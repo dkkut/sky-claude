@@ -15,12 +15,16 @@
    Этот файл только спрашивает и показывает ответ.
 =============================================================== */
 
+/** Способ второго фактора: код из приложения или письмо на почту. */
+export type TwoFactorMethod = 'app' | 'email';
+
 export interface SkyIdInfo {
   id:                 string;
   phone:              string;
   email?:             string;
   emailVerified:      boolean;
   twoFactorEnabled:   boolean;
+  twoFactorMethod:    TwoFactorMethod;
   createdAt?:         string;
 }
 
@@ -36,6 +40,7 @@ export interface ServerProfile {
   primeExpiresAt?:  string | null;
   primePlan?:       string | null;
   twoFactorEnabled: boolean;
+  twoFactorMethod:  TwoFactorMethod;
   createdAt?:       string;
 }
 
@@ -71,6 +76,10 @@ const ERRORS: Record<string, string> = {
   invalid_name:          'Имя: от 2 до 64 символов',
   username_taken:        'Такой ник уже занят',
   email_taken:           'Эта почта уже привязана к другому Sky ID',
+  email_not_verified:    'Сначала привяжите и подтвердите почту',
+  already_enabled:       'Защита уже включена. Чтобы сменить способ, сначала отключите её',
+  invalid_method:        'Такой способ проверки не поддерживается',
+  not_started:           'Настройка не начата — начните заново',
   profile_limit_reached: 'На один Sky ID можно завести не больше двух профилей',
   profile_code_required: 'Профиль защищён — введите код из приложения',
   two_factor_required:   'Введите код из приложения',
@@ -170,7 +179,8 @@ export const apiPhoneCooldown = (phone: string) =>
   post<{ retryAfter: number }>('/api/auth/phone/cooldown', { phone });
 
 export type PhoneVerified =
-  | ({ needsTwoFactor: true; challenge: string; expiresIn: number })
+  | ({ needsTwoFactor: true; method: TwoFactorMethod; challenge: string;
+       expiresIn: number; email?: string; retryAfter?: number })
   | (SkySession & { accessToken: string; expiresIn: number; isNew?: boolean });
 
 /** Шаг 2: проверяем код. Может ответить «нужен второй фактор». */
@@ -180,6 +190,10 @@ export const apiVerifyPhoneCode = (phone: string, code: string) =>
 /** Шаг 3: второй фактор самого Sky ID. */
 export const apiVerifySkyTwoFactor = (challenge: string, code: string) =>
   post<SkySession & { accessToken: string }>('/api/auth/two-factor/verify', { challenge, code });
+
+/** Прислать код второго фактора на почту ещё раз (на экране входа). */
+export const apiResendLoginTwoFactor = (challenge: string) =>
+  post<{ ok: true; email: string; retryAfter: number }>('/api/auth/two-factor/send', { challenge });
 
 /** Восстановление сессии по куке — вызывается при старте приложения. */
 export const apiRefreshSession = async (): Promise<Reply<SkySession & { accessToken: string }>> => {
@@ -222,8 +236,14 @@ export const apiUpdateProfile = (profileId: string, p: { name?: string; avatar?:
 
 /* ═══ Двухэтапная защита профиля ═════════════════════════════ */
 
-export const apiProfileTwoFactorBegin = (profileId: string) =>
-  post<{ secret: string; uri: string }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}/two-factor/begin`);
+export const apiProfileTwoFactorBegin = (profileId: string, method: TwoFactorMethod = 'app') =>
+  post<{ method: TwoFactorMethod; secret?: string; uri?: string; email?: string; retryAfter?: number }>(
+    `/api/skyid/profiles/${encodeURIComponent(profileId)}/two-factor/begin`, { method });
+
+/** Прислать код на почту ещё раз — и при настройке, и при входе в профиль. */
+export const apiProfileTwoFactorSend = (profileId: string) =>
+  post<{ ok: true; email: string; retryAfter: number }>(
+    `/api/skyid/profiles/${encodeURIComponent(profileId)}/two-factor/send`);
 
 export const apiProfileTwoFactorConfirm = (profileId: string, code: string) =>
   post<{ profile: ServerProfile }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}/two-factor/confirm`, { code });
@@ -233,8 +253,12 @@ export const apiProfileTwoFactorDisable = (profileId: string, code: string) =>
 
 /* ═══ Двухэтапная защита Sky ID ══════════════════════════════ */
 
-export const apiSkyTwoFactorBegin = () =>
-  post<{ secret: string; uri: string }>('/api/skyid/two-factor/begin');
+export const apiSkyTwoFactorBegin = (method: TwoFactorMethod = 'app') =>
+  post<{ method: TwoFactorMethod; secret?: string; uri?: string; email?: string; retryAfter?: number }>(
+    '/api/skyid/two-factor/begin', { method });
+
+export const apiSkyTwoFactorSend = () =>
+  post<{ ok: true; email: string; retryAfter: number }>('/api/skyid/two-factor/send');
 
 export const apiSkyTwoFactorConfirm = (code: string) =>
   post<{ skyId: SkyIdInfo }>('/api/skyid/two-factor/confirm', { code });

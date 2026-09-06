@@ -21,8 +21,16 @@ import { sendSms, sendEmail } from './notify.mjs';
 const TTL_SEC = 5 * 60;
 /** Пауза до повторной отправки — она же таймер на экране. */
 export const RESEND_COOLDOWN_SEC = 60;
-/** Потолок отправок на один адрес за час. */
-const MAX_PER_HOUR = 5;
+/**
+ * Потолок отправок на один адрес за час.
+ *
+ * У SMS он ниже: каждое сообщение стоит денег, а чужой телефон, звенящий
+ * без спроса, — это уже травля. Письма дешевле и никого не будят, а на
+ * почту в обычной жизни кодов уходит больше: подтвердить адрес, включить
+ * второй фактор, войти пару раз.
+ */
+const MAX_PER_HOUR = { phone: 5, email: 12 };
+const hourlyLimit = (channel) => MAX_PER_HOUR[channel] ?? 5;
 /** Сколько раз можно ошибиться, прежде чем код сгорит. */
 const MAX_ATTEMPTS = 5;
 
@@ -54,24 +62,38 @@ export const issueCode = async (channel, destination, purpose) => {
       WHERE channel = $1 AND destination = $2 AND created_at > now() - interval '1 hour'`,
     [channel, destination],
   );
-  if (hourly[0].n >= MAX_PER_HOUR) {
+  if (hourly[0].n >= hourlyLimit(channel)) {
     return { error: 'too_many_requests' };
   }
 
   const code = generateNumericCode(6);
   const expiresAt = new Date(Date.now() + TTL_SEC * 1000);
 
+  const codeId = `vc-${generateId()}`;
   await query(
     `INSERT INTO verification_codes (id, channel, destination, code_hash, purpose, expires_at)
      VALUES ($1,$2,$3,$4,$5,$6)`,
-    [`vc-${generateId()}`, channel, destination, hashCode(code, destination), purpose, expiresAt],
+    [codeId, channel, destination, hashCode(code, destination), purpose, expiresAt],
   );
 
   const delivery = channel === 'phone'
     ? await sendSms(destination, `Код Sky ID: ${code}. Никому его не сообщайте.`)
-    : await sendEmail(destination, 'Подтверждение Sky ID', `Ваш код подтверждения: ${code}`);
+    : await sendEmail(destination, 'Код Sky ID',
+        `Ваш код подтверждения: ${code}\n\n` +
+        `Код действует ${Math.round(TTL_SEC / 60)} минут. Никому его не сообщайте — ` +
+        `сотрудники Sky никогда не спрашивают код.\n` +
+        `Если вы ничего не запрашивали, просто не отвечайте на это письмо.`);
 
-  if (!delivery.ok) return { error: delivery.error ?? 'delivery_failed' };
+  if (!delivery.ok) {
+    // Провайдер не настроен — это наша поломка, а не поведение человека.
+    // Запись удаляем, иначе он ещё и в паузу упрётся из-за кода, который
+    // никуда не ушёл. Настоящий сбой доставки запись оставляет: иначе
+    // сломанный провайдер превращается в бесплатный усилитель рассылки.
+    if (String(delivery.error ?? '').endsWith('_not_configured')) {
+      await query('DELETE FROM verification_codes WHERE id = $1', [codeId]);
+    }
+    return { error: delivery.error ?? 'delivery_failed' };
+  }
 
   return { ok: true, retryAfter: RESEND_COOLDOWN_SEC, expiresIn: TTL_SEC };
 };

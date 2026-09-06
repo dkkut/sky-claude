@@ -20,6 +20,7 @@ import { authRoutes } from './routes/auth.mjs';
 import { skyIdRoutes } from './routes/skyid.mjs';
 import { walletRoutes } from './routes/wallet.mjs';
 import { purgeExpiredCodes } from './verification.mjs';
+import { checkDeliverySetup, closeMailer } from './notify.mjs';
 import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
@@ -85,6 +86,10 @@ const start = async () => {
 
   // Список ключей беты приводим в соответствие с .env при каждом
   // запуске: убранный оттуда ключ должен переставать работать.
+  // Про неработающую доставку кодов лучше узнать при запуске, а не
+  // тогда, когда кто-то не сможет войти.
+  checkDeliverySetup();
+
   const removed = await syncBetaKeys();
   if (betaEnabled()) {
     console.log(`[beta] калитка включена, ключей: ${config.betaKeys.length}` +
@@ -123,6 +128,7 @@ const shutdown = async (signal) => {
     if (houseKeeping) clearInterval(houseKeeping);
     await new Promise((resolve) => server.close(resolve));
     if (signalHub) await signalHub.close();
+    closeMailer();
     await closeRedis();
     await closeDb();
   } catch (err) {

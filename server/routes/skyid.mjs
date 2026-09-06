@@ -18,7 +18,7 @@ import {
   findSkyIdById, publicSkyId, setEmailVerified,
   beginSkyTwoFactor, confirmSkyTwoFactor, disableSkyTwoFactor, verifySkyTwoFactor,
   beginProfileTwoFactor, confirmProfileTwoFactor, verifyProfileTwoFactor, disableProfileTwoFactor,
-  grantPrime, revokePrime, MAX_PROFILES,
+  grantPrime, revokePrime, MAX_PROFILES, sendTwoFactorEmail,
 } from './../skyid.mjs';
 
 /**
@@ -101,7 +101,21 @@ export const skyIdRoutes = async (req, res, url) => {
     if (!profile) return json(res, 404, { error: 'not_found' });
 
     if (profile.twoFactorEnabled) {
-      if (!body.code) return json(res, 401, { error: 'profile_code_required' });
+      if (!body.code) {
+        // Если второй фактор приходит письмом — сразу и отправляем,
+        // чтобы человек не искал отдельную кнопку.
+        let sent = null;
+        if (profile.twoFactorMethod === 'email') {
+          const r = await sendTwoFactorEmail(s.skyId, profileId);
+          if (r.error && r.error !== 'too_soon') return json(res, 503, r);
+          sent = { retryAfter: r.retryAfter };
+        }
+        return json(res, 401, {
+          error: 'profile_code_required',
+          method: profile.twoFactorMethod ?? 'app',
+          ...(sent ?? {}),
+        });
+      }
       const check = await verifyProfileTwoFactor(s.skyId, profileId, body.code);
       if (check.error) return json(res, 401, { error: check.error });
     }
@@ -133,16 +147,30 @@ export const skyIdRoutes = async (req, res, url) => {
 
   /* ══ Двухэтапная защита профиля ══════════════════════════════════ */
 
-  const p2faMatch = url.match(/^\/api\/skyid\/profiles\/([\w.-]+)\/two-factor\/(begin|confirm|disable)$/);
+  const p2faMatch = url.match(/^\/api\/skyid\/profiles\/([\w.-]+)\/two-factor\/(begin|confirm|disable|send)$/);
   if (req.method === 'POST' && p2faMatch) {
     const s = await requireSkyId(req, res); if (!s) return true;
     const [, profileId, action] = p2faMatch;
 
     if (action === 'begin') {
-      const result = await beginProfileTwoFactor(s.skyId, profileId);
-      if (result.error) return json(res, 404, { error: result.error });
+      const body = await parseBody(req);
+      const result = await beginProfileTwoFactor(s.skyId, profileId, body.method ?? 'app');
+      if (result.error === 'not_found') return json(res, 404, { error: result.error });
+      if (result.error) return json(res, 400, result);
       // Секрет отдаём один раз, чтобы человек внёс его в приложение.
-      return json(res, 200, { secret: result.secret, uri: result.uri });
+      // Для почты секрета нет — только адрес, куда ушёл код.
+      return json(res, 200, {
+        method: result.method, secret: result.secret, uri: result.uri,
+        email: result.email, retryAfter: result.retryAfter,
+      });
+    }
+
+    // Повторная отправка кода на почту — и при настройке, и при входе
+    // в защищённый профиль.
+    if (action === 'send') {
+      const result = await sendTwoFactorEmail(s.skyId, profileId);
+      if (result.error) return json(res, 400, result);
+      return json(res, 200, { ok: true, email: result.email, retryAfter: result.retryAfter });
     }
 
     const body = await parseBody(req);
@@ -165,9 +193,22 @@ export const skyIdRoutes = async (req, res, url) => {
 
   if (req.method === 'POST' && url === '/api/skyid/two-factor/begin') {
     const s = await requireSkyId(req, res); if (!s) return true;
+    const body = await parseBody(req);
     const sky = await findSkyIdById(s.skyId);
-    const result = await beginSkyTwoFactor(s.skyId, sky.phone);
-    return json(res, 200, { secret: result.secret, uri: result.uri });
+    const result = await beginSkyTwoFactor(s.skyId, sky.phone, body.method ?? 'app');
+    if (result.error) return json(res, 400, result);
+    return json(res, 200, {
+      method: result.method, secret: result.secret, uri: result.uri,
+      email: result.email, retryAfter: result.retryAfter,
+    });
+  }
+
+  // Повторная отправка кода на почту при настройке защиты Sky ID.
+  if (req.method === 'POST' && url === '/api/skyid/two-factor/send') {
+    const s = await requireSkyId(req, res); if (!s) return true;
+    const result = await sendTwoFactorEmail(s.skyId, null);
+    if (result.error) return json(res, 400, result);
+    return json(res, 200, { ok: true, email: result.email, retryAfter: result.retryAfter });
   }
 
   if (req.method === 'POST' && url === '/api/skyid/two-factor/confirm') {

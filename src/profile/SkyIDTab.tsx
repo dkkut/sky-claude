@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { ConfirmExit } from '@/auth/AuthScreen';
-import type { ServerProfile } from '@/core/auth/api';
+import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
 
 /* ── helpers ─────────────────────────────────────────────────── */
 const fmtDt = (iso: string) =>
@@ -332,26 +332,32 @@ const ProfilesSection = () => {
  * профиля, различается только тем, куда уходят вызовы.
  */
 const TwoFactorBlock = ({
-  title, hint, enabled, begin, confirm, disable,
+  title, hint, enabled, method, emailReady, begin, confirm, disable, resend,
 }: {
   title: string; hint: string; enabled: boolean;
-  begin: () => Promise<{ ok: boolean; secret?: string; uri?: string; reason?: string }>;
+  method: TwoFactorMethod; emailReady: boolean;
+  begin: (m: TwoFactorMethod) => Promise<{ ok: boolean; method?: TwoFactorMethod; secret?: string; email?: string; reason?: string }>;
   confirm: (code: string) => Promise<{ ok: boolean; reason?: string }>;
   disable: (code: string) => Promise<{ ok: boolean; reason?: string }>;
+  resend: () => Promise<{ ok: boolean; reason?: string; retryAfter?: number }>;
 }) => {
   const [stage, setStage] = useState<'idle' | 'setup' | 'off'>('idle');
+  const [pick, setPick] = useState<TwoFactorMethod>('app');
   const [secret, setSecret] = useState('');
+  const [sentTo, setSentTo] = useState('');
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const reset = () => { setStage('idle'); setCode(''); setSecret(''); setSentTo(''); };
+
   const start = async () => {
     setBusy(true); setMsg(null);
-    const r = await begin();
+    const r = await begin(pick);
     setBusy(false);
     if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Не получилось' }); return; }
-    setSecret(r.secret ?? ''); setStage('setup');
+    setSecret(r.secret ?? ''); setSentTo(r.email ?? ''); setStage('setup');
   };
 
   const finish = async () => {
@@ -359,8 +365,7 @@ const TwoFactorBlock = ({
     const r = await confirm(code);
     setBusy(false);
     if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Неверный код' }); return; }
-    setStage('idle'); setCode(''); setSecret('');
-    setMsg({ ok: true, text: 'Защита включена' });
+    reset(); setMsg({ ok: true, text: 'Защита включена' });
   };
 
   const off = async () => {
@@ -368,9 +373,22 @@ const TwoFactorBlock = ({
     const r = await disable(code);
     setBusy(false);
     if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Неверный код' }); return; }
-    setStage('idle'); setCode('');
-    setMsg({ ok: true, text: 'Защита отключена' });
+    reset(); setMsg({ ok: true, text: 'Защита отключена' });
   };
+
+  const askCode = async () => {
+    setBusy(true); setMsg(null);
+    const r = await resend();
+    setBusy(false);
+    setMsg(r.ok
+      ? { ok: true, text: 'Код отправлен на почту' }
+      : { ok: false, text: r.reason ?? 'Не получилось отправить' });
+  };
+
+  /* Какой способ настраивается сейчас: при включённой защите — тот, что
+     записан, при настройке — выбранный. */
+  const active = stage === 'setup' ? pick : method;
+  const byEmail = active === 'email';
 
   return (
     <div className="rounded-2xl p-4 space-y-3"
@@ -387,6 +405,12 @@ const TwoFactorBlock = ({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>{title}</p>
           <p className="text-[11px] leading-snug mt-0.5" style={{ color: 'var(--t3)' }}>{hint}</p>
+          {enabled && (
+            <p className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'var(--green)' }}>
+              {method === 'email' ? <Mail size={11} /> : <Smartphone size={11} />}
+              {method === 'email' ? 'код приходит на почту' : 'код из приложения'}
+            </p>
+          )}
         </div>
         <span className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold"
           style={{
@@ -398,11 +422,42 @@ const TwoFactorBlock = ({
       </div>
 
       {stage === 'idle' && !enabled && (
-        <button type="button" onClick={start} disabled={busy}
-          className="w-full rounded-xl py-2.5 text-sm font-semibold"
-          style={{ background: 'var(--accent)', color: '#fff' }}>
-          {busy ? 'Готовим…' : 'Включить защиту'}
-        </button>
+        <>
+          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>
+            Чем подтверждать
+          </p>
+          <div className="flex gap-2">
+            {([
+              { key: 'app'   as const, icon: Smartphone, label: 'Приложение', note: 'Google Authenticator и подобные' },
+              { key: 'email' as const, icon: Mail,       label: 'Почта',      note: emailReady ? 'код письмом' : 'нужна привязанная почта' },
+            ]).map(({ key, icon: Icon, label, note }) => {
+              const off = key === 'email' && !emailReady;
+              return (
+                <button key={key} type="button" disabled={off}
+                  onClick={() => setPick(key)}
+                  className="flex-1 rounded-xl px-3 py-2.5 text-left"
+                  style={{
+                    background: pick === key ? 'var(--accent-bg)' : 'var(--bg-l3)',
+                    border: `1px solid ${pick === key ? 'rgba(79,110,247,0.35)' : 'var(--border)'}`,
+                    opacity: off ? 0.45 : 1,
+                  }}>
+                  <Icon size={14} style={{ color: pick === key ? 'var(--accent)' : 'var(--t3)' }} />
+                  <p className="text-[12px] font-semibold mt-1" style={{ color: 'var(--t1)' }}>{label}</p>
+                  <p className="text-[10px] leading-snug" style={{ color: 'var(--t3)' }}>{note}</p>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+            SMS вторым способом нет намеренно: вход и так идёт по коду из SMS,
+            и второй код на тот же номер ничего не добавит.
+          </p>
+          <button type="button" onClick={start} disabled={busy}
+            className="w-full rounded-xl py-2.5 text-sm font-semibold"
+            style={{ background: 'var(--accent)', color: '#fff' }}>
+            {busy ? 'Готовим…' : 'Включить защиту'}
+          </button>
+        </>
       )}
 
       {stage === 'idle' && enabled && (
@@ -415,28 +470,41 @@ const TwoFactorBlock = ({
 
       {stage === 'setup' && (
         <div className="space-y-3">
-          <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t2)' }}>
-            Добавьте этот ключ в приложение-аутентификатор (Google Authenticator,
-            Aegis, 1Password) и введите код, который оно покажет.
-          </p>
-          <button type="button"
-            onClick={() => { navigator.clipboard.writeText(secret).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left font-mono text-[12px] break-all"
-            style={{ background: 'var(--bg-l3)', border: '1px solid var(--border-m)', color: 'var(--t1)' }}>
-            <span className="min-w-0 flex-1 break-all">{secret}</span>
-            {copied ? <Check size={13} style={{ color: 'var(--green)' }} /> : <Copy size={13} style={{ color: 'var(--t3)' }} />}
-          </button>
-          <Field inputMode="numeric" maxLength={6} placeholder="Код из приложения"
+          {byEmail ? (
+            <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t2)' }}>
+              Отправили код на {sentTo || 'вашу почту'}. Введите его, чтобы включить защиту.
+            </p>
+          ) : (
+            <>
+              <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t2)' }}>
+                Добавьте этот ключ в приложение-аутентификатор (Google Authenticator,
+                Aegis, 1Password) и введите код, который оно покажет.
+              </p>
+              <button type="button"
+                onClick={() => { navigator.clipboard.writeText(secret).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left font-mono text-[12px] break-all"
+                style={{ background: 'var(--bg-l3)', border: '1px solid var(--border-m)', color: 'var(--t1)' }}>
+                <span className="min-w-0 flex-1 break-all">{secret}</span>
+                {copied ? <Check size={13} style={{ color: 'var(--green)' }} /> : <Copy size={13} style={{ color: 'var(--t3)' }} />}
+              </button>
+            </>
+          )}
+          <Field inputMode="numeric" maxLength={6} placeholder="Код"
             value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
           <div className="flex gap-2">
-            <button type="button" onClick={() => { setStage('idle'); setCode(''); setSecret(''); }}
-              className="sky-btn-ghost flex-1">Отмена</button>
+            <button type="button" onClick={reset} className="sky-btn-ghost flex-1">Отмена</button>
             <button type="button" onClick={finish} disabled={busy || code.length < 6}
               className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
               style={{ background: 'var(--accent)', color: '#fff' }}>
               Включить
             </button>
           </div>
+          {byEmail && (
+            <button type="button" onClick={askCode} disabled={busy}
+              className="w-full text-center text-[12px]" style={{ color: 'var(--accent)' }}>
+              Отправить код ещё раз
+            </button>
+          )}
         </div>
       )}
 
@@ -446,17 +514,22 @@ const TwoFactorBlock = ({
             Чтобы отключить защиту, введите действующий код. Так тот, кто
             дорвался до открытой вкладки, не сможет снять её одной кнопкой.
           </p>
-          <Field inputMode="numeric" maxLength={6} placeholder="Код из приложения"
+          <Field inputMode="numeric" maxLength={6} placeholder="Код"
             value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
           <div className="flex gap-2">
-            <button type="button" onClick={() => { setStage('idle'); setCode(''); }}
-              className="sky-btn-ghost flex-1">Отмена</button>
+            <button type="button" onClick={reset} className="sky-btn-ghost flex-1">Отмена</button>
             <button type="button" onClick={off} disabled={busy || code.length < 6}
               className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
               style={{ background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.25)', color: 'var(--red)' }}>
               Отключить
             </button>
           </div>
+          {byEmail && (
+            <button type="button" onClick={askCode} disabled={busy}
+              className="w-full text-center text-[12px]" style={{ color: 'var(--accent)' }}>
+              Прислать код на почту
+            </button>
+          )}
         </div>
       )}
 
@@ -468,11 +541,12 @@ const TwoFactorBlock = ({
 const SecuritySection = () => {
   const {
     sky, profiles, activeProfileId,
-    beginSkyTwoFactor, confirmSkyTwoFactor, disableSkyTwoFactor,
-    beginProfileTwoFactor, confirmProfileTwoFactor, disableProfileTwoFactor,
+    beginSkyTwoFactor, confirmSkyTwoFactor, disableSkyTwoFactor, sendSkyTwoFactorCode,
+    beginProfileTwoFactor, confirmProfileTwoFactor, disableProfileTwoFactor, sendProfileTwoFactorCode,
   } = useAuthStore();
 
   const active: ServerProfile | undefined = profiles.find(p => p.id === activeProfileId);
+  const emailReady = Boolean(sky?.emailVerified);
 
   return (
     <div className="space-y-3">
@@ -480,13 +554,24 @@ const SecuritySection = () => {
         Двухэтапная защита
       </p>
 
+      {!emailReady && (
+        <p className="rounded-xl px-3 py-2 text-[11px] leading-relaxed"
+          style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t3)' }}>
+          Чтобы получать коды письмом, привяжите почту на вкладке «Sky ID».
+          Без неё доступен только код из приложения.
+        </p>
+      )}
+
       <TwoFactorBlock
         title="Вход в Sky ID"
         hint="Спрашивается при входе по номеру — после кода из SMS."
         enabled={Boolean(sky?.twoFactorEnabled)}
-        begin={beginSkyTwoFactor}
+        method={sky?.twoFactorMethod ?? 'app'}
+        emailReady={emailReady}
+        begin={m => beginSkyTwoFactor(m)}
         confirm={confirmSkyTwoFactor}
         disable={disableSkyTwoFactor}
+        resend={sendSkyTwoFactorCode}
       />
 
       {active && (
@@ -494,9 +579,12 @@ const SecuritySection = () => {
           title={`Профиль «${active.name}»`}
           hint="Спрашивается при открытии этого профиля. Не связана с защитой Sky ID."
           enabled={active.twoFactorEnabled}
-          begin={() => beginProfileTwoFactor(active.id)}
+          method={active.twoFactorMethod ?? 'app'}
+          emailReady={emailReady}
+          begin={m => beginProfileTwoFactor(active.id, m)}
           confirm={code => confirmProfileTwoFactor(active.id, code)}
           disable={code => disableProfileTwoFactor(active.id, code)}
+          resend={() => sendProfileTwoFactorCode(active.id)}
         />
       )}
 

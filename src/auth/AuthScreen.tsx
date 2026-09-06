@@ -279,10 +279,15 @@ const CodeStep = () => {
 /* ═══ Шаг 3: защита самого Sky ID ══════════════════════════════ */
 
 const SkyTwoFactorStep = () => {
-  const { verifySkyTwoFactor, logout } = useAuthStore();
+  const {
+    verifySkyTwoFactor, resendLoginTwoFactor, logout,
+    twoFactorMethod, twoFactorEmail, codeInfo,
+  } = useAuthStore();
   const [code, setCode] = useState('');
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const byEmail = twoFactorMethod === 'email';
+  const [left, setLeft] = useCountdown(byEmail ? (codeInfo?.retryAfter ?? 60) : 0);
 
   const submit = async (value = code) => {
     if (busy || value.length < 6) return;
@@ -292,10 +297,19 @@ const SkyTwoFactorStep = () => {
     setBusy(false);
   };
 
+  const resend = async () => {
+    setErr(undefined);
+    const res = await resendLoginTwoFactor();
+    setLeft(res.retryAfter ?? 60);
+    if (!res.ok) setErr(res.reason);
+  };
+
   return (
     <Shell
       title="Подтверждение входа"
-      subtitle="У этого Sky ID включена двухэтапная защита. Введите код из приложения-аутентификатора."
+      subtitle={byEmail
+        ? `Отправили код на ${twoFactorEmail ?? 'вашу почту'}`
+        : 'У этого Sky ID включена двухэтапная защита. Введите код из приложения-аутентификатора.'}
       onBack={logout}
     >
       <div className="space-y-4">
@@ -307,6 +321,15 @@ const SkyTwoFactorStep = () => {
         >
           {busy ? 'Проверяем…' : 'Подтвердить'}
         </button>
+        {byEmail && (
+          <button
+            type="button" onClick={resend} disabled={left > 0}
+            className="w-full text-center text-sm"
+            style={{ color: left > 0 ? 'var(--t3)' : 'var(--accent)' }}
+          >
+            {left > 0 ? `Отправить ещё раз через ${left} с` : 'Отправить код ещё раз'}
+          </button>
+        )}
       </div>
     </Shell>
   );
@@ -482,10 +505,12 @@ export const ConfirmExit = ({
 const ProfileCodeStep = ({
   profile, onBack,
 }: { profile: ServerProfile; onBack: () => void }) => {
-  const { selectProfile } = useAuthStore();
+  const { selectProfile, sendProfileTwoFactorCode } = useAuthStore();
   const [code, setCode] = useState('');
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const byEmail = profile.twoFactorMethod === 'email';
+  const [left, setLeft] = useCountdown(byEmail ? 60 : 0);
 
   const submit = async (value = code) => {
     if (busy || value.length < 6) return;
@@ -495,10 +520,19 @@ const ProfileCodeStep = ({
     setBusy(false);
   };
 
+  const resend = async () => {
+    setErr(undefined);
+    const res = await sendProfileTwoFactorCode(profile.id);
+    setLeft(res.retryAfter ?? 60);
+    if (!res.ok) setErr(res.reason);
+  };
+
   return (
     <Shell
       title={profile.name}
-      subtitle="Профиль защищён. Введите код из приложения-аутентификатора."
+      subtitle={byEmail
+        ? 'Профиль защищён. Код отправлен на почту Sky ID.'
+        : 'Профиль защищён. Введите код из приложения-аутентификатора.'}
       onBack={onBack}
     >
       <div className="space-y-4">
@@ -510,6 +544,15 @@ const ProfileCodeStep = ({
         >
           {busy ? 'Проверяем…' : 'Открыть профиль'}
         </button>
+        {byEmail && (
+          <button
+            type="button" onClick={resend} disabled={left > 0}
+            className="w-full text-center text-sm"
+            style={{ color: left > 0 ? 'var(--t3)' : 'var(--accent)' }}
+          >
+            {left > 0 ? `Отправить ещё раз через ${left} с` : 'Отправить код ещё раз'}
+          </button>
+        )}
       </div>
     </Shell>
   );

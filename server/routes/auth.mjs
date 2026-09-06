@@ -20,11 +20,22 @@ import { json, parseBody, readRefreshToken, readSession } from './../http.mjs';
 import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../verification.mjs';
 import {
   ensureSkyId, findSkyIdById, publicSkyId, listProfiles,
-  getProfileOfSkyId, verifySkyTwoFactor,
+  getProfileOfSkyId, verifySkyTwoFactor, sendTwoFactorEmail,
 } from './../skyid.mjs';
 
 /** Токен между SMS и вторым фактором живёт ровно столько, сколько нужно. */
 const CHALLENGE_TTL_SEC = 5 * 60;
+
+/**
+ * Показываем почту так, чтобы человек узнал свою, но подсмотревший
+ * из-за плеча не узнал чужую: a***@example.com.
+ */
+const maskEmail = (email) => {
+  const value = String(email ?? '');
+  const at = value.indexOf('@');
+  if (at < 1) return '';
+  return `${value[0]}***${value.slice(at)}`;
+};
 
 const PHONE_RE = /^\+?[0-9]{10,15}$/;
 const normalizePhone = (raw) => {
@@ -119,7 +130,26 @@ export const authRoutes = async (req, res, url) => {
       const challenge = signToken(
         { sub: skyId.id, typ: '2fa-challenge' }, config.jwtSecret, CHALLENGE_TTL_SEC,
       );
-      return json(res, 200, { needsTwoFactor: true, challenge, expiresIn: CHALLENGE_TTL_SEC });
+
+      // Код на почту отправляем сразу: заставлять нажимать «прислать
+      // код» после ввода SMS — лишний шаг. Пауза между отправками не
+      // ошибка: предыдущий код ещё жив.
+      let sent = null;
+      if (skyId.two_factor_method === 'email') {
+        const r = await sendTwoFactorEmail(skyId.id, null);
+        if (r.error && r.error !== 'too_soon') {
+          return json(res, 503, { error: r.error });
+        }
+        sent = { email: maskEmail(skyId.email), retryAfter: r.retryAfter };
+      }
+
+      return json(res, 200, {
+        needsTwoFactor: true,
+        method: skyId.two_factor_method ?? 'app',
+        challenge,
+        expiresIn: CHALLENGE_TTL_SEC,
+        ...(sent ?? {}),
+      });
     }
 
     const session = await startSession(skyId);
@@ -143,6 +173,18 @@ export const authRoutes = async (req, res, url) => {
 
     const session = await startSession(skyId);
     return json(res, 200, session.body, { 'Set-Cookie': session.cookie });
+  }
+
+  /* ── Повторная отправка кода второго фактора на почту ───────────── */
+  if (req.method === 'POST' && url === '/api/auth/two-factor/send') {
+    const body = await parseBody(req);
+    const payload = verifyToken(String(body.challenge ?? ''), config.jwtSecret);
+    if (!payload || payload.typ !== '2fa-challenge') {
+      return json(res, 401, { error: 'challenge_expired' });
+    }
+    const result = await sendTwoFactorEmail(payload.sub, null);
+    if (result.error) return json(res, 400, result);
+    return json(res, 200, { ok: true, email: maskEmail(result.email), retryAfter: result.retryAfter });
   }
 
   /* ── Сколько ждать до повторной отправки ────────────────────────── */

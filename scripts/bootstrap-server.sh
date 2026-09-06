@@ -222,15 +222,29 @@ REDIS_PASSWORD=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 32)
 ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '\n')
 
 # ВНИМАНИЕ: 'log' пишет код входа в журнал контейнера и никуда не шлёт.
-# Пока здесь log, войти сможет только тот, у кого есть доступ к серверу.
-# Для рабочего сайта поставьте SMS_MODE=smsru и ключ SMS_API_ID.
+# В бою он запрещён — войти не сможет никто, пока не задан провайдер.
+# Для рабочего сайта: SMS_MODE=smsru и ключ SMS_API_ID.
 SMS_MODE=log
 SMS_API_ID=
 SMS_FROM=
+SMS_WEBHOOK_URL=
+SMS_WEBHOOK_TOKEN=
 
+# Почта: подтверждение адреса и код второго фактора.
+# Рабочий вариант: EMAIL_MODE=smtp с ящиком вашего хостинга.
 EMAIL_MODE=log
+EMAIL_FROM=
+SMTP_HOST=
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=
+SMTP_PASS=
+RESEND_API_KEY=
 EMAIL_WEBHOOK_URL=
 EMAIL_WEBHOOK_TOKEN=
+
+# Разрешает режим 'log' в бою. Оставьте пустым.
+ALLOW_LOG_CODES=
 
 RATE_LIMIT_PER_MINUTE=120
 ACCESS_TTL_SEC=900
@@ -253,9 +267,10 @@ cat <<INFO
     1. Направьте A-запись домена на этот сервер и дождитесь обновления DNS.
     2. Положите код в ${APP_DIR} (git clone или деплой через GitHub Actions).
     3. Выпустите сертификат:  cd ${APP_DIR} && bash scripts/init-letsencrypt.sh
-    4. Подключите отправку SMS: в ${ENV_FILE} задайте SMS_MODE=smsru
-       и SMS_API_ID. Пока там SMS_MODE=log, коды входа пишутся в журнал
-       контейнера и людям не приходят — войти никто не сможет.
+    4. Подключите отправку кодов: в ${ENV_FILE} задайте SMS_MODE=smsru
+       и SMS_API_ID, а для почты — EMAIL_MODE=smtp с данными ящика.
+       Пока стоит SMS_MODE=log, войти не сможет никто: в бою этот режим
+       запрещён. Подробности — в DEPLOY.md, раздел «Отправка кодов».
 
   Проверьте, что вход по ключу работает, ДО того как закроете текущую сессию.
 

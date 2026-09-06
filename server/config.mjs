@@ -21,9 +21,27 @@ export const config = {
   smsApiId:  process.env.SMS_API_ID || '',
   smsFrom:   process.env.SMS_FROM   || '',
 
+  smsWebhookUrl:      process.env.SMS_WEBHOOK_URL      || '',
+  smsWebhookToken:    process.env.SMS_WEBHOOK_TOKEN    || '',
+
   emailMode:          process.env.EMAIL_MODE           || 'log',
+  emailFrom:          process.env.EMAIL_FROM           || '',
   emailWebhookUrl:    process.env.EMAIL_WEBHOOK_URL    || '',
   emailWebhookToken:  process.env.EMAIL_WEBHOOK_TOKEN  || '',
+
+  // Обычная почта хостинга: адрес сервера, порт и учётные данные ящика.
+  smtpHost:           process.env.SMTP_HOST            || '',
+  smtpPort:    Number(process.env.SMTP_PORT            || 465),
+  smtpUser:           process.env.SMTP_USER            || '',
+  smtpPass:           process.env.SMTP_PASS            || '',
+  // true — сразу TLS (обычно порт 465), false — STARTTLS (587).
+  smtpSecure:        (process.env.SMTP_SECURE ?? 'true') !== 'false',
+
+  resendApiKey:       process.env.RESEND_API_KEY       || '',
+
+  // Разрешает режим 'log' в бою. Без него коды в журнал не пишутся:
+  // тот, кто читает логи, входил бы под любым аккаунтом.
+  allowLogCodes:      process.env.ALLOW_LOG_CODES === '1',
 
   // Ключи закрытой беты: «ключ:подпись» через запятую. Пустая строка —
   // калитки нет, сайт открыт всем.

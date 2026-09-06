@@ -76,9 +76,20 @@ services:
       SMS_MODE:              ${SMS_MODE:-log}
       SMS_API_ID:            ${SMS_API_ID:-}
       SMS_FROM:              ${SMS_FROM:-}
+      SMS_WEBHOOK_URL:       ${SMS_WEBHOOK_URL:-}
+      SMS_WEBHOOK_TOKEN:     ${SMS_WEBHOOK_TOKEN:-}
       EMAIL_MODE:            ${EMAIL_MODE:-log}
+      EMAIL_FROM:            ${EMAIL_FROM:-}
       EMAIL_WEBHOOK_URL:     ${EMAIL_WEBHOOK_URL:-}
       EMAIL_WEBHOOK_TOKEN:   ${EMAIL_WEBHOOK_TOKEN:-}
+      SMTP_HOST:             ${SMTP_HOST:-}
+      SMTP_PORT:             ${SMTP_PORT:-465}
+      SMTP_USER:             ${SMTP_USER:-}
+      SMTP_PASS:             ${SMTP_PASS:-}
+      SMTP_SECURE:           ${SMTP_SECURE:-true}
+      RESEND_API_KEY:        ${RESEND_API_KEY:-}
+      # Разрешает писать коды в журнал в бою. Без крайней нужды не включать.
+      ALLOW_LOG_CODES:       ${ALLOW_LOG_CODES:-}
       # Ключи закрытой беты. Пустая строка — калитки нет.
       BETA_KEYS:             ${BETA_KEYS:-}
       REDIS_URL:             redis://:${REDIS_PASSWORD:?нужно задать REDIS_PASSWORD в .env}@redis:6379

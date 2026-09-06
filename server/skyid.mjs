@@ -15,6 +15,7 @@ import { query, pool } from './db.mjs';
 import { generateId } from './security.mjs';
 import { encryptSecret, decryptSecret } from './crypto.mjs';
 import { generateSecret, verifyTotp, otpauthUri } from './totp.mjs';
+import { issueCode, verifyCode } from './verification.mjs';
 
 /** Максимум профилей в одном Sky ID. Дублируется триггером в БД. */
 export const MAX_PROFILES = 2;
@@ -27,6 +28,7 @@ const toSkyId = (row) => row && ({
   email:            row.email ?? undefined,
   emailVerified:    row.email_verified,
   twoFactorEnabled: row.two_factor_enabled,
+  twoFactorMethod:  row.two_factor_method ?? 'app',
   createdAt:        row.created_at.toISOString(),
 });
 
@@ -46,6 +48,7 @@ const toProfile = (row) => row && ({
   primeUntil: row.prime_expires_at ? row.prime_expires_at.toISOString() : undefined,
   primePlan:  row.prime_plan ?? undefined,
   twoFactorEnabled: row.two_factor_enabled,
+  twoFactorMethod:  row.two_factor_method ?? 'app',
   createdAt: row.created_at.toISOString(),
 });
 
@@ -120,20 +123,114 @@ export const setEmailVerified = async (skyId, email) => {
  * того, как человек подтвердит, что его приложение выдаёт верный код.
  * Иначе можно запереть себя, сохранив секрет, который никуда не записан.
  */
-export const beginSkyTwoFactor = async (skyId, label) => {
+/**
+ * Общая часть для обоих способов: куда слать код и как его проверить.
+ *
+ * 'app'   — код показывает приложение-аутентификатор (TOTP).
+ * 'email' — код приходит письмом на подтверждённую почту Sky ID.
+ *
+ * SMS вторым фактором сознательно нет: вход и так идёт по коду из SMS,
+ * и второй код на тот же номер ничего не добавляет — кто получил
+ * первый, получит и второй.
+ */
+export const TWO_FACTOR_METHODS = ['app', 'email'];
+
+/** Почта, на которую можно слать второй фактор: только подтверждённая. */
+const verifiedEmailOf = async (skyId) => {
+  const { rows } = await query(
+    'SELECT email, email_verified FROM sky_ids WHERE id = $1', [skyId],
+  );
+  return rows[0]?.email_verified ? rows[0].email : null;
+};
+
+/**
+ * Назначение кода. Включает и цель, и этап: код для включения защиты и
+ * код для входа не должны делить одну паузу между отправками. Иначе
+ * сразу после включения защиты профиль минуту нельзя было бы открыть —
+ * прежний код уже потрачен, а новый ещё нельзя выслать.
+ */
+const emailPurpose = (skyId, profileId, stage) =>
+  `${profileId ? `2fa-profile:${profileId}` : `2fa-sky:${skyId}`}:${stage}`;
+
+/** Идёт настройка (защита ещё не включена) или обычная проверка. */
+const stageOf = (enabled) => (enabled ? 'use' : 'setup');
+
+const twoFactorState = async (skyId, profileId) => {
+  const { rows } = profileId
+    ? await query('SELECT two_factor_enabled AS on FROM profiles WHERE sky_id = $1 AND id = $2', [skyId, profileId])
+    : await query('SELECT two_factor_enabled AS on FROM sky_ids WHERE id = $1', [skyId]);
+  return rows[0] ? stageOf(rows[0].on) : null;
+};
+
+/** Отправляет код второго фактора на почту. */
+export const sendTwoFactorEmail = async (skyId, profileId = null, stage = null) => {
+  const email = await verifiedEmailOf(skyId);
+  if (!email) return { error: 'email_not_verified' };
+
+  const at = stage ?? await twoFactorState(skyId, profileId);
+  if (!at) return { error: 'not_found' };
+
+  const result = await issueCode('email', email, emailPurpose(skyId, profileId, at));
+  if (result.error) return { error: result.error, retryAfter: result.retryAfter };
+  return { ok: true, retryAfter: result.retryAfter, expiresIn: result.expiresIn, email };
+};
+
+const checkEmailCode = async (skyId, profileId, code, stage) => {
+  const email = await verifiedEmailOf(skyId);
+  if (!email) return { error: 'email_not_verified' };
+  const result = await verifyCode('email', email, emailPurpose(skyId, profileId, stage), code);
+  return result.error ? { error: result.error, attemptsLeft: result.attemptsLeft } : { ok: true };
+};
+
+/* ─── Двухэтапная защита Sky ID ────────────────────────────────────────── */
+/*  Секрет сохраняется сразу, но защита включается только после того,
+    как человек подтвердит, что код у него действительно приходит.
+    Иначе можно запереть себя, сохранив секрет, который никуда не записан. */
+
+export const beginSkyTwoFactor = async (skyId, label, method = 'app') => {
+  if (!TWO_FACTOR_METHODS.includes(method)) return { error: 'invalid_method' };
+
+  // Пока защита включена, начинать настройку заново нельзя: иначе
+  // достаточно было бы открытой вкладки, чтобы сбросить её без кода.
+  // Сменить способ — сначала отключить, а отключение требует кода.
+  const { rows } = await query('SELECT two_factor_enabled FROM sky_ids WHERE id = $1', [skyId]);
+  if (!rows[0]) return { error: 'not_found' };
+  if (rows[0].two_factor_enabled) return { error: 'already_enabled' };
+
+  if (method === 'email') {
+    const sent = await sendTwoFactorEmail(skyId, null, 'setup');
+    if (sent.error) return sent;
+    await query(
+      `UPDATE sky_ids SET two_factor_method = 'email', two_factor_secret = NULL,
+              two_factor_enabled = FALSE, updated_at = now() WHERE id = $1`,
+      [skyId],
+    );
+    return { ok: true, method: 'email', email: sent.email, retryAfter: sent.retryAfter };
+  }
+
   const secret = generateSecret();
   await query(
-    'UPDATE sky_ids SET two_factor_secret = $2, two_factor_enabled = FALSE, updated_at = now() WHERE id = $1',
+    `UPDATE sky_ids SET two_factor_secret = $2, two_factor_method = 'app',
+            two_factor_enabled = FALSE, updated_at = now() WHERE id = $1`,
     [skyId, encryptSecret(secret)],
   );
-  return { secret, uri: otpauthUri(secret, label, 'Sky ID') };
+  return { ok: true, method: 'app', secret, uri: otpauthUri(secret, label, 'Sky ID') };
 };
 
 export const confirmSkyTwoFactor = async (skyId, code) => {
-  const { rows } = await query('SELECT two_factor_secret FROM sky_ids WHERE id = $1', [skyId]);
-  const secret = decryptSecret(rows[0]?.two_factor_secret);
-  if (!secret) return { error: 'not_started' };
-  if (!verifyTotp(secret, code)) return { error: 'invalid_code' };
+  const { rows } = await query(
+    'SELECT two_factor_secret, two_factor_method FROM sky_ids WHERE id = $1', [skyId],
+  );
+  if (!rows[0]) return { error: 'not_found' };
+
+  if (rows[0].two_factor_method === 'email') {
+    const check = await checkEmailCode(skyId, null, code, 'setup');
+    if (check.error) return check;
+  } else {
+    const secret = decryptSecret(rows[0].two_factor_secret);
+    if (!secret) return { error: 'not_started' };
+    if (!verifyTotp(secret, code)) return { error: 'invalid_code' };
+  }
 
   await query('UPDATE sky_ids SET two_factor_enabled = TRUE, updated_at = now() WHERE id = $1', [skyId]);
   return { ok: true };
@@ -141,9 +238,13 @@ export const confirmSkyTwoFactor = async (skyId, code) => {
 
 export const verifySkyTwoFactor = async (skyId, code) => {
   const { rows } = await query(
-    'SELECT two_factor_enabled, two_factor_secret FROM sky_ids WHERE id = $1', [skyId],
+    'SELECT two_factor_enabled, two_factor_secret, two_factor_method FROM sky_ids WHERE id = $1',
+    [skyId],
   );
   if (!rows[0]?.two_factor_enabled) return { ok: true, skipped: true };
+
+  if (rows[0].two_factor_method === 'email') return checkEmailCode(skyId, null, code, 'use');
+
   const secret = decryptSecret(rows[0].two_factor_secret);
   if (!secret) return { error: 'not_configured' };
   return verifyTotp(secret, code) ? { ok: true } : { error: 'invalid_code' };
@@ -151,7 +252,8 @@ export const verifySkyTwoFactor = async (skyId, code) => {
 
 export const disableSkyTwoFactor = async (skyId) => {
   await query(
-    'UPDATE sky_ids SET two_factor_enabled = FALSE, two_factor_secret = NULL, updated_at = now() WHERE id = $1',
+    `UPDATE sky_ids SET two_factor_enabled = FALSE, two_factor_secret = NULL,
+            two_factor_method = 'app', updated_at = now() WHERE id = $1`,
     [skyId],
   );
   return { ok: true };
@@ -232,25 +334,49 @@ export const updateProfile = async (skyId, profileId, patch) => {
 /*  Независима от защиты Sky ID: включение одной ничего не делает с другой,
     и защита первого профиля не распространяется на второй.               */
 
-export const beginProfileTwoFactor = async (skyId, profileId) => {
+export const beginProfileTwoFactor = async (skyId, profileId, method = 'app') => {
+  if (!TWO_FACTOR_METHODS.includes(method)) return { error: 'invalid_method' };
+
   const profile = await getProfileOfSkyId(skyId, profileId);
   if (!profile) return { error: 'not_found' };
+  // Как и у Sky ID: включённую защиту нельзя сбросить началом настройки.
+  if (profile.twoFactorEnabled) return { error: 'already_enabled' };
+
+  if (method === 'email') {
+    const sent = await sendTwoFactorEmail(skyId, profileId, 'setup');
+    if (sent.error) return sent;
+    await query(
+      `UPDATE profiles SET two_factor_method = 'email', two_factor_secret = NULL,
+              two_factor_enabled = FALSE, updated_at = now() WHERE sky_id = $1 AND id = $2`,
+      [skyId, profileId],
+    );
+    return { ok: true, method: 'email', email: sent.email, retryAfter: sent.retryAfter };
+  }
 
   const secret = generateSecret();
   await query(
-    'UPDATE profiles SET two_factor_secret = $3, two_factor_enabled = FALSE, updated_at = now() WHERE sky_id = $1 AND id = $2',
+    `UPDATE profiles SET two_factor_secret = $3, two_factor_method = 'app',
+            two_factor_enabled = FALSE, updated_at = now() WHERE sky_id = $1 AND id = $2`,
     [skyId, profileId, encryptSecret(secret)],
   );
-  return { secret, uri: otpauthUri(secret, `${profile.username} (профиль)`, 'Sky ID') };
+  return { ok: true, method: 'app', secret, uri: otpauthUri(secret, `${profile.username} (профиль)`, 'Sky ID') };
 };
 
 export const confirmProfileTwoFactor = async (skyId, profileId, code) => {
   const { rows } = await query(
-    'SELECT two_factor_secret FROM profiles WHERE sky_id = $1 AND id = $2', [skyId, profileId],
+    'SELECT two_factor_secret, two_factor_method FROM profiles WHERE sky_id = $1 AND id = $2',
+    [skyId, profileId],
   );
-  const secret = decryptSecret(rows[0]?.two_factor_secret);
-  if (!secret) return { error: 'not_started' };
-  if (!verifyTotp(secret, code)) return { error: 'invalid_code' };
+  if (!rows[0]) return { error: 'not_found' };
+
+  if (rows[0].two_factor_method === 'email') {
+    const check = await checkEmailCode(skyId, profileId, code, 'setup');
+    if (check.error) return check;
+  } else {
+    const secret = decryptSecret(rows[0].two_factor_secret);
+    if (!secret) return { error: 'not_started' };
+    if (!verifyTotp(secret, code)) return { error: 'invalid_code' };
+  }
 
   await query(
     'UPDATE profiles SET two_factor_enabled = TRUE, updated_at = now() WHERE sky_id = $1 AND id = $2',
@@ -261,11 +387,14 @@ export const confirmProfileTwoFactor = async (skyId, profileId, code) => {
 
 export const verifyProfileTwoFactor = async (skyId, profileId, code) => {
   const { rows } = await query(
-    'SELECT two_factor_enabled, two_factor_secret FROM profiles WHERE sky_id = $1 AND id = $2',
+    `SELECT two_factor_enabled, two_factor_secret, two_factor_method
+       FROM profiles WHERE sky_id = $1 AND id = $2`,
     [skyId, profileId],
   );
   if (!rows[0]) return { error: 'not_found' };
   if (!rows[0].two_factor_enabled) return { ok: true, skipped: true };
+
+  if (rows[0].two_factor_method === 'email') return checkEmailCode(skyId, profileId, code, 'use');
 
   const secret = decryptSecret(rows[0].two_factor_secret);
   if (!secret) return { error: 'not_configured' };
@@ -274,7 +403,8 @@ export const verifyProfileTwoFactor = async (skyId, profileId, code) => {
 
 export const disableProfileTwoFactor = async (skyId, profileId) => {
   const { rowCount } = await query(
-    `UPDATE profiles SET two_factor_enabled = FALSE, two_factor_secret = NULL, updated_at = now()
+    `UPDATE profiles SET two_factor_enabled = FALSE, two_factor_secret = NULL,
+            two_factor_method = 'app', updated_at = now()
       WHERE sky_id = $1 AND id = $2`,
     [skyId, profileId],
   );

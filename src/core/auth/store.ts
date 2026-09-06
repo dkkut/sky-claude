@@ -94,6 +94,11 @@ interface AuthState {
   challenge: string | null;
   codeInfo: CodeInfo | null;
 
+  /** Чем подтверждать вход: кодом из приложения или письмом. */
+  twoFactorMethod: TwoFactorMethod;
+  /** Замаскированный адрес, куда ушёл код второго фактора. */
+  twoFactorEmail: string | null;
+
   isAuthenticated: boolean; currentUserId: string|null; accounts: Account[];
 
   setPhoneInput:(v:string)=>void;
@@ -102,8 +107,10 @@ interface AuthState {
   requestCode:(phone?:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
   /** Шаг 2: проверяем код из SMS. */
   verifyCode:(code:string)=>Promise<{ok:boolean;reason?:string}>;
-  /** Шаг 3: код приложения, если у Sky ID включена двухэтапная защита. */
+  /** Шаг 3: код приложения или из письма, если защита включена. */
   verifySkyTwoFactor:(code:string)=>Promise<{ok:boolean;reason?:string}>;
+  /** Прислать код второго фактора на почту ещё раз (экран входа). */
+  resendLoginTwoFactor:()=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
 
   /** Открыть профиль. Защищённому нужен код из приложения. */
   selectProfile:(profileId:string,code?:string)=>Promise<{ok:boolean;reason?:string;needsCode?:boolean}>;
@@ -114,10 +121,12 @@ interface AuthState {
   reloadSession:()=>Promise<boolean>;
 
   /* ── защита ── */
-  beginProfileTwoFactor:(profileId:string)=>Promise<{ok:boolean;secret?:string;uri?:string;reason?:string}>;
+  beginProfileTwoFactor:(profileId:string,method?:TwoFactorMethod)=>Promise<{ok:boolean;method?:TwoFactorMethod;secret?:string;uri?:string;email?:string;reason?:string}>;
+  sendProfileTwoFactorCode:(profileId:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
   confirmProfileTwoFactor:(profileId:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
   disableProfileTwoFactor:(profileId:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
-  beginSkyTwoFactor:()=>Promise<{ok:boolean;secret?:string;uri?:string;reason?:string}>;
+  beginSkyTwoFactor:(method?:TwoFactorMethod)=>Promise<{ok:boolean;method?:TwoFactorMethod;secret?:string;uri?:string;email?:string;reason?:string}>;
+  sendSkyTwoFactorCode:()=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
   confirmSkyTwoFactor:(code:string)=>Promise<{ok:boolean;reason?:string}>;
   disableSkyTwoFactor:(code:string)=>Promise<{ok:boolean;reason?:string}>;
 
@@ -161,8 +170,9 @@ import {
   apiProfileTwoFactorBegin, apiProfileTwoFactorConfirm, apiProfileTwoFactorDisable,
   apiSkyTwoFactorBegin, apiSkyTwoFactorConfirm, apiSkyTwoFactorDisable,
   apiEmailStart, apiEmailVerify, apiGrantPrime, apiRevokePrime,
+  apiResendLoginTwoFactor, apiSkyTwoFactorSend, apiProfileTwoFactorSend,
   setAccessToken,
-  type SkyIdInfo, type ServerProfile, type SkySession,
+  type SkyIdInfo, type ServerProfile, type SkySession, type TwoFactorMethod,
 } from './api';
 
 /* helpers */
@@ -267,6 +277,7 @@ const emptyAuth={
   isAuthenticated:false,currentUserId:null,
   step:'phone' as const,phoneInput:'+7',pendingPhone:'',
   challenge:null,codeInfo:null,
+  twoFactorMethod:'app' as TwoFactorMethod,twoFactorEmail:null,
 };
 
 export const useAuthStore=create<AuthState>((set,get)=>({
@@ -307,7 +318,12 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     const data=res.data as any;
     // У Sky ID включена двухэтапная защита — сессии пока нет.
     if(data?.needsTwoFactor){
-      set({challenge:data.challenge,step:'twofa'});
+      set({
+        challenge:data.challenge,step:'twofa',
+        twoFactorMethod:data.method ?? 'app',
+        twoFactorEmail:data.email ?? null,
+        codeInfo:data.retryAfter ? {retryAfter:data.retryAfter,expiresIn:300} : null,
+      });
       return{ok:true};
     }
     setAccessToken(data.accessToken??null);
@@ -325,14 +341,26 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     return{ok:true};
   },
 
+  resendLoginTwoFactor:async()=>{
+    const{challenge}=get();
+    if(!challenge)return{ok:false,reason:'Начните вход заново'};
+    const res=await apiResendLoginTwoFactor(challenge);
+    if(!res.ok)return{ok:false,reason:res.reason,retryAfter:(res.data as any)?.retryAfter};
+    set({twoFactorEmail:res.data?.email ?? get().twoFactorEmail});
+    return{ok:true,retryAfter:res.data?.retryAfter};
+  },
+
   /* ══ Профили ══════════════════════════════════════════════ */
 
   selectProfile:async(profileId,code)=>{
     const res=await apiSelectProfile(profileId,code);
     if(!res.ok){
       // Профиль под защитой: нужен код из приложения.
-      if(res.error==='profile_code_required'||res.error==='invalid_code')
+      if(res.error==='profile_code_required'||res.error==='invalid_code'){
+        const info=res.data as any;
+        if(info?.method)set({twoFactorMethod:info.method});
         return{ok:false,needsCode:true,reason:res.error==='invalid_code'?res.reason:undefined};
+      }
       return{ok:false,reason:res.reason};
     }
     if(!await get().reloadSession())
@@ -368,9 +396,16 @@ export const useAuthStore=create<AuthState>((set,get)=>({
 
   /* ══ Двухэтапная защита ═══════════════════════════════════ */
 
-  beginProfileTwoFactor:async(profileId)=>{
-    const res=await apiProfileTwoFactorBegin(profileId);
-    return res.ok?{ok:true,secret:res.data?.secret,uri:res.data?.uri}:{ok:false,reason:res.reason};
+  beginProfileTwoFactor:async(profileId,method='app')=>{
+    const res=await apiProfileTwoFactorBegin(profileId,method);
+    return res.ok
+      ?{ok:true,method:res.data?.method,secret:res.data?.secret,uri:res.data?.uri,email:res.data?.email}
+      :{ok:false,reason:res.reason};
+  },
+  sendProfileTwoFactorCode:async(profileId)=>{
+    const res=await apiProfileTwoFactorSend(profileId);
+    return res.ok?{ok:true,retryAfter:res.data?.retryAfter}
+                 :{ok:false,reason:res.reason,retryAfter:(res.data as any)?.retryAfter};
   },
   confirmProfileTwoFactor:async(profileId,code)=>{
     const res=await apiProfileTwoFactorConfirm(profileId,code.trim());
@@ -385,9 +420,16 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     return{ok:true};
   },
 
-  beginSkyTwoFactor:async()=>{
-    const res=await apiSkyTwoFactorBegin();
-    return res.ok?{ok:true,secret:res.data?.secret,uri:res.data?.uri}:{ok:false,reason:res.reason};
+  beginSkyTwoFactor:async(method='app')=>{
+    const res=await apiSkyTwoFactorBegin(method);
+    return res.ok
+      ?{ok:true,method:res.data?.method,secret:res.data?.secret,uri:res.data?.uri,email:res.data?.email}
+      :{ok:false,reason:res.reason};
+  },
+  sendSkyTwoFactorCode:async()=>{
+    const res=await apiSkyTwoFactorSend();
+    return res.ok?{ok:true,retryAfter:res.data?.retryAfter}
+                 :{ok:false,reason:res.reason,retryAfter:(res.data as any)?.retryAfter};
   },
   confirmSkyTwoFactor:async(code)=>{
     const res=await apiSkyTwoFactorConfirm(code.trim());
