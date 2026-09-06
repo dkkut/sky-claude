@@ -95,12 +95,38 @@ jobs:
           install -d -m 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          # Ключ хоста фиксируем, чтобы деплой не шёл на подменённый сервер.
-          if [ -n "${{ secrets.SSH_KNOWN_HOSTS }}" ]; then
-            printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+          # Ключ сервера фиксируем, чтобы деплой не ушёл на подменённую машину.
+          #
+          # Способ 1 — SSH_HOST_FINGERPRINT: короткая строка SHA256:...,
+          # её легко скопировать без ошибок. Ключ забираем сами и сверяем
+          # с ней отпечаток. Способ 2 — SSH_KNOWN_HOSTS целиком, если он
+          # уже настроен. Без обоих деплой не идёт: молча доверять ключу
+          # неизвестного сервера нельзя.
+          KNOWN="${{ secrets.SSH_KNOWN_HOSTS }}"
+          FP="${{ secrets.SSH_HOST_FINGERPRINT }}"
+
+          if [ -n "$FP" ]; then
+            ssh-keyscan -p "$SSH_PORT" -t ed25519 "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+            if [ ! -s ~/.ssh/known_hosts ]; then
+              echo "::error::Сервер $SSH_HOST:$SSH_PORT не ответил на запрос ключа."
+              exit 1
+            fi
+            ACTUAL=$(ssh-keygen -lf ~/.ssh/known_hosts | awk '{print $2}')
+            EXPECTED=$(printf '%s' "$FP" | tr -d '[:space:]')
+            if [ "$ACTUAL" != "$EXPECTED" ]; then
+              echo "::error::Отпечаток ключа сервера не совпал. Ожидали $EXPECTED, получили $ACTUAL."
+              echo "::error::Либо секрет SSH_HOST_FINGERPRINT указан неверно, либо сервер подменён."
+              exit 1
+            fi
+            echo "Отпечаток ключа сервера совпал: $ACTUAL"
+          elif [ -n "$KNOWN" ]; then
+            # Убираем возможные \r от копирования через Windows или телефон.
+            printf '%s\n' "$KNOWN" | tr -d '\r' > ~/.ssh/known_hosts
           else
-            echo "::warning::Секрет SSH_KNOWN_HOSTS не задан — ключ сервера принимается без проверки."
-            ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+            echo "::error::Не задан ни SSH_HOST_FINGERPRINT, ни SSH_KNOWN_HOSTS."
+            echo "::error::Получите отпечаток на сервере: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"
+            exit 1
           fi
           chmod 600 ~/.ssh/known_hosts
 
