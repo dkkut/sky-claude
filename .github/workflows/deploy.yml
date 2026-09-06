@@ -93,8 +93,39 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+
+          # Приватный ключ многострочный, и при вставке через телефон или
+          # Windows переносы теряются — тогда ssh падает с "error in
+          # libcrypto". Поэтому: предпочитаем SSH_KEY_B64 (одна строка
+          # base64, ломаться нечему), а обычный SSH_KEY при необходимости
+          # восстанавливаем — тело ключа это base64 без пробелов, его
+          # достаточно снова разбить по 70 символов.
+          if [ -n "${{ secrets.SSH_KEY_B64 }}" ]; then
+            printf '%s' "${{ secrets.SSH_KEY_B64 }}" | tr -d '[:space:]' | base64 -d > ~/.ssh/id_deploy
+          else
+            printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
+            if ! grep -q 'PRIVATE KEY' ~/.ssh/id_deploy; then
+              echo "::error::Секрет SSH_KEY не похож на приватный ключ — нет строки BEGIN ... PRIVATE KEY."
+              exit 1
+            fi
+            # Переносов внутри нет — значит их съело при копировании.
+            if [ "$(wc -l < ~/.ssh/id_deploy)" -le 2 ]; then
+              echo "Переносы строк в ключе потеряны — восстанавливаю."
+              HEADER=$(sed -n 's/.*\(-----BEGIN [A-Z ]*PRIVATE KEY-----\).*/\1/p' ~/.ssh/id_deploy | head -1)
+              FOOTER=$(sed -n 's/.*\(-----END [A-Z ]*PRIVATE KEY-----\).*/\1/p' ~/.ssh/id_deploy | head -1)
+              BODY=$(tr -d '\n' < ~/.ssh/id_deploy | sed "s/.*$HEADER//; s/$FOOTER.*//" | tr -d '[:space:]')
+              { echo "$HEADER"; printf '%s' "$BODY" | fold -w 70; echo; echo "$FOOTER"; } > ~/.ssh/id_deploy
+            fi
+          fi
           chmod 600 ~/.ssh/id_deploy
+
+          # Проверяем ключ до того, как им пользоваться: так причина видна
+          # сразу, а не как невнятное "Permission denied".
+          if ! ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1; then
+            echo "::error::Приватный ключ не читается. Задайте секрет SSH_KEY_B64 одной строкой:"
+            echo "::error::  base64 -w0 /home/sky/.ssh/deploy"
+            exit 1
+          fi
 
           # Ключ сервера фиксируем, чтобы деплой не ушёл на подменённую машину.
           #
