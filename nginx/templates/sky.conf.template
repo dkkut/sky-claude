@@ -82,6 +82,15 @@ server {
         return 200 'ok';
     }
 
+    # -- Ключ беты: тот же лимит, что и у проверки кода ---------
+    location = /api/beta/unlock {
+        limit_req zone=req_code burst=10 nodelay;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_pass http://sky_api;
+    }
+
     # -- Отправка кода: самый жёсткий лимит ---------------------
     #  Каждый такой запрос — это SMS, то есть деньги и чужой телефон,
     #  звенящий по чьей-то чужой воле. Пять в минуту с адреса — потолок.

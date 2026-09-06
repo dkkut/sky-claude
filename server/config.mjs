@@ -24,4 +24,12 @@ export const config = {
   emailMode:          process.env.EMAIL_MODE           || 'log',
   emailWebhookUrl:    process.env.EMAIL_WEBHOOK_URL    || '',
   emailWebhookToken:  process.env.EMAIL_WEBHOOK_TOKEN  || '',
+
+  // Ключи закрытой беты: «ключ:подпись» через запятую. Пустая строка —
+  // калитки нет, сайт открыт всем.
+  betaKeys: (process.env.BETA_KEYS || '')
+    .split(',').map((s) => s.trim()).filter(Boolean),
+
+  // Сколько живёт разрешение, выданное за верный ключ (30 дней).
+  betaTtlSec: Number(process.env.BETA_TTL_SEC || 60 * 60 * 24 * 30),
 };

@@ -9,6 +9,9 @@
 
 export const REFRESH_COOKIE = 'sky_rt';
 
+/** Пропуск в закрытую бету. В отличие от refresh уходит на весь сайт. */
+export const BETA_COOKIE = 'sky_beta';
+
 /** Путь намеренно узкий: кука уходит только на эндпоинты авторизации. */
 const COOKIE_PATH = '/api/auth';
 
@@ -46,6 +49,20 @@ export const clearRefreshCookie = () => [
   `${REFRESH_COOKIE}=`,
   `Path=${COOKIE_PATH}`,
   'Max-Age=0',
+  'HttpOnly',
+  'Secure',
+  'SameSite=Strict',
+].join('; ');
+
+/**
+ * Пропуск в бету. Путь широкий: калитка стоит перед всем API, а не
+ * только перед входом. Остальное — как у refresh: скриптам не видна,
+ * только по HTTPS, межсайтовые запросы её не увозят.
+ */
+export const buildBetaCookie = (token, maxAgeSec) => [
+  `${BETA_COOKIE}=${encodeURIComponent(token)}`,
+  'Path=/',
+  `Max-Age=${maxAgeSec}`,
   'HttpOnly',
   'Secure',
   'SameSite=Strict',

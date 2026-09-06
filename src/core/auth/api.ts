@@ -57,6 +57,8 @@ type Json = Record<string, unknown>;
 
 /* ─── Сообщения об ошибках ───────────────────────────────────── */
 const ERRORS: Record<string, string> = {
+  beta_required:         'Нужен ключ доступа к закрытой бете',
+  invalid_beta_key:      'Такой ключ не подходит',
   invalid_phone:         'Проверьте номер телефона',
   invalid_email:         'Проверьте адрес почты',
   invalid_code:          'Неверный код',
@@ -117,6 +119,14 @@ const refreshOnce = (): Promise<boolean> => {
 
 export interface Reply<T> { ok: boolean; data?: T; error?: string; reason?: string; status: number }
 
+/* ─── Калитка закрытой беты ──────────────────────────────────────
+   Пока приложение не готово, сервер отвечает на любой запрос к API
+   отказом beta_required, если у браузера нет пропуска. Здесь мы лишь
+   замечаем этот отказ и сообщаем о нём приложению — решает сервер. */
+
+let onBetaRequired: (() => void) | null = null;
+export const setBetaRequiredHandler = (fn: (() => void) | null) => { onBetaRequired = fn; };
+
 /**
  * Запрос к API. Если access протух — обновляемся один раз и повторяем;
  * второй неудачи достаточно, чтобы считать сессию законченной.
@@ -135,6 +145,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true): Prom
 
   const data = await readJson(res);
   if (!res.ok) {
+    if (res.status === 403 && data?.error === 'beta_required') onBetaRequired?.();
     return { ok: false, error: data?.error, reason: explain(data?.error, res.status), status: res.status, data };
   }
   return { ok: true, data, status: res.status };
@@ -246,6 +257,14 @@ export const apiGrantPrime = (plan: string, days: number) =>
 
 export const apiRevokePrime = () =>
   post<{ profile: ServerProfile }>('/api/skyid/prime/revoke');
+
+/* ═══ Закрытая бета ══════════════════════════════════════════ */
+
+/** Нужен ли ключ вообще. Когда бета закончится, сервер ответит false. */
+export const apiBetaStatus = () => get<{ required: boolean }>('/api/beta/status');
+
+/** Обменивает ключ на пропуск. Сам ключ в браузере не сохраняется. */
+export const apiBetaUnlock = (key: string) => post<{ ok: true }>('/api/beta/unlock', { key });
 
 /* ═══ Прочее ═════════════════════════════════════════════════ */
 

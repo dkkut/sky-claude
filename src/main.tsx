@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppShell }      from './app/AppShell';
 import { AuthScreen }    from './auth/AuthScreen';
+import { BetaGate }      from './auth/BetaGate';
+import { setBetaRequiredHandler } from './core/auth/api';
 import { OfflineMode }   from './offline/OfflineMode';
 import { ErrorBoundary } from './app/ErrorBoundary';
 import { useAuthStore }  from './core/auth/store';
@@ -293,6 +295,15 @@ const Root = () => {
   // Готовность наступает, когда и таймер вышел, и ответ получен —
   // иначе успел бы мелькнуть экран входа у уже вошедшего пользователя.
   const [sessionChecked, setSessionChecked] = useState(false);
+
+  // Закрытая бета: сервер отказывает всему API, пока у браузера нет
+  // пропуска. Замечаем такой отказ и показываем экран с полем для ключа.
+  const [betaLocked, setBetaLocked] = useState(false);
+  useEffect(() => {
+    setBetaRequiredHandler(() => setBetaLocked(true));
+    return () => setBetaRequiredHandler(null);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     useAuthStore.getState().restoreSession()
@@ -321,6 +332,15 @@ const Root = () => {
   }, [isAuthenticated, currentUserId]);
 
   if (!ready || !sessionChecked) return <Splash offline={offline} />;
+
+  if (betaLocked) {
+    return (
+      <BetaGate onUnlocked={() => {
+        setBetaLocked(false);
+        void useAuthStore.getState().restoreSession();
+      }} />
+    );
+  }
 
   if (offline && isAuthenticated) {
     return <OfflineMode onRetryOnline={() => { if (navigator.onLine) setOffline(false); }} />;

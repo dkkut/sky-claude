@@ -12,6 +12,10 @@ import { json } from './http.mjs';
 import { waitForDb, migrate, closeDb } from './db.mjs';
 import { connectRedis, closeRedis } from './sessions.mjs';
 import { startSignalHub } from './signal.mjs';
+import { verifyToken } from './security.mjs';
+import { BETA_COOKIE, parseCookies } from './cookies.mjs';
+import { betaEnabled, syncBetaKeys, betaHashLive } from './beta.mjs';
+import { betaRoutes } from './routes/beta.mjs';
 import { authRoutes } from './routes/auth.mjs';
 import { skyIdRoutes } from './routes/skyid.mjs';
 import { walletRoutes } from './routes/wallet.mjs';
@@ -19,7 +23,20 @@ import { purgeExpiredCodes } from './verification.mjs';
 import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [authRoutes, skyIdRoutes, walletRoutes];
+const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes];
+
+/**
+ * Пропущен ли запрос через калитку беты.
+ *
+ * Проверка стоит на сервере, а не в браузере: экран с полем для ключа
+ * закрывал бы только глаза, а API отвечал бы кому угодно.
+ */
+const betaAllowed = (req) => {
+  if (!betaEnabled()) return true;
+  const token = parseCookies(req.headers.cookie)[BETA_COOKIE];
+  const payload = verifyToken(token ?? '', config.jwtSecret);
+  return Boolean(payload && payload.typ === 'beta' && betaHashLive(payload.k));
+};
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -33,6 +50,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url === '/healthz') {
       return json(res, 200, { status: 'ok', uptime: process.uptime() });
+    }
+
+    // Сама калитка и проверка здоровья открыты всегда — иначе ключ
+    // негде было бы ввести.
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !betaAllowed(req)) {
+      return json(res, 403, { error: 'beta_required' });
     }
 
     for (const route of ROUTES) {
@@ -59,6 +82,14 @@ const start = async () => {
   await waitForDb();
   await migrate();
   await connectRedis();
+
+  // Список ключей беты приводим в соответствие с .env при каждом
+  // запуске: убранный оттуда ключ должен переставать работать.
+  const removed = await syncBetaKeys();
+  if (betaEnabled()) {
+    console.log(`[beta] калитка включена, ключей: ${config.betaKeys.length}` +
+                (removed ? `, отозвано: ${removed}` : ''));
+  }
 
   signalHub = startSignalHub();
 
