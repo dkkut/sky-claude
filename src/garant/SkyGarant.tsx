@@ -65,7 +65,7 @@ interface GarantState {
   confirmSeller:  (id: string) => void;  // продавец получил деньги
   cancel:         (id: string) => void;
   openDispute:    (id: string, reason: string, openedBy: string) => void;
-  resolveDispute: (id: string, winner: 'seller_wins' | 'buyer_wins', note: string) => void;
+  resolveDispute: (id: string, winner: 'seller_wins' | 'buyer_wins' | 'cancelled', note: string) => void;
   adminForceConfirm:(id: string, side: 'buyer' | 'seller') => void;
 
   getMyDeals:     (userId: string) => GarantDeal[];
@@ -147,10 +147,6 @@ export const useGarantStore = create<GarantState>((set, get) => ({
       ...d, status:'disputed' as const,
       disputeReason:reason, disputeOpenedBy:openedBy, disputeAt:new Date().toISOString()
     } : d);
-    saveDeals(next); set({ deals: next });
-  },
-  dispute: (id) => {
-    const next = get().deals.map(d => d.id===id ? {...d, status:'disputed' as const, disputeAt:new Date().toISOString()} : d);
     saveDeals(next); set({ deals: next });
   },
   resolveDispute: (id, winner, note) => {

@@ -38,9 +38,12 @@ export const Sidebar = () => {
   const isPrime       = account?.isPrime ?? false;
 
   const unreadNotifs  = useNotifStore(s => s.notifs.filter(n => !n.read).length);
-  const unreadChats   = useMessengerStore(s =>
-    s.chats.filter(c => c.unread > 0 && (c.members ?? c.participants ?? []).includes(currentUserId ?? '')).length
-  );
+  const unreadChats   = useMessengerStore(s => {
+    const withUnread = new Set(
+      s.messages.filter(m => !m.fromMe && m.status !== 'read').map(m => m.chatId)
+    );
+    return s.chats.filter(c => withUnread.has(c.id)).length;
+  });
 
   return (
     <aside

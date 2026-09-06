@@ -5,7 +5,7 @@
 import { useState, useRef } from 'react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type TargetAndTransition } from 'framer-motion';
 import { X, ChevronLeft, Check, Gift, Heart, ShoppingCart, Star, ArrowLeftRight, Search, Filter } from 'lucide-react';
 import {
   useGiftStore, GIFT_CATALOG, GIFT_RARITY_LABEL, GIFT_RARITY_COLOR, GIFT_RARITY_GLOW,
@@ -23,7 +23,7 @@ const C = {
 };
 
 /* -- Animation variants --------------------------------------- */
-const ANIM: Record<string, object> = {
+const ANIM: Record<string, TargetAndTransition> = {
   bounce:  { y: [0,-10,0,-5,0], transition: { duration:1.4, repeat:Infinity, ease:'easeInOut' } },
   spin:    { rotate: [0,360],   transition: { duration:3,   repeat:Infinity, ease:'linear'     } },
   pulse:   { scale: [1,1.15,1], transition: { duration:1.2, repeat:Infinity, ease:'easeInOut' } },

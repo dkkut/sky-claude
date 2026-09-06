@@ -4,7 +4,7 @@
    sleepy (зевота), love (сердечки), angry (дрожь)
 =============================================================== */
 import { useEffect, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type TargetAndTransition, type Transition } from 'framer-motion';
 import type { PetMood } from './petData';
 import type { PetSkin } from './petSkins';
 
@@ -542,14 +542,14 @@ function useBlinkState(): boolean {
 }
 
 /* -- Body motion animations ------------------------------- */
-const BODY_ANIM: Record<PetMood, object> = {
+const BODY_ANIM: Record<PetMood, TargetAndTransition> = {
   idle:    { y: [0, -4, 0],            scale: [1, 1.02, 1]         },
   happy:   { y: [0, -14, 0, -10, 0],  rotate: [-3, 0, 3, 0, -3]  },
   excited: { y: [0, -8, 0],            x: [-3, 3, -3],  scale: [1, 1.06, 1] },
   sleepy:  { y: [0, 2, 0],            scale: [1, 0.97, 1]         },
   love:    { y: [0, -8, 0],            scale: [1, 1.05, 1]         },
 };
-const BODY_TRANS: Record<PetMood, object> = {
+const BODY_TRANS: Record<PetMood, Transition> = {
   idle:    { duration: 2.5, repeat: Infinity, ease: 'easeInOut'  },
   happy:   { duration: 0.65, repeat: Infinity, ease: 'easeInOut' },
   excited: { duration: 0.35, repeat: Infinity, ease: 'linear'    },

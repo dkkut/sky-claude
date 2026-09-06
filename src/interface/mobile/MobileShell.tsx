@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useModuleStore } from '@/data/state/modules';
 import { PlayerEngine } from '@/player/PlayerEngine';
@@ -8,15 +8,11 @@ import { FloatingChatLayer } from '@/notifications/FloatingChat';
 import { ActiveCallPanel, IncomingCallOverlay, MiniCallOverlay } from '@/calls/CallUI';
 import { ErrorBoundary } from '@/app/ErrorBoundary';
 
-import { StoriesModule } from '@/stories/StoriesModule';
-import { ExtrasModule } from '@/extras/ExtrasModule';
-import { LibraryModule } from '@/library/LibraryModule';
-import { BusinessStudio } from '@/library/BusinessStudio';
-import { BloomModule } from '@/bloom/BloomModule';
-import { ProfileModule } from '@/profile/ProfileModule';
 import { NotificationsScreen } from '@/notifications/NotificationsScreen';
-import { GamingModule } from '@/gaming/GamingModule';
-import { SkyVideo } from '@/extras/SkyVideo';
+import {
+  StoriesModule, ExtrasModule, LibraryModule, BusinessStudio, BloomModule,
+  ProfileModule, GamingModule, SkyVideo, ModuleFallback,
+} from '@/app/lazyModules';
 
 import { MobileHeader } from './MobileHeader';
 import { MobileMessenger } from './MobileMessenger';
@@ -52,16 +48,18 @@ export const MobileShell = () => {
           <ErrorBoundary key={activeModule}>
             <motion.div key={activeModule + '_mob'} className="h-full w-full"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}>
-              {activeModule === 'stories'       && <StoriesModule />}
-              {activeModule === 'messages'      && <MobileMessenger />}
-              {activeModule === 'notifications' && <NotificationsScreen />}
-              {activeModule === 'gaming'        && <GamingModule />}
-              {activeModule === 'bloom'         && <BloomModule />}
-              {activeModule === 'extras'        && <ExtrasModule />}
-              {activeModule === 'library'       && <LibraryModule />}
-              {activeModule === 'studio'        && <BusinessStudio />}
-              {activeModule === 'profile'       && <ProfileModule />}
-              {activeModule === 'video'         && <SkyVideo />}
+              <Suspense fallback={<ModuleFallback />}>
+                {activeModule === 'stories'       && <StoriesModule />}
+                {activeModule === 'messages'      && <MobileMessenger />}
+                {activeModule === 'notifications' && <NotificationsScreen />}
+                {activeModule === 'gaming'        && <GamingModule />}
+                {activeModule === 'bloom'         && <BloomModule />}
+                {activeModule === 'extras'        && <ExtrasModule />}
+                {activeModule === 'library'       && <LibraryModule />}
+                {activeModule === 'studio'        && <BusinessStudio />}
+                {activeModule === 'profile'       && <ProfileModule />}
+                {activeModule === 'video'         && <SkyVideo />}
+              </Suspense>
             </motion.div>
           </ErrorBoundary>
         </AnimatePresence>

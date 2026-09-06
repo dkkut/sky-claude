@@ -293,7 +293,7 @@ export const useMessengerStore = create<S>((set,get) => {
     },
 
     forward:id=>{
-      const m=get().messages.find(m=>m.id===id); if(!m) return;
+      const m=get().messages.find(m=>m.id===id); if(!m) return null;
       return get().sendMessage({text:`↪ ${m.text}`,kind:m.kind,mediaUrl:m.mediaUrl,fileName:m.fileName});
     },
 

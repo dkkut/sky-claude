@@ -145,7 +145,7 @@ export const ArtistSubmitTrack = ({ onDone }: { onDone: () => void }) => {
         copyrightNote: copyrightNote.trim() || undefined,
         copyrightDoc:  docFile ? docName : undefined,
         submittedAt:   new Date().toISOString(),
-      }, new Blob([audioDataUrl]));
+      }, audioDataUrl);
       setDone(true);
     } catch (e) {
       setErr('Ошибка загрузки. Попробуйте ещё раз.');

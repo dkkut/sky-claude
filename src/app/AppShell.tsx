@@ -7,15 +7,11 @@ import { useModuleStore }         from '@/data/state/modules';
 import { useAuthStore }           from '@/core/auth/store';
 import { ChatList }               from '@/messenger/ChatList';
 import { ChatWindow }             from '@/messenger/ChatWindow';
-import { ExtrasModule }           from '@/extras/ExtrasModule';
-import { LibraryModule }          from '@/library/LibraryModule';
-import { BusinessStudio }         from '@/library/BusinessStudio';
-import { BloomModule }            from '@/bloom/BloomModule';
-import { ProfileModule }          from '@/profile/ProfileModule';
-import { StoriesModule }          from '@/stories/StoriesModule';
 import { NotificationsScreen }    from '@/notifications/NotificationsScreen';
-import { GamingModule }           from '@/gaming/GamingModule';
-import { SkyVideo }               from '@/extras/SkyVideo';
+import {
+  ExtrasModule, LibraryModule, BusinessStudio, BloomModule,
+  ProfileModule, StoriesModule, GamingModule, SkyVideo, ModuleFallback,
+} from './lazyModules';
 import { NotifToastLayer }        from '@/notifications/NotifToast';
 import { FloatingChatLayer }      from '@/notifications/FloatingChat';
 import { ActiveCallPanel, IncomingCallOverlay, MiniCallOverlay } from '@/calls/CallUI';
@@ -204,16 +200,18 @@ export const AppShell = () => {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.1 }}>
-                {activeModule === 'stories'       && <StoriesModule />}
-                {activeModule === 'messages'      && <MessengerScreen />}
-                {activeModule === 'notifications' && <NotificationsScreen />}
-                {activeModule === 'gaming'        && <GamingModule />}
-                {activeModule === 'bloom'         && <BloomModule />}
-                {activeModule === 'extras'        && <ExtrasModule />}
-                {activeModule === 'library'       && <LibraryModule />}
-                {activeModule === 'studio'        && <BusinessStudio />}
-                {activeModule === 'profile'       && <ProfileModule />}
-                {activeModule === 'video'         && <SkyVideo />}
+                <React.Suspense fallback={<ModuleFallback />}>
+                  {activeModule === 'stories'       && <StoriesModule />}
+                  {activeModule === 'messages'      && <MessengerScreen />}
+                  {activeModule === 'notifications' && <NotificationsScreen />}
+                  {activeModule === 'gaming'        && <GamingModule />}
+                  {activeModule === 'bloom'         && <BloomModule />}
+                  {activeModule === 'extras'        && <ExtrasModule />}
+                  {activeModule === 'library'       && <LibraryModule />}
+                  {activeModule === 'studio'        && <BusinessStudio />}
+                  {activeModule === 'profile'       && <ProfileModule />}
+                  {activeModule === 'video'         && <SkyVideo />}
+                </React.Suspense>
               </motion.div>
             </ErrorBoundary>
           </AnimatePresence>

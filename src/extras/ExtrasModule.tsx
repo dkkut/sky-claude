@@ -1,12 +1,10 @@
 import { Home, BookOpen, Briefcase, Building2, Check, CheckCircle, ChevronLeft, Clock, Cloud, Crown, Eye, Film, Flag, Gamepad2, Gem, Image, Megaphone, MessageCircle, MessageCircleMore, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, Scale, Send, Shield, ShoppingCart, Sparkles, Ticket, Trash2, Tv2, Upload, Users, XCircle, Zap, Bot } from 'lucide-react';
-import { WorkModule } from '@/work/WorkModule';
-import { FamilyModule } from '@/family/FamilyModule';
 import { BotsBrowser, HashInlineMenu, BotChatOverlay, BOTS_REGISTRY } from '@/bots/SkyBots';
 import { usePlayerStore } from '@/player/playerStore';
 import { BotCreatorPanel } from '@/bots/BotCreator';
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePlatformStore, grantPrimeForUser } from '@/platform/store';
+import { usePlatformStore, grantPrimeForUser, type Track } from '@/platform/store';
 import { useAuthStore } from '@/core/auth/store';
 import { useMessengerStore } from '@/messenger/store';
 import { useVideoStore } from '@/video/store';
@@ -14,25 +12,37 @@ import { useModerationStore, type ModDomain, type WarningKind } from '@/shared/m
 import { BlockedChannelBadge } from '@/shared/ContentWarningGate';
 import { useModuleStore } from '@/data/state/modules';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
-import { SkyMusic } from './SkyMusic';
-import { SkySoundCloud } from './SkySoundCloud';
-import { SkyFilm } from './SkyFilm';
-import { SkyPrime } from './SkyPrime';
-import { SkyMarket } from '@/marketplace/SkyMarket';
-import { SkyAdsCabinet } from '@/ads/SkyAds';
 import { useAdsStore, AD_PLACEMENTS, AD_STATUS_COLOR, AD_STATUS_LABEL } from '@/ads/store';
-import { SkyBooks } from '@/books/SkyBooks';
-import { SkyTV }    from './SkyTV';
-import { SkyAITab } from '@/ai/SkyAI';
-import { PrimePulse } from '@/prime/PrimePulse';
-import { MusicianHub } from '@/music/MusicianHub';
-import { SkyBusiness } from '@/business/SkyBusiness';
 import { SkyGamesMarket, GamesAdminPanel } from '@/games/SkyGamesMarket';
+
+/** Заглушка на время подгрузки чанка вкладки. */
+const TabFallback = () => (
+  <div className="grid h-full place-items-center">
+    <div className="h-8 w-8 rounded-full border-2 animate-spin"
+      style={{ borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }}/>
+  </div>
+);
+
+/* Экраны хаба «Медиа» — отдельными чанками: открытая вкладка тянет только себя. */
+const WorkModule = React.lazy(() => import('@/work/WorkModule').then(m => ({ default: m.WorkModule })));
+const FamilyModule = React.lazy(() => import('@/family/FamilyModule').then(m => ({ default: m.FamilyModule })));
+const SkyMusic = React.lazy(() => import('./SkyMusic').then(m => ({ default: m.SkyMusic })));
+const SkySoundCloud = React.lazy(() => import('./SkySoundCloud').then(m => ({ default: m.SkySoundCloud })));
+const SkyFilm = React.lazy(() => import('./SkyFilm').then(m => ({ default: m.SkyFilm })));
+const SkyPrime = React.lazy(() => import('./SkyPrime').then(m => ({ default: m.SkyPrime })));
+const SkyMarket = React.lazy(() => import('@/marketplace/SkyMarket').then(m => ({ default: m.SkyMarket })));
+const SkyAdsCabinet = React.lazy(() => import('@/ads/SkyAds').then(m => ({ default: m.SkyAdsCabinet })));
+const SkyBooks = React.lazy(() => import('@/books/SkyBooks').then(m => ({ default: m.SkyBooks })));
+const SkyTV = React.lazy(() => import('./SkyTV').then(m => ({ default: m.SkyTV })));
+const SkyAITab = React.lazy(() => import('@/ai/SkyAI').then(m => ({ default: m.SkyAITab })));
+const PrimePulse = React.lazy(() => import('@/prime/PrimePulse').then(m => ({ default: m.PrimePulse })));
+const MusicianHub = React.lazy(() => import('@/music/MusicianHub').then(m => ({ default: m.MusicianHub })));
+const SkyBusiness = React.lazy(() => import('@/business/SkyBusiness').then(m => ({ default: m.SkyBusiness })));
+const SkyGarant = React.lazy(() => import('@/garant/SkyGarant').then(m => ({ default: m.SkyGarant })));
+const SkyPVZ = React.lazy(() => import('@/pvz/SkyPVZ').then(m => ({ default: m.SkyPVZ })));
+const SkyGiftsNFT = React.lazy(() => import('@/gifts/SkyGiftsNFT').then(m => ({ default: m.SkyGiftsNFT })));
 import { AdminMusicPanel } from '@/music/ArtistSubmit';
 import { AdminDisputesPanel, AdminGarantPanel } from '@/admin/AdminDisputes';
-import { SkyGarant } from '@/garant/SkyGarant';
-import { SkyPVZ } from '@/pvz/SkyPVZ';
-import { SkyGiftsNFT } from '@/gifts/SkyGiftsNFT';
 
 
 /* --- BroadcastChannel: синхронизация комнат между вкладками ----------- */
@@ -380,7 +390,7 @@ const AdminChannelModerationTab = () => {
 };
 
 const AdminContentTab = ({ tracks, approveTrack, rejectTrack }: {
-  tracks: any[]; approveTrack: (id:string)=>void; rejectTrack: (id:string)=>void;
+  tracks: Track[]; approveTrack: (id:string)=>void; rejectTrack: (id:string)=>void;
 }) => {
   const [expandId,     setExpandId]     = useState<string|null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -1124,7 +1134,7 @@ const MoreTab = () => {
         <p className="text-sm font-bold" style={{color:'var(--t1)'}}>Sky Garant</p>
       </div>
       <div className="flex-1 overflow-hidden">
-        <SkyGarant/>
+        <React.Suspense fallback={<TabFallback/>}><SkyGarant/></React.Suspense>
       </div>
     </div>
   );
@@ -2660,6 +2670,7 @@ export const ExtrasModule = () => {
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           >
+        <React.Suspense fallback={<TabFallback/>}>
         {tab==='home' && <MediaHomeTab onNav={handleNav}/>}
         {tab==='music'  && <SkyMusic/>}
         {tab==='soundcloud' && <SkySoundCloud/>}
@@ -2691,6 +2702,7 @@ export const ExtrasModule = () => {
             <div className="text-center"><Shield size={40} style={{color:'var(--t3)',margin:'0 auto 12px'}}/><p className="text-sm" style={{color:'var(--t3)'}}>Нет доступа</p></div>
           </div>
         )}
+        </React.Suspense>
           </motion.div>
         </AnimatePresence>
       </div>

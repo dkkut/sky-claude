@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, Star, Lock, Check, Sparkles, CircleUserRound, PawPrint } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useCustomization } from './store';
-import { RARITY_COLOR, RARITY_LABEL, type Rarity, type ItemCategory } from './types';
+import { RARITY_COLOR, RARITY_LABEL, type Rarity, type ItemCategory, type CosmeticItem } from './types';
 import { FRAME_CATALOG } from './catalog/frames';
 import { BANNER_CATALOG } from './catalog/banners';
 import { PROFILE_THEME_CATALOG } from './catalog/profileThemes';
@@ -64,7 +64,7 @@ export const CustomizationMarket = ({ onClose }: { onClose: () => void }) => {
   const [q, setQ] = useState('');
   const [rarity, setRarity] = useState<Rarity | null>(null);
   const [onlyFav, setOnlyFav] = useState(false);
-  const [preview, setPreview] = useState<any | null>(null);
+  const [preview, setPreview] = useState<CosmeticItem | null>(null);
 
   const catalog = useMemo(() => {
     switch (cat) {
@@ -78,7 +78,7 @@ export const CustomizationMarket = ({ onClose }: { onClose: () => void }) => {
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return catalog.filter((i: any) =>
+    return catalog.filter((i: CosmeticItem) =>
       (!s || i.name.toLowerCase().includes(s) || i.description.toLowerCase().includes(s)) &&
       (!rarity || i.rarity === rarity) &&
       (!onlyFav || (me && isFavorite(me.id, i.id))),
@@ -87,7 +87,7 @@ export const CustomizationMarket = ({ onClose }: { onClose: () => void }) => {
 
   if (!me) return null;
 
-  const unlockedOf = (item: any): boolean => {
+  const unlockedOf = (item: CosmeticItem): boolean => {
     if (item.unlock.type === 'owned') return (owned[me.id] ?? []).includes(item.id);
     if (item.unlock.type === 'prime') return !!me.isPrime;
     if (item.unlock.type === 'business') return !!me.isPrimeBusiness;
@@ -167,7 +167,7 @@ export const CustomizationMarket = ({ onClose }: { onClose: () => void }) => {
             <div className="sky-empty py-16 text-center text-sm" style={{ color: 'var(--t3)' }}>Ничего не найдено</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {filtered.map((item: any) => {
+              {filtered.map((item: CosmeticItem) => {
                 const unlocked = unlockedOf(item);
                 const isEquipped = equippedId === item.id;
                 return (

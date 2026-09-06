@@ -117,6 +117,7 @@ export class StreamViewerConn {
     this.pc.onicecandidate = (ev) => { if (ev.candidate) sigSend({ type:'ice', streamId, from:myId, to:broadcasterId, candidate: ev.candidate.toJSON() }); };
 
     this.unsub = sigOn(async (msg) => {
+      if (msg.type === 'viewer-request') return;
       if (msg.streamId !== this.streamId || msg.to !== this.myId || msg.from !== this.broadcasterId) return;
       if (msg.type === 'offer') {
         await this.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));

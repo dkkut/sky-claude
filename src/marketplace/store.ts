@@ -191,6 +191,7 @@ export const useMarketStore = create<MarketState>((set, get) => {
 
       const order: Order = {
         id:           `ord-${crypto.randomUUID().slice(0,8)}`,
+        marketType:   prod.marketType,
         trackNumber:  genTrack(),
         buyerId:      uid,
         sellerId:     prod.sellerId,

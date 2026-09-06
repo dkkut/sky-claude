@@ -2449,7 +2449,7 @@ export const SkyMusic = () => {
         {cur && !showNP && (
           <MiniBar track={cur} playing={playing} cur={curTime} dur={durTime}
             liked={favorites.includes(cur.id)}
-            onPlay={() => setPlaying(p => !p)} onNext={skipNext} onOpen={() => setShowNP(true)}
+            onPlay={() => setPlaying(!playing)} onNext={skipNext} onOpen={() => setShowNP(true)}
             onLike={() => onLike(cur.id)} />
         )}
       </AnimatePresence>
@@ -2461,10 +2461,10 @@ export const SkyMusic = () => {
             track={cur} playing={playing} currentTime={curTime} duration={durTime}
             volume={volume} shuffle={shuffle} repeat={repeat}
             favorites={favorites} queue={queue} queueIdx={qIdx}
-            onPlay={() => setPlaying(p => !p)} onPrev={skipPrev} onNext={skipNext}
+            onPlay={() => setPlaying(!playing)} onPrev={skipPrev} onNext={skipNext}
             onSeek={seek} onVolume={setVolume}
-            onShuffle={() => setShuffle(v => !v)}
-            onRepeat={() => setRepeat(r => r === 'off' ? 'all' : r === 'all' ? 'one' : 'off')}
+            onShuffle={() => setShuffle(!shuffle)}
+            onRepeat={() => setRepeat(repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off')}
             onLike={onLike} onAdd={id => setAddModal(id)}
             onClose={() => setShowNP(false)} />
         )}

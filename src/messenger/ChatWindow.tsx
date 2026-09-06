@@ -880,7 +880,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     const { editingId: eid, messages: msgs } = useMessengerStore.getState();
     const em = eid ? msgs.find(m => m.id === eid) : null;
     if ((!t && !em) || isBlocked) return;
-    if (!em && t && chat?.type !== 'direct') {
+    if (!em && t && chat && chat.type !== 'direct') {
       const gs = useGroupStore.getState();
       const allowed = gs.checkFlood(chat.id, myId);
       if (!allowed) { setFloodBlocked(true); setTimeout(() => setFloodBlocked(false), 3000); return; }

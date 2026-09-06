@@ -730,13 +730,15 @@ export const StoriesModule = () => {
 
   const openStories=(group:Story[])=>{
     setViewerGroup(group);setViewerIdx(0);setViewerOpen(true);
+    const uid = currentUserId;
+    if (!uid) return;
     setStories(ss=>ss.map(s=>{
       if (!group.find(g=>g.id===s.id)) return s;
-      const already = (s.viewedBy ?? []).includes(currentUserId);
+      const already = (s.viewedBy ?? []).includes(uid);
       return {
         ...s, viewed:true,
-        viewedBy: already ? s.viewedBy : [...(s.viewedBy ?? []), currentUserId],
-        views: already ? s.views : s.views + (s.authorId===currentUserId ? 0 : 1),
+        viewedBy: already ? s.viewedBy : [...(s.viewedBy ?? []), uid],
+        views: already ? s.views : s.views + (s.authorId===uid ? 0 : 1),
       };
     }));
   };

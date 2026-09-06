@@ -3,7 +3,7 @@
    + SKY CLOUD  -  виртуальный маскот Sky
 =============================================================== */
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type TargetAndTransition } from 'framer-motion';
 
 /* === EMOJI ANIMATION PRESETS ================================
    Каждый тип эмодзи имеет свою физику и характер движения
@@ -61,7 +61,7 @@ export const ANIMATED_EMOJIS: Record<string, EmojiDef> = {
 };
 
 /* --- Animation keyframes по типам ------------------------- */
-const ANIM_VARIANTS: Record<EmojiAnim, object> = {
+const ANIM_VARIANTS: Record<EmojiAnim, TargetAndTransition> = {
   float: {
     y: [0, -8, 0],
     transition: { duration:2.4, repeat:Infinity, ease:'easeInOut' },
@@ -275,7 +275,7 @@ const CLOUD_MOODS: Record<CloudMood, {
   mouth:      string;
   accessory?: string;
   bg:         string;
-  anim:       object;
+  anim:       TargetAndTransition;
   particles?: string[];
 }> = {
   idle: {

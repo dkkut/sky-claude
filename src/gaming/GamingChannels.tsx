@@ -107,8 +107,8 @@ const SEED_MSGS: Record<string,GMessage[]> = {
 
 const SK = 'sky:gchannels:v1';
 const loadGC = () => { try { return JSON.parse(localStorage.getItem(SK)||'{}'); } catch { return {}; } };
-const saveGC = (msgs: Record<string,GMessage[]>) => {
-  try { localStorage.setItem(SK, JSON.stringify(msgs)); } catch {}
+const saveGC = (data: { messages: Record<string,GMessage[]> }) => {
+  try { localStorage.setItem(SK, JSON.stringify(data)); } catch {}
 };
 
 export const useGamingChannels = create<GamingChannelsState>((set, get) => {

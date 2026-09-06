@@ -181,6 +181,15 @@ interface GamingState {
 
 const stored = load();
 
+/* Матчмейкинга на сервере пока нет, поэтому очередь имитируется таймерами:
+   статусы и счётчик секунд — ровно те, что отрисовывает GamingModule. */
+let queueTick:  ReturnType<typeof setInterval> | null = null;
+let queueFound: ReturnType<typeof setTimeout>  | null = null;
+const stopQueueTimers = () => {
+  if (queueTick)  { clearInterval(queueTick); queueTick  = null; }
+  if (queueFound) { clearTimeout(queueFound); queueFound = null; }
+};
+
 export const useGamingStore = create<GamingState>((set, get) => {
   const flush = () => {
     const s = get();
@@ -199,6 +208,30 @@ export const useGamingStore = create<GamingState>((set, get) => {
     tourneys: stored?.tourneys ?? SEED_TOURNEYS,
     news:     SEED_NEWS,   // всегда из seed (новости не редактируются)
     invites:  stored?.invites  ?? SEED_INVITES,
+
+    startQueue: (gameId) => {
+      stopQueueTimers();
+      set({ queueStatus: 'searching', queueGame: gameId, queueSeconds: 0 });
+      queueTick = setInterval(() => {
+        if (get().queueStatus !== 'searching') { stopQueueTimers(); return; }
+        set(s => ({ queueSeconds: s.queueSeconds + 1 }));
+      }, 1000);
+      queueFound = setTimeout(() => {
+        if (get().queueStatus !== 'searching') return;
+        stopQueueTimers();
+        set({ queueStatus: 'found' });
+      }, 6000 + Math.floor(Math.random() * 5000));
+    },
+
+    cancelQueue: () => {
+      stopQueueTimers();
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0 });
+    },
+
+    acceptMatch: () => {
+      stopQueueTimers();
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0 });
+    },
 
     myStats: (gameId) => {
       const uid = me();

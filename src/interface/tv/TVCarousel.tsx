@@ -40,7 +40,7 @@ export function TVCarousel<T>({ title, items, getId, renderItem, rowAutoFocusPri
       el?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
     };
     const unsub = tvFocusManager.subscribe(check);
-    return unsub;
+    return () => { unsub(); };
   }, [items, getId]);
 
   if (items.length === 0) return null;

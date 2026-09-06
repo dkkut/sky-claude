@@ -21,6 +21,9 @@ const bot = {
   }
 };`;
 
+/** Пустой бланк формы бота — общий для создания, отмены и сохранения. */
+const EMPTY_FORM = {name:'',desc:'',emoji:'🤖',code:DEFAULT_CODE,inline:false,inlineTrigger:'',inlineTemplate:''};
+
 const runBotCode = (code: string, input: any): Promise<{ok: boolean; result?: string; error?: string}> => {
   return new Promise((resolve) => {
     const blob = new Blob([`
@@ -55,7 +58,7 @@ export const BotCreatorPanel = () => {
   const [bots, setBots]   = useState<any[]>(getMyBots);
   const [view, setView]   = useState<'list'|'create'|'edit'|'test'>('list');
   const [editBot, setEB]  = useState<any>(null);
-  const [form, setForm]   = useState({name:'',desc:'',emoji:'🤖',code:DEFAULT_CODE,inline:false,inlineTrigger:'',inlineTemplate:''});
+  const [form, setForm]   = useState(EMPTY_FORM);
   const [testIn, setTI]   = useState('');
   const [testRes, setTR]  = useState<any>(null);
   const [testing, setTesting] = useState(false);
@@ -67,7 +70,7 @@ export const BotCreatorPanel = () => {
     const b = { id: editBot?.id || 'b_'+Date.now(), ...form, name: form.name.trim(), active: true, created: new Date().toLocaleDateString('ru') };
     const upd = editBot ? bots.map(x => x.id===editBot.id ? b : x) : [b, ...bots];
     setBots(upd); saveMyBots(upd);
-    setSM('✓ Сохранено'); setTimeout(() => { setView('list'); setSM(''); setEB(null); setForm({name:'',desc:'',emoji:'🤖',code:DEFAULT_CODE,inline:false,inlineTrigger:'',inlineTemplate:''}); }, 700);
+    setSM('✓ Сохранено'); setTimeout(() => { setView('list'); setSM(''); setEB(null); setForm(EMPTY_FORM); }, 700);
   };
 
   const del = (id: string) => { const u = bots.filter(b => b.id!==id); setBots(u); saveMyBots(u); };
@@ -122,7 +125,7 @@ export const BotCreatorPanel = () => {
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{borderBottom:'1px solid var(--border)'}}>
         <div className="flex items-center gap-3">
-          <button type="button" onClick={()=>{setView('list');setEB(null);setForm({name:'',desc:'',emoji:'🤖',code:DEFAULT_CODE,inline:false,inlineTrigger:'',inlineTemplate:''});}} className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10"><ChevronLeft size={16} style={{color:'var(--t2)'}}/></button>
+          <button type="button" onClick={()=>{setView('list');setEB(null);setForm(EMPTY_FORM);}} className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10"><ChevronLeft size={16} style={{color:'var(--t2)'}}/></button>
           <p className="text-base font-bold" style={{color:'var(--t1)'}}>{view==='edit'?'Редактировать':'Создать бота'}</p>
         </div>
         <div className="flex gap-2">
@@ -212,7 +215,7 @@ export const BotCreatorPanel = () => {
           <Bot size={16} style={{color:'var(--accent)'}}/>
           <h2 className="text-base font-bold" style={{color:'var(--t1)'}}>Мои боты</h2>
         </div>
-        <motion.button whileTap={{scale:0.95}} type="button" onClick={()=>{setForm({name:'',desc:'',emoji:'🤖',code:DEFAULT_CODE});setView('create');}}
+        <motion.button whileTap={{scale:0.95}} type="button" onClick={()=>{setForm(EMPTY_FORM);setView('create');}}
           className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold"
           style={{background:'var(--accent)',color:'#fff'}}><Plus size={12}/>Создать</motion.button>
       </div>
