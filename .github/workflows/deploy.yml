@@ -204,7 +204,11 @@ jobs:
 
           echo "==> Жду, пока сервисы станут healthy"
           for i in $(seq 1 30); do
-            unhealthy=$(docker compose ps --format '{{.Service}} {{.Health}}' | grep -v 'healthy' | grep -v '^certbot' || true)
+            # Сравниваем поле целиком: grep -v healthy отбросил бы и
+            # строку "unhealthy", то есть упавший сервис посчитался бы
+            # исправным. certbot healthcheck-а не имеет и проверке не подлежит.
+            unhealthy=$(docker compose ps --format '{{.Service}} {{.Health}}' \
+                        | awk '$1 != "certbot" && $2 != "healthy" { print $1 }' | tr '\n' ' ')
             [ -z "$unhealthy" ] && break
             sleep 5
           done
