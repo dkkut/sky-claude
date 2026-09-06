@@ -1,0 +1,323 @@
+import { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Monitor, MonitorOff,
+  Minimize2, Maximize2, Volume2, VolumeX, FlipHorizontal,
+} from 'lucide-react';
+import { useCallStore } from './store';
+
+const fmtDur = (ms: number) => {
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+};
+
+/* ─── Video element ─────────────────────────────────────────────────────── */
+const VideoEl = ({ stream, muted=false, mirror=false, className='' }:
+  { stream: MediaStream|null; muted?: boolean; mirror?: boolean; className?: string }) => {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current; if (!v || !stream) return;
+    v.srcObject = stream;
+    v.play().catch(()=>{});
+    return () => { v.srcObject = null; };
+  }, [stream]);
+  if (!stream) return <div className="h-full w-full bg-black/60"/>;
+  return <video ref={ref} autoPlay playsInline muted={muted} className={className}
+    style={mirror?{transform:'scaleX(-1)'}:undefined}/>;
+};
+
+/* ─── Ctrl button ───────────────────────────────────────────────────────── */
+const Btn = ({ icon: Icon, label, onClick, on=false, danger=false, accept=false, lg=false }:
+  { icon: any; label: string; onClick: ()=>void; on?: boolean; danger?: boolean; accept?: boolean; lg?: boolean }) => {
+  const sz = lg ? 'h-16 w-16' : 'h-12 w-12';
+  const ico = lg ? 26 : 20;
+  const bg  = danger ? 'rgba(239,68,68,0.9)' : accept ? 'rgba(34,197,94,0.9)' : on ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
+  const sh  = danger ? '0 4px 24px rgba(239,68,68,0.5)' : accept ? '0 4px 24px rgba(34,197,94,0.5)' : 'none';
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <motion.button type="button" whileTap={{scale:0.86}} whileHover={{scale:1.06}} onClick={onClick}
+        className={`grid ${sz} place-items-center rounded-full transition-all`}
+        style={{background:bg, boxShadow:sh}}>
+        <Icon size={ico} className="text-white"/>
+      </motion.button>
+      <span className="text-[10px]" style={{color:'rgba(255,255,255,0.45)'}}>{label}</span>
+    </div>
+  );
+};
+
+/* ─── Pulse rings ───────────────────────────────────────────────────────── */
+const PulseRings = ({ avatar, active }: { avatar: string; active: boolean }) => (
+  <div className="relative flex items-center justify-center">
+    {active && [1,2,3].map(n=>(
+      <motion.div key={n} className="absolute rounded-full"
+        style={{ width: 112+n*28, height: 112+n*28, border: '1px solid var(--accent-bg)' }}
+        animate={{ scale:[1,1.06,1], opacity:[0.4,0.05,0.4] }}
+        transition={{ duration:2, delay:n*0.35, repeat:Infinity }}/>
+    ))}
+    <div className="relative z-10 grid h-28 w-28 place-items-center rounded-full text-4xl font-bold text-white"
+      style={{ background:'var(--bg-l3)',
+        border:'3px solid var(--accent-bg)', boxShadow:'0 0 60px var(--accent-bg)' }}>
+      {avatar}
+    </div>
+  </div>
+);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INCOMING OVERLAY
+═══════════════════════════════════════════════════════════════════════════ */
+export const IncomingCallOverlay = () => {
+  const incoming = useCallStore(s=>s.incoming);
+  const accept   = useCallStore(s=>s.acceptIncoming);
+  const decline  = useCallStore(s=>s.declineIncoming);
+  if (!incoming) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div key="inc-bg"
+        initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+        className="absolute inset-0 z-50 flex items-center justify-center"
+        style={{background:'rgba(0,0,0,0.86)',backdropFilter:'blur(24px)'}}>
+        <motion.div
+          initial={{scale:0.82,y:30}} animate={{scale:1,y:0}} exit={{scale:0.82,y:30}}
+          transition={{type:'spring',stiffness:280,damping:26}}
+          className="w-full max-w-xs overflow-hidden rounded-xl"
+          style={{background:'var(--bg)',border:'1px solid rgba(255,255,255,0.1)'}}>
+          <div className="relative overflow-hidden px-6 pt-10 pb-8"
+            style={{background:'radial-gradient(ellipse at 50% 0%,var(--accent-bg),transparent 65%)'}}>
+            {/* Rings + avatar */}
+            <div className="flex justify-center mb-6">
+              <PulseRings avatar={incoming.callerAvatar} active={true}/>
+            </div>
+            {/* Info */}
+            <div className="text-center mb-8">
+              <p className="text-xs font-medium mb-2" style={{color:'var(--accent)'}}>
+                {incoming.mode==='video'?'Видеозвонок':'Голосовой вызов'}
+              </p>
+              <p className="text-2xl font-bold text-white">{incoming.callerName}</p>
+              <motion.p animate={{opacity:[1,0.4,1]}} transition={{duration:1.4,repeat:Infinity}}
+                className="mt-1 text-sm" style={{color:'var(--t2)'}}>Входящий вызов…</motion.p>
+            </div>
+            {/* Actions */}
+            <div className="flex justify-center gap-16 items-end">
+              <div className="flex flex-col items-center gap-2">
+                <motion.button type="button" whileTap={{scale:0.86}} onClick={decline}
+                  className="grid h-16 w-16 place-items-center rounded-full"
+                  style={{background:'rgba(239,68,68,0.9)',boxShadow:'0 4px 24px rgba(239,68,68,0.5)'}}>
+                  <PhoneOff size={26} className="text-white"/>
+                </motion.button>
+                <span className="text-xs" style={{color:'var(--t2)'}}>Отклонить</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <motion.button type="button" whileTap={{scale:0.86}} onClick={()=>accept()}
+                  className="grid h-16 w-16 place-items-center rounded-full"
+                  style={{background:'rgba(34,197,94,0.9)',boxShadow:'0 4px 24px rgba(34,197,94,0.5)'}}>
+                  {incoming.mode==='video'?<Video size={26} className="text-white"/>:<Phone size={26} className="text-white"/>}
+                </motion.button>
+                <span className="text-xs" style={{color:'var(--t2)'}}>Ответить</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACTIVE CALL PANEL
+═══════════════════════════════════════════════════════════════════════════ */
+export const ActiveCallPanel = () => {
+  const active      = useCallStore(s=>s.active);
+  const mini        = useCallStore(s=>s.miniMode);
+  const muted       = useCallStore(s=>s.muted);
+  const camOff      = useCallStore(s=>s.cameraOff);
+  const spkOff      = useCallStore(s=>s.speakerOff);
+  const end         = useCallStore(s=>s.endCall);
+  const toggleMute  = useCallStore(s=>s.toggleMute);
+  const toggleCam   = useCallStore(s=>s.toggleCamera);
+  const toggleSpk   = useCallStore(s=>s.toggleSpeaker);
+  const toggleScr   = useCallStore(s=>s.toggleScreen);
+  const toggleMini  = useCallStore(s=>s.toggleMini);
+  const [timer, setTimer]   = useState('00:00');
+  const [mirror, setMirror] = useState(true);
+
+  useEffect(()=>{
+    if(!active)return;
+    const t=setInterval(()=>setTimer(fmtDur(active.startedAt)),500);
+    return()=>clearInterval(t);
+  },[active]);
+
+
+  if(!active||mini) return null;
+  const isVideo = active.mode==='video';
+  const conn    = active.connected || !!active.remoteStream;
+
+  return (
+    <AnimatePresence>
+      <motion.div key="active-call"
+        initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+        className="absolute inset-0 z-50 flex flex-col overflow-hidden"
+        style={{background:isVideo?'#000':'radial-gradient(ellipse at 50% 20%,var(--accent-bg),#08090f 65%)'}}>
+
+        {/* ── VIDEO ─────────────────────────────────────────── */}
+        {isVideo&&(
+          <div className="relative flex-1 overflow-hidden bg-black">
+            {conn
+              ? <VideoEl stream={active.remoteStream} className="h-full w-full object-cover"/>
+              : <div className="flex h-full flex-col items-center justify-center"
+                  style={{background:'radial-gradient(ellipse at 50% 30%,var(--accent-bg),#000 70%)'}}>
+                  <PulseRings avatar={active.peerAvatar} active={true}/>
+                  <p className="mt-4 text-xl font-bold text-white">{active.peerName}</p>
+                  <motion.p animate={{opacity:[1,0.4,1]}} transition={{duration:1.2,repeat:Infinity}}
+                    className="mt-1.5 text-sm" style={{color:'var(--t2)'}}>Соединение…</motion.p>
+                </div>}
+            {/* Local PiP */}
+            <div className="absolute top-16 right-4 overflow-hidden rounded-2xl shadow-2xl"
+              style={{width:96,height:136,border:'2px solid rgba(255,255,255,0.2)'}}>
+              {active.localStream&&!camOff&&!active.screenShareOn
+                ? <VideoEl stream={active.localStream} muted mirror={mirror} className="h-full w-full object-cover"/>
+                : <div className="flex h-full w-full items-center justify-center bg-black/80">
+                    {camOff?<VideoOff size={18} className="text-white/40"/>:<Monitor size={18} className="text-white/40"/>}
+                  </div>}
+              {/* flip button */}
+              <button type="button" onClick={()=>setMirror(m=>!m)}
+                className="absolute bottom-1.5 right-1.5 grid h-5 w-5 place-items-center rounded-full"
+                style={{background:'rgba(0,0,0,0.6)'}}>
+                <FlipHorizontal size={10} className="text-white/70"/>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── VOICE ─────────────────────────────────────────── */}
+        {!isVideo&&(
+          <div className="flex flex-1 flex-col items-center justify-center gap-6">
+            <PulseRings avatar={active.peerAvatar} active={!muted}/>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">{active.peerName}</p>
+              {conn
+                ? <p className="mt-1 font-mono text-sm" style={{color:'var(--accent)'}}>{timer}</p>
+                : <motion.p animate={{opacity:[1,0.4,1]}} transition={{duration:1.2,repeat:Infinity}}
+                    className="mt-1 text-sm" style={{color:'var(--t2)'}}>Звонок…</motion.p>}
+            </div>
+            {/* Voice bars */}
+            {conn&&!muted&&(
+              <div className="flex items-end gap-0.5 h-8">
+                {[...Array(12)].map((_,i)=>(
+                  <motion.div key={i} className="w-1 rounded-full" style={{background:'var(--accent-bg)',minHeight:3}}
+                    animate={{height:[3,4+Math.sin(i*0.7)*14+8,3]}}
+                    transition={{duration:0.6+(i%3)*0.12,delay:i*0.05,repeat:Infinity,repeatType:'reverse'}}/>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── TOP BAR ───────────────────────────────────────── */}
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 py-4"
+          style={{background:isVideo?'linear-gradient(rgba(0,0,0,0.72),transparent)':undefined}}>
+          <div>
+            <p className="font-semibold text-white">{active.peerName}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <motion.div className="h-1.5 w-1.5 rounded-full"
+                style={{background:conn?'#22c55e':'#f59e0b'}}
+                animate={{opacity:[1,0.4,1]}} transition={{duration:1,repeat:Infinity}}/>
+              <span className="font-mono text-xs" style={{color:'rgba(255,255,255,0.6)'}}>
+                {conn?timer:'Подключение…'}
+              </span>
+            </div>
+          </div>
+          <button type="button" onClick={toggleMini}
+            className="grid h-9 w-9 place-items-center rounded-full"
+            style={{background:'rgba(0,0,0,0.45)',backdropFilter:'blur(8px)'}}>
+            <Minimize2 size={15} className="text-white"/>
+          </button>
+        </div>
+
+        {/* ── CONTROLS ──────────────────────────────────────── */}
+        <div className="shrink-0 pb-10 pt-5 px-4"
+          style={{background:isVideo?'linear-gradient(transparent,rgba(0,0,0,0.88))':undefined}}>
+          <div className="flex items-center justify-center gap-5 flex-wrap">
+            <Btn icon={muted?MicOff:Mic}       label={muted?'Вкл. mic':'Выкл. mic'} onClick={toggleMute} on={muted}/>
+            {isVideo&&<Btn icon={camOff?VideoOff:Video} label={camOff?'Вкл.':'Камера'}    onClick={toggleCam}  on={camOff}/>}
+            {isVideo&&<Btn icon={active.screenShareOn?MonitorOff:Monitor} label={active.screenShareOn?'Стоп':'Экран'} onClick={()=>toggleScr()} on={active.screenShareOn}/>}
+            <Btn icon={spkOff?VolumeX:Volume2} label={spkOff?'Вкл.':'Звук'}         onClick={toggleSpk}  on={spkOff}/>
+            <Btn icon={PhoneOff} label="Завершить" onClick={end} danger lg/>
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MINI OVERLAY
+═══════════════════════════════════════════════════════════════════════════ */
+export const MiniCallOverlay = () => {
+  const active     = useCallStore(s=>s.active);
+  const mini       = useCallStore(s=>s.miniMode);
+  const muted      = useCallStore(s=>s.muted);
+  const end        = useCallStore(s=>s.endCall);
+  const toggleMute = useCallStore(s=>s.toggleMute);
+  const toggleMini = useCallStore(s=>s.toggleMini);
+  const [timer, setTimer] = useState('00:00');
+
+  useEffect(()=>{
+    if(!active)return;
+    const t=setInterval(()=>setTimer(fmtDur(active.startedAt)),500);
+    return()=>clearInterval(t);
+  },[active]);
+
+  if(!active||!mini) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div key="mini"
+        initial={{opacity:0,y:20,scale:0.92}} animate={{opacity:1,y:0,scale:1}}
+        exit={{opacity:0,y:20,scale:0.92}}
+        className="absolute bottom-6 right-6 z-50 overflow-hidden rounded-2xl shadow-2xl"
+        style={{background:'var(--bg)',border:'1px solid var(--accent-bg)',
+          boxShadow:'0 8px 40px rgba(0,0,0,0.7)',width:240}}>
+        {/* local video strip */}
+        {active.mode==='video'&&active.localStream&&(
+          <div className="relative h-[90px] overflow-hidden bg-black">
+            <VideoEl stream={active.localStream} muted mirror className="h-full w-full object-cover opacity-80"/>
+            <div className="absolute inset-0" style={{background:'linear-gradient(transparent,rgba(0,0,0,0.5))'}}/>
+          </div>
+        )}
+        <div className="flex items-center gap-2.5 px-3 py-2.5">
+          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold text-white"
+            style={{background:'var(--accent-bg)'}}>{active.peerAvatar}</div>
+          <div className="flex-1 min-w-0">
+            <p className="truncate text-sm font-medium text-white">{active.peerName}</p>
+            <div className="flex items-center gap-1">
+              <motion.div className="h-1.5 w-1.5 rounded-full"
+                style={{background: active.connected ? '#22c55e' : '#f59e0b'}}
+                animate={{opacity:[1,0.4,1]}} transition={{duration:1,repeat:Infinity}}/>
+              <p className="text-xs font-mono" style={{color:'var(--accent)'}}>
+                {active.connected ? timer : '…'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <motion.button type="button" whileTap={{scale:0.88}} onClick={toggleMute}
+              className="grid h-8 w-8 place-items-center rounded-full"
+              style={{background:muted?'rgba(239,68,68,0.3)':'rgba(255,255,255,0.1)'}}>
+              {muted?<MicOff size={13} className="text-red-400"/>:<Mic size={13} className="text-white/70"/>}
+            </motion.button>
+            <motion.button type="button" whileTap={{scale:0.88}} onClick={toggleMini}
+              className="grid h-8 w-8 place-items-center rounded-full"
+              style={{background:'var(--accent-bg)'}}>
+              <Maximize2 size={13} className="text-white"/>
+            </motion.button>
+            <motion.button type="button" whileTap={{scale:0.88}} onClick={end}
+              className="grid h-8 w-8 place-items-center rounded-full"
+              style={{background:'rgba(239,68,68,0.88)'}}>
+              <PhoneOff size={13} className="text-white"/>
+            </motion.button>
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};

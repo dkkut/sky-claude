@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "SKY: Install deps",
+      "type": "shell",
+      "command": "npm install",
+      "problemMatcher": []
+    },
+    {
+      "label": "SKY: Dev (Windows)",
+      "type": "shell",
+      "command": "npm run dev:win",
+      "problemMatcher": []
+    },
+    {
+      "label": "SKY: Dev (Local)",
+      "type": "shell",
+      "command": "npm run dev:local",
+      "problemMatcher": []
+    }
+  ]
+}

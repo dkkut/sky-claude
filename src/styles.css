@@ -1,0 +1,225 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+/* ─── Design Tokens ─────────────────────────────────────────────── */
+:root {
+  --bg:        #0e0e11;
+  --bg-l1:     #131316;
+  --bg-l2:     #18181c;
+  --bg-l3:     #1e1e23;
+  --bg-l4:     #25252b;
+  --border:    rgba(255,255,255,0.055);
+  --border-m:  rgba(255,255,255,0.10);
+  --border-s:  rgba(255,255,255,0.16);
+  --accent:         #4f6ef7;
+  --accent-hover:   #6380f9;
+  --accent-active:  #3b5bf5;
+  --accent-bg:      rgba(79,110,247,0.10);
+  --accent-bg-m:    rgba(79,110,247,0.18);
+  --accent-glow:    rgba(79,110,247,0.35);
+  --green:     #34d399;
+  --green-bg:  rgba(52,211,153,0.10);
+  --red:       #f87171;
+  --red-bg:    rgba(248,113,113,0.10);
+  --amber:     #f59e0b;
+  --amber-bg:  rgba(245,158,11,0.10);
+  --purple:    #a78bfa;
+  --t1:  #ebebed;
+  --t2:  #8b8b97;
+  --t3:  #4a4a55;
+  --t4:  #2e2e36;
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.3);
+  --shadow-lg:  0 8px 24px rgba(0,0,0,0.5), 0 4px 8px rgba(0,0,0,0.3);
+  --shadow-xl:  0 16px 48px rgba(0,0,0,0.6), 0 8px 16px rgba(0,0,0,0.4);
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring:cubic-bezier(0.34, 1.56, 0.64, 1);
+  --r:          cubic-bezier(0.4,0,0.2,1);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; }
+html, body { overflow-x: hidden; }
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+
+/* iOS Safari auto-zooms the viewport on focus for any input/textarea under 16px.
+   Force 16px minimum specifically on phones, regardless of any smaller text-size
+   utility class applied directly to the field (hence !important). Desktop/tablet
+   typography above 640px is untouched. */
+@media (max-width: 640px) {
+  input, textarea, select { font-size: 16px !important; }
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--t1);
+  background: var(--bg);
+  letter-spacing: -0.01em;
+}
+
+/* Sky Music — собственная типографика, отличная от остального приложения */
+.sky-music-scope, .sky-music-scope input, .sky-music-scope textarea {
+  font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+.scroll-none { scrollbar-width: none; -ms-overflow-style: none; }
+.scroll-none::-webkit-scrollbar { display: none; }
+
+::selection { background: rgba(79,110,247,0.28); color: #fff; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+/* ─── Inputs ─────────────────────────────────────────────────────── */
+.sky-input {
+  background: var(--bg-l2);
+  border: 1px solid var(--border);
+  color: var(--t1);
+  border-radius: 10px;
+  padding: 9px 13px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.sky-input:hover { border-color: var(--border-m); }
+.sky-input:focus {
+  border-color: var(--accent);
+  background: var(--bg-l3);
+  box-shadow: 0 0 0 3px rgba(79,110,247,0.12);
+}
+.sky-input::placeholder { color: var(--t3); }
+
+/* ─── Buttons ────────────────────────────────────────────────────── */
+.sky-btn-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--accent);
+  color: #fff; border: none; border-radius: 10px;
+  padding: 10px 18px; font-size: 14px; font-weight: 600; font-family: inherit;
+  cursor: pointer; letter-spacing: -0.01em;
+  transition: background 0.12s, transform 0.1s, box-shadow 0.12s;
+  box-shadow: 0 2px 8px rgba(79,110,247,0.3);
+}
+.sky-btn-primary:hover { background: var(--accent-hover); box-shadow: 0 4px 16px rgba(79,110,247,0.4); }
+.sky-btn-primary:active { transform: scale(0.97); background: var(--accent-active); }
+.sky-btn-primary:disabled { opacity: 0.38; cursor: default; box-shadow: none; transform: none; }
+
+.sky-btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: transparent; color: var(--t2);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 9px 16px; font-size: 14px; font-weight: 500; font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.sky-btn-ghost:hover { background: rgba(255,255,255,0.05); border-color: var(--border-m); color: var(--t1); }
+.sky-btn-ghost:active { background: rgba(255,255,255,0.08); }
+
+/* ─── Cards ──────────────────────────────────────────────────────── */
+.sky-card {
+  background: var(--bg-l1); border: 1px solid var(--border);
+  border-radius: 18px; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.sky-card:hover { border-color: var(--border-m); box-shadow: var(--shadow-md); }
+
+/* ─── Glassmorphism ──────────────────────────────────────────────── */
+.sky-glass {
+  background: rgba(19,19,22,0.82);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.07);
+}
+
+/* ─── Badges ─────────────────────────────────────────────────────── */
+.sky-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; line-height: 1.5; }
+.sky-badge-accent { background: var(--accent-bg); color: var(--accent); }
+.sky-badge-green  { background: var(--green-bg);  color: var(--green);  }
+.sky-badge-red    { background: var(--red-bg);    color: var(--red);    }
+.sky-badge-amber  { background: var(--amber-bg);  color: var(--amber);  }
+
+/* ─── Message bubbles ────────────────────────────────────────────── */
+.msg-bubble-out {
+  background: linear-gradient(135deg, #4f6ef7, #6172f3);
+  color: #fff; border-radius: 18px 18px 4px 18px;
+  box-shadow: 0 2px 8px rgba(79,110,247,0.25);
+}
+.msg-bubble-in {
+  background: var(--bg-l2); color: var(--t1);
+  border-radius: 18px 18px 18px 4px;
+  border: 1px solid var(--border);
+}
+
+/* ─── Status ─────────────────────────────────────────────────────── */
+.status-dot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--bg-l1); }
+.status-online  { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.5); }
+.status-away    { background: #f59e0b; }
+.status-offline { background: var(--t3); }
+
+/* ─── Skeleton ───────────────────────────────────────────────────── */
+@keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+.sky-skeleton {
+  background: linear-gradient(90deg, var(--bg-l2) 25%, var(--bg-l3) 50%, var(--bg-l2) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s infinite;
+  border-radius: 8px;
+}
+
+/* ─── Typing ─────────────────────────────────────────────────────── */
+.sky-typing span { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--t2); animation: typing-bounce 1.2s ease-in-out infinite; }
+.sky-typing span:nth-child(2) { animation-delay: 0.2s; }
+.sky-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-6px); opacity: 1; } }
+
+/* ─── Prime ──────────────────────────────────────────────────────── */
+.sky-prime-glow { box-shadow: 0 0 0 1px rgba(245,158,11,0.3), 0 4px 20px rgba(245,158,11,0.15); }
+.sky-prime-badge { background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 700; font-size: 10px; padding: 2px 7px; border-radius: 99px; }
+
+/* ─── Text gradient ──────────────────────────────────────────────── */
+.text-gradient-accent { background: linear-gradient(135deg, var(--accent), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+/* ─── Dividers ───────────────────────────────────────────────────── */
+.sky-divider { height: 1px; background: var(--border); }
+.sky-divider-label { display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--t3); }
+.sky-divider-label::before, .sky-divider-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ─── Empty state ────────────────────────────────────────────────── */
+.sky-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 48px 24px; text-align: center; }
+.sky-empty-icon { font-size: 40px; opacity: 0.4; line-height: 1; }
+
+/* ─── Chat font ──────────────────────────────────────────────────── */
+.sky-chat-font { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+
+/* ─── Hover lift ─────────────────────────────────────────────────── */
+.sky-hover-lift { transition: transform 0.15s var(--ease-out), box-shadow 0.15s; }
+.sky-hover-lift:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+/* ─── Animations ─────────────────────────────────────────────────── */
+@keyframes sky-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes sky-shimmer-text { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+@keyframes sky-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes sky-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sky-float-0 { 0%, 100% { transform: translate(-50%,-50%) scale(1); } 50% { transform: translate(-50%,-60%) scale(1.08); } }
+@keyframes sky-float-1 { 0%, 100% { transform: translate(-50%,-50%) scale(1.05); } 50% { transform: translate(-50%,-44%) scale(0.95); } }
+@keyframes sky-wave-arm { 0%, 100% { transform: rotate(-20deg); } 50% { transform: rotate(20deg); } }
+@keyframes sky-cloud-pulse { 0%, 100% { opacity: 0.3; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.15); } }
+@keyframes sky-shadow-pulse { 0%, 100% { opacity: 0.8; transform: scaleX(1); } 50% { opacity: 0.4; transform: scaleX(0.7); } }
+@keyframes pet-cursor-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes music-ring { 0% { transform: scale(0.8); opacity: 0.8; } 50% { transform: scale(1.15); opacity: 0.3; } 100% { transform: scale(0.8); opacity: 0.8; } }
+@keyframes music-pulse { 0%, 100% { transform: scaleY(0.4); } 50% { transform: scaleY(1); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+.sky-spin { animation: spin 1s linear infinite; }
+
+/* ─── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 768px) { .sky-desktop-only { display: none !important; } }
+@media (min-width: 769px) { .sky-mobile-only  { display: none !important; } }

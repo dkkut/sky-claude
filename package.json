@@ -1,0 +1,53 @@
+{
+  "name": "sky-bloom",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --max-warnings 0",
+    "dev:local": "vite --host",
+    "dev:win": "vite --host",
+    "healthcheck": "node scripts/healthcheck.mjs",
+    "start:api": "node server/server.mjs",
+    "healthcheck:api": "HEALTHCHECK_URL=http://127.0.0.1:8080/healthz node scripts/healthcheck.mjs"
+  },
+  "dependencies": {
+    "framer-motion": "^11.0.8",
+    "leaflet": "^1.9.4",
+    "music-metadata-browser": "^2.5.10",
+    "react-leaflet": "^4.2.1",
+    "three": "^0.160.0",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.160.0",
+    "@types/leaflet": "^1.9.8",
+    "@typescript-eslint/eslint-plugin": "^8.18.1",
+    "@typescript-eslint/parser": "^8.18.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.16",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.5",
+    "@eslint/js": "^9.17.0",
+    "typescript-eslint": "^8.18.1"
+  },
+  "main": "index.html",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}

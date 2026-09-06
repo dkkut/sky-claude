@@ -1,0 +1,225 @@
+import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Heart, Music2, ListMusic, Mic2, Sparkles, Disc3, Play, Search, ChevronRight } from 'lucide-react';
+import type { Track } from '@/platform/store';
+import { getG } from '@/music/utils';
+import { loadHistory } from '@/music/utils';
+
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 6)  return 'Доброй ночи';
+  if (h < 12) return 'Доброе утро';
+  if (h < 18) return 'Добрый день';
+  return 'Добрый вечер';
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 14 },
+  show: (i: number) => ({ opacity: 1, y: 0, transition: { duration: 0.45, delay: Math.min(i, 6) * 0.05, ease: [0.22, 1, 0.36, 1] } }),
+};
+
+/* -- Крупная карточка трека, премиальный тайминг/тени в духе Yandex Music -- */
+const TrackTile = ({ t, onPlay, active, playing }: { t: Track; onPlay: () => void; active: boolean; playing: boolean }) => {
+  const [c1, c2] = getG(t.id);
+  return (
+    <motion.button type="button" onClick={onPlay} whileTap={{ scale: 0.95 }}
+      className="shrink-0 text-left group" style={{ width: 156 }}>
+      <div className="relative overflow-hidden rounded-2xl transition-transform duration-300 group-active:scale-[0.98]" style={{
+        height: 156, background: t.coverUrl ? undefined : `linear-gradient(150deg,${c1},${c2})`,
+        boxShadow: active ? '0 12px 32px -8px rgba(255,255,255,0.12)' : '0 4px 16px -4px rgba(0,0,0,0.4)',
+      }}>
+        {t.coverUrl
+          ? <img src={t.coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+          : <div className="grid h-full w-full place-items-center"><Music2 size={32} color="rgba(255,255,255,0.3)"/></div>}
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+          style={{ background: 'linear-gradient(0deg,rgba(0,0,0,0.55) 0%,transparent 45%)' }}/>
+        <div className="absolute bottom-2.5 right-2.5 grid h-9 w-9 place-items-center rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 translate-y-1 group-hover:translate-y-0"
+          style={{ background: 'rgba(255,255,255,0.95)' }}>
+          <Play size={15} fill="#0a0a0f" color="#0a0a0f" style={{ marginLeft: 1 }}/>
+        </div>
+        {active && playing && (
+          <div className="absolute inset-0 grid place-items-center" style={{ background: 'rgba(8,8,12,0.45)' }}>
+            <div className="flex h-5 items-end gap-[3px]">
+              {[0,1,2].map(j => <div key={j} style={{ width: 3, borderRadius: 2, background: '#fff', height: 5+j*4, animation: `skyMusicEq ${0.5+j*0.15}s ease-in-out infinite alternate` }}/>)}
+            </div>
+          </div>
+        )}
+      </div>
+      <p className="mt-2.5 truncate text-[13.5px] font-semibold" style={{ color: active ? '#fff' : '#f0f1f4', letterSpacing: '-0.01em' }}>{t.title}</p>
+      <p className="truncate text-[12px] mt-0.5" style={{ color: '#7d818c' }}>{t.artist}</p>
+    </motion.button>
+  );
+};
+
+const Section = ({ title, icon: Icon, index, children, empty }: {
+  title: string; icon: React.FC<any>; index: number; children?: React.ReactNode; empty?: string;
+}) => (
+  <motion.section custom={index} variants={fadeUp} initial="hidden" animate="show" className="mb-8">
+    <div className="mb-3.5 flex items-center justify-between px-5">
+      <div className="flex items-center gap-2">
+        <Icon size={14} strokeWidth={2.2} style={{ color: '#8a8f9a' }}/>
+        <p className="text-[16px] font-bold" style={{ color: '#fafafb', letterSpacing: '-0.015em' }}>{title}</p>
+      </div>
+      {!empty && <ChevronRight size={16} style={{ color: '#4a4d55' }}/>}
+    </div>
+    {empty ? (
+      <p className="px-5 text-[13px]" style={{ color: '#5c626e' }}>{empty}</p>
+    ) : (
+      <div className="flex gap-3.5 overflow-x-auto px-5 pb-1" style={{ scrollbarWidth: 'none' }}>{children}</div>
+    )}
+  </motion.section>
+);
+
+export const SkyMusicHome = ({
+  tracks, favorites, playing, activeId, onPlay,
+}: {
+  tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
+  onPlay: (t: Track, pool: Track[]) => void;
+}) => {
+  const pub = useMemo(() => tracks.filter(t => t.status === 'published'), [tracks]);
+  const fresh = useMemo(() => [...pub].sort((a,b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 10), [pub]);
+  const popularNow = useMemo(() => [...pub].sort((a,b) => b.plays - a.plays).slice(0, 10), [pub]);
+  const likedTracks = useMemo(() => pub.filter(t => favorites.includes(t.id)), [pub, favorites]);
+
+  const [historyIds, setHistoryIds] = useState<string[]>([]);
+  useEffect(() => { setHistoryIds(loadHistory()); }, []);
+  const recentlyPlayed = useMemo(
+    () => historyIds.map(id => pub.find(t => t.id === id)).filter(Boolean).slice(0, 10) as Track[],
+    [historyIds, pub],
+  );
+
+  const forYou = useMemo(() => {
+    // без ИИ — простое ранжирование по любимым жанрам/исполнителям
+    const genreCount: Record<string, number> = {}; const artistCount: Record<string, number> = {};
+    pub.filter(t => favorites.includes(t.id)).forEach(t => {
+      genreCount[t.genre] = (genreCount[t.genre] ?? 0) + 1;
+      artistCount[t.artist] = (artistCount[t.artist] ?? 0) + 1;
+    });
+    return [...pub].sort((a, b) => {
+      const sa = (genreCount[a.genre] ?? 0) * 2 + (artistCount[a.artist] ?? 0) * 3 + Math.log1p(a.plays);
+      const sb = (genreCount[b.genre] ?? 0) * 2 + (artistCount[b.artist] ?? 0) * 3 + Math.log1p(b.plays);
+      return sb - sa;
+    }).slice(0, 10);
+  }, [pub, favorites]);
+
+  const favoriteArtists = useMemo(() => {
+    const byArtist: Record<string, Track[]> = {};
+    pub.forEach(t => { (byArtist[t.artist] ??= []).push(t); });
+    return Object.entries(byArtist).sort((a,b) => b[1].length - a[1].length).slice(0, 8);
+  }, [pub]);
+
+  const albums = useMemo(() => {
+    // Явной модели "альбом" пока нет — группируем треки по исполнителю+жанру как псевдо-альбом.
+    const map: Record<string, Track[]> = {};
+    pub.forEach(t => { (map[`${t.artist} · ${t.genre}`] ??= []).push(t); });
+    return Object.entries(map).filter(([,ts]) => ts.length >= 1).slice(0, 10);
+  }, [pub]);
+
+  const wavePool = useMemo(() => [...pub].sort(() => Math.random() - 0.5), [pub]);
+  const startWave = () => { if (wavePool[0]) onPlay(wavePool[0], wavePool); };
+  const [c1, c2] = wavePool[0] ? getG(wavePool[0].id) : ['#6a3de8', '#2563eb'];
+
+  return (
+    <div className="sky-music-scope h-full overflow-y-auto pb-8" style={{ scrollbarWidth: 'none', background: '#0a0a0f' }}>
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-5 pt-5 pb-1">
+        <motion.p initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+          className="text-[24px] font-extrabold" style={{ color: '#fafafb', letterSpacing: '-0.03em' }}>
+          {greeting()}
+        </motion.p>
+        <div className="grid h-9 w-9 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+          <Search size={16} style={{ color: '#c7ccd6' }}/>
+        </div>
+      </div>
+
+      {/* "Моя волна" — большая градиентная карточка вместо 3D-сферы:
+          тот же премиальный вид, но лёгкий CSS без WebGL. */}
+      <div className="px-5 pt-4 pb-1">
+        <motion.button type="button" onClick={startWave} whileTap={{ scale: 0.985 }}
+          className="relative w-full overflow-hidden rounded-[28px] text-left"
+          style={{ height: 168 }}>
+          <div className="absolute inset-0" style={{ background: `linear-gradient(135deg,${c1} 0%,${c2} 55%,#0a0a0f 130%)` }}/>
+          <div className="absolute inset-0" style={{ background: 'radial-gradient(120% 90% at 15% 15%, rgba(255,255,255,0.16), transparent 60%)' }}/>
+          <div className="absolute -right-6 -bottom-10 h-40 w-40 rounded-full" style={{ background: 'rgba(255,255,255,0.08)', filter: 'blur(2px)' }}/>
+          <div className="relative h-full flex flex-col justify-between p-5">
+            <div className="flex items-center gap-1.5">
+              <Sparkles size={14} color="rgba(255,255,255,0.85)"/>
+              <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.85)' }}>Моя волна</span>
+            </div>
+            <div className="flex items-end justify-between">
+              <div>
+                <p className="text-[20px] font-extrabold text-white" style={{ letterSpacing: '-0.02em' }}>Бесконечный поток</p>
+                <p className="text-[12.5px] mt-0.5" style={{ color: 'rgba(255,255,255,0.7)' }}>Подобрано специально для тебя</p>
+              </div>
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.95)' }}>
+                <Play size={19} fill="#0a0a0f" color="#0a0a0f" style={{ marginLeft: 2 }}/>
+              </div>
+            </div>
+          </div>
+        </motion.button>
+      </div>
+
+      <div className="h-2"/>
+
+      <Section title="Недавно слушали" icon={Disc3} index={1} empty={recentlyPlayed.length===0 ? 'Пока ничего не прослушано' : undefined}>
+        {recentlyPlayed.map(t => (
+          <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, recentlyPlayed)}/>
+        ))}
+      </Section>
+
+      <Section title="Для вас" icon={Sparkles} index={2}>
+        {forYou.map(t => (
+          <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, forYou)}/>
+        ))}
+      </Section>
+
+      <Section title="Новые релизы" icon={Disc3} index={3}>
+        {fresh.map(t => (
+          <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, fresh)}/>
+        ))}
+      </Section>
+
+      <Section title="Любимые исполнители" icon={Mic2} index={4}>
+        {favoriteArtists.map(([artist, ts]) => (
+          <motion.div key={artist} whileTap={{ scale: 0.95 }} className="shrink-0 text-center" style={{ width: 100 }}>
+            <div className="mx-auto mb-2.5 grid h-24 w-24 place-items-center rounded-full"
+              style={{ background: `linear-gradient(150deg,${getG(artist)[0]},${getG(artist)[1]})`, boxShadow: '0 6px 20px -6px rgba(0,0,0,0.5)' }}>
+              <Mic2 size={24} color="rgba(255,255,255,0.45)"/>
+            </div>
+            <p className="truncate text-[12.5px] font-semibold" style={{ color: '#f0f1f4' }}>{artist}</p>
+            <p className="text-[11px] mt-0.5" style={{ color: '#5c626e' }}>{ts.length} тр.</p>
+          </motion.div>
+        ))}
+      </Section>
+
+      <Section title="Альбомы" icon={ListMusic} index={5}>
+        {albums.map(([name, ts]) => (
+          <button key={name} type="button" onClick={() => ts[0] && onPlay(ts[0], ts)} className="shrink-0 text-left" style={{ width: 148 }}>
+            <div className="grid h-[148px] w-[148px] place-items-center rounded-2xl" style={{
+              background: `linear-gradient(150deg,${getG(name)[0]},${getG(name)[1]})`,
+              boxShadow: '0 4px 16px -4px rgba(0,0,0,0.4)',
+            }}>
+              <ListMusic size={28} color="rgba(255,255,255,0.3)"/>
+            </div>
+            <p className="mt-2.5 truncate text-[13.5px] font-semibold" style={{ color: '#f0f1f4' }}>{name.split(' · ')[0]}</p>
+            <p className="truncate text-[12px] mt-0.5" style={{ color: '#5c626e' }}>{name.split(' · ')[1]}</p>
+          </button>
+        ))}
+      </Section>
+
+      <Section title="Плейлисты" icon={ListMusic} index={6} empty="Плейлисты появятся во вкладке «Коллекция»"/>
+
+      <Section title="Подкасты" icon={Mic2} index={7} empty="Раздел подкастов скоро появится"/>
+
+      <Section title="Музыка по настроению" icon={Sparkles} index={8} empty="Подборки по настроению скоро появятся"/>
+
+      <Section title="Популярное сейчас" icon={Heart} index={9}>
+        {popularNow.map(t => (
+          <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, popularNow)}/>
+        ))}
+      </Section>
+
+      <style>{`@keyframes skyMusicEq { from { transform: scaleY(0.4); } to { transform: scaleY(1.6); } }`}</style>
+    </div>
+  );
+};

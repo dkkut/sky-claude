@@ -1,0 +1,273 @@
+import { useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Heart, Download, ListMusic, Mic2, History as HistoryIcon, Radio, BookOpen,
+  Pin, Check, ArrowUpDown, ChevronLeft, Play, Trash2, X,
+} from 'lucide-react';
+import type { Track } from '@/platform/store';
+import { usePlatformStore } from '@/platform/store';
+import { getG, loadHistory } from '@/music/utils';
+
+type Category = 'liked'|'downloaded'|'albums'|'artists'|'playlists'|'history'|'podcasts'|'audiobooks';
+type SortKey = 'added'|'title'|'artist';
+
+const CATS: { key: Category; label: string; icon: React.FC<any> }[] = [
+  { key:'liked',      label:'Любимые',    icon:Heart },
+  { key:'downloaded', label:'Скачанные',  icon:Download },
+  { key:'albums',     label:'Альбомы',    icon:ListMusic },
+  { key:'artists',    label:'Исполнители',icon:Mic2 },
+  { key:'playlists',  label:'Плейлисты',  icon:ListMusic },
+  { key:'history',    label:'История',    icon:HistoryIcon },
+  { key:'podcasts',   label:'Подкасты',   icon:Radio },
+  { key:'audiobooks', label:'Аудиокниги', icon:BookOpen },
+];
+
+const PIN_KEY = 'sky:music:pins:v1';
+const loadPins = (): string[] => { try { return JSON.parse(localStorage.getItem(PIN_KEY) || '[]'); } catch { return []; } };
+const savePins = (ids: string[]) => { try { localStorage.setItem(PIN_KEY, JSON.stringify(ids)); } catch {} };
+
+const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, onToggleSelect }: {
+  t: Track; active: boolean; playing: boolean; onPlay: () => void; liked: boolean; onLike: () => void;
+  selectMode: boolean; selected: boolean; onToggleSelect: () => void;
+}) => {
+  const [c1, c2] = getG(t.id);
+  return (
+    <button type="button" onClick={selectMode ? onToggleSelect : onPlay}
+      className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.03]">
+      {selectMode && (
+        <div className="grid h-5 w-5 shrink-0 place-items-center rounded-full"
+          style={{ background: selected ? '#4fe3d0' : 'transparent', border: selected ? 'none' : '1.5px solid #444851' }}>
+          {selected && <Check size={12} color="#0a0a0f"/>}
+        </div>
+      )}
+      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl"
+        style={{ background: t.coverUrl ? undefined : `linear-gradient(145deg,${c1},${c2})` }}>
+        {t.coverUrl && <img src={t.coverUrl} alt="" className="h-full w-full rounded-xl object-cover"/>}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13.5px] font-medium" style={{ color: active ? '#4fe3d0' : '#f2f5f8' }}>{t.title}</p>
+        <p className="truncate text-[11.5px]" style={{ color: '#8a8f9a' }}>{t.artist}</p>
+      </div>
+      {!selectMode && (
+        <button type="button" onClick={e => { e.stopPropagation(); onLike(); }} className="shrink-0 p-1">
+          <Heart size={16} fill={liked ? '#f43f5e' : 'none'} color={liked ? '#f43f5e' : '#5c626e'}/>
+        </button>
+      )}
+    </button>
+  );
+};
+
+export const SkyMusicLibrary = ({
+  tracks, favorites, playing, activeId, onPlay, onLike,
+}: {
+  tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
+  onPlay: (t: Track, pool: Track[]) => void; onLike: (id: string) => void;
+}) => {
+  const { playlists } = usePlatformStore();
+  const [cat, setCat] = useState<Category>('liked');
+  const [sort, setSort] = useState<SortKey>('added');
+  const [genreFilter, setGenreFilter] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pins, setPins] = useState<string[]>([]);
+  const [openPlaylist, setOpenPlaylist] = useState<string | null>(null);
+  const [historyIds, setHistoryIds] = useState<string[]>([]);
+
+  useEffect(() => { setPins(loadPins()); setHistoryIds(loadHistory()); }, []);
+  const togglePin = (id: string) => setPins(p => { const next = p.includes(id) ? p.filter(x=>x!==id) : [id, ...p]; savePins(next); return next; });
+
+  const pub = useMemo(() => tracks.filter(t => t.status === 'published'), [tracks]);
+  const genres = useMemo(() => [...new Set(pub.map(t => t.genre))].filter(Boolean), [pub]);
+
+  const applySort = (list: Track[]) => {
+    const arr = [...list];
+    if (sort === 'title')  arr.sort((a,b) => a.title.localeCompare(b.title));
+    if (sort === 'artist') arr.sort((a,b) => a.artist.localeCompare(b.artist));
+    if (sort === 'added')  arr.sort((a,b) => b.addedAt.localeCompare(a.addedAt));
+    return arr;
+  };
+  const applyGenre = (list: Track[]) => genreFilter ? list.filter(t => t.genre === genreFilter) : list;
+
+  const likedTracks   = useMemo(() => applySort(applyGenre(pub.filter(t => favorites.includes(t.id)))), [pub, favorites, sort, genreFilter]);
+  const downloaded    = useMemo(() => applySort(applyGenre(pub.filter(t => t.isLocal))), [pub, sort, genreFilter]);
+  const historyTracks = useMemo(() => historyIds.map(id => pub.find(t => t.id===id)).filter(Boolean) as Track[], [historyIds, pub]);
+
+  const albums = useMemo(() => {
+    const map: Record<string, Track[]> = {};
+    pub.forEach(t => { (map[`${t.artist} · ${t.genre}`] ??= []).push(t); });
+    let entries = Object.entries(map);
+    if (genreFilter) entries = entries.filter(([,ts]) => ts.some(t => t.genre === genreFilter));
+    return entries.sort(([a],[b]) => pins.includes(b) ? 1 : pins.includes(a) ? -1 : a.localeCompare(b));
+  }, [pub, genreFilter, pins]);
+
+  const artists = useMemo(() => {
+    const map: Record<string, Track[]> = {};
+    pub.forEach(t => { (map[t.artist] ??= []).push(t); });
+    return Object.entries(map).sort(([a],[b]) => pins.includes(b) ? 1 : pins.includes(a) ? -1 : a.localeCompare(b));
+  }, [pub, pins]);
+
+  const sortedPlaylists = useMemo(
+    () => [...playlists].sort((a,b) => pins.includes(b.id) ? 1 : pins.includes(a.id) ? -1 : 0),
+    [playlists, pins],
+  );
+
+  const toggleSelect = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const bulkLikeAll = () => { selected.forEach(id => { if (!favorites.includes(id)) onLike(id); }); setSelected(new Set()); setSelectMode(false); };
+  const bulkUnlikeAll = () => { selected.forEach(id => { if (favorites.includes(id)) onLike(id); }); setSelected(new Set()); setSelectMode(false); };
+
+  if (openPlaylist) {
+    const pl = playlists.find(p => p.id === openPlaylist);
+    const pool = pl ? (pl.trackIds.map(id => pub.find(t => t.id === id)).filter(Boolean) as Track[]) : [];
+    return (
+      <div className="sky-music-scope flex h-full flex-col" style={{ background: '#0a0a0f' }}>
+        <div className="flex shrink-0 items-center gap-3 px-4 py-3">
+          <button type="button" onClick={() => setOpenPlaylist(null)}><ChevronLeft size={20} color="#8a8f9a"/></button>
+          <p className="flex-1 truncate text-[15px] font-semibold" style={{ color:'#f2f5f8' }}>{pl?.name ?? 'Плейлист'}</p>
+          <span className="text-[12px]" style={{ color:'#5c626e' }}>{pool.length}</span>
+        </div>
+        <div className="flex-1 overflow-y-auto pb-6">
+          {pool.map(t => (
+            <Row key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, pool)}
+              liked={favorites.includes(t.id)} onLike={() => onLike(t.id)}
+              selectMode={false} selected={false} onToggleSelect={() => {}}/>
+          ))}
+          {pool.length === 0 && <p className="py-10 text-center text-[12.5px]" style={{ color:'#5c626e' }}>Плейлист пуст</p>}
+        </div>
+      </div>
+    );
+  }
+
+  const trackList = cat==='liked' ? likedTracks : cat==='downloaded' ? downloaded : cat==='history' ? historyTracks : [];
+  const isTrackCat = cat==='liked' || cat==='downloaded' || cat==='history';
+
+  return (
+    <div className="sky-music-scope flex h-full flex-col overflow-hidden" style={{ background: '#0a0a0f' }}>
+      {/* Категории */}
+      <div className="flex shrink-0 gap-1.5 overflow-x-auto px-3 pb-2 pt-3" style={{ scrollbarWidth: 'none' }}>
+        {CATS.map(c => (
+          <button key={c.key} type="button" onClick={() => { setCat(c.key); setSelectMode(false); setSelected(new Set()); }}
+            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-medium"
+            style={{ background: cat===c.key ? '#4fe3d0' : 'rgba(255,255,255,0.05)', color: cat===c.key ? '#0a0a0f' : '#c7ccd6' }}>
+            <c.icon size={13}/>{c.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Сортировка / фильтр / выделение — только для трек-списков */}
+      {isTrackCat && (
+        <div className="flex shrink-0 items-center gap-2 overflow-x-auto px-4 pb-2" style={{ scrollbarWidth: 'none' }}>
+          <button type="button" onClick={() => setSort(s => s==='added' ? 'title' : s==='title' ? 'artist' : 'added')}
+            className="flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background:'rgba(255,255,255,0.05)', color:'#8a8f9a' }}>
+            <ArrowUpDown size={11}/>{sort==='added'?'По дате':sort==='title'?'По названию':'По исполнителю'}
+          </button>
+          {genres.map(g => (
+            <button key={g} type="button" onClick={() => setGenreFilter(f => f===g ? null : g)}
+              className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium"
+              style={{ background: genreFilter===g ? 'rgba(79,227,208,0.15)' : 'rgba(255,255,255,0.05)', color: genreFilter===g ? '#4fe3d0' : '#8a8f9a' }}>
+              {g}
+            </button>
+          ))}
+          <button type="button" onClick={() => setSelectMode(v => !v)}
+            className="ml-auto shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: selectMode ? '#4fe3d0' : 'rgba(255,255,255,0.05)', color: selectMode ? '#0a0a0f' : '#8a8f9a' }}>
+            {selectMode ? 'Готово' : 'Выделить'}
+          </button>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto pb-24">
+        {isTrackCat && (
+          <>
+            {trackList.map(t => (
+              <Row key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, trackList)}
+                liked={favorites.includes(t.id)} onLike={() => onLike(t.id)}
+                selectMode={selectMode} selected={selected.has(t.id)} onToggleSelect={() => toggleSelect(t.id)}/>
+            ))}
+            {trackList.length === 0 && (
+              <p className="py-12 text-center text-[12.5px]" style={{ color:'#5c626e' }}>
+                {cat==='downloaded' ? 'Загруженные с устройства треки появятся здесь' : cat==='history' ? 'Пока ничего не прослушано' : 'Добавляйте треки в любимые'}
+              </p>
+            )}
+          </>
+        )}
+
+        {cat === 'albums' && (
+          <div className="grid grid-cols-2 gap-3 px-4 pt-2">
+            {albums.map(([name, ts]) => {
+              const [c1,c2] = getG(name);
+              return (
+                <motion.div key={name} whileTap={{ scale: 0.97 }} className="relative">
+                  <button type="button" onClick={() => ts[0] && onPlay(ts[0], ts)} className="w-full text-left">
+                    <div className="grid aspect-square place-items-center rounded-2xl" style={{ background:`linear-gradient(145deg,${c1},${c2})` }}>
+                      <ListMusic size={24} color="rgba(255,255,255,0.35)"/>
+                    </div>
+                    <p className="mt-1.5 truncate text-[12.5px] font-medium" style={{ color:'#f2f5f8' }}>{name.split(' · ')[0]}</p>
+                    <p className="truncate text-[11px]" style={{ color:'#5c626e' }}>{name.split(' · ')[1]}</p>
+                  </button>
+                  <button type="button" onClick={() => togglePin(name)} className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full" style={{ background:'rgba(0,0,0,0.5)' }}>
+                    <Pin size={11} fill={pins.includes(name) ? '#4fe3d0' : 'none'} color={pins.includes(name) ? '#4fe3d0' : '#fff'}/>
+                  </button>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+
+        {cat === 'artists' && artists.map(([artist, ts]) => (
+          <button key={artist} type="button" onClick={() => ts[0] && onPlay(ts[0], ts)}
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.03]">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full" style={{ background:`linear-gradient(145deg,${getG(artist)[0]},${getG(artist)[1]})` }}>
+              <Mic2 size={16} color="rgba(255,255,255,0.5)"/>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13.5px] font-medium" style={{ color:'#f2f5f8' }}>{artist}</p>
+              <p className="text-[11px]" style={{ color:'#5c626e' }}>{ts.length} треков</p>
+            </div>
+            <button type="button" onClick={e => { e.stopPropagation(); togglePin(artist); }} className="shrink-0 p-1.5">
+              <Pin size={14} fill={pins.includes(artist) ? '#4fe3d0' : 'none'} color={pins.includes(artist) ? '#4fe3d0' : '#5c626e'}/>
+            </button>
+          </button>
+        ))}
+
+        {cat === 'playlists' && sortedPlaylists.map(pl => (
+          <button key={pl.id} type="button" onClick={() => setOpenPlaylist(pl.id)}
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.03]">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl" style={{ background:`linear-gradient(145deg,${getG(pl.id)[0]},${getG(pl.id)[1]})` }}>
+              <ListMusic size={16} color="rgba(255,255,255,0.5)"/>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13.5px] font-medium" style={{ color:'#f2f5f8' }}>{pl.name}</p>
+              <p className="text-[11px]" style={{ color:'#5c626e' }}>{pl.trackIds.length} треков</p>
+            </div>
+            <button type="button" onClick={e => { e.stopPropagation(); togglePin(pl.id); }} className="shrink-0 p-1.5">
+              <Pin size={14} fill={pins.includes(pl.id) ? '#4fe3d0' : 'none'} color={pins.includes(pl.id) ? '#4fe3d0' : '#5c626e'}/>
+            </button>
+          </button>
+        ))}
+        {cat === 'playlists' && sortedPlaylists.length === 0 && (
+          <p className="py-12 text-center text-[12.5px]" style={{ color:'#5c626e' }}>Плейлистов пока нет</p>
+        )}
+
+        {cat === 'podcasts' && <p className="py-12 text-center text-[12.5px]" style={{ color:'#5c626e' }}>Раздел подкастов скоро появится</p>}
+        {cat === 'audiobooks' && <p className="py-12 text-center text-[12.5px]" style={{ color:'#5c626e' }}>Раздел аудиокниг скоро появится</p>}
+      </div>
+
+      {/* Панель действий при массовом выделении */}
+      <AnimatePresence>
+        {selectMode && selected.size > 0 && (
+          <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
+            className="absolute inset-x-3 bottom-3 flex items-center gap-2 rounded-2xl p-2.5"
+            style={{ background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
+            <span className="px-2 text-[12px] font-medium" style={{ color:'#c7ccd6' }}>{selected.size} выбрано</span>
+            <button type="button" onClick={bulkLikeAll} className="flex items-center gap-1 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background:'rgba(244,63,94,0.12)', color:'#f43f5e' }}>
+              <Heart size={13} fill="#f43f5e"/>В любимые
+            </button>
+            <button type="button" onClick={bulkUnlikeAll} className="flex items-center gap-1 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background:'rgba(255,255,255,0.06)', color:'#c7ccd6' }}>
+              <Trash2 size={13}/>Убрать
+            </button>
+            <button type="button" onClick={() => { setSelected(new Set()); setSelectMode(false); }} className="ml-auto p-1.5"><X size={16} color="#5c626e"/></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};

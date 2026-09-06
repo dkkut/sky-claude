@@ -1,0 +1,18 @@
+{
+  "name": "Sky",
+  "short_name": "Sky",
+  "description": "Sky — твоя экосистема",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "icons": [
+    { "src": "/logo.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Чаты", "short_name": "Чаты", "url": "/?module=messages", "icons": [{ "src": "/logo.png", "sizes": "192x192" }] },
+    { "name": "Bloom", "short_name": "Bloom", "url": "/?module=bloom", "icons": [{ "src": "/logo.png", "sizes": "192x192" }] },
+    { "name": "Sky", "short_name": "Sky", "url": "/?module=extras", "icons": [{ "src": "/logo.png", "sizes": "192x192" }] }
+  ]
+}
