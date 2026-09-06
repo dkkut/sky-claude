@@ -26,3 +26,7 @@ Thumbs.db
 .vite/
 .eslintcache
 coverage/
+
+# локальные варианты образов для отладки сборки
+Dockerfile*.test
+ca-bundle.crt

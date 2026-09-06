@@ -14,7 +14,9 @@ const clients = new Map();
 const chats    = new Map(); // chatId → ChatItem
 const messages = new Map(); // chatId → MessageItem[]
 
-const wss = new WebSocketServer({ port: PORT });
+// Хаб поднимается не при импорте, а из server.mjs после того, как готовы
+// БД и Redis: иначе клиенты успевают подключиться к ещё не готовому серверу.
+let wss = null;
 
 /* ─── helpers ──────────────────────────────────────────────────────────── */
 const send = (ws, msg) => {
@@ -54,7 +56,10 @@ const addMsg  = (chatId, msg) => {
 };
 
 /* ─── connection ───────────────────────────────────────────────────────── */
-wss.on('connection', (ws) => {
+export const startSignalHub = () => {
+  wss = new WebSocketServer({ port: PORT });
+
+  wss.on('connection', (ws) => {
   let myUserId = null;
 
   ws.on('message', (raw) => {
@@ -203,7 +208,18 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('error', (e) => console.error('[ws]', e.message));
-});
+    ws.on('error', (e) => console.error('[ws]', e.message));
+  });
 
-console.log(`[ws] Hub on :${PORT}`);
+  console.log(`[ws] Hub on :${PORT}`);
+
+  return {
+    /** Закрывает соединения и слушающий сокет — нужно для штатной остановки. */
+    close: () => new Promise((resolve) => {
+      for (const ws of clients.values()) ws.close(1001, 'server shutting down');
+      clients.clear();
+      wss.close(() => resolve());
+      wss = null;
+    }),
+  };
+};

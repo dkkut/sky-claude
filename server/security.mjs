@@ -52,3 +52,67 @@ export const rateLimit = (key, perMinute) => {
 };
 
 export const generateId = () => crypto.randomUUID();
+
+/* ─── Пароли ───────────────────────────────────────────────────────────── */
+
+/**
+ * Параметры scrypt. N — главный множитель стоимости; память под перебор
+ * считается как 128 * N * r ≈ 16 МБ на попытку, что делает перебор на GPU
+ * дорогим. Хранятся вместе с хешем, поэтому их можно поднять позже,
+ * не ломая уже сохранённые пароли.
+ */
+const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64, saltBytes: 16 };
+
+const scryptAsync = (password, salt, params) => new Promise((resolve, reject) => {
+  crypto.scrypt(
+    password, salt, params.keylen,
+    { N: params.N, r: params.r, p: params.p },
+    (err, derived) => (err ? reject(err) : resolve(derived)),
+  );
+});
+
+/**
+ * Возвращает строку вида scrypt$N$r$p$соль$хеш (соль и хеш в base64).
+ * Алгоритм и параметры лежат внутри самой строки — при их смене старые
+ * пароли продолжают проверяться прежними параметрами.
+ */
+export const hashPassword = async (password) => {
+  if (typeof password !== 'string' || password.length === 0) {
+    throw new Error('пустой пароль');
+  }
+  const salt = crypto.randomBytes(SCRYPT.saltBytes);
+  const hash = await scryptAsync(password, salt, SCRYPT);
+  return [
+    'scrypt', SCRYPT.N, SCRYPT.r, SCRYPT.p,
+    salt.toString('base64'), hash.toString('base64'),
+  ].join('$');
+};
+
+/**
+ * Проверяет пароль. Никогда не бросает исключение: любой мусор на входе —
+ * это просто false, иначе кривой хеш в базе превращался бы в 500.
+ */
+export const verifyPassword = async (password, stored) => {
+  if (typeof password !== 'string' || typeof stored !== 'string') return false;
+
+  const parts = stored.split('$');
+  if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
+
+  const [, nRaw, rRaw, pRaw, saltB64, hashB64] = parts;
+  const params = {
+    N: Number(nRaw), r: Number(rRaw), p: Number(pRaw),
+    keylen: Buffer.from(hashB64, 'base64').length,
+  };
+  if (!Number.isInteger(params.N) || !Number.isInteger(params.r)
+      || !Number.isInteger(params.p) || !params.keylen) return false;
+
+  try {
+    const expected = Buffer.from(hashB64, 'base64');
+    const actual   = await scryptAsync(password, Buffer.from(saltB64, 'base64'), params);
+    if (actual.length !== expected.length) return false;
+    return crypto.timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
+};
+

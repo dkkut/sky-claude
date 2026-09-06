@@ -64,6 +64,9 @@ services:
       ACCESS_TTL_SEC:        ${ACCESS_TTL_SEC:-900}
       REFRESH_TTL_SEC:       ${REFRESH_TTL_SEC:-2592000}
       DATABASE_URL:          postgres://sky:${POSTGRES_PASSWORD:?нужно задать POSTGRES_PASSWORD в .env}@postgres:5432/sky
+      # Демо-аккаунты заводятся только на пустой базе и только если пароль задан.
+      # В продакшне переменную оставляют пустой — тогда их не будет вовсе.
+      SEED_PASSWORD:         ${SEED_PASSWORD:-}
       REDIS_URL:             redis://:${REDIS_PASSWORD:?нужно задать REDIS_PASSWORD в .env}@redis:6379
     networks: [internal]
     deploy:
