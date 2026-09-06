@@ -25,6 +25,8 @@ map $http_upgrade $connection_upgrade {
 server {
     listen      80;
     listen [::]:80;
+    # www.${DOMAIN} указан на случай домена второго уровня; для
+    # поддомена такое имя просто никогда не придёт и ни на что не влияет.
     server_name ${DOMAIN} www.${DOMAIN};
 
     # Проверка Let's Encrypt должна ходить по HTTP.
@@ -50,6 +52,8 @@ server {
     listen      443 ssl;
     listen [::]:443 ssl;
     http2       on;
+    # www.${DOMAIN} указан на случай домена второго уровня; для
+    # поддомена такое имя просто никогда не придёт и ни на что не влияет.
     server_name ${DOMAIN} www.${DOMAIN};
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;

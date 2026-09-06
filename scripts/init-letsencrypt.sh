@@ -33,6 +33,19 @@ echo "==> Домен: ${DOMAIN}"
 echo "==> Останавливаю nginx, если он запущен"
 $COMPOSE stop web 2>/dev/null || true
 
+# Для поддомена вида web.example.com версия с www не нужна: домена
+# www.web.example.com не существует, а certbot проверяет ВСЕ запрошенные
+# имена и падает целиком, если хоть одно не подтвердилось.
+# Считаем точки: одна — это домен второго уровня, добавляем www.
+DOMAIN_ARGS=(-d "${DOMAIN}")
+if [[ "${CERTBOT_WWW:-auto}" == "yes" ]] || \
+   { [[ "${CERTBOT_WWW:-auto}" == "auto" ]] && [[ "$(tr -cd '.' <<<"$DOMAIN" | wc -c)" -eq 1 ]]; }; then
+  DOMAIN_ARGS+=(-d "www.${DOMAIN}")
+  echo "==> Сертификат будет включать www.${DOMAIN}"
+else
+  echo "==> Сертификат только на ${DOMAIN} (www не добавляем)"
+fi
+
 STAGING_ARG=""
 if [[ "${CERTBOT_STAGING:-0}" != "0" ]]; then
   echo "==> Тестовый режим Let's Encrypt: сертификат будет невалидным,"
@@ -49,7 +62,7 @@ $COMPOSE run --rm -p 80:80 --entrypoint certbot certbot \
   --agree-tos --no-eff-email \
   --non-interactive \
   --keep-until-expiring \
-  -d "${DOMAIN}" -d "www.${DOMAIN}"
+  "${DOMAIN_ARGS[@]}"
 
 # -- Запуск стека ---------------------------------------------
 echo "==> Поднимаю стек"
