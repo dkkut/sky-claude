@@ -76,6 +76,7 @@ services:
       SMS_MODE:              ${SMS_MODE:-log}
       SMS_API_ID:            ${SMS_API_ID:-}
       SMS_FROM:              ${SMS_FROM:-}
+      SMS_DEVICE_ID:         ${SMS_DEVICE_ID:-}
       SMS_WEBHOOK_URL:       ${SMS_WEBHOOK_URL:-}
       SMS_WEBHOOK_TOKEN:     ${SMS_WEBHOOK_TOKEN:-}
       EMAIL_MODE:            ${EMAIL_MODE:-log}

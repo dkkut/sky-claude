@@ -37,10 +37,22 @@ const maskEmail = (email) => {
   return `${value[0]}***${value.slice(at)}`;
 };
 
-const PHONE_RE = /^\+?[0-9]{10,15}$/;
+/**
+ * Приводит номер к одному виду: +7 и дальше цифры.
+ *
+ * Это не косметика. Номер — это и есть учётная запись, и «+79001234567»,
+ * «79001234567» и «89001234567» должны попадать в один Sky ID. Пока
+ * номер хранился как набран, один и тот же человек, войдя однажды через
+ * восьмёрку, заводил себе второй аккаунт с пустыми профилями.
+ *
+ * Восьмёрку меняем на семёрку только у одиннадцатизначных номеров —
+ * это российский способ набора; в других странах кода «8» нет.
+ */
 const normalizePhone = (raw) => {
-  const digits = String(raw ?? '').replace(/[^\d+]/g, '');
-  return PHONE_RE.test(digits) ? digits : null;
+  let digits = String(raw ?? '').replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('8')) digits = `7${digits.slice(1)}`;
+  if (digits.length < 10 || digits.length > 15) return null;
+  return `+${digits}`;
 };
 
 /** Собирает пару токенов и куку для уже существующей сессии Sky ID. */

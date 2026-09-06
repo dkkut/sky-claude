@@ -92,8 +92,46 @@ const smsProviders = {
   },
 
   /**
+   * TextBee — шлюз, который отправляет SMS через ваш собственный
+   * телефон с Android. Нужен ключ из личного кабинета (SMS_API_ID);
+   * SMS_DEVICE_ID указывать не обязательно — без него берётся телефон,
+   * выходивший на связь последним.
+   */
+  async textbee(phone, text) {
+    if (!config.smsApiId) return { ok: false, error: 'sms_not_configured' };
+    if (!asciiOnly(config.smsApiId)) {
+      console.error('[sms:textbee] ключ содержит недопустимые символы.');
+      return { ok: false, error: 'sms_not_configured' };
+    }
+
+    const body = { recipients: [phone], message: text };
+    if (config.smsDeviceId) body.deviceId = config.smsDeviceId;
+
+    try {
+      const res = await fetch('https://api.textbee.dev/api/v1/gateway/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': config.smsApiId },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+
+      if (!res.ok) {
+        // Тело ответа при отказе содержит причину — она пригодится,
+        // а сам код сообщения в журнал не попадает.
+        const why = await res.text().catch(() => '');
+        console.error(`[sms:textbee] шлюз ответил ${res.status}: ${why.slice(0, 200)}`);
+        return { ok: false, error: 'sms_delivery_failed' };
+      }
+      return { ok: true };
+    } catch (err) {
+      console.error('[sms:textbee] сеть:', err.message);
+      return { ok: false, error: 'sms_delivery_failed' };
+    }
+  },
+
+  /**
    * Любой другой провайдер через свой обработчик: POST с JSON
-   * { to, text }. Пригодится, если sms.ru не подходит.
+   * { to, text }. Пригодится, если ни sms.ru, ни TextBee не подходят.
    */
   async webhook(phone, text) {
     if (!config.smsWebhookUrl) return { ok: false, error: 'sms_not_configured' };
@@ -258,8 +296,8 @@ export const checkDeliverySetup = () => {
     problems.push(logAllowed()
       ? 'SMS_MODE=log — коды входа пишутся в журнал и никому не отправляются.'
       : 'SMS_MODE=log запрещён в бою: войти не сможет никто. Задайте SMS_MODE=smsru и SMS_API_ID.');
-  } else if (config.smsMode === 'smsru' && !config.smsApiId) {
-    problems.push('SMS_MODE=smsru, но SMS_API_ID пуст — SMS отправлять нечем.');
+  } else if ((config.smsMode === 'smsru' || config.smsMode === 'textbee') && !config.smsApiId) {
+    problems.push(`SMS_MODE=${config.smsMode}, но SMS_API_ID пуст — SMS отправлять нечем.`);
   } else if (config.smsMode === 'webhook' && !config.smsWebhookUrl) {
     problems.push('SMS_MODE=webhook, но SMS_WEBHOOK_URL пуст.');
   }

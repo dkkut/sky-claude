@@ -20,6 +20,9 @@ export const config = {
   smsMode:   process.env.SMS_MODE   || 'log',
   smsApiId:  process.env.SMS_API_ID || '',
   smsFrom:   process.env.SMS_FROM   || '',
+  // TextBee: какой телефон-шлюз использовать. Пусто — тот, что выходил
+  // на связь последним.
+  smsDeviceId: process.env.SMS_DEVICE_ID || '',
 
   smsWebhookUrl:      process.env.SMS_WEBHOOK_URL      || '',
   smsWebhookToken:    process.env.SMS_WEBHOOK_TOKEN    || '',
