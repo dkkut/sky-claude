@@ -288,6 +288,17 @@ const Root = () => {
     };
   }, []);
 
+  // Пока показывается сплэш, спрашиваем сервер, есть ли живая сессия.
+  // Готовность наступает, когда и таймер вышел, и ответ получен —
+  // иначе успел бы мелькнуть экран входа у уже вошедшего пользователя.
+  const [sessionChecked, setSessionChecked] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    useAuthStore.getState().restoreSession()
+      .finally(() => { if (!cancelled) setSessionChecked(true); });
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     const t = setTimeout(() => setReady(true), 2600);
     return () => clearTimeout(t);
@@ -305,7 +316,7 @@ const Root = () => {
     }
   }, [isAuthenticated, currentUserId]);
 
-  if (!ready) return <Splash offline={offline} />;
+  if (!ready || !sessionChecked) return <Splash offline={offline} />;
 
   if (offline && isAuthenticated) {
     return <OfflineMode onRetryOnline={() => { if (navigator.onLine) setOffline(false); }} />;

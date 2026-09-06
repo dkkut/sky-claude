@@ -485,9 +485,9 @@ const PasswordSection = ({ userId }: { userId: string }) => {
   const [show,   setShow] = useState(false);
   const [msg,    setMsg]  = useState<{ ok: boolean; text: string } | null>(null);
 
-  const submit = () => {
+  const submit = async () => {
     if (newPw !== newPw2) { setMsg({ ok: false, text: 'Пароли не совпадают' }); return; }
-    const r = changePassword(userId, oldPw, newPw);
+    const r = await changePassword(userId, oldPw, newPw);
     setMsg({ ok: r.ok, text: r.ok ? 'Пароль изменён ✓' : r.reason ?? 'Ошибка' });
     if (r.ok) { setOld(''); setNew(''); setNew2(''); }
   };

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuthStore, DEMO_PASSWORD } from '@/core/auth/store';
+import { useAuthStore } from '@/core/auth/store';
 
 
 const avatarGrad = (n: string) => { const h = [...n].reduce((a,c)=>a+c.charCodeAt(0),0)%360; return `linear-gradient(135deg,hsl(${h},65%,42%),hsl(${(h+40)%360},70%,36%))`; };
@@ -20,21 +20,23 @@ export const AuthScreen = () => {
     setErr(''); setBusy(true);
     await new Promise(r => setTimeout(r, 180));
     if (mode === 'login') {
-      const ok = login(user.trim(), pass);
-      if (!ok) setErr('Неверный логин или пароль');
+      const res = await login(user.trim(), pass);
+      if (!res.ok) setErr(res.reason ?? 'Неверный логин или пароль');
     } else {
       if (!name.trim() || !user.trim() || !pass) {
         setErr('Заполни все поля'); setBusy(false); return;
       }
-      const ok = register(name.trim(), user.trim().toLowerCase(), pass);
-      if (!ok) setErr('Имя пользователя занято');
+      const res = await register(name.trim(), user.trim().toLowerCase(), pass);
+      if (!res.ok) setErr(res.reason ?? 'Не удалось зарегистрироваться');
     }
     setBusy(false);
   };
 
   const pickAccount = (username: string) => {
     setUser(username);
-    setPass(DEMO_PASSWORD); // auto-fill demo password
+    // Пароль больше не подставляем: он проверяется на сервере и
+    // в браузере не хранится.
+    setPass('');
     setMode('login');
   };
 
@@ -100,7 +102,7 @@ export const AuthScreen = () => {
               <input className="sky-input" placeholder="Имя пользователя"
                 value={user} onChange={e => setUser(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && go()} autoFocus />
-              <input className="sky-input" type="password" placeholder={`Пароль (демо: ${DEMO_PASSWORD})`}
+              <input className="sky-input" type="password" placeholder="Пароль"
                 value={pass} onChange={e => setPass(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && go()} />
               {err && (

@@ -79,14 +79,16 @@ interface AuthState {
   requestCode:()=>{ok:boolean;reason?:string};
   registerAndRequestCode:()=>{ok:boolean;reason?:string};
   verifyCode:(code:string)=>{ok:boolean;reason?:string};
-  login:(username:string,password:string)=>boolean;
-  register:(name:string,username:string,password:string)=>boolean;
+  login:(username:string,password:string)=>Promise<{ok:boolean;reason?:string}>;
+  register:(name:string,username:string,password:string)=>Promise<{ok:boolean;reason?:string}>;
+  /** Восстанавливает сессию по HttpOnly-куке. Вызывается при старте приложения. */
+  restoreSession:()=>Promise<void>;
   logout:()=>void;
   logoutAll:(userId:string)=>void;
   findUsersByUsername:(q:string)=>Account[];
   findBySkyId:(skyId:string)=>Account|undefined;
   updateProfile:(p:Partial<Pick<Account,'name'|'bio'|'avatar'|'banner'|'privacy'|'gameProfile'|'nameSticker'|'nameColor'|'customStatus'|'statusEmoji'|'birthDate'|'links'|'country'|'language'|'timezone'|'equippedFrame'>>)=>void;
-  changePassword:(userId:string,oldPw:string,newPw:string)=>{ok:boolean;reason?:string};
+  changePassword:(userId:string,oldPw:string,newPw:string)=>Promise<{ok:boolean;reason?:string}>;
   enable2FA:(userId:string,method:'email'|'sms',secret:string)=>void;
   disable2FA:(userId:string)=>void;
   send2FACode:(userId:string)=>string;
@@ -107,8 +109,10 @@ interface AuthState {
   setModerationNote:(userId:string,note:string)=>void;
 }
 
+import { apiLogin, apiRegister, apiLogout, apiRefresh, apiChangePassword, type ServerUser } from './api';
+
 /* helpers */
-export const DEMO_SMS_CODE='0000'; export const DEMO_PASSWORD='0000';
+export const DEMO_SMS_CODE='0000';
 const CODE=DEMO_SMS_CODE; const W=typeof window!=='undefined';
 const nm=(v:string)=>v.replace(/[^\d+]/g,'');
 const nu=(v:string)=>v.trim().toLowerCase().replace(/^@/,'');
@@ -133,9 +137,9 @@ const addSec=(acc:Account,ev:Omit<SecurityEvent,'id'|'at'>):Account=>{
 };
 const DP={whoCanWrite:'all' as const,whoSeesOnline:'all' as const,whoCanCall:'all' as const};
 const SEED:Account[]=[
-  {id:'acc-kutuzov',name:'Kutuzov',phone:'+79000000000',username:'kutuzov',password:DEMO_PASSWORD,bio:'Sky Admin',isPrime:true,isAdmin:true,createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-ADMIN1'},
-  {id:'acc-luna',name:'Luna Nova',phone:'+79005550101',username:'luna_nova',password:DEMO_PASSWORD,bio:'Raid support',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-LUNA01'},
-  {id:'acc-neo',name:'Neo Driver',phone:'+79005550102',username:'neon_driver',password:DEMO_PASSWORD,bio:'FPS captain ⚡',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-NEO001'},
+  {id:'acc-kutuzov',name:'Kutuzov',phone:'+79000000000',username:'kutuzov',bio:'Sky Admin',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-ADMIN1'},
+  {id:'acc-luna',name:'Luna Nova',phone:'+79005550101',username:'luna_nova',bio:'Raid support',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-LUNA01'},
+  {id:'acc-neo',name:'Neo Driver',phone:'+79005550102',username:'neon_driver',bio:'FPS captain ⚡',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-NEO001'},
 ];
 const AK='sky:auth:v4:accounts',SK='sky:auth:v4:session',PK='sky:auth:v4:pending';
 const rA=():Account[]=>{if(!W)return SEED;try{const p=JSON.parse(localStorage.getItem(AK)||'');if(Array.isArray(p)&&p.length)return p;}catch{}return SEED;};
@@ -147,10 +151,13 @@ const wP=(p:string)=>{if(!W)return;p?localStorage.setItem(PK,JSON.stringify({pho
 const DI=new Set(['acc-kutuzov','acc-luna','acc-neo']);
 const initAccounts=():Account[]=>{
   const stored=rA();
+  // Локальный список — только для экрана выбора аккаунта. Ни пароля,
+  // ни прав он не несёт: и то и другое приходит с сервера при входе.
   const patch=(a:Account):Account=>{
     const s=SEED.find(x=>x.phone===a.phone);
-    if(!DI.has(a.id)||!s)return{...a,skyId:a.skyId??genSkyId()};
-    return{...a,password:DEMO_PASSWORD,username:s.username,isAdmin:s.isAdmin,isPrime:s.isPrime,skyId:a.skyId??s.skyId??genSkyId()};
+    const base={...a,password:undefined,skyId:a.skyId??genSkyId()};
+    if(!DI.has(a.id)||!s)return base;
+    return{...base,username:s.username,skyId:a.skyId??s.skyId??genSkyId()};
   };
   const m=stored.map(patch);
   const final=m.find(a=>a.phone==='+79000000000')?m:[SEED[0],...m];
@@ -158,11 +165,52 @@ const initAccounts=():Account[]=>{
 };
 const accs=initAccounts(),sess=rS(),pend=rP();
 
+/**
+ * Записывает в стор данные сессии, пришедшие с сервера.
+ *
+ * Личность и права (isAdmin, isPrime) берутся ТОЛЬКО отсюда: локальная
+ * запись аккаунта перезаписывается серверной. Поэтому правка
+ * localStorage вручную ничего не даёт — при следующей загрузке
+ * значения вернутся к тем, что в базе.
+ *
+ * Пароль в локальную запись не пишется никогда.
+ */
+const applyServerSession=(
+  set:(p:Partial<AuthState>)=>void,
+  get:()=>AuthState,
+  user:ServerUser,
+)=>{
+  const{accounts}=get();
+  const existing=accounts.find(a=>a.id===user.id);
+  const merged:Account=existing
+    ?{...existing,username:user.username,name:user.name,phone:user.phone,
+      isAdmin:user.isAdmin,isPrime:user.isPrime,password:undefined}
+    :addDevice({id:user.id,phone:user.phone,username:user.username,name:user.name,
+      isAdmin:user.isAdmin,isPrime:user.isPrime,createdAt:new Date().toISOString(),
+      bio:'',privacy:DP,skyId:genSkyId()} as Account);
+  const updated=existing
+    ?accounts.map(a=>a.id===user.id?addDevice(merged):a)
+    :[...accounts,merged];
+  wA(updated);wS(user.id);
+  set({accounts:updated,isAuthenticated:true,currentUserId:user.id,step:'authenticated'});
+};
+
 export const useAuthStore=create<AuthState>((set,get)=>({
-  step:sess?'authenticated':pend?'code':'phone',
+  // Стартуем как невошедшие независимо от того, что лежит в localStorage:
+  // факт входа подтверждает только сервер (restoreSession по HttpOnly-куке).
+  // Иначе достаточно было бы дописать себе запись сессии в браузере.
+  step:pend?'code':'phone',
   phoneInput:pend||'+7',pendingPhone:pend,pendingUsername:'',pendingName:'',
-  isAuthenticated:Boolean(sess),currentUserId:sess,accounts:accs,
+  isAuthenticated:false,currentUserId:null,accounts:accs,
   pending2faUserId:null,twoFaError:null,
+
+  restoreSession:async()=>{
+    const res=await apiRefresh();
+    if(res.ok&&res.user){applyServerSession(set,get,res.user);return;}
+    // Куки нет или сессия отозвана — считаем, что вход не выполнен.
+    wS(null);
+    set({isAuthenticated:false,currentUserId:null,step:'phone'});
+  },
 
   setPhoneInput:v=>set({phoneInput:v}),
   setPendingProfile:({username,name})=>set({pendingUsername:username,pendingName:name}),
@@ -202,41 +250,37 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     return{ok:true};
   },
 
-  login:(username,password)=>{
-    const{accounts}=get();const u=nu(username);
-    const acc=accounts.find(a=>a.username===u);
-    if(!acc)return false;
-    if(acc.password&&acc.password!==password){
-      const updated=accounts.map(a=>a.id===acc.id?addSec(a,{type:'login_fail',text:`Неудачная попытка · ${curDev().browser}`}):a);
-      wA(updated);set({accounts:updated});return false;
+  // Пароль проверяет сервер. Локальный список аккаунтов — только для
+  // экрана выбора: решение о входе принимается не здесь.
+  login:async(username,password)=>{
+    const res=await apiLogin(nu(username),password);
+    if(!res.ok||!res.user){
+      const{accounts}=get();const u=nu(username);
+      const acc=accounts.find(a=>a.username===u);
+      if(acc){
+        const updated=accounts.map(a=>a.id===acc.id?addSec(a,{type:'login_fail',text:`Неудачная попытка · ${curDev().browser}`}):a);
+        wA(updated);set({accounts:updated});
+      }
+      return{ok:false,reason:res.reason};
     }
-    if(acc.twoFA?.enabled){set({pending2faUserId:acc.id,step:'twofa'});return false;}
-    const cd=curDev();
-    const isNew=!(acc.devices??[]).some(d=>d.browser===cd.browser&&d.os===cd.os);
-    const updated=accounts.map(a=>{
-      if(a.id!==acc.id)return a;
-      let x=!a.password?{...a,password}:a;
-      x=addDevice(x);
-      x=addSec(x,{type:isNew?'login_new_device':'login',text:`Вход с ${cd.browser} · ${cd.os}`});
-      return x;
-    });
-    wA(updated);wS(acc.id);
-    set({isAuthenticated:true,currentUserId:acc.id,step:'authenticated',accounts:updated});
-    return true;
+    applyServerSession(set,get,res.user);
+    return{ok:true};
   },
 
-  register:(name,username,password)=>{
-    const{accounts}=get();const u=nu(username);
-    if(!u||name.trim().length<2||!password)return false;
-    if(accounts.some(a=>a.username===u))return false;
-    let acc:Account={id:`acc-${crypto.randomUUID()}`,phone:'',username:u,name:name.trim(),password,createdAt:new Date().toISOString(),bio:'',privacy:DP,skyId:genSkyId()};
-    acc=addDevice(acc);acc=addSec(acc,{type:'login',text:'Регистрация аккаунта'});
-    const updated=[...accounts,acc];wA(updated);wS(acc.id);
-    set({accounts:updated,isAuthenticated:true,currentUserId:acc.id,step:'authenticated'});
-    return true;
+  register:async(name,username,password)=>{
+    const u=nu(username);
+    if(!u||name.trim().length<2||!password)return{ok:false,reason:'Заполните все поля'};
+    const{phoneInput,pendingPhone}=get();
+    const res=await apiRegister({phone:nm(pendingPhone||phoneInput),username:u,name:name.trim(),password});
+    if(!res.ok||!res.user)return{ok:false,reason:res.reason};
+    applyServerSession(set,get,res.user);
+    return{ok:true};
   },
 
   logout:()=>{
+    // Серверную сессию отзываем не дожидаясь ответа: локальный выход
+    // не должен зависеть от доступности сети.
+    void apiLogout();
     const{currentUserId,accounts}=get();
     const updated=accounts.map(a=>a.id===currentUserId?{...a,devices:(a.devices??[]).map(d=>({...d,isCurrent:false}))}:a);
     wA(updated);wS(null);wP('');
@@ -266,14 +310,15 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     wA(updated);set({accounts:updated});
   },
 
-  changePassword:(userId,oldPw,newPw)=>{
+  // Пароль меняет сервер: он же проверяет старый и разлогинивает
+  // остальные устройства. В браузере пароль не хранится вообще.
+  changePassword:async(userId,oldPw,newPw)=>{
+    const res=await apiChangePassword(oldPw,newPw);
+    if(!res.ok)return{ok:false,reason:res.reason};
     const{accounts}=get();
-    const acc=accounts.find(a=>a.id===userId);
-    if(!acc)return{ok:false,reason:'Аккаунт не найден'};
-    if(acc.password&&acc.password!==oldPw)return{ok:false,reason:'Неверный текущий пароль'};
-    if(!newPw||newPw.length<4)return{ok:false,reason:'Новый пароль минимум 4 символа'};
-    const updated=accounts.map(a=>a.id===userId?addSec({...a,password:newPw},{type:'password_change',text:'Пароль изменён'}):a);
-    wA(updated);set({accounts:updated});return{ok:true};
+    const updated=accounts.map(a=>a.id===userId?addSec(a,{type:'password_change',text:'Пароль изменён'}):a);
+    wA(updated);set({accounts:updated});
+    return{ok:true};
   },
 
   enable2FA:(userId,method,secret)=>{
