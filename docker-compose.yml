@@ -66,7 +66,6 @@ services:
       DATABASE_URL:          postgres://sky:${POSTGRES_PASSWORD:?нужно задать POSTGRES_PASSWORD в .env}@postgres:5432/sky
       # Демо-аккаунты заводятся только на пустой базе и только если пароль задан.
       # В продакшне переменную оставляют пустой — тогда их не будет вовсе.
-      SEED_PASSWORD:         ${SEED_PASSWORD:-}
       # 'demo' открывает пополнение кошелька без реального платежа.
       # В продакшне не задавайте — иначе баланс рисуется одним запросом.
       PAYMENTS_MODE:         ${PAYMENTS_MODE:-disabled}

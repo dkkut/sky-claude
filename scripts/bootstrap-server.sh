@@ -218,6 +218,20 @@ REFRESH_TOKEN_SECRET=$(openssl rand -base64 48 | tr -d '\n')
 POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 32)
 REDIS_PASSWORD=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 32)
 
+# Шифрует секреты двухэтапной защиты в базе.
+ENCRYPTION_KEY=$(openssl rand -base64 32 | tr -d '\n')
+
+# ВНИМАНИЕ: 'log' пишет код входа в журнал контейнера и никуда не шлёт.
+# Пока здесь log, войти сможет только тот, у кого есть доступ к серверу.
+# Для рабочего сайта поставьте SMS_MODE=smsru и ключ SMS_API_ID.
+SMS_MODE=log
+SMS_API_ID=
+SMS_FROM=
+
+EMAIL_MODE=log
+EMAIL_WEBHOOK_URL=
+EMAIL_WEBHOOK_TOKEN=
+
 RATE_LIMIT_PER_MINUTE=120
 ACCESS_TTL_SEC=900
 REFRESH_TTL_SEC=2592000
@@ -239,6 +253,9 @@ cat <<INFO
     1. Направьте A-запись домена на этот сервер и дождитесь обновления DNS.
     2. Положите код в ${APP_DIR} (git clone или деплой через GitHub Actions).
     3. Выпустите сертификат:  cd ${APP_DIR} && bash scripts/init-letsencrypt.sh
+    4. Подключите отправку SMS: в ${ENV_FILE} задайте SMS_MODE=smsru
+       и SMS_API_ID. Пока там SMS_MODE=log, коды входа пишутся в журнал
+       контейнера и людям не приходят — войти никто не сможет.
 
   Проверьте, что вход по ключу работает, ДО того как закроете текущую сессию.
 

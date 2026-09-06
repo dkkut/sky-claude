@@ -68,7 +68,6 @@ REFRESH_TOKEN_SECRET=$(openssl rand -base64 48 | tr -d '\n')
 POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 32)
 REDIS_PASSWORD=$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 32)
 PAYMENTS_MODE=disabled
-SEED_PASSWORD=
 RATE_LIMIT_PER_MINUTE=120
 ACCESS_TTL_SEC=900
 REFRESH_TTL_SEC=2592000
