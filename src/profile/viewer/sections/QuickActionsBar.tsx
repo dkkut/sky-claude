@@ -14,9 +14,10 @@ import { useProfileViewer } from '../store';
 import type { ProfileData } from '../useProfileData';
 import { GiftModal, type GiftModalProps } from '@/gifts/SkyGifts';
 import { ReportProfileSheet, TransferMoneySheet, InviteToChatSheet } from '../ActionSheets';
+import type { IconComponent } from '@/shared/icon';
 
 const Pill = ({ icon: Icon, label, onClick, tone, primary }: {
-  icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void; tone?: string; primary?: boolean;
+  icon: IconComponent; label: string; onClick: () => void; tone?: string; primary?: boolean;
 }) => (
   <button type="button" onClick={onClick}
     className="flex flex-col items-center gap-1 sm:gap-1.5 shrink-0 sky-hover-lift"
@@ -33,7 +34,7 @@ const Pill = ({ icon: Icon, label, onClick, tone, primary }: {
 );
 
 const Row = ({ icon: Icon, label, onClick, danger }: {
-  icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void; danger?: boolean;
+  icon: IconComponent; label: string; onClick: () => void; danger?: boolean;
 }) => (
   <button type="button" onClick={onClick}
     className="w-full flex items-center gap-3 px-4 py-3 sky-hover-lift text-left">

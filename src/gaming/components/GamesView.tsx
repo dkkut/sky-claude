@@ -23,7 +23,7 @@ export const GamesView = ({ onGame }: Props) => {
       <div className="px-4 pb-3">
         <div className="flex items-center gap-2 rounded-xl px-3 py-2"
           style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-          <Search size={13} style={{ color: 'var(--t3)', shrink: 0 }}/>
+          <Search size={13} style={{ color: 'var(--t3)', flexShrink: 0 }}/>
           <input
             value={query} onChange={e => setQuery(e.target.value)}
             placeholder="Поиск игры..."

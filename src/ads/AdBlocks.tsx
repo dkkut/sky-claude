@@ -57,7 +57,7 @@ export const BannerAd = ({ placement, className = '' }: { placement: AdPlacement
             <p className="text-[11px] truncate" style={{ color:'rgba(255,255,255,0.5)' }}>{ad.description}</p>
           )}
         </div>
-        {ad.linkUrl && <ExternalLink size={13} style={{ color:'rgba(255,255,255,0.35)', shrink:0 }}/>}
+        {ad.linkUrl && <ExternalLink size={13} style={{ color:'rgba(255,255,255,0.35)', flexShrink: 0 }}/>}
       </div>
       <button type="button" onClick={() => setDismissed(true)}
         className="absolute top-1.5 right-1.5 grid h-5 w-5 place-items-center rounded-full hover:bg-white/10"

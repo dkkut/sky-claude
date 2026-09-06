@@ -28,11 +28,12 @@ import { SkyMusicHome } from './SkyMusicHome';
 import { SkyMusicLibrary } from './SkyMusicLibrary';
 import { SkyMusicSearch } from './SkyMusicSearch';
 import { usePlayerStore } from '@/player/playerStore';
+import type { IconComponent } from '@/shared/icon';
 
 /* ── Tab types & nav config ─────────────────────────────────── */
 type TabKey = 'home' | 'collection' | 'charts' | 'upload' | 'import' | 'history' | 'musician';
 
-const NAV_TABS: { key: TabKey; icon: React.FC<{ size?: number }>; label: string }[] = [
+const NAV_TABS: { key: TabKey; icon: IconComponent; label: string }[] = [
   { key: 'home',       icon: Music2,     label: 'Главная'   },
   { key: 'collection', icon: ListMusic,  label: 'Коллекция' },
   { key: 'charts',     icon: BarChart3,  label: 'Чарты'     },

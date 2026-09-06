@@ -610,7 +610,7 @@ const AdminPanel = () => {
   const pendingAds = campaigns.filter(c=>c.status==='moderation');
   const { accounts, grantPrime, revokePrime, setAdmin, banUser, muteUser, spamBlock, freezeUser, setModerationNote, currentUserId } = useAuthStore();
   const { reports, resolveReport } = useMessengerStore();
-  const [adminTab, setAdminTab] = useState<'reports'|'users'|'moderation'|'content'|'channels'|'ads_mod'|'feedback'|'disputes'|'support'>('reports');
+  const [adminTab, setAdminTab] = useState<'reports'|'users'|'moderation'|'content'|'channels'|'ads_mod'|'feedback'|'disputes'|'support'|'games_mod'|'garant_adm'>('reports');
   const [selUser, setSelUser] = useState<string|null>(null);
   const [muteMin, setMuteMin] = useState('30');
   const [spamMin, setSpamMin] = useState('60');
@@ -647,7 +647,7 @@ const AdminPanel = () => {
           ['games_mod',  `Игры`,       Gamepad2],
           ['disputes',   `Споры`,      Scale],
           ['garant_adm', `Гарант`,     Shield],
-          ['disputes',   `Споры`,     Scale],
+          ['support',    'Поддержка',  MessageSquare],
           ['feedback',   'Обратная связь', MessageSquare],
         ] as const).map(([k,l,Icon])=>(
           <button key={k} type="button" onClick={()=>setAdminTab(k)}
@@ -970,14 +970,14 @@ const AdminPanel = () => {
         {adminTab==='disputes'    && <AdminDisputesPanel/>}
         {adminTab==='garant_adm' && <AdminGarantPanel/>}
 
+        {adminTab==='support'    && <AdminSupportTab/>}
+
         {/* ==== ADS MODERATION ==== */}
         {adminTab==='ads_mod' && (
           <div className="p-4 space-y-3">
             {pendingAds.length===0&&(
               <div className="py-12 text-center"><p className="text-sm" style={{color:'var(--t3)'}}>Нет рекламы на модерации</p></div>
             )}
-
-        {adminTab==='support' && <AdminSupportTab/>}
             {pendingAds.map(ad=>(
               <div key={ad.id} className="rounded-2xl p-4 space-y-3"
                 style={{background:'var(--bg-l1)',border:'1px solid rgba(245,158,11,0.2)'}}>

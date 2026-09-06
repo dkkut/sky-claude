@@ -115,7 +115,7 @@ export const HomeView = ({ onGame }: Props) => {
               </div>
             ))}
           </div>
-          <Users size={13} style={{ color: 'rgba(255,255,255,0.25)', shrink: 0 }}/>
+          <Users size={13} style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}/>
         </div>
       </section>
 

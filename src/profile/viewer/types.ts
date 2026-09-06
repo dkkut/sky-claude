@@ -1,15 +1,11 @@
 /* ===============================================================
    PROFILE VIEWER — общие типы
 =============================================================== */
-import type { ComponentType, CSSProperties } from 'react';
+import type { ComponentType } from 'react';
 
 /** Достаточно узкий тип, под который подходит любая иконка lucide-react. */
-export interface IconProps {
-  size?:        number;
-  className?:   string;
-  style?:       CSSProperties;
-  strokeWidth?: number;
-}
+import type { IconProps } from '@/shared/icon';
+export type { IconProps };
 
 /** Лёгкая карточка человека для списков (друзья, подписчики, участники…) */
 export interface PersonEntry {

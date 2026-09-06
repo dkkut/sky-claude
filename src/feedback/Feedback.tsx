@@ -225,7 +225,7 @@ export const AdBanner = ({ placement }: { placement: AdCampaign['placement'] }) 
   return (
     <div className="mx-4 my-2 overflow-hidden rounded-xl flex items-center gap-3 px-3 py-2.5"
       style={{background:'rgba(79,110,247,0.06)',border:'1px solid rgba(79,110,247,0.15)'}}>
-      <Sparkles size={14} style={{color:C.accent,shrink:0}}/>
+      <Sparkles size={14} style={{color:C.accent,flexShrink: 0}}/>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-bold truncate text-white">{ad.title}</p>
         {ad.description&&<p className="text-[10px] truncate" style={{color:C.t3}}>{ad.description}</p>}

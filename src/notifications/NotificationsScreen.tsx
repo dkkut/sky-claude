@@ -140,10 +140,6 @@ export const NotificationsScreen = () => {
     return () => clearTimeout(t);
   }, []);
 
-  const filtered = tab === 'all'
-    ? notifs
-    : notifs.filter(n => kindToTab(n.kind) === tab || (tab !== 'all' && n.kind === 'system' && tab === 'all'));
-
   const shown = tab === 'all' ? notifs : notifs.filter(n => kindToTab(n.kind) === tab);
   const unread = notifs.filter(n => !n.read).length;
 

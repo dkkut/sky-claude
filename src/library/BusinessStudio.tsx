@@ -127,7 +127,7 @@ const UploadForm = ({ onDone }:{ onDone:()=>void }) => {
         await addVideo({ title:title.trim(),description:desc.trim(),uploadedBy:currentUserId,uploaderName:me.name,
           duration:toDur(dur),durationSec:dur,category:'other',tags:tagList,isShort:false,
           sourceUrl:url,thumbnailUrl:cover,thumbnailGrad:undefined,
-          fileName:file.name,mimeType:file.type,bytes:file.size,status,
+          fileName:file.name,mimeType:file.type,bytes:file.size,isDraft:status==='draft',
           isPaid,paidPrice:isPaid?price:undefined,
         },file);
       }

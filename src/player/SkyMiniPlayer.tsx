@@ -7,7 +7,7 @@ import {
   ChevronUp, X, Music2, Mic2, Video, Radio, Mic,
   List, AlignLeft, Bookmark,
 } from 'lucide-react';
-import { usePlayerStore, type MediaKind, type LyricLine, type Chapter } from './playerStore';
+import { usePlayerStore, type MediaKind, type LyricLine, type Chapter, type PlayerItem } from './playerStore';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 
 /* ── helpers ───────────────────────────────────────────────────────────────── */
@@ -40,7 +40,7 @@ const accentOf = (hue?: number) => `hsl(${hue ?? 245},70%,55%)`;
 const CoverArt = ({
   item, size, radius = 12, spinning = false,
 }: {
-  item: NonNullable<ReturnType<typeof usePlayerStore>['item']>;
+  item: PlayerItem;
   size: number; radius?: number; spinning?: boolean;
 }) => {
   const grad = gradOf(item.hue, item.kind === 'music' ? undefined : item.color);
@@ -112,7 +112,7 @@ const Waveform = ({ playing, color }: { playing: boolean; color: string }) => (
 const SmartContext = ({
   item, currentTime, color,
 }: {
-  item: NonNullable<ReturnType<typeof usePlayerStore>['item']>;
+  item: PlayerItem;
   currentTime: number;
   color: string;
 }) => {

@@ -343,8 +343,7 @@ const StatsView = () => {
             </div>
 
             {/* Stats grid */}
-            <div className="grid grid-cols-4 divide-x" style={{ borderBottom: `1px solid ${FC.border}`,
-              ['--tw-divide-opacity' as string]: 1, divideColor: FC.border }}>
+            <div className="grid grid-cols-4" style={{ borderBottom: `1px solid ${FC.border}` }}>
               {[
                 { v:`${s.winRate}%`,        l:'W/R',  c: FC.green  },
                 { v:s.kd.toFixed(2),         l:'K/D',  c: FC.t1    },

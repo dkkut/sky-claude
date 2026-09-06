@@ -380,8 +380,7 @@ export const ArtistSubmitTrack = ({ onDone }: { onDone: () => void }) => {
                 <input ref={docRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" className="hidden"
                   onChange={handleDoc}/>
                 <p className="text-xs font-bold mb-2" style={{ color:C.t3 }}>
-                  Прикрепите документ
-                  {copyrightType==='author'?'':' (PDF, JPG, PNG, DOC)'}
+                  Прикрепите документ (PDF, JPG, PNG, DOC)
                 </p>
                 <div className="flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer"
                   style={{ background:C.l2, border:`1px solid ${docFile?C.accent:C.border}` }}

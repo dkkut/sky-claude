@@ -18,6 +18,7 @@ import { saveDownloadFromDataUrl, isDownloaded } from '@/offline/offlineDB';
 import { useModerationStore } from '@/shared/moderationStore';
 import { ContentWarningGate, BlockedChannelBadge } from '@/shared/ContentWarningGate';
 import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
+import type { IconComponent } from '@/shared/icon';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
 import { SkyShorts } from './SkyShorts';
 
@@ -491,7 +492,7 @@ const Hero = ({ movie, onPlay, onInfo }: { movie: Movie; onPlay: () => void; onI
 
 /* -- Horizontal row ---------------------------------------- */
 const Row = ({ title, Icon, movies, onSelect }: {
-  title: string; Icon: React.FC<{ size: number; style?: any }>;
+  title: string; Icon: IconComponent;
   movies: Movie[]; onSelect: (m: Movie) => void;
 }) => {
   if (!movies.length) return null;

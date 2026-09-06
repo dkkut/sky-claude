@@ -231,7 +231,7 @@ const SkyMail = () => {
                 <p className="text-[11px] truncate" style={{color:!e.read?C.t1:C.t3}}>{e.subject}</p>
                 <p className="text-[10px] truncate mt-0.5" style={{color:C.t3}}>{e.body.slice(0,60)}...</p>
               </div>
-              {e.starred&&<Star size={10} fill={C.amber} style={{color:C.amber,shrink:0,marginTop:4}}/>}
+              {e.starred&&<Star size={10} fill={C.amber} style={{color:C.amber,flexShrink: 0,marginTop:4}}/>}
             </motion.button>
           ))}
         </div>

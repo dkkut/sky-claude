@@ -59,7 +59,9 @@ export const sendWebPush = (payload: PushPayload) => {
       tag:     payload.chatId ?? 'sky-msg',   // группируем по чату
       renotify: true,
       silent:  false,
-    });
+      // renotify отсутствует в NotificationOptions из lib.dom, хотя браузеры
+      // его поддерживают в паре с tag — поэтому расширяем тип точечно.
+    } as NotificationOptions & { renotify?: boolean });
 
     // Авто-закрытие
     const timer = setTimeout(() => n.close(), NOTIF_TIMEOUT_MS);

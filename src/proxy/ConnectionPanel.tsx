@@ -151,7 +151,7 @@ const VlessTab = () => {
       {error && (
         <div className="flex items-center gap-2 rounded-xl px-4 py-3"
           style={{background:'rgba(255,59,92,0.08)', border:'1px solid rgba(255,59,92,0.2)'}}>
-          <AlertCircle size={14} style={{color:C.red, shrink:0}}/>
+          <AlertCircle size={14} style={{color:C.red, flexShrink: 0}}/>
           <p className="text-xs" style={{color:C.red}}>{error}</p>
         </div>
       )}
@@ -306,8 +306,10 @@ const applyHttpProxy = (cfg: ProxyHttpCfg) => {
 };
 
 const PROXY_HTTP_KEY = 'sky:proxy:http:v1';
-const loadHttpProxy = (): ProxyHttpCfg => {
-  try { return JSON.parse(localStorage.getItem(PROXY_HTTP_KEY)||'{}'); } catch { return {} as any; }
+// В localStorage может лежать пустой объект или конфиг от старой версии,
+// поэтому результат частичный — недостающие поля добирают дефолты на месте вызова.
+const loadHttpProxy = (): Partial<ProxyHttpCfg> => {
+  try { return JSON.parse(localStorage.getItem(PROXY_HTTP_KEY)||'{}'); } catch { return {}; }
 };
 const saveHttpProxy = (c: ProxyHttpCfg) => {
   try { localStorage.setItem(PROXY_HTTP_KEY, JSON.stringify(c)); } catch {}

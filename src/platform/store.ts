@@ -193,7 +193,12 @@ const initUid     = getUid();
 const initUser    = initUid ? rUser(initUid) : null;
 
 // Tracks loaded without audio blob  -  blob URLs restored async from IndexedDB
-const rawTracks0: Track[] = initGlobal?.tracks ?? SEED_TRACKS;
+// Треки, сохранённые прошлыми версиями, могут не содержать plays/likes/status —
+// они добираются дефолтами ниже, поэтому тип сохранённой записи мягче Track.
+type StoredTrack = Omit<Track, 'plays' | 'likes' | 'status'>
+  & Partial<Pick<Track, 'plays' | 'likes' | 'status'>>;
+
+const rawTracks0: StoredTrack[] = initGlobal?.tracks ?? SEED_TRACKS;
 
 const seen0 = new Set<string>();
 const initTracks = rawTracks0
@@ -375,7 +380,7 @@ export const reloadPlatformForUser = (uid: string) => {
   const globalData = rGlobal();
   const userData   = uid ? rUser(uid) : null;
 
-  const raw2: Track[] = globalData?.tracks ?? SEED_TRACKS;
+  const raw2: StoredTrack[] = globalData?.tracks ?? SEED_TRACKS;
 
   const seen2 = new Set<string>();
   const tracks2 = raw2
