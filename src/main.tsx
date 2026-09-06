@@ -9,6 +9,7 @@ import { connectSocket, disconnectSocket } from './messenger/socket';
 import { reloadMessengerForUser } from './messenger/store';
 import { reloadPlatformForUser }  from './platform/store';
 import { reloadNotifsForUser }    from './notifications/store';
+import { reloadWalletForUser }    from './wallet/store';
 import './styles.css';
 
 const SHIMMER_CSS = `
@@ -310,8 +311,11 @@ const Root = () => {
       reloadMessengerForUser(currentUserId);
       reloadPlatformForUser(currentUserId);
       reloadNotifsForUser(currentUserId);
+      // Кошелёк подтягиваем с сервера: в браузере он больше не хранится.
+      void reloadWalletForUser(currentUserId);
       connectSocket(currentUserId);
     } else {
+      void reloadWalletForUser(null);
       disconnectSocket();
     }
   }, [isAuthenticated, currentUserId]);

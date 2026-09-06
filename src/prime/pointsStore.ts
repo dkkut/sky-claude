@@ -59,11 +59,12 @@ export const progressToNextTier = (lifetime: number) => {
 };
 
 /* Обычные функции — можно вызывать откуда угодно, не только из компонентов */
-export const earnPrimePoints = (amount: number, reason: string) => {
-  if (amount > 0) useMoney.getState().earnPoints(me(), amount, reason);
+export const earnPrimePoints = async (amount: number, reason: string): Promise<boolean> => {
+  if (amount <= 0) return false;
+  return useMoney.getState().earnPoints(me(), amount, reason);
 };
 
-export const redeemPrimeReward = (rewardId: string): boolean => {
+export const redeemPrimeReward = async (rewardId: string): Promise<boolean> => {
   const reward = REWARDS.find(r => r.id === rewardId);
   if (!reward) return false;
   return useMoney.getState().spendPoints(me(), reward.cost, `Обмен: ${reward.title}`, rewardId);

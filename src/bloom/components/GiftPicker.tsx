@@ -7,7 +7,7 @@ import { useAuthStore } from '@/core/auth/store';
 
 export const GiftPicker = ({ onPick, onClose }: { onPick: (modelKey: string) => void; onClose: () => void }) => {
   const currentUserId = useAuthStore(s => s.currentUserId);
-  const points = useMoney(s => currentUserId ? (s.points[currentUserId] ?? 0) : 0);
+  const points = useMoney(s => (currentUserId && currentUserId === s.userId ? s.points : 0));
 
   return (
     <AnimatePresence>

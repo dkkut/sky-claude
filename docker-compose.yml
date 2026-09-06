@@ -67,6 +67,9 @@ services:
       # Демо-аккаунты заводятся только на пустой базе и только если пароль задан.
       # В продакшне переменную оставляют пустой — тогда их не будет вовсе.
       SEED_PASSWORD:         ${SEED_PASSWORD:-}
+      # 'demo' открывает пополнение кошелька без реального платежа.
+      # В продакшне не задавайте — иначе баланс рисуется одним запросом.
+      PAYMENTS_MODE:         ${PAYMENTS_MODE:-disabled}
       REDIS_URL:             redis://:${REDIS_PASSWORD:?нужно задать REDIS_PASSWORD в .env}@redis:6379
     networks: [internal]
     deploy:

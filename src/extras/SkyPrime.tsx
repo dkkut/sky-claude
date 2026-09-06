@@ -38,9 +38,9 @@ const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
   const curTier = tierFor(lifetime);
   const { next, pct, remaining } = progressToNextTier(lifetime);
 
-  const handleRedeem = (id: string, title: string) => {
-    const ok = redeemPrimeReward(id);
-    setToast(ok ? `Обменяно: ${title} ✓` : 'Недостаточно баллов');
+  const handleRedeem = async (id: string, title: string) => {
+    const ok = await redeemPrimeReward(id);
+    setToast(ok ? `Обменяно: ${title} ✓` : useMoney.getState().lastError ?? 'Недостаточно баллов');
     setTimeout(() => setToast(null), 2200);
   };
 

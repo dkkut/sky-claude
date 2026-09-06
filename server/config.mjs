@@ -6,4 +6,8 @@ export const config = {
   rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE || 120),
   accessTtlSec: Number(process.env.ACCESS_TTL_SEC || 900),
   refreshTtlSec: Number(process.env.REFRESH_TTL_SEC || 60 * 60 * 24 * 30),
+  // 'demo' разрешает пополнение кошелька без настоящего платежа.
+  // Любое другое значение (в том числе отсутствие) закрывает эту ручку:
+  // иначе баланс можно было бы нарисовать себе одним запросом.
+  paymentsMode: process.env.PAYMENTS_MODE || 'disabled',
 };

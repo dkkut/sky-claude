@@ -891,10 +891,10 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
 
   const [showCheckout, setShowCheckout] = useState(false);
 
-  const buy = () => {
+  const buy = async () => {
     setErr('');
     // Try wallet first
-    const ok = spend(currentUserId!, price, 'prime', `Sky Prime  -  ${planLb}`);
+    const ok = await spend(currentUserId!, price, 'prime', `Sky Prime  -  ${planLb}`);
     if (ok) {
       grantPrime(currentUserId!, chosen);
       grantPlatformPrime(chosen);

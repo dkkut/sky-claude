@@ -97,9 +97,9 @@ export const TransferMoneySheet = ({ targetId, targetName, onClose }: { targetId
   const num = Number(amount);
   const valid = num > 0 && num <= balance;
 
-  const submit = () => {
+  const submit = async () => {
     if (!currentUserId || !valid) return;
-    const ok = transfer(currentUserId, targetId, num);
+    const ok = await transfer(currentUserId, targetId, num);
     if (ok) { setDone(true); setTimeout(onClose, 1100); }
   };
 

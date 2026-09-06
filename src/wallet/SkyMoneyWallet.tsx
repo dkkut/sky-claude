@@ -607,14 +607,14 @@ const TransferSheet = ({ onDone }: { onDone: () => void }) => {
   const toUser   = others.find(a => a.id === toId);
   const num      = parseInt(amount) || 0;
 
-  const confirm = () => {
+  const confirm = async () => {
     setErr('');
     if (!toId)       { setErr('Выберите получателя'); return; }
     if (num < 10)    { setErr('Минимальная сумма 10 ₽'); return; }
     if (num > myBal) { setErr('Недостаточно средств'); return; }
-    const ok = transfer(currentUserId!, toId, num);
+    const ok = await transfer(currentUserId!, toId, num);
     if (ok) { setSuccess(true); setTimeout(onDone, 1600); }
-    else      setErr('Ошибка перевода');
+    else      setErr(useMoney.getState().lastError ?? 'Ошибка перевода');
   };
 
   if (success) return (

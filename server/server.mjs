@@ -5,6 +5,7 @@ import { userStore, seedDemoUsers } from './store.mjs';
 import { sessionStore, connectRedis, closeRedis } from './sessions.mjs';
 import { waitForDb, migrate, closeDb } from './db.mjs';
 import { REFRESH_COOKIE, parseCookies, buildRefreshCookie, clearRefreshCookie } from './cookies.mjs';
+import { wallet } from './wallet.mjs';
 import { startSignalHub } from './signal.mjs';
 
 const json = (res, code, body, extraHeaders = {}) => {
@@ -67,6 +68,18 @@ const createAuthPair = async (userId, previousSessionId = null) => {
     body:   { accessToken, expiresIn: config.accessTtlSec },
     cookie: buildRefreshCookie(refreshToken, config.refreshTtlSec),
   };
+};
+
+/**
+ * Возвращает id пользователя из access-токена или null.
+ *
+ * Все денежные операции опираются только на него: идентификатор из тела
+ * запроса брать нельзя, иначе можно было бы начислить или списать
+ * с чужого счёта.
+ */
+const actorId = (req) => {
+  const payload = verifyToken(readAccessToken(req), config.jwtSecret);
+  return payload && payload.typ === 'access' ? payload.sub : null;
 };
 
 /* ─── Валидация регистрации ─────────────────────────────────────────────
@@ -211,6 +224,85 @@ const server = http.createServer(async (req, res) => {
       const user = await userStore.findById(payload.sub);
       if (!user) return json(res, 401, { error: 'unauthorized' });
       return json(res, 200, { user });
+    }
+
+    /* ── Кошелёк ──
+       Владелец операции — тот, чей токен предъявлен. Ни одна ручка
+       не принимает чужой userId. */
+    if (req.url?.startsWith('/api/wallet')) {
+      const uid = actorId(req);
+      if (!uid) return json(res, 401, { error: 'unauthorized' });
+
+      if (req.method === 'GET' && req.url === '/api/wallet') {
+        return json(res, 200, await wallet.getState(uid));
+      }
+
+      if (req.method === 'POST' && req.url === '/api/wallet/topup') {
+        // Пополнение создаёт деньги, поэтому в обычном режиме закрыто:
+        // включать его можно только вместе с настоящим приёмом платежей.
+        if (config.paymentsMode !== 'demo') {
+          return json(res, 501, { error: 'payments_not_configured' });
+        }
+        const body = await parseBody(req);
+        const result = await wallet.topUp(uid, body.amount, sanitizeInput(body.method || 'card'));
+        return result.error ? json(res, 400, result) : json(res, 200, result);
+      }
+
+      // refund и earn-points увеличивают баланс или баллы, поэтому
+      // закрыты тем же флагом, что и пополнение: пока источник этих
+      // начислений (семейный счёт, активность) считается в браузере,
+      // открывать их в бою нельзя.
+      if (req.method === 'POST' && req.url === '/api/wallet/refund') {
+        if (config.paymentsMode !== 'demo') return json(res, 501, { error: 'payments_not_configured' });
+        const body = await parseBody(req);
+        const result = await wallet.refund(uid, body.amount, sanitizeInput(body.desc || 'Возврат'),
+                                           body.ref ? sanitizeInput(body.ref) : null);
+        return result.error ? json(res, 400, result) : json(res, 200, result);
+      }
+
+      if (req.method === 'POST' && req.url === '/api/wallet/earn-points') {
+        if (config.paymentsMode !== 'demo') return json(res, 501, { error: 'payments_not_configured' });
+        const body = await parseBody(req);
+        const result = await wallet.earnPoints(uid, body.amount, sanitizeInput(body.desc || 'Начисление'));
+        return result.error ? json(res, 400, result) : json(res, 200, result);
+      }
+
+      if (req.method === 'POST' && req.url === '/api/wallet/spend') {
+        const body = await parseBody(req);
+        const result = await wallet.spend(
+          uid, body.amount, sanitizeInput(body.type || 'market'),
+          sanitizeInput(body.desc || ''), body.ref ? sanitizeInput(body.ref) : null,
+        );
+        return result.error ? json(res, 400, result) : json(res, 200, result);
+      }
+
+      if (req.method === 'POST' && req.url === '/api/wallet/transfer') {
+        const body = await parseBody(req);
+        const target = body.toUserId
+          ? await userStore.findById(sanitizeInput(body.toUserId))
+          : await userStore.findByUsername(sanitizeInput(body.toUsername || ''));
+        if (!target) return json(res, 404, { error: 'recipient_not_found' });
+
+        const result = await wallet.transfer(uid, target.id, body.amount);
+        return result.error ? json(res, 400, result) : json(res, 200, result);
+      }
+
+      if (req.method === 'POST' && req.url === '/api/wallet/exchange') {
+        const body = await parseBody(req);
+        const result = await wallet.exchangeToPoints(uid, body.rubles);
+        return result.error ? json(res, 400, result) : json(res, 200, result);
+      }
+
+      if (req.method === 'POST' && req.url === '/api/wallet/spend-points') {
+        const body = await parseBody(req);
+        const result = await wallet.spendPoints(
+          uid, body.amount, sanitizeInput(body.desc || ''),
+          body.ref ? sanitizeInput(body.ref) : null,
+        );
+        return result.error ? json(res, 400, result) : json(res, 200, result);
+      }
+
+      return json(res, 404, { error: 'not_found' });
     }
 
     return json(res, 404, { error: 'not_found' });

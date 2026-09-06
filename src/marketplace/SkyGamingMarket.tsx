@@ -87,9 +87,9 @@ const ItemDetail = ({ item, onBack }: { item: GamingItem; onBack: () => void }) 
 
   const balance = getBalance(currentUserId ?? '');
 
-  const buy = () => {
+  const buy = async () => {
     if (!currentUserId) return;
-    const ok = spend(currentUserId, item.price, 'market', item.title, item.id);
+    const ok = await spend(currentUserId, item.price, 'market', item.title, item.id);
     if (ok) {
       buyItem(item.id, currentUserId);
       setOrdered(true);

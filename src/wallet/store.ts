@@ -53,163 +53,104 @@ export interface Transaction {
 }
 
 interface WalletState {
-  // балансы по userId
-  balances:     Record<string, number>;
-  points:       Record<string, number>;   // Баллы Прайма
+  /** Чей снимок сейчас загружен. Сервер отдаёт только свои данные. */
+  userId:       string | null;
+  balance:      number;
+  points:       number;
   transactions: Transaction[];
+  /** Идёт ли обмен с сервером — для блокировки кнопок в интерфейсе. */
+  busy:         boolean;
 
-  // действия
-  topUp:     (userId: string, amount: number, method: string) => boolean;
-  spend:     (userId: string, amount: number, type: TxType, desc: string, ref?: string) => boolean;
-  refund:    (userId: string, amount: number, desc: string, ref?: string) => void;
-  transfer:  (fromId: string, toId: string, amount: number) => boolean;
+  /** Подтягивает состояние с сервера. Вызывается при входе и после операций. */
+  refresh:      () => Promise<void>;
+  /** Сбрасывает кэш при выходе, чтобы чужой баланс не остался на экране. */
+  reset:        () => void;
+
+  topUp:     (userId: string, amount: number, method: string) => Promise<boolean>;
+  spend:     (userId: string, amount: number, type: TxType, desc: string, ref?: string) => Promise<boolean>;
+  transfer:  (fromId: string, toId: string, amount: number) => Promise<boolean>;
+  spendPoints: (userId: string, amount: number, desc: string, ref?: string) => Promise<boolean>;
+  refund:      (userId: string, amount: number, desc: string, ref?: string) => Promise<boolean>;
+  earnPoints:  (userId: string, amount: number, desc: string) => Promise<boolean>;
+  exchangeToPoints: (userId: string, rubles: number) => Promise<boolean>;
+
+  // Чтение идёт из кэша последнего ответа сервера. Параметр userId
+  // оставлен ради совместимости с местами вызова: чужой баланс клиенту
+  // не отдаётся, поэтому для любого другого id вернётся 0.
   getBalance:  (userId: string) => number;
   getPoints:   (userId: string) => number;
-  earnPoints:  (userId: string, amount: number, desc: string) => void;
-  spendPoints: (userId: string, amount: number, desc: string, ref?: string) => boolean;
-  exchangeToPoints: (userId: string, rubles: number) => boolean;  // 1₽ = 1 балл (курс 1:1)
   getTxs:      (userId: string) => Transaction[];
+
+  /** Текст последней ошибки операции — для показа пользователю. */
+  lastError:   string | null;
 }
 
-const KEY = 'sky:money:v1';
-const W   = typeof window !== 'undefined';
-
-const load = () => {
-  if (!W) return null;
-  try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; }
-};
-const save = (s: WalletState) => {
-  if (!W) return;
-  try { localStorage.setItem(KEY, JSON.stringify({ balances: s.balances, points: s.points, transactions: s.transactions })); } catch {}
-};
-
-const stored = load();
-
-/* Seed: каждому демо-аккаунту стартовый баланс */
-const SEED_BALANCES: Record<string, number> = {
-  'acc-kutuzov': 1200,
-  'acc-luna':    3500,
-  'acc-neo':     800,
-};
-const SEED_POINTS: Record<string, number> = {
-  'acc-kutuzov': 500,
-  'acc-luna':    1200,
-  'acc-neo':     250,
-};
-
-const mkTx = (userId: string, type: TxType, amount: number, desc: string, ref?: string): Transaction => ({
-  id:        `tx-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
-  userId, type, amount, desc, ref: ref ?? undefined,
-  createdAt: new Date().toISOString(),
-});
+import {
+  fetchWallet, apiTopUp, apiSpend, apiTransferTo, apiExchange, apiSpendPoints,
+  apiRefund, apiEarnPoints,
+} from './api';
 
 export const useMoney = create<WalletState>((set, get) => {
-  const persist = () => { try { save(get()); } catch {} };
+  /** Применяет снимок, пришедший с сервера. */
+  const apply = (snap: { balance: number; points: number; transactions: Transaction[] }) =>
+    set({ balance: snap.balance, points: snap.points, transactions: snap.transactions });
+
+  /**
+   * Общая обвязка для операций: блокирует кнопки, а после успеха
+   * перечитывает состояние с сервера. Локально сумму не считаем —
+   * иначе экран и база разъедутся при любой гонке.
+   */
+  const run = async (fn: () => Promise<{ ok: boolean; reason?: string }>) => {
+    set({ busy: true, lastError: null });
+    try {
+      const res = await fn();
+      if (!res.ok) { set({ lastError: res.reason ?? 'Операция не выполнена' }); return false; }
+      await get().refresh();
+      return true;
+    } catch {
+      set({ lastError: 'Нет связи с сервером' });
+      return false;
+    } finally {
+      set({ busy: false });
+    }
+  };
 
   return {
-    balances:     stored?.balances     ?? SEED_BALANCES,
-    points:       stored?.points       ?? SEED_POINTS,
-    transactions: stored?.transactions ?? [
-      mkTx('acc-kutuzov','topup',    1200, 'Стартовый баланс'),
-      mkTx('acc-luna',   'topup',    3500, 'Стартовый баланс'),
-      mkTx('acc-neo',    'topup',    800,  'Стартовый баланс'),
-      mkTx('acc-kutuzov','market',  -2580, 'Футболка Neo Driver™ × 2', 'o2'),
-      mkTx('acc-luna',   'prime',   -3790, 'Sky Prime  -  1 год'),
-    ],
+    userId: null,
+    balance: 0,
+    points: 0,
+    transactions: [],
+    busy: false,
+    lastError: null,
 
-    getBalance: (userId) => get().balances[userId] ?? 0,
-    getPoints:  (userId) => get().points[userId] ?? 0,
-
-    earnPoints: (userId, amount, desc) => {
-      set(s => ({
-        points: { ...s.points, [userId]: (s.points[userId] ?? 0) + amount },
-        transactions: [...s.transactions, mkTx(userId, 'points_earn', amount, desc)],
-      }));
-      persist();
+    refresh: async () => {
+      const snap = await fetchWallet();
+      if (snap) apply(snap);
     },
 
-    spendPoints: (userId, amount, desc, ref) => {
-      const pts = get().points[userId] ?? 0;
-      if (pts < amount) return false;
-      set(s => ({
-        points: { ...s.points, [userId]: s.points[userId] - amount },
-        transactions: [...s.transactions, mkTx(userId, 'points_spend', -amount, desc, ref)],
-      }));
-      persist(); return true;
-    },
+    reset: () => set({ userId: null, balance: 0, points: 0, transactions: [], lastError: null }),
 
-    exchangeToPoints: (userId, rubles) => {
-      // 1 ₽ = 10 баллов
-      const pts = get().balances[userId] ?? 0;
-      if (pts < rubles) return false;
-      const points = rubles * 10;
-      set(s => ({
-        balances: { ...s.balances, [userId]: s.balances[userId] - rubles },
-        points:   { ...s.points,   [userId]: (s.points[userId] ?? 0) + points },
-        transactions: [
-          ...s.transactions,
-          mkTx(userId, 'points_earn', points, `Обмен ${rubles.toLocaleString('ru')} ₽ → ${points.toLocaleString('ru')} баллов`),
-        ],
-      }));
-      persist(); return true;
-    },
+    getBalance: (userId) => (userId && userId === get().userId ? get().balance : 0),
+    getPoints:  (userId) => (userId && userId === get().userId ? get().points  : 0),
+    getTxs:     (userId) => (userId && userId === get().userId ? get().transactions : []),
 
-    getTxs: (userId) =>
-      get().transactions
-        .filter(t => t.userId === userId)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-
-    topUp: (userId, amount, method) => {
-      if (amount <= 0) return false;
-      set(s => ({
-        balances: { ...s.balances, [userId]: (s.balances[userId] ?? 0) + amount },
-        transactions: [...s.transactions, mkTx(userId, 'topup', amount, `Пополнение через ${method}`)],
-      }));
-      persist(); return true;
-    },
-
-    spend: (userId, amount, type, desc, ref) => {
-      if (amount <= 0) return false;
-      const bal = get().balances[userId] ?? 0;
-      if (bal < amount) return false;
-      set(s => ({
-        balances: { ...s.balances, [userId]: s.balances[userId] - amount },
-        transactions: [...s.transactions, mkTx(userId, type, -amount, desc, ref)],
-      }));
-      persist(); return true;
-    },
-
-    refund: (userId, amount, desc, ref) => {
-      set(s => ({
-        balances: { ...s.balances, [userId]: (s.balances[userId] ?? 0) + amount },
-        transactions: [...s.transactions, mkTx(userId, 'refund', amount, desc, ref)],
-      }));
-      persist();
-    },
-
-    transfer: (fromId, toId, amount) => {
-      if (amount <= 0) return false;
-      const bal = get().balances[fromId] ?? 0;
-      if (bal < amount) return false;
-      const now = new Date().toISOString();
-      set(s => ({
-        balances: {
-          ...s.balances,
-          [fromId]: (s.balances[fromId] ?? 0) - amount,
-          [toId]:   (s.balances[toId]   ?? 0) + amount,
-        },
-        transactions: [
-          ...s.transactions,
-          mkTx(fromId, 'transfer_out', -amount, `Перевод пользователю`),
-          mkTx(toId,   'transfer_in',   amount, `Получен перевод`),
-        ],
-      }));
-      persist(); return true;
-    },
+    topUp:    (_userId, amount, method)              => run(() => apiTopUp(amount, method)),
+    spend:    (_userId, amount, type, desc, ref)     => run(() => apiSpend(amount, type, desc, ref)),
+    transfer: (_fromId, toId, amount)                => run(() => apiTransferTo(toId, amount)),
+    spendPoints: (_userId, amount, desc, ref)        => run(() => apiSpendPoints(amount, desc, ref)),
+    refund:      (_userId, amount, desc, ref)        => run(() => apiRefund(amount, desc, ref)),
+    earnPoints:  (_userId, amount, desc)             => run(() => apiEarnPoints(amount, desc)),
+    exchangeToPoints: (_userId, rubles)              => run(() => apiExchange(rubles)),
   };
 });
 
-/* -- Helpers --------------------------------------------------- */
+/** Загружает кошелёк вошедшего пользователя. Вызывается из main.tsx. */
+export const reloadWalletForUser = async (userId: string | null) => {
+  if (!userId) { useMoney.getState().reset(); return; }
+  useMoney.setState({ userId });
+  await useMoney.getState().refresh();
+};
+
 export const fmt = (n: number) =>
   Math.abs(n).toLocaleString('ru', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 });
 

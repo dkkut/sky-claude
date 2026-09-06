@@ -101,9 +101,9 @@ const ListingDetail = ({ listing, onBack }: { listing: ServiceListing; onBack: (
   const selPkg  = listing.packages.find(p => p.level === pkg)!;
   const badge   = LEVEL_BADGE[listing.sellerLevel];
 
-  const buy = () => {
+  const buy = async () => {
     if (!currentUserId) return;
-    const ok = spend(currentUserId, selPkg.price, 'market', listing.title, listing.id);
+    const ok = await spend(currentUserId, selPkg.price, 'market', listing.title, listing.id);
     if (ok) {
       order(listing.id, pkg, currentUserId, requirements || undefined);
       setOrdered(true);
