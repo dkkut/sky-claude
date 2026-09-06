@@ -1,0 +1,182 @@
+name: Deploy
+
+# Деплой идёт с ветки разработки и вручную. Автодеплой по push в main
+# намеренно не включён: сначала проверяем на этой ветке.
+on:
+  push:
+    branches: [claude/project-server-setup-opwwui]
+  workflow_dispatch:
+
+concurrency:
+  # Параллельные деплои на один сервер запрещены; текущий не прерываем,
+  # чтобы не оборвать docker compose на полпути.
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_WEB: ghcr.io/${{ github.repository }}-web
+  IMAGE_API: ghcr.io/${{ github.repository }}-api
+
+jobs:
+  # ---------------------------------------------------------
+  build:
+    name: Сборка и проверка
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci --no-audit --no-fund
+
+      # tsc + vite. Падает здесь — до сервера ничего не уезжает.
+      - name: Проверка типов и сборка
+        run: npm run build
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Вход в реестр образов
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Образ web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_WEB }}:${{ github.sha }}
+            ${{ env.IMAGE_WEB }}:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+      - name: Образ api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.api
+          push: true
+          tags: |
+            ${{ env.IMAGE_API }}:${{ github.sha }}
+            ${{ env.IMAGE_API }}:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+  # ---------------------------------------------------------
+  deploy:
+    name: Выкладка на сервер
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Подготовка SSH
+        env:
+          SSH_KEY:  ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Ключ хоста фиксируем, чтобы деплой не шёл на подменённый сервер.
+          if [ -n "${{ secrets.SSH_KNOWN_HOSTS }}" ]; then
+            printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          else
+            echo "::warning::Секрет SSH_KNOWN_HOSTS не задан — ключ сервера принимается без проверки."
+            ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      # На сервер уезжает только то, что нужно для запуска:
+      # исходников и .env среди этого нет.
+      - name: Копирование конфигурации
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+          APP_DIR:  ${{ vars.APP_DIR || '/opt/sky' }}
+        run: |
+          tar czf deploy-bundle.tgz docker-compose.yml scripts/init-letsencrypt.sh
+          scp -i ~/.ssh/id_deploy -P "$SSH_PORT" deploy-bundle.tgz "$SSH_USER@$SSH_HOST:$APP_DIR/"
+
+      - name: Запуск
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+          APP_DIR:  ${{ vars.APP_DIR || '/opt/sky' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            APP_DIR="$APP_DIR" \
+            WEB_IMAGE="${IMAGE_WEB}:${GITHUB_SHA}" \
+            API_IMAGE="${IMAGE_API}:${GITHUB_SHA}" \
+            GH_TOKEN="$GH_TOKEN" \
+            GH_ACTOR="${{ github.actor }}" \
+            'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+
+          tar xzf deploy-bundle.tgz && rm -f deploy-bundle.tgz
+
+          # Токен живёт только на время этого запуска.
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+
+          echo "==> Скачиваю образы"
+          WEB_IMAGE="$WEB_IMAGE" API_IMAGE="$API_IMAGE" docker compose pull web api
+
+          echo "==> Перезапускаю"
+          WEB_IMAGE="$WEB_IMAGE" API_IMAGE="$API_IMAGE" docker compose up -d --remove-orphans
+
+          echo "==> Жду, пока сервисы станут healthy"
+          for i in $(seq 1 30); do
+            unhealthy=$(docker compose ps --format '{{.Service}} {{.Health}}' | grep -v 'healthy' | grep -v '^certbot' || true)
+            [ -z "$unhealthy" ] && break
+            sleep 5
+          done
+          docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+
+          if [ -n "${unhealthy:-}" ]; then
+            echo "::error::Сервисы не поднялись: $unhealthy"
+            docker compose logs --tail 50
+            exit 1
+          fi
+
+          docker logout ghcr.io
+          # Чистим только образы без тегов, тома с данными не трогаем.
+          docker image prune -f >/dev/null
+          echo "==> Деплой завершён"
+          REMOTE
+
+      - name: Проверка домена снаружи
+        env:
+          DOMAIN: ${{ vars.DOMAIN }}
+        run: |
+          if [ -z "$DOMAIN" ]; then
+            echo "::warning::Переменная DOMAIN не задана — внешняя проверка пропущена."
+            exit 0
+          fi
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$DOMAIN/healthz" || true)
+            [ "$code" = "200" ] && { echo "https://$DOMAIN/healthz → 200"; exit 0; }
+            sleep 6
+          done
+          echo "::error::https://$DOMAIN/healthz не отвечает 200"
+          exit 1

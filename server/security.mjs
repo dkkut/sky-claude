@@ -13,11 +13,28 @@ export const signToken = (payload, secret, ttlSec) => {
 };
 
 export const verifyToken = (token, secret) => {
+  if (typeof token !== 'string') return null;
   const [h, p, s] = token.split('.');
   if (!h || !p || !s) return null;
+
   const expected = crypto.createHmac('sha256', secret).update(`${h}.${p}`).digest('base64url');
-  if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(s))) return null;
-  const payload = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
+  const actualBuf   = Buffer.from(s);
+  const expectedBuf = Buffer.from(expected);
+
+  // timingSafeEqual выбрасывает RangeError на буферах разной длины,
+  // а подпись приходит от клиента и может быть любой. Длину сверяем
+  // отдельно: для HMAC фиксированного размера она не секрет.
+  if (actualBuf.length !== expectedBuf.length) return null;
+  if (!crypto.timingSafeEqual(expectedBuf, actualBuf)) return null;
+
+  // Тело тоже клиентское — JSON.parse на мусоре бросает исключение.
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  if (!payload || typeof payload !== 'object') return null;
   if (!payload.exp || payload.exp < nowSec()) return null;
   return payload;
 };

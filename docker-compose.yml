@@ -1,7 +1,175 @@
+# ============================================================
+#  Sky — продакшн-стек.
+#
+#  Наружу смотрит только nginx (80/443). API, БД и Redis живут
+#  во внутренней сети и с хоста недоступны.
+#
+#  Лимиты рассчитаны на сервер 12 ГБ RAM: сервисы суммарно берут
+#  около 4 ГБ, остальное остаётся ОС, сборке образов и запасу.
+#
+#  Секреты читаются из .env рядом с этим файлом. Файл не в git —
+#  создаётся скриптом scripts/bootstrap-server.sh.
+# ============================================================
+name: sky
+
 services:
-  sky-web:
-    build: .
+  # -- Edge: TLS, статика, проксирование ---------------------
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${WEB_IMAGE:-sky-web:local}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
     ports:
-      - "4173:4173"
+      - "80:80"
+      - "443:443"
     environment:
-      - CHOKIDAR_USEPOLLING=true
+      DOMAIN: ${DOMAIN:?нужно задать DOMAIN в .env}
+    volumes:
+      - certbot-certs:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot:ro
+    # command намеренно не переопределяем: entrypoint образа nginx
+    # выполняет свои init-скрипты (развёртывание шаблонов, периодический
+    # reload) только когда команда контейнера — сам nginx.
+    networks: [edge, internal]
+    deploy:
+      resources:
+        limits: { memory: 256M }
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  # -- API (8080) и WebSocket-хаб (8081) ---------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: ${API_IMAGE:-sky-api:local}
+    restart: unless-stopped
+    # Штатный init Docker: reaper процессов и корректная передача сигналов.
+    init: true
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    environment:
+      NODE_ENV:              production
+      API_PORT:              "8080"
+      SIGNAL_PORT:           "8081"
+      JWT_SECRET:            ${JWT_SECRET:?нужно задать JWT_SECRET в .env}
+      REFRESH_TOKEN_SECRET:  ${REFRESH_TOKEN_SECRET:?нужно задать REFRESH_TOKEN_SECRET в .env}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      ACCESS_TTL_SEC:        ${ACCESS_TTL_SEC:-900}
+      REFRESH_TTL_SEC:       ${REFRESH_TTL_SEC:-2592000}
+      DATABASE_URL:          postgres://sky:${POSTGRES_PASSWORD:?нужно задать POSTGRES_PASSWORD в .env}@postgres:5432/sky
+      REDIS_URL:             redis://:${REDIS_PASSWORD:?нужно задать REDIS_PASSWORD в .env}@redis:6379
+    networks: [internal]
+    deploy:
+      resources:
+        limits: { memory: 1G }
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+
+  # -- Postgres ----------------------------------------------
+  #  Пока приложение к нему не подключено: хранилище всё ещё в
+  #  памяти процесса. Заведён сразу, потому что перенос пользователей
+  #  и сессий в БД — первый пункт работ по безопасности.
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     sky
+      POSTGRES_DB:       sky
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Инициализация с проверкой контрольных сумм страниц.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1536MB
+      - -c
+      - max_connections=100
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sky -d sky"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [internal]
+    deploy:
+      resources:
+        limits: { memory: 2G }
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+
+  # -- Redis: сессии и кэш ------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --appendonly
+      - "yes"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks: [internal]
+    deploy:
+      resources:
+        limits: { memory: 768M }
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+
+  # -- Certbot: выпуск и продление сертификата ----------------
+  #  Просыпается раз в 12 часов, продлевает при необходимости.
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - certbot-certs:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    # Портов не публикует: первичный выпуск запускается отдельной командой
+    # с явным -p 80:80 (см. scripts/init-letsencrypt.sh), а продление
+    # идёт через webroot уже работающего nginx.
+    entrypoint: >
+      sh -c "trap exit TERM;
+             while :; do certbot renew --webroot -w /var/www/certbot --quiet;
+             sleep 12h & wait $${!}; done"
+    networks: [edge]
+    logging: *logging
+
+networks:
+  # Внешняя сеть: только edge-слой.
+  edge:
+  # Внутренняя: без выхода в интернет, сюда смотрят API, БД и Redis.
+  internal:
+    internal: true
+
+volumes:
+  postgres-data:
+  redis-data:
+  certbot-certs:
+  certbot-webroot:

@@ -1,5 +1,26 @@
+# Зависимости и артефакты — ставятся/собираются внутри образа.
 node_modules
 dist
+dist-ssr
+
+# Секреты не должны попадать в контекст сборки.
+.env
+.env.*
+!.env.example
+
+# История и служебное.
 .git
 .gitignore
+.github
+.vscode
+*.log
 npm-debug.log*
+
+# Документация и windows-скрипты в образе не нужны.
+docs
+*.md
+!README.md
+START.bat
+START.ps1
+scripts/run-windows.*
+scripts/dev-*.mjs

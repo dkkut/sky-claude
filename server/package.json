@@ -1,0 +1,17 @@
+{
+  "name": "sky-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "HTTP API и WebSocket-хаб Sky. Отдельный манифест от фронтенда: в образ бэкенда не должны попадать three, leaflet и прочие браузерные зависимости.",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
