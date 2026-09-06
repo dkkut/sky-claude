@@ -11,6 +11,8 @@ import { signToken, sanitizeInput } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
 import { json, parseBody, requireSkyId, requireProfile } from './../http.mjs';
 import { issueCode, verifyCode } from './../verification.mjs';
+import { wallet } from './../wallet.mjs';
+
 import {
   listProfiles, createProfile, updateProfile, getProfileOfSkyId,
   findSkyIdById, publicSkyId, setEmailVerified,
@@ -19,7 +21,34 @@ import {
   grantPrime, revokePrime, MAX_PROFILES,
 } from './../skyid.mjs';
 
+/**
+ * Цены подписки в рублях по сроку. Держим их здесь, а не в браузере:
+ * присланную клиентом цену можно переписать в запросе.
+ */
+const PRIME_PRICES = { 30: 400, 365: 3790, 730: 6990 };
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/**
+ * Аватар: либо обычная ссылка на картинку, либо сама картинка,
+ * вложенная в строку.
+ *
+ * Значение подставляется в стили и в src на страницах, которые видят
+ * другие люди. Поэтому подходят только два вида строк целиком, а всё
+ * остальное отбрасывается: ни javascript:, ни попытка закрыть кавычку
+ * и дописать своё правило в эти два вида не укладываются.
+ */
+const AVATAR_URL  = /^https:\/\/[\w.-]+(:\d{1,5})?\/[\w\-./%~+]*$/;
+const AVATAR_DATA = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
+const AVATAR_MAX  = 256 * 1024;   // ~190 КБ картинки после base64
+
+const sanitizeAvatar = (raw) => {
+  const value = String(raw ?? '').trim();
+  if (!value || value.length > AVATAR_MAX) return null;
+  if (AVATAR_URL.test(value) && value.length <= 512) return value;
+  if (AVATAR_DATA.test(value)) return value;
+  return null;
+};
 
 /**
  * Свежий access-токен под выбранный профиль. sid переносим из старого
@@ -49,7 +78,7 @@ export const skyIdRoutes = async (req, res, url) => {
     const result = await createProfile(s.skyId, {
       name:     sanitizeInput(body.name ?? ''),
       username: sanitizeInput(body.username ?? ''),
-      avatar:   body.avatar ? String(body.avatar).slice(0, 512) : null,
+      avatar:   sanitizeAvatar(body.avatar),
     });
     if (result.error === 'profile_limit_reached') {
       return json(res, 409, { error: 'profile_limit_reached', maxProfiles: MAX_PROFILES });
@@ -95,7 +124,7 @@ export const skyIdRoutes = async (req, res, url) => {
     const body = await parseBody(req);
     const result = await updateProfile(s.skyId, patchMatch[1], {
       name:   body.name   !== undefined ? sanitizeInput(body.name) : undefined,
-      avatar: body.avatar !== undefined ? String(body.avatar).slice(0, 512) : undefined,
+      avatar: body.avatar !== undefined ? sanitizeAvatar(body.avatar) : undefined,
     });
     if (result.error === 'not_found') return json(res, 404, { error: 'not_found' });
     if (result.error) return json(res, 400, { error: result.error });
@@ -207,12 +236,34 @@ export const skyIdRoutes = async (req, res, url) => {
       return json(res, 501, { error: 'payments_not_configured' });
     }
 
+    // Срок и цена — из таблицы сервера. Если бы цену присылал браузер,
+    // подписку можно было бы купить за рубль, поправив запрос.
+    const days = Number(body.days);
+    const price = PRIME_PRICES[days];
+    if (!price) return json(res, 400, { error: 'invalid_plan' });
+
     // Без явного profileId Prime получает активный профиль, а не «весь Sky ID».
     const target = body.profileId ? String(body.profileId) : s.profileId;
-    const result = await grantPrime(s.skyId, target, sanitizeInput(body.plan ?? 'standard'),
-                                    Number(body.days) || null);
-    if (result.error) return json(res, 404, { error: result.error });
-    return json(res, 200, { profile: result.profile, profiles: await listProfiles(s.skyId) });
+    // Платит тот профиль, которому выписывается подписка: чужой кошелёк
+    // так не потратить.
+    if (target !== s.profileId) return json(res, 403, { error: 'not_active_profile' });
+
+    const owned = await getProfileOfSkyId(s.skyId, target);
+    if (!owned) return json(res, 404, { error: 'not_found' });
+
+    const paid = await wallet.spend(target, price, 'prime', `Sky Prime · ${days} дн.`);
+    if (paid.error) return json(res, 400, paid);
+
+    const result = await grantPrime(s.skyId, target, sanitizeInput(body.plan ?? 'standard'), days);
+    if (result.error) {
+      // Списали, но не выдали — возвращаем деньги, иначе они пропадут.
+      await wallet.refund(target, price, 'Возврат за Sky Prime');
+      return json(res, 500, { error: 'grant_failed' });
+    }
+    return json(res, 200, {
+      profile: result.profile, profiles: await listProfiles(s.skyId),
+      balance: paid.balance, price,
+    });
   }
 
   if (req.method === 'POST' && url === '/api/skyid/prime/revoke') {

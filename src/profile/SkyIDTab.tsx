@@ -1,20 +1,33 @@
 /**
- * SkyIDTab — вкладка «Sky ID» в профиле
- * Разделы: Sky ID · 2FA · Устройства · Смена пароля · Лог безопасности
+ * Вкладка «Sky ID» в профиле.
+ *
+ * Разделы: Sky ID (номер, почта) · Профили · Защита · Устройства · История.
+ *
+ * Всё, что здесь меняется, меняется на сервере: экран только показывает
+ * его ответ. Включить себе Prime или снять защиту, поправив что-то в
+ * браузере, нельзя.
  */
-import { useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Copy, Check, Smartphone, Monitor, Globe,
-  LogOut, Trash2, Key, Lock, Unlock, Eye, EyeOff,
-  Clock, AlertTriangle, CheckCircle2, ChevronRight,
-  Fingerprint, Hash, RefreshCw, Send, XCircle,
+  LogOut, Trash2, Lock, Unlock, Mail, Crown, Plus,
+  Clock, AlertTriangle, CheckCircle2, KeyRound,
+  Fingerprint, XCircle, Users, ArrowLeftRight,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
+import { ConfirmExit } from '@/auth/AuthScreen';
+import type { ServerProfile } from '@/core/auth/api';
 
 /* ── helpers ─────────────────────────────────────────────────── */
 const fmtDt = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+
+const prettyPhone = (raw: string) => {
+  const d = (raw ?? '').replace(/\D/g, '');
+  if (d.length !== 11) return raw || '—';
+  return `+${d[0]} ${d.slice(1, 4)} ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}`;
+};
 
 const DevIcon = ({ os }: { os: string }) => {
   if (os === 'Android' || os === 'iOS') return <Smartphone size={14} />;
@@ -34,45 +47,54 @@ const EVT_ICON: Record<string, React.ReactNode> = {
   login:            <CheckCircle2 size={13} />,
   login_new_device: <AlertTriangle size={13} />,
   login_fail:       <XCircle size={13} />,
-  password_change:  <Key size={13} />,
+  password_change:  <KeyRound size={13} />,
   '2fa_enable':     <Lock size={13} />,
   '2fa_disable':    <Unlock size={13} />,
   logout_all:       <LogOut size={13} />,
 };
 
+/** Плашка с результатом действия. */
+const Note = ({ ok, text }: { ok: boolean; text: string }) => (
+  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+    className="rounded-xl px-3 py-2 text-xs leading-snug"
+    style={{
+      background: ok ? 'var(--green-bg)' : 'var(--red-bg)',
+      border:     `1px solid ${ok ? 'rgba(52,211,153,0.2)' : 'rgba(248,113,113,0.2)'}`,
+      color:      ok ? 'var(--green)' : 'var(--red)',
+    }}>
+    {text}
+  </motion.div>
+);
+
+const Field = (p: React.InputHTMLAttributes<HTMLInputElement>) => (
+  <input {...p} className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+    style={{ background: 'var(--bg-l3)', border: '1px solid var(--border-m)', color: 'var(--t1)', ...(p.style ?? {}) }} />
+);
+
 /* ── sub-sections ────────────────────────────────────────────── */
-type SubTab = 'skyid' | '2fa' | 'devices' | 'password' | 'log';
+type SubTab = 'skyid' | 'profiles' | 'security' | 'devices' | 'log';
 
 const SUB_TABS: { key: SubTab; label: string }[] = [
   { key: 'skyid',    label: 'Sky ID'    },
-  { key: '2fa',      label: '2FA'       },
+  { key: 'profiles', label: 'Профили'   },
+  { key: 'security', label: 'Защита'    },
   { key: 'devices',  label: 'Устройства'},
-  { key: 'password', label: 'Пароль'    },
   { key: 'log',      label: 'История'   },
 ];
 
 /* ════════════════════════════════════════════════════════════ */
 export const SkyIDTab = () => {
-  const {
-    accounts, currentUserId,
-    enable2FA, disable2FA, send2FACode, verify2FA,
-    changePassword, terminateDevice, logoutAll,
-  } = useAuthStore();
+  const { accounts, currentUserId, terminateDevice, logoutAll, reloadSession } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
-  const [sub,     setSub]     = useState<SubTab>('skyid');
-  const [copied,  setCopied]  = useState(false);
+  const [sub, setSub] = useState<SubTab>('skyid');
+
+  // Состояние Sky ID могло измениться в другой вкладке — перечитываем.
+  useEffect(() => { void reloadSession(); }, [reloadSession]);
 
   if (!me) return null;
 
-  const copyId = () => {
-    navigator.clipboard.writeText(me.skyId ?? '').catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Sub-nav */}
       <div className="flex gap-1 px-4 pt-3 pb-0 overflow-x-auto shrink-0" style={{ scrollbarWidth: 'none' }}>
         {SUB_TABS.map(({ key, label }) => (
           <button key={key} type="button" onClick={() => setSub(key)}
@@ -94,24 +116,15 @@ export const SkyIDTab = () => {
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}>
 
-            {/* ── SKY ID ─────────────────────────────────── */}
-            {sub === 'skyid' && <SkyIdSection me={me} copied={copied} onCopy={copyId} />}
-
-            {/* ── 2FA ────────────────────────────────────── */}
-            {sub === '2fa' && <TwoFASection me={me} />}
-
-            {/* ── DEVICES ────────────────────────────────── */}
-            {sub === 'devices' && (
+            {sub === 'skyid'    && <SkyIdSection />}
+            {sub === 'profiles' && <ProfilesSection />}
+            {sub === 'security' && <SecuritySection />}
+            {sub === 'devices'  && (
               <DevicesSection me={me}
                 onTerminate={id => terminateDevice(me.id, id)}
-                onLogoutAll={() => logoutAll(me.id)} />
+                onLogoutAll={() => logoutAll()} />
             )}
-
-            {/* ── PASSWORD ───────────────────────────────── */}
-            {sub === 'password' && <PasswordSection userId={me.id} />}
-
-            {/* ── LOG ────────────────────────────────────── */}
-            {sub === 'log' && <SecurityLogSection me={me} />}
+            {sub === 'log'      && <SecurityLogSection me={me} />}
 
           </motion.div>
         </AnimatePresence>
@@ -120,284 +133,383 @@ export const SkyIDTab = () => {
   );
 };
 
-/* ── Sky ID card ─────────────────────────────────────────────── */
-const SkyIdSection = ({ me, copied, onCopy }: { me: any; copied: boolean; onCopy: () => void }) => {
-  const { findBySkyId } = useAuthStore();
-  const [query,  setQuery]  = useState('');
-  const [result, setResult] = useState<any>(null);
-  const [notFound, setNotFound] = useState(false);
+/* ── Sky ID: номер, идентификатор, почта ─────────────────────── */
+const SkyIdSection = () => {
+  const { sky } = useAuthStore();
+  const [copied, setCopied] = useState(false);
 
-  const search = () => {
-    const r = findBySkyId(query);
-    setResult(r ?? null);
-    setNotFound(!r);
+  if (!sky) return null;
+
+  const copy = () => {
+    navigator.clipboard.writeText(sky.id).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div className="space-y-4">
-      {/* Card */}
       <div className="rounded-2xl p-5"
         style={{ background: 'linear-gradient(135deg,rgba(79,110,247,0.14),rgba(129,140,248,0.07))', border: '1px solid rgba(79,110,247,0.22)' }}>
         <div className="flex items-center gap-2 mb-3">
           <Fingerprint size={16} style={{ color: 'var(--accent)' }} />
-          <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>Твой Sky ID</p>
+          <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>Ваш Sky ID</p>
         </div>
-        <p className="text-2xl font-black font-mono tracking-widest" style={{ color: 'var(--t1)' }}>
-          {me.skyId ?? '—'}
+        <p className="text-xl font-bold" style={{ color: 'var(--t1)' }}>{prettyPhone(sky.phone)}</p>
+        <p className="mt-1 break-all font-mono text-[11px]" style={{ color: 'var(--t3)' }}>{sky.id}</p>
+        <p className="text-[11px] mt-2 leading-relaxed" style={{ color: 'var(--t3)' }}>
+          Один аккаунт для всей экосистемы. Профили внутри него — разные, а вход общий.
         </p>
-        <p className="text-[11px] mt-1" style={{ color: 'var(--t3)' }}>
-          Уникальный идентификатор · Можно использовать для поиска
-        </p>
-        <motion.button whileTap={{ scale: 0.95 }} type="button" onClick={onCopy}
+        <motion.button whileTap={{ scale: 0.95 }} type="button" onClick={copy}
           className="flex items-center gap-2 mt-3 rounded-xl px-4 py-2 text-xs font-bold transition-all"
           style={{
-            background: copied ? 'rgba(52,211,153,0.12)' : 'rgba(79,110,247,0.12)',
-            border:     copied ? '1px solid rgba(52,211,153,0.3)' : '1px solid rgba(79,110,247,0.25)',
+            background: copied ? 'var(--green-bg)' : 'var(--accent-bg)',
+            border:     `1px solid ${copied ? 'rgba(52,211,153,0.3)' : 'rgba(79,110,247,0.25)'}`,
             color:      copied ? 'var(--green)' : 'var(--accent)',
           }}>
-          {copied ? <><Check size={13} />Скопировано!</> : <><Copy size={13} />Копировать Sky ID</>}
+          {copied ? <><Check size={13} />Скопировано</> : <><Copy size={13} />Копировать Sky ID</>}
         </motion.button>
       </div>
 
-      {/* Search by Sky ID */}
-      <div className="rounded-2xl p-4" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-        <p className="text-xs font-bold mb-3" style={{ color: 'var(--t2)' }}>
-          <Hash size={12} className="inline mr-1" />Найти по Sky ID
-        </p>
-        <div className="flex gap-2">
-          <input value={query} onChange={e => { setQuery(e.target.value); setResult(null); setNotFound(false); }}
-            placeholder="SKY-A1B2C3" onKeyDown={e => e.key === 'Enter' && search()}
-            className="flex-1 rounded-xl px-3 py-2 text-sm font-mono outline-none"
-            style={{ background: 'var(--bg-l3)', border: '1px solid var(--border-m)', color: 'var(--t1)' }} />
-          <button type="button" onClick={search}
-            className="rounded-xl px-4 py-2 text-xs font-bold"
-            style={{ background: 'var(--accent)', color: '#fff' }}>
-            Найти
-          </button>
-        </div>
-        <AnimatePresence>
-          {result && (
-            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="flex items-center gap-3 mt-3 rounded-xl px-3 py-2.5"
-              style={{ background: 'rgba(52,211,153,0.07)', border: '1px solid rgba(52,211,153,0.18)' }}>
-              <div className="grid h-9 w-9 place-items-center rounded-full text-sm font-bold text-white shrink-0"
-                style={{ background: 'linear-gradient(135deg,var(--accent),#818cf8)' }}>
-                {result.name[0]}
-              </div>
-              <div>
-                <p className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>{result.name}</p>
-                <p className="text-[11px]" style={{ color: 'var(--t3)' }}>@{result.username} · {result.skyId}</p>
-              </div>
-              <CheckCircle2 size={16} className="ml-auto shrink-0" style={{ color: 'var(--green)' }} />
-            </motion.div>
-          )}
-          {notFound && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="flex items-center gap-2 mt-3 text-xs" style={{ color: 'var(--red)' }}>
-              <XCircle size={13} /> Пользователь не найден
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Info */}
-      <div className="rounded-2xl px-4 py-3"
-        style={{ background: 'rgba(79,110,247,0.05)', border: '1px solid rgba(79,110,247,0.12)' }}>
-        <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
-          Sky ID генерируется автоматически при регистрации и не изменяется. Используется для идентификации аккаунта вне зависимости от имени пользователя.
-        </p>
-      </div>
+      <EmailSection />
     </div>
   );
 };
 
-/* ── 2FA section ─────────────────────────────────────────────── */
-const TwoFASection = ({ me }: { me: any }) => {
-  const { enable2FA, disable2FA, send2FACode, verify2FA } = useAuthStore();
-  const tfa = me.twoFA;
-  const [method, setMethod]   = useState<'sms'|'email'>('sms');
-  const [secret, setSecret]   = useState('');
-  const [step,   setStep]     = useState<'idle'|'setup'|'verify'>('idle');
-  const [otp,    setOtp]      = useState('');
-  const [demoCode, setDemo]   = useState('');
-  const [err,    setErr]      = useState('');
-  const [ok,     setOk]       = useState(false);
-  const [showSec, setShowSec] = useState(false);
+/* ── Почта: запасной способ связи ────────────────────────────── */
+const EmailSection = () => {
+  const { sky, startEmailLink, confirmEmailLink } = useAuthStore();
+  const [email, setEmail] = useState('');
+  const [code, setCode]   = useState('');
+  const [stage, setStage] = useState<'idle' | 'code'>('idle');
+  const [msg, setMsg]     = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy]   = useState(false);
 
-  const startSetup = () => { setStep('setup'); setErr(''); setOk(false); };
-
-  const sendCode = () => {
-    const code = send2FACode(me.id);
-    setDemo(code); setStep('verify'); setErr('');
+  const send = async () => {
+    setBusy(true); setMsg(null);
+    const r = await startEmailLink(email);
+    setBusy(false);
+    if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Не получилось' }); return; }
+    setStage('code');
+    setMsg({ ok: true, text: 'Код отправлен на почту' });
   };
 
-  const verify = () => {
-    const r = verify2FA(me.id, otp);
-    if (r.ok) { setOk(true); setStep('idle'); }
-    else setErr(r.reason ?? 'Ошибка');
+  const confirm = async () => {
+    setBusy(true); setMsg(null);
+    const r = await confirmEmailLink(email, code);
+    setBusy(false);
+    if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Неверный код' }); return; }
+    setStage('idle'); setCode(''); setEmail('');
+    setMsg({ ok: true, text: 'Почта привязана' });
   };
-
-  const enableWithSecret = () => {
-    if (!secret.trim() || secret.length < 4) { setErr('Пин минимум 4 символа'); return; }
-    enable2FA(me.id, method, secret);
-    setOk(true); setStep('idle'); setSecret('');
-  };
-
-  const disable = () => { disable2FA(me.id); setOk(false); };
 
   return (
-    <div className="space-y-4">
-      {/* Status */}
-      <div className="rounded-2xl p-4 flex items-center gap-4"
-        style={{
-          background: tfa?.enabled ? 'rgba(52,211,153,0.06)' : 'rgba(248,113,113,0.06)',
-          border:     `1px solid ${tfa?.enabled ? 'rgba(52,211,153,0.2)' : 'rgba(248,113,113,0.2)'}`,
-        }}>
-        <div className="grid h-11 w-11 place-items-center rounded-2xl shrink-0"
-          style={{ background: tfa?.enabled ? 'rgba(52,211,153,0.12)' : 'rgba(248,113,113,0.12)' }}>
-          {tfa?.enabled ? <Lock size={18} style={{ color: 'var(--green)' }} /> : <Unlock size={18} style={{ color: 'var(--red)' }} />}
-        </div>
-        <div className="flex-1">
-          <p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>
-            {tfa?.enabled ? '2FA включена' : '2FA отключена'}
-          </p>
-          <p className="text-[11px] mt-0.5" style={{ color: 'var(--t3)' }}>
-            {tfa?.enabled ? `Метод: ${tfa.method === 'sms' ? 'SMS-код' : 'Email-код'} · Двойная защита активна` : 'Включите для дополнительной защиты'}
-          </p>
-        </div>
+    <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center gap-2">
+        <Mail size={14} style={{ color: 'var(--t2)' }} />
+        <p className="text-xs font-bold" style={{ color: 'var(--t2)' }}>Почта</p>
+        {sky?.emailVerified && (
+          <span className="ml-auto rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+            style={{ background: 'var(--green-bg)', color: 'var(--green)' }}>подтверждена</span>
+        )}
       </div>
 
-      {/* Controls */}
-      {!tfa?.enabled && step === 'idle' && (
-        <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={startSetup}
-          className="w-full flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold"
-          style={{ background: 'var(--accent)', color: '#fff' }}>
-          <Shield size={15} /> Включить 2FA
-        </motion.button>
+      {sky?.email && (
+        <p className="text-sm" style={{ color: 'var(--t1)' }}>{sky.email}</p>
       )}
 
-      {tfa?.enabled && step === 'idle' && (
-        <button type="button" onClick={disable}
-          className="w-full flex items-center justify-center gap-2 rounded-2xl py-2.5 text-sm font-semibold"
-          style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)', color: 'var(--red)' }}>
-          <Unlock size={14} /> Отключить 2FA
-        </button>
-      )}
+      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+        Необязательна. Пригодится, чтобы получать уведомления безопасности и
+        восстанавливать доступ, если потеряется номер.
+      </p>
 
-      {/* Setup */}
-      <AnimatePresence>
-        {step === 'setup' && (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="rounded-2xl p-4 space-y-4"
-            style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-
-            {/* Method */}
-            <div>
-              <p className="text-xs font-bold mb-2" style={{ color: 'var(--t3)' }}>Метод</p>
-              <div className="flex gap-2">
-                {(['sms','email'] as const).map(m => (
-                  <button key={m} type="button" onClick={() => setMethod(m)}
-                    className="flex-1 rounded-xl py-2 text-xs font-semibold transition-all"
-                    style={{
-                      background: method === m ? 'var(--accent-bg)' : 'var(--bg-l3)',
-                      border: `1px solid ${method === m ? 'rgba(79,110,247,0.3)' : 'var(--border)'}`,
-                      color: method === m ? 'var(--accent)' : 'var(--t2)',
-                    }}>
-                    {m === 'sms' ? '📱 SMS-код' : '📧 Email-код'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Secret pin */}
-            <div>
-              <p className="text-xs font-bold mb-2" style={{ color: 'var(--t3)' }}>Двухэтапный пароль (пин)</p>
-              <div className="flex gap-2">
-                <input
-                  type={showSec ? 'text' : 'password'}
-                  value={secret}
-                  onChange={e => setSecret(e.target.value)}
-                  placeholder="Минимум 4 символа"
-                  className="flex-1 rounded-xl px-3 py-2.5 text-sm outline-none"
-                  style={{ background: 'var(--bg-l3)', border: '1px solid var(--border-m)', color: 'var(--t1)' }}
-                />
-                <button type="button" onClick={() => setShowSec(s => !s)}
-                  className="grid h-10 w-10 place-items-center rounded-xl"
-                  style={{ background: 'var(--bg-l3)', border: '1px solid var(--border)', color: 'var(--t3)' }}>
-                  {showSec ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
-              <p className="text-[10px] mt-1" style={{ color: 'var(--t3)' }}>
-                Этот пин будет запрашиваться при каждом входе
-              </p>
-            </div>
-
-            {err && <p className="text-xs" style={{ color: 'var(--red)' }}>{err}</p>}
-
-            <div className="flex gap-2">
-              <button type="button" onClick={() => { setStep('idle'); setErr(''); }}
-                className="rounded-xl px-4 py-2 text-xs font-semibold"
-                style={{ background: 'var(--bg-l3)', color: 'var(--t2)', border: '1px solid var(--border)' }}>
-                Отмена
-              </button>
-              <button type="button" onClick={enableWithSecret}
-                className="flex-1 rounded-xl py-2 text-xs font-bold"
-                style={{ background: 'var(--accent)', color: '#fff' }}>
-                Включить 2FA
-              </button>
-            </div>
-
-            <div className="h-px" style={{ background: 'var(--border)' }} />
-
-            <div>
-              <p className="text-[11px] mb-2" style={{ color: 'var(--t3)' }}>
-                Или отправить одноразовый код (демо):
-              </p>
-              <button type="button" onClick={sendCode}
-                className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold"
-                style={{ background: 'var(--bg-l3)', border: '1px solid var(--border)', color: 'var(--t2)' }}>
-                <Send size={12} /> Получить код
-              </button>
-            </div>
-          </motion.div>
-        )}
-
-        {step === 'verify' && (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="rounded-2xl p-4 space-y-3"
-            style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-            {demoCode && (
-              <div className="rounded-xl px-3 py-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
-                <p className="text-[11px]" style={{ color: 'var(--amber)' }}>
-                  🔔 Демо-режим: твой код <strong className="font-mono text-sm">{demoCode}</strong>
-                </p>
-              </div>
-            )}
-            <input value={otp} onChange={e => setOtp(e.target.value)} placeholder="Введи код"
-              className="w-full rounded-xl px-4 py-2.5 text-sm font-mono outline-none text-center tracking-widest"
-              style={{ background: 'var(--bg-l3)', border: '1px solid var(--border-m)', color: 'var(--t1)' }} />
-            {err && <p className="text-xs" style={{ color: 'var(--red)' }}>{err}</p>}
-            <button type="button" onClick={verify}
-              className="w-full rounded-xl py-2.5 text-sm font-bold"
+      {stage === 'idle' ? (
+        <>
+          <Field type="email" inputMode="email" autoComplete="email"
+            placeholder={sky?.email ? 'Новый адрес' : 'you@example.com'}
+            value={email} onChange={e => setEmail(e.target.value)} />
+          <button type="button" onClick={send} disabled={busy || !email.includes('@')}
+            className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
+            style={{ background: 'var(--accent)', color: '#fff' }}>
+            {busy ? 'Отправляем…' : sky?.email ? 'Привязать другую' : 'Привязать почту'}
+          </button>
+        </>
+      ) : (
+        <>
+          <Field inputMode="numeric" maxLength={6} placeholder="Код из письма"
+            value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { setStage('idle'); setCode(''); }}
+              className="sky-btn-ghost flex-1">Отмена</button>
+            <button type="button" onClick={confirm} disabled={busy || code.length < 6}
+              className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
               style={{ background: 'var(--accent)', color: '#fff' }}>
               Подтвердить
             </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {ok && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm"
-          style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)', color: 'var(--green)' }}>
-          <CheckCircle2 size={14} /> Изменения сохранены
-        </motion.div>
+          </div>
+        </>
       )}
+
+      {msg && <Note ok={msg.ok} text={msg.text} />}
     </div>
   );
 };
 
-/* ── Devices section ─────────────────────────────────────────── */
+/* ── Профили: список, смена, создание, выход ─────────────────── */
+const ProfilesSection = () => {
+  const { profiles, activeProfileId, maxProfiles, switchProfile, logout } = useAuthStore();
+  const [confirmExit, setConfirmExit] = useState(false);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Users size={14} style={{ color: 'var(--t3)' }} />
+        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>
+          Профили · {profiles.length} из {maxProfiles}
+        </p>
+      </div>
+
+      {profiles.map(p => (
+        <div key={p.id} className="flex items-center gap-3 rounded-2xl px-4 py-3"
+          style={{
+            background: p.id === activeProfileId ? 'var(--accent-bg)' : 'var(--bg-l2)',
+            border: `1px solid ${p.id === activeProfileId ? 'rgba(79,110,247,0.2)' : 'var(--border)'}`,
+          }}>
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
+            style={{ background: p.avatar ? `center/cover url(${p.avatar})` : 'linear-gradient(135deg,var(--accent),#818cf8)' }}>
+            {!p.avatar && p.name.slice(0, 1).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}>{p.name}</p>
+              {p.isPrime && <Crown size={12} style={{ color: 'var(--amber)' }} />}
+              {p.twoFactorEnabled && <Shield size={12} style={{ color: 'var(--green)' }} />}
+            </div>
+            <p className="truncate text-[11px]" style={{ color: 'var(--t3)' }}>@{p.username}</p>
+          </div>
+          {p.id === activeProfileId && (
+            <span className="shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold"
+              style={{ background: 'rgba(79,110,247,0.18)', color: 'var(--accent)' }}>СЕЙЧАС</span>
+          )}
+        </div>
+      ))}
+
+      <button type="button" onClick={switchProfile}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold"
+        style={{ background: 'var(--bg-l3)', border: '1px solid var(--border-m)', color: 'var(--t1)' }}>
+        <ArrowLeftRight size={15} /> Сменить профиль
+      </button>
+
+      {profiles.length < maxProfiles && (
+        <button type="button" onClick={switchProfile}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm"
+          style={{ background: 'transparent', border: '1px dashed var(--border-m)', color: 'var(--t2)' }}>
+          <Plus size={15} /> Создать второй профиль
+        </button>
+      )}
+
+      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+        У каждого профиля свои Prime, кошелёк и защита. Смена профиля не выходит
+        из Sky ID — код из SMS заново не понадобится.
+      </p>
+
+      <button type="button" onClick={() => setConfirmExit(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl py-2.5 text-sm font-semibold"
+        style={{ background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.2)', color: 'var(--red)' }}>
+        <LogOut size={14} /> Выйти из Sky ID
+      </button>
+
+      <AnimatePresence>
+        {confirmExit && <ConfirmExit onCancel={() => setConfirmExit(false)} onConfirm={logout} />}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+/* ── Защита: две независимые двухэтапные проверки ────────────── */
+
+/**
+ * Один блок включения защиты. Порядок один и тот же для Sky ID и для
+ * профиля, различается только тем, куда уходят вызовы.
+ */
+const TwoFactorBlock = ({
+  title, hint, enabled, begin, confirm, disable,
+}: {
+  title: string; hint: string; enabled: boolean;
+  begin: () => Promise<{ ok: boolean; secret?: string; uri?: string; reason?: string }>;
+  confirm: (code: string) => Promise<{ ok: boolean; reason?: string }>;
+  disable: (code: string) => Promise<{ ok: boolean; reason?: string }>;
+}) => {
+  const [stage, setStage] = useState<'idle' | 'setup' | 'off'>('idle');
+  const [secret, setSecret] = useState('');
+  const [code, setCode] = useState('');
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const start = async () => {
+    setBusy(true); setMsg(null);
+    const r = await begin();
+    setBusy(false);
+    if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Не получилось' }); return; }
+    setSecret(r.secret ?? ''); setStage('setup');
+  };
+
+  const finish = async () => {
+    setBusy(true); setMsg(null);
+    const r = await confirm(code);
+    setBusy(false);
+    if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Неверный код' }); return; }
+    setStage('idle'); setCode(''); setSecret('');
+    setMsg({ ok: true, text: 'Защита включена' });
+  };
+
+  const off = async () => {
+    setBusy(true); setMsg(null);
+    const r = await disable(code);
+    setBusy(false);
+    if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Неверный код' }); return; }
+    setStage('idle'); setCode('');
+    setMsg({ ok: true, text: 'Защита отключена' });
+  };
+
+  return (
+    <div className="rounded-2xl p-4 space-y-3"
+      style={{
+        background: enabled ? 'var(--green-bg)' : 'var(--bg-l2)',
+        border: `1px solid ${enabled ? 'rgba(52,211,153,0.2)' : 'var(--border)'}`,
+      }}>
+      <div className="flex items-center gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl"
+          style={{ background: enabled ? 'rgba(52,211,153,0.12)' : 'var(--bg-l3)' }}>
+          {enabled ? <Lock size={17} style={{ color: 'var(--green)' }} />
+                   : <Unlock size={17} style={{ color: 'var(--t3)' }} />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>{title}</p>
+          <p className="text-[11px] leading-snug mt-0.5" style={{ color: 'var(--t3)' }}>{hint}</p>
+        </div>
+        <span className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold"
+          style={{
+            background: enabled ? 'rgba(52,211,153,0.15)' : 'var(--bg-l3)',
+            color: enabled ? 'var(--green)' : 'var(--t3)',
+          }}>
+          {enabled ? 'вкл' : 'выкл'}
+        </span>
+      </div>
+
+      {stage === 'idle' && !enabled && (
+        <button type="button" onClick={start} disabled={busy}
+          className="w-full rounded-xl py-2.5 text-sm font-semibold"
+          style={{ background: 'var(--accent)', color: '#fff' }}>
+          {busy ? 'Готовим…' : 'Включить защиту'}
+        </button>
+      )}
+
+      {stage === 'idle' && enabled && (
+        <button type="button" onClick={() => { setStage('off'); setMsg(null); }}
+          className="w-full rounded-xl py-2.5 text-sm font-semibold"
+          style={{ background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.2)', color: 'var(--red)' }}>
+          Отключить защиту
+        </button>
+      )}
+
+      {stage === 'setup' && (
+        <div className="space-y-3">
+          <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t2)' }}>
+            Добавьте этот ключ в приложение-аутентификатор (Google Authenticator,
+            Aegis, 1Password) и введите код, который оно покажет.
+          </p>
+          <button type="button"
+            onClick={() => { navigator.clipboard.writeText(secret).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left font-mono text-[12px] break-all"
+            style={{ background: 'var(--bg-l3)', border: '1px solid var(--border-m)', color: 'var(--t1)' }}>
+            <span className="min-w-0 flex-1 break-all">{secret}</span>
+            {copied ? <Check size={13} style={{ color: 'var(--green)' }} /> : <Copy size={13} style={{ color: 'var(--t3)' }} />}
+          </button>
+          <Field inputMode="numeric" maxLength={6} placeholder="Код из приложения"
+            value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { setStage('idle'); setCode(''); setSecret(''); }}
+              className="sky-btn-ghost flex-1">Отмена</button>
+            <button type="button" onClick={finish} disabled={busy || code.length < 6}
+              className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
+              style={{ background: 'var(--accent)', color: '#fff' }}>
+              Включить
+            </button>
+          </div>
+        </div>
+      )}
+
+      {stage === 'off' && (
+        <div className="space-y-3">
+          <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t2)' }}>
+            Чтобы отключить защиту, введите действующий код. Так тот, кто
+            дорвался до открытой вкладки, не сможет снять её одной кнопкой.
+          </p>
+          <Field inputMode="numeric" maxLength={6} placeholder="Код из приложения"
+            value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { setStage('idle'); setCode(''); }}
+              className="sky-btn-ghost flex-1">Отмена</button>
+            <button type="button" onClick={off} disabled={busy || code.length < 6}
+              className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
+              style={{ background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.25)', color: 'var(--red)' }}>
+              Отключить
+            </button>
+          </div>
+        </div>
+      )}
+
+      {msg && <Note ok={msg.ok} text={msg.text} />}
+    </div>
+  );
+};
+
+const SecuritySection = () => {
+  const {
+    sky, profiles, activeProfileId,
+    beginSkyTwoFactor, confirmSkyTwoFactor, disableSkyTwoFactor,
+    beginProfileTwoFactor, confirmProfileTwoFactor, disableProfileTwoFactor,
+  } = useAuthStore();
+
+  const active: ServerProfile | undefined = profiles.find(p => p.id === activeProfileId);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>
+        Двухэтапная защита
+      </p>
+
+      <TwoFactorBlock
+        title="Вход в Sky ID"
+        hint="Спрашивается при входе по номеру — после кода из SMS."
+        enabled={Boolean(sky?.twoFactorEnabled)}
+        begin={beginSkyTwoFactor}
+        confirm={confirmSkyTwoFactor}
+        disable={disableSkyTwoFactor}
+      />
+
+      {active && (
+        <TwoFactorBlock
+          title={`Профиль «${active.name}»`}
+          hint="Спрашивается при открытии этого профиля. Не связана с защитой Sky ID."
+          enabled={active.twoFactorEnabled}
+          begin={() => beginProfileTwoFactor(active.id)}
+          confirm={code => confirmProfileTwoFactor(active.id, code)}
+          disable={code => disableProfileTwoFactor(active.id, code)}
+        />
+      )}
+
+      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+        Две защиты независимы: можно включить только на профиль, только на вход
+        в Sky ID или на оба сразу. Второй профиль защищается отдельно — откройте
+        его и включите защиту там.
+      </p>
+    </div>
+  );
+};
+
+/* ── Устройства этого браузера ───────────────────────────────── */
 const DevicesSection = ({ me, onTerminate, onLogoutAll }: { me: any; onTerminate: (id: string) => void; onLogoutAll: () => void }) => {
   const devs: any[] = me.devices ?? [];
   const [confirm, setConfirm] = useState(false);
@@ -406,12 +518,12 @@ const DevicesSection = ({ me, onTerminate, onLogoutAll }: { me: any; onTerminate
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>
-          Активные устройства · {devs.length}
+          Входы с этого устройства · {devs.length}
         </p>
         <button type="button" onClick={() => setConfirm(true)}
           className="text-[11px] font-semibold flex items-center gap-1"
           style={{ color: 'var(--red)' }}>
-          <LogOut size={11} /> Выйти везде
+          <LogOut size={11} /> Выйти
         </button>
       </div>
 
@@ -419,8 +531,8 @@ const DevicesSection = ({ me, onTerminate, onLogoutAll }: { me: any; onTerminate
         {confirm && (
           <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="rounded-2xl p-3 flex items-center gap-3"
-            style={{ background: 'rgba(248,113,113,0.07)', border: '1px solid rgba(248,113,113,0.18)' }}>
-            <p className="text-xs flex-1" style={{ color: 'var(--t1)' }}>Завершить все сессии?</p>
+            style={{ background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,0.18)' }}>
+            <p className="text-xs flex-1" style={{ color: 'var(--t1)' }}>Завершить эту сессию?</p>
             <button type="button" onClick={() => { onLogoutAll(); setConfirm(false); }}
               className="rounded-xl px-3 py-1.5 text-[11px] font-bold"
               style={{ background: 'rgba(248,113,113,0.18)', color: 'var(--red)' }}>Да</button>
@@ -434,14 +546,14 @@ const DevicesSection = ({ me, onTerminate, onLogoutAll }: { me: any; onTerminate
       {devs.length === 0 ? (
         <div className="flex flex-col items-center py-12 gap-3 opacity-50">
           <Globe size={28} style={{ color: 'var(--t3)' }} />
-          <p className="text-sm" style={{ color: 'var(--t2)' }}>Нет активных устройств</p>
+          <p className="text-sm" style={{ color: 'var(--t2)' }}>Записей пока нет</p>
         </div>
       ) : devs.map((d, i) => (
         <motion.div key={d.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.05 }}
           className="flex items-start gap-3 rounded-2xl px-4 py-3"
           style={{
-            background: d.isCurrent ? 'rgba(79,110,247,0.06)' : 'var(--bg-l2)',
+            background: d.isCurrent ? 'var(--accent-bg)' : 'var(--bg-l2)',
             border: `1px solid ${d.isCurrent ? 'rgba(79,110,247,0.2)' : 'var(--border)'}`,
           }}>
           <div className="grid h-9 w-9 place-items-center rounded-xl shrink-0 mt-0.5"
@@ -456,103 +568,36 @@ const DevicesSection = ({ me, onTerminate, onLogoutAll }: { me: any; onTerminate
                   style={{ background: 'rgba(79,110,247,0.18)', color: 'var(--accent)' }}>ТЕКУЩЕЕ</span>
               )}
             </div>
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--t3)' }}>
-              {d.ip} · {d.city}
-            </p>
             <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'var(--t3)' }}>
               <Clock size={9} /> Вход: {fmtDt(d.loginAt)}
             </p>
           </div>
           {!d.isCurrent && (
             <button type="button" onClick={() => onTerminate(d.id)}
-              className="grid h-7 w-7 place-items-center rounded-xl hover:bg-red-500/10 transition-colors shrink-0"
+              className="grid h-7 w-7 place-items-center rounded-xl transition-colors shrink-0"
               style={{ color: 'var(--t3)' }}>
               <Trash2 size={13} />
             </button>
           )}
         </motion.div>
       ))}
-    </div>
-  );
-};
 
-/* ── Change password ─────────────────────────────────────────── */
-const PasswordSection = ({ userId }: { userId: string }) => {
-  const { changePassword } = useAuthStore();
-  const [oldPw,  setOld]  = useState('');
-  const [newPw,  setNew]  = useState('');
-  const [newPw2, setNew2] = useState('');
-  const [show,   setShow] = useState(false);
-  const [msg,    setMsg]  = useState<{ ok: boolean; text: string } | null>(null);
-
-  const submit = async () => {
-    if (newPw !== newPw2) { setMsg({ ok: false, text: 'Пароли не совпадают' }); return; }
-    const r = await changePassword(userId, oldPw, newPw);
-    setMsg({ ok: r.ok, text: r.ok ? 'Пароль изменён ✓' : r.reason ?? 'Ошибка' });
-    if (r.ok) { setOld(''); setNew(''); setNew2(''); }
-  };
-
-  const iSty = { background: 'var(--bg-l2)', border: '1px solid var(--border-m)', color: 'var(--t1)' };
-  const iCls = 'w-full rounded-2xl px-4 py-2.5 text-sm outline-none';
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>Смена пароля</p>
-
-      {(['Текущий пароль', 'Новый пароль', 'Повторите новый'] as const).map((label, idx) => {
-        const val  = idx === 0 ? oldPw  : idx === 1 ? newPw  : newPw2;
-        const setV = idx === 0 ? setOld : idx === 1 ? setNew : setNew2;
-        return (
-          <div key={label} className="relative">
-            <p className="text-[11px] font-semibold mb-1.5" style={{ color: 'var(--t2)' }}>{label}</p>
-            <div className="flex gap-2">
-              <input type={show ? 'text' : 'password'} value={val} onChange={e => setV(e.target.value)}
-                placeholder="••••••••" className={iCls} style={iSty} />
-              {idx === 0 && (
-                <button type="button" onClick={() => setShow(s => !s)}
-                  className="grid h-10 w-10 place-items-center rounded-2xl shrink-0"
-                  style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t3)' }}>
-                  {show ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      {msg && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="rounded-xl px-3 py-2 text-xs"
-          style={{
-            background: msg.ok ? 'rgba(52,211,153,0.08)' : 'rgba(248,113,113,0.08)',
-            border:     `1px solid ${msg.ok ? 'rgba(52,211,153,0.2)' : 'rgba(248,113,113,0.2)'}`,
-            color:      msg.ok ? 'var(--green)' : 'var(--red)',
-          }}>
-          {msg.text}
-        </motion.div>
-      )}
-
-      <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={submit}
-        className="w-full flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold"
-        style={{ background: 'var(--accent)', color: '#fff' }}>
-        <Key size={14} /> Изменить пароль
-      </motion.button>
-
-      <p className="text-[11px] text-center" style={{ color: 'var(--t3)' }}>
-        Демо-пароль: <span className="font-mono font-bold">0000</span>
+      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+        Это записи входов, сделанных в этом браузере. Чтобы закрыть доступ
+        везде, выйдите из Sky ID и смените код доступа к номеру.
       </p>
     </div>
   );
 };
 
-/* ── Security log ────────────────────────────────────────────── */
+/* ── История безопасности ────────────────────────────────────── */
 const SecurityLogSection = ({ me }: { me: any }) => {
   const log: any[] = me.securityLog ?? [];
 
   return (
     <div className="space-y-2">
       <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>
-        История безопасности · {log.length} событий
+        История · {log.length}
       </p>
 
       {log.length === 0 ? (

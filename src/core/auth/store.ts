@@ -67,32 +67,77 @@ export interface Account {
   skyId?: string; twoFA?: TwoFA; devices?: Device[]; securityLog?: SecurityEvent[];
 }
 
-type Step = 'phone'|'register'|'code'|'authenticated'|'twofa';
+/**
+ * Шаги входа:
+ *   phone    — вводим номер
+ *   code     — вводим код из SMS
+ *   twofa    — вводим код приложения (защита самого Sky ID)
+ *   profiles — Sky ID открыт, выбираем профиль (или заводим второй)
+ *   authenticated — профиль выбран, работаем
+ */
+export type Step = 'phone' | 'code' | 'twofa' | 'profiles' | 'authenticated';
+
+export interface CodeInfo { retryAfter: number; expiresIn: number }
 
 interface AuthState {
-  step: Step; phoneInput: string; pendingPhone: string;
-  pendingUsername: string; pendingName: string;
+  step: Step;
+
+  /* ── Sky ID ── */
+  sky: SkyIdInfo | null;
+  profiles: ServerProfile[];
+  activeProfileId: string | null;
+  maxProfiles: number;
+
+  /* ── ход входа ── */
+  phoneInput: string;
+  pendingPhone: string;
+  challenge: string | null;
+  codeInfo: CodeInfo | null;
+
   isAuthenticated: boolean; currentUserId: string|null; accounts: Account[];
-  pending2faUserId: string|null; twoFaError: string|null;
+
   setPhoneInput:(v:string)=>void;
-  setPendingProfile:(p:{username:string;name:string})=>void;
-  requestCode:()=>{ok:boolean;reason?:string};
-  registerAndRequestCode:()=>{ok:boolean;reason?:string};
-  verifyCode:(code:string)=>{ok:boolean;reason?:string};
-  login:(username:string,password:string)=>Promise<{ok:boolean;reason?:string}>;
-  register:(name:string,username:string,password:string)=>Promise<{ok:boolean;reason?:string}>;
+
+  /** Шаг 1: просим код на телефон. */
+  requestCode:(phone?:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
+  /** Шаг 2: проверяем код из SMS. */
+  verifyCode:(code:string)=>Promise<{ok:boolean;reason?:string}>;
+  /** Шаг 3: код приложения, если у Sky ID включена двухэтапная защита. */
+  verifySkyTwoFactor:(code:string)=>Promise<{ok:boolean;reason?:string}>;
+
+  /** Открыть профиль. Защищённому нужен код из приложения. */
+  selectProfile:(profileId:string,code?:string)=>Promise<{ok:boolean;reason?:string;needsCode?:boolean}>;
+  createProfile:(p:{name:string;username:string})=>Promise<{ok:boolean;reason?:string}>;
+  /** Вернуться к меню профилей, не выходя из Sky ID. */
+  switchProfile:()=>void;
+  /** Перечитать состояние входа с сервера. Возвращает, удалось ли. */
+  reloadSession:()=>Promise<boolean>;
+
+  /* ── защита ── */
+  beginProfileTwoFactor:(profileId:string)=>Promise<{ok:boolean;secret?:string;uri?:string;reason?:string}>;
+  confirmProfileTwoFactor:(profileId:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
+  disableProfileTwoFactor:(profileId:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
+  beginSkyTwoFactor:()=>Promise<{ok:boolean;secret?:string;uri?:string;reason?:string}>;
+  confirmSkyTwoFactor:(code:string)=>Promise<{ok:boolean;reason?:string}>;
+  disableSkyTwoFactor:(code:string)=>Promise<{ok:boolean;reason?:string}>;
+
+  /* ── почта ── */
+  startEmailLink:(email:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
+  confirmEmailLink:(email:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
+
+  /* ── Prime активного профиля ── */
+  purchasePrime:(plan:string,days:number)=>Promise<{ok:boolean;reason?:string}>;
+  cancelPrime:()=>Promise<{ok:boolean;reason?:string}>;
+
   /** Восстанавливает сессию по HttpOnly-куке. Вызывается при старте приложения. */
   restoreSession:()=>Promise<void>;
+  /** Полный выход из Sky ID. */
   logout:()=>void;
-  logoutAll:(userId:string)=>void;
+  logoutAll:(userId?:string)=>void;
+
   findUsersByUsername:(q:string)=>Account[];
   findBySkyId:(skyId:string)=>Account|undefined;
   updateProfile:(p:Partial<Pick<Account,'name'|'bio'|'avatar'|'banner'|'privacy'|'gameProfile'|'nameSticker'|'nameColor'|'customStatus'|'statusEmoji'|'birthDate'|'links'|'country'|'language'|'timezone'|'equippedFrame'>>)=>void;
-  changePassword:(userId:string,oldPw:string,newPw:string)=>Promise<{ok:boolean;reason?:string}>;
-  enable2FA:(userId:string,method:'email'|'sms',secret:string)=>void;
-  disable2FA:(userId:string)=>void;
-  send2FACode:(userId:string)=>string;
-  verify2FA:(userId:string,code:string)=>{ok:boolean;reason?:string};
   terminateDevice:(userId:string,deviceId:string)=>void;
   updateMusicianProfile:(userId:string,p:Partial<Pick<Account,'isMusician'|'artistName'|'artistBio'|'artistBanner'|'artistAvatar'|'artistGenres'>>)=>void;
   followArtist:(followerId:string,artistId:string)=>void;
@@ -109,23 +154,26 @@ interface AuthState {
   setModerationNote:(userId:string,note:string)=>void;
 }
 
-import { apiLogin, apiRegister, apiLogout, apiRefresh, apiChangePassword, type ServerUser } from './api';
+import {
+  apiRequestPhoneCode, apiVerifyPhoneCode, apiVerifySkyTwoFactor,
+  apiRefreshSession, apiSession, apiLogout,
+  apiListProfiles, apiCreateProfile, apiSelectProfile,
+  apiProfileTwoFactorBegin, apiProfileTwoFactorConfirm, apiProfileTwoFactorDisable,
+  apiSkyTwoFactorBegin, apiSkyTwoFactorConfirm, apiSkyTwoFactorDisable,
+  apiEmailStart, apiEmailVerify, apiGrantPrime, apiRevokePrime,
+  setAccessToken,
+  type SkyIdInfo, type ServerProfile, type SkySession,
+} from './api';
 
 /* helpers */
-export const DEMO_SMS_CODE='0000';
-const CODE=DEMO_SMS_CODE; const W=typeof window!=='undefined';
+const W=typeof window!=='undefined';
 const nm=(v:string)=>v.replace(/[^\d+]/g,'');
-const nu=(v:string)=>v.trim().toLowerCase().replace(/^@/,'');
-const vp=(v:string)=>/^\+?\d{10,15}$/.test(v);
-const vu=(v:string)=>/^[a-z0-9_]{3,24}$/.test(v);
 const genSkyId=()=>{const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='SKY-';for(let i=0;i<6;i++)s+=c[Math.floor(Math.random()*c.length)];return s;};
-const simpleHash=(s:string)=>{let h=0;for(let i=0;i<s.length;i++)h=(Math.imul(31,h)+s.charCodeAt(i))|0;return Math.abs(h).toString(36);};
-const genOtp=()=>String(Math.floor(100000+Math.random()*900000));
 const curDev=()=>{
   const ua=W?navigator.userAgent:'Server';
   const pb=(ua:string)=>ua.includes('Edg')?'Edge':ua.includes('Chrome')?'Chrome':ua.includes('Firefox')?'Firefox':ua.includes('Safari')?'Safari':'Browser';
   const po=(ua:string)=>ua.includes('Windows')?'Windows':ua.includes('Mac')?'macOS':ua.includes('Linux')?'Linux':ua.includes('Android')?'Android':ua.includes('iPhone')||ua.includes('iPad')?'iOS':'Unknown';
-  return {ua,browser:pb(ua),os:po(ua),ip:'192.168.x.x',city:'Местоположение скрыто'};
+  return {ua,browser:pb(ua),os:po(ua),ip:'скрыт',city:'Местоположение скрыто'};
 };
 const addDevice=(acc:Account,isCurrent=true):Account=>{
   const d:Device={id:`dev-${Date.now()}`,...curDev(),loginAt:new Date().toISOString(),lastSeen:new Date().toISOString(),isCurrent};
@@ -136,145 +184,261 @@ const addSec=(acc:Account,ev:Omit<SecurityEvent,'id'|'at'>):Account=>{
   return{...acc,securityLog:[e,...(acc.securityLog??[])].slice(0,50)};
 };
 const DP={whoCanWrite:'all' as const,whoSeesOnline:'all' as const,whoCanCall:'all' as const};
+
+/* Локальный справочник людей: имена и ники для поиска, упоминаний и
+   подписей к сообщениям. Ни прав, ни признака Prime он не несёт —
+   всё это приходит с сервера вместе с профилем. */
 const SEED:Account[]=[
-  {id:'acc-kutuzov',name:'Kutuzov',phone:'+79000000000',username:'kutuzov',bio:'Sky Admin',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-ADMIN1'},
-  {id:'acc-luna',name:'Luna Nova',phone:'+79005550101',username:'luna_nova',bio:'Raid support',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-LUNA01'},
-  {id:'acc-neo',name:'Neo Driver',phone:'+79005550102',username:'neon_driver',bio:'FPS captain ⚡',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-NEO001'},
+  {id:'acc-kutuzov',name:'Kutuzov',phone:'',username:'kutuzov',bio:'Sky Admin',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-ADMIN1'},
+  {id:'acc-luna',name:'Luna Nova',phone:'',username:'luna_nova',bio:'Raid support',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-LUNA01'},
+  {id:'acc-neo',name:'Neo Driver',phone:'',username:'neon_driver',bio:'FPS captain ⚡',createdAt:new Date().toISOString(),privacy:DP,skyId:'SKY-NEO001'},
 ];
-const AK='sky:auth:v4:accounts',SK='sky:auth:v4:session',PK='sky:auth:v4:pending';
+const AK='sky:auth:v5:accounts';
 const rA=():Account[]=>{if(!W)return SEED;try{const p=JSON.parse(localStorage.getItem(AK)||'');if(Array.isArray(p)&&p.length)return p;}catch{}return SEED;};
-const wA=(a:Account[])=>{if(W)localStorage.setItem(AK,JSON.stringify(a));};
-const rS=():string|null=>{if(!W)return null;try{return JSON.parse(localStorage.getItem(SK)||'').id||null;}catch{return null;}};
-const wS=(id:string|null)=>{if(!W)return;id?localStorage.setItem(SK,JSON.stringify({id})):localStorage.removeItem(SK);};
-const rP=():string=>{if(!W)return'';try{return JSON.parse(localStorage.getItem(PK)||'').phone||'';}catch{return'';}};
-const wP=(p:string)=>{if(!W)return;p?localStorage.setItem(PK,JSON.stringify({phone:p})):localStorage.removeItem(PK);};
-const DI=new Set(['acc-kutuzov','acc-luna','acc-neo']);
+const wA=(a:Account[])=>{if(W){try{localStorage.setItem(AK,JSON.stringify(a));}catch{}}};
 const initAccounts=():Account[]=>{
-  const stored=rA();
-  // Локальный список — только для экрана выбора аккаунта. Ни пароля,
-  // ни прав он не несёт: и то и другое приходит с сервера при входе.
-  const patch=(a:Account):Account=>{
-    const s=SEED.find(x=>x.phone===a.phone);
-    const base={...a,password:undefined,skyId:a.skyId??genSkyId()};
-    if(!DI.has(a.id)||!s)return base;
-    return{...base,username:s.username,skyId:a.skyId??s.skyId??genSkyId()};
-  };
-  const m=stored.map(patch);
-  const final=m.find(a=>a.phone==='+79000000000')?m:[SEED[0],...m];
-  wA(final);return final;
+  // Пароли в браузере не хранятся вообще: вход идёт по коду из SMS.
+  //
+  // Права и Prime стираем при каждом запуске: в справочнике они не
+  // источник истины, а лишь отражение ответа сервера. Своим профилям
+  // их вернёт applySession, чужим — неоткуда, поэтому дописать себе
+  // корону или админку правкой localStorage не выйдет.
+  const cleaned=rA().map(a=>({
+    ...a,password:undefined,skyId:a.skyId??genSkyId(),
+    isAdmin:false,isPrime:false,primeUntil:undefined,
+    isPrimeBusiness:false,primeBusinessUntil:undefined,
+  }));
+  wA(cleaned);return cleaned;
 };
-const accs=initAccounts(),sess=rS(),pend=rP();
+const accs=initAccounts();
 
 /**
- * Записывает в стор данные сессии, пришедшие с сервера.
+ * Профиль с сервера → запись локального справочника.
  *
- * Личность и права (isAdmin, isPrime) берутся ТОЛЬКО отсюда: локальная
- * запись аккаунта перезаписывается серверной. Поэтому правка
- * localStorage вручную ничего не даёт — при следующей загрузке
- * значения вернутся к тем, что в базе.
- *
- * Пароль в локальную запись не пишется никогда.
+ * Личность и права (isAdmin, isPrime) берутся ТОЛЬКО отсюда: что бы ни
+ * лежало в localStorage, при следующей загрузке значения вернутся к тем,
+ * что в базе. Поэтому правка браузерного хранилища ничего не даёт.
  */
-const applyServerSession=(
+const toAccount=(p:ServerProfile,phone:string,prev?:Account):Account=>({
+  ...(prev??{createdAt:p.createdAt??new Date().toISOString(),bio:'',privacy:DP} as Account),
+  id:p.id, skyId:p.skyId, username:p.username, name:p.name,
+  phone,
+  avatar:p.avatar??prev?.avatar,
+  bio:p.bio??prev?.bio??'',
+  isAdmin:p.isAdmin, isPrime:p.isPrime,
+  primeUntil:p.primeExpiresAt??undefined,
+  twoFA:{enabled:p.twoFactorEnabled,method:'sms',failCount:0},
+  password:undefined,
+});
+
+/** Кладёт в стор состояние входа, каким его прислал сервер. */
+const applySession=(
   set:(p:Partial<AuthState>)=>void,
   get:()=>AuthState,
-  user:ServerUser,
+  session:SkySession,
+  markDevice=false,
 )=>{
-  const{accounts}=get();
-  const existing=accounts.find(a=>a.id===user.id);
-  const merged:Account=existing
-    ?{...existing,username:user.username,name:user.name,phone:user.phone,
-      isAdmin:user.isAdmin,isPrime:user.isPrime,password:undefined}
-    :addDevice({id:user.id,phone:user.phone,username:user.username,name:user.name,
-      isAdmin:user.isAdmin,isPrime:user.isPrime,createdAt:new Date().toISOString(),
-      bio:'',privacy:DP,skyId:genSkyId()} as Account);
-  const updated=existing
-    ?accounts.map(a=>a.id===user.id?addDevice(merged):a)
-    :[...accounts,merged];
-  wA(updated);wS(user.id);
-  set({accounts:updated,isAuthenticated:true,currentUserId:user.id,step:'authenticated'});
+  const {accounts}=get();
+  const phone=session.skyId.phone;
+  let updated=[...accounts];
+  for(const p of session.profiles){
+    const i=updated.findIndex(a=>a.id===p.id);
+    const merged=toAccount(p,phone,i>=0?updated[i]:undefined);
+    const withDev=markDevice&&p.id===session.activeProfileId?addDevice(merged):merged;
+    if(i>=0)updated[i]=withDev; else updated.push(withDev);
+  }
+  wA(updated);
+  set({
+    accounts:updated,
+    sky:session.skyId,
+    profiles:session.profiles,
+    activeProfileId:session.activeProfileId,
+    maxProfiles:session.maxProfiles??2,
+    currentUserId:session.activeProfileId,
+    isAuthenticated:Boolean(session.activeProfileId),
+    step:session.activeProfileId?'authenticated':'profiles',
+    challenge:null,
+  });
+};
+
+/** Состояние «никто не вошёл». */
+const emptyAuth={
+  sky:null,profiles:[],activeProfileId:null,
+  isAuthenticated:false,currentUserId:null,
+  step:'phone' as const,phoneInput:'+7',pendingPhone:'',
+  challenge:null,codeInfo:null,
 };
 
 export const useAuthStore=create<AuthState>((set,get)=>({
   // Стартуем как невошедшие независимо от того, что лежит в localStorage:
   // факт входа подтверждает только сервер (restoreSession по HttpOnly-куке).
-  // Иначе достаточно было бы дописать себе запись сессии в браузере.
-  step:pend?'code':'phone',
-  phoneInput:pend||'+7',pendingPhone:pend,pendingUsername:'',pendingName:'',
-  isAuthenticated:false,currentUserId:null,accounts:accs,
-  pending2faUserId:null,twoFaError:null,
-
-  restoreSession:async()=>{
-    const res=await apiRefresh();
-    if(res.ok&&res.user){applyServerSession(set,get,res.user);return;}
-    // Куки нет или сессия отозвана — считаем, что вход не выполнен.
-    wS(null);
-    set({isAuthenticated:false,currentUserId:null,step:'phone'});
-  },
+  ...emptyAuth,
+  maxProfiles:2,
+  accounts:accs,
 
   setPhoneInput:v=>set({phoneInput:v}),
-  setPendingProfile:({username,name})=>set({pendingUsername:username,pendingName:name}),
 
-  requestCode:()=>{
-    const{phoneInput,accounts}=get();const phone=nm(phoneInput);
-    if(!vp(phone))return{ok:false,reason:'Введите корректный номер'};
-    const ex=accounts.find(a=>a.phone===phone);
-    if(!ex){set({pendingPhone:phone,phoneInput:phone,step:'register'});return{ok:false,reason:'ACCOUNT_NOT_FOUND'};}
-    wP(phone);set({pendingPhone:phone,step:'code',phoneInput:phone});return{ok:true};
-  },
+  /* ══ Вход ═════════════════════════════════════════════════ */
 
-  registerAndRequestCode:()=>{
-    const{phoneInput,pendingUsername,pendingName,accounts}=get();
-    const phone=nm(phoneInput),username=nu(pendingUsername),name=pendingName.trim();
-    if(!vp(phone))return{ok:false,reason:'Неверный номер'};
-    if(name.length<2)return{ok:false,reason:'Имя минимум 2 символа'};
-    if(!vu(username))return{ok:false,reason:'Username: 3-24 символа, a-z 0-9 _'};
-    if(accounts.some(a=>a.phone===phone))return{ok:false,reason:'Номер уже зарегистрирован'};
-    if(accounts.some(a=>a.username===username))return{ok:false,reason:'Username занят'};
-    const acc:Account={id:`acc-${crypto.randomUUID()}`,phone,username,name,createdAt:new Date().toISOString(),bio:'',privacy:DP,skyId:genSkyId()};
-    const updated=[...accounts,acc];wA(updated);wP(phone);
-    set({accounts:updated,pendingPhone:phone,step:'code',phoneInput:phone,pendingUsername:'',pendingName:''});
-    return{ok:true};
-  },
-
-  verifyCode:code=>{
-    const{pendingPhone,accounts}=get();
-    if(code.trim()!==CODE)return{ok:false,reason:'Неверный код. Демо: 0000'};
-    const acc=accounts.find(a=>a.phone===pendingPhone);
-    if(!acc)return{ok:false,reason:'Аккаунт не найден'};
-    if(acc.twoFA?.enabled){set({pending2faUserId:acc.id,step:'twofa'});wP('');return{ok:false,reason:'2FA_REQUIRED'};}
-    const cd=curDev();
-    const updated=accounts.map(a=>a.id===acc.id?addDevice(addSec(a,{type:'login',text:`Вход с ${cd.browser} · ${cd.os}`})):a);
-    wP('');wS(acc.id);wA(updated);
-    set({isAuthenticated:true,currentUserId:acc.id,step:'authenticated',accounts:updated});
-    return{ok:true};
-  },
-
-  // Пароль проверяет сервер. Локальный список аккаунтов — только для
-  // экрана выбора: решение о входе принимается не здесь.
-  login:async(username,password)=>{
-    const res=await apiLogin(nu(username),password);
-    if(!res.ok||!res.user){
-      const{accounts}=get();const u=nu(username);
-      const acc=accounts.find(a=>a.username===u);
-      if(acc){
-        const updated=accounts.map(a=>a.id===acc.id?addSec(a,{type:'login_fail',text:`Неудачная попытка · ${curDev().browser}`}):a);
-        wA(updated);set({accounts:updated});
+  requestCode:async(phone)=>{
+    const value=nm(phone??get().phoneInput);
+    const res=await apiRequestPhoneCode(value);
+    if(!res.ok){
+      // Пауза между отправками — не ошибка ввода: показываем, сколько ждать.
+      const retryAfter=(res.data as any)?.retryAfter;
+      if(res.error==='too_soon'){
+        set({pendingPhone:value,phoneInput:value,step:'code'});
+        return{ok:true,retryAfter};
       }
+      return{ok:false,reason:res.reason,retryAfter};
+    }
+    set({
+      pendingPhone:value,phoneInput:value,step:'code',
+      codeInfo:{retryAfter:res.data?.retryAfter??60,expiresIn:res.data?.expiresIn??300},
+    });
+    return{ok:true,retryAfter:res.data?.retryAfter};
+  },
+
+  verifyCode:async(code)=>{
+    const{pendingPhone}=get();
+    const res=await apiVerifyPhoneCode(pendingPhone,code.trim());
+    if(!res.ok)return{ok:false,reason:res.reason};
+
+    const data=res.data as any;
+    // У Sky ID включена двухэтапная защита — сессии пока нет.
+    if(data?.needsTwoFactor){
+      set({challenge:data.challenge,step:'twofa'});
+      return{ok:true};
+    }
+    setAccessToken(data.accessToken??null);
+    applySession(set,get,data,true);
+    return{ok:true};
+  },
+
+  verifySkyTwoFactor:async(code)=>{
+    const{challenge}=get();
+    if(!challenge)return{ok:false,reason:'Начните вход заново'};
+    const res=await apiVerifySkyTwoFactor(challenge,code.trim());
+    if(!res.ok)return{ok:false,reason:res.reason};
+    setAccessToken((res.data as any)?.accessToken??null);
+    applySession(set,get,res.data as any,true);
+    return{ok:true};
+  },
+
+  /* ══ Профили ══════════════════════════════════════════════ */
+
+  selectProfile:async(profileId,code)=>{
+    const res=await apiSelectProfile(profileId,code);
+    if(!res.ok){
+      // Профиль под защитой: нужен код из приложения.
+      if(res.error==='profile_code_required'||res.error==='invalid_code')
+        return{ok:false,needsCode:true,reason:res.error==='invalid_code'?res.reason:undefined};
       return{ok:false,reason:res.reason};
     }
-    applyServerSession(set,get,res.user);
+    if(!await get().reloadSession())
+      return{ok:false,reason:'Профиль открыт, но состояние не обновилось. Обновите страницу.'};
     return{ok:true};
   },
 
-  register:async(name,username,password)=>{
-    const u=nu(username);
-    if(!u||name.trim().length<2||!password)return{ok:false,reason:'Заполните все поля'};
-    const{phoneInput,pendingPhone}=get();
-    const res=await apiRegister({phone:nm(pendingPhone||phoneInput),username:u,name:name.trim(),password});
-    if(!res.ok||!res.user)return{ok:false,reason:res.reason};
-    applyServerSession(set,get,res.user);
+  createProfile:async({name,username})=>{
+    const res=await apiCreateProfile({name:name.trim(),username:username.trim().toLowerCase().replace(/^@/,'')});
+    if(!res.ok)return{ok:false,reason:res.reason};
+    // Только что созданный профиль сразу открываем: защиты на нём ещё
+    // нет, а лишний экран выбора после создания только мешает.
+    const created=res.data?.profile;
+    if(created){
+      const sel=await apiSelectProfile(created.id);
+      if(!sel.ok){await get().reloadSession();return{ok:true};}
+    }
+    await get().reloadSession();
     return{ok:true};
+  },
+
+  // Смена профиля не выходит из Sky ID: возвращаемся к меню, сессия жива.
+  switchProfile:()=>set({step:'profiles',isAuthenticated:false}),
+
+  reloadSession:async()=>{
+    const res=await apiSession();
+    if(res.ok&&res.data){applySession(set,get,res.data);return true;}
+    // 401 — сессии больше нет; всё остальное (нет сети, лимит) не повод
+    // выкидывать человека: пусть попробует ещё раз.
+    if(res.status===401)get().logout();
+    return false;
+  },
+
+  /* ══ Двухэтапная защита ═══════════════════════════════════ */
+
+  beginProfileTwoFactor:async(profileId)=>{
+    const res=await apiProfileTwoFactorBegin(profileId);
+    return res.ok?{ok:true,secret:res.data?.secret,uri:res.data?.uri}:{ok:false,reason:res.reason};
+  },
+  confirmProfileTwoFactor:async(profileId,code)=>{
+    const res=await apiProfileTwoFactorConfirm(profileId,code.trim());
+    if(!res.ok)return{ok:false,reason:res.reason};
+    await get().reloadSession();
+    return{ok:true};
+  },
+  disableProfileTwoFactor:async(profileId,code)=>{
+    const res=await apiProfileTwoFactorDisable(profileId,code.trim());
+    if(!res.ok)return{ok:false,reason:res.reason};
+    await get().reloadSession();
+    return{ok:true};
+  },
+
+  beginSkyTwoFactor:async()=>{
+    const res=await apiSkyTwoFactorBegin();
+    return res.ok?{ok:true,secret:res.data?.secret,uri:res.data?.uri}:{ok:false,reason:res.reason};
+  },
+  confirmSkyTwoFactor:async(code)=>{
+    const res=await apiSkyTwoFactorConfirm(code.trim());
+    if(!res.ok)return{ok:false,reason:res.reason};
+    set({sky:res.data?.skyId??get().sky});
+    return{ok:true};
+  },
+  disableSkyTwoFactor:async(code)=>{
+    const res=await apiSkyTwoFactorDisable(code.trim());
+    if(!res.ok)return{ok:false,reason:res.reason};
+    set({sky:res.data?.skyId??get().sky});
+    return{ok:true};
+  },
+
+  /* ══ Почта ════════════════════════════════════════════════ */
+
+  startEmailLink:async(email)=>{
+    const res=await apiEmailStart(email.trim().toLowerCase());
+    return res.ok?{ok:true,retryAfter:res.data?.retryAfter}:{ok:false,reason:res.reason};
+  },
+  confirmEmailLink:async(email,code)=>{
+    const res=await apiEmailVerify(email.trim().toLowerCase(),code.trim());
+    if(!res.ok)return{ok:false,reason:res.reason};
+    set({sky:res.data?.skyId??get().sky});
+    return{ok:true};
+  },
+
+  /* ══ Prime ════════════════════════════════════════════════ */
+
+  // Считает и списывает сервер: цену и срок он берёт из своей таблицы,
+  // поэтому подделать сумму в запросе нельзя.
+  purchasePrime:async(plan,days)=>{
+    const res=await apiGrantPrime(plan,days);
+    if(!res.ok)return{ok:false,reason:res.reason};
+    await get().reloadSession();
+    return{ok:true};
+  },
+  cancelPrime:async()=>{
+    const res=await apiRevokePrime();
+    if(!res.ok)return{ok:false,reason:res.reason};
+    await get().reloadSession();
+    return{ok:true};
+  },
+
+  /* ══ Сессия ═══════════════════════════════════════════════ */
+
+  restoreSession:async()=>{
+    const res=await apiRefreshSession();
+    if(res.ok&&res.data){applySession(set,get,res.data as any);return;}
+    // Куки нет или сессия отозвана — считаем, что вход не выполнен.
+    set(emptyAuth);
   },
 
   logout:()=>{
@@ -283,20 +447,24 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     void apiLogout();
     const{currentUserId,accounts}=get();
     const updated=accounts.map(a=>a.id===currentUserId?{...a,devices:(a.devices??[]).map(d=>({...d,isCurrent:false}))}:a);
-    wA(updated);wS(null);wP('');
-    set({isAuthenticated:false,currentUserId:null,pendingPhone:'',step:'phone',phoneInput:'+7',accounts:updated});
+    wA(updated);
+    set({...emptyAuth,accounts:updated});
   },
 
-  logoutAll:(userId)=>{
-    const updated=get().accounts.map(a=>a.id===userId?addSec({...a,devices:[]},{type:'logout_all',text:'Завершены все сессии'}):a);
-    wA(updated);wS(null);wP('');
-    set({isAuthenticated:false,currentUserId:null,step:'phone',phoneInput:'+7',accounts:updated});
+  logoutAll:()=>{
+    const{currentUserId,accounts}=get();
+    const updated=accounts.map(a=>a.id===currentUserId?addSec({...a,devices:[]},{type:'logout_all',text:'Завершены все сессии'}):a);
+    wA(updated);
+    void apiLogout();
+    set({...emptyAuth,accounts:updated});
   },
+
+  /* ══ Локальный справочник и модерация ═════════════════════ */
 
   findUsersByUsername:q=>{
     const raw=q.trim();if(!raw)return[];
     const s=raw.replace(/^@/,'').toLowerCase();
-    return get().accounts.filter(a=>a.username.toLowerCase().includes(s)||a.name.toLowerCase().includes(s)||a.phone.includes(s)).slice(0,15);
+    return get().accounts.filter(a=>a.username.toLowerCase().includes(s)||a.name.toLowerCase().includes(s)).slice(0,15);
   },
 
   findBySkyId:skyId=>{
@@ -308,57 +476,6 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     const{currentUserId,accounts}=get();
     const updated=accounts.map(a=>a.id===currentUserId?{...a,...payload}:a);
     wA(updated);set({accounts:updated});
-  },
-
-  // Пароль меняет сервер: он же проверяет старый и разлогинивает
-  // остальные устройства. В браузере пароль не хранится вообще.
-  changePassword:async(userId,oldPw,newPw)=>{
-    const res=await apiChangePassword(oldPw,newPw);
-    if(!res.ok)return{ok:false,reason:res.reason};
-    const{accounts}=get();
-    const updated=accounts.map(a=>a.id===userId?addSec(a,{type:'password_change',text:'Пароль изменён'}):a);
-    wA(updated);set({accounts:updated});
-    return{ok:true};
-  },
-
-  enable2FA:(userId,method,secret)=>{
-    const updated=get().accounts.map(a=>a.id===userId?addSec({...a,twoFA:{enabled:true,method,secret,failCount:0}},{type:'2fa_enable',text:`2FA включена (${method==='email'?'Email':'SMS'})`}):a);
-    wA(updated);set({accounts:updated});
-  },
-
-  disable2FA:(userId)=>{
-    const updated=get().accounts.map(a=>a.id===userId?addSec({...a,twoFA:{enabled:false,method:'sms',failCount:0}},{type:'2fa_disable',text:'2FA отключена'}):a);
-    wA(updated);set({accounts:updated});
-  },
-
-  send2FACode:(userId)=>{
-    const otp=genOtp();const hash=simpleHash(otp);
-    const updated=get().accounts.map(a=>a.id===userId?{...a,twoFA:{...(a.twoFA??{enabled:true,method:'sms' as const,failCount:0}),codeHash:hash,codeAt:new Date().toISOString()}}:a);
-    wA(updated);set({accounts:updated});return otp;
-  },
-
-  verify2FA:(userId,code)=>{
-    const{accounts}=get();const acc=accounts.find(a=>a.id===userId);
-    if(!acc?.twoFA)return{ok:false,reason:'2FA не настроена'};
-    if(acc.twoFA.lockedUntil&&new Date(acc.twoFA.lockedUntil)>new Date()){
-      const secs=Math.ceil((new Date(acc.twoFA.lockedUntil).getTime()-Date.now())/1000);
-      return{ok:false,reason:`Слишком много попыток. Подождите ${secs} с.`};
-    }
-    if(acc.twoFA.codeAt){const age=Date.now()-new Date(acc.twoFA.codeAt).getTime();if(age>5*60*1000)return{ok:false,reason:'Код устарел. Запросите новый.'};}
-    const ok=acc.twoFA.secret?code.trim()===acc.twoFA.secret:simpleHash(code.trim())===acc.twoFA.codeHash;
-    if(!ok){
-      const fail=(acc.twoFA.failCount??0)+1;
-      const locked=fail>=5?new Date(Date.now()+30_000).toISOString():undefined;
-      const updated=accounts.map(a=>a.id===userId?{...a,twoFA:{...a.twoFA!,failCount:fail,lockedUntil:locked}}:a);
-      wA(updated);set({accounts:updated});
-      if(locked)return{ok:false,reason:'Слишком много попыток. Заблокировано на 30 с.'};
-      return{ok:false,reason:`Неверный код (${5-fail} попыток)`};
-    }
-    const cd=curDev();
-    const updated=accounts.map(a=>a.id===userId?addDevice(addSec({...a,twoFA:{...a.twoFA!,failCount:0,codeHash:undefined,lockedUntil:undefined}},{type:'login',text:`Вход через 2FA · ${cd.browser}`})):a);
-    wA(updated);wS(userId);
-    set({isAuthenticated:true,currentUserId:userId,step:'authenticated',accounts:updated,pending2faUserId:null,twoFaError:null});
-    return{ok:true};
   },
 
   terminateDevice:(userId,deviceId)=>{

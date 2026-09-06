@@ -4,9 +4,11 @@ import {
   Camera, Edit2, Check, X, Phone, Shield, Star, Crown, Clock,
   Lock, Eye, Bell, ChevronRight, LogOut, Gamepad2, Trophy, Swords, ChevronDown,
   Settings, Moon, Globe, Volume2, Download, Palette, Info, ExternalLink, WifiOff, Wallet, Gift, EyeOff, PawPrint, Briefcase, Users,
-  RotateCcw, CheckCheck, MessageSquare, Send, Fingerprint, Coffee, Timer, Pause, Tv
+  RotateCcw, CheckCheck, MessageSquare, Send, Fingerprint, Coffee, Timer, Pause, Tv,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
+import { ConfirmExit } from '@/auth/AuthScreen';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { syncBloomAuthor } from '@/bloom/store';
 import { useMessengerStore } from '@/messenger/store';
@@ -309,6 +311,8 @@ const TVModeSection = () => {
 };
 
 const SettingsSection = ({ logout, username }: { logout:()=>void; username:string }) => {
+  const switchProfile = useAuthStore(s=>s.switchProfile);
+  const [confirmExit, setConfirmExit] = useState(false);
   const { settings, set, reset } = useSettings();
   const s = settings;
 
@@ -577,19 +581,37 @@ const SettingsSection = ({ logout, username }: { logout:()=>void; username:strin
         </button>
       </div>
 
-      {/* -- ВЫХОД ------------------------------- */}
+      {/* -- СМЕНА ПРОФИЛЯ И ВЫХОД --------------- */}
+      {/* Смена профиля не выходит из Sky ID: код из SMS заново не нужен. */}
+      <div className="rounded-2xl overflow-hidden" style={{ background:'var(--bg-l2)', border:'1px solid var(--border)' }}>
+        <button type="button" onClick={switchProfile}
+          className="flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.03]">
+          <div className="grid h-9 w-9 place-items-center rounded-xl" style={{ background:'var(--accent-bg)' }}>
+            <ArrowLeftRight size={16} style={{ color:'var(--accent)' }}/>
+          </div>
+          <div className="text-left">
+            <p className="text-sm" style={{ color:'var(--t1)' }}>Сменить профиль</p>
+            <p className="text-xs" style={{ color:'var(--t3)' }}>Sky ID останется открытым</p>
+          </div>
+        </button>
+      </div>
+
       <div className="rounded-2xl overflow-hidden" style={{ background:'rgba(239,68,68,0.05)', border:'1px solid rgba(239,68,68,0.15)' }}>
-        <button type="button" onClick={logout}
+        <button type="button" onClick={()=>setConfirmExit(true)}
           className="flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-red-500/10">
           <div className="grid h-9 w-9 place-items-center rounded-xl" style={{ background:'rgba(239,68,68,0.1)' }}>
             <LogOut size={16} style={{ color:'var(--red)' }}/>
           </div>
           <div className="text-left">
-            <p className="text-sm" style={{ color:'var(--red)' }}>Выйти из аккаунта</p>
+            <p className="text-sm" style={{ color:'var(--red)' }}>Выйти из Sky ID</p>
             <p className="text-xs" style={{ color:'var(--t3)' }}>@{username}</p>
           </div>
         </button>
       </div>
+
+      <AnimatePresence>
+        {confirmExit && <ConfirmExit onCancel={()=>setConfirmExit(false)} onConfirm={logout}/>}
+      </AnimatePresence>
 
       <div className="h-4"/>
     </div>

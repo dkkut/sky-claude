@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import { Crown, Check, Star, Zap, Shield, Music2, Film, Radio, Sparkles, Gift, TrendingUp, X } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
-import { useMoney, fmt as fmtMoney } from '@/wallet/store';
+import { useMoney, fmt as fmtMoney, reloadWalletForUser } from '@/wallet/store';
 import { usePlatformStore } from '@/platform/store';
 import { REWARDS, TIER_LIST, tierFor, lifetimePointsOf, progressToNextTier, earnPrimePoints, redeemPrimeReward } from '@/prime/pointsStore';
 import { useRegionStore } from '@/region/store';
@@ -147,25 +147,39 @@ const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
 };
 
 export const SkyPrime = () => {
-  const { accounts, currentUserId, grantPrime, updateProfile } = useAuthStore();
+  const { accounts, currentUserId, purchasePrime, cancelPrime } = useAuthStore();
   const { grantPrime: grantPlatformPrime, revokePrime } = usePlatformStore();
+  const [buyError, setBuyError] = useState<string | null>(null);
+  const [buying, setBuying] = useState(false);
   const me = accounts.find(a => a.id === currentUserId);
   const isPrime = me?.isPrime ?? false;
   const { formatPrice, isWorldwide } = useRegionStore();
   const isMobile = useIsMobile();
 
-  const { spend, getBalance } = useMoney();
+  const { getBalance } = useMoney();
   const walletBalance = getBalance(currentUserId ?? '');
 
   const PRICES: Record<number, number> = { 30: 400, 365: 3790, 730: 6990 };
 
-  const handleBuy = (days: number) => {
-    const price = PRICES[days] ?? 400;
-    const ok    = spend(currentUserId!, price, 'prime',
-      `Sky Prime  -  ${days === 30 ? '1 месяц' : days === 365 ? '1 год' : '2 года'}`);
-    if (!ok) return; // insufficient funds  -  UI handles via button state
-    grantPrime(currentUserId!, days);
+  // Покупку проводит сервер: он берёт цену из своей таблицы, списывает
+  // с кошелька профиля и только потом выписывает подписку. Раньше списание
+  // и выдача шли из браузера, а результат списания даже не проверялся —
+  // Prime доставался бесплатно.
+  const handleBuy = async (days: number) => {
+    if (buying) return;
+    setBuying(true); setBuyError(null);
+    const res = await purchasePrime(
+      days === 30 ? 'month' : days === 365 ? 'year' : 'two_years', days,
+    );
+    setBuying(false);
+    if (!res.ok) { setBuyError(res.reason ?? 'Не удалось оформить подписку'); return; }
+    await reloadWalletForUser(currentUserId ?? null);
     grantPlatformPrime(days);
+  };
+
+  const handleCancel = async () => {
+    const res = await cancelPrime();
+    if (res.ok) revokePrime();
   };
 
   if (isPrime) return (
@@ -206,7 +220,7 @@ export const SkyPrime = () => {
           ))}
         </div>
 
-        <button type="button" onClick={() => { revokePrime(); updateProfile({ isPrime: false, primeUntil: undefined } as any); }}
+        <button type="button" onClick={handleCancel}
           className={isMobile ? 'mt-4 w-full rounded-xl py-2.5 text-[13px]' : 'mt-6 w-full rounded-2xl py-3 text-sm'} style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--t3)' }}>
           Отменить подписку
         </button>
@@ -252,7 +266,7 @@ export const SkyPrime = () => {
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 + i * 0.06 }}
               whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-              onClick={() => handleBuy(plan.days)}
+              onClick={() => handleBuy(plan.days)} disabled={buying}
               className={isMobile ? 'relative w-full overflow-hidden rounded-xl p-3.5 text-left' : 'relative w-full overflow-hidden rounded-xl p-5 text-left'}
               style={{
                 background: plan.popular ? 'linear-gradient(135deg, rgba(245,158,11,0.2), rgba(251,191,36,0.1))' : 'rgba(14,16,26,0.6)',
@@ -278,6 +292,13 @@ export const SkyPrime = () => {
             </motion.button>
           ))}
         </div>
+
+        {buyError && (
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="mt-3 text-center text-xs leading-snug" style={{ color: 'var(--red)' }} role="alert">
+            {buyError}
+          </motion.p>
+        )}
 
         {/* Wallet balance check */}
         <div className={isMobile ? 'mt-3 rounded-xl px-3 py-2.5 flex items-center gap-2.5' : 'mt-4 rounded-2xl px-4 py-3 flex items-center gap-3'}

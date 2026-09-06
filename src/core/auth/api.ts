@@ -1,23 +1,50 @@
 /* ===============================================================
-   КЛИЕНТ API АВТОРИЗАЦИИ
+   КЛИЕНТ SKY ID
+
+   Sky ID — это учётная запись (телефон, почта, двухэтапная защита),
+   внутри которой живут профили (имя, ник, аватар, Prime, кошелёк).
+   Вход выполняется в Sky ID, работа идёт от имени выбранного профиля.
 
    Access-токен держим только в памяти вкладки: в localStorage его
    класть нельзя — оттуда его заберёт любой скрипт, дорвавшийся до
    страницы. Refresh-токен браузеру вообще не виден, он приходит
    в HttpOnly-куке и уходит обратно сам.
 
-   Отсюда же перевыпуск: если access протух, запрос делается заново
-   после обновления, но только один раз — иначе при отозванной сессии
-   получился бы бесконечный цикл.
+   Ни одно решение здесь не принимается: сколько профилей можно
+   завести, есть ли Prime, нужен ли второй фактор — отвечает сервер.
+   Этот файл только спрашивает и показывает ответ.
 =============================================================== */
 
-export interface ServerUser {
-  id:       string;
-  phone:    string;
-  username: string;
-  name:     string;
-  isAdmin:  boolean;
-  isPrime:  boolean;
+export interface SkyIdInfo {
+  id:                 string;
+  phone:              string;
+  email?:             string;
+  emailVerified:      boolean;
+  twoFactorEnabled:   boolean;
+  createdAt?:         string;
+}
+
+export interface ServerProfile {
+  id:               string;
+  skyId:            string;
+  username:         string;
+  name:             string;
+  avatar?:          string | null;
+  bio?:             string | null;
+  isAdmin:          boolean;
+  isPrime:          boolean;
+  primeExpiresAt?:  string | null;
+  primePlan?:       string | null;
+  twoFactorEnabled: boolean;
+  createdAt?:       string;
+}
+
+/** Полное состояние входа, как его видит сервер. */
+export interface SkySession {
+  skyId:           SkyIdInfo;
+  profiles:        ServerProfile[];
+  activeProfileId: string | null;
+  maxProfiles:     number;
 }
 
 /** Живёт только в памяти вкладки. Перезагрузка страницы его теряет — это намеренно. */
@@ -26,12 +53,44 @@ let accessToken: string | null = null;
 export const getAccessToken = () => accessToken;
 export const setAccessToken = (t: string | null) => { accessToken = t; };
 
-const API = '/api/auth';
-
 type Json = Record<string, unknown>;
 
-const request = async (path: string, init: RequestInit = {}): Promise<Response> =>
-  fetch(`${API}${path}`, {
+/* ─── Сообщения об ошибках ───────────────────────────────────── */
+const ERRORS: Record<string, string> = {
+  invalid_phone:         'Проверьте номер телефона',
+  invalid_email:         'Проверьте адрес почты',
+  invalid_code:          'Неверный код',
+  code_expired:          'Код устарел — запросите новый',
+  too_many_attempts:     'Слишком много попыток. Запросите новый код',
+  too_soon:              'Код уже отправлен, подождите немного',
+  too_many_requests:     'Слишком много запросов кода. Попробуйте через час',
+  rate_limited:          'Слишком много попыток, подождите минуту',
+  invalid_username:      'Ник: 3–32 символа, латиница, цифры и _',
+  invalid_name:          'Имя: от 2 до 64 символов',
+  username_taken:        'Такой ник уже занят',
+  email_taken:           'Эта почта уже привязана к другому Sky ID',
+  profile_limit_reached: 'На один Sky ID можно завести не больше двух профилей',
+  profile_code_required: 'Профиль защищён — введите код из приложения',
+  two_factor_required:   'Введите код из приложения',
+  challenge_expired:     'Время вышло — начните вход заново',
+  not_found:             'Не найдено',
+  unauthorized:          'Сессия закончилась, войдите заново',
+  no_active_profile:     'Сначала выберите профиль',
+  sms_not_configured:    'Отправка кодов пока не настроена',
+  email_not_configured:  'Отправка писем пока не настроена',
+  payments_not_configured: 'Оплата пока не подключена',
+};
+
+export const explain = (code?: string, status?: number) =>
+  (code && ERRORS[code]) || (code ? `Не получилось (${code})` : `Ошибка сервера (${status ?? '?'})`);
+
+/* ─── Транспорт ──────────────────────────────────────────────── */
+const readJson = async (res: Response): Promise<any> => {
+  try { return await res.json(); } catch { return {}; }
+};
+
+const raw = (path: string, init: RequestInit = {}) =>
+  fetch(path, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -42,110 +101,155 @@ const request = async (path: string, init: RequestInit = {}): Promise<Response> 
     credentials: 'same-origin',
   });
 
-const post = (path: string, body: Json = {}) =>
-  request(path, { method: 'POST', body: JSON.stringify(body) });
+/** Чтобы несколько одновременных 401 не устроили гонку обновлений. */
+let refreshing: Promise<boolean> | null = null;
 
-/** Читает JSON, не падая на пустом или битом теле. */
-const readJson = async (res: Response): Promise<any> => {
-  try { return await res.json(); } catch { return {}; }
+const refreshOnce = (): Promise<boolean> => {
+  refreshing ??= (async () => {
+    const res  = await raw('/api/auth/refresh', { method: 'POST', body: '{}' });
+    const data = await readJson(res);
+    if (!res.ok) { setAccessToken(null); return false; }
+    setAccessToken(data.accessToken ?? null);
+    return true;
+  })().finally(() => { refreshing = null; });
+  return refreshing;
 };
 
-export interface AuthResult {
-  ok:      boolean;
-  user?:   ServerUser;
-  reason?: string;
-}
-
-const ERRORS: Record<string, string> = {
-  invalid_credentials: 'Неверный логин или пароль',
-  already_exists:      'Такой аккаунт уже существует',
-  invalid_phone:       'Некорректный номер телефона',
-  invalid_username:    'Ник: 3–32 символа, латиница, цифры, _',
-  invalid_name:        'Некорректное имя',
-  weak_password:       'Пароль минимум 8 символов',
-  rate_limited:        'Слишком много попыток, подождите минуту',
-};
-
-const toReason = (data: any, res: Response) =>
-  ERRORS[data?.error] ?? `Ошибка сервера (${res.status})`;
-
-export const apiLogin = async (login: string, password: string): Promise<AuthResult> => {
-  const res  = await post('/login', { login, password });
-  const data = await readJson(res);
-  if (!res.ok) return { ok: false, reason: toReason(data, res) };
-  setAccessToken(data.accessToken ?? null);
-  return { ok: true, user: data.user };
-};
-
-export const apiRegister = async (
-  p: { phone: string; username: string; name: string; password: string },
-): Promise<AuthResult> => {
-  const res  = await post('/register', p);
-  const data = await readJson(res);
-  if (!res.ok) return { ok: false, reason: toReason(data, res) };
-  setAccessToken(data.accessToken ?? null);
-  return { ok: true, user: data.user };
-};
-
-export const apiLogout = async (): Promise<void> => {
-  try { await post('/logout'); } finally { setAccessToken(null); }
-};
+export interface Reply<T> { ok: boolean; data?: T; error?: string; reason?: string; status: number }
 
 /**
- * Восстанавливает сессию по куке. Вызывается при старте приложения:
- * access-токена после перезагрузки нет, а кука осталась.
+ * Запрос к API. Если access протух — обновляемся один раз и повторяем;
+ * второй неудачи достаточно, чтобы считать сессию законченной.
  */
-export const apiRefresh = async (): Promise<AuthResult> => {
-  const res  = await post('/refresh');
+const call = async <T>(path: string, init: RequestInit = {}, retry = true): Promise<Reply<T>> => {
+  let res: Response;
+  try {
+    res = await raw(path, init);
+  } catch {
+    return { ok: false, error: 'network', reason: 'Нет связи с сервером', status: 0 };
+  }
+
+  if (res.status === 401 && retry && path !== '/api/auth/refresh') {
+    if (await refreshOnce()) return call<T>(path, init, false);
+  }
+
   const data = await readJson(res);
   if (!res.ok) {
-    setAccessToken(null);
-    return { ok: false, reason: toReason(data, res) };
+    return { ok: false, error: data?.error, reason: explain(data?.error, res.status), status: res.status, data };
   }
-  setAccessToken(data.accessToken ?? null);
-  return { ok: true, user: data.user };
+  return { ok: true, data, status: res.status };
 };
 
-/** Кто вошёл — по мнению сервера, а не по данным из браузера. */
-export const apiMe = async (): Promise<AuthResult> => {
-  const res = await request('/me');
-  if (res.status === 401) {
-    // Access протух — пробуем один раз обновиться и повторить.
-    const refreshed = await apiRefresh();
-    if (!refreshed.ok) return refreshed;
-    const retry = await request('/me');
-    if (!retry.ok) return { ok: false, reason: 'unauthorized' };
-    return { ok: true, user: (await readJson(retry)).user };
-  }
-  if (!res.ok) return { ok: false, reason: `Ошибка сервера (${res.status})` };
-  return { ok: true, user: (await readJson(res)).user };
+const post = <T>(path: string, body: Json = {}) =>
+  call<T>(path, { method: 'POST', body: JSON.stringify(body) });
+const patch = <T>(path: string, body: Json = {}) =>
+  call<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
+const get = <T>(path: string) => call<T>(path);
+
+/* ═══ Вход ═══════════════════════════════════════════════════ */
+
+export interface CodeRequested { ok: true; retryAfter: number; expiresIn: number; codeLength: number }
+
+/** Шаг 1: просим код на телефон. */
+export const apiRequestPhoneCode = (phone: string) =>
+  post<CodeRequested>('/api/auth/phone/start', { phone });
+
+/** Сколько секунд осталось до повторной отправки. */
+export const apiPhoneCooldown = (phone: string) =>
+  post<{ retryAfter: number }>('/api/auth/phone/cooldown', { phone });
+
+export type PhoneVerified =
+  | ({ needsTwoFactor: true; challenge: string; expiresIn: number })
+  | (SkySession & { accessToken: string; expiresIn: number; isNew?: boolean });
+
+/** Шаг 2: проверяем код. Может ответить «нужен второй фактор». */
+export const apiVerifyPhoneCode = (phone: string, code: string) =>
+  post<PhoneVerified>('/api/auth/phone/verify', { phone, code });
+
+/** Шаг 3: второй фактор самого Sky ID. */
+export const apiVerifySkyTwoFactor = (challenge: string, code: string) =>
+  post<SkySession & { accessToken: string }>('/api/auth/two-factor/verify', { challenge, code });
+
+/** Восстановление сессии по куке — вызывается при старте приложения. */
+export const apiRefreshSession = async (): Promise<Reply<SkySession & { accessToken: string }>> => {
+  const res = await post<SkySession & { accessToken: string }>('/api/auth/refresh');
+  if (res.ok && res.data) setAccessToken(res.data.accessToken ?? null);
+  else setAccessToken(null);
+  return res;
 };
 
-export const apiChangePassword = async (
-  oldPassword: string, newPassword: string,
-): Promise<{ ok: boolean; reason?: string }> => {
-  const send = () => post('/change-password', { oldPassword, newPassword });
-  let res = await send();
-  if (res.status === 401) {
-    // Access протух — обновляемся и пробуем один раз.
-    const refreshed = await apiRefresh();
-    if (!refreshed.ok) return { ok: false, reason: 'Сессия истекла, войдите заново' };
-    res = await send();
-  }
-  const data = await readJson(res);
-  if (!res.ok) {
-    const map: Record<string, string> = {
-      wrong_password: 'Неверный текущий пароль',
-      weak_password:  'Новый пароль минимум 8 символов',
-      unauthorized:   'Сессия истекла, войдите заново',
-    };
-    return { ok: false, reason: map[data?.error] ?? toReason(data, res) };
-  }
-  setAccessToken(data.accessToken ?? null);
-  return { ok: true };
+/** Текущее состояние входа по мнению сервера. */
+export const apiSession = () => get<SkySession>('/api/auth/session');
+
+export const apiLogout = async (): Promise<void> => {
+  try { await post('/api/auth/logout'); } finally { setAccessToken(null); }
 };
 
-/** Доступен ли бэкенд. Нужно, чтобы отличить «нет сети» от «неверный пароль». */
+/* ═══ Профили ════════════════════════════════════════════════ */
+
+export const apiListProfiles = () =>
+  get<{ profiles: ServerProfile[]; activeProfileId: string | null; maxProfiles: number }>('/api/skyid/profiles');
+
+export const apiCreateProfile = (p: { name: string; username: string; avatar?: string }) =>
+  post<{ profile: ServerProfile; profiles: ServerProfile[] }>('/api/skyid/profiles', p);
+
+/**
+ * Выбор профиля. Sky ID при этом остаётся авторизованным — меняется
+ * только активный профиль в той же сессии. Для защищённого профиля
+ * нужен код: без него сервер отвечает profile_code_required.
+ */
+export const apiSelectProfile = async (profileId: string, code?: string) => {
+  const res = await post<{ profile: ServerProfile; activeProfileId: string; accessToken: string }>(
+    `/api/skyid/profiles/${encodeURIComponent(profileId)}/select`, code ? { code } : {},
+  );
+  if (res.ok && res.data?.accessToken) setAccessToken(res.data.accessToken);
+  return res;
+};
+
+export const apiUpdateProfile = (profileId: string, p: { name?: string; avatar?: string }) =>
+  patch<{ profile: ServerProfile }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}`, p);
+
+/* ═══ Двухэтапная защита профиля ═════════════════════════════ */
+
+export const apiProfileTwoFactorBegin = (profileId: string) =>
+  post<{ secret: string; uri: string }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}/two-factor/begin`);
+
+export const apiProfileTwoFactorConfirm = (profileId: string, code: string) =>
+  post<{ profile: ServerProfile }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}/two-factor/confirm`, { code });
+
+export const apiProfileTwoFactorDisable = (profileId: string, code: string) =>
+  post<{ profile: ServerProfile }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}/two-factor/disable`, { code });
+
+/* ═══ Двухэтапная защита Sky ID ══════════════════════════════ */
+
+export const apiSkyTwoFactorBegin = () =>
+  post<{ secret: string; uri: string }>('/api/skyid/two-factor/begin');
+
+export const apiSkyTwoFactorConfirm = (code: string) =>
+  post<{ skyId: SkyIdInfo }>('/api/skyid/two-factor/confirm', { code });
+
+export const apiSkyTwoFactorDisable = (code: string) =>
+  post<{ skyId: SkyIdInfo }>('/api/skyid/two-factor/disable', { code });
+
+/* ═══ Почта ══════════════════════════════════════════════════ */
+
+export const apiEmailStart = (email: string) =>
+  post<{ ok: true; retryAfter: number; expiresIn: number }>('/api/skyid/email/start', { email });
+
+export const apiEmailVerify = (email: string, code: string) =>
+  post<{ skyId: SkyIdInfo }>('/api/skyid/email/verify', { email, code });
+
+/* ═══ Prime ══════════════════════════════════════════════════ */
+
+export const apiGrantPrime = (plan: string, days: number) =>
+  post<{ profile: ServerProfile }>('/api/skyid/prime/grant', { plan, days });
+
+export const apiRevokePrime = () =>
+  post<{ profile: ServerProfile }>('/api/skyid/prime/revoke');
+
+/* ═══ Прочее ═════════════════════════════════════════════════ */
+
+/** Доступен ли бэкенд. Нужно, чтобы отличить «нет сети» от «неверный код». */
 export const apiAvailable = async (): Promise<boolean> => {
   try {
     const res = await fetch('/healthz', { cache: 'no-store', signal: AbortSignal.timeout(4000) });

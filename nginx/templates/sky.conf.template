@@ -82,9 +82,34 @@ server {
         return 200 'ok';
     }
 
-    # -- Авторизация: жёсткий лимит против перебора паролей ----
-    location ^~ /api/auth/ {
+    # -- Отправка кода: самый жёсткий лимит ---------------------
+    #  Каждый такой запрос — это SMS, то есть деньги и чужой телефон,
+    #  звенящий по чьей-то чужой воле. Пять в минуту с адреса — потолок.
+    location = /api/auth/phone/start {
         limit_req zone=req_auth burst=5 nodelay;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_pass http://sky_api;
+    }
+
+    # -- Проверка кода: лимит против перебора -------------------
+    #  Здесь запас больше: человек ошибается в цифрах, а перебор всё
+    #  равно упирается в счётчик попыток на самом коде (5 и код сгорает).
+    location ~ ^/api/auth/(phone/verify|two-factor/verify)$ {
+        limit_req zone=req_code burst=10 nodelay;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_pass http://sky_api;
+    }
+
+    # -- Остальная авторизация: обычный лимит -------------------
+    #  refresh, session и logout вызываются при каждой загрузке
+    #  страницы. Держать их на «пять в минуту» значило бы выкидывать
+    #  человека из аккаунта за то, что он несколько раз обновил вкладку.
+    location ^~ /api/auth/ {
+        limit_req zone=req_general burst=60 nodelay;
         include /etc/nginx/snippets/proxy-common.conf;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;

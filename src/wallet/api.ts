@@ -9,7 +9,7 @@
    мы никуда не передаём, и списать с чужого счёта нельзя даже подделав
    запрос.
 =============================================================== */
-import { getAccessToken, apiRefresh } from '@/core/auth/api';
+import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
 import type { Transaction, TxType } from './store';
 
 export interface WalletSnapshot {
@@ -50,7 +50,7 @@ const call = async (path: string, init: RequestInit = {}): Promise<Response> => 
   if (res.status !== 401) return res;
 
   // Access-токен живёт 15 минут; обновляемся один раз и повторяем.
-  const refreshed = await apiRefresh();
+  const refreshed = await apiRefreshSession();
   return refreshed.ok ? send() : res;
 };
 
