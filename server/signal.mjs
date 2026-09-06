@@ -15,6 +15,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.mjs';
 import { verifyToken } from './security.mjs';
+import { sessionStore } from './sessions.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember,
@@ -59,10 +60,30 @@ const removeClient = (userId, ws) => {
 };
 
 /* ─── авторизация ──────────────────────────────────────────────────────── */
-const userIdFromToken = (token) => {
+/**
+ * Хаб работает от имени профиля: идентификатор профиля — это тот же id,
+ * на который ссылаются авторы сообщений и участники чатов. Пока профиль
+ * не выбран, его нет, и подключение к хабу не имеет смысла.
+ *
+ * Подписи токена мало: после «Выйти из Sky ID» он остаётся формально
+ * действительным до конца срока. Поэтому сверяемся с живой сессией и
+ * профиль берём из неё же — тогда смена профиля в другой вкладке не
+ * оставит сокет говорить от имени прежнего.
+ *
+ * Возвращает { userId, sessionId } либо null.
+ */
+const identify = async (token) => {
   const payload = verifyToken(token, config.jwtSecret);
-  return payload && payload.typ === 'access' ? payload.sub : null;
+  if (!payload || payload.typ !== 'access' || !payload.sky || !payload.sid) return null;
+
+  const stored = await sessionStore.get(payload.sid);
+  if (!stored || stored.userId !== payload.sky || !stored.profileId) return null;
+
+  return { userId: stored.profileId, sessionId: payload.sid };
 };
+
+/** Как часто перепроверять, что сессия открытого сокета ещё жива. */
+const SESSION_RECHECK_MS = 60_000;
 
 /** Отдаёт вошедшему его чаты и последние сообщения по каждому. */
 const sendSnapshot = async (ws, userId) => {
@@ -189,7 +210,10 @@ export const startSignalHub = () => {
   wss = new WebSocketServer({ port: PORT, maxPayload: MAX_MESSAGE_BYTES });
 
   wss.on('connection', (ws) => {
-    const session = { userId: null, count: 0, minute: 0 };
+    const session = { userId: null, sessionId: null, count: 0, minute: 0 };
+    // Долго живущий сокет проверяем не только на входе: вышли из Sky ID
+    // или сменили профиль — соединение должно закрыться само.
+    let recheck = null;
 
     // Неавторизованное соединение живёт ограниченное время: иначе можно
     // держать тысячи открытых сокетов, ничего не предъявляя.
@@ -205,15 +229,27 @@ export const startSignalHub = () => {
       /* ── Авторизация ── */
       if (msg.type === 'auth') {
         if (session.userId) return;
-        const userId = userIdFromToken(msg.payload?.token);
-        if (!userId) {
+        const who = await identify(msg.payload?.token);
+        if (!who) {
           send(ws, { type: 'auth-failed' });
           ws.close(4401, 'unauthorized');
           return;
         }
+        const { userId } = who;
         session.userId = userId;
+        session.sessionId = who.sessionId;
         clearTimeout(authTimer);
         addClient(userId, ws);
+
+        recheck = setInterval(async () => {
+          try {
+            const stored = await sessionStore.get(session.sessionId);
+            if (!stored || stored.profileId !== session.userId) ws.close(4401, 'session ended');
+          } catch (err) {
+            console.error('[ws] проверка сессии', err.message);
+          }
+        }, SESSION_RECHECK_MS);
+        recheck.unref();
 
         send(ws, { type: 'authorized', payload: { userId, onlineUsers: [...clients.keys()] } });
         // Об онлайне сообщаем только тем, с кем есть общий чат.
@@ -247,6 +283,7 @@ export const startSignalHub = () => {
 
     ws.on('close', async () => {
       clearTimeout(authTimer);
+      if (recheck) clearInterval(recheck);
       const uid = session.userId;
       if (!uid) return;
       const wentOffline = removeClient(uid, ws);

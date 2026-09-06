@@ -39,9 +39,13 @@ export const sessionStore = {
   /**
    * Кладёт сессию с временем жизни refresh-токена: Redis удалит запись
    * сам, отдельная чистка не нужна.
+   *
+   * userId здесь — это Sky ID: сессия принадлежит аккаунту, а не профилю.
+   * Активный профиль хранится отдельным полем и меняется при переключении,
+   * не затрагивая саму сессию.
    */
-  async put({ id, userId }, ttlSec) {
-    const value = JSON.stringify({ id, userId, createdAt: Date.now() });
+  async put({ id, userId, profileId = null }, ttlSec) {
+    const value = JSON.stringify({ id, userId, profileId, createdAt: Date.now() });
     await client
       .multi()
       .setEx(KEY_SESSION(id), ttlSec, value)
@@ -59,6 +63,22 @@ export const sessionStore = {
     } catch {
       return null;
     }
+  },
+
+  /**
+   * Меняет активный профиль в существующей сессии. Срок жизни сохраняем:
+   * переключение профиля не должно ни продлевать, ни укорачивать вход.
+   */
+  async setActiveProfile(id, profileId) {
+    const session = await this.get(id);
+    if (!session) return false;
+    const ttl = await client.ttl(KEY_SESSION(id));
+    await client.setEx(
+      KEY_SESSION(id),
+      ttl > 0 ? ttl : 60,
+      JSON.stringify({ ...session, profileId }),
+    );
+    return true;
   },
 
   async revoke(id) {

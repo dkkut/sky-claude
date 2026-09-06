@@ -70,6 +70,16 @@ services:
       # 'demo' открывает пополнение кошелька без реального платежа.
       # В продакшне не задавайте — иначе баланс рисуется одним запросом.
       PAYMENTS_MODE:         ${PAYMENTS_MODE:-disabled}
+      # Отдельный ключ шифрования секретов двухэтапной защиты.
+      ENCRYPTION_KEY:        ${ENCRYPTION_KEY:-}
+      # Доставка кодов. 'log' пишет код в журнал и никуда не шлёт —
+      # в бою нужен настоящий провайдер, иначе войти никто не сможет.
+      SMS_MODE:              ${SMS_MODE:-log}
+      SMS_API_ID:            ${SMS_API_ID:-}
+      SMS_FROM:              ${SMS_FROM:-}
+      EMAIL_MODE:            ${EMAIL_MODE:-log}
+      EMAIL_WEBHOOK_URL:     ${EMAIL_WEBHOOK_URL:-}
+      EMAIL_WEBHOOK_TOKEN:   ${EMAIL_WEBHOOK_TOKEN:-}
       REDIS_URL:             redis://:${REDIS_PASSWORD:?нужно задать REDIS_PASSWORD в .env}@redis:6379
     networks: [internal]
     deploy:
