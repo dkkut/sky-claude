@@ -11,6 +11,7 @@
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { claimAttachment, linkAttachment, dropForMessage } from './attachments.mjs';
+import { postDenial, contextFor, roleOf, permissionsOf } from './chatadmin.mjs';
 
 /** Потолок участников группы или канала при создании. */
 const MAX_PARTICIPANTS = 100;
@@ -95,7 +96,7 @@ const PEOPLE_SELECT = `
      FROM chat_members cm JOIN profiles p ON p.id = cm.user_id
     WHERE cm.chat_id = c.id) AS people`;
 
-const toChat = (row) => {
+const toChat = (row, viewerRole = undefined) => {
   const people = row.people ?? [];
   const name = decryptContent(row.name);
   const description = row.description ? decryptContent(row.description) : undefined;
@@ -111,6 +112,9 @@ const toChat = (row) => {
     ownerId: row.owner_id ?? undefined,
     people,
     participants: people.map((p) => p.id),
+    // Роль спрашивающего: по ней интерфейс решает, что показывать. Сами
+    // права всё равно проверяются на сервере при каждом действии.
+    myRole: viewerRole ?? row.my_role ?? undefined,
     createdAt: row.created_at.toISOString(),
   };
 };
@@ -145,6 +149,12 @@ const toMessage = (row) => {
   // прочтений, и раньше «прочитано» просто рисовалось по таймеру.
   readByAll: Boolean(row.read_by_all),
   editedAt: row.edited_at ? row.edited_at.toISOString() : undefined,
+  // Закрепление — свойство сообщения для всех участников, а не пометка
+  // в браузере закрепившего.
+  pinned: Boolean(row.pinned_at),
+  pinnedBy: row.pinned_by ?? undefined,
+  // Уникальные читатели: нужны каналам, остальным просто не мешают.
+  views: row.views ?? 0,
   createdAt: row.created_at.toISOString(),
   // Адрес вложения собирает сервер — см. mediaUrlFor.
   mediaUrl: row.deleted ? undefined : mediaUrlFor(extra.fileId),
@@ -165,13 +175,18 @@ export const listChats = async (userId) => {
 
 /** Один чат — с проверкой участия. Нужен, чтобы отдать его создателю. */
 export const getChat = async (chatId, userId) => {
-  if (!(await isMember(chatId, userId))) return null;
-  const { rows } = await query(`SELECT c.*, ${PEOPLE_SELECT} FROM chats c WHERE c.id = $1`, [chatId]);
+  const { rows } = await query(
+    `SELECT c.*, me.role AS my_role, ${PEOPLE_SELECT}
+       FROM chats c JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $2
+      WHERE c.id = $1`,
+    [chatId, userId],
+  );
   return rows[0] ? toChat(rows[0]) : null;
 };
 
 const MESSAGE_SELECT = `
   SELECT m.*,
+         (SELECT count(*)::int FROM message_views v WHERE v.message_id = m.id) AS views,
          coalesce((SELECT jsonb_agg(jsonb_build_object('emoji', g.emoji, 'userIds', g.ids))
                      FROM (SELECT emoji, array_agg(user_id) AS ids
                              FROM message_reactions r WHERE r.message_id = m.id
@@ -362,9 +377,12 @@ export const createChat = async (chat, creatorId) => {
       }
     } else {
       for (const uid of participants) {
+        // Создателю — роль владельца: без неё он не мог бы ни настроить
+        // собственную группу, ни написать в собственный канал.
         await client.query(
-          'INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
-          [id, uid],
+          `INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1,$2,$3)
+           ON CONFLICT (chat_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+          [id, uid, uid === creatorId ? 'owner' : 'member'],
         );
       }
     }
@@ -417,6 +435,13 @@ export const saveMessage = async (chatId, authorId, msg) => {
   // Запрет проверяется на сервере: раньше «заблокировать» лишь прятало
   // сообщения в браузере получателя, а доходили они по-прежнему.
   if (await blockedInChat(chatId, authorId)) return null;
+
+  // Правила группы и канала — одним местом на все ветки: канал только
+  // для админов, ограничения участника, антифлуд, медленный режим,
+  // запрет ссылок. Отправитель узнаёт причину: она не секрет и без неё
+  // непонятно, почему сообщение не ушло.
+  const denial = await postDenial(chatId, authorId, msg?.text);
+  if (denial) return { error: denial };
 
   const id = String(msg?.id ?? '');
   // Идентификатор произвольной формы — это мусор в первичном ключе и
@@ -496,12 +521,25 @@ export const editMessage = async (messageId, authorId, text) => {
  * Помечает удалённым. Текст затирается в самой строке, а не скрывается
  * на клиенте: иначе он остался бы доступен любому, кто смотрит ответ API.
  */
-export const deleteMessage = async (messageId, authorId) => {
+export const deleteMessage = async (messageId, actorId) => {
+  // Своё сообщение удаляет автор; чужое — тот, кому это позволено
+  // ролью в этом же чате. Право проверяется здесь, а не на клиенте.
+  const { rows: found } = await query(
+    'SELECT chat_id, author_id FROM messages WHERE id = $1 AND NOT deleted',
+    [String(messageId ?? '')],
+  );
+  if (!found[0]) return null;
+  if (found[0].author_id !== actorId) {
+    const ctx = await contextFor(found[0].chat_id, actorId);
+    if (!ctx || !ctx.can.deleteOthers) return null;
+  }
+
   const { rows } = await query(
-    `UPDATE messages SET deleted = TRUE, text = '', payload = '{}'::jsonb
-      WHERE id = $1 AND author_id = $2
+    `UPDATE messages SET deleted = TRUE, text = '', payload = '{}'::jsonb,
+                         pinned_at = NULL, pinned_by = NULL
+      WHERE id = $1
       RETURNING id, chat_id`,
-    [messageId, authorId],
+    [String(messageId ?? '')],
   );
   if (!rows[0]) return null;
   await query('DELETE FROM message_reactions WHERE message_id = $1', [messageId]);

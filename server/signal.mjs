@@ -22,8 +22,14 @@ import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
-  blockUser, unblockUser, listBlocked, addMember, leaveChat,
+  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat,
 } from './chats.mjs';
+import {
+  getSettings, updateSettings, setRole, kickMember, unbanMember, muteMember,
+  createInvite, revokeInvite, listInvites, joinByInvite,
+  listJoinRequests, decideJoin, listLog, listMembers, markViewed, pinMessage,
+  contextFor,
+} from './chatadmin.mjs';
 
 const PORT = Number(process.env.SIGNAL_PORT || 8081);
 
@@ -119,6 +125,21 @@ const broadcast = (userIds, msg, exceptId) => {
 const fanout = (userIds, msg, exceptWs) => {
   for (const uid of userIds) {
     for (const ws of clients.get(uid) ?? []) if (ws !== exceptWs) send(ws, msg);
+  }
+};
+
+/**
+ * Рассылает чат каждому в его собственном виде.
+ *
+ * Чат теперь несёт роль спрашивающего, а раньше всем уходил один и тот
+ * же пакет — тот, что видит создатель. Приглашённый получал чужую роль
+ * владельца и вместе с ней все кнопки управления.
+ */
+const sendChatToEach = async (chatId, userIds) => {
+  for (const uid of userIds) {
+    if (!clients.has(uid)) continue;
+    const view = await getChat(chatId, uid);
+    if (view) sendTo(uid, { type: 'chat-created', payload: { chat: view } });
   }
 };
 
@@ -234,6 +255,12 @@ const handle = async (ws, session, msg) => {
       // null значит «не участник» — молча игнорируем, чтобы по ответу
       // нельзя было выяснять, какие чаты существуют.
       if (!saved) return;
+      // А вот причину отказа по правилам чата отправитель знать должен:
+      // иначе непонятно, почему сообщение не ушло.
+      if (saved.error) {
+        send(ws, { type: 'message-rejected', payload: { chatId, messageId: message?.id, reason: saved.error } });
+        return;
+      }
 
       fanout(await memberIds(chatId), { type: 'new-message', payload: { chatId, message: saved } }, ws);
       send(ws, { type: 'message-sent', payload: { messageId: saved.id, chatId, message: saved } });
@@ -277,6 +304,10 @@ const handle = async (ws, session, msg) => {
     case 'typing': {
       const chatId = payload?.chatId;
       if (!chatId || !(await isMember(chatId, me))) return;
+      // В канале «печатает…» не показываем: у записи один автор и
+      // тысяча читателей, и рассылать это всем — только шум.
+      const ctxT = await contextFor(chatId, me);
+      if (ctxT?.type === 'channel') return;
       // Имя набирающего не пересылаем: клиент присылал его сам, и в
       // строке «печатает…» можно было назваться кем угодно. Получатель
       // подставит имя из своего же списка участников чата.
@@ -307,7 +338,9 @@ const handle = async (ws, session, msg) => {
         send(ws, { type: 'chat-rejected', payload: { chatId: chat.id } });
         return;
       }
-      fanout(created.participants, { type: 'chat-created', payload: { chat: created } }, ws);
+      // Каждому — его собственный вид чата: в нём есть роль, и она у
+      // всех разная.
+      await sendChatToEach(created.id, created.participants.filter((id) => id !== me));
       send(ws, { type: 'chat-created', payload: { chat: created } });
       break;
     }
@@ -332,9 +365,7 @@ const handle = async (ws, session, msg) => {
       const result = await addMember(chatId, me, userId);
       if (result.error) { send(ws, { type: 'chat-error', payload: { chatId, error: result.error } }); return; }
       // Новому участнику чат нужен целиком, остальным — обновлённый состав.
-      for (const uid of result.chat.participants) {
-        sendTo(uid, { type: 'chat-created', payload: { chat: result.chat } });
-      }
+      await sendChatToEach(chatId, result.chat.participants);
       break;
     }
 
@@ -366,6 +397,165 @@ const handle = async (ws, session, msg) => {
       // Отвечаем только самому запретившему: собеседник не должен
       // узнавать, что его заблокировали.
       send(ws, { type: 'blocked-changed', payload: { blocked: await listBlocked(me) } });
+      break;
+    }
+
+
+    /* ── Управление группой и каналом ──────────────────────────────
+       Каждое действие проверяет право на сервере: присланная клиентом
+       роль здесь ничего не значит. ── */
+
+    case 'chat-admin': {
+      const chatId = payload?.chatId;
+      const action = String(payload?.action ?? '');
+      if (!chatId || !action) return;
+
+      /** Отправить обновлённый чат всем, кто в нём состоит. */
+      const pushChat = async (ids) => sendChatToEach(chatId, ids ?? await memberIds(chatId));
+      const fail = (error) => send(ws, { type: 'chat-error', payload: { chatId, action, error } });
+
+      switch (action) {
+        case 'get-settings': {
+          const settings = await getSettings(chatId);
+          if (!settings || !(await isMember(chatId, me))) return fail('not_found');
+          return send(ws, { type: 'chat-settings', payload: { chatId, settings } });
+        }
+
+        case 'set-settings': {
+          const result = await updateSettings(chatId, me, payload?.settings ?? {});
+          if (result.error) return fail(result.error);
+          // Настройки касаются всех: рассылаем всем участникам.
+          for (const uid of await memberIds(chatId)) {
+            sendTo(uid, { type: 'chat-settings', payload: { chatId, settings: result.settings } });
+          }
+          break;
+        }
+
+        case 'members': {
+          const list = await listMembers(chatId, me);
+          if (!list) return fail('not_found');
+          return send(ws, { type: 'chat-members', payload: { chatId, ...list } });
+        }
+
+        case 'set-role': {
+          const result = await setRole(chatId, me, String(payload?.userId ?? ''), String(payload?.role ?? ''));
+          if (result.error) return fail(result.error);
+          await pushChat();
+          break;
+        }
+
+        case 'kick':
+        case 'ban': {
+          const target = String(payload?.userId ?? '');
+          const result = await kickMember(chatId, me, target, { ban: action === 'ban' });
+          if (result.error) return fail(result.error);
+          // Исключённому чат больше не принадлежит; остальным — новый состав.
+          sendTo(target, { type: 'chat-removed', payload: { chatId } });
+          await pushChat((result.members ?? []).filter((id) => id !== target));
+          break;
+        }
+
+        case 'unban': {
+          const result = await unbanMember(chatId, me, String(payload?.userId ?? ''));
+          if (result.error) return fail(result.error);
+          break;
+        }
+
+        case 'mute': {
+          const result = await muteMember(chatId, me, String(payload?.userId ?? ''), payload?.minutes);
+          if (result.error) return fail(result.error);
+          const list = await listMembers(chatId, me);
+          if (list) send(ws, { type: 'chat-members', payload: { chatId, ...list } });
+          break;
+        }
+
+        case 'invites': {
+          const invites = await listInvites(chatId, me);
+          if (!invites) return fail('not_allowed');
+          return send(ws, { type: 'chat-invites', payload: { chatId, invites } });
+        }
+
+        case 'create-invite': {
+          const result = await createInvite(chatId, me, {
+            maxUses: payload?.maxUses, expiresInHours: payload?.expiresInHours,
+          });
+          if (result.error) return fail(result.error);
+          const invites = await listInvites(chatId, me);
+          return send(ws, { type: 'chat-invites', payload: { chatId, invites: invites ?? [] } });
+        }
+
+        case 'requests': {
+          const requests = await listJoinRequests(chatId, me);
+          if (!requests) return fail('not_allowed');
+          return send(ws, { type: 'chat-requests', payload: { chatId, requests } });
+        }
+
+        case 'approve-join':
+        case 'reject-join': {
+          const target = String(payload?.userId ?? '');
+          const result = await decideJoin(chatId, me, target, action === 'approve-join');
+          if (result.error) return fail(result.error);
+          if (result.joined) await sendChatToEach(chatId, await memberIds(chatId));
+          const requests = await listJoinRequests(chatId, me);
+          send(ws, { type: 'chat-requests', payload: { chatId, requests: requests ?? [] } });
+          break;
+        }
+
+        case 'log': {
+          const entries = await listLog(chatId, me, payload?.limit);
+          if (!entries) return fail('not_allowed');
+          return send(ws, { type: 'chat-log', payload: { chatId, entries } });
+        }
+      }
+      break;
+    }
+
+    case 'revoke-invite': {
+      const result = await revokeInvite(payload?.code, me);
+      if (result.error) return;
+      const invites = await listInvites(result.chatId, me);
+      send(ws, { type: 'chat-invites', payload: { chatId: result.chatId, invites: invites ?? [] } });
+      break;
+    }
+
+    case 'join-invite': {
+      const result = await joinByInvite(payload?.code, me, payload?.answer);
+      if (result.error) {
+        send(ws, { type: 'join-result', payload: { error: result.error } });
+        return;
+      }
+      if (result.pending) {
+        send(ws, { type: 'join-result', payload: { chatId: result.chatId, pending: true } });
+        // Управляющим — обновлённый список заявок.
+        for (const uid of await memberIds(result.chatId)) {
+          const list = await listJoinRequests(result.chatId, uid);
+          if (list) sendTo(uid, { type: 'chat-requests', payload: { chatId: result.chatId, requests: list } });
+        }
+        return;
+      }
+      send(ws, { type: 'join-result', payload: { chatId: result.chatId, joined: true } });
+      await sendChatToEach(result.chatId, await memberIds(result.chatId));
+      break;
+    }
+
+    case 'pin-message': {
+      const result = await pinMessage(payload?.chatId, me, payload?.messageId, payload?.pinned !== false);
+      if (result.error) return;
+      broadcast(await memberIds(payload.chatId), {
+        type: 'message-pinned',
+        payload: { chatId: payload.chatId, messageId: result.messageId, pinned: result.pinned },
+      });
+      send(ws, { type: 'message-pinned', payload: { chatId: payload.chatId, messageId: result.messageId, pinned: result.pinned } });
+      break;
+    }
+
+    case 'viewed': {
+      // Просмотры записей канала: считаются уникальные читатели.
+      const counts = await markViewed(payload?.chatId, me, payload?.messageIds);
+      if (!counts?.length) return;
+      broadcast(await memberIds(payload.chatId),
+        { type: 'message-views', payload: { chatId: payload.chatId, counts } });
+      send(ws, { type: 'message-views', payload: { chatId: payload.chatId, counts } });
       break;
     }
 
