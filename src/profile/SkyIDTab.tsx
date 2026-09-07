@@ -23,8 +23,8 @@ import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
 const fmtDt = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
 
-const prettyPhone = (raw: string) => {
-  const d = (raw ?? '').replace(/\D/g, '');
+const prettyPhone = (raw?: string) => {
+  const d = String(raw ?? '').replace(/\D/g, '');
   if (d.length !== 11) return raw || '—';
   return `+${d[0]} ${d.slice(1, 4)} ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}`;
 };
@@ -154,7 +154,9 @@ const SkyIdSection = () => {
           <Fingerprint size={16} style={{ color: 'var(--accent)' }} />
           <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>Ваш Sky ID</p>
         </div>
-        <p className="text-xl font-bold" style={{ color: 'var(--t1)' }}>{prettyPhone(sky.phone)}</p>
+        <p className="text-xl font-bold break-all" style={{ color: 'var(--t1)' }}>
+          {sky.email ?? prettyPhone(sky.phone)}
+        </p>
         <p className="mt-1 break-all font-mono text-[11px]" style={{ color: 'var(--t3)' }}>{sky.id}</p>
         <p className="text-[11px] mt-2 leading-relaxed" style={{ color: 'var(--t3)' }}>
           Один аккаунт для всей экосистемы. Профили внутри него — разные, а вход общий.
@@ -171,6 +173,85 @@ const SkyIdSection = () => {
       </div>
 
       <EmailSection />
+      <PhoneSection />
+    </div>
+  );
+};
+
+/* ── Телефон: второй канал проверки ──────────────────────────── */
+const PhoneSection = () => {
+  const { sky, startPhoneLink, confirmPhoneLink } = useAuthStore();
+  const [phone, setPhone] = useState('');
+  const [code, setCode]   = useState('');
+  const [stage, setStage] = useState<'idle' | 'code'>('idle');
+  const [msg, setMsg]     = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy]   = useState(false);
+
+  const send = async () => {
+    setBusy(true); setMsg(null);
+    const r = await startPhoneLink(phone);
+    setBusy(false);
+    if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Не получилось' }); return; }
+    setStage('code');
+    setMsg({ ok: true, text: 'Код отправлен в SMS' });
+  };
+
+  const confirm = async () => {
+    setBusy(true); setMsg(null);
+    const r = await confirmPhoneLink(phone, code);
+    setBusy(false);
+    if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Неверный код' }); return; }
+    setStage('idle'); setCode(''); setPhone('');
+    setMsg({ ok: true, text: 'Телефон привязан' });
+  };
+
+  return (
+    <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center gap-2">
+        <Smartphone size={14} style={{ color: 'var(--t2)' }} />
+        <p className="text-xs font-bold" style={{ color: 'var(--t2)' }}>Телефон</p>
+        {sky?.phoneVerified && (
+          <span className="ml-auto rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+            style={{ background: 'var(--green-bg)', color: 'var(--green)' }}>подтверждён</span>
+        )}
+      </div>
+
+      {sky?.phone && <p className="text-sm" style={{ color: 'var(--t1)' }}>{prettyPhone(sky.phone)}</p>}
+
+      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+        Необязателен. Нужен, чтобы получать код второй проверки в SMS —
+        это отдельный канал от почты, которой вы входите, и в этом весь смысл.
+      </p>
+
+      {stage === 'idle' ? (
+        <>
+          <Field inputMode="tel" autoComplete="tel"
+            placeholder={sky?.phone ? 'Новый номер' : '+7 900 000-00-00'}
+            value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d+\s()-]/g, ''))} />
+          <button type="button" onClick={send}
+            disabled={busy || phone.replace(/\D/g, '').length < 10}
+            className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
+            style={{ background: 'var(--accent)', color: '#fff' }}>
+            {busy ? 'Отправляем…' : sky?.phone ? 'Привязать другой' : 'Привязать телефон'}
+          </button>
+        </>
+      ) : (
+        <>
+          <Field inputMode="numeric" maxLength={6} placeholder="Код из SMS"
+            value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { setStage('idle'); setCode(''); }}
+              className="sky-btn-ghost flex-1">Отмена</button>
+            <button type="button" onClick={confirm} disabled={busy || code.length < 6}
+              className="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
+              style={{ background: 'var(--accent)', color: '#fff' }}>
+              Подтвердить
+            </button>
+          </div>
+        </>
+      )}
+
+      {msg && <Note ok={msg.ok} text={msg.text} />}
     </div>
   );
 };
@@ -218,8 +299,8 @@ const EmailSection = () => {
       )}
 
       <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
-        Необязательна. Пригодится, чтобы получать уведомления безопасности и
-        восстанавливать доступ, если потеряется номер.
+        Основной способ входа: на этот адрес приходит код при каждом входе.
+        Меняя его, убедитесь, что новый ящик вам доступен.
       </p>
 
       {stage === 'idle' ? (
@@ -332,10 +413,10 @@ const ProfilesSection = () => {
  * профиля, различается только тем, куда уходят вызовы.
  */
 const TwoFactorBlock = ({
-  title, hint, enabled, method, emailReady, begin, confirm, disable, resend,
+  title, hint, enabled, method, emailReady, phoneReady, begin, confirm, disable, resend,
 }: {
   title: string; hint: string; enabled: boolean;
-  method: TwoFactorMethod; emailReady: boolean;
+  method: TwoFactorMethod; emailReady: boolean; phoneReady: boolean;
   begin: (m: TwoFactorMethod) => Promise<{ ok: boolean; method?: TwoFactorMethod; secret?: string; email?: string; reason?: string }>;
   confirm: (code: string) => Promise<{ ok: boolean; reason?: string }>;
   disable: (code: string) => Promise<{ ok: boolean; reason?: string }>;
@@ -388,7 +469,9 @@ const TwoFactorBlock = ({
   /* Какой способ настраивается сейчас: при включённой защите — тот, что
      записан, при настройке — выбранный. */
   const active = stage === 'setup' ? pick : method;
-  const byEmail = active === 'email';
+  // Код присылает сервер во всех случаях, кроме приложения: оно
+  // показывает его само.
+  const byEmail = active !== 'app';
 
   return (
     <div className="rounded-2xl p-4 space-y-3"
@@ -407,8 +490,12 @@ const TwoFactorBlock = ({
           <p className="text-[11px] leading-snug mt-0.5" style={{ color: 'var(--t3)' }}>{hint}</p>
           {enabled && (
             <p className="text-[11px] mt-1 flex items-center gap-1" style={{ color: 'var(--green)' }}>
-              {method === 'email' ? <Mail size={11} /> : <Smartphone size={11} />}
-              {method === 'email' ? 'код приходит на почту' : 'код из приложения'}
+              {method === 'email' ? <Mail size={11} />
+               : method === 'sms' ? <Smartphone size={11} />
+               : <KeyRound size={11} />}
+              {method === 'email' ? 'код приходит на почту'
+               : method === 'sms' ? 'код приходит в SMS'
+               : 'код из приложения'}
             </p>
           )}
         </div>
@@ -426,16 +513,17 @@ const TwoFactorBlock = ({
           <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>
             Чем подтверждать
           </p>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {([
-              { key: 'app'   as const, icon: Smartphone, label: 'Приложение', note: 'Google Authenticator и подобные' },
-              { key: 'email' as const, icon: Mail,       label: 'Почта',      note: emailReady ? 'код письмом' : 'нужна привязанная почта' },
+              { key: 'app'   as const, icon: KeyRound,   label: 'Приложение', note: 'Authenticator' },
+              { key: 'email' as const, icon: Mail,       label: 'Почта',      note: emailReady ? 'код письмом' : 'нужна почта' },
+              { key: 'sms'   as const, icon: Smartphone, label: 'SMS',        note: phoneReady ? 'код на телефон' : 'нужен телефон' },
             ]).map(({ key, icon: Icon, label, note }) => {
-              const off = key === 'email' && !emailReady;
+              const off = (key === 'email' && !emailReady) || (key === 'sms' && !phoneReady);
               return (
                 <button key={key} type="button" disabled={off}
                   onClick={() => setPick(key)}
-                  className="flex-1 rounded-xl px-3 py-2.5 text-left"
+                  className="rounded-xl px-2.5 py-2.5 text-left"
                   style={{
                     background: pick === key ? 'var(--accent-bg)' : 'var(--bg-l3)',
                     border: `1px solid ${pick === key ? 'rgba(79,110,247,0.35)' : 'var(--border)'}`,
@@ -448,10 +536,16 @@ const TwoFactorBlock = ({
               );
             })}
           </div>
-          <p className="text-[10px] leading-relaxed" style={{ color: 'var(--t3)' }}>
-            SMS вторым способом нет намеренно: вход и так идёт по коду из SMS,
-            и второй код на тот же номер ничего не добавит.
-          </p>
+
+          {pick === 'email' && (
+            <p className="rounded-xl px-3 py-2 text-[11px] leading-relaxed"
+              style={{ background: 'var(--amber-bg)', color: 'var(--amber)' }}>
+              Вы входите по почте, поэтому код на неё же — это тот же самый
+              канал: кто добрался до ящика, получит оба кода. Настоящую
+              защиту дают приложение или SMS.
+            </p>
+          )}
+
           <button type="button" onClick={start} disabled={busy}
             className="w-full rounded-xl py-2.5 text-sm font-semibold"
             style={{ background: 'var(--accent)', color: '#fff' }}>
@@ -472,7 +566,8 @@ const TwoFactorBlock = ({
         <div className="space-y-3">
           {byEmail ? (
             <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t2)' }}>
-              Отправили код на {sentTo || 'вашу почту'}. Введите его, чтобы включить защиту.
+              Отправили код {active === 'sms' ? 'в SMS' : `на ${sentTo || 'вашу почту'}`}.
+              Введите его, чтобы включить защиту.
             </p>
           ) : (
             <>
@@ -527,7 +622,7 @@ const TwoFactorBlock = ({
           {byEmail && (
             <button type="button" onClick={askCode} disabled={busy}
               className="w-full text-center text-[12px]" style={{ color: 'var(--accent)' }}>
-              Прислать код на почту
+              Прислать код ещё раз
             </button>
           )}
         </div>
@@ -547,6 +642,7 @@ const SecuritySection = () => {
 
   const active: ServerProfile | undefined = profiles.find(p => p.id === activeProfileId);
   const emailReady = Boolean(sky?.emailVerified);
+  const phoneReady = Boolean(sky?.phoneVerified);
 
   return (
     <div className="space-y-3">
@@ -554,20 +650,21 @@ const SecuritySection = () => {
         Двухэтапная защита
       </p>
 
-      {!emailReady && (
+      {!phoneReady && (
         <p className="rounded-xl px-3 py-2 text-[11px] leading-relaxed"
           style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t3)' }}>
-          Чтобы получать коды письмом, привяжите почту на вкладке «Sky ID».
-          Без неё доступен только код из приложения.
+          Вы входите по почте, поэтому лучший второй канал — телефон.
+          Привяжите его на вкладке «Sky ID», и код будет приходить в SMS.
+          Без него остаётся приложение-аутентификатор.
         </p>
       )}
 
       <TwoFactorBlock
         title="Вход в Sky ID"
-        hint="Спрашивается при входе по номеру — после кода из SMS."
+        hint="Спрашивается при входе — после кода, который пришёл на почту."
         enabled={Boolean(sky?.twoFactorEnabled)}
         method={sky?.twoFactorMethod ?? 'app'}
-        emailReady={emailReady}
+        emailReady={emailReady} phoneReady={phoneReady}
         begin={m => beginSkyTwoFactor(m)}
         confirm={confirmSkyTwoFactor}
         disable={disableSkyTwoFactor}
@@ -580,7 +677,7 @@ const SecuritySection = () => {
           hint="Спрашивается при открытии этого профиля. Не связана с защитой Sky ID."
           enabled={active.twoFactorEnabled}
           method={active.twoFactorMethod ?? 'app'}
-          emailReady={emailReady}
+          emailReady={emailReady} phoneReady={phoneReady}
           begin={m => beginProfileTwoFactor(active.id, m)}
           confirm={code => confirmProfileTwoFactor(active.id, code)}
           disable={code => disableProfileTwoFactor(active.id, code)}
@@ -592,6 +689,8 @@ const SecuritySection = () => {
         Две защиты независимы: можно включить только на профиль, только на вход
         в Sky ID или на оба сразу. Второй профиль защищается отдельно — откройте
         его и включите защиту там.
+        {' '}Смысл второго шага в том, что канал другой: код туда же, куда вы
+        входите, защитой не является.
       </p>
     </div>
   );

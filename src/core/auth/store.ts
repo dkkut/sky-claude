@@ -69,13 +69,16 @@ export interface Account {
 
 /**
  * Шаги входа:
- *   phone    — вводим номер
- *   code     — вводим код из SMS
- *   twofa    — вводим код приложения (защита самого Sky ID)
+ *   login    — вводим почту (или номер, если выбран запасной путь)
+ *   code     — вводим код, который пришёл
+ *   twofa    — вводим код второй проверки
  *   profiles — Sky ID открыт, выбираем профиль (или заводим второй)
  *   authenticated — профиль выбран, работаем
  */
-export type Step = 'phone' | 'code' | 'twofa' | 'profiles' | 'authenticated';
+export type Step = 'login' | 'code' | 'twofa' | 'profiles' | 'authenticated';
+
+/** Чем входим. Почта — основной путь: письма ничего не стоят. */
+export type LoginChannel = 'email' | 'phone';
 
 export interface CodeInfo { retryAfter: number; expiresIn: number }
 
@@ -89,23 +92,30 @@ interface AuthState {
   maxProfiles: number;
 
   /* ── ход входа ── */
+  loginChannel: LoginChannel;
+  emailInput: string;
   phoneInput: string;
+  pendingEmail: string;
   pendingPhone: string;
   challenge: string | null;
   codeInfo: CodeInfo | null;
 
   /** Чем подтверждать вход: кодом из приложения или письмом. */
   twoFactorMethod: TwoFactorMethod;
-  /** Замаскированный адрес, куда ушёл код второго фактора. */
+  /** Замаскированный адрес или номер, куда ушёл код второго фактора. */
   twoFactorEmail: string | null;
+  twoFactorPhone: string | null;
 
   isAuthenticated: boolean; currentUserId: string|null; accounts: Account[];
 
   setPhoneInput:(v:string)=>void;
+  setEmailInput:(v:string)=>void;
+  /** Переключение между входом по почте и по номеру. */
+  setLoginChannel:(c:LoginChannel)=>void;
 
-  /** Шаг 1: просим код на телефон. */
-  requestCode:(phone?:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
-  /** Шаг 2: проверяем код из SMS. */
+  /** Шаг 1: просим код — на почту или на телефон, смотря чем входим. */
+  requestCode:(value?:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
+  /** Шаг 2: проверяем пришедший код. */
   verifyCode:(code:string)=>Promise<{ok:boolean;reason?:string}>;
   /** Шаг 3: код приложения или из письма, если защита включена. */
   verifySkyTwoFactor:(code:string)=>Promise<{ok:boolean;reason?:string}>;
@@ -130,9 +140,11 @@ interface AuthState {
   confirmSkyTwoFactor:(code:string)=>Promise<{ok:boolean;reason?:string}>;
   disableSkyTwoFactor:(code:string)=>Promise<{ok:boolean;reason?:string}>;
 
-  /* ── почта ── */
+  /* ── почта и телефон в настройках ── */
   startEmailLink:(email:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
   confirmEmailLink:(email:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
+  startPhoneLink:(phone:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
+  confirmPhoneLink:(phone:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
 
   /* ── Prime активного профиля ── */
   purchasePrime:(plan:string,days:number)=>Promise<{ok:boolean;reason?:string}>;
@@ -164,7 +176,9 @@ interface AuthState {
 }
 
 import {
+  apiRequestEmailCode, apiVerifyEmailCode,
   apiRequestPhoneCode, apiVerifyPhoneCode, apiVerifySkyTwoFactor,
+  apiPhoneLinkStart, apiPhoneLinkVerify,
   apiRefreshSession, apiSession, apiLogout,
   apiListProfiles, apiCreateProfile, apiSelectProfile,
   apiProfileTwoFactorBegin, apiProfileTwoFactorConfirm, apiProfileTwoFactorDisable,
@@ -249,7 +263,7 @@ const applySession=(
   markDevice=false,
 )=>{
   const {accounts}=get();
-  const phone=session.skyId.phone;
+  const phone=session.skyId.phone ?? '';
   let updated=[...accounts];
   for(const p of session.profiles){
     const i=updated.findIndex(a=>a.id===p.id);
@@ -275,9 +289,11 @@ const applySession=(
 const emptyAuth={
   sky:null,profiles:[],activeProfileId:null,
   isAuthenticated:false,currentUserId:null,
-  step:'phone' as const,phoneInput:'+7',pendingPhone:'',
+  step:'login' as const,
+  loginChannel:'email' as LoginChannel,
+  emailInput:'',phoneInput:'+7',pendingEmail:'',pendingPhone:'',
   challenge:null,codeInfo:null,
-  twoFactorMethod:'app' as TwoFactorMethod,twoFactorEmail:null,
+  twoFactorMethod:'app' as TwoFactorMethod,twoFactorEmail:null,twoFactorPhone:null,
 };
 
 export const useAuthStore=create<AuthState>((set,get)=>({
@@ -288,40 +304,65 @@ export const useAuthStore=create<AuthState>((set,get)=>({
   accounts:accs,
 
   setPhoneInput:v=>set({phoneInput:v}),
+  setEmailInput:v=>set({emailInput:v}),
+  setLoginChannel:c=>set({loginChannel:c}),
 
   /* ══ Вход ═════════════════════════════════════════════════ */
 
-  requestCode:async(phone)=>{
-    const value=nm(phone??get().phoneInput);
-    const res=await apiRequestPhoneCode(value);
+  requestCode:async(value)=>{
+    const{loginChannel,emailInput,phoneInput}=get();
+
+    if(loginChannel==='email'){
+      const email=(value??emailInput).trim().toLowerCase();
+      const res=await apiRequestEmailCode(email);
+      if(!res.ok){
+        const retryAfter=(res.data as any)?.retryAfter;
+        // Пауза между письмами — не ошибка ввода: код уже отправлен.
+        if(res.error==='too_soon'){
+          set({pendingEmail:email,emailInput:email,step:'code'});
+          return{ok:true,retryAfter};
+        }
+        return{ok:false,reason:res.reason,retryAfter};
+      }
+      set({
+        pendingEmail:email,emailInput:email,step:'code',
+        codeInfo:{retryAfter:res.data?.retryAfter??60,expiresIn:res.data?.expiresIn??300},
+      });
+      return{ok:true,retryAfter:res.data?.retryAfter};
+    }
+
+    const phone=nm(value??phoneInput);
+    const res=await apiRequestPhoneCode(phone);
     if(!res.ok){
-      // Пауза между отправками — не ошибка ввода: показываем, сколько ждать.
       const retryAfter=(res.data as any)?.retryAfter;
       if(res.error==='too_soon'){
-        set({pendingPhone:value,phoneInput:value,step:'code'});
+        set({pendingPhone:phone,phoneInput:phone,step:'code'});
         return{ok:true,retryAfter};
       }
       return{ok:false,reason:res.reason,retryAfter};
     }
     set({
-      pendingPhone:value,phoneInput:value,step:'code',
+      pendingPhone:phone,phoneInput:phone,step:'code',
       codeInfo:{retryAfter:res.data?.retryAfter??60,expiresIn:res.data?.expiresIn??300},
     });
     return{ok:true,retryAfter:res.data?.retryAfter};
   },
 
   verifyCode:async(code)=>{
-    const{pendingPhone}=get();
-    const res=await apiVerifyPhoneCode(pendingPhone,code.trim());
+    const{loginChannel,pendingEmail,pendingPhone}=get();
+    const res=loginChannel==='email'
+      ? await apiVerifyEmailCode(pendingEmail,code.trim())
+      : await apiVerifyPhoneCode(pendingPhone,code.trim());
     if(!res.ok)return{ok:false,reason:res.reason};
 
     const data=res.data as any;
-    // У Sky ID включена двухэтапная защита — сессии пока нет.
+    // Включена вторая проверка — сессии пока нет.
     if(data?.needsTwoFactor){
       set({
         challenge:data.challenge,step:'twofa',
         twoFactorMethod:data.method ?? 'app',
         twoFactorEmail:data.email ?? null,
+        twoFactorPhone:data.phone ?? null,
         codeInfo:data.retryAfter ? {retryAfter:data.retryAfter,expiresIn:300} : null,
       });
       return{ok:true};
@@ -471,6 +512,18 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     const res=await apiRevokePrime();
     if(!res.ok)return{ok:false,reason:res.reason};
     await get().reloadSession();
+    return{ok:true};
+  },
+
+  startPhoneLink:async(phone)=>{
+    const res=await apiPhoneLinkStart(nm(phone));
+    return res.ok?{ok:true,retryAfter:res.data?.retryAfter}
+                 :{ok:false,reason:res.reason,retryAfter:(res.data as any)?.retryAfter};
+  },
+  confirmPhoneLink:async(phone,code)=>{
+    const res=await apiPhoneLinkVerify(nm(phone),code.trim());
+    if(!res.ok)return{ok:false,reason:res.reason};
+    set({sky:res.data?.skyId ?? get().sky});
     return{ok:true};
   },
 

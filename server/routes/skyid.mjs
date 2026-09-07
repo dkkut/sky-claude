@@ -18,7 +18,7 @@ import {
   findSkyIdById, publicSkyId, setEmailVerified,
   beginSkyTwoFactor, confirmSkyTwoFactor, disableSkyTwoFactor, verifySkyTwoFactor,
   beginProfileTwoFactor, confirmProfileTwoFactor, verifyProfileTwoFactor, disableProfileTwoFactor,
-  grantPrime, revokePrime, MAX_PROFILES, sendTwoFactorEmail,
+  grantPrime, revokePrime, MAX_PROFILES, sendTwoFactorCode, setPhoneVerified,
 } from './../skyid.mjs';
 
 /**
@@ -28,6 +28,18 @@ import {
 const PRIME_PRICES = { 30: 400, 365: 3790, 730: 6990 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/**
+ * Тот же вид номера, что и при входе: «+79001234567», «89001234567» и
+ * «+7 900 123-45-67» — один и тот же телефон, и привязка не должна
+ * зависеть от того, как его набрали.
+ */
+const normalizePhone = (raw) => {
+  let digits = String(raw ?? '').replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('8')) digits = `7${digits.slice(1)}`;
+  if (digits.length < 10 || digits.length > 15) return null;
+  return `+${digits}`;
+};
 
 /**
  * Аватар: либо обычная ссылка на картинку, либо сама картинка,
@@ -106,7 +118,7 @@ export const skyIdRoutes = async (req, res, url) => {
         // чтобы человек не искал отдельную кнопку.
         let sent = null;
         if (profile.twoFactorMethod === 'email') {
-          const r = await sendTwoFactorEmail(s.skyId, profileId);
+          const r = await sendTwoFactorCode(s.skyId, profileId);
           if (r.error && r.error !== 'too_soon') return json(res, 503, r);
           sent = { retryAfter: r.retryAfter };
         }
@@ -168,7 +180,7 @@ export const skyIdRoutes = async (req, res, url) => {
     // Повторная отправка кода на почту — и при настройке, и при входе
     // в защищённый профиль.
     if (action === 'send') {
-      const result = await sendTwoFactorEmail(s.skyId, profileId);
+      const result = await sendTwoFactorCode(s.skyId, profileId);
       if (result.error) return json(res, 400, result);
       return json(res, 200, { ok: true, email: result.email, retryAfter: result.retryAfter });
     }
@@ -206,7 +218,7 @@ export const skyIdRoutes = async (req, res, url) => {
   // Повторная отправка кода на почту при настройке защиты Sky ID.
   if (req.method === 'POST' && url === '/api/skyid/two-factor/send') {
     const s = await requireSkyId(req, res); if (!s) return true;
-    const result = await sendTwoFactorEmail(s.skyId, null);
+    const result = await sendTwoFactorCode(s.skyId, null);
     if (result.error) return json(res, 400, result);
     return json(res, 200, { ok: true, email: result.email, retryAfter: result.retryAfter });
   }
@@ -257,6 +269,39 @@ export const skyIdRoutes = async (req, res, url) => {
     if (check.error) return json(res, 401, { error: check.error, attemptsLeft: check.attemptsLeft });
 
     const result = await setEmailVerified(s.skyId, email);
+    if (result.error) return json(res, 409, { error: result.error });
+    return json(res, 200, { ok: true, skyId: publicSkyId(result.skyId) });
+  }
+
+  /* ══ Привязка телефона ═══════════════════════════════════════════
+     Телефон необязателен: войти можно и по одной почте. Он нужен как
+     второй канал проверки — код на него становится настоящим вторым
+     фактором, потому что вход идёт другим путём.                     */
+
+  if (req.method === 'POST' && url === '/api/skyid/phone/start') {
+    const s = await requireSkyId(req, res); if (!s) return true;
+    const body = await parseBody(req);
+    const phone = normalizePhone(body.phone);
+    if (!phone) return json(res, 400, { error: 'invalid_phone' });
+
+    const result = await issueCode('phone', phone, `link:${s.skyId}`);
+    if (result.error === 'too_soon') {
+      return json(res, 429, { error: 'too_soon', retryAfter: result.retryAfter });
+    }
+    if (result.error) return json(res, 429, { error: result.error });
+    return json(res, 200, { ok: true, retryAfter: result.retryAfter, expiresIn: result.expiresIn });
+  }
+
+  if (req.method === 'POST' && url === '/api/skyid/phone/verify') {
+    const s = await requireSkyId(req, res); if (!s) return true;
+    const body = await parseBody(req);
+    const phone = normalizePhone(body.phone);
+    if (!phone) return json(res, 400, { error: 'invalid_phone' });
+
+    const check = await verifyCode('phone', phone, `link:${s.skyId}`, body.code);
+    if (check.error) return json(res, 401, { error: check.error, attemptsLeft: check.attemptsLeft });
+
+    const result = await setPhoneVerified(s.skyId, phone);
     if (result.error) return json(res, 409, { error: result.error });
     return json(res, 200, { ok: true, skyId: publicSkyId(result.skyId) });
   }

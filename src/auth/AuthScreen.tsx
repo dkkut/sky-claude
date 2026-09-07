@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, ChevronRight, Crown, LogOut, Plus, ShieldCheck, Smartphone, X,
+  ArrowLeft, ChevronRight, Crown, LogOut, Mail, Plus, ShieldCheck, Smartphone, X,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import type { ServerProfile } from '@/core/auth/api';
@@ -27,8 +27,8 @@ const initials = (n: string) =>
   n.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 
 /** Телефон как +7 900 123-45-67 — читать вслух проще, чем сплошную строку. */
-const prettyPhone = (raw: string) => {
-  const d = raw.replace(/\D/g, '');
+const prettyPhone = (raw?: string) => {
+  const d = String(raw ?? '').replace(/\D/g, '');
   if (d.length !== 11) return raw;
   return `+${d[0]} ${d.slice(1, 4)} ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}`;
 };
@@ -167,12 +167,17 @@ const ErrorLine = ({ text }: { text?: string }) =>
     </motion.p>
   ) : null;
 
-/* ═══ Шаг 1: телефон ═══════════════════════════════════════════ */
+/* ═══ Шаг 1: почта (основной путь) или телефон ══════════════════ */
 
-const PhoneStep = () => {
-  const { phoneInput, setPhoneInput, requestCode } = useAuthStore();
+const LoginStep = () => {
+  const {
+    loginChannel, setLoginChannel,
+    emailInput, setEmailInput, phoneInput, setPhoneInput, requestCode,
+  } = useAuthStore();
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
+
+  const byEmail = loginChannel === 'email';
 
   const go = async () => {
     if (busy) return;
@@ -182,53 +187,89 @@ const PhoneStep = () => {
     setBusy(false);
   };
 
-  const digits = phoneInput.replace(/\D/g, '').length;
+  const ready = byEmail
+    ? /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailInput.trim())
+    : phoneInput.replace(/\D/g, '').length >= 10;
 
   return (
-    <Shell title="Sky ID" subtitle="Один аккаунт для всей экосистемы. Вход по номеру телефона.">
+    <Shell
+      title="Sky ID"
+      subtitle={byEmail
+        ? 'Один аккаунт для всей экосистемы. Пришлём код на почту.'
+        : 'Пришлём код в SMS на этот номер.'}
+    >
       <div className="space-y-3">
         <div className="relative">
-          <Smartphone
-            size={17}
-            style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--t3)' }}
-          />
-          <input
-            className="sky-input"
-            style={{ paddingLeft: 38, height: 46, fontSize: 16 }}
-            placeholder="+7 900 000-00-00"
-            inputMode="tel"
-            autoComplete="tel"
-            autoFocus
-            value={phoneInput}
-            onChange={e => setPhoneInput(e.target.value.replace(/[^\d+\s()-]/g, ''))}
-            onKeyDown={e => e.key === 'Enter' && go()}
-          />
+          {byEmail
+            ? <Mail size={17} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--t3)' }} />
+            : <Smartphone size={17} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--t3)' }} />}
+          {byEmail ? (
+            <input
+              key="email"
+              className="sky-input"
+              style={{ paddingLeft: 38, height: 46, fontSize: 16 }}
+              placeholder="you@example.com"
+              type="email" inputMode="email" autoComplete="email"
+              autoCapitalize="none" autoCorrect="off" spellCheck={false}
+              autoFocus
+              value={emailInput}
+              onChange={e => setEmailInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && go()}
+            />
+          ) : (
+            <input
+              key="phone"
+              className="sky-input"
+              style={{ paddingLeft: 38, height: 46, fontSize: 16 }}
+              placeholder="+7 900 000-00-00"
+              inputMode="tel" autoComplete="tel" autoFocus
+              value={phoneInput}
+              onChange={e => setPhoneInput(e.target.value.replace(/[^\d+\s()-]/g, ''))}
+              onKeyDown={e => e.key === 'Enter' && go()}
+            />
+          )}
         </div>
+
         <ErrorLine text={err} />
+
         <button
-          className="sky-btn-primary w-full"
-          style={{ height: 46 }}
-          onClick={go}
-          disabled={busy || digits < 10}
+          className="sky-btn-primary w-full" style={{ height: 46 }}
+          onClick={go} disabled={busy || !ready}
         >
           {busy ? 'Отправляем…' : 'Получить код'}
         </button>
+
+        <button
+          type="button"
+          onClick={() => { setErr(undefined); setLoginChannel(byEmail ? 'phone' : 'email'); }}
+          className="w-full text-center text-sm"
+          style={{ color: 'var(--accent)' }}
+        >
+          {byEmail ? 'Войти по номеру телефона' : 'Войти по почте'}
+        </button>
+
         <p className="text-center text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
-          Отправим код в SMS. Пароль не нужен — его в Sky ID больше нет.
+          Пароля в Sky ID нет: каждый вход подтверждается кодом.
         </p>
       </div>
     </Shell>
   );
 };
 
-/* ═══ Шаг 2: код из SMS ════════════════════════════════════════ */
+/* ═══ Шаг 2: код, который пришёл ════════════════════════════════ */
 
 const CodeStep = () => {
-  const { pendingPhone, codeInfo, verifyCode, requestCode, setPhoneInput } = useAuthStore();
+  const {
+    loginChannel, pendingEmail, pendingPhone, codeInfo,
+    verifyCode, requestCode,
+  } = useAuthStore();
   const [code, setCode] = useState('');
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [left, setLeft] = useCountdown(codeInfo?.retryAfter ?? 60);
+
+  const byEmail = loginChannel === 'email';
+  const target = byEmail ? pendingEmail : prettyPhone(pendingPhone);
 
   const submit = async (value = code) => {
     if (busy || value.length < 6) return;
@@ -240,16 +281,16 @@ const CodeStep = () => {
 
   const resend = async () => {
     setErr(undefined);
-    const res = await requestCode(pendingPhone);
+    const res = await requestCode();
     setLeft(res.retryAfter ?? 60);
     if (!res.ok) setErr(res.reason);
   };
 
   return (
     <Shell
-      title="Код из SMS"
-      subtitle={`Отправили на ${prettyPhone(pendingPhone)}`}
-      onBack={() => { setPhoneInput(pendingPhone); useAuthStore.setState({ step: 'phone' }); }}
+      title={byEmail ? 'Код из письма' : 'Код из SMS'}
+      subtitle={`Отправили на ${target}`}
+      onBack={() => useAuthStore.setState({ step: 'login' })}
     >
       <div className="space-y-4">
         <CodeInput value={code} onChange={setCode} onComplete={submit} disabled={busy} />
@@ -271,6 +312,11 @@ const CodeStep = () => {
         >
           {left > 0 ? `Отправить ещё раз через ${left} с` : 'Отправить код ещё раз'}
         </button>
+        {byEmail && (
+          <p className="text-center text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+            Письмо иногда попадает в «Спам» — загляните туда, если не пришло.
+          </p>
+        )}
       </div>
     </Shell>
   );
@@ -281,13 +327,15 @@ const CodeStep = () => {
 const SkyTwoFactorStep = () => {
   const {
     verifySkyTwoFactor, resendLoginTwoFactor, logout,
-    twoFactorMethod, twoFactorEmail, codeInfo,
+    twoFactorMethod, twoFactorEmail, twoFactorPhone, codeInfo,
   } = useAuthStore();
   const [code, setCode] = useState('');
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const byEmail = twoFactorMethod === 'email';
-  const [left, setLeft] = useCountdown(byEmail ? (codeInfo?.retryAfter ?? 60) : 0);
+  // Код приходит сам только когда его шлёт сервер: приложение показывает
+  // его само, повторно отправлять нечего.
+  const sentToSomewhere = twoFactorMethod !== 'app';
+  const [left, setLeft] = useCountdown(sentToSomewhere ? (codeInfo?.retryAfter ?? 60) : 0);
 
   const submit = async (value = code) => {
     if (busy || value.length < 6) return;
@@ -307,9 +355,10 @@ const SkyTwoFactorStep = () => {
   return (
     <Shell
       title="Подтверждение входа"
-      subtitle={byEmail
-        ? `Отправили код на ${twoFactorEmail ?? 'вашу почту'}`
-        : 'У этого Sky ID включена двухэтапная защита. Введите код из приложения-аутентификатора.'}
+      subtitle={
+        twoFactorMethod === 'sms'   ? `Отправили код на ${twoFactorPhone ?? 'ваш телефон'}`
+      : twoFactorMethod === 'email' ? `Отправили код на ${twoFactorEmail ?? 'вашу почту'}`
+      : 'У этого Sky ID включена двухэтапная защита. Введите код из приложения-аутентификатора.'}
       onBack={logout}
     >
       <div className="space-y-4">
@@ -321,7 +370,7 @@ const SkyTwoFactorStep = () => {
         >
           {busy ? 'Проверяем…' : 'Подтвердить'}
         </button>
-        {byEmail && (
+        {sentToSomewhere && (
           <button
             type="button" onClick={resend} disabled={left > 0}
             className="w-full text-center text-sm"
@@ -417,7 +466,7 @@ const ProfilesStep = () => {
   return (
     <Shell
       title="Ваши профили"
-      subtitle={sky ? `Sky ID · ${prettyPhone(sky.phone)}` : undefined}
+      subtitle={sky ? `Sky ID · ${sky.email ?? prettyPhone(sky.phone)}` : undefined}
     >
       <div className="space-y-2.5">
         {profiles.map(p => <ProfileCard key={p.id} profile={p} onPick={() => pick(p)} />)}
@@ -509,8 +558,8 @@ const ProfileCodeStep = ({
   const [code, setCode] = useState('');
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const byEmail = profile.twoFactorMethod === 'email';
-  const [left, setLeft] = useCountdown(byEmail ? 60 : 0);
+  const sentToSomewhere = profile.twoFactorMethod !== 'app';
+  const [left, setLeft] = useCountdown(sentToSomewhere ? 60 : 0);
 
   const submit = async (value = code) => {
     if (busy || value.length < 6) return;
@@ -530,9 +579,10 @@ const ProfileCodeStep = ({
   return (
     <Shell
       title={profile.name}
-      subtitle={byEmail
-        ? 'Профиль защищён. Код отправлен на почту Sky ID.'
-        : 'Профиль защищён. Введите код из приложения-аутентификатора.'}
+      subtitle={
+        profile.twoFactorMethod === 'sms'   ? 'Профиль защищён. Код отправлен на ваш телефон.'
+      : profile.twoFactorMethod === 'email' ? 'Профиль защищён. Код отправлен на почту Sky ID.'
+      : 'Профиль защищён. Введите код из приложения-аутентификатора.'}
       onBack={onBack}
     >
       <div className="space-y-4">
@@ -544,7 +594,7 @@ const ProfileCodeStep = ({
         >
           {busy ? 'Проверяем…' : 'Открыть профиль'}
         </button>
-        {byEmail && (
+        {sentToSomewhere && (
           <button
             type="button" onClick={resend} disabled={left > 0}
             className="w-full text-center text-sm"
@@ -630,7 +680,7 @@ export const AuthScreen = () => {
         {step === 'twofa'    ? <SkyTwoFactorStep /> :
          step === 'profiles' ? <ProfilesStep /> :
          step === 'code'     ? <CodeStep /> :
-                               <PhoneStep />}
+                               <LoginStep />}
       </div>
     </AnimatePresence>
   );

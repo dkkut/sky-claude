@@ -16,11 +16,13 @@
 =============================================================== */
 
 /** Способ второго фактора: код из приложения или письмо на почту. */
-export type TwoFactorMethod = 'app' | 'email';
+export type TwoFactorMethod = 'app' | 'email' | 'sms';
 
 export interface SkyIdInfo {
   id:                 string;
-  phone:              string;
+  /** Телефон необязателен: аккаунт может жить на одной почте. */
+  phone?:             string;
+  phoneVerified:      boolean;
   email?:             string;
   emailVerified:      boolean;
   twoFactorEnabled:   boolean;
@@ -77,6 +79,8 @@ const ERRORS: Record<string, string> = {
   username_taken:        'Такой ник уже занят',
   email_taken:           'Эта почта уже привязана к другому Sky ID',
   email_not_verified:    'Сначала привяжите и подтвердите почту',
+  phone_not_verified:    'Сначала привяжите и подтвердите телефон',
+  phone_taken:           'Этот номер уже привязан к другому Sky ID',
   already_enabled:       'Защита уже включена. Чтобы сменить способ, сначала отключите её',
   invalid_method:        'Такой способ проверки не поддерживается',
   not_started:           'Настройка не начата — начните заново',
@@ -170,7 +174,15 @@ const get = <T>(path: string) => call<T>(path);
 
 export interface CodeRequested { ok: true; retryAfter: number; expiresIn: number; codeLength: number }
 
-/** Шаг 1: просим код на телефон. */
+/** Шаг 1 основного пути: просим код на почту. */
+export const apiRequestEmailCode = (email: string) =>
+  post<CodeRequested>('/api/auth/email/start', { email });
+
+/** Шаг 2 основного пути: проверяем код из письма. */
+export const apiVerifyEmailCode = (email: string, code: string) =>
+  post<LoginResult>('/api/auth/email/verify', { email, code });
+
+/** Шаг 1 запасного пути: просим код на телефон. */
 export const apiRequestPhoneCode = (phone: string) =>
   post<CodeRequested>('/api/auth/phone/start', { phone });
 
@@ -178,10 +190,14 @@ export const apiRequestPhoneCode = (phone: string) =>
 export const apiPhoneCooldown = (phone: string) =>
   post<{ retryAfter: number }>('/api/auth/phone/cooldown', { phone });
 
-export type PhoneVerified =
+export type LoginResult =
   | ({ needsTwoFactor: true; method: TwoFactorMethod; challenge: string;
-       expiresIn: number; email?: string; retryAfter?: number })
+       expiresIn: number; email?: string; phone?: string;
+       sameChannel?: boolean; retryAfter?: number })
   | (SkySession & { accessToken: string; expiresIn: number; isNew?: boolean });
+
+/** Прежнее имя оставлено, чтобы не переписывать всё сразу. */
+export type PhoneVerified = LoginResult;
 
 /** Шаг 2: проверяем код. Может ответить «нужен второй фактор». */
 export const apiVerifyPhoneCode = (phone: string, code: string) =>
@@ -265,6 +281,16 @@ export const apiSkyTwoFactorConfirm = (code: string) =>
 
 export const apiSkyTwoFactorDisable = (code: string) =>
   post<{ skyId: SkyIdInfo }>('/api/skyid/two-factor/disable', { code });
+
+/* ═══ Привязка телефона ══════════════════════════════════════
+   Телефон необязателен. Он нужен как второй канал проверки: код на
+   него — настоящий второй фактор, потому что вход идёт по почте. */
+
+export const apiPhoneLinkStart = (phone: string) =>
+  post<{ ok: true; retryAfter: number }>('/api/skyid/phone/start', { phone });
+
+export const apiPhoneLinkVerify = (phone: string, code: string) =>
+  post<{ skyId: SkyIdInfo }>('/api/skyid/phone/verify', { phone, code });
 
 /* ═══ Почта ══════════════════════════════════════════════════ */
 

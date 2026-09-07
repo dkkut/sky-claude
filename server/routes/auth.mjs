@@ -19,8 +19,8 @@ import { buildRefreshCookie, clearRefreshCookie } from './../cookies.mjs';
 import { json, parseBody, readRefreshToken, readSession } from './../http.mjs';
 import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../verification.mjs';
 import {
-  ensureSkyId, findSkyIdById, publicSkyId, listProfiles,
-  getProfileOfSkyId, verifySkyTwoFactor, sendTwoFactorEmail,
+  ensureSkyId, ensureSkyIdByEmail, findSkyIdById, publicSkyId, listProfiles,
+  getProfileOfSkyId, verifySkyTwoFactor, sendTwoFactorCode,
 } from './../skyid.mjs';
 
 /** Токен между SMS и вторым фактором живёт ровно столько, сколько нужно. */
@@ -35,6 +35,20 @@ const maskEmail = (email) => {
   const at = value.indexOf('@');
   if (at < 1) return '';
   return `${value[0]}***${value.slice(at)}`;
+};
+
+/** Номер показываем хвостом: свой узнаешь, чужой — нет. */
+const maskPhone = (phone) => {
+  const value = String(phone ?? '');
+  return value.length > 4 ? `••• ${value.slice(-4)}` : '';
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** Почта приводится к нижнему регистру: Ivan@ и ivan@ — один адрес. */
+const normalizeEmail = (raw) => {
+  const value = String(raw ?? '').trim().toLowerCase();
+  return EMAIL_RE.test(value) && value.length <= 254 ? value : null;
 };
 
 /**
@@ -123,6 +137,77 @@ export const authRoutes = async (req, res, url) => {
     });
   }
 
+  /* ── Вход по почте: шаг 1, запрос кода ──────────────────────────
+     Основной способ входа. Письма ничего не стоят и не зависят от
+     симки, поэтому именно с них начинается знакомство с Sky ID.      */
+  if (req.method === 'POST' && url === '/api/auth/email/start') {
+    const body = await parseBody(req);
+    const email = normalizeEmail(body.email);
+    if (!email) return json(res, 400, { error: 'invalid_email' });
+
+    const result = await issueCode('email', email, 'login');
+    if (result.error === 'too_soon') {
+      return json(res, 429, { error: 'too_soon', retryAfter: result.retryAfter });
+    }
+    if (result.error) return json(res, 429, { error: result.error });
+
+    // Ответ одинаков и для нового адреса, и для существующего: по нему
+    // нельзя перебором собрать список тех, у кого есть аккаунт.
+    return json(res, 200, {
+      ok: true, retryAfter: result.retryAfter, expiresIn: result.expiresIn, codeLength: 6,
+    });
+  }
+
+  /* ── Вход по почте: шаг 2, проверка кода ────────────────────────── */
+  if (req.method === 'POST' && url === '/api/auth/email/verify') {
+    const body = await parseBody(req);
+    const email = normalizeEmail(body.email);
+    if (!email) return json(res, 400, { error: 'invalid_email' });
+
+    const check = await verifyCode('email', email, 'login', body.code);
+    if (check.error) {
+      return json(res, 401, { error: check.error, attemptsLeft: check.attemptsLeft });
+    }
+
+    const { skyId, created } = await ensureSkyIdByEmail(email);
+
+    if (skyId.two_factor_enabled) {
+      const challenge = signToken(
+        { sub: skyId.id, typ: '2fa-challenge' }, config.jwtSecret, CHALLENGE_TTL_SEC,
+      );
+      // Код второго фактора шлём сразу, кроме случая, когда способ —
+      // та же почта: второй код на тот же адрес защитой не является.
+      let sent = null;
+      if (skyId.two_factor_method !== 'app' && skyId.two_factor_method !== 'email') {
+        const r = await sendTwoFactorCode(skyId.id, null, 'use');
+        if (r.error && r.error !== 'too_soon') return json(res, 503, { error: r.error });
+        sent = { phone: maskPhone(r.phone), retryAfter: r.retryAfter };
+      }
+      return json(res, 200, {
+        needsTwoFactor: true,
+        method: skyId.two_factor_method ?? 'app',
+        sameChannel: skyId.two_factor_method === 'email',
+        challenge, expiresIn: CHALLENGE_TTL_SEC,
+        ...(sent ?? {}),
+      });
+    }
+
+    const session = await startSession(skyId);
+    return json(res, created ? 201 : 200, { ...session.body, isNew: created },
+                { 'Set-Cookie': session.cookie });
+  }
+
+  /* ── Сколько ждать до повторной отправки письма ─────────────────── */
+  if (req.method === 'POST' && url === '/api/auth/email/cooldown') {
+    const body = await parseBody(req);
+    const email = normalizeEmail(body.email);
+    if (!email) return json(res, 400, { error: 'invalid_email' });
+    return json(res, 200, {
+      retryAfter: await cooldownLeft('email', email, 'login'),
+      limits: VERIFICATION_LIMITS,
+    });
+  }
+
   /* ── Шаг 2: проверка кода ───────────────────────────────────────── */
   if (req.method === 'POST' && url === '/api/auth/phone/verify') {
     const body = await parseBody(req);
@@ -148,7 +233,7 @@ export const authRoutes = async (req, res, url) => {
       // ошибка: предыдущий код ещё жив.
       let sent = null;
       if (skyId.two_factor_method === 'email') {
-        const r = await sendTwoFactorEmail(skyId.id, null);
+        const r = await sendTwoFactorCode(skyId.id, null);
         if (r.error && r.error !== 'too_soon') {
           return json(res, 503, { error: r.error });
         }
@@ -194,7 +279,7 @@ export const authRoutes = async (req, res, url) => {
     if (!payload || payload.typ !== '2fa-challenge') {
       return json(res, 401, { error: 'challenge_expired' });
     }
-    const result = await sendTwoFactorEmail(payload.sub, null);
+    const result = await sendTwoFactorCode(payload.sub, null);
     if (result.error) return json(res, 400, result);
     return json(res, 200, { ok: true, email: maskEmail(result.email), retryAfter: result.retryAfter });
   }

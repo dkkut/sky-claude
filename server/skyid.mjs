@@ -24,7 +24,8 @@ export const MAX_PROFILES = 2;
 
 const toSkyId = (row) => row && ({
   id:               row.id,
-  phone:            row.phone,
+  phone:            row.phone ?? undefined,
+  phoneVerified:    Boolean(row.phone_verified),
   email:            row.email ?? undefined,
   emailVerified:    row.email_verified,
   twoFactorEnabled: row.two_factor_enabled,
@@ -82,19 +83,72 @@ export const findSkyIdById = async (id) => {
   return rows[0] ?? null;
 };
 
-/** Заводит Sky ID под номер или возвращает существующий. */
+export const findSkyIdByEmail = async (email) => {
+  const { rows } = await query(
+    'SELECT * FROM sky_ids WHERE lower(email) = lower($1) AND email_verified', [String(email)],
+  );
+  return rows[0] ?? null;
+};
+
+/**
+ * Заводит Sky ID под номер или возвращает существующий.
+ *
+ * Остаётся для аккаунтов, заведённых до перехода на почту, и для тех,
+ * кто предпочитает вход по SMS.
+ */
 export const ensureSkyId = async (phone) => {
   const existing = await findSkyIdByPhone(phone);
   if (existing) return { skyId: existing, created: false };
 
   const id = `sky-${generateId()}`;
   const { rows } = await query(
-    'INSERT INTO sky_ids (id, phone) VALUES ($1,$2) ON CONFLICT (phone) DO NOTHING RETURNING *',
+    // Без указания столбца: уникальный индекс на телефон теперь
+    // частичный (только для непустых), и вывести его по имени столбца
+    // Postgres не берётся.
+    `INSERT INTO sky_ids (id, phone, phone_verified) VALUES ($1,$2,TRUE)
+     ON CONFLICT DO NOTHING RETURNING *`,
     [id, String(phone)],
   );
   // Конфликт значит, что параллельный запрос успел раньше — берём его.
   if (!rows[0]) return { skyId: await findSkyIdByPhone(phone), created: false };
   return { skyId: rows[0], created: true };
+};
+
+/**
+ * То же для почты — основного способа входа.
+ *
+ * Адрес считается подтверждённым сразу: сюда попадают только после
+ * верного кода из письма, а он и есть подтверждение.
+ */
+export const ensureSkyIdByEmail = async (email) => {
+  const clean = String(email).toLowerCase();
+  const existing = await findSkyIdByEmail(clean);
+  if (existing) return { skyId: existing, created: false };
+
+  const id = `sky-${generateId()}`;
+  const { rows } = await query(
+    `INSERT INTO sky_ids (id, email, email_verified) VALUES ($1,$2,TRUE)
+     ON CONFLICT DO NOTHING RETURNING *`,
+    [id, clean],
+  );
+  if (!rows[0]) return { skyId: await findSkyIdByEmail(clean), created: false };
+  return { skyId: rows[0], created: true };
+};
+
+/** Привязывает подтверждённый номер к существующему Sky ID. */
+export const setPhoneVerified = async (skyId, phone) => {
+  try {
+    const { rows } = await query(
+      `UPDATE sky_ids SET phone = $2, phone_verified = TRUE, updated_at = now()
+        WHERE id = $1 RETURNING *`,
+      [skyId, String(phone)],
+    );
+    return { skyId: rows[0] };
+  } catch (err) {
+    // 23505 — номер уже привязан к другому Sky ID.
+    if (err.code === '23505') return { error: 'phone_taken' };
+    throw err;
+  }
 };
 
 export const publicSkyId = (row) => toSkyId(row);
@@ -128,20 +182,14 @@ export const setEmailVerified = async (skyId, email) => {
  *
  * 'app'   — код показывает приложение-аутентификатор (TOTP).
  * 'email' — код приходит письмом на подтверждённую почту Sky ID.
+ * 'sms'   — код приходит на подтверждённый номер.
  *
- * SMS вторым фактором сознательно нет: вход и так идёт по коду из SMS,
- * и второй код на тот же номер ничего не добавляет — кто получил
- * первый, получит и второй.
+ * Смысл второго фактора в том, что канал ДРУГОЙ. Код на тот же адрес,
+ * которым вошли, ничего не добавляет: кто получил первый, получит и
+ * второй. Проверку этого делает вызывающая сторона — она знает, каким
+ * способом человек вошёл.
  */
-export const TWO_FACTOR_METHODS = ['app', 'email'];
-
-/** Почта, на которую можно слать второй фактор: только подтверждённая. */
-const verifiedEmailOf = async (skyId) => {
-  const { rows } = await query(
-    'SELECT email, email_verified FROM sky_ids WHERE id = $1', [skyId],
-  );
-  return rows[0]?.email_verified ? rows[0].email : null;
-};
+export const TWO_FACTOR_METHODS = ['app', 'email', 'sms'];
 
 /**
  * Назначение кода. Включает и цель, и этап: код для включения защиты и
@@ -149,7 +197,7 @@ const verifiedEmailOf = async (skyId) => {
  * сразу после включения защиты профиль минуту нельзя было бы открыть —
  * прежний код уже потрачен, а новый ещё нельзя выслать.
  */
-const emailPurpose = (skyId, profileId, stage) =>
+const codePurpose = (skyId, profileId, stage) =>
   `${profileId ? `2fa-profile:${profileId}` : `2fa-sky:${skyId}`}:${stage}`;
 
 /** Идёт настройка (защита ещё не включена) или обычная проверка. */
@@ -162,23 +210,60 @@ const twoFactorState = async (skyId, profileId) => {
   return rows[0] ? stageOf(rows[0].on) : null;
 };
 
-/** Отправляет код второго фактора на почту. */
-export const sendTwoFactorEmail = async (skyId, profileId = null, stage = null) => {
-  const email = await verifiedEmailOf(skyId);
-  if (!email) return { error: 'email_not_verified' };
+/** Куда слать код выбранным способом: почта или телефон. */
+const destinationFor = async (skyId, method) => {
+  const { rows } = await query(
+    'SELECT email, email_verified, phone, phone_verified FROM sky_ids WHERE id = $1', [skyId],
+  );
+  const row = rows[0];
+  if (!row) return { error: 'not_found' };
+  if (method === 'email') {
+    return row.email_verified ? { channel: 'email', to: row.email } : { error: 'email_not_verified' };
+  }
+  if (method === 'sms') {
+    return row.phone_verified ? { channel: 'phone', to: row.phone } : { error: 'phone_not_verified' };
+  }
+  return { error: 'invalid_method' };
+};
+
+/** Каким способом настроена защита — у Sky ID или у профиля. */
+const methodOf = async (skyId, profileId) => {
+  const { rows } = profileId
+    ? await query('SELECT two_factor_method AS m FROM profiles WHERE sky_id = $1 AND id = $2', [skyId, profileId])
+    : await query('SELECT two_factor_method AS m FROM sky_ids WHERE id = $1', [skyId]);
+  return rows[0]?.m ?? null;
+};
+
+/**
+ * Отправляет код второго фактора выбранным способом.
+ *
+ * method не передан — берём тот, что записан: при повторной отправке
+ * гадать не нужно, способ уже выбран.
+ */
+export const sendTwoFactorCode = async (skyId, profileId = null, stage = null, method = null) => {
+  const how = method ?? await methodOf(skyId, profileId);
+  if (!how || how === 'app') return { error: 'invalid_method' };
+
+  const dest = await destinationFor(skyId, how);
+  if (dest.error) return dest;
 
   const at = stage ?? await twoFactorState(skyId, profileId);
   if (!at) return { error: 'not_found' };
 
-  const result = await issueCode('email', email, emailPurpose(skyId, profileId, at));
+  const result = await issueCode(dest.channel, dest.to, codePurpose(skyId, profileId, at));
   if (result.error) return { error: result.error, retryAfter: result.retryAfter };
-  return { ok: true, retryAfter: result.retryAfter, expiresIn: result.expiresIn, email };
+  return {
+    ok: true, retryAfter: result.retryAfter, expiresIn: result.expiresIn,
+    method: how, email: how === 'email' ? dest.to : undefined,
+    phone: how === 'sms' ? dest.to : undefined,
+  };
 };
 
-const checkEmailCode = async (skyId, profileId, code, stage) => {
-  const email = await verifiedEmailOf(skyId);
-  if (!email) return { error: 'email_not_verified' };
-  const result = await verifyCode('email', email, emailPurpose(skyId, profileId, stage), code);
+const checkTwoFactorCode = async (skyId, profileId, code, stage, method = null) => {
+  const how = method ?? await methodOf(skyId, profileId);
+  const dest = await destinationFor(skyId, how);
+  if (dest.error) return dest;
+  const result = await verifyCode(dest.channel, dest.to, codePurpose(skyId, profileId, stage), code);
   return result.error ? { error: result.error, attemptsLeft: result.attemptsLeft } : { ok: true };
 };
 
@@ -197,15 +282,15 @@ export const beginSkyTwoFactor = async (skyId, label, method = 'app') => {
   if (!rows[0]) return { error: 'not_found' };
   if (rows[0].two_factor_enabled) return { error: 'already_enabled' };
 
-  if (method === 'email') {
-    const sent = await sendTwoFactorEmail(skyId, null, 'setup');
+  if (method !== 'app') {
+    const sent = await sendTwoFactorCode(skyId, null, 'setup', method);
     if (sent.error) return sent;
     await query(
-      `UPDATE sky_ids SET two_factor_method = 'email', two_factor_secret = NULL,
+      `UPDATE sky_ids SET two_factor_method = $2, two_factor_secret = NULL,
               two_factor_enabled = FALSE, updated_at = now() WHERE id = $1`,
-      [skyId],
+      [skyId, method],
     );
-    return { ok: true, method: 'email', email: sent.email, retryAfter: sent.retryAfter };
+    return { ok: true, method, email: sent.email, phone: sent.phone, retryAfter: sent.retryAfter };
   }
 
   const secret = generateSecret();
@@ -223,8 +308,8 @@ export const confirmSkyTwoFactor = async (skyId, code) => {
   );
   if (!rows[0]) return { error: 'not_found' };
 
-  if (rows[0].two_factor_method === 'email') {
-    const check = await checkEmailCode(skyId, null, code, 'setup');
+  if (rows[0].two_factor_method !== 'app') {
+    const check = await checkTwoFactorCode(skyId, null, code, 'setup');
     if (check.error) return check;
   } else {
     const secret = decryptSecret(rows[0].two_factor_secret);
@@ -243,7 +328,7 @@ export const verifySkyTwoFactor = async (skyId, code) => {
   );
   if (!rows[0]?.two_factor_enabled) return { ok: true, skipped: true };
 
-  if (rows[0].two_factor_method === 'email') return checkEmailCode(skyId, null, code, 'use');
+  if (rows[0].two_factor_method !== 'app') return checkTwoFactorCode(skyId, null, code, 'use');
 
   const secret = decryptSecret(rows[0].two_factor_secret);
   if (!secret) return { error: 'not_configured' };
@@ -342,15 +427,15 @@ export const beginProfileTwoFactor = async (skyId, profileId, method = 'app') =>
   // Как и у Sky ID: включённую защиту нельзя сбросить началом настройки.
   if (profile.twoFactorEnabled) return { error: 'already_enabled' };
 
-  if (method === 'email') {
-    const sent = await sendTwoFactorEmail(skyId, profileId, 'setup');
+  if (method !== 'app') {
+    const sent = await sendTwoFactorCode(skyId, profileId, 'setup', method);
     if (sent.error) return sent;
     await query(
-      `UPDATE profiles SET two_factor_method = 'email', two_factor_secret = NULL,
+      `UPDATE profiles SET two_factor_method = $3, two_factor_secret = NULL,
               two_factor_enabled = FALSE, updated_at = now() WHERE sky_id = $1 AND id = $2`,
-      [skyId, profileId],
+      [skyId, profileId, method],
     );
-    return { ok: true, method: 'email', email: sent.email, retryAfter: sent.retryAfter };
+    return { ok: true, method, email: sent.email, phone: sent.phone, retryAfter: sent.retryAfter };
   }
 
   const secret = generateSecret();
@@ -369,8 +454,8 @@ export const confirmProfileTwoFactor = async (skyId, profileId, code) => {
   );
   if (!rows[0]) return { error: 'not_found' };
 
-  if (rows[0].two_factor_method === 'email') {
-    const check = await checkEmailCode(skyId, profileId, code, 'setup');
+  if (rows[0].two_factor_method !== 'app') {
+    const check = await checkTwoFactorCode(skyId, profileId, code, 'setup');
     if (check.error) return check;
   } else {
     const secret = decryptSecret(rows[0].two_factor_secret);
@@ -394,7 +479,7 @@ export const verifyProfileTwoFactor = async (skyId, profileId, code) => {
   if (!rows[0]) return { error: 'not_found' };
   if (!rows[0].two_factor_enabled) return { ok: true, skipped: true };
 
-  if (rows[0].two_factor_method === 'email') return checkEmailCode(skyId, profileId, code, 'use');
+  if (rows[0].two_factor_method !== 'app') return checkTwoFactorCode(skyId, profileId, code, 'use');
 
   const secret = decryptSecret(rows[0].two_factor_secret);
   if (!secret) return { error: 'not_configured' };
