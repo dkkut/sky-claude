@@ -94,6 +94,9 @@ const ERRORS: Record<string, string> = {
   sms_not_configured:    'Отправка кодов пока не настроена',
   email_not_configured:  'Отправка писем пока не настроена',
   payments_not_configured: 'Оплата пока не подключена',
+  file_too_large:      'Файл слишком большой (до 10 МБ)',
+  quota_exceeded:      'Закончилось место для вложений',
+  empty_file:          'Пустой файл',
 };
 
 export const explain = (code?: string, status?: number) =>
@@ -331,6 +334,50 @@ export const apiSearchPeople = (q: string) =>
 /** Имена по известным id — для участников групп. */
 export const apiPeopleByIds = (ids: string[]) =>
   get<{ people: DirectoryPerson[] }>(`/api/directory/people?ids=${encodeURIComponent(ids.join(','))}`);
+
+/* ═══ Вложения ═══════════════════════════════════════════════ */
+
+export interface UploadedFile { id: string; mime: string; size: number; name: string }
+
+/** Потолок вложения — тот же, что на сервере. */
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Отправляет файл на сервер и возвращает его идентификатор.
+ *
+ * Байты идут телом как есть: картинка внутри JSON весит на треть
+ * больше. Имя и чат — в строке запроса; на сервере файл лежит под своим
+ * идентификатором, а имя нужно только для показа.
+ */
+export const apiUploadFile = async (chatId: string, file: File): Promise<Reply<{ file: UploadedFile }>> => {
+  if (file.size > MAX_FILE_BYTES) {
+    return { ok: false, error: 'file_too_large', reason: explain('file_too_large'), status: 413 };
+  }
+  const path = `/api/files?chatId=${encodeURIComponent(chatId)}&name=${encodeURIComponent(file.name)}`;
+  return call<{ file: UploadedFile }>(path, {
+    method: 'POST',
+    body: file,
+    // Тип содержимого сервер определяет по самим байтам: строка от
+    // клиента ему не указ, поэтому здесь она нейтральная.
+    headers: { 'Content-Type': 'application/octet-stream' },
+  });
+};
+
+/**
+ * Скачивает вложение.
+ *
+ * Через fetch, а не подстановкой адреса в src: токен доступа живёт в
+ * памяти вкладки, и тег img его не отправит — картинка просто не
+ * загрузится. Класть же токен в куку или в адрес значит завести второй
+ * способ доказать, кто ты, и охранять его отдельно.
+ */
+export const apiFetchFile = async (path: string): Promise<Blob | null> => {
+  const once = () => raw(path, { method: 'GET' });
+  let res = await once();
+  if (res.status === 401 && await refreshOnce()) res = await once();
+  if (!res.ok) return null;
+  return res.blob();
+};
 
 /* ═══ Прочее ═════════════════════════════════════════════════ */
 

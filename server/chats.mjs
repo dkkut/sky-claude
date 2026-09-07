@@ -9,6 +9,8 @@
  * это в обработчике сообщений нельзя — там легко забыть одну ветку.
  */
 import { query, pool } from './db.mjs';
+import { encryptContent, decryptContent } from './crypto.mjs';
+import { claimAttachment, linkAttachment, dropForMessage } from './attachments.mjs';
 
 /** Потолок участников группы или канала при создании. */
 const MAX_PARTICIPANTS = 100;
@@ -34,26 +36,16 @@ const MAX_PAYLOAD_BYTES = 16 * 1024;
 const MAX_TEXT_LENGTH = 8000;
 
 /**
- * Ссылка на вложение приходит от клиента и попадает в src и href на
- * страницах других людей.
+ * Ссылку на вложение задаёт сервер, а не клиент.
  *
- * Поэтому разрешены только два вида. Картинка, вложенная в саму строку
- * (без svg: он умеет выполнять скрипты, если открыть его как документ),
- * и blob: — ссылка, действительная лишь в браузере отправителя. Всё
- * остальное — javascript:, data:text/html, ссылка на чужой сервер,
- * который узнает адрес каждого, кто откроет переписку, — отбрасывается.
+ * Раньше она приходила в сообщении и попадала в src и href на страницах
+ * других людей — значит любой мог прислать javascript: или ссылку на
+ * свой сервер, который узнавал бы адрес каждого, кто открыл переписку.
+ * Теперь клиент присылает только идентификатор загруженного файла, а
+ * адрес выводится из него: он всегда наш и всегда один и тот же по виду.
  */
-const DATA_IMAGE_RE = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/]{16,}={0,2}$/;
-const MAX_MEDIA_URL = 12 * 1024;
-
-const safeMediaUrl = (raw) => {
-  const value = typeof raw === 'string' ? raw.trim() : '';
-  if (!value || value.length > MAX_MEDIA_URL) return undefined;
-  // blob: живёт только во вкладке отправителя — другим он ничего не
-  // откроет, но и вреда не несёт: пусть автор видит своё вложение.
-  if (value.startsWith('blob:')) return value.length <= 512 ? value : undefined;
-  return DATA_IMAGE_RE.test(value) ? value : undefined;
-};
+const FILE_ID_RE = /^f-[0-9a-f-]{36}$/;
+const mediaUrlFor = (fileId) => (FILE_ID_RE.test(String(fileId ?? '')) ? `/api/files/${fileId}` : undefined);
 
 /** Ключи, которые нельзя пускать в объект: они меняют его поведение. */
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -105,13 +97,17 @@ const PEOPLE_SELECT = `
 
 const toChat = (row) => {
   const people = row.people ?? [];
+  const name = decryptContent(row.name);
+  const description = row.description ? decryptContent(row.description) : undefined;
   return {
     id: row.id,
     type: row.type,
-    name: row.name,
+    // null значит «расшифровать не удалось»: ключ сменили без
+    // перешифровки. Показать мусор нельзя, промолчать — тоже.
+    name: name ?? '(не удалось прочитать)',
     username: row.username,
     avatar: row.avatar,
-    description: row.description ?? undefined,
+    description: description ?? undefined,
     ownerId: row.owner_id ?? undefined,
     people,
     participants: people.map((p) => p.id),
@@ -119,15 +115,29 @@ const toChat = (row) => {
   };
 };
 
-const toMessage = (row) => ({
+/**
+ * Довесок сообщения хранится зашифрованным одной строкой в поле «e».
+ * Разбираем её обратно в объект; на старых записях поля лежат как есть.
+ */
+const readPayload = (payload) => {
+  if (!payload || typeof payload !== 'object') return {};
+  if (typeof payload.e !== 'string') return payload;   // запись до шифрования
+  const plain = decryptContent(payload.e);
+  if (plain === null) return {};
+  try { return JSON.parse(plain); } catch { return {}; }
+};
+
+const toMessage = (row) => {
+  const extra = readPayload(row.payload);
+  return {
   // Поля, специфичные для сообщения, лежат в payload — их набор задаёт
   // фронтенд и меняется чаще, чем схема таблицы.
-  ...(row.payload ?? {}),
+  ...extra,
   id: row.id,
   chatId: row.chat_id,
   authorId: row.author_id,
   kind: row.kind,
-  text: row.deleted ? 'Сообщение удалено' : row.text,
+  text: row.deleted ? 'Сообщение удалено' : (decryptContent(row.text) ?? '(не удалось прочитать)'),
   deleted: row.deleted,
   reactions: row.reactions ?? [],
   // Прочитано ли всеми, кроме автора: из этого клиент рисует галочки
@@ -136,7 +146,10 @@ const toMessage = (row) => ({
   readByAll: Boolean(row.read_by_all),
   editedAt: row.edited_at ? row.edited_at.toISOString() : undefined,
   createdAt: row.created_at.toISOString(),
-});
+  // Адрес вложения собирает сервер — см. mediaUrlFor.
+  mediaUrl: row.deleted ? undefined : mediaUrlFor(extra.fileId),
+  };
+};
 
 /** Чаты пользователя вместе с участниками. */
 export const listChats = async (userId) => {
@@ -169,12 +182,32 @@ const MESSAGE_SELECT = `
              WHERE mr.message_id = m.id AND mr.user_id <> m.author_id) AS read_by_all
     FROM messages m`;
 
-/** Последние сообщения чата. Не участник не получает ничего. */
-export const listMessages = async (chatId, userId, limit = 50) => {
+/**
+ * Сообщения чата. Не участник не получает ничего.
+ *
+ * before — идентификатор самого старого уже показанного сообщения:
+ * с ним отдаётся предыдущая страница. Без него переписка обрывалась на
+ * последних пятидесяти сообщениях, и всё, что раньше, было недоступно
+ * ни на одном устройстве.
+ */
+export const listMessages = async (chatId, userId, limit = 50, before = null) => {
   if (!(await isMember(chatId, userId))) return null;
+  const size = Math.min(Math.max(Number(limit) || 50, 1), 200);
+
+  const args = [chatId, size];
+  let cursor = '';
+  if (before) {
+    // Курсор — время создания того сообщения, плюс сам id на случай
+    // совпадения времени до микросекунды.
+    args.push(String(before));
+    cursor = `AND (m.created_at, m.id) <
+               (SELECT b.created_at, b.id FROM messages b WHERE b.id = $3 AND b.chat_id = $1)`;
+  }
+
   const { rows } = await query(
-    `${MESSAGE_SELECT} WHERE m.chat_id = $1 ORDER BY m.created_at DESC LIMIT $2`,
-    [chatId, Math.min(Math.max(Number(limit) || 50, 1), 200)],
+    `${MESSAGE_SELECT} WHERE m.chat_id = $1 ${cursor}
+      ORDER BY m.created_at DESC, m.id DESC LIMIT $2`,
+    args,
   );
   return rows.reverse().map(toMessage);
 };
@@ -298,8 +331,10 @@ export const createChat = async (chat, creatorId) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT (id) DO NOTHING
        RETURNING id`,
-      [id, type, String(chat.name ?? '').slice(0, 64), String(chat.username ?? '').slice(0, 64),
-       String(chat.avatar ?? '').slice(0, 8), chat.description ? String(chat.description).slice(0, 512) : null,
+      [id, type, encryptContent(String(chat.name ?? '').slice(0, 64)),
+       String(chat.username ?? '').slice(0, 64),
+       String(chat.avatar ?? '').slice(0, 8),
+       chat.description ? encryptContent(String(chat.description).slice(0, 512)) : null,
        creatorId],
     );
 
@@ -310,7 +345,21 @@ export const createChat = async (chat, creatorId) => {
       const { rowCount } = await client.query(
         'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2', [id, creatorId],
       );
-      if (rowCount === 0) { await client.query('ROLLBACK'); return null; }
+      if (rowCount === 0) {
+        // Кроме одного случая: личный чат, из которого вышли и хотят
+        // вернуться. Его идентификатор выведен из пары собеседников,
+        // поэтому по нему нельзя попасть в чужую переписку — только в
+        // свою собственную.
+        const { rows: kind } = await client.query('SELECT type FROM chats WHERE id = $1', [id]);
+        if (kind[0]?.type !== 'direct' || id !== directChatId(participants[0], participants[1])) {
+          await client.query('ROLLBACK');
+          return null;
+        }
+        await client.query(
+          'INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+          [id, creatorId],
+        );
+      }
     } else {
       for (const uid of participants) {
         await client.query(
@@ -354,6 +403,9 @@ const SERVER_OWNED = new Set([
   'id', 'chatId', 'authorId', 'kind', 'text', 'createdAt',
   'fromMe', 'status', 'time', 'timestamp', 'reactions', 'readByAll',
   'deleted', 'editedAt', 'pinned', 'favorited', 'viewedBy',
+  // Адрес вложения выводится из fileId — присланный клиентом
+  // отбрасывается целиком.
+  'mediaUrl',
 ]);
 
 /**
@@ -362,6 +414,9 @@ const SERVER_OWNED = new Set([
  */
 export const saveMessage = async (chatId, authorId, msg) => {
   if (!(await isMember(chatId, authorId))) return null;
+  // Запрет проверяется на сервере: раньше «заблокировать» лишь прятало
+  // сообщения в браузере получателя, а доходили они по-прежнему.
+  if (await blockedInChat(chatId, authorId)) return null;
 
   const id = String(msg?.id ?? '');
   // Идентификатор произвольной формы — это мусор в первичном ключе и
@@ -377,11 +432,6 @@ export const saveMessage = async (chatId, authorId, msg) => {
   const rest = {};
   for (const [key, value] of Object.entries(msg ?? {})) {
     if (SERVER_OWNED.has(key) || FORBIDDEN_KEYS.has(key)) continue;
-    if (key === 'mediaUrl') {
-      const safe = safeMediaUrl(value);
-      if (safe) rest.mediaUrl = safe;
-      continue;
-    }
     if (key === 'fileName' || key === 'mimeType') {
       rest[key] = String(value ?? '').slice(0, 255);
       continue;
@@ -390,14 +440,44 @@ export const saveMessage = async (chatId, authorId, msg) => {
   }
   if (Buffer.byteLength(JSON.stringify(rest)) > MAX_PAYLOAD_BYTES) return null;
 
-  const { rows } = await query(
-    `INSERT INTO messages (id, chat_id, author_id, kind, text, payload)
-     VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (id) DO NOTHING
-     RETURNING id`,
-    [id, chatId, authorId, kind, text, rest],
-  );
-  return rows[0] ? readMessage(rows[0].id) : null;
+  // Вложение остаётся в сообщении, только если оно действительно своё,
+  // из этого же чата и ещё ни к чему не приложено. Иначе идентификатор
+  // выбрасывается: подставить в своё сообщение чужой файл нельзя.
+  const fileId = FILE_ID_RE.test(String(rest.fileId ?? '')) ? String(rest.fileId) : null;
+  delete rest.fileId;
+
+  const client = await pool.connect();
+  let savedId = null;
+  try {
+    await client.query('BEGIN');
+
+    // Сначала занимаем файл, потом пишем сообщение: внешний ключ не даст
+    // сослаться на сообщение, которого ещё нет, а блокировка не даст
+    // приложить один файл к двум сообщениям.
+    const claimed = fileId && await claimAttachment(client, fileId, { chatId, ownerId: authorId });
+    if (claimed) rest.fileId = fileId;
+
+    // Содержимое ложится в базу зашифрованным: дамп без ключа бесполезен.
+    const { rows } = await client.query(
+      `INSERT INTO messages (id, chat_id, author_id, kind, text, payload)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (id) DO NOTHING
+       RETURNING id`,
+      [id, chatId, authorId, kind, encryptContent(text), { e: encryptContent(JSON.stringify(rest)) }],
+    );
+    savedId = rows[0]?.id ?? null;
+    // Такой id уже занят — не пишем ничего и не отнимаем файл.
+    if (!savedId) { await client.query('ROLLBACK'); return null; }
+
+    if (claimed) await linkAttachment(client, fileId, savedId);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+  return readMessage(savedId);
 };
 
 /** Правит текст. Чужие сообщения не редактируются. */
@@ -406,7 +486,7 @@ export const editMessage = async (messageId, authorId, text) => {
     `UPDATE messages SET text = $3, edited_at = now()
       WHERE id = $1 AND author_id = $2 AND NOT deleted
       RETURNING id, chat_id, edited_at`,
-    [String(messageId ?? ''), authorId, String(text ?? '').slice(0, MAX_TEXT_LENGTH)],
+    [String(messageId ?? ''), authorId, encryptContent(String(text ?? '').slice(0, MAX_TEXT_LENGTH))],
   );
   if (!rows[0]) return null;
   return { id: rows[0].id, chatId: rows[0].chat_id, editedAt: rows[0].edited_at.toISOString() };
@@ -425,6 +505,9 @@ export const deleteMessage = async (messageId, authorId) => {
   );
   if (!rows[0]) return null;
   await query('DELETE FROM message_reactions WHERE message_id = $1', [messageId]);
+  // Вложение удаляется вместе с сообщением: иначе оно осталось бы
+  // доступным по прямой ссылке после «удалить у всех».
+  await dropForMessage(rows[0].id);
   return { id: rows[0].id, chatId: rows[0].chat_id };
 };
 
@@ -491,4 +574,135 @@ export const markRead = async (chatId, userId) => {
     [chatId, userId, READ_BATCH],
   );
   return rows.map((r) => r.message_id);
+};
+
+/* ─── Блокировки ───────────────────────────────────────────────────────── */
+/**
+ * «Заблокировать» должно означать, что сообщения не доходят, а не что
+ * их прячет браузер получателя. Проверка стоит на записи: отправитель
+ * не узнаёт, что его заблокировали, — сообщение просто не сохраняется.
+ */
+export const blockUser = async (blockerId, blockedId) => {
+  if (!blockerId || !blockedId || blockerId === blockedId) return false;
+  const { rowCount } = await query(
+    'SELECT 1 FROM profiles WHERE id = $1', [blockedId],
+  );
+  if (rowCount === 0) return false;
+  await query(
+    `INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1,$2)
+     ON CONFLICT DO NOTHING`, [blockerId, blockedId],
+  );
+  return true;
+};
+
+export const unblockUser = async (blockerId, blockedId) => {
+  await query('DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2', [blockerId, blockedId]);
+  return true;
+};
+
+export const listBlocked = async (blockerId) => {
+  const { rows } = await query(
+    'SELECT blocked_id FROM blocks WHERE blocker_id = $1', [blockerId],
+  );
+  return rows.map((r) => r.blocked_id);
+};
+
+/** Есть ли запрет в любую сторону между двумя людьми. */
+export const blockedBetween = async (a, b) => {
+  const { rowCount } = await query(
+    `SELECT 1 FROM blocks
+      WHERE (blocker_id = $1 AND blocked_id = $2)
+         OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1`,
+    [a, b],
+  );
+  return rowCount > 0;
+};
+
+/**
+ * Кто из участников личного чата запретил автору писать.
+ *
+ * В группе запрет не действует: там переписка общая, и уход одного
+ * человека — это выход из чата, а не запрет всем остальным.
+ */
+const blockedInChat = async (chatId, authorId) => {
+  const { rowCount } = await query(
+    `SELECT 1 FROM chats c
+       JOIN chat_members m ON m.chat_id = c.id AND m.user_id <> $2
+       JOIN blocks b ON (b.blocker_id = m.user_id AND b.blocked_id = $2)
+                     OR (b.blocker_id = $2 AND b.blocked_id = m.user_id)
+      WHERE c.id = $1 AND c.type = 'direct' LIMIT 1`,
+    [chatId, authorId],
+  );
+  return rowCount > 0;
+};
+
+/* ─── Состав чата ──────────────────────────────────────────────────────── */
+/**
+ * Добавляет участника в существующую группу.
+ *
+ * Право на это есть у владельца чата, и позвать можно только того, с
+ * кем у зовущего уже есть общий чат, — то же правило, что и при
+ * создании группы. Иначе через «добавить» обходилось бы ограничение,
+ * поставленное при создании.
+ */
+export const addMember = async (chatId, actorId, userId) => {
+  const { rows } = await query(
+    `SELECT c.type, m.role FROM chats c
+       JOIN chat_members m ON m.chat_id = c.id AND m.user_id = $2
+      WHERE c.id = $1`,
+    [chatId, actorId],
+  );
+  const chat = rows[0];
+  if (!chat) return { error: 'not_found' };
+  if (chat.type === 'direct') return { error: 'not_allowed' };
+  if (chat.role !== 'owner' && chat.role !== 'admin') return { error: 'not_allowed' };
+
+  const { rows: count } = await query(
+    'SELECT count(*)::int AS n FROM chat_members WHERE chat_id = $1', [chatId],
+  );
+  if ((count[0]?.n ?? 0) >= MAX_PARTICIPANTS) return { error: 'chat_full' };
+
+  const allowed = await knownTo(actorId, [String(userId)]);
+  if (!allowed.has(String(userId))) return { error: 'not_allowed' };
+
+  await query(
+    'INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+    [chatId, String(userId)],
+  );
+  return { chat: await getChat(chatId, actorId) };
+};
+
+/**
+ * Выход из чата.
+ *
+ * Из личного чата уходит только ушедший: у собеседника переписка
+ * остаётся. Удалять её у обоих значило бы дать любому право стереть
+ * общую историю в одностороннем порядке. Вернуться можно — открыв тот
+ * же чат заново: его идентификатор выведен из пары собеседников, и
+ * никого третьего он впустить не может.
+ *
+ * Владелец группы, выходя, распускает её целиком: оставлять чат без
+ * хозяина некому.
+ */
+export const leaveChat = async (chatId, userId) => {
+  const { rows } = await query(
+    `SELECT c.type, c.owner_id,
+            (SELECT array_agg(user_id) FROM chat_members WHERE chat_id = c.id) AS members
+       FROM chats c JOIN chat_members m ON m.chat_id = c.id AND m.user_id = $2
+      WHERE c.id = $1`,
+    [chatId, userId],
+  );
+  const chat = rows[0];
+  if (!chat) return null;
+
+  const members = chat.members ?? [];
+  const dissolve = chat.type !== 'direct' && chat.owner_id === userId;
+
+  if (dissolve) {
+    // Каскад удалит участников, сообщения, реакции и вложения.
+    await query('DELETE FROM chats WHERE id = $1', [chatId]);
+  } else {
+    await query('DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2', [chatId, userId]);
+  }
+  return { members, dissolved: dissolve };
 };

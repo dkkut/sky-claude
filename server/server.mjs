@@ -10,6 +10,7 @@ import { config } from './config.mjs';
 import { rateLimit } from './security.mjs';
 import { json } from './http.mjs';
 import { waitForDb, migrate, closeDb } from './db.mjs';
+import { encryptExistingContent } from './encryptbackfill.mjs';
 import { connectRedis, closeRedis } from './sessions.mjs';
 import { startSignalHub } from './signal.mjs';
 import { verifyToken } from './security.mjs';
@@ -20,12 +21,14 @@ import { authRoutes } from './routes/auth.mjs';
 import { skyIdRoutes } from './routes/skyid.mjs';
 import { walletRoutes } from './routes/wallet.mjs';
 import { directoryRoutes } from './routes/directory.mjs';
+import { fileRoutes } from './routes/files.mjs';
+import { sweepOrphans } from './attachments.mjs';
 import { purgeExpiredCodes } from './verification.mjs';
 import { checkDeliverySetup, closeMailer } from './notify.mjs';
 import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes];
+const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -81,8 +84,21 @@ let signalHub = null;
 let houseKeeping = null;
 
 const start = async () => {
+  // Содержимое переписки лежит в базе зашифрованным, и ключ для этого
+  // нужен собственный. Вывод из JWT_SECRET здесь недопустим: смена
+  // подписи токенов — обычное дело при подозрении на утечку, а она
+  // сделала бы нечитаемой всю переписку разом.
+  if (config.nodeEnv === 'production' && !config.encryptionKey) {
+    console.error('[запуск] не задан ENCRYPTION_KEY. Переписка хранится зашифрованной, '
+                + 'и без отдельного ключа её нельзя ни записать, ни прочитать надёжно. '
+                + 'Задайте ENCRYPTION_KEY в .env (scripts/rotate-secrets.sh сделает это сам) '
+                + 'и храните его отдельно от резервных копий базы.');
+    process.exit(1);
+  }
+
   await waitForDb();
   await migrate();
+  await encryptExistingContent();
   await connectRedis();
 
   // Список ключей беты приводим в соответствие с .env при каждом
@@ -103,6 +119,7 @@ const start = async () => {
   houseKeeping = setInterval(async () => {
     try {
       await purgeExpiredCodes();
+      await sweepOrphans();
       const expired = await expirePrimeSubscriptions();
       if (expired) console.log(`[prime] истекло подписок: ${expired}`);
     } catch (err) {

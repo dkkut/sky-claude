@@ -126,6 +126,20 @@ server {
     }
 
     # -- Остальной API -----------------------------------------
+    # -- Вложения: единственное место с большим телом ------------
+    location ^~ /api/files {
+        limit_req zone=req_general burst=30 nodelay;
+        # Потолок с запасом над серверным (10 МБ): отказ должен давать
+        # приложение с понятной ошибкой, а не nginx безымянной 413.
+        client_max_body_size 12m;
+        # Файл идёт одним куском — буферизация только съедала бы память.
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/ {
         limit_req zone=req_general burst=60 nodelay;
         include /etc/nginx/snippets/proxy-common.conf;

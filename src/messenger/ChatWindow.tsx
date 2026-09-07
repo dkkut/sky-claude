@@ -1,5 +1,5 @@
 import {
-  FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState,
+  FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState, useLayoutEffect,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,7 +7,7 @@ import {
   Phone, Video, Search, MoreVertical, Paperclip, Mic, Square, Images, PawPrint, Gift, ShoppingCart,
   Send, X, Pencil, Trash2, Pin, Forward, Check, CheckCheck, FileText, Camera,
   ChevronDown, ChevronLeft, Flag, BellOff, Archive, UserMinus, UserPlus, Reply, Palette, Settings2, BarChart2, Crown,
-  Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield,
+  Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield, LogOut,
 } from 'lucide-react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { useModerationStore } from '@/shared/moderationStore';
@@ -15,9 +15,11 @@ import { ContentWarningGate, BlockedChannelBadge } from '@/shared/ContentWarning
 import { useMessengerStore } from './store';
 import { useCallStore }      from '@/calls/store';
 import { useAuthStore }      from '@/core/auth/store';
-import { MessageItem }       from './types';
+import { MessageItem, MessageKind } from './types';
 import { broadcast }         from './socket';
 import { safeMediaUrl }      from './safeUrl';
+import { useAttachment }     from './mediaCache';
+import { apiUploadFile, MAX_FILE_BYTES } from '@/core/auth/api';
 import { PetPanel, PetBubble, PETS } from './PetPanel';
 import { PetHouse }          from './PetHouse';
 import { SpoilerText, OnceViewText, SelfDestructTimer, PollBubble, MsgOptionsPanel, CreatePollModal } from './MsgFeatures';
@@ -96,6 +98,7 @@ const Ticks = ({ s, fromMe }: { s: string; fromMe: boolean }) => {
 
 /* -- Voice bubble ------------------------------------------------- */
 const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
+  const media = useAttachment(safeMediaUrl(msg.mediaUrl));
   const [playing, setPlaying] = useState(false);
   const [pct, setPct]         = useState(0);
   const [dur, setDur]         = useState(0);
@@ -107,7 +110,7 @@ const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => 
 
   return (
     <div className="flex items-center gap-2.5" style={{ minWidth: 200, maxWidth: 280 }}>
-      <audio ref={ref} src={safeMediaUrl(msg.mediaUrl)}
+      <audio ref={ref} src={media}
         onLoadedMetadata={e => setDur(e.currentTarget.duration)}
         onEnded={() => { setPlaying(false); setPct(0); }}
         onTimeUpdate={e => { const a = e.currentTarget; if (a.duration) setPct(a.currentTime / a.duration * 100); }} />
@@ -146,11 +149,12 @@ const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => 
 
 /* -- File bubble -------------------------------------------------- */
 const FileBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
+  const media = useAttachment(safeMediaUrl(msg.mediaUrl));
   const { getTheme } = useChatTheme();
   const _theme2 = getTheme();
   const accent = fromMe ? '#8ac4f0' : _theme2.accent;
   return (
-    <a href={safeMediaUrl(msg.mediaUrl) ?? '#'} download={msg.fileName}
+    <a href={media ?? '#'} download={msg.fileName}
       className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:brightness-110"
       style={{ background: fromMe ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.15)', minWidth: 180, maxWidth: 260 }}>
       <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: `${accent}20` }}>
@@ -167,6 +171,7 @@ const FileBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
 
 /* -- Video Note (кружочек) ------------------------------------------- */
 const VideoNoteBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
+  const media = useAttachment(safeMediaUrl(msg.mediaUrl));
   const ref  = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [pct, setPct]         = useState(0);
@@ -196,7 +201,7 @@ const VideoNoteBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean })
       {/* circular clip */}
       <div className="absolute inset-0 rounded-full overflow-hidden"
         style={{ boxShadow: `0 0 0 2.5px ${accent}55` }}>
-        <video ref={ref} src={safeMediaUrl(msg.mediaUrl)} playsInline
+        <video ref={ref} src={media} playsInline
           className="w-full h-full object-cover"
           onTimeUpdate={e => {
             const v = e.currentTarget;
@@ -253,12 +258,13 @@ const VideoNoteBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean })
 
 /* -- Photo bubble ------------------------------------------------- */
 const PhotoBubble = ({ msg }: { msg: MessageItem }) => {
+  const media = useAttachment(safeMediaUrl(msg.mediaUrl));
   const [open, setOpen] = useState(false);
   return (
     <>
       <div className="rounded-xl overflow-hidden cursor-zoom-in" style={{ maxWidth: 280 }}
         onClick={() => setOpen(true)}>
-        <img src={safeMediaUrl(msg.mediaUrl)} alt="photo"
+        <img src={media} alt="photo"
           className="block w-full object-cover max-h-72" style={{ maxWidth: 280 }} />
       </div>
       <AnimatePresence>
@@ -266,7 +272,7 @@ const PhotoBubble = ({ msg }: { msg: MessageItem }) => {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.9)' }} onClick={() => setOpen(false)}>
-            <img src={safeMediaUrl(msg.mediaUrl)} alt="photo" className="max-w-full max-h-full rounded-xl object-contain" />
+            <img src={media} alt="photo" className="max-w-full max-h-full rounded-xl object-contain" />
             <button type="button" className="absolute top-4 right-4 grid h-10 w-10 place-items-center rounded-full"
               style={{ background: 'rgba(255,255,255,0.15)' }}>
               <X size={18} className="text-white" />
@@ -680,7 +686,8 @@ const ReportModal = ({ chatId, onClose }: { chatId: string; onClose: () => void 
 export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const isMobile = useIsMobile();
   const {
-    chats, messages, activeChatId, sendMessage, react, addReport, blockUser: blockChatUser,
+    chats, messages, activeChatId, sendMessage, react, addReport,
+    blockUser: blockChatUser, unblockUser: unblockChatUser, loadOlder, leaveChat: leaveChatOnServer,
     replyToId, setReplyTo, editingId, startEdit,
     editMessage, deleteMessage, pinMessage, forward,
     typing: typingMap, setTyping, markRead, blocked,
@@ -787,11 +794,29 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const [floodBlocked, setFloodBlocked] = useState(false);
   const [linkBlocked, setLinkBlocked] = useState(false);
   const pinned   = useMemo(() => chatMsgs.filter(m => m.pinned && !m.deleted), [chatMsgs]);
+  const loadingOlder = useMessengerStore(s => s.loadingOlder);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    const keep = keepScroll.current;
+    if (!el || !keep) return;
+    if (el.scrollHeight === keep.before) return;
+    el.scrollTop = keep.top + (el.scrollHeight - keep.before);
+    keepScroll.current = null;
+  }, [chatMsgs.length]);
   const typing   = typingMap[activeChatId] ?? [];
   const replyMsg = replyToId ? msgMap[replyToId] : null;
   const editMsg  = editingId ? msgMap[editingId] : null;
   const myId     = currentUserId ?? '';
-  const isBlocked = blocked.includes(chat?.username ?? '');
+  // Дописанная сверху страница смещает ленту: запоминаем высоту до
+  // вставки, чтобы вернуть взгляд на то же сообщение.
+  const keepScroll = useRef<{ before: number; top: number } | null>(null);
+  // Запрет ведёт сервер и хранит по идентификатору профиля: ник можно
+  // сменить, а запрет от этого сниматься не должен.
+  const peerIdForBlock = chat?.type === 'direct'
+    ? (chat.participants ?? []).find(p => p !== myId) : undefined;
+  const isBlocked = !!peerIdForBlock && blocked.includes(peerIdForBlock);
   const isPrime = accounts.find(a => a.id === currentUserId)?.isPrime ?? false;
   const [aiComposerBusy, setAiComposerBusy] = useState<AiComposerAction | null>(null);
   const [dictating, setDictating] = useState(false);
@@ -996,15 +1021,53 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     }
   };
 
+  /**
+   * Отправка вложения: сперва файл уходит на сервер, и только потом
+   * рядом с сообщением появляется ссылка на него.
+   *
+   * Раньше здесь была ссылка вида blob:, действительная ровно в той
+   * вкладке, где файл выбрали: получатель не видел ничего, и на другом
+   * устройстве отправителя тоже ничего не было.
+   */
+  const sendAttachment = async (
+    file: File | Blob,
+    { kind, text, fileName }: { kind: MessageKind; text: string; fileName: string },
+  ) => {
+    if (!chat) return;
+    if (file.size > MAX_FILE_BYTES) {
+      setRecError('Файл больше 10 МБ'); setTimeout(() => setRecError(''), 3000);
+      return;
+    }
+    const asFile = file instanceof File ? file : new File([file], fileName, { type: file.type });
+    setUploading(fileName); setUploadPct(20);
+
+    const res = await apiUploadFile(chat.id, asFile);
+    if (!res.ok || !res.data?.file) {
+      setUploading(null); setUploadPct(0);
+      setRecError(res.reason ?? 'Не удалось отправить файл');
+      setTimeout(() => setRecError(''), 3500);
+      return;
+    }
+    setUploadPct(90);
+
+    // Локальная ссылка нужна только чтобы отправитель сразу видел
+    // вложение; в сообщение она не уходит — сервер соберёт адрес сам.
+    const preview = URL.createObjectURL(asFile);
+    blobUrls.current.push(preview);
+    const m = sendMessage({
+      text, kind, mediaUrl: preview, fileName,
+      bytes: asFile.size, mimeType: res.data.file.mime,
+    });
+    if (m) broadcast.message({ ...m, fileId: res.data.file.id } as any);
+    setUploadPct(100);
+    setTimeout(() => { setUploading(null); setUploadPct(0); }, 400);
+  };
+
   const sendFile = async (file: File) => {
     const isMedia = file.type.startsWith('image/') || file.type.startsWith('video/');
-    setUploading(file.name); setUploadPct(0);
-    for (let p = 15; p <= 90; p += 25) { await new Promise(r => setTimeout(r, 60)); setUploadPct(p); }
-    const url = URL.createObjectURL(file);
-    blobUrls.current.push(url);
-    const m = sendMessage({ text: file.name, kind: isMedia ? 'photo' : 'file', mediaUrl: url, fileName: file.name, bytes: file.size, mimeType: file.type });
-    if (m) broadcast.message(m);
-    setUploadPct(100); setTimeout(() => { setUploading(null); setUploadPct(0); }, 500);
+    await sendAttachment(file, {
+      kind: isMedia ? 'photo' : 'file', text: file.name, fileName: file.name,
+    });
   };
 
   const startRec = async () => {
@@ -1018,10 +1081,9 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
         if (!cancelRef.current && recChunks.current.length) {
           const blob = new Blob(recChunks.current, { type: 'audio/webm' });
           const sec = recSecRef.current;
-          const voiceUrl = URL.createObjectURL(blob);
-          blobUrls.current.push(voiceUrl);
-          const m = sendMessage({ text: fmtS(sec), kind: 'voice', mediaUrl: voiceUrl, fileName: `voice-${Date.now()}.webm` });
-          if (m) broadcast.message(m);
+          void sendAttachment(blob, {
+            kind: 'voice', text: fmtS(sec), fileName: `voice-${Date.now()}.webm`,
+          });
         }
         recStream.current = null; setRecSec(0); recSecRef.current = 0;
       };
@@ -1045,10 +1107,9 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
         if (!cancelRef.current && recChunks.current.length) {
           const blob = new Blob(recChunks.current, { type: 'video/webm' });
           const sec = recSecRef.current;
-          const url = URL.createObjectURL(blob);
-          blobUrls.current.push(url);
-          const m = sendMessage({ text: fmtS(sec), kind: 'video-note', mediaUrl: url, fileName: `video-note-${Date.now()}.webm` });
-          if (m) broadcast.message(m);
+          void sendAttachment(blob, {
+            kind: 'video-note', text: fmtS(sec), fileName: `video-note-${Date.now()}.webm`,
+          });
         }
         recStream.current = null; setRecSec(0); recSecRef.current = 0;
       };
@@ -1220,6 +1281,13 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 ...(chat.type === 'direct' ? [{ icon: Crown, label: 'Подарить Prime', fn: () => { setShowGiftPrime(true); setMenuOpen(false); }, tone: 'var(--amber)' }] : []),
                 { icon: Palette, label: 'Тема чата', fn: () => { setShowTheme(true); setMenuOpen(false); } },
                 { icon: Info, label: chat.type === 'direct' ? 'Информация о чате' : 'Информация и участники', fn: () => { setShowInfo(v => !v); setMenuOpen(false); } },
+                // Выйти из чата было нельзя вовсе: начатую кем-то
+                // переписку не получалось закрыть.
+                { icon: LogOut,
+                  label: chat.type === 'direct' ? 'Убрать переписку у себя'
+                       : chat.ownerId === myId ? 'Удалить чат' : 'Выйти из чата',
+                  fn: () => { setConfirmLeave(true); setMenuOpen(false); },
+                  tone: 'var(--red)' },
               ].map((item, i) => (
                 <button key={i} type="button" onClick={item.fn}
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors hover:bg-white/5"
@@ -1515,6 +1583,43 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
         )}
       </AnimatePresence>
 
+      {/* -- Подтверждение выхода из чата ------------------------------ */}
+      <AnimatePresence>
+        {confirmLeave && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setConfirmLeave(false)}>
+            <motion.div initial={{ scale: 0.94 }} animate={{ scale: 1 }} exit={{ scale: 0.94 }}
+              className="w-full max-w-xs rounded-2xl p-5"
+              style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}
+              onClick={e => e.stopPropagation()}>
+              <p className="text-sm font-semibold mb-1" style={{ color: 'var(--t1)' }}>
+                {chat.type === 'direct' ? 'Убрать переписку у себя?'
+                 : chat.ownerId === myId ? 'Удалить чат?' : 'Выйти из чата?'}
+              </p>
+              <p className="text-xs mb-4" style={{ color: 'var(--t2)' }}>
+                {chat.type === 'direct'
+                  ? 'Чат пропадёт у вас на всех устройствах. У собеседника переписка останется; вернуться можно, написав ему снова.'
+                  : chat.ownerId === myId
+                    ? 'Чат и вся переписка пропадут у всех участников.'
+                    : 'Вы перестанете получать сообщения этого чата.'}
+              </p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setConfirmLeave(false)}
+                  className="flex-1 py-2 rounded-xl text-sm font-medium"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t1)' }}>Отмена</button>
+                <button type="button"
+                  onClick={() => { leaveChatOnServer(chat.id); setConfirmLeave(false); }}
+                  className="flex-1 py-2 rounded-xl text-sm font-semibold text-white"
+                  style={{ background: 'var(--red)' }}>
+                  {chat.type !== 'direct' && chat.ownerId === myId ? 'Удалить' : 'Убрать'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* -- Messages -------------------------------------------------- */}
       <div
         className="flex-1 relative overflow-y-auto px-4 py-3 scroll-none sky-chat-font"
@@ -1523,7 +1628,18 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
         onScroll={() => {
           const el = listRef.current; if (!el) return;
           setShowScroll(el.scrollHeight - el.scrollTop - el.clientHeight > 300);
+          // Долистали до верха — просим у сервера страницу постарше.
+          // Без этого переписка обрывалась на последних пятидесяти
+          // сообщениях: всё, что раньше, было недоступно совсем.
+          if (el.scrollTop < 120 && chat) {
+            const before = el.scrollHeight;
+            keepScroll.current = { before, top: el.scrollTop };
+            loadOlder(chat.id);
+          }
         }}>
+        {chat && loadingOlder[chat.id] && (
+          <p className="py-2 text-center text-xs" style={{ color: 'var(--t2)' }}>Загружаем…</p>
+        )}
         <LiquidCursor
           containerRef={chatAreaRef as React.RefObject<HTMLElement>}
           color={theme.liquidColor}
@@ -1555,7 +1671,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                     🚩 Пожаловаться
                   </button>
                   <button type="button"
-                    onClick={() => blockChatUser(peerId??'')}
+                    onClick={() => (isBlocked ? unblockChatUser(peerId ?? '') : blockChatUser(peerId ?? ''))}
                     className="flex-1 rounded-xl py-2 text-[11px] font-bold"
                     style={{ background:'rgba(239,68,68,0.1)', color:'var(--red)', border:'1px solid rgba(239,68,68,0.2)' }}>
                     🚫 Заблокировать

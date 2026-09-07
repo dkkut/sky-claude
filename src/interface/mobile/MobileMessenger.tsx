@@ -12,15 +12,22 @@ import { SwipeBackView } from './SwipeBackView';
  *  не трогая внутреннюю логику ChatList/ChatWindow. */
 export const MobileMessenger = () => {
   const activeChatId = useMessengerStore(s => s.activeChatId);
-  const prevChatId = useRef(activeChatId);
+  // Следим за счётчиком открытий, а не за самим идентификатором: чат
+  // может быть уже выбран в сторе, и тогда нажатие по нему не меняло
+  // ничего — список так и оставался на экране.
+  const openSeq = useMessengerStore(s => s.openSeq);
+  const prevSeq = useRef(openSeq);
   const [view, setView] = useState<'list'|'chat'>('list');
 
   useEffect(() => {
-    if (activeChatId !== prevChatId.current) {
-      setView('chat');
-      prevChatId.current = activeChatId;
+    if (openSeq !== prevSeq.current) {
+      prevSeq.current = openSeq;
+      if (activeChatId) setView('chat');
     }
-  }, [activeChatId]);
+  }, [openSeq, activeChatId]);
+
+  // Чат исчез (вышли из него или его распустили) — возвращаемся к списку.
+  useEffect(() => { if (!activeChatId) setView('list'); }, [activeChatId]);
 
   return (
     <div className="relative h-full overflow-hidden">

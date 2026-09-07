@@ -51,6 +51,11 @@ interface S {
   quickReplies: { id: string; text: string }[];
   connected:    boolean;
   synced:       boolean;
+  /** Растёт при каждом открытии чата — даже если открыли тот же самый. */
+  openSeq:      number;
+  /** Чаты, для которых сервер уже сказал «раньше ничего нет». */
+  historyDone:  Record<string, boolean>;
+  loadingOlder: Record<string, boolean>;
 
   setActiveChat: (id:string)=>void;
   setSearch:     (v:string)=>void;
@@ -70,7 +75,11 @@ interface S {
   pinChat:       (id:string)=>void;
   archiveChat:   (id:string)=>void;
   muteChat:      (id:string)=>void;
-  blockUser:     (username:string)=>void;
+  blockUser:     (userId:string)=>void;
+  unblockUser:   (userId:string)=>void;
+  loadOlder:     (chatId:string)=>void;
+  leaveChat:     (chatId:string)=>void;
+  addMember:     (chatId:string,userId:string)=>void;
   react:         (msgId:string,emoji:string)=>void;
   forward:       (id:string)=>MessageItem|null;
   markRead:      (chatId:string)=>void;
@@ -95,6 +104,9 @@ interface S {
   applyDeleted:   (id:string)=>void;
   applyReaction:  (msgId:string,emoji:string,userId:string,removed:boolean)=>void;
   applyRead:      (ids:string[])=>void;
+  applyOlder:     (chatId:string,msgs:MessageItem[],done:boolean)=>void;
+  applyBlocked:   (ids:string[])=>void;
+  applyChatGone:  (chatId:string)=>void;
   applyOnline:    (ids:Set<string>)=>void;
   setConnected:   (v:boolean)=>void;
   markSynced:     ()=>void;
@@ -165,8 +177,13 @@ export const useMessengerStore = create<S>((set,get) => {
     quickReplies: saved?.quickReplies ?? [],
     connected:    false,
     synced:       false,
+    openSeq:      0,
+    historyDone:  {},
+    loadingOlder: {},
 
-    setActiveChat: id => { mut(()=>({activeChatId:id,replyToId:null,editingId:null})); },
+    // Счётчик растёт всегда, даже если открыли уже открытый чат: на
+    // телефоне переход в окно переписки следит именно за ним.
+    setActiveChat: id => { mut(s=>({activeChatId:id,replyToId:null,editingId:null,openSeq:s.openSeq+1})); },
     setSearch:     v  => set({search:v}),
     setFilter:     v  => mut(()=>({filter:v})),
     setFolder:     v  => mut(()=>({folder:v})),
@@ -200,7 +217,10 @@ export const useMessengerStore = create<S>((set,get) => {
       const {activeChatId,chats,blocked,replyToId}=get();
       if(!activeChatId) return null;
       const chat=chats.find(c=>c.id===activeChatId);
-      if(chat&&blocked.includes(chat.username??'')) return null;
+      // Запрет действует и на сервере — здесь только чтобы не рисовать
+      // сообщение, которое всё равно не уйдёт.
+      const peer=chat?.type==='direct'?(chat.participants??[]).find(p=>p!==me):undefined;
+      if(peer&&blocked.includes(peer)) return null;
       const id=crypto.randomUUID();
       const isScheduled = !!scheduledAt && scheduledAt > Date.now();
       const msg:MessageItem={
@@ -246,7 +266,26 @@ export const useMessengerStore = create<S>((set,get) => {
     pinChat:      id=>mut(s=>({chats:s.chats.map(c=>c.id===id?{...c,pinned:!c.pinned}:c)})),
     archiveChat:  id=>mut(s=>({chats:s.chats.map(c=>c.id===id?{...c,archived:!c.archived}:c)})),
     muteChat:     id=>mut(s=>({chats:s.chats.map(c=>c.id===id?{...c,muted:!c.muted}:c)})),
-    blockUser:    u =>mut(s=>({blocked:s.blocked.includes(u)?s.blocked.filter(x=>x!==u):[...s.blocked,u]})),
+    // Запрет теперь серверный: браузер только просит и показывает.
+    blockUser:   id => wireSend({type:'block-user',payload:{userId:id}}),
+    unblockUser: id => wireSend({type:'unblock-user',payload:{userId:id}}),
+
+    /** Просит страницу переписки постарше той, что уже показана. */
+    loadOlder: (chatId) => {
+      const s = get();
+      if (!chatId || s.historyDone[chatId] || s.loadingOlder[chatId]) return;
+      const oldest = s.messages
+        .filter(m => m.chatId === chatId && !m.isScheduled && m.status !== 'queued')
+        .sort((a,b)=>a.timestamp-b.timestamp)[0];
+      if (!oldest) return;
+      set(st => ({ loadingOlder: { ...st.loadingOlder, [chatId]: true } }));
+      wireSend({ type:'get-messages', payload:{ chatId, limit: 50, before: oldest.id } });
+    },
+
+    leaveChat: (chatId) => { if (chatId) wireSend({type:'leave-chat',payload:{chatId}}); },
+    addMember: (chatId,userId) => {
+      if (chatId && userId) wireSend({type:'add-member',payload:{chatId,userId}});
+    },
 
     react:(msgId,emoji)=>{
       const me=getUid(); if(!me) return;
@@ -283,7 +322,7 @@ export const useMessengerStore = create<S>((set,get) => {
       const me=getUid(); if(!me||!person?.id||person.id===me) return null;
       const id=directChatId(me,person.id);
       const ex=get().chats.find(c=>c.id===id);
-      if(ex){mut(()=>({activeChatId:ex.id}));return ex;}
+      if(ex){mut(st=>({activeChatId:ex.id,openSeq:st.openSeq+1}));return ex;}
       const nc:ChatItem={
         id,name:person.name,username:person.username,
         avatar:(person.name||'?').slice(0,2).toUpperCase(),online:false,
@@ -293,6 +332,7 @@ export const useMessengerStore = create<S>((set,get) => {
         chats:[nc,...s.chats],
         people:{...s.people,[person.id]:person},
         activeChatId:nc.id,
+        openSeq:s.openSeq+1,
       }));
       return nc;
     },
@@ -308,7 +348,7 @@ export const useMessengerStore = create<S>((set,get) => {
         members:memberIds.length+1,description,ownerId:me,
         participants:[me,...memberIds],folder:'social',
       };
-      mut(s=>({chats:[nc,...s.chats],activeChatId:id}));
+      mut(s=>({chats:[nc,...s.chats],activeChatId:id,openSeq:s.openSeq+1}));
       return id;
     },
 
@@ -374,7 +414,10 @@ export const useMessengerStore = create<S>((set,get) => {
         chats:all,
         people:{...s.people,...indexPeople(people)},
         messages:s.messages.filter(m=>ids.has(m.chatId)||m.isScheduled),
-        activeChatId:ids.has(s.activeChatId)?s.activeChatId:(all[0]?.id??''),
+        // Сам чат не выбираем: выбирал первый попавшийся, и на телефоне
+        // нажатие по нему уже ничего не меняло — окно переписки не
+        // открывалось вовсе. Пусто значит «ничего не открыто».
+        activeChatId:ids.has(s.activeChatId)?s.activeChatId:'',
       };
     }),
 
@@ -453,6 +496,28 @@ export const useMessengerStore = create<S>((set,get) => {
       }),
     })),
 
+    /** Дописывает подгруженную страницу к началу ленты. */
+    applyOlder:(chatId,msgs,done)=>{
+      mut(s=>{
+        const have = new Set(s.messages.map(m=>m.id));
+        const fresh = msgs.filter(m=>!have.has(m.id));
+        return {
+          messages: [...fresh, ...s.messages].sort((a,b)=>a.timestamp-b.timestamp),
+          historyDone: { ...s.historyDone, [chatId]: done || fresh.length === 0 },
+          loadingOlder: { ...s.loadingOlder, [chatId]: false },
+        };
+      });
+    },
+
+    applyBlocked:(ids)=>mut(()=>({blocked:ids??[]})),
+
+    /** Чат распущен или мы из него вышли. */
+    applyChatGone:(chatId)=>mut(s=>({
+      chats: s.chats.filter(c=>c.id!==chatId),
+      messages: s.messages.filter(m=>m.chatId!==chatId),
+      activeChatId: s.activeChatId===chatId ? '' : s.activeChatId,
+    })),
+
     applyRead:(ids)=>{
       if(!ids?.length) return;
       const set2=new Set(ids);
@@ -492,5 +557,8 @@ export const reloadMessengerForUser = (uid: string) => {
     quickReplies: saved2?.quickReplies ?? [],
     connected:    false,
     synced:       false,
+    openSeq:      0,
+    historyDone:  {},
+    loadingOlder: {},
   });
 };

@@ -33,12 +33,17 @@ const initials = (s: string) => (s || '?').slice(0, 2).toUpperCase();
 const toChatItem = (raw: any, myId: string, prev?: ChatItem): ChatItem => {
   const people: Person[] = raw.people ?? [];
   const peer = raw.type === 'direct' ? people.find(p => p.id !== myId) : undefined;
-  const name = peer ? peer.name : (raw.name || 'Без названия');
+  // Собеседник мог убрать переписку у себя — тогда его в составе чата
+  // уже нет. Название при этом менять не на что: оставляем прежнее,
+  // иначе человек увидел бы в списке своё собственное имя.
+  const name = peer ? peer.name
+    : raw.type === 'direct' ? (prev?.name || raw.name || 'Собеседник')
+    : (raw.name || 'Без названия');
   return {
     id:       raw.id,
     type:     raw.type as ChatType,
     name,
-    username: peer ? peer.username : (raw.username ?? ''),
+    username: peer ? peer.username : (prev?.username ?? raw.username ?? ''),
     avatar:   initials(name),
     online:   prev?.online ?? false,
     members:  raw.type === 'direct' ? undefined : people.length,
@@ -260,8 +265,31 @@ const handle = (data: any) => {
         raw.map(c => toChatItem(c, myId, store.chats.find(p => p.id === c.id))),
         raw.flatMap(c => c.people ?? []),
       );
+      // Список запретов ведёт сервер: браузер его только отображает.
+      if (Array.isArray(payload?.blocked)) store.applyBlocked(payload.blocked);
       break;
     }
+
+    case 'blocked-changed':
+      store.applyBlocked(payload?.blocked ?? []);
+      break;
+
+    case 'messages-older':
+      store.applyOlder(payload?.chatId,
+        (payload?.messages ?? []).map((m: any) => toMessageItem(m, myId)),
+        Boolean(payload?.done));
+      break;
+
+    case 'chat-removed':
+    case 'chat-left':
+      // Чат распустили, или из него вышли мы сами. У остальных
+      // участников чат остаётся — им приходит обновлённый состав.
+      if (type === 'chat-removed' || payload?.userId === myId) store.applyChatGone(payload?.chatId);
+      break;
+
+    case 'chat-error':
+      console.warn('[чат]', payload?.error);
+      break;
 
     case 'messages-snapshot':
       store.applyMessages(payload?.chatId, (payload?.messages ?? []).map((m: any) => toMessageItem(m, myId)));

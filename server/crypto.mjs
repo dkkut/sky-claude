@@ -35,8 +35,13 @@ const derive = (info) =>
 
 let _encKey = null;
 let _macKey = null;
+let _contentKey = null;
 const encKey = () => (_encKey ??= derive('sky:secret-encryption:v1'));
 const macKey = () => (_macKey ??= derive('sky:code-hmac:v1'));
+// Отдельный ключ для содержимого переписки: он используется на каждое
+// сообщение, а ключ секретов 2FA — изредка. Разводить их стоит хотя бы
+// потому, что объём данных под одним ключом лучше не смешивать.
+const contentKey = () => (_contentKey ??= derive('sky:message-content:v1'));
 
 /* ─── Секреты двухэтапной защиты ───────────────────────────────────────── */
 
@@ -93,4 +98,72 @@ export const generateNumericCode = (digits = 6) => {
     value = crypto.randomBytes(4).readUInt32BE(0);
   } while (value >= limit);
   return String(value % max).padStart(digits, '0');
+};
+
+/* ─── Содержимое переписки ─────────────────────────────────────────────── */
+/**
+ * Текст сообщений и названия чатов в базе лежат зашифрованными.
+ *
+ * Это не сквозное шифрование: ключ у сервера, и сервер способен
+ * прочитать переписку. Оно защищает от другого — от утечки дампа базы,
+ * попавшего не туда бэкапа, украденного диска и от доступа к базе в
+ * обход приложения. Называть это E2EE нельзя.
+ *
+ * Формат тот же, что у секретов: v1.<nonce>.<tag>.<шифротекст>. Номер
+ * версии впереди позволяет сменить ключ, не останавливая сервис:
+ * старые записи читаются прежним ключом, новые пишутся новым.
+ */
+export const encryptContent = (plain) => {
+  const text = String(plain ?? '');
+  if (text === '') return '';
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', contentKey(), iv);
+  const enc = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  return ['v1', iv.toString('base64url'), cipher.getAuthTag().toString('base64url'),
+          enc.toString('base64url')].join('.');
+};
+
+/**
+ * Обратное преобразование.
+ *
+ * Значение, не похожее на шифротекст, возвращается как есть: так читаются
+ * записи, сделанные до перехода на шифрование. Подделать шифротекст, не
+ * зная ключа, нельзя — GCM проверяет метку целостности, — поэтому
+ * «непохоже на шифротекст» здесь безопасно означает «старая запись».
+ */
+export const decryptContent = (blob) => {
+  if (typeof blob !== 'string' || blob === '') return '';
+  if (!blob.startsWith('v1.')) return blob;
+  const [, ivB64, tagB64, dataB64] = blob.split('.');
+  if (!ivB64 || !tagB64 || !dataB64) return blob;
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', contentKey(), Buffer.from(ivB64, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tagB64, 'base64url'));
+    return Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64url')), decipher.final()]).toString('utf8');
+  } catch {
+    // Ключ сменили без перешифровки, или запись повреждена. Отдать
+    // мусор нельзя, «потерять» молча — тоже: возвращаем пометку.
+    return null;
+  }
+};
+
+/** Шифрование двоичных данных — для вложений. */
+export const encryptBytes = (buf) => {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', contentKey(), iv);
+  const enc = Buffer.concat([cipher.update(buf), cipher.final()]);
+  // Один буфер: версия, nonce, метка, данные — чтобы файл на диске был
+  // самодостаточным и не требовал отдельной таблицы с параметрами.
+  return Buffer.concat([Buffer.from([1]), iv, cipher.getAuthTag(), enc]);
+};
+
+export const decryptBytes = (buf) => {
+  if (!Buffer.isBuffer(buf) || buf.length < 29 || buf[0] !== 1) return null;
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', contentKey(), buf.subarray(1, 13));
+    decipher.setAuthTag(buf.subarray(13, 29));
+    return Buffer.concat([decipher.update(buf.subarray(29)), decipher.final()]);
+  } catch {
+    return null;
+  }
 };

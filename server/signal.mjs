@@ -22,6 +22,7 @@ import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
+  blockUser, unblockUser, listBlocked, addMember, leaveChat,
 } from './chats.mjs';
 
 const PORT = Number(process.env.SIGNAL_PORT || 8081);
@@ -181,7 +182,9 @@ const identify = async (token) => {
  */
 const sendSnapshot = async (ws, userId) => {
   const chats = await listChats(userId);
-  send(ws, { type: 'chats-snapshot', payload: { chats } });
+  // Список запретов приезжает вместе с чатами: он теперь серверный, и
+  // браузер не должен решать его самостоятельно.
+  send(ws, { type: 'chats-snapshot', payload: { chats, blocked: await listBlocked(userId) } });
 
   for (const chat of chats) {
     const messages = await listMessages(chat.id, userId, 50);
@@ -311,9 +314,58 @@ const handle = async (ws, session, msg) => {
 
     case 'get-messages': {
       const chatId = payload?.chatId;
-      const messages = await listMessages(chatId, me, payload?.limit ?? 100);
+      const messages = await listMessages(chatId, me, payload?.limit ?? 100, payload?.before ?? null);
       if (!messages) return;
-      send(ws, { type: 'messages-snapshot', payload: { chatId, messages } });
+      // «Догрузка» отличается от снимка: клиент дописывает её к началу
+      // ленты, а не заменяет ею всё, что уже показано.
+      send(ws, {
+        type: payload?.before ? 'messages-older' : 'messages-snapshot',
+        payload: { chatId, messages, before: payload?.before ?? null, done: messages.length === 0 },
+      });
+      break;
+    }
+
+    /* ── Состав чата ── */
+    case 'add-member': {
+      const { chatId, userId } = payload ?? {};
+      if (!chatId || !userId) return;
+      const result = await addMember(chatId, me, userId);
+      if (result.error) { send(ws, { type: 'chat-error', payload: { chatId, error: result.error } }); return; }
+      // Новому участнику чат нужен целиком, остальным — обновлённый состав.
+      for (const uid of result.chat.participants) {
+        sendTo(uid, { type: 'chat-created', payload: { chat: result.chat } });
+      }
+      break;
+    }
+
+    case 'leave-chat': {
+      const chatId = payload?.chatId;
+      if (!chatId) return;
+      const result = await leaveChat(chatId, me);
+      if (!result) return;
+      // Сообщаем всем, кто был в чате на момент выхода: у оставшихся
+      // должен пропасть участник, а при роспуске — весь чат.
+      for (const uid of result.members) {
+        sendTo(uid, {
+          type: result.dissolved ? 'chat-removed' : 'chat-left',
+          payload: { chatId, userId: me },
+        });
+      }
+      break;
+    }
+
+    /* ── Запреты ── */
+    case 'block-user':
+    case 'unblock-user': {
+      const target = payload?.userId;
+      if (!target || target === me) return;
+      const done = type === 'block-user'
+        ? await blockUser(me, target)
+        : await unblockUser(me, target);
+      if (!done) return;
+      // Отвечаем только самому запретившему: собеседник не должен
+      // узнавать, что его заблокировали.
+      send(ws, { type: 'blocked-changed', payload: { blocked: await listBlocked(me) } });
       break;
     }
 
