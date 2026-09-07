@@ -164,13 +164,15 @@ const toMessage = (row) => {
 /** Чаты пользователя вместе с участниками. */
 export const listChats = async (userId) => {
   const { rows } = await query(
-    `SELECT c.*, ${PEOPLE_SELECT}
+    `SELECT c.*, me.role AS my_role, ${PEOPLE_SELECT}
        FROM chats c
        JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $1
       ORDER BY c.created_at DESC`,
     [userId],
   );
-  return rows.map(toChat);
+  // Роль берётся из строки. Писать rows.map(toChat) нельзя: вторым
+  // аргументом ушёл бы номер строки и подменил бы роль числом.
+  return rows.map((row) => toChat(row));
 };
 
 /** Один чат — с проверкой участия. Нужен, чтобы отдать его создателю. */

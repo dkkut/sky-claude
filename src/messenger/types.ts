@@ -17,6 +17,8 @@ export interface ChatItem {
   folder?: Exclude<ChatFolder, 'all'>;
   description?: string;
   ownerId?: string;
+  /** Роль спрашивающего в этом чате — приходит с сервера. */
+  myRole?: 'owner' | 'admin' | 'moderator' | 'helper' | 'member';
 }
 
 export interface MessageReaction { emoji: string; userIds: string[]; }
@@ -51,6 +53,9 @@ export interface MessageItem {
   isScheduled?:   boolean;
   favorited?:     boolean;            // сохранено в «Избранное»
   viewedBy?:      string[];           // userId — реальные просмотры (для каналов)
+  views?:         number;             // уникальные читатели записи канала (считает сервер)
+  pinnedBy?:      string;             // кто закрепил
+  fileId?:        string;             // вложение на сервере
   // Опрос
   poll?: {
     question:  string;

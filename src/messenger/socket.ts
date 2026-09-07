@@ -14,6 +14,7 @@ import { useMessengerStore } from './store';
 import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
 import { setWireSink, type Outgoing } from '@/core/wire';
 import { bsignal, type SignalMsg } from '@/calls/webrtc';
+import { useAdminStore, ADMIN_ERRORS, POST_ERRORS } from './adminStore';
 import type { MessageItem, ChatItem, ChatType } from './types';
 
 /* ─── Приведение серверных данных к виду интерфейса ───────────────────── */
@@ -50,6 +51,8 @@ const toChatItem = (raw: any, myId: string, prev?: ChatItem): ChatItem => {
     participants: raw.participants ?? people.map(p => p.id),
     description:  raw.description,
     ownerId:      raw.ownerId,
+    // Роль решает сервер; интерфейс по ней только рисует кнопки.
+    myRole:       raw.myRole,
     // Закрепление, архив и звук — настройки этого устройства, сервер о
     // них не знает и не должен их затирать при каждой синхронизации.
     pinned:   prev?.pinned,
@@ -287,8 +290,54 @@ const handle = (data: any) => {
       if (type === 'chat-removed' || payload?.userId === myId) store.applyChatGone(payload?.chatId);
       break;
 
+    /* ── Управление группой и каналом ── */
+    case 'chat-settings':
+      useAdminStore.getState().applySettings(payload?.chatId, payload?.settings);
+      break;
+
+    case 'chat-members':
+      useAdminStore.getState().applyMembers(payload?.chatId, {
+        members: payload?.members, hidden: payload?.hidden, count: payload?.count,
+      });
+      break;
+
+    case 'chat-invites':
+      useAdminStore.getState().applyInvites(payload?.chatId, payload?.invites ?? []);
+      break;
+
+    case 'chat-requests':
+      useAdminStore.getState().applyRequests(payload?.chatId, payload?.requests ?? []);
+      break;
+
+    case 'chat-log':
+      useAdminStore.getState().applyLog(payload?.chatId, payload?.entries ?? []);
+      break;
+
     case 'chat-error':
-      console.warn('[чат]', payload?.error);
+      // Отказ показываем словами: молчаливое бездействие кнопки хуже,
+      // чем объяснение, почему она не сработала.
+      useAdminStore.getState().notify(ADMIN_ERRORS[payload?.error] ?? 'Не получилось');
+      break;
+
+    case 'message-rejected':
+      useAdminStore.getState().notify(POST_ERRORS[payload?.reason] ?? 'Сообщение не отправлено');
+      store.dropMessage(payload?.messageId);
+      break;
+
+    case 'join-result':
+      if (payload?.error) {
+        useAdminStore.getState().notify(ADMIN_ERRORS[payload.error] ?? 'Не получилось войти');
+      } else if (payload?.pending) {
+        useAdminStore.getState().notify('Заявка отправлена — ждите одобрения');
+      }
+      break;
+
+    case 'message-pinned':
+      store.applyPinned(payload?.messageId, Boolean(payload?.pinned));
+      break;
+
+    case 'message-views':
+      store.applyViews(payload?.counts ?? []);
       break;
 
     case 'messages-snapshot':

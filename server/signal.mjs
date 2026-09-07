@@ -136,10 +136,15 @@ const fanout = (userIds, msg, exceptWs) => {
  * владельца и вместе с ней все кнопки управления.
  */
 const sendChatToEach = async (chatId, userIds) => {
+  // Правила чата идут вместе с ним: приглашённый должен сразу знать,
+  // можно ли ему здесь писать, а не выяснять это отказом сервера.
+  const settings = await getSettings(chatId);
   for (const uid of userIds) {
     if (!clients.has(uid)) continue;
     const view = await getChat(chatId, uid);
-    if (view) sendTo(uid, { type: 'chat-created', payload: { chat: view } });
+    if (!view) continue;
+    sendTo(uid, { type: 'chat-created', payload: { chat: view } });
+    if (settings) sendTo(uid, { type: 'chat-settings', payload: { chatId, settings } });
   }
 };
 
@@ -210,6 +215,13 @@ const sendSnapshot = async (ws, userId) => {
   for (const chat of chats) {
     const messages = await listMessages(chat.id, userId, 50);
     send(ws, { type: 'messages-snapshot', payload: { chatId: chat.id, messages: messages ?? [] } });
+    // Правила чата нужны каждому участнику, а не только тем, кто
+    // открывал панель управления: иначе тот, кому писать уже нельзя,
+    // видит поле ввода и узнаёт об этом только по отказу сервера.
+    if (chat.type !== 'direct') {
+      const settings = await getSettings(chat.id);
+      if (settings) send(ws, { type: 'chat-settings', payload: { chatId: chat.id, settings } });
+    }
   }
   send(ws, { type: 'snapshot-done' });
 };

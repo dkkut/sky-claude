@@ -106,6 +106,10 @@ interface S {
   applyRead:      (ids:string[])=>void;
   applyOlder:     (chatId:string,msgs:MessageItem[],done:boolean)=>void;
   applyBlocked:   (ids:string[])=>void;
+  /** Сервер не принял сообщение — убираем его из ленты. */
+  dropMessage:    (id?:string)=>void;
+  applyPinned:    (id:string,pinned:boolean)=>void;
+  applyViews:     (counts:{messageId:string;views:number}[])=>void;
   applyChatGone:  (chatId:string)=>void;
   applyOnline:    (ids:Set<string>)=>void;
   setConnected:   (v:boolean)=>void;
@@ -261,7 +265,12 @@ export const useMessengerStore = create<S>((set,get) => {
     },
 
     deleteMessage:id=>mut(s=>({messages:s.messages.map(m=>m.id===id?{...m,deleted:true,text:'Сообщение удалено',mediaUrl:undefined}:m)})),
-    pinMessage:   id=>mut(s=>({messages:s.messages.map(m=>m.id===id?{...m,pinned:!m.pinned}:m)})),
+    // Закрепление видят все участники, поэтому решает сервер: здесь
+    // только просьба. Ответ придёт событием и обновит ленту.
+    pinMessage:   id=>{
+      const m=get().messages.find(x=>x.id===id);
+      if(m) wireSend({type:'pin-message',payload:{chatId:m.chatId,messageId:id,pinned:!m.pinned}});
+    },
     toggleFavoriteMessage: id=>mut(s=>({messages:s.messages.map(m=>m.id===id?{...m,favorited:!m.favorited}:m)})),
     pinChat:      id=>mut(s=>({chats:s.chats.map(c=>c.id===id?{...c,pinned:!c.pinned}:c)})),
     archiveChat:  id=>mut(s=>({chats:s.chats.map(c=>c.id===id?{...c,archived:!c.archived}:c)})),
@@ -365,10 +374,6 @@ export const useMessengerStore = create<S>((set,get) => {
           return {...c,participants:[...(c.participants??[]),userId],members:(c.members??1)+1};
         }),
       }));
-      import('./groupStore').then(({ useGroupStore }) => {
-        useGroupStore.getState().log(chatId, 'member_joined',
-          `${userName} присоединил${userName.endsWith('а')?'ась':'ся'} к группе`, userId);
-      });
     },
 
     addReport:p=>{
@@ -510,6 +515,24 @@ export const useMessengerStore = create<S>((set,get) => {
     },
 
     applyBlocked:(ids)=>mut(()=>({blocked:ids??[]})),
+
+    /**
+     * Сообщение не приняли по правилам чата — убираем его из ленты.
+     * Иначе оно так и висело бы «в очереди», хотя его нигде нет.
+     */
+    dropMessage:(id)=>{ if(id) mut(s=>({messages:s.messages.filter(m=>m.id!==id)})); },
+
+    applyPinned:(id,pinned)=>mut(s=>({
+      messages:s.messages.map(m=>m.id===id?{...m,pinned}:m),
+    })),
+
+    applyViews:(counts)=>{
+      if(!counts?.length) return;
+      const map=new Map(counts.map(c=>[c.messageId,c.views]));
+      mut(s=>({messages:s.messages.map(m=>
+        map.has(m.id)?{...m,views:map.get(m.id)}:m
+      )}));
+    },
 
     /** Чат распущен или мы из него вышли. */
     applyChatGone:(chatId)=>mut(s=>({

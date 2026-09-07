@@ -7,7 +7,7 @@ import {
   Phone, Video, Search, MoreVertical, Paperclip, Mic, Square, Images, PawPrint, Gift, ShoppingCart,
   Send, X, Pencil, Trash2, Pin, Forward, Check, CheckCheck, FileText, Camera,
   ChevronDown, ChevronLeft, Flag, BellOff, Archive, UserMinus, UserPlus, Reply, Palette, Settings2, BarChart2, Crown,
-  Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield, LogOut,
+  Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield, LogOut, Eye,
 } from 'lucide-react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { useModerationStore } from '@/shared/moderationStore';
@@ -30,7 +30,7 @@ import { PrimeGiftBubble }                  from '@/gifts/GiftPrime';
 import { GiftPrimeModal } from '@/gifts/GiftPrime';
 import { AiSummarizeButton, AiTranscribeButton, AiVideoNoteButton, AiSuggestReplies, AiTranslateButton, runAiComposerAction, type AiComposerAction } from '@/ai/SkyAI';
 import { GroupManage } from './GroupManage';
-import { useGroupStore } from './groupStore';
+import { useAdminStore, canDo } from './adminStore';
 import { GameActivityBadge } from '@/gaming/GamingUI';
 import { useGamingAccounts } from '@/gaming/accounts';
 import { openProfile } from '@/profile/viewer/store';
@@ -615,6 +615,14 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
           <div className={`flex items-center gap-1 mt-1 ${fromMe ? 'justify-end' : 'justify-start'}`}>
             {msg.isSilent && <span title="Тихое" style={{ fontSize:10, color:'var(--t2)' }}>🔕</span>}
             {msg.editedAt && <span className="text-[10px]" style={{ color: fromMe ? 'rgba(255,255,255,0.55)' : 'var(--t2)' }}>изм.</span>}
+            {/* Охват записи канала: считает сервер, и считает разных
+                читателей, а не открытия. */}
+            {typeof msg.views === 'number' && msg.views > 0 && (
+              <span className="flex items-center gap-0.5 text-[11px]"
+                style={{ color: fromMe ? 'rgba(255,255,255,0.5)' : 'var(--t2)' }}>
+                <Eye size={10} /> {msg.views}
+              </span>
+            )}
             <span className="text-[11px]" style={{ color: fromMe ? 'rgba(255,255,255,0.5)' : 'var(--t2)' }}>{msg.time}</span>
             <Ticks s={msg.status} fromMe={fromMe} />
           </div>
@@ -791,11 +799,29 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const [threadRootId, setThreadRootId] = useState<string | null>(null);
   const [threadDraft, setThreadDraft] = useState('');
   const [showGroupManage, setShowGroupManage] = useState(false);
-  const [floodBlocked, setFloodBlocked] = useState(false);
-  const [linkBlocked, setLinkBlocked] = useState(false);
+  // Отказ сервера показываем словами и гасим сами.
+  const postNotice = useAdminStore(s => s.notice);
+  const clearNotice = useAdminStore(s => s.notify);
+  useEffect(() => {
+    if (!postNotice) return;
+    const t = setTimeout(() => clearNotice(null), 4000);
+    return () => clearTimeout(t);
+  }, [postNotice, clearNotice]);
   const pinned   = useMemo(() => chatMsgs.filter(m => m.pinned && !m.deleted), [chatMsgs]);
   const loadingOlder = useMessengerStore(s => s.loadingOlder);
+  const markViewed = useAdminStore(s => s.markViewed);
   const [confirmLeave, setConfirmLeave] = useState(false);
+
+  // В канале считаем охват: сообщаем серверу, какие записи мы увидели.
+  // Он считает разных читателей, поэтому перечитывание ничего не
+  // накручивает.
+  useEffect(() => {
+    if (chat?.type !== 'channel') return;
+    const unseen = chatMsgs.filter(m => !m.fromMe && !m.deleted && m.kind !== 'system').map(m => m.id);
+    if (unseen.length === 0) return;
+    const t = setTimeout(() => markViewed(chat.id, unseen.slice(-100)), 900);
+    return () => clearTimeout(t);
+  }, [chat?.id, chat?.type, chatMsgs.length, markViewed]);
 
   useLayoutEffect(() => {
     const el = listRef.current;
@@ -912,16 +938,6 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     const { editingId: eid, messages: msgs } = useMessengerStore.getState();
     const em = eid ? msgs.find(m => m.id === eid) : null;
     if ((!t && !em) || isBlocked) return;
-    if (!em && t && chat && chat.type !== 'direct') {
-      const gs = useGroupStore.getState();
-      const allowed = gs.checkFlood(chat.id, myId);
-      if (!allowed) { setFloodBlocked(true); setTimeout(() => setFloodBlocked(false), 3000); return; }
-      const settings = gs.getSettings(chat.id);
-      const role = gs.getRole(chat.id, myId, chat.ownerId);
-      if (settings.antiSpamLinks && role === 'member' && /https?:\/\/[^\s]+/i.test(t)) {
-        setLinkBlocked(true); setTimeout(() => setLinkBlocked(false), 3000); return;
-      }
-    }
     if (em) {
       editMessage(em.id, t); broadcast.edit(em.id, t, 'изм.'); startEdit(null);
     } else {
@@ -1157,6 +1173,15 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const peerFrame = activeFrame(peerAcc);
   const peerBanner = activeBanner(peerAcc);
 
+  // Право писать: у канала — только у тех, кто им управляет; у группы
+  // ещё и настройка «пишут только администраторы». Решает всё равно
+  // сервер, здесь мы лишь не показываем поле, которое ответит отказом.
+  const chatSettings = useAdminStore(s => s.settings[chat.id]);
+  const runsChat = ['owner', 'admin', 'moderator'].includes(chat.myRole ?? 'member');
+  const canPost = chat.type === 'direct' ? true
+    : chat.type === 'channel' ? runsChat
+    : (chatSettings?.whoCanPost === 'admins' ? runsChat : true);
+
   if (chat.type === 'channel') {
     const modBlocked = channelModBlocked;
     if (modBlocked) {
@@ -1249,7 +1274,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                   </div>
                 ) : (
                   <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                    {`${chat.members ?? (chat.participants?.length ?? 2)} участников`}
+                    {`${chat.members ?? (chat.participants?.length ?? 2)} ${chat.type === 'channel' ? 'подписчиков' : 'участников'}`}
                   </p>
                 )}
               </div>
@@ -1280,6 +1305,13 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 { icon: ShoppingCart, label: 'Магазин подарков', fn: () => { setShowMarket(true); setMenuOpen(false); } },
                 ...(chat.type === 'direct' ? [{ icon: Crown, label: 'Подарить Prime', fn: () => { setShowGiftPrime(true); setMenuOpen(false); }, tone: 'var(--amber)' }] : []),
                 { icon: Palette, label: 'Тема чата', fn: () => { setShowTheme(true); setMenuOpen(false); } },
+                // Управление лежало только внутри «Информации» — на два
+                // нажатия глубже, чем всё остальное, и никем не находилось.
+                ...(chat.type !== 'direct' ? [{
+                  icon: Shield,
+                  label: chat.type === 'channel' ? 'Управление каналом' : 'Управление группой',
+                  fn: () => { setShowGroupManage(true); setMenuOpen(false); },
+                }] : []),
                 { icon: Info, label: chat.type === 'direct' ? 'Информация о чате' : 'Информация и участники', fn: () => { setShowInfo(v => !v); setMenuOpen(false); } },
                 // Выйти из чата было нельзя вовсе: начатую кем-то
                 // переписку не получалось закрыть.
@@ -1561,7 +1593,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                     { icon: UserPlus, label: 'Открыть профиль', fn: () => { setShowInfo(false); openProfile(peerId); } },
                   ] : []),
                   ...(chat.type !== 'direct' ? [
-                    { icon: Shield, label: 'Управление группой', fn: () => { setShowGroupManage(true); } },
+                    { icon: Shield, label: chat.type === 'channel' ? 'Управление каналом' : 'Управление группой', fn: () => { setShowGroupManage(true); } },
                   ] : []),
                   { icon: BellOff, label: chat.online ? 'Онлайн' : 'Оффлайн', sub: '' },
                   { icon: Archive, label: 'Архивировать', fn: () => { useMessengerStore.getState().archiveChat(activeChatId); setShowInfo(false); } },
@@ -1923,25 +1955,32 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
         )}
       </AnimatePresence>
 
-      {/* -- Flood warning ---------------------------------------------- */}
+      {/* -- Почему сообщение не ушло ----------------------------------
+           Причину называет сервер: правила чата проверяются там, а не
+           здесь, и здесь мы только показываем ответ. */}
       <AnimatePresence>
-        {floodBlocked && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+        {postNotice && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
             className="shrink-0 flex items-center gap-2 px-4 pt-2 overflow-hidden">
-            <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-semibold w-full" style={{ background: 'rgba(224,85,95,0.12)', color: 'var(--red)' }}>
-              <Shield size={13} /> Слишком много сообщений подряд — подождите немного (антифлуд группы)
-            </div>
-          </motion.div>
-        )}
-        {linkBlocked && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            className="shrink-0 flex items-center gap-2 px-4 pt-2 overflow-hidden">
-            <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-semibold w-full" style={{ background: 'rgba(224,85,95,0.12)', color: 'var(--red)' }}>
-              <Shield size={13} /> Ссылки от новых участников запрещены настройками группы
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12px] font-semibold w-full"
+              style={{ background: 'rgba(224,85,95,0.12)', color: 'var(--red)' }}>
+              <Shield size={13} /> {postNotice}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {!canPost && (
+        <footer className="shrink-0 px-4 py-4 border-t text-center sky-chat-font"
+          style={{ borderColor: theme.border, background: theme.panel }}>
+          <p className="text-[13px]" style={{ color: 'var(--t2)' }}>
+            {chat.type === 'channel'
+              ? 'Это канал — здесь публикуют его администраторы'
+              : 'Сейчас в группе пишут только администраторы'}
+          </p>
+        </footer>
+      )}
 
       {/* -- AI composer tools: исправить текст / сменить тон -------- */}
       <AnimatePresence>
@@ -1974,7 +2013,10 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           </motion.div>
         )}
       </AnimatePresence>
-      {!recording && (
+      {/* В канале читателю писать нечем: право решает сервер, и
+          показывать поле ввода, которое всё равно ответит отказом, —
+          только путать. */}
+      {!recording && canPost && (
         <footer className="shrink-0 px-3 py-3 border-t sky-chat-font" style={{ borderColor: theme.border, background: theme.panel }}>
           {isBlocked && (
             <p className="mb-2 text-center text-xs font-medium" style={{ color: 'var(--red)' }}>
