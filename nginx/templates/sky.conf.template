@@ -136,6 +136,13 @@ server {
 
     # -- WebSocket-хаб ------------------------------------------
     location ^~ /ws {
+        # Потолок одновременных сокетов с одного адреса: соединение
+        # живёт часами, и открыть их тысячами — готовый отказ в
+        # обслуживании ещё до всякой авторизации. Запас на общий выход
+        # в интернет у семьи или офиса; на человека потолок отдельный и
+        # строже — он в самом хабе.
+        limit_conn conn_ws 30;
+
         include /etc/nginx/snippets/proxy-common.conf;
         proxy_set_header Upgrade    $http_upgrade;
         proxy_set_header Connection $connection_upgrade;

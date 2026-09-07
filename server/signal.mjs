@@ -15,7 +15,10 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.mjs';
 import { verifyToken } from './security.mjs';
-import { sessionStore } from './sessions.mjs';
+import { sessionStore, onSessionRevoked } from './sessions.mjs';
+import { query } from './db.mjs';
+import { BETA_COOKIE, parseCookies } from './cookies.mjs';
+import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
@@ -25,15 +28,68 @@ const PORT = Number(process.env.SIGNAL_PORT || 8081);
 
 /** Сколько ждём авторизации после подключения. */
 const AUTH_TIMEOUT_MS = 10_000;
-/** Потолок сообщений в минуту с одного соединения — против флуда. */
+/**
+ * Потолок сообщений в минуту — на человека, а не на соединение.
+ *
+ * Счётчик жил на сокете, и обойти его было нечем: открыть десять
+ * соединений одной сессией и получить десятикратный лимит.
+ */
 const MSG_RATE_PER_MIN = 240;
+/**
+ * Сколько устройств одного человека хаб держит одновременно.
+ *
+ * Телефон, ноутбук, планшет, пара вкладок — с запасом. Без потолка одна
+ * действительная сессия открывала тысячи сокетов, и каждый заставлял
+ * сервер собирать снимок переписки из базы.
+ */
+const MAX_SOCKETS_PER_USER = 8;
+/** Сколько неавторизованных соединений терпим с одного адреса. */
+const MAX_PENDING_PER_IP = 20;
 /** Потолок размера одного сообщения. */
 const MAX_MESSAGE_BYTES = 256 * 1024;
 /** Период проверки живости соединений. */
 const HEARTBEAT_MS = 30_000;
+/**
+ * Как надолго доверяем прошлой проверке сессии.
+ *
+ * Перепроверка раз в минуту означала, что после выхода из Sky ID сокет
+ * ещё минуту читал и писал переписку. Теперь проверка идёт перед каждой
+ * операцией, а результат кэшируется на несколько секунд, чтобы не ходить
+ * в Redis по сто раз в минуту.
+ */
+const SESSION_CACHE_MS = 5_000;
+
+/**
+ * Общий на все соединения счётчик действий.
+ *
+ * Ключ — идентификатор профиля, поэтому лимит нельзя размножить,
+ * открыв ещё одно соединение.
+ */
+const userRate = new Map();
+const allowAction = (userId) => {
+  const minute = Math.floor(Date.now() / 60_000);
+  const box = userRate.get(userId);
+  if (!box || box.minute !== minute) {
+    userRate.set(userId, { minute, count: 1 });
+    return true;
+  }
+  box.count += 1;
+  return box.count <= MSG_RATE_PER_MIN;
+};
+// Счётчики прошлых минут не нужны: чистим, чтобы карта не росла вечно.
+setInterval(() => {
+  const minute = Math.floor(Date.now() / 60_000);
+  for (const [id, box] of userRate) if (box.minute !== minute) userRate.delete(id);
+}, 60_000).unref();
+
+/** Неавторизованные соединения по адресу — до предъявления токена. */
+const pending = new Map();
 
 // userId → набор соединений (у человека может быть открыто несколько вкладок)
 const clients = new Map();
+// sessionId → сокеты этой сессии: нужен, чтобы закрыть их при выходе,
+// не дожидаясь очередной проверки.
+const bySession = new Map();
 
 let wss = null;
 
@@ -65,11 +121,15 @@ const fanout = (userIds, msg, exceptWs) => {
   }
 };
 
-const addClient = (userId, ws) => {
+const addClient = (userId, sessionId, ws) => {
   if (!clients.has(userId)) clients.set(userId, new Set());
   clients.get(userId).add(ws);
+  if (!bySession.has(sessionId)) bySession.set(sessionId, new Set());
+  bySession.get(sessionId).add(ws);
 };
-const removeClient = (userId, ws) => {
+const removeClient = (userId, sessionId, ws) => {
+  const bySess = bySession.get(sessionId);
+  if (bySess) { bySess.delete(ws); if (bySess.size === 0) bySession.delete(sessionId); }
   const set = clients.get(userId);
   if (!set) return false;
   set.delete(ws);
@@ -77,6 +137,17 @@ const removeClient = (userId, ws) => {
   clients.delete(userId);
   return true; // последнее соединение закрылось — человек ушёл в офлайн
 };
+
+/*
+ * Сессия закончилась — закрываем её сокеты немедленно, а не когда
+ * подойдёт срок очередной проверки. Иначе после «Выйти» украденный
+ * токен ещё несколько секунд читал переписку.
+ */
+onSessionRevoked((sessionId) => {
+  for (const ws of bySession.get(sessionId) ?? []) {
+    try { ws.close(4401, 'session ended'); } catch { /* уже закрыт */ }
+  }
+});
 
 /* ─── авторизация ──────────────────────────────────────────────────────── */
 /**
@@ -101,9 +172,6 @@ const identify = async (token) => {
   return { userId: stored.profileId, sessionId: payload.sid };
 };
 
-/** Как часто перепроверять, что сессия открытого сокета ещё жива. */
-const SESSION_RECHECK_MS = 60_000;
-
 /**
  * Отдаёт вошедшему его чаты и последние сообщения по каждому.
  *
@@ -122,13 +190,24 @@ const sendSnapshot = async (ws, userId) => {
   send(ws, { type: 'snapshot-done' });
 };
 
-/** Кто из сейчас подключённых состоит с человеком в общем чате. */
+/**
+ * Кто из сейчас подключённых состоит с человеком в общем чате.
+ *
+ * Одним запросом на всех: раньше на каждое подключение уходил отдельный
+ * запрос про каждого, кто сейчас в сети. При сотне подключённых это сто
+ * запросов на вход — и квадратичная нагрузка на базу, которой хватало,
+ * чтобы положить её одним скриптом.
+ */
 const visibleOnline = async (userId) => {
-  const out = [];
-  for (const other of clients.keys()) {
-    if (other !== userId && await shareAChat(userId, other)) out.push(other);
-  }
-  return out;
+  const others = [...clients.keys()].filter((id) => id !== userId);
+  if (others.length === 0) return [];
+  const { rows } = await query(
+    `SELECT DISTINCT y.user_id FROM chat_members x
+       JOIN chat_members y ON y.chat_id = x.chat_id
+      WHERE x.user_id = $1 AND y.user_id = ANY($2::text[])`,
+    [userId, others],
+  );
+  return rows.map((r) => r.user_id);
 };
 
 /* ─── обработка сообщений ──────────────────────────────────────────────── */
@@ -195,8 +274,11 @@ const handle = async (ws, session, msg) => {
     case 'typing': {
       const chatId = payload?.chatId;
       if (!chatId || !(await isMember(chatId, me))) return;
+      // Имя набирающего не пересылаем: клиент присылал его сам, и в
+      // строке «печатает…» можно было назваться кем угодно. Получатель
+      // подставит имя из своего же списка участников чата.
       broadcast(await memberIds(chatId),
-        { type: 'user-typing', payload: { chatId, userId: me, username: payload.username, active: payload.active } },
+        { type: 'user-typing', payload: { chatId, userId: me, active: payload?.active === true } },
         me);
       break;
     }
@@ -288,7 +370,7 @@ const handle = async (ws, session, msg) => {
 
 /** Есть ли у двоих общий чат — условие для звонка. */
 const shareAChat = async (a, b) => {
-  const { rows } = await (await import('./db.mjs')).query(
+  const { rows } = await query(
     `SELECT 1 FROM chat_members x JOIN chat_members y ON x.chat_id = y.chat_id
       WHERE x.user_id = $1 AND y.user_id = $2 LIMIT 1`,
     [a, b],
@@ -297,6 +379,42 @@ const shareAChat = async (a, b) => {
 };
 
 /* ─── запуск ───────────────────────────────────────────────────────────── */
+
+/**
+ * Откуда разрешено открывать сокет.
+ *
+ * Рукопожатие WebSocket не подчиняется правилам обмена между сайтами:
+ * страница злоумышленника может открыть соединение к нашему хабу из
+ * браузера жертвы. Предъявить токен она не сможет — он лежит в памяти
+ * нашей вкладки, а не в куке, — но открывать соединения пачками вполне.
+ */
+const originAllowed = (origin) => {
+  if (!origin) return true;            // не браузер: свои проверки, curl
+  const allowed = [config.publicOrigin, ...(config.extraOrigins ?? [])].filter(Boolean);
+  if (allowed.length === 0) return true;
+  return allowed.includes(origin);
+};
+
+/**
+ * Калитка закрытой беты действует и на сокете.
+ *
+ * HTTP-слой её проверяет, а хаб — нет, и укравший токен обходил бы
+ * калитку через сокет. Проверка та же самая, что и в server.mjs.
+ */
+const betaAllowed = (req) => {
+  if (!betaEnabled()) return true;
+  const token = parseCookies(req.headers.cookie)[BETA_COOKIE];
+  const payload = verifyToken(token ?? '', config.jwtSecret);
+  return Boolean(payload && payload.typ === 'beta' && betaHashLive(payload.k));
+};
+
+const ipOf = (req) => {
+  // За nginx настоящий адрес приходит заголовком; сам nginx его
+  // перезаписывает, поэтому подделать его снаружи нельзя.
+  const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
+  return fwd || req.socket.remoteAddress || 'unknown';
+};
+
 export const startSignalHub = () => {
   wss = new WebSocketServer({ port: PORT, maxPayload: MAX_MESSAGE_BYTES });
 
@@ -317,13 +435,25 @@ export const startSignalHub = () => {
   beat.unref();
   wss.on('close', () => clearInterval(beat));
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    if (!originAllowed(req.headers.origin)) { ws.close(4403, 'origin'); return; }
+    if (!betaAllowed(req)) { ws.close(4403, 'beta required'); return; }
+
+    const ip = ipOf(req);
+    const openFromIp = (pending.get(ip) ?? 0) + 1;
+    if (openFromIp > MAX_PENDING_PER_IP) { ws.close(4429, 'too many connections'); return; }
+    pending.set(ip, openFromIp);
+    let counted = true;
+    const uncount = () => {
+      if (!counted) return;
+      counted = false;
+      const left = (pending.get(ip) ?? 1) - 1;
+      if (left > 0) pending.set(ip, left); else pending.delete(ip);
+    };
+
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
-    const session = { userId: null, sessionId: null, count: 0, minute: 0 };
-    // Долго живущий сокет проверяем не только на входе: вышли из Sky ID
-    // или сменили профиль — соединение должно закрыться само.
-    let recheck = null;
+    const session = { userId: null, sessionId: null, checkedAt: 0 };
 
     // Неавторизованное соединение живёт ограниченное время: иначе можно
     // держать тысячи открытых сокетов, ничего не предъявляя.
@@ -331,7 +461,36 @@ export const startSignalHub = () => {
       if (!session.userId) ws.close(4401, 'auth timeout');
     }, AUTH_TIMEOUT_MS);
 
-    ws.on('message', async (raw) => {
+    /**
+     * Сессия ещё жива и профиль тот же?
+     *
+     * Проверяем перед каждой операцией, но не чаще раза в несколько
+     * секунд: сокет живёт часами, а «Выйти из Sky ID» должно закрывать
+     * его сразу, а не когда-нибудь.
+     */
+    const sessionAlive = async () => {
+      const now = Date.now();
+      if (now - session.checkedAt < SESSION_CACHE_MS) return true;
+      try {
+        const stored = await sessionStore.get(session.sessionId);
+        if (!stored || stored.profileId !== session.userId) return false;
+      } catch (err) {
+        // Не смогли убедиться, что сессия жива, — значит не работаем.
+        console.error('[ws] проверка сессии', err.message);
+        return false;
+      }
+      session.checkedAt = now;
+      return true;
+    };
+
+    /*
+     * Весь разбор входящего — внутри try. В обработчике много обращений
+     * к базе и к Redis, и любое из них может отказать: незамеченная
+     * ошибка в асинхронном обработчике роняет весь процесс, а вместе с
+     * ним и всех остальных. Одно упавшее соединение не должно стоить
+     * сервера.
+     */
+    const onMessage = async (raw) => {
       let msg;
       try { msg = JSON.parse(raw); } catch { return; }
       if (!msg || typeof msg.type !== 'string') return;
@@ -346,20 +505,20 @@ export const startSignalHub = () => {
           return;
         }
         const { userId } = who;
+
+        // Больше устройств, чем бывает у человека, — это скрипт.
+        if ((clients.get(userId)?.size ?? 0) >= MAX_SOCKETS_PER_USER) {
+          send(ws, { type: 'too-many-devices' });
+          ws.close(4429, 'too many devices');
+          return;
+        }
+
         session.userId = userId;
         session.sessionId = who.sessionId;
+        session.checkedAt = Date.now();
         clearTimeout(authTimer);
-        addClient(userId, ws);
-
-        recheck = setInterval(async () => {
-          try {
-            const stored = await sessionStore.get(session.sessionId);
-            if (!stored || stored.profileId !== session.userId) ws.close(4401, 'session ended');
-          } catch (err) {
-            console.error('[ws] проверка сессии', err.message);
-          }
-        }, SESSION_RECHECK_MS);
-        recheck.unref();
+        uncount();                       // соединение больше не «ожидающее»
+        addClient(userId, who.sessionId, ws);
 
         // Список онлайна — только те, с кем есть общий чат: иначе по
         // одному подключению можно было бы снять всех, кто сейчас в сети.
@@ -374,32 +533,43 @@ export const startSignalHub = () => {
       // Всё остальное — только после авторизации.
       if (!session.userId) return;
 
-      // Простой счётчик на минуту: перебор закрывает соединение.
-      const minute = Math.floor(Date.now() / 60_000);
-      if (minute !== session.minute) { session.minute = minute; session.count = 0; }
-      if (++session.count > MSG_RATE_PER_MIN) {
+      // Счётчик общий на все устройства человека: открыть второй сокет
+      // и получить второй лимит не выйдет.
+      if (!allowAction(session.userId)) {
         ws.close(4429, 'rate limited');
         return;
       }
 
-      try {
-        await handle(ws, session, msg);
-      } catch (err) {
-        console.error('[ws] ошибка обработки', msg.type, err.message);
-      }
+      // Вышли из Sky ID или сменили профиль — соединение закрывается,
+      // не дожидаясь, пока истечёт срок токена.
+      if (!(await sessionAlive())) { ws.close(4401, 'session ended'); return; }
+
+      await handle(ws, session, msg);
+    };
+
+    ws.on('message', (raw) => {
+      onMessage(raw).catch((err) => {
+        // Сообщение об ошибке — в журнал, наружу не отдаём: в нём
+        // бывают подробности устройства базы.
+        console.error('[ws] ошибка обработки', err.message);
+      });
     });
 
-    ws.on('close', async () => {
+    const onClose = async () => {
       clearTimeout(authTimer);
-      if (recheck) clearInterval(recheck);
+      uncount();
       const uid = session.userId;
       if (!uid) return;
-      const wentOffline = removeClient(uid, ws);
+      const wentOffline = removeClient(uid, session.sessionId, ws);
       if (!wentOffline) return;
-      for (const other of clients.keys()) {
-        if (await shareAChat(uid, other)) sendTo(other, { type: 'user-offline', payload: { userId: uid } });
+      for (const other of await visibleOnline(uid)) {
+        sendTo(other, { type: 'user-offline', payload: { userId: uid } });
       }
       console.log(`[ws] -${uid} (${clients.size} online)`);
+    };
+
+    ws.on('close', () => {
+      onClose().catch((err) => console.error('[ws] закрытие', err.message));
     });
 
     ws.on('error', (e) => console.error('[ws]', e.message));

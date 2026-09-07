@@ -35,6 +35,25 @@ export const closeRedis = async () => {
   client = null;
 };
 
+/**
+ * Кого предупредить, когда сессия перестала существовать.
+ *
+ * Открытый WebSocket живёт часами, а «Выйти из Sky ID» должно закрывать
+ * его сразу. Опрос Redis перед каждой операцией с кэшем на несколько
+ * секунд оставляет окно, в которое украденный токен ещё читает
+ * переписку. Поэтому о прекращении сессии сообщаем сразу — хаб
+ * подписывается и закрывает свои сокеты.
+ */
+const revokeWatchers = new Set();
+export const onSessionRevoked = (fn) => { revokeWatchers.add(fn); return () => revokeWatchers.delete(fn); };
+const announceRevoked = (ids) => {
+  for (const id of ids) {
+    for (const fn of revokeWatchers) {
+      try { fn(id); } catch (err) { console.error('[sessions] слушатель', err.message); }
+    }
+  }
+};
+
 export const sessionStore = {
   /**
    * Кладёт сессию с временем жизни refresh-токена: Redis удалит запись
@@ -86,6 +105,7 @@ export const sessionStore = {
     const multi = client.multi().del(KEY_SESSION(id));
     if (session?.userId) multi.sRem(KEY_USER_SESS(session.userId), id);
     await multi.exec();
+    announceRevoked([id]);
   },
 
   /** Разлогинить пользователя на всех устройствах — например при смене пароля. */
@@ -96,6 +116,7 @@ export const sessionStore = {
       .del(ids.map(KEY_SESSION))
       .del(KEY_USER_SESS(userId))
       .exec();
+    announceRevoked(ids);
     return ids.length;
   },
 };

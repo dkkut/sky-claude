@@ -307,9 +307,14 @@ const handle = (data: any) => {
       store.applyReaction(payload?.messageId, payload?.emoji, payload?.userId, Boolean(payload?.removed));
       break;
 
-    case 'user-typing':
-      store.setTyping(payload?.chatId, payload?.username || payload?.userId, Boolean(payload?.active));
+    case 'user-typing': {
+      // Имя набирающего сервер не пересылает — его присылал сам клиент,
+      // и назваться можно было кем угодно. Берём из списка участников.
+      const who = payload?.userId ? store.people[payload.userId] : undefined;
+      const label = who?.username || who?.name || 'Кто-то';
+      store.setTyping(payload?.chatId, label, Boolean(payload?.active));
       break;
+    }
 
     case 'messages-read':
       store.applyRead(payload?.messageIds ?? []);

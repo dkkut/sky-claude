@@ -17,6 +17,7 @@ import { useCallStore }      from '@/calls/store';
 import { useAuthStore }      from '@/core/auth/store';
 import { MessageItem }       from './types';
 import { broadcast }         from './socket';
+import { safeMediaUrl }      from './safeUrl';
 import { PetPanel, PetBubble, PETS } from './PetPanel';
 import { PetHouse }          from './PetHouse';
 import { SpoilerText, OnceViewText, SelfDestructTimer, PollBubble, MsgOptionsPanel, CreatePollModal } from './MsgFeatures';
@@ -106,7 +107,7 @@ const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => 
 
   return (
     <div className="flex items-center gap-2.5" style={{ minWidth: 200, maxWidth: 280 }}>
-      <audio ref={ref} src={msg.mediaUrl}
+      <audio ref={ref} src={safeMediaUrl(msg.mediaUrl)}
         onLoadedMetadata={e => setDur(e.currentTarget.duration)}
         onEnded={() => { setPlaying(false); setPct(0); }}
         onTimeUpdate={e => { const a = e.currentTarget; if (a.duration) setPct(a.currentTime / a.duration * 100); }} />
@@ -149,7 +150,7 @@ const FileBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
   const _theme2 = getTheme();
   const accent = fromMe ? '#8ac4f0' : _theme2.accent;
   return (
-    <a href={msg.mediaUrl || '#'} download={msg.fileName}
+    <a href={safeMediaUrl(msg.mediaUrl) ?? '#'} download={msg.fileName}
       className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:brightness-110"
       style={{ background: fromMe ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.15)', minWidth: 180, maxWidth: 260 }}>
       <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: `${accent}20` }}>
@@ -195,7 +196,7 @@ const VideoNoteBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean })
       {/* circular clip */}
       <div className="absolute inset-0 rounded-full overflow-hidden"
         style={{ boxShadow: `0 0 0 2.5px ${accent}55` }}>
-        <video ref={ref} src={msg.mediaUrl} playsInline
+        <video ref={ref} src={safeMediaUrl(msg.mediaUrl)} playsInline
           className="w-full h-full object-cover"
           onTimeUpdate={e => {
             const v = e.currentTarget;
@@ -257,7 +258,7 @@ const PhotoBubble = ({ msg }: { msg: MessageItem }) => {
     <>
       <div className="rounded-xl overflow-hidden cursor-zoom-in" style={{ maxWidth: 280 }}
         onClick={() => setOpen(true)}>
-        <img src={msg.mediaUrl} alt="photo"
+        <img src={safeMediaUrl(msg.mediaUrl)} alt="photo"
           className="block w-full object-cover max-h-72" style={{ maxWidth: 280 }} />
       </div>
       <AnimatePresence>
@@ -265,7 +266,7 @@ const PhotoBubble = ({ msg }: { msg: MessageItem }) => {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.9)' }} onClick={() => setOpen(false)}>
-            <img src={msg.mediaUrl} alt="photo" className="max-w-full max-h-full rounded-xl object-contain" />
+            <img src={safeMediaUrl(msg.mediaUrl)} alt="photo" className="max-w-full max-h-full rounded-xl object-contain" />
             <button type="button" className="absolute top-4 right-4 grid h-10 w-10 place-items-center rounded-full"
               style={{ background: 'rgba(255,255,255,0.15)' }}>
               <X size={18} className="text-white" />

@@ -17,11 +17,15 @@ const MAX_RESULTS = 20;
 /** Потолок на разовое разрешение id: список участников группы. */
 const MAX_IDS = 100;
 
+/**
+ * Аватар наружу не отдаём: он хранится картинкой прямо в строке и весит
+ * до четверти мегабайта, а двадцать результатов поиска — уже пять
+ * мегабайт на каждое нажатие клавиши. Интерфейсу хватает буквы имени.
+ */
 const toPerson = (row) => ({
   id: row.id,
   name: row.name,
   username: row.username,
-  avatar: row.avatar ?? undefined,
 });
 
 /**
@@ -39,7 +43,7 @@ export const searchPeople = async (raw, meId) => {
   const prefix = `${q.replace(/([\\%_])/g, '\\$1')}%`;
 
   const { rows } = await query(
-    `SELECT id, name, username, avatar FROM profiles
+    `SELECT id, name, username FROM profiles
       WHERE id <> $2
         AND (lower(username) LIKE $1 OR lower(name) LIKE $1)
       ORDER BY lower(username) = $3 DESC, lower(username)
@@ -49,12 +53,24 @@ export const searchPeople = async (raw, meId) => {
   return rows.map(toPerson);
 };
 
-/** Разрешение известных id в имена — для участников чатов. */
-export const peopleByIds = async (ids) => {
+/**
+ * Разрешение известных id в имена — для участников чатов.
+ *
+ * Отдаём только тех, с кем у спрашивающего есть общий чат, и его самого.
+ * Иначе ручка превращалась в способ узнать имя владельца любого
+ * идентификатора, попавшего на глаза.
+ */
+export const peopleByIds = async (ids, meId) => {
   const list = Array.from(new Set((Array.isArray(ids) ? ids : []).map(String))).slice(0, MAX_IDS);
-  if (list.length === 0) return [];
+  if (list.length === 0 || !meId) return [];
   const { rows } = await query(
-    'SELECT id, name, username, avatar FROM profiles WHERE id = ANY($1::text[])', [list],
+    `SELECT p.id, p.name, p.username FROM profiles p
+      WHERE p.id = ANY($1::text[])
+        AND (p.id = $2 OR EXISTS (
+              SELECT 1 FROM chat_members x
+                JOIN chat_members y ON y.chat_id = x.chat_id
+               WHERE x.user_id = $2 AND y.user_id = p.id))`,
+    [list, meId],
   );
   return rows.map(toPerson);
 };

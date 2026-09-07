@@ -53,4 +53,15 @@ export const config = {
 
   // Сколько живёт разрешение, выданное за верный ключ (30 дней).
   betaTtlSec: Number(process.env.BETA_TTL_SEC || 60 * 60 * 24 * 30),
+
+  /**
+   * Откуда разрешено открывать WebSocket.
+   *
+   * Рукопожатие сокета не подчиняется правилам обмена между сайтами:
+   * без этой проверки чужая страница открывает соединения к хабу из
+   * браузера посетителя. Пусто — проверки нет (локальная отладка).
+   */
+  publicOrigin: process.env.DOMAIN ? `https://${process.env.DOMAIN}` : '',
+  extraOrigins: (process.env.EXTRA_ORIGINS || '')
+    .split(',').map((s) => s.trim()).filter(Boolean),
 };

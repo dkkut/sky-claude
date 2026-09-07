@@ -73,10 +73,21 @@ const NewChatModal = ({ onClose }: { onClose: () => void }) => {
   const [name, setName]     = useState('');
   const [query, setQuery]   = useState('');
   const [members, setMembers] = useState<string[]>([]);
-  const [picked, setPicked]   = useState<Record<string, { id: string; name: string; username: string }>>({});
   // Людей ищем на сервере: локального списка «всех аккаунтов» больше
   // нет, и настоящего собеседника в нём всё равно не было.
   const { people: found, loading } = usePeopleSearch(query);
+  // В группу сервер пускает только тех, с кем уже есть общий чат: иначе
+  // достаточно было создать группу со списком чужих идентификаторов,
+  // чтобы получить право писать этим людям и звонить им. Поэтому и
+  // выбирать предлагаем из тех же людей.
+  const known = useMessengerStore(s => s.people);
+  const myId  = useAuthStore.getState().currentUserId;
+  const contacts = useMemo(() => {
+    const q = query.trim().toLowerCase().replace(/^@/, '');
+    return Object.values(known)
+      .filter(p => p.id !== myId)
+      .filter(p => !q || p.name.toLowerCase().includes(q) || p.username.toLowerCase().includes(q));
+  }, [known, query, myId]);
 
   const goCreate = () => {
     if (!name.trim()) return;
@@ -86,16 +97,10 @@ const NewChatModal = ({ onClose }: { onClose: () => void }) => {
     setActiveChat(id); onClose();
   };
 
-  const toggleMember = (u: { id: string; name: string; username: string }) => {
+  const toggleMember = (u: { id: string }) => {
     setMembers(m => m.includes(u.id) ? m.filter(x => x !== u.id) : [...m, u.id]);
-    setPicked(p => ({ ...p, [u.id]: u }));
   };
-  // Выбранные показываем всегда: строка поиска меняется, и без этого
-  // отмеченный человек пропадал бы из списка вместе с результатами.
-  const memberOptions = [
-    ...members.map(id => picked[id]).filter(Boolean),
-    ...found.filter(u => !members.includes(u.id)),
-  ];
+  const memberOptions = contacts;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -199,6 +204,11 @@ const NewChatModal = ({ onClose }: { onClose: () => void }) => {
               </div>
             </div>
             <div className="overflow-y-auto flex-1">
+              {memberOptions.length === 0 && (
+                <p className="px-4 py-4 text-center text-xs" style={{ color: 'var(--t2)' }}>
+                  Пока некого добавить: сначала напишите человеку лично
+                </p>
+              )}
               {memberOptions.map(u => (
                 <button key={u.id} type="button"
                   onClick={() => toggleMember(u)}
