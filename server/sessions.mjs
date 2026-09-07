@@ -30,6 +30,11 @@ export const connectRedis = async () => {
   return client;
 };
 
+/** Отвечает ли кэш. Нужно проверке готовности после смены паролей. */
+export const redisAlive = async () => {
+  try { return (await client?.ping()) === 'PONG'; } catch { return false; }
+};
+
 export const closeRedis = async () => {
   if (client?.isOpen) await client.quit();
   client = null;

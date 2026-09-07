@@ -9,9 +9,9 @@ import http from 'node:http';
 import { config } from './config.mjs';
 import { rateLimit } from './security.mjs';
 import { json } from './http.mjs';
-import { waitForDb, migrate, closeDb } from './db.mjs';
+import { waitForDb, migrate, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
-import { connectRedis, closeRedis } from './sessions.mjs';
+import { connectRedis, closeRedis, redisAlive } from './sessions.mjs';
 import { startSignalHub } from './signal.mjs';
 import { verifyToken } from './security.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
@@ -55,6 +55,28 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url === '/healthz') {
       return json(res, 200, { status: 'ok', uptime: process.uptime() });
+    }
+
+    /*
+     * Готовность, а не просто «процесс жив».
+     *
+     * healthz отвечает, даже когда приложение не может достучаться до
+     * базы или кэша: контейнер запущен, а сайт не работает. После смены
+     * паролей важно отличать одно от другого, поэтому здесь настоящая
+     * проверка обоих хранилищ.
+     *
+     * Наружу не рассказываем, что именно отказало: подробности нужны в
+     * журнале, а не постороннему.
+     */
+    if (req.method === 'GET' && url === '/readyz') {
+      let db = false;
+      try { await query('SELECT 1'); db = true; } catch (err) {
+        console.error('[readyz] база', err.message);
+      }
+      const cache = await redisAlive();
+      if (db && cache) return json(res, 200, { ready: true });
+      console.error(`[readyz] не готово: база=${db}, кэш=${cache}`);
+      return json(res, 503, { ready: false });
     }
 
     // Сама калитка и проверка здоровья открыты всегда — иначе ключ

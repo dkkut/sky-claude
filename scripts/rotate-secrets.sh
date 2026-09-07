@@ -79,6 +79,7 @@ if docker compose ps postgres --format '{{.State}}' 2>/dev/null | grep -q runnin
   docker compose exec -T -e PGPASSWORD="$OLD_PG" postgres \
     psql -U sky -d sky -c "ALTER USER sky WITH PASSWORD '$NEW_PG';" >/dev/null </dev/null
   set_env POSTGRES_PASSWORD "$NEW_PG"
+  PG_ROTATED=1
   echo "    пароль изменён и в базе, и в .env"
 else
   echo "    контейнер базы не запущен — пароль в .env НЕ трогаю,"
@@ -199,10 +200,24 @@ if [ $? -ne 0 ]; then
 fi
 
 echo
+echo "==> Проверяю, что приложение действительно работает"
+# Не «контейнер запущен», а «приложение достучалось до базы и кэша».
+# После смены паролей это разные вещи: процесс поднимется в любом
+# случае, а вот подключиться с новым паролем может и не выйти.
+READY=""
+for _ in $(seq 1 45); do
+  CODE="$(docker compose exec -T api node -e "
+    require('http').get('http://127.0.0.1:'+(process.env.API_PORT||8080)+'/readyz',
+      r=>{console.log(r.statusCode);process.exit(0)}).on('error',()=>{console.log(0);process.exit(0)})
+  " 2>/dev/null || echo 0)"
+  if [ "$CODE" = "200" ]; then READY=1; break; fi
+  sleep 2
+done
+
+echo
 echo "==> Что говорит сервер"
-sleep 8
 docker compose logs api --tail 40 \
-  | grep -E '\[доставка\]|\[beta\]|\[crypto\]|\[db\]|\[api\]|listening' || true
+  | grep -E '\[доставка\]|\[beta\]|\[crypto\]|\[db\]|\[api\]|\[readyz\]|listening' || true
 
 echo
 echo "────────────────────────────────────────────"
@@ -217,12 +232,56 @@ fi
 echo "Старый .env лежит рядом: $BACKUP"
 echo "(удалите, когда убедитесь, что всё работает)."
 
-if docker compose ps api --format '{{.State}}' 2>/dev/null | grep -q running; then
+if [ -n "$READY" ]; then
   echo
-  echo "Готово. Все вошедшие вышли из аккаунтов — это ожидаемо."
-else
-  echo
-  echo "ВНИМАНИЕ: приложение не поднялось. Причина — в журнале:"
-  echo "    docker compose logs api --tail 50"
-  exit 1
+  echo "Готово. Приложение отвечает, база и кэш на месте."
+  echo "Все вошедшие вышли из аккаунтов — это ожидаемо: подписи токенов сменились."
+  exit 0
 fi
+
+# ── Не заработало: возвращаем всё как было ─────────────────
+# Просто вернуть .env недостаточно: пароль базы сменён и в самой базе,
+# и старый файл с ним уже не совпадёт. Поэтому возвращаем оба — сначала
+# пароль в базе, потом файл.
+echo
+echo "ВНИМАНИЕ: приложение не отвечает или не видит базу либо кэш."
+echo "==> Возвращаю прежние настройки"
+
+# Возвращаем пароль базы только если он действительно менялся: когда
+# контейнер базы был остановлен, скрипт его не трогал.
+if [ "${PG_ROTATED:-}" = "1" ] && docker compose ps postgres --format '{{.State}}' 2>/dev/null | grep -q running; then
+  if docker compose exec -T -e PGPASSWORD="$NEW_PG" postgres \
+       psql -U sky -d sky -c "ALTER USER sky WITH PASSWORD '$OLD_PG';" >/dev/null </dev/null 2>&1; then
+    echo "    пароль базы возвращён"
+  else
+    echo "    !!! пароль базы вернуть не удалось — он остался новым."
+    echo "        Тогда и .env возвращать нельзя: возьмите из него всё,"
+    echo "        кроме POSTGRES_PASSWORD. Новый пароль базы: см. .env"
+    echo "        Копия прежнего файла: $BACKUP"
+    exit 1
+  fi
+fi
+
+cp "$BACKUP" .env
+chmod 600 .env
+docker compose up -d >/dev/null 2>&1 || true
+
+for _ in $(seq 1 30); do
+  CODE="$(docker compose exec -T api node -e "
+    require('http').get('http://127.0.0.1:'+(process.env.API_PORT||8080)+'/readyz',
+      r=>{console.log(r.statusCode);process.exit(0)}).on('error',()=>{console.log(0);process.exit(0)})
+  " 2>/dev/null || echo 0)"
+  if [ "$CODE" = "200" ]; then
+    echo
+    echo "Прежние настройки восстановлены, приложение снова работает."
+    echo "Ничего не изменилось. Причина неудачи — в журнале:"
+    echo "    docker compose logs api --tail 50"
+    exit 1
+  fi
+  sleep 2
+done
+
+echo
+echo "!!! Вернуть автоматически не вышло. Копия прежнего .env: $BACKUP"
+echo "    Журнал: docker compose logs api --tail 50"
+exit 1
