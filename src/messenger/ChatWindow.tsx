@@ -687,6 +687,12 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     drafts, setChatDraft, quickReplies, addQuickReply, removeQuickReply, markChannelViewed,
   } = useMessengerStore();
   const { accounts, currentUserId } = useAuthStore();
+  // Имена собеседников приходят с сервера вместе с чатами: локальный
+  // список accounts знает только тех, кто заведён в этом браузере, и
+  // реальный участник группы подписывался бы в нём «Пользователь».
+  const people = useMessengerStore(s => s.people);
+  const nameOf = (id?: string) =>
+    (id && (accounts.find(a => a.id === id)?.name ?? people[id]?.name)) || '';
   const startCall = useCallStore(s => s.startCall);
 
   const [draft, setDraft]           = useState('');
@@ -971,7 +977,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     setDraft(v); draftRef.current = v;
     if (!chat) return;
     const me = useAuthStore.getState().accounts.find(a => a.id === myId);
-    const uname = me?.username ?? 'Вы';
+    const uname = me?.username ?? people[myId ?? '']?.username ?? 'Вы';
     setTyping(chat.id, uname, true); broadcast.typing(chat.id, uname, true);
     if (typTimer.current) clearTimeout(typTimer.current);
     typTimer.current = window.setTimeout(() => {
@@ -1386,7 +1392,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 const Row = ({ m, isRoot }: { m: MessageItem; isRoot?: boolean }) => (
                   <div className="rounded-2xl p-3" style={{ background: isRoot ? 'rgba(91,155,209,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isRoot ? 'rgba(91,155,209,0.25)' : 'rgba(255,255,255,0.06)'}` }}>
                     <p className="text-[11px] font-semibold mb-1" style={{ color: theme.accent }}>
-                      {m.fromMe ? 'Вы' : accounts.find(a => a.id === m.authorId)?.name ?? 'Пользователь'}
+                      {m.fromMe ? 'Вы' : (nameOf(m.authorId) || 'Пользователь')}
                     </p>
                     <p className="text-sm" style={{ color: theme.otherText }}>{m.deleted ? 'Сообщение удалено' : m.text}</p>
                     <p className="text-[10px] mt-1" style={{ color: 'var(--t3)' }}>{m.time}</p>
@@ -1578,7 +1584,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           const showDate = !prev || new Date(prev.timestamp).toDateString() !== new Date(msg.timestamp).toDateString();
           const replyTo  = msg.replyToId ? msgMap[msg.replyToId] : undefined;
           const acc      = !msg.fromMe ? accounts.find(a => a.id === msg.authorId) : null;
-          const author   = acc?.name ?? '';
+          const author   = !msg.fromMe ? nameOf(msg.authorId) : '';
           const isGroup  = chat.type === 'group' || chat.type === 'channel';
 
           const dateLabel = () => {
@@ -1786,7 +1792,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
             style={{ borderColor: theme.border, background: theme.panel }}>
             <div className="flex-1 border-l-2 pl-3 min-w-0" style={{ borderColor: theme.accent }}>
               <p className="text-xs font-semibold" style={{ color: theme.accent }}>
-                {editMsg ? '✏️ Редактирование' : `↩ ${replyMsg?.fromMe ? 'Вы' : accounts.find(a => a.id === replyMsg?.authorId)?.name ?? ''}`}
+                {editMsg ? '✏️ Редактирование' : `↩ ${replyMsg?.fromMe ? 'Вы' : nameOf(replyMsg?.authorId)}`}
               </p>
               <p className="text-xs truncate mt-0.5" style={{ color: 'var(--t2)' }}>
                 {editMsg?.text ?? replyMsg?.text}

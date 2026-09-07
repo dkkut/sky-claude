@@ -11,6 +11,7 @@ import { openProfile } from '@/profile/viewer/store';
 import { activeFrame } from '@/profile/viewer/cosmetics';
 import { activeChatListStyle } from '@/customization/selectors';
 import { useGamingAccounts } from '@/gaming/accounts';
+import { usePeopleSearch } from './usePeopleSearch';
 
 const fmtTime = (ts: number) => {
   const d = new Date(ts), now = new Date();
@@ -68,16 +69,14 @@ const preview = (msg?: MessageItem): string => {
 /* -- NewChatModal ------------------------------------------------ */
 const NewChatModal = ({ onClose }: { onClose: () => void }) => {
   const { createChat, startDM, setActiveChat } = useMessengerStore();
-  const { accounts, currentUserId } = useAuthStore();
   const [step, setStep]     = useState<'menu' | 'dm' | 'group' | 'channel'>('menu');
   const [name, setName]     = useState('');
   const [query, setQuery]   = useState('');
   const [members, setMembers] = useState<string[]>([]);
-  const others = accounts.filter(a => a.id !== currentUserId);
-  const found = useMemo(() => {
-    const q = query.toLowerCase().trim();
-    return q ? others.filter(a => a.name.toLowerCase().includes(q) || a.username.toLowerCase().includes(q)) : others;
-  }, [query, others]);
+  const [picked, setPicked]   = useState<Record<string, { id: string; name: string; username: string }>>({});
+  // Людей ищем на сервере: локального списка «всех аккаунтов» больше
+  // нет, и настоящего собеседника в нём всё равно не было.
+  const { people: found, loading } = usePeopleSearch(query);
 
   const goCreate = () => {
     if (!name.trim()) return;
@@ -86,6 +85,17 @@ const NewChatModal = ({ onClose }: { onClose: () => void }) => {
     if (chat) broadcast.newChat(chat);
     setActiveChat(id); onClose();
   };
+
+  const toggleMember = (u: { id: string; name: string; username: string }) => {
+    setMembers(m => m.includes(u.id) ? m.filter(x => x !== u.id) : [...m, u.id]);
+    setPicked(p => ({ ...p, [u.id]: u }));
+  };
+  // Выбранные показываем всегда: строка поиска меняется, и без этого
+  // отмеченный человек пропадал бы из списка вместе с результатами.
+  const memberOptions = [
+    ...members.map(id => picked[id]).filter(Boolean),
+    ...found.filter(u => !members.includes(u.id)),
+  ];
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -142,6 +152,17 @@ const NewChatModal = ({ onClose }: { onClose: () => void }) => {
               </div>
             </div>
             <div className="overflow-y-auto flex-1">
+              {query.trim().length < 2 && (
+                <p className="py-4 text-center text-xs" style={{ color: 'var(--t2)' }}>
+                  Введите имя или @username
+                </p>
+              )}
+              {query.trim().length >= 2 && loading && found.length === 0 && (
+                <p className="py-4 text-center text-xs" style={{ color: 'var(--t2)' }}>Ищем…</p>
+              )}
+              {query.trim().length >= 2 && !loading && found.length === 0 && (
+                <p className="py-4 text-center text-xs" style={{ color: 'var(--t2)' }}>Никого не нашли</p>
+              )}
               {found.map(u => (
                 <button key={u.id} type="button"
                   onClick={() => { const c = startDM(u); if (c) broadcast.newChat(c); onClose(); }}
@@ -169,10 +190,18 @@ const NewChatModal = ({ onClose }: { onClose: () => void }) => {
             </div>
             <p className="px-4 pt-3 pb-1 text-xs font-semibold uppercase tracking-widest shrink-0"
               style={{ color: 'var(--t2)' }}>Участники</p>
+            <div className="px-4 pb-2 shrink-0">
+              <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'var(--bg-l2)' }}>
+                <Search size={14} style={{ color: 'var(--t2)' }} />
+                <input value={query} onChange={e => setQuery(e.target.value)}
+                  placeholder="Найти участника..." className="flex-1 bg-transparent text-sm outline-none"
+                  style={{ color: 'var(--t1)' }} />
+              </div>
+            </div>
             <div className="overflow-y-auto flex-1">
-              {others.map(u => (
+              {memberOptions.map(u => (
                 <button key={u.id} type="button"
-                  onClick={() => setMembers(m => m.includes(u.id) ? m.filter(x => x !== u.id) : [...m, u.id])}
+                  onClick={() => toggleMember(u)}
                   className="flex w-full items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/5">
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
                     style={{ background: avatarColor(u.name) }}>{u.name[0]}</div>
@@ -243,7 +272,10 @@ type Filter = 'all' | 'unread' | 'direct' | 'group';
 
 export const ChatList = () => {
   const { chats, messages, activeChatId, setActiveChat, markRead } = useMessengerStore();
-  const { findUsersByUsername, currentUserId, accounts } = useAuthStore();
+  const connected = useMessengerStore(s => s.connected);
+  // accounts здесь только для косметики профиля (рамки, оформление);
+  // поиск людей идёт на сервере.
+  const { currentUserId, accounts } = useAuthStore();
   const { isBlocked: isChannelBlocked } = useModerationStore();
   const gamingActivity = useGamingAccounts(s => s.activity);
   const [search, setSearch]     = useState('');
@@ -287,11 +319,13 @@ export const ChatList = () => {
       });
   }, [chats, search, filter, lastMsgMap, unreadMap]);
 
-  const foundPeople = useMemo(() => {
-    const q = peopleQ.trim();
-    if (q.length < 1) return [];
-    return findUsersByUsername(q).filter(u => u.id !== currentUserId).slice(0, 8);
-  }, [peopleQ, currentUserId, accounts.length]);
+  // Поиск идёт на сервере — в браузере списка всех пользователей нет
+  // и быть не должно.
+  const { people: searched, loading: searching } = usePeopleSearch(peopleQ);
+  const foundPeople = useMemo(
+    () => searched.filter(u => u.id !== currentUserId).slice(0, 8),
+    [searched, currentUserId],
+  );
 
   const FILTERS: [Filter, string][] = [['all', 'Все'], ['unread', 'Непрочит.'], ['direct', 'Личные'], ['group', 'Группы']];
 
@@ -316,6 +350,12 @@ export const ChatList = () => {
             <motion.div key="t" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="flex-1 flex items-center gap-2">
               <h1 className="text-[18px] font-bold tracking-tight" style={{ color: 'var(--t1)' }}>Сообщения</h1>
+              {/* Пока связи нет, отправленное лежит в очереди — об этом
+                  лучше сказать прямо, чем показывать вечную «галочку». */}
+              {!connected && (
+                <span className="text-[10px] font-medium rounded-full px-2 py-0.5"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t2)' }}>нет связи</span>
+              )}
               {totalUnread > 0 && (
                 <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5"
                   style={{ background: 'var(--accent)', color: '#fff', minWidth: 20, textAlign: 'center' }}>
@@ -374,8 +414,10 @@ export const ChatList = () => {
                   ))}
                 </motion.div>
               )}
-              {peopleQ.trim().length >= 1 && foundPeople.length === 0 && (
-                <p className="py-2 text-center text-xs" style={{ color: 'var(--t2)' }}>Не найдено</p>
+              {peopleQ.trim().length >= 2 && foundPeople.length === 0 && (
+                <p className="py-2 text-center text-xs" style={{ color: 'var(--t2)' }}>
+                  {searching ? 'Ищем…' : 'Не найдено'}
+                </p>
               )}
             </AnimatePresence>
           </motion.div>

@@ -316,6 +316,22 @@ export const apiBetaStatus = () => get<{ required: boolean }>('/api/beta/status'
 /** Обменивает ключ на пропуск. Сам ключ в браузере не сохраняется. */
 export const apiBetaUnlock = (key: string) => post<{ ok: true }>('/api/beta/unlock', { key });
 
+/* ═══ Справочник людей ═══════════════════════════════════════ */
+
+export interface DirectoryPerson { id: string; name: string; username: string; avatar?: string }
+
+/**
+ * Поиск собеседника на сервере. До этого мессенджер искал людей в
+ * списке аккаунтов внутри браузера и находил только тех, кто попал
+ * туда при сборке, — то есть реального человека найти было нечем.
+ */
+export const apiSearchPeople = (q: string) =>
+  get<{ people: DirectoryPerson[] }>(`/api/directory/search?q=${encodeURIComponent(q)}`);
+
+/** Имена по известным id — для участников групп. */
+export const apiPeopleByIds = (ids: string[]) =>
+  get<{ people: DirectoryPerson[] }>(`/api/directory/people?ids=${encodeURIComponent(ids.join(','))}`);
+
 /* ═══ Прочее ═════════════════════════════════════════════════ */
 
 /** Доступен ли бэкенд. Нужно, чтобы отличить «нет сети» от «неверный код». */

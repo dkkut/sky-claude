@@ -19,12 +19,13 @@ import { betaRoutes } from './routes/beta.mjs';
 import { authRoutes } from './routes/auth.mjs';
 import { skyIdRoutes } from './routes/skyid.mjs';
 import { walletRoutes } from './routes/wallet.mjs';
+import { directoryRoutes } from './routes/directory.mjs';
 import { purgeExpiredCodes } from './verification.mjs';
 import { checkDeliverySetup, closeMailer } from './notify.mjs';
 import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes];
+const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.

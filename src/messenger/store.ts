@@ -1,13 +1,22 @@
 import { create } from 'zustand';
 import { ChatItem, MessageItem, MessageKind, ChatFolder, Report } from './types';
-import { Account, useAuthStore } from '@/core/auth/store';
+import { useAuthStore } from '@/core/auth/store';
+import { wireSend } from './wire';
 
 const W      = typeof window !== 'undefined';
 const nowTs  = () => Date.now();
 const nowFmt = () => new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
-const pKey   = (id:string) => `sky:msg:v6:${id}`;
+const pKey   = (id:string) => `sky:msg:v7:${id}`;
 const getUid = () => useAuthStore.getState().currentUserId ?? '';
 
+/**
+ * Локальное хранилище — только кэш, чтобы список чатов не был пустым в
+ * первую секунду после запуска и в офлайне. Источник истины — сервер:
+ * при подключении его снимок заменяет всё, что здесь лежало.
+ *
+ * До этого переписка жила в localStorage целиком, и «отправленное»
+ * сообщение существовало ровно в том браузере, где его набрали.
+ */
 const load = (uid:string) => {
   if(!W||!uid) return null;
   try{ return JSON.parse(localStorage.getItem(pKey(uid))||'null'); }catch{return null;}
@@ -17,65 +26,18 @@ const persist = (uid:string, data:object) => {
   try{ localStorage.setItem(pKey(uid), JSON.stringify(data)); }catch{}
 };
 
-/* --- Глобальный ключ для синхронизации между аккаунтами --------------- */
-const GLOBAL_KEY = 'sky:global:msgs:v1';
-const loadGlobal = () => { try{ return JSON.parse(localStorage.getItem(GLOBAL_KEY)||'{}'); }catch{return{};} };
-export const saveToGlobal = (msg: MessageItem) => {
-  try{
-    const g = loadGlobal();
-    const msgs: MessageItem[] = g.messages||[];
-    if(!msgs.find(m=>m.id===msg.id)){
-      msgs.push(msg);
-      if(msgs.length>2000) msgs.splice(0,msgs.length-2000);
-      localStorage.setItem(GLOBAL_KEY, JSON.stringify({...g,messages:msgs}));
-    }
-  }catch{}
-};
-
-/* --- Seed ------------------------------------------------------------- */
-const SEED_CHATS_BASE: ChatItem[] = [
-  {id:'team-core',   name:'Core Raiders', username:'core_raiders', avatar:'CR', online:true,  pinned:true, type:'group',   members:9,    folder:'work'},
-  {id:'arena-squad', name:'Arena Squad',  username:'arena_squad',  avatar:'AS', online:true,  type:'group',   members:5,    folder:'social'},
-  {id:'patch-notes', name:'Patch Notes',  username:'patch_notes',  avatar:'PN', online:true,  muted:true, type:'channel', members:1240, folder:'news', description:'Обновления Sky'},
-  {id:'dm-luna',     name:'Luna Nova',    username:'luna_nova',    avatar:'LN', online:false, type:'direct', participants:['acc-kutuzov','acc-luna']},
-  {id:'dm-neo',      name:'Neo Driver',   username:'neon_driver',  avatar:'ND', online:true,  type:'direct', participants:['acc-kutuzov','acc-neo']},
-];
-
-/* Адаптируем seed-чаты под конкретного юзера:
-   - Показываем только чаты где юзер  -  участник
-   - Для DM меняем name/username/avatar на собеседника */
-const ACCOUNTS_SEED: Record<string,{name:string;username:string;avatar:string}> = {
-  'acc-kutuzov': {name:'Kutuzov',    username:'kutuzov',    avatar:'KU'},
-  'acc-luna':    {name:'Luna Nova',  username:'luna_nova',  avatar:'LN'},
-  'acc-neo':     {name:'Neo Driver', username:'neon_driver',avatar:'ND'},
-};
-const seedChatsFor = (uid: string): ChatItem[] => {
-  return SEED_CHATS_BASE
-    .filter(c => c.type !== 'direct' || (c.participants??[]).includes(uid))
-    .map(c => {
-      if (c.type !== 'direct') return c;
-      const peerId = (c.participants??[]).find(p=>p!==uid) ?? '';
-      const peer = ACCOUNTS_SEED[peerId];
-      if (!peer) return c;
-      return { ...c, name: peer.name, username: peer.username, avatar: peer.avatar };
-    });
-};
-const SEED_CHATS = seedChatsFor('acc-kutuzov'); // default for backward compat
-const ago = (m:number) => ({time:new Date(Date.now()-m*60000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}),timestamp:Date.now()-m*60000});
-const SEED_MSGS: MessageItem[] = [
-  {id:'m1',clientId:'m1',chatId:'team-core',   fromMe:false,authorId:'acc-luna',   kind:'text',text:'Рейд в 21:00, подтверждаем состав 🗡️',reactions:[{emoji:'🔥',userIds:['acc-neo']}],status:'read',...ago(80)},
-  {id:'m2',clientId:'m2',chatId:'team-core',   fromMe:true, authorId:'acc-kutuzov',kind:'text',text:'Я в деле, беру саппорт-роль.',         reactions:[],status:'read',...ago(78)},
-  {id:'m4',clientId:'m4',chatId:'arena-squad', fromMe:false,authorId:'acc-neo',    kind:'text',text:'Завтра арена в 20:00? 🏟️',             reactions:[],status:'delivered',...ago(200)},
-  {id:'m5',clientId:'m5',chatId:'dm-luna',     fromMe:false,authorId:'acc-luna',   kind:'text',text:'Привет! Как дела? ☀️',                 reactions:[],status:'read',time:'Вчера',timestamp:Date.now()-86400000},
-  {id:'m6',clientId:'m6',chatId:'dm-neo',      fromMe:false,authorId:'acc-neo',    kind:'text',text:'Season 5: новые карты. Готов?',         reactions:[],status:'read',...ago(150)},
-  {id:'m7',clientId:'m7',chatId:'patch-notes', fromMe:false,authorId:'system',     kind:'system',text:'📋 Sky v4  -  исправлены баги.',        reactions:[],status:'read',...ago(300)},
-];
+/** Человек в справочнике: то немногое, что нужно, чтобы его подписать. */
+export interface Person { id:string; name:string; username:string; avatar?:string }
 
 type Filter = 'all'|'unread'|'direct'|'group'|'channel'|'archived';
+
+/** Идентификатор личного чата — тот же, что считает сервер (chats.mjs). */
+export const directChatId = (a:string,b:string) => `dm-${[a,b].sort().join('~')}`;
 
 interface S {
   chats:        ChatItem[];
   messages:     MessageItem[];
+  people:       Record<string,Person>;
   reports:      Report[];
   blocked:      string[];
   typing:       Record<string,string[]>;
@@ -87,6 +49,8 @@ interface S {
   editingId:    string|null;
   drafts:       Record<string,string>;
   quickReplies: { id: string; text: string }[];
+  connected:    boolean;
+  synced:       boolean;
 
   setActiveChat: (id:string)=>void;
   setSearch:     (v:string)=>void;
@@ -110,31 +74,37 @@ interface S {
   react:         (msgId:string,emoji:string)=>void;
   forward:       (id:string)=>MessageItem|null;
   markRead:      (chatId:string)=>void;
-  startDM:       (account:Account)=>ChatItem|null;
+  startDM:       (person:Person)=>ChatItem|null;
   createChat:    (p:{name:string;type:'group'|'channel';description?:string;memberIds?:string[]})=>string;
   addParticipant:(chatId:string,userId:string,userName:string)=>void;
   addReport:     (p:Omit<Report,'id'|'createdAt'|'status'>)=>void;
   resolveReport: (id:string,status:Report['status'])=>void;
-  injectMessage: (msg:MessageItem)=>void;
   setChatDraft:  (chatId:string,text:string)=>void;
   addQuickReply:    (text:string)=>void;
   removeQuickReply: (id:string)=>void;
   markChannelViewed: (chatId:string)=>void;
+
+  /* ── Приезжает с сервера (socket.ts) ─────────────────────────────── */
+  applyChats:     (chats:ChatItem[],people:Person[])=>void;
+  applyChat:      (chat:ChatItem,people:Person[])=>void;
+  dropChat:       (chatId:string)=>void;
+  applyMessages:  (chatId:string,msgs:MessageItem[])=>void;
+  applyIncoming:  (msg:MessageItem)=>void;
+  applyConfirmed: (msg:MessageItem)=>void;
+  applyEdited:    (id:string,text:string,editedAt?:string)=>void;
+  applyDeleted:   (id:string)=>void;
+  applyReaction:  (msgId:string,emoji:string,userId:string,removed:boolean)=>void;
+  applyRead:      (ids:string[])=>void;
+  applyOnline:    (ids:Set<string>)=>void;
+  setConnected:   (v:boolean)=>void;
+  markSynced:     ()=>void;
 }
+
+const indexPeople = (list:Person[]):Record<string,Person> =>
+  Object.fromEntries((list??[]).filter(p=>p?.id).map(p=>[p.id,p]));
 
 const uid0 = getUid();
 const saved = uid0 ? load(uid0) : null;
-
-/* Подгружаем глобальные сообщения от других аккаунтов */
-const globalMsgs: MessageItem[] = loadGlobal().messages||[];
-
-const mergeMsgs = (own: MessageItem[], global: MessageItem[]): MessageItem[] => {
-  const ids = new Set(own.map(m=>m.id));
-  return [...own, ...global.filter(m=>!ids.has(m.id))];
-};
-
-const recomputeFromMe = (msgs: MessageItem[], uid: string): MessageItem[] =>
-  msgs.map(m => ({ ...m, fromMe: m.authorId === uid && m.kind !== 'system' }));
 
 const _typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -144,7 +114,10 @@ export const useMessengerStore = create<S>((set,get) => {
     const s = get();
     persist(uid, {
       chats:        s.chats,
+      // blob:-ссылки живут только в текущей вкладке — сохранять их
+      // бессмысленно, после перезагрузки они уже никуда не ведут.
       messages:     s.messages.map(m=>({...m,mediaUrl:m.mediaUrl?.startsWith('blob:')?undefined:m.mediaUrl})),
+      people:       s.people,
       reports:      s.reports,
       blocked:      s.blocked,
       activeChatId: s.activeChatId,
@@ -157,17 +130,8 @@ export const useMessengerStore = create<S>((set,get) => {
 
   const mut = (fn:(s:S)=>Partial<S>) => { set(s=>({...s,...fn(s)})); flush(); };
 
-  const upStatus = (msgId:string, status:MessageItem['status']) =>
-    mut(s=>({messages:s.messages.map(m=>m.id===msgId?{...m,status}:m)}));
-
-  const deliver = (id:string) => {
-    setTimeout(()=>upStatus(id,'delivered'),600+Math.random()*400);
-    setTimeout(()=>upStatus(id,'read'),1600+Math.random()*800);
-  };
-
-  /* Реальный тикер отложенных сообщений — раз в 10с проверяет, не настало
-     ли время отправки, и «доставляет» сообщение по-настоящему (а не
-     просто визуально помечает как отправленное). */
+  /* Тикер отложенных сообщений: когда наступает срок, сообщение
+     действительно уходит на сервер, а не просто перестаёт быть серым. */
   if (W) {
     setInterval(() => {
       const now = Date.now();
@@ -179,17 +143,19 @@ export const useMessengerStore = create<S>((set,get) => {
             ? { ...m, isScheduled: false, scheduledAt: undefined, timestamp: nowTs(), time: nowFmt() }
             : m),
       }));
-      due.forEach(m => deliver(m.id));
+      due.forEach(m => wireSend({ type:'send-message', payload:{ chatId:m.chatId,
+        message:{ ...m, isScheduled:false, scheduledAt:undefined } } }));
     }, 10000);
   }
 
   return {
-    chats:        saved?.chats        ?? SEED_CHATS,
-    messages:     recomputeFromMe(saved ? mergeMsgs(saved.messages??[], globalMsgs) : mergeMsgs(SEED_MSGS, globalMsgs), uid0 ?? ''),
-    reports:      saved?.reports      ?? [],
-    blocked:      saved?.blocked      ?? [],
+    chats:        saved?.chats    ?? [],
+    messages:     saved?.messages ?? [],
+    people:       saved?.people   ?? {},
+    reports:      saved?.reports  ?? [],
+    blocked:      saved?.blocked  ?? [],
     typing:       {},
-    activeChatId: saved?.activeChatId ?? 'team-core',
+    activeChatId: saved?.activeChatId ?? '',
     search:       '',
     filter:       (saved?.filter      ?? 'all') as Filter,
     folder:       (saved?.folder      ?? 'all') as ChatFolder,
@@ -197,31 +163,32 @@ export const useMessengerStore = create<S>((set,get) => {
     editingId:    null,
     drafts:       saved?.drafts       ?? {},
     quickReplies: saved?.quickReplies ?? [],
+    connected:    false,
+    synced:       false,
 
-    setActiveChat: id => mut(()=>({activeChatId:id,replyToId:null,editingId:null})),
+    setActiveChat: id => { mut(()=>({activeChatId:id,replyToId:null,editingId:null})); },
     setSearch:     v  => set({search:v}),
     setFilter:     v  => mut(()=>({filter:v})),
     setFolder:     v  => mut(()=>({folder:v})),
     setReplyTo:    id => set({replyToId:id}),
     startEdit:     id => set({editingId:id}),
 
-    // Auto-expire typing indicator after 4s (handles closed tabs / network drops)
+    // Индикатор набора гаснет сам через 4 секунды: вкладку могли просто
+    // закрыть, и «печатает…» осталось бы висеть навсегда.
     setTyping:(chatId,user,on)=>{
+      if(!chatId||!user) return;
       set(s=>{
         const prev=s.typing[chatId]??[];
         return{typing:{...s.typing,[chatId]:on?[...new Set([...prev,user])]:prev.filter(x=>x!==user)}};
       });
       const key=`${chatId}::${user}`;
+      const existing=_typingTimers.get(key);
+      if(existing){ clearTimeout(existing); _typingTimers.delete(key); }
       if(on){
-        const existing=_typingTimers.get(key);
-        if(existing) clearTimeout(existing);
         _typingTimers.set(key, setTimeout(()=>{
           _typingTimers.delete(key);
           set(s=>({typing:{...s.typing,[chatId]:(s.typing[chatId]??[]).filter(x=>x!==user)}}));
         },4000));
-      } else {
-        const existing=_typingTimers.get(key);
-        if(existing){ clearTimeout(existing); _typingTimers.delete(key); }
       }
     },
 
@@ -230,36 +197,36 @@ export const useMessengerStore = create<S>((set,get) => {
       if(!val&&kind==='text') return null;
       const me=getUid();
       if(!me) return null;
-      const {activeChatId,chats,blocked,replyToId,messages}=get();
+      const {activeChatId,chats,blocked,replyToId}=get();
+      if(!activeChatId) return null;
       const chat=chats.find(c=>c.id===activeChatId);
       if(chat&&blocked.includes(chat.username??'')) return null;
       const id=crypto.randomUUID();
-      if(messages.some(m=>m.clientId===id)) return null;
       const isScheduled = !!scheduledAt && scheduledAt > Date.now();
       const msg:MessageItem={
         id,clientId:id,chatId:activeChatId,
         fromMe:true,authorId:me,
         kind,text:val,mediaUrl,fileName,bytes,mimeType,
         replyToId:replyToId??undefined,
-        reactions:[],time:nowFmt(),timestamp:nowTs(),status:'sent',
+        reactions:[],time:nowFmt(),timestamp:nowTs(),
+        // «В очереди» до подтверждения сервера: раньше сообщение сразу
+        // рисовалось отправленным, даже когда связи не было вовсе.
+        status:'queued',
         once, spoiler, isSilent, selfDestruct, destroyAt,
         scheduledAt: isScheduled ? scheduledAt : undefined,
         isScheduled,
       };
       mut(s=>({messages:[...s.messages,msg],replyToId:null,editingId:null}));
-      // отложенные сообщения не «доставляем» сразу — они не входят в чат,
-      // пока не наступит время (см. tickScheduled)
-      if(!isScheduled) deliver(id);
-      return msg; // возвращаем для BroadcastChannel в ChatWindow
+      return msg; // отправку делает вызывающий через broadcast.message
     },
 
-    /** Реально отправляет запланированное сообщение раньше срока, либо
-        глобальный тикер делает то же самое сам, когда наступает время. */
+    /** Отправляет отложенное раньше срока. */
     sendScheduledNow: (id) => {
       const msg = get().messages.find(m=>m.id===id);
       if (!msg || !msg.isScheduled) return;
       mut(s=>({messages:s.messages.map(m=>m.id===id?{...m,isScheduled:false,scheduledAt:undefined,timestamp:nowTs(),time:nowFmt()}:m)}));
-      deliver(id);
+      wireSend({ type:'send-message', payload:{ chatId:msg.chatId,
+        message:{ ...msg, isScheduled:false, scheduledAt:undefined } } });
     },
     cancelScheduled: (id) => {
       mut(s=>({messages:s.messages.filter(m=>m.id!==id)}));
@@ -297,71 +264,70 @@ export const useMessengerStore = create<S>((set,get) => {
       return get().sendMessage({text:`↪ ${m.text}`,kind:m.kind,mediaUrl:m.mediaUrl,fileName:m.fileName});
     },
 
-    markRead:chatId=>mut(s=>({messages:s.messages.map(m=>
-      m.chatId===chatId&&!m.fromMe&&m.status!=='read'?{...m,status:'read'}:m
-    )})),
+    markRead:chatId=>{
+      if(!chatId) return;
+      const has = get().messages.some(m=>m.chatId===chatId&&!m.fromMe&&m.status!=='read');
+      mut(s=>({messages:s.messages.map(m=>
+        m.chatId===chatId&&!m.fromMe&&m.status!=='read'?{...m,status:'read'}:m
+      )}));
+      // Сервер считает галочки у отправителя — сообщаем ему о прочтении.
+      if(has) wireSend({type:'read-messages',payload:{chatId}});
+    },
 
-    startDM:account=>{
-      const me=getUid(); if(!me||account.id===me) return null;
-      const ex=get().chats.find(c=>c.type==='direct'&&c.participants?.includes(account.id)&&c.participants?.includes(me));
+    /**
+     * Открывает личный чат. Идентификатор выводится из пары собеседников
+     * и совпадает с тем, что считает сервер: иначе у каждой стороны
+     * получался бы свой чат и своя половина разговора.
+     */
+    startDM:person=>{
+      const me=getUid(); if(!me||!person?.id||person.id===me) return null;
+      const id=directChatId(me,person.id);
+      const ex=get().chats.find(c=>c.id===id);
       if(ex){mut(()=>({activeChatId:ex.id}));return ex;}
       const nc:ChatItem={
-        id:`dm-${account.id}`,name:account.name,username:account.username,
-        avatar:account.name.slice(0,2).toUpperCase(),online:true,
-        type:'direct',participants:[me,account.id],folder:'social',
+        id,name:person.name,username:person.username,
+        avatar:(person.name||'?').slice(0,2).toUpperCase(),online:false,
+        type:'direct',participants:[me,person.id],folder:'social',
       };
-      mut(s=>({chats:[nc,...s.chats],activeChatId:nc.id}));
+      mut(s=>({
+        chats:[nc,...s.chats],
+        people:{...s.people,[person.id]:person},
+        activeChatId:nc.id,
+      }));
       return nc;
     },
 
     createChat:({name,type,description,memberIds=[]})=>{
       const me=getUid(); if(!me) return '';
+      // Формат id проверяет и сервер: он должен совпадать с тем, что
+      // разрешено в chats.mjs, иначе создание будет отклонено.
       const id=`${type}-${crypto.randomUUID().slice(0,8)}`;
       const nc:ChatItem={
         id,name,username:name.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,''),
-        avatar:name.slice(0,2).toUpperCase(),online:true,type,
+        avatar:name.slice(0,2).toUpperCase(),online:false,type,
         members:memberIds.length+1,description,ownerId:me,
         participants:[me,...memberIds],folder:'social',
       };
-      const sys:MessageItem={
-        id:crypto.randomUUID(),clientId:crypto.randomUUID(),chatId:id,
-        fromMe:false,authorId:'system',kind:'system',
-        text:`${type==='group'?'Группа':'Канал'} «${name}» создан`,
-        reactions:[],time:nowFmt(),timestamp:nowTs(),status:'read',
-      };
-      mut(s=>({chats:[nc,...s.chats],messages:[...s.messages,sys],activeChatId:id}));
+      mut(s=>({chats:[nc,...s.chats],activeChatId:id}));
       return id;
     },
 
+    /**
+     * Локальная пометка о новом участнике. Состав чата на сервере
+     * задаётся при создании; отдельной операции «добавить» пока нет,
+     * поэтому здесь только запись в ленте, без прав в чате.
+     */
     addParticipant:(chatId,userId,userName)=>{
-      const sys:MessageItem={
-        id:crypto.randomUUID(),clientId:crypto.randomUUID(),chatId,
-        fromMe:false,authorId:'system',kind:'system',
-        text:`${userName} добавлен(а) в чат`,
-        reactions:[],time:nowFmt(),timestamp:nowTs(),status:'read',
-      };
       mut(s=>({
         chats:s.chats.map(c=>{
           if(c.id!==chatId) return c;
           if((c.participants??[]).includes(userId)) return c;
           return {...c,participants:[...(c.participants??[]),userId],members:(c.members??1)+1};
         }),
-        messages:[...s.messages,sys],
       }));
-      // Приветственное сообщение группы (если включено в настройках) —
-      // читаем через глобальный доступ к groupStore, чтобы не тянуть
-      // циклическую зависимость между модулями стора.
       import('./groupStore').then(({ useGroupStore }) => {
-        const settings = useGroupStore.getState().getSettings(chatId);
-        if (!settings.welcomeEnabled || !settings.welcomeMessage.trim()) return;
-        const welcome:MessageItem={
-          id:crypto.randomUUID(),clientId:crypto.randomUUID(),chatId,
-          fromMe:false,authorId:'system',kind:'system',
-          text:settings.welcomeMessage,
-          reactions:[],time:nowFmt(),timestamp:nowTs(),status:'read',
-        };
-        mut(s=>({messages:[...s.messages,welcome]}));
-        useGroupStore.getState().log(chatId, 'member_joined', `${userName} присоединил${userName.endsWith('а')?'ась':'ся'} к группе`, userId);
+        useGroupStore.getState().log(chatId, 'member_joined',
+          `${userName} присоединил${userName.endsWith('а')?'ась':'ся'} к группе`, userId);
       });
     },
 
@@ -370,18 +336,6 @@ export const useMessengerStore = create<S>((set,get) => {
       mut(s=>({reports:[r,...s.reports]}));
     },
     resolveReport:(id,status)=>mut(s=>({reports:s.reports.map(r=>r.id===id?{...r,status}:r)})),
-
-    /* Вызывается из socket.ts при получении входящего сообщения */
-    injectMessage:(msg:MessageItem)=>{
-      const me = getUid();
-      set(s=>{
-        if(s.messages.find(m=>m.id===msg.id)) return {};
-        const isActive = s.activeChatId===msg.chatId;
-        const fromMe = msg.authorId === me && msg.kind !== 'system';
-        return {messages:[...s.messages,{...msg,fromMe,status:isActive?'read':'delivered'}]};
-      });
-      flush();
-    },
 
     setChatDraft: (chatId, text) => mut(s => ({
       drafts: text.trim() ? { ...s.drafts, [chatId]: text } : Object.fromEntries(Object.entries(s.drafts).filter(([k]) => k !== chatId)),
@@ -393,9 +347,6 @@ export const useMessengerStore = create<S>((set,get) => {
     },
     removeQuickReply: (id) => mut(s => ({ quickReplies: s.quickReplies.filter(q => q.id !== id) })),
 
-    /** Реальный трекинг просмотров канала: при открытии канала все уже
-        загруженные посты помечаются просмотренными текущим пользователем
-        (без дублей) — используется для честной аналитики охвата. */
     markChannelViewed: (chatId) => {
       const uid = getUid(); if (!uid) return;
       mut(s => ({
@@ -405,27 +356,141 @@ export const useMessengerStore = create<S>((set,get) => {
             : m),
       }));
     },
+
+    /* ══ Данные с сервера ══════════════════════════════════════════════
+       Снимок сервера — источник истины. Локально переживают его только
+       отложенные сообщения: их ещё никто не отправлял.               */
+
+    applyChats:(chats,people)=>mut(s=>{
+      const fromServer=new Set(chats.map(c=>c.id));
+      // Чат, который только что открыли, а сервер о нём ещё не знает
+      // (создание висит в очереди), не выбрасываем: вместе с ним
+      // пропало бы уже написанное в него сообщение.
+      const pending=s.chats.filter(c=>!fromServer.has(c.id)
+        && s.messages.some(m=>m.chatId===c.id&&(m.status==='queued'||m.isScheduled)));
+      const all=[...pending,...chats];
+      const ids=new Set(all.map(c=>c.id));
+      return {
+        chats:all,
+        people:{...s.people,...indexPeople(people)},
+        messages:s.messages.filter(m=>ids.has(m.chatId)||m.isScheduled),
+        activeChatId:ids.has(s.activeChatId)?s.activeChatId:(all[0]?.id??''),
+      };
+    }),
+
+    applyChat:(chat,people)=>mut(s=>({
+      chats:s.chats.some(c=>c.id===chat.id)
+        ? s.chats.map(c=>c.id===chat.id?{...c,...chat}:c)
+        : [chat,...s.chats],
+      people:{...s.people,...indexPeople(people)},
+    })),
+
+    dropChat:(chatId)=>mut(s=>({
+      chats:s.chats.filter(c=>c.id!==chatId),
+      messages:s.messages.filter(m=>m.chatId!==chatId),
+      activeChatId:s.activeChatId===chatId?'':s.activeChatId,
+    })),
+
+    applyMessages:(chatId,msgs)=>{
+      if(!chatId) return;
+      mut(s=>({
+        messages:[
+          // Своё неотправленное и отложенное сохраняем: сервер о нём
+          // ещё не знает, а выбросить — значит потерять написанное.
+          ...s.messages.filter(m=>m.chatId!==chatId||m.isScheduled||m.status==='queued'),
+          ...msgs.filter(m=>!s.messages.some(o=>o.id===m.id&&(o.isScheduled||o.status==='queued'))),
+        ].sort((a,b)=>a.timestamp-b.timestamp),
+      }));
+    },
+
+    applyIncoming:(msg)=>{
+      if(!msg?.id) return;
+      mut(s=>{
+        if(s.messages.some(m=>m.id===msg.id)) return {};
+        const isActive=s.activeChatId===msg.chatId;
+        return {messages:[...s.messages,{...msg,status:msg.fromMe?msg.status:(isActive?'read':'delivered')}]
+          .sort((a,b)=>a.timestamp-b.timestamp)};
+      });
+      // Открытый чат сразу отмечаем прочитанным — иначе у отправителя
+      // сообщение так и висело бы недоставленным.
+      if(!msg.fromMe && get().activeChatId===msg.chatId) {
+        wireSend({type:'read-messages',payload:{chatId:msg.chatId}});
+      }
+    },
+
+    applyConfirmed:(msg)=>{
+      if(!msg?.id) return;
+      mut(s=>({
+        messages:s.messages.some(m=>m.id===msg.id)
+          ? s.messages.map(m=>m.id===msg.id?{...m,...msg,mediaUrl:m.mediaUrl??msg.mediaUrl}:m)
+          : [...s.messages,msg].sort((a,b)=>a.timestamp-b.timestamp),
+      }));
+    },
+
+    applyEdited:(id,text,editedAt)=>mut(s=>({
+      messages:s.messages.map(m=>m.id===id?{...m,text,editedAt:editedAt??nowFmt()}:m),
+    })),
+
+    applyDeleted:(id)=>mut(s=>({
+      messages:s.messages.map(m=>m.id===id
+        ?{...m,deleted:true,text:'Сообщение удалено',mediaUrl:undefined,reactions:[]}:m),
+    })),
+
+    applyReaction:(msgId,emoji,userId,removed)=>mut(s=>({
+      messages:s.messages.map(m=>{
+        if(m.id!==msgId) return m;
+        const ex=m.reactions.find(r=>r.emoji===emoji);
+        if(removed){
+          if(!ex) return m;
+          const ids=ex.userIds.filter(u=>u!==userId);
+          return {...m,reactions:ids.length
+            ?m.reactions.map(r=>r.emoji===emoji?{...r,userIds:ids}:r)
+            :m.reactions.filter(r=>r.emoji!==emoji)};
+        }
+        if(!ex) return {...m,reactions:[...m.reactions,{emoji,userIds:[userId]}]};
+        if(ex.userIds.includes(userId)) return m;
+        return {...m,reactions:m.reactions.map(r=>r.emoji===emoji?{...r,userIds:[...r.userIds,userId]}:r)};
+      }),
+    })),
+
+    applyRead:(ids)=>{
+      if(!ids?.length) return;
+      const set2=new Set(ids);
+      mut(s=>({messages:s.messages.map(m=>set2.has(m.id)&&m.fromMe?{...m,status:'read'}:m)}));
+    },
+
+    applyOnline:(ids)=>set(s=>({
+      chats:s.chats.map(c=>{
+        if(c.type!=='direct') return c;
+        const online=(c.participants??[]).some(p=>p!==getUid()&&ids.has(p));
+        return c.online===online?c:{...c,online};
+      }),
+    })),
+
+    setConnected:(v)=>set({connected:v,...(v?{}:{synced:false})}),
+    markSynced:()=>set({connected:true,synced:true}),
   };
 });
 
 /* --- Перезагрузка данных при смене аккаунта ------------------------------- */
 export const reloadMessengerForUser = (uid: string) => {
-  const saved = uid ? load(uid) : null;
-  const globalMsgs2: MessageItem[] = loadGlobal().messages || [];
-  const raw = saved ? mergeMsgs(saved.messages ?? [], globalMsgs2) : mergeMsgs(SEED_MSGS, globalMsgs2);
+  const saved2 = uid ? load(uid) : null;
   useMessengerStore.setState({
-    chats:        saved?.chats    ?? seedChatsFor(uid),
-    messages:     recomputeFromMe(raw, uid),
-    reports:      saved?.reports  ?? [],
-    blocked:      saved?.blocked  ?? [],
-    activeChatId: saved?.activeChatId ?? 'team-core',
-    filter:       (saved?.filter  ?? 'all') as Filter,
-    folder:       (saved?.folder  ?? 'all') as any,
+    chats:        saved2?.chats    ?? [],
+    messages:     saved2?.messages ?? [],
+    people:       saved2?.people   ?? {},
+    reports:      saved2?.reports  ?? [],
+    blocked:      saved2?.blocked  ?? [],
+    activeChatId: saved2?.activeChatId ?? '',
+    filter:       (saved2?.filter  ?? 'all') as Filter,
+    folder:       (saved2?.folder  ?? 'all') as ChatFolder,
     search:       '',
     replyToId:    null,
     editingId:    null,
     typing:       {},
-    drafts:       saved?.drafts       ?? {},
-    quickReplies: saved?.quickReplies ?? [],
+    drafts:       saved2?.drafts       ?? {},
+    quickReplies: saved2?.quickReplies ?? [],
+    connected:    false,
+    synced:       false,
   });
 };

@@ -3,7 +3,9 @@
  * и автоматически создаёт уведомления.
  *
  * Источники:
- * - messenger/socket.ts  —  входящие сообщения (BC event 'msg')
+ * - messenger/socket.ts  —  входящие сообщения (событие окна
+ *   'sky:incoming-message'; раньше это был BroadcastChannel, но
+ *   сообщения теперь приходят с сервера, а не из соседней вкладки)
  * - calls/store.ts  —  входящие и пропущенные звонки
  * - bloom  —  лайки и комментарии (через Bloom BC)
  *
@@ -20,8 +22,6 @@ import { useCallStore }        from '@/calls/store';
 import { useModuleStore }      from '@/data/state/modules';
 import { usePushNotifications } from './usePushNotifications';
 
-// Слушаем messenger BC напрямую
-const MSG_CHANNEL   = 'sky:realtime:v2';
 const BLOOM_CHANNEL = 'sky:bloom:bc:v1';
 
 export const NotifBridge = () => {
@@ -66,66 +66,54 @@ export const NotifBridge = () => {
     });
   }, [incomingCall?.callId]);
 
-  // -- Messenger BC  —  входящие сообщения ----------------------------
+  // -- Входящие сообщения от сервера ----------------------------------
   useEffect(() => {
-    const bc = typeof BroadcastChannel !== 'undefined'
-      ? new BroadcastChannel(MSG_CHANNEL) : null;
-    if (!bc) return;
-
-    bc.onmessage = (e) => {
-      const { type, payload, from } = e.data ?? {};
+    const onIncoming = (e: Event) => {
+      const { message: msg, senderName } = (e as CustomEvent).detail ?? {};
       const myId = useAuthStore.getState().currentUserId;
-      if (!type || from === myId) return;
+      if (!msg || !myId || msg.authorId === myId) return;
 
-      // Play sound for incoming messages
-      if (type === 'message' && settings.soundMessages) {
-        const text = payload?.text ?? '';
-        const hasMention = text.includes('@') && settings.soundMentions;
-        if (hasMention) playMentionSound();
+      const name   = senderName || 'Кто-то';
+      const letter = name[0]?.toUpperCase() ?? '?';
+
+      const body = msg.kind === 'text'
+        ? (msg.text.length > 60 ? msg.text.slice(0, 57) + '...' : msg.text)
+        : msg.kind === 'photo'  ? 'Фото'
+        : msg.kind === 'voice'  ? 'Голосовое'
+        : msg.kind === 'file'   ? (msg.fileName ?? 'Файл')
+        : 'Сообщение';
+
+      const myAccount = useAuthStore.getState().accounts.find(a => a.id === myId);
+      const isMention = !!myAccount && msg.text?.includes(`@${myAccount.username}`);
+
+      if (settings.soundMessages) {
+        if (isMention && settings.soundMentions) playMentionSound();
         else playMessageSound();
       }
 
-      if (type === 'msg') {
-        const msg = payload;
-        if (!msg || msg.authorId === myId) return;
+      // 1️⃣ Внутренний тост (всегда)
+      push({
+        kind:         isMention ? 'mention' : 'message',
+        title:        name,
+        body,
+        avatarLetter: letter,
+        color:        'var(--accent)',
+        chatId:       msg.chatId,
+      });
 
-        const sender = useAuthStore.getState().accounts.find(a => a.id === msg.authorId);
-        const name   = sender?.name ?? 'Кто-то';
-        const letter = name[0]?.toUpperCase() ?? '?';
-
-        const body = msg.kind === 'text'
-          ? (msg.text.length > 60 ? msg.text.slice(0, 57) + '...' : msg.text)
-          : msg.kind === 'photo'  ? 'Фото'
-          : msg.kind === 'voice'  ? 'Голосовое'
-          : msg.kind === 'file'   ? (msg.fileName ?? 'Файл')
-          : 'Сообщение';
-
-        const myAccount = useAuthStore.getState().accounts.find(a => a.id === myId);
-        const isMention = myAccount && msg.text?.includes(`@${myAccount.username}`);
-
-        // 1️⃣ Внутренний тост (всегда)
-        push({
-          kind:         isMention ? 'mention' : 'message',
-          title:        name,
-          body,
-          avatarLetter: letter,
-          color:        'var(--accent)',
-          chatId:       msg.chatId,
-        });
-
-        // 2️⃣ Web Push (только когда вкладка неактивна)
-        sendWebPush({
-          title:        name,
-          body,
-          chatId:       msg.chatId,
-          senderName:   name,
-          senderLetter: letter,
-        });
-      }
+      // 2️⃣ Web Push (только когда вкладка неактивна)
+      sendWebPush({
+        title:        name,
+        body,
+        chatId:       msg.chatId,
+        senderName:   name,
+        senderLetter: letter,
+      });
     };
 
-    return () => bc.close();
-  }, [sendWebPush]);
+    window.addEventListener('sky:incoming-message', onIncoming);
+    return () => window.removeEventListener('sky:incoming-message', onIncoming);
+  }, [sendWebPush, push, settings.soundMessages, settings.soundMentions]);
 
   // -- Bloom BC  —  лайки и комментарии -------------------------------
   useEffect(() => {

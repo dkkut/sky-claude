@@ -18,7 +18,7 @@ import { verifyToken } from './security.mjs';
 import { sessionStore } from './sessions.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
-  editMessage, deleteMessage, markRead, memberIds, isMember,
+  editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
 } from './chats.mjs';
 
 const PORT = Number(process.env.SIGNAL_PORT || 8081);
@@ -29,6 +29,8 @@ const AUTH_TIMEOUT_MS = 10_000;
 const MSG_RATE_PER_MIN = 240;
 /** Потолок размера одного сообщения. */
 const MAX_MESSAGE_BYTES = 256 * 1024;
+/** Период проверки живости соединений. */
+const HEARTBEAT_MS = 30_000;
 
 // userId → набор соединений (у человека может быть открыто несколько вкладок)
 const clients = new Map();
@@ -44,6 +46,20 @@ const sendTo = (userId, msg) => {
 };
 const broadcast = (userIds, msg, exceptId) => {
   for (const uid of userIds) if (uid !== exceptId) sendTo(uid, msg);
+};
+/**
+ * Рассылка участникам чата, кроме того самого соединения, откуда пришло
+ * действие.
+ *
+ * Исключать надо именно соединение, а не человека: у одного человека
+ * открыт телефон и ноутбук, и раньше отправленное с телефона не
+ * доходило до ноутбука — свои сокеты выбрасывались вместе с автором.
+ * Само отправившее соединение уже показало действие у себя.
+ */
+const fanout = (userIds, msg, exceptWs) => {
+  for (const uid of userIds) {
+    for (const ws of clients.get(uid) ?? []) if (ws !== exceptWs) send(ws, msg);
+  }
 };
 
 const addClient = (userId, ws) => {
@@ -85,17 +101,31 @@ const identify = async (token) => {
 /** Как часто перепроверять, что сессия открытого сокета ещё жива. */
 const SESSION_RECHECK_MS = 60_000;
 
-/** Отдаёт вошедшему его чаты и последние сообщения по каждому. */
+/**
+ * Отдаёт вошедшему его чаты и последние сообщения по каждому.
+ *
+ * Пустой чат тоже отправляется — пустым списком. Иначе клиент, у
+ * которого в кэше остались сообщения из удалённой переписки, так бы их
+ * и показывал: «ничего не прислали» он принимал за «ничего не менялось».
+ */
 const sendSnapshot = async (ws, userId) => {
   const chats = await listChats(userId);
   send(ws, { type: 'chats-snapshot', payload: { chats } });
 
   for (const chat of chats) {
     const messages = await listMessages(chat.id, userId, 50);
-    if (messages?.length) {
-      send(ws, { type: 'messages-snapshot', payload: { chatId: chat.id, messages } });
-    }
+    send(ws, { type: 'messages-snapshot', payload: { chatId: chat.id, messages: messages ?? [] } });
   }
+  send(ws, { type: 'snapshot-done' });
+};
+
+/** Кто из сейчас подключённых состоит с человеком в общем чате. */
+const visibleOnline = async (userId) => {
+  const out = [];
+  for (const other of clients.keys()) {
+    if (other !== userId && await shareAChat(userId, other)) out.push(other);
+  }
+  return out;
 };
 
 /* ─── обработка сообщений ──────────────────────────────────────────────── */
@@ -104,6 +134,13 @@ const handle = async (ws, session, msg) => {
   const me = session.userId;
 
   switch (type) {
+    case 'ping': {
+      // Браузер не умеет слать протокольный ping, поэтому клиент
+      // проверяет живость соединения обычным сообщением.
+      send(ws, { type: 'pong' });
+      break;
+    }
+
     case 'send-message': {
       const { chatId, message } = payload ?? {};
       if (!chatId || !message) return;
@@ -113,16 +150,19 @@ const handle = async (ws, session, msg) => {
       // нельзя было выяснять, какие чаты существуют.
       if (!saved) return;
 
-      broadcast(await memberIds(chatId), { type: 'new-message', payload: { chatId, message: saved } }, me);
-      send(ws, { type: 'message-sent', payload: { messageId: saved.id, chatId } });
+      fanout(await memberIds(chatId), { type: 'new-message', payload: { chatId, message: saved } }, ws);
+      send(ws, { type: 'message-sent', payload: { messageId: saved.id, chatId, message: saved } });
       break;
     }
 
     case 'edit-message': {
-      const { messageId, chatId, text } = payload ?? {};
+      const { messageId, text } = payload ?? {};
       const edited = await editMessage(messageId, me, text);
       if (!edited) return;
-      broadcast(await memberIds(edited.chatId), { type: 'message-edited', payload: { messageId, chatId, text } }, me);
+      fanout(await memberIds(edited.chatId), {
+        type: 'message-edited',
+        payload: { messageId: edited.id, chatId: edited.chatId, text: String(text ?? ''), editedAt: edited.editedAt },
+      }, ws);
       break;
     }
 
@@ -130,26 +170,44 @@ const handle = async (ws, session, msg) => {
       const { messageId } = payload ?? {};
       const removed = await deleteMessage(messageId, me);
       if (!removed) return;
-      broadcast(await memberIds(removed.chatId),
-        { type: 'message-deleted', payload: { messageId, chatId: removed.chatId } }, me);
+      fanout(await memberIds(removed.chatId),
+        { type: 'message-deleted', payload: { messageId: removed.id, chatId: removed.chatId } }, ws);
       break;
     }
 
-    case 'react-message':
+    case 'react-message': {
+      const { messageId } = payload ?? {};
+      // Реакция сохраняется, а не только рассылается: иначе она
+      // исчезала после перезагрузки страницы и никогда не доезжала до
+      // второго устройства того же человека.
+      const result = await toggleReaction(messageId, me, payload?.emoji);
+      if (!result) return;
+      fanout(await memberIds(result.chatId), {
+        type: 'message-reaction',
+        payload: { messageId, chatId: result.chatId, emoji: result.emoji, userId: me, removed: result.removed },
+      }, ws);
+      break;
+    }
+
     case 'typing': {
       const chatId = payload?.chatId;
       if (!chatId || !(await isMember(chatId, me))) return;
-      const out = type === 'typing'
-        ? { type: 'user-typing', payload: { chatId, userId: me, username: payload.username, active: payload.active } }
-        : { type: 'message-reaction', payload: { ...payload, userId: me } };
-      broadcast(await memberIds(chatId), out, me);
+      broadcast(await memberIds(chatId),
+        { type: 'user-typing', payload: { chatId, userId: me, username: payload.username, active: payload.active } },
+        me);
       break;
     }
 
     case 'read-messages': {
       const chatId = payload?.chatId;
-      if (!chatId || !(await markRead(chatId, me))) return;
-      broadcast(await memberIds(chatId), { type: 'messages-read', payload: { chatId, byUserId: me } }, me);
+      if (!chatId) return;
+      const changed = await markRead(chatId, me);
+      if (!changed) return;
+      // Пустой список значит «нового ничего не прочитано» — рассылать
+      // нечего, авторы уже видят свои галочки.
+      if (changed.length === 0) return;
+      fanout(await memberIds(chatId),
+        { type: 'messages-read', payload: { chatId, byUserId: me, messageIds: changed } }, ws);
       break;
     }
 
@@ -157,8 +215,11 @@ const handle = async (ws, session, msg) => {
       const chat = payload?.chat;
       if (!chat?.id || !chat?.type) return;
       const created = await createChat(chat, me);
-      if (!created) return;
-      broadcast(created.participants, { type: 'chat-created', payload: { chat: created } }, me);
+      if (!created) {
+        send(ws, { type: 'chat-rejected', payload: { chatId: chat.id } });
+        return;
+      }
+      fanout(created.participants, { type: 'chat-created', payload: { chat: created } }, ws);
       send(ws, { type: 'chat-created', payload: { chat: created } });
       break;
     }
@@ -209,7 +270,26 @@ const shareAChat = async (a, b) => {
 export const startSignalHub = () => {
   wss = new WebSocketServer({ port: PORT, maxPayload: MAX_MESSAGE_BYTES });
 
+  /*
+   * Оборванное соединение (потеря сети, закрытая крышка ноутбука) не
+   * всегда приводит к событию close: сокет остаётся в списке, человек
+   * числится в сети, и ему продолжают уходить сообщения в никуда.
+   * Раз в HEARTBEAT_MS шлём протокольный ping и закрываем то, что не
+   * ответило до следующего круга.
+   */
+  const beat = setInterval(() => {
+    for (const ws of wss.clients) {
+      if (ws.isAlive === false) { ws.terminate(); continue; }
+      ws.isAlive = false;
+      try { ws.ping(); } catch { /* сокет уже закрыт */ }
+    }
+  }, HEARTBEAT_MS);
+  beat.unref();
+  wss.on('close', () => clearInterval(beat));
+
   wss.on('connection', (ws) => {
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
     const session = { userId: null, sessionId: null, count: 0, minute: 0 };
     // Долго живущий сокет проверяем не только на входе: вышли из Sky ID
     // или сменили профиль — соединение должно закрыться само.
@@ -251,13 +331,11 @@ export const startSignalHub = () => {
         }, SESSION_RECHECK_MS);
         recheck.unref();
 
-        send(ws, { type: 'authorized', payload: { userId, onlineUsers: [...clients.keys()] } });
-        // Об онлайне сообщаем только тем, с кем есть общий чат.
-        for (const other of clients.keys()) {
-          if (other !== userId && await shareAChat(userId, other)) {
-            sendTo(other, { type: 'user-online', payload: { userId } });
-          }
-        }
+        // Список онлайна — только те, с кем есть общий чат: иначе по
+        // одному подключению можно было бы снять всех, кто сейчас в сети.
+        const online = await visibleOnline(userId);
+        send(ws, { type: 'authorized', payload: { userId, onlineUsers: online } });
+        for (const other of online) sendTo(other, { type: 'user-online', payload: { userId } });
         await sendSnapshot(ws, userId);
         console.log(`[ws] +${userId} (${clients.size} online)`);
         return;
