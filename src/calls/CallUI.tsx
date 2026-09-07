@@ -5,8 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Monitor, MonitorOff,
-  Minimize2, Maximize2, Volume2, VolumeX, FlipHorizontal,
-} from 'lucide-react';
+  Minimize2, Maximize2, Volume2, VolumeX, FlipHorizontal, Lock, ChevronDown} from 'lucide-react';
 import { useCallStore } from './store';
 import { startRingtone, stopRingtone, playCallConnected, playCallEnded } from '@/audio/sounds';
 import { useSettings } from '@/settings/store';
@@ -55,6 +54,86 @@ export const CallAudio = () => {
   }, [stream]);
 
   return <audio ref={ref} autoPlay playsInline muted={speakerOff} style={{ display: 'none' }} />;
+};
+
+/**
+ * Полоска «звонок зашифрован» с кодом звонка.
+ *
+ * Сам разговор WebRTC шифрует всегда: незашифрованного режима у него
+ * нет, и звук с видео идут напрямую между устройствами. Но ключами
+ * стороны обмениваются через наш сервер — и недобросовестный сервер мог
+ * бы подменить их, встав посередине. Код считается из отпечатков ключей
+ * обеих сторон: назовите его вслух, и если он совпал — посередине
+ * никого нет.
+ */
+const SecurityBar = () => {
+  const active = useCallStore(s => s.active);
+  const [open, setOpen] = useState(false);
+  if (!active) return null;
+
+  const sec = active.security;
+  return (
+    <div className="absolute left-0 right-0 z-30 px-4" style={{ top: 'calc(env(safe-area-inset-top) + 60px)' }}>
+      <motion.button type="button" layout onClick={() => setOpen(o => !o)}
+        className="w-full rounded-2xl px-3 py-2 text-left"
+        style={{
+          background: 'rgba(16,32,24,0.72)', border: '1px solid rgba(80,200,140,0.35)',
+          backdropFilter: 'blur(10px)',
+        }}>
+        <div className="flex items-center gap-2">
+          <Lock size={13} style={{ color: '#4ade80' }} />
+          <span className="text-xs font-semibold" style={{ color: '#4ade80' }}>
+            Звонок зашифрован
+          </span>
+          {sec ? (
+            <span className="ml-auto text-base tracking-[2px]" aria-label="код звонка">
+              {sec.emoji.join('')}
+            </span>
+          ) : (
+            <span className="ml-auto text-[11px]" style={{ color: 'rgba(255,255,255,0.45)' }}>
+              считаем код…
+            </span>
+          )}
+          <ChevronDown size={13}
+            style={{ color: 'rgba(255,255,255,0.45)', transform: open ? 'rotate(180deg)' : undefined }} />
+        </div>
+
+        <AnimatePresence>
+          {open && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+              <div className="pt-2 mt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.09)' }}>
+                {sec ? (
+                  <>
+                    <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.62)' }}>
+                      Назовите эти картинки вслух. Если у собеседника такие же —
+                      разговор слышите только вы двое, и подслушать его не может
+                      никто, включая нас.
+                    </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-2xl tracking-[4px]">{sec.emoji.join('')}</span>
+                      <span className="font-mono text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                        {sec.digits}
+                      </span>
+                    </div>
+                    {sec.cipher && (
+                      <p className="mt-2 font-mono text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                        {sec.cipher}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.62)' }}>
+                    Код появится, как только устройства обменяются ключами.
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.button>
+    </div>
+  );
 };
 
 const AvatarCircle = ({ letter, size=120, active=false }: { letter:string; size?:number; active?:boolean }) => {
@@ -220,6 +299,9 @@ export const ActiveCallPanel = () => {
         onClick={isVideo?resetBtnTimer:undefined}>
         {!isVideo&&<div className="absolute inset-0 pointer-events-none"
           style={{background:`radial-gradient(ellipse at 50% 30%,hsl(${hue},55%,22%,0.45),transparent 65%)`}}/>}
+        {/* Полоска с кодом звонка — как в мессенджерах, где ключи
+            сверяют глазами. Рисуем всегда, и в видео тоже. */}
+        <SecurityBar />
         {isVideo&&(
           <div className="absolute inset-0">
             {conn?<VideoEl stream={active.remoteStream} muted={spkOff} className=""/>

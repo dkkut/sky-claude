@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { SkyPeerConnection, bsignal } from './webrtc';
 import { useAuthStore } from '@/core/auth/store';
+import { computeCallSecurity, type CallSecurity } from './security';
 
 export type CallMode   = 'voice' | 'video';
 export type CallStatus = 'missed' | 'completed' | 'rejected';
@@ -18,6 +19,11 @@ export interface ActiveCall {
   screenShareOn: boolean; direction: 'in' | 'out';
   pc: SkyPeerConnection | null;      // WebRTC connection
   connected: boolean;                // peer connected (ice connected)
+  /**
+   * Код звонка: считается из отпечатков ключей обеих сторон, когда они
+   * ими обменялись. Совпал у обоих — посередине никого нет.
+   */
+  security: CallSecurity | null;
 }
 
 export interface IncomingCall {
@@ -77,6 +83,18 @@ export const useCallStore = create<CallState>((set, get) => {
     set(s => s.active ? ({ active: { ...s.active, remoteStream: pc.remoteStream, connected: true } }) : {});
   };
 
+  /**
+   * Код звонка считаем, когда обе стороны обменялись ключами. Раньше
+   * этого момента отпечатка собеседника ещё нет, и сверять нечего.
+   */
+  const readSecurity = (pc: SkyPeerConnection, callId: string) => {
+    void computeCallSecurity(pc.pc, callId).then((security) => {
+      if (!security) return;
+      set(s => (s.active && s.active.callId === callId)
+        ? ({ active: { ...s.active, security } }) : {});
+    }).catch(() => { /* код не посчитался — экран покажет это честно */ });
+  };
+
   const cleanupPC = () => {
     const { active } = get();
     if (!active) return;
@@ -115,7 +133,9 @@ export const useCallStore = create<CallState>((set, get) => {
       bsignal.on(callId, (msg) => {
         if (msg.from !== peerId) return;
         if (msg.type === 'answer') {
-          pc.handleAnswer(msg.sdp).then(() => adoptRemote(pc)).catch(() => {});
+          pc.handleAnswer(msg.sdp)
+            .then(() => { adoptRemote(pc); readSecurity(pc, callId); })
+            .catch(() => {});
         }
         if (msg.type === 'reject') {
           const h = pushHist({ peerName, peerAvatar, mode, startedAt: new Date().toISOString(), durationSec: 0, status: 'rejected', direction: 'out' });
@@ -135,7 +155,8 @@ export const useCallStore = create<CallState>((set, get) => {
 
       set({
         active: { callId, peerId, peerName, peerAvatar, mode, startedAt: Date.now(),
-          localStream, remoteStream: null, screenShareOn: false, direction: 'out', pc, connected: false },
+          localStream, remoteStream: null, screenShareOn: false, direction: 'out', pc,
+          connected: false, security: null },
         muted: false, cameraOff: false, speakerOff: false, miniMode: false,
       });
 
@@ -179,7 +200,8 @@ export const useCallStore = create<CallState>((set, get) => {
       set({
         active: { callId: incoming.callId, peerId: incoming.from, peerName: incoming.callerName,
           peerAvatar: incoming.callerAvatar, mode: incoming.mode, startedAt: Date.now(),
-          localStream: null, remoteStream: null, screenShareOn: false, direction: 'in', pc, connected: false },
+          localStream: null, remoteStream: null, screenShareOn: false, direction: 'in', pc,
+          connected: false, security: null },
         incoming: null, muted: false, cameraOff: false, speakerOff: false, miniMode: false,
       });
 
@@ -188,6 +210,7 @@ export const useCallStore = create<CallState>((set, get) => {
 
       const answer = await pc.handleOffer(incoming.sdp);
       adoptRemote(pc);
+      readSecurity(pc, incoming.callId);
 
       bsignal.send({ type: 'answer', callId: incoming.callId, from: me, to: incoming.from, sdp: answer });
     },
