@@ -12,7 +12,8 @@
  */
 import { useMessengerStore } from './store';
 import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
-import { setWireSink, type Outgoing } from './wire';
+import { setWireSink, type Outgoing } from '@/core/wire';
+import { bsignal, type SignalMsg } from '@/calls/webrtc';
 import type { MessageItem, ChatItem, ChatType } from './types';
 
 /* ─── Приведение серверных данных к виду интерфейса ───────────────────── */
@@ -181,6 +182,46 @@ const announce = (msg: MessageItem) => {
   }));
 };
 
+/**
+ * Как подписать входящий звонок.
+ *
+ * Имя приходит не от звонящего: сервер его не пересылает, иначе на
+ * экране входящего можно было бы представиться кем угодно. Берём его из
+ * своего же справочника — общий чат у нас с ним есть, иначе звонок сюда
+ * бы не дошёл.
+ */
+const callerOf = (userId: string) => {
+  const store = useMessengerStore.getState();
+  const person = store.people[userId];
+  if (person) return { name: person.name, avatar: (person.name || '?').slice(0, 1).toUpperCase() };
+  const chat = store.chats.find(c => c.type === 'direct' && (c.participants ?? []).includes(userId));
+  const name = chat?.name || 'Неизвестный';
+  return { name, avatar: name.slice(0, 1).toUpperCase() };
+};
+
+/** Событие хаба → сообщение сигналинга звонков в его собственном виде. */
+const toSignal = (type: string, data: any): SignalMsg | null => {
+  const from   = String(data?.from ?? '');
+  const callId = String(data?.callId ?? data?.payload?.callId ?? '');
+  const p      = data?.payload ?? {};
+  if (!from || !callId) return null;
+  const base = { callId, from, to: myId };
+
+  switch (type) {
+    case 'call-incoming': {
+      const who = callerOf(from);
+      return { ...base, type: 'offer', sdp: p.sdp, mode: p.mode === 'video' ? 'video' : 'voice',
+               callerName: who.name, callerAvatar: who.avatar };
+    }
+    case 'call-answered':   return { ...base, type: 'answer', sdp: p.sdp };
+    case 'ice-candidate':   return { ...base, type: 'ice', candidate: p.candidate };
+    case 'call-rejected':   return { ...base, type: 'reject' };
+    case 'call-ended':      return { ...base, type: 'end' };
+    case 'call-unavailable':return { ...base, type: 'unavailable' };
+    default: return null;
+  }
+};
+
 const handle = (data: any) => {
   const store = useMessengerStore.getState();
   const { type, payload } = data ?? {};
@@ -281,6 +322,18 @@ const handle = (data: any) => {
     case 'user-offline':
       if (payload?.userId) { online.delete(payload.userId); notifyOnline(); }
       break;
+
+    /* Звонки идут по тому же сокету — отдельного соединения им не нужно. */
+    case 'call-incoming':
+    case 'call-answered':
+    case 'ice-candidate':
+    case 'call-rejected':
+    case 'call-ended':
+    case 'call-unavailable': {
+      const signal = toSignal(type, data);
+      if (signal) bsignal.receive(signal);
+      break;
+    }
   }
 };
 

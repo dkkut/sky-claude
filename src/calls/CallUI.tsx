@@ -29,6 +29,34 @@ const VideoEl = ({ stream, muted=false, mirror=false, className='' }:
     style={mirror?{transform:'scaleX(-1)'}:undefined}/>;
 };
 
+/**
+ * Звук собеседника.
+ *
+ * Голосовой звонок нигде не подключал удалённый поток к элементу
+ * воспроизведения: соединение устанавливалось, а слышно не было ничего.
+ * Элемент живёт отдельно от экрана звонка — свернув звонок в уголок,
+ * человек не должен переставать слышать собеседника.
+ *
+ * В видеозвонке дорожку играет сам <video>, поэтому здесь молчим —
+ * иначе голос шёл бы дважды.
+ */
+export const CallAudio = () => {
+  const active     = useCallStore(s => s.active);
+  const speakerOff = useCallStore(s => s.speakerOff);
+  const ref = useRef<HTMLAudioElement>(null);
+  const stream = active?.mode === 'voice' ? active.remoteStream : null;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.srcObject = stream;
+    if (stream) el.play().catch(() => { /* автовоспроизведение запретили */ });
+    return () => { el.srcObject = null; };
+  }, [stream]);
+
+  return <audio ref={ref} autoPlay playsInline muted={speakerOff} style={{ display: 'none' }} />;
+};
+
 const AvatarCircle = ({ letter, size=120, active=false }: { letter:string; size?:number; active?:boolean }) => {
   const hue = letter.charCodeAt(0)*7%360;
   return (
@@ -194,7 +222,7 @@ export const ActiveCallPanel = () => {
           style={{background:`radial-gradient(ellipse at 50% 30%,hsl(${hue},55%,22%,0.45),transparent 65%)`}}/>}
         {isVideo&&(
           <div className="absolute inset-0">
-            {conn?<VideoEl stream={active.remoteStream} className=""/>
+            {conn?<VideoEl stream={active.remoteStream} muted={spkOff} className=""/>
               :<div className="flex h-full flex-col items-center justify-center"
                 style={{background:`radial-gradient(ellipse at 50% 40%,hsl(${hue},55%,18%,0.6),#000 70%)`}}>
                 <AvatarCircle letter={active.peerAvatar} size={110} active/>

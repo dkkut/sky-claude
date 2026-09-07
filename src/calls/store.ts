@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { SkyPeerConnection, bsignal } from './webrtc';
+import { useAuthStore } from '@/core/auth/store';
 
 export type CallMode   = 'voice' | 'video';
 export type CallStatus = 'missed' | 'completed' | 'rejected';
@@ -51,11 +52,17 @@ interface CallState {
   // внутренний  -  вызывается из socket.ts
   _handleIncomingOffer: (data: { callId: string; from: string; callerName: string; callerAvatar: string; mode: CallMode; sdp: RTCSessionDescriptionInit }) => void;
   _handleCallEnd: () => void;
+  _handleUnavailable: (callId: string) => void;
 }
 
-const myId = () => {
-  try { return JSON.parse(localStorage.getItem('sky:auth:v4:session')||'null')?.id ?? ''; } catch { return ''; }
-};
+/**
+ * Кто я — берём из живой сессии, а не из localStorage.
+ *
+ * Здесь читался ключ sky:auth:v4:session, которого не существует со
+ * времён Sky ID: функция всегда возвращала пустую строку, и звонок уходил
+ * «ни от кого».
+ */
+const myId = () => useAuthStore.getState().currentUserId ?? '';
 
 export const useCallStore = create<CallState>((set, get) => {
 
@@ -64,9 +71,19 @@ export const useCallStore = create<CallState>((set, get) => {
     saveHist(h); return h;
   };
 
+  /** Поток мог прийти, пока экран звонка ещё не был создан. */
+  const adoptRemote = (pc: SkyPeerConnection) => {
+    if (!pc.remoteStream.getTracks().length) return;
+    set(s => s.active ? ({ active: { ...s.active, remoteStream: pc.remoteStream, connected: true } }) : {});
+  };
+
   const cleanupPC = () => {
     const { active } = get();
-    if (active?.pc) { active.pc.destroy(); }
+    if (!active) return;
+    active.pc?.destroy();
+    // Звонок закончен — снимаем все подписки на него и придержанные
+    // кандидаты, иначе они копились бы до конца сессии.
+    bsignal.off(active.callId);
   };
 
   return {
@@ -98,7 +115,7 @@ export const useCallStore = create<CallState>((set, get) => {
       bsignal.on(callId, (msg) => {
         if (msg.from !== peerId) return;
         if (msg.type === 'answer') {
-          pc.handleAnswer(msg.sdp);
+          pc.handleAnswer(msg.sdp).then(() => adoptRemote(pc)).catch(() => {});
         }
         if (msg.type === 'reject') {
           const h = pushHist({ peerName, peerAvatar, mode, startedAt: new Date().toISOString(), durationSec: 0, status: 'rejected', direction: 'out' });
@@ -107,6 +124,9 @@ export const useCallStore = create<CallState>((set, get) => {
         }
         if (msg.type === 'end') {
           get().endCall();
+        }
+        if (msg.type === 'unavailable') {
+          get()._handleUnavailable(callId);
         }
       });
 
@@ -119,8 +139,14 @@ export const useCallStore = create<CallState>((set, get) => {
         muted: false, cameraOff: false, speakerOff: false, miniMode: false,
       });
 
-      // Шлём offer через BroadcastChannel
-      bsignal.send({ type: 'offer', callId, from: me, to: peerId, sdp: offer, mode, callerName: peerName, callerAvatar: peerAvatar });
+      // Имя в offer — своё: раньше здесь стояло имя того, кому звонят,
+      // и на экране входящего человек видел сам себя. Через хаб эти поля
+      // не пересылаются вовсе (получатель подписывает звонок сам), они
+      // нужны только локальным голосовым комнатам.
+      const meAcc = useAuthStore.getState().accounts.find(a => a.id === me);
+      bsignal.send({ type: 'offer', callId, from: me, to: peerId, sdp: offer, mode,
+        callerName: meAcc?.name ?? 'Звонок', callerAvatar: (meAcc?.name ?? '?').slice(0, 1).toUpperCase() });
+      adoptRemote(pc);
     },
 
     /* -- Принять входящий ---------------------------------------------- */
@@ -147,15 +173,21 @@ export const useCallStore = create<CallState>((set, get) => {
         if (msg.type === 'end') get().endCall();
       });
 
-      const localStream = await pc.getMedia(incoming.mode === 'video');
-      const answer = await pc.handleOffer(incoming.sdp);
-
+      // Экран звонка заводим ДО работы с медиа. Поток собеседника
+      // приходит уже во время handleOffer, а обработчик кладёт его в
+      // active — которого ещё не было, и звук у ответившего пропадал.
       set({
         active: { callId: incoming.callId, peerId: incoming.from, peerName: incoming.callerName,
           peerAvatar: incoming.callerAvatar, mode: incoming.mode, startedAt: Date.now(),
-          localStream, remoteStream: null, screenShareOn: false, direction: 'in', pc, connected: false },
+          localStream: null, remoteStream: null, screenShareOn: false, direction: 'in', pc, connected: false },
         incoming: null, muted: false, cameraOff: false, speakerOff: false, miniMode: false,
       });
+
+      const localStream = await pc.getMedia(incoming.mode === 'video');
+      set(s => s.active ? ({ active: { ...s.active, localStream } }) : {});
+
+      const answer = await pc.handleOffer(incoming.sdp);
+      adoptRemote(pc);
 
       bsignal.send({ type: 'answer', callId: incoming.callId, from: me, to: incoming.from, sdp: answer });
     },
@@ -165,6 +197,7 @@ export const useCallStore = create<CallState>((set, get) => {
       const { incoming } = get(); if (!incoming) return;
       const me = myId();
       bsignal.send({ type: 'reject', callId: incoming.callId, from: me, to: incoming.from });
+      bsignal.off(incoming.callId);
       const h = pushHist({ peerName: incoming.callerName, peerAvatar: incoming.callerAvatar,
         mode: incoming.mode, startedAt: new Date().toISOString(), durationSec: 0, status: 'rejected', direction: 'in' });
       set({ incoming: null, history: h });
@@ -223,8 +256,30 @@ export const useCallStore = create<CallState>((set, get) => {
 
     /* -- Внутренние  -  вызываются из socket.ts -------------------------- */
     _handleIncomingOffer({ callId, from, callerName, callerAvatar, mode, sdp }) {
-      if (get().active || get().incoming) return; // уже в звонке
+      if (get().active || get().incoming) {
+        // Линия занята. Молчать нельзя: у звонящего шли бы гудки до
+        // бесконечности — отвечаем отказом сразу.
+        bsignal.send({ type: 'reject', callId, from: myId(), to: from });
+        return;
+      }
       set({ incoming: { callId, from, callerName, callerAvatar, mode, sdp } });
+    },
+
+    /** Собеседник не в сети: сервер сказал, что доставить offer некому. */
+    _handleUnavailable(callId) {
+      const { active } = get();
+      if (!active || active.callId !== callId) return;
+      // Экран звонка просто закроется — без объяснения это выглядит как
+      // сбой, поэтому говорим, что произошло.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sky:call-unavailable',
+          { detail: { peerName: active.peerName } }));
+      }
+      cleanupPC();
+      const h = pushHist({ peerName: active.peerName, peerAvatar: active.peerAvatar,
+        mode: active.mode, startedAt: new Date(active.startedAt).toISOString(),
+        durationSec: 0, status: 'missed', direction: 'out' });
+      set({ active: null, miniMode: false, muted: false, cameraOff: false, speakerOff: false, history: h });
     },
 
     _handleCallEnd() {
@@ -243,14 +298,27 @@ export const useCallStore = create<CallState>((set, get) => {
   };
 });
 
-/* --- Слушаем входящие offers через BroadcastChannel ----------------------- */
+/* --- Входящие звонки ------------------------------------------------------
+   Хаб присылает только то, что адресовано нам, но локальные голосовые
+   комнаты вещают всем вкладкам — поэтому адресата всё равно проверяем. */
 bsignal.on('__incoming__', (msg) => {
-  if (msg.type !== 'offer') return;
   const me = myId();
-  if (msg.to !== me) return;   // не нам
-  useCallStore.getState()._handleIncomingOffer({
-    callId: msg.callId, from: msg.from,
-    callerName: msg.callerName, callerAvatar: msg.callerAvatar,
-    mode: msg.mode as CallMode, sdp: msg.sdp,
-  });
+  if (!me || msg.to !== me) return;
+
+  if (msg.type === 'offer') {
+    // Комнаты обслуживает свой модуль.
+    if (msg.callId.startsWith('vp:')) return;
+    useCallStore.getState()._handleIncomingOffer({
+      callId: msg.callId, from: msg.from,
+      callerName: msg.callerName, callerAvatar: msg.callerAvatar,
+      mode: msg.mode as CallMode, sdp: msg.sdp,
+    });
+    return;
+  }
+
+  // Звонящий передумал до того, как мы взяли трубку.
+  if (msg.type === 'end' || msg.type === 'reject') {
+    const inc = useCallStore.getState().incoming;
+    if (inc && inc.callId === msg.callId) useCallStore.getState()._handleCallEnd();
+  }
 });

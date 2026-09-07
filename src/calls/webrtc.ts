@@ -1,49 +1,133 @@
 /**
- * WebRTC через BroadcastChannel как сигнальный канал.
- * Работает между вкладками одного браузера  -  реальный аудио/видео.
- * Когда появится сервер  -  заменить BC на WebSocket в SkySignal.
+ * WebRTC: медиа-соединение и сигналинг.
+ *
+ * Сигналинг идёт через тот же хаб, что и сообщения (server/signal.mjs):
+ * раньше это был BroadcastChannel, то есть дозвониться можно было
+ * только в соседнюю вкладку своего же браузера.
+ *
+ * Сервер пересылает offer/answer/ICE только между теми, у кого есть
+ * общий чат, подставляет отправителя из сессии и не пропускает ничего,
+ * кроме нужного самому WebRTC. Поэтому «представиться» чужим именем
+ * или дозвониться до незнакомого человека через хаб нельзя.
  */
+import { wireSend } from '@/core/wire';
 
 const ICE: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
-type SignalMsg =
+export type SignalMsg =
   | { type: 'offer';     callId: string; from: string; to: string; sdp: RTCSessionDescriptionInit; mode: string; callerName: string; callerAvatar: string }
   | { type: 'answer';    callId: string; from: string; to: string; sdp: RTCSessionDescriptionInit }
   | { type: 'ice';       callId: string; from: string; to: string; candidate: RTCIceCandidateInit }
   | { type: 'reject';    callId: string; from: string; to: string }
   | { type: 'end';       callId: string; from: string; to: string }
-  | { type: 'ringing';   callId: string; from: string; to: string };
+  | { type: 'unavailable'; callId: string; from: string; to: string };
+
+/**
+ * Голосовые комнаты пока живут только в браузере: их состав нигде на
+ * сервере не хранится, и общего чата у участников может не быть. Пока
+ * это так, их сигналинг остаётся на BroadcastChannel — то есть между
+ * вкладками одного браузера, как и сама комната.
+ */
+const PARTY_PREFIX = 'vp:';
+const isParty = (callId: string) => callId.startsWith(PARTY_PREFIX);
 
 const SIG_CHANNEL = 'sky:signal:v1';
 
-class BroadcastSignal {
+/** Сколько держим кандидатов, пришедших до ответа на звонок. */
+const PENDING_TTL_MS = 60_000;
+const PENDING_MAX = 100;
+
+class SkySignal {
   private bc: BroadcastChannel | null = null;
-  private handlers = new Map<string, (msg: SignalMsg) => void>();
+  /**
+   * На один звонок подписаны двое: сам SkyPeerConnection (ему нужны
+   * ICE-кандидаты) и стор (ему нужны ответ, отказ, завершение). Раньше
+   * здесь была одна функция на callId, и вторая подписка молча стирала
+   * первую — кандидаты до соединения не доходили вовсе.
+   */
+  private handlers = new Map<string, Set<(msg: SignalMsg) => void>>();
+  /** Пришло раньше, чем появился получатель, — придержим и отдадим потом. */
+  private pending = new Map<string, { at: number; msgs: SignalMsg[] }>();
 
   init() {
     if (this.bc) return;
     if (typeof BroadcastChannel === 'undefined') return;
     this.bc = new BroadcastChannel(SIG_CHANNEL);
-    this.bc.onmessage = (e) => {
-      const msg: SignalMsg = e.data;
-      // Каждый call имеет свой handler по callId
-      this.handlers.get(msg.callId)?.(msg);
-      // Также глобальный обработчик входящих
-      this.handlers.get('__incoming__')?.(msg);
-    };
+    this.bc.onmessage = (e) => this.receive(e.data as SignalMsg);
   }
 
-  send(msg: SignalMsg) { this.bc?.postMessage(msg); }
+  /** Единая точка входа: сюда приходит и от хаба, и от комнат. */
+  receive(msg: SignalMsg) {
+    if (!msg?.callId) return;
+    const set = this.handlers.get(msg.callId);
+    if (set?.size) {
+      for (const fn of [...set]) { try { fn(msg); } catch { /* один упал — остальные работают */ } }
+    } else if (msg.type === 'ice') {
+      // Кандидаты приходят раньше, чем человек взял трубку: без них
+      // соединение потом не установится, поэтому придерживаем.
+      this.buffer(msg);
+    }
+    for (const fn of [...(this.handlers.get('__incoming__') ?? [])]) {
+      try { fn(msg); } catch { /* не мешаем остальным */ }
+    }
+  }
 
-  on(callId: string, handler: (msg: SignalMsg) => void) { this.handlers.set(callId, handler); }
+  private buffer(msg: SignalMsg) {
+    const now = Date.now();
+    for (const [id, box] of this.pending) if (now - box.at > PENDING_TTL_MS) this.pending.delete(id);
+    const box = this.pending.get(msg.callId) ?? { at: now, msgs: [] };
+    if (box.msgs.length < PENDING_MAX) box.msgs.push(msg);
+    box.at = now;
+    this.pending.set(msg.callId, box);
+  }
 
-  off(callId: string) { this.handlers.delete(callId); }
+  send(msg: SignalMsg) {
+    if (isParty(msg.callId)) { this.bc?.postMessage(msg); return; }
+    // «to» — единственное, что сервер берёт от клиента: кому звоним.
+    // Кто звонит, он знает сам из сессии.
+    switch (msg.type) {
+      case 'offer':
+        wireSend({ type: 'call-offer', payload: { to: msg.to, callId: msg.callId, sdp: msg.sdp, mode: msg.mode } });
+        break;
+      case 'answer':
+        wireSend({ type: 'call-answer', payload: { to: msg.to, callId: msg.callId, sdp: msg.sdp } });
+        break;
+      case 'ice':
+        wireSend({ type: 'ice-candidate', payload: { to: msg.to, callId: msg.callId, candidate: msg.candidate } });
+        break;
+      case 'reject':
+        wireSend({ type: 'call-reject', payload: { to: msg.to, callId: msg.callId } });
+        break;
+      case 'end':
+        wireSend({ type: 'call-end', payload: { to: msg.to, callId: msg.callId } });
+        break;
+    }
+  }
+
+  on(callId: string, handler: (msg: SignalMsg) => void) {
+    if (!this.handlers.has(callId)) this.handlers.set(callId, new Set());
+    this.handlers.get(callId)!.add(handler);
+
+    const held = this.pending.get(callId);
+    if (held) {
+      this.pending.delete(callId);
+      for (const msg of held.msgs) { try { handler(msg); } catch { /* пропускаем */ } }
+    }
+  }
+
+  off(callId: string, handler?: (msg: SignalMsg) => void) {
+    if (!handler) { this.handlers.delete(callId); this.pending.delete(callId); return; }
+    const set = this.handlers.get(callId);
+    if (!set) return;
+    set.delete(handler);
+    if (set.size === 0) this.handlers.delete(callId);
+  }
 }
 
-export const bsignal = new BroadcastSignal();
+export const bsignal = new SkySignal();
 
 /* --- PeerConnection wrapper ------------------------------------------------ */
 export class SkyPeerConnection {
@@ -56,6 +140,8 @@ export class SkyPeerConnection {
   private onRemote: (s: MediaStream) => void;
   private onConnected: () => void;
   private onFailed:    () => void;
+  private onSignal!: (msg: SignalMsg) => void;
+  private pendingIce: RTCIceCandidateInit[] = [];
 
   constructor(opts: {
     peerId: string; callId: string; myId: string;
@@ -88,13 +174,27 @@ export class SkyPeerConnection {
       if (this.pc.connectionState === 'disconnected') this.onFailed();
     };
 
-    // Слушаем ICE-кандидатов от peer
-    bsignal.on(this.callId, (msg) => {
-      if (msg.from !== this.peerId) return;
-      if (msg.type === 'ice') {
-        this.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
-      }
-    });
+    // Слушаем ICE-кандидатов от собеседника.
+    this.onSignal = (msg) => {
+      if (msg.from !== this.peerId || msg.type !== 'ice') return;
+      this.addCandidate(msg.candidate);
+    };
+    bsignal.on(this.callId, this.onSignal);
+  }
+
+  /**
+   * Кандидата нельзя добавить, пока не принято описание другой стороны:
+   * браузер отвергнет его, и путь соединения потеряется. Поэтому ранние
+   * кандидаты складываем и добавляем сразу после setRemoteDescription.
+   */
+  private addCandidate(candidate: RTCIceCandidateInit) {
+    if (!this.pc.remoteDescription) { this.pendingIce.push(candidate); return; }
+    this.pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+  }
+
+  private flushCandidates() {
+    const queued = this.pendingIce.splice(0);
+    for (const c of queued) this.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
   }
 
   async getMedia(video: boolean): Promise<MediaStream> {
@@ -120,6 +220,7 @@ export class SkyPeerConnection {
 
   async handleOffer(sdp: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
     await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    this.flushCandidates();
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
     return answer;
@@ -127,6 +228,7 @@ export class SkyPeerConnection {
 
   async handleAnswer(sdp: RTCSessionDescriptionInit) {
     await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    this.flushCandidates();
   }
 
   setMuted(muted: boolean) {
@@ -147,7 +249,8 @@ export class SkyPeerConnection {
   }
 
   destroy() {
-    bsignal.off(this.callId);
+    // Снимаем только свою подписку: на этом же звонке висит стор.
+    bsignal.off(this.callId, this.onSignal);
     this.localStream?.getTracks().forEach(t => t.stop());
     this.pc.close();
   }

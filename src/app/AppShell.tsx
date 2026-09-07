@@ -14,7 +14,7 @@ import {
 } from './lazyModules';
 import { NotifToastLayer }        from '@/notifications/NotifToast';
 import { FloatingChatLayer }      from '@/notifications/FloatingChat';
-import { ActiveCallPanel, IncomingCallOverlay, MiniCallOverlay } from '@/calls/CallUI';
+import { ActiveCallPanel, IncomingCallOverlay, MiniCallOverlay, CallAudio } from '@/calls/CallUI';
 import { NotifBridge }            from '@/notifications/NotifBridge';
 import { ProfileViewerLayer }     from '@/profile/viewer/ProfileViewerLayer';
 import { BreakReminderModal }     from '@/settings/BreakReminderModal';
@@ -218,6 +218,8 @@ export const AppShell = () => {
           <IncomingCallOverlay />
           <ActiveCallPanel />
           <MiniCallOverlay />
+          {/* Звук собеседника не зависит от того, свёрнут звонок или нет. */}
+          <CallAudio />
         </main>
         <NotifToastLayer />
         <FloatingChatLayer />

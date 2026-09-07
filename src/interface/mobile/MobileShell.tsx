@@ -5,7 +5,7 @@ import { PlayerEngine } from '@/player/PlayerEngine';
 import { NotifBridge } from '@/notifications/NotifBridge';
 import { NotifToastLayer } from '@/notifications/NotifToast';
 import { FloatingChatLayer } from '@/notifications/FloatingChat';
-import { ActiveCallPanel, IncomingCallOverlay, MiniCallOverlay } from '@/calls/CallUI';
+import { ActiveCallPanel, IncomingCallOverlay, MiniCallOverlay, CallAudio } from '@/calls/CallUI';
 import { ErrorBoundary } from '@/app/ErrorBoundary';
 
 import { NotificationsScreen } from '@/notifications/NotificationsScreen';
@@ -67,6 +67,8 @@ export const MobileShell = () => {
         <IncomingCallOverlay />
         <ActiveCallPanel />
         <MiniCallOverlay />
+        {/* Звук собеседника не зависит от того, свёрнут звонок или нет. */}
+        <CallAudio />
       </main>
 
       {activeModule !== 'extras' && <MobileMiniPlayer onOpen={() => setPlayerOpen(true)} />}

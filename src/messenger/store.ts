@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { ChatItem, MessageItem, MessageKind, ChatFolder, Report } from './types';
 import { useAuthStore } from '@/core/auth/store';
-import { wireSend } from './wire';
+import { wireSend } from '@/core/wire';
 
 const W      = typeof window !== 'undefined';
 const nowTs  = () => Date.now();

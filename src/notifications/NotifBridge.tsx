@@ -115,6 +115,23 @@ export const NotifBridge = () => {
     return () => window.removeEventListener('sky:incoming-message', onIncoming);
   }, [sendWebPush, push, settings.soundMessages, settings.soundMentions]);
 
+  // -- Не удалось дозвониться -----------------------------------------
+  useEffect(() => {
+    const onUnavailable = (e: Event) => {
+      const { peerName } = (e as CustomEvent).detail ?? {};
+      const name = peerName || 'Собеседник';
+      push({
+        kind:         'call_missed',
+        title:        'Не удалось дозвониться',
+        body:         `${name} сейчас не в сети`,
+        avatarLetter: name[0]?.toUpperCase() ?? '?',
+        color:        'var(--red)',
+      });
+    };
+    window.addEventListener('sky:call-unavailable', onUnavailable);
+    return () => window.removeEventListener('sky:call-unavailable', onUnavailable);
+  }, [push]);
+
   // -- Bloom BC  —  лайки и комментарии -------------------------------
   useEffect(() => {
     const bc = typeof BroadcastChannel !== 'undefined'

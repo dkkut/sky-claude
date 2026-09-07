@@ -41,8 +41,11 @@ let wss = null;
 const send = (ws, msg) => {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 };
+/** Возвращает число соединений, куда сообщение действительно ушло. */
 const sendTo = (userId, msg) => {
-  for (const ws of clients.get(userId) ?? []) send(ws, msg);
+  let n = 0;
+  for (const ws of clients.get(userId) ?? []) { send(ws, msg); n += 1; }
+  return n;
 };
 const broadcast = (userIds, msg, exceptId) => {
   for (const uid of userIds) if (uid !== exceptId) sendTo(uid, msg);
@@ -241,7 +244,29 @@ const handle = async (ws, session, msg) => {
     case 'call-end': {
       const to = payload?.to;
       if (!to || to === me) return;
-      if (!(await shareAChat(me, to))) return;
+
+      const callId = String(payload?.callId ?? '');
+      if (!callId || callId.length > 128) return;
+
+      if (!(await shareAChat(me, to))) {
+        // Звонить можно только тем, с кем есть общий чат: иначе по
+        // одному лишь идентификатору можно было бы дозвониться до
+        // любого. Звонящему отвечаем, чтобы он не слушал гудки.
+        if (type === 'call-offer') send(ws, { type: 'call-unavailable', from: to, callId });
+        return;
+      }
+
+      // Пересылаем только то, что нужно самому WebRTC. Имени звонящего
+      // здесь нет намеренно: пришли его клиент, и на экране входящего
+      // можно было бы представиться кем угодно. Получатель подписывает
+      // звонок сам — общий чат у них есть, иначе звонок бы не дошёл.
+      const relay = { callId };
+      if (type === 'call-offer') {
+        relay.sdp  = payload.sdp;
+        relay.mode = payload.mode === 'video' ? 'video' : 'voice';
+      }
+      if (type === 'call-answer')   relay.sdp = payload.sdp;
+      if (type === 'ice-candidate') relay.candidate = payload.candidate;
 
       const kind = {
         'call-offer':    'call-incoming',
@@ -250,7 +275,12 @@ const handle = async (ws, session, msg) => {
         'call-reject':   'call-rejected',
         'call-end':      'call-ended',
       }[type];
-      sendTo(to, { type: kind, from: me, callId: payload.callId, payload });
+      const delivered = sendTo(to, { type: kind, from: me, callId, payload: relay });
+
+      // Звонок в закрытое приложение иначе означал бы гудки без конца.
+      if (!delivered && type === 'call-offer') {
+        send(ws, { type: 'call-unavailable', from: to, callId });
+      }
       break;
     }
   }
