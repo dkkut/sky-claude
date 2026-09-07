@@ -171,7 +171,8 @@ jobs:
           APP_DIR:  ${{ vars.APP_DIR || '/opt/sky' }}
         run: |
           tar czf deploy-bundle.tgz docker-compose.yml \
-            scripts/init-letsencrypt.sh scripts/rotate-secrets.sh
+            scripts/init-letsencrypt.sh scripts/rotate-secrets.sh \
+            scripts/set-sms-key.sh scripts/new-beta-keys.sh
           scp -i ~/.ssh/id_deploy -P "$SSH_PORT" deploy-bundle.tgz "$SSH_USER@$SSH_HOST:$APP_DIR/"
 
       - name: Запуск
