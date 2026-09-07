@@ -103,6 +103,29 @@ default_env EMAIL_WEBHOOK_TOKEN ''
 default_env ALLOW_LOG_CODES ''
 default_env PAYMENTS_MODE 'disabled'
 
+# ── Образы приложения ──────────────────────────────────────
+# Без этих переменных compose поднимет sky-*:local — образ первой
+# ручной сборки. Это тихий откат к старому коду: он не знает про
+# нынешнюю схему базы и падает на запуске.
+pin_image() {                       # pin_image <ПЕРЕМЕННАЯ> <часть имени>
+  local key="$1" repo="$2" found
+  [ -n "$(value_of "$key")" ] && return 0
+  found="$(docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' 2>/dev/null \
+           | grep "$repo" | grep -v '<none>' | sort -t'|' -k2 -r | head -1 | cut -d'|' -f1)"
+  if [ -n "$found" ]; then
+    set_env "$key" "$found"
+    echo "    $key = $found"
+  else
+    echo "    ВНИМАНИЕ: $key не задан, и подходящий образ не найден."
+    echo "    Запустите деплой заново — иначе поднимется старая сборка."
+  fi
+}
+
+echo
+echo "==> Образы приложения"
+pin_image API_IMAGE 'sky-claude-api'
+pin_image WEB_IMAGE 'sky-claude-web'
+
 # ── Ключи закрытой беты ────────────────────────────────────
 if [ -z "$(value_of BETA_KEYS)" ]; then
   K1="$(gen 24)"; K2="$(gen 24)"
