@@ -120,12 +120,15 @@ if [ "$CUR_SMS" = "textbee" ] && [ -n "$CUR_KEY" ]; then
 else
   echo "    вставьте ключ из личного кабинета TextBee."
   echo "    (Enter без ввода — пропустить; тогда войти никто не сможет.)"
-  printf '    Ключ: '
-  read -r TB_KEY || TB_KEY=''
+  printf '    Ключ (на экране не появится): '
+  # -s: ключ не печатается. Терминал часто фотографируют, и напечатанный
+  # ключ утекает вместе со снимком экрана.
+  read -rs TB_KEY </dev/tty || TB_KEY=''
+  echo
   if [ -n "$TB_KEY" ]; then
     set_env SMS_MODE   'textbee'
     set_env SMS_API_ID "$TB_KEY"
-    echo "    TextBee подключён"
+    echo "    TextBee подключён (ключ длиной ${#TB_KEY} символов)"
   else
     echo "    пропущено"
   fi
@@ -134,29 +137,49 @@ fi
 chmod 600 .env
 
 # ── Перезапуск ─────────────────────────────────────────────
+# Дальше ошибка перезапуска не должна обрывать скрипт: ключи беты надо
+# показать в любом случае, иначе они останутся только в .env, а человек
+# уйдёт разбираться с ошибкой и потеряет их из виду.
+set +e
+
 echo
 echo "==> Перезапускаю приложение"
 # Пароль базы уже сменён в самой базе, поэтому приложение обязано
 # подняться с новым .env. Если общий запуск споткнулся (например, не
 # скачался certbot), поднимаем хотя бы то, без чего сайт не работает.
-if ! docker compose up -d; then
+docker compose up -d
+if [ $? -ne 0 ]; then
   echo "    общий запуск не удался — поднимаю основные службы"
-  docker compose up -d postgres redis api web
-  echo "    проверьте отдельно: docker compose up -d certbot"
+  docker compose up -d postgres redis web
+  docker compose up -d api
+  echo "    certbot проверьте отдельно: docker compose up -d certbot"
 fi
+
 echo
 echo "==> Что говорит сервер"
-sleep 6
-docker compose logs api --tail 30 | grep -E '\[доставка\]|\[beta\]|\[crypto\]|listening' || true
+sleep 8
+docker compose logs api --tail 40 \
+  | grep -E '\[доставка\]|\[beta\]|\[crypto\]|\[db\]|\[api\]|listening' || true
 
 echo
 echo "────────────────────────────────────────────"
 if [ "${NEW_BETA:-}" = "1" ]; then
-  echo "Ключи закрытой беты (сохраните, второй раз не покажутся):"
+  echo "Ключи закрытой беты — сохраните сейчас, второй раз не покажутся"
+  echo "(в базе лежат только их отпечатки):"
   echo
   echo "    ваш      : $K1"
   echo "    команде  : $K2"
   echo
 fi
-echo "Готово. Все вошедшие вышли из аккаунтов — это ожидаемо."
-echo "Старый .env лежит рядом: $BACKUP (удалите, когда убедитесь, что всё работает)."
+echo "Старый .env лежит рядом: $BACKUP"
+echo "(удалите, когда убедитесь, что всё работает)."
+
+if docker compose ps api --format '{{.State}}' 2>/dev/null | grep -q running; then
+  echo
+  echo "Готово. Все вошедшие вышли из аккаунтов — это ожидаемо."
+else
+  echo
+  echo "ВНИМАНИЕ: приложение не поднялось. Причина — в журнале:"
+  echo "    docker compose logs api --tail 50"
+  exit 1
+fi
