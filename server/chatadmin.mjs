@@ -160,7 +160,9 @@ export const writeLog = async (chatId, actorId, targetId, type, detail) => {
 export const listLog = async (chatId, actorId, limit = 100) => {
   const ctx = await contextFor(chatId, actorId);
   // Журнал — для тех, кто управляет чатом, а не для всех подряд.
-  if (!ctx || !ctx.can.restrict) return null;
+  // В личном чате управлять нечем: там оба равны, и создатель значится
+  // владельцем только потому, что кто-то должен был чат завести.
+  if (!ctx || ctx.type === 'direct' || !ctx.can.restrict) return null;
   const { rows } = await query(
     `SELECT id, actor_id, target_id, type, detail, created_at FROM chat_log
       WHERE chat_id = $1 ORDER BY created_at DESC LIMIT $2`,
@@ -232,7 +234,11 @@ export const kickMember = async (chatId, actorId, userId, { ban = false } = {}) 
 
 export const unbanMember = async (chatId, actorId, userId) => {
   const ctx = await contextFor(chatId, actorId);
-  if (!ctx || !ctx.can.ban) return { error: 'not_allowed' };
+  if (!ctx) return { error: 'not_found' };
+  // В личном чате блокировок нет — иначе туда попадали бы записи
+  // журнала о снятии того, чего не было.
+  if (ctx.type === 'direct') return { error: 'not_allowed' };
+  if (!ctx.can.ban) return { error: 'not_allowed' };
   await query('DELETE FROM chat_bans WHERE chat_id = $1 AND user_id = $2', [chatId, userId]);
   await writeLog(chatId, actorId, userId, 'unban', 'Блокировка снята');
   return { ok: true };
@@ -425,6 +431,16 @@ export const decideJoin = async (chatId, actorId, userId, approve) => {
   if (!ctx) return { error: 'not_found' };
   if (!ctx.can.approveJoins) return { error: 'not_allowed' };
 
+  // Предел на размер чата проверяется ДО отметки «одобрено»: иначе
+  // заявка осталась бы одобренной, а человек — не в чате, и подать её
+  // заново он бы уже не смог.
+  if (approve) {
+    const { rows: full } = await query(
+      'SELECT count(*)::int AS n FROM chat_members WHERE chat_id = $1', [chatId],
+    );
+    if ((full[0]?.n ?? 0) >= 100) return { error: 'chat_full' };
+  }
+
   const { rowCount } = await query(
     `UPDATE chat_join_requests SET status = $3
       WHERE chat_id = $1 AND user_id = $2 AND status = 'pending'`,
@@ -532,10 +548,15 @@ export const markViewed = async (chatId, userId, messageIds) => {
     [chatId, userId, ids],
   );
 
+  // Считаем только по записям ЭТОГО чата. Без условия по chat_id
+  // подписчик одного канала мог бы прислать идентификаторы записей
+  // другого и узнать их охват, не будучи там подписан.
   const { rows } = await query(
-    `SELECT message_id, count(*)::int AS n FROM message_views
-      WHERE message_id = ANY($1::text[]) GROUP BY message_id`,
-    [ids],
+    `SELECT v.message_id, count(*)::int AS n
+       FROM message_views v JOIN messages m ON m.id = v.message_id
+      WHERE m.chat_id = $1 AND v.message_id = ANY($2::text[])
+      GROUP BY v.message_id`,
+    [chatId, ids],
   );
   return rows.map((r) => ({ messageId: r.message_id, views: r.n }));
 };
