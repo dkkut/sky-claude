@@ -57,11 +57,12 @@ const toChatItem = (raw: any, myId: string, prev?: ChatItem): ChatItem => {
     myRole:       raw.myRole,
     // Пометка «оставить непрочитанным» — с сервера, своя у каждого.
     markedUnread: Boolean(raw.markedUnread),
-    // Закрепление, архив и звук — настройки этого устройства, сервер о
-    // них не знает и не должен их затирать при каждой синхронизации.
-    pinned:   prev?.pinned,
-    archived: prev?.archived,
-    muted:    prev?.muted,
+    // Закрепление, архив и звук приходят с сервера: это пометки
+    // участника, одинаковые на всех его устройствах.
+    pinned:   Boolean(raw.pinned),
+    archived: Boolean(raw.archived),
+    muted:    Boolean(raw.muted),
+    // Папка пока нигде не выставляется — оставляем как было.
     folder:   prev?.folder,
   };
 };

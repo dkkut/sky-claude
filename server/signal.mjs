@@ -23,7 +23,7 @@ import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
-  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread,
+  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags,
 } from './chats.mjs';
 import {
   getSettings, updateSettings, setRole, kickMember, unbanMember, muteMember,
@@ -435,6 +435,21 @@ const handle = async (ws, session, msg) => {
       break;
     }
 
+
+    /* ── Закрепление, архив и звук ─────────────────────────────────
+       Пометки участника: меняя их, человек меняет свой вид чата и ничей
+       больше. Раньше они жили в localStorage, и чат, убранный в архив с
+       телефона, оставался на месте на компьютере. ── */
+
+    case 'chat-flags': {
+      const chatId = payload?.chatId;
+      if (!chatId) return;
+      const ok = await setChatFlags(chatId, me, payload ?? {});
+      if (!ok) return;
+      const view = await getChat(chatId, me);
+      if (view) sendTo(me, { type: 'chat-created', payload: { chat: view } });
+      break;
+    }
 
     /* ── «Пометить как новое» ──────────────────────────────────────
        Пометка своя у каждого участника и живёт на сервере, поэтому

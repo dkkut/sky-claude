@@ -126,6 +126,19 @@ const saved = uid0 ? load(uid0) : null;
 
 const _typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+/** Переключает пометку участника и просит сервер запомнить её. */
+const flagChat = (
+  get: () => S,
+  mut: (fn: (s: S) => Partial<S>) => void,
+  id: string,
+  flag: 'pinned' | 'archived' | 'muted',
+) => {
+  if (!id) return;
+  const next = !get().chats.find(c => c.id === id)?.[flag];
+  mut(s => ({ chats: s.chats.map(c => c.id === id ? { ...c, [flag]: next } : c) }));
+  wireSend({ type: 'chat-flags', payload: { chatId: id, [flag]: next } });
+};
+
 export const useMessengerStore = create<S>((set,get) => {
   const flush = () => {
     const uid = getUid(); if(!uid) return;
@@ -274,9 +287,12 @@ export const useMessengerStore = create<S>((set,get) => {
       if(m) wireSend({type:'pin-message',payload:{chatId:m.chatId,messageId:id,pinned:!m.pinned}});
     },
     toggleFavoriteMessage: id=>mut(s=>({messages:s.messages.map(m=>m.id===id?{...m,favorited:!m.favorited}:m)})),
-    pinChat:      id=>mut(s=>({chats:s.chats.map(c=>c.id===id?{...c,pinned:!c.pinned}:c)})),
-    archiveChat:  id=>mut(s=>({chats:s.chats.map(c=>c.id===id?{...c,archived:!c.archived}:c)})),
-    muteChat:     id=>mut(s=>({chats:s.chats.map(c=>c.id===id?{...c,muted:!c.muted}:c)})),
+    // Закрепление, архив и звук хранит сервер: это пометки участника, и
+    // они должны быть одинаковыми на всех его устройствах. Показываем
+    // сразу, истиной остаётся присланный сервером чат.
+    pinChat:      id=>flagChat(get,mut,id,'pinned'),
+    archiveChat:  id=>flagChat(get,mut,id,'archived'),
+    muteChat:     id=>flagChat(get,mut,id,'muted'),
     // Запрет теперь серверный: браузер только просит и показывает.
     blockUser:   id => wireSend({type:'block-user',payload:{userId:id}}),
     unblockUser: id => wireSend({type:'unblock-user',payload:{userId:id}}),

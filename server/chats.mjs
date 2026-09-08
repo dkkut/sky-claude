@@ -116,8 +116,11 @@ const toChat = (row, viewerRole = undefined) => {
     // Роль спрашивающего: по ней интерфейс решает, что показывать. Сами
     // права всё равно проверяются на сервере при каждом действии.
     myRole: viewerRole ?? row.my_role ?? undefined,
-    // Пометка «оставить непрочитанным» — своя у каждого участника.
+    // Пометки участника: у каждого свои, поэтому едут вместе с ролью.
     markedUnread: Boolean(row.marked_unread),
+    pinned:   Boolean(row.pinned),
+    archived: Boolean(row.archived),
+    muted:    Boolean(row.muted),
     createdAt: row.created_at.toISOString(),
   };
 };
@@ -169,7 +172,8 @@ const toMessage = (row) => {
 /** Чаты пользователя вместе с участниками. */
 export const listChats = async (userId) => {
   const { rows } = await query(
-    `SELECT c.*, me.role AS my_role, me.marked_unread, ${PEOPLE_SELECT}
+    `SELECT c.*, me.role AS my_role, me.marked_unread,
+            me.pinned, me.archived, me.muted, ${PEOPLE_SELECT}
        FROM chats c
        JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $1
       ORDER BY c.created_at DESC`,
@@ -183,7 +187,8 @@ export const listChats = async (userId) => {
 /** Один чат — с проверкой участия. Нужен, чтобы отдать его создателю. */
 export const getChat = async (chatId, userId) => {
   const { rows } = await query(
-    `SELECT c.*, me.role AS my_role, me.marked_unread, ${PEOPLE_SELECT}
+    `SELECT c.*, me.role AS my_role, me.marked_unread,
+            me.pinned, me.archived, me.muted, ${PEOPLE_SELECT}
        FROM chats c JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $2
       WHERE c.id = $1`,
     [chatId, userId],
@@ -664,6 +669,29 @@ export const markRead = async (chatId, userId) => {
     [chatId, userId, READ_BATCH],
   );
   return rows.map((r) => r.message_id);
+};
+
+/** Какие пометки участник вправе менять у себя. */
+const MEMBER_FLAGS = new Set(['pinned', 'archived', 'muted']);
+
+/**
+ * Закрепление, архив и звук. Пометки принадлежат участнику: меняя их,
+ * человек меняет только свой вид чата и ничей больше.
+ */
+export const setChatFlags = async (chatId, userId, patch = {}) => {
+  const sets = [];
+  const args = [chatId, userId];
+  for (const [key, value] of Object.entries(patch)) {
+    if (!MEMBER_FLAGS.has(key)) continue;
+    args.push(Boolean(value));
+    sets.push(`${key} = $${args.length}`);
+  }
+  if (sets.length === 0) return false;
+  const { rowCount } = await query(
+    `UPDATE chat_members SET ${sets.join(', ')} WHERE chat_id = $1 AND user_id = $2`,
+    args,
+  );
+  return rowCount > 0;
 };
 
 /**
