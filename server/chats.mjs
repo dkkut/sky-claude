@@ -166,6 +166,7 @@ const toMessage = (row) => {
   readByAll: Boolean(row.read_by_all),
   // Прочитано ли ЭТИМ человеком: из этого клиент считает непрочитанные.
   readByMe: Boolean(row.read_by_me),
+  favorited: Boolean(row.favorited),
   editedAt: row.edited_at ? row.edited_at.toISOString() : undefined,
   // Закрепление — свойство сообщения для всех участников, а не пометка
   // в браузере закрепившего.
@@ -225,6 +226,9 @@ const MESSAGE_SELECT = `
          -- перезагрузки страницы.
          EXISTS (SELECT 1 FROM message_reads me
                   WHERE me.message_id = m.id AND me.user_id = VIEWERPARAM) AS read_by_me,
+         -- Избранное своё у каждого, поэтому спрашивается про смотрящего.
+         EXISTS (SELECT 1 FROM message_favorites mf
+                  WHERE mf.message_id = m.id AND mf.user_id = VIEWERPARAM) AS favorited,
          -- Голоса в опросе. Считает сервер: раньше голос жил в памяти
          -- вкладки и не доходил ни до кого, включая самого голосовавшего.
          coalesce((SELECT jsonb_object_agg(v.option_id, v.ids)
@@ -234,7 +238,10 @@ const MESSAGE_SELECT = `
     FROM messages m`;
 
 /** Тот же запрос, но с номером параметра под «прочитано мной». */
-const selectFor = (viewerParam) => MESSAGE_SELECT.replace('VIEWERPARAM', viewerParam);
+const selectFor = (viewerParam) =>
+  // Именно replaceAll: подстановок в запросе несколько (своё прочтение
+  // и своё избранное), а replace со строкой меняет только первую.
+  MESSAGE_SELECT.replaceAll('VIEWERPARAM', viewerParam);
 
 /**
  * Сообщения чата. Не участник не получает ничего.
@@ -810,6 +817,32 @@ export const sweepExpired = async (limit = 200) => {
   );
   for (const r of rows) await burn(r.id);
   return rows.map((r) => ({ messageId: r.id, chatId: r.chat_id }));
+};
+
+/**
+ * Звёздочка на сообщении. Своя у каждого: это выбор человека, а не
+ * свойство сообщения. Право — участие в чате.
+ */
+export const toggleFavorite = async (messageId, userId) => {
+  const id = String(messageId ?? '');
+  const { rows } = await query(
+    `SELECT m.chat_id FROM messages m
+       JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $2
+      WHERE m.id = $1 AND NOT m.deleted`,
+    [id, userId],
+  );
+  if (!rows[0]) return null;
+
+  const { rowCount } = await query(
+    'DELETE FROM message_favorites WHERE message_id = $1 AND user_id = $2', [id, userId],
+  );
+  if (!rowCount) {
+    await query(
+      'INSERT INTO message_favorites (message_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [id, userId],
+    );
+  }
+  return { chatId: rows[0].chat_id, messageId: id, favorited: rowCount === 0 };
 };
 
 /** Какие пометки участник вправе менять у себя. */

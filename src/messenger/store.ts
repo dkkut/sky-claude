@@ -90,6 +90,7 @@ interface S {
   /** Голос в опросе — считает сервер. */
   voteInPoll:    (messageId:string,optionId:string)=>void;
   applyPollVotes:(messageId:string,votes:Record<string,string[]>)=>void;
+  applyFavorite: (messageId:string,favorited:boolean)=>void;
   startDM:       (person:Person)=>ChatItem|null;
   createChat:    (p:{name:string;type:'group'|'channel';description?:string;memberIds?:string[]})=>string;
   addParticipant:(chatId:string,userId:string,userName:string)=>void;
@@ -291,7 +292,17 @@ export const useMessengerStore = create<S>((set,get) => {
       const m=get().messages.find(x=>x.id===id);
       if(m) wireSend({type:'pin-message',payload:{chatId:m.chatId,messageId:id,pinned:!m.pinned}});
     },
-    toggleFavoriteMessage: id=>mut(s=>({messages:s.messages.map(m=>m.id===id?{...m,favorited:!m.favorited}:m)})),
+    // Избранное хранит сервер: снимок при подключении заменяет
+    // сообщения целиком, и звёздочка, жившая в памяти вкладки,
+    // терялась после каждой перезагрузки.
+    toggleFavoriteMessage: id=>{
+      if(!id) return;
+      mut(s=>({messages:s.messages.map(m=>m.id===id?{...m,favorited:!m.favorited}:m)}));
+      wireSend({type:'favorite-message',payload:{messageId:id}});
+    },
+    applyFavorite:(id,favorited)=>mut(s=>({
+      messages:s.messages.map(m=>m.id===id?{...m,favorited}:m),
+    })),
     // Закрепление, архив и звук хранит сервер: это пометки участника, и
     // они должны быть одинаковыми на всех его устройствах. Показываем
     // сразу, истиной остаётся присланный сервером чат.

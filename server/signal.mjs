@@ -23,7 +23,7 @@ import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
-  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags, votePoll, consumeOnce, sweepExpired,
+  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags, votePoll, consumeOnce, sweepExpired, toggleFavorite,
 } from './chats.mjs';
 import {
   getSettings, updateSettings, setRole, kickMember, unbanMember, muteMember,
@@ -219,8 +219,16 @@ const sendSnapshot = async (ws, userId) => {
   send(ws, { type: 'chats-snapshot', payload: { chats, blocked: await listBlocked(userId) } });
 
   for (const chat of chats) {
-    const messages = await listMessages(chat.id, userId, 50);
-    send(ws, { type: 'messages-snapshot', payload: { chatId: chat.id, messages: messages ?? [] } });
+    // Сбой на одном чате не должен оставлять человека без снимка вовсе:
+    // без завершающего события клиент ждёт молча и бесконечно. Лучше
+    // отдать остальное и записать сбой в журнал.
+    let messages = [];
+    try {
+      messages = await listMessages(chat.id, userId, 50) ?? [];
+    } catch (err) {
+      console.error('[ws] снимок чата', chat.id, err.message);
+    }
+    send(ws, { type: 'messages-snapshot', payload: { chatId: chat.id, messages } });
     // Правила чата нужны каждому участнику, а не только тем, кто
     // открывал панель управления: иначе тот, кому писать уже нельзя,
     // видит поле ввода и узнаёт об этом только по отказу сервера.
@@ -435,6 +443,16 @@ const handle = async (ws, session, msg) => {
       break;
     }
 
+
+    /* ── Избранное ─────────────────────────────────────────────────
+       Своё у каждого, поэтому уходит только на свои устройства. ── */
+
+    case 'favorite-message': {
+      const result = await toggleFavorite(payload?.messageId, me);
+      if (!result) return;
+      sendTo(me, { type: 'message-favorited', payload: result });
+      break;
+    }
 
     /* ── Просмотр один раз ─────────────────────────────────────────
        Получатель открыл — сообщение гаснет у всех. Гасит сервер: раньше

@@ -352,6 +352,10 @@ const handle = (data: any) => {
       store.applyPinned(payload?.messageId, Boolean(payload?.pinned));
       break;
 
+    case 'message-favorited':
+      store.applyFavorite(payload?.messageId, Boolean(payload?.favorited));
+      break;
+
     case 'message-burned':
       // Сгорело по сроку или после просмотра — у всех одинаково.
       store.deleteMessage(payload?.messageId);
