@@ -352,6 +352,10 @@ const handle = (data: any) => {
       store.applyPinned(payload?.messageId, Boolean(payload?.pinned));
       break;
 
+    case 'poll-votes':
+      store.applyPollVotes(payload?.messageId, payload?.votes ?? {});
+      break;
+
     case 'message-views':
       store.applyViews(payload?.counts ?? []);
       break;

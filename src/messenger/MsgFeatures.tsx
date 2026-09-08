@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Eye, EyeOff, Timer, BarChart2, Check, Clock, Send, X, Plus, Trash2 } from 'lucide-react';
 import { useMessengerStore } from './store';
+import { useAuthStore } from '@/core/auth/store';
 import type { MessageItem } from './types';
 
 const C = { accent:'#5b9bd1', t1:'var(--t1)', t2:'var(--t2)', t3:'var(--t3)', border:'var(--border)', l2:'#1e1e24' };
@@ -121,20 +122,21 @@ interface PollBubbleProps {
 }
 
 export const PollBubble = ({ poll, msgId, fromMe }: PollBubbleProps) => {
-  const { voteInPoll } = useMessengerStore() as any;
-  const myId = (window as any).__skyCurrentUserId ?? '';
-  const [myVotes, setMyVotes] = useState<string[]>([]);
+  const voteInPoll = useMessengerStore(s => s.voteInPoll);
+  // Кто я — из хранилища входа. Раньше здесь читалась переменная окна,
+  // которую никто никогда не выставлял: свой голос не находился, и
+  // опрос всегда выглядел так, будто человек не голосовал.
+  const myId = useAuthStore(s => s.currentUserId) ?? '';
 
   const total = poll.options.reduce((s,o) => s + o.votes.length, 0);
 
+  // Свой голос виден в самих данных опроса — их присылает сервер.
+  // Прежняя память вкладки терялась при первой же перерисовке.
+  const myVotes = poll.options.filter(o => o.votes.includes(myId)).map(o => o.id);
+
   const vote = (optId: string) => {
     if (poll.closed) return;
-    if (!poll.multiple) {
-      setMyVotes([optId]);
-    } else {
-      setMyVotes(prev => prev.includes(optId) ? prev.filter(x => x!==optId) : [...prev, optId]);
-    }
-    if (voteInPoll) voteInPoll(msgId, optId, myId);
+    voteInPoll(msgId, optId);
   };
 
   const hasVoted = myVotes.length > 0;

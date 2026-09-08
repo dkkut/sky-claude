@@ -23,7 +23,7 @@ import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
-  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags,
+  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags, votePoll,
 } from './chats.mjs';
 import {
   getSettings, updateSettings, setRole, kickMember, unbanMember, muteMember,
@@ -435,6 +435,24 @@ const handle = async (ws, session, msg) => {
       break;
     }
 
+
+    /* ── Голос в опросе ────────────────────────────────────────────
+       Право голосовать — участие в чате, вариант проверяется по самому
+       сообщению. Раньше голос никуда не уходил вовсе. ── */
+
+    case 'poll-vote': {
+      const result = await votePoll(payload?.messageId, me, payload?.optionId);
+      if (!result) return;
+      broadcast(await memberIds(result.chatId), {
+        type: 'poll-votes',
+        payload: { chatId: result.chatId, messageId: result.messageId, votes: result.votes },
+      });
+      send(ws, {
+        type: 'poll-votes',
+        payload: { chatId: result.chatId, messageId: result.messageId, votes: result.votes },
+      });
+      break;
+    }
 
     /* ── Закрепление, архив и звук ─────────────────────────────────
        Пометки участника: меняя их, человек меняет свой вид чата и ничей

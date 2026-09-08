@@ -85,6 +85,9 @@ interface S {
   markRead:      (chatId:string)=>void;
   /** «Пометить как новое» — решает сервер, чтобы пометка была на всех устройствах. */
   markUnread:    (chatId:string)=>void;
+  /** Голос в опросе — считает сервер. */
+  voteInPoll:    (messageId:string,optionId:string)=>void;
+  applyPollVotes:(messageId:string,votes:Record<string,string[]>)=>void;
   startDM:       (person:Person)=>ChatItem|null;
   createChat:    (p:{name:string;type:'group'|'channel';description?:string;memberIds?:string[]})=>string;
   addParticipant:(chatId:string,userId:string,userName:string)=>void;
@@ -350,6 +353,21 @@ export const useMessengerStore = create<S>((set,get) => {
       mut(s=>({chats:s.chats.map(c=>c.id===chatId?{...c,markedUnread:true}:c)}));
       wireSend({type:'mark-unread',payload:{chatId,value:true}});
     },
+
+    voteInPoll:(messageId,optionId)=>{
+      if(!messageId||!optionId) return;
+      // Ответ придёт событием и перепишет голоса: показывать своё
+      // предположение здесь нельзя — сервер может отказать.
+      wireSend({type:'poll-vote',payload:{messageId,optionId}});
+    },
+
+    applyPollVotes:(messageId,votes)=>mut(s=>({
+      messages:s.messages.map(m=>{
+        if(m.id!==messageId||!m.poll) return m;
+        return {...m,poll:{...m.poll,
+          options:m.poll.options.map(o=>({...o,votes:votes[o.id]??[]}))}};
+      }),
+    })),
 
     /**
      * Открывает личный чат. Идентификатор выводится из пары собеседников

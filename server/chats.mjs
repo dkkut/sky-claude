@@ -139,6 +139,16 @@ const readPayload = (payload) => {
 
 const toMessage = (row) => {
   const extra = readPayload(row.payload);
+  // Варианты опроса приходят из сообщения, а голоса — из своей таблицы:
+  // хранить их в тексте сообщения значило бы переписывать его на каждый
+  // голос, и два одновременных голоса затирали бы друг друга.
+  if (extra.poll && Array.isArray(extra.poll.options)) {
+    const tally = row.poll_votes ?? {};
+    extra.poll = {
+      ...extra.poll,
+      options: extra.poll.options.map((o) => ({ ...o, votes: tally[o?.id] ?? [] })),
+    };
+  }
   return {
   // Поля, специфичные для сообщения, лежат в payload — их набор задаёт
   // фронтенд и меняется чаще, чем схема таблицы.
@@ -211,7 +221,13 @@ const MESSAGE_SELECT = `
          -- приходили как непрочитанные, и счётчик воскресал после
          -- перезагрузки страницы.
          EXISTS (SELECT 1 FROM message_reads me
-                  WHERE me.message_id = m.id AND me.user_id = VIEWERPARAM) AS read_by_me
+                  WHERE me.message_id = m.id AND me.user_id = VIEWERPARAM) AS read_by_me,
+         -- Голоса в опросе. Считает сервер: раньше голос жил в памяти
+         -- вкладки и не доходил ни до кого, включая самого голосовавшего.
+         coalesce((SELECT jsonb_object_agg(v.option_id, v.ids)
+                     FROM (SELECT option_id, jsonb_agg(user_id) AS ids
+                             FROM poll_votes pv WHERE pv.message_id = m.id
+                            GROUP BY option_id) v), '{}'::jsonb) AS poll_votes
     FROM messages m`;
 
 /** Тот же запрос, но с номером параметра под «прочитано мной». */
@@ -669,6 +685,66 @@ export const markRead = async (chatId, userId) => {
     [chatId, userId, READ_BATCH],
   );
   return rows.map((r) => r.message_id);
+};
+
+/**
+ * Голос в опросе.
+ *
+ * Варианты опроса лежат в самом сообщении, поэтому вариант проверяется
+ * по нему: прислать чужой или выдуманный id нельзя. Право голосовать —
+ * это участие в чате, и оно проверяется здесь, а не на клиенте.
+ */
+export const votePoll = async (messageId, userId, optionId) => {
+  const id = String(messageId ?? '');
+  const option = String(optionId ?? '').slice(0, 64);
+  if (!id || !option) return null;
+
+  const { rows } = await query(
+    `SELECT m.chat_id, m.kind, m.payload, m.deleted
+       FROM messages m
+       JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $2
+      WHERE m.id = $1`,
+    [id, userId],
+  );
+  const row = rows[0];
+  if (!row || row.deleted || row.kind !== 'poll') return null;
+
+  const poll = readPayload(row.payload)?.poll;
+  if (!poll || poll.closed) return null;
+  const options = Array.isArray(poll.options) ? poll.options : [];
+  if (!options.some((o) => o && o.id === option)) return null;
+
+  // В опросе с одним ответом новый голос заменяет прежний.
+  if (!poll.multiple) {
+    await query('DELETE FROM poll_votes WHERE message_id = $1 AND user_id = $2', [id, userId]);
+    await query(
+      'INSERT INTO poll_votes (message_id, user_id, option_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+      [id, userId, option],
+    );
+  } else {
+    // В опросе с несколькими ответами повторное нажатие снимает голос.
+    const { rowCount } = await query(
+      'DELETE FROM poll_votes WHERE message_id = $1 AND user_id = $2 AND option_id = $3',
+      [id, userId, option],
+    );
+    if (!rowCount) {
+      await query(
+        'INSERT INTO poll_votes (message_id, user_id, option_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+        [id, userId, option],
+      );
+    }
+  }
+  return { chatId: row.chat_id, messageId: id, votes: await pollVotes(id) };
+};
+
+/** Кто за что проголосовал: вариант → список людей. */
+const pollVotes = async (messageId) => {
+  const { rows } = await query(
+    'SELECT option_id, user_id FROM poll_votes WHERE message_id = $1', [messageId],
+  );
+  const map = {};
+  for (const r of rows) (map[r.option_id] ??= []).push(r.user_id);
+  return map;
 };
 
 /** Какие пометки участник вправе менять у себя. */
