@@ -220,3 +220,20 @@ export const presenceVisibleFrom = async (viewerId, others) => {
   );
   return [...open, ...ok.map((r) => r.owner)];
 };
+
+/**
+ * Присутствие взаимно: кто видит меня, того вижу и я.
+ *
+ * Спрятавшись, человек перестаёт видеть и чужое присутствие — иначе
+ * настройка давала бы одностороннюю выгоду: сам невидим, а за другими
+ * наблюдаешь. Так же устроено в Telegram и WhatsApp.
+ *
+ * Отсюда и простота: «кого вижу я» и «кто видит меня» — это один и тот
+ * же список, пересечение двух направлений.
+ */
+export const presenceBetween = async (userId, others) => {
+  if (others.length === 0) return [];
+  const iShow    = new Set(await presenceVisibleTo(userId, others));
+  const theyShow = new Set(await presenceVisibleFrom(userId, others));
+  return others.filter((id) => iShow.has(id) && theyShow.has(id));
+};

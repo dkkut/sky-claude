@@ -18,7 +18,7 @@ import { verifyToken } from './security.mjs';
 import { sessionStore, onSessionRevoked } from './sessions.mjs';
 import { query } from './db.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
-import { getPrivacy, setPrivacy, presenceVisibleTo, presenceVisibleFrom, mayCall } from './privacy.mjs';
+import { getPrivacy, setPrivacy, presenceBetween, mayCall } from './privacy.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
@@ -253,18 +253,18 @@ const nearbyOnline = async (userId) => {
 };
 
 /**
- * Кого этот человек видит в сети.
+ * С кем этот человек виден друг другу.
  *
  * Мало быть в общем чате: у каждого своя настройка «кто видит в сети»,
- * и решает её сервер. Раньше настройка жила галочкой в браузере и не
- * значила ничего.
+ * и решает её сервер. Присутствие взаимно — спрятавшись, человек
+ * перестаёт видеть и чужое, — поэтому «кого вижу я» и «кто видит меня»
+ * это один и тот же список.
  */
-const visibleOnline = async (userId) =>
-  presenceVisibleFrom(userId, await nearbyOnline(userId));
+const presenceCircle = async (userId) =>
+  presenceBetween(userId, await nearbyOnline(userId));
 
-/** Кому видно, что этот человек подключился или отключился. */
-const presenceAudience = async (userId) =>
-  presenceVisibleTo(userId, await nearbyOnline(userId));
+const visibleOnline = presenceCircle;
+const presenceAudience = presenceCircle;
 
 /* ─── обработка сообщений ──────────────────────────────────────────────── */
 const handle = async (ws, session, msg) => {
@@ -450,13 +450,17 @@ const handle = async (ws, session, msg) => {
       // видит человека теперь, и остальным рядом говорим, что он ушёл.
       if (changesPresence) {
         const near = await nearbyOnline(me);
-        const seeing = new Set(await presenceVisibleTo(me, near));
+        const circle = new Set(await presenceBetween(me, near));
         for (const other of near) {
           sendTo(other, {
-            type: seeing.has(other) ? 'user-online' : 'user-offline',
+            type: circle.has(other) ? 'user-online' : 'user-offline',
             payload: { userId: me },
           });
         }
+        // Свой список тоже пересобираем: спрятавшись, человек перестаёт
+        // видеть чужое присутствие, и кружки должны погаснуть сразу, а
+        // не до следующего подключения.
+        send(ws, { type: 'online-reset', payload: { onlineUsers: [...circle] } });
       }
       send(ws, { type: 'privacy', payload: next });
       break;

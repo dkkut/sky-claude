@@ -412,6 +412,15 @@ const handle = (data: any) => {
       store.applyRead(payload?.messageIds ?? []);
       break;
 
+    case 'online-reset':
+      // Сменили настройку присутствия: сервер прислал заново весь круг
+      // тех, с кем мы видны друг другу. Спрятавшись, человек перестаёт
+      // видеть и чужое — кружки должны погаснуть сразу.
+      online.clear();
+      for (const id of payload?.onlineUsers ?? []) online.add(id);
+      notifyOnline();
+      break;
+
     case 'user-online':
       if (payload?.userId) { online.add(payload.userId); notifyOnline(); }
       break;
