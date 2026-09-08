@@ -22,7 +22,7 @@ import type { Track }        from '@/platform/store';
 import type { RepeatMode }   from '@/music/types';
 import { addHistory, loadHistory, toDurStr, getG } from '@/music/utils';
 import { AddToPlaylistModal } from '@/music/AddToPlaylistModal';
-import { MusicImport, ReplaceTrackButton } from '@/music/MusicImport';
+import { MusicImport } from '@/music/MusicImport';
 import { parseBlob } from 'music-metadata-browser';
 import { ArtistProfile }      from '@/music/ArtistProfile';
 import { MusicianProfileTab } from '@/music/MusicianProfile';

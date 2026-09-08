@@ -22,6 +22,12 @@ export const PlayerEngine = () => {
 
   const srcUrl = item?.srcUrl;
 
+  /* Сколько треков подряд не заигралось и сколько раз мы пробовали
+     переподключиться к текущему. Ref, а не state: перерисовывать плеер
+     из-за счётчика незачем. */
+  const failsRef = useRef(0);
+  const retryRef = useRef(0);
+
   /* «Сейчас слушает музыку» — реальный live-статус в профиле,
      выключается автоматически, если владелец скрыл showMusic. */
   useEffect(() => {
@@ -55,9 +61,28 @@ export const PlayerEngine = () => {
     if (a.src !== srcUrl) {
       a.src = srcUrl;
       a.currentTime = 0;
+      retryRef.current = 0;
       if (isPlaying) a.play().catch(() => setPlaying(false));
     }
   }, [srcUrl]);
+
+  /* Трек заиграл — значит, очередь жива: счётчик неудач обнуляем. */
+  const onPlaying = () => { failsRef.current = 0; retryRef.current = 0; };
+
+  /**
+   * Перейти к следующему треку, а если следующего нет — остановиться.
+   *
+   * nextTrack на последнем треке без повтора просто ничего не делает, и
+   * плеер оставался «играющим» без звука. Сравниваем трек до и после:
+   * не сдвинулись — честно гасим воспроизведение.
+   */
+  const advanceOrStop = () => {
+    const before = usePlayerStore.getState().item?.id;
+    nextTrack();
+    const after = usePlayerStore.getState().item?.id;
+    if (before === after) { setPlaying(false); return false; }
+    return true;
+  };
 
   /* Play / pause */
   useEffect(() => {
@@ -93,10 +118,37 @@ export const PlayerEngine = () => {
       style={{ display: 'none' }}
       onTimeUpdate={() => { const a = audioRef.current; if (a) syncTime(a.currentTime, a.duration || 0); }}
       onLoadedMetadata={() => { const a = audioRef.current; if (a) syncTime(a.currentTime, a.duration || 0); }}
+      onPlaying={onPlaying}
+      onError={() => {
+        const a = audioRef.current;
+        if (!a || !srcUrl) return;
+        const code = a.error?.code ?? 0;
+
+        // Обрыв связи посреди трека — не повод его выкидывать: связь
+        // возвращается. Пробуем один раз с того же места.
+        if (code === MediaError.MEDIA_ERR_NETWORK && retryRef.current === 0) {
+          const at = a.currentTime;
+          retryRef.current = 1;
+          a.load();
+          a.currentTime = at;
+          if (isPlaying) a.play().catch(() => setPlaying(false));
+          return;
+        }
+
+        // Файл не играется. Раньше плеер молча замирал на нём: кнопка
+        // «играет», а звука нет и дальше очередь не идёт. Переходим к
+        // следующему — но не по кругу: если не заиграл ни один трек
+        // очереди, останавливаемся.
+        const len = usePlayerStore.getState().item?.queue?.length ?? 0;
+        failsRef.current += 1;
+        if (len > 1 && failsRef.current < len && advanceOrStop()) return;
+        failsRef.current = 0;
+        setPlaying(false);
+      }}
       onEnded={() => {
         const a = audioRef.current;
         if (repeat === 'one' && a) { a.currentTime = 0; a.play().catch(() => {}); return; }
-        nextTrack();
+        advanceOrStop();
       }}
     />
   );

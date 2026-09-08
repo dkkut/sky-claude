@@ -5,7 +5,7 @@ import {
   Pin, Check, ArrowUpDown, ChevronLeft, Play, Trash2, X,
 } from 'lucide-react';
 import type { Track } from '@/platform/store';
-import { usePlatformStore } from '@/platform/store';
+import { useMusicStore } from '@/music/serverStore';
 import { getG, loadHistory } from '@/music/utils';
 
 type Category = 'liked'|'downloaded'|'albums'|'artists'|'playlists'|'history'|'podcasts'|'audiobooks';
@@ -63,7 +63,13 @@ export const SkyMusicLibrary = ({
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
   onPlay: (t: Track, pool: Track[]) => void; onLike: (id: string) => void;
 }) => {
-  const { playlists } = usePlatformStore();
+  const playlists = useMusicStore(st => st.playlists);
+  const createPlaylist = useMusicStore(st => st.createPlaylist);
+  const deletePlaylist = useMusicStore(st => st.deletePlaylist);
+  const renamePlaylist = useMusicStore(st => st.renamePlaylist);
+  const [newName, setNewName] = useState('');
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameTo, setRenameTo] = useState('');
   const [cat, setCat] = useState<Category>('liked');
   const [sort, setSort] = useState<SortKey>('added');
   const [genreFilter, setGenreFilter] = useState<string | null>(null);
@@ -228,21 +234,74 @@ export const SkyMusicLibrary = ({
           </button>
         ))}
 
+        {cat === 'playlists' && (
+          <div className="flex items-center gap-2 px-4 pb-2 pt-1">
+            <input value={newName} onChange={e => setNewName(e.target.value)}
+              placeholder="Новый плейлист" maxLength={120}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && newName.trim()) {
+                  void createPlaylist(newName.trim()); setNewName('');
+                }
+              }}
+              className="flex-1 rounded-xl px-3 py-2 text-[13px] outline-none"
+              style={{ background:'rgba(255,255,255,0.05)', color:'#f2f5f8', border:'1px solid rgba(255,255,255,0.07)' }}/>
+            <button type="button" disabled={!newName.trim()}
+              onClick={() => { void createPlaylist(newName.trim()); setNewName(''); }}
+              className="rounded-xl px-3.5 py-2 text-[12.5px] font-bold disabled:opacity-40"
+              style={{ background:'#fff', color:'#0a0a0f' }}>
+              Создать
+            </button>
+          </div>
+        )}
+
+        {/* Строка — не <button>: внутри неё свои кнопки, а кнопка в
+            кнопке — недопустимая разметка, и браузер её распрямляет. */}
         {cat === 'playlists' && sortedPlaylists.map(pl => (
-          <button key={pl.id} type="button" onClick={() => setOpenPlaylist(pl.id)}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.03]">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl" style={{ background:`linear-gradient(145deg,${getG(pl.id)[0]},${getG(pl.id)[1]})` }}>
-              <ListMusic size={16} color="rgba(255,255,255,0.5)"/>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13.5px] font-medium" style={{ color:'#f2f5f8' }}>{pl.name}</p>
-              <p className="text-[11px]" style={{ color:'#5c626e' }}>{pl.trackIds.length} треков</p>
-            </div>
-            <button type="button" onClick={e => { e.stopPropagation(); togglePin(pl.id); }} className="shrink-0 p-1.5">
+          <div key={pl.id} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.03]">
+            <button type="button" onClick={() => setOpenPlaylist(pl.id)}
+              className="flex min-w-0 flex-1 items-center gap-3 text-left">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl" style={{ background:`linear-gradient(145deg,${getG(pl.id)[0]},${getG(pl.id)[1]})` }}>
+                <ListMusic size={16} color="rgba(255,255,255,0.5)"/>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13.5px] font-medium" style={{ color:'#f2f5f8' }}>{pl.name}</p>
+                <p className="text-[11px]" style={{ color:'#5c626e' }}>{pl.trackIds.length} треков</p>
+              </div>
+            </button>
+            <button type="button" onClick={() => togglePin(pl.id)} className="shrink-0 p-1.5"
+              aria-label={pins.includes(pl.id) ? 'Открепить плейлист' : 'Закрепить плейлист'}>
               <Pin size={14} fill={pins.includes(pl.id) ? '#4fe3d0' : 'none'} color={pins.includes(pl.id) ? '#4fe3d0' : '#5c626e'}/>
             </button>
-          </button>
+            <button type="button" aria-label="Переименовать плейлист"
+              onClick={() => { setRenaming(pl.id); setRenameTo(pl.name); }}
+              className="shrink-0 px-1.5 py-1 text-[11px]" style={{ color:'#5c626e' }}>
+              Имя
+            </button>
+            <button type="button" aria-label="Удалить плейлист"
+              onClick={() => { if (window.confirm(`Удалить плейлист «${pl.name}»?`)) void deletePlaylist(pl.id); }}
+              className="shrink-0 px-1.5 py-1 text-[11px]" style={{ color:'#e05a5a' }}>
+              Удалить
+            </button>
+          </div>
         ))}
+
+        {cat === 'playlists' && renaming && (
+          <div className="flex items-center gap-2 px-4 py-2">
+            <input value={renameTo} onChange={e => setRenameTo(e.target.value)} autoFocus maxLength={120}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && renameTo.trim()) {
+                  void renamePlaylist(renaming, renameTo.trim()); setRenaming(null);
+                }
+                if (e.key === 'Escape') setRenaming(null);
+              }}
+              className="flex-1 rounded-xl px-3 py-2 text-[13px] outline-none"
+              style={{ background:'rgba(255,255,255,0.05)', color:'#f2f5f8', border:'1px solid rgba(255,255,255,0.07)' }}/>
+            <button type="button" onClick={() => { void renamePlaylist(renaming, renameTo.trim()); setRenaming(null); }}
+              className="rounded-xl px-3.5 py-2 text-[12.5px] font-bold" style={{ background:'#fff', color:'#0a0a0f' }}>
+              Готово
+            </button>
+          </div>
+        )}
         {cat === 'playlists' && sortedPlaylists.length === 0 && (
           <p className="py-12 text-center text-[12.5px]" style={{ color:'#5c626e' }}>Плейлистов пока нет</p>
         )}
