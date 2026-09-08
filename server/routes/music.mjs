@@ -16,7 +16,7 @@
  *    идентификатор.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import {
   listTracks, readTrack, visibleTrack, createTrack, finishTrack, updateTrack,
@@ -26,6 +26,7 @@ import {
   listFavorites, setFavorite, addHistory, listHistory, setProgress, listProgress,
 } from './../music.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, remove, parseRange } from './../musicstore.mjs';
+import { ticketCookie, ticketFromCookies } from './../musicticket.mjs';
 
 /** Потолок на трек. Больше — это уже не песня, а фильм. */
 const MAX_AUDIO_BYTES = 30 * 1024 * 1024;
@@ -118,12 +119,33 @@ const withHead = (head, rest) => Readable.from((async function* () {
 export const musicRoutes = async (req, res, url) => {
   if (!url.startsWith('/api/music')) return false;
 
-  const session = await requireProfile(req, res);
-  if (!session) return true;
-  const me = session.profileId;
-
   const path = url.split('?')[0];
   const params = new URL(req.url, 'http://x').searchParams;
+
+  /* Выдача звука и обложек — единственное место, куда браузер ходит
+     сам, тегами <audio> и <img>. Заголовок Authorization он туда не
+     подставит, поэтому здесь принимается ещё и подписанный пропуск из
+     куки. Всё остальное по-прежнему требует обычной сессии. */
+  const isMedia = /^\/api\/music\/track\/[^/]+\/(audio|cover)$/.test(path)
+    && (req.method === 'GET' || req.method === 'HEAD');
+
+  let me;
+  if (isMedia) {
+    const session = await readSession(req);
+    me = session?.profileId ?? ticketFromCookies(req.headers.cookie);
+    if (!me) return json(res, 401, { error: 'unauthorized' });
+  } else {
+    const session = await requireProfile(req, res);
+    if (!session) return true;
+    me = session.profileId;
+  }
+
+  /* Пропуск выдаётся отдельной ручкой: клиент просит его один раз при
+     открытии музыки, обычным запросом с токеном. */
+  if (req.method === 'POST' && path === '/api/music/ticket') {
+    res.setHeader('Set-Cookie', ticketCookie(me));
+    return json(res, 200, { ok: true });
+  }
 
   /* ── Каталог и поиск ───────────────────────────────────────── */
 

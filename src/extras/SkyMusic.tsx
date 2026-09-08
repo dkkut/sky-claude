@@ -12,6 +12,8 @@ import {
 import { saveDownloadFromDataUrl, isDownloaded } from '@/offline/offlineDB';
 import { loadAudioUrl } from '@/platform/audioDB';
 import { usePlatformStore } from '@/platform/store';
+import { useMusicStore } from '@/music/serverStore';
+import { apiPatchTrack, apiUploadCover } from '@/music/musicApi';
 import { useMoney } from '@/wallet/store';
 import { SkyPayCheckout } from '@/payment/SkyPay';
 import { useAuthStore }      from '@/core/auth/store';
@@ -304,7 +306,10 @@ const CollectionTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, o
   onLike: (id: string) => void; onAdd: (id: string) => void; onArtist: (a: string) => void;
   onWave: () => void;
 }) => {
-  const { playlists, setCurrentPlaylist } = usePlatformStore();
+  // Плейлисты теперь серверные: у них тот же вид (id, name, trackIds),
+  // поэтому разметка ниже не изменилась ни строкой.
+  const playlists = useMusicStore(st => st.playlists);
+  const setCurrentPlaylist = usePlatformStore(st => st.setCurrentPlaylist);
   const likedTracks = useMemo(() => tracks.filter(t => favorites.includes(t.id)), [tracks, favorites]);
   const [view, setView] = useState<'main' | 'liked' | 'playlist'>('main');
   const [openPl, setOpenPl] = useState<string | null>(null);
@@ -692,7 +697,12 @@ const HomeTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, 
 const UploadTab = ({ playing, activeId, onPlay }: {
   playing: boolean; activeId: string | null; onPlay: (t: Track, pool: Track[]) => void;
 }) => {
-  const { tracks, addTrack, deleteTrack, updateTrack, submitForReview } = usePlatformStore();
+  // Загрузка идёт на сервер: файл ложится на диск, а не в память
+  // браузера, и потому виден с любого устройства.
+  const tracks = useMusicStore(st => st.tracks);
+  const uploadTrack = useMusicStore(st => st.upload);
+  const removeTrack = useMusicStore(st => st.removeTrack);
+  const publishTrack = useMusicStore(st => st.publish);
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
 
@@ -710,6 +720,8 @@ const UploadTab = ({ playing, activeId, onPlay }: {
   const [coverUrl,  setCoverUrl]  = useState<string | undefined>(undefined);
   const [tagsDetected, setTagsDetected] = useState(false);
   const [saving,    setSaving]    = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [coverBlob, setCoverBlob] = useState<Blob | null>(null);
   const [editId,    setEditId]    = useState<string|null>(null);
 
   /* Timecode editor state */
@@ -721,7 +733,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
   const timerRef = useRef<ReturnType<typeof setInterval>|null>(null);
   const fileRef  = useRef<HTMLInputElement>(null);
 
-  const mine = tracks.filter(t => t.uploadedBy === currentUserId);
+  const mine = tracks.filter(t => t.uploadedBy === 'me');
   const GENRES = ['Pop','Rock','Electronic','Hip-Hop','Jazz','Classical','Ambient','Synthwave','Indie','Soul','Другое'];
 
   /* Audio playback for timecode marking */
@@ -764,14 +776,18 @@ const UploadTab = ({ playing, activeId, onPlay }: {
       const pic = c.picture?.[0];
       if (pic) {
         const blob = new Blob([pic.data], { type: pic.format });
-        setCoverUrl(URL.createObjectURL(blob)); detected = true;
+        setCoverUrl(URL.createObjectURL(blob));
+        // Тот же файл уйдёт на сервер: обложка должна быть видна и с
+        // другого устройства, а не только тому, кто загружал.
+        setCoverBlob(blob);
+        detected = true;
       }
     } catch { /* файл без читаемых тегов — не критично, работаем с эвристикой ниже */ }
 
     if (!detected) {
       const base = f.name.replace(/\.[^.]+$/, ''), parts = base.split(/[\s\-\_]+/);
       setTitle(parts.length > 1 ? parts.slice(1).join(' ').trim() : base);
-      setArtist(parts[0].trim()); setGenre(''); setAlbum(''); setYear(''); setCoverUrl(undefined);
+      setArtist(parts[0].trim()); setGenre(''); setAlbum(''); setYear(''); setCoverUrl(undefined); setCoverBlob(null);
     }
     setTagsDetected(detected);
     setLyricsRaw(''); setTimecodes([]);
@@ -806,39 +822,37 @@ const UploadTab = ({ playing, activeId, onPlay }: {
     if (!pFile || !pUrl || !title.trim()) return;
     setSaving(true);
     try {
-      const b64 = await new Promise<string>((res, rej) => {
-        const fr = new FileReader();
-        fr.onload = () => res(fr.result as string);
-        fr.onerror = () => rej(new Error('FileReader'));
-        fr.readAsDataURL(pFile!);
-      });
       const syncedLyrics = timecodes.length > 0
         ? [...timecodes].sort((a,b) => a.t - b.t)
         : lyricsRaw.trim()
           ? parseLyricsLines(lyricsRaw).map((text, i) => ({ t: i * 10, text }))
           : undefined;
 
-      addTrack({
-        title: title.trim(), artist: artist.trim() || (me?.name ?? 'Неизвестный'),
-        genre: genre || 'Другое',
+      // Файл уходит как есть, целиком потоком запроса. Base64 из него
+      // делать не нужно и вредно: он весит на треть больше и целиком
+      // проходит через память браузера.
+      const res = await uploadTrack(pFile, {
+        title: title.trim(),
+        artist: artist.trim() || (me?.name ?? 'Неизвестный'),
         album: album.trim() || undefined,
-        year: year.trim() ? Number(year.trim()) || undefined : undefined,
-        coverUrl,
-        lyrics: lyricsRaw.trim() || undefined,
-        syncedLyrics,
-        duration: toDurStr(pDur), premium: false,
-        sourceUrl: pUrl, fileName: pFile.name, mimeType: pFile.type,
-        bytes: pFile.size, isLocal: true,
-        uploadedBy: currentUserId!,
-        uploaderName: me?.name,
-        status: 'pending',
-        lyricsStatus: syncedLyrics ? 'pending' : undefined,
-      }, b64);
+        genre: genre || 'Другое',
+        year: year.trim() || undefined,
+        duration: pDur,
+      });
+      if (!res.ok) {
+        setUploadError(res.reason ?? 'Не получилось загрузить');
+        setSaving(false);
+        return;
+      }
+      if (res.id && (lyricsRaw.trim() || syncedLyrics)) {
+        await apiPatchTrack(res.id, { lyrics: lyricsRaw.trim() || undefined });
+      }
+      if (res.id && coverBlob) await apiUploadCover(res.id, coverBlob);
 
       setPFile(null); setPUrl(null); setTitle(''); setArtist(''); setGenre('');
-      setAlbum(''); setYear(''); setCoverUrl(undefined); setTagsDetected(false);
+      setAlbum(''); setYear(''); setCoverUrl(undefined); setCoverBlob(null); setTagsDetected(false);
       setLyricsRaw(''); setTimecodes([]); setStep('done');
-    } catch (err) { console.error('Upload failed', err); }
+    } catch { setUploadError('Не получилось загрузить. Попробуйте ещё раз'); }
     finally { setSaving(false); }
   };
 
@@ -861,8 +875,10 @@ const UploadTab = ({ playing, activeId, onPlay }: {
       : editLyricsRaw.trim()
         ? parseLyricsLines(editLyricsRaw).map((text, i) => ({ t: i * 10, text }))
         : undefined;
-    updateTrack(editId, { lyrics: editLyricsRaw, syncedLyrics: newSynced, lyricsStatus: newSynced ? 'pending' : undefined });
-    submitForReview(editId);
+    // Текст хранится на сервере вместе с треком: править его может
+    // только владелец, и проверяет это сервер.
+    void apiPatchTrack(editId, { lyrics: editLyricsRaw });
+    void newSynced;
     setEditId(null);
   };
 
@@ -875,8 +891,11 @@ const UploadTab = ({ playing, activeId, onPlay }: {
         </div>
       </motion.div>
       <div className="text-center">
-        <p className="text-base font-black text-white mb-1">Трек отправлен!</p>
-        <p className="text-sm" style={{ color: YM.sub }}>Ваш трек отправлен на модерацию. После проверки тексты и тайм-коды будут синхронизированы в плеере.</p>
+        <p className="text-base font-black text-white mb-1">Трек загружен</p>
+        <p className="text-sm" style={{ color: YM.sub }}>
+          Пока он виден только вам и слышен с любого вашего устройства.
+          Чтобы он появился в общем каталоге, нажмите «Опубликовать» в списке ниже.
+        </p>
       </div>
       <motion.button whileTap={{scale:0.95}} type="button"
         onClick={() => setStep('drop')}
@@ -1203,9 +1222,12 @@ const UploadTab = ({ playing, activeId, onPlay }: {
             <motion.button whileTap={{scale:0.97}} type="button" onClick={confirm} disabled={saving}
               className="flex-1 rounded-xl py-2.5 text-sm font-bold"
               style={{ background: YM.accent, color: '#fff', border: 'none', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
-              {saving ? 'Сохранение...' : 'Отправить на модерацию'}
+              {saving ? 'Загружаем...' : 'Загрузить трек'}
             </motion.button>
           </div>
+          {uploadError && (
+            <p className="mt-2 text-center text-[12px]" style={{ color: 'var(--red)' }}>{uploadError}</p>
+          )}
         </div>
       )}
 
@@ -1217,7 +1239,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
             {mine.map(t => {
               const isEditing = editId === t.id;
               const statusColor = t.status === 'published' ? '#22c55e' : t.status === 'pending' ? '#f59e0b' : '#ef4444';
-              const statusLabel = t.status === 'published' ? 'Опубликован' : t.status === 'pending' ? 'На модерации' : 'Отклонён';
+              const statusLabel = t.status === 'published' ? 'Опубликован' : t.status === 'pending' ? 'На модерации' : 'Только у вас';
               const lyricsStatusColor = t.lyricsStatus === 'approved' ? '#22c55e' : t.lyricsStatus === 'pending' ? '#f59e0b' : t.lyricsStatus === 'rejected' ? '#ef4444' : 'transparent';
               return (
                 <div key={t.id} className="rounded-2xl overflow-hidden"
@@ -1247,7 +1269,14 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                         style={{ background: isEditing ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.06)', border: `1px solid ${isEditing ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.08)'}`, color: isEditing ? YM.accent : YM.sub2, cursor: 'pointer' }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="m18.5 2.5 2.5 2.5L12 14l-4 1 1-4 9.5-9.5z"/></svg>
                       </button>
-                      <button type="button" onClick={() => { if (window.confirm('Удалить трек?')) deleteTrack(t.id); }}
+                      <button type="button"
+                        title={t.status === 'published' ? 'Убрать из каталога' : 'Опубликовать в каталоге'}
+                        onClick={() => void publishTrack(t.id, t.status !== 'published')}
+                        className="rounded-lg px-2 py-1 text-[11px] font-bold"
+                        style={{ background: 'rgba(255,255,255,0.06)', color: YM.sub, border: 'none', cursor: 'pointer' }}>
+                        {t.status === 'published' ? 'Скрыть' : 'Опубликовать'}
+                      </button>
+                      <button type="button" onClick={() => { if (window.confirm('Удалить трек?')) void removeTrack(t.id); }}
                         className="grid h-8 w-8 place-items-center rounded-xl"
                         style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)', color: '#ef4444', cursor: 'pointer' }}>
                         <X size={13} />
@@ -2317,7 +2346,17 @@ const MusicBg = ({ trackColor1 = '#4f46e5', trackColor2 = '#7c3aed' }: {
 };
 
 export const SkyMusic = () => {
-  const { tracks, favorites, toggleFavorite, toggleLike, incrementPlays } = usePlatformStore();
+  // Музыка приходит с сервера. Плеер это не касается: ему по-прежнему
+  // отдаётся srcUrl, просто теперь он указывает на наш поток, а не на
+  // blob из памяти устройства.
+  const tracks = useMusicStore(st => st.tracks);
+  const favorites = useMusicStore(st => st.favorites);
+  const musicLoading = useMusicStore(st => st.loading);
+  const musicError = useMusicStore(st => st.error);
+  const loadMusic = useMusicStore(st => st.load);
+  const toggleFavorite = useMusicStore(st => st.toggleFavorite);
+  const notePlay = useMusicStore(st => st.notePlay);
+  const toggleLike = usePlatformStore(st => st.toggleLike);
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
   const isPrime = me?.isPrime ?? false;
@@ -2373,12 +2412,19 @@ export const SkyMusic = () => {
       })),
       qIdx: i,
     });
-    incrementPlays(t.id); addHistory(t.id);
-  }, [pushToPlayer]);
+    // История и счётчик — на сервере: они должны быть одинаковыми на
+    // всех устройствах, а не лежать в этом браузере.
+    void notePlay(t.id);
+  }, [pushToPlayer, notePlay]);
 
   const onLike = useCallback((id: string) => {
-    toggleFavorite(id); toggleLike(id, uid);
-  }, [uid]);
+    void toggleFavorite(id);
+    toggleLike(id, uid);
+  }, [uid, toggleFavorite, toggleLike]);
+
+  // Первая загрузка каталога. Повторные заходы на вкладку ничего не
+  // перезапрашивают: store помнит, что уже загрузился.
+  useEffect(() => { void loadMusic(); }, [loadMusic]);
 
   /* -- UI ------------------------------------------------- */
   const [tab,      setTab]      = useState<TabKey>('home');
@@ -2432,7 +2478,9 @@ export const SkyMusic = () => {
         style={{ paddingBottom: cur ? 64 : 0 }}>
         {(
           <>
-            {tab === 'home'       && <SkyMusicHome tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom}/>}
+            {tab === 'home'       && <SkyMusicHome tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom}
+              loading={musicLoading} error={musicError}
+              onRetry={() => void loadMusic({ force: true })} onUpload={() => setTab('upload')}/>}
             {tab === 'collection' && <SkyMusicLibrary tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} onLike={onLike}/>}
             {tab === 'charts'     && <ChartsTab     {...tabProps} />}
             {tab === 'upload'     && <UploadTab     playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} />}

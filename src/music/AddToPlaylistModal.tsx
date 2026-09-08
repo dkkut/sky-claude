@@ -1,7 +1,7 @@
 /* -- Модал «Добавить в плейлист» --------------------------- */
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ListMusic, Check } from 'lucide-react';
-import { usePlatformStore } from '@/platform/store';
+import { useMusicStore } from '@/music/serverStore';
 
 interface Props {
   trackId: string | null;
@@ -9,7 +9,11 @@ interface Props {
 }
 
 export const AddToPlaylistModal = ({ trackId, onClose }: Props) => {
-  const { playlists, addToPlaylist, removeFromPlaylist } = usePlatformStore();
+  // Плейлисты серверные: добавление проверяется правами, а не доверием
+  // к нажатой кнопке.
+  const playlists = useMusicStore(s => s.playlists);
+  const addToPlaylist = useMusicStore(s => s.addToPlaylist);
+  const removeFromPlaylist = useMusicStore(s => s.removeFromPlaylist);
 
   return (
     <AnimatePresence>
@@ -36,7 +40,7 @@ export const AddToPlaylistModal = ({ trackId, onClose }: Props) => {
                 return (
                   <button key={pl.id} type="button"
                     onClick={() => {
-                      has ? removeFromPlaylist(pl.id, trackId) : addToPlaylist(pl.id, trackId);
+                      void (has ? removeFromPlaylist(pl.id, trackId) : addToPlaylist(pl.id, trackId));
                       onClose();
                     }}
                     className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 hover:bg-white/5">

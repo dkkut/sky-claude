@@ -9,7 +9,7 @@ import {
   ChevronLeft, Mic2, Globe, Lock,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
-import { usePlatformStore } from '@/platform/store';
+import { useMusicStore } from '@/music/serverStore';
 
 /* ── design tokens ── */
 const YM = { bg:'#0a0a0f', card:'var(--bg-l2)', border:'var(--border)',
@@ -233,7 +233,7 @@ export const MusicianProfileTab = ({
   onPlay:(t:any,pool:any[])=>void; onLike:(id:string)=>void;
 }) => {
   const { accounts, currentUserId, followArtist, unfollowArtist } = useAuthStore();
-  const { tracks } = usePlatformStore();
+  const tracks = useMusicStore(s => s.tracks);
   const me = accounts.find(a=>a.id===currentUserId);
   const [editOpen, setEditOpen] = useState(false);
   const [viewArtist, setViewArtist] = useState<string|null>(null);

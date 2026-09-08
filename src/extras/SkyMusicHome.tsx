@@ -147,10 +147,12 @@ const Section = ({ title, icon: Icon, index, children, empty }: {
 );
 
 export const SkyMusicHome = ({
-  tracks, favorites, playing, activeId, onPlay,
+  tracks, favorites, playing, activeId, onPlay, loading, error, onRetry, onUpload,
 }: {
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
   onPlay: (t: Track, pool: Track[]) => void;
+  loading?: boolean; error?: string | null;
+  onRetry?: () => void; onUpload?: () => void;
 }) => {
   const pub = useMemo(() => tracks.filter(t => t.status === 'published'), [tracks]);
   const fresh = useMemo(() => [...pub].sort((a,b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 10), [pub]);
@@ -195,6 +197,63 @@ export const SkyMusicHome = ({
   const wavePool = useMemo(() => [...pub].sort(() => Math.random() - 0.5), [pub]);
   const startWave = () => { if (wavePool[0]) onPlay(wavePool[0], wavePool); };
   const [c1, c2] = wavePool[0] ? getG(wavePool[0].id) : ['#6a3de8', '#2563eb'];
+
+  // Три состояния, которых у экрана раньше быть не могло: каталог лежал
+  // в самом браузере и не умел ни грузиться, ни отказывать.
+  if (loading && tracks.length === 0) {
+    return (
+      <div className="sky-music-scope grid h-full place-items-center" style={{ background: '#0a0a0f' }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 rounded-full border-2 border-white/10 border-t-white/60 sky-spin"/>
+          <p className="text-[13px]" style={{ color: '#7d818c' }}>Загружаем музыку…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && tracks.length === 0) {
+    return (
+      <div className="sky-music-scope grid h-full place-items-center px-8 text-center" style={{ background: '#0a0a0f' }}>
+        <div>
+          <p className="text-[15px] font-bold" style={{ color: '#fafafb' }}>Музыка не загрузилась</p>
+          <p className="mt-1.5 text-[13px]" style={{ color: '#7d818c' }}>{error}</p>
+          {onRetry && (
+            <button type="button" onClick={onRetry}
+              className="mt-4 rounded-2xl px-5 py-2.5 text-[13px] font-bold"
+              style={{ background: 'rgba(255,255,255,0.08)', color: '#fafafb' }}>
+              Повторить
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (pub.length === 0) {
+    return (
+      <div className="sky-music-scope relative h-full" style={{ background: '#0a0a0f' }}>
+        <div className="absolute inset-x-0 top-0 h-56">
+          <SkySphere color1={c1} color2={c2} active={playing}/>
+        </div>
+        <div className="relative flex h-full flex-col items-center justify-center px-8 text-center">
+          <p className="text-[20px] font-extrabold" style={{ color: '#fafafb', letterSpacing: '-0.02em' }}>
+            Здесь пока тихо
+          </p>
+          <p className="mt-2 max-w-xs text-[13px] leading-relaxed" style={{ color: '#7d818c' }}>
+            В каталоге ещё нет опубликованных треков. Загрузите свои — они появятся
+            здесь и будут слышны с любого устройства.
+          </p>
+          {onUpload && (
+            <button type="button" onClick={onUpload}
+              className="mt-5 rounded-2xl px-5 py-3 text-[13px] font-bold"
+              style={{ background: '#fff', color: '#0a0a0f' }}>
+              Загрузить трек
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="sky-music-scope relative h-full" style={{ background: '#0a0a0f' }}>

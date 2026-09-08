@@ -8,7 +8,7 @@ import {
   HeartIcon, Share2, CheckCircle, Disc, Upload,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
-import { usePlatformStore } from '@/platform/store';
+import { useMusicStore } from '@/music/serverStore';
 import { ArtistSubmitTrack } from './ArtistSubmit';
 import { create } from 'zustand';
 
@@ -150,7 +150,7 @@ const ArtistCard = ({ artist, myId, onOpen }: { artist:ArtistProfile; myId:strin
 /* -- Artist Detail ----------------------------------------- */
 const ArtistDetail = ({ artist, myId, onBack }: { artist:ArtistProfile; myId:string; onBack:()=>void }) => {
   const { follow, unfollow } = useMusicianStore();
-  const { tracks } = usePlatformStore();
+  const tracks = useMusicStore(s => s.tracks);
   const following = artist.followedBy.includes(myId);
   const myTracks  = tracks.filter(t => t.uploadedBy === artist.userId && t.status==='published');
 
