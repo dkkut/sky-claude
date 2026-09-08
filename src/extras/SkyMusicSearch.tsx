@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Mic, Clock, TrendingUp, Mic2, ListMusic, FileText } from 'lucide-react';
 import type { Track } from '@/platform/store';
-import { usePlatformStore } from '@/platform/store';
+import { useMusicStore } from '@/music/serverStore';
 import { getG } from '@/music/utils';
 
 const HISTORY_KEY = 'sky:music:searchHistory:v1';
@@ -26,7 +26,14 @@ export const SkyMusicSearch = ({
   onPlay: (t: Track, pool: Track[]) => void; onLike: (id: string) => void;
   onArtist: (a: string) => void; onClose: () => void;
 }) => {
-  const { playlists } = usePlatformStore();
+  const playlists = useMusicStore(st => st.playlists);
+  const searchServer = useMusicStore(st => st.search);
+  // Каталог на устройстве — только первая сотня треков, поэтому поиск
+  // спрашивает и сервер. Быстрый ответ даёт местный список, полный —
+  // сервер; результаты объединяются по идентификатору.
+  const [remote, setRemote] = useState<Track[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [q, setQ] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
@@ -64,16 +71,32 @@ export const SkyMusicSearch = ({
 
   const query = q.toLowerCase().trim();
 
+  useEffect(() => {
+    if (query.length < 2) { setRemote([]); setSearching(false); setSearchError(false); return; }
+    let alive = true;
+    setSearching(true);
+    // Пауза перед запросом: иначе на каждую букву уходил бы свой запрос.
+    const t = setTimeout(() => {
+      void searchServer(query)
+        .then(found => { if (alive) { setRemote(found); setSearchError(false); } })
+        .catch(() => { if (alive) setSearchError(true); })
+        .finally(() => { if (alive) setSearching(false); });
+    }, 300);
+    return () => { alive = false; clearTimeout(t); setSearching(false); };
+  }, [query, searchServer]);
+
   const results = useMemo(() => {
     if (!query) return null;
-    const tr = pub.filter(t => t.title.toLowerCase().includes(query));
+    const local = pub.filter(t => t.title.toLowerCase().includes(query));
+    const seen = new Set(local.map(t => t.id));
+    const tr = [...local, ...remote.filter(t => !seen.has(t.id))];
     const ar = allArtists.filter(a => a.toLowerCase().includes(query));
     const ge = allGenres.filter(g => g.toLowerCase().includes(query));
     const al = albumNames.filter(a => a.toLowerCase().includes(query));
     const pl = playlists.filter(p => p.name.toLowerCase().includes(query));
     const lyr = pub.filter(t => t.lyrics && t.lyrics.toLowerCase().includes(query) && !t.title.toLowerCase().includes(query));
     return { tr, ar, ge, al, pl, lyr };
-  }, [query, pub, allArtists, allGenres, albumNames, playlists]);
+  }, [query, pub, remote, allArtists, allGenres, albumNames, playlists]);
 
   const totalCount = results ? results.tr.length + results.ar.length + results.ge.length + results.al.length + results.pl.length + results.lyr.length : 0;
 
@@ -138,7 +161,19 @@ export const SkyMusicSearch = ({
 
         {query && results && (
           <>
-            {totalCount === 0 && (
+            {totalCount === 0 && searching && (
+              <div className="py-10 text-center">
+                <p className="text-[13px]" style={{ color: '#5c626e' }}>Ищем…</p>
+              </div>
+            )}
+            {totalCount === 0 && !searching && searchError && (
+              <div className="py-10 text-center">
+                <p className="text-[13px]" style={{ color: '#5c626e' }}>Поиск сейчас недоступен</p>
+                <button type="button" onClick={() => setQ(q)} className="mt-2 text-[12.5px]"
+                  style={{ color: '#4fe3d0' }}>Повторить</button>
+              </div>
+            )}
+            {totalCount === 0 && !searching && !searchError && (
               <div className="py-10 text-center">
                 <p className="text-[13px]" style={{ color: '#5c626e' }}>Ничего не найдено</p>
                 {suggestion && (

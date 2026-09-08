@@ -13,7 +13,7 @@ import { saveDownloadFromDataUrl, isDownloaded } from '@/offline/offlineDB';
 import { loadAudioUrl } from '@/platform/audioDB';
 import { usePlatformStore } from '@/platform/store';
 import { useMusicStore } from '@/music/serverStore';
-import { apiPatchTrack, apiUploadCover } from '@/music/musicApi';
+import { apiPatchTrack, apiUploadCover, apiLyrics } from '@/music/musicApi';
 import { useMoney } from '@/wallet/store';
 import { SkyPayCheckout } from '@/payment/SkyPay';
 import { useAuthStore }      from '@/core/auth/store';
@@ -1636,28 +1636,29 @@ const hslDark = (h:number) => `hsl(${h},55%,12%)`;
 const hslDk2  = (h:number) => `hsl(${(h+40)%360},45%,8%)`;
 const hslGlow = (h:number) => `hsl(${h},58%,36%)`;
 
-export const MOCK_LYRICS: Record<string,{t:number;text:string}[]> = {
-  __default__: [
-    {t:0,text:''},
-    {t:4,text:'Музыка звучит'},
-    {t:9,text:'Слова текут рекой'},
-    {t:14,text:'В этом моменте'},
-    {t:19,text:'Только ты и я'},
-    {t:26,text:'Ритм нас уносит'},
-    {t:31,text:'Куда-то вдаль'},
-    {t:38,text:'Не нужно думать'},
-    {t:43,text:'Просто слушай, плыви'},
-    {t:52,text:'Мелодия знает'},
-    {t:57,text:'Всё что нужно сказать'},
-    {t:63,text:'Её не замолчать'},
-    {t:69,text:'Она — это мы с тобой'},
-    {t:78,text:'Этот миг'},
-    {t:83,text:'Навсегда'},
-    {t:88,text:'С нами останется'},
-    {t:94,text:'В памяти, в сердце'},
-    {t:105,text:'...'},
-  ],
+/**
+ * Разбор текста песни. Поддерживаются метки времени в общепринятом
+ * виде — [мм:сс] или [мм:сс.дд]; строки без меток показываются просто
+ * как текст, без подсветки по ходу песни.
+ */
+export const parseTimedLyrics = (raw: string): { t: number; text: string }[] => {
+  const lines = String(raw ?? '').split('\n').map(l => l.trimEnd()).filter(l => l.trim() !== '');
+  const out: { t: number; text: string }[] = [];
+  for (const line of lines) {
+    const m = /^\s*\[(\d{1,2}):(\d{2})(?:[.:](\d{1,2}))?\]\s*(.*)$/.exec(line);
+    if (m) {
+      const t = Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(m[3]) / 100 : 0);
+      out.push({ t, text: m[4] });
+    } else {
+      out.push({ t: out.length === 0 ? 0 : -1, text: line });
+    }
+  }
+  // Если меток нет вовсе, оставляем строки без времени: подсветки не
+  // будет, но текст человек прочитает.
+  return out.every(l => l.t < 0 || l.t === 0) ? out.map(l => ({ ...l, t: 0 })) : out.filter(l => l.t >= 0);
 };
+
+
 
 const VolumeIcon = ({ v }: { v: number }) => {
   if (v === 0) return (
@@ -1805,14 +1806,24 @@ const SkyFullPlayer = ({
   const effVol = muted ? 0 : volume;
 
   /* Lyrics: use mock or stored */
+  /* Текст песни приходит с сервера — тот, который загрузил владелец.
+     Придуманных строк здесь больше нет: показать чужой песне чужие
+     слова хуже, чем не показать никаких. */
+  const [serverLyrics, setServerLyrics] = React.useState<{t:number;text:string}[] | null>(null);
+  React.useEffect(() => {
+    let alive = true;
+    setServerLyrics(null);
+    void apiLyrics(track.id).then(res => {
+      if (!alive || !res) return;
+      setServerLyrics(parseTimedLyrics(res.lyrics));
+    });
+    return () => { alive = false; };
+  }, [track.id]);
+
   const lyrics = React.useMemo(() => {
-    // Priority: 1) track's approved syncedLyrics 2) mock lyrics 3) default mock
-    if (track.syncedLyrics && track.syncedLyrics.length > 0 &&
-        (track.lyricsStatus === 'approved' || track.lyricsStatus === undefined)) {
-      return track.syncedLyrics;
-    }
-    return MOCK_LYRICS[track.id] || MOCK_LYRICS.__default__;
-  }, [track.id, track.syncedLyrics, track.lyricsStatus]);
+    if (track.syncedLyrics && track.syncedLyrics.length > 0) return track.syncedLyrics;
+    return serverLyrics ?? [];
+  }, [track.id, track.syncedLyrics, serverLyrics]);
 
   const activeLyric = React.useMemo(
     () => lyrics.reduce((best, l, i) => l.t <= currentTime ? i : best, 0),
@@ -2399,9 +2410,9 @@ export const SkyMusic = () => {
 
   const playFrom = useCallback((t: Track, pool: Track[]) => {
     const i = pool.findIndex(x => x.id === t.id); if (i < 0) return;
-    const lyrics = (t.syncedLyrics && t.syncedLyrics.length > 0 && (t.lyricsStatus === 'approved' || t.lyricsStatus === undefined))
-      ? t.syncedLyrics
-      : (MOCK_LYRICS[t.id] || MOCK_LYRICS.__default__);
+    // Текст подтянется отдельно, с сервера: класть в плеер выдуманные
+    // строки только ради заполненного экрана — нечестно.
+    const lyrics = t.syncedLyrics && t.syncedLyrics.length > 0 ? t.syncedLyrics : [];
     pushToPlayer({
       id: t.id, kind: 'music', title: t.title, author: t.artist ?? '',
       coverUrl: t.coverUrl, hue: parseInt(t.id, 36) % 360,
@@ -2425,6 +2436,15 @@ export const SkyMusic = () => {
   // Первая загрузка каталога. Повторные заходы на вкладку ничего не
   // перезапрашивают: store помнит, что уже загрузился.
   useEffect(() => { void loadMusic(); }, [loadMusic]);
+
+  // Где человек остановился — на сервер, чтобы продолжить с другого
+  // устройства. Само сохранение придерживает частоту внутри store:
+  // сюда время приходит по нескольку раз в секунду.
+  const saveProgress = useMusicStore(st => st.saveProgress);
+  useEffect(() => {
+    if (!cur?.id || !playing || curTime <= 0) return;
+    saveProgress(cur.id, curTime);
+  }, [cur?.id, playing, curTime, saveProgress]);
 
   /* -- UI ------------------------------------------------- */
   const [tab,      setTab]      = useState<TabKey>('home');
