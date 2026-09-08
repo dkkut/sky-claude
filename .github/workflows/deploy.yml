@@ -172,6 +172,7 @@ jobs:
         run: |
           tar czf deploy-bundle.tgz docker-compose.yml \
             scripts/init-letsencrypt.sh scripts/rotate-secrets.sh \
+            scripts/set-encryption-key.sh \
             scripts/set-sms-key.sh scripts/set-email.sh scripts/new-beta-keys.sh
           scp -i ~/.ssh/id_deploy -P "$SSH_PORT" deploy-bundle.tgz "$SSH_USER@$SSH_HOST:$APP_DIR/"
 
