@@ -14,6 +14,7 @@ import { useWarehouseStore } from './warehouseStore';
 import { usePassStore, ACCESS_LEVELS } from './passStore';
 import { SlidePanel, EmptyState, ConfirmModal } from './shared';
 import type { AccessPass, AccessLevel, PassType, PassSendChannel } from './types';
+import { qrDataUri } from '@/shared/qr';
 
 const levelCfg = (level: AccessLevel) => ACCESS_LEVELS.find(l => l.key === level)!;
 
@@ -213,8 +214,12 @@ const PassDetail = ({ pass, whName, onClose }: { pass: AccessPass; whName: strin
   const cfg = levelCfg(pass.accessLevel);
   const expired = isExpired(pass);
 
-  const qrPayload = encodeURIComponent(JSON.stringify({ code: pass.code, warehouseId: pass.warehouseId, level: pass.accessLevel }));
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrPayload}&bgcolor=141420&color=ffffff&qzone=2&format=svg`;
+  // Код пропуска — это и есть секрет: кто его знает, тот проходит.
+  // Поэтому QR рисуется здесь же, на устройстве, и наружу не уходит.
+  const qrUrl = qrDataUri(
+    JSON.stringify({ code: pass.code, warehouseId: pass.warehouseId, level: pass.accessLevel }),
+    { size: 200, background: '#141420', color: '#ffffff', quietZone: 2 },
+  );
 
   return (
     <SlidePanel open onClose={onClose} title={pass.holderName}>

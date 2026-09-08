@@ -43,6 +43,7 @@ const SkyPVZ = React.lazy(() => import('@/pvz/SkyPVZ').then(m => ({ default: m.S
 const SkyGiftsNFT = React.lazy(() => import('@/gifts/SkyGiftsNFT').then(m => ({ default: m.SkyGiftsNFT })));
 import { AdminMusicPanel } from '@/music/ArtistSubmit';
 import { AdminDisputesPanel, AdminGarantPanel } from '@/admin/AdminDisputes';
+import { qrDataUri } from '@/shared/qr';
 
 
 /* --- BroadcastChannel: синхронизация комнат между вкладками ----------- */
@@ -1288,7 +1289,10 @@ const TicketsTab = () => {
         <div className="flex justify-center px-6 pb-4">
           <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
             <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(JSON.stringify({ id: showQR.code, event: showQR.title, date: showQR.date, venue: showQR.venue, qty: showQR.qty, vip: showQR.isVip }))}&bgcolor=141420&color=ffffff&qzone=2&format=svg`}
+              src={qrDataUri(
+                JSON.stringify({ id: showQR.code, event: showQR.title, date: showQR.date, venue: showQR.venue, qty: showQR.qty, vip: showQR.isVip }),
+                { size: 200, background: '#141420', color: '#ffffff', quietZone: 2 },
+              )}
               alt="QR" width={200} height={200} style={{ display: 'block' }} />
           </div>
         </div>

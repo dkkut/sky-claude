@@ -16,14 +16,15 @@ import {
 } from './shipmentStore';
 import { SlidePanel, EmptyState, ConfirmModal } from './shared';
 import type { Shipment, ShipmentStatus } from './types';
+import { qrDataUri } from '@/shared/qr';
 
-/* ── QR (тот же сервис, что уже используется для пропусков) ──────── */
-const qrUrlFor = (shipment: Shipment) => {
-  const payload = encodeURIComponent(JSON.stringify({
+/* ── QR (рисуется на устройстве, как и для пропусков) ────────────── */
+const qrUrlFor = (shipment: Shipment) => qrDataUri(
+  JSON.stringify({
     type: 'sky-shipment', number: shipment.number, code: shipment.code, id: shipment.id,
-  }));
-  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${payload}&bgcolor=ffffff&color=000000&qzone=1&format=svg`;
-};
+  }),
+  { size: 220, background: '#ffffff', color: '#000000', quietZone: 1 },
+);
 
 /* ── HTML-разметка самой наклейки (переиспользуется и в превью, и в печати) ── */
 const buildLabelHtml = (s: Shipment, qrUrl: string) => `

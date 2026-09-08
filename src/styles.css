@@ -1,6 +1,6 @@
 /* @import обязан идти раньше любых других правил, иначе PostCSS его отбрасывает
-   и шрифт Inter не подгружается в собранной версии. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+   и шрифты не подгружаются в собранной версии. */
+@import './fonts.css';
 
 @tailwind base;
 @tailwind components;

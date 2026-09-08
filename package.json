@@ -17,20 +17,22 @@
   "dependencies": {
     "framer-motion": "^11.0.8",
     "leaflet": "^1.9.4",
-    "music-metadata-browser": "^2.5.10",
-    "react-leaflet": "^4.2.1",
-    "three": "^0.160.0",
     "lucide-react": "^0.469.0",
+    "music-metadata-browser": "^2.5.10",
+    "qrcode-generator": "^2.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "zustand": "^5.0.2",
-    "ws": "^8.18.0"
+    "react-leaflet": "^4.2.1",
+    "three": "^0.160.0",
+    "ws": "^8.18.0",
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/leaflet": "^1.9.8",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/three": "^0.160.0",
-    "@types/leaflet": "^1.9.8",
     "@typescript-eslint/eslint-plugin": "^8.18.1",
     "@typescript-eslint/parser": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.3",
@@ -41,9 +43,8 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "typescript": "~5.6.2",
-    "vite": "^6.0.5",
-    "@eslint/js": "^9.17.0",
-    "typescript-eslint": "^8.18.1"
+    "typescript-eslint": "^8.18.1",
+    "vite": "^6.0.5"
   },
   "main": "index.html",
   "engines": {
