@@ -257,6 +257,8 @@ interface ChatAction {
   label: string;
   fn: () => void;
   danger?: boolean;
+  /** Кнопка на месте, но сейчас ничего не изменит. */
+  idle?: boolean;
 }
 
 const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
@@ -266,8 +268,13 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
   onClose: () => void;
   onManage: (chatId: string) => void;
 }) => {
-  const { chats, pinChat, muteChat, archiveChat, markRead, markUnread, leaveChat } = useMessengerStore();
+  const { chats, messages, pinChat, muteChat, archiveChat, markRead, markUnread, leaveChat } = useMessengerStore();
   const chat = chats.find(c => c.id === chatId);
+  // Сколько в чате действительно непрочитанного — по нему решаем, какая
+  // из двух кнопок сейчас что-то меняет.
+  const unreadCount = useMemo(
+    () => messages.filter(m => m.chatId === chatId && !m.fromMe && m.status !== 'read').length,
+    [messages, chatId]);
   const myId = useAuthStore(st => st.currentUserId);
   const [confirmLeave, setConfirmLeave] = useState(false);
   if (!chat) return null;
@@ -288,11 +295,14 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
     label: chat.muted ? 'Включить уведомления' : 'Отключить уведомления',
     fn: act(() => muteChat(chatId)),
   };
+  const marked = Boolean(chat.markedUnread);
   const read: ChatAction = {
     icon: CheckCheck, label: 'Прочитать', fn: act(() => markRead(chatId)),
+    idle: unreadCount === 0 && !marked,
   };
   const unread: ChatAction = {
     icon: MessageSquareDot, label: 'Пометить как новое', fn: act(() => markUnread(chatId)),
+    idle: marked,
   };
   const toArchive: ChatAction = {
     icon: Archive, label: 'Архивировать', fn: act(() => archiveChat(chatId)),
@@ -316,14 +326,13 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
   };
 
   /* Свой набор на каждый сегмент. */
-  const hasUnread = (chat.markedUnread ?? false) || segment === 'unread';
   const items: ChatAction[] =
-      segment === 'archived' ? [fromArchive, pin, sound, remove]
-    : segment === 'unread'   ? [read, pin, sound, toArchive, remove]
-    : segment === 'direct'   ? [profile, pin, sound, hasUnread ? read : unread, toArchive, remove]
+      segment === 'archived' ? [fromArchive, pin, sound, read, unread, remove]
+    : segment === 'unread'   ? [read, unread, pin, sound, toArchive, remove]
+    : segment === 'direct'   ? [profile, pin, sound, read, unread, toArchive, remove]
     : segment === 'group'    ? [...(runsChat ? [manage] : []), pin, sound,
-                                hasUnread ? read : unread, toArchive, remove]
-    : [pin, sound, hasUnread ? read : unread, toArchive,
+                                read, unread, toArchive, remove]
+    : [pin, sound, read, unread, toArchive,
        ...(!isDirect && runsChat ? [manage] : []), remove];
 
   /* Размещение: меню под превью чата, а если внизу не помещается — над ним. */
@@ -374,9 +383,10 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
                  boxShadow: '0 18px 50px rgba(0,0,0,0.6)' }}
         onClick={e => e.stopPropagation()}>
         {items.map(item => (
-          <button key={item.label} type="button" onClick={item.fn}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-white/5"
-            style={{ color: item.danger ? 'var(--red)' : 'var(--t1)' }}>
+          <button key={item.label} type="button" onClick={item.fn} disabled={item.idle}
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-white/5 disabled:hover:bg-transparent"
+            style={{ color: item.danger ? 'var(--red)' : 'var(--t1)', opacity: item.idle ? 0.38 : 1,
+                     cursor: item.idle ? 'default' : 'pointer' }}>
             <item.icon size={16} style={{ color: item.danger ? 'var(--red)' : 'var(--t2)' }} />
             {item.label}
           </button>
