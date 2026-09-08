@@ -2295,10 +2295,24 @@ const MusicBg = ({ trackColor1 = '#4f46e5', trackColor2 = '#7c3aed' }: {
     return () => { cancelAnimationFrame(rafRef.current); ro.disconnect(); };
   }, []);
 
+  // zIndex: -1, а не 0 — и это не косметика.
+  //
+  // Холст спозиционирован (absolute), а заголовки разделов и подписи —
+  // обычный поток. По порядку отрисовки CSS позиционированные потомки
+  // рисуются ПОВЕРХ обычного содержимого, поэтому при zIndex: 0 холст
+  // закрашивал собой весь текст: он оставался в разметке, кликался и
+  // читался программой чтения с экрана, но его не было видно.
+  // Карточки при этом оставались видны — им framer-motion выставляет
+  // transform, а это поднимает их в тот же слой, что и холст.
+  //
+  // Отрицательный z-index кладёт холст между фоном родителя и обычным
+  // потоком: фон виден, текст поверх него. Родителю нужен isolate,
+  // иначе холст ушёл бы искать ближайший контекст наложения выше и мог
+  // спрятаться за непрозрачным фоном экрана целиком.
   return (
     <canvas ref={canvasRef}
       className="absolute inset-0 w-full h-full pointer-events-none"
-      style={{ zIndex: 0 }}/>
+      style={{ zIndex: -1 }}/>
   );
 };
 
@@ -2387,7 +2401,8 @@ export const SkyMusic = () => {
   const [bgC1, bgC2] = cur ? getG(cur.id) : ['#4f46e5', '#7c3aed'];
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden" style={{ background: YM.bg }}>
+    <div className="relative flex h-full flex-col overflow-hidden"
+      style={{ background: YM.bg, isolation: 'isolate' }}>
       {/* ── Animated gradient bg ── */}
       <MusicBg trackColor1={bgC1} trackColor2={bgC2}/>
 
