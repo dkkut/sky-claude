@@ -7,7 +7,7 @@ import {
   Phone, Video, Search, MoreVertical, Paperclip, Mic, Square, Images, PawPrint, Gift, ShoppingCart,
   Send, X, Pencil, Trash2, Pin, Forward, Check, CheckCheck, FileText, Camera,
   ChevronDown, ChevronLeft, Flag, BellOff, Archive, UserMinus, UserPlus, Reply, Palette, Settings2, BarChart2, Crown,
-  Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield, LogOut, Eye, Download,
+  Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield, LogOut, Eye, Download, MicOff,
 } from 'lucide-react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { useModerationStore } from '@/shared/moderationStore';
@@ -26,6 +26,7 @@ import { SpoilerText, OnceViewText, SelfDestructTimer, PollBubble, MsgOptionsPan
 import { LiquidCursor, ThemePicker } from './LiquidCursor';
 import { useChatTheme } from './themes';
 import { useSettings } from '@/settings/store';
+import { apiRestrictions } from '@/moderation/supportApi';
 import { GiftModal, GiftBubble, GiftMarket } from '@/gifts/SkyGifts';
 import { PrimeGiftBubble }                  from '@/gifts/GiftPrime';
 import { GiftPrimeModal } from '@/gifts/GiftPrime';
@@ -843,6 +844,19 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   // Настройки этого устройства: Enter для отправки, «печатает…»,
   // галочки прочтения, авто-загрузка медиа.
   const appSettings = useSettings(st => st.settings);
+  // «Запрет говорить» выдаёт администратор, и знает о нём сервер.
+  // Показываем словами, иначе человек просто упирался бы в отказы на
+  // каждое голосовое и не понимал, почему.
+  const [voiceBlock, setVoiceBlock] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const check = () => { void apiRestrictions().then(r => {
+      if (alive) setVoiceBlock(r.mutedUntil ?? null);
+    }); };
+    check();
+    const t = setInterval(check, 60_000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
   // Отказ сервера показываем словами и гасим сами.
   const postNotice = useAdminStore(s => s.notice);
   const clearNotice = useAdminStore(s => s.notify);
@@ -2024,6 +2038,28 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Запрет говорить: показываем словами и с датой, а не отказом на
+          каждое голосовое. Текстом писать при этом можно. */}
+      {voiceBlock && (
+        <div className="shrink-0 px-4 pt-2">
+          <div className="flex items-start gap-2 rounded-xl px-3 py-2.5"
+            style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }}>
+            <MicOff size={14} style={{ color: 'var(--amber)', marginTop: 1, flexShrink: 0 }} />
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold" style={{ color: 'var(--amber)' }}>
+                Голосовые и звонки временно недоступны
+              </p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--t3)' }}>
+                Ограничение действует до{' '}
+                {new Date(voiceBlock).toLocaleString('ru-RU',
+                  { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.
+                Писать сообщениями можно.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!canPost && (
         <footer className="shrink-0 px-4 py-4 border-t text-center sky-chat-font"

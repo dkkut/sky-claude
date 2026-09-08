@@ -167,6 +167,13 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true): Prom
   return { ok: true, data, status: res.status };
 };
 
+/**
+ * Тот же запрос наружу модуля: поддержка ходит своими маршрутами, но
+ * должна пользоваться общим обновлением токена и общей обработкой
+ * закрытой беты, а не заводить второй такой же механизм.
+ */
+export const apiCall = call;
+
 const post = <T>(path: string, body: Json = {}) =>
   call<T>(path, { method: 'POST', body: JSON.stringify(body) });
 const patch = <T>(path: string, body: Json = {}) =>

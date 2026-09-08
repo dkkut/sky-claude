@@ -5,6 +5,8 @@ import { AuthScreen }    from './auth/AuthScreen';
 import { BetaGate }      from './auth/BetaGate';
 import { setBetaRequiredHandler } from './core/auth/api';
 import { OfflineMode }   from './offline/OfflineMode';
+import { BlockedScreen } from './moderation/BlockedScreen';
+import { apiRestrictions, type Restrictions } from './moderation/supportApi';
 import { ErrorBoundary } from './app/ErrorBoundary';
 import { useAuthStore }  from './core/auth/store';
 import { connectSocket, disconnectSocket } from './messenger/socket';
@@ -316,6 +318,20 @@ const Root = () => {
     return () => clearTimeout(t);
   }, []);
 
+  // Ограничения решает сервер, поэтому спрашиваем его, а не смотрим в
+  // сохранённый профиль: снятый бан должен действовать сразу, а
+  // выставленный — не обходиться перезагрузкой страницы.
+  const [limits, setLimits] = useState<Restrictions>({});
+  useEffect(() => {
+    if (!isAuthenticated) { setLimits({}); return; }
+    let alive = true;
+    const check = () => { void apiRestrictions().then(r => { if (alive) setLimits(r); }); };
+    check();
+    // Блокировку могут выдать, пока человек сидит в приложении.
+    const t = setInterval(check, 60_000);
+    return () => { alive = false; clearInterval(t); };
+  }, [isAuthenticated, currentUserId]);
+
   useEffect(() => {
     if (isAuthenticated && currentUserId) {
       // note: splash always shown on load; only setReady via timer
@@ -340,6 +356,13 @@ const Root = () => {
         void useAuthStore.getState().restoreSession();
       }} />
     );
+  }
+
+  // Блокировка перекрывает всё: выхода в экосистему с этого экрана нет,
+  // но обращение в поддержку оттуда доступно — решение надо чем-то
+  // оспаривать.
+  if (isAuthenticated && limits.bannedUntil !== undefined) {
+    return <BlockedScreen bannedUntil={limits.bannedUntil} />;
   }
 
   if (offline && isAuthenticated) {
