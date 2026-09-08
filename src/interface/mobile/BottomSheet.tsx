@@ -87,7 +87,7 @@ export const BottomSheet = ({
               height: heightFor(snap),
               background: 'var(--bg-l1)',
               boxShadow: '0 -20px 60px rgba(0,0,0,0.45)',
-              paddingBottom: 'env(safe-area-inset-bottom)',
+              paddingBottom: 'var(--safe-bottom)',
               touchAction: 'none',
             }}
             animate={controls}

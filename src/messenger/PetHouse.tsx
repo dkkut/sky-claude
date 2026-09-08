@@ -653,7 +653,7 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
 
       {/* ── HEADER ──────────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 pb-3 shrink-0"
-        style={{ borderBottom:'1px solid rgba(255,255,255,.08)', background:'rgba(0,0,0,.4)', paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
+        style={{ borderBottom:'1px solid rgba(255,255,255,.08)', background:'rgba(0,0,0,.4)', paddingTop: 'calc(var(--safe-top) + 12px)' }}>
         <div className="flex items-center gap-3">
           <div className="relative">
             <CSSPet pet={activePet} state="idle" mood={petMood} size={36}/>

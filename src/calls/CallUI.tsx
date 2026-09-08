@@ -73,7 +73,7 @@ const SecurityBar = () => {
 
   const sec = active.security;
   return (
-    <div className="absolute left-0 right-0 z-30 px-4" style={{ top: 'calc(env(safe-area-inset-top) + 60px)' }}>
+    <div className="absolute left-0 right-0 z-30 px-4" style={{ top: 'calc(var(--safe-top) + 60px)' }}>
       <motion.button type="button" layout onClick={() => setOpen(o => !o)}
         className="w-full rounded-2xl px-3 py-2 text-left"
         style={{

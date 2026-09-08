@@ -124,7 +124,7 @@ export const AppShell = () => {
               initial={{ opacity: 0, y: -60 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -60 }}
               transition={{ type: 'spring', damping: 24, stiffness: 300 }}
               style={{
-                position: 'fixed', top: 'calc(env(safe-area-inset-top) + 8px)', left: 16, right: 16,
+                position: 'fixed', top: 'calc(var(--safe-top) + 8px)', left: 16, right: 16,
                 zIndex: 99998, background: 'var(--bg-l3)', border: '1px solid var(--border-m)', borderRadius: 16,
                 padding: '12px 16px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                 display: 'flex', alignItems: 'center', gap: 12, backdropFilter: 'blur(20px)',

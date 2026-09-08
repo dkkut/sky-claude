@@ -60,7 +60,7 @@ export const BloomModule = () => {
 
       {/* Шапка */}
       <div className="shrink-0 border-b" style={{ borderColor: 'var(--border)', background: 'var(--bg-l1)' }}>
-        <div className={isMobile ? 'flex items-center justify-between px-3.5 pb-1.5' : 'flex items-center justify-between px-5 pb-2'} style={{ paddingTop: isMobile ? 'calc(env(safe-area-inset-top) + 10px)' : 'calc(env(safe-area-inset-top) + 16px)' }}>
+        <div className={isMobile ? 'flex items-center justify-between px-3.5 pb-1.5' : 'flex items-center justify-between px-5 pb-2'} style={{ paddingTop: isMobile ? 'calc(var(--safe-top) + 10px)' : 'calc(var(--safe-top) + 16px)' }}>
           <div className="flex items-center gap-2">
             <Flower2 size={16} style={{ color: "#f472b6" }} />
             <h2 className="text-base font-bold" style={{ color: 'var(--t1)' }}>Bloom</h2>

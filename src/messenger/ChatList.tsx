@@ -525,7 +525,7 @@ export const ChatList = () => {
       style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}>
 
       {/* Top bar */}
-      <div className="flex items-center gap-1.5 px-4 pb-3 shrink-0" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 16px)' }}>
+      <div className="flex items-center gap-1.5 px-4 pb-3 shrink-0" style={{ paddingTop: 'calc(var(--safe-top) + 16px)' }}>
         <AnimatePresence mode="wait">
           {showSearch ? (
             <motion.div key="s" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}

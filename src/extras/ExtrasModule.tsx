@@ -2601,7 +2601,7 @@ export const ExtrasModule = () => {
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header: logo + tabs + arrows */}
       <div className="relative z-10 flex items-center gap-1.5 border-b px-2 shrink-0"
-        style={{ borderColor:'var(--border)', background:'var(--bg)', paddingTop: 'calc(env(safe-area-inset-top) + 8px)', paddingBottom: 8 }}>
+        style={{ borderColor:'var(--border)', background:'var(--bg)', paddingTop: 'calc(var(--safe-top) + 8px)', paddingBottom: 8 }}>
 
         {/* Logo */}
         <motion.div

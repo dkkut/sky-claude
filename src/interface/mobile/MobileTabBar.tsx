@@ -16,7 +16,7 @@ export const MobileTabBar = ({ onMore }: { onMore: () => void }) => {
   const { activeModule, setActiveModule } = useModuleStore();
 
   return (
-    <div className="shrink-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)', background: 'rgba(10,10,15,0.82)', backdropFilter: 'blur(24px) saturate(180%)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+    <div className="shrink-0" style={{ paddingBottom: 'var(--safe-bottom)', background: 'rgba(10,10,15,0.82)', backdropFilter: 'blur(24px) saturate(180%)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
       <div className="flex items-center justify-around px-1 pt-1.5 pb-1">
         {PRIMARY.map(({ key, label, icon: Icon }) => {
           const active = activeModule === key;

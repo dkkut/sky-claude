@@ -59,7 +59,7 @@ export const LegalNotice = ({ onDone }: { onDone: () => void }) => {
           initial={{ y: 140, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 260, damping: 26 }}
           className="fixed inset-x-0 bottom-0 z-[2500] px-3 pb-3"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+          style={{ paddingBottom: 'calc(var(--safe-bottom) + 12px)' }}>
           <div className="mx-auto max-w-md rounded-3xl p-4"
             style={{
               background: 'var(--bg-l1)',

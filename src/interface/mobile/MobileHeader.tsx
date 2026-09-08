@@ -22,7 +22,7 @@ export const MobileHeader = () => {
 
   return (
     <div className="flex shrink-0 items-center justify-between px-4 pb-2"
-      style={{ paddingTop: 'calc(env(safe-area-inset-top) + 10px)' }}>
+      style={{ paddingTop: 'calc(var(--safe-top) + 10px)' }}>
       <h1 className="text-[20px] font-black tracking-tight" style={{ color: 'var(--t1)' }}>{TITLES[activeModule] ?? 'Sky'}</h1>
       <div className="flex items-center gap-2">
         <button type="button" onClick={() => { haptic('light'); setShowRegion(true); }}

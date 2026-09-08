@@ -62,7 +62,7 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
           transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           className="fixed inset-0 z-[95] flex flex-col overflow-hidden">
 
-          <div className="flex shrink-0 items-center justify-between px-5" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 10px)' }}>
+          <div className="flex shrink-0 items-center justify-between px-5" style={{ paddingTop: 'calc(var(--safe-top) + 10px)' }}>
             <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }}>
               <ChevronDown size={18} className="text-white"/>
             </button>
@@ -133,7 +133,7 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
             </button>
           </div>
 
-          <div className="flex shrink-0 justify-center pb-6" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 20px)' }}>
+          <div className="flex shrink-0 justify-center pb-6" style={{ paddingBottom: 'calc(var(--safe-bottom) + 20px)' }}>
             <button type="button" onClick={() => setShowLyrics(v => !v)}
               className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-bold"
               style={{ background: showLyrics ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)', color: '#fff' }}>

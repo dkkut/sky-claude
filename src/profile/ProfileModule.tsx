@@ -731,7 +731,7 @@ export const ProfileModule = () => {
     <div className="flex h-full flex-col overflow-hidden sm:flex-row">
       {/* Mobile top strip: user row + horizontal scrollable section pills */}
       <div className="flex shrink-0 flex-col border-b sm:hidden" style={{ borderColor: 'var(--border)' }}>
-        <div className="flex items-center gap-2.5 px-4 pb-3" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 14px)' }}>
+        <div className="flex items-center gap-2.5 px-4 pb-3" style={{ paddingTop: 'calc(var(--safe-top) + 14px)' }}>
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
             style={{background: `linear-gradient(135deg,${['#2CA5E0','#E84393','#FF7043','#7E57C2'][(me.name.charCodeAt(0)||0)%4]},${['#1a85c4','#c4276e','#d45a30','#6340a8'][(me.name.charCodeAt(0)||0)%4]})`}}>
             {me.name.split(' ').map((w:string)=>w[0]).join('').slice(0,2).toUpperCase()}

@@ -1291,7 +1291,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
 
       {/* -- Header --------------------------------------------------- */}
       <div className="shrink-0 px-2 sm:px-4 pt-2 sm:pt-3"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top) + 8px)' }}>
+        style={{ paddingTop: 'calc(var(--safe-top) + 8px)' }}>
         <header className="flex items-center gap-2">
           {isMobile && onBack && (
             <button type="button" onClick={onBack}
@@ -1504,7 +1504,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
             className="absolute inset-y-0 right-0 z-20 flex flex-col border-l overflow-hidden w-full sm:w-[320px]"
             style={{ background: '#121215', borderColor: 'rgba(255,255,255,0.05)' }}>
             <div className="flex items-center gap-2 border-b shrink-0"
-              style={{ borderColor: theme.border, paddingLeft: 16, paddingRight: 16, paddingBottom: 12, paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
+              style={{ borderColor: theme.border, paddingLeft: 16, paddingRight: 16, paddingBottom: 12, paddingTop: 'calc(var(--safe-top) + 12px)' }}>
               <p className="flex-1 font-semibold" style={{ color: theme.otherText }}>Отложенные сообщения</p>
               <button type="button" onClick={() => setShowScheduled(false)} style={{ color: 'var(--t2)' }}><X size={17} /></button>
             </div>
@@ -1549,7 +1549,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
             className="absolute inset-y-0 right-0 z-30 flex flex-col border-l overflow-hidden w-full sm:w-[380px]"
             style={{ background: '#121215', borderColor: 'rgba(255,255,255,0.05)' }}>
             <div className="flex items-center gap-2 border-b shrink-0"
-              style={{ borderColor: theme.border, paddingLeft: 16, paddingRight: 16, paddingBottom: 12, paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
+              style={{ borderColor: theme.border, paddingLeft: 16, paddingRight: 16, paddingBottom: 12, paddingTop: 'calc(var(--safe-top) + 12px)' }}>
               <MessagesSquare size={16} style={{ color: theme.accent }} />
               <p className="flex-1 font-semibold" style={{ color: theme.otherText }}>Ветка обсуждения</p>
               <button type="button" onClick={() => setThreadRootId(null)} style={{ color: 'var(--t2)' }}><X size={17} /></button>
@@ -1610,7 +1610,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
             className="absolute inset-y-0 right-0 z-20 flex flex-col border-l overflow-hidden w-full sm:w-[280px]"
             style={{ background: '#121215', borderColor: 'rgba(255,255,255,0.05)' }}>
             <div className="flex items-center gap-2 border-b shrink-0"
-              style={{ borderColor: theme.border, paddingLeft: 16, paddingRight: 16, paddingBottom: 12, paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
+              style={{ borderColor: theme.border, paddingLeft: 16, paddingRight: 16, paddingBottom: 12, paddingTop: 'calc(var(--safe-top) + 12px)' }}>
               <p className="flex-1 font-semibold" style={{ color: theme.otherText }}>Информация</p>
               <button type="button" onClick={() => setShowInfo(false)} style={{ color: 'var(--t2)' }}><X size={17} /></button>
             </div>

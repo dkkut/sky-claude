@@ -276,7 +276,7 @@ export const BotChatOverlay = ({ bot, onClose }: { bot: any, onClose: ()=>void }
       <motion.div initial={{opacity:0,x:isMobile?0:20,y:isMobile?20:0,scale:isMobile?1:0.95}} animate={{opacity:1,x:0,y:0,scale:1}} exit={{opacity:0,x:isMobile?0:20,y:isMobile?20:0}}
         className={`pointer-events-auto flex flex-col overflow-hidden shadow-2xl ${isMobile ? 'w-full h-full rounded-none' : 'rounded-2xl'}`}
         style={isMobile
-          ? {background:'#0f0f18',paddingTop:'env(safe-area-inset-top)',paddingBottom:'env(safe-area-inset-bottom)'}
+          ? {background:'#0f0f18',paddingTop:'var(--safe-top)',paddingBottom:'var(--safe-bottom)'}
           : {width:360,height:520,background:'#0f0f18',border:'1px solid rgba(255,255,255,0.1)',
              margin:'0 16px 80px 0',boxShadow:'0 20px 60px rgba(0,0,0,0.8)'}}>
         {/* Header */}
