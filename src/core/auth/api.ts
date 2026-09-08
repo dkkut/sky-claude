@@ -77,6 +77,7 @@ const ERRORS: Record<string, string> = {
   invalid_username:      'Ник: 3–32 символа, латиница, цифры и _',
   invalid_name:          'Имя: от 2 до 64 символов',
   username_taken:        'Такой ник уже занят',
+  legal_not_accepted:    'Чтобы завести Sky ID, нужно принять документы',
   email_taken:           'Эта почта уже привязана к другому Sky ID',
   email_not_verified:    'Сначала привяжите и подтвердите почту',
   phone_not_verified:    'Сначала привяжите и подтвердите телефон',
@@ -241,8 +242,14 @@ export const apiLogout = async (): Promise<void> => {
 export const apiListProfiles = () =>
   get<{ profiles: ServerProfile[]; activeProfileId: string | null; maxProfiles: number }>('/api/skyid/profiles');
 
-export const apiCreateProfile = (p: { name: string; username: string; avatar?: string }) =>
-  post<{ profile: ServerProfile; profiles: ServerProfile[] }>('/api/skyid/profiles', p);
+/**
+ * Создание профиля. Для первого профиля Sky ID сервер требует
+ * `acceptLegal`: первый профиль — это и есть регистрация, и согласие с
+ * документами записывается именно там, вместе с их редакцией.
+ */
+export const apiCreateProfile = (
+  p: { name: string; username: string; avatar?: string; acceptLegal?: boolean },
+) => post<{ profile: ServerProfile; profiles: ServerProfile[] }>('/api/skyid/profiles', p);
 
 /**
  * Выбор профиля. Sky ID при этом остаётся авторизованным — меняется

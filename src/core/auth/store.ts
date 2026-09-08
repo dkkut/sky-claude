@@ -124,7 +124,7 @@ interface AuthState {
 
   /** Открыть профиль. Защищённому нужен код из приложения. */
   selectProfile:(profileId:string,code?:string)=>Promise<{ok:boolean;reason?:string;needsCode?:boolean}>;
-  createProfile:(p:{name:string;username:string})=>Promise<{ok:boolean;reason?:string}>;
+  createProfile:(p:{name:string;username:string;acceptLegal?:boolean})=>Promise<{ok:boolean;reason?:string}>;
   /** Вернуться к меню профилей, не выходя из Sky ID. */
   switchProfile:()=>void;
   /** Перечитать состояние входа с сервера. Возвращает, удалось ли. */
@@ -409,8 +409,9 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     return{ok:true};
   },
 
-  createProfile:async({name,username})=>{
-    const res=await apiCreateProfile({name:name.trim(),username:username.trim().toLowerCase().replace(/^@/,'')});
+  createProfile:async({name,username,acceptLegal})=>{
+    const res=await apiCreateProfile({name:name.trim(),username:username.trim().toLowerCase().replace(/^@/,''),
+      acceptLegal});
     if(!res.ok)return{ok:false,reason:res.reason};
     // Только что созданный профиль сразу открываем: защиты на нём ещё
     // нет, а лишний экран выбора после создания только мешает.

@@ -12,6 +12,7 @@ import { sessionStore } from './../sessions.mjs';
 import { json, parseBody, requireSkyId, requireProfile } from './../http.mjs';
 import { issueCode, verifyCode } from './../verification.mjs';
 import { wallet } from './../wallet.mjs';
+import { recordAcceptance, LEGAL_REVISION } from './../legal.mjs';
 
 import {
   listProfiles, createProfile, updateProfile, getProfileOfSkyId,
@@ -87,6 +88,13 @@ export const skyIdRoutes = async (req, res, url) => {
     const s = await requireSkyId(req, res); if (!s) return true;
     const body = await parseBody(req);
 
+    // Первый профиль — это и есть регистрация. Дальше согласие уже
+    // записано, и спрашивать его на втором профиле незачем.
+    const existing = await listProfiles(s.skyId);
+    if (existing.length === 0 && body.acceptLegal !== true) {
+      return json(res, 400, { error: 'legal_not_accepted' });
+    }
+
     const result = await createProfile(s.skyId, {
       name:     sanitizeInput(body.name ?? ''),
       username: sanitizeInput(body.username ?? ''),
@@ -96,6 +104,10 @@ export const skyIdRoutes = async (req, res, url) => {
       return json(res, 409, { error: 'profile_limit_reached', maxProfiles: MAX_PROFILES });
     }
     if (result.error) return json(res, 400, { error: result.error });
+
+    // Записываем после того, как профиль создан: иначе согласие
+    // осталось бы от регистрации, которая не состоялась.
+    if (existing.length === 0) await recordAcceptance(s.skyId, LEGAL_REVISION);
 
     return json(res, 201, { profile: result.profile, profiles: await listProfiles(s.skyId) });
   }

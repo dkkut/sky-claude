@@ -15,6 +15,7 @@ import {
   ArrowLeft, ChevronRight, Crown, LogOut, Mail, Plus, ShieldCheck, Smartphone, X,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
+import { LegalCheckbox } from '@/info/LegalNotice';
 import type { ServerProfile } from '@/core/auth/api';
 
 /* ── мелочи оформления ─────────────────────────────────────────── */
@@ -618,14 +619,18 @@ const CreateProfileStep = ({
   const [username, setUsername] = useState('');
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
+  // Первый профиль — это регистрация Sky ID, и согласие спрашивается
+  // здесь. У второго профиля согласие уже записано, спрашивать нечего.
+  const [accepted, setAccepted] = useState(false);
 
   const cleanUser = useMemo(() => username.trim().toLowerCase().replace(/^@/, ''), [username]);
-  const ready = name.trim().length >= 2 && /^[a-z0-9_]{3,32}$/.test(cleanUser);
+  const ready = name.trim().length >= 2 && /^[a-z0-9_]{3,32}$/.test(cleanUser)
+    && (!first || accepted);
 
   const go = async () => {
     if (busy || !ready) return;
     setErr(undefined); setBusy(true);
-    const res = await createProfile({ name, username: cleanUser });
+    const res = await createProfile({ name, username: cleanUser, acceptLegal: first ? accepted : undefined });
     if (!res.ok) setErr(res.reason);
     setBusy(false);
   };
@@ -657,6 +662,7 @@ const CreateProfileStep = ({
         <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
           Ник: 3–32 символа, латиница, цифры и подчёркивание.
         </p>
+        {first && <LegalCheckbox checked={accepted} onChange={setAccepted} />}
         <ErrorLine text={err} />
         <button
           className="sky-btn-primary w-full" style={{ height: 46 }}

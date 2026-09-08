@@ -8,6 +8,7 @@ import { OfflineMode }   from './offline/OfflineMode';
 import { BlockedScreen } from './moderation/BlockedScreen';
 import { apiSupportStatus, type Restrictions } from './moderation/supportApi';
 import { ErrorBoundary } from './app/ErrorBoundary';
+import { LegalNotice, legalNoticeSeen } from './info/LegalNotice';
 import { useAuthStore }  from './core/auth/store';
 import { connectSocket, disconnectSocket } from './messenger/socket';
 import { reloadMessengerForUser } from './messenger/store';
@@ -301,6 +302,7 @@ const Root = () => {
   // Закрытая бета: сервер отказывает всему API, пока у браузера нет
   // пропуска. Замечаем такой отказ и показываем экран с полем для ключа.
   const [betaLocked, setBetaLocked] = useState(false);
+  const [legalOpen, setLegalOpen] = useState(() => !legalNoticeSeen());
   useEffect(() => {
     setBetaRequiredHandler(() => setBetaLocked(true));
     return () => setBetaRequiredHandler(null);
@@ -349,12 +351,32 @@ const Root = () => {
 
   if (!ready || !sessionChecked) return <Splash offline={offline} />;
 
+  // Окно о документах всплывает поверх любого экрана до входа — беты,
+  // входа, выбора профиля: согласие относится не к экрану, а к
+  // пользованию сервисом. Вошедшего им не дёргаем: у него согласие уже
+  // записано на сервере, при создании профиля.
+  //
+  // Экран под окном получает нижний отступ, пока окно висит: иначе на
+  // невысоком телефоне оно накроет ту самую кнопку, ради которой человек
+  // сюда и пришёл.
+  const showLegal = !isAuthenticated && legalOpen;
+  const underLegal = (screen: React.ReactNode) => (
+    <div style={{
+      height: '100%', boxSizing: 'border-box',
+      paddingBottom: showLegal ? 168 : 0,
+      transition: 'padding-bottom 220ms ease',
+    }}>
+      {screen}
+      {showLegal && <LegalNotice onDone={() => setLegalOpen(false)} />}
+    </div>
+  );
+
   if (betaLocked) {
-    return (
+    return underLegal(
       <BetaGate onUnlocked={() => {
         setBetaLocked(false);
         void useAuthStore.getState().restoreSession();
-      }} />
+      }} />,
     );
   }
 
@@ -371,7 +393,7 @@ const Root = () => {
 
   return isAuthenticated
     ? <AppShell key={currentUserId ?? 'app'} />
-    : <AuthScreen />;
+    : underLegal(<AuthScreen />);
 };
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, ScrollText, FileText, ShieldCheck,
-  Receipt, Tag, Building2, Loader2,
+  Receipt, Tag, Building2, Loader2, X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Markdown } from './markdown';
@@ -35,7 +35,11 @@ const DOCS: Doc[] = [
   { key: 'contacts', title: 'Контакты и реквизиты',         sub: 'С кем вы имеете дело',           icon: Building2 },
 ];
 
-export const LegalDocs = () => {
+/**
+ * `onClose` появляется, когда документы открыты поверх чего-то — до
+ * входа, например. Внутри вкладки профиля закрывать нечего.
+ */
+export const LegalDocs = ({ onClose }: { onClose?: () => void }) => {
   const [open, setOpen] = useState<Doc | null>(null);
   const [text, setText] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -69,6 +73,12 @@ export const LegalDocs = () => {
         <p className="flex-1 truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}>
           {open ? open.title : 'Информация'}
         </p>
+        {onClose && (
+          <button type="button" onClick={onClose} aria-label="Закрыть"
+            className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: 'var(--bg-l2)' }}>
+            <X size={16} style={{ color: 'var(--t2)' }} />
+          </button>
+        )}
       </div>
 
       <AnimatePresence mode="wait">
