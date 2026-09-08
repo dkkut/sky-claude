@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Heart, Music2, ListMusic, Mic2, Sparkles, Disc3, Play, Search, ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Heart, Music2, ListMusic, Mic2, Sparkles, Disc3, Play, Search, ChevronRight, X } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { getG } from '@/music/utils';
 import { loadHistory } from '@/music/utils';
+import { SkySphere } from '@/music/SkySphere';
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -50,6 +51,81 @@ const TrackTile = ({ t, onPlay, active, playing }: { t: Track; onPlay: () => voi
     </motion.button>
   );
 };
+
+/**
+ * Подборка «Мой поток».
+ *
+ * Открывается нажатием на карточку: человек видит, из чего состоит
+ * поток, и может начать с любого места. Плеер при этом остаётся тем же
+ * самым — отсюда вызывается ровно тот же onPlay, что и из остальных
+ * списков.
+ */
+const WaveSheet = ({ pool, c1, c2, playing, activeId, onPlay, onClose }: {
+  pool: Track[]; c1: string; c2: string; playing: boolean; activeId: string | null;
+  onPlay: (t: Track) => void; onClose: () => void;
+}) => (
+  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    className="absolute inset-0 z-40 flex flex-col" style={{ background: '#0a0a0f' }}>
+    <div className="relative shrink-0 overflow-hidden" style={{ height: 208 }}>
+      <div className="absolute inset-0" style={{ zIndex: 0 }}>
+        <SkySphere color1={c1} color2={c2} active={playing}/>
+      </div>
+      <div className="absolute inset-0" style={{ zIndex: 1,
+        background: 'linear-gradient(to top, #0a0a0f 0%, rgba(10,10,15,0.35) 50%, transparent 80%)' }}/>
+      <button type="button" onClick={onClose} aria-label="Закрыть"
+        className="absolute right-4 grid h-9 w-9 place-items-center rounded-full"
+        style={{ top: 16, zIndex: 2, background: 'rgba(0,0,0,0.45)' }}>
+        <X size={17} color="#fff"/>
+      </button>
+      <div className="absolute bottom-4 left-5 right-5" style={{ zIndex: 2 }}>
+        <p className="text-[28px] font-extrabold text-white"
+          style={{ letterSpacing: '-0.03em', textShadow: '0 2px 18px rgba(0,0,0,0.55)' }}>Мой поток</p>
+        <p className="text-[12.5px] mt-0.5" style={{ color: 'rgba(255,255,255,0.72)' }}>
+          {pool.length} {pool.length === 1 ? 'трек' : pool.length < 5 ? 'трека' : 'треков'} · обновляется каждый раз
+        </p>
+      </div>
+    </div>
+
+    <div className="shrink-0 px-5 pb-3">
+      <button type="button" onClick={() => pool[0] && onPlay(pool[0])}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-bold"
+        style={{ background: '#fff', color: '#0a0a0f' }}>
+        <Play size={16} fill="#0a0a0f" color="#0a0a0f"/> Слушать поток
+      </button>
+    </div>
+
+    <div className="flex-1 overflow-y-auto px-2 pb-6" style={{ scrollbarWidth: 'none' }}>
+      {pool.length === 0 && (
+        <p className="py-10 text-center text-[13px]" style={{ color: '#7d818c' }}>
+          Пока нечего слушать
+        </p>
+      )}
+      {pool.map((t, i) => {
+        const active = activeId === t.id;
+        const [g1, g2] = getG(t.id);
+        return (
+          <button key={t.id} type="button" onClick={() => onPlay(t)}
+            className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left transition-colors hover:bg-white/[0.04]">
+            <span className="w-5 shrink-0 text-center text-[12px] tabular-nums"
+              style={{ color: active ? '#fff' : '#5c606b' }}>{i + 1}</span>
+            <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl"
+              style={{ background: t.coverUrl ? undefined : `linear-gradient(150deg,${g1},${g2})` }}>
+              {t.coverUrl
+                ? <img src={t.coverUrl} alt="" className="h-full w-full object-cover"/>
+                : <Music2 size={17} color="rgba(255,255,255,0.32)"/>}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13.5px] font-semibold"
+                style={{ color: active ? '#fff' : '#f0f1f4' }}>{t.title}</span>
+              <span className="block truncate text-[12px]" style={{ color: '#7d818c' }}>{t.artist}</span>
+            </span>
+            {active && playing && <Sparkles size={14} style={{ color: '#8b7dff' }}/>}
+          </button>
+        );
+      })}
+    </div>
+  </motion.div>
+);
 
 const Section = ({ title, icon: Icon, index, children, empty }: {
   title: string; icon: React.FC<any>; index: number; children?: React.ReactNode; empty?: string;
@@ -115,12 +191,14 @@ export const SkyMusicHome = ({
     return Object.entries(map).filter(([,ts]) => ts.length >= 1).slice(0, 10);
   }, [pub]);
 
+  const [waveOpen, setWaveOpen] = useState(false);
   const wavePool = useMemo(() => [...pub].sort(() => Math.random() - 0.5), [pub]);
   const startWave = () => { if (wavePool[0]) onPlay(wavePool[0], wavePool); };
   const [c1, c2] = wavePool[0] ? getG(wavePool[0].id) : ['#6a3de8', '#2563eb'];
 
   return (
-    <div className="sky-music-scope h-full overflow-y-auto pb-8" style={{ scrollbarWidth: 'none', background: '#0a0a0f' }}>
+    <div className="sky-music-scope relative h-full" style={{ background: '#0a0a0f' }}>
+      <div className="h-full overflow-y-auto pb-8" style={{ scrollbarWidth: 'none' }}>
       {/* Top bar */}
       <div className="flex items-center justify-between px-5 pt-5 pb-1">
         <motion.p initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
@@ -132,32 +210,52 @@ export const SkyMusicHome = ({
         </div>
       </div>
 
-      {/* "Моя волна" — большая градиентная карточка вместо 3D-сферы:
-          тот же премиальный вид, но лёгкий CSS без WebGL. */}
+      {/* «Мой поток» — сфера вместо плоской карточки.
+          Нажатие открывает подборку, кнопка справа сразу включает поток:
+          так у карточки два разных действия и ни одно не отобрано. */}
       <div className="px-5 pt-4 pb-1">
-        <motion.button type="button" onClick={startWave} whileTap={{ scale: 0.985 }}
+        <motion.button type="button" onClick={() => setWaveOpen(true)} whileTap={{ scale: 0.985 }}
+          aria-label="Мой поток — открыть подборку"
           className="relative w-full overflow-hidden rounded-[28px] text-left"
-          style={{ height: 168 }}>
-          <div className="absolute inset-0" style={{ background: `linear-gradient(135deg,${c1} 0%,${c2} 55%,#0a0a0f 130%)` }}/>
-          <div className="absolute inset-0" style={{ background: 'radial-gradient(120% 90% at 15% 15%, rgba(255,255,255,0.16), transparent 60%)' }}/>
-          <div className="absolute -right-6 -bottom-10 h-40 w-40 rounded-full" style={{ background: 'rgba(255,255,255,0.08)', filter: 'blur(2px)' }}/>
-          <div className="relative h-full flex flex-col justify-between p-5">
+          style={{ height: 212, background: '#07070c' }}>
+          {/* Сфера — фон карточки. Ниже текста, выше подложки. */}
+          <div className="absolute inset-0" style={{ zIndex: 0 }}>
+            <SkySphere color1={c1} color2={c2} active={playing}/>
+          </div>
+          {/* Затемнение снизу: по светлой сфере текст не читался бы. */}
+          <div className="absolute inset-0" style={{ zIndex: 1,
+            background: 'linear-gradient(to top, rgba(4,4,8,0.82) 0%, rgba(4,4,8,0.25) 45%, transparent 75%)' }}/>
+
+          <div className="relative h-full flex flex-col justify-between p-5" style={{ zIndex: 2 }}>
             <div className="flex items-center gap-1.5">
               <Sparkles size={14} color="rgba(255,255,255,0.85)"/>
-              <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.85)' }}>Моя волна</span>
+              <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                Моя волна
+              </span>
             </div>
-            <div className="flex items-end justify-between">
-              <div>
-                <p className="text-[20px] font-extrabold text-white" style={{ letterSpacing: '-0.02em' }}>Бесконечный поток</p>
-                <p className="text-[12.5px] mt-0.5" style={{ color: 'rgba(255,255,255,0.7)' }}>Подобрано специально для тебя</p>
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[26px] font-extrabold text-white"
+                  style={{ letterSpacing: '-0.03em', textShadow: '0 2px 18px rgba(0,0,0,0.55)' }}>
+                  Мой поток
+                </p>
+                <p className="text-[12.5px] mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.72)' }}>
+                  Подобрано специально для тебя
+                </p>
               </div>
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.95)' }}>
+              <span role="button" tabIndex={0}
+                aria-label="Включить поток"
+                onClick={e => { e.stopPropagation(); startWave(); }}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); startWave(); } }}
+                className="grid h-12 w-12 shrink-0 cursor-pointer place-items-center rounded-full"
+                style={{ background: 'rgba(255,255,255,0.95)', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
                 <Play size={19} fill="#0a0a0f" color="#0a0a0f" style={{ marginLeft: 2 }}/>
-              </div>
+              </span>
             </div>
           </div>
         </motion.button>
       </div>
+
 
       <div className="h-2"/>
 
@@ -220,6 +318,15 @@ export const SkyMusicHome = ({
       </Section>
 
       <style>{`@keyframes skyMusicEq { from { transform: scaleY(0.4); } to { transform: scaleY(1.6); } }`}</style>
+      </div>
+
+      <AnimatePresence>
+        {waveOpen && (
+          <WaveSheet pool={wavePool} c1={c1} c2={c2} playing={playing} activeId={activeId}
+            onPlay={(t) => { onPlay(t, wavePool); }}
+            onClose={() => setWaveOpen(false)}/>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
