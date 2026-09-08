@@ -18,6 +18,7 @@ import { verifyToken } from './security.mjs';
 import { sessionStore, onSessionRevoked } from './sessions.mjs';
 import { query } from './db.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
+import { getPrivacy, setPrivacy, presenceVisibleTo, presenceVisibleFrom, mayCall } from './privacy.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
@@ -210,8 +211,7 @@ const sendSnapshot = async (ws, userId) => {
   // Приватность приходит с сервера, а не берётся из памяти браузера:
   // иначе на новом устройстве галочка показывала бы не то, что на самом
   // деле настроено.
-  const { rows: priv } = await query('SELECT hide_last_seen FROM profiles WHERE id = $1', [userId]);
-  send(ws, { type: 'privacy', payload: { hideLastSeen: Boolean(priv[0]?.hide_last_seen) } });
+  send(ws, { type: 'privacy', payload: await getPrivacy(userId) });
 
   const chats = await listChats(userId);
   // Список запретов приезжает вместе с чатами: он теперь серверный, и
@@ -240,34 +240,7 @@ const sendSnapshot = async (ws, userId) => {
  * запросов на вход — и квадратичная нагрузка на базу, которой хватало,
  * чтобы положить её одним скриптом.
  */
-const visibleOnline = async (userId) => {
-  const others = [...clients.keys()].filter((id) => id !== userId);
-  if (others.length === 0) return [];
-  const { rows } = await query(
-    `SELECT DISTINCT y.user_id FROM chat_members x
-       JOIN chat_members y ON y.chat_id = x.chat_id
-       JOIN profiles p ON p.id = y.user_id
-      WHERE x.user_id = $1 AND y.user_id = ANY($2::text[])
-        AND NOT p.hide_last_seen`,
-    [userId, others],
-  );
-  return rows.map((r) => r.user_id);
-};
-
-/**
- * Скрывает ли человек своё присутствие.
- *
- * Спрашиваем базу, а не клиента: настройка защищает от других, поэтому
- * своему же браузеру верить нельзя — его можно переписать.
- */
-const hidesPresence = async (userId) => {
-  const { rows } = await query('SELECT hide_last_seen FROM profiles WHERE id = $1', [userId]);
-  return Boolean(rows[0]?.hide_last_seen);
-};
-
-/** Кому видно, что этот человек подключился или отключился. */
-const presenceAudience = async (userId) => {
-  if (await hidesPresence(userId)) return [];
+const nearbyOnline = async (userId) => {
   const others = [...clients.keys()].filter((id) => id !== userId);
   if (others.length === 0) return [];
   const { rows } = await query(
@@ -278,6 +251,20 @@ const presenceAudience = async (userId) => {
   );
   return rows.map((r) => r.user_id);
 };
+
+/**
+ * Кого этот человек видит в сети.
+ *
+ * Мало быть в общем чате: у каждого своя настройка «кто видит в сети»,
+ * и решает её сервер. Раньше настройка жила галочкой в браузере и не
+ * значила ничего.
+ */
+const visibleOnline = async (userId) =>
+  presenceVisibleFrom(userId, await nearbyOnline(userId));
+
+/** Кому видно, что этот человек подключился или отключился. */
+const presenceAudience = async (userId) =>
+  presenceVisibleTo(userId, await nearbyOnline(userId));
 
 /* ─── обработка сообщений ──────────────────────────────────────────────── */
 const handle = async (ws, session, msg) => {
@@ -379,8 +366,11 @@ const handle = async (ws, session, msg) => {
       const chat = payload?.chat;
       if (!chat?.id || !chat?.type) return;
       const created = await createChat(chat, me);
-      if (!created) {
-        send(ws, { type: 'chat-rejected', payload: { chatId: chat.id } });
+      if (!created || created.error) {
+        send(ws, {
+          type: 'chat-rejected',
+          payload: { chatId: chat.id, reason: created?.error ?? undefined },
+        });
         return;
       }
       // Каждому — его собственный вид чата: в нём есть роль, и она у
@@ -451,35 +441,24 @@ const handle = async (ws, session, msg) => {
        а не галочкой в браузере: свой клиент можно переписать. ── */
 
     case 'privacy': {
-      const wanted = payload?.hideLastSeen;
-      if (typeof wanted === 'boolean') {
-        const { rows } = await query(
-          'UPDATE profiles SET hide_last_seen = $2 WHERE id = $1 RETURNING hide_last_seen',
-          [me, wanted],
-        );
-        if (!rows[0]) return;
+      const patch = (payload && typeof payload === 'object') ? payload : {};
+      const changesPresence = patch.whoSeesOnline !== undefined;
+      const next = await setPrivacy(me, patch);
 
-        // Тем, кто видел человека в сети, надо сказать, что он ушёл —
-        // иначе кружок «в сети» останется висеть до их следующего входа.
-        // И наоборот: снял галочку — снова появился.
-        const others = [...clients.keys()].filter((id) => id !== me);
-        if (others.length > 0) {
-          const { rows: near } = await query(
-            `SELECT DISTINCT y.user_id FROM chat_members x
-               JOIN chat_members y ON y.chat_id = x.chat_id
-              WHERE x.user_id = $1 AND y.user_id = ANY($2::text[])`,
-            [me, others],
-          );
-          for (const other of near.map((r) => r.user_id)) {
-            sendTo(other, {
-              type: wanted ? 'user-offline' : 'user-online',
-              payload: { userId: me },
-            });
-          }
+      // Присутствие меняется прямо сейчас: иначе кружок «в сети» висел
+      // бы у собеседников до их следующего подключения. Считаем, кто
+      // видит человека теперь, и остальным рядом говорим, что он ушёл.
+      if (changesPresence) {
+        const near = await nearbyOnline(me);
+        const seeing = new Set(await presenceVisibleTo(me, near));
+        for (const other of near) {
+          sendTo(other, {
+            type: seeing.has(other) ? 'user-online' : 'user-offline',
+            payload: { userId: me },
+          });
         }
       }
-      const { rows: now } = await query('SELECT hide_last_seen FROM profiles WHERE id = $1', [me]);
-      send(ws, { type: 'privacy', payload: { hideLastSeen: Boolean(now[0]?.hide_last_seen) } });
+      send(ws, { type: 'privacy', payload: next });
       break;
     }
 
@@ -659,6 +638,14 @@ const handle = async (ws, session, msg) => {
         // одному лишь идентификатору можно было бы дозвониться до
         // любого. Звонящему отвечаем, чтобы он не слушал гудки.
         if (type === 'call-offer') send(ws, { type: 'call-unavailable', from: to, callId });
+        return;
+      }
+
+      // Настройка «кто может звонить» получателя. Проверяется на первом
+      // приглашении: дальше идут ответ и обмен адресами уже начатого
+      // разговора, и гонять запрос на каждый кандидат ICE незачем.
+      if (type === 'call-offer' && !(await mayCall(to, me))) {
+        send(ws, { type: 'call-unavailable', from: to, callId });
         return;
       }
 

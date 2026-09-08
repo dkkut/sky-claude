@@ -82,6 +82,7 @@ export const POST_ERRORS: Record<string, string> = {
   slow_mode:         'Включён медленный режим — подождите немного',
   flood:             'Слишком много сообщений подряд',
   not_member:        'Вы больше не участник этого чата',
+  not_accepting:     'Собеседник ограничил, кто может ему писать',
 };
 
 interface S {

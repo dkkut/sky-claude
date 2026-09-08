@@ -10,6 +10,7 @@ import {
 import { useAuthStore } from '@/core/auth/store';
 import { ConfirmExit } from '@/auth/AuthScreen';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
+import { usePrivacyStore } from './privacyStore';
 import { syncBloomAuthor } from '@/bloom/store';
 import { useMessengerStore } from '@/messenger/store';
 import { ConnectionPanel } from '@/proxy/ConnectionPanel';
@@ -663,7 +664,10 @@ export const ProfileModule = () => {
 
   if (!me) return <div className="p-6 text-sm" style={{color:'var(--t3)'}}>Профиль не найден</div>;
 
-  const privacy = me.privacy ?? { whoCanWrite:'all', whoSeesOnline:'all', whoCanCall:'all' };
+  // Приватность решает сервер: здесь зеркало его состояния. Раньше она
+  // лежала в профиле в localStorage и до сервера не доходила.
+  const privacy = usePrivacyStore(st => st.privacy);
+  const savePrivacy = usePrivacyStore(st => st.save);
 
   const saveEdit = () => {
     if (nameVal.trim().length >= 2) {
@@ -695,9 +699,6 @@ export const ProfileModule = () => {
     reader.onload = () => updateProfile({ [key]: reader.result as string });
     reader.readAsDataURL(f);
   };
-
-  const savePrivacy = (patch: Partial<typeof privacy>) =>
-    updateProfile({ privacy: { ...privacy, ...patch } });
 
   const saveGame = () =>
     updateProfile({ gameProfile: { nickname: gNick.trim()||me.name, rank: gRank.trim()||'Новичок', game: gGame.trim()||'Unknown', wins: me.gameProfile?.wins??0 } });
@@ -964,13 +965,21 @@ export const ProfileModule = () => {
             </div>
             <div className="rounded-xl p-4" style={{background:'var(--accent-bg)',border:'1px solid var(--accent-bg)'}}>
               <p className="text-xs" style={{color:'var(--accent)'}}>
-                Настройки применяются немедленно и сохраняются в твоём аккаунте
+                Проверяет сервер, а не приложение: настройка действует на всех
+                устройствах и её не обойти изменённым клиентом. «Контакты» — это
+                те, с кем есть общая группа или кому вы сами писали. Переписку,
+                которую вы начали сами, запрет не прерывает.
               </p>
             </div>
 
             <div className="mt-5 mb-2">
               <h3 className="font-semibold text-white">Кто видит информацию профиля</h3>
-              <p className="text-sm mt-1" style={{color:'var(--t3)'}}>Отдельно по каждому разделу</p>
+              <p className="text-sm mt-1" style={{color:'var(--t3)'}}>
+                Отдельно по каждому разделу. Сейчас сервер и так сообщает о вас
+                другим только имя и ник — эти разделы никуда не уходят с
+                устройства. Выбор сохраняется на сервере и будет действовать,
+                когда они туда переедут.
+              </p>
             </div>
             <div className="rounded-xl overflow-hidden" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
               <div className="px-2 py-1">
@@ -991,7 +1000,11 @@ export const ProfileModule = () => {
                   <div key={key}>
                     <div className="flex items-center justify-between py-3 px-2">
                       <span className="text-sm" style={{color:'var(--t1)'}}>{label}</span>
-                      <Toggle on={privacy[key] ?? true} onToggle={() => savePrivacy({ [key]: !(privacy[key] ?? true) })}/>
+                      <Toggle on={privacy.profileVisibility?.[key] ?? true}
+                        onToggle={() => savePrivacy({ profileVisibility: {
+                          ...privacy.profileVisibility,
+                          [key]: !(privacy.profileVisibility?.[key] ?? true),
+                        } })}/>
                     </div>
                     {i < arr.length - 1 && <div className="h-px mx-4" style={{background:'var(--border)'}}/>}
                   </div>

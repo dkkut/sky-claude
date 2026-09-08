@@ -16,6 +16,7 @@ import { setWireSink, type Outgoing } from '@/core/wire';
 import { bsignal, type SignalMsg } from '@/calls/webrtc';
 import { useAdminStore, ADMIN_ERRORS, POST_ERRORS } from './adminStore';
 import { useSettings } from '@/settings/store';
+import { usePrivacyStore } from '@/profile/privacyStore';
 import type { MessageItem, ChatItem, ChatType } from './types';
 
 /* ─── Приведение серверных данных к виду интерфейса ───────────────────── */
@@ -293,7 +294,10 @@ const handle = (data: any) => {
 
     /* ── Приватность профиля: решает сервер ── */
     case 'privacy':
-      useSettings.getState().applyServerPrivacy(Boolean(payload?.hideLastSeen));
+      usePrivacyStore.getState().apply(payload ?? {});
+      // «Скрыть был(а) в сети» на экране настроек — тот же самый
+      // переключатель, только короткий: «никто» против «все».
+      useSettings.getState().applyServerPrivacy(payload?.whoSeesOnline === 'nobody');
       break;
 
     /* ── Управление группой и каналом ── */
@@ -362,9 +366,14 @@ const handle = (data: any) => {
     }
 
     case 'chat-rejected':
-      // Сервер не дал создать чат (занятый id, несуществующий участник).
+      // Сервер не дал создать чат (занятый id, несуществующий участник,
+      // или собеседник ограничил, кто может ему писать).
       // Убираем оптимистично добавленный, чтобы список не врал.
       store.dropChat(payload?.chatId);
+      if (payload?.reason) {
+        useAdminStore.getState().notify(
+          POST_ERRORS[payload.reason] ?? 'Не получилось начать переписку');
+      }
       break;
 
     case 'new-message': {

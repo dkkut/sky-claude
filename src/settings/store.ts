@@ -138,8 +138,15 @@ export const useSettings = create<SettingsState>((setState, get) => {
       // «Был(а) в сети» скрывает сервер, а не браузер: здесь только
       // просьба. Придёт ответ — applyServerPrivacy запишет, как вышло
       // на самом деле.
+      // «Скрыть был(а) в сети» — короткая форма настройки «кто видит в
+      // сети»: спрятаться от всех или показаться всем. Отдельного
+      // признака на сервере нет намеренно — два переключателя одного и
+      // того же рано или поздно разошлись бы.
       if (patch.hideLastSeen !== undefined) {
-        wireSend({ type: 'privacy', payload: { hideLastSeen: patch.hideLastSeen } });
+        wireSend({
+          type: 'privacy',
+          payload: { whoSeesOnline: patch.hideLastSeen ? 'nobody' : 'all' },
+        });
       }
     },
     applyServerPrivacy: (hideLastSeen) => {

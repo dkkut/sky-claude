@@ -12,6 +12,7 @@ import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { claimAttachment, linkAttachment, dropForMessage } from './attachments.mjs';
 import { postDenial, contextFor, roleOf, permissionsOf } from './chatadmin.mjs';
+import { mayWriteTo } from './privacy.mjs';
 
 /** Потолок участников группы или канала при создании. */
 const MAX_PARTICIPANTS = 100;
@@ -332,6 +333,13 @@ export const createChat = async (chat, creatorId) => {
     if (others.some((uid) => !allowed.has(uid))) return null;
   }
 
+  // Настройка собеседника «кто может писать». Проверяется уже здесь, а
+  // не только при отправке: иначе тот, кому писать нельзя, всё равно
+  // заводил бы пустую переписку, и она появлялась бы в чужом списке.
+  if (type === 'direct' && !(await mayWriteTo(others[0], creatorId))) {
+    return { error: 'not_accepting' };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -432,6 +440,25 @@ const SERVER_OWNED = new Set([
  * Сохраняет сообщение. Автор берётся из сессии, а не из тела: иначе
  * можно было бы написать в чат от чужого имени.
  */
+/**
+ * Отказ по настройке «кто может писать» у собеседника.
+ *
+ * Настройка принадлежит получателю и проверяется на сервере: у
+ * отправителя её в браузере нет и быть не должно.
+ */
+const directWriteDenied = async (chatId, authorId) => {
+  const { rows } = await query('SELECT type FROM chats WHERE id = $1', [chatId]);
+  if (rows[0]?.type !== 'direct') return null;
+  const { rows: others } = await query(
+    'SELECT user_id FROM chat_members WHERE chat_id = $1 AND user_id <> $2',
+    [chatId, authorId],
+  );
+  for (const { user_id: peer } of others) {
+    if (!(await mayWriteTo(peer, authorId))) return 'not_accepting';
+  }
+  return null;
+};
+
 export const saveMessage = async (chatId, authorId, msg) => {
   if (!(await isMember(chatId, authorId))) return null;
   // Запрет проверяется на сервере: раньше «заблокировать» лишь прятало
@@ -444,6 +471,12 @@ export const saveMessage = async (chatId, authorId, msg) => {
   // непонятно, почему сообщение не ушло.
   const denial = await postDenial(chatId, authorId, msg?.text);
   if (denial) return { error: denial };
+
+  // Настройка получателя «кто может писать» — только для личных чатов:
+  // в группе право писать определяют её собственные правила, и они уже
+  // проверены выше.
+  const closed = await directWriteDenied(chatId, authorId);
+  if (closed) return { error: closed };
 
   const id = String(msg?.id ?? '');
   // Идентификатор произвольной формы — это мусор в первичном ключе и
