@@ -352,6 +352,11 @@ const handle = (data: any) => {
       store.applyPinned(payload?.messageId, Boolean(payload?.pinned));
       break;
 
+    case 'message-burned':
+      // Сгорело по сроку или после просмотра — у всех одинаково.
+      store.deleteMessage(payload?.messageId);
+      break;
+
     case 'poll-votes':
       store.applyPollVotes(payload?.messageId, payload?.votes ?? {});
       break;

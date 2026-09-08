@@ -85,6 +85,8 @@ interface S {
   markRead:      (chatId:string)=>void;
   /** «Пометить как новое» — решает сервер, чтобы пометка была на всех устройствах. */
   markUnread:    (chatId:string)=>void;
+  /** Одноразовое открыто получателем — просим сервер погасить. */
+  consumeOnce:   (messageId:string)=>void;
   /** Голос в опросе — считает сервер. */
   voteInPoll:    (messageId:string,optionId:string)=>void;
   applyPollVotes:(messageId:string,votes:Record<string,string[]>)=>void;
@@ -352,6 +354,11 @@ export const useMessengerStore = create<S>((set,get) => {
       // остался бы прочитанным. Показываем сразу, ответ придёт чатом.
       mut(s=>({chats:s.chats.map(c=>c.id===chatId?{...c,markedUnread:true}:c)}));
       wireSend({type:'mark-unread',payload:{chatId,value:true}});
+    },
+
+    consumeOnce:(messageId)=>{
+      if(!messageId) return;
+      wireSend({type:'consume-once',payload:{messageId}});
     },
 
     voteInPoll:(messageId,optionId)=>{

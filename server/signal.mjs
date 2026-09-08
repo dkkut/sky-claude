@@ -23,7 +23,7 @@ import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
-  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags, votePoll,
+  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags, votePoll, consumeOnce, sweepExpired,
 } from './chats.mjs';
 import {
   getSettings, updateSettings, setRole, kickMember, unbanMember, muteMember,
@@ -435,6 +435,24 @@ const handle = async (ws, session, msg) => {
       break;
     }
 
+
+    /* ── Просмотр один раз ─────────────────────────────────────────
+       Получатель открыл — сообщение гаснет у всех. Гасит сервер: раньше
+       его прятал только браузер, а сама запись лежала вечно. ── */
+
+    case 'consume-once': {
+      const result = await consumeOnce(payload?.messageId, me);
+      if (!result) return;
+      broadcast(await memberIds(result.chatId), {
+        type: 'message-burned',
+        payload: { chatId: result.chatId, messageId: result.messageId },
+      });
+      send(ws, {
+        type: 'message-burned',
+        payload: { chatId: result.chatId, messageId: result.messageId },
+      });
+      break;
+    }
 
     /* ── Голос в опросе ────────────────────────────────────────────
        Право голосовать — участие в чате, вариант проверяется по самому
@@ -944,10 +962,25 @@ export const startSignalHub = () => {
     ws.on('error', (e) => console.error('[ws]', e.message));
   });
 
+  // Просроченные гасим здесь, а не отдельным заданием: хаб знает, кому
+  // сказать, что сообщение исчезло, — иначе оно пропадало бы только
+  // после перезагрузки страницы.
+  const sweeper = setInterval(() => {
+    sweepExpired().then((burned) => {
+      for (const b of burned) {
+        memberIds(b.chatId).then((ids) => broadcast(ids, {
+          type: 'message-burned', payload: { chatId: b.chatId, messageId: b.messageId },
+        })).catch(() => { /* чат исчез — рассказывать некому */ });
+      }
+    }).catch((err) => console.error('[ws] уборка просроченных', err.message));
+  }, 5000);
+  sweeper.unref();
+
   console.log(`[ws] Hub on :${PORT}`);
 
   return {
     close: () => new Promise((resolve) => {
+      clearInterval(sweeper);
       for (const set of clients.values()) {
         for (const ws of set) ws.close(1001, 'server shutting down');
       }

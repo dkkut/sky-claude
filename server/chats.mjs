@@ -173,6 +173,9 @@ const toMessage = (row) => {
   pinnedBy: row.pinned_by ?? undefined,
   // Уникальные читатели: нужны каналам, остальным просто не мешают.
   views: row.views ?? 0,
+  // Пометки эфемерности — из колонок, а не из текста сообщения.
+  once: Boolean(row.once),
+  destroyAt: row.destroy_at ? row.destroy_at.getTime() : undefined,
   createdAt: row.created_at.toISOString(),
   // Адрес вложения собирает сервер — см. mediaUrlFor.
   mediaUrl: row.deleted ? undefined : mediaUrlFor(extra.fileId),
@@ -539,6 +542,16 @@ export const saveMessage = async (chatId, authorId, msg) => {
   const fileId = FILE_ID_RE.test(String(rest.fileId ?? '')) ? String(rest.fileId) : null;
   delete rest.fileId;
 
+  // «Просмотр один раз» и «самоуничтожение» переезжают из довеска в
+  // колонки: раньше они лежали в тексте сообщения и ничего не значили —
+  // сервер хранил такое сообщение вечно, а прятал его только браузер.
+  const once = rest.once === true;
+  const seconds = Math.trunc(Number(rest.selfDestruct ?? 0));
+  // Потолок — сутки: срок присылает клиент, и «через сто лет» это не срок.
+  const ttl = Number.isFinite(seconds) && seconds > 0
+    ? String(Math.min(seconds, 86400))
+    : null;
+
   const client = await pool.connect();
   let savedId = null;
   try {
@@ -552,11 +565,14 @@ export const saveMessage = async (chatId, authorId, msg) => {
 
     // Содержимое ложится в базу зашифрованным: дамп без ключа бесполезен.
     const { rows } = await client.query(
-      `INSERT INTO messages (id, chat_id, author_id, kind, text, payload)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO messages (id, chat_id, author_id, kind, text, payload, once, destroy_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,
+               CASE WHEN $8::int IS NULL THEN NULL
+                    ELSE now() + ($8 || ' seconds')::interval END)
        ON CONFLICT (id) DO NOTHING
        RETURNING id`,
-      [id, chatId, authorId, kind, encryptContent(text), { e: encryptContent(JSON.stringify(rest)) }],
+      [id, chatId, authorId, kind, encryptContent(text), { e: encryptContent(JSON.stringify(rest)) },
+       once, ttl],
     );
     savedId = rows[0]?.id ?? null;
     // Такой id уже занят — не пишем ничего и не отнимаем файл.
@@ -745,6 +761,55 @@ const pollVotes = async (messageId) => {
   const map = {};
   for (const r of rows) (map[r.option_id] ??= []).push(r.user_id);
   return map;
+};
+
+/**
+ * Гасит сообщение: текст и довесок стираются, вложение удаляется.
+ * Одна дорога для срока и для «просмотра один раз» — иначе одна из
+ * веток рано или поздно забыла бы про вложение.
+ */
+const burn = async (messageId) => {
+  await dropForMessage(messageId);
+  await query(
+    `UPDATE messages
+        SET deleted = TRUE, text = '', payload = '{}'::jsonb, destroy_at = NULL
+      WHERE id = $1 AND NOT deleted`,
+    [messageId],
+  );
+};
+
+/**
+ * Сообщение с «просмотром один раз» гасится, когда его открыл не автор.
+ * Возвращает чат, чтобы было кому разослать, или null.
+ */
+export const consumeOnce = async (messageId, viewerId) => {
+  const { rows } = await query(
+    `SELECT m.chat_id, m.author_id FROM messages m
+       JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $2
+      WHERE m.id = $1 AND m.once AND NOT m.deleted`,
+    [String(messageId ?? ''), viewerId],
+  );
+  const row = rows[0];
+  // Автору своё же сообщение гасить незачем: он его и написал.
+  if (!row || row.author_id === viewerId) return null;
+  await burn(String(messageId));
+  return { chatId: row.chat_id, messageId: String(messageId) };
+};
+
+/**
+ * Обход просроченных. Возвращает погашенные, чтобы хаб сказал об этом
+ * тем, у кого они открыты: иначе сообщение исчезло бы только после
+ * перезагрузки страницы.
+ */
+export const sweepExpired = async (limit = 200) => {
+  const { rows } = await query(
+    `SELECT id, chat_id FROM messages
+      WHERE destroy_at IS NOT NULL AND destroy_at <= now() AND NOT deleted
+      LIMIT $1`,
+    [limit],
+  );
+  for (const r of rows) await burn(r.id);
+  return rows.map((r) => ({ messageId: r.id, chatId: r.chat_id }));
 };
 
 /** Какие пометки участник вправе менять у себя. */

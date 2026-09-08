@@ -29,13 +29,15 @@ export const SpoilerText = ({ text, color }: { text: string; color: string }) =>
 
 /* === ONCE VIEW TEXT/PHOTO ================================== */
 export const OnceViewText = ({ msg, fromMe, color }: { msg: MessageItem; fromMe: boolean; color: string }) => {
-  const { deleteMessage } = useMessengerStore();
+  const consumeOnce = useMessengerStore(s => s.consumeOnce);
   const [viewed, setViewed] = useState(false);
 
   const open = () => {
     setViewed(true);
-    // Auto-delete after 5s for non-sender
-    if (!fromMe) setTimeout(() => deleteMessage(msg.id), 5000);
+    // Гасит сервер, а не эта вкладка: раньше сообщение просто убиралось
+    // с экрана получателя, а запись на сервере оставалась — и
+    // возвращалась при перезагрузке.
+    if (!fromMe) setTimeout(() => consumeOnce(msg.id), 5000);
   };
 
   if (viewed) return (
