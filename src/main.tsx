@@ -6,7 +6,7 @@ import { BetaGate }      from './auth/BetaGate';
 import { setBetaRequiredHandler } from './core/auth/api';
 import { OfflineMode }   from './offline/OfflineMode';
 import { BlockedScreen } from './moderation/BlockedScreen';
-import { apiRestrictions, type Restrictions } from './moderation/supportApi';
+import { apiSupportStatus, type Restrictions } from './moderation/supportApi';
 import { ErrorBoundary } from './app/ErrorBoundary';
 import { useAuthStore }  from './core/auth/store';
 import { connectSocket, disconnectSocket } from './messenger/socket';
@@ -325,7 +325,7 @@ const Root = () => {
   useEffect(() => {
     if (!isAuthenticated) { setLimits({}); return; }
     let alive = true;
-    const check = () => { void apiRestrictions().then(r => { if (alive) setLimits(r); }); };
+    const check = () => { void apiSupportStatus().then(r => { if (alive) setLimits(r.restrictions); }); };
     check();
     // Блокировку могут выдать, пока человек сидит в приложении.
     const t = setInterval(check, 60_000);

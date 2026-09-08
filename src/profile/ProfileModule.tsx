@@ -1,11 +1,11 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Camera, Edit2, Check, X, Phone, Shield, Star, Crown, Clock,
   Lock, Eye, Bell, ChevronRight, LogOut, Gamepad2, Trophy, Swords, ChevronDown,
   Settings, Moon, Globe, Volume2, Download, Palette, Info, ExternalLink, WifiOff, Wallet, Gift, EyeOff, PawPrint, Briefcase, Users,
   RotateCcw, CheckCheck, MessageSquare, Send, Fingerprint, Coffee, Timer, Pause, Tv,
-  ArrowLeftRight,
+  ArrowLeftRight, LifeBuoy, ScrollText, Inbox,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { ConfirmExit } from '@/auth/AuthScreen';
@@ -14,7 +14,6 @@ import { usePrivacyStore } from './privacyStore';
 import { syncBloomAuthor } from '@/bloom/store';
 import { useMessengerStore } from '@/messenger/store';
 import { ConnectionPanel } from '@/proxy/ConnectionPanel';
-import { FeedbackForm } from '@/feedback/Feedback';
 import { ReferralPanel } from '@/referral/Referral';
 import { useSettings, ACCENT_COLORS, THEME_MODES, FONT_SIZES, type AccentColor, type ThemeMode, type FontSize } from '@/settings/store';
 import { useBreakReminderStore, INTERVAL_OPTIONS, SNOOZE_OPTIONS } from '@/settings/breakReminderStore';
@@ -28,6 +27,10 @@ import { CustomizationSettingsTab } from '@/customization/CustomizationSettingsT
 import { loadSkinData, getActiveSkin, SKIN_RARITY_COLOR, SKIN_RARITY_LABEL, PET_SKINS } from '@/messenger/petSkins';
 import { PETS } from '@/messenger/petData';
 import { useMoney, fmt } from '@/wallet/store';
+import { SupportScreen } from '@/support/SupportScreen';
+import { AdminQueue }    from '@/support/AdminQueue';
+import { LegalDocs }     from '@/info/LegalDocs';
+import { apiSupportStatus } from '@/moderation/supportApi';
 import { SkyIDTab }    from './SkyIDTab';
 import { BusinessTab } from './BusinessTab';
 
@@ -35,7 +38,7 @@ const fmtDur = (s: number) => s < 60 ? `${s}с` : `${Math.floor(s/60)}м ${s%60}
 const fmtDate = (iso: string) => { try { return new Date(iso).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}); } catch { return iso; } };
 
 type PrivacyVal = 'all'|'contacts'|'nobody';
-type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'business'|'customization';
+type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'business'|'customization'|'support'|'info'|'support_queue';
 
 // --- Toggle row --------------------------------------------------------------
 const PrivRow = ({ label, sub, value, onChange }: { label:string; sub?:string; value:PrivacyVal; onChange:(v:PrivacyVal)=>void }) => {
@@ -311,13 +314,17 @@ const TVModeSection = () => {
   );
 };
 
-const SettingsSection = ({ logout, username }: { logout:()=>void; username:string }) => {
+const SettingsSection = ({ logout, username, onOpen, staff }: {
+  logout:()=>void; username:string;
+  onOpen:(section:Section)=>void;
+  /** Разбирает ли этот человек обращения — решает сервер. */
+  staff:boolean;
+}) => {
   const switchProfile = useAuthStore(s=>s.switchProfile);
   const [confirmExit, setConfirmExit] = useState(false);
   const { settings, set, reset } = useSettings();
   const s = settings;
 
-  const [showFeedback, setShowFeedback] = useState(false);
   const { accounts, currentUserId } = useAuthStore();
   // Подписку выдаёт сервер: цену и срок он берёт из своей таблицы.
   // Раньше эти кнопки писали признак прямо в localStorage — то есть
@@ -342,24 +349,6 @@ const SettingsSection = ({ logout, username }: { logout:()=>void; username:strin
 
   return (
     <>
-    <AnimatePresence>
-      {showFeedback && (
-        <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-          className="fixed inset-0 z-[500] flex flex-col overflow-hidden"
-          style={{background:'var(--bg)'}}>
-          <div className="flex items-center gap-3 px-4 py-3 border-b shrink-0" style={{borderColor:'var(--border)'}}>
-            <button type="button" onClick={()=>setShowFeedback(false)}
-              className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/5">
-              <X size={16} style={{color:'var(--t2)'}}/>
-            </button>
-            <p className="text-sm font-bold text-white">Обратная связь</p>
-          </div>
-          <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:'none'}}>
-            <FeedbackForm onClose={()=>setShowFeedback(false)}/>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
     <div className="flex flex-col px-4 py-4 pb-10 space-y-3" style={{ scrollbarWidth:'none' }}>
 
       {/* -- ТЕМА ------------------------------- */}
@@ -560,20 +549,27 @@ const SettingsSection = ({ logout, username }: { logout:()=>void; username:strin
         <p className="px-1 text-xs" style={{ color:'var(--amber)' }}>{subNotice}</p>
       )}
 
-      {/* -- ОБРАТНАЯ СВЯЗЬ ---------------------------------------- */}
-      <div className="rounded-2xl overflow-hidden" style={{ background:'var(--bg-l1)', border:'1px solid var(--border)' }}>
-        <button type="button" onClick={() => setShowFeedback(true)}
-          className="flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.04]">
-          <div className="grid h-9 w-9 place-items-center rounded-xl" style={{ background:'var(--accent-bg)' }}>
-            <MessageSquare size={16} style={{ color:'var(--accent)' }}/>
-          </div>
-          <div className="flex-1 text-left">
-            <p className="text-sm text-white">Обратная связь</p>
-            <p className="text-xs" style={{ color:'var(--t3)' }}>Жалоба · Предложение · Баг</p>
-          </div>
-          <ChevronRight size={14} style={{ color:'var(--t3)' }}/>
-        </button>
-      </div>
+      {/* -- ПОДДЕРЖКА И ДОКУМЕНТЫ -------------------------------- */}
+      {/* Путь «Настройки — Тех. поддержка» назван в документах дословно,
+          поэтому пункт называется так и лежит именно здесь. */}
+      <SectionBlock title="Помощь">
+        <SettingsRow icon={LifeBuoy} iconColor="var(--accent)" label="Тех. поддержка"
+          sub="Вопрос · Ошибка · Жалоба · Обжалование"
+          onClick={() => onOpen('support')}
+          right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
+        <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
+        <SettingsRow icon={ScrollText} iconColor="var(--t3)" label="Информация"
+          sub="Правила · Оферта · Политика · Контакты"
+          onClick={() => onOpen('info')}
+          right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
+        {staff && <div className="h-px mx-4" style={{ background:'var(--border)' }}/>}
+        {staff && (
+          <SettingsRow icon={Inbox} iconColor="var(--amber)" label="Очередь поддержки"
+            sub="Разбор обращений"
+            onClick={() => onOpen('support_queue')}
+            right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
+        )}
+      </SectionBlock>
 
       {/* -- О ПРИЛОЖЕНИИ ------------------------ */}
       <SectionBlock title="О приложении">
@@ -648,6 +644,14 @@ export const ProfileModule = () => {
   const isMobile = useIsMobile();
 
   const [section, setSection] = useState<Section>('main');
+  // Владелец — администратор по нику, а не по колонке в профиле,
+  // поэтому спрашиваем сервер, а не смотрим в свои же данные.
+  const [staff, setStaff] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void apiSupportStatus().then(r => { if (alive) setStaff(r.staff); });
+    return () => { alive = false; };
+  }, []);
   const [editing, setEditing] = useState(false);
   const [nameVal,     setNameVal]     = useState(me?.name ?? '');
   const [bioVal,      setBioVal]      = useState(me?.bio ?? '');
@@ -717,6 +721,10 @@ export const ProfileModule = () => {
     {key:'referral',      label:'Приглашения',          icon:Users},
     {key:'skyid',         label:'Sky ID',               icon:Fingerprint},
     {key:'business',      label:'Бизнес',               icon:Briefcase},
+    {key:'support',       label:'Тех. поддержка',       icon:LifeBuoy},
+    {key:'info',          label:'Информация',           icon:ScrollText},
+    // Очередь появляется только у того, кому её доверил сервер.
+    ...(staff ? [{key:'support_queue' as const, label:'Очередь поддержки', icon:Inbox}] : []),
   ] as const;
 
   return (
@@ -1068,7 +1076,8 @@ export const ProfileModule = () => {
         {section === 'settings' && (
           <div className="flex flex-col min-h-0 h-full overflow-hidden">
             <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:'none'}}>
-              <SettingsSection logout={logout} username={me.username}/>
+              <SettingsSection logout={logout} username={me.username}
+                onOpen={setSection} staff={staff}/>
             </div>
           </div>
         )}
@@ -1117,6 +1126,26 @@ export const ProfileModule = () => {
         {section === 'business' && (
           <div className="flex flex-col h-full overflow-hidden">
             <BusinessTab />
+          </div>
+        )}
+
+        {section === 'support' && (
+          <div className="flex flex-col h-full overflow-hidden">
+            <SupportScreen />
+          </div>
+        )}
+
+        {section === 'info' && (
+          <div className="flex flex-col h-full overflow-hidden">
+            <LegalDocs />
+          </div>
+        )}
+
+        {/* Очередь рисуется только сотруднику, но решает всё равно
+            сервер: без прав он не отдаст ни одного чужого обращения. */}
+        {section === 'support_queue' && staff && (
+          <div className="flex flex-col h-full overflow-hidden">
+            <AdminQueue />
           </div>
         )}
 

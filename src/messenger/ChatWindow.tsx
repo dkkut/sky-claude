@@ -26,7 +26,7 @@ import { SpoilerText, OnceViewText, SelfDestructTimer, PollBubble, MsgOptionsPan
 import { LiquidCursor, ThemePicker } from './LiquidCursor';
 import { useChatTheme } from './themes';
 import { useSettings } from '@/settings/store';
-import { apiRestrictions } from '@/moderation/supportApi';
+import { apiSupportStatus } from '@/moderation/supportApi';
 import { GiftModal, GiftBubble, GiftMarket } from '@/gifts/SkyGifts';
 import { PrimeGiftBubble }                  from '@/gifts/GiftPrime';
 import { GiftPrimeModal } from '@/gifts/GiftPrime';
@@ -850,8 +850,8 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const [voiceBlock, setVoiceBlock] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    const check = () => { void apiRestrictions().then(r => {
-      if (alive) setVoiceBlock(r.mutedUntil ?? null);
+    const check = () => { void apiSupportStatus().then(r => {
+      if (alive) setVoiceBlock(r.restrictions.mutedUntil ?? null);
     }); };
     check();
     const t = setInterval(check, 60_000);

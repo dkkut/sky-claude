@@ -8,7 +8,7 @@
  */
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
-import { restrictionsOf } from './../admin.mjs';
+import { restrictionsOf, isAdmin } from './../admin.mjs';
 import {
   createTicket, readTicket, listMyTickets, listQueue,
   replyToTicket, assignTicket, setTicketStatus, listAdmins,
@@ -49,8 +49,14 @@ export const supportRoutes = async (req, res, url) => {
   }
 
   // Состояние ограничений — чтобы окно блокировки знало, что показать.
+  // Здесь же признак сотрудника: владелец является администратором по
+  // нику, а не по колонке в базе, поэтому спрашивать надо сервер —
+  // из профиля, который лежит у клиента, это не видно.
   if (req.method === 'GET' && url === '/api/support/status') {
-    return json(res, 200, { restrictions: await restrictionsOf(me) });
+    return json(res, 200, {
+      restrictions: await restrictionsOf(me),
+      staff: await isAdmin(me),
+    });
   }
 
   /* ── Для тех, кто разбирает ───────────────────────────────── */

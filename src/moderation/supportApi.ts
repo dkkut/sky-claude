@@ -47,10 +47,23 @@ export interface Restrictions {
   spamUntil?: string;
 }
 
-/** Что сейчас запрещено — решает сервер, здесь только показ. */
-export const apiRestrictions = async (): Promise<Restrictions> => {
-  const r = await apiCall<{ restrictions: Restrictions }>('/api/support/status');
-  return r.ok ? (r.data?.restrictions ?? {}) : {};
+export interface SupportStatus {
+  restrictions: Restrictions;
+  /** Разбирает ли этот человек обращения. */
+  staff: boolean;
+}
+
+/**
+ * Что сейчас запрещено и кто я такой — решает сервер, здесь только
+ * показ. Признак сотрудника берётся отсюда, а не из профиля: владелец
+ * является администратором по нику, и в профиле этого не видно.
+ */
+export const apiSupportStatus = async (): Promise<SupportStatus> => {
+  const r = await apiCall<{ restrictions: Restrictions; staff?: boolean }>(
+    '/api/support/status');
+  return r.ok
+    ? { restrictions: r.data?.restrictions ?? {}, staff: Boolean(r.data?.staff) }
+    : { restrictions: {}, staff: false };
 };
 
 export const apiSupportTickets = async (): Promise<SupportTicket[] | null> => {

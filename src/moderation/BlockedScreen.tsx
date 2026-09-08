@@ -11,12 +11,15 @@
  */
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Ban, LifeBuoy, LogOut, Send, ChevronLeft, Loader2 } from 'lucide-react';
+import { Ban, LifeBuoy, LogOut, ChevronLeft } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import {
   apiSupportTickets, apiCreateTicket, apiReadTicket, apiReplyTicket,
   type SupportTicket,
 } from './supportApi';
+// Разметка обращения общая с поддержкой в профиле: два экземпляра
+// одного и того же разошлись бы при первой правке.
+import { Composer, MessageBubble, SafetyNotice, STATUS_LABEL } from '@/support/parts';
 
 /** «до 14 марта, 18:20» — срок понятными словами. */
 const untilText = (iso?: string) => {
@@ -72,6 +75,7 @@ export const BlockedScreen = ({ bannedUntil }: { bannedUntil?: string }) => {
         {view !== 'notice' ? (
           <button type="button"
             onClick={() => { setView(view === 'ticket' ? 'list' : 'notice'); setOpen(null); }}
+            aria-label="Назад"
             className="grid h-9 w-9 place-items-center rounded-xl"
             style={{ background: 'var(--bg-l2)' }}>
             <ChevronLeft size={17} />
@@ -126,6 +130,7 @@ export const BlockedScreen = ({ bannedUntil }: { bannedUntil?: string }) => {
           <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="flex flex-1 flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+              <SafetyNotice />
               {tickets.length === 0 && (
                 <p className="py-10 text-center text-sm" style={{ color: 'var(--t3)' }}>
                   Обращений пока нет
@@ -157,20 +162,7 @@ export const BlockedScreen = ({ bannedUntil }: { bannedUntil?: string }) => {
               </p>
             </div>
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-              {(open.messages ?? []).map(m => (
-                <div key={m.id} className={`flex ${m.fromStaff ? 'justify-start' : 'justify-end'}`}>
-                  <div className="max-w-[80%] rounded-2xl px-3.5 py-2.5"
-                    style={{ background: m.fromStaff ? 'var(--bg-l2)' : 'var(--accent)',
-                             color: m.fromStaff ? 'var(--t1)' : '#fff' }}>
-                    {m.fromStaff && (
-                      <p className="mb-0.5 text-[10px] font-bold" style={{ color: 'var(--accent)' }}>
-                        Поддержка
-                      </p>
-                    )}
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.body}</p>
-                  </div>
-                </div>
-              ))}
+              {(open.messages ?? []).map(m => <MessageBubble key={m.id} message={m} />)}
             </div>
             {open.status !== 'closed' ? (
               <Composer draft={draft} setDraft={setDraft} onSend={submit} busy={busy}
@@ -186,30 +178,3 @@ export const BlockedScreen = ({ bannedUntil }: { bannedUntil?: string }) => {
     </div>
   );
 };
-
-const STATUS_LABEL: Record<string, string> = {
-  open: 'Ждёт ответа поддержки',
-  in_progress: 'В работе',
-  waiting: 'Ждём вашего ответа',
-  closed: 'Закрыто',
-};
-
-const Composer = ({ draft, setDraft, onSend, busy, error, placeholder }: {
-  draft: string; setDraft: (v: string) => void; onSend: () => void;
-  busy: boolean; error: string | null; placeholder: string;
-}) => (
-  <div className="shrink-0 px-3 py-3" style={{ borderTop: '1px solid var(--border)' }}>
-    {error && <p className="mb-1.5 px-1 text-xs" style={{ color: 'var(--red)' }}>{error}</p>}
-    <div className="flex items-end gap-2">
-      <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={2}
-        placeholder={placeholder}
-        className="flex-1 resize-none rounded-2xl px-3.5 py-2.5 text-sm outline-none"
-        style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }} />
-      <button type="button" onClick={onSend} disabled={busy || !draft.trim()}
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-white disabled:opacity-40"
-        style={{ background: 'var(--accent)' }}>
-        {busy ? <Loader2 size={17} className="sky-spin" /> : <Send size={17} />}
-      </button>
-    </div>
-  </div>
-);
