@@ -55,6 +55,8 @@ const toChatItem = (raw: any, myId: string, prev?: ChatItem): ChatItem => {
     ownerId:      raw.ownerId,
     // Роль решает сервер; интерфейс по ней только рисует кнопки.
     myRole:       raw.myRole,
+    // Пометка «оставить непрочитанным» — с сервера, своя у каждого.
+    markedUnread: Boolean(raw.markedUnread),
     // Закрепление, архив и звук — настройки этого устройства, сервер о
     // них не знает и не должен их затирать при каждой синхронизации.
     pinned:   prev?.pinned,
@@ -84,8 +86,11 @@ const toMessageItem = (raw: any, myId: string): MessageItem => {
     time:      fmtTime(ts),
     timestamp: ts,
     // Статус своего сообщения знает только сервер: он видит, кто его
-    // открыл. Чужое пришло — значит доставлено.
-    status:    mine ? (raw.readByAll ? 'read' : 'sent') : 'delivered',
+    // открыл. У чужого важно другое — прочитал ли его я сам; сервер
+    // теперь это сообщает, и счётчик непрочитанного больше не воскресает
+    // после перезагрузки страницы.
+    status:    mine ? (raw.readByAll ? 'read' : 'sent')
+                    : (raw.readByMe ? 'read' : 'delivered'),
     // Локальные пометки на сервере не живут — они не должны приезжать
     // обратно как чужие.
     isScheduled: false,

@@ -116,6 +116,8 @@ const toChat = (row, viewerRole = undefined) => {
     // Роль спрашивающего: по ней интерфейс решает, что показывать. Сами
     // права всё равно проверяются на сервере при каждом действии.
     myRole: viewerRole ?? row.my_role ?? undefined,
+    // Пометка «оставить непрочитанным» — своя у каждого участника.
+    markedUnread: Boolean(row.marked_unread),
     createdAt: row.created_at.toISOString(),
   };
 };
@@ -149,6 +151,8 @@ const toMessage = (row) => {
   // на своих сообщениях. Считает сервер — у клиента нет списка чужих
   // прочтений, и раньше «прочитано» просто рисовалось по таймеру.
   readByAll: Boolean(row.read_by_all),
+  // Прочитано ли ЭТИМ человеком: из этого клиент считает непрочитанные.
+  readByMe: Boolean(row.read_by_me),
   editedAt: row.edited_at ? row.edited_at.toISOString() : undefined,
   // Закрепление — свойство сообщения для всех участников, а не пометка
   // в браузере закрепившего.
@@ -165,7 +169,7 @@ const toMessage = (row) => {
 /** Чаты пользователя вместе с участниками. */
 export const listChats = async (userId) => {
   const { rows } = await query(
-    `SELECT c.*, me.role AS my_role, ${PEOPLE_SELECT}
+    `SELECT c.*, me.role AS my_role, me.marked_unread, ${PEOPLE_SELECT}
        FROM chats c
        JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $1
       ORDER BY c.created_at DESC`,
@@ -179,7 +183,7 @@ export const listChats = async (userId) => {
 /** Один чат — с проверкой участия. Нужен, чтобы отдать его создателю. */
 export const getChat = async (chatId, userId) => {
   const { rows } = await query(
-    `SELECT c.*, me.role AS my_role, ${PEOPLE_SELECT}
+    `SELECT c.*, me.role AS my_role, me.marked_unread, ${PEOPLE_SELECT}
        FROM chats c JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $2
       WHERE c.id = $1`,
     [chatId, userId],
@@ -197,8 +201,16 @@ const MESSAGE_SELECT = `
          (SELECT count(*) FROM chat_members cm
            WHERE cm.chat_id = m.chat_id AND cm.user_id <> m.author_id)
          = (SELECT count(*) FROM message_reads mr
-             WHERE mr.message_id = m.id AND mr.user_id <> m.author_id) AS read_by_all
+             WHERE mr.message_id = m.id AND mr.user_id <> m.author_id) AS read_by_all,
+         -- Своё прочтение. Без него при каждом подключении все входящие
+         -- приходили как непрочитанные, и счётчик воскресал после
+         -- перезагрузки страницы.
+         EXISTS (SELECT 1 FROM message_reads me
+                  WHERE me.message_id = m.id AND me.user_id = VIEWERPARAM) AS read_by_me
     FROM messages m`;
+
+/** Тот же запрос, но с номером параметра под «прочитано мной». */
+const selectFor = (viewerParam) => MESSAGE_SELECT.replace('VIEWERPARAM', viewerParam);
 
 /**
  * Сообщения чата. Не участник не получает ничего.
@@ -212,18 +224,18 @@ export const listMessages = async (chatId, userId, limit = 50, before = null) =>
   if (!(await isMember(chatId, userId))) return null;
   const size = Math.min(Math.max(Number(limit) || 50, 1), 200);
 
-  const args = [chatId, size];
+  const args = [chatId, size, userId];
   let cursor = '';
   if (before) {
     // Курсор — время создания того сообщения, плюс сам id на случай
     // совпадения времени до микросекунды.
     args.push(String(before));
     cursor = `AND (m.created_at, m.id) <
-               (SELECT b.created_at, b.id FROM messages b WHERE b.id = $3 AND b.chat_id = $1)`;
+               (SELECT b.created_at, b.id FROM messages b WHERE b.id = $4 AND b.chat_id = $1)`;
   }
 
   const { rows } = await query(
-    `${MESSAGE_SELECT} WHERE m.chat_id = $1 ${cursor}
+    `${selectFor('$3')} WHERE m.chat_id = $1 ${cursor}
       ORDER BY m.created_at DESC, m.id DESC LIMIT $2`,
     args,
   );
@@ -231,8 +243,8 @@ export const listMessages = async (chatId, userId, limit = 50, before = null) =>
 };
 
 /** Одно сообщение по id — уже после того, как право на него проверено. */
-const readMessage = async (messageId) => {
-  const { rows } = await query(`${MESSAGE_SELECT} WHERE m.id = $1`, [messageId]);
+const readMessage = async (messageId, viewerId = null) => {
+  const { rows } = await query(`${selectFor('$2')} WHERE m.id = $1`, [messageId, viewerId]);
   return rows[0] ? toMessage(rows[0]) : null;
 };
 
@@ -537,7 +549,7 @@ export const saveMessage = async (chatId, authorId, msg) => {
   } finally {
     client.release();
   }
-  return readMessage(savedId);
+  return readMessage(savedId, authorId);
 };
 
 /** Правит текст. Чужие сообщения не редактируются. */
@@ -634,6 +646,11 @@ const READ_BATCH = 200;
  */
 export const markRead = async (chatId, userId) => {
   if (!(await isMember(chatId, userId))) return null;
+  // Прочитали — значит пометка «оставить непрочитанным» снимается.
+  await query(
+    'UPDATE chat_members SET marked_unread = FALSE WHERE chat_id = $1 AND user_id = $2',
+    [chatId, userId],
+  );
   const { rows } = await query(
     `INSERT INTO message_reads (message_id, user_id)
      SELECT m.id, $2 FROM messages m
@@ -647,6 +664,19 @@ export const markRead = async (chatId, userId) => {
     [chatId, userId, READ_BATCH],
   );
   return rows.map((r) => r.message_id);
+};
+
+/**
+ * «Пометить как новое» — свойство участника чата, а не сообщения:
+ * человек помечает непрочитанной всю переписку целиком. Хранится на
+ * сервере, поэтому пометка видна на всех его устройствах.
+ */
+export const setMarkedUnread = async (chatId, userId, value) => {
+  const { rowCount } = await query(
+    'UPDATE chat_members SET marked_unread = $3 WHERE chat_id = $1 AND user_id = $2',
+    [chatId, userId, Boolean(value)],
+  );
+  return rowCount > 0;
 };
 
 /* ─── Блокировки ───────────────────────────────────────────────────────── */

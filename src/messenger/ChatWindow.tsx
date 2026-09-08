@@ -836,6 +836,10 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const [threadRootId, setThreadRootId] = useState<string | null>(null);
   const [threadDraft, setThreadDraft] = useState('');
   const [showGroupManage, setShowGroupManage] = useState(false);
+  // Управление можно позвать из списка чатов удержанием — панель живёт
+  // здесь, поэтому просьба приходит через общий стор.
+  const manageFor = useAdminStore(s => s.manageFor);
+  const clearManage = useAdminStore(s => s.openManage);
   // Настройки этого устройства: Enter для отправки, «печатает…»,
   // галочки прочтения, авто-загрузка медиа.
   const appSettings = useSettings(st => st.settings);
@@ -847,6 +851,10 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     const t = setTimeout(() => clearNotice(null), 4000);
     return () => clearTimeout(t);
   }, [postNotice, clearNotice]);
+  useEffect(() => {
+    if (manageFor && manageFor === activeChatId) { setShowGroupManage(true); clearManage(null); }
+  }, [manageFor, activeChatId, clearManage]);
+
   const pinned   = useMemo(() => chatMsgs.filter(m => m.pinned && !m.deleted), [chatMsgs]);
   const loadingOlder = useMessengerStore(s => s.loadingOlder);
   const markViewed = useAdminStore(s => s.markViewed);

@@ -1,6 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Edit, X, Check, Pin, BellOff, Archive, Users, Hash, UserPlus, ChevronRight, CheckCheck, Star } from 'lucide-react';
+import { Search, Edit, X, Check, Pin, BellOff, Bell, Archive, ArchiveRestore, Users, Hash, UserPlus,
+  ChevronRight, CheckCheck, Star, Shield, Trash2, MessageSquareDot } from 'lucide-react';
 import { BannerAd } from '@/ads/AdBlocks';
 import { useMessengerStore } from './store';
 import { broadcast } from './socket';
@@ -12,6 +14,7 @@ import { activeFrame } from '@/profile/viewer/cosmetics';
 import { activeChatListStyle } from '@/customization/selectors';
 import { useGamingAccounts } from '@/gaming/accounts';
 import { usePeopleSearch } from './usePeopleSearch';
+import { useAdminStore } from './adminStore';
 
 const fmtTime = (ts: number) => {
   const d = new Date(ts), now = new Date();
@@ -240,45 +243,186 @@ const NewChatModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
-/* -- Context Menu ------------------------------------------------ */
-const CtxMenu = ({ chatId, x, y, onClose }: { chatId: string; x: number; y: number; onClose: () => void }) => {
-  const { chats, pinChat, muteChat, archiveChat, markRead } = useMessengerStore();
+/* -- Меню действий над чатом --------------------------------------
+   Открывается удержанием на телефоне и правой кнопкой на компьютере.
+   Над списком кнопок показывается сам чат: так видно, к чему они
+   относятся, — иначе в длинном списке легко промахнуться строкой.
+
+   Набор кнопок зависит от сегмента: в «Непрочитанных» первым делом
+   нужно прочитать, в «Архиве» — вернуть из архива, в личных — открыть
+   профиль или закрыть переписку, в группах — управление и выход. -- */
+
+interface ChatAction {
+  icon: any;
+  label: string;
+  fn: () => void;
+  danger?: boolean;
+}
+
+const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
+  chatId: string;
+  segment: Filter;
+  anchor: { x: number; y: number; width: number; top: number; height: number };
+  onClose: () => void;
+  onManage: (chatId: string) => void;
+}) => {
+  const { chats, pinChat, muteChat, archiveChat, markRead, markUnread, leaveChat } = useMessengerStore();
   const chat = chats.find(c => c.id === chatId);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [onClose]);
-  const items = [
-    { icon: Pin,     label: chat?.pinned   ? 'Открепить'      : 'Закрепить',        fn: () => pinChat(chatId)     },
-    { icon: BellOff, label: chat?.muted    ? 'Включить звук'  : 'Отключить звук',   fn: () => muteChat(chatId)    },
-    { icon: Check,   label: 'Прочитать',                                             fn: () => markRead(chatId)    },
-    { icon: Archive, label: chat?.archived ? 'Из архива'      : 'Архивировать',     fn: () => archiveChat(chatId) },
-  ];
-  const vw = window.innerWidth, vh = window.innerHeight;
-  return (
-    <div ref={ref}>
-      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.1 }}
-        className="fixed z-50 py-1.5 rounded-xl shadow-2xl overflow-hidden"
-        style={{ left: Math.min(x, vw - 210), top: Math.min(y, vh - 200), minWidth: 196, background: 'var(--bg-l3)', border: '1px solid var(--border-m)', boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
+  const myId = useAuthStore(st => st.currentUserId);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  if (!chat) return null;
+
+  const isDirect = chat.type === 'direct';
+  const isOwner  = chat.ownerId === myId;
+  const runsChat = ['owner', 'admin', 'moderator'].includes(chat.myRole ?? 'member');
+  const peerId   = isDirect ? chat.participants?.find(p => p !== myId) : undefined;
+
+  const act = (fn: () => void) => () => { fn(); onClose(); };
+
+  /* Общие для всех сегментов действия. */
+  const pin: ChatAction = {
+    icon: Pin, label: chat.pinned ? 'Открепить' : 'Закрепить', fn: act(() => pinChat(chatId)),
+  };
+  const sound: ChatAction = {
+    icon: chat.muted ? Bell : BellOff,
+    label: chat.muted ? 'Включить уведомления' : 'Отключить уведомления',
+    fn: act(() => muteChat(chatId)),
+  };
+  const read: ChatAction = {
+    icon: CheckCheck, label: 'Прочитать', fn: act(() => markRead(chatId)),
+  };
+  const unread: ChatAction = {
+    icon: MessageSquareDot, label: 'Пометить как новое', fn: act(() => markUnread(chatId)),
+  };
+  const toArchive: ChatAction = {
+    icon: Archive, label: 'Архивировать', fn: act(() => archiveChat(chatId)),
+  };
+  const fromArchive: ChatAction = {
+    icon: ArchiveRestore, label: 'Вернуть из архива', fn: act(() => archiveChat(chatId)),
+  };
+  const manage: ChatAction = {
+    icon: Shield,
+    label: chat.type === 'channel' ? 'Управление каналом' : 'Управление группой',
+    fn: act(() => onManage(chatId)),
+  };
+  const profile: ChatAction = {
+    icon: UserPlus, label: 'Открыть профиль', fn: act(() => { if (peerId) openProfile(peerId); }),
+  };
+  const remove: ChatAction = {
+    icon: Trash2,
+    label: isDirect ? 'Убрать переписку у себя' : isOwner ? 'Удалить чат' : 'Выйти из чата',
+    danger: true,
+    fn: () => setConfirmLeave(true),
+  };
+
+  /* Свой набор на каждый сегмент. */
+  const hasUnread = (chat.markedUnread ?? false) || segment === 'unread';
+  const items: ChatAction[] =
+      segment === 'archived' ? [fromArchive, pin, sound, remove]
+    : segment === 'unread'   ? [read, pin, sound, toArchive, remove]
+    : segment === 'direct'   ? [profile, pin, sound, hasUnread ? read : unread, toArchive, remove]
+    : segment === 'group'    ? [...(runsChat ? [manage] : []), pin, sound,
+                                hasUnread ? read : unread, toArchive, remove]
+    : [pin, sound, hasUnread ? read : unread, toArchive,
+       ...(!isDirect && runsChat ? [manage] : []), remove];
+
+  /* Размещение: меню под превью чата, а если внизу не помещается — над ним. */
+  const vw = typeof window === 'undefined' ? 380 : window.innerWidth;
+  const vh = typeof window === 'undefined' ? 700 : window.innerHeight;
+  const menuH = items.length * 46 + 16;
+  const cardW = Math.min(anchor.width || vw - 24, vw - 24);
+  const cardLeft = Math.max(12, Math.min(anchor.x, vw - cardW - 12));
+  const below = anchor.top + anchor.height + 8;
+  const fitsBelow = below + menuH < vh - 12;
+  const menuTop = fitsBelow ? below : Math.max(12, anchor.top - menuH - 8);
+  const cardTop = fitsBelow
+    ? Math.min(anchor.top, vh - menuH - anchor.height - 24)
+    : Math.max(12, menuTop + menuH + 8);
+
+  return createPortal(
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60]"
+      style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}
+      onClick={onClose} onContextMenu={e => { e.preventDefault(); onClose(); }}>
+
+      {/* Сам чат — чтобы было видно, над чем действия */}
+      <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+        className="fixed overflow-hidden rounded-2xl"
+        style={{ left: cardLeft, top: cardTop, width: cardW,
+                 background: 'var(--bg-l2)', boxShadow: '0 18px 50px rgba(0,0,0,0.6)' }}
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <TgAvatar chat={chat} size={46} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}>{chat.name}</p>
+            <p className="truncate text-xs" style={{ color: 'var(--t3)' }}>
+              {isDirect ? (chat.username ? `@${chat.username}` : 'Личная переписка')
+                        : `${chat.members ?? chat.participants?.length ?? 0} участников`}
+            </p>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Кнопки */}
+      <motion.div initial={{ scale: 0.94, opacity: 0, y: fitsBelow ? -8 : 8 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+        className="fixed overflow-hidden rounded-2xl py-1.5"
+        style={{ left: cardLeft, top: menuTop, width: Math.min(cardW, 300),
+                 background: 'var(--bg-l3)', border: '1px solid var(--border-m)',
+                 boxShadow: '0 18px 50px rgba(0,0,0,0.6)' }}
+        onClick={e => e.stopPropagation()}>
         {items.map(item => (
-          <button key={item.label} type="button" onClick={() => { item.fn(); onClose(); }}
+          <button key={item.label} type="button" onClick={item.fn}
             className="flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-white/5"
-            style={{ color: 'var(--t1)' }}>
-            <item.icon size={15} style={{ color: 'var(--t2)' }} /> {item.label}
+            style={{ color: item.danger ? 'var(--red)' : 'var(--t1)' }}>
+            <item.icon size={16} style={{ color: item.danger ? 'var(--red)' : 'var(--t2)' }} />
+            {item.label}
           </button>
         ))}
       </motion.div>
-    </div>
+
+      {/* Выход из чата спрашивается отдельно: отменить его нельзя */}
+      <AnimatePresence>
+        {confirmLeave && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.7)' }} onClick={e => { e.stopPropagation(); setConfirmLeave(false); }}>
+            <div className="w-full max-w-xs rounded-2xl p-5"
+              style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}
+              onClick={e => e.stopPropagation()}>
+              <p className="mb-1 text-sm font-semibold" style={{ color: 'var(--t1)' }}>
+                {isDirect ? 'Убрать переписку у себя?' : isOwner ? 'Удалить чат?' : 'Выйти из чата?'}
+              </p>
+              <p className="mb-4 text-xs" style={{ color: 'var(--t2)' }}>
+                {isDirect ? 'У собеседника переписка останется. Написав снова, вы её вернёте.'
+                  : isOwner ? 'Чат исчезнет у всех участников вместе с перепиской.'
+                  : 'Вернуться можно будет по приглашению.'}
+              </p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setConfirmLeave(false)}
+                  className="flex-1 rounded-xl py-2 text-sm font-semibold"
+                  style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>Отмена</button>
+                <button type="button" onClick={() => { leaveChat(chatId); setConfirmLeave(false); onClose(); }}
+                  className="flex-1 rounded-xl py-2 text-sm font-semibold text-white"
+                  style={{ background: 'var(--red)' }}>
+                  {isDirect ? 'Убрать' : isOwner ? 'Удалить' : 'Выйти'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>,
+    document.body,
   );
 };
 
 /* ===================================================================
    ChatList
 =================================================================== */
-type Filter = 'all' | 'unread' | 'direct' | 'group';
+type Filter = 'all' | 'unread' | 'direct' | 'group' | 'archived';
 
 export const ChatList = () => {
   const { chats, messages, activeChatId, setActiveChat, markRead } = useMessengerStore();
@@ -294,7 +438,22 @@ export const ChatList = () => {
   const [showNew, setShowNew]   = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
   const [filter, setFilter]     = useState<Filter>('all');
-  const [ctx, setCtx]           = useState<{ id: string; x: number; y: number } | null>(null);
+  const [ctx, setCtx] = useState<
+    { id: string; x: number; y: number; width: number; top: number; height: number } | null>(null);
+  // Удержание: на телефоне правой кнопки нет, а меню нужно.
+  const holdTimer = useRef<number | null>(null);
+  const holdFrom  = useRef<{ x: number; y: number } | null>(null);
+  const cancelHold = () => {
+    if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
+    holdFrom.current = null;
+  };
+  const openMenuFor = (el: HTMLElement, id: string) => {
+    const r = el.getBoundingClientRect();
+    setCtx({ id, x: r.left, y: r.top, width: r.width, top: r.top, height: r.height });
+    // Короткий отклик — как в системных меню удержания.
+    try { navigator.vibrate?.(12); } catch { /* не поддерживается */ }
+  };
+  useEffect(() => cancelHold, []);
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (showSearch) searchRef.current?.focus(); }, [showSearch]);
 
@@ -307,8 +466,11 @@ export const ChatList = () => {
   const unreadMap = useMemo(() => {
     const map: Record<string, number> = {};
     for (const m of messages) if (!m.fromMe && m.status !== 'read') map[m.chatId] = (map[m.chatId] ?? 0) + 1;
+    // Помеченный вручную считается непрочитанным, даже если новых
+    // сообщений в нём нет: иначе «пометить как новое» ничего не меняло бы.
+    for (const c of chats) if (c.markedUnread && !map[c.id]) map[c.id] = 1;
     return map;
-  }, [messages]);
+  }, [messages, chats]);
 
   const totalUnread = Object.values(unreadMap).reduce((s, n) => s + n, 0);
 
@@ -316,6 +478,9 @@ export const ChatList = () => {
     const q = search.toLowerCase().trim();
     return [...chats]
       .filter(c => {
+        // Архив — отдельный сегмент. Раньше архивные отсеивались из всех
+        // фильтров, а вкладки для них не было: чат исчезал навсегда.
+        if (filter === 'archived') return Boolean(c.archived);
         if (c.archived) return false;
         if (filter === 'unread')  return (unreadMap[c.id] ?? 0) > 0;
         if (filter === 'direct')  return c.type === 'direct';
@@ -337,7 +502,13 @@ export const ChatList = () => {
     [searched, currentUserId],
   );
 
-  const FILTERS: [Filter, string][] = [['all', 'Все'], ['unread', 'Непрочит.'], ['direct', 'Личные'], ['group', 'Группы']];
+  const archivedCount = chats.filter(c => c.archived).length;
+  // Вкладка архива показывается, только когда в нём что-то лежит:
+  // пустой сегмент в списке только мешает.
+  const FILTERS: [Filter, string][] = [
+    ['all', 'Все'], ['unread', 'Непрочит.'], ['direct', 'Личные'], ['group', 'Группы'],
+    ...(archivedCount > 0 ? [['archived', 'Архив'] as [Filter, string]] : []),
+  ];
 
   return (
     <aside className="flex w-full flex-col shrink-0 border-r overflow-hidden sm:w-[340px]"
@@ -470,8 +641,27 @@ export const ChatList = () => {
 
           return (
             <button key={chat.id} type="button"
-              onClick={() => { setActiveChat(chat.id); markRead(chat.id); }}
-              onContextMenu={e => { e.preventDefault(); setCtx({ id: chat.id, x: e.clientX, y: e.clientY }); }}
+              onClick={() => {
+                // После удержания палец отрывается «щелчком» — открывать
+                // при этом чат нельзя, иначе меню мигнёт и исчезнет.
+                if (ctx) return;
+                setActiveChat(chat.id); markRead(chat.id);
+              }}
+              onContextMenu={e => { e.preventDefault(); openMenuFor(e.currentTarget, chat.id); }}
+              onTouchStart={e => {
+                const t = e.touches[0];
+                holdFrom.current = { x: t.clientX, y: t.clientY };
+                const el = e.currentTarget;
+                holdTimer.current = window.setTimeout(() => openMenuFor(el, chat.id), 450);
+              }}
+              onTouchMove={e => {
+                // Палец поехал — это прокрутка, а не удержание.
+                const t = e.touches[0]; const from = holdFrom.current;
+                if (!from) return;
+                if (Math.abs(t.clientX - from.x) > 10 || Math.abs(t.clientY - from.y) > 10) cancelHold();
+              }}
+              onTouchEnd={cancelHold}
+              onTouchCancel={cancelHold}
               className="flex w-full items-center gap-3 px-4 py-3 transition-colors relative"
               style={{
                 background: active ? 'var(--accent-bg)' : (peerStyle?.background ?? 'transparent'),
@@ -542,7 +732,11 @@ export const ChatList = () => {
 
       <AnimatePresence>
         {showNew && <NewChatModal onClose={() => setShowNew(false)} />}
-        {ctx && <CtxMenu chatId={ctx.id} x={ctx.x} y={ctx.y} onClose={() => setCtx(null)} />}
+        {ctx && (
+          <ChatCtxMenu chatId={ctx.id} segment={filter} anchor={ctx}
+            onClose={() => setCtx(null)}
+            onManage={(id) => { setActiveChat(id); useAdminStore.getState().openManage(id); }} />
+        )}
         {showFavorites && <FavoritesModal onClose={() => setShowFavorites(false)} />}
     </AnimatePresence>
     </aside>

@@ -93,6 +93,11 @@ interface S {
   log:      Record<string, LogEntry[]>;
   /** Последний отказ сервера — показывается и гаснет. */
   notice:   string | null;
+  /**
+   * Просьба открыть управление чатом. Ставится из списка чатов, а
+   * панель живёт в окне чата — иначе пришлось бы держать две её копии.
+   */
+  manageFor: string | null;
 
   /* ── Команды ── */
   loadSettings: (chatId: string) => void;
@@ -120,6 +125,7 @@ interface S {
   applyRequests: (chatId: string, requests: JoinRequest[]) => void;
   applyLog:      (chatId: string, entries: LogEntry[]) => void;
   notify:        (text: string | null) => void;
+  openManage:    (chatId: string | null) => void;
 }
 
 const cmd = (chatId: string, action: string, extra: Record<string, unknown> = {}) =>
@@ -127,6 +133,7 @@ const cmd = (chatId: string, action: string, extra: Record<string, unknown> = {}
 
 export const useAdminStore = create<S>((set) => ({
   settings: {}, members: {}, invites: {}, requests: {}, log: {}, notice: null,
+  manageFor: null,
 
   loadSettings: (chatId) => cmd(chatId, 'get-settings'),
   loadMembers:  (chatId) => cmd(chatId, 'members'),
@@ -155,4 +162,5 @@ export const useAdminStore = create<S>((set) => ({
   applyRequests: (chatId, requests) => set(s => ({ requests: { ...s.requests, [chatId]: requests } })),
   applyLog:      (chatId, entries)  => set(s => ({ log:      { ...s.log,      [chatId]: entries } })),
   notify:        (text)             => set({ notice: text }),
+  openManage:    (chatId)           => set({ manageFor: chatId }),
 }));

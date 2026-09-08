@@ -17,6 +17,8 @@ export interface ChatItem {
   folder?: Exclude<ChatFolder, 'all'>;
   description?: string;
   ownerId?: string;
+  /** Помечен непрочитанным вручную — приходит с сервера. */
+  markedUnread?: boolean;
   /** Роль спрашивающего в этом чате — приходит с сервера. */
   myRole?: 'owner' | 'admin' | 'moderator' | 'helper' | 'member';
 }

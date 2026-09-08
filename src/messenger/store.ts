@@ -83,6 +83,8 @@ interface S {
   react:         (msgId:string,emoji:string)=>void;
   forward:       (id:string)=>MessageItem|null;
   markRead:      (chatId:string)=>void;
+  /** «Пометить как новое» — решает сервер, чтобы пометка была на всех устройствах. */
+  markUnread:    (chatId:string)=>void;
   startDM:       (person:Person)=>ChatItem|null;
   createChat:    (p:{name:string;type:'group'|'channel';description?:string;memberIds?:string[]})=>string;
   addParticipant:(chatId:string,userId:string,userName:string)=>void;
@@ -319,7 +321,18 @@ export const useMessengerStore = create<S>((set,get) => {
         m.chatId===chatId&&!m.fromMe&&m.status!=='read'?{...m,status:'read'}:m
       )}));
       // Сервер считает галочки у отправителя — сообщаем ему о прочтении.
-      if(has) wireSend({type:'read-messages',payload:{chatId}});
+      // Он же снимает пометку «оставить непрочитанным».
+      const marked = get().chats.find(c=>c.id===chatId)?.markedUnread;
+      if(marked) mut(s=>({chats:s.chats.map(c=>c.id===chatId?{...c,markedUnread:false}:c)}));
+      if(has||marked) wireSend({type:'read-messages',payload:{chatId}});
+    },
+
+    markUnread:chatId=>{
+      if(!chatId) return;
+      // Пометка живёт на сервере: иначе на втором устройстве чат так и
+      // остался бы прочитанным. Показываем сразу, ответ придёт чатом.
+      mut(s=>({chats:s.chats.map(c=>c.id===chatId?{...c,markedUnread:true}:c)}));
+      wireSend({type:'mark-unread',payload:{chatId,value:true}});
     },
 
     /**

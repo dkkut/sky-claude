@@ -23,7 +23,7 @@ import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
-  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat,
+  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread,
 } from './chats.mjs';
 import {
   getSettings, updateSettings, setRole, kickMember, unbanMember, muteMember,
@@ -435,6 +435,21 @@ const handle = async (ws, session, msg) => {
       break;
     }
 
+
+    /* ── «Пометить как новое» ──────────────────────────────────────
+       Пометка своя у каждого участника и живёт на сервере, поэтому
+       видна на всех его устройствах. ── */
+
+    case 'mark-unread': {
+      const chatId = payload?.chatId;
+      if (!chatId) return;
+      const ok = await setMarkedUnread(chatId, me, payload?.value !== false);
+      if (!ok) return;
+      // Свой вид чата — на все свои устройства: пометка их касается.
+      const view = await getChat(chatId, me);
+      if (view) sendTo(me, { type: 'chat-created', payload: { chat: view } });
+      break;
+    }
 
     /* ── Приватность профиля ───────────────────────────────────────
        Настройка защищает человека от других, поэтому живёт на сервере,
