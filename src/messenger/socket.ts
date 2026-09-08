@@ -15,6 +15,7 @@ import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
 import { setWireSink, type Outgoing } from '@/core/wire';
 import { bsignal, type SignalMsg } from '@/calls/webrtc';
 import { useAdminStore, ADMIN_ERRORS, POST_ERRORS } from './adminStore';
+import { useSettings } from '@/settings/store';
 import type { MessageItem, ChatItem, ChatType } from './types';
 
 /* ─── Приведение серверных данных к виду интерфейса ───────────────────── */
@@ -288,6 +289,11 @@ const handle = (data: any) => {
       // Чат распустили, или из него вышли мы сами. У остальных
       // участников чат остаётся — им приходит обновлённый состав.
       if (type === 'chat-removed' || payload?.userId === myId) store.applyChatGone(payload?.chatId);
+      break;
+
+    /* ── Приватность профиля: решает сервер ── */
+    case 'privacy':
+      useSettings.getState().applyServerPrivacy(Boolean(payload?.hideLastSeen));
       break;
 
     /* ── Управление группой и каналом ── */

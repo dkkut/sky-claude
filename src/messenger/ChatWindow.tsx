@@ -7,7 +7,7 @@ import {
   Phone, Video, Search, MoreVertical, Paperclip, Mic, Square, Images, PawPrint, Gift, ShoppingCart,
   Send, X, Pencil, Trash2, Pin, Forward, Check, CheckCheck, FileText, Camera,
   ChevronDown, ChevronLeft, Flag, BellOff, Archive, UserMinus, UserPlus, Reply, Palette, Settings2, BarChart2, Crown,
-  Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield, LogOut, Eye,
+  Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield, LogOut, Eye, Download,
 } from 'lucide-react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { useModerationStore } from '@/shared/moderationStore';
@@ -25,6 +25,7 @@ import { PetHouse }          from './PetHouse';
 import { SpoilerText, OnceViewText, SelfDestructTimer, PollBubble, MsgOptionsPanel, CreatePollModal } from './MsgFeatures';
 import { LiquidCursor, ThemePicker } from './LiquidCursor';
 import { useChatTheme } from './themes';
+import { useSettings } from '@/settings/store';
 import { GiftModal, GiftBubble, GiftMarket } from '@/gifts/SkyGifts';
 import { PrimeGiftBubble }                  from '@/gifts/GiftPrime';
 import { GiftPrimeModal } from '@/gifts/GiftPrime';
@@ -88,9 +89,37 @@ const RT = ({ t }: { t: string }) => {
   );
 };
 
+/**
+ * Заглушка вместо вложения, когда авто-загрузка выключена.
+ * Нажатие качает именно этот файл — настройку не меняет.
+ */
+const TapToLoad = ({ onLoad, label, round = false, size }: {
+  onLoad: () => void; label: string; round?: boolean; size?: number;
+}) => (
+  <button type="button" onClick={(e) => { e.stopPropagation(); onLoad(); }}
+    className={`flex flex-col items-center justify-center gap-1.5 transition-colors hover:brightness-125 ${round ? 'rounded-full' : 'rounded-xl'}`}
+    style={{
+      width: size ?? 200, height: size ?? 150,
+      background: 'rgba(0,0,0,0.35)', border: '1px dashed var(--border)', color: 'var(--t2)',
+    }}>
+    <Download size={20} />
+    <span className="text-[11px]">{label}</span>
+  </button>
+);
+
 /* -- Message status ticks ----------------------------------------- */
+/**
+ * Галочки на своих сообщениях. Настройка «Уведомления о прочтении»
+ * убирает их с экрана — раньше тумблер стоял, но галочки показывались
+ * всегда.
+ *
+ * Это про показ, а не про приватность: собеседник по-прежнему знает,
+ * что сообщение прочитано. Скрыть это от него можно было бы только на
+ * сервере, и настройка называлась бы иначе.
+ */
 const Ticks = ({ s, fromMe }: { s: string; fromMe: boolean }) => {
-  if (!fromMe) return null;
+  const show = useSettings(st => st.settings.showReadReceipts);
+  if (!fromMe || !show) return null;
   if (s === 'read')      return <CheckCheck size={15} style={{ color: '#4FC3F7' }} />;
   if (s === 'delivered') return <CheckCheck size={15} style={{ color: 'var(--t2)' }} />;
   return <Check size={15} style={{ color: 'var(--t2)' }} />;
@@ -98,7 +127,7 @@ const Ticks = ({ s, fromMe }: { s: string; fromMe: boolean }) => {
 
 /* -- Voice bubble ------------------------------------------------- */
 const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
-  const media = useAttachment(safeMediaUrl(msg.mediaUrl));
+  const { url: media, withhold, request } = useAttachment(safeMediaUrl(msg.mediaUrl));
   const [playing, setPlaying] = useState(false);
   const [pct, setPct]         = useState(0);
   const [dur, setDur]         = useState(0);
@@ -107,6 +136,8 @@ const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => 
   const { getTheme } = useChatTheme();
   const _theme = getTheme();
   const accent = fromMe ? '#8ac4f0' : _theme.accent;
+
+  if (withhold) return <TapToLoad onLoad={request} label="Загрузить голосовое" size={56} />;
 
   return (
     <div className="flex items-center gap-2.5" style={{ minWidth: 200, maxWidth: 280 }}>
@@ -149,12 +180,13 @@ const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => 
 
 /* -- File bubble -------------------------------------------------- */
 const FileBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
-  const media = useAttachment(safeMediaUrl(msg.mediaUrl));
+  const { url: media, withhold, request } = useAttachment(safeMediaUrl(msg.mediaUrl));
   const { getTheme } = useChatTheme();
   const _theme2 = getTheme();
   const accent = fromMe ? '#8ac4f0' : _theme2.accent;
   return (
     <a href={media ?? '#'} download={msg.fileName}
+      onClick={(e) => { if (withhold) { e.preventDefault(); request(); } }}
       className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:brightness-110"
       style={{ background: fromMe ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.15)', minWidth: 180, maxWidth: 260 }}>
       <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: `${accent}20` }}>
@@ -162,7 +194,9 @@ const FileBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium" style={{ color: fromMe ? 'var(--t1)' : 'var(--t1)' }}>{msg.fileName}</p>
-        <p className="text-[11px]" style={{ color: 'var(--t2)' }}>{fmtB(msg.bytes)}</p>
+        <p className="text-[11px]" style={{ color: 'var(--t2)' }}>
+          {withhold ? `${fmtB(msg.bytes)} · нажмите, чтобы загрузить` : fmtB(msg.bytes)}
+        </p>
       </div>
     </a>
   );
@@ -171,7 +205,7 @@ const FileBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
 
 /* -- Video Note (кружочек) ------------------------------------------- */
 const VideoNoteBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
-  const media = useAttachment(safeMediaUrl(msg.mediaUrl));
+  const { url: media, withhold, request } = useAttachment(safeMediaUrl(msg.mediaUrl));
   const ref  = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [pct, setPct]         = useState(0);
@@ -194,6 +228,8 @@ const VideoNoteBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean })
       Нет видео
     </div>
   );
+
+  if (withhold) return <TapToLoad onLoad={request} label="Загрузить видео" round size={SIZE} />;
 
   return (
     <div className="relative cursor-pointer select-none" style={{ width: SIZE, height: SIZE }}
@@ -258,8 +294,9 @@ const VideoNoteBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean })
 
 /* -- Photo bubble ------------------------------------------------- */
 const PhotoBubble = ({ msg }: { msg: MessageItem }) => {
-  const media = useAttachment(safeMediaUrl(msg.mediaUrl));
+  const { url: media, withhold, request } = useAttachment(safeMediaUrl(msg.mediaUrl));
   const [open, setOpen] = useState(false);
+  if (withhold) return <TapToLoad onLoad={request} label="Загрузить фото" />;
   return (
     <>
       <div className="rounded-xl overflow-hidden cursor-zoom-in" style={{ maxWidth: 280 }}
@@ -476,7 +513,7 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
   // Clean rounded bubbles (no tail), like MAX/modern messengers
 
   return (
-    <div className={`flex mb-0.5 ${fromMe ? 'justify-end' : 'justify-start'}`}
+    <div data-compact-row className={`flex mb-0.5 ${fromMe ? 'justify-end' : 'justify-start'}`}
       onMouseEnter={() => { if (!isMobile) setHover(true); }} onMouseLeave={() => { if (!isMobile) setHover(false); }}>
       <div className="relative max-w-[68%] group">
         {/* hover actions — только на десктопе, на тач-экранах нет надёжного hover */}
@@ -799,6 +836,9 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const [threadRootId, setThreadRootId] = useState<string | null>(null);
   const [threadDraft, setThreadDraft] = useState('');
   const [showGroupManage, setShowGroupManage] = useState(false);
+  // Настройки этого устройства: Enter для отправки, «печатает…»,
+  // галочки прочтения, авто-загрузка медиа.
+  const appSettings = useSettings(st => st.settings);
   // Отказ сервера показываем словами и гасим сами.
   const postNotice = useAdminStore(s => s.notice);
   const clearNotice = useAdminStore(s => s.notify);
@@ -1011,7 +1051,10 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   };
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+    // «Enter для отправки» — настройка этого устройства. Выключена —
+    // Enter переносит строку, а отправляет только кнопка. Раньше
+    // тумблер стоял в настройках и не значил ничего.
+    if (e.key === 'Enter' && !e.shiftKey && appSettings.enterToSend) { e.preventDefault(); submit(); }
     if (e.key === 'Escape') { setReplyTo(null); startEdit(null); setDraft(''); draftRef.current = ''; }
   };
 
@@ -1020,10 +1063,13 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     if (!chat) return;
     const me = useAuthStore.getState().accounts.find(a => a.id === myId);
     const uname = me?.username ?? people[myId ?? '']?.username ?? 'Вы';
-    setTyping(chat.id, uname, true); broadcast.typing(chat.id, uname, true);
+    // Выключенный тумблер «Печатает…» означает «не сообщать о себе».
+    // Скрыть можно только своё: чужой статус решает чужое устройство.
+    const tellTyping = appSettings.showTyping;
+    if (tellTyping) { setTyping(chat.id, uname, true); broadcast.typing(chat.id, uname, true); }
     if (typTimer.current) clearTimeout(typTimer.current);
     typTimer.current = window.setTimeout(() => {
-      setTyping(chat.id, uname, false); broadcast.typing(chat.id, uname, false);
+      if (tellTyping) { setTyping(chat.id, uname, false); broadcast.typing(chat.id, uname, false); }
       setChatDraft(chat.id, draftRef.current); // debounced сохранение черновика
     }, 1500);
     // Inline # bot menu detection

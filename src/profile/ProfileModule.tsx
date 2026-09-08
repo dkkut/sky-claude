@@ -212,7 +212,7 @@ const SettingsRow = ({ icon:Icon, iconColor='var(--accent)', label, sub, right, 
 }) => {
   const isMobile = useIsMobile();
   return (
-  <div onClick={onClick}
+  <div onClick={onClick} data-compact-row
     className={isMobile ? 'flex w-full items-center gap-2.5 px-3 py-2 transition-colors hover:bg-white/[0.04]' : 'flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.04]'}
     style={{ cursor: onClick ? 'pointer' : 'default' }}>
     <div className={isMobile ? 'grid h-7 w-7 place-items-center rounded-lg shrink-0' : 'grid h-9 w-9 place-items-center rounded-xl shrink-0'}
@@ -317,7 +317,24 @@ const SettingsSection = ({ logout, username }: { logout:()=>void; username:strin
   const s = settings;
 
   const [showFeedback, setShowFeedback] = useState(false);
-  const { accounts, currentUserId, grantPrime, grantPrimeBusiness } = useAuthStore();
+  const { accounts, currentUserId } = useAuthStore();
+  // Подписку выдаёт сервер: цену и срок он берёт из своей таблицы.
+  // Раньше эти кнопки писали признак прямо в localStorage — то есть
+  // «покупка» за 249 ₽ проходила бесплатно и до сервера не доходила.
+  const [buying, setBuying] = useState(false);
+  const [subNotice, setSubNotice] = useState<string | null>(null);
+  const REASONS: Record<string, string> = {
+    payments_not_configured: 'Оплата пока не подключена.',
+    invalid_plan:            'Такого срока подписки нет.',
+    insufficient_funds:      'Не хватает средств на счёте.',
+    not_active_profile:      'Подписка оформляется на активный профиль.',
+  };
+  const buyPrime = async () => {
+    setSubNotice(null); setBuying(true);
+    const res = await useAuthStore.getState().purchasePrime('standard', 30);
+    setBuying(false);
+    if (!res.ok) setSubNotice(REASONS[res.reason ?? ''] ?? 'Не получилось оформить подписку.');
+  };
   const me = accounts.find(a => a.id === currentUserId);
   const isPrime = me?.isPrime ?? false;
   const isPrimeBusiness = me?.isPrimeBusiness ?? false;
@@ -506,10 +523,10 @@ const SettingsSection = ({ logout, username }: { logout:()=>void; username:strin
             </p>
           </div>
           {!isPrime && (
-            <button type="button" onClick={() => grantPrime(currentUserId??'', 30)}
-              className="rounded-xl px-3 py-1.5 text-[11px] font-bold"
+            <button type="button" disabled={buying} onClick={buyPrime}
+              className="rounded-xl px-3 py-1.5 text-[11px] font-bold disabled:opacity-50"
               style={{ background:'rgba(245,158,11,0.12)', color:'var(--amber)' }}>
-              Активировать
+              {buying ? 'Проверяем…' : 'Активировать'}
             </button>
           )}
         </div>
@@ -529,7 +546,7 @@ const SettingsSection = ({ logout, username }: { logout:()=>void; username:strin
             </p>
           </div>
           {!isPrimeBusiness && (
-            <button type="button" onClick={() => grantPrimeBusiness(currentUserId??'', 30)}
+            <button type="button" onClick={() => setSubNotice('Prime Business ещё не подключён к оплате.')}
               className="rounded-xl px-3 py-1.5 text-[11px] font-bold"
               style={{ background:'rgba(79,110,247,0.12)', color:'var(--accent)' }}>
               249 ₽/мес
@@ -537,6 +554,10 @@ const SettingsSection = ({ logout, username }: { logout:()=>void; username:strin
           )}
         </div>
       </div>
+
+      {subNotice && (
+        <p className="px-1 text-xs" style={{ color:'var(--amber)' }}>{subNotice}</p>
+      )}
 
       {/* -- ОБРАТНАЯ СВЯЗЬ ---------------------------------------- */}
       <div className="rounded-2xl overflow-hidden" style={{ background:'var(--bg-l1)', border:'1px solid var(--border)' }}>

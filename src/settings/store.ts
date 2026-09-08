@@ -3,6 +3,7 @@
    Реально работающие настройки с сохранением
 =============================================================== */
 import { create } from 'zustand';
+import { wireSend } from '@/core/wire';
 
 export type AccentColor = 'blue' | 'purple' | 'green' | 'pink' | 'orange' | 'cyan' | 'red';
 export type FontSize    = 'small' | 'normal' | 'large';
@@ -47,12 +48,12 @@ export interface AppSettings {
   showReadReceipts:boolean;
   showTyping:      boolean;
   autoDownloadMedia:boolean;
-  linkPreviews:    boolean;
-  // Конфиденциальность
+  /* Конфиденциальность.
+     hideLastSeen хранится ЗДЕСЬ только для отрисовки галочки. Решает
+     сервер: настройка защищает от других, а свой браузер можно
+     переписать. Меняется через applyServerPrivacy/wireSend ниже. */
   hideLastSeen:    boolean;
   twoFactorHint:   string;
-  // Данные
-  dataAutoSave:    boolean;
   language:        'ru' | 'en';
 }
 
@@ -73,10 +74,8 @@ const defaults: AppSettings = {
   showReadReceipts: true,
   showTyping:       true,
   autoDownloadMedia:true,
-  linkPreviews:     true,
   hideLastSeen:     false,
   twoFactorHint:    '',
-  dataAutoSave:     true,
   language:         'ru',
 };
 
@@ -108,12 +107,19 @@ export const applySettings = (s: AppSettings) => {
   } else {
     root.style.removeProperty('--motion-duration');
   }
+
+  // Компактный режим: плотнее строки и меньше отступы. Раньше тумблер
+  // не делал ничего — теперь ставит признак на корне, а размеры
+  // подхватывает разметка.
+  root.dataset.compact = s.compactMode ? 'on' : 'off';
 };
 
 interface SettingsState {
   settings: AppSettings;
   set: (patch: Partial<AppSettings>) => void;
   reset: () => void;
+  /** Ответ сервера про приватность — записываем как есть, не спрашивая. */
+  applyServerPrivacy: (hideLastSeen: boolean) => void;
 }
 
 export const useSettings = create<SettingsState>((setState, get) => {
@@ -128,6 +134,18 @@ export const useSettings = create<SettingsState>((setState, get) => {
       setState({ settings: next });
       try { localStorage.setItem(SK, JSON.stringify(next)); } catch {}
       applySettings(next);
+
+      // «Был(а) в сети» скрывает сервер, а не браузер: здесь только
+      // просьба. Придёт ответ — applyServerPrivacy запишет, как вышло
+      // на самом деле.
+      if (patch.hideLastSeen !== undefined) {
+        wireSend({ type: 'privacy', payload: { hideLastSeen: patch.hideLastSeen } });
+      }
+    },
+    applyServerPrivacy: (hideLastSeen) => {
+      const next = { ...get().settings, hideLastSeen };
+      setState({ settings: next });
+      try { localStorage.setItem(SK, JSON.stringify(next)); } catch {}
     },
     reset: () => {
       setState({ settings: defaults });

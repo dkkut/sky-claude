@@ -207,6 +207,12 @@ const identify = async (token) => {
  * и показывал: «ничего не прислали» он принимал за «ничего не менялось».
  */
 const sendSnapshot = async (ws, userId) => {
+  // Приватность приходит с сервера, а не берётся из памяти браузера:
+  // иначе на новом устройстве галочка показывала бы не то, что на самом
+  // деле настроено.
+  const { rows: priv } = await query('SELECT hide_last_seen FROM profiles WHERE id = $1', [userId]);
+  send(ws, { type: 'privacy', payload: { hideLastSeen: Boolean(priv[0]?.hide_last_seen) } });
+
   const chats = await listChats(userId);
   // Список запретов приезжает вместе с чатами: он теперь серверный, и
   // браузер не должен решать его самостоятельно.
@@ -235,6 +241,33 @@ const sendSnapshot = async (ws, userId) => {
  * чтобы положить её одним скриптом.
  */
 const visibleOnline = async (userId) => {
+  const others = [...clients.keys()].filter((id) => id !== userId);
+  if (others.length === 0) return [];
+  const { rows } = await query(
+    `SELECT DISTINCT y.user_id FROM chat_members x
+       JOIN chat_members y ON y.chat_id = x.chat_id
+       JOIN profiles p ON p.id = y.user_id
+      WHERE x.user_id = $1 AND y.user_id = ANY($2::text[])
+        AND NOT p.hide_last_seen`,
+    [userId, others],
+  );
+  return rows.map((r) => r.user_id);
+};
+
+/**
+ * Скрывает ли человек своё присутствие.
+ *
+ * Спрашиваем базу, а не клиента: настройка защищает от других, поэтому
+ * своему же браузеру верить нельзя — его можно переписать.
+ */
+const hidesPresence = async (userId) => {
+  const { rows } = await query('SELECT hide_last_seen FROM profiles WHERE id = $1', [userId]);
+  return Boolean(rows[0]?.hide_last_seen);
+};
+
+/** Кому видно, что этот человек подключился или отключился. */
+const presenceAudience = async (userId) => {
+  if (await hidesPresence(userId)) return [];
   const others = [...clients.keys()].filter((id) => id !== userId);
   if (others.length === 0) return [];
   const { rows } = await query(
@@ -412,6 +445,43 @@ const handle = async (ws, session, msg) => {
       break;
     }
 
+
+    /* ── Приватность профиля ───────────────────────────────────────
+       Настройка защищает человека от других, поэтому живёт на сервере,
+       а не галочкой в браузере: свой клиент можно переписать. ── */
+
+    case 'privacy': {
+      const wanted = payload?.hideLastSeen;
+      if (typeof wanted === 'boolean') {
+        const { rows } = await query(
+          'UPDATE profiles SET hide_last_seen = $2 WHERE id = $1 RETURNING hide_last_seen',
+          [me, wanted],
+        );
+        if (!rows[0]) return;
+
+        // Тем, кто видел человека в сети, надо сказать, что он ушёл —
+        // иначе кружок «в сети» останется висеть до их следующего входа.
+        // И наоборот: снял галочку — снова появился.
+        const others = [...clients.keys()].filter((id) => id !== me);
+        if (others.length > 0) {
+          const { rows: near } = await query(
+            `SELECT DISTINCT y.user_id FROM chat_members x
+               JOIN chat_members y ON y.chat_id = x.chat_id
+              WHERE x.user_id = $1 AND y.user_id = ANY($2::text[])`,
+            [me, others],
+          );
+          for (const other of near.map((r) => r.user_id)) {
+            sendTo(other, {
+              type: wanted ? 'user-offline' : 'user-online',
+              payload: { userId: me },
+            });
+          }
+        }
+      }
+      const { rows: now } = await query('SELECT hide_last_seen FROM profiles WHERE id = $1', [me]);
+      send(ws, { type: 'privacy', payload: { hideLastSeen: Boolean(now[0]?.hide_last_seen) } });
+      break;
+    }
 
     /* ── Управление группой и каналом ──────────────────────────────
        Каждое действие проверяет право на сервере: присланная клиентом
@@ -778,7 +848,11 @@ export const startSignalHub = () => {
         // одному подключению можно было бы снять всех, кто сейчас в сети.
         const online = await visibleOnline(userId);
         send(ws, { type: 'authorized', payload: { userId, onlineUsers: online } });
-        for (const other of online) sendTo(other, { type: 'user-online', payload: { userId } });
+        // Кого вижу я и кто видит меня — разные списки: я мог скрыться,
+        // не переставая видеть остальных.
+        for (const other of await presenceAudience(userId)) {
+          sendTo(other, { type: 'user-online', payload: { userId } });
+        }
         await sendSnapshot(ws, userId);
         console.log(`[ws] +${userId} (${clients.size} online)`);
         return;
@@ -816,7 +890,9 @@ export const startSignalHub = () => {
       if (!uid) return;
       const wentOffline = removeClient(uid, session.sessionId, ws);
       if (!wentOffline) return;
-      for (const other of await visibleOnline(uid)) {
+      // Тот же список, что и при входе: скрывшийся не «уходит» у других,
+      // потому что он у них и не появлялся.
+      for (const other of await presenceAudience(uid)) {
         sendTo(other, { type: 'user-offline', payload: { userId: uid } });
       }
       console.log(`[ws] -${uid} (${clients.size} online)`);

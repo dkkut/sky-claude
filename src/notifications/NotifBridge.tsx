@@ -101,7 +101,10 @@ export const NotifBridge = () => {
         chatId:       msg.chatId,
       });
 
-      // 2️⃣ Web Push (только когда вкладка неактивна)
+      // 2️⃣ Web Push (только когда вкладка неактивна и push разрешён).
+      // Раньше тумблер «Push-уведомления браузера» лишь спрашивал
+      // разрешение, а уведомления уходили независимо от него.
+      if (!settings.desktopNotifs) return;
       sendWebPush({
         title:        name,
         body,
@@ -113,7 +116,7 @@ export const NotifBridge = () => {
 
     window.addEventListener('sky:incoming-message', onIncoming);
     return () => window.removeEventListener('sky:incoming-message', onIncoming);
-  }, [sendWebPush, push, settings.soundMessages, settings.soundMentions]);
+  }, [sendWebPush, push, settings.soundMessages, settings.soundMentions, settings.desktopNotifs]);
 
   // -- Не удалось дозвониться -----------------------------------------
   useEffect(() => {

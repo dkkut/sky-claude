@@ -12,6 +12,7 @@
  */
 import { useEffect, useState } from 'react';
 import { apiFetchFile } from '@/core/auth/api';
+import { useSettings } from '@/settings/store';
 
 const MAX_CACHED = 40;
 
@@ -51,27 +52,42 @@ const load = (path: string): Promise<string | null> => {
 /**
  * Готовая к показу ссылка. Пока файл качается — undefined; если файл
  * недоступен (вышли из чата, сообщение удалили) — тоже.
+ *
+ * При выключенной авто-загрузке файл не качается сам: возвращается
+ * withhold = true, и разметка показывает кнопку «загрузить». Раньше
+ * тумблер «Авто-загрузка медиа» стоял в настройках и не значил ничего —
+ * на мобильном трафике это заметно.
  */
-export const useAttachment = (src?: string): string | undefined => {
+export const useAttachment = (src?: string) => {
+  const auto = useSettings(st => st.settings.autoDownloadMedia);
   const [ready, setReady] = useState<string | undefined>(
     src && src.startsWith('/api/files/') ? cache.get(src) : src,
   );
+  // Отдельная просьба пользователя пересиливает выключенную авто-загрузку.
+  const [asked, setAsked] = useState(false);
+
+  const remote = Boolean(src && src.startsWith('/api/files/'));
+  const cached = remote && src ? cache.get(src) : undefined;
+  const withhold = remote && !auto && !asked && !cached;
+
+  useEffect(() => { setAsked(false); }, [src]);
 
   useEffect(() => {
     if (!src) { setReady(undefined); return; }
     // Своё, ещё не отправленное вложение показывается прямо из вкладки.
-    if (!src.startsWith('/api/files/')) { setReady(src); return; }
+    if (!remote) { setReady(src); return; }
 
     const known = cache.get(src);
     if (known) { setReady(known); return; }
+    if (!auto && !asked) { setReady(undefined); return; }
 
     let alive = true;
     setReady(undefined);
     void load(src).then((url) => { if (alive) setReady(url ?? undefined); });
     return () => { alive = false; };
-  }, [src]);
+  }, [src, remote, auto, asked]);
 
-  return ready;
+  return { url: ready, withhold, request: () => setAsked(true) };
 };
 
 /** Забыть скачанное — например при выходе из аккаунта. */

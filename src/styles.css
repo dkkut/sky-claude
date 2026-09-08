@@ -225,3 +225,15 @@ body {
 /* ─── Responsive ─────────────────────────────────────────────────── */
 @media (max-width: 768px) { .sky-desktop-only { display: none !important; } }
 @media (min-width: 769px) { .sky-mobile-only  { display: none !important; } }
+
+/* ─── Компактный режим ───────────────────────────────────────────────
+   Тумблер «Компактный режим» раньше не делал ничего. Теперь настройка
+   ставит признак на корне документа, а здесь он сжимает то, что и
+   должен сжимать: вертикальные отступы списков и высоту строк. Ширины
+   и горизонтальные отступы не трогаем — от них зависит вёрстка. */
+:root[data-compact='on'] [data-compact-row] {
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+}
+:root[data-compact='on'] { line-height: 1.25; }
+:root[data-compact='on'] .sky-gap-tight > * + * { margin-top: 0.25rem !important; }
