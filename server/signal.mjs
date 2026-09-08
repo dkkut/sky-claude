@@ -19,6 +19,10 @@ import { sessionStore, onSessionRevoked } from './sessions.mjs';
 import { query } from './db.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
 import { getPrivacy, setPrivacy, presenceBetween, mayCall } from './privacy.mjs';
+import {
+  restrictionsOf, isBannedNow, isAdmin, isOwner,
+  setAdminRight, restrictUser, setModerationNote, listAdminLog,
+} from './admin.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
@@ -291,6 +295,22 @@ const handle = async (ws, session, msg) => {
       const { chatId, message } = payload ?? {};
       if (!chatId || !message) return;
 
+      // Наказания администратора. Раньше сервер о них не знал вовсе:
+      // забаненный продолжал писать как ни в чём не бывало.
+      const limits = await restrictionsOf(me);
+      if (limits.bannedUntil) { ws.close(4403, 'banned'); return; }
+      if (limits.spamUntil) {
+        send(ws, { type: 'message-rejected',
+          payload: { chatId, messageId: message?.id, reason: 'spam_blocked' } });
+        return;
+      }
+      // «Запрет говорить» — про голос: голосовые и кружки.
+      if (limits.mutedUntil && (message?.kind === 'voice' || message?.kind === 'video-note')) {
+        send(ws, { type: 'message-rejected',
+          payload: { chatId, messageId: message?.id, reason: 'voice_muted' } });
+        return;
+      }
+
       const saved = await saveMessage(chatId, me, message);
       // null значит «не участник» — молча игнорируем, чтобы по ответу
       // нельзя было выяснять, какие чаты существуют.
@@ -443,6 +463,52 @@ const handle = async (ws, session, msg) => {
       break;
     }
 
+
+    /* ── Панель администратора ─────────────────────────────────────
+       Право спрашивается у базы на каждом действии, а не берётся из
+       токена: снятые права должны действовать сразу. Раньше эта панель
+       меняла записи в localStorage нажавшего и не значила ничего. ── */
+
+    case 'admin': {
+      const action = String(payload?.action ?? '');
+      const target = String(payload?.userId ?? '');
+      const failAdm = (error) => send(ws, { type: 'admin-error', payload: { action, error } });
+
+      // Единственный ответ незнающему: «нельзя». По разнице ответов
+      // нельзя выяснять, кто есть в базе, а кто нет.
+      if (!(await isAdmin(me))) return failAdm('not_allowed');
+
+      switch (action) {
+        case 'whoami': {
+          return send(ws, { type: 'admin-me',
+            payload: { isAdmin: true, isOwner: await isOwner(me) } });
+        }
+        case 'set-admin': {
+          const r = await setAdminRight(me, target, payload?.value !== false);
+          if (r.error) return failAdm(r.error);
+          return send(ws, { type: 'admin-done', payload: { action, userId: target, ...r } });
+        }
+        case 'restrict': {
+          const r = await restrictUser(me, target, String(payload?.kind ?? ''), payload?.minutes);
+          if (r.error) return failAdm(r.error);
+          // Забаненного отключаем сразу, а не когда он сам уйдёт.
+          if (r.kind === 'ban' && r.minutes > 0) {
+            for (const sock of clients.get(target) ?? []) sock.close(4403, 'banned');
+          }
+          return send(ws, { type: 'admin-done', payload: { action, userId: target, ...r } });
+        }
+        case 'note': {
+          const r = await setModerationNote(me, target, payload?.text);
+          if (r.error) return failAdm(r.error);
+          return send(ws, { type: 'admin-done', payload: { action, userId: target, ...r } });
+        }
+        case 'log': {
+          const entries = await listAdminLog(me, payload?.limit);
+          return send(ws, { type: 'admin-log', payload: { entries: entries ?? [] } });
+        }
+      }
+      return failAdm('not_allowed');
+    }
 
     /* ── Избранное ─────────────────────────────────────────────────
        Своё у каждого, поэтому уходит только на свои устройства. ── */
@@ -729,6 +795,16 @@ const handle = async (ws, session, msg) => {
         return;
       }
 
+      // «Запрет говорить» касается и звонков: без этого наказание
+      // обходилось бы одним нажатием на трубку.
+      if (type === 'call-offer') {
+        const lim = await restrictionsOf(me);
+        if (lim.bannedUntil || lim.mutedUntil) {
+          send(ws, { type: 'call-unavailable', from: to, callId });
+          return;
+        }
+      }
+
       // Настройка «кто может звонить» получателя. Проверяется на первом
       // приглашении: дальше идут ответ и обмен адресами уже начатого
       // разговора, и гонять запрос на каждый кандидат ICE незачем.
@@ -911,6 +987,10 @@ export const startSignalHub = () => {
           ws.close(4429, 'too many devices');
           return;
         }
+
+        // Забаненный не подключается вовсе. Проверяем у базы, а не по
+        // токену: бан выдают тогда, когда ждать конца сессии нельзя.
+        if (await isBannedNow(userId)) { ws.close(4403, 'banned'); return; }
 
         session.userId = userId;
         session.sessionId = who.sessionId;
