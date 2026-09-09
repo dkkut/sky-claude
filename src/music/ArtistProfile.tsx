@@ -1,12 +1,10 @@
 /* -- Профиль артиста --------------------------------------- */
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Play, Pause, Music2, CheckCircle2, UserPlus, UserMinus, Mic2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Music2, Mic2 } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { getG, fmtPlays } from './utils';
 import { Cover, TrackRow, Viz } from './MusicPrimitives';
-import { useMusicianStore } from './MusicianHub';
-import { useAuthStore } from '@/core/auth/store';
 
 interface Props {
   artist:   string;
@@ -31,14 +29,10 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
   const byGenre = new Map<string, Track[]>();
   artTracks.forEach(t => { byGenre.set(t.genre, [...(byGenre.get(t.genre) ?? []), t]); });
 
-  const { artists, follow, unfollow } = useMusicianStore();
-  const { currentUserId } = useAuthStore();
-  const artistProfile = artists.find(a => a.artistName === artist);
-  const isFollowing = !!currentUserId && !!artistProfile?.followedBy.includes(currentUserId);
-  const toggleFollow = () => {
-    if (!artistProfile || !currentUserId) return;
-    isFollowing ? unfollow(artistProfile.userId, currentUserId) : follow(artistProfile.userId, currentUserId);
-  };
+  // Подписки на артиста здесь нет намеренно: прежняя кнопка писала
+  // подписку в localStorage этого браузера — ни артист, ни другие
+  // слушатели её не видели. Подписка имеет смысл только серверная, с
+  // уведомлениями о новых треках; её ещё нет.
 
   const similarArtists = useMemo(() => {
     const others = new Map<string, Track[]>();
@@ -84,7 +78,6 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
           <div className="pb-1 min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <p className="text-xl font-black text-white truncate">{artist}</p>
-              {artistProfile?.verified && <CheckCircle2 size={16} style={{ color: '#4fe3d0' }}/>}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               {genres.slice(0, 2).map(g => (
@@ -93,18 +86,8 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
               ))}
             </div>
           </div>
-          {artistProfile && (
-            <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={toggleFollow}
-              className="mb-1 flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-bold"
-              style={{ background: isFollowing ? 'rgba(255,255,255,0.08)' : '#A855F7', color: '#fff' }}>
-              {isFollowing ? <><UserMinus size={13}/>Вы подписаны</> : <><UserPlus size={13}/>Подписаться</>}
-            </motion.button>
-          )}
         </div>
 
-        {artistProfile?.bio && (
-          <p className="mt-3 text-[12.5px] leading-relaxed" style={{ color: 'var(--t2)' }}>{artistProfile.bio}</p>
-        )}
 
         {/* Статистика */}
         <div className="grid grid-cols-3 gap-2 mt-4">
