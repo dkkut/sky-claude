@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { useMusicStore } from '@/music/serverStore';
+import { PrivateUpload } from '@/music/PrivateUpload';
 import { getG } from '@/music/utils';
 
 type Category = 'liked'|'mine'|'downloaded'|'albums'|'artists'|'playlists'|'history'|'podcasts'|'audiobooks';
@@ -229,12 +230,18 @@ export const SkyMusicLibrary = ({
               Ваша личная коллекция. Загруженное здесь видите только вы —
               в общий каталог оно попадает, лишь когда вы сами публикуете трек.
             </p>
-            <div className="mt-2.5 flex gap-2">
+            {/* Загрузка здесь своя: она кладёт трек в личную коллекцию и
+                ничего не предлагает публиковать. Путь в общий каталог —
+                отдельная вкладка «Загрузить». */}
+            <div className="mt-2.5">
+              <PrivateUpload/>
+            </div>
+            <div className="mt-2 flex gap-2">
               {onOpenUpload && (
                 <button type="button" onClick={onOpenUpload}
-                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-bold"
-                  style={{ background:'#fff', color:'#0a0a0f' }}>
-                  <Upload size={13}/>Загрузить
+                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium"
+                  style={{ background:'rgba(255,255,255,0.05)', color:'#c7ccd6', border:'1px solid rgba(255,255,255,0.07)' }}>
+                  <Upload size={13}/>В общий каталог
                 </button>
               )}
               {onOpenImport && (

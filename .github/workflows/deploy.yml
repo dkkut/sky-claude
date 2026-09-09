@@ -41,6 +41,11 @@ jobs:
       - name: Проверка типов и сборка
         run: npm run build
 
+      # Опечатка в конфиге nginx валит веб-контейнер уже на сервере,
+      # поэтому проверяем его здесь — до сборки и выкладки.
+      - name: Проверка конфигурации nginx
+        run: ./scripts/nginx-check.sh
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Вход в реестр образов

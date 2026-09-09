@@ -140,6 +140,23 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # -- Музыка: свои файлы и своя отдача ------------------------
+    #  Общий потолок тела в 1 МБ резал загрузку трека ещё на nginx:
+    #  до приложения запрос не доходил, и человек получал безымянную
+    #  413 вместо понятного ответа. Потолок здесь с запасом над
+    #  серверным (30 МБ), чтобы отказ по размеру давало приложение.
+    location ^~ /api/music/ {
+        limit_req zone=req_general burst=90 nodelay;
+        client_max_body_size 32m;
+        # Тело идёт потоком: буферизация означала бы держать весь трек
+        # в памяти или во временном файле дважды.
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/ {
         limit_req zone=req_general burst=60 nodelay;
         include /etc/nginx/snippets/proxy-common.conf;

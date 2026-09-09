@@ -149,6 +149,9 @@ export const apiUploadTrack = async (
     body: file,
     headers: { 'Content-Type': 'application/octet-stream' },
   });
+  // 413 может прийти и без тела: так отвечает nginx, если файл больше
+  // его потолка. Человеку нужно объяснение, а не голый код.
+  if (r.status === 413) return { ok: false, reason: UPLOAD_REASONS.file_too_large };
   if (!r.ok) return { ok: false, reason: UPLOAD_REASONS[r.error ?? ''] ?? r.reason };
   return { ok: true, track: r.data?.track };
 };
