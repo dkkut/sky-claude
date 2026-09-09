@@ -38,7 +38,7 @@ const text = (v, max) => String(v ?? '')
  * Что уходит клиенту. Служебных полей здесь нет: ни путей на диске, ни
  * внутренних отметок — только то, что нужно показать.
  */
-const toTrack = (row) => ({
+export const toTrack = (row) => ({
   id: row.id,
   title: row.title,
   artist: row.artist,

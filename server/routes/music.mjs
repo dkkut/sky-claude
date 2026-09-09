@@ -20,7 +20,7 @@ import { json, parseBody, requireProfile, readSession } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import {
   listTracks, readTrack, visibleTrack, createTrack, finishTrack, updateTrack,
-  submitTrack, moderationQueue, moderateTrack,
+  submitTrack, moderationQueue, moderateTrack, toTrack,
   deleteTrack, setCover, countPlay, readLyrics,
   listPlaylists, createPlaylist, renamePlaylist, setPlaylistPublic, deletePlaylist,
   readPlaylist, addToPlaylist, removeFromPlaylist, reorderPlaylist,
@@ -28,6 +28,10 @@ import {
 } from './../music.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, remove, parseRange } from './../musicstore.mjs';
 import { ticketCookie, ticketFromCookies } from './../musicticket.mjs';
+import {
+  readArtist, readArtistByName, saveArtist, followArtist,
+  listFollowing, listArtists, newFromFollowed,
+} from './../musicartists.mjs';
 
 /** Потолок на трек. Больше — это уже не песня, а фильм. */
 const MAX_AUDIO_BYTES = 30 * 1024 * 1024;
@@ -160,6 +164,61 @@ export const musicRoutes = async (req, res, url) => {
         mine: params.get('mine') === '1',
       }),
     });
+  }
+
+  /* ── Артисты и подписки ────────────────────────────────────── */
+
+  if (req.method === 'GET' && path === '/api/music/artists') {
+    if (!rateLimit(`music:read:${me}`, STREAM_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    return json(res, 200, { artists: await listArtists(me, { limit: params.get('limit') }) });
+  }
+
+  if (req.method === 'GET' && path === '/api/music/following') {
+    if (!rateLimit(`music:read:${me}`, STREAM_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    return json(res, 200, { artists: await listFollowing(me) });
+  }
+
+  if (req.method === 'GET' && path === '/api/music/feed') {
+    if (!rateLimit(`music:read:${me}`, STREAM_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const rows = await newFromFollowed(me, { limit: params.get('limit') });
+    // Лента — только опубликованное, поэтому личных полей в ней нет.
+    return json(res, 200, { tracks: rows.map((r) => toTrack(r)) });
+  }
+
+  if (req.method === 'PUT' && path === '/api/music/artist') {
+    if (!rateLimit(`music:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const body = await parseBody(req);
+    const r = await saveArtist(me, body ?? {});
+    if (r.error) return json(res, 400, r);
+    return json(res, 200, { artist: await readArtist(me, me) });
+  }
+
+  if (req.method === 'GET' && path === '/api/music/artist') {
+    if (!rateLimit(`music:read:${me}`, STREAM_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const byName = params.get('name');
+    const a = byName ? await readArtistByName(byName, me) : await readArtist(me, me);
+    return a ? json(res, 200, { artist: a }) : json(res, 404, { error: 'not_found' });
+  }
+
+  const artistMatch = path.match(/^\/api\/music\/artist\/([^/]+)(\/[a-z]+)?$/);
+  if (artistMatch) {
+    const artistId = artistMatch[1];
+    const tail = artistMatch[2] ?? '';
+
+    if (req.method === 'GET' && tail === '') {
+      const a = await readArtist(artistId, me);
+      return a ? json(res, 200, { artist: a }) : json(res, 404, { error: 'not_found' });
+    }
+
+    if (req.method === 'POST' && tail === '/follow') {
+      if (!rateLimit(`music:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const body = await parseBody(req);
+      const r = await followArtist(artistId, me, body?.on !== false);
+      if (r.error) return json(res, r.error === 'not_found' ? 404 : 403, r);
+      return json(res, 200, r);
+    }
+
+    return json(res, 404, { error: 'not_found' });
   }
 
   /* ── Очередь проверки ──────────────────────────────────────── */

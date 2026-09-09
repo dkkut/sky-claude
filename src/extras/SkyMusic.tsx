@@ -131,10 +131,12 @@ const HeartBtn = ({ liked, onClick, size = 18 }: { liked: boolean; onClick: () =
 );
 
 /* -- Track row  -  YM style --------------------------------- */
-const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNum, num }: {
+const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNum, num, onArtist }: {
   track: Track; active: boolean; playing: boolean;
   onPlay: () => void; liked: boolean; onLike: () => void;
   onAdd: () => void; showNum?: boolean; num?: number;
+  /** Открыть страницу исполнителя. Без неё имя — просто подпись. */
+  onArtist?: (name: string) => void;
 }) => {
   const [dlState, setDlState] = useState<'idle'|'loading'|'done'>('idle');
 
@@ -200,7 +202,15 @@ const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNu
     )}
     <div className="flex-1 min-w-0">
       <p className={isMobile ? 'text-[13px] font-medium truncate' : 'text-sm font-medium truncate'} style={{ color: active ? YM.accent : YM.text }}>{track.title}</p>
-      <p className={isMobile ? 'text-[11px] truncate' : 'text-xs truncate'} style={{ color: YM.sub }}>{track.artist}</p>
+      {onArtist ? (
+        <button type="button" onClick={e => { e.stopPropagation(); onArtist(track.artist); }}
+          className={isMobile ? 'block max-w-full truncate text-left text-[11px]' : 'block max-w-full truncate text-left text-xs'}
+          style={{ color: YM.sub }}>
+          {track.artist}
+        </button>
+      ) : (
+        <p className={isMobile ? 'text-[11px] truncate' : 'text-xs truncate'} style={{ color: YM.sub }}>{track.artist}</p>
+      )}
     </div>
     <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
       <HeartBtn liked={liked} onClick={onLike} size={isMobile ? 14 : 16} />
@@ -1437,9 +1447,10 @@ const UploadTab = ({ playing, activeId, onPlay }: {
 
 
 
-const HistTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd }: {
+const HistTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, onArtist }: {
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
   onPlay: (t: Track, pool: Track[]) => void; onLike: (id: string) => void; onAdd: (id: string) => void;
+  onArtist?: (name: string) => void;
 }) => {
   // История — с сервера: тот же список на телефоне и на компьютере.
   const history = useMusicStore(st => st.history);
@@ -1461,16 +1472,17 @@ const HistTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd }
       {hist.map((t, i) => (
         <TrackRow key={`${t.id}-${i}`} track={t} active={activeId === t.id} playing={playing && activeId === t.id}
           onPlay={() => onPlay(t, hist)} liked={favorites.includes(t.id)} onLike={() => onLike(t.id)}
-          onAdd={() => onAdd(t.id)} showNum num={i + 1} />
+          onAdd={() => onAdd(t.id)} showNum num={i + 1} onArtist={onArtist} />
       ))}
     </div>
   );
 };
 
 /* -- Charts tab ------------------------------------------- */
-const ChartsTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd }: {
+const ChartsTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, onArtist }: {
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
   onPlay: (t: Track, pool: Track[]) => void; onLike: (id: string) => void; onAdd: (id: string) => void;
+  onArtist?: (name: string) => void;
 }) => {
   const pub = useMemo(() => tracks.filter(t => t.status === 'published'), [tracks]);
   const top = useMemo(() => [...pub].sort((a, b) => b.plays - a.plays), [pub]);
@@ -1480,7 +1492,7 @@ const ChartsTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd
       {top.map((t, i) => (
         <TrackRow key={t.id} track={t} active={activeId === t.id} playing={playing && activeId === t.id}
           onPlay={() => onPlay(t, top)} liked={favorites.includes(t.id)} onLike={() => onLike(t.id)}
-          onAdd={() => onAdd(t.id)} showNum num={i + 1} />
+          onAdd={() => onAdd(t.id)} showNum num={i + 1} onArtist={onArtist} />
       ))}
     </div>
   );
@@ -2553,7 +2565,7 @@ export const SkyMusic = () => {
             {tab === 'upload'     && <UploadTab     playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} />}
             {tab === 'import'     && <MusicImport/>}
             {tab === 'history'    && <HistTab       {...tabProps} />}
-            {tab === 'musician'   && <MusicianProfileTab playing={playing} activeId={cur?.id ?? null} favorites={favorites} onPlay={playFrom} onLike={onLike}/>}
+            {tab === 'musician'   && <MusicianProfileTab playing={playing} activeId={cur?.id ?? null} onPlay={playFrom}/>}
           </>
         )}
       </div>

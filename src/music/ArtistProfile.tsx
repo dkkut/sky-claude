@@ -1,7 +1,8 @@
 /* -- Профиль артиста --------------------------------------- */
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Play, Pause, Music2, Mic2 } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Music2, Mic2, UserPlus, UserMinus } from 'lucide-react';
+import { apiArtistByName, apiFollowArtist, type ServerArtist } from './musicApi';
 import type { Track } from '@/platform/store';
 import { getG, fmtPlays } from './utils';
 import { Cover, TrackRow, Viz } from './MusicPrimitives';
@@ -29,10 +30,24 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
   const byGenre = new Map<string, Track[]>();
   artTracks.forEach(t => { byGenre.set(t.genre, [...(byGenre.get(t.genre) ?? []), t]); });
 
-  // Подписки на артиста здесь нет намеренно: прежняя кнопка писала
-  // подписку в localStorage этого браузера — ни артист, ни другие
-  // слушатели её не видели. Подписка имеет смысл только серверная, с
-  // уведомлениями о новых треках; её ещё нет.
+  // Профиль артиста и подписка — с сервера. Прежняя кнопка писала
+  // подписку в localStorage этого браузера, и о ней не знал никто.
+  const [profile, setProfile] = useState<ServerArtist | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setProfile(null);
+    void apiArtistByName(artist).then(a => { if (alive) setProfile(a); });
+    return () => { alive = false; };
+  }, [artist]);
+
+  const toggleFollow = async () => {
+    if (!profile || profile.own) return;
+    setBusy(true);
+    const fresh = await apiFollowArtist(profile.id, !profile.following);
+    setBusy(false);
+    if (fresh) setProfile(fresh);
+  };
 
   const similarArtists = useMemo(() => {
     const others = new Map<string, Track[]>();
@@ -86,15 +101,31 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
               ))}
             </div>
           </div>
+          {/* Кнопка появляется, только если у артиста есть профиль на
+              сервере: подписываться иначе не на кого. */}
+          {profile && !profile.own && (
+            <motion.button type="button" whileTap={{ scale: 0.94 }} disabled={busy}
+              onClick={() => void toggleFollow()}
+              className="mb-1 flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-bold disabled:opacity-50"
+              style={{ background: profile.following ? 'rgba(255,255,255,0.08)' : '#A855F7', color: '#fff' }}>
+              {profile.following
+                ? <><UserMinus size={13}/>Вы подписаны</>
+                : <><UserPlus size={13}/>Подписаться</>}
+            </motion.button>
+          )}
         </div>
+
+        {profile?.bio && (
+          <p className="mt-3 text-[12.5px] leading-relaxed" style={{ color: 'var(--t2)' }}>{profile.bio}</p>
+        )}
 
 
         {/* Статистика */}
         <div className="grid grid-cols-3 gap-2 mt-4">
           {[
-            { label: 'Треков',    val: String(artTracks.length) },
-            { label: 'Слушатели', val: fmtPlays(totalPlays) },
-            { label: 'Жанров',    val: String(genres.length) },
+            { label: 'Треков',      val: String(artTracks.length) },
+            { label: 'Прослушиваний', val: fmtPlays(totalPlays) },
+            { label: 'Подписчиков', val: String(profile?.followers ?? 0) },
           ].map(({ label, val }) => (
             <div key={label} className="rounded-2xl py-2.5 text-center"
               style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>

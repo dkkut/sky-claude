@@ -116,6 +116,71 @@ export const apiDeleteTrack = async (id: string) => {
   return r.ok;
 };
 
+/* ─── Артист и подписки ────────────────────────────────────────────── */
+
+export interface ServerArtist {
+  id: string;
+  name: string;
+  bio: string;
+  genres: string[];
+  username?: string;
+  followers: number;
+  tracks: number;
+  plays: number;
+  following?: boolean;
+  own?: boolean;
+}
+
+/** Свой профиль артиста. */
+export const apiMyArtist = async () => {
+  const r = await apiCall<{ artist: ServerArtist }>('/api/music/artist');
+  return r.ok ? (r.data?.artist ?? null) : null;
+};
+
+/** Страница артиста по псевдониму — так её открывают из строки трека. */
+export const apiArtistByName = async (name: string) => {
+  const r = await apiCall<{ artist: ServerArtist }>(
+    `/api/music/artist?name=${encodeURIComponent(name)}`);
+  return r.ok ? (r.data?.artist ?? null) : null;
+};
+
+export const apiSaveArtist = async (p: { name: string; bio?: string; genres?: string[] }) => {
+  const r = await apiCall<{ artist: ServerArtist }>('/api/music/artist',
+    { method: 'PUT', body: JSON.stringify(p) });
+  if (r.ok) return { ok: true as const, artist: r.data?.artist ?? null };
+  return { ok: false as const, reason: ARTIST_REASONS[r.error ?? ''] ?? r.reason };
+};
+
+const ARTIST_REASONS: Record<string, string> = {
+  invalid_name: 'Псевдоним слишком короткий',
+  name_taken: 'Такой псевдоним уже занят',
+  rate_limited: 'Слишком часто. Попробуйте чуть позже',
+};
+
+export const apiFollowArtist = async (artistId: string, on: boolean) => {
+  const r = await apiCall<{ artist: ServerArtist }>(
+    `/api/music/artist/${encodeURIComponent(artistId)}/follow`,
+    { method: 'POST', body: JSON.stringify({ on }) });
+  return r.ok ? (r.data?.artist ?? null) : null;
+};
+
+/** Витрина: артисты, у которых есть опубликованные треки. */
+export const apiArtists = async () => {
+  const r = await apiCall<{ artists: ServerArtist[] }>('/api/music/artists');
+  return r.ok ? (r.data?.artists ?? []) : null;
+};
+
+export const apiFollowing = async () => {
+  const r = await apiCall<{ artists: ServerArtist[] }>('/api/music/following');
+  return r.ok ? (r.data?.artists ?? []) : null;
+};
+
+/** Новое у тех, на кого человек подписан. */
+export const apiArtistFeed = async () => {
+  const r = await apiCall<{ tracks: ServerTrack[] }>('/api/music/feed');
+  return r.ok ? (r.data?.tracks ?? []) : null;
+};
+
 /* ─── Проверка перед публикацией ───────────────────────────────────── */
 
 /** Владелец отправляет свой трек на проверку. */

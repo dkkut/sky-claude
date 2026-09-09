@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Music2, ListMusic, Mic2, Sparkles, Disc3, Play, Search, ChevronRight, X } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { getG } from '@/music/utils';
 import { useMusicStore } from '@/music/serverStore';
+import { apiArtistFeed, toClientTrack } from '@/music/musicApi';
 import { SkySphere } from '@/music/SkySphere';
 
 const greeting = () => {
@@ -193,6 +194,17 @@ export const SkyMusicHome = ({
     return Object.entries(map).filter(([,ts]) => ts.length >= 1).slice(0, 10);
   }, [pub]);
 
+  // Новое у тех, на кого человек подписан. Пусто — раздела нет: пустой
+  // заголовок ничего не объясняет.
+  const [feed, setFeed] = useState<Track[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void apiArtistFeed().then(list => {
+      if (alive && list) setFeed(list.map(toClientTrack));
+    });
+    return () => { alive = false; };
+  }, []);
+
   const [waveOpen, setWaveOpen] = useState(false);
   const wavePool = useMemo(() => [...pub].sort(() => Math.random() - 0.5), [pub]);
   const startWave = () => { if (wavePool[0]) onPlay(wavePool[0], wavePool); };
@@ -317,6 +329,14 @@ export const SkyMusicHome = ({
 
 
       <div className="h-2"/>
+
+      {feed.length > 0 && (
+        <Section title="Новое у ваших артистов" icon={Sparkles} index={0}>
+          {feed.map(t => (
+            <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, feed)}/>
+          ))}
+        </Section>
+      )}
 
       <Section title="Недавно слушали" icon={Disc3} index={1} empty={recentlyPlayed.length===0 ? 'Пока ничего не прослушано' : undefined}>
         {recentlyPlayed.map(t => (
