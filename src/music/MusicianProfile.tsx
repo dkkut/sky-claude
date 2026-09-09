@@ -4,9 +4,8 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Music2, Users, Play, Heart, BarChart3, Upload, Check, Edit3,
-  X, Camera, Plus, Minus, TrendingUp, Headphones, Star, Share2,
-  ChevronLeft, Mic2, Globe, Lock,
+  Music2, Play, Heart, Check, Edit3,
+  X, Camera, TrendingUp, Headphones, Mic2,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMusicStore } from '@/music/serverStore';
@@ -22,7 +21,6 @@ const fu = (i=0) => ({
 });
 
 const fmtPlays = (n:number) => n>=1_000_000?`${(n/1_000_000).toFixed(1)}М`:n>=1_000?`${(n/1_000).toFixed(1)}К`:String(n);
-const fmtAgo = (iso:string) => { const d=Math.floor((Date.now()-new Date(iso).getTime())/86400000); return d===0?'Сегодня':d===1?'Вчера':`${d} дн.`; };
 
 /* ── Track row ── */
 const TrackRow = ({ track, index, playing, activeId, onPlay, onLike, liked }:
@@ -85,16 +83,20 @@ const TrackRow = ({ track, index, playing, activeId, onPlay, onLike, liked }:
 const EditMusicianForm = ({ onClose }:{ onClose:()=>void }) => {
   const { accounts, currentUserId, updateMusicianProfile } = useAuthStore();
   const me = accounts.find(a=>a.id===currentUserId);
-  if(!me) return null;
 
-  const [name,    setName]   = useState(me.artistName ?? me.name);
-  const [bio,     setBio]    = useState(me.artistBio ?? '');
-  const [genres,  setGenres] = useState<string[]>(me.artistGenres ?? []);
-  const [banner,  setBanner] = useState<string|undefined>(me.artistBanner);
-  const [avatar,  setAvatar] = useState<string|undefined>(me.artistAvatar ?? me.avatar);
+  // Состояние заводим до любого возврата: хук, вызванный через раз,
+  // роняет весь экран («Rendered more hooks than during the previous
+  // render»), а не просто портит вид.
+  const [name,    setName]   = useState(me?.artistName ?? me?.name ?? '');
+  const [bio,     setBio]    = useState(me?.artistBio ?? '');
+  const [genres,  setGenres] = useState<string[]>(me?.artistGenres ?? []);
+  const [banner,  setBanner] = useState<string|undefined>(me?.artistBanner);
+  const [avatar,  setAvatar] = useState<string|undefined>(me?.artistAvatar ?? me?.avatar);
   const [saved,   setSaved]  = useState(false);
   const bannerRef = useRef<HTMLInputElement>(null);
   const avatarRef = useRef<HTMLInputElement>(null);
+
+  if(!me) return null;
 
   const ALL_GENRES = ['Pop','Rock','Electronic','Hip-Hop','Jazz','Classical','Ambient','Synthwave','Indie','Soul','R&B','Folk','Metal','Другое'];
 
@@ -232,108 +234,22 @@ export const MusicianProfileTab = ({
   playing:boolean; activeId:string|null; favorites:string[];
   onPlay:(t:any,pool:any[])=>void; onLike:(id:string)=>void;
 }) => {
-  const { accounts, currentUserId, followArtist, unfollowArtist } = useAuthStore();
+  const { accounts, currentUserId } = useAuthStore();
   const tracks = useMusicStore(s => s.tracks);
   const me = accounts.find(a=>a.id===currentUserId);
   const [editOpen, setEditOpen] = useState(false);
-  const [viewArtist, setViewArtist] = useState<string|null>(null);
   const [artistTab, setArtistTab] = useState<'tracks'|'stats'>('tracks');
 
   /* ── My tracks ── */
   const myTracks = tracks.filter(t=>t.uploadedBy===currentUserId && t.status==='published');
   const totalPlays = myTracks.reduce((s,t)=>s+t.plays,0);
-  const totalLikes = myTracks.reduce((s,t)=>s+t.likes.length,0);
-  const followers  = me?.artistFollowers?.length ?? 0;
 
-  /* ── Other artist profiles ── */
-  const artists = accounts.filter(a=>a.isMusician && a.id !== currentUserId);
-
-  /* ── View another artist ── */
-  if(viewArtist) {
-    const artist = accounts.find(a=>a.id===viewArtist);
-    if(!artist) { setViewArtist(null); return null; }
-    const artTracks = tracks.filter(t=>t.uploadedBy===viewArtist && t.status==='published');
-    const isFollowing = (me?.artistFollowers ?? []).length > 0 ||
-      (artist.artistFollowers??[]).includes(currentUserId??'');
-    const iFollow = (artist.artistFollowers??[]).includes(currentUserId??'');
-
-    return (
-      <div className="flex flex-col h-full overflow-y-auto" style={{ scrollbarWidth:'none' }}>
-        {/* Banner */}
-        <div className="relative shrink-0" style={{ height:140 }}>
-          <div className="w-full h-full"
-            style={{ background: artist.artistBanner ? undefined : 'linear-gradient(135deg,#1e1b4b,#312e81)' }}>
-            {artist.artistBanner && <img src={artist.artistBanner} alt="" className="w-full h-full object-cover"/>}
-          </div>
-          <div className="absolute inset-0" style={{ background:'linear-gradient(transparent 40%,rgba(10,10,15,.95))' }}/>
-          <button type="button" onClick={()=>setViewArtist(null)}
-            className="absolute top-3 left-3 grid h-8 w-8 place-items-center rounded-full"
-            style={{ background:'rgba(0,0,0,.6)', backdropFilter:'blur(8px)', border:'none', cursor:'pointer', color:'#fff' }}>
-            <ChevronLeft size={16}/>
-          </button>
-        </div>
-
-        {/* Profile row */}
-        <div className="px-4 -mt-10 pb-4 flex items-end gap-4 relative z-10">
-          <div className="h-20 w-20 rounded-2xl overflow-hidden shrink-0"
-            style={{ border:'3px solid #0a0a0f', background:'linear-gradient(135deg,#4f46e5,#7c3aed)', boxShadow:'0 8px 24px rgba(0,0,0,.6)' }}>
-            {artist.artistAvatar
-              ? <img src={artist.artistAvatar} alt="" className="w-full h-full object-cover"/>
-              : <div className="w-full h-full grid place-items-center text-3xl font-black text-white">{(artist.artistName??artist.name)[0]}</div>}
-          </div>
-          <div className="flex-1 min-w-0 pb-1">
-            <p className="text-lg font-black text-white truncate">{artist.artistName ?? artist.name}</p>
-            {artist.artistGenres?.length ? (
-              <p className="text-[11px] mt-0.5" style={{ color:YM.t3 }}>{artist.artistGenres.join(' · ')}</p>
-            ) : null}
-          </div>
-          <motion.button whileTap={{scale:.93}} type="button"
-            onClick={()=>iFollow ? unfollowArtist(currentUserId!,artist.id) : followArtist(currentUserId!,artist.id)}
-            className="shrink-0 rounded-2xl px-4 py-2 text-xs font-black mb-1"
-            style={{ background:iFollow?'var(--bg-l3)':YM.accent, color:iFollow?YM.t2:'#fff',
-              border:`1px solid ${iFollow?'var(--border)':'transparent'}`, cursor:'pointer' }}>
-            {iFollow ? 'Подписан ✓' : '+ Подписаться'}
-          </motion.button>
-        </div>
-
-        {/* Bio */}
-        {artist.artistBio && (
-          <p className="px-4 pb-4 text-[13px] leading-relaxed" style={{ color:YM.t2 }}>{artist.artistBio}</p>
-        )}
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-2 px-4 mb-4">
-          {[
-            { label:'Треков', val:artTracks.length, icon:Music2, color:'#6366f1' },
-            { label:'Прослушиваний', val:fmtPlays(artTracks.reduce((s,t)=>s+t.plays,0)), icon:Headphones, color:'#22d3ee' },
-            { label:'Подписчиков', val:artist.artistFollowers?.length??0, icon:Users, color:'#f43f5e' },
-          ].map(({label,val,icon:Icon,color})=>(
-            <div key={label} className="rounded-2xl px-3 py-3 text-center"
-              style={{ background:'var(--bg-l2)', border:'1px solid var(--border)' }}>
-              <Icon size={14} className="mx-auto mb-1" style={{ color }}/>
-              <p className="text-base font-black" style={{ color:YM.t1 }}>{val}</p>
-              <p className="text-[9px] mt-0.5" style={{ color:YM.t3 }}>{label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Tracks */}
-        <div className="px-4 pb-2">
-          <p className="text-[10px] font-black uppercase tracking-wider mb-2" style={{ color:YM.t3 }}>Треки</p>
-        </div>
-        {artTracks.length === 0 ? (
-          <div className="flex flex-col items-center py-10 gap-2 opacity-40">
-            <Music2 size={24} style={{ color:YM.t3 }}/><p className="text-sm" style={{ color:YM.t2 }}>Нет треков</p>
-          </div>
-        ) : artTracks.map((t,i)=>(
-          <TrackRow key={t.id} track={t} index={i} playing={playing} activeId={activeId}
-            onPlay={()=>onPlay(t,artTracks)} onLike={()=>onLike(t.id)}
-            liked={favorites.includes(t.id)}/>
-        ))}
-        <div className="h-8"/>
-      </div>
-    );
-  }
+  /* Списка «Музыканты Sky» здесь больше нет.
+     Он собирался из accounts — из учётных записей, вошедших в этом
+     браузере. У обычного человека там ровно он сам, а подписка писалась
+     в тот же локальный список и не доходила ни до кого. Страница
+     артиста, собранная по настоящим трекам с сервера, открывается по
+     имени исполнителя из любой строки трека. */
 
   /* ── My profile view ── */
   return (
@@ -379,11 +295,10 @@ export const MusicianProfileTab = ({
           )}
 
           {/* Stats */}
-          <motion.div {...fu(1)} className="grid grid-cols-3 gap-2 px-4 mb-5">
+          <motion.div {...fu(1)} className="grid grid-cols-2 gap-2 px-4 mb-5">
             {[
               { label:'Треков',          val:myTracks.length,    icon:Music2,     color:'#6366f1' },
               { label:'Прослушиваний',   val:fmtPlays(totalPlays),icon:Headphones, color:'#22d3ee' },
-              { label:'Подписчиков',     val:followers,           icon:Users,      color:'#f43f5e' },
             ].map(({label,val,icon:Icon,color})=>(
               <div key={label} className="rounded-2xl px-3 py-3 text-center"
                 style={{ background:'var(--bg-l2)', border:'1px solid var(--border)' }}>
@@ -487,47 +402,6 @@ export const MusicianProfileTab = ({
             <Mic2 size={16}/>Создать профиль музыканта
           </motion.button>
         </div>
-      )}
-
-      {/* ── Other musicians ── */}
-      {artists.length > 0 && (
-        <motion.div {...fu(4)} className="px-4 pb-8 mt-4">
-          <p className="text-[10px] font-black uppercase tracking-wider mb-3" style={{ color:YM.t3 }}>
-            Музыканты Sky
-          </p>
-          <div className="space-y-2">
-            {artists.map((a,i)=>{
-              const artTracks = tracks.filter(t=>t.uploadedBy===a.id&&t.status==='published');
-              const iFollow = (a.artistFollowers??[]).includes(currentUserId??'');
-              return (
-                <motion.div key={a.id} {...fu(i)}
-                  className="flex items-center gap-3 rounded-2xl px-4 py-3 cursor-pointer hover:bg-white/4 transition-colors"
-                  style={{ background:'var(--bg-l2)', border:'1px solid var(--border)' }}
-                  onClick={()=>setViewArtist(a.id)}>
-                  <div className="h-11 w-11 rounded-xl overflow-hidden shrink-0"
-                    style={{ background:'linear-gradient(135deg,#4f46e5,#7c3aed)' }}>
-                    {a.artistAvatar
-                      ? <img src={a.artistAvatar} alt="" className="w-full h-full object-cover"/>
-                      : <div className="w-full h-full grid place-items-center text-lg font-black text-white">{(a.artistName??a.name)[0]}</div>}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-bold truncate" style={{ color:YM.t1 }}>{a.artistName??a.name}</p>
-                    <p className="text-[11px] mt-0.5" style={{ color:YM.t3 }}>
-                      {artTracks.length} треков · {a.artistFollowers?.length??0} подп.
-                    </p>
-                  </div>
-                  <button type="button"
-                    onClick={e=>{e.stopPropagation();iFollow?unfollowArtist(currentUserId!,a.id):followArtist(currentUserId!,a.id);}}
-                    className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-bold"
-                    style={{ background:iFollow?'var(--bg-l3)':YM.accent, color:iFollow?YM.t2:'#fff',
-                      border:`1px solid ${iFollow?'var(--border)':'transparent'}`, cursor:'pointer' }}>
-                    {iFollow?'✓':'+ Подп.'}
-                  </button>
-                </motion.div>
-              );
-            })}
-          </div>
-        </motion.div>
       )}
 
       <style>{`@keyframes barBeat{0%,100%{height:40%}50%{height:100%}}`}</style>

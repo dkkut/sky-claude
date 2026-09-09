@@ -2444,6 +2444,21 @@ export const SkyMusic = () => {
   // устройства. Само сохранение придерживает частоту внутри store:
   // сюда время приходит по нескольку раз в секунду.
   const saveProgress = useMusicStore(st => st.saveProgress);
+  const progressMap = useMusicStore(st => st.progress);
+
+  // ...и обратно: когда трек начинает играть, возвращаемся туда, где
+  // человек его бросил. Сохранять позицию и не пользоваться ею —
+  // половина дела. Один раз на трек: дальше он играет как обычно.
+  const restoredRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (!cur?.id || durTime <= 0) return;
+    if (restoredRef.current === cur.id) return;
+    restoredRef.current = cur.id;
+    const at = progressMap[cur.id] ?? 0;
+    // Совсем начало и самый хвост не восстанавливаем: в первом случае
+    // возвращать некуда, во втором человек трек уже дослушал.
+    if (at > 5 && at < durTime - 10) seek(at);
+  }, [cur?.id, durTime, progressMap, seek]);
   useEffect(() => {
     if (!cur?.id || !playing || curTime <= 0) return;
     saveProgress(cur.id, curTime);
