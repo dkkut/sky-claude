@@ -40,7 +40,6 @@ const NAV_TABS: { key: TabKey; icon: IconComponent; label: string }[] = [
   { key: 'collection', icon: ListMusic,  label: 'Коллекция' },
   { key: 'charts',     icon: BarChart3,  label: 'Чарты'     },
   { key: 'upload',     icon: Upload,     label: 'Загрузить' },
-  { key: 'import',     icon: Download,   label: 'Перенос'   },
   { key: 'history',    icon: History,    label: 'История'   },
   { key: 'musician',   icon: Mic2,       label: 'Артист'    },
 ];
@@ -2519,7 +2518,8 @@ export const SkyMusic = () => {
             {tab === 'home'       && <SkyMusicHome tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom}
               loading={musicLoading} error={musicError}
               onRetry={() => void loadMusic({ force: true })} onUpload={() => setTab('upload')}/>}
-            {tab === 'collection' && <SkyMusicLibrary tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} onLike={onLike}/>}
+            {tab === 'collection' && <SkyMusicLibrary tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} onLike={onLike}
+              onOpenUpload={() => setTab('upload')} onOpenImport={() => setTab('import')}/>}
             {tab === 'charts'     && <ChartsTab     {...tabProps} />}
             {tab === 'upload'     && <UploadTab     playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} />}
             {tab === 'import'     && <MusicImport/>}

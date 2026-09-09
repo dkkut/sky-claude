@@ -1218,6 +1218,10 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     setTimeout(() => { if (el) el.style.background = ''; }, 1400);
   };
 
+  // Настройки чата читаем до возврата «чат не выбран»: хук, вызванный
+  // через раз, роняет весь мессенджер.
+  const chatSettings = useAdminStore(s => s.settings[chat?.id ?? '']);
+
   if (!chat) return (
     <div className="flex flex-1 items-center justify-center" style={{ background: '#0d0d0f' }}>
       <div className="text-center space-y-4">
@@ -1244,7 +1248,6 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   // Право писать: у канала — только у тех, кто им управляет; у группы
   // ещё и настройка «пишут только администраторы». Решает всё равно
   // сервер, здесь мы лишь не показываем поле, которое ответит отказом.
-  const chatSettings = useAdminStore(s => s.settings[chat.id]);
   const runsChat = ['owner', 'admin', 'moderator'].includes(chat.myRole ?? 'member');
   const canPost = chat.type === 'direct' ? true
     : chat.type === 'channel' ? runsChat

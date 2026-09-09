@@ -296,12 +296,13 @@ export const SkyBooks = () => {
   const [search, setSearch] = useState('');
   const [detail, setDetail] = useState<Book|null>(null);
   const [shelf,  setShelf]  = useState<string[]>([]);
-
-  if (detail) return <BookDetail book={detail} onBack={() => setDetail(null)}/>;
-
+  // Состояние — до любого возврата: хук, вызванный через раз, роняет
+  // экран целиком, а не портит вид.
   const [shelfIds] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('sky:books:shelf:v1')||'[]'); } catch { return []; }
   });
+
+  if (detail) return <BookDetail book={detail} onBack={() => setDetail(null)}/>;
   const filtered = BOOKS.filter(b => {
     if (genre !== 'all' && b.genre !== genre) return false;
     if (tab === 'audio' && !b.hasAudio)  return false;

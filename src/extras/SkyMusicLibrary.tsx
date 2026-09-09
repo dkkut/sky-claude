@@ -2,21 +2,27 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, Download, ListMusic, Mic2, History as HistoryIcon, Radio, BookOpen,
-  Pin, Check, ArrowUpDown, ChevronLeft, Play, Trash2, X,
+  Pin, Check, ArrowUpDown, ChevronLeft, Play, Trash2, X, FolderLock, Upload,
 } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { useMusicStore } from '@/music/serverStore';
 import { getG } from '@/music/utils';
 
-type Category = 'liked'|'downloaded'|'albums'|'artists'|'playlists'|'history'|'podcasts'|'audiobooks';
+type Category = 'liked'|'mine'|'downloaded'|'albums'|'artists'|'playlists'|'history'|'podcasts'|'audiobooks';
 type SortKey = 'added'|'title'|'artist';
 
+/** Три главные кнопки сверху: то, ради чего сюда заходят чаще всего. */
+const MAIN: { key: Category; label: string; icon: React.FC<any> }[] = [
+  { key:'liked',     label:'Избранное',  icon:Heart },
+  { key:'playlists', label:'Плейлисты',  icon:ListMusic },
+  { key:'mine',      label:'Моя музыка', icon:FolderLock },
+];
+
+/** Остальное — второй строкой, чтобы не спорить с главными кнопками. */
 const CATS: { key: Category; label: string; icon: React.FC<any> }[] = [
-  { key:'liked',      label:'Любимые',    icon:Heart },
   { key:'downloaded', label:'Скачанные',  icon:Download },
   { key:'albums',     label:'Альбомы',    icon:ListMusic },
   { key:'artists',    label:'Исполнители',icon:Mic2 },
-  { key:'playlists',  label:'Плейлисты',  icon:ListMusic },
   { key:'history',    label:'История',    icon:HistoryIcon },
   { key:'podcasts',   label:'Подкасты',   icon:Radio },
   { key:'audiobooks', label:'Аудиокниги', icon:BookOpen },
@@ -26,9 +32,11 @@ const PIN_KEY = 'sky:music:pins:v1';
 const loadPins = (): string[] => { try { return JSON.parse(localStorage.getItem(PIN_KEY) || '[]'); } catch { return []; } };
 const savePins = (ids: string[]) => { try { localStorage.setItem(PIN_KEY, JSON.stringify(ids)); } catch {} };
 
-const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, onToggleSelect }: {
+const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, onToggleSelect, note }: {
   t: Track; active: boolean; playing: boolean; onPlay: () => void; liked: boolean; onLike: () => void;
   selectMode: boolean; selected: boolean; onToggleSelect: () => void;
+  /** Подпись справа: например, лежит ли трек в общем каталоге. */
+  note?: string;
 }) => {
   const [c1, c2] = getG(t.id);
   return (
@@ -48,6 +56,10 @@ const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, 
         <p className="truncate text-[13.5px] font-medium" style={{ color: active ? '#4fe3d0' : '#f2f5f8' }}>{t.title}</p>
         <p className="truncate text-[11.5px]" style={{ color: '#8a8f9a' }}>{t.artist}</p>
       </div>
+      {note && (
+        <span className="shrink-0 rounded-full px-2 py-0.5 text-[10.5px]"
+          style={{ background:'rgba(255,255,255,0.05)', color:'#8a8f9a' }}>{note}</span>
+      )}
       {!selectMode && (
         <button type="button" onClick={e => { e.stopPropagation(); onLike(); }} className="shrink-0 p-1">
           <Heart size={16} fill={liked ? '#f43f5e' : 'none'} color={liked ? '#f43f5e' : '#5c626e'}/>
@@ -58,10 +70,11 @@ const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, 
 };
 
 export const SkyMusicLibrary = ({
-  tracks, favorites, playing, activeId, onPlay, onLike,
+  tracks, favorites, playing, activeId, onPlay, onLike, onOpenImport, onOpenUpload,
 }: {
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
   onPlay: (t: Track, pool: Track[]) => void; onLike: (id: string) => void;
+  onOpenImport?: () => void; onOpenUpload?: () => void;
 }) => {
   const playlists = useMusicStore(st => st.playlists);
   const createPlaylist = useMusicStore(st => st.createPlaylist);
@@ -99,6 +112,14 @@ export const SkyMusicLibrary = ({
   const likedTracks   = useMemo(() => applySort(applyGenre(pub.filter(t => favorites.includes(t.id)))), [pub, favorites, sort, genreFilter]);
   const downloaded    = useMemo(() => applySort(applyGenre(pub.filter(t => t.isLocal))), [pub, sort, genreFilter]);
   const historyTracks = useMemo(() => historyIds.map(id => pub.find(t => t.id===id)).filter(Boolean) as Track[], [historyIds, pub]);
+
+  // Личная коллекция: то, что человек загрузил сам. Сервер отдаёт свои
+  // треки любого состояния, чужие закрытые не отдаёт никому — поэтому
+  // здесь по определению только своё.
+  const mineTracks = useMemo(
+    () => applySort(applyGenre(tracks.filter(t => t.uploadedBy === 'me'))),
+    [tracks, sort, genreFilter],
+  );
 
   const albums = useMemo(() => {
     const map: Record<string, Track[]> = {};
@@ -145,13 +166,32 @@ export const SkyMusicLibrary = ({
     );
   }
 
-  const trackList = cat==='liked' ? likedTracks : cat==='downloaded' ? downloaded : cat==='history' ? historyTracks : [];
-  const isTrackCat = cat==='liked' || cat==='downloaded' || cat==='history';
+  const trackList = cat==='liked' ? likedTracks
+    : cat==='mine' ? mineTracks
+    : cat==='downloaded' ? downloaded
+    : cat==='history' ? historyTracks : [];
+  const isTrackCat = cat==='liked' || cat==='mine' || cat==='downloaded' || cat==='history';
 
   return (
     <div className="sky-music-scope flex h-full flex-col overflow-hidden" style={{ background: '#0a0a0f' }}>
-      {/* Категории */}
-      <div className="flex shrink-0 gap-1.5 overflow-x-auto px-3 pb-2 pt-3" style={{ scrollbarWidth: 'none' }}>
+      {/* Главные разделы */}
+      <div className="flex shrink-0 gap-2 px-3 pt-3">
+        {MAIN.map(m => (
+          <button key={m.key} type="button"
+            onClick={() => { setCat(m.key); setSelectMode(false); setSelected(new Set()); }}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[12.5px] font-bold"
+            style={{
+              background: cat===m.key ? '#4fe3d0' : 'rgba(255,255,255,0.05)',
+              color: cat===m.key ? '#0a0a0f' : '#c7ccd6',
+              border: `1px solid ${cat===m.key ? 'transparent' : 'rgba(255,255,255,0.07)'}`,
+            }}>
+            <m.icon size={14}/>{m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Остальные категории */}
+      <div className="flex shrink-0 gap-1.5 overflow-x-auto px-3 pb-2 pt-2" style={{ scrollbarWidth: 'none' }}>
         {CATS.map(c => (
           <button key={c.key} type="button" onClick={() => { setCat(c.key); setSelectMode(false); setSelected(new Set()); }}
             className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-medium"
@@ -183,16 +223,44 @@ export const SkyMusicLibrary = ({
       )}
 
       <div className="flex-1 overflow-y-auto pb-24">
+        {cat === 'mine' && (
+          <div className="px-4 pb-2 pt-1">
+            <p className="text-[12px] leading-relaxed" style={{ color:'#8a8f9a' }}>
+              Ваша личная коллекция. Загруженное здесь видите только вы —
+              в общий каталог оно попадает, лишь когда вы сами публикуете трек.
+            </p>
+            <div className="mt-2.5 flex gap-2">
+              {onOpenUpload && (
+                <button type="button" onClick={onOpenUpload}
+                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-bold"
+                  style={{ background:'#fff', color:'#0a0a0f' }}>
+                  <Upload size={13}/>Загрузить
+                </button>
+              )}
+              {onOpenImport && (
+                <button type="button" onClick={onOpenImport}
+                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium"
+                  style={{ background:'rgba(255,255,255,0.05)', color:'#c7ccd6', border:'1px solid rgba(255,255,255,0.07)' }}>
+                  <Download size={13}/>Перенос
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {isTrackCat && (
           <>
             {trackList.map(t => (
               <Row key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, trackList)}
                 liked={favorites.includes(t.id)} onLike={() => onLike(t.id)}
-                selectMode={selectMode} selected={selected.has(t.id)} onToggleSelect={() => toggleSelect(t.id)}/>
+                selectMode={selectMode} selected={selected.has(t.id)} onToggleSelect={() => toggleSelect(t.id)}
+                note={cat==='mine' ? (t.status === 'published' ? 'в каталоге' : 'только у вас') : undefined}/>
             ))}
             {trackList.length === 0 && (
               <p className="py-12 text-center text-[12.5px]" style={{ color:'#5c626e' }}>
-                {cat==='downloaded' ? 'Загруженные с устройства треки появятся здесь' : cat==='history' ? 'Пока ничего не прослушано' : 'Добавляйте треки в любимые'}
+                {cat==='downloaded' ? 'Загруженные с устройства треки появятся здесь'
+                  : cat==='mine' ? 'Здесь пока пусто — загрузите свой первый трек'
+                  : cat==='history' ? 'Пока ничего не прослушано' : 'Добавляйте треки в любимые'}
               </p>
             )}
           </>

@@ -460,6 +460,10 @@ const BIZ_METRICS: BizMetric[] = [
 ];
 
 const BusinessTools = ({ locked }: { locked: boolean }) => {
+  // Состояние заводим до проверки подписки: иначе при её появлении или
+  // пропаже число хуков меняется и React роняет экран.
+  const [tool, setTool] = useState<'dashboard'|'tasks'|'crm'|'calendar'>('dashboard');
+
   if (locked) return (
     <div className="flex flex-col items-center justify-center gap-4 h-full px-6" style={{background:C.bg}}>
       <span className="text-5xl">💼</span>
@@ -470,7 +474,6 @@ const BusinessTools = ({ locked }: { locked: boolean }) => {
       <p className="text-xs" style={{color:C.t3}}>Профиль → Настройки → Подписки</p>
     </div>
   );
-  const [tool, setTool] = useState<'dashboard'|'tasks'|'crm'|'calendar'>('dashboard');
 
   const TOOLS = [
     {key:'dashboard',label:'Сводка',icon:'📊'},

@@ -30,12 +30,12 @@ export const LivePet = ({ petId, mood, onMoodEnd }: {
   petId: string; mood: PetMood; onMoodEnd: ()=>void;
 }) => {
   const pet = PETS.find(p=>p.id===petId);
-  if (!pet) return null;
-  const frames = pet.moods[mood];
+  // Хуки — до проверки: неизвестный питомец не должен менять их число.
+  const frames = pet ? pet.moods[mood] : [];
   const [frame, setFrame] = useState(0);
-  const { glow } = RARITY_CFG[pet.rarity];
 
   useEffect(()=>{
+    if (frames.length === 0) return;
     let i = 0;
     const t = setInterval(()=>{
       i++;
@@ -43,7 +43,10 @@ export const LivePet = ({ petId, mood, onMoodEnd }: {
       setFrame(i);
     }, 700);
     return ()=>clearInterval(t);
-  }, [mood]);
+  }, [mood, frames.length]);
+
+  if (!pet) return null;
+  const { glow } = RARITY_CFG[pet.rarity];
 
   return (
     <motion.div
@@ -69,15 +72,17 @@ export const PetBubble = ({ petId, mood, sound, petName, petColor }: {
   petId: string; mood: PetMood; sound: string; petName: string; petColor: string;
 }) => {
   const pet = PETS.find(p=>p.id===petId);
-  if (!pet) return <span>{sound}</span>;
-  const { glow } = RARITY_CFG[pet.rarity];
-  const frames = pet.moods[mood];
+  const frames = pet ? pet.moods[mood] : [];
   const [frame, setFrame] = useState(0);
 
   useEffect(()=>{
+    if (frames.length === 0) return;
     const t = setInterval(()=>setFrame(f=>(f+1)%frames.length), 800);
     return ()=>clearInterval(t);
-  },[mood]);
+  },[mood, frames.length]);
+
+  if (!pet) return <span>{sound}</span>;
+  const { glow } = RARITY_CFG[pet.rarity];
 
   return (
     <div className="flex flex-col items-center gap-2 py-2" style={{ minWidth:100 }}>

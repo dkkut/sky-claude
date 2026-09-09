@@ -14,7 +14,6 @@ export const CollectionScreen = ({ collectionId, onClose, onOpenGift }: { collec
   const { collectionById, giftsInCollection, listings } = useNftGiftsStore();
   const col = collectionById(collectionId);
   const [sort, setSort] = useState<'rarity'|'price'|'edition'>('rarity');
-  if (!col) return null;
 
   const items = giftsInCollection(collectionId);
   const owners = new Set(items.map(g=>g.ownerId)).size;
@@ -27,6 +26,10 @@ export const CollectionScreen = ({ collectionId, onClose, onOpenGift }: { collec
     if (sort==='price') return b.price-a.price;
     return a.edition-b.edition;
   }), [items, sort]);
+
+  // Проверка после всех хуков: иначе их количество меняется между
+  // отрисовками и React роняет экран.
+  if (!col) return null;
 
   return (
     <GiftSlide open onClose={onClose} title={col.name}>

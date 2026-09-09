@@ -666,12 +666,14 @@ export const ProfileModule = () => {
   const [gRank, setGRank] = useState(me?.gameProfile?.rank ?? '');
   const [gGame, setGGame] = useState(me?.gameProfile?.game ?? '');
 
-  if (!me) return <div className="p-6 text-sm" style={{color:'var(--t3)'}}>Профиль не найден</div>;
-
   // Приватность решает сервер: здесь зеркало его состояния. Раньше она
   // лежала в профиле в localStorage и до сервера не доходила.
+  // Подписка на неё — до возврата: хук, вызванный через раз, роняет
+  // экран целиком.
   const privacy = usePrivacyStore(st => st.privacy);
   const savePrivacy = usePrivacyStore(st => st.save);
+
+  if (!me) return <div className="p-6 text-sm" style={{color:'var(--t3)'}}>Профиль не найден</div>;
 
   const saveEdit = () => {
     if (nameVal.trim().length >= 2) {
