@@ -42,6 +42,7 @@ const SkyGarant = React.lazy(() => import('@/garant/SkyGarant').then(m => ({ def
 const SkyPVZ = React.lazy(() => import('@/pvz/SkyPVZ').then(m => ({ default: m.SkyPVZ })));
 const SkyGiftsNFT = React.lazy(() => import('@/gifts/SkyGiftsNFT').then(m => ({ default: m.SkyGiftsNFT })));
 import { AdminMusicPanel } from '@/music/ArtistSubmit';
+import { apiModerationQueue } from '@/music/musicApi';
 import { AdminDisputesPanel, AdminGarantPanel } from '@/admin/AdminDisputes';
 import { qrDataUri } from '@/shared/qr';
 
@@ -617,6 +618,12 @@ const AdminSupportTab = () => {
 
 const AdminPanel = () => {
   const { tracks, approveTrack, rejectTrack } = usePlatformStore();
+  // Сколько заявок на музыку ждёт решения — спрашиваем сервер: очередь
+  // он отдаёт только администратору, и обычному человеку она пуста.
+  const [musicPending, setMusicPending] = useState(0);
+  useEffect(() => {
+    void apiModerationQueue().then(q => setMusicPending(q?.length ?? 0));
+  }, []);
   const { campaigns, moderate } = useAdsStore();
   const pendingAds = campaigns.filter(c=>c.status==='moderation');
   const { accounts, grantPrime, revokePrime, setAdmin, banUser, muteUser, spamBlock, freezeUser, setModerationNote, currentUserId } = useAuthStore();
@@ -650,9 +657,7 @@ const AdminPanel = () => {
         {([
           ['reports',    `Жалобы${pending.length>0?` (${pending.length})`:''}`,    Flag],
           ['users',      'Пользователи',                                              Users],
-          // Счётчик «на модерации» убран вместе с мнимой очередью: он
-          // считал локальные записи этого браузера и всегда был нулём.
-          ['moderation', 'Музыка', Music2],
+          ['moderation', `Музыка${musicPending > 0 ? ` (${musicPending})` : ''}`, Music2],
           ['content',    'Контент',                                                   Upload],
           ['channels',   'Каналы',                                                   Shield],
           ['ads_mod',    `Реклама${pendingAds.length>0?` (${pendingAds.length})`:''}`, Megaphone],
