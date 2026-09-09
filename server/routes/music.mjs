@@ -28,6 +28,8 @@ import {
 } from './../music.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, remove, parseRange } from './../musicstore.mjs';
 import { ticketCookie, ticketFromCookies } from './../musicticket.mjs';
+import { hasPrime } from './../skyid.mjs';
+import { isAdmin } from './../admin.mjs';
 import {
   readArtist, readArtistByName, saveArtist, followArtist,
   listFollowing, listArtists, newFromFollowed,
@@ -143,6 +145,14 @@ export const musicRoutes = async (req, res, url) => {
     const session = await requireProfile(req, res);
     if (!session) return true;
     me = session.profileId;
+  }
+
+  /* Sky Music входит в подписку Sky Prime.
+     Проверка здесь, а не на экране: клиент можно переписать, поэтому
+     закрытым должен быть сам доступ к данным и файлам. Администратор
+     проходит без подписки — иначе некому разбирать заявки. */
+  if (!(await hasPrime(me)) && !(await isAdmin(me))) {
+    return json(res, 403, { error: 'prime_required' });
   }
 
   /* Пропуск выдаётся отдельной ручкой: клиент просит его один раз при

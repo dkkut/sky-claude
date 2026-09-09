@@ -1511,51 +1511,29 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
     { days:365, label:'1 год',   price:'3 790 ₽', popular:true },
     { days:730, label:'2 года',  price:'6 990 ₽' },
   ];
+  // Цены здесь только для показа: считает и списывает сервер по своей
+  // таблице, поэтому подделать сумму в запросе нельзя.
   const PRICES: Record<number, number> = { 30:400, 365:3790, 730:6990 };
-  const { accounts, currentUserId, grantPrime } = useAuthStore();
-  const { grantPrime: grantPlatformPrime } = usePlatformStore();
-  const { spend, getBalance } = useMoney();
+  const { currentUserId, purchasePrime } = useAuthStore();
+  const { getBalance } = useMoney();
   const balance = getBalance(currentUserId ?? '');
   const [chosen, setChosen] = useState(365);
   const [err,    setErr]    = useState('');
+  const [busy,   setBusy]   = useState(false);
   const [done,   setDone]   = useState(false);
 
   const price  = PRICES[chosen];
-  const planLb = PLANS.find(p => p.days === chosen)?.label ?? '';
-
-  const [showCheckout, setShowCheckout] = useState(false);
 
   const buy = async () => {
-    setErr('');
-    // Try wallet first
-    const ok = await spend(currentUserId!, price, 'prime', `Sky Prime  -  ${planLb}`);
-    if (ok) {
-      grantPrime(currentUserId!, chosen);
-      grantPlatformPrime(chosen);
-      setDone(true);
-    } else {
-      // Not enough in wallet → open Sky Pay checkout
-      setShowCheckout(true);
-    }
+    setErr(''); setBusy(true);
+    // Подписку выписывает сервер: он же списывает деньги и он же потом
+    // решает, отдавать ли музыку. Прежняя кнопка выдавала Prime прямо в
+    // браузере — экран открывался, а сервер отказывал.
+    const res = await purchasePrime('standard', chosen);
+    setBusy(false);
+    if (!res.ok) { setErr(res.reason ?? 'Не получилось оформить подписку'); return; }
+    setDone(true);
   };
-
-  if (showCheckout) {
-    const purposeMap: Record<number, any> = { 30:'prime_month', 365:'prime_year', 730:'prime_2year' };
-    return (
-      <div style={{ height:'100%' }}>
-        <SkyPayCheckout
-          purpose={purposeMap[chosen] ?? 'prime_month'}
-          amount={price}
-          onSuccess={() => {
-            grantPrime(currentUserId!, chosen);
-            grantPlatformPrime(chosen);
-            setDone(true);
-          }}
-          onCancel={() => setShowCheckout(false)}
-        />
-      </div>
-    );
-  }
 
   const icon  = service === 'music' ? '🎵' : '🎬';
   const label = service === 'music' ? 'Sky Music' : 'Sky Film';
@@ -1596,7 +1574,7 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
         <p className="text-xl font-black text-white">{label}  -  только для Prime</p>
         <p className="text-sm mt-2 leading-relaxed" style={{ color:'var(--t2)', maxWidth:300 }}>
           {service === 'music'
-            ? 'Полный каталог музыки, загрузка треков и офлайн-режим доступны с подпиской Sky Prime.'
+            ? 'Каталог, своя коллекция и загрузка треков входят в подписку Sky Prime.'
             : 'Вся кинотека, 4K качество и совместный просмотр доступны с подпиской Sky Prime.'}
         </p>
       </div>
@@ -1655,10 +1633,10 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
       )}
 
       {/* CTA */}
-      <motion.button whileTap={{ scale:0.97 }} type="button" onClick={buy}
-        className="w-full max-w-xs rounded-2xl py-4 text-sm font-bold text-white"
+      <motion.button whileTap={{ scale:0.97 }} type="button" onClick={() => void buy()} disabled={busy}
+        className="w-full max-w-xs rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-50"
         style={{ background:'linear-gradient(135deg,#f59e0b,#fbbf24)', boxShadow:'0 8px 28px rgba(245,158,11,0.35)' }}>
-        👑 Оформить Prime за {PRICES[chosen].toLocaleString('ru')} ₽
+        {busy ? 'Оформляем…' : `👑 Оформить Prime за ${PRICES[chosen].toLocaleString('ru')} ₽`}
       </motion.button>
 
       <p className="text-xs text-center" style={{ color:'var(--t3)' }}>
@@ -2523,6 +2501,19 @@ export const SkyMusic = () => {
 
   /* colours for animated bg — change with current track */
   const [bgC1, bgC2] = cur ? getG(cur.id) : ['#4f46e5', '#7c3aed'];
+
+  /* Sky Music входит в подписку. Экран — только вежливость: доступ к
+     каталогу и файлам закрывает сервер, и переписанный клиент ничего
+     этим не добьётся. Администратор проходит без подписки: ему
+     разбирать заявки на публикацию. */
+  if (!isPrime && !(me?.isAdmin ?? false)) {
+    return (
+      <div className="relative flex h-full flex-col overflow-hidden"
+        style={{ background: YM.bg, isolation: 'isolate' }}>
+        <PrimeGate service="music"/>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden"

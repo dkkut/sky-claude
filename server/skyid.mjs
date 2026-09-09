@@ -505,6 +505,25 @@ export const disableProfileTwoFactor = async (skyId, profileId) => {
  * Прежняя активная подписка помечается завершённой, чтобы у профиля не
  * копилось несколько активных строк.
  */
+/**
+ * Есть ли у профиля действующая подписка Prime.
+ *
+ * Правда — в таблице подписок, а не во флаге profiles.is_prime: флаг
+ * удобен для показа, но истечь сам он не умеет.
+ */
+export const hasPrime = async (profileId) => {
+  if (!profileId) return false;
+  const { rows } = await query(
+    `SELECT EXISTS (
+       SELECT 1 FROM prime_subscriptions
+        WHERE profile_id = $1 AND status = 'active'
+          AND (expires_at IS NULL OR expires_at > now())
+     ) AS ok`,
+    [String(profileId)],
+  );
+  return rows[0]?.ok === true;
+};
+
 export const grantPrime = async (skyId, profileId, plan, days) => {
   const owned = await getProfileOfSkyId(skyId, profileId);
   if (!owned) return { error: 'not_found' };
