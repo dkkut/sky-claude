@@ -631,7 +631,6 @@ const AdminPanel = () => {
   const [noteEdit, setNoteEdit] = useState(false);
 
   const pending = reports.filter(r => r.status === 'pending');
-  const pendingTracks = tracks.filter(t => t.status === 'pending');
   const selAcc = accounts.find(a => a.id === selUser);
 
   const fmtUntil = (iso?: string) => {
@@ -651,7 +650,9 @@ const AdminPanel = () => {
         {([
           ['reports',    `Жалобы${pending.length>0?` (${pending.length})`:''}`,    Flag],
           ['users',      'Пользователи',                                              Users],
-          ['moderation', `Музыка${pendingTracks.length>0?` (${pendingTracks.length})`:''}`, Music2],
+          // Счётчик «на модерации» убран вместе с мнимой очередью: он
+          // считал локальные записи этого браузера и всегда был нулём.
+          ['moderation', 'Музыка', Music2],
           ['content',    'Контент',                                                   Upload],
           ['channels',   'Каналы',                                                   Shield],
           ['ads_mod',    `Реклама${pendingAds.length>0?` (${pendingAds.length})`:''}`, Megaphone],
