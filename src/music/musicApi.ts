@@ -22,6 +22,11 @@ export interface ServerTrack {
   plays: number;
   own?: boolean;
   createdAt?: string;
+  /** Причину отказа сервер отдаёт только владельцу. */
+  rejectReason?: string;
+  submittedAt?: string;
+  /** В очереди проверки — чей это трек. */
+  ownerName?: string;
 }
 
 export interface ServerPlaylist {
@@ -62,10 +67,9 @@ export const toClientTrack = (t: ServerTrack): Track => ({
   premium: false,
   sourceUrl: audioUrl(t.id),
   addedAt: t.createdAt ?? new Date().toISOString(),
-  // 'rejected' на клиенте отдельного вида не имеет: для владельца это
-  // просто неопубликованный трек.
-  status: (t.status === 'published' ? 'published'
-    : t.status === 'pending' ? 'pending' : 'private') as TrackStatus,
+  status: t.status as TrackStatus,
+  rejectReason: t.rejectReason,
+  submittedAt: t.submittedAt,
   plays: t.plays,
   likes: [],
   uploadedBy: t.own ? 'me' : undefined,
@@ -109,6 +113,29 @@ export const apiPatchTrack = async (id: string, patch: {
 
 export const apiDeleteTrack = async (id: string) => {
   const r = await apiCall(`/api/music/track/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return r.ok;
+};
+
+/* ─── Проверка перед публикацией ───────────────────────────────────── */
+
+/** Владелец отправляет свой трек на проверку. */
+export const apiSubmitTrack = async (id: string) => {
+  const r = await apiCall<{ track: ServerTrack }>(
+    `/api/music/track/${encodeURIComponent(id)}/submit`, { method: 'POST', body: '{}' });
+  return r.ok ? (r.data?.track ?? null) : null;
+};
+
+/** Очередь проверки. Отдаётся только администратору. */
+export const apiModerationQueue = async () => {
+  const r = await apiCall<{ tracks: ServerTrack[] }>('/api/music/moderation');
+  return r.ok ? (r.data?.tracks ?? []) : null;
+};
+
+/** Решение по заявке: принять или отклонить с причиной. */
+export const apiModerate = async (id: string, approve: boolean, reason?: string) => {
+  const r = await apiCall<{ status: string }>(
+    `/api/music/track/${encodeURIComponent(id)}/moderate`,
+    { method: 'POST', body: JSON.stringify({ approve, reason }) });
   return r.ok;
 };
 

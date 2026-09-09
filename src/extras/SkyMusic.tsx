@@ -704,6 +704,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
   const uploadTrack = useMusicStore(st => st.upload);
   const removeTrack = useMusicStore(st => st.removeTrack);
   const publishTrack = useMusicStore(st => st.publish);
+  const submitForReview = useMusicStore(st => st.submitForReview);
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
 
@@ -1239,8 +1240,12 @@ const UploadTab = ({ playing, activeId, onPlay }: {
           <div className="space-y-2">
             {mine.map(t => {
               const isEditing = editId === t.id;
-              const statusColor = t.status === 'published' ? '#22c55e' : t.status === 'pending' ? '#f59e0b' : '#ef4444';
-              const statusLabel = t.status === 'published' ? 'Опубликован' : t.status === 'pending' ? 'На модерации' : 'Только у вас';
+              const statusColor = t.status === 'published' ? '#22c55e'
+                : t.status === 'pending' ? '#f59e0b'
+                : t.status === 'rejected' ? '#ef4444' : '#8a8f9a';
+              const statusLabel = t.status === 'published' ? 'В каталоге'
+                : t.status === 'pending' ? 'На проверке'
+                : t.status === 'rejected' ? 'Отклонён' : 'Только у вас';
               const lyricsStatusColor = t.lyricsStatus === 'approved' ? '#22c55e' : t.lyricsStatus === 'pending' ? '#f59e0b' : t.lyricsStatus === 'rejected' ? '#ef4444' : 'transparent';
               return (
                 <div key={t.id} className="rounded-2xl overflow-hidden"
@@ -1263,6 +1268,11 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                           </span>
                         )}
                       </div>
+                      {t.status === 'rejected' && t.rejectReason && (
+                        <p className="mt-1 text-[11px] leading-snug" style={{ color: '#ef4444' }}>
+                          Причина: {t.rejectReason}
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-1.5 shrink-0">
                       <button type="button" onClick={() => setEditId(isEditing ? null : t.id)}
@@ -1270,13 +1280,32 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                         style={{ background: isEditing ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.06)', border: `1px solid ${isEditing ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.08)'}`, color: isEditing ? YM.accent : YM.sub2, cursor: 'pointer' }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="m18.5 2.5 2.5 2.5L12 14l-4 1 1-4 9.5-9.5z"/></svg>
                       </button>
-                      <button type="button"
-                        title={t.status === 'published' ? 'Убрать из каталога' : 'Опубликовать в каталоге'}
-                        onClick={() => void publishTrack(t.id, t.status !== 'published')}
-                        className="rounded-lg px-2 py-1 text-[11px] font-bold"
-                        style={{ background: 'rgba(255,255,255,0.06)', color: YM.sub, border: 'none', cursor: 'pointer' }}>
-                        {t.status === 'published' ? 'Скрыть' : 'Опубликовать'}
-                      </button>
+                      {/* В общий каталог трек попадает через проверку, а не
+                          по нажатию: за то, что лежит в каталоге, отвечает
+                          владелец сервиса. Снять с публикации и отозвать
+                          заявку человек может сам. */}
+                      {t.status === 'published' ? (
+                        <button type="button" title="Убрать из каталога"
+                          onClick={() => void publishTrack(t.id, false)}
+                          className="rounded-lg px-2 py-1 text-[11px] font-bold"
+                          style={{ background: 'rgba(255,255,255,0.06)', color: YM.sub, border: 'none', cursor: 'pointer' }}>
+                          Скрыть
+                        </button>
+                      ) : t.status === 'pending' ? (
+                        <button type="button" title="Отозвать заявку"
+                          onClick={() => void publishTrack(t.id, false)}
+                          className="rounded-lg px-2 py-1 text-[11px] font-bold"
+                          style={{ background: 'rgba(255,255,255,0.06)', color: YM.sub, border: 'none', cursor: 'pointer' }}>
+                          Отозвать
+                        </button>
+                      ) : (
+                        <button type="button" title="Отправить трек на проверку"
+                          onClick={() => void submitForReview(t.id)}
+                          className="rounded-lg px-2 py-1 text-[11px] font-bold"
+                          style={{ background: 'rgba(255,255,255,0.06)', color: YM.sub, border: 'none', cursor: 'pointer' }}>
+                          {t.status === 'rejected' ? 'Отправить снова' : 'На проверку'}
+                        </button>
+                      )}
                       <button type="button" onClick={() => { if (window.confirm('Удалить трек?')) void removeTrack(t.id); }}
                         className="grid h-8 w-8 place-items-center rounded-xl"
                         style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)', color: '#ef4444', cursor: 'pointer' }}>

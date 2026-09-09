@@ -51,6 +51,11 @@ const toTrack = (row) => ({
   plays: Number(row.plays ?? 0),
   own: row.own === true || undefined,
   createdAt: row.created_at?.toISOString?.() ?? undefined,
+  // Причину отказа видит только владелец: это разговор с ним, а не
+  // сведения о треке.
+  rejectReason: row.own === true && row.reject_reason
+    ? (decryptContent(row.reject_reason) ?? undefined) : undefined,
+  submittedAt: row.own === true ? (row.submitted_at?.toISOString?.() ?? undefined) : undefined,
 });
 
 const toPlaylist = (row, tracks) => ({
@@ -164,16 +169,102 @@ export const updateTrack = async (trackId, ownerId, patch) => {
     put('lyrics', l ? encryptContent(l) : null);
   }
   if (patch.status !== undefined) {
-    // Публикацию человек включает сам, но 'pending' и 'rejected' —
-    // состояния проверки, и клиент их себе выставлять не может.
+    // Снять с публикации или отозвать заявку владелец может сам.
+    // Выложить в общий каталог — нет: туда трек попадает только через
+    // проверку, а 'pending' и 'rejected' ставит она же.
     const s = String(patch.status);
-    if (s !== 'published' && s !== 'private') return { error: 'invalid_status' };
-    put('status', s);
+    if (s === 'private') { put('status', s); put('submitted_at', null); }
+    else if (s === 'published' && await isAdmin(ownerId)) { put('status', s); }
+    else if (s === 'published') return { error: 'needs_review' };
+    else return { error: 'invalid_status' };
   }
   if (sets.length === 0) return { ok: true };
 
   await query(`UPDATE music_tracks SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`, args);
   return { ok: true };
+};
+
+/* ─── Проверка перед публикацией ───────────────────────────────────── */
+
+/** Максимум причины отказа: это короткое объяснение, а не переписка. */
+const MAX_REASON = 500;
+
+/**
+ * Владелец отправляет свой трек на проверку. Отправить можно закрытый
+ * или отклонённый — отклонённый после правок идёт по тому же пути.
+ */
+export const submitTrack = async (trackId, ownerId) => {
+  const { rows } = await query(
+    'SELECT owner_id, status FROM music_tracks WHERE id = $1', [String(trackId ?? '')]);
+  const row = rows[0];
+  if (!row) return { error: 'not_found' };
+  if (row.owner_id !== ownerId) return { error: 'not_allowed' };
+  if (row.status === 'pending') return { error: 'already_pending' };
+  if (row.status === 'published') return { error: 'already_published' };
+
+  await query(
+    `UPDATE music_tracks
+        SET status = 'pending', submitted_at = now(),
+            reject_reason = NULL, moderated_at = NULL, moderated_by = NULL,
+            updated_at = now()
+      WHERE id = $1`,
+    [trackId],
+  );
+  return { ok: true };
+};
+
+/** Очередь проверки. Только для администратора. */
+export const moderationQueue = async (adminId, { limit } = {}) => {
+  if (!(await isAdmin(adminId))) return { error: 'not_allowed' };
+  const lim = Math.min(200, Math.max(1, Number(limit) || 100));
+  const { rows } = await query(
+    `SELECT t.*, p.username AS owner_name
+       FROM music_tracks t
+       LEFT JOIN profiles p ON p.id = t.owner_id
+      WHERE t.status = 'pending'
+      ORDER BY t.submitted_at ASC NULLS LAST
+      LIMIT $1`,
+    [lim],
+  );
+  return {
+    tracks: rows.map((r) => ({
+      ...toTrack(r),
+      ownerName: r.owner_name ?? undefined,
+      submittedAt: r.submitted_at?.toISOString?.() ?? undefined,
+    })),
+  };
+};
+
+/**
+ * Решение по заявке. Принять — трек уходит в общий каталог; отклонить —
+ * возвращается владельцу с причиной.
+ */
+export const moderateTrack = async (trackId, adminId, { approve, reason } = {}) => {
+  if (!(await isAdmin(adminId))) return { error: 'not_allowed' };
+  const { rows } = await query('SELECT status FROM music_tracks WHERE id = $1', [String(trackId ?? '')]);
+  if (!rows[0]) return { error: 'not_found' };
+  if (rows[0].status !== 'pending') return { error: 'not_pending' };
+
+  if (approve) {
+    await query(
+      `UPDATE music_tracks
+          SET status = 'published', moderated_at = now(), moderated_by = $2,
+              reject_reason = NULL, updated_at = now()
+        WHERE id = $1`,
+      [trackId, adminId],
+    );
+    return { ok: true, status: 'published' };
+  }
+
+  const why = text(reason, MAX_REASON);
+  await query(
+    `UPDATE music_tracks
+        SET status = 'rejected', moderated_at = now(), moderated_by = $2,
+            reject_reason = $3, updated_at = now()
+      WHERE id = $1`,
+    [trackId, adminId, why ? encryptContent(why) : null],
+  );
+  return { ok: true, status: 'rejected' };
 };
 
 export const deleteTrack = async (trackId, actorId) => {

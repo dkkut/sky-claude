@@ -89,9 +89,10 @@ export const Cover = ({ track, size = 44, playing = false, active = false }: {
 /* -- Статусы треков ----------------------------------------- */
 
 export const STATUS_CFG: Record<TrackStatus, { label: string; color: string; bg: string; icon: any }> = {
-  private:   { label: 'Личный',      color: 'var(--t2)', bg: 'rgba(139,147,168,0.1)', icon: Lock },
-  pending:   { label: 'Модерация',   color: 'var(--amber)',   bg: 'rgba(245,158,11,0.1)',  icon: AlertCircle },
-  published: { label: 'Опубликован', color: '#22c55e',   bg: 'rgba(34,197,94,0.1)',   icon: CheckCircle },
+  private:   { label: 'Только у вас', color: 'var(--t2)',    bg: 'rgba(139,147,168,0.1)', icon: Lock },
+  pending:   { label: 'На проверке',  color: 'var(--amber)', bg: 'rgba(245,158,11,0.1)',  icon: AlertCircle },
+  published: { label: 'В каталоге',   color: '#22c55e',      bg: 'rgba(34,197,94,0.1)',   icon: CheckCircle },
+  rejected:  { label: 'Отклонён',     color: 'var(--red)',   bg: 'rgba(239,68,68,0.1)',   icon: AlertCircle },
 };
 
 /* -- Строка трека ------------------------------------------- */

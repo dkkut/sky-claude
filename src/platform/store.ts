@@ -4,7 +4,9 @@ import { saveAudioDataUrl, saveAudioBlob, loadAudioUrl, deleteAudio } from './au
 /* ===========================================================================
    TYPES
 =========================================================================== */
-export type TrackStatus = 'private' | 'pending' | 'published';
+// 'pending' — трек ждёт проверки, 'rejected' — её не прошёл: это
+// разные вещи, и человеку их надо показывать по-разному.
+export type TrackStatus = 'private' | 'pending' | 'published' | 'rejected';
 
 export interface Track {
   id: string;

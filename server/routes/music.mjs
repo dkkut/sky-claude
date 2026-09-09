@@ -20,6 +20,7 @@ import { json, parseBody, requireProfile, readSession } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import {
   listTracks, readTrack, visibleTrack, createTrack, finishTrack, updateTrack,
+  submitTrack, moderationQueue, moderateTrack,
   deleteTrack, setCover, countPlay, readLyrics,
   listPlaylists, createPlaylist, renamePlaylist, setPlaylistPublic, deletePlaylist,
   readPlaylist, addToPlaylist, removeFromPlaylist, reorderPlaylist,
@@ -161,6 +162,15 @@ export const musicRoutes = async (req, res, url) => {
     });
   }
 
+  /* ── Очередь проверки ──────────────────────────────────────── */
+
+  if (req.method === 'GET' && path === '/api/music/moderation') {
+    if (!rateLimit(`music:read:${me}`, STREAM_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const r = await moderationQueue(me, { limit: params.get('limit') });
+    if (r.error) return json(res, 403, r);
+    return json(res, 200, r);
+  }
+
   /* ── Один трек ─────────────────────────────────────────────── */
 
   const trackMatch = path.match(/^\/api\/music\/track\/([^/]+)(\/[a-z]+)?$/);
@@ -193,6 +203,30 @@ export const musicRoutes = async (req, res, url) => {
     if (req.method === 'GET' && tail === '/lyrics') {
       const l = await readLyrics(id, me);
       return l ? json(res, 200, l) : json(res, 404, { error: 'not_found' });
+    }
+
+    if (req.method === 'POST' && tail === '/submit') {
+      if (!rateLimit(`music:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const r = await submitTrack(id, me);
+      if (r.error) {
+        const code = r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : 409;
+        return json(res, code, r);
+      }
+      return json(res, 200, { track: await readTrack(id, me) });
+    }
+
+    if (req.method === 'POST' && tail === '/moderate') {
+      if (!rateLimit(`music:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const body = await parseBody(req);
+      const r = await moderateTrack(id, me, {
+        approve: body?.approve === true,
+        reason: body?.reason,
+      });
+      if (r.error) {
+        const code = r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : 409;
+        return json(res, code, r);
+      }
+      return json(res, 200, r);
     }
 
     if (req.method === 'POST' && tail === '/play') {
