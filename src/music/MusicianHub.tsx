@@ -43,16 +43,12 @@ const SK_ART = 'sky:artists:v1';
 const loadArt = () => { try { return JSON.parse(localStorage.getItem(SK_ART)||'[]'); } catch { return []; } };
 const saveArt = (a: ArtistProfile[]) => { try { localStorage.setItem(SK_ART, JSON.stringify(a)); } catch {} };
 
-// Seed artists
-const SEED_ARTISTS: ArtistProfile[] = [
-  { userId:'luna_nova', artistName:'Luna Nova', bio:'Электронная музыка и ambient. Каждый трек  -  путешествие.',
-    genre:'Electronic', verified:true, gradientFrom:'#1a0040', gradientTo:'#4a0080',
-    monthlyListeners:142000, followers:8400, followedBy:[], totalPlays:1840000,
-    links:{ vk:'luna_nova_music', telegram:'lunanovalive' }, createdAt:new Date().toISOString() },
-];
-
+// Придуманного артиста здесь больше нет. Раньше список открывался
+// «Luna Nova» со 142 000 слушателей в месяц и 1,84 млн прослушиваний —
+// цифрами, за которыми не стоит ни одного человека. Список начинается
+// пустым и наполняется теми, кто действительно завёл профиль.
 export const useMusicianStore = create<MusicianState>((set, get) => ({
-  artists:    [...SEED_ARTISTS, ...loadArt().filter((a:any) => !SEED_ARTISTS.find(s=>s.userId===a.userId))],
+  artists:    loadArt(),
   myArtistId: null,
 
   create: (params) => {
@@ -61,7 +57,7 @@ export const useMusicianStore = create<MusicianState>((set, get) => ({
       createdAt: new Date().toISOString(),
     };
     const artists = [...get().artists.filter(a=>a.userId!==params.userId), profile];
-    saveArt(artists.filter(a=>!SEED_ARTISTS.find(s=>s.userId===a.userId)));
+    saveArt(artists);
     set({ artists, myArtistId:params.userId });
   },
 

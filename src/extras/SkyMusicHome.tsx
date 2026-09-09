@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Music2, ListMusic, Mic2, Sparkles, Disc3, Play, Search, ChevronRight, X } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { getG } from '@/music/utils';
-import { loadHistory } from '@/music/utils';
+import { useMusicStore } from '@/music/serverStore';
 import { SkySphere } from '@/music/SkySphere';
 
 const greeting = () => {
@@ -159,8 +159,8 @@ export const SkyMusicHome = ({
   const popularNow = useMemo(() => [...pub].sort((a,b) => b.plays - a.plays).slice(0, 10), [pub]);
   const likedTracks = useMemo(() => pub.filter(t => favorites.includes(t.id)), [pub, favorites]);
 
-  const [historyIds, setHistoryIds] = useState<string[]>([]);
-  useEffect(() => { setHistoryIds(loadHistory()); }, []);
+  // Недавнее — с сервера: на другом устройстве список тот же.
+  const historyIds = useMusicStore(st => st.history).map(h => h.id);
   const recentlyPlayed = useMemo(
     () => historyIds.map(id => pub.find(t => t.id === id)).filter(Boolean).slice(0, 10) as Track[],
     [historyIds, pub],

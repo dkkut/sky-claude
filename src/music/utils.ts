@@ -40,14 +40,6 @@ export const algoScore = (t: Track, ctx: ListenCtx, now: number): number => {
   return recency + pop + likes + genre + artist + likedBst + heard;
 };
 
-/* История прослушиваний */
-const HIST_KEY = 'sky:music:history:v1';
-export const loadHistory = (): string[] => {
-  try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch { return []; }
-};
-export const addHistory = (id: string) => {
-  try {
-    const h = loadHistory().filter(x => x !== id);
-    localStorage.setItem(HIST_KEY, JSON.stringify([id, ...h].slice(0, 100)));
-  } catch {}
-};
+/* История прослушиваний лежит на сервере: useMusicStore().history.
+   Прежний список в localStorage жил только в одном браузере и врал
+   на любом другом устройстве, поэтому убран. */

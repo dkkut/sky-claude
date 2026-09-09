@@ -20,7 +20,7 @@ import { useAuthStore }      from '@/core/auth/store';
 import { useIsMobile }       from '@/interface/mobile/useIsMobile';
 import type { Track }        from '@/platform/store';
 import type { RepeatMode }   from '@/music/types';
-import { addHistory, loadHistory, toDurStr, getG } from '@/music/utils';
+import { toDurStr, getG } from '@/music/utils';
 import { AddToPlaylistModal } from '@/music/AddToPlaylistModal';
 import { MusicImport } from '@/music/MusicImport';
 import { parseBlob } from 'music-metadata-browser';
@@ -205,13 +205,15 @@ const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNu
     </div>
     <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
       <HeartBtn liked={liked} onClick={onLike} size={isMobile ? 14 : 16} />
-      {!isMobile && (
-      <button type="button" onClick={e => { e.stopPropagation(); onAdd(); }}
+      {/* «В плейлист» показываем и на телефоне: раньше кнопка была
+          только на большом экране, и с телефона плейлист нельзя было
+          собрать вообще никак. */}
+      <button type="button" aria-label="Добавить в плейлист"
+        onClick={e => { e.stopPropagation(); onAdd(); }}
         className="grid h-7 w-7 place-items-center rounded-full transition-colors hover:bg-white/10"
         style={{ color: YM.sub }}>
         <Plus size={15} />
       </button>
-      )}
       {/* Download for offline */}
       {!isMobile && (
       <button type="button" onClick={handleDownload}
@@ -1411,10 +1413,12 @@ const HistTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd }
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
   onPlay: (t: Track, pool: Track[]) => void; onLike: (id: string) => void; onAdd: (id: string) => void;
 }) => {
-  const hist = useMemo(() => {
-    const ids = loadHistory();
-    return ids.map(id => tracks.find(t => t.id === id)).filter(Boolean) as Track[];
-  }, [tracks]);
+  // История — с сервера: тот же список на телефоне и на компьютере.
+  const history = useMusicStore(st => st.history);
+  const hist = useMemo(
+    () => history.map(h => tracks.find(t => t.id === h.id)).filter(Boolean) as Track[],
+    [history, tracks],
+  );
   return (
     <div className="flex flex-col h-full overflow-y-auto pb-4">
       <h3 className="px-3 pt-3 pb-2 text-base font-bold" style={{ color: YM.text }}>
@@ -1805,7 +1809,6 @@ const SkyFullPlayer = ({
   const [c1, c2] = getG(track.id);
   const effVol = muted ? 0 : volume;
 
-  /* Lyrics: use mock or stored */
   /* Текст песни приходит с сервера — тот, который загрузил владелец.
      Придуманных строк здесь больше нет: показать чужой песне чужие
      слова хуже, чем не показать никаких. */

@@ -1,17 +1,12 @@
 /* -- Профиль артиста --------------------------------------- */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Play, Pause, Music2, CheckCircle2, UserPlus, UserMinus, Mic2, Send } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Music2, CheckCircle2, UserPlus, UserMinus, Mic2 } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { getG, fmtPlays } from './utils';
 import { Cover, TrackRow, Viz } from './MusicPrimitives';
 import { useMusicianStore } from './MusicianHub';
 import { useAuthStore } from '@/core/auth/store';
-
-const COMMENTS_KEY = 'sky:music:artistComments:v1';
-interface ArtistComment { id: string; artist: string; authorName: string; text: string; at: string; }
-const loadComments = (): ArtistComment[] => { try { return JSON.parse(localStorage.getItem(COMMENTS_KEY) || '[]'); } catch { return []; } };
-const saveComments = (c: ArtistComment[]) => { try { localStorage.setItem(COMMENTS_KEY, JSON.stringify(c)); } catch {} };
 
 interface Props {
   artist:   string;
@@ -37,8 +32,7 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
   artTracks.forEach(t => { byGenre.set(t.genre, [...(byGenre.get(t.genre) ?? []), t]); });
 
   const { artists, follow, unfollow } = useMusicianStore();
-  const { currentUserId, accounts } = useAuthStore();
-  const me = accounts.find(a => a.id === currentUserId);
+  const { currentUserId } = useAuthStore();
   const artistProfile = artists.find(a => a.artistName === artist);
   const isFollowing = !!currentUserId && !!artistProfile?.followedBy.includes(currentUserId);
   const toggleFollow = () => {
@@ -52,17 +46,6 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
       .forEach(t => { others.set(t.artist, [...(others.get(t.artist) ?? []), t]); });
     return [...others.entries()].sort((a,b) => b[1].length - a[1].length).slice(0, 8);
   }, [tracks, artist, genres]);
-
-  const [comments, setComments] = useState<ArtistComment[]>([]);
-  const [draft, setDraft] = useState('');
-  useEffect(() => { setComments(loadComments().filter(c => c.artist === artist)); }, [artist]);
-  const sendComment = () => {
-    const text = draft.trim(); if (!text) return;
-    const all = loadComments();
-    const c: ArtistComment = { id: crypto.randomUUID(), artist, authorName: me?.name ?? 'Пользователь', text, at: new Date().toISOString() };
-    const next = [...all, c]; saveComments(next);
-    setComments(next.filter(x => x.artist === artist)); setDraft('');
-  };
 
   return (
     <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
@@ -269,30 +252,13 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
           </div>
         </section>
 
-        {/* Комментарии */}
-        <section>
-          <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--t3)' }}>
-            Комментарии{comments.length > 0 ? ` · ${comments.length}` : ''}
-          </p>
-          <div className="flex items-center gap-2 mb-3">
-            <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') sendComment(); }}
-              placeholder="Написать комментарий..." className="flex-1 rounded-xl px-3 py-2 text-[12.5px] outline-none"
-              style={{ background: 'var(--bg-l2)', color: 'var(--t1)' }}/>
-            <button type="button" onClick={sendComment} disabled={!draft.trim()}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full disabled:opacity-40" style={{ background: '#A855F7' }}>
-              <Send size={14} color="#fff"/>
-            </button>
-          </div>
-          <div className="space-y-2.5">
-            {comments.slice().reverse().map(c => (
-              <div key={c.id} className="rounded-xl p-2.5" style={{ background: 'var(--bg-l2)' }}>
-                <p className="text-[12px] font-semibold" style={{ color: 'var(--t1)' }}>{c.authorName}</p>
-                <p className="text-[12.5px]" style={{ color: 'var(--t2)' }}>{c.text}</p>
-              </div>
-            ))}
-            {comments.length === 0 && <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Будьте первым, кто оставит комментарий</p>}
-          </div>
-        </section>
+        {/* Комментариев здесь нет намеренно.
+            Прежний блок складывал написанное в localStorage: человек
+            видел свой «комментарий», а больше его не видел никто и
+            никогда — ни артист, ни другие слушатели. Настоящие
+            комментарии — это общий текст на сервере, а значит жалобы,
+            блокировки и разбор споров; это отдельная работа, и делать
+            вид, что она уже сделана, нельзя. */}
       </div>
     </motion.div>
   );

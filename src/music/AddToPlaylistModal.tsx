@@ -1,4 +1,5 @@
 /* -- Модал «Добавить в плейлист» --------------------------- */
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ListMusic, Check } from 'lucide-react';
 import { useMusicStore } from '@/music/serverStore';
@@ -14,6 +15,19 @@ export const AddToPlaylistModal = ({ trackId, onClose }: Props) => {
   const playlists = useMusicStore(s => s.playlists);
   const addToPlaylist = useMusicStore(s => s.addToPlaylist);
   const removeFromPlaylist = useMusicStore(s => s.removeFromPlaylist);
+  const createPlaylist = useMusicStore(s => s.createPlaylist);
+  const [name, setName] = useState('');
+
+  // Плейлиста может не быть ни одного — тогда окно не должно быть
+  // пустым и молчаливым: заводим прямо здесь и сразу кладём трек.
+  const makeAndAdd = async () => {
+    const title = name.trim();
+    if (!title || !trackId) return;
+    const made = await createPlaylist(title);
+    if (made) await addToPlaylist(made.id, trackId);
+    setName('');
+    onClose();
+  };
 
   return (
     <AnimatePresence>
@@ -35,6 +49,11 @@ export const AddToPlaylistModal = ({ trackId, onClose }: Props) => {
             </div>
 
             <div className="space-y-1.5">
+              {playlists.length === 0 && (
+                <p className="pb-1 text-[12.5px]" style={{ color: 'var(--t3)' }}>
+                  Плейлистов пока нет — назовите первый.
+                </p>
+              )}
               {playlists.map(pl => {
                 const has = pl.trackIds.includes(trackId);
                 return (
@@ -50,6 +69,19 @@ export const AddToPlaylistModal = ({ trackId, onClose }: Props) => {
                   </button>
                 );
               })}
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <input value={name} onChange={e => setName(e.target.value)} maxLength={120}
+                onKeyDown={e => { if (e.key === 'Enter') void makeAndAdd(); }}
+                placeholder="Новый плейлист"
+                className="min-w-0 flex-1 rounded-xl px-3 py-2 text-[12.5px] outline-none"
+                style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }}/>
+              <button type="button" disabled={!name.trim()} onClick={() => void makeAndAdd()}
+                className="shrink-0 rounded-xl px-3 py-2 text-[12px] font-bold disabled:opacity-40"
+                style={{ background: '#fff', color: '#0a0a0f' }}>
+                Создать
+              </button>
             </div>
           </motion.div>
         </motion.div>

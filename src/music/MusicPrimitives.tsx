@@ -147,12 +147,14 @@ export const TrackRow = memo(({
 
       {/* Действия */}
       <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-        <button type="button" onClick={e => { e.stopPropagation(); onLike(); }}
+        <button type="button" aria-label={liked ? 'Убрать из любимых' : 'В любимые'}
+          onClick={e => { e.stopPropagation(); onLike(); }}
           className="grid h-7 w-7 place-items-center rounded-lg hover:bg-white/10">
           <Heart size={13} className={liked ? 'fill-red-400 text-red-400' : ''}
             style={{ color: liked ? undefined : 'rgba(255,255,255,0.35)' }}/>
         </button>
-        <button type="button" onClick={e => { e.stopPropagation(); onAdd(); }}
+        <button type="button" aria-label="Добавить в плейлист"
+          onClick={e => { e.stopPropagation(); onAdd(); }}
           className="grid h-7 w-7 place-items-center rounded-lg hover:bg-white/10">
           <FolderPlus size={13} style={{ color: 'rgba(255,255,255,0.35)' }}/>
         </button>

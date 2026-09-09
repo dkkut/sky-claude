@@ -3,7 +3,8 @@ import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Sparkles, TrendingUp, Zap, Hash } from 'lucide-react';
 import type { Track } from '@/platform/store';
-import { algoScore, loadHistory, getG } from './utils';
+import { algoScore, getG } from './utils';
+import { useMusicStore } from './serverStore';
 import { TrackRow } from './MusicPrimitives';
 import type { ListenCtx } from './types';
 
@@ -28,7 +29,9 @@ export const ForYouTab = ({ tracks, favorites, playing, activeId, onPlay, onLike
   const pub = tracks.filter(t => t.status === 'published');
   const now = Date.now();
 
-  const hist = useMemo(() => loadHistory(), []);
+  // Что человек уже слушал — с сервера, а не из этого браузера.
+  const history = useMusicStore(st => st.history);
+  const hist = useMemo(() => history.map(h => h.id), [history]);
 
   const ctx: ListenCtx = useMemo(() => {
     const genreCount:  Record<string, number> = {};

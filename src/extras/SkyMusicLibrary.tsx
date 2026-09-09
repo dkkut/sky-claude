@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { useMusicStore } from '@/music/serverStore';
-import { getG, loadHistory } from '@/music/utils';
+import { getG } from '@/music/utils';
 
 type Category = 'liked'|'downloaded'|'albums'|'artists'|'playlists'|'history'|'podcasts'|'audiobooks';
 type SortKey = 'added'|'title'|'artist';
@@ -77,9 +77,11 @@ export const SkyMusicLibrary = ({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pins, setPins] = useState<string[]>([]);
   const [openPlaylist, setOpenPlaylist] = useState<string | null>(null);
-  const [historyIds, setHistoryIds] = useState<string[]>([]);
+  // Недавнее — с сервера: закрепления остаются местными (это украшение
+  // конкретного устройства), а история одна на все.
+  const historyIds = useMusicStore(st => st.history).map(h => h.id);
 
-  useEffect(() => { setPins(loadPins()); setHistoryIds(loadHistory()); }, []);
+  useEffect(() => { setPins(loadPins()); }, []);
   const togglePin = (id: string) => setPins(p => { const next = p.includes(id) ? p.filter(x=>x!==id) : [id, ...p]; savePins(next); return next; });
 
   const pub = useMemo(() => tracks.filter(t => t.status === 'published'), [tracks]);

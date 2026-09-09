@@ -45,11 +45,10 @@ export const NowPlaying = ({
   const [c1, c2] = getG(track.id);
   const liked    = favorites.includes(track.id);
 
-  // Video clip URLs mapped by track id — demo uses YouTube-style free content
-  // In production: replace with real clip URLs per track
-  const VIDEO_MAP: Record<string, string> = {};
+  // Клип показываем только тогда, когда сам файл трека и есть видео.
+  // Отдельного хранилища клипов нет, и подставлять сюда чужие ролики
+  // мы не будем.
   const videoUrl = track.sourceUrl?.match(/\.(mp4|webm|mov)$/i) ? track.sourceUrl : null;
-  // Ambient video: generate canvas-based animation as fallback
   const hasVideo = !!videoUrl;
 
   return (

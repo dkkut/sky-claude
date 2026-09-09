@@ -1,7 +1,7 @@
 /* -- История прослушиваний --------------------------------- */
 import { useMemo } from 'react';
 import type { Track } from '@/platform/store';
-import { loadHistory } from './utils';
+import { useMusicStore } from './serverStore';
 import { TrackRow } from './MusicPrimitives';
 
 interface Props {
@@ -16,8 +16,13 @@ interface Props {
 }
 
 export const HistoryTab = ({ tracks, favorites, activeId, playing, onPlay, onLike, onAdd, onArtist }: Props) => {
-  const hist = useMemo(() => loadHistory(), []);
-  const pool = hist.map(id => tracks.find(t => t.id === id)).filter(Boolean) as Track[];
+  // История приходит с сервера уже треками — она одинакова на всех
+  // устройствах. Сверяемся с каталогом: удалённый трек играть нечем.
+  const history = useMusicStore(st => st.history);
+  const pool = useMemo(
+    () => history.map(h => tracks.find(t => t.id === h.id)).filter(Boolean) as Track[],
+    [history, tracks],
+  );
 
   return (
     <div className="h-full overflow-y-auto px-2 py-2">
