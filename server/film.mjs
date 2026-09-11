@@ -389,14 +389,19 @@ export const submitMovie = async (movieId, ownerId, { license, explicit, ageRest
   if (Number(row.bytes ?? 0) <= 0) return { error: 'no_file' };
 
   const lic = license === 'personal' ? 'personal' : 'open';
-  await query(
+  // Проверка выше и запись — два разных мгновения. Условие по нынешнему
+  // состоянию стоит в самом UPDATE, поэтому из нескольких одновременных
+  // нажатий срабатывает ровно одно, а остальные ничего не меняют и
+  // получают честный отказ.
+  const { rowCount } = await query(
     `UPDATE film_movies
         SET status = 'pending', submitted_at = now(),
             license = $2, explicit = $3, age_restricted18 = $4,
             reject_reason = NULL, moderated_at = NULL, moderated_by = NULL,
             updated_at = now()
-      WHERE id = $1`,
+      WHERE id = $1 AND status IN ('private','rejected')`,
     [movieId, lic, explicit === true, lic === 'open' && ageRestricted18 === true]);
+  if (rowCount === 0) return { error: 'already_pending' };
   return { ok: true };
 };
 
@@ -427,19 +432,28 @@ export const moderateMovie = async (movieId, adminId, { approve, reason } = {}) 
   if (!rows[0]) return { error: 'not_found' };
   if (rows[0].status !== 'pending') return { error: 'not_pending' };
 
+  // Решение принимается один раз. Условие «ещё на проверке» стоит в
+  // самом UPDATE: иначе два администратора, нажавшие одновременно,
+  // оба получали бы «готово», а в базе оставалось бы решение того, кто
+  // записал вторым — и заявка могла оказаться отклонённой после того,
+  // как её уже пропустили.
   if (approve) {
-    await query(
+    const { rowCount } = await query(
       `UPDATE film_movies SET status = 'published', moderated_at = now(), moderated_by = $2,
-              reject_reason = NULL, updated_at = now() WHERE id = $1`,
+              reject_reason = NULL, updated_at = now()
+        WHERE id = $1 AND status = 'pending'`,
       [movieId, adminId]);
+    if (rowCount === 0) return { error: 'not_pending' };
     return { ok: true, status: 'published' };
   }
 
   const why = text(reason, MAX_REASON);
-  await query(
+  const { rowCount } = await query(
     `UPDATE film_movies SET status = 'rejected', moderated_at = now(), moderated_by = $2,
-            reject_reason = $3, updated_at = now() WHERE id = $1`,
+            reject_reason = $3, updated_at = now()
+      WHERE id = $1 AND status = 'pending'`,
     [movieId, adminId, why ? encryptContent(why) : null]);
+  if (rowCount === 0) return { error: 'not_pending' };
   return { ok: true, status: 'rejected' };
 };
 
