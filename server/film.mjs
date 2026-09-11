@@ -53,7 +53,16 @@ const text = (v, max) => String(v ?? '')
   .trim()
   .slice(0, max);
 
+/**
+ * Число в заданных границах — или null, если его не прислали.
+ *
+ * Проверка на пустоту здесь не придирка. Number(null), Number('') и
+ * Number([]) — это ноль, а не «ничего», и без этой строчки фильм без
+ * года получал год 1870: ноль проходил как настоящее число и упирался
+ * в нижнюю границу. Ровно это и было видно на карточке.
+ */
 const num = (v, min, max) => {
+  if (v === null || v === undefined || v === '' || typeof v === 'object') return null;
   const n = Math.trunc(Number(v));
   if (!Number.isFinite(n)) return null;
   return Math.max(min, Math.min(max, n));
@@ -466,13 +475,25 @@ export const countView = async (movieId) => {
 /**
  * Оценка. Только опубликованному кино: у закрытого фильма один зритель,
  * и «средняя оценка» из одной своей же ничего не значит.
+ *
+ * Ноль — это снять свою оценку. Нужен он не для полноты: в коротком
+ * кино та же таблица показана сердечком, а сердечко должно нажиматься
+ * дважды. Раньше это сердечко считало отметки в localStorage нажавшего,
+ * то есть не значило ничего и никому, кроме одной вкладки, не было
+ * видно.
  */
 export const rateMovie = async (userId, movieId, score) => {
-  const s = num(score, 1, 10);
-  if (s === null || Number(score) < 1 || Number(score) > 10) return { error: 'invalid_score' };
+  const raw = Number(score);
+  if (!Number.isFinite(raw) || raw < 0 || raw > 10) return { error: 'invalid_score' };
   const row = await visibleMovie(movieId, userId);
   if (!row) return { error: 'not_found' };
   if (row.status !== 'published') return { error: 'not_allowed' };
+
+  if (Math.trunc(raw) === 0) {
+    await query('DELETE FROM film_ratings WHERE user_id = $1 AND movie_id = $2', [userId, movieId]);
+    return { ok: true };
+  }
+  const s = num(raw, 1, 10);
   await query(
     `INSERT INTO film_ratings (user_id, movie_id, score) VALUES ($1,$2,$3)
      ON CONFLICT (user_id, movie_id) DO UPDATE SET score = $3, created_at = now()`,

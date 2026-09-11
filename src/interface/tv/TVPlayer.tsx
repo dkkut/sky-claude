@@ -7,10 +7,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Volume2, VolumeX, Subtitles, Settings2, ChevronLeft } from 'lucide-react';
-import { usePlatformStore } from '@/platform/store';
 import { useVideoStore } from '@/video/store';
 import { useAuthStore } from '@/core/auth/store';
 import { recordProgress } from './watchProgressStore';
+import { useFilmStore } from '@/film/serverStore';
+import { videoUrl } from '@/film/filmApi';
 import { useTVKeyBindings } from './useTVKeyBindings';
 import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
 
@@ -24,14 +25,23 @@ const fmt = (s: number) => {
 };
 
 export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
-  const movie = usePlatformStore(s => source.kind === 'movie' ? s.movies.find(m => m.id === source.id) : undefined);
+  const movie = useFilmStore(s => (source.kind === 'movie'
+    ? s.catalog.find(m => m.id === source.id) ?? s.mine.find(m => m.id === source.id)
+    : undefined));
   const video = useVideoStore(s => source.kind === 'video' ? s.videos.find(v => v.id === source.id) : undefined);
   const { currentUserId } = useAuthStore();
   const incrementViews = useVideoStore(s => s.incrementViews);
   const addToHistory = useVideoStore(s => s.addToHistory);
+  const savedPosition = useFilmStore(s => (movie ? s.progress[movie.id] : undefined));
+  const saveFilmProgress = useFilmStore(s => s.saveProgress);
+  const flushFilmProgress = useFilmStore(s => s.flushProgress);
+  const noteFilmView = useFilmStore(s => s.noteView);
+  const restored = useRef(false);
 
   const title = movie?.title ?? video?.title ?? '';
-  const sourceUrl = movie?.sourceUrl ?? video?.sourceUrl;
+  // Фильм идёт с сервера потоком: телевизор просит куски по мере
+  // просмотра, поэтому длинное кино начинается сразу и перематывается.
+  const sourceUrl = movie ? videoUrl(movie.id) : video?.sourceUrl;
   const contentId = source.id;
 
   const vRef = useRef<HTMLVideoElement>(null);
@@ -61,18 +71,32 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
     return () => setPauseHandler(null);
   }, [setPauseHandler]);
 
-  /* реально пишем прогресс просмотра — раз в 5с и при уходе с экрана */
+  /* Позиция просмотра — раз в пять секунд и при уходе с экрана.
+     Для кино она уходит на сервер: только так начатое на телефоне
+     продолжается на телевизоре и наоборот. Видеохостинг по-прежнему
+     помнит позицию у себя — его записи живут отдельно. */
   useEffect(() => {
-    saveTimer.current = window.setInterval(() => {
+    const write = () => {
       const v = vRef.current;
-      if (v && v.duration) recordProgress(contentId, v.currentTime, v.duration);
-    }, 5000);
+      if (!v || !v.duration) return;
+      if (movie) saveFilmProgress(movie.id, v.currentTime, v.duration);
+      else recordProgress(contentId, v.currentTime, v.duration);
+    };
+    saveTimer.current = window.setInterval(write, 5000);
     return () => {
       if (saveTimer.current) window.clearInterval(saveTimer.current);
       const v = vRef.current;
-      if (v && v.duration) recordProgress(contentId, v.currentTime, v.duration);
+      if (v && v.duration) {
+        if (movie) void flushFilmProgress(movie.id, v.currentTime, v.duration);
+        else recordProgress(contentId, v.currentTime, v.duration);
+      }
     };
-  }, [contentId]);
+  }, [contentId, movie, saveFilmProgress, flushFilmProgress]);
+
+  /* Счётчик просмотров кино ведёт сервер: он общий, а не свой у каждого. */
+  useEffect(() => {
+    if (movie) void noteFilmView(movie.id);
+  }, [movie?.id, noteFilmView]);
 
   /* для SkyVideo — реальный счётчик просмотров и история, как у обычного плеера видео */
   useEffect(() => {
@@ -116,6 +140,15 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
         <video ref={vRef} src={sourceUrl} autoPlay className="h-full w-full object-contain"
           onTimeUpdate={e => setCur(e.currentTarget.currentTime)}
           onDurationChange={e => setDur(e.currentTarget.duration)}
+          onLoadedMetadata={e => {
+            // Продолжаем с того места, где остановились, — хоть здесь,
+            // хоть на другом устройстве. К самым титрам не возвращаем.
+            if (restored.current || !movie) return;
+            restored.current = true;
+            const from = savedPosition ?? movie.position ?? 0;
+            const d = e.currentTarget.duration;
+            if (from > 30 && (!d || from < d - 60)) e.currentTarget.currentTime = from;
+          }}
           onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
           onEnded={onBack}/>
       ) : (

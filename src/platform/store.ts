@@ -49,21 +49,6 @@ export interface Playlist {
   createdAt: string;
 }
 
-export interface Movie {
-  id: string; title: string; category: string; description?: string;
-  duration: string; trailerUrl?: string; coverUrl?: string;
-  premium: boolean; sourceUrl?: string; fileName?: string;
-  mimeType?: string; bytes?: number; addedAt: string;
-  rating?: number; year?: number; genre?: string; director?: string;
-  ageRating?: string; country?: string;
-  license?: 'open' | 'personal';   // публикация по открытой или личной лицензии
-  explicit?: boolean;               // пометка E — ненормативная лексика/контент
-  ageRestricted18?: boolean;        // 18+ (для открытой лицензии)
-  uploadedBy?: string; uploaderName?: string;
-  isShort?: boolean;                // короткое вертикальное видео (9:16) — режим "Shorts"
-  likes?: string[];                 // userId лайкнувших (используется в Shorts)
-}
-
 export interface SharedRoom {
   id: string; host: string; title: string; description?: string;
   mediaType: 'music'|'movie'; mediaId?: string; progressSec: number;
@@ -80,7 +65,6 @@ interface PlatformState {
   playlists: Playlist[];
   favorites: string[];
   currentPlaylistId: string|null;
-  movies:    Movie[];
   rooms:     SharedRoom[];
   grantPrime:         (days: number) => void;
   revokePrime:        () => void;
@@ -99,10 +83,6 @@ interface PlatformState {
   addToPlaylist:      (plId: string, tId: string) => void;
   removeFromPlaylist: (plId: string, tId: string) => void;
   setCurrentPlaylist: (id: string|null) => void;
-  addMovie:           (p: Omit<Movie,'id'|'addedAt'>) => void;
-  updateMovie:        (id: string, p: Partial<Movie>) => void;
-  toggleMovieLike:    (id: string, userId: string) => void;
-  deleteMovie:        (id: string) => void;
   createRoom:         (p: Omit<SharedRoom,'id'|'progressSec'|'active'|'participants'|'chatMessages'>) => string;
   updateRoom:         (id: string, patch: Partial<SharedRoom>) => void;
   joinRoom:           (roomId: string, userId: string) => void;
@@ -137,19 +117,6 @@ const SEED_TRACKS: Track[] = [
   { id:'trk-5', title:'Dark Matter', artist:'Skyline',    genre:'Synthwave',  duration:'04:22', premium:false, status:'published', plays:1580, likes:[], addedAt:new Date(Date.now()-86400000*1).toISOString(), sourceUrl:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3', copyrightType:'license' },
   { id:'trk-6', title:'Overdrive',   artist:'Core Audio', genre:'Rock',       duration:'03:12', premium:false, status:'published', plays:445,  likes:[], addedAt:new Date(Date.now()-86400000*4).toISOString(), sourceUrl:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3', copyrightType:'license' },
 ];
-const SEED_MOVIES: Movie[] = [
-  { id:'mov-1', title:'Bloom Horizon',    category:'Фантастика', description:'Молодой пилот обнаруживает таинственный сигнал с края солнечной системы. Экспедиция за его источником меняет всё, что он знал о вселенной.',           duration:'2ч 14м', premium:false, addedAt:new Date().toISOString(), rating:7.8, year:2024, genre:'Фантастика, Приключения', director:'А. Волков', ageRating:'12+', country:'Россия' },
-  { id:'mov-2', title:'Raid Protocol',    category:'Боевик',     description:'Элитный отряд специального назначения получает задание в сердце враждебного города. Один на один с целой армией.',                                        duration:'1ч 52м', premium:true,  addedAt:new Date().toISOString(), rating:8.1, year:2024, genre:'Боевик, Триллер',       director:'Н. Дрейк',  ageRating:'18+', country:'США' },
-  { id:'mov-3', title:'Neon District',    category:'Триллер',    description:'Детектив расследует серию исчезновений в неоновых кварталах мегаполиса. Следы ведут туда, куда лучше не заходить.',                                       duration:'1ч 48м', premium:false, addedAt:new Date().toISOString(), rating:7.4, year:2023, genre:'Триллер, Детектив',     director:'Л. Ким',    ageRating:'16+', country:'Корея' },
-  { id:'mov-4', title:'Deep Signal',      category:'Фантастика', description:'Когда с далёкой звезды приходит сообщение, человечество должно решить: ответить или молчать. Выбор, от которого зависит судьба Земли.',                 duration:'2ч 05м', premium:false, addedAt:new Date().toISOString(), rating:8.5, year:2024, genre:'Фантастика, Драма',     director:'С. Парк',   ageRating:'12+', country:'Япония' },
-  { id:'mov-5', title:'Street Kings',     category:'Боевик',     description:'Уличный боец с тёмным прошлым вынужден вернуться в мир, который он пытался забыть. Последняя схватка за тех, кто ему дорог.',                           duration:'1ч 39м', premium:true,  addedAt:new Date().toISOString(), rating:7.2, year:2023, genre:'Боевик, Драма',         director:'М. Чен',    ageRating:'18+', country:'Китай' },
-  { id:'mov-6', title:'Hollow Echo',      category:'Ужасы',      description:'Группа исследователей аномалий попадает в заброшенный комплекс, где время работает по другим законам.',                                                   duration:'1ч 44м', premium:false, addedAt:new Date().toISOString(), rating:6.9, year:2023, genre:'Ужасы, Мистика',       director:'Е. Соков',  ageRating:'18+', country:'Россия' },
-  { id:'mov-7', title:'Amber Theory',     category:'Драма',      description:'Двое незнакомцев встречаются в поезде и за одну ночь успевают прожить целую жизнь. История о выборе, который нельзя отменить.',                          duration:'1ч 56м', premium:false, addedAt:new Date().toISOString(), rating:8.3, year:2024, genre:'Драма, Мелодрама',      director:'А. Рид',    ageRating:'12+', country:'Франция' },
-  { id:'mov-8', title:'Prism Break',      category:'Триллер',    description:'Хакер случайно взламывает сервер, на котором хранится государственная тайна. Теперь за ним охотятся с обеих сторон.',                                   duration:'2ч 02м', premium:true,  addedAt:new Date().toISOString(), rating:7.7, year:2024, genre:'Триллер, Экшн',        director:'Т. Хан',    ageRating:'16+', country:'Германия' },
-  { id:'mov-s1', title:'Ночной забег',    category:'Короткометражка', description:'60 секунд из жизни курьера, который не успевает ни на что — но всё равно бежит.', duration:'0м 58с', premium:false, addedAt:new Date().toISOString(), rating:7.9, year:2025, genre:'Драма', director:'И. Орлова', ageRating:'12+', country:'Россия', isShort:true, likes:[] },
-  { id:'mov-s2', title:'Комната 404',     category:'Короткометражка', description:'Что находится за дверью, которой нет в плане здания?', duration:'1м 12с', premium:false, addedAt:new Date().toISOString(), rating:8.0, year:2025, genre:'Ужасы', director:'Д. Марков', ageRating:'16+', country:'Россия', isShort:true, likes:[] },
-  { id:'mov-s3', title:'Последний трамвай', category:'Короткометражка', description:'Городская зарисовка о случайной встрече двух незнакомцев в час ночи.', duration:'0м 47с', premium:false, addedAt:new Date().toISOString(), rating:7.5, year:2025, genre:'Драма', director:'А. Рид', ageRating:'0+', country:'Франция', isShort:true, likes:[] },
-];
 const SEED_PLAYLISTS: Playlist[] = [
   { id:'pl-fav', name:'Избранное ❤️', trackIds:[], createdAt:new Date().toISOString() },
 ];
@@ -164,7 +131,6 @@ const wGlobal = (s: PlatformState) => {
   if (!W) return;
   const payload = {
     tracks: s.tracks.map(t => ({ ...t, sourceUrl: t.isLocal ? undefined : t.sourceUrl })),
-    movies: s.movies.map(m => ({ ...m, sourceUrl: m.sourceUrl?.startsWith('blob:') ? undefined : m.sourceUrl })),
     rooms:  s.rooms,
   };
   try { localStorage.setItem(GK, JSON.stringify(payload)); } catch {}
@@ -236,7 +202,6 @@ export const usePlatformStore = create<PlatformState>((set, get) => {
 
   return {
     tracks:            initTracks,
-    movies:            initGlobal?.movies  ?? SEED_MOVIES,
     rooms:             initGlobal?.rooms   ?? [],
     isPrime:           initUser?.isPrime           ?? false,
     primeUntil:        initUser?.primeUntil        ?? null,
@@ -310,20 +275,6 @@ export const usePlatformStore = create<PlatformState>((set, get) => {
     removeFromPlaylist: (plId, tId) => { set(s => ({ playlists: s.playlists.map(p=>p.id===plId?{...p,trackIds:p.trackIds.filter(id=>id!==tId)}:p) })); saveU(); },
     setCurrentPlaylist: id => { set({ currentPlaylistId: id }); saveU(); },
 
-    addMovie: p => { set(s => ({ movies: [...s.movies, { ...p, id:`mov-${crypto.randomUUID()}`, addedAt:new Date().toISOString() }] })); saveG(); },
-    updateMovie: (id, p) => { set(s => ({ movies: s.movies.map(m=>m.id===id?{...m,...p}:m) })); saveG(); },
-    toggleMovieLike: (id, userId) => {
-      set(s => ({ movies: s.movies.map(m => m.id===id
-        ? { ...m, likes: (m.likes ?? []).includes(userId) ? (m.likes ?? []).filter(u=>u!==userId) : [...(m.likes ?? []), userId] }
-        : m) }));
-      saveG();
-    },
-    deleteMovie: id => {
-      const m = get().movies.find(m=>m.id===id);
-      if (m?.sourceUrl?.startsWith('blob:')) URL.revokeObjectURL(m.sourceUrl);
-      set(s => ({ movies: s.movies.filter(m=>m.id!==id) })); saveG();
-    },
-
     createRoom: p => {
       const id = `room-${crypto.randomUUID()}`;
       set(s => ({ rooms: [...s.rooms, { ...p, id, progressSec:0, active:true, participants:[], chatMessages:[] }] }));
@@ -391,7 +342,6 @@ export const reloadPlatformForUser = (uid: string) => {
 
   usePlatformStore.setState({
     tracks:            tracks2,
-    movies:            globalData?.movies ?? SEED_MOVIES,
     rooms:             globalData?.rooms  ?? [],
     isPrime:           userData?.isPrime           ?? false,
     primeUntil:        userData?.primeUntil        ?? null,

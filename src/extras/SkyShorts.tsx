@@ -2,6 +2,13 @@
    SKY FILM — Shorts
    Вертикальный полноэкранный режим коротких видео (9:16),
    свайп вверх/вниз, автовоспроизведение, лайк/избранное/поделиться.
+
+   Видео берётся с сервера потоком, как и полные фильмы. Сердечко тоже
+   стало настоящим: раньше оно считало отметки в localStorage
+   нажавшего — то есть не значило ничего и никому, кроме одной вкладки,
+   не было видно. Теперь это та же оценка, что и у полного кино,
+   только в виде «нравится»: она лежит на сервере, её видят все и она
+   переживает смену устройства.
 =========================================================== */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, type PanInfo } from 'framer-motion';
@@ -9,9 +16,9 @@ import {
   X, Heart, Bookmark, BookmarkCheck, Share2, Volume2, VolumeX,
   Play, Pause, User, ChevronUp, ChevronDown,
 } from 'lucide-react';
-import { usePlatformStore, type Movie } from '@/platform/store';
-import { useAuthStore } from '@/core/auth/store';
 import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
+import { useFilmStore } from '@/film/serverStore';
+import { videoUrl, type ServerMovie } from '@/film/filmApi';
 
 const K = {
   text: '#FFFFFF',
@@ -21,7 +28,7 @@ const K = {
 };
 
 interface SkyShortsProps {
-  movies: Movie[];
+  movies: ServerMovie[];
   startId?: string;
   saved: string[];
   onToggleSave: (id: string) => void;
@@ -32,7 +39,7 @@ interface SkyShortsProps {
 const ShortItem = ({
   movie, active, muted, onToggleMute, saved, onToggleSave, onEnded,
 }: {
-  movie: Movie; active: boolean; muted: boolean; onToggleMute: () => void;
+  movie: ServerMovie; active: boolean; muted: boolean; onToggleMute: () => void;
   saved: boolean; onToggleSave: () => void; onEnded: () => void;
 }) => {
   const vRef = useRef<HTMLVideoElement>(null);
@@ -40,19 +47,25 @@ const ShortItem = ({
   const [progress, setProgress] = useState(0);
   const [flash, setFlash] = useState(false);
   const [shared, setShared] = useState(false);
-  const { toggleMovieLike } = usePlatformStore();
-  const { accounts, currentUserId } = useAuthStore();
-  const me = accounts.find(a => a.id === currentUserId);
-  const liked = !!(me && movie.likes?.includes(me.id));
+  const rate = useFilmStore(s => s.rate);
+  const noteView = useFilmStore(s => s.noteView);
+  // «Нравится» — это оценка, выставленная на сервере. Повторное
+  // нажатие её снимает, поэтому сердечко нажимается дважды.
+  const liked = (movie.myRating ?? 0) > 0;
   const { setPlaying: registerActive, setPauseHandler } = useRegisterWatchActivity();
+  const counted = useRef(false);
 
   /* Играет только активная (текущая) карточка; остальные — на паузе */
   useEffect(() => {
     const v = vRef.current;
     if (!v) return;
-    if (active) { v.currentTime = 0; v.play().catch(() => {}); setPlaying(true); }
-    else { v.pause(); setPlaying(false); }
-  }, [active, movie.id]);
+    if (active) {
+      v.currentTime = 0;
+      v.play().catch(() => {});
+      setPlaying(true);
+      if (!counted.current) { counted.current = true; void noteView(movie.id); }
+    } else { v.pause(); setPlaying(false); }
+  }, [active, movie.id, noteView]);
 
   useEffect(() => { registerActive(active && playing); return () => registerActive(false); }, [active, playing, registerActive]);
   useEffect(() => {
@@ -69,7 +82,7 @@ const ShortItem = ({
     setFlash(true); setTimeout(() => setFlash(false), 400);
   };
 
-  const like = () => { if (me) toggleMovieLike(movie.id, me.id); };
+  const like = () => { void rate(movie.id, liked ? 0 : 10); };
 
   const share = async () => {
     const text = `${movie.title} — смотри в SkyFilm Shorts`;
@@ -82,8 +95,8 @@ const ShortItem = ({
 
   return (
     <div className="relative h-full w-full bg-black" onClick={toggle}>
-      {movie.sourceUrl ? (
-        <video ref={vRef} src={movie.sourceUrl} className="h-full w-full object-cover" playsInline loop={false}
+      {movie.bytes > 0 ? (
+        <video ref={vRef} src={videoUrl(movie.id)} className="h-full w-full object-cover" playsInline loop={false}
           onTimeUpdate={() => { const v = vRef.current; if (v?.duration) setProgress(v.currentTime / v.duration); }}
           onEnded={onEnded}/>
       ) : (
@@ -132,7 +145,7 @@ const ShortItem = ({
           <div className="grid h-11 w-11 place-items-center rounded-full" style={{ background: 'rgba(0,0,0,0.35)' }}>
             <Heart size={22} color={liked ? '#ff3b5c' : '#fff'} fill={liked ? '#ff3b5c' : 'none'}/>
           </div>
-          <span className="text-[11px] font-semibold text-white">{movie.likes?.length ?? 0}</span>
+          <span className="text-[11px] font-semibold text-white">{movie.ratingCount ?? 0}</span>
         </button>
         <button type="button" onClick={onToggleSave} className="flex flex-col items-center gap-1">
           <div className="grid h-11 w-11 place-items-center rounded-full" style={{ background: 'rgba(0,0,0,0.35)' }}>

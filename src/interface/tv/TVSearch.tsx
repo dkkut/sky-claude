@@ -5,7 +5,8 @@
 =========================================================== */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search as SearchIcon, X, Delete } from 'lucide-react';
-import { usePlatformStore } from '@/platform/store';
+import { useFilmStore } from '@/film/serverStore';
+import { posterUrl } from '@/film/filmApi';
 import { TVFocusable } from './TVFocusable';
 import { TVCard } from './TVCard';
 import { tvFocusManager } from './focusManager';
@@ -19,7 +20,11 @@ const ROWS = ['ЙЦУКЕНГШЩЗХ', 'ФЫВАПРОЛДЖЭ', 'ЯЧСМИТ�
 interface TVSearchProps { onOpenMovie: (id: string) => void; onBack: () => void; }
 
 export const TVSearch = ({ onOpenMovie, onBack }: TVSearchProps) => {
-  const movies = usePlatformStore(s => s.movies);
+  // Поиск идёт по общему каталогу. Личные фильмы в него не попадают:
+  // сервер их в каталоге не отдаёт вовсе.
+  const movies = useFilmStore(s => s.catalog);
+  const loadFilm = useFilmStore(s => s.load);
+  useEffect(() => { void loadFilm(); }, [loadFilm]);
   const [query, setQuery] = useState('');
   const [history, setHistory] = useState<string[]>(loadHistory());
   const inputRef = useRef<HTMLInputElement>(null);
@@ -113,7 +118,7 @@ export const TVSearch = ({ onOpenMovie, onBack }: TVSearchProps) => {
         ) : (
           <div className="flex flex-wrap gap-5">
             {results.map((m, i) => (
-              <TVCard key={m.id} id={`res-${m.id}`} title={m.title} subtitle={m.genre} imageUrl={m.coverUrl} rating={m.rating}
+              <TVCard key={m.id} id={`res-${m.id}`} title={m.title} subtitle={m.genre} imageUrl={m.hasPoster ? posterUrl(m.id) : undefined} rating={m.rating}
                 onEnter={() => { commit(query); onOpenMovie(m.id); }} autoFocusPriority={i === 0 ? 0 : undefined}/>
             ))}
           </div>

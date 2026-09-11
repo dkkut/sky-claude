@@ -15,7 +15,8 @@ import { TVMusic } from './TVMusic';
 import { TVVideoHub } from './TVVideoHub';
 import { TVCatalogGrid } from './TVCatalogGrid';
 import { TVProfileSettings } from './TVProfileSettings';
-import { usePlatformStore } from '@/platform/store';
+import { useFilmStore } from '@/film/serverStore';
+import { posterUrl, type ServerMovie } from '@/film/filmApi';
 
 const HEADER_KINDS = new Set<TVScreen['kind']>(['home', 'movies', 'series', 'music', 'video', 'favorites']);
 
@@ -25,8 +26,12 @@ export const TVShell = () => {
   const back = useTVNavStore(s => s.back);
   const setTopLevel = useTVNavStore(s => s.setTopLevel);
   const saveFocusForCurrent = useTVNavStore(s => s.saveFocusForCurrent);
-  const movies = usePlatformStore(s => s.movies);
-  const favorites = usePlatformStore(s => s.favorites);
+  // Каталог и закладки кино — с сервера. Раньше «избранное» здесь
+  // было списком избранной музыки: в общем сторе он один на всё.
+  const movies = useFilmStore(s => s.catalog);
+  const savedFilms = useFilmStore(s => s.saved);
+  const loadFilm = useFilmStore(s => s.load);
+  useEffect(() => { void loadFilm(); }, [loadFilm]);
 
   const screen = stack[stack.length - 1].screen;
   const isPlayer = screen.kind === 'player';
@@ -60,10 +65,12 @@ export const TVShell = () => {
     window.scrollTo({ top: stack[stack.length - 1].scrollY ?? 0 });
   }, [screen, isPlayer]);
 
-  const favoriteMovies = movies.filter(m => favorites.includes(m.id) && !m.isShort)
-    .map(m => ({ id: m.id, title: m.title, subtitle: m.genre, imageUrl: m.coverUrl, rating: m.rating }));
-  const allMovies = movies.filter(m => !m.isShort)
-    .map(m => ({ id: m.id, title: m.title, subtitle: m.genre, imageUrl: m.coverUrl, rating: m.rating }));
+  const card = (m: ServerMovie) => ({
+    id: m.id, title: m.title, subtitle: m.genre,
+    imageUrl: m.hasPoster ? posterUrl(m.id) : undefined, rating: m.rating,
+  });
+  const favoriteMovies = savedFilms.filter(m => !m.isShort).map(card);
+  const allMovies = movies.filter(m => !m.isShort).map(card);
 
   return (
     <div className="fixed inset-0 z-[500] overflow-y-auto" style={{ background: 'var(--bg)' }}>

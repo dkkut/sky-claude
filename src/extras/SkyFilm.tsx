@@ -1,5 +1,22 @@
 /* ===========================================================
-   SKY FILM  -  редизайн в стиле Кинопоиска
+   SKY FILM
+
+   Экран тот же, что и был. Изменилось то, откуда берутся данные:
+   раньше список фильмов лежал в localStorage браузера, а сам файл —
+   во временной ссылке blob:, которая пропадает при перезагрузке
+   страницы. Теперь и список, и файлы живут на сервере, и он же решает,
+   что этому человеку показывать.
+
+   Два множества держатся порознь и никогда не смешиваются:
+
+     • каталог — только опубликованное, его видят все;
+     • «Моя коллекция» — то, что человек загрузил сам. Она закрыта:
+       в каталог, поиск, популярное и подборки эти фильмы не попадают,
+       и другому человеку — включая администратора — не отдаются вовсе.
+
+   Закрытость обеспечивается не здесь. Здесь мы просто не получаем
+   чужого: проверка стоит в базе и в запросах сервера, а этот файл
+   можно переписать в браузере сколько угодно.
 =========================================================== */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,19 +24,21 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize2, Minimize2,
   X, Star, Clock, Film, Search, ChevronLeft, RotateCcw,
   SkipForward, Bookmark, BookmarkCheck, Info,
-  Tv, TrendingUp, Award, Layers, Download, CheckCircle, Upload, Image as ImageIcon, Plus, Crown,
-  ShieldAlert, ShieldCheck, Cloud, Zap,
+  Tv, TrendingUp, Award, Layers, Download, CheckCircle, Upload, Image as ImageIcon,
+  Plus, Crown, ShieldAlert, ShieldCheck, Cloud, Zap, AlertTriangle, Lock, History,
 } from 'lucide-react';
-import { usePlatformStore, Movie } from '@/platform/store';
-import { useMoney } from '@/wallet/store';
-import { SkyPayCheckout } from '@/payment/SkyPay';
 import { useAuthStore } from '@/core/auth/store';
-import { saveDownloadFromDataUrl, isDownloaded } from '@/offline/offlineDB';
+import { saveDownload, isDownloaded } from '@/offline/offlineDB';
 import { useModerationStore } from '@/shared/moderationStore';
 import { ContentWarningGate, BlockedChannelBadge } from '@/shared/ContentWarningGate';
 import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
 import type { IconComponent } from '@/shared/icon';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
+import { useFilmStore } from '@/film/serverStore';
+import {
+  videoUrl, posterUrl, fmtDuration, readDuration,
+  apiFilmModerationQueue, apiModerateMovie, type ServerMovie,
+} from '@/film/filmApi';
 import { SkyShorts } from './SkyShorts';
 
 /* -- токены ----------------------------------------------- */
@@ -42,37 +61,44 @@ const fmtT = (s: number) => {
   return h ? `${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}` : `${m}:${String(ss).padStart(2,'0')}`;
 };
 
-/* -- градиенты по ID --------------------------------------- */
-const GRADS: Record<string, [string,string]> = {
-  'mov-1':['#0b1a45','#162f6a'], 'mov-2':['#2a0808','#581212'],
-  'mov-3':['#061828','#0d2d45'], 'mov-4':['#06180f','#0e3020'],
-  'mov-5':['#1a0a00','#3c1900'], 'mov-6':['#100016','#1e002e'],
-  'mov-7':['#180c22','#35183e'], 'mov-8':['#001a1a','#003333'],
+const fmtSize = (bytes: number) => {
+  if (!bytes) return '';
+  const gb = bytes / (1024 ** 3);
+  return gb >= 1 ? `${gb.toFixed(1)} ГБ` : `${Math.round(bytes / (1024 ** 2))} МБ`;
 };
-const grad = (id: string): [string,string] => GRADS[id] ?? ['#0d1422','#1a2540'];
+
+/* -- градиенты для постера по умолчанию --------------------
+   Раньше их раздавали по жёстко записанным «mov-1»…«mov-8» — вместе с
+   образцом данных, которого больше нет. Теперь цвет считается из самого
+   идентификатора: у одного фильма он всегда один и тот же, а палитра
+   осталась прежней.
+---------------------------------------------------------- */
+const PALETTE: [string,string][] = [
+  ['#0b1a45','#162f6a'], ['#2a0808','#581212'],
+  ['#061828','#0d2d45'], ['#06180f','#0e3020'],
+  ['#1a0a00','#3c1900'], ['#100016','#1e002e'],
+  ['#180c22','#35183e'], ['#001a1a','#003333'],
+];
+const grad = (id: string): [string,string] => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+};
 
 /* -- Постер ----------------------------------------------- */
-const Poster = ({ movie, w = 110, h }: { movie: Movie; w?: number; h?: number }) => {
+const Poster = ({ movie, w = 110, h }: { movie: ServerMovie; w?: number; h?: number }) => {
   const [c1, c2] = grad(movie.id);
   const ph = h ?? Math.round(w * 1.48);
   return (
-    <div className="relative overflow-hidden rounded-xl shrink-0"
-      style={{ width: w, height: ph }}>
-      {movie.coverUrl
-        ? <img src={movie.coverUrl} alt={movie.title} className="w-full h-full object-cover" />
+    <div className="relative overflow-hidden rounded-xl shrink-0" style={{ width: w, height: ph }}>
+      {movie.hasPoster
+        ? <img src={posterUrl(movie.id)} alt={movie.title} className="w-full h-full object-cover" />
         : <div className="w-full h-full flex items-center justify-center"
             style={{ background: `linear-gradient(160deg,${c1},${c2})` }}>
             <Film size={w * 0.28} color="rgba(255,255,255,0.18)" />
           </div>}
-      {/* vignette bottom */}
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: 'linear-gradient(transparent 55%, rgba(0,0,0,0.75))' }} />
-      {/* SKY+ badge */}
-      {movie.premium && (
-        <div className="absolute top-1.5 left-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-black text-white"
-          style={{ background: `linear-gradient(135deg,${K.orange},${K.orange2})` }}>SKY+</div>
-      )}
-      {/* rating */}
       {movie.rating != null && (
         <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 rounded-md px-1.5 py-0.5"
           style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}>
@@ -86,22 +112,26 @@ const Poster = ({ movie, w = 110, h }: { movie: Movie; w?: number; h?: number })
   );
 };
 
-/* -- Poster full-width (for grid) ------------------------- */
-const PosterFill = ({ movie }: { movie: Movie }) => {
+/* -- Постер во всю ширину (для сетки) --------------------- */
+const PosterFill = ({ movie }: { movie: ServerMovie }) => {
   const [c1, c2] = grad(movie.id);
   return (
     <div className="relative overflow-hidden rounded-xl w-full" style={{ aspectRatio: '2/3' }}>
-      {movie.coverUrl
-        ? <img src={movie.coverUrl} alt={movie.title} className="w-full h-full object-cover" />
+      {movie.hasPoster
+        ? <img src={posterUrl(movie.id)} alt={movie.title} className="w-full h-full object-cover" />
         : <div className="w-full h-full flex items-center justify-center"
             style={{ background: `linear-gradient(160deg,${c1},${c2})` }}>
             <Film size={32} color="rgba(255,255,255,0.18)" />
           </div>}
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: 'linear-gradient(transparent 55%, rgba(0,0,0,0.75))' }} />
-      {movie.premium && (
-        <div className="absolute top-1.5 left-1.5 rounded-md px-1.5 py-0.5 text-[9px] font-black text-white"
-          style={{ background: `linear-gradient(135deg,${K.orange},${K.orange2})` }}>SKY+</div>
+      {/* Замок вместо значка SKY+: он говорит то, что человеку важно
+          знать про свой фильм, — что этот фильм не видит никто. */}
+      {movie.private && (
+        <div className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-black text-white"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <Lock size={8} /> ТОЛЬКО Я
+        </div>
       )}
       {movie.rating != null && (
         <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 rounded-md px-1.5 py-0.5"
@@ -114,7 +144,7 @@ const PosterFill = ({ movie }: { movie: Movie }) => {
   );
 };
 
-/* -- Star chip --------------------------------------------- */
+/* -- Оценка ------------------------------------------------ */
 const Stars = ({ r }: { r?: number }) => {
   if (r == null) return null;
   const col = r >= 8 ? '#4CAF50' : r >= 7 ? K.gold : K.sub;
@@ -126,46 +156,80 @@ const Stars = ({ r }: { r?: number }) => {
   );
 };
 
-/* -- Video player ------------------------------------------ */
-const Player = ({ movie, onClose }: { movie: Movie; onClose: () => void }) => {
+/* -- Проигрыватель ----------------------------------------
+   Видео приходит с сервера потоком: браузер сам просит куски по мере
+   просмотра и при перемотке, поэтому фильм начинается сразу, а не
+   после того, как скачается целиком.
+---------------------------------------------------------- */
+const Player = ({ movie, onClose }: { movie: ServerMovie; onClose: () => void }) => {
   const vRef  = useRef<HTMLVideoElement>(null);
   const cRef  = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
   const [pl,  setPl]  = useState(false);
   const [cur, setCur] = useState(0);
-  const [dur, setDur] = useState(0);
+  const [dur, setDur] = useState(movie.duration || 0);
   const [vol, setVol] = useState(0.85);
   const [mut, setMut] = useState(false);
   const [fs,  setFs]  = useState(false);
   const [ui,  setUi]  = useState(true);
+  const [failed, setFailed] = useState(false);
   const [c1, c2] = grad(movie.id);
   const pct = dur > 0 ? (cur / dur) * 100 : 0;
   const { setPlaying, setPauseHandler } = useRegisterWatchActivity();
+  const savedPos = useFilmStore(s => s.progress[movie.id]);
+  const saveProgress = useFilmStore(s => s.saveProgress);
+  const flushProgress = useFilmStore(s => s.flushProgress);
+  const noteView = useFilmStore(s => s.noteView);
+  /** Позицию надо отдать серверу при уходе, а к тому моменту видео уже снято. */
+  const last = useRef({ pos: 0, dur: 0 });
+  const counted = useRef(false);
+  const restored = useRef(false);
 
-  useEffect(() => { const v = vRef.current; if (!v || !movie.sourceUrl) return; v.src = movie.sourceUrl; }, [movie.id]);
+  /* Продолжаем с того места, где остановились в прошлый раз — хоть на
+     этом устройстве, хоть на другом: позицию помнит сервер. */
+  const onMeta = () => {
+    const v = vRef.current; if (!v) return;
+    setDur(v.duration || movie.duration || 0);
+    if (restored.current) return;
+    restored.current = true;
+    const from = savedPos ?? movie.position ?? 0;
+    // К самому концу не возвращаем: человек его уже видел.
+    if (from > 30 && (!v.duration || from < v.duration - 60)) { v.currentTime = from; setCur(from); }
+  };
+
   useEffect(() => { if (vRef.current) vRef.current.volume = mut ? 0 : vol; }, [vol, mut]);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); vRef.current?.pause(); }, []);
 
-  /* Сообщаем движку «Перерыва от просмотра» о фактическом воспроизведении,
-     и отдаём ему функцию паузы для варианта «Сделать перерыв». */
-  useEffect(() => {
-    setPlaying(pl);
-    return () => setPlaying(false);
-  }, [pl, setPlaying]);
+  /* При уходе — последняя позиция на сервер. Без этого последние
+     секунды просмотра терялись бы, и на другом устройстве фильм
+     продолжался бы чуть раньше, чем человек ушёл. */
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+    vRef.current?.pause();
+    const { pos, dur: d } = last.current;
+    if (pos > 5) void flushProgress(movie.id, pos, d);
+  }, [movie.id, flushProgress]);
+
+  /* Сообщаем движку «Перерыва от просмотра» о фактическом
+     воспроизведении и отдаём ему функцию паузы. */
+  useEffect(() => { setPlaying(pl); return () => setPlaying(false); }, [pl, setPlaying]);
   useEffect(() => {
     setPauseHandler(() => { vRef.current?.pause(); setPl(false); });
     return () => setPauseHandler(null);
   }, [setPauseHandler]);
 
-  /* «Сейчас смотрит фильм» — реальный live-статус в профиле. */
+  /* «Сейчас смотрит фильм» — живая отметка в профиле. */
   const { currentUserId, accounts } = useAuthStore();
   const setWatchPresence = useMediaPresence(s => s.setWatchPresence);
   useEffect(() => {
     if (!currentUserId) return;
     const me = accounts.find(a => a.id === currentUserId);
     const allowed = me?.privacy?.showMovies ?? true;
-    if (pl && allowed) setWatchPresence({ userId: currentUserId, title: movie.title, kind: 'movie', coverUrl: movie.coverUrl }, currentUserId);
-    else setWatchPresence(null, currentUserId);
+    // Закрытый фильм в чужом профиле не показываем даже названием:
+    // это ровно то, что человек держит только у себя.
+    if (pl && allowed && !movie.private) {
+      setWatchPresence({ userId: currentUserId, title: movie.title, kind: 'movie',
+        coverUrl: movie.hasPoster ? posterUrl(movie.id) : undefined }, currentUserId);
+    } else setWatchPresence(null, currentUserId);
     return () => setWatchPresence(null, currentUserId);
   }, [pl, movie.id, currentUserId]);
 
@@ -177,8 +241,11 @@ const Player = ({ movie, onClose }: { movie: Movie; onClose: () => void }) => {
 
   const toggle = () => {
     const v = vRef.current; if (!v) return;
-    pl ? v.pause() : v.play().catch(() => {});
-    setPl(p => !p);
+    if (pl) { v.pause(); setPl(false); return; }
+    v.play().then(() => {
+      setPl(true);
+      if (!counted.current) { counted.current = true; void noteView(movie.id); }
+    }).catch(() => setPl(false));
   };
   const seek = (t: number) => { if (vRef.current) { vRef.current.currentTime = t; setCur(t); } };
   const skip = (n: number) => seek(Math.max(0, Math.min(dur, cur + n)));
@@ -187,28 +254,80 @@ const Player = ({ movie, onClose }: { movie: Movie; onClose: () => void }) => {
     else { await document.exitFullscreen?.().catch(() => {}); setFs(false); }
   };
 
+  /** Связь оборвалась — предлагаем продолжить с того же места, а не начать заново. */
+  const retry = () => {
+    const v = vRef.current; if (!v) return;
+    const from = last.current.pos;
+    setFailed(false);
+    v.load();
+    v.currentTime = from;
+    v.play().then(() => setPl(true)).catch(() => setPl(false));
+  };
+
   return (
     <motion.div ref={cRef} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-[100] bg-black flex items-center justify-center"
       onMouseMove={bump} style={{ cursor: ui ? 'default' : 'none' }}>
 
-      {movie.sourceUrl
-        ? <video ref={vRef} className="h-full w-full object-contain"
-            onTimeUpdate={() => setCur(vRef.current?.currentTime ?? 0)}
-            onLoadedMetadata={() => setDur(vRef.current?.duration ?? 0)}
-            onEnded={() => setPl(false)} onClick={toggle} />
-        : <div className="h-full w-full flex flex-col items-center justify-center gap-4"
-            style={{ background: `linear-gradient(160deg,${c1},${c2})` }}>
-            <Film size={72} color="rgba(255,255,255,0.1)" />
-            <p className="text-xl font-bold text-white">{movie.title}</p>
-            <p className="text-sm" style={{ color: K.sub }}>Видеофайл не загружен</p>
-          </div>}
+      {movie.bytes > 0 ? (
+        <video ref={vRef} src={videoUrl(movie.id)} className="h-full w-full object-contain"
+          preload="metadata" playsInline
+          onTimeUpdate={() => {
+            const v = vRef.current; if (!v) return;
+            setCur(v.currentTime);
+            last.current = { pos: v.currentTime, dur: v.duration || movie.duration || 0 };
+            saveProgress(movie.id, v.currentTime, v.duration || movie.duration || 0);
+          }}
+          onLoadedMetadata={onMeta}
+          onPlaying={() => { setFailed(false); setPl(true); }}
+          onPause={() => setPl(false)}
+          onError={() => { setFailed(true); setPl(false); }}
+          onStalled={() => setFailed(false)}
+          onEnded={() => { setPl(false); void flushProgress(movie.id, dur, dur); }}
+          onClick={toggle} />
+      ) : (
+        <div className="h-full w-full flex flex-col items-center justify-center gap-4"
+          style={{ background: `linear-gradient(160deg,${c1},${c2})` }}>
+          <Film size={72} color="rgba(255,255,255,0.1)" />
+          <p className="text-xl font-bold text-white">{movie.title}</p>
+          <p className="text-sm" style={{ color: K.sub }}>Видеофайл не загружен</p>
+        </div>
+      )}
+
+      {/* Обрыв связи. Показываем причину и предлагаем продолжить с того
+          же места — заново длинный фильм никто смотреть не станет.
+
+          Своя кнопка выхода здесь обязательна, и лежит это окно ниже
+          управления: иначе оно перекрывает кнопку «назад» в верхней
+          строке, и человек, у которого фильм не пошёл, остаётся запертым
+          в чёрном экране без единого способа из него выйти. */}
+      {failed && (
+        <div className="absolute inset-0 z-0 flex flex-col items-center justify-center gap-3 px-8 text-center"
+          style={{ background: 'rgba(0,0,0,0.82)' }}>
+          <AlertTriangle size={40} style={{ color: K.orange }} />
+          <p className="text-[15px] font-bold text-white">Воспроизведение прервалось</p>
+          <p className="text-[12.5px]" style={{ color: K.sub, maxWidth: 300 }}>
+            Похоже, пропала связь. Можно продолжить с того места, где остановились — {fmtT(last.current.pos)}.
+          </p>
+          <div className="mt-1 flex gap-2">
+            <button type="button" onClick={retry}
+              className="rounded-full px-6 py-2.5 text-[13px] font-bold text-white" style={{ background: K.orange }}>
+              Продолжить
+            </button>
+            <button type="button" onClick={onClose}
+              className="rounded-full px-6 py-2.5 text-[13px] font-semibold"
+              style={{ background: 'rgba(255,255,255,0.12)', color: K.text }}>
+              Выйти
+            </button>
+          </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {ui && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-            {/* top */}
+            className="absolute inset-0 z-10 flex flex-col justify-between pointer-events-none">
+            {/* верх */}
             <div className="flex items-center gap-3 px-5 py-4 pointer-events-auto"
               style={{ background: 'linear-gradient(rgba(0,0,0,0.78),transparent)' }}>
               <button type="button" onClick={onClose}
@@ -220,13 +339,19 @@ const Player = ({ movie, onClose }: { movie: Movie; onClose: () => void }) => {
                 <p className="font-bold text-white truncate">{movie.title}</p>
                 {movie.year && <p className="text-xs" style={{ color: K.sub }}>{movie.year} · {movie.genre}</p>}
               </div>
+              {movie.private && (
+                <span className="flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold"
+                  style={{ background: 'rgba(0,0,0,0.5)', color: K.sub }}>
+                  <Lock size={10} /> Только я
+                </span>
+              )}
               <button type="button" onClick={toggleFs}
                 className="grid h-10 w-10 place-items-center rounded-full pointer-events-auto"
                 style={{ background: 'rgba(0,0,0,0.5)' }}>
                 {fs ? <Minimize2 size={16} className="text-white" /> : <Maximize2 size={16} className="text-white" />}
               </button>
             </div>
-            {/* center */}
+            {/* середина */}
             <div className="flex items-center justify-center gap-8 pointer-events-auto">
               <motion.button whileTap={{ scale: 0.88 }} type="button" onClick={() => skip(-10)}
                 className="grid h-12 w-12 place-items-center rounded-full"
@@ -245,7 +370,7 @@ const Player = ({ movie, onClose }: { movie: Movie; onClose: () => void }) => {
                 <SkipForward size={20} className="text-white" />
               </motion.button>
             </div>
-            {/* bottom */}
+            {/* низ */}
             <div className="px-5 pb-5 space-y-3 pointer-events-auto"
               style={{ background: 'linear-gradient(transparent,rgba(0,0,0,0.88))' }}>
               <div className="flex items-center gap-3">
@@ -277,13 +402,23 @@ const Player = ({ movie, onClose }: { movie: Movie; onClose: () => void }) => {
   );
 };
 
-/* -- Detail bottom sheet ----------------------------------- */
+/* -- Карточка фильма --------------------------------------- */
+/**
+ * Сколько фильм может весить, чтобы его имело смысл класть в память
+ * устройства. Прежняя кнопка «скачать» переводила файл в строку base64
+ * и держала его в памяти вкладки целиком — на настоящем фильме это
+ * кончалось не скачиванием, а падением вкладки.
+ */
+const OFFLINE_LIMIT = 600 * 1024 * 1024;
+
 const Detail = ({ movie, onPlay, onClose, saved, onSave }: {
-  movie: Movie; onPlay: () => void; onClose: () => void; saved: boolean; onSave: () => void;
+  movie: ServerMovie; onPlay: () => void; onClose: () => void; saved: boolean; onSave: () => void;
 }) => {
   const [c1, c2] = grad(movie.id);
   const [dlState, setDlState] = useState<'idle'|'loading'|'done'>('idle');
+  const [dlError, setDlError] = useState('');
   const { isBlocked, blockReason, warningFor, isAcknowledged } = useModerationStore();
+  const rate = useFilmStore(s => s.rate);
   const modBlocked = isBlocked('movie', movie.id);
   const modWarning = warningFor('movie', movie.id);
   const modAcked   = isAcknowledged('movie', movie.id);
@@ -310,24 +445,37 @@ const Detail = ({ movie, onPlay, onClose, saved, onSave }: {
     );
   }
 
+  /**
+   * Сохранить для просмотра без связи. Файл забирается потоком и
+   * кладётся в хранилище устройства как есть — без перевода в строку,
+   * который раньше поднимал весь фильм в память вкладки.
+   */
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (dlState !== 'idle' || !movie.sourceUrl) return;
-    setDlState('loading');
+    if (dlState !== 'idle' || !movie.bytes) return;
+    if (movie.bytes > OFFLINE_LIMIT) {
+      setDlError(`Фильм слишком большой для памяти устройства (${fmtSize(movie.bytes)})`);
+      return;
+    }
+    setDlState('loading'); setDlError('');
     try {
-      const resp = await fetch(movie.sourceUrl);
+      const resp = await fetch(videoUrl(movie.id), { credentials: 'same-origin' });
+      if (!resp.ok) throw new Error('отказ сервера');
       const blob = await resp.blob();
-      const dataUrl = await new Promise<string>(r => { const fr = new FileReader(); fr.onload = () => r(fr.result as string); fr.readAsDataURL(blob); });
-      await saveDownloadFromDataUrl({
+      await saveDownload({
         id: movie.id, kind: 'movie',
-        title: movie.title, duration: movie.duration,
-        mimeType: movie.mimeType ?? 'video/mp4',
-        bytes: movie.bytes ?? blob.size,
+        title: movie.title, duration: fmtDuration(movie.duration),
+        mimeType: blob.type || 'video/mp4',
+        bytes: blob.size,
         addedAt: new Date().toISOString(),
-      }, dataUrl);
+      }, blob);
       setDlState('done');
-    } catch { setDlState('idle'); }
+    } catch {
+      setDlState('idle');
+      setDlError('Не получилось сохранить — попробуйте ещё раз');
+    }
   };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
@@ -339,10 +487,10 @@ const Detail = ({ movie, onPlay, onClose, saved, onSave }: {
         style={{ background: K.card, maxHeight: '88vh' }}
         onClick={e => e.stopPropagation()}>
 
-        {/* hero */}
+        {/* шапка */}
         <div className="relative h-52 shrink-0 overflow-hidden">
-          {movie.coverUrl
-            ? <img src={movie.coverUrl} alt="" className="w-full h-full object-cover" />
+          {movie.hasPoster
+            ? <img src={posterUrl(movie.id)} alt="" className="w-full h-full object-cover" />
             : <div className="w-full h-full" style={{ background: `linear-gradient(160deg,${c1},${c2})` }} />}
           <div className="absolute inset-0" style={{ background: 'linear-gradient(transparent 30%,rgba(6,6,9,0.96))' }} />
           <button type="button" onClick={onClose}
@@ -359,45 +507,60 @@ const Detail = ({ movie, onPlay, onClose, saved, onSave }: {
                 <span className="rounded px-1.5 py-0.5 text-[10px] font-bold border"
                   style={{ color: K.sub, borderColor: K.dim }}>{movie.ageRating}</span>
               )}
-              {(movie as any).ageRestricted18 && (
+              {movie.ageRestricted18 && (
                 <span className="rounded px-1.5 py-0.5 text-[10px] font-black text-white" style={{ background:'rgba(239,68,68,0.85)' }}>18+</span>
               )}
-              {(movie as any).explicit && (
+              {movie.explicit && (
                 <span className="rounded px-1.5 py-0.5 text-[10px] font-black text-white" style={{ background:'rgba(0,0,0,0.6)' }}>E</span>
               )}
             </div>
           </div>
         </div>
 
-        {/* body */}
+        {/* тело */}
         <div className="overflow-y-auto flex-1 px-5 pt-4 pb-8" style={{ scrollbarWidth: 'none' }}>
           <div className="flex items-center gap-4 mb-4">
             <Stars r={movie.rating} />
-            {movie.duration && (
+            {movie.ratingCount ? (
+              <span className="text-[11px]" style={{ color: K.dim }}>{movie.ratingCount} оценок</span>
+            ) : null}
+            {movie.duration > 0 && (
               <span className="flex items-center gap-1 text-sm" style={{ color: K.sub }}>
-                <Clock size={13} /> {movie.duration}
+                <Clock size={13} /> {fmtDuration(movie.duration)}
               </span>
             )}
             {movie.country && <span className="text-sm" style={{ color: K.sub }}>{movie.country}</span>}
           </div>
 
-          {(movie as any).license && (
-            <div className="flex items-center gap-1.5 rounded-xl px-3 py-2 mb-4 text-[11px]"
-              style={{ background: (movie as any).license==='open' ? 'rgba(255,85,0,0.08)' : 'rgba(34,197,94,0.08)',
-                border: `1px solid ${(movie as any).license==='open' ? 'rgba(255,85,0,0.2)' : 'rgba(34,197,94,0.2)'}`,
-                color: K.sub }}>
-              {(movie as any).license === 'open'
-                ? <><ShieldAlert size={13} style={{ color: K.orange }}/><span>Открытая лицензия — взято из открытых источников. Экосистема не несёт ответственности за использование лицензий. Загрузил: {(movie as any).uploaderName ?? 'пользователь'}</span></>
-                : <><ShieldCheck size={13} style={{ color:'#22c55e' }}/><span>Авторское право на личную лицензию подтверждено. Загрузил: {(movie as any).uploaderName ?? 'пользователь'}</span></>}
+          {/* Личный фильм: прямо сказано, что его не видит никто. */}
+          {movie.private && (
+            <div className="flex items-start gap-1.5 rounded-xl px-3 py-2 mb-4 text-[11px]"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: K.sub }}>
+              <Lock size={13} className="mt-0.5 shrink-0" style={{ color: K.sub }} />
+              <span>
+                Этот фильм — в вашей личной коллекции. Его не видит никто, кроме вас: ни в каталоге,
+                ни в поиске, ни у других людей. Он доступен на всех ваших устройствах.
+              </span>
             </div>
           )}
 
-          {/* CTA */}
+          {movie.license && !movie.private && (
+            <div className="flex items-center gap-1.5 rounded-xl px-3 py-2 mb-4 text-[11px]"
+              style={{ background: movie.license==='open' ? 'rgba(255,85,0,0.08)' : 'rgba(34,197,94,0.08)',
+                border: `1px solid ${movie.license==='open' ? 'rgba(255,85,0,0.2)' : 'rgba(34,197,94,0.2)'}`,
+                color: K.sub }}>
+              {movie.license === 'open'
+                ? <><ShieldAlert size={13} style={{ color: K.orange }}/><span>Открытая лицензия — взято из открытых источников. Экосистема не несёт ответственности за использование лицензий. Загрузил: {movie.uploaderName ?? 'пользователь'}</span></>
+                : <><ShieldCheck size={13} style={{ color:'#22c55e' }}/><span>Авторское право на личную лицензию подтверждено. Загрузил: {movie.uploaderName ?? 'пользователь'}</span></>}
+            </div>
+          )}
+
+          {/* кнопки */}
           <div className="flex gap-3 mb-5">
             <motion.button whileTap={{ scale: 0.96 }} type="button" onClick={onPlay}
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-base font-bold text-white"
               style={{ background: K.orange }}>
-              <Play size={18} fill="white" /> Смотреть
+              <Play size={18} fill="white" /> {movie.position && movie.position > 30 ? 'Продолжить' : 'Смотреть'}
             </motion.button>
             <button type="button" onClick={onSave}
               className="grid h-12 w-12 place-items-center rounded-2xl transition-all"
@@ -406,11 +569,10 @@ const Detail = ({ movie, onPlay, onClose, saved, onSave }: {
                 ? <BookmarkCheck size={18} style={{ color: K.orange }} />
                 : <Bookmark size={18} style={{ color: K.sub }} />}
             </button>
-            {/* Download for offline */}
             <button type="button" onClick={handleDownload}
-              disabled={dlState === 'loading' || (!movie.sourceUrl && dlState === 'idle')}
+              disabled={dlState === 'loading' || !movie.bytes}
               className="grid h-12 w-12 place-items-center rounded-2xl transition-all"
-              title={dlState === 'done' ? 'Скачано' : dlState === 'loading' ? 'Скачивание...' : movie.sourceUrl ? 'Скачать офлайн' : 'Нет файла'}
+              title={dlState === 'done' ? 'Сохранено на устройстве' : dlState === 'loading' ? 'Сохраняем…' : movie.bytes ? 'Смотреть без связи' : 'Нет файла'}
               style={{ background: dlState === 'done' ? 'rgba(52,211,153,0.15)' : dlState === 'loading' ? 'rgba(79,110,247,0.15)' : 'var(--border)', border: `1px solid ${dlState === 'done' ? '#34d39944' : dlState === 'loading' ? '#4f6ef744' : 'transparent'}` }}>
               {dlState === 'done'
                 ? <CheckCircle size={18} style={{ color: 'var(--green)' }} />
@@ -420,6 +582,28 @@ const Detail = ({ movie, onPlay, onClose, saved, onSave }: {
               }
             </button>
           </div>
+          {dlError && <p className="mb-4 text-[11.5px]" style={{ color: 'var(--red)' }}>{dlError}</p>}
+
+          {/* Оценка — настоящая: её ставят живые зрители, среднее считает сервер. */}
+          {!movie.private && (
+            <div className="mb-5 rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: K.dim }}>
+                {movie.myRating ? `Ваша оценка: ${movie.myRating}` : 'Ваша оценка'}
+              </p>
+              <div className="flex gap-1">
+                {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+                  <button key={n} type="button" onClick={() => void rate(movie.id, movie.myRating === n ? 0 : n)}
+                    className="flex-1 rounded-md py-1.5 text-[11px] font-bold transition-colors"
+                    style={{
+                      background: (movie.myRating ?? 0) >= n ? `${K.gold}22` : 'rgba(255,255,255,0.05)',
+                      color: (movie.myRating ?? 0) >= n ? K.gold : K.dim,
+                    }}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {movie.description && (
             <p className="text-sm leading-relaxed mb-5" style={{ color: K.sub }}>{movie.description}</p>
@@ -432,6 +616,7 @@ const Detail = ({ movie, onPlay, onClose, saved, onSave }: {
               ['Страна',   movie.country],
               ['Год',      movie.year?.toString()],
               ['Рейтинг',  movie.ageRating],
+              ['Размер',   fmtSize(movie.bytes)],
             ] as [string, string|undefined][]).filter(([,v]) => v).map(([l, v]) => (
               <div key={l} className="flex gap-3">
                 <span className="w-20 shrink-0 text-xs pt-0.5" style={{ color: K.dim }}>{l}</span>
@@ -445,15 +630,14 @@ const Detail = ({ movie, onPlay, onClose, saved, onSave }: {
   );
 };
 
-/* -- Hero banner ------------------------------------------- */
-const Hero = ({ movie, onPlay, onInfo }: { movie: Movie; onPlay: () => void; onInfo: () => void }) => {
+/* -- Баннер ------------------------------------------------ */
+const Hero = ({ movie, onPlay, onInfo }: { movie: ServerMovie; onPlay: () => void; onInfo: () => void }) => {
   const [c1, c2] = grad(movie.id);
   return (
     <div className="relative overflow-hidden rounded-2xl mx-3 mt-3 mb-5" style={{ height: 230 }}>
-      {movie.coverUrl
-        ? <img src={movie.coverUrl} alt="" className="w-full h-full object-cover" />
+      {movie.hasPoster
+        ? <img src={posterUrl(movie.id)} alt="" className="w-full h-full object-cover" />
         : <div className="w-full h-full" style={{ background: `linear-gradient(160deg,${c1},${c2})` }} />}
-      {/* left-heavy overlay like Kinopoisk */}
       <div className="absolute inset-0"
         style={{ background: 'linear-gradient(to right,rgba(6,6,9,0.94) 0%,rgba(6,6,9,0.6) 50%,rgba(6,6,9,0.1) 100%)' }} />
       <div className="absolute inset-0 flex flex-col justify-end px-5 pb-5">
@@ -467,7 +651,7 @@ const Hero = ({ movie, onPlay, onInfo }: { movie: Movie; onPlay: () => void; onI
         <div className="flex items-center flex-wrap gap-2.5 mb-4">
           <Stars r={movie.rating} />
           {movie.year && <span className="text-xs" style={{ color: K.sub }}>{movie.year}</span>}
-          {movie.duration && <span className="text-xs" style={{ color: K.sub }}>· {movie.duration}</span>}
+          {movie.duration > 0 && <span className="text-xs" style={{ color: K.sub }}>· {fmtDuration(movie.duration)}</span>}
           {movie.ageRating && (
             <span className="rounded px-1.5 py-0.5 text-[10px] font-bold border"
               style={{ color: K.sub, borderColor: K.dim }}>{movie.ageRating}</span>
@@ -490,10 +674,11 @@ const Hero = ({ movie, onPlay, onInfo }: { movie: Movie; onPlay: () => void; onI
   );
 };
 
-/* -- Horizontal row ---------------------------------------- */
-const Row = ({ title, Icon, movies, onSelect }: {
+/* -- Полка ------------------------------------------------- */
+const Row = ({ title, Icon, movies, onSelect, progress }: {
   title: string; Icon: IconComponent;
-  movies: Movie[]; onSelect: (m: Movie) => void;
+  movies: ServerMovie[]; onSelect: (m: ServerMovie) => void;
+  progress?: Record<string, number>;
 }) => {
   if (!movies.length) return null;
   return (
@@ -503,35 +688,45 @@ const Row = ({ title, Icon, movies, onSelect }: {
         <h3 className="text-[15px] font-bold" style={{ color: K.text }}>{title}</h3>
       </div>
       <div className="flex gap-3 px-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-        {movies.map(m => (
-          <div key={m.id} className="shrink-0" style={{ width: 110 }}>
-            <motion.div whileHover={{ scale: 1.04, y: -4 }} whileTap={{ scale: 0.97 }}
-              className="cursor-pointer" onClick={() => onSelect(m)}>
-              <PosterFill movie={m} />
-            </motion.div>
-            <p className="mt-1.5 text-xs font-medium truncate leading-tight px-0.5" style={{ color: K.text }}>{m.title}</p>
-            {m.rating != null && (
-              <div className="flex items-center gap-0.5 px-0.5 mt-0.5">
-                <Star size={9} fill={K.gold} style={{ color: K.gold }} />
-                <span className="text-[10px] font-bold tabular-nums" style={{ color: K.gold }}>{m.rating.toFixed(1)}</span>
-              </div>
-            )}
-          </div>
-        ))}
+        {movies.map(m => {
+          const seen = progress?.[m.id] ?? m.position ?? 0;
+          const pct = m.duration > 0 ? Math.min(100, (seen / m.duration) * 100) : 0;
+          return (
+            <div key={m.id} className="shrink-0" style={{ width: 110 }}>
+              <motion.div whileHover={{ scale: 1.04, y: -4 }} whileTap={{ scale: 0.97 }}
+                className="relative cursor-pointer" onClick={() => onSelect(m)}>
+                <PosterFill movie={m} />
+                {pct > 1 && (
+                  <div className="absolute bottom-1 left-1.5 right-1.5 h-[3px] overflow-hidden rounded-full"
+                    style={{ background: 'rgba(255,255,255,0.25)' }}>
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: K.orange }} />
+                  </div>
+                )}
+              </motion.div>
+              <p className="mt-1.5 text-xs font-medium truncate leading-tight px-0.5" style={{ color: K.text }}>{m.title}</p>
+              {m.rating != null && (
+                <div className="flex items-center gap-0.5 px-0.5 mt-0.5">
+                  <Star size={9} fill={K.gold} style={{ color: K.gold }} />
+                  <span className="text-[10px] font-bold tabular-nums" style={{ color: K.gold }}>{m.rating.toFixed(1)}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 };
 
-/* -- Catalog grid ------------------------------------------ */
-const Grid = ({ movies, onSelect }: { movies: Movie[]; onSelect: (m: Movie) => void }) => {
+/* -- Сетка ------------------------------------------------- */
+const Grid = ({ movies, onSelect }: { movies: ServerMovie[]; onSelect: (m: ServerMovie) => void }) => {
   const { isBlocked } = useModerationStore();
   return (
   <div className="grid gap-x-3 gap-y-5 px-3 pb-4"
     style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))' }}>
     {movies.map((m, i) => (
       <motion.div key={m.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: i * 0.03 }} className="flex flex-col">
+        transition={{ delay: Math.min(i, 12) * 0.03 }} className="flex flex-col">
         <motion.div whileHover={{ scale: 1.04, y: -4 }} whileTap={{ scale: 0.97 }}
           className="relative cursor-pointer w-full" onClick={() => onSelect(m)}>
           {isBlocked('movie', m.id) ? (
@@ -541,12 +736,12 @@ const Grid = ({ movies, onSelect }: { movies: Movie[]; onSelect: (m: Movie) => v
           ) : (
           <>
           <PosterFill movie={m} />
-          {((m as any).explicit || (m as any).ageRestricted18) && (
-            <div className="absolute right-1 top-1 flex gap-1">
-              {(m as any).ageRestricted18 && (
+          {(m.explicit || m.ageRestricted18) && (
+            <div className="absolute right-1 bottom-1 flex gap-1">
+              {m.ageRestricted18 && (
                 <span className="rounded px-1 py-0.5 text-[8px] font-black text-white" style={{ background:'rgba(239,68,68,0.85)' }}>18+</span>
               )}
-              {(m as any).explicit && (
+              {m.explicit && (
                 <span className="rounded px-1 py-0.5 text-[8px] font-black text-white" style={{ background:'rgba(0,0,0,0.6)' }}>E</span>
               )}
             </div>
@@ -567,184 +762,222 @@ const Grid = ({ movies, onSelect }: { movies: Movie[]; onSelect: (m: Movie) => v
   );
 };
 
-/* ===========================================================
-   SkyFilm  -  main
-=========================================================== */
-/* -- Личная загрузка видео --------------------------------- */
-/** Секунды → "ч:мм:сс" / "м:сс". Используется вкладками загрузки и публикации. */
-const toDur = (s: number) => {
-  if (!isFinite(s)||s<=0) return '0:00';
-  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);
-  return h>0?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`;
-};
+type Tab = 'home' | 'catalog' | 'saved' | 'mine' | 'publish';
 
-const UploadTab = () => {
-  const { addMovie, movies, deleteMovie } = usePlatformStore();
-  const { currentUserId } = useAuthStore();
+/* ═══════════════════════════════════════════════════════════
+   МОЯ КОЛЛЕКЦИЯ
+
+   Здесь человек загружает фильмы для себя. Сервер кладёт их
+   закрытыми — всегда, без исключений и без выбора: «опубликовать при
+   загрузке» тут нет не потому, что кнопку убрали, а потому, что
+   сервер публикацию при загрузке не делает вовсе.
+═══════════════════════════════════════════════════════════ */
+const iSty = { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color: K.text };
+const iCls = 'w-full rounded-2xl px-4 py-2.5 text-sm outline-none';
+
+const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
+  const mine = useFilmStore(s => s.mine);
+  const upload = useFilmStore(s => s.upload);
+  const setPoster = useFilmStore(s => s.setPoster);
+  const removeMovie = useFilmStore(s => s.removeMovie);
+
   const [vFile, setVFile]     = useState<File|null>(null);
-  const [cover, setCover]     = useState<string|undefined>();
+  const [poster, setPosterFile] = useState<File|null>(null);
+  const [posterPreview, setPosterPreview] = useState<string|undefined>();
   const [title, setTitle]     = useState('');
   const [desc,  setDesc]      = useState('');
   const [cat,   setCat]       = useState('Другое');
-  const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [busy, setBusy]       = useState(false);
+  const [percent, setPercent] = useState(0);
+  const [err, setErr]         = useState('');
+  const cancelRef = useRef<(() => void) | null>(null);
   const vRef   = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
-  const mine   = movies.filter(m => (m as any).uploadedBy === currentUserId);
 
+  /* Ссылка на предпросмотр постера — временная, и её надо отпускать:
+     иначе каждый выбранный файл остаётся висеть в памяти вкладки. */
+  useEffect(() => () => { if (posterPreview) URL.revokeObjectURL(posterPreview); }, [posterPreview]);
 
   const submit = async () => {
-    if (!vFile || !title.trim()) return;
-    setLoading(true); setProgress(20);
-    const url = URL.createObjectURL(vFile);
-    const dur = await new Promise<number>(r => {
-      const v = document.createElement('video'); v.preload='metadata';
-      v.onloadedmetadata = () => { URL.revokeObjectURL(v.src); r(v.duration); };
-      v.onerror = () => { URL.revokeObjectURL(v.src); r(0); }; v.src = url;
-    });
-    setProgress(60);
-    addMovie({
-      title: title.trim(), category: cat.trim()||'Другое',
-      description: desc.trim()||undefined, coverUrl: cover,
-      duration: toDur(dur), premium: false,
-      sourceUrl: URL.createObjectURL(vFile),
-      fileName: vFile.name, mimeType: vFile.type, bytes: vFile.size,
-      ...(({ uploadedBy: currentUserId }) as any),
-    });
-    setProgress(100);
-    setVFile(null); setCover(undefined); setTitle(''); setDesc(''); setCat('Другое');
-    setTimeout(() => { setLoading(false); setProgress(0); }, 500);
+    if (!vFile || !title.trim() || busy) return;
+    setBusy(true); setPercent(0); setErr('');
+    const duration = await readDuration(vFile);
+    // Жанр в каталоге он же категория: по нему собираются кнопки
+    // разделов и он же стоит в карточке. Поле одно, поэтому пишем
+    // в оба — иначе в карточке строка «Жанр» всегда была бы пустой.
+    const genre = cat.trim() || 'Другое';
+    const job = upload(vFile, {
+      title: title.trim(),
+      description: desc.trim() || undefined,
+      category: genre,
+      genre,
+      duration,
+    }, setPercent);
+    cancelRef.current = job.cancel;
+    const res = await job.promise;
+    cancelRef.current = null;
+    if (!res.ok) { setErr(res.reason ?? 'Не получилось загрузить'); setBusy(false); setPercent(0); return; }
+    if (poster && res.id) await setPoster(res.id, poster);
+    setVFile(null); setPosterFile(null);
+    if (posterPreview) URL.revokeObjectURL(posterPreview);
+    setPosterPreview(undefined);
+    setTitle(''); setDesc(''); setCat('Другое');
+    setBusy(false); setPercent(0);
   };
-
-  const iSty = { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color: K.text };
-  const iCls = 'w-full rounded-2xl px-4 py-2.5 text-sm outline-none';
 
   return (
     <div className="h-full overflow-y-auto px-4 py-4 space-y-4" style={{ scrollbarWidth:'none' }}>
-      {/* Upload form */}
+      {/* Что такое эта вкладка — сказано словами, а не подразумевается. */}
+      <div className="flex items-start gap-2 rounded-2xl p-3 text-[11.5px]"
+        style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${K.border}`, color: K.sub }}>
+        <Lock size={13} className="mt-0.5 shrink-0" style={{ color: K.sub }}/>
+        <span>
+          Личная коллекция. Всё, что вы сюда загрузите, видите только вы — ни в каталоге, ни в поиске,
+          ни у других людей этих фильмов нет. Они хранятся на сервере, поэтому доступны с любого
+          вашего устройства и не пропадают при закрытии вкладки.
+        </span>
+      </div>
+
       <div className="rounded-2xl p-4 space-y-3" style={{ background: K.card, border: `1px solid ${K.border}` }}>
-        <p className="text-sm font-bold" style={{ color: K.text }}>Загрузить видео</p>
-        {/* File drop */}
+        <p className="text-sm font-bold" style={{ color: K.text }}>Загрузить фильм</p>
         <div
           className="flex flex-col items-center justify-center gap-2 rounded-2xl py-6 cursor-pointer transition-colors"
           style={{ background: vFile ? 'rgba(255,85,0,0.07)' : 'rgba(255,255,255,0.03)', border: `2px dashed ${vFile ? K.orange : 'rgba(255,255,255,0.1)'}` }}
-          onClick={() => vRef.current?.click()}>
+          onClick={() => !busy && vRef.current?.click()}>
           <input ref={vRef} type="file" accept="video/*" className="hidden"
-            onChange={e => { const f=e.target.files?.[0]; if(f){setVFile(f);if(!title)setTitle(f.name.replace(/\.[^.]+$/,''));} }} />
+            onChange={e => { const f=e.target.files?.[0]; if(f){setVFile(f);setErr('');if(!title)setTitle(f.name.replace(/\.[^.]+$/,''));} }} />
           <Film size={28} style={{ color: vFile ? K.orange : K.dim }} />
           <p className="text-sm font-medium" style={{ color: vFile ? K.orange : K.sub }}>
             {vFile ? vFile.name : 'Выбрать видеофайл'}
           </p>
-          <p className="text-xs" style={{ color: K.dim }}>MP4 · MKV · AVI · MOV · WebM</p>
+          <p className="text-xs" style={{ color: K.dim }}>
+            {vFile ? fmtSize(vFile.size) : 'MP4 · MOV · MKV · WebM · AVI'}
+          </p>
         </div>
         <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Название *" className={iCls} style={iSty}/>
         <input value={cat} onChange={e=>setCat(e.target.value)} placeholder="Жанр (Фантастика, Комедия...)" className={iCls} style={iSty}/>
         <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Описание (необязательно)" rows={3}
           className={iCls+' resize-none'} style={iSty}/>
-        {/* Cover */}
         <div className="flex items-center gap-3">
           <input ref={imgRef} type="file" accept="image/*" className="hidden"
-            onChange={async e=>{ const f=e.target.files?.[0]; if(f){const r=new FileReader();r.onload=()=>setCover(r.result as string);r.readAsDataURL(f);} }}/>
+            onChange={e=>{ const f=e.target.files?.[0]; if(f){ setPosterFile(f); if (posterPreview) URL.revokeObjectURL(posterPreview); setPosterPreview(URL.createObjectURL(f)); } }}/>
           <button type="button" onClick={() => imgRef.current?.click()}
             className="flex items-center gap-2 rounded-2xl px-3 py-2 text-sm transition-colors"
             style={{ background:'var(--border)', border:'1px solid rgba(255,255,255,0.1)', color: K.sub }}>
-            <ImageIcon size={14}/>{cover ? '✅ Постер' : 'Добавить постер'}
+            <ImageIcon size={14}/>{poster ? 'Постер выбран' : 'Добавить постер'}
           </button>
-          {cover && <img src={cover} alt="" className="h-10 w-16 rounded-xl object-cover"/>}
+          {posterPreview && <img src={posterPreview} alt="" className="h-10 w-16 rounded-xl object-cover"/>}
         </div>
-        {loading && (
-          <div className="h-1.5 overflow-hidden rounded-full" style={{ background:'var(--border)' }}>
-            <motion.div className="h-full rounded-full" transition={{ duration:0.3 }}
-              style={{ width:`${progress}%`, background:`linear-gradient(90deg,${K.orange},${K.orange2})` }}/>
-          </div>
+
+        {busy && (
+          <>
+            <div className="h-1.5 overflow-hidden rounded-full" style={{ background:'var(--border)' }}>
+              <div className="h-full rounded-full transition-all"
+                style={{ width:`${percent}%`, background:`linear-gradient(90deg,${K.orange},${K.orange2})` }}/>
+            </div>
+            <button type="button" onClick={() => cancelRef.current?.()}
+              className="w-full text-center text-[11.5px]" style={{ color: K.dim }}>
+              Отменить загрузку
+            </button>
+          </>
         )}
-        <motion.button whileTap={{ scale:0.97 }} type="button" onClick={submit}
-          disabled={loading||!vFile||!title.trim()}
+        {err && <p className="text-[11.5px]" style={{ color:'var(--red)' }}>{err}</p>}
+
+        <motion.button whileTap={{ scale:0.97 }} type="button" onClick={() => void submit()}
+          disabled={busy||!vFile||!title.trim()}
           className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white disabled:opacity-40"
           style={{ background: K.orange }}>
-          <Plus size={15}/>{loading ? `${progress}%...` : 'Добавить фильм'}
+          <Plus size={15}/>{busy ? `${percent}%…` : 'Добавить в коллекцию'}
         </motion.button>
       </div>
 
-      {/* My uploads */}
-      {mine.length > 0 && (
+      {mine.length > 0 ? (
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: K.dim }}>
-            Мои видео · {mine.length}
+            Мои фильмы · {mine.length}
           </p>
           {mine.map(m => (
             <div key={m.id} className="flex items-center gap-3 rounded-2xl p-3"
               style={{ background: K.card, border:`1px solid ${K.border}` }}>
-              <div className="h-12 w-20 shrink-0 rounded-xl overflow-hidden"
-                style={{ background:`linear-gradient(135deg,${grad(m.id)[0]},${grad(m.id)[1]})` }}>
-                {m.coverUrl ? <img src={m.coverUrl} alt="" className="w-full h-full object-cover"/> : null}
-              </div>
-              <div className="flex-1 min-w-0">
+              <button type="button" onClick={() => onOpen(m)} className="shrink-0">
+                <Poster movie={m} w={54} h={80}/>
+              </button>
+              <button type="button" onClick={() => onOpen(m)} className="flex-1 min-w-0 text-left">
                 <p className="text-sm font-semibold truncate" style={{ color: K.text }}>{m.title}</p>
-                <p className="text-xs" style={{ color: K.dim }}>{m.category} · {m.duration}</p>
-              </div>
-              <button type="button" onClick={() => deleteMovie(m.id)}
-                className="grid h-8 w-8 place-items-center rounded-full hover:bg-red-500/10">
+                <p className="text-xs truncate" style={{ color: K.dim }}>
+                  {m.category}{m.duration ? ` · ${fmtDuration(m.duration)}` : ''}{m.bytes ? ` · ${fmtSize(m.bytes)}` : ''}
+                </p>
+                <StatusChip movie={m}/>
+              </button>
+              <button type="button" onClick={() => void removeMovie(m.id)}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-red-500/10">
                 <X size={14} style={{ color:'var(--red)' }}/>
               </button>
             </div>
           ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2 py-10">
+          <Lock size={34} style={{ color: K.dim }} />
+          <p className="text-sm" style={{ color: K.sub }}>В коллекции пока пусто</p>
         </div>
       )}
     </div>
   );
 };
 
-type Tab = 'home' | 'catalog' | 'saved' | 'upload' | 'publish';
+/** Состояние фильма словами: где он сейчас и кто его видит. */
+const StatusChip = ({ movie }: { movie: ServerMovie }) => {
+  const map: Record<string, { text: string; color: string; bg: string }> = {
+    private:   { text: 'Только вы',     color: K.sub,     bg: 'rgba(255,255,255,0.07)' },
+    pending:   { text: 'На проверке',   color: K.orange,  bg: 'rgba(255,85,0,0.12)' },
+    published: { text: 'В каталоге',    color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
+    rejected:  { text: 'Отклонён',      color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+  };
+  const s = map[movie.status] ?? map.private;
+  return (
+    <span className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+      style={{ background: s.bg, color: s.color }}>
+      {movie.status === 'private' && <Lock size={9}/>}
+      {s.text}
+      {movie.status === 'rejected' && movie.rejectReason ? ` · ${movie.rejectReason}` : ''}
+    </span>
+  );
+};
 
-/* -- Публикация в общий доступ -----------------------------------
-   Отдельно от "Моё" (личная оффлайн-загрузка для просмотра без
-   интернета) — сюда фильм публикуется в общий каталог экосистемы,
-   с выбором лицензии (открытая/личная) и обязательными пометками.
---------------------------------------------------------------- */
+/* ═══════════════════════════════════════════════════════════
+   ОПУБЛИКОВАТЬ
+
+   Второй загрузки здесь больше нет — раньше их было две, и обе писали
+   в один и тот же список, из-за чего «личное» и «общее» ничем не
+   отличались. Теперь фильм уже лежит в коллекции, и здесь человек
+   только просит вынести его в общий каталог: выбирает лицензию,
+   ставит пометки и отправляет на проверку. Решение принимает
+   администратор.
+═══════════════════════════════════════════════════════════ */
 const PublishTab = () => {
-  const { addMovie, movies, deleteMovie } = usePlatformStore();
-  const { accounts, currentUserId } = useAuthStore();
-  const me = accounts.find(a => a.id === currentUserId);
-
+  const mine = useFilmStore(s => s.mine);
+  const submitForReview = useFilmStore(s => s.submitForReview);
+  const unpublish = useFilmStore(s => s.unpublish);
   const [gateOk, setGateOk] = useState(false);
-  const [vFile, setVFile]   = useState<File|null>(null);
-  const [cover, setCover]   = useState<string|undefined>();
-  const [title, setTitle]   = useState('');
-  const [desc,  setDesc]    = useState('');
-  const [cat,   setCat]     = useState('Другое');
+  const [chosen, setChosen] = useState<string | null>(null);
   const [license, setLicense] = useState<'open'|'personal'>('open');
   const [explicit, setExplicit] = useState(false);
-  const [ageRestricted18, setAgeRestricted18] = useState(false);
+  const [ageRestricted18, setAge] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
 
-  const mine = movies.filter(m => (m as any).uploadedBy === currentUserId && (m as any).license);
+  const ready = mine.filter(m => m.status === 'private' || m.status === 'rejected');
+  const sent  = mine.filter(m => m.status === 'pending' || m.status === 'published');
 
-  const submit = async () => {
-    if (!vFile || !title.trim() || (license === 'open' && !agreed)) return;
-    setLoading(true); setProgress(20);
-    const url = URL.createObjectURL(vFile);
-    const dur = await new Promise<number>(r => {
-      const v = document.createElement('video'); v.preload='metadata';
-      v.onloadedmetadata = () => { URL.revokeObjectURL(v.src); r(v.duration); };
-      v.onerror = () => { URL.revokeObjectURL(v.src); r(0); }; v.src = url;
-    });
-    setProgress(60);
-    addMovie({
-      title: title.trim(), category: cat.trim()||'Другое',
-      description: desc.trim()||undefined, coverUrl: cover,
-      duration: toDur(dur), premium: false,
-      sourceUrl: URL.createObjectURL(vFile),
-      fileName: vFile.name, mimeType: vFile.type, bytes: vFile.size,
-      license, explicit, ageRestricted18: license === 'open' ? ageRestricted18 : false,
-      ...(({ uploadedBy: currentUserId, uploaderName: me?.name ?? 'Пользователь' }) as any),
-    });
-    setProgress(100);
-    setVFile(null); setCover(undefined); setTitle(''); setDesc(''); setCat('Другое');
-    setLicense('open'); setExplicit(false); setAgeRestricted18(false); setAgreed(false);
-    setTimeout(() => { setLoading(false); setProgress(0); }, 500);
+  const send = async () => {
+    if (!chosen || (license === 'open' && !agreed) || busy) return;
+    setBusy(true); setErr('');
+    const r = await submitForReview(chosen, { license, explicit, ageRestricted18 });
+    setBusy(false);
+    if (!r.ok) { setErr(r.reason ?? 'Не получилось отправить'); return; }
+    setChosen(null); setLicense('open'); setExplicit(false); setAge(false); setAgreed(false);
   };
 
   if (!gateOk) return (
@@ -772,94 +1005,115 @@ const PublishTab = () => {
         Видео с пометкой «Открытая лицензия» — взято из открытых источников (сайт). Экосистема не несёт ответственности за использование лицензий.
       </div>
 
-      <input type="file" accept="video/*" id="pub-video" className="hidden"
-        onChange={e => setVFile(e.target.files?.[0] ?? null)} />
-      <label htmlFor="pub-video" className="flex items-center gap-3 rounded-2xl p-4" style={{ background:'rgba(255,255,255,0.04)', border: vFile ? `1px solid ${K.orange}` : '1px dashed var(--border)' }}>
-        <Upload size={18} style={{ color: vFile ? K.orange : K.dim }}/>
-        <span className="min-w-0 flex-1 truncate text-sm" style={{ color: vFile ? K.text : K.sub }}>
-          {vFile ? vFile.name : 'Выбрать видеофайл'}
-        </span>
-      </label>
-
-      <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Название фильма"
-        className="w-full rounded-2xl px-4 py-3 text-sm outline-none" style={{ background:'rgba(255,255,255,0.04)', color:K.text }}/>
-      <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Описание" rows={2}
-        className="w-full resize-none rounded-2xl px-4 py-3 text-sm outline-none" style={{ background:'rgba(255,255,255,0.04)', color:K.text }}/>
-      <input value={cat} onChange={e=>setCat(e.target.value)} placeholder="Категория/жанр"
-        className="w-full rounded-2xl px-4 py-3 text-sm outline-none" style={{ background:'rgba(255,255,255,0.04)', color:K.text }}/>
-
-      {/* Лицензия публикации */}
-      <div className="grid grid-cols-2 gap-2">
-        {([['open','Открытая'],['personal','Личная']] as const).map(([k,l]) => (
-          <button key={k} type="button" onClick={() => setLicense(k)}
-            className="rounded-2xl py-2.5 text-sm font-semibold"
-            style={{ background: license===k ? (k==='open'?'rgba(255,85,0,0.12)':'rgba(34,197,94,0.12)') : 'rgba(255,255,255,0.04)',
-              color: license===k ? (k==='open'?K.orange:'#22c55e') : K.sub,
-              border: license===k ? `1px solid ${k==='open'?'rgba(255,85,0,0.3)':'rgba(34,197,94,0.3)'}` : '1px solid transparent' }}>
-            {l} лицензия
-          </button>
-        ))}
+      <div className="flex items-start gap-1.5 rounded-2xl p-2.5 text-[10.5px]" style={{ background: 'rgba(255,255,255,0.04)', color: K.sub }}>
+        <Info size={12} className="mt-0.5 shrink-0" style={{ color: K.sub }}/>
+        Фильм сначала загружается в личную коллекцию и остаётся закрытым. В общий каталог он попадает
+        только после проверки — сам себя опубликовать нельзя.
       </div>
 
-      {license === 'open' ? (
-        <div className="rounded-2xl p-3 space-y-2.5" style={{ background: 'rgba(255,85,0,0.06)', border: '1px solid rgba(255,85,0,0.2)' }}>
-          <p className="flex items-start gap-1.5 text-xs" style={{ color: K.sub }}>
-            <ShieldAlert size={13} className="mt-0.5 shrink-0" style={{ color: K.orange }}/>
-            Взято из открытых источников (сайт). Экосистема не несёт ответственности за использование лицензий.
+      {ready.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-10">
+          <Cloud size={34} style={{ color: K.dim }} />
+          <p className="text-sm text-center" style={{ color: K.sub }}>
+            Нечего публиковать — сначала загрузите фильм<br/>во вкладке «Коллекция»
           </p>
-          <label className="flex items-start gap-2 text-xs" style={{ color: K.text }}>
-            <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} className="mt-0.5"/>
-            Подтверждаю: экосистема не несёт ответственности за использование лицензий и авторских прав этого видео
-          </label>
-          <label className="flex items-center gap-2 text-xs" style={{ color: K.text }}>
-            <input type="checkbox" checked={ageRestricted18} onChange={e=>setAgeRestricted18(e.target.checked)}/>
-            18+ (содержит нецензурные слова / не для всех)
-          </label>
-          <label className="flex items-center gap-2 text-xs" style={{ color: K.text }}>
-            <input type="checkbox" checked={explicit} onChange={e=>setExplicit(e.target.checked)}/>
-            Пометка E (ненормативная лексика)
-          </label>
         </div>
       ) : (
-        <div className="flex items-center gap-1.5 rounded-2xl p-3 text-xs" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e' }}>
-          <ShieldCheck size={14} className="shrink-0"/>Авторское право на личную лицензию подтверждено
-        </div>
+        <>
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: K.dim }}>Какой фильм публикуем</p>
+          <div className="space-y-2">
+            {ready.map(m => (
+              <button key={m.id} type="button" onClick={() => setChosen(chosen === m.id ? null : m.id)}
+                className="flex w-full items-center gap-3 rounded-2xl p-2.5 text-left"
+                style={{ background: chosen===m.id ? 'rgba(255,85,0,0.1)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${chosen===m.id ? 'rgba(255,85,0,0.35)' : 'transparent'}` }}>
+                <Poster movie={m} w={40} h={58}/>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold" style={{ color: K.text }}>{m.title}</p>
+                  <p className="truncate text-[10.5px]" style={{ color: K.dim }}>
+                    {m.category}{m.duration ? ` · ${fmtDuration(m.duration)}` : ''}
+                  </p>
+                  {m.status === 'rejected' && m.rejectReason && (
+                    <p className="truncate text-[10.5px]" style={{ color: '#ef4444' }}>Отклонён: {m.rejectReason}</p>
+                  )}
+                </div>
+                {chosen===m.id && <CheckCircle size={16} style={{ color: K.orange }}/>}
+              </button>
+            ))}
+          </div>
+
+          {chosen && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                {([['open','Открытая'],['personal','Личная']] as const).map(([k,l]) => (
+                  <button key={k} type="button" onClick={() => setLicense(k)}
+                    className="rounded-2xl py-2.5 text-sm font-semibold"
+                    style={{ background: license===k ? (k==='open'?'rgba(255,85,0,0.12)':'rgba(34,197,94,0.12)') : 'rgba(255,255,255,0.04)',
+                      color: license===k ? (k==='open'?K.orange:'#22c55e') : K.sub,
+                      border: license===k ? `1px solid ${k==='open'?'rgba(255,85,0,0.3)':'rgba(34,197,94,0.3)'}` : '1px solid transparent' }}>
+                    {l} лицензия
+                  </button>
+                ))}
+              </div>
+
+              {license === 'open' ? (
+                <div className="rounded-2xl p-3 space-y-2.5" style={{ background: 'rgba(255,85,0,0.06)', border: '1px solid rgba(255,85,0,0.2)' }}>
+                  <p className="flex items-start gap-1.5 text-xs" style={{ color: K.sub }}>
+                    <ShieldAlert size={13} className="mt-0.5 shrink-0" style={{ color: K.orange }}/>
+                    Взято из открытых источников (сайт). Экосистема не несёт ответственности за использование лицензий.
+                  </p>
+                  <label className="flex items-start gap-2 text-xs" style={{ color: K.text }}>
+                    <input type="checkbox" checked={agreed} onChange={e=>setAgreed(e.target.checked)} className="mt-0.5"/>
+                    Подтверждаю: экосистема не несёт ответственности за использование лицензий и авторских прав этого видео
+                  </label>
+                  <label className="flex items-center gap-2 text-xs" style={{ color: K.text }}>
+                    <input type="checkbox" checked={ageRestricted18} onChange={e=>setAge(e.target.checked)}/>
+                    18+ (содержит нецензурные слова / не для всех)
+                  </label>
+                  <label className="flex items-center gap-2 text-xs" style={{ color: K.text }}>
+                    <input type="checkbox" checked={explicit} onChange={e=>setExplicit(e.target.checked)}/>
+                    Пометка E (ненормативная лексика)
+                  </label>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 rounded-2xl p-3 text-xs" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e' }}>
+                  <ShieldCheck size={14} className="shrink-0"/>Авторское право на личную лицензию подтверждено
+                </div>
+              )}
+
+              {err && <p className="text-[11.5px]" style={{ color:'var(--red)' }}>{err}</p>}
+
+              <motion.button whileTap={{ scale:0.97 }} type="button" onClick={() => void send()}
+                disabled={busy||(license==='open'&&!agreed)}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white disabled:opacity-40"
+                style={{ background: K.orange }}>
+                <Cloud size={15}/>{busy ? 'Отправляем…' : 'Отправить на проверку'}
+              </motion.button>
+            </>
+          )}
+        </>
       )}
 
-      {loading && (
-        <div className="h-1.5 overflow-hidden rounded-full" style={{ background:'var(--border)' }}>
-          <motion.div className="h-full rounded-full" transition={{ duration:0.3 }}
-            style={{ width:`${progress}%`, background:`linear-gradient(90deg,${K.orange},${K.orange2})` }}/>
-        </div>
-      )}
-
-      <motion.button whileTap={{ scale:0.97 }} type="button" onClick={submit}
-        disabled={loading||!vFile||!title.trim()||(license==='open'&&!agreed)}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white disabled:opacity-40"
-        style={{ background: K.orange }}>
-        <Cloud size={15}/>{loading ? `${progress}%...` : 'Опубликовать в общий доступ'}
-      </motion.button>
-
-      {mine.length > 0 && (
+      {sent.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: K.dim }}>Мои публикации · {mine.length}</p>
-          {mine.map(m => (
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: K.dim }}>Отправленные · {sent.length}</p>
+          {sent.map(m => (
             <div key={m.id} className="flex items-center gap-2.5 rounded-2xl p-2.5" style={{ background:'rgba(255,255,255,0.04)' }}>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <p className="truncate text-[13px] font-semibold" style={{ color: K.text }}>{m.title}</p>
-                  {(m as any).explicit && <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-black" style={{ background:'rgba(255,255,255,0.1)', color:K.sub }}>E</span>}
-                  {(m as any).ageRestricted18 && <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-black" style={{ background:'rgba(239,68,68,0.15)', color:'#ef4444' }}>18+</span>}
+                  {m.explicit && <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-black" style={{ background:'rgba(255,255,255,0.1)', color:K.sub }}>E</span>}
+                  {m.ageRestricted18 && <span className="shrink-0 rounded px-1 py-0.5 text-[9px] font-black" style={{ background:'rgba(239,68,68,0.15)', color:'#ef4444' }}>18+</span>}
                 </div>
-                <p className="flex items-center gap-1 truncate text-[10.5px]" style={{ color: K.sub }}>
-                  {(m as any).license === 'open' ? <><Cloud size={10}/>Открытая лицензия</> : <><ShieldCheck size={10} style={{color:'#22c55e'}}/>Личная лицензия</>}
-                  {' · загрузил '}{(m as any).uploaderName ?? me?.name}
-                </p>
+                <StatusChip movie={m}/>
               </div>
-              <button type="button" onClick={() => deleteMovie(m.id)}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-red-500/10">
-                <X size={14} style={{ color:'var(--red)' }}/>
-              </button>
+              {m.status === 'published' && (
+                <button type="button" onClick={() => void unpublish(m.id)}
+                  className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold"
+                  style={{ background:'rgba(255,255,255,0.07)', color: K.sub }}>
+                  Убрать из каталога
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -868,9 +1122,74 @@ const PublishTab = () => {
   );
 };
 
-/* -- Prime Gate -------------------------------------------------
-   Показывается вместо контента если нет Prime подписки
---------------------------------------------------------------- */
+/* -- Очередь проверки (только администратору) --------------- */
+const ModerationPanel = () => {
+  const [queue, setQueue] = useState<ServerMovie[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [rejecting, setRejecting] = useState<string | null>(null);
+
+  const reload = useCallback(async () => { setQueue(await apiFilmModerationQueue()); }, []);
+  useEffect(() => { void reload(); }, [reload]);
+
+  const decide = async (id: string, approve: boolean) => {
+    setBusy(id);
+    await apiModerateMovie(id, approve, approve ? undefined : reason.trim() || undefined);
+    setBusy(null); setRejecting(null); setReason('');
+    await reload();
+  };
+
+  if (queue === null) return null;
+  return (
+    <div className="space-y-2 px-4 pb-4">
+      <p className="text-xs font-bold uppercase tracking-wide" style={{ color: K.dim }}>
+        Очередь проверки · {queue.length}
+      </p>
+      {queue.length === 0 && <p className="py-6 text-center text-sm" style={{ color: K.sub }}>Заявок нет</p>}
+      {queue.map(m => (
+        <div key={m.id} className="rounded-2xl p-3 space-y-2" style={{ background: K.card, border: `1px solid ${K.border}` }}>
+          <div className="flex items-center gap-3">
+            <Poster movie={m} w={44} h={64}/>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold" style={{ color: K.text }}>{m.title}</p>
+              <p className="truncate text-[11px]" style={{ color: K.dim }}>
+                {m.category}{m.duration ? ` · ${fmtDuration(m.duration)}` : ''} · {m.ownerName ?? 'пользователь'}
+              </p>
+              <p className="text-[11px]" style={{ color: K.sub }}>
+                {m.license === 'open' ? 'Открытая лицензия' : 'Личная лицензия'}
+                {m.ageRestricted18 ? ' · 18+' : ''}{m.explicit ? ' · E' : ''}
+              </p>
+            </div>
+          </div>
+          {rejecting === m.id ? (
+            <div className="space-y-2">
+              <input value={reason} onChange={e => setReason(e.target.value)}
+                placeholder="Причина отказа — её увидит владелец" className={iCls} style={iSty}/>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => void decide(m.id, false)} disabled={busy === m.id}
+                  className="flex-1 rounded-2xl py-2 text-[13px] font-bold text-white disabled:opacity-40"
+                  style={{ background: 'var(--red)' }}>Отклонить</button>
+                <button type="button" onClick={() => { setRejecting(null); setReason(''); }}
+                  className="rounded-2xl px-4 py-2 text-[13px]" style={{ background: 'var(--border)', color: K.sub }}>Отмена</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button type="button" onClick={() => void decide(m.id, true)} disabled={busy === m.id}
+                className="flex-1 rounded-2xl py-2 text-[13px] font-bold text-white disabled:opacity-40"
+                style={{ background: '#22c55e' }}>В каталог</button>
+              <button type="button" onClick={() => setRejecting(m.id)}
+                className="flex-1 rounded-2xl py-2 text-[13px] font-semibold"
+                style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>Отклонить</button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* -- Экран подписки ---------------------------------------- */
 const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
   const PLANS = [
     { days:30,  label:'1 месяц', price:'400 ₽' },
@@ -880,23 +1199,16 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
   // Цены здесь только для показа: считает и списывает сервер по своей
   // таблице, поэтому подделать сумму в запросе нельзя.
   const PRICES: Record<number, number> = { 30:400, 365:3790, 730:6990 };
-  const { currentUserId, purchasePrime } = useAuthStore();
-  const { getBalance } = useMoney();
-  const balance = getBalance(currentUserId ?? '');
+  const { purchasePrime } = useAuthStore();
   const [chosen, setChosen] = useState(365);
   const [err,    setErr]    = useState('');
   const [busy,   setBusy]   = useState(false);
   const [done,   setDone]   = useState(false);
 
-  const price  = PRICES[chosen];
-
   const buy = async () => {
     setErr(''); setBusy(true);
     // Подписку выписывает сервер: он же списывает деньги и он же потом
-    // решает, отдавать ли контент. Прежняя кнопка списывала деньги
-    // через spend(), а Prime выдавала прямо в браузере — при
-    // недостатке денег сервер отклонял бы позже, а при их наличии
-    // деньги списывались по-настоящему, а подписка не выдавалась вовсе.
+    // решает, отдавать ли контент.
     const res = await purchasePrime('standard', chosen);
     setBusy(false);
     if (!res.ok) { setErr(res.reason ?? 'Не получилось оформить подписку'); return; }
@@ -916,16 +1228,13 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
       </motion.div>
       <div className="text-center">
         <p className="text-xl font-black text-white">Sky Prime активен!</p>
-        <p className="text-sm mt-2" style={{ color:'var(--t2)' }}>
-          Добро пожаловать в {label}
-        </p>
+        <p className="text-sm mt-2" style={{ color:'var(--t2)' }}>Добро пожаловать в {label}</p>
       </div>
     </div>
   );
 
   return (
-    <div className="flex flex-col items-center justify-center h-full px-5 py-6 gap-5">
-      {/* Icon */}
+    <div className="flex flex-col items-center justify-center h-full px-5 py-6 gap-5 overflow-y-auto">
       <div className="relative">
         <div className="grid h-20 w-20 place-items-center rounded-3xl text-4xl"
           style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)' }}>
@@ -937,21 +1246,18 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
         </div>
       </div>
 
-      {/* Title */}
       <div className="text-center">
         <p className="text-xl font-black text-white">{label}  -  только для Prime</p>
         <p className="text-sm mt-2 leading-relaxed" style={{ color:'var(--t2)', maxWidth:300 }}>
           {service === 'music'
             ? 'Полный каталог музыки, загрузка треков и офлайн-режим доступны с подпиской Sky Prime.'
-            : 'Вся кинотека, 4K качество и совместный просмотр доступны с подпиской Sky Prime.'}
+            : 'Вся кинотека, личная коллекция и просмотр без рекламы доступны с подпиской Sky Prime.'}
         </p>
       </div>
 
-      {/* Plans */}
       <div className="w-full space-y-2.5 max-w-xs">
         {PLANS.map(plan => (
-          <motion.button key={plan.days} type="button"
-            whileTap={{ scale:0.97 }}
+          <motion.button key={plan.days} type="button" whileTap={{ scale:0.97 }}
             onClick={() => setChosen(plan.days)}
             className="relative flex items-center justify-between w-full rounded-2xl px-4 py-3.5 transition-all"
             style={{
@@ -984,15 +1290,6 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
         ))}
       </div>
 
-      {/* Balance */}
-      <div className="w-full max-w-xs rounded-2xl px-4 py-2.5 flex items-center justify-between"
-        style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
-        <span className="text-xs" style={{ color:'var(--t3)' }}>Баланс SkyMoney</span>
-        <span className="text-sm font-bold" style={{ color: balance >= price ? 'var(--green)' : 'var(--red)' }}>
-          {balance.toLocaleString('ru')} ₽
-        </span>
-      </div>
-
       {err && (
         <motion.p initial={{ opacity:0, y:-4 }} animate={{ opacity:1, y:0 }}
           className="text-xs text-center leading-relaxed" style={{ color:'var(--red)', maxWidth:280 }}>
@@ -1000,7 +1297,6 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
         </motion.p>
       )}
 
-      {/* CTA */}
       <motion.button whileTap={{ scale:0.97 }} type="button" onClick={() => void buy()} disabled={busy}
         className="w-full max-w-xs rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-50"
         style={{ background:'linear-gradient(135deg,#f59e0b,#fbbf24)', boxShadow:'0 8px 28px rgba(245,158,11,0.35)' }}>
@@ -1014,47 +1310,97 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
   );
 };
 
+/* ═══════════════════════════════════════════════════════════
+   SkyFilm
+═══════════════════════════════════════════════════════════ */
 export const SkyFilm = () => {
-  const { movies } = usePlatformStore();
-  const { accounts, currentUserId: filmUid } = useAuthStore();
-  const filmMe = accounts.find(a => a.id === filmUid);
-  const isPrime = filmMe?.isPrime ?? false;
-  const [tab,       setTab]       = useState<Tab>('home');
-  const [playing,   setPlaying]   = useState<Movie | null>(null);
-  const [detail,    setDetail]    = useState<Movie | null>(null);
-  const [category,  setCategory]  = useState('Все');
-  const [search,    setSearch]    = useState('');
-  const [showSrch,  setShowSrch]  = useState(false);
-  const [saved,     setSaved]     = useState<string[]>([]);
+  const { accounts, currentUserId } = useAuthStore();
+  const me = accounts.find(a => a.id === currentUserId);
+  const isAdmin = me?.isAdmin ?? false;
 
-  const toggleSave = (id: string) => setSaved(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
-  const cats = useMemo(() => [...new Set(movies.map(m => m.category))], [movies]);
+  const catalog = useFilmStore(s => s.catalog);
+  const savedList = useFilmStore(s => s.saved);
+  const continueWatching = useFilmStore(s => s.continueWatching);
+  const categories = useFilmStore(s => s.categories);
+  const progress = useFilmStore(s => s.progress);
+  const loading = useFilmStore(s => s.loading);
+  const loaded = useFilmStore(s => s.loaded);
+  const needsPrime = useFilmStore(s => s.needsPrime);
+  const error = useFilmStore(s => s.error);
+  const load = useFilmStore(s => s.load);
+  const toggleSaved = useFilmStore(s => s.toggleSaved);
+  const searchServer = useFilmStore(s => s.search);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    return movies.filter(m => {
-      const mq = !q || m.title.toLowerCase().includes(q) || (m.genre ?? '').toLowerCase().includes(q) || m.category.toLowerCase().includes(q);
-      const mc = category === 'Все' || m.category === category;
-      return mq && mc;
-    });
-  }, [movies, search, category]);
-
-  const topRated   = useMemo(() => [...movies].sort((a,b) => (b.rating??0)-(a.rating??0)).slice(0,10), [movies]);
-  const fresh      = useMemo(() => [...movies].sort((a,b) => b.addedAt.localeCompare(a.addedAt)).slice(0,10), [movies]);
-  const savedMovies = useMemo(() => movies.filter(m => saved.includes(m.id)), [movies, saved]);
-  const shortMovies = useMemo(() => movies.filter(m => m.isShort), [movies]);
+  const [tab,      setTab]      = useState<Tab>('home');
+  const [playing,  setPlaying]  = useState<ServerMovie | null>(null);
+  const [detail,   setDetail]   = useState<ServerMovie | null>(null);
+  const [category, setCategory] = useState('Все');
+  const [search,   setSearch]   = useState('');
+  const [showSrch, setShowSrch] = useState(false);
+  const [found,    setFound]    = useState<ServerMovie[]>([]);
   const [shortsStartId, setShortsStartId] = useState<string | null>(null);
-  const hero = topRated[0];
 
-  const NAV: { key: Tab; Icon: React.FC<any>; label: string }[] = [
+  useEffect(() => { void load(); }, [load]);
+
+  /* Поиск идёт на сервере, а не по тому, что уже лежит на экране.
+     Так он находит весь каталог, а не первую сотню, — и так личное в
+     него не попадает по построению. */
+  useEffect(() => {
+    const q = search.trim();
+    if (!q) { setFound([]); return; }
+    let alive = true;
+    const t = setTimeout(() => {
+      void searchServer(q).then(r => { if (alive) setFound(r); });
+    }, 300);
+    return () => { alive = false; clearTimeout(t); };
+  }, [search, searchServer]);
+
+  const savedIds = useMemo(() => savedList.map(m => m.id), [savedList]);
+  const cats = useMemo(() => categories.map(c => c.name), [categories]);
+
+  const filtered = useMemo(
+    () => (category === 'Все' ? catalog : catalog.filter(m => m.category === category)),
+    [catalog, category]);
+
+  const topRated = useMemo(
+    () => [...catalog].filter(m => m.rating != null).sort((a,b) => (b.rating??0)-(a.rating??0)).slice(0,10),
+    [catalog]);
+  const fresh = useMemo(
+    () => [...catalog].sort((a,b) => (b.addedAt ?? '').localeCompare(a.addedAt ?? '')).slice(0,10),
+    [catalog]);
+  const popular = useMemo(
+    () => [...catalog].sort((a,b) => b.views - a.views).slice(0,10), [catalog]);
+  const shortMovies = useMemo(() => catalog.filter(m => m.isShort), [catalog]);
+  const hero = topRated[0] ?? fresh[0];
+
+  const NAV: { key: Tab; Icon: IconComponent; label: string }[] = [
     { key: 'home',    Icon: Tv,       label: 'Главная'  },
     { key: 'catalog', Icon: Layers,   label: 'Каталог'  },
     { key: 'saved',   Icon: Bookmark, label: 'Закладки' },
-    { key: 'upload',  Icon: Upload,   label: 'Моё'      },
+    { key: 'mine',    Icon: Upload,   label: 'Коллекция' },
     { key: 'publish', Icon: Cloud,    label: 'Опубликовать' },
   ];
 
-  if (!isPrime) return <PrimeGate service="film"/>;
+  /* Подписку подтверждает сервер: он не отдал ни каталога, ни пропуска. */
+  if (needsPrime) return <PrimeGate service="film"/>;
+
+  if (loading && !loaded) return (
+    <div className="flex h-full flex-col items-center justify-center gap-3" style={{ background: K.bg }}>
+      <Film size={38} style={{ color: K.dim }} />
+      <p className="text-sm" style={{ color: K.sub }}>Загружаем кино…</p>
+    </div>
+  );
+
+  if (error && !loaded) return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center" style={{ background: K.bg }}>
+      <AlertTriangle size={38} style={{ color: K.orange }} />
+      <p className="text-sm" style={{ color: K.sub }}>{error}</p>
+      <button type="button" onClick={() => void load({ force: true })}
+        className="rounded-full px-6 py-2.5 text-[13px] font-bold text-white" style={{ background: K.orange }}>
+        Попробовать ещё раз
+      </button>
+    </div>
+  );
 
   return (
     <>
@@ -1093,20 +1439,23 @@ export const SkyFilm = () => {
           </button>
         </header>
 
-        {/* -- Контент ------------------------------------------ */}
+        {/* -- Содержимое --------------------------------------- */}
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
 
-          {/* search overlay */}
           {showSrch && search ? (
             <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
               <p className="px-3 py-2 text-xs font-semibold" style={{ color: K.sub }}>
-                Результаты · {filtered.length}
+                Результаты · {found.length}
               </p>
-              <Grid movies={filtered} onSelect={m => { setDetail(m); setShowSrch(false); }} />
-              {!filtered.length && (
+              <Grid movies={found} onSelect={m => { setDetail(m); setShowSrch(false); }} />
+              {!found.length && (
                 <div className="flex flex-col items-center gap-2 py-16">
                   <Film size={38} style={{ color: K.dim }} />
                   <p className="text-sm" style={{ color: K.sub }}>Ничего не найдено</p>
+                  <p className="max-w-[260px] text-center text-[11.5px]" style={{ color: K.dim }}>
+                    Поиск идёт по общему каталогу. Свои фильмы ищите во вкладке «Коллекция» —
+                    они закрыты и в общий поиск не попадают.
+                  </p>
                 </div>
               )}
             </div>
@@ -1114,9 +1463,7 @@ export const SkyFilm = () => {
           ) : tab === 'home' ? (
             <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
               {hero && (
-                <Hero movie={hero}
-                  onPlay={() => setPlaying(hero)}
-                  onInfo={() => setDetail(hero)} />
+                <Hero movie={hero} onPlay={() => setPlaying(hero)} onInfo={() => setDetail(hero)} />
               )}
               {shortMovies.length > 0 && (
                 <button type="button" onClick={() => setShortsStartId(shortMovies[0].id)}
@@ -1132,14 +1479,25 @@ export const SkyFilm = () => {
                   <span className="text-[11px] font-bold px-2 py-1 rounded-full" style={{ background: K.orange, color: '#fff' }}>{shortMovies.length}</span>
                 </button>
               )}
+              <Row title="Продолжить просмотр" Icon={History} movies={continueWatching}
+                onSelect={setDetail} progress={progress} />
               <Row title="Топ по рейтингу" Icon={Award}      movies={topRated} onSelect={setDetail} />
-              <Row title="Новинки"          Icon={TrendingUp} movies={fresh}    onSelect={setDetail} />
+              <Row title="Популярное"       Icon={TrendingUp} movies={popular}  onSelect={setDetail} />
+              <Row title="Новинки"          Icon={Film}       movies={fresh}    onSelect={setDetail} />
+              {catalog.length === 0 && (
+                <div className="flex flex-col items-center gap-2 py-16">
+                  <Film size={38} style={{ color: K.dim }} />
+                  <p className="text-sm" style={{ color: K.sub }}>В каталоге пока пусто</p>
+                  <p className="max-w-[260px] text-center text-[11.5px]" style={{ color: K.dim }}>
+                    Свои фильмы можно загрузить во вкладке «Коллекция» — они останутся видны только вам.
+                  </p>
+                </div>
+              )}
               <div className="h-4" />
             </div>
 
           ) : tab === 'catalog' ? (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              {/* category chips */}
               <div className="shrink-0 flex gap-2 px-3 py-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                 {['Все', ...cats].map(c => (
                   <button key={c} type="button" onClick={() => setCategory(c)}
@@ -1163,24 +1521,24 @@ export const SkyFilm = () => {
               </div>
             </div>
 
-          ) : tab === 'upload' ? (
-            /* upload */
+          ) : tab === 'mine' ? (
             <div className="flex-1 overflow-hidden">
-              <UploadTab />
+              <MineTab onOpen={setDetail} />
             </div>
+
           ) : tab === 'publish' ? (
-            /* публикация в общий доступ */
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
               <PublishTab />
+              {isAdmin && <ModerationPanel />}
             </div>
+
           ) : (
-            /* saved */
             <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
               <p className="px-3 pt-3 pb-2 text-base font-bold" style={{ color: K.text }}>
-                Закладки · {savedMovies.length}
+                Закладки · {savedList.length}
               </p>
-              {savedMovies.length > 0
-                ? <Grid movies={savedMovies} onSelect={setDetail} />
+              {savedList.length > 0
+                ? <Grid movies={savedList} onSelect={setDetail} />
                 : <div className="flex flex-col items-center gap-3 py-16">
                     <Bookmark size={42} style={{ color: K.dim }} />
                     <p className="text-sm" style={{ color: K.sub }}>Сохраняйте фильмы для просмотра позже</p>
@@ -1192,38 +1550,40 @@ export const SkyFilm = () => {
         {/* -- Нижняя навигация --------------------------------- */}
         <nav className="shrink-0 flex items-center justify-around border-t py-2"
           style={{ background: K.card, borderColor: K.border }}>
+          {/* Пять частей поровну. С прежними отступами по бокам пятая
+              вкладка не помещалась на телефоне и уезжала за край. */}
           {NAV.map(({ key, Icon, label }) => (
             <button key={key} type="button" onClick={() => setTab(key)}
-              className="flex flex-col items-center gap-0.5 px-6 py-1.5 transition-colors"
+              className="flex flex-1 min-w-0 flex-col items-center gap-0.5 px-1 py-1.5 transition-colors"
               style={{ color: tab === key ? K.orange : K.dim }}>
               <Icon size={21} />
-              <span className="text-[9px] font-semibold">{label}</span>
+              <span className="w-full truncate text-center text-[9px] font-semibold">{label}</span>
             </button>
           ))}
         </nav>
       </div>
 
-      {/* Detail sheet */}
+      {/* Карточка */}
       <AnimatePresence>
         {detail && !playing && (
           <Detail movie={detail}
             onPlay={() => { setPlaying(detail); setDetail(null); }}
             onClose={() => setDetail(null)}
-            saved={saved.includes(detail.id)}
-            onSave={() => toggleSave(detail.id)} />
+            saved={savedIds.includes(detail.id)}
+            onSave={() => void toggleSaved(detail.id)} />
         )}
       </AnimatePresence>
 
-      {/* Player */}
+      {/* Проигрыватель */}
       <AnimatePresence>
         {playing && <Player movie={playing} onClose={() => setPlaying(null)} />}
       </AnimatePresence>
 
-      {/* Shorts — вертикальное короткое кино */}
+      {/* Короткое кино */}
       <AnimatePresence>
         {shortsStartId && (
-          <SkyShorts movies={shortMovies} startId={shortsStartId} saved={saved}
-            onToggleSave={toggleSave} onClose={() => setShortsStartId(null)}/>
+          <SkyShorts movies={shortMovies} startId={shortsStartId} saved={savedIds}
+            onToggleSave={id => void toggleSaved(id)} onClose={() => setShortsStartId(null)}/>
         )}
       </AnimatePresence>
     </>

@@ -43,6 +43,8 @@ const SkyPVZ = React.lazy(() => import('@/pvz/SkyPVZ').then(m => ({ default: m.S
 const SkyGiftsNFT = React.lazy(() => import('@/gifts/SkyGiftsNFT').then(m => ({ default: m.SkyGiftsNFT })));
 import { AdminMusicPanel } from '@/music/ArtistSubmit';
 import { apiModerationQueue } from '@/music/musicApi';
+import { useFilmStore } from '@/film/serverStore';
+import { posterUrl } from '@/film/filmApi';
 import { AdminDisputesPanel, AdminGarantPanel } from '@/admin/AdminDisputes';
 import { qrDataUri } from '@/shared/qr';
 
@@ -71,7 +73,13 @@ const toBase64 = (file: File): Promise<string> => new Promise((res,rej)=>{
 
 // --- Rooms --------------------------------------------------------------------
 const RoomsTab = () => {
-  const { rooms, movies, tracks, createRoom, deleteRoom, syncRoomProgress, setRoomActive, joinRoom, leaveRoom, sendRoomMessage, updateRoom } = usePlatformStore();
+  const { rooms, tracks, createRoom, deleteRoom, syncRoomProgress, setRoomActive, joinRoom, leaveRoom, sendRoomMessage, updateRoom } = usePlatformStore();
+  // Кино для совместного просмотра берётся из каталога на сервере.
+  // Личные фильмы сюда не попадают намеренно: комната — это несколько
+  // человек, а личная коллекция на то и личная.
+  const movies = useFilmStore(s => s.catalog);
+  const loadFilm = useFilmStore(s => s.load);
+  useEffect(() => { void loadFilm(); }, [loadFilm]);
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a=>a.id===currentUserId);
   const [activeRoomId, setActiveRoomId] = useState<string|null>(null);
@@ -150,9 +158,12 @@ const RoomsTab = () => {
   }, [timer]);
 
   if (activeRoom) {
-    const media = activeRoom.mediaType==='movie'
-      ? movies.find(m=>m.id===activeRoom.mediaId)
-      : tracks.find(t=>t.id===activeRoom.mediaId);
+    const film  = activeRoom.mediaType==='movie' ? movies.find(m=>m.id===activeRoom.mediaId) : undefined;
+    const track = activeRoom.mediaType==='movie' ? undefined : tracks.find(t=>t.id===activeRoom.mediaId);
+    const media = film ?? track;
+    // Постер фильма живёт на сервере и отдаётся по адресу, а обложка
+    // трека приходит готовой ссылкой — отсюда две ветки.
+    const mediaCover = film?.hasPoster ? posterUrl(film.id) : track?.coverUrl;
 
     return (
       <div className="flex h-full flex-col overflow-hidden sm:flex-row">
@@ -172,8 +183,8 @@ const RoomsTab = () => {
           <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
             <div className="h-40 w-40 overflow-hidden rounded-xl grid place-items-center"
               style={{background:'var(--bg-l2)'}}>
-              {media?.coverUrl
-                ? <img src={media.coverUrl} alt="" className="h-full w-full object-cover"/>
+              {mediaCover
+                ? <img src={mediaCover} alt="" className="h-full w-full object-cover"/>
                 : <div className="grid place-items-center" style={{ opacity: 0.3 }}>{activeRoom.mediaType==='movie' ? <Film size={48}/> : <Music2 size={48}/>}</div>}
             </div>
             <div className="text-center">
@@ -354,8 +365,13 @@ const ModRow = ({ domain, id, title, sub }: { domain: ModDomain; id: string; tit
 const AdminChannelModerationTab = () => {
   const { chats } = useMessengerStore();
   const { videos } = useVideoStore();
-  const { movies } = usePlatformStore();
+  // Кино берём из общего каталога на сервере: модерировать можно то,
+  // что выложено на всех. Личные коллекции сюда не попадают — сервер
+  // их не отдаёт никому, включая администратора.
+  const movies = useFilmStore(s => s.catalog);
+  const loadFilm = useFilmStore(s => s.load);
   const [sub, setSub] = useState<'messenger'|'video'|'movies'>('messenger');
+  useEffect(() => { void loadFilm(); }, [loadFilm]);
 
   const channels = chats.filter(c => c.type === 'channel');
   const videoChannels = [...new Map(videos.map(v => [v.uploadedBy, v.uploaderName])).entries()];
