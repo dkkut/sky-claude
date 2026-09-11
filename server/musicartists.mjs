@@ -70,6 +70,9 @@ export const readArtistByName = async (name, viewerId) => {
 
 /** Свой профиль артиста: заводится и правится только самим человеком. */
 export const saveArtist = async (profileId, { name, bio, genres }) => {
+  // Псевдоним должен быть строкой: объект от переписанного клиента
+  // иначе превратился бы в «[object Object]» и так и записался.
+  if (typeof name !== 'string') return { error: 'invalid_name' };
   const clean = text(name, MAX_NAME);
   if (clean.length < 2) return { error: 'invalid_name' };
 
@@ -81,17 +84,27 @@ export const saveArtist = async (profileId, { name, bio, genres }) => {
   );
   if (taken[0]) return { error: 'name_taken' };
 
-  const bioText = text(bio, MAX_BIO);
-  const genreText = text(Array.isArray(genres) ? genres.join(',') : genres, MAX_GENRES);
+  const bioText = typeof bio === 'string' ? text(bio, MAX_BIO) : '';
+  const genreText = Array.isArray(genres)
+    ? text(genres.filter((g) => typeof g === 'string').join(','), MAX_GENRES)
+    : (typeof genres === 'string' ? text(genres, MAX_GENRES) : '');
 
-  await query(
-    `INSERT INTO music_artists (profile_id, name, bio, genres)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (profile_id) DO UPDATE
-       SET name = EXCLUDED.name, bio = EXCLUDED.bio,
-           genres = EXCLUDED.genres, updated_at = now()`,
-    [profileId, clean, bioText ? encryptContent(bioText) : null, genreText],
-  );
+  try {
+    await query(
+      `INSERT INTO music_artists (profile_id, name, bio, genres)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (profile_id) DO UPDATE
+         SET name = EXCLUDED.name, bio = EXCLUDED.bio,
+             genres = EXCLUDED.genres, updated_at = now()`,
+      [profileId, clean, bioText ? encryptContent(bioText) : null, genreText],
+    );
+  } catch (err) {
+    // Проверка выше и запись — два разных мгновения: если между ними
+    // тот же псевдоним занял кто-то другой, уникальный индекс не даст
+    // записать. Это не поломка сервера, а тот же занятый псевдоним.
+    if (err?.code === '23505') return { error: 'name_taken' };
+    throw err;
+  }
   return { ok: true };
 };
 
