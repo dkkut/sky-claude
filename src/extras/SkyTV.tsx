@@ -82,13 +82,13 @@ const ChannelCard = ({ channel, active, onOpen, onFavorite }: {
         style={{ color: channel.favorite ? '#f5c518' : C.t3 }}/>
     </button>
 
-    <button type="button" onClick={onOpen} className="flex w-full flex-col gap-2.5 text-left">
-      <div className="flex items-start gap-2.5">
-        <ChannelMark channel={channel}/>
-        <div className="min-w-0 flex-1 pr-7">
-          <p className="truncate text-[13px] font-bold" style={{ color: C.t1 }}>{channel.name}</p>
-          <p className="truncate text-[11px]" style={{ color: C.t3 }}>{channel.category}</p>
-        </div>
+    {/* Знак канала над названием, а не рядом: рядом он съедал половину
+        ширины карточки, и «Первый канал» превращался в «Первый ...». */}
+    <button type="button" onClick={onOpen} className="flex w-full flex-col gap-2 text-left">
+      <ChannelMark channel={channel} size={40}/>
+      <div className="min-w-0 w-full">
+        <p className="truncate text-[13px] font-bold" style={{ color: C.t1 }}>{channel.name}</p>
+        <p className="truncate text-[11px]" style={{ color: C.t3 }}>{channel.category}</p>
       </div>
 
       {channel.live ? (

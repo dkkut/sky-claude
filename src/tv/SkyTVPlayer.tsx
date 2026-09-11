@@ -385,8 +385,11 @@ export const SkyTVPlayer = ({ channel, onClose, onPrev, onNext, tvMode }: TVPlay
               </div>
             </div>
 
-            {/* Середина: переключение каналов и пауза */}
-            <div className="flex items-center justify-center gap-6" style={{ pointerEvents: 'auto' }}>
+            {/* Середина: переключение каналов и пауза.
+                При отказе её нет вовсе: играть нечего, а большая кнопка
+                ложилась ровно поверх объяснения, почему эфира нет. */}
+            <div className="flex items-center justify-center gap-6"
+              style={{ pointerEvents: 'auto', visibility: error ? 'hidden' : 'visible' }}>
               {onPrev && (
                 <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={onPrev}
                   className={`${btn} h-12 w-12`} style={{ background: 'rgba(0,0,0,0.5)' }}
