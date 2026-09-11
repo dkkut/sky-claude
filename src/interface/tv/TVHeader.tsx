@@ -12,6 +12,7 @@ const SECTIONS: { key: TVScreen['kind']; label: string }[] = [
   { key: 'series',    label: 'Сериалы'    },
   { key: 'music',     label: 'Sky Music'  },
   { key: 'video',     label: 'SkyVideo'   },
+  { key: 'channels',  label: 'Sky TV'     },
   { key: 'favorites', label: 'Избранное'  },
 ];
 

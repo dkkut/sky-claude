@@ -25,6 +25,8 @@ import { directoryRoutes } from './routes/directory.mjs';
 import { fileRoutes } from './routes/files.mjs';
 import { musicRoutes } from './routes/music.mjs';
 import { filmRoutes } from './routes/film.mjs';
+import { tvRoutes } from './routes/tv.mjs';
+import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphans } from './attachments.mjs';
 import { purgeExpiredCodes } from './verification.mjs';
@@ -33,7 +35,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, musicRoutes, filmRoutes];
+                supportRoutes, musicRoutes, filmRoutes, tvRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -157,6 +159,10 @@ const start = async () => {
       // занимают.
       const films = await sweepOrphanFilms();
       if (films) console.log(`[film] убрано осиротевших файлов: ${films}`);
+      // Неотвечающий телеканал должен превращаться в честное «временно
+      // недоступен» на карточке, а не в чёрный экран после нажатия.
+      const tv = await checkAllSources();
+      if (tv.bad) console.log(`[tv] источников не отвечает: ${tv.bad} из ${tv.ok + tv.bad}`);
       const expired = await expirePrimeSubscriptions();
       if (expired) console.log(`[prime] истекло подписок: ${expired}`);
     } catch (err) {
