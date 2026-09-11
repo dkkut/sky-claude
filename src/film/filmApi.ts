@@ -38,6 +38,9 @@ export interface ServerMovie {
   explicit?: boolean;
   ageRestricted18?: boolean;
   isShort?: boolean;
+  /** Размер кадра. Нужен, чтобы отличить вертикальное видео от обычного. */
+  width?: number;
+  height?: number;
   views: number;
   /** Средняя оценка живых зрителей; её нет, пока никто не оценил. */
   rating?: number;
@@ -109,6 +112,20 @@ export const apiCatalog = async (opts: CatalogOpts = {}) => {
   return r.ok ? (r.data?.movies ?? []) : null;
 };
 
+/**
+ * Лента короткого кино. Листается по времени, а не по номеру страницы:
+ * пока человек листает, кто-то мог выложить новое, и при счёте по
+ * номерам одно видео он увидел бы дважды, а другое пропустил.
+ */
+export const apiShorts = async (opts: { limit?: number; before?: string } = {}) => {
+  const p = new URLSearchParams();
+  if (opts.limit) p.set('limit', String(opts.limit));
+  if (opts.before) p.set('before', opts.before);
+  const qs = p.toString();
+  const r = await apiCall<{ movies: ServerMovie[] }>(`/api/film/shorts${qs ? `?${qs}` : ''}`);
+  return r.ok ? (r.data?.movies ?? []) : null;
+};
+
 export const apiCategories = async () => {
   const r = await apiCall<{ categories: { name: string; count: number }[] }>('/api/film/categories');
   return r.ok ? (r.data?.categories ?? []) : null;
@@ -132,6 +149,7 @@ export const apiMovie = async (id: string) => {
 export const apiPatchMovie = async (id: string, patch: {
   title?: string; description?: string; category?: string; genre?: string;
   year?: number; country?: string; director?: string; ageRating?: string;
+  isShort?: boolean;
   status?: 'private';
 }) => {
   const r = await apiCall<{ movie: ServerMovie }>(`/api/film/movie/${encodeURIComponent(id)}`,
@@ -241,6 +259,8 @@ export interface UploadMeta {
   director?: string;
   ageRating?: string;
   duration?: number;
+  width?: number;
+  height?: number;
   isShort?: boolean;
 }
 
@@ -282,6 +302,8 @@ export const apiUploadMovie = (
   if (meta.director) p.set('director', meta.director);
   if (meta.ageRating) p.set('ageRating', meta.ageRating);
   if (meta.duration) p.set('duration', String(Math.round(meta.duration)));
+  if (meta.width) p.set('width', String(Math.round(meta.width)));
+  if (meta.height) p.set('height', String(Math.round(meta.height)));
   if (meta.isShort) p.set('isShort', 'true');
 
   const xhr = new XMLHttpRequest();
@@ -323,18 +345,36 @@ export const apiUploadPoster = async (movieId: string, file: Blob) => {
   return r.ok;
 };
 
+/** Сколько длится короткометражка. То же число стоит и на сервере. */
+export const MAX_SHORT_DURATION = 300;
+
+export interface VideoMeta { duration: number; width: number; height: number }
+
 /**
- * Длительность файла узнаём в браузере: сервер для этого пришлось бы
- * разбирать контейнер, а здесь её знает сам проигрыватель. Число потом
- * всё равно проверяется на стороне сервера, так что соврать им нельзя
- * — можно только испортить себе же подпись под своим фильмом.
+ * Длительность и размер кадра узнаём в браузере: сервер для этого
+ * пришлось бы разбирать контейнер, а здесь их знает сам проигрыватель.
+ * Числа потом всё равно проверяются на стороне сервера, так что соврать
+ * ими нельзя — можно только испортить себе же подпись под своим фильмом.
  */
-export const readDuration = (file: Blob) => new Promise<number>((resolve) => {
+export const readVideoMeta = (file: Blob) => new Promise<VideoMeta>((resolve) => {
   const url = URL.createObjectURL(file);
   const v = document.createElement('video');
   v.preload = 'metadata';
-  const done = (d: number) => { URL.revokeObjectURL(url); resolve(d); };
-  v.onloadedmetadata = () => done(Number.isFinite(v.duration) ? v.duration : 0);
-  v.onerror = () => done(0);
+  const done = (m: VideoMeta) => { URL.revokeObjectURL(url); resolve(m); };
+  v.onloadedmetadata = () => done({
+    duration: Number.isFinite(v.duration) ? v.duration : 0,
+    width: v.videoWidth || 0,
+    height: v.videoHeight || 0,
+  });
+  v.onerror = () => done({ duration: 0, width: 0, height: 0 });
   v.src = url;
 });
+
+/**
+ * Похоже ли это на короткометражку. Подсказка для галочки при
+ * загрузке, не более: решает всё равно сервер, а человек может
+ * передумать в обе стороны.
+ */
+export const looksLikeShort = (m: VideoMeta) =>
+  m.duration > 0 && m.duration <= MAX_SHORT_DURATION
+  && m.height > 0 && m.height >= m.width;

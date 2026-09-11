@@ -15,7 +15,7 @@ import {
   apiCatalog, apiCategories, apiMyFilms, apiSavedFilms, apiSetSaved,
   apiContinue, apiProgress, apiSetProgress, apiCountView, apiRateMovie,
   apiUploadMovie, apiPatchMovie, apiDeleteMovie, apiSubmitMovie,
-  apiUploadPoster, apiFilmTicket,
+  apiUploadPoster, apiFilmTicket, apiShorts,
   type ServerMovie, type UploadMeta, type CatalogOpts, type MovieProgress,
 } from './filmApi';
 
@@ -26,6 +26,15 @@ interface FilmState {
   mine: ServerMovie[];
   saved: ServerMovie[];
   continueWatching: ServerMovie[];
+  /**
+   * Лента короткого кино. Своя, а не отсев каталога: каталог отдаётся
+   * первой сотней, и короткометражка, оказавшаяся сто первой, в ленту
+   * не попадала бы вовсе.
+   */
+  shorts: ServerMovie[];
+  /** Кончилась ли лента — чтобы не просить у сервера пустоту без конца. */
+  shortsDone: boolean;
+  shortsLoading: boolean;
   categories: { name: string; count: number }[];
   /** На чём остановился этот человек: id фильма → секунды. */
   progress: Record<string, number>;
@@ -46,6 +55,10 @@ interface FilmState {
   refreshMine: () => Promise<void>;
   search: (q: string) => Promise<ServerMovie[]>;
   sortCatalog: (sort: CatalogOpts['sort']) => Promise<void>;
+  /** Первая страница ленты короткого кино. */
+  loadShorts: (opts?: { force?: boolean }) => Promise<void>;
+  /** Следующая порция — по мере пролистывания. */
+  loadMoreShorts: () => Promise<void>;
 
   toggleSaved: (movieId: string) => Promise<void>;
   rate: (movieId: string, score: number) => Promise<void>;
@@ -79,6 +92,7 @@ const replace = (s: FilmState, m: ServerMovie) => ({
   mine: s.mine.map((x) => (x.id === m.id ? m : x)),
   saved: s.saved.map((x) => (x.id === m.id ? m : x)),
   continueWatching: s.continueWatching.map((x) => (x.id === m.id ? m : x)),
+  shorts: s.shorts.map((x) => (x.id === m.id ? m : x)),
 });
 
 export const useFilmStore = create<FilmState>((set, get) => ({
@@ -86,6 +100,9 @@ export const useFilmStore = create<FilmState>((set, get) => ({
   mine: [],
   saved: [],
   continueWatching: [],
+  shorts: [],
+  shortsDone: false,
+  shortsLoading: false,
   categories: [],
   progress: {},
   progressList: [],
@@ -135,6 +152,42 @@ export const useFilmStore = create<FilmState>((set, get) => ({
   sortCatalog: async (sort) => {
     const found = await apiCatalog({ sort, limit: 100 });
     if (found) set({ catalog: found });
+  },
+
+  loadShorts: async ({ force } = {}) => {
+    if (get().shortsLoading) return;
+    if (get().shorts.length > 0 && !force) return;
+    set({ shortsLoading: true });
+    const first = await apiShorts({ limit: 12 });
+    set({
+      shorts: first ?? [],
+      shortsDone: (first?.length ?? 0) < 12,
+      shortsLoading: false,
+    });
+  },
+
+  /**
+   * Следующая порция. Отсчитываем от времени последнего показанного, а
+   * не от номера страницы: пока человек листает, кто-то мог выложить
+   * новое видео, и при счёте по номерам одно он увидел бы дважды, а
+   * другое пропустил.
+   */
+  loadMoreShorts: async () => {
+    const { shorts, shortsDone, shortsLoading } = get();
+    if (shortsDone || shortsLoading || shorts.length === 0) return;
+    set({ shortsLoading: true });
+    const before = shorts[shorts.length - 1]?.addedAt;
+    const next = await apiShorts({ limit: 12, before });
+    if (!next) { set({ shortsLoading: false }); return; }
+    // Повтор всё равно отсекаем: сервер мог отдать то же самое, если
+    // у двух видео совпало время добавления до секунды.
+    const have = new Set(shorts.map((m) => m.id));
+    const fresh = next.filter((m) => !have.has(m.id));
+    set({
+      shorts: [...shorts, ...fresh],
+      shortsDone: next.length < 12,
+      shortsLoading: false,
+    });
   },
 
   toggleSaved: async (movieId) => {
@@ -223,6 +276,7 @@ export const useFilmStore = create<FilmState>((set, get) => ({
       mine: s.mine.filter((m) => m.id !== movieId),
       saved: s.saved.filter((m) => m.id !== movieId),
       continueWatching: s.continueWatching.filter((m) => m.id !== movieId),
+      shorts: s.shorts.filter((m) => m.id !== movieId),
     }));
   },
 }));
@@ -231,6 +285,7 @@ export const useFilmStore = create<FilmState>((set, get) => ({
 export const resetFilmForUser = () => {
   useFilmStore.setState({
     catalog: [], mine: [], saved: [], continueWatching: [], categories: [],
+    shorts: [], shortsDone: false, shortsLoading: false,
     progress: {}, progressList: [],
     loaded: false, loading: false, error: null, needsPrime: false,
   });

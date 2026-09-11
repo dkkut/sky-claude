@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
 import { useFilmStore } from '@/film/serverStore';
-import { videoUrl, type ServerMovie } from '@/film/filmApi';
+import { videoUrl, posterUrl, type ServerMovie } from '@/film/filmApi';
 
 const K = {
   text: '#FFFFFF',
@@ -28,10 +28,7 @@ const K = {
 };
 
 interface SkyShortsProps {
-  movies: ServerMovie[];
   startId?: string;
-  saved: string[];
-  onToggleSave: (id: string) => void;
   onClose: () => void;
 }
 
@@ -47,6 +44,7 @@ const ShortItem = ({
   const [progress, setProgress] = useState(0);
   const [flash, setFlash] = useState(false);
   const [shared, setShared] = useState(false);
+  const [broken, setBroken] = useState(false);
   const rate = useFilmStore(s => s.rate);
   const noteView = useFilmStore(s => s.noteView);
   // «Нравится» — это оценка, выставленная на сервере. Повторное
@@ -95,15 +93,28 @@ const ShortItem = ({
 
   return (
     <div className="relative h-full w-full bg-black" onClick={toggle}>
-      {movie.bytes > 0 ? (
+      {movie.bytes > 0 && !broken ? (
         <video ref={vRef} src={videoUrl(movie.id)} className="h-full w-full object-cover" playsInline loop={false}
+          // Постер показывается, пока не пришли первые куски видео:
+          // иначе при пролистывании между роликами моргает чёрное.
+          poster={movie.hasPoster ? posterUrl(movie.id) : undefined}
+          preload="auto"
           onTimeUpdate={() => { const v = vRef.current; if (v?.duration) setProgress(v.currentTime / v.duration); }}
+          onError={() => setBroken(true)}
+          onPlaying={() => setBroken(false)}
           onEnded={onEnded}/>
       ) : (
         <div className="h-full w-full flex flex-col items-center justify-center gap-3"
           style={{ background: `linear-gradient(160deg,#1a1a22,#0a0a0f)` }}>
           <Play size={56} color="rgba(255,255,255,0.15)"/>
-          <p className="text-sm px-8 text-center" style={{ color: K.dim }}>Видео ещё не загружено</p>
+          <p className="text-sm px-8 text-center" style={{ color: K.dim }}>
+            {broken ? 'Это видео не удалось открыть' : 'Видео ещё не загружено'}
+          </p>
+          {broken && (
+            <p className="text-xs px-10 text-center" style={{ color: K.dim }}>
+              Пролистайте дальше — остальная лента работает
+            </p>
+          )}
         </div>
       )}
 
@@ -140,7 +151,9 @@ const ShortItem = ({
       </div>
 
       {/* правая колонка действий */}
-      <div className="absolute right-3 bottom-6 flex flex-col items-center gap-5 pointer-events-auto" onClick={e => e.stopPropagation()}>
+      {/* Кнопок стало пять — добавился счётчик просмотров, — поэтому
+          промежутки поджаты: иначе нижняя упирается в край экрана. */}
+      <div data-shorts-actions className="absolute right-3 bottom-6 flex flex-col items-center gap-3.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
         <button type="button" onClick={like} className="flex flex-col items-center gap-1">
           <div className="grid h-11 w-11 place-items-center rounded-full" style={{ background: 'rgba(0,0,0,0.35)' }}>
             <Heart size={22} color={liked ? '#ff3b5c' : '#fff'} fill={liked ? '#ff3b5c' : 'none'}/>
@@ -153,6 +166,12 @@ const ShortItem = ({
           </div>
           <span className="text-[10px] font-semibold text-white">{saved ? 'В закладках' : 'Сохранить'}</span>
         </button>
+        <div className="flex flex-col items-center gap-1">
+          <div className="grid h-11 w-11 place-items-center rounded-full" style={{ background: 'rgba(0,0,0,0.35)' }}>
+            <Play size={18} color="#fff" fill="#fff"/>
+          </div>
+          <span className="text-[11px] font-semibold text-white">{movie.views ?? 0}</span>
+        </div>
         <button type="button" onClick={share} className="flex flex-col items-center gap-1">
           <div className="grid h-11 w-11 place-items-center rounded-full" style={{ background: 'rgba(0,0,0,0.35)' }}>
             <Share2 size={19} color="#fff"/>
@@ -170,16 +189,44 @@ const ShortItem = ({
 /* ══════════════════════════════════════════════════════════════════
    ROOT
 ══════════════════════════════════════════════════════════════════ */
-export const SkyShorts = ({ movies, startId, saved, onToggleSave, onClose }: SkyShortsProps) => {
-  const initial = Math.max(0, movies.findIndex(m => m.id === startId));
-  const [index, setIndex]   = useState(initial === -1 ? 0 : initial);
+export const SkyShorts = ({ startId, onClose }: SkyShortsProps) => {
+  /* Лента приходит с сервера порциями. Держать её здесь, а не получать
+     готовым списком снаружи, важно по существу: листают её бесконечно,
+     и следующая порция должна подъезжать по мере пролистывания, а не
+     кончаться на той сотне, что успел отдать каталог. */
+  const movies = useFilmStore(s => s.shorts);
+  const shortsDone = useFilmStore(s => s.shortsDone);
+  const shortsLoading = useFilmStore(s => s.shortsLoading);
+  const loadShorts = useFilmStore(s => s.loadShorts);
+  const loadMoreShorts = useFilmStore(s => s.loadMoreShorts);
+  const savedList = useFilmStore(s => s.saved);
+  const toggleSaved = useFilmStore(s => s.toggleSaved);
+
+  const [index, setIndex]   = useState(0);
   const [muted, setMuted]   = useState(false);
   const [dir,   setDir]     = useState(1);
+  const jumped = useRef(false);
+
+  useEffect(() => { void loadShorts(); }, [loadShorts]);
+
+  /* Открыли с конкретного видео — встаём на него, но только один раз:
+     дальше человек листает сам, и перескакивать обратно нельзя. */
+  useEffect(() => {
+    if (jumped.current || !startId || movies.length === 0) return;
+    const at = movies.findIndex(m => m.id === startId);
+    if (at >= 0) { jumped.current = true; setIndex(at); }
+  }, [startId, movies]);
 
   const go = useCallback((delta: number) => {
     setDir(delta);
     setIndex(i => Math.max(0, Math.min(movies.length - 1, i + delta)));
   }, [movies.length]);
+
+  /* Следующая порция — заранее, за три видео до конца: иначе человек
+     упирается в край ленты и ждёт, пока она догрузится. */
+  useEffect(() => {
+    if (movies.length && index >= movies.length - 3) void loadMoreShorts();
+  }, [index, movies.length, loadMoreShorts]);
 
   const onDragEnd = (_: any, info: PanInfo) => {
     if (info.offset.y < -70 || info.velocity.y < -500) go(1);
@@ -215,8 +262,16 @@ export const SkyShorts = ({ movies, startId, saved, onToggleSave, onClose }: Sky
       onWheel={onWheel}>
 
       {!movie ? (
-        <div className="flex flex-col items-center gap-3">
-          <p className="text-sm" style={{ color: K.dim }}>Короткие видео ещё не добавлены</p>
+        <div className="flex flex-col items-center gap-3 px-10 text-center">
+          <p className="text-sm" style={{ color: K.dim }}>
+            {shortsLoading ? 'Загружаем ленту…' : 'Короткого кино пока нет'}
+          </p>
+          {!shortsLoading && (
+            <p className="text-xs" style={{ color: K.dim }}>
+              Снимите вертикальное видео до пяти минут, загрузите его в «Коллекцию»
+              и отправьте на проверку — оно появится здесь.
+            </p>
+          )}
           <button type="button" onClick={onClose} className="rounded-full px-4 py-2 text-xs font-bold text-white" style={{ background: K.accent }}>Закрыть</button>
         </div>
       ) : (
@@ -228,7 +283,8 @@ export const SkyShorts = ({ movies, startId, saved, onToggleSave, onClose }: Sky
             transition={{ type: 'tween', duration: 0.28, ease: 'easeOut' }}
             className="absolute inset-0">
             <ShortItem movie={movie} active muted={muted} onToggleMute={() => setMuted(m => !m)}
-              saved={saved.includes(movie.id)} onToggleSave={() => onToggleSave(movie.id)}
+              saved={savedList.some(x => x.id === movie.id)}
+              onToggleSave={() => void toggleSaved(movie.id)}
               onEnded={() => go(1)}/>
           </motion.div>
         </AnimatePresence>
@@ -238,7 +294,9 @@ export const SkyShorts = ({ movies, startId, saved, onToggleSave, onClose }: Sky
           <button type="button" onClick={onClose} className="pointer-events-auto grid h-9 w-9 place-items-center rounded-full" style={{ background: 'rgba(0,0,0,0.4)' }}>
             <X size={18} color="#fff"/>
           </button>
-          <p className="text-white text-sm font-bold pointer-events-none">Shorts</p>
+          <p className="text-white text-sm font-bold pointer-events-none">
+            Shorts · {index + 1}{shortsDone ? ` из ${movies.length}` : ''}
+          </p>
           <div className="w-9"/>
         </div>
 
@@ -248,7 +306,7 @@ export const SkyShorts = ({ movies, startId, saved, onToggleSave, onClose }: Sky
             className="grid h-9 w-9 place-items-center rounded-full disabled:opacity-30" style={{ background: 'rgba(255,255,255,0.1)' }}>
             <ChevronUp size={18} color="#fff"/>
           </button>
-          <button type="button" onClick={() => go(1)} disabled={index === movies.length - 1}
+          <button type="button" onClick={() => go(1)} disabled={index >= movies.length - 1 && shortsDone}
             className="grid h-9 w-9 place-items-center rounded-full disabled:opacity-30" style={{ background: 'rgba(255,255,255,0.1)' }}>
             <ChevronDown size={18} color="#fff"/>
           </button>

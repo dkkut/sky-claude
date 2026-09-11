@@ -26,7 +26,7 @@ import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import {
-  listCatalog, listCategories, listMine, readMovie, visibleMovie,
+  listCatalog, listCategories, listShorts, listMine, readMovie, visibleMovie,
   createMovie, finishMovie, updateMovie, deleteMovie, setPoster,
   submitMovie, moderationQueue, moderateMovie,
   listSaved, setSaved, countView, rateMovie,
@@ -209,6 +209,18 @@ export const filmRoutes = async (req, res, url) => {
     });
   }
 
+  /* Лента короткого кино. Отдельная ручка, а не отсев каталога на
+     экране: лента бесконечна, а каталог отдаётся первой сотней. */
+  if (req.method === 'GET' && path === '/api/film/shorts') {
+    if (!rateLimit(`film:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    return json(res, 200, {
+      movies: await listShorts(me, {
+        limit: params.get('limit'),
+        before: params.get('before') ?? undefined,
+      }),
+    });
+  }
+
   if (req.method === 'GET' && path === '/api/film/categories') {
     if (!rateLimit(`film:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     return json(res, 200, { categories: await listCategories() });
@@ -297,6 +309,12 @@ export const filmRoutes = async (req, res, url) => {
       director: params.get('director'),
       ageRating: params.get('ageRating'),
       duration: params.get('duration'),
+      // Размер кадра нужен, чтобы отличить короткометражку от просто
+      // короткого видео: в вертикальной ленте горизонтальный ролик
+      // выглядит обрезком. Числа приходят из браузера — соврать ими
+      // можно только себе же.
+      width: params.get('width'),
+      height: params.get('height'),
       isShort: params.get('isShort'),
     };
 

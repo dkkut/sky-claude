@@ -44,6 +44,13 @@ const MAX_AGE = 10;
 const MAX_REASON = 500;
 /** Сутки: всё, что длиннее, — не фильм, а ошибка в метаданных. */
 const MAX_DURATION = 86400;
+/**
+ * Короткометражка — не «любое короткое видео». Пять минут это верхний
+ * предел: дальше это уже фильм, и в вертикальной ленте, где листают
+ * пальцем, ему не место. Предел стоит на сервере, потому что пометку
+ * присылает клиент, а его можно переписать.
+ */
+const MAX_SHORT_DURATION = 300;
 /** Столько фильмов в личной коллекции одного человека. */
 const MAX_OWN_MOVIES = 500;
 
@@ -99,6 +106,8 @@ export const toMovie = (row) => ({
   explicit: row.explicit === true || undefined,
   ageRestricted18: row.age_restricted18 === true || undefined,
   isShort: row.is_short === true || undefined,
+  width: Number(row.width ?? 0) || undefined,
+  height: Number(row.height ?? 0) || undefined,
   views: Number(row.views ?? 0),
   rating: row.rating == null ? undefined : Math.round(Number(row.rating) * 10) / 10,
   ratingCount: row.rating_count == null ? undefined : Number(row.rating_count),
@@ -214,6 +223,38 @@ export const listCatalog = async (viewerId, { q, category, limit, offset, sort }
   return rows.map(toMovie);
 };
 
+/**
+ * Лента короткого кино.
+ *
+ * Отдельная выборка, а не отсев каталога на экране. Разница
+ * существенная: каталог отдаётся первой сотней, и короткометражка,
+ * оказавшаяся сто первой, в ленту не попадала бы вовсе — притом что
+ * сама лента бесконечна по смыслу.
+ *
+ * Условие то же, что и везде: только опубликованное. Закрытое кино в
+ * общую ленту не попадает, даже своё, — листают её все подряд.
+ *
+ * Листается по времени добавления, а не по номеру страницы: пока
+ * человек листает, кто-то мог выложить новое, и при счёте по номерам
+ * одно видео он увидел бы дважды, а другое пропустил.
+ */
+export const listShorts = async (viewerId, { limit, before } = {}) => {
+  const lim = num(limit, 1, 30) ?? 12;
+  const args = [viewerId ?? '', lim];
+  let cut = '';
+  if (before) {
+    const t = new Date(String(before));
+    if (!Number.isNaN(t.getTime())) { args.push(t.toISOString()); cut = ` AND m.created_at < $${args.length}`; }
+  }
+  const { rows } = await query(
+    `${SELECT_MOVIE}
+      WHERE m.is_short AND m.status = 'published'${cut}
+      ORDER BY m.created_at DESC
+      LIMIT $2`,
+    args);
+  return rows.map(toMovie);
+};
+
 /** Категории каталога — только те, в которых есть опубликованное кино. */
 export const listCategories = async () => {
   const { rows } = await query(
@@ -263,12 +304,16 @@ export const createMovie = async (ownerId, meta) => {
   if ((cnt[0]?.n ?? 0) >= MAX_OWN_MOVIES) return { error: 'too_many' };
 
   const description = text(meta.description, MAX_DESCRIPTION);
+  const duration = num(meta.duration, 0, MAX_DURATION) ?? 0;
+  const width = num(meta.width, 0, 16384) ?? 0;
+  const height = num(meta.height, 0, 16384) ?? 0;
+
   const id = newId();
   await query(
     `INSERT INTO film_movies
        (id, owner_id, title, description, category, genre, year, country, director,
-        age_rating, duration_sec, mime, bytes, is_short, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'private')`,
+        age_rating, duration_sec, mime, bytes, is_short, width, height, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'private')`,
     [id, ownerId, title,
       description ? encryptContent(description) : null,
       text(meta.category, MAX_SHORT) || 'Другое',
@@ -277,12 +322,31 @@ export const createMovie = async (ownerId, meta) => {
       text(meta.country, MAX_SHORT),
       text(meta.director, MAX_DIRECTOR),
       text(meta.ageRating, MAX_AGE),
-      num(meta.duration, 0, MAX_DURATION) ?? 0,
+      duration,
       String(meta.mime ?? 'video/mp4'),
       0,
-      meta.isShort === true || meta.isShort === 'true'],
+      shortAllowed(meta.isShort, duration),
+      width, height],
   );
   return { id };
+};
+
+/**
+ * Можно ли считать это короткометражкой.
+ *
+ * Решает сервер, а не пометка в запросе. Пометку присылает клиент, и
+ * без этой проверки в вертикальную ленту, где листают пальцем, можно
+ * было бы затолкать двухчасовой фильм — достаточно дописать один
+ * параметр в адрес загрузки.
+ *
+ * Длительность к этому моменту уже своя: она пришла из браузера, но
+ * обрезана по тем же правилам, и соврать ею можно только себе же —
+ * в ленте окажется видео, которое там же и выглядит неуместно.
+ */
+const shortAllowed = (flag, duration) => {
+  const asked = flag === true || flag === 'true' || flag === '1';
+  if (!asked) return false;
+  return duration > 0 && duration <= MAX_SHORT_DURATION;
 };
 
 /**
@@ -298,7 +362,7 @@ export const finishMovie = async (movieId, ownerId, { bytes, mime }) => {
 
 /** Владелец правит своё; чужое не правит никто, включая администратора. */
 export const updateMovie = async (movieId, ownerId, patch) => {
-  const { rows } = await query('SELECT owner_id, status FROM film_movies WHERE id = $1',
+  const { rows } = await query('SELECT owner_id, status, duration_sec FROM film_movies WHERE id = $1',
     [String(movieId ?? '')]);
   if (!rows[0]) return { error: 'not_found' };
   if (rows[0].owner_id !== ownerId) return { error: 'not_allowed' };
@@ -323,6 +387,17 @@ export const updateMovie = async (movieId, ownerId, patch) => {
   if (patch.director !== undefined) put('director', text(patch.director, MAX_DIRECTOR));
   if (patch.ageRating !== undefined) put('age_rating', text(patch.ageRating, MAX_AGE));
   if (patch.duration !== undefined) put('duration_sec', num(patch.duration, 0, MAX_DURATION) ?? 0);
+
+  if (patch.isShort !== undefined) {
+    // Передумать можно: человек мог загрузить короткометражку обычным
+    // фильмом и наоборот. Правило то же самое — длинное короткометражкой
+    // не станет, сколько его ни помечай.
+    const want = patch.isShort === true || patch.isShort === 'true';
+    if (want && !shortAllowed(true, Number(rows[0].duration_sec ?? 0))) {
+      return { error: 'too_long_for_short' };
+    }
+    put('is_short', want);
+  }
 
   if (patch.status !== undefined) {
     // Вернуть фильм себе владелец может сам, в любой момент: это его

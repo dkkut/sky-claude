@@ -36,8 +36,9 @@ import type { IconComponent } from '@/shared/icon';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
 import { useFilmStore } from '@/film/serverStore';
 import {
-  videoUrl, posterUrl, fmtDuration, readDuration,
-  apiFilmModerationQueue, apiModerateMovie, type ServerMovie,
+  videoUrl, posterUrl, fmtDuration, readVideoMeta, looksLikeShort,
+  MAX_SHORT_DURATION, apiFilmModerationQueue, apiModerateMovie,
+  type ServerMovie, type VideoMeta,
 } from '@/film/filmApi';
 import { SkyShorts } from './SkyShorts';
 
@@ -782,6 +783,8 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
   const removeMovie = useFilmStore(s => s.removeMovie);
 
   const [vFile, setVFile]     = useState<File|null>(null);
+  const [meta, setMeta]       = useState<VideoMeta|null>(null);
+  const [isShort, setIsShort] = useState(false);
   const [poster, setPosterFile] = useState<File|null>(null);
   const [posterPreview, setPosterPreview] = useState<string|undefined>();
   const [title, setTitle]     = useState('');
@@ -801,7 +804,7 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
   const submit = async () => {
     if (!vFile || !title.trim() || busy) return;
     setBusy(true); setPercent(0); setErr('');
-    const duration = await readDuration(vFile);
+    const info = meta ?? await readVideoMeta(vFile);
     // Жанр в каталоге он же категория: по нему собираются кнопки
     // разделов и он же стоит в карточке. Поле одно, поэтому пишем
     // в оба — иначе в карточке строка «Жанр» всегда была бы пустой.
@@ -811,14 +814,17 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
       description: desc.trim() || undefined,
       category: genre,
       genre,
-      duration,
+      duration: info.duration,
+      width: info.width,
+      height: info.height,
+      isShort,
     }, setPercent);
     cancelRef.current = job.cancel;
     const res = await job.promise;
     cancelRef.current = null;
     if (!res.ok) { setErr(res.reason ?? 'Не получилось загрузить'); setBusy(false); setPercent(0); return; }
     if (poster && res.id) await setPoster(res.id, poster);
-    setVFile(null); setPosterFile(null);
+    setVFile(null); setPosterFile(null); setMeta(null); setIsShort(false);
     if (posterPreview) URL.revokeObjectURL(posterPreview);
     setPosterPreview(undefined);
     setTitle(''); setDesc(''); setCat('Другое');
@@ -845,15 +851,54 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
           style={{ background: vFile ? 'rgba(255,85,0,0.07)' : 'rgba(255,255,255,0.03)', border: `2px dashed ${vFile ? K.orange : 'rgba(255,255,255,0.1)'}` }}
           onClick={() => !busy && vRef.current?.click()}>
           <input ref={vRef} type="file" accept="video/*" className="hidden"
-            onChange={e => { const f=e.target.files?.[0]; if(f){setVFile(f);setErr('');if(!title)setTitle(f.name.replace(/\.[^.]+$/,''));} }} />
+            onChange={async e => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              setVFile(f); setErr('');
+              if (!title) setTitle(f.name.replace(/\.[^.]+$/, ''));
+              // Размеры кадра и длительность читаются сразу: по ним
+              // видно, короткометражка это или обычный фильм, и галочка
+              // ставится сама. Передумать можно — решает всё равно
+              // сервер, а не эта подсказка.
+              const info = await readVideoMeta(f);
+              setMeta(info);
+              setIsShort(looksLikeShort(info));
+            }} />
           <Film size={28} style={{ color: vFile ? K.orange : K.dim }} />
           <p className="text-sm font-medium" style={{ color: vFile ? K.orange : K.sub }}>
             {vFile ? vFile.name : 'Выбрать видеофайл'}
           </p>
           <p className="text-xs" style={{ color: K.dim }}>
-            {vFile ? fmtSize(vFile.size) : 'MP4 · MOV · MKV · WebM · AVI'}
+            {vFile
+              ? `${fmtSize(vFile.size)}${meta?.duration ? ` · ${fmtDuration(meta.duration)}` : ''}${meta?.width ? ` · ${meta.width}×${meta.height}` : ''}`
+              : 'MP4 · MOV · MKV · WebM · AVI'}
           </p>
         </div>
+
+        {/* Короткометражка — не «любое короткое видео»: это вертикальное
+            и недлинное. Галочка ставится сама по самому файлу, но
+            последнее слово за человеком. Слишком длинное сервер в ленту
+            не пустит, поэтому и предлагать не будем. */}
+        {vFile && meta && meta.duration > 0 && meta.duration <= MAX_SHORT_DURATION && (
+          <button type="button" onClick={() => setIsShort(v => !v)}
+            className="flex w-full items-start gap-2.5 rounded-2xl p-3 text-left"
+            style={{ background: isShort ? 'rgba(255,85,0,0.1)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${isShort ? 'rgba(255,85,0,0.3)' : 'transparent'}` }}>
+            <div className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md"
+              style={{ background: isShort ? K.orange : 'rgba(255,255,255,0.08)' }}>
+              {isShort && <CheckCircle size={13} color="#fff"/>}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold" style={{ color: isShort ? K.orange : K.text }}>
+                Это короткое кино
+              </p>
+              <p className="text-[11px]" style={{ color: K.dim }}>
+                Попадёт в вертикальную ленту «Короткое кино» — после проверки.
+                {meta.height < meta.width ? ' Кадр горизонтальный: в ленте его обрежет по бокам.' : ''}
+              </p>
+            </div>
+          </button>
+        )}
         <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Название *" className={iCls} style={iSty}/>
         <input value={cat} onChange={e=>setCat(e.target.value)} placeholder="Жанр (Фантастика, Комедия...)" className={iCls} style={iSty}/>
         <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Описание (необязательно)" rows={3}
@@ -907,7 +952,15 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
                 <p className="text-xs truncate" style={{ color: K.dim }}>
                   {m.category}{m.duration ? ` · ${fmtDuration(m.duration)}` : ''}{m.bytes ? ` · ${fmtSize(m.bytes)}` : ''}
                 </p>
-                <StatusChip movie={m}/>
+                <div className="flex flex-wrap items-center gap-1">
+                  <StatusChip movie={m}/>
+                  {m.isShort && (
+                    <span className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+                      style={{ background: `${K.orange}1f`, color: K.orange }}>
+                      <Zap size={9}/> Коротко
+                    </span>
+                  )}
+                </div>
               </button>
               <button type="button" onClick={() => void removeMovie(m.id)}
                 className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-red-500/10">
@@ -1370,7 +1423,14 @@ export const SkyFilm = () => {
     [catalog]);
   const popular = useMemo(
     () => [...catalog].sort((a,b) => b.views - a.views).slice(0,10), [catalog]);
-  const shortMovies = useMemo(() => catalog.filter(m => m.isShort), [catalog]);
+  /* Лента короткого кино приходит своей ручкой, а не отсевом каталога:
+     каталог отдаётся первой сотней, и короткометражка, оказавшаяся сто
+     первой, в ленту не попадала бы вовсе. Здесь нужно только знать,
+     есть ли лента вообще, — чтобы не звать в пустоту. */
+  const shorts = useFilmStore(s => s.shorts);
+  const shortsDone = useFilmStore(s => s.shortsDone);
+  const loadShorts = useFilmStore(s => s.loadShorts);
+  useEffect(() => { void loadShorts(); }, [loadShorts]);
   const hero = topRated[0] ?? fresh[0];
 
   const NAV: { key: Tab; Icon: IconComponent; label: string }[] = [
@@ -1465,8 +1525,8 @@ export const SkyFilm = () => {
               {hero && (
                 <Hero movie={hero} onPlay={() => setPlaying(hero)} onInfo={() => setDetail(hero)} />
               )}
-              {shortMovies.length > 0 && (
-                <button type="button" onClick={() => setShortsStartId(shortMovies[0].id)}
+              {shorts.length > 0 && (
+                <button type="button" onClick={() => setShortsStartId(shorts[0].id)}
                   className="mx-3 mt-3 mb-1 flex items-center gap-3 rounded-2xl px-4 py-3.5 w-[calc(100%-24px)]"
                   style={{ background: `linear-gradient(135deg,${K.orange}22,${K.card2})`, border: `1px solid ${K.orange}33` }}>
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full" style={{ background: K.orange }}>
@@ -1476,7 +1536,12 @@ export const SkyFilm = () => {
                     <p className="text-sm font-bold" style={{ color: K.text }}>Короткое кино</p>
                     <p className="text-[11px]" style={{ color: K.sub }}>Вертикальные короткометражки · свайп вверх</p>
                   </div>
-                  <span className="text-[11px] font-bold px-2 py-1 rounded-full" style={{ background: K.orange, color: '#fff' }}>{shortMovies.length}</span>
+                  {/* Число показываем, только когда лента кончилась и мы
+                      знаем его целиком. Иначе здесь стояла бы длина
+                      первой порции — то есть неправда. */}
+                  <span className="text-[11px] font-bold px-2 py-1 rounded-full" style={{ background: K.orange, color: '#fff' }}>
+                    {shortsDone ? shorts.length : 'Смотреть'}
+                  </span>
                 </button>
               )}
               <Row title="Продолжить просмотр" Icon={History} movies={continueWatching}
@@ -1582,8 +1647,7 @@ export const SkyFilm = () => {
       {/* Короткое кино */}
       <AnimatePresence>
         {shortsStartId && (
-          <SkyShorts movies={shortMovies} startId={shortsStartId} saved={savedIds}
-            onToggleSave={id => void toggleSaved(id)} onClose={() => setShortsStartId(null)}/>
+          <SkyShorts startId={shortsStartId} onClose={() => setShortsStartId(null)}/>
         )}
       </AnimatePresence>
     </>
