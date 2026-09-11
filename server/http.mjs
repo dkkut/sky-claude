@@ -22,12 +22,26 @@ export const json = (res, code, body, extraHeaders = {}) => {
   res.end(JSON.stringify(body));
 };
 
+/**
+ * Ошибка запроса, а не сервера.
+ *
+ * Кривое тело — это то, что прислал клиент, и отвечать на него надо
+ * «неверный запрос». Без этой пометки такая ошибка доходила до общего
+ * обработчика наравне с поломкой внутри сервера: человек получал 500, в
+ * журнал попадала запись о сбое, а вне боевого режима наружу уходил ещё
+ * и текст ошибки. Достаточно было отправить в любую ручку строку «не
+ * json».
+ */
+export class BadRequest extends Error {
+  constructor(code) { super(code); this.status = 400; this.code = code; }
+}
+
 export const parseBody = (req) => new Promise((resolve, reject) => {
   let raw = '';
   req.on('data', (chunk) => {
     raw += chunk;
     if (raw.length > 1_000_000) {
-      reject(new Error('Payload too large'));
+      reject(new BadRequest('payload_too_large'));
       req.destroy();
     }
   });
@@ -35,7 +49,7 @@ export const parseBody = (req) => new Promise((resolve, reject) => {
     try {
       resolve(raw ? JSON.parse(raw) : {});
     } catch {
-      reject(new Error('Invalid JSON'));
+      reject(new BadRequest('invalid_json'));
     }
   });
   req.on('error', reject);

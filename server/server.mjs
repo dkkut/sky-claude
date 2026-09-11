@@ -24,6 +24,8 @@ import { supportRoutes } from './routes/support.mjs';
 import { directoryRoutes } from './routes/directory.mjs';
 import { fileRoutes } from './routes/files.mjs';
 import { musicRoutes } from './routes/music.mjs';
+import { filmRoutes } from './routes/film.mjs';
+import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphans } from './attachments.mjs';
 import { purgeExpiredCodes } from './verification.mjs';
 import { checkDeliverySetup, closeMailer } from './notify.mjs';
@@ -31,7 +33,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, musicRoutes];
+                supportRoutes, musicRoutes, filmRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -96,6 +98,10 @@ const server = http.createServer(async (req, res) => {
 
     return json(res, 404, { error: 'not_found' });
   } catch (error) {
+    // Кривое или слишком большое тело — вина запроса, а не сервера:
+    // отвечаем 400 и молча, без записи о сбое. Иначе достаточно было
+    // послать «не json», чтобы получить 500 и строчку в журнале.
+    if (error?.status === 400) return json(res, 400, { error: error.code ?? 'bad_request' });
     console.error('[api]', error);
     const message = config.nodeEnv === 'production' ? 'internal_error' : error.message;
     return json(res, 500, { error: message });
@@ -145,6 +151,12 @@ const start = async () => {
     try {
       await purgeExpiredCodes();
       await sweepOrphans();
+      // Кино на диске весит больше всего остального вместе взятого,
+      // поэтому осиротевшие файлы убираем отдельно: фильм без владельца
+      // и файл без записи в базе никто уже не откроет, а место они
+      // занимают.
+      const films = await sweepOrphanFilms();
+      if (films) console.log(`[film] убрано осиротевших файлов: ${films}`);
       const expired = await expirePrimeSubscriptions();
       if (expired) console.log(`[prime] истекло подписок: ${expired}`);
     } catch (err) {

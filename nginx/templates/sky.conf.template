@@ -157,6 +157,30 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # Кино. Отличий от музыки два, и оба из-за размера файла.
+    #
+    # Тело запроса — до четырёх гигабайт (FILM_MAX_BYTES на стороне
+    # api): общий client_max_body_size в 1m обрезал бы загрузку фильма
+    # ещё до того, как она дойдёт до приложения, и человек видел бы
+    # непонятный отказ 413.
+    #
+    # Ответ не буферизуется — это уже задано в proxy-common.conf, и
+    # повторять директиву здесь нельзя: nginx считает это ошибкой и не
+    # запускается. Важно это именно для кино: с буферизацией nginx
+    # попытался бы сложить весь фильм во временный файл, прежде чем
+    # отдать первый кадр.
+    location ^~ /api/film/ {
+        limit_req zone=req_general burst=180 nodelay;
+        client_max_body_size 4096m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        # Загрузка фильма на медленной связи идёт долго, и обрывать её
+        # по таймауту нельзя.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/ {
         limit_req zone=req_general burst=60 nodelay;
         include /etc/nginx/snippets/proxy-common.conf;
