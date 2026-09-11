@@ -16,6 +16,7 @@ import { generateId } from './security.mjs';
 import { encryptSecret, decryptSecret } from './crypto.mjs';
 import { generateSecret, verifyTotp, otpauthUri } from './totp.mjs';
 import { issueCode, verifyCode } from './verification.mjs';
+import { isOwnerUsername } from './admin.mjs';
 
 /** Максимум профилей в одном Sky ID. Дублируется триггером в БД. */
 export const MAX_PROFILES = 2;
@@ -44,7 +45,12 @@ const toProfile = (row) => row && ({
   name:     row.name,
   username: row.username,
   avatar:   row.avatar ?? undefined,
-  isAdmin:  row.is_admin,
+  // Право, а не колонка. Владелец — администратор по нику из .env, и
+  // колонка is_admin у него при этом стоит в false. Сервер это знает
+  // (isAdmin в admin.mjs) и пускал владельца всюду, а вот в профиль
+  // уходило голое значение колонки — и панель администратора у хозяина
+  // сервиса просто не появлялась.
+  isAdmin:  Boolean(row.is_admin) || isOwnerUsername(row.username),
   isPrime:  Boolean(row.prime_active),
   primeUntil: row.prime_expires_at ? row.prime_expires_at.toISOString() : undefined,
   primePlan:  row.prime_plan ?? undefined,

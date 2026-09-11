@@ -22,6 +22,17 @@ import { encryptContent, decryptContent } from './crypto.mjs';
 const ownerName = () => String(config.ownerUsername ?? '').trim().toLowerCase();
 
 /**
+ * Владелец ли это по нику. Нужна там, где ник уже прочитан из базы и
+ * второй запрос был бы лишним, — например при сборке профиля для
+ * клиента. Правило владельца остаётся в одном файле: считать его
+ * где-то ещё вручную нельзя, иначе два места разойдутся.
+ */
+export const isOwnerUsername = (username) => {
+  const name = ownerName();
+  return Boolean(name) && String(username ?? '').trim().toLowerCase() === name;
+};
+
+/**
  * Владелец ли это. Сверяем по нику, а не по сохранённому id: сменить
  * ник владельца в .env — законный способ передать сервис, а вот
  * подменить строку в базе не должно быть достаточно.
