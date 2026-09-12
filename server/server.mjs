@@ -28,10 +28,12 @@ import { filmRoutes } from './routes/film.mjs';
 import { tvRoutes } from './routes/tv.mjs';
 import { podcastRoutes } from './routes/podcasts.mjs';
 import { botRoutes } from './routes/bots.mjs';
+import { ticketRoutes } from './routes/tickets.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanPodcastFiles } from './podcasts.mjs';
 import { sweepBots } from './bots.mjs';
+import { expireOrganizers, closePastEvents, sweepOrphanTicketImages } from './tickets.mjs';
 import { retryPendingWebhooks } from './botevents.mjs';
 import { sweepOrphans } from './attachments.mjs';
 import { purgeExpiredCodes } from './verification.mjs';
@@ -40,7 +42,8 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes, botRoutes];
+                supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes, botRoutes,
+                ticketRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -205,6 +208,18 @@ const start = async () => {
       // забирать уже некому: очередь без потолка растёт вечно.
       const botEvents = await sweepBots();
       if (botEvents) console.log(`[bots] выброшено просроченных событий: ${botEvents}`);
+      // Подписка организатора кончается по времени, а не по нажатию:
+      // без этого кабинет оставался бы открытым до следующего входа.
+      // Мероприятия и билеты при этом не трогаем — закрываются только
+      // действия организатора.
+      const orgs = await expireOrganizers();
+      if (orgs) console.log(`[tickets] истекло подписок организаторов: ${orgs}`);
+      // Прошедшее мероприятие должно само становиться завершённым, а его
+      // билеты — просроченными: иначе «действителен» висел бы годами.
+      const past = await closePastEvents();
+      if (past) console.log(`[tickets] завершено прошедших мероприятий: ${past}`);
+      const posters = await sweepOrphanTicketImages();
+      if (posters) console.log(`[tickets] убрано осиротевших афиш: ${posters}`);
     } catch (err) {
       console.error('[housekeeping]', err.message);
     }
