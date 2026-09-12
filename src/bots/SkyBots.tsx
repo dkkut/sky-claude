@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Send, ChevronRight, Bot, Search, Zap } from 'lucide-react';
+import {
+  X, Check, Send, ChevronRight, Bot, Search, Zap,
+  CloudSun, Newspaper, Calculator, Sparkles, ShoppingCart, Cloud, Wind, BadgeCheck,
+} from 'lucide-react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 
 /* ── Bot data ───────────────────────────────────────────────────────────── */
 export const BOTS_REGISTRY = [
   {
     id:'weather', name:'SkyWeather', username:'@skyweather', cat:'Утилиты', verified:true,
-    emoji:'🌤', color:'#4e8cf7', shortDesc:'Погода онлайн',
+    Icon:CloudSun, color:'#4e8cf7', shortDesc:'Погода онлайн',
     desc:'Погода в любой точке мира. Текущая, прогноз на 7 дней.',
     commands:[{cmd:'/weather',desc:'Погода'},{cmd:'/forecast',desc:'Прогноз'},{cmd:'/start',desc:'Начало'}],
     respond: async (msg: string) => {
@@ -28,7 +31,7 @@ export const BOTS_REGISTRY = [
   },
   {
     id:'news', name:'SkyNews', username:'@skynews', cat:'Новости', verified:true,
-    emoji:'📰', color:'#f43f5e', shortDesc:'Новости дня',
+    Icon:Newspaper, color:'#f43f5e', shortDesc:'Новости дня',
     desc:'Главные новости без воды. Технологии, финансы, спорт.',
     commands:[{cmd:'/top',desc:'Топ новостей'},{cmd:'/tech',desc:'Технологии'},{cmd:'/sport',desc:'Спорт'}],
     respond: async (msg: string) => {
@@ -42,7 +45,7 @@ export const BOTS_REGISTRY = [
   },
   {
     id:'calc', name:'SkyCalc', username:'@skycalc', cat:'Утилиты', verified:false,
-    emoji:'🧮', color:'#f59e0b', shortDesc:'Калькулятор',
+    Icon:Calculator, color:'#f59e0b', shortDesc:'Калькулятор',
     desc:'Математика и конвертер валют. Мгновенные расчёты.',
     commands:[{cmd:'/usd',desc:'Курс USD'},{cmd:'/eur',desc:'Курс EUR'},{cmd:'/calc',desc:'Вычислить'}],
     respond: async (msg: string) => {
@@ -60,7 +63,7 @@ export const BOTS_REGISTRY = [
   },
   {
     id:'ai_help', name:'SkyAI Assistant', username:'@skyai', cat:'ИИ', verified:true,
-    emoji:'✦', color:'#8b5cf6', shortDesc:'ИИ-помощник',
+    Icon:Sparkles, color:'#8b5cf6', shortDesc:'ИИ-помощник',
     desc:'ИИ-ассистент на базе Claude. Ответы, тексты, советы.',
     commands:[{cmd:'/ask',desc:'Спросить'},{cmd:'/write',desc:'Написать текст'},{cmd:'/start',desc:'Начало'}],
     respond: async (msg: string) => {
@@ -78,7 +81,7 @@ export const BOTS_REGISTRY = [
   },
   {
     id:'market', name:'SkyMarket Bot', username:'@skymarketbot', cat:'Маркет', verified:true,
-    emoji:'🛒', color:'#a855f7', shortDesc:'Маркет-помощник',
+    Icon:ShoppingCart, color:'#a855f7', shortDesc:'Маркет-помощник',
     desc:'Поиск товаров и скидки прямо в чате.',
     commands:[{cmd:'/deals',desc:'Скидки дня'},{cmd:'/orders',desc:'Заказы'},{cmd:'/start',desc:'Начало'}],
     respond: async (msg: string) => {
@@ -101,13 +104,13 @@ const BotResp = ({ resp, color }: { resp: any, color: string }) => {
   if(resp.type==='weather') return (
     <div className="rounded-2xl p-4" style={{background:`${color}15`,border:`1px solid ${color}30`,minWidth:180}}>
       <div className="flex items-start gap-3 mb-3">
-        <span className="text-3xl">☁️</span>
+        <Cloud size={28} style={{color:'var(--t3)'}}/>
         <div><p className="text-3xl font-black text-white leading-none">+{resp.temp}°</p>
           <p className="text-xs mt-1" style={{color:'rgba(255,255,255,0.6)'}}>{resp.condition}</p></div>
       </div>
       <div className="flex gap-4">
-        <span className="text-xs" style={{color:'rgba(255,255,255,0.5)'}}>💨 {resp.wind} м/с</span>
-        <span className="text-xs" style={{color:'rgba(255,255,255,0.5)'}}>☁ {resp.cloud}%</span>
+        <span className="inline-flex items-center gap-1 text-xs" style={{color:'rgba(255,255,255,0.5)'}}><Wind size={11}/>{resp.wind} м/с</span>
+        <span className="inline-flex items-center gap-1 text-xs" style={{color:'rgba(255,255,255,0.5)'}}><Cloud size={11}/>{resp.cloud}%</span>
       </div>
     </div>
   );
@@ -217,11 +220,11 @@ export const HashInlineMenu = ({ query, onSelect, onClose }: { query: string, on
             className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/5"
             style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
             <div className="grid h-9 w-9 place-items-center rounded-xl text-xl shrink-0"
-              style={{background:`${bot.color}20`,border:`1px solid ${bot.color}35`}}>{bot.emoji}</div>
+              style={{background:`${bot.color}20`,border:`1px solid ${bot.color}35`}}><bot.Icon size={20} style={{color:bot.color}}/></div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <p className="text-sm font-semibold text-white">{bot.name}</p>
-                {bot.verified&&<span className="text-[11px]" style={{color:'#4e8cf7'}}>✓</span>}
+                {bot.verified&&<BadgeCheck size={12} style={{color:'#4e8cf7'}}/>}
                 <span className="ml-auto text-[10px] font-bold shrink-0" style={{color:bot.color}}>{bot.cat}</span>
               </div>
               <p className="text-xs truncate mt-0.5" style={{color:'rgba(255,255,255,0.45)'}}>{bot.username} · {bot.shortDesc}</p>
@@ -283,11 +286,11 @@ export const BotChatOverlay = ({ bot, onClose }: { bot: any, onClose: ()=>void }
         <div className="flex items-center gap-3 px-4 py-3 shrink-0"
           style={{borderBottom:'1px solid rgba(255,255,255,0.07)',background:'#111'}}>
           <div className="grid h-9 w-9 place-items-center rounded-xl text-xl shrink-0"
-            style={{background:`${bot.color}20`,border:`1px solid ${bot.color}35`}}>{bot.emoji}</div>
+            style={{background:`${bot.color}20`,border:`1px solid ${bot.color}35`}}><bot.Icon size={20} style={{color:bot.color}}/></div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               <p className="text-sm font-bold text-white">{bot.name}</p>
-              {bot.verified&&<span className="text-[11px]" style={{color:'#4e8cf7'}}>✓</span>}
+              {bot.verified&&<BadgeCheck size={12} style={{color:'#4e8cf7'}}/>}
             </div>
             <p className="text-[11px]" style={{color:'rgba(255,255,255,0.4)'}}>{bot.username} · бот</p>
           </div>
@@ -323,7 +326,7 @@ export const BotChatOverlay = ({ bot, onClose }: { bot: any, onClose: ()=>void }
           {msgs.map(msg=>msg.fromBot?(
             <div key={msg.id} className="flex items-end gap-2">
               <div className="grid h-7 w-7 place-items-center rounded-lg text-base shrink-0"
-                style={{background:`${bot.color}20`}}>{bot.emoji}</div>
+                style={{background:`${bot.color}20`}}><bot.Icon size={18} style={{color:bot.color}}/></div>
               <div className="flex flex-col gap-1">
                 <div className="rounded-2xl rounded-bl-sm overflow-hidden"
                   style={{background:'#1c1c28',border:'1px solid rgba(255,255,255,0.08)',
@@ -347,7 +350,7 @@ export const BotChatOverlay = ({ bot, onClose }: { bot: any, onClose: ()=>void }
           {loading&&(
             <div className="flex items-end gap-2">
               <div className="grid h-7 w-7 place-items-center rounded-lg text-base shrink-0"
-                style={{background:`${bot.color}20`}}>{bot.emoji}</div>
+                style={{background:`${bot.color}20`}}><bot.Icon size={18} style={{color:bot.color}}/></div>
               <div className="rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1.5 items-center"
                 style={{background:'#1c1c28',border:'1px solid rgba(255,255,255,0.08)'}}>
                 {[0,1,2].map(i=><div key={i} className="h-1.5 w-1.5 rounded-full animate-bounce"
@@ -427,11 +430,11 @@ export const BotsBrowser = ({ onClose }: { onClose: ()=>void }) => {
             className="flex w-full items-center gap-3 rounded-2xl p-4 text-left transition-colors hover:bg-white/5"
             style={{background:'var(--bg-l2)',border:'1px solid var(--border)'}}>
             <div className="grid h-12 w-12 place-items-center rounded-xl text-2xl shrink-0"
-              style={{background:`${bot.color}20`,border:`1px solid ${bot.color}35`}}>{bot.emoji}</div>
+              style={{background:`${bot.color}20`,border:`1px solid ${bot.color}35`}}><bot.Icon size={20} style={{color:bot.color}}/></div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 mb-0.5">
                 <p className="text-sm font-bold" style={{color:'var(--t1)'}}>{bot.name}</p>
-                {bot.verified&&<span className="text-[11px]" style={{color:'var(--accent)'}}>✓</span>}
+                {bot.verified&&<BadgeCheck size={12} style={{color:'var(--accent)'}}/>}
                 <span className="ml-auto text-[10px] font-bold shrink-0" style={{color:bot.color}}>{bot.cat}</span>
               </div>
               <p className="text-xs truncate mb-2" style={{color:'var(--t3)'}}>{bot.desc}</p>

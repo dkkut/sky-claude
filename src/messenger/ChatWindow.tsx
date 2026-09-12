@@ -7,7 +7,8 @@ import {
   Phone, Video, Search, MoreVertical, Paperclip, Mic, Square, Images, PawPrint, Gift, ShoppingCart,
   Send, X, Pencil, Trash2, Pin, Forward, Check, CheckCheck, FileText, Camera,
   ChevronDown, ChevronLeft, Flag, BellOff, Archive, UserMinus, UserPlus, Reply, Palette, Settings2, BarChart2, Crown,
-  Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield, LogOut, Eye, Download, MicOff,
+  Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield, LogOut, Eye, EyeOff, Download, MicOff,
+  AlertTriangle, Hand,
 } from 'lucide-react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { useModerationStore } from '@/shared/moderationStore';
@@ -651,7 +652,7 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
             <SelfDestructTimer msg={msg} fromMe={fromMe}/>
           )}
           <div className={`flex items-center gap-1 mt-1 ${fromMe ? 'justify-end' : 'justify-start'}`}>
-            {msg.isSilent && <span title="Тихое" style={{ fontSize:10, color:'var(--t2)' }}>🔕</span>}
+            {msg.isSilent && <BellOff size={10} style={{ color:'var(--t2)' }}/>}
             {msg.editedAt && <span className="text-[10px]" style={{ color: fromMe ? 'rgba(255,255,255,0.55)' : 'var(--t2)' }}>изм.</span>}
             {/* Охват записи канала: считает сервер, и считает разных
                 читателей, а не открытия. */}
@@ -1058,7 +1059,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
       const msg = sendMessage({ text: t, kind: 'text', ...extraFields });
       if (msg) {
         broadcast.message(msg);
-        // 🐾 Earn pet coins for chatting
+        // Монетки питомцу за переписку
         try {
           const _pc = JSON.parse(localStorage.getItem('sky:pet:coins:v1') || '{}');
           _pc[currentUserId ?? ''] = (_pc[currentUserId ?? ''] ?? 0) + 1;
@@ -1227,7 +1228,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
       <div className="text-center space-y-4">
         <div className="grid h-20 w-20 place-items-center rounded-full mx-auto"
           style={{ background: 'rgba(91,155,209,0.08)', border: '1px solid rgba(91,155,209,0.15)' }}>
-          <span style={{ fontSize: 36 }}>💬</span>
+          <MessagesSquare size={34} style={{ color:'var(--t3)' }}/>
         </div>
         <div>
           <p className="text-base font-semibold" style={{ color: 'var(--t1)' }}>Sky Messenger</p>
@@ -1758,7 +1759,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
               style={{ background:'rgba(245,158,11,0.07)', border:'1px solid rgba(245,158,11,0.22)' }}>
               <div className="px-4 py-3">
                 <div className="flex items-start gap-2.5 mb-2.5">
-                  <span className="text-lg shrink-0 mt-0.5">⚠️</span>
+                  <AlertTriangle size={17} className="shrink-0 mt-0.5" style={{ color:'var(--amber)' }}/>
                   <div>
                     <p className="text-xs font-bold" style={{ color:'var(--amber)' }}>Незнакомый пользователь</p>
                     <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color:'rgba(245,158,11,0.65)' }}>
@@ -1771,13 +1772,13 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                     onClick={() => addReport({ chatId:activeChatId??'', messageId:messages.filter(m=>m.chatId===activeChatId&&!m.fromMe)[0]?.id??'', reporterId:myId??'', reportedId:peerId??'', reason:'Мошенничество', comment:'Незнакомый пользователь' })}
                     className="flex-1 rounded-xl py-2 text-[11px] font-bold"
                     style={{ background:'rgba(245,158,11,0.15)', color:'var(--amber)', border:'1px solid rgba(245,158,11,0.3)' }}>
-                    🚩 Пожаловаться
+                    <Flag size={13} className="inline mr-1.5"/>Пожаловаться
                   </button>
                   <button type="button"
                     onClick={() => (isBlocked ? unblockChatUser(peerId ?? '') : blockChatUser(peerId ?? ''))}
                     className="flex-1 rounded-xl py-2 text-[11px] font-bold"
                     style={{ background:'rgba(239,68,68,0.1)', color:'var(--red)', border:'1px solid rgba(239,68,68,0.2)' }}>
-                    🚫 Заблокировать
+                    <Ban size={13} className="inline mr-1.5"/>Заблокировать
                   </button>
                 </div>
               </div>
@@ -1788,7 +1789,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
         {filteredMsgs.length === 0 && !searchQ && searchFilter === 'all' && (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
-              <p className="text-3xl opacity-20 mb-2">👋</p>
+              <Hand size={28} className="mx-auto opacity-20 mb-2" style={{ color:'var(--t3)' }}/>
               <p className="text-sm" style={{ color: 'var(--t2)' }}>Напишите первым</p>
             </div>
           </div>
@@ -2012,7 +2013,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
             style={{ borderColor: theme.border, background: theme.panel }}>
             <div className="flex-1 border-l-2 pl-3 min-w-0" style={{ borderColor: theme.accent }}>
               <p className="text-xs font-semibold" style={{ color: theme.accent }}>
-                {editMsg ? '✏️ Редактирование' : `↩ ${replyMsg?.fromMe ? 'Вы' : nameOf(replyMsg?.authorId)}`}
+                {editMsg ? 'Редактирование' : `Ответ: ${replyMsg?.fromMe ? 'Вы' : nameOf(replyMsg?.authorId)}`}
               </p>
               <p className="text-xs truncate mt-0.5" style={{ color: 'var(--t2)' }}>
                 {editMsg?.text ?? replyMsg?.text}
@@ -2344,9 +2345,9 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     {(msgOptions.once||msgOptions.spoiler||msgOptions.silent||msgOptions.selfDestruct>0) && (
       <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 rounded-full px-3 py-1 pointer-events-none"
         style={{ background:'rgba(91,155,209,0.15)', border:'1px solid rgba(91,155,209,0.3)' }}>
-        {msgOptions.once    && <span className="text-[10px]" style={{ color:theme.accent }}>👁 Однократно</span>}
-        {msgOptions.spoiler && <span className="text-[10px]" style={{ color:theme.accent }}>🙈 Спойлер</span>}
-        {msgOptions.silent  && <span className="text-[10px]" style={{ color:theme.accent }}>🔕 Тихо</span>}
+        {msgOptions.once    && <span className="inline-flex items-center gap-1 text-[10px]" style={{ color:theme.accent }}><Eye size={10}/>Однократно</span>}
+        {msgOptions.spoiler && <span className="inline-flex items-center gap-1 text-[10px]" style={{ color:theme.accent }}><EyeOff size={10}/>Спойлер</span>}
+        {msgOptions.silent  && <span className="inline-flex items-center gap-1 text-[10px]" style={{ color:theme.accent }}><BellOff size={10}/>Тихо</span>}
         {msgOptions.selfDestruct>0 && <span className="text-[10px]" style={{ color:'var(--amber)' }}>⏱ {msgOptions.selfDestruct}с</span>}
       </div>
     )}

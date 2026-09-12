@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Plus, Trash2, Play, Code2, ChevronLeft, Settings, Check, X } from 'lucide-react';
+import { Bot, Plus, Trash2, Play, Code2, ChevronLeft, Settings, Check, X, Lock } from 'lucide-react';
 
 const BOT_KEY = 'sky:my_bots:v1';
 const getMyBots = (): any[] => { try { return JSON.parse(localStorage.getItem(BOT_KEY)||'[]'); } catch { return []; } };
@@ -70,7 +70,7 @@ export const BotCreatorPanel = () => {
     const b = { id: editBot?.id || 'b_'+Date.now(), ...form, name: form.name.trim(), active: true, created: new Date().toLocaleDateString('ru') };
     const upd = editBot ? bots.map(x => x.id===editBot.id ? b : x) : [b, ...bots];
     setBots(upd); saveMyBots(upd);
-    setSM('✓ Сохранено'); setTimeout(() => { setView('list'); setSM(''); setEB(null); setForm(EMPTY_FORM); }, 700);
+    setSM('Сохранено'); setTimeout(() => { setView('list'); setSM(''); setEB(null); setForm(EMPTY_FORM); }, 700);
   };
 
   const del = (id: string) => { const u = bots.filter(b => b.id!==id); setBots(u); saveMyBots(u); };
@@ -201,8 +201,8 @@ export const BotCreatorPanel = () => {
               style={{color:'#e5e7eb',tabSize:2}}/>
           </div>
         </div>
-        {saveMsg && <div className="rounded-xl px-4 py-3" style={{background:saveMsg.startsWith('✓')?'rgba(0,200,90,0.08)':'rgba(244,63,94,0.08)',border:`1px solid ${saveMsg.startsWith('✓')?'rgba(0,200,90,0.2)':'rgba(244,63,94,0.2)'}`}}>
-          <p className="text-sm" style={{color:saveMsg.startsWith('✓')?'var(--green)':'var(--red)'}}>{saveMsg}</p>
+        {saveMsg && <div className="rounded-xl px-4 py-3" style={{background:saveMsg==='Сохранено'?'rgba(0,200,90,0.08)':'rgba(244,63,94,0.08)',border:`1px solid ${saveMsg==='Сохранено'?'rgba(0,200,90,0.2)':'rgba(244,63,94,0.2)'}`}}>
+          <p className="text-sm" style={{color:saveMsg==='Сохранено'?'var(--green)':'var(--red)'}}>{saveMsg}</p>
         </div>}
       </div>
     </div>
@@ -222,7 +222,7 @@ export const BotCreatorPanel = () => {
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3" style={{scrollbarWidth:'none'}}>
         <div className="rounded-2xl px-4 py-3" style={{background:'rgba(245,158,11,0.06)',border:'1px solid rgba(245,158,11,0.15)'}}>
           <div className="flex items-start gap-3">
-            <span className="text-base shrink-0">🔒</span>
+            <Lock size={15} className="shrink-0" style={{color:'var(--t3)'}}/>
             <div><p className="text-xs font-bold mb-1" style={{color:'var(--amber)'}}>Web Worker Sandbox</p>
               <p className="text-xs leading-relaxed" style={{color:'var(--t3)'}}>Код выполняется изолированно — без доступа к сети, DOM или файловой системе. Таймаут 3 секунды.</p>
             </div>
@@ -230,7 +230,7 @@ export const BotCreatorPanel = () => {
         </div>
         {bots.length === 0 ? (
           <div className="grid place-items-center h-40 text-center">
-            <div><p className="text-4xl mb-3">🤖</p>
+            <div><Bot size={36} className="mx-auto mb-3" style={{color:'var(--t3)'}}/>
               <p className="text-sm font-semibold mb-1" style={{color:'var(--t2)'}}>Нет ботов</p>
               <p className="text-xs" style={{color:'var(--t3)'}}>Создайте первого бота на JavaScript</p>
             </div>
