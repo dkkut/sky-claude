@@ -1,4 +1,4 @@
-import { Gamepad2, Play, CircleDot, Sparkles, EyeOff, Music2, Film } from 'lucide-react';
+import { Gamepad2, Play, CircleDot, Sparkles, EyeOff, Music2, Film, Camera} from 'lucide-react';
 import { fmtAgo } from '@/bloom/store';
 import { SectionHead } from './Head';
 import type { ProfileData } from '../useProfileData';
@@ -96,7 +96,9 @@ export const ActivitySection = ({ data }: { data: ProfileData }) => {
             <div className="space-y-2">
               {recentPosts.map(p => (
                 <div key={p.id} className="px-3 py-2.5 rounded-xl" style={{ background: 'var(--bg-l2)' }}>
-                  <p className="text-sm line-clamp-2" style={{ color: 'var(--t1)' }}>{p.text || '📷 медиа-публикация'}</p>
+                  <p className="flex items-center gap-1.5 text-sm line-clamp-2" style={{ color: 'var(--t1)' }}>
+                {p.text || <><Camera size={13}/> медиа-публикация</>}
+              </p>
                   <div className="text-[11px] mt-1" style={{ color: 'var(--t3)' }}>{fmtAgo(p.createdAt)}</div>
                 </div>
               ))}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Plus, Users, Clock, Radio } from 'lucide-react';
+import { Search, Plus, Users, Clock, Radio, Mic } from 'lucide-react';
 import { useVoicePartyStore } from '../store';
 import { CATEGORY_LABEL, CATEGORY_ICON } from '../types';
 import type { VPCategory, VPRoom } from '../types';
@@ -52,7 +52,9 @@ export const RoomsList = ({ onOpenRoom, onCreate }: { onOpenRoom: (id: string) =
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="shrink-0 px-4 pt-4 pb-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-black" style={{ color: 'var(--t1)' }}>🎙️ Voice Party</h2>
+          <h2 className="flex items-center gap-2 text-lg font-black" style={{ color: 'var(--t1)' }}>
+            <Mic size={18}/> Voice Party
+          </h2>
           <motion.button type="button" whileTap={{ scale: 0.94 }} onClick={onCreate}
             className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-bold text-white" style={{ background: 'var(--accent)' }}>
             <Plus size={14}/>Комната
@@ -69,7 +71,10 @@ export const RoomsList = ({ onOpenRoom, onCreate }: { onOpenRoom: (id: string) =
         {results ? (
           <div className="space-y-2">
             {results.length === 0 ? (
-              <div className="sky-empty py-10"><div className="sky-empty-icon">🔍</div><p style={{ color: 'var(--t2)' }}>Ничего не найдено</p></div>
+              <div className="sky-empty py-10">
+                <div className="sky-empty-icon"><Search size={30}/></div>
+                <p style={{ color: 'var(--t2)' }}>Ничего не найдено</p>
+              </div>
             ) : results.map(r => <RoomCard key={r.id} r={r}/>)}
           </div>
         ) : (
@@ -98,7 +103,7 @@ export const RoomsList = ({ onOpenRoom, onCreate }: { onOpenRoom: (id: string) =
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--t3)' }}>{cat ? CATEGORY_LABEL[cat] : 'Сейчас в эфире'}</p>
               {live.length === 0 ? (
                 <div className="sky-empty py-8">
-                  <div className="sky-empty-icon">🎙️</div>
+                  <div className="sky-empty-icon"><Mic size={30}/></div>
                   <p style={{ color: 'var(--t2)' }}>Пока нет активных комнат</p>
                   <button type="button" onClick={onCreate} className="sky-btn-primary mt-2 px-5 py-2.5">Создать комнату</button>
                 </div>

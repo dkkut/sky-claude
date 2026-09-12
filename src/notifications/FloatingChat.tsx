@@ -11,7 +11,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence }                  from 'framer-motion';
-import { X, Minus, Send, MessageCircle }            from 'lucide-react';
+import { X, Minus, Send, MessageCircle, Camera, Mic, Paperclip, Check, CheckCheck } from 'lucide-react';
 import { useFloatingChatStore, FloatingChatEntry }  from './floatingChatStore';
 import { useMessengerStore }                        from '@/messenger/store';
 import { useAuthStore }                             from '@/core/auth/store';
@@ -231,14 +231,16 @@ const FloatingChat = ({ entry, index }: FloatingChatProps) => {
                         wordBreak: 'break-word',
                       }}>
                       {msg.kind === 'text'  ? msg.text :
-                       msg.kind === 'photo' ? '📷 Фото' :
-                       msg.kind === 'voice' ? '🎤 Голосовое' :
-                       msg.kind === 'file'  ? `📎 ${msg.fileName ?? 'Файл'}` :
+                       msg.kind === 'photo' ? <span className="inline-flex items-center gap-1.5"><Camera size={13}/> Фото</span> :
+                       msg.kind === 'voice' ? <span className="inline-flex items-center gap-1.5"><Mic size={13}/> Голосовое</span> :
+                       msg.kind === 'file'  ? <span className="inline-flex items-center gap-1.5"><Paperclip size={13}/> {msg.fileName ?? 'Файл'}</span> :
                        msg.text ?? ''}
                     </div>
                     <p className="text-[9px] mt-0.5 px-1" style={{ color: 'var(--t3)' }}>
                       {fmtTime(msg.timestamp)}
-                      {isMe && (msg.status === 'read' ? ' ✓✓' : ' ✓')}
+                      {isMe && (msg.status === 'read'
+                        ? <CheckCheck size={10} className="inline-block ml-0.5 -mt-0.5"/>
+                        : <Check size={10} className="inline-block ml-0.5 -mt-0.5"/>)}
                     </p>
                   </motion.div>
                 );

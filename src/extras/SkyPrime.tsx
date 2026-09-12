@@ -124,7 +124,9 @@ const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
               <div className={isMobile ? 'space-y-2' : 'space-y-2.5'}>
                 {REWARDS.map(r => (
                   <div key={r.id} className={isMobile ? 'flex items-center gap-2.5 rounded-xl p-2.5' : 'flex items-center gap-3 rounded-2xl p-3'} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                    <div className={isMobile ? 'grid h-9 w-9 shrink-0 place-items-center rounded-lg text-lg' : 'grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl'} style={{ background: 'rgba(255,255,255,0.05)' }}>{r.icon}</div>
+                    <div className={isMobile ? 'grid h-9 w-9 shrink-0 place-items-center rounded-lg' : 'grid h-11 w-11 shrink-0 place-items-center rounded-xl'} style={{ background: 'rgba(255,255,255,0.05)' }}>
+                      <r.Icon size={isMobile ? 17 : 20} style={{ color: 'var(--amber)' }}/>
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] font-bold text-white">{r.title}</p>
                       <p className="truncate text-[11px]" style={{ color: 'var(--t3)' }}>{r.desc}</p>

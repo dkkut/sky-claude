@@ -8,8 +8,7 @@ import {
   Upload, Music2, Film, Mic2, TrendingUp, DollarSign, BarChart3,
   Users, Eye, ChevronRight, X, Check, Edit3, Trash2, Globe, Lock,
   AlertCircle, ArrowUpRight, ArrowDownRight, CreditCard, Wallet,
-  Plus, RefreshCw, Settings, Sparkles, Star, Heart,
-} from 'lucide-react';
+  Plus, RefreshCw, Settings, Sparkles, Star, Heart, Image as ImageIcon} from 'lucide-react';
 import { useMonetizationStore, type RevenueEntry } from './monetizationStore';
 import { useAuthStore } from '@/core/auth/store';
 import { useVideoStore } from '@/video/store';
@@ -179,7 +178,9 @@ const UploadForm = ({ onDone }:{ onDone:()=>void }) => {
           <button type="button" onClick={()=>coverRef.current?.click()}
             className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-semibold transition-colors"
             style={{ background:V.bg2, border:`1px solid ${V.border}`, color:V.t2 }}>
-            🖼 {cover?'✅ Обложка':'Добавить обложку'}
+            {cover
+              ? <><Check size={15} style={{ color:'var(--green)' }}/> Обложка</>
+              : <><ImageIcon size={15}/> Добавить обложку</>}
           </button>
           {cover&&<img src={cover} alt="" className="h-10 w-10 rounded-xl object-cover"/>}
         </div>

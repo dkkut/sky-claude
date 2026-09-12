@@ -4,7 +4,7 @@
 =============================================================== */
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Eye, EyeOff, Timer, BarChart2, Check, Clock, Send, X, Plus, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Timer, BarChart2, Check, Clock, Send, X, Plus, Trash2, BellOff } from 'lucide-react';
 import { useMessengerStore } from './store';
 import { useAuthStore } from '@/core/auth/store';
 import type { MessageItem } from './types';
@@ -250,10 +250,10 @@ export const MsgOptionsPanel = ({ options, onChange, onClose }: MsgOptionsProps)
 
       {/* Toggle rows */}
       {([
-        { key:'once',    icon:'👁',  label:'Однократный просмотр', sub:'Удалится после прочтения' },
-        { key:'spoiler', icon:'🙈',  label:'Спойлер',              sub:'Текст скрыт до нажатия'  },
-        { key:'silent',  icon:'🔕',  label:'Без звука',            sub:'Получатель не услышит'   },
-      ] as const).map(({ key, icon, label, sub }) => (
+        { key:'once',    Icon:Eye,      label:'Однократный просмотр', sub:'Удалится после прочтения' },
+        { key:'spoiler', Icon:EyeOff,   label:'Спойлер',              sub:'Текст скрыт до нажатия'  },
+        { key:'silent',  Icon:BellOff,  label:'Без звука',            sub:'Получатель не услышит'   },
+      ] as const).map(({ key, Icon, label, sub }) => (
         <button key={key} type="button"
           onClick={() => set({ [key]: !options[key] } as any)}
           className="flex items-center gap-3 w-full rounded-xl px-3 py-2.5 mb-1.5 transition-all"
@@ -261,7 +261,7 @@ export const MsgOptionsPanel = ({ options, onChange, onClose }: MsgOptionsProps)
             background: options[key] ? `${C.accent}15` : 'rgba(255,255,255,0.04)',
             border: `1px solid ${options[key] ? C.accent+'40' : 'transparent'}`,
           }}>
-          <span className="text-base">{icon}</span>
+          <Icon size={15} style={{ color: options[key] ? C.accent : C.t2 }}/>
           <div className="flex-1 text-left">
             <p className="text-xs font-semibold" style={{ color: options[key] ? C.accent : C.t1 }}>{label}</p>
             <p className="text-[10px]" style={{ color: C.t3 }}>{sub}</p>
@@ -278,7 +278,7 @@ export const MsgOptionsPanel = ({ options, onChange, onClose }: MsgOptionsProps)
       <div className="mt-1.5">
         <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5 px-1"
           style={{ color:C.t3 }}>
-          ⏱ Самоудаление
+          <span className="inline-flex items-center gap-1"><Timer size={11}/> Самоудаление</span>
         </p>
         <div className="flex flex-wrap gap-1.5">
           {TIMERS.map(t => (

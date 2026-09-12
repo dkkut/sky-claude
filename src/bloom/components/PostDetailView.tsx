@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Flower2 } from 'lucide-react';
 import { useBloomStore } from '../store';
 import { PostCard } from './PostCard';
 
@@ -30,7 +30,7 @@ export const PostDetailView = ({ postId, onClose, onAuthorClick, onTagClick }: {
           <PostCard post={post} onAuthorClick={onAuthorClick} onTagClick={onTagClick}/>
         ) : (
           <div className="sky-empty">
-            <div className="sky-empty-icon">🌸</div>
+            <div className="sky-empty-icon"><Flower2 size={30}/></div>
             <p style={{ color: 'var(--t2)' }}>Пост не найден или был удалён</p>
           </div>
         )}

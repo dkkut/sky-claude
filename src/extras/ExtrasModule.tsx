@@ -1,4 +1,4 @@
-import { Home, BookOpen, Briefcase, Building2, Ban, Bug, Calendar, Check, CheckCircle, ChevronLeft, Clock, Cloud, Crown, Film, Flag, Gamepad2, Gem, Heart, Inbox, Lightbulb, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MicOff, MoreHorizontal, Music2, Pause, PenLine, Play, Plus, QrCode, Scale, Send, Shield, ShoppingCart, Snowflake, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, XCircle, Zap, Bot } from 'lucide-react';
+import { Home, BookOpen, Briefcase, Building2, Ban, Bug, Calendar, Check, CheckCircle, ChevronLeft, Clock, Cloud, Crown, Film, Flag, Gamepad2, Gem, Heart, Inbox, Lightbulb, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MicOff, MoreHorizontal, Music2, Pause, PenLine, Play, Plus, QrCode, Scale, Send, Shield, ShoppingCart, Snowflake, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, XCircle, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
 import { BotsBrowser, HashInlineMenu, BotChatOverlay, BOTS_REGISTRY } from '@/bots/SkyBots';
 import { BotCreatorPanel } from '@/bots/BotCreator';
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
@@ -448,7 +448,7 @@ const AdminContentTab = ({ tracks, approveTrack, rejectTrack }: {
                         <div className="flex gap-1.5 mt-1 flex-wrap">
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                             style={{background:'rgba(245,158,11,0.12)',color:'#f59e0b'}}>
-                            ⏳ На модерации
+                            <span className="inline-flex items-center gap-1"><Clock size={9}/> На модерации</span>
                           </span>
                           {hasSynced && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
@@ -475,7 +475,9 @@ const AdminContentTab = ({ tracks, approveTrack, rejectTrack }: {
                           onClick={() => setExpandId(expandId === t.id ? null : t.id)}
                           className="rounded-xl px-3 py-1.5 text-xs font-bold"
                           style={{background:'rgba(255,255,255,0.05)',color:'var(--t3)',border:'1px solid var(--border)',cursor:'pointer'}}>
-                          {isExp ? '▲ Скрыть' : '▼ Просмотр'}
+                          <span className="inline-flex items-center gap-1">
+                            {isExp ? <><ChevronUp size={12}/> Скрыть</> : <><ChevronDown size={12}/> Просмотр</>}
+                          </span>
                         </button>
                       </div>
                     </div>

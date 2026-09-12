@@ -9,21 +9,23 @@
    из завершения доставки Sky Courier), а не только из компонентов.
 =========================================================== */
 import { useMoney } from '@/wallet/store';
+import { Ticket, Banknote, Headphones, Zap, Gift } from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
 import { useAuthStore } from '@/core/auth/store';
 
 export type PrimeTier = 'silver' | 'gold' | 'platinum' | 'diamond';
 
 export interface Reward {
-  id: string; title: string; desc: string; cost: number; icon: string;
+  id: string; title: string; desc: string; cost: number; Icon: IconComponent;
   kind: 'discount'|'cashback'|'freebie'|'boost';
 }
 
 export const REWARDS: Reward[] = [
-  { id:'delivery_free',title:'Бесплатная доставка',    desc:'Sky Market — до 150 ₽ компенсации', cost:1200, icon:'🎟️', kind:'freebie' },
-  { id:'cashback5',title:'+5% кэшбек на неделю',       desc:'На все покупки в Sky Market',    cost:600,  icon:'💸', kind:'cashback' },
-  { id:'music_ad', title:'Месяц Sky Music без рекламы',desc:'Уже включено в Prime',           cost:400,  icon:'🎧', kind:'freebie' },
-  { id:'boost',    title:'Буст доставки x2',           desc:'Приоритет у курьеров на 24ч',    cost:500,  icon:'⚡', kind:'boost' },
-  { id:'giftcert', title:'Сертификат 200 ₽',           desc:'На баланс Sky Money',            cost:2000, icon:'🎁', kind:'freebie' },
+  { id:'delivery_free',title:'Бесплатная доставка',    desc:'Sky Market — до 150 ₽ компенсации', cost:1200, Icon:Ticket, kind:'freebie' },
+  { id:'cashback5',title:'+5% кэшбек на неделю',       desc:'На все покупки в Sky Market',    cost:600,  Icon:Banknote, kind:'cashback' },
+  { id:'music_ad', title:'Месяц Sky Music без рекламы',desc:'Уже включено в Prime',           cost:400,  Icon:Headphones, kind:'freebie' },
+  { id:'boost',    title:'Буст доставки x2',           desc:'Приоритет у курьеров на 24ч',    cost:500,  Icon:Zap, kind:'boost' },
+  { id:'giftcert', title:'Сертификат 200 ₽',           desc:'На баланс Sky Money',            cost:2000, Icon:Gift, kind:'freebie' },
 ];
 
 const TIERS: { key: PrimeTier; label: string; min: number; color: string }[] = [

@@ -11,7 +11,7 @@
 ================================================================ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Music2, Headphones, Users, Mic2, Edit3, Check, Loader } from 'lucide-react';
+import { Music2, Headphones, Users, Mic2, Edit3, Check, Loader, Play} from 'lucide-react';
 import { useMusicStore } from '@/music/serverStore';
 import {
   apiMyArtist, apiSaveArtist, apiFollowing, type ServerArtist,
@@ -215,7 +215,7 @@ export const MusicianProfileTab = ({
             </p>
           </div>
           <span className="shrink-0 text-[11px]" style={{ color: YM.t3 }}>
-            {playing && activeId === t.id ? '▶' : ''}
+            {playing && activeId === t.id ? <Play size={11} fill="currentColor"/> : null}
           </span>
         </button>
       ))}

@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Edit, X, Check, Pin, BellOff, Bell, Archive, ArchiveRestore, Users, Hash, UserPlus,
-  ChevronRight, CheckCheck, Star, Shield, Trash2, MessageSquareDot } from 'lucide-react';
+  ChevronRight, CheckCheck, Star, Shield, Trash2, MessageSquareDot, Ban} from 'lucide-react';
 import { BannerAd } from '@/ads/AdBlocks';
 import { useMessengerStore } from './store';
 import { broadcast } from './socket';
@@ -62,7 +62,7 @@ const preview = (msg?: MessageItem): string => {
   if (msg.deleted) return 'Сообщение удалено';
   if (msg.kind === 'photo') return 'Фото';
   if (msg.kind === 'voice') return 'Голосовое';
-  if (msg.kind === 'video-note') return '⭕ Видеосообщение';
+  if (msg.kind === 'video-note') return 'Видеосообщение';
   if (msg.kind === 'file') return msg.fileName ?? 'Файл';
   if (msg.kind === 'pet') return 'Питомец';
   if (msg.kind === 'system') return msg.text;
@@ -717,7 +717,9 @@ export const ChatList = () => {
                     {peerId && gamingActivity[peerId]?.isPlaying ? (
                       <>Играет в {gamingActivity[peerId]!.gameIcon} {gamingActivity[peerId]!.gameName}</>
                     ) : chat.type === 'channel' && isChannelBlocked('messenger-channel', chat.id) ? (
-                      <span style={{ color: '#ef4444' }}>🚫 Канал заблокирован модерацией</span>
+                      <span className="inline-flex items-center gap-1" style={{ color: '#ef4444' }}>
+                        <Ban size={11}/> Канал заблокирован модерацией
+                      </span>
                     ) : (
                       <>
                         {last?.fromMe && last.kind !== 'system' && (

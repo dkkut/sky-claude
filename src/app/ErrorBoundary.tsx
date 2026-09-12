@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle } from 'lucide-react';
 
 interface EBState { hasError: boolean; error: Error | null; }
 
@@ -20,7 +21,7 @@ export class ErrorBoundary extends React.Component<
           justifyContent: 'center', height: '100%', gap: 16, padding: 32,
           background: 'var(--bg-l1)', color: 'var(--t1)',
         }}>
-          <div style={{ fontSize: 40 }}>⚠️</div>
+          <AlertTriangle size={40} style={{ color: 'var(--amber)' }}/>
           <p style={{ fontWeight: 700, fontSize: 16 }}>Что-то пошло не так</p>
           <p style={{ color: 'var(--t2)', fontSize: 13, textAlign: 'center', maxWidth: 320 }}>
             {this.state.error?.message ?? 'Неизвестная ошибка'}

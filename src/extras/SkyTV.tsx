@@ -298,7 +298,9 @@ export const SkyTV = () => {
               color: category === t ? '#fff' : C.t3,
               border: `1px solid ${category === t ? 'transparent' : C.border}`,
             }}>
-            {t === 'Избранное' ? '★ Избранное' : t}
+            {t === 'Избранное'
+                ? <span className="inline-flex items-center gap-1"><Star size={11} fill="currentColor"/> Избранное</span>
+                : t}
           </button>
         ))}
         <span className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[10px]"

@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, SkipForward } from 'lucide-react';
+import { Play, Pause, SkipForward, Music2} from 'lucide-react';
 import { usePlayerStore } from '@/player/playerStore';
 import { haptic } from './haptics';
 
@@ -19,7 +19,7 @@ export const MobileMiniPlayer = ({ onOpen }: { onOpen: () => void }) => {
           </div>
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white"
             style={{ background: item.coverUrl ? `url(${item.coverUrl}) center/cover` : `hsl(${item.hue ?? 210},60%,40%)` }}>
-            {!item.coverUrl && '🎵'}
+            {!item.coverUrl && <Music2 size={16} style={{ color: 'rgba(255,255,255,0.55)' }}/>}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[12.5px] font-bold" style={{ color: 'var(--t1)' }}>{item.title}</p>

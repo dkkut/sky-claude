@@ -18,6 +18,7 @@ import {
   Bell, Check, X, Crown, CalendarDays, Siren, Lock, Unlock, LogOut,
   Banknote, ShieldCheck, Plane, Trophy, Gem, Zap, Dot, Cake, Receipt, Target as Goal,
   Umbrella, Gamepad2, Car, Laptop, Guitar, Smartphone, Bike, GraduationCap,
+  Hourglass,
 } from 'lucide-react';
 
 const MAP: Record<string, typeof Home> = {
@@ -49,6 +50,7 @@ const MAP: Record<string, typeof Home> = {
   birthday: Cake,
   bill: Receipt,
   goalGive: Goal,
+  capsule: Hourglass,
   // Виды семейных целей — их человек выбирает сам при создании.
   beach: Umbrella,
   game: Gamepad2,

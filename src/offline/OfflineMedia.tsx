@@ -116,7 +116,7 @@ const OfflineMusic = () => {
         <Download size={40} style={{ color: C.t2 }} />
         <p className="text-sm font-semibold" style={{ color: C.t2 }}>Нет скачанных треков</p>
         <p className="text-xs text-center leading-relaxed px-6" style={{ color: C.t3 }}>
-          В онлайн-режиме нажмите «⬇» рядом с треком, чтобы скачать его для офлайн
+          В онлайн-режиме нажмите «Скачать» рядом с треком, чтобы слушать его без сети
         </p>
       </div>
     );
@@ -278,7 +278,7 @@ const OfflineFilms = () => {
         <Download size={40} style={{ color: C.t2 }} />
         <p className="text-sm font-semibold" style={{ color: C.t2 }}>Нет скачанных фильмов</p>
         <p className="text-xs text-center leading-relaxed" style={{ color: C.t3 }}>
-          В онлайн-режиме нажмите «⬇» рядом с фильмом для скачивания
+          В онлайн-режиме нажмите «Скачать» рядом с фильмом
         </p>
       </div>
     );

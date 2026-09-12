@@ -1,4 +1,4 @@
-import { Music2 } from 'lucide-react';
+import { Music2, CloudSun } from 'lucide-react';
 import { useBloomStore } from '../store';
 import { useAuthStore } from '@/core/auth/store';
 import { usePlayerStore } from '@/player/playerStore';
@@ -7,7 +7,7 @@ import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { Av } from './Primitives';
 
 /* Детерминированный «прогноз» и курсы — стабильны в рамках сессии, без внешних вызовов */
-const WEATHER = { icon: '🌤️', temp: '+18°', city: 'Sky City' };
+const WEATHER = { Icon: CloudSun, temp: '+18°', city: 'Sky City' };
 const CURRENCY = [
   { c: 'USD', d: '+0.4%', up: true },
   { c: 'EUR', d: '-0.2%', up: false },
@@ -44,7 +44,7 @@ export const FeedWidgets = () => {
 
         <Widget minWidth={mw(110)} compact={isMobile}>
           <WLabel>Погода</WLabel>
-          <p className="text-base leading-none">{WEATHER.icon}</p>
+          <WEATHER.Icon size={16} style={{ color: 'var(--t2)' }}/>
           <p className="mt-1 text-sm font-extrabold" style={{ color: 'var(--t1)' }}>{WEATHER.temp}</p>
           <p className="text-[9px]" style={{ color: 'var(--t3)' }}>{WEATHER.city}</p>
         </Widget>

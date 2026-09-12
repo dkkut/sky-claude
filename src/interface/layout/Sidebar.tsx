@@ -1,8 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, MessageSquare, Bell, Layers, Swords, Radio, User, PlaySquare,
-  Library, Briefcase,
-} from 'lucide-react';
+  Library, Briefcase, Crown} from 'lucide-react';
 import { useModuleStore }  from '@/data/state/modules';
 import { useAuthStore }    from '@/core/auth/store';
 import { useNotifStore }   from '@/notifications/store';
@@ -172,10 +171,8 @@ export const Sidebar = () => {
         }}>
         {initials}
         {isPrime && (
-          <span
-            className="absolute -top-1 -right-1 text-[8px] leading-none"
-            title="Prime">
-            👑
+          <span className="absolute -top-1 -right-1 leading-none" title="Prime">
+            <Crown size={10} style={{ color: 'var(--amber)' }} fill="currentColor"/>
           </span>
         )}
       </motion.button>

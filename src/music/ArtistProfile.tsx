@@ -220,7 +220,7 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
                           )}
                         </div>
                         <p className="text-xs font-semibold text-white truncate">{t.title}</p>
-                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{fmtPlays(t.plays)} ▶</p>
+                        <p className="flex items-center gap-1 text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}><Play size={9} fill="currentColor"/> {fmtPlays(t.plays)}</p>
                       </motion.div>
                     );
                   })}

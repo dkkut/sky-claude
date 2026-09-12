@@ -19,10 +19,10 @@ export const ACCENT_COLORS: Record<AccentColor, { hex: string; bg: string; label
   red:    { hex: '#ef4444', bg: 'rgba(239,68,68,0.12)',   label: 'Красный'   },
 };
 
-export const THEME_MODES: Record<ThemeMode, { bg: string; l1: string; l2: string; l3: string; label: string; icon: string }> = {
-  dark:   { bg:'#111113', l1:'#161618', l2:'#1c1c1f', l3:'#222226', label:'Тёмная',  icon:'🌙' },
-  amoled: { bg:'#000000', l1:'#0a0a0a', l2:'#111111', l3:'#161616', label:'AMOLED',  icon:'⚫' },
-  dim:    { bg:'#1a1c21', l1:'#1f2128', l2:'#262830', l3:'#2d2f38', label:'Dim',     icon:'🌫' },
+export const THEME_MODES: Record<ThemeMode, { bg: string; l1: string; l2: string; l3: string; label: string }> = {
+  dark:   { bg:'#111113', l1:'#161618', l2:'#1c1c1f', l3:'#222226', label:'Тёмная' },
+  amoled: { bg:'#000000', l1:'#0a0a0a', l2:'#111111', l3:'#161616', label:'AMOLED' },
+  dim:    { bg:'#1a1c21', l1:'#1f2128', l2:'#262830', l3:'#2d2f38', label:'Dim' },
 };
 
 export const FONT_SIZES: Record<FontSize, { size: string; label: string }> = {

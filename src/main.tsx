@@ -131,10 +131,8 @@ const SplashCloud = ({ waving }: { waving: boolean }) => {
           display: waving ? 'block' : 'none',
         }}>
           <ellipse cx="80" cy="52" rx="8" ry="7" fill="url(#cg)" opacity="0.95"/>
-          <text x="76" y="48" fontSize="13" textAnchor="middle"
-            style={{ userSelect:'none', pointerEvents:'none' }}>
-            {'👋'}
-          </text>
+          <path d="M74 44v5m2.5-6v6m2.5-5v5" stroke="#fff" strokeWidth="1.4"
+            strokeLinecap="round" fill="none" opacity="0.9"/>
         </g>
 
         {/* Sky brand tag */}
@@ -403,7 +401,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         height: '100dvh', gap: 16, padding: 32, background: 'var(--bg)', color: 'var(--t1)',
       }}>
-        <div style={{ fontSize: 40 }}>⚠️</div>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--amber, #f59e0b)' }}>
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>
+          <path d="M12 9v4"/><path d="M12 17h.01"/>
+        </svg>
         <p style={{ fontWeight: 700, fontSize: 16 }}>Что-то пошло не так</p>
         <p style={{ color: 'var(--t2)', fontSize: 13, textAlign: 'center', maxWidth: 320 }}>
           Приложению нужна перезагрузка. Ваши данные сохранены.

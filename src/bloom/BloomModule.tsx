@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Clock, Bookmark, User, Search, Hash, Plus, X, Flower2, Bell } from 'lucide-react';
+import { Sparkles, Clock, Bookmark, User, Search, Hash, Plus, X, Flower2, Bell, PenLine } from 'lucide-react';
 import { FeedAd } from '@/ads/AdBlocks';
 import { useBloomStore, type FeedTab } from './store';
 import { useAuthStore } from '@/core/auth/store';
@@ -139,7 +139,10 @@ export const BloomModule = () => {
             {feedPosts.length === 0 && (
               <div className="sky-empty">
                 <div className="sky-empty-icon">
-                  {tab === 'saved' ? '🔖' : tab === 'mine' ? '✍️' : tagSearch ? '#️⃣' : '🌸'}
+                  {tab === 'saved' ? <Bookmark size={30}/>
+                    : tab === 'mine' ? <PenLine size={30}/>
+                    : tagSearch ? <Hash size={30}/>
+                    : <Flower2 size={30}/>}
                 </div>
                 <p style={{ color: 'var(--t2)' }}>
                   {tab === 'saved' ? 'Нет сохранённых постов'

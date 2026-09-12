@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useMotionValue } from 'framer-motion';
 import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
-  ListMusic, Mic2, X,
-} from 'lucide-react';
+  ListMusic, Mic2, X, Music2} from 'lucide-react';
 import { usePlayerStore } from '@/player/playerStore';
 import { BottomSheet } from './BottomSheet';
 import { haptic } from './haptics';
@@ -78,7 +77,11 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
               <motion.div key="cover" initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
                 className="relative aspect-square w-full max-w-[300px] overflow-hidden rounded-3xl"
                 style={{ background: item.coverUrl ? `url(${item.coverUrl}) center/cover` : `linear-gradient(135deg, ${g1}, ${g2})`, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
-                {!item.coverUrl && <div className="grid h-full place-items-center text-6xl">🎵</div>}
+                {!item.coverUrl && (
+          <div className="grid h-full place-items-center">
+            <Music2 size={56} style={{ color: 'rgba(255,255,255,0.55)' }}/>
+          </div>
+        )}
               </motion.div>
             ) : (
               <div ref={lyricsRef} className="h-full w-full overflow-y-auto py-10 text-center">
@@ -147,7 +150,7 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
                 <button key={q.id + i} type="button" onClick={() => { playQueueIndex(i); setShowQueue(false); }}
                   className="flex w-full items-center gap-3 rounded-xl p-2.5" style={{ background: i === item.qIdx ? 'var(--accent-bg)' : 'transparent' }}>
                   <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-white" style={{ background: q.coverUrl ? `url(${q.coverUrl}) center/cover` : `hsl(${q.hue ?? 210},60%,35%)` }}>
-                    {!q.coverUrl && '🎵'}
+                    {!q.coverUrl && <Music2 size={16} style={{ color: 'rgba(255,255,255,0.55)' }}/>}
                   </div>
                   <div className="min-w-0 flex-1 text-left">
                     <p className="truncate text-[13px] font-semibold" style={{ color: i === item.qIdx ? 'var(--accent)' : 'var(--t1)' }}>{q.title}</p>

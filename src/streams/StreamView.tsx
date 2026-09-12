@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X, Eye, Send, Gift, PictureInPicture2, TrendingUp,
+  X, Eye, Send, Gift, PictureInPicture2, TrendingUp, Zap,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMoney } from '@/wallet/store';
@@ -75,7 +75,7 @@ export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: str
     if (!ok) { alert('Недостаточно средств на балансе'); return; }
     sendChat(streamId, {
       id: crypto.randomUUID(), userId: currentUserId, userName: me.name,
-      text: `задонатил(а) ${donateAmount}⚡`, createdAt: Date.now(),
+      text: `задонатил(а) ${donateAmount}`, createdAt: Date.now(),
       isDonation: true, donationAmount: donateAmount,
     });
     useStreamsStore.getState().updateStream(streamId, { totalDonations: live.totalDonations + donateAmount });
@@ -184,11 +184,13 @@ export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: str
                 {DONATE_AMOUNTS.map(a => (
                   <button key={a} type="button" onClick={() => setDonateAmount(a)}
                     className="flex-1 rounded-lg py-1.5 text-[11px] font-bold" style={{ background: donateAmount===a?S.gold:'rgba(255,255,255,0.08)', color: donateAmount===a?'#000':S.t2 }}>
-                    {a}⚡
+                    <span className="inline-flex items-center justify-center gap-0.5">{a}<Zap size={10}/></span>
                   </button>
                 ))}
               </div>
-              <p className="text-[10px]" style={{ color: S.t3 }}>Баланс: {currentUserId ? getBalance(currentUserId) : 0}⚡</p>
+              <p className="text-[10px] flex items-center gap-0.5" style={{ color: S.t3 }}>
+                Баланс: {currentUserId ? getBalance(currentUserId) : 0}<Zap size={9}/>
+              </p>
               <button type="button" onClick={donate} className="w-full rounded-lg py-2 text-xs font-bold" style={{ background: S.gold, color: '#000' }}>Отправить</button>
             </div>
           )}

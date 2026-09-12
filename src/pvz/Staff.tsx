@@ -3,8 +3,7 @@
 ====================================================================== */
 import { useState } from 'react';
 import {
-  UserPlus, AlertTriangle, Trash2, Briefcase,
-} from 'lucide-react';
+  UserPlus, AlertTriangle, Trash2, Briefcase, Star} from 'lucide-react';
 import { C } from '@/marketplace/SkyMarket';
 import { useAuthStore } from '@/core/auth/store';
 import { usePVZStore } from './store';
@@ -38,7 +37,7 @@ const StaffDetail = ({ staff, onClose }: { staff: StaffMember; onClose: () => vo
       </div>
 
       <div className="px-5 mt-4 grid grid-cols-3 gap-2">
-        <GlassCard className="p-3 text-center"><p className="text-base font-black" style={{ color: C.amber }}>★{staff.rating.toFixed(1)}</p><p className="text-[9px]" style={{ color: C.t3 }}>Рейтинг</p></GlassCard>
+        <GlassCard className="p-3 text-center"><p className="flex items-center justify-center gap-1 text-base font-black" style={{ color: C.amber }}><Star size={13} fill="currentColor"/>{staff.rating.toFixed(1)}</p><p className="text-[9px]" style={{ color: C.t3 }}>Рейтинг</p></GlassCard>
         <GlassCard className="p-3 text-center"><p className="text-base font-black" style={{ color: C.t1 }}>{staff.servedCount}</p><p className="text-[9px]" style={{ color: C.t3 }}>Обслужено</p></GlassCard>
         <GlassCard className="p-3 text-center"><p className="text-base font-black" style={{ color: C.t1 }}>{staff.avgIssueTimeSec}с</p><p className="text-[9px]" style={{ color: C.t3 }}>Скорость</p></GlassCard>
       </div>
@@ -134,7 +133,7 @@ export const StaffScreen = ({ pvz }: { pvz: PVZ }) => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold truncate" style={{ color: C.t1 }}>{s.name}</p>
-                <p className="text-[10px]" style={{ color: C.t3 }}>{POSITION_LABELS[s.position]} · ★{s.rating.toFixed(1)} · {s.servedCount} клиентов</p>
+                <p className="text-[10px]" style={{ color: C.t3 }}>{POSITION_LABELS[s.position]} · <Star size={9} className="inline-block -mt-0.5" fill="currentColor"/> {s.rating.toFixed(1)} · {s.servedCount} клиентов</p>
               </div>
             </button>
             <button type="button" onClick={() => removeStaffMember(s.id)} className="grid h-7 w-7 place-items-center rounded-lg shrink-0" style={{ background: C.l2 }}>

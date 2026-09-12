@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Plus, X, Lock, Unlock, Mail } from 'lucide-react';
+import { ArrowLeft, Plus, X, Lock, Unlock, Mail, Hourglass} from 'lucide-react';
 import { useFamilyStore } from '../store';
 
 export const FamilyCapsule = ({ onBack }: { onBack: () => void }) => {
@@ -39,7 +39,7 @@ export const FamilyCapsule = ({ onBack }: { onBack: () => void }) => {
       <div className="flex-1 px-4 py-3 space-y-2.5">
         {family.capsules.length === 0 && (
           <div className="sky-empty py-10">
-            <div className="sky-empty-icon">⏳</div>
+            <div className="sky-empty-icon"><Hourglass size={30}/></div>
             <p style={{ color: 'var(--t2)' }}>Сохраните письмо или сообщение — и откройте его в будущем всей семьёй</p>
             <button type="button" onClick={() => setCreating(true)} className="sky-btn-primary mt-2 px-5 py-2.5">Создать капсулу</button>
           </div>

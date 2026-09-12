@@ -1,4 +1,4 @@
-import { UserPlus, UserCheck, TrendingUp, Music2, MessageCircle, Sparkles, Megaphone, Hash } from 'lucide-react';
+import { UserPlus, UserCheck, TrendingUp, Music2, MessageCircle, Sparkles, Megaphone, Hash, Heart } from 'lucide-react';
 import { useBloomStore, fmtViews, type BloomPost } from '../store';
 import { useAuthStore } from '@/core/auth/store';
 import { usePlayerStore } from '@/player/playerStore';
@@ -167,7 +167,9 @@ export const HotCommentsCard = ({ onOpenPost }: { onOpenPost: (id: string) => vo
             <Av name={comment.authorName} size={7}/>
             <div className="min-w-0 flex-1">
               <p className="text-[12px]"><span className="font-semibold" style={{ color: 'var(--t1)' }}>{comment.authorName}</span> <span style={{ color: 'var(--t2)' }}>{comment.text}</span></p>
-              <p className="mt-0.5 text-[10.5px]" style={{ color: 'var(--t3)' }}>❤️ {comment.likes.length} · к посту {post.authorName}</p>
+              <p className="mt-0.5 flex items-center gap-1 text-[10.5px]" style={{ color: 'var(--t3)' }}>
+                <Heart size={10}/> {comment.likes.length} · к посту {post.authorName}
+              </p>
             </div>
           </button>
         ))}

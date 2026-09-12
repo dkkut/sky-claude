@@ -203,7 +203,9 @@ export const IncomingCallOverlay = () => {
           <motion.span animate={{opacity:[0.4,1,0.4]}} transition={{duration:2,repeat:Infinity}}
             className="text-[11px] font-semibold uppercase tracking-widest"
             style={{color:'rgba(255,255,255,0.45)'}}>
-            {isVideo?'📹 Входящий видеозвонок':'📞 Входящий звонок'}
+            <span className="inline-flex items-center gap-1.5">
+              {isVideo ? <><Video size={12}/> Входящий видеозвонок</> : <><Phone size={12}/> Входящий звонок</>}
+            </span>
           </motion.span>
         </div>
         <motion.div initial={{scale:0.75,opacity:0}} animate={{scale:1,opacity:1}}
@@ -359,7 +361,9 @@ export const ActiveCallPanel = () => {
                     {conn?timer:'Соединение...'}
                   </span>
                   {muted&&<span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                    style={{background:'rgba(239,68,68,0.25)',color:'var(--red)'}}>🔇 Без звука</span>}
+                    style={{background:'rgba(239,68,68,0.25)',color:'var(--red)'}}>
+                    <span className="inline-flex items-center gap-1"><MicOff size={9}/> Без звука</span>
+                  </span>}
                 </div>
               </div>
               <motion.button type="button" whileTap={{scale:0.9}} onClick={toggleMini}

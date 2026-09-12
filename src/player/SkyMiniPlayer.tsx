@@ -5,8 +5,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-mo
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
   ChevronUp, X, Music2, Mic2, Video, Radio, Mic,
-  List, AlignLeft, Bookmark,
-} from 'lucide-react';
+  List, AlignLeft, Bookmark, ListTree} from 'lucide-react';
 import { usePlayerStore, type MediaKind, type LyricLine, type Chapter, type PlayerItem } from './playerStore';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 
@@ -456,7 +455,9 @@ export const SkyMiniPlayer = () => {
                           border: `1px solid ${smartTab === 'context' ? `${accent}44` : 'transparent'}`,
                           cursor: 'pointer',
                         }}>
-                        {item.kind === 'podcast' ? '📑 Главы' : '🎵 Текст'}
+                        <span className="inline-flex items-center gap-1.5">
+                  {item.kind === 'podcast' ? <><ListTree size={12}/> Главы</> : <><Music2 size={12}/> Текст</>}
+                </span>
                       </button>
                     )}
                     {hasQueue && (

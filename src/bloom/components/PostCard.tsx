@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, MessageCircle, Repeat2, Bookmark, MoreHorizontal,
   Send, Eye, X, MapPin, Pin, User, Share2, ThumbsUp, Gift,
+  Flame, Zap,
 } from 'lucide-react';
 import type { BloomPost } from '../store';
 import { useBloomStore, fmtAgo, fmtViews, badgeFor } from '../store';
@@ -80,7 +81,9 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
             background: heat === 'hot' ? 'rgba(244,33,46,0.12)' : 'rgba(255,122,0,0.10)',
             border: `1px solid ${heat === 'hot' ? 'var(--red)' : 'var(--orange, #ff7a00)'}40`,
           }}>
-          <span className="text-[11px]">{heat === 'hot' ? '🔥' : '⚡'}</span>
+          {heat === 'hot'
+            ? <Flame size={11} style={{ color: 'var(--red)' }}/>
+            : <Zap size={11} style={{ color: '#ff7a00' }}/>}
           <span className="text-[11px] font-bold" style={{ color: heat === 'hot' ? 'var(--red)' : '#ff7a00' }}>
             {heat === 'hot' ? 'Горячее' : 'Растёт'}
           </span>

@@ -919,7 +919,9 @@ export const StoriesModule = () => {
               <motion.button whileTap={{scale:0.97}} type="button" onClick={()=>setStudioOpen(true)}
                 className="rounded-2xl px-6 py-3 text-sm font-bold text-white"
                 style={{background:'rgba(239,68,68,0.8)'}}>
-                🔴 Начать трансляцию
+                <span className="inline-flex items-center justify-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-white"/> Начать трансляцию
+                </span>
               </motion.button>
             </div>
           ):(

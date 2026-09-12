@@ -25,7 +25,7 @@ import {
   X, Star, Clock, Film, Search, ChevronLeft, RotateCcw,
   SkipForward, Bookmark, BookmarkCheck, Info,
   Tv, TrendingUp, Award, Layers, Download, CheckCircle, Upload, Image as ImageIcon,
-  Plus, Crown, ShieldAlert, ShieldCheck, Cloud, Zap, AlertTriangle, Lock, History,
+  Plus, Crown, ShieldAlert, ShieldCheck, Cloud, Zap, AlertTriangle, Lock, History, Music2,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { saveDownload, isDownloaded } from '@/offline/offlineDB';
@@ -1269,7 +1269,7 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
     setDone(true);
   };
 
-  const icon  = service === 'music' ? '🎵' : '🎬';
+  const Icon  = service === 'music' ? Music2 : Film;
   const label = service === 'music' ? 'Sky Music' : 'Sky Film';
 
   if (done) return (
@@ -1278,7 +1278,7 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
         transition={{ type:'spring', stiffness:400, damping:20 }}
         className="grid h-20 w-20 place-items-center rounded-full"
         style={{ background:'linear-gradient(135deg,#f59e0b,#fbbf24)', boxShadow:'0 12px 40px rgba(245,158,11,0.4)' }}>
-        <span style={{ fontSize:36 }}>👑</span>
+        <Crown size={36} className="text-white"/>
       </motion.div>
       <div className="text-center">
         <p className="text-xl font-black text-white">Sky Prime активен!</p>
@@ -1290,9 +1290,9 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
   return (
     <div className="flex flex-col items-center justify-center h-full px-5 py-6 gap-5 overflow-y-auto">
       <div className="relative">
-        <div className="grid h-20 w-20 place-items-center rounded-3xl text-4xl"
+        <div className="grid h-20 w-20 place-items-center rounded-3xl"
           style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)' }}>
-          {icon}
+          <Icon size={36} style={{ color:'var(--t2)' }}/>
         </div>
         <div className="absolute -top-2 -right-2 grid h-8 w-8 place-items-center rounded-full"
           style={{ background:'linear-gradient(135deg,#f59e0b,#fbbf24)' }}>
@@ -1354,7 +1354,11 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
       <motion.button whileTap={{ scale:0.97 }} type="button" onClick={() => void buy()} disabled={busy}
         className="w-full max-w-xs rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-50"
         style={{ background:'linear-gradient(135deg,#f59e0b,#fbbf24)', boxShadow:'0 8px 28px rgba(245,158,11,0.35)' }}>
-        {busy ? 'Оформляем…' : `👑 Оформить Prime за ${PRICES[chosen].toLocaleString('ru')} ₽`}
+        {busy ? 'Оформляем…' : (
+          <span className="inline-flex items-center justify-center gap-2">
+            <Crown size={15}/> Оформить Prime за {PRICES[chosen].toLocaleString('ru')} ₽
+          </span>
+        )}
       </motion.button>
 
       <p className="text-xs text-center" style={{ color:'var(--t3)' }}>

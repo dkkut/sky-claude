@@ -275,7 +275,9 @@ const ParticipantTile = ({ p, isMod, isMe, onMenu }: { p: VPParticipant; isMod: 
         )}
         {p.handRaised && (
           <motion.div animate={{ rotate: [0,15,-15,0] }} transition={{ duration: 0.6, repeat: Infinity, repeatDelay: 1 }}
-            className="absolute -top-1 -right-1 grid h-5 w-5 place-items-center rounded-full text-xs" style={{ background: 'var(--amber)' }}>✋</motion.div>
+            className="absolute -top-1 -right-1 grid h-5 w-5 place-items-center rounded-full" style={{ background: 'var(--amber)' }}>
+            <Hand size={11} style={{ color: '#14121f' }}/>
+          </motion.div>
         )}
         {RoleIcon && (
           <div className="absolute -bottom-0.5 -left-0.5 grid h-5 w-5 place-items-center rounded-full" style={{ background: '#14121f', border: '1.5px solid var(--amber)' }}>

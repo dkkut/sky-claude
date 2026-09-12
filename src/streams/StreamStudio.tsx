@@ -7,8 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Video, Monitor, Mic, MicOff, VideoOff, MessageSquare,
-  X, Clock, Eye,
-} from 'lucide-react';
+  X, Clock, Eye, Zap} from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useStreamsStore, CATEGORY_LABEL, type StreamCategory, type LiveStreamEntry } from './store';
 import { StreamBroadcaster } from './webrtc';
@@ -203,7 +202,11 @@ export const StreamStudio = ({ onClose, onGoLive }: StreamStudioProps) => {
           ) : live!.chat.map(m => (
             <div key={m.id} className="text-xs">
               <span className="font-bold" style={{ color: m.isDonation?'#f5b942':S.accent }}>{m.userName}</span>
-              {m.isDonation && <span className="ml-1 font-bold" style={{ color:'#f5b942' }}>+{m.donationAmount}⚡</span>}
+              {m.isDonation && (
+                <span className="ml-1 inline-flex items-center gap-0.5 font-bold" style={{ color:'#f5b942' }}>
+                  +{m.donationAmount}<Zap size={10}/>
+                </span>
+              )}
               <span style={{ color: S.t1 }}>: {m.text}</span>
             </div>
           ))}

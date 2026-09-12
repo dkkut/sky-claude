@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Headphones, BookOpen, Star, ChevronLeft, Play, Pause, X, BookMarked, Sparkles,
   Library, PenLine, Rocket, Wand2, Drama, Brain, Landmark, Briefcase,
+  SkipBack, Rewind, FastForward, SkipForward,
 } from 'lucide-react';
 
 type BookTab = 'home' | 'ebooks' | 'audio' | 'shelf';
@@ -225,8 +226,8 @@ const BookDetail = ({ book, onBack }: { book:Book; onBack:()=>void }) => {
           <audio ref={audioRef} onEnded={()=>setPlaying(false)} preload="none"/>
           {/* Controls */}
           <div className="flex items-center justify-center gap-6">
-            {['⏮','⏪'].map(ic => (
-              <button key={ic} type="button" className="text-xl" style={{ color:B.t2 }}>{ic}</button>
+            {[SkipBack, Rewind].map((Ic, i) => (
+              <button key={i} type="button" style={{ color:B.t2 }}><Ic size={20}/></button>
             ))}
             <motion.button type="button" whileTap={{ scale:.9 }}
               onClick={() => {
@@ -237,8 +238,8 @@ const BookDetail = ({ book, onBack }: { book:Book; onBack:()=>void }) => {
               style={{ background:B.accent, boxShadow:`0 8px 24px ${B.accent}50` }}>
               {playing ? <Pause size={24} className="text-white"/> : <Play size={24} className="text-white"/>}
             </motion.button>
-            {['⏩','⏭'].map(ic => (
-              <button key={ic} type="button" className="text-xl" style={{ color:B.t2 }}>{ic}</button>
+            {[FastForward, SkipForward].map((Ic, i) => (
+              <button key={i} type="button" style={{ color:B.t2 }}><Ic size={20}/></button>
             ))}
           </div>
           {playing && (

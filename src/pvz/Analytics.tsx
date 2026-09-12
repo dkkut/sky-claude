@@ -2,7 +2,7 @@
    SKY ПВЗ  —  Аналитика
 ====================================================================== */
 import { useMemo, useState } from 'react';
-import { Eye, Package, Timer, Hourglass, TrendingUp, PackageX, Ban, Truck } from 'lucide-react';
+import { Eye, Package, Timer, Hourglass, TrendingUp, PackageX, Ban, Truck, Star} from 'lucide-react';
 import { C, fmt } from '@/marketplace/SkyMarket';
 import { usePVZStore } from './store';
 import { GlassCard, KpiTile, Segmented, InteractiveLineChart, Heatmap, type ChartPeriod, PERIOD_DAYS } from './shared';
@@ -87,7 +87,7 @@ export const AnalyticsScreen = ({ pvz }: { pvz: PVZ }) => {
                 <p className="text-xs font-semibold truncate" style={{ color: C.t1 }}>{s.name}</p>
                 <p className="text-[10px]" style={{ color: C.t3 }}>{s.servedCount} клиентов · {s.avgIssueTimeSec}с/выдача · {s.errorsCount} ошибок</p>
               </div>
-              <p className="text-xs font-bold shrink-0" style={{ color: C.amber }}>★ {s.rating.toFixed(1)}</p>
+              <p className="flex items-center gap-1 text-xs font-bold shrink-0" style={{ color: C.amber }}><Star size={11} fill="currentColor"/> {s.rating.toFixed(1)}</p>
             </GlassCard>
           ))}
         </div>

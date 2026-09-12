@@ -522,7 +522,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       const uid = me();
       const capsule: TimeCapsule = { id: crypto.randomUUID(), title, message, authorId: uid, authorName: myName(), createdAt: nowISO(), unlockAt, opened: false };
       mut(f => ({ ...f, capsules: [capsule, ...f.capsules] }));
-      get()._log(`создал(а) капсулу времени «${title}»`, '⏳');
+      get()._log(`создал(а) капсулу времени «${title}»`, 'capsule');
     },
     openCapsule: (id) => {
       const f = get().family;

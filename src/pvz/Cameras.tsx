@@ -42,7 +42,9 @@ export const CamerasScreen = ({ pvz }: { pvz: PVZ }) => {
                   <>
                     <div className="absolute inset-0 opacity-20" style={{ background:'repeating-linear-gradient(0deg, transparent, transparent 2px, white 2px, white 3px)' }}/>
                     <Video size={20} style={{ color: C.t3 }}/>
-                    <span className="absolute top-1.5 left-1.5 flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background:'rgba(244,63,94,0.8)', color:'#fff' }}>● LIVE</span>
+                    <span className="absolute top-1.5 left-1.5 flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background:'rgba(244,63,94,0.8)', color:'#fff' }}>
+            <span className="h-1 w-1 rounded-full" style={{ background:'#fff' }}/> LIVE
+          </span>
                   </>
                 ) : <VideoOff size={18} style={{ color: C.t3 }}/>}
               </div>
