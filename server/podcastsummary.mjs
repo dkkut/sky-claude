@@ -24,10 +24,13 @@ import { query } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { askModel, aiConfigured } from './ai.mjs';
 import { config } from './config.mjs';
+import { rateLimitPerHour } from './security.mjs';
 import { visibleEpisode, readTranscript } from './podcasts.mjs';
 
 /** Сколько знаков расшифровки уходит в один запрос. */
 const MAX_INPUT_CHARS = 60_000;
+/** Сколько новых пересказов сервер согласен считать за час — на всех. */
+const MAX_NEW_PER_HOUR = Math.max(1, Number(process.env.AI_SUMMARIES_PER_HOUR) || 200);
 
 const clean = (v, max) => String(v ?? '')
   .replace(/[\u0000-\u001f\u007f]/g, ' ')
@@ -186,6 +189,16 @@ export const buildSummary = async (episodeId, viewerId) => {
   if (!aiConfigured()) return { error: 'ai_not_configured' };
 
   if (running.has(episodeId)) return running.get(episodeId);
+
+  // Потолок на весь сервер, а не только на человека.
+  //
+  // Просить пересказ может любой, кому виден выпуск, — и это правильно:
+  // пересказ один на выпуск и считается один раз. Но личный предел
+  // ограничивает одного человека, а платит за всех владелец сервера.
+  // Поэтому есть и общий счёт: даже если просящих много, за час
+  // наберётся не больше этого числа новых пересказов.
+  if (!rateLimitPerHour('podcast:summary:all', MAX_NEW_PER_HOUR)) return { error: 'ai_busy' };
+
   const work = (async () => {
     const { text, partial, covered } = asPrompt(cues);
     // Потолок времени — по самой расшифровке, а не по полю длительности:

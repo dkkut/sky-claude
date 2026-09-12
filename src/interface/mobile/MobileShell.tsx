@@ -2,6 +2,7 @@ import { useState, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useModuleStore } from '@/data/state/modules';
 import { PlayerEngine } from '@/player/PlayerEngine';
+import { PodcastPlayerHost } from '@/podcasts/PodcastPlayer';
 import { NotifBridge } from '@/notifications/NotifBridge';
 import { NotifToastLayer } from '@/notifications/NotifToast';
 import { FloatingChatLayer } from '@/notifications/FloatingChat';
@@ -71,6 +72,9 @@ export const MobileShell = () => {
         <CallAudio />
       </main>
 
+      {/* Подкаст продолжает играть при уходе с экрана, поэтому его
+          проигрыватель живёт здесь, в оболочке, а не внутри модуля. */}
+      <PodcastPlayerHost />
       {activeModule !== 'extras' && <MobileMiniPlayer onOpen={() => setPlayerOpen(true)} />}
       <MobileTabBar onMore={() => setMoreOpen(true)} />
       <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />

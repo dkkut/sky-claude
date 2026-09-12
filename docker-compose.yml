@@ -101,6 +101,9 @@ services:
       AI_API_KEY:            ${AI_API_KEY:-}
       AI_MODEL:              ${AI_MODEL:-claude-sonnet-4-5-20250929}
       AI_BASE_URL:           ${AI_BASE_URL:-https://api.anthropic.com}
+      # Потолок на новые пересказы за час — на весь сервер, а не на
+      # человека: платит за них владелец.
+      AI_SUMMARIES_PER_HOUR: ${AI_SUMMARIES_PER_HOUR:-200}
       TV_ALLOWED_HOSTS:      ${TV_ALLOWED_HOSTS:-}
       # Доставка кодов. 'log' пишет код в журнал и никуда не шлёт —
       # в бою нужен настоящий провайдер, иначе войти никто не сможет.

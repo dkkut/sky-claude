@@ -730,14 +730,24 @@ export const listContinue = async (userId, { limit } = {}) => {
 
 export const addHistory = async (userId, episodeId) => {
   if (!(await visibleEpisode(episodeId, userId))) return { error: 'not_found' };
+
+  // Счётчик прослушиваний прибавляется не чаще раза в полчаса на
+  // человека. Иначе его накручивают повторным нажатием: клиент шлёт
+  // отметку сам, и верить ему, что это новое прослушивание, нельзя.
+  const { rows: last } = await query(
+    `SELECT played_at FROM podcast_history
+      WHERE user_id = $1 AND episode_id = $2
+      ORDER BY played_at DESC LIMIT 1`, [userId, episodeId]);
+  const fresh = !last[0] || (Date.now() - new Date(last[0].played_at).getTime()) > 30 * 60 * 1000;
+
   await query('INSERT INTO podcast_history (id, user_id, episode_id) VALUES ($1,$2,$3)',
     [newId('phs'), userId, episodeId]);
   await query(
     `DELETE FROM podcast_history WHERE user_id = $1 AND id NOT IN (
        SELECT id FROM podcast_history WHERE user_id = $1 ORDER BY played_at DESC LIMIT 200)`,
     [userId]);
-  await query('UPDATE podcast_episodes SET plays = plays + 1 WHERE id = $1', [episodeId]);
-  return { ok: true };
+  if (fresh) await query('UPDATE podcast_episodes SET plays = plays + 1 WHERE id = $1', [episodeId]);
+  return { ok: true, counted: fresh };
 };
 
 export const listHistory = async (userId, { limit } = {}) => {

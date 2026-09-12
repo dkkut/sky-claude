@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { createPortal }           from 'react-dom';
 import { Sidebar }                from '@/interface/layout/Sidebar';
 import { PlayerEngine }           from '@/player/PlayerEngine';
+import { PodcastPlayerHost }      from '@/podcasts/PodcastPlayer';
 import { useModuleStore }         from '@/data/state/modules';
 import { useAuthStore }           from '@/core/auth/store';
 import { ChatList }               from '@/messenger/ChatList';
@@ -187,6 +188,9 @@ export const AppShell = () => {
       <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)', height: '100dvh' }}>
         <NotifBridge />
         <PlayerEngine />
+        {/* Подкаст продолжает играть при уходе с экрана, поэтому его
+            проигрыватель живёт здесь, в оболочке, а не внутри модуля. */}
+        <PodcastPlayerHost />
         <Sidebar />
         <main
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
