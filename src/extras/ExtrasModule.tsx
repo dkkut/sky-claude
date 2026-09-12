@@ -1,4 +1,4 @@
-import { Home, BookOpen, Briefcase, Building2, Check, CheckCircle, ChevronLeft, Clock, Cloud, Crown, Eye, Film, Flag, Gamepad2, Gem, Image, Megaphone, MessageCircle, MessageCircleMore, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, Scale, Send, Shield, ShoppingCart, Sparkles, Ticket, Trash2, Tv2, Upload, Users, XCircle, Zap, Bot } from 'lucide-react';
+import { Home, BookOpen, Briefcase, Building2, Ban, Bug, Calendar, Check, CheckCircle, ChevronLeft, Clock, Cloud, Crown, Film, Flag, Gamepad2, Gem, Heart, Inbox, Lightbulb, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MicOff, MoreHorizontal, Music2, Pause, PenLine, Play, Plus, QrCode, Scale, Send, Shield, ShoppingCart, Snowflake, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, XCircle, Zap, Bot } from 'lucide-react';
 import { BotsBrowser, HashInlineMenu, BotChatOverlay, BOTS_REGISTRY } from '@/bots/SkyBots';
 import { BotCreatorPanel } from '@/bots/BotCreator';
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
@@ -440,7 +440,7 @@ const AdminContentTab = ({ tracks, approveTrack, rejectTrack }: {
                     <div className="flex items-center gap-3 p-3">
                       <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl"
                         style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)'}}>
-                        <span style={{fontSize:20}}>🎵</span>
+                        <Music2 size={19} style={{color:'var(--t2)'}}/>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold truncate" style={{color:'var(--t1)'}}>{t.title}</p>
@@ -453,13 +453,13 @@ const AdminContentTab = ({ tracks, approveTrack, rejectTrack }: {
                           {hasSynced && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                               style={{background:'rgba(99,102,241,0.12)',color:'#818cf8'}}>
-                              📍 {t.syncedLyrics!.length} тайм-кодов
+                              <MapPin size={11} className="inline mr-1"/>{t.syncedLyrics!.length} тайм-кодов
                             </span>
                           )}
                           {t.uploaderName && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full"
                               style={{background:'rgba(255,255,255,0.05)',color:'var(--t3)'}}>
-                              👤 {t.uploaderName}
+                              <Users size={11} className="inline mr-1"/>{t.uploaderName}
                             </span>
                           )}
                         </div>
@@ -469,7 +469,7 @@ const AdminContentTab = ({ tracks, approveTrack, rejectTrack }: {
                           onClick={() => { approveTrack(t.id); setExpandId(null); }}
                           className="rounded-xl px-3 py-1.5 text-xs font-bold"
                           style={{background:'rgba(34,197,94,0.12)',color:'#22c55e',border:'1px solid rgba(34,197,94,0.2)',cursor:'pointer'}}>
-                          ✓ Принять
+                          <Check size={13} className="inline mr-1"/>Принять
                         </button>
                         <button type="button"
                           onClick={() => setExpandId(expandId === t.id ? null : t.id)}
@@ -534,7 +534,7 @@ const AdminContentTab = ({ tracks, approveTrack, rejectTrack }: {
                             }}
                             className="w-full rounded-xl py-2 text-xs font-bold"
                             style={{background:'rgba(239,68,68,0.1)',color:'#ef4444',border:'1px solid rgba(239,68,68,0.2)',cursor:'pointer'}}>
-                            ✗ Отклонить
+                            <X size={13} className="inline mr-1"/>Отклонить
                           </button>
                         </div>
                       </div>
@@ -553,7 +553,7 @@ const AdminContentTab = ({ tracks, approveTrack, rejectTrack }: {
                         style={{background:'var(--bg-l1)'}}>
                         <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
                           style={{background:'linear-gradient(135deg,#6366f1,#8b5cf6)'}}>
-                          <span style={{fontSize:14}}>🎵</span>
+                          <Music2 size={13} style={{color:'var(--t2)'}}/>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold truncate" style={{color:'var(--t1)'}}>{t.title}</p>
@@ -563,15 +563,15 @@ const AdminContentTab = ({ tracks, approveTrack, rejectTrack }: {
                           {t.syncedLyrics && t.syncedLyrics.length > 0 && (
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                               style={{background:'rgba(34,197,94,0.1)',color:'#22c55e'}}>
-                              📍 {t.syncedLyrics.length}
+                              <MapPin size={10} className="inline mr-1"/>{t.syncedLyrics.length}
                             </span>
                           )}
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                            style={{background:'rgba(34,197,94,0.1)',color:'#22c55e'}}>✓</span>
+                            style={{background:'rgba(34,197,94,0.1)',color:'#22c55e'}}><Check size={11}/></span>
                           <button type="button"
                             onClick={() => rejectTrack(t.id)}
                             style={{background:'none',border:'none',cursor:'pointer',color:'var(--t3)',fontSize:12}}>
-                            ✕
+                            <X size={12}/>
                           </button>
                         </div>
                       </div>
@@ -721,7 +721,7 @@ const AdminPanel = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isPending?'bg-amber-500/20 text-amber-400':'bg-white/8 text-white/35'}`}>
-                          {isPending?'⏳ Рассматривается':(r.status??'')==='reviewed'?'✅ Рассмотрено':'❌ Отклонено'}
+                          {isPending?'Рассматривается':(r.status??'')==='reviewed'?'Рассмотрено':'Отклонено'}
                         </span>
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                           style={{background:'rgba(239,68,68,0.12)',color:'var(--red)'}}>
@@ -818,15 +818,15 @@ const AdminPanel = () => {
                   <div className="flex-1 min-w-0 text-left">
                     <div className="flex items-center gap-1">
                       <p className="text-xs font-semibold truncate text-white">{user.name}</p>
-                      {user.isPrime&&<span style={{fontSize:9,color:'var(--amber)'}}>★</span>}
-                      {user.isAdmin&&<span style={{fontSize:9,color:'var(--accent)'}}>⬡</span>}
+                      {user.isPrime&&<Crown size={9} style={{color:'var(--amber)'}}/>}
+                      {user.isAdmin&&<Shield size={9} style={{color:'var(--accent)'}}/>}
                     </div>
                     <p className="text-[10px] truncate" style={{color:'var(--t3)'}}>@{user.username}</p>
                     {/* Status badges */}
                     <div className="flex gap-0.5 mt-0.5 flex-wrap">
                       {user.isBanned&&<span className="text-[8px] px-1 rounded" style={{background:'rgba(239,68,68,0.2)',color:'var(--red)'}}>БАН</span>}
                       {user.isMuted&&<span className="text-[8px] px-1 rounded" style={{background:'rgba(168,85,247,0.2)',color:'#a855f7'}}>МУТ</span>}
-                      {user.isFrozen&&<span className="text-[8px] px-1 rounded" style={{background:'rgba(6,182,212,0.2)',color:'#06b6d4'}}>❄</span>}
+                      {user.isFrozen&&<Snowflake size={9} style={{color:'#06b6d4'}}/>}
                       {user.isSpamBlocked&&<span className="text-[8px] px-1 rounded" style={{background:'rgba(249,115,22,0.2)',color:'#f97316'}}>СПАМ</span>}
                     </div>
                   </div>
@@ -854,18 +854,18 @@ const AdminPanel = () => {
                   </div>
                   {/* Active restrictions */}
                   <div className="flex flex-wrap gap-1.5">
-                    {selAcc.isPrime&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(245,158,11,0.15)',color:'var(--amber)'}}>⭐ Prime {fmtUntil(selAcc.primeUntil)}</span>}
-                    {selAcc.isAdmin&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'var(--accent-bg)',color:'var(--accent)'}}>🛡 Admin</span>}
-                    {selAcc.isBanned&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(239,68,68,0.15)',color:'var(--red)'}}>⛔ Заблокирован</span>}
-                    {selAcc.isMuted&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(168,85,247,0.15)',color:'#a855f7'}}>🔇 Мут {fmtUntil(selAcc.mutedUntil)}</span>}
-                    {selAcc.isFrozen&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(6,182,212,0.15)',color:'#06b6d4'}}>❄️ Заморожен {fmtUntil(selAcc.frozenUntil)}</span>}
-                    {selAcc.isSpamBlocked&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(249,115,22,0.15)',color:'#f97316'}}>🚫 Спам-блок {fmtUntil(selAcc.spamBlockedUntil)}</span>}
+                    {selAcc.isPrime&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(245,158,11,0.15)',color:'var(--amber)'}}><Crown size={9} className="inline mr-1"/>Prime {fmtUntil(selAcc.primeUntil)}</span>}
+                    {selAcc.isAdmin&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'var(--accent-bg)',color:'var(--accent)'}}><Shield size={9} className="inline mr-1"/>Admin</span>}
+                    {selAcc.isBanned&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(239,68,68,0.15)',color:'var(--red)'}}><Ban size={9} className="inline mr-1"/>Заблокирован</span>}
+                    {selAcc.isMuted&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(168,85,247,0.15)',color:'#a855f7'}}><MicOff size={9} className="inline mr-1"/>Мут {fmtUntil(selAcc.mutedUntil)}</span>}
+                    {selAcc.isFrozen&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(6,182,212,0.15)',color:'#06b6d4'}}><Snowflake size={9} className="inline mr-1"/>Заморожен {fmtUntil(selAcc.frozenUntil)}</span>}
+                    {selAcc.isSpamBlocked&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(249,115,22,0.15)',color:'#f97316'}}><Ban size={9} className="inline mr-1"/>Спам-блок {fmtUntil(selAcc.spamBlockedUntil)}</span>}
                   </div>
                 </div>
 
                 {/* Prime subscription */}
                 <div className="rounded-2xl p-4 space-y-2.5" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}>⭐ Подписка Prime</p>
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}><Crown size={11} className="inline mr-1"/>Подписка Prime</p>
                   <div className="flex gap-2">
                     <input value={primeD} onChange={e=>setPrimeD(e.target.value)}
                       placeholder="Дней" type="number" min="1" max="365"
@@ -874,14 +874,14 @@ const AdminPanel = () => {
                     <button type="button" onClick={()=>{grantPrime(selAcc.id,parseInt(primeD)||30);grantPrimeForUser(selAcc.id,parseInt(primeD)||30);}}
                       className="flex-1 rounded-xl py-2 text-xs font-bold"
                       style={{background:'rgba(245,158,11,0.15)',color:'var(--amber)',border:'1px solid rgba(245,158,11,0.3)'}}>
-                      ✅ Выдать Prime на {primeD} дн.
+                      <Check size={13} className="inline mr-1"/>Выдать Prime на {primeD} дн.
                     </button>
                   </div>
                   {selAcc.isPrime&&(
                     <button type="button" onClick={()=>revokePrime(selAcc.id)}
                       className="w-full rounded-xl py-2 text-xs font-bold"
                       style={{background:'rgba(239,68,68,0.08)',color:'var(--red)',border:'1px solid rgba(239,68,68,0.2)'}}>
-                      ❌ Отозвать Prime
+                      <X size={13} className="inline mr-1"/>Отозвать Prime
                     </button>
                   )}
                   {selAcc.id!==currentUserId&&(
@@ -890,14 +890,14 @@ const AdminPanel = () => {
                       style={{background:selAcc.isAdmin?'rgba(239,68,68,0.08)':'var(--accent-bg)',
                         color:selAcc.isAdmin?'var(--red)':'var(--accent)',
                         border:`1px solid ${selAcc.isAdmin?'rgba(239,68,68,0.2)':'var(--accent-bg)'}`}}>
-                      {selAcc.isAdmin?'🛡 Убрать права Admin':'🛡 Назначить Admin'}
+                      <><Shield size={13} className="inline mr-1"/>{selAcc.isAdmin?'Убрать права Admin':'Назначить Admin'}</>
                     </button>
                   )}
                 </div>
 
                 {/* Mute (no calls/voice) */}
                 <div className="rounded-2xl p-4 space-y-2.5" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}>🔇 Запрет говорить</p>
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}><MicOff size={11} className="inline mr-1"/>Запрет говорить</p>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[['15','15 мин'],['60','1 час'],['360','6 ч'],['1440','24 ч'],['10080','7 дн'],['0','Снять']].map(([v,l])=>(
                       <button key={v} type="button"
@@ -914,7 +914,7 @@ const AdminPanel = () => {
 
                 {/* Spam block */}
                 <div className="rounded-2xl p-4 space-y-2.5" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}>🚫 Спам-блок (ограничение отправки)</p>
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}><Ban size={11} className="inline mr-1"/>Спам-блок (ограничение отправки)</p>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[['30','30 мин'],['60','1 час'],['360','6 ч'],['1440','24 ч'],['10080','7 дн'],['0','Снять']].map(([v,l])=>(
                       <button key={v} type="button"
@@ -931,7 +931,7 @@ const AdminPanel = () => {
 
                 {/* Freeze */}
                 <div className="rounded-2xl p-4 space-y-2.5" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}>❄️ Заморозить (только чтение)</p>
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}><Snowflake size={11} className="inline mr-1"/>Заморозить (только чтение)</p>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[['1','1 час'],['6','6 ч'],['24','24 ч'],['72','3 дня'],['168','7 дн'],['0','Снять']].map(([v,l])=>(
                       <button key={v} type="button"
@@ -948,18 +948,18 @@ const AdminPanel = () => {
 
                 {/* Ban */}
                 <div className="rounded-2xl p-4 space-y-2" style={{background:'rgba(239,68,68,0.04)',border:'1px solid rgba(239,68,68,0.18)'}}>
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'rgba(239,68,68,0.7)'}}>⛔ Блокировка</p>
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'rgba(239,68,68,0.7)'}}><Ban size={11} className="inline mr-1"/>Блокировка</p>
                   {selAcc.isBanned ? (
                     <button type="button" onClick={()=>banUser(selAcc.id,false)}
                       className="w-full rounded-xl py-2.5 text-xs font-bold"
                       style={{background:'rgba(34,197,94,0.12)',color:'#22c55e',border:'1px solid rgba(34,197,94,0.25)'}}>
-                      ✅ Разблокировать пользователя
+                      <Check size={13} className="inline mr-1"/>Разблокировать пользователя
                     </button>
                   ) : (
                     <button type="button" onClick={()=>banUser(selAcc.id,true)}
                       className="w-full rounded-xl py-2.5 text-xs font-bold"
                       style={{background:'rgba(239,68,68,0.12)',color:'var(--red)',border:'1px solid rgba(239,68,68,0.25)'}}>
-                      ⛔ Заблокировать навсегда
+                      <Ban size={13} className="inline mr-1"/>Заблокировать навсегда
                     </button>
                   )}
                 </div>
@@ -967,7 +967,7 @@ const AdminPanel = () => {
                 {/* Moderation note */}
                 <div className="rounded-2xl p-4 space-y-2" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}>📝 Заметка</p>
+                    <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}><PenLine size={11} className="inline mr-1"/>Заметка</p>
                     <button type="button" onClick={()=>setNoteEdit(!noteEdit)}
                       className="text-[10px] font-semibold" style={{color:'var(--accent)'}}>
                       {noteEdit?'Отмена':'Изменить'}
@@ -1028,9 +1028,9 @@ const AdminPanel = () => {
                     <p className="font-semibold text-white">{ad.title}</p>
                     <p className="text-xs mt-0.5" style={{color:'var(--t2)'}}>{ad.description}</p>
                     <div className="flex gap-2 mt-1.5 text-[10px]" style={{color:'var(--t3)'}}>
-                      <span>📍 {AD_PLACEMENTS.find(p=>p.placement===ad.placement)?.label}</span>
-                      <span>💰 {ad.budget.toLocaleString('ru')} ₽</span>
-                      <span>📅 {ad.durationDays} дн.</span>
+                      <span className="inline-flex items-center gap-1"><MapPin size={11}/>{AD_PLACEMENTS.find(p=>p.placement===ad.placement)?.label}</span>
+                      <span>{ad.budget.toLocaleString('ru')} ₽</span>
+                      <span className="inline-flex items-center gap-1"><Calendar size={11}/>{ad.durationDays} дн.</span>
                     </div>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0"
@@ -1041,12 +1041,12 @@ const AdminPanel = () => {
                   <button type="button" onClick={()=>moderate(ad.id,true)}
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
                     style={{background:'rgba(34,197,94,0.15)',color:'#22c55e',border:'1px solid rgba(34,197,94,0.3)'}}>
-                    ✅ Одобрить
+                    <Check size={13} className="inline mr-1"/>Одобрить
                   </button>
                   <button type="button" onClick={()=>moderate(ad.id,false,'Нарушение правил рекламы')}
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
                     style={{background:'rgba(239,68,68,0.1)',color:'var(--red)',border:'1px solid rgba(239,68,68,0.2)'}}>
-                    ❌ Отклонить
+                    <X size={13} className="inline mr-1"/>Отклонить
                   </button>
                 </div>
               </div>
@@ -1065,12 +1065,12 @@ const AdminPanel = () => {
               {/* Stats */}
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { label:'Баги', count:bugs.length, color:'var(--red)', icon:'🐛' },
-                  { label:'Предложения', count:suggestions.length, color:'var(--green)', icon:'💡' },
-                  { label:'Жалобы', count:complaints.length, color:'var(--amber)', icon:'🚩' },
-                ].map(({label,count,color,icon}) => (
+                  { label:'Баги', count:bugs.length, color:'var(--red)', Icon:Bug },
+                  { label:'Предложения', count:suggestions.length, color:'var(--green)', Icon:Lightbulb },
+                  { label:'Жалобы', count:complaints.length, color:'var(--amber)', Icon:Flag },
+                ].map(({label,count,color,Icon}) => (
                   <div key={label} className="rounded-2xl p-3 text-center" style={{ background:'var(--bg-l1)', border:`1px solid ${color}25` }}>
-                    <span className="text-lg">{icon}</span>
+                    <Icon size={17} style={{ color, margin:'0 auto' }}/>
                     <p className="text-lg font-black text-white">{count}</p>
                     <p className="text-[10px]" style={{ color:'var(--t3)' }}>{label}</p>
                   </div>
@@ -1078,7 +1078,7 @@ const AdminPanel = () => {
               </div>
               {feedbackItems.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-10">
-                  <span className="text-4xl">📭</span>
+                  <Inbox size={34} style={{color:'var(--t3)'}}/>
                   <p className="text-sm" style={{ color:'var(--t3)' }}>Нет обращений</p>
                 </div>
               ) : (
@@ -1086,7 +1086,7 @@ const AdminPanel = () => {
                   if (!r || typeof r !== 'object') return null;
                   const feedType = r.feedbackType ?? 'bug';
                   const color = feedType==='bug'?'var(--red)':feedType==='suggestion'?'var(--green)':'var(--amber)';
-                  const icon  = feedType==='bug'?'🐛':feedType==='suggestion'?'💡':'🚩';
+                  const Icon  = feedType==='bug'?Bug:feedType==='suggestion'?Lightbulb:Flag;
                   const reporter = accounts.find(a=>a.id===(r.reporterId??''));
                   const itemKey = r.id ?? `fi-${_fi}`;
                   return (
@@ -1094,7 +1094,7 @@ const AdminPanel = () => {
                       <div className="h-0.5" style={{ background:color }}/>
                       <div className="p-4">
                         <div className="flex items-start gap-2.5 mb-2">
-                          <span className="text-lg shrink-0">{icon}</span>
+                          <Icon size={17} className="shrink-0" style={{ color }}/>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background:`${color}20`, color }}>
@@ -1118,7 +1118,7 @@ const AdminPanel = () => {
                             <button type="button" onClick={()=>resolveReport(r.id,'reviewed')}
                               className="flex-1 rounded-xl py-2 text-xs font-bold"
                               style={{ background:'rgba(34,197,94,0.12)', color:'#22c55e', border:'1px solid rgba(34,197,94,0.25)' }}>
-                              ✓ Рассмотрено
+                              <Check size={12} className="inline mr-1"/>Рассмотрено
                             </button>
                             <button type="button" onClick={()=>resolveReport(r.id,'dismissed')}
                               className="flex-1 rounded-xl py-2 text-xs font-bold"
@@ -1129,7 +1129,7 @@ const AdminPanel = () => {
                         )}
                         {r.status!=='pending' && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background:(r.status??'')==='reviewed'?'rgba(34,197,94,0.15)':'var(--border)', color:(r.status??'')==='reviewed'?'#22c55e':'var(--t3)' }}>
-                            {(r.status??'')==='reviewed'?'✓ Рассмотрено':'Закрыто'}
+                            {(r.status??'')==='reviewed'?'Рассмотрено':'Закрыто'}
                           </span>
                         )}
                       </div>
@@ -1162,7 +1162,7 @@ const MoreTab = () => {
           className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/5">
           <ChevronLeft size={16} style={{color:'var(--t2)'}}/>
         </button>
-        <span className="text-2xl">🛡️</span>
+        <Shield size={22} style={{color:'var(--t1)'}}/>
         <p className="text-sm font-bold" style={{color:'var(--t1)'}}>Sky Garant</p>
       </div>
       <div className="flex-1 overflow-hidden">
@@ -1172,14 +1172,14 @@ const MoreTab = () => {
   );
 
   const MORE_APPS = [
-    { key:'garant' as MoreView, icon:'🛡️', label:'Sky Garant',
+    { key:'garant' as MoreView, Icon:Shield, label:'Sky Garant',
       desc:'Безопасные сделки между пользователями',
       color:'var(--accent)', badge:0 },
-    { key:'hub' as MoreView, icon:'🔜', label:'Скоро',
+    { key:'hub' as MoreView, Icon:Clock, label:'Скоро',
       desc:'Новые сервисы в разработке', color:'var(--t2)', badge:0, disabled:true },
-    { key:'hub' as MoreView, icon:'🔜', label:'Скоро',
+    { key:'hub' as MoreView, Icon:Clock, label:'Скоро',
       desc:'', color:'var(--t2)', badge:0, disabled:true },
-    { key:'hub' as MoreView, icon:'🔜', label:'Скоро',
+    { key:'hub' as MoreView, Icon:Clock, label:'Скоро',
       desc:'', color:'var(--t2)', badge:0, disabled:true },
   ];
 
@@ -1201,8 +1201,10 @@ const MoreTab = () => {
                 opacity:app.disabled?0.45:1}}>
               <div className="absolute top-0 right-0 w-20 h-20 rounded-full pointer-events-none"
                 style={{background:`radial-gradient(circle,${app.color}12,transparent)`,transform:'translate(30%,-30%)'}}/>
-              <div className="grid h-12 w-12 place-items-center rounded-2xl text-2xl"
-                style={{background:app.disabled?'rgba(255,255,255,0.05)':`${app.color}20`}}>{app.icon}</div>
+              <div className="grid h-12 w-12 place-items-center rounded-2xl"
+                style={{background:app.disabled?'rgba(255,255,255,0.05)':`${app.color}20`}}>
+                <app.Icon size={22} style={{color:app.disabled?'var(--t3)':app.color}}/>
+              </div>
               <div>
                 <p className="text-sm font-black" style={{color:'var(--t1)'}}>{app.label}</p>
                 {app.desc&&<p className="text-[10px] mt-0.5 leading-tight" style={{color:app.disabled?'var(--t3)':`${app.color}cc`}}>{app.desc}</p>}
@@ -1266,13 +1268,13 @@ const TicketsTab = () => {
   const [showQR, setQR]     = useState<any>(null);
 
   const EVENTS = [
-    { id:'ev1', type:'cinema',  title:'Dune: Part Two',           venue:'Каро 11 Октябрь',    city:'Москва', date:'15 апр', time:'19:30', price:450,  vip:750,  hue:45,  art:'🌅', rating:'8.7', desc:'Пол Атрейдес ведёт фрименов. IMAX / Dolby Atmos.', avail:47,   total:220,   tags:['IMAX','Sci-Fi'] },
-    { id:'ev2', type:'cinema',  title:'Мастер и Маргарита',       venue:'Формула Кино',        city:'СПб',    date:'17 апр', time:'20:15', price:420,  vip:680,  hue:270, art:'🌙', rating:'8.1', desc:'Экранизация романа Булгакова. VIP-зал.',            avail:12,   total:80,    tags:['Драма','VIP'] },
-    { id:'ev3', type:'cinema',  title:'Сто лет тому вперёд',      venue:'Синема Парк',         city:'Москва', date:'16 апр', time:'18:00', price:380,  vip:600,  hue:195, art:'🚀', rating:'7.4', desc:'Фантастика по Булычёву. Семейный.',                 avail:112,  total:180,   tags:['Семейный'] },
-    { id:'ev4', type:'concert', title:'Imagine Dragons',           venue:'СК Олимпийский',      city:'Москва', date:'22 апр', time:'20:00', price:3500, vip:8500, hue:320, art:'⚡', rating:'9.2', desc:'Loom World Tour. Фанпит + трибуна + VIP.',           avail:342,  total:8000,  tags:['Рок','World Tour'] },
-    { id:'ev5', type:'concert', title:'Miyagi & Andy Panda',       venue:'ВТБ Арена',           city:'Москва', date:'25 апр', time:'21:00', price:2200, vip:5000, hue:185, art:'🌊', rating:'8.9', desc:'«Дорога домой» — 10 лет вместе.',                  avail:1240, total:12000, tags:['Хип-хоп'] },
-    { id:'ev6', type:'concert', title:'Классика под открытым небом', venue:'Архангельское',     city:'МО',     date:'28 апр', time:'18:00', price:1800, vip:4500, hue:245, art:'🎻', rating:'9.5', desc:'Оркестр Большого. Чайковский, Рахманинов.',         avail:560,  total:3000,  tags:['Классика','Open Air'] },
-    { id:'ev7', type:'concert', title:'GONE.Fludd',                venue:'Adrenaline Stadium',  city:'Москва', date:'2 мая',  time:'20:30', price:1900, vip:4200, hue:155, art:'🌿', rating:'8.4', desc:'«GONE.WILD» — новый альбом вживую. 18+.',           avail:780,  total:5000,  tags:['Инди','18+'] },
+    { id:'ev1', type:'cinema',  title:'Dune: Part Two',           venue:'Каро 11 Октябрь',    city:'Москва', date:'15 апр', time:'19:30', price:450,  vip:750,  hue:45,  rating:'8.7', desc:'Пол Атрейдес ведёт фрименов. IMAX / Dolby Atmos.', avail:47,   total:220,   tags:['IMAX','Sci-Fi'] },
+    { id:'ev2', type:'cinema',  title:'Мастер и Маргарита',       venue:'Формула Кино',        city:'СПб',    date:'17 апр', time:'20:15', price:420,  vip:680,  hue:270, rating:'8.1', desc:'Экранизация романа Булгакова. VIP-зал.',            avail:12,   total:80,    tags:['Драма','VIP'] },
+    { id:'ev3', type:'cinema',  title:'Сто лет тому вперёд',      venue:'Синема Парк',         city:'Москва', date:'16 апр', time:'18:00', price:380,  vip:600,  hue:195, rating:'7.4', desc:'Фантастика по Булычёву. Семейный.',                 avail:112,  total:180,   tags:['Семейный'] },
+    { id:'ev4', type:'concert', title:'Imagine Dragons',           venue:'СК Олимпийский',      city:'Москва', date:'22 апр', time:'20:00', price:3500, vip:8500, hue:320, rating:'9.2', desc:'Loom World Tour. Фанпит + трибуна + VIP.',           avail:342,  total:8000,  tags:['Рок','World Tour'] },
+    { id:'ev5', type:'concert', title:'Miyagi & Andy Panda',       venue:'ВТБ Арена',           city:'Москва', date:'25 апр', time:'21:00', price:2200, vip:5000, hue:185, rating:'8.9', desc:'«Дорога домой» — 10 лет вместе.',                  avail:1240, total:12000, tags:['Хип-хоп'] },
+    { id:'ev6', type:'concert', title:'Классика под открытым небом', venue:'Архангельское',     city:'МО',     date:'28 апр', time:'18:00', price:1800, vip:4500, hue:245, rating:'9.5', desc:'Оркестр Большого. Чайковский, Рахманинов.',         avail:560,  total:3000,  tags:['Классика','Open Air'] },
+    { id:'ev7', type:'concert', title:'GONE.Fludd',                venue:'Adrenaline Stadium',  city:'Москва', date:'2 мая',  time:'20:30', price:1900, vip:4200, hue:155, rating:'8.4', desc:'«GONE.WILD» — новый альбом вживую. 18+.',           avail:780,  total:5000,  tags:['Инди','18+'] },
   ];
 
   const fmtP = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
@@ -1297,7 +1299,7 @@ const TicketsTab = () => {
       venue: ev.venue, date: ev.date + ' ' + ev.time, type: ev.type,
       qty, isVip, price: (isVip ? ev.vip : ev.price) * qty,
       code: 'SKY-' + Math.random().toString(36).toUpperCase().slice(2, 8),
-      hue: ev.hue, art: ev.art,
+      hue: ev.hue,
       bought: new Date().toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
     };
     setMyTix(m => [t, ...m]);
@@ -1312,7 +1314,11 @@ const TicketsTab = () => {
         className="w-full max-w-xs rounded-3xl overflow-hidden"
         style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}>
         <div className="px-6 pt-6 pb-4 text-center">
-          <div className="text-3xl mb-3">{showQR.art}</div>
+          <div className="mb-3 flex justify-center">
+            {showQR.type === 'cinema'
+              ? <Film size={28} style={{ color:'var(--t2)' }}/>
+              : <Music2 size={28} style={{ color:'var(--t2)' }}/>}
+          </div>
           <p className="text-base font-bold" style={{ color: 'var(--t1)' }}>{showQR.title}</p>
           <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>{showQR.venue} · {showQR.date}</p>
           {showQR.isVip && <span className="inline-block mt-2 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,215,0,0.1)', color: '#ffd700' }}>VIP</span>}
@@ -1351,12 +1357,12 @@ const TicketsTab = () => {
         className="w-full max-w-sm rounded-3xl overflow-hidden"
         style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}>
         <div className="p-6 text-center" style={{ background: 'linear-gradient(135deg, rgba(0,200,90,0.08), rgba(0,200,90,0.02))' }}>
-          <div className="text-5xl mb-3">🎉</div>
+          <CheckCircle size={44} className="mx-auto mb-3" style={{ color:'#22c55e' }}/>
           <p className="text-xl font-black" style={{ color: 'var(--t1)' }}>Готово!</p>
           <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>Билет сохранён в «Мои билеты»</p>
         </div>
         <div className="px-5 py-4 space-y-0">
-          {([['Событие', confirm.title], ['Место', confirm.venue], ['Дата', confirm.date], ['Тип', confirm.isVip ? 'VIP 👑' : 'Стандарт'], ['Количество', confirm.qty + ' шт'], ['Итого', fmtP(confirm.price)]] as [string, string][]).map(([k, v]) => (
+          {([['Событие', confirm.title], ['Место', confirm.venue], ['Дата', confirm.date], ['Тип', confirm.isVip ? 'VIP' : 'Стандарт'], ['Количество', confirm.qty + ' шт'], ['Итого', fmtP(confirm.price)]] as [string, string][]).map(([k, v]) => (
             <div key={k} className="flex justify-between items-center py-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
               <p className="text-xs" style={{ color: 'var(--t3)' }}>{k}</p>
               <p className="text-xs font-bold" style={{ color: 'var(--t1)' }}>{v}</p>
@@ -1372,7 +1378,7 @@ const TicketsTab = () => {
             onClick={() => { setQR(confirm); setCfm(null); }}
             className="flex-1 rounded-xl py-2.5 text-sm font-bold"
             style={{ background: 'var(--bg-l3)', color: 'var(--t2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
-            📱 QR-код
+            <QrCode size={13} className="inline mr-1"/>QR-код
           </motion.button>
           <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={() => setCfm(null)}
             className="flex-1 rounded-xl py-2.5 text-sm font-bold"
@@ -1401,20 +1407,24 @@ const TicketsTab = () => {
           <p className="flex-1 text-sm font-bold truncate" style={{ color: 'var(--t1)' }}>{ev.title}</p>
           <motion.button whileTap={{ scale: 0.85 }} type="button" onClick={() => toggleFav(ev.id)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20 }}>
-            {fav.includes(ev.id) ? '❤️' : '🤍'}
+            <Heart size={16} fill={fav.includes(ev.id) ? '#ef4444' : 'none'} style={{ color: fav.includes(ev.id) ? '#ef4444' : 'var(--t3)' }}/>
           </motion.button>
         </div>
         <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
           {/* Hero */}
           <div className="relative overflow-hidden" style={{ height: 160, background: bgGrad(ev.hue) }}>
-            <div className="absolute right-8 top-1/2 -translate-y-1/2 text-7xl" style={{ opacity: 0.12 }}>{ev.art}</div>
+            <div className="absolute right-8 top-1/2 -translate-y-1/2" style={{ opacity: 0.12 }}>
+              {ev.type === 'cinema'
+                ? <Film size={68} style={{ color:'#fff' }}/>
+                : <Music2 size={68} style={{ color:'#fff' }}/>}
+            </div>
             <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 60%)' }} />
             <div className="absolute bottom-5 left-5">
               <div className="flex gap-2 mb-2">
                 <span className="text-[10px] font-black px-2 py-0.5 rounded" style={{ background: ev.type === 'cinema' ? 'rgba(245,158,11,0.35)' : 'rgba(168,85,247,0.35)', color: ev.type === 'cinema' ? '#f59e0b' : '#a855f7' }}>
-                  {ev.type === 'cinema' ? '🎬 КИНО' : '🎵 КОНЦЕРТ'}
+                  {ev.type === 'cinema' ? 'КИНО' : 'КОНЦЕРТ'}
                 </span>
-                <span className="text-[10px] font-black px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}>★ {ev.rating}</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}><Star size={9} fill="#fff"/>{ev.rating}</span>
               </div>
               <p className="text-2xl font-black text-white drop-shadow-lg">{ev.title}</p>
             </div>
@@ -1423,9 +1433,9 @@ const TicketsTab = () => {
           <div className="p-5 space-y-5">
             {/* Info grid */}
             <div className="grid grid-cols-2 gap-2">
-              {([['📅', ev.date], ['⏰', ev.time], ['📍', ev.venue], ['🏙', ev.city]] as [string, string][]).map(([icon, val], i) => (
+              {([[Calendar, ev.date], [Clock, ev.time], [MapPin, ev.venue], [Building2, ev.city]] as [typeof Calendar, string][]).map(([Icon, val], i) => (
                 <div key={i} className="flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-                  <span className="text-base">{icon}</span>
+                  <Icon size={15} style={{ color: 'var(--t3)' }}/>
                   <p className="text-xs font-semibold truncate" style={{ color: 'var(--t1)' }}>{val}</p>
                 </div>
               ))}
@@ -1452,14 +1462,14 @@ const TicketsTab = () => {
               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
                 <div className="h-full rounded-full" style={{ width: avPct + '%', background: stockC(ev.avail) }} />
               </div>
-              {ev.avail < 50 && <p className="text-[10px] font-bold mt-1.5" style={{ color: 'var(--red)' }}>⚡ Торопитесь — осталось мало</p>}
+              {ev.avail < 50 && <p className="inline-flex items-center gap-1 text-[10px] font-bold mt-1.5" style={{ color: 'var(--red)' }}><Zap size={10}/>Торопитесь — осталось мало</p>}
             </div>
 
             {/* Ticket selector */}
             <div className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
               <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--t3)' }}>Тип билета</p>
               <div className="grid grid-cols-2 gap-2">
-                {([['Стандарт', false, ev.price], ['VIP 👑', true, ev.vip]] as [string, boolean, number][]).map(([l, v, p]) => (
+                {([['Стандарт', false, ev.price], ['VIP', true, ev.vip]] as [string, boolean, number][]).map(([l, v, p]) => (
                   <div key={l} onClick={() => setVip(v)} className="rounded-xl p-3.5 cursor-pointer transition-all"
                     style={{ background: isVip === v ? `hsl(${ev.hue},50%,16%)` : 'var(--bg-l3)', border: `1.5px solid ${isVip === v ? `hsl(${ev.hue},60%,32%)` : 'var(--border)'}` }}>
                     <p className="text-xs font-bold mb-1" style={{ color: isVip === v ? `hsl(${ev.hue},80%,65%)` : 'var(--t2)' }}>{l}</p>
@@ -1505,12 +1515,12 @@ const TicketsTab = () => {
       <div className="px-5 py-3.5 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
-            <span className="text-xl">🎫</span>
+            <Ticket size={19} style={{ color:'var(--t1)' }}/>
             <h2 className="text-base font-black" style={{ color: 'var(--t1)' }}>Sky Билеты</h2>
           </div>
           {myTix.length > 0 && (
             <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid rgba(79,110,247,0.2)' }}>
-              🎫 {myTix.length}
+              <Ticket size={12} className="inline mr-1"/>{myTix.length}
             </span>
           )}
         </div>
@@ -1523,7 +1533,7 @@ const TicketsTab = () => {
         </div>
         {/* Filters */}
         <div className="flex gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
-          {([['all', 'Все'], ['cinema', '🎬 Кино'], ['concert', '🎵 Концерты']] as [string, string][]).map(([k, l]) => (
+          {([['all', 'Все'], ['cinema', 'Кино'], ['concert', 'Концерты']] as [string, string][]).map(([k, l]) => (
             <button key={k} type="button" onClick={() => setFilter(k as any)}
               className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
               style={{ background: filter === k ? 'var(--t1)' : 'var(--bg-l3)', color: filter === k ? 'var(--bg)' : 'var(--t3)', border: `1px solid ${filter === k ? 'transparent' : 'var(--border)'}`, cursor: 'pointer' }}>
@@ -1539,7 +1549,7 @@ const TicketsTab = () => {
             </button>
           ))}
           <div className="w-px shrink-0" style={{ background: 'var(--border)', margin: '2px 4px' }} />
-          {([['all', '💰 Все'], ['budget', '< 1К'], ['mid', '1–5К'], ['prem', '5К+']] as [string, string][]).map(([k, l]) => (
+          {([['all', 'Все'], ['budget', '< 1К'], ['mid', '1–5К'], ['prem', '5К+']] as [string, string][]).map(([k, l]) => (
             <button key={k} type="button" onClick={() => setPriceF(k as any)}
               className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
               style={{ background: priceF === k ? 'rgba(0,200,90,0.1)' : 'transparent', color: priceF === k ? 'var(--green)' : 'var(--t3)', border: `1px solid ${priceF === k ? 'rgba(0,200,90,0.2)' : 'transparent'}`, cursor: 'pointer' }}>
@@ -1572,7 +1582,11 @@ const TicketsTab = () => {
                   style={{ background: 'var(--bg-l2)', border: `1px solid ${urgent ? 'rgba(244,63,94,0.25)' : 'var(--border)'}`, boxShadow: urgent ? '0 0 0 1px rgba(244,63,94,0.1)' : 'none' }}>
                   {/* Hero */}
                   <div className="relative overflow-hidden" style={{ height: 80, background: bgGrad(ev.hue) }}>
-                    <div className="absolute right-5 top-1/2 -translate-y-1/2 text-5xl" style={{ opacity: 0.15 }}>{ev.art}</div>
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2" style={{ opacity: 0.15 }}>
+                      {ev.type === 'cinema'
+                        ? <Film size={46} style={{ color:'#fff' }}/>
+                        : <Music2 size={46} style={{ color:'#fff' }}/>}
+                    </div>
                     <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.3), transparent 60%)' }} />
                     <div className="absolute inset-0 px-4 flex items-center gap-3">
                       <div>
@@ -1581,8 +1595,8 @@ const TicketsTab = () => {
                             style={{ background: ev.type === 'cinema' ? 'rgba(245,158,11,0.35)' : 'rgba(168,85,247,0.35)', color: ev.type === 'cinema' ? '#f59e0b' : '#a855f7' }}>
                             {ev.type === 'cinema' ? 'КИНО' : 'КОНЦЕРТ'}
                           </span>
-                          {urgent && <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(244,63,94,0.35)', color: '#f43f5e' }}>⚡ МАЛО МЕСТ</span>}
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)' }}>★ {ev.rating}</span>
+                          {urgent && <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(244,63,94,0.35)', color: '#f43f5e' }}><Zap size={9} className="inline mr-1"/>МАЛО МЕСТ</span>}
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)' }}><Star size={9} fill="currentColor" className="inline mr-1"/>{ev.rating}</span>
                         </div>
                         <p className="text-sm font-black text-white">{ev.title}</p>
                       </div>
@@ -1592,11 +1606,11 @@ const TicketsTab = () => {
                   <div className="px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs" style={{ color: 'var(--t3)' }}>📅</span>
+                        <Calendar size={12} style={{ color: 'var(--t3)' }}/>
                         <p className="text-xs font-semibold" style={{ color: 'var(--t2)' }}>{ev.date}</p>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs" style={{ color: 'var(--t3)' }}>📍</span>
+                        <MapPin size={12} style={{ color: 'var(--t3)' }}/>
                         <p className="text-xs truncate max-w-[120px]" style={{ color: 'var(--t2)' }}>{ev.venue}</p>
                       </div>
                     </div>
@@ -1604,7 +1618,7 @@ const TicketsTab = () => {
                       <motion.button whileTap={{ scale: 0.8 }} type="button"
                         onClick={e => { e.stopPropagation(); toggleFav(ev.id); }}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>
-                        {fav.includes(ev.id) ? '❤️' : '🤍'}
+                        <Heart size={16} fill={fav.includes(ev.id) ? '#ef4444' : 'none'} style={{ color: fav.includes(ev.id) ? '#ef4444' : 'var(--t3)' }}/>
                       </motion.button>
                       <div className="text-right">
                         <p className="text-[10px]" style={{ color: 'var(--t3)' }}>от</p>
@@ -1629,7 +1643,7 @@ const TicketsTab = () => {
 
         {tab === 'my' && (
           myTix.length === 0
-            ? <div className="grid place-items-center h-40 text-center"><div><p className="text-4xl mb-3">🎫</p><p className="text-sm font-bold" style={{ color: 'var(--t2)' }}>Нет билетов</p><p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>Купите в разделе «Афиша»</p></div></div>
+            ? <div className="grid place-items-center h-40 text-center"><div><Ticket size={36} className="mx-auto mb-3" style={{ color:'var(--t3)' }}/><p className="text-sm font-bold" style={{ color: 'var(--t2)' }}>Нет билетов</p><p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>Купите в разделе «Афиша»</p></div></div>
             : myTix.map((t: any) => (
               <div key={t.id} className="rounded-2xl overflow-hidden" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
                 <div className="flex items-center gap-3 px-4 py-3" style={{ background: bgGrad(t.hue), borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -1650,7 +1664,7 @@ const TicketsTab = () => {
                     <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => setQR(t)}
                       className="rounded-lg px-3 py-1.5 text-xs font-bold"
                       style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid rgba(79,110,247,0.2)', cursor: 'pointer' }}>
-                      📱 QR
+                      <QrCode size={12} className="inline mr-1"/>QR
                     </motion.button>
                   </div>
                 </div>
@@ -1660,19 +1674,23 @@ const TicketsTab = () => {
 
         {tab === 'fav' && (
           fav.length === 0
-            ? <div className="grid place-items-center h-40 text-center"><div><p className="text-4xl mb-3">🤍</p><p className="text-sm font-bold" style={{ color: 'var(--t2)' }}>Нет избранного</p></div></div>
+            ? <div className="grid place-items-center h-40 text-center"><div><Heart size={36} className="mx-auto mb-3" style={{ color:'var(--t3)' }}/><p className="text-sm font-bold" style={{ color: 'var(--t2)' }}>Нет избранного</p></div></div>
             : EVENTS.filter(ev => fav.includes(ev.id)).map(ev => (
               <motion.div key={ev.id} whileHover={{ y: -1 }} onClick={() => { setOpen(ev); setQty(1); setVip(false); }}
                 className="flex items-center gap-3 rounded-2xl px-4 py-3 cursor-pointer"
                 style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-                <div className="h-12 w-12 rounded-xl grid place-items-center text-2xl shrink-0" style={{ background: bgGrad(ev.hue) }}>{ev.art}</div>
+                <div className="h-12 w-12 rounded-xl grid place-items-center shrink-0" style={{ background: bgGrad(ev.hue) }}>
+                  {ev.type === 'cinema'
+                    ? <Film size={20} style={{ color:'#fff' }}/>
+                    : <Music2 size={20} style={{ color:'#fff' }}/>}
+                </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold truncate" style={{ color: 'var(--t1)' }}>{ev.title}</p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--t3)' }}>{ev.venue} · {ev.date}</p>
                   <p className="text-xs font-bold mt-1" style={{ color: 'var(--t1)' }}>от {fmtP(ev.price)}</p>
                 </div>
                 <motion.button whileTap={{ scale: 0.8 }} type="button" onClick={e => { e.stopPropagation(); toggleFav(ev.id); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20 }}>❤️</motion.button>
+                  style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Heart size={18} fill="#ef4444" style={{ color:'#ef4444' }}/></motion.button>
               </motion.div>
             ))
         )}
@@ -1933,21 +1951,26 @@ const MediaHomeTab = ({
     transition: { duration: 0.36, delay: i * 0.07, ease: [0.22,1,0.36,1] as any },
   });
 
+  /* Значки разделов — из общего набора приложения, а не эмодзи.
+     Эмодзи рисует шрифт устройства: на телефоне, на компьютере и на
+     телевизоре это три разные картинки разного веса и цвета, и
+     подстроить их под остальной интерфейс нельзя. Значок же берёт
+     цвет и толщину линии оттуда же, откуда вся остальная разметка. */
   const SECTIONS = [
-    { key:'music',   emoji:'🎵', label:'Музыка',   color:'#6366f1', bg:'rgba(99,102,241,.12)'  },
-    { key:'movies',  emoji:'🎬', label:'Кино',     color:'#f43f5e', bg:'rgba(244,63,94,.12)'   },
-    { key:'tv',      emoji:'📺', label:'ТВ',       color:'#a855f7', bg:'rgba(168,85,247,.12)'  },
-    { key:'podcasts',emoji:'🎙', label:'Подкасты', color:'#10b981', bg:'rgba(16,185,129,.12)'  },
-    { key:'tickets', emoji:'🎫', label:'Билеты',   color:'#f59e0b', bg:'rgba(245,158,11,.12)'  },
-    { key:'ai',      emoji:'✦',  label:'Sky AI',   color:'#8b5cf6', bg:'rgba(139,92,246,.12)'  },
+    { key:'music',   Icon:Music2,   label:'Музыка',   color:'#6366f1', bg:'rgba(99,102,241,.12)'  },
+    { key:'movies',  Icon:Film,     label:'Кино',     color:'#f43f5e', bg:'rgba(244,63,94,.12)'   },
+    { key:'tv',      Icon:Tv2,      label:'ТВ',       color:'#a855f7', bg:'rgba(168,85,247,.12)'  },
+    { key:'podcasts',Icon:Mic2,     label:'Подкасты', color:'#10b981', bg:'rgba(16,185,129,.12)'  },
+    { key:'tickets', Icon:Ticket,   label:'Билеты',   color:'#f59e0b', bg:'rgba(245,158,11,.12)'  },
+    { key:'ai',      Icon:Sparkles, label:'Sky AI',   color:'#8b5cf6', bg:'rgba(139,92,246,.12)'  },
   ] as const;
 
   const FEATURED = [
-    { title:'Lo-Fi Chill 2026',  sub:'Плейлист · 38 треков', emoji:'🌙', g:['#1e1b4b','#312e81'] as [string,string] },
-    { title:'Sky Tech Podcast',  sub:'Еп. 54 · 42 мин',       emoji:'💻', g:['#052e16','#14532d'] as [string,string] },
-    { title:'Neon Racer OST',    sub:'Саундтрек · 22 трека',  emoji:'⚡', g:['#1c1917','#44403c'] as [string,string] },
-    { title:'Sky Hits · Апрель', sub:'Топ 50 · Каждую неделю',emoji:'🔥', g:['#450a0a','#7f1d1d'] as [string,string] },
-    { title:'Midnight Vibes',    sub:'Плейлист · 18 треков',  emoji:'🌌', g:['#0c0a09','#292524'] as [string,string] },
+    { title:'Lo-Fi Chill 2026',  sub:'Плейлист · 38 треков', Icon:Music2,   g:['#1e1b4b','#312e81'] as [string,string] },
+    { title:'Sky Tech Podcast',  sub:'Еп. 54 · 42 мин',       Icon:Mic2,     g:['#052e16','#14532d'] as [string,string] },
+    { title:'Neon Racer OST',    sub:'Саундтрек · 22 трека',  Icon:Zap,      g:['#1c1917','#44403c'] as [string,string] },
+    { title:'Sky Hits · Апрель', sub:'Топ 50 · Каждую неделю',Icon:Sparkles, g:['#450a0a','#7f1d1d'] as [string,string] },
+    { title:'Midnight Vibes',    sub:'Плейлист · 18 треков',  Icon:Music2,   g:['#0c0a09','#292524'] as [string,string] },
   ];
 
   const fmtMin = (m: number) => m >= 60 ? `${Math.floor(m/60)}ч ${m%60}м` : `${m}м`;
@@ -2016,7 +2039,7 @@ const MediaHomeTab = ({
             {isPrime && (
               <div className="rounded-full px-2.5 py-1 shrink-0 mt-1"
                 style={{ background:'rgba(245,158,11,.15)', border:'1px solid rgba(245,158,11,.3)' }}>
-                <span className="text-[9.5px] font-black" style={{ color:'#f59e0b' }}>✦ PRIME</span>
+                <span className="inline-flex items-center gap-1 text-[9.5px] font-black" style={{ color:'#f59e0b' }}><Crown size={9}/>PRIME</span>
               </div>
             )}
           </div>
@@ -2034,7 +2057,7 @@ const MediaHomeTab = ({
             <div className={isMobile ? 'grid h-7 w-7 place-items-center rounded-lg shrink-0' : 'grid h-9 w-9 place-items-center rounded-xl shrink-0'}
               style={{ background:'linear-gradient(135deg,rgba(99,102,241,.5),rgba(168,85,247,.4))',
                 border:'1px solid rgba(255,255,255,.15)' }}>
-              <span style={{ fontSize:18 }}>🎵</span>
+              <Music2 size={17} style={{ color:'var(--t2)' }}/>
             </div>
             <div className="flex-1 text-left">
               <p className="text-[13px] font-black text-white">Мой поток</p>
@@ -2056,15 +2079,15 @@ const MediaHomeTab = ({
         <p className="text-[10px] font-black uppercase tracking-[0.16em] mb-2.5"
           style={{ color:'var(--t3)' }}>Разделы</p>
         <div className={isMobile ? 'grid grid-cols-4 gap-1.5' : 'grid grid-cols-3 gap-2'}>
-          {SECTIONS.map(({ key, emoji, label, color, bg }) => (
+          {SECTIONS.map(({ key, Icon, label, color, bg }) => (
             <motion.button key={key} type="button"
               whileHover={{ scale:1.04, y:-2 }} whileTap={{ scale:.93 }}
               onClick={() => onNav(key)}
               className={isMobile ? 'flex flex-col items-center gap-1 rounded-xl py-2.5' : 'flex flex-col items-center gap-2 rounded-2xl py-4'}
               style={{ background:'var(--bg-l2)', border:'1px solid var(--border)', cursor:'pointer' }}>
-              <div className={isMobile ? 'grid h-7 w-7 place-items-center rounded-lg text-sm' : 'grid h-10 w-10 place-items-center rounded-xl text-xl'}
+              <div className={isMobile ? 'grid h-7 w-7 place-items-center rounded-lg' : 'grid h-10 w-10 place-items-center rounded-xl'}
                 style={{ background:bg, border:`1px solid ${color}28` }}>
-                {emoji}
+                <Icon size={isMobile ? 15 : 20} style={{ color }}/>
               </div>
               <span className={isMobile ? 'text-[9.5px] font-bold text-center leading-tight' : 'text-[11px] font-bold'} style={{ color:'var(--t1)' }}>{label}</span>
             </motion.button>
@@ -2096,7 +2119,9 @@ const MediaHomeTab = ({
               <div className="relative overflow-hidden rounded-2xl mb-2"
                 style={{ height:cardSize, background:`linear-gradient(155deg,${f.g[0]},${f.g[1]})`,
                   boxShadow:'0 8px 24px rgba(0,0,0,.45)', border:'1px solid rgba(255,255,255,.06)' }}>
-                <div className="absolute inset-0 flex items-center justify-center" style={{ fontSize:isMobile?32:48 }}>{f.emoji}</div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <f.Icon size={isMobile?30:44} style={{ color:'rgba(255,255,255,0.85)' }}/>
+                </div>
                 {/* Hover play overlay */}
                 <motion.div className="absolute inset-0 flex items-center justify-center opacity-0"
                   style={{ background:'rgba(0,0,0,.45)' }}
@@ -2145,7 +2170,7 @@ const MediaHomeTab = ({
                       boxShadow:'0 4px 16px rgba(0,0,0,.35)', border:'1px solid rgba(255,255,255,.05)' }}>
                     {track.coverUrl
                       ? <img src={track.coverUrl} alt="" className="w-full h-full object-cover"/>
-                      : <div className="w-full h-full grid place-items-center" style={{ fontSize:isMobile?24:32 }}>🎵</div>}
+                      : <div className="w-full h-full grid place-items-center"><Music2 size={isMobile?22:30} style={{ color:'var(--t3)' }}/></div>}
                   </div>
                   <p className="text-[10.5px] font-bold truncate" style={{ color:'var(--t1)' }}>{track.title}</p>
                   <p className="text-[9.5px] truncate mt-0.5" style={{ color:'var(--t3)' }}>{track.artist}</p>
@@ -2173,9 +2198,9 @@ const MediaHomeTab = ({
             ))}
           </div>
           {([
-            { label:'🎵 Музыка',   pct:58, color:'#6366f1' },
-            { label:'🎬 Видео',    pct:24, color:'#f43f5e' },
-            { label:'🎙 Подкасты', pct:18, color:'#10b981' },
+            { label:'Музыка',   pct:58, color:'#6366f1' },
+            { label:'Видео',    pct:24, color:'#f43f5e' },
+            { label:'Подкасты', pct:18, color:'#10b981' },
           ] as const).map(({ label, pct, color }, i) => (
             <div key={label} className={i>0?'mt-2.5':''}>
               <div className="flex justify-between mb-1">
