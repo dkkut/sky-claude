@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { ArrowLeft, Lock } from 'lucide-react';
+import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
 
 export const FamilyAchievements = ({ onBack }: { onBack: () => void }) => {
@@ -26,7 +27,9 @@ export const FamilyAchievements = ({ onBack }: { onBack: () => void }) => {
               className="flex flex-col items-center gap-2 rounded-2xl p-4 text-center"
               style={{ background: a.unlocked ? 'var(--bg-l1)' : 'var(--bg-l2)', border: `1px solid ${a.unlocked ? 'rgba(245,158,11,0.3)' : 'var(--border)'}`, opacity: a.unlocked ? 1 : 0.55 }}>
               <div className="grid h-14 w-14 place-items-center rounded-2xl text-2xl" style={{ background: a.unlocked ? 'rgba(245,158,11,0.15)' : 'var(--bg-l1)' }}>
-                {a.unlocked ? a.icon : <Lock size={20} style={{ color: 'var(--t3)' }}/>}
+                {a.unlocked
+                  ? <FamilyIcon kind={a.kind} size={22} color="var(--amber)"/>
+                  : <Lock size={20} style={{ color: 'var(--t3)' }}/>}
               </div>
               <p className="text-[12.5px] font-bold" style={{ color: 'var(--t1)' }}>{a.title}</p>
               <p className="text-[10.5px] leading-tight" style={{ color: 'var(--t3)' }}>{a.desc}</p>

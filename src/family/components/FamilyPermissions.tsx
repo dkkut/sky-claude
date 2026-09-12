@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
+import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
 import { PERMISSIONS } from '../types';
 
@@ -20,7 +21,7 @@ export const FamilyPermissions = ({ onBack }: { onBack: () => void }) => {
       </div>
 
       {managed.length === 0 ? (
-        <div className="sky-empty py-12"><div className="sky-empty-icon">🔐</div><p style={{ color: 'var(--t2)' }}>В семье нет детей или подростков</p></div>
+        <div className="sky-empty py-12"><div className="sky-empty-icon"><FamilyIcon kind="safe" size={30} color="var(--t3)"/></div><p style={{ color: 'var(--t2)' }}>В семье нет детей или подростков</p></div>
       ) : (
         <>
           <div className="flex gap-2 overflow-x-auto px-4 pb-2" style={{ scrollbarWidth: 'none' }}>

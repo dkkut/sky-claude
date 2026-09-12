@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Plus, X, Check } from 'lucide-react';
+import { FamilyIcon, GOAL_KINDS } from '../familyIcons';
 import { useFamilyStore } from '../store';
 import { fmt } from '@/wallet/store';
 
-const EMOJIS = ['🏖','🎮','🚗','🏠','💻','✈️','🎸','📱','🚲','🎓'];
+
 
 export const FamilyGoals = ({ onBack }: { onBack: () => void }) => {
   const { family, createGoal, contributeToGoal, deleteGoal } = useFamilyStore();
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
-  const [emoji, setEmoji] = useState(EMOJIS[0]);
+  const [kind, setKind] = useState(GOAL_KINDS[0]);
   const [target, setTarget] = useState('');
   const [deadline, setDeadline] = useState('');
   const [contribGoal, setContribGoal] = useState<string | null>(null);
@@ -21,7 +22,7 @@ export const FamilyGoals = ({ onBack }: { onBack: () => void }) => {
 
   const submitCreate = () => {
     if (!title.trim() || !Number(target)) return;
-    createGoal(title.trim(), emoji, Number(target), deadline || undefined);
+    createGoal(title.trim(), kind, Number(target), deadline || undefined);
     setCreating(false); setTitle(''); setTarget(''); setDeadline('');
   };
 
@@ -49,7 +50,7 @@ export const FamilyGoals = ({ onBack }: { onBack: () => void }) => {
       <div className="flex-1 px-4 py-3 space-y-3">
         {family.goals.length === 0 && (
           <div className="sky-empty py-10">
-            <div className="sky-empty-icon">🎯</div>
+            <div className="sky-empty-icon"><FamilyIcon kind="goal" size={30} color="var(--t3)"/></div>
             <p style={{ color: 'var(--t2)' }}>Создайте первую семейную цель накопления</p>
             <button type="button" onClick={() => setCreating(true)} className="sky-btn-primary mt-2 px-5 py-2.5">Создать цель</button>
           </div>
@@ -60,12 +61,12 @@ export const FamilyGoals = ({ onBack }: { onBack: () => void }) => {
             <motion.div key={g.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               className="rounded-3xl p-4" style={{ background: 'var(--bg-l1)', border: `1px solid ${g.achieved ? 'rgba(34,197,94,0.35)' : 'var(--border)'}` }}>
               <div className="flex items-center gap-3">
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-2xl" style={{ background: 'var(--bg-l2)' }}>{g.emoji}</div>
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-2xl" style={{ background: 'var(--bg-l2)' }}><FamilyIcon kind={g.kind} size={22}/></div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] font-bold" style={{ color: 'var(--t1)' }}>{g.title}</p>
                   <p className="text-[11.5px]" style={{ color: 'var(--t3)' }}>{fmt(g.savedAmount)} из {fmt(g.targetAmount)}{g.deadline ? ` · до ${new Date(g.deadline).toLocaleDateString('ru')}` : ''}</p>
                 </div>
-                {g.achieved && <span className="shrink-0 text-lg">🎉</span>}
+                {g.achieved && <FamilyIcon kind="done" size={16} color="var(--green)"/>}
                 <button type="button" onClick={() => deleteGoal(g.id)}><X size={14} style={{ color: 'var(--t3)' }}/></button>
               </div>
               <div className="mt-3 h-2 w-full overflow-hidden rounded-full" style={{ background: 'var(--bg-l2)' }}>
@@ -104,10 +105,10 @@ export const FamilyGoals = ({ onBack }: { onBack: () => void }) => {
                 <>
                   <p className="mb-4 text-[15px] font-black" style={{ color: 'var(--t1)' }}>Новая цель</p>
                   <div className="mb-3 flex flex-wrap gap-2">
-                    {EMOJIS.map(e => (
-                      <button key={e} type="button" onClick={() => setEmoji(e)}
-                        className="grid h-10 w-10 place-items-center rounded-xl text-lg" style={{ background: emoji === e ? 'var(--accent-bg)' : 'var(--bg-l2)', border: emoji === e ? '1.5px solid var(--accent)' : '1px solid transparent' }}>
-                        {e}
+                    {GOAL_KINDS.map(k => (
+                      <button key={k} type="button" onClick={() => setKind(k)}
+                        className="grid h-10 w-10 place-items-center rounded-xl" style={{ background: kind === k ? 'var(--accent-bg)' : 'var(--bg-l2)', border: kind === k ? '1.5px solid var(--accent)' : '1px solid transparent' }}>
+                        <FamilyIcon kind={k} size={18} color={kind === k ? 'var(--accent)' : 'var(--t2)'}/>
                       </button>
                     ))}
                   </div>

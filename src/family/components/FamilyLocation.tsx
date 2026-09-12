@@ -43,7 +43,7 @@ export const FamilyLocation = ({ onBack }: { onBack: () => void }) => {
           <button type="button" onClick={() => toggleShareLocation(!myLoc?.sharing)}
             className="flex-1 rounded-2xl py-3 text-[13px] font-bold"
             style={{ background: myLoc?.sharing ? 'rgba(34,197,94,0.12)' : 'var(--bg-l1)', color: myLoc?.sharing ? 'var(--green)' : 'var(--t2)', border: '1px solid var(--border)' }}>
-            {myLoc?.sharing ? '✓ Геопозиция включена' : 'Поделиться геопозицией'}
+            {myLoc?.sharing ? 'Геопозиция включена' : 'Поделиться геопозицией'}
           </button>
           {myLoc?.sharing && (
             <motion.button type="button" whileTap={{ scale: 0.96 }} onClick={markImHome}

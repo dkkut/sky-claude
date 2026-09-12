@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, X, Wallet } from 'lucide-react';
+import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
 import type { AllowanceFreq } from '../types';
 
@@ -35,7 +36,7 @@ export const FamilyAllowance = ({ onBack }: { onBack: () => void }) => {
 
       <div className="flex-1 px-4 py-3 space-y-2.5">
         {kids.length === 0 && (
-          <div className="sky-empty py-10"><div className="sky-empty-icon">💵</div><p style={{ color: 'var(--t2)' }}>В семье пока нет детей или подростков</p></div>
+          <div className="sky-empty py-10"><div className="sky-empty-icon"><FamilyIcon kind="money" size={30} color="var(--t3)"/></div><p style={{ color: 'var(--t2)' }}>В семье пока нет детей или подростков</p></div>
         )}
         {kids.map(m => {
           const a = family.allowances.find(x => x.memberId === m.id && x.active);

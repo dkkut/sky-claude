@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Home, Users, Wallet, Target, Sparkles } from 'lucide-react';
+import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
 
 const PERKS = [
@@ -24,7 +25,7 @@ export const CreateFamily = () => {
   if (creating) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3">
-        <motion.div animate={{ scale: [1,1.15,1], rotate: [0,8,-8,0] }} transition={{ duration: 1.2, repeat: Infinity }} className="text-4xl">🏠</motion.div>
+        <motion.div animate={{ scale: [1,1.15,1], rotate: [0,8,-8,0] }} transition={{ duration: 1.2, repeat: Infinity }} ><FamilyIcon kind="home" size={36} color="var(--accent)"/></motion.div>
         <p className="text-[13px]" style={{ color: 'var(--t3)' }}>Создаём пространство для вашей семьи…</p>
       </div>
     );
@@ -36,7 +37,7 @@ export const CreateFamily = () => {
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 12 }}
           className="grid h-20 w-20 place-items-center rounded-3xl text-4xl"
           style={{ background: 'linear-gradient(135deg, rgba(79,110,247,0.25), rgba(139,92,246,0.2))', boxShadow: '0 8px 30px rgba(79,110,247,0.35)' }}>
-          🏠
+            <FamilyIcon kind="home" size={30} color="var(--accent)"/>
         </motion.div>
         <h1 className="mt-4 text-2xl font-black" style={{ color: 'var(--t1)' }}>Sky Family</h1>
         <p className="mt-1 max-w-xs text-[13px]" style={{ color: 'var(--t3)' }}>

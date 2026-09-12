@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Crown, Check, Users, Sparkles, Percent, Gift } from 'lucide-react';
+import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
 import { PRIME_FAMILY_PLANS } from '../types';
 import { useMoney, fmt } from '@/wallet/store';
@@ -27,7 +28,7 @@ export const FamilyPrime = ({ onBack }: { onBack: () => void }) => {
 
   const buy = () => {
     const ok = purchaseFamilyPrime(planId);
-    setToast(ok ? 'Sky Prime Family активирован для всей семьи 🎉' : 'Недостаточно средств на личном балансе');
+    setToast(ok ? 'Sky Prime Family активирован для всей семьи' : 'Недостаточно средств на личном балансе');
     setTimeout(() => setToast(null), 2600);
   };
 
@@ -42,7 +43,7 @@ export const FamilyPrime = ({ onBack }: { onBack: () => void }) => {
         <div className="flex flex-col items-center text-center">
           <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 12 }}
             className="grid h-16 w-16 place-items-center rounded-3xl text-3xl" style={{ background: 'linear-gradient(135deg,#f59e0b,#eab308)', boxShadow: '0 8px 26px rgba(245,158,11,0.4)' }}>
-            👑
+          <FamilyIcon kind="prime" size={30} color="var(--amber)"/>
           </motion.div>
           <h1 className="mt-3 text-xl font-black" style={{ color: 'var(--t1)' }}>Prime для всей семьи</h1>
           <p className="mt-1 max-w-xs text-[12.5px]" style={{ color: 'var(--t3)' }}>
@@ -52,7 +53,7 @@ export const FamilyPrime = ({ onBack }: { onBack: () => void }) => {
 
         {active && family.primeUntil && (
           <div className="mt-5 rounded-2xl p-4 text-center" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)' }}>
-            <p className="text-[13px] font-bold" style={{ color: 'var(--green)' }}>✓ Активен для всей семьи</p>
+            <p className="text-[13px] font-bold" style={{ color: 'var(--green)' }}>Активен для всей семьи</p>
             <p className="text-[11.5px]" style={{ color: 'var(--t3)' }}>До {new Date(family.primeUntil).toLocaleDateString('ru-RU', { day:'numeric', month:'long', year:'numeric' })}</p>
           </div>
         )}

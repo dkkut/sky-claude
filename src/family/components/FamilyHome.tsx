@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Wallet, Target, Trophy, Bell, Users, ChevronRight, TrendingUp, ShoppingCart, BarChart3, Calendar, ShieldAlert, MapPin, Coins, Lock, Clock3, MessageCircle, Shield, Sparkles, Plane } from 'lucide-react';
+import { Plus, Wallet, Target, Trophy, Bell, Users, ChevronRight, TrendingUp, ShoppingCart, BarChart3, Calendar, ShieldAlert, MapPin, Coins, Lock, Clock3, MessageCircle, Shield, Sparkles, Plane, CloudSun } from 'lucide-react';
+import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
 import { fmtAgo } from '@/bloom/store';
 
@@ -112,7 +113,7 @@ export const FamilyHome = ({ onNav }: { onNav: (v: FamilyView) => void }) => {
       <button type="button" onClick={() => onNav('prime')}
         className="mx-4 mt-3 flex items-center gap-3 rounded-2xl p-3.5 text-left"
         style={{ background: isPrimeFamilyActive() ? 'rgba(34,197,94,0.1)' : 'linear-gradient(135deg, rgba(245,158,11,0.14), var(--bg-l1))', border: `1px solid ${isPrimeFamilyActive() ? 'rgba(34,197,94,0.25)' : 'rgba(245,158,11,0.25)'}` }}>
-        <span className="text-xl">👑</span>
+        <FamilyIcon kind="prime" size={19} color="var(--amber)"/>
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-bold" style={{ color: 'var(--t1)' }}>Sky Prime Family</p>
           <p className="text-[11px]" style={{ color: 'var(--t3)' }}>{isPrimeFamilyActive() ? 'Активен для всей семьи' : 'Prime для всех участников по одной цене'}</p>
@@ -148,14 +149,14 @@ export const FamilyHome = ({ onNav }: { onNav: (v: FamilyView) => void }) => {
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--t3)' }}>Последние действия</p>
         {family.activity.length === 0 ? (
           <div className="sky-empty">
-            <div className="sky-empty-icon">🌤️</div>
+            <div className="sky-empty-icon"><CloudSun size={30} style={{ color: 'var(--t3)' }}/></div>
             <p style={{ color: 'var(--t2)' }}>Здесь появится история семьи</p>
           </div>
         ) : (
           <div className="space-y-2">
             {family.activity.slice(0,8).map(a => (
               <div key={a.id} className="flex items-center gap-3 rounded-2xl p-3" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
-                <span className="text-base">{a.icon}</span>
+                <FamilyIcon kind={a.kind} size={15}/>
                 <p className="min-w-0 flex-1 truncate text-[12.5px]" style={{ color: 'var(--t2)' }}>
                   <span className="font-semibold" style={{ color: 'var(--t1)' }}>{a.memberName}</span> {a.text}
                 </p>

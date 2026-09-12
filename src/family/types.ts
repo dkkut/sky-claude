@@ -40,7 +40,8 @@ export type AutoTopupFreq = 'off'|'daily'|'weekly'|'monthly'|'on_income';
 export interface FamilyGoal {
   id: string;
   title: string;
-  emoji: string;
+  /** Вид цели: по нему экран берёт значок (см. familyIcons). */
+  kind: string;
   targetAmount: number;
   savedAmount: number;
   deadline?: string;
@@ -69,7 +70,8 @@ export interface FamilyAchievement {
   id: string;
   title: string;
   desc: string;
-  icon: string;
+  /** Вид события: по нему экран берёт значок из общего набора. */
+  kind: string;
   unlocked: boolean;
   unlockedAt?: string;
   reward: string; // текстовое описание награды (тема/рамка/бейдж)
@@ -80,7 +82,15 @@ export interface ActivityItem {
   memberId: string;
   memberName: string;
   text: string;
-  icon: string;
+  /**
+   * Вид события, а не картинка.
+   *
+   * Раньше здесь лежала эмодзи, и лента событий выглядела по-разному на
+   * телефоне и на компьютере: рисует её шрифт устройства. Теперь
+   * хранится вид, а значок к нему подбирает экран — из того же набора,
+   * что и весь остальной интерфейс.
+   */
+  kind: string;
   createdAt: string;
 }
 
@@ -130,8 +140,9 @@ export interface SOSAlert {
 export const CALENDAR_KIND_LABEL: Record<CalendarEventKind, string> = {
   birthday:'День рождения', trip:'Поездка', holiday:'Праздник', reminder:'Напоминание', bill:'Оплата счёта', event:'Событие',
 };
+/** Вид события календаря → вид значка (см. familyIcons). */
 export const CALENDAR_KIND_ICON: Record<CalendarEventKind, string> = {
-  birthday:'🎂', trip:'✈️', holiday:'🎉', reminder:'⏰', bill:'💳', event:'📅',
+  birthday:'birthday', trip:'trip', holiday:'done', reminder:'request', bill:'money', event:'calendar',
 };
 
 export interface MemberLocation {

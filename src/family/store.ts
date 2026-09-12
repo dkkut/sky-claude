@@ -18,13 +18,13 @@ import type {
 import { CASHBACK_TIERS, AVATAR_COLORS, PRIME_FAMILY_PLANS, PERMISSIONS } from './types';
 
 const ACH_TEMPLATES: Omit<FamilyAchievement,'unlocked'|'unlockedAt'>[] = [
-  { id:'first_topup',  title:'Первая покупка',        desc:'Пополните семейный счёт впервые',        icon:'🏆', reward:'Тема «Рассвет»' },
-  { id:'purchases_10', title:'10 операций',           desc:'Совершите 10 операций по семейному счёту',icon:'🎯', reward:'Рамка профиля «Клевер»' },
-  { id:'topup_month',  title:'Пополнение месяца',     desc:'Пополняйте счёт 4 недели подряд',         icon:'📅', reward:'Анимация «Звёздная пыль»' },
-  { id:'million',      title:'Миллион оборота',       desc:'Общий оборот семьи достиг 1 000 000 ₽',   icon:'💎', reward:'Бейдж «Sky Dynasty»' },
-  { id:'first_goal',   title:'Первая цель',           desc:'Создайте семейную цель накопления',       icon:'🎁', reward:'Фон «Облака»' },
-  { id:'goal_done',    title:'Цель достигнута',       desc:'Полностью накопите на семейную цель',     icon:'🎉', reward:'Салют в приложении' },
-  { id:'active_family',title:'Самая активная семья',  desc:'50 операций за всё время',                icon:'⚡', reward:'Золотой бейдж семьи' },
+  { id:'first_topup',  title:'Первая покупка',        desc:'Пополните семейный счёт впервые',        kind:'trophy', reward:'Тема «Рассвет»' },
+  { id:'purchases_10', title:'10 операций',           desc:'Совершите 10 операций по семейному счёту',kind:'target', reward:'Рамка профиля «Клевер»' },
+  { id:'topup_month',  title:'Пополнение месяца',     desc:'Пополняйте счёт 4 недели подряд',         kind:'calendar', reward:'Анимация «Звёздная пыль»' },
+  { id:'million',      title:'Миллион оборота',       desc:'Общий оборот семьи достиг 1 000 000 ₽',   kind:'gem', reward:'Бейдж «Sky Dynasty»' },
+  { id:'first_goal',   title:'Первая цель',           desc:'Создайте семейную цель накопления',       kind:'gift', reward:'Фон «Облака»' },
+  { id:'goal_done',    title:'Цель достигнута',       desc:'Полностью накопите на семейную цель',     kind:'done', reward:'Салют в приложении' },
+  { id:'active_family',title:'Самая активная семья',  desc:'50 операций за всё время',                kind:'zap', reward:'Золотой бейдж семьи' },
 ];
 
 const nowISO = () => new Date().toISOString();
@@ -88,7 +88,7 @@ interface FamilyState {
   setAutoTopup: (cfg: Family['autoTopup']) => void;
 
   // цели
-  createGoal: (title: string, emoji: string, targetAmount: number, deadline?: string) => void;
+  createGoal: (title: string, kind: string, targetAmount: number, deadline?: string) => void;
   contributeToGoal: (goalId: string, amount: number) => boolean;
   deleteGoal: (goalId: string) => void;
 
@@ -158,7 +158,7 @@ interface FamilyState {
   removeChecklistItem: (tripId: string, itemId: string) => void;
   updateTripNotes: (tripId: string, notes: string) => void;
 
-  _log: (text: string, icon: string) => void;
+  _log: (text: string, kind: string) => void;
   _checkAchievements: () => void;
 }
 
@@ -211,7 +211,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
         id: crypto.randomUUID(), name, ownerId: uid, createdAt: nowISO(),
         members: [owner], balance: 0, transactions: [], goals: [], approvalRequests: [],
         achievements: ACH_TEMPLATES.map(a => ({ ...a, unlocked: false })),
-        activity: [{ id: crypto.randomUUID(), memberId: uid, memberName: myName(), text: `создал(а) семью «${name}»`, icon: '🏠', createdAt: nowISO() }],
+        activity: [{ id: crypto.randomUUID(), memberId: uid, memberName: myName(), text: `создал(а) семью «${name}»`, kind: 'home', createdAt: nowISO() }],
         autoTopup: null, totalTurnover: 0, shoppingList: [], calendar: [], sosAlerts: [],
         locations: [], allowances: [], safe: [], capsules: [], trips: [],
       };
@@ -243,7 +243,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
         const days = Math.ceil((new Date(f.primeUntil).getTime() - Date.now()) / 86400000);
         if (days > 0) useAuthStore.getState().grantPrime(accountId, days);
       }
-      get()._log(`присоединился(ась) к семье`, '👋');
+      get()._log(`присоединился(ась) к семье`, 'join');
       return true;
     },
 
@@ -259,7 +259,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
         requireApprovalOver: role === 'child' ? 200 : 1000,
       };
       mut(fam => ({ ...fam, members: [...fam.members, member] }));
-      get()._log(`добавил(а) ребёнка «${name}» в семью`, '🧒');
+      get()._log(`добавил(а) ребёнка «${name}» в семью`, 'child');
     },
 
     removeMember: (memberId) => {
@@ -278,7 +278,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       if (!ok) return false;
       const tx: FamilyTx = { id: crypto.randomUUID(), memberId: uid, memberName: myName(), kind: 'topup', amount, desc: 'Пополнение из личного кошелька', createdAt: nowISO() };
       mut(fm => ({ ...fm, balance: fm.balance + amount, totalTurnover: fm.totalTurnover + amount, transactions: [tx, ...fm.transactions] }));
-      get()._log(`пополнил(а) семейный счёт на ${amount.toLocaleString('ru')} ₽`, '💰');
+      get()._log(`пополнил(а) семейный счёт на ${amount.toLocaleString('ru')} ₽`, 'topup');
       get().addPoints(uid, Math.round(amount/100), 'Пополнение семейного счёта');
       get()._checkAchievements();
       return true;
@@ -300,17 +300,17 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       useMoney.getState().refund(uid, amount, 'Перевод из семейного счёта Sky Family');
       const tx: FamilyTx = { id: crypto.randomUUID(), memberId: uid, memberName: myName(), kind: 'withdraw', amount, desc: reason || 'Вывод на личный счёт', createdAt: nowISO() };
       mut(fm => ({ ...fm, balance: fm.balance - amount, transactions: [tx, ...fm.transactions] }));
-      get()._log(`перевёл(а) ${amount.toLocaleString('ru')} ₽ на личный счёт`, '📤');
+      get()._log(`перевёл(а) ${amount.toLocaleString('ru')} ₽ на личный счёт`, 'transfer');
       return true;
     },
 
     setAutoTopup: (cfg) => mut(f => ({ ...f, autoTopup: cfg })),
 
-    createGoal: (title, emoji, targetAmount, deadline) => {
+    createGoal: (title, kind, targetAmount, deadline) => {
       const uid = me();
-      const goal: FamilyGoal = { id: crypto.randomUUID(), title, emoji, targetAmount, savedAmount: 0, deadline, createdBy: uid, createdAt: nowISO(), contributors: [] };
+      const goal: FamilyGoal = { id: crypto.randomUUID(), title, kind, targetAmount, savedAmount: 0, deadline, createdBy: uid, createdAt: nowISO(), contributors: [] };
       mut(f => ({ ...f, goals: [goal, ...f.goals] }));
-      get()._log(`создал(а) цель «${emoji} ${title}»`, '🎯');
+      get()._log(`создал(а) цель «${title}»`, 'goal');
       get()._checkAchievements();
     },
 
@@ -330,8 +330,8 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
         }),
         transactions: [{ id: crypto.randomUUID(), memberId: uid, memberName: myName(), kind: 'goal_contribute', amount, desc: `Взнос в цель`, createdAt: nowISO() }, ...fm.transactions],
       }));
-      get()._log(`внёс(ла) ${amount.toLocaleString('ru')} ₽ в семейную цель`, '🎁');
-      if (achievedNow) { get()._log(`Семья достигла цели! 🎉`, '🎉'); }
+      get()._log(`внёс(ла) ${amount.toLocaleString('ru')} ₽ в семейную цель`, 'goalAdd');
+      if (achievedNow) { get()._log('Семья достигла цели!', 'done'); }
       get()._checkAchievements();
       return true;
     },
@@ -351,7 +351,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
         status: 'pending', createdAt: nowISO(),
       };
       mut(f => ({ ...f, approvalRequests: [req, ...f.approvalRequests] }));
-      get()._log(`запросил(а) разрешение: ${itemTitle}`, '🔔');
+      get()._log(`запросил(а) разрешение: ${itemTitle}`, 'request');
     },
 
     resolveApproval: (id, approve) => {
@@ -369,7 +369,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
           }));
         }
       }
-      get()._log(approve ? `одобрил(а) запрос «${req?.itemTitle}»` : `отклонил(а) запрос «${req?.itemTitle}»`, approve ? '✅' : '❌');
+      get()._log(approve ? `одобрил(а) запрос «${req?.itemTitle}»` : `отклонил(а) запрос «${req?.itemTitle}»`, approve ? 'approve' : 'reject');
     },
 
     isPrimeFamilyActive: () => {
@@ -390,7 +390,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
 
       f.members.forEach(m => { if (m.accountId) useAuthStore.getState().grantPrime(m.accountId, plan.days); });
       mut(fam => ({ ...fam, primeUntil: until }));
-      get()._log(`оформил(а) Sky Prime Family (${plan.label}) — Prime теперь у всей семьи`, '👑');
+      get()._log(`оформил(а) Sky Prime Family (${plan.label}) — Prime теперь у всей семьи`, 'prime');
       get().addPoints(uid, Math.round(plan.price/5), 'Sky Prime Family');
       return true;
     },
@@ -408,7 +408,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       const uid = me();
       const ev: FamilyCalendarEvent = { id: crypto.randomUUID(), title, kind, date, note, createdBy: uid, createdAt: nowISO() };
       mut(f => ({ ...f, calendar: [...f.calendar, ev] }));
-      get()._log(`добавил(а) в календарь: ${title}`, '📅');
+      get()._log(`добавил(а) в календарь: ${title}`, 'calendar');
     },
     removeEvent: (id) => mut(f => ({ ...f, calendar: f.calendar.filter(e => e.id !== id) })),
     upcomingEvents: () => {
@@ -421,7 +421,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       const uid = me();
       const alert: SOSAlert = { id: crypto.randomUUID(), memberId: uid, memberName: myName(), createdAt: nowISO(), resolved: false };
       mut(f => ({ ...f, sosAlerts: [alert, ...f.sosAlerts] }));
-      get()._log(`🆘 нажал(а) кнопку SOS — все взрослые уведомлены`, '🆘');
+      get()._log('нажал(а) кнопку SOS — все взрослые уведомлены', 'sos');
     },
     resolveSOS: (id) => mut(f => ({ ...f, sosAlerts: f.sosAlerts.map(a => a.id === id ? { ...a, resolved: true, resolvedAt: nowISO() } : a) })),
 
@@ -429,19 +429,19 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       const f = get().family;
       const member = f?.members.find(m => m.id === memberId);
       if (member?.accountId) useAuthStore.getState().spamBlock(member.accountId, 60 * 24 * 365);
-      get()._log(`заблокировал(а) доступ участнику ${member?.name ?? ''}`, '🔒');
+      get()._log(`заблокировал(а) доступ участнику ${member?.name ?? ''}`, 'lock');
     },
     unblockMemberAccess: (memberId) => {
       const f = get().family;
       const member = f?.members.find(m => m.id === memberId);
       if (member?.accountId) useAuthStore.getState().spamBlock(member.accountId, 0);
-      get()._log(`восстановил(а) доступ участнику ${member?.name ?? ''}`, '🔓');
+      get()._log(`восстановил(а) доступ участнику ${member?.name ?? ''}`, 'unlock');
     },
     logoutMemberEverywhere: (memberId) => {
       const f = get().family;
       const member = f?.members.find(m => m.id === memberId);
       if (member?.accountId) useAuthStore.getState().logoutAll(member.accountId);
-      get()._log(`завершил(а) все сессии участника ${member?.name ?? ''}`, '🚪');
+      get()._log(`завершил(а) все сессии участника ${member?.name ?? ''}`, 'logout');
     },
     securityFeed: () => {
       const f = get().family;
@@ -469,7 +469,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
     markImHome: () => {
       const uid = me();
       mut(f => ({ ...f, locations: f.locations.map(l => l.memberId === uid ? { ...l, point: HOME_POINT, atHome: true, updatedAt: nowISO() } : l) }));
-      get()._log(`отметил(а) "Я дома"`, '🏠');
+      get()._log(`отметил(а) "Я дома"`, 'home');
     },
     locationFor: (memberId) => get().family?.locations.find(l => l.memberId === memberId) ?? null,
 
@@ -477,7 +477,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       const days = freq === 'weekly' ? 7 : 30;
       const next: Allowance = { memberId, amount, freq, nextPayoutAt: new Date(Date.now() + days*86400000).toISOString(), active: true };
       mut(f => ({ ...f, allowances: [...f.allowances.filter(a => a.memberId !== memberId), next] }));
-      get()._log(`настроил(а) карманные деньги`, '💵');
+      get()._log(`настроил(а) карманные деньги`, 'money');
     },
     cancelAllowance: (memberId) => mut(f => ({ ...f, allowances: f.allowances.map(a => a.memberId === memberId ? { ...a, active: false } : a) })),
 
@@ -493,7 +493,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
         allowances: fm.allowances.map(x => x.memberId === memberId ? { ...x, nextPayoutAt: new Date(Date.now()+days*86400000).toISOString() } : x),
         transactions: [{ id: crypto.randomUUID(), memberId, memberName: member.name, kind: 'withdraw', amount: a.amount, desc: 'Карманные деньги', createdAt: nowISO() }, ...fm.transactions],
       }));
-      get()._log(`получил(а) карманные деньги: ${a.amount.toLocaleString('ru')} ₽`, '💵');
+      get()._log(`получил(а) карманные деньги: ${a.amount.toLocaleString('ru')} ₽`, 'money');
       get().addPoints(memberId, Math.round(a.amount/50), 'Карманные деньги');
       return true;
     },
@@ -507,7 +507,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       const uid = me();
       const item: SafeItem = { id: crypto.randomUUID(), kind, title, content, visibility, ownerId: uid, createdAt: nowISO() };
       mut(f => ({ ...f, safe: [item, ...f.safe] }));
-      get()._log(`добавил(а) в семейный сейф: ${title}`, '🔐');
+      get()._log(`добавил(а) в семейный сейф: ${title}`, 'safe');
     },
     removeSafeItem: (id) => mut(f => ({ ...f, safe: f.safe.filter(i => i.id !== id) })),
     visibleSafeItems: () => {
@@ -566,7 +566,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       const uid = me();
       const trip: TripPlan = { id: crypto.randomUUID(), title, destination, startDate, endDate, budget, checklist: [], notes: '', createdBy: uid, createdAt: nowISO() };
       mut(f => ({ ...f, trips: [trip, ...f.trips] }));
-      get()._log(`запланировал(а) поездку «${title}»`, '✈️');
+      get()._log(`запланировал(а) поездку «${title}»`, 'trip');
       get().addEvent(`Поездка: ${title}`, 'trip', startDate, destination);
     },
     deleteTrip: (id) => mut(f => ({ ...f, trips: f.trips.filter(t => t.id !== id) })),
@@ -584,9 +584,9 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       mut(f => ({ ...f, trips: f.trips.map(t => t.id === tripId ? { ...t, notes } : t) }));
     },
 
-    _log: (text, icon) => {
+    _log: (text, kind) => {
       const uid = me();
-      mut(f => ({ ...f, activity: [{ id: crypto.randomUUID(), memberId: uid, memberName: myName(), text, icon, createdAt: nowISO() }, ...f.activity].slice(0, 100) }));
+      mut(f => ({ ...f, activity: [{ id: crypto.randomUUID(), memberId: uid, memberName: myName(), text, kind, createdAt: nowISO() }, ...f.activity].slice(0, 100) }));
     },
 
     _checkAchievements: () => {

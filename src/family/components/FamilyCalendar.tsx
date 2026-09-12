@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Plus, X, Check } from 'lucide-react';
 import { useFamilyStore } from '../store';
 import { CALENDAR_KIND_LABEL, CALENDAR_KIND_ICON } from '../types';
+import { FamilyIcon } from '../familyIcons';
 import type { CalendarEventKind } from '../types';
 
 const KINDS = Object.keys(CALENDAR_KIND_LABEL) as CalendarEventKind[];
@@ -28,7 +29,7 @@ export const FamilyCalendar = ({ onBack }: { onBack: () => void }) => {
 
   const Row = ({ e }: { e: typeof events[number] }) => (
     <div className="flex items-center gap-3 rounded-2xl p-3.5" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
-      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-xl" style={{ background: 'var(--bg-l2)' }}>{CALENDAR_KIND_ICON[e.kind]}</div>
+      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-xl" style={{ background: 'var(--bg-l2)' }}><FamilyIcon kind={CALENDAR_KIND_ICON[e.kind]} size={18}/></div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13.5px] font-bold" style={{ color: 'var(--t1)' }}>{e.title}</p>
         <p className="truncate text-[11px]" style={{ color: 'var(--t3)' }}>
@@ -54,7 +55,7 @@ export const FamilyCalendar = ({ onBack }: { onBack: () => void }) => {
       <div className="flex-1 px-4 py-3 space-y-2">
         {events.length === 0 && (
           <div className="sky-empty py-10">
-            <div className="sky-empty-icon">📅</div>
+            <div className="sky-empty-icon"><FamilyIcon kind="calendar" size={30} color="var(--t3)"/></div>
             <p style={{ color: 'var(--t2)' }}>Пока нет событий</p>
             <button type="button" onClick={() => setAdding(true)} className="sky-btn-primary mt-2 px-5 py-2.5">Добавить событие</button>
           </div>
@@ -87,7 +88,7 @@ export const FamilyCalendar = ({ onBack }: { onBack: () => void }) => {
                 {KINDS.map(k => (
                   <button key={k} type="button" onClick={() => setKind(k)}
                     className="rounded-xl px-3 py-1.5 text-[12px] font-semibold" style={{ background: kind === k ? 'var(--accent)' : 'var(--bg-l2)', color: kind === k ? '#fff' : 'var(--t2)' }}>
-                    {CALENDAR_KIND_ICON[k]} {CALENDAR_KIND_LABEL[k]}
+                    <FamilyIcon kind={CALENDAR_KIND_ICON[k]} size={12}/> {CALENDAR_KIND_LABEL[k]}
                   </button>
                 ))}
               </div>

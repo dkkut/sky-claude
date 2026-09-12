@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowDownToLine, ArrowUpFromLine, Repeat, X, Lock } from 'lucide-react';
+import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
 import { useMoney, fmt } from '@/wallet/store';
 import { useAuthStore } from '@/core/auth/store';
@@ -93,13 +94,13 @@ export const FamilyWallet = ({ onBack }: { onBack: () => void }) => {
         <div className="mt-5">
           <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--t3)' }}>История операций</p>
           {family.transactions.length === 0 ? (
-            <div className="sky-empty"><div className="sky-empty-icon">🧾</div><p style={{ color: 'var(--t2)' }}>Операций пока нет</p></div>
+            <div className="sky-empty"><div className="sky-empty-icon"><FamilyIcon kind="bill" size={30} color="var(--t3)"/></div><p style={{ color: 'var(--t2)' }}>Операций пока нет</p></div>
           ) : (
             <div className="space-y-2">
               {family.transactions.slice(0,30).map(t => (
                 <div key={t.id} className="flex items-center gap-3 rounded-2xl p-3" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
                   <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm" style={{ background: 'var(--bg-l2)' }}>
-                    {t.kind === 'topup' ? '💰' : t.kind === 'withdraw' ? '📤' : t.kind === 'goal_contribute' ? '🎯' : '💳'}
+                    <FamilyIcon kind={t.kind === 'topup' ? 'topup' : t.kind === 'withdraw' ? 'transfer' : t.kind === 'goal_contribute' ? 'goal' : 'bill'} size={16}/>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold" style={{ color: 'var(--t1)' }}>{t.memberName}</p>

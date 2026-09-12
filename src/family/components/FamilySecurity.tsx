@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { ArrowLeft, ShieldAlert, Lock, Unlock, LogOut, Check, ShieldCheck } from 'lucide-react';
+import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
 
 const EVENT_LABEL: Record<string, string> = {
@@ -86,7 +87,7 @@ export const FamilySecurity = ({ onBack }: { onBack: () => void }) => {
         <div>
           <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--t3)' }}>Журнал действий</p>
           {feed.length === 0 ? (
-            <div className="sky-empty"><div className="sky-empty-icon">🛡️</div><p style={{ color: 'var(--t2)' }}>Событий пока нет</p></div>
+            <div className="sky-empty"><div className="sky-empty-icon"><FamilyIcon kind="safe" size={30} color="var(--t3)"/></div><p style={{ color: 'var(--t2)' }}>Событий пока нет</p></div>
           ) : (
             <div className="space-y-2">
               {feed.map((e, i) => (

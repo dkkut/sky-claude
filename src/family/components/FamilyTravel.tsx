@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Plus, X, Check, Trash2, MapPin, Wallet } from 'lucide-react';
+import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
 
 export const FamilyTravel = ({ onBack }: { onBack: () => void }) => {
@@ -101,7 +102,7 @@ export const FamilyTravel = ({ onBack }: { onBack: () => void }) => {
       <div className="flex-1 px-4 py-3 space-y-2.5">
         {family.trips.length === 0 && (
           <div className="sky-empty py-10">
-            <div className="sky-empty-icon">✈️</div>
+            <div className="sky-empty-icon"><FamilyIcon kind="trip" size={30} color="var(--t3)"/></div>
             <p style={{ color: 'var(--t2)' }}>Спланируйте первую семейную поездку</p>
             <button type="button" onClick={() => setCreating(true)} className="sky-btn-primary mt-2 px-5 py-2.5">Создать поездку</button>
           </div>
@@ -112,7 +113,7 @@ export const FamilyTravel = ({ onBack }: { onBack: () => void }) => {
           return (
             <button key={t.id} type="button" onClick={() => setOpenTrip(t.id)}
               className="w-full rounded-2xl p-4 text-left" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
-              <p className="text-[14px] font-bold" style={{ color: 'var(--t1)' }}>✈️ {t.title}</p>
+              <p className="text-[14px] font-bold" style={{ color: 'var(--t1)' }}>{t.title}</p>
               <p className="mt-0.5 text-[11.5px]" style={{ color: 'var(--t3)' }}>{t.destination} · {new Date(t.startDate).toLocaleDateString('ru-RU')}</p>
               {t.checklist.length > 0 && (
                 <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'var(--bg-l2)' }}>

@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { ArrowLeft, Check, X, Bell } from 'lucide-react';
+import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
 import { fmtAgo } from '@/bloom/store';
 
@@ -54,7 +55,8 @@ export const ApprovalsScreen = ({ onBack }: { onBack: () => void }) => {
             <div className="space-y-2">
               {resolved.map(r => (
                 <div key={r.id} className="flex items-center gap-3 rounded-2xl p-3" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
-                  <span className="text-base">{r.status === 'approved' ? '✅' : '❌'}</span>
+                  <FamilyIcon kind={r.status === 'approved' ? 'approve' : 'reject'} size={15}
+              color={r.status === 'approved' ? 'var(--green)' : 'var(--red)'}/>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[12.5px] font-semibold" style={{ color: 'var(--t1)' }}>{r.itemTitle}</p>
                     <p className="text-[11px]" style={{ color: 'var(--t3)' }}>{r.memberName} · {r.amount.toLocaleString('ru')} ₽</p>
