@@ -754,19 +754,14 @@ export const SkyPodcasts = () => {
       <Sky/>
 
       <div className="relative px-4 pb-24 pt-4">
-        {/* Шапка */}
-        <div className="mb-4 flex items-center gap-2.5">
-          <div className="grid h-10 w-10 place-items-center rounded-2xl"
-            style={{ background: `linear-gradient(135deg, ${C.purple}, #7c3aed)` }}>
-            <Mic size={18} className="text-white"/>
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-black leading-none tracking-tight">
-              <span style={{ color: C.t1 }}>Sky</span>
-              <span style={{ color: C.purple }}>Подкасты</span>
-            </h1>
-            <p className="mt-1 text-[11px]" style={{ color: C.t3 }}>Слушать и смотреть</p>
-          </div>
+        {/* Шапка. Без значка: в кино и на телевидении его тоже нет —
+            там название и есть опознавательный знак раздела. */}
+        <div className="mb-4">
+          <h1 className="text-xl font-black leading-none tracking-tight">
+            <span style={{ color: C.t1 }}>Sky</span>
+            <span style={{ color: C.purple }}>Подкасты</span>
+          </h1>
+          <p className="mt-1 text-[11px]" style={{ color: C.t3 }}>Слушать и смотреть</p>
         </div>
 
         {/* Поиск */}
