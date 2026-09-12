@@ -6,7 +6,7 @@ import { useState, useMemo } from 'react';
 import {
   Plus, PackageSearch, Search, Trash2, Pencil, Printer,
   History, ChevronRight, Warehouse as WhIcon, MapPin,
-  Boxes, Scale, Ruler,
+  Boxes, Scale, Ruler, X,
 } from 'lucide-react';
 import { C, fmtTs } from '../SkyMarket';
 import { useMarketStore } from '../store';
@@ -275,7 +275,7 @@ const SortingCenterPicker = ({ shipment }: { shipment: Shipment }) => {
               {options.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
             <button type="button" onClick={apply} className="rounded-xl px-3 py-2 text-xs font-bold text-white" style={{ background: C.acc }}>ОК</button>
-            <button type="button" onClick={() => setPicking(false)} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>✕</button>
+            <button type="button" onClick={() => setPicking(false)} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}><X size={13}/></button>
           </div>
         )
       ) : (

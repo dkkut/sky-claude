@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, ChevronLeft, TrendingUp, Eye, MousePointer, Calendar,
   Play, Pause, Trash2, Check, AlertCircle, Upload, Image, FileText,
-  BarChart2, Megaphone, Clock, X, ChevronRight, Shield,
+  BarChart2, Megaphone, Clock, X, ChevronRight, Shield, Rocket,
 } from 'lucide-react';
 import {
   useAdsStore, AD_PLACEMENTS, AD_FORMAT_LABEL, AD_STATUS_LABEL, AD_STATUS_COLOR,
@@ -52,7 +52,7 @@ const CampaignCard = ({ c, onOpen }: { c: AdCampaign; onOpen: () => void }) => {
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-base">{p?.icon}</span>
+              {p && <p.Icon size={15} style={{ color:C.t2 }}/>}
               <p className="text-sm font-bold truncate" style={{ color:C.t1 }}>{c.title}</p>
             </div>
             <p className="text-xs truncate" style={{ color:C.t3 }}>{p?.label}</p>
@@ -194,9 +194,9 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
     <div className="flex flex-col items-center justify-center gap-5 py-12 px-6">
       <motion.div initial={{ scale:0 }} animate={{ scale:1 }}
         transition={{ type:'spring', stiffness:400, damping:18 }}
-        className="grid h-20 w-20 place-items-center rounded-full text-4xl"
+        className="grid h-20 w-20 place-items-center rounded-full"
         style={{ background:'rgba(79,110,247,0.12)', border:`2px solid ${C.accent}40` }}>
-        🚀
+        <Rocket size={36} style={{ color:C.accent }}/>
       </motion.div>
       <div className="text-center">
         <p className="text-xl font-black" style={{ color:C.t1 }}>Кампания создана!</p>
@@ -251,8 +251,8 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
                 onClick={() => { setPlacement(p.placement); setStep('format'); }}
                 className="flex items-center gap-4 w-full rounded-2xl px-4 py-4 transition-all"
                 style={{ background:C.l1, border:`1.5px solid ${placement===p.placement?C.accent:C.border}` }}>
-                <div className="grid h-12 w-12 place-items-center rounded-2xl shrink-0 text-2xl"
-                  style={{ background:C.l2 }}>{p.icon}</div>
+                <div className="grid h-12 w-12 place-items-center rounded-2xl shrink-0"
+                  style={{ background:C.l2 }}><p.Icon size={22} style={{ color:C.t2 }}/></div>
                 <div className="flex-1 text-left">
                   <p className="text-sm font-bold" style={{ color:C.t1 }}>{p.label}</p>
                   <p className="text-xs mt-0.5 leading-snug" style={{ color:C.t3 }}>{p.description}</p>
@@ -416,8 +416,10 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
                 <span style={{ color:C.t1 }}>Итого</span>
                 <span style={{ color:C.accent }}>{fmtBudget(budget)}</span>
               </div>
-              <p className="text-[10px]" style={{ color:balance<budget?C.red:C.green }}>
-                {balance<budget?`Не хватает ${fmtBudget(budget-balance)}`:`Баланс: ${fmtBudget(balance)} ✓`}
+              <p className="text-[10px] flex items-center gap-1" style={{ color:balance<budget?C.red:C.green }}>
+                {balance<budget
+                  ? `Не хватает ${fmtBudget(budget-balance)}`
+                  : <><Check size={10}/> Баланс: {fmtBudget(balance)}</>}
               </p>
             </div>
             <button type="button" onClick={() => setStep('review')} disabled={balance<budget}
@@ -437,7 +439,7 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
             {/* Preview */}
             <div className="rounded-2xl overflow-hidden" style={{ background:C.l2, border:`1px solid ${C.border}` }}>
               <div className="px-4 py-3 flex items-center gap-2 border-b" style={{ borderColor:C.border }}>
-                <span className="text-base">{pricing.icon}</span>
+                <pricing.Icon size={15} style={{ color:C.t2 }}/>
                 <span className="text-xs font-semibold" style={{ color:C.t2 }}>{pricing.label}</span>
                 <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full"
                   style={{ background:'rgba(245,158,11,0.15)', color:C.amber }}>
@@ -463,7 +465,7 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
             <motion.button whileTap={{ scale:.97 }} type="button" onClick={submit}
               className="flex items-center justify-center gap-2 w-full rounded-2xl py-4 text-sm font-bold text-white"
               style={{ background:`linear-gradient(135deg,${C.accent},#818cf8)`, boxShadow:`0 6px 24px ${C.accent}40` }}>
-              🚀 Запустить кампанию · {fmtBudget(budget)}
+              <Rocket size={16}/> Запустить кампанию · {fmtBudget(budget)}
             </motion.button>
           </div>
         )}
@@ -516,7 +518,7 @@ const CampaignDetail = ({ c, onBack }: { c: AdCampaign; onBack: () => void }) =>
         <div className="rounded-2xl p-4 space-y-3" style={{ background:C.l2, border:`1px solid ${C.border}` }}>
           <p className="text-xs font-semibold uppercase tracking-wider" style={{ color:C.t3 }}>Детали</p>
           {[
-            { l:'Площадка',  v:`${p?.icon} ${p?.label}` },
+            { l:'Площадка',  v:p?.label ?? '' },
             { l:'Формат',    v:AD_FORMAT_LABEL[c.format] },
             { l:'Старт',     v:new Date(c.startDate).toLocaleDateString('ru',{day:'numeric',month:'long'}) },
             { l:'Конец',     v:new Date(c.endDate).toLocaleDateString('ru',{day:'numeric',month:'long'}) },
@@ -609,9 +611,9 @@ export const SkyAdsCabinet = () => {
       <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3" style={{ scrollbarWidth:'none' }}>
         {campaigns.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 py-16">
-            <div className="grid h-16 w-16 place-items-center rounded-3xl text-3xl"
+            <div className="grid h-16 w-16 place-items-center rounded-3xl"
               style={{ background:C.l2, border:`1px solid ${C.border}` }}>
-              📣
+              <Megaphone size={30} style={{ color:C.t3 }}/>
             </div>
             <div className="text-center">
               <p className="text-base font-bold" style={{ color:C.t1 }}>Нет кампаний</p>
@@ -623,7 +625,7 @@ export const SkyAdsCabinet = () => {
               {AD_PLACEMENTS.slice(0,3).map(p => (
                 <div key={p.placement} className="flex items-center gap-3 rounded-2xl px-4 py-3"
                   style={{ background:C.l2, border:`1px solid ${C.border}` }}>
-                  <span className="text-xl">{p.icon}</span>
+                  <p.Icon size={19} style={{ color:C.t2 }}/>
                   <div className="flex-1">
                     <p className="text-xs font-semibold" style={{ color:C.t1 }}>{p.label}</p>
                     <p className="text-[10px]" style={{ color:C.accent }}>от {fmtBudget(p.pricePerDay)}/день</p>

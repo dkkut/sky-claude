@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronRight, Star, Wallet } from 'lucide-react';
+import { ChevronRight, Star, Wallet, Package } from 'lucide-react';
+import { VEHICLE_CFG } from '@/marketplace/logistics/shared';
 import { CourierApply } from './CourierApply';
 import { useCourierStore } from '@/marketplace/logistics/courierStore';
 
@@ -24,7 +25,12 @@ export const WorkModule = () => {
         <motion.button type="button" whileTap={{ scale: 0.98 }} onClick={() => setView('courier')}
           className="flex w-full items-center gap-4 overflow-hidden rounded-3xl p-4 text-left"
           style={{ background: 'linear-gradient(135deg, rgba(6,182,212,0.14), var(--bg-l1))', border: '1px solid rgba(6,182,212,0.22)' }}>
-          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl text-2xl" style={{ background: 'rgba(6,182,212,0.15)' }}>{courierProfile?.avatar ?? '📦'}</div>
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl" style={{ background: 'rgba(6,182,212,0.15)' }}>
+            {(() => {
+              const Icon = courierProfile ? VEHICLE_CFG[courierProfile.vehicle].icon : Package;
+              return <Icon size={24} style={{ color:'#06b6d4' }}/>;
+            })()}
+          </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <p className="text-[15px] font-bold" style={{ color: 'var(--t1)' }}>Курьер</p>

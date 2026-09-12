@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Star, Zap, Check, ChevronLeft, Tag, Package, Clock } from 'lucide-react';
+import { ShoppingCart, Star, Zap, Check, ChevronLeft, Tag, Package, Clock, Swords, ClipboardList } from 'lucide-react';
 import {
   useGamingMarket, fmtGPrice,
   RARITY_COLOR, RARITY_GLOW, RARITY_LABEL,
@@ -36,7 +36,9 @@ const ItemCard = ({ item, onClick }: { item: GamingItem; onClick: () => void }) 
 
       {item.featured && (
         <div className="absolute top-2 left-2 rounded-full px-2 py-0.5 text-[9px] font-bold"
-          style={{ background:'rgba(245,158,11,0.85)', color:'#fff' }}>★ ТОП</div>
+          style={{ background:'rgba(245,158,11,0.85)', color:'#fff' }}>
+          <span className="inline-flex items-center gap-1"><Star size={9} fill="currentColor"/> ТОП</span>
+        </div>
       )}
       {discount > 0 && (
         <div className="absolute top-2 right-2 rounded-full px-1.5 py-0.5 text-[9px] font-bold"
@@ -46,7 +48,7 @@ const ItemCard = ({ item, onClick }: { item: GamingItem; onClick: () => void }) 
       <div className="relative p-3.5 pt-7">
         {/* Type + Rarity */}
         <div className="flex items-center gap-1.5 mb-2">
-          <span className="text-sm">{GITEM_TYPE_ICON[item.type]}</span>
+          {(() => { const Icon = GITEM_TYPE_ICON[item.type]; return <Icon size={14} style={{ color:rc }}/>; })()}
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
             style={{ background:`${rc}20`, color:rc, border:`1px solid ${rc}40` }}>
             {RARITY_LABEL[item.rarity]}
@@ -66,7 +68,9 @@ const ItemCard = ({ item, onClick }: { item: GamingItem; onClick: () => void }) 
           </div>
           {item.delivery === 'instant'
             ? <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold"
-                style={{ background:'rgba(52,211,153,0.2)', color:C.green }}>⚡ Сразу</span>
+                style={{ background:'rgba(52,211,153,0.2)', color:C.green }}>
+                <span className="inline-flex items-center gap-0.5"><Zap size={9}/> Сразу</span>
+              </span>
             : <span className="text-[9px] px-1.5 py-0.5 rounded-full"
                 style={{ background:'rgba(79,110,247,0.15)', color:C.accent }}>Вручную</span>
           }
@@ -125,14 +129,16 @@ const ItemDetail = ({ item, onBack }: { item: GamingItem; onBack: () => void }) 
         </button>
         <div className="relative">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-2xl">{GITEM_TYPE_ICON[item.type]}</span>
+            {(() => { const Icon = GITEM_TYPE_ICON[item.type]; return <Icon size={22} style={{ color:rc }}/>; })()}
             <span className="text-xs font-bold px-2 py-1 rounded-full"
               style={{ background:`${rc}25`, color:rc, border:`1px solid ${rc}45` }}>
               {RARITY_LABEL[item.rarity]}
             </span>
             {item.delivery === 'instant' && (
               <span className="text-[10px] font-bold px-2 py-1 rounded-full"
-                style={{ background:'rgba(52,211,153,0.2)', color:C.green }}>⚡ Мгновенно</span>
+                style={{ background:'rgba(52,211,153,0.2)', color:C.green }}>
+                <span className="inline-flex items-center gap-1"><Zap size={10}/> Мгновенно</span>
+              </span>
             )}
           </div>
           <h1 className="text-xl font-black text-white leading-tight mb-1">{item.title}</h1>
@@ -198,8 +204,10 @@ const ItemDetail = ({ item, onBack }: { item: GamingItem; onBack: () => void }) 
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs font-semibold" style={{ color:C.t3 }}>
-                {item.delivery === 'instant' ? '⚡ Мгновенная выдача' : '📋 Ручная выдача'}
+              <p className="text-xs font-semibold flex items-center justify-end gap-1" style={{ color:C.t3 }}>
+                {item.delivery === 'instant'
+                  ? <><Zap size={12}/> Мгновенная выдача</>
+                  : <><ClipboardList size={12}/> Ручная выдача</>}
               </p>
               {item.stock < 10 && item.stock < 999999 && (
                 <p className="text-[10px] mt-0.5" style={{ color:C.amber }}>
@@ -266,7 +274,7 @@ export const GamingMarket = () => {
           : myOrders.map(o => (
             <div key={o.id} className="rounded-2xl p-3 flex items-center gap-3"
               style={{ background:C.l2, border:`1px solid ${C.border}` }}>
-              <span className="text-xl">{GITEM_TYPE_ICON[o.type]}</span>
+              {(() => { const Icon = GITEM_TYPE_ICON[o.type]; return <Icon size={19} style={{ color:C.t2 }}/>; })()}
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold truncate" style={{ color:C.t1 }}>{o.itemTitle}</p>
                 <p className="text-[10px]" style={{ color:C.t3 }}>{o.game}</p>
@@ -290,7 +298,9 @@ export const GamingMarket = () => {
       {/* Sub-header */}
       <div className="flex items-center justify-between px-4 py-2.5 shrink-0"
         style={{ borderBottom:`1px solid ${C.border}` }}>
-        <p className="text-xs font-bold" style={{ color:C.t2 }}>⚔️ Игровые товары и услуги</p>
+        <p className="text-xs font-bold flex items-center gap-1.5" style={{ color:C.t2 }}>
+          <Swords size={13}/> Игровые товары и услуги
+        </p>
         <button type="button" onClick={() => setShowOrders(true)}
           className="flex items-center gap-1.5 text-xs font-semibold" style={{ color:C.accent }}>
           <Package size={12}/>Покупки {myOrders.length > 0 && `(${myOrders.length})`}
@@ -308,7 +318,7 @@ export const GamingMarket = () => {
           <button key={t} type="button" onClick={() => setFilter(t)}
             className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-all flex items-center gap-1"
             style={{ background:filter===t?C.accent:C.l2, color:filter===t?'#fff':C.t2 }}>
-            {GITEM_TYPE_ICON[t]}{GITEM_TYPE_LABEL[t]}
+            {(() => { const Icon = GITEM_TYPE_ICON[t]; return <Icon size={13}/>; })()}{GITEM_TYPE_LABEL[t]}
           </button>
         ))}
       </div>
@@ -318,7 +328,7 @@ export const GamingMarket = () => {
         {filter === 'all' && featured.length > 0 && (
           <div className="mb-4">
             <p className="text-[10px] font-bold uppercase tracking-wider mb-2.5" style={{ color:C.t3 }}>
-              ★ Избранное
+              <Star size={11} className="inline-block -mt-0.5 mr-1" fill="currentColor"/> Избранное
             </p>
             <div className="grid grid-cols-2 gap-3">
               {featured.map(item => <ItemCard key={item.id} item={item} onClick={() => setDetail(item)}/>)}
@@ -328,8 +338,8 @@ export const GamingMarket = () => {
         {/* All */}
         <div>
           {filter !== 'all' && (
-            <p className="text-[10px] font-bold uppercase tracking-wider mb-2.5" style={{ color:C.t3 }}>
-              {GITEM_TYPE_ICON[filter]} {GITEM_TYPE_LABEL[filter]} · {visible.length}
+            <p className="text-[10px] font-bold uppercase tracking-wider mb-2.5 flex items-center gap-1" style={{ color:C.t3 }}>
+              {(() => { const Icon = GITEM_TYPE_ICON[filter]; return <Icon size={11}/>; })()} {GITEM_TYPE_LABEL[filter]} · {visible.length}
             </p>
           )}
           {filter === 'all' && <p className="text-[10px] font-bold uppercase tracking-wider mb-2.5" style={{ color:C.t3 }}>Все товары</p>}

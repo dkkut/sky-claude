@@ -4,6 +4,11 @@
 =============================================================== */
 import { create } from 'zustand';
 
+import {
+  Palette, Code2, Music2, Film, PenLine, Megaphone, Swords, Wrench,
+} from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
+
 export type ServiceCategory =
   | 'design'       // графика, UI/UX
   | 'dev'          // разработка
@@ -19,9 +24,20 @@ export const SVC_CAT_LABEL: Record<ServiceCategory, string> = {
   video: 'Видео', writing: 'Текст', marketing: 'Маркетинг',
   gaming: 'Гейминг', other: 'Другое',
 };
-export const SVC_CAT_ICON: Record<ServiceCategory, string> = {
-  design: '🎨', dev: '💻', music: '🎵', video: '🎬',
-  writing: '✍️', marketing: '📣', gaming: '⚔️', other: '🔧',
+/**
+ * Значок категории услуги. Раньше была эмодзи — её рисовал шрифт
+ * устройства, поэтому картинка отличалась на телефоне, компьютере и
+ * телевизоре, а под цвет темы не подгонялась.
+ */
+export const SVC_CAT_ICON: Record<ServiceCategory, IconComponent> = {
+  design:    Palette,
+  dev:       Code2,
+  music:     Music2,
+  video:     Film,
+  writing:   PenLine,
+  marketing: Megaphone,
+  gaming:    Swords,
+  other:     Wrench,
 };
 export const SVC_CAT_COLOR: Record<ServiceCategory, string> = {
   design: '#ec4899', dev: '#4f6ef7', music: '#a855f7', video: '#f43f5e',

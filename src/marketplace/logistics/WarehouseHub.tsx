@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import {
   Plus, Warehouse as WhIcon, MapPin, Camera, Clock, Package,
   ArrowRightLeft, Users, History, Trash2, Pencil, ChevronRight,
-  Crosshair, X, UserPlus, AlertTriangle, Boxes,
+  Crosshair, X, UserPlus, AlertTriangle, Boxes, Building2,
 } from 'lucide-react';
 import { C, fmtTs, StatCard } from '../SkyMarket';
 import { useAuthStore } from '@/core/auth/store';
@@ -151,7 +151,7 @@ const WarehouseForm = ({ existing, onDone, onClose }: { existing?: Warehouse; on
           className="w-full mt-2 rounded-xl px-3 py-2 text-xs outline-none" style={{ background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 }}>
           {CITIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <div className="mt-2"><MiniMap cityId={cityId} points={[{ id:'new', pos: location, label: name || 'Склад', emoji: '🏢', highlight: true }]} height={140}/></div>
+        <div className="mt-2"><MiniMap cityId={cityId} points={[{ id:'new', pos: location, label: name || 'Склад', Icon: Building2, highlight: true }]} height={140}/></div>
       </div>
 
       <div>
@@ -519,8 +519,9 @@ const WarehouseDetail = ({ wh, onClose }: { wh: Warehouse; onClose: () => void }
       <div className="px-4 pt-3">
         {wh.photos[0] && <img src={wh.photos[0]} className="w-full h-32 object-cover rounded-2xl mb-3"/>}
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold px-2 py-1 rounded-full" style={{ background: open ? 'rgba(0,220,90,0.1)' : 'rgba(255,255,255,0.05)', color: open ? C.green : C.t3 }}>
-            {open ? '● Открыт сейчас' : '● Закрыт'}
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-full" style={{ background: open ? 'rgba(0,220,90,0.1)' : 'rgba(255,255,255,0.05)', color: open ? C.green : C.t3 }}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'currentColor' }}/>
+            {open ? 'Открыт сейчас' : 'Закрыт'}
           </span>
           <div className="flex gap-2">
             <button type="button" onClick={() => setEditing(true)} className="grid h-8 w-8 place-items-center rounded-lg" style={{ background: C.l2 }}>
@@ -545,7 +546,7 @@ const WarehouseDetail = ({ wh, onClose }: { wh: Warehouse; onClose: () => void }
 
       {tab === 'overview' && (
         <div className="p-4 space-y-3">
-          <MiniMap cityId={wh.cityId} points={[{ id:wh.id, pos:wh.location, label:wh.name, emoji:'🏢', highlight:true }]}/>
+          <MiniMap cityId={wh.cityId} points={[{ id:wh.id, pos:wh.location, label:wh.name, Icon:Building2, highlight:true }]}/>
           <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
             <p className="text-xs flex items-center gap-1.5 mb-2" style={{ color: C.t2 }}><MapPin size={12}/> {wh.address}</p>
             <CapacityBar occupied={occupied(wh.id)} capacity={wh.capacity}/>

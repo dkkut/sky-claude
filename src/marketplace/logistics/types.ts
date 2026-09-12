@@ -21,7 +21,6 @@ export type CourierVehicle = 'foot' | 'bike' | 'scooter' | 'car' | 'van';
 export interface Courier {
   id:               string;
   name:             string;
-  avatar:           string;          // emoji-аватар
   phone:            string;
   cityId:           string;
   district:         string;

@@ -4,6 +4,11 @@
 =============================================================== */
 import { create } from 'zustand';
 
+import {
+  Palette, Zap, Coins, User, Package, Trophy, GraduationCap,
+} from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
+
 export type GItemType =
   | 'skin'        // скины персонажей / оружия
   | 'boost'       // усилители XP / рейтинга
@@ -30,9 +35,15 @@ export const GITEM_TYPE_LABEL: Record<GItemType, string> = {
   skin: 'Скин', boost: 'Буст', currency: 'Валюта',
   account: 'Аккаунт', case: 'Кейс', rank: 'Ранг', coaching: 'Коучинг',
 };
-export const GITEM_TYPE_ICON: Record<GItemType, string> = {
-  skin: '🎨', boost: '⚡', currency: '💰',
-  account: '👤', case: '📦', rank: '🏆', coaching: '🎓',
+/** Значок вида игрового товара — вместо эмодзи, которую рисовал шрифт устройства. */
+export const GITEM_TYPE_ICON: Record<GItemType, IconComponent> = {
+  skin:     Palette,
+  boost:    Zap,
+  currency: Coins,
+  account:  User,
+  case:     Package,
+  rank:     Trophy,
+  coaching: GraduationCap,
 };
 
 export interface GamingItem {

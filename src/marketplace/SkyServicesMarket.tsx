@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Clock, RefreshCw, ChevronLeft, Check, Package, Shield, ChevronRight } from 'lucide-react';
+import { Star, Clock, RefreshCw, ChevronLeft, Check, Package, Shield, ChevronRight, Wrench } from 'lucide-react';
 import {
   useServicesMarket, fmtSvcPrice, STATUS_LABEL_SVC,
   SVC_CAT_LABEL, SVC_CAT_ICON, SVC_CAT_COLOR,
@@ -20,7 +20,7 @@ const C = {
 const LEVEL_BADGE: Record<string, { label:string; color:string }> = {
   new:  { label:'Новичок', color:'var(--t2)' },
   pro:  { label:'PRO',     color:'var(--accent)' },
-  top:  { label:'TOP ⭐',  color:'var(--amber)' },
+  top:  { label:'TOP',     color:'var(--amber)' },
 };
 
 const PKG_LABEL: Record<ServiceLevel, string> = {
@@ -42,7 +42,7 @@ const ListingCard = ({ listing, onClick }: { listing: ServiceListing; onClick: (
       <div className="p-3.5">
         {/* Category + seller level */}
         <div className="flex items-center gap-1.5 mb-2">
-          <span className="text-sm">{SVC_CAT_ICON[listing.category]}</span>
+          {(() => { const Icon = SVC_CAT_ICON[listing.category]; return <Icon size={14} style={{ color:cat }}/>; })()}
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
             style={{ background:`${cat}18`, color:cat }}>
             {SVC_CAT_LABEL[listing.category]}
@@ -139,7 +139,7 @@ const ListingDetail = ({ listing, onBack }: { listing: ServiceListing; onBack: (
         </button>
         <div className="relative">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-2xl">{SVC_CAT_ICON[listing.category]}</span>
+            {(() => { const Icon = SVC_CAT_ICON[listing.category]; return <Icon size={22} style={{ color:cat }}/>; })()}
             <span className="text-xs font-bold px-2 py-0.5 rounded-full"
               style={{ background:`${cat}25`, color:cat }}>{SVC_CAT_LABEL[listing.category]}</span>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
@@ -357,7 +357,9 @@ export const ServicesMarket = () => {
       {/* Sub-header */}
       <div className="flex items-center justify-between px-4 py-2.5 shrink-0"
         style={{ borderBottom:`1px solid ${C.border}` }}>
-        <p className="text-xs font-bold" style={{ color:C.t2 }}>🔧 Биржа услуг · Фрилансеры</p>
+        <p className="text-xs font-bold flex items-center gap-1.5" style={{ color:C.t2 }}>
+          <Wrench size={13}/> Биржа услуг · Фрилансеры
+        </p>
         <button type="button" onClick={() => setShowOrders(true)}
           className="flex items-center gap-1.5 text-xs font-semibold" style={{ color:C.accent }}>
           <Package size={12}/>Заказы {myOrders.length > 0 && `(${myOrders.length})`}
@@ -375,7 +377,7 @@ export const ServicesMarket = () => {
           <button key={cat} type="button" onClick={() => setCatFilter(cat)}
             className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold flex items-center gap-1"
             style={{ background:catFilter===cat?SVC_CAT_COLOR[cat]:C.l2, color:catFilter===cat?'#fff':C.t2 }}>
-            {SVC_CAT_ICON[cat]}{SVC_CAT_LABEL[cat]}
+            {(() => { const Icon = SVC_CAT_ICON[cat]; return <Icon size={13}/>; })()}{SVC_CAT_LABEL[cat]}
           </button>
         ))}
       </div>
@@ -385,7 +387,7 @@ export const ServicesMarket = () => {
         {catFilter === 'all' && featured.length > 0 && (
           <div className="mb-4">
             <p className="text-[10px] font-bold uppercase tracking-wider mb-2.5" style={{ color:C.t3 }}>
-              ★ Рекомендуем
+              <Star size={11} className="inline-block -mt-0.5 mr-1" fill="currentColor"/> Рекомендуем
             </p>
             <div className="grid grid-cols-2 gap-3">
               {featured.map(l => <ListingCard key={l.id} listing={l} onClick={() => setDetail(l)}/>)}
@@ -393,8 +395,11 @@ export const ServicesMarket = () => {
           </div>
         )}
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider mb-2.5" style={{ color:C.t3 }}>
-            {catFilter === 'all' ? 'Все услуги' : `${SVC_CAT_ICON[catFilter]} ${SVC_CAT_LABEL[catFilter]}`} · {visible.length}
+          <p className="text-[10px] font-bold uppercase tracking-wider mb-2.5 flex items-center gap-1" style={{ color:C.t3 }}>
+            {catFilter === 'all'
+              ? 'Все услуги'
+              : <>{(() => { const Icon = SVC_CAT_ICON[catFilter]; return <Icon size={11}/>; })()} {SVC_CAT_LABEL[catFilter]}</>}
+            · {visible.length}
           </p>
           <div className="grid grid-cols-2 gap-3">
             {visible.map(l => <ListingCard key={l.id} listing={l} onClick={() => setDetail(l)}/>)}

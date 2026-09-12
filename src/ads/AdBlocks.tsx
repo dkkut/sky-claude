@@ -4,7 +4,7 @@
 =============================================================== */
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ExternalLink } from 'lucide-react';
+import { X, ExternalLink, Megaphone, Pin } from 'lucide-react';
 import { useAdsStore, type AdCampaign, type AdPlacement } from './store';
 
 /* -- Banner Ad (лента, шапки) ------------------------------- */
@@ -44,8 +44,10 @@ export const BannerAd = ({ placement, className = '' }: { placement: AdPlacement
           <img src={ad.imageUrl} alt="" className="h-10 w-10 rounded-xl object-cover shrink-0"/>
         )}
         {!ad.imageUrl && (
-          <div className="h-10 w-10 rounded-xl shrink-0 flex items-center justify-center text-xl"
-            style={{ background:'rgba(79,110,247,0.15)' }}>📢</div>
+          <div className="h-10 w-10 rounded-xl shrink-0 flex items-center justify-center"
+            style={{ background:'rgba(79,110,247,0.15)' }}>
+            <Megaphone size={18} style={{ color:'#818cf8' }}/>
+          </div>
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5">
@@ -96,8 +98,10 @@ export const FeedAd = () => {
       style={{ background:'linear-gradient(135deg,#0d1117,#161b22)', border:'1px solid rgba(255,255,255,0.08)' }}>
       <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor:'var(--border)' }}>
         <div className="flex items-center gap-2.5">
-          <div className="grid h-8 w-8 place-items-center rounded-full text-sm"
-            style={{ background:'rgba(79,110,247,0.2)' }}>📢</div>
+          <div className="grid h-8 w-8 place-items-center rounded-full"
+            style={{ background:'rgba(79,110,247,0.2)' }}>
+            <Megaphone size={15} style={{ color:'#818cf8' }}/>
+          </div>
           <div>
             <p className="text-xs font-semibold text-white">Рекламный пост</p>
             <p className="text-[10px]" style={{ color:'rgba(255,255,255,0.4)' }}>Sky Ads</p>
@@ -172,7 +176,7 @@ export const PrerollAd = ({ onSkip }: { onSkip: () => void }) => {
         {ad.imageUrl
           ? <img src={ad.imageUrl} alt="" className="w-full h-full object-cover"/>
           : <div className="text-center px-8">
-              <div className="text-5xl mb-4">📢</div>
+              <Megaphone size={46} className="mx-auto mb-4 text-white/80"/>
               <p className="text-xl font-black text-white">{ad.title}</p>
               {ad.description && <p className="text-sm mt-2" style={{ color:'rgba(255,255,255,0.6)' }}>{ad.description}</p>}
             </div>
@@ -223,7 +227,9 @@ export const ChannelAdPost = () => {
       style={{ background:'rgba(79,110,247,0.06)', border:'1px solid rgba(79,110,247,0.2)' }}>
       <div className="flex items-center justify-between px-3 py-2"
         style={{ borderBottom:'1px solid rgba(79,110,247,0.1)' }}>
-        <span className="text-[9px] font-bold" style={{ color:'#818cf8' }}>📌 Закреплённая реклама</span>
+        <span className="text-[9px] font-bold flex items-center gap-1" style={{ color:'#818cf8' }}>
+          <Pin size={9}/> Закреплённая реклама
+        </span>
         <button type="button" onClick={() => setDismissed(true)}>
           <X size={10} style={{ color:'rgba(255,255,255,0.3)' }}/>
         </button>

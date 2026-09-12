@@ -1,13 +1,14 @@
 /* ===============================================================
    SKY MUSIC IMPORT  —  перенос подборок с других площадок
 =============================================================== */
-import { Download } from 'lucide-react';
+import { Download, Headphones, Music2, Apple, Hexagon, Music4, Cloud } from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
 
 /* -- Площадки ------------------------------------------------- */
 export interface MusicPlatform {
   id:      string;
   name:    string;
-  icon:    string;
+  Icon:    IconComponent;
   color:   string;
   urlHint: string;
   urlPattern: RegExp;
@@ -17,7 +18,7 @@ export const MUSIC_PLATFORMS: MusicPlatform[] = [
   {
     id: 'spotify',
     name: 'Spotify',
-    icon: '🎧',
+    Icon: Headphones,
     color: '#1DB954',
     urlHint: 'https://open.spotify.com/playlist/...',
     urlPattern: /spotify\.com\/playlist\//,
@@ -25,7 +26,7 @@ export const MUSIC_PLATFORMS: MusicPlatform[] = [
   {
     id: 'yandex',
     name: 'Яндекс Музыка',
-    icon: '🎵',
+    Icon: Music2,
     color: '#FFCC00',
     urlHint: 'https://music.yandex.ru/users/.../playlists/...',
     urlPattern: /music\.yandex\.(ru|com)/,
@@ -33,7 +34,7 @@ export const MUSIC_PLATFORMS: MusicPlatform[] = [
   {
     id: 'apple',
     name: 'Apple Music',
-    icon: '🍎',
+    Icon: Apple,
     color: '#FC3C44',
     urlHint: 'https://music.apple.com/playlist/...',
     urlPattern: /music\.apple\.com/,
@@ -41,7 +42,7 @@ export const MUSIC_PLATFORMS: MusicPlatform[] = [
   {
     id: 'vk',
     name: 'VK Музыка',
-    icon: '🔷',
+    Icon: Hexagon,
     color: '#0077FF',
     urlHint: 'https://vk.com/music/playlist/...',
     urlPattern: /vk\.com\/(music|audio)/,
@@ -49,7 +50,7 @@ export const MUSIC_PLATFORMS: MusicPlatform[] = [
   {
     id: 'deezer',
     name: 'Deezer',
-    icon: '🎶',
+    Icon: Music4,
     color: '#EF5466',
     urlHint: 'https://www.deezer.com/playlist/...',
     urlPattern: /deezer\.com\/playlist\//,
@@ -57,7 +58,7 @@ export const MUSIC_PLATFORMS: MusicPlatform[] = [
   {
     id: 'soundcloud',
     name: 'SoundCloud',
-    icon: '☁️',
+    Icon: Cloud,
     color: '#FF5500',
     urlHint: 'https://soundcloud.com/user/sets/...',
     urlPattern: /soundcloud\.com/,
@@ -100,7 +101,7 @@ export const MusicImport = () => (
         <span key={pl.id}
           className="rounded-xl px-3 py-1.5 text-[11.5px]"
           style={{ background: 'rgba(255,255,255,0.04)', color: '#5c626e' }}>
-          {pl.name}
+          <pl.Icon size={12} className="inline-block -mt-0.5 mr-1"/>{pl.name}
         </span>
       ))}
     </div>

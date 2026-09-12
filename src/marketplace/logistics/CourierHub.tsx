@@ -30,7 +30,7 @@ const CourierRow = ({
       <button type="button" onClick={onOpen} className="flex items-center gap-3 flex-1 min-w-0 text-left">
         <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-xl"
           style={{ background: C.l2 }}>
-          {courier.avatar}
+          <Vehicle size={17} style={{ color: C.t2 }}/>
           <span className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full"
             style={{ background: C.l1, border: `1.5px solid ${courier.online ? C.green : C.t3}` }}>
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: courier.online ? C.green : C.t3 }}/>
@@ -204,7 +204,9 @@ const CourierDetail = ({
   return (
     <SlidePanel open onClose={onClose} title={courier.name}>
       <div className="px-4 pt-4 pb-2 flex items-center gap-3">
-        <span className="grid h-16 w-16 place-items-center rounded-3xl text-3xl" style={{ background: C.l2 }}>{courier.avatar}</span>
+        <span className="grid h-16 w-16 place-items-center rounded-3xl" style={{ background: C.l2 }}>
+          <Vehicle size={28} style={{ color: C.t2 }}/>
+        </span>
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <p className="text-base font-bold" style={{ color: C.t1 }}>{courier.name}</p>
@@ -533,7 +535,7 @@ export const CourierHub = ({ sellerId, orders }: { sellerId: string; orders: any
             {showMap && (
               <div className="px-4 py-3">
                 <MiniMap cityId={filters.cityId} points={filtered.map(c => ({
-                  id:c.id, pos:c.location, label:c.name.split(' ')[0], emoji:c.avatar, online:c.online,
+                  id:c.id, pos:c.location, label:c.name.split(' ')[0], Icon:VEHICLE_CFG[c.vehicle].icon, online:c.online,
                 }))}/>
               </div>
             )}

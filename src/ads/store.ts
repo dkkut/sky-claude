@@ -3,6 +3,8 @@
    Реклама в: Видеохостинге, Каналах, Bloom-ленте
 =============================================================== */
 import { create } from 'zustand';
+import { Film, Tv, Flower2, Camera, Megaphone, Pin } from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
 
 export type AdPlacement =
   | 'video_preroll'   // перед видео
@@ -60,7 +62,7 @@ export interface AdPricing {
   placement:    AdPlacement;
   label:        string;
   description:  string;
-  icon:         string;
+  Icon:         IconComponent;
   pricePerDay:  number;         // ₽/день
   minDays:      number;
   maxImpressions: number;       // охват в день
@@ -72,7 +74,7 @@ export const AD_PLACEMENTS: AdPricing[] = [
     placement:     'video_preroll',
     label:         'Видео  -  Преролл',
     description:   'Видеореклама до 30 сек перед роликами Sky Video',
-    icon:          '🎬',
+    Icon:          Film,
     pricePerDay:   1500,
     minDays:       3,
     maxImpressions:5000,
@@ -82,7 +84,7 @@ export const AD_PLACEMENTS: AdPricing[] = [
     placement:     'video_banner',
     label:         'Видео  -  Баннер',
     description:   'Баннер поверх видео в правом нижнем углу',
-    icon:          '📺',
+    Icon:          Tv,
     pricePerDay:   800,
     minDays:       1,
     maxImpressions:8000,
@@ -92,7 +94,7 @@ export const AD_PLACEMENTS: AdPricing[] = [
     placement:     'bloom_feed',
     label:         'Bloom  -  Лента',
     description:   'Рекламный пост в социальной ленте Bloom среди обычных постов',
-    icon:          '🌸',
+    Icon:          Flower2,
     pricePerDay:   600,
     minDays:       1,
     maxImpressions:12000,
@@ -102,7 +104,7 @@ export const AD_PLACEMENTS: AdPricing[] = [
     placement:     'bloom_stories',
     label:         'Bloom  -  Истории',
     description:   'Полноэкранная реклама в историях Sky',
-    icon:          '📸',
+    Icon:          Camera,
     pricePerDay:   1200,
     minDays:       1,
     maxImpressions:7000,
@@ -112,7 +114,7 @@ export const AD_PLACEMENTS: AdPricing[] = [
     placement:     'channel_post',
     label:         'Каналы  -  Пост',
     description:   'Рекламный пост в популярных каналах Sky Messenger',
-    icon:          '📢',
+    Icon:          Megaphone,
     pricePerDay:   400,
     minDays:       1,
     maxImpressions:3000,
@@ -122,7 +124,7 @@ export const AD_PLACEMENTS: AdPricing[] = [
     placement:     'channel_pin',
     label:         'Каналы  -  Закреп',
     description:   'Закреплённый пост в шапке канала  -  максимальная видимость',
-    icon:          '📌',
+    Icon:          Pin,
     pricePerDay:   2500,
     minDays:       1,
     maxImpressions:4000,

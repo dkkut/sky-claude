@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { Package, Flag, Warehouse, Truck, CircleParking } from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
 import { MapContainer, TileLayer, Marker, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -8,10 +11,23 @@ import type { GeoPoint } from './types';
 import { useTransportStore } from './transportStore';
 import { TRANSPORT_KIND_LABEL } from './transportTypes';
 
-const dotIcon = (emoji: string, bg: string, size = 30) => L.divIcon({
-  html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:${size*0.55}px;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:2px solid rgba(255,255,255,0.85)">${emoji}</div>`,
-  className: '', iconSize: [size, size], iconAnchor: [size/2, size/2],
-});
+/**
+ * Кружок-метка на карте со значком внутри.
+ *
+ * Раньше внутрь подставлялась эмодзи. Leaflet принимает готовую
+ * разметку, поэтому значок из набора приложения рисуется здесь в
+ * разметку заранее — картинка одинакова на любом устройстве и не
+ * зависит от того, какой шрифт эмодзи стоит в системе.
+ */
+const dotIcon = (Icon: IconComponent, bg: string, size = 30) => {
+  const svg = renderToStaticMarkup(
+    <Icon size={Math.round(size * 0.55)} color="#fff" strokeWidth={2.4}/>,
+  );
+  return L.divIcon({
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:2px solid rgba(255,255,255,0.85)">${svg}</div>`,
+    className: '', iconSize: [size, size], iconAnchor: [size/2, size/2],
+  });
+};
 
 // Плавно двигает точку между двумя координатами по прямой — имитация
 // движения транспорта "в реальном времени" без реального GPS-провайдера.
@@ -78,17 +94,17 @@ export const TransportMap = ({ companyId }: { companyId: string }) => {
         ))}
         {orderPoints.map(({ order, from, to }) => (
           <div key={`${order.id}-pts`} style={{ display: 'contents' }}>
-            <Marker position={[from.lat, from.lng]} icon={dotIcon('📦', '#22c55e', 26)}>
+            <Marker position={[from.lat, from.lng]} icon={dotIcon(Package, '#22c55e', 26)}>
               <Tooltip direction="top">Погрузка · {order.productName}</Tooltip>
             </Marker>
-            <Marker position={[to.lat, to.lng]} icon={dotIcon('🏁', '#ef4444', 26)}>
+            <Marker position={[to.lat, to.lng]} icon={dotIcon(Flag, '#ef4444', 26)}>
               <Tooltip direction="top">Выдача · {order.toAddress}</Tooltip>
             </Marker>
           </div>
         ))}
 
         {warehousePoints.map(({ w, pos }) => (
-          <Marker key={w.id} position={[pos.lat, pos.lng]} icon={dotIcon('🏬', '#8b5cf6', 28)}>
+          <Marker key={w.id} position={[pos.lat, pos.lng]} icon={dotIcon(Warehouse, '#8b5cf6', 28)}>
             <Tooltip direction="top">{w.warehouseName}</Tooltip>
           </Marker>
         ))}
@@ -96,7 +112,7 @@ export const TransportMap = ({ companyId }: { companyId: string }) => {
         {vehiclePositions.map(({ vehicle, pos, moving }) => {
           const driver = team.find(t => t.id === vehicle.driverId);
           return (
-            <Marker key={vehicle.id} position={[pos.lat, pos.lng]} icon={dotIcon(moving ? '🚚' : '🅿️', moving ? '#3b82f6' : '#6b7280', 30)}>
+            <Marker key={vehicle.id} position={[pos.lat, pos.lng]} icon={dotIcon(moving ? Truck : CircleParking, moving ? '#3b82f6' : '#6b7280', 30)}>
               <Tooltip direction="top">
                 {vehicle.brand} {vehicle.model} · {TRANSPORT_KIND_LABEL[vehicle.kind]}{driver ? ` · ${driver.name}` : ''}{moving ? ' · в пути' : ' · на месте'}
               </Tooltip>
@@ -106,10 +122,10 @@ export const TransportMap = ({ companyId }: { companyId: string }) => {
       </MapContainer>
 
       <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-1.5 rounded-xl p-2.5 text-[11px]" style={{ background: 'rgba(15,15,20,0.85)', color: '#fff' }}>
-        <span>🚚 транспорт в пути</span>
-        <span>🅿️ на стоянке</span>
-        <span>📦 погрузка · 🏁 выдача</span>
-        <span>🏬 склад</span>
+        <span className="flex items-center gap-1.5"><Truck size={12} color="#3b82f6"/> транспорт в пути</span>
+        <span className="flex items-center gap-1.5"><CircleParking size={12} color="#9ca3af"/> на стоянке</span>
+        <span className="flex items-center gap-1.5"><Package size={12} color="#22c55e"/> погрузка · <Flag size={12} color="#ef4444"/> выдача</span>
+        <span className="flex items-center gap-1.5"><Warehouse size={12} color="#8b5cf6"/> склад</span>
       </div>
     </div>
   );

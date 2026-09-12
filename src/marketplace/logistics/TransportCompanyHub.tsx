@@ -12,11 +12,14 @@ import { useTransportStore } from './transportStore';
 import { TransportMap } from './TransportMap';
 import { TRANSPORT_KIND_LABEL, type TransportKind, type VehicleStatus } from './transportTypes';
 
-const VEHICLE_STATUS_UI: Record<VehicleStatus, { label: string; color: string; dot: string }> = {
-  available:   { label: 'Доступен',      color: '#22c55e', dot: '🟢' },
-  busy:        { label: 'Занят',         color: '#eab308', dot: '🟡' },
-  maintenance: { label: 'На обслуживании', color: '#ef4444', dot: '🔴' },
-  disabled:    { label: 'Отключён',      color: '#6b7280', dot: '⚫' },
+/* Цветной кружок статуса раньше был эмодзи «зелёный круг» и рисовался
+   шрифтом устройства. Теперь цвет один и тот же для точки и для текста
+   — он и так лежит в `color`, отдельная картинка не нужна. */
+const VEHICLE_STATUS_UI: Record<VehicleStatus, { label: string; color: string }> = {
+  available:   { label: 'Доступен',      color: '#22c55e' },
+  busy:        { label: 'Занят',         color: '#eab308' },
+  maintenance: { label: 'На обслуживании', color: '#ef4444' },
+  disabled:    { label: 'Отключён',      color: '#6b7280' },
 };
 
 /* ============================== Онбординг ============================== */
@@ -181,7 +184,8 @@ const TodayDashboard = ({ companyId }: { companyId: string }) => {
             const n = vehiclesFor(companyId).filter(v => v.status === st).length;
             return (
               <div key={st} className="flex-1 rounded-xl p-2 text-center" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
-                <p className="text-sm">{VEHICLE_STATUS_UI[st].dot}</p>
+                <span className="mx-auto block h-2.5 w-2.5 rounded-full"
+                  style={{ background: VEHICLE_STATUS_UI[st].color }}/>
                 <p className="text-[10px] font-semibold" style={{ color: C.t2 }}>{n}</p>
               </div>
             );
@@ -234,7 +238,7 @@ const FleetTab = ({ companyId }: { companyId: string }) => {
             <div className="mt-3 flex items-center justify-between gap-2">
               <select value={v.status} onChange={e => updateVehicleStatus(v.id, e.target.value as VehicleStatus)}
                 className="rounded-lg px-2 py-1.5 text-[11px] font-semibold outline-none" style={{ background: `${VEHICLE_STATUS_UI[v.status].color}15`, color: VEHICLE_STATUS_UI[v.status].color, border: 'none' }}>
-                {(Object.keys(VEHICLE_STATUS_UI) as VehicleStatus[]).map(s => <option key={s} value={s}>{VEHICLE_STATUS_UI[s].dot} {VEHICLE_STATUS_UI[s].label}</option>)}
+                {(Object.keys(VEHICLE_STATUS_UI) as VehicleStatus[]).map(s => <option key={s} value={s}>{VEHICLE_STATUS_UI[s].label}</option>)}
               </select>
               <select value={v.driverId ?? ''} onChange={e => assignDriverToVehicle(v.id, e.target.value || null)}
                 className="flex-1 rounded-lg px-2 py-1.5 text-[11px] outline-none" style={{ background: C.l2, color: C.t2, border: `1px solid ${C.brd}` }}>

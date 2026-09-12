@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import {
   Plus, KeyRound, Ban, CheckCircle2, Trash2, Send,
   MessageSquare, Mail, LogIn, LogOut, ScanLine,
-  ClipboardList,
+  ClipboardList, Check, AlertTriangle,
 } from 'lucide-react';
 import { C, fmtTs } from '../SkyMarket';
 import { useWarehouseStore } from './warehouseStore';
@@ -163,7 +163,7 @@ const SendPassBlock = ({ pass }: { pass: AccessPass }) => {
       <button type="button" onClick={() => { sendPass(pass.id, channel, target); setSent(true); setTimeout(()=>setSent(false), 2000); }}
         disabled={!target.trim()}
         className="w-full rounded-xl py-2 text-xs font-bold text-white disabled:opacity-40" style={{ background: C.acc }}>
-        {sent ? 'Отправлено ✓' : 'Отправить'}
+        {sent ? <span className="inline-flex items-center gap-1.5"><Check size={13}/> Отправлено</span> : 'Отправить'}
       </button>
       {logs.length > 0 && (
         <div className="pt-1 space-y-1">
@@ -240,8 +240,16 @@ const PassDetail = ({ pass, whName, onClose }: { pass: AccessPass; whName: strin
               <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5" style={{ color: C.t3 }}>Код пропуска</p>
               <p className="text-lg font-black font-mono tracking-widest" style={{ color: C.acc }}>{pass.code}</p>
             </div>
-            {!pass.active && <p className="text-[10px] text-center font-bold" style={{ color: C.red }}>⛔ Пропуск заблокирован</p>}
-            {expired && pass.active && <p className="text-[10px] text-center font-bold" style={{ color: C.amber }}>⚠ Срок действия истёк</p>}
+            {!pass.active && (
+              <p className="text-[10px] text-center font-bold flex items-center justify-center gap-1" style={{ color: C.red }}>
+                <Ban size={11}/> Пропуск заблокирован
+              </p>
+            )}
+            {expired && pass.active && (
+              <p className="text-[10px] text-center font-bold flex items-center justify-center gap-1" style={{ color: C.amber }}>
+                <AlertTriangle size={11}/> Срок действия истёк
+              </p>
+            )}
             <p className="text-[10px] text-center" style={{ color: C.t3 }}>
               {pass.type === 'permanent' ? 'Постоянный пропуск' : `Действует до ${pass.validUntil ? fmtTs(pass.validUntil) : ''}`}
             </p>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Bike, Footprints, Car as CarIcon, Truck as VanIcon, Check, Star, Package, Power } from 'lucide-react';
+import { VEHICLE_CFG } from '@/marketplace/logistics/shared';
 import { useCourierStore } from '@/marketplace/logistics/courierStore';
 import { useAuthStore } from '@/core/auth/store';
 import { CITIES } from '@/marketplace/logistics/geo';
@@ -35,7 +36,6 @@ export const CourierApply = ({ onBack }: { onBack: () => void }) => {
     setTimeout(() => {
       registerAsCourier({
         name: me?.name ?? 'Курьер Sky',
-        avatar: VEHICLES.find(v => v.key === vehicle)?.key === 'foot' ? '🚶' : vehicle === 'bike' ? '🚴' : vehicle === 'scooter' ? '🛵' : vehicle === 'car' ? '🚗' : '🚐',
         phone: me?.phone ?? '+7 (999) 000-00-00',
         cityId, district, vehicle, pricePerDelivery: price,
         workFrom: '09:00', workTo: '21:00', bio: bio.trim() || 'Новый курьер Sky, готов к заказам!',
@@ -51,7 +51,9 @@ export const CourierApply = ({ onBack }: { onBack: () => void }) => {
         <button type="button" onClick={onBack} className="mb-3 text-left text-[12.5px]" style={{ color: 'var(--t3)' }}>← Работа</button>
 
         <div className="rounded-3xl p-5 text-center" style={{ background: 'linear-gradient(135deg, rgba(6,182,212,0.15), var(--bg-l1))', border: '1px solid rgba(6,182,212,0.25)' }}>
-          <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-full text-3xl" style={{ background: 'var(--bg-l2)' }}>{profile.avatar}</div>
+          <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-full" style={{ background: 'var(--bg-l2)' }}>
+            {(() => { const Icon = VEHICLE_CFG[profile.vehicle].icon; return <Icon size={28} style={{ color:'var(--t2)' }}/>; })()}
+          </div>
           <p className="text-lg font-black" style={{ color: 'var(--t1)' }}>{profile.name}</p>
           <div className="mt-1 flex items-center justify-center gap-1 text-[12.5px]" style={{ color: 'var(--t3)' }}>
             <Star size={12} fill="#f59e0b" color="#f59e0b"/>{profile.rating} · {profile.deliveriesCount} доставок

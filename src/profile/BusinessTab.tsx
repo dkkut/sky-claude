@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import type { IconComponent } from '@/shared/icon';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   QrCode, TrendingUp, ShoppingBag, DollarSign, Users, BarChart2,
@@ -6,6 +7,7 @@ import {
   ChevronRight, X, Camera, RefreshCw, Shield, Clock, Eye,
   Star, Repeat2, CreditCard, PieChart, Tag, Plus, Minus,
   LayoutGrid, List, AlertCircle, Wifi, Hash, ExternalLink,
+  Ticket, User, HelpCircle, History,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
@@ -50,8 +52,12 @@ const FAKE_QR: QRResult[] = [
   { id: 'TKT-XXXX', type: 'ticket',  title: 'Билет: неизвестное событие',  meta: 'Статус: недействителен',         valid: false, ts: new Date().toISOString() },
 ];
 
-const QR_ICON: Record<QRResult['type'], string> = {
-  ticket: '🎟️', payment: '💳', profile: '👤', unknown: '❓',
+/** Значок вида QR-кода — вместо эмодзи, которую рисовал шрифт устройства. */
+const QR_ICON: Record<QRResult['type'], IconComponent> = {
+  ticket:  Ticket,
+  payment: CreditCard,
+  profile: User,
+  unknown: HelpCircle,
 };
 
 const QRScanner = ({ onClose }: { onClose: () => void }) => {
@@ -123,7 +129,11 @@ const QRScanner = ({ onClose }: { onClose: () => void }) => {
                 background: tab === t ? 'var(--accent)' : 'rgba(0,0,0,0)',
                 color: tab === t ? '#fff' : 'var(--t3)',
               }}>
-              {t === 'scanner' ? '📷 Сканер' : `🕐 История (${history.length})`}
+              <span className="inline-flex items-center justify-center gap-1.5">
+                {t === 'scanner'
+                  ? <><Camera size={13}/> Сканер</>
+                  : <><History size={13}/> История ({history.length})</>}
+              </span>
             </button>
           ))}
         </div>
@@ -177,7 +187,7 @@ const QRScanner = ({ onClose }: { onClose: () => void }) => {
                   <motion.div initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: 'spring', stiffness: 400, damping: 26 }}
                     className="flex flex-col items-center gap-2 px-4 text-center">
-                    <span className="text-4xl">{QR_ICON[result.type]}</span>
+                    {(() => { const Icon = QR_ICON[result.type]; return <Icon size={36} style={{ color:'var(--t2)' }}/>; })()}
                     <motion.div
                       initial={{ scale: 0 }} animate={{ scale: 1 }}
                       transition={{ delay: 0.15, type: 'spring', stiffness: 500, damping: 30 }}>
@@ -209,7 +219,7 @@ const QRScanner = ({ onClose }: { onClose: () => void }) => {
                     <div className="flex items-start gap-3">
                       <div className="grid h-10 w-10 place-items-center rounded-2xl shrink-0 text-xl"
                         style={{ background: result.valid ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)' }}>
-                        {QR_ICON[result.type]}
+                        {(() => { const Icon = QR_ICON[result.type]; return <Icon size={16}/>; })()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-white truncate">{result.title}</p>
@@ -260,7 +270,7 @@ const QRScanner = ({ onClose }: { onClose: () => void }) => {
                   transition={{ delay: i * 0.04 }}
                   className="flex items-center gap-3 rounded-2xl px-4 py-3"
                   style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-                  <span className="text-xl shrink-0">{QR_ICON[r.type]}</span>
+                  {(() => { const Icon = QR_ICON[r.type]; return <Icon size={19} className="shrink-0" style={{ color:'var(--t2)' }}/>; })()}
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-white truncate">{r.title}</p>
                     <p className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>

@@ -3,7 +3,8 @@
 ====================================================================== */
 import { PropsWithChildren } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Bike, Car, Truck as VanIcon, Footprints } from 'lucide-react';
+import { X, Bike, Car, Truck as VanIcon, Footprints, MapPin } from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
 import { C } from '../SkyMarket';
 import { CITIES, toMapPercent } from './geo';
 import type { CourierVehicle, GeoPoint } from './types';
@@ -63,7 +64,7 @@ export const EmptyState = ({ icon: Icon, title, sub }: { icon: any; title: strin
 );
 
 /* ── Иконка транспорта курьера ───────────────────────────────────── */
-export const VEHICLE_CFG: Record<CourierVehicle, { label: string; icon: any }> = {
+export const VEHICLE_CFG: Record<CourierVehicle, { label: string; icon: IconComponent }> = {
   foot:    { label: 'Пешком',  icon: Footprints },
   bike:    { label: 'Велосипед', icon: Bike },
   scooter: { label: 'Скутер',  icon: Bike },
@@ -91,7 +92,7 @@ export const MiniMap = ({
   cityId, points, height = 200,
 }: {
   cityId: string;
-  points: { id: string; pos: GeoPoint; label: string; emoji?: string; online?: boolean; highlight?: boolean }[];
+  points: { id: string; pos: GeoPoint; label: string; Icon?: IconComponent; online?: boolean; highlight?: boolean }[];
   height?: number;
 }) => {
   const city = CITIES.find(c => c.id === cityId) ?? CITIES[0];
@@ -115,7 +116,7 @@ export const MiniMap = ({
               style={{ height: pt.highlight ? 30 : 24, width: pt.highlight ? 30 : 24,
                 background: pt.online === false ? 'var(--bg-l3)' : `linear-gradient(135deg,${C.acc},#8b5cf6)`,
                 border: pt.highlight ? `2px solid ${C.amber}` : '2px solid rgba(255,255,255,0.2)' }}>
-              <span style={{ fontSize: pt.highlight ? 14 : 12 }}>{pt.emoji ?? '📍'}</span>
+              {(() => { const Icon = pt.Icon ?? MapPin; return <Icon size={pt.highlight ? 15 : 13} color="#fff"/>; })()}
             </div>
             {pt.online && (
               <motion.div className="absolute rounded-full" style={{ height: 24, width: 24, border: `1.5px solid ${C.acc}` }}
