@@ -577,7 +577,14 @@ export const unpublishBot = async (botId, ownerId) => {
 export const moderationQueue = async () => {
   const { rows } = await query(
     `SELECT b.*, p.name AS owner_name,
-            (SELECT count(*) FROM bot_users u WHERE u.bot_id = b.id) AS users_count
+            (SELECT count(*) FROM bot_users u WHERE u.bot_id = b.id) AS users_count,
+            -- Отвечает ли сервер автора — это главное, что решает
+            -- модератор: опубликованный бот, который молчит, хуже
+            -- отсутствующего. Без этого поля карточка всегда говорила
+            -- «не отвечает», даже когда сервер был на связи.
+            EXISTS (SELECT 1 FROM bot_runtimes r
+                     WHERE r.bot_id = b.id AND r.revoked_at IS NULL
+                       AND r.last_seen_at > now() - interval '90 seconds') AS online
        FROM bots b LEFT JOIN profiles p ON p.id = b.owner_id
       WHERE b.status = 'pending' ORDER BY b.updated_at LIMIT 100`,
   );

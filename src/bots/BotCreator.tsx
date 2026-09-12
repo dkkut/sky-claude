@@ -95,27 +95,116 @@ const ago = (iso?: string | null) => {
 };
 
 /**
- * Разбор кода без выполнения.
+ * Проверка кода без выполнения.
  *
- * Функция создаётся, но НЕ вызывается: движок разбирает текст и
- * сообщает о синтаксической ошибке, а тело программы при этом не
- * исполняется. Ни fetch, ни доступа к странице, ни бесконечного цикла —
- * потому что ничего не запускается вовсе.
+ * Разбирать текст движком языка нельзя: new Function и eval запрещены
+ * политикой безопасности страницы (CSP), и это правильно — иначе любая
+ * найденная дыра в приложении получала бы готовый способ выполнить
+ * произвольный код. Первая версия этой проверки как раз спотыкалась об
+ * это и объявляла ошибкой любой, даже совершенно правильный код.
  *
- * Проверка нарочно живёт в браузере автора, а не на сервере Sky: даже
- * разбор чужого текста — это работа, которую платформа делать не
- * обязана.
+ * Поэтому здесь свой разбор, и он честно ограничен: считает парность
+ * скобок и закрытость строк. Это ловит то, на чём спотыкаются чаще
+ * всего — обрезанную при копировании строку, потерянную скобку,
+ * незакрытую кавычку. Всё остальное скажет тот, кто код запускает, то
+ * есть сервер владельца.
+ *
+ * Комментарии и строки пропускаются целиком: скобка внутри кавычек —
+ * не скобка, а текст.
  */
+const PAIRS: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
+
 const syntaxCheck = (code: string, lang: string): { ok: boolean; error?: string } => {
-  if (lang !== 'js' && lang !== 'ts') {
-    return { ok: true };
+  /* Чужой язык не разбираем: Python и Go проверит тот, кто их запускает. */
+  if (lang !== 'js' && lang !== 'ts') return { ok: true };
+
+  const stack: { ch: string; line: number }[] = [];
+  let line = 1;
+  let i = 0;
+
+  const at = (n: number) => code[i + n] ?? '';
+
+  while (i < code.length) {
+    const ch = code[i];
+
+    if (ch === '\n') { line += 1; i += 1; continue; }
+
+    /* Комментарии. */
+    if (ch === '/' && at(1) === '/') {
+      while (i < code.length && code[i] !== '\n') i += 1;
+      continue;
+    }
+    if (ch === '/' && at(1) === '*') {
+      const started = line;
+      i += 2;
+      while (i < code.length && !(code[i] === '*' && at(1) === '/')) {
+        if (code[i] === '\n') line += 1;
+        i += 1;
+      }
+      if (i >= code.length) return { ok: false, error: `Комментарий со строки ${started} не закрыт` };
+      i += 2;
+      continue;
+    }
+
+    /* Строки. Обратные кавычки умеют вкладывать выражения — за ними
+       следим отдельно, иначе скобка внутри ${…} потеряется. */
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      const started = line;
+      i += 1;
+      let closed = false;
+      while (i < code.length) {
+        const c = code[i];
+        if (c === '\\') { i += 2; continue; }
+        if (c === '\n') {
+          line += 1;
+          /* Обычная кавычка не переживает перевод строки. */
+          if (quote !== '`') break;
+          i += 1;
+          continue;
+        }
+        if (quote === '`' && c === '$' && at(1) === '{') {
+          stack.push({ ch: '{', line });
+          i += 2;
+          /* Возвращаемся к обычному разбору: внутри ${…} снова код. */
+          let depth = 1;
+          while (i < code.length && depth > 0) {
+            if (code[i] === '\n') line += 1;
+            else if (code[i] === '{') depth += 1;
+            else if (code[i] === '}') depth -= 1;
+            i += 1;
+          }
+          if (depth > 0) return { ok: false, error: `Вставка \${'{'}…${'}'} со строки ${started} не закрыта` };
+          stack.pop();
+          continue;
+        }
+        if (c === quote) { closed = true; i += 1; break; }
+        i += 1;
+      }
+      if (!closed) return { ok: false, error: `Строка со строки ${started} не закрыта (${quote})` };
+      continue;
+    }
+
+    if (ch === '(' || ch === '[' || ch === '{') { stack.push({ ch, line }); i += 1; continue; }
+
+    if (ch === ')' || ch === ']' || ch === '}') {
+      const top = stack.pop();
+      if (!top) return { ok: false, error: `Лишняя «${ch}» в строке ${line}` };
+      if (top.ch !== PAIRS[ch]) {
+        return { ok: false, error: `В строке ${line} закрывается «${ch}», а открыта «${top.ch}» в строке ${top.line}` };
+      }
+      i += 1;
+      continue;
+    }
+
+    i += 1;
   }
-  try {
-    new Function(`return (async () => {\n${code}\n});`);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: (e as Error)?.message ?? 'Синтаксическая ошибка' };
+
+  if (stack.length) {
+    const left = stack[stack.length - 1];
+    return { ok: false, error: `Не закрыта «${left.ch}» из строки ${left.line}` };
   }
+  return { ok: true };
 };
 
 /* ─── Панель сервера ────────────────────────────────────────────── */
@@ -197,6 +286,10 @@ const ServerPanel = ({ bot, onChanged }: { bot: BotRow; onChanged: () => void })
             {([
               ['Последний раз на связи', ago(rt.lastSeen)],
               ['Подключён', ago(rt.connectedAt)],
+              /* Метку сервер называет сам при привязке: у владельца их
+                 может быть несколько, и «который из них» — первое, что
+                 он захочет узнать. */
+              ['Сервер', rt.label || 'без названия'],
               ['Версия', rt.version || '—'],
               ['Доставка', rt.delivery === 'webhook' ? 'вебхук' : 'опрос'],
               ['Событий отдано', String(rt.eventsSent ?? 0)],
@@ -505,8 +598,14 @@ export const BotCreatorPanel = () => {
         <div className="flex gap-2">
           <button type="button" onClick={() => setCheck(syntaxCheck(form.code, form.codeLang))}
             className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold"
-            style={{ background: 'var(--bg-l2)', color: 'var(--t2)', border: '1px solid var(--border)' }}>
-            <Terminal size={12}/>Проверить
+            style={{
+              background: check ? (check.ok ? 'rgba(0,200,90,0.1)' : 'rgba(244,63,94,0.1)') : 'var(--bg-l2)',
+              color: check ? (check.ok ? 'var(--green)' : 'var(--red)') : 'var(--t2)',
+              border: `1px solid ${check ? (check.ok ? 'rgba(0,200,90,0.25)' : 'rgba(244,63,94,0.25)') : 'var(--border)'}`,
+            }}>
+            {check
+              ? (check.ok ? <><Check size={12}/>Синтаксис в порядке</> : <><X size={12}/>Ошибка в коде</>)
+              : <><Terminal size={12}/>Проверить</>}
           </button>
           <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={() => void save()} disabled={busy}
             className="rounded-xl px-3 py-1.5 text-xs font-bold disabled:opacity-50"
@@ -654,7 +753,9 @@ export const BotCreatorPanel = () => {
                           : <><X size={12}/> {check.error}</>}
               </p>
               <p className="text-[10px] mt-1" style={{ color: 'var(--t3)' }}>
-                Проверка разбирает текст, но не выполняет его — ни здесь, ни в Sky.
+                Проверяются парность скобок и закрытость строк — код при этом
+                не выполняется ни здесь, ни в Sky. Остальное скажет ваш сервер
+                при запуске.
               </p>
             </div>
           )}
