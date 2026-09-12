@@ -1,6 +1,5 @@
 import { Home, BookOpen, Briefcase, Building2, Check, CheckCircle, ChevronLeft, Clock, Cloud, Crown, Eye, Film, Flag, Gamepad2, Gem, Image, Megaphone, MessageCircle, MessageCircleMore, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, Scale, Send, Shield, ShoppingCart, Sparkles, Ticket, Trash2, Tv2, Upload, Users, XCircle, Zap, Bot } from 'lucide-react';
 import { BotsBrowser, HashInlineMenu, BotChatOverlay, BOTS_REGISTRY } from '@/bots/SkyBots';
-import { usePlayerStore } from '@/player/playerStore';
 import { BotCreatorPanel } from '@/bots/BotCreator';
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -44,6 +43,8 @@ const SkyPVZ = React.lazy(() => import('@/pvz/SkyPVZ').then(m => ({ default: m.S
 const SkyGiftsNFT = React.lazy(() => import('@/gifts/SkyGiftsNFT').then(m => ({ default: m.SkyGiftsNFT })));
 import { AdminMusicPanel } from '@/music/ArtistSubmit';
 import { apiModerationQueue } from '@/music/musicApi';
+import { PodcastModeration } from '@/podcasts/PodcastsAdmin';
+import { usePodcastPendingCount } from '@/podcasts/usePodcastPending';
 import { useFilmStore } from '@/film/serverStore';
 import { posterUrl } from '@/film/filmApi';
 import { AdminDisputesPanel, AdminGarantPanel } from '@/admin/AdminDisputes';
@@ -641,11 +642,14 @@ const AdminPanel = () => {
   useEffect(() => {
     void apiModerationQueue().then(q => setMusicPending(q?.length ?? 0));
   }, []);
+  // Столько же для подкастов: очередь отдаётся только администратору,
+  // у обычного человека выйдет ноль.
+  const podcastPending = usePodcastPendingCount();
   const { campaigns, moderate } = useAdsStore();
   const pendingAds = campaigns.filter(c=>c.status==='moderation');
   const { accounts, grantPrime, revokePrime, setAdmin, banUser, muteUser, spamBlock, freezeUser, setModerationNote, currentUserId } = useAuthStore();
   const { reports, resolveReport } = useMessengerStore();
-  const [adminTab, setAdminTab] = useState<'reports'|'users'|'moderation'|'content'|'channels'|'ads_mod'|'feedback'|'disputes'|'support'|'games_mod'|'garant_adm'>('reports');
+  const [adminTab, setAdminTab] = useState<'reports'|'users'|'moderation'|'podcasts_mod'|'content'|'channels'|'ads_mod'|'feedback'|'disputes'|'support'|'games_mod'|'garant_adm'>('reports');
   const [selUser, setSelUser] = useState<string|null>(null);
   const [muteMin, setMuteMin] = useState('30');
   const [spamMin, setSpamMin] = useState('60');
@@ -675,6 +679,7 @@ const AdminPanel = () => {
           ['reports',    `Жалобы${pending.length>0?` (${pending.length})`:''}`,    Flag],
           ['users',      'Пользователи',                                              Users],
           ['moderation', `Музыка${musicPending > 0 ? ` (${musicPending})` : ''}`, Music2],
+          ['podcasts_mod', `Подкасты${podcastPending > 0 ? ` (${podcastPending})` : ''}`, Mic2],
           ['content',    'Контент',                                                   Upload],
           ['channels',   'Каналы',                                                   Shield],
           ['ads_mod',    `Реклама${pendingAds.length>0?` (${pendingAds.length})`:''}`, Megaphone],
@@ -998,6 +1003,9 @@ const AdminPanel = () => {
 
         {/* ==== MUSIC MODERATION ==== */}
         {adminTab==='moderation' && <AdminMusicPanel/>}
+
+        {/* ==== PODCASTS MODERATION ==== */}
+        {adminTab==='podcasts_mod' && <div className="p-4"><PodcastModeration/></div>}
 
         {/* ==== GAMES MODERATION ==== */}
         {adminTab==='games_mod'  && <GamesAdminPanel/>}

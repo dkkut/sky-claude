@@ -4,6 +4,7 @@ import { Play, Pause, Heart, Upload, X, Cloud, ShieldCheck, ShieldAlert } from '
 import { useAuthStore } from '@/core/auth/store';
 import { usePlayerStore } from '@/player/playerStore';
 import { useOpenSoundStore, type OpenTrack, type SoundLicense } from './openSoundStore';
+import { ACCEPT_AUDIO } from '@/shared/fileAccept';
 
 const ORANGE = '#ff5500'; // фирменный акцент SoundCloud-стиля
 
@@ -107,7 +108,7 @@ const UploadSheet = ({ open, onClose }: { open: boolean; onClose: () => void }) 
               <button type="button" onClick={() => { onClose(); reset(); }}><X size={18} style={{ color: 'var(--t3)' }}/></button>
             </div>
 
-            <input ref={fileRef} type="file" accept="audio/*" className="hidden"
+            <input ref={fileRef} type="file" accept={ACCEPT_AUDIO} className="hidden"
               onChange={e => {
                 const f = e.target.files?.[0]; if (!f) return;
                 setFile(f); setUrl(URL.createObjectURL(f));

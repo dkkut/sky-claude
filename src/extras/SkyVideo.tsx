@@ -19,6 +19,7 @@ import { useVideoStore, fmtViews, fmtAgo, getVideoGrad, CATEGORY_LABEL, type Vid
 import { useAuthStore } from '@/core/auth/store';
 import { openProfile } from '@/profile/viewer/store';
 import { useSocialGraph } from '@/profile/viewer/social';
+import { ACCEPT_VIDEO, ACCEPT_IMAGE } from '@/shared/fileAccept';
 
 /* -- Design tokens ------------------------------------------- */
 const V = {
@@ -843,7 +844,7 @@ const UploadTab = ({ onDone }: { onDone: () => void }) => {
         onClick={() => fileRef.current?.click()}
         onDragOver={e => { e.preventDefault(); }}
         onDrop={e => { e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) handleFile(f); }}>
-        <input ref={fileRef} type="file" accept="video/*" className="hidden"
+        <input ref={fileRef} type="file" accept={ACCEPT_VIDEO} className="hidden"
           onChange={e => { const f=e.target.files?.[0]; if(f) handleFile(f); }}/>
         <div className="grid h-14 w-14 place-items-center rounded-2xl"
           style={{ background: file ? `${V.accent}20` : V.bg3 }}>
@@ -889,7 +890,7 @@ const UploadTab = ({ onDone }: { onDone: () => void }) => {
 
           {/* Cover */}
           <div className="flex items-center gap-3">
-            <input ref={coverRef} type="file" accept="image/*" className="hidden"
+            <input ref={coverRef} type="file" accept={ACCEPT_IMAGE} className="hidden"
               onChange={e => { const f=e.target.files?.[0]; if(f){const r=new FileReader();r.onload=()=>setCover(r.result as string);r.readAsDataURL(f);} }}/>
             <button type="button" onClick={() => coverRef.current?.click()}
               className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm transition-colors"

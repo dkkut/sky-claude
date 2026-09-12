@@ -41,6 +41,7 @@ import {
   type ServerMovie, type VideoMeta,
 } from '@/film/filmApi';
 import { SkyShorts } from './SkyShorts';
+import { ACCEPT_VIDEO, ACCEPT_IMAGE } from '@/shared/fileAccept';
 
 /* -- токены ----------------------------------------------- */
 const K = {
@@ -850,7 +851,7 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
           className="flex flex-col items-center justify-center gap-2 rounded-2xl py-6 cursor-pointer transition-colors"
           style={{ background: vFile ? 'rgba(255,85,0,0.07)' : 'rgba(255,255,255,0.03)', border: `2px dashed ${vFile ? K.orange : 'rgba(255,255,255,0.1)'}` }}
           onClick={() => !busy && vRef.current?.click()}>
-          <input ref={vRef} type="file" accept="video/*" className="hidden"
+          <input ref={vRef} type="file" accept={ACCEPT_VIDEO} className="hidden"
             onChange={async e => {
               const f = e.target.files?.[0];
               if (!f) return;
@@ -904,7 +905,7 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
         <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Описание (необязательно)" rows={3}
           className={iCls+' resize-none'} style={iSty}/>
         <div className="flex items-center gap-3">
-          <input ref={imgRef} type="file" accept="image/*" className="hidden"
+          <input ref={imgRef} type="file" accept={ACCEPT_IMAGE} className="hidden"
             onChange={e=>{ const f=e.target.files?.[0]; if(f){ setPosterFile(f); if (posterPreview) URL.revokeObjectURL(posterPreview); setPosterPreview(URL.createObjectURL(f)); } }}/>
           <button type="button" onClick={() => imgRef.current?.click()}
             className="flex items-center gap-2 rounded-2xl px-3 py-2 text-sm transition-colors"

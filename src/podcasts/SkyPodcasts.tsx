@@ -19,11 +19,15 @@ import { motion } from 'framer-motion';
 import {
   Mic, Search, X, Play, Plus, Heart, Bell, BellRing, ChevronLeft, ChevronRight,
   Headphones, Video, Loader2, Upload, Image as ImageIcon, FileText, Send,
-  ShieldCheck, Trash2, Clock, Sparkles, Check, PenLine, Users,
+  Trash2, Clock, Sparkles, PenLine, Users,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { usePlayer, prefersReducedMotion } from './playerStore';
 import { parseSubtitles } from './subtitles';
+import { PodcastModeration } from './PodcastsAdmin';
+import {
+  ACCEPT_AUDIO, ACCEPT_VIDEO, ACCEPT_IMAGE, ACCEPT_SUBTITLES,
+} from '@/shared/fileAccept';
 import {
   apiCatalog, apiCategories, apiSearch, apiMine, apiPodcast, apiEpisodes,
   apiSubscriptions, apiSetSubscribed, apiFavorites, apiSetFavorite,
@@ -31,7 +35,7 @@ import {
   apiCreatePodcast, apiPatchPodcast, apiDeletePodcast, apiSubmitPodcast,
   apiCreateEpisode, apiPatchEpisode, apiDeleteEpisode,
   apiUploadMedia, apiUploadCover, apiSaveTranscript,
-  apiModerationQueue, apiModerate, apiMediaTicket,
+  apiMediaTicket,
   showCoverUrl, epCoverUrl, fmtDuration,
   type Podcast, type Episode,
 } from './podcastApi';
@@ -341,11 +345,17 @@ const EpisodeEditor = ({ e, onChanged }: { e: Episode; onChanged: () => void }) 
   /**
    * Длительность берём у самого файла, а не спрашиваем у автора: он
    * ошибётся, а полоса и «осталось» считаются по этому числу.
+   *
+   * Чем измерять — решает кнопка, на которую нажали, а не file.type.
+   * У файла с незнакомым системе расширением тип пустой, и по нему
+   * видеовыпуск измерялся бы звуковым элементом: длительность вышла бы
+   * верной, а размер кадра потерялся.
    */
-  const measure = (file: File): Promise<{ duration: number; width?: number; height?: number }> =>
+  const measure = (file: File, kind: 'audio' | 'video'):
+  Promise<{ duration: number; width?: number; height?: number }> =>
     new Promise((resolve) => {
       const url = URL.createObjectURL(file);
-      const probe = document.createElement(file.type.startsWith('video') ? 'video' : 'audio') as HTMLVideoElement;
+      const probe = document.createElement(kind) as HTMLVideoElement;
       probe.preload = 'metadata';
       probe.onloadedmetadata = () => {
         const out = {
@@ -362,7 +372,7 @@ const EpisodeEditor = ({ e, onChanged }: { e: Episode; onChanged: () => void }) 
 
   const upload = async (kind: 'audio' | 'video', file: File) => {
     setBusy(kind); setNote(null); setProgress(0);
-    const meta = await measure(file);
+    const meta = await measure(file, kind);
     const { promise } = apiUploadMedia(e.id, kind, file, meta, setProgress);
     const r = await promise;
     if (r.ok && meta.duration > 0) await apiPatchEpisode(e.id, { duration: meta.duration });
@@ -389,20 +399,20 @@ const EpisodeEditor = ({ e, onChanged }: { e: Episode; onChanged: () => void }) 
 
   return (
     <div className="mt-2 flex flex-col gap-2">
-      <UploadRow label="Звук" accept="audio/*" busy={busy === 'audio'} progress={busy === 'audio' ? progress : undefined}
+      <UploadRow label="Звук" accept={ACCEPT_AUDIO} busy={busy === 'audio'} progress={busy === 'audio' ? progress : undefined}
         hint={e.hasAudio ? 'Загружен — можно заменить' : 'MP3, M4A, OGG, WAV или FLAC'}
         onPick={(f) => void upload('audio', f)}/>
-      <UploadRow label="Видео" accept="video/*" busy={busy === 'video'} progress={busy === 'video' ? progress : undefined}
+      <UploadRow label="Видео" accept={ACCEPT_VIDEO} busy={busy === 'video'} progress={busy === 'video' ? progress : undefined}
         hint={e.hasVideo ? 'Загружено — можно заменить' : 'MP4, WebM или MOV — необязательно'}
         onPick={(f) => void upload('video', f)}/>
-      <UploadRow label="Обложка" accept="image/*" busy={busy === 'cover'}
+      <UploadRow label="Обложка" accept={ACCEPT_IMAGE} busy={busy === 'cover'}
         hint={e.hasCover ? 'Есть' : 'JPEG, PNG или WebP'}
         onPick={async (f) => {
           setBusy('cover');
           const ok = await apiUploadCover({ episodeId: e.id }, f);
           setBusy(''); setNote(ok ? null : 'Обложка не загрузилась'); onChanged();
         }}/>
-      <UploadRow label="Расшифровка" accept=".vtt,.srt,text/vtt,text/plain" busy={busy === 'cues'}
+      <UploadRow label="Расшифровка" accept={ACCEPT_SUBTITLES} busy={busy === 'cues'}
         hint={e.hasTranscript ? 'Есть — можно заменить' : 'Файл WebVTT или SRT'}
         onPick={(f) => void uploadCues(f)}/>
 
@@ -557,7 +567,7 @@ const UploadCoverButton = ({ podcastId, has, onDone }: { podcastId: string; has:
         {busy ? <Loader2 size={11} className="animate-spin"/> : <ImageIcon size={11}/>}
         {has ? 'Заменить обложку' : 'Обложка'}
       </button>
-      <input ref={ref} type="file" accept="image/*" className="hidden"
+      <input ref={ref} type="file" accept={ACCEPT_IMAGE} className="hidden"
         onChange={async (e) => {
           const f = e.target.files?.[0]; e.target.value = '';
           if (!f) return;
@@ -640,96 +650,6 @@ const Studio = () => {
       )}
       <div className="flex flex-col gap-3">
         {mine?.map((p) => <ShowStudio key={p.id} p={p} onChanged={load}/>)}
-      </div>
-    </div>
-  );
-};
-
-/* ─── Проверка ─────────────────────────────────────────────────────── */
-
-const ModerationPanel = () => {
-  const [queue, setQueue] = useState<Podcast[] | null>(null);
-  const [busy, setBusy] = useState('');
-  const [reason, setReason] = useState('');
-  const [rejecting, setRejecting] = useState<string | null>(null);
-  const play = usePlayer((s) => s.play);
-  const [episodes, setEpisodes] = useState<Record<string, Episode[]>>({});
-
-  const load = useCallback(async () => { setQueue(await apiModerationQueue()); }, []);
-  useEffect(() => { void load(); }, [load]);
-
-  const decide = async (id: string, approve: boolean) => {
-    setBusy(id);
-    await apiModerate(id, approve, approve ? undefined : reason.trim());
-    setBusy(''); setRejecting(null); setReason('');
-    await load();
-  };
-
-  if (queue === null) return <div className="py-8 text-center"><Loader2 size={20} className="animate-spin inline" style={{ color: C.t3 }}/></div>;
-
-  return (
-    <div className="pb-28">
-      <div className="mb-3 flex items-center gap-2">
-        <ShieldCheck size={16} style={{ color: C.purple }}/>
-        <h3 className="text-[14px] font-bold" style={{ color: C.t1 }}>На проверке</h3>
-      </div>
-      {queue.length === 0 && <p className="py-8 text-center text-sm" style={{ color: C.t3 }}>Заявок нет.</p>}
-      <div className="flex flex-col gap-3">
-        {queue.map((p) => (
-          <div key={p.id} className="rounded-2xl p-3" style={glass}>
-            <div className="flex gap-3">
-              <div className="w-16 shrink-0"><ShowCover p={p} size="sm"/></div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[14px] font-semibold" style={{ color: C.t1 }}>{p.title}</div>
-                <div className="text-[11px]" style={{ color: C.t3 }}>{p.category} · {p.episodes} вып.</div>
-                {p.description && (
-                  <p className="mt-1 line-clamp-3 text-[12px] leading-snug" style={{ color: C.t2 }}>{p.description}</p>
-                )}
-              </div>
-            </div>
-
-            <button onClick={async () => {
-              if (episodes[p.id]) { setEpisodes({ ...episodes, [p.id]: [] }); return; }
-              setEpisodes({ ...episodes, [p.id]: (await apiEpisodes(p.id, { limit: 50 })) ?? [] });
-            }}
-            className="mt-2 text-[11px]" style={{ color: C.purple }}>
-              Послушать выпуски
-            </button>
-            {episodes[p.id]?.map((e) => (
-              <EpisodeRow key={e.id} e={e} onPlay={(mode) => void play({ ...e, podcastTitle: p.title }, { mode })}/>
-            ))}
-
-            {rejecting === p.id ? (
-              <div className="mt-2 flex flex-col gap-2">
-                <input value={reason} onChange={(e) => setReason(e.target.value)}
-                  placeholder="Причина отказа — её увидит автор"
-                  className="rounded-xl px-3 py-2 text-[12px] outline-none" style={{ background: C.l1, color: C.t1 }}/>
-                <div className="flex gap-2">
-                  <button onClick={() => decide(p.id, false)} disabled={busy === p.id}
-                    className="rounded-xl px-3 py-1.5 text-[12px]" style={{ background: '#ef4444', color: '#fff' }}>
-                    Отклонить
-                  </button>
-                  <button onClick={() => { setRejecting(null); setReason(''); }}
-                    className="rounded-xl px-3 py-1.5 text-[12px]" style={{ background: C.l1, color: C.t2 }}>
-                    Отмена
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-2 flex gap-2">
-                <button onClick={() => decide(p.id, true)} disabled={busy === p.id}
-                  className="flex items-center gap-1 rounded-xl px-3 py-1.5 text-[12px] font-semibold"
-                  style={{ background: '#22c55e', color: '#fff' }}>
-                  <Check size={13}/>Опубликовать
-                </button>
-                <button onClick={() => setRejecting(p.id)}
-                  className="rounded-xl px-3 py-1.5 text-[12px]" style={{ background: C.l1, color: C.t2 }}>
-                  Отклонить
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -841,7 +761,10 @@ export const SkyPodcasts = () => {
             <Mic size={18} className="text-white"/>
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[19px] font-bold leading-none" style={{ color: C.t1 }}>Подкасты</h1>
+            <h1 className="text-xl font-black leading-none tracking-tight">
+              <span style={{ color: C.t1 }}>Sky</span>
+              <span style={{ color: C.purple }}>Подкасты</span>
+            </h1>
             <p className="mt-1 text-[11px]" style={{ color: C.t3 }}>Слушать и смотреть</p>
           </div>
         </div>
@@ -1021,7 +944,7 @@ export const SkyPodcasts = () => {
         )}
 
         {!found && !openShow && tab === 'studio' && <Studio/>}
-        {!found && !openShow && tab === 'moderation' && isAdmin && <ModerationPanel/>}
+        {!found && !openShow && tab === 'moderation' && isAdmin && <PodcastModeration/>}
       </div>
     </div>
   );
