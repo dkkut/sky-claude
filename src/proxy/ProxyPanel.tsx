@@ -5,7 +5,8 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Plus, Trash2, Check, X, Copy, ChevronRight,
-  Wifi, WifiOff, RefreshCw, AlertCircle, ChevronLeft, QrCode,
+  Wifi, WifiOff, RefreshCw, AlertCircle, ChevronLeft,
+  Zap, Lock, Link2, Settings2,
 } from 'lucide-react';
 import {
   useProxyStore, STATUS_LABEL, STATUS_COLOR,
@@ -70,7 +71,7 @@ const ConfigCard = ({ cfg, onEdit }: { cfg:ProxyConfig; onEdit:()=>void }) => {
           <div className="flex items-center gap-2.5">
             <div className="grid h-9 w-9 place-items-center rounded-xl text-base shrink-0"
               style={{ background: cfg.protocol==='vless' ? 'rgba(79,110,247,0.15)' : 'rgba(168,85,247,0.15)' }}>
-              {cfg.protocol === 'vless' ? '⚡' : '🔒'}
+              {cfg.protocol === 'vless' ? <Zap size={16}/> : <Lock size={16}/>}
             </div>
             <div>
               <p className="text-sm font-bold truncate" style={{ color:C.t1, maxWidth:140 }}>
@@ -112,7 +113,7 @@ const ConfigCard = ({ cfg, onEdit }: { cfg:ProxyConfig; onEdit:()=>void }) => {
           <div className="flex items-center justify-between text-[11px] mt-1">
             <span style={{ color:C.t3 }}>TLS</span>
             <span style={{ color: cfg.tls ? C.green : C.amber }}>
-              {cfg.tls ? '✓ Включён' : '✗ Выключен'}
+              {cfg.tls ? 'Включён' : 'Выключен'}
             </span>
           </div>
           {isActive && latencyMs !== null && status === 'connected' && (
@@ -243,7 +244,7 @@ const AddConfigForm = ({ onDone }: { onDone: () => void }) => {
             style={{ background:mode===m?C.accent:'transparent',
               color:mode===m?'#fff':C.t3,
               borderRight:i===0?`1px solid ${C.border}`:'none' }}>
-            {m==='uri' ? '🔗 Вставить URI' : '⚙️ Вручную'}
+            {m==='uri' ? <><Link2 size={12} className="inline mr-1"/>Вставить URI</> : <><Settings2 size={12} className="inline mr-1"/>Вручную</>}
           </button>
         ))}
       </div>
@@ -261,7 +262,7 @@ const AddConfigForm = ({ onDone }: { onDone: () => void }) => {
           </div>
           <div className="rounded-xl px-3 py-2.5 text-[10px] leading-relaxed"
             style={{ background:`${C.accent}08`, border:`1px solid ${C.accent}20`, color:C.t3 }}>
-            💡 Поддерживаются URI-ссылки из Xray, V2RayN, NekoRay. Импортируйте из вашей панели управления.
+            Поддерживаются URI-ссылки из Xray, V2RayN, NekoRay. Импортируйте из вашей панели управления.
           </div>
         </div>
       ) : (
@@ -275,7 +276,7 @@ const AddConfigForm = ({ onDone }: { onDone: () => void }) => {
                   className="flex-1 py-2 text-xs font-bold"
                   style={{ background:protocol===p?C.accent:'transparent', color:protocol===p?'#fff':C.t3,
                     borderRight:i===0?`1px solid ${C.border}`:'none' }}>
-                  {p === 'vless' ? '⚡ VLESS' : '🔒 Trojan'}
+                  {p === 'vless' ? <><Zap size={12} className="inline mr-1"/>VLESS</> : <><Lock size={12} className="inline mr-1"/>Trojan</>}
                 </button>
               ))}
             </div>
@@ -335,7 +336,7 @@ const AddConfigForm = ({ onDone }: { onDone: () => void }) => {
         onClick={mode==='uri' ? handleUri : handleManual}
         className="w-full rounded-2xl py-3.5 text-sm font-bold text-white"
         style={{ background:`linear-gradient(135deg,${C.accent},#818cf8)`, boxShadow:`0 6px 24px ${C.accent}40` }}>
-        {mode==='uri' ? '📥 Импортировать' : '✅ Добавить конфиг'}
+        {mode==='uri' ? 'Импортировать' : 'Добавить конфиг'}
       </motion.button>
     </div>
   );
@@ -419,7 +420,7 @@ export const ProxyPanel = () => {
                   </div>
                 )}
                 {error && (
-                  <p className="text-[10px] mt-1.5" style={{ color:C.red }}>⚠️ {error}</p>
+                  <p className="inline-flex items-center gap-1 text-[10px] mt-1.5" style={{ color:C.red }}><AlertCircle size={10}/>{error}</p>
                 )}
               </div>
             )}
@@ -428,7 +429,7 @@ export const ProxyPanel = () => {
             {configs.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-12">
                 <div className="grid h-16 w-16 place-items-center rounded-3xl text-3xl"
-                  style={{ background:C.l1, border:`1px solid ${C.border}` }}>🔒</div>
+                  style={{ background:C.l1, border:`1px solid ${C.border}` }}><Lock size={18} style={{ color:C.t2 }}/></div>
                 <div className="text-center">
                   <p className="text-base font-bold" style={{ color:C.t1 }}>Нет конфигураций</p>
                   <p className="text-sm mt-1" style={{ color:C.t2 }}>
@@ -450,7 +451,7 @@ export const ProxyPanel = () => {
             <div className="rounded-2xl px-4 py-3"
               style={{ background:'rgba(255,255,255,0.02)', border:`1px solid ${C.border}` }}>
               <p className="text-[10px] leading-relaxed" style={{ color:C.t3 }}>
-                🔐 Соединение устанавливается через WebSocket + TLS. UUID/пароль хранятся локально и не передаются на сервера Sky.
+                Соединение устанавливается через WebSocket + TLS. UUID/пароль хранятся локально и не передаются на сервера Sky.
               </p>
             </div>
           </>

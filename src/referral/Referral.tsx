@@ -7,6 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Gift, Crown, Copy, Check, Share2, Star, Trophy,
   ChevronRight, Sparkles, TrendingUp, Link2, Zap, Shield,
+  Sprout, Flame, Gem, Award, Medal, Briefcase, Smartphone,
+  Gamepad2, MessageCircle, Megaphone, Lightbulb, FlaskConical,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { create } from 'zustand';
@@ -23,20 +25,19 @@ interface RewardMilestone {
   count:       number;
   label:       string;
   desc:        string;
-  icon:        string;
+  Icon:        typeof Sprout;
   primeDays:   number;
   businessDays:number;
   points:       number;
-  badge:        string;    // badge emoji показывается в профиле
 }
 
 export const MILESTONES: RewardMilestone[] = [
-  { count:5,   label:'Первые 5',    icon:'🌱', primeDays:3,  businessDays:0,  points:200,  badge:'🌱', desc:'3 дня Prime + 200 баллов' },
-  { count:10,  label:'Десятка',     icon:'🔥', primeDays:5,  businessDays:5,  points:500,  badge:'🔥', desc:'5 дней Prime + 5 дней Business + 500 баллов' },
-  { count:25,  label:'Двадцать пять', icon:'⚡', primeDays:14, businessDays:7,  points:1200, badge:'⚡', desc:'2 недели Prime + неделя Business + 1200 баллов' },
-  { count:50,  label:'Полсотни',    icon:'💎', primeDays:30, businessDays:14, points:3000, badge:'💎', desc:'Месяц Prime + 2 недели Business + 3000 баллов' },
-  { count:100, label:'Сотня',       icon:'👑', primeDays:90, businessDays:30, points:7500, badge:'👑', desc:'3 месяца Prime + месяц Business + 7500 баллов + особый статус' },
-  { count:250, label:'Амбассадор',  icon:'🏆', primeDays:180,businessDays:90, points:20000,badge:'🏆', desc:'6 мес Prime + 3 мес Business + 20000 баллов + значок Амбассадора' },
+  { count:5,   label:'Первые 5',    Icon:Sprout, primeDays:3,  businessDays:0,  points:200, desc:'3 дня Prime + 200 баллов' },
+  { count:10,  label:'Десятка',     Icon:Flame, primeDays:5,  businessDays:5,  points:500, desc:'5 дней Prime + 5 дней Business + 500 баллов' },
+  { count:25,  label:'Двадцать пять', Icon:Zap, primeDays:14, businessDays:7,  points:1200, desc:'2 недели Prime + неделя Business + 1200 баллов' },
+  { count:50,  label:'Полсотни',    Icon:Gem, primeDays:30, businessDays:14, points:3000, desc:'Месяц Prime + 2 недели Business + 3000 баллов' },
+  { count:100, label:'Сотня',       Icon:Crown, primeDays:90, businessDays:30, points:7500, desc:'3 месяца Prime + месяц Business + 7500 баллов + особый статус' },
+  { count:250, label:'Амбассадор',  Icon:Trophy, primeDays:180,businessDays:90, points:20000, desc:'6 мес Prime + 3 мес Business + 20000 баллов + значок Амбассадора' },
 ];
 
 interface ReferralState {
@@ -149,7 +150,9 @@ const C = {
   accent:'var(--accent)', green:'var(--green)', amber:'var(--amber)', red:'var(--red)',
 };
 
-const MEDAL = ['🥇','🥈','🥉'];
+/* Место в топе — числом и цветом. Медали-эмодзи рисовал шрифт
+   устройства, и на части телефонов все три выглядели одинаково. */
+const MEDAL_COLOR = ['#f5c518','#c0c7d0','#cd7f32'];
 
 /* -- Progress bar ------------------------------------------ */
 const ProgressBar = ({ current, target, color }: { current:number; target:number; color:string }) => {
@@ -202,7 +205,7 @@ const MilestoneCard = ({
         <div className="flex items-center gap-3 mb-3">
           <div className="grid h-12 w-12 place-items-center rounded-2xl text-2xl shrink-0"
             style={{ background: done ? `${C.amber}15` : 'rgba(255,255,255,0.04)' }}>
-            {ms.icon}
+            <ms.Icon size={22} style={{ color: done ? C.amber : C.t3 }}/>
           </div>
           <div className="flex-1">
             <div className="flex items-baseline gap-2">
@@ -218,18 +221,18 @@ const MilestoneCard = ({
           {ms.primeDays > 0 && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
               style={{ background:'rgba(245,158,11,0.12)', color:C.amber }}>
-              ⭐ Prime {ms.primeDays}д
+              Prime {ms.primeDays}д
             </span>
           )}
           {ms.businessDays > 0 && (
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
               style={{ background:'rgba(79,110,247,0.12)', color:C.accent }}>
-              💼 Business {ms.businessDays}д
+              Business {ms.businessDays}д
             </span>
           )}
           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
             style={{ background:'rgba(52,211,153,0.12)', color:C.green }}>
-            ✦ {ms.points.toLocaleString('ru')} баллов
+            {ms.points.toLocaleString('ru')} баллов
           </span>
         </div>
 
@@ -321,7 +324,7 @@ export const ReferralPanel = () => {
           <motion.div initial={{ opacity:0, y:-40 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-40 }}
             className="absolute top-4 left-4 right-4 z-50 rounded-2xl px-4 py-3 flex items-center gap-3"
             style={{ background:`linear-gradient(135deg,${C.amber},#d97706)`, boxShadow:`0 8px 32px ${C.amber}50` }}>
-            <span className="text-2xl">🎉</span>
+            <Sparkles size={22} style={{ color:C.amber }}/>
             <div>
               <p className="text-sm font-black text-black">Награда получена!</p>
               <p className="text-[11px] text-black/70">
@@ -335,10 +338,10 @@ export const ReferralPanel = () => {
       {/* Header */}
       <div className="px-4 pt-5 pb-3 shrink-0">
         <div className="flex items-center gap-3 mb-4">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl text-2xl shrink-0"
+          <div className="grid h-12 w-12 place-items-center rounded-2xl shrink-0"
             style={{ background:`linear-gradient(135deg,${C.accent}20,rgba(167,139,250,0.12))`,
               border:`1.5px solid ${C.accent}30` }}>
-            👥
+            <Users size={22} style={{ color:C.accent }}/>
           </div>
           <div>
             <p className="text-lg font-black text-white">Пригласи друзей</p>
@@ -351,7 +354,7 @@ export const ReferralPanel = () => {
           {[
             { label:'Приглашено', val:count,  color:C.accent },
             { label:'Наград',     val:MILESTONES.filter(m=>isClaimed(myId,m.count)).length, color:C.green },
-            { label:'До след.',   val:next ? `${next.count - count}` : '✓', color:C.amber },
+            { label:'До след.',   val:next ? `${next.count - count}` : '—', color:C.amber },
           ].map(({label,val,color}) => (
             <div key={label} className="rounded-2xl py-3 px-2 text-center"
               style={{ background:C.l1, border:`1px solid ${C.border}` }}>
@@ -397,7 +400,7 @@ export const ReferralPanel = () => {
         {next && (
           <div className="rounded-2xl px-4 py-3 flex items-center gap-3 mb-3"
             style={{ background:`${C.amber}08`, border:`1px solid ${C.amber}20` }}>
-            <span className="text-2xl">{next.icon}</span>
+            <next.Icon size={22} style={{ color:C.amber }}/>
             <div className="flex-1">
               <p className="text-xs font-bold" style={{ color:C.amber }}>
                 Следующая награда: {next.count} чел.
@@ -412,7 +415,7 @@ export const ReferralPanel = () => {
 
         {/* Tabs */}
         <div className="flex gap-1">
-          {([['main','🎁 Награды'],['history','👥 Кто пришёл'],['leaderboard','🏆 Топ']] as const).map(([k,l]) => (
+          {([['main','Награды'],['history','Кто пришёл'],['leaderboard','Топ']] as const).map(([k,l]) => (
             <button key={k} type="button" onClick={() => setTab(k)}
               className="flex-1 rounded-full py-2 text-[11px] font-semibold transition-all"
               style={{ background:tab===k?C.accent:'var(--border)',
@@ -438,7 +441,7 @@ export const ReferralPanel = () => {
             <div className="rounded-xl p-3 mt-2"
               style={{ background:'rgba(255,255,255,0.02)', border:`1px solid ${C.border}` }}>
               <p className="text-[10px] font-bold mb-2" style={{ color:C.t3 }}>
-                🧪 Тест (только для разработки)
+                <FlaskConical size={12} className="inline mr-1"/>Тест (только для разработки)
               </p>
               <div className="flex gap-2">
                 <input value={testInput} onChange={e=>setTestInput(e.target.value)}
@@ -458,7 +461,7 @@ export const ReferralPanel = () => {
           <>
             {refs.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-10">
-                <span className="text-4xl">👥</span>
+                <Users size={36} style={{ color:C.t3 }}/>
                 <p className="text-sm font-bold text-white">Пока никого</p>
                 <p className="text-xs text-center" style={{ color:C.t2 }}>
                   Поделись ссылкой и жди первых друзей!
@@ -495,7 +498,7 @@ export const ReferralPanel = () => {
             <div className="rounded-2xl overflow-hidden"
               style={{ background:C.l1, border:`1px solid ${C.border}` }}>
               <div className="px-4 py-3 border-b" style={{ borderColor:C.border }}>
-                <p className="text-xs font-bold text-white">🏆 Топ приглашающих</p>
+                <p className="inline-flex items-center gap-1.5 text-xs font-bold text-white"><Trophy size={13}/>Топ приглашающих</p>
                 <p className="text-[10px] mt-0.5" style={{ color:C.t3 }}>За всё время</p>
               </div>
               {leaderboard.length === 0 ? (
@@ -508,8 +511,9 @@ export const ReferralPanel = () => {
                     className="flex items-center gap-3 px-4 py-3 border-t"
                     style={{ borderColor:C.border,
                       background:entry.userId===myId?`${C.accent}08`:'transparent' }}>
-                    <span className="text-lg w-6 shrink-0 text-center">
-                      {i < 3 ? MEDAL[i] : `${i+1}`}
+                    <span className="text-sm font-black w-6 shrink-0 text-center"
+                      style={{ color: i < 3 ? MEDAL_COLOR[i] : C.t3 }}>
+                      {i+1}
                     </span>
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-white">{entry.name}</p>
@@ -528,16 +532,16 @@ export const ReferralPanel = () => {
             {/* How it works */}
             <div className="rounded-2xl p-4 space-y-3"
               style={{ background:C.l1, border:`1px solid ${C.border}` }}>
-              <p className="text-xs font-bold text-white">💡 Как привлечь больше людей</p>
+              <p className="inline-flex items-center gap-1.5 text-xs font-bold text-white"><Lightbulb size={13}/>Как привлечь больше людей</p>
               {[
-                { icon:'📱', text:'Поделись ссылкой в Stories/Reels  -  охват 1000+ за час' },
-                { icon:'🎮', text:'Отправь в геймерский Discord/чат  -  там активная аудитория' },
-                { icon:'💬', text:'Добавь в подпись email или Telegram Bio' },
-                { icon:'🎁', text:'Скажи друзьям про подарок 3 дня Prime  -  конверсия выше' },
-                { icon:'📢', text:'Сделай пост ВКонтакте с кодом  -  он уникален только у тебя' },
-              ].map(({icon,text}) => (
+                { Icon:Smartphone, text:'Поделись ссылкой в Stories/Reels  -  охват 1000+ за час' },
+                { Icon:Gamepad2, text:'Отправь в геймерский Discord/чат  -  там активная аудитория' },
+                { Icon:MessageCircle, text:'Добавь в подпись email или Telegram Bio' },
+                { Icon:Gift, text:'Скажи друзьям про подарок 3 дня Prime  -  конверсия выше' },
+                { Icon:Megaphone, text:'Сделай пост ВКонтакте с кодом  -  он уникален только у тебя' },
+              ].map(({Icon,text}) => (
                 <div key={text} className="flex items-start gap-2.5">
-                  <span className="text-base shrink-0">{icon}</span>
+                  <Icon size={15} className="shrink-0 mt-0.5" style={{ color:C.t3 }}/>
                   <p className="text-xs leading-relaxed" style={{ color:C.t2 }}>{text}</p>
                 </div>
               ))}

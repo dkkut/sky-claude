@@ -6,9 +6,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Wifi, WifiOff, Radio, Globe, Satellite, Network,
+  Globe, Satellite, Network,
   Signal, RefreshCw, Copy, Check, Plus, Trash2, AlertCircle,
-  ChevronRight, Shield, Zap, Activity, X,
+  ChevronRight, Shield, Zap, HelpCircle, Paperclip,
 } from 'lucide-react';
 import {
   useProxyStore, parseProxyUri, STATUS_LABEL, STATUS_COLOR,
@@ -344,9 +344,9 @@ const ProxyHttpTab = () => {
       });
       const data = await r.json().catch(()=>({ok:false}));
       const ms = Date.now()-t0;
-      setTestResult(data.ok ? `✓ Прокси доступен · ${ms} мс` : `✗ ${data.error||'Нет ответа'}`);
+      setTestResult(data.ok ? `Прокси доступен · ${ms} мс` : `Не отвечает: ${data.error||'нет ответа'}`);
     } catch (e: any) {
-      setTestResult(`✗ ${e.message||'Таймаут'}`);
+      setTestResult(`Не отвечает: ${e.message||'таймаут'}`);
     }
     setTesting(false);
   };
@@ -404,11 +404,11 @@ const ProxyHttpTab = () => {
         <button type="button" onClick={test}
           className="w-full rounded-xl py-2.5 text-sm font-bold"
           style={{background:C.l2, color:testing?C.t3:C.t2, border:`1px solid ${C.brd}`}}>
-          {testing ? 'Проверяем...' : '⚡ Проверить соединение'}
+          {testing ? 'Проверяем...' : 'Проверить соединение'}
         </button>
         {testResult && (
           <p className="text-xs font-semibold text-center"
-            style={{color: testResult.startsWith('✓') ? C.green : C.red}}>
+            style={{color: testResult.startsWith('Прокси доступен') ? C.green : C.red}}>
             {testResult}
           </p>
         )}
@@ -506,11 +506,6 @@ const SatelliteTab = () => {
   const qualityLabel = (ms: number|null) =>
     ms==null ? '—' : ms < 80 ? 'Отлично' : ms < 200 ? 'Норма' : 'Высокая задержка';
 
-  const connTypeEmoji: Record<string,string> = {
-    wifi:'📶', cellular:'📡', ethernet:'🔌', bluetooth:'📲',
-    'slow-2g':'🐌', '2g':'🐢', '3g':'🚶', '4g':'🚀', unknown:'❓',
-  };
-
   return (
     <div className="space-y-4 overflow-y-auto pb-6" style={{scrollbarWidth:'none'}}>
       {/* Network Info */}
@@ -521,11 +516,11 @@ const SatelliteTab = () => {
           </p>
           <div className="grid grid-cols-2 gap-2">
             {[
-              ['Тип сети',    `${connTypeEmoji[netInfo.type]??'❓'} ${netInfo.type}`],
-              ['Эффективный', `${connTypeEmoji[netInfo.effectiveType]??'❓'} ${netInfo.effectiveType}`],
+              ['Тип сети',    netInfo.type],
+              ['Эффективный', netInfo.effectiveType],
               ['Скорость',    netInfo.downlink != null ? `${netInfo.downlink} Мбит/с` : '—'],
               ['RTT',         netInfo.rtt      != null ? `${netInfo.rtt} мс` : '—'],
-              ['Экономия',    netInfo.saveData ? '✓ Вкл' : '—'],
+              ['Экономия',    netInfo.saveData ? 'Вкл' : '—'],
             ].map(([k,v]) => (
               <div key={k} className="rounded-xl px-3 py-2" style={{background:C.l2}}>
                 <p className="text-[10px] font-bold uppercase" style={{color:C.t3}}>{k}</p>
@@ -1100,7 +1095,7 @@ const SkyLinkTabPC = () => {
       <div className="rounded-2xl p-4" style={{background:'linear-gradient(135deg,rgba(79,110,247,0.08),rgba(79,110,247,0.02))',border:`1px solid ${wsState==='connected'?'rgba(79,110,247,0.3)':'var(--border)'}`}}>
         <div className="flex items-center gap-3 mb-3">
           <div className="grid h-10 w-10 place-items-center rounded-xl text-xl shrink-0"
-            style={{background:'linear-gradient(135deg,var(--accent),#8b5cf6)'}}>🕸</div>
+            style={{background:'linear-gradient(135deg,var(--accent),#8b5cf6)'}}><Network size={18} style={{color:'#fff'}}/></div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold" style={{color:'var(--t1)'}}>SkyLink Node</p>
             <p className="text-[10px] font-mono truncate" style={{color:'var(--t3)'}}>{myId}</p>
@@ -1163,7 +1158,7 @@ const SkyLinkTabPC = () => {
               <button type="button" onClick={()=>fileRef.current?.click()} disabled={!canSend}
                 className="rounded-xl px-3 py-1.5 text-xs font-semibold disabled:opacity-30"
                 style={{background:'var(--accent-bg)',color:'var(--accent)',border:'1px solid rgba(79,110,247,0.2)'}}>
-                📎 Файл
+                <Paperclip size={13} className="inline mr-1"/>Файл
               </button>
               <input ref={fileRef} type="file" className="hidden"
                 onChange={e=>{const f=e.target.files?.[0];if(f){sendFile(f);e.target.value='';}}}/>
@@ -1186,9 +1181,9 @@ const SkyLinkTabPC = () => {
             {xferLog.filter(x=>x.from===activePeer||x.to===activePeer).map((x,i)=>(
               <div key={'xf'+i} className={`flex ${x.type==='sent_file'?'justify-end':'justify-start'}`}>
                 <div className="rounded-2xl px-3 py-2" style={{background:'var(--bg-l3)',border:'1px solid var(--border)'}}>
-                  <p className="text-xs font-bold" style={{color:'var(--t2)'}}>{x.type==='sent_file'?'📤 Отправлен':'📥 Получен'}</p>
+                  <p className="text-xs font-bold" style={{color:'var(--t2)'}}>{x.type==='sent_file'?'Отправлен':'Получен'}</p>
                   {x.name&&<p className="text-xs mt-0.5" style={{color:'var(--t1)'}}>{x.name}</p>}
-                  {x.url&&<a href={x.url} download="received" className="text-[11px]" style={{color:'var(--accent)'}}>⬇ Скачать ({fmtSz(x.size||0)})</a>}
+                  {x.url&&<a href={x.url} download="received" className="text-[11px]" style={{color:'var(--accent)'}}>Скачать ({fmtSz(x.size||0)})</a>}
                 </div>
               </div>
             ))}
@@ -1247,12 +1242,12 @@ const SatelliteTabPC = () => {
   },[]);
 
   const satStatus = () => {
-    if (!netInfo.supported) return {c:'var(--t3)',t:'Network API не поддерживается',icon:'❓'};
+    if (!netInfo.supported) return {c:'var(--t3)',t:'Network API не поддерживается',Icon:HelpCircle};
     const rttV = netInfo.rtt as number|null;
-    if (rttV == null) return {c:'var(--t3)',t:'RTT данные недоступны',icon:'❓'};
-    if (rttV > 500) return {c:'var(--accent)',t:'Возможен геостационарный спутник (RTT > 500мс)',icon:'📡'};
-    if (rttV > 100) return {c:'var(--amber)',t:'Возможен LEO-спутник (Starlink и др.)',icon:'🛰'};
-    return {c:'var(--green)',t:'Обычное наземное соединение',icon:'🌐'};
+    if (rttV == null) return {c:'var(--t3)',t:'RTT данные недоступны',Icon:HelpCircle};
+    if (rttV > 500) return {c:'var(--accent)',t:'Возможен геостационарный спутник (RTT > 500мс)',Icon:Satellite};
+    if (rttV > 100) return {c:'var(--amber)',t:'Возможен LEO-спутник (Starlink и др.)',Icon:Satellite};
+    return {c:'var(--green)',t:'Обычное наземное соединение',Icon:Globe};
   };
 
   const getGPS = ()=>{
@@ -1293,7 +1288,7 @@ const SatelliteTabPC = () => {
     setRttB(false);
   };
 
-  const WX_CODES:Record<number,string>={0:'☀️ Ясно',1:'🌤 Ясно',2:'⛅ Перем.',3:'☁️ Пасм.',45:'🌫 Туман',51:'🌦 Морось',61:'🌧 Дождь',71:'❄️ Снег',80:'🌧 Ливень',95:'⛈ Гроза'};
+  const WX_CODES:Record<number,string>={0:'Ясно',1:'Ясно',2:'Переменная облачность',3:'Пасмурно',45:'Туман',51:'Морось',61:'Дождь',71:'Снег',80:'Ливень',95:'Гроза'};
   const sl = satStatus();
 
   return (
@@ -1301,7 +1296,7 @@ const SatelliteTabPC = () => {
       {/* Detection */}
       <div className="rounded-2xl p-4" style={{background:`${sl.c}10`,border:`1px solid ${sl.c}25`}}>
         <div className="flex items-center gap-3 mb-3">
-          <span className="text-2xl">{sl.icon}</span>
+          <sl.Icon size={22} style={{color:sl.c}}/>
           <div>
             <p className="text-sm font-bold" style={{color:'var(--t1)'}}>Анализ соединения</p>
             <p className="text-xs mt-0.5" style={{color:sl.c}}>{sl.t}</p>
@@ -1337,7 +1332,7 @@ const SatelliteTabPC = () => {
             </div>
           ))}
         </div>}
-        {rtt?.avg!=null&&<p className="text-xs mt-2" style={{color:'var(--t3)'}}>{rtt.avg>500?'📡 Геостационарный спутник':rtt.avg>100?'🛰 Возможно LEO / Starlink':'🌐 Наземное соединение'}</p>}
+        {rtt?.avg!=null&&<p className="text-xs mt-2" style={{color:'var(--t3)'}}>{rtt.avg>500?'Геостационарный спутник':rtt.avg>100?'Возможно LEO / Starlink':'Наземное соединение'}</p>}
       </div>
 
       {/* GPS + Weather */}
@@ -1345,8 +1340,8 @@ const SatelliteTabPC = () => {
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-bold" style={{color:'var(--t1)'}}>GPS + Погода (Open-Meteo)</p>
           <div className="flex gap-2">
-            {!gpsPos&&<button type="button" onClick={getGPS} className="rounded-xl px-3 py-1.5 text-xs font-semibold" style={{background:'rgba(0,220,90,0.1)',color:'var(--green)',border:'1px solid rgba(0,220,90,0.2)'}}>📍 GPS</button>}
-            {gpsPos&&<button type="button" onClick={fetchWX} className="rounded-xl px-3 py-1.5 text-xs font-semibold" style={{background:'var(--accent-bg)',color:'var(--accent)',border:'1px solid rgba(79,110,247,0.2)'}}>{wxLoad?'Загрузка...':'🌤 Погода'}</button>}
+            {!gpsPos&&<button type="button" onClick={getGPS} className="rounded-xl px-3 py-1.5 text-xs font-semibold" style={{background:'rgba(0,220,90,0.1)',color:'var(--green)',border:'1px solid rgba(0,220,90,0.2)'}}>GPS</button>}
+            {gpsPos&&<button type="button" onClick={fetchWX} className="rounded-xl px-3 py-1.5 text-xs font-semibold" style={{background:'var(--accent-bg)',color:'var(--accent)',border:'1px solid rgba(79,110,247,0.2)'}}>{wxLoad?'Загрузка...':'Погода'}</button>}
           </div>
         </div>
         {gpsErr&&<p className="text-xs mb-2" style={{color:'var(--red)'}}>{gpsErr}</p>}
@@ -1379,7 +1374,7 @@ const SatelliteTabPC = () => {
           <motion.button whileTap={{scale:0.9}} type="button" onClick={fetchTLE}
             className="rounded-xl px-3 py-1.5 text-xs font-semibold"
             style={{background:'rgba(167,139,250,0.1)',color:'#a78bfa',border:'1px solid rgba(167,139,250,0.2)'}}>
-            {tleLoad?'Загрузка...':'🛰 Загрузить TLE'}
+            {tleLoad?'Загрузка...':'Загрузить TLE'}
           </motion.button>
         </div>
         {tle&&!tle.error&&(
