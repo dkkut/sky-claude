@@ -1,4 +1,4 @@
-import { Home, BookOpen, Briefcase, Building2, Ban, Bug, Calendar, Check, CheckCircle, ChevronLeft, Clock, Cloud, Crown, Film, Flag, Gamepad2, Gem, Heart, Inbox, Lightbulb, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MicOff, MoreHorizontal, Music2, Pause, PenLine, Play, Plus, QrCode, Scale, Send, Shield, ShoppingCart, Snowflake, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, XCircle, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
+import { Home, BookOpen, Briefcase, Building2, Ban, Bug, Calendar, Check, CheckCircle, ChevronLeft, Clock, Cloud, Crown, Film, Flag, Gem, Heart, Inbox, Lightbulb, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MicOff, MoreHorizontal, Music2, Pause, PenLine, Play, Plus, QrCode, Scale, Send, Shield, ShoppingCart, Snowflake, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, XCircle, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
 import { BotsBrowser, HashInlineMenu, BotChatOverlay, BOTS_REGISTRY } from '@/bots/SkyBots';
 import { BotCreatorPanel } from '@/bots/BotCreator';
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
@@ -12,7 +12,6 @@ import { BlockedChannelBadge } from '@/shared/ContentWarningGate';
 import { useModuleStore } from '@/data/state/modules';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { useAdsStore, AD_PLACEMENTS, AD_STATUS_COLOR, AD_STATUS_LABEL } from '@/ads/store';
-import { SkyGamesMarket, GamesAdminPanel } from '@/games/SkyGamesMarket';
 
 /** Заглушка на время подгрузки чанка вкладки. */
 const TabFallback = () => (
@@ -37,7 +36,6 @@ const SkyPodcasts = React.lazy(() => import('@/podcasts/SkyPodcasts').then(m => 
 const SkyAITab = React.lazy(() => import('@/ai/SkyAI').then(m => ({ default: m.SkyAITab })));
 const PrimePulse = React.lazy(() => import('@/prime/PrimePulse').then(m => ({ default: m.PrimePulse })));
 const MusicianHub = React.lazy(() => import('@/music/MusicianHub').then(m => ({ default: m.MusicianHub })));
-const SkyBusiness = React.lazy(() => import('@/business/SkyBusiness').then(m => ({ default: m.SkyBusiness })));
 const SkyGarant = React.lazy(() => import('@/garant/SkyGarant').then(m => ({ default: m.SkyGarant })));
 const SkyPVZ = React.lazy(() => import('@/pvz/SkyPVZ').then(m => ({ default: m.SkyPVZ })));
 const SkyGiftsNFT = React.lazy(() => import('@/gifts/SkyGiftsNFT').then(m => ({ default: m.SkyGiftsNFT })));
@@ -54,7 +52,7 @@ import { qrDataUri } from '@/shared/qr';
 /* --- BroadcastChannel: синхронизация комнат между вкладками ----------- */
 const ROOMS_BC = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('sky:rooms:v1') : null;
 
-type Tab = 'garant'|'home'|'music'|'soundcloud'|'movies'|'prime'|'rooms'|'market'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'musicians'|'business'|'games_market'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
+type Tab = 'garant'|'home'|'music'|'soundcloud'|'movies'|'prime'|'rooms'|'market'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
 
 const fmtBytes = (b?: number) => b ? `${(b/1024/1024).toFixed(1)} MB` : '';
 const fmtSec = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -651,7 +649,7 @@ const AdminPanel = () => {
   const pendingAds = campaigns.filter(c=>c.status==='moderation');
   const { accounts, grantPrime, revokePrime, setAdmin, banUser, muteUser, spamBlock, freezeUser, setModerationNote, currentUserId } = useAuthStore();
   const { reports, resolveReport } = useMessengerStore();
-  const [adminTab, setAdminTab] = useState<'reports'|'users'|'moderation'|'podcasts_mod'|'content'|'channels'|'ads_mod'|'feedback'|'disputes'|'support'|'games_mod'|'garant_adm'>('reports');
+  const [adminTab, setAdminTab] = useState<'reports'|'users'|'moderation'|'podcasts_mod'|'content'|'channels'|'ads_mod'|'feedback'|'disputes'|'support'|'garant_adm'>('reports');
   const [selUser, setSelUser] = useState<string|null>(null);
   const [muteMin, setMuteMin] = useState('30');
   const [spamMin, setSpamMin] = useState('60');
@@ -685,7 +683,6 @@ const AdminPanel = () => {
           ['content',    'Контент',                                                   Upload],
           ['channels',   'Каналы',                                                   Shield],
           ['ads_mod',    `Реклама${pendingAds.length>0?` (${pendingAds.length})`:''}`, Megaphone],
-          ['games_mod',  `Игры`,       Gamepad2],
           ['disputes',   `Споры`,      Scale],
           ['garant_adm', `Гарант`,     Shield],
           ['support',    'Поддержка',  MessageSquare],
@@ -1009,8 +1006,7 @@ const AdminPanel = () => {
         {/* ==== PODCASTS MODERATION ==== */}
         {adminTab==='podcasts_mod' && <div className="p-4"><PodcastModeration/></div>}
 
-        {/* ==== GAMES MODERATION ==== */}
-        {adminTab==='games_mod'  && <GamesAdminPanel/>}
+        {/* ==== СПОРЫ И ГАРАНТ ==== */}
         {adminTab==='disputes'    && <AdminDisputesPanel/>}
         {adminTab==='garant_adm' && <AdminGarantPanel/>}
 
@@ -1245,8 +1241,6 @@ const TABS = [
   {key:'books',    label:'Книги',    icon:BookOpen},
   {key:'pulse',    label:'Pulse',    icon:Zap},
   {key:'musicians',label:'Артисты',  icon:Mic2},
-  {key:'business',     label:'Бизнес',   icon:Briefcase},
-  {key:'games_market', label:'Игры',     icon:Gamepad2},
   {key:'ads',      label:'Реклама',  icon:Megaphone},
   {key:'more',   label:'Прочее', icon:MoreHorizontal},
   {key:'admin',  label:'Admin',  icon:Shield},
@@ -2347,8 +2341,6 @@ export const ExtrasModule = () => {
         {tab==='ai'         && <SkyAITab/>}
         {tab==='pulse'     && <PrimePulse/>}
         {tab==='musicians' && <MusicianHub/>}
-        {tab==='business'      && <SkyBusiness/>}
-        {tab==='games_market' && <SkyGamesMarket/>}
         {tab==='more'         && <MoreTab/>}
         {tab==='admin'  && isAdmin && <AdminPanel/>}
         {tab==='garant'                && <SkyGarant/>}
