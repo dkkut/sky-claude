@@ -33,6 +33,7 @@ const SkyAdsCabinet = React.lazy(() => import('@/ads/SkyAds').then(m => ({ defau
 const SkyBooks = React.lazy(() => import('@/books/SkyBooks').then(m => ({ default: m.SkyBooks })));
 const SkyTV = React.lazy(() => import('./SkyTV').then(m => ({ default: m.SkyTV })));
 const SkyPodcasts = React.lazy(() => import('@/podcasts/SkyPodcasts').then(m => ({ default: m.SkyPodcasts })));
+const SkyTickets = React.lazy(() => import('@/tickets/SkyTickets').then(m => ({ default: m.SkyTickets })));
 const SkyAITab = React.lazy(() => import('@/ai/SkyAI').then(m => ({ default: m.SkyAITab })));
 const PrimePulse = React.lazy(() => import('@/prime/PrimePulse').then(m => ({ default: m.PrimePulse })));
 const MusicianHub = React.lazy(() => import('@/music/MusicianHub').then(m => ({ default: m.MusicianHub })));
@@ -42,6 +43,8 @@ const SkyGiftsNFT = React.lazy(() => import('@/gifts/SkyGiftsNFT').then(m => ({ 
 import { AdminMusicPanel } from '@/music/ArtistSubmit';
 import { apiModerationQueue } from '@/music/musicApi';
 import { PodcastModeration } from '@/podcasts/PodcastsAdmin';
+import { TicketsModeration } from '@/tickets/TicketsAdmin';
+import { useTicketPendingCount } from '@/tickets/useTicketPending';
 import { usePodcastPendingCount } from '@/podcasts/usePodcastPending';
 import { BotModeration } from '@/bots/BotsAdmin';
 import { useBotPendingCount } from '@/bots/useBotPending';
@@ -647,12 +650,13 @@ const AdminPanel = () => {
   // Столько же для подкастов: очередь отдаётся только администратору,
   // у обычного человека выйдет ноль.
   const podcastPending = usePodcastPendingCount();
+  const ticketPending  = useTicketPendingCount();
   const botPending     = useBotPendingCount();
   const { campaigns, moderate } = useAdsStore();
   const pendingAds = campaigns.filter(c=>c.status==='moderation');
   const { accounts, grantPrime, revokePrime, setAdmin, banUser, muteUser, spamBlock, freezeUser, setModerationNote, currentUserId } = useAuthStore();
   const { reports, resolveReport } = useMessengerStore();
-  const [adminTab, setAdminTab] = useState<'reports'|'users'|'moderation'|'podcasts_mod'|'bots_mod'|'content'|'channels'|'ads_mod'|'feedback'|'disputes'|'support'|'garant_adm'>('reports');
+  const [adminTab, setAdminTab] = useState<'reports'|'users'|'moderation'|'podcasts_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'ads_mod'|'feedback'|'disputes'|'support'|'garant_adm'>('reports');
   const [selUser, setSelUser] = useState<string|null>(null);
   const [muteMin, setMuteMin] = useState('30');
   const [spamMin, setSpamMin] = useState('60');
@@ -684,6 +688,7 @@ const AdminPanel = () => {
           ['moderation', `Музыка${musicPending > 0 ? ` (${musicPending})` : ''}`, Music2],
           ['podcasts_mod', `Подкасты${podcastPending > 0 ? ` (${podcastPending})` : ''}`, Mic2],
           ['bots_mod',     `Боты${botPending > 0 ? ` (${botPending})` : ''}`,         Bot],
+          ['tickets_mod',  `Билеты${ticketPending > 0 ? ` (${ticketPending})` : ''}`,   Ticket],
           ['content',    'Контент',                                                   Upload],
           ['channels',   'Каналы',                                                   Shield],
           ['ads_mod',    `Реклама${pendingAds.length>0?` (${pendingAds.length})`:''}`, Megaphone],
@@ -1013,6 +1018,9 @@ const AdminPanel = () => {
         {/* ==== БОТЫ ==== */}
         {adminTab==='bots_mod'     && <div className="p-4"><BotModeration/></div>}
 
+        {/* ==== БИЛЕТЫ ==== */}
+        {adminTab==='tickets_mod'  && <div className="p-4 overflow-y-auto"><TicketsModeration/></div>}
+
         {/* ==== СПОРЫ И ГАРАНТ ==== */}
         {adminTab==='disputes'    && <AdminDisputesPanel/>}
         {adminTab==='garant_adm' && <AdminGarantPanel/>}
@@ -1253,457 +1261,6 @@ const TABS = [
   {key:'admin',  label:'Admin',  icon:Shield},
   {key:'garant', label:'Гарант', icon:Shield},
 ] as const;
-
-// ─── TicketsTab ─────────────────────────────────────────────────────────────
-
-const TicketsTab = () => {
-  const [tab, setTab]       = useState<'events'|'my'|'fav'>('events');
-  const [filter, setFilter] = useState<'all'|'cinema'|'concert'>('all');
-  const [city, setCity]     = useState('Все');
-  const [priceF, setPriceF] = useState<'all'|'budget'|'mid'|'prem'>('all');
-  const [q, setQ]           = useState('');
-  const [open, setOpen]     = useState<any>(null);
-  const [qty, setQty]       = useState(1);
-  const [isVip, setVip]     = useState(false);
-  const [confirm, setCfm]   = useState<any>(null);
-  const [fav, setFav]       = useState<string[]>([]);
-  const [myTix, setMyTix]   = useState<any[]>([]);
-  const [showQR, setQR]     = useState<any>(null);
-
-  const EVENTS = [
-    { id:'ev1', type:'cinema',  title:'Dune: Part Two',           venue:'Каро 11 Октябрь',    city:'Москва', date:'15 апр', time:'19:30', price:450,  vip:750,  hue:45,  rating:'8.7', desc:'Пол Атрейдес ведёт фрименов. IMAX / Dolby Atmos.', avail:47,   total:220,   tags:['IMAX','Sci-Fi'] },
-    { id:'ev2', type:'cinema',  title:'Мастер и Маргарита',       venue:'Формула Кино',        city:'СПб',    date:'17 апр', time:'20:15', price:420,  vip:680,  hue:270, rating:'8.1', desc:'Экранизация романа Булгакова. VIP-зал.',            avail:12,   total:80,    tags:['Драма','VIP'] },
-    { id:'ev3', type:'cinema',  title:'Сто лет тому вперёд',      venue:'Синема Парк',         city:'Москва', date:'16 апр', time:'18:00', price:380,  vip:600,  hue:195, rating:'7.4', desc:'Фантастика по Булычёву. Семейный.',                 avail:112,  total:180,   tags:['Семейный'] },
-    { id:'ev4', type:'concert', title:'Imagine Dragons',           venue:'СК Олимпийский',      city:'Москва', date:'22 апр', time:'20:00', price:3500, vip:8500, hue:320, rating:'9.2', desc:'Loom World Tour. Фанпит + трибуна + VIP.',           avail:342,  total:8000,  tags:['Рок','World Tour'] },
-    { id:'ev5', type:'concert', title:'Miyagi & Andy Panda',       venue:'ВТБ Арена',           city:'Москва', date:'25 апр', time:'21:00', price:2200, vip:5000, hue:185, rating:'8.9', desc:'«Дорога домой» — 10 лет вместе.',                  avail:1240, total:12000, tags:['Хип-хоп'] },
-    { id:'ev6', type:'concert', title:'Классика под открытым небом', venue:'Архангельское',     city:'МО',     date:'28 апр', time:'18:00', price:1800, vip:4500, hue:245, rating:'9.5', desc:'Оркестр Большого. Чайковский, Рахманинов.',         avail:560,  total:3000,  tags:['Классика','Open Air'] },
-    { id:'ev7', type:'concert', title:'GONE.Fludd',                venue:'Adrenaline Stadium',  city:'Москва', date:'2 мая',  time:'20:30', price:1900, vip:4200, hue:155, rating:'8.4', desc:'«GONE.WILD» — новый альбом вживую. 18+.',           avail:780,  total:5000,  tags:['Инди','18+'] },
-  ];
-
-  const fmtP = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
-  const stockC = (av: number) => av < 20 ? 'var(--red)' : av < 100 ? 'var(--amber)' : 'var(--green)';
-  const stockL = (av: number, tot: number) => Math.round((av / tot) * 100);
-  const bgGrad = (hue: number) => `linear-gradient(135deg, hsl(${hue},55%,14%) 0%, hsl(${(hue+55)%360},45%,8%) 100%)`;
-  const toggleFav = (id: string) => setFav(f => f.includes(id) ? f.filter(x => x !== id) : [...f, id]);
-
-  const shown = EVENTS.filter(ev => {
-    if (filter !== 'all' && ev.type !== filter) return false;
-    if (city !== 'Все' && ev.city !== city) return false;
-    if (priceF === 'budget' && ev.price > 1000) return false;
-    if (priceF === 'mid' && (ev.price < 1000 || ev.price > 5000)) return false;
-    if (priceF === 'prem' && ev.price < 5000) return false;
-    if (q && !ev.title.toLowerCase().includes(q.toLowerCase()) && !ev.venue.toLowerCase().includes(q.toLowerCase())) return false;
-    return true;
-  });
-
-  const buy = (ev: any) => {
-    const t = {
-      id: 'tkt' + Date.now(), eventId: ev.id, title: ev.title,
-      venue: ev.venue, date: ev.date + ' ' + ev.time, type: ev.type,
-      qty, isVip, price: (isVip ? ev.vip : ev.price) * qty,
-      code: 'SKY-' + Math.random().toString(36).toUpperCase().slice(2, 8),
-      hue: ev.hue,
-      bought: new Date().toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
-    };
-    setMyTix(m => [t, ...m]);
-    setCfm(t);
-    setOpen(null);
-  };
-
-  // ── QR viewer ──
-  if (showQR) return (
-    <div className="flex h-full flex-col items-center justify-center p-6">
-      <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        className="w-full max-w-xs rounded-3xl overflow-hidden"
-        style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}>
-        <div className="px-6 pt-6 pb-4 text-center">
-          <div className="mb-3 flex justify-center">
-            {showQR.type === 'cinema'
-              ? <Film size={28} style={{ color:'var(--t2)' }}/>
-              : <Music2 size={28} style={{ color:'var(--t2)' }}/>}
-          </div>
-          <p className="text-base font-bold" style={{ color: 'var(--t1)' }}>{showQR.title}</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>{showQR.venue} · {showQR.date}</p>
-          {showQR.isVip && <span className="inline-block mt-2 text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,215,0,0.1)', color: '#ffd700' }}>VIP</span>}
-        </div>
-        <div className="flex justify-center px-6 pb-4">
-          <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-            <img
-              src={qrDataUri(
-                JSON.stringify({ id: showQR.code, event: showQR.title, date: showQR.date, venue: showQR.venue, qty: showQR.qty, vip: showQR.isVip }),
-                { size: 200, background: '#141420', color: '#ffffff', quietZone: 2 },
-              )}
-              alt="QR" width={200} height={200} style={{ display: 'block' }} />
-          </div>
-        </div>
-        <div className="px-6 pb-6 space-y-3">
-          <div className="rounded-xl px-4 py-3 text-center" style={{ background: 'rgba(79,110,247,0.06)', border: '1px solid rgba(79,110,247,0.12)' }}>
-            <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--t3)' }}>Код билета</p>
-            <p className="text-2xl font-black font-mono tracking-widest" style={{ color: 'var(--accent)' }}>{showQR.code}</p>
-          </div>
-          <p className="text-[10px] text-center" style={{ color: 'var(--t3)' }}>Покажите QR при входе · Скриншот работает офлайн</p>
-          <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={() => setQR(null)}
-            className="w-full rounded-xl py-2.5 text-sm font-bold"
-            style={{ background: 'var(--bg-l3)', color: 'var(--t2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
-            Закрыть
-          </motion.button>
-        </div>
-      </motion.div>
-    </div>
-  );
-
-  // ── Confirm ──
-  if (confirm) return (
-    <div className="flex h-full flex-col items-center justify-center p-5">
-      <motion.div initial={{ scale: 0.8, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-        className="w-full max-w-sm rounded-3xl overflow-hidden"
-        style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', boxShadow: '0 24px 64px rgba(0,0,0,0.4)' }}>
-        <div className="p-6 text-center" style={{ background: 'linear-gradient(135deg, rgba(0,200,90,0.08), rgba(0,200,90,0.02))' }}>
-          <CheckCircle size={44} className="mx-auto mb-3" style={{ color:'#22c55e' }}/>
-          <p className="text-xl font-black" style={{ color: 'var(--t1)' }}>Готово!</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>Билет сохранён в «Мои билеты»</p>
-        </div>
-        <div className="px-5 py-4 space-y-0">
-          {([['Событие', confirm.title], ['Место', confirm.venue], ['Дата', confirm.date], ['Тип', confirm.isVip ? 'VIP' : 'Стандарт'], ['Количество', confirm.qty + ' шт'], ['Итого', fmtP(confirm.price)]] as [string, string][]).map(([k, v]) => (
-            <div key={k} className="flex justify-between items-center py-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
-              <p className="text-xs" style={{ color: 'var(--t3)' }}>{k}</p>
-              <p className="text-xs font-bold" style={{ color: 'var(--t1)' }}>{v}</p>
-            </div>
-          ))}
-          <div className="rounded-xl px-4 py-3 text-center mt-3" style={{ background: 'rgba(79,110,247,0.06)', border: '1px solid rgba(79,110,247,0.12)' }}>
-            <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--t3)' }}>Код</p>
-            <p className="text-2xl font-black font-mono tracking-widest" style={{ color: 'var(--accent)' }}>{confirm.code}</p>
-          </div>
-        </div>
-        <div className="flex gap-2 px-5 pb-5 mt-2">
-          <motion.button whileTap={{ scale: 0.95 }} type="button"
-            onClick={() => { setQR(confirm); setCfm(null); }}
-            className="flex-1 rounded-xl py-2.5 text-sm font-bold"
-            style={{ background: 'var(--bg-l3)', color: 'var(--t2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
-            <QrCode size={13} className="inline mr-1"/>QR-код
-          </motion.button>
-          <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={() => setCfm(null)}
-            className="flex-1 rounded-xl py-2.5 text-sm font-bold"
-            style={{ background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer' }}>
-            Отлично!
-          </motion.button>
-        </div>
-      </motion.div>
-    </div>
-  );
-
-  // ── Event detail ──
-  if (open) {
-    const ev = open;
-    const total = (isVip ? ev.vip : ev.price) * qty;
-    const avPct = stockL(ev.avail, ev.total);
-    return (
-      <div className="flex h-full flex-col overflow-hidden">
-        <div className="flex items-center gap-3 px-5 py-3.5 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
-          <motion.button whileTap={{ scale: 0.9 }} type="button"
-            onClick={() => { setOpen(null); setQty(1); setVip(false); }}
-            className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
-          </motion.button>
-          <p className="flex-1 text-sm font-bold truncate" style={{ color: 'var(--t1)' }}>{ev.title}</p>
-          <motion.button whileTap={{ scale: 0.85 }} type="button" onClick={() => toggleFav(ev.id)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20 }}>
-            <Heart size={16} fill={fav.includes(ev.id) ? '#ef4444' : 'none'} style={{ color: fav.includes(ev.id) ? '#ef4444' : 'var(--t3)' }}/>
-          </motion.button>
-        </div>
-        <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-          {/* Hero */}
-          <div className="relative overflow-hidden" style={{ height: 160, background: bgGrad(ev.hue) }}>
-            <div className="absolute right-8 top-1/2 -translate-y-1/2" style={{ opacity: 0.12 }}>
-              {ev.type === 'cinema'
-                ? <Film size={68} style={{ color:'#fff' }}/>
-                : <Music2 size={68} style={{ color:'#fff' }}/>}
-            </div>
-            <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 60%)' }} />
-            <div className="absolute bottom-5 left-5">
-              <div className="flex gap-2 mb-2">
-                <span className="text-[10px] font-black px-2 py-0.5 rounded" style={{ background: ev.type === 'cinema' ? 'rgba(245,158,11,0.35)' : 'rgba(168,85,247,0.35)', color: ev.type === 'cinema' ? '#f59e0b' : '#a855f7' }}>
-                  {ev.type === 'cinema' ? 'КИНО' : 'КОНЦЕРТ'}
-                </span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.15)', color: '#fff' }}><Star size={9} fill="#fff"/>{ev.rating}</span>
-              </div>
-              <p className="text-2xl font-black text-white drop-shadow-lg">{ev.title}</p>
-            </div>
-          </div>
-
-          <div className="p-5 space-y-5">
-            {/* Info grid */}
-            <div className="grid grid-cols-2 gap-2">
-              {([[Calendar, ev.date], [Clock, ev.time], [MapPin, ev.venue], [Building2, ev.city]] as [typeof Calendar, string][]).map(([Icon, val], i) => (
-                <div key={i} className="flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-                  <Icon size={15} style={{ color: 'var(--t3)' }}/>
-                  <p className="text-xs font-semibold truncate" style={{ color: 'var(--t1)' }}>{val}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Tags */}
-            <div className="flex gap-2 flex-wrap">
-              {ev.tags.map((t: string) => (
-                <span key={t} className="text-xs font-bold px-2.5 py-1 rounded-full"
-                  style={{ background: `hsl(${ev.hue},40%,12%)`, color: `hsl(${ev.hue},70%,60%)`, border: `1px solid hsl(${ev.hue},40%,22%)` }}>
-                  #{t}
-                </span>
-              ))}
-            </div>
-
-            <p className="text-sm leading-relaxed" style={{ color: 'var(--t2)' }}>{ev.desc}</p>
-
-            {/* Availability */}
-            <div className="rounded-2xl p-4" style={{ background: 'var(--bg-l2)', border: `1px solid ${ev.avail < 50 ? 'rgba(244,63,94,0.2)' : 'var(--border)'}` }}>
-              <div className="flex justify-between items-center mb-2">
-                <p className="text-xs font-semibold" style={{ color: 'var(--t3)' }}>Мест доступно</p>
-                <p className="text-sm font-bold" style={{ color: stockC(ev.avail) }}>{ev.avail} из {ev.total}</p>
-              </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
-                <div className="h-full rounded-full" style={{ width: avPct + '%', background: stockC(ev.avail) }} />
-              </div>
-              {ev.avail < 50 && <p className="inline-flex items-center gap-1 text-[10px] font-bold mt-1.5" style={{ color: 'var(--red)' }}><Zap size={10}/>Торопитесь — осталось мало</p>}
-            </div>
-
-            {/* Ticket selector */}
-            <div className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--t3)' }}>Тип билета</p>
-              <div className="grid grid-cols-2 gap-2">
-                {([['Стандарт', false, ev.price], ['VIP', true, ev.vip]] as [string, boolean, number][]).map(([l, v, p]) => (
-                  <div key={l} onClick={() => setVip(v)} className="rounded-xl p-3.5 cursor-pointer transition-all"
-                    style={{ background: isVip === v ? `hsl(${ev.hue},50%,16%)` : 'var(--bg-l3)', border: `1.5px solid ${isVip === v ? `hsl(${ev.hue},60%,32%)` : 'var(--border)'}` }}>
-                    <p className="text-xs font-bold mb-1" style={{ color: isVip === v ? `hsl(${ev.hue},80%,65%)` : 'var(--t2)' }}>{l}</p>
-                    <p className="text-lg font-black" style={{ color: 'var(--t1)' }}>{fmtP(p)}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between">
-                <p className="text-sm" style={{ color: 'var(--t2)' }}>Количество</p>
-                <div className="flex items-center rounded-xl overflow-hidden" style={{ background: 'var(--bg-l3)', border: '1px solid var(--border)' }}>
-                  <motion.button whileTap={{ scale: 0.85 }} type="button" onClick={() => setQty(q => Math.max(1, q - 1))}
-                    className="w-10 h-9 grid place-items-center text-lg transition-colors hover:bg-white/10"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t2)' }}>−</motion.button>
-                  <p className="w-8 text-center text-sm font-black" style={{ color: 'var(--t1)' }}>{qty}</p>
-                  <motion.button whileTap={{ scale: 0.85 }} type="button" onClick={() => setQty(q => Math.min(8, q + 1))}
-                    className="w-10 h-9 grid place-items-center text-lg transition-colors hover:bg-white/10"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t2)' }}>+</motion.button>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center pt-3" style={{ borderTop: '1px solid var(--border)' }}>
-                <p className="text-sm" style={{ color: 'var(--t2)' }}>Итого</p>
-                <p className="text-2xl font-black" style={{ color: 'var(--t1)' }}>{fmtP(total)}</p>
-              </div>
-
-              <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={() => buy(ev)}
-                className="w-full rounded-xl py-3.5 text-sm font-black"
-                style={{ background: `hsl(${ev.hue},65%,42%)`, color: '#fff', border: 'none', cursor: 'pointer', boxShadow: `0 4px 20px hsl(${ev.hue},60%,25%)` }}>
-                Купить · {fmtP(total)}
-              </motion.button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Main ──
-  return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {/* Header */}
-      <div className="px-5 py-3.5 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2.5">
-            <Ticket size={19} style={{ color:'var(--t1)' }}/>
-            <h2 className="text-base font-black" style={{ color: 'var(--t1)' }}>Sky Билеты</h2>
-          </div>
-          {myTix.length > 0 && (
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid rgba(79,110,247,0.2)' }}>
-              <Ticket size={12} className="inline mr-1"/>{myTix.length}
-            </span>
-          )}
-        </div>
-        {/* Search */}
-        <div className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 mb-3" style={{ background: 'var(--bg-l3)', border: '1px solid var(--border)' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--t3)', flexShrink: 0 }}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск событий, площадок..."
-            className="flex-1 text-sm bg-transparent outline-none" style={{ color: 'var(--t1)' }} />
-          {q && <button type="button" onClick={() => setQ('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--t3)', fontSize: 16 }}>×</button>}
-        </div>
-        {/* Filters */}
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
-          {([['all', 'Все'], ['cinema', 'Кино'], ['concert', 'Концерты']] as [string, string][]).map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setFilter(k as any)}
-              className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
-              style={{ background: filter === k ? 'var(--t1)' : 'var(--bg-l3)', color: filter === k ? 'var(--bg)' : 'var(--t3)', border: `1px solid ${filter === k ? 'transparent' : 'var(--border)'}`, cursor: 'pointer' }}>
-              {l}
-            </button>
-          ))}
-          <div className="w-px shrink-0" style={{ background: 'var(--border)', margin: '2px 4px' }} />
-          {(['Все', 'Москва', 'СПб', 'МО']).map(ct => (
-            <button key={ct} type="button" onClick={() => setCity(ct)}
-              className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
-              style={{ background: city === ct ? 'rgba(79,110,247,0.15)' : 'transparent', color: city === ct ? 'var(--accent)' : 'var(--t3)', border: `1px solid ${city === ct ? 'rgba(79,110,247,0.25)' : 'transparent'}`, cursor: 'pointer' }}>
-              {ct}
-            </button>
-          ))}
-          <div className="w-px shrink-0" style={{ background: 'var(--border)', margin: '2px 4px' }} />
-          {([['all', 'Все'], ['budget', '< 1К'], ['mid', '1–5К'], ['prem', '5К+']] as [string, string][]).map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setPriceF(k as any)}
-              className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
-              style={{ background: priceF === k ? 'rgba(0,200,90,0.1)' : 'transparent', color: priceF === k ? 'var(--green)' : 'var(--t3)', border: `1px solid ${priceF === k ? 'rgba(0,200,90,0.2)' : 'transparent'}`, cursor: 'pointer' }}>
-              {l}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex gap-1 px-5 py-2.5 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
-        {([['events', 'Афиша'], ['my', 'Мои билеты'], ['fav', 'Избранное']] as [string, string][]).map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setTab(k as any)}
-            className="rounded-xl px-4 py-1.5 text-xs font-bold transition-all"
-            style={{ background: tab === k ? 'var(--accent)' : 'var(--bg-l2)', color: tab === k ? '#fff' : 'var(--t3)', border: `1px solid ${tab === k ? 'transparent' : 'var(--border)'}`, cursor: 'pointer' }}>
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3" style={{ scrollbarWidth: 'none' }}>
-        {tab === 'events' && (
-          <>
-            {shown.map(ev => {
-              const urgent = ev.avail < 50;
-              return (
-                <motion.div key={ev.id} whileHover={{ y: -1 }} onClick={() => { setOpen(ev); setQty(1); setVip(false); }}
-                  className="rounded-2xl overflow-hidden cursor-pointer"
-                  style={{ background: 'var(--bg-l2)', border: `1px solid ${urgent ? 'rgba(244,63,94,0.25)' : 'var(--border)'}`, boxShadow: urgent ? '0 0 0 1px rgba(244,63,94,0.1)' : 'none' }}>
-                  {/* Hero */}
-                  <div className="relative overflow-hidden" style={{ height: 80, background: bgGrad(ev.hue) }}>
-                    <div className="absolute right-5 top-1/2 -translate-y-1/2" style={{ opacity: 0.15 }}>
-                      {ev.type === 'cinema'
-                        ? <Film size={46} style={{ color:'#fff' }}/>
-                        : <Music2 size={46} style={{ color:'#fff' }}/>}
-                    </div>
-                    <div className="absolute inset-0" style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.3), transparent 60%)' }} />
-                    <div className="absolute inset-0 px-4 flex items-center gap-3">
-                      <div>
-                        <div className="flex gap-1.5 mb-1.5">
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded"
-                            style={{ background: ev.type === 'cinema' ? 'rgba(245,158,11,0.35)' : 'rgba(168,85,247,0.35)', color: ev.type === 'cinema' ? '#f59e0b' : '#a855f7' }}>
-                            {ev.type === 'cinema' ? 'КИНО' : 'КОНЦЕРТ'}
-                          </span>
-                          {urgent && <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(244,63,94,0.35)', color: '#f43f5e' }}><Zap size={9} className="inline mr-1"/>МАЛО МЕСТ</span>}
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)' }}><Star size={9} fill="currentColor" className="inline mr-1"/>{ev.rating}</span>
-                        </div>
-                        <p className="text-sm font-black text-white">{ev.title}</p>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Info row */}
-                  <div className="px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-1.5">
-                        <Calendar size={12} style={{ color: 'var(--t3)' }}/>
-                        <p className="text-xs font-semibold" style={{ color: 'var(--t2)' }}>{ev.date}</p>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <MapPin size={12} style={{ color: 'var(--t3)' }}/>
-                        <p className="text-xs truncate max-w-[120px]" style={{ color: 'var(--t2)' }}>{ev.venue}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <motion.button whileTap={{ scale: 0.8 }} type="button"
-                        onClick={e => { e.stopPropagation(); toggleFav(ev.id); }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>
-                        <Heart size={16} fill={fav.includes(ev.id) ? '#ef4444' : 'none'} style={{ color: fav.includes(ev.id) ? '#ef4444' : 'var(--t3)' }}/>
-                      </motion.button>
-                      <div className="text-right">
-                        <p className="text-[10px]" style={{ color: 'var(--t3)' }}>от</p>
-                        <p className="text-sm font-black" style={{ color: 'var(--t1)' }}>{fmtP(ev.price)}</p>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs" style={{ color: stockC(ev.avail) }}>
-                        <div className="h-2 w-2 rounded-full" style={{ background: stockC(ev.avail) }} />
-                        <span className="font-bold">{ev.avail}</span>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-            {shown.length === 0 && (
-              <div className="grid place-items-center h-40">
-                <p className="text-sm" style={{ color: 'var(--t3)' }}>Ничего не найдено</p>
-              </div>
-            )}
-          </>
-        )}
-
-        {tab === 'my' && (
-          myTix.length === 0
-            ? <div className="grid place-items-center h-40 text-center"><div><Ticket size={36} className="mx-auto mb-3" style={{ color:'var(--t3)' }}/><p className="text-sm font-bold" style={{ color: 'var(--t2)' }}>Нет билетов</p><p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>Купите в разделе «Афиша»</p></div></div>
-            : myTix.map((t: any) => (
-              <div key={t.id} className="rounded-2xl overflow-hidden" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-                <div className="flex items-center gap-3 px-4 py-3" style={{ background: bgGrad(t.hue), borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <span className="text-2xl">{t.art}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold truncate text-white">{t.title}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>{t.venue} · {t.date}</p>
-                  </div>
-                  {t.isVip && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,215,0,0.2)', color: '#ffd700' }}>VIP</span>}
-                </div>
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div>
-                    <p className="text-[10px]" style={{ color: 'var(--t3)' }}>Куплено {t.bought}</p>
-                    <p className="text-sm font-black" style={{ color: 'var(--accent)' }}>{fmtP(t.price)}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <span className="text-xs font-mono font-bold px-2.5 py-1.5 rounded-lg" style={{ background: 'var(--bg-l3)', color: 'var(--accent)', border: '1px solid var(--border)' }}>{t.code}</span>
-                    <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => setQR(t)}
-                      className="rounded-lg px-3 py-1.5 text-xs font-bold"
-                      style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid rgba(79,110,247,0.2)', cursor: 'pointer' }}>
-                      <QrCode size={12} className="inline mr-1"/>QR
-                    </motion.button>
-                  </div>
-                </div>
-              </div>
-            ))
-        )}
-
-        {tab === 'fav' && (
-          fav.length === 0
-            ? <div className="grid place-items-center h-40 text-center"><div><Heart size={36} className="mx-auto mb-3" style={{ color:'var(--t3)' }}/><p className="text-sm font-bold" style={{ color: 'var(--t2)' }}>Нет избранного</p></div></div>
-            : EVENTS.filter(ev => fav.includes(ev.id)).map(ev => (
-              <motion.div key={ev.id} whileHover={{ y: -1 }} onClick={() => { setOpen(ev); setQty(1); setVip(false); }}
-                className="flex items-center gap-3 rounded-2xl px-4 py-3 cursor-pointer"
-                style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-                <div className="h-12 w-12 rounded-xl grid place-items-center shrink-0" style={{ background: bgGrad(ev.hue) }}>
-                  {ev.type === 'cinema'
-                    ? <Film size={20} style={{ color:'#fff' }}/>
-                    : <Music2 size={20} style={{ color:'#fff' }}/>}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold truncate" style={{ color: 'var(--t1)' }}>{ev.title}</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--t3)' }}>{ev.venue} · {ev.date}</p>
-                  <p className="text-xs font-bold mt-1" style={{ color: 'var(--t1)' }}>от {fmtP(ev.price)}</p>
-                </div>
-                <motion.button whileTap={{ scale: 0.8 }} type="button" onClick={e => { e.stopPropagation(); toggleFav(ev.id); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Heart size={18} fill="#ef4444" style={{ color:'#ef4444' }}/></motion.button>
-              </motion.div>
-            ))
-        )}
-      </div>
-    </div>
-  );
-};
-
-
-
 
 /* ─────────────────────────────────────────────────────────────────────────────
    SKY MEDIA LOGO  – SVG inline, adapts to any size
@@ -2344,7 +1901,7 @@ export const ExtrasModule = () => {
         {tab==='bots'       && <BotsBrowser onClose={()=>setTab('music')}/>}
         {tab==='mybots'     && <BotCreatorPanel/>}
         {tab==='podcasts'   && <SkyPodcasts/>}
-        {tab==='tickets'    && <TicketsTab/>}
+        {tab==='tickets'    && <SkyTickets/>}
         {tab==='ai'         && <SkyAITab/>}
         {tab==='pulse'     && <PrimePulse/>}
         {tab==='musicians' && <MusicianHub/>}
