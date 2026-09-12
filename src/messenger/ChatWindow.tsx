@@ -1008,7 +1008,15 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
       editMessage(em.id, t); broadcast.edit(em.id, t, 'изм.'); startEdit(null);
     } else {
       // ── Bot command detection (#commandname @target) ──────────────
-      const botCmdMatch = t.match(/^#(\w+)(?:\s+(@\S+))?(.*)$/);
+      /*
+       * Разбор вызова «#триггер …».
+       *
+       * Набор символов тот же, что принимает сервер при настройке
+       * триггера: латиница, цифры, подчёркивание и кириллица. \w сюда
+       * не годится — он не знает кириллицы, и «#погода» никогда бы не
+       * сработала, хотя завести такой триггер сервер позволяет.
+       */
+      const botCmdMatch = t.match(/^#([A-Za-z0-9_А-Яа-яЁё]+)(?:\s+(@\S+))?(.*)$/);
       if (botCmdMatch) {
         const [, cmdName, mention, rest] = botCmdMatch;
         const botTexts: Record<string, (m?: string, r?: string) => string> = {

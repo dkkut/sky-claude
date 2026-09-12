@@ -677,12 +677,18 @@ export const BotCreatorPanel = () => {
               <p className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>Inline-бот (#)</p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--t3)' }}>Вызывается через # прямо в чате</p>
             </div>
-            <div className="h-6 w-11 rounded-full cursor-pointer flex items-center px-0.5"
-              style={{ background: form.inline ? 'var(--accent)' : 'var(--bg-l3)' }}
-              onClick={() => setForm((p) => ({ ...p, inline: !p.inline }))}>
-              <div className="h-5 w-5 rounded-full bg-white shadow"
+            {/* Настоящая кнопка-переключатель, а не раскрашенный блок:
+                до блока не добраться ни с клавиатуры, ни голосовым
+                управлением, и программа чтения с экрана не скажет, в
+                каком он положении. */}
+            <button type="button" role="switch" aria-checked={form.inline}
+              aria-label="Inline-бот"
+              onClick={() => setForm((p) => ({ ...p, inline: !p.inline }))}
+              className="h-6 w-11 rounded-full cursor-pointer flex items-center px-0.5 shrink-0"
+              style={{ background: form.inline ? 'var(--accent)' : 'var(--bg-l3)', border: 'none' }}>
+              <span className="h-5 w-5 rounded-full bg-white shadow block"
                 style={{ transform: form.inline ? 'translateX(20px)' : 'translateX(0)', transition: 'transform .2s' }}/>
-            </div>
+            </button>
           </div>
           {form.inline && (
             <div className="mt-3 space-y-2">

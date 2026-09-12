@@ -341,6 +341,33 @@ export { runtimeState };
 /* ─── Создание и правка ────────────────────────────────────────────── */
 
 /**
+ * Разбор настроек inline. Общий для создания и правки: разойдись они —
+ * и одно из двух мест однажды начало бы принимать то, что другое
+ * отвергает.
+ *
+ * Возвращает { error } либо { enabled, trigger, placeholder }.
+ */
+const parseInline = async (patch, selfId = null) => {
+  if (patch.inline !== true) return { enabled: false, trigger: null, placeholder: '' };
+
+  const trigger = String(patch.inlineTrigger ?? '').replace(/^#/, '').trim().toLowerCase();
+  if (!/^[a-z0-9_а-яё]{2,24}$/i.test(trigger)) return { error: 'invalid_trigger' };
+
+  /* Отказ до записи: так владелец видит «триггер занят», а не
+     непонятную ошибку базы. Сама уникальность всё равно стоит в базе —
+     проверка здесь только ради внятного ответа, и на неё одну
+     полагаться нельзя: два одновременных запроса оба её пройдут. */
+  const { rowCount: busy } = await query(
+    `SELECT 1 FROM bots
+      WHERE lower(inline_trigger) = $1 AND inline_enabled AND ($2::text IS NULL OR id <> $2)`,
+    [trigger, selfId],
+  );
+  if (busy) return { error: 'trigger_taken' };
+
+  return { enabled: true, trigger, placeholder: text(patch.inlinePlaceholder, MAX_SHORT) };
+};
+
+/**
  * Заводит бота вместе с его профилем.
  *
  * Профиль и бот создаются одной транзакцией: бот без профиля не смог бы
@@ -360,6 +387,13 @@ export const createBot = async (ownerId, input = {}) => {
   );
   if (counted[0].n >= MAX_BOTS_PER_OWNER) return { error: 'too_many' };
 
+  /* Настройки inline задают прямо в форме создания. Раньше они здесь
+     молча терялись: человек заполнял триггер, сохранял — и бот
+     оказывался без него, а понять это можно было только полезши в
+     редактирование. */
+  const inline = await parseInline(input);
+  if (inline.error) return { error: inline.error };
+
   const botId = `bot-${generateId()}`;
   const profileId = `acc-${generateId()}`;
 
@@ -377,14 +411,16 @@ export const createBot = async (ownerId, input = {}) => {
     );
     await client.query(
       `INSERT INTO bots (id, owner_id, profile_id, name, username,
-                         short_desc, description, category, icon, accent, code, code_lang)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+                         short_desc, description, category, icon, accent, code, code_lang,
+                         inline_enabled, inline_trigger, inline_placeholder)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [botId, ownerId, profileId, name, uname,
        text(input.shortDesc, MAX_SHORT), text(input.desc, MAX_DESC),
        oneOf(input.category, CATEGORIES, 'Другое'),
        oneOf(input.icon, ICONS, 'bot'), accent(input.accent),
        input.code ? encryptContent(text(input.code, MAX_CODE)) : null,
-       oneOf(input.codeLang, ['js', 'ts', 'py', 'go', 'other'], 'js')],
+       oneOf(input.codeLang, ['js', 'ts', 'py', 'go', 'other'], 'js'),
+       inline.enabled, inline.trigger, inline.placeholder],
     );
     await client.query('COMMIT');
   } catch (err) {
@@ -434,27 +470,11 @@ export const updateBot = async (botId, ownerId, patch = {}) => {
   }
 
   if (patch.inline !== undefined) {
-    const on = patch.inline === true;
-    put('inline_enabled', on);
-    if (on) {
-      const trigger = String(patch.inlineTrigger ?? '').replace(/^#/, '').trim().toLowerCase();
-      if (!/^[a-z0-9_а-яё]{2,24}$/i.test(trigger)) return { error: 'invalid_trigger' };
-      /* Отказ до записи: так владелец видит «триггер занят», а не
-         непонятную ошибку базы. Сама уникальность всё равно стоит в
-         базе — проверка здесь только ради внятного ответа, и на неё
-         одну полагаться нельзя: два одновременных запроса оба её
-         пройдут. */
-      const { rowCount: busy } = await query(
-        `SELECT 1 FROM bots
-          WHERE lower(inline_trigger) = $1 AND inline_enabled AND id <> $2`,
-        [trigger, botId],
-      );
-      if (busy) return { error: 'trigger_taken' };
-      put('inline_trigger', trigger);
-      put('inline_placeholder', text(patch.inlinePlaceholder, MAX_SHORT));
-    } else {
-      put('inline_trigger', null);
-    }
+    const inline = await parseInline(patch, botId);
+    if (inline.error) return { error: inline.error };
+    put('inline_enabled', inline.enabled);
+    put('inline_trigger', inline.trigger);
+    if (inline.enabled) put('inline_placeholder', inline.placeholder);
   }
 
   if (sets.length === 0) return { bot: await readBot(botId, ownerId) };
