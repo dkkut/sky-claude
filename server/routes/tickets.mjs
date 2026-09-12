@@ -221,6 +221,11 @@ export const ticketRoutes = async (req, res, url) => {
   if (req.method === 'GET' && imgMatch) {
     const mime = await imageMime(imgMatch[1], Number(imgMatch[2]));
     if (!mime) return json(res, 404, { error: 'not_found' });
+    /* Та же проверка, что и у обложки: черновик чужого мероприятия не
+       показываем и картинкой. Идентификатор случайный, но «его никто
+       не угадает» — это не право доступа. */
+    const ev = await readEvent(imgMatch[1], me);
+    if (!ev) return json(res, 404, { error: 'not_found' });
     return sendImage(res, imageIdFor(imgMatch[1], Number(imgMatch[2])), mime);
   }
 

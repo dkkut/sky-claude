@@ -94,6 +94,35 @@ const when = (value) => {
   return d;
 };
 
+/**
+ * Строка, по которой ищут в афише.
+ *
+ * Приведение регистра делает JavaScript, а не база. lower() в
+ * PostgreSQL складывает регистр по правилам LC_CTYPE той базы, где
+ * выполняется: на одной сборке libc «Концерт» становится «концерт», на
+ * другой остаётся как есть — и поиск по-русски молча делается
+ * чувствительным к регистру. toLowerCase() ведёт себя одинаково везде.
+ */
+export const searchTextFor = (parts) =>
+  parts.filter(Boolean).join(' ').toLowerCase().slice(0, 600);
+
+/** Пересобрать строку поиска по тому, что сейчас лежит в базе. */
+const refreshSearchText = async (eventId) => {
+  const { rows } = await query(
+    `SELECT e.title, e.venue, e.city, e.category,
+            COALESCE(o.display_name, p.name) AS organizer_name
+       FROM ticket_events e
+       LEFT JOIN profiles p ON p.id = e.organizer_id
+       LEFT JOIN ticket_organizers o ON o.profile_id = e.organizer_id
+      WHERE e.id = $1`,
+    [eventId],
+  );
+  const r = rows[0];
+  if (!r) return;
+  await query('UPDATE ticket_events SET search_text = $2 WHERE id = $1',
+    [eventId, searchTextFor([r.title, r.venue, r.city, r.category, r.organizer_name])]);
+};
+
 /* ─── Журнал ────────────────────────────────────────────────────────── */
 
 export const logTicket = async (eventId, actorId, action, detail = '') => {
@@ -159,7 +188,7 @@ export const isOrganizer = async (profileId) => (await organizerState(profileId)
  * Вызывается ТОЛЬКО из места, которое уже списало деньги. Сама по себе
  * эта функция ничего не проверяет про оплату — поэтому она не
  * экспортируется в маршруты напрямую, а вызывается из
- * ticketpay.mjs::payOrganizer.
+ * ticketorders.mjs::payOrganizer.
  *
  * Продление считается от большего из «сейчас» и «текущего конца»: тот,
  * кто платит заранее, не теряет остаток, а тот, у кого срок вышел
@@ -206,6 +235,13 @@ export const setOrganizerName = async (profileId, name) => {
      ON CONFLICT (profile_id) DO UPDATE SET display_name = $2, updated_at = now()`,
     [profileId, clean || null],
   );
+  /* Имя организатора участвует в поиске, поэтому строки поиска его
+     мероприятий надо пересобрать: иначе афиша ещё долго находилась бы
+     по прежнему имени. */
+  const { rows } = await query(
+    'SELECT id FROM ticket_events WHERE organizer_id = $1', [profileId],
+  );
+  for (const r of rows) await refreshSearchText(r.id);
   return organizerState(profileId);
 };
 
@@ -326,12 +362,13 @@ export const listCatalog = async (viewerId, opts = {}) => {
   const q = text(opts.q, 80).toLowerCase();
   if (q.length >= 2) {
     const like = add(`%${q.replace(/([\\%_])/g, '\\$1')}%`);
-    /* Описание зашифровано, поэтому по нему поиска нет: расшифровать
-       тысячу строк ради одного запроса дороже, чем не искать по ним.
-       Ищем по тому, что лежит открытым и для поиска и предназначено. */
-    clauses.push(`(lower(e.title) LIKE ${like} OR lower(e.venue) LIKE ${like}
-                   OR lower(e.city) LIKE ${like} OR lower(e.category) LIKE ${like}
-                   OR lower(COALESCE(o.display_name, p.name)) LIKE ${like})`);
+    /* Ищем по заранее приведённой строке: приведение регистра сделал
+       сервер, база только сравнивает. Так поиск по-русски одинаково
+       работает на любой сборке libc — см. миграцию 036.
+
+       Описания в этой строке нет: оно зашифровано, и расшифровывать
+       тысячу строк ради одного запроса дороже, чем не искать по ним. */
+    clauses.push(`e.search_text LIKE ${like}`);
   }
 
   if (opts.city && opts.city !== 'Все') clauses.push(`e.city = ${add(text(opts.city, 80))}`);
@@ -530,6 +567,7 @@ export const createEvent = async (organizerId, input = {}) => {
      text(input.city, 80), text(input.venue, MAX_PLACE), text(input.address, MAX_PLACE),
      text(input.venueNote, MAX_PLACE), accent(input.accent)],
   );
+  await refreshSearchText(id);
   await logTicket(id, organizerId, 'event.created', title);
   return { event: await readEvent(id, organizerId) };
 };
@@ -582,6 +620,7 @@ export const updateEvent = async (eventId, organizerId, patch = {}) => {
   sets.push('updated_at = now()');
 
   await query(`UPDATE ticket_events SET ${sets.join(', ')} WHERE id = $1`, args);
+  await refreshSearchText(eventId);
   return { event: await readEvent(eventId, organizerId) };
 };
 
