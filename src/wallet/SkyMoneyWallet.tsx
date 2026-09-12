@@ -7,6 +7,7 @@ import {
   Wallet, Plus, ArrowUpRight, ArrowDownLeft, RotateCcw,
   Crown, ShoppingBag, Music2, ChevronRight, X, Check,
   CreditCard, Smartphone, Building2, Users, Star, ArrowLeftRight,
+  Globe, Zap, Landmark, Lock, Gift,
 } from 'lucide-react';
 import { useMoney, TX_ICON, TX_LABEL, fmt, fmtSigned, type TxType } from './store';
 import { useAuthStore } from '@/core/auth/store';
@@ -81,7 +82,7 @@ const BalanceCard = ({ balance, points, userId, onExchange }: {
           <div className="text-4xl font-black" style={{ color:'var(--amber)', letterSpacing:'-0.02em' }}>
             {points.toLocaleString('ru')}
           </div>
-          <div className="text-xs mt-1" style={{ color:'rgba(255,255,255,0.35)' }}>⭐ баллов</div>
+          <div className="text-xs mt-1" style={{ color:'rgba(255,255,255,0.35)' }}>баллов</div>
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
@@ -186,11 +187,11 @@ const TxItem = ({ tx }: { tx: ReturnType<typeof useMoney.getState>['transactions
 =============================================================== */
 type PayMethod = 'ru-card' | 'intl-card' | 'sbp' | 'paypal';
 
-const PAY_METHODS: { id: PayMethod; label: string; sub: string; fee: number; icon: string; color: string }[] = [
-  { id:'ru-card',   label:'Карта РФ',         sub:'Visa · МИР · Mastercard',    fee:0,   icon:'💳', color:'var(--accent)' },
-  { id:'intl-card', label:'Зарубежная карта',  sub:'Visa · Mastercard · Amex',   fee:1.5, icon:'🌍', color:'#a855f7' },
-  { id:'sbp',       label:'СБП',              sub:'Система быстрых платежей',    fee:0,   icon:'⚡', color:'var(--green)' },
-  { id:'paypal',    label:'PayPal',           sub:'Оплата через PayPal',          fee:2.5, icon:'🅿',  color:'#0070ba' },
+const PAY_METHODS: { id: PayMethod; label: string; sub: string; fee: number; Icon: typeof CreditCard; color: string }[] = [
+  { id:'ru-card',   label:'Карта РФ',         sub:'Visa · МИР · Mastercard',    fee:0,   Icon:CreditCard, color:'var(--accent)' },
+  { id:'intl-card', label:'Зарубежная карта',  sub:'Visa · Mastercard · Amex',   fee:1.5, Icon:Globe, color:'#a855f7' },
+  { id:'sbp',       label:'СБП',              sub:'Система быстрых платежей',    fee:0,   Icon:Zap, color:'var(--green)' },
+  { id:'paypal',    label:'PayPal',           sub:'Оплата через PayPal',          fee:2.5, Icon:Landmark,  color:'#0070ba' },
 ];
 
 const QUICK_AMOUNTS_CASH = [200, 500, 1000, 2000, 5000, 10000];
@@ -239,7 +240,7 @@ const CardForm = ({ intl, onPay }: { intl: boolean; onPay: (data: object) => voi
           <span className="text-xs font-bold tracking-wider uppercase text-white opacity-70">
             {intl ? 'International' : 'Russia'}
           </span>
-          <span className="text-lg">{intl ? '🌍' : '🇷🇺'}</span>
+          {intl ? <Globe size={17}/> : <CreditCard size={17}/>}
         </div>
         <div>
           <p className="text-base font-bold text-white tracking-widest font-mono">
@@ -302,18 +303,18 @@ const CardForm = ({ intl, onPay }: { intl: boolean; onPay: (data: object) => voi
 const SbpForm = ({ amount, onPay }: { amount: number; onPay: () => void }) => {
   const [bank, setBank] = useState('');
   const BANKS = [
-    { id:'sber',  name:'Сбербанк',   logo:'🟢' },
-    { id:'tbank', name:'Т-Банк',     logo:'🟡' },
-    { id:'alfa',  name:'Альфа-Банк', logo:'🔴' },
-    { id:'vtb',   name:'ВТБ',        logo:'🔵' },
-    { id:'other', name:'Другой банк',logo:'🏦' },
+    { id:'sber',  name:'Сбербанк',   dot:'#21a038' },
+    { id:'tbank', name:'Т-Банк',     dot:'#ffdd2d' },
+    { id:'alfa',  name:'Альфа-Банк', dot:'#ef3124' },
+    { id:'vtb',   name:'ВТБ',        dot:'#0a2896' },
+    { id:'other', name:'Другой банк',dot:'#8b95a5' },
   ];
   return (
     <div className="space-y-4">
       <div className="rounded-2xl p-4 flex flex-col items-center gap-3"
         style={{ background:'rgba(52,211,153,0.06)', border:'1px solid rgba(52,211,153,0.2)' }}>
         <div className="grid h-16 w-16 place-items-center rounded-2xl text-3xl"
-          style={{ background:'rgba(52,211,153,0.12)' }}>⚡</div>
+          style={{ background:'rgba(52,211,153,0.12)' }}><Zap size={18} style={{ color:'#34d399' }}/></div>
         <div className="text-center">
           <p className="text-sm font-bold text-white">СБП  -  Система быстрых платежей</p>
           <p className="text-xs mt-1" style={{ color:C.t2 }}>Мгновенный перевод · 0% комиссии</p>
@@ -328,7 +329,7 @@ const SbpForm = ({ amount, onPay }: { amount: number; onPay: () => void }) => {
               background: bank===b.id ? 'rgba(52,211,153,0.1)' : C.l2,
               border: `1px solid ${bank===b.id ? 'rgba(52,211,153,0.35)' : C.border}`,
             }}>
-            <span className="text-xl">{b.logo}</span>
+            <span className="h-4 w-4 shrink-0 rounded-full" style={{ background:b.dot }}/>
             <span className="text-sm font-medium flex-1 text-left" style={{ color:C.t1 }}>{b.name}</span>
             {bank===b.id && <Check size={15} style={{ color:C.green }}/>}
           </button>
@@ -364,7 +365,7 @@ const PayPalForm = ({ amount, fee, onPay }: { amount: number; fee: number; onPay
       <div className="rounded-2xl p-4 flex items-center gap-3"
         style={{ background:'rgba(0,112,186,0.08)', border:'1px solid rgba(0,112,186,0.25)' }}>
         <div className="grid h-12 w-12 place-items-center rounded-xl text-2xl flex-shrink-0"
-          style={{ background:'rgba(0,112,186,0.12)' }}>🅿</div>
+          style={{ background:'rgba(0,112,186,0.12)' }}><Landmark size={18} style={{ color:'#0070ba' }}/></div>
         <div>
           <p className="text-sm font-bold text-white">PayPal</p>
           <p className="text-xs mt-0.5" style={{ color:C.t2 }}>Безопасная оплата через PayPal · Комиссия {fee}%</p>
@@ -394,7 +395,7 @@ const PayPalForm = ({ amount, fee, onPay }: { amount: number; fee: number; onPay
         </div>
       )}
       <div className="text-center text-xs" style={{ color:C.t3 }}>
-        🔒 Ваши данные защищены SSL-шифрованием PayPal
+        <Lock size={11} className="inline mr-1"/>Ваши данные защищены SSL-шифрованием PayPal
       </div>
       <button type="button" onClick={onPay} disabled={!valid}
         className="w-full py-3.5 rounded-2xl text-sm font-bold text-white disabled:opacity-35"
@@ -527,7 +528,7 @@ const TopUpSheet = ({ onDone }: { onDone: () => void }) => {
                   }}>
                   <div className="grid h-10 w-10 place-items-center rounded-xl text-xl flex-shrink-0"
                     style={{ background:`${m.color}18` }}>
-                    {m.icon}
+                    <m.Icon size={20} style={{ color:m.color }}/>
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-sm font-semibold" style={{ color:C.t1 }}>{m.label}</p>
@@ -568,7 +569,7 @@ const TopUpSheet = ({ onDone }: { onDone: () => void }) => {
         <motion.div initial={{ opacity:0, x:12 }} animate={{ opacity:1, x:0 }} className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xl">{chosen.icon}</span>
+              <chosen.Icon size={19} style={{ color:chosen.color }}/>
               <p className="text-sm font-semibold" style={{ color:C.t1 }}>{chosen.label}</p>
             </div>
             <button type="button" onClick={() => setStep('method')}
@@ -737,9 +738,9 @@ const ExchangeView = ({ onDone, userId }: { onDone: () => void; userId: string }
     <div className="flex flex-col items-center justify-center gap-5 h-full px-6">
       <motion.div initial={{ scale:0 }} animate={{ scale:1 }}
         transition={{ type:'spring', stiffness:400, damping:18 }}
-        className="grid h-20 w-20 place-items-center rounded-full text-4xl"
+        className="grid h-20 w-20 place-items-center rounded-full"
         style={{ background:'rgba(245,158,11,0.15)', border:'2px solid rgba(245,158,11,0.4)' }}>
-        ⭐
+        <Star size={36} fill="currentColor" style={{ color:'var(--amber)' }}/>
       </motion.div>
       <div className="text-center">
         <p className="text-xl font-black text-white">Обмен выполнен!</p>
@@ -754,7 +755,7 @@ const ExchangeView = ({ onDone, userId }: { onDone: () => void; userId: string }
       {/* Rate info */}
       <div className="rounded-2xl p-4 flex items-center gap-4"
         style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)' }}>
-        <span className="text-3xl">⭐</span>
+        <Star size={28} fill="currentColor" style={{ color:'var(--amber)' }}/>
         <div>
           <p className="text-sm font-bold text-white">Курс обмена</p>
           <p className="text-xs mt-0.5" style={{ color:C.t2 }}>1 рубль = 10 Баллов Прайма</p>
@@ -772,7 +773,7 @@ const ExchangeView = ({ onDone, userId }: { onDone: () => void; userId: string }
           <p className="text-lg font-black text-white">{fmt(balance)}</p>
         </div>
         <div className="rounded-2xl p-3.5" style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)' }}>
-          <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color:'rgba(245,158,11,0.5)' }}>Баллы ⭐</p>
+          <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color:'rgba(245,158,11,0.5)' }}>Баллы</p>
           <p className="text-lg font-black" style={{ color:'var(--amber)' }}>{(points).toLocaleString('ru')}</p>
         </div>
       </div>
@@ -812,7 +813,7 @@ const ExchangeView = ({ onDone, userId }: { onDone: () => void; userId: string }
           </div>
           <div className="flex justify-between text-sm">
             <span style={{ color:C.t2 }}>Получите</span>
-            <span className="font-bold" style={{ color:'var(--amber)' }}>⭐ {willGet.toLocaleString('ru')} баллов</span>
+            <span className="font-bold" style={{ color:'var(--amber)' }}>{willGet.toLocaleString('ru')} баллов</span>
           </div>
           <div className="flex justify-between text-sm pt-1.5 font-bold" style={{ borderTop:`1px solid ${C.border}` }}>
             <span style={{ color:C.t2 }}>Остаток ₽</span>
@@ -829,7 +830,7 @@ const ExchangeView = ({ onDone, userId }: { onDone: () => void; userId: string }
         disabled={rubles < 50 || rubles > balance}
         className="w-full rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-35"
         style={{ background:'linear-gradient(135deg,#d97706,#f59e0b)', boxShadow:'0 8px 28px rgba(245,158,11,0.35)' }}>
-        ⭐ Обменять {rubles >= 50 ? `${fmt(rubles)} → ${willGet.toLocaleString('ru')} баллов` : ''}
+        Обменять {rubles >= 50 ? `${fmt(rubles)} → ${willGet.toLocaleString('ru')} баллов` : ''}
       </motion.button>
     </div>
   );
@@ -1000,7 +1001,7 @@ export const SkyMoneyWallet = () => {
         style={{ background:C.l2, border:`1px solid ${C.border}` }}>
         <div className="grid h-8 w-8 place-items-center rounded-xl"
           style={{ background:'rgba(236,72,153,0.15)' }}>
-          <span style={{ fontSize:16 }}>🎁</span>
+          <Gift size={15} style={{ color:'var(--t2)' }}/>
         </div>
         <span className="text-sm font-medium flex-1 text-left" style={{ color:C.t1 }}>Мои подарки</span>
         <ChevronRight size={14} style={{ color:C.t3 }}/>
@@ -1021,7 +1022,7 @@ export const SkyMoneyWallet = () => {
       {/* Security note */}
       <div className="rounded-2xl px-4 py-3 flex gap-3"
         style={{ background:'rgba(52,211,153,0.05)', border:'1px solid rgba(52,211,153,0.15)' }}>
-        <span style={{ fontSize:16 }}>🔒</span>
+        <Lock size={15} style={{ color:'var(--t2)' }}/>
         <p className="text-xs leading-relaxed" style={{ color:C.t3 }}>
           SkyMoney защищён шифрованием. Все транзакции фиксируются и могут быть проверены в истории.
         </p>

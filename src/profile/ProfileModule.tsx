@@ -100,7 +100,7 @@ const ProfilePetsSection = () => {
       {/* Header with hide toggle */}
       <div className="flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-wider" style={{ color:'var(--t3)' }}>
-          🐾 Мои питомцы
+          <PawPrint size={13} className="inline mr-1"/>Мои питомцы
         </p>
         <button type="button" onClick={toggleHidden}
           className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all"
@@ -158,7 +158,7 @@ const ProfilePetsSection = () => {
         </p>
         {ownedSkins.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-6">
-            <span className="text-3xl opacity-40">🎨</span>
+            <Palette size={28} className="opacity-40" style={{ color:'var(--t3)' }}/>
             <p className="text-xs" style={{ color:'var(--t3)' }}>Нет купленных скинов</p>
           </div>
         ) : (
@@ -509,7 +509,7 @@ const SettingsSection = ({ logout, username, onOpen, staff }: {
           <div className="flex-1">
             <p className="text-sm font-bold text-white">Sky Prime</p>
             <p className="text-xs" style={{ color: isPrime ? 'var(--green)' : 'var(--t3)' }}>
-              {isPrime ? `✓ Активна` : 'Не активна'}
+              {isPrime ? 'Активна' : 'Не активна'}
             </p>
           </div>
           {!isPrime && (
@@ -532,7 +532,7 @@ const SettingsSection = ({ logout, username, onOpen, staff }: {
                 style={{ background:'rgba(79,110,247,0.2)', color:'var(--accent)' }}>NEW</span>
             </div>
             <p className="text-[11px]" style={{ color: isPrimeBusiness ? 'var(--green)' : 'var(--t3)' }}>
-              {isPrimeBusiness ? '✓ Почта · Диск 50ГБ · Бизнес' : 'Почта @skymessenger · 50 ГБ · CRM'}
+              {isPrimeBusiness ? 'Почта · Диск 50ГБ · Бизнес' : 'Почта @skymessenger · 50 ГБ · CRM'}
             </p>
           </div>
           {!isPrimeBusiness && (
@@ -1093,7 +1093,7 @@ export const ProfileModule = () => {
         {section === 'gifts' && (
           <div className="flex flex-col h-full overflow-y-auto px-4 py-4" style={{ scrollbarWidth:'none' }}>
             <p className="text-xs font-bold uppercase tracking-wider mb-4" style={{ color:'var(--t3)' }}>
-              🎁 Моя коллекция подарков
+              Моя коллекция подарков
             </p>
             <ProfileGiftsShowcase userId={currentUserId ?? ''} isOwn={true}/>
           </div>
