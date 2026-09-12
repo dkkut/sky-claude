@@ -95,9 +95,10 @@ services:
       PODCAST_DIR:                 /data/podcasts
       PODCAST_AUDIO_MAX_BYTES:     ${PODCAST_AUDIO_MAX_BYTES:-536870912}
       PODCAST_VIDEO_MAX_BYTES:     ${PODCAST_VIDEO_MAX_BYTES:-4294967296}
-      # Языковая модель для пересказа выпусков. Ключ живёт только здесь,
-      # в окружении сервера: в браузер уходит уже готовый пересказ.
-      # Пусто — пересказа нет, и экран честно об этом пишет.
+      # Языковая модель: и пересказ выпусков, и Sky AI. Ключ живёт
+      # только здесь, в окружении сервера: в браузер уходит готовый
+      # ответ, но не ключ. Пусто — Sky AI честно отвечает, что не
+      # настроен, вместо того чтобы делать вид, что думает.
       AI_API_KEY:            ${AI_API_KEY:-}
       AI_MODEL:              ${AI_MODEL:-claude-sonnet-4-5-20250929}
       AI_BASE_URL:           ${AI_BASE_URL:-https://api.anthropic.com}
@@ -133,11 +134,27 @@ services:
       DOMAIN:                ${DOMAIN:?нужно задать DOMAIN в .env}
       EXTRA_ORIGINS:         ${EXTRA_ORIGINS:-}
       REDIS_URL:             redis://:${REDIS_PASSWORD:?нужно задать REDIS_PASSWORD в .env}@redis:6379
+      # Расшифровка речи — отдельный поставщик: языковая модель этого
+      # не умеет. Пусто — расшифровки нет, и сервер так и говорит.
+      STT_API_KEY:           ${STT_API_KEY:-}
+      STT_MODEL:             ${STT_MODEL:-whisper-1}
+      STT_BASE_URL:          ${STT_BASE_URL:-}
+      # Дневные пределы Sky AI. Бесплатный чат ограничен числом
+      # сообщений, а не подпиской.
+      AI_CHAT_PER_DAY:       ${AI_CHAT_PER_DAY:-60}
+      AI_CHAT_PER_DAY_PRIME: ${AI_CHAT_PER_DAY_PRIME:-400}
     volumes:
       # Музыка переживает пересборку образа: файлы лежат в томе.
       - music-data:/data/music
       - film-data:/data/film
       - podcast-data:/data/podcasts
+      # Афиши мероприятий: тоже том, иначе пересборка образа стирает
+      # постеры всех опубликованных мероприятий.
+      - tickets-data:/data/tickets
+      # Файлы, отданные Sky AI на разбор. Живут минуты, но том нужен:
+      # без него они пишутся в слой образа, а он только для чтения в
+      # части сборок и переполняется в остальных.
+      - ai-data:/data/aifiles
     # internal — чтобы говорить с базой и кэшем, outbound — чтобы
     # достучаться до провайдера SMS и почтового сервера. Без второй
     # сети контейнер не разрешает даже имена: коды отправлять некуда.
@@ -255,5 +272,7 @@ volumes:
   music-data:
   film-data:
   podcast-data:
+  tickets-data:
+  ai-data:
   certbot-certs:
   certbot-webroot:

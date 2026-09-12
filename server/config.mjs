@@ -105,4 +105,12 @@ export const config = {
   aiApiKey: process.env.AI_API_KEY || '',
   aiModel: process.env.AI_MODEL || 'claude-sonnet-4-5-20250929',
   aiBaseUrl: process.env.AI_BASE_URL || 'https://api.anthropic.com',
+
+  // Расшифровка речи — отдельная работа и отдельный поставщик:
+  // языковая модель этого не умеет. Ожидается обычная ручка
+  // /v1/audio/transcriptions. Пока ключ не задан, расшифровки нет, и
+  // сервер так и отвечает — выдумывать текст вместо неё нельзя.
+  sttApiKey:  process.env.STT_API_KEY  || '',
+  sttModel:   process.env.STT_MODEL    || 'whisper-1',
+  sttBaseUrl: process.env.STT_BASE_URL || '',
 };
