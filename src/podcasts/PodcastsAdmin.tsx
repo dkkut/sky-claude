@@ -128,7 +128,9 @@ export const PodcastModeration = () => {
 
       <div className="flex flex-col gap-3">
         {queue.map((p) => (
-          <div key={p.id} className="rounded-2xl p-3" style={glass}>
+          // Признак с идентификатором — чтобы проверка работала именно с
+          // нужной заявкой, а не с первой попавшейся: в очереди их много.
+          <div key={p.id} data-moderation-card={p.id} className="rounded-2xl p-3" style={glass}>
             <div className="flex gap-3">
               <div className="w-16 shrink-0"><Cover p={p}/></div>
               <div className="min-w-0 flex-1">

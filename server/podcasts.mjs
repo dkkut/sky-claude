@@ -243,13 +243,26 @@ export const listMine = async (ownerId) => {
 /* ─── Выпуски ──────────────────────────────────────────────────────── */
 
 export const listEpisodes = async (podcastId, viewerId, { q, limit, offset } = {}) => {
-  if (!(await visiblePodcast(podcastId, viewerId))) return null;
+  const show = await visiblePodcast(podcastId, viewerId);
+  if (!show) return null;
   const lim = num(limit, 1, 200) ?? 100;
   const off = num(offset, 0, 100000) ?? 0;
   const args = [viewerId ?? '', String(podcastId ?? ''), lim, off];
-  // Черновики видит только автор — условие в самом запросе, а не отсев
-  // после: так его нельзя забыть.
-  const where = ['e.podcast_id = $2', '(e.published OR p.owner_id = $1)'];
+
+  /*
+   * Черновики видит только автор — условие в самом запросе, а не отсев
+   * после: так его нельзя забыть.
+   *
+   * И одно исключение: передача, отправленная на проверку. Все её
+   * выпуски ещё черновики, поэтому администратор видел пустую заявку и
+   * судил о передаче по названию. Это не проверка, а штамп. Право
+   * смотреть отправленное на проверку у него уже есть — оно записано в
+   * visiblePodcast и в visibleEpisode, — здесь оно просто не было
+   * доведено до списка.
+   */
+  const forReview = show.status === 'pending' && await isAdmin(viewerId);
+  const where = ['e.podcast_id = $2',
+    forReview ? 'TRUE' : '(e.published OR p.owner_id = $1)'];
   const s = searchClause(q, args, ['e.title']);
   if (s) where.push(s);
 
@@ -551,7 +564,26 @@ export const moderationQueue = async (adminId, { limit } = {}) => {
   const { rows } = await query(
     `${SELECT_PODCAST} WHERE p.status = 'pending'
       ORDER BY p.submitted_at ASC NULLS LAST LIMIT $2`, [adminId, lim]);
-  return { podcasts: rows.map(toPodcast) };
+
+  /*
+   * Сколько в заявке выпусков — считаем отдельно и по всем.
+   *
+   * Обычный счёт берёт только выложенные да свои, а у передачи на
+   * проверке выложенных нет ни одного: в очереди стояло «0 вып.» у
+   * передачи с выпусками. Число, которое всегда ноль, хуже, чем
+   * отсутствие числа, — по нему принимают решение.
+   */
+  const counts = new Map();
+  if (rows.length > 0) {
+    const { rows: c } = await query(
+      `SELECT podcast_id, count(*)::int AS n FROM podcast_episodes
+        WHERE podcast_id = ANY($1) GROUP BY podcast_id`,
+      [rows.map((r) => r.id)]);
+    for (const row of c) counts.set(row.podcast_id, row.n);
+  }
+  return {
+    podcasts: rows.map((r) => ({ ...toPodcast(r), episodes: counts.get(r.id) ?? 0 })),
+  };
 };
 
 export const moderatePodcast = async (podcastId, adminId, { approve, reason } = {}) => {
