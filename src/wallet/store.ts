@@ -3,6 +3,11 @@
    Баланс, транзакции, пополнение, списание для Prime и Market
 =============================================================== */
 import { create } from 'zustand';
+import {
+  CreditCard, Crown, ShoppingBag, Music2, Home, RotateCcw,
+  ArrowDownLeft, ArrowUpRight, Star, Gift,
+} from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
 
 export type TxType =
   | 'topup'          // пополнение
@@ -29,17 +34,25 @@ export const TX_LABEL: Record<TxType, string> = {
   points_spend:  'Потрачены баллы',
 };
 
-export const TX_ICON: Record<TxType, string> = {
-  topup:        '💳',
-  prime:        '👑',
-  market:       '🛍',
-  music:        '🎵',
-  family:       '🏠',
-  refund:       '↩️',
-  transfer_in:  '📥',
-  transfer_out:  '📤',
-  points_earn:   '⭐',
-  points_spend:  '🎁',
+/**
+ * Значок вида операции.
+ *
+ * Раньше здесь лежала эмодзи, и в списке операций картинка зависела
+ * от шрифта устройства: на телефоне одна, на телевизоре другая, а
+ * цвет под тему не подбирался. Теперь это значок из набора
+ * приложения — он одинаков везде и красится вместе с темой.
+ */
+export const TX_ICON: Record<TxType, IconComponent> = {
+  topup:        CreditCard,
+  prime:        Crown,
+  market:       ShoppingBag,
+  music:        Music2,
+  family:       Home,
+  refund:       RotateCcw,
+  transfer_in:  ArrowDownLeft,
+  transfer_out: ArrowUpRight,
+  points_earn:  Star,
+  points_spend: Gift,
 };
 
 export interface Transaction {

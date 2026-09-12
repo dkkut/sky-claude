@@ -1,3 +1,4 @@
+import { Sparkles } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createPortal }           from 'react-dom';
@@ -130,7 +131,7 @@ export const AppShell = () => {
                 padding: '12px 16px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
                 display: 'flex', alignItems: 'center', gap: 12, backdropFilter: 'blur(20px)',
               }}>
-              <span style={{ fontSize: 22 }}>👋</span>
+              <Sparkles size={22} style={{ color: 'var(--accent)', flexShrink: 0 }}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--t1)' }}>Добро пожаловать в Sky!</p>
               </div>
@@ -170,7 +171,7 @@ export const AppShell = () => {
               display: 'flex', alignItems: 'center', gap: 12, minWidth: 280,
               backdropFilter: 'blur(20px)',
             }}>
-            <span style={{ fontSize: 24 }}>👋</span>
+            <Sparkles size={24} style={{ color: 'var(--accent)', flexShrink: 0 }}/>
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--t1)' }}>Добро пожаловать в Sky!</p>
               <p style={{ fontSize: 12, color: 'var(--t2)', marginTop: 2 }}>Экосистема готова к использованию</p>

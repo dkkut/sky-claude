@@ -12,6 +12,7 @@ import {
   Play, Pause, Volume2, VolumeX, Maximize2, ThumbsUp, ThumbsDown,
   MessageCircle, Share2, Upload, Search, X, ChevronLeft, MoreVertical,
   Trash2, Eye, Clock, Plus, Check, ArrowUp, ArrowDown, Heart, Pin,
+  Film, Image as ImageIcon, History, Bookmark,
 } from 'lucide-react';
 import { AiVideoSummarize, AiVideoQA } from '@/ai/SkyAI';
 import { AdBanner } from '@/feedback/Feedback';
@@ -171,7 +172,7 @@ const VideoPlayer = ({ video }: { video: VideoEntry }) => {
             style={{ background:`linear-gradient(160deg,${video.thumbnailGrad?.[0]??'#111'},${video.thumbnailGrad?.[1]??'#333'})` }}>
             {video.thumbnailUrl && <img src={video.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30"/>}
             <div className="relative text-center px-6">
-              <div className="text-4xl mb-3">🎬</div>
+              <Film size={38} className="mx-auto mb-3 text-white/70"/>
               <p className="text-sm font-semibold text-white">Видео недоступно офлайн</p>
               <p className="text-xs mt-1" style={{ color:'rgba(255,255,255,0.5)' }}>Загрузите видеофайл для просмотра</p>
             </div>
@@ -532,7 +533,10 @@ const ShortsPlayer = ({ shorts, initialIndex = 0, onClose }: { shorts: VideoEntr
           : <div className="w-full aspect-[9/16] max-h-[80vh] flex items-center justify-center"
               style={{ background:`linear-gradient(160deg,${video.thumbnailGrad?.[0]??'#111'},${video.thumbnailGrad?.[1]??'#333'})` }}>
               {video.thumbnailUrl && <img src={video.thumbnailUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-25"/>}
-              <div className="relative text-center"><div className="text-5xl mb-3">🎬</div><p className="text-sm text-white font-semibold">Нет файла</p></div>
+              <div className="relative text-center">
+                <Film size={46} className="mx-auto mb-3 text-white/70"/>
+                <p className="text-sm text-white font-semibold">Нет файла</p>
+              </div>
             </div>
         }
 
@@ -740,8 +744,8 @@ const StudioTab = () => {
                 <p className="text-sm font-semibold truncate mb-1.5" style={{ color:V.t1 }}>{v.title}</p>
                 <div className="flex items-center gap-3 text-[11px]" style={{ color:V.t3 }}>
                   <span><Eye size={11} className="inline mr-0.5"/> {fmtViews(v.views)}</span>
-                  <span>👍 {v.likes.length}</span>
-                  <span>💬 {v.comments.length}</span>
+                  <span><ThumbsUp size={11} className="inline mr-0.5"/> {v.likes.length}</span>
+                  <span><MessageCircle size={11} className="inline mr-0.5"/> {v.comments.length}</span>
                   <span className="ml-auto">{fmtAgo(v.createdAt)}</span>
                 </div>
               </div>
@@ -895,7 +899,9 @@ const UploadTab = ({ onDone }: { onDone: () => void }) => {
             <button type="button" onClick={() => coverRef.current?.click()}
               className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm transition-colors"
               style={{ background:V.bg2, border:`1px solid ${V.border}`, color:V.t2 }}>
-              🖼 {cover ? '✅ Обложка' : 'Добавить обложку'}
+              {cover
+                ? <><Check size={15} style={{ color:'var(--green)' }}/> Обложка</>
+                : <><ImageIcon size={15}/> Добавить обложку</>}
             </button>
             {cover && <img src={cover} alt="" className="h-10 w-16 rounded-xl object-cover"/>}
           </div>
@@ -1194,7 +1200,7 @@ export const SkyVideo = () => {
                 </p>
                 {getHistory(myId ?? '').length === 0
                   ? <div className="flex flex-col items-center gap-2 py-12 opacity-50">
-                      <span className="text-4xl">🕐</span>
+                      <History size={38} className="text-white/60"/>
                       <p className="text-sm" style={{ color:'rgba(255,255,255,0.5)' }}>История пуста</p>
                     </div>
                   : getHistory(myId ?? '').map(v => (
@@ -1222,7 +1228,7 @@ export const SkyVideo = () => {
                 </p>
                 {getSaved(myId ?? '').length === 0
                   ? <div className="flex flex-col items-center gap-2 py-12 opacity-50">
-                      <span className="text-4xl">🔖</span>
+                      <Bookmark size={38} className="text-white/60"/>
                       <p className="text-sm" style={{ color:'rgba(255,255,255,0.5)' }}>Нет сохранённых</p>
                     </div>
                   : getSaved(myId ?? '').map(v => (
@@ -1240,7 +1246,7 @@ export const SkyVideo = () => {
                       </div>
                       <button type="button" onClick={e => { e.stopPropagation(); unsaveVideo(myId??'',v.id); }}
                         className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10 shrink-0">
-                        <span style={{ fontSize:16 }}>🗑</span>
+                        <Trash2 size={15} className="text-white/70"/>
                       </button>
                     </button>
                   ))

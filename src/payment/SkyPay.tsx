@@ -6,8 +6,9 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Lock, Shield, Check, X,
-  AlertCircle, RefreshCw, CreditCard, Wifi, Clock,
+  AlertCircle, RefreshCw, CreditCard, Wifi, Clock, Zap, Landmark, KeyRound,
 } from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
 import {
   usePayGateway, PROVIDERS, detectCardBrand, maskCard, fmtAmount,
   STATUS_LABEL, PURPOSE_LABEL,
@@ -33,9 +34,30 @@ const P = {
   amber:  'var(--amber)',
 };
 
-/* -- Card brand icon ------------------------------------------- */
-const BRAND_ICON: Record<string, string> = {
-  visa: '💙', mastercard: '🔴', mir: '🟢', amex: '🟣', unknown: '💳',
+/* -- Card brand icon -------------------------------------------
+   Платёжные системы раньше показывались цветными кружками-эмодзи:
+   «синее сердце» для Visa, «красный круг» для Mastercard. Ни одна
+   из этих картинок систему не называла, а рисовал их шрифт
+   устройства. Теперь это короткая подпись бренда на его цвете —
+   читается одинаково везде и не зависит от шрифта.
+---------------------------------------------------------------- */
+const BRAND_MARK: Record<string, { text: string; color: string }> = {
+  visa:       { text: 'VISA', color: '#1a1f71' },
+  mastercard: { text: 'MC',   color: '#eb001b' },
+  mir:        { text: 'МИР',  color: '#0f754e' },
+  amex:       { text: 'AMEX', color: '#2e77bb' },
+  unknown:    { text: '',     color: 'transparent' },
+};
+
+const BrandMark = ({ brand }: { brand: string }) => {
+  const m = BRAND_MARK[brand] ?? BRAND_MARK.unknown;
+  if (!m.text) return <CreditCard size={18} style={{ color:'rgba(255,255,255,0.6)' }}/>;
+  return (
+    <span className="rounded px-1.5 py-0.5 text-[10px] font-black tracking-wider text-white"
+      style={{ background: m.color }}>
+      {m.text}
+    </span>
+  );
 };
 
 /* -- Input field ----------------------------------------------- */
@@ -85,7 +107,7 @@ const CardPreview = ({ num, exp, holder, intl }: { num:string; exp:string; holde
           style={{ background:'linear-gradient(135deg,#c8a02a,#f0c040)', boxShadow:'0 1px 4px rgba(0,0,0,0.4)' }}/>
       </div>
       {/* Brand */}
-      <div className="absolute top-3 right-4 text-xl">{BRAND_ICON[brand]}</div>
+      <div className="absolute top-3 right-4"><BrandMark brand={brand}/></div>
       {/* Card number */}
       <div className="absolute bottom-12 left-5 right-5">
         <p className="text-base tracking-[.22em] font-bold text-white font-mono"
@@ -232,12 +254,12 @@ const CardForm = ({ intl, onSubmit }: {
 const SbpForm = ({ amount, onSubmit }: { amount: number; onSubmit: () => void }) => {
   const [bank, setBank] = useState('');
   const BANKS = [
-    { id:'sber',   name:'Сбербанк',    color:'#21A038', logo:'🟢' },
-    { id:'tbank',  name:'Т-Банк',      color:'#FFDD2D', logo:'🟡' },
-    { id:'alfa',   name:'Альфа-Банк',  color:'#EF3124', logo:'🔴' },
-    { id:'vtb',    name:'ВТБ',         color:'#0072CE', logo:'🔵' },
-    { id:'raiffeisen', name:'Райффайзен', color:'#FFED00', logo:'🟡' },
-    { id:'other',  name:'Другой банк', color:'var(--t2)', logo:'🏦' },
+    { id:'sber',   name:'Сбербанк',    color:'#21A038' },
+    { id:'tbank',  name:'Т-Банк',      color:'#FFDD2D' },
+    { id:'alfa',   name:'Альфа-Банк',  color:'#EF3124' },
+    { id:'vtb',    name:'ВТБ',         color:'#0072CE' },
+    { id:'raiffeisen', name:'Райффайзен', color:'#FFED00' },
+    { id:'other',  name:'Другой банк', color:'var(--t2)', other:true },
   ];
 
   return (
@@ -245,12 +267,16 @@ const SbpForm = ({ amount, onSubmit }: { amount: number; onSubmit: () => void })
       {/* SBP logo area */}
       <div className="rounded-2xl p-4 flex items-center gap-4"
         style={{ background:'rgba(52,211,153,0.07)', border:'1px solid rgba(52,211,153,0.2)' }}>
-        <div className="grid h-14 w-14 place-items-center rounded-2xl flex-shrink-0 text-3xl"
-          style={{ background:'rgba(52,211,153,0.12)' }}>⚡</div>
+        <div className="grid h-14 w-14 place-items-center rounded-2xl flex-shrink-0"
+          style={{ background:'rgba(52,211,153,0.12)' }}>
+          <Zap size={26} style={{ color:P.green }}/>
+        </div>
         <div>
           <p className="text-sm font-bold" style={{ color:P.t1 }}>СБП  -  Система быстрых платежей</p>
           <p className="text-xs mt-0.5" style={{ color:P.t2 }}>Мгновенный перевод · 0% комиссии</p>
-          <p className="text-xs mt-1" style={{ color:P.green }}>✓ Центробанк России</p>
+          <p className="text-xs mt-1 flex items-center gap-1" style={{ color:P.green }}>
+            <Check size={12}/> Центробанк России
+          </p>
         </div>
       </div>
 
@@ -267,7 +293,9 @@ const SbpForm = ({ amount, onSubmit }: { amount: number; onSubmit: () => void })
               background: bank===b.id ? `${b.color}18` : P.l2,
               border:     `1.5px solid ${bank===b.id ? b.color+'55' : P.border}`,
             }}>
-            <span className="text-xl flex-shrink-0">{b.logo}</span>
+            {b.other
+              ? <Landmark size={17} className="flex-shrink-0" style={{ color:b.color }}/>
+              : <span className="h-3.5 w-3.5 rounded-full flex-shrink-0" style={{ background:b.color }}/>}
             <span className="text-xs font-semibold text-left" style={{ color:P.t1 }}>{b.name}</span>
             {bank===b.id && <Check size={13} className="ml-auto flex-shrink-0" style={{ color:P.green }}/>}
           </motion.button>
@@ -376,7 +404,9 @@ const StatusScreen = ({ status, amount, sessionId, onRetry, onClose }: {
           <motion.div animate={{ rotate:360 }} transition={{ duration:1, repeat:Infinity, ease:'linear' }}
             className="absolute inset-0 rounded-full"
             style={{ border:`3px solid ${P.amber}`, borderTopColor:'transparent' }}/>
-          <div className="absolute inset-2 grid place-items-center text-xl">🔐</div>
+          <div className="absolute inset-2 grid place-items-center">
+            <KeyRound size={20} style={{ color:P.amber }}/>
+          </div>
         </div>
       ),
       title: 'Обрабатывается...',
@@ -558,9 +588,9 @@ export const SkyPayCheckout = ({ purpose, amount, onSuccess, onCancel }: SkyPayP
                       background: P.l1,
                       border:     `1.5px solid ${provider===p.id ? P.accent+'60' : P.border}`,
                     }}>
-                    <div className="grid h-11 w-11 place-items-center rounded-xl text-2xl flex-shrink-0"
+                    <div className="grid h-11 w-11 place-items-center rounded-xl flex-shrink-0"
                       style={{ background:P.l2 }}>
-                      {p.icon}
+                      <p.Icon size={21} style={{ color:P.t2 }}/>
                     </div>
                     <div className="flex-1 text-left">
                       <p className="text-sm font-semibold" style={{ color:P.t1 }}>{p.label}</p>
@@ -578,9 +608,9 @@ export const SkyPayCheckout = ({ purpose, amount, onSuccess, onCancel }: SkyPayP
 
               {/* Security badges */}
               <div className="flex items-center justify-center gap-4 pt-3">
-                {[['🔒','SSL'],['🛡','3D Secure'],['✓','PCI DSS']].map(([ico,lbl]) => (
+                {([[Lock,'SSL'],[Shield,'3D Secure'],[Check,'PCI DSS']] as [IconComponent,string][]).map(([Ico,lbl]) => (
                   <div key={lbl} className="flex items-center gap-1">
-                    <span className="text-sm">{ico}</span>
+                    <Ico size={13} style={{ color:P.t3 }}/>
                     <span className="text-[10px]" style={{ color:P.t3 }}>{lbl}</span>
                   </div>
                 ))}
@@ -646,9 +676,12 @@ export const PayHistory = ({ userId }: { userId: string }) => {
       {sessions.slice(0,20).map(s => (
         <div key={s.id} className="flex items-center gap-3 px-4 py-3 rounded-2xl"
           style={{ background:P.l1, border:`1px solid ${P.border}` }}>
-          <div className="grid h-9 w-9 place-items-center rounded-xl flex-shrink-0 text-lg"
+          <div className="grid h-9 w-9 place-items-center rounded-xl flex-shrink-0"
             style={{ background:P.l2 }}>
-            {PROVIDERS.find(p=>p.id===s.provider)?.icon ?? '💳'}
+            {(() => {
+              const Ico = PROVIDERS.find(p => p.id === s.provider)?.Icon ?? CreditCard;
+              return <Ico size={17} style={{ color:P.t2 }}/>;
+            })()}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold truncate" style={{ color:P.t1 }}>

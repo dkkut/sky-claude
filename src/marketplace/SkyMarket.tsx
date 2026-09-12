@@ -8,7 +8,8 @@ import {
   Heart, Package, Truck, CheckCircle, Clock, ArrowLeft, Plus,
   Minus, Share2, ChevronRight, Zap, TrendingUp,
   Store, BarChart3, Grid3X3, List, BadgePercent, Flame,
-  AlertCircle, Edit3, Trash2,
+  AlertCircle, Edit3, Trash2, Laptop, Shirt, Home, Sparkles, Dumbbell,
+  BookOpen, Gamepad2, Apple, MapPin, Check,
 } from 'lucide-react';
 import { useMoney } from '@/wallet/store';
 import { useMarketStore } from './store';
@@ -46,16 +47,31 @@ export const fmt   = (n: number) => n.toLocaleString('ru-RU') + ' ₽';
 export const fmtTs = (s: string) =>
   new Date(s).toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
 
-const CAT_CFG: Record<ProductCategory, { label:string; emoji:string; color:string }> = {
-  electronics: { label:'Электроника', emoji:'💻', color:'#3b82f6' },
-  clothing:    { label:'Одежда',      emoji:'👕', color:'#8b5cf6' },
-  home:        { label:'Дом',         emoji:'🏠', color:'#10b981' },
-  beauty:      { label:'Красота',     emoji:'✨', color:'#ec4899' },
-  sports:      { label:'Спорт',       emoji:'🏋️', color:'#f59e0b' },
-  books:       { label:'Книги',       emoji:'📚', color:'#6366f1' },
-  toys:        { label:'Игрушки',     emoji:'🎮', color:'#f43f5e' },
-  food:        { label:'Питание',     emoji:'⚡', color:'#22c55e' },
-  other:       { label:'Другое',      emoji:'📦', color:'var(--t3)' },
+const CAT_CFG: Record<ProductCategory, { label:string; Icon:typeof Package; color:string }> = {
+  electronics: { label:'Электроника', Icon:Laptop,   color:'#3b82f6' },
+  clothing:    { label:'Одежда',      Icon:Shirt,    color:'#8b5cf6' },
+  home:        { label:'Дом',         Icon:Home,     color:'#10b981' },
+  beauty:      { label:'Красота',     Icon:Sparkles, color:'#ec4899' },
+  sports:      { label:'Спорт',       Icon:Dumbbell, color:'#f59e0b' },
+  books:       { label:'Книги',       Icon:BookOpen, color:'#6366f1' },
+  toys:        { label:'Игрушки',     Icon:Gamepad2, color:'#f43f5e' },
+  food:        { label:'Питание',     Icon:Apple,    color:'#22c55e' },
+  other:       { label:'Другое',      Icon:Package,  color:'var(--t3)' },
+};
+
+/**
+ * Значок категории товара.
+ *
+ * Раньше здесь стояла эмодзи, и картинка зависела от шрифта устройства:
+ * на телефоне одна, на телевизоре другая, а цвет и толщину линии под
+ * тему подобрать было нельзя. Теперь категория хранит свой значок из
+ * набора приложения, а размер и цвет задаются на месте.
+ */
+const CatIcon = ({ cat, size = 20, color }:
+{ cat: ProductCategory; size?: number; color?: string }) => {
+  const cfg = CAT_CFG[cat];
+  const Icon = cfg.Icon;
+  return <Icon size={size} style={{ color: color ?? cfg.color }}/>;
 };
 
 const ORDER_STATUS: Record<string,{label:string;color:string;icon:any}> = {
@@ -140,7 +156,7 @@ const ProductCard = ({
         style={{ background: `${cat.color}10`, border: `1px solid ${cat.color}20` }}>
         {product.images[0]
           ? <img src={product.images[0]} alt={product.title} className="h-full w-full object-cover"/>
-          : <span className="text-3xl">{cat.emoji}</span>}
+          : <CatIcon cat={product.category} size={30}/>}
         {product.badge && (
           <div className="absolute top-1 left-1 rounded px-1 py-0.5 text-[8px] font-black text-white"
             style={{ background: product.badge.includes('−') || product.badge === 'ЛИМ' ? '#f43f5e' : C.acc }}>
@@ -150,7 +166,9 @@ const ProductCard = ({
       </div>
       {/* Info */}
       <div className="flex-1 min-w-0" onClick={onOpen}>
-        <p className="text-[10px] mb-0.5" style={{ color: cat.color }}>{cat.emoji} {cat.label}</p>
+        <p className="text-[10px] mb-0.5 flex items-center gap-1" style={{ color: cat.color }}>
+          <CatIcon cat={product.category} size={11}/> {cat.label}
+        </p>
         <p className="text-sm font-semibold truncate" style={{ color: C.t1 }}>{product.title}</p>
         <div className="flex items-center gap-2 mt-0.5">
           <Stars rating={product.rating} size={10}/>
@@ -195,8 +213,8 @@ const ProductCard = ({
           ? <img src={product.images[0]} alt={product.title} className="h-full w-full object-cover"/>
           : (
             <div className="h-full w-full flex flex-col items-center justify-center gap-2">
-              <span className="text-5xl" style={{ filter: `drop-shadow(0 4px 12px ${cat.color}40)` }}>
-                {cat.emoji}
+              <span style={{ filter: `drop-shadow(0 4px 12px ${cat.color}40)` }}>
+                <CatIcon cat={product.category} size={48}/>
               </span>
             </div>
           )}
@@ -333,7 +351,7 @@ const ProductPage = ({
           style={{ height: 240, background: `${cat.color}08`, border: `1px solid ${cat.color}15` }}>
           {product.images[0]
             ? <img src={product.images[0]} alt={product.title} className="h-full object-contain"/>
-            : <span className="text-8xl">{cat.emoji}</span>}
+            : <CatIcon cat={product.category} size={88}/>}
           {product.badge && (
             <div className="absolute top-3 left-3 rounded-lg px-2.5 py-1 text-xs font-black text-white"
               style={{ background: product.badge.includes('−') ? '#f43f5e' : C.acc }}>
@@ -350,8 +368,8 @@ const ProductPage = ({
 
         {/* Main info */}
         <div className="px-4 mt-4">
-          <p className="text-[10px] font-semibold mb-1" style={{ color: cat.color }}>
-            {cat.emoji} {cat.label} · {seller?.shopName}
+          <p className="text-[10px] font-semibold mb-1 flex items-center gap-1" style={{ color: cat.color }}>
+            <CatIcon cat={product.category} size={11}/> {cat.label} · {seller?.shopName}
           </p>
           <h1 className="text-xl font-bold leading-tight mb-2" style={{ color: C.t1 }}>
             {product.title}
@@ -501,7 +519,9 @@ const ProductPage = ({
               )}
               {submitted && (
                 <div className="rounded-2xl p-3 text-center" style={{ background:'rgba(0,220,90,0.08)', border:'1px solid rgba(0,220,90,0.2)' }}>
-                  <p className="text-xs font-semibold" style={{ color: C.green }}>✓ Отзыв опубликован</p>
+                  <p className="text-xs font-semibold flex items-center justify-center gap-1.5" style={{ color: C.green }}>
+                    <Check size={13}/> Отзыв опубликован
+                  </p>
                 </div>
               )}
               {productReviews.length === 0 ? (
@@ -539,7 +559,7 @@ const ProductPage = ({
                     onClick={() => { /* handled by parent */ }}>
                     <div className="h-24 flex items-center justify-center"
                       style={{ background:`${CAT_CFG[p.category].color}08` }}>
-                      <span className="text-3xl">{CAT_CFG[p.category].emoji}</span>
+                      <CatIcon cat={p.category} size={30}/>
                     </div>
                     <div className="p-2">
                       <p className="text-[11px] font-semibold line-clamp-2 leading-tight" style={{ color:C.t1 }}>
@@ -598,7 +618,7 @@ const CartDrawer = ({
                 style={{ background:`${CAT_CFG[p.category].color}10` }}>
                 {p.images[0]
                   ? <img src={p.images[0]} alt="" className="h-full w-full object-cover rounded-xl"/>
-                  : <span className="text-2xl">{CAT_CFG[p.category].emoji}</span>}
+                  : <CatIcon cat={p.category} size={24}/>}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold truncate" style={{ color:C.t1 }}>{p.title}</p>
@@ -836,9 +856,9 @@ const Catalog = ({
                   </div>
                   <div className="ml-auto flex gap-2 shrink-0 overflow-hidden" style={{ maxWidth:120 }}>
                     {onSaleProds.slice(0,2).map(p => (
-                      <div key={p.id} className="grid h-12 w-12 place-items-center rounded-xl text-2xl shrink-0"
+                      <div key={p.id} className="grid h-12 w-12 place-items-center rounded-xl shrink-0"
                         style={{ background:'rgba(255,255,255,0.06)' }}>
-                        {CAT_CFG[p.category].emoji}
+                        <CatIcon cat={p.category} size={22} color="#fff"/>
                       </div>
                     ))}
                   </div>
@@ -864,7 +884,7 @@ const Catalog = ({
                       style={{ background:C.l1, border:`1px solid ${C.brd}` }}>
                       <div className="h-24 flex items-center justify-center"
                         style={{ background:`${CAT_CFG[p.category].color}08` }}>
-                        <span className="text-4xl">{CAT_CFG[p.category].emoji}</span>
+                        <CatIcon cat={p.category} size={36}/>
                       </div>
                       <div className="p-2">
                         <p className="text-[11px] font-semibold line-clamp-2 leading-tight" style={{ color:C.t1 }}>
@@ -894,7 +914,7 @@ const Catalog = ({
               style={{ background:category===k?`${v.color}20`:'transparent',
                 color:category===k?v.color:C.t3,
                 border:`1px solid ${category===k?v.color+'40':C.brd}` }}>
-              {v.emoji} {v.label}
+              <v.Icon size={12}/> {v.label}
             </button>
           ))}
         </div>
@@ -973,9 +993,9 @@ const Checkout = ({ cart, onDone }: { cart: ReturnType<typeof useCart>; onDone: 
   if (done) return (
     <div className="flex flex-col items-center justify-center gap-5 h-full px-6">
       <motion.div initial={{ scale:0 }} animate={{ scale:1 }} transition={{ type:'spring' }}
-        className="grid h-20 w-20 place-items-center rounded-3xl text-4xl"
+        className="grid h-20 w-20 place-items-center rounded-3xl"
         style={{ background:'rgba(0,220,90,0.1)', border:'1px solid rgba(0,220,90,0.25)' }}>
-        ✓
+        <Check size={38} style={{ color:C.green }}/>
       </motion.div>
       <div className="text-center">
         <p className="text-xl font-bold" style={{ color:C.t1 }}>Заказ оформлен!</p>
@@ -984,8 +1004,11 @@ const Checkout = ({ cart, onDone }: { cart: ReturnType<typeof useCart>; onDone: 
           <div className="mt-3 w-full max-w-xs space-y-1.5">
             {[...new Map(placedOrders.map(o => [o.deliveryCompanyId, o])).values()].map(o => (
               <div key={o.deliveryCompanyId} className="flex items-center justify-between rounded-xl px-3 py-2 text-xs" style={{ background:C.l1, border:`1px solid ${C.brd}` }}>
-                <span style={{ color:C.t2 }}>
-                  {o.deliverySource === 'seller' ? '🏪' : o.deliverySource === 'skymarket' ? '📦' : '🚚'} {o.deliveryCompanyName}
+                <span className="flex items-center gap-1.5" style={{ color:C.t2 }}>
+                  {o.deliverySource === 'seller'
+                    ? <Store size={12}/>
+                    : o.deliverySource === 'skymarket' ? <Package size={12}/> : <Truck size={12}/>}
+                  {o.deliveryCompanyName}
                 </span>
                 <span className="font-bold" style={{ color:C.t1 }}>{fmt(o.deliveryPrice ?? 0)}</span>
               </div>
@@ -1006,7 +1029,7 @@ const Checkout = ({ cart, onDone }: { cart: ReturnType<typeof useCart>; onDone: 
         {cart.items.map(({ product:p, qty }) => (
           <div key={p.id} className="flex items-center gap-3 rounded-xl p-3"
             style={{ background:C.l1, border:`1px solid ${C.brd}` }}>
-            <span className="text-2xl">{CAT_CFG[p.category].emoji}</span>
+            <CatIcon cat={p.category} size={24}/>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold truncate" style={{ color:C.t1 }}>{p.title}</p>
               <p className="text-xs" style={{ color:C.t3 }}>{qty} шт × {fmt(p.price)}</p>
@@ -1163,9 +1186,9 @@ const ProductForm = ({
               className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
               style={{background:C.l2,border:`1px solid ${C.brd}`,color:C.t1}}>
               <option value="">Без бейджа</option>
-              <option value="ХИТ">🔥 ХИТ</option>
-              <option value="NEW">✨ NEW</option>
-              <option value="ЛИМ">💎 Лимитированный</option>
+              <option value="ХИТ">ХИТ</option>
+              <option value="NEW">NEW</option>
+              <option value="ЛИМ">Лимитированный</option>
             </select>
           </div>
         </div>
@@ -1175,7 +1198,7 @@ const ProductForm = ({
             className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
             style={{background:C.l2,border:`1px solid ${C.brd}`,color:C.t1}}>
             {Object.entries(CAT_CFG).map(([k,v])=>(
-              <option key={k} value={k}>{v.emoji} {v.label}</option>
+              <option key={k} value={k}>{v.label}</option>
             ))}
           </select>
         </div>
@@ -1277,7 +1300,7 @@ const SellerProducts = ({sellerId}:{sellerId:string}) => {
                     style={{background:`${cat.color}10`}}>
                     {p.images[0]
                       ? <img src={p.images[0]} alt="" className="h-full w-full object-cover rounded-xl"/>
-                      : <span className="text-2xl">{cat.emoji}</span>}
+                      : <CatIcon cat={p.category} size={24}/>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -1424,7 +1447,9 @@ const SellerOrders = ({sellerId}:{sellerId:string}) => {
                     <p className="text-xs mt-0.5" style={{color:C.t3}}>
                       {o.quantity} шт · <span className="font-bold" style={{color:C.t2}}>{fmt(o.total)}</span>
                     </p>
-                    <p className="text-[10px] mt-0.5" style={{color:C.t3}}>📍 {o.address}</p>
+                    <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{color:C.t3}}>
+                      <MapPin size={10} className="shrink-0"/> {o.address}
+                    </p>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-xs font-black" style={{color:C.green}}>+{fmt(Math.round(o.total*0.95))}</p>
@@ -1564,7 +1589,7 @@ const SellerAnalytics = ({seller,sellerId}:{seller:SellerProfile;sellerId:string
                 <span className="text-xs font-black w-5 shrink-0 text-center" style={{color:C.t3}}>
                   {i+1}
                 </span>
-                <span className="text-xl shrink-0">{CAT_CFG[p.category].emoji}</span>
+                <span className="shrink-0"><CatIcon cat={p.category} size={20}/></span>
                 <p className="flex-1 text-xs font-semibold truncate" style={{color:C.t1}}>{p.title}</p>
                 <div className="text-right shrink-0">
                   <p className="text-xs font-black" style={{color:C.green}}>{fmt(p.revenue)}</p>
@@ -1585,7 +1610,9 @@ const SellerAnalytics = ({seller,sellerId}:{seller:SellerProfile;sellerId:string
           </div>
           {wdDone ? (
             <div className="rounded-xl p-3 text-center" style={{background:'rgba(0,220,90,0.08)',border:'1px solid rgba(0,220,90,0.2)'}}>
-              <p className="text-xs font-semibold" style={{color:C.green}}>✓ {wdDone}</p>
+              <p className="text-xs font-semibold flex items-center justify-center gap-1.5" style={{color:C.green}}>
+                <Check size={13}/> {wdDone}
+              </p>
               <button type="button" onClick={()=>setWdDone('')}
                 className="text-xs mt-1" style={{color:C.acc}}>Вывести ещё</button>
             </div>
@@ -1650,9 +1677,9 @@ const SellerSettings = ({seller}:{seller:SellerProfile}) => {
             </span>
           </div>
           <div className="flex items-center gap-3 mt-3 pt-3" style={{borderTop:`1px solid ${C.brd}`}}>
-            <span className="text-[10px] px-2 py-1 rounded-full font-semibold"
+            <span className="text-[10px] px-2 py-1 rounded-full font-semibold inline-flex items-center gap-1.5"
               style={{background:'rgba(0,220,90,0.12)',color:C.green}}>
-              ● Активен
+              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{background:C.green}}/> Активен
             </span>
             <span className="text-[10px]" style={{color:C.t3}}>
               Работает с {fmtTs(seller.createdAt)}
@@ -1681,7 +1708,9 @@ const SellerSettings = ({seller}:{seller:SellerProfile}) => {
           style={{background:saved?'rgba(0,220,90,0.15)':C.acc,
             color:saved?C.green:'#fff',
             border:saved?`1px solid rgba(0,220,90,0.3)`:'none'}}>
-          {saved ? '✓ Сохранено' : 'Сохранить изменения'}
+          {saved
+            ? <span className="inline-flex items-center justify-center gap-1.5"><Check size={14}/> Сохранено</span>
+            : 'Сохранить изменения'}
         </motion.button>
       </div>
 
@@ -1828,7 +1857,9 @@ const SellerAdsPanel = ({ seller }: { seller: any }) => {
         </div>
       )}
       {done && <div className="mt-3 rounded-2xl p-3 text-center" style={{background:'rgba(0,220,90,0.08)',border:'1px solid rgba(0,220,90,0.2)'}}>
-        <p className="text-xs font-semibold" style={{color:C.green}}>✓ {done}</p>
+        <p className="text-xs font-semibold flex items-center justify-center gap-1.5" style={{color:C.green}}>
+          <Check size={13}/> {done}
+        </p>
       </div>}
       <div className="mt-4 space-y-2">
         <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{color:C.t3}}>Тарифы</p>
@@ -1889,8 +1920,10 @@ const SellerDashboard = ({seller}:{seller:SellerProfile}) => {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold truncate" style={{color:C.t1}}>{seller.shopName}</p>
             <div className="flex items-center gap-2">
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold"
-                style={{background:'rgba(0,220,90,0.12)',color:C.green}}>● Активен</span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold inline-flex items-center gap-1"
+                style={{background:'rgba(0,220,90,0.12)',color:C.green}}>
+                <span className="inline-block h-1 w-1 rounded-full" style={{background:C.green}}/> Активен
+              </span>
               <Stars rating={seller.rating} size={10}/>
             </div>
           </div>

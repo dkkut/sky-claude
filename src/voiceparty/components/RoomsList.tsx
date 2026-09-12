@@ -22,7 +22,7 @@ export const RoomsList = ({ onOpenRoom, onCreate }: { onOpenRoom: (id: string) =
     <motion.button type="button" whileTap={{ scale: 0.97 }} onClick={() => onOpenRoom(r.id)}
       className="w-full rounded-2xl p-3.5 text-left" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
       <div className="flex items-center gap-2">
-        <span className="text-lg">{CATEGORY_ICON[r.category]}</span>
+        {(() => { const Icon = CATEGORY_ICON[r.category]; return <Icon size={17} style={{ color:'var(--t2)' }}/>; })()}
         <p className="min-w-0 flex-1 truncate text-[13.5px] font-bold" style={{ color: 'var(--t1)' }}>{r.title}</p>
         {!r.scheduledFor && (
           <span className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white" style={{ background: 'var(--red)' }}>
@@ -82,7 +82,7 @@ export const RoomsList = ({ onOpenRoom, onCreate }: { onOpenRoom: (id: string) =
               {CATS.map(c => (
                 <button key={c} type="button" onClick={() => setCat(c)}
                   className="shrink-0 rounded-xl px-3 py-1.5 text-[12px] font-semibold" style={{ background: cat === c ? 'var(--accent)' : 'var(--bg-l1)', color: cat === c ? '#fff' : 'var(--t2)', border: '1px solid var(--border)' }}>
-                  {CATEGORY_ICON[c]} {CATEGORY_LABEL[c]}
+                  {(() => { const Icon = CATEGORY_ICON[c]; return <Icon size={12} className="inline-block -mt-0.5 mr-1"/>; })()}{CATEGORY_LABEL[c]}
                 </button>
               ))}
             </div>

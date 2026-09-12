@@ -7,7 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, X, Play, Pause, SkipForward,
   Heart, Plus, MoreHorizontal, ChevronLeft,
-  ListMusic, Upload, History, BarChart3, Music2, Mic2, Download, CheckCircle, Crown, ArrowDownToLine
+  ListMusic, Upload, History, BarChart3, Music2, Mic2, Download, CheckCircle, Crown, ArrowDownToLine,
+  Sparkles, Flame, Star, Check, Clock, Film
 } from 'lucide-react';
 import { saveDownloadFromDataUrl, isDownloaded } from '@/offline/offlineDB';
 import { loadAudioUrl } from '@/platform/audioDB';
@@ -472,7 +473,7 @@ const HomeTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, 
 
   if (pub.length === 0) return (
     <div className="flex flex-col items-center justify-center h-full gap-4 pb-8">
-      <div className="text-6xl opacity-20">🎵</div>
+      <Music2 size={56} className="opacity-20" style={{ color: YM.sub }}/>
       <p className="text-sm font-semibold" style={{ color: YM.sub }}>Пока нет треков</p>
       <p className="text-xs" style={{ color: YM.sub2 }}>Загрузите первый трек во вкладке «Загрузить»</p>
     </div>
@@ -575,18 +576,18 @@ const HomeTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, 
       {/* ── QUICK PLAYLISTS ──────────────────────────────────────────────── */}
       <div className="flex gap-2.5 px-3 mb-5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {[
-          { label: 'Для вас',    sub: 'Персональная',  pool: top,   icon: '✦', color: '#a855f7' },
-          { label: 'В тренде',  sub: `${top.length} треков`,  pool: top,   icon: '🔥', color: '#f43f5e' },
-          { label: 'Новинки',   sub: 'Свежие треки',   pool: fresh, icon: '🌟', color: '#22d3ee' },
-          { label: 'Любимые',   sub: 'Мои треки',      pool: tracks.filter(t => favorites.includes(t.id)), icon: '❤️', color: '#ec4899' },
+          { label: 'Для вас',    sub: 'Персональная',  pool: top,   Icon: Sparkles, color: '#a855f7' },
+          { label: 'В тренде',  sub: `${top.length} треков`,  pool: top,   Icon: Flame,    color: '#f43f5e' },
+          { label: 'Новинки',   sub: 'Свежие треки',   pool: fresh, Icon: Star,     color: '#22d3ee' },
+          { label: 'Любимые',   sub: 'Мои треки',      pool: tracks.filter(t => favorites.includes(t.id)), Icon: Heart, color: '#ec4899' },
         ].map(item => (
           <motion.button key={item.label} type="button" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
             onClick={() => item.pool[0] && onPlay(item.pool[0], item.pool)}
             className="shrink-0 flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-left"
             style={{ background: YM.card, border: '1px solid rgba(255,255,255,0.06)', minWidth: 170, cursor: 'pointer' }}>
-            <div className="h-10 w-10 rounded-xl shrink-0 grid place-items-center text-xl"
+            <div className="h-10 w-10 rounded-xl shrink-0 grid place-items-center"
               style={{ background: `${item.color}22`, border: `1px solid ${item.color}30` }}>
-              {item.icon}
+              <item.Icon size={18} style={{ color: item.color }}/>
             </div>
             <div className="min-w-0">
               <p className="text-sm font-bold truncate" style={{ color: YM.text }}>{item.label}</p>
@@ -645,7 +646,9 @@ const HomeTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, 
                   <div className="px-3 py-2.5">
                     <p className="text-xs font-bold truncate" style={{ color: YM.text }}>{t.title}</p>
                     <p className="text-[11px] truncate mt-0.5" style={{ color: YM.sub2 }}>{t.artist}</p>
-                    <p className="text-[10px] mt-1 font-semibold" style={{ color: YM.sub2 }}>▶ {t.plays.toLocaleString('ru')}</p>
+                    <p className="text-[10px] mt-1 font-semibold flex items-center gap-1" style={{ color: YM.sub2 }}>
+                      <Play size={9} fill="currentColor"/> {t.plays.toLocaleString('ru')}
+                    </p>
                   </div>
                 </motion.div>
               );
@@ -899,7 +902,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
     <div className="flex flex-col items-center justify-center h-full gap-5 px-6">
       <motion.div initial={{scale:0}} animate={{scale:1}} transition={{type:'spring',stiffness:300}}>
         <div className="grid h-20 w-20 place-items-center rounded-full" style={{ background: 'rgba(168,85,247,0.15)', border: '2px solid rgba(168,85,247,0.3)' }}>
-          <span className="text-4xl">🎵</span>
+          <Music2 size={36} style={{ color: YM.accent }}/>
         </div>
       </motion.div>
       <div className="text-center">
@@ -929,7 +932,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
               <div className="flex items-center gap-1.5">
                 <div className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-black"
                   style={{ background: step === s ? YM.accent : step === 'lyrics' && s === 'meta' ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.08)', color: step === s ? '#fff' : step === 'lyrics' && s === 'meta' ? YM.accent : YM.sub2 }}>
-                  {step === 'lyrics' && s === 'meta' ? '✓' : i + 1}
+                  {step === 'lyrics' && s === 'meta' ? <Check size={11}/> : i + 1}
                 </div>
                 <span className="text-xs font-semibold" style={{ color: step === s ? YM.text : YM.sub2 }}>
                   {s === 'meta' ? 'Инфо' : 'Текст и тайм-коды'}
@@ -976,7 +979,11 @@ const UploadTab = ({ playing, activeId, onPlay }: {
             <div className="flex-1 min-w-0">
               <p className="text-xs font-bold truncate text-white">{pFile?.name}</p>
               <p className="text-[11px]" style={{ color: YM.sub2 }}>{fmt(pDur)} · {((pFile?.size ?? 0)/1024/1024).toFixed(1)} MB</p>
-              {tagsDetected && <p className="text-[10.5px] font-medium" style={{ color: YM.accent }}>✓ Метаданные найдены автоматически</p>}
+              {tagsDetected && (
+                <p className="text-[10.5px] font-medium flex items-center gap-1" style={{ color: YM.accent }}>
+                  <Check size={11}/> Метаданные найдены автоматически
+                </p>
+              )}
             </div>
             <button type="button" onClick={() => { setPFile(null); setPUrl(null); setStep('drop'); }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: YM.sub2 }}>
@@ -1095,7 +1102,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                 <div className="rounded-xl px-3 py-2 mb-3"
                   style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.14)' }}>
                   <p className="text-[11px]" style={{ color: YM.sub2, lineHeight: '1.5' }}>
-                    Воспроизведите трек → нажмите <strong style={{ color: YM.sub }}>«⏱ Взять»</strong> напротив строки в нужный момент. Или введите время вручную.
+                    Воспроизведите трек → нажмите <strong style={{ color: YM.sub }}>«Взять»</strong> напротив строки в нужный момент. Или введите время вручную.
                   </p>
                 </div>
 
@@ -1149,7 +1156,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                           }}
                         />
 
-                        {/* ⏱ Grab current time */}
+                        {/* Взять текущее время */}
                         <motion.button
                           whileTap={{ scale: 0.88 }}
                           type="button"
@@ -1274,7 +1281,9 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                         {t.syncedLyrics && t.syncedLyrics.length > 0 && (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${lyricsStatusColor}18`, color: lyricsStatusColor || YM.sub2, border: `1px solid ${lyricsStatusColor}30` }}>
                             {t.syncedLyrics.length} тайм-кодов
-                            {t.lyricsStatus === 'approved' ? ' ✓' : t.lyricsStatus === 'pending' ? ' ⏳' : t.lyricsStatus === 'rejected' ? ' ✗' : ''}
+                            {t.lyricsStatus === 'approved' ? <Check size={10}/>
+                              : t.lyricsStatus === 'pending' ? <Clock size={10}/>
+                              : t.lyricsStatus === 'rejected' ? <X size={10}/> : null}
                           </span>
                         )}
                       </div>
@@ -1377,7 +1386,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                                     style={{ background: hasTime ? 'rgba(168,85,247,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${hasTime ? 'rgba(168,85,247,0.25)' : 'rgba(255,255,255,0.08)'}`, color: hasTime ? YM.accent : YM.sub2 }}
                                   />
 
-                                  {/* ⏱ Grab from main player */}
+                                  {/* Взять время из главного плеера */}
                                   <motion.button whileTap={{ scale: 0.85 }} type="button"
                                     title={`Взять ${fmt(playing && activeId ? 0 : 0)} из плеера`}
                                     onClick={() => {
@@ -1535,7 +1544,7 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
     setDone(true);
   };
 
-  const icon  = service === 'music' ? '🎵' : '🎬';
+  const Icon  = service === 'music' ? Music2 : Film;
   const label = service === 'music' ? 'Sky Music' : 'Sky Film';
 
   if (done) return (
@@ -1544,7 +1553,7 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
         transition={{ type:'spring', stiffness:400, damping:20 }}
         className="grid h-20 w-20 place-items-center rounded-full"
         style={{ background:'linear-gradient(135deg,#f59e0b,#fbbf24)', boxShadow:'0 12px 40px rgba(245,158,11,0.4)' }}>
-        <span style={{ fontSize:36 }}>👑</span>
+        <Crown size={36} className="text-white"/>
       </motion.div>
       <div className="text-center">
         <p className="text-xl font-black text-white">Sky Prime активен!</p>
@@ -1559,9 +1568,9 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
     <div className="flex flex-col items-center justify-center h-full px-5 py-6 gap-5">
       {/* Icon */}
       <div className="relative">
-        <div className="grid h-20 w-20 place-items-center rounded-3xl text-4xl"
+        <div className="grid h-20 w-20 place-items-center rounded-3xl"
           style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)' }}>
-          {icon}
+          <Icon size={36} style={{ color:'var(--t2)' }}/>
         </div>
         <div className="absolute -top-2 -right-2 grid h-8 w-8 place-items-center rounded-full"
           style={{ background:'linear-gradient(135deg,#f59e0b,#fbbf24)' }}>
@@ -1636,7 +1645,11 @@ const PrimeGate = ({ service }: { service: 'music' | 'film' }) => {
       <motion.button whileTap={{ scale:0.97 }} type="button" onClick={() => void buy()} disabled={busy}
         className="w-full max-w-xs rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-50"
         style={{ background:'linear-gradient(135deg,#f59e0b,#fbbf24)', boxShadow:'0 8px 28px rgba(245,158,11,0.35)' }}>
-        {busy ? 'Оформляем…' : `👑 Оформить Prime за ${PRICES[chosen].toLocaleString('ru')} ₽`}
+        {busy ? 'Оформляем…' : (
+          <span className="inline-flex items-center justify-center gap-2">
+            <Crown size={15}/> Оформить Prime за {PRICES[chosen].toLocaleString('ru')} ₽
+          </span>
+        )}
       </motion.button>
 
       <p className="text-xs text-center" style={{ color:'var(--t3)' }}>
@@ -1765,7 +1778,9 @@ const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLi
           onClick={onOpen}>
           {track.coverUrl
             ? <img src={track.coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', fontSize: 18 }}>🎵</div>}
+            : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
+                <Music2 size={18} color="rgba(255,255,255,0.7)"/>
+              </div>}
         </div>
 
         {/* Info */}

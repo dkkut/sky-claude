@@ -8,7 +8,10 @@
 =============================================================== */
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, X, Loader, ChevronDown, ChevronUp, Lock, Languages } from 'lucide-react';
+import {
+  Sparkles, X, Loader, ChevronDown, ChevronUp, Lock, Languages,
+  MessageCircle, FileText, Globe, Crown, AlertTriangle,
+} from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 
 const C = {
@@ -158,7 +161,7 @@ export const AiTranscribeButton = ({ duration, msgId }: AiTranscribeProps) => {
         style={{ background:`${C.accent}12`, border:`1px solid ${C.border}`, color:C.accent }}>
         {loading
           ? <><Loader size={10} className="animate-spin"/> Расшифровываю...</>
-          : <><Sparkles size={10}/> Расшифровать {open ? '▲' : '▼'}</>
+          : <><Sparkles size={10}/> Расшифровать {open ? <ChevronUp size={10}/> : <ChevronDown size={10}/>}</>
         }
       </button>
       <AnimatePresence>
@@ -290,7 +293,7 @@ export const AiVideoSummarize = ({ title, description, duration, tags, category 
         style={{ background:`${C.accent}15`, border:`1px solid ${C.border}`, color:C.accent }}>
         {loading
           ? <><Loader size={13} className="animate-spin"/> Анализирую видео...</>
-          : <><Sparkles size={13}/> AI-пересказ видео {open ? '▲' : '▼'}</>
+          : <><Sparkles size={13}/> AI-пересказ видео {open ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}</>
         }
       </button>
       <AnimatePresence>
@@ -524,7 +527,7 @@ export const SkyAITab = () => {
   const isPrime = me?.isPrime ?? false;
 
   const [input,   setInput]   = useState('');
-  const [history, setHistory] = useState<{ role: 'user' | 'ai'; text: string }[]>([]);
+  const [history, setHistory] = useState<{ role: 'user' | 'ai'; text: string; error?: boolean }[]>([]);
   const [loading, setLoading] = useState(false);
   const [mode,    setMode]    = useState<'chat' | 'summary' | 'translate'>('chat');
   const listRef = useRef<HTMLDivElement>(null);
@@ -534,9 +537,9 @@ export const SkyAITab = () => {
   }, [history, loading]);
 
   const MODES = [
-    { key: 'chat',      label: '💬 Чат',      desc: 'Свободный диалог' },
-    { key: 'summary',   label: '📝 Резюме',   desc: 'Краткий пересказ' },
-    { key: 'translate', label: '🌍 Перевод',  desc: 'Текст → Русский'  },
+    { key: 'chat',      label: 'Чат',      Icon: MessageCircle, desc: 'Свободный диалог' },
+    { key: 'summary',   label: 'Резюме',   Icon: FileText,      desc: 'Краткий пересказ' },
+    { key: 'translate', label: 'Перевод',  Icon: Globe,         desc: 'Текст → Русский'  },
   ] as const;
 
   const run = async () => {
@@ -554,7 +557,7 @@ export const SkyAITab = () => {
       const result = await callAI(prompts[mode] ?? text, 600);
       setHistory(h => [...h, { role: 'ai', text: result }]);
     } catch (e: any) {
-      setHistory(h => [...h, { role: 'ai', text: `⚠️ Ошибка: ${e?.message ?? 'Не удалось получить ответ'}` }]);
+      setHistory(h => [...h, { role: 'ai', error: true, text: `Ошибка: ${e?.message ?? 'Не удалось получить ответ'}` }]);
     }
     setLoading(false);
   };
@@ -565,7 +568,7 @@ export const SkyAITab = () => {
         <div className="flex items-center gap-2.5">
           <div className="grid h-8 w-8 place-items-center rounded-xl"
             style={{ background: 'linear-gradient(135deg,#a855f7,#6366f1)' }}>
-            <span style={{ fontSize: 16 }}>✦</span>
+            <Sparkles size={16} className="text-white"/>
           </div>
           <div>
             <h2 className="text-sm font-black" style={{ color: 'var(--t1)' }}>Sky AI</h2>
@@ -575,7 +578,7 @@ export const SkyAITab = () => {
         {!isPrime && (
           <span className="text-xs font-bold px-2.5 py-1 rounded-full"
             style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.2)' }}>
-            👑 Только Prime
+            <span className="inline-flex items-center gap-1"><Crown size={12}/> Только Prime</span>
           </span>
         )}
       </div>
@@ -589,7 +592,7 @@ export const SkyAITab = () => {
               border: `1px solid ${mode === m.key ? 'rgba(168,85,247,0.3)' : 'var(--border)'}`,
               cursor: 'pointer',
             }}>
-            {m.label}
+            <span className="inline-flex items-center gap-1.5"><m.Icon size={12}/> {m.label}</span>
           </button>
         ))}
       </div>
@@ -598,7 +601,7 @@ export const SkyAITab = () => {
         {history.length === 0 && (
           <div className="grid place-items-center h-full py-12 text-center">
             <div>
-              <div className="text-5xl mb-4">✦</div>
+              <Sparkles size={46} className="mx-auto mb-4" style={{ color: '#a855f7' }}/>
               <p className="text-sm font-bold mb-1" style={{ color: 'var(--t1)' }}>
                 {MODES.find(m => m.key === mode)?.label}
               </p>
@@ -619,7 +622,7 @@ export const SkyAITab = () => {
             {msg.role === 'ai' && (
               <div className="grid h-7 w-7 place-items-center rounded-xl shrink-0 mr-2 mt-0.5"
                 style={{ background: 'linear-gradient(135deg,#a855f7,#6366f1)' }}>
-                <span style={{ fontSize: 12 }}>✦</span>
+                <Sparkles size={12} className="text-white"/>
               </div>
             )}
             <div className="max-w-[78%] rounded-2xl px-4 py-2.5"
@@ -627,8 +630,9 @@ export const SkyAITab = () => {
                 background: msg.role === 'user' ? 'var(--accent)' : 'var(--bg-l2)',
                 border: msg.role === 'ai' ? '1px solid var(--border)' : 'none',
               }}>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap"
-                style={{ color: msg.role === 'user' ? '#fff' : 'var(--t1)' }}>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap flex items-start gap-1.5"
+                style={{ color: msg.error ? 'var(--red)' : msg.role === 'user' ? '#fff' : 'var(--t1)' }}>
+                {msg.error && <AlertTriangle size={14} className="shrink-0 mt-0.5"/>}
                 {msg.text}
               </p>
             </div>
@@ -638,7 +642,7 @@ export const SkyAITab = () => {
           <div className="flex items-end gap-2">
             <div className="grid h-7 w-7 place-items-center rounded-xl shrink-0"
               style={{ background: 'linear-gradient(135deg,#a855f7,#6366f1)' }}>
-              <span style={{ fontSize: 12 }}>✦</span>
+              <Sparkles size={12} className="text-white"/>
             </div>
             <div className="rounded-2xl px-4 py-3 flex gap-1 items-center"
               style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>

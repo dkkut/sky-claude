@@ -44,7 +44,7 @@ export const CreateRoom = ({ onBack, onCreated }: { onBack: () => void; onCreate
             {CATS.map(c => (
               <button key={c} type="button" onClick={() => setCategory(c)}
                 className="rounded-xl px-3 py-2 text-[12.5px] font-semibold" style={{ background: category === c ? 'var(--accent)' : 'var(--bg-l1)', color: category === c ? '#fff' : 'var(--t2)', border: '1px solid var(--border)' }}>
-                {CATEGORY_ICON[c]} {CATEGORY_LABEL[c]}
+                {(() => { const Icon = CATEGORY_ICON[c]; return <Icon size={13}/>; })()} {CATEGORY_LABEL[c]}
               </button>
             ))}
           </div>

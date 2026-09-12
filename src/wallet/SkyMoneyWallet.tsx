@@ -154,7 +154,7 @@ const SpendingStats = ({ txs }: { txs: ReturnType<typeof useMoney.getState>['tra
 
 /* -- Recent Transactions ------------------------------------------- */
 const TxItem = ({ tx }: { tx: ReturnType<typeof useMoney.getState>['transactions'][0] }) => {
-  const icon  = TX_ICON[tx.type];
+  const Icon  = TX_ICON[tx.type];
   const label = TX_LABEL[tx.type];
   const plus  = tx.amount > 0;
   const d = new Date(tx.createdAt);
@@ -162,10 +162,10 @@ const TxItem = ({ tx }: { tx: ReturnType<typeof useMoney.getState>['transactions
 
   return (
     <div className="flex items-center gap-3 py-3" style={{ borderBottom:`1px solid ${C.border}` }}>
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-lg"
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl"
         style={{ background: plus ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.04)',
           border: `1px solid ${plus ? 'rgba(52,211,153,0.2)' : C.border}` }}>
-        {icon}
+        <Icon size={18} style={{ color: plus ? C.green : C.t2 }}/>
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold truncate" style={{ color:C.t1 }}>{label}</p>

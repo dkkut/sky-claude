@@ -2,14 +2,32 @@
    VOICE PARTY  —  типы
 =========================================================== */
 
+import {
+  MessageCircle, Gamepad2, BookOpen, Headphones, Briefcase, Megaphone,
+} from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
+
 export type VPRole = 'owner'|'admin'|'moderator'|'speaker'|'listener';
 export type VPCategory = 'interests'|'gaming'|'study'|'music'|'business'|'public';
 
 export const CATEGORY_LABEL: Record<VPCategory,string> = {
   interests:'По интересам', gaming:'Игровая', study:'Учебная', music:'Музыкальная вечеринка', business:'Бизнес-встреча', public:'Публичное мероприятие',
 };
-export const CATEGORY_ICON: Record<VPCategory,string> = {
-  interests:'💬', gaming:'🎮', study:'📚', music:'🎧', business:'💼', public:'📣',
+/**
+ * Значок категории комнаты.
+ *
+ * Раньше здесь стояла эмодзи, а рисует её шрифт устройства — на
+ * телефоне, на компьютере и на телевизоре выходили разные картинки,
+ * и подогнать их цвет под тему было нельзя. Теперь берём значок из
+ * набора приложения.
+ */
+export const CATEGORY_ICON: Record<VPCategory,IconComponent> = {
+  interests: MessageCircle,
+  gaming:    Gamepad2,
+  study:     BookOpen,
+  music:     Headphones,
+  business:  Briefcase,
+  public:    Megaphone,
 };
 
 export interface VPParticipant {

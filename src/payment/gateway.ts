@@ -6,6 +6,8 @@
    одной строкой  -  заменить execute() в GatewayProvider.
 =============================================================== */
 import { create } from 'zustand';
+import { CreditCard, Globe, Zap, Wallet } from 'lucide-react';
+import type { IconComponent } from '@/shared/icon';
 
 /* -- Типы ------------------------------------------------------ */
 export type PayProvider  = 'skypay_card' | 'skypay_intl' | 'skypay_sbp' | 'skypay_paypal';
@@ -53,7 +55,7 @@ export interface CardData {
 interface ProviderConfig {
   id:       PayProvider;
   label:    string;
-  icon:     string;
+  Icon:     IconComponent;
   feeRate:  number;   // 0..1
   minFee:   number;   // минимальная комиссия ₽
   enabled:  boolean;
@@ -61,10 +63,10 @@ interface ProviderConfig {
 }
 
 export const PROVIDERS: ProviderConfig[] = [
-  { id:'skypay_card',   label:'Карта РФ',          icon:'💳', feeRate:0,     minFee:0,  enabled:true  },
-  { id:'skypay_intl',   label:'Зарубежная карта',   icon:'🌍', feeRate:0.015, minFee:10, enabled:true  },
-  { id:'skypay_sbp',    label:'СБП',               icon:'⚡', feeRate:0,     minFee:0,  enabled:true  },
-  { id:'skypay_paypal', label:'PayPal',             icon:'🅿', feeRate:0.025, minFee:15, enabled:true  },
+  { id:'skypay_card',   label:'Карта РФ',          Icon:CreditCard, feeRate:0,     minFee:0,  enabled:true  },
+  { id:'skypay_intl',   label:'Зарубежная карта',   Icon:Globe,      feeRate:0.015, minFee:10, enabled:true  },
+  { id:'skypay_sbp',    label:'СБП',               Icon:Zap,        feeRate:0,     minFee:0,  enabled:true  },
+  { id:'skypay_paypal', label:'PayPal',             Icon:Wallet,     feeRate:0.025, minFee:15, enabled:true  },
 ];
 
 /* -- Gateway Provider Interface (заменить на реальный в prod) -- */

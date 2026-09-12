@@ -48,7 +48,10 @@ export const RoomView = ({ roomId, onLeave }: { roomId: string; onLeave: () => v
         <div className="flex items-center gap-3">
           <button type="button" onClick={leave} className="rounded-full p-1.5" style={{ background: 'rgba(255,255,255,0.08)' }}><ArrowLeft size={16} className="text-white"/></button>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[14.5px] font-bold text-white">{CATEGORY_ICON[room.category]} {room.title}</p>
+            <p className="flex items-center gap-1.5 truncate text-[14.5px] font-bold text-white">
+              {(() => { const Icon = CATEGORY_ICON[room.category]; return <Icon size={14} className="shrink-0"/>; })()}
+              <span className="truncate">{room.title}</span>
+            </p>
             <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.5)' }}>{room.participants.length} участников · {CATEGORY_LABEL[room.category]}</p>
           </div>
           {isMod && (
