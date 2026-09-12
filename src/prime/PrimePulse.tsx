@@ -3,13 +3,16 @@
 =============================================================== */
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Zap, Gift, Star, Copy, Check, Clock, ChevronRight, Sparkles } from 'lucide-react';
+import {
+  Zap, Gift, Star, Copy, Check, Clock, ChevronRight, Sparkles,
+  PawPrint, Palette, Music2, Gamepad2, Film, Package, BookOpen, Trophy, Crown, Globe, ShoppingBag,
+} from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 
 interface PulseOffer {
   id:       string;
   category: 'game' | 'service' | 'promo' | 'fun';
-  icon:     string;
+  Icon:     typeof Star;
   title:    string;
   desc:     string;
   brand:    string;
@@ -21,43 +24,43 @@ interface PulseOffer {
 }
 
 const OFFERS: PulseOffer[] = [
-  { id:'p1', category:'promo', icon:'⭐', title:'Sky Points ×2 — весь месяц',
+  { id:'p1', category:'promo', Icon:Star, title:'Sky Points ×2 — весь месяц',
     desc:'Удвоенное начисление Sky Points за все покупки, подписки и активность в приложении.',
     brand:'Sky', value:'×2 Points', expiresIn:'до конца месяца', isPremium:false,
     color:['var(--amber)','#d97706'] },
-  { id:'p2', category:'game', icon:'🐾', title:'Скин питомца — Ночной Лис',
+  { id:'p2', category:'game', Icon:PawPrint, title:'Скин питомца — Ночной Лис',
     desc:'Эксклюзивный Prime-скин для питомца Sky. Доступен только подписчикам этого месяца.',
     brand:'Sky', code:'PULSE-NFOX25', value:'Бесплатно', expiresIn:'7 дней', isPremium:false,
     color:['#a855f7','#7c3aed'] },
-  { id:'p3', category:'promo', icon:'🎨', title:'−30% на Sky Реклама',
+  { id:'p3', category:'promo', Icon:Palette, title:'−30% на Sky Реклама',
     desc:'Скидка на запуск рекламной кампании в Sky Video и Bloom-ленте для Prime-участников.',
     brand:'Sky Ads', code:'PRIME-ADS30', value:'−30%', expiresIn:'до конца месяца', isPremium:false,
     color:['var(--accent)','#3b55c9'] },
-  { id:'p4', category:'service', icon:'🎵', title:'Sky Music — Premium на месяц',
+  { id:'p4', category:'service', Icon:Music2, title:'Sky Music — Premium на месяц',
     desc:'Бесплатный месяц Sky Music Premium с высоким качеством звука и офлайн-прослушиванием.',
     brand:'Sky Music', code:'PRIME-MUS30', value:'30 дней', expiresIn:'14 дней', isPremium:false,
     color:['#f43f5e','#e11d48'] },
-  { id:'p5', category:'game', icon:'🎮', title:'Sky Gaming — турнирные очки',
+  { id:'p5', category:'game', Icon:Gamepad2, title:'Sky Gaming — турнирные очки',
     desc:'+500 ELO-очков для участия в закрытых Prime-турнирах Sky Gaming.',
     brand:'Sky Gaming', code:'PRIME-GAME500', value:'+500 ELO', expiresIn:'10 дней', isPremium:false,
     color:['#f97316','#ea580c'] },
-  { id:'p6', category:'service', icon:'🎬', title:'Sky Video — Creator Pro',
+  { id:'p6', category:'service', Icon:Film, title:'Sky Video — Creator Pro',
     desc:'Доступ к Sky Video Creator Pro: 4K-загрузка, продвинутая аналитика и монетизация.',
     brand:'Sky Video', code:'PRIME-VID-PRO', value:'Creator Pro', expiresIn:'21 день', isPremium:false,
     color:['#ef4444','#dc2626'] },
-  { id:'p7', category:'fun', icon:'📦', title:'Sky Market — кэшбэк 10%',
+  { id:'p7', category:'fun', Icon:Package, title:'Sky Market — кэшбэк 10%',
     desc:'Кэшбэк 10% Sky Points на все покупки в Sky Market в течение недели.',
     brand:'Sky Market', code:'PRIME-MKT10', value:'10% кэшбэк', expiresIn:'7 дней', isPremium:false,
     color:['#f23c6e','#c2185b'] },
-  { id:'p8', category:'fun', icon:'📚', title:'Sky Books — 5 книг бесплатно',
+  { id:'p8', category:'fun', Icon:BookOpen, title:'Sky Books — 5 книг бесплатно',
     desc:'Любые 5 книг или аудиокниг из каталога Sky Books бесплатно в этом месяце.',
     brand:'Sky Books', code:'PRIME-BOOK5', value:'5 книг', expiresIn:'до конца месяца', isPremium:false,
     color:['#059669','#047857'] },
-  { id:'p9', category:'service', icon:'🏆', title:'Sky Prime Ultra — пробный',
+  { id:'p9', category:'service', Icon:Trophy, title:'Sky Prime Ultra — пробный',
     desc:'3 дня бесплатного доступа к Sky Prime Ultra: все функции, питомец, анимации.',
     brand:'Sky Prime', code:'PRIME-ULTRA3', value:'3 дня Ultra', expiresIn:'5 дней', isPremium:false,
     color:['#fbbf24','#d97706'] },
-  { id:'p10', category:'promo', icon:'👑', title:'Prime в подарок — −20%',
+  { id:'p10', category:'promo', Icon:Crown, title:'Prime в подарок — −20%',
     desc:'Скидка 20% на подарок Sky Prime другу. Сэкономьте и порадуйте близких.',
     brand:'Sky', code:'PRIME-GIFT20', value:'−20%', expiresIn:'12 дней', isPremium:false,
     color:['#8b5cf6','#7c3aed'] },
@@ -69,7 +72,7 @@ const C = {
   t1:'var(--t1)', t2:'var(--t2)', t3:'var(--t3)',
 };
 
-const CAT_LABELS = { game:'🎮 Игры', service:'🌐 Сервисы', promo:'⭐ Sky', fun:'🛍 Партнёры' };
+const CAT_LABELS = { game:'Игры', service:'Сервисы', promo:'Sky', fun:'Партнёры' };
 
 const OfferCard = ({ offer }: { offer: PulseOffer }) => {
   const [copied, setCopied] = useState(false);
@@ -92,7 +95,7 @@ const OfferCard = ({ offer }: { offer: PulseOffer }) => {
           {/* Icon */}
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-2xl"
             style={{ background:`linear-gradient(135deg,${offer.color[0]},${offer.color[1]})` }}>
-            {offer.icon}
+            <offer.Icon size={20} style={{ color:'var(--amber)' }}/>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-1">
@@ -162,7 +165,7 @@ export const PrimePulse = () => {
       style={{ background:C.bg }}>
       <div className="grid h-20 w-20 place-items-center rounded-3xl text-4xl"
         style={{ background:'linear-gradient(135deg,#f59e0b22,#d97706)' }}>
-        ⚡
+          <Zap size={18} style={{ color:'var(--amber)' }}/>
       </div>
       <div className="text-center">
         <p className="text-xl font-black" style={{ color:C.t1 }}>Prime Pulse</p>
@@ -173,7 +176,7 @@ export const PrimePulse = () => {
       <div className="rounded-2xl px-5 py-4 w-full max-w-xs"
         style={{ background:'linear-gradient(135deg,#f59e0b18,#d9770610)', border:'1px solid rgba(245,158,11,0.3)' }}>
         <p className="text-sm font-bold text-center" style={{ color:C.amber }}>
-          ⭐ Оформите Prime в SkyMoney → Кошелёк
+          Оформите Prime в SkyMoney → Кошелёк
         </p>
       </div>
     </div>
@@ -185,18 +188,18 @@ export const PrimePulse = () => {
       <div className="px-4 pt-4 pb-3 shrink-0">
         <div className="flex items-center gap-3 mb-3">
           <div className="grid h-10 w-10 place-items-center rounded-2xl text-2xl"
-            style={{ background:'linear-gradient(135deg,#f59e0b,#d97706)' }}>⚡</div>
+            style={{ background:'linear-gradient(135deg,#f59e0b,#d97706)' }}><Zap size={18} style={{ color:'#fff' }}/></div>
           <div>
             <p className="text-lg font-black" style={{ color:C.t1 }}>Prime Pulse</p>
-            <p className="text-xs" style={{ color:C.amber }}>⭐ {offers.length} предложений для вас</p>
+            <p className="text-xs" style={{ color:C.amber }}>{offers.length} предложений для вас</p>
           </div>
         </div>
 
         {/* Featured banner */}
         <div className="rounded-2xl px-4 py-3 mb-3 relative overflow-hidden"
           style={{ background:'linear-gradient(135deg,#f59e0b22,#d9770615)' }}>
-          <div className="absolute right-3 top-0 bottom-0 flex items-center text-4xl opacity-30">🎁</div>
-          <p className="text-xs font-bold" style={{ color:C.amber }}>🔥 Ограниченное предложение</p>
+          <div className="absolute right-3 top-0 bottom-0 flex items-center opacity-30"><Gift size={34} style={{ color:'#fff' }}/></div>
+          <p className="text-xs font-bold" style={{ color:C.amber }}>Ограниченное предложение</p>
           <p className="text-sm font-black text-white mt-0.5">Баллы Прайма ×2  -  весь месяц</p>
           <p className="text-[10px] mt-0.5" style={{ color:C.t3 }}>Осталось 7 дней</p>
         </div>
@@ -208,7 +211,7 @@ export const PrimePulse = () => {
               className="rounded-full px-3 py-1.5 text-[11px] font-semibold shrink-0 transition-all"
               style={{ background:filter===f?C.amber:'var(--border)',
                 color:filter===f?'#000':C.t3 }}>
-              {f==='all' ? '✨ Все' : CAT_LABELS[f]}
+              {f==='all' ? 'Все' : CAT_LABELS[f]}
             </button>
           ))}
         </div>

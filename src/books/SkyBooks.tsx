@@ -3,7 +3,10 @@
 =============================================================== */
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Headphones, BookOpen, Star, ChevronLeft, Play, Pause, X, BookMarked, Sparkles } from 'lucide-react';
+import {
+  Search, Headphones, BookOpen, Star, ChevronLeft, Play, Pause, X, BookMarked, Sparkles,
+  Library, PenLine, Rocket, Wand2, Drama, Brain, Landmark, Briefcase,
+} from 'lucide-react';
 
 type BookTab = 'home' | 'ebooks' | 'audio' | 'shelf';
 type Genre   = 'all' | 'fiction' | 'scifi' | 'thriller' | 'business' | 'self' | 'history' | 'fantasy';
@@ -15,53 +18,52 @@ interface Book {
   pages?: number; duration?: string;  // audio
   isPrime: boolean; price: number;
   description: string; hasAudio: boolean; hasEbook: boolean;
-  emoji: string;
 }
 
 const BOOKS: Book[] = [
   { id:'b1', title:'Мастер и Маргарита', author:'М. Булгаков', genre:'fiction',
     cover:'#1a1a4e,#4a0080', rating:4.9, reviews:28400, pages:480, duration:'14ч 22м',
     isPrime:false, price:299, description:'Культовый роман о добре и зле, любви и свободе.',
-    hasAudio:true, hasEbook:true, emoji:'🌙' },
+    hasAudio:true, hasEbook:true },
   { id:'b2', title:'Dune', author:'Фрэнк Герберт', genre:'scifi',
     cover:'#3d1c00,#8b4513', rating:4.8, reviews:41200, pages:688, duration:'21ч 08м',
     isPrime:true, price:0, description:'Эпическая сага о планете Арракис и судьбах вселенной.',
-    hasAudio:true, hasEbook:true, emoji:'🏜️' },
+    hasAudio:true, hasEbook:true },
   { id:'b3', title:'Думай медленно, решай быстро', author:'Д. Канеман', genre:'self',
     cover:'#003366,#0066cc', rating:4.7, reviews:19800, pages:499, duration:'19ч 14м',
     isPrime:true, price:0, description:'Нобелевский лауреат о двух системах мышления.',
-    hasAudio:true, hasEbook:true, emoji:'🧠' },
+    hasAudio:true, hasEbook:true },
   { id:'b4', title:'Преступление и наказание', author:'Ф. Достоевский', genre:'fiction',
     cover:'#1a0000,#660000', rating:4.8, reviews:35100, pages:671, duration:'23ч 45м',
     isPrime:false, price:199, description:'Психологический роман о преступлении и искуплении.',
-    hasAudio:true, hasEbook:true, emoji:'⚖️' },
+    hasAudio:true, hasEbook:true },
   { id:'b5', title:'Сапиенс', author:'Ю. Н. Харари', genre:'history',
     cover:'#001a33,#003366', rating:4.6, reviews:52300, pages:512, duration:'15ч 17м',
     isPrime:true, price:0, description:'Краткая история человечества от камня до AI.',
-    hasAudio:true, hasEbook:true, emoji:'🌍' },
+    hasAudio:true, hasEbook:true },
   { id:'b6', title:'Гарри Поттер и Философский камень', author:'Дж. Роулинг', genre:'fantasy',
     cover:'#1a0033,#330066', rating:4.9, reviews:78900, pages:309, duration:'8ч 18м',
     isPrime:false, price:349, description:'Начало легендарной истории о волшебнике.',
-    hasAudio:true, hasEbook:true, emoji:'⚡' },
+    hasAudio:true, hasEbook:true },
   { id:'b7', title:'Атлант расправил плечи', author:'А. Рэнд', genre:'business',
     cover:'#0a0a0a,#1a1a2e', rating:4.5, reviews:12400, pages:1168, duration:'54ч 30м',
     isPrime:true, price:0, description:'Философский роман о свободе и производительности.',
-    hasAudio:false, hasEbook:true, emoji:'🏛️' },
+    hasAudio:false, hasEbook:true },
   { id:'b8', title:'Три товарища', author:'Э. М. Ремарк', genre:'fiction',
     cover:'#1a1a00,#4a4a00', rating:4.8, reviews:24600, pages:448, duration:'13ч 02м',
     isPrime:false, price:249, description:'История дружбы и любви в послевоенной Германии.',
-    hasAudio:true, hasEbook:true, emoji:'🚗' },
+    hasAudio:true, hasEbook:true },
 ];
 
-const GENRES: { key:Genre; label:string; icon:string }[] = [
-  { key:'all',     label:'Все',          icon:'📚' },
-  { key:'fiction', label:'Классика',     icon:'✍️' },
-  { key:'scifi',   label:'Фантастика',   icon:'🚀' },
-  { key:'fantasy', label:'Фэнтези',      icon:'🧙' },
-  { key:'thriller',label:'Триллер',      icon:'🔪' },
-  { key:'business',label:'Бизнес',       icon:'💼' },
-  { key:'self',    label:'Саморазвитие', icon:'🧠' },
-  { key:'history', label:'История',      icon:'🌍' },
+const GENRES: { key:Genre; label:string; Icon:typeof Library }[] = [
+  { key:'all',     label:'Все',          Icon:Library },
+  { key:'fiction', label:'Классика',     Icon:PenLine },
+  { key:'scifi',   label:'Фантастика',   Icon:Rocket },
+  { key:'fantasy', label:'Фэнтези',      Icon:Wand2 },
+  { key:'thriller',label:'Триллер',      Icon:Drama },
+  { key:'business',label:'Бизнес',       Icon:Briefcase },
+  { key:'self',    label:'Саморазвитие', Icon:Brain },
+  { key:'history', label:'История',      Icon:Landmark },
 ];
 
 const B = {
@@ -81,7 +83,8 @@ const BookCard = ({ book, onOpen }: { book:Book; onOpen:()=>void }) => {
       <div className="relative w-full rounded-2xl overflow-hidden"
         style={{ aspectRatio:'2/3', background:`linear-gradient(155deg,${from},${to})` }}>
         <div className="absolute inset-0 flex items-center justify-center text-5xl">
-          {book.emoji}
+          {(() => { const I = GENRES.find(g=>g.key===book.genre)?.Icon ?? BookOpen;
+            return <I size={26} style={{ color:'rgba(255,255,255,0.8)' }}/>; })()}
         </div>
         {/* Prime badge */}
         {book.isPrime && (
@@ -113,7 +116,7 @@ const BookCard = ({ book, onOpen }: { book:Book; onOpen:()=>void }) => {
           <span className="text-[10px] font-semibold" style={{ color:B.t2 }}>{book.rating}</span>
         </div>
         <p className="text-[10px] font-bold mt-1" style={{ color: book.isPrime ? B.amber : B.accent }}>
-          {book.isPrime ? '⭐ Prime' : `${book.price} ₽`}
+          {book.isPrime ? 'Prime' : `${book.price} ₽`}
         </p>
       </div>
     </motion.button>
@@ -167,7 +170,8 @@ const BookDetail = ({ book, onBack }: { book:Book; onBack:()=>void }) => {
               background:`linear-gradient(155deg,${from},${to})`,
               boxShadow:`0 20px 60px ${from}80` }}>
             <div className="absolute inset-0 flex items-center justify-center text-6xl">
-              {book.emoji}
+              {(() => { const I = GENRES.find(g=>g.key===book.genre)?.Icon ?? BookOpen;
+            return <I size={26} style={{ color:'rgba(255,255,255,0.8)' }}/>; })()}
             </div>
           </div>
         </div>
@@ -268,7 +272,7 @@ const BookDetail = ({ book, onBack }: { book:Book; onBack:()=>void }) => {
               </div>
             )}
             <div className="text-xs" style={{ color:B.t3 }}>
-              <span className="font-bold" style={{ color:GENRES.find(g=>g.key===book.genre)?.icon ? B.accent : B.t2 }}>
+              <span className="font-bold" style={{ color:B.accent }}>
                 {GENRES.find(g=>g.key===book.genre)?.label}
               </span>
             </div>
@@ -282,7 +286,7 @@ const BookDetail = ({ book, onBack }: { book:Book; onBack:()=>void }) => {
             ? `linear-gradient(135deg,#f59e0b,#d97706)`
             : `linear-gradient(135deg,${B.accent},#7c3aed)`,
             boxShadow:`0 8px 32px ${book.isPrime?'#f59e0b50':B.accent+'50'}` }}>
-          {book.isPrime ? '⭐ Читать с Prime' : `Купить за ${book.price} ₽`}
+          {book.isPrime ? 'Читать с Prime' : `Купить за ${book.price} ₽`}
         </motion.button>
       </div>
     </motion.div>
@@ -337,12 +341,12 @@ export const SkyBooks = () => {
         </div>
         {/* Tabs */}
         <div className="flex gap-1.5 mb-3">
-          {([['home','📚','Главная'],['ebooks','📖','Электронные'],['audio','🎧','Аудио'],['shelf','🔖','Полка']] as const).map(([k,i,l])=>(
+          {([['home',Library,'Главная'],['ebooks',BookOpen,'Электронные'],['audio',Headphones,'Аудио'],['shelf',BookMarked,'Полка']] as const).map(([k,TabIcon,l])=>(
             <button key={k} type="button" onClick={()=>setTab(k)}
               className="flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all"
               style={{ background:tab===k?B.accent:'var(--border)',
                 color:tab===k?'#fff':B.t3 }}>
-              <span>{i}</span>{l}
+              <TabIcon size={12}/>{l}
             </button>
           ))}
         </div>
@@ -354,7 +358,7 @@ export const SkyBooks = () => {
               style={{ background:genre===g.key?`${B.accent}20`:'rgba(255,255,255,0.05)',
                 border:`1px solid ${genre===g.key?B.accent+'50':'transparent'}`,
                 color:genre===g.key?B.accent:B.t3 }}>
-              {g.icon} {g.label}
+              <g.Icon size={13} className="inline mr-1.5"/>{g.label}
             </button>
           ))}
         </div>
@@ -367,10 +371,10 @@ export const SkyBooks = () => {
             style={{ background:'linear-gradient(135deg,#1a0533,#4a007a)', height:140 }}
             onClick={() => setDetail(BOOKS[2])}>
             <div className="absolute inset-0 flex items-center gap-4 px-5">
-              <div className="text-5xl">{BOOKS[2].emoji}</div>
+              <BookOpen size={44} style={{ color:'rgba(255,255,255,0.8)' }}/>
               <div>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                  style={{ background:'var(--amber)', color:'#000' }}>⭐ PRIME</span>
+                  style={{ background:'var(--amber)', color:'#000' }}>PRIME</span>
                 <p className="text-base font-black text-white mt-1 leading-tight">{BOOKS[2].title}</p>
                 <p className="text-xs mt-0.5" style={{ color:'rgba(255,255,255,0.6)' }}>{BOOKS[2].author}</p>
               </div>
@@ -383,7 +387,7 @@ export const SkyBooks = () => {
       <div className="flex-1 overflow-y-auto px-4 pb-4" style={{ scrollbarWidth:'none' }}>
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-12">
-            <span className="text-4xl">📚</span>
+            <Library size={36} style={{ color:'var(--t3)' }}/>
             <p className="text-sm" style={{ color:B.t3 }}>Ничего не найдено</p>
           </div>
         ) : (
