@@ -5,9 +5,10 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Shield, Plus, ChevronRight, Check, X, Clock, ArrowRight,
+  Shield, Plus, Check, ArrowRight,
   Package, DollarSign, Star, AlertCircle, Crown, Lock,
-  ChevronLeft, Users, Zap, CheckCircle, XCircle, History,
+  ChevronLeft, CheckCircle, XCircle, History,
+  Palette, Gift, Gem, Sparkles, Scale, Handshake,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMoney } from '@/wallet/store';
@@ -35,7 +36,6 @@ export interface GarantDeal {
   buyerName:   string;
   itemType:    ItemType;
   itemName:    string;
-  itemEmoji:   string;
   price:       number;
   payType:     PayType;
   status:      DealStatus;
@@ -210,13 +210,17 @@ const STATUS_INFO: Record<DealStatus, { label:string; color:string; icon:any; de
   disputed:       { label:'Спор',          color:'var(--red)', icon:AlertCircle, desc:'Открыт спор  -  ожидайте решения администратора' },
 };
 
-const ITEM_TYPES: { key:ItemType; label:string; emoji:string }[] = [
-  { key:'skin',     label:'Скин',          emoji:'🎨' },
-  { key:'gift',     label:'Подарок Sky',   emoji:'🎁' },
-  { key:'nft',      label:'NFT',           emoji:'💎' },
-  { key:'currency', label:'Валюта/Баллы',  emoji:'⭐' },
-  { key:'item',     label:'Предмет',       emoji:'📦' },
-  { key:'other',    label:'Другое',        emoji:'🔮' },
+/* Значок вида товара — из общего набора. Раньше у сделки было ещё и
+   своё поле с эмодзи, которое продавец вписывал руками: два источника
+   одной картинки, причём второй ничего не сообщал о товаре. Остался
+   один — вид сделки. */
+const ITEM_TYPES: { key:ItemType; label:string; Icon:typeof Package }[] = [
+  { key:'skin',     label:'Скин',          Icon:Palette },
+  { key:'gift',     label:'Подарок Sky',   Icon:Gift },
+  { key:'nft',      label:'NFT',           Icon:Gem },
+  { key:'currency', label:'Валюта/Баллы',  Icon:Star },
+  { key:'item',     label:'Предмет',       Icon:Package },
+  { key:'other',    label:'Другое',        Icon:Sparkles },
 ];
 
 const C = {
@@ -243,10 +247,11 @@ const DealCard = ({ deal, myId, onOpen }: { deal:GarantDeal; myId:string; onOpen
       <div className="h-0.5 w-full" style={{ background:si.color }}/>
       <div className="p-4">
         <div className="flex items-start gap-3 mb-3">
-          {/* Item emoji in card */}
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-2xl"
+          {/* Значок вида товара */}
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl"
             style={{ background:`${si.color}12` }}>
-            {deal.itemEmoji}
+            {(() => { const I = ITEM_TYPES.find(t=>t.key===deal.itemType)?.Icon ?? Package;
+              return <I size={22} style={{ color:si.color }}/>; })()}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-1">
@@ -266,7 +271,7 @@ const DealCard = ({ deal, myId, onOpen }: { deal:GarantDeal; myId:string; onOpen
         {/* Price + progress */}
         <div className="flex items-center justify-between">
           <span className="text-base font-black" style={{ color:C.amber }}>
-            {deal.payType==='rubles' ? `${deal.price.toLocaleString('ru')} ₽` : `⭐ ${deal.price.toLocaleString('ru')}`}
+            {deal.payType==='rubles' ? `${deal.price.toLocaleString('ru')} ₽` : `${deal.price.toLocaleString('ru')}`}
           </span>
           {/* Deposit progress */}
           <div className="flex items-center gap-1.5">
@@ -402,8 +407,11 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
         {/* Item card */}
         <div className="rounded-2xl p-4" style={{ background:C.l1, border:`1px solid ${C.border}` }}>
           <div className="flex items-center gap-3 mb-3">
-            <div className="grid h-14 w-14 place-items-center rounded-2xl text-3xl shrink-0"
-              style={{ background:C.l2 }}>{deal.itemEmoji}</div>
+            <div className="grid h-14 w-14 place-items-center rounded-2xl shrink-0"
+              style={{ background:C.l2 }}>
+              {(() => { const I = ITEM_TYPES.find(t=>t.key===deal.itemType)?.Icon ?? Package;
+                return <I size={26} style={{ color:C.accent }}/>; })()}
+            </div>
             <div>
               <p className="text-base font-black text-white">{deal.itemName}</p>
               <p className="text-xs" style={{ color:C.t3 }}>
@@ -432,7 +440,7 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
             style={{ borderTop:`1px solid ${C.border}` }}>
             <span className="text-xs" style={{ color:C.t3 }}>Стоимость сделки</span>
             <span className="text-xl font-black" style={{ color:C.amber }}>
-              {deal.payType==='rubles' ? `${deal.price.toLocaleString('ru')} ₽` : `⭐ ${deal.price.toLocaleString('ru')}`}
+              {deal.payType==='rubles' ? `${deal.price.toLocaleString('ru')} ₽` : `${deal.price.toLocaleString('ru')}`}
             </span>
           </div>
         </div>
@@ -490,7 +498,7 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
         {deal.status === 'completed' && (
           <div className="rounded-2xl p-4 text-center"
             style={{ background:`${C.green}08`, border:`1px solid ${C.green}25` }}>
-            <div className="text-3xl mb-2">✅</div>
+            <CheckCircle size={30} className="mx-auto mb-2" style={{ color:C.green }}/>
             <p className="text-sm font-bold" style={{ color:C.green }}>Сделка завершена!</p>
             {deal.completedAt && <p className="text-[10px] mt-1" style={{ color:C.t3 }}>{fmtDate(deal.completedAt)}</p>}
           </div>
@@ -522,7 +530,7 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
                 className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-40"
                 style={{ background:`linear-gradient(135deg,${C.amber},#d97706)`, boxShadow:`0 6px 24px ${C.amber}35` }}>
                 <DollarSign size={16}/>
-                Внести {deal.payType==='rubles'?`${deal.price.toLocaleString('ru')} ₽`:`⭐ ${deal.price.toLocaleString('ru')}`}
+                Внести {deal.payType==='rubles'?`${deal.price.toLocaleString('ru')} ₽`:`${deal.price.toLocaleString('ru')}`}
               </motion.button>
             </>
           )}
@@ -599,9 +607,9 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
                 deal.disputeResult==='cancelled'?C.t2:(
                   (deal.disputeResult==='seller_wins' && isSeller)||(deal.disputeResult==='buyer_wins' && isBuyer)
                     ? C.green : C.red) }}>
-                {deal.disputeResult==='cancelled' ? '❌ Сделка отменена администратором' :
-                 deal.disputeResult==='seller_wins' ? (isSeller?'✅ Спор решён в вашу пользу':'❌ Спор решён в пользу продавца') :
-                 (isBuyer?'✅ Спор решён в вашу пользу':'❌ Спор решён в пользу покупателя')}
+                {deal.disputeResult==='cancelled' ? 'Сделка отменена администратором' :
+                 deal.disputeResult==='seller_wins' ? (isSeller?'Спор решён в вашу пользу':'Спор решён в пользу продавца') :
+                 (isBuyer?'Спор решён в вашу пользу':'Спор решён в пользу покупателя')}
               </p>
               {deal.disputeNote && (
                 <p className="text-xs mt-1.5 leading-relaxed" style={{ color:C.t2 }}>
@@ -625,7 +633,6 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
   const [step,      setStep]      = useState<'type'|'details'|'party'|'confirm'>('type');
   const [itemType,  setItemType]  = useState<ItemType>('skin');
   const [itemName,  setItemName]  = useState('');
-  const [itemEmoji, setItemEmoji] = useState('🎨');
   const [desc,      setDesc]      = useState('');
   const [price,     setPrice]     = useState('');
   const [payType,   setPayType]   = useState<PayType>('rubles');
@@ -647,7 +654,7 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
       <motion.div initial={{ scale:0 }} animate={{ scale:1 }}
         transition={{ type:'spring', stiffness:400, damping:18 }}
         className="grid h-20 w-20 place-items-center rounded-full text-4xl"
-        style={{ background:`${C.accent}15`, border:`2px solid ${C.accent}40` }}>🛡️</motion.div>
+        style={{ background:`${C.accent}15`, border:`2px solid ${C.accent}40` }}><Shield size={26} style={{ color:C.accent }}/></motion.div>
       <div className="text-center">
         <p className="text-xl font-black text-white">Сделка создана!</p>
         <p className="text-sm mt-1.5" style={{ color:C.t2 }}>
@@ -671,7 +678,7 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
       description:desc.trim(),
       sellerId:currentUserId??'', sellerName:me?.name??'',
       buyerId:buyerAcc.id, buyerName:buyerAcc.name,
-      itemType, itemName:itemName.trim(), itemEmoji,
+      itemType, itemName:itemName.trim(),
       price:+price, payType,
       comment:desc.trim(),
     });
@@ -700,7 +707,7 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
 
       {!canCreate && (
         <div className="mx-4 mt-3 rounded-2xl p-4" style={{ background:`${C.amber}08`, border:`1px solid ${C.amber}25` }}>
-          <p className="text-xs font-bold" style={{ color:C.amber }}>⚠️ Лимит использован</p>
+          <p className="inline-flex items-center gap-1 text-xs font-bold" style={{ color:C.amber }}><AlertCircle size={12}/>Лимит использован</p>
           <p className="text-[11px] mt-0.5" style={{ color:C.t3 }}>Бесплатно  -  3 сделки в месяц. Использовано: {monthly}/3. Подключите подписку для безлимита.</p>
         </div>
       )}
@@ -714,11 +721,11 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
             <div className="grid grid-cols-2 gap-2.5">
               {ITEM_TYPES.map(t=>(
                 <button key={t.key} type="button"
-                  onClick={()=>{ setItemType(t.key); setItemEmoji(t.emoji); }}
+                  onClick={()=>setItemType(t.key)}
                   className="flex items-center gap-3 rounded-2xl p-4 transition-all"
                   style={{ background:itemType===t.key?`${C.accent}15`:C.l1,
                     border:`1.5px solid ${itemType===t.key?C.accent:C.border}` }}>
-                  <span className="text-2xl">{t.emoji}</span>
+                  <t.Icon size={20} style={{ color:itemType===t.key?C.accent:C.t3 }}/>
                   <span className="text-sm font-semibold" style={{ color:itemType===t.key?C.t1:C.t2 }}>{t.label}</span>
                   {itemType===t.key&&<Check size={14} style={{ color:C.accent, marginLeft:'auto' }}/>}
                 </button>
@@ -737,13 +744,9 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
         {step==='details'&&(
           <>
             <p className="text-sm font-bold text-white">Детали товара</p>
-            <div className="flex gap-2">
-              <input value={itemEmoji} onChange={e=>setItemEmoji(e.target.value)} maxLength={2}
-                className="w-14 rounded-xl text-2xl text-center outline-none" style={iSty}/>
-              <input value={itemName} onChange={e=>setItemName(e.target.value)}
-                placeholder="Название товара *"
-                className="flex-1 rounded-xl px-3 py-3 text-sm outline-none" style={iSty}/>
-            </div>
+            <input value={itemName} onChange={e=>setItemName(e.target.value)}
+              placeholder="Название товара *"
+              className="w-full rounded-xl px-3 py-3 text-sm outline-none" style={iSty}/>
             <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={3}
               placeholder="Описание (необязательно)..."
               className="w-full rounded-xl px-3 py-3 text-sm outline-none resize-none" style={iSty}/>
@@ -757,7 +760,7 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
                     style={{ background:payType===p?`${C.amber}15`:C.l2,
                       border:`1.5px solid ${payType===p?C.amber:C.border}`,
                       color:payType===p?C.amber:C.t3 }}>
-                    {p==='rubles'?'💵 Рубли':'⭐ Баллы'}
+                    {p==='rubles'?'Рубли':'Баллы'}
                   </button>
                 ))}
               </div>
@@ -795,7 +798,7 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
                         style={{ background:C.accent }}>{buyerAcc.name[0]}</div>
                       <div>
                         <p className="text-sm font-bold text-white">{buyerAcc.name}</p>
-                        <p className="text-[10px]" style={{ color:C.green }}>✓ Найден</p>
+                        <p className="inline-flex items-center gap-1 text-[10px]" style={{ color:C.green }}><Check size={10}/>Найден</p>
                       </div>
                     </div>
                   ) : (
@@ -823,7 +826,8 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
             <div className="rounded-2xl overflow-hidden"
               style={{ background:`linear-gradient(135deg,${C.accent}12,${C.l1})`, border:`1px solid ${C.accent}25` }}>
               <div className="p-4 flex items-center gap-3">
-                <span className="text-4xl">{itemEmoji}</span>
+                {(() => { const I = ITEM_TYPES.find(t=>t.key===itemType)?.Icon ?? Package;
+                  return <I size={34} style={{ color:C.accent }}/>; })()}
                 <div>
                   <p className="text-base font-black text-white">{itemName}</p>
                   <p className="text-xs" style={{ color:C.t3 }}>{ITEM_TYPES.find(t=>t.key===itemType)?.label}</p>
@@ -833,7 +837,7 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
                 {[
                   { l:'Продавец', v:me?.name??'' },
                   { l:'Покупатель', v:buyerAcc?.name??'' },
-                  { l:'Стоимость', v:payType==='rubles'?`${(+price).toLocaleString('ru')} ₽`:`⭐ ${(+price).toLocaleString('ru')}` },
+                  { l:'Стоимость', v:payType==='rubles'?`${(+price).toLocaleString('ru')} ₽`:`${(+price).toLocaleString('ru')}` },
                 ].map(({l,v})=>(
                   <div key={l} className="flex justify-between text-sm pt-2">
                     <span style={{ color:C.t3 }}>{l}</span>
@@ -845,7 +849,7 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
 
             <div className="rounded-2xl px-4 py-3" style={{ background:`${C.accent}06`, border:`1px solid ${C.accent}15` }}>
               <p className="text-[11px] leading-relaxed" style={{ color:C.t2 }}>
-                🛡️ Sky Garant держит товар и оплату до тех пор, пока обе стороны не подтвердят получение. Это защищает обоих участников.
+                Sky Garant держит товар и оплату до тех пор, пока обе стороны не подтвердят получение. Это защищает обоих участников.
               </p>
             </div>
 
@@ -892,7 +896,7 @@ const SubModal = ({ onClose }: { onClose:()=>void }) => {
         {done ? (
           <div className="flex flex-col items-center gap-4 py-10 px-6">
             <motion.div initial={{ scale:0 }} animate={{ scale:1 }} transition={{ type:'spring', stiffness:400, damping:18 }}
-              className="text-5xl">🛡️</motion.div>
+              ><Shield size={46} style={{ color:C.accent }}/></motion.div>
             <p className="text-xl font-black text-white">Подписка активирована!</p>
             <p className="text-sm" style={{ color:C.t2 }}>Безлимитные сделки на месяц</p>
             <button type="button" onClick={onClose}
@@ -904,7 +908,7 @@ const SubModal = ({ onClose }: { onClose:()=>void }) => {
           <div className="px-6 pt-6 pb-8 space-y-4">
             <div className="flex items-center gap-3">
               <div className="grid h-12 w-12 place-items-center rounded-2xl text-2xl"
-                style={{ background:`${C.accent}15` }}>🛡️</div>
+                style={{ background:`${C.accent}15` }}><Shield size={22} style={{ color:C.accent }}/></div>
               <div>
                 <p className="text-lg font-black text-white">Sky Garant Pro</p>
                 <p className="text-xs" style={{ color:C.t3 }}>Безлимитные сделки в месяц</p>
@@ -912,10 +916,10 @@ const SubModal = ({ onClose }: { onClose:()=>void }) => {
               <span className="ml-auto text-2xl font-black" style={{ color:C.amber }}>159 ₽</span>
             </div>
             {[
-              '♾️ Безлимитные сделки в месяц',
-              '⚡ Приоритетная поддержка при спорах',
-              '📊 Расширенная история сделок',
-              '🔔 Уведомления о статусе сделок',
+              'Безлимитные сделки в месяц',
+              'Приоритетная поддержка при спорах',
+              'Расширенная история сделок',
+              'Уведомления о статусе сделок',
             ].map(f=>(
               <div key={f} className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded-full flex items-center justify-center shrink-0"
@@ -924,7 +928,7 @@ const SubModal = ({ onClose }: { onClose:()=>void }) => {
               </div>
             ))}
             <p className="text-[10px] text-center" style={{ color:C.t3 }}>
-              Баланс: {balance.toLocaleString('ru')} ₽ · {balance<price?`⚠️ Нужно ещё ${price-balance} ₽`:'✓ Достаточно'}
+              Баланс: {balance.toLocaleString('ru')} ₽ · {balance<price?`Нужно ещё ${price-balance} ₽`:'Достаточно'}
             </p>
             <motion.button whileTap={{ scale:.97 }} type="button" onClick={buy}
               disabled={balance<price}
@@ -977,7 +981,7 @@ export const SkyGarant = () => {
             <div>
               <p className="text-base font-black text-white">Sky Garant</p>
               <p className="text-[10px]" style={{ color:C.t3 }}>
-                {hasSub ? '♾️ Безлимит' : `${3-monthly} из 3 бесплатных`}
+                {hasSub ? 'Безлимит' : `${3-monthly} из 3 бесплатных`}
               </p>
             </div>
           </div>
@@ -991,7 +995,7 @@ export const SkyGarant = () => {
             )}
             {hasSub && (
               <span className="text-[10px] font-bold px-2.5 py-1 rounded-full"
-                style={{ background:`${C.accent}15`, color:C.accent }}>🛡️ Pro</span>
+                style={{ background:`${C.accent}15`, color:C.accent }}><Shield size={10} className="inline mr-1"/>Pro</span>
             )}
             <motion.button whileTap={{ scale:.93 }} type="button"
               onClick={()=>setView('create')}
@@ -1019,7 +1023,7 @@ export const SkyGarant = () => {
 
         {/* Tabs */}
         <div className="flex rounded-2xl overflow-hidden" style={{ background:C.l1, border:`1px solid ${C.border}` }}>
-          {([['active','⚡ Активные'],['history','📜 История'],['disputes','⚖️ Споры']] as const).map(([k,l],i)=>(
+          {([['active','Активные'],['history','История'],['disputes','Споры']] as const).map(([k,l],i)=>(
             <button key={k} type="button" onClick={()=>setHistTab(k as any)}
               className="flex-1 py-2.5 text-[11px] font-bold transition-all"
               style={{ background:histTab===k?C.accent:'transparent',
@@ -1037,7 +1041,7 @@ export const SkyGarant = () => {
           <div className="flex flex-col items-center gap-4 py-12">
             <div className="grid h-16 w-16 place-items-center rounded-3xl text-3xl"
               style={{ background:C.l1, border:`1px solid ${C.border}` }}>
-              {histTab==='active'?'🤝':histTab==='history'?'📜':'⚖️'}
+              {histTab==='active'?<Handshake size={28}/>:histTab==='history'?<History size={28}/>:<Scale size={28}/>}
             </div>
             <div className="text-center">
               <p className="text-sm font-bold text-white">

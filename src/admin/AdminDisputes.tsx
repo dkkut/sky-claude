@@ -4,7 +4,7 @@
 =============================================================== */
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, ChevronDown, ChevronUp, Scale, Gavel } from 'lucide-react';
+import { Check, X, ChevronDown, ChevronUp, Scale, Gavel, Package, Trophy, Shield, Undo2 } from 'lucide-react';
 import { useGarantStore, type GarantDeal } from '@/garant/SkyGarant';
 import { useAuthStore } from '@/core/auth/store';
 
@@ -42,21 +42,21 @@ const GarantDisputeCard = ({ deal }: { deal: GarantDeal }) => {
 
       <div className="flex items-start gap-3 px-4 py-3.5 cursor-pointer"
         onClick={() => setExpanded(e=>!e)}>
-        <span className="text-2xl shrink-0">{deal.itemEmoji}</span>
+        <Package size={22} className="shrink-0" style={{ color:'var(--t3)' }}/>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-bold text-white text-sm truncate">{deal.title}</p>
             <span className="text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0"
               style={{ background:isResolved?'rgba(52,211,153,0.15)':'rgba(248,113,113,0.15)',
                 color:isResolved?'var(--green)':'var(--red)' }}>
-              {isResolved?'✓ Решён':'⚖️ Спор'}
+              {isResolved?'Решён':'Спор'}
             </span>
           </div>
           <p className="text-xs mt-0.5" style={{color:'var(--t2)'}}>
             {deal.sellerName} → {deal.buyerName}
           </p>
           <p className="text-sm font-black mt-0.5" style={{color:'var(--amber)'}}>
-            {deal.payType==='rubles'?`${deal.price.toLocaleString('ru')} ₽`:`⭐ ${deal.price.toLocaleString('ru')}`}
+            {deal.payType==='rubles'?`${deal.price.toLocaleString('ru')} ₽`:`${deal.price.toLocaleString('ru')}`}
           </p>
         </div>
         {expanded ? <ChevronUp size={16} style={{color:'var(--t3)'}}/> : <ChevronDown size={16} style={{color:'var(--t3)'}}/>}
@@ -91,13 +91,13 @@ const GarantDisputeCard = ({ deal }: { deal: GarantDeal }) => {
                       <p className="text-[9px]" style={{color:'var(--t3)'}}>@{acc?.username ?? ' - '}</p>
                     </div>
                     <span className="text-[9px] font-semibold" style={{color:confirmed?'var(--green)':'var(--red)'}}>
-                      {confirmed?'✓ Подтвердил':'✗ Не подтвердил'}
+                      {confirmed?'Подтвердил':'Не подтвердил'}
                     </span>
                     {!confirmed && !isResolved && (
                       <button type="button" onClick={() => adminForceConfirm(deal.id, side)}
                         className="w-full rounded-lg py-1.5 text-[10px] font-bold"
                         style={{background:'rgba(79,110,247,0.15)',color:'var(--accent)',border:'1px solid rgba(79,110,247,0.25)'}}>
-                        👮 Подтвердить за {label==='Продавец'?'него':'неё'}
+                        <Gavel size={12} className="inline mr-1"/>Подтвердить за {label==='Продавец'?'него':'неё'}
                       </button>
                     )}
                   </div>
@@ -116,18 +116,18 @@ const GarantDisputeCard = ({ deal }: { deal: GarantDeal }) => {
                 <motion.div initial={{opacity:0,y:6}} animate={{opacity:1,y:0}}
                   className="rounded-2xl p-4 space-y-3"
                   style={{background:'rgba(124,58,237,0.07)',border:'1.5px solid rgba(124,58,237,0.25)'}}>
-                  <p className="text-sm font-bold text-white">⚖️ Решение по спору</p>
+                  <p className="inline-flex items-center gap-1.5 text-sm font-bold text-white"><Scale size={14}/>Решение по спору</p>
                   <div className="space-y-2">
                     {([
-                      {key:'seller_wins',label:'Победа продавца',icon:'🏆',c:'var(--green)'},
-                      {key:'buyer_wins', label:'Победа покупателя',icon:'🛡️',c:'var(--accent)'},
-                      {key:'cancelled',  label:'Отмена сделки',icon:'↩️',c:'var(--t2)'},
+                      {key:'seller_wins',label:'Победа продавца',Icon:Trophy,c:'var(--green)'},
+                      {key:'buyer_wins', label:'Победа покупателя',Icon:Shield,c:'var(--accent)'},
+                      {key:'cancelled',  label:'Отмена сделки',Icon:Undo2,c:'var(--t2)'},
                     ] as const).map(opt => (
                       <button key={opt.key} type="button" onClick={() => setWinner(opt.key)}
                         className="flex items-center gap-3 w-full rounded-xl px-3 py-2.5 transition-all"
                         style={{background:winner===opt.key?`${opt.c}12`:'rgba(255,255,255,0.04)',
                           border:`1.5px solid ${winner===opt.key?opt.c:'var(--border)'}`}}>
-                        <span className="text-xl">{opt.icon}</span>
+                        <opt.Icon size={18} style={{color:winner===opt.key?opt.c:'var(--t3)'}}/>
                         <span className="text-xs font-bold" style={{color:winner===opt.key?opt.c:'var(--t1)'}}>{opt.label}</span>
                         {winner===opt.key && <Check size={13} style={{color:opt.c,marginLeft:'auto'}}/>}
                       </button>
@@ -155,7 +155,7 @@ const GarantDisputeCard = ({ deal }: { deal: GarantDeal }) => {
                 <div className="rounded-xl p-3"
                   style={{background:'rgba(52,211,153,0.08)',border:'1px solid rgba(52,211,153,0.2)'}}>
                   <p className="text-xs font-bold" style={{color:'var(--green)'}}>
-                    ✅ {deal.disputeResult==='seller_wins'?'Победа продавца':
+                    <Check size={13} className="inline mr-1"/>{deal.disputeResult==='seller_wins'?'Победа продавца':
                         deal.disputeResult==='buyer_wins'?'Победа покупателя':'Сделка отменена'}
                   </p>
                   {deal.disputeNote && <p className="text-[11px] mt-1" style={{color:'var(--t2)'}}>{deal.disputeNote}</p>}
@@ -187,7 +187,7 @@ export const AdminDisputesPanel = () => {
         ))}
       </div>
       <div className="flex rounded-xl overflow-hidden" style={{border:'1px solid var(--border)'}}>
-        {([['open','⚖️ Открытые'],['resolved','✅ Решённые']] as const).map(([k,l],i)=>(
+        {([['open','Открытые'],['resolved','Решённые']] as const).map(([k,l],i)=>(
           <button key={k} type="button" onClick={()=>setFilter(k)}
             className="flex-1 py-2.5 text-xs font-bold transition-all"
             style={{background:filter===k?'var(--accent)':'transparent',color:filter===k?'white':'var(--t3)',
@@ -221,7 +221,7 @@ export const AdminGarantPanel = () => {
       <div className="rounded-xl px-3 py-2.5"
         style={{background:'rgba(245,158,11,0.07)',border:'1px solid rgba(245,158,11,0.2)'}}>
         <p className="text-[11px] leading-relaxed" style={{color:'rgba(245,158,11,0.8)'}}>
-          👮 Принудительное подтверждение  -  используйте только если пользователь явно уклоняется. Зависшие &gt;24ч: <strong>{stalled.length}</strong> · У гаранта: <strong>{escrow.length}</strong>
+          Принудительное подтверждение  -  используйте только если пользователь явно уклоняется. Зависшие &gt;24ч: <strong>{stalled.length}</strong> · У гаранта: <strong>{escrow.length}</strong>
         </p>
       </div>
       {escrow.length===0 && <div className="py-8 text-center"><p className="text-sm" style={{color:'var(--t3)'}}>Сделок у гаранта нет</p></div>}
@@ -232,12 +232,12 @@ export const AdminGarantPanel = () => {
           <div key={deal.id} className="rounded-2xl overflow-hidden"
             style={{background:'var(--bg-l1)',border:`1px solid ${isStalled?'rgba(245,158,11,0.3)':'var(--border)'}`}}>
             <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={()=>setExpanded(isOpen?null:deal.id)}>
-              <span className="text-xl">{deal.itemEmoji}</span>
+              <Package size={19} style={{ color:'var(--t3)' }}/>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-white truncate">{deal.itemName}</p>
-                <p className="text-[11px]" style={{color:'var(--t3)'}}>{deal.sellerName} → {deal.buyerName} · {deal.payType==='rubles'?`${deal.price} ₽`:`⭐${deal.price}`}</p>
+                <p className="text-[11px]" style={{color:'var(--t3)'}}>{deal.sellerName} → {deal.buyerName} · {deal.payType==='rubles'?`${deal.price} ₽`:`${deal.price}`}</p>
               </div>
-              {isStalled && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{background:'rgba(245,158,11,0.15)',color:'var(--amber)'}}>⚠️ Завис</span>}
+              {isStalled && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{background:'rgba(245,158,11,0.15)',color:'var(--amber)'}}>Завис</span>}
               {isOpen?<ChevronUp size={14} style={{color:'var(--t3)'}}/>:<ChevronDown size={14} style={{color:'var(--t3)'}}/>}
             </div>
             <AnimatePresence>
@@ -254,13 +254,13 @@ export const AdminGarantPanel = () => {
                           <p className="text-[9px] font-bold uppercase" style={{color:'var(--t3)'}}>{label}</p>
                           <p className="text-xs font-bold text-white">{name}</p>
                           <span className="text-[9px]" style={{color:confirmed?'var(--green)':'var(--red)'}}>
-                            {confirmed?'✓ Подтвердил':'✗ Не подтвердил'}
+                            {confirmed?'Подтвердил':'Не подтвердил'}
                           </span>
                           {!confirmed && (
                             <button type="button" onClick={()=>adminForceConfirm(deal.id, side)}
                               className="w-full rounded-lg py-1.5 text-[10px] font-bold"
                               style={{background:'rgba(79,110,247,0.15)',color:'var(--accent)',border:'1px solid rgba(79,110,247,0.25)'}}>
-                              👮 Подтвердить за {label==='Продавец'?'него':'неё'}
+                              <Gavel size={12} className="inline mr-1"/>Подтвердить за {label==='Продавец'?'него':'неё'}
                             </button>
                           )}
                         </div>
