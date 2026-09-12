@@ -41,15 +41,49 @@ export const verifyToken = (token, secret) => {
 
 export const sanitizeInput = (value) => String(value).replace(/[<>$`]/g, '').trim();
 
+/**
+ * Счётчики обращений.
+ *
+ * На каждый ключ хранится одно окно и число попыток в нём. Раньше на
+ * каждую новую минуту заводилась ещё одна запись, а старые не убирались
+ * никогда: за сутки работы это тысячи мёртвых ключей на каждого, кто
+ * заходил. Теперь запись одна на ключ, а те, чьё окно давно прошло,
+ * выметаются — иначе счётчик течёт памятью тем сильнее, чем дольше
+ * сервер живёт.
+ */
 const buckets = new Map();
-export const rateLimit = (key, perMinute) => {
+let sweptAt = 0;
+
+const hit = (key, window, limit, windowMs) => {
   const now = Date.now();
-  const minute = Math.floor(now / 60000);
-  const bucketKey = `${key}:${minute}`;
-  const count = buckets.get(bucketKey) || 0;
-  buckets.set(bucketKey, count + 1);
-  return count + 1 <= perMinute;
+  // Уборка редкая: проходить всю карту на каждом запросе дороже, чем
+  // подержать лишнюю минуту несколько просроченных записей.
+  if (now - sweptAt > 10 * 60_000) {
+    sweptAt = now;
+    for (const [k, v] of buckets) {
+      if (now - v.at > 2 * v.span) buckets.delete(k);
+    }
+  }
+  const cur = buckets.get(key);
+  if (!cur || cur.window !== window) {
+    buckets.set(key, { window, count: 1, at: now, span: windowMs });
+    return 1 <= limit;
+  }
+  cur.count += 1;
+  cur.at = now;
+  return cur.count <= limit;
 };
+
+export const rateLimit = (key, perMinute) =>
+  hit(`m:${key}`, Math.floor(Date.now() / 60_000), perMinute, 60_000);
+
+/**
+ * То же самое, но окно в час. Нужно там, где обращение стоит денег или
+ * заметного времени: минутный предел такое пропускает шестьюдесятью
+ * порциями в час, и это не предел вовсе.
+ */
+export const rateLimitPerHour = (key, perHour) =>
+  hit(`h:${key}`, Math.floor(Date.now() / 3_600_000), perHour, 3_600_000);
 
 export const generateId = () => crypto.randomUUID();
 

@@ -181,6 +181,27 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # Подкасты. Устроены как кино и по тем же причинам: видеовыпуск
+    # весит столько же, а звуковой — сотни мегабайт. Общий потолок тела
+    # в 1m обрезал бы загрузку выпуска ещё до приложения, и человек
+    # видел бы безымянную 413 вместо понятного ответа.
+    #
+    # Ответ не буферизуется — это задано в proxy-common.conf, и
+    # повторять директиву здесь нельзя. Для подкастов это важно так же,
+    # как для кино: с буферизацией nginx складывал бы весь выпуск во
+    # временный файл, прежде чем отдать первую секунду звука.
+    location ^~ /api/podcasts/ {
+        limit_req zone=req_general burst=180 nodelay;
+        client_max_body_size 4096m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        # Загрузка выпуска на медленной связи идёт долго, и обрывать её
+        # по таймауту нельзя.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/ {
         limit_req zone=req_general burst=60 nodelay;
         include /etc/nginx/snippets/proxy-common.conf;

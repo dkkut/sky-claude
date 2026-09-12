@@ -26,8 +26,10 @@ import { fileRoutes } from './routes/files.mjs';
 import { musicRoutes } from './routes/music.mjs';
 import { filmRoutes } from './routes/film.mjs';
 import { tvRoutes } from './routes/tv.mjs';
+import { podcastRoutes } from './routes/podcasts.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
+import { sweepOrphanPodcastFiles } from './podcasts.mjs';
 import { sweepOrphans } from './attachments.mjs';
 import { purgeExpiredCodes } from './verification.mjs';
 import { checkDeliverySetup, closeMailer } from './notify.mjs';
@@ -35,7 +37,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, musicRoutes, filmRoutes, tvRoutes];
+                supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -161,6 +163,10 @@ const start = async () => {
       if (films) console.log(`[film] убрано осиротевших файлов: ${films}`);
       // Неотвечающий телеканал должен превращаться в честное «временно
       // недоступен» на карточке, а не в чёрный экран после нажатия.
+      // То же и с подкастами: оборвавшаяся загрузка оставляет файл
+      // без строки в базе, а место он занимает.
+      const pods = await sweepOrphanPodcastFiles();
+      if (pods) console.log(`[podcasts] убрано осиротевших файлов: ${pods}`);
       const tv = await checkAllSources();
       if (tv.bad) console.log(`[tv] источников не отвечает: ${tv.bad} из ${tv.ok + tv.bad}`);
       const expired = await expirePrimeSubscriptions();

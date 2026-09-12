@@ -20,7 +20,7 @@ COPY scripts/ ./scripts/
 # образа — иначе он появился бы принадлежащим root, а процесс работает
 # не от root и писать в него не смог бы: загрузка отвечала бы отказом
 # на ровном месте.
-RUN mkdir -p /data/music /data/film && chown -R node:node /data
+RUN mkdir -p /data/music /data/film /data/podcasts && chown -R node:node /data
 
 # Работаем не от root: образ node уже содержит пользователя node.
 USER node

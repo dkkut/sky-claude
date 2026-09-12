@@ -179,6 +179,7 @@ jobs:
             scripts/init-letsencrypt.sh scripts/rotate-secrets.sh \
             scripts/set-encryption-key.sh scripts/set-owner.sh \
             scripts/tv-source.sh scripts/tv-import.sh \
+            scripts/set-ai-key.sh \
             scripts/set-sms-key.sh scripts/set-email.sh scripts/new-beta-keys.sh
           scp -i ~/.ssh/id_deploy -P "$SSH_PORT" deploy-bundle.tgz "$SSH_USER@$SSH_HOST:$APP_DIR/"
 
