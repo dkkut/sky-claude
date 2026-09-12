@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
-import { Crown, Check, Star, Zap, Shield, Music2, Film, Radio, Sparkles, Gift, TrendingUp, X } from 'lucide-react';
+import { Crown, Check, Star, Zap, Shield, Music2, Film, Radio, Sparkles, Gift, TrendingUp, X, CreditCard } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMoney, fmt as fmtMoney, reloadWalletForUser } from '@/wallet/store';
 import { usePlatformStore } from '@/platform/store';
@@ -40,7 +40,7 @@ const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
 
   const handleRedeem = async (id: string, title: string) => {
     const ok = await redeemPrimeReward(id);
-    setToast(ok ? `Обменяно: ${title} ✓` : useMoney.getState().lastError ?? 'Недостаточно баллов');
+    setToast(ok ? `Обменяно: ${title}` : useMoney.getState().lastError ?? 'Недостаточно баллов');
     setTimeout(() => setToast(null), 2200);
   };
 
@@ -305,7 +305,7 @@ export const SkyPrime = () => {
         {/* Wallet balance check */}
         <div className={isMobile ? 'mt-3 rounded-xl px-3 py-2.5 flex items-center gap-2.5' : 'mt-4 rounded-2xl px-4 py-3 flex items-center gap-3'}
           style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)' }}>
-          <span style={{ fontSize:16 }}>💳</span>
+          <CreditCard size={16} style={{ color:'var(--t2)' }}/>
           <div className="flex-1">
             <p className="text-xs font-semibold text-white">Баланс SkyMoney</p>
             <p className="text-xs" style={{ color:'var(--t3)' }}>

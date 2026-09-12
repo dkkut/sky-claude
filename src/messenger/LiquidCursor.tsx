@@ -4,7 +4,7 @@
 =============================================================== */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Palette, X } from 'lucide-react';
+import { Check, Palette, X, Lightbulb } from 'lucide-react';
 import { useChatTheme, THEMES, type ChatTheme, type ChatThemeId } from './themes';
 
 /* === LIQUID GLASS CURSOR ==================================== */
@@ -208,7 +208,7 @@ export const ThemePicker = ({ chatId, onClose }: ThemePickerProps) => {
           {/* Info */}
           <div className="mt-5 rounded-2xl px-4 py-3 flex items-start gap-3"
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <span className="text-base">💡</span>
+            <Lightbulb size={15} className="shrink-0 mt-0.5" style={{ color: 'var(--amber)' }}/>
             <p className="text-xs leading-relaxed" style={{ color: 'var(--t2)' }}>
               Тема сохраняется для каждого чата отдельно.
               Кружок внизу  -  цвет эффекта жидкого стекла при наведении.

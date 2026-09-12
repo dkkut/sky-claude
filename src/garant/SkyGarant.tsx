@@ -9,6 +9,7 @@ import {
   Package, DollarSign, Star, AlertCircle, Crown, Lock,
   ChevronLeft, CheckCircle, XCircle, History,
   Palette, Gift, Gem, Sparkles, Scale, Handshake,
+  Clock,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMoney } from '@/wallet/store';
@@ -587,8 +588,9 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
               )}
               <div className="rounded-xl px-3 py-2.5 mt-1"
                 style={{ background:'rgba(255,255,255,0.04)' }}>
-                <p className="text-[11px]" style={{ color:C.t2 }}>
-                  ⏳ Администратор рассматривает спор. Решение будет принято в течение 24-72 часов.
+                <p className="flex items-start gap-1.5 text-[11px]" style={{ color:C.t2 }}>
+                  <Clock size={11} className="shrink-0 mt-0.5"/>
+                  Администратор рассматривает спор. Решение будет принято в течение 24-72 часов.
                 </p>
               </div>
             </div>
