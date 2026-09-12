@@ -1,0 +1,23 @@
+{
+  "name": "sky-bot-sdk",
+  "version": "1.0.0",
+  "description": "Sky Bot SDK. Ставится на сервер владельца бота: код бота выполняется там, а не в Sky. Sky даёт события и принимает действия.",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "README.md",
+    "example.mjs"
+  ],
+  "scripts": {
+    "example": "node example.mjs"
+  },
+  "keywords": ["sky", "bot", "sdk"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

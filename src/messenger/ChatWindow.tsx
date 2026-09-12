@@ -51,7 +51,7 @@ const BannerMotif = ({ motif, accent, opacity }: { motif: MotifName; accent: str
   );
 };
 import { useGiftStore, type SentGift } from '@/gifts/store';
-import { HashInlineMenu, BotChatOverlay, BotsBrowser, BOTS_REGISTRY } from '@/bots/SkyBots';
+import { HashInlineMenu, BotChatOverlay, BotsBrowser, InlineConfirm } from '@/bots/SkyBots';
 
 /* -- constants ---------------------------------------------------- */
 const REACTS  = ['👍','❤️','🔥','😂','😮','😢','👏'];
@@ -755,6 +755,9 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const [showHash, setShowHash]     = useState(false);
   const [hashQ, setHashQ]           = useState('');
   const [openBot, setOpenBot]       = useState<any>(null);
+  /* Вызов inline-бота ждёт подтверждения человека: бот предлагает
+     текст, отправляет его сам человек. Здесь лежит то, что он набрал. */
+  const [inlineAsk, setInlineAsk]   = useState<{ trigger: string; query: string } | null>(null);
   const [recording, setRecording]   = useState(false);
   const [recKind,    setRecKind]     = useState<'voice'|'video-note'>('voice');
   const [recSec, setRecSec]         = useState(0);
@@ -1031,17 +1034,19 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           requestAnimationFrame(() => taRef.current?.focus());
           return;
         }
-        // Unknown # command — try to match a bot by username and open it
-        const matchedBot = BOTS_REGISTRY.find(b =>
-          b.username.replace('@','').toLowerCase() === cmdName.toLowerCase() ||
-          b.id.toLowerCase() === cmdName.toLowerCase()
-        );
-        if (matchedBot) {
-          setOpenBot(matchedBot);
-          setDraft(''); draftRef.current = '';
-          requestAnimationFrame(() => taRef.current?.focus());
-          return;
-        }
+        /*
+         * Не встроенная команда — значит это вызов inline-бота.
+         *
+         * Ничего не отправляем: спрашиваем сервер бота и показываем
+         * человеку, что тот предложил. Отправит он сам, нажав кнопку в
+         * окне подтверждения, — и сообщение уйдёт от его имени.
+         */
+        setInlineAsk({
+          trigger: cmdName,
+          query: `${mention ? `${mention} ` : ''}${rest}`.trim(),
+        });
+        setDraft(''); draftRef.current = '';
+        return;
       }
       // ── Normal message ────────────────────────────────────────────
       const extraFields: Record<string,any> = {};
@@ -2247,9 +2252,11 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                   query={hashQ}
                   onSelect={(bot: any) => {
                     setShowHash(false);
-                    if (bot.__browse__) { setOpenBot({__browse__: true}); return; }
+                    if ('__browse__' in bot) { setOpenBot({ __browse__: true }); return; }
+                    /* Подставляем триггер, а не ник: по триггеру бот и
+                       вызывается. Человек допишет запрос и нажмёт Enter. */
                     const lastHash = draftRef.current.lastIndexOf('#');
-                    const newDraft = draftRef.current.slice(0, lastHash) + bot.username + ' ';
+                    const newDraft = `${draftRef.current.slice(0, lastHash)}#${bot.trigger} `;
                     setDraft(newDraft); draftRef.current = newDraft;
                     taRef.current?.focus();
                   }}
@@ -2258,6 +2265,17 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
               )}</AnimatePresence>
               {openBot && !openBot.__browse__ && (
                 <BotChatOverlay bot={openBot} onClose={() => setOpenBot(null)} />
+              )}
+              {inlineAsk && activeChatId && createPortal(
+                <InlineConfirm
+                  chatId={activeChatId}
+                  trigger={inlineAsk.trigger}
+                  query={inlineAsk.query}
+                  fromName={accounts.find(a => a.id === currentUserId)?.name ?? ''}
+                  onDone={() => { setInlineAsk(null); requestAnimationFrame(() => taRef.current?.focus()); }}
+                  onClose={() => setInlineAsk(null)}
+                />,
+                document.body,
               )}
               {openBot && openBot.__browse__ && createPortal(
                 <div style={{position:'fixed',inset:0,zIndex:999,background:'var(--bg)',display:'flex',flexDirection:'column'}}>

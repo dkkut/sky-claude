@@ -27,9 +27,12 @@ import { musicRoutes } from './routes/music.mjs';
 import { filmRoutes } from './routes/film.mjs';
 import { tvRoutes } from './routes/tv.mjs';
 import { podcastRoutes } from './routes/podcasts.mjs';
+import { botRoutes } from './routes/bots.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanPodcastFiles } from './podcasts.mjs';
+import { sweepBots } from './bots.mjs';
+import { retryPendingWebhooks } from './botevents.mjs';
 import { sweepOrphans } from './attachments.mjs';
 import { purgeExpiredCodes } from './verification.mjs';
 import { checkDeliverySetup, closeMailer } from './notify.mjs';
@@ -37,7 +40,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes];
+                supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes, botRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -88,9 +91,21 @@ const server = http.createServer(async (req, res) => {
       return json(res, 503, { ready: false });
     }
 
-    // Сама калитка и проверка здоровья открыты всегда — иначе ключ
-    // негде было бы ввести.
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !betaAllowed(req)) {
+    /*
+     * Сама калитка и проверка здоровья открыты всегда — иначе ключ
+     * негде было бы ввести.
+     *
+     * Bot API тоже мимо калитки, и это не послабление. Калитка держит
+     * ЛЮДЕЙ, которым рано видеть приложение: ключ вводят в браузере, и
+     * он живёт в куке. За Bot API стоит не браузер, а программа на
+     * сервере владельца бота — куки ей взять неоткуда, а пускать её
+     * через ключ беты значило бы раздать этот ключ всем владельцам
+     * ботов. Вход туда охраняется своим, более строгим способом:
+     * секретом runtime, выданным при привязке, и токеном на час. Без
+     * них /api/bots/rt/ не отвечает ничего.
+     */
+    const isBotApi = url.startsWith('/api/bots/rt/');
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -117,6 +132,7 @@ const server = http.createServer(async (req, res) => {
    упадут с 500.                                                          */
 let signalHub = null;
 let houseKeeping = null;
+let botRetry = null;
 
 const start = async () => {
   // Содержимое переписки лежит в базе зашифрованным, и ключ для этого
@@ -150,6 +166,20 @@ const start = async () => {
 
   signalHub = startSignalHub();
 
+  /*
+   * Досылка вебхуков ботов.
+   *
+   * Отдельно от часовой уборки и куда чаще: сервер владельца бота мог
+   * лежать ровно в ту минуту, когда пришло событие, и ждать час, чтобы
+   * попробовать снова, — значит не доставить вовсе. Тех, кто забирает
+   * события сам, это не касается: они висят на запросе и получают
+   * событие в момент появления.
+   */
+  botRetry = setInterval(() => {
+    retryPendingWebhooks().catch((err) => console.error('[bots] досылка', err.message));
+  }, 60 * 1000);
+  botRetry.unref();
+
   // Раз в час убираем отработавшие коды и гасим истёкшие подписки Prime.
   houseKeeping = setInterval(async () => {
     try {
@@ -171,6 +201,10 @@ const start = async () => {
       if (tv.bad) console.log(`[tv] источников не отвечает: ${tv.bad} из ${tv.ok + tv.bad}`);
       const expired = await expirePrimeSubscriptions();
       if (expired) console.log(`[prime] истекло подписок: ${expired}`);
+      // Событие, которое сервер владельца бота не забрал за сутки,
+      // забирать уже некому: очередь без потолка растёт вечно.
+      const botEvents = await sweepBots();
+      if (botEvents) console.log(`[bots] выброшено просроченных событий: ${botEvents}`);
     } catch (err) {
       console.error('[housekeeping]', err.message);
     }
@@ -193,6 +227,7 @@ const shutdown = async (signal) => {
   force.unref();
   try {
     if (houseKeeping) clearInterval(houseKeeping);
+    if (botRetry) clearInterval(botRetry);
     await new Promise((resolve) => server.close(resolve));
     if (signalHub) await signalHub.close();
     closeMailer();
