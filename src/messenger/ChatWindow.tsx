@@ -31,7 +31,10 @@ import { apiSupportStatus } from '@/moderation/supportApi';
 import { GiftModal, GiftBubble, GiftMarket } from '@/gifts/SkyGifts';
 import { PrimeGiftBubble }                  from '@/gifts/GiftPrime';
 import { GiftPrimeModal } from '@/gifts/GiftPrime';
-import { AiSummarizeButton, AiTranscribeButton, AiVideoNoteButton, AiSuggestReplies, AiTranslateButton, runAiComposerAction, type AiComposerAction } from '@/ai/SkyAI';
+import { AiSummarizeButton, AiTranscribeButton, AiVideoNoteButton, AiSuggestReplies, AiTranslateButton } from '@/ai/SkyAI';
+// Правка черновика — запрос к серверу, а не экранный элемент, поэтому
+// живёт в слое вызовов Sky AI.
+import { runAiComposerAction, type AiComposerAction } from '@/ai/aiApi';
 import { GroupManage } from './GroupManage';
 import { useAdminStore, canDo } from './adminStore';
 import { GameActivityBadge } from '@/gaming/GamingUI';
@@ -579,7 +582,9 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
         {msg.kind === 'video-note' && (
           <div>
             <VideoNoteBubble msg={msg} fromMe={fromMe}/>
-            <AiVideoNoteButton duration={parseInt(msg.text||'0')||15} msgId={msg.id}/>
+            {/* Адрес записи нужен по-настоящему: расшифровка теперь
+                настоящая, а не заготовленный текст после паузы. */}
+            <AiVideoNoteButton duration={parseInt(msg.text||'0')||15} msgId={msg.id} mediaUrl={msg.mediaUrl}/>
           </div>
         )}
 
@@ -602,7 +607,7 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
           {msg.kind === 'voice'      && (
             <div>
               <VoiceBubble msg={msg} fromMe={fromMe}/>
-              <AiTranscribeButton duration={parseInt(msg.text||'0')||30} msgId={msg.id}/>
+              <AiTranscribeButton duration={parseInt(msg.text||'0')||30} msgId={msg.id} mediaUrl={msg.mediaUrl}/>
             </div>
           )}
           {msg.kind === 'file'       && <FileBubble  msg={msg} fromMe={fromMe} />}

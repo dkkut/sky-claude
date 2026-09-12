@@ -27,7 +27,7 @@ import { hasPrime } from './../skyid.mjs';
 import { aiConfigured, sttConfigured } from './../ai.mjs';
 import {
   listChats, createChat, renameChat, deleteChat, readChat, sendMessage,
-  usageToday, LIMITS, PRIME_TOOLS, MAX_MESSAGE_CHARS, CHAT_ID_RE,
+  usageToday, LIMITS, PRIME_TOOLS, MAX_MESSAGE_CHARS, CHAT_ID_RE, ask, ASK_TASKS,
 } from './../aichat.mjs';
 import {
   summarize, analyzeFile, analyzeImage, transcribe,
@@ -138,6 +138,7 @@ export const aiRoutes = async (req, res, url) => {
       maxMessageChars: MAX_MESSAGE_CHARS,
       maxSummaryChars: MAX_SUMMARY_CHARS,
       summaryStyles: Object.entries(SUMMARY_STYLES).map(([key, v]) => ({ key, label: v.label })),
+      askTasks: Object.keys(ASK_TASKS),
       uploadLimits: { document: MAX_DOC_BYTES, image: MAX_IMAGE_BYTES, audio: MAX_AUDIO_BYTES },
     });
   }
@@ -196,6 +197,22 @@ export const aiRoutes = async (req, res, url) => {
     const result = await sendMessage(me, {
       chatId: body.chatId,
       body: body.text,
+      prime: await hasPrime(me),
+    });
+    if (result.error) return fail(res, result);
+    return json(res, 200, result);
+  }
+
+  /* Мелкие помощники в переписке: перевод, правка, варианты ответа.
+     Один ход без истории — то же, что человек набрал бы в чате сам,
+     поэтому и бесплатно. Prime здесь не спрашивается. */
+  if (req.method === 'POST' && path === '/api/ai/ask') {
+    if (!rateLimit(`ai:chat:${me}`, CHAT_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const body = await parseBody(req);
+    const result = await ask(me, {
+      task: body.task,
+      text: body.text,
+      arg: body.arg,
       prime: await hasPrime(me),
     });
     if (result.error) return fail(res, result);

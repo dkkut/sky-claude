@@ -202,6 +202,38 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # Афиши мероприятий. Обложка — до 6 МБ (см. routes/tickets.mjs), и
+    # общий потолок тела в 1m обрезал бы её ещё на nginx: организатор
+    # видел бы безымянную 413 вместо понятного отказа приложения.
+    location ^~ /api/tickets/ {
+        limit_req zone=req_general burst=90 nodelay;
+        client_max_body_size 12m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_pass http://sky_api;
+    }
+
+    # Sky AI. Тело большое по двум причинам: документ на разбор и запись
+    # на расшифровку (до 96 МБ, см. aitools.mjs). Потолок здесь с
+    # запасом над серверным, чтобы отказ по размеру давало приложение.
+    #
+    # Ответ модели приходит не сразу: разбор длинного документа думает
+    # минуты, а расшифровка часовой записи — дольше. Короткий
+    # proxy_read_timeout обрывал бы такой запрос на полпути, и человек
+    # видел бы «шлюз не отвечает» вместо ответа, за который уже
+    # заплачено.
+    location ^~ /api/ai/ {
+        limit_req zone=req_general burst=60 nodelay;
+        client_max_body_size 128m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 360s;
+        proxy_send_timeout 360s;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/ {
         limit_req zone=req_general burst=60 nodelay;
         include /etc/nginx/snippets/proxy-common.conf;

@@ -11,7 +11,7 @@ import { useStreamsStore, CATEGORY_LABEL } from '@/streams/store';
 import { StreamStudio } from '@/streams/StreamStudio';
 import { StreamView } from '@/streams/StreamView';
 import { usePlatformStore } from '@/platform/store';
-import { callAI } from '@/ai/SkyAI';
+import { apiAiAsk } from '@/ai/aiApi';
 import { openProfile } from '@/profile/viewer/store';
 
 /* --- BroadcastChannel: синхронизация историй между вкладками ----------- */
@@ -387,8 +387,11 @@ const CreateStory = ({ onPublish, onClose, authorId, authorName, authorAvatar }:
     const t = text.trim(); if(!t) return;
     setTranslating(true);
     try {
-      const r = await callAI(`Переведи текст на английский язык, если он на русском, или на русский, если он на английском. Ответь только переводом, без пояснений:\n\n${t}`, 150);
-      setText(r);
+      /* Задание выбирается из списка на сервере, а не составляется
+         здесь: свободный текст запроса, присланный браузером, — это
+         способ переписать правила модели целиком. */
+      const r = await apiAiAsk('translate', t, /[а-яё]/i.test(t) ? 'English' : 'Русский');
+      if (r.ok) setText(r.text);
     } catch {}
     setTranslating(false);
   };

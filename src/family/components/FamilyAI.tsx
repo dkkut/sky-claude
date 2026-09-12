@@ -4,21 +4,20 @@ import { ArrowLeft, Sparkles, Send, Lock, Loader } from 'lucide-react';
 import { useFamilyStore } from '../store';
 import { useAuthStore } from '@/core/auth/store';
 import { fmt } from '@/wallet/store';
+/*
+ * Разговор с моделью идёт через сервер Sky.
+ *
+ * Здесь была вторая копия функции callAI, которая обращалась к
+ * api.anthropic.com прямо из браузера — и без ключа, потому что ключ в
+ * странице это ключ, отданный всем. Поставщик отвечал отказом, и
+ * семейный помощник показывал «Не удалось связаться с Sky AI» всегда.
+ *
+ * Правила доступа к самому помощнику не тронуты: он как был за Prime
+ * (личным или семейным), так и остался. Изменилось только то, каким
+ * путём уходит запрос.
+ */
+import { apiAiAsk } from '@/ai/aiApi';
 
-async function callAI(prompt: string, maxTokens = 500): Promise<string> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
-  const data = await res.json();
-  return (data.content?.find((b: any) => b.type === 'text')?.text ?? '').trim();
-}
 
 const QUICK_PROMPTS = [
   'Сколько мы потратили в этом месяце?',
@@ -71,8 +70,9 @@ export const FamilyAI = ({ onBack }: { onBack: () => void }) => {
     setMessages(m => [...m, userMsg]);
     setInput(''); setLoading(true); setError('');
     try {
-      const reply = await callAI(buildContext() + text.trim());
-      setMessages(m => [...m, { id: crypto.randomUUID(), role: 'assistant', text: reply || 'Не удалось получить ответ.' }]);
+      const r = await apiAiAsk('advise', buildContext() + text.trim());
+      if (!r.ok) { setError(r.reason); return; }
+      setMessages(m => [...m, { id: crypto.randomUUID(), role: 'assistant', text: r.text || 'Не удалось получить ответ.' }]);
     } catch {
       setError('Не удалось связаться с Sky AI. Попробуйте ещё раз.');
     } finally {
