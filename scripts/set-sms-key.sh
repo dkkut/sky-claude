@@ -67,7 +67,8 @@ HTTP="$(curl -sS -o /tmp/textbee-answer.$$ -w '%{http_code}' \
         -X POST 'https://api.textbee.dev/api/v1/gateway/send-sms' \
         -H 'Content-Type: application/json' \
         -H "x-api-key: $KEY" \
-        --data "$BODY" --max-time 20 || echo 000)"
+        --data "$BODY" --max-time 20)" || true
+HTTP="${HTTP:-000}"
 ANSWER="$(head -c 400 /tmp/textbee-answer.$$ 2>/dev/null || true)"
 rm -f /tmp/textbee-answer.$$
 
