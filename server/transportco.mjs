@@ -517,12 +517,21 @@ export const proposePrice = async (orderId, ownerId, price) => {
   const { rows: c } = await query('SELECT id, name FROM logi_tc WHERE owner_id = $1', [ownerId]);
   if (!c[0]) return { error: 'no_company' };
 
+  /* Своё предложение можно переписать, чужое — нет. Иначе последняя
+     компания молча затирала бы предложение первой, и продавец решал бы
+     по цене, которой ему никто не предлагал. */
   const { rows } = await query(
     `UPDATE logi_tc_orders
         SET offer_company_id = $2, offer_price_kop = $3, updated_at = now()
       WHERE id = $1 AND status = 'new'
+        AND (offer_company_id IS NULL OR offer_company_id = $2)
       RETURNING *`, [orderId, c[0].id, kop(price)]);
-  if (!rows[0]) return { error: 'wrong_state' };
+  if (!rows[0]) {
+    const { rows: why } = await query(
+      'SELECT status, offer_company_id FROM logi_tc_orders WHERE id = $1', [orderId]);
+    if (!why[0]) return { error: 'not_found' };
+    return { error: why[0].offer_company_id ? 'offer_taken' : 'wrong_state' };
+  }
 
   await notifySeller(rows[0].seller_id, `Перевозчик предложил свою цену: ${rub(kop(price))} ₽`);
   return { order: toTcOrder(rows[0], { full: false }) };

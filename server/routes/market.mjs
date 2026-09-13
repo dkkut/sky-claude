@@ -28,6 +28,7 @@ import { isAdmin } from './../admin.mjs';
 import {
   SELLER_PRICE, SELLER_DAYS, CATEGORIES, GAME_CATEGORIES, MARKET_TYPES,
   SERVICE_CATEGORIES, SERVICE_LEVELS, setServicePackages,
+  PROMO_PLANS, buyPromotion, listPromotions,
   readSeller, readMySeller, createSeller, updateSeller, setSellerAvatar, sellerAvatarMime,
   paySellerSubscription, listGames, createGame, updateGame,
   setGameCover, gameCoverMime, readProduct, listCatalog, listMyProducts,
@@ -100,6 +101,8 @@ const CODES = {
   not_applicable: 409,
   use_deal_chat: 409,
   not_a_service: 409,
+  bad_plan: 400,
+  product_archived: 409,
   not_warehouse_mode: 409,
   no_such_supply: 404,
   supply_closed: 409,
@@ -485,6 +488,27 @@ export const marketRoutes = async (req, res, url) => {
     return json(res, 200, {
       items: await listMyProducts(me, { limit: params.get('limit'), offset: params.get('offset') }),
     });
+  }
+
+  /* ══ Продвижение товара ═════════════════════════════════════════
+     Плата Sky за своё же место на витрине — как подписка. К деньгам
+     сделки отношения не имеет: те идут продавцу напрямую. */
+
+  if (req.method === 'GET' && path === '/api/market/promotions') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, {
+      plans: Object.entries(PROMO_PLANS).map(([id, p]) => ({ id, ...p })),
+      items: await listPromotions(me),
+    });
+  }
+
+  if (req.method === 'POST' && path === '/api/market/promotions') {
+    if (!rateLimitPerHour(`mk:promo:${me}`, 30)) {
+      return json(res, 429, { error: 'too_many_requests' });
+    }
+    const body = await parseBody(req);
+    const done = await buyPromotion(me, body.productId, body.plan);
+    return done.error ? fail(res, done) : json(res, 201, done);
   }
 
   if (req.method === 'GET' && path === '/api/market/seller/stats') {

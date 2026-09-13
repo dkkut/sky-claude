@@ -102,6 +102,28 @@ export const remove = async (id) => {
   try { await rm(pathFor(checkId(id)), { force: true }); } catch { /* уже нет */ }
 };
 
+/**
+ * Уборка осиротевших файлов.
+ *
+ * Файл без строки в базе — это байты, которые уже никто не откроет и
+ * никто не удалит: удаление идёт от строки, а строки нет. Появляются
+ * они после каскадных удалений — ушёл человек, ушли его товары и
+ * склады, а файлы остались.
+ *
+ * Список известных идентификаторов приходит снаружи: этот файл про
+ * диск и ничего не знает про таблицы.
+ */
+export const sweepOrphans = async (known) => {
+  const alive = known instanceof Set ? known : new Set(known ?? []);
+  let removed = 0;
+  for (const id of await listStoredIds()) {
+    if (alive.has(id)) continue;
+    await remove(id);
+    removed += 1;
+  }
+  return removed;
+};
+
 /** Что лежит на диске — для уборки осиротевшего. */
 export const listStoredIds = async () => {
   const out = [];

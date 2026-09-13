@@ -19,6 +19,7 @@ import type {
   MarketNotification, MarketConfig, MarketType, ProductCategory,
   GameCategoryKey, ShipMethod, ShipDestination, MyCarrier, CarrierJob,
   ServiceCategory, ServiceLevel, ServicePackage, FulfilmentMode,
+  PromoPlan, Promotion,
 } from './types';
 
 const q = (params: Record<string, string | number | undefined | null>) => {
@@ -108,6 +109,19 @@ export const apiMyProducts = (limit = 100, offset = 0) =>
 export const apiUploadSellerAvatar = (file: Blob) =>
   apiCall<{ ok: true }>('/api/market/seller/avatar',
     { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } });
+
+/**
+ * Продвижение товара.
+ *
+ * Плата Sky за своё же место на витрине — как подписка продавца. Уходит
+ * только название тарифа: цену и срок берёт сервер.
+ */
+export const apiPromotions = () =>
+  apiCall<{ plans: PromoPlan[]; items: Promotion[] }>('/api/market/promotions');
+
+export const apiBuyPromotion = (productId: string, plan: string) =>
+  apiCall<{ promotion: Promotion; balance: number }>('/api/market/promotions',
+    { method: 'POST', body: JSON.stringify({ productId, plan }) });
 
 /* ─── Товары ──────────────────────────────────────────────────────── */
 

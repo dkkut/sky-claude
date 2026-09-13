@@ -40,7 +40,8 @@ import { sweepBots } from './bots.mjs';
 import { expireOrganizers, closePastEvents, sweepOrphanTicketImages } from './tickets.mjs';
 import { sweepAiUsage } from './aichat.mjs';
 import { sweepTogether } from './together.mjs';
-import { sweepSellerSubscriptions } from './market.mjs';
+import { sweepSellerSubscriptions, liveFileIds } from './market.mjs';
+import { sweepOrphans as sweepMarketFiles } from './marketstore.mjs';
 import { sweepPickupExpiry } from './marketdelivery.mjs';
 import { sweepAiFiles } from './aitools.mjs';
 import { retryPendingWebhooks } from './botevents.mjs';
@@ -250,6 +251,10 @@ const start = async () => {
       // «ждёт получателя» вечно: срок хранения кончился — это спор.
       const stale = await sweepPickupExpiry();
       if (stale) console.log(`[market] просрочено хранение посылок: ${stale}`);
+      // Файл без строки в базе уже никто не откроет и никто не удалит:
+      // удаление идёт от строки, а строки нет.
+      const orphans = await sweepMarketFiles(await liveFileIds());
+      if (orphans) console.log(`[market] убрано осиротевших файлов: ${orphans}`);
     } catch (err) {
       console.error('[housekeeping]', err.message);
     }

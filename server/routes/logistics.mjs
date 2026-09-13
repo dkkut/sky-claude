@@ -92,6 +92,7 @@ const CODES = {
   no_such_company: 404,
   target_not_found: 404,
   no_offer: 409,
+  offer_taken: 409,
 };
 
 const fail = (res, result) => json(res, CODES[result.error] ?? 400, { error: result.error });

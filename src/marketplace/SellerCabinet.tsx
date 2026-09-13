@@ -19,7 +19,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Store, Package, ShoppingBag, BarChart3, Settings, Plus, Trash2,
   Edit3, CheckCircle2, AlertCircle, Star, ImagePlus, CreditCard,
-  Truck, Route, Warehouse as WarehouseIcon, PackageSearch, KeyRound,
+  Truck, Route, Warehouse as WarehouseIcon, PackageSearch, KeyRound, Zap,
 } from 'lucide-react';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert, StatCard, Stars,
@@ -29,13 +29,14 @@ import {
   apiCreateSeller, apiUpdateSeller, apiPaySellerSubscription,
   apiCreateProduct, apiUpdateProduct, apiArchiveProduct,
   apiUploadProductImage, apiDeleteProductImage, apiGames,
-  apiSetServicePackages,
+  apiSetServicePackages, apiPromotions, apiBuyPromotion,
   type ProductInput,
 } from './marketApi';
 import { useMarketStore } from './store';
 import type {
   Product, Seller, MarketType, ProductCategory, GameCategoryKey, Game,
   ServiceCategory, ServiceLevel, ServicePackage, FulfilmentMode,
+  PromoPlan, Promotion,
 } from './types';
 import {
   GAME_CATEGORY_LABEL, CATEGORY_LABEL, SERVICE_CATEGORY_LABEL, SERVICE_LEVEL_LABEL,
@@ -583,6 +584,118 @@ const SellerOrders = ({ meId }: { meId: string }) => {
   );
 };
 
+/* ── Продвижение ──────────────────────────────────────────────────── */
+
+/**
+ * Реклама товара.
+ *
+ * Раньше этот экран рисовал «кампания запущена» и добавлял строчку в
+ * память вкладки: денег никто не брал, охвата никто не давал, а при
+ * перезагрузке кампания исчезала. Теперь продвижение настоящее — оно
+ * оплачивается из кошелька Sky и действительно поднимает товар в
+ * каталоге на оплаченный срок.
+ *
+ * Это плата нам за место на витрине, как подписка. Деньги сделки через
+ * Sky по-прежнему не проходят.
+ */
+const SellerPromotions = () => {
+  const { myProducts } = useMarketStore();
+  const [plans, setPlans] = useState<PromoPlan[]>([]);
+  const [items, setItems] = useState<Promotion[]>([]);
+  const [plan, setPlan] = useState<string>('');
+  const [productId, setProductId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState('');
+
+  const reload = async () => {
+    const r = await apiPromotions();
+    if (r.ok && r.data) { setPlans(r.data.plans); setItems(r.data.items); }
+  };
+  useEffect(() => { void reload(); }, []);
+
+  const live = myProducts.filter((p) => p.active);
+
+  const buy = async () => {
+    if (!plan || !productId) return;
+    setBusy(true); setError(null); setDone('');
+    const r = await apiBuyPromotion(productId, plan);
+    setBusy(false);
+    if (!r.ok || !r.data) { setError(r.reason ?? 'Не получилось оплатить'); return; }
+    setDone(`Товар продвигается до ${fmtTime(r.data.promotion.endsAt)}`);
+    setPlan(''); setProductId('');
+    await reload();
+  };
+
+  return (
+    <div className="space-y-3 p-4">
+      {items.filter((i) => i.active).length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold" style={{ color: C.t3 }}>СЕЙЧАС ПРОДВИГАЕТСЯ</p>
+          {items.filter((i) => i.active).map((i) => (
+            <div key={i.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+              <p className="text-[12px] font-semibold" style={{ color: C.t1 }}>{i.productTitle}</p>
+              <p className="mt-0.5 text-[11px]" style={{ color: C.t3 }}>
+                {i.planTitle} · до {fmtTime(i.endsAt)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Field label="Какой товар продвигать">
+        <select value={productId} onChange={(e) => setProductId(e.target.value)}
+          className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle}>
+          <option value="">Выберите товар</option>
+          {live.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+        </select>
+      </Field>
+      {live.length === 0 && <Alert text="На витрине пока нет товаров, которые можно продвигать." />}
+
+      <p className="text-[11px] font-semibold" style={{ color: C.t3 }}>ТАРИФЫ</p>
+      {plans.map((p) => (
+        <button key={p.id} type="button" onClick={() => setPlan(p.id)}
+          className="block w-full rounded-2xl p-3 text-left"
+          style={{
+            background: plan === p.id ? C.accBg : C.l1,
+            border: `1px solid ${plan === p.id ? 'rgba(79,110,247,0.35)' : C.brd}`,
+          }}>
+          <div className="flex items-center justify-between">
+            <p className="text-[12px] font-bold" style={{ color: C.t1 }}>{p.title}</p>
+            <p className="text-sm font-black" style={{ color: C.t1 }}>{fmt(p.price)}</p>
+          </div>
+          <p className="mt-0.5 text-[11px]" style={{ color: C.t2 }}>{p.note}</p>
+        </button>
+      ))}
+
+      {error && <Alert text={error} />}
+      {done && <Alert kind="info" text={done} />}
+
+      <button type="button" disabled={!plan || !productId || busy} onClick={buy}
+        className="w-full rounded-xl py-2.5 text-[12px] font-bold disabled:opacity-40"
+        style={{ background: C.acc, color: '#fff' }}>
+        {busy ? 'Оплачиваем…' : 'Оплатить продвижение'}
+      </button>
+
+      <p className="text-[10px]" style={{ color: C.t3 }}>
+        Списывается из кошелька Sky. Это плата за место на витрине, а не комиссия
+        со сделки: деньги покупателя идут вам напрямую, мимо Sky.
+      </p>
+
+      {items.filter((i) => !i.active).length > 0 && (
+        <div className="space-y-1 pt-2">
+          <p className="text-[11px] font-semibold" style={{ color: C.t3 }}>ЗАВЕРШЁННЫЕ</p>
+          {items.filter((i) => !i.active).map((i) => (
+            <p key={i.id} className="text-[11px]" style={{ color: C.t3 }}>
+              {i.productTitle} · {i.planTitle} · до {fmtTime(i.endsAt)}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── Счётчики ─────────────────────────────────────────────────────── */
 
 const SellerStatsView = () => {
@@ -731,7 +844,7 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
 
 type CabTab = 'orders' | 'products' | 'stats'
   | 'couriers' | 'transport' | 'warehouses' | 'shipments' | 'passes'
-  | 'settings';
+  | 'ads' | 'settings';
 
 /* Логистика — часть кабинета продавца, как и была: курьеры, своя
    транспортная компания, склады, поставки и пропуска. Теперь всё это
@@ -745,6 +858,7 @@ const TABS: { key: CabTab; label: string; Icon: LucideIcon }[] = [
   { key: 'warehouses', label: 'Мои склады', Icon: WarehouseIcon },
   { key: 'shipments',  label: 'Поставки', Icon: PackageSearch },
   { key: 'passes',     label: 'Пропуска и доступы', Icon: KeyRound },
+  { key: 'ads',        label: 'Реклама',  Icon: Zap },
   { key: 'settings',   label: 'Магазин',  Icon: Settings },
 ];
 
@@ -797,6 +911,7 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
         {tab === 'warehouses' && <WarehouseHub />}
         {tab === 'shipments' && <ShipmentHub />}
         {tab === 'passes' && <PassHub />}
+        {tab === 'ads' && <SellerPromotions />}
         {tab === 'settings' && <SellerSettings seller={seller} />}
       </div>
     </div>

@@ -490,6 +490,7 @@ export const toProduct = (row) => ({
   region: row.region ?? undefined,
   serviceCategory: row.service_category ?? undefined,
   tags: Array.isArray(row.tags) ? row.tags : [],
+  promoted: row.promoted_until ? new Date(row.promoted_until).getTime() > Date.now() : false,
   packages: Array.isArray(row.packages) ? row.packages : undefined,
   active: Boolean(row.active),
   sold: Number(row.sold ?? 0),
@@ -592,6 +593,9 @@ export const listCatalog = async (viewerId, {
 
   /* Порядок сортировки выбирается из списка, а не подставляется из
      запроса: подстановка в ORDER BY — это внедрение в запрос. */
+  /* Продвинутые товары идут первыми при любом порядке: это и есть
+     услуга, за которую заплатили. Внутри — обычный порядок. */
+  const promoted = 'CASE WHEN p.promoted_until > now() THEN 0 ELSE 1 END';
   const order = {
     new: 'p.created_at DESC',
     cheap: 'p.price_kop ASC, p.created_at DESC',
@@ -603,7 +607,7 @@ export const listCatalog = async (viewerId, {
   args.push(lim, off);
   const { rows } = await query(
     `${SELECT_PRODUCT} WHERE ${where.join(' AND ')}
-      ORDER BY ${order}
+      ORDER BY ${promoted}, ${order}
       LIMIT $${args.length - 1} OFFSET $${args.length}`,
     args,
   );
@@ -961,6 +965,106 @@ export const readServicePackage = async (productId, level) => {
   };
 };
 
+/* ─── Продвижение товара ───────────────────────────────────────────── */
+
+/**
+ * Тарифы продвижения.
+ *
+ * Цену и срок задаёт сервер: из запроса приходит только название
+ * тарифа, иначе месяц на витрине покупался бы за рубль.
+ */
+export const PROMO_PLANS = {
+  basic:   { price: 990,  days: 2,  title: 'Базовый',  note: '48 часов показов в ленте покупателей' },
+  pro:     { price: 2990, days: 7,  title: 'Про',      note: '7 дней, приоритет в каталоге' },
+  premium: { price: 7990, days: 30, title: 'Премиум',  note: '30 дней, верх каталога' },
+};
+
+const toPromotion = (row) => ({
+  id: row.id,
+  productId: row.product_id,
+  productTitle: row.product_title ?? undefined,
+  plan: row.plan,
+  planTitle: PROMO_PLANS[row.plan]?.title ?? row.plan,
+  amount: Number(row.amount),
+  days: Number(row.days),
+  startsAt: row.starts_at?.toISOString?.() ?? undefined,
+  endsAt: row.ends_at?.toISOString?.() ?? undefined,
+  active: row.ends_at ? new Date(row.ends_at).getTime() > Date.now() : false,
+});
+
+/**
+ * Купить продвижение своего товара.
+ *
+ * Деньги — из кошелька Sky: это плата нам за место, а не часть сделки.
+ * Если строка не записалась, деньги возвращаются: оплата без услуги
+ * хуже, чем услуга без оплаты.
+ *
+ * Продление считается от большей из двух дат — «сейчас» и «до какого
+ * числа уже оплачено», иначе вторая покупка сокращала бы срок вместо
+ * того, чтобы его продлевать.
+ */
+export const buyPromotion = async (sellerId, productId, plan) => {
+  const tariff = PROMO_PLANS[String(plan ?? '')];
+  if (!tariff) return { error: 'bad_plan' };
+  if (!PRODUCT_ID_RE.test(String(productId ?? ''))) return { error: 'not_found' };
+
+  const { rows } = await query(
+    'SELECT seller_id, active, title FROM market_products WHERE id = $1', [productId]);
+  if (!rows[0]) return { error: 'not_found' };
+  if (rows[0].seller_id !== sellerId) return { error: 'not_allowed' };
+  if (!rows[0].active) return { error: 'product_archived' };
+
+  /* Продвигать можно только то, что и так вправе стоять на витрине. */
+  const allowed = await canSell(sellerId);
+  if (!allowed.ok) return { error: allowed.error };
+
+  const paid = await wallet.spend(
+    sellerId, tariff.price, 'market_promotion',
+    `Sky Market: продвижение «${rows[0].title}», ${tariff.days} дн.`);
+  if (paid.error) return paid;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: upd } = await client.query(
+      `UPDATE market_products
+          SET promoted_until = GREATEST(COALESCE(promoted_until, now()), now())
+                               + ($2::int * interval '1 day'),
+              updated_at = now()
+        WHERE id = $1 RETURNING promoted_until`,
+      [productId, tariff.days]);
+    const { rows: made } = await client.query(
+      `INSERT INTO market_promotions (id, product_id, seller_id, plan, amount, days, ends_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [`mpr-${generateId()}`, productId, sellerId, String(plan),
+        tariff.price, tariff.days, upd[0].promoted_until]);
+    await client.query('COMMIT');
+
+    await logMarket(sellerId, 'promotion_bought', productId, { plan: String(plan) });
+    return {
+      promotion: toPromotion({ ...made[0], product_title: rows[0].title }),
+      balance: paid.balance,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    await wallet.refund(sellerId, tariff.price, 'Sky Market: возврат за продвижение')
+      .catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+export const listPromotions = async (sellerId, { limit } = {}) => {
+  const lim = int(limit, 1, 100) ?? 50;
+  const { rows } = await query(
+    `SELECT pr.*, p.title AS product_title
+       FROM market_promotions pr JOIN market_products p ON p.id = pr.product_id
+      WHERE pr.seller_id = $1 ORDER BY pr.created_at DESC LIMIT $2`,
+    [sellerId, lim]);
+  return rows.map(toPromotion);
+};
+
 /* ─── Отзывы и пересчёт рейтинга ───────────────────────────────────── */
 
 /**
@@ -1046,6 +1150,27 @@ export const paymentDetailsForOrder = async (sellerId, { forBuyer = false } = {}
     [sellerId]);
   const enc = rows[0]?.payment_details_enc;
   return enc ? (decryptContent(enc) ?? null) : null;
+};
+
+/**
+ * Все идентификаторы файлов, у которых есть строка в базе.
+ *
+ * Нужен уборке: всё, чего здесь нет, на диске лежит зря. Аватары
+ * магазинов и обложки игр выводятся из идентификаторов их владельцев —
+ * так же, как они и выдавались при загрузке.
+ */
+export const liveFileIds = async () => {
+  const alive = new Set();
+  const { rows: imgs } = await query('SELECT id FROM market_product_images');
+  for (const r of imgs) alive.add(r.id);
+  const { rows: sellers } = await query(
+    'SELECT profile_id FROM market_sellers WHERE has_avatar');
+  for (const r of sellers) alive.add(`msa-${String(r.profile_id).slice(4)}`);
+  const { rows: games } = await query('SELECT id FROM market_games WHERE has_cover');
+  for (const r of games) alive.add(`mgc-${String(r.id).slice(3)}`);
+  const { rows: photos } = await query('SELECT id FROM logi_warehouse_photos');
+  for (const r of photos) alive.add(r.id);
+  return alive;
 };
 
 export { text as marketText, int as marketInt, searchTextFor, encryptContent, decryptContent };

@@ -72,7 +72,15 @@ const toCourier = (row, { withPhone = false } = {}) => ({
   workTo: row.work_to,
   online: Boolean(row.online),
   bio: row.bio,
-  location: { lat: Number(row.lat ?? 0), lng: Number(row.lng ?? 0) },
+  /*
+   * Точка на карте — живое местоположение человека. Показывается,
+   * только пока он сам объявил себя на связи: уйдя со связи, курьер
+   * перестаёт быть точкой на чужой карте, а не остаётся там, где его
+   * застали.
+   */
+  location: row.online
+    ? { lat: Number(row.lat ?? 0), lng: Number(row.lng ?? 0) }
+    : { lat: 0, lng: 0 },
   updatedAt: row.updated_at?.toISOString?.() ?? undefined,
   createdAt: row.created_at?.toISOString?.() ?? undefined,
 });

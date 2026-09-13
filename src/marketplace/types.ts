@@ -139,6 +139,8 @@ export interface Product {
   serviceCategory?: ServiceCategory;
   tags: string[];
   packages?: ServicePackage[];
+  /** Продвигается ли товар прямо сейчас. Решает сервер. */
+  promoted?: boolean;
   favorite?: boolean;
   own?: boolean;
   createdAt?: string;
@@ -340,6 +342,28 @@ export interface MarketNotification {
   body: string;
   read: boolean;
   createdAt?: string;
+}
+
+/** Тариф продвижения. Цену и срок задаёт сервер. */
+export interface PromoPlan {
+  id: 'basic' | 'pro' | 'premium';
+  title: string;
+  price: number;
+  days: number;
+  note: string;
+}
+
+export interface Promotion {
+  id: string;
+  productId: string;
+  productTitle?: string;
+  plan: string;
+  planTitle: string;
+  amount: number;
+  days: number;
+  startsAt?: string;
+  endsAt?: string;
+  active: boolean;
 }
 
 export interface MarketConfig {
