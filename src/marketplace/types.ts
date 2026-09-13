@@ -212,6 +212,32 @@ export interface Carrier {
   rating: number | null;
 }
 
+/** Своя транспортная компания — то, что видит её владелец. */
+export interface MyCarrier {
+  id: string;
+  title: string;
+  city: string;
+  active: boolean;
+  etaHours: number;
+  minPrice: number;
+}
+
+/** Поручение своей компании: что везти и куда. */
+export interface CarrierJob {
+  orderId: string;
+  title: string;
+  orderStatus: OrderStatus;
+  status: string;
+  statusText: string;
+  destination: ShipDestination;
+  carrier: string;
+  address: string;
+  contact: string;
+  pickupPoint: { title: string; city: string; address: string } | null;
+  pickupUntil: string | null;
+  eta: string | null;
+}
+
 export interface Shipment {
   orderId: string;
   method: ShipMethod;

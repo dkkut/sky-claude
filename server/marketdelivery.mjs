@@ -29,6 +29,7 @@ import { generateId } from './security.mjs';
 import { config } from './config.mjs';
 import { isAdmin } from './admin.mjs';
 import { logMarket, marketText as text, marketInt as int, ORDER_ID_RE } from './market.mjs';
+import { decryptContent } from './crypto.mjs';
 import { applyTransition, toOrder } from './marketorders.mjs';
 import { systemMessage } from './marketchat.mjs';
 import { pushMarket } from './signal.mjs';
@@ -257,6 +258,7 @@ export const readShipment = async (orderId, viewerId) => {
   if (!ORDER_ID_RE.test(id)) return null;
   const { rows } = await query(
     `SELECT s.*, o.buyer_id, o.seller_id, o.pickup_until,
+            c.owner_id AS carrier_owner,
             c.title AS carrier_title, c.kind AS carrier_kind, c.code AS carrier_code,
             p.title AS point_title, p.city AS point_city, p.address AS point_address,
             p.work_from, p.work_to
@@ -267,7 +269,11 @@ export const readShipment = async (orderId, viewerId) => {
       WHERE s.order_id = $1`, [id]);
   const row = rows[0];
   if (!row) return null;
-  if (row.buyer_id !== viewerId && row.seller_id !== viewerId && !(await isAdmin(viewerId))) {
+  /* Видят стороны сделки, поддержка и та компания, которая эту
+     посылку везёт: без этого она не знает, куда и что ей поручили. */
+  const mine = row.buyer_id === viewerId || row.seller_id === viewerId
+    || (row.carrier_kind === 'inhouse' && row.carrier_owner === viewerId);
+  if (!mine && !(await isAdmin(viewerId))) {
     await logMarket(viewerId, 'shipment_access_denied', id);
     return null;
   }
@@ -290,6 +296,64 @@ export const readShipment = async (orderId, viewerId) => {
     pickupUntil: row.pickup_until?.toISOString?.() ?? null,
     updatedAt: row.updated_at?.toISOString?.() ?? undefined,
   };
+};
+
+/**
+ * Что везёт моя транспортная компания.
+ *
+ * Своей компании нужен список поручений — иначе двигать посылки она
+ * может, но не знает какие. Адрес и телефон покупателя здесь
+ * расшифровываются: везти без адреса нельзя, а компания уже назначена
+ * на это отправление продавцом.
+ */
+export const listCarrierShipments = async (ownerId, { limit } = {}) => {
+  const lim = int(limit, 1, 200) ?? 100;
+  const { rows } = await query(
+    `SELECT s.order_id, s.status, s.status_text, s.destination, s.eta,
+            o.title_snap, o.status AS order_status, o.address_enc, o.contact_enc,
+            o.pickup_until,
+            c.title AS carrier_title,
+            p.title AS point_title, p.city AS point_city, p.address AS point_address
+       FROM market_shipments s
+       JOIN market_carriers c ON c.id = s.carrier_id
+       JOIN market_orders o ON o.id = s.order_id
+       LEFT JOIN market_pickup_points p ON p.id = s.pickup_point_id
+      WHERE c.kind = 'inhouse' AND c.owner_id = $1
+        AND o.status NOT IN ('completed', 'cancelled')
+      ORDER BY s.created_at DESC LIMIT $2`,
+    [ownerId, lim]);
+  return rows.map((r) => ({
+    orderId: r.order_id,
+    title: r.title_snap,
+    orderStatus: r.order_status,
+    status: r.status,
+    statusText: r.status_text,
+    destination: r.destination,
+    carrier: r.carrier_title,
+    address: r.destination === 'buyer_address' ? (r.address_enc ? (decryptContent(r.address_enc) ?? '') : '') : '',
+    contact: r.contact_enc ? (decryptContent(r.contact_enc) ?? '') : '',
+    pickupPoint: r.point_title
+      ? { title: r.point_title, city: r.point_city, address: r.point_address }
+      : null,
+    pickupUntil: r.pickup_until?.toISOString?.() ?? null,
+    eta: r.eta?.toISOString?.() ?? null,
+  }));
+};
+
+/** Свои транспортные компании — чтобы кабинет знал, есть ли они вообще. */
+export const listMyCarriers = async (ownerId) => {
+  const { rows } = await query(
+    `SELECT id, title, city, active, eta_hours, min_price_kop
+       FROM market_carriers WHERE kind = 'inhouse' AND owner_id = $1
+      ORDER BY title`, [ownerId]);
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    city: r.city,
+    active: Boolean(r.active),
+    etaHours: Number(r.eta_hours),
+    minPrice: Number(r.min_price_kop) / 100,
+  }));
 };
 
 /* ─── Движение посылки ─────────────────────────────────────────────── */
@@ -337,13 +401,23 @@ const moveShipment = async (client, order, shipment, key, { actorId, actorRole, 
 };
 
 /**
- * Продавец, который везёт сам, двигает посылку руками.
+ * Состояние посылки двигают руками — но не кто угодно и не у любой.
  *
- * Разрешено только для method = 'seller_self': у отправления, отданного
- * службе, состояние приходит от службы, и давать продавцу рисовать его
- * самому означало бы «доставлено» без доставки.
+ * Двигать может только тот, кто её реально везёт:
+ *
+ *   · продавец — когда везёт сам (method = 'seller_self');
+ *   · владелец своей транспортной компании — когда посылку везёт его
+ *     компания (carrier.kind = 'inhouse').
+ *
+ * У внешней службы состояние приходит вебхуком от неё самой, и руками
+ * его не ставит никто: «доставлено» без доставки — это ровно то, ради
+ * чего подписывают вебхуки.
+ *
+ * Своей компании вебхука взять неоткуда, поэтому руки — её
+ * единственный способ отчитаться. Без этого её отправления застревали
+ * бы на «принято» навсегда.
  */
-export const sellerMoveShipment = async (orderId, sellerId, key, note = '') => {
+export const moveShipmentByHand = async (orderId, actorId, key, note = '') => {
   const id = String(orderId ?? '');
   if (!ORDER_ID_RE.test(id)) return { error: 'not_found' };
   if (!['in_transit', 'arrived', 'ready_for_pickup'].includes(String(key))) {
@@ -354,25 +428,40 @@ export const sellerMoveShipment = async (orderId, sellerId, key, note = '') => {
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `SELECT o.*, s.method, s.destination, s.status AS shipment_status
-         FROM market_orders o JOIN market_shipments s ON s.order_id = o.id
+      `SELECT o.*, s.method, s.destination, s.status AS shipment_status,
+              c.kind AS carrier_kind, c.owner_id AS carrier_owner
+         FROM market_orders o
+         JOIN market_shipments s ON s.order_id = o.id
+         LEFT JOIN market_carriers c ON c.id = s.carrier_id
         WHERE o.id = $1 FOR UPDATE OF o`, [id]);
     const order = rows[0];
-    if (!order || order.seller_id !== sellerId) {
+    if (!order) { await client.query('ROLLBACK'); return { error: 'not_found' }; }
+
+    const bySeller = order.method === 'seller_self' && order.seller_id === actorId;
+    const byInhouse = order.carrier_kind === 'inhouse' && order.carrier_owner === actorId;
+
+    if (!bySeller && !byInhouse) {
       await client.query('ROLLBACK');
-      if (order) await logMarket(sellerId, 'shipment_move_denied', id);
+      /* Стороне сделки говорим, почему нельзя; постороннему — что
+         такого заказа нет. Разница в ответах сама по себе
+         рассказывает, чей это заказ. */
+      if (order.seller_id === actorId || order.buyer_id === actorId) {
+        await logMarket(actorId, 'shipment_move_denied', id);
+        return { error: 'carrier_owns_status' };
+      }
+      await logMarket(actorId, 'shipment_move_denied', id);
       return { error: 'not_found' };
-    }
-    if (order.method !== 'seller_self') {
-      await client.query('ROLLBACK');
-      return { error: 'carrier_owns_status' };
     }
 
     const moved = await moveShipment(client,
       order,
       { status: order.shipment_status, destination: order.destination },
       String(key),
-      { actorId: sellerId, actorRole: 'seller', detail: { statusText: text(note, 200) } });
+      {
+        actorId,
+        actorRole: bySeller ? 'seller' : 'system',
+        detail: { statusText: text(note, 200), byCarrier: byInhouse },
+      });
     if (moved.error) { await client.query('ROLLBACK'); return moved; }
     if (moved.stale) { await client.query('ROLLBACK'); return { error: 'stale_status' }; }
 
@@ -380,8 +469,8 @@ export const sellerMoveShipment = async (orderId, sellerId, key, note = '') => {
     for (const n of moved.notes ?? []) {
       pushMarket([n.userId], { type: 'market-notification', payload: n.note });
     }
-    await logMarket(sellerId, 'shipment_moved', id, { to: String(key) });
-    return { ok: true, shipment: await readShipment(id, sellerId) };
+    await logMarket(actorId, 'shipment_moved', id, { to: String(key), byCarrier: byInhouse });
+    return { ok: true, shipment: await readShipment(id, actorId) };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -389,6 +478,9 @@ export const sellerMoveShipment = async (orderId, sellerId, key, note = '') => {
     client.release();
   }
 };
+
+/** Прежнее имя: им зовут ту же дверь маршруты продавца. */
+export const sellerMoveShipment = moveShipmentByHand;
 
 /* ─── Вебхуки перевозчиков ─────────────────────────────────────────── */
 

@@ -16,10 +16,12 @@ import {
   apiMarketConfig, apiCatalog, apiGames, apiMySeller, apiSellerStats,
   apiMyProducts, apiFavorites, apiSetFavorite, apiOrders,
   apiMarketNotifications, apiReadAllNotifications, apiDealChats, apiDealUnread,
+  apiMyCarriers, apiCarrierJobs,
   type CatalogQuery,
 } from './marketApi';
 import type {
   Product, Seller, SellerStats, Order, Game, MarketNotification, DealChat, MarketConfig,
+  MyCarrier, CarrierJob,
 } from './types';
 
 interface MarketState {
@@ -43,6 +45,9 @@ interface MarketState {
   chats: DealChat[];
   unread: number;
 
+  myCarriers: MyCarrier[];
+  carrierJobs: CarrierJob[];
+
   loadConfig: () => Promise<void>;
   loadGames: () => Promise<void>;
   loadCatalog: (query?: CatalogQuery) => Promise<void>;
@@ -55,6 +60,8 @@ interface MarketState {
   readAllNotifications: () => Promise<void>;
   loadChats: () => Promise<void>;
   loadUnread: () => Promise<void>;
+  loadCarrier: () => Promise<void>;
+  loadCarrierJobs: () => Promise<void>;
   setSeller: (seller: Seller | null) => void;
   patchProduct: (product: Product) => void;
   patchOrder: (order: Order) => void;
@@ -76,6 +83,8 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   notifications: [],
   chats: [],
   unread: 0,
+  myCarriers: [],
+  carrierJobs: [],
 
   loadConfig: async () => {
     if (get().config) return;
@@ -152,6 +161,16 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   loadUnread: async () => {
     const r = await apiDealUnread();
     if (r.ok && r.data) set({ unread: r.data.unread });
+  },
+
+  loadCarrier: async () => {
+    const r = await apiMyCarriers();
+    if (r.ok && r.data) set({ myCarriers: r.data.carriers });
+  },
+
+  loadCarrierJobs: async () => {
+    const r = await apiCarrierJobs();
+    if (r.ok && r.data) set({ carrierJobs: r.data.shipments });
   },
 
   setSeller: (seller) => set({ seller, sellerLoaded: true }),

@@ -49,6 +49,7 @@ import {
 import {
   listPickupPoints, listCarriers, shipOrder, readShipment,
   sellerMoveShipment, carrierWebhook, upsertPickupPoint, upsertCarrier,
+  listCarrierShipments, listMyCarriers,
 } from './../marketdelivery.mjs';
 
 /* ─── Потолки ──────────────────────────────────────────────────────
@@ -491,6 +492,23 @@ export const marketRoutes = async (req, res, url) => {
   if (req.method === 'GET' && path === '/api/market/carriers') {
     if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
     return json(res, 200, { carriers: await listCarriers({ city: params.get('city') }) });
+  }
+
+  /* ══ Своя транспортная компания ═════════════════════════════════
+     Компанию заводит администрация, но возит она сама: ей нужен свой
+     список поручений и право двигать то, что она везёт. Состояние
+     чужих отправлений отсюда не меняется — проверка внутри. */
+
+  if (req.method === 'GET' && path === '/api/market/carrier') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { carriers: await listMyCarriers(me) });
+  }
+
+  if (req.method === 'GET' && path === '/api/market/carrier/shipments') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, {
+      shipments: await listCarrierShipments(me, { limit: params.get('limit') }),
+    });
   }
 
   /* ══ Заказы ═════════════════════════════════════════════════════ */

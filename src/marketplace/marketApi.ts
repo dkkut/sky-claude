@@ -17,7 +17,7 @@ import type {
   Product, Review, Seller, SellerStats, Order, OrderEvent, OrderAction,
   Game, PickupPoint, Carrier, Shipment, DealChat, ChatMessage,
   MarketNotification, MarketConfig, MarketType, ProductCategory,
-  GameCategoryKey, ShipMethod, ShipDestination,
+  GameCategoryKey, ShipMethod, ShipDestination, MyCarrier, CarrierJob,
 } from './types';
 
 const q = (params: Record<string, string | number | undefined | null>) => {
@@ -225,6 +225,20 @@ export const apiShipOrder = (orderId: string, input: {
 export const apiMoveShipment = (orderId: string, status: 'in_transit' | 'arrived' | 'ready_for_pickup', note = '') =>
   apiCall<{ ok: true; shipment: Shipment }>(`/api/market/orders/${enc(orderId)}/shipment-status`,
     { method: 'POST', body: JSON.stringify({ status, note }) });
+
+/* ─── Своя транспортная компания ──────────────────────────────────── */
+
+/**
+ * Компанию заводит администрация, а возит она сама.
+ *
+ * Вебхука у своей компании нет, поэтому состояние посылки она ставит
+ * руками — но только у той посылки, которую ей поручили. Проверяет это
+ * сервер, а не этот файл.
+ */
+export const apiMyCarriers = () => apiCall<{ carriers: MyCarrier[] }>('/api/market/carrier');
+
+export const apiCarrierJobs = (limit = 100) =>
+  apiCall<{ shipments: CarrierJob[] }>(`/api/market/carrier/shipments${q({ limit })}`);
 
 /* ─── Чат сделки ──────────────────────────────────────────────────── */
 

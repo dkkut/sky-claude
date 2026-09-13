@@ -33,6 +33,7 @@ import type {
 import { CATEGORY_LABEL } from './types';
 import { OrdersList, OrderPage } from './OrderScreens';
 import { BecomeSeller, SellerCabinet } from './SellerCabinet';
+import { CarrierCabinet } from './CarrierCabinet';
 import { GamingMarket } from './SkyGamingMarket';
 import { ServicesMarket } from './SkyServicesMarket';
 
@@ -497,13 +498,14 @@ const Notifications = ({ onOpenOrder }: { onOpenOrder: (id: string) => void }) =
 
 /* ── Корень ───────────────────────────────────────────────────────── */
 
-type Tab = 'catalog' | 'gaming' | 'services' | 'orders' | 'fav' | 'seller' | 'bell';
+type Tab = 'catalog' | 'gaming' | 'services' | 'orders' | 'fav' | 'seller' | 'carrier' | 'bell';
 
 export const SkyMarket = () => {
   const { currentUserId } = useAuthStore();
   const meId = currentUserId ?? '';
   const {
     seller, sellerLoaded, loadSeller, loadConfig, notifications, loadNotifications,
+    myCarriers, loadCarrier,
   } = useMarketStore();
   const [tab, setTab] = useState<Tab>('catalog');
   const [product, setProduct] = useState<string | null>(null);
@@ -513,6 +515,9 @@ export const SkyMarket = () => {
     void loadConfig();
     void loadSeller();
     void loadNotifications();
+    /* Вкладка своей транспортной компании появляется только у того, у
+       кого такая компания есть: остальным она не нужна. */
+    void loadCarrier();
   }, []);
 
   const unreadNotes = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
@@ -546,6 +551,7 @@ export const SkyMarket = () => {
             { key: 'orders',   label: 'Заказы' },
             { key: 'fav',      label: 'Избранное' },
             { key: 'seller',   label: seller ? 'Магазин' : 'Продавать' },
+            ...(myCarriers.length > 0 ? [{ key: 'carrier' as Tab, label: 'Доставка' }] : []),
           ] as { key: Tab; label: string }[]).map((t) => (
             <button key={t.key} type="button"
               onClick={() => { setProduct(null); setOrder(null); setTab(t.key); }}
@@ -578,6 +584,7 @@ export const SkyMarket = () => {
               {tab === 'orders' && <MyOrders meId={meId} />}
               {tab === 'fav' && <Favorites onOpen={setProduct} />}
               {tab === 'bell' && <Notifications onOpenOrder={openOrder} />}
+              {tab === 'carrier' && <CarrierCabinet />}
               {tab === 'seller' && (
                 !sellerLoaded
                   ? <p className="p-4 text-[12px]" style={{ color: C.t3 }}>Загружаем…</p>
