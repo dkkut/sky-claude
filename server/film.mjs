@@ -32,6 +32,7 @@ import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { isAdmin } from './admin.mjs';
+import { sharedInSession } from './watchgrant.mjs';
 import { removeMovieFiles, listStoredIds, posterIdFor } from './filmstore.mjs';
 
 const newId = () => `mov-${crypto.randomUUID()}`;
@@ -155,6 +156,12 @@ const SELECT_MOVIE = `
  * Администратор здесь не всесилен намеренно. Ему доступно
  * опубликованное и отправленное на проверку; закрытый фильм из чужой
  * личной коллекции для него такой же чужой, как для любого другого.
+ *
+ * Единственное исключение — совместный просмотр, и оно узкое: владелец
+ * может открыть СВОЮ личную загрузку тем, кого позвал, и только пока
+ * идёт сеанс. В каталог она от этого не попадает — каталог отбирает
+ * опубликованное, а личная загрузка опубликованной не становится. За
+ * пределами сеанса пропуск не действует: см. watchgrant.mjs.
  */
 export const visibleMovie = async (movieId, viewerId) => {
   const { rows } = await query('SELECT * FROM film_movies WHERE id = $1', [String(movieId ?? '')]);
@@ -163,6 +170,15 @@ export const visibleMovie = async (movieId, viewerId) => {
   if (row.owner_id && row.owner_id === viewerId) return { ...row, own: true };
   if (row.status === 'published') return row;
   if (row.status === 'pending' && await isAdmin(viewerId)) return row;
+
+  /* Личная загрузка, которую её владелец показывает в сеансе. Пометка
+     viaSession говорит вызывающему, откуда взялось право: по ней видно,
+     что это не «фильм стал общим», а «этому человеку его показывают
+     прямо сейчас». */
+  if (row.status === 'private' && await sharedInSession(row.id, viewerId)) {
+    return { ...row, viaSession: true };
+  }
+
   // Чужой закрытый фильм неотличим от несуществующего: разница в
   // ответах сама по себе выдаёт, что такой фильм есть.
   return null;
@@ -545,7 +561,13 @@ export const listSaved = async (userId) => {
 };
 
 export const setSaved = async (userId, movieId, on) => {
-  if (!(await visibleMovie(movieId, userId))) return { error: 'not_found' };
+  const row = await visibleMovie(movieId, userId);
+  if (!row) return { error: 'not_found' };
+  /* Закладка на чужую личную загрузку не имеет смысла: в списке
+     закладок она всё равно не покажется, потому что тот отбирает
+     опубликованное и своё. Отказываем сразу, а не оставляем строку,
+     которая никогда никому не понадобится. */
+  if (row.status !== 'published' && row.own !== true) return { error: 'not_allowed' };
   if (on) {
     await query('INSERT INTO film_saved (user_id, movie_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
       [userId, movieId]);

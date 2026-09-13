@@ -49,6 +49,7 @@ const CODES = {
   too_many_sessions: 409,
   limit_below_current: 409,
   content_private: 409,
+  content_not_shareable: 409,
   content_not_ready: 409,
   content_not_found: 404,
   queue_end: 409,

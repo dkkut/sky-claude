@@ -423,10 +423,20 @@ export const Player = ({ movie, onClose, together = null }: {
                 <p className="font-bold text-white truncate">{movie.title}</p>
                 {movie.year && <p className="text-xs" style={{ color: K.sub }}>{movie.year} · {movie.genre}</p>}
               </div>
-              {movie.private && (
+              {/* «Только я» — про личную полку, поэтому подпись видит
+                  её владелец. Тому, кому эту запись показывают в
+                  сеансе, она сообщала бы неправду: для него фильм не
+                  «только я», а «мне показывают». */}
+              {movie.private && movie.own && (
                 <span className="flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold"
                   style={{ background: 'rgba(0,0,0,0.5)', color: K.sub }}>
                   <Lock size={10} /> Только я
+                </span>
+              )}
+              {movie.private && !movie.own && together && (
+                <span className="flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold"
+                  style={{ background: 'rgba(0,0,0,0.5)', color: K.sub }}>
+                  <Lock size={10} /> Личная запись владельца
                 </span>
               )}
               {/* Плеер занимает весь экран, и список участников за ним

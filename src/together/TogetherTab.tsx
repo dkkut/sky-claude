@@ -30,6 +30,7 @@ import {
 import { useFilmStore } from '@/film/serverStore';
 import { Player as FilmPlayer } from '@/extras/SkyFilm';
 import { apiTracks } from '@/music/musicApi';
+import { apiMovie, type ServerMovie } from '@/film/filmApi';
 import { useTogetherStore } from './togetherState';
 import { ListenTogether } from './ListenTogether';
 import {
@@ -136,6 +137,9 @@ const CreateForm = ({ limits, onDone, onCancel }: {
   onCancel: () => void;
 }) => {
   const movies = useFilmStore(s => s.catalog);
+  /* Личная полка: то, что человек загрузил для себя. В каталоге этого
+     нет и не будет — но показать своё тем, кого позвал, он вправе. */
+  const mine = useFilmStore(s => s.mine);
   const loadFilm = useFilmStore(s => s.load);
   const [tracks, setTracks] = useState<{ id: string; title: string; artist: string }[]>([]);
 
@@ -157,6 +161,14 @@ const CreateForm = ({ limits, onDone, onCancel }: {
   /* Потолок участников приходит с сервера. Здесь он только показан:
      присланное сверх него сервер всё равно отклонит. */
   const maxOthers = Math.max(1, (limits?.maxParticipantsDefault ?? 10) - 1);
+
+  /* Делиться можно только личным (status private) и только тем, что
+     догрузилось. Отправленное на проверку и отклонённое в список не
+     попадает — сервер такие всё равно не примет. */
+  const personal = useMemo(
+    () => mine.filter(m => m.status === 'private' && m.bytes > 0),
+    [mine]);
+  const isPersonal = personal.some(m => m.id === contentId);
 
   const create = async () => {
     if (!contentId) { setError('Выберите, что смотреть или слушать.'); return; }
@@ -202,10 +214,29 @@ const CreateForm = ({ limits, onDone, onCancel }: {
         className="w-full rounded-2xl px-4 py-2.5 text-sm outline-none"
         style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }}>
         <option value="">— Выбрать {type === 'watch' ? 'фильм' : 'трек'} —</option>
-        {type === 'watch'
-          ? movies.map(m => <option key={m.id} value={m.id}>{m.title}</option>)
-          : tracks.map(t => <option key={t.id} value={t.id}>{t.artist} — {t.title}</option>)}
+        {type === 'watch' ? (
+          <>
+            {personal.length > 0 && (
+              <optgroup label="Моя коллекция">
+                {personal.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+              </optgroup>
+            )}
+            {movies.length > 0 && (
+              <optgroup label="Из каталога">
+                {movies.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+              </optgroup>
+            )}
+          </>
+        ) : tracks.map(t => <option key={t.id} value={t.id}>{t.artist} — {t.title}</option>)}
       </select>
+
+      {isPersonal && (
+        <p className="rounded-xl px-3 py-2 text-[11px]" data-tg-personal-note
+          style={{ background: 'var(--bg-l2)', color: 'var(--t2)' }}>
+          Это запись из вашей коллекции. Её увидят только те, кого вы позовёте,
+          и только пока идёт сеанс. В каталоге она не появится.
+        </p>
+      )}
 
       <input value={title} onChange={e => setTitle(e.target.value)} data-tg-title
         placeholder="Название сессии (необязательно)"
@@ -352,9 +383,22 @@ const SessionScreen = ({ session, onClose }: { session: TogetherSession; onClose
   useEffect(() => { void refreshParticipants(session.id); }, [session.id, refreshParticipants]);
   useEffect(() => { if (session.type === 'watch') void loadFilm(); }, [session.type, loadFilm]);
 
-  const movie = useMemo(
-    () => (session.type === 'watch' ? movies.find(m => m.id === session.queue[0]?.id) : undefined),
-    [movies, session]);
+  /*
+   * Запись о фильме спрашиваем у сервера по идентификатору, а не ищем
+   * в списках. Личной загрузки владельца нет ни в каталоге, ни в
+   * коллекции позванного — а показать её ему нужно. Сервер сам решит,
+   * положено ли: у него для этого есть всё, а у списков — нет.
+   */
+  const [movie, setMovie] = useState<ServerMovie | null>(null);
+  const wantedId = session.type === 'watch' ? (session.queue[0]?.id ?? null) : null;
+  useEffect(() => {
+    if (!wantedId) { setMovie(null); return; }
+    const known = movies.find(m => m.id === wantedId);
+    if (known) { setMovie(known); return; }
+    let alive = true;
+    void apiMovie(wantedId).then(m => { if (alive) setMovie(m ?? null); });
+    return () => { alive = false; };
+  }, [wantedId, movies]);
 
   const inside = participants.filter(p => p.status === 'joined').length;
 
@@ -424,9 +468,8 @@ const SessionScreen = ({ session, onClose }: { session: TogetherSession; onClose
                 }} />
             : <div className="flex flex-1 items-center justify-center p-6 text-center">
                 <p className="text-sm" style={{ color: 'var(--t3)' }}>
-                  {movies.length === 0
-                    ? 'Открываю фильм…'
-                    : 'Фильм не найден в каталоге. Возможно, его сняли с публикации.'}
+                  Фильм не открывается. Возможно, владелец убрал его или
+                  завершил показ.
                 </p>
               </div>
         ) : (

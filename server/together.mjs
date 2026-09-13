@@ -128,11 +128,27 @@ const resolveContent = async (type, kind, contentId, ownerId) => {
     const movie = await readMovie(contentId, ownerId);
     if (!movie) return { error: 'content_not_found' };
     if (movie.bytes <= 0) return { error: 'content_not_ready' };
-    /* Закрытый фильм виден только своему владельцу — так устроено кино,
-       и «Вместе» это правило не отменяет. Сессию, в которую никто не
-       сможет войти, лучше не заводить вовсе: отказ сейчас понятнее,
-       чем пустая комната потом. */
-    if (movie.private) return { error: 'content_private' };
+
+    /*
+     * Что можно показать в сеансе.
+     *
+     * Опубликованное — всем: оно и так в каталоге.
+     *
+     * Личную загрузку — только свою. «Мне показали, а я показал
+     * дальше» не проходит: у того, кому показывают, own ложно, и
+     * пересобрать чужую запись в собственный сеанс он не может. Это
+     * единственное место, где такая цепочка могла бы начаться, и она
+     * обрывается здесь.
+     *
+     * Отправленное на проверку и отклонённое проверкой — нельзя ни в
+     * каком виде. Отклонённое особенно: иначе совместный просмотр стал
+     * бы способом раздавать ровно то, что модерация не пропустила.
+     */
+    if (movie.status !== 'published') {
+      if (!movie.own) return { error: 'content_forbidden' };
+      if (movie.status !== 'private') return { error: 'content_not_shareable' };
+    }
+
     return {
       title: movie.title,
       queue: [{ id: movie.id, ms: Math.max(0, Math.round(Number(movie.duration || 0) * 1000)) }],
@@ -204,14 +220,44 @@ const mayUseContent = async (row, userId) => {
   if (!(await hasPrime(userId)) && !(await isAdmin(userId))) return false;
 
   if (row.content_kind === 'movie') {
-    const movie = await visibleMovie(queue[0].id, userId);
-    return Boolean(movie) && movie.status === 'published';
+    /*
+     * Смотрим глазами владельца сеанса, а не самого участника, и это
+     * не послабление. Вопрос здесь один: можно ли ЭТО показывать в
+     * ЭТОМ сеансе. Право же самого человека быть в сеансе уже
+     * установлено — без строки участника сюда не попадают.
+     *
+     * Спрашивать глазами участника было бы и неверно: у позванного,
+     * который ещё не вошёл, пропуска на личную загрузку нет по
+     * определению, и позвать его на своё кино стало бы невозможно.
+     */
+    const movie = await visibleMovie(queue[0].id, row.owner_id);
+    if (!movie) return false;
+    if (movie.status === 'published') return true;
+    return movie.status === 'private' && movie.owner_id === row.owner_id;
   }
   /* Музыка: право нужно на текущий трек. Остальные проверятся, когда до
      них дойдёт очередь, — к тому времени права могут и измениться. */
   const idx = Math.min(Math.max(0, Number(row.queue_index) || 0), queue.length - 1);
   const track = await visibleTrack(queue[idx].id, userId);
   return Boolean(track) && track.status === 'published';
+};
+
+/**
+ * Показывает ли этот сеанс личную загрузку своего владельца.
+ *
+ * От ответа зависит, что делать, когда владелец выходит: обычный сеанс
+ * переживает это со сменой владельца, а показ личной записи —
+ * заканчивается вместе с тем, кто её показывал.
+ */
+const ownsPrivateContent = async (row) => {
+  if (row.content_kind !== 'movie') return false;
+  const queue = Array.isArray(row.queue) ? row.queue : [];
+  if (queue.length === 0) return false;
+  const { rows } = await query(
+    "SELECT 1 FROM film_movies WHERE id = $1 AND owner_id = $2 AND status = 'private'",
+    [queue[0].id, row.owner_id],
+  );
+  return rows.length > 0;
 };
 
 /* ─── Состояние воспроизведения ─────────────────────────────────────── */
@@ -810,6 +856,30 @@ export const leaveSession = async (sessionId, userId) => {
 
   if (part.role !== 'owner') return { ok: true, recipients };
 
+  /*
+   * Уход владельца, который показывал СВОЮ личную загрузку.
+   *
+   * Здесь владение не передаётся, а сеанс закрывается. Разрешение было
+   * не «смотрите это кино», а «я вам его показываю»: оно держится на
+   * том, кто показывает. Передать его вместе с ролью значило бы, что
+   * личная запись человека продолжает крутиться без него и уже по
+   * чужому решению.
+   *
+   * Опубликованного кино и музыки это не касается: они и так доступны
+   * каждому, и там владение переходит как обычно.
+   */
+  if (await ownsPrivateContent(row)) {
+    await query(
+      "UPDATE together_sessions SET status = 'ended', ended_at = now(), playing = FALSE WHERE id = $1",
+      [sessionId]);
+    await query(
+      `UPDATE together_participants SET status = 'left', left_at = now()
+        WHERE session_id = $1 AND status = 'joined'`,
+      [sessionId]);
+    await logTogether(sessionId, userId, 'session_ended', { reason: 'owner_left_private' });
+    return { ok: true, ended: true, recipients };
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1001,7 +1071,9 @@ const trackStillOpen = async (row, index) => {
   if (!item) return false;
   if (row.content_kind === 'movie') {
     const movie = await visibleMovie(item.id, row.owner_id);
-    return Boolean(movie) && movie.status === 'published';
+    if (!movie) return false;
+    if (movie.status === 'published') return true;
+    return movie.status === 'private' && movie.owner_id === row.owner_id;
   }
   const track = await visibleTrack(item.id, row.owner_id);
   return Boolean(track) && track.status === 'published';
