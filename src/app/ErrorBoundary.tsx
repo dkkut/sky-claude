@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { isChunkError, clearChunkReloadMark } from './lazyChunk';
+import { isChunkError } from './lazyChunk';
 
 interface EBState { hasError: boolean; error: Error | null; }
 
@@ -12,13 +12,6 @@ export class ErrorBoundary extends React.Component<
 
   static getDerivedStateFromError(error: Error): EBState {
     return { hasError: true, error };
-  }
-
-  componentDidMount() {
-    /* Экран показался — значит страница жива, и метку о перезагрузке
-       из-за пропавшего куска можно снять: следующая такая пропажа
-       снова достойна одной перезагрузки. */
-    clearChunkReloadMark();
   }
 
   render() {
@@ -51,7 +44,9 @@ export class ErrorBoundary extends React.Component<
           <button
             onClick={() => {
               if (stale) {
-                clearChunkReloadMark();
+                /* Метку не трогаем: если и после этой перезагрузки
+                   кусок не придёт, защита должна удержать страницу от
+                   круга и показать честную ошибку. */
                 window.location.reload();
                 return;
               }
