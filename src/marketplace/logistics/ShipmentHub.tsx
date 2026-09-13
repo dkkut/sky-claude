@@ -105,8 +105,7 @@ const ShipmentForm = ({ editing, onClose, onDone }: {
 }) => {
   const { createShipment, updateShipment } = useShipmentStore();
   const { myWarehouses } = useWarehouseStore();
-  const { mySeller } = useMarketStore();
-  const seller = mySeller();
+  const seller = useMarketStore(s => s.seller);
   const warehouses = myWarehouses();
   const sortingCenters = warehouses.filter(w => w.role === 'sorting_center');
   const centerOptions = sortingCenters.length > 0 ? sortingCenters : warehouses;

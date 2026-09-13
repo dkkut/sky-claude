@@ -1,36 +1,47 @@
 /* ======================================================================
-   SKY MARKET  -  Types
+   SKY MARKET — типы
+
+   Это отражение того, что отдаёт сервер, и ничего сверх. Здесь нет
+   баланса продавца, вывода средств, комиссии и замороженных сумм —
+   Sky не хранит деньги сделки, покупатель платит продавцу напрямую.
+
+   Всё, что лежит в этих полях, — уже решение сервера. Переписать их в
+   памяти вкладки можно, кнопки нарисуются; нажатие всё равно уйдёт на
+   сервер, а тот спросит базу и ответит отказом.
 ====================================================================== */
+
+export type MarketType = 'standard' | 'game';
 
 export type ProductCategory =
   | 'electronics' | 'clothing' | 'home' | 'beauty'
   | 'sports' | 'books' | 'toys' | 'food' | 'other';
 
-export type MarketType = 'standard' | 'game';
-
+/**
+ * Состояние сделки — ровно то же, что в машине переходов на сервере.
+ *
+ * Слова declared и confirmed означают заявления сторон, а не проверку
+ * платежа: Sky перевода не видит.
+ */
 export type OrderStatus =
-  | 'pending'          // ожидает оплаты/подтверждения продавца
-  | 'confirmed'        // продавец подтвердил
-  | 'shipped'          // отправлен, трек-номер присвоен
-  | 'delivered'        // покупатель подтвердил получение
-  | 'cancelled'        // отменён
-  | 'disputed';        // спор
+  | 'created'
+  | 'payment_pending'
+  | 'buyer_payment_declared'
+  | 'seller_payment_confirmed'
+  | 'fulfillment'
+  | 'seller_shipped'
+  | 'in_transit'
+  | 'ready_for_pickup'
+  | 'buyer_received'
+  | 'completed'
+  | 'cancelled'
+  | 'disputed';
+
+/** Действие, которое клиент вправе попросить. Состояние выбирает сервер. */
+export type OrderAction = 'accept' | 'declare_paid' | 'confirm_paid' | 'fulfill' | 'received';
+
+export type OrderRole = 'buyer' | 'seller' | 'support';
 
 export type SellerStatus = 'pending' | 'active' | 'suspended';
-
-/* ── Игровой маркет: игры и категории — реальные сущности, управляются
-   из Admin Panel, а не хардкод во frontend ── */
-export interface Game {
-  id:          string;
-  title:       string;
-  slug:        string;          // для /market/games/:slug
-  coverUrl?:   string;
-  description: string;
-  categories:  string[];        // ключи из GAME_CATEGORY_LABEL, выбранные для этой игры
-  order:       number;          // порядок отображения
-  hidden:      boolean;
-  createdAt:   string;
-}
 
 export type GameCategoryKey =
   | 'currency' | 'accounts' | 'keys' | 'dlc' | 'items'
@@ -42,95 +53,241 @@ export const GAME_CATEGORY_LABEL: Record<GameCategoryKey, string> = {
   giftcards: 'Gift Cards', licenses: 'Игровые лицензии',
 };
 
-export type DeliveryMethod = 'instant' | 'manual';
+export const CATEGORY_LABEL: Record<ProductCategory, string> = {
+  electronics: 'Электроника', clothing: 'Одежда', home: 'Дом', beauty: 'Красота',
+  sports: 'Спорт', books: 'Книги', toys: 'Игрушки', food: 'Питание', other: 'Другое',
+};
+
+export interface Game {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  hasCover: boolean;
+  order: number;
+  hidden: boolean;
+}
 
 export interface Product {
-  id:          string;
-  sellerId:    string;
-  title:       string;
+  id: string;
+  sellerId: string;
+  sellerName?: string;
+  sellerRating?: number;
+  marketType: MarketType;
+  title: string;
   description: string;
-  price:       number;          // в рублях
-  oldPrice?:   number;          // зачёркнутая цена
-  badge?:      string;          // ХИТ / NEW / ЛИМ / −X%
-  discount?:   number;          // % скидки
-  category:    ProductCategory;
-  images:      string[];        // base64 или blob URL
-  stock:       number;
-  rating:      number;          // 0-5
+  /** Копейки — для расчётов. Рубли — для показа. Обратно не отправляется ни то, ни другое. */
+  priceKop: number;
+  price: number;
+  oldPriceKop?: number;
+  oldPrice?: number;
+  category: ProductCategory;
+  stock: number;
+  inStock: boolean;
+  sold: number;
+  rating: number | null;
   reviewCount: number;
-  sold:        number;
-  createdAt:   string;
-  active:      boolean;
-  /* ── Игровой маркет (marketType==='game') ── */
-  marketType:      MarketType;      // 'standard' — обычный товар, 'game' — игровой лот
-  gameId?:          string;         // ссылка на Game.id
-  gameCategory?:     GameCategoryKey;
-  deliveryMethod?:   DeliveryMethod;
-  region?:           string;       // регион аккаунта/ключа, если применимо
+  active: boolean;
+  /** Идентификаторы картинок. Адрес собирается на месте, путей на диске здесь нет. */
+  images: string[];
+  gameId?: string;
+  gameTitle?: string;
+  gameCategory?: GameCategoryKey;
+  region?: string;
+  favorite?: boolean;
+  own?: boolean;
+  createdAt?: string;
 }
 
 export interface Review {
-  id:        string;
-  productId: string;
-  buyerId:   string;
+  id: string;
+  rating: number;
+  text: string;
   buyerName: string;
-  rating:    number;    // 1-5
-  text:      string;
-  createdAt: string;
+  createdAt?: string;
+}
+
+export interface Subscription {
+  active: boolean;
+  status: 'active' | 'expired' | 'inactive';
+  until: string | null;
+  price: number;
+  days: number;
+}
+
+export interface Seller {
+  id: string;
+  shopName: string;
+  description: string;
+  hasAvatar: boolean;
+  status: SellerStatus;
+  rating: number | null;
+  reviewCount: number;
+  ordersTotal?: number;
+  ordersDone?: number;
+  ordersCancelled?: number;
+  subscription?: Subscription;
+  createdAt?: string;
+}
+
+/** Счётчики продавца. Денег здесь нет и быть не может. */
+export interface SellerStats {
+  rating: number | null;
+  reviewCount: number;
+  ordersTotal: number;
+  ordersDone: number;
+  ordersCancelled: number;
+  ordersOpen: number;
+  productsActive: number;
 }
 
 export interface Order {
-  id:          string;
-  trackNumber: string;           // авто-генерируется: SKY-XXXX-XXXX
-  buyerId:     string;
-  sellerId:    string;
-  productId:   string;
-  productTitle:string;
-  productImage?:string;
-  quantity:    number;
-  price:       number;           // цена за единицу
-  total:       number;           // итого
-  status:      OrderStatus;
-  address:     string;
-  createdAt:   string;
-  shippedAt?:  string;
-  deliveredAt?:string;
-  cancelReason?:string;
-  deliveryCompanyId?:   string;
-  deliveryCompanyName?: string;
-  deliverySource?:      'seller'|'skymarket'|'external';
-  deliveryPrice?:       number;
-  marketType:  MarketType;       // 'standard' | 'game'
-  commissionRate?: number;       // ставка на момент заказа (снимок, не пересчитывается задним числом)
-  commissionAmount?: number;
+  id: string;
+  marketType: MarketType;
+  status: OrderStatus;
+  stateSeq: number;
+  productId: string;
+  title: string;
+  priceKop: number;
+  price: number;
+  quantity: number;
+  totalKop: number;
+  total: number;
+  buyerId: string;
+  sellerId: string;
+  role: OrderRole;
+  address: string;
+  contact: string;
+  pickupPointId: string | null;
+  packingStartedAt: string | null;
+  packedAt: string | null;
+  paidDeclaredAt: string | null;
+  paidConfirmedAt: string | null;
+  deliveredAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string;
+  pickupUntil: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-export interface SellerProfile {
-  accountId:   string;
-  shopName:    string;
-  description: string;
-  status:      SellerStatus;
-  balance:     number;           // рублей к выводу
-  totalEarned: number;
-  commission:  number;           // 0.05 = 5%
-  createdAt:   string;
-  rating:      number;
-  salesCount:  number;
+export interface OrderEvent {
+  role: 'buyer' | 'seller' | 'support' | 'system';
+  from: string | null;
+  to: string;
+  detail: Record<string, unknown>;
+  at?: string;
 }
 
-export interface WithdrawRequest {
-  id:        string;
-  sellerId:  string;
-  amount:    number;             // сумма до комиссии
-  fee:       number;             // комиссия 5%
-  net:       number;             // к выводу
-  status:    'pending' | 'done';
-  createdAt: string;
+export type ShipMethod = 'carrier' | 'seller_self';
+export type ShipDestination = 'pickup_point' | 'buyer_address';
+
+export interface PickupPoint {
+  id: string;
+  title: string;
+  city: string;
+  address: string;
+  phone: string;
+  workFrom: string;
+  workTo: string;
+  holdDays: number;
 }
 
-/* ── Глобальные ставки комиссии по типу маркета — задаются только из
-   Admin Panel, фронтенд их не хардкодит и не может передать своё значение ── */
-export interface MarketCommissionRates {
-  standard: number;   // 0.05 = 5%
-  game:     number;
+export interface Carrier {
+  id: string;
+  kind: 'external' | 'inhouse';
+  code: string | null;
+  title: string;
+  city: string;
+  minPriceKop: number;
+  minPrice: number;
+  pricePerKmKop: number;
+  maxWeightG: number;
+  etaHours: number;
+  rating: number | null;
 }
+
+export interface Shipment {
+  orderId: string;
+  method: ShipMethod;
+  destination: ShipDestination;
+  carrier: { title: string; kind: string; code: string | null } | null;
+  pickupPoint: { title: string; city: string; address: string; workFrom: string; workTo: string } | null;
+  tracking: string | null;
+  status: string;
+  statusText: string;
+  location: string | null;
+  eta: string | null;
+  pickupUntil: string | null;
+  updatedAt?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  authorId: string;
+  role: 'buyer' | 'seller' | 'support' | 'system';
+  text: string;
+  read: boolean;
+  createdAt?: string;
+}
+
+/** Чат сделки. Это не диалог мессенджера и в его списках не появляется. */
+export interface DealChat {
+  id: string;
+  orderId: string;
+  role: OrderRole;
+  orderStatus: OrderStatus;
+  marketType: MarketType;
+  title: string;
+  unread?: number;
+  lastMessage?: string;
+  lastAt?: string | null;
+  createdAt?: string;
+}
+
+export interface MarketNotification {
+  id: string;
+  orderId: string | null;
+  kind: string;
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt?: string;
+}
+
+export interface MarketConfig {
+  categories: ProductCategory[];
+  gameCategories: GameCategoryKey[];
+  marketTypes: MarketType[];
+  sellerPrice: number;
+  sellerDays: number;
+  moneyModel: 'direct';
+}
+
+/* ─── Подписи состояний ───────────────────────────────────────────
+   Один список на весь клиент: разошедшиеся подписи — это способ
+   показать покупателю и продавцу разное про одну и ту же сделку.  */
+
+export const ORDER_LABEL: Record<OrderStatus, string> = {
+  created: 'Оформлен',
+  payment_pending: 'Ждёт оплаты',
+  buyer_payment_declared: 'Покупатель отправил деньги',
+  seller_payment_confirmed: 'Продавец получил деньги',
+  fulfillment: 'В работе',
+  seller_shipped: 'Отправлен',
+  in_transit: 'В пути',
+  ready_for_pickup: 'Ждёт в пункте выдачи',
+  buyer_received: 'Получен',
+  completed: 'Закрыт',
+  cancelled: 'Отменён',
+  disputed: 'Спор',
+};
+
+export const ACTION_LABEL: Record<OrderAction, { buyer: string; seller: string }> = {
+  accept:       { buyer: '', seller: 'Принять заказ' },
+  declare_paid: { buyer: 'Отправил деньги', seller: '' },
+  confirm_paid: { buyer: '', seller: 'Получил деньги' },
+  fulfill:      { buyer: '', seller: 'Выдать заказ' },
+  received:     { buyer: 'Подтверждаю получение', seller: '' },
+};

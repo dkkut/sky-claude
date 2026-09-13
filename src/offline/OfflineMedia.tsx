@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { listDownloads, getDownloadUrl, deleteDownload, type DownloadedItem } from './offlineDB';
 import { useMarketStore } from '@/marketplace/store';
-import { useAuthStore } from '@/core/auth/store';
+import { ORDER_LABEL } from '@/marketplace/types';
 
 /* -- цвета ------------------------------------------------------- */
 const C = {
@@ -327,36 +327,53 @@ const OfflineFilms = () => {
 /* ===================================================================
    OFFLINE MARKET (Orders)
 =================================================================== */
-const STATUS_LABELS: Record<string, string> = {
-  pending:   'Ожидание',
-  confirmed: 'Подтверждён',
-  shipped:   'Отправлен',
-  delivered: 'Доставлен',
-  cancelled: 'Отменён',
-};
+/*
+ * Заказы без связи.
+ *
+ * Показывается последнее, что успело прийти с сервера, и только для
+ * чтения: двигать сделку офлайн нельзя — состояние заказа решает
+ * сервер, а его сейчас не спросить.
+ *
+ * Раньше здесь стояла ссылка «написать продавцу» на выдуманный номер
+ * +79000000000. Номер был один на всех и никому не принадлежал, так
+ * что нажатие писало SMS в пустоту. Такой кнопки больше нет: связаться
+ * с продавцом можно в чате заказа, когда связь вернётся.
+ */
 const STATUS_COLOR: Record<string, string> = {
-  pending:   'var(--amber)',
-  confirmed: 'var(--accent)',
-  shipped:   '#a855f7',
-  delivered: 'var(--green)',
-  cancelled: 'var(--red)',
+  created:                  'var(--t2)',
+  payment_pending:          'var(--amber)',
+  buyer_payment_declared:   'var(--amber)',
+  seller_payment_confirmed: 'var(--accent)',
+  fulfillment:              'var(--accent)',
+  seller_shipped:           '#a855f7',
+  in_transit:               '#a855f7',
+  ready_for_pickup:         'var(--green)',
+  buyer_received:           'var(--green)',
+  completed:                'var(--green)',
+  cancelled:                'var(--red)',
+  disputed:                 'var(--red)',
 };
+
 const STATUS_ICON: Record<string, typeof Package> = {
-  pending:   Clock,
-  confirmed: Package,
-  shipped:   Truck,
-  delivered: CheckCircle,
+  created:                  Clock,
+  payment_pending:          Clock,
+  buyer_payment_declared:   Clock,
+  seller_payment_confirmed: Package,
+  fulfillment:              Package,
+  seller_shipped:           Truck,
+  in_transit:               Truck,
+  ready_for_pickup:         Truck,
+  buyer_received:           CheckCircle,
+  completed:                CheckCircle,
 };
 
 const OfflineMarket = () => {
-  const { orders }   = useMarketStore();
-  const { currentUserId } = useAuthStore();
-  const myOrders = orders.filter(o => o.buyerId === currentUserId);
+  const orders = useMarketStore(s => s.ordersBuy);
 
-  const fmt = (n: number) =>
+  const fmtSum = (n: number) =>
     n.toLocaleString('ru', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 });
 
-  if (myOrders.length === 0) {
+  if (orders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 opacity-50">
         <ShoppingBag size={40} style={{ color: C.t2 }} />
@@ -368,33 +385,28 @@ const OfflineMarket = () => {
   return (
     <div className="flex flex-col gap-3 px-3 py-3">
       <p className="text-xs font-semibold uppercase tracking-wider px-1" style={{ color: C.t3 }}>
-        Мои заказы · {myOrders.length}
+        Мои заказы · {orders.length}
       </p>
-      {myOrders.map(o => {
+      <p className="text-[11px] px-1" style={{ color: C.t3 }}>
+        Без связи заказы только для чтения: состояние сделки решает сервер.
+      </p>
+      {orders.map(o => {
         const color = STATUS_COLOR[o.status] ?? C.t2;
         const Icon  = STATUS_ICON[o.status] ?? Package;
-        const sellerPhone = '+79000000000'; // В реальной версии берётся из profila
         return (
           <div key={o.id} className="rounded-2xl overflow-hidden"
             style={{ background: C.l2, border: `1px solid ${C.border}` }}>
-            {/* Шапка заказа */}
             <div className="flex items-center justify-between px-4 py-3"
               style={{ borderBottom: `1px solid ${C.border}` }}>
-              <div>
-                <p className="text-xs font-bold text-white">{o.productTitle}</p>
-                <p className="text-[11px] mt-0.5 font-mono" style={{ color: C.accent }}>
-                  {o.trackNumber}
-                </p>
-              </div>
+              <p className="text-xs font-bold text-white">{o.title}</p>
               <div className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
                 style={{ background: `${color}15`, border: `1px solid ${color}30` }}>
                 <Icon size={11} style={{ color }} />
                 <span className="text-[10px] font-semibold" style={{ color }}>
-                  {STATUS_LABELS[o.status]}
+                  {ORDER_LABEL[o.status]}
                 </span>
               </div>
             </div>
-            {/* Детали */}
             <div className="px-4 py-3 space-y-2">
               <div className="flex justify-between">
                 <span className="text-xs" style={{ color: C.t2 }}>Кол-во</span>
@@ -402,38 +414,14 @@ const OfflineMarket = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-xs" style={{ color: C.t2 }}>Сумма</span>
-                <span className="text-xs font-semibold" style={{ color: C.green }}>{fmt(o.total)}</span>
+                <span className="text-xs font-semibold" style={{ color: C.green }}>{fmtSum(o.total)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-xs" style={{ color: C.t2 }}>Адрес</span>
-                <span className="text-xs font-semibold text-white text-right max-w-[55%]">{o.address}</span>
-              </div>
-              {o.shippedAt && (
+              {o.address && (
                 <div className="flex justify-between">
-                  <span className="text-xs" style={{ color: C.t2 }}>Отправлен</span>
-                  <span className="text-xs font-semibold text-white">
-                    {new Date(o.shippedAt).toLocaleDateString('ru')}
-                  </span>
+                  <span className="text-xs" style={{ color: C.t2 }}>Адрес</span>
+                  <span className="text-xs font-semibold text-white text-right max-w-[55%]">{o.address}</span>
                 </div>
               )}
-            </div>
-            {/* Offline связь с маркетом */}
-            <div className="px-4 pb-3">
-              <a href={`sms:${sellerPhone}?body=${encodeURIComponent(`[SKY Market] Заказ ${o.trackNumber}: `)}`}
-                className="flex items-center justify-between w-full rounded-xl px-3 py-2.5 transition-colors"
-                style={{ background: `${C.accent}12`, border: `1px solid ${C.accent}25` }}>
-                <div className="flex items-center gap-2">
-                  <div className="grid h-7 w-7 place-items-center rounded-full"
-                    style={{ background: `${C.accent}20` }}>
-                    <ShoppingBag size={12} style={{ color: C.accent }} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold" style={{ color: C.t1 }}>Написать продавцу</p>
-                    <p className="text-[10px]" style={{ color: C.t2 }}>Через SMS · {sellerPhone}</p>
-                  </div>
-                </div>
-                <ChevronRight size={14} style={{ color: C.t3 }} />
-              </a>
             </div>
           </div>
         );

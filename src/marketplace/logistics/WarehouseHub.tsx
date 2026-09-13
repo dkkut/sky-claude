@@ -228,7 +228,7 @@ const WarehouseForm = ({ existing, onDone, onClose }: { existing?: Warehouse; on
 /* ── Управление остатками ─────────────────────────────────────────── */
 const StockTab = ({ wh }: { wh: Warehouse }) => {
   const { stockFor, adjustStock, setStock, free } = useWarehouseStore();
-  const products = useMarketStore(s => s.products).filter(p => p.sellerId === wh.sellerId);
+  const products = useMarketStore(s => s.myProducts).filter((p) => p.sellerId === wh.sellerId);
   const stock = stockFor(wh.id);
   const [addingId, setAddingId] = useState('');
   const [qty, setQty] = useState(1);
