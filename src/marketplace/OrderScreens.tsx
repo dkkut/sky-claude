@@ -15,6 +15,7 @@ import { useEffect, useState, useRef } from 'react';
 import {
   ArrowLeft, Send, Truck, Package, MapPin, Clock, ShieldAlert,
   CheckCircle2, XCircle, Store, MessageSquare, Star, Warehouse, User,
+  Wallet, Copy,
 } from 'lucide-react';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert,
@@ -410,12 +411,59 @@ const ReviewForm = ({ orderId, onDone }: { orderId: string; onDone: () => void }
   );
 };
 
+/* ── Реквизиты продавца ───────────────────────────────────────────── */
+
+/**
+ * Куда переводить.
+ *
+ * Реквизиты приходят с сервера из профиля продавца, а не из переписки.
+ * Это важно: реквизиты, присланные сообщением, подменяет тот, кто в
+ * переписку попал, и деньги уходят не туда. Поэтому здесь и написано,
+ * откуда они взялись, — чтобы присланный в чат «новый номер карты» не
+ * выглядел равноценной заменой.
+ */
+const PaymentDetails = ({ details }: { details: string }) => {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(details);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* Буфер обмена может быть закрыт — реквизиты видно и так. */
+    }
+  };
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3"
+      style={{ background: C.l1, border: `1px solid ${C.acc}55` }}>
+      <div className="flex items-center gap-2">
+        <Wallet size={14} style={{ color: C.acc }} />
+        <p className="text-[12px] font-bold" style={{ color: C.t1 }}>Реквизиты для оплаты</p>
+      </div>
+      <p className="whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-[12px]"
+        style={{ background: C.l2, color: C.t1 }}>{details}</p>
+      <button type="button" onClick={copy}
+        className="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-[11px] font-bold"
+        style={{ background: C.l2, color: C.t1, border: `1px solid ${C.brd}` }}>
+        <Copy size={12} /> {copied ? 'Скопировано' : 'Скопировать'}
+      </button>
+      <p className="text-[10px]" style={{ color: C.t3 }}>
+        Эти реквизиты Sky взял из профиля продавца. Если в переписке пришли другие —
+        не переводите по ним и напишите в поддержку.
+      </p>
+    </div>
+  );
+};
+
 /* ── Страница заказа ──────────────────────────────────────────────── */
 
 export const OrderPage = ({ orderId, meId, onBack, onChanged }:
 { orderId: string; meId: string; onBack: () => void; onChanged?: (o: Order) => void }) => {
   const [order, setOrder] = useState<Order | null>(null);
   const [shipment, setShipment] = useState<Shipment | null>(null);
+  const [payment, setPayment] = useState<string | null>(null);
   const [events, setEvents] = useState<OrderEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -427,6 +475,7 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
     if (r.ok && r.data) {
       setOrder(r.data.order);
       setShipment(r.data.shipment);
+      setPayment(r.data.paymentDetails);
       onChanged?.(r.data.order);
     } else setError(r.reason ?? 'Заказ не открылся');
   };
@@ -534,6 +583,11 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
           Sky не принимает и не хранит деньги этой сделки. Покупатель переводит продавцу
           напрямую, а «отправил» и «получил» — это отметки сторон, а не проверка перевода.
         </div>
+
+        {payment && iam === 'buyer'
+          && !['completed', 'cancelled'].includes(order.status) && (
+          <PaymentDetails details={payment} />
+        )}
 
         {steps.map((s) => (
           <div key={s.action} className="space-y-2">

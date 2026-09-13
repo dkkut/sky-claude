@@ -36,7 +36,7 @@ import { isAdmin } from './admin.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import {
   canSell, logMarket, marketText as text, marketInt as int,
-  ORDER_ID_RE, PRODUCT_ID_RE, recalcRatings,
+  ORDER_ID_RE, PRODUCT_ID_RE, recalcRatings, paymentDetailsForOrder,
 } from './market.mjs';
 import { pushMarket } from './signal.mjs';
 
@@ -266,7 +266,8 @@ export const createOrder = async (buyerId, input = {}) => {
     await client.query('BEGIN');
 
     const { rows: prod } = await client.query(
-      `SELECT p.*, s.status AS seller_status, s.sub_status, s.sub_until
+      `SELECT p.*, s.status AS seller_status, s.sub_status, s.sub_until,
+              s.has_payment_details
          FROM market_products p
          JOIN market_sellers s ON s.profile_id = p.seller_id
         WHERE p.id = $1
@@ -282,6 +283,15 @@ export const createOrder = async (buyerId, input = {}) => {
         || !product.sub_until || new Date(product.sub_until) <= new Date()) {
       await client.query('ROLLBACK');
       return { error: 'not_found' };
+    }
+
+    /* Платить продавцу напрямую — единственный путь оплаты, и без
+       реквизитов этот путь никуда не ведёт. Заказ, по которому
+       покупателю некуда перевести деньги, лучше не создавать вовсе,
+       чем оставлять его висеть в ожидании оплаты. */
+    if (!product.has_payment_details) {
+      await client.query('ROLLBACK');
+      return { error: 'seller_has_no_payment_details' };
     }
 
     if (product.seller_id === buyerId) {
@@ -703,6 +713,27 @@ export const resolveDispute = async (orderId, actorId, outcome, note = '') => {
   } finally {
     client.release();
   }
+};
+
+/* ─── Реквизиты по заказу ──────────────────────────────────────────── */
+
+/**
+ * Куда переводить по этому заказу.
+ *
+ * Спрашивается отдельно от самого заказа, потому что и правило другое:
+ * заказ видят обе стороны и поддержка, а реквизиты — тот, кому платить,
+ * то есть покупатель. Продавец свои и так знает, и в его собственном
+ * профиле они есть.
+ *
+ * По отменённому заказу не выдаются: платить по нему незачем.
+ */
+export const orderPaymentDetails = async (orderId, viewerId) => {
+  const found = await accessOrder(orderId, viewerId);
+  if (!found) return null;
+  const { order, role } = found;
+  if (order.status === 'cancelled') return null;
+  if (role !== 'buyer' && role !== 'support') return null;
+  return paymentDetailsForOrder(order.seller_id, { forBuyer: true });
 };
 
 /* ─── Списки ───────────────────────────────────────────────────────── */

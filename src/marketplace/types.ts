@@ -120,6 +120,10 @@ export interface Seller {
   shopName: string;
   description: string;
   hasAvatar: boolean;
+  /** Есть ли куда переводить. Видно всем — сами реквизиты нет. */
+  hasPaymentDetails: boolean;
+  /** Только в своём профиле. Покупателю они приходят по его заказу. */
+  paymentDetails?: string;
   status: SellerStatus;
   rating: number | null;
   reviewCount: number;

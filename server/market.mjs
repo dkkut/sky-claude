@@ -38,6 +38,7 @@ export const SELLER_DAYS = 7;
 
 const MAX_SHOP_NAME = 60;
 const MAX_SHOP_DESC = 2000;
+const MAX_PAYMENT_DETAILS = 600;
 const MAX_TITLE = 140;
 const MAX_DESC = 6000;
 const MAX_PRODUCTS_PER_SELLER = 2000;
@@ -130,6 +131,15 @@ const toSeller = (row, own = false) => row && ({
   ordersDone: Number(row.orders_done ?? 0),
   ordersCancelled: Number(row.orders_cancel ?? 0),
   createdAt: row.created_at?.toISOString?.() ?? undefined,
+  /* Есть ли куда переводить. Признак виден всем: покупателю полезно
+     знать, что продавец готов принять оплату, а сами реквизиты для
+     этого показывать не нужно. */
+  hasPaymentDetails: Boolean(row.has_payment_details),
+  /* Сами реквизиты — только самому продавцу. Покупателю они приходят
+     иначе: по его собственному заказу, из readOrderPaymentDetails. */
+  paymentDetails: own && row.payment_details_enc
+    ? (decryptContent(row.payment_details_enc) ?? '')
+    : undefined,
   /* Состояние подписки — разговор с самим продавцом. Покупателю в
      карточке магазина знать, до какого числа оплачено, незачем. */
   subscription: own ? subscriptionOf(row) : undefined,
@@ -172,6 +182,11 @@ export const canSell = async (profileId) => {
   if (row.status === 'suspended') return { ok: false, error: 'seller_suspended' };
   if (row.status === 'pending') return { ok: false, error: 'seller_pending' };
   if (!subscriptionOf(row).active) return { ok: false, error: 'subscription_required' };
+  /* Sky денег не держит, и единственный путь оплаты — прямой перевод
+     продавцу. Продавец без реквизитов получить деньги не может, а
+     значит и торговать ему нечем: заказ по такому товару застрял бы
+     на «покупатель не знает, куда платить». */
+  if (!row.has_payment_details) return { ok: false, error: 'payment_details_required' };
   return { ok: true, row };
 };
 
@@ -193,17 +208,20 @@ export const readMySeller = async (profileId) => {
 };
 
 /** Завести магазин. Подписка оплачивается отдельно. */
-export const createSeller = async (profileId, { shopName, description } = {}) => {
+export const createSeller = async (profileId, { shopName, description, paymentDetails } = {}) => {
   const name = text(shopName, MAX_SHOP_NAME);
   if (name.length < 2) return { error: 'bad_shop_name' };
 
   const exists = await sellerRow(profileId);
   if (exists) return { error: 'already_seller' };
 
+  const details = text(paymentDetails, MAX_PAYMENT_DETAILS);
   const { rows } = await query(
-    `INSERT INTO market_sellers (profile_id, shop_name, description)
-     VALUES ($1,$2,$3) RETURNING *`,
-    [profileId, name, text(description, MAX_SHOP_DESC)],
+    `INSERT INTO market_sellers
+       (profile_id, shop_name, description, payment_details_enc, has_payment_details)
+     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [profileId, name, text(description, MAX_SHOP_DESC),
+      details ? encryptContent(details) : null, Boolean(details)],
   );
   await logMarket(profileId, 'seller_created', profileId);
   return { seller: toSeller(rows[0], true) };
@@ -223,6 +241,21 @@ export const updateSeller = async (profileId, patch = {}) => {
   if (patch.description !== undefined) {
     args.push(text(patch.description, MAX_SHOP_DESC));
     sets.push(`description = $${args.length}`);
+  }
+  /*
+   * Реквизиты для перевода.
+   *
+   * Хранятся зашифрованными и в журнал не попадают: это платёжные
+   * данные живого человека. Пустая строка означает «убрать» — и тогда
+   * продавец перестаёт быть в состоянии торговать, потому что деньги
+   * ему переводить некуда.
+   */
+  if (patch.paymentDetails !== undefined) {
+    const details = text(patch.paymentDetails, MAX_PAYMENT_DETAILS);
+    args.push(details ? encryptContent(details) : null);
+    sets.push(`payment_details_enc = $${args.length}`);
+    args.push(Boolean(details));
+    sets.push(`has_payment_details = $${args.length}`);
   }
   if (sets.length === 0) return { seller: toSeller(row, true) };
 
@@ -793,6 +826,32 @@ export const listReviews = async (productId, { limit } = {}) => {
     buyerName: r.buyer_name,
     createdAt: r.created_at?.toISOString?.() ?? undefined,
   }));
+};
+
+/* ─── Реквизиты продавца по заказу ─────────────────────────────────── */
+
+/**
+ * Куда покупателю переводить деньги.
+ *
+ * Реквизиты берутся из профиля продавца на сервере, а не из переписки:
+ * присланные в чат реквизиты подменяет тот, кто в чат попал, и
+ * покупатель переводит деньги не туда, куда думает.
+ *
+ * Выдаются только по живому заказу и только его покупателю. Продавцу
+ * свои реквизиты приходят в его же профиле, поддержке — при разборе
+ * спора. Постороннему, как и на чужой заказ, — ничего.
+ *
+ * По отменённому заказу реквизиты не выдаются: платить по нему уже
+ * незачем, а оставленный на экране номер карты — это номер карты,
+ * оставленный на экране.
+ */
+export const paymentDetailsForOrder = async (sellerId, { forBuyer = false } = {}) => {
+  if (!forBuyer) return null;
+  const { rows } = await query(
+    'SELECT payment_details_enc FROM market_sellers WHERE profile_id = $1 AND has_payment_details',
+    [sellerId]);
+  const enc = rows[0]?.payment_details_enc;
+  return enc ? (decryptContent(enc) ?? null) : null;
 };
 
 export { text as marketText, int as marketInt, searchTextFor, encryptContent, decryptContent };

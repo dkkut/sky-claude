@@ -41,6 +41,7 @@ import {
   createOrder, actOnOrder, cancelOrder, openDispute, resolveDispute,
   markPacking, listOrders, accessOrder, orderHistory, toOrder,
   leaveReview, sellerStats, listNotifications, readNotification, readAllNotifications,
+  orderPaymentDetails,
 } from './../marketorders.mjs';
 import {
   listChats, readChat, sendMessage, markRead, unreadCount, chatOfOrder,
@@ -73,6 +74,8 @@ const CODES = {
   unknown_carrier: 404,
   unknown_tracking: 404,
   subscription_required: 402,
+  payment_details_required: 409,
+  seller_has_no_payment_details: 409,
   insufficient_funds: 402,
   seller_suspended: 403,
   seller_pending: 403,
@@ -523,6 +526,9 @@ export const marketRoutes = async (req, res, url) => {
       return json(res, 200, {
         order: toOrder(found.order, found.role),
         shipment: await readShipment(orderId, me),
+        /* Куда переводить. Приходит с сервера, а не из переписки:
+           реквизиты, присланные в чат, подменяет тот, кто в чат попал. */
+        paymentDetails: await orderPaymentDetails(orderId, me),
       });
     }
 

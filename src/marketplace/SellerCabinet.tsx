@@ -40,12 +40,17 @@ export const BecomeSeller = () => {
   const { setSeller, config } = useMarketStore();
   const [shopName, setShopName] = useState('');
   const [description, setDescription] = useState('');
+  const [paymentDetails, setPaymentDetails] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const create = async () => {
     setBusy(true); setError(null);
-    const r = await apiCreateSeller({ shopName: shopName.trim(), description: description.trim() });
+    const r = await apiCreateSeller({
+      shopName: shopName.trim(),
+      description: description.trim(),
+      paymentDetails: paymentDetails.trim(),
+    });
     setBusy(false);
     if (!r.ok || !r.data) { setError(r.reason ?? 'Магазин не завёлся'); return; }
     setSeller(r.data.seller);
@@ -75,9 +80,18 @@ export const BecomeSeller = () => {
           className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
       </Field>
 
+      <Field label="Реквизиты для оплаты"
+        hint="Покупатель увидит их после оформления заказа — переводить он будет сюда. Без реквизитов торговать нельзя: платят вам напрямую.">
+        <textarea value={paymentDetails} onChange={(e) => setPaymentDetails(e.target.value)}
+          rows={3} maxLength={600}
+          placeholder="Например: СБП +7 900 000-00-00 (Т-Банк), получатель Иван И."
+          className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+      </Field>
+
       {error && <Alert text={error} />}
 
-      <button type="button" disabled={busy || shopName.trim().length < 2} onClick={create}
+      <button type="button" disabled={busy || shopName.trim().length < 2 || paymentDetails.trim().length < 4}
+        onClick={create}
         className="w-full rounded-xl py-2.5 text-[12px] font-bold disabled:opacity-40"
         style={{ background: C.acc, color: '#fff' }}>
         {busy ? 'Открываем…' : 'Открыть магазин'}
@@ -455,13 +469,18 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
   const { setSeller } = useMarketStore();
   const [shopName, setShopName] = useState(seller.shopName);
   const [description, setDescription] = useState(seller.description);
+  const [paymentDetails, setPaymentDetails] = useState(seller.paymentDetails ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   const save = async () => {
     setBusy(true); setError(null); setSaved(false);
-    const r = await apiUpdateSeller({ shopName: shopName.trim(), description: description.trim() });
+    const r = await apiUpdateSeller({
+      shopName: shopName.trim(),
+      description: description.trim(),
+      paymentDetails: paymentDetails.trim(),
+    });
     setBusy(false);
     if (!r.ok || !r.data) { setError(r.reason ?? 'Не сохранилось'); return; }
     setSeller(r.data.seller);
@@ -480,6 +499,18 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} maxLength={2000}
           className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
       </Field>
+
+      <Field label="Реквизиты для оплаты"
+        hint="Показываются покупателю после оформления заказа — он переводит деньги напрямую вам. Sky их не видит и не хранит переводы.">
+        <textarea value={paymentDetails} onChange={(e) => setPaymentDetails(e.target.value)}
+          rows={3} maxLength={600}
+          placeholder="Например: СБП +7 900 000-00-00 (Т-Банк), получатель Иван И."
+          className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+      </Field>
+
+      {!seller.hasPaymentDetails && (
+        <Alert text="Пока реквизиты не заданы, товары не публикуются и заказать у вас нельзя: покупателю некуда переводить деньги." />
+      )}
 
       {error && <Alert text={error} />}
       {saved && <Alert kind="info" text="Сохранено" />}
@@ -517,6 +548,12 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
       {!sub?.active && (
         <div className="shrink-0 px-4 pt-3">
           <SubscriptionCard seller={seller} />
+        </div>
+      )}
+
+      {!seller.hasPaymentDetails && (
+        <div className="shrink-0 px-4 pt-3">
+          <Alert text="Укажите реквизиты для оплаты во вкладке «Магазин» — без них покупателю некуда переводить деньги, и товары не публикуются." />
         </div>
       )}
 

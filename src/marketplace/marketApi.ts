@@ -84,10 +84,10 @@ export const apiMySeller = () => apiCall<{ seller: Seller | null }>('/api/market
 export const apiSeller = (sellerId: string) =>
   apiCall<{ seller: Seller }>(`/api/market/sellers/${enc(sellerId)}`);
 
-export const apiCreateSeller = (input: { shopName: string; description?: string }) =>
+export const apiCreateSeller = (input: { shopName: string; description?: string; paymentDetails?: string }) =>
   apiCall<{ seller: Seller }>('/api/market/seller', { method: 'POST', body: JSON.stringify(input) });
 
-export const apiUpdateSeller = (patch: { shopName?: string; description?: string }) =>
+export const apiUpdateSeller = (patch: { shopName?: string; description?: string; paymentDetails?: string }) =>
   apiCall<{ seller: Seller }>('/api/market/seller', { method: 'PATCH', body: JSON.stringify(patch) });
 
 /** Подписка за место на витрине. Цену называет сервер. */
@@ -156,8 +156,16 @@ export const apiCreateOrder = (input: OrderInput) =>
 export const apiOrders = (side: 'buyer' | 'seller', status?: 'open' | 'closed') =>
   apiCall<{ items: Order[] }>(`/api/market/orders${q({ side, status })}`);
 
+/**
+ * Заказ вместе с реквизитами продавца.
+ *
+ * Реквизиты приходят с сервера и только покупателю этого заказа.
+ * Присланные в чат реквизиты подменяет тот, кто в чат попал, — поэтому
+ * платить нужно по тем, что пришли отсюда.
+ */
 export const apiOrder = (id: string) =>
-  apiCall<{ order: Order; shipment: Shipment | null }>(`/api/market/orders/${enc(id)}`);
+  apiCall<{ order: Order; shipment: Shipment | null; paymentDetails: string | null }>(
+    `/api/market/orders/${enc(id)}`);
 
 export const apiOrderHistory = (id: string) =>
   apiCall<{ events: OrderEvent[] }>(`/api/market/orders/${enc(id)}/history`);
