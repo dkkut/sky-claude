@@ -122,10 +122,20 @@ export const remove = async (id) => {
  * диск и ничего не знает про таблицы.
  */
 export const sweepOrphans = async (known) => {
-  const alive = known instanceof Set ? known : new Set(known ?? []);
+  /* Сначала диск, и только потом база — порядок здесь важен.
+     Загрузка пишет строку в базу раньше, чем файл на диск. Если
+     спросить базу первой, то картинка, загруженная в тот же миг,
+     в ответе базы ещё не появится, а на диске уже будет лежать —
+     и уборка сотрёт её как ничейную, оставив в карточке пустоту.
+     При обратном порядке у всякого увиденного файла строка была
+     записана заведомо раньше, и спрошенная после база её вернёт. */
+  const stored = await listStoredIds();
+  if (stored.length === 0) return 0;
+  const alive = typeof known === 'function' ? await known() : known;
+  const live = alive instanceof Set ? alive : new Set(alive ?? []);
   let removed = 0;
-  for (const id of await listStoredIds()) {
-    if (alive.has(id)) continue;
+  for (const id of stored) {
+    if (live.has(id)) continue;
     await remove(id);
     removed += 1;
   }

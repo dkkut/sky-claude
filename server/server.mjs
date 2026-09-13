@@ -253,7 +253,7 @@ const start = async () => {
       if (stale) console.log(`[market] просрочено хранение посылок: ${stale}`);
       // Файл без строки в базе уже никто не откроет и никто не удалит:
       // удаление идёт от строки, а строки нет.
-      const orphans = await sweepMarketFiles(await liveFileIds());
+      const orphans = await sweepMarketFiles(liveFileIds);
       if (orphans) console.log(`[market] убрано осиротевших файлов: ${orphans}`);
     } catch (err) {
       console.error('[housekeeping]', err.message);
