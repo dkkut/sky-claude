@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Truck, Plus, X, Check, Star, Package, Users, Wallet, Route, Warehouse as WarehouseIcon,
@@ -460,7 +460,7 @@ const ExchangeTab = ({ companyId }: { companyId: string }) => {
           ) : (
             <>
               <div className="mt-3 grid grid-cols-3 gap-1.5">
-                <button type="button" onClick={() => acceptExchangeOrder(o.id, companyId)} className="rounded-xl py-2.5 text-[11.5px] font-bold text-white" style={{ background: '#22c55e' }}>Принять</button>
+                <button type="button" onClick={() => { void acceptExchangeOrder(o.id); }} className="rounded-xl py-2.5 text-[11.5px] font-bold text-white" style={{ background: '#22c55e' }}>Принять</button>
                 <button type="button" onClick={() => setOfferFor(o.id)} className="rounded-xl py-2.5 text-[11.5px] font-bold" style={{ background: C.l2, color: C.t2 }}>Своя цена</button>
                 <button type="button" onClick={() => declineExchangeOrder(o.id)} className="rounded-xl py-2.5 text-[11.5px] font-bold" style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>Отказ</button>
               </div>
@@ -643,7 +643,10 @@ const WarehousesTab = ({ companyId }: { companyId: string }) => {
 
 /* ============================== Панель одобрения предложений (для продавца) ============================== */
 export const DeliveryOffersPanel = ({ sellerId }: { sellerId: string }) => {
-  const { offersForSeller, approveOffer, rejectOffer } = useTransportStore();
+  const { offersForSeller, approveOffer, rejectOffer, load } = useTransportStore();
+  /* Предложения приходят с сервера: их шлют чужие компании, и в памяти
+     этой вкладки их взяться неоткуда. */
+  useEffect(() => { void load(); }, []);
   const offers = offersForSeller(sellerId);
   if (offers.length === 0) return null;
 
@@ -689,8 +692,10 @@ const TC_TABS: { key: TCTab; label: string; icon: any }[] = [
 
 export const TransportCompanyHub = () => {
   const { currentUserId } = useAuthStore();
-  const { companyByOwner } = useTransportStore();
+  const { companyByOwner, load } = useTransportStore();
   const company = currentUserId ? companyByOwner(currentUserId) : null;
+  /* Компания, парк, команда и биржа приходят с сервера. */
+  useEffect(() => { void load(); }, []);
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<TCTab>('today');
 

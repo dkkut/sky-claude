@@ -18,6 +18,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Store, Package, ShoppingBag, BarChart3, Settings, Plus, Trash2,
   Edit3, CheckCircle2, AlertCircle, Star, ImagePlus, CreditCard,
+  Truck, Route, Warehouse as WarehouseIcon, PackageSearch, KeyRound,
 } from 'lucide-react';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert, StatCard, Stars,
@@ -33,6 +34,11 @@ import { useMarketStore } from './store';
 import type { Product, Seller, MarketType, ProductCategory, GameCategoryKey, Game } from './types';
 import { GAME_CATEGORY_LABEL, CATEGORY_LABEL } from './types';
 import { OrdersList, OrderPage } from './OrderScreens';
+import { CourierHub } from './logistics/CourierHub';
+import { TransportCompanyHub, DeliveryOffersPanel } from './logistics/TransportCompanyHub';
+import { WarehouseHub } from './logistics/WarehouseHub';
+import { ShipmentHub } from './logistics/ShipmentHub';
+import { PassHub } from './logistics/PassHub';
 
 /* ── Стать продавцом ──────────────────────────────────────────────── */
 
@@ -423,7 +429,14 @@ const SellerOrders = ({ meId }: { meId: string }) => {
         onChanged={patchOrder} />
     );
   }
-  return <OrdersList orders={ordersSell} onOpen={setOpen} empty="Заказов пока нет" />;
+  return (
+    <div className="h-full overflow-y-auto">
+      {/* Встречные предложения перевозчиков: решение по цене принимает
+          продавец, и место этому решению — рядом с его заказами. */}
+      <DeliveryOffersPanel sellerId={meId} />
+      <OrdersList orders={ordersSell} onOpen={setOpen} empty="Заказов пока нет" />
+    </div>
+  );
 };
 
 /* ── Счётчики ─────────────────────────────────────────────────────── */
@@ -526,20 +539,34 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
 
 /* ── Кабинет ──────────────────────────────────────────────────────── */
 
-type CabTab = 'orders' | 'products' | 'stats' | 'settings';
+type CabTab = 'orders' | 'products' | 'stats'
+  | 'couriers' | 'transport' | 'warehouses' | 'shipments' | 'passes'
+  | 'settings';
 
+/* Логистика — часть кабинета продавца, как и была: курьеры, своя
+   транспортная компания, склады, поставки и пропуска. Теперь всё это
+   живёт на сервере, но стоит там же, где стояло. */
 const TABS: { key: CabTab; label: string; Icon: LucideIcon }[] = [
-  { key: 'orders',   label: 'Заказы',   Icon: ShoppingBag },
-  { key: 'products', label: 'Товары',   Icon: Package },
-  { key: 'stats',    label: 'Счётчики', Icon: BarChart3 },
-  { key: 'settings', label: 'Магазин',  Icon: Settings },
+  { key: 'orders',     label: 'Заказы',   Icon: ShoppingBag },
+  { key: 'products',   label: 'Товары',   Icon: Package },
+  { key: 'stats',      label: 'Счётчики', Icon: BarChart3 },
+  { key: 'couriers',   label: 'Курьеры',  Icon: Truck },
+  { key: 'transport',  label: 'Транспортная компания', Icon: Route },
+  { key: 'warehouses', label: 'Мои склады', Icon: WarehouseIcon },
+  { key: 'shipments',  label: 'Поставки', Icon: PackageSearch },
+  { key: 'passes',     label: 'Пропуска и доступы', Icon: KeyRound },
+  { key: 'settings',   label: 'Магазин',  Icon: Settings },
 ];
 
 export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }) => {
-  const { loadSellerData } = useMarketStore();
+  const { loadSellerData, ordersSell, loadOrders } = useMarketStore();
   const [tab, setTab] = useState<CabTab>('orders');
 
-  useEffect(() => { void loadSellerData(); }, []);
+  useEffect(() => { void loadSellerData(); void loadOrders('seller'); }, []);
+
+  /* Курьерскому хабу нужны заказы продавца — те же, что в его вкладке
+     «Заказы»: он предлагает отдать курьеру именно их. */
+  const ordersForCouriers = ordersSell;
 
   const sub = seller.subscription;
 
@@ -557,10 +584,11 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
         </div>
       )}
 
-      <div className="flex shrink-0 gap-1 px-4 py-2" style={{ borderBottom: `1px solid ${C.brd}` }}>
+      <div className="flex shrink-0 gap-1 overflow-x-auto px-4 py-2"
+        style={{ borderBottom: `1px solid ${C.brd}`, scrollbarWidth: 'none' }}>
         {TABS.map((t) => (
           <button key={t.key} type="button" onClick={() => setTab(t.key)}
-            className="flex flex-1 items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold"
+            className="flex shrink-0 items-center justify-center gap-1 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold"
             style={{
               background: tab === t.key ? C.accBg : 'transparent',
               color: tab === t.key ? C.acc : C.t3,
@@ -574,6 +602,11 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
         {tab === 'orders' && <SellerOrders meId={meId} />}
         {tab === 'products' && <SellerProducts />}
         {tab === 'stats' && <SellerStatsView />}
+        {tab === 'couriers' && <CourierHub sellerId={seller.id} orders={ordersForCouriers} />}
+        {tab === 'transport' && <TransportCompanyHub />}
+        {tab === 'warehouses' && <WarehouseHub />}
+        {tab === 'shipments' && <ShipmentHub />}
+        {tab === 'passes' && <PassHub />}
         {tab === 'settings' && <SellerSettings seller={seller} />}
       </div>
     </div>

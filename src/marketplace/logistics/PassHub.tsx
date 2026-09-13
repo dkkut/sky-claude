@@ -2,7 +2,7 @@
    SKY MARKET / LOGISTICS  —  Pass Hub
    Раздел «Пропуска и доступы» в личном кабинете продавца
 ====================================================================== */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Plus, KeyRound, Ban, CheckCircle2, Trash2, Send,
@@ -68,11 +68,12 @@ const PassForm = ({ warehouseId, warehouses, onDone, onClose }: {
 
   const submit = () => {
     if (!whId || !holderName.trim()) return;
-    const pass = createPass({
+    /* Пропуск выписывает сервер: он же выдаёт код, а до ответа
+       идентификатора ещё нет. */
+    void createPass({
       warehouseId: whId, holderName, holderContact,
       accessLevel, type, validUntil: type === 'temporary' ? new Date(validUntil).toISOString() : null,
-    });
-    onDone(pass.id);
+    }).then((pass) => { if (pass) onDone(pass.id); });
   };
 
   return (
@@ -177,14 +178,20 @@ const SendPassBlock = ({ pass }: { pass: AccessPass }) => {
 };
 
 /* ── Сканер QR (симуляция подтверждения входа) ───────────────────── */
-const ScannerBlock = ({ onScanned }: { onScanned: (code: string) => { ok: boolean; reason?: string } }) => {
+const ScannerBlock = ({ onScanned }: {
+  onScanned: (code: string) => Promise<{ ok: boolean; reason?: string }>;
+}) => {
   const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; reason?: string } | null>(null);
 
-  const scan = () => {
-    if (!code.trim()) return;
-    const r = onScanned(code.trim());
-    setResult(r);
+  /* Код проверяет сервер: у него отпечаток кода и только пропуска
+     этого склада. Поэтому ответ приходит не мгновенно. */
+  const scan = async () => {
+    if (!code.trim() || busy) return;
+    setBusy(true);
+    setResult(await onScanned(code.trim()));
+    setBusy(false);
   };
 
   return (
@@ -194,7 +201,7 @@ const ScannerBlock = ({ onScanned }: { onScanned: (code: string) => { ok: boolea
       <div className="flex gap-2">
         <input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="Код пропуска"
           className="flex-1 rounded-xl px-3 py-2 text-xs font-mono tracking-widest outline-none" style={{ background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 }}/>
-        <button type="button" onClick={scan} className="rounded-xl px-3 py-2 text-xs font-bold text-white shrink-0" style={{ background: C.acc }}>Скан</button>
+        <button type="button" onClick={scan} disabled={busy} className="rounded-xl px-3 py-2 text-xs font-bold text-white shrink-0 disabled:opacity-50" style={{ background: C.acc }}>Скан</button>
       </div>
       {result && (
         <div className="rounded-xl p-2 flex items-center gap-2" style={{ background: result.ok ? 'rgba(0,220,90,0.08)' : 'rgba(244,63,94,0.08)' }}>
@@ -272,7 +279,7 @@ const PassDetail = ({ pass, whName, onClose }: { pass: AccessPass; whName: strin
         </div>
 
         <SendPassBlock pass={pass}/>
-        <ScannerBlock onScanned={(code) => scanPass(code)}/>
+        <ScannerBlock onScanned={(code) => scanPass(code, pass.warehouseId)}/>
 
         <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
           <p className="text-xs font-bold mb-2 flex items-center gap-1.5" style={{ color: C.t1 }}><ClipboardList size={13}/> Журнал посещений ({visits.length})</p>
@@ -345,10 +352,17 @@ const AttendanceReport = ({ warehouseId, passes }: { warehouseId: string; passes
    ROOT
 ══════════════════════════════════════════════════════════════════ */
 export const PassHub = () => {
-  const { myWarehouses } = useWarehouseStore();
-  const { myPasses } = usePassStore();
+  const { myWarehouses, load: loadWarehouses } = useWarehouseStore();
+  const { myPasses, loadFor } = usePassStore();
   const warehouses = myWarehouses();
   const passes = myPasses();
+
+  /* Пропуска лежат на сервере по складам: читаем их для каждого
+     склада, к которому у человека есть доступ. */
+  useEffect(() => { void loadWarehouses(); }, []);
+  useEffect(() => {
+    for (const w of warehouses) void loadFor(w.id);
+  }, [warehouses.map((w) => w.id).join(',')]);
 
   const [whFilter, setWhFilter] = useState<string>('all');
   const [view, setView] = useState<'passes' | 'report'>('passes');

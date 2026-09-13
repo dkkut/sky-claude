@@ -2,7 +2,7 @@
    SKY MARKET / LOGISTICS  —  Courier Hub
    Полноценный раздел «Курьеры» в личном кабинете продавца
 ====================================================================== */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, SlidersHorizontal, Star, Heart, Send,
@@ -447,7 +447,9 @@ const MyCouriersList = ({ onOpen }: { onOpen: (c: Courier) => void }) => {
    ROOT
 ══════════════════════════════════════════════════════════════════ */
 export const CourierHub = ({ sellerId, orders }: { sellerId: string; orders: any[] }) => {
-  const { couriers, favorites, toggleFavorite, assignCourier, bulkAssignCourier, myNotifications, assignmentForOrder } = useCourierStore();
+  const { couriers, favorites, toggleFavorite, assignCourier, bulkAssignCourier, myNotifications, assignmentForOrder, load } = useCourierStore();
+  /* Каталог курьеров, заявки и поручения приходят с сервера. */
+  useEffect(() => { void load(); }, []);
   const [tab, setTab] = useState<HubTab>('search');
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [showFilters, setShowFilters] = useState(false);

@@ -1,268 +1,252 @@
 /* ======================================================================
-   SKY MARKET / LOGISTICS  —  Courier store
+   SKY MARKET / LOGISTICS — курьеры
+
+   Хранилище стало кэшем ответов сервера. Раньше каталог курьеров был
+   выдуманным списком в памяти вкладки: «заявка на сотрудничество»
+   никуда не уходила, переписка существовала только у того, кто её
+   открыл, а «курьер на связи» означало, что кто-то нажал кнопку у себя.
+
+   Список функций и их имена прежние — экраны не переписаны. Изменилось
+   то, откуда берётся правда.
 ====================================================================== */
 import { create } from 'zustand';
 import { useAuthStore } from '@/core/auth/store';
-import { pointForSeed, jitter } from './geo';
 import type {
-  Courier, CourierReview, CollabRequest, CourierChatMessage,
-  DeliveryNotification, CourierAssignment, CollabStatus, DeliveryEventType,
+  Courier, CourierReview, CollabRequest, CollabStatus, CourierChatMessage,
+  CourierAssignment, DeliveryNotification, DeliveryEventType,
 } from './types';
+import {
+  apiMyCourier, apiRegisterCourier, apiCourierPresence, apiCouriers, apiCourier,
+  apiCourierFavorite, apiCourierReviews, apiAddCourierReview,
+  apiSendCollab, apiCollabs, apiRespondCollab,
+  apiCourierChat, apiSendCourierMessage,
+  apiAssignments, apiAssignCourier, apiSetAssignmentStatus,
+  apiLogiNotifications, apiReadLogiNotification,
+} from './logisticsApi';
 
-const KEY = 'sky:logistics:couriers:v1';
-const W   = typeof window !== 'undefined';
-const me  = () => useAuthStore.getState().currentUserId ?? '';
-
-const load = () => {
-  if (!W) return null;
-  try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; }
-};
-const save = (data: object) => {
-  if (!W) return;
-  try { localStorage.setItem(KEY, JSON.stringify(data)); } catch {}
-};
-
-const genId = (p: string) => `${p}-${crypto.randomUUID().slice(0,8)}`;
-
-/* ── Seed-данные ──────────────────────────────────────────────────── */
-const SEED_COURIERS: Courier[] = [
-  { id:'cr1', name:'Иван Петров',     phone:'+7 999 111-22-33', cityId:'msk', district:'ЦАО',    vehicle:'bike',    rating:4.9, reviewCount:58, deliveriesCount:234, pricePerDelivery:180, workFrom:'08:00', workTo:'22:00', online:true,  bio:'Работаю быстро и аккуратно, есть термобокс для еды.', location:pointForSeed('msk','cr1'), updatedAt:new Date().toISOString(), createdAt:new Date(Date.now()-86400000*120).toISOString() },
-  { id:'cr2', name:'Алексей Смирнов', phone:'+7 999 222-33-44', cityId:'msk', district:'САО',    vehicle:'scooter', rating:4.7, reviewCount:41, deliveriesCount:189, pricePerDelivery:220, workFrom:'09:00', workTo:'21:00', online:true,  bio:'Доставка крупногабаритных товаров, есть багажный бокс.', location:pointForSeed('msk','cr2'), updatedAt:new Date().toISOString(), createdAt:new Date(Date.now()-86400000*90).toISOString() },
-  { id:'cr3', name:'Мария Козлова',   phone:'+7 999 333-44-55', cityId:'msk', district:'ЗАО',    vehicle:'car',     rating:4.8, reviewCount:77, deliveriesCount:312, pricePerDelivery:350, workFrom:'07:00', workTo:'23:00', online:false, bio:'Авто-доставка по всему городу, до 50кг.',               location:pointForSeed('msk','cr3'), updatedAt:new Date(Date.now()-3600000*4).toISOString(), createdAt:new Date(Date.now()-86400000*200).toISOString() },
-  { id:'cr4', name:'Дмитрий Новиков', phone:'+7 999 444-55-66', cityId:'msk', district:'ЮВАО',   vehicle:'scooter', rating:4.6, reviewCount:24, deliveriesCount:98,  pricePerDelivery:200, workFrom:'10:00', workTo:'20:00', online:true,  bio:'Новичок, но очень ответственный. Гибкий график.',       location:pointForSeed('msk','cr4'), updatedAt:new Date().toISOString(), createdAt:new Date(Date.now()-86400000*30).toISOString() },
-  { id:'cr5', name:'Елена Сидорова',  phone:'+7 999 555-66-77', cityId:'spb', district:'Центральный', vehicle:'bike', rating:5.0, reviewCount:103,deliveriesCount:456, pricePerDelivery:170, workFrom:'08:00', workTo:'22:00', online:true,  bio:'Топ курьер СПб. Аккуратная упаковка, всегда на связи.', location:pointForSeed('spb','cr5'), updatedAt:new Date().toISOString(), createdAt:new Date(Date.now()-86400000*300).toISOString() },
-  { id:'cr6', name:'Сергей Волков',   phone:'+7 999 666-77-88', cityId:'spb', district:'Невский',     vehicle:'van',  rating:4.4, reviewCount:19, deliveriesCount:67,  pricePerDelivery:450, workFrom:'06:00', workTo:'18:00', online:false, bio:'Грузовая доставка, паллеты, переезды складов.',         location:pointForSeed('spb','cr6'), updatedAt:new Date(Date.now()-3600000*9).toISOString(), createdAt:new Date(Date.now()-86400000*60).toISOString() },
-  { id:'cr7', name:'Алия Гарифуллина',phone:'+7 999 777-88-99', cityId:'kzn', district:'Вахитовский',  vehicle:'foot', rating:4.9, reviewCount:35, deliveriesCount:140, pricePerDelivery:130, workFrom:'09:00', workTo:'21:00', online:true,  bio:'Пешая доставка в центре, без пробок и опозданий.',      location:pointForSeed('kzn','cr7'), updatedAt:new Date().toISOString(), createdAt:new Date(Date.now()-86400000*45).toISOString() },
-  { id:'cr8', name:'Павел Орлов',     phone:'+7 999 888-99-00', cityId:'ekb', district:'Ленинский',   vehicle:'scooter', rating:4.5, reviewCount:28, deliveriesCount:115, pricePerDelivery:210, workFrom:'10:00', workTo:'22:00', online:true,  bio:'Работаю вечерами и в выходные.',                        location:pointForSeed('ekb','cr8'), updatedAt:new Date().toISOString(), createdAt:new Date(Date.now()-86400000*15).toISOString() },
-];
-
-const SEED_REVIEWS: CourierReview[] = [
-  { id:'crv1', courierId:'cr1', sellerId:'acc-luna', sellerName:'Luna Store', rating:5, text:'Всегда вовремя, очень вежливый. Рекомендую!', createdAt:new Date(Date.now()-86400000*10).toISOString() },
-  { id:'crv2', courierId:'cr1', sellerId:'acc-neo',  sellerName:'Neo Market', rating:5, text:'Берёт крупные партии без проблем.',           createdAt:new Date(Date.now()-86400000*20).toISOString() },
-  { id:'crv3', courierId:'cr3', sellerId:'acc-neo',  sellerName:'Neo Market', rating:4, text:'Хорошо, но один раз задержался на 30 минут.',  createdAt:new Date(Date.now()-86400000*5).toISOString() },
-  { id:'crv4', courierId:'cr5', sellerId:'acc-luna', sellerName:'Luna Store', rating:5, text:'Лучший курьер в городе. Полная отдача!',       createdAt:new Date(Date.now()-86400000*3).toISOString() },
-];
+const me = () => useAuthStore.getState().currentUserId ?? '';
 
 interface CourierState {
-  couriers:      Courier[];
-  reviews:       CourierReview[];
-  favorites:     string[];             // courierId списком, общий список (без привязки к продавцу — упрощение для демо)
-  collabs:       CollabRequest[];
-  messages:      CourierChatMessage[];
+  couriers: Courier[];
+  reviews: CourierReview[];
+  favorites: string[];
+  collabs: CollabRequest[];
+  messages: CourierChatMessage[];
   notifications: DeliveryNotification[];
-  assignments:   CourierAssignment[];
+  assignments: CourierAssignment[];
+  myProfile: Courier | null;
+  loaded: boolean;
 
-  toggleFavorite:(courierId: string) => void;
-  isFavorite:    (courierId: string) => boolean;
+  load: () => Promise<void>;
+  loadChat: (courierId: string, sellerId?: string) => Promise<void>;
+  loadReviews: (courierId: string) => Promise<void>;
 
-  sendCollabRequest: (courierId: string, message: string) => CollabRequest;
-  respondCollab:     (collabId: string, status: CollabStatus) => void;
-  endCollab:         (collabId: string) => void;
-  collabWith:        (courierId: string) => CollabRequest | null;
-  myCollabs:         () => CollabRequest[];
+  toggleFavorite: (courierId: string) => Promise<void>;
+  isFavorite: (courierId: string) => boolean;
 
-  sendMessage:  (courierId: string, text: string, from?: 'seller'|'courier') => void;
-  chatWith:     (courierId: string) => CourierChatMessage[];
+  sendCollabRequest: (courierId: string, message: string) => Promise<CollabRequest | null>;
+  respondCollab: (collabId: string, status: CollabStatus) => Promise<void>;
+  endCollab: (collabId: string) => Promise<void>;
+  collabWith: (courierId: string) => CollabRequest | null;
+  myCollabs: () => CollabRequest[];
 
-  assignCourier:    (orderId: string, courierId: string) => void;
-  bulkAssignCourier:(orderIds: string[], courierId: string) => void;
-  setAssignmentStatus:(assignmentId: string, status: CourierAssignment['status']) => void;
-  assignmentForOrder:(orderId: string) => CourierAssignment | null;
+  sendMessage: (courierId: string, text: string, from?: 'seller' | 'courier') => Promise<void>;
+  chatWith: (courierId: string) => CourierChatMessage[];
 
-  pushNotification: (courierId: string, type: DeliveryEventType, text: string, orderId?: string) => void;
-  markNotificationRead: (id: string) => void;
+  assignCourier: (orderId: string, courierId: string) => Promise<void>;
+  bulkAssignCourier: (orderIds: string[], courierId: string) => Promise<void>;
+  setAssignmentStatus: (assignmentId: string, status: CourierAssignment['status']) => Promise<void>;
+  assignmentForOrder: (orderId: string) => CourierAssignment | null;
+
+  /** Уведомления складывает сервер. Здесь осталась только перезагрузка. */
+  pushNotification: (courierId?: string, type?: DeliveryEventType, text?: string, orderId?: string) => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
   myNotifications: () => DeliveryNotification[];
 
-  simulateTick: () => void; // обновляет геопозиции онлайн-курьеров (имитация real-time)
-  addReview: (courierId: string, rating: number, text: string) => void;
+  /** Геопозиции обновляет сам курьер. Перерисовка — просто перечитывание. */
+  simulateTick: () => Promise<void>;
+  addReview: (courierId: string, rating: number, text: string) => Promise<void>;
   reviewsFor: (courierId: string) => CourierReview[];
 
-  // Самостоятельная регистрация: пользователь сам приходит и устраивается курьером.
-  // Не меняет логику существующей системы — просто добавляет новую запись в тот же каталог,
-  // который уже используют продавцы в CourierHub.
-  registerAsCourier: (p: { name: string; phone: string; cityId: string; district: string; vehicle: Courier['vehicle']; pricePerDelivery: number; workFrom: string; workTo: string; bio: string }) => void;
+  registerAsCourier: (p: {
+    name: string; phone: string; cityId: string; district: string;
+    vehicle: Courier['vehicle']; pricePerDelivery: number;
+    workFrom: string; workTo: string; bio: string;
+  }) => Promise<void>;
   myCourierProfile: () => Courier | null;
-  setMyOnline: (online: boolean) => void;
+  setMyOnline: (online: boolean) => Promise<void>;
 }
 
-const stored = load();
+export const useCourierStore = create<CourierState>((set, get) => ({
+  couriers: [],
+  reviews: [],
+  favorites: [],
+  collabs: [],
+  messages: [],
+  notifications: [],
+  assignments: [],
+  myProfile: null,
+  loaded: false,
 
-export const useCourierStore = create<CourierState>((set, get) => {
-  const flush = () => {
-    const s = get();
-    save({
-      couriers: s.couriers, reviews: s.reviews, favorites: s.favorites,
-      collabs: s.collabs, messages: s.messages,
-      notifications: s.notifications, assignments: s.assignments,
+  load: async () => {
+    const [list, mine, collabs, assignSeller, assignCourier, notes] = await Promise.all([
+      apiCouriers(), apiMyCourier(), apiCollabs(),
+      apiAssignments('seller'), apiAssignments('courier'), apiLogiNotifications(),
+    ]);
+    const couriers = list.ok && list.data ? list.data.couriers : [];
+    set({
+      couriers,
+      favorites: couriers.filter((c) => c.favorite).map((c) => c.id),
+      myProfile: mine.ok ? (mine.data?.courier ?? null) : null,
+      collabs: collabs.ok && collabs.data ? collabs.data.collabs : [],
+      assignments: [
+        ...(assignSeller.ok && assignSeller.data ? assignSeller.data.assignments : []),
+        ...(assignCourier.ok && assignCourier.data ? assignCourier.data.assignments : []),
+      ],
+      notifications: notes.ok && notes.data ? notes.data.items : [],
+      loaded: true,
     });
-  };
-  const mut = (fn: (s: CourierState) => Partial<CourierState>) => {
-    set(s => ({ ...s, ...fn(s) }));
-    flush();
-  };
+  },
 
-  return {
-    couriers:      stored?.couriers      ?? SEED_COURIERS,
-    reviews:       stored?.reviews       ?? SEED_REVIEWS,
-    favorites:     stored?.favorites     ?? [],
-    collabs:       stored?.collabs       ?? [],
-    messages:      stored?.messages      ?? [],
-    notifications: stored?.notifications ?? [],
-    assignments:   stored?.assignments   ?? [],
+  loadChat: async (courierId, sellerId) => {
+    const r = await apiCourierChat(courierId, sellerId);
+    if (!r.ok || !r.data) return;
+    set({
+      messages: [...get().messages.filter((m) => m.courierId !== courierId), ...r.data.messages],
+    });
+  },
 
-    toggleFavorite: (courierId) => mut(s => ({
-      favorites: s.favorites.includes(courierId)
-        ? s.favorites.filter(id => id !== courierId)
-        : [...s.favorites, courierId],
-    })),
-    isFavorite: (courierId) => get().favorites.includes(courierId),
+  loadReviews: async (courierId) => {
+    const r = await apiCourierReviews(courierId);
+    if (!r.ok || !r.data) return;
+    set({ reviews: [...get().reviews.filter((x) => x.courierId !== courierId), ...r.data.reviews] });
+  },
 
-    sendCollabRequest: (courierId, message) => {
-      const sellerId = me();
-      const req: CollabRequest = {
-        id: genId('collab'), courierId, sellerId,
-        message: message.trim(), status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
-      mut(s => ({ collabs: [...s.collabs.filter(c => !(c.courierId===courierId && c.sellerId===sellerId && c.status==='pending')), req] }));
-      return req;
-    },
+  toggleFavorite: async (courierId) => {
+    const on = !get().favorites.includes(courierId);
+    const r = await apiCourierFavorite(courierId, on);
+    if (!r.ok) return;
+    set({
+      favorites: on
+        ? [...get().favorites, courierId]
+        : get().favorites.filter((id) => id !== courierId),
+    });
+  },
 
-    respondCollab: (collabId, status) => mut(s => ({
-      collabs: s.collabs.map(c => c.id === collabId
-        ? { ...c, status, respondedAt: new Date().toISOString() }
-        : c),
-    })),
+  isFavorite: (courierId) => get().favorites.includes(courierId),
 
-    endCollab: (collabId) => mut(s => ({
-      collabs: s.collabs.map(c => c.id === collabId ? { ...c, status: 'ended' as const, respondedAt: new Date().toISOString() } : c),
-    })),
+  sendCollabRequest: async (courierId, message) => {
+    const r = await apiSendCollab(courierId, message);
+    const c = await apiCollabs();
+    if (c.ok && c.data) set({ collabs: c.data.collabs });
+    return r.ok && r.data ? r.data.collab : null;
+  },
 
-    collabWith: (courierId) => {
-      const sellerId = me();
-      const list = get().collabs.filter(c => c.courierId===courierId && c.sellerId===sellerId);
-      return list.length ? list[list.length-1] : null;
-    },
+  respondCollab: async (collabId, status) => {
+    await apiRespondCollab(collabId, status);
+    const c = await apiCollabs();
+    if (c.ok && c.data) set({ collabs: c.data.collabs });
+    /* Принятая заявка открывает телефон курьера — список нужно перечитать. */
+    const list = await apiCouriers();
+    if (list.ok && list.data) set({ couriers: list.data.couriers });
+  },
 
-    myCollabs: () => {
-      const sellerId = me();
-      return get().collabs.filter(c => c.sellerId === sellerId);
-    },
+  endCollab: async (collabId) => { await get().respondCollab(collabId, 'ended'); },
 
-    sendMessage: (courierId, text, from: 'seller'|'courier' = 'seller') => {
-      if (!text.trim()) return;
-      const sellerId = me();
-      const msg: CourierChatMessage = {
-        id: genId('msg'), courierId, sellerId, from,
-        text: text.trim(), createdAt: new Date().toISOString(),
-      };
-      mut(s => ({ messages: [...s.messages, msg] }));
-    },
+  collabWith: (courierId) => get().collabs.find(
+    (c) => c.courierId === courierId && c.sellerId === me()
+      && (c.status === 'pending' || c.status === 'accepted')) ?? null,
 
-    chatWith: (courierId) => {
-      const sellerId = me();
-      return get().messages.filter(m => m.courierId===courierId && m.sellerId===sellerId);
-    },
+  myCollabs: () => get().collabs,
 
-    assignCourier: (orderId, courierId) => {
-      const sellerId = me();
-      const assignment: CourierAssignment = {
-        id: genId('asg'), orderId, courierId, sellerId,
-        status: 'assigned', assignedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      };
-      mut(s => ({
-        assignments: [...s.assignments.filter(a => a.orderId !== orderId), assignment],
-      }));
-      get().pushNotification(courierId, 'accepted', 'Заказ назначен курьеру', orderId);
-    },
+  sendMessage: async (courierId, text, from) => {
+    /* Кем написано, решает сервер по тому, кто спрашивает: присланное
+       from здесь ничего не значит и передаётся только как подсказка о
+       собеседнике, когда пишет курьер. */
+    const sellerId = from === 'courier' ? undefined : undefined;
+    await apiSendCourierMessage(courierId, text, sellerId);
+    await get().loadChat(courierId);
+  },
 
-    bulkAssignCourier: (orderIds, courierId) => {
-      const sellerId = me();
-      const now = new Date().toISOString();
-      const news: CourierAssignment[] = orderIds.map(orderId => ({
-        id: genId('asg'), orderId, courierId, sellerId,
-        status: 'assigned', assignedAt: now, updatedAt: now,
-      }));
-      mut(s => ({
-        assignments: [...s.assignments.filter(a => !orderIds.includes(a.orderId)), ...news],
-      }));
-      get().pushNotification(courierId, 'accepted', `Назначено ${orderIds.length} заказ(ов)`, undefined);
-    },
+  chatWith: (courierId) => get().messages.filter((m) => m.courierId === courierId),
 
-    setAssignmentStatus: (assignmentId, status) => mut(s => ({
-      assignments: s.assignments.map(a => a.id === assignmentId
-        ? { ...a, status, updatedAt: new Date().toISOString() }
-        : a),
-    })),
-
-    assignmentForOrder: (orderId) => get().assignments.find(a => a.orderId === orderId) ?? null,
-
-    pushNotification: (courierId, type, text, orderId) => {
-      const sellerId = me();
-      const note: DeliveryNotification = {
-        id: genId('ntf'), courierId, sellerId, orderId, type, text,
-        read: false, createdAt: new Date().toISOString(),
-      };
-      mut(s => ({ notifications: [note, ...s.notifications].slice(0, 100) }));
-    },
-
-    markNotificationRead: (id) => mut(s => ({
-      notifications: s.notifications.map(n => n.id === id ? { ...n, read: true } : n),
-    })),
-
-    myNotifications: () => {
-      const sellerId = me();
-      return get().notifications.filter(n => n.sellerId === sellerId);
-    },
-
-    simulateTick: () => mut(s => ({
-      couriers: s.couriers.map(c => c.online
-        ? { ...c, location: jitter(c.location), updatedAt: new Date().toISOString() }
-        : c),
-    })),
-
-    addReview: (courierId, rating, text) => {
-      const sellerId = me();
-      const sellerName = useAuthStore.getState().accounts.find(a => a.id===sellerId)?.name ?? 'Продавец';
-      const review: CourierReview = {
-        id: genId('crv'), courierId, sellerId, sellerName, rating, text: text.trim(),
-        createdAt: new Date().toISOString(),
-      };
-      mut(s => {
-        const reviews = [...s.reviews, review];
-        const forCourier = reviews.filter(r => r.courierId === courierId);
-        const avg = forCourier.reduce((a,r) => a+r.rating, 0) / forCourier.length;
-        return {
-          reviews,
-          couriers: s.couriers.map(c => c.id === courierId
-            ? { ...c, rating: Math.round(avg*10)/10, reviewCount: forCourier.length }
-            : c),
-        };
+  assignCourier: async (orderId, courierId) => {
+    await apiAssignCourier(orderId, courierId);
+    const r = await apiAssignments('seller');
+    if (r.ok && r.data) {
+      set({
+        assignments: [
+          ...get().assignments.filter((a) => a.sellerId !== me()),
+          ...r.data.assignments,
+        ],
       });
-    },
+    }
+  },
 
-    reviewsFor: (courierId) => get().reviews.filter(r => r.courierId === courierId)
-      .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+  bulkAssignCourier: async (orderIds, courierId) => {
+    for (const id of orderIds) await apiAssignCourier(id, courierId);
+    const r = await apiAssignments('seller');
+    if (r.ok && r.data) {
+      set({
+        assignments: [
+          ...get().assignments.filter((a) => a.sellerId !== me()),
+          ...r.data.assignments,
+        ],
+      });
+    }
+  },
 
-    registerAsCourier: (p) => {
-      const uid = me();
-      if (!uid) return;
-      const existing = get().couriers.find(c => c.id === uid);
-      if (existing) { mut(s => ({ couriers: s.couriers.map(c => c.id === uid ? { ...c, ...p, online: true, updatedAt: new Date().toISOString() } : c) })); return; }
-      const profile: Courier = {
-        id: uid, name: p.name, phone: p.phone, cityId: p.cityId, district: p.district,
-        vehicle: p.vehicle, rating: 5, reviewCount: 0, deliveriesCount: 0, pricePerDelivery: p.pricePerDelivery,
-        workFrom: p.workFrom, workTo: p.workTo, online: true, bio: p.bio,
-        location: pointForSeed(p.cityId, uid), updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
-      };
-      mut(s => ({ couriers: [profile, ...s.couriers] }));
-    },
+  setAssignmentStatus: async (assignmentId, status) => {
+    await apiSetAssignmentStatus(assignmentId, status);
+    const [s, c] = await Promise.all([apiAssignments('seller'), apiAssignments('courier')]);
+    set({
+      assignments: [
+        ...(s.ok && s.data ? s.data.assignments : []),
+        ...(c.ok && c.data ? c.data.assignments : []),
+      ],
+    });
+  },
 
-    myCourierProfile: () => get().couriers.find(c => c.id === me()) ?? null,
+  assignmentForOrder: (orderId) => get().assignments.find((a) => a.orderId === orderId) ?? null,
 
-    setMyOnline: (online) => {
-      const uid = me();
-      mut(s => ({ couriers: s.couriers.map(c => c.id === uid ? { ...c, online, updatedAt: new Date().toISOString() } : c) }));
-    },
-  };
-});
+  pushNotification: async () => {
+    const r = await apiLogiNotifications();
+    if (r.ok && r.data) set({ notifications: r.data.items });
+  },
+
+  markNotificationRead: async (id) => {
+    await apiReadLogiNotification(id);
+    set({ notifications: get().notifications.map((n) => (n.id === id ? { ...n, read: true } : n)) });
+  },
+
+  myNotifications: () => get().notifications,
+
+  simulateTick: async () => {
+    const r = await apiCouriers();
+    if (r.ok && r.data) set({ couriers: r.data.couriers });
+  },
+
+  addReview: async (courierId, rating, text) => {
+    await apiAddCourierReview(courierId, rating, text);
+    await get().loadReviews(courierId);
+    const one = await apiCourier(courierId);
+    if (one.ok && one.data) {
+      set({ couriers: get().couriers.map((c) => (c.id === courierId ? one.data!.courier : c)) });
+    }
+  },
+
+  reviewsFor: (courierId) => get().reviews.filter((r) => r.courierId === courierId),
+
+  registerAsCourier: async (p) => {
+    await apiRegisterCourier(p);
+    await get().load();
+  },
+
+  myCourierProfile: () => get().myProfile,
+
+  setMyOnline: async (online) => {
+    const r = await apiCourierPresence({ online });
+    if (r.ok && r.data) set({ myProfile: r.data.courier });
+    await get().simulateTick();
+  },
+}));

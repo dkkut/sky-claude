@@ -2,7 +2,7 @@
    SKY MARKET / LOGISTICS  —  Shipment Hub (Поставки / разметка)
    Раздел «Поставки» в личном кабинете продавца
 ====================================================================== */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Plus, PackageSearch, Search, Trash2, Pencil, Printer,
   History, ChevronRight, Warehouse as WhIcon, MapPin,
@@ -133,8 +133,9 @@ const ShipmentForm = ({ editing, onClose, onDone }: {
       placesCount, weightKg: weightKg ? Number(weightKg) : undefined, volumeM3: volumeM3 ? Number(volumeM3) : undefined,
       sortingCenterId: center?.id ?? null, sortingCenterName: center?.name,
     };
-    if (editing) { updateShipment(editing.id, input); onDone(editing.id); }
-    else { onDone(createShipment(input)); }
+    /* Поставку заводит сервер: он же выдаёт номер и код наклейки. */
+    if (editing) { void updateShipment(editing.id, input).then(() => onDone(editing.id)); }
+    else { void createShipment(input).then((id) => { if (id) onDone(id); }); }
   };
 
   const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -402,13 +403,23 @@ const Row = ({ icon: Icon, label, value }: { icon: any; label: string; value: st
    ROOT
 ══════════════════════════════════════════════════════════════════ */
 export const ShipmentHub = () => {
-  const { myShipments, findShipments } = useShipmentStore();
-  const { myWarehouses } = useWarehouseStore();
+  const { myShipments, findShipments, load, search } = useShipmentStore();
+  const { myWarehouses, load: loadWarehouses } = useWarehouseStore();
   const warehouses = myWarehouses();
+  useEffect(() => { void load(); void loadWarehouses(); }, []);
   const [query, setQuery] = useState('');
   const [centerFilter, setCenterFilter] = useState<string>('all');
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+
+  /* Поиск идёт и на сервере: по номеру с наклейки нужно находить
+     поставку, даже если её нет среди первых загруженных. Найдёт он
+     всё равно только свои — чужая наклейка не открывает чужой адрес. */
+  useEffect(() => {
+    if (!query.trim()) return;
+    const timer = setTimeout(() => { void search(query.trim()); }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const base = useMemo(() => query.trim() ? findShipments(query) : myShipments(), [query, myShipments, findShipments]);
   const shipments = useMemo(() => {

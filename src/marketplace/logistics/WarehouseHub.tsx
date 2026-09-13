@@ -2,7 +2,7 @@
    SKY MARKET / LOGISTICS  —  Warehouse Hub
    Раздел «Мои склады» в личном кабинете продавца
 ====================================================================== */
-import { useState, useRef, type ChangeEvent } from 'react';
+import { useState, useRef, type ChangeEvent, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Plus, Warehouse as WhIcon, MapPin, Camera, Clock, Package,
@@ -117,12 +117,14 @@ const WarehouseForm = ({ existing, onDone, onClose }: { existing?: Warehouse; on
   const submit = () => {
     if (!name.trim() || !address.trim()) return;
     const role = isSortingCenter ? 'sorting_center' as const : 'own' as const;
+    /* Склад теперь заводится на сервере, поэтому ждём ответа: до него
+       идентификатора ещё не существует. */
     if (existing) {
-      updateWarehouse(existing.id, { name: name.trim(), address: address.trim(), cityId, location, photos, capacity, schedule, role });
-      onDone(existing.id);
+      void updateWarehouse(existing.id, { name: name.trim(), address: address.trim(), cityId, location, photos, capacity, schedule, role })
+        .then(() => onDone(existing.id));
     } else {
-      const id = addWarehouse({ name: name.trim(), address: address.trim(), cityId, location, photos, capacity, schedule, role });
-      onDone(id);
+      void addWarehouse({ name: name.trim(), address: address.trim(), cityId, location, photos, capacity, schedule, role })
+        .then((id) => { if (id) onDone(id); });
     }
   };
 
@@ -586,8 +588,10 @@ const WarehouseDetail = ({ wh, onClose }: { wh: Warehouse; onClose: () => void }
    ROOT
 ══════════════════════════════════════════════════════════════════ */
 export const WarehouseHub = () => {
-  const { myWarehouses } = useWarehouseStore();
+  const { myWarehouses, load } = useWarehouseStore();
   const warehouses = myWarehouses();
+  /* Склады теперь живут на сервере — при открытии их надо прочитать. */
+  useEffect(() => { void load(); }, []);
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const openWh = warehouses.find(w => w.id === openId);
