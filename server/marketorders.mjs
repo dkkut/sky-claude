@@ -37,12 +37,14 @@ import { encryptContent, decryptContent } from './crypto.mjs';
 import {
   canSell, logMarket, marketText as text, marketInt as int,
   ORDER_ID_RE, PRODUCT_ID_RE, recalcRatings, paymentDetailsForOrder,
+  readServicePackage, fulfilmentOf,
 } from './market.mjs';
 import { pushMarket } from './signal.mjs';
 
 const MAX_ADDRESS = 400;
 const MAX_CONTACT = 200;
 const MAX_REASON = 300;
+const MAX_REQUIREMENTS = 4000;
 const MAX_REVIEW = 2000;
 const MAX_QUANTITY = 100;
 /** Столько незакрытых заказов человек может держать одновременно. */
@@ -83,6 +85,20 @@ const FLOW = {
     fulfill:      { from: ['seller_payment_confirmed'], to: 'fulfillment', by: 'seller' },
     /* Покупатель получил посылку — на руки, из пункта выдачи, неважно. */
     received:     { from: ['seller_shipped', 'in_transit', 'ready_for_pickup'], to: 'buyer_received', by: 'buyer' },
+  },
+  /*
+   * Услуга. Путь тот же, что у игрового лота: везти нечего, исполнитель
+   * сдаёт работу, заказчик принимает. Отдельной машины у неё нет
+   * намеренно — второй набор правил однажды разойдётся с первым.
+   */
+  service: {
+    accept:       { from: ['created'], to: 'payment_pending', by: 'seller' },
+    declare_paid: { from: ['payment_pending'], to: 'buyer_payment_declared', by: 'buyer' },
+    confirm_paid: { from: ['buyer_payment_declared'], to: 'seller_payment_confirmed', by: 'seller' },
+    /* «Сдать работу». */
+    fulfill:      { from: ['seller_payment_confirmed'], to: 'fulfillment', by: 'seller' },
+    /* «Принимаю работу». */
+    received:     { from: ['fulfillment'], to: 'buyer_received', by: 'buyer' },
   },
   game: {
     accept:       { from: ['created'], to: 'payment_pending', by: 'seller' },
@@ -234,6 +250,15 @@ export const toOrder = (row, role) => {
     cancelledAt: row.cancelled_at?.toISOString?.() ?? null,
     cancelReason: row.cancel_reason ?? '',
     pickupUntil: row.pickup_until?.toISOString?.() ?? null,
+    supplyId: row.supply_id ?? null,
+    atWarehouseAt: row.at_warehouse_at?.toISOString?.() ?? null,
+    packageLevel: row.package_level ?? null,
+    packageTitle: row.package_title ?? null,
+    deliveryDays: row.delivery_days ?? null,
+    dueAt: row.due_at?.toISOString?.() ?? null,
+    /* Требования видит исполнитель и заказчик — работать по ним и
+       предстоит. Постороннему заказ вообще не открывается. */
+    requirements: seeContact ? dec(row.requirements_enc) : '',
     createdAt: row.created_at?.toISOString?.() ?? undefined,
     updatedAt: row.updated_at?.toISOString?.() ?? undefined,
   };
@@ -260,6 +285,9 @@ export const createOrder = async (buyerId, input = {}) => {
   const address = text(input.address, MAX_ADDRESS);
   const contact = text(input.contact, MAX_CONTACT);
   const pickupPointId = text(input.pickupPointId, 80) || null;
+  /* Требования к работе. Шифруем: там бывают домены, доступы и
+     внутренняя кухня заказчика. */
+  const requirements = text(input.requirements, MAX_REQUIREMENTS);
 
   const client = await pool.connect();
   try {
@@ -327,7 +355,18 @@ export const createOrder = async (buyerId, input = {}) => {
       [productId, qty]);
     if (took === 0) { await client.query('ROLLBACK'); return { error: 'out_of_stock' }; }
 
-    const priceKop = BigInt(product.price_kop);
+    /*
+     * Услуга продаётся пакетом. Уровень пакета приходит от клиента, а
+     * цена и срок — из базы: присланная цена не читается, иначе
+     * премиум покупался бы по цене базового.
+     */
+    let pack = null;
+    if (product.market_type === 'service') {
+      pack = await readServicePackage(productId, input.packageLevel);
+      if (!pack) { await client.query('ROLLBACK'); return { error: 'bad_package' }; }
+    }
+
+    const priceKop = BigInt(pack ? pack.priceKop : product.price_kop);
     const totalKop = priceKop * BigInt(qty);
 
     const orderId = `mo-${generateId()}`;
@@ -335,14 +374,17 @@ export const createOrder = async (buyerId, input = {}) => {
       `INSERT INTO market_orders
          (id, buyer_id, seller_id, product_id, market_type, title_snap,
           price_kop, quantity, total_kop, status,
-          address_enc, contact_enc, pickup_point_id, state_seq)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'created',$10,$11,$12,1)
+          address_enc, contact_enc, pickup_point_id, state_seq,
+          package_level, package_title, delivery_days, requirements_enc)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'created',$10,$11,$12,1,$13,$14,$15,$16)
        RETURNING *`,
       [orderId, buyerId, product.seller_id, productId, product.market_type,
         product.title, String(priceKop), qty, String(totalKop),
         address ? encryptContent(address) : null,
         contact ? encryptContent(contact) : null,
-        pickupPointId]);
+        pickupPointId,
+        pack?.level ?? null, pack?.title ?? null, pack?.delivery ?? null,
+        requirements ? encryptContent(requirements) : null]);
 
     await client.query(
       `INSERT INTO market_order_events (order_id, actor_id, actor_role, from_status, to_status, detail)
@@ -498,6 +540,13 @@ export const actOnOrder = async (orderId, actorId, action, detail = {}) => {
     /* Продавец, взявшийся собирать заказ, отмечает это временем сборки. */
     if (act === 'fulfill' && order.market_type === 'standard') {
       extraSets.push('packing_started_at = COALESCE(packing_started_at, now())');
+    }
+    /* Срок сдачи услуги считается от подтверждения оплаты и сервером:
+       обещанный на витрине срок — это срок работы, а не срок ожидания
+       денег. */
+    if (act === 'confirm_paid' && order.market_type === 'service' && order.delivery_days) {
+      extraSets.push('due_at = $$');
+      extraArgs.push(new Date(Date.now() + Number(order.delivery_days) * 86400_000));
     }
 
     const { row, notes } = await applyTransition(client, order, {
@@ -713,6 +762,72 @@ export const resolveDispute = async (orderId, actorId, outcome, note = '') => {
   } finally {
     client.release();
   }
+};
+
+/* ─── Работа через свой склад ──────────────────────────────────────── */
+
+/**
+ * Положить заказ в поставку на свой склад.
+ *
+ * Это шаг режима «через склад»: продавец собирает заказы в одну
+ * поставку, отправляет её на свой склад, а уже оттуда везёт покупателю
+ * своими силами.
+ *
+ * Проверяется всё, что можно подменить: заказ должен быть его, поставка
+ * — его, склад — тот самый, который он назначил режимом работы. Иначе
+ * чужой заказ уехал бы на чужой склад по присланному идентификатору.
+ */
+export const putOrderInSupply = async (orderId, sellerId, supplyId) => {
+  const id = String(orderId ?? '');
+  if (!ORDER_ID_RE.test(id)) return { error: 'not_found' };
+
+  const { rows } = await query(
+    'SELECT * FROM market_orders WHERE id = $1 AND seller_id = $2', [id, sellerId]);
+  const order = rows[0];
+  if (!order) {
+    await logMarket(sellerId, 'supply_put_denied', id);
+    return { error: 'not_found' };
+  }
+  if (order.market_type !== 'standard') return { error: 'not_applicable' };
+
+  const how = await fulfilmentOf(sellerId);
+  if (how.mode !== 'warehouse') return { error: 'not_warehouse_mode' };
+  if (order.status !== 'fulfillment') return { error: 'wrong_state', status: order.status };
+
+  const { rows: sup } = await query(
+    'SELECT id, status, sorting_center_id FROM logi_supplies WHERE id = $1 AND seller_id = $2',
+    [String(supplyId ?? ''), sellerId]);
+  const supply = sup[0];
+  if (!supply) return { error: 'no_such_supply' };
+  /* Уехавшую поставку доукомплектовать нельзя: коробка уже закрыта. */
+  if (!['draft', 'preparing'].includes(supply.status)) return { error: 'supply_closed' };
+
+  const { rows: upd } = await query(
+    'UPDATE market_orders SET supply_id = $2, updated_at = now() WHERE id = $1 RETURNING *',
+    [id, supply.id]);
+  await logMarket(sellerId, 'order_put_in_supply', id, { supplyId: supply.id });
+  return { order: toOrder(upd[0], 'seller') };
+};
+
+/** Что лежит в этой поставке. Только своё. */
+export const ordersInSupply = async (supplyId, sellerId) => {
+  const { rows } = await query(
+    `SELECT * FROM market_orders WHERE supply_id = $1 AND seller_id = $2
+      ORDER BY created_at`, [String(supplyId ?? ''), sellerId]);
+  return rows.map((r) => toOrder(r, 'seller'));
+};
+
+/**
+ * Поставка доехала до склада.
+ *
+ * Отметку ставит сервер сразу всем заказам поставки: отдельного «этот
+ * доехал, а этот нет» у одной коробки не бывает.
+ */
+export const markSupplyArrived = async (supplyId) => {
+  const { rowCount } = await query(
+    `UPDATE market_orders SET at_warehouse_at = now(), updated_at = now()
+      WHERE supply_id = $1 AND at_warehouse_at IS NULL`, [String(supplyId ?? '')]);
+  return rowCount;
 };
 
 /* ─── Реквизиты по заказу ──────────────────────────────────────────── */

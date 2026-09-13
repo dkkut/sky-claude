@@ -28,7 +28,7 @@ import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { config } from './config.mjs';
 import { isAdmin } from './admin.mjs';
-import { logMarket, marketText as text, marketInt as int, ORDER_ID_RE } from './market.mjs';
+import { logMarket, marketText as text, marketInt as int, ORDER_ID_RE, fulfilmentOf } from './market.mjs';
 import { decryptContent } from './crypto.mjs';
 import { applyTransition, toOrder } from './marketorders.mjs';
 import { systemMessage } from './marketchat.mjs';
@@ -175,6 +175,27 @@ export const shipOrder = async (orderId, sellerId, input = {}) => {
     if (order.status !== 'fulfillment') {
       await client.query('ROLLBACK');
       return { error: 'wrong_state', status: order.status };
+    }
+
+    /*
+     * Режим работы магазина решает, откуда едет заказ.
+     *
+     * Через свой склад — значит заказ сперва доезжает туда поставкой, и
+     * только оттуда идёт покупателю своими силами. Пока он не на
+     * складе, отправлять нечего: коробка ещё у продавца. И службу тут
+     * выбрать нельзя — со склада продавец везёт сам, с тем же
+     * подтверждением получения от покупателя.
+     */
+    const how = await fulfilmentOf(order.seller_id);
+    if (how.mode === 'warehouse') {
+      if (!order.at_warehouse_at) {
+        await client.query('ROLLBACK');
+        return { error: order.supply_id ? 'supply_not_arrived' : 'not_in_supply' };
+      }
+      if (method !== 'seller_self' || destination !== 'buyer_address') {
+        await client.query('ROLLBACK');
+        return { error: 'warehouse_ships_itself' };
+      }
     }
 
     const { rows: has } = await client.query(

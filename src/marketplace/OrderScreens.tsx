@@ -12,10 +12,11 @@
  * это слова сторон, а не проверка перевода.
  */
 import { useEffect, useState, useRef } from 'react';
+import { apiCall } from '@/core/auth/api';
 import {
   ArrowLeft, Send, Truck, Package, MapPin, Clock, ShieldAlert,
   CheckCircle2, XCircle, Store, MessageSquare, Star, Warehouse, User,
-  Wallet, Copy,
+  Wallet, Copy, Boxes,
 } from 'lucide-react';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert,
@@ -24,6 +25,7 @@ import {
   apiOrder, apiOrderAction, apiCancelOrder, apiDisputeOrder, apiMarkPacking,
   apiLeaveReview, apiOrderChat, apiSendDealMessage, apiReadDealChat,
   apiPickupPoints, apiCarriers, apiShipOrder, apiMoveShipment, apiOrderHistory,
+  apiPutOrderInSupply, apiMySeller,
 } from './marketApi';
 import type {
   Order, Shipment, ChatMessage, OrderAction, OrderEvent,
@@ -106,9 +108,16 @@ export const OrderRow = ({ order, onOpen }: { order: Order; onOpen: () => void }
  * нет, и состояние двигает продавец руками. Назначение — пункт выдачи
  * или дверь покупателя.
  */
-const ShipForm = ({ order, onDone }: { order: Order; onDone: (s: Shipment) => void }) => {
-  const [method, setMethod] = useState<ShipMethod>('carrier');
-  const [destination, setDestination] = useState<ShipDestination>('pickup_point');
+const ShipForm = ({ order, onDone, onlySelf = false }: {
+  order: Order;
+  onDone: (s: Shipment) => void;
+  /* Со своего склада продавец везёт сам: службу тут выбрать нельзя, и
+     сервер этого не примет. */
+  onlySelf?: boolean;
+}) => {
+  const [method, setMethod] = useState<ShipMethod>(onlySelf ? 'seller_self' : 'carrier');
+  const [destination, setDestination] = useState<ShipDestination>(
+    onlySelf ? 'buyer_address' : 'pickup_point');
   const [carriers, setCarriers] = useState<Carrier[]>([]);
   const [points, setPoints] = useState<PickupPoint[]>([]);
   const [carrierId, setCarrierId] = useState('');
@@ -143,7 +152,14 @@ const ShipForm = ({ order, onDone }: { order: Order; onDone: (s: Shipment) => vo
     <div className="space-y-3 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
       <p className="text-[12px] font-bold" style={{ color: C.t1 }}>Как отправляем</p>
 
-      <div className="grid grid-cols-2 gap-2">
+      {onlySelf && (
+        <p className="text-[11px]" style={{ color: C.t3 }}>
+          Заказ на вашем складе. Со склада вы везёте покупателю сами — с тем же
+          подтверждением получения.
+        </p>
+      )}
+
+      <div className={onlySelf ? 'hidden' : 'grid grid-cols-2 gap-2'}>
         {([['carrier', 'Транспортной компанией', Truck], ['seller_self', 'Отвезу сам', User]] as const).map(([k, label, Icon]) => (
           <button key={k} type="button" onClick={() => setMethod(k)}
             className="flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold"
@@ -157,7 +173,7 @@ const ShipForm = ({ order, onDone }: { order: Order; onDone: (s: Shipment) => vo
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className={onlySelf ? 'hidden' : 'grid grid-cols-2 gap-2'}>
         {([['pickup_point', 'В пункт выдачи', Warehouse], ['buyer_address', 'До покупателя', MapPin]] as const).map(([k, label, Icon]) => (
           <button key={k} type="button" onClick={() => setDestination(k)}
             className="flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold"
@@ -211,6 +227,86 @@ const ShipForm = ({ order, onDone }: { order: Order; onDone: (s: Shipment) => vo
         style={{ background: C.acc, color: '#fff' }}>
         {busy ? 'Отправляем…' : 'Отправить заказ'}
       </button>
+    </div>
+  );
+};
+
+/* ── Сборка в поставку на свой склад ──────────────────────────────── */
+
+/**
+ * Режим «через свой склад».
+ *
+ * Продавец кладёт заказ в поставку, поставка едет на его склад, и уже
+ * оттуда он везёт покупателю сам. Пока заказ не на складе, отправлять
+ * нечего — коробка ещё у продавца, и сервер это проверит.
+ */
+const SupplyPicker = ({ order, onDone }: { order: Order; onDone: () => void }) => {
+  const [supplies, setSupplies] = useState<{ id: string; name: string; number: string; status: string }[]>([]);
+  const [picked, setPicked] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const r = await apiCall<{ supplies: { id: string; name: string; number: string; status: string }[] }>(
+        '/api/logistics/supplies');
+      if (r.ok && r.data) {
+        setSupplies(r.data.supplies.filter((s) => ['draft', 'preparing'].includes(s.status)));
+      }
+    })();
+  }, []);
+
+  const put = async () => {
+    if (!picked) return;
+    setBusy(true); setError(null);
+    const r = await apiPutOrderInSupply(order.id, picked);
+    setBusy(false);
+    if (!r.ok) { setError(r.reason ?? 'Не получилось положить в поставку'); return; }
+    onDone();
+  };
+
+  if (order.atWarehouseAt) {
+    return (
+      <div className="flex items-center gap-2 rounded-2xl p-3"
+        style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <Boxes size={14} style={{ color: C.green }} />
+        <p className="text-[11px]" style={{ color: C.t2 }}>
+          Заказ на складе. Теперь везите покупателю сами.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <div className="flex items-center gap-2">
+        <Boxes size={14} style={{ color: C.acc }} />
+        <p className="text-[12px] font-bold" style={{ color: C.t1 }}>Собрать в поставку на склад</p>
+      </div>
+      <p className="text-[11px]" style={{ color: C.t3 }}>
+        {order.supplyId
+          ? 'Заказ уже в поставке. Отправьте её на склад во вкладке «Поставки».'
+          : 'Ваш магазин работает через склад: заказ едет туда поставкой, и уже оттуда — покупателю.'}
+      </p>
+
+      {!order.supplyId && (
+        <>
+          <select value={picked} onChange={(e) => setPicked(e.target.value)}
+            className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle}>
+            <option value="">Выберите поставку</option>
+            {supplies.map((s) => <option key={s.id} value={s.id}>{s.number} · {s.name}</option>)}
+          </select>
+          {supplies.length === 0 && (
+            <Alert text="Открытых поставок нет. Создайте её во вкладке «Поставки»." />
+          )}
+          {error && <Alert text={error} />}
+          <button type="button" disabled={!picked || busy} onClick={put}
+            className="w-full rounded-xl py-2 text-[12px] font-bold disabled:opacity-40"
+            style={{ background: C.acc, color: '#fff' }}>
+            {busy ? 'Кладём…' : 'Положить в поставку'}
+          </button>
+        </>
+      )}
     </div>
   );
 };
@@ -464,6 +560,9 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
   const [order, setOrder] = useState<Order | null>(null);
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [payment, setPayment] = useState<string | null>(null);
+  /* Режим работы своего магазина: от него зависит, что делать с заказом
+     на стадии выполнения. Спрашивается у сервера. */
+  const [myMode, setMyMode] = useState<'direct' | 'warehouse'>('direct');
   const [events, setEvents] = useState<OrderEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -481,6 +580,20 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
   };
 
   useEffect(() => { void reload(); }, [orderId]);
+  /* Режим работы своего магазина: от него зависит, что делать с заказом
+     на стадии выполнения. Спрашивается у сервера, а не угадывается. */
+  useEffect(() => {
+    void (async () => {
+      const r = await apiMySeller();
+      if (r.ok && r.data?.seller) setMyMode(r.data.seller.fulfilmentMode ?? 'direct');
+    })();
+  }, []);
+  useEffect(() => {
+    void (async () => {
+      const r = await apiMySeller();
+      if (r.ok && r.data?.seller) setMyMode(r.data.seller.fulfilmentMode ?? 'direct');
+    })();
+  }, []);
 
   const act = async (action: OrderAction) => {
     setBusy(true); setError(null);
@@ -540,8 +653,13 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
       || (iam === 'seller' && ['created', 'payment_pending', 'buyer_payment_declared'].includes(order.status)));
   const mayDispute = ['buyer_payment_declared', 'seller_payment_confirmed', 'fulfillment',
     'seller_shipped', 'in_transit', 'ready_for_pickup'].includes(order.status);
+  const warehouseMode = iam === 'seller' && myMode === 'warehouse'
+    && order.marketType === 'standard';
   const mayShip = iam === 'seller' && order.marketType === 'standard'
-    && order.status === 'fulfillment' && !shipment;
+    && order.status === 'fulfillment' && !shipment
+    /* В режиме «через склад» отправка открывается только после того,
+       как заказ доехал до склада. */
+    && (!warehouseMode || Boolean(order.atWarehouseAt));
 
   return (
     <div className="flex h-full flex-col">
@@ -618,7 +736,14 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
           </div>
         )}
 
-        {mayShip && <ShipForm order={order} onDone={(s) => { setShipment(s); void reload(); }} />}
+        {warehouseMode && order.status === 'fulfillment' && !shipment && (
+          <SupplyPicker order={order} onDone={() => void reload()} />
+        )}
+
+        {mayShip && (
+          <ShipForm order={order} onlySelf={warehouseMode}
+            onDone={(s) => { setShipment(s); void reload(); }} />
+        )}
 
         {shipment && (
           <ShipmentCard shipment={shipment} canMove={iam === 'seller'}

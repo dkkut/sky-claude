@@ -14,6 +14,7 @@
  * ответил сервер; каждое нажатие он проверяет заново.
  */
 import { useEffect, useState } from 'react';
+import { useWarehouseStore } from './logistics/warehouseStore';
 import type { LucideIcon } from 'lucide-react';
 import {
   Store, Package, ShoppingBag, BarChart3, Settings, Plus, Trash2,
@@ -28,11 +29,17 @@ import {
   apiCreateSeller, apiUpdateSeller, apiPaySellerSubscription,
   apiCreateProduct, apiUpdateProduct, apiArchiveProduct,
   apiUploadProductImage, apiDeleteProductImage, apiGames,
+  apiSetServicePackages,
   type ProductInput,
 } from './marketApi';
 import { useMarketStore } from './store';
-import type { Product, Seller, MarketType, ProductCategory, GameCategoryKey, Game } from './types';
-import { GAME_CATEGORY_LABEL, CATEGORY_LABEL } from './types';
+import type {
+  Product, Seller, MarketType, ProductCategory, GameCategoryKey, Game,
+  ServiceCategory, ServiceLevel, ServicePackage, FulfilmentMode,
+} from './types';
+import {
+  GAME_CATEGORY_LABEL, CATEGORY_LABEL, SERVICE_CATEGORY_LABEL, SERVICE_LEVEL_LABEL,
+} from './types';
 import { OrdersList, OrderPage } from './OrderScreens';
 import { CourierHub } from './logistics/CourierHub';
 import { TransportCompanyHub, DeliveryOffersPanel } from './logistics/TransportCompanyHub';
@@ -164,6 +171,11 @@ const ProductForm = ({ product, onDone, onCancel }:
   const [gameId, setGameId] = useState(product?.gameId ?? '');
   const [gameCategory, setGameCategory] = useState<GameCategoryKey | ''>(product?.gameCategory ?? '');
   const [region, setRegion] = useState(product?.region ?? '');
+  const [serviceCategory, setServiceCategory] = useState<ServiceCategory | ''>(product?.serviceCategory ?? '');
+  const [tags, setTags] = useState((product?.tags ?? []).join(', '));
+  /* Пакеты услуги. Уходят отдельным запросом после сохранения самой
+     услуги: без неё им не к чему прикрепиться. */
+  const [packages, setPackages] = useState<ServicePackage[]>(product?.packages ?? []);
   const [games, setGames] = useState<Game[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,13 +204,22 @@ const ProductForm = ({ product, onDone, onCancel }:
       input.gameId = gameId;
       input.gameCategory = (gameCategory || undefined) as GameCategoryKey | undefined;
     }
+    if (marketType === 'service') {
+      input.serviceCategory = (serviceCategory || undefined) as ServiceCategory | undefined;
+      input.tags = tags.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 12);
+    }
 
     setBusy(true); setError(null);
     const r = product
       ? await apiUpdateProduct(product.id, input)
       : await apiCreateProduct(input);
+    if (!r.ok || !r.data) { setBusy(false); setError(r.reason ?? 'Товар не сохранился'); return; }
+
+    if (marketType === 'service' && packages.length > 0) {
+      const saved = await apiSetServicePackages(r.data.product.id, packages);
+      if (!saved.ok) { setBusy(false); setError(saved.reason ?? 'Пакеты не сохранились'); return; }
+    }
     setBusy(false);
-    if (!r.ok) { setError(r.reason ?? 'Товар не сохранился'); return; }
     onDone();
   };
 
@@ -209,8 +230,8 @@ const ProductForm = ({ product, onDone, onCancel }:
       </p>
 
       {!product && (
-        <div className="grid grid-cols-2 gap-2">
-          {([['standard', 'Обычный товар'], ['game', 'Игровой лот']] as const).map(([k, label]) => (
+        <div className="grid grid-cols-3 gap-2">
+          {([['standard', 'Товар'], ['game', 'Игровой лот'], ['service', 'Услуга']] as const).map(([k, label]) => (
             <button key={k} type="button" onClick={() => setMarketType(k)}
               className="rounded-xl py-2 text-[11px] font-semibold"
               style={{
@@ -266,6 +287,32 @@ const ProductForm = ({ product, onDone, onCancel }:
         )}
       </div>
 
+      {marketType === 'service' && (
+        <>
+          <Field label="Вид услуги">
+            <select value={serviceCategory} onChange={(e) => setServiceCategory(e.target.value as ServiceCategory)}
+              className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle}>
+              <option value="">Выберите вид</option>
+              {Object.entries(SERVICE_CATEGORY_LABEL).map(([k, label]) => (
+                <option key={k} value={k}>{label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Метки" hint="Через запятую — по ним услугу находят в поиске.">
+            <input value={tags} onChange={(e) => setTags(e.target.value)} maxLength={400}
+              placeholder="логотип, брендинг, вектор"
+              className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+          </Field>
+
+          <PackageEditor packages={packages} onChange={setPackages} />
+
+          <p className="text-[10px]" style={{ color: C.t3 }}>
+            Цена услуги на витрине — цена самого дешёвого пакета; считает её сервер.
+            Доставки и трек-номера у услуги нет: вы сдаёте работу, заказчик принимает.
+          </p>
+        </>
+      )}
+
       {marketType === 'game' && (
         <>
           <Field label="Игра" hint="Список игр ведёт администрация Sky.">
@@ -305,6 +352,103 @@ const ProductForm = ({ product, onDone, onCancel }:
           {busy ? 'Сохраняем…' : 'Сохранить'}
         </button>
       </div>
+    </div>
+  );
+};
+
+/* ── Пакеты услуги ────────────────────────────────────────────────── */
+
+const EMPTY_PACKAGE = (level: ServiceLevel): ServicePackage => ({
+  level,
+  title: SERVICE_LEVEL_LABEL[level],
+  description: '',
+  price: 0,
+  priceKop: 0,
+  delivery: 3,
+  revisions: 1,
+  includes: [],
+});
+
+/**
+ * Три пакета услуги.
+ *
+ * Цена здесь — рубли на экране и копейки в запросе: складывать рубли с
+ * плавающей точкой нельзя, и 19.99 не должно уехать на витрину как
+ * 19.98.
+ */
+const PackageEditor = ({ packages, onChange }: {
+  packages: ServicePackage[];
+  onChange: (next: ServicePackage[]) => void;
+}) => {
+  const byLevel = (level: ServiceLevel) => packages.find((p) => p.level === level);
+
+  const toggle = (level: ServiceLevel) => {
+    onChange(byLevel(level)
+      ? packages.filter((p) => p.level !== level)
+      : [...packages, EMPTY_PACKAGE(level)]);
+  };
+
+  const patch = (level: ServiceLevel, next: Partial<ServicePackage>) => {
+    onChange(packages.map((p) => (p.level === level ? { ...p, ...next } : p)));
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-semibold" style={{ color: C.t3 }}>ПАКЕТЫ</p>
+      {(['basic', 'standard', 'premium'] as ServiceLevel[]).map((level) => {
+        const p = byLevel(level);
+        return (
+          <div key={level} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+            <button type="button" onClick={() => toggle(level)}
+              className="flex w-full items-center justify-between text-left">
+              <p className="text-[12px] font-bold" style={{ color: p ? C.t1 : C.t3 }}>
+                {SERVICE_LEVEL_LABEL[level]}
+              </p>
+              <span className="text-[11px] font-semibold" style={{ color: C.acc }}>
+                {p ? 'Убрать' : 'Добавить'}
+              </span>
+            </button>
+
+            {p && (
+              <div className="mt-2 space-y-2">
+                <input value={p.title} maxLength={80}
+                  onChange={(e) => patch(level, { title: e.target.value })}
+                  placeholder="Название пакета"
+                  className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+                <textarea value={p.description} rows={2} maxLength={600}
+                  onChange={(e) => patch(level, { description: e.target.value })}
+                  placeholder="Что входит одним предложением"
+                  className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+                <div className="grid grid-cols-3 gap-2">
+                  <input value={kopToRubles(p.priceKop)} inputMode="decimal"
+                    onChange={(e) => patch(level, { priceKop: rublesToKop(e.target.value) ?? 0 })}
+                    placeholder="Цена, ₽"
+                    className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+                  <input value={String(p.delivery)} inputMode="numeric"
+                    onChange={(e) => patch(level, { delivery: Math.max(1, Number(e.target.value) || 1) })}
+                    placeholder="Дней"
+                    className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+                  <input value={p.revisions === -1 ? '∞' : String(p.revisions)}
+                    onChange={(e) => patch(level, {
+                      revisions: e.target.value.trim() === '∞' ? -1 : Math.max(0, Number(e.target.value) || 0),
+                    })}
+                    placeholder="Правок"
+                    className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+                </div>
+                <input value={p.includes.join(', ')} maxLength={400}
+                  onChange={(e) => patch(level, {
+                    includes: e.target.value.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 12),
+                  })}
+                  placeholder="Что входит, через запятую"
+                  className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <p className="text-[10px]" style={{ color: C.t3 }}>
+        Впишите «∞» в поле правок, если правки без ограничения.
+      </p>
     </div>
   );
 };
@@ -483,6 +627,11 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
   const [shopName, setShopName] = useState(seller.shopName);
   const [description, setDescription] = useState(seller.description);
   const [paymentDetails, setPaymentDetails] = useState(seller.paymentDetails ?? '');
+  const [mode, setMode] = useState<FulfilmentMode>(seller.fulfilmentMode ?? 'direct');
+  const [warehouseId, setWarehouseId] = useState(seller.fulfilmentWarehouseId ?? '');
+  const { myWarehouses, load: loadWarehouses } = useWarehouseStore();
+  const warehouses = myWarehouses();
+  useEffect(() => { void loadWarehouses(); }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -493,6 +642,8 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
       shopName: shopName.trim(),
       description: description.trim(),
       paymentDetails: paymentDetails.trim(),
+      fulfilmentMode: mode,
+      fulfilmentWarehouseId: mode === 'warehouse' ? warehouseId : null,
     });
     setBusy(false);
     if (!r.ok || !r.data) { setError(r.reason ?? 'Не сохранилось'); return; }
@@ -524,6 +675,45 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
       {!seller.hasPaymentDetails && (
         <Alert text="Пока реквизиты не заданы, товары не публикуются и заказать у вас нельзя: покупателю некуда переводить деньги." />
       )}
+
+      {/* Режим работы магазина */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold" style={{ color: C.t3 }}>РЕЖИМ РАБОТЫ</p>
+        <div className="grid grid-cols-2 gap-2">
+          {([['direct', 'Напрямую'], ['warehouse', 'Через свой склад']] as const).map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setMode(k)}
+              className="rounded-xl py-2 text-[11px] font-semibold"
+              style={{
+                background: mode === k ? C.accBg : C.l2,
+                color: mode === k ? C.acc : C.t2,
+                border: `1px solid ${mode === k ? 'rgba(79,110,247,0.3)' : C.brd}`,
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'direct' ? (
+          <p className="text-[10px]" style={{ color: C.t3 }}>
+            Заказ уходит покупателю сразу: службой доставки в пункт выдачи или до двери,
+            либо вы везёте сами.
+          </p>
+        ) : (
+          <>
+            <Field label="Склад магазина"
+              hint="Заказы собираются в поставку, едут на этот склад, и уже оттуда вы везёте покупателю сами — с тем же подтверждением получения.">
+              <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle}>
+                <option value="">Выберите свой склад</option>
+                {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+            </Field>
+            {warehouses.length === 0 && (
+              <Alert text="Своих складов пока нет. Заведите склад во вкладке «Мои склады» — без него режим не включится." />
+            )}
+          </>
+        )}
+      </div>
 
       {error && <Alert text={error} />}
       {saved && <Alert kind="info" text="Сохранено" />}

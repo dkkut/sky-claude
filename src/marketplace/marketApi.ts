@@ -18,6 +18,7 @@ import type {
   Game, PickupPoint, Carrier, Shipment, DealChat, ChatMessage,
   MarketNotification, MarketConfig, MarketType, ProductCategory,
   GameCategoryKey, ShipMethod, ShipDestination, MyCarrier, CarrierJob,
+  ServiceCategory, ServiceLevel, ServicePackage, FulfilmentMode,
 } from './types';
 
 const q = (params: Record<string, string | number | undefined | null>) => {
@@ -43,6 +44,7 @@ export interface CatalogQuery {
   category?: ProductCategory;
   gameId?: string;
   gameCategory?: GameCategoryKey;
+  serviceCategory?: ServiceCategory;
   sellerId?: string;
   sort?: 'new' | 'cheap' | 'expensive' | 'popular' | 'rating';
   limit?: number;
@@ -87,7 +89,10 @@ export const apiSeller = (sellerId: string) =>
 export const apiCreateSeller = (input: { shopName: string; description?: string; paymentDetails?: string }) =>
   apiCall<{ seller: Seller }>('/api/market/seller', { method: 'POST', body: JSON.stringify(input) });
 
-export const apiUpdateSeller = (patch: { shopName?: string; description?: string; paymentDetails?: string }) =>
+export const apiUpdateSeller = (patch: {
+  shopName?: string; description?: string; paymentDetails?: string;
+  fulfilmentMode?: FulfilmentMode; fulfilmentWarehouseId?: string | null;
+}) =>
   apiCall<{ seller: Seller }>('/api/market/seller', { method: 'PATCH', body: JSON.stringify(patch) });
 
 /** Подписка за место на витрине. Цену называет сервер. */
@@ -115,6 +120,8 @@ export interface ProductInput {
   oldPriceKop?: number | null;
   category?: ProductCategory;
   stock: number;
+  serviceCategory?: ServiceCategory;
+  tags?: string[];
   gameId?: string;
   gameCategory?: GameCategoryKey;
   region?: string;
@@ -140,6 +147,18 @@ export const apiUploadProductImage = (productId: string, file: Blob) =>
 export const apiDeleteProductImage = (imageId: string) =>
   apiCall<{ ok: true }>(`/api/market/images/${enc(imageId)}`, { method: 'DELETE' });
 
+/**
+ * Пакеты услуги.
+ *
+ * Уходят разом и разом же заменяются: три строки, которые всегда
+ * правят вместе, проще переписать целиком.
+ */
+export const apiSetServicePackages = (
+  productId: string,
+  packages: (Pick<ServicePackage, 'level' | 'title' | 'description' | 'priceKop' | 'delivery' | 'revisions' | 'includes'>)[],
+) => apiCall<{ product: Product }>(`/api/market/products/${enc(productId)}/packages`,
+  { method: 'PUT', body: JSON.stringify({ packages }) });
+
 /* ─── Заказы ──────────────────────────────────────────────────────── */
 
 export interface OrderInput {
@@ -148,6 +167,9 @@ export interface OrderInput {
   address?: string;
   contact?: string;
   pickupPointId?: string;
+  /** Услуга заказывается пакетом: уходит уровень, цену берёт сервер. */
+  packageLevel?: ServiceLevel;
+  requirements?: string;
 }
 
 export const apiCreateOrder = (input: OrderInput) =>
@@ -194,6 +216,18 @@ export const apiMarkPacking = (id: string, done: boolean) =>
 export const apiLeaveReview = (id: string, rating: number, text: string) =>
   apiCall<{ ok: true; reviewId: string }>(`/api/market/orders/${enc(id)}/review`,
     { method: 'POST', body: JSON.stringify({ rating, text }) });
+
+/**
+ * Положить заказ в поставку на свой склад.
+ *
+ * Шаг режима «через склад»: со склада продавец повезёт покупателю сам.
+ */
+export const apiPutOrderInSupply = (orderId: string, supplyId: string) =>
+  apiCall<{ order: Order }>(`/api/market/orders/${enc(orderId)}/supply`,
+    { method: 'POST', body: JSON.stringify({ supplyId }) });
+
+export const apiSupplyOrders = (supplyId: string) =>
+  apiCall<{ items: Order[] }>(`/api/market/supplies/${enc(supplyId)}/orders`);
 
 /* ─── Доставка ────────────────────────────────────────────────────── */
 

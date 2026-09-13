@@ -23,6 +23,7 @@ import { encryptContent, decryptContent } from './crypto.mjs';
 import { marketText as text, marketInt as int } from './market.mjs';
 import { logLogi } from './logistics.mjs';
 import { warehouseAccess, logWarehouse, PASS_ID_RE, SUPPLY_ID_RE } from './warehouses.mjs';
+import { markSupplyArrived } from './marketorders.mjs';
 
 const LEVELS = ['guest', 'employee', 'manager', 'owner'];
 const PASS_TYPES = ['temporary', 'permanent'];
@@ -437,6 +438,14 @@ export const setSupplyStatus = async (supplyId, actorId, status) => {
     'UPDATE logi_supplies SET status = $2, updated_at = now() WHERE id = $1 RETURNING *',
     [supplyId, String(status)]);
   await logSupply(supplyId, actorId, 'status_changed', `Состояние: ${status}`);
+
+  /* Доехавшая поставка — это доехавшие заказы, которые в ней лежали.
+     Отметку ставит сервер всем сразу: разбирать коробку на «этот
+     доехал, а этот нет» некому и незачем. */
+  if (['at_sorting_center', 'delivered'].includes(String(status))) {
+    const marked = await markSupplyArrived(supplyId);
+    if (marked) await logSupply(supplyId, actorId, 'orders_arrived', `Заказов принято складом: ${marked}`);
+  }
   return { supply: toSupply(rows[0]) };
 };
 

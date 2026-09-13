@@ -580,7 +580,7 @@ export const SkyMarket = () => {
               transition={{ duration: 0.1 }}>
               {tab === 'catalog' && <Catalog marketType="standard" onOpen={setProduct} />}
               {tab === 'gaming' && <GamingMarket onOpen={setProduct} />}
-              {tab === 'services' && <ServicesMarket />}
+              {tab === 'services' && <ServicesMarket onOrdered={openOrder} />}
               {tab === 'orders' && <MyOrders meId={meId} />}
               {tab === 'fav' && <Favorites onOpen={setProduct} />}
               {tab === 'bell' && <Notifications onOpenOrder={openOrder} />}

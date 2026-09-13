@@ -10,7 +10,40 @@
    сервер, а тот спросит базу и ответит отказом.
 ====================================================================== */
 
-export type MarketType = 'standard' | 'game';
+export type MarketType = 'standard' | 'game' | 'service';
+
+/** Вид услуги. Список ведёт сервер — здесь только подписи. */
+export type ServiceCategory =
+  | 'design' | 'dev' | 'music' | 'video' | 'writing' | 'marketing' | 'gaming' | 'other';
+
+export const SERVICE_CATEGORY_LABEL: Record<ServiceCategory, string> = {
+  design: 'Дизайн', dev: 'Разработка', music: 'Музыка', video: 'Видео',
+  writing: 'Текст', marketing: 'Маркетинг', gaming: 'Гейминг', other: 'Другое',
+};
+
+export type ServiceLevel = 'basic' | 'standard' | 'premium';
+
+export const SERVICE_LEVEL_LABEL: Record<ServiceLevel, string> = {
+  basic: 'Базовый', standard: 'Стандарт', premium: 'Премиум',
+};
+
+/**
+ * Пакет услуги.
+ *
+ * Цену отсюда клиент не отправляет обратно: при заказе уходит только
+ * уровень, а цену и срок берёт сервер из своей базы.
+ */
+export interface ServicePackage {
+  level: ServiceLevel;
+  title: string;
+  description: string;
+  price: number;
+  priceKop: number;
+  delivery: number;
+  /** -1 — без ограничения. */
+  revisions: number;
+  includes: string[];
+}
 
 export type ProductCategory =
   | 'electronics' | 'clothing' | 'home' | 'beauty'
@@ -42,6 +75,15 @@ export type OrderAction = 'accept' | 'declare_paid' | 'confirm_paid' | 'fulfill'
 export type OrderRole = 'buyer' | 'seller' | 'support';
 
 export type SellerStatus = 'pending' | 'active' | 'suspended';
+
+/**
+ * Режим работы магазина.
+ *
+ *   direct    — заказ уходит покупателю сразу: службой или своими силами.
+ *   warehouse — заказы собираются в поставку, едут на свой склад, и уже
+ *               оттуда продавец везёт покупателю сам.
+ */
+export type FulfilmentMode = 'direct' | 'warehouse';
 
 export type GameCategoryKey =
   | 'currency' | 'accounts' | 'keys' | 'dlc' | 'items'
@@ -94,6 +136,9 @@ export interface Product {
   gameTitle?: string;
   gameCategory?: GameCategoryKey;
   region?: string;
+  serviceCategory?: ServiceCategory;
+  tags: string[];
+  packages?: ServicePackage[];
   favorite?: boolean;
   own?: boolean;
   createdAt?: string;
@@ -122,6 +167,10 @@ export interface Seller {
   hasAvatar: boolean;
   /** Есть ли куда переводить. Видно всем — сами реквизиты нет. */
   hasPaymentDetails: boolean;
+  /** Как магазин отправляет заказы: напрямую или через свой склад. */
+  fulfilmentMode: FulfilmentMode;
+  /** Какой именно склад — только в своём профиле. */
+  fulfilmentWarehouseId?: string | null;
   /** Только в своём профиле. Покупателю они приходят по его заказу. */
   paymentDetails?: string;
   status: SellerStatus;
@@ -172,6 +221,13 @@ export interface Order {
   cancelledAt: string | null;
   cancelReason: string;
   pickupUntil: string | null;
+  supplyId: string | null;
+  atWarehouseAt: string | null;
+  packageLevel: ServiceLevel | null;
+  packageTitle: string | null;
+  deliveryDays: number | null;
+  dueAt: string | null;
+  requirements: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -289,6 +345,8 @@ export interface MarketNotification {
 export interface MarketConfig {
   categories: ProductCategory[];
   gameCategories: GameCategoryKey[];
+  serviceCategories: ServiceCategory[];
+  serviceLevels: ServiceLevel[];
   marketTypes: MarketType[];
   sellerPrice: number;
   sellerDays: number;

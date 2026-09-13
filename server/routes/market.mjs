@@ -27,6 +27,7 @@ import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { isAdmin } from './../admin.mjs';
 import {
   SELLER_PRICE, SELLER_DAYS, CATEGORIES, GAME_CATEGORIES, MARKET_TYPES,
+  SERVICE_CATEGORIES, SERVICE_LEVELS, setServicePackages,
   readSeller, readMySeller, createSeller, updateSeller, setSellerAvatar, sellerAvatarMime,
   paySellerSubscription, listGames, createGame, updateGame,
   setGameCover, gameCoverMime, readProduct, listCatalog, listMyProducts,
@@ -41,7 +42,7 @@ import {
   createOrder, actOnOrder, cancelOrder, openDispute, resolveDispute,
   markPacking, listOrders, accessOrder, orderHistory, toOrder,
   leaveReview, sellerStats, listNotifications, readNotification, readAllNotifications,
-  orderPaymentDetails,
+  orderPaymentDetails, putOrderInSupply, ordersInSupply,
 } from './../marketorders.mjs';
 import {
   listChats, readChat, sendMessage, markRead, unreadCount, chatOfOrder,
@@ -98,6 +99,20 @@ const CODES = {
   slug_taken: 409,
   not_applicable: 409,
   use_deal_chat: 409,
+  not_a_service: 409,
+  not_warehouse_mode: 409,
+  no_such_supply: 404,
+  supply_closed: 409,
+  not_in_supply: 409,
+  supply_not_arrived: 409,
+  warehouse_ships_itself: 409,
+  warehouse_required: 400,
+  not_your_warehouse: 403,
+  no_packages: 400,
+  bad_package: 400,
+  bad_package_price: 400,
+  bad_package_title: 400,
+  bad_service_category: 400,
 };
 
 const fail = (res, result) => json(res, CODES[result.error] ?? 400, { error: result.error });
@@ -266,6 +281,8 @@ export const marketRoutes = async (req, res, url) => {
     return json(res, 200, {
       categories: CATEGORIES,
       gameCategories: GAME_CATEGORIES,
+      serviceCategories: SERVICE_CATEGORIES,
+      serviceLevels: SERVICE_LEVELS,
       marketTypes: MARKET_TYPES,
       sellerPrice: SELLER_PRICE,
       sellerDays: SELLER_DAYS,
@@ -284,6 +301,7 @@ export const marketRoutes = async (req, res, url) => {
       category: params.get('category'),
       gameId: params.get('gameId'),
       gameCategory: params.get('gameCategory'),
+      serviceCategory: params.get('serviceCategory'),
       sellerId: params.get('sellerId'),
       sort: params.get('sort'),
       limit: params.get('limit'),
@@ -335,6 +353,15 @@ export const marketRoutes = async (req, res, url) => {
     if (req.method === 'DELETE' && tail === '') {
       if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
       const done = await archiveProduct(productId, me);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+
+    /* Пакеты услуги. Цену пакета решает продавец, а проверяет сервер:
+       из запроса берутся только уровень, название, цена и срок. */
+    if (req.method === 'PUT' && tail === '/packages') {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      const body = await parseBody(req);
+      const done = await setServicePackages(productId, me, body.packages);
       return done.error ? fail(res, done) : json(res, 200, done);
     }
 
@@ -521,6 +548,12 @@ export const marketRoutes = async (req, res, url) => {
     return done.error ? fail(res, done) : json(res, 201, done);
   }
 
+  const supplyOrders = path.match(/^\/api\/market\/supplies\/(ls-[0-9a-f-]{36})\/orders$/);
+  if (req.method === 'GET' && supplyOrders) {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { items: await ordersInSupply(supplyOrders[1], me) });
+  }
+
   if (req.method === 'GET' && path === '/api/market/orders') {
     if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
     const items = await listOrders(me, {
@@ -601,6 +634,12 @@ export const marketRoutes = async (req, res, url) => {
     if (tail === '/review') {
       const done = await leaveReview(orderId, me, body);
       return done.error ? fail(res, done) : json(res, 201, done);
+    }
+    /* Режим «через свой склад»: заказ кладётся в поставку, поставка
+       едет на склад, а уже оттуда продавец везёт покупателю сам. */
+    if (tail === '/supply') {
+      const done = await putOrderInSupply(orderId, me, body.supplyId);
+      return done.error ? fail(res, done) : json(res, 200, done);
     }
     if (tail === '/ship') {
       const done = await shipOrder(orderId, me, body);

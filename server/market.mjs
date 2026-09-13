@@ -68,7 +68,19 @@ export const GAME_CATEGORIES = [
   'giftcards', 'topup', 'services', 'subscriptions',
 ];
 
-export const MARKET_TYPES = ['standard', 'game'];
+export const MARKET_TYPES = ['standard', 'game', 'service'];
+
+/**
+ * Виды услуг.
+ *
+ * Свой список, а не категории товаров: «дизайн» и «продукты питания» в
+ * одном списке не значат ничего ни покупателю, ни поиску.
+ */
+export const SERVICE_CATEGORIES = [
+  'design', 'dev', 'music', 'video', 'writing', 'marketing', 'gaming', 'other',
+];
+
+export const SERVICE_LEVELS = ['basic', 'standard', 'premium'];
 
 /* ─── Мелкие помощники ─────────────────────────────────────────────── */
 
@@ -135,6 +147,10 @@ const toSeller = (row, own = false) => row && ({
      знать, что продавец готов принять оплату, а сами реквизиты для
      этого показывать не нужно. */
   hasPaymentDetails: Boolean(row.has_payment_details),
+  /* Режим работы магазина: напрямую или через свой склад. Виден всем —
+     покупателю полезно знать, что заказ поедет через склад. */
+  fulfilmentMode: row.fulfilment_mode ?? 'direct',
+  fulfilmentWarehouseId: own ? (row.fulfilment_warehouse_id ?? null) : undefined,
   /* Сами реквизиты — только самому продавцу. Покупателю они приходят
      иначе: по его собственному заказу, из readOrderPaymentDetails. */
   paymentDetails: own && row.payment_details_enc
@@ -250,6 +266,28 @@ export const updateSeller = async (profileId, patch = {}) => {
    * продавец перестаёт быть в состоянии торговать, потому что деньги
    * ему переводить некуда.
    */
+  /*
+   * Режим работы магазина.
+   *
+   * Через склад — значит склад должен быть и должен быть свой: чужой
+   * склад своим режимом работы не назначишь, а склад «где-то там» не
+   * назначишь вовсе, потому что заказы поедут в никуда.
+   */
+  if (patch.fulfilmentMode !== undefined) {
+    const mode = patch.fulfilmentMode === 'warehouse' ? 'warehouse' : 'direct';
+    let warehouseId = null;
+    if (mode === 'warehouse') {
+      const wid = text(patch.fulfilmentWarehouseId, 80);
+      if (!wid) return { error: 'warehouse_required' };
+      const { rows: w } = await query(
+        'SELECT id FROM logi_warehouses WHERE id = $1 AND seller_id = $2', [wid, profileId]);
+      if (!w[0]) return { error: 'not_your_warehouse' };
+      warehouseId = w[0].id;
+    }
+    args.push(mode); sets.push(`fulfilment_mode = $${args.length}`);
+    args.push(warehouseId); sets.push(`fulfilment_warehouse_id = $${args.length}`);
+  }
+
   if (patch.paymentDetails !== undefined) {
     const details = text(patch.paymentDetails, MAX_PAYMENT_DETAILS);
     args.push(details ? encryptContent(details) : null);
@@ -450,6 +488,9 @@ export const toProduct = (row) => ({
   gameTitle: row.game_title ?? undefined,
   gameCategory: row.game_category ?? undefined,
   region: row.region ?? undefined,
+  serviceCategory: row.service_category ?? undefined,
+  tags: Array.isArray(row.tags) ? row.tags : [],
+  packages: Array.isArray(row.packages) ? row.packages : undefined,
   active: Boolean(row.active),
   sold: Number(row.sold ?? 0),
   rating: row.rating == null ? null : Math.round(Number(row.rating) * 10) / 10,
@@ -473,7 +514,14 @@ const SELECT_PRODUCT = `
          EXISTS (SELECT 1 FROM market_favorites f
                   WHERE f.product_id = p.id AND f.user_id = $1) AS favorite,
          ARRAY(SELECT i.id FROM market_product_images i
-                WHERE i.product_id = p.id ORDER BY i.sort_order, i.created_at) AS image_ids
+                WHERE i.product_id = p.id ORDER BY i.sort_order, i.created_at) AS image_ids,
+         COALESCE((SELECT jsonb_agg(jsonb_build_object(
+                     'level', k.level, 'title', k.title, 'description', k.description,
+                     'price', k.price_kop / 100.0, 'priceKop', k.price_kop,
+                     'delivery', k.delivery_days, 'revisions', k.revisions,
+                     'includes', k.includes) ORDER BY k.price_kop)
+                    FROM market_service_packages k WHERE k.product_id = p.id),
+                  '[]'::jsonb) AS packages
     FROM market_products p
     JOIN market_sellers s ON s.profile_id = p.seller_id
     LEFT JOIN market_games g ON g.id = p.game_id
@@ -507,7 +555,7 @@ export const readProduct = async (productId, viewerId) => {
  * запроса стал бы шаблоном и вернул весь каталог одним символом.
  */
 export const listCatalog = async (viewerId, {
-  marketType = 'standard', q, category, gameId, gameCategory,
+  marketType = 'standard', q, category, gameId, gameCategory, serviceCategory,
   sellerId, sort, limit, offset, minPrice, maxPrice,
 } = {}) => {
   const lim = int(limit, 1, 100) ?? 40;
@@ -531,6 +579,9 @@ export const listCatalog = async (viewerId, {
   }
   if (gameCategory && GAME_CATEGORIES.includes(String(gameCategory))) {
     args.push(String(gameCategory)); where.push(`p.game_category = $${args.length}`);
+  }
+  if (serviceCategory && SERVICE_CATEGORIES.includes(String(serviceCategory))) {
+    args.push(String(serviceCategory)); where.push(`p.service_category = $${args.length}`);
   }
   if (sellerId) { args.push(String(sellerId)); where.push(`p.seller_id = $${args.length}`); }
 
@@ -633,6 +684,18 @@ const validateProduct = async (input, { partial = false } = {}) => {
   }
   if (input.active !== undefined) out.active = input.active === true;
   if (input.region !== undefined) out.region = text(input.region, 60) || null;
+  if (input.serviceCategory !== undefined) {
+    const c = String(input.serviceCategory ?? '');
+    out.service_category = SERVICE_CATEGORIES.includes(c) ? c : null;
+  }
+  if (input.tags !== undefined) {
+    /* Метки чистим и режем: это строка поиска, а не место для
+       произвольного объёма данных от клиента. */
+    const tags = Array.isArray(input.tags)
+      ? input.tags.slice(0, 12).map((t) => text(t, 30)).filter(Boolean)
+      : [];
+    out.tags = JSON.stringify(tags);
+  }
 
   return { fields: out };
 };
@@ -654,6 +717,11 @@ export const createProduct = async (sellerId, input = {}) => {
   if (checked.error) return checked;
   const f = checked.fields;
 
+  if (marketType === 'service') {
+    const c = String(input.serviceCategory ?? '');
+    if (!SERVICE_CATEGORIES.includes(c)) return { error: 'bad_service_category' };
+  }
+
   let gameId = null;
   let gameCategory = null;
   if (marketType === 'game') {
@@ -672,11 +740,12 @@ export const createProduct = async (sellerId, input = {}) => {
   await query(
     `INSERT INTO market_products
        (id, seller_id, market_type, title, description, price_kop, old_price_kop,
-        category, stock, game_id, game_category, region, search_text)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        category, stock, game_id, game_category, region, service_category, tags, search_text)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)`,
     [id, sellerId, marketType, f.title, f.description, f.price_kop, f.old_price_kop ?? null,
       f.category, f.stock, gameId, gameCategory, f.region ?? null,
-      searchTextFor([f.title, f.description])],
+      f.service_category ?? null, f.tags ?? '[]',
+      searchTextFor([f.title, f.description, ...(JSON.parse(f.tags ?? '[]'))])],
   );
   await logMarket(sellerId, 'product_created', id, { marketType });
   return { product: await readProduct(id, sellerId) };
@@ -700,7 +769,9 @@ export const updateProduct = async (productId, sellerId, patch = {}) => {
   const sets = [];
   const args = [productId];
   for (const [col, val] of Object.entries(f)) {
-    args.push(val); sets.push(`${col} = $${args.length}`);
+    args.push(val);
+    /* Метки — jsonb: без приведения Postgres примет их за строку. */
+    sets.push(col === 'tags' ? `tags = $${args.length}::jsonb` : `${col} = $${args.length}`);
   }
   if (patch.gameCategory !== undefined) {
     const gc = GAME_CATEGORIES.includes(String(patch.gameCategory)) ? String(patch.gameCategory) : null;
@@ -786,6 +857,110 @@ export const deleteProductImage = async (imageId, sellerId) => {
   return { ok: true };
 };
 
+/* ─── Пакеты услуги ────────────────────────────────────────────────── */
+
+const MAX_PACKAGE_INCLUDES = 12;
+
+/**
+ * Задать пакеты услуги.
+ *
+ * Пакеты приходят разом и разом же заменяются: три строки, которые
+ * всегда редактируют вместе, проще переписать целиком, чем сводить
+ * частичные правки. Цена пакета — целые копейки и больше нуля; «дешевле
+ * нуля» не бывает даже в подарок.
+ *
+ * Владелец проверяется по базе. Право торговать — тоже: пакеты меняют
+ * цену услуги, а цену на витрине правит только тот, кто вправе на ней
+ * стоять.
+ */
+export const setServicePackages = async (productId, sellerId, packages) => {
+  if (!PRODUCT_ID_RE.test(String(productId ?? ''))) return { error: 'not_found' };
+  const { rows } = await query(
+    'SELECT seller_id, market_type FROM market_products WHERE id = $1', [productId]);
+  if (!rows[0]) return { error: 'not_found' };
+  if (rows[0].seller_id !== sellerId) return { error: 'not_allowed' };
+  if (rows[0].market_type !== 'service') return { error: 'not_a_service' };
+
+  const allowed = await canSell(sellerId);
+  if (!allowed.ok) return { error: allowed.error };
+
+  const list = Array.isArray(packages) ? packages.slice(0, SERVICE_LEVELS.length) : [];
+  const clean = [];
+  const seen = new Set();
+  for (const p of list) {
+    const level = String(p?.level ?? '');
+    if (!SERVICE_LEVELS.includes(level) || seen.has(level)) continue;
+    const price = int(p?.priceKop, 1, MAX_PRICE_KOP);
+    if (price === null) return { error: 'bad_package_price' };
+    const title = text(p?.title, 80);
+    if (!title) return { error: 'bad_package_title' };
+    seen.add(level);
+    clean.push({
+      level,
+      title,
+      description: text(p?.description, 600),
+      price,
+      delivery: int(p?.delivery, 1, 365) ?? 1,
+      /* -1 — «без ограничения»: так это и показывалось на экране. */
+      revisions: p?.revisions === -1 ? -1 : (int(p?.revisions, 0, 99) ?? 0),
+      includes: Array.isArray(p?.includes)
+        ? p.includes.slice(0, MAX_PACKAGE_INCLUDES).map((x) => text(x, 80)).filter(Boolean)
+        : [],
+    });
+  }
+  if (clean.length === 0) return { error: 'no_packages' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM market_service_packages WHERE product_id = $1', [productId]);
+    for (const p of clean) {
+      await client.query(
+        `INSERT INTO market_service_packages
+           (id, product_id, level, title, description, price_kop, delivery_days, revisions, includes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+        [`msp-${generateId()}`, productId, p.level, p.title, p.description,
+          p.price, p.delivery, p.revisions, JSON.stringify(p.includes)]);
+    }
+    /* Цена самой услуги — цена самого дешёвого пакета: витрина должна
+       показывать «от скольки», и считать это должен сервер. */
+    const cheapest = clean.reduce((a, b) => (b.price < a.price ? b : a));
+    await client.query(
+      'UPDATE market_products SET price_kop = $2, updated_at = now() WHERE id = $1',
+      [productId, cheapest.price]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  await logMarket(sellerId, 'service_packages_set', productId, { count: clean.length });
+  return { product: await readProduct(productId, sellerId) };
+};
+
+/**
+ * Пакет услуги для заказа.
+ *
+ * Цену и срок берёт отсюда сервер — присланная клиентом цена пакета не
+ * читается вовсе, иначе премиум покупался бы по цене базового.
+ */
+export const readServicePackage = async (productId, level) => {
+  const { rows } = await query(
+    'SELECT * FROM market_service_packages WHERE product_id = $1 AND level = $2',
+    [String(productId ?? ''), String(level ?? '')]);
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    level: row.level,
+    title: row.title,
+    priceKop: Number(row.price_kop),
+    delivery: Number(row.delivery_days),
+    revisions: Number(row.revisions),
+  };
+};
+
 /* ─── Отзывы и пересчёт рейтинга ───────────────────────────────────── */
 
 /**
@@ -826,6 +1001,25 @@ export const listReviews = async (productId, { limit } = {}) => {
     buyerName: r.buyer_name,
     createdAt: r.created_at?.toISOString?.() ?? undefined,
   }));
+};
+
+/* ─── Режим работы магазина ────────────────────────────────────────── */
+
+/**
+ * Как этот продавец отправляет заказы.
+ *
+ * Спрашивается у базы каждый раз, когда решается, что заказу можно
+ * дальше: присланного «я работаю напрямую» здесь не читается, иначе
+ * заказ уезжал бы мимо склада, а остатки на складе врали бы.
+ */
+export const fulfilmentOf = async (sellerId) => {
+  const { rows } = await query(
+    'SELECT fulfilment_mode, fulfilment_warehouse_id FROM market_sellers WHERE profile_id = $1',
+    [sellerId]);
+  return {
+    mode: rows[0]?.fulfilment_mode ?? 'direct',
+    warehouseId: rows[0]?.fulfilment_warehouse_id ?? null,
+  };
 };
 
 /* ─── Реквизиты продавца по заказу ─────────────────────────────────── */
