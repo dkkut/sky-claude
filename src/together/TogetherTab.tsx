@@ -415,7 +415,13 @@ const SessionScreen = ({ session, onClose }: { session: TogetherSession; onClose
         ) : session.type === 'watch' ? (
           movie
             ? <FilmPlayer movie={movie} onClose={onClose}
-                together={{ sessionId: session.id, canControl: session.canControl, watchers: inside }} />
+                together={{
+                  sessionId: session.id,
+                  canControl: session.canControl,
+                  watchers: inside,
+                  onLeave: leave,
+                  onEnd: session.isOwner ? end : undefined,
+                }} />
             : <div className="flex flex-1 items-center justify-center p-6 text-center">
                 <p className="text-sm" style={{ color: 'var(--t3)' }}>
                   {movies.length === 0

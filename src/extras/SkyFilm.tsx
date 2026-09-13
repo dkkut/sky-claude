@@ -179,6 +179,17 @@ export interface WatchTogether {
   canControl: boolean;
   /** Сколько человек сейчас смотрит. Показывается в шапке плеера. */
   watchers?: number;
+  /**
+   * Выйти из сессии и завершить её.
+   *
+   * Обе кнопки живут в шапке плеера, а не только на экране сессии, и
+   * это не украшение. Плеер занимает весь экран и накрывает собой всё
+   * остальное: без них владелец, начав смотреть, уже не мог завершить
+   * сеанс, а участник — выйти из него. Стрелка «назад» лишь сворачивает
+   * просмотр, из сессии она не выводит.
+   */
+  onLeave?: () => void;
+  onEnd?: () => void;
 }
 
 export const Player = ({ movie, onClose, together = null }: {
@@ -426,6 +437,20 @@ export const Player = ({ movie, onClose, together = null }: {
                   style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }} data-tg-watchers>
                   <Users size={10} /> {together.watchers ?? 1}
                 </span>
+              )}
+              {together?.onEnd && (
+                <button type="button" onClick={together.onEnd} data-tg-end-player
+                  className="rounded-full px-3 py-1.5 text-[11px] font-semibold"
+                  style={{ background: 'rgba(239,68,68,0.18)', color: '#f87171' }}>
+                  Завершить
+                </button>
+              )}
+              {together?.onLeave && (
+                <button type="button" onClick={together.onLeave} data-tg-leave-player
+                  className="rounded-full px-3 py-1.5 text-[11px] font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.12)', color: K.text }}>
+                  Выйти
+                </button>
               )}
               <button type="button" onClick={toggleFs}
                 className="grid h-10 w-10 place-items-center rounded-full pointer-events-auto"

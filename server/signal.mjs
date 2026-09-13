@@ -29,7 +29,7 @@ import {
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
   blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags, votePoll, consumeOnce, sweepExpired, toggleFavorite,
 } from './chats.mjs';
-import { applyCommand, stateFor } from './together.mjs';
+import { applyCommand } from './together.mjs';
 import {
   getSettings, updateSettings, setRole, kickMember, unbanMember, muteMember,
   createInvite, revokeInvite, listInvites, joinByInvite,

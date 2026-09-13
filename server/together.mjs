@@ -397,16 +397,6 @@ export const liveMemberIds = async (sessionId) => {
   return rows.map((r) => r.user_id);
 };
 
-/** Кого касается сессия вообще: и те, кого только позвали. */
-export const audienceIds = async (sessionId) => {
-  const { rows } = await query(
-    `SELECT user_id FROM together_participants
-      WHERE session_id = $1 AND status IN ('joined', 'invited')`,
-    [sessionId],
-  );
-  return rows.map((r) => r.user_id);
-};
-
 /* ─── Создание ─────────────────────────────────────────────────────── */
 
 export const createSession = async (ownerId, input = {}) => {
@@ -1141,17 +1131,4 @@ export const applyCommand = async (sessionId, userId, cmd = {}) => {
     event,
     recipients: await liveMemberIds(sessionId),
   };
-};
-
-/**
- * Состояние для того, кто только что вошёл.
- *
- * Отдельно от applyCommand: вошедшему нужно состояние даже тогда, когда
- * управлять он не вправе, и даже когда сессия ещё не началась.
- */
-export const stateFor = async (sessionId, userId) => {
-  const found = await accessSession(sessionId, userId);
-  if (!found) return null;
-  if (found.part.status !== 'joined') return null;
-  return toSession(found.row, found.part);
 };

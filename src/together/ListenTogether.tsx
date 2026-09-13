@@ -73,6 +73,29 @@ export const ListenTogether = ({ session }: { session: TogetherSession }) => {
     return () => { alive = false; };
   }, [currentId]);
 
+  /*
+   * Подпись под обложкой приходит отдельным запросом и может опоздать.
+   * Звук из-за этого не ждём: он начинается сразу, а название
+   * подставляется, как только доедет. Без этой правки в мини-плеере
+   * так и оставалось бы слово «Трек»: push задаёт запись целиком и
+   * сбрасывает позицию, поэтому повторно звать его нельзя — правим
+   * только подписи.
+   */
+  useEffect(() => {
+    if (!current) return;
+    const item = usePlayerStore.getState().item;
+    if (!item || item.id !== current.id) return;
+    if (item.title === current.title && item.author === current.artist) return;
+    usePlayerStore.setState({
+      item: {
+        ...item,
+        title: current.title,
+        author: current.artist,
+        coverUrl: current.hasCover ? coverUrl(current.id) : undefined,
+      },
+    });
+  }, [current]);
+
   const handle: PlayerHandle = useMemo(() => ({
     position: () => (audioEl()?.currentTime ?? 0) * 1000,
     playing: () => { const a = audioEl(); return Boolean(a && !a.paused && !a.ended); },
