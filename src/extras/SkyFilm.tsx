@@ -25,7 +25,7 @@ import {
   X, Star, Clock, Film, Search, ChevronLeft, RotateCcw,
   SkipForward, Bookmark, BookmarkCheck, Info,
   Tv, TrendingUp, Award, Layers, Download, CheckCircle, Upload, Image as ImageIcon,
-  Plus, Crown, ShieldAlert, ShieldCheck, Cloud, Zap, AlertTriangle, Lock, History, Music2,
+  Plus, Crown, ShieldAlert, ShieldCheck, Cloud, Zap, AlertTriangle, Lock, History, Music2, Users,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { saveDownload, isDownloaded } from '@/offline/offlineDB';
@@ -177,6 +177,8 @@ const Stars = ({ r }: { r?: number }) => {
 export interface WatchTogether {
   sessionId: string;
   canControl: boolean;
+  /** Сколько человек сейчас смотрит. Показывается в шапке плеера. */
+  watchers?: number;
 }
 
 export const Player = ({ movie, onClose, together = null }: {
@@ -416,6 +418,15 @@ export const Player = ({ movie, onClose, together = null }: {
                   <Lock size={10} /> Только я
                 </span>
               )}
+              {/* Плеер занимает весь экран, и список участников за ним
+                  не виден. Сколько человек смотрит — видно всегда: без
+                  этого непонятно, один ты уже остался или нет. */}
+              {together && (
+                <span className="flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold"
+                  style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }} data-tg-watchers>
+                  <Users size={10} /> {together.watchers ?? 1}
+                </span>
+              )}
               <button type="button" onClick={toggleFs}
                 className="grid h-10 w-10 place-items-center rounded-full pointer-events-auto"
                 style={{ background: 'rgba(0,0,0,0.5)' }}>
@@ -437,7 +448,7 @@ export const Player = ({ movie, onClose, together = null }: {
                 style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }}>
                 <RotateCcw size={20} className="text-white" />
               </motion.button>
-              <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={toggle}
+              <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={toggle} data-film-play
                 className="grid place-items-center rounded-full"
                 style={{ width: 68, height: 68, background: K.orange, boxShadow: `0 0 36px ${K.orange}60` }}>
                 {pl ? <Pause size={28} fill="white" className="text-white" />
@@ -455,7 +466,8 @@ export const Player = ({ movie, onClose, together = null }: {
               style={{ background: 'linear-gradient(transparent,rgba(0,0,0,0.88))' }}>
               <div className="flex items-center gap-3">
                 <span className="text-xs font-mono w-10 text-right" style={{ color: K.sub }}>{fmtT(cur)}</span>
-                <div className={`group relative flex-1 h-[3px] rounded-full transition-all ${watching ? '' : 'cursor-pointer hover:h-1.5'}`}
+                <div data-film-bar
+                  className={`group relative flex-1 h-[3px] rounded-full transition-all ${watching ? '' : 'cursor-pointer hover:h-1.5'}`}
                   style={{ background: 'rgba(255,255,255,0.18)' }}
                   onClick={e => {
                     if (watching) return;

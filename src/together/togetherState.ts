@@ -197,8 +197,10 @@ export const receiveTogether = (type: string, payload: any) => {
     if (!state) return;
     const open = store.session;
     /* События приходят по всем сессиям, где человек состоит; применяем
-       только к той, что открыта на экране. */
-    if (open && state.sessionId && state.sessionId !== open.id) return;
+       только к той, что открыта на экране. Чужое событие, принятое «на
+       всякий случай», позже подставило бы не то место в не тот фильм. */
+    if (!open) return;
+    if (state.sessionId && state.sessionId !== open.id) return;
 
     /* Расхождение часов меряем только по ответу на собственную сверку:
        у неё известно время отправки, и значит известна половина
@@ -298,13 +300,29 @@ export const targetPosition = (p: Playback, skewMs: number): number => {
  *
  * Возвращает, насколько разошлись, — для показа в отладке и в тестах.
  */
+/**
+ * Когда в последний раз пробовали запустить воспроизведение.
+ *
+ * Браузер вправе не дать звуку заиграть без действия человека, и тогда
+ * play() отклоняется. Сверка идёт четыре раза в секунду, и без этой
+ * задержки получилось бы четыре отклонённых попытки в секунду — с
+ * ошибками в консоли и нагрузкой на ровном месте. Раз в секунду
+ * достаточно: как только человек тронет экран, ближайшая попытка
+ * пройдёт.
+ */
+let lastPlayTry = 0;
+const PLAY_RETRY_MS = 1000;
+
 export const correctOnce = (handle: PlayerHandle, p: Playback, skewMs: number): number => {
   const want = targetPosition(p, skewMs);
   const have = handle.position();
   const drift = want - have;
 
   if (p.playing && p.status === 'live') {
-    if (!handle.playing()) handle.play();
+    if (!handle.playing() && Date.now() - lastPlayTry > PLAY_RETRY_MS) {
+      lastPlayTry = Date.now();
+      handle.play();
+    }
   } else if (handle.playing()) {
     handle.pause();
   }

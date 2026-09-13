@@ -431,10 +431,16 @@ export const createSession = async (ownerId, input = {}) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    /* Замок на самого владельца, а не на строки.
+       Считать незавершённые сессии «с блокировкой строк» нельзя: FOR
+       UPDATE не работает вместе с подсчётом, да и блокировать было бы
+       нечего — новая строка ещё не создана, и два запроса, идущие
+       одновременно, не видят друг друга. Замок по владельцу
+       выстраивает их в очередь и снимается вместе с транзакцией. */
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`together:${ownerId}`]);
     const { rows: live } = await client.query(
       `SELECT count(*)::int AS n FROM together_sessions
-        WHERE owner_id = $1 AND status <> 'ended'
-        FOR UPDATE`,
+        WHERE owner_id = $1 AND status <> 'ended'`,
       [ownerId],
     );
     if ((live[0]?.n ?? 0) >= MAX_LIVE_PER_OWNER) {
@@ -539,10 +545,29 @@ export const inviteToSession = async (sessionId, ownerId, userIds) => {
         'SELECT status FROM together_participants WHERE session_id = $1 AND user_id = $2',
         [sessionId, uid],
       );
-      if (existing[0] && ['invited', 'joined'].includes(existing[0].status)) {
+      if (existing[0]?.status === 'joined') {
         await client.query('ROLLBACK');
         skipped.push({ id: uid, reason: 'already_in' });
         continue;
+      }
+      /* «Позван» — ещё не повод отказать. Приглашение могло протухнуть
+         или быть отозванным, и тогда строка участника говорит «позван»,
+         а принять человеку нечего. Отказывать здесь значило бы запереть
+         владельца: позвать снова он уже не может, а войти тот не может
+         тем более. Поэтому смотрим не на строку, а на то, есть ли
+         действующее приглашение. */
+      if (existing[0]?.status === 'invited') {
+        const { rows: liveInvite } = await client.query(
+          `SELECT 1 FROM together_invitations
+            WHERE session_id = $1 AND invitee_id = $2
+              AND used_at IS NULL AND revoked_at IS NULL AND expires_at > now()`,
+          [sessionId, uid],
+        );
+        if (liveInvite[0]) {
+          await client.query('ROLLBACK');
+          skipped.push({ id: uid, reason: 'already_in' });
+          continue;
+        }
       }
 
       /* Повторное приглашение возвращает человека в «позван» — и
@@ -1044,7 +1069,11 @@ export const applyCommand = async (sessionId, userId, cmd = {}) => {
             WHERE id = $1 RETURNING *`;
   } else if (action === 'seek') {
     const dur = durationOf(row);
-    const wanted = int(cmd.positionMs, 0, 24 * 60 * 60 * 1000);
+    /* Верхняя граница разбора щедрая намеренно: она отсекает не
+       большие числа, а не-числа. Слишком большое число — это «в
+       конец», и отвечать на него ошибкой значило бы ломать ползунок
+       у того, кто дотянул его до края. */
+    const wanted = int(cmd.positionMs, 0, 30 * 24 * 60 * 60 * 1000);
     if (wanted === null) return { error: 'bad_position' };
     /* Дальше конца не перематываем. Длительность берётся из записи о
        содержимом, а не из того, что прислал клиент. */

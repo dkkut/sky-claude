@@ -143,6 +143,11 @@ services:
       # сообщений, а не подпиской.
       AI_CHAT_PER_DAY:       ${AI_CHAT_PER_DAY:-60}
       AI_CHAT_PER_DAY_PRIME: ${AI_CHAT_PER_DAY_PRIME:-400}
+
+      # Сколько человек пускать в одну сессию «Вместе». Предел живёт
+      # здесь, а не в коде страницы: поднять его должно быть можно, не
+      # пересобирая приложение, а обойти из браузера — нельзя.
+      TOGETHER_MAX_PARTICIPANTS: ${TOGETHER_MAX_PARTICIPANTS:-10}
     volumes:
       # Музыка переживает пересборку образа: файлы лежат в томе.
       - music-data:/data/music

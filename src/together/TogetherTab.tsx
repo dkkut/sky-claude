@@ -339,6 +339,10 @@ const SidePanel = ({ session, onChanged }: { session: TogetherSession; onChanged
 
 const SessionScreen = ({ session, onClose }: { session: TogetherSession; onClose: () => void }) => {
   const movies = useFilmStore(s => s.catalog);
+  /* Каталог кино грузим здесь, а не только в форме создания. Позванный
+     попадает сюда прямо из приглашения, формы не открывает — и без
+     этого экран честно, но бессмысленно сообщал бы, что фильма нет. */
+  const loadFilm = useFilmStore(s => s.load);
   const refreshSession = useTogetherStore(s => s.refreshSession);
   const refreshParticipants = useTogetherStore(s => s.refreshParticipants);
   const participants = useTogetherStore(s => s.participants);
@@ -346,6 +350,7 @@ const SessionScreen = ({ session, onClose }: { session: TogetherSession; onClose
   const setError = useTogetherStore(s => s.setError);
 
   useEffect(() => { void refreshParticipants(session.id); }, [session.id, refreshParticipants]);
+  useEffect(() => { if (session.type === 'watch') void loadFilm(); }, [session.type, loadFilm]);
 
   const movie = useMemo(
     () => (session.type === 'watch' ? movies.find(m => m.id === session.queue[0]?.id) : undefined),
@@ -410,10 +415,12 @@ const SessionScreen = ({ session, onClose }: { session: TogetherSession; onClose
         ) : session.type === 'watch' ? (
           movie
             ? <FilmPlayer movie={movie} onClose={onClose}
-                together={{ sessionId: session.id, canControl: session.canControl }} />
+                together={{ sessionId: session.id, canControl: session.canControl, watchers: inside }} />
             : <div className="flex flex-1 items-center justify-center p-6 text-center">
                 <p className="text-sm" style={{ color: 'var(--t3)' }}>
-                  Фильм не найден в каталоге. Возможно, его сняли с публикации.
+                  {movies.length === 0
+                    ? 'Открываю фильм…'
+                    : 'Фильм не найден в каталоге. Возможно, его сняли с публикации.'}
                 </p>
               </div>
         ) : (
@@ -452,6 +459,15 @@ export const TogetherTab = () => {
      подтягиваться под чужие команды из невидимого экрана. */
   useEffect(() => () => { close(); }, [close]);
 
+  /**
+   * Войти в сессию.
+   *
+   * Через эту же дверь идёт и создатель сразу после создания. Создать —
+   * не то же самое, что войти: пока владелец не вошёл, сессия числится
+   * запланированной, и сервер не примет по ней ни одной команды. Раньше
+   * создатель попадал прямо в плеер, жал «играть» и не понимал, почему
+   * ничего не происходит.
+   */
   const enter = async (id: string) => {
     setNote(null);
     const r = await apiTogetherJoin(id);
@@ -508,7 +524,7 @@ export const TogetherTab = () => {
 
       {creating ? (
         <CreateForm limits={limits} onCancel={() => setCreating(false)}
-          onDone={(s) => { setCreating(false); setSession(s); void refreshList(); }} />
+          onDone={(s) => { setCreating(false); void enter(s.id); void refreshList(); }} />
       ) : (
         <button type="button" onClick={() => setCreating(true)} data-tg-new
           className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium text-white"
