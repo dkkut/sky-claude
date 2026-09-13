@@ -15,7 +15,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Search, X, ArrowLeft, Clock, RefreshCw, Check, Briefcase } from 'lucide-react';
-import { C, fmt, Stars, Empty, Field, inputStyle, Alert, ProductImage } from './ui';
+import { C, fmt, Stars, Empty, Field, inputStyle, Alert, ProductImage, ProductLogo } from './ui';
 import { useMarketStore } from './store';
 import { apiProduct, apiProductReviews, apiCreateOrder } from './marketApi';
 import type {
@@ -37,7 +37,10 @@ const ServiceCard = ({ product, onOpen }: { product: Product; onOpen: () => void
       <ProductImage imageId={product.images[0]} alt={product.title}
         className="h-28 w-full object-cover" style={{ display: 'block' }} />
       <div className="p-3">
-        <p className="line-clamp-2 text-[12px] font-semibold" style={{ color: C.t1 }}>{product.title}</p>
+        <div className="flex items-start gap-2">
+          <ProductLogo product={product} size={26} />
+          <p className="line-clamp-2 text-[12px] font-semibold" style={{ color: C.t1 }}>{product.title}</p>
+        </div>
         <p className="mt-1 truncate text-[10px]" style={{ color: C.t3 }}>{product.sellerName}</p>
         <div className="mt-1 flex items-center gap-1">
           <Stars rating={product.rating} size={10} />
@@ -188,7 +191,10 @@ const ServicePage = ({ productId, onBack, onOrdered }: {
 
         <div className="space-y-3 p-4">
           <div>
-            <p className="text-[13px] font-semibold" style={{ color: C.t1 }}>{product.title}</p>
+            <div className="flex items-center gap-2">
+              <ProductLogo product={product} size={32} />
+              <p className="text-[13px] font-semibold" style={{ color: C.t1 }}>{product.title}</p>
+            </div>
             <div className="mt-1 flex items-center gap-2">
               <Stars rating={product.rating} />
               <span className="text-[11px]" style={{ color: C.t3 }}>

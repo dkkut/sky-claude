@@ -474,6 +474,11 @@ export const toProduct = (row) => ({
   sellerId: row.seller_id,
   sellerName: row.shop_name ?? undefined,
   sellerRating: row.seller_rating == null ? undefined : Math.round(Number(row.seller_rating) * 10) / 10,
+  /* Есть ли чем заменить логотип. Признак нужен карточке, чтобы не
+     спрашивать картинку наугад: тридцать карточек без аватара — это
+     тридцать запросов, каждый из которых заканчивается ничем. */
+  sellerHasAvatar: row.seller_has_avatar === true,
+  gameHasCover: row.game_has_cover === true,
   marketType: row.market_type,
   title: row.title,
   description: row.description,
@@ -497,6 +502,9 @@ export const toProduct = (row) => ({
   rating: row.rating == null ? null : Math.round(Number(row.rating) * 10) / 10,
   reviewCount: Number(row.review_count ?? 0),
   images: row.image_ids ?? [],
+  /* Логотип — отдельная квадратная марка, а не первая фотография: в
+     мелкой карточке снимок вещи не читается, а эмблема читается. */
+  hasLogo: Boolean(row.has_logo),
   favorite: row.favorite === true || undefined,
   own: row.own === true || undefined,
   createdAt: row.created_at?.toISOString?.() ?? undefined,
@@ -510,7 +518,9 @@ const SELECT_PRODUCT = `
   SELECT p.*,
          s.shop_name,
          s.rating AS seller_rating,
+         s.has_avatar AS seller_has_avatar,
          g.title AS game_title,
+         g.has_cover AS game_has_cover,
          p.seller_id = $1 AS own,
          EXISTS (SELECT 1 FROM market_favorites f
                   WHERE f.product_id = p.id AND f.user_id = $1) AS favorite,
@@ -861,6 +871,45 @@ export const deleteProductImage = async (imageId, sellerId) => {
   return { ok: true };
 };
 
+/* ─── Логотип товара ───────────────────────────────────────────────── */
+
+export const setProductLogo = async (productId, sellerId, mime) => {
+  const { rows } = await query(
+    'SELECT seller_id FROM market_products WHERE id = $1', [String(productId ?? '')]);
+  if (!rows[0] || rows[0].seller_id !== sellerId) return { error: 'not_allowed' };
+  await query(
+    'UPDATE market_products SET has_logo = TRUE, logo_mime = $2, updated_at = now() WHERE id = $1',
+    [productId, String(mime)]);
+  return { ok: true };
+};
+
+/**
+ * Тип логотипа — и заодно право его видеть.
+ *
+ * Логотип снятого с витрины товара не остаётся открытым только потому,
+ * что кто-то запомнил адрес: правило то же, что у остальных картинок.
+ */
+export const productLogoMime = async (productId, viewerId) => {
+  if (!PRODUCT_ID_RE.test(String(productId ?? ''))) return null;
+  const { rows } = await query(
+    `SELECT p.logo_mime, p.seller_id, p.active, s.status
+       FROM market_products p JOIN market_sellers s ON s.profile_id = p.seller_id
+      WHERE p.id = $1 AND p.has_logo`, [productId]);
+  const row = rows[0];
+  if (!row) return null;
+  if (row.seller_id !== viewerId && (!row.active || row.status !== 'active')) {
+    if (!(await isAdmin(viewerId))) return null;
+  }
+  return row.logo_mime;
+};
+
+export const dropProductLogo = async (productId, sellerId) => {
+  const { rowCount } = await query(
+    'UPDATE market_products SET has_logo = FALSE, logo_mime = NULL WHERE id = $1 AND seller_id = $2',
+    [String(productId ?? ''), sellerId]);
+  return rowCount > 0;
+};
+
 /* ─── Пакеты услуги ────────────────────────────────────────────────── */
 
 const MAX_PACKAGE_INCLUDES = 12;
@@ -1168,6 +1217,8 @@ export const liveFileIds = async () => {
   for (const r of sellers) alive.add(`msa-${String(r.profile_id).slice(4)}`);
   const { rows: games } = await query('SELECT id FROM market_games WHERE has_cover');
   for (const r of games) alive.add(`mgc-${String(r.id).slice(3)}`);
+  const { rows: logos } = await query('SELECT id FROM market_products WHERE has_logo');
+  for (const r of logos) alive.add(`mpl-${String(r.id).slice(3)}`);
   const { rows: photos } = await query('SELECT id FROM logi_warehouse_photos');
   for (const r of photos) alive.add(r.id);
   return alive;

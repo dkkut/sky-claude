@@ -115,6 +115,9 @@ export interface Product {
   sellerId: string;
   sellerName?: string;
   sellerRating?: number;
+  /** Есть ли чем заменить логотип: карточка не спрашивает картинку наугад. */
+  sellerHasAvatar?: boolean;
+  gameHasCover?: boolean;
   marketType: MarketType;
   title: string;
   description: string;
@@ -132,6 +135,8 @@ export interface Product {
   active: boolean;
   /** Идентификаторы картинок. Адрес собирается на месте, путей на диске здесь нет. */
   images: string[];
+  /** Есть ли своя марка. Нет — карточка возьмёт обложку игры или аватар магазина. */
+  hasLogo: boolean;
   gameId?: string;
   gameTitle?: string;
   gameCategory?: GameCategoryKey;
@@ -308,6 +313,8 @@ export interface Shipment {
   location: string | null;
   eta: string | null;
   pickupUntil: string | null;
+  /** Кому и куда платить за доставку. Видит только продавец заказа. */
+  carrierPayment: { carrier: string; details: string } | null;
   updatedAt?: string;
 }
 

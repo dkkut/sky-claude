@@ -28,6 +28,10 @@ export interface TransportCompany {
   maxVolumeM3: number;
   deliveryTimeHours: number;
   verified: boolean;
+  /** Есть ли куда платить. Признак виден всем, сами реквизиты — нет. */
+  hasPaymentDetails?: boolean;
+  /** Только в своём профиле компании. */
+  paymentDetails?: string;
   rating: number;          // 0..5
   completedDeliveries: number;
   successRatePct: number;  // 0..100

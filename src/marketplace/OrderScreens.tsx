@@ -350,6 +350,22 @@ const ShipmentCard = ({ shipment, canMove, onMoved }:
         <p className="text-[11px]" style={{ color: C.t3 }}>Где сейчас: {shipment.location}</p>
       )}
 
+      {/* Перевозчику платит продавец и напрямую: Sky в этих деньгах не
+          участвует так же, как не участвует в деньгах сделки. */}
+      {shipment.carrierPayment && (
+        <div className="space-y-1 rounded-xl px-3 py-2" style={{ background: C.l2 }}>
+          <p className="text-[11px] font-bold" style={{ color: C.t1 }}>
+            Оплата перевозчику: {shipment.carrierPayment.carrier}
+          </p>
+          <p className="whitespace-pre-wrap break-words text-[11px]" style={{ color: C.t2 }}>
+            {shipment.carrierPayment.details}
+          </p>
+          <p className="text-[10px]" style={{ color: C.t3 }}>
+            Реквизиты Sky взял из профиля компании. Перевод идёт напрямую ей, мимо Sky.
+          </p>
+        </div>
+      )}
+
       {canMove && shipment.method === 'seller_self' && (
         <div className="flex gap-2">
           <button type="button" disabled={busy} onClick={() => move('in_transit')}

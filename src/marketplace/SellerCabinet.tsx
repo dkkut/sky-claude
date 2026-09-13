@@ -23,12 +23,13 @@ import {
 } from 'lucide-react';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert, StatCard, Stars,
-  ProductImage, rublesToKop, kopToRubles,
+  ProductImage, ProductLogo, rublesToKop, kopToRubles,
 } from './ui';
 import {
   apiCreateSeller, apiUpdateSeller, apiPaySellerSubscription,
   apiCreateProduct, apiUpdateProduct, apiArchiveProduct,
   apiUploadProductImage, apiDeleteProductImage, apiGames,
+  apiUploadProductLogo, apiDeleteProductLogo,
   apiSetServicePackages, apiPromotions, apiBuyPromotion,
   type ProductInput,
 } from './marketApi';
@@ -460,6 +461,21 @@ const ImageManager = ({ product, onChanged }: { product: Product; onChanged: () 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Логотип.
+   *
+   * Отдельно от фотографий: это марка, по которой товар узнают в
+   * списке. Нет своей — карточка возьмёт обложку игры или аватар
+   * магазина, так что пустой она не останется.
+   */
+  const uploadLogo = async (file: File) => {
+    setBusy(true); setError(null);
+    const r = await apiUploadProductLogo(product.id, file);
+    setBusy(false);
+    if (!r.ok) { setError(r.reason ?? 'Логотип не загрузился'); return; }
+    onChanged();
+  };
+
   const upload = async (file: File) => {
     setBusy(true); setError(null);
     const r = await apiUploadProductImage(product.id, file);
@@ -475,6 +491,29 @@ const ImageManager = ({ product, onChanged }: { product: Product; onChanged: () 
 
   return (
     <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        <ProductLogo product={product} size={44} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold" style={{ color: C.t2 }}>Логотип товара</p>
+          <p className="text-[10px]" style={{ color: C.t3 }}>
+            Квадратная марка для списка. Без неё возьмём обложку игры или аватар магазина.
+          </p>
+        </div>
+        <label className="cursor-pointer rounded-lg px-2 py-1 text-[11px] font-semibold"
+          style={{ background: C.l2, color: C.acc }}>
+          {product.hasLogo ? 'Заменить' : 'Загрузить'}
+          <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadLogo(f); e.target.value = ''; }} />
+        </label>
+        {product.hasLogo && (
+          <button type="button"
+            onClick={async () => { await apiDeleteProductLogo(product.id); onChanged(); }}
+            className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: C.l2, color: C.red }}>
+            <Trash2 size={12} />
+          </button>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {product.images.map((id) => (
           <div key={id} className="relative">
@@ -566,6 +605,9 @@ const SellerOrders = ({ meId }: { meId: string }) => {
   const { ordersSell, loadOrders, patchOrder } = useMarketStore();
   const [open, setOpen] = useState<string | null>(null);
 
+  /* Список перечитывается при каждом открытии вкладки: заказ мог
+     появиться, пока продавец был на другой. Один лишний запрос дешевле
+     устаревшего списка. */
   useEffect(() => { void loadOrders('seller'); }, []);
 
   if (open) {
@@ -866,10 +908,14 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
   const { loadSellerData, ordersSell, loadOrders } = useMarketStore();
   const [tab, setTab] = useState<CabTab>('orders');
 
-  useEffect(() => { void loadSellerData(); void loadOrders('seller'); }, []);
+  useEffect(() => { void loadSellerData(); }, []);
 
   /* Курьерскому хабу нужны заказы продавца — те же, что в его вкладке
-     «Заказы»: он предлагает отдать курьеру именно их. */
+     «Заказы»: он предлагает отдать курьеру именно их. Читаем их, когда
+     эта вкладка открывается, а не при каждом заходе в кабинет. */
+  useEffect(() => {
+    if (tab === 'couriers') void loadOrders('seller');
+  }, [tab]);
   const ordersForCouriers = ordersSell;
 
   const sub = seller.subscription;

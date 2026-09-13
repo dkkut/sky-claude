@@ -66,6 +66,7 @@ export const apiProductReviews = (id: string, limit = 50) =>
 /** Адрес картинки. Собирается здесь, потому что путей на диске клиенту не отдают. */
 export const marketImageUrl = (imageId: string) => `/api/market/images/${enc(imageId)}`;
 export const sellerAvatarUrl = (sellerId: string) => `/api/market/sellers/${enc(sellerId)}/avatar`;
+export const productLogoUrl = (productId: string) => `/api/market/products/${enc(productId)}/logo`;
 export const gameCoverUrl = (gameId: string) => `/api/market/games/${enc(gameId)}/cover`;
 
 /* ─── Избранное ───────────────────────────────────────────────────── */
@@ -153,6 +154,14 @@ export const apiUpdateProduct = (id: string, patch: Partial<ProductInput>) =>
 /** Снять с витрины. Удаления нет: на товар ссылаются чужие заказы. */
 export const apiArchiveProduct = (id: string) =>
   apiCall<{ ok: true }>(`/api/market/products/${enc(id)}`, { method: 'DELETE' });
+
+/** Логотип товара — одна квадратная марка, отдельно от фотографий. */
+export const apiUploadProductLogo = (productId: string, file: Blob) =>
+  apiCall<{ ok: true }>(`/api/market/products/${enc(productId)}/logo`,
+    { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } });
+
+export const apiDeleteProductLogo = (productId: string) =>
+  apiCall<{ ok: true }>(`/api/market/products/${enc(productId)}/logo`, { method: 'DELETE' });
 
 export const apiUploadProductImage = (productId: string, file: Blob) =>
   apiCall<{ ok: true; imageId: string }>(`/api/market/products/${enc(productId)}/images`,

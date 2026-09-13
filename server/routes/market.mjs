@@ -34,10 +34,11 @@ import {
   setGameCover, gameCoverMime, readProduct, listCatalog, listMyProducts,
   listFavorites, setFavorite, createProduct, updateProduct, archiveProduct,
   addProductImage, readProductImage, deleteProductImage, listReviews,
+  setProductLogo, productLogoMime, dropProductLogo,
 } from './../market.mjs';
 import {
   saveStream, sizeOf, openStream, remove,
-  sellerAvatarIdFor, gameCoverIdFor,
+  sellerAvatarIdFor, gameCoverIdFor, productLogoIdFor,
 } from './../marketstore.mjs';
 import {
   createOrder, actOnOrder, cancelOrder, openDispute, resolveDispute,
@@ -100,6 +101,7 @@ const CODES = {
   slug_taken: 409,
   not_applicable: 409,
   use_deal_chat: 409,
+  carrier_has_no_payment_details: 409,
   not_a_service: 409,
   bad_plan: 400,
   product_archived: 409,
@@ -366,6 +368,44 @@ export const marketRoutes = async (req, res, url) => {
       const body = await parseBody(req);
       const done = await setServicePackages(productId, me, body.packages);
       return done.error ? fail(res, done) : json(res, 200, done);
+    }
+
+    /* Логотип товара: одна квадратная марка, отдельно от фотографий. */
+    if (req.method === 'GET' && tail === '/logo') {
+      const mime = await productLogoMime(productId, me);
+      if (!mime) return json(res, 404, { error: 'not_found' });
+      return sendImage(res, productLogoIdFor(productId), mime);
+    }
+
+    if (req.method === 'POST' && tail === '/logo') {
+      if (!rateLimitPerHour(`mk:upload:${me}`, UPLOAD_PER_HOUR)) {
+        return rejectBody(req, res, 429, { error: 'too_many_requests' });
+      }
+      const declared = Number(req.headers['content-length'] ?? 0);
+      if (declared > MAX_IMAGE_BYTES) {
+        return rejectBody(req, res, 413, { error: 'too_large', limit: MAX_IMAGE_BYTES });
+      }
+      const head = await peek(req, 32);
+      const mime = sniff(head);
+      if (!mime) return rejectBody(req, res, 415, { error: 'unsupported_image' });
+
+      const allowed = await setProductLogo(productId, me, mime);
+      if (allowed.error) return rejectBody(req, res, CODES[allowed.error] ?? 400, allowed);
+
+      req.resume();
+      const saved = await saveStream(productLogoIdFor(productId), withHead(head, req), MAX_IMAGE_BYTES);
+      if (saved.error) {
+        await dropProductLogo(productId, me);
+        return json(res, saved.error === 'too_large' ? 413 : 500, { error: saved.error });
+      }
+      return json(res, 200, { ok: true, bytes: saved.bytes });
+    }
+
+    if (req.method === 'DELETE' && tail === '/logo') {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      if (!(await dropProductLogo(productId, me))) return json(res, 404, { error: 'not_found' });
+      await remove(productLogoIdFor(productId));
+      return json(res, 200, { ok: true });
     }
 
     if (req.method === 'POST' && tail === '/images') {

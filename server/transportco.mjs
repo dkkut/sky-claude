@@ -79,6 +79,12 @@ const toCompany = (row, { own = false } = {}) => ({
      хранятся зашифрованными, как любые персональные данные. */
   contactPhone: row.contact_phone_enc ? (decryptContent(row.contact_phone_enc) ?? '') : '',
   contactEmail: row.contact_email_enc ? (decryptContent(row.contact_email_enc) ?? '') : '',
+  /* Есть ли куда платить. Признак виден всем — продавцу полезно знать,
+     что компания готова принять оплату; сами реквизиты нет. */
+  hasPaymentDetails: Boolean(row.has_payment_details),
+  paymentDetails: own && row.payment_details_enc
+    ? (decryptContent(row.payment_details_enc) ?? '')
+    : undefined,
   workDays: Array.isArray(row.work_days) ? row.work_days : [],
   workFrom: row.work_from,
   workTo: row.work_to,
@@ -135,6 +141,7 @@ const companyFields = (p = {}) => ({
   max_weight_g: grams(p.maxWeightKg),
   max_volume_ml: Math.max(0, Math.round(Number(p.maxVolumeM3 ?? 0) * 1_000_000) || 0),
   delivery_hours: int(p.deliveryTimeHours, 1, 24 * 90) ?? 24,
+  payment_details: text(p.paymentDetails, 600),
 });
 
 export const createCompany = async (ownerId, input = {}) => {
@@ -146,17 +153,20 @@ export const createCompany = async (ownerId, input = {}) => {
        (id, owner_id, name, logo_hue, description, city, regions,
         contact_phone_enc, contact_email_enc, work_days, work_from, work_to,
         weekend_delivery, transport_kinds, zones, min_price_kop, price_per_km_kop,
-        max_weight_g, max_volume_ml, delivery_hours)
+        max_weight_g, max_volume_ml, delivery_hours, payment_details_enc, has_payment_details)
      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10::jsonb,$11,$12,$13,$14::jsonb,$15::jsonb,
-             $16,$17,$18,$19,$20)
+             $16,$17,$18,$19,$20,$21,$22)
      ON CONFLICT (owner_id) DO NOTHING
      RETURNING *`,
     [`ltc-${generateId()}`, ownerId, f.name, f.logo_hue, f.description, f.city, f.regions,
       f.phone ? encryptContent(f.phone) : null, f.email ? encryptContent(f.email) : null,
       f.work_days, f.work_from, f.work_to, f.weekend, f.kinds, f.zones,
-      f.min_price_kop, f.price_per_km_kop, f.max_weight_g, f.max_volume_ml, f.delivery_hours]);
+      f.min_price_kop, f.price_per_km_kop, f.max_weight_g, f.max_volume_ml, f.delivery_hours,
+      f.payment_details ? encryptContent(f.payment_details) : null,
+      Boolean(f.payment_details)]);
   if (!rows[0]) return { error: 'already_have_company' };
 
+  await syncMarketCarrier(rows[0]);
   await logLogi(ownerId, 'tc_created', rows[0].id);
   return { company: toCompany(rows[0], { own: true }) };
 };
@@ -174,12 +184,16 @@ export const updateCompany = async (companyId, ownerId, patch = {}) => {
             work_days = $9::jsonb, work_from = $10, work_to = $11, weekend_delivery = $12,
             transport_kinds = $13::jsonb, zones = $14::jsonb, min_price_kop = $15,
             price_per_km_kop = $16, max_weight_g = $17, max_volume_ml = $18,
-            delivery_hours = $19, updated_at = now()
+            delivery_hours = $19, payment_details_enc = $20, has_payment_details = $21,
+            updated_at = now()
       WHERE id = $1 RETURNING *`,
     [companyId, f.name, f.logo_hue, f.description, f.city, f.regions,
       f.phone ? encryptContent(f.phone) : null, f.email ? encryptContent(f.email) : null,
       f.work_days, f.work_from, f.work_to, f.weekend, f.kinds, f.zones,
-      f.min_price_kop, f.price_per_km_kop, f.max_weight_g, f.max_volume_ml, f.delivery_hours]);
+      f.min_price_kop, f.price_per_km_kop, f.max_weight_g, f.max_volume_ml, f.delivery_hours,
+      f.payment_details ? encryptContent(f.payment_details) : null,
+      Boolean(f.payment_details)]);
+  await syncMarketCarrier(rows[0]);
   return { company: toCompany(rows[0], { own: true }) };
 };
 
@@ -212,6 +226,62 @@ export const setCompanyVerified = async (actorId, companyId, verified) => {
   if (!rows[0]) return { error: 'not_found' };
   await logLogi(actorId, 'tc_verified', companyId, { verified: verified === true });
   return { company: toCompany(rows[0]) };
+};
+
+/* ─── Компания как перевозчик маркета ──────────────────────────────── */
+
+/**
+ * Одна компания — одна строка в списке перевозчиков маркета.
+ *
+ * Второго реестра «те же компании, но для маркета» заводить нельзя: два
+ * списка одних и тех же перевозчиков однажды разойдутся, и продавец
+ * выберет из одного, а везти будет некому. Поэтому строка создаётся и
+ * обновляется вместе с самой компанией.
+ *
+ * Перевозчик заводится выключенным, пока у компании нет реквизитов:
+ * платить ей продавец будет напрямую, и компания, которой некуда
+ * перевести, работу выполнить не сможет.
+ */
+const syncMarketCarrier = async (company) => {
+  await query(
+    `INSERT INTO market_carriers
+       (id, kind, code, title, owner_id, company_id, city,
+        min_price_kop, price_per_km_kop, max_weight_g, eta_hours, active)
+     VALUES ($1,'inhouse',NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+     ON CONFLICT (company_id) WHERE company_id IS NOT NULL DO UPDATE
+       SET title = EXCLUDED.title, city = EXCLUDED.city,
+           min_price_kop = EXCLUDED.min_price_kop,
+           price_per_km_kop = EXCLUDED.price_per_km_kop,
+           max_weight_g = EXCLUDED.max_weight_g,
+           eta_hours = EXCLUDED.eta_hours,
+           active = EXCLUDED.active`,
+    [`mcr-${generateId()}`, company.name, company.owner_id, company.id, company.city,
+      company.min_price_kop, company.price_per_km_kop,
+      Number(company.max_weight_g) > 0 ? company.max_weight_g : 30000,
+      company.delivery_hours, Boolean(company.has_payment_details)]);
+};
+
+/**
+ * Реквизиты перевозчика по заказу маркета.
+ *
+ * Отдаются продавцу того заказа, который эта компания везёт: платить ей
+ * будет он, напрямую, мимо Sky. Постороннему — ничего, как и на чужой
+ * заказ.
+ */
+export const carrierPaymentForOrder = async (orderId, sellerId) => {
+  const { rows } = await query(
+    `SELECT t.payment_details_enc, t.name, o.seller_id, o.status
+       FROM market_shipments s
+       JOIN market_orders o ON o.id = s.order_id
+       JOIN market_carriers c ON c.id = s.carrier_id
+       JOIN logi_tc t ON t.id = c.company_id
+      WHERE s.order_id = $1`, [String(orderId ?? '')]);
+  const row = rows[0];
+  if (!row) return null;
+  if (row.seller_id !== sellerId) return null;
+  if (row.status === 'cancelled') return null;
+  if (!row.payment_details_enc) return null;
+  return { carrier: row.name, details: decryptContent(row.payment_details_enc) ?? '' };
 };
 
 /* ─── Парк ─────────────────────────────────────────────────────────── */

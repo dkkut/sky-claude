@@ -31,6 +31,7 @@ import { isAdmin } from './admin.mjs';
 import { logMarket, marketText as text, marketInt as int, ORDER_ID_RE, fulfilmentOf } from './market.mjs';
 import { decryptContent } from './crypto.mjs';
 import { applyTransition, toOrder } from './marketorders.mjs';
+import { carrierPaymentForOrder } from './transportco.mjs';
 import { systemMessage } from './marketchat.mjs';
 import { pushMarket } from './signal.mjs';
 
@@ -205,9 +206,18 @@ export const shipOrder = async (orderId, sellerId, input = {}) => {
     let carrier = null;
     if (method === 'carrier') {
       const { rows: c } = await client.query(
-        'SELECT * FROM market_carriers WHERE id = $1 AND active', [carrierId]);
+        `SELECT c.*, t.has_payment_details
+           FROM market_carriers c
+           LEFT JOIN logi_tc t ON t.id = c.company_id
+          WHERE c.id = $1 AND c.active`, [carrierId]);
       carrier = c[0];
       if (!carrier) { await client.query('ROLLBACK'); return { error: 'bad_carrier' }; }
+      /* Компании платят напрямую, и компания без реквизитов получить
+         оплату не может — значит и брать работу ей нечем. */
+      if (carrier.company_id && !carrier.has_payment_details) {
+        await client.query('ROLLBACK');
+        return { error: 'carrier_has_no_payment_details' };
+      }
     }
 
     let point = null;
@@ -298,6 +308,11 @@ export const readShipment = async (orderId, viewerId) => {
     await logMarket(viewerId, 'shipment_access_denied', id);
     return null;
   }
+  /* Кому платить за доставку — продавцу этого заказа и только ему. */
+  const carrierPayment = row.seller_id === viewerId
+    ? await carrierPaymentForOrder(id, viewerId)
+    : null;
+
   return {
     orderId: row.order_id,
     method: row.method,
@@ -315,6 +330,9 @@ export const readShipment = async (orderId, viewerId) => {
     location: row.location ?? null,
     eta: row.eta?.toISOString?.() ?? null,
     pickupUntil: row.pickup_until?.toISOString?.() ?? null,
+    /* Кому и куда платить за доставку. Только продавцу этого заказа:
+       платит он, напрямую перевозчику, мимо Sky. */
+    carrierPayment,
     updatedAt: row.updated_at?.toISOString?.() ?? undefined,
   };
 };

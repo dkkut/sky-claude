@@ -12,7 +12,7 @@ import {
   BookOpen, Gamepad2, Apple, ImageOff,
 } from 'lucide-react';
 import type { Product, ProductCategory } from './types';
-import { marketImageUrl } from './marketApi';
+import { marketImageUrl, productLogoUrl, gameCoverUrl, sellerAvatarUrl } from './marketApi';
 
 /* ── Токены ───────────────────────────────────────────────────────── */
 
@@ -164,6 +164,58 @@ export const ProductImage = ({ imageId, alt, className, style }:
   );
 };
 
+/* ── Логотип товара ───────────────────────────────────────────────── */
+
+/**
+ * Марка товара.
+ *
+ * Своя, если продавец её загрузил. Нет своей — берём то, что и так
+ * узнаваемо: у игрового лота обложку его игры, у остального аватар
+ * магазина. Нет и этого — буква названия на своём цвете: пустой серый
+ * квадрат не говорит ничего, а буква хотя бы отличает один товар от
+ * другого.
+ *
+ * Спрашиваем только то, что точно есть: сервер присылает признаки
+ * «у магазина есть аватар» и «у игры есть обложка». Без них карточка
+ * запрашивала бы картинку наугад, и каталог из тридцати товаров стоил
+ * бы тридцати лишних запросов, каждый из которых заканчивается ничем.
+ */
+export const ProductLogo = ({ product, size = 28 }: { product: Product; size?: number }) => {
+  const chain = [
+    product.hasLogo ? productLogoUrl(product.id) : null,
+    product.gameId && product.gameHasCover ? gameCoverUrl(product.gameId) : null,
+    product.sellerId && product.sellerHasAvatar ? sellerAvatarUrl(product.sellerId) : null,
+  ].filter(Boolean) as string[];
+
+  const [step, setStep] = useState(0);
+  const src = chain[step];
+
+  /* Буква названия на цвете, выведенном из идентификатора: один и тот
+     же товар всегда одного цвета. */
+  if (!src) {
+    let hash = 0;
+    for (const ch of product.id) hash = (hash * 31 + ch.charCodeAt(0)) % 360;
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: size / 4,
+        background: `hsl(${hash} 45% 30%)`, color: '#fff',
+        display: 'grid', placeItems: 'center',
+        fontSize: size * 0.45, fontWeight: 800, flexShrink: 0,
+      }}>
+        {(product.title.trim()[0] ?? '?').toUpperCase()}
+      </div>
+    );
+  }
+
+  return (
+    <img src={src} alt="" onError={() => setStep((n) => n + 1)}
+      style={{
+        width: size, height: size, borderRadius: size / 4,
+        objectFit: 'cover', flexShrink: 0, background: C.l3,
+      }} />
+  );
+};
+
 /* ── Карточка товара ──────────────────────────────────────────────── */
 
 export const ProductCard = ({ product, onOpen, onFavorite }:
@@ -190,7 +242,10 @@ export const ProductCard = ({ product, onOpen, onFavorite }:
           )}
         </div>
         <div className="p-2.5">
-          <p className="line-clamp-2 text-[12px] font-semibold" style={{ color: C.t1 }}>{product.title}</p>
+          <div className="flex items-start gap-2">
+            <ProductLogo product={product} size={26} />
+            <p className="line-clamp-2 text-[12px] font-semibold" style={{ color: C.t1 }}>{product.title}</p>
+          </div>
           <div className="mt-1.5 flex items-baseline gap-1.5">
             <p className="text-sm font-black" style={{ color: C.t1 }}>{fmt(product.price)}</p>
             {product.oldPrice != null && (

@@ -22,7 +22,7 @@ import { useAuthStore } from '@/core/auth/store';
 import { useMarketStore } from './store';
 import {
   C, fmt, fmtTs, fmtTime, Stars, Empty, Field,
-  inputStyle, Alert, ProductCard, ProductImage, CatIcon, CAT_CFG,
+  inputStyle, Alert, ProductCard, ProductImage, ProductLogo, CatIcon, CAT_CFG,
 } from './ui';
 import {
   apiProduct, apiProductReviews, apiCreateOrder, apiPickupPoints,
@@ -256,7 +256,10 @@ export const ProductPage = ({ productId, onBack, onOrdered }:
                 <p className="text-[12px] line-through" style={{ color: C.t3 }}>{fmt(product.oldPrice)}</p>
               )}
             </div>
-            <p className="mt-1 text-[13px] font-semibold" style={{ color: C.t1 }}>{product.title}</p>
+            <div className="mt-1 flex items-center gap-2">
+              <ProductLogo product={product} size={32} />
+              <p className="text-[13px] font-semibold" style={{ color: C.t1 }}>{product.title}</p>
+            </div>
             <div className="mt-1 flex items-center gap-2">
               <Stars rating={product.rating} />
               <span className="text-[11px]" style={{ color: C.t3 }}>

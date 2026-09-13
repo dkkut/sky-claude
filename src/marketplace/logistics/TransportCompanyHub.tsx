@@ -57,9 +57,13 @@ const CreateCompanyForm = ({ onDone, onCancel }: { onDone: () => void; onCancel:
   const [maxWeight, setMaxWeight] = useState('500');
   const [maxVolume, setMaxVolume] = useState('5');
   const [deliveryHours, setDeliveryHours] = useState('24');
+  const [paymentDetails, setPaymentDetails] = useState('');
 
   const toggleKind = (k: TransportKind) => setKinds(v => v.includes(k) ? v.filter(x => x !== k) : [...v, k]);
-  const canSubmit = name.trim() && city.trim() && phone.trim() && kinds.length > 0;
+  /* Реквизиты обязательны: продавец платит компании напрямую, и
+     компания, которой некуда перевести, работу выполнить не может. */
+  const canSubmit = name.trim() && city.trim() && phone.trim()
+    && kinds.length > 0 && paymentDetails.trim().length > 3;
 
   const submit = () => {
     if (!canSubmit || !currentUserId) return;
@@ -73,6 +77,7 @@ const CreateCompanyForm = ({ onDone, onCancel }: { onDone: () => void; onCancel:
       minPrice: Number(minPrice) || 0, pricePerKm: Number(pricePerKm) || 0,
       maxWeightKg: Number(maxWeight) || 0, maxVolumeM3: Number(maxVolume) || 0,
       deliveryTimeHours: Number(deliveryHours) || 24,
+      paymentDetails: paymentDetails.trim(),
     });
     onDone();
   };
@@ -98,6 +103,18 @@ const CreateCompanyForm = ({ onDone, onCancel }: { onDone: () => void; onCancel:
         <label className="flex items-center gap-2 text-xs" style={{ color: C.t2 }}>
           <input type="checkbox" checked={weekend} onChange={e => setWeekend(e.target.checked)}/>Доставка по выходным
         </label>
+
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.t3 }}>Реквизиты для оплаты</p>
+        <textarea value={paymentDetails} onChange={e => setPaymentDetails(e.target.value)}
+          rows={2} maxLength={600}
+          placeholder="Например: СБП +7 900 000-00-00, ООО «Перевозчик»"
+          className="w-full resize-none rounded-xl px-3.5 py-2.5 text-sm outline-none"
+          style={{ background: C.l1, border: `1px solid ${C.brd}`, color: C.t1 }}/>
+        <p className="text-[11px]" style={{ color: C.t3 }}>
+          Продавец увидит их, когда отдаст вам заказ, и переведёт напрямую вам.
+          Sky эти деньги не принимает и не хранит. Без реквизитов компания не
+          появится в выборе перевозчиков.
+        </p>
 
         <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.t3 }}>Тип перевозок</p>
         <div className="flex flex-wrap gap-1.5">
