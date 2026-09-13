@@ -29,6 +29,7 @@ import {
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
   blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags, votePoll, consumeOnce, sweepExpired, toggleFavorite,
 } from './chats.mjs';
+import { applyCommand, stateFor } from './together.mjs';
 import {
   getSettings, updateSettings, setRole, kickMember, unbanMember, muteMember,
   createInvite, revokeInvite, listInvites, joinByInvite,
@@ -95,6 +96,25 @@ setInterval(() => {
 }, 60_000).unref();
 
 /** Неавторизованные соединения по адресу — до предъявления токена. */
+/**
+ * Отдельный счётчик для «Вместе».
+ *
+ * Общего предела в 240 действий на минуту мало: перемотка ползунком
+ * шлёт события пачкой, и без своего счётчика один человек с дёргающимся
+ * пальцем выбирал бы весь лимит, после чего у него отвалилась бы
+ * переписка. Здесь предел свой и последствие своё — отказ на команду, а
+ * не разрыв соединения.
+ */
+const TOGETHER_PER_MIN = 120;
+const togetherRate = new Map();
+const allowTogether = (userId) => {
+  const now = Date.now();
+  const slot = togetherRate.get(userId);
+  if (!slot || now - slot.at > 60_000) { togetherRate.set(userId, { at: now, n: 1 }); return true; }
+  slot.n += 1;
+  return slot.n <= TOGETHER_PER_MIN;
+};
+
 const pending = new Map();
 
 // userId → набор соединений (у человека может быть открыто несколько вкладок)
@@ -776,6 +796,66 @@ const handle = async (ws, session, msg) => {
 
     /* ── Звонки. Сигналинг идёт только между участниками общего чата,
           иначе по WebRTC можно было бы дозвониться до кого угодно. ── */
+    /*
+     * Совместный просмотр и совместное прослушивание.
+     *
+     * Отдельного соединения этому не нужно, и отдельной «комнаты» в
+     * памяти хаба тоже: рассылка идёт по списку участников из базы, а
+     * этот список — то же самое право, по которому сессия вообще
+     * открыта. Поэтому вышедший перестаёт получать события ровно тогда,
+     * когда его строка сменила состояние: он просто не попадает в
+     * список.
+     *
+     * Ни одной проверки права здесь нет — и это не упущение. Их делает
+     * applyCommand: у сессии два входа, обычный запрос и этот сокет, и
+     * правило у них обязано быть одно. Здесь только форма сообщения и
+     * частота.
+     */
+    case 'together': {
+      const sessionId = String(payload?.sessionId ?? '');
+      const action = String(payload?.action ?? '');
+      if (!sessionId || !action) return;
+
+      /* Свой счётчик поверх общего. Перемотка идёт частыми событиями, и
+         отдельный предел на сессию не даёт одному человеку выбрать весь
+         общий лимит собственным дёрганьем ползунка. */
+      if (!allowTogether(me)) {
+        send(ws, { type: 'together-error', payload: { sessionId, error: 'rate_limited' } });
+        return;
+      }
+
+      const result = await applyCommand(sessionId, me, {
+        action,
+        positionMs: payload?.positionMs,
+        rate: payload?.rate,
+        index: payload?.index,
+      });
+
+      if (result.error) {
+        /* Отказ видит только тот, кто попросил: остальным о чужой
+           неудачной попытке знать незачем. */
+        send(ws, { type: 'together-error', payload: { sessionId, error: result.error } });
+        return;
+      }
+
+      /* Ответ на «расскажи, что сейчас» уходит только спросившему: это
+         чтение, и рассылать его всем значило бы будить людей ради
+         чужой сверки часов. */
+      if (!result.event) {
+        send(ws, { type: 'together-state', payload: { action: 'sync', state: result.shared } });
+        return;
+      }
+
+      /* Состояние уходит целиком, а не «прибавьте три секунды».
+         Отставший или пропустивший событие клиент выравнивается по
+         следующему же сообщению, а не копит расхождение. */
+      broadcast(result.recipients, {
+        type: 'together-state',
+        payload: { action: result.event, by: me, state: result.shared },
+      });
+      break;
+    }
+
     case 'call-offer':
     case 'call-answer':
     case 'ice-candidate':
@@ -1105,6 +1185,18 @@ export const startSignalHub = () => {
  * Ничего не решает про права: кому можно видеть сообщение, уже решил
  * слой данных, а сюда приходит готовый список участников.
  */
+/**
+ * Событие «Вместе» из HTTP-слоя.
+ *
+ * Вход, выход, приглашение и завершение приходят обычным запросом, а
+ * рассказать о них надо тем, кто сейчас на связи. Кому именно — решил
+ * слой данных: сюда приходит готовый список участников, и права здесь
+ * не проверяются, потому что уже проверены.
+ */
+export const pushTogether = (userIds, msg) => {
+  broadcast(Array.isArray(userIds) ? userIds : [], msg);
+};
+
 export const pushNewMessage = (userIds, chatId, message) => {
   broadcast(userIds, { type: 'new-message', payload: { chatId, message } });
 };

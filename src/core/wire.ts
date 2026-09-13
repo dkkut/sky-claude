@@ -17,3 +17,19 @@ export const setWireSink = (fn: ((msg: Outgoing) => void) | null) => { sink = fn
 
 /** Отправка «в сеть». Пока сокета нет — сообщение просто теряется. */
 export const wireSend = (msg: Outgoing) => { sink?.(msg); };
+
+/**
+ * Отправка без очереди.
+ *
+ * Обычная отправка копит сообщения, пока нет связи, и досылает их
+ * потом — это верно для переписки: письмо, ушедшее с опозданием,
+ * остаётся тем же письмом. Для совместного просмотра — неверно:
+ * «пауза на 12:03», доставленная через две минуты, поставит на паузу
+ * тех, кто давно ушёл вперёд. Такие сообщения лучше потерять: строй
+ * восстановит ближайшая сверка.
+ */
+let volatileSink: ((msg: Outgoing) => void) | null = null;
+
+export const setVolatileSink = (fn: ((msg: Outgoing) => void) | null) => { volatileSink = fn; };
+
+export const wireSendVolatile = (msg: Outgoing) => { volatileSink?.(msg); };

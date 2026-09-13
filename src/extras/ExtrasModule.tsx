@@ -28,6 +28,7 @@ const SkyMusic = React.lazy(() => import('./SkyMusic').then(m => ({ default: m.S
 const SkySoundCloud = React.lazy(() => import('./SkySoundCloud').then(m => ({ default: m.SkySoundCloud })));
 const SkyFilm = React.lazy(() => import('./SkyFilm').then(m => ({ default: m.SkyFilm })));
 const SkyPrime = React.lazy(() => import('./SkyPrime').then(m => ({ default: m.SkyPrime })));
+const TogetherTab = React.lazy(() => import('@/together/TogetherTab').then(m => ({ default: m.TogetherTab })));
 const SkyMarket = React.lazy(() => import('@/marketplace/SkyMarket').then(m => ({ default: m.SkyMarket })));
 const SkyAdsCabinet = React.lazy(() => import('@/ads/SkyAds').then(m => ({ default: m.SkyAdsCabinet })));
 const SkyBooks = React.lazy(() => import('@/books/SkyBooks').then(m => ({ default: m.SkyBooks })));
@@ -54,8 +55,21 @@ import { AdminDisputesPanel, AdminGarantPanel } from '@/admin/AdminDisputes';
 import { qrDataUri } from '@/shared/qr';
 
 
-/* --- BroadcastChannel: синхронизация комнат между вкладками ----------- */
-const ROOMS_BC = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('sky:rooms:v1') : null;
+/* --- «Вместе» -----------------------------------------------------------
+   Экран переехал в src/together. Здесь его больше нет по двум причинам.
+
+   Первая: прежняя вкладка жила целиком в браузере. «Синхронизация» шла
+   через BroadcastChannel — канал между вкладками ОДНОГО браузера, — и
+   два человека не видели друг друга никогда. Воспроизведение было
+   таймером, прибавлявшим секунду к числу; ни кино, ни музыка при этом
+   не играли.
+
+   Вторая: сессия теперь живёт на сервере, и вместе с ней туда уехали
+   права. Держать такой экран в общем файле дополнений неудобно —
+   у него свой стор, свой обмен по сокету и своя связь с плеерами.
+
+   Оформление и порядок экранов сохранены: список карточками, кнопка
+   создания, внутри плеер и колонка участников.                     */
 
 type Tab = 'garant'|'home'|'music'|'soundcloud'|'movies'|'prime'|'rooms'|'market'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
 
@@ -76,249 +90,6 @@ const toBase64 = (file: File): Promise<string> => new Promise((res,rej)=>{
   const r=new FileReader(); r.onload=()=>res(r.result as string); r.onerror=rej; r.readAsDataURL(file);
 });
 
-// --- Rooms --------------------------------------------------------------------
-const RoomsTab = () => {
-  const { rooms, tracks, createRoom, deleteRoom, syncRoomProgress, setRoomActive, joinRoom, leaveRoom, sendRoomMessage, updateRoom } = usePlatformStore();
-  // Кино для совместного просмотра берётся из каталога на сервере.
-  // Личные фильмы сюда не попадают намеренно: комната — это несколько
-  // человек, а личная коллекция на то и личная.
-  const movies = useFilmStore(s => s.catalog);
-  const loadFilm = useFilmStore(s => s.load);
-  useEffect(() => { void loadFilm(); }, [loadFilm]);
-  const { accounts, currentUserId } = useAuthStore();
-  const me = accounts.find(a=>a.id===currentUserId);
-  const [activeRoomId, setActiveRoomId] = useState<string|null>(null);
-  const [chatMsg, setChatMsg] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newType, setNewType] = useState<'music'|'movie'>('movie');
-  const [newMediaId, setNewMediaId] = useState('');
-  const [timer, setTimerVal] = useState<Record<string,number>>({});
-
-  const activeRoom = rooms.find(r=>r.id===activeRoomId);
-  const myName = me?.name ?? 'Вы';
-
-  // Слушаем обновления из других вкладок
-  useEffect(()=>{
-    if(!ROOMS_BC) return;
-    const handler = (e: MessageEvent) => {
-      const { type, payload } = e.data ?? {};
-      if (type === 'room-sync')    syncRoomProgress(payload.roomId, payload.sec);
-      if (type === 'room-active')  setRoomActive(payload.roomId, payload.active);
-      if (type === 'room-msg')     sendRoomMessage(payload.roomId, payload.author, payload.text);
-      if (type === 'room-join')    joinRoom(payload.roomId, payload.userId);
-      if (type === 'room-leave')   leaveRoom(payload.roomId, payload.userId);
-    };
-    ROOMS_BC.onmessage = handler;
-    return () => { if(ROOMS_BC) ROOMS_BC.onmessage = null; };
-  }, []);
-
-  const create = () => {
-    if (!newTitle.trim()) return;
-    const id = createRoom({ host: myName, title: newTitle.trim(), mediaType: newType, mediaId: newMediaId||undefined });
-    joinRoom(id, currentUserId!);
-    setActiveRoomId(id); setCreating(false); setNewTitle('');
-  };
-
-  const join = (id: string) => {
-    joinRoom(id, currentUserId!);
-    ROOMS_BC?.postMessage({ type: 'room-join', payload: { roomId: id, userId: currentUserId } });
-    setActiveRoomId(id);
-  };
-  const leave = (id: string) => {
-    leaveRoom(id, currentUserId!);
-    ROOMS_BC?.postMessage({ type: 'room-leave', payload: { roomId: id, userId: currentUserId } });
-    if(activeRoomId===id) setActiveRoomId(null);
-  };
-
-  const sendMsg = () => {
-    if (!chatMsg.trim()||!activeRoomId) return;
-    sendRoomMessage(activeRoomId, myName, chatMsg.trim());
-    ROOMS_BC?.postMessage({ type: 'room-msg', payload: { roomId: activeRoomId, author: myName, text: chatMsg.trim() } });
-    setChatMsg('');
-  };
-
-  // Playback timer + BC broadcast
-  const startPlay = (roomId: string) => {
-    setRoomActive(roomId, true);
-    ROOMS_BC?.postMessage({ type: 'room-active', payload: { roomId, active: true } });
-    const t = window.setInterval(()=>{
-      const r = usePlatformStore.getState().rooms.find(r=>r.id===roomId);
-      if(!r||!r.active){clearInterval(t);return;}
-      const newSec = (r.progressSec||0)+1;
-      syncRoomProgress(roomId, newSec);
-      ROOMS_BC?.postMessage({ type: 'room-sync', payload: { roomId, sec: newSec } });
-    },1000);
-    setTimerVal(v=>({...v,[roomId]:t}));
-  };
-  const stopPlay = (roomId: string) => {
-    setRoomActive(roomId, false);
-    ROOMS_BC?.postMessage({ type: 'room-active', payload: { roomId, active: false } });
-    if(timer[roomId]) { clearInterval(timer[roomId]); setTimerVal(v=>({...v,[roomId]:0})); }
-  };
-
-  // Чистим все таймеры при unmount
-  useEffect(()=>() => {
-    Object.values(timer).forEach(t => { if(t) clearInterval(t); });
-  }, [timer]);
-
-  if (activeRoom) {
-    const film  = activeRoom.mediaType==='movie' ? movies.find(m=>m.id===activeRoom.mediaId) : undefined;
-    const track = activeRoom.mediaType==='movie' ? undefined : tracks.find(t=>t.id===activeRoom.mediaId);
-    const media = film ?? track;
-    // Постер фильма живёт на сервере и отдаётся по адресу, а обложка
-    // трека приходит готовой ссылкой — отсюда две ветки.
-    const mediaCover = film?.hasPoster ? posterUrl(film.id) : track?.coverUrl;
-
-    return (
-      <div className="flex h-full flex-col overflow-hidden sm:flex-row">
-        {/* Player */}
-        <div className="flex flex-1 min-h-0 flex-col">
-          <div className="flex items-center gap-3 border-b px-4 py-3" style={{borderColor:'var(--border)'}}>
-            <button type="button" onClick={()=>setActiveRoomId(null)} style={{color:'var(--t3)'}}>←</button>
-            <p className="font-semibold text-white flex-1">{activeRoom.title}</p>
-            <span className="text-xs px-2 py-1 rounded-full" style={{background:'rgba(34,197,94,0.1)',color:'#22c55e'}}>
-              {activeRoom.participants.length} зрит.
-            </span>
-            <button type="button" onClick={()=>leave(activeRoom.id)}
-              className="rounded-xl px-3 py-1.5 text-xs" style={{background:'rgba(239,68,68,0.1)',color:'var(--red)'}}>
-              Выйти
-            </button>
-          </div>
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
-            <div className="h-40 w-40 overflow-hidden rounded-xl grid place-items-center"
-              style={{background:'var(--bg-l2)'}}>
-              {mediaCover
-                ? <img src={mediaCover} alt="" className="h-full w-full object-cover"/>
-                : <div className="grid place-items-center" style={{ opacity: 0.3 }}>{activeRoom.mediaType==='movie' ? <Film size={48}/> : <Music2 size={48}/>}</div>}
-            </div>
-            <div className="text-center">
-              <p className="font-bold text-white text-lg">{media?.title ?? activeRoom.title}</p>
-              <p className="text-sm mt-1" style={{color:'var(--t3)'}}>Хост: {activeRoom.host}</p>
-            </div>
-            {/* Progress */}
-            <div className="w-full max-w-sm">
-              <div className="h-1.5 w-full overflow-hidden rounded-full cursor-pointer" style={{background:'rgba(255,255,255,0.1)'}}
-                onClick={e=>{const r=e.currentTarget.getBoundingClientRect(); const pct=(e.clientX-r.left)/r.width; syncRoomProgress(activeRoom.id,Math.floor(pct*300));}}>
-                <motion.div className="h-full rounded-full" style={{background:'linear-gradient(90deg,var(--accent),#818cf8)',width:`${Math.min(100,(activeRoom.progressSec/300)*100)}%`}}/>
-              </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-xs" style={{color:'var(--t3)'}}>{fmtSec(activeRoom.progressSec)}</span>
-                <span className="text-xs" style={{color:'var(--t3)'}}>5:00</span>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button type="button" onClick={()=>syncRoomProgress(activeRoom.id,Math.max(0,activeRoom.progressSec-10))}
-                className="rounded-2xl px-4 py-2 text-sm" style={{background:'var(--border)',color:'var(--t1)'}}>-10с</button>
-              <motion.button whileTap={{scale:0.9}} type="button"
-                onClick={()=>activeRoom.active?stopPlay(activeRoom.id):startPlay(activeRoom.id)}
-                className="grid h-12 w-12 place-items-center rounded-full"
-                style={{background:'var(--accent)'}}>
-                {activeRoom.active?<Pause size={20} className="text-white"/>:<Play size={20} className="text-white ml-0.5"/>}
-              </motion.button>
-              <button type="button" onClick={()=>syncRoomProgress(activeRoom.id,activeRoom.progressSec+10)}
-                className="rounded-2xl px-4 py-2 text-sm" style={{background:'var(--border)',color:'var(--t1)'}}>+10с</button>
-            </div>
-          </div>
-        </div>
-        {/* Chat */}
-        <div className="flex w-full max-h-[40vh] shrink-0 flex-col border-t sm:w-64 sm:max-h-none sm:border-l sm:border-t-0"
-          style={{borderColor:'var(--border)'}}>
-          <div className="border-b px-3 py-2.5" style={{borderColor:'var(--border)'}}>
-            <p className="text-sm font-medium text-white flex items-center gap-1.5"><MessageCircle size={13}/>Чат комнаты</p>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {activeRoom.chatMessages.length===0&&<p className="text-xs text-center py-4" style={{color:'var(--t3)'}}>Чат пуст</p>}
-            {activeRoom.chatMessages.map((m,i)=>(
-              <div key={i}>
-                <p className="text-xs font-semibold" style={{color:'var(--accent)'}}>{m.author}</p>
-                <p className="text-xs" style={{color:'var(--t1)'}}>{m.text}</p>
-                <p className="text-[10px]" style={{color:'var(--t3)'}}>{m.time}</p>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2 border-t p-2" style={{borderColor:'var(--border)'}}>
-            <input value={chatMsg} onChange={e=>setChatMsg(e.target.value)} placeholder="Сообщение..."
-              className="flex-1 rounded-xl px-3 py-2 text-sm outline-none text-white"
-              style={{background:'var(--bg-l2)'}}
-              onKeyDown={e=>e.key==='Enter'&&sendMsg()}/>
-            <button type="button" onClick={sendMsg} className="grid h-9 w-9 place-items-center rounded-xl"
-              style={{background:'var(--accent-bg)',color:'var(--accent)'}}><Send size={14}/></button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full overflow-y-auto p-4 space-y-4">
-      {creating ? (
-        <div className="rounded-xl p-4 space-y-3" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-          <p className="font-semibold text-white">Новая комната</p>
-          <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} placeholder="Название комнаты..."
-            className="w-full rounded-2xl px-4 py-2.5 text-sm text-white outline-none"
-            style={{background:'var(--bg-l2)',border:'1px solid var(--border)'}}/>
-          <div className="flex gap-2">
-            {([['movie','Кино'],['music','Музыка']] as const).map(([k,l])=>(
-              <button key={k} type="button" onClick={()=>setNewType(k)}
-                className="flex-1 rounded-2xl py-2 text-sm transition-all"
-                style={{background:newType===k?'var(--accent-bg)':'var(--bg-l2)',
-                  border:`1px solid ${newType===k?'var(--accent-bg)':'var(--border)'}`,
-                  color:newType===k?'var(--accent)':'var(--t3)'}}>
-                {l}
-              </button>
-            ))}
-          </div>
-          <select value={newMediaId} onChange={e=>setNewMediaId(e.target.value)}
-            className="w-full rounded-2xl px-4 py-2.5 text-sm outline-none"
-            style={{background:'var(--bg-l2)',border:'1px solid var(--border)',color:'var(--t1)'}}>
-            <option value=""> -  Выбрать {newType==='movie'?'фильм':'трек'}  - </option>
-            {(newType==='movie'?movies:tracks).map((m:any)=>(
-              <option key={m.id} value={m.id}>{m.title}</option>
-            ))}
-          </select>
-          <div className="flex gap-2">
-            <button type="button" onClick={()=>setCreating(false)}
-              className="flex-1 rounded-2xl py-2.5 text-sm" style={{background:'var(--border)',color:'var(--t2)'}}>
-              Отмена
-            </button>
-            <motion.button whileTap={{scale:0.97}} type="button" onClick={create} disabled={!newTitle.trim()}
-              className="flex-1 rounded-2xl py-2.5 text-sm font-bold text-white disabled:opacity-40"
-              style={{background:'var(--accent)'}}>
-              Создать
-            </motion.button>
-          </div>
-        </div>
-      ) : (
-        <button type="button" onClick={()=>setCreating(true)}
-          className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium text-white"
-          style={{background:'var(--accent)'}}>
-          <Plus size={15}/> Создать комнату
-        </button>
-      )}
-
-      {rooms.length===0&&!creating&&<p className="text-sm text-center py-8" style={{color:'var(--t3)'}}>Нет комнат. Создай первую!</p>}
-      {rooms.map(room=>(
-        <div key={room.id} className="rounded-xl p-4" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <p className="font-medium text-white">{room.title}</p>
-              <p className="text-xs mt-0.5" style={{color:'var(--t3)'}}>
-                Хост: {room.host} · {room.mediaType==='movie'?'Кино':'Музыка'} · {room.participants.length} зрит.
-              </p>
-            </div>
-            <button type="button" onClick={()=>deleteRoom(room.id)} style={{color:'var(--t3)'}}><Trash2 size={14}/></button>
-          </div>
-          <button type="button" onClick={()=>join(room.id)}
-            className="w-full rounded-2xl py-2.5 text-sm font-medium text-white mt-2"
-            style={{background:'var(--accent-bg)',border:'1px solid var(--accent-bg)'}}>
-            Войти в комнату →
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 
 const WARNING_LABEL: Record<NonNullable<WarningKind>, string> = { casino: 'Казино', '18+': '18+', casino18: 'Казино + 18+' };
@@ -1889,7 +1660,7 @@ export const ExtrasModule = () => {
         {tab==='soundcloud' && <SkySoundCloud/>}
         {tab==='movies' && <SkyFilm/>}
         {tab==='prime'  && <SkyPrime/>}
-        {tab==='rooms'  && <RoomsTab/>}
+        {tab==='rooms'  && <TogetherTab/>}
         {tab==='market' && <SkyMarket/>}
         {tab==='pvz'    && <SkyPVZ/>}
         {tab==='nftgifts' && <SkyGiftsNFT/>}

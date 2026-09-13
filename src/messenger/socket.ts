@@ -12,8 +12,9 @@
  */
 import { useMessengerStore } from './store';
 import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
-import { setWireSink, type Outgoing } from '@/core/wire';
+import { setWireSink, setVolatileSink, type Outgoing } from '@/core/wire';
 import { bsignal, type SignalMsg } from '@/calls/webrtc';
+import { receiveTogether } from '@/together/togetherState';
 import { useAdminStore, ADMIN_ERRORS, POST_ERRORS } from './adminStore';
 import { useSettings } from '@/settings/store';
 import { usePrivacyStore } from '@/profile/privacyStore';
@@ -448,6 +449,19 @@ const handle = (data: any) => {
       if (payload?.userId) { online.delete(payload.userId); notifyOnline(); }
       break;
 
+    /* Совместный просмотр идёт по тому же сокету: второго соединения
+       и второй системы связи для него не заводили. */
+    case 'together-state':
+    case 'together-join':
+    case 'together-leave':
+    case 'together-decline':
+    case 'together-end':
+    case 'together-settings':
+    case 'together-invited':
+    case 'together-error':
+      receiveTogether(type, payload);
+      break;
+
     /* Звонки идут по тому же сокету — отдельного соединения им не нужно. */
     case 'call-incoming':
     case 'call-answered':
@@ -577,6 +591,18 @@ export const broadcast = {
 
 // Стор отправляет через ту же очередь (отложенные сообщения, прочтение).
 setWireSink(send);
+
+/*
+ * Летучая отправка: без очереди.
+ *
+ * Команды совместного просмотра устаревают за секунды. Досланная после
+ * восстановления связи «пауза» относилась бы к моменту, которого давно
+ * нет, и сбила бы строй всем остальным. Поэтому нет связи — команда
+ * пропадает, а состояние подтянет ближайшая сверка.
+ */
+setVolatileSink((msg) => {
+  if (authorized && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+});
 
 export const wsApi = broadcast;
 

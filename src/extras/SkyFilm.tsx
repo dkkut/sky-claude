@@ -35,6 +35,8 @@ import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
 import type { IconComponent } from '@/shared/icon';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
 import { useFilmStore } from '@/film/serverStore';
+import { sendTogether, type PlayerHandle } from '@/together/togetherState';
+import { useTogetherSync } from '@/together/useTogetherSync';
 import {
   videoUrl, posterUrl, fmtDuration, readVideoMeta, looksLikeShort,
   MAX_SHORT_DURATION, apiFilmModerationQueue, apiModerateMovie,
@@ -163,7 +165,25 @@ const Stars = ({ r }: { r?: number }) => {
    просмотра и при перемотке, поэтому фильм начинается сразу, а не
    после того, как скачается целиком.
 ---------------------------------------------------------- */
-const Player = ({ movie, onClose }: { movie: ServerMovie; onClose: () => void }) => {
+/**
+ * Поводок совместного просмотра.
+ *
+ * Не второй плеер и не отдельный режим: те же элементы управления, тот
+ * же <video>, та же перемотка. Меняется одно — куда уходит нажатие.
+ * Без сессии оно двигает своё видео; в сессии уходит на сервер и
+ * возвращается оттуда общим состоянием, которое двигает видео у всех
+ * сразу. Тот, кому управлять не положено, кнопок не получает вовсе.
+ */
+export interface WatchTogether {
+  sessionId: string;
+  canControl: boolean;
+}
+
+export const Player = ({ movie, onClose, together = null }: {
+  movie: ServerMovie;
+  onClose: () => void;
+  together?: WatchTogether | null;
+}) => {
   const vRef  = useRef<HTMLVideoElement>(null);
   const cRef  = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
@@ -194,12 +214,37 @@ const Player = ({ movie, onClose }: { movie: ServerMovie; onClose: () => void })
     setDur(v.duration || movie.duration || 0);
     if (restored.current) return;
     restored.current = true;
+    /* В совместном просмотре своё «остановился здесь» не применяется:
+       место в фильме общее, и его задаёт сессия. Иначе вошедший
+       перематывал бы всех к тому, где был сам в прошлый раз. */
+    if (together) return;
     const from = savedPos ?? movie.position ?? 0;
     // К самому концу не возвращаем: человек его уже видел.
     if (from > 30 && (!v.duration || from < v.duration - 60)) { v.currentTime = from; setCur(from); }
   };
 
   useEffect(() => { if (vRef.current) vRef.current.volume = mut ? 0 : vol; }, [vol, mut]);
+
+  /* Ручка для совместного просмотра: то немногое, что сессии позволено
+     делать с этим проигрывателем. Громкость, полный экран и всё
+     остальное остаются личным делом каждого — общее только место в
+     фильме и то, идёт он или стоит. */
+  const handle: PlayerHandle = useMemo(() => ({
+    position: () => (vRef.current?.currentTime ?? 0) * 1000,
+    playing:  () => Boolean(vRef.current && !vRef.current.paused && !vRef.current.ended),
+    seek: (ms) => { const v = vRef.current; if (v) { v.currentTime = ms / 1000; setCur(ms / 1000); } },
+    play:  () => { vRef.current?.play().then(() => setPl(true)).catch(() => setPl(false)); },
+    pause: () => { vRef.current?.pause(); setPl(false); },
+    setRate: (r) => { if (vRef.current) vRef.current.playbackRate = r; },
+    currentId: () => movie.id,
+  }), [movie.id]);
+
+  useTogetherSync(together?.sessionId ?? null, handle, Boolean(together));
+
+  /* Смотрит, но не управляет. Кнопки в этом случае не просто не
+     работают — их не видно: неработающая кнопка раздражает сильнее
+     отсутствующей, а человек и так знает, что фильм общий. */
+  const watching = Boolean(together) && !together?.canControl;
 
   /* При уходе — последняя позиция на сервер. Без этого последние
      секунды просмотра терялись бы, и на другом устройстве фильм
@@ -242,6 +287,16 @@ const Player = ({ movie, onClose }: { movie: ServerMovie; onClose: () => void })
   }, []);
 
   const toggle = () => {
+    /* В сессии нажатие не двигает своё видео: оно уходит на сервер, а
+       видео двигает пришедшее оттуда состояние — у всех разом. Так у
+       нажавшего и у остальных не бывает разной картины даже на
+       полсекунды. */
+    if (together) {
+      if (!together.canControl) return;
+      sendTogether(together.sessionId, pl ? 'pause' : 'play');
+      if (!counted.current) { counted.current = true; void noteView(movie.id); }
+      return;
+    }
     const v = vRef.current; if (!v) return;
     if (pl) { v.pause(); setPl(false); return; }
     v.play().then(() => {
@@ -249,7 +304,14 @@ const Player = ({ movie, onClose }: { movie: ServerMovie; onClose: () => void })
       if (!counted.current) { counted.current = true; void noteView(movie.id); }
     }).catch(() => setPl(false));
   };
-  const seek = (t: number) => { if (vRef.current) { vRef.current.currentTime = t; setCur(t); } };
+  const seek = (t: number) => {
+    if (together) {
+      if (!together.canControl) return;
+      sendTogether(together.sessionId, 'seek', { positionMs: Math.round(Math.max(0, t) * 1000) });
+      return;
+    }
+    if (vRef.current) { vRef.current.currentTime = t; setCur(t); }
+  };
   const skip = (n: number) => seek(Math.max(0, Math.min(dur, cur + n)));
   const toggleFs = async () => {
     if (!document.fullscreenElement) { await cRef.current?.requestFullscreen?.().catch(() => {}); setFs(true); }
@@ -285,8 +347,15 @@ const Player = ({ movie, onClose }: { movie: ServerMovie; onClose: () => void })
           onPause={() => setPl(false)}
           onError={() => { setFailed(true); setPl(false); }}
           onStalled={() => setFailed(false)}
-          onEnded={() => { setPl(false); void flushProgress(movie.id, dur, dur); }}
-          onClick={toggle} />
+          onEnded={() => {
+            setPl(false);
+            void flushProgress(movie.id, dur, dur);
+            /* В сессии о конце сообщает только тот, кто управляет:
+               иначе десять человек прислали бы десять одинаковых
+               сообщений об одном и том же конце. */
+            if (together?.canControl) sendTogether(together.sessionId, 'ended');
+          }}
+          onClick={() => { if (!watching) toggle(); }} />
       ) : (
         <div className="h-full w-full flex flex-col items-center justify-center gap-4"
           style={{ background: `linear-gradient(160deg,${c1},${c2})` }}>
@@ -354,6 +423,14 @@ const Player = ({ movie, onClose }: { movie: ServerMovie; onClose: () => void })
               </button>
             </div>
             {/* середина */}
+            {watching ? (
+              <div className="flex items-center justify-center pointer-events-none">
+                <span className="rounded-full px-4 py-2 text-[12px] font-semibold"
+                  style={{ background: 'rgba(0,0,0,0.55)', color: K.sub, backdropFilter: 'blur(6px)' }}>
+                  Смотрим вместе · воспроизведением управляет владелец
+                </span>
+              </div>
+            ) : (
             <div className="flex items-center justify-center gap-8 pointer-events-auto">
               <motion.button whileTap={{ scale: 0.88 }} type="button" onClick={() => skip(-10)}
                 className="grid h-12 w-12 place-items-center rounded-full"
@@ -372,14 +449,19 @@ const Player = ({ movie, onClose }: { movie: ServerMovie; onClose: () => void })
                 <SkipForward size={20} className="text-white" />
               </motion.button>
             </div>
+            )}
             {/* низ */}
             <div className="px-5 pb-5 space-y-3 pointer-events-auto"
               style={{ background: 'linear-gradient(transparent,rgba(0,0,0,0.88))' }}>
               <div className="flex items-center gap-3">
                 <span className="text-xs font-mono w-10 text-right" style={{ color: K.sub }}>{fmtT(cur)}</span>
-                <div className="group relative flex-1 h-[3px] cursor-pointer rounded-full transition-all hover:h-1.5"
+                <div className={`group relative flex-1 h-[3px] rounded-full transition-all ${watching ? '' : 'cursor-pointer hover:h-1.5'}`}
                   style={{ background: 'rgba(255,255,255,0.18)' }}
-                  onClick={e => { const r = e.currentTarget.getBoundingClientRect(); seek(((e.clientX-r.left)/r.width)*dur); }}>
+                  onClick={e => {
+                    if (watching) return;
+                    const r = e.currentTarget.getBoundingClientRect();
+                    seek(((e.clientX-r.left)/r.width)*dur);
+                  }}>
                   <div className="h-full rounded-full" style={{ width: `${pct}%`, background: `linear-gradient(90deg,${K.orange},${K.orange2})` }} />
                   <div className="absolute top-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full bg-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                     style={{ left: `calc(${pct}% - 7px)`, boxShadow: `0 0 8px ${K.orange}` }} />

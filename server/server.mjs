@@ -30,12 +30,14 @@ import { podcastRoutes } from './routes/podcasts.mjs';
 import { botRoutes } from './routes/bots.mjs';
 import { ticketRoutes } from './routes/tickets.mjs';
 import { aiRoutes } from './routes/ai.mjs';
+import { togetherRoutes } from './routes/together.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanPodcastFiles } from './podcasts.mjs';
 import { sweepBots } from './bots.mjs';
 import { expireOrganizers, closePastEvents, sweepOrphanTicketImages } from './tickets.mjs';
 import { sweepAiUsage } from './aichat.mjs';
+import { sweepTogether } from './together.mjs';
 import { sweepAiFiles } from './aitools.mjs';
 import { retryPendingWebhooks } from './botevents.mjs';
 import { sweepOrphans } from './attachments.mjs';
@@ -46,7 +48,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes, botRoutes,
-                ticketRoutes, aiRoutes];
+                ticketRoutes, aiRoutes, togetherRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -230,6 +232,11 @@ const start = async () => {
       if (aiFiles) console.log(`[ai] убрано неразобранных файлов: ${aiFiles}`);
       const aiDays = await sweepAiUsage();
       if (aiDays) console.log(`[ai] убрано старых счётчиков: ${aiDays}`);
+      // Брошенная сессия «Вместе» — та, где полсуток ничего не
+      // происходило. Такие остаются после закрытых вкладок: сокет
+      // умер, а строка так и висит «живой».
+      const rooms = await sweepTogether();
+      if (rooms) console.log(`[вместе] закрыто брошенных сессий: ${rooms}`);
     } catch (err) {
       console.error('[housekeeping]', err.message);
     }
