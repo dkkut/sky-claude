@@ -10,15 +10,16 @@
    { default }, которую ждёт React.lazy.
 =============================================================== */
 import React from 'react';
+import { lazyChunk } from './lazyChunk';
 
-export const ExtrasModule   = React.lazy(() => import('@/extras/ExtrasModule').then(m => ({ default: m.ExtrasModule })));
-export const LibraryModule  = React.lazy(() => import('@/library/LibraryModule').then(m => ({ default: m.LibraryModule })));
-export const BusinessStudio = React.lazy(() => import('@/library/BusinessStudio').then(m => ({ default: m.BusinessStudio })));
-export const BloomModule    = React.lazy(() => import('@/bloom/BloomModule').then(m => ({ default: m.BloomModule })));
-export const ProfileModule  = React.lazy(() => import('@/profile/ProfileModule').then(m => ({ default: m.ProfileModule })));
-export const StoriesModule  = React.lazy(() => import('@/stories/StoriesModule').then(m => ({ default: m.StoriesModule })));
-export const GamingModule   = React.lazy(() => import('@/gaming/GamingModule').then(m => ({ default: m.GamingModule })));
-export const SkyVideo       = React.lazy(() => import('@/extras/SkyVideo').then(m => ({ default: m.SkyVideo })));
+export const ExtrasModule   = lazyChunk(() => import('@/extras/ExtrasModule').then(m => ({ default: m.ExtrasModule })));
+export const LibraryModule  = lazyChunk(() => import('@/library/LibraryModule').then(m => ({ default: m.LibraryModule })));
+export const BusinessStudio = lazyChunk(() => import('@/library/BusinessStudio').then(m => ({ default: m.BusinessStudio })));
+export const BloomModule    = lazyChunk(() => import('@/bloom/BloomModule').then(m => ({ default: m.BloomModule })));
+export const ProfileModule  = lazyChunk(() => import('@/profile/ProfileModule').then(m => ({ default: m.ProfileModule })));
+export const StoriesModule  = lazyChunk(() => import('@/stories/StoriesModule').then(m => ({ default: m.StoriesModule })));
+export const GamingModule   = lazyChunk(() => import('@/gaming/GamingModule').then(m => ({ default: m.GamingModule })));
+export const SkyVideo       = lazyChunk(() => import('@/extras/SkyVideo').then(m => ({ default: m.SkyVideo })));
 
 /** Заглушка на время подгрузки чанка модуля. */
 export const ModuleFallback = () => (
