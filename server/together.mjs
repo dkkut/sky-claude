@@ -1021,7 +1021,7 @@ export const listMySessions = async (userId, { status, limit } = {}) => {
  * после закрытых вкладок и потерянной связи: сокет умер, а строка
  * осталась «живой».
  */
-export const sweepTogether = async () => {
+export const sweepTogether = async ({ isOnline } = {}) => {
   const { rowCount } = await query(
     `UPDATE together_sessions
         SET status = 'ended', ended_at = now(), playing = FALSE
@@ -1030,7 +1030,46 @@ export const sweepTogether = async () => {
         AND created_at < now() - ($1::bigint * interval '1 millisecond')`,
     [IDLE_END_MS],
   );
-  return rowCount;
+
+  /*
+   * Показ личной записи держится на том, кто её показывает.
+   *
+   * Кнопки «Выйти» и «Завершить» закрывают его сразу. Но вкладку можно
+   * и просто закрыть — тогда сеанс остаётся живым, и личная запись
+   * человека продолжала бы отдаваться позванным до самой уборки, уже
+   * без него. Поэтому спрашиваем у хаба, на связи ли владелец, и если
+   * его нет — показ заканчиваем.
+   *
+   * Короткий обрыв связи этому не помеха: уборка ходит раз в час, и
+   * вернувшийся за это время владелец снова на связи. Опубликованного
+   * кино и музыки правило не касается — они доступны и без хозяина
+   * сеанса.
+   */
+  let closed = 0;
+  if (typeof isOnline === 'function') {
+    const { rows } = await query(
+      `SELECT s.id, s.owner_id
+         FROM together_sessions s
+         JOIN film_movies m ON m.id = s.content_id AND m.owner_id = s.owner_id
+        WHERE s.status <> 'ended'
+          AND s.content_kind = 'movie'
+          AND m.status = 'private'`,
+    );
+    for (const row of rows) {
+      if (isOnline(row.owner_id)) continue;
+      await query(
+        "UPDATE together_sessions SET status = 'ended', ended_at = now(), playing = FALSE WHERE id = $1",
+        [row.id]);
+      await query(
+        `UPDATE together_participants SET status = 'left', left_at = now()
+          WHERE session_id = $1 AND status = 'joined'`,
+        [row.id]);
+      await logTogether(row.id, null, 'session_ended', { reason: 'owner_offline_private' });
+      closed += 1;
+    }
+  }
+
+  return rowCount + closed;
 };
 
 /* ══════════════════════════════════════════════════════════════════════

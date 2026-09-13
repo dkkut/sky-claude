@@ -12,7 +12,7 @@ import { json } from './http.mjs';
 import { waitForDb, migrate, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
 import { connectRedis, closeRedis, redisAlive } from './sessions.mjs';
-import { startSignalHub } from './signal.mjs';
+import { startSignalHub, isOnline } from './signal.mjs';
 import { verifyToken } from './security.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
 import { betaEnabled, syncBetaKeys, betaHashLive } from './beta.mjs';
@@ -235,7 +235,7 @@ const start = async () => {
       // Брошенная сессия «Вместе» — та, где полсуток ничего не
       // происходило. Такие остаются после закрытых вкладок: сокет
       // умер, а строка так и висит «живой».
-      const rooms = await sweepTogether();
+      const rooms = await sweepTogether({ isOnline });
       if (rooms) console.log(`[вместе] закрыто брошенных сессий: ${rooms}`);
     } catch (err) {
       console.error('[housekeeping]', err.message);
