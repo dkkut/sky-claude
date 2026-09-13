@@ -52,6 +52,16 @@ export const config = {
   // тот, кто читает логи, входил бы под любым аккаунтом.
   allowLogCodes:      process.env.ALLOW_LOG_CODES === '1',
 
+  // Секреты вебхуков перевозчиков Sky Market. Каждый перевозчик
+  // подписывает своё уведомление своим секретом; пустой секрет означает
+  // «этот перевозчик не подключён», и его вебхук не принимается вовсе —
+  // иначе уведомление о доставке мог бы прислать кто угодно.
+  marketWebhookSecrets: {
+    cdek:        process.env.MARKET_WEBHOOK_CDEK        || '',
+    fivepost:    process.env.MARKET_WEBHOOK_FIVEPOST    || '',
+    russianpost: process.env.MARKET_WEBHOOK_RUSSIANPOST || '',
+  },
+
   // Ключи закрытой беты: «ключ:подпись» через запятую. Пустая строка —
   // калитки нет, сайт открыт всем.
   betaKeys: (process.env.BETA_KEYS || '')

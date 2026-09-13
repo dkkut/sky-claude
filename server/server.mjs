@@ -31,6 +31,7 @@ import { botRoutes } from './routes/bots.mjs';
 import { ticketRoutes } from './routes/tickets.mjs';
 import { aiRoutes } from './routes/ai.mjs';
 import { togetherRoutes } from './routes/together.mjs';
+import { marketRoutes } from './routes/market.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanPodcastFiles } from './podcasts.mjs';
@@ -38,6 +39,8 @@ import { sweepBots } from './bots.mjs';
 import { expireOrganizers, closePastEvents, sweepOrphanTicketImages } from './tickets.mjs';
 import { sweepAiUsage } from './aichat.mjs';
 import { sweepTogether } from './together.mjs';
+import { sweepSellerSubscriptions } from './market.mjs';
+import { sweepPickupExpiry } from './marketdelivery.mjs';
 import { sweepAiFiles } from './aitools.mjs';
 import { retryPendingWebhooks } from './botevents.mjs';
 import { sweepOrphans } from './attachments.mjs';
@@ -48,7 +51,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes, botRoutes,
-                ticketRoutes, aiRoutes, togetherRoutes];
+                ticketRoutes, aiRoutes, togetherRoutes, marketRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -237,6 +240,15 @@ const start = async () => {
       // умер, а строка так и висит «живой».
       const rooms = await sweepTogether({ isOnline });
       if (rooms) console.log(`[вместе] закрыто брошенных сессий: ${rooms}`);
+      // Подписка продавца Sky Market кончается по времени. Колонка
+      // должна говорить правду и без запроса: иначе выборки по
+      // sub_status = active считают торгующими тех, у кого срок вышел.
+      const shops = await sweepSellerSubscriptions();
+      if (shops) console.log(`[market] истекло подписок продавцов: ${shops}`);
+      // Посылка, за которой не пришли в пункт выдачи, не должна висеть
+      // «ждёт получателя» вечно: срок хранения кончился — это спор.
+      const stale = await sweepPickupExpiry();
+      if (stale) console.log(`[market] просрочено хранение посылок: ${stale}`);
     } catch (err) {
       console.error('[housekeeping]', err.message);
     }

@@ -1206,6 +1206,17 @@ export const pushTogether = (userIds, msg) => {
   broadcast(Array.isArray(userIds) ? userIds : [], msg);
 };
 
+/**
+ * Sky Market: уведомление о сделке и сообщение чата сделки.
+ *
+ * Отдельный путь и отдельные типы событий. Сообщения чата сделки не
+ * идут через pushNewMessage намеренно: обработчик мессенджера положил
+ * бы их в список диалогов, а чат сделки — не диалог.
+ */
+export const pushMarket = (userIds, msg) => {
+  broadcast(Array.isArray(userIds) ? userIds : [], msg);
+};
+
 export const pushNewMessage = (userIds, chatId, message) => {
   broadcast(userIds, { type: 'new-message', payload: { chatId, message } });
 };
