@@ -32,6 +32,7 @@ import { ticketRoutes } from './routes/tickets.mjs';
 import { aiRoutes } from './routes/ai.mjs';
 import { togetherRoutes } from './routes/together.mjs';
 import { marketRoutes } from './routes/market.mjs';
+import { logisticsRoutes } from './routes/logistics.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanPodcastFiles } from './podcasts.mjs';
@@ -51,7 +52,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes, botRoutes,
-                ticketRoutes, aiRoutes, togetherRoutes, marketRoutes];
+                ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, logisticsRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.

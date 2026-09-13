@@ -21,9 +21,10 @@ const ROOT = process.env.MARKET_DIR || '/data/market';
  * Идентификаторы, которые мы сами и выдали:
  *   mpi — картинка товара,
  *   msa — витрина продавца (аватар магазина),
- *   mgc — обложка игры.
+ *   mgc — обложка игры,
+ *   lwp — фотография склада.
  */
-const ID_RE = /^(mpi|msa|mgc)-[0-9a-f-]{36}$/;
+const ID_RE = /^(mpi|msa|mgc|lwp)-[0-9a-f-]{36}$/;
 
 const dirFor = (id) => join(ROOT, id.slice(4, 6));
 const pathFor = (id) => join(dirFor(id), id);
