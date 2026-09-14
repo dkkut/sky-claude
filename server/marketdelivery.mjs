@@ -27,7 +27,7 @@ import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { config } from './config.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 import { logMarket, marketText as text, marketInt as int, ORDER_ID_RE, fulfilmentOf } from './market.mjs';
 import { decryptContent } from './crypto.mjs';
 import { applyTransition, toOrder } from './marketorders.mjs';
@@ -304,7 +304,7 @@ export const readShipment = async (orderId, viewerId) => {
      посылку везёт: без этого она не знает, куда и что ей поручили. */
   const mine = row.buyer_id === viewerId || row.seller_id === viewerId
     || (row.carrier_kind === 'inhouse' && row.carrier_owner === viewerId);
-  if (!mine && !(await isAdmin(viewerId))) {
+  if (!mine && !(await can(viewerId, 'market'))) {
     await logMarket(viewerId, 'shipment_access_denied', id);
     return null;
   }
@@ -644,7 +644,7 @@ export const carrierWebhook = async (code, rawBody, signature, payload) => {
 /* ─── Справочники: правка администрацией ───────────────────────────── */
 
 export const upsertPickupPoint = async (actorId, input = {}) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'market'))) return { error: 'not_allowed' };
   const title = text(input.title, 120);
   const city = text(input.city, 80);
   const address = text(input.address, 300);
@@ -665,7 +665,7 @@ export const upsertPickupPoint = async (actorId, input = {}) => {
 };
 
 export const upsertCarrier = async (actorId, input = {}) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'market'))) return { error: 'not_allowed' };
   const kind = ['external', 'inhouse'].includes(String(input.kind)) ? String(input.kind) : null;
   const title = text(input.title, 120);
   if (!kind || !title) return { error: 'bad_carrier' };

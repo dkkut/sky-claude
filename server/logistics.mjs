@@ -19,7 +19,6 @@
  */
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
-import { isAdmin } from './admin.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { marketText as text, marketInt as int, ORDER_ID_RE } from './market.mjs';
 import { pushMarket } from './signal.mjs';
@@ -635,4 +634,4 @@ export const listCourierReviews = async (courierId, { limit } = {}) => {
   }));
 };
 
-export { isAdmin, pool };
+export { pool };

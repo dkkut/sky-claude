@@ -25,7 +25,7 @@
 import { query, pool } from './db.mjs';
 import { generateId } from './security.mjs';
 import { wallet } from './wallet.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { hasAccepted } from './agreements.mjs';
 
@@ -214,7 +214,7 @@ export const readSeller = async (sellerId, viewerId) => {
   /* Закрытый администрацией магазин виден только ему самому и
      администрации: покупателю показывать витрину, на которой нельзя
      купить, незачем. */
-  if (row.status === 'suspended' && sellerId !== viewerId && !(await isAdmin(viewerId))) return null;
+  if (row.status === 'suspended' && sellerId !== viewerId && !(await can(viewerId, 'market'))) return null;
   return toSeller(row, sellerId === viewerId);
 };
 
@@ -421,7 +421,7 @@ export const readGame = async (idOrSlug) => {
 
 /** Игры заводит администрация: это витрина платформы, а не товар продавца. */
 export const createGame = async (actorId, { title, slug, description, order } = {}) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'market'))) return { error: 'not_allowed' };
   const name = text(title, 120);
   const key = text(slug, 60).toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
   if (name.length < 2 || key.length < 2) return { error: 'bad_game' };
@@ -439,7 +439,7 @@ export const createGame = async (actorId, { title, slug, description, order } = 
 };
 
 export const updateGame = async (actorId, gameId, patch = {}) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'market'))) return { error: 'not_allowed' };
   if (!GAME_ID_RE.test(String(gameId ?? ''))) return { error: 'not_found' };
 
   const sets = [];
@@ -458,7 +458,7 @@ export const updateGame = async (actorId, gameId, patch = {}) => {
 };
 
 export const setGameCover = async (actorId, gameId, mime) => {
-  if (!(await isAdmin(actorId))) return false;
+  if (!(await can(actorId, 'market'))) return false;
   const { rowCount } = await query(
     'UPDATE market_games SET has_cover = TRUE, cover_mime = $2 WHERE id = $1',
     [gameId, String(mime)]);
@@ -565,7 +565,7 @@ export const readProduct = async (productId, viewerId) => {
   if (!row) return null;
   const mine = row.seller_id === viewerId;
   if (!mine && (!row.active || row.status === 'suspended')) {
-    if (!(await isAdmin(viewerId))) return null;
+    if (!(await can(viewerId, 'market'))) return null;
   }
   return toProduct(row);
 };
@@ -829,7 +829,7 @@ export const archiveProduct = async (productId, actorId) => {
   if (!PRODUCT_ID_RE.test(String(productId ?? ''))) return { error: 'not_found' };
   const { rows } = await query('SELECT seller_id FROM market_products WHERE id = $1', [productId]);
   if (!rows[0]) return { error: 'not_found' };
-  if (rows[0].seller_id !== actorId && !(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (rows[0].seller_id !== actorId && !(await can(actorId, 'market'))) return { error: 'not_allowed' };
 
   await query('UPDATE market_products SET active = FALSE, updated_at = now() WHERE id = $1', [productId]);
   await logMarket(actorId, 'product_archived', productId);
@@ -867,7 +867,7 @@ export const readProductImage = async (imageId, viewerId) => {
   /* Ту же проверку, что и у самого товара: картинка снятого с витрины
      товара не должна оставаться открытой, пока открыт её адрес. */
   if (row.seller_id !== viewerId && (!row.active || row.status !== 'active')) {
-    if (!(await isAdmin(viewerId))) return null;
+    if (!(await can(viewerId, 'market'))) return null;
   }
   return { mime: row.mime };
 };
@@ -910,7 +910,7 @@ export const productLogoMime = async (productId, viewerId) => {
   const row = rows[0];
   if (!row) return null;
   if (row.seller_id !== viewerId && (!row.active || row.status !== 'active')) {
-    if (!(await isAdmin(viewerId))) return null;
+    if (!(await can(viewerId, 'market'))) return null;
   }
   return row.logo_mime;
 };

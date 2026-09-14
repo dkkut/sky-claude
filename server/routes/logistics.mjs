@@ -26,7 +26,6 @@ import {
   assignCourier, setAssignmentStatus, listAssignments,
   listLogiNotifications, readLogiNotification,
   addCourierReview, listCourierReviews,
-  COURIER_ID_RE,
 } from './../logistics.mjs';
 import {
   listWarehouses, listSortingCenters, createWarehouse, updateWarehouse, deleteWarehouse,
@@ -34,7 +33,6 @@ import {
   listStock, warehouseFill, setStock,
   listTransfers, createTransfer, advanceTransfer, cancelTransfer,
   listStaff, addStaff, removeStaff, listWarehouseLog,
-  WAREHOUSE_ID_RE,
 } from './../warehouses.mjs';
 import {
   listPasses, createPass, updatePass, deletePass, scanPass,

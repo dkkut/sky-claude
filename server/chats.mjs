@@ -11,7 +11,7 @@
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { claimAttachment, linkAttachment, dropForMessage } from './attachments.mjs';
-import { postDenial, contextFor, roleOf, permissionsOf } from './chatadmin.mjs';
+import { postDenial, contextFor } from './chatadmin.mjs';
 import { mayWriteTo } from './privacy.mjs';
 
 /** Потолок участников группы или канала при создании. */

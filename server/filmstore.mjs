@@ -69,7 +69,7 @@ export const saveStream = async (id, source, limitBytes) => {
   });
   try {
     await pipeline(source, createWriteStream(pathFor(safe)));
-  } catch (err) {
+  } catch {
     await remove(safe).catch(() => {});
     if (tooLarge) return { error: 'file_too_large' };
     // Оборвалась связь — файл тоже неполный, и держать его незачем.

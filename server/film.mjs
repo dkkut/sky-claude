@@ -31,7 +31,7 @@
 import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 import { sharedInSession } from './watchgrant.mjs';
 import { removeMovieFiles, listStoredIds, posterIdFor } from './filmstore.mjs';
 
@@ -169,7 +169,7 @@ export const visibleMovie = async (movieId, viewerId) => {
   if (!row) return null;
   if (row.owner_id && row.owner_id === viewerId) return { ...row, own: true };
   if (row.status === 'published') return row;
-  if (row.status === 'pending' && await isAdmin(viewerId)) return row;
+  if (row.status === 'pending' && await can(viewerId, 'content')) return row;
 
   /* Личная загрузка, которую её владелец показывает в сеансе. Пометка
      viaSession говорит вызывающему, откуда взялось право: по ней видно,
@@ -449,7 +449,7 @@ export const deleteMovie = async (movieId, actorId) => {
 
   if (row.owner_id !== actorId) {
     if (row.status !== 'published') return { error: 'not_found' };
-    if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+    if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
   }
   await query('DELETE FROM film_movies WHERE id = $1', [movieId]);
   // Файлы убираем после записи в базе: строки уже нет, и если уборка
@@ -498,7 +498,7 @@ export const submitMovie = async (movieId, ownerId, { license, explicit, ageRest
 
 /** Очередь проверки. Только для администратора и только ждущее её. */
 export const moderationQueue = async (adminId, { limit } = {}) => {
-  if (!(await isAdmin(adminId))) return { error: 'not_allowed' };
+  if (!(await can(adminId, 'content'))) return { error: 'not_allowed' };
   const lim = num(limit, 1, 200) ?? 100;
   const { rows } = await query(
     `${SELECT_MOVIE} WHERE m.status = 'pending'
@@ -518,7 +518,7 @@ export const moderationQueue = async (adminId, { limit } = {}) => {
  * — возвращается владельцу с причиной и снова виден только ему.
  */
 export const moderateMovie = async (movieId, adminId, { approve, reason } = {}) => {
-  if (!(await isAdmin(adminId))) return { error: 'not_allowed' };
+  if (!(await can(adminId, 'content'))) return { error: 'not_allowed' };
   const { rows } = await query('SELECT status FROM film_movies WHERE id = $1', [String(movieId ?? '')]);
   if (!rows[0]) return { error: 'not_found' };
   if (rows[0].status !== 'pending') return { error: 'not_pending' };

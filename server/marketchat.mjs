@@ -20,7 +20,7 @@
  */
 import { query } from './db.mjs';
 import { generateId } from './security.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { logMarket, marketText as text, marketInt as int, CHAT_ID_RE, ORDER_ID_RE } from './market.mjs';
 import { pushMarket } from './signal.mjs';
@@ -38,7 +38,7 @@ const roleInChat = async (chat, userId) => {
   if (!chat || !userId) return null;
   if (chat.buyer_id === userId) return 'buyer';
   if (chat.seller_id === userId) return 'seller';
-  if (await isAdmin(userId)) return 'support';
+  if (await can(userId, 'market')) return 'support';
   return null;
 };
 

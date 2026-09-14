@@ -18,7 +18,7 @@
 import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { encryptSecret, decryptSecret } from './crypto.mjs';
-import { isOwner, isAdmin } from './admin.mjs';
+import { isOwner, can } from './admin.mjs';
 import { checkUrl, probeSource, SourceRejected } from './tvsource.mjs';
 
 const newId = (p) => `${p}-${crypto.randomUUID()}`;
@@ -454,7 +454,7 @@ export const detachSource = async (actorId, sourceId) => {
  * браузера или на чужой экран за плечом, ему незачем.
  */
 export const adminOverview = async (actorId) => {
-  if (!(await isOwner(actorId)) && !(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await isOwner(actorId)) && !(await can(actorId, 'content'))) return { error: 'not_allowed' };
   const { rows } = await query(
     `SELECT c.slug, c.name, c.category, c.enabled,
             s.id AS source_id, s.kind, s.delivery, s.licence, s.active, s.priority,

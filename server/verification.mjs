@@ -34,7 +34,6 @@ const hourlyLimit = (channel) => MAX_PER_HOUR[channel] ?? 5;
 /** Сколько раз можно ошибиться, прежде чем код сгорит. */
 const MAX_ATTEMPTS = 5;
 
-const now = () => new Date();
 
 /**
  * Выдаёт новый код.

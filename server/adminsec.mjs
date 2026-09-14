@@ -38,7 +38,8 @@ import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { config } from './config.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
-import { isAdmin, isOwner, setAdminLogSink } from './admin.mjs';
+import { isAdmin, isOwner, setAdminLogSink, rightsOf, can } from './admin.mjs';
+import { ROLE_NAMES, ROLE_LABEL } from './roles.mjs';
 import { decryptSecret } from './crypto.mjs';
 import { verifyTotp } from './totp.mjs';
 import { sendEmail } from './notify.mjs';
@@ -47,101 +48,12 @@ import { grantPrime } from './skyid.mjs';
 
 /* ─── Роли и права ─────────────────────────────────────────────────── */
 
-/**
- * Права по направлениям.
- *
- * Список намеренно короткий: право, которое ничего не закрывает, — это
- * запись в таблице, а не защита. Каждое здесь что-то решает.
- */
-export const PERMISSIONS = [
-  'moderation',      // баны, немота, заметки о людях
-  'support',         // очередь обращений
-  'content',         // музыка, кино, телевидение, подкасты
-  'market',          // магазины, товары, перевозчики, пункты выдачи
-  'logistics',       // склады, видеообзоры помещений
-  'tickets',         // мероприятия и билеты
-  'bots',            // боты
-  'finance',         // начисления денег и Prime
-  'security',        // роли, права, журнал, аварийный режим
-];
-
-/**
- * Роли — это наборы прав, а не отдельная сущность.
- *
- * `owner` в этот список не входит: владелец не роль в базе, он выводится
- * из ника в окружении и имеет всё. Роль, которую можно выдать, не должна
- * быть способна дорасти до владельца.
- */
-export const ROLES = {
-  super_admin:     PERMISSIONS,
-  security_admin:  ['security', 'moderation', 'support'],
-  moderation_admin:['moderation', 'support'],
-  support_admin:   ['support'],
-  content_admin:   ['content'],
-  market_admin:    ['market', 'logistics'],
-  tickets_admin:   ['tickets'],
-  finance_admin:   ['finance'],
-  read_only_admin: [],
-};
-
-export const ROLE_NAMES = Object.keys(ROLES);
-
-export const ROLE_LABEL = {
-  super_admin: 'Полные права',
-  security_admin: 'Безопасность',
-  moderation_admin: 'Модерация',
-  support_admin: 'Поддержка',
-  content_admin: 'Содержимое',
-  market_admin: 'Маркет и склады',
-  tickets_admin: 'Билеты',
-  finance_admin: 'Начисления',
-  read_only_admin: 'Только чтение',
-};
-
-/**
- * Права этого человека прямо сейчас.
- *
- * Владелец получает всё. Администратор без назначенной роли — тоже: так
- * было до появления ролей, и менять это выкладкой нельзя, иначе люди,
- * которые вчера работали, сегодня упрутся в отказ.
- *
- * Не администратор — пустой набор. Отказ по умолчанию: неизвестная роль
- * не даёт ничего, и добавить право можно только назначением роли.
- */
-export const rightsOf = async (actorId) => {
-  if (!actorId) return { admin: false, owner: false, role: null, permissions: [] };
-
-  const { rows } = await query(
-    'SELECT is_admin, admin_role, username FROM profiles WHERE id = $1', [actorId]);
-  const row = rows[0];
-  if (!row) return { admin: false, owner: false, role: null, permissions: [] };
-
-  const owner = await isOwner(actorId);
-  if (owner) {
-    return { admin: true, owner: true, role: 'owner', permissions: [...PERMISSIONS] };
-  }
-  if (!row.is_admin) return { admin: false, owner: false, role: null, permissions: [] };
-
-  const role = row.admin_role;
-  if (!role) {
-    /* Прежний администратор без роли. Полные права — ровно те, что у
-       него были вчера. */
-    return { admin: true, owner: false, role: 'super_admin', permissions: [...PERMISSIONS], legacy: true };
-  }
-  const list = ROLES[role];
-  if (!list) {
-    /* Роль в базе, которой нет в коде: откатили выкладку, поправили
-       строку руками. Отказ по умолчанию — не гадать, что имелось в виду. */
-    return { admin: true, owner: false, role, permissions: [] };
-  }
-  return { admin: true, owner: false, role, permissions: [...list] };
-};
-
-/** Есть ли конкретное право. Единственный способ спросить. */
-export const can = async (actorId, permission) => {
-  const rights = await rightsOf(actorId);
-  return rights.permissions.includes(permission);
-};
+/* Таблица прав лежит в roles.mjs, а ответ на вопрос «есть ли право» — в
+   admin.mjs: спрашивают его все модули, а тянуть ради этого кошелёк и
+   почту, которые нужны здесь, они не должны. Здесь — только повторный
+   вывоз, чтобы панель и сокет продолжали брать всё из одного места. */
+export { PERMISSIONS, ROLES, ROLE_NAMES, ROLE_LABEL } from './roles.mjs';
+export { rightsOf, can } from './admin.mjs';
 
 /* ─── Журнал безопасности ──────────────────────────────────────────── */
 
@@ -844,7 +756,7 @@ export const decidePendingAction = async (actorId, id, approve, opts = {}) => {
     return { error: 'payload_tampered' };
   }
 
-  const done = await executePending(row, payload, actorId, meta);
+  const done = await executePending(row, payload, actorId);
   await query(
     `UPDATE admin_pending_actions
         SET status = $2, executed_at = now(), outcome = $3 WHERE id = $1`,
@@ -884,7 +796,7 @@ export const sweepPendingActions = async () => {
  * подтверждением проходят часы, и за это время человек мог стать
  * владельцем.
  */
-const executePending = async (row, payload, ownerId, meta) => {
+const executePending = async (row, payload, ownerId) => {
   const target = row.target_id;
   if (!target) return { error: 'not_found' };
   if (await isOwner(target)) return { error: 'owner_protected' };

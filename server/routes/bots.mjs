@@ -25,7 +25,7 @@ import crypto from 'node:crypto';
 import { json, parseBody, requireProfile, readAccessToken } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { query } from './../db.mjs';
-import { isAdmin, isOwner } from './../admin.mjs';
+import { can } from './../admin.mjs';
 import {
   listPublished, listCategories, listMine, readBot, readBotByUsername,
   createBot, updateBot, deleteBot, readCode, setCommands,
@@ -443,9 +443,11 @@ export const botRoutes = async (req, res, url) => {
   /* ── Модерация ──────────────────────────────────────────────── */
 
   if (path === '/api/bots/moderation') {
-    /* Право администратора спрашивается у admin.mjs, а не берётся из
-       поля в теле запроса. */
-    if (!(await isAdmin(me)) && !(await isOwner(me))) return json(res, 403, { error: 'not_allowed' });
+    /* Право спрашивается у сервера, а не берётся из поля в теле
+       запроса. И право именно на ботов: администратор поддержки не
+       должен решать, кого из чужих ботов пустить в экосистему.
+       Владельцу права даются все, поэтому он проходит здесь же. */
+    if (!(await can(me, 'bots'))) return json(res, 403, { error: 'not_allowed' });
     if (req.method === 'GET') return json(res, 200, { bots: await moderationQueue() });
     if (req.method === 'POST') {
       const body = await parseBody(req);

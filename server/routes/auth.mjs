@@ -12,7 +12,7 @@
  * номера, и для нового. Узнать по нему, заведён ли аккаунт, нельзя.
  */
 import { config } from './../config.mjs';
-import { signToken, verifyToken, sanitizeInput } from './../security.mjs';
+import { signToken, verifyToken } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
 import { generateId } from './../security.mjs';
 import { buildRefreshCookie, clearRefreshCookie } from './../cookies.mjs';

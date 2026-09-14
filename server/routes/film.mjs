@@ -35,7 +35,7 @@ import {
 import { saveStream, saveBytes, sizeOf, openStream, parseRange } from './../filmstore.mjs';
 import { ticketCookie, ticketFromCookies } from './../filmticket.mjs';
 import { hasPrime } from './../skyid.mjs';
-import { isAdmin } from './../admin.mjs';
+import { can } from './../admin.mjs';
 
 /**
  * Потолок на фильм. Настраивается: сколько поместится, знает тот, кто
@@ -181,9 +181,11 @@ export const filmRoutes = async (req, res, url) => {
 
   /* Sky Film входит в подписку Sky Prime.
      Проверка здесь, а не на экране: клиент можно переписать, поэтому
-     закрытым должен быть сам доступ к данным и файлам. Администратор
-     проходит без подписки — иначе некому разбирать заявки. */
-  if (!(await hasPrime(me)) && !(await isAdmin(me))) {
+     закрытым должен быть сам доступ к данным и файлам. Без подписки
+     проходит тот, кто отвечает за содержимое: иначе некому разбирать
+     заявки. Остальным администраторам бесплатный Prime не полагается —
+     право на очередь и право смотреть даром это разные вещи. */
+  if (!(await hasPrime(me)) && !(await can(me, 'content'))) {
     return json(res, 403, { error: 'prime_required' });
   }
 

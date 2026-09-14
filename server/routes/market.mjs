@@ -25,7 +25,7 @@ import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession } from './../http.mjs';
 import { ticketCookies, ticketFromCookies } from './../marketticket.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
-import { isAdmin } from './../admin.mjs';
+import { can } from './../admin.mjs';
 import {
   SELLER_PRICE, SELLER_DAYS, CATEGORIES, GAME_CATEGORIES, MARKET_TYPES,
   SERVICE_CATEGORIES, SERVICE_LEVELS, setServicePackages,
@@ -345,7 +345,7 @@ export const marketRoutes = async (req, res, url) => {
 
   if (req.method === 'GET' && path === '/api/market/games') {
     if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
-    return json(res, 200, { games: await listGames({ all: await isAdmin(me) }) });
+    return json(res, 200, { games: await listGames({ all: await can(me, 'market') }) });
   }
 
   const gameCover = path.match(/^\/api\/market\/games\/(mg-[0-9a-f-]{36})\/cover$/);
@@ -702,7 +702,7 @@ export const marketRoutes = async (req, res, url) => {
        состояние выбирает машина переходов по типу маркета и тому, где
        заказ сейчас. */
     if (tail === '/action') {
-      const done = await actOnOrder(orderId, me, body.action, body);
+      const done = await actOnOrder(orderId, me, body.action);
       return done.error ? fail(res, done) : json(res, 200, done);
     }
     if (tail === '/cancel') {

@@ -26,7 +26,6 @@
  * причина отказа. Всё это остаётся в журнале сервера.
  */
 import https from 'node:https';
-import http from 'node:http';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import { config } from './config.mjs';

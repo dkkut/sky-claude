@@ -20,7 +20,7 @@
  */
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { marketText as text, marketInt as int } from './market.mjs';
 import { logLogi } from './logistics.mjs';
@@ -55,7 +55,7 @@ export const warehouseAccess = async (warehouseId, actorId) => {
   if (!row) return null;
   if (row.seller_id === actorId) return { warehouse: row, role: 'owner' };
   if (row.staff_role) return { warehouse: row, role: row.staff_role };
-  if (await isAdmin(actorId)) return { warehouse: row, role: 'support' };
+  if (await can(actorId, 'logistics')) return { warehouse: row, role: 'support' };
   await logLogi(actorId, 'warehouse_denied', warehouseId);
   return null;
 };

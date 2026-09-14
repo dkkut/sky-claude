@@ -14,7 +14,7 @@
 import crypto from 'node:crypto';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 
 const newId = (p) => `${p}-${crypto.randomUUID()}`;
 
@@ -77,7 +77,7 @@ export const visibleTrack = async (trackId, viewerId) => {
   if (!row) return null;
   if (row.status === 'published') return row;
   if (row.owner_id && row.owner_id === viewerId) return { ...row, own: true };
-  if (await isAdmin(viewerId)) return row;
+  if (await can(viewerId, 'content')) return row;
   return null;
 };
 
@@ -174,7 +174,7 @@ export const updateTrack = async (trackId, ownerId, patch) => {
     // проверку, а 'pending' и 'rejected' ставит она же.
     const s = String(patch.status);
     if (s === 'private') { put('status', s); put('submitted_at', null); }
-    else if (s === 'published' && await isAdmin(ownerId)) { put('status', s); }
+    else if (s === 'published' && await can(ownerId, 'content')) { put('status', s); }
     else if (s === 'published') return { error: 'needs_review' };
     else return { error: 'invalid_status' };
   }
@@ -215,7 +215,7 @@ export const submitTrack = async (trackId, ownerId) => {
 
 /** Очередь проверки. Только для администратора. */
 export const moderationQueue = async (adminId, { limit } = {}) => {
-  if (!(await isAdmin(adminId))) return { error: 'not_allowed' };
+  if (!(await can(adminId, 'content'))) return { error: 'not_allowed' };
   const lim = Math.min(200, Math.max(1, Number(limit) || 100));
   const { rows } = await query(
     `SELECT t.*, p.username AS owner_name
@@ -240,7 +240,7 @@ export const moderationQueue = async (adminId, { limit } = {}) => {
  * возвращается владельцу с причиной.
  */
 export const moderateTrack = async (trackId, adminId, { approve, reason } = {}) => {
-  if (!(await isAdmin(adminId))) return { error: 'not_allowed' };
+  if (!(await can(adminId, 'content'))) return { error: 'not_allowed' };
   const { rows } = await query('SELECT status FROM music_tracks WHERE id = $1', [String(trackId ?? '')]);
   if (!rows[0]) return { error: 'not_found' };
   if (rows[0].status !== 'pending') return { error: 'not_pending' };
@@ -271,7 +271,7 @@ export const deleteTrack = async (trackId, actorId) => {
   const { rows } = await query('SELECT owner_id FROM music_tracks WHERE id = $1', [String(trackId ?? '')]);
   if (!rows[0]) return { error: 'not_found' };
   const owner = rows[0].owner_id === actorId;
-  if (!owner && !(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!owner && !(await can(actorId, 'content'))) return { error: 'not_allowed' };
   await query('DELETE FROM music_tracks WHERE id = $1', [trackId]);
   return { ok: true };
 };

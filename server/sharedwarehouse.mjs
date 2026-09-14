@@ -21,7 +21,7 @@
  */
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { marketText as text, marketInt as int } from './market.mjs';
 import { logLogi } from './logistics.mjs';
@@ -264,7 +264,7 @@ export const closeShared = async (warehouseId, actorId) => {
 
 /** Отключение администрацией — по нарушению регламента. Владелец обратно не включит. */
 export const suspendShared = async (warehouseId, actorId, on) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'logistics'))) return { error: 'not_allowed' };
   if (!WAREHOUSE_ID_RE.test(String(warehouseId ?? ''))) return { error: 'not_found' };
   const { rows } = await query(
     `UPDATE logi_warehouses SET shared_state = $2, updated_at = now()

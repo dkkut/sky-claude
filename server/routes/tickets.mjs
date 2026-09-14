@@ -18,7 +18,7 @@
 import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
-import { isAdmin } from './../admin.mjs';
+import { can } from './../admin.mjs';
 import {
   listCatalog, listCities, readEvent, listMine, createEvent, updateEvent,
   submitEvent, setEventStatus, publishProblems, moderationQueue, moderateEvent,
@@ -368,8 +368,10 @@ export const ticketRoutes = async (req, res, url) => {
   /* ══ Модерация ══════════════════════════════════════════════════ */
 
   if (path === '/api/tickets/moderation') {
-    /* isAdmin уже включает владельца — второй проверки не нужно. */
-    if (!(await isAdmin(me))) return json(res, 403, { error: 'not_allowed' });
+    /* Право на билеты, а не «администратор вообще»: разбирать заявки
+       организаторов должен тот, кому это поручено. Владелец имеет все
+       права, так что отдельной проверки на него не нужно. */
+    if (!(await can(me, 'tickets'))) return json(res, 403, { error: 'not_allowed' });
     if (req.method === 'GET') return json(res, 200, { events: await moderationQueue() });
     if (req.method === 'POST') {
       const body = await parseBody(req);

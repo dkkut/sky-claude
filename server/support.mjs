@@ -15,7 +15,7 @@
 import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
-import { isAdmin, writeAdminLog } from './admin.mjs';
+import { can, adminsWith, writeAdminLog } from './admin.mjs';
 
 const KINDS = new Set(['question', 'bug', 'idea', 'report', 'appeal']);
 const STATUSES = new Set(['open', 'in_progress', 'waiting', 'closed']);
@@ -100,7 +100,7 @@ export const readTicket = async (ticketId, viewerId) => {
   const { rows } = await query('SELECT * FROM support_tickets WHERE id = $1', [String(ticketId ?? '')]);
   const row = rows[0];
   if (!row) return null;
-  if (row.author_id !== viewerId && !(await isAdmin(viewerId))) return null;
+  if (row.author_id !== viewerId && !(await can(viewerId, 'support'))) return null;
 
   const { rows: msgs } = await query(
     'SELECT * FROM support_messages WHERE ticket_id = $1 ORDER BY created_at', [row.id],
@@ -133,7 +133,7 @@ export const listMyTickets = async (userId) => {
  * жалобы и переписка.
  */
 export const listQueue = async (actorId, { status, mine } = {}) => {
-  if (!(await isAdmin(actorId))) return null;
+  if (!(await can(actorId, 'support'))) return null;
   const where = ['TRUE'];
   const args = [];
   if (STATUSES.has(status)) { args.push(status); where.push(`status = $${args.length}`); }
@@ -162,7 +162,7 @@ export const replyToTicket = async (ticketId, authorId, body) => {
   const ticket = rows[0];
   if (!ticket) return { error: 'not_found' };
 
-  const staff = await isAdmin(authorId);
+  const staff = await can(authorId, 'support');
   if (ticket.author_id !== authorId && !staff) return { error: 'not_allowed' };
   if (ticket.status === 'closed') return { error: 'closed' };
 
@@ -199,9 +199,9 @@ export const replyToTicket = async (ticketId, authorId, body) => {
  * чужого обращения и увидеть его переписку.
  */
 export const assignTicket = async (ticketId, actorId, assigneeId) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'support'))) return { error: 'not_allowed' };
   const target = String(assigneeId ?? '');
-  if (target && !(await isAdmin(target))) return { error: 'not_admin' };
+  if (target && !(await can(target, 'support'))) return { error: 'not_admin' };
 
   const { rowCount } = await query(
     `UPDATE support_tickets
@@ -232,7 +232,7 @@ export const setTicketStatus = async (ticketId, actorId, status) => {
   const ticket = rows[0];
   if (!ticket) return { error: 'not_found' };
 
-  const staff = await isAdmin(actorId);
+  const staff = await can(actorId, 'support');
   if (!staff) {
     if (ticket.author_id !== actorId) return { error: 'not_allowed' };
     if (status !== 'closed' && status !== 'open') return { error: 'not_allowed' };
@@ -249,11 +249,16 @@ export const setTicketStatus = async (ticketId, actorId, status) => {
   return { ticket: await readTicket(ticket.id, actorId) };
 };
 
-/** Администраторы — чтобы было из кого выбирать ответственного. */
+/**
+ * Из кого выбирать ответственного.
+ *
+ * Не «все администраторы», а те, у кого есть право на поддержку: тот же
+ * набор, что проверяет assignTicket. Иначе экран предлагал бы человека,
+ * которому сервер откажет, — и выглядело бы это как поломка, а не как
+ * запрет.
+ */
 export const listAdmins = async (actorId) => {
-  if (!(await isAdmin(actorId))) return null;
-  const { rows } = await query(
-    'SELECT id, name, username FROM profiles WHERE is_admin ORDER BY lower(name) LIMIT 200',
-  );
+  if (!(await can(actorId, 'support'))) return null;
+  const rows = await adminsWith('support');
   return rows.map((r) => ({ id: r.id, name: r.name, username: r.username }));
 };

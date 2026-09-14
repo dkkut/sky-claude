@@ -32,7 +32,7 @@ import { generateId } from './security.mjs';
 import { visibleMovie, readMovie } from './film.mjs';
 import { visibleTrack, readTrack, readPlaylist } from './music.mjs';
 import { hasPrime } from './skyid.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 
 /* ─── Пределы ───────────────────────────────────────────────────────
    Все до единого живут на сервере. Клиент их показывает, но не
@@ -217,7 +217,7 @@ const mayUseContent = async (row, userId) => {
      и название фильма — а сам файл ему всё равно не отдали бы. Отказ
      на входе честнее и совпадает с правилом того модуля, чьё это
      содержимое. Администратор проходит там, пройдёт и здесь. */
-  if (!(await hasPrime(userId)) && !(await isAdmin(userId))) return false;
+  if (!(await hasPrime(userId)) && !(await can(userId, 'content'))) return false;
 
   if (row.content_kind === 'movie') {
     /*
@@ -451,7 +451,7 @@ export const createSession = async (ownerId, input = {}) => {
 
   /* Та же подписка, что и на одиночный просмотр: «Вместе» ничего не
      открывает сверх того, что человеку и так доступно. */
-  if (!(await hasPrime(ownerId)) && !(await isAdmin(ownerId))) return { error: 'prime_required' };
+  if (!(await hasPrime(ownerId)) && !(await can(ownerId, 'content'))) return { error: 'prime_required' };
 
   const kind = String(input.contentKind ?? '');
   const resolved = await resolveContent(type, kind, input.contentId, ownerId);

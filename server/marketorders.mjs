@@ -32,7 +32,7 @@
  */
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import {
   canSell, logMarket, marketText as text, marketInt as int,
@@ -182,7 +182,7 @@ export const roleFor = async (order, userId) => {
   if (!order || !userId) return null;
   if (order.buyer_id === userId) return 'buyer';
   if (order.seller_id === userId) return 'seller';
-  if (await isAdmin(userId)) return 'support';
+  if (await can(userId, 'market')) return 'support';
   return null;
 };
 
@@ -484,8 +484,14 @@ const fanout = (notes) => {
  * confirm_paid, fulfill, received. Нового состояния он не присылает
  * никогда: состояние выбирает таблица переходов по действию, типу
  * маркета и текущему состоянию.
+ *
+ * Ничего, кроме названия действия, отсюда не читается — и раньше
+ * тело запроса сюда всё же передавалось четвёртым доводом, который
+ * функция молча выбрасывала. Довод убран: код, который выглядит
+ * принимающим состояние от клиента, рано или поздно начнёт его
+ * принимать.
  */
-export const actOnOrder = async (orderId, actorId, action, detail = {}) => {
+export const actOnOrder = async (orderId, actorId, action) => {
   const id = String(orderId ?? '');
   if (!ORDER_ID_RE.test(id)) return { error: 'not_found' };
   const act = String(action ?? '');
@@ -713,7 +719,7 @@ export const openDispute = async (orderId, actorId, reason = '') => {
 export const resolveDispute = async (orderId, actorId, outcome, note = '') => {
   const id = String(orderId ?? '');
   if (!ORDER_ID_RE.test(id)) return { error: 'not_found' };
-  if (!(await isAdmin(actorId))) {
+  if (!(await can(actorId, 'market'))) {
     await logMarket(actorId, 'dispute_resolve_denied', id);
     return { error: 'not_allowed' };
   }

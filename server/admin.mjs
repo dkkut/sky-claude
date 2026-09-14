@@ -17,6 +17,7 @@ import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { config } from './config.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
+import { PERMISSIONS, ROLES } from './roles.mjs';
 
 /** Ник владельца из .env, приведённый к нижнему регистру. */
 const ownerName = () => String(config.ownerUsername ?? '').trim().toLowerCase();
@@ -102,6 +103,86 @@ export const isAdmin = async (userId) => {
 };
 
 /**
+ * Права этого человека прямо сейчас.
+ *
+ * Живёт здесь, а не в adminsec.mjs, потому что спрашивать право должны
+ * все модули — музыка, кино, склады, билеты, — а adminsec тянет за
+ * собой кошелёк, почту и Prime. Право — это низкоуровневый вопрос, и
+ * отвечать на него должен низкоуровневый файл.
+ *
+ * Владелец получает всё. Администратор без назначенной роли — тоже: так
+ * было до появления ролей, и менять это выкладкой нельзя, иначе люди,
+ * которые вчера работали, сегодня упрутся в отказ.
+ *
+ * Не администратор — пустой набор. Отказ по умолчанию: неизвестная роль
+ * не даёт ничего, и добавить право можно только назначением роли.
+ */
+export const rightsOf = async (actorId) => {
+  if (!actorId) return { admin: false, owner: false, role: null, permissions: [] };
+
+  const name = ownerName();
+  const { rows } = await query(
+    'SELECT is_admin, admin_role, lower(username) = $2 AS owner FROM profiles WHERE id = $1',
+    [actorId, name || ' '],
+  );
+  const row = rows[0];
+  if (!row) return { admin: false, owner: false, role: null, permissions: [] };
+
+  if (row.owner) {
+    return { admin: true, owner: true, role: 'owner', permissions: [...PERMISSIONS] };
+  }
+  if (!row.is_admin) return { admin: false, owner: false, role: null, permissions: [] };
+
+  const role = row.admin_role;
+  if (!role) {
+    /* Прежний администратор без роли. Полные права — ровно те, что у
+       него были вчера. */
+    return { admin: true, owner: false, role: 'super_admin', permissions: [...PERMISSIONS], legacy: true };
+  }
+  const list = ROLES[role];
+  if (!list) {
+    /* Роль в базе, которой нет в коде: откатили выкладку, поправили
+       строку руками. Отказ по умолчанию — не гадать, что имелось в виду. */
+    return { admin: true, owner: false, role, permissions: [] };
+  }
+  return { admin: true, owner: false, role, permissions: [...list] };
+};
+
+/**
+ * Есть ли конкретное право. Единственный способ спросить.
+ *
+ * Модули спрашивают именно это, а не isAdmin: «администратор» — слишком
+ * широкий ответ. Администратор поддержки не должен снимать чужой фильм
+ * с публикации только потому, что он администратор.
+ */
+export const can = async (actorId, permission) => {
+  const rights = await rightsOf(actorId);
+  return rights.permissions.includes(permission);
+};
+
+/**
+ * Кто из администраторов имеет это право.
+ *
+ * Нужно там, где из сотрудников выбирают: назначить ответственного за
+ * обращение, показать очередь. Список строится из той же таблицы ролей,
+ * что и проверка права, — иначе экран предлагал бы людей, которым
+ * сервер потом откажет.
+ *
+ * Владелец сюда не попадает: он не сотрудник в очереди, и подставлять
+ * его исполнителем чужого обращения не нужно.
+ */
+export const adminsWith = async (permission) => {
+  const roles = Object.keys(ROLES).filter((r) => ROLES[r].includes(permission));
+  const { rows } = await query(
+    `SELECT id, name, username FROM profiles
+      WHERE is_admin AND (admin_role IS NULL OR admin_role = ANY($1))
+      ORDER BY lower(name) LIMIT 200`,
+    [roles],
+  );
+  return rows;
+};
+
+/**
  * Куда писать журнал.
  *
  * По умолчанию — прямая вставка: этот файл должен работать и сам по
@@ -130,7 +211,7 @@ export const writeAdminLog = async (actorId, targetId, type, detail, extra = {})
 };
 
 export const listAdminLog = async (actorId, limit = 100) => {
-  if (!(await isAdmin(actorId))) return null;
+  if (!(await can(actorId, 'security'))) return null;
   const { rows } = await query(
     `SELECT id, actor_id, target_id, type, detail, created_at
        FROM admin_log ORDER BY created_at DESC LIMIT $1`,
@@ -148,12 +229,16 @@ export const listAdminLog = async (actorId, limit = 100) => {
 /**
  * Выдать или снять права администратора.
  *
- * Назначать может администратор. Но у владельца права не снимаются
- * никем, и себе самому их снять тоже нельзя: иначе последний
- * администратор случайно оставил бы сервис без управления.
+ * Назначать может тот, у кого есть право безопасности, — не любой
+ * администратор. Иначе назначенный на одну очередь заводил бы себе
+ * помощников, и раздача прав перестала бы иметь дно.
+ *
+ * У владельца права не снимаются никем, и себе самому их снять тоже
+ * нельзя: иначе последний администратор случайно оставил бы сервис
+ * без управления.
  */
 export const setAdminRight = async (actorId, targetId, value) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'security'))) return { error: 'not_allowed' };
   if (!targetId) return { error: 'not_found' };
   if (actorId === targetId) return { error: 'not_allowed' };
   if (await isOwner(targetId)) return { error: 'owner_protected' };
@@ -187,7 +272,7 @@ const untilFrom = (minutes) => {
  * Владельца ограничить нельзя — по той же причине, что и разжаловать.
  */
 export const restrictUser = async (actorId, targetId, kind, minutes, extra = {}) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'moderation'))) return { error: 'not_allowed' };
   const column = FIELDS[kind];
   if (!column) return { error: 'not_allowed' };
   if (!targetId || actorId === targetId) return { error: 'not_allowed' };
@@ -229,7 +314,7 @@ export const restrictUser = async (actorId, targetId, kind, minutes, extra = {})
  * то, что нельзя проверить снаружи: кто хозяин учётной записи.
  */
 export const blockSkyId = async (actorId, targetProfileId, minutes, reason = '', extra = {}) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'moderation'))) return { error: 'not_allowed' };
   if (!targetProfileId || actorId === targetProfileId) return { error: 'not_allowed' };
   if (await isOwner(targetProfileId)) return { error: 'owner_protected' };
 
@@ -283,7 +368,7 @@ export const skyIdBlockOf = async (profileId) => {
 
 /** Заметка модератора о человеке. Видна только администраторам. */
 export const setModerationNote = async (actorId, targetId, text, extra = {}) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'moderation'))) return { error: 'not_allowed' };
   const { rowCount } = await query(
     'UPDATE profiles SET moderation_note = $2 WHERE id = $1',
     [targetId, String(text ?? '').slice(0, 1000)],

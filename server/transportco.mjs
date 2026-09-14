@@ -22,7 +22,7 @@
  */
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { marketText as text, marketInt as int } from './market.mjs';
 import { logLogi } from './logistics.mjs';
@@ -216,7 +216,7 @@ export const listCompanies = async (viewerId, { city, limit } = {}) => {
 
 /** Отметку «проверена» ставит администрация, а не сама компания. */
 export const setCompanyVerified = async (actorId, companyId, verified) => {
-  if (!(await isAdmin(actorId))) {
+  if (!(await can(actorId, 'logistics'))) {
     await logLogi(actorId, 'tc_verify_denied', companyId);
     return { error: 'not_allowed' };
   }

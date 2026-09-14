@@ -20,8 +20,8 @@ import { query } from './db.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
 import { getPrivacy, setPrivacy, presenceBetween, mayCall } from './privacy.mjs';
 import {
-  restrictionsOf, isBannedNow, isAdmin, isOwner,
-  setAdminRight, restrictUser, setModerationNote, listAdminLog,
+  restrictionsOf, isBannedNow, isAdmin,
+  restrictUser, setModerationNote,
   blockSkyId, skyIdBlockOf,
 } from './admin.mjs';
 import {

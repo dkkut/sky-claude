@@ -23,7 +23,7 @@
  */
 import { query } from './db.mjs';
 import { generateId } from './security.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 import { logLogi } from './logistics.mjs';
 import { remove as removeVideo, sizeOf } from './videostore.mjs';
 
@@ -126,7 +126,7 @@ export const latestReview = async (kind, subjectId, viewerId) => {
   const owner = await ownerOf(kind, subjectId);
   if (!owner) return null;
   const own = owner === viewerId;
-  if (!own && !(await isAdmin(viewerId))) return null;
+  if (!own && !(await can(viewerId, 'logistics'))) return null;
 
   const { rows } = await query(
     `SELECT * FROM logi_video_reviews
@@ -148,7 +148,7 @@ export const videoAccess = async (reviewId, viewerId) => {
   const row = rows[0];
   if (!row) return null;
   const owner = await ownerOf(row.subject_kind, row.subject_id);
-  if (owner !== viewerId && !(await isAdmin(viewerId))) {
+  if (owner !== viewerId && !(await can(viewerId, 'logistics'))) {
     await logLogi(viewerId, 'video_watch_denied', reviewId);
     return null;
   }
@@ -173,7 +173,7 @@ export const hasApprovedReview = async (kind, subjectId) => {
  * очередь — это список одинаковых строк, и решать по ним нельзя.
  */
 export const pendingReviews = async (actorId, { limit } = {}) => {
-  if (!(await isAdmin(actorId))) return null;
+  if (!(await can(actorId, 'logistics'))) return null;
   const n = Math.min(100, Math.max(1, Number(limit) || 50));
   const { rows } = await query(
     `SELECT r.*, w.name AS wh_name, w.city_id AS wh_city
@@ -202,7 +202,7 @@ export const pendingReviews = async (actorId, { limit } = {}) => {
  * снимает запрет. Включает владелец, и только приняв регламент.
  */
 export const decideReview = async (reviewId, actorId, approve, reason = '') => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!(await can(actorId, 'logistics'))) return { error: 'not_allowed' };
   if (!VIDEO_ID_RE.test(String(reviewId ?? ''))) return { error: 'not_found' };
 
   const next = approve ? 'approved' : 'rejected';

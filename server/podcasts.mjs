@@ -17,7 +17,7 @@
 import crypto from 'node:crypto';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
-import { isAdmin } from './admin.mjs';
+import { can } from './admin.mjs';
 import {
   removeEpisodeFiles, removeShowFiles, listStoredIds, remove as removeStoredFile,
 } from './podcaststore.mjs';
@@ -158,7 +158,7 @@ export const visiblePodcast = async (podcastId, viewerId) => {
   if (!row) return null;
   if (row.owner_id && row.owner_id === viewerId) return { ...row, own: true };
   if (row.status === 'published') return row;
-  if (row.status === 'pending' && await isAdmin(viewerId)) return row;
+  if (row.status === 'pending' && await can(viewerId, 'content')) return row;
   // Чужая закрытая передача неотличима от несуществующей: разница в
   // ответах сама по себе выдаёт, что она есть.
   return null;
@@ -178,7 +178,7 @@ export const visibleEpisode = async (episodeId, viewerId) => {
   if (!row) return null;
   if (row.owner_id && row.owner_id === viewerId) return { ...row, own: true };
   if (row.podcast_status === 'published' && row.published) return row;
-  if (row.podcast_status === 'pending' && await isAdmin(viewerId)) return row;
+  if (row.podcast_status === 'pending' && await can(viewerId, 'content')) return row;
   return null;
 };
 
@@ -260,7 +260,7 @@ export const listEpisodes = async (podcastId, viewerId, { q, limit, offset } = {
    * visiblePodcast и в visibleEpisode, — здесь оно просто не было
    * доведено до списка.
    */
-  const forReview = show.status === 'pending' && await isAdmin(viewerId);
+  const forReview = show.status === 'pending' && await can(viewerId, 'content');
   const where = ['e.podcast_id = $2',
     forReview ? 'TRUE' : '(e.published OR p.owner_id = $1)'];
   const s = searchClause(q, args, ['e.title']);
@@ -508,7 +508,7 @@ export const deleteEpisode = async (episodeId, actorId) => {
     // Администратор убирает только опубликованное — то, что сам же и
     // пропустил. Чужой черновик не его дело.
     if (row.status !== 'published') return { error: 'not_found' };
-    if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+    if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
   }
   await query('DELETE FROM podcast_episodes WHERE id = $1', [episodeId]);
   await removeEpisodeFiles(episodeId).catch(() => {});
@@ -522,7 +522,7 @@ export const deletePodcast = async (podcastId, actorId) => {
   if (!row) return { error: 'not_found' };
   if (row.owner_id !== actorId) {
     if (row.status !== 'published') return { error: 'not_found' };
-    if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+    if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
   }
   const { rows: eps } = await query('SELECT id FROM podcast_episodes WHERE podcast_id = $1', [podcastId]);
   await query('DELETE FROM podcasts WHERE id = $1', [podcastId]);
@@ -559,7 +559,7 @@ export const submitPodcast = async (podcastId, ownerId) => {
 };
 
 export const moderationQueue = async (adminId, { limit } = {}) => {
-  if (!(await isAdmin(adminId))) return { error: 'not_allowed' };
+  if (!(await can(adminId, 'content'))) return { error: 'not_allowed' };
   const lim = num(limit, 1, 200) ?? 100;
   const { rows } = await query(
     `${SELECT_PODCAST} WHERE p.status = 'pending'
@@ -587,7 +587,7 @@ export const moderationQueue = async (adminId, { limit } = {}) => {
 };
 
 export const moderatePodcast = async (podcastId, adminId, { approve, reason } = {}) => {
-  if (!(await isAdmin(adminId))) return { error: 'not_allowed' };
+  if (!(await can(adminId, 'content'))) return { error: 'not_allowed' };
   const { rows } = await query('SELECT status FROM podcasts WHERE id = $1', [String(podcastId ?? '')]);
   if (!rows[0]) return { error: 'not_found' };
   if (rows[0].status !== 'pending') return { error: 'not_pending' };
