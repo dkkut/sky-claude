@@ -113,6 +113,37 @@ export const wallet = {
     });
   },
 
+  /**
+   * Начисление администрацией по решению владельца.
+   *
+   * Создаёт ценность из ничего — как пополнение, но по другому поводу:
+   * не «человек заплатил», а «владелец распорядился». Поэтому отдельный
+   * вид записи в журнале кошелька: по нему видно, откуда деньги.
+   *
+   * Своего пути к балансу у панели администратора нет: она зовёт это, а
+   * это ходит той же транзакцией с той же блокировкой строки, что и всё
+   * остальное. Два пути к одному счёту однажды разойдутся.
+   *
+   * Право решить проверяется не здесь, а там, где поворачивается второй
+   * ключ: сюда попадает уже подтверждённое владельцем действие.
+   */
+  async adminGrant(userId, amount, what, descr, ref) {
+    if (!validAmount(amount)) return { error: 'invalid_amount' };
+    const points = what === 'points';
+
+    return inTransaction(async (c) => {
+      await ensureAccount(c, userId);
+      const column = points ? 'points' : 'balance';
+      const { rows } = await c.query(
+        `UPDATE wallet_accounts SET ${column} = ${column} + $2, updated_at = now()
+          WHERE user_id = $1 RETURNING balance, points`,
+        [userId, amount],
+      );
+      await addTx(c, userId, points ? 'admin_points' : 'admin_grant', amount, descr, ref ?? null);
+      return { balance: Number(rows[0].balance), points: Number(rows[0].points) };
+    });
+  },
+
   /** Начисление баллов. Тоже создаёт ценность — гейт тот же. */
   async earnPoints(userId, amount, descr) {
     if (!validAmount(amount)) return { error: 'invalid_amount' };

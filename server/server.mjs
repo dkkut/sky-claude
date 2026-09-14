@@ -47,6 +47,7 @@ import { sweepOrphans as sweepMarketFiles } from './marketstore.mjs';
 import { sweepOrphans as sweepVideoFiles } from './videostore.mjs';
 import { liveVideoIds } from './videoreview.mjs';
 import { sweepExpiredRentals } from './sharedwarehouse.mjs';
+import { sweepStepUp, sweepPendingActions } from './adminsec.mjs';
 import { sweepPickupExpiry } from './marketdelivery.mjs';
 import { sweepAiFiles } from './aitools.mjs';
 import { retryPendingWebhooks } from './botevents.mjs';
@@ -269,6 +270,12 @@ const start = async () => {
       // Оборвавшаяся загрузка обзора оставляет файл без строки в базе.
       const videos = await sweepVideoFiles(liveVideoIds);
       if (videos) console.log(`[склады] убрано осиротевших обзоров: ${videos}`);
+      // Панель администратора: отработавшие подтверждения личности и
+      // заявки, о которых забыли. Заявка, ждущая вечно, однажды будет
+      // подтверждена не глядя.
+      await sweepStepUp();
+      const staleRequests = await sweepPendingActions();
+      if (staleRequests) console.log(`[админ] просрочено заявок: ${staleRequests}`);
     } catch (err) {
       console.error('[housekeeping]', err.message);
     }

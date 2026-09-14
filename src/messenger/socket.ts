@@ -239,9 +239,30 @@ const toSignal = (type: string, data: any): SignalMsg | null => {
   }
 };
 
+/**
+ * Слушатели панели администратора.
+ *
+ * Панель живёт на том же сокете, но в общем разборе ей делать нечего:
+ * её сообщения нужны только ей, и ждёт она их по одному на запрос.
+ */
+type AdminMessage = { type: string; payload: any };
+const adminWatchers = new Set<(m: AdminMessage) => void>();
+
+export const onAdminMessage = (fn: (m: AdminMessage) => void) => {
+  adminWatchers.add(fn);
+  return () => adminWatchers.delete(fn);
+};
+
 const handle = (data: any) => {
   const store = useMessengerStore.getState();
   const { type, payload } = data ?? {};
+
+  if (typeof type === 'string' && type.startsWith('admin-')) {
+    for (const fn of adminWatchers) {
+      try { fn({ type, payload }); } catch { /* слушатель панели упал — не наше дело */ }
+    }
+    return;
+  }
 
   switch (type) {
     case 'authorized': {

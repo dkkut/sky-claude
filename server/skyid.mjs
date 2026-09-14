@@ -15,6 +15,7 @@ import { query, pool } from './db.mjs';
 import { generateId } from './security.mjs';
 import { encryptSecret, decryptSecret } from './crypto.mjs';
 import { generateSecret, verifyTotp, otpauthUri } from './totp.mjs';
+import { mayClaimUsername } from './admin.mjs';
 import { issueCode, verifyCode } from './verification.mjs';
 import { isOwnerUsername } from './admin.mjs';
 
@@ -375,12 +376,19 @@ export const getProfileById = async (profileId) => {
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,32}$/;
 
-export const createProfile = async (skyId, { name, username, avatar }) => {
+export const createProfile = async (skyId, { name, username, avatar, ownerClaim }) => {
   const cleanName = String(name ?? '').trim();
   const cleanUser = String(username ?? '').trim();
 
   if (cleanName.length < 2 || cleanName.length > 64) return { error: 'invalid_name' };
   if (!USERNAME_RE.test(cleanUser)) return { error: 'invalid_username' };
+
+  /* Ник владельца — не обычный ник: из него выводятся права владельца
+     всей экосистемы. Пока он свободен, зарегистрировавшийся под ним
+     получал бы сервис целиком. Занять его можно только одноразовым
+     ключом из окружения — см. mayClaimUsername. */
+  const claim = await mayClaimUsername(cleanUser, ownerClaim);
+  if (!claim.ok) return { error: claim.error };
 
   const id = `acc-${generateId()}`;
   try {

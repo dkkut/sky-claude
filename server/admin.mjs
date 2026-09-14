@@ -33,6 +33,45 @@ export const isOwnerUsername = (username) => {
 };
 
 /**
+ * Можно ли завести профиль с этим ником.
+ *
+ * Ник владельца — не обычный ник. Права владельца выводятся из него, и
+ * пока он свободен, любой зарегистрировавшийся под ним получает всю
+ * экосистему: не удалить, не забанить, подтверждает сам себе любые
+ * критические действия. Это не рассуждение — проверка показала ровно
+ * это на живом сервере.
+ *
+ * Поэтому занять его можно только одноразовым ключом из окружения, и
+ * только пока его никто не держит. Ключ знает тот, у кого есть доступ к
+ * серверу, то есть настоящий владелец.
+ *
+ * Сравнение ключа идёт побайтово постоянным временем: обычное равенство
+ * строк подсказывает длину совпадения по времени ответа.
+ */
+export const mayClaimUsername = async (username, claimToken) => {
+  const name = ownerName();
+  const wanted = String(username ?? '').trim().toLowerCase();
+  if (!name || wanted !== name) return { ok: true };
+
+  /* Ник владельца уже за кем-то — второй раз его не занять ничем.
+     Иначе утёкший ключ отбирал бы сервис у живого владельца. */
+  const { rowCount } = await query(
+    'SELECT 1 FROM profiles WHERE lower(username) = $1', [name]);
+  if (rowCount > 0) return { ok: false, error: 'username_taken' };
+
+  const want = String(config.ownerClaimToken ?? '');
+  if (!want) return { ok: false, error: 'owner_claim_closed' };
+
+  const given = String(claimToken ?? '');
+  const a = Buffer.from(given);
+  const b = Buffer.from(want);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return { ok: false, error: 'owner_claim_denied' };
+  }
+  return { ok: true, claimedOwner: true };
+};
+
+/**
  * Владелец ли это. Сверяем по нику, а не по сохранённому id: сменить
  * ник владельца в .env — законный способ передать сервис, а вот
  * подменить строку в базе не должно быть достаточно.
@@ -62,14 +101,32 @@ export const isAdmin = async (userId) => {
   return Boolean(r.owner || r.is_admin);
 };
 
-/** Запись в журнал: кто, кого, что. */
-export const writeAdminLog = async (actorId, targetId, type, detail) => {
+/**
+ * Куда писать журнал.
+ *
+ * По умолчанию — прямая вставка: этот файл должен работать и сам по
+ * себе. Но записи журнала скреплены цепочкой отпечатков, а считает её
+ * adminsec.mjs, и двух писателей у одной цепочки быть не может: строка,
+ * вставленная мимо, рвёт её и выглядит как подделка.
+ *
+ * Поэтому adminsec при загрузке подменяет писателя на свой. Это шов, а
+ * не хитрость: обратный импорт замкнул бы два файла друг на друга.
+ */
+let sink = async (entry) => {
   await query(
     `INSERT INTO admin_log (id, actor_id, target_id, type, detail)
      VALUES ($1,$2,$3,$4,$5)`,
-    [`al-${crypto.randomUUID()}`, actorId ?? null, targetId ?? null,
-     String(type).slice(0, 40), encryptContent(String(detail ?? '').slice(0, 300))],
+    [`al-${crypto.randomUUID()}`, entry.actorId ?? null, entry.targetId ?? null,
+      String(entry.type).slice(0, 40),
+      encryptContent(String(entry.detail ?? '').slice(0, 300))],
   );
+};
+
+export const setAdminLogSink = (fn) => { sink = fn; };
+
+/** Запись в журнал: кто, кого, что. */
+export const writeAdminLog = async (actorId, targetId, type, detail, extra = {}) => {
+  await sink({ actorId, targetId, type, detail, ...extra });
 };
 
 export const listAdminLog = async (actorId, limit = 100) => {
@@ -129,7 +186,7 @@ const untilFrom = (minutes) => {
  * Ограничить человека: бан, запрет говорить или спам-блок.
  * Владельца ограничить нельзя — по той же причине, что и разжаловать.
  */
-export const restrictUser = async (actorId, targetId, kind, minutes) => {
+export const restrictUser = async (actorId, targetId, kind, minutes, extra = {}) => {
   if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
   const column = FIELDS[kind];
   if (!column) return { error: 'not_allowed' };
@@ -147,19 +204,19 @@ export const restrictUser = async (actorId, targetId, kind, minutes) => {
   if (!rowCount) return { error: 'not_found' };
 
   await writeAdminLog(actorId, targetId, mins === null ? `${kind}_lift` : kind,
-    mins === null ? 'Ограничение снято' : `Ограничение на ${mins} мин.`);
+    mins === null ? 'Ограничение снято' : `Ограничение на ${mins} мин.`, extra);
   return { ok: true, kind, minutes: mins ?? 0 };
 };
 
 /** Заметка модератора о человеке. Видна только администраторам. */
-export const setModerationNote = async (actorId, targetId, text) => {
+export const setModerationNote = async (actorId, targetId, text, extra = {}) => {
   if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
   const { rowCount } = await query(
     'UPDATE profiles SET moderation_note = $2 WHERE id = $1',
     [targetId, String(text ?? '').slice(0, 1000)],
   );
   if (!rowCount) return { error: 'not_found' };
-  await writeAdminLog(actorId, targetId, 'note', 'Изменена заметка модератора');
+  await writeAdminLog(actorId, targetId, 'note', 'Изменена заметка модератора', extra);
   return { ok: true };
 };
 

@@ -14,7 +14,7 @@
  */
 import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.mjs';
-import { verifyToken } from './security.mjs';
+import { verifyToken, rateLimit, rateLimitPerHour } from './security.mjs';
 import { sessionStore, onSessionRevoked } from './sessions.mjs';
 import { query } from './db.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
@@ -23,6 +23,14 @@ import {
   restrictionsOf, isBannedNow, isAdmin, isOwner,
   setAdminRight, restrictUser, setModerationNote, listAdminLog,
 } from './admin.mjs';
+import {
+  rightsOf, can, myRights, requestMeta,
+  logAdmin, logSecurityEvent, readAdminLog, readSecurityEvents, verifyAdminLog,
+  beginStepUp, consumeStepUp,
+  createPendingAction, listPendingActions, decidePendingAction,
+  listAdminsWithRoles, lockdownState, setLockdown,
+  ROLE_NAMES, PERMISSIONS,
+} from './adminsec.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
@@ -492,25 +500,135 @@ const handle = async (ws, session, msg) => {
     case 'admin': {
       const action = String(payload?.action ?? '');
       const target = String(payload?.userId ?? '');
-      const failAdm = (error) => send(ws, { type: 'admin-error', payload: { action, error } });
+      const meta = ws.adminMeta ?? {};
+      const failAdm = (error, extra = {}) =>
+        send(ws, { type: 'admin-error', payload: { action, error, ...extra } });
 
       // Единственный ответ незнающему: «нельзя». По разнице ответов
       // нельзя выяснять, кто есть в базе, а кто нет.
-      if (!(await isAdmin(me))) return failAdm('not_allowed');
+      const rights = await rightsOf(me);
+      if (!rights.admin) {
+        await logSecurityEvent(me, 'admin_probe', action, meta);
+        return failAdm('not_allowed');
+      }
+
+      /* Пределы раздельные: читать панель можно часто, менять — реже,
+         подтверждать личность — совсем редко. Один общий предел либо
+         мешает работе, либо не мешает подбору. */
+      const READS = new Set(['whoami', 'log', 'security-events', 'pending', 'admins', 'lockdown']);
+      const limitOk = READS.has(action)
+        ? rateLimit(`adm:r:${me}`, 120)
+        : action === 'step-up'
+          ? rateLimitPerHour(`adm:su:${me}`, 20)
+          : rateLimit(`adm:w:${me}`, 30);
+      if (!limitOk) {
+        await logSecurityEvent(me, 'admin_rate_limited', action, meta);
+        return failAdm('too_many_requests');
+      }
+
+      /* Аварийный режим закрывает панель целиком. Владелец проходит:
+         иначе включивший остался бы без способа выключить. */
+      if (!rights.owner && !READS.has(action)) {
+        const lock = await lockdownState();
+        if (lock.active) {
+          await logSecurityEvent(me, 'admin_lockdown_block', action, meta);
+          return failAdm('lockdown');
+        }
+      }
 
       switch (action) {
         case 'whoami': {
-          return send(ws, { type: 'admin-me',
-            payload: { isAdmin: true, isOwner: await isOwner(me) } });
+          return send(ws, { type: 'admin-me', payload: await myRights(me) });
         }
+
+        /* ── Повторное подтверждение личности ──────────────────────
+           Выдаётся под конкретное действие и живёт минуты. Годное на
+           всё и навсегда равно отсутствию подтверждения. */
+        case 'step-up': {
+          const r = await beginStepUp(me, String(payload?.purpose ?? ''), { meta });
+          if (r.error) return failAdm(r.error);
+          return send(ws, { type: 'admin-step-up', payload: r });
+        }
+
+        /* ── Права и роли: только через подтверждение владельца ─────
+           Раньше один администратор в одиночку заводил второго. Теперь
+           он оформляет заявку, а поворачивает второй ключ владелец. */
         case 'set-admin': {
-          const r = await setAdminRight(me, target, payload?.value !== false);
+          const r = await createPendingAction(
+            me, payload?.value === false ? 'admin_revoke' : 'admin_grant', target, {},
+            { stepUpCode: payload?.code, reason: payload?.reason, meta });
           if (r.error) return failAdm(r.error);
-          return send(ws, { type: 'admin-done', payload: { action, userId: target, ...r } });
+          return send(ws, { type: 'admin-pending', payload: r });
         }
-        case 'restrict': {
-          const r = await restrictUser(me, target, String(payload?.kind ?? ''), payload?.minutes);
+        case 'set-role': {
+          const r = await createPendingAction(me, 'role_set', target,
+            { role: payload?.role },
+            { stepUpCode: payload?.code, reason: payload?.reason, meta });
           if (r.error) return failAdm(r.error);
+          return send(ws, { type: 'admin-pending', payload: r });
+        }
+
+        /* ── Начисления: деньги, баллы, Prime ──────────────────────
+           Тоже два ключа. Деньги из ничего — это ровно то, ради чего
+           административный аккаунт и крадут. */
+        case 'grant': {
+          const kind = { money: 'grant_money', points: 'grant_points', prime: 'grant_prime' }[
+            String(payload?.what ?? '')];
+          if (!kind) return failAdm('bad_kind');
+          const r = await createPendingAction(me, kind, target,
+            { amount: payload?.amount, days: payload?.days, plan: payload?.plan },
+            { stepUpCode: payload?.code, reason: payload?.reason, meta });
+          if (r.error) return failAdm(r.error);
+          return send(ws, { type: 'admin-pending', payload: r });
+        }
+
+        /* ── Очередь заявок ────────────────────────────────────────
+           Владелец видит все, администратор — только свои. */
+        case 'pending': {
+          const list = await listPendingActions(me, {
+            status: payload?.status, limit: payload?.limit });
+          if (list === null) return failAdm('not_allowed');
+          return send(ws, { type: 'admin-pending-list', payload: { actions: list } });
+        }
+        case 'decide': {
+          const r = await decidePendingAction(me, String(payload?.id ?? ''),
+            payload?.approve === true,
+            { stepUpCode: payload?.code, note: payload?.note, meta });
+          if (r.error) return failAdm(r.error, r.action ? { action: r.action } : {});
+          return send(ws, { type: 'admin-done', payload: { action, ...r } });
+        }
+
+        /* ── Ограничения ───────────────────────────────────────────
+           Повседневная работа модерации остаётся немедленной: запирать
+           её за подтверждением владельца значит остановить модерацию.
+           Но ограничить другого администратора — это уже не модерация,
+           а борьба внутри панели: для неё нужны право безопасности и
+           подтверждение личности. */
+        case 'restrict': {
+          if (!(await can(me, 'moderation'))) {
+            await logAdmin({ actorId: me, targetId: target, type: 'restrict',
+              result: 'denied', detail: 'Нет права модерации', meta });
+            return failAdm('not_allowed');
+          }
+          if (await isAdmin(target)) {
+            if (!(await can(me, 'security'))) {
+              await logAdmin({ actorId: me, targetId: target, type: 'restrict_admin',
+                result: 'denied', detail: 'Ограничение администратора без права безопасности', meta });
+              return failAdm('admin_protected');
+            }
+            const step = await consumeStepUp(me, 'restrict:admin', payload?.code, { meta });
+            if (step.error) return failAdm(step.error);
+          }
+          /* Журнал пишет сама restrictUser — одной записью и через ту
+             же цепочку. Второй записи здесь быть не должно: два писателя
+             рвут цепочку, и разрыв выглядит как подделка. */
+          const r = await restrictUser(me, target, String(payload?.kind ?? ''),
+            payload?.minutes, { meta });
+          if (r.error) {
+            await logAdmin({ actorId: me, targetId: target, type: 'restrict',
+              result: 'denied', detail: r.error, meta });
+            return failAdm(r.error);
+          }
           // Забаненного отключаем сразу, а не когда он сам уйдёт.
           if (r.kind === 'ban' && r.minutes > 0) {
             for (const sock of clients.get(target) ?? []) sock.close(4403, 'banned');
@@ -518,15 +636,64 @@ const handle = async (ws, session, msg) => {
           return send(ws, { type: 'admin-done', payload: { action, userId: target, ...r } });
         }
         case 'note': {
-          const r = await setModerationNote(me, target, payload?.text);
-          if (r.error) return failAdm(r.error);
+          if (!(await can(me, 'moderation'))) return failAdm('not_allowed');
+          const r = await setModerationNote(me, target, payload?.text, { meta });
+          if (r.error) {
+            await logAdmin({ actorId: me, targetId: target, type: 'note',
+              result: 'denied', detail: r.error, meta });
+            return failAdm(r.error);
+          }
           return send(ws, { type: 'admin-done', payload: { action, userId: target, ...r } });
         }
+
+        /* ── Журнал и события ──────────────────────────────────────
+           Раньше журнал читал любой администратор. Список того, кто кого
+           забанил, — это и список того, кого стоит бояться. */
         case 'log': {
-          const entries = await listAdminLog(me, payload?.limit);
-          return send(ws, { type: 'admin-log', payload: { entries: entries ?? [] } });
+          const entries = await readAdminLog(me, { limit: payload?.limit });
+          if (entries === null) return failAdm('not_allowed');
+          return send(ws, { type: 'admin-log', payload: { entries } });
+        }
+        case 'security-events': {
+          const events = await readSecurityEvents(me, { limit: payload?.limit });
+          if (events === null) return failAdm('not_allowed');
+          return send(ws, { type: 'admin-security-events', payload: { events } });
+        }
+        case 'verify-log': {
+          const r = await verifyAdminLog(me, { limit: payload?.limit });
+          if (r.error) return failAdm(r.error);
+          return send(ws, { type: 'admin-log-verified', payload: r });
+        }
+        case 'admins': {
+          const list = await listAdminsWithRoles(me);
+          if (list === null) return failAdm('not_allowed');
+          return send(ws, { type: 'admin-list', payload: {
+            admins: list, roles: ROLE_NAMES, permissions: PERMISSIONS } });
+        }
+
+        /* ── Аварийный режим ───────────────────────────────────────
+           Только владелец. Обычная жизнь сервиса при этом продолжается:
+           страдать оттого, что у нас что-то случилось, должны мы. */
+        case 'lockdown': {
+          return send(ws, { type: 'admin-lockdown', payload: await lockdownState() });
+        }
+        case 'set-lockdown': {
+          const step = await consumeStepUp(me, 'lockdown', payload?.code, { meta });
+          if (step.error) return failAdm(step.error);
+          const r = await setLockdown(me, payload?.on === true, payload?.reason, { meta });
+          if (r.error) return failAdm(r.error);
+          /* Закрыли панель — закрываем и открытые административные
+             сокеты: иначе тот, кого мы закрываем, доработает начатое. */
+          if (r.active) {
+            for (const [uid, socks] of clients) {
+              if (uid === me) continue;
+              if (await isAdmin(uid)) for (const sock of socks) sock.close(4403, 'lockdown');
+            }
+          }
+          return send(ws, { type: 'admin-lockdown', payload: r });
         }
       }
+      await logSecurityEvent(me, 'admin_unknown_action', action, meta);
       return failAdm('not_allowed');
     }
 
@@ -1005,6 +1172,11 @@ export const startSignalHub = () => {
       const left = (pending.get(ip) ?? 1) - 1;
       if (left > 0) pending.set(ip, left); else pending.delete(ip);
     };
+
+    /* Обезличенные приметы запроса. Нужны журналу безопасности: по ним
+       видно «тот же источник или другой», а самого адреса в журнале нет
+       — это данные о человеке, и хранить их ради удобства нельзя. */
+    ws.adminMeta = requestMeta(req);
 
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });

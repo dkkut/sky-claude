@@ -5,7 +5,7 @@ import {
   Lock, Eye, Bell, ChevronRight, LogOut, Gamepad2, Trophy, Swords, ChevronDown,
   Settings, Moon, Globe, Volume2, Download, Palette, Info, ExternalLink, WifiOff, Wallet, Gift, EyeOff, PawPrint, Briefcase, Users,
   RotateCcw, CheckCheck, MessageSquare, Send, Fingerprint, Coffee, Timer, Pause, Tv,
-  ArrowLeftRight, LifeBuoy, ScrollText, Inbox, Video,
+  ArrowLeftRight, LifeBuoy, ScrollText, Inbox, Video, ShieldHalf,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { ConfirmExit } from '@/auth/AuthScreen';
@@ -30,6 +30,7 @@ import { useMoney, fmt } from '@/wallet/store';
 import { SupportScreen } from '@/support/SupportScreen';
 import { AdminQueue }    from '@/support/AdminQueue';
 import { VideoQueue }    from '@/marketplace/logistics/VideoQueue';
+import { AdminPanel }    from '@/admin/AdminPanel';
 import { LegalDocs }     from '@/info/LegalDocs';
 import { apiSupportStatus } from '@/moderation/supportApi';
 import { SkyIDTab }    from './SkyIDTab';
@@ -39,7 +40,7 @@ const fmtDur = (s: number) => s < 60 ? `${s}с` : `${Math.floor(s/60)}м ${s%60}
 const fmtDate = (iso: string) => { try { return new Date(iso).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}); } catch { return iso; } };
 
 type PrivacyVal = 'all'|'contacts'|'nobody';
-type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'business'|'customization'|'support'|'info'|'support_queue'|'video_queue';
+type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'business'|'customization'|'support'|'info'|'support_queue'|'video_queue'|'admin_panel';
 
 // --- Toggle row --------------------------------------------------------------
 const PrivRow = ({ label, sub, value, onChange }: { label:string; sub?:string; value:PrivacyVal; onChange:(v:PrivacyVal)=>void }) => {
@@ -729,6 +730,7 @@ export const ProfileModule = () => {
     // Очередь появляется только у того, кому её доверил сервер.
     ...(staff ? [{key:'support_queue' as const, label:'Очередь поддержки', icon:Inbox}] : []),
     ...(staff ? [{key:'video_queue' as const, label:'Видеообзоры складов', icon:Video}] : []),
+    ...(staff ? [{key:'admin_panel' as const, label:'Панель администратора', icon:ShieldHalf}] : []),
   ] as const;
 
   return (
@@ -1159,6 +1161,15 @@ export const ProfileModule = () => {
         {section === 'video_queue' && staff && (
           <div className="flex flex-col h-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
             <VideoQueue />
+          </div>
+        )}
+
+        {/* Панель администратора. Рисуется сотруднику, но что ему в ней
+            доступно, решает сервер: список прав приходит оттуда, и
+            нарисованная кнопка ничего не разрешает. */}
+        {section === 'admin_panel' && staff && (
+          <div className="flex flex-col h-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+            <AdminPanel />
           </div>
         )}
 

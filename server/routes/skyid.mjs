@@ -99,9 +99,19 @@ export const skyIdRoutes = async (req, res, url) => {
       name:     sanitizeInput(body.name ?? ''),
       username: sanitizeInput(body.username ?? ''),
       avatar:   sanitizeAvatar(body.avatar),
+      /* Ключ, которым владелец один раз занимает свой ник. Обычной
+         регистрации он не нужен и ни на что не влияет. Не чистим его
+         sanitizeInput: это секрет, а не текст для показа, и любая
+         правка сломала бы сравнение. */
+      ownerClaim: typeof body.ownerClaim === 'string' ? body.ownerClaim : '',
     });
     if (result.error === 'profile_limit_reached') {
       return json(res, 409, { error: 'profile_limit_reached', maxProfiles: MAX_PROFILES });
+    }
+    /* Ник владельца: отвечаем тем же кодом, что и на занятый ник.
+       Разные ответы подсказывали бы, какой ник особенный. */
+    if (result.error === 'owner_claim_closed' || result.error === 'owner_claim_denied') {
+      return json(res, 409, { error: 'username_taken' });
     }
     if (result.error) return json(res, 400, { error: result.error });
 
