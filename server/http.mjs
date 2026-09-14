@@ -8,6 +8,7 @@ import { config } from './config.mjs';
 import { verifyToken } from './security.mjs';
 import { REFRESH_COOKIE, parseCookies } from './cookies.mjs';
 import { sessionStore } from './sessions.mjs';
+import { query } from './db.mjs';
 
 export const json = (res, code, body, extraHeaders = {}) => {
   res.writeHead(code, {
@@ -106,10 +107,57 @@ export const requireSkyId = async (req, res) => {
   return session;
 };
 
-/** Нужен активный профиль: без него операция бессмысленна. */
+/**
+ * Что забаненному оставляем открытым.
+ *
+ * Выход — чтобы он мог уйти. Обновление токена — чтобы страница не
+ * рассыпалась на полуслове. Поддержка — чтобы он мог обжаловать: бан без
+ * способа оспорить это не наказание, а стена. Выбор профиля — чтобы
+ * перейти на свой второй, если он не забанен.
+ */
+const BANNED_MAY = [
+  '/api/auth/logout',
+  '/api/auth/refresh',
+  '/api/support/',
+  '/api/skyid/profiles/',
+];
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * Нужен активный профиль: без него операция бессмысленна.
+ *
+ * Здесь же проверяется бан — и это единственное место, где его вообще
+ * можно проверить один раз на все ручки. До этого он спрашивался только
+ * на сокете, и означал ровно «нельзя переписываться»: забаненный
+ * продавец продолжал торговать, принимать чужие деньги и снимать ячейки
+ * на складах. Администратор при этом был уверен, что убрал человека с
+ * платформы.
+ *
+ * Закрываем изменяющие запросы, а чтение оставляем. Человек должен
+ * видеть, что с ним произошло, и иметь возможность это оспорить;
+ * молчаливо переставшая работать страница не объясняет ничего.
+ *
+ * Спрашивается у базы, а не из токена: снятый бан должен действовать
+ * сразу, а снимают его обычно как раз тогда, когда ждать нельзя.
+ */
 export const requireProfile = async (req, res) => {
   const session = await readSession(req);
   if (!session) { json(res, 401, { error: 'unauthorized' }); return null; }
   if (!session.profileId) { json(res, 409, { error: 'no_active_profile' }); return null; }
+
+  if (!SAFE_METHODS.has(req.method)) {
+    const path = String(req.url ?? '').split('?')[0];
+    if (!BANNED_MAY.some((prefix) => path.startsWith(prefix))) {
+      const { rows } = await query(
+        'SELECT banned_until FROM profiles WHERE id = $1', [session.profileId]);
+      const until = rows[0]?.banned_until;
+      if (until && until > new Date()) {
+        json(res, 403, { error: 'banned', until: until.toISOString() });
+        return null;
+      }
+    }
+  }
+
   return session;
 };

@@ -598,7 +598,18 @@ const payloadHash = (kind, targetId, payload) => crypto
  */
 const checkPayload = (kind, raw = {}) => {
   switch (kind) {
-    case 'admin_grant':
+    case 'admin_grant': {
+      /* Роль нужна уже в заявке: правило «администратор без роли —
+         полноправный» задумано для тех, кто работал до появления ролей,
+         а не для тех, кого заводят сейчас. Без роли новый администратор
+         получал бы всё сразу, и владелец подтверждал бы, не видя чего.
+         Умолчание — только чтение: отказ по умолчанию. */
+      const role = raw.role === undefined || raw.role === null || raw.role === ''
+        ? 'read_only_admin' : String(raw.role);
+      if (!ROLE_NAMES.includes(role)) return { error: 'bad_role' };
+      return { ok: true, payload: { role } };
+    }
+
     case 'admin_revoke':
       return { ok: true, payload: {} };
 
@@ -879,17 +890,27 @@ const executePending = async (row, payload, ownerId, meta) => {
   if (await isOwner(target)) return { error: 'owner_protected' };
 
   switch (row.kind) {
-    case 'admin_grant':
-    case 'admin_revoke': {
-      const value = row.kind === 'admin_grant';
+    case 'admin_grant': {
+      const role = ROLE_NAMES.includes(String(payload.role)) ? String(payload.role) : 'read_only_admin';
+      /* Роль ставится тем же запросом, что и признак администратора.
+         Двумя запросами между ними был бы промежуток, в котором человек
+         уже администратор, но ещё без роли, то есть полноправный. */
       const { rowCount } = await query(
-        'UPDATE profiles SET is_admin = $2 WHERE id = $1', [target, value]);
+        `UPDATE profiles
+            SET is_admin = TRUE, admin_role = $2,
+                admin_role_set_at = now(), admin_role_set_by = $3
+          WHERE id = $1`, [target, role, ownerId]);
       if (!rowCount) return { error: 'not_found' };
-      /* Снятые права должны действовать сразу, а не с новой сессии.
-         Право спрашивается у базы на каждом действии, так что этого уже
-         достаточно; но открытые сокеты закрываем отдельно — см. signal. */
-      if (!value) await query('UPDATE profiles SET admin_role = NULL WHERE id = $1', [target]);
-      return { outcome: value ? 'Права выданы' : 'Права сняты' };
+      return { outcome: `Права выданы, роль: ${ROLE_LABEL[role] ?? role}` };
+    }
+
+    case 'admin_revoke': {
+      /* Роль снимаем вместе с правами: иначе повторная выдача вернула бы
+         человека полноправным, потому что роли у него не осталось. */
+      const { rowCount } = await query(
+        'UPDATE profiles SET is_admin = FALSE, admin_role = NULL WHERE id = $1', [target]);
+      if (!rowCount) return { error: 'not_found' };
+      return { outcome: 'Права сняты' };
     }
 
     case 'role_set': {

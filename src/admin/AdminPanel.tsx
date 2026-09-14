@@ -284,6 +284,13 @@ const AdminsList = ({ admins, roles, onChanged }: {
   const [failed, setFailed] = useState('');
   const [sent, setSent] = useState('');
 
+  /* Выдача прав новому человеку. Роль выбирается здесь же и уходит
+     вместе с заявкой: администратор без роли считался бы полноправным,
+     и владелец подтверждал бы, не видя чего. */
+  const [newId, setNewId] = useState('');
+  const [newRole, setNewRole] = useState('read_only_admin');
+  const [granting, setGranting] = useState(false);
+
   const send = async (code: string) => {
     const id = editing;
     setEditing(null); setFailed(''); setSent('');
@@ -293,12 +300,47 @@ const AdminsList = ({ admins, roles, onChanged }: {
     onChanged();
   };
 
+  const grant = async (code: string) => {
+    setGranting(false); setFailed(''); setSent('');
+    const r = await adminCall({
+      action: 'set-admin', userId: newId.trim(), value: true, role: newRole, code });
+    if (r.type !== 'admin-pending') { setFailed(errorText(r.payload?.error)); return; }
+    setSent('Заявка на выдачу прав отправлена владельцу.');
+    setNewId('');
+    onChanged();
+  };
+
   return (
     <div className="space-y-2">
       <p className="text-[11px]" style={{ color: C.t3 }}>
         Роль определяет, что человеку доступно. Сменить её в одиночку нельзя:
         заявку подтверждает владелец.
       </p>
+
+      <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <p className="text-xs font-bold" style={{ color: C.t1 }}>Выдать права</p>
+        <input value={newId} onChange={(e) => setNewId(e.target.value)}
+          placeholder="Идентификатор профиля (acc-…)"
+          className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
+          className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle}>
+          {roles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r] ?? r}</option>)}
+        </select>
+        <p className="text-[10px]" style={{ color: C.t3 }}>
+          Выдавайте наименьшее, чего хватит для работы. Расширить роль всегда можно
+          отдельной заявкой, а вернуть выданное лишнее — уже нельзя.
+        </p>
+        {granting ? (
+          <StepUp purpose="pending:admin_grant" onCode={(c) => void grant(c)}
+            onCancel={() => setGranting(false)} />
+        ) : (
+          <button type="button" disabled={!newId.trim()} onClick={() => setGranting(true)}
+            className="w-full rounded-xl py-2 text-xs font-bold disabled:opacity-40"
+            style={{ background: C.acc, color: '#fff' }}>
+            Оформить заявку
+          </button>
+        )}
+      </div>
 
       {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
       {sent && <p className="text-[11px]" style={{ color: C.green }}>{sent}</p>}

@@ -555,7 +555,8 @@ const handle = async (ws, session, msg) => {
            он оформляет заявку, а поворачивает второй ключ владелец. */
         case 'set-admin': {
           const r = await createPendingAction(
-            me, payload?.value === false ? 'admin_revoke' : 'admin_grant', target, {},
+            me, payload?.value === false ? 'admin_revoke' : 'admin_grant', target,
+            { role: payload?.role },
             { stepUpCode: payload?.code, reason: payload?.reason, meta });
           if (r.error) return failAdm(r.error);
           return send(ws, { type: 'admin-pending', payload: r });
