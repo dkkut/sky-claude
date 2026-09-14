@@ -12,7 +12,8 @@ import {
 import { C, fmt, fmtTs, Stars, StatCard } from '../SkyMarket';
 import { useCourierStore } from './courierStore';
 import { CITIES, distanceKm } from './geo';
-import { SlidePanel, EmptyState, VEHICLE_CFG, OnlineDot, MiniMap } from './shared';
+import { SlidePanel, EmptyState, VEHICLE_CFG, OnlineDot } from './shared';
+import { SkyMap } from './SkyMap';
 import type { Courier } from './types';
 
 type HubTab = 'search' | 'mine' | 'notifications';
@@ -536,8 +537,12 @@ export const CourierHub = ({ sellerId, orders }: { sellerId: string; orders: any
 
             {showMap && (
               <div className="px-4 py-3">
-                <MiniMap cityId={filters.cityId} points={filtered.map(c => ({
-                  id:c.id, pos:c.location, label:c.name.split(' ')[0], Icon:VEHICLE_CFG[c.vehicle].icon, online:c.online,
+                {/* Точку показывает только тот, кто на связи: сервер
+                    её и отдаёт только для таких. Ушедший со связи
+                    курьер на карту не попадёт — где он, мы не знаем. */}
+                <SkyMap points={filtered.map(c => ({
+                  id: c.id, pos: c.location, label: c.name.split(' ')[0],
+                  Icon: VEHICLE_CFG[c.vehicle].icon, online: c.online, kind: 'courier' as const,
                 }))}/>
               </div>
             )}

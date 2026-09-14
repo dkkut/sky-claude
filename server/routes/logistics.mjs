@@ -15,7 +15,8 @@
  * Sky её оплату не принимает и не хранит.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession } from './../http.mjs';
+import { ticketFromCookies } from './../marketticket.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   registerCourier, updateCourier, myCourier, setCourierPresence,
@@ -44,6 +45,7 @@ import {
 import {
   myCompany, createCompany, updateCompany, listCompanies, setCompanyVerified,
   listVehicles, addVehicle, setVehicleStatus, assignDriver, removeVehicle,
+  setVehiclePosition,
   listTeam, addMember, toggleMember, removeMember,
   createTcOrder, listCompanyOrders, listSellerTcOrders, listExchange,
   acceptExchangeOrder, proposePrice, answerOffer, assignTcOrder,
@@ -79,6 +81,8 @@ const CODES = {
   over_capacity: 409,
   not_enough_stock: 409,
   too_many_warehouses: 409,
+  /* Внутри лежит чужой товар — это отказ, а не кривой запрос. */
+  warehouse_rented: 409,
   too_many_photos: 409,
   too_heavy: 409,
   vehicle_unavailable: 409,
@@ -91,6 +95,7 @@ const CODES = {
   no_such_vehicle: 404,
   no_such_company: 404,
   target_not_found: 404,
+  bad_position: 400,
   no_offer: 409,
   offer_taken: 409,
 };
@@ -186,9 +191,22 @@ export const logisticsRoutes = async (req, res, url) => {
   const path = url.split('?')[0];
   const params = new URL(req.url, 'http://x').searchParams;
 
-  const session = await requireProfile(req, res);
-  if (!session) return true;
-  const me = session.profileId;
+  /* Фотографию склада браузер тянет тегом <img>, а заголовок туда не
+     подставить — принимаем подписанный пропуск, как и в маркете. Права
+     на саму фотографию всё равно проверяются по базе. */
+  const isPicture = (req.method === 'GET' || req.method === 'HEAD')
+    && /^\/api\/logistics\/photos\/lwp-[0-9a-f-]{36}$/.test(path);
+
+  let me;
+  if (isPicture) {
+    const session = await readSession(req);
+    me = session?.profileId ?? ticketFromCookies(req.headers.cookie);
+    if (!me) return json(res, 401, { error: 'unauthorized' });
+  } else {
+    const session = await requireProfile(req, res);
+    if (!session) return true;
+    me = session.profileId;
+  }
 
   const readOk = () => rateLimit(`lg:r:${me}`, READ_PER_MIN);
   const writeOk = () => rateLimit(`lg:w:${me}`, WRITE_PER_MIN);
@@ -697,6 +715,11 @@ export const logisticsRoutes = async (req, res, url) => {
     }
     if (req.method === 'POST' && tail === '/driver') {
       const done = await assignDriver(vehicleId, me, (await body()).driverId);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+    /* Где машина сейчас. Только за свою: чужую на карте не подвинешь. */
+    if (req.method === 'POST' && tail === '/position') {
+      const done = await setVehiclePosition(vehicleId, me, await body());
       return done.error ? fail(res, done) : json(res, 200, done);
     }
     if (req.method === 'DELETE' && tail === '') {

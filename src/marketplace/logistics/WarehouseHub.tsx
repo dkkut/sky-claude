@@ -7,15 +7,18 @@ import { motion } from 'framer-motion';
 import {
   Plus, Warehouse as WhIcon, MapPin, Camera, Clock, Package,
   ArrowRightLeft, Users, History, Trash2, Pencil, ChevronRight,
-  Crosshair, X, UserPlus, AlertTriangle, Boxes, Building2,
+  Crosshair, X, UserPlus, AlertTriangle, Boxes, Building2, ShieldCheck,
 } from 'lucide-react';
 import { C, fmtTs, StatCard } from '../SkyMarket';
 import { useAuthStore } from '@/core/auth/store';
 import { useMarketStore } from '../store';
 import { useWarehouseStore, WEEK_DAYS, defaultSchedule } from './warehouseStore';
-import { CITIES, pointForSeed } from './geo';
-import { SlidePanel, EmptyState, MiniMap, ConfirmModal } from './shared';
-import type { Warehouse, DaySchedule, WarehouseStaff } from './types';
+import { CITIES } from './geo';
+import { SlidePanel, EmptyState, ConfirmModal } from './shared';
+import { SkyMap } from './SkyMap';
+import { apiGeocode } from './mapsApi';
+import { SharedWarehouseTab } from './SharedWarehouseTab';
+import type { Warehouse, DaySchedule, WarehouseStaff, GeoPoint } from './types';
 
 /* ── Прогресс-бар загрузки склада ────────────────────────────────── */
 const CapacityBar = ({ occupied, capacity }: { occupied: number; capacity: number }) => {
@@ -86,12 +89,16 @@ const WarehouseForm = ({ existing, onDone, onClose }: { existing?: Warehouse; on
   const [name, setName] = useState(existing?.name ?? '');
   const [cityId, setCityId] = useState(existing?.cityId ?? 'msk');
   const [address, setAddress] = useState(existing?.address ?? '');
-  const [location, setLocation] = useState(existing?.location ?? pointForSeed('msk', `wh-${Date.now()}`));
+  /* Никакой точки «по умолчанию» у нового склада нет и быть не может:
+     выдуманная координата — это адрес, по которому приедут не туда.
+     Место задаётся одним из трёх способов: разбором адреса, кнопкой
+     «я здесь» или щелчком по карте. */
+  const [location, setLocation] = useState<GeoPoint | null>(existing?.location ?? null);
   const [photos, setPhotos] = useState<string[]>(existing?.photos ?? []);
   const [capacity, setCapacity] = useState(existing?.capacity ?? 200);
   const [schedule, setSchedule] = useState<DaySchedule[]>(existing?.schedule ?? defaultSchedule());
   const [isSortingCenter, setIsSortingCenter] = useState(existing?.role === 'sorting_center');
-  const [geoStatus, setGeoStatus] = useState<'idle'|'loading'|'done'|'error'>('idle');
+  const [geoStatus, setGeoStatus] = useState<'idle'|'loading'|'done'|'error'|'notfound'>('idle');
 
   const onPhoto = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -111,6 +118,17 @@ const WarehouseForm = ({ existing, onDone, onClose }: { existing?: Warehouse; on
     );
   };
 
+  /* Разбор написанного адреса. Ходит сервер, своим ключом: у браузера
+     ключа Google нет и не будет. Не нашлось — так и пишем, а не ставим
+     точку наугад. */
+  const findAddress = async () => {
+    if (!address.trim()) return;
+    setGeoStatus('loading');
+    const point = await apiGeocode(address.trim());
+    if (point) { setLocation(point); setGeoStatus('done'); }
+    else setGeoStatus('notfound');
+  };
+
   const setDay = (idx: number, patch: Partial<DaySchedule>) =>
     setSchedule(s => s.map((d,i) => i===idx ? { ...d, ...patch } : d));
 
@@ -119,11 +137,14 @@ const WarehouseForm = ({ existing, onDone, onClose }: { existing?: Warehouse; on
     const role = isSortingCenter ? 'sorting_center' as const : 'own' as const;
     /* Склад теперь заводится на сервере, поэтому ждём ответа: до него
        идентификатора ещё не существует. */
+    /* Места нет — склад всё равно заводится: без точки он просто не
+       появится на карте, и это честнее, чем поставить его наугад. */
+    const spot = location ?? undefined;
     if (existing) {
-      void updateWarehouse(existing.id, { name: name.trim(), address: address.trim(), cityId, location, photos, capacity, schedule, role })
+      void updateWarehouse(existing.id, { name: name.trim(), address: address.trim(), cityId, location: spot, photos, capacity, schedule, role })
         .then(() => onDone(existing.id));
     } else {
-      void addWarehouse({ name: name.trim(), address: address.trim(), cityId, location, photos, capacity, schedule, role })
+      void addWarehouse({ name: name.trim(), address: address.trim(), cityId, location: spot, photos, capacity, schedule, role })
         .then((id) => { if (id) onDone(id); });
     }
   };
@@ -146,14 +167,28 @@ const WarehouseForm = ({ existing, onDone, onClose }: { existing?: Warehouse; on
             <Crosshair size={16}/>
           </button>
         </div>
-        {geoStatus === 'loading' && <p className="text-[10px] mt-1" style={{ color: C.t3 }}>Определяем местоположение...</p>}
-        {geoStatus === 'done' && <p className="text-[10px] mt-1" style={{ color: C.green }}>Геолокация определена</p>}
+        <button type="button" onClick={() => void findAddress()}
+          className="mt-2 w-full rounded-xl px-3 py-2 text-xs font-bold"
+          style={{ background: C.l2, border: `1px solid ${C.brd}`, color: C.t2 }}>
+          Найти адрес на карте
+        </button>
+        {geoStatus === 'loading' && <p className="text-[10px] mt-1" style={{ color: C.t3 }}>Ищем место...</p>}
+        {geoStatus === 'done' && <p className="text-[10px] mt-1" style={{ color: C.green }}>Место на карте задано</p>}
         {geoStatus === 'error' && <p className="text-[10px] mt-1" style={{ color: C.red }}>Не удалось получить геолокацию</p>}
-        <select value={cityId} onChange={e => { setCityId(e.target.value); setLocation(pointForSeed(e.target.value, `wh-${Date.now()}`)); }}
+        {geoStatus === 'notfound' && <p className="text-[10px] mt-1" style={{ color: C.red }}>Такой адрес не нашёлся. Уточните его или укажите место щелчком по карте.</p>}
+        <select value={cityId} onChange={e => setCityId(e.target.value)}
           className="w-full mt-2 rounded-xl px-3 py-2 text-xs outline-none" style={{ background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 }}>
           {CITIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <div className="mt-2"><MiniMap cityId={cityId} points={[{ id:'new', pos: location, label: name || 'Склад', Icon: Building2, highlight: true }]} height={140}/></div>
+        <div className="mt-2">
+          <SkyMap height={140} onPick={(p) => { setLocation(p); setGeoStatus('done'); }}
+            points={location ? [{ id: 'new', pos: location, label: name || 'Склад', Icon: Building2, kind: 'warehouse' }] : []}/>
+          <p className="mt-1 text-[10px]" style={{ color: C.t3 }}>
+            {location
+              ? 'Щелчок по карте переставит метку.'
+              : 'Место ещё не задано. Найдите адрес, нажмите «я здесь» или щёлкните по карте.'}
+          </p>
+        </div>
       </div>
 
       <div>
@@ -490,7 +525,7 @@ const AnalyticsTab = ({ wh }: { wh: Warehouse }) => {
 };
 
 /* ── Детальная карточка склада ────────────────────────────────────── */
-type WhTab = 'overview' | 'stock' | 'transfers' | 'staff' | 'analytics' | 'history';
+type WhTab = 'overview' | 'shared' | 'stock' | 'transfers' | 'staff' | 'analytics' | 'history';
 
 const WarehouseDetail = ({ wh, onClose }: { wh: Warehouse; onClose: () => void }) => {
   const { deleteWarehouse, occupied } = useWarehouseStore();
@@ -501,6 +536,7 @@ const WarehouseDetail = ({ wh, onClose }: { wh: Warehouse; onClose: () => void }
 
   const TABS: { key: WhTab; label: string; icon: any }[] = [
     { key:'overview',  label:'Обзор',     icon:WhIcon },
+    { key:'shared',    label:'Общий',     icon:ShieldCheck },
     { key:'stock',     label:'Остатки',   icon:Package },
     { key:'transfers', label:'Перемещ.',  icon:ArrowRightLeft },
     { key:'staff',     label:'Персонал',  icon:Users },
@@ -548,7 +584,7 @@ const WarehouseDetail = ({ wh, onClose }: { wh: Warehouse; onClose: () => void }
 
       {tab === 'overview' && (
         <div className="p-4 space-y-3">
-          <MiniMap cityId={wh.cityId} points={[{ id:wh.id, pos:wh.location, label:wh.name, Icon:Building2, highlight:true }]}/>
+          <SkyMap points={wh.location ? [{ id: wh.id, pos: wh.location, label: wh.name, Icon: Building2, kind: 'warehouse' }] : []}/>
           <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
             <p className="text-xs flex items-center gap-1.5 mb-2" style={{ color: C.t2 }}><MapPin size={12}/> {wh.address}</p>
             <CapacityBar occupied={occupied(wh.id)} capacity={wh.capacity}/>
@@ -566,6 +602,7 @@ const WarehouseDetail = ({ wh, onClose }: { wh: Warehouse; onClose: () => void }
           </div>
         </div>
       )}
+      {tab === 'shared' && <SharedWarehouseTab wh={wh}/>}
       {tab === 'stock' && <StockTab wh={wh}/>}
       {tab === 'transfers' && <TransfersTab wh={wh}/>}
       {tab === 'staff' && <StaffTab wh={wh}/>}

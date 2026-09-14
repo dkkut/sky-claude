@@ -22,7 +22,8 @@
  * нет в Sky.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession } from './../http.mjs';
+import { ticketCookies, ticketFromCookies } from './../marketticket.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { isAdmin } from './../admin.mjs';
 import {
@@ -79,6 +80,8 @@ const CODES = {
   unknown_tracking: 404,
   subscription_required: 402,
   payment_details_required: 409,
+  /* Правила продавцов не приняты: это запрет, а не кривой запрос. */
+  seller_rules_required: 403,
   seller_has_no_payment_details: 409,
   insufficient_funds: 402,
   seller_suspended: 403,
@@ -271,12 +274,35 @@ export const marketRoutes = async (req, res, url) => {
     return json(res, 200, done);
   }
 
-  const session = await requireProfile(req, res);
-  if (!session) return true;
-  const me = session.profileId;
+  /* Картинки браузер тянет сам, тегом <img>, и заголовок Authorization
+     туда не подставить. Поэтому на выдаче картинок принимается ещё и
+     подписанный пропуск из куки. Всё остальное по-прежнему требует
+     обычной сессии, а права на саму картинку всё равно проверяются по
+     базе — пропуск говорит только, чей это запрос. */
+  const isPicture = (req.method === 'GET' || req.method === 'HEAD')
+    && /^\/api\/market\/(images\/[^/]+|games\/[^/]+\/cover|products\/[^/]+\/logo|sellers\/[^/]+\/avatar)$/
+      .test(path);
+
+  let me;
+  if (isPicture) {
+    const session = await readSession(req);
+    me = session?.profileId ?? ticketFromCookies(req.headers.cookie);
+    if (!me) return json(res, 401, { error: 'unauthorized' });
+  } else {
+    const session = await requireProfile(req, res);
+    if (!session) return true;
+    me = session.profileId;
+  }
 
   const readOk = () => rateLimit(`mk:r:${me}`, READ_PER_MIN);
   const writeOk = () => rateLimit(`mk:w:${me}`, WRITE_PER_MIN);
+
+  /* Пропуск выдаётся отдельной ручкой: клиент просит его один раз при
+     открытии маркета, обычным запросом с токеном. */
+  if (req.method === 'POST' && path === '/api/market/ticket') {
+    res.setHeader('Set-Cookie', ticketCookies(me));
+    return json(res, 200, { ok: true });
+  }
 
   /* ══ Что умеет сервер ═══════════════════════════════════════════
      Списки и цены отдаются экрану, чтобы он не выдумывал свои.

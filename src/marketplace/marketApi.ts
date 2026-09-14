@@ -66,6 +66,23 @@ export const apiProductReviews = (id: string, limit = 50) =>
 /** Адрес картинки. Собирается здесь, потому что путей на диске клиенту не отдают. */
 export const marketImageUrl = (imageId: string) => `/api/market/images/${enc(imageId)}`;
 export const sellerAvatarUrl = (sellerId: string) => `/api/market/sellers/${enc(sellerId)}/avatar`;
+
+/**
+ * Пропуск для картинок.
+ *
+ * Тег <img> заголовок авторизации отправить не умеет: адрес в src
+ * браузер тянет сам. Без пропуска каждая картинка маркета получала в
+ * ответ 401, срабатывала подстановка «не загрузилась», и витрина стояла
+ * с серыми прямоугольниками вместо товара.
+ *
+ * Сервер в ответ кладёт короткую куку. Правами она не распоряжается:
+ * снятый с витрины чужой товар по ней не откроется так же, как не
+ * открывался по токену.
+ */
+export const apiMarketTicket = async () => {
+  const r = await apiCall('/api/market/ticket', { method: 'POST', body: '{}' });
+  return r.ok;
+};
 export const productLogoUrl = (productId: string) => `/api/market/products/${enc(productId)}/logo`;
 export const gameCoverUrl = (gameId: string) => `/api/market/games/${enc(gameId)}/cover`;
 

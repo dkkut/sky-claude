@@ -33,6 +33,8 @@ import { aiRoutes } from './routes/ai.mjs';
 import { togetherRoutes } from './routes/together.mjs';
 import { marketRoutes } from './routes/market.mjs';
 import { logisticsRoutes } from './routes/logistics.mjs';
+import { sharedWarehouseRoutes } from './routes/sharedwh.mjs';
+import { mapsRoutes } from './routes/maps.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanPodcastFiles } from './podcasts.mjs';
@@ -42,6 +44,9 @@ import { sweepAiUsage } from './aichat.mjs';
 import { sweepTogether } from './together.mjs';
 import { sweepSellerSubscriptions, liveFileIds } from './market.mjs';
 import { sweepOrphans as sweepMarketFiles } from './marketstore.mjs';
+import { sweepOrphans as sweepVideoFiles } from './videostore.mjs';
+import { liveVideoIds } from './videoreview.mjs';
+import { sweepExpiredRentals } from './sharedwarehouse.mjs';
 import { sweepPickupExpiry } from './marketdelivery.mjs';
 import { sweepAiFiles } from './aitools.mjs';
 import { retryPendingWebhooks } from './botevents.mjs';
@@ -53,7 +58,8 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes, botRoutes,
-                ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, logisticsRoutes];
+                ticketRoutes, aiRoutes, togetherRoutes, marketRoutes,
+                sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -255,6 +261,14 @@ const start = async () => {
       // удаление идёт от строки, а строки нет.
       const orphans = await sweepMarketFiles(liveFileIds);
       if (orphans) console.log(`[market] убрано осиротевших файлов: ${orphans}`);
+      // Аренда ячейки кончается по времени, а не по нажатию. Саму ячейку
+      // при этом не освобождаем: внутри может остаться товар, и решать,
+      // что с ним, — дело склада и регламента, а не расписания.
+      const rents = await sweepExpiredRentals();
+      if (rents) console.log(`[склады] закрыто аренд по сроку: ${rents}`);
+      // Оборвавшаяся загрузка обзора оставляет файл без строки в базе.
+      const videos = await sweepVideoFiles(liveVideoIds);
+      if (videos) console.log(`[склады] убрано осиротевших обзоров: ${videos}`);
     } catch (err) {
       console.error('[housekeeping]', err.message);
     }

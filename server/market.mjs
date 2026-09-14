@@ -27,6 +27,7 @@ import { generateId } from './security.mjs';
 import { wallet } from './wallet.mjs';
 import { isAdmin } from './admin.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
+import { hasAccepted } from './agreements.mjs';
 
 /* ─── Подписка продавца ────────────────────────────────────────────── */
 
@@ -223,13 +224,24 @@ export const readMySeller = async (profileId) => {
   return row ? toSeller(row, true) : null;
 };
 
-/** Завести магазин. Подписка оплачивается отдельно. */
+/**
+ * Завести магазин. Подписка оплачивается отдельно.
+ *
+ * Правила продавцов принимаются здесь и только здесь — до того, как
+ * магазин появился. Признак согласия сервер проверяет по своей записи,
+ * а не по присланной галочке: галочку рисует та же вкладка, которая
+ * могла и не показать текст.
+ */
 export const createSeller = async (profileId, { shopName, description, paymentDetails } = {}) => {
   const name = text(shopName, MAX_SHOP_NAME);
   if (name.length < 2) return { error: 'bad_shop_name' };
 
   const exists = await sellerRow(profileId);
   if (exists) return { error: 'already_seller' };
+
+  if (!(await hasAccepted(profileId, 'seller_rules'))) {
+    return { error: 'seller_rules_required' };
+  }
 
   const details = text(paymentDetails, MAX_PAYMENT_DETAILS);
   const { rows } = await query(

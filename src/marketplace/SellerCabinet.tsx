@@ -13,13 +13,14 @@
  * Право торговать здесь не решается. Кнопки рисуются по тому, что уже
  * ответил сервер; каждое нажатие он проверяет заново.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useWarehouseStore } from './logistics/warehouseStore';
 import type { LucideIcon } from 'lucide-react';
 import {
   Store, Package, ShoppingBag, BarChart3, Settings, Plus, Trash2,
   Edit3, CheckCircle2, AlertCircle, Star, ImagePlus, CreditCard,
   Truck, Route, Warehouse as WarehouseIcon, PackageSearch, KeyRound, Zap,
+  Lock as LockIcon, Check, ScrollText,
 } from 'lucide-react';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert, StatCard, Stars,
@@ -46,6 +47,10 @@ import { OrdersList, OrderPage } from './OrderScreens';
 import { CourierHub } from './logistics/CourierHub';
 import { TransportCompanyHub, DeliveryOffersPanel } from './logistics/TransportCompanyHub';
 import { WarehouseHub } from './logistics/WarehouseHub';
+import { CellMarket } from './logistics/CellMarket';
+import { DocumentGate } from './logistics/DocumentGate';
+import { apiDocuments } from './logistics/sharedApi';
+import { SlidePanel } from './logistics/shared';
 import { ShipmentHub } from './logistics/ShipmentHub';
 import { PassHub } from './logistics/PassHub';
 
@@ -59,6 +64,20 @@ export const BecomeSeller = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /* Приняты ли правила продавцов. Признак приходит с сервера и туда же
+     уходит: галочка на этом экране ничего не решает — магазин заводит
+     сервер, и он же смотрит на свою запись о согласии. */
+  const [rulesOk, setRulesOk] = useState<boolean | null>(null);
+  const [gate, setGate] = useState(false);
+
+  const loadRules = useCallback(async () => {
+    const r = await apiDocuments();
+    const doc = r.ok ? r.data?.documents.find((d) => d.code === 'seller_rules') : null;
+    setRulesOk(doc?.accepted ?? false);
+  }, []);
+
+  useEffect(() => { void loadRules(); }, [loadRules]);
+
   const create = async () => {
     setBusy(true); setError(null);
     const r = await apiCreateSeller({
@@ -67,9 +86,23 @@ export const BecomeSeller = () => {
       paymentDetails: paymentDetails.trim(),
     });
     setBusy(false);
-    if (!r.ok || !r.data) { setError(r.reason ?? 'Магазин не завёлся'); return; }
+    if (!r.ok || !r.data) {
+      if (r.error === 'seller_rules_required') { setRulesOk(false); setGate(true); return; }
+      setError(r.reason ?? 'Магазин не завёлся');
+      return;
+    }
     setSeller(r.data.seller);
   };
+
+  if (gate) {
+    return (
+      <SlidePanel open onClose={() => setGate(false)} onBack={() => setGate(false)} title="Правила продавцов">
+        <DocumentGate code="seller_rules"
+          note="Их принимают до того, как магазин появился: по ним вы и будете работать."
+          onAccepted={() => { setGate(false); setRulesOk(true); }} />
+      </SlidePanel>
+    );
+  }
 
   return (
     <div className="space-y-3 p-4">
@@ -103,9 +136,21 @@ export const BecomeSeller = () => {
           className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
       </Field>
 
+      <button type="button" onClick={() => setGate(true)}
+        className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px]"
+        style={{ background: C.l1, border: `1px solid ${rulesOk ? C.brd : C.acc}` }}>
+        {rulesOk
+          ? <Check size={14} style={{ color: C.green, flexShrink: 0 }} />
+          : <ScrollText size={14} style={{ color: C.acc, flexShrink: 0 }} />}
+        <span style={{ color: rulesOk ? C.t2 : C.t1 }}>
+          {rulesOk ? 'Правила продавцов приняты' : 'Прочитать и принять правила продавцов'}
+        </span>
+      </button>
+
       {error && <Alert text={error} />}
 
-      <button type="button" disabled={busy || shopName.trim().length < 2 || paymentDetails.trim().length < 4}
+      <button type="button"
+        disabled={busy || !rulesOk || shopName.trim().length < 2 || paymentDetails.trim().length < 4}
         onClick={create}
         className="w-full rounded-xl py-2.5 text-[12px] font-bold disabled:opacity-40"
         style={{ background: C.acc, color: '#fff' }}>
@@ -885,7 +930,7 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
 /* ── Кабинет ──────────────────────────────────────────────────────── */
 
 type CabTab = 'orders' | 'products' | 'stats'
-  | 'couriers' | 'transport' | 'warehouses' | 'shipments' | 'passes'
+  | 'couriers' | 'transport' | 'warehouses' | 'cells' | 'shipments' | 'passes'
   | 'ads' | 'settings';
 
 /* Логистика — часть кабинета продавца, как и была: курьеры, своя
@@ -898,6 +943,7 @@ const TABS: { key: CabTab; label: string; Icon: LucideIcon }[] = [
   { key: 'couriers',   label: 'Курьеры',  Icon: Truck },
   { key: 'transport',  label: 'Транспортная компания', Icon: Route },
   { key: 'warehouses', label: 'Мои склады', Icon: WarehouseIcon },
+  { key: 'cells',      label: 'Ячейки на складах', Icon: LockIcon },
   { key: 'shipments',  label: 'Поставки', Icon: PackageSearch },
   { key: 'passes',     label: 'Пропуска и доступы', Icon: KeyRound },
   { key: 'ads',        label: 'Реклама',  Icon: Zap },
@@ -955,6 +1001,7 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
         {tab === 'couriers' && <CourierHub sellerId={seller.id} orders={ordersForCouriers} />}
         {tab === 'transport' && <TransportCompanyHub />}
         {tab === 'warehouses' && <WarehouseHub />}
+        {tab === 'cells' && <CellMarket />}
         {tab === 'shipments' && <ShipmentHub />}
         {tab === 'passes' && <PassHub />}
         {tab === 'ads' && <SellerPromotions />}

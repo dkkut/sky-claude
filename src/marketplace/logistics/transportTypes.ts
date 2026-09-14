@@ -52,6 +52,10 @@ export interface TCVehicle {
   status: VehicleStatus;
   driverId: string | null;
   currentLoadKg: number;
+  /** Где машина сейчас — если это передали и передали недавно. Пусто
+      значит «неизвестно, где она», и на карту такая машина не попадёт:
+      выдуманная точка увела бы заказ не туда. */
+  position: (GeoPoint & { at: string }) | null;
 }
 
 export type TeamRole = 'driver'|'courier'|'dispatcher';

@@ -76,7 +76,7 @@ interface WarehouseState {
 
   myWarehouses: () => Warehouse[];
   addWarehouse: (p: {
-    name: string; address: string; cityId: string; location: { lat: number; lng: number };
+    name: string; address: string; cityId: string; location?: { lat: number; lng: number };
     photos: string[]; schedule: DaySchedule[]; capacity: number; role?: Warehouse['role'];
   }) => Promise<string>;
   updateWarehouse: (id: string, p: Partial<Warehouse>) => Promise<void>;

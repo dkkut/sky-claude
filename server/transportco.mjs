@@ -299,7 +299,46 @@ const toVehicle = (row) => ({
   status: row.status,
   driverId: row.driver_id ?? null,
   currentLoadKg: Number(row.load_g ?? 0) / 1000,
+  /* Где машина сейчас — если это кто-то передал и передал недавно.
+     Положение недельной давности означает «неизвестно», а не «стоит
+     там», и выдавать его за нынешнее нельзя: по нему распределяют
+     заказы. */
+  position: row.lat != null && row.lng != null && freshPosition(row.position_at)
+    ? { lat: Number(row.lat), lng: Number(row.lng), at: row.position_at.toISOString() }
+    : null,
 });
+
+/** Сколько положение считается нынешним. Дальше — «неизвестно». */
+const POSITION_FRESH_MS = 2 * 60 * 60 * 1000;
+
+const freshPosition = (at) => {
+  const t = at?.getTime?.();
+  return Number.isFinite(t) && Date.now() - t < POSITION_FRESH_MS;
+};
+
+/**
+ * Передать положение машины.
+ *
+ * Передаёт владелец компании — за свою машину и только за свою.
+ * Проверка идёт по базе: принадлежность машины компании и компании
+ * человеку. Присланный идентификатор компании не читается.
+ */
+export const setVehiclePosition = async (vehicleId, ownerId, { lat, lng } = {}) => {
+  const a = Number(lat);
+  const b = Number(lng);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return { error: 'bad_position' };
+  if (Math.abs(a) > 90 || Math.abs(b) > 180) return { error: 'bad_position' };
+
+  const { rows } = await query(
+    `UPDATE logi_tc_vehicles v
+        SET lat = $2, lng = $3, position_at = now()
+       FROM logi_tc t
+      WHERE v.id = $1 AND t.id = v.company_id AND t.owner_id = $4
+      RETURNING v.*`,
+    [String(vehicleId ?? ''), a, b, ownerId]);
+  if (!rows[0]) return { error: 'not_found' };
+  return { vehicle: toVehicle(rows[0]) };
+};
 
 export const listVehicles = async (companyId, ownerId) => {
   const row = await ownCompanyRow(companyId, ownerId);

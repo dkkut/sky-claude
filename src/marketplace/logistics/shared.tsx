@@ -3,10 +3,10 @@
 ====================================================================== */
 import { PropsWithChildren } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Bike, Car, Truck as VanIcon, Footprints, MapPin } from 'lucide-react';
+import { X, Bike, Car, Truck as VanIcon, Footprints } from 'lucide-react';
 import type { IconComponent } from '@/shared/icon';
 import { C } from '../SkyMarket';
-import { CITIES, toMapPercent } from './geo';
+import { SkyMap } from './SkyMap';
 import type { CourierVehicle, GeoPoint } from './types';
 
 /* ── Full-panel slide (как CartDrawer/Checkout в SkyMarket) ──────── */
@@ -87,49 +87,21 @@ export const Segmented = <T extends string>({
   </div>
 );
 
-/* ── Мини-карта (CSS/SVG имитация real-time карты, без внешних сервисов) ── */
+/* ── Мини-карта ──────────────────────────────────────────────────
+   Раньше это была нарисованная сетка «улиц» с точками, положение
+   которых выводилось из хэша идентификатора. Теперь — настоящая карта
+   Google, которую собирает наш сервер; см. SkyMap. Имя и набор свойств
+   оставлены прежними нарочно: экраны, которые её показывают, менять
+   незачем — им нужна карта, а не знание о том, как она устроена.     */
 export const MiniMap = ({
-  cityId, points, height = 200,
+  points, height = 200,
 }: {
-  cityId: string;
+  /** Город больше не нужен: карту задают сами точки. Оставлено ради
+      старых мест вызова — сюда его по-прежнему передают. */
+  cityId?: string;
   points: { id: string; pos: GeoPoint; label: string; Icon?: IconComponent; online?: boolean; highlight?: boolean }[];
   height?: number;
-}) => {
-  const city = CITIES.find(c => c.id === cityId) ?? CITIES[0];
-  return (
-    <div className="relative rounded-2xl overflow-hidden" style={{ height, background: 'radial-gradient(circle at 30% 20%, rgba(79,110,247,0.12), transparent 60%), var(--bg-l2)', border: `1px solid ${C.brd}` }}>
-      {/* псевдо-сетка улиц */}
-      <svg className="absolute inset-0 h-full w-full opacity-30" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {[15,32,50,68,85].map(v => (<line key={'v'+v} x1={v} y1={0} x2={v} y2={100} stroke="white" strokeWidth="0.3"/>))}
-        {[18,38,58,78].map(h => (<line key={'h'+h} x1={0} y1={h} x2={100} y2={h} stroke="white" strokeWidth="0.3"/>))}
-      </svg>
-      <div className="absolute top-2 left-2 text-[10px] font-bold px-2 py-1 rounded-full" style={{ background: 'rgba(0,0,0,0.4)', color: C.t2 }}>
-        {city.name}
-      </div>
-      {points.map(pt => {
-        const { x, y } = toMapPercent(pt.pos, cityId);
-        return (
-          <motion.div key={pt.id} className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
-            style={{ left: `${x}%`, top: `${y}%` }}
-            animate={{ left: `${x}%`, top: `${y}%` }} transition={{ duration: 1.2, ease: 'easeInOut' }}>
-            <div className="grid place-items-center rounded-full shadow-lg"
-              style={{ height: pt.highlight ? 30 : 24, width: pt.highlight ? 30 : 24,
-                background: pt.online === false ? 'var(--bg-l3)' : `linear-gradient(135deg,${C.acc},#8b5cf6)`,
-                border: pt.highlight ? `2px solid ${C.amber}` : '2px solid rgba(255,255,255,0.2)' }}>
-              {(() => { const Icon = pt.Icon ?? MapPin; return <Icon size={pt.highlight ? 15 : 13} color="#fff"/>; })()}
-            </div>
-            {pt.online && (
-              <motion.div className="absolute rounded-full" style={{ height: 24, width: 24, border: `1.5px solid ${C.acc}` }}
-                animate={{ scale: [1, 1.8], opacity: [0.6, 0] }} transition={{ duration: 2, repeat: Infinity }}/>
-            )}
-            <span className="mt-1 text-[8px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap"
-              style={{ background: 'rgba(0,0,0,0.5)', color: C.t1 }}>{pt.label}</span>
-          </motion.div>
-        );
-      })}
-    </div>
-  );
-};
+}) => <SkyMap points={points} height={height} />;
 
 /* ── Статус-точка online/offline ─────────────────────────────────── */
 export const OnlineDot = ({ online }: { online: boolean }) => (

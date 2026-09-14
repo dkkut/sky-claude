@@ -112,7 +112,9 @@ export interface Warehouse {
   name:      string;
   address:   string;
   cityId:    string;
-  location:  GeoPoint;
+  /** Точка на карте. Пусто — место ещё не задано; на карту такой склад
+      не попадёт, и это честнее выдуманной координаты. */
+  location:  GeoPoint | null;
   photos:    string[];          // data-url
   schedule:  DaySchedule[];
   capacity:  number;            // вместимость, ед. товара

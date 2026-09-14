@@ -25,7 +25,7 @@ import {
   inputStyle, Alert, ProductCard, ProductImage, ProductLogo, CatIcon, CAT_CFG,
 } from './ui';
 import {
-  apiProduct, apiProductReviews, apiCreateOrder, apiPickupPoints,
+  apiProduct, apiProductReviews, apiCreateOrder, apiPickupPoints, apiMarketTicket,
 } from './marketApi';
 import type {
   Product, Review, ProductCategory, PickupPoint, MarketType,
@@ -515,6 +515,9 @@ export const SkyMarket = () => {
   const [order, setOrder] = useState<string | null>(null);
 
   useEffect(() => {
+    /* Первым делом пропуск: без него ни одна картинка не загрузится —
+       тег <img> заголовок авторизации не отправляет. */
+    void apiMarketTicket();
     void loadConfig();
     void loadSeller();
     void loadNotifications();

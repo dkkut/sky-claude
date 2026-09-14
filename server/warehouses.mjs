@@ -72,11 +72,19 @@ const toWarehouse = (row, photos = []) => ({
   name: row.name,
   address: row.address_enc ? (decryptContent(row.address_enc) ?? '') : '',
   cityId: row.city_id,
-  location: { lat: Number(row.lat ?? 0), lng: Number(row.lng ?? 0) },
+  /* Пусто — место склада не задано. Ноль-ноль вместо этого означал бы
+     точку в Гвинейском заливе, и карта показала бы склад там. */
+  location: row.lat == null || row.lng == null
+    ? null
+    : { lat: Number(row.lat), lng: Number(row.lng) },
   photos,
   schedule: Array.isArray(row.schedule) ? row.schedule : [],
   capacity: Number(row.capacity ?? 0),
   role: row.role,
+  /* Открыт ли склад для чужих. Поле читается из той же строки, а не
+     спрашивается у модуля общего склада: обратный импорт замкнул бы
+     два модуля друг на друга ради одного слова. */
+  sharedState: row.shared_state ?? 'off',
   createdAt: row.created_at?.toISOString?.() ?? undefined,
 });
 
@@ -202,6 +210,17 @@ export const deleteWarehouse = async (warehouseId, actorId) => {
   const found = await warehouseAccess(warehouseId, actorId);
   if (!found) return { error: 'not_found' };
   if (!MAY_OWN.has(found.role)) return { error: 'not_allowed' };
+
+  /* Склад с живой арендой не удаляют. Внутри лежит чужой товар, а
+     строки аренды ушли бы каскадом вместе со складом — и человек,
+     приехавший за своим, не нашёл бы даже записи о том, что он его
+     сюда привозил. */
+  const { rows: live } = await query(
+    `SELECT 1 FROM logi_cell_rentals
+      WHERE warehouse_id = $1 AND status IN ('created','payment_declared','active') LIMIT 1`,
+    [warehouseId]);
+  if (live[0]) return { error: 'warehouse_rented' };
+
   const photos = await photosOf(warehouseId);
   await query('DELETE FROM logi_warehouses WHERE id = $1', [warehouseId]);
   await logLogi(actorId, 'warehouse_deleted', warehouseId);

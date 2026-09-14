@@ -1,5 +1,16 @@
 /* ======================================================================
-   SKY MARKET / LOGISTICS  —  Geo helpers
+   SKY MARKET / LOGISTICS — география
+
+   Здесь остались только настоящие вещи: список городов с их центрами и
+   расстояние между двумя точками.
+
+   Раньше рядом жили три помощника, которые выдумывали географию:
+   pointForSeed расставлял курьеров и склады по остатку от деления хэша,
+   jitter «оживлял» их случайным дрожанием, а toMapPercent раскладывал
+   всё это по нарисованной сетке улиц. Выглядело как карта и означало
+   ровно ничего — по такой точке не доедешь. Настоящие координаты берёт
+   сервер: у склада те, что задал владелец, у курьера — переданные им
+   самим, у адреса — разобранные Google.
 ====================================================================== */
 import type { City, GeoPoint } from './types';
 
@@ -13,22 +24,6 @@ export const CITIES: City[] = [
 
 export const cityById = (id: string) => CITIES.find(c => c.id === id);
 
-/* Смещение точки от центра города на основе хэша строки —
-   стабильно «раскидывает» курьеров/склады по районам без рандома при каждом рендере. */
-const hash = (s: string) => {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h;
-};
-
-export const pointForSeed = (cityId: string, seedKey: string): GeoPoint => {
-  const city = cityById(cityId) ?? CITIES[0];
-  const h = hash(seedKey);
-  const dLat = (((h % 1000) / 1000) - 0.5) * 0.18;
-  const dLng = ((((h >> 10) % 1000) / 1000) - 0.5) * 0.18;
-  return { lat: city.center.lat + dLat, lng: city.center.lng + dLng };
-};
-
 /* Haversine — расстояние в км между двумя точками */
 export const distanceKm = (a: GeoPoint, b: GeoPoint): number => {
   const R = 6371;
@@ -40,19 +35,4 @@ export const distanceKm = (a: GeoPoint, b: GeoPoint): number => {
   const sinDLng = Math.sin(dLng / 2);
   const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-};
-
-/* Небольшое «дыхание» точки — для имитации обновления геопозиции в реальном времени */
-export const jitter = (p: GeoPoint, amount = 0.004): GeoPoint => ({
-  lat: p.lat + (Math.random() - 0.5) * amount,
-  lng: p.lng + (Math.random() - 0.5) * amount,
-});
-
-/* Преобразование GeoPoint в проценты внутри bounding-box города — для мини-карты на CSS */
-export const toMapPercent = (p: GeoPoint, cityId: string): { x:number; y:number } => {
-  const city = cityById(cityId) ?? CITIES[0];
-  const span = 0.22; // примерный охват мини-карты в градусах
-  const x = 50 + ((p.lng - city.center.lng) / span) * 100;
-  const y = 50 - ((p.lat - city.center.lat) / span) * 100;
-  return { x: Math.min(96, Math.max(4, x)), y: Math.min(96, Math.max(4, y)) };
 };
