@@ -66,6 +66,7 @@ export interface AdminRow {
   owner: boolean;
   roleSetAt: string | null;
   banned: boolean;
+  blocked: boolean;
 }
 
 export interface PendingAction {
@@ -97,6 +98,30 @@ export interface LogEntry {
   result: string;
   detail: string;
   createdAt: string;
+}
+
+/**
+ * Человек глазами модератора.
+ *
+ * Здесь ровно то, что нужно для решения о запрете: кто это и что с ним
+ * уже сделано. Ни почты, ни телефона, ни заметок — для запрета они не
+ * нужны, а как сведения о человеке ценны.
+ */
+export interface Person {
+  id: string;
+  username: string;
+  name: string;
+  admin: boolean;
+  owner: boolean;
+  /** Бан профиля: закрыта одна витрина, другие профили работают. */
+  banned: boolean;
+  bannedUntil: string | null;
+  /** Блокировка учётной записи: закрыт человек целиком. */
+  blocked: boolean;
+  blockedUntil: string | null;
+  blockedReason: string;
+  /** Сколько профилей в этой учётной записи. */
+  profiles: number;
 }
 
 export interface SecurityEvent {
@@ -135,6 +160,7 @@ export interface Answer {
     actions?: PendingAction[];
     entries?: LogEntry[];
     events?: SecurityEvent[];
+    people?: Person[];
     /** заявка */
     id?: string;
     kind?: string;
@@ -160,7 +186,7 @@ export interface Answer {
 const ANSWERS = new Set([
   'admin-me', 'admin-done', 'admin-error', 'admin-log', 'admin-pending',
   'admin-pending-list', 'admin-list', 'admin-step-up', 'admin-lockdown',
-  'admin-security-events', 'admin-log-verified',
+  'admin-security-events', 'admin-log-verified', 'admin-people',
 ]);
 
 const waiting: ((a: Answer) => void)[] = [];
@@ -206,6 +232,8 @@ export const ADMIN_ERROR: Record<string, string> = {
   bad_role: 'Неизвестная роль',
   bad_kind: 'Неизвестное действие',
   not_found: 'Не найдено',
+  account_blocked: 'Учётная запись заблокирована',
+  banned: 'Профиль забанен',
   too_many_requests: 'Слишком часто, подождите',
   timeout: 'Сервер не ответил',
 };

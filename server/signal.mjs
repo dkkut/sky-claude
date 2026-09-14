@@ -22,13 +22,14 @@ import { getPrivacy, setPrivacy, presenceBetween, mayCall } from './privacy.mjs'
 import {
   restrictionsOf, isBannedNow, isAdmin, isOwner,
   setAdminRight, restrictUser, setModerationNote, listAdminLog,
+  blockSkyId, skyIdBlockOf,
 } from './admin.mjs';
 import {
   rightsOf, can, myRights, requestMeta,
   logAdmin, logSecurityEvent, readAdminLog, readSecurityEvents, verifyAdminLog,
   beginStepUp, consumeStepUp,
   createPendingAction, listPendingActions, decidePendingAction,
-  listAdminsWithRoles, lockdownState, setLockdown,
+  listAdminsWithRoles, findPerson, lockdownState, setLockdown,
   ROLE_NAMES, PERMISSIONS,
 } from './adminsec.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
@@ -515,7 +516,8 @@ const handle = async (ws, session, msg) => {
       /* Пределы раздельные: читать панель можно часто, менять — реже,
          подтверждать личность — совсем редко. Один общий предел либо
          мешает работе, либо не мешает подбору. */
-      const READS = new Set(['whoami', 'log', 'security-events', 'pending', 'admins', 'lockdown']);
+      const READS = new Set(['whoami', 'log', 'security-events', 'pending', 'admins',
+        'lockdown', 'find']);
       const limitOk = READS.has(action)
         ? rateLimit(`adm:r:${me}`, 120)
         : action === 'step-up'
@@ -636,6 +638,42 @@ const handle = async (ws, session, msg) => {
           }
           return send(ws, { type: 'admin-done', payload: { action, userId: target, ...r } });
         }
+        /* ── Блокировка учётной записи ─────────────────────────────
+           Не замена бану профиля, а решение потяжелее: бан закрывает
+           одну витрину, блокировка — человека целиком, со всеми его
+           профилями и теми, что он заведёт после. Поэтому сверх права
+           модерации спрашивается подтверждение личности. */
+        case 'block-account': {
+          if (!(await can(me, 'moderation'))) {
+            await logAdmin({ actorId: me, targetId: target, type: 'skyid_block',
+              result: 'denied', detail: 'Нет права модерации', meta });
+            return failAdm('not_allowed');
+          }
+          const minutes = Number(payload?.minutes);
+          /* Снятие подтверждения личности не требует: вернуть человеку
+             доступ — не то действие, от которого надо защищаться. */
+          if (minutes > 0) {
+            const step = await consumeStepUp(me, 'block:account', payload?.code, { meta });
+            if (step.error) return failAdm(step.error);
+          }
+          const r = await blockSkyId(me, target, minutes, payload?.reason, { meta });
+          if (r.error) {
+            await logAdmin({ actorId: me, targetId: target, type: 'skyid_block',
+              result: 'denied', detail: r.error, meta });
+            return failAdm(r.error);
+          }
+          /* Закрываем открытые подключения всех его профилей сразу: иначе
+             заблокированный доработает начатое до конца сессии. */
+          if (r.minutes > 0) {
+            const { rows: mine } = await query(
+              'SELECT id FROM profiles WHERE sky_id = $1', [r.skyId]);
+            for (const row of mine) {
+              for (const sock of clients.get(row.id) ?? []) sock.close(4403, 'account blocked');
+            }
+          }
+          return send(ws, { type: 'admin-done', payload: { action, userId: target, ...r } });
+        }
+
         case 'note': {
           if (!(await can(me, 'moderation'))) return failAdm('not_allowed');
           const r = await setModerationNote(me, target, payload?.text, { meta });
@@ -665,6 +703,14 @@ const handle = async (ws, session, msg) => {
           if (r.error) return failAdm(r.error);
           return send(ws, { type: 'admin-log-verified', payload: r });
         }
+        /* Поиск человека: чтобы запрет применяли к тому, кого искали, а
+           не к тому, чей идентификатор набрали с опечаткой. */
+        case 'find': {
+          const people = await findPerson(me, payload?.q);
+          if (people === null) return failAdm('not_allowed');
+          return send(ws, { type: 'admin-people', payload: { people } });
+        }
+
         case 'admins': {
           const list = await listAdminsWithRoles(me);
           if (list === null) return failAdm('not_allowed');
@@ -1239,6 +1285,9 @@ export const startSignalHub = () => {
         // Спрашиваем ДО учёта соединения и до проверки числа устройств:
         // всё, что стоит между проверкой и учётом, — окно для гонки.
         if (await isBannedNow(userId)) { ws.close(4403, 'banned'); return; }
+        // Блокировка учётной записи закрывает все профили человека, а не
+        // один: бан второго профиля не спасал — на него и переходили.
+        if (await skyIdBlockOf(userId)) { ws.close(4403, 'account blocked'); return; }
 
         // Больше устройств, чем бывает у человека, — это скрипт.
         // Проверка и учёт идут подряд, без единого await между ними,

@@ -966,8 +966,10 @@ const executePending = async (row, payload, ownerId, meta) => {
 export const listAdminsWithRoles = async (actorId) => {
   if (!(await can(actorId, 'security'))) return null;
   const { rows } = await query(
-    `SELECT id, username, name, admin_role, admin_role_set_at, banned_until
-       FROM profiles WHERE is_admin ORDER BY username`);
+    `SELECT p.id, p.username, p.name, p.admin_role, p.admin_role_set_at,
+            p.banned_until, s.blocked_until
+       FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
+      WHERE p.is_admin ORDER BY p.username`);
   const out = [];
   for (const r of rows) {
     const owner = await isOwner(r.id);
@@ -982,6 +984,54 @@ export const listAdminsWithRoles = async (actorId) => {
       owner,
       roleSetAt: r.admin_role_set_at?.toISOString?.() ?? null,
       banned: Boolean(r.banned_until && r.banned_until > new Date()),
+      blocked: Boolean(r.blocked_until && r.blocked_until > new Date()),
+    });
+  }
+  return out;
+};
+
+/**
+ * Найти человека по нику или идентификатору — для панели.
+ *
+ * Нужен, чтобы администратор не вводил acc-… руками: ошибка в одном
+ * знаке означала бы запрет не тому. Отдаётся только тому, у кого есть
+ * право модерации, и только то, что нужно для решения: кто это, и что с
+ * ним уже сделано.
+ *
+ * Ни почты, ни телефона, ни заметок — для запрета они не нужны, а как
+ * сведения о человеке ценны.
+ */
+export const findPerson = async (actorId, queryText) => {
+  if (!(await can(actorId, 'moderation'))) return null;
+  const raw = String(queryText ?? '').trim().replace(/^@/, '').slice(0, 64);
+  if (raw.length < 2) return [];
+
+  const { rows } = await query(
+    `SELECT p.id, p.username, p.name, p.is_admin, p.banned_until,
+            s.blocked_until, s.blocked_reason,
+            (SELECT count(*) FROM profiles o WHERE o.sky_id = p.sky_id)::int AS profiles
+       FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
+      WHERE p.id = $1 OR lower(p.username) = lower($1) OR p.username ILIKE $2
+      ORDER BY (lower(p.username) = lower($1)) DESC, p.username
+      LIMIT 20`, [raw, `%${raw}%`]);
+
+  const now = new Date();
+  const out = [];
+  for (const r of rows) {
+    out.push({
+      id: r.id,
+      username: r.username,
+      name: r.name,
+      admin: r.is_admin === true,
+      owner: await isOwner(r.id),
+      banned: Boolean(r.banned_until && r.banned_until > now),
+      bannedUntil: r.banned_until && r.banned_until > now ? r.banned_until.toISOString() : null,
+      blocked: Boolean(r.blocked_until && r.blocked_until > now),
+      blockedUntil: r.blocked_until && r.blocked_until > now ? r.blocked_until.toISOString() : null,
+      blockedReason: r.blocked_until && r.blocked_until > now ? (r.blocked_reason ?? '') : '',
+      /* Сколько профилей в этой учётной записи. Отсюда видно, почему бан
+         одного профиля может ничего не решить. */
+      profiles: Number(r.profiles ?? 1),
     });
   }
   return out;

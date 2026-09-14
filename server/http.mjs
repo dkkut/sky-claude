@@ -100,10 +100,34 @@ export const readSession = async (req) => {
   return { skyId: payload.sky, profileId: stored.profileId ?? null, sessionId: payload.sid };
 };
 
-/** Нужен только вход в Sky ID — профиль может быть не выбран. */
+/** Чтение ничего не меняет, поэтому запреты его не касаются. */
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * Нужен только вход в Sky ID — профиль может быть не выбран.
+ *
+ * Блокировка учётной записи проверяется и здесь, а не только там, где
+ * есть профиль. Иначе заблокированный заводил бы себе новый профиль:
+ * работать им он всё равно не смог бы, но сам факт того, что запрет
+ * обходится хотя бы на шаг, — это не запрет.
+ *
+ * Изменяющие запросы закрыты, чтение оставлено: человек должен видеть
+ * свою учётную запись и понимать, что с ней.
+ */
 export const requireSkyId = async (req, res) => {
   const session = await readSession(req);
   if (!session) { json(res, 401, { error: 'unauthorized' }); return null; }
+
+  if (!SAFE_METHODS.has(req.method)) {
+    const { rows } = await query(
+      'SELECT blocked_until FROM sky_ids WHERE id = $1', [session.skyId]);
+    const until = rows[0]?.blocked_until;
+    if (until && until > new Date()) {
+      json(res, 403, { error: 'account_blocked', until: until.toISOString() });
+      return null;
+    }
+  }
+
   return session;
 };
 
@@ -122,7 +146,6 @@ const BANNED_MAY = [
   '/api/skyid/profiles/',
 ];
 
-const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
  * Нужен активный профиль: без него операция бессмысленна.
@@ -149,11 +172,24 @@ export const requireProfile = async (req, res) => {
   if (!SAFE_METHODS.has(req.method)) {
     const path = String(req.url ?? '').split('?')[0];
     if (!BANNED_MAY.some((prefix) => path.startsWith(prefix))) {
+      /* Два запрета рядом, и это разные вещи. Бан закрывает витрину:
+         второй профиль того же человека работает. Блокировка закрывает
+         человека: все его профили, включая заведённые после неё.
+         Спрашиваем оба одним запросом — лишнее обращение к базе на
+         каждом изменяющем запросе того не стоит. */
       const { rows } = await query(
-        'SELECT banned_until FROM profiles WHERE id = $1', [session.profileId]);
-      const until = rows[0]?.banned_until;
-      if (until && until > new Date()) {
-        json(res, 403, { error: 'banned', until: until.toISOString() });
+        `SELECT p.banned_until, s.blocked_until
+           FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
+          WHERE p.id = $1`, [session.profileId]);
+      const now = new Date();
+      const blocked = rows[0]?.blocked_until;
+      if (blocked && blocked > now) {
+        json(res, 403, { error: 'account_blocked', until: blocked.toISOString() });
+        return null;
+      }
+      const banned = rows[0]?.banned_until;
+      if (banned && banned > now) {
+        json(res, 403, { error: 'banned', until: banned.toISOString() });
         return null;
       }
     }

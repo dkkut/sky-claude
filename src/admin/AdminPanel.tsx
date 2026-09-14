@@ -17,12 +17,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Shield, ShieldAlert, ShieldCheck, Loader2, Check, X, KeyRound,
-  Wallet, Crown, ScrollText, AlertTriangle, RefreshCw, Users,
+  Wallet, Crown, ScrollText, AlertTriangle, RefreshCw, Users, Ban,
 } from 'lucide-react';
 import {
   adminCall, errorText, ROLE_LABEL, PERMISSION_LABEL,
   type MyRights, type AdminRow, type PendingAction, type LogEntry, type SecurityEvent,
-  type AdminPermission,
+  type AdminPermission, type Person,
 } from './adminWire';
 
 const C = {
@@ -390,9 +390,233 @@ const AdminsList = ({ admins, roles, onChanged }: {
   );
 };
 
+/* ─── Люди: бан профиля и блокировка учётной записи ───────────────── */
+
+/**
+ * Два запрета рядом, и это разные вещи.
+ *
+ *   бан профиля  — закрыта одна витрина. Второй профиль того же
+ *                  человека продолжает работать, и это не оплошность:
+ *                  так наказывают за то, что сделано этим профилем;
+ *
+ *   блокировка   — закрыт человек. Все его профили и те, что он заведёт
+ *   учётной        после, плюс вход. Так убирают с платформы.
+ *   записи
+ *
+ * Экран говорит об этом прямо: администратор, забанивший один профиль в
+ * уверенности, что убрал человека, ошибётся дважды — и в наказании, и в
+ * том, что будет думать дальше.
+ */
+const HOURS: { label: string; minutes: number }[] = [
+  { label: 'час', minutes: 60 },
+  { label: 'сутки', minutes: 60 * 24 },
+  { label: 'неделя', minutes: 60 * 24 * 7 },
+  { label: 'месяц', minutes: 60 * 24 * 30 },
+  { label: 'год', minutes: 60 * 24 * 365 },
+];
+
+const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
+  const [q, setQ] = useState('');
+  const [people, setPeople] = useState<Person[] | null>(null);
+  const [picked, setPicked] = useState<Person | null>(null);
+  const [minutes, setMinutes] = useState(60 * 24);
+  const [reason, setReason] = useState('');
+  const [blocking, setBlocking] = useState(false);
+  const [failed, setFailed] = useState('');
+  const [done, setDone] = useState('');
+
+  const search = async () => {
+    setFailed(''); setDone(''); setPicked(null);
+    const r = await adminCall({ action: 'find', q: q.trim() });
+    if (r.type !== 'admin-people') { setFailed(errorText(r.payload?.error)); setPeople([]); return; }
+    setPeople(r.payload.people ?? []);
+  };
+
+  const refresh = async (id: string) => {
+    const r = await adminCall({ action: 'find', q: id });
+    const fresh = (r.type === 'admin-people' ? r.payload.people ?? [] : []).find((p) => p.id === id);
+    if (fresh) { setPicked(fresh); setPeople((was) => (was ?? []).map((p) => (p.id === id ? fresh : p))); }
+  };
+
+  /** Бан профиля: немедленный, это повседневная работа модерации. */
+  const banProfile = async (on: boolean) => {
+    if (!picked) return;
+    setFailed(''); setDone('');
+    const r = await adminCall({
+      action: 'restrict', userId: picked.id, kind: 'ban', minutes: on ? minutes : 0 });
+    if (r.type !== 'admin-done') { setFailed(errorText(r.payload?.error)); return; }
+    setDone(on ? 'Профиль забанен.' : 'Бан профиля снят.');
+    await refresh(picked.id);
+  };
+
+  /** Блокировка учётной записи: тяжелее, поэтому с подтверждением личности. */
+  const blockAccount = async (code: string, on: boolean) => {
+    if (!picked) return;
+    setBlocking(false); setFailed(''); setDone('');
+    const r = await adminCall({
+      action: 'block-account', userId: picked.id,
+      minutes: on ? minutes : 0, reason: reason.trim(), code });
+    if (r.type !== 'admin-done') { setFailed(errorText(r.payload?.error)); return; }
+    setDone(on
+      ? 'Учётная запись заблокирована. Закрыты все профили этого человека и вход.'
+      : 'Блокировка снята.');
+    await refresh(picked.id);
+  };
+
+  if (!canModerate) {
+    return <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>
+      Запреты налагает модерация.
+    </p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void search(); }}
+          placeholder="Ник или идентификатор профиля"
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <button type="button" onClick={() => void search()}
+          className="rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>
+          Найти
+        </button>
+      </div>
+
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {done && <p className="text-[11px]" style={{ color: C.green }}>{done}</p>}
+
+      {people?.length === 0 && (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Никого не нашлось.</p>
+      )}
+
+      {(people ?? []).map((p) => (
+        <button key={p.id} type="button" onClick={() => { setPicked(p); setReason(''); }}
+          className="w-full rounded-2xl p-3 text-left"
+          style={{
+            background: C.l1,
+            border: `1px solid ${picked?.id === p.id ? C.acc : C.brd}`,
+          }}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>
+              {p.owner && <Crown size={11} style={{ color: C.amber, display: 'inline', marginRight: 4 }} />}
+              {p.name} <span className="font-normal" style={{ color: C.t3 }}>@{p.username}</span>
+            </p>
+            {p.blocked && <span className="shrink-0 text-[10px] font-bold" style={{ color: C.red }}>заблокирован</span>}
+            {!p.blocked && p.banned && <span className="shrink-0 text-[10px] font-bold" style={{ color: C.amber }}>забанен</span>}
+          </div>
+          <p className="text-[10px]" style={{ color: C.t3 }}>
+            {p.admin ? 'администратор · ' : ''}
+            профилей в учётной записи: {p.profiles}
+          </p>
+        </button>
+      ))}
+
+      {picked && !picked.owner && (
+        <div className="space-y-3 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <p className="text-xs font-bold" style={{ color: C.t1 }}>
+            {picked.name} <span className="font-normal" style={{ color: C.t3 }}>@{picked.username}</span>
+          </p>
+
+          <div>
+            <p className="mb-1 text-[10px] font-bold" style={{ color: C.t3 }}>НА СКОЛЬКО</p>
+            <div className="flex flex-wrap gap-1">
+              {HOURS.map((h) => (
+                <button key={h.minutes} type="button" onClick={() => setMinutes(h.minutes)}
+                  className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold"
+                  style={{
+                    background: minutes === h.minutes ? C.acc : C.l2,
+                    color: minutes === h.minutes ? '#fff' : C.t3,
+                  }}>
+                  {h.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Бан профиля */}
+          <div className="rounded-xl p-2.5" style={{ background: C.l2 }}>
+            <p className="flex items-center gap-1.5 text-[11px] font-bold" style={{ color: C.t1 }}>
+              <Ban size={12} style={{ color: C.amber }} /> Забанить профиль
+            </p>
+            <p className="mt-1 text-[10px]" style={{ color: C.t3 }}>
+              Закрывает эту витрину. Остальные профили этого человека
+              {picked.profiles > 1 ? ` (их ещё ${picked.profiles - 1})` : ''} продолжат работать.
+            </p>
+            {picked.banned ? (
+              <button type="button" onClick={() => void banProfile(false)}
+                className="mt-2 w-full rounded-lg py-2 text-[11px] font-bold"
+                style={{ background: C.l1, color: C.green }}>
+                Снять бан профиля
+              </button>
+            ) : (
+              <button type="button" onClick={() => void banProfile(true)}
+                className="mt-2 w-full rounded-lg py-2 text-[11px] font-bold"
+                style={{ background: C.amber, color: '#111' }}>
+                Забанить профиль
+              </button>
+            )}
+          </div>
+
+          {/* Блокировка учётной записи */}
+          <div className="rounded-xl p-2.5" style={{ background: C.l2 }}>
+            <p className="flex items-center gap-1.5 text-[11px] font-bold" style={{ color: C.t1 }}>
+              <ShieldAlert size={12} style={{ color: C.red }} /> Заблокировать Sky ID
+            </p>
+            <p className="mt-1 text-[10px]" style={{ color: C.t3 }}>
+              Закрывает человека целиком: все его профили, те, что он заведёт после,
+              и вход. Это не бан посильнее — это другое решение.
+            </p>
+
+            {picked.blocked ? (
+              <>
+                {picked.blockedReason && (
+                  <p className="mt-1.5 text-[10px]" style={{ color: C.t2 }}>
+                    Основание: {picked.blockedReason}
+                  </p>
+                )}
+                <button type="button" onClick={() => void blockAccount('', false)}
+                  className="mt-2 w-full rounded-lg py-2 text-[11px] font-bold"
+                  style={{ background: C.l1, color: C.green }}>
+                  Снять блокировку
+                </button>
+              </>
+            ) : (
+              <>
+                <input value={reason} onChange={(e) => setReason(e.target.value)}
+                  placeholder="Основание — попадёт в журнал"
+                  className="mt-2 w-full rounded-lg px-3 py-2 text-[11px] outline-none" style={inputStyle} />
+                {blocking ? (
+                  <div className="mt-2">
+                    <StepUp purpose="block:account" onCode={(c) => void blockAccount(c, true)}
+                      onCancel={() => setBlocking(false)} />
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setBlocking(true)}
+                    className="mt-2 w-full rounded-lg py-2 text-[11px] font-bold"
+                    style={{ background: C.red, color: '#fff' }}>
+                    Заблокировать Sky ID
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {picked?.owner && (
+        <p className="rounded-2xl p-3 text-[11px]" style={{ background: C.l1, color: C.t2, border: `1px solid ${C.brd}` }}>
+          Это владелец сервиса. К нему запреты неприменимы — ни бан профиля, ни
+          блокировка учётной записи: иначе назначенный администратор отобрал бы
+          сервис у хозяина.
+        </p>
+      )}
+    </div>
+  );
+};
+
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'pending' | 'admins' | 'grant' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -484,6 +708,7 @@ export const AdminPanel = () => {
 
   const TABS: { key: Tab; label: string; show: boolean }[] = [
     { key: 'overview', label: 'Обзор', show: true },
+    { key: 'people', label: 'Люди', show: has('moderation') },
     { key: 'pending', label: 'Заявки', show: true },
     { key: 'grant', label: 'Начисления', show: has('finance') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
@@ -594,6 +819,8 @@ export const AdminPanel = () => {
           <PendingList rights={rights} actions={actions} onChanged={() => void loadPending()} />
         </>
       )}
+
+      {tab === 'people' && <PeopleTab canModerate={has('moderation')} />}
 
       {tab === 'grant' && <GrantForm onSent={() => void loadPending()} />}
 

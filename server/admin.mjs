@@ -208,6 +208,79 @@ export const restrictUser = async (actorId, targetId, kind, minutes, extra = {})
   return { ok: true, kind, minutes: mins ?? 0 };
 };
 
+/* ─── Блокировка учётной записи ─────────────────────────────────────── */
+
+/**
+ * Заблокировать Sky ID целиком.
+ *
+ * Не то же самое, что бан профиля, и не замена ему. Бан закрывает одну
+ * витрину — второй профиль того же человека работает дальше. Блокировка
+ * закрывает человека: все его профили и те, что он заведёт после, а
+ * заодно и вход.
+ *
+ * Владельца не блокирует никто: иначе назначенный администратор отобрал
+ * бы сервис у хозяина через блокировку вместо разжалования.
+ *
+ * Себя — тоже нельзя. Это не забота об администраторе, а забота о
+ * сервисе: последний оставшийся, заблокировавший сам себя, оставил бы
+ * экосистему без управления.
+ *
+ * Право и подтверждение личности проверяются до вызова — здесь только
+ * то, что нельзя проверить снаружи: кто хозяин учётной записи.
+ */
+export const blockSkyId = async (actorId, targetProfileId, minutes, reason = '', extra = {}) => {
+  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  if (!targetProfileId || actorId === targetProfileId) return { error: 'not_allowed' };
+  if (await isOwner(targetProfileId)) return { error: 'owner_protected' };
+
+  const { rows } = await query(
+    'SELECT sky_id FROM profiles WHERE id = $1', [String(targetProfileId)]);
+  const skyId = rows[0]?.sky_id;
+  if (!skyId) return { error: 'not_found' };
+
+  /* Учётная запись, в которой есть профиль владельца, не блокируется
+     тоже: иначе владельца достали бы через его же второй профиль. */
+  const { rowCount: ownerInside } = await query(
+    `SELECT 1 FROM profiles WHERE sky_id = $1 AND lower(username) = $2`,
+    [skyId, ownerName() || ' ']);
+  if (ownerInside > 0) return { error: 'owner_protected' };
+
+  const mins = untilFrom(minutes);
+  await query(
+    `UPDATE sky_ids
+        SET blocked_until = CASE WHEN $2::int IS NULL THEN NULL
+                                 ELSE now() + ($2 || ' minutes')::interval END,
+            blocked_reason = $3, blocked_by = $4,
+            blocked_at = CASE WHEN $2::int IS NULL THEN NULL ELSE now() END
+      WHERE id = $1`,
+    [skyId, mins === null ? null : String(mins), String(reason ?? '').slice(0, 300), actorId]);
+
+  await writeAdminLog(actorId, targetProfileId,
+    mins === null ? 'skyid_unblock' : 'skyid_block',
+    mins === null ? 'Учётная запись разблокирована'
+      : `Учётная запись заблокирована на ${mins} мин.${reason ? `: ${reason}` : ''}`,
+    extra);
+
+  return { ok: true, skyId, minutes: mins ?? 0 };
+};
+
+/**
+ * Заблокирована ли учётная запись этого профиля.
+ *
+ * Спрашивается у базы при каждой проверке: снятая блокировка должна
+ * действовать сразу, а снимают её обычно как раз тогда, когда ждать
+ * нельзя.
+ */
+export const skyIdBlockOf = async (profileId) => {
+  const { rows } = await query(
+    `SELECT s.blocked_until, s.blocked_reason
+       FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
+      WHERE p.id = $1`, [String(profileId ?? '')]);
+  const until = rows[0]?.blocked_until;
+  if (!until || until <= new Date()) return null;
+  return { until: until.toISOString(), reason: rows[0].blocked_reason ?? '' };
+};
+
 /** Заметка модератора о человеке. Видна только администраторам. */
 export const setModerationNote = async (actorId, targetId, text, extra = {}) => {
   if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
