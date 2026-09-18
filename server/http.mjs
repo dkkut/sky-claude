@@ -5,7 +5,7 @@
  * пары функций и чтобы заголовки безопасности задавались в одном месте.
  */
 import { config } from './config.mjs';
-import { verifyToken } from './security.mjs';
+import { verifyToken, rateLimit } from './security.mjs';
 import { REFRESH_COOKIE, parseCookies } from './cookies.mjs';
 import { sessionStore } from './sessions.mjs';
 import { query } from './db.mjs';
@@ -119,6 +119,15 @@ export const requireSkyId = async (req, res) => {
   if (!session) { json(res, 401, { error: 'unauthorized' }); return null; }
 
   if (!SAFE_METHODS.has(req.method)) {
+    /* Тот же общий потолок, что и в requireProfile — здесь дело ещё до
+       выбора профиля, и своя стража у ручки (email/phone, два фактора)
+       его не заменяет: она ограничивает подбор кода, а не забытую
+       защиту где-то ещё. */
+    if (!rateLimit(`http:write:${session.skyId}`, 1500)) {
+      json(res, 429, { error: 'rate_limited' });
+      return null;
+    }
+
     const { rows } = await query(
       'SELECT blocked_until FROM sky_ids WHERE id = $1', [session.skyId]);
     const until = rows[0]?.blocked_until;
@@ -170,6 +179,20 @@ export const requireProfile = async (req, res) => {
   if (!session.profileId) { json(res, 409, { error: 'no_active_profile' }); return null; }
 
   if (!SAFE_METHODS.has(req.method)) {
+    /* Общий потолок на все изменяющие запросы разом, помимо того, что
+       считает сам обработчик пути. Своя стража у ручки — это разумный
+       предел под её нагрузку; но она есть не у каждой ручки, и забытая
+       однажды не значит безопасная навсегда. Этот предел — не замена
+       частным, они куда строже, а щит на случай, если частного нет
+       вовсе: без него забытая ручка была бы открыта пулемётной очереди.
+       Число выше самого частого легального потока в проекте — позиция
+       прослушивания, которую шлют по таймеру с нескольких устройств
+       разом, — чтобы не мешать ему, а не подгонять под него. */
+    if (!rateLimit(`http:write:${session.profileId}`, 1500)) {
+      json(res, 429, { error: 'rate_limited' });
+      return null;
+    }
+
     const path = String(req.url ?? '').split('?')[0];
     if (!BANNED_MAY.some((prefix) => path.startsWith(prefix))) {
       /* Два запрета рядом, и это разные вещи. Бан закрывает витрину:

@@ -46,6 +46,7 @@ import { sendEmail } from './notify.mjs';
 import { wallet } from './wallet.mjs';
 import { grantPrime } from './skyid.mjs';
 import { adjustRevenue } from './skyvideo.mjs';
+import { sessionStore } from './sessions.mjs';
 
 /* ─── Роли и права ─────────────────────────────────────────────────── */
 
@@ -430,6 +431,30 @@ export const lockdownState = async () => {
   };
 };
 
+/**
+ * Разлогинить всех администраторов, кроме владельца, на всех
+ * устройствах сразу.
+ *
+ * До этого включение аварийного режима закрывало только открытый
+ * сокет админ-панели — токен входа оставался действующим, и через
+ * секунду тот же человек открывал новую вкладку и заходил снова: не в
+ * панель (её всё ещё держал замок ниже), но во всё остальное —
+ * мессенджер, маркет, кошелёк — как ни в чём не бывало. Аварийный
+ * режим при подозрении на компрометацию должен обрывать доступ
+ * целиком, а не только один экран.
+ *
+ * Владелец не трогается: он и есть тот, кто включает режим и должен
+ * остаться внутри, чтобы было кому его выключить.
+ */
+const revokeOtherAdminSessions = async (ownerId) => {
+  const { rows } = await query(
+    `SELECT s.id AS sky_id FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
+      WHERE p.is_admin AND p.id <> $1`, [ownerId]);
+  let n = 0;
+  for (const row of rows) n += await sessionStore.revokeAllForUser(row.sky_id);
+  return n;
+};
+
 export const setLockdown = async (actorId, on, reason = '', { meta = {} } = {}) => {
   if (!(await isOwner(actorId))) {
     await logAdmin({ actorId, type: 'lockdown', targetType: 'system',
@@ -439,8 +464,15 @@ export const setLockdown = async (actorId, on, reason = '', { meta = {} } = {}) 
   await query(
     `UPDATE admin_lockdown SET active = $1, reason = $2, set_by = $3, set_at = now()
       WHERE id`, [Boolean(on), String(reason ?? '').slice(0, 300), actorId]);
+
+  let revoked = 0;
+  if (on) revoked = await revokeOtherAdminSessions(actorId);
+
   await logAdmin({ actorId, type: on ? 'lockdown_on' : 'lockdown_off',
-    targetType: 'system', detail: String(reason ?? '').slice(0, 300), meta });
+    targetType: 'system',
+    detail: on ? `${String(reason ?? '').slice(0, 250)} · сессий закрыто: ${revoked}`
+      : String(reason ?? '').slice(0, 300),
+    meta });
   return { ...(await lockdownState()) };
 };
 

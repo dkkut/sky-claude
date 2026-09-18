@@ -168,6 +168,9 @@ export const passwordRoutes = async (req, res, url) => {
   if (req.method === 'POST' && url === '/api/auth/password/remove') {
     const session = await readSession(req);
     if (!session) return json(res, 401, { error: 'unauthorized' });
+    if (!rateLimit(`pwremove:${session.skyId}`, 10)) {
+      return json(res, 429, { error: 'too_many_requests' });
+    }
     await query(
       `UPDATE sky_ids SET password_hash = NULL, password_set_at = NULL,
               password_fail_count = 0, password_locked_until = NULL
@@ -261,6 +264,13 @@ export const passwordRoutes = async (req, res, url) => {
     const body = await parseBody(req);
     const email = normalizeEmail(body.email);
     if (!email) return json(res, 400, { error: 'invalid_email' });
+
+    // Тот же предел по адресу, что у входа паролем: код сам ограничен
+    // числом попыток, но ручку, что его проверяет, стоит ограничить и
+    // отдельно — предел на код и предел на ручку защищают от разного.
+    if (!rateLimit(`pwreset:${email}`, 10)) {
+      return json(res, 429, { error: 'too_many_requests' });
+    }
 
     const check = await verifyCode('email', email, 'password_reset', body.code);
     if (check.error) return json(res, 401, { error: check.error, attemptsLeft: check.attemptsLeft });
