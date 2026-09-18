@@ -1,9 +1,8 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Send, Users, Radio, Plus } from 'lucide-react';
+import { X, Check, Users, Radio, Plus } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMessengerStore } from '@/messenger/store';
-import { useMoney, fmt } from '@/wallet/store';
 
 const Backdrop = ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => (
   <AnimatePresence>
@@ -81,57 +80,6 @@ export const ReportProfileSheet = ({ targetId, onClose }: { targetId: string; on
             </button>
           </div>
         </>
-      )}
-    </Backdrop>
-  );
-};
-
-/* ============================================================ Sky Money */
-export const TransferMoneySheet = ({ targetId, targetName, onClose }: { targetId: string; targetName: string; onClose: () => void }) => {
-  const { currentUserId } = useAuthStore();
-  const { getBalance, transfer } = useMoney();
-  const [amount, setAmount] = useState('');
-  const [message, setMessage] = useState('');
-  const [done, setDone] = useState(false);
-  const balance = currentUserId ? getBalance(currentUserId) : 0;
-  const num = Number(amount);
-  const valid = num > 0 && num <= balance;
-
-  const submit = async () => {
-    if (!currentUserId || !valid) return;
-    const ok = await transfer(currentUserId, targetId, num);
-    if (ok) { setDone(true); setTimeout(onClose, 1100); }
-  };
-
-  return (
-    <Backdrop onClose={onClose}>
-      <SheetHeader title={`Перевести ${targetName}`} onClose={onClose} />
-      {done ? (
-        <div className="px-5 py-8 flex flex-col items-center gap-2 text-center">
-          <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: 'rgba(74,222,128,0.15)' }}>
-            <Check size={22} style={{ color: 'var(--green)' }} />
-          </div>
-          <p className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>{fmt(num)} отправлено</p>
-        </div>
-      ) : (
-        <div className="px-5 py-4 space-y-4">
-          <div className="text-center">
-            <div className="text-xs mb-1" style={{ color: 'var(--t3)' }}>Доступно {fmt(balance)}</div>
-            <input value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d]/g, ''))}
-              placeholder="0" inputMode="numeric"
-              className="w-full bg-transparent text-center text-4xl font-bold outline-none"
-              style={{ color: 'var(--t1)' }} />
-          </div>
-          <input value={message} onChange={e => setMessage(e.target.value)} placeholder="Сообщение (необязательно)"
-            className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
-            style={{ background: 'var(--bg-l2)', color: 'var(--t1)' }} />
-          <button type="button" disabled={!valid} onClick={submit}
-            className="w-full py-2.5 rounded-xl font-semibold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
-            style={{ background: 'var(--accent)', color: '#fff' }}>
-            <Send size={15} /> Перевести
-          </button>
-          {num > balance && <p className="text-xs text-center" style={{ color: 'var(--red)' }}>Недостаточно средств</p>}
-        </div>
       )}
     </Backdrop>
   );

@@ -4,22 +4,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X, Eye, Send, Gift, PictureInPicture2, TrendingUp, Zap,
+  X, Eye, Send, PictureInPicture2, TrendingUp,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
-import { useMoney } from '@/wallet/store';
 import { useStreamsStore } from './store';
 import { StreamViewerConn } from './webrtc';
 
 const S = { bg:'#0a0a0e', l1:'#131318', l2:'#1c1c22', border:'rgba(255,255,255,0.08)', accent:'var(--accent)', t1:'#f2f2f5', t2:'rgba(255,255,255,0.65)', t3:'rgba(255,255,255,0.4)', red:'#e0555f', gold:'#f5b942' };
 const REACTS = ['❤️','🔥','😂','👏','😮'];
-const DONATE_AMOUNTS = [50, 100, 250, 500];
 
 export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: string; onClose: () => void; onOpenProfile: (id: string) => void }) => {
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
   const { streams, join, leave, sendChat, react, voteOnPrediction } = useStreamsStore();
-  const { getBalance, transfer } = useMoney();
 
   const live = streams[streamId];
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -28,8 +25,6 @@ export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: str
 
   const [connected, setConnected] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  const [showDonate, setShowDonate] = useState(false);
-  const [donateAmount, setDonateAmount] = useState(100);
   const [floatingReacts, setFloatingReacts] = useState<{ id: number; emoji: string }[]>([]);
   const reactKey = useRef(0);
 
@@ -67,19 +62,6 @@ export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: str
     const id = reactKey.current;
     setFloatingReacts(f => [...f, { id, emoji }]);
     setTimeout(() => setFloatingReacts(f => f.filter(r => r.id !== id)), 1800);
-  };
-
-  const donate = () => {
-    if (!currentUserId || !me) return;
-    const ok = transfer(currentUserId, live.authorId, donateAmount);
-    if (!ok) { alert('Недостаточно средств на балансе'); return; }
-    sendChat(streamId, {
-      id: crypto.randomUUID(), userId: currentUserId, userName: me.name,
-      text: `задонатил(а) ${donateAmount}`, createdAt: Date.now(),
-      isDonation: true, donationAmount: donateAmount,
-    });
-    useStreamsStore.getState().updateStream(streamId, { totalDonations: live.totalDonations + donateAmount });
-    setShowDonate(false);
   };
 
   const openPrediction = live.predictions.find(p => !p.closed);
@@ -177,27 +159,7 @@ export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: str
         </div>
 
         <div className="p-3 border-t space-y-2" style={{ borderColor: S.border }}>
-          {showDonate && (
-            <div className="rounded-xl p-3 space-y-2" style={{ background: S.l2 }}>
-              <p className="text-xs font-bold" style={{ color: S.gold }}>Донат стримеру</p>
-              <div className="flex gap-1.5">
-                {DONATE_AMOUNTS.map(a => (
-                  <button key={a} type="button" onClick={() => setDonateAmount(a)}
-                    className="flex-1 rounded-lg py-1.5 text-[11px] font-bold" style={{ background: donateAmount===a?S.gold:'rgba(255,255,255,0.08)', color: donateAmount===a?'#000':S.t2 }}>
-                    <span className="inline-flex items-center justify-center gap-0.5">{a}<Zap size={10}/></span>
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] flex items-center gap-0.5" style={{ color: S.t3 }}>
-                Баланс: {currentUserId ? getBalance(currentUserId) : 0}<Zap size={9}/>
-              </p>
-              <button type="button" onClick={donate} className="w-full rounded-lg py-2 text-xs font-bold" style={{ background: S.gold, color: '#000' }}>Отправить</button>
-            </div>
-          )}
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setShowDonate(v => !v)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ background: `${S.gold}22` }}>
-              <Gift size={15} style={{ color: S.gold }}/>
-            </button>
             <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()}
               placeholder="Написать в чат..." className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={{ background: S.l2, color: S.t1, border: `1px solid ${S.border}` }}/>
             <button type="button" onClick={sendMsg} disabled={!chatInput.trim()} className="grid h-9 w-9 shrink-0 place-items-center rounded-full disabled:opacity-40" style={{ background: S.accent }}>

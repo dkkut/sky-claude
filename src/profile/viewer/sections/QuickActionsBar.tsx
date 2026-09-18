@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageCircle, Phone, Video, UserPlus, UserCheck, UserX, UserRoundCheck,
-  Bell, Gift as GiftIcon, Send, Users, Radio, Share2, Link2, Flag, Ban, EyeOff, Eye,
+  Bell, Gift as GiftIcon, Users, Radio, Share2, Link2, Flag, Ban, EyeOff, Eye,
   MoreHorizontal, X,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
@@ -13,7 +13,7 @@ import { useSocialGraph } from '../social';
 import { useProfileViewer } from '../store';
 import type { ProfileData } from '../useProfileData';
 import { GiftModal, type GiftModalProps } from '@/gifts/SkyGifts';
-import { ReportProfileSheet, TransferMoneySheet, InviteToChatSheet } from '../ActionSheets';
+import { ReportProfileSheet, InviteToChatSheet } from '../ActionSheets';
 import type { IconComponent } from '@/shared/icon';
 
 const Pill = ({ icon: Icon, label, onClick, tone, primary }: {
@@ -54,7 +54,7 @@ export const QuickActionsBar = ({ data, onEdit }: { data: ProfileData; onEdit?: 
   const close = useProfileViewer(s => s.close);
 
   const [more, setMore] = useState(false);
-  const [sheet, setSheet] = useState<'gift' | 'transfer' | 'inviteGroup' | 'inviteChannel' | 'report' | null>(null);
+  const [sheet, setSheet] = useState<'gift' | 'inviteGroup' | 'inviteChannel' | 'report' | null>(null);
 
   if (!data.account) return null;
   const acc = data.account;
@@ -122,7 +122,6 @@ export const QuickActionsBar = ({ data, onEdit }: { data: ProfileData; onEdit?: 
                 </button>
               </div>
               <div className="py-1">
-                <Row icon={Send} label="Перевести Sky Money" onClick={() => { setMore(false); setSheet('transfer'); }} />
                 <Row icon={Users} label="Пригласить в группу" onClick={() => { setMore(false); setSheet('inviteGroup'); }} />
                 <Row icon={Radio} label="Пригласить в канал" onClick={() => { setMore(false); setSheet('inviteChannel'); }} />
                 <Row icon={Share2} label="Поделиться профилем" onClick={() => { setMore(false); shareProfile(acc.id, acc.name); }} />
@@ -141,7 +140,6 @@ export const QuickActionsBar = ({ data, onEdit }: { data: ProfileData; onEdit?: 
       {sheet === 'gift' && (
         <GiftModalLauncher acc={acc} onClose={() => setSheet(null)} />
       )}
-      {sheet === 'transfer' && <TransferMoneySheet targetId={acc.id} targetName={acc.name} onClose={() => setSheet(null)} />}
       {sheet === 'inviteGroup' && <InviteToChatSheet targetId={acc.id} targetName={acc.name} kind="group" onClose={() => setSheet(null)} />}
       {sheet === 'inviteChannel' && <InviteToChatSheet targetId={acc.id} targetName={acc.name} kind="channel" onClose={() => setSheet(null)} />}
       {sheet === 'report' && <ReportProfileSheet targetId={acc.id} onClose={() => setSheet(null)} />}

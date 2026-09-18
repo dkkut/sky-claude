@@ -12,7 +12,6 @@ import { config } from './../config.mjs';
 import { sanitizeInput } from './../security.mjs';
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { wallet } from './../wallet.mjs';
-import { userStore } from './../store.mjs';
 
 export const walletRoutes = async (req, res, url) => {
   if (!url.startsWith('/api/wallet')) return false;
@@ -57,17 +56,6 @@ export const walletRoutes = async (req, res, url) => {
       uid, body.amount, sanitizeInput(body.type || 'market'),
       sanitizeInput(body.desc || ''), body.ref ? sanitizeInput(body.ref) : null,
     );
-    return result.error ? json(res, 400, result) : json(res, 200, result);
-  }
-
-  if (req.method === 'POST' && url === '/api/wallet/transfer') {
-    const body = await parseBody(req);
-    const target = body.toUserId
-      ? await userStore.findById(sanitizeInput(body.toUserId))
-      : await userStore.findByUsername(sanitizeInput(body.toUsername || ''));
-    if (!target) return json(res, 404, { error: 'recipient_not_found' });
-
-    const result = await wallet.transfer(uid, target.id, body.amount);
     return result.error ? json(res, 400, result) : json(res, 200, result);
   }
 

@@ -81,7 +81,6 @@ interface WalletState {
 
   topUp:     (userId: string, amount: number, method: string) => Promise<boolean>;
   spend:     (userId: string, amount: number, type: TxType, desc: string, ref?: string) => Promise<boolean>;
-  transfer:  (fromId: string, toId: string, amount: number) => Promise<boolean>;
   spendPoints: (userId: string, amount: number, desc: string, ref?: string) => Promise<boolean>;
   refund:      (userId: string, amount: number, desc: string, ref?: string) => Promise<boolean>;
   earnPoints:  (userId: string, amount: number, desc: string) => Promise<boolean>;
@@ -99,7 +98,7 @@ interface WalletState {
 }
 
 import {
-  fetchWallet, apiTopUp, apiSpend, apiTransferTo, apiExchange, apiSpendPoints,
+  fetchWallet, apiTopUp, apiSpend, apiExchange, apiSpendPoints,
   apiRefund, apiEarnPoints,
 } from './api';
 
@@ -149,7 +148,6 @@ export const useMoney = create<WalletState>((set, get) => {
 
     topUp:    (_userId, amount, method)              => run(() => apiTopUp(amount, method)),
     spend:    (_userId, amount, type, desc, ref)     => run(() => apiSpend(amount, type, desc, ref)),
-    transfer: (_fromId, toId, amount)                => run(() => apiTransferTo(toId, amount)),
     spendPoints: (_userId, amount, desc, ref)        => run(() => apiSpendPoints(amount, desc, ref)),
     refund:      (_userId, amount, desc, ref)        => run(() => apiRefund(amount, desc, ref)),
     earnPoints:  (_userId, amount, desc)             => run(() => apiEarnPoints(amount, desc)),

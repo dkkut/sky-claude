@@ -29,8 +29,6 @@ const ERRORS: Record<string, string> = {
   insufficient_funds:      'Недостаточно средств',
   insufficient_points:     'Недостаточно баллов',
   invalid_amount:          'Некорректная сумма',
-  self_transfer:           'Нельзя перевести самому себе',
-  recipient_not_found:     'Получатель не найден',
   payments_not_configured: 'Пополнение недоступно: платежи не подключены',
   unauthorized:            'Сессия истекла, войдите заново',
 };
@@ -79,8 +77,6 @@ export const fetchWallet = async (): Promise<WalletSnapshot | null> => {
 export const apiTopUp    = (amount: number, method: string) => op('/topup', { amount, method });
 export const apiSpend    = (amount: number, type: TxType, desc: string, ref?: string) =>
   op('/spend', { amount, type, desc, ref });
-export const apiTransfer = (toUsername: string, amount: number) => op('/transfer', { toUsername, amount });
-export const apiTransferTo = (toUserId: string, amount: number) => op('/transfer', { toUserId, amount });
 export const apiExchange = (rubles: number) => op('/exchange', { rubles });
 export const apiSpendPoints = (amount: number, desc: string, ref?: string) =>
   op('/spend-points', { amount, desc, ref });

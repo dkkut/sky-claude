@@ -40,7 +40,7 @@ const TOP_UP_METHODS = [
 /* QUICK_AMOUNTS moved to TopUpSheet */
 
 /* -- Toplevel section type --------------------------------------- */
-type WView = 'main' | 'topup' | 'checkout' | 'transfer' | 'history' | 'pay_history' | 'gifts' | 'exchange';
+type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange';
 
 /* -- Balance Card ----------------------------------------------- */
 const BalanceCard = ({ balance, points, userId, onExchange }: {
@@ -98,13 +98,12 @@ const BalanceCard = ({ balance, points, userId, onExchange }: {
 );
 
 /* -- Quick Actions ----------------------------------------------- */
-const QuickActions = ({ onTopUp, onTransfer, onHistory }: {
-  onTopUp: () => void; onTransfer: () => void; onHistory: () => void;
+const QuickActions = ({ onTopUp, onHistory }: {
+  onTopUp: () => void; onHistory: () => void;
 }) => (
-  <div className="grid grid-cols-3 gap-3">
+  <div className="grid grid-cols-2 gap-3">
     {[
       { icon:Plus,           label:'Пополнить', onClick:onTopUp,    color:C.accent },
-      { icon:ArrowUpRight,   label:'Перевод',   onClick:onTransfer, color:C.green  },
       { icon:RotateCcw,      label:'История',   onClick:onHistory,  color:C.amber  },
     ].map(({ icon:Icon, label, onClick, color }) => (
       <motion.button key={label} type="button" onClick={onClick} whileTap={{ scale:0.94 }}
@@ -594,103 +593,6 @@ const TopUpSheet = ({ onDone }: { onDone: () => void }) => {
   );
 };
 
-
-const TransferSheet = ({ onDone }: { onDone: () => void }) => {
-  const { accounts, currentUserId } = useAuthStore();
-  const { transfer, getBalance }    = useMoney();
-  const [toId,    setToId]    = useState('');
-  const [amount,  setAmount]  = useState('');
-  const [success, setSuccess] = useState(false);
-  const [err,     setErr]     = useState('');
-
-  const others   = accounts.filter(a => a.id !== currentUserId);
-  const myBal    = getBalance(currentUserId ?? '');
-  const toUser   = others.find(a => a.id === toId);
-  const num      = parseInt(amount) || 0;
-
-  const confirm = async () => {
-    setErr('');
-    if (!toId)       { setErr('Выберите получателя'); return; }
-    if (num < 10)    { setErr('Минимальная сумма 10 ₽'); return; }
-    if (num > myBal) { setErr('Недостаточно средств'); return; }
-    const ok = await transfer(currentUserId!, toId, num);
-    if (ok) { setSuccess(true); setTimeout(onDone, 1600); }
-    else      setErr(useMoney.getState().lastError ?? 'Ошибка перевода');
-  };
-
-  if (success) return (
-    <div className="flex flex-col items-center justify-center gap-4 py-10">
-      <motion.div initial={{ scale:0 }} animate={{ scale:1 }} transition={{ type:'spring', stiffness:400, damping:20 }}
-        className="grid h-16 w-16 place-items-center rounded-full"
-        style={{ background:'rgba(52,211,153,0.15)', border:'2px solid rgba(52,211,153,0.4)' }}>
-        <Check size={32} style={{ color:C.green }}/>
-      </motion.div>
-      <p className="text-lg font-bold text-white">Перевод выполнен!</p>
-    </div>
-  );
-
-  return (
-    <div className="space-y-4 p-1">
-      {/* Recipient */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color:C.t3 }}>Получатель</p>
-        <div className="space-y-2">
-          {others.map(a => (
-            <button key={a.id} type="button" onClick={() => setToId(a.id)}
-              className="flex items-center gap-3 w-full rounded-2xl px-4 py-3 transition-all"
-              style={{
-                background: toId === a.id ? `${C.accent}10` : C.l2,
-                border: `1px solid ${toId === a.id ? C.accent+'40' : C.border}`,
-              }}>
-              <div className="grid h-9 w-9 place-items-center rounded-full text-sm font-bold text-white shrink-0"
-                style={{ background:`linear-gradient(135deg,hsl(${[...a.name].reduce((s,c)=>s+c.charCodeAt(0),0)%360},65%,42%),hsl(${([...a.name].reduce((s,c)=>s+c.charCodeAt(0),0)+40)%360},70%,36%))` }}>
-                {a.name[0]}
-              </div>
-              <div className="flex-1 text-left">
-                <p className="text-sm font-medium" style={{ color:C.t1 }}>{a.name}</p>
-                <p className="text-xs" style={{ color:C.t3 }}>@{a.username}</p>
-              </div>
-              {toId === a.id && <Check size={16} style={{ color:C.accent }}/>}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Amount */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color:C.t3 }}>Сумма</p>
-        <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold" style={{ color:C.t3 }}>₽</span>
-          <input type="number" min="10" value={amount} onChange={e => setAmount(e.target.value)}
-            placeholder="Сколько отправить?"
-            className="w-full rounded-2xl pl-8 pr-4 py-3 text-sm outline-none"
-            style={{ background:C.l2, border:`1px solid ${C.border}`, color:C.t1 }}/>
-        </div>
-        <p className="text-xs mt-1.5" style={{ color:C.t3 }}>Доступно: <span style={{ color:C.t2 }}>{fmt(myBal)}</span></p>
-      </div>
-
-      {err && <p className="text-xs text-center" style={{ color:C.red }}>{err}</p>}
-
-      {toUser && num >= 10 && (
-        <motion.div initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }}
-          className="rounded-2xl p-4" style={{ background:C.l2, border:`1px solid ${C.border}` }}>
-          <p className="text-sm" style={{ color:C.t2 }}>
-            Перевод <span className="font-bold" style={{ color:C.t1 }}>{fmt(num)}</span> пользователю{' '}
-            <span className="font-bold" style={{ color:C.t1 }}>{toUser.name}</span>
-          </p>
-        </motion.div>
-      )}
-
-      <motion.button whileTap={{ scale:0.97 }} type="button" onClick={confirm}
-        disabled={!toId || !amount || num < 10}
-        className="w-full py-3.5 rounded-2xl text-sm font-bold text-white disabled:opacity-40"
-        style={{ background:`linear-gradient(135deg,${C.green}cc,${C.green})` }}>
-        Отправить {num >= 10 ? fmt(num) : ''}
-      </motion.button>
-    </div>
-  );
-};
-
 /* -- Full History ----------------------------------------------- */
 const HistoryView = ({ txs, onBack }: { txs: ReturnType<typeof useMoney.getState>['transactions']; onBack: () => void }) => (
   <motion.div initial={{ opacity:0, x:20 }} animate={{ opacity:1, x:0 }} className="flex flex-col h-full">
@@ -864,21 +766,6 @@ export const SkyMoneyWallet = () => {
     </div>
   );
 
-  if (view === 'transfer') return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 shrink-0" style={{ borderBottom:`1px solid ${C.border}` }}>
-        <button type="button" onClick={() => setView('main')}
-          className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/5">
-          <X size={16} style={{ color:C.t2 }}/>
-        </button>
-        <span className="text-sm font-semibold" style={{ color:C.t1 }}>Перевод</span>
-      </div>
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ scrollbarWidth:'none' }}>
-        <TransferSheet onDone={() => setView('main')}/>
-      </div>
-    </div>
-  );
-
   if (view === 'gifts') return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 shrink-0" style={{ borderBottom:`1px solid ${C.border}` }}>
@@ -939,7 +826,6 @@ export const SkyMoneyWallet = () => {
         <BalanceCard balance={balance} points={points} userId={currentUserId} onExchange={() => setView('exchange')}/>
         <QuickActions
           onTopUp={() => setView('topup')}
-          onTransfer={() => setView('transfer')}
           onHistory={() => setView('history')}
         />
       </div>

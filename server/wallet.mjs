@@ -183,34 +183,6 @@ export const wallet = {
     });
   },
 
-  async transfer(fromId, toId, amount) {
-    if (!validAmount(amount)) return { error: 'invalid_amount' };
-    if (fromId === toId)      return { error: 'self_transfer' };
-
-    return inTransaction(async (c) => {
-      await ensureAccount(c, fromId);
-      await ensureAccount(c, toId);
-
-      // Блокируем оба счёта в одном порядке (по возрастанию id):
-      // иначе два встречных перевода могут заблокировать друг друга.
-      const [first, second] = [fromId, toId].sort();
-      await c.query('SELECT 1 FROM wallet_accounts WHERE user_id IN ($1,$2) ORDER BY user_id FOR UPDATE', [first, second]);
-
-      const { rows } = await c.query('SELECT balance FROM wallet_accounts WHERE user_id = $1', [fromId]);
-      const balance = Number(rows[0].balance);
-      if (balance < amount) return { error: 'insufficient_funds', balance };
-
-      await c.query('UPDATE wallet_accounts SET balance = balance - $2, updated_at = now() WHERE user_id = $1', [fromId, amount]);
-      await c.query('UPDATE wallet_accounts SET balance = balance + $2, updated_at = now() WHERE user_id = $1', [toId, amount]);
-
-      await addTx(c, fromId, 'transfer_out', -amount, 'Перевод', toId);
-      await addTx(c, toId,   'transfer_in',   amount, 'Получен перевод', fromId);
-
-      const after = await c.query('SELECT balance FROM wallet_accounts WHERE user_id = $1', [fromId]);
-      return { balance: Number(after.rows[0].balance) };
-    });
-  },
-
   /** Обмен рублей на баллы по фиксированному курсу. */
   async exchangeToPoints(userId, rubles) {
     if (!validAmount(rubles)) return { error: 'invalid_amount' };
