@@ -1,11 +1,11 @@
-import { Gamepad2, Play, CircleDot, Sparkles, EyeOff, Music2, Film, Camera} from 'lucide-react';
+import { Gamepad2, CircleDot, Sparkles, EyeOff, Music2, Film, Camera} from 'lucide-react';
 import { fmtAgo } from '@/bloom/store';
 import { SectionHead } from './Head';
 import type { ProfileData } from '../useProfileData';
 
 export const hasActivity = (data: ProfileData) =>
   data.activity.canShow && (
-    !!data.activity.gaming || data.activity.recentVideos.length > 0 ||
+    !!data.activity.gaming ||
     !!data.activity.lastStory || data.activity.recentPosts.length > 0 ||
     !!data.activity.nowPlaying || !!data.activity.nowWatching
   );
@@ -21,7 +21,7 @@ export const ActivitySection = ({ data }: { data: ProfileData }) => {
   }
   if (!hasActivity(data)) return null;
 
-  const { gaming, recentVideos, lastStory, recentPosts, nowPlaying, nowWatching } = data.activity;
+  const { gaming, lastStory, recentPosts, nowPlaying, nowWatching } = data.activity;
 
   return (
     <div className="sky-card p-3.5 sm:p-5" style={{ background: 'var(--profile-card-bg, var(--bg-l1))', border: '1px solid var(--profile-card-border, transparent)' }}>
@@ -106,22 +106,6 @@ export const ActivitySection = ({ data }: { data: ProfileData }) => {
           </div>
         )}
 
-        {recentVideos.length > 0 && (
-          <div>
-            <div className="text-xs font-semibold mb-2" style={{ color: 'var(--t3)' }}>Недавно смотрел(а)</div>
-            <div className="flex gap-2 overflow-x-auto no-scrollbar">
-              {recentVideos.map(v => (
-                <div key={v.id} className="shrink-0 w-28 rounded-xl overflow-hidden" style={{ background: 'var(--bg-l2)' }}>
-                  <div className="h-16 flex items-center justify-center"
-                    style={{ background: v.thumbnailGrad ? `linear-gradient(135deg,${v.thumbnailGrad[0]},${v.thumbnailGrad[1]})` : 'var(--bg-l3)' }}>
-                    <Play size={16} color="#fff" />
-                  </div>
-                  <div className="px-2 py-1.5 text-[11px] line-clamp-2" style={{ color: 'var(--t2)' }}>{v.title}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

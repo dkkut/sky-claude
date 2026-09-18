@@ -13,8 +13,6 @@ import type { ChatItem } from '@/messenger/types';
 import { useBloomStore } from '@/bloom/store';
 import type { BloomPost } from '@/bloom/store';
 import { useGiftStore, GIFT_CATALOG, type SentGift } from '@/gifts/store';
-import { useVideoStore } from '@/video/store';
-import type { VideoEntry } from '@/video/store';
 import { useGamingAccounts } from '@/gaming/accounts';
 import type { GameActivity } from '@/gaming/accounts';
 import { useSocialGraph, type FriendStatus } from './social';
@@ -87,7 +85,6 @@ export interface ProfileData {
 
   activity: {
     gaming:        GameActivity | null;
-    recentVideos:  VideoEntry[];
     lastStory:     StoryPreview | null;
     recentPosts:   BloomPost[];
     nowPlaying:    MusicPresence | null;
@@ -122,9 +119,6 @@ export function useProfileData(userId: string | null): ProfileData | null {
 
   const sent = useGiftStore(s => s.sent);
 
-  const watchHistory = useVideoStore(s => s.watchHistory);
-  const videos       = useVideoStore(s => s.videos);
-
   const gamingActivity = useGamingAccounts(s => s.activity);
 
   const follows = useSocialGraph(s => s.follows);
@@ -148,7 +142,7 @@ export function useProfileData(userId: string | null): ProfileData | null {
         frame: activeFrame(undefined),
         relationship: { friendStatus: 'none', isFollowing: false, isFollowedBy: false, isBlocked: false, isHidden: false },
         social: { friendIds: [], followerIds: [], followingIds: [], mutualFriendIds: [], mutualGroups: [], viewCount: 0 },
-        activity: { gaming: null, recentVideos: [], lastStory: null, recentPosts: [], nowPlaying: null, nowWatching: null, canShow: false },
+        activity: { gaming: null, lastStory: null, recentPosts: [], nowPlaying: null, nowWatching: null, canShow: false },
         gifts: { all: [], exclusive: [], limited: [], seasonal: [] },
         progression,
         stats: { postsCount: 0, reactionsReceived: 0, giftsReceived: 0, giftsSent: 0, messagesWithMe: 0, profileViews: 0 },
@@ -195,7 +189,6 @@ export function useProfileData(userId: string | null): ProfileData | null {
     const canSee = (key: 'showGames'|'showMusic'|'showMovies'|'showGifts'|'showAchievements'|'showFollowing'|'showFriends'|'showPhotos'|'showStories'|'showPosts') =>
       isOwn || (account.privacy?.[key] ?? true);
     const showActivity = isOwn || (account.privacy?.showActivity ?? true);
-    const recentVideos = showActivity && canSee('showMovies') ? (watchHistory[userId] ?? []).slice(0, 6).map(id => videos.find(v => v.id === id)).filter((v): v is VideoEntry => !!v) : [];
     const lastStory = showActivity && canSee('showStories') ? readLastStory(userId) : null;
     const recentPosts = canSee('showPosts') ? posts.filter(p => p.authorId === userId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3) : [];
     const gaming = (showActivity && canSee('showGames')) ? (gamingActivity[userId] ?? null) : null;
@@ -224,7 +217,7 @@ export function useProfileData(userId: string | null): ProfileData | null {
       frame: activeFrame(account),
       relationship: { friendStatus, isFollowing, isFollowedBy, isBlocked, isHidden },
       social: { friendIds, followerIds, followingIds, mutualFriendIds, mutualGroups, viewCount },
-      activity: { gaming, recentVideos, lastStory, recentPosts, nowPlaying, nowWatching, canShow: showActivity },
+      activity: { gaming, lastStory, recentPosts, nowPlaying, nowWatching, canShow: showActivity },
       gifts,
       progression: canSee('showAchievements') ? progression : { ...progression, achievements: [] },
       stats: {
@@ -238,6 +231,6 @@ export function useProfileData(userId: string | null): ProfileData | null {
     };
   }, [
     userId, viewerId, account, myChats, myMessages, blockedList, posts, hidden, sent,
-    watchHistory, videos, gamingActivity, follows, friends, views, progression, musicPresenceMap, watchPresenceMap,
+    gamingActivity, follows, friends, views, progression, musicPresenceMap, watchPresenceMap,
   ]);
 }

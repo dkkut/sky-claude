@@ -7,8 +7,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Volume2, VolumeX, Subtitles, Settings2, ChevronLeft } from 'lucide-react';
-import { useVideoStore } from '@/video/store';
-import { useAuthStore } from '@/core/auth/store';
+import { useSkyVideoStore } from '@/video/serverStore';
+import { videoUrl as skyVideoUrl } from '@/video/skyVideoApi';
 import { recordProgress } from './watchProgressStore';
 import { useFilmStore } from '@/film/serverStore';
 import { videoUrl } from '@/film/filmApi';
@@ -28,10 +28,9 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
   const movie = useFilmStore(s => (source.kind === 'movie'
     ? s.catalog.find(m => m.id === source.id) ?? s.mine.find(m => m.id === source.id)
     : undefined));
-  const video = useVideoStore(s => source.kind === 'video' ? s.videos.find(v => v.id === source.id) : undefined);
-  const { currentUserId } = useAuthStore();
-  const incrementViews = useVideoStore(s => s.incrementViews);
-  const addToHistory = useVideoStore(s => s.addToHistory);
+  const video = useSkyVideoStore(s => source.kind === 'video' ? s.feed.find(v => v.id === source.id) : undefined);
+  const noteSkyVideoView = useSkyVideoStore(s => s.noteView);
+  const loadSkyVideo = useSkyVideoStore(s => s.load);
   const savedPosition = useFilmStore(s => (movie ? s.progress[movie.id] : undefined));
   const saveFilmProgress = useFilmStore(s => s.saveProgress);
   const flushFilmProgress = useFilmStore(s => s.flushProgress);
@@ -41,7 +40,7 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
   const title = movie?.title ?? video?.title ?? '';
   // Фильм идёт с сервера потоком: телевизор просит куски по мере
   // просмотра, поэтому длинное кино начинается сразу и перематывается.
-  const sourceUrl = movie ? videoUrl(movie.id) : video?.sourceUrl;
+  const sourceUrl = movie ? videoUrl(movie.id) : (video ? skyVideoUrl(video.id) : undefined);
   const contentId = source.id;
 
   const vRef = useRef<HTMLVideoElement>(null);
@@ -98,12 +97,14 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
     if (movie) void noteFilmView(movie.id);
   }, [movie?.id, noteFilmView]);
 
-  /* для SkyVideo — реальный счётчик просмотров и история, как у обычного плеера видео */
+  /* Для SkyVideo — реальный счётчик просмотров на сервере. Позиция
+     просмотра по-прежнему своя у телевизора (watchProgressStore) —
+     у Sky Video нет серверной синхронизации прогресса, как у кино. */
   useEffect(() => {
     if (source.kind !== 'video') return;
-    incrementViews(source.id);
-    if (currentUserId) addToHistory(currentUserId, source.id);
-  }, [source.kind, source.id, currentUserId, incrementViews, addToHistory]);
+    void loadSkyVideo();
+    void noteSkyVideoView(source.id);
+  }, [source.kind, source.id, loadSkyVideo, noteSkyVideoView]);
 
   const togglePlay = useCallback(() => {
     const v = vRef.current; if (!v) return;
