@@ -1,138 +1,78 @@
 /* ================================================================
-   SKY BUSINESS STUDIO — Загрузка контента + Монетизация
-   Для авторов: музыка · видео · подкасты · аналитика · выплаты
+   SKY STUDIO — панель автора Sky Video
+   Загрузка, публикация, монетизация — всё на сервере
 ================================================================ */
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Upload, Music2, Film, Mic2, TrendingUp, DollarSign, BarChart3,
-  Users, Eye, ChevronRight, X, Check, Edit3, Trash2, Globe, Lock,
-  AlertCircle, ArrowUpRight, ArrowDownRight, CreditCard, Wallet,
-  Plus, RefreshCw, Settings, Sparkles, Star, Heart, Image as ImageIcon} from 'lucide-react';
-import { useMonetizationStore, type RevenueEntry } from './monetizationStore';
+  Upload, Film, TrendingUp, DollarSign, BarChart3,
+  Eye, Check, Trash2, Sparkles, Clock3, ThumbsUp,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import type { Transition } from 'framer-motion';
+import { useSkyVideoStore, resetSkyVideoForUser } from '@/video/serverStore';
+import { apiSkyVideoRevenue, fmtDuration, thumbnailUrl, type ServerVideo, type RevenueEntry } from '@/video/skyVideoApi';
 import { useAuthStore } from '@/core/auth/store';
-import { useVideoStore } from '@/video/store';
 
 /* ── Design tokens ─────────────────────────────────────────── */
 const V = { bg:'var(--bg)', bg1:'var(--bg-l1)', bg2:'var(--bg-l2)', bg3:'var(--bg-l3)',
   border:'var(--border)', bm:'var(--border-m)', accent:'var(--accent)',
   t1:'var(--t1)', t2:'var(--t2)', t3:'var(--t3)', green:'var(--green)', red:'var(--red)', amber:'var(--amber)' };
 
-const fadeUp = (i=0) => ({ initial:{opacity:0,y:10}, animate:{opacity:1,y:0}, transition:{duration:.2,delay:i*.05,ease:[.22,1,.36,1] as any} });
-const fmtMoney = (n:number) => new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(n);
+const fadeUp = (i=0) => ({
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: .2, delay: i * .05, ease: [.22, 1, .36, 1] } as Transition,
+});
+const fmtMoney = (kopecks:number) => new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(kopecks/100);
 const fmtAgo = (iso:string) => { const d=Math.floor((Date.now()-new Date(iso).getTime())/86400000); if(d===0)return'Сегодня';if(d===1)return'Вчера';return`${d} дн. назад`; };
+const fmtViews = (n:number) => n>=1000 ? `${(n/1000).toFixed(1)}К` : String(n);
 
 /* ── KPI card ───────────────────────────────────────────────── */
-const KPICard = ({ icon:Icon, label, value, delta, color }:{ icon:any; label:string; value:string; delta?:number; color:string }) => (
+const KPICard = ({ icon:Icon, label, value, color }:{ icon:LucideIcon; label:string; value:string; color:string }) => (
   <div className="rounded-2xl p-4" style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
-    <div className="flex items-center justify-between mb-2">
-      <div className="grid h-8 w-8 place-items-center rounded-xl" style={{ background:`${color}18` }}>
-        <Icon size={14} style={{ color }}/>
-      </div>
-      {delta!=null&&(
-        <span className="flex items-center gap-0.5 text-[11px] font-semibold" style={{ color:delta>=0?V.green:V.red }}>
-          {delta>=0?<ArrowUpRight size={11}/>:<ArrowDownRight size={11}/>}{Math.abs(delta)}%
-        </span>
-      )}
+    <div className="grid h-8 w-8 place-items-center rounded-xl mb-2" style={{ background:`${color}18` }}>
+      <Icon size={14} style={{ color }}/>
     </div>
     <p className="text-xl font-black" style={{ color:V.t1 }}>{value}</p>
     <p className="text-[11px] mt-0.5" style={{ color:V.t3 }}>{label}</p>
   </div>
 );
 
-/* ── Revenue chart ──────────────────────────────────────────── */
-const WEEK = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
-const CHART_VALS = [1200,1850,920,2400,3100,1780,2950];
-const MAX_C = Math.max(...CHART_VALS);
-
-const RevenueChart = () => {
-  const [hov, setHov] = useState<number|null>(null);
-  return (
-    <div className="rounded-2xl p-4" style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <p className="text-sm font-bold" style={{ color:V.t1 }}>Выручка за 7 дней</p>
-          <p className="text-[11px]" style={{ color:V.t3 }}>Все источники дохода</p>
-        </div>
-        <span className="flex items-center gap-1 text-[11px] font-semibold" style={{ color:V.green }}>
-          <ArrowUpRight size={11}/>+24.8%
-        </span>
-      </div>
-      <div className="flex items-end gap-1.5 h-24">
-        {CHART_VALS.map((v,i)=>{
-          const h=(v/MAX_C)*100; const isH=hov===i;
-          return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1 cursor-pointer"
-              onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}>
-              {isH&&(
-                <motion.div initial={{opacity:0,y:3}} animate={{opacity:1,y:0}}
-                  className="text-[9px] font-bold rounded-lg px-1.5 py-0.5 whitespace-nowrap"
-                  style={{ background:V.accent, color:'#fff' }}>
-                  {fmtMoney(v)}
-                </motion.div>
-              )}
-              <motion.div className="w-full rounded-t-lg" initial={{height:0}}
-                animate={{height:`${h}%`}} transition={{delay:.05+i*.04,type:'spring',stiffness:280,damping:26}}
-                style={{ background:isH?V.accent:`linear-gradient(to top,rgba(79,110,247,.7),rgba(79,110,247,.25))`, minHeight:3 }}/>
-              <p className="text-[9px]" style={{ color:isH?V.accent:V.t3 }}>{WEEK[i]}</p>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-/* ── Upload form ────────────────────────────────────────────── */
-type ContentType = 'music'|'video'|'podcast';
-
+/* ── Upload form: тот же поток, что во вкладке «Загрузить» Sky Video ── */
 const UploadForm = ({ onDone }:{ onDone:()=>void }) => {
-  const { currentUserId, accounts } = useAuthStore();
-  const me = accounts.find(a=>a.id===currentUserId);
-  const { addVideo } = useVideoStore();
+  const { upload, setThumbnail, publish } = useSkyVideoStore();
+  const categories = useSkyVideoStore(s => s.categories);
 
-  const [type,    setType]   = useState<ContentType>('music');
-  const [file,    setFile]   = useState<File|null>(null);
-  const [cover,   setCover]  = useState<string|undefined>();
-  const [title,   setTitle]  = useState('');
-  const [desc,    setDesc]   = useState('');
-  const [tags,    setTags]   = useState('');
-  const [status,  setStatus] = useState<'draft'|'published'>('published');
-  const [isPaid,  setIsPaid] = useState(false);
-  const [price,   setPrice]  = useState(99);
-  const [loading, setLoad]   = useState(false);
-  const [prog,    setProg]   = useState(0);
-  const fileRef  = useRef<HTMLInputElement>(null);
-  const coverRef = useRef<HTMLInputElement>(null);
+  const [file,    setFile]    = useState<File|null>(null);
+  const [cover,   setCover]   = useState<File|null>(null);
+  const [coverPreview, setCoverPreview] = useState<string|undefined>();
+  const [title,   setTitle]   = useState('');
+  const [desc,    setDesc]    = useState('');
+  const [cat,     setCat]     = useState('Другое');
+  const [tags,    setTags]    = useState('');
+  const [publishNow, setPublishNow] = useState(true);
+  const [loading, setLoad]    = useState(false);
+  const [prog,    setProg]    = useState(0);
+  const [error,   setError]   = useState<string|null>(null);
 
-  const TYPE_ACCEPT:Record<ContentType,string> = { music:'audio/*', video:'video/*', podcast:'audio/*' };
-
-  const handleFile = (f:File) => { setFile(f); if(!title) setTitle(f.name.replace(/\.[^.]+$/,'')); };
+  const handleFile = (f:File) => { setFile(f); setError(null); if(!title) setTitle(f.name.replace(/\.[^.]+$/,'')); };
 
   const submit = async () => {
-    if(!file||!title.trim()||!currentUserId||!me) return;
-    setLoad(true); setProg(15);
-    try {
-      const url = URL.createObjectURL(file);
-      if(type==='video') {
-        const dur = await new Promise<number>(r=>{
-          const v=document.createElement('video'); v.preload='metadata';
-          const u=URL.createObjectURL(file);
-          v.onloadedmetadata=()=>{URL.revokeObjectURL(u);r(v.duration);}; v.onerror=()=>r(0); v.src=u;
-        });
-        setProg(55);
-        const toDur=(s:number)=>{const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);return h>0?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`;};
-        const tagList=tags.split(/[,\s]+/).map(t=>t.trim().toLowerCase()).filter(Boolean);
-        await addVideo({ title:title.trim(),description:desc.trim(),uploadedBy:currentUserId,uploaderName:me.name,
-          duration:toDur(dur),durationSec:dur,category:'other',tags:tagList,isShort:false,
-          sourceUrl:url,thumbnailUrl:cover,thumbnailGrad:undefined,
-          fileName:file.name,mimeType:file.type,bytes:file.size,isDraft:status==='draft',
-          isPaid,paidPrice:isPaid?price:undefined,
-        },file);
-      }
-      setProg(100);
-      setTimeout(()=>{ setLoad(false); onDone(); },400);
-    } catch { setLoad(false); setProg(0); }
+    if(!file||!title.trim()) return;
+    setLoad(true); setProg(0); setError(null);
+    const { readVideoMeta } = await import('@/video/skyVideoApi');
+    const meta = await readVideoMeta(file);
+    const { promise } = upload(file, {
+      title: title.trim(), description: desc.trim(), category: cat, tags,
+      duration: meta.duration, width: meta.width, height: meta.height,
+    }, setProg);
+    const res = await promise;
+    if (!res.ok || !res.id) { setLoad(false); setError(res.reason ?? 'Не получилось'); return; }
+    if (cover) await setThumbnail(res.id, cover);
+    if (publishNow) await publish(res.id, true);
+    setLoad(false);
+    onDone();
   };
 
   const iS = { background:V.bg2, border:`1px solid ${V.border}`, color:V.t1 };
@@ -140,91 +80,53 @@ const UploadForm = ({ onDone }:{ onDone:()=>void }) => {
 
   return (
     <div className="space-y-4 px-4 py-4 overflow-y-auto h-full" style={{ scrollbarWidth:'none' }}>
-      {/* Type selector */}
-      <div className="grid grid-cols-3 gap-2">
-        {([['music','Музыка',Music2,'#8b5cf6'],['video','Видео',Film,'#0ea5e9'],['podcast','Подкаст',Mic2,'#f59e0b']] as const).map(([k,l,Icon,c])=>(
-          <button key={k} type="button" onClick={()=>setType(k)}
-            className="flex flex-col items-center gap-2 rounded-2xl py-3.5 text-xs font-semibold transition-all"
-            style={{ background:type===k?`${c}14`:V.bg2, border:`1px solid ${type===k?c+'40':V.border}`, color:type===k?c:V.t2 }}>
-            <Icon size={18} style={{ color:type===k?c:V.t3 }}/>{l}
-          </button>
-        ))}
-      </div>
+      {error && (
+        <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background:'rgba(248,113,113,0.1)', color:V.red }}>{error}</div>
+      )}
 
-      {/* Drop zone */}
       <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 py-10 cursor-pointer transition-all"
         style={{ borderColor:file?V.accent:V.bm, background:file?`${V.accent}05`:'transparent' }}
-        onClick={()=>fileRef.current?.click()}
+        onClick={()=>document.getElementById('studio-video-input')?.click()}
         onDragOver={e=>e.preventDefault()}
         onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f);}}>
-        <input ref={fileRef} type="file" accept={TYPE_ACCEPT[type]} className="hidden" onChange={e=>{const f=e.target.files?.[0];if(f)handleFile(f);}}/>
+        <input id="studio-video-input" type="file" accept="video/*" className="hidden" onChange={e=>{const f=e.target.files?.[0];if(f)handleFile(f);}}/>
         <div className="grid h-14 w-14 place-items-center rounded-2xl" style={{ background:file?`${V.accent}18`:V.bg3 }}>
           {file?<Check size={24} style={{ color:V.accent }}/>:<Upload size={24} style={{ color:V.t3 }}/>}
         </div>
         <div className="text-center">
           <p className="text-sm font-semibold" style={{ color:file?V.accent:V.t2 }}>{file?file.name:'Нажмите или перетащите файл'}</p>
-          {!file&&<p className="text-xs mt-1" style={{ color:V.t3 }}>{type==='video'?'MP4 · MOV · MKV':'MP3 · FLAC · WAV · M4A'}</p>}
+          {!file&&<p className="text-xs mt-1" style={{ color:V.t3 }}>MP4 · WebM · AVI · OGV</p>}
         </div>
       </div>
 
       {file&&<motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} className="space-y-3">
         <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Название *" className={iC} style={iS}/>
         <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Описание" rows={3} className={`${iC} resize-none`} style={iS}/>
-        <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Теги: музыка, sky, 2026..." className={iC} style={iS}/>
+        <select value={cat} onChange={e=>setCat(e.target.value)} className={iC} style={{ ...iS, cursor:'pointer' }}>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="Теги: sky, обзор, 2026..." className={iC} style={iS}/>
 
-        {/* Cover */}
         <div className="flex items-center gap-3">
-          <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=()=>setCover(r.result as string);r.readAsDataURL(f);}}}/>
-          <button type="button" onClick={()=>coverRef.current?.click()}
+          <input id="studio-cover-input" type="file" accept="image/*" className="hidden"
+            onChange={e=>{ const f=e.target.files?.[0]; if(f){ setCover(f); setCoverPreview(URL.createObjectURL(f)); } }}/>
+          <button type="button" onClick={()=>document.getElementById('studio-cover-input')?.click()}
             className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-semibold transition-colors"
             style={{ background:V.bg2, border:`1px solid ${V.border}`, color:V.t2 }}>
-            {cover
-              ? <><Check size={15} style={{ color:'var(--green)' }}/> Обложка</>
-              : <><ImageIcon size={15}/> Добавить обложку</>}
+            {cover ? <><Check size={15} style={{ color:'var(--green)' }}/> Обложка</> : 'Добавить обложку'}
           </button>
-          {cover&&<img src={cover} alt="" className="h-10 w-10 rounded-xl object-cover"/>}
+          {coverPreview&&<img src={coverPreview} alt="" className="h-10 w-10 rounded-xl object-cover"/>}
         </div>
 
-        {/* Status */}
         <div className="flex gap-2">
-          {(['published','draft'] as const).map(s=>(
-            <button key={s} type="button" onClick={()=>setStatus(s)}
+          {([[true,'Опубликовать'],[false,'Черновик']] as const).map(([v,l])=>(
+            <button key={String(v)} type="button" onClick={()=>setPublishNow(v)}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold"
-              style={{ background:status===s?`${V.accent}15`:V.bg2, border:`1px solid ${status===s?V.accent+'35':V.border}`, color:status===s?V.accent:V.t2 }}>
-              {s==='published'?<Globe size={12}/>:<Lock size={12}/>}
-              {s==='published'?'Опубликовать':'Черновик'}
+              style={{ background:publishNow===v?`${V.accent}15`:V.bg2, border:`1px solid ${publishNow===v?V.accent+'35':V.border}`, color:publishNow===v?V.accent:V.t2 }}>
+              {l}
             </button>
           ))}
         </div>
-
-        {/* Paid content toggle */}
-        <div className="flex items-center justify-between rounded-2xl px-4 py-3"
-          style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
-          <div>
-            <p className="text-sm font-semibold" style={{ color:V.t1 }}>Платный контент</p>
-            <p className="text-[11px] mt-0.5" style={{ color:V.t3 }}>Пользователи платят за доступ</p>
-          </div>
-          <motion.div className="h-6 w-11 rounded-full cursor-pointer flex items-center px-0.5"
-            style={{ background:isPaid?V.accent:V.bg3 }}
-            onClick={()=>setIsPaid(p=>!p)}>
-            <motion.div className="h-5 w-5 rounded-full bg-white shadow"
-              animate={{ x:isPaid?20:0 }} transition={{ type:'spring',stiffness:700,damping:36 }}/>
-          </motion.div>
-        </div>
-        {isPaid&&(
-          <div className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background:`${V.amber}08`, border:`1px solid ${V.amber}20` }}>
-            <DollarSign size={16} style={{ color:V.amber }}/>
-            <div className="flex-1">
-              <p className="text-xs font-semibold" style={{ color:V.t1 }}>Цена доступа</p>
-            </div>
-            <div className="flex items-center gap-1">
-              <input type="number" value={price} onChange={e=>setPrice(+e.target.value)} min={9} max={9999}
-                className="w-20 rounded-xl px-3 py-1.5 text-sm text-right outline-none"
-                style={{ background:V.bg3, border:`1px solid ${V.bm}`, color:V.t1 }}/>
-              <span className="text-sm font-semibold" style={{ color:V.t2 }}>₽</span>
-            </div>
-          </div>
-        )}
 
         {loading&&(
           <div className="space-y-1.5">
@@ -241,131 +143,16 @@ const UploadForm = ({ onDone }:{ onDone:()=>void }) => {
           disabled={loading||!title.trim()}
           className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black disabled:opacity-40"
           style={{ background:V.accent, color:'#fff', boxShadow:`0 4px 16px ${V.accent}40` }}>
-          <Upload size={15}/>{loading?`${prog}%…`:`Опубликовать ${type==='music'?'трек':type==='video'?'видео':'подкаст'}`}
+          <Upload size={15}/>{loading?`${prog}%…`:publishNow?'Опубликовать видео':'Сохранить черновик'}
         </motion.button>
       </motion.div>}
     </div>
   );
 };
 
-/* ── Monetization settings ──────────────────────────────────── */
-const MonetizationSettings = () => {
-  const { settings, updateSettings } = useMonetizationStore();
-  const [saved, setSaved] = useState(false);
-
-  const save = () => { setSaved(true); setTimeout(()=>setSaved(false),2000); };
-
-  const Toggle = ({ label, sub, value, onChange }:{ label:string; sub:string; value:boolean; onChange:(v:boolean)=>void }) => (
-    <div className="flex items-center justify-between py-3" style={{ borderBottom:`1px solid ${V.border}` }}>
-      <div>
-        <p className="text-sm font-semibold" style={{ color:V.t1 }}>{label}</p>
-        <p className="text-[11px] mt-0.5" style={{ color:V.t3 }}>{sub}</p>
-      </div>
-      <motion.div className="h-6 w-11 rounded-full cursor-pointer flex items-center px-0.5 shrink-0"
-        style={{ background:value?V.accent:V.bg3 }} onClick={()=>onChange(!value)}>
-        <motion.div className="h-5 w-5 rounded-full bg-white shadow"
-          animate={{ x:value?20:0 }} transition={{ type:'spring',stiffness:700,damping:36 }}/>
-      </motion.div>
-    </div>
-  );
-
-  return (
-    <div className="space-y-4 px-4 py-4 overflow-y-auto h-full" style={{ scrollbarWidth:'none' }}>
-      {saved&&(
-        <motion.div initial={{opacity:0,y:-6}} animate={{opacity:1,y:0}} exit={{opacity:0}}
-          className="rounded-xl px-3 py-2 text-xs font-bold flex items-center gap-2"
-          style={{ background:'rgba(52,211,153,.08)', border:'1px solid rgba(52,211,153,.2)', color:V.green }}>
-          <Check size={12}/>Настройки сохранены
-        </motion.div>
-      )}
-
-      <div className="rounded-2xl px-4 py-2" style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
-        <Toggle label="Подписка" sub="Ежемесячная плата за контент" value={settings.subscriptionEnabled}
-          onChange={v=>updateSettings({subscriptionEnabled:v})}/>
-        {settings.subscriptionEnabled&&(
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="py-3 flex items-center gap-3">
-            <p className="text-xs font-semibold flex-1" style={{ color:V.t2 }}>Цена подписки</p>
-            <input type="number" value={settings.subscriptionPrice}
-              onChange={e=>updateSettings({subscriptionPrice:+e.target.value})} min={49}
-              className="w-24 rounded-xl px-3 py-1.5 text-sm text-right outline-none"
-              style={{ background:V.bg3, border:`1px solid ${V.bm}`, color:V.t1 }}/>
-            <span className="text-sm" style={{ color:V.t2 }}>₽/мес</span>
-          </motion.div>
-        )}
-        <Toggle label="Донаты" sub="Разовые пожертвования от фанатов" value={settings.donationsEnabled}
-          onChange={v=>updateSettings({donationsEnabled:v})}/>
-        <Toggle label="Реклама" sub="Доход от рекламы в ваших материалах" value={settings.adsEnabled}
-          onChange={v=>updateSettings({adsEnabled:v})}/>
-      </div>
-
-      {/* Payout */}
-      <div className="rounded-2xl p-4" style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
-        <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color:V.t3 }}>Метод выплаты</p>
-        <div className="flex gap-2 mb-3">
-          {(['card','wallet','none'] as const).map(m=>(
-            <button key={m} type="button" onClick={()=>updateSettings({payoutMethod:m})}
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-semibold"
-              style={{ background:settings.payoutMethod===m?`${V.accent}14`:V.bg3,
-                border:`1px solid ${settings.payoutMethod===m?V.accent+'35':V.bm}`,
-                color:settings.payoutMethod===m?V.accent:V.t2 }}>
-              {m==='card'?<CreditCard size={12}/>:m==='wallet'?<Wallet size={12}/>:<X size={12}/>}
-              {m==='card'?'Карта':m==='wallet'?'Кошелёк':'Нет'}
-            </button>
-          ))}
-        </div>
-        {settings.payoutMethod!=='none'&&(
-          <input value={settings.payoutDetail} placeholder={settings.payoutMethod==='card'?'Номер карты':'Email кошелька'}
-            onChange={e=>updateSettings({payoutDetail:e.target.value})}
-            className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-            style={{ background:V.bg3, border:`1px solid ${V.bm}`, color:V.t1 }}/>
-        )}
-      </div>
-
-      <motion.button whileTap={{scale:.97}} type="button" onClick={save}
-        className="w-full flex items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold"
-        style={{ background:V.accent, color:'#fff' }}>
-        <Check size={14}/>Сохранить настройки
-      </motion.button>
-    </div>
-  );
-};
-
-/* ── Revenue log ────────────────────────────────────────────── */
-const RevenueLog = ({ revenue }:{ revenue:RevenueEntry[] }) => {
-  const TYPE_C:Record<string,{ label:string; color:string; icon:any }> = {
-    subscription:{ label:'Подписка',    color:V.accent, icon:Star },
-    donation:    { label:'Донат',       color:V.green,  icon:Heart },
-    paid_content:{ label:'Платн. конт.',color:V.amber,  icon:DollarSign },
-    ad_revenue:  { label:'Реклама',     color:'#64748b',icon:Eye },
-  };
-  return (
-    <div className="space-y-2">
-      {revenue.slice(0,20).map((r,i)=>{
-        const tc=TYPE_C[r.type];
-        return (
-          <motion.div key={r.id} {...fadeUp(i)} className="flex items-center gap-3 rounded-2xl px-4 py-3"
-            style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
-            <div className="grid h-8 w-8 place-items-center rounded-xl shrink-0"
-              style={{ background:`${tc.color}14` }}>
-              <tc.icon size={14} style={{ color:tc.color }}/>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-semibold truncate" style={{ color:V.t1 }}>{r.desc}</p>
-              <p className="text-[10px] mt-0.5" style={{ color:V.t3 }}>{tc.label} · {fmtAgo(r.date)}</p>
-            </div>
-            <p className="text-sm font-black shrink-0" style={{ color:V.green }}>+{fmtMoney(r.amount)}</p>
-          </motion.div>
-        );
-      })}
-    </div>
-  );
-};
-
-/* ── My content table ───────────────────────────────────────── */
-const MyContent = () => {
-  const { videos } = useVideoStore();
-  const { currentUserId } = useAuthStore();
-  const mine = videos.filter(v=>v.uploadedBy===currentUserId);
+/* ── Мой контент ────────────────────────────────────────────── */
+const MyContent = ({ mine, onSelect }:{ mine:ServerVideo[]; onSelect:(v:ServerVideo)=>void }) => {
+  const { publish, removeVideo } = useSkyVideoStore();
 
   if(!mine.length) return (
     <div className="flex flex-col items-center py-16 gap-3 opacity-50">
@@ -374,34 +161,40 @@ const MyContent = () => {
     </div>
   );
 
-  const fmtViews=(n:number)=>n>=1000?`${(n/1000).toFixed(1)}К`:String(n);
-
   return (
     <div className="space-y-2">
       {mine.map((v,i)=>(
-        <motion.div key={v.id} {...fadeUp(i)} className="flex items-center gap-3 rounded-2xl px-4 py-3"
-          style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
-          {/* Thumb */}
-          <div className="shrink-0 w-14 rounded-xl overflow-hidden" style={{ aspectRatio:'16/9',
-            background:`linear-gradient(135deg,${v.thumbnailGrad?.[0]??'#333'},${v.thumbnailGrad?.[1]??'#555'})` }}>
-            {v.thumbnailUrl&&<img src={v.thumbnailUrl} alt="" className="w-full h-full object-cover"/>}
+        <motion.div key={v.id} {...fadeUp(i)} className="flex items-center gap-3 rounded-2xl px-4 py-3 cursor-pointer"
+          style={{ background:V.bg2, border:`1px solid ${V.border}` }} onClick={()=>onSelect(v)}>
+          <div className="shrink-0 w-14 rounded-xl overflow-hidden" style={{ aspectRatio:'16/9', background:'#333' }}>
+            {v.hasThumbnail && <img src={thumbnailUrl(v.id)} alt="" className="w-full h-full object-cover"/>}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[12px] font-semibold truncate" style={{ color:V.t1 }}>{v.title}</p>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[10px]" style={{ color:V.t3 }}>{fmtViews(v.views)} просм.</span>
               <span className="text-[10px]" style={{ color:V.t3 }}>·</span>
-              <span className="text-[10px]" style={{ color:V.t3 }}>{v.duration}</span>
-              {v.isPaid&&<span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                style={{ background:`${V.amber}18`, color:V.amber }}>Платное</span>}
+              <span className="text-[10px]" style={{ color:V.t3 }}>{fmtDuration(v.duration)}</span>
+              {v.monetizationStatus==='approved'&&<span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ background:`${V.green}18`, color:V.green }}>Монетизация</span>}
+              {v.monetizationStatus==='pending'&&<span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1"
+                style={{ background:`${V.amber}18`, color:V.amber }}><Clock3 size={9}/>На проверке</span>}
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full`}
+          <div className="flex items-center gap-1 shrink-0" onClick={e=>e.stopPropagation()}>
+            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
               style={{ background:v.status==='published'?'rgba(52,211,153,.1)':'rgba(100,116,139,.1)',
                 color:v.status==='published'?V.green:'#64748b' }}>
-              {v.status==='published'?'Опубл.':'Черн.'}
+              {v.status==='published'?'Опубл.':v.status==='draft'?'Черн.':v.status==='hidden'?'Скрыто':'Снято'}
             </span>
+            {v.status === 'draft' && (
+              <button type="button" onClick={()=>publish(v.id, true)}
+                className="rounded-lg px-2 py-1 text-[10px] font-bold text-white" style={{ background:V.accent }}>Опубл.</button>
+            )}
+            <button type="button" onClick={()=>removeVideo(v.id)}
+              className="grid h-6 w-6 place-items-center rounded-lg" style={{ background:V.bg3 }}>
+              <Trash2 size={11} style={{ color:V.red }}/>
+            </button>
           </div>
         </motion.div>
       ))}
@@ -409,30 +202,136 @@ const MyContent = () => {
   );
 };
 
+/* ── Монетизация одного ролика ─────────────────────────────── */
+const VideoMonetizationCard = ({ video, onBack }:{ video:ServerVideo; onBack:()=>void }) => {
+  const { requestMonetization } = useSkyVideoStore();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string|null>(null);
+  const [revenue, setRevenue] = useState<RevenueEntry[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    apiSkyVideoRevenue(video.id).then(r => { if (live && r) setRevenue(r); });
+    return () => { live = false; };
+  }, [video.id]);
+
+  const total = revenue.reduce((s,r)=>s+r.amount,0);
+
+  const request = async () => {
+    setBusy(true);
+    const res = await requestMonetization(video.id);
+    setBusy(false);
+    setMsg(res.ok ? 'Заявка отправлена на проверку' : (res.reason ?? 'Не получилось'));
+  };
+
+  return (
+    <div className="space-y-4 px-4 py-4 overflow-y-auto h-full" style={{ scrollbarWidth:'none' }}>
+      <button type="button" onClick={onBack} className="text-xs font-semibold" style={{ color:V.accent }}>← Ко всем роликам</button>
+      <div className="rounded-2xl p-4" style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
+        <p className="text-sm font-bold truncate" style={{ color:V.t1 }}>{video.title}</p>
+        <p className="text-xs mt-1" style={{ color:V.t3 }}>{fmtViews(video.views)} просмотров · {video.likes} лайков</p>
+      </div>
+
+      <div className="rounded-2xl p-4" style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
+        <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color:V.t3 }}>Статус монетизации</p>
+        {video.monetizationStatus === 'none' && video.status === 'published' && (
+          <button type="button" onClick={request} disabled={busy}
+            className="rounded-xl px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background:V.amber }}>
+            {busy ? 'Отправка...' : 'Подать заявку на монетизацию'}
+          </button>
+        )}
+        {video.monetizationStatus === 'none' && video.status !== 'published' && (
+          <p className="text-xs" style={{ color:V.t3 }}>Сначала опубликуйте ролик</p>
+        )}
+        {video.monetizationStatus === 'pending' && (
+          <p className="text-xs flex items-center gap-1.5" style={{ color:V.t2 }}><Clock3 size={12}/>Заявка на проверке у модерации</p>
+        )}
+        {video.monetizationStatus === 'approved' && (
+          <p className="text-xs font-semibold" style={{ color:V.green }}>Монетизация одобрена</p>
+        )}
+        {video.monetizationStatus === 'rejected' && (
+          <p className="text-xs font-semibold" style={{ color:V.red }}>Заявка отклонена</p>
+        )}
+        {video.monetizationStatus === 'suspended' && (
+          <p className="text-xs font-semibold" style={{ color:V.red }}>Монетизация приостановлена</p>
+        )}
+        {msg && <p className="text-[11px] mt-2" style={{ color:V.t3 }}>{msg}</p>}
+      </div>
+
+      {video.monetizationStatus === 'approved' && (
+        <div className="rounded-2xl p-4" style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold uppercase tracking-wider" style={{ color:V.t3 }}>Начислено по ролику</p>
+            <p className="text-sm font-black" style={{ color:V.green }}>{fmtMoney(total)}</p>
+          </div>
+          {revenue.length === 0 ? (
+            <p className="text-xs text-center py-4" style={{ color:V.t3 }}>Начислений пока нет</p>
+          ) : (
+            <div className="space-y-2">
+              {revenue.map(r => (
+                <div key={r.id} className="flex items-center justify-between text-xs">
+                  <span style={{ color:V.t2 }}>{r.source === 'ads' ? 'Реклама' : 'Корректировка'} · {fmtAgo(r.createdAt)}</span>
+                  <span className="font-bold" style={{ color: r.amount >= 0 ? V.green : V.red }}>
+                    {r.amount >= 0 ? '+' : ''}{fmtMoney(r.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ══════════════════════════════════════════════════════════════
    MAIN STUDIO
 ══════════════════════════════════════════════════════════════ */
-type StudioTab = 'overview'|'upload'|'content'|'monetization'|'revenue';
+type StudioTab = 'overview'|'upload'|'content'|'revenue';
 
 export const BusinessStudio = () => {
-  const { settings, revenue } = useMonetizationStore();
+  const { mine, load } = useSkyVideoStore();
+  const { currentUserId } = useAuthStore();
   const [tab, setTab] = useState<StudioTab>('overview');
+  const [selected, setSelected] = useState<ServerVideo|null>(null);
+  const [revenueByVideo, setRevenueByVideo] = useState<Record<string, RevenueEntry[]>>({});
 
-  const totalThisWeek = CHART_VALS.reduce((a,b)=>a+b,0);
+  useEffect(() => { load(); }, []);
+  useEffect(() => () => { if (!currentUserId) resetSkyVideoForUser(); }, [currentUserId]);
 
-  const TABS: { key:StudioTab; label:string; icon:any }[] = [
-    { key:'overview',     label:'Обзор',         icon:BarChart3 },
-    { key:'upload',       label:'Загрузить',      icon:Upload },
-    { key:'content',      label:'Контент',        icon:Film },
-    { key:'monetization', label:'Монетизация',    icon:DollarSign },
-    { key:'revenue',      label:'Доходы',         icon:TrendingUp },
+  const monetized = mine.filter(v => v.monetizationStatus === 'approved');
+  useEffect(() => {
+    let live = true;
+    Promise.all(monetized.map(v => apiSkyVideoRevenue(v.id).then(r => [v.id, r ?? []] as const)))
+      .then(pairs => { if (live) setRevenueByVideo(Object.fromEntries(pairs)); });
+    return () => { live = false; };
+  }, [monetized.map(v => v.id).join(',')]);
+
+  const published = mine.filter(v => v.status === 'published');
+  const totalViews = published.reduce((s,v)=>s+v.views,0);
+  const totalLikes = published.reduce((s,v)=>s+v.likes,0);
+  const allRevenue = Object.values(revenueByVideo).flat();
+  const totalEarned = allRevenue.reduce((s,r)=>s+r.amount,0);
+
+  const TABS: { key:StudioTab; label:string; icon:LucideIcon }[] = [
+    { key:'overview', label:'Обзор',      icon:BarChart3 },
+    { key:'upload',   label:'Загрузить',  icon:Upload },
+    { key:'content',  label:'Контент',    icon:Film },
+    { key:'revenue',  label:'Доходы',     icon:TrendingUp },
   ];
+
+  if (selected) {
+    return (
+      <motion.div initial={{opacity:0}} animate={{opacity:1}} className="flex flex-col h-full overflow-hidden" style={{ background:V.bg }}>
+        <VideoMonetizationCard video={selected} onBack={() => setSelected(null)} />
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{duration:.18}}
       className="flex flex-col h-full overflow-hidden" style={{ background:V.bg }}>
 
-      {/* Header */}
       <div className="shrink-0 px-5 pt-4 pb-0" style={{ borderBottom:`1px solid ${V.border}`, background:V.bg1 }}>
         <div className="flex items-center gap-3 mb-3">
           <motion.div initial={{scale:.7,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:400,damping:26}}
@@ -442,11 +341,10 @@ export const BusinessStudio = () => {
           </motion.div>
           <div>
             <p className="text-[15px] font-bold" style={{ color:V.t1 }}>Sky Studio</p>
-            <p className="text-[10px]" style={{ color:V.t3 }}>Панель автора · Создавай и зарабатывай</p>
+            <p className="text-[10px]" style={{ color:V.t3 }}>Панель автора Sky Video</p>
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex overflow-x-auto" style={{ scrollbarWidth:'none' }}>
           {TABS.map(({key,label,icon:Icon})=>(
             <button key={key} type="button" onClick={()=>setTab(key)}
@@ -463,60 +361,28 @@ export const BusinessStudio = () => {
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-hidden">
         <AnimatePresence mode="wait">
           <motion.div key={tab} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0}}
             transition={{duration:.15}} className="h-full">
 
-            {/* Overview */}
             {tab==='overview'&&(
               <div className="overflow-y-auto h-full px-5 py-4 space-y-4" style={{ scrollbarWidth:'none' }}>
-                {/* KPI grid */}
                 <div className="grid grid-cols-2 gap-2">
-                  <KPICard icon={DollarSign} label="Доход за неделю"     value={fmtMoney(totalThisWeek)} delta={24}  color={V.accent}/>
-                  <KPICard icon={Users}      label="Подписчиков"          value="1 204"                   delta={6}   color={V.green}/>
-                  <KPICard icon={Eye}        label="Просмотры за месяц"   value="48.2К"                   delta={31}  color="#f59e0b"/>
-                  <KPICard icon={TrendingUp} label="Всего заработано"     value={fmtMoney(settings.totalEarned)} delta={18} color="#ec4899"/>
+                  <KPICard icon={Film}       label="Опубликовано"    value={String(published.length)} color={V.accent}/>
+                  <KPICard icon={Eye}        label="Всего просмотров" value={fmtViews(totalViews)}     color="#f59e0b"/>
+                  <KPICard icon={ThumbsUp}   label="Всего лайков"    value={fmtViews(totalLikes)}      color="#ec4899"/>
+                  <KPICard icon={DollarSign} label="Заработано"      value={fmtMoney(totalEarned)}     color={V.green}/>
                 </div>
-                <RevenueChart/>
-                {/* Pending payout */}
-                <div className="rounded-2xl p-4 flex items-center gap-4"
-                  style={{ background:'rgba(52,211,153,.06)', border:'1px solid rgba(52,211,153,.18)' }}>
-                  <div className="grid h-11 w-11 place-items-center rounded-2xl shrink-0"
-                    style={{ background:'rgba(52,211,153,.12)' }}>
-                    <Wallet size={20} style={{ color:V.green }}/>
+                {monetized.length === 0 && (
+                  <div className="rounded-2xl p-4 flex items-center gap-3"
+                    style={{ background:`${V.amber}0c`, border:`1px solid ${V.amber}30` }}>
+                    <DollarSign size={18} style={{ color:V.amber }}/>
+                    <p className="text-xs" style={{ color:V.t2 }}>
+                      Монетизация ролика открывается по заявке — подайте её со страницы ролика после публикации.
+                    </p>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-black" style={{ color:V.t1 }}>К выплате</p>
-                    <p className="text-[11px] mt-0.5" style={{ color:V.t3 }}>Доступно для вывода</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-lg font-black" style={{ color:V.green }}>{fmtMoney(settings.pendingPayout)}</p>
-                    <button type="button" className="text-[11px] font-semibold mt-0.5 flex items-center gap-0.5" style={{ color:V.accent }}>
-                      Вывести <ChevronRight size={11}/>
-                    </button>
-                  </div>
-                </div>
-                {/* Quick actions */}
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { icon:Upload, label:'Загрузить контент', sub:'Музыка · Видео · Подкасты', color:V.accent, action:()=>setTab('upload') },
-                    { icon:Settings, label:'Монетизация',      sub:'Настройки дохода',           color:'#f59e0b', action:()=>setTab('monetization') },
-                  ].map(item=>(
-                    <motion.button key={item.label} whileTap={{scale:.97}} type="button" onClick={item.action}
-                      className="flex items-start gap-3 rounded-2xl p-4 text-left"
-                      style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
-                      <div className="grid h-9 w-9 place-items-center rounded-xl shrink-0" style={{ background:`${item.color}14` }}>
-                        <item.icon size={16} style={{ color:item.color }}/>
-                      </div>
-                      <div>
-                        <p className="text-[12px] font-bold" style={{ color:V.t1 }}>{item.label}</p>
-                        <p className="text-[10px] mt-0.5" style={{ color:V.t3 }}>{item.sub}</p>
-                      </div>
-                    </motion.button>
-                  ))}
-                </div>
+                )}
               </div>
             )}
 
@@ -524,27 +390,41 @@ export const BusinessStudio = () => {
 
             {tab==='content' && (
               <div className="overflow-y-auto h-full px-5 py-4" style={{ scrollbarWidth:'none' }}>
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm font-bold" style={{ color:V.t1 }}>Мой контент</p>
-                  <button type="button" onClick={()=>setTab('upload')}
-                    className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-bold"
-                    style={{ background:V.accent, color:'#fff' }}>
-                    <Plus size={11}/>Загрузить
-                  </button>
-                </div>
-                <MyContent/>
+                <p className="text-sm font-bold mb-4" style={{ color:V.t1 }}>Мой контент</p>
+                <MyContent mine={mine} onSelect={setSelected}/>
               </div>
             )}
-
-            {tab==='monetization' && <MonetizationSettings/>}
 
             {tab==='revenue' && (
               <div className="overflow-y-auto h-full px-5 py-4 space-y-4" style={{ scrollbarWidth:'none' }}>
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold" style={{ color:V.t1 }}>История доходов</p>
-                  <span className="text-[11px]" style={{ color:V.t3 }}>{revenue.length} транзакций</span>
+                  <p className="text-sm font-bold" style={{ color:V.t1 }}>Доходы по роликам</p>
+                  <span className="text-[11px]" style={{ color:V.t3 }}>{fmtMoney(totalEarned)}</span>
                 </div>
-                <RevenueLog revenue={revenue}/>
+                {monetized.length === 0 ? (
+                  <div className="flex flex-col items-center py-16 gap-3 opacity-50">
+                    <DollarSign size={28} style={{ color:V.t3 }}/>
+                    <p className="text-sm" style={{ color:V.t2 }}>Нет роликов с монетизацией</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {monetized.map((v,i) => {
+                      const entries = revenueByVideo[v.id] ?? [];
+                      const sum = entries.reduce((s,r)=>s+r.amount,0);
+                      return (
+                        <motion.button key={v.id} {...fadeUp(i)} type="button" onClick={()=>setSelected(v)}
+                          className="w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-left"
+                          style={{ background:V.bg2, border:`1px solid ${V.border}` }}>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12px] font-semibold truncate" style={{ color:V.t1 }}>{v.title}</p>
+                            <p className="text-[10px] mt-0.5" style={{ color:V.t3 }}>{entries.length} начислений</p>
+                          </div>
+                          <p className="text-sm font-black shrink-0" style={{ color:V.green }}>{fmtMoney(sum)}</p>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
