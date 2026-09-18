@@ -332,6 +332,176 @@ const RevenueAdjustForm = ({ onSent }: { onSent: () => void }) => {
   );
 };
 
+/* ─── Prime Pulse: предложения ────────────────────────────────────── */
+
+const PULSE_CATEGORIES = ['game', 'service', 'promo', 'fun'] as const;
+const PULSE_CAT_LABEL: Record<string, string> = { game: 'Игры', service: 'Сервисы', promo: 'Sky', fun: 'Партнёры' };
+
+const emptyPulseForm = () => ({
+  category: 'promo' as typeof PULSE_CATEGORIES[number],
+  title: '', description: '', brand: 'Sky', valueLabel: '',
+  color1: '#f59e0b', color2: '#d97706', expiresAt: '', maxPerUser: '1',
+});
+
+const PulseOfferForm = ({ initial, onCancel, onSaved }: {
+  initial?: import('@/prime/primePulseApi').PulseOffer;
+  onCancel: () => void;
+  onSaved: () => void;
+}) => {
+  const [form, setForm] = useState(() => initial ? {
+    category: initial.category, title: initial.title, description: initial.description,
+    brand: initial.brand, valueLabel: initial.valueLabel,
+    color1: initial.color[0], color2: initial.color[1],
+    expiresAt: initial.expiresAt ? initial.expiresAt.slice(0, 10) : '',
+    maxPerUser: String(initial.maxPerUser),
+  } : emptyPulseForm());
+  const [failed, setFailed] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true); setFailed('');
+    const { apiPulseCreateOffer, apiPulseUpdateOffer } = await import('@/prime/primePulseApi');
+    const input = {
+      category: form.category, title: form.title.trim(), description: form.description.trim(),
+      brand: form.brand.trim() || 'Sky', valueLabel: form.valueLabel.trim(),
+      color1: form.color1, color2: form.color2,
+      expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
+      maxPerUser: Number(form.maxPerUser) || 1,
+    };
+    const res = initial ? await apiPulseUpdateOffer(initial.id, input) : await apiPulseCreateOffer(input);
+    setBusy(false);
+    if (!res.ok) { setFailed(res.reason); return; }
+    onSaved();
+  };
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <div className="flex gap-1">
+        {PULSE_CATEGORIES.map((k) => (
+          <button key={k} type="button" onClick={() => setForm((f) => ({ ...f, category: k }))}
+            className="flex-1 rounded-xl py-1.5 text-[11px] font-semibold"
+            style={{ background: form.category === k ? C.acc : C.l2, color: form.category === k ? '#fff' : C.t3 }}>
+            {PULSE_CAT_LABEL[k]}
+          </button>
+        ))}
+      </div>
+      <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+        placeholder="Название" className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+        placeholder="Описание" className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <div className="flex gap-2">
+        <input value={form.brand} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
+          placeholder="Бренд (Sky Music, Sky Market…)" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <input value={form.valueLabel} onChange={(e) => setForm((f) => ({ ...f, valueLabel: e.target.value }))}
+          placeholder="Значение (×2, −30%…)" className="w-28 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      </div>
+      <div className="flex gap-2 items-center">
+        <input type="color" value={form.color1} onChange={(e) => setForm((f) => ({ ...f, color1: e.target.value }))}
+          className="h-9 w-12 rounded-lg" style={{ background: C.l2, border: `1px solid ${C.brd}` }} />
+        <input type="color" value={form.color2} onChange={(e) => setForm((f) => ({ ...f, color2: e.target.value }))}
+          className="h-9 w-12 rounded-lg" style={{ background: C.l2, border: `1px solid ${C.brd}` }} />
+        <input type="date" value={form.expiresAt} onChange={(e) => setForm((f) => ({ ...f, expiresAt: e.target.value }))}
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <input value={form.maxPerUser} onChange={(e) => setForm((f) => ({ ...f, maxPerUser: e.target.value.replace(/\D/g, '') }))}
+          inputMode="numeric" placeholder="Раз/чел" className="w-16 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      <div className="flex gap-2">
+        <button type="button" disabled={busy || !form.title.trim() || !form.valueLabel.trim()} onClick={() => void save()}
+          className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+          {initial ? 'Сохранить' : 'Создать'}
+        </button>
+        <button type="button" onClick={onCancel} className="rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>
+          Отмена
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const PrimePulseAdminSection = () => {
+  const [offers, setOffers] = useState<import('@/prime/primePulseApi').PulseOffer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState('');
+  const [editing, setEditing] = useState<string | null | 'new'>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { apiPulseAdminOffers } = await import('@/prime/primePulseApi');
+    const list = await apiPulseAdminOffers();
+    setLoading(false);
+    if (list === null) { setFailed('Не удалось загрузить предложения'); return; }
+    setOffers(list);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const toggle = async (id: string, on: boolean) => {
+    const { apiPulseSetActive } = await import('@/prime/primePulseApi');
+    if (await apiPulseSetActive(id, on)) void load();
+  };
+
+  const remove = async (id: string) => {
+    const { apiPulseDeleteOffer } = await import('@/prime/primePulseApi');
+    const res = await apiPulseDeleteOffer(id);
+    if (!res.ok) { setFailed(res.reason); return; }
+    void load();
+  };
+
+  if (editing === 'new') {
+    return <PulseOfferForm onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />;
+  }
+  const editingOffer = offers.find((o) => o.id === editing);
+  if (editingOffer) {
+    return <PulseOfferForm initial={editingOffer} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />;
+  }
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={() => setEditing('new')}
+        className="w-full rounded-xl py-2.5 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>
+        + Новое предложение
+      </button>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {loading ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : offers.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Предложений пока нет.</p>
+      ) : offers.map((o) => (
+        <div key={o.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-bold" style={{ color: C.t1 }}>{o.title}</p>
+              <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+                {o.brand} · {PULSE_CAT_LABEL[o.category]} · {o.valueLabel} · погашений: {o.redeemedCount ?? 0}
+              </p>
+            </div>
+            <span className="shrink-0 text-[10px] font-bold" style={{ color: o.active ? C.green : C.t3 }}>
+              {o.active ? 'Активно' : 'Снято'}
+            </span>
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => setEditing(o.id)}
+              className="flex-1 rounded-xl py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+              Изменить
+            </button>
+            <button type="button" onClick={() => void toggle(o.id, !o.active)}
+              className="flex-1 rounded-xl py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: o.active ? C.amber : C.green }}>
+              {o.active ? 'Снять' : 'Вернуть'}
+            </button>
+            {(o.redeemedCount ?? 0) === 0 && (
+              <button type="button" onClick={() => void remove(o.id)}
+                className="rounded-xl px-3 py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.red }}>
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const SkyVideoAdminSection = ({ rights, onPendingChanged }: { rights: MyRights; onPendingChanged: () => void }) => (
   <div className="space-y-4">
     {rights.permissions.includes('content') && (
@@ -773,7 +943,7 @@ const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -892,6 +1062,7 @@ export const AdminPanel = () => {
     { key: 'pending', label: 'Заявки', show: true },
     { key: 'grant', label: 'Начисления', show: has('finance') },
     { key: 'video', label: 'Sky Video', show: has('content') || has('finance') },
+    { key: 'pulse', label: 'Prime Pulse', show: has('content') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
     { key: 'events', label: 'События', show: has('security') },
@@ -1018,6 +1189,7 @@ export const AdminPanel = () => {
 
       {tab === 'grant' && <GrantForm onSent={() => void loadPending()} />}
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
+      {tab === 'pulse' && <PrimePulseAdminSection />}
 
       {tab === 'admins' && (
         <>
