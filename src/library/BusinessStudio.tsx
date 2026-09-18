@@ -419,19 +419,26 @@ const PodcastUploadForm = ({ onDone }:{ onDone:()=>void }) => {
     const res = await promise;
     if (!res.ok) { setLoad(false); setError(res.reason ?? 'Не получилось'); return; }
 
+    // setNote запланирует перерисовку, но в этой же функции переменная
+    // note снаружи останется прежней (замыкание на момент вызова) —
+    // поэтому решение «ждать ли перед onDone» берём из локальной
+    // переменной, а не из note: иначе таймер всегда получал бы 0 и
+    // сообщение исчезало бы раньше, чем человек успел бы его прочитать.
+    let noteMsg: string | null = null;
     if (publishNow) {
       await apiPatchEpisode(episode.id, { published: true });
       const show = shows.find(s => s.id === podcastId);
       if (show && show.status !== 'published') {
         const submitted = await apiSubmitPodcast(podcastId);
-        setNote(submitted.ok
+        noteMsg = submitted.ok
           ? 'Выпуск загружен, передача отправлена на проверку модерацией.'
-          : `Выпуск загружен, но передачу отправить на проверку не удалось: ${submitted.reason}`);
+          : `Выпуск загружен, но передачу отправить на проверку не удалось: ${submitted.reason}`;
+        setNote(noteMsg);
       }
     }
 
     setLoad(false);
-    if (!publishNow) onDone(); else setTimeout(onDone, note ? 1800 : 0);
+    if (!publishNow) onDone(); else setTimeout(onDone, noteMsg ? 1800 : 0);
   };
 
   const iS = { background:V.bg2, border:`1px solid ${V.border}`, color:V.t1 };
@@ -553,15 +560,21 @@ const BookUploadForm = ({ onDone }:{ onDone:()=>void }) => {
     }
     if (cover) await apiUploadBookCover(book.id, cover);
 
+    // Как и в форме подкаста: note снаружи в этой функции ещё не
+    // обновится (замыкание на момент вызова setNote), поэтому решение
+    // о задержке берём из локальной переменной — иначе onDone сработал
+    // бы сразу же, и сообщение о проверке никто бы не успел увидеть.
+    let noteMsg: string | null = null;
     if (publishNow) {
       const submitted = await apiSubmitBook(book.id);
-      setNote(submitted.ok
+      noteMsg = submitted.ok
         ? 'Книга отправлена на проверку модерацией.'
-        : `Книга сохранена, но отправить на проверку не удалось: ${submitted.reason}`);
+        : `Книга сохранена, но отправить на проверку не удалось: ${submitted.reason}`;
+      setNote(noteMsg);
     }
 
     setLoad(false);
-    if (!publishNow) onDone(); else setTimeout(onDone, note ? 1800 : 0);
+    if (!publishNow) onDone(); else setTimeout(onDone, noteMsg ? 1800 : 0);
   };
 
   const iS = { background:V.bg2, border:`1px solid ${V.border}`, color:V.t1 };
@@ -588,12 +601,12 @@ const BookUploadForm = ({ onDone }:{ onDone:()=>void }) => {
         rows={6} className={`${iC} resize-none`} style={iS}/>
 
       <div className="flex items-center gap-3">
-        <input id="studio-book-audio-input" type="file" accept="audio/*" className="hidden"
+        <input id="studio-book-audio-input" type="file" accept="audio/*,video/*" className="hidden"
           onChange={e=>{ const f=e.target.files?.[0]; if(f) setAudio(f); }}/>
         <button type="button" onClick={()=>document.getElementById('studio-book-audio-input')?.click()}
           className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-semibold transition-colors"
           style={{ background:V.bg2, border:`1px solid ${V.border}`, color:V.t2 }}>
-          {audio ? <><Check size={15} style={{ color:'var(--green)' }}/> {audio.name}</> : 'Добавить озвучку главы'}
+          {audio ? <><Check size={15} style={{ color:'var(--green)' }}/> {audio.name}</> : 'Добавить озвучку главы (аудио или видео)'}
         </button>
       </div>
 

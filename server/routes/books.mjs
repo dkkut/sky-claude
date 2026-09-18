@@ -58,6 +58,19 @@ const AUDIO_SIGNATURES = [
   { mime: 'audio/webm', test: (b) => b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3 },
 ];
 
+/**
+ * Озвучку главы нередко записывают на телефон видео-камерой — файл
+ * приходит контейнером видео, а звучит в нём только голос. Тег
+ * <audio> прекрасно проигрывает звуковую дорожку такого файла, так
+ * что video/* здесь такой же законный источник, как чистое аудио.
+ */
+const VIDEO_SIGNATURES = [
+  { mime: 'video/mp4', test: (b) => b.subarray(4, 8).toString('latin1') === 'ftyp' },
+  { mime: 'video/webm', test: (b) => b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3 },
+  { mime: 'video/ogg', test: (b) => b.subarray(0, 4).toString('latin1') === 'OggS' },
+  { mime: 'video/quicktime', test: (b) => b.subarray(4, 12).toString('latin1') === 'ftypqt  ' },
+];
+
 const IMAGE_SIGNATURES = [
   { mime: 'image/jpeg', test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
   { mime: 'image/png', test: (b) => b.subarray(0, 8)
@@ -388,7 +401,7 @@ export const bookRoutes = async (req, res, url) => {
       if (!owned) return rejectBody(req, res, 404, { error: 'not_found' });
 
       const head = await peek(req, 32);
-      const mime = sniff(head, AUDIO_SIGNATURES);
+      const mime = sniff(head, [...AUDIO_SIGNATURES, ...VIDEO_SIGNATURES]);
       if (!mime) return rejectBody(req, res, 400, { error: 'unsupported_type' });
 
       const fileId = audioIdFor(id);

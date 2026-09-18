@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useMotionValue } from 'framer-motion';
 import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1,
-  ListMusic, Mic2, X, Music2} from 'lucide-react';
+  ListMusic, Music2} from 'lucide-react';
 import { usePlayerStore } from '@/player/playerStore';
 import { BottomSheet } from './BottomSheet';
 import { haptic } from './haptics';
@@ -20,7 +20,6 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
   } = usePlayerStore();
 
   const [showQueue, setShowQueue] = useState(false);
-  const [showLyrics, setShowLyrics] = useState(false);
   const [scrubbing, setScrubbing] = useState<number | null>(null);
   const dragY = useMotionValue(0);
   const lyricsRef = useRef<HTMLDivElement>(null);
@@ -30,9 +29,9 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
   const activeLine = useMemo(() => lyrics.reduce((best, l, i) => l.t <= currentTime ? i : best, -1), [lyrics, currentTime]);
 
   useEffect(() => {
-    if (!showLyrics || activeLine < 0) return;
+    if (activeLine < 0) return;
     lineRefs.current[activeLine]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [activeLine, showLyrics]);
+  }, [activeLine]);
 
   useEffect(() => { if (open) dragY.set(0); }, [open]);
 
@@ -61,7 +60,8 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
           transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           className="fixed inset-0 z-[95] flex flex-col overflow-hidden">
 
-          <div className="flex shrink-0 items-center justify-between px-5" style={{ paddingTop: 'calc(var(--safe-top) + 10px)' }}>
+          {/* Верхняя панель — с запасом сверху: на телефоне её иначе перекрывает системная строка состояния. */}
+          <div className="flex shrink-0 items-center justify-between px-5" style={{ paddingTop: 'calc(var(--safe-top) + 22px)' }}>
             <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }}>
               <ChevronDown size={18} className="text-white"/>
             </button>
@@ -71,40 +71,36 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
             </button>
           </div>
 
-          {/* Обложка / текст песни */}
-          <div className="flex flex-1 flex-col items-center justify-center px-8">
-            {!showLyrics ? (
-              <motion.div key="cover" initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                className="relative aspect-square w-full max-w-[300px] overflow-hidden rounded-3xl"
-                style={{ background: item.coverUrl ? `url(${item.coverUrl}) center/cover` : `linear-gradient(135deg, ${g1}, ${g2})`, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
-                {!item.coverUrl && (
-          <div className="grid h-full place-items-center">
-            <Music2 size={56} style={{ color: 'rgba(255,255,255,0.55)' }}/>
-          </div>
-        )}
-              </motion.div>
-            ) : (
-              <div ref={lyricsRef} className="h-full w-full overflow-y-auto py-10 text-center">
-                {lyrics.length === 0 ? (
-                  <p className="mt-20 text-[13px] text-white/50">Текст песни недоступен</p>
-                ) : lyrics.map((l, i) => (
-                  <p key={i} ref={el => { lineRefs.current[i] = el; }}
-                    className="my-3 text-[19px] font-bold leading-snug transition-all"
-                    style={{ color: i === activeLine ? '#fff' : 'rgba(255,255,255,0.35)', transform: i === activeLine ? 'scale(1.04)' : 'scale(1)' }}>
-                    {l.text}
-                  </p>
-                ))}
+          {/* Текст песни — сверху и первым, чтобы помещался целиком, а не обрезался под маленький экран. */}
+          <div ref={lyricsRef} className="min-h-0 flex-1 overflow-y-auto px-8 py-4 text-center">
+            {lyrics.length === 0 ? (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-[13px] text-white/50">Текст песни недоступен</p>
               </div>
-            )}
+            ) : lyrics.map((l, i) => (
+              <p key={i} ref={el => { lineRefs.current[i] = el; }}
+                className="my-2.5 text-[16px] font-bold leading-snug transition-all"
+                style={{ color: i === activeLine ? '#fff' : 'rgba(255,255,255,0.35)', transform: i === activeLine ? 'scale(1.04)' : 'scale(1)' }}>
+                {l.text}
+              </p>
+            ))}
           </div>
 
-          <div className="shrink-0 px-6 pb-2">
-            <p className="truncate text-center text-[19px] font-black text-white">{item.title}</p>
-            <p className="truncate text-center text-[13px] text-white/60">{item.author}</p>
+          {/* Обложка с кнопками управления — под текстом, компактнее, чтобы обоим хватило места. */}
+          <div className="shrink-0 flex flex-col items-center px-8 pt-1">
+            <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              className="relative aspect-square w-full max-w-[168px] overflow-hidden rounded-2xl"
+              style={{ background: item.coverUrl ? `url(${item.coverUrl}) center/cover` : `linear-gradient(135deg, ${g1}, ${g2})`, boxShadow: '0 14px 40px rgba(0,0,0,0.5)' }}>
+              {!item.coverUrl && (
+                <div className="grid h-full place-items-center">
+                  <Music2 size={40} style={{ color: 'rgba(255,255,255,0.55)' }}/>
+                </div>
+              )}
+            </motion.div>
           </div>
 
           {/* Скраббер */}
-          <div className="shrink-0 px-6 pt-4">
+          <div className="shrink-0 px-6 pt-3">
             <div className="relative h-6 cursor-pointer" onPointerDown={onScrubMove} onPointerMove={e => e.buttons===1 && onScrubMove(e)} onPointerUp={onScrubEnd}>
               <div className="absolute top-1/2 h-1 w-full -translate-y-1/2 rounded-full bg-white/20"/>
               <div className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-white" style={{ width: `${pct}%` }}/>
@@ -117,7 +113,7 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
           </div>
 
           {/* Управление */}
-          <div className="flex shrink-0 items-center justify-between px-6 py-5">
+          <div className="flex shrink-0 items-center justify-between px-6 py-3">
             <button type="button" onClick={() => { haptic('selection'); setShuffle(!shuffle); }}>
               <Shuffle size={18} style={{ color: shuffle ? '#fff' : 'rgba(255,255,255,0.4)' }}/>
             </button>
@@ -136,12 +132,10 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
             </button>
           </div>
 
-          <div className="flex shrink-0 justify-center pb-6" style={{ paddingBottom: 'calc(var(--safe-bottom) + 20px)' }}>
-            <button type="button" onClick={() => setShowLyrics(v => !v)}
-              className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-bold"
-              style={{ background: showLyrics ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)', color: '#fff' }}>
-              <Mic2 size={13}/>{showLyrics ? 'Обложка' : 'Текст песни'}
-            </button>
+          {/* Название и исполнитель — в самом низу экрана. */}
+          <div className="shrink-0 px-6 pb-2" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
+            <p className="truncate text-center text-[17px] font-black text-white">{item.title}</p>
+            <p className="truncate text-center text-[13px] text-white/60">{item.author}</p>
           </div>
 
           <BottomSheet open={showQueue} onClose={() => setShowQueue(false)} title="Очередь" snapPoints={[0.6]}>
