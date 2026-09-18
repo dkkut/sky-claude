@@ -1,10 +1,10 @@
-import { Home, BookOpen, Briefcase, Building2, Ban, Bug, Calendar, Check, CheckCircle, ChevronLeft, Clock, Cloud, Crown, Film, Flag, Gem, Heart, Inbox, Lightbulb, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MicOff, MoreHorizontal, Music2, Pause, PenLine, Play, Plus, QrCode, Scale, Send, Shield, ShoppingCart, Snowflake, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, XCircle, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
+import { Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Scale, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
 import { lazyChunk } from '@/app/lazyChunk';
 import { BotsBrowser } from '@/bots/SkyBots';
 import { BotCreatorPanel } from '@/bots/BotCreator';
 import React, { FormEvent, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePlatformStore, grantPrimeForUser, type Track } from '@/platform/store';
+import { usePlatformStore, type Track } from '@/platform/store';
 import { useAuthStore } from '@/core/auth/store';
 import { useMessengerStore } from '@/messenger/store';
 import { useVideoStore } from '@/video/store';
@@ -54,6 +54,12 @@ import { useFilmStore } from '@/film/serverStore';
 import { posterUrl } from '@/film/filmApi';
 import { AdminDisputesPanel, AdminGarantPanel } from '@/admin/AdminDisputes';
 import { qrDataUri } from '@/shared/qr';
+/* Реальная панель прав: роли, подтверждение личности, второй ключ
+   владельца, второй фактор, журнал. Названа с приставкой Rbac здесь,
+   чтобы не столкнуться с локальным именем AdminPanel ниже — тем самым,
+   которое эта панель и заменяет. */
+import { AdminPanel as RbacAdminPanel } from '@/admin/AdminPanel';
+import { apiSupportStatus } from '@/moderation/supportApi';
 
 
 /* --- «Вместе» -----------------------------------------------------------
@@ -426,37 +432,14 @@ const AdminPanel = () => {
   const botPending     = useBotPendingCount();
   const { campaigns, moderate } = useAdsStore();
   const pendingAds = campaigns.filter(c=>c.status==='moderation');
-  const { accounts, grantPrime, revokePrime, setAdmin, banUser, muteUser, spamBlock, freezeUser, setModerationNote, currentUserId } = useAuthStore();
-  const { reports, resolveReport } = useMessengerStore();
-  const [adminTab, setAdminTab] = useState<'reports'|'users'|'moderation'|'podcasts_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'ads_mod'|'feedback'|'disputes'|'support'|'garant_adm'>('reports');
-  const [selUser, setSelUser] = useState<string|null>(null);
-  const [muteMin, setMuteMin] = useState('30');
-  const [spamMin, setSpamMin] = useState('60');
-  const [freezeH, setFreezeH] = useState('24');
-  const [primeD,  setPrimeD]  = useState('30');
-  const [moderNote, setModerNote] = useState('');
-  const [noteEdit, setNoteEdit] = useState(false);
-
-  const pending = reports.filter(r => r.status === 'pending');
-  const selAcc = accounts.find(a => a.id === selUser);
-
-  const fmtUntil = (iso?: string) => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (d < new Date()) return '(истёк)';
-    return `до ${d.toLocaleString('ru',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}`;
-  };
-
-  const iCls = "w-full rounded-2xl px-4 py-2.5 text-sm text-white outline-none";
-  const iSty = {background:'var(--bg-l2)',border:'1px solid var(--border)'};
+  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'ads_mod'|'disputes'|'support'|'garant_adm'>('core');
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Sub-tabs */}
       <div className="flex gap-0.5 border-b px-4 pt-2 shrink-0 overflow-x-auto" style={{borderColor:'var(--border)',scrollbarWidth:'none'}}>
         {([
-          ['reports',    `Жалобы${pending.length>0?` (${pending.length})`:''}`,    Flag],
-          ['users',      'Пользователи',                                              Users],
+          ['core',       'Права и запреты', Shield],
           ['moderation', `Музыка${musicPending > 0 ? ` (${musicPending})` : ''}`, Music2],
           ['podcasts_mod', `Подкасты${podcastPending > 0 ? ` (${podcastPending})` : ''}`, Mic2],
           ['bots_mod',     `Боты${botPending > 0 ? ` (${botPending})` : ''}`,         Bot],
@@ -467,7 +450,6 @@ const AdminPanel = () => {
           ['disputes',   `Споры`,      Scale],
           ['garant_adm', `Гарант`,     Shield],
           ['support',    'Поддержка',  MessageSquare],
-          ['feedback',   'Обратная связь', MessageSquare],
         ] as const).map(([k,l,Icon])=>(
           <button key={k} type="button" onClick={()=>setAdminTab(k)}
             className="flex shrink-0 items-center gap-1.5 rounded-t-xl px-3 py-2 text-xs font-medium"
@@ -480,306 +462,16 @@ const AdminPanel = () => {
 
       <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:'none'}}>
 
-        {/* ==== REPORTS ==== */}
-        {adminTab==='reports' && (
-          <div className="p-4 space-y-3">
-            {reports.length===0 && (
-              <div className="flex flex-col items-center gap-2 py-12">
-                <Flag size={36} style={{color:'var(--t3)'}}/>
-                <p className="text-sm" style={{color:'var(--t3)'}}>Жалоб нет</p>
-              </div>
-            )}
-            {reports.map(r => {
-              const reporter = accounts.find(a=>a.id===r.reporterId);
-              const reported = accounts.find(a=>a.id===r.reportedId);
-              const isPending = (r.status??'pending')==='pending';
-              return (
-                <div key={r.id} className="rounded-2xl overflow-hidden"
-                  style={{background:'var(--bg-l1)',border:`1px solid ${isPending?'rgba(245,158,11,0.3)':'var(--border)'}`}}>
-                  {/* Header */}
-                  <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isPending?'bg-amber-500/20 text-amber-400':'bg-white/8 text-white/35'}`}>
-                          {isPending?'Рассматривается':(r.status??'')==='reviewed'?'Рассмотрено':'Отклонено'}
-                        </span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                          style={{background:'rgba(239,68,68,0.12)',color:'var(--red)'}}>
-                          {r.reason}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs" style={{color:'var(--t2)'}}>
-                        <span className="font-semibold text-white">{reporter?.name??'?'}</span>
-                        <span style={{color:'var(--t3)'}}>пожаловался на</span>
-                        <span className="font-semibold text-white">{reported?.name??r.reportedId??'?'}</span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] shrink-0" style={{color:'var(--t3)'}}>
-                      {new Date(typeof r.createdAt === "number" ? r.createdAt : Date.now()).toLocaleDateString('ru',{day:'numeric',month:'short'})}
-                    </span>
-                  </div>
-
-                  {/* Message */}
-                  {r.comment && (
-                    <div className="mx-4 mb-3 rounded-xl px-3 py-2.5"
-                      style={{background:'var(--bg-l2)',border:'1px solid var(--border)'}}>
-                      <p className="text-xs leading-relaxed" style={{color:'var(--t2)'}}>{r.comment}</p>
-                      {r.messageId && (
-                        <p className="text-[10px] mt-1" style={{color:'var(--t3)'}}>
-                          Сообщение: {r.messageId.slice(0,12)}... · Чат: {r.chatId}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Quick actions on reported user */}
-                  {isPending && r.reportedId && (
-                    <div className="px-4 pb-3 space-y-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}>
-                        Быстрые действия
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {[
-                          {label:'Предупреждение',color:'var(--amber)',bg:'rgba(245,158,11,0.12)',
-                            act:()=>resolveReport(r.id,'reviewed')},
-                          {label:'Мут 1ч',color:'#a855f7',bg:'rgba(168,85,247,0.12)',
-                            act:()=>{muteUser(r.reportedId!,60);resolveReport(r.id,'reviewed');}},
-                          {label:'Мут 24ч',color:'#a855f7',bg:'rgba(168,85,247,0.12)',
-                            act:()=>{muteUser(r.reportedId!,1440);resolveReport(r.id,'reviewed');}},
-                          {label:'Спам-блок 1ч',color:'#f97316',bg:'rgba(249,115,22,0.12)',
-                            act:()=>{spamBlock(r.reportedId!,60);resolveReport(r.id,'reviewed');}},
-                          {label:'Заморозить 24ч',color:'#06b6d4',bg:'rgba(6,182,212,0.12)',
-                            act:()=>{freezeUser(r.reportedId!,24);resolveReport(r.id,'reviewed');}},
-                          {label:'Заблокировать',color:'#ef4444',bg:'rgba(239,68,68,0.12)',
-                            act:()=>{banUser(r.reportedId!,true);resolveReport(r.id,'reviewed');}},
-                        ].map(({label,color,bg,act})=>(
-                          <button key={label} type="button" onClick={act}
-                            className="rounded-xl px-2.5 py-1.5 text-[11px] font-semibold transition-all hover:brightness-110"
-                            style={{background:bg,color,border:`1px solid ${color}30`}}>
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                      {/* Resolve / Dismiss */}
-                      <div className="flex gap-2 pt-1">
-                        <button type="button" onClick={()=>resolveReport(r.id,'reviewed')}
-                          className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold"
-                          style={{background:'rgba(34,197,94,0.12)',color:'#22c55e',border:'1px solid rgba(34,197,94,0.25)'}}>
-                          <CheckCircle size={13}/> Рассмотрено
-                        </button>
-                        <button type="button" onClick={()=>resolveReport(r.id,'dismissed')}
-                          className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold"
-                          style={{background:'rgba(239,68,68,0.08)',color:'var(--red)',border:'1px solid rgba(239,68,68,0.2)'}}>
-                          <XCircle size={13}/> Отклонить
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ==== USERS ==== */}
-        {adminTab==='users' && (
-          <div className="flex h-full flex-col sm:flex-row">
-            {/* User list */}
-            <div className="w-full max-h-[38vh] shrink-0 border-b overflow-y-auto sm:w-44 sm:max-h-none sm:border-b-0 sm:border-r" style={{borderColor:'var(--border)',scrollbarWidth:'none'}}>
-              {accounts.map(user=>(
-                <button key={user.id} type="button" onClick={()=>{setSelUser(user.id);setModerNote(user.moderationNote??'');setNoteEdit(false);}}
-                  className="flex w-full items-center gap-2 px-3 py-2.5 transition-colors hover:bg-white/[0.03]"
-                  style={{background:selUser===user.id?'var(--accent-bg)':'transparent',
-                    borderLeft:selUser===user.id?'2px solid var(--accent)':'2px solid transparent'}}>
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold text-white overflow-hidden"
-                    style={{background:'var(--accent-bg)'}}>
-                    {user.avatar?<img src={user.avatar} alt="" className="h-full w-full object-cover"/>:user.name[0]}
-                  </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <div className="flex items-center gap-1">
-                      <p className="text-xs font-semibold truncate text-white">{user.name}</p>
-                      {user.isPrime&&<Crown size={9} style={{color:'var(--amber)'}}/>}
-                      {user.isAdmin&&<Shield size={9} style={{color:'var(--accent)'}}/>}
-                    </div>
-                    <p className="text-[10px] truncate" style={{color:'var(--t3)'}}>@{user.username}</p>
-                    {/* Status badges */}
-                    <div className="flex gap-0.5 mt-0.5 flex-wrap">
-                      {user.isBanned&&<span className="text-[8px] px-1 rounded" style={{background:'rgba(239,68,68,0.2)',color:'var(--red)'}}>БАН</span>}
-                      {user.isMuted&&<span className="text-[8px] px-1 rounded" style={{background:'rgba(168,85,247,0.2)',color:'#a855f7'}}>МУТ</span>}
-                      {user.isFrozen&&<Snowflake size={9} style={{color:'#06b6d4'}}/>}
-                      {user.isSpamBlocked&&<span className="text-[8px] px-1 rounded" style={{background:'rgba(249,115,22,0.2)',color:'#f97316'}}>СПАМ</span>}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* User detail */}
-            {selAcc ? (
-              <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{scrollbarWidth:'none'}}>
-                {/* Profile */}
-                <div className="rounded-2xl p-4" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="grid h-12 w-12 place-items-center rounded-2xl overflow-hidden text-lg font-bold text-white"
-                      style={{background:'var(--accent-bg)'}}>
-                      {selAcc.avatar?<img src={selAcc.avatar} alt="" className="h-full w-full object-cover"/>:selAcc.name[0]}
-                    </div>
-                    <div>
-                      <p className="font-bold text-white">{selAcc.name}</p>
-                      <p className="text-xs" style={{color:'var(--t3)'}}>@{selAcc.username} · {selAcc.phone}</p>
-                      <p className="text-[10px] mt-0.5" style={{color:'var(--t3)'}}>
-                        Зарегистрирован: {new Date(selAcc.createdAt).toLocaleDateString('ru')}
-                      </p>
-                    </div>
-                  </div>
-                  {/* Active restrictions */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {selAcc.isPrime&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(245,158,11,0.15)',color:'var(--amber)'}}><Crown size={9} className="inline mr-1"/>Prime {fmtUntil(selAcc.primeUntil)}</span>}
-                    {selAcc.isAdmin&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'var(--accent-bg)',color:'var(--accent)'}}><Shield size={9} className="inline mr-1"/>Admin</span>}
-                    {selAcc.isBanned&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(239,68,68,0.15)',color:'var(--red)'}}><Ban size={9} className="inline mr-1"/>Заблокирован</span>}
-                    {selAcc.isMuted&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(168,85,247,0.15)',color:'#a855f7'}}><MicOff size={9} className="inline mr-1"/>Мут {fmtUntil(selAcc.mutedUntil)}</span>}
-                    {selAcc.isFrozen&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(6,182,212,0.15)',color:'#06b6d4'}}><Snowflake size={9} className="inline mr-1"/>Заморожен {fmtUntil(selAcc.frozenUntil)}</span>}
-                    {selAcc.isSpamBlocked&&<span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background:'rgba(249,115,22,0.15)',color:'#f97316'}}><Ban size={9} className="inline mr-1"/>Спам-блок {fmtUntil(selAcc.spamBlockedUntil)}</span>}
-                  </div>
-                </div>
-
-                {/* Prime subscription */}
-                <div className="rounded-2xl p-4 space-y-2.5" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}><Crown size={11} className="inline mr-1"/>Подписка Prime</p>
-                  <div className="flex gap-2">
-                    <input value={primeD} onChange={e=>setPrimeD(e.target.value)}
-                      placeholder="Дней" type="number" min="1" max="365"
-                      className="w-20 rounded-xl px-3 py-2 text-sm text-white outline-none"
-                      style={{background:'var(--bg-l2)',border:'1px solid var(--border)'}}/>
-                    <button type="button" onClick={()=>{grantPrime(selAcc.id,parseInt(primeD)||30);grantPrimeForUser(selAcc.id,parseInt(primeD)||30);}}
-                      className="flex-1 rounded-xl py-2 text-xs font-bold"
-                      style={{background:'rgba(245,158,11,0.15)',color:'var(--amber)',border:'1px solid rgba(245,158,11,0.3)'}}>
-                      <Check size={13} className="inline mr-1"/>Выдать Prime на {primeD} дн.
-                    </button>
-                  </div>
-                  {selAcc.isPrime&&(
-                    <button type="button" onClick={()=>revokePrime(selAcc.id)}
-                      className="w-full rounded-xl py-2 text-xs font-bold"
-                      style={{background:'rgba(239,68,68,0.08)',color:'var(--red)',border:'1px solid rgba(239,68,68,0.2)'}}>
-                      <X size={13} className="inline mr-1"/>Отозвать Prime
-                    </button>
-                  )}
-                  {selAcc.id!==currentUserId&&(
-                    <button type="button" onClick={()=>setAdmin(selAcc.id,!selAcc.isAdmin)}
-                      className="w-full rounded-xl py-2 text-xs font-bold"
-                      style={{background:selAcc.isAdmin?'rgba(239,68,68,0.08)':'var(--accent-bg)',
-                        color:selAcc.isAdmin?'var(--red)':'var(--accent)',
-                        border:`1px solid ${selAcc.isAdmin?'rgba(239,68,68,0.2)':'var(--accent-bg)'}`}}>
-                      <><Shield size={13} className="inline mr-1"/>{selAcc.isAdmin?'Убрать права Admin':'Назначить Admin'}</>
-                    </button>
-                  )}
-                </div>
-
-                {/* Mute (no calls/voice) */}
-                <div className="rounded-2xl p-4 space-y-2.5" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}><MicOff size={11} className="inline mr-1"/>Запрет говорить</p>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[['15','15 мин'],['60','1 час'],['360','6 ч'],['1440','24 ч'],['10080','7 дн'],['0','Снять']].map(([v,l])=>(
-                      <button key={v} type="button"
-                        onClick={()=>muteUser(selAcc.id,parseInt(v))}
-                        className="rounded-xl py-2 text-[11px] font-semibold"
-                        style={{background:v==='0'?'rgba(34,197,94,0.1)':'rgba(168,85,247,0.1)',
-                          color:v==='0'?'#22c55e':'#a855f7',
-                          border:`1px solid ${v==='0'?'rgba(34,197,94,0.25)':'rgba(168,85,247,0.2)'}`}}>
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Spam block */}
-                <div className="rounded-2xl p-4 space-y-2.5" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}><Ban size={11} className="inline mr-1"/>Спам-блок (ограничение отправки)</p>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[['30','30 мин'],['60','1 час'],['360','6 ч'],['1440','24 ч'],['10080','7 дн'],['0','Снять']].map(([v,l])=>(
-                      <button key={v} type="button"
-                        onClick={()=>spamBlock(selAcc.id,parseInt(v))}
-                        className="rounded-xl py-2 text-[11px] font-semibold"
-                        style={{background:v==='0'?'rgba(34,197,94,0.1)':'rgba(249,115,22,0.1)',
-                          color:v==='0'?'#22c55e':'#f97316',
-                          border:`1px solid ${v==='0'?'rgba(34,197,94,0.25)':'rgba(249,115,22,0.2)'}`}}>
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Freeze */}
-                <div className="rounded-2xl p-4 space-y-2.5" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}><Snowflake size={11} className="inline mr-1"/>Заморозить (только чтение)</p>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[['1','1 час'],['6','6 ч'],['24','24 ч'],['72','3 дня'],['168','7 дн'],['0','Снять']].map(([v,l])=>(
-                      <button key={v} type="button"
-                        onClick={()=>freezeUser(selAcc.id,parseInt(v))}
-                        className="rounded-xl py-2 text-[11px] font-semibold"
-                        style={{background:v==='0'?'rgba(34,197,94,0.1)':'rgba(6,182,212,0.1)',
-                          color:v==='0'?'#22c55e':'#06b6d4',
-                          border:`1px solid ${v==='0'?'rgba(34,197,94,0.25)':'rgba(6,182,212,0.2)'}`}}>
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Ban */}
-                <div className="rounded-2xl p-4 space-y-2" style={{background:'rgba(239,68,68,0.04)',border:'1px solid rgba(239,68,68,0.18)'}}>
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{color:'rgba(239,68,68,0.7)'}}><Ban size={11} className="inline mr-1"/>Блокировка</p>
-                  {selAcc.isBanned ? (
-                    <button type="button" onClick={()=>banUser(selAcc.id,false)}
-                      className="w-full rounded-xl py-2.5 text-xs font-bold"
-                      style={{background:'rgba(34,197,94,0.12)',color:'#22c55e',border:'1px solid rgba(34,197,94,0.25)'}}>
-                      <Check size={13} className="inline mr-1"/>Разблокировать пользователя
-                    </button>
-                  ) : (
-                    <button type="button" onClick={()=>banUser(selAcc.id,true)}
-                      className="w-full rounded-xl py-2.5 text-xs font-bold"
-                      style={{background:'rgba(239,68,68,0.12)',color:'var(--red)',border:'1px solid rgba(239,68,68,0.25)'}}>
-                      <Ban size={13} className="inline mr-1"/>Заблокировать навсегда
-                    </button>
-                  )}
-                </div>
-
-                {/* Moderation note */}
-                <div className="rounded-2xl p-4 space-y-2" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{color:'var(--t3)'}}><PenLine size={11} className="inline mr-1"/>Заметка</p>
-                    <button type="button" onClick={()=>setNoteEdit(!noteEdit)}
-                      className="text-[10px] font-semibold" style={{color:'var(--accent)'}}>
-                      {noteEdit?'Отмена':'Изменить'}
-                    </button>
-                  </div>
-                  {noteEdit ? (
-                    <div className="space-y-2">
-                      <textarea value={moderNote} onChange={e=>setModerNote(e.target.value)}
-                        rows={3} placeholder="Заметка о пользователе (видна только администраторам)..."
-                        className="w-full rounded-xl px-3 py-2 text-xs text-white outline-none resize-none"
-                        style={{background:'var(--bg-l2)',border:'1px solid var(--border)'}}/>
-                      <button type="button"
-                        onClick={()=>{setModerationNote(selAcc.id,moderNote);setNoteEdit(false);}}
-                        className="w-full rounded-xl py-2 text-xs font-bold"
-                        style={{background:'var(--accent-bg)',color:'var(--accent)'}}>
-                        Сохранить
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-xs" style={{color:selAcc.moderationNote?'var(--t2)':'var(--t3)'}}>
-                      {selAcc.moderationNote||'Нет заметок'}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <p className="text-sm" style={{color:'var(--t3)'}}>Выберите пользователя</p>
-              </div>
-            )}
-          </div>
-        )}
+        {/* ==== ПРАВА И ЗАПРЕТЫ ====
+             Единый вход в реальную панель администратора: роли,
+             подтверждение личности, второй ключ владельца, второй
+             фактор, журнал. Раньше здесь были два экрана — «Жалобы» и
+             «Пользователи», — которые не были ничем: бан, мут, выдача
+             Prime и права администратора менялись только в localStorage
+             этого браузера и не доходили до сервера ни в каком виде.
+             Администратор видел у себя «забанен», а по факту никто
+             нигде забанен не был. */}
+        {adminTab==='core' && <RbacAdminPanel/>}
 
         {/* ==== MUSIC MODERATION ==== */}
         {adminTab==='moderation' && <AdminMusicPanel/>}
@@ -838,93 +530,6 @@ const AdminPanel = () => {
             ))}
           </div>
         )}
-
-        {/* ==== CONTENT ==== */}
-        {adminTab==='feedback' && (() => {
-          const feedbackItems = reports.filter(r => r.feedbackType);
-          const bugs        = feedbackItems.filter(r => r.feedbackType === 'bug');
-          const suggestions = feedbackItems.filter(r => r.feedbackType === 'suggestion');
-          const complaints  = feedbackItems.filter(r => r.feedbackType === 'report');
-          return (
-            <div className="p-4 space-y-3">
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label:'Баги', count:bugs.length, color:'var(--red)', Icon:Bug },
-                  { label:'Предложения', count:suggestions.length, color:'var(--green)', Icon:Lightbulb },
-                  { label:'Жалобы', count:complaints.length, color:'var(--amber)', Icon:Flag },
-                ].map(({label,count,color,Icon}) => (
-                  <div key={label} className="rounded-2xl p-3 text-center" style={{ background:'var(--bg-l1)', border:`1px solid ${color}25` }}>
-                    <Icon size={17} style={{ color, margin:'0 auto' }}/>
-                    <p className="text-lg font-black text-white">{count}</p>
-                    <p className="text-[10px]" style={{ color:'var(--t3)' }}>{label}</p>
-                  </div>
-                ))}
-              </div>
-              {feedbackItems.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 py-10">
-                  <Inbox size={34} style={{color:'var(--t3)'}}/>
-                  <p className="text-sm" style={{ color:'var(--t3)' }}>Нет обращений</p>
-                </div>
-              ) : (
-                feedbackItems.map((r: any, _fi: number) => {
-                  if (!r || typeof r !== 'object') return null;
-                  const feedType = r.feedbackType ?? 'bug';
-                  const color = feedType==='bug'?'var(--red)':feedType==='suggestion'?'var(--green)':'var(--amber)';
-                  const Icon  = feedType==='bug'?Bug:feedType==='suggestion'?Lightbulb:Flag;
-                  const reporter = accounts.find(a=>a.id===(r.reporterId??''));
-                  const itemKey = r.id ?? `fi-${_fi}`;
-                  return (
-                    <div key={itemKey} className="rounded-2xl overflow-hidden" style={{ background:'var(--bg-l1)', border:`1px solid ${color}25` }}>
-                      <div className="h-0.5" style={{ background:color }}/>
-                      <div className="p-4">
-                        <div className="flex items-start gap-2.5 mb-2">
-                          <Icon size={17} className="shrink-0" style={{ color }}/>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background:`${color}20`, color }}>
-                                {feedType==='bug'?'Баг':feedType==='suggestion'?'Предложение':'Жалоба'}
-                              </span>
-                              <span className="text-[10px]" style={{ color:'var(--t3)' }}>
-                                {new Date(typeof r.createdAt === "number" ? r.createdAt : Date.now()).toLocaleDateString('ru',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}
-                              </span>
-                            </div>
-                            {r.feedbackTitle && <p className="text-sm font-bold text-white">{r.feedbackTitle}</p>}
-                            <p className="text-xs mt-0.5" style={{ color:'var(--t2)' }}>от {reporter?.name??r.reporterId}</p>
-                            {r.comment && (
-                              <div className="mt-2 rounded-xl px-3 py-2" style={{ background:'var(--bg-l2)', border:'1px solid var(--border)' }}>
-                                <p className="text-xs leading-relaxed" style={{ color:'var(--t2)' }}>{r.comment}</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        {(r.status??'pending')==='pending' && (
-                          <div className="flex gap-2">
-                            <button type="button" onClick={()=>resolveReport(r.id,'reviewed')}
-                              className="flex-1 rounded-xl py-2 text-xs font-bold"
-                              style={{ background:'rgba(34,197,94,0.12)', color:'#22c55e', border:'1px solid rgba(34,197,94,0.25)' }}>
-                              <Check size={12} className="inline mr-1"/>Рассмотрено
-                            </button>
-                            <button type="button" onClick={()=>resolveReport(r.id,'dismissed')}
-                              className="flex-1 rounded-xl py-2 text-xs font-bold"
-                              style={{ background:'rgba(239,68,68,0.08)', color:'var(--red)', border:'1px solid rgba(239,68,68,0.2)' }}>
-                              Закрыть
-                            </button>
-                          </div>
-                        )}
-                        {r.status!=='pending' && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background:(r.status??'')==='reviewed'?'rgba(34,197,94,0.15)':'var(--border)', color:(r.status??'')==='reviewed'?'#22c55e':'var(--t3)' }}>
-                            {(r.status??'')==='reviewed'?'Рассмотрено':'Закрыто'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          );
-        })()}
 
         {adminTab==='content' && <AdminContentTab tracks={tracks} approveTrack={approveTrack} rejectTrack={rejectTrack}/>}
         {adminTab==='channels' && <AdminChannelModerationTab/>}
@@ -1562,12 +1167,20 @@ export const ExtrasModule = () => {
   const { pendingExtrasTab, setPendingExtrasTab } = useModuleStore();
   const [tab, setTab] = useState<Tab>((pendingExtrasTab as Tab) || 'home');
   useEffect(() => { if (pendingExtrasTab) setPendingExtrasTab(null); }, []);
-  const { accounts, currentUserId } = useAuthStore();
-  const me = accounts.find(a=>a.id===currentUserId);
-  const isAdmin = me?.isAdmin ?? false;
   const { reports } = useMessengerStore();
   const pendingCount = reports.filter(r=>(r.status??'pending')==='pending').length;
 
+  // Плитка «Admin» — тот же признак, что и одноимённый пункт в
+  // «Профиле»: спрашивается у сервера, а не берётся из локального
+  // профиля в сторе. Владелец администратор по нику, а не по полю в
+  // базе, и права меняются на сервере — сохранённая у клиента копия
+  // рано или поздно разойдётся с тем, что на самом деле разрешено.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void apiSupportStatus().then(r => { if (alive) setIsAdmin(r.isAdmin); });
+    return () => { alive = false; };
+  }, []);
 
   const visibleTabs = TABS.filter(t=>t.key!=='admin'||isAdmin);
   const handleNav = (t: string) => setTab(t as Tab);
