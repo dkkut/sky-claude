@@ -69,6 +69,7 @@ export interface ProfileData {
   userId:   string;
   account?: Account;
   notFound: boolean;
+  loading:  boolean;
   isOwn:    boolean;
   viewerId: string;
 
@@ -152,6 +153,10 @@ export function useProfileData(userId: string | null): ProfileData | null {
     () => ownAccount ?? (otherEntry ? toAccountFromPublic(otherEntry) : undefined),
     [ownAccount, otherEntry],
   );
+  // Чужой профиль ещё не отвечен сервером — это "загружается", а не
+  // "не найден": otherEntry === undefined значит только "мы его ещё не
+  // спросили или ждём ответ", а не что его нет (это даёт только null).
+  const loading = !!userId && userId !== viewerId && !ownAccount && otherEntry === undefined;
   const progression = useProgression(userId ?? '', account);
 
   return useMemo<ProfileData | null>(() => {
@@ -160,7 +165,7 @@ export function useProfileData(userId: string | null): ProfileData | null {
 
     if (!account) {
       return {
-        userId, notFound: true, isOwn, viewerId,
+        userId, notFound: !loading, loading, isOwn, viewerId,
         presence: { online: false, label: '', platform: null, visible: false },
         frame: activeFrame(undefined),
         relationship: { friendStatus: 'none', isFollowing: false, isFollowedBy: false, isBlocked: false, isHidden: false },
@@ -235,7 +240,7 @@ export function useProfileData(userId: string | null): ProfileData | null {
     const messagesWithMe = dmWithTarget ? myMessages.filter(m => m.chatId === dmWithTarget.id && !m.deleted).length : 0;
 
     return {
-      userId, account, notFound: false, isOwn, viewerId,
+      userId, account, notFound: false, loading: false, isOwn, viewerId,
       presence,
       frame: activeFrame(account),
       relationship: { friendStatus, isFollowing, isFollowedBy, isBlocked, isHidden },
@@ -253,7 +258,7 @@ export function useProfileData(userId: string | null): ProfileData | null {
       },
     };
   }, [
-    userId, viewerId, account, myChats, myMessages, blockedList, posts, hidden, sent,
+    userId, viewerId, account, loading, myChats, myMessages, blockedList, posts, hidden, sent,
     gamingActivity, follows, friends, views, progression, musicPresenceMap, watchPresenceMap,
   ]);
 }

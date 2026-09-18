@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, X, Ban, UserX } from 'lucide-react';
+import { ChevronLeft, X, Ban, UserX, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useProfileViewer } from './store';
 import { useSocialGraph } from './social';
@@ -57,14 +57,17 @@ export const FullProfilePage = ({ userId }: { userId: string }) => {
 
       {/* -- Top bar -- */}
       <div className="relative z-10 flex items-center justify-between px-2.5 sm:px-5 py-2 sm:py-3 shrink-0 sky-glass"
-        style={{ borderBottom: '1px solid var(--profile-card-border, var(--border))' }}>
+        style={{
+          borderBottom: '1px solid var(--profile-card-border, var(--border))',
+          paddingTop: 'calc(var(--safe-top) + 10px)',
+        }}>
         <button type="button" onClick={canGoBack ? back : close}
           className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center sky-hover-lift"
           style={{ background: 'var(--profile-card-bg, var(--bg-l2))' }}>
           {canGoBack ? <ChevronLeft size={16} style={{ color: 'var(--t1)' }} /> : <X size={16} style={{ color: 'var(--t1)' }} />}
         </button>
         <span className="text-[13px] sm:text-sm font-semibold" style={{ color: 'var(--t1)' }}>
-          {data.notFound ? 'Профиль' : data.isOwn ? 'Мой профиль' : data.account?.name}
+          {data.loading ? '' : data.notFound ? 'Профиль' : data.isOwn ? 'Мой профиль' : data.account?.name}
         </span>
         <button type="button" onClick={close}
           className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center sky-hover-lift"
@@ -75,7 +78,11 @@ export const FullProfilePage = ({ userId }: { userId: string }) => {
 
       {/* -- Content -- */}
       <div className="relative z-10 flex-1 overflow-y-auto">
-        {data.notFound ? (
+        {data.loading ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2 px-6 text-center">
+            <Loader2 size={28} className="animate-spin" style={{ color: 'var(--t3)' }} />
+          </div>
+        ) : data.notFound ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 px-6 text-center">
             <UserX size={32} style={{ color: 'var(--t3)' }} />
             <p className="text-sm font-medium" style={{ color: 'var(--t2)' }}>Профиль не найден</p>
