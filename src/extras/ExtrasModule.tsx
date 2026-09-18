@@ -45,9 +45,11 @@ const SkyGiftsNFT = lazyChunk(() => import('@/gifts/SkyGiftsNFT').then(m => ({ d
 import { AdminMusicPanel } from '@/music/ArtistSubmit';
 import { apiModerationQueue } from '@/music/musicApi';
 import { PodcastModeration } from '@/podcasts/PodcastsAdmin';
+import { BookModeration } from '@/books/BooksAdmin';
 import { TicketsModeration } from '@/tickets/TicketsAdmin';
 import { useTicketPendingCount } from '@/tickets/useTicketPending';
 import { usePodcastPendingCount } from '@/podcasts/usePodcastPending';
+import { useBookPendingCount } from '@/books/useBookPending';
 import { BotModeration } from '@/bots/BotsAdmin';
 import { useBotPendingCount } from '@/bots/useBotPending';
 import { useFilmStore } from '@/film/serverStore';
@@ -431,11 +433,12 @@ const AdminPanel = () => {
   // Столько же для подкастов: очередь отдаётся только администратору,
   // у обычного человека выйдет ноль.
   const podcastPending = usePodcastPendingCount();
+  const bookPending    = useBookPendingCount();
   const ticketPending  = useTicketPendingCount();
   const botPending     = useBotPendingCount();
   const { campaigns, moderate } = useAdsStore();
   const pendingAds = campaigns.filter(c=>c.status==='moderation');
-  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'ads_mod'|'disputes'|'support'|'garant_adm'>('core');
+  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'books_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'ads_mod'|'disputes'|'support'|'garant_adm'>('core');
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -445,6 +448,7 @@ const AdminPanel = () => {
           ['core',       'Права и запреты', Shield],
           ['moderation', `Музыка${musicPending > 0 ? ` (${musicPending})` : ''}`, Music2],
           ['podcasts_mod', `Подкасты${podcastPending > 0 ? ` (${podcastPending})` : ''}`, Mic2],
+          ['books_mod', `Книги${bookPending > 0 ? ` (${bookPending})` : ''}`, BookOpen],
           ['bots_mod',     `Боты${botPending > 0 ? ` (${botPending})` : ''}`,         Bot],
           ['tickets_mod',  `Билеты${ticketPending > 0 ? ` (${ticketPending})` : ''}`,   Ticket],
           ['content',    'Контент',                                                   Upload],
@@ -481,6 +485,9 @@ const AdminPanel = () => {
 
         {/* ==== PODCASTS MODERATION ==== */}
         {adminTab==='podcasts_mod' && <div className="p-4"><PodcastModeration/></div>}
+
+        {/* ==== BOOKS MODERATION ==== */}
+        {adminTab==='books_mod' && <div className="p-4"><BookModeration/></div>}
 
         {/* ==== БОТЫ ==== */}
         {adminTab==='bots_mod'     && <div className="p-4"><BotModeration/></div>}

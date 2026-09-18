@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload, Film, TrendingUp, DollarSign, BarChart3,
   Eye, Check, Trash2, Sparkles, Clock3, ThumbsUp,
-  Video as VideoIcon, Music2, Mic2, Loader2,
+  Video as VideoIcon, Music2, Mic2, Loader2, BookOpen,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Transition } from 'framer-motion';
@@ -24,6 +24,10 @@ import {
   apiMine as apiMyPodcasts, apiCreatePodcast, apiCreateEpisode, apiUploadMedia,
   apiPatchEpisode, apiSubmitPodcast, type Podcast,
 } from '@/podcasts/podcastApi';
+import {
+  apiCreateBook, apiCreateChapter, apiUploadChapterAudio, apiUploadCover as apiUploadBookCover,
+  apiSubmitBook, CATEGORIES as BOOK_CATEGORIES,
+} from '@/books/booksApi';
 
 /* ── Design tokens ─────────────────────────────────────────── */
 const V = { bg:'var(--bg)', bg1:'var(--bg-l1)', bg2:'var(--bg-l2)', bg3:'var(--bg-l3)',
@@ -505,21 +509,149 @@ const PodcastUploadForm = ({ onDone }:{ onDone:()=>void }) => {
   );
 };
 
+/* ── Загрузка книги: книга → первая глава (текст и/или озвучка) ────── */
+const BookUploadForm = ({ onDone }:{ onDone:()=>void }) => {
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [category, setCategory] = useState(BOOK_CATEGORIES[1] ?? 'Другое');
+  const [genre, setGenre] = useState('');
+  const [content, setContent] = useState('');
+  const [audio, setAudio] = useState<File|null>(null);
+  const [cover, setCover] = useState<File|null>(null);
+  const [coverPreview, setCoverPreview] = useState<string|undefined>();
+  const [publishNow, setPublishNow] = useState(true);
+  const [loading, setLoad] = useState(false);
+  const [prog, setProg] = useState(0);
+  const [error, setError] = useState<string|null>(null);
+  const [note, setNote] = useState<string|null>(null);
+
+  const readAudioDuration = (f: Blob) => new Promise<number>((resolve) => {
+    const url = URL.createObjectURL(f);
+    const a = new Audio();
+    const done = (d: number) => { URL.revokeObjectURL(url); resolve(d); };
+    a.onloadedmetadata = () => done(Number.isFinite(a.duration) ? a.duration : 0);
+    a.onerror = () => done(0);
+    a.src = url;
+  });
+
+  const submit = async () => {
+    if (!title.trim()) return;
+    if (!content.trim() && !audio) { setError('Добавьте текст главы или её озвучку — без этого читать или слушать нечего'); return; }
+    setLoad(true); setProg(0); setError(null); setNote(null);
+
+    const book = await apiCreateBook({ title: title.trim(), description: desc.trim(), category, genre: genre.trim() || undefined });
+    if (!book) { setLoad(false); setError('Не получилось завести книгу'); return; }
+
+    const chapter = await apiCreateChapter(book.id, { title: 'Глава 1', content: content.trim() || undefined });
+    if (!chapter) { setLoad(false); setError('Не получилось создать главу'); return; }
+
+    if (audio) {
+      const duration = await readAudioDuration(audio);
+      const { promise } = apiUploadChapterAudio(chapter.id, audio, duration, setProg);
+      const res = await promise;
+      if (!res.ok) { setLoad(false); setError(res.reason ?? 'Не получилось загрузить озвучку'); return; }
+    }
+    if (cover) await apiUploadBookCover(book.id, cover);
+
+    if (publishNow) {
+      const submitted = await apiSubmitBook(book.id);
+      setNote(submitted.ok
+        ? 'Книга отправлена на проверку модерацией.'
+        : `Книга сохранена, но отправить на проверку не удалось: ${submitted.reason}`);
+    }
+
+    setLoad(false);
+    if (!publishNow) onDone(); else setTimeout(onDone, note ? 1800 : 0);
+  };
+
+  const iS = { background:V.bg2, border:`1px solid ${V.border}`, color:V.t1 };
+  const iC = 'w-full rounded-2xl px-4 py-2.5 text-sm outline-none';
+
+  return (
+    <div className="space-y-4 px-4 py-4 overflow-y-auto h-full" style={{ scrollbarWidth:'none' }}>
+      {error && <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background:'rgba(248,113,113,0.1)', color:V.red }}>{error}</div>}
+      {note && <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background:'rgba(52,211,153,0.1)', color:V.green }}>{note}</div>}
+      <p className="text-xs" style={{ color:V.t3 }}>
+        Первая глава заводится вместе с книгой — остальные и обложку можно добавить позже, в кабинете книги.
+      </p>
+
+      <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Название книги *" className={iC} style={iS}/>
+      <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Описание" rows={2} className={`${iC} resize-none`} style={iS}/>
+      <div className="flex gap-2">
+        <select value={category} onChange={e=>setCategory(e.target.value)} className={`flex-1 ${iC}`} style={{ ...iS, cursor:'pointer' }}>
+          {BOOK_CATEGORIES.filter(c=>c!=='Все').map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <input value={genre} onChange={e=>setGenre(e.target.value)} placeholder="Жанр" className={`flex-1 ${iC}`} style={iS}/>
+      </div>
+
+      <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Текст первой главы"
+        rows={6} className={`${iC} resize-none`} style={iS}/>
+
+      <div className="flex items-center gap-3">
+        <input id="studio-book-audio-input" type="file" accept="audio/*" className="hidden"
+          onChange={e=>{ const f=e.target.files?.[0]; if(f) setAudio(f); }}/>
+        <button type="button" onClick={()=>document.getElementById('studio-book-audio-input')?.click()}
+          className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-semibold transition-colors"
+          style={{ background:V.bg2, border:`1px solid ${V.border}`, color:V.t2 }}>
+          {audio ? <><Check size={15} style={{ color:'var(--green)' }}/> {audio.name}</> : 'Добавить озвучку главы'}
+        </button>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <input id="studio-book-cover-input" type="file" accept="image/*" className="hidden"
+          onChange={e=>{ const f=e.target.files?.[0]; if(f){ setCover(f); setCoverPreview(URL.createObjectURL(f)); } }}/>
+        <button type="button" onClick={()=>document.getElementById('studio-book-cover-input')?.click()}
+          className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-semibold transition-colors"
+          style={{ background:V.bg2, border:`1px solid ${V.border}`, color:V.t2 }}>
+          {cover ? <><Check size={15} style={{ color:'var(--green)' }}/> Обложка</> : 'Добавить обложку'}
+        </button>
+        {coverPreview&&<img src={coverPreview} alt="" className="h-10 w-10 rounded-xl object-cover"/>}
+      </div>
+
+      <div className="flex gap-2">
+        {([[true,'Отправить на проверку'],[false,'Сохранить черновиком']] as const).map(([v,l])=>(
+          <button key={String(v)} type="button" onClick={()=>setPublishNow(v)}
+            className="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold"
+            style={{ background:publishNow===v?`${V.accent}15`:V.bg2, border:`1px solid ${publishNow===v?V.accent+'35':V.border}`, color:publishNow===v?V.accent:V.t2 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {loading&&(
+        <div className="space-y-1.5">
+          <div className="flex justify-between text-xs" style={{ color:V.t3 }}><span>Загрузка...</span><span>{prog}%</span></div>
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background:V.bg3 }}>
+            <motion.div className="h-full rounded-full" style={{ width:`${prog}%`, background:`linear-gradient(90deg,${V.accent},#818cf8)` }} transition={{ duration:.3 }}/>
+          </div>
+        </div>
+      )}
+
+      <motion.button whileTap={{scale:.97}} type="button" onClick={submit}
+        disabled={loading||!title.trim()}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black disabled:opacity-40"
+        style={{ background:V.accent, color:'#fff', boxShadow:`0 4px 16px ${V.accent}40` }}>
+        <Upload size={15}/>{loading?'Загрузка…':'Создать книгу'}
+      </motion.button>
+    </div>
+  );
+};
+
 /* ── Выбор типа контента для загрузки ───────────────────────────── */
-type UploadKind = 'video' | 'film' | 'music' | 'podcast';
+type UploadKind = 'video' | 'film' | 'music' | 'podcast' | 'book';
 const UPLOAD_KIND_LABEL: Record<UploadKind, string> = {
-  video: 'Sky Video', film: 'Кино', music: 'Музыка', podcast: 'Подкаст',
+  video: 'Sky Video', film: 'Кино', music: 'Музыка', podcast: 'Подкаст', book: 'Книга',
 };
 const UPLOAD_KIND_ICON: Record<UploadKind, LucideIcon> = {
-  video: VideoIcon, film: Film, music: Music2, podcast: Mic2,
+  video: VideoIcon, film: Film, music: Music2, podcast: Mic2, book: BookOpen,
 };
 
 const UploadTab = ({ onDone }: { onDone: (kind: UploadKind) => void }) => {
   const [kind, setKind] = useState<UploadKind>('video');
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="shrink-0 grid grid-cols-4 gap-1.5 px-4 pt-3 pb-2">
-        {(['video','film','music','podcast'] as UploadKind[]).map(k => {
+      <div className="shrink-0 grid grid-cols-5 gap-1.5 px-4 pt-3 pb-2">
+        {(['video','film','music','podcast','book'] as UploadKind[]).map(k => {
           const Icon = UPLOAD_KIND_ICON[k];
           return (
             <button key={k} type="button" onClick={()=>setKind(k)}
@@ -535,6 +667,7 @@ const UploadTab = ({ onDone }: { onDone: (kind: UploadKind) => void }) => {
         {kind === 'film' && <FilmUploadForm onDone={()=>onDone('film')}/>}
         {kind === 'music' && <MusicUploadForm onDone={()=>onDone('music')}/>}
         {kind === 'podcast' && <PodcastUploadForm onDone={()=>onDone('podcast')}/>}
+        {kind === 'book' && <BookUploadForm onDone={()=>onDone('book')}/>}
       </div>
     </div>
   );
@@ -731,7 +864,7 @@ export const BusinessStudio = () => {
           </motion.div>
           <div>
             <p className="text-[15px] font-bold" style={{ color:V.t1 }}>Sky Studio</p>
-            <p className="text-[10px]" style={{ color:V.t3 }}>Видео · Кино · Музыка · Подкасты</p>
+            <p className="text-[10px]" style={{ color:V.t3 }}>Видео · Кино · Музыка · Подкасты · Книги</p>
           </div>
         </div>
 

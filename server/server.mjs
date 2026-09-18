@@ -30,6 +30,7 @@ import { skyVideoRoutes } from './routes/skyvideo.mjs';
 import { primePulseRoutes } from './routes/primepulse.mjs';
 import { tvRoutes } from './routes/tv.mjs';
 import { podcastRoutes } from './routes/podcasts.mjs';
+import { bookRoutes } from './routes/books.mjs';
 import { botRoutes } from './routes/bots.mjs';
 import { ticketRoutes } from './routes/tickets.mjs';
 import { aiRoutes } from './routes/ai.mjs';
@@ -62,8 +63,8 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, botRoutes,
-                ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
+                supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
+                botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
                 sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];
 
 /**

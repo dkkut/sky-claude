@@ -1,0 +1,66 @@
+/**
+ * Пропуск для медиа книг — как у подкастов, только для <audio> и
+ * <img> внутри /api/books: тег не умеет слать Authorization, поэтому
+ * выдача файлов опознаёт человека по короткой подписанной куке.
+ *
+ * Своя пометка назначения — пропуск подкастов сюда не подойдёт, и
+ * наоборот.
+ */
+import crypto from 'node:crypto';
+import { config } from './config.mjs';
+
+const COOKIE = 'sky_book';
+const TTL_SEC = 6 * 60 * 60;
+const CONTEXT = 'sky:book-ticket:v1';
+
+const b64u = (buf) => Buffer.from(buf).toString('base64url');
+
+const sign = (payload) => crypto
+  .createHmac('sha256', `${config.jwtSecret}:${CONTEXT}`)
+  .update(payload)
+  .digest('base64url');
+
+export const issueTicket = (profileId) => {
+  const body = b64u(JSON.stringify({ p: profileId, e: Math.floor(Date.now() / 1000) + TTL_SEC }));
+  return `${body}.${sign(body)}`;
+};
+
+export const readTicket = (raw) => {
+  const value = String(raw ?? '');
+  const dot = value.indexOf('.');
+  if (dot <= 0) return null;
+
+  const body = value.slice(0, dot);
+  const given = Buffer.from(value.slice(dot + 1));
+  const want = Buffer.from(sign(body));
+  if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return null;
+
+  try {
+    const data = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (!data?.p || typeof data.e !== 'number') return null;
+    if (data.e < Math.floor(Date.now() / 1000)) return null;
+    return String(data.p);
+  } catch {
+    return null;
+  }
+};
+
+export const ticketCookie = (profileId) => {
+  const parts = [
+    `${COOKIE}=${issueTicket(profileId)}`,
+    'HttpOnly',
+    'SameSite=Strict',
+    'Path=/api/books',
+    `Max-Age=${TTL_SEC}`,
+  ];
+  if (config.nodeEnv === 'production') parts.push('Secure');
+  return parts.join('; ');
+};
+
+export const ticketFromCookies = (cookieHeader) => {
+  const raw = String(cookieHeader ?? '')
+    .split(';')
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${COOKIE}=`));
+  return raw ? readTicket(raw.slice(COOKIE.length + 1)) : null;
+};
