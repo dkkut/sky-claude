@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePlatformStore, type Track } from '@/platform/store';
 import { useAuthStore } from '@/core/auth/store';
 import { useMessengerStore } from '@/messenger/store';
-import { useVideoStore } from '@/video/store';
+import { useSkyVideoStore } from '@/video/serverStore';
 import { useModerationStore, type ModDomain, type WarningKind } from '@/shared/moderationStore';
 import { BlockedChannelBadge } from '@/shared/ContentWarningGate';
 import { useModuleStore } from '@/data/state/modules';
@@ -147,17 +147,20 @@ const ModRow = ({ domain, id, title, sub }: { domain: ModDomain; id: string; tit
 
 const AdminChannelModerationTab = () => {
   const { chats } = useMessengerStore();
-  const { videos } = useVideoStore();
-  // Кино берём из общего каталога на сервере: модерировать можно то,
-  // что выложено на всех. Личные коллекции сюда не попадают — сервер
-  // их не отдаёт никому, включая администратора.
+  // Кино и Sky Video берём из общего каталога на сервере: модерировать
+  // можно то, что выложено на всех. Личные коллекции и черновики сюда
+  // не попадают — сервер их не отдаёт никому, включая администратора.
   const movies = useFilmStore(s => s.catalog);
   const loadFilm = useFilmStore(s => s.load);
+  const skyVideos = useSkyVideoStore(s => s.feed);
+  const loadSkyVideo = useSkyVideoStore(s => s.load);
   const [sub, setSub] = useState<'messenger'|'video'|'movies'>('messenger');
-  useEffect(() => { void loadFilm(); }, [loadFilm]);
+  useEffect(() => { void loadFilm(); void loadSkyVideo(); }, [loadFilm, loadSkyVideo]);
 
   const channels = chats.filter(c => c.type === 'channel');
-  const videoChannels = [...new Map(videos.map(v => [v.uploadedBy, v.uploaderName])).entries()];
+  const videoChannels = [...new Map(
+    skyVideos.filter(v => v.authorId).map(v => [v.authorId as string, v.authorName ?? v.authorId as string]),
+  ).entries()];
 
   return (
     <div className="space-y-3 p-4">

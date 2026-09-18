@@ -45,6 +45,7 @@ import { verifyTotp } from './totp.mjs';
 import { sendEmail } from './notify.mjs';
 import { wallet } from './wallet.mjs';
 import { grantPrime } from './skyid.mjs';
+import { adjustRevenue } from './skyvideo.mjs';
 
 /* ─── Роли и права ─────────────────────────────────────────────────── */
 
@@ -467,6 +468,8 @@ const PENDING_TTL_HOURS = 24;
 export const MAX_GRANT_RUBLES = 1_000_000;
 export const MAX_GRANT_POINTS = 10_000_000;
 export const MAX_GRANT_PRIME_DAYS = 3650;
+/** Потолок разовой корректировки дохода по ролику, в копейках. */
+export const MAX_REVENUE_ADJUST_KOPECKS = 100_000_00;
 
 /**
  * Виды заявок и что для каждой нужно.
@@ -481,6 +484,7 @@ export const PENDING_KINDS = {
   grant_money:   { permission: 'finance',  stepUp: true,  title: 'Начислить деньги' },
   grant_points:  { permission: 'finance',  stepUp: true,  title: 'Начислить баллы' },
   grant_prime:   { permission: 'finance',  stepUp: true,  title: 'Выдать Prime' },
+  skyvideo_revenue_adjust: { permission: 'finance', stepUp: true, title: 'Скорректировать доход по ролику Sky Video' },
 };
 
 /**
@@ -550,6 +554,19 @@ const checkPayload = (kind, raw = {}) => {
       return { ok: true, payload: { days, plan } };
     }
 
+    case 'skyvideo_revenue_adjust': {
+      const videoId = String(raw.videoId ?? '');
+      if (!/^svid-[0-9a-f-]{36}$/.test(videoId)) return { error: 'bad_video' };
+      /* Сумма подписанная: минус — это исправление лишнего начисления,
+         а не только выдача. Ноль ничего не значил бы, поэтому отклонён. */
+      const amount = Math.trunc(Number(raw.amountKopecks));
+      if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > MAX_REVENUE_ADJUST_KOPECKS) {
+        return { error: 'bad_amount' };
+      }
+      const note = String(raw.note ?? '').slice(0, 300);
+      return { ok: true, payload: { videoId, amountKopecks: amount, note } };
+    }
+
     default:
       return { error: 'bad_kind' };
   }
@@ -594,6 +611,16 @@ export const createPendingAction = async (actorId, kind, targetId, raw = {}, opt
 
   const checked = checkPayload(kind, raw);
   if (checked.error) return checked;
+
+  if (kind === 'skyvideo_revenue_adjust') {
+    /* Ролик должен принадлежать именно тому, на кого оформлена заявка —
+       иначе владелец подтверждал бы начисление на счёт одного человека,
+       глядя на имя другого. */
+    const { rows: vids } = await query(
+      'SELECT owner_id FROM sky_videos WHERE id = $1', [checked.payload.videoId]);
+    if (!vids[0]) return { error: 'not_found' };
+    if (vids[0].owner_id !== target) return { error: 'video_owner_mismatch' };
+  }
 
   if (spec.stepUp) {
     const step = await consumeStepUp(actorId, `pending:${kind}`, stepUpCode, { meta });
@@ -859,6 +886,14 @@ const executePending = async (row, payload, ownerId) => {
       const res = await grantPrime(skyId, target, payload.plan ?? 'standard', days);
       if (res.error) return { error: res.error };
       return { outcome: `Prime на ${days} дн.` };
+    }
+
+    case 'skyvideo_revenue_adjust': {
+      const amount = Number(payload.amountKopecks);
+      const res = await adjustRevenue(payload.videoId, ownerId, amount, payload.note);
+      if (res.error) return { error: res.error };
+      const rubles = (amount / 100).toFixed(2);
+      return { outcome: `${amount >= 0 ? 'Начислено' : 'Списано'} ${Math.abs(Number(rubles))} ₽ по ролику ${payload.videoId}` };
     }
 
     default:

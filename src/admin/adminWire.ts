@@ -241,6 +241,8 @@ export const ADMIN_ERROR: Record<string, string> = {
   bad_days: 'Срок должен быть целым числом дней',
   bad_role: 'Неизвестная роль',
   bad_kind: 'Неизвестное действие',
+  bad_video: 'Неизвестный ролик',
+  video_owner_mismatch: 'Ролик принадлежит не тому человеку, кто указан в заявке',
   not_found: 'Не найдено',
   account_blocked: 'Учётная запись заблокирована',
   banned: 'Профиль забанен',

@@ -585,6 +585,17 @@ const handle = async (ws, session, msg) => {
           return send(ws, { type: 'admin-pending', payload: r });
         }
 
+        /* ── Sky Video: корректировка дохода по ролику ─────────────
+           Тот же приём, что и денежные начисления: заявка на владельца
+           ролика, второй ключ поворачивает владелец панели. */
+        case 'skyvideo-revenue-adjust': {
+          const r = await createPendingAction(me, 'skyvideo_revenue_adjust', target,
+            { videoId: payload?.videoId, amountKopecks: payload?.amountKopecks, note: payload?.note },
+            { stepUpCode: payload?.code, reason: payload?.reason, meta });
+          if (r.error) return failAdm(r.error);
+          return send(ws, { type: 'admin-pending', payload: r });
+        }
+
         /* ── Очередь заявок ────────────────────────────────────────
            Владелец видит все, администратор — только свои. */
         case 'pending': {

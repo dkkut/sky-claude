@@ -189,6 +189,163 @@ const GrantForm = ({ onSent }: { onSent: () => void }) => {
   );
 };
 
+/* ─── Sky Video: монетизация и корректировка дохода ───────────────── */
+
+/**
+ * Очередь заявок на монетизацию роликов. Решение здесь прямое, без
+ * второго ключа: это модерация содержимого (право content), а не
+ * деньги — деньги начинают идти только после отдельной корректировки,
+ * и та уже оформляется заявкой с подтверждением владельца.
+ */
+const SkyVideoMonetizationQueue = () => {
+  const [queue, setQueue] = useState<import('@/video/skyVideoApi').MonetizationQueueEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { apiSkyVideoMonetizationQueue } = await import('@/video/skyVideoApi');
+    const list = await apiSkyVideoMonetizationQueue();
+    setLoading(false);
+    if (list === null) { setFailed('Не удалось загрузить очередь'); return; }
+    setQueue(list);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const decide = async (requestId: string, approve: boolean) => {
+    const { apiDecideSkyVideoMonetization } = await import('@/video/skyVideoApi');
+    const ok = await apiDecideSkyVideoMonetization(requestId, approve);
+    if (!ok) { setFailed('Не получилось решить заявку'); return; }
+    setQueue((q) => q.filter((r) => r.requestId !== requestId));
+  };
+
+  if (loading) return <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />;
+
+  return (
+    <div className="space-y-2">
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {queue.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Заявок на монетизацию нет.</p>
+      ) : queue.map((r) => (
+        <div key={r.requestId} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <p className="text-xs font-bold" style={{ color: C.t1 }}>{r.title}</p>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            {r.ownerName ?? r.ownerUsername ?? r.ownerId} · {r.views} просмотров · {fmtTs(r.requestedAt)}
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => void decide(r.requestId, true)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
+              style={{ background: C.green, color: '#fff' }}>
+              <Check size={12} /> Одобрить
+            </button>
+            <button type="button" onClick={() => void decide(r.requestId, false)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
+              style={{ background: C.l2, color: C.red }}>
+              <X size={12} /> Отклонить
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * Корректировка дохода по конкретному ролику. Начисление и списание —
+ * тот же приём, что деньги на счёт: экран оформляет заявку, а
+ * поворачивает второй ключ владелец. Сама эта форма ничего не
+ * начисляет — только просит.
+ */
+const RevenueAdjustForm = ({ onSent }: { onSent: () => void }) => {
+  const [ownerId, setOwnerId] = useState('');
+  const [videoId, setVideoId] = useState('');
+  const [rubles, setRubles] = useState('');
+  const [sign, setSign] = useState<'plus' | 'minus'>('plus');
+  const [note, setNote] = useState('');
+  const [step, setStep] = useState(false);
+  const [failed, setFailed] = useState('');
+  const [sent, setSent] = useState('');
+
+  const send = async (code: string) => {
+    setStep(false); setFailed(''); setSent('');
+    const kopecks = Math.round(Number(rubles) * 100) * (sign === 'minus' ? -1 : 1);
+    const r = await adminCall({
+      action: 'skyvideo-revenue-adjust', userId: ownerId.trim(), videoId: videoId.trim(),
+      amountKopecks: kopecks, note: note.trim(), code,
+    });
+    if (r.type !== 'admin-pending') { setFailed(errorText(r.payload?.error)); return; }
+    setSent('Заявка отправлена владельцу на подтверждение.');
+    setRubles(''); setNote('');
+    onSent();
+  };
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <p className="flex items-center gap-2 text-xs font-bold" style={{ color: C.t1 }}>
+        <Wallet size={13} style={{ color: C.acc }} /> Скорректировать доход по ролику
+      </p>
+      <p className="text-[11px]" style={{ color: C.t3 }}>
+        Тоже в два ключа. Ролик должен принадлежать указанному человеку —
+        иначе владелец не сможет подтвердить заявку.
+      </p>
+
+      <input value={ownerId} onChange={(e) => setOwnerId(e.target.value)}
+        placeholder="Идентификатор профиля автора (acc-…)"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <input value={videoId} onChange={(e) => setVideoId(e.target.value)}
+        placeholder="Идентификатор ролика (svid-…)"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+
+      <div className="flex gap-1">
+        {([['plus', 'Начислить'], ['minus', 'Списать']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setSign(k)}
+            className="flex-1 rounded-xl py-1.5 text-[11px] font-semibold"
+            style={{ background: sign === k ? C.acc : C.l2, color: sign === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <input value={rubles} onChange={(e) => setRubles(e.target.value.replace(/[^\d.]/g, ''))}
+        inputMode="decimal" placeholder="Сумма, ₽"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <input value={note} onChange={(e) => setNote(e.target.value)}
+        placeholder="Основание — его увидит владелец"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {sent && <p className="text-[11px]" style={{ color: C.green }}>{sent}</p>}
+
+      {step ? (
+        <StepUp purpose="pending:skyvideo_revenue_adjust" onCode={(c) => void send(c)}
+          onCancel={() => setStep(false)} />
+      ) : (
+        <button type="button"
+          disabled={!ownerId.trim() || !videoId.trim() || !rubles || Number(rubles) <= 0}
+          onClick={() => { setFailed(''); setSent(''); setStep(true); }}
+          className="w-full rounded-xl py-2.5 text-xs font-bold disabled:opacity-40"
+          style={{ background: C.acc, color: '#fff' }}>
+          Оформить заявку
+        </button>
+      )}
+    </div>
+  );
+};
+
+const SkyVideoAdminSection = ({ rights, onPendingChanged }: { rights: MyRights; onPendingChanged: () => void }) => (
+  <div className="space-y-4">
+    {rights.permissions.includes('content') && (
+      <div>
+        <p className="mb-2 text-xs font-bold" style={{ color: C.t1 }}>Заявки на монетизацию</p>
+        <SkyVideoMonetizationQueue />
+      </div>
+    )}
+    {rights.permissions.includes('finance') && (
+      <RevenueAdjustForm onSent={onPendingChanged} />
+    )}
+  </div>
+);
+
 /* ─── Очередь заявок ───────────────────────────────────────────────── */
 
 const STATUS_LABEL: Record<PendingAction['status'], string> = {
@@ -616,7 +773,7 @@ const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -734,6 +891,7 @@ export const AdminPanel = () => {
     { key: 'people', label: 'Люди', show: has('moderation') },
     { key: 'pending', label: 'Заявки', show: true },
     { key: 'grant', label: 'Начисления', show: has('finance') },
+    { key: 'video', label: 'Sky Video', show: has('content') || has('finance') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
     { key: 'events', label: 'События', show: has('security') },
@@ -859,6 +1017,7 @@ export const AdminPanel = () => {
       {tab === 'people' && <PeopleTab canModerate={has('moderation')} />}
 
       {tab === 'grant' && <GrantForm onSent={() => void loadPending()} />}
+      {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
 
       {tab === 'admins' && (
         <>
