@@ -77,8 +77,10 @@ export interface Account {
  */
 export type Step = 'login' | 'code' | 'twofa' | 'profiles' | 'authenticated';
 
-/** Чем входим. Почта — основной путь: письма ничего не стоят. */
-export type LoginChannel = 'email' | 'phone';
+/** Чем входим. Почта — основной путь: письма ничего не стоят.
+    'password' — запасной вход почтой и паролем, без кода на каждый
+    раз; слабее основного, и экран обязан показать это рядом с ним. */
+export type LoginChannel = 'email' | 'phone' | 'password';
 
 export interface CodeInfo { retryAfter: number; expiresIn: number }
 
@@ -117,6 +119,19 @@ interface AuthState {
   requestCode:(value?:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
   /** Шаг 2: проверяем пришедший код. */
   verifyCode:(code:string)=>Promise<{ok:boolean;reason?:string}>;
+
+  /** Вход почтой и паролем, без кода. */
+  passwordInput:string;
+  setPasswordInput:(v:string)=>void;
+  loginWithPassword:()=>Promise<{ok:boolean;reason?:string}>;
+  /** Задать пароль на своём аккаунте: сперва код на почту. */
+  startPasswordSetup:()=>Promise<{ok:boolean;reason?:string;email?:string;retryAfter?:number}>;
+  finishPasswordSetup:(password:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
+  changePassword:(currentPassword:string,newPassword:string)=>Promise<{ok:boolean;reason?:string}>;
+  removePassword:()=>Promise<{ok:boolean;reason?:string}>;
+  /** Забыли пароль: код на почту, затем новый пароль. */
+  forgotPassword:(email:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
+  resetPassword:(email:string,code:string,password:string)=>Promise<{ok:boolean;reason?:string}>;
   /** Шаг 3: код приложения или из письма, если защита включена. */
   verifySkyTwoFactor:(code:string)=>Promise<{ok:boolean;reason?:string}>;
   /** Прислать код второго фактора на почту ещё раз (экран входа). */
@@ -185,6 +200,8 @@ import {
   apiSkyTwoFactorBegin, apiSkyTwoFactorConfirm, apiSkyTwoFactorDisable,
   apiEmailStart, apiEmailVerify, apiGrantPrime, apiRevokePrime,
   apiResendLoginTwoFactor, apiSkyTwoFactorSend, apiProfileTwoFactorSend,
+  apiLoginWithPassword, apiStartPasswordSetup, apiFinishPasswordSetup,
+  apiChangePassword, apiRemovePassword, apiForgotPassword, apiResetPassword,
   setAccessToken,
   type SkyIdInfo, type ServerProfile, type SkySession, type TwoFactorMethod,
 } from './api';
@@ -291,7 +308,7 @@ const emptyAuth={
   isAuthenticated:false,currentUserId:null,
   step:'login' as const,
   loginChannel:'email' as LoginChannel,
-  emailInput:'',phoneInput:'+7',pendingEmail:'',pendingPhone:'',
+  emailInput:'',phoneInput:'+7',pendingEmail:'',pendingPhone:'',passwordInput:'',
   challenge:null,codeInfo:null,
   twoFactorMethod:'app' as TwoFactorMethod,twoFactorEmail:null,twoFactorPhone:null,
 };
@@ -304,6 +321,7 @@ export const useAuthStore=create<AuthState>((set,get)=>({
   accounts:accs,
 
   setPhoneInput:v=>set({phoneInput:v}),
+  setPasswordInput:v=>set({passwordInput:v}),
   setEmailInput:v=>set({emailInput:v}),
   setLoginChannel:c=>set({loginChannel:c}),
 
@@ -370,6 +388,61 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     setAccessToken(data.accessToken??null);
     applySession(set,get,data,true);
     return{ok:true};
+  },
+
+  /* ── Вход почтой и паролем: сразу, без промежуточного кода ── */
+  loginWithPassword:async()=>{
+    const{emailInput,passwordInput}=get();
+    const res=await apiLoginWithPassword(emailInput.trim().toLowerCase(),passwordInput);
+    if(!res.ok)return{ok:false,reason:res.reason};
+
+    const data=res.data as any;
+    if(data?.needsTwoFactor){
+      set({
+        challenge:data.challenge,step:'twofa',
+        twoFactorMethod:data.method ?? 'app',
+        twoFactorEmail:data.email ?? null,
+        twoFactorPhone:data.phone ?? null,
+        codeInfo:data.retryAfter ? {retryAfter:data.retryAfter,expiresIn:300} : null,
+      });
+      return{ok:true};
+    }
+    setAccessToken(data.accessToken??null);
+    applySession(set,get,data,true);
+    // Пароль в сторе входа держать незачем — он уже сделал своё дело.
+    set({passwordInput:''});
+    return{ok:true};
+  },
+
+  startPasswordSetup:async()=>{
+    const res=await apiStartPasswordSetup();
+    if(!res.ok)return{ok:false,reason:res.reason};
+    return{ok:true,email:res.data?.email,retryAfter:res.data?.retryAfter};
+  },
+  finishPasswordSetup:async(password,code)=>{
+    const res=await apiFinishPasswordSetup(password,code.trim());
+    return res.ok?{ok:true}:{ok:false,reason:res.reason};
+  },
+  changePassword:async(currentPassword,newPassword)=>{
+    const res=await apiChangePassword(currentPassword,newPassword);
+    if(!res.ok)return{ok:false,reason:res.reason};
+    // Смена пароля выдаёт новый access-токен для этого же устройства —
+    // остальные она гасит на сервере, здесь просто подхватываем свой.
+    setAccessToken(res.data?.accessToken??null);
+    return{ok:true};
+  },
+  removePassword:async()=>{
+    const res=await apiRemovePassword();
+    return res.ok?{ok:true}:{ok:false,reason:res.reason};
+  },
+  forgotPassword:async(email)=>{
+    const res=await apiForgotPassword(email.trim().toLowerCase());
+    if(!res.ok)return{ok:false,reason:res.reason,retryAfter:(res.data as any)?.retryAfter};
+    return{ok:true,retryAfter:res.data?.retryAfter};
+  },
+  resetPassword:async(email,code,password)=>{
+    const res=await apiResetPassword(email.trim().toLowerCase(),code.trim(),password);
+    return res.ok?{ok:true}:{ok:false,reason:res.reason};
   },
 
   verifySkyTwoFactor:async(code)=>{

@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, ChevronRight, Crown, LogOut, Mail, Plus, ShieldCheck, Smartphone, X,
+  ArrowLeft, ChevronRight, Crown, Eye, EyeOff, KeyRound, LogOut, Mail, Plus, ShieldAlert, ShieldCheck, Smartphone, X,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { LegalCheckbox } from '@/info/LegalNotice';
@@ -170,27 +170,166 @@ const ErrorLine = ({ text }: { text?: string }) =>
 
 /* ═══ Шаг 1: почта (основной путь) или телефон ══════════════════ */
 
+/**
+ * Забыли пароль — мини-форма внутри экрана входа паролем.
+ *
+ * Не отдельный шаг мастера: это боковая ветка одного и того же
+ * действия «войти паролем», а не часть обычного пути «код → второй
+ * фактор → профили», и заводить ради неё ещё один Step в общем сторе
+ * не нужно.
+ */
+const ForgotPasswordBlock = ({ email, onDone }: { email: string; onDone: () => void }) => {
+  const { forgotPassword, resetPassword } = useAuthStore();
+  const [stage, setStage] = useState<'ask' | 'code'>('ask');
+  const [code, setCode] = useState('');
+  const [pwd, setPwd] = useState('');
+  const [err, setErr] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const send = async () => {
+    if (busy || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) return;
+    setBusy(true); setErr(undefined);
+    const res = await forgotPassword(email);
+    setBusy(false);
+    // Ответ один и для существующей почты, и для незаведённой: иначе
+    // форма сама выдавала бы, у кого есть аккаунт.
+    if (res.ok || res.reason) { setStage('code'); setSent(true); }
+  };
+
+  const finish = async () => {
+    if (busy || code.trim().length < 4 || pwd.length < 8) return;
+    setBusy(true); setErr(undefined);
+    const res = await resetPassword(email, code, pwd);
+    setBusy(false);
+    if (!res.ok) { setErr(res.reason); return; }
+    onDone();
+  };
+
+  return (
+    <div className="space-y-2.5 rounded-2xl p-3" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
+      <p className="text-xs font-bold" style={{ color: 'var(--t1)' }}>Восстановление пароля</p>
+      {stage === 'ask' ? (
+        <>
+          <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+            Пришлём код на {email || 'вашу почту'} — тот же адрес, что для входа.
+          </p>
+          <ErrorLine text={err} />
+          <button type="button" onClick={send} disabled={busy}
+            className="sky-btn-primary w-full" style={{ height: 40, fontSize: 13 }}>
+            {busy ? 'Отправляем…' : 'Прислать код'}
+          </button>
+        </>
+      ) : (
+        <>
+          {sent && <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Код отправлен, если такой аккаунт есть.</p>}
+          <input className="sky-input" style={{ height: 40, fontSize: 15, textAlign: 'center', letterSpacing: 3 }}
+            placeholder="000000" inputMode="numeric" maxLength={6}
+            value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
+          <input className="sky-input" style={{ height: 40, fontSize: 14 }}
+            type="password" placeholder="Новый пароль" autoComplete="new-password"
+            value={pwd} onChange={e => setPwd(e.target.value)} />
+          <ErrorLine text={err} />
+          <button type="button" onClick={finish} disabled={busy}
+            className="sky-btn-primary w-full" style={{ height: 40, fontSize: 13 }}>
+            {busy ? 'Меняем…' : 'Задать новый пароль'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
+
 const LoginStep = () => {
   const {
     loginChannel, setLoginChannel,
     emailInput, setEmailInput, phoneInput, setPhoneInput, requestCode,
+    passwordInput, setPasswordInput, loginWithPassword,
   } = useAuthStore();
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const [forgot, setForgot] = useState(false);
 
   const byEmail = loginChannel === 'email';
+  const byPassword = loginChannel === 'password';
 
   const go = async () => {
     if (busy) return;
     setErr(undefined); setBusy(true);
-    const res = await requestCode();
+    const res = byPassword ? await loginWithPassword() : await requestCode();
     if (!res.ok) setErr(res.reason);
     setBusy(false);
   };
 
-  const ready = byEmail
-    ? /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailInput.trim())
-    : phoneInput.replace(/\D/g, '').length >= 10;
+  const ready = byPassword
+    ? /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailInput.trim()) && passwordInput.length > 0
+    : byEmail
+      ? /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailInput.trim())
+      : phoneInput.replace(/\D/g, '').length >= 10;
+
+  if (byPassword) {
+    return (
+      <Shell title="Sky ID" subtitle="Почта и пароль — без кода на каждый вход.">
+        <div className="space-y-3">
+          {/* Предупреждение стоит рядом с формой, а не только в
+              подсказке под кнопкой: это ровно то место, где решение
+              принимается. Пароль можно списать, подсмотреть или
+              переиспользовать с другого сайта — код в письме нельзя. */}
+          <div className="flex items-start gap-2 rounded-xl p-2.5" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }}>
+            <ShieldAlert size={15} style={{ color: 'var(--amber)', flexShrink: 0, marginTop: 1 }} />
+            <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t2)' }}>
+              Этот способ менее защищён, чем код на почту: пароль можно подсмотреть
+              или повторно использовать. Включайте, только если вход кодом неудобен.
+            </p>
+          </div>
+
+          <div className="relative">
+            <Mail size={17} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--t3)' }} />
+            <input
+              className="sky-input" style={{ paddingLeft: 38, height: 46, fontSize: 16 }}
+              placeholder="you@example.com" type="email" inputMode="email" autoComplete="email"
+              autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus
+              value={emailInput} onChange={e => setEmailInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && go()}
+            />
+          </div>
+          <div className="relative">
+            <KeyRound size={17} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--t3)' }} />
+            <input
+              className="sky-input" style={{ paddingLeft: 38, paddingRight: 40, height: 46, fontSize: 16 }}
+              placeholder="Пароль" type={showPwd ? 'text' : 'password'} autoComplete="current-password"
+              value={passwordInput} onChange={e => setPasswordInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && go()}
+            />
+            <button type="button" onClick={() => setShowPwd(v => !v)}
+              style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--t3)' }}>
+              {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+
+          <ErrorLine text={err} />
+
+          <button className="sky-btn-primary w-full" style={{ height: 46 }} onClick={go} disabled={busy || !ready}>
+            {busy ? 'Входим…' : 'Войти'}
+          </button>
+
+          <button type="button" onClick={() => setForgot(v => !v)}
+            className="w-full text-center text-xs" style={{ color: 'var(--t3)' }}>
+            Забыли пароль?
+          </button>
+          {forgot && (
+            <ForgotPasswordBlock email={emailInput} onDone={() => { setForgot(false); setErr(undefined); }} />
+          )}
+
+          <button type="button" onClick={() => { setErr(undefined); setForgot(false); setLoginChannel('email'); }}
+            className="w-full text-center text-sm" style={{ color: 'var(--accent)' }}>
+            Войти кодом на почту
+          </button>
+        </div>
+      </Shell>
+    );
+  }
 
   return (
     <Shell
@@ -249,9 +388,14 @@ const LoginStep = () => {
           {byEmail ? 'Войти по номеру телефона' : 'Войти по почте'}
         </button>
 
-        <p className="text-center text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
-          Пароля в Sky ID нет: каждый вход подтверждается кодом.
-        </p>
+        <button
+          type="button"
+          onClick={() => { setErr(undefined); setLoginChannel('password'); }}
+          className="w-full text-center text-[11px] leading-relaxed"
+          style={{ color: 'var(--t3)' }}
+        >
+          Есть пароль от Sky ID? Войти паролем
+        </button>
       </div>
     </Shell>
   );

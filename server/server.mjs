@@ -18,6 +18,7 @@ import { BETA_COOKIE, parseCookies } from './cookies.mjs';
 import { betaEnabled, syncBetaKeys, betaHashLive } from './beta.mjs';
 import { betaRoutes } from './routes/beta.mjs';
 import { authRoutes } from './routes/auth.mjs';
+import { passwordRoutes } from './routes/password.mjs';
 import { skyIdRoutes } from './routes/skyid.mjs';
 import { walletRoutes } from './routes/wallet.mjs';
 import { supportRoutes } from './routes/support.mjs';
@@ -57,7 +58,7 @@ import { checkDeliverySetup, closeMailer } from './notify.mjs';
 import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, authRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes, botRoutes,
                 ticketRoutes, aiRoutes, togetherRoutes, marketRoutes,
                 sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];

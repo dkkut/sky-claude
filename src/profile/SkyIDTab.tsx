@@ -633,6 +633,169 @@ const TwoFactorBlock = ({
   );
 };
 
+/**
+ * Пароль как способ входа — необязательный и слабее основного.
+ *
+ * Живёт в «Защите» рядом с двухэтапной проверкой не случайно: и то, и
+ * другое отвечает на один вопрос — как сервер узнаёт, что это вы, —
+ * просто пароль отвечает на него хуже кода на почту, и экран честно
+ * об этом говорит, а не только в момент включения.
+ */
+const PasswordSection = () => {
+  const {
+    sky, startPasswordSetup, finishPasswordSetup, changePassword, removePassword,
+  } = useAuthStore();
+  const has = Boolean(sky?.passwordSet);
+  const emailReady = Boolean(sky?.emailVerified);
+
+  const [mode, setMode] = useState<'idle' | 'setup-code' | 'setup-pwd' | 'change' | 'remove'>('idle');
+  const [code, setCode] = useState('');
+  const [pwd, setPwd] = useState('');
+  const [pwd2, setPwd2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string>();
+  const [ok, setOk] = useState<string>();
+
+  const reset = () => { setMode('idle'); setCode(''); setPwd(''); setPwd2(''); setErr(undefined); };
+
+  const startSetup = async () => {
+    setBusy(true); setErr(undefined);
+    const r = await startPasswordSetup();
+    setBusy(false);
+    if (!r.ok) { setErr(r.reason); return; }
+    setMode('setup-code');
+  };
+
+  const confirmSetup = async () => {
+    if (pwd.length < 8) { setErr('Пароль: минимум 8 символов'); return; }
+    setBusy(true); setErr(undefined);
+    const r = await finishPasswordSetup(pwd, code);
+    setBusy(false);
+    if (!r.ok) { setErr(r.reason); return; }
+    setOk('Пароль задан.'); reset();
+  };
+
+  const doChange = async () => {
+    if (pwd2.length < 8) { setErr('Новый пароль: минимум 8 символов'); return; }
+    setBusy(true); setErr(undefined);
+    const r = await changePassword(pwd, pwd2);
+    setBusy(false);
+    if (!r.ok) { setErr(r.reason); return; }
+    setOk('Пароль изменён. Другие устройства вышли из аккаунта.'); reset();
+  };
+
+  const doRemove = async () => {
+    setBusy(true); setErr(undefined);
+    const r = await removePassword();
+    setBusy(false);
+    if (!r.ok) { setErr(r.reason); return; }
+    setOk('Вход паролем отключён.'); reset();
+  };
+
+  return (
+    <div className="space-y-2.5 rounded-2xl p-3.5" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-bold" style={{ color: 'var(--t1)' }}>
+          <KeyRound size={13} /> Вход почтой и паролем
+        </p>
+        {has && <span className="text-[10px] font-bold" style={{ color: 'var(--green)' }}>включён</span>}
+      </div>
+      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+        Необязательный запасной способ. Слабее кода на почту: пароль можно
+        подсмотреть или переиспользовать с другого сайта — код нельзя.
+      </p>
+
+      {!emailReady && (
+        <p className="text-[11px]" style={{ color: 'var(--amber)' }}>
+          Сначала привяжите и подтвердите почту на вкладке «Sky ID».
+        </p>
+      )}
+      {ok && <p className="text-[11px]" style={{ color: 'var(--green)' }}>{ok}</p>}
+      {err && <p className="text-[11px]" style={{ color: 'var(--red)' }}>{err}</p>}
+
+      {mode === 'idle' && emailReady && (
+        <div className="flex flex-wrap gap-1.5">
+          {!has && (
+            <button type="button" onClick={startSetup} disabled={busy}
+              className="rounded-lg px-3 py-1.5 text-[11px] font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>
+              Задать пароль
+            </button>
+          )}
+          {has && (
+            <>
+              <button type="button" onClick={() => { setMode('change'); setOk(undefined); }}
+                className="rounded-lg px-3 py-1.5 text-[11px] font-bold" style={{ background: 'var(--bg-l2)', color: 'var(--t1)' }}>
+                Сменить пароль
+              </button>
+              <button type="button" onClick={() => { setMode('remove'); setOk(undefined); }}
+                className="rounded-lg px-3 py-1.5 text-[11px] font-bold" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)' }}>
+                Отключить
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {mode === 'setup-code' && (
+        <div className="space-y-2">
+          <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Код отправлен на почту.</p>
+          <input className="sky-input" style={{ height: 38, fontSize: 14, textAlign: 'center', letterSpacing: 3 }}
+            placeholder="000000" inputMode="numeric" maxLength={6}
+            value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
+          <input className="sky-input" style={{ height: 38, fontSize: 13 }}
+            type="password" placeholder="Новый пароль" autoComplete="new-password"
+            value={pwd} onChange={e => setPwd(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && confirmSetup()} />
+          <div className="flex gap-2">
+            <button type="button" onClick={confirmSetup} disabled={busy}
+              className="flex-1 rounded-lg py-1.5 text-[11px] font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>
+              {busy ? 'Задаём…' : 'Подтвердить'}
+            </button>
+            <button type="button" onClick={reset}
+              className="rounded-lg px-3 py-1.5 text-[11px]" style={{ color: 'var(--t3)' }}>Отмена</button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'change' && (
+        <div className="space-y-2">
+          <input className="sky-input" style={{ height: 38, fontSize: 13 }}
+            type="password" placeholder="Текущий пароль" autoComplete="current-password"
+            value={pwd} onChange={e => setPwd(e.target.value)} />
+          <input className="sky-input" style={{ height: 38, fontSize: 13 }}
+            type="password" placeholder="Новый пароль" autoComplete="new-password"
+            value={pwd2} onChange={e => setPwd2(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && doChange()} />
+          <div className="flex gap-2">
+            <button type="button" onClick={doChange} disabled={busy}
+              className="flex-1 rounded-lg py-1.5 text-[11px] font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>
+              {busy ? 'Меняем…' : 'Сменить'}
+            </button>
+            <button type="button" onClick={reset}
+              className="rounded-lg px-3 py-1.5 text-[11px]" style={{ color: 'var(--t3)' }}>Отмена</button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'remove' && (
+        <div className="space-y-2">
+          <p className="text-[11px]" style={{ color: 'var(--t3)' }}>
+            Вход паролем отключится. Код на почту продолжит работать как обычно.
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={doRemove} disabled={busy}
+              className="flex-1 rounded-lg py-1.5 text-[11px] font-bold" style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}>
+              {busy ? 'Отключаем…' : 'Отключить'}
+            </button>
+            <button type="button" onClick={reset}
+              className="rounded-lg px-3 py-1.5 text-[11px]" style={{ color: 'var(--t3)' }}>Отмена</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const SecuritySection = () => {
   const {
     sky, profiles, activeProfileId,
@@ -646,6 +809,8 @@ const SecuritySection = () => {
 
   return (
     <div className="space-y-3">
+      <PasswordSection />
+
       <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>
         Двухэтапная защита
       </p>

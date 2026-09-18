@@ -30,7 +30,7 @@ const CHALLENGE_TTL_SEC = 5 * 60;
  * Показываем почту так, чтобы человек узнал свою, но подсмотревший
  * из-за плеча не узнал чужую: a***@example.com.
  */
-const maskEmail = (email) => {
+export const maskEmail = (email) => {
   const value = String(email ?? '');
   const at = value.indexOf('@');
   if (at < 1) return '';
@@ -46,7 +46,7 @@ const maskPhone = (phone) => {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /** Почта приводится к нижнему регистру: Ivan@ и ivan@ — один адрес. */
-const normalizeEmail = (raw) => {
+export const normalizeEmail = (raw) => {
   const value = String(raw ?? '').trim().toLowerCase();
   return EMAIL_RE.test(value) && value.length <= 254 ? value : null;
 };
@@ -69,8 +69,15 @@ const normalizePhone = (raw) => {
   return `+${digits}`;
 };
 
-/** Собирает пару токенов и куку для уже существующей сессии Sky ID. */
-const issueTokens = (skyId, sessionId, profileId) => ({
+/**
+ * Собирает пару токенов и куку для уже существующей сессии Sky ID.
+ *
+ * Вывезена наружу для routes/password.mjs: вход по паролю заканчивается
+ * тем же самым устройством сессии, что и вход по коду, — рефреш-кука,
+ * короткий доступ, sid внутри. Держать вторую копию этой сборки было бы
+ * поводом однажды забыть обновить одну из двух одинаково.
+ */
+export const issueTokens = (skyId, sessionId, profileId) => ({
   body: {
     accessToken: signToken(
       // sid нужен, чтобы смена профиля меняла саму сессию: refresh-кука
@@ -87,8 +94,11 @@ const issueTokens = (skyId, sessionId, profileId) => ({
   ),
 });
 
-/** Начинает сессию Sky ID и выбирает профиль по умолчанию, если он один. */
-const startSession = async (skyIdRow) => {
+/**
+ * Начинает сессию Sky ID и выбирает профиль по умолчанию, если он один.
+ * Экспортирована по той же причине, что и issueTokens выше.
+ */
+export const startSession = async (skyIdRow) => {
   const profiles = await listProfiles(skyIdRow.id);
 
   // Единственный незащищённый профиль открываем сразу: лишний экран

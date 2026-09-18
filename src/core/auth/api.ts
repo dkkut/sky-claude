@@ -27,6 +27,8 @@ export interface SkyIdInfo {
   emailVerified:      boolean;
   twoFactorEnabled:   boolean;
   twoFactorMethod:    TwoFactorMethod;
+  /** Есть ли способ входа почтой и паролем. */
+  passwordSet?:       boolean;
   createdAt?:         string;
 }
 
@@ -98,6 +100,17 @@ const ERRORS: Record<string, string> = {
   file_too_large:      'Файл слишком большой (до 10 МБ)',
   quota_exceeded:      'Закончилось место для вложений',
   empty_file:          'Пустой файл',
+  /* Вход и смена пароля. invalid_credentials нарочно одно и то же для
+     «нет такой почты» и «неверный пароль» — иначе по ответу можно было
+     бы собирать список заведённых адресов. */
+  invalid_credentials:   'Неверная почта или пароль',
+  account_locked:        'Слишком много неверных попыток — подождите 15 минут',
+  password_too_short:    'Пароль: минимум 8 символов',
+  password_too_long:     'Пароль слишком длинный',
+  password_too_weak:     'Пароль не должен совпадать с почтой',
+  wrong_password:        'Неверный текущий пароль',
+  no_password_set:       'Пароль ещё не задан',
+  email_required:        'Сначала привяжите и подтвердите почту',
 };
 
 export const explain = (code?: string, status?: number) =>
@@ -192,6 +205,28 @@ export const apiRequestEmailCode = (email: string) =>
 /** Шаг 2 основного пути: проверяем код из письма. */
 export const apiVerifyEmailCode = (email: string, code: string) =>
   post<LoginResult>('/api/auth/email/verify', { email, code });
+
+/**
+ * Второй, необязательный путь: почта и пароль, без кода на каждый вход.
+ * Слабее основного — пароль можно списать или переиспользовать с
+ * другого сайта, — поэтому клиент обязан показать предупреждение
+ * рядом с этой кнопкой, а не только рядом с формой создания пароля.
+ */
+export const apiLoginWithPassword = (email: string, password: string) =>
+  post<LoginResult>('/api/auth/password/login', { email, password });
+
+export const apiStartPasswordSetup = () =>
+  post<CodeRequested & { email: string }>('/api/auth/password/setup/start');
+export const apiFinishPasswordSetup = (password: string, code: string) =>
+  post<{ ok: true }>('/api/auth/password/setup', { password, code });
+export const apiChangePassword = (currentPassword: string, newPassword: string) =>
+  post<{ ok: true; accessToken: string; expiresIn: number }>('/api/auth/password/change', { currentPassword, newPassword });
+export const apiRemovePassword = () =>
+  post<{ ok: true }>('/api/auth/password/remove');
+export const apiForgotPassword = (email: string) =>
+  post<CodeRequested>('/api/auth/password/forgot', { email });
+export const apiResetPassword = (email: string, code: string, password: string) =>
+  post<{ ok: true }>('/api/auth/password/reset', { email, code, password });
 
 /** Шаг 1 запасного пути: просим код на телефон. */
 export const apiRequestPhoneCode = (phone: string) =>

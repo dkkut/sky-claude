@@ -32,6 +32,10 @@ const toSkyId = (row) => row && ({
   emailVerified:    row.email_verified,
   twoFactorEnabled: row.two_factor_enabled,
   twoFactorMethod:  row.two_factor_method ?? 'app',
+  // Сам хеш наружу никогда не идёт — только факт, что вход паролем
+  // включён, чтобы экран настроек знал, что показать: «задать» или
+  // «сменить».
+  passwordSet:      Boolean(row.password_hash),
   createdAt:        row.created_at.toISOString(),
 });
 
