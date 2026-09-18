@@ -1,18 +1,29 @@
 /* ================================================================
-   SKY STUDIO — панель автора Sky Video
-   Загрузка, публикация, монетизация — всё на сервере
+   SKY STUDIO — единая панель автора
+   Загрузка видео, кино, музыки и подкастов — каждое на свой настоящий
+   сервер. Публикация и монетизация показаны для Sky Video: у кино,
+   музыки и подкастов свои экраны с той же ролью (заявка → проверка),
+   дублировать их здесь незачем — Studio отсюда только заводит контент.
 ================================================================ */
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload, Film, TrendingUp, DollarSign, BarChart3,
   Eye, Check, Trash2, Sparkles, Clock3, ThumbsUp,
+  Video as VideoIcon, Music2, Mic2, Loader2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Transition } from 'framer-motion';
 import { useSkyVideoStore, resetSkyVideoForUser } from '@/video/serverStore';
 import { apiSkyVideoRevenue, fmtDuration, thumbnailUrl, type ServerVideo, type RevenueEntry } from '@/video/skyVideoApi';
 import { useAuthStore } from '@/core/auth/store';
+import { useFilmStore } from '@/film/serverStore';
+import { readVideoMeta as readFilmVideoMeta } from '@/film/filmApi';
+import { useMusicStore } from '@/music/serverStore';
+import {
+  apiMine as apiMyPodcasts, apiCreatePodcast, apiCreateEpisode, apiUploadMedia,
+  apiPatchEpisode, apiSubmitPodcast, type Podcast,
+} from '@/podcasts/podcastApi';
 
 /* ── Design tokens ─────────────────────────────────────────── */
 const V = { bg:'var(--bg)', bg1:'var(--bg-l1)', bg2:'var(--bg-l2)', bg3:'var(--bg-l3)',
@@ -39,8 +50,8 @@ const KPICard = ({ icon:Icon, label, value, color }:{ icon:LucideIcon; label:str
   </div>
 );
 
-/* ── Upload form: тот же поток, что во вкладке «Загрузить» Sky Video ── */
-const UploadForm = ({ onDone }:{ onDone:()=>void }) => {
+/* ── Загрузка видео: тот же поток, что во вкладке «Загрузить» Sky Video ── */
+const VideoUploadForm = ({ onDone }:{ onDone:()=>void }) => {
   const { upload, setThumbnail, publish } = useSkyVideoStore();
   const categories = useSkyVideoStore(s => s.categories);
 
@@ -146,6 +157,385 @@ const UploadForm = ({ onDone }:{ onDone:()=>void }) => {
           <Upload size={15}/>{loading?`${prog}%…`:publishNow?'Опубликовать видео':'Сохранить черновик'}
         </motion.button>
       </motion.div>}
+    </div>
+  );
+};
+
+/* ── Загрузка кино: та же форма, что в разделе «Личная коллекция» Sky Film ── */
+const FilmUploadForm = ({ onDone }:{ onDone:()=>void }) => {
+  const { upload, setPoster, categories, load: loadCategories } = useFilmStore();
+
+  const [file, setFile] = useState<File|null>(null);
+  const [poster, setPoster_] = useState<File|null>(null);
+  const [posterPreview, setPosterPreview] = useState<string|undefined>();
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [cat, setCat] = useState('');
+  const [genre, setGenre] = useState('');
+  const [year, setYear] = useState('');
+  const [director, setDirector] = useState('');
+  const [loading, setLoad] = useState(false);
+  const [prog, setProg] = useState(0);
+  const [error, setError] = useState<string|null>(null);
+
+  useEffect(() => { void loadCategories(); }, []);
+  useEffect(() => { if (!cat && categories.length) setCat(categories[0].name); }, [categories]);
+
+  const handleFile = (f:File) => { setFile(f); setError(null); if(!title) setTitle(f.name.replace(/\.[^.]+$/,'')); };
+
+  const submit = async () => {
+    if (!file || !title.trim()) return;
+    setLoad(true); setProg(0); setError(null);
+    const meta = await readFilmVideoMeta(file);
+    const { promise } = upload(file, {
+      title: title.trim(), description: desc.trim(), category: cat || undefined,
+      genre: genre.trim() || undefined, year: year ? Number(year) : undefined,
+      director: director.trim() || undefined,
+      duration: meta.duration, width: meta.width, height: meta.height,
+    }, setProg);
+    const res = await promise;
+    if (!res.ok || !res.id) { setLoad(false); setError(res.reason ?? 'Не получилось'); return; }
+    if (poster) await setPoster(res.id, poster);
+    setLoad(false);
+    onDone();
+  };
+
+  const iS = { background:V.bg2, border:`1px solid ${V.border}`, color:V.t1 };
+  const iC = 'w-full rounded-2xl px-4 py-2.5 text-sm outline-none';
+
+  return (
+    <div className="space-y-4 px-4 py-4 overflow-y-auto h-full" style={{ scrollbarWidth:'none' }}>
+      {error && <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background:'rgba(248,113,113,0.1)', color:V.red }}>{error}</div>}
+      <p className="text-xs" style={{ color:V.t3 }}>
+        Фильм ложится в личную коллекцию закрытым — опубликовать его в общем каталоге можно
+        только после проверки модерацией, в разделе «Личная коллекция» Sky Film.
+      </p>
+
+      <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 py-10 cursor-pointer transition-all"
+        style={{ borderColor:file?V.accent:V.bm, background:file?`${V.accent}05`:'transparent' }}
+        onClick={()=>document.getElementById('studio-film-input')?.click()}
+        onDragOver={e=>e.preventDefault()}
+        onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f);}}>
+        <input id="studio-film-input" type="file" accept="video/*" className="hidden" onChange={e=>{const f=e.target.files?.[0];if(f)handleFile(f);}}/>
+        <div className="grid h-14 w-14 place-items-center rounded-2xl" style={{ background:file?`${V.accent}18`:V.bg3 }}>
+          {file?<Check size={24} style={{ color:V.accent }}/>:<Upload size={24} style={{ color:V.t3 }}/>}
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-semibold" style={{ color:file?V.accent:V.t2 }}>{file?file.name:'Нажмите или перетащите файл'}</p>
+          {!file&&<p className="text-xs mt-1" style={{ color:V.t3 }}>MP4 · MOV · MKV · WebM · AVI</p>}
+        </div>
+      </div>
+
+      {file&&<motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} className="space-y-3">
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Название *" className={iC} style={iS}/>
+        <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Описание" rows={3} className={`${iC} resize-none`} style={iS}/>
+        {categories.length > 0 && (
+          <select value={cat} onChange={e=>setCat(e.target.value)} className={iC} style={{ ...iS, cursor:'pointer' }}>
+            {categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+          </select>
+        )}
+        <div className="flex gap-2">
+          <input value={genre} onChange={e=>setGenre(e.target.value)} placeholder="Жанр" className={`flex-1 ${iC}`} style={iS}/>
+          <input value={year} onChange={e=>setYear(e.target.value.replace(/\D/g,'').slice(0,4))} inputMode="numeric" placeholder="Год" className="w-24 rounded-2xl px-4 py-2.5 text-sm outline-none" style={iS}/>
+        </div>
+        <input value={director} onChange={e=>setDirector(e.target.value)} placeholder="Режиссёр" className={iC} style={iS}/>
+
+        <div className="flex items-center gap-3">
+          <input id="studio-poster-input" type="file" accept="image/*" className="hidden"
+            onChange={e=>{ const f=e.target.files?.[0]; if(f){ setPoster_(f); setPosterPreview(URL.createObjectURL(f)); } }}/>
+          <button type="button" onClick={()=>document.getElementById('studio-poster-input')?.click()}
+            className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-semibold transition-colors"
+            style={{ background:V.bg2, border:`1px solid ${V.border}`, color:V.t2 }}>
+            {poster ? <><Check size={15} style={{ color:'var(--green)' }}/> Постер</> : 'Добавить постер'}
+          </button>
+          {posterPreview&&<img src={posterPreview} alt="" className="h-10 w-10 rounded-xl object-cover"/>}
+        </div>
+
+        {loading&&(
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs" style={{ color:V.t3 }}><span>Загрузка...</span><span>{prog}%</span></div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background:V.bg3 }}>
+              <motion.div className="h-full rounded-full" style={{ width:`${prog}%`, background:`linear-gradient(90deg,${V.accent},#818cf8)` }} transition={{ duration:.3 }}/>
+            </div>
+          </div>
+        )}
+
+        <motion.button whileTap={{scale:.97}} type="button" onClick={submit}
+          disabled={loading||!title.trim()}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black disabled:opacity-40"
+          style={{ background:V.accent, color:'#fff', boxShadow:`0 4px 16px ${V.accent}40` }}>
+          <Upload size={15}/>{loading?`${prog}%…`:'Добавить в личную коллекцию'}
+        </motion.button>
+      </motion.div>}
+    </div>
+  );
+};
+
+/* ── Загрузка музыки: тот же поток, что в загрузке Sky Music ──────── */
+const MusicUploadForm = ({ onDone }:{ onDone:()=>void }) => {
+  const upload = useMusicStore(s => s.upload);
+
+  const [file, setFile] = useState<File|null>(null);
+  const [cover, setCover] = useState<File|null>(null);
+  const [coverPreview, setCoverPreview] = useState<string|undefined>();
+  const [title, setTitle] = useState('');
+  const [artist, setArtist] = useState('');
+  const [album, setAlbum] = useState('');
+  const [genre, setGenre] = useState('');
+  const [loading, setLoad] = useState(false);
+  const [error, setError] = useState<string|null>(null);
+
+  const handleFile = (f:File) => { setFile(f); setError(null); if(!title) setTitle(f.name.replace(/\.[^.]+$/,'')); };
+
+  const readAudioDuration = (f: Blob) => new Promise<number>((resolve) => {
+    const url = URL.createObjectURL(f);
+    const a = new Audio();
+    const done = (d: number) => { URL.revokeObjectURL(url); resolve(d); };
+    a.onloadedmetadata = () => done(Number.isFinite(a.duration) ? a.duration : 0);
+    a.onerror = () => done(0);
+    a.src = url;
+  });
+
+  const submit = async () => {
+    if (!file || !title.trim() || !artist.trim()) return;
+    setLoad(true); setError(null);
+    const duration = await readAudioDuration(file);
+    const res = await upload(file, {
+      title: title.trim(), artist: artist.trim(), album: album.trim() || undefined,
+      genre: genre.trim() || undefined, duration,
+    });
+    if (!res.ok || !res.id) { setLoad(false); setError(res.reason ?? 'Не получилось'); return; }
+    const { apiUploadCover } = await import('@/music/musicApi');
+    if (cover) await apiUploadCover(res.id, cover);
+    setLoad(false);
+    onDone();
+  };
+
+  const iS = { background:V.bg2, border:`1px solid ${V.border}`, color:V.t1 };
+  const iC = 'w-full rounded-2xl px-4 py-2.5 text-sm outline-none';
+
+  return (
+    <div className="space-y-4 px-4 py-4 overflow-y-auto h-full" style={{ scrollbarWidth:'none' }}>
+      {error && <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background:'rgba(248,113,113,0.1)', color:V.red }}>{error}</div>}
+
+      <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 py-10 cursor-pointer transition-all"
+        style={{ borderColor:file?V.accent:V.bm, background:file?`${V.accent}05`:'transparent' }}
+        onClick={()=>document.getElementById('studio-music-input')?.click()}
+        onDragOver={e=>e.preventDefault()}
+        onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f);}}>
+        <input id="studio-music-input" type="file" accept="audio/*" className="hidden" onChange={e=>{const f=e.target.files?.[0];if(f)handleFile(f);}}/>
+        <div className="grid h-14 w-14 place-items-center rounded-2xl" style={{ background:file?`${V.accent}18`:V.bg3 }}>
+          {file?<Check size={24} style={{ color:V.accent }}/>:<Upload size={24} style={{ color:V.t3 }}/>}
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-semibold" style={{ color:file?V.accent:V.t2 }}>{file?file.name:'Нажмите или перетащите файл'}</p>
+          {!file&&<p className="text-xs mt-1" style={{ color:V.t3 }}>MP3 · OGG · FLAC · WAV · M4A</p>}
+        </div>
+      </div>
+
+      {file&&<motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} className="space-y-3">
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Название *" className={iC} style={iS}/>
+        <input value={artist} onChange={e=>setArtist(e.target.value)} placeholder="Исполнитель *" className={iC} style={iS}/>
+        <div className="flex gap-2">
+          <input value={album} onChange={e=>setAlbum(e.target.value)} placeholder="Альбом" className={`flex-1 ${iC}`} style={iS}/>
+          <input value={genre} onChange={e=>setGenre(e.target.value)} placeholder="Жанр" className={`flex-1 ${iC}`} style={iS}/>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <input id="studio-trackcover-input" type="file" accept="image/*" className="hidden"
+            onChange={e=>{ const f=e.target.files?.[0]; if(f){ setCover(f); setCoverPreview(URL.createObjectURL(f)); } }}/>
+          <button type="button" onClick={()=>document.getElementById('studio-trackcover-input')?.click()}
+            className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-semibold transition-colors"
+            style={{ background:V.bg2, border:`1px solid ${V.border}`, color:V.t2 }}>
+            {cover ? <><Check size={15} style={{ color:'var(--green)' }}/> Обложка</> : 'Добавить обложку'}
+          </button>
+          {coverPreview&&<img src={coverPreview} alt="" className="h-10 w-10 rounded-xl object-cover"/>}
+        </div>
+
+        {loading && <div className="flex items-center gap-2 text-xs" style={{ color:V.t3 }}><Loader2 size={13} className="animate-spin"/>Загрузка...</div>}
+
+        <motion.button whileTap={{scale:.97}} type="button" onClick={submit}
+          disabled={loading||!title.trim()||!artist.trim()}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black disabled:opacity-40"
+          style={{ background:V.accent, color:'#fff', boxShadow:`0 4px 16px ${V.accent}40` }}>
+          <Upload size={15}/>{loading?'Загрузка…':'Загрузить трек'}
+        </motion.button>
+      </motion.div>}
+    </div>
+  );
+};
+
+/* ── Загрузка подкаста: своя передача → выпуск → медиафайл ─────────── */
+const PodcastUploadForm = ({ onDone }:{ onDone:()=>void }) => {
+  const [shows, setShows] = useState<Podcast[]>([]);
+  const [showId, setShowId] = useState<string>('');
+  const [newShowTitle, setNewShowTitle] = useState('');
+  const [loadingShows, setLoadingShows] = useState(true);
+
+  const [file, setFile] = useState<File|null>(null);
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [publishNow, setPublishNow] = useState(true);
+  const [loading, setLoad] = useState(false);
+  const [prog, setProg] = useState(0);
+  const [error, setError] = useState<string|null>(null);
+  const [note, setNote] = useState<string|null>(null);
+
+  useEffect(() => {
+    let live = true;
+    apiMyPodcasts().then(list => {
+      if (!live) return;
+      setLoadingShows(false);
+      if (list) { setShows(list); if (list.length) setShowId(list[0].id); }
+    });
+    return () => { live = false; };
+  }, []);
+
+  const handleFile = (f:File) => { setFile(f); setError(null); if(!title) setTitle(f.name.replace(/\.[^.]+$/,'')); };
+
+  const submit = async () => {
+    if (!file || !title.trim()) return;
+    setLoad(true); setProg(0); setError(null); setNote(null);
+
+    let podcastId = showId;
+    if (!podcastId) {
+      if (!newShowTitle.trim()) { setLoad(false); setError('Укажите название передачи'); return; }
+      const created = await apiCreatePodcast({ title: newShowTitle.trim() });
+      if (!created) { setLoad(false); setError('Не получилось завести передачу'); return; }
+      podcastId = created.id;
+      setShows(s => [created, ...s]);
+      setShowId(created.id);
+    }
+
+    const episode = await apiCreateEpisode(podcastId, { title: title.trim(), description: desc.trim() });
+    if (!episode) { setLoad(false); setError('Не получилось создать выпуск'); return; }
+
+    const kind = file.type.startsWith('video/') ? 'video' : 'audio';
+    const { promise } = apiUploadMedia(episode.id, kind, file, {}, setProg);
+    const res = await promise;
+    if (!res.ok) { setLoad(false); setError(res.reason ?? 'Не получилось'); return; }
+
+    if (publishNow) {
+      await apiPatchEpisode(episode.id, { published: true });
+      const show = shows.find(s => s.id === podcastId);
+      if (show && show.status !== 'published') {
+        const submitted = await apiSubmitPodcast(podcastId);
+        setNote(submitted.ok
+          ? 'Выпуск загружен, передача отправлена на проверку модерацией.'
+          : `Выпуск загружен, но передачу отправить на проверку не удалось: ${submitted.reason}`);
+      }
+    }
+
+    setLoad(false);
+    if (!publishNow) onDone(); else setTimeout(onDone, note ? 1800 : 0);
+  };
+
+  const iS = { background:V.bg2, border:`1px solid ${V.border}`, color:V.t1 };
+  const iC = 'w-full rounded-2xl px-4 py-2.5 text-sm outline-none';
+
+  if (loadingShows) return <div className="flex justify-center py-10"><Loader2 size={20} className="animate-spin" style={{ color:V.t3 }}/></div>;
+
+  return (
+    <div className="space-y-4 px-4 py-4 overflow-y-auto h-full" style={{ scrollbarWidth:'none' }}>
+      {error && <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background:'rgba(248,113,113,0.1)', color:V.red }}>{error}</div>}
+      {note && <div className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background:'rgba(52,211,153,0.1)', color:V.green }}>{note}</div>}
+
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color:V.t3 }}>Передача</p>
+        {shows.length > 0 ? (
+          <select value={showId} onChange={e=>setShowId(e.target.value)} className={iC} style={{ ...iS, cursor:'pointer' }}>
+            {shows.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+            <option value="">+ Новая передача</option>
+          </select>
+        ) : (
+          <p className="text-xs mb-2" style={{ color:V.t3 }}>У вас пока нет передачи — заведём её вместе с первым выпуском.</p>
+        )}
+        {!showId && (
+          <input value={newShowTitle} onChange={e=>setNewShowTitle(e.target.value)} placeholder="Название передачи *"
+            className={`${iC} mt-2`} style={iS}/>
+        )}
+      </div>
+
+      <div className="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 py-10 cursor-pointer transition-all"
+        style={{ borderColor:file?V.accent:V.bm, background:file?`${V.accent}05`:'transparent' }}
+        onClick={()=>document.getElementById('studio-podcast-input')?.click()}
+        onDragOver={e=>e.preventDefault()}
+        onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleFile(f);}}>
+        <input id="studio-podcast-input" type="file" accept="audio/*,video/*" className="hidden" onChange={e=>{const f=e.target.files?.[0];if(f)handleFile(f);}}/>
+        <div className="grid h-14 w-14 place-items-center rounded-2xl" style={{ background:file?`${V.accent}18`:V.bg3 }}>
+          {file?<Check size={24} style={{ color:V.accent }}/>:<Upload size={24} style={{ color:V.t3 }}/>}
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-semibold" style={{ color:file?V.accent:V.t2 }}>{file?file.name:'Нажмите или перетащите файл'}</p>
+          {!file&&<p className="text-xs mt-1" style={{ color:V.t3 }}>Аудио или видео-выпуск</p>}
+        </div>
+      </div>
+
+      {file&&<motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} className="space-y-3">
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Название выпуска *" className={iC} style={iS}/>
+        <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Описание" rows={3} className={`${iC} resize-none`} style={iS}/>
+
+        <div className="flex gap-2">
+          {([[true,'Опубликовать'],[false,'Черновик']] as const).map(([v,l])=>(
+            <button key={String(v)} type="button" onClick={()=>setPublishNow(v)}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-semibold"
+              style={{ background:publishNow===v?`${V.accent}15`:V.bg2, border:`1px solid ${publishNow===v?V.accent+'35':V.border}`, color:publishNow===v?V.accent:V.t2 }}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {loading&&(
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs" style={{ color:V.t3 }}><span>Загрузка...</span><span>{prog}%</span></div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background:V.bg3 }}>
+              <motion.div className="h-full rounded-full" style={{ width:`${prog}%`, background:`linear-gradient(90deg,${V.accent},#818cf8)` }} transition={{ duration:.3 }}/>
+            </div>
+          </div>
+        )}
+
+        <motion.button whileTap={{scale:.97}} type="button" onClick={submit}
+          disabled={loading||!title.trim()||(!showId && !newShowTitle.trim())}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-black disabled:opacity-40"
+          style={{ background:V.accent, color:'#fff', boxShadow:`0 4px 16px ${V.accent}40` }}>
+          <Upload size={15}/>{loading?`${prog}%…`:publishNow?'Опубликовать выпуск':'Сохранить черновик'}
+        </motion.button>
+      </motion.div>}
+    </div>
+  );
+};
+
+/* ── Выбор типа контента для загрузки ───────────────────────────── */
+type UploadKind = 'video' | 'film' | 'music' | 'podcast';
+const UPLOAD_KIND_LABEL: Record<UploadKind, string> = {
+  video: 'Sky Video', film: 'Кино', music: 'Музыка', podcast: 'Подкаст',
+};
+const UPLOAD_KIND_ICON: Record<UploadKind, LucideIcon> = {
+  video: VideoIcon, film: Film, music: Music2, podcast: Mic2,
+};
+
+const UploadTab = ({ onDone }: { onDone: (kind: UploadKind) => void }) => {
+  const [kind, setKind] = useState<UploadKind>('video');
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="shrink-0 grid grid-cols-4 gap-1.5 px-4 pt-3 pb-2">
+        {(['video','film','music','podcast'] as UploadKind[]).map(k => {
+          const Icon = UPLOAD_KIND_ICON[k];
+          return (
+            <button key={k} type="button" onClick={()=>setKind(k)}
+              className="flex flex-col items-center gap-1.5 rounded-2xl py-2.5 text-[10px] font-semibold transition-colors"
+              style={{ background:kind===k?`${V.accent}18`:V.bg2, border:`1px solid ${kind===k?V.accent+'40':V.border}`, color:kind===k?V.accent:V.t2 }}>
+              <Icon size={15}/>{UPLOAD_KIND_LABEL[k]}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex-1 min-h-0">
+        {kind === 'video' && <VideoUploadForm onDone={()=>onDone('video')}/>}
+        {kind === 'film' && <FilmUploadForm onDone={()=>onDone('film')}/>}
+        {kind === 'music' && <MusicUploadForm onDone={()=>onDone('music')}/>}
+        {kind === 'podcast' && <PodcastUploadForm onDone={()=>onDone('podcast')}/>}
+      </div>
     </div>
   );
 };
@@ -341,7 +731,7 @@ export const BusinessStudio = () => {
           </motion.div>
           <div>
             <p className="text-[15px] font-bold" style={{ color:V.t1 }}>Sky Studio</p>
-            <p className="text-[10px]" style={{ color:V.t3 }}>Панель автора Sky Video</p>
+            <p className="text-[10px]" style={{ color:V.t3 }}>Видео · Кино · Музыка · Подкасты</p>
           </div>
         </div>
 
@@ -386,7 +776,7 @@ export const BusinessStudio = () => {
               </div>
             )}
 
-            {tab==='upload' && <UploadForm onDone={()=>setTab('content')}/>}
+            {tab==='upload' && <UploadTab onDone={(kind)=>setTab(kind==='video'?'content':'overview')}/>}
 
             {tab==='content' && (
               <div className="overflow-y-auto h-full px-5 py-4" style={{ scrollbarWidth:'none' }}>

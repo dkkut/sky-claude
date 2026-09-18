@@ -253,6 +253,7 @@ const UPLOAD_REASONS: Record<string, string> = {
   file_too_large: 'Файл слишком большой — до 30 МБ',
   invalid_meta: 'Заполните название и исполнителя',
   rate_limited: 'Слишком часто. Попробуйте чуть позже',
+  prime_required: 'Загрузка музыки доступна по подписке Sky Prime',
 };
 
 export const apiUploadCover = async (trackId: string, file: Blob) => {
