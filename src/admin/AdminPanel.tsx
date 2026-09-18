@@ -641,10 +641,14 @@ export const AdminPanel = () => {
       roleLabel: r.payload.roleLabel ?? '',
       permissions: r.payload.permissions ?? [],
       legacy: r.payload.legacy === true,
+      twoFactor: r.payload.twoFactor === true,
+      twoFactorDue: r.payload.twoFactorDue ?? null,
+      twoFactorRequired: r.payload.twoFactorRequired === true,
       lockdown: r.payload.lockdown ?? { active: false, reason: '', since: null },
     } : {
       admin: false, owner: false, role: null, roleLabel: '',
       permissions: [], legacy: false,
+      twoFactor: false, twoFactorDue: null, twoFactorRequired: false,
       lockdown: { active: false, reason: '', since: null },
     });
   }, []);
@@ -706,6 +710,25 @@ export const AdminPanel = () => {
     );
   }
 
+  if (rights.twoFactorRequired) {
+    /* Прав здесь уже нет — сервер вернул пустой набор permissions.
+       Это единственный экран, который объясняет, почему: без него
+       выглядело бы так, будто права сняли, а не так, будто их не
+       выдадут без второго фактора. */
+    return (
+      <div className="flex flex-col items-center gap-2 py-14 text-center">
+        <ShieldAlert size={22} style={{ color: C.red }} />
+        <p className="text-sm font-bold" style={{ color: C.t1 }}>Нужен второй фактор</p>
+        <p className="max-w-[280px] text-xs" style={{ color: C.t3 }}>
+          Срок на включение прошёл. Один код на почту больше не открывает
+          панель — учётную запись с этими правами не защитить одним
+          фактором. Включите двухэтапную защиту в настройках Sky ID,
+          и права вернутся сразу, без нового входа.
+        </p>
+      </div>
+    );
+  }
+
   const TABS: { key: Tab; label: string; show: boolean }[] = [
     { key: 'overview', label: 'Обзор', show: true },
     { key: 'people', label: 'Люди', show: has('moderation') },
@@ -718,6 +741,19 @@ export const AdminPanel = () => {
 
   return (
     <div className="space-y-3 p-4">
+      {!rights.owner && !rights.twoFactor && rights.twoFactorDue && (
+        /* Предупреждение, а не отказ: срок ещё не наступил, права
+           работают. Молчать до последнего дня значило бы, что человек
+           узнаёт о запрете, только когда панель уже закрылась. */
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-[11px]"
+          style={{ background: 'color-mix(in srgb, var(--red) 12%, transparent)', color: C.t2 }}>
+          <ShieldAlert size={13} style={{ color: C.red, flexShrink: 0 }} />
+          <span>
+            Второй фактор не включён. С {fmtTs(rights.twoFactorDue)} без него панель
+            перестанет отвечать — включите в настройках Sky ID.
+          </span>
+        </div>
+      )}
       <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {TABS.filter((t) => t.show).map((t) => (
           <button key={t.key} type="button" onClick={() => setTab(t.key)}

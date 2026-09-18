@@ -117,35 +117,83 @@ export const isAdmin = async (userId) => {
  * Не администратор — пустой набор. Отказ по умолчанию: неизвестная роль
  * не даёт ничего, и добавить право можно только назначением роли.
  */
+const NOBODY = { admin: false, owner: false, role: null, permissions: [] };
+
+/**
+ * Проставить срок, к которому нужен второй фактор.
+ *
+ * Обычно срок ставится при выдаче прав. Но владелец прав не получает —
+ * он выводится из ника в окружении, — а сменить ник владельца это
+ * законный способ передать сервис. Поэтому новому владельцу срок
+ * ставится при первом же обращении: запись одна на всю его жизнь в этой
+ * роли, и лучше она, чем единственная учётная запись в экосистеме,
+ * которой требование не касается вовсе.
+ */
+const startTwoFactorClock = async (profileId) => {
+  await query(
+    `UPDATE profiles SET admin_2fa_due = now() + interval '14 days'
+      WHERE id = $1 AND admin_2fa_due IS NULL`, [profileId]);
+};
+
 export const rightsOf = async (actorId) => {
-  if (!actorId) return { admin: false, owner: false, role: null, permissions: [] };
+  if (!actorId) return { ...NOBODY };
 
   const name = ownerName();
   const { rows } = await query(
-    'SELECT is_admin, admin_role, lower(username) = $2 AS owner FROM profiles WHERE id = $1',
+    `SELECT p.is_admin, p.admin_role, p.admin_2fa_due,
+            lower(p.username) = $2 AS owner,
+            s.two_factor_enabled
+       FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
+      WHERE p.id = $1`,
     [actorId, name || ' '],
   );
   const row = rows[0];
-  if (!row) return { admin: false, owner: false, role: null, permissions: [] };
+  if (!row) return { ...NOBODY };
+  if (!row.owner && !row.is_admin) return { ...NOBODY };
+
+  /* Второй фактор — условие работы, а не настройка по желанию.
+     Вся защита панели — роли, подтверждение личности, второй ключ —
+     стоит на том, что вошёл именно тот, кто должен. Вход по одному
+     коду на почту это допущение не выдерживает: кто добрался до ящика,
+     получал панель целиком, и повторное подтверждение слало код туда
+     же.
+     Права не «урезаются», а исчезают: модули спрашивают то же самое,
+     что и панель, и полумера здесь означала бы, что запрет обходится
+     через любой модуль. Признак admin при этом остаётся — чтобы
+     панель могла объяснить, что произошло, вместо молчаливого отказа.
+     Выход всегда открыт: включение второго фактора живёт в настройках
+     Sky ID и правами не закрыто. */
+  if (!row.admin_2fa_due) await startTwoFactorClock(actorId);
+  const overdue = row.admin_2fa_due
+    && row.admin_2fa_due <= new Date()
+    && !row.two_factor_enabled;
+
+  const base = {
+    admin: true,
+    twoFactor: Boolean(row.two_factor_enabled),
+    twoFactorDue: row.admin_2fa_due ? row.admin_2fa_due.toISOString() : null,
+    twoFactorRequired: Boolean(overdue),
+  };
 
   if (row.owner) {
-    return { admin: true, owner: true, role: 'owner', permissions: [...PERMISSIONS] };
+    return { ...base, owner: true, role: 'owner',
+      permissions: overdue ? [] : [...PERMISSIONS] };
   }
-  if (!row.is_admin) return { admin: false, owner: false, role: null, permissions: [] };
 
   const role = row.admin_role;
   if (!role) {
     /* Прежний администратор без роли. Полные права — ровно те, что у
        него были вчера. */
-    return { admin: true, owner: false, role: 'super_admin', permissions: [...PERMISSIONS], legacy: true };
+    return { ...base, owner: false, role: 'super_admin',
+      permissions: overdue ? [] : [...PERMISSIONS], legacy: true };
   }
   const list = ROLES[role];
   if (!list) {
     /* Роль в базе, которой нет в коде: откатили выкладку, поправили
        строку руками. Отказ по умолчанию — не гадать, что имелось в виду. */
-    return { admin: true, owner: false, role, permissions: [] };
+    return { ...base, owner: false, role, permissions: [] };
   }
-  return { admin: true, owner: false, role, permissions: [...list] };
+  return { ...base, owner: false, role, permissions: overdue ? [] : [...list] };
 };
 
 /**

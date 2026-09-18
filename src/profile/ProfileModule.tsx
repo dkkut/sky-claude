@@ -648,10 +648,24 @@ export const ProfileModule = () => {
   const [section, setSection] = useState<Section>('main');
   // Владелец — администратор по нику, а не по колонке в профиле,
   // поэтому спрашиваем сервер, а не смотрим в свои же данные.
+  //
+  // Три признака разные: роли развели права по направлениям, и пункт
+  // меню должен появляться у того, кому он вообще что-то откроет.
+  // Вход в панель администратора при этом — отдельный случай: она
+  // сама решает, что показать (нужные вкладки, пустой экран с
+  // объяснением или требование включить второй фактор), поэтому
+  // открывает её любой администратор, а не только с правом поддержки.
   const [staff, setStaff] = useState(false);
+  const [logistics, setLogistics] = useState(false);
+  const [isAdminUser, setIsAdminUser] = useState(false);
   useEffect(() => {
     let alive = true;
-    void apiSupportStatus().then(r => { if (alive) setStaff(r.staff); });
+    void apiSupportStatus().then(r => {
+      if (!alive) return;
+      setStaff(r.staff);
+      setLogistics(r.logistics);
+      setIsAdminUser(r.isAdmin);
+    });
     return () => { alive = false; };
   }, []);
   const [editing, setEditing] = useState(false);
@@ -729,8 +743,8 @@ export const ProfileModule = () => {
     {key:'info',          label:'Информация',           icon:ScrollText},
     // Очередь появляется только у того, кому её доверил сервер.
     ...(staff ? [{key:'support_queue' as const, label:'Очередь поддержки', icon:Inbox}] : []),
-    ...(staff ? [{key:'video_queue' as const, label:'Видеообзоры складов', icon:Video}] : []),
-    ...(staff ? [{key:'admin_panel' as const, label:'Панель администратора', icon:ShieldHalf}] : []),
+    ...(logistics ? [{key:'video_queue' as const, label:'Видеообзоры складов', icon:Video}] : []),
+    ...(isAdminUser ? [{key:'admin_panel' as const, label:'Панель администратора', icon:ShieldHalf}] : []),
   ] as const;
 
   return (
@@ -1155,19 +1169,20 @@ export const ProfileModule = () => {
           </div>
         )}
 
-        {/* Очередь видеообзоров общих складов. Рисуется сотруднику, но
-            решает всё равно сервер: без прав он не отдаст ни одной
-            заявки и не примет ни одного решения. */}
-        {section === 'video_queue' && staff && (
+        {/* Очередь видеообзоров общих складов. Рисуется тому, у кого
+            есть право logistics, но решает всё равно сервер: без прав
+            он не отдаст ни одной заявки и не примет ни одного решения. */}
+        {section === 'video_queue' && logistics && (
           <div className="flex flex-col h-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
             <VideoQueue />
           </div>
         )}
 
-        {/* Панель администратора. Рисуется сотруднику, но что ему в ней
-            доступно, решает сервер: список прав приходит оттуда, и
-            нарисованная кнопка ничего не разрешает. */}
-        {section === 'admin_panel' && staff && (
+        {/* Панель администратора. Рисуется любому администратору — у
+            ролей разные права, и войти должен каждый, а что внутри
+            доступно (или почему не доступно ничего), решает сама
+            панель по ответу сервера. */}
+        {section === 'admin_panel' && isAdminUser && (
           <div className="flex flex-col h-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
             <AdminPanel />
           </div>

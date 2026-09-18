@@ -959,6 +959,12 @@ export const myRights = async (actorId) => {
     roleLabel: rights.owner ? 'Владелец' : (ROLE_LABEL[rights.role] ?? rights.role ?? ''),
     permissions: rights.permissions,
     legacy: Boolean(rights.legacy),
+    /* Панель должна суметь объяснить пустые права, а не просто их
+       показать: «прав нет» и «прав нет, потому что не включён второй
+       фактор, срок истёк 3 дня назад» — разные экраны. */
+    twoFactor: Boolean(rights.twoFactor),
+    twoFactorDue: rights.twoFactorDue ?? null,
+    twoFactorRequired: Boolean(rights.twoFactorRequired),
     lockdown: await lockdownState(),
   };
 };

@@ -54,6 +54,13 @@ export interface MyRights {
   permissions: AdminPermission[];
   /** Прежний администратор без назначенной роли: права шире нужного. */
   legacy: boolean;
+  /** Включён ли второй фактор у этой учётной записи прямо сейчас. */
+  twoFactor: boolean;
+  /** Срок, после которого без второго фактора прав не остаётся. */
+  twoFactorDue: string | null;
+  /** Срок наступил, а второго фактора нет — permissions уже пуст, это
+      только объяснение почему. */
+  twoFactorRequired: boolean;
   lockdown: { active: boolean; reason: string; since: string | null };
 }
 
@@ -150,6 +157,9 @@ export interface Answer {
     roleLabel?: string;
     permissions?: AdminPermission[];
     legacy?: boolean;
+    twoFactor?: boolean;
+    twoFactorDue?: string | null;
+    twoFactorRequired?: boolean;
     lockdown?: MyRights['lockdown'];
     /** step-up */
     method?: 'app' | 'email';

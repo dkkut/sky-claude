@@ -8,7 +8,7 @@
  */
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
-import { restrictionsOf, can } from './../admin.mjs';
+import { restrictionsOf, can, isAdmin } from './../admin.mjs';
 import {
   createTicket, readTicket, listMyTickets, listQueue,
   replyToTicket, assignTicket, setTicketStatus, listAdmins,
@@ -49,13 +49,23 @@ export const supportRoutes = async (req, res, url) => {
   }
 
   // Состояние ограничений — чтобы окно блокировки знало, что показать.
-  // Здесь же признак сотрудника: владелец является администратором по
-  // нику, а не по колонке в базе, поэтому спрашивать надо сервер —
-  // из профиля, который лежит у клиента, это не видно.
+  // Здесь же признаки для меню профиля: владелец является
+  // администратором по нику, а не по колонке в базе, поэтому спрашивать
+  // надо сервер — из профиля, который лежит у клиента, это не видно.
+  //
+  // Три признака, а не один общий: у ролей разные права, и пункт меню
+  // должен появляться у того, кому он вообще что-то откроет. `staff`
+  // отвечает за очередь поддержки, `logistics` — за видеообзоры
+  // складов, `isAdmin` — за сам вход в панель администратора: она
+  // разная у разных ролей, но войти в неё и увидеть, что доступно
+  // (или почему не доступно ничего — например, не включён второй
+  // фактор), должен любой администратор, а не только с правом support.
   if (req.method === 'GET' && url === '/api/support/status') {
     return json(res, 200, {
       restrictions: await restrictionsOf(me),
       staff: await can(me, 'support'),
+      logistics: await can(me, 'logistics'),
+      isAdmin: await isAdmin(me),
     });
   }
 

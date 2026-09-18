@@ -49,21 +49,34 @@ export interface Restrictions {
 
 export interface SupportStatus {
   restrictions: Restrictions;
-  /** Разбирает ли этот человек обращения. */
+  /** Разбирает ли этот человек обращения поддержки. */
   staff: boolean;
+  /** Видит ли очередь видеообзоров складов. */
+  logistics: boolean;
+  /** Администратор ли вообще — вход в панель, а не право внутри неё.
+      Панель сама решает, что показать: пусто и объяснение почему, если
+      прав нет или просрочен второй фактор, иначе — то, что положено
+      роли. */
+  isAdmin: boolean;
 }
 
 /**
  * Что сейчас запрещено и кто я такой — решает сервер, здесь только
- * показ. Признак сотрудника берётся отсюда, а не из профиля: владелец
+ * показ. Признаки сотрудника берутся отсюда, а не из профиля: владелец
  * является администратором по нику, и в профиле этого не видно.
  */
 export const apiSupportStatus = async (): Promise<SupportStatus> => {
-  const r = await apiCall<{ restrictions: Restrictions; staff?: boolean }>(
-    '/api/support/status');
+  const r = await apiCall<{
+    restrictions: Restrictions; staff?: boolean; logistics?: boolean; isAdmin?: boolean;
+  }>('/api/support/status');
   return r.ok
-    ? { restrictions: r.data?.restrictions ?? {}, staff: Boolean(r.data?.staff) }
-    : { restrictions: {}, staff: false };
+    ? {
+      restrictions: r.data?.restrictions ?? {},
+      staff: Boolean(r.data?.staff),
+      logistics: Boolean(r.data?.logistics),
+      isAdmin: Boolean(r.data?.isAdmin),
+    }
+    : { restrictions: {}, staff: false, logistics: false, isAdmin: false };
 };
 
 export const apiSupportTickets = async (): Promise<SupportTicket[] | null> => {
