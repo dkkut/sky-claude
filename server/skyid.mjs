@@ -18,6 +18,7 @@ import { generateSecret, verifyTotp, otpauthUri } from './totp.mjs';
 import { mayClaimUsername } from './admin.mjs';
 import { issueCode, verifyCode } from './verification.mjs';
 import { isOwnerUsername } from './admin.mjs';
+import { getPrivacy, isContact } from './privacy.mjs';
 
 /** Максимум профилей в одном Sky ID. Дублируется триггером в БД. */
 export const MAX_PROFILES = 2;
@@ -376,6 +377,39 @@ export const getProfileOfSkyId = async (skyId, profileId) => {
 export const getProfileById = async (profileId) => {
   const { rows } = await query(`${PROFILE_SELECT} WHERE p.id = $1`, [profileId]);
   return toProfile(rows[0]);
+};
+
+/**
+ * Профиль для просмотра кем угодно — тот минимум, что видно о человеке
+ * без единой общей группы и без переписки: имя, ник, аватар, Prime.
+ *
+ * Не toProfile целиком: там есть twoFactorEnabled и twoFactorMethod —
+ * это устройство защиты владельца, а не что-то для показа посторонним.
+ * Настройки приватности отдаются как есть, а не применяются здесь —
+ * решение, что после них можно показать (друзей, посты, игры), остаётся
+ * за экраном профиля: сами эти разделы сервер пока не хранит.
+ */
+export const publicProfile = async (viewerId, targetId) => {
+  const p = await getProfileById(String(targetId ?? ''));
+  if (!p) return null;
+  const privacy = await getPrivacy(p.id);
+  return {
+    id: p.id,
+    name: p.name,
+    username: p.username,
+    avatar: p.avatar,
+    isAdmin: p.isAdmin,
+    isPrime: p.isPrime,
+    primeUntil: p.primeUntil,
+    createdAt: p.createdAt,
+    isContact: viewerId ? await isContact(viewerId, p.id) : false,
+    privacy: {
+      whoCanWrite: privacy.whoCanWrite,
+      whoCanCall: privacy.whoCanCall,
+      whoSeesOnline: privacy.whoSeesOnline,
+      ...privacy.profileVisibility,
+    },
+  };
 };
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{3,32}$/;

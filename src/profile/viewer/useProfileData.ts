@@ -6,8 +6,10 @@
    там, где данных объективно нет (например, публичного «сейчас
    слушает музыку»), поле просто отсутствует, и секция это учитывает.
 =============================================================== */
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useAuthStore, type Account } from '@/core/auth/store';
+import type { PublicProfile } from '@/core/auth/api';
+import { useOtherProfiles } from './otherProfiles';
 import { useMessengerStore } from '@/messenger/store';
 import type { ChatItem } from '@/messenger/types';
 import { useBloomStore } from '@/bloom/store';
@@ -35,6 +37,13 @@ function readLastStory(userId: string): StoryPreview | null {
     return fresh[0] ?? null;
   } catch { return null; }
 }
+
+/** Профиль, отданный ручкой /api/skyid/profile/:id, в форме локального Account. */
+const toAccountFromPublic = (p: PublicProfile): Account => ({
+  id: p.id, name: p.name, username: p.username, phone: '',
+  avatar: p.avatar, isAdmin: p.isAdmin, isPrime: p.isPrime, primeUntil: p.primeUntil,
+  createdAt: p.createdAt, privacy: p.privacy,
+});
 
 export type Platform = 'desktop' | 'mobile' | null;
 const classifyPlatform = (os?: string): Platform => {
@@ -128,7 +137,21 @@ export function useProfileData(userId: string | null): ProfileData | null {
   const musicPresenceMap = useMediaPresence(s => s.music);
   const watchPresenceMap = useMediaPresence(s => s.watch);
 
-  const account = useMemo(() => accounts.find(a => a.id === userId), [accounts, userId]);
+  const ownAccount = useMemo(() => accounts.find(a => a.id === userId), [accounts, userId]);
+
+  // Чужой профиль своего Sky ID не бывает — его нет в accounts, он
+  // приходит отдельной ручкой и живёт в своём кэше. Просим его, как
+  // только видим id, которого нет ни среди своих, ни в кэше.
+  const otherEntry = useOtherProfiles(s => (userId ? s.byId[userId] : undefined));
+  const fetchOther = useOtherProfiles(s => s.fetch);
+  useEffect(() => {
+    if (userId && userId !== viewerId && !ownAccount) void fetchOther(userId);
+  }, [userId, viewerId, ownAccount, fetchOther]);
+
+  const account = useMemo(
+    () => ownAccount ?? (otherEntry ? toAccountFromPublic(otherEntry) : undefined),
+    [ownAccount, otherEntry],
+  );
   const progression = useProgression(userId ?? '', account);
 
   return useMemo<ProfileData | null>(() => {

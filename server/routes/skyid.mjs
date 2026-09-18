@@ -16,11 +16,12 @@ import { recordAcceptance, LEGAL_REVISION } from './../legal.mjs';
 
 import {
   listProfiles, createProfile, updateProfile, getProfileOfSkyId,
-  findSkyIdById, publicSkyId, setEmailVerified,
+  findSkyIdById, publicSkyId, setEmailVerified, publicProfile,
   beginSkyTwoFactor, confirmSkyTwoFactor, disableSkyTwoFactor, verifySkyTwoFactor,
   beginProfileTwoFactor, confirmProfileTwoFactor, verifyProfileTwoFactor, disableProfileTwoFactor,
   grantPrime, revokePrime, MAX_PROFILES, sendTwoFactorCode, setPhoneVerified,
 } from './../skyid.mjs';
+import { rateLimit } from './../security.mjs';
 
 /**
  * Цены подписки в рублях по сроку. Держим их здесь, а не в браузере:
@@ -82,6 +83,19 @@ export const skyIdRoutes = async (req, res, url) => {
       activeProfileId: s.profileId,
       maxProfiles: MAX_PROFILES,
     });
+  }
+
+  /* Профиль любого человека — то немногое, что о нём видно без общего
+     чата и без переписки: имя, ник, аватар, Prime. Раздельно от
+     /profiles/:id выше: та ручка — управление своими профилями внутри
+     своего Sky ID, эта — витрина чужого профиля для кого угодно из
+     Sky, кто уже вошёл. */
+  const publicMatch = url.match(/^\/api\/skyid\/profile\/([\w.-]+)$/);
+  if (req.method === 'GET' && publicMatch) {
+    const s = await requireProfile(req, res); if (!s) return true;
+    if (!rateLimit(`skyid:pub:${s.profileId}`, 120)) return json(res, 429, { error: 'rate_limited' });
+    const p = await publicProfile(s.profileId, publicMatch[1]);
+    return p ? json(res, 200, { profile: p }) : json(res, 404, { error: 'not_found' });
   }
 
   if (req.method === 'POST' && url === '/api/skyid/profiles') {

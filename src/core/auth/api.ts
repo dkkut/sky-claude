@@ -302,6 +302,31 @@ export const apiSelectProfile = async (profileId: string, code?: string) => {
 export const apiUpdateProfile = (profileId: string, p: { name?: string; avatar?: string }) =>
   patch<{ profile: ServerProfile }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}`, p);
 
+/** То немногое, что видно о чужом профиле: имя, ник, аватар, Prime, приватность. */
+export interface PublicProfile {
+  id: string;
+  name: string;
+  username: string;
+  avatar?: string;
+  isAdmin: boolean;
+  isPrime: boolean;
+  primeUntil?: string;
+  createdAt: string;
+  isContact: boolean;
+  privacy: {
+    whoCanWrite: 'all' | 'contacts' | 'nobody';
+    whoCanCall: 'all' | 'contacts' | 'nobody';
+    whoSeesOnline: 'all' | 'contacts' | 'nobody';
+    showPhone?: boolean; showBirthDate?: boolean; showGames?: boolean; showMusic?: boolean;
+    showMovies?: boolean; showGifts?: boolean; showAchievements?: boolean; showFollowing?: boolean;
+    showFriends?: boolean; showPhotos?: boolean; showStories?: boolean; showPosts?: boolean;
+  };
+}
+
+/** Профиль любого человека по id — независимо от того, свой он или чужой. */
+export const apiPublicProfile = (profileId: string) =>
+  get<{ profile: PublicProfile }>(`/api/skyid/profile/${encodeURIComponent(profileId)}`);
+
 /* ═══ Двухэтапная защита профиля ═════════════════════════════ */
 
 export const apiProfileTwoFactorBegin = (profileId: string, method: TwoFactorMethod = 'app') =>
