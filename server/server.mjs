@@ -26,6 +26,7 @@ import { directoryRoutes } from './routes/directory.mjs';
 import { fileRoutes } from './routes/files.mjs';
 import { musicRoutes } from './routes/music.mjs';
 import { filmRoutes } from './routes/film.mjs';
+import { skyVideoRoutes } from './routes/skyvideo.mjs';
 import { tvRoutes } from './routes/tv.mjs';
 import { podcastRoutes } from './routes/podcasts.mjs';
 import { botRoutes } from './routes/bots.mjs';
@@ -38,6 +39,7 @@ import { sharedWarehouseRoutes } from './routes/sharedwh.mjs';
 import { mapsRoutes } from './routes/maps.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
+import { sweepOrphanVideos } from './skyvideo.mjs';
 import { sweepOrphanPodcastFiles } from './podcasts.mjs';
 import { sweepBots } from './bots.mjs';
 import { expireOrganizers, closePastEvents, sweepOrphanTicketImages } from './tickets.mjs';
@@ -59,7 +61,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, musicRoutes, filmRoutes, tvRoutes, podcastRoutes, botRoutes,
+                supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, botRoutes,
                 ticketRoutes, aiRoutes, togetherRoutes, marketRoutes,
                 sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];
 
@@ -212,6 +214,8 @@ const start = async () => {
       // занимают.
       const films = await sweepOrphanFilms();
       if (films) console.log(`[film] убрано осиротевших файлов: ${films}`);
+      const skyvideos = await sweepOrphanVideos();
+      if (skyvideos) console.log(`[skyvideo] убрано осиротевших файлов: ${skyvideos}`);
       // Неотвечающий телеканал должен превращаться в честное «временно
       // недоступен» на карточке, а не в чёрный экран после нажатия.
       // То же и с подкастами: оборвавшаяся загрузка оставляет файл
