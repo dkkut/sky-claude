@@ -19,7 +19,7 @@ import { onAdminMessage } from '@/messenger/socket';
 /** Права по направлениям. Список ведёт сервер — здесь только подписи. */
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
-  | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns';
+  | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -32,6 +32,7 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   finance: 'Начисления',
   security: 'Безопасность',
   campaigns: 'Мероприятия',
+  gifts: 'Подарки',
 };
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -45,6 +46,7 @@ export const ROLE_LABEL: Record<string, string> = {
   tickets_admin: 'Билеты',
   finance_admin: 'Начисления',
   campaigns_admin: 'Мероприятия',
+  gifts_admin: 'Подарки',
   read_only_admin: 'Только чтение',
 };
 

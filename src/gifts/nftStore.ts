@@ -5,7 +5,7 @@
 ====================================================================== */
 import { create } from 'zustand';
 import { useAuthStore } from '@/core/auth/store';
-import { useMessengerStore } from '@/messenger/store';
+import { apiNftTransfer, apiNftOwners } from './giftsApi';
 import {
   RARITY_CONFIG, RARITY_ORDER, ALL_BACKGROUNDS, ACHIEVEMENT_LABELS,
 } from './types';
@@ -205,7 +205,11 @@ interface NftGiftsState {
   offersFor:       (giftId: string) => Offer[];
   respondOffer:    (offerId: string, accept: boolean) => void;
 
-  giftToUser: (giftId: string, toAccountId: string, toAccountName: string) => void;
+  giftToUser: (giftId: string, toAccountId: string, toAccountName: string) => Promise<{ ok: boolean; reason?: string }>;
+  // Подтягивает настоящих владельцев с сервера поверх детерминированного
+  // расчёта «по рождению» — так виден результат передачи, сделанной с
+  // другого устройства или другим сеансом.
+  syncOwnership: () => Promise<void>;
 
   isFavorite:     (giftId: string) => boolean;
   toggleFavorite: (giftId: string) => void;
@@ -376,24 +380,36 @@ export const useNftGiftsStore = create<NftGiftsState>((set, get) => {
       flush();
     },
 
-    giftToUser: (giftId, toAccountId, toAccountName) => {
-      const gift = get().giftById(giftId); if (!gift) return;
+    // Настоящая передача: сервер сам проверяет, что подарок сейчас
+    // действительно принадлежит отправителю (server/nft.mjs::transferNft),
+    // атомарно переключает владельца и дописывает постоянную историю.
+    // Локальная витрина (эта функция) только отражает то, что сервер
+    // подтвердил, — она не решает, состоялась ли передача.
+    giftToUser: async (giftId, toAccountId, toAccountName) => {
+      const gift = get().giftById(giftId); if (!gift) return { ok: false, reason: 'Подарок не найден' };
       const fromId = gift.ownerId; const fromName = gift.ownerName;
+      const r = await apiNftTransfer(giftId, toAccountId);
+      if (!r.ok) return { ok: false, reason: r.reason };
       mut(s => ({
-        gifts: s.gifts.map(g => g.id===giftId ? { ...g, ownerId: toAccountId, ownerName: toAccountName } : g),
-        provenance: [...s.provenance, { id: genId('prov'), giftId, type:'gift' as const, fromId, fromName, toId: toAccountId, toName: toAccountName, price: null, at: nowISO() }],
-        transactions: [...s.transactions, { id: genId('tx'), userId: fromId, giftId, type:'gift_out' as const, amount:0, at: nowISO() }, { id: genId('tx'), userId: toAccountId, giftId, type:'gift_in' as const, amount:0, at: nowISO() }],
+        gifts: s.gifts.map(g => g.id===giftId ? { ...g, ownerId: r.ownerId, ownerName: r.ownerName } : g),
+        provenance: [...s.provenance, { id: genId('prov'), giftId, type:'gift' as const, fromId, fromName, toId: r.ownerId, toName: r.ownerName, price: null, at: nowISO() }],
+        transactions: [...s.transactions, { id: genId('tx'), userId: fromId, giftId, type:'gift_out' as const, amount:0, at: nowISO() }, { id: genId('tx'), userId: r.ownerId, giftId, type:'gift_in' as const, amount:0, at: nowISO() }],
       }));
       writeLog('gift_sent', `Подарок «${gift.name}» отправлен пользователю ${toAccountName}`);
       notify(toAccountId, 'gift', 'Вам подарок!', `${fromName} подарил вам «${gift.name}»`, giftId);
-      try {
-        const account = useAuthStore.getState().accounts.find(a=>a.id===toAccountId);
-        if (account) {
-          const chat = useMessengerStore.getState().startDM(account);
-          if (chat) useMessengerStore.getState().sendMessage({ text:`🎁 Подарок: ${gift.name}`, kind:'gift' });
-        }
-      } catch {}
       flush();
+      return { ok: true };
+    },
+
+    syncOwnership: async () => {
+      const ids = get().gifts.map(g => g.id);
+      const owners = await apiNftOwners(ids);
+      mut(s => ({
+        gifts: s.gifts.map(g => {
+          const o = owners[g.id];
+          return o && o.transferred ? { ...g, ownerId: o.id, ownerName: o.name } : g;
+        }),
+      }));
     },
 
     isFavorite: (giftId) => get().favorites.includes(giftId),

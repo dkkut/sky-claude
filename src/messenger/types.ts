@@ -58,6 +58,11 @@ export interface MessageItem {
   views?:         number;             // уникальные читатели записи канала (считает сервер)
   pinnedBy?:      string;             // кто закрепил
   fileId?:        string;             // вложение на сервере
+  // Sky Gifts: сообщение несёт только id доставки — реальные данные
+  // (цена, картинка, состояние) карточка получает отдельным запросом,
+  // который сервер отдаёт только участнику этой доставки.
+  giftInstanceId?:      string;
+  primeGiftInstanceId?: string;
   // Опрос
   poll?: {
     question:  string;

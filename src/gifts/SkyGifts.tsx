@@ -2,18 +2,56 @@
    SKY GIFTS UI
    Модальное окно выбора подарка + отображение в чате
 =============================================================== */
-import { useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, type TargetAndTransition } from 'framer-motion';
-import { X, ChevronLeft, Check, Gift, Heart, ShoppingCart, Star, ArrowLeftRight, Search, Filter } from 'lucide-react';
+import { X, ChevronLeft, Check, Heart, ShoppingCart, Star, Search } from 'lucide-react';
 import {
-  useGiftStore, GIFT_CATALOG, GIFT_RARITY_LABEL, GIFT_RARITY_COLOR, GIFT_RARITY_GLOW,
+  GIFT_CATALOG, GIFT_RARITY_LABEL, GIFT_RARITY_COLOR, GIFT_RARITY_GLOW,
   RARITY_CARD_BG, RARITY_CARD_BORDER, RARITY_SHIMMER, RARITY_STARS,
   fmtGiftPrice, type GiftItem, type SentGift, type GiftRarity,
 } from './store';
+import {
+  apiGiftCatalog, apiSendGift, apiMyProfileGifts, apiMyReceivedGifts, apiMySentGifts,
+  apiPublicProfileGifts, toSentGift, type GiftCatalogItem,
+} from './giftsApi';
 import { useMoney } from '@/wallet/store';
 import { useAuthStore } from '@/core/auth/store';
+
+const RARITIES: GiftRarity[] = ['common', 'rare', 'epic', 'legendary', 'unique'];
+const asRarity = (r: string): GiftRarity => (RARITIES.includes(r as GiftRarity) ? (r as GiftRarity) : 'common');
+const ANIMATIONS: GiftItem['animation'][] = ['bounce', 'spin', 'pulse', 'float', 'sparkle'];
+
+/**
+ * Каталог реальный (сервер, server/gifts.mjs), а не GIFT_CATALOG —
+ * тот остаётся только как запасной, пока сервер не ответил, и как
+ * источник данных для уже показанных где-то ещё старых записей.
+ * Рублёвая цена в каталоге не хранится (обычные подарки продаются
+ * только за баллы Прайма) — показываем производную по тому же курсу,
+ * что и обмен в кошельке (10 баллов = 1 ₽), чтобы не менять экран.
+ */
+const toGiftItem = (i: GiftCatalogItem, idx: number): GiftItem => {
+  const [c1, c2] = (i.gradient || '').split(',');
+  return {
+    id: i.id, name: i.name, emoji: i.emoji, description: i.description,
+    rarity: asRarity(i.rarity), price: Math.round(i.pricePoints / 10), pricePoints: i.pricePoints,
+    gradient: [c1 || '#1a1a1f', c2 || '#252528'],
+    animation: ANIMATIONS[idx % ANIMATIONS.length],
+    available: -1, sold: 0, seasonal: i.seasonal,
+  };
+};
+
+/** GIFT_CATALOG остаётся запасным на время загрузки, чтобы экран не мигал пустотой. */
+const useGiftCatalog = () => {
+  const [catalog, setCatalog] = useState<GiftItem[]>(GIFT_CATALOG);
+  useEffect(() => {
+    let alive = true;
+    apiGiftCatalog().then((items) => { if (alive && items.length) setCatalog(items.map(toGiftItem)); });
+    return () => { alive = false; };
+  }, []);
+  return catalog;
+};
 
 const C = {
   bg:'var(--bg)', l1:'var(--bg-l1)', l2:'var(--bg-l2)', l3:'var(--bg-l3)',
@@ -115,8 +153,8 @@ const _shimCss=(typeof document!=="undefined"&&!document.getElementById("_sky-sh
 
 export const GiftMarket = ({ onClose }: { onClose: () => void }) => {
   const { currentUserId } = useAuthStore();
-  const { getPoints, spendPoints } = useMoney();
-  const { sendGift } = useGiftStore();
+  const { getPoints } = useMoney();
+  const catalog = useGiftCatalog();
   const [filter,   setFilter]   = useState<GiftRarity|'all'>('all');
   const [search,   setSearch]   = useState('');
   const [selected, setSelected] = useState<GiftItem|null>(null);
@@ -126,20 +164,21 @@ export const GiftMarket = ({ onClose }: { onClose: () => void }) => {
 
   const points  = getPoints(currentUserId ?? '');
 
-  const visible = GIFT_CATALOG.filter(g => {
+  const visible = catalog.filter(g => {
     const matchRarity = filter === 'all' || g.rarity === filter;
     const matchSearch = !search || g.name.toLowerCase().includes(search.toLowerCase());
     return matchRarity && matchSearch;
   });
 
-  const buy = () => {
+  const buy = async () => {
     if (!selected || !currentUserId) return;
     setErr('');
-    const ok = spendPoints(currentUserId, selected.pricePoints,
-      `Подарок «${selected.name}»`, selected.id);
-    if (!ok) { setErr('Недостаточно баллов. Обменяйте рубли в кошельке.'); return; }
     setBuying(true);
-    setTimeout(() => { setBuying(false); setDone(true); }, 1200);
+    // Подарок себе — тот же заказ, что и в GiftModal, только сразу в профиль.
+    const r = await apiSendGift({ giftCatalogId: selected.id, recipientId: currentUserId, target: 'profile' });
+    setBuying(false);
+    if (!r.ok) { setErr(r.reason); return; }
+    setDone(true);
   };
 
   const RARITY_FILTERS: (GiftRarity|'all')[] = ['all','common','rare','epic','legendary','unique'];
@@ -294,46 +333,46 @@ export interface GiftModalProps {
   toUserId:  string;
   toName:    string;
   onClose:   () => void;
-  onSent:    (gift: SentGift) => void;
+  onSent:    () => void;
 }
 
-export const GiftModal = ({ chatId, toUserId, toName, onClose, onSent }: GiftModalProps) => {
+export const GiftModal = ({ toUserId, toName, onClose, onSent }: GiftModalProps) => {
   const { currentUserId, accounts } = useAuthStore();
-  const { spend, getBalance, getPoints } = useMoney();
-  const { sendGift, saveToProfile }      = useGiftStore();
+  const { getBalance, getPoints } = useMoney();
   const me = accounts.find(a => a.id === currentUserId);
   const [showMarket, setShowMarket] = useState(false);
   const [target, setTarget]         = useState<GiftTarget>('chat');
-  const { spendPoints } = useMoney();
   const points = getPoints(currentUserId ?? '');
+
+  const catalog = useGiftCatalog();
 
   const [selected, setSelected] = useState<GiftItem | null>(null);
   const [message,  setMessage]  = useState('');
   const [rarityFilter, setRarityFilter] = useState<GiftRarity | 'all'>('all');
   const [step, setStep]         = useState<'pick' | 'confirm' | 'success'>('pick');
   const [err,  setErr]          = useState('');
+  const [sending, setSending]   = useState(false);
 
   const balance = getBalance(currentUserId ?? '');
 
   const filtered = rarityFilter === 'all'
-    ? GIFT_CATALOG
-    : GIFT_CATALOG.filter(g => g.rarity === rarityFilter);
+    ? catalog
+    : catalog.filter(g => g.rarity === rarityFilter);
 
-  const buy = () => {
+  const buy = async () => {
     if (!selected || !currentUserId || !me) return;
     setErr('');
-    // Все подарки оплачиваются Баллами Прайма
-    const ok = spendPoints(currentUserId, selected.pricePoints,
-      `Подарок «${selected.name}»${target === 'profile' ? ' → профиль' : ` → ${toName}`}`,
-      selected.id);
-    if (!ok) { setErr('Недостаточно баллов Прайма. Обменяйте рубли в кошельке.'); return; }
-    if (target === 'profile') {
-      const sg = saveToProfile(selected.id, currentUserId, me.name, message);
-      if (sg) { setStep('success'); setTimeout(() => onClose(), 2000); }
-    } else {
-      const sg = sendGift(selected.id, currentUserId, me.name, toUserId, toName, chatId, message);
-      if (sg) { setStep('success'); setTimeout(() => { onSent(sg); onClose(); }, 1800); }
-    }
+    setSending(true);
+    // Цену и доставку решает сервер (server/gifts.mjs::sendGift) — сюда
+    // едет только id подарка из каталога, не цена и не картинка.
+    const r = await apiSendGift({
+      giftCatalogId: selected.id, recipientId: toUserId, target,
+      message,
+    });
+    setSending(false);
+    if (!r.ok) { setErr(r.reason); return; }
+    setStep('success');
+    setTimeout(() => { onSent(); onClose(); }, target === 'profile' ? 2000 : 1800);
   };
 
   const RARITY_FILTERS: (GiftRarity | 'all')[] = ['all','common','rare','epic','legendary','unique'];
@@ -573,15 +612,15 @@ export const GiftModal = ({ chatId, toUserId, toName, onClose, onSent }: GiftMod
             )}
 
             <div className="mx-5 mb-8">
-              <motion.button whileTap={{ scale:.97 }} type="button" onClick={buy}
+              <motion.button whileTap={{ scale:.97 }} type="button" onClick={buy} disabled={sending || points < selected.pricePoints}
                 className="flex items-center justify-center gap-2 w-full rounded-2xl py-4 text-base font-bold text-white"
                 style={{
                   background: `linear-gradient(135deg,${GIFT_RARITY_COLOR[selected.rarity]},${GIFT_RARITY_COLOR[selected.rarity]}aa)`,
-                  opacity: points < selected.pricePoints ? 0.45 : 1,
+                  opacity: sending || points < selected.pricePoints ? 0.45 : 1,
                   boxShadow: `0 8px 28px ${GIFT_RARITY_GLOW[selected.rarity]}`,
                 }}>
                 <Star size={18}/>
-                {target === 'profile'
+                {sending ? 'Отправляем…' : target === 'profile'
                   ? `Сохранить · ⭐${selected.pricePoints.toLocaleString('ru')}`
                   : `Подарить · ⭐${selected.pricePoints.toLocaleString('ru')}`}
               </motion.button>
@@ -620,7 +659,6 @@ export const GiftModal = ({ chatId, toUserId, toName, onClose, onSent }: GiftMod
 export const GiftBubble = ({ gift, fromMe }: { gift: SentGift; fromMe: boolean }) => {
   const rc = GIFT_RARITY_COLOR[gift.giftRarity];
   const rg = GIFT_RARITY_GLOW[gift.giftRarity] ?? 'rgba(79,110,247,0.3)';
-  const giftItem = GIFT_CATALOG.find(g => g.id === gift.giftId);
   const grad0 = gift.giftGrad?.[0] ?? 'var(--bg)';
   const grad1 = gift.giftGrad?.[1] ?? 'var(--bg-l2)';
   const isEpic = ['epic','legendary','unique'].includes(gift.giftRarity);
@@ -742,13 +780,41 @@ export const GiftBubble = ({ gift, fromMe }: { gift: SentGift; fromMe: boolean }
    Красивая витрина подарков в профиле
 =============================================================== */
 export const ProfileGiftsShowcase = ({ userId, isOwn }: { userId: string; isOwn: boolean }) => {
-  const { getReceived, getProfileGifts } = useGiftStore();
   const [tab, setTab] = useState<'profile'|'received'>('profile');
+  const [profileGifts,  setProfileGifts]  = useState<SentGift[]>([]);
+  const [receivedGifts, setReceivedGifts] = useState<SentGift[]>([]);
+  const [hidden, setHidden] = useState(false);
 
-  const profileGifts  = getProfileGifts(userId);
-  const receivedGifts = getReceived(userId);
+  useEffect(() => {
+    let alive = true;
+    if (isOwn) {
+      Promise.all([apiMyProfileGifts(), apiMyReceivedGifts()]).then(([p, r]) => {
+        if (!alive) return;
+        setProfileGifts(p.map(toSentGift));
+        setReceivedGifts(r.map(toSentGift));
+      });
+    } else {
+      // Чужой профиль: видно только то, что человек сам сохранил и
+      // разрешил показывать (showGifts) — «получено, но не сохранено»
+      // не публично никогда, это не квирк экрана, а серверная приватность.
+      apiPublicProfileGifts(userId).then((res) => {
+        if (!alive) return;
+        setHidden(res.hidden);
+        setProfileGifts(res.items.map(toSentGift));
+        setReceivedGifts([]);
+      });
+    }
+    return () => { alive = false; };
+  }, [userId, isOwn]);
 
   const list = tab === 'profile' ? profileGifts : receivedGifts;
+
+  if (!isOwn && hidden) return (
+    <div className="flex flex-col items-center gap-3 py-10">
+      <span className="text-4xl">🔒</span>
+      <p className="text-sm font-semibold" style={{ color:C.t2 }}>Подарки скрыты настройками приватности</p>
+    </div>
+  );
 
   if (profileGifts.length === 0 && receivedGifts.length === 0) return (
     <div className="flex flex-col items-center gap-3 py-10">
@@ -770,7 +836,8 @@ export const ProfileGiftsShowcase = ({ userId, isOwn }: { userId: string; isOwn:
       <div className="flex gap-2">
         {([
           { key: 'profile'  as const, label: `⭐ В профиле (${profileGifts.length})`  },
-          { key: 'received' as const, label: `💌 Получено (${receivedGifts.length})`  },
+          // «Получено, но не сохранено» — приватность, показываем только себе.
+          ...(isOwn ? [{ key: 'received' as const, label: `💌 Получено (${receivedGifts.length})` }] : []),
         ]).map(({ key, label }) => (
           <button key={key} type="button" onClick={() => setTab(key)}
             className="flex-1 py-2 rounded-2xl text-xs font-bold transition-all"
@@ -878,12 +945,21 @@ export const ProfileGiftsShowcase = ({ userId, isOwn }: { userId: string; isOwn:
 
 /* -- My Gifts collection --------------------------------------- */
 export const MyGifts = ({ userId }: { userId: string }) => {
-  const { getReceived, getSentBy } = useGiftStore();
   const [tab, setTab] = useState<'received'|'sent'>('received');
+  const [received, setReceived] = useState<SentGift[]>([]);
+  const [sent,     setSent]     = useState<SentGift[]>([]);
 
-  const received = getReceived(userId);
-  const sent     = getSentBy(userId);
-  const list     = tab === 'received' ? received : sent;
+  useEffect(() => {
+    let alive = true;
+    Promise.all([apiMyReceivedGifts(), apiMySentGifts()]).then(([r, s]) => {
+      if (!alive) return;
+      setReceived(r.map(toSentGift));
+      setSent(s.map(toSentGift));
+    });
+    return () => { alive = false; };
+  }, [userId]);
+
+  const list = tab === 'received' ? received : sent;
 
   return (
     <div className="flex flex-col h-full">

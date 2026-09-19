@@ -19,15 +19,9 @@ import {
   findSkyIdById, publicSkyId, setEmailVerified, publicProfile,
   beginSkyTwoFactor, confirmSkyTwoFactor, disableSkyTwoFactor, verifySkyTwoFactor,
   beginProfileTwoFactor, confirmProfileTwoFactor, verifyProfileTwoFactor, disableProfileTwoFactor,
-  grantPrime, revokePrime, MAX_PROFILES, sendTwoFactorCode, setPhoneVerified,
+  grantPrime, revokePrime, MAX_PROFILES, sendTwoFactorCode, setPhoneVerified, PRIME_PRICES,
 } from './../skyid.mjs';
 import { rateLimit } from './../security.mjs';
-
-/**
- * Цены подписки в рублях по сроку. Держим их здесь, а не в браузере:
- * присланную клиентом цену можно переписать в запросе.
- */
-const PRIME_PRICES = { 30: 400, 365: 3790, 730: 6990 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 

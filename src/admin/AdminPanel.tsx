@@ -33,6 +33,214 @@ const C = {
 
 const inputStyle = { background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 };
 
+/* ─── Sky Gifts: каталог обычных подарков и медиа карточки Prime ─────── */
+
+const emptyGiftForm = () => ({ name: '', description: '', emoji: '🎁', pricePoints: '', gradient: '#1a1a1f,#252528', rarity: 'common', seasonal: false });
+
+const GiftCatalogForm = ({ initial, onCancel, onSaved }: {
+  initial?: import('@/gifts/giftsApi').GiftCatalogItem;
+  onCancel: () => void;
+  onSaved: () => void;
+}) => {
+  const [form, setForm] = useState(() => initial ? {
+    name: initial.name, description: initial.description, emoji: initial.emoji,
+    pricePoints: String(initial.pricePoints), gradient: initial.gradient, rarity: initial.rarity, seasonal: initial.seasonal,
+  } : emptyGiftForm());
+  const [failed, setFailed] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true); setFailed('');
+    const { apiAdminCreateGift, apiAdminUpdateGift } = await import('@/gifts/giftsApi');
+    const input = {
+      name: form.name.trim(), description: form.description.trim(), emoji: form.emoji.trim() || '🎁',
+      pricePoints: Math.trunc(Number(form.pricePoints)), gradient: form.gradient.trim(), rarity: form.rarity, seasonal: form.seasonal,
+    };
+    const res = initial ? await apiAdminUpdateGift(initial.id, input) : await apiAdminCreateGift(input);
+    setBusy(false);
+    if (!res.ok) { setFailed(res.reason); return; }
+    onSaved();
+  };
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <div className="flex gap-2">
+        <input value={form.emoji} onChange={(e) => setForm((f) => ({ ...f, emoji: e.target.value }))}
+          placeholder="🎁" className="w-16 rounded-xl px-3 py-2 text-center text-lg outline-none" style={inputStyle} />
+        <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          placeholder="Название" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      </div>
+      <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+        placeholder="Описание" rows={2} className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <div className="flex gap-2">
+        <input value={form.pricePoints} onChange={(e) => setForm((f) => ({ ...f, pricePoints: e.target.value }))}
+          placeholder="Цена в баллах Прайма" type="number" min={1}
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <select value={form.rarity} onChange={(e) => setForm((f) => ({ ...f, rarity: e.target.value }))}
+          className="rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle}>
+          {['common', 'rare', 'epic', 'legendary', 'unique'].map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
+      <input value={form.gradient} onChange={(e) => setForm((f) => ({ ...f, gradient: e.target.value }))}
+        placeholder="Цвета фона: #111111,#222222" className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <label className="flex items-center gap-2 text-xs" style={{ color: C.t2 }}>
+        <input type="checkbox" checked={form.seasonal} onChange={(e) => setForm((f) => ({ ...f, seasonal: e.target.checked }))} />
+        Сезонный подарок
+      </label>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      <div className="flex gap-2">
+        <button type="button" disabled={busy || !form.name.trim() || !form.pricePoints} onClick={() => void save()}
+          className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+          {initial ? 'Сохранить' : 'Создать'}
+        </button>
+        <button type="button" onClick={onCancel} className="rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>
+          Отмена
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/** Загрузка одной версии медиа: новая версия не трогает уже отправленные подарки. */
+const GiftMediaUpload = ({ label, onUpload }: { label: string; onUpload: (file: File) => Promise<{ ok: boolean; reason?: string }> }) => {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const inputId = useState(() => `gm-${Math.random().toString(36).slice(2)}`)[0];
+  return (
+    <label htmlFor={inputId} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold cursor-pointer"
+      style={{ background: C.l2, color: busy ? C.t3 : C.t2, border: `1px solid ${C.brd}` }}>
+      {busy ? '…' : label}
+      {err && <span style={{ color: C.red }} title={err}> !</span>}
+      <input id={inputId} type="file" accept="image/*,video/*" className="hidden" disabled={busy}
+        onChange={async (e) => {
+          const file = e.target.files?.[0]; e.target.value = '';
+          if (!file) return;
+          setBusy(true); setErr('');
+          const r = await onUpload(file);
+          setBusy(false);
+          if (!r.ok) setErr(r.reason ?? 'Ошибка');
+        }} />
+    </label>
+  );
+};
+
+const GiftsCatalogList = () => {
+  const [items, setItems] = useState<import('@/gifts/giftsApi').GiftCatalogItem[] | null>(null);
+  const [editing, setEditing] = useState<string | 'new' | null>(null);
+
+  const load = useCallback(async () => {
+    const { apiAdminGiftCatalog } = await import('@/gifts/giftsApi');
+    setItems(await apiAdminGiftCatalog());
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  if (items === null) return <p className="text-xs" style={{ color: C.t3 }}>Загрузка…</p>;
+
+  return (
+    <div className="space-y-2">
+      {editing === 'new'
+        ? <GiftCatalogForm onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />
+        : (
+          <button type="button" onClick={() => setEditing('new')}
+            className="w-full rounded-2xl py-2.5 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>
+            + Новый подарок
+          </button>
+        )}
+      {items.map((it) => (
+        editing === it.id ? (
+          <GiftCatalogForm key={it.id} initial={it} onCancel={() => setEditing(null)}
+            onSaved={() => { setEditing(null); void load(); }} />
+        ) : (
+          <div key={it.id} className="rounded-2xl p-3 space-y-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">{it.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold truncate" style={{ color: C.t1 }}>{it.name}</p>
+                <p className="text-[10px]" style={{ color: C.t3 }}>⭐ {it.pricePoints.toLocaleString('ru')} · {it.rarity}{it.seasonal ? ' · сезонный' : ''}</p>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-1 rounded-full" style={{ background: it.active ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: it.active ? C.green : C.red }}>
+                {it.active ? 'включён' : 'выключен'}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button type="button" onClick={() => setEditing(it.id)}
+                className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+                Изменить
+              </button>
+              <button type="button" onClick={async () => {
+                const { apiAdminSetGiftActive } = await import('@/gifts/giftsApi');
+                await apiAdminSetGiftActive(it.id, !it.active);
+                void load();
+              }} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+                {it.active ? 'Выключить' : 'Включить'}
+              </button>
+              <GiftMediaUpload label="Фото/видео" onUpload={async (file) => {
+                const { apiAdminUploadGiftMedia } = await import('@/gifts/giftsApi');
+                const r = await apiAdminUploadGiftMedia(it.id, 'main', file);
+                if (r.ok) void load();
+                return r;
+              }} />
+              <GiftMediaUpload label="Превью" onUpload={async (file) => {
+                const { apiAdminUploadGiftMedia } = await import('@/gifts/giftsApi');
+                const r = await apiAdminUploadGiftMedia(it.id, 'thumbnail', file);
+                if (r.ok) void load();
+                return r;
+              }} />
+            </div>
+          </div>
+        )
+      ))}
+      {items.length === 0 && <p className="text-xs text-center py-6" style={{ color: C.t3 }}>Каталог пуст</p>}
+    </div>
+  );
+};
+
+/** Медиа карточки Prime — по темам оформления, отдельно от каталога обычных подарков. */
+const PrimeCardMediaPanel = () => {
+  const [themes, setThemes] = useState<import('@/gifts/GiftPrime').PrimeGiftTheme[] | null>(null);
+  useEffect(() => { void import('@/gifts/GiftPrime').then((m) => setThemes(m.PRIME_GIFT_THEMES)); }, []);
+  if (!themes) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px]" style={{ color: C.t3 }}>
+        Необязательно: если для темы не загружено медиа, карточка Prime в мессенджере рисуется тем же градиентом, что и сейчас.
+      </p>
+      {themes.map((t) => (
+        <div key={t.id} className="rounded-2xl p-3 flex items-center gap-2" style={{ background: t.bg, border: `1px solid ${C.brd}` }}>
+          <span className="text-xl">{t.emoji}</span>
+          <p className="flex-1 text-xs font-bold text-white">{t.label}</p>
+          <GiftMediaUpload label="Фото/видео" onUpload={async (file) => {
+            const { apiAdminUploadPrimeCardMedia } = await import('@/gifts/giftsApi');
+            return apiAdminUploadPrimeCardMedia(t.id, 'main', file);
+          }} />
+          <GiftMediaUpload label="Превью" onUpload={async (file) => {
+            const { apiAdminUploadPrimeCardMedia } = await import('@/gifts/giftsApi');
+            return apiAdminUploadPrimeCardMedia(t.id, 'thumbnail', file);
+          }} />
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const GiftsAdminSection = () => {
+  const [sub, setSub] = useState<'catalog' | 'prime-card'>('catalog');
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        {([['catalog', 'Каталог подарков'], ['prime-card', 'Карточка Prime']] as const).map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setSub(key)}
+            className="flex-1 rounded-xl py-2 text-xs font-bold"
+            style={{ background: sub === key ? C.acc : C.l2, color: sub === key ? '#fff' : C.t3 }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {sub === 'catalog' ? <GiftsCatalogList /> : <PrimeCardMediaPanel />}
+    </div>
+  );
+};
+
 const fmtTs = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleString('ru', {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
@@ -1404,7 +1612,7 @@ const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'campaigns' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'campaigns' | 'gifts' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -1525,6 +1733,7 @@ export const AdminPanel = () => {
     { key: 'video', label: 'Sky Video', show: has('content') || has('finance') },
     { key: 'pulse', label: 'Prime Pulse', show: has('content') },
     { key: 'campaigns', label: 'Мероприятия', show: has('campaigns') },
+    { key: 'gifts', label: 'Подарки', show: has('gifts') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
     { key: 'events', label: 'События', show: has('security') },
@@ -1653,6 +1862,7 @@ export const AdminPanel = () => {
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
       {tab === 'pulse' && <PrimePulseAdminSection />}
       {tab === 'campaigns' && <CampaignsAdminSection onPendingChanged={() => void loadPending()} />}
+      {tab === 'gifts' && <GiftsAdminSection />}
 
       {tab === 'admins' && (
         <>

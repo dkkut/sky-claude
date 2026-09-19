@@ -1,0 +1,169 @@
+/**
+ * Владение и передача существующих NFT-подарков.
+ *
+ * Сам каталог (84 подарка, 12 коллекций) остаётся ровно тем же
+ * процедурным клиентским кодом, что и был (src/gifts/nftStore.ts) —
+ * здесь только правда о том, кому какой подарок сейчас принадлежит, и
+ * неизменяемая история передач.
+ *
+ * Пока подарок ни разу не передавали, «истинный» владелец — тот же,
+ * что вычисляет клиент (см. server/nftgenesis.mjs): строки в
+ * nft_ownership для него ещё нет. Первая передача материализует эту
+ * строку и одновременно записывает «genesis» в историю — дальше
+ * подарок уже целиком под управлением базы.
+ */
+import { pool, query } from './db.mjs';
+import { generateId } from './security.mjs';
+import { getPrivacy } from './privacy.mjs';
+import { isKnownNftId, genesisOwner } from './nftgenesis.mjs';
+import { notifyGift } from './giftnotify.mjs';
+
+const materializeGenesis = async (client, nftId) => {
+  const { rows } = await client.query(
+    'SELECT owner_id, owner_name FROM nft_ownership WHERE nft_id = $1',
+    [nftId],
+  );
+  if (rows[0]) return rows[0];
+  const g = genesisOwner(nftId);
+  if (!g) return null;
+  await client.query(
+    `INSERT INTO nft_ownership (nft_id, owner_id, owner_name) VALUES ($1,$2,$3)
+     ON CONFLICT (nft_id) DO NOTHING`,
+    [nftId, g.id, g.name],
+  );
+  await client.query(
+    `INSERT INTO nft_provenance (id, nft_id, type, from_id, from_name, to_id, to_name, operation_id, source)
+     VALUES ($1,$2,'genesis',NULL,'Sky Mint',$3,$4,$5,'seed')
+     ON CONFLICT (operation_id) DO NOTHING`,
+    [`nprov-${generateId()}`, nftId, g.id, g.name, `genesis:${nftId}`],
+  );
+  const { rows: after } = await client.query(
+    'SELECT owner_id, owner_name FROM nft_ownership WHERE nft_id = $1',
+    [nftId],
+  );
+  return after[0] ?? { owner_id: g.id, owner_name: g.name };
+};
+
+/** Текущий владелец. Без записи в базу — только для чтения. */
+export const currentOwner = async (nftId) => {
+  if (!isKnownNftId(nftId)) return null;
+  const { rows } = await query(
+    'SELECT owner_id, owner_name, updated_at FROM nft_ownership WHERE nft_id = $1',
+    [nftId],
+  );
+  if (rows[0]) return { id: rows[0].owner_id, name: rows[0].owner_name, since: rows[0].updated_at.toISOString(), transferred: true };
+  const g = genesisOwner(nftId);
+  return g ? { id: g.id, name: g.name, since: null, transferred: false } : null;
+};
+
+/** Владельцы нескольких подарков разом — витрина и каталог спрашивают так. */
+export const ownersOf = async (nftIds) => {
+  const ids = Array.from(new Set((Array.isArray(nftIds) ? nftIds : []).map(String).filter(isKnownNftId)));
+  const out = {};
+  if (!ids.length) return out;
+  const { rows } = await query(
+    'SELECT nft_id, owner_id, owner_name, updated_at FROM nft_ownership WHERE nft_id = ANY($1::text[])',
+    [ids],
+  );
+  const known = new Map(rows.map((r) => [r.nft_id, r]));
+  for (const id of ids) {
+    const row = known.get(id);
+    if (row) { out[id] = { id: row.owner_id, name: row.owner_name, since: row.updated_at.toISOString(), transferred: true }; continue; }
+    const g = genesisOwner(id);
+    if (g) out[id] = { id: g.id, name: g.name, since: null, transferred: false };
+  }
+  return out;
+};
+
+/**
+ * NFT, которые сейчас реально принадлежат настоящему профилю (для
+ * показа в своём/чужом профиле). Подарки, у которых ещё нет строки в
+ * nft_ownership, здесь не участвуют — их «владелец по рождению» либо
+ * демонстрационный аккаунт, либо ещё никем не заявлен, и в профиль
+ * реального человека он не попадёт, пока подарок ему не подарят.
+ */
+export const ownedByProfile = async (profileId) => {
+  const { rows } = await query(
+    `SELECT nft_id, updated_at FROM nft_ownership WHERE owner_id = $1 ORDER BY updated_at DESC`,
+    [profileId],
+  );
+  return rows.map((r) => ({ nftId: r.nft_id, since: r.updated_at.toISOString() }));
+};
+
+/** То же самое, но с проверкой видимости (используется для чужого профиля). */
+export const publicOwnedBy = async (viewerId, targetId) => {
+  if (viewerId !== targetId) {
+    const priv = await getPrivacy(targetId);
+    if (priv.profileVisibility?.showGifts === false) return { hidden: true, items: [] };
+  }
+  return { hidden: false, items: await ownedByProfile(targetId) };
+};
+
+/** Полная неизменяемая история подарка, от рождения до сегодня. */
+export const provenanceOf = async (nftId) => {
+  if (!isKnownNftId(nftId)) return null;
+  await (async () => {
+    const client = await pool.connect();
+    try { await client.query('BEGIN'); await materializeGenesis(client, nftId); await client.query('COMMIT'); }
+    catch (err) { await client.query('ROLLBACK'); throw err; }
+    finally { client.release(); }
+  })();
+  const { rows } = await query(
+    `SELECT id, type, from_id, from_name, to_id, to_name, operation_id, source, at
+       FROM nft_provenance WHERE nft_id = $1 ORDER BY at ASC`,
+    [nftId],
+  );
+  return rows.map((r) => ({
+    id: r.id, type: r.type, fromId: r.from_id, fromName: r.from_name,
+    toId: r.to_id, toName: r.to_name, operationId: r.operation_id,
+    source: r.source, at: r.at.toISOString(),
+  }));
+};
+
+/**
+ * Передача подарка от текущего владельца к другому реальному профилю.
+ *
+ * Блокировка по nftId сериализует все одновременные попытки передать
+ * ОДИН И ТОТ ЖЕ подарок: вторая заявка дожидается первой и видит уже
+ * нового владельца, поэтому «два одновременных перевода одного NFT»
+ * не может дать двух победителей — либо `not_owner`, либо успех, и
+ * только у одного из двух запросов.
+ */
+export const transferNft = async (senderId, nftId, recipientId, source = 'gift') => {
+  if (!isKnownNftId(nftId)) return { error: 'not_found' };
+  const to = String(recipientId ?? '');
+  if (!to) return { error: 'invalid_recipient' };
+  if (to === senderId) return { error: 'self_transfer' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`nft:${nftId}`]);
+
+    const { rows: rp } = await client.query('SELECT id, name FROM profiles WHERE id = $1', [to]);
+    if (!rp[0]) { await client.query('ROLLBACK'); return { error: 'recipient_not_found' }; }
+
+    const current = await materializeGenesis(client, nftId);
+    if (!current) { await client.query('ROLLBACK'); return { error: 'not_found' }; }
+    if (current.owner_id !== senderId) { await client.query('ROLLBACK'); return { error: 'not_owner' }; }
+
+    await client.query(
+      `UPDATE nft_ownership SET owner_id = $2, owner_name = $3, updated_at = now() WHERE nft_id = $1`,
+      [nftId, to, rp[0].name],
+    );
+    const opId = `transfer-${generateId()}`;
+    await client.query(
+      `INSERT INTO nft_provenance (id, nft_id, type, from_id, from_name, to_id, to_name, operation_id, source)
+       VALUES ($1,$2,'transfer',$3,$4,$5,$6,$7,$8)`,
+      [`nprov-${generateId()}`, nftId, senderId, current.owner_name, to, rp[0].name, opId, String(source).slice(0, 32)],
+    );
+    await client.query('COMMIT');
+    await notifyGift(to, 'nft_transfer', '🖼️ Вам подарили NFT', `Вам передали коллекционный подарок «${nftId}»`, nftId);
+    return { ok: true, nftId, ownerId: to, ownerName: rp[0].name, operationId: opId };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};

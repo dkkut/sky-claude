@@ -23,6 +23,14 @@ import { getPrivacy, isContact } from './privacy.mjs';
 /** Максимум профилей в одном Sky ID. Дублируется триггером в БД. */
 export const MAX_PROFILES = 2;
 
+/**
+ * Цены подписки Prime в рублях по сроку — единственная таблица на весь
+ * сервер (самостоятельная покупка, routes/skyid.mjs, и подарок Prime,
+ * primegifts.mjs, читают её отсюда). Присланную клиентом цену никто не
+ * читает нигде: её всегда считает сервер по этой таблице.
+ */
+export const PRIME_PRICES = { 30: 400, 90: 1090, 180: 2090, 365: 3790, 730: 6990 };
+
 /* ─── Представление наружу ─────────────────────────────────────────────── */
 
 const toSkyId = (row) => row && ({
@@ -576,18 +584,46 @@ export const hasPrime = async (profileId) => {
   return rows[0]?.ok === true;
 };
 
-export const grantPrime = async (skyId, profileId, plan, days) => {
+/**
+ * `additive: true` не заменяет действующую подписку, а прибавляет
+ * дни к её остатку — для подарка Prime: если у получателя Prime уже
+ * активен, подарок должен продлить срок, а не обнулить то, что уже
+ * было оплачено. Без этого флага (все прежние вызывающие — админ-
+ * начисление, награда мероприятия, самостоятельная покупка) поведение
+ * не меняется: старая подписка истекает, новая считает от «сейчас».
+ */
+export const grantPrime = async (skyId, profileId, plan, days, opts = {}) => {
+  const additive = opts?.additive === true;
   const owned = await getProfileOfSkyId(skyId, profileId);
   if (!owned) return { error: 'not_found' };
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    let base = Date.now();
+    if (additive) {
+      const { rows: activeRows } = await client.query(
+        `SELECT expires_at FROM prime_subscriptions
+          WHERE profile_id = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > now())
+          FOR UPDATE`,
+        [profileId],
+      );
+      if (activeRows[0] && activeRows[0].expires_at === null) {
+        // Уже бессрочный Prime — добавлять дни некуда, но подарок не пропадает:
+        // подписка остаётся такой же бессрочной.
+        await client.query('COMMIT');
+        return { profile: await getProfileOfSkyId(skyId, profileId) };
+      }
+      const currentExpiry = activeRows[0]?.expires_at;
+      if (currentExpiry && currentExpiry.getTime() > base) base = currentExpiry.getTime();
+    }
+
     await client.query(
       `UPDATE prime_subscriptions SET status = 'expired' WHERE profile_id = $1 AND status = 'active'`,
       [profileId],
     );
-    const expires = days ? new Date(Date.now() + days * 86400_000) : null;
+    const expires = days ? new Date(base + days * 86400_000) : null;
     await client.query(
       `INSERT INTO prime_subscriptions (id, profile_id, status, plan, expires_at)
        VALUES ($1,$2,'active',$3,$4)`,

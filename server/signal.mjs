@@ -1472,6 +1472,16 @@ export const pushNewMessage = (userIds, chatId, message) => {
   broadcast(userIds, { type: 'new-message', payload: { chatId, message } });
 };
 
+/**
+ * Sky Gifts: уведомление о подарке/Prime/передаче NFT, когда событие
+ * не приходит собственным сообщением в чат (обычный подарок «в чат»
+ * и подарок Prime и так поднимают уведомление через новое сообщение —
+ * см. server/giftnotify.mjs).
+ */
+export const pushGiftNotification = (userIds, note) => {
+  broadcast(Array.isArray(userIds) ? userIds : [], { type: 'gift-notification', payload: note });
+};
+
 /** Тем же путём уходит новоиспечённый чат с ботом. */
 export const pushChatCreated = async (userIds, chatId) => {
   await sendChatToEach(chatId, userIds);

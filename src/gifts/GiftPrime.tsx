@@ -1,14 +1,12 @@
 /* ===============================================================
    GIFT PRIME  -  Подарить подписку Sky Prime с праздничным фоном
 =============================================================== */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Crown, Check, X, Star, Heart, Gift } from 'lucide-react';
-import { useIsMobile } from '@/interface/mobile/useIsMobile';
+import { Crown, Check, X } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
-import { useMessengerStore } from '@/messenger/store';
-import { broadcast } from '@/messenger/socket';
 import { useMoney } from '@/wallet/store';
+import { apiPrimeGiftPrices, apiSendPrimeGift, type PrimeTier } from './giftsApi';
 
 export interface PrimeGiftTheme {
   id:       string;
@@ -70,12 +68,14 @@ export const PRIME_GIFT_THEMES: PrimeGiftTheme[] = [
   },
 ];
 
-const PRIME_DURATIONS = [
-  { months:1,  price:299,  label:'1 месяц',   popular:false },
-  { months:3,  price:799,  label:'3 месяца',  popular:true  },
-  { months:6,  price:1499, label:'6 месяцев', popular:false },
-  { months:12, price:2499, label:'1 год',      popular:false },
-];
+/** Подпись срока по числу дней — те же слова, что и раньше, но без
+ * округления «дни → месяцы»: тарифы теперь приходят с сервера
+ * (apiPrimeGiftPrices), и подгонять их обратно под месяцы незачем. */
+const durationLabel = (days: number) => {
+  if (days % 365 === 0) return days === 365 ? '1 год' : `${days / 365} года`;
+  if (days % 30 === 0) { const m = days / 30; return `${m} ${m === 1 ? 'месяц' : m < 5 ? 'месяца' : 'месяцев'}`; }
+  return `${days} дн.`;
+};
 
 /* -- Confetti particle -------------------------------------- */
 const Confetti = ({ theme }: { theme: PrimeGiftTheme }) => (
@@ -93,8 +93,8 @@ const Confetti = ({ theme }: { theme: PrimeGiftTheme }) => (
 );
 
 /* -- Gift card preview -------------------------------------- */
-const PrimeGiftCard = ({ theme, toName, months, fromName, message }: {
-  theme: PrimeGiftTheme; toName: string; months: number; fromName: string; message: string;
+const PrimeGiftCard = ({ theme, toName, days, fromName, message }: {
+  theme: PrimeGiftTheme; toName: string; days: number; fromName: string; message: string;
 }) => (
   <div className="relative overflow-hidden rounded-3xl" style={{ background:theme.bg, minHeight:220 }}>
     <Confetti theme={theme}/>
@@ -114,7 +114,7 @@ const PrimeGiftCard = ({ theme, toName, months, fromName, message }: {
         <Crown size={16} style={{ color:theme.textColor }}/>
       </div>
       <p className="text-sm font-semibold mb-1" style={{ color:'rgba(255,255,255,0.7)' }}>
-        {months} {months===1?'месяц':months<5?'месяца':'месяцев'} подписки
+        {durationLabel(days)} подписки
       </p>
       <p className="text-xs" style={{ color:'rgba(255,255,255,0.5)' }}>для {toName || 'Получателя'}</p>
       {message && (
@@ -134,61 +134,51 @@ interface GiftPrimeProps {
 }
 
 export const GiftPrimeModal = ({ toUserId, toName, onClose }: GiftPrimeProps) => {
-  const { accounts, currentUserId, grantPrime } = useAuthStore();
-  const { spend, getBalance }  = useMoney();
+  const { accounts, currentUserId } = useAuthStore();
+  const { getBalance }  = useMoney();
   const me = accounts.find(a => a.id === currentUserId);
 
   const [step,     setStep]     = useState<'theme'|'duration'|'message'|'confirm'|'done'>('theme');
   const [theme,    setTheme]    = useState(PRIME_GIFT_THEMES[0]);
-  const [duration, setDuration] = useState(PRIME_DURATIONS[1]);
+  // Тарифы — только с сервера (apiPrimeGiftPrices → PRIME_PRICES в
+  // server/skyid.mjs): цену и доступные сроки клиент не придумывает.
+  const [tiers,    setTiers]    = useState<PrimeTier[]>([]);
+  const [duration, setDuration] = useState<PrimeTier | null>(null);
   const [message,  setMessage]  = useState('');
   const [err,      setErr]      = useState('');
+  const [sending,  setSending]  = useState(false);
+
+  useEffect(() => {
+    apiPrimeGiftPrices().then((list) => {
+      setTiers(list);
+      setDuration((cur) => cur ?? list[0] ?? null);
+    });
+  }, []);
 
   const balance = getBalance(currentUserId ?? '');
 
-  const handleSend = () => {
+  const handleSend = async () => {
+    if (!duration) return;
     setErr('');
-    if (balance < duration.price) { setErr(`Недостаточно средств. Нужно ${duration.price} ₽`); return; }
-    const ok = spend(currentUserId!, duration.price, 'market', `Подарок Prime → ${toName}`);
-    if (!ok) { setErr('Ошибка оплаты'); return; }
-    grantPrime(toUserId, duration.months * 30);
-    // Send to chat — setActiveChat first so sendMessage uses correct chatId
-    try {
-      const msStore = useMessengerStore.getState();
-      const chat = msStore.chats.find((ch: any) =>
-        ch.type === 'direct' &&
-        Array.isArray(ch.members) &&
-        ch.members.includes(currentUserId!) &&
-        ch.members.includes(toUserId)
-      );
-      if (chat) {
-        const months = duration.months;
-        const label = months === 1 ? 'месяц' : months < 5 ? 'месяца' : 'месяцев';
-        const text = `${theme.emoji} Я подарил(а) тебе Sky Prime на ${months} ${label}!${message ? ' «' + message + '»' : ''}`;
-        // Must set active chat before calling sendMessage
-        msStore.setActiveChat(chat.id);
-          // Send as prime_gift card (renders as animated gift card in chat)
-        const primeGiftPayload = JSON.stringify({
-          type:      'prime_gift',
-          themeId:   theme.id,
-          themeBg:   theme.bg,
-          themeEmoji:theme.emoji,
-          themeTextColor: theme.textColor,
-          months:    duration.months,
-          durationLabel: duration.label,
-          price:     duration.price,
-          message,
-          fromName:  me?.name ?? '',
-          toName,
-        });
-        const msg = msStore.sendMessage({ kind: 'prime_gift', text: primeGiftPayload });
-        if (msg) {
-          try { broadcast.message(msg); } catch {}
-        }
-      }
-    } catch (e) { console.error('[GiftPrime] sendMessage failed', e); }
+    setSending(true);
+    const r = await apiSendPrimeGift({
+      recipientId: toUserId, days: duration.days, theme: theme.id, message,
+    });
+    setSending(false);
+    if (!r.ok) { setErr(r.reason); return; }
     setStep('done');
   };
+
+  if (!duration) {
+    return (
+      <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+        className="fixed inset-0 z-[400] flex items-center justify-center"
+        style={{ background:'rgba(0,0,0,0.8)', backdropFilter:'blur(12px)' }} onClick={onClose}>
+        <div className="h-8 w-8 rounded-full border-2 animate-spin"
+          style={{ borderColor:'rgba(245,158,11,0.25)', borderTopColor:'var(--amber)' }}/>
+      </motion.div>
+    );
+  }
 
   return (
     <AnimatePresence>
@@ -288,7 +278,7 @@ export const GiftPrimeModal = ({ toUserId, toName, onClose }: GiftPrimeProps) =>
                       className="rounded-full px-4 py-1 mb-3"
                       style={{ background: 'rgba(255,255,255,0.13)', border: '1px solid rgba(255,255,255,0.22)', backdropFilter: 'blur(8px)' }}>
                       <p className="text-[13px] font-bold" style={{ color: theme.textColor }}>
-                        {duration.label} · {duration.price} ₽
+                        {durationLabel(duration.days)} · {duration.price} ₽
                       </p>
                     </motion.div>
 
@@ -343,7 +333,7 @@ export const GiftPrimeModal = ({ toUserId, toName, onClose }: GiftPrimeProps) =>
                   Подарок отправлен! 🎉
                 </motion.p>
                 <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.42)' }}>
-                  {toName} получил Sky Prime · {duration.label}
+                  {toName} получил Sky Prime · {durationLabel(duration.days)}
                 </p>
               </motion.div>
 
@@ -417,7 +407,7 @@ export const GiftPrimeModal = ({ toUserId, toName, onClose }: GiftPrimeProps) =>
                         </motion.button>
                       ))}
                     </div>
-                    <PrimeGiftCard theme={theme} toName={toName} months={duration.months} fromName={me?.name??''} message=""/>
+                    <PrimeGiftCard theme={theme} toName={toName} days={duration.days} fromName={me?.name??''} message=""/>
                     <motion.button whileTap={{ scale:.97 }} type="button" onClick={() => setStep('duration')}
                       className="w-full rounded-2xl py-4 text-sm font-bold text-white"
                       style={{ background:'linear-gradient(135deg,#f59e0b,#d97706)' }}>
@@ -426,30 +416,26 @@ export const GiftPrimeModal = ({ toUserId, toName, onClose }: GiftPrimeProps) =>
                   </>
                 )}
 
-                {/* STEP 2: Duration */}
+                {/* STEP 2: Duration — тарифы и цены только с сервера */}
                 {step === 'duration' && (
                   <>
                     <p className="text-sm font-bold text-white">Длительность подписки</p>
                     <div className="space-y-2">
-                      {PRIME_DURATIONS.map(d => (
-                        <motion.button key={d.months} type="button" whileTap={{ scale:.98 }}
+                      {tiers.map(d => (
+                        <motion.button key={d.days} type="button" whileTap={{ scale:.98 }}
                           onClick={() => setDuration(d)}
                           className="flex items-center gap-3 w-full rounded-2xl p-4 transition-all"
-                          style={{ background: duration.months===d.months ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.04)',
-                            border:`1.5px solid ${duration.months===d.months?'var(--amber)':'var(--border)'}` }}>
+                          style={{ background: duration.days===d.days ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.04)',
+                            border:`1.5px solid ${duration.days===d.days?'var(--amber)':'var(--border)'}` }}>
                           <div className="grid h-10 w-10 place-items-center rounded-xl shrink-0 text-xl"
                             style={{ background:'rgba(245,158,11,0.15)' }}>
-                            {d.months===12?'👑':d.months===6?'⭐':d.months===3?'✨':'🌟'}
+                            {d.days>=365?'👑':d.days>=90?'⭐':d.days>=30?'✨':'🌟'}
                           </div>
                           <div className="flex-1 text-left">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-bold text-white">{d.label}</p>
-                              {d.popular && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                                style={{ background:'var(--amber)', color:'#000' }}>Популярно</span>}
-                            </div>
+                            <p className="text-sm font-bold text-white">{durationLabel(d.days)}</p>
                           </div>
                           <p className="text-base font-black" style={{ color:'var(--amber)' }}>{d.price} ₽</p>
-                          {duration.months===d.months && <Check size={16} style={{ color:'var(--amber)' }}/>}
+                          {duration.days===d.days && <Check size={16} style={{ color:'var(--amber)' }}/>}
                         </motion.button>
                       ))}
                     </div>
@@ -474,7 +460,7 @@ export const GiftPrimeModal = ({ toUserId, toName, onClose }: GiftPrimeProps) =>
                       className="w-full rounded-2xl px-4 py-3 text-sm outline-none resize-none"
                       style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', color:'var(--t1)' }}/>
                     <p className="text-[10px] text-right" style={{ color:'rgba(255,255,255,0.3)' }}>{message.length}/150</p>
-                    <PrimeGiftCard theme={theme} toName={toName} months={duration.months} fromName={me?.name??''} message={message}/>
+                    <PrimeGiftCard theme={theme} toName={toName} days={duration.days} fromName={me?.name??''} message={message}/>
                     <motion.button whileTap={{ scale:.97 }} type="button" onClick={() => setStep('confirm')}
                       className="w-full rounded-2xl py-4 text-sm font-bold text-white"
                       style={{ background:'linear-gradient(135deg,#f59e0b,#d97706)' }}>
@@ -486,12 +472,12 @@ export const GiftPrimeModal = ({ toUserId, toName, onClose }: GiftPrimeProps) =>
                 {/* STEP 4: Confirm */}
                 {step === 'confirm' && (
                   <>
-                    <PrimeGiftCard theme={theme} toName={toName} months={duration.months} fromName={me?.name??''} message={message}/>
+                    <PrimeGiftCard theme={theme} toName={toName} days={duration.days} fromName={me?.name??''} message={message}/>
                     <div className="rounded-2xl p-4 space-y-2"
                       style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)' }}>
                       {[
                         { l:'Получатель', v:toName },
-                        { l:'Подписка',  v:`Sky Prime ${duration.label}` },
+                        { l:'Подписка',  v:`Sky Prime ${durationLabel(duration.days)}` },
                         { l:'Стоимость', v:`${duration.price} ₽` },
                         { l:'Оформление',v:`${theme.emoji} ${theme.label}` },
                       ].map(({l,v}) => (
@@ -502,11 +488,11 @@ export const GiftPrimeModal = ({ toUserId, toName, onClose }: GiftPrimeProps) =>
                       ))}
                     </div>
                     {err && <p className="text-xs text-center" style={{ color:'var(--red)' }}>{err}</p>}
-                    <motion.button whileTap={{ scale:.97 }} type="button" onClick={handleSend}
+                    <motion.button whileTap={{ scale:.97 }} type="button" onClick={handleSend} disabled={sending}
                       className="flex items-center justify-center gap-2 w-full rounded-2xl py-4 text-base font-black text-black"
                       style={{ background:'linear-gradient(135deg,#fbbf24,#f59e0b,#d97706)',
-                        boxShadow:'0 8px 32px rgba(245,158,11,0.5)' }}>
-                      <Crown size={18}/> Подарить Prime · {duration.price} ₽
+                        boxShadow:'0 8px 32px rgba(245,158,11,0.5)', opacity: sending ? 0.7 : 1 }}>
+                      <Crown size={18}/> {sending ? 'Отправляем…' : `Подарить Prime · ${duration.price} ₽`}
                     </motion.button>
                   </>
                 )}
@@ -517,176 +503,5 @@ export const GiftPrimeModal = ({ toUserId, toName, onClose }: GiftPrimeProps) =>
         </motion.div>
       </motion.div>
     </AnimatePresence>
-  );
-};
-
-/* ══════════════════════════════════════════════════════════════
-   PRIME GIFT BUBBLE  —  рендерится в чате как карточка-сообщение
-   Точь-в-точь как физическая gift card
-══════════════════════════════════════════════════════════════ */
-export interface PrimeGiftData {
-  type:           string;
-  themeId:        string;
-  themeBg:        string;
-  themeEmoji:     string;
-  themeTextColor: string;
-  months:         number;
-  durationLabel:  string;
-  price:          number;
-  message?:       string;
-  fromName:       string;
-  toName:         string;
-}
-
-export const PrimeGiftBubble = ({ data, fromMe }: { data: PrimeGiftData; fromMe: boolean }) => {
-  const [hovered, setHovered] = useState(false);
-  const isMobile = useIsMobile();
-  const [opened,  setOpened]  = useState(false);
-  const tc = data.themeTextColor;
-
-  return (
-    <motion.div
-      initial={{ scale: 0.72, opacity: 0, y: 20 }}
-      animate={{ scale: 1,    opacity: 1, y: 0  }}
-      transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-      className={`flex ${fromMe ? 'justify-end' : 'justify-start'}`}>
-
-      <div style={{ perspective: 700 }}
-        onMouseEnter={() => { if (!isMobile) setHovered(true); }}
-        onMouseLeave={() => { if (!isMobile) setHovered(false); }}>
-
-        <motion.div
-          animate={{
-            rotateY: hovered ? (fromMe ? -12 : 12) : 0,
-            rotateX: hovered ? -6 : 0,
-            scale:   hovered ? 1.04 : 1,
-            y:       hovered ? -5 : 0,
-          }}
-          transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-          style={{ transformStyle: 'preserve-3d' }}>
-
-          {/* ── Card ─────────────────────────────────────── */}
-          <div className="relative overflow-hidden"
-            style={{
-              width: 220,
-              borderRadius: 24,
-              background: data.themeBg,
-              border: '1.5px solid rgba(255,255,255,0.18)',
-              boxShadow: hovered
-                ? `0 28px 70px rgba(0,0,0,0.65), 0 0 48px ${tc}38, inset 0 1px 0 rgba(255,255,255,0.18)`
-                : `0 12px 40px rgba(0,0,0,0.5), 0 0 28px ${tc}20, inset 0 1px 0 rgba(255,255,255,0.1)`,
-              cursor: 'pointer',
-            }}
-            onClick={() => setOpened(o => !o)}>
-
-            {/* Shimmer sweep */}
-            <motion.div className="absolute inset-0 pointer-events-none"
-              style={{
-                background: 'linear-gradient(108deg,transparent 20%,rgba(255,255,255,0.15) 50%,transparent 80%)',
-                backgroundSize: '240% 100%',
-              }}
-              animate={{ backgroundPosition: ['240% 0','-240% 0'] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut', repeatDelay: 1 }}
-            />
-
-            {/* Top gloss */}
-            <div className="absolute top-0 left-0 right-0 pointer-events-none"
-              style={{ height: '45%', background: 'linear-gradient(180deg,rgba(255,255,255,0.12),transparent)', borderRadius: '24px 24px 0 0' }}/>
-
-            {/* Floating sparkles */}
-            {['✦','✧','✦','✧'].map((s, i) => (
-              <motion.span key={i}
-                className="absolute pointer-events-none select-none"
-                style={{ fontSize: 9 + (i % 2) * 3, top: `${10 + i * 20}%`, left: `${3 + i * 24}%`, color: tc }}
-                animate={{ opacity: [0.1, 0.65, 0.1], scale: [0.7, 1.3, 0.7] }}
-                transition={{ duration: 1.6 + i * 0.25, repeat: Infinity, delay: i * 0.3 }}>
-                {s}
-              </motion.span>
-            ))}
-
-            {/* Content */}
-            <div className="relative z-10 px-5 pt-5 pb-4 text-center">
-
-              {/* Crown emoji */}
-              <motion.div
-                animate={{ y: [0, -7, 0], rotate: [-3, 3, -3], scale: [1, 1.06, 1] }}
-                transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-                style={{ fontSize: 40, lineHeight: 1, marginBottom: 8, filter: `drop-shadow(0 6px 14px ${tc}60)` }}>
-                👑
-              </motion.div>
-
-              {/* SKY PRIME */}
-              <div className="flex items-center justify-center gap-1.5 mb-1">
-                <Crown size={11} style={{ color: tc }}/>
-                <p className="text-base font-black tracking-wide"
-                  style={{ color: '#fff', textShadow: `0 0 18px ${tc}88` }}>
-                  Sky Prime
-                </p>
-                <Crown size={11} style={{ color: tc }}/>
-              </div>
-
-              {/* Duration pill */}
-              <div className="inline-flex items-center rounded-full px-3 py-0.5 mb-3"
-                style={{ background: 'rgba(255,255,255,0.13)', border: '1px solid rgba(255,255,255,0.2)' }}>
-                <p className="text-[11px] font-bold" style={{ color: tc }}>
-                  {data.durationLabel}
-                </p>
-              </div>
-
-              {/* Divider */}
-              <div className="h-px mx-2 mb-3" style={{ background: 'rgba(255,255,255,0.1)' }}/>
-
-              {/* To / from */}
-              <div className="rounded-xl px-3 py-2.5 mb-2"
-                style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <p className="text-[9px] uppercase tracking-[0.15em] font-bold mb-0.5"
-                  style={{ color: 'rgba(255,255,255,0.38)' }}>
-                  {fromMe ? 'Получатель' : 'Отправитель'}
-                </p>
-                <p className="text-sm font-black" style={{ color: '#fff' }}>
-                  {fromMe ? data.toName : data.fromName}
-                </p>
-              </div>
-
-              {/* Message — revealed on tap */}
-              <motion.div
-                initial={false}
-                animate={{ height: opened && data.message ? 'auto' : 0, opacity: opened && data.message ? 1 : 0 }}
-                transition={{ duration: 0.22 }}
-                style={{ overflow: 'hidden' }}>
-                {data.message && (
-                  <p className="text-[11px] italic leading-relaxed mt-1 mb-2 px-1"
-                    style={{ color: 'rgba(255,255,255,0.6)' }}>
-                    «{data.message}»
-                  </p>
-                )}
-              </motion.div>
-
-              {/* Tap hint */}
-              {data.message && !opened && (
-                <p className="text-[9px] mt-1" style={{ color: 'rgba(255,255,255,0.28)' }}>
-                  нажми, чтобы читать
-                </p>
-              )}
-
-              {/* Feature pills */}
-              <div className="flex flex-wrap justify-center gap-1 mt-2">
-                {['🚀 Без рекламы','⭐ Badge','🎬 HD'].map(f => (
-                  <span key={f} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full"
-                    style={{ background: 'rgba(255,255,255,0.09)', color: tc, border: '1px solid rgba(255,255,255,0.09)' }}>
-                    {f}
-                  </span>
-                ))}
-              </div>
-
-              {/* From line */}
-              <p className="text-[9px] mt-2.5" style={{ color: 'rgba(255,255,255,0.28)' }}>
-                {fromMe ? `от ${data.fromName}` : `для ${data.toName}`}
-              </p>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    </motion.div>
   );
 };

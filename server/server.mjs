@@ -42,6 +42,8 @@ import { pvzRoutes } from './routes/pvz.mjs';
 import { pvzShipmentRoutes } from './routes/pvzshipments.mjs';
 import { campaignRoutes } from './routes/campaigns.mjs';
 import { sweepOrphanCampaignCovers } from './campaigns.mjs';
+import { giftRoutes } from './routes/gifts.mjs';
+import { sweepOrphanGiftMedia } from './gifts.mjs';
 import { mapsRoutes } from './routes/maps.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
@@ -69,7 +71,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
-                pvzRoutes, pvzShipmentRoutes, campaignRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];
+                pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -258,6 +260,11 @@ const start = async () => {
       if (posters) console.log(`[tickets] убрано осиротевших афиш: ${posters}`);
       const campaignCovers = await sweepOrphanCampaignCovers();
       if (campaignCovers) console.log(`[campaigns] убрано осиротевших обложек: ${campaignCovers}`);
+      // Старая версия обложки/видео подарка или карточки Prime, на
+      // которую больше никто не ссылается (каталог её сменил, а ни
+      // один уже отправленный подарок к ней не привязан).
+      const giftMedia = await sweepOrphanGiftMedia();
+      if (giftMedia.removed) console.log(`[gifts] убрано осиротевших версий медиа: ${giftMedia.removed}`);
       // Файл, отданный Sky AI на разбор, живёт до разбора и не дольше.
       // Человек закрыл вкладку между загрузкой и разбором — держать
       // его документ сутками незачем.

@@ -28,9 +28,9 @@ import { LiquidCursor, ThemePicker } from './LiquidCursor';
 import { useChatTheme } from './themes';
 import { useSettings } from '@/settings/store';
 import { apiSupportStatus } from '@/moderation/supportApi';
-import { GiftModal, GiftBubble, GiftMarket } from '@/gifts/SkyGifts';
-import { PrimeGiftBubble }                  from '@/gifts/GiftPrime';
+import { GiftModal, GiftMarket } from '@/gifts/SkyGifts';
 import { GiftPrimeModal } from '@/gifts/GiftPrime';
+import { GiftMessageCard, PrimeGiftMessageCard } from '@/gifts/GiftMessageCards';
 import { AiSummarizeButton, AiTranscribeButton, AiVideoNoteButton, AiSuggestReplies, AiTranslateButton } from '@/ai/SkyAI';
 // Правка черновика — запрос к серверу, а не экранный элемент, поэтому
 // живёт в слое вызовов Sky AI.
@@ -53,7 +53,6 @@ const BannerMotif = ({ motif, accent, opacity }: { motif: MotifName; accent: str
     </div>
   );
 };
-import { useGiftStore, type SentGift } from '@/gifts/store';
 import { HashInlineMenu, BotChatOverlay, BotsBrowser, InlineConfirm } from '@/bots/SkyBots';
 
 /* -- constants ---------------------------------------------------- */
@@ -617,18 +616,16 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
               return <PetBubble petId={d.petId} mood={d.mood} sound={d.sound} petName={PETS.find(p=>p.id===d.petId)?.name??''} petColor={PETS.find(p=>p.id===d.petId)?.color??theme.accent} />;
             } catch { return null; }
           })()}
-          {msg.kind === 'gift' && (() => {
-            try {
-              const d = JSON.parse(msg.text);
-              return <GiftBubble gift={d} fromMe={fromMe}/>;
-            } catch { return null; }
-          })()}
-          {msg.kind === 'prime_gift' && (() => {
-            try {
-              const d = JSON.parse(msg.text);
-              return <PrimeGiftBubble data={d} fromMe={fromMe}/>;
-            } catch { return null; }
-          })()}
+          {msg.kind === 'gift' && (
+            msg.giftInstanceId
+              ? <GiftMessageCard instanceId={msg.giftInstanceId} fromMe={fromMe}/>
+              : null
+          )}
+          {msg.kind === 'prime_gift' && (
+            msg.primeGiftInstanceId
+              ? <PrimeGiftMessageCard instanceId={msg.primeGiftInstanceId} fromMe={fromMe}/>
+              : null
+          )}
           {msg.kind === 'text' && !msg.deleted && (() => {
             if (msg.spoiler) return <SpoilerText text={msg.text} color={theme.otherText}/>;
             if (msg.once)    return <OnceViewText msg={msg} fromMe={fromMe} color={theme.otherText}/>;
@@ -2435,11 +2432,10 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
             toUserId={toId}
             toName={toAcc?.name ?? chat.name}
             onClose={() => setShowGifts(false)}
-            onSent={(gift) => {
-              const m = sendMessage({ text: JSON.stringify(gift), kind: 'gift' });
-              if (m) broadcast.message(m);
-              setShowGifts(false);
-            }}
+            // Доставка в чат теперь идёт от сервера (server/gifts.mjs
+            // сам создаёт сообщение и рассылает его по сокету) — второй,
+            // клиентской отправки того же подарка здесь больше не нужно.
+            onSent={() => setShowGifts(false)}
           />
         );
       })()}

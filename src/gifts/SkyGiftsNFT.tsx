@@ -1,10 +1,11 @@
 /* ======================================================================
    SKY GIFTS NFT  —  Root shell
 ====================================================================== */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Home as HomeIcon, ShoppingBag, User, BarChart3, Shield } from 'lucide-react';
 import { C } from '@/marketplace/SkyMarket';
 import { useAuthStore } from '@/core/auth/store';
+import { useNftGiftsStore } from './nftStore';
 import { GiftsHome } from './Home';
 import { Marketplace } from './Marketplace';
 import { GiftDetail } from './GiftDetail';
@@ -31,6 +32,12 @@ export const SkyGiftsNFT = () => {
   const [notifsOpen, setNotifsOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [securityOpen, setSecurityOpen] = useState(false);
+
+  // Настоящее владение — с сервера, поверх детерминированного расчёта
+  // «по рождению»: без этого передача, сделанная в другом сеансе, была
+  // бы не видна, пока кто-то не подарит тот же предмет ещё раз локально.
+  const syncOwnership = useNftGiftsStore(s => s.syncOwnership);
+  useEffect(() => { syncOwnership(); }, [syncOwnership]);
 
   const TABS: { key: Tab; label: string; icon: any }[] = [
     { key:'home', label:'Главная', icon:HomeIcon },

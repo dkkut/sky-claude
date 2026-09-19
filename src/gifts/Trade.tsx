@@ -186,8 +186,20 @@ const GiftFlow = ({ giftId, onDone }: { giftId: string; onDone: () => void }) =>
   const gift = giftById(giftId);
   const [q, setQ] = useState('');
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState('');
   const results = q.trim() ? findUsersByUsername(q.trim()).slice(0,8) : [];
   if (!gift) return null;
+
+  const handleGift = async (toId: string, toName: string) => {
+    setErr('');
+    setSending(true);
+    const r = await giftToUser(giftId, toId, toName);
+    setSending(false);
+    if (!r.ok) { setErr(r.reason ?? 'Не удалось передать подарок'); return; }
+    setSent(true);
+    setTimeout(onDone, 1400);
+  };
 
   if (sent) {
     return (
@@ -208,14 +220,15 @@ const GiftFlow = ({ giftId, onDone }: { giftId: string; onDone: () => void }) =>
       </div>
       <div className="space-y-2">
         {results.map(a => (
-          <button key={a.id} type="button" onClick={() => { giftToUser(giftId, a.id, a.name); setSent(true); setTimeout(onDone, 1400); }}
-            className="w-full flex items-center gap-3 rounded-xl p-3" style={{ background: C.l1, border:`1px solid ${C.brd}` }}>
+          <button key={a.id} type="button" disabled={sending} onClick={() => handleGift(a.id, a.name)}
+            className="w-full flex items-center gap-3 rounded-xl p-3 disabled:opacity-50" style={{ background: C.l1, border:`1px solid ${C.brd}` }}>
             <span className="grid h-9 w-9 place-items-center rounded-xl text-xs font-bold" style={{ background: C.l2, color: C.t1 }}>{a.name[0]}</span>
             <div className="flex-1 text-left"><p className="text-xs font-semibold" style={{ color: C.t1 }}>{a.name}</p><p className="text-[10px]" style={{ color: C.t3 }}>@{a.username}</p></div>
             <Send size={14} style={{ color: C.acc }}/>
           </button>
         ))}
       </div>
+      {err && <p className="text-xs text-center" style={{ color: 'var(--red)' }}>{err}</p>}
     </div>
   );
 };
