@@ -28,6 +28,7 @@ import {
 } from './pvzShipmentsApi';
 import { apiOrderQr } from './pvzStaffApi';
 import { qrDataUri } from '@/shared/qr';
+import { ReportProblemButton } from './pvzSupport';
 
 const METHOD_LABEL: Record<ShipmentMethod, string> = {
   seller_self: 'Везу сам', carrier: 'Службой доставки', other: 'Другое',
@@ -163,7 +164,13 @@ const ShipmentDetailView = ({ shipmentId, onBack, onChanged }:
       </div>
 
       {missing.length > 0 && (
-        <Alert kind="error" text={`Не получены ПВЗ: ${missing.map((i) => i.title).join(', ')}. Свяжитесь с покупателями или откройте спор по заказу.`} />
+        <div className="space-y-2">
+          <Alert kind="error" text={`Не получены ПВЗ: ${missing.map((i) => i.title).join(', ')}. Свяжитесь с покупателями или откройте спор по заказу.`} />
+          <ReportProblemButton subject="ПВЗ не получил часть поставки" label="Сообщить в поддержку" context={{
+            'Поставка': shipment.id, 'Точка': shipment.pvzTitle,
+            'Не получены заказы': missing.map((i) => `${i.orderId} (${i.title})`).join('; '),
+          }} />
+        </div>
       )}
       {error && <Alert text={error} />}
 

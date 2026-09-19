@@ -33,9 +33,10 @@ import {
   apiPvzPendingShipments, apiPvzOpenShipmentByQr, apiPvzScanOrder,
   apiPvzManualReceive, apiPvzConfirmReceipt, apiPvzUnmatched, apiPvzResolveUnmatched,
   apiPvzShipmentDetail,
-  type PvzShipment, type PvzShipmentDetail,
+  type PvzShipment, type PvzShipmentDetail, type PvzUnmatchedScan,
 } from './pvzShipmentsApi';
 import { apiPvzVideoReview, apiUploadPvzVideo, videoUrl, type VideoReview } from './logistics/sharedApi';
+import { ReportProblemButton } from './pvzSupport';
 
 const ROLE_RANK: Record<PvzRole, number> = { read_only: 0, employee: 1, manager: 2, owner: 3 };
 const ROLE_LABEL: Record<PvzRole, string> = {
@@ -184,7 +185,7 @@ const ReceivingTab = ({ pvzId, myRole }: { pvzId: string; myRole: PvzRole }) => 
   const [qrInput, setQrInput] = useState('');
   const [scanInput, setScanInput] = useState('');
   const [manualOrderId, setManualOrderId] = useState('');
-  const [unmatched, setUnmatched] = useState<{ id: string; reason: string; orderId: string | null }[]>([]);
+  const [unmatched, setUnmatched] = useState<PvzUnmatchedScan[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; kind: 'error' | 'info' } | null>(null);
 
@@ -340,10 +341,14 @@ const ReceivingTab = ({ pvzId, myRole }: { pvzId: string; myRole: PvzRole }) => 
           <p className="pt-2 text-[11px] font-semibold" style={{ color: C.red }}>Разбор несовпадений · {unmatched.length}</p>
           {unmatched.map((u) => (
             <div key={u.id} className="flex items-center justify-between rounded-xl p-2.5" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-[11px]" style={{ color: C.t1 }}>{u.reason}</p>
                 {u.orderId && <p className="truncate text-[10px]" style={{ color: C.t3 }}>{u.orderId}</p>}
               </div>
+              <ReportProblemButton subject="Несовпадение при сканировании в ПВЗ" label="В поддержку" context={{
+                'Пункт выдачи': pvzId, 'Поставка': u.shipmentId, 'Заказ (если распознан)': u.orderId,
+                'Причина отказа': u.reason, 'Когда': u.createdAt,
+              }} />
               <button type="button" onClick={() => resolve(u.id)}
                 className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>Разобрано</button>
             </div>
@@ -584,7 +589,12 @@ const CommissionsTab = () => {
               {' '}· {c.percent}%
             </span>
             {c.status === 'accrued' && (
-              <button type="button" onClick={() => dispute(c.id)} className="text-[10px] font-bold" style={{ color: C.red }}>Оспорить</button>
+              <div className="flex items-center gap-2">
+                <ReportProblemButton subject="Спорное начисление комиссии ПВЗ" label="В поддержку" context={{
+                  'Начисление': c.id, 'Заказ': c.orderId, 'Точка': c.pvzTitle, 'Сумма': `${fmt(c.amountKop / 100)} (${c.percent}%)`,
+                }} />
+                <button type="button" onClick={() => dispute(c.id)} className="text-[10px] font-bold" style={{ color: C.red }}>Оспорить</button>
+              </div>
             )}
           </div>
         </div>
