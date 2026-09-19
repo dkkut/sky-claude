@@ -385,6 +385,13 @@ export const manualReceiveOrder = async (pvzId, actorId, shipmentId, orderId) =>
     if (!item) { await client.query('ROLLBACK'); return { error: 'not_in_shipment' }; }
     if (item.status === 'received') { await client.query('ROLLBACK'); return { error: 'already_received' }; }
 
+    const { rows: orderRows } = await client.query(
+      `SELECT status FROM market_orders WHERE id = $1 FOR UPDATE`, [oid]);
+    if (['completed', 'cancelled', 'buyer_received'].includes(orderRows[0]?.status)) {
+      await client.query('ROLLBACK');
+      return { error: 'order_closed' };
+    }
+
     await client.query(
       `UPDATE market_pvz_shipment_items SET status = 'received', scanned_at = now(), scanned_by = $2 WHERE id = $1`,
       [item.id, actorId]);
