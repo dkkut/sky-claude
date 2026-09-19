@@ -38,6 +38,7 @@ import { togetherRoutes } from './routes/together.mjs';
 import { marketRoutes } from './routes/market.mjs';
 import { logisticsRoutes } from './routes/logistics.mjs';
 import { sharedWarehouseRoutes } from './routes/sharedwh.mjs';
+import { pvzRoutes } from './routes/pvz.mjs';
 import { mapsRoutes } from './routes/maps.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
@@ -65,7 +66,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
-                sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];
+                pvzRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.

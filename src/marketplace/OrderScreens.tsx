@@ -16,8 +16,9 @@ import { apiCall } from '@/core/auth/api';
 import {
   ArrowLeft, Send, Truck, Package, MapPin, Clock, ShieldAlert,
   CheckCircle2, XCircle, Store, MessageSquare, Star, Warehouse, User,
-  Wallet, Copy, Boxes,
+  Wallet, Copy, Boxes, Video, KeyRound,
 } from 'lucide-react';
+import { apiPvzPublicVideo, videoUrl } from './logistics/sharedApi';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert,
 } from './ui';
@@ -311,6 +312,45 @@ const SupplyPicker = ({ order, onDone }: { order: Order; onDone: () => void }) =
   );
 };
 
+/* ── Видеообзор пункта выдачи ─────────────────────────────────────────
+   Лениво: ищем одобренный обзор только по нажатию, а не при каждом
+   открытии заказа. Если обзора нет — кнопка тихо исчезает, ничего не
+   ломая в карточке. */
+const PvzVideoLink = ({ pvzId }: { pvzId: string }) => {
+  const [open, setOpen] = useState(false);
+  const [reviewId, setReviewId] = useState<string | null>(null);
+  const [checked, setChecked] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const toggle = async () => {
+    if (open) { setOpen(false); return; }
+    if (!checked) {
+      setLoading(true);
+      const r = await apiPvzPublicVideo(pvzId);
+      setReviewId(r.ok ? (r.data?.review?.id ?? null) : null);
+      setChecked(true);
+      setLoading(false);
+    }
+    setOpen(true);
+  };
+
+  if (checked && !reviewId) return null;
+
+  return (
+    <div>
+      <button type="button" onClick={toggle} disabled={loading}
+        className="flex items-center gap-1.5 text-[11px] font-bold disabled:opacity-50"
+        style={{ color: C.acc }}>
+        <Video size={12} /> {loading ? 'Загрузка…' : open ? 'Скрыть видео пункта' : 'Видеообзор пункта'}
+      </button>
+      {open && reviewId && (
+        <video src={videoUrl(reviewId)} controls preload="metadata"
+          className="mt-2 w-full rounded-xl" style={{ maxHeight: 220, background: '#000' }} />
+      )}
+    </div>
+  );
+};
+
 /* ── Посылка ──────────────────────────────────────────────────────── */
 
 const ShipmentCard = ({ shipment, canMove, onMoved }:
@@ -339,11 +379,26 @@ const ShipmentCard = ({ shipment, canMove, onMoved }:
         </p>
       )}
       {shipment.pickupPoint && (
-        <div className="rounded-xl px-3 py-2 text-[11px]" style={{ background: C.l2, color: C.t2 }}>
-          <p style={{ color: C.t1 }}>{shipment.pickupPoint.title}</p>
-          <p>{shipment.pickupPoint.city}, {shipment.pickupPoint.address}</p>
-          <p>Работает {shipment.pickupPoint.workFrom}–{shipment.pickupPoint.workTo}</p>
-          {shipment.pickupUntil && <p>Забрать до {fmtTime(shipment.pickupUntil)}</p>}
+        <div className="space-y-2 rounded-xl px-3 py-2 text-[11px]" style={{ background: C.l2, color: C.t2 }}>
+          <div>
+            <p style={{ color: C.t1 }}>{shipment.pickupPoint.title}</p>
+            <p>{shipment.pickupPoint.city}, {shipment.pickupPoint.address}</p>
+            <p>Работает {shipment.pickupPoint.workFrom}–{shipment.pickupPoint.workTo}</p>
+            {shipment.pickupUntil && <p>Забрать до {fmtTime(shipment.pickupUntil)}</p>}
+          </div>
+          {shipment.pickupCode && (
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2"
+              style={{ background: C.l1, border: `1px solid ${C.acc}55` }}>
+              <KeyRound size={14} style={{ color: C.acc }} />
+              <div>
+                <p style={{ color: C.t3 }}>Назовите сотруднику код получения</p>
+                <p className="text-[15px] font-bold tracking-[0.2em]" style={{ color: C.t1 }}>
+                  {shipment.pickupCode}
+                </p>
+              </div>
+            </div>
+          )}
+          <PvzVideoLink pvzId={shipment.pickupPoint.id} />
         </div>
       )}
       {shipment.location && (

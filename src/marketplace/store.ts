@@ -19,6 +19,7 @@ import {
   apiMyCarriers, apiCarrierJobs,
   type CatalogQuery,
 } from './marketApi';
+import { apiPvzMine, type PvzMembership } from './pvzStaffApi';
 import type {
   Product, Seller, SellerStats, Order, Game, MarketNotification, DealChat, MarketConfig,
   MyCarrier, CarrierJob,
@@ -48,6 +49,9 @@ interface MarketState {
   myCarriers: MyCarrier[];
   carrierJobs: CarrierJob[];
 
+  /** Точки выдачи, где человек работает сотрудником. Пусто — вкладка кабинета ПВЗ не показывается. */
+  myPvz: PvzMembership[];
+
   loadConfig: () => Promise<void>;
   loadGames: () => Promise<void>;
   loadCatalog: (query?: CatalogQuery) => Promise<void>;
@@ -62,6 +66,7 @@ interface MarketState {
   loadUnread: () => Promise<void>;
   loadCarrier: () => Promise<void>;
   loadCarrierJobs: () => Promise<void>;
+  loadMyPvz: () => Promise<void>;
   setSeller: (seller: Seller | null) => void;
   patchProduct: (product: Product) => void;
   patchOrder: (order: Order) => void;
@@ -85,6 +90,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   unread: 0,
   myCarriers: [],
   carrierJobs: [],
+  myPvz: [],
 
   loadConfig: async () => {
     if (get().config) return;
@@ -171,6 +177,11 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   loadCarrierJobs: async () => {
     const r = await apiCarrierJobs();
     if (r.ok && r.data) set({ carrierJobs: r.data.shipments });
+  },
+
+  loadMyPvz: async () => {
+    const r = await apiPvzMine();
+    if (r.ok && r.data) set({ myPvz: r.data.pvzs });
   },
 
   setSeller: (seller) => set({ seller, sellerLoaded: true }),

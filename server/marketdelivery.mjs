@@ -34,6 +34,7 @@ import { applyTransition, toOrder } from './marketorders.mjs';
 import { carrierPaymentForOrder } from './transportco.mjs';
 import { systemMessage } from './marketchat.mjs';
 import { pushMarket } from './signal.mjs';
+import { issuePickupCode } from './pvzops.mjs';
 
 const CARRIER_ID_RE = /^mcr-[0-9a-f-]{36}$/;
 const POINT_ID_RE = /^mpp-[0-9a-f-]{36}$/;
@@ -77,7 +78,10 @@ const SHIPMENT_RANK = {
 export const listPickupPoints = async ({ city, limit } = {}) => {
   const lim = int(limit, 1, 200) ?? 100;
   const args = [lim];
-  let where = 'active';
+  /* staff_closed — временное решение самой точки (переучёт, авария),
+     отдельное от active (039, решает Sky-администрация): пункт
+     остаётся в системе, но заказ туда сейчас не повезёшь. */
+  let where = 'active AND NOT staff_closed';
   if (city) { args.unshift(text(city, 80)); where += ' AND city = $1'; }
   const { rows } = await query(
     `SELECT id, title, city, address, phone, work_from, work_to, hold_days
@@ -223,7 +227,7 @@ export const shipOrder = async (orderId, sellerId, input = {}) => {
     let point = null;
     if (destination === 'pickup_point') {
       const { rows: p } = await client.query(
-        'SELECT * FROM market_pickup_points WHERE id = $1 AND active', [pointId]);
+        'SELECT * FROM market_pickup_points WHERE id = $1 AND active AND NOT staff_closed', [pointId]);
       point = p[0];
       if (!point) { await client.query('ROLLBACK'); return { error: 'bad_pickup_point' }; }
     }
@@ -288,7 +292,7 @@ export const readShipment = async (orderId, viewerId) => {
   const id = String(orderId ?? '');
   if (!ORDER_ID_RE.test(id)) return null;
   const { rows } = await query(
-    `SELECT s.*, o.buyer_id, o.seller_id, o.pickup_until,
+    `SELECT s.*, o.buyer_id, o.seller_id, o.pickup_until, o.status AS order_status, o.pickup_code_enc,
             c.owner_id AS carrier_owner,
             c.title AS carrier_title, c.kind AS carrier_kind, c.code AS carrier_code,
             p.title AS point_title, p.city AS point_city, p.address AS point_address,
@@ -313,6 +317,14 @@ export const readShipment = async (orderId, viewerId) => {
     ? await carrierPaymentForOrder(id, viewerId)
     : null;
 
+  /* Код получения видит только покупатель, и только пока заказ ждёт
+     его в пункте выдачи: продавцу, перевозчику и поддержке он ни к
+     чему, а сотрудник точки проверяет его на своей отдельной ручке,
+     не читая здесь. */
+  const pickupCode = (viewerId === row.buyer_id && row.order_status === 'ready_for_pickup' && row.pickup_code_enc)
+    ? (decryptContent(row.pickup_code_enc) || null)
+    : null;
+
   return {
     orderId: row.order_id,
     method: row.method,
@@ -321,7 +333,7 @@ export const readShipment = async (orderId, viewerId) => {
       title: row.carrier_title, kind: row.carrier_kind, code: row.carrier_code,
     } : null,
     pickupPoint: row.point_title ? {
-      title: row.point_title, city: row.point_city, address: row.point_address,
+      id: row.pickup_point_id, title: row.point_title, city: row.point_city, address: row.point_address,
       workFrom: row.work_from, workTo: row.work_to,
     } : null,
     tracking: row.tracking ?? null,
@@ -330,6 +342,7 @@ export const readShipment = async (orderId, viewerId) => {
     location: row.location ?? null,
     eta: row.eta?.toISOString?.() ?? null,
     pickupUntil: row.pickup_until?.toISOString?.() ?? null,
+    pickupCode,
     /* Кому и куда платить за доставку. Только продавцу этого заказа:
        платит он, напрямую перевозчику, мимо Sky. */
     carrierPayment,
@@ -432,6 +445,16 @@ const moveShipment = async (client, order, shipment, key, { actorId, actorRole, 
     buyer_received: 4, completed: 5,
   };
   if ((ORDER_RANK[to] ?? -1) <= (ORDER_RANK[order.status] ?? -1)) return { ok: true };
+
+  /*
+   * Приехало в пункт выдачи — заводим код получения, если его ещё нет.
+   * Заведён он сервером и здесь же, до самого перехода: applyTransition
+   * ничего не знает про pickup_code_enc и его не тронет, а RETURNING *
+   * внутри него отдаст уже записанный код.
+   */
+  if (to === 'ready_for_pickup' && shipment.destination === 'pickup_point' && !order.pickup_code_enc) {
+    await issuePickupCode(client, order.id);
+  }
 
   const { row, notes } = await applyTransition(client, order, {
     to, actorId, actorRole, detail: { ...detail, shipmentStatus: map.shipment },

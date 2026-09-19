@@ -76,6 +76,20 @@ export const apiUploadVideo = (warehouseId: string, file: File) =>
     `/api/logistics/video/warehouse/${enc(warehouseId)}`,
     { method: 'POST', body: file, headers: { 'Content-Type': file.type || 'video/mp4' } });
 
+/** Обзор пункта выдачи: своя запись, для сотрудника и администрации. */
+export const apiPvzVideoReview = (pvzId: string) =>
+  apiCall<{ review: VideoReview | null }>(`/api/logistics/video/pickup_point/${enc(pvzId)}`);
+
+export const apiUploadPvzVideo = (pvzId: string, file: File) =>
+  apiCall<{ id: string; bytes: number }>(
+    `/api/logistics/video/pickup_point/${enc(pvzId)}`,
+    { method: 'POST', body: file, headers: { 'Content-Type': file.type || 'video/mp4' } });
+
+/** Публичная витрина: только id одобренного обзора, доступна любому вошедшему покупателю. */
+export const apiPvzPublicVideo = (pvzId: string) =>
+  apiCall<{ review: { id: string; bytes: number; createdAt?: string } | null }>(
+    `/api/logistics/video/pickup_point/${enc(pvzId)}/public`);
+
 export const apiVideoQueue = () =>
   apiCall<{ reviews: VideoReview[] }>('/api/logistics/video-queue');
 

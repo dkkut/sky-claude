@@ -25,7 +25,7 @@ import {
   DOC_CODES, readDocument, acceptDocument, acceptanceState,
 } from './../agreements.mjs';
 import {
-  startReview, finishReview, dropReview, latestReview, videoAccess,
+  startReview, finishReview, dropReview, latestReview, videoAccess, publicReview,
   pendingReviews, decideReview, MAX_VIDEO_BYTES, VIDEO_ID_RE,
 } from './../videoreview.mjs';
 import {
@@ -388,6 +388,18 @@ export const sharedWarehouseRoutes = async (req, res, url) => {
   }
 
   /* ══ Видеообзор ═════════════════════════════════════════════════ */
+
+  /* Публичная витрина: одобренный обзор пункта выдачи, доступный
+     любому вошедшему покупателю — не только сотруднику и не только
+     администрации. Метаданные отдельно от самого файла: сам файл идёт
+     по общей ручке videoAccess ниже, она уже пускает сюда кого угодно
+     для status = 'approved'. */
+  const publicVideo = path.match(
+    /^\/api\/logistics\/video\/pickup_point\/(mpp-[0-9a-f-]{36})\/public$/);
+  if (req.method === 'GET' && publicVideo) {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { review: await publicReview(publicVideo[1]) });
+  }
 
   const videoSubject = path.match(
     /^\/api\/logistics\/video\/(warehouse|pickup_point)\/([a-z]{1,4}-[0-9a-f-]{36})$/);

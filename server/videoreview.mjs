@@ -26,9 +26,13 @@ import { generateId } from './security.mjs';
 import { can } from './admin.mjs';
 import { logLogi } from './logistics.mjs';
 import { remove as removeVideo, sizeOf } from './videostore.mjs';
+import { mayManagePvz, isStaffOf, logPvz } from './pvzops.mjs';
 
 export const VIDEO_ID_RE = /^lvr-[0-9a-f-]{36}$/;
 export const SUBJECT_KINDS = ['warehouse', 'pickup_point'];
+
+/** Чьим разрешением проверяется очередь модерации — у каждого рода объекта своя администрация. */
+const adminPermFor = (kind) => (kind === 'pickup_point' ? 'market' : 'logistics');
 
 /** Полгигабайта: обзор помещения — это несколько минут, а не фильм. */
 export const MAX_VIDEO_BYTES = 512 * 1024 * 1024;
@@ -36,10 +40,11 @@ export const MAX_VIDEO_BYTES = 512 * 1024 * 1024;
 const MAX_REASON = 500;
 
 /**
- * Кто владеет объектом.
+ * Кто владеет объектом (склад — один продавец).
  *
- * Возвращает идентификатор владельца или null, если объекта нет. Ни
- * роли, ни прав здесь не выдаётся: право решает тот, кто спрашивает.
+ * Возвращает идентификатор владельца или null, если объекта нет или у
+ * рода объекта не бывает единственного владельца (пункт выдачи — им
+ * распоряжается несколько сотрудников, см. mayManage).
  */
 const ownerOf = async (kind, subjectId) => {
   if (kind === 'warehouse') {
@@ -47,9 +52,44 @@ const ownerOf = async (kind, subjectId) => {
       'SELECT seller_id FROM logi_warehouses WHERE id = $1', [String(subjectId ?? '')]);
     return rows[0]?.seller_id ?? null;
   }
-  /* Пункт выдачи получит здесь свою строку, когда до него дойдёт
-     очередь. Пока такого объекта нет, и обзор к нему не привяжешь. */
   return null;
+};
+
+const subjectExists = async (kind, subjectId) => {
+  const id = String(subjectId ?? '');
+  if (kind === 'warehouse') {
+    const { rows } = await query('SELECT 1 FROM logi_warehouses WHERE id = $1', [id]);
+    return Boolean(rows[0]);
+  }
+  if (kind === 'pickup_point') {
+    const { rows } = await query('SELECT 1 FROM market_pickup_points WHERE id = $1', [id]);
+    return Boolean(rows[0]);
+  }
+  return false;
+};
+
+/**
+ * Вправе снимать, заменять и убирать обзор объекта.
+ *
+ * У склада это единственный владелец. У пункта выдачи владельца в
+ * прежнем смысле нет — им распоряжается команда, и право даёт не
+ * равенство id, а permission 'admin' на этой самой точке (или
+ * Sky-администрация с правом 'market').
+ */
+const mayManage = async (kind, subjectId, actorId) => {
+  if (kind === 'warehouse') {
+    const owner = await ownerOf(kind, subjectId);
+    return owner != null && owner === actorId;
+  }
+  if (kind === 'pickup_point') return mayManagePvz(subjectId, actorId);
+  return false;
+};
+
+/** Вправе смотреть свою запись целиком (включая кто решал) — шире, чем mayManage: сюда входит любой сотрудник точки. */
+const mayView = async (kind, subjectId, actorId) => {
+  if (await mayManage(kind, subjectId, actorId)) return true;
+  if (kind === 'pickup_point') return isStaffOf(subjectId, actorId);
+  return false;
 };
 
 const toReview = (row, { own = false } = {}) => ({
@@ -79,10 +119,10 @@ const toReview = (row, { own = false } = {}) => ({
  */
 export const startReview = async (kind, subjectId, actorId, mime) => {
   if (!SUBJECT_KINDS.includes(String(kind))) return { error: 'bad_subject' };
-  const owner = await ownerOf(kind, subjectId);
-  if (!owner) return { error: 'not_found' };
-  if (owner !== actorId) {
+  if (!(await subjectExists(kind, subjectId))) return { error: 'not_found' };
+  if (!(await mayManage(kind, subjectId, actorId))) {
     await logLogi(actorId, 'video_denied', String(subjectId));
+    if (kind === 'pickup_point') await logPvz(null, subjectId, actorId, 'video_denied', { type: 'video', id: '' }, {}, true);
     return { error: 'not_found' };
   }
 
@@ -116,17 +156,17 @@ export const dropReview = async (reviewId) => {
 };
 
 /**
- * Последний обзор объекта — владельцу и администрации.
+ * Последний обзор объекта — тем, кто им распоряжается, и администрации.
  *
  * Постороннему возвращается null, и объект для него неотличим от того,
- * у которого обзора нет вовсе.
+ * у которого обзора нет вовсе. Для публичного обзора пункта выдачи
+ * есть отдельная ручка — publicReview: покупателю сюда обращаться незачем.
  */
 export const latestReview = async (kind, subjectId, viewerId) => {
   if (!SUBJECT_KINDS.includes(String(kind))) return null;
-  const owner = await ownerOf(kind, subjectId);
-  if (!owner) return null;
-  const own = owner === viewerId;
-  if (!own && !(await can(viewerId, 'logistics'))) return null;
+  if (!(await subjectExists(kind, subjectId))) return null;
+  const own = await mayView(kind, subjectId, viewerId);
+  if (!own && !(await can(viewerId, adminPermFor(kind)))) return null;
 
   const { rows } = await query(
     `SELECT * FROM logi_video_reviews
@@ -136,10 +176,30 @@ export const latestReview = async (kind, subjectId, viewerId) => {
 };
 
 /**
+ * Обзор пункта выдачи глазами покупателя: только если он есть и уже
+ * одобрен администрацией. Ни статуса «на проверке», ни отклонённого
+ * покупателю не показывают — это внутренняя кухня точки, а не то, что
+ * помогает решить, ехать ли за заказом.
+ */
+export const publicReview = async (pvzId) => {
+  const id = String(pvzId ?? '');
+  if (!(await subjectExists('pickup_point', id))) return null;
+  const { rows } = await query(
+    `SELECT id, bytes, created_at FROM logi_video_reviews
+      WHERE subject_kind = 'pickup_point' AND subject_id = $1 AND status = 'approved'
+      ORDER BY created_at DESC LIMIT 1`, [id]);
+  const row = rows[0];
+  if (!row) return null;
+  return { id: row.id, bytes: Number(row.bytes ?? 0), createdAt: row.created_at?.toISOString?.() ?? undefined };
+};
+
+/**
  * Право смотреть саму запись.
  *
  * Возвращает тип файла или null. Вызывается до открытия файла на диске:
- * отказ здесь означает, что поток не начнётся вовсе.
+ * отказ здесь означает, что поток не начнётся вовсе. Одобренный обзор
+ * пункта выдачи смотрит кто угодно вошедший — это и есть его смысл:
+ * витрина для покупателя, а не внутренний документ.
  */
 export const videoAccess = async (reviewId, viewerId) => {
   if (!VIDEO_ID_RE.test(String(reviewId ?? ''))) return null;
@@ -147,8 +207,10 @@ export const videoAccess = async (reviewId, viewerId) => {
     'SELECT * FROM logi_video_reviews WHERE id = $1', [reviewId]);
   const row = rows[0];
   if (!row) return null;
-  const owner = await ownerOf(row.subject_kind, row.subject_id);
-  if (owner !== viewerId && !(await can(viewerId, 'logistics'))) {
+  const isPublicApproved = row.subject_kind === 'pickup_point' && row.status === 'approved';
+  if (!isPublicApproved
+    && !(await mayView(row.subject_kind, row.subject_id, viewerId))
+    && !(await can(viewerId, adminPermFor(row.subject_kind)))) {
     await logLogi(viewerId, 'video_watch_denied', reviewId);
     return null;
   }
@@ -173,21 +235,28 @@ export const hasApprovedReview = async (kind, subjectId) => {
  * очередь — это список одинаковых строк, и решать по ним нельзя.
  */
 export const pendingReviews = async (actorId, { limit } = {}) => {
-  if (!(await can(actorId, 'logistics'))) return null;
+  const mayLogistics = await can(actorId, 'logistics');
+  const mayMarket = await can(actorId, 'market');
+  if (!mayLogistics && !mayMarket) return null;
   const n = Math.min(100, Math.max(1, Number(limit) || 50));
   const { rows } = await query(
-    `SELECT r.*, w.name AS wh_name, w.city_id AS wh_city
+    `SELECT r.*, w.name AS wh_name, w.city_id AS wh_city,
+            p.title AS pp_title, p.city AS pp_city
        FROM logi_video_reviews r
        LEFT JOIN logi_warehouses w
          ON r.subject_kind = 'warehouse' AND w.id = r.subject_id
+       LEFT JOIN market_pickup_points p
+         ON r.subject_kind = 'pickup_point' AND p.id = r.subject_id
       WHERE r.status = 'pending'
       ORDER BY r.created_at
       LIMIT $1`, [n]);
-  return rows.map((r) => ({
-    ...toReview(r),
-    subjectTitle: r.wh_name ?? '',
-    subjectCity: r.wh_city ?? '',
-  }));
+  return rows
+    .filter((r) => (r.subject_kind === 'warehouse' ? mayLogistics : mayMarket))
+    .map((r) => ({
+      ...toReview(r),
+      subjectTitle: r.wh_name ?? r.pp_title ?? '',
+      subjectCity: r.wh_city ?? r.pp_city ?? '',
+    }));
 };
 
 /**
@@ -202,8 +271,11 @@ export const pendingReviews = async (actorId, { limit } = {}) => {
  * снимает запрет. Включает владелец, и только приняв регламент.
  */
 export const decideReview = async (reviewId, actorId, approve, reason = '') => {
-  if (!(await can(actorId, 'logistics'))) return { error: 'not_allowed' };
   if (!VIDEO_ID_RE.test(String(reviewId ?? ''))) return { error: 'not_found' };
+  const { rows: kindRow } = await query(
+    'SELECT subject_kind FROM logi_video_reviews WHERE id = $1', [reviewId]);
+  if (!kindRow[0]) return { error: 'not_found' };
+  if (!(await can(actorId, adminPermFor(kindRow[0].subject_kind)))) return { error: 'not_allowed' };
 
   const next = approve ? 'approved' : 'rejected';
   const why = approve ? '' : String(reason ?? '').slice(0, MAX_REASON);
@@ -225,6 +297,10 @@ export const decideReview = async (reviewId, actorId, approve, reason = '') => {
       `UPDATE logi_warehouses SET shared_state = $2, updated_at = now()
         WHERE id = $1 AND shared_state = 'review'`,
       [row.subject_id, approve ? 'review' : 'rejected']);
+  }
+  if (row.subject_kind === 'pickup_point') {
+    await logPvz(null, row.subject_id, actorId, approve ? 'video_approved' : 'video_rejected',
+      { type: 'video', id: reviewId }, { reason: why });
   }
   await logLogi(actorId, approve ? 'video_approved' : 'video_rejected', reviewId);
   return { review: toReview(row) };

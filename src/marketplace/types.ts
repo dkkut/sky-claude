@@ -306,13 +306,15 @@ export interface Shipment {
   method: ShipMethod;
   destination: ShipDestination;
   carrier: { title: string; kind: string; code: string | null } | null;
-  pickupPoint: { title: string; city: string; address: string; workFrom: string; workTo: string } | null;
+  pickupPoint: { id: string; title: string; city: string; address: string; workFrom: string; workTo: string } | null;
   tracking: string | null;
   status: string;
   statusText: string;
   location: string | null;
   eta: string | null;
   pickupUntil: string | null;
+  /** Код получения из пункта выдачи. Виден только покупателю, и только пока заказ его ждёт. */
+  pickupCode?: string | null;
   /** Кому и куда платить за доставку. Видит только продавец заказа. */
   carrierPayment: { carrier: string; details: string } | null;
   updatedAt?: string;
