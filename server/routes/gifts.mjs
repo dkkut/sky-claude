@@ -24,6 +24,9 @@ import {
 import {
   currentOwner, ownersOf, provenanceOf, transferNft, ownedByProfile, publicOwnedBy,
 } from './../nft.mjs';
+import {
+  activeListings, listingFor, createListing, cancelListing, buyListing,
+} from './../nftmarket.mjs';
 import { isKnownNftId } from './../nftgenesis.mjs';
 import { listGiftNotifications, readGiftNotification } from './../giftnotify.mjs';
 import { saveStream, openStream, sizeOf, newMediaId } from './../giftstore.mjs';
@@ -34,6 +37,9 @@ const WRITE_PER_MIN = 40;
 const SEND_PER_MIN = 15;
 const ACTIVATE_PER_MIN = 20;
 const TRANSFER_PER_HOUR = 30;
+const LISTING_PER_HOUR = 30;
+const BUY_PER_MIN = 15;
+const NFT_LISTING_ID_RE = /^lst-[0-9a-f-]{36}$/;
 const UPLOAD_PER_HOUR = 30;
 const STREAM_PER_MIN = 600;
 
@@ -255,6 +261,12 @@ export const giftRoutes = async (req, res, url) => {
     const ids = (params.get('ids') ?? '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 200);
     return json(res, 200, { owners: await ownersOf(ids) });
   }
+  // Проверяется раньше общего nftMatch ниже: без этого литеральный путь
+  // "listings" сам сошёл бы за nftId в /nft/:id и упал бы в 404.
+  if (req.method === 'GET' && path === '/api/gifts/nft/listings') {
+    if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { listings: await activeListings() });
+  }
   const nftProfileMatch = /^\/api\/gifts\/nft\/profile\/([A-Za-z0-9_-]{1,64})$/.exec(path);
   if (req.method === 'GET' && nftProfileMatch) {
     if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
@@ -278,6 +290,41 @@ export const giftRoutes = async (req, res, url) => {
       if (!rateLimitPerHour(`gift:transfer:${me}`, TRANSFER_PER_HOUR)) return json(res, 429, { error: 'too_many_requests' });
       const b = await body();
       const r = await transferNft(me, nftId, String(b.recipientId ?? ''));
+      return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
+    }
+  }
+
+  /* ── NFT: маркет (выставить / снять / купить) ─────────────────────── */
+
+  const nftListingByGiftMatch = /^\/api\/gifts\/nft\/([a-z0-9-]{1,32})\/listing$/.exec(path);
+  if (nftListingByGiftMatch) {
+    const nftId = nftListingByGiftMatch[1];
+    if (!isKnownNftId(nftId)) return json(res, 404, { error: 'not_found' });
+    if (req.method === 'GET') {
+      if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+      return json(res, 200, { listing: await listingFor(nftId) });
+    }
+    if (req.method === 'POST') {
+      if (!rateLimitPerHour(`gift:listing:${me}`, LISTING_PER_HOUR)) return json(res, 429, { error: 'too_many_requests' });
+      const b = await body();
+      const r = await createListing(me, nftId, {
+        type: b.type, price: b.price, reservePrice: b.reservePrice, decayPct: b.decayPct, durationH: b.durationH,
+      });
+      return r.error ? json(res, errCode(r.error), r) : json(res, 201, r);
+    }
+  }
+  const nftListingMatch = /^\/api\/gifts\/nft\/listing\/(lst-[0-9a-f-]{36})(\/buy)?$/.exec(path);
+  if (nftListingMatch) {
+    const listingId = nftListingMatch[1];
+    if (!NFT_LISTING_ID_RE.test(listingId)) return json(res, 404, { error: 'not_found' });
+    if (req.method === 'DELETE' && !nftListingMatch[2]) {
+      if (!rateLimit(`gift:w:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+      const r = await cancelListing(me, listingId);
+      return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
+    }
+    if (req.method === 'POST' && nftListingMatch[2] === '/buy') {
+      if (!rateLimit(`gift:buy:${me}`, BUY_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+      const r = await buyListing(me, listingId);
       return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
     }
   }

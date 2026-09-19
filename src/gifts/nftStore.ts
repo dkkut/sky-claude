@@ -5,7 +5,10 @@
 ====================================================================== */
 import { create } from 'zustand';
 import { useAuthStore } from '@/core/auth/store';
-import { apiNftTransfer, apiNftOwners } from './giftsApi';
+import {
+  apiNftTransfer, apiNftOwners, apiNftActiveListings, apiNftCreateListing,
+  apiNftCancelListing, apiNftBuyListing, apiNftHistory, type NftListing,
+} from './giftsApi';
 import {
   RARITY_CONFIG, RARITY_ORDER, ALL_BACKGROUNDS, ACHIEVEMENT_LABELS,
 } from './types';
@@ -110,26 +113,15 @@ const buildGifts = (collections: GiftCollection[]): { gifts: Gift[]; provenance:
   return { gifts, provenance };
 };
 
-const buildListings = (gifts: Gift[]): Listing[] => {
-  const listings: Listing[] = [];
-  gifts.forEach((g) => {
-    const roll = seeded(g.id+'listed', 0, 1);
-    if (roll > 0.88) return; // подавляющее большинство подарков выставлено на продажу
-    const types: ListingType[] = ['fixed','auction','instant','reserve'];
-    const type = pick(g.id+'ltype', types);
-    const durationH = Math.round(seeded(g.id+'dur', 6, 168));
-    listings.push({
-      id: genId('lst'), giftId: g.id, sellerId: g.ownerId, sellerName: g.ownerName, type,
-      price: g.price, currentBid: type==='auction' ? Math.round(g.price*seeded(g.id+'bid',0.8,0.98)) : null,
-      reservePrice: type==='reserve' ? Math.round(g.price*1.15) : null,
-      decayPct: type==='fixed' ? Math.round(seeded(g.id+'decay',2,8)) : 0,
-      decayHours: 24, durationH, status:'active', views: Math.round(seeded(g.id+'lv',20,2000)), watchers: Math.round(seeded(g.id+'lw',0,140)),
-      createdAt: new Date(Date.now() - 3600000*seeded(g.id+'lc',1,72)).toISOString(),
-      endsAt: new Date(Date.now() + 3600000*durationH).toISOString(), soldAt:null, soldPrice:null,
-    });
-  });
-  return listings;
-};
+// Лоты маркета больше не подделка на клиенте — их настоящий источник
+// server/nftmarket.mjs, а эта функция только переводит его ответ в ту
+// же форму Listing, которую уже рисуют существующие экраны.
+const toLocalListing = (l: NftListing): Listing => ({
+  id: l.id, giftId: l.nftId, sellerId: l.sellerId, sellerName: l.sellerName ?? '—', type: l.type,
+  price: l.price, currentBid: l.currentBid, reservePrice: l.reservePrice, decayPct: l.decayPct,
+  decayHours: 24, durationH: l.durationH, status: l.status, views: 0, watchers: 0,
+  createdAt: l.createdAt, endsAt: l.endsAt, soldAt: l.soldAt, soldPrice: l.soldPrice,
+});
 
 const seedComments = (gifts: Gift[]): GiftComment[] => gifts.slice(0,18).map((g,i) => ({
   id: genId('cmt'), giftId: g.id, authorId: OWNER_POOL[i%OWNER_POOL.length].id, authorName: OWNER_POOL[i%OWNER_POOL.length].name,
@@ -196,9 +188,13 @@ interface NftGiftsState {
 
   activeListings:  () => Listing[];
   listingFor:      (giftId: string) => Listing | null;
-  createListing:   (giftId: string, p: { type: ListingType; price: number; reservePrice?: number; decayPct?: number; durationH: number }) => void;
-  cancelListing:   (listingId: string) => void;
-  buyListing:      (listingId: string) => void;
+  // Настоящие: сервер (server/nftmarket.mjs) проверяет владение, баланс
+  // покупателя и атомарно переносит собственность — эта витрина только
+  // отражает то, что он подтвердил, как и giftToUser ниже.
+  createListing:   (giftId: string, p: { type: ListingType; price: number; reservePrice?: number; decayPct?: number; durationH: number }) => Promise<{ ok: boolean; reason?: string }>;
+  cancelListing:   (listingId: string) => Promise<{ ok: boolean; reason?: string }>;
+  buyListing:      (listingId: string) => Promise<{ ok: boolean; reason?: string }>;
+  syncListings:    () => Promise<void>;
   placeBid:        (listingId: string, amount: number) => void;
   bidsFor:         (listingId: string) => Bid[];
   makeOffer:       (giftId: string, amount: number) => void;
@@ -206,10 +202,16 @@ interface NftGiftsState {
   respondOffer:    (offerId: string, accept: boolean) => void;
 
   giftToUser: (giftId: string, toAccountId: string, toAccountName: string) => Promise<{ ok: boolean; reason?: string }>;
-  // Подтягивает настоящих владельцев с сервера поверх детерминированного
-  // расчёта «по рождению» — так виден результат передачи, сделанной с
-  // другого устройства или другим сеансом.
+  // Подтягивает настоящих владельцев и активные лоты маркета с сервера
+  // поверх детерминированного расчёта «по рождению» — так виден
+  // результат передачи или покупки, сделанной с другого устройства или
+  // другим сеансом.
   syncOwnership: () => Promise<void>;
+  // История конкретного подарка с сервера — тянется только по запросу
+  // (открыли карточку), не для всех 84 сразу: без этого таймлайн
+  // «История» показывал бы только то, что случилось в этом же браузере.
+  syncProvenance: (giftId: string) => Promise<void>;
+  realSince: Record<string, string>;
 
   isFavorite:     (giftId: string) => boolean;
   toggleFavorite: (giftId: string) => void;
@@ -246,13 +248,16 @@ interface NftGiftsState {
 const stored = load();
 const seedCollections = stored?.collections ?? buildCollections();
 const seedGiftsData = stored ? { gifts: stored.gifts, provenance: stored.provenance } : buildGifts(seedCollections);
-const seedListings = stored?.listings ?? buildListings(seedGiftsData.gifts);
 
 export const useNftGiftsStore = create<NftGiftsState>((set, get) => {
   const flush = () => {
     const s = get();
     save({
-      collections: s.collections, gifts: s.gifts, provenance: s.provenance, listings: s.listings,
+      // listings сюда намеренно не идут: с этого коммита это правда
+      // сервера (server/nftmarket.mjs), а не локальная витрина — кэш в
+      // localStorage до следующей синхронизации мог бы показать уже
+      // проданный или снятый лот как «активный».
+      collections: s.collections, gifts: s.gifts, provenance: s.provenance,
       bids: s.bids, offers: s.offers, favorites: s.favorites, archivedIds: s.archivedIds, comments: s.comments, reactions: s.reactions,
       follows: s.follows, showcases: s.showcases, notifications: s.notifications, actionLog: s.actionLog, transactions: s.transactions,
     });
@@ -277,7 +282,7 @@ export const useNftGiftsStore = create<NftGiftsState>((set, get) => {
     collections: seedCollections,
     gifts:       seedGiftsData.gifts,
     provenance:  seedGiftsData.provenance,
-    listings:    seedListings,
+    listings:    [],
     bids:        stored?.bids ?? [],
     offers:      stored?.offers ?? [],
     favorites:   stored?.favorites ?? [],
@@ -289,6 +294,7 @@ export const useNftGiftsStore = create<NftGiftsState>((set, get) => {
     notifications: stored?.notifications ?? [],
     actionLog:   stored?.actionLog ?? [],
     transactions:stored?.transactions ?? [],
+    realSince:   {},
 
     giftById:       (id) => get().gifts.find(g=>g.id===id) ?? null,
     collectionById: (id) => get().collections.find(c=>c.id===id) ?? null,
@@ -299,47 +305,53 @@ export const useNftGiftsStore = create<NftGiftsState>((set, get) => {
     activeListings: () => get().listings.filter(l => l.status==='active'),
     listingFor: (giftId) => get().listings.find(l=>l.giftId===giftId && l.status==='active') ?? null,
 
-    createListing: (giftId, p) => {
-      const gift = get().giftById(giftId); if (!gift) return;
-      const sellerId = me();
-      const listing: Listing = {
-        id: genId('lst'), giftId, sellerId, sellerName: myName(), type: p.type, price: p.price,
-        currentBid: null, reservePrice: p.reservePrice ?? null,
-        decayPct: p.decayPct ?? 0, decayHours: 24, durationH: p.durationH, status:'active',
-        views:0, watchers:0, createdAt: nowISO(), endsAt: new Date(Date.now()+3600000*p.durationH).toISOString(),
-        soldAt:null, soldPrice:null,
-      };
-      mut(s => ({ listings: [listing, ...s.listings] }));
-      writeLog('listing_created', `Подарок «${gift.name}» выставлен на продажу (${p.type})`); flush();
+    createListing: async (giftId, p) => {
+      const r = await apiNftCreateListing(giftId, {
+        type: p.type, price: p.price, reservePrice: p.reservePrice, decayPct: p.decayPct, durationH: p.durationH,
+      });
+      if (!r.ok) return { ok: false, reason: r.reason };
+      const listing = toLocalListing(r.listing);
+      mut(s => ({ listings: [listing, ...s.listings.filter(l => l.giftId !== giftId)] }));
+      const gift = get().giftById(giftId);
+      writeLog('listing_created', `Подарок «${gift?.name ?? giftId}» выставлен на продажу (${p.type})`); flush();
+      return { ok: true };
     },
 
-    cancelListing: (listingId) => {
+    cancelListing: async (listingId) => {
+      const r = await apiNftCancelListing(listingId);
+      if (!r.ok) return { ok: false, reason: r.reason };
       mut(s => ({ listings: s.listings.map(l => l.id===listingId ? { ...l, status:'cancelled' as const } : l) }));
       writeLog('listing_cancelled', 'Лот снят с продажи'); flush();
+      return { ok: true };
     },
 
-    buyListing: (listingId) => {
-      const listing = get().listings.find(l=>l.id===listingId); if (!listing || listing.status!=='active') return;
-      const gift = get().giftById(listing.giftId); if (!gift) return;
-      const buyerId = me(); const buyerName = myName();
-      const finalPrice = listing.type==='auction' ? (listing.currentBid ?? listing.price) : listing.price;
-
+    // Настоящая покупка: сервер (server/nftmarket.mjs::buyListing) сам
+    // списывает баланс, проверяет, что лот ещё не забрали, и атомарно
+    // переносит собственность — эта функция только отражает результат.
+    buyListing: async (listingId) => {
+      const before = get().listings.find(l=>l.id===listingId);
+      const r = await apiNftBuyListing(listingId);
+      if (!r.ok) return { ok: false, reason: r.reason };
+      const buyerId = r.ownerId; const buyerName = r.ownerName; const price = r.price;
       mut(s => ({
-        listings: s.listings.map(l => l.id===listingId ? { ...l, status:'sold' as const, soldAt: nowISO(), soldPrice: finalPrice } : l),
-        gifts: s.gifts.map(g => g.id===gift.id ? {
-          ...g, ownerId: buyerId, ownerName: buyerName, price: finalPrice,
-          priceHistory: [...g.priceHistory, { at: nowISO(), price: finalPrice }],
+        listings: s.listings.map(l => l.id===listingId ? { ...l, status:'sold' as const, soldAt: nowISO(), soldPrice: price } : l),
+        gifts: s.gifts.map(g => g.id===r.nftId ? {
+          ...g, ownerId: buyerId, ownerName: buyerName, price,
+          priceHistory: [...g.priceHistory, { at: nowISO(), price }],
         } : g),
-        provenance: [...s.provenance, { id: genId('prov'), giftId: gift.id, type:'sale' as const, fromId: listing.sellerId, fromName: listing.sellerName, toId: buyerId, toName: buyerName, price: finalPrice, at: nowISO() }],
-        transactions: [...s.transactions,
-          { id: genId('tx'), userId: buyerId, giftId: gift.id, type:'buy' as const, amount: finalPrice, at: nowISO() },
-          { id: genId('tx'), userId: listing.sellerId, giftId: gift.id, type:'sell' as const, amount: finalPrice, at: nowISO() },
-        ],
+        provenance: [...s.provenance, { id: genId('prov'), giftId: r.nftId, type:'sale' as const, fromId: before?.sellerId ?? null, fromName: before?.sellerName ?? '—', toId: buyerId, toName: buyerName, price, at: nowISO() }],
+        transactions: [...s.transactions, { id: genId('tx'), userId: buyerId, giftId: r.nftId, type:'buy' as const, amount: price, at: nowISO() }],
       }));
-      writeLog('purchase', `Куплен подарок «${gift.name}» за ${finalPrice.toLocaleString('ru-RU')} ₽`);
-      notify(buyerId, 'purchase', 'Покупка совершена', `Вы приобрели «${gift.name}» за ${finalPrice.toLocaleString('ru-RU')} ₽`, gift.id);
-      notify(listing.sellerId, 'sale', 'Подарок продан', `«${gift.name}» продан за ${finalPrice.toLocaleString('ru-RU')} ₽`, gift.id);
+      const gift = get().giftById(r.nftId);
+      writeLog('purchase', `Куплен подарок «${gift?.name ?? r.nftId}» за ${price.toLocaleString('ru-RU')} ₽`);
+      notify(buyerId, 'purchase', 'Покупка совершена', `Вы приобрели «${gift?.name ?? r.nftId}» за ${price.toLocaleString('ru-RU')} ₽`, r.nftId);
       flush();
+      return { ok: true };
+    },
+
+    syncListings: async () => {
+      const items = await apiNftActiveListings();
+      mut(() => ({ listings: items.map(toLocalListing) }));
     },
 
     placeBid: (listingId, amount) => {
@@ -409,7 +421,28 @@ export const useNftGiftsStore = create<NftGiftsState>((set, get) => {
           const o = owners[g.id];
           return o && o.transferred ? { ...g, ownerId: o.id, ownerName: o.name } : g;
         }),
+        // Настоящая дата передачи с сервера — иначе для подарка,
+        // полученного в другом сеансе, «с какого числа он у меня» брать
+        // неоткуда (у этого браузера нет записи о ней в provenance),
+        // и правило «неделя на продажу» посчиталось бы неверно.
+        realSince: Object.fromEntries(
+          Object.entries(owners).filter(([, o]) => o.transferred && o.since).map(([id, o]) => [id, o.since as string]),
+        ),
       }));
+      void get().syncListings();
+    },
+
+    syncProvenance: async (giftId) => {
+      const remote = await apiNftHistory(giftId);
+      if (!remote.length) return;
+      const local = get().provenance.filter(p => p.giftId !== giftId);
+      const mapped: ProvenanceEntry[] = remote.map((r) => ({
+        id: r.id, giftId,
+        type: r.type === 'genesis' ? 'minted' : r.type === 'transfer' && r.source === 'gift' ? 'gift' : r.type,
+        fromId: r.fromId, fromName: r.fromName ?? 'Sky Mint', toId: r.toId, toName: r.toName,
+        price: r.price, at: r.at,
+      }));
+      mut(() => ({ provenance: [...local, ...mapped] }));
     },
 
     isFavorite: (giftId) => get().favorites.includes(giftId),
@@ -420,6 +453,8 @@ export const useNftGiftsStore = create<NftGiftsState>((set, get) => {
     // подарок ни разу не переходил из рук в руки.
     acquiredAtFor: (giftId) => {
       const gift = get().giftById(giftId); if (!gift) return nowISO();
+      const verified = get().realSince[giftId];
+      if (verified) return verified;
       const history = get().provenance.filter(p => p.giftId === giftId && p.toId === gift.ownerId)
         .sort((a,b) => new Date(b.at).getTime() - new Date(a.at).getTime());
       return history[0]?.at ?? gift.createdAt;

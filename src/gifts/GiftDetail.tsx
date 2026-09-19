@@ -32,7 +32,7 @@ export const GiftDetail = ({ giftId, onClose, onTrade, onOpenProfile }: {
   const {
     giftById, collectionById, isFavorite, toggleFavorite, valuationFor, provenanceFor,
     commentsFor, addComment, reactionFor, toggleReaction, listingFor,
-    canSellFor, isArchived, toggleArchive, deleteGift,
+    canSellFor, isArchived, toggleArchive, deleteGift, syncProvenance,
   } = useNftGiftsStore();
   const gift = giftById(giftId);
   const [commentText, setCommentText] = useState('');
@@ -54,6 +54,10 @@ export const GiftDetail = ({ giftId, onClose, onTrade, onOpenProfile }: {
     window.addEventListener('deviceorientation', handler);
     return () => window.removeEventListener('deviceorientation', handler);
   }, [mx, my]);
+
+  // Настоящая история с сервера — локальный provenance помнит только
+  // то, что произошло в этом же браузере.
+  useEffect(() => { void syncProvenance(giftId); }, [giftId, syncProvenance]);
 
   if (!gift) return null;
   const rc = RARITY_CONFIG[gift.rarity];

@@ -69,8 +69,15 @@ export interface PrimeGiftInstance {
 
 export interface NftOwner { id: string; name: string; since: string | null; transferred: boolean }
 export interface NftProvenanceEntry {
-  id: string; type: 'genesis' | 'transfer'; fromId: string | null; fromName: string | null;
-  toId: string; toName: string; operationId: string; source: string; at: string;
+  id: string; type: 'genesis' | 'transfer' | 'sale'; fromId: string | null; fromName: string | null;
+  toId: string; toName: string; operationId: string; source: string; price: number | null; at: string;
+}
+export type NftListingType = 'fixed' | 'auction' | 'instant' | 'reserve';
+export interface NftListing {
+  id: string; nftId: string; sellerId: string; sellerName: string | null;
+  type: NftListingType; price: number; reservePrice: number | null; decayPct: number; durationH: number;
+  currentBid: number | null; status: 'active' | 'sold' | 'cancelled';
+  soldPrice: number | null; soldAt: string | null; createdAt: string; endsAt: string;
 }
 export interface GiftNotification {
   id: string; kind: string; title: string; body: string; refId: string | null; read: boolean; createdAt: string;
@@ -93,6 +100,9 @@ const ERRORS: Record<string, string> = {
   too_many_requests: 'Слишком часто. Попробуйте чуть позже',
   too_large: 'Файл слишком большой',
   unsupported_media: 'Неподдерживаемый формат файла',
+  invalid_type: 'Неверный тип продажи',
+  invalid_price: 'Неверная цена',
+  already_listed: 'Уже выставлен на продажу',
 };
 export const giftErrorText = (code?: string) => ERRORS[code ?? ''] ?? 'Не получилось';
 
@@ -213,6 +223,40 @@ export const apiNftProfile = async (userId: string): Promise<{ hidden: boolean; 
   const r = await apiCall<{ hidden: boolean; items: { nftId: string; since: string }[] }>(
     `/api/gifts/nft/profile/${encodeURIComponent(userId)}`);
   return r.ok ? (r.data ?? { hidden: false, items: [] }) : { hidden: false, items: [] };
+};
+
+/* ─── NFT: маркет (выставить / снять / купить) ──────────────────────── */
+
+export const apiNftActiveListings = async (): Promise<NftListing[]> => {
+  const r = await apiCall<{ listings: NftListing[] }>('/api/gifts/nft/listings');
+  return r.ok ? (r.data?.listings ?? []) : [];
+};
+
+export const apiNftListingFor = async (nftId: string): Promise<NftListing | null> => {
+  const r = await apiCall<{ listing: NftListing | null }>(`/api/gifts/nft/${encodeURIComponent(nftId)}/listing`);
+  return r.ok ? (r.data?.listing ?? null) : null;
+};
+
+export const apiNftCreateListing = async (nftId: string, params: {
+  type: NftListingType; price: number; reservePrice?: number; decayPct?: number; durationH: number;
+}) => {
+  const r = await apiCall<{ listing: NftListing }>(`/api/gifts/nft/${encodeURIComponent(nftId)}/listing`, {
+    method: 'POST', body: JSON.stringify(params),
+  });
+  if (r.ok) return { ok: true as const, listing: r.data?.listing as NftListing };
+  return { ok: false as const, reason: giftErrorText(r.error) };
+};
+
+export const apiNftCancelListing = async (listingId: string) => {
+  const r = await apiCall(`/api/gifts/nft/listing/${encodeURIComponent(listingId)}`, { method: 'DELETE' });
+  return r.ok ? { ok: true as const } : { ok: false as const, reason: giftErrorText(r.error) };
+};
+
+export const apiNftBuyListing = async (listingId: string) => {
+  const r = await apiCall<{ nftId: string; price: number; ownerId: string; ownerName: string }>(
+    `/api/gifts/nft/listing/${encodeURIComponent(listingId)}/buy`, { method: 'POST' });
+  if (r.ok) return { ok: true as const, ...(r.data as { nftId: string; price: number; ownerId: string; ownerName: string }) };
+  return { ok: false as const, reason: giftErrorText(r.error) };
 };
 
 /* ─── Уведомления ────────────────────────────────────────────────────── */

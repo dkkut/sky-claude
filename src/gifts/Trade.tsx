@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ShoppingBag, Tag, Send, Check, Eye, Heart, Gavel, Timer, TrendingDown,
+  ShoppingBag, Tag, Send, Check, Gavel, Timer, TrendingDown,
   Search, Sparkles,
 } from 'lucide-react';
 import { C, fmt } from '@/marketplace/SkyMarket';
@@ -13,22 +13,26 @@ import { useNftGiftsStore } from './nftStore';
 import { GiftSlide, GlassCard, EmptyState } from './shared';
 import type { ListingType } from './types';
 
-const COMMISSION_PCT = 3;
-
 /* ── Покупка ──────────────────────────────────────────────────────── */
 const BuyFlow = ({ giftId, onDone }: { giftId: string; onDone: () => void }) => {
   const { giftById, listingFor, buyListing, provenanceFor } = useNftGiftsStore();
   const gift = giftById(giftId);
   const listing = listingFor(giftId);
   const [confirmed, setConfirmed] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [err, setErr] = useState('');
   if (!gift || !listing) return <EmptyState icon={ShoppingBag} title="Лот недоступен"/>;
 
   const price = listing.type==='auction' ? (listing.currentBid ?? listing.price) : listing.price;
-  const commission = Math.round(price*COMMISSION_PCT/100);
-  const total = price + commission;
   const sales = provenanceFor(giftId).filter(p=>p.type==='sale').slice(-5).reverse();
 
-  const confirm = () => { buyListing(listing.id); setConfirmed(true); setTimeout(onDone, 1400); };
+  const confirm = async () => {
+    setErr(''); setBuying(true);
+    const r = await buyListing(listing.id);
+    setBuying(false);
+    if (!r.ok) { setErr(r.reason ?? 'Не удалось купить подарок'); return; }
+    setConfirmed(true); setTimeout(onDone, 1400);
+  };
 
   if (confirmed) {
     return (
@@ -45,15 +49,8 @@ const BuyFlow = ({ giftId, onDone }: { giftId: string; onDone: () => void }) => 
   return (
     <div className="p-5 space-y-3">
       <GlassCard className="p-4">
-        <div className="flex justify-between text-xs mb-1.5"><span style={{ color: C.t3 }}>Стоимость</span><span className="font-bold" style={{ color: C.t1 }}>{fmt(price)}</span></div>
-        <div className="flex justify-between text-xs mb-1.5"><span style={{ color: C.t3 }}>Комиссия платформы ({COMMISSION_PCT}%)</span><span className="font-bold" style={{ color: C.t1 }}>{fmt(commission)}</span></div>
-        <div className="h-px my-2" style={{ background: C.brd }}/>
-        <div className="flex justify-between text-sm"><span className="font-bold" style={{ color: C.t1 }}>Итого</span><span className="font-black" style={{ color: C.acc }}>{fmt(total)}</span></div>
+        <div className="flex justify-between text-sm"><span className="font-bold" style={{ color: C.t1 }}>Итого</span><span className="font-black" style={{ color: C.acc }}>{fmt(price)}</span></div>
       </GlassCard>
-      <div className="grid grid-cols-2 gap-2">
-        <GlassCard className="p-3 flex items-center gap-2"><Eye size={13} style={{ color: C.t3 }}/><span className="text-xs" style={{ color: C.t2 }}>{listing.views} просмотров</span></GlassCard>
-        <GlassCard className="p-3 flex items-center gap-2"><Heart size={13} style={{ color: C.t3 }}/><span className="text-xs" style={{ color: C.t2 }}>{listing.watchers} желающих</span></GlassCard>
-      </div>
       {sales.length > 0 && (
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: C.t3 }}>Последние сделки</p>
@@ -62,8 +59,9 @@ const BuyFlow = ({ giftId, onDone }: { giftId: string; onDone: () => void }) => 
           ))}</div>
         </div>
       )}
-      <button type="button" onClick={confirm} className="w-full flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white" style={{ background: C.acc }}>
-        <ShoppingBag size={16}/> Подтвердить покупку за {fmt(total)}
+      {err && <p className="text-xs text-center" style={{ color: 'var(--red)' }}>{err}</p>}
+      <button type="button" onClick={confirm} disabled={buying} className="w-full flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white disabled:opacity-50" style={{ background: C.acc }}>
+        <ShoppingBag size={16}/> {buying ? 'Покупка…' : `Подтвердить покупку за ${fmt(price)}`}
       </button>
     </div>
   );
@@ -82,17 +80,26 @@ const SellFlow = ({ giftId, onDone }: { giftId: string; onDone: () => void }) =>
   const [decayOn, setDecayOn] = useState(false);
   const [durationH, setDurationH] = useState(72);
   const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
 
   if (!gift) return null;
 
   if (existing) {
+    const cancel = async () => {
+      setErr(''); setBusy(true);
+      const r = await cancelListing(existing.id);
+      setBusy(false);
+      if (!r.ok) setErr(r.reason ?? 'Не удалось снять лот');
+    };
     return (
       <div className="p-5 space-y-3">
         <GlassCard className="p-4">
           <p className="text-xs font-bold mb-1" style={{ color: C.t1 }}>Лот уже выставлен</p>
           <p className="text-xs" style={{ color: C.t3 }}>Тип: {existing.type} · Цена: {fmt(existing.price)}</p>
         </GlassCard>
-        <button type="button" onClick={() => { cancelListing(existing.id); }} className="w-full rounded-xl py-2.5 text-xs font-bold" style={{ background: C.l2, color: C.red }}>Снять с продажи</button>
+        {err && <p className="text-xs text-center" style={{ color: C.red }}>{err}</p>}
+        <button type="button" onClick={cancel} disabled={busy} className="w-full rounded-xl py-2.5 text-xs font-bold disabled:opacity-50" style={{ background: C.l2, color: C.red }}>{busy ? 'Снимаем…' : 'Снять с продажи'}</button>
 
         {offers.length>0 && (
           <div>
@@ -171,9 +178,15 @@ const SellFlow = ({ giftId, onDone }: { giftId: string; onDone: () => void }) =>
           <input type="range" min={1} max={20} value={decayPct} onChange={e => setDecayPct(Number(e.target.value))} className="w-full" style={{ accentColor: C.acc }}/>
         </div>
       )}
-      <button type="button" onClick={() => { createListing(giftId, { type, price, reservePrice: type==='reserve'?reservePrice:undefined, decayPct: decayOn?decayPct:0, durationH }); setDone(true); setTimeout(onDone, 1200); }}
-        className="w-full flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white" style={{ background: C.acc }}>
-        <Tag size={16}/> Опубликовать лот
+      {err && <p className="text-xs text-center" style={{ color: C.red }}>{err}</p>}
+      <button type="button" disabled={busy} onClick={async () => {
+        setErr(''); setBusy(true);
+        const r = await createListing(giftId, { type, price, reservePrice: type==='reserve'?reservePrice:undefined, decayPct: decayOn?decayPct:0, durationH });
+        setBusy(false);
+        if (!r.ok) { setErr(r.reason ?? 'Не удалось выставить лот'); return; }
+        setDone(true); setTimeout(onDone, 1200);
+      }} className="w-full flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white disabled:opacity-50" style={{ background: C.acc }}>
+        <Tag size={16}/> {busy ? 'Публикация…' : 'Опубликовать лот'}
       </button>
     </div>
   );

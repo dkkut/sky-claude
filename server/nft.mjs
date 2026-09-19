@@ -109,14 +109,14 @@ export const provenanceOf = async (nftId) => {
     finally { client.release(); }
   })();
   const { rows } = await query(
-    `SELECT id, type, from_id, from_name, to_id, to_name, operation_id, source, at
+    `SELECT id, type, from_id, from_name, to_id, to_name, operation_id, source, price, at
        FROM nft_provenance WHERE nft_id = $1 ORDER BY at ASC`,
     [nftId],
   );
   return rows.map((r) => ({
     id: r.id, type: r.type, fromId: r.from_id, fromName: r.from_name,
     toId: r.to_id, toName: r.to_name, operationId: r.operation_id,
-    source: r.source, at: r.at.toISOString(),
+    source: r.source, price: r.price == null ? null : Number(r.price), at: r.at.toISOString(),
   }));
 };
 
@@ -129,11 +129,13 @@ export const provenanceOf = async (nftId) => {
  * не может дать двух победителей — либо `not_owner`, либо успех, и
  * только у одного из двух запросов.
  */
-export const transferNft = async (senderId, nftId, recipientId, source = 'gift') => {
+export const transferNft = async (senderId, nftId, recipientId, source = 'gift', opts = {}) => {
   if (!isKnownNftId(nftId)) return { error: 'not_found' };
   const to = String(recipientId ?? '');
   if (!to) return { error: 'invalid_recipient' };
   if (to === senderId) return { error: 'self_transfer' };
+  const price = Number.isFinite(opts.price) ? Math.round(opts.price) : null;
+  const provType = opts.type === 'sale' ? 'sale' : 'transfer';
 
   const client = await pool.connect();
   try {
@@ -151,14 +153,17 @@ export const transferNft = async (senderId, nftId, recipientId, source = 'gift')
       `UPDATE nft_ownership SET owner_id = $2, owner_name = $3, updated_at = now() WHERE nft_id = $1`,
       [nftId, to, rp[0].name],
     );
-    const opId = `transfer-${generateId()}`;
+    const opId = `${provType}-${generateId()}`;
     await client.query(
-      `INSERT INTO nft_provenance (id, nft_id, type, from_id, from_name, to_id, to_name, operation_id, source)
-       VALUES ($1,$2,'transfer',$3,$4,$5,$6,$7,$8)`,
-      [`nprov-${generateId()}`, nftId, senderId, current.owner_name, to, rp[0].name, opId, String(source).slice(0, 32)],
+      `INSERT INTO nft_provenance (id, nft_id, type, from_id, from_name, to_id, to_name, operation_id, source, price)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [`nprov-${generateId()}`, nftId, provType, senderId, current.owner_name, to, rp[0].name, opId, String(source).slice(0, 32), price],
     );
     await client.query('COMMIT');
-    await notifyGift(to, 'nft_transfer', '🖼️ Вам подарили NFT', `Вам передали коллекционный подарок «${nftId}»`, nftId);
+    const note = provType === 'sale'
+      ? { title: '🛍️ NFT продан', body: `«${nftId}» куплен за ${price ?? 0} ₽` }
+      : { title: '🖼️ Вам подарили NFT', body: `Вам передали коллекционный подарок «${nftId}»` };
+    await notifyGift(to, provType === 'sale' ? 'nft_purchase' : 'nft_transfer', note.title, note.body, nftId);
     return { ok: true, nftId, ownerId: to, ownerName: rp[0].name, operationId: opId };
   } catch (err) {
     await client.query('ROLLBACK');
