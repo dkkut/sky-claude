@@ -20,10 +20,11 @@ export const PERMISSIONS = [
   'content',         // музыка, кино, телевидение, подкасты
   'market',          // магазины, товары, перевозчики, пункты выдачи
   'logistics',       // склады, видеообзоры помещений
-  'tickets',         // мероприятия и билеты
+  'tickets',         // мероприятия и билеты Sky Tickets
   'bots',            // боты
   'finance',         // начисления денег и Prime
   'security',        // роли, права, журнал, аварийный режим
+  'campaigns',       // мероприятия с наградой (не Sky Tickets — другая сущность)
 ];
 
 /**
@@ -42,6 +43,11 @@ export const ROLES = {
   market_admin:    ['market', 'logistics'],
   tickets_admin:   ['tickets'],
   finance_admin:   ['finance'],
+  // 'support' — вместе с решением по заявке на награду (одобрить,
+  // отклонить) в тот же тикет уходит объяснение; без права 'support'
+  // ответ в чат поддержки молча не доходит (см. support.mjs, staff-
+  // проверка в replyToTicket), а отдельного чата у мероприятий нет.
+  campaigns_admin: ['campaigns', 'support'],
   read_only_admin: [],
 };
 
@@ -56,5 +62,6 @@ export const ROLE_LABEL = {
   market_admin: 'Маркет и склады',
   tickets_admin: 'Билеты',
   finance_admin: 'Начисления',
+  campaigns_admin: 'Мероприятия',
   read_only_admin: 'Только чтение',
 };

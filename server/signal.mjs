@@ -32,6 +32,7 @@ import {
   listAdminsWithRoles, findPerson, lockdownState, setLockdown,
   ROLE_NAMES, PERMISSIONS,
 } from './adminsec.mjs';
+import { grantForProposal } from './campaigns.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
@@ -580,6 +581,23 @@ const handle = async (ws, session, msg) => {
           if (!kind) return failAdm('bad_kind');
           const r = await createPendingAction(me, kind, target,
             { amount: payload?.amount, days: payload?.days, plan: payload?.plan },
+            { stepUpCode: payload?.code, reason: payload?.reason, meta });
+          if (r.error) return failAdm(r.error);
+          return send(ws, { type: 'admin-pending', payload: r });
+        }
+
+        /* ── Мероприятия: предложить награду ────────────────────────
+           Тот же приём, что и остальные начисления: получателя не
+           берём из того, что прислал клиент, — только из самой заявки
+           на награду, чтобы чужой userId в запросе не мог перенаправить
+           чужую награду на другой счёт. adminsec.mjs перепроверяет то
+           же самое ещё раз перед тем, как заморозить содержимое заявки. */
+        case 'propose-campaign-reward': {
+          const grantId = String(payload?.grantId ?? '');
+          const grant = await grantForProposal(grantId);
+          if (!grant) return failAdm('not_found');
+          const r = await createPendingAction(me, 'campaign_reward', grant.profile_id,
+            { grantId },
             { stepUpCode: payload?.code, reason: payload?.reason, meta });
           if (r.error) return failAdm(r.error);
           return send(ws, { type: 'admin-pending', payload: r });

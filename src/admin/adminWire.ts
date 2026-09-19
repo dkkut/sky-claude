@@ -19,7 +19,7 @@ import { onAdminMessage } from '@/messenger/socket';
 /** Права по направлениям. Список ведёт сервер — здесь только подписи. */
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
-  | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security';
+  | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -31,6 +31,7 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   bots: 'Боты',
   finance: 'Начисления',
   security: 'Безопасность',
+  campaigns: 'Мероприятия',
 };
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -43,6 +44,7 @@ export const ROLE_LABEL: Record<string, string> = {
   market_admin: 'Маркет и склады',
   tickets_admin: 'Билеты',
   finance_admin: 'Начисления',
+  campaigns_admin: 'Мероприятия',
   read_only_admin: 'Только чтение',
 };
 
@@ -243,6 +245,7 @@ export const ADMIN_ERROR: Record<string, string> = {
   bad_kind: 'Неизвестное действие',
   bad_video: 'Неизвестный ролик',
   video_owner_mismatch: 'Ролик принадлежит не тому человеку, кто указан в заявке',
+  grant_target_mismatch: 'Заявка на награду принадлежит другому человеку',
   not_found: 'Не найдено',
   account_blocked: 'Учётная запись заблокирована',
   banned: 'Профиль забанен',

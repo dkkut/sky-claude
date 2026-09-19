@@ -27,7 +27,7 @@ const KINDS: TicketKind[] = ['question', 'bug', 'idea', 'report'];
 /** Пока обращение открыто, ответ поддержки должен появляться сам. */
 const REFRESH_MS = 20_000;
 
-export const SupportScreen = () => {
+export const SupportScreen = ({ initialTicketId }: { initialTicketId?: string | null } = {}) => {
   const [view, setView] = useState<'list' | 'new' | 'ticket'>('list');
   const [tickets, setTickets] = useState<SupportTicket[] | null>(null);
   const [open, setOpen] = useState<SupportTicket | null>(null);
@@ -66,6 +66,10 @@ export const SupportScreen = () => {
     const t = await apiReadTicket(id);
     if (t) { setOpen(t); setView('ticket'); setError(null); }
   };
+
+  // Пришли сюда извне (например, из заявки на награду мероприятия) —
+  // открываем именно тот тикет, а не список.
+  useEffect(() => { if (initialTicketId) void openTicket(initialTicketId); }, [initialTicketId]);
 
   const create = async () => {
     const text = draft.trim();

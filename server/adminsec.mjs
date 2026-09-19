@@ -47,6 +47,7 @@ import { wallet } from './wallet.mjs';
 import { grantPrime } from './skyid.mjs';
 import { adjustRevenue } from './skyvideo.mjs';
 import { sessionStore } from './sessions.mjs';
+import { grantForProposal, markGrantProposed, finalizeGrant, failGrant } from './campaigns.mjs';
 
 /* ─── Роли и права ─────────────────────────────────────────────────── */
 
@@ -517,6 +518,12 @@ export const PENDING_KINDS = {
   grant_points:  { permission: 'finance',  stepUp: true,  title: 'Начислить баллы' },
   grant_prime:   { permission: 'finance',  stepUp: true,  title: 'Выдать Prime' },
   skyvideo_revenue_adjust: { permission: 'finance', stepUp: true, title: 'Скорректировать доход по ролику Sky Video' },
+  /* Награда мероприятия начисляется тем же способом, что и обычная
+     выдача Prime (grant_prime — тот же grantPrime), но предлагает её
+     администратор с правом campaigns, а не finance: он не может
+     выдать её сам, только оформить заявку — поворачивает ключ
+     по-прежнему только владелец. */
+  campaign_reward: { permission: 'campaigns', stepUp: true, title: 'Выдать награду мероприятия (Prime)' },
 };
 
 /**
@@ -584,6 +591,17 @@ const checkPayload = (kind, raw = {}) => {
       if (days === null) return { error: 'bad_days' };
       const plan = ['standard', 'year'].includes(String(raw.plan)) ? String(raw.plan) : 'standard';
       return { ok: true, payload: { days, plan } };
+    }
+
+    case 'campaign_reward': {
+      /* Только форма id здесь — дни и получателя следующий шаг берёт
+         прямо из заявки на награду в базе, а не из того, что прислали:
+         иначе предложивший заявку администратор мог бы вписать любое
+         число дней, и владелец подтверждал бы не то, что было
+         заработано. */
+      const grantId = String(raw.grantId ?? '');
+      if (!/^cprg-[0-9a-f-]{36}$/.test(grantId)) return { error: 'bad_grant' };
+      return { ok: true, payload: { grantId } };
     }
 
     case 'skyvideo_revenue_adjust': {
@@ -654,6 +672,18 @@ export const createPendingAction = async (actorId, kind, targetId, raw = {}, opt
     if (vids[0].owner_id !== target) return { error: 'video_owner_mismatch' };
   }
 
+  if (kind === 'campaign_reward') {
+    /* Заявка должна принадлежать именно тому, на кого её оформляют, ещё
+       не быть решённой, и число дней владелец должен увидеть заработанное
+       на момент запроса — не текущую настройку уровня, которую
+       администрация могла успеть изменить. */
+    const grant = await grantForProposal(checked.payload.grantId);
+    if (!grant) return { error: 'not_found' };
+    if (grant.profile_id !== target) return { error: 'grant_target_mismatch' };
+    if (grant.status !== 'pending') return { error: 'already_decided' };
+    checked.payload.days = grant.reward_days;
+  }
+
   if (spec.stepUp) {
     const step = await consumeStepUp(actorId, `pending:${kind}`, stepUpCode, { meta });
     if (step.error) return step;
@@ -671,6 +701,10 @@ export const createPendingAction = async (actorId, kind, targetId, raw = {}, opt
 
   await logAdmin({ actorId, targetId: target, type: `${kind}_request`,
     detail: `${spec.title}: ${JSON.stringify(checked.payload)}`, meta });
+
+  if (kind === 'campaign_reward') {
+    await markGrantProposed(checked.payload.grantId, id);
+  }
 
   return { id, kind, targetId: target, status: 'pending', payload: checked.payload };
 };
@@ -926,6 +960,28 @@ const executePending = async (row, payload, ownerId) => {
       if (res.error) return { error: res.error };
       const rubles = (amount / 100).toFixed(2);
       return { outcome: `${amount >= 0 ? 'Начислено' : 'Списано'} ${Math.abs(Number(rubles))} ₽ по ролику ${payload.videoId}` };
+    }
+
+    case 'campaign_reward': {
+      /* Своего пути к Prime нет и здесь — та же выдача подписки, что у
+         обычного grant_prime. Отличие только в том, что до и после
+         неё нужно отметить саму заявку на награду и ответить в уже
+         открытый по ней тикет поддержки. */
+      const days = Number(payload.days);
+      const { rows } = await query('SELECT sky_id FROM profiles WHERE id = $1', [target]);
+      const skyId = rows[0]?.sky_id;
+      if (!skyId) return { error: 'not_found' };
+      const granted = await grantPrime(skyId, target, 'standard', days);
+      if (granted.error) { await failGrant(payload.grantId); return { error: granted.error }; }
+      const done = await finalizeGrant(payload.grantId, ownerId, days);
+      if (done.error) {
+        /* Prime уже выдан, а свою заявку отметить не удалось — сама
+           выдача от этого не откатывается: удвоенного начисления не
+           будет, потому что UNIQUE(participation_id, level_id) и так
+           не даст запросить этот уровень снова. */
+        return { outcome: `Prime на ${days} дн. выдан, но заявка ${payload.grantId} уже была решена` };
+      }
+      return { outcome: `Prime на ${days} дн. по заявке ${payload.grantId}` };
     }
 
     default:

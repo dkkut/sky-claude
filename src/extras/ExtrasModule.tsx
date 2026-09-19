@@ -1,4 +1,4 @@
-import { Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Scale, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
+import { Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Scale, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
 import { lazyChunk } from '@/app/lazyChunk';
 import { BotsBrowser } from '@/bots/SkyBots';
 import { BotCreatorPanel } from '@/bots/BotCreator';
@@ -38,6 +38,7 @@ const SkyPodcasts = lazyChunk(() => import('@/podcasts/SkyPodcasts').then(m => (
 const SkyTickets = lazyChunk(() => import('@/tickets/SkyTickets').then(m => ({ default: m.SkyTickets })));
 const SkyAITab = lazyChunk(() => import('@/ai/SkyAI').then(m => ({ default: m.SkyAITab })));
 const PrimePulse = lazyChunk(() => import('@/prime/PrimePulse').then(m => ({ default: m.PrimePulse })));
+const Campaigns = lazyChunk(() => import('@/campaigns/Campaigns').then(m => ({ default: m.Campaigns })));
 const MusicianHub = lazyChunk(() => import('@/music/MusicianHub').then(m => ({ default: m.MusicianHub })));
 const SkyGarant = lazyChunk(() => import('@/garant/SkyGarant').then(m => ({ default: m.SkyGarant })));
 const SkyPVZ = lazyChunk(() => import('@/pvz/SkyPVZ').then(m => ({ default: m.SkyPVZ })));
@@ -80,7 +81,7 @@ import { apiSupportStatus } from '@/moderation/supportApi';
    Оформление и порядок экранов сохранены: список карточками, кнопка
    создания, внутри плеер и колонка участников.                     */
 
-type Tab = 'garant'|'home'|'music'|'soundcloud'|'movies'|'prime'|'rooms'|'market'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
+type Tab = 'garant'|'home'|'music'|'soundcloud'|'movies'|'prime'|'rooms'|'market'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
 
 const fmtBytes = (b?: number) => b ? `${(b/1024/1024).toFixed(1)} MB` : '';
 const fmtSec = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -642,6 +643,7 @@ const TABS = [
   {key:'family',   label:'Sky Family',icon:Users},
   {key:'books',    label:'Книги',    icon:BookOpen},
   {key:'pulse',    label:'Pulse',    icon:Zap},
+  {key:'campaigns',label:'Мероприятия', icon:Gift},
   {key:'musicians',label:'Артисты',  icon:Mic2},
   {key:'ads',      label:'Реклама',  icon:Megaphone},
   {key:'more',   label:'Прочее', icon:MoreHorizontal},
@@ -1299,6 +1301,7 @@ export const ExtrasModule = () => {
         {tab==='tickets'    && <SkyTickets/>}
         {tab==='ai'         && <SkyAITab/>}
         {tab==='pulse'     && <PrimePulse/>}
+        {tab==='campaigns' && <Campaigns/>}
         {tab==='musicians' && <MusicianHub/>}
         {tab==='more'         && <MoreTab/>}
         {tab==='admin'  && isAdmin && <AdminPanel/>}

@@ -40,6 +40,8 @@ import { logisticsRoutes } from './routes/logistics.mjs';
 import { sharedWarehouseRoutes } from './routes/sharedwh.mjs';
 import { pvzRoutes } from './routes/pvz.mjs';
 import { pvzShipmentRoutes } from './routes/pvzshipments.mjs';
+import { campaignRoutes } from './routes/campaigns.mjs';
+import { sweepOrphanCampaignCovers } from './campaigns.mjs';
 import { mapsRoutes } from './routes/maps.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
@@ -67,7 +69,7 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
-                pvzRoutes, pvzShipmentRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];
+                pvzRoutes, pvzShipmentRoutes, campaignRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -130,9 +132,17 @@ const server = http.createServer(async (req, res) => {
      * ботов. Вход туда охраняется своим, более строгим способом:
      * секретом runtime, выданным при привязке, и токеном на час. Без
      * них /api/bots/rt/ не отвечает ничего.
+     *
+     * Переход по ссылке участника мероприятия — та же история: её
+     * кликает случайный зритель ролика в соцсети, у которого никогда
+     * не было браузера с ключом беты и не будет. Свой секрет у неё
+     * тоже есть — случайный токен участника, который сверяется на
+     * сервере constant-time сравнением; без него запрос ничего не
+     * находит и ничего не считает.
      */
     const isBotApi = url.startsWith('/api/bots/rt/');
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !betaAllowed(req)) {
+    const isCampaignClick = /^\/api\/campaigns\/r\//.test(url);
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -246,6 +256,8 @@ const start = async () => {
       if (past) console.log(`[tickets] завершено прошедших мероприятий: ${past}`);
       const posters = await sweepOrphanTicketImages();
       if (posters) console.log(`[tickets] убрано осиротевших афиш: ${posters}`);
+      const campaignCovers = await sweepOrphanCampaignCovers();
+      if (campaignCovers) console.log(`[campaigns] убрано осиротевших обложек: ${campaignCovers}`);
       // Файл, отданный Sky AI на разбор, живёт до разбора и не дольше.
       // Человек закрыл вкладку между загрузкой и разбором — держать
       // его документ сутками незачем.

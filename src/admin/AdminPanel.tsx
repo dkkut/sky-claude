@@ -14,10 +14,10 @@
  * Скрытая кнопка защитой не является, поэтому спрятанное здесь спрятано
  * ради порядка на экране, а не ради безопасности.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 import {
   Shield, ShieldAlert, ShieldCheck, Loader2, Check, X, KeyRound,
-  Wallet, Crown, ScrollText, AlertTriangle, RefreshCw, Users, Ban,
+  Wallet, Crown, ScrollText, AlertTriangle, RefreshCw, Users, Ban, Trophy,
 } from 'lucide-react';
 import {
   adminCall, errorText, ROLE_LABEL, PERMISSION_LABEL,
@@ -28,7 +28,7 @@ import {
 const C = {
   bg: 'var(--bg-l1)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
   brd: 'var(--border)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)',
-  acc: 'var(--accent)', red: 'var(--red)', green: 'var(--green)', amber: 'var(--amber)',
+  acc: 'var(--accent)', red: 'var(--red)', green: 'var(--green)', amber: 'var(--amber)', purple: 'var(--purple)',
 };
 
 const inputStyle = { background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 };
@@ -502,6 +502,467 @@ const PrimePulseAdminSection = () => {
   );
 };
 
+/* ─── Мероприятия: кампании, шкала наград, участники, заявки ─────────── */
+
+const emptyCampaignForm = () => ({ title: '', description: '', conditions: '', startsAt: '', endsAt: '' });
+
+const CampaignForm = ({ initial, onCancel, onSaved }: {
+  initial?: import('@/campaigns/campaignsApi').Campaign;
+  onCancel: () => void;
+  onSaved: () => void;
+}) => {
+  const [form, setForm] = useState(() => initial ? {
+    title: initial.title, description: initial.description, conditions: initial.conditions,
+    startsAt: initial.startsAt ? initial.startsAt.slice(0, 10) : '',
+    endsAt: initial.endsAt ? initial.endsAt.slice(0, 10) : '',
+  } : emptyCampaignForm());
+  const [failed, setFailed] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true); setFailed('');
+    const { apiAdminCreateCampaign, apiAdminUpdateCampaign } = await import('@/campaigns/campaignsApi');
+    const input = {
+      title: form.title.trim(), description: form.description.trim(), conditions: form.conditions.trim(),
+      startsAt: form.startsAt ? new Date(form.startsAt).toISOString() : null,
+      endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : null,
+    };
+    const res = initial ? await apiAdminUpdateCampaign(initial.id, input) : await apiAdminCreateCampaign(input);
+    setBusy(false);
+    if (!res.ok) { setFailed(res.reason); return; }
+    onSaved();
+  };
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+        placeholder="Название" className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+        placeholder="Описание" rows={3} className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <textarea value={form.conditions} onChange={(e) => setForm((f) => ({ ...f, conditions: e.target.value }))}
+        placeholder="Условия участия" rows={3} className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <p className="mb-1 text-[10px]" style={{ color: C.t3 }}>Начало</p>
+          <input type="date" value={form.startsAt} onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))}
+            className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        </div>
+        <div className="flex-1">
+          <p className="mb-1 text-[10px]" style={{ color: C.t3 }}>Окончание</p>
+          <input type="date" value={form.endsAt} onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))}
+            className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        </div>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      <div className="flex gap-2">
+        <button type="button" disabled={busy || !form.title.trim()} onClick={() => void save()}
+          className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+          {initial ? 'Сохранить' : 'Создать'}
+        </button>
+        <button type="button" onClick={onCancel} className="rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>
+          Отмена
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const emptyLevelForm = () => ({ viewsThreshold: '', rewardDays: '' });
+
+/** Шкала наград — числа приходят с сервера и правятся только здесь, никогда во фронтенде. */
+const CampaignLevelsPanel = ({ campaignId, onBack }: { campaignId: string; onBack: () => void }) => {
+  const [levels, setLevels] = useState<import('@/campaigns/campaignsApi').CampaignLevel[] | null>(null);
+  const [editing, setEditing] = useState<string | 'new' | null>(null);
+  const [form, setForm] = useState(emptyLevelForm());
+  const [failed, setFailed] = useState('');
+
+  const load = useCallback(async () => {
+    const { apiAdminLevels } = await import('@/campaigns/campaignsApi');
+    const list = await apiAdminLevels(campaignId);
+    setLevels(list ?? []);
+  }, [campaignId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const startEdit = (lv?: import('@/campaigns/campaignsApi').CampaignLevel) => {
+    setFailed('');
+    setForm(lv ? { viewsThreshold: String(lv.viewsThreshold), rewardDays: String(lv.rewardDays) } : emptyLevelForm());
+    setEditing(lv ? lv.id : 'new');
+  };
+
+  const save = async () => {
+    setFailed('');
+    const { apiAdminCreateLevel, apiAdminUpdateLevel } = await import('@/campaigns/campaignsApi');
+    const input = { viewsThreshold: Number(form.viewsThreshold), rewardDays: Number(form.rewardDays) };
+    const res = editing === 'new' ? await apiAdminCreateLevel(campaignId, input)
+      : await apiAdminUpdateLevel(campaignId, String(editing), input);
+    if (!res.ok) { setFailed(res.reason); return; }
+    setEditing(null); void load();
+  };
+
+  const toggle = async (id: string, on: boolean) => {
+    const { apiAdminSetLevelActive } = await import('@/campaigns/campaignsApi');
+    if (await apiAdminSetLevelActive(campaignId, id, on)) void load();
+  };
+
+  const remove = async (id: string) => {
+    const { apiAdminDeleteLevel } = await import('@/campaigns/campaignsApi');
+    const res = await apiAdminDeleteLevel(campaignId, id);
+    if (!res.ok) { setFailed(res.reason); return; }
+    void load();
+  };
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={onBack} className="text-[11px] font-semibold" style={{ color: C.t3 }}>← Назад к мероприятиям</button>
+      <p className="text-xs font-bold" style={{ color: C.t1 }}>Шкала наград</p>
+      <p className="text-[11px]" style={{ color: C.t3 }}>
+        Не суммируется: пользователь получает награду только высшего достигнутого уровня.
+      </p>
+
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+
+      {editing ? (
+        <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex gap-2">
+            <input value={form.viewsThreshold} onChange={(e) => setForm((f) => ({ ...f, viewsThreshold: e.target.value.replace(/\D/g, '') }))}
+              inputMode="numeric" placeholder="Порог просмотров" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+            <input value={form.rewardDays} onChange={(e) => setForm((f) => ({ ...f, rewardDays: e.target.value.replace(/\D/g, '') }))}
+              inputMode="numeric" placeholder="Дней Prime" className="w-28 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+          </div>
+          <div className="flex gap-2">
+            <button type="button" disabled={!form.viewsThreshold || !form.rewardDays} onClick={() => void save()}
+              className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+              Сохранить
+            </button>
+            <button type="button" onClick={() => setEditing(null)} className="rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>
+              Отмена
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => startEdit()}
+          className="w-full rounded-xl py-2 text-xs font-bold" style={{ background: C.l2, color: C.acc }}>
+          + Новый уровень
+        </button>
+      )}
+
+      {levels === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : levels.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Уровней пока нет.</p>
+      ) : levels.slice().sort((a, b) => a.viewsThreshold - b.viewsThreshold).map((lv) => (
+        <div key={lv.id} className="flex items-center justify-between rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div>
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{lv.viewsThreshold.toLocaleString('ru-RU')} просмотров → {lv.rewardDays} дн. Prime</p>
+            <p className="mt-0.5 text-[10px]" style={{ color: lv.active ? C.green : C.t3 }}>{lv.active ? 'Активен' : 'Отключён'}</p>
+          </div>
+          <div className="flex gap-1.5">
+            <button type="button" onClick={() => startEdit(lv)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+              Изменить
+            </button>
+            <button type="button" onClick={() => void toggle(lv.id, !lv.active)}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: lv.active ? C.amber : C.green }}>
+              {lv.active ? 'Отключить' : 'Включить'}
+            </button>
+            <button type="button" onClick={() => void remove(lv.id)} className="rounded-lg px-2 py-1.5" style={{ background: C.l2, color: C.red }}>
+              <X size={11} />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const CampaignParticipantsPanel = ({ campaignId, onBack }: { campaignId: string; onBack: () => void }) => {
+  const [rows, setRows] = useState<import('@/campaigns/campaignsApi').AdminParticipant[] | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const { apiAdminParticipants } = await import('@/campaigns/campaignsApi');
+      setRows(await apiAdminParticipants(campaignId) ?? []);
+    })();
+  }, [campaignId]);
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={onBack} className="text-[11px] font-semibold" style={{ color: C.t3 }}>← Назад к мероприятиям</button>
+      <p className="text-xs font-bold" style={{ color: C.t1 }}>Участники</p>
+      {rows === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : rows.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Участников пока нет.</p>
+      ) : rows.map((p) => (
+        <div key={p.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>@{p.username}</p>
+            <span className="shrink-0 text-[10px] font-bold"
+              style={{ color: p.status === 'suspicious' ? C.amber : p.status === 'blocked' ? C.red : C.green }}>
+              {p.status === 'suspicious' ? 'Проверка' : p.status === 'blocked' ? 'Заблокировано' : 'Активно'}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            Sky ID {p.skyId} · {p.views.toLocaleString('ru-RU')} просмотров · {fmtTs(p.createdAt)}
+          </p>
+          {p.videoUrl && <p className="mt-1 truncate text-[10px]" style={{ color: C.t3 }}>{p.videoUrl}</p>}
+          {p.suspiciousReason && <p className="mt-1 text-[10px]" style={{ color: C.amber }}>{p.suspiciousReason}</p>}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const CampaignCoverUpload = ({ campaignId }: { campaignId: string }) => {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const [done, setDone] = useState(false);
+
+  const pick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true); setFailed(''); setDone(false);
+    const { apiAdminUploadCover } = await import('@/campaigns/campaignsApi');
+    const res = await apiAdminUploadCover(campaignId, file);
+    setBusy(false);
+    if (!res.ok) { setFailed(res.reason); return; }
+    setDone(true);
+  };
+
+  return (
+    <label className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold"
+      style={{ background: C.l2, color: C.t2 }}>
+      {busy ? <Loader2 size={11} className="animate-spin" /> : done ? <Check size={11} style={{ color: C.green }} /> : null}
+      Обложка
+      <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => void pick(e)} />
+      {failed && <span style={{ color: C.red }}>{failed}</span>}
+    </label>
+  );
+};
+
+const CampaignsAdminList = () => {
+  const [campaigns, setCampaigns] = useState<import('@/campaigns/campaignsApi').Campaign[] | null>(null);
+  const [editing, setEditing] = useState<string | 'new' | null>(null);
+  const [levelsFor, setLevelsFor] = useState<string | null>(null);
+  const [participantsFor, setParticipantsFor] = useState<string | null>(null);
+  const [failed, setFailed] = useState('');
+
+  const load = useCallback(async () => {
+    const { apiAdminCampaigns } = await import('@/campaigns/campaignsApi');
+    const list = await apiAdminCampaigns();
+    if (list === null) { setFailed('Не удалось загрузить мероприятия'); return; }
+    setCampaigns(list);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const toggleActive = async (id: string, on: boolean) => {
+    const { apiAdminSetCampaignActive } = await import('@/campaigns/campaignsApi');
+    if (await apiAdminSetCampaignActive(id, on)) void load();
+  };
+
+  const archive = async (id: string) => {
+    const { apiAdminArchiveCampaign } = await import('@/campaigns/campaignsApi');
+    if (await apiAdminArchiveCampaign(id)) void load();
+  };
+
+  if (levelsFor) return <CampaignLevelsPanel campaignId={levelsFor} onBack={() => setLevelsFor(null)} />;
+  if (participantsFor) return <CampaignParticipantsPanel campaignId={participantsFor} onBack={() => setParticipantsFor(null)} />;
+
+  if (editing === 'new') {
+    return <CampaignForm onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />;
+  }
+  const editingCampaign = campaigns?.find((c) => c.id === editing);
+  if (editingCampaign) {
+    return <CampaignForm initial={editingCampaign} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />;
+  }
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={() => setEditing('new')}
+        className="w-full rounded-xl py-2.5 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>
+        + Новое мероприятие
+      </button>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {campaigns === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : campaigns.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Мероприятий пока нет.</p>
+      ) : campaigns.map((c) => (
+        <div key={c.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{c.title}</p>
+            <span className="shrink-0 text-[10px] font-bold"
+              style={{ color: c.archived ? C.t3 : c.active ? C.green : C.amber }}>
+              {c.archived ? 'В архиве' : c.active ? 'Активно' : 'Черновик'}
+            </span>
+          </div>
+          <p className="mt-1 line-clamp-2 text-[10px]" style={{ color: C.t3 }}>{c.description}</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <button type="button" onClick={() => setEditing(c.id)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+              Изменить
+            </button>
+            <button type="button" onClick={() => setLevelsFor(c.id)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.purple }}>
+              Шкала наград
+            </button>
+            <button type="button" onClick={() => setParticipantsFor(c.id)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+              Участники
+            </button>
+            <CampaignCoverUpload campaignId={c.id} />
+            {!c.archived && (
+              <button type="button" onClick={() => void toggleActive(c.id, !c.active)}
+                className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: c.active ? C.amber : C.green }}>
+                {c.active ? 'Снять' : 'Включить'}
+              </button>
+            )}
+            {!c.archived && (
+              <button type="button" onClick={() => void archive(c.id)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.red }}>
+                В архив
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * Заявки на награду: одобрение всегда в два ключа, отклонение — сразу.
+ * Получателя не спрашиваем: сервер сам берёт его из самой заявки, поэтому
+ * форма предложения — это кнопка и подтверждение личности, без единого
+ * поля ввода. Так чужую награду нельзя перенаправить опечаткой в id.
+ */
+const CampaignGrantsPanel = ({ onPendingChanged }: { onPendingChanged: () => void }) => {
+  const [grants, setGrants] = useState<import('@/campaigns/campaignsApi').AdminGrant[] | null>(null);
+  const [status, setStatus] = useState<'pending' | 'granted' | 'rejected' | ''>('pending');
+  const [failed, setFailed] = useState('');
+  const [proposing, setProposing] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+
+  const load = useCallback(async () => {
+    const { apiAdminGrants } = await import('@/campaigns/campaignsApi');
+    const list = await apiAdminGrants(status ? { status } : {});
+    if (list === null) { setFailed('Не удалось загрузить заявки'); return; }
+    setGrants(list);
+  }, [status]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const propose = async (grantId: string, code: string) => {
+    setProposing(null); setFailed('');
+    const r = await adminCall({ action: 'propose-campaign-reward', grantId, code });
+    if (r.type !== 'admin-pending') { setFailed(errorText(r.payload?.error)); return; }
+    onPendingChanged();
+    void load();
+  };
+
+  const reject = async (grantId: string) => {
+    const { apiAdminRejectGrant } = await import('@/campaigns/campaignsApi');
+    const res = await apiAdminRejectGrant(grantId, reason.trim());
+    setRejecting(null); setReason('');
+    if (!res.ok) { setFailed(res.reason); return; }
+    void load();
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1">
+        {([['pending', 'Ждут'], ['granted', 'Начислены'], ['rejected', 'Отклонены'], ['', 'Все']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setStatus(k)}
+            className="flex-1 rounded-xl py-1.5 text-[11px] font-semibold"
+            style={{ background: status === k ? C.acc : C.l2, color: status === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+
+      {grants === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : grants.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Заявок нет.</p>
+      ) : grants.map((g) => (
+        <div key={g.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-bold" style={{ color: C.t1 }}>@{g.username}</p>
+              <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+                {g.campaignTitle} · {g.viewsAtRequest.toLocaleString('ru-RU')} просмотров · {g.rewardDays} дн. Prime
+              </p>
+              <p className="text-[10px]" style={{ color: C.t3 }}>Sky ID {g.skyId} · {fmtTs(g.createdAt)}</p>
+            </div>
+            <span className="shrink-0 text-[10px] font-bold" style={{
+              color: g.status === 'granted' ? C.green : g.status === 'rejected' ? C.red
+                : g.status === 'pending' ? C.amber : C.t3,
+            }}>
+              {g.status === 'pending' ? 'Ждёт' : g.status === 'granted' ? 'Начислена' : g.status === 'rejected' ? 'Отклонена' : g.status}
+            </span>
+          </div>
+
+          {g.status === 'pending' && (
+            <div className="mt-2 space-y-2">
+              {proposing === g.id ? (
+                <StepUp purpose="pending:campaign_reward" onCode={(c) => void propose(g.id, c)} onCancel={() => setProposing(null)} />
+              ) : rejecting === g.id ? (
+                <div className="space-y-1.5">
+                  <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина отказа (увидит участник)"
+                    className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => void reject(g.id)}
+                      className="flex-1 rounded-xl py-1.5 text-[11px] font-bold" style={{ background: C.red, color: '#fff' }}>
+                      Отклонить
+                    </button>
+                    <button type="button" onClick={() => { setRejecting(null); setReason(''); }}
+                      className="rounded-xl px-3 py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.t3 }}>
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setProposing(g.id)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold" style={{ background: C.green, color: '#04150c' }}>
+                    <Trophy size={12} /> Предложить выдачу
+                  </button>
+                  <button type="button" onClick={() => setRejecting(g.id)}
+                    className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.red }}>
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const CampaignsAdminSection = ({ onPendingChanged }: { onPendingChanged: () => void }) => {
+  const [sub, setSub] = useState<'campaigns' | 'grants'>('campaigns');
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1">
+        <button type="button" onClick={() => setSub('campaigns')}
+          className="flex-1 rounded-xl py-1.5 text-[11px] font-semibold"
+          style={{ background: sub === 'campaigns' ? C.acc : C.l2, color: sub === 'campaigns' ? '#fff' : C.t3 }}>
+          Мероприятия
+        </button>
+        <button type="button" onClick={() => setSub('grants')}
+          className="flex-1 rounded-xl py-1.5 text-[11px] font-semibold"
+          style={{ background: sub === 'grants' ? C.acc : C.l2, color: sub === 'grants' ? '#fff' : C.t3 }}>
+          Заявки на подарок
+        </button>
+      </div>
+      {sub === 'campaigns' ? <CampaignsAdminList /> : <CampaignGrantsPanel onPendingChanged={onPendingChanged} />}
+    </div>
+  );
+};
+
 const SkyVideoAdminSection = ({ rights, onPendingChanged }: { rights: MyRights; onPendingChanged: () => void }) => (
   <div className="space-y-4">
     {rights.permissions.includes('content') && (
@@ -943,7 +1404,7 @@ const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'campaigns' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -1063,6 +1524,7 @@ export const AdminPanel = () => {
     { key: 'grant', label: 'Начисления', show: has('finance') },
     { key: 'video', label: 'Sky Video', show: has('content') || has('finance') },
     { key: 'pulse', label: 'Prime Pulse', show: has('content') },
+    { key: 'campaigns', label: 'Мероприятия', show: has('campaigns') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
     { key: 'events', label: 'События', show: has('security') },
@@ -1190,6 +1652,7 @@ export const AdminPanel = () => {
       {tab === 'grant' && <GrantForm onSent={() => void loadPending()} />}
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
       {tab === 'pulse' && <PrimePulseAdminSection />}
+      {tab === 'campaigns' && <CampaignsAdminSection onPendingChanged={() => void loadPending()} />}
 
       {tab === 'admins' && (
         <>

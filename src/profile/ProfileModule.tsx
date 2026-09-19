@@ -8,6 +8,7 @@ import {
   ArrowLeftRight, LifeBuoy, ScrollText, Inbox, Video, ShieldHalf,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
+import { useModuleStore } from '@/data/state/modules';
 import { ConfirmExit } from '@/auth/AuthScreen';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { usePrivacyStore } from './privacyStore';
@@ -646,6 +647,17 @@ export const ProfileModule = () => {
   const isMobile = useIsMobile();
 
   const [section, setSection] = useState<Section>('main');
+  // Пришли сюда из другого раздела с заявкой на подарок мероприятия —
+  // открываем «Поддержку» сразу на её тикете, тем же приёмом, что
+  // pendingExtrasTab открывает вкладку внутри «Прочего». Значение забираем
+  // в локальный стейт один раз при входе: общий стор гасим сразу же, иначе
+  // повторный заход в «Поддержку» из меню открывал бы тот же тикет снова.
+  const [openSupportTicketId] = useState(() => useModuleStore.getState().pendingSupportTicketId);
+  useEffect(() => {
+    if (!openSupportTicketId) return;
+    setSection('support');
+    useModuleStore.getState().setPendingSupportTicketId(null);
+  }, [openSupportTicketId]);
   // Владелец — администратор по нику, а не по колонке в профиле,
   // поэтому спрашиваем сервер, а не смотрим в свои же данные.
   //
@@ -1151,7 +1163,7 @@ export const ProfileModule = () => {
 
         {section === 'support' && (
           <div className="flex flex-col h-full overflow-hidden">
-            <SupportScreen />
+            <SupportScreen initialTicketId={openSupportTicketId} />
           </div>
         )}
 
