@@ -240,6 +240,7 @@ export const myPvzMemberships = async (profileId) => {
 
 const MAX_TITLE = 120;
 const MAX_ADDR = 300;
+const MAX_PAYMENT_DETAILS = 600;
 
 /**
  * Владелец заводит свою точку. Она видна ему сразу (кабинет, сотрудники,
@@ -355,15 +356,27 @@ export const updatePvzSettings = async (pvzId, actorId, patch = {}) => {
   const sets = [];
   const args = [pvzId];
   const push = (col, val) => { args.push(val); sets.push(`${col} = $${args.length}`); };
+  /* В журнал попадают только имена изменённых полей, не значения —
+     платёжные реквизиты в открытом виде в market_pvz_audit.detail не
+     место (тот же принцип, что и у самих реквизитов: зашифрованы в
+     покое, а не только на входе). */
+  const changedFields = [];
 
-  if (patch.phone !== undefined) push('phone', text(patch.phone, 40));
-  if (patch.workFrom !== undefined) push('work_from', text(patch.workFrom, 5) || '09:00');
-  if (patch.workTo !== undefined) push('work_to', text(patch.workTo, 5) || '21:00');
-  if (patch.holdDays !== undefined) push('hold_days', int(patch.holdDays, 1, 60) ?? 7);
+  if (patch.phone !== undefined) { push('phone', text(patch.phone, 40)); changedFields.push('phone'); }
+  if (patch.workFrom !== undefined) { push('work_from', text(patch.workFrom, 5) || '09:00'); changedFields.push('workFrom'); }
+  if (patch.workTo !== undefined) { push('work_to', text(patch.workTo, 5) || '21:00'); changedFields.push('workTo'); }
+  if (patch.holdDays !== undefined) { push('hold_days', int(patch.holdDays, 1, 60) ?? 7); changedFields.push('holdDays'); }
+  if (patch.paymentDetails !== undefined) {
+    const details = text(patch.paymentDetails, MAX_PAYMENT_DETAILS);
+    push('owner_payment_details_enc', details ? encryptContent(details) : null);
+    args.push(Boolean(details));
+    sets.push(`has_owner_payment_details = $${args.length}`);
+    changedFields.push('paymentDetails');
+  }
   if (sets.length === 0) return { error: 'nothing_to_update' };
 
   await query(`UPDATE market_pickup_points SET ${sets.join(', ')} WHERE id = $1`, args);
-  await logPvz(null, pvzId, actorId, 'pvz_settings_updated', { type: 'pvz', id: pvzId }, patch);
+  await logPvz(null, pvzId, actorId, 'pvz_settings_updated', { type: 'pvz', id: pvzId }, { fields: changedFields });
   return { ok: true };
 };
 
@@ -826,7 +839,8 @@ export const pvzOverview = async (pvzId, actorId) => {
   if (!role && !(await can(actorId, 'market'))) return null;
   const { rows } = await query(
     `SELECT id, title, city, address, phone, work_from, work_to, hold_days,
-            active, staff_closed, staff_closed_reason, owner_id, owner_status
+            active, staff_closed, staff_closed_reason, owner_id, owner_status,
+            has_owner_payment_details, owner_payment_details_enc
        FROM market_pickup_points WHERE id = $1`, [pvzId]);
   const p = rows[0];
   if (!p) return null;
@@ -841,6 +855,13 @@ export const pvzOverview = async (pvzId, actorId) => {
     active: p.active, staffClosed: p.staff_closed, staffClosedReason: p.staff_closed_reason,
     hasOwner: Boolean(p.owner_id), ownerStatus: p.owner_status, myRole: role,
     cellCount: pending[0]?.n ?? 0,
+    hasOwnerPaymentDetails: Boolean(p.has_owner_payment_details),
+    /* Сами реквизиты — только самому владельцу, тем же приёмом, что и
+       у продавца (market.mjs, toSeller): постороннему сотруднику
+       видно только, что реквизиты заданы, не что в них. */
+    ownerPaymentDetails: ROLE_RANK[role] >= ROLE_RANK.owner && p.owner_payment_details_enc
+      ? (decryptContent(p.owner_payment_details_enc) ?? '')
+      : undefined,
     waitingOrders: waiting.map((o) => ({
       id: o.id, title: o.title_snap, pickupUntil: o.pickup_until?.toISOString?.() ?? null,
     })),
@@ -902,23 +923,36 @@ export const commissionsForOwner = async (actorId, { limit } = {}) => {
   return rows.map(toCommission);
 };
 
+/**
+ * Продавцу — вместе с реквизитами владельца точки: ему нужно знать,
+ * куда переводить комиссию, и узнать это он должен от сервера, а не
+ * из переписки — тот же принцип, что у paymentDetailsForOrder
+ * (market.mjs) для оплаты самого товара. Видно только по своей
+ * собственной комиссии (WHERE seller_id = $1), IDOR тут структурно
+ * невозможен — реквизиты приходят вместе со строкой начисления, а не
+ * отдельной ручкой по pvzId, до которой чужому продавцу дотянуться
+ * нечем.
+ */
 export const commissionsForSeller = async (actorId, { limit } = {}) => {
   const lim = int(limit, 1, 300) ?? 100;
   const { rows } = await query(
-    `SELECT c.*, p.title AS pvz_title, o.title_snap AS order_title
+    `SELECT c.*, p.title AS pvz_title, p.owner_payment_details_enc, o.title_snap AS order_title
        FROM market_pvz_commissions c
        JOIN market_pickup_points p ON p.id = c.pvz_id
        JOIN market_orders o ON o.id = c.order_id
       WHERE c.seller_id = $1 ORDER BY c.created_at DESC LIMIT $2`, [actorId, lim]);
-  return rows.map(toCommission);
+  return rows.map((r) => toCommission(r, true));
 };
 
-function toCommission(r) {
+function toCommission(r, forSeller = false) {
   return {
     id: r.id, orderId: r.order_id, pvzId: r.pvz_id, pvzTitle: r.pvz_title, orderTitle: r.order_title,
     orderAmountKop: Number(r.order_amount_kop), percent: Number(r.percent), amountKop: Number(r.amount_kop),
     status: r.status, declaredPaidAt: r.declared_paid_at?.toISOString?.() ?? null,
     createdAt: r.created_at.toISOString(),
+    ownerPaymentDetails: forSeller && r.owner_payment_details_enc
+      ? (decryptContent(r.owner_payment_details_enc) ?? '')
+      : undefined,
   };
 }
 
