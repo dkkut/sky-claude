@@ -18,7 +18,7 @@ import {
   PVZ_ID_RE, CELL_ID_RE, KEY_ID_RE, STAFF_ID_RE, PERMISSIONS, ROLES,
   PVZ_SUBSCRIPTION_PRICE, PVZ_OWNER_COMMISSION_PERCENT,
   myPvzMemberships, pvzOverview, listStaff, addStaff, revokeStaff, setStaffClosed,
-  createPvz, activatePvzSubscription,
+  createPvz, activatePvzSubscription, updatePvzSettings,
   listCells, upsertCell, setCellStatus, reserveCell,
   receiveOrder, placeInCell, verifyPickup,
   listKeys, createKey, issueKeyToStaff, returnKeyFromStaff, reportKeyLost,
@@ -139,6 +139,12 @@ export const pvzRoutes = async (req, res, path) => {
   if (req.method === 'POST' && rest === '/activate') {
     if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
     const done = await activatePvzSubscription(pvzId, me);
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+
+  if (req.method === 'POST' && rest === '/settings') {
+    if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await updatePvzSettings(pvzId, me, await body());
     return done.error ? fail(res, done) : json(res, 200, done);
   }
 

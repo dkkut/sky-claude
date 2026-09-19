@@ -342,6 +342,31 @@ export const setStaffClosed = async (pvzId, actorId, closed, reason = '') => {
   return { ok: true };
 };
 
+/**
+ * Настройки точки, которые вправе менять сам владелец: часы работы,
+ * срок хранения, телефон. Название/город/адрес — только через
+ * администрацию (upsertPickupPoint в market.mjs): их меняет карточка в
+ * публичном каталоге и Google Карты, а не кабинет владельца.
+ */
+export const updatePvzSettings = async (pvzId, actorId, patch = {}) => {
+  if (!(await isOwnerOf(pvzId, actorId))) return { error: 'not_allowed' };
+  if (!(await pvzExists(pvzId))) return { error: 'not_found' };
+
+  const sets = [];
+  const args = [pvzId];
+  const push = (col, val) => { args.push(val); sets.push(`${col} = $${args.length}`); };
+
+  if (patch.phone !== undefined) push('phone', text(patch.phone, 40));
+  if (patch.workFrom !== undefined) push('work_from', text(patch.workFrom, 5) || '09:00');
+  if (patch.workTo !== undefined) push('work_to', text(patch.workTo, 5) || '21:00');
+  if (patch.holdDays !== undefined) push('hold_days', int(patch.holdDays, 1, 60) ?? 7);
+  if (sets.length === 0) return { error: 'nothing_to_update' };
+
+  await query(`UPDATE market_pickup_points SET ${sets.join(', ')} WHERE id = $1`, args);
+  await logPvz(null, pvzId, actorId, 'pvz_settings_updated', { type: 'pvz', id: pvzId }, patch);
+  return { ok: true };
+};
+
 /* ─── Ячейки ──────────────────────────────────────────────────────────── */
 
 const toCell = (r) => ({
