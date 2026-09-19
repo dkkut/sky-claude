@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Bike, Footprints, Car as CarIcon, Truck as VanIcon, Check, Star, Package, Power } from 'lucide-react';
-import { VEHICLE_CFG } from '@/marketplace/logistics/shared';
+import { Bike, Footprints, Car as CarIcon, Truck as VanIcon, Check, Package, Loader2 } from 'lucide-react';
 import { useCourierStore } from '@/marketplace/logistics/courierStore';
 import { useAuthStore } from '@/core/auth/store';
 import { CITIES } from '@/marketplace/logistics/geo';
 import type { CourierVehicle } from '@/marketplace/logistics/types';
+import { CourierAdmission } from './CourierAdmission';
+import { CourierDashboard } from './CourierDashboard';
 
 const VEHICLES: { key: CourierVehicle; label: string; icon: any; hint: string }[] = [
   { key: 'foot',    label: 'Пешком',     icon: Footprints, hint: 'Доставки в пределах района' },
@@ -16,10 +17,16 @@ const VEHICLES: { key: CourierVehicle; label: string; icon: any; hint: string }[
 ];
 
 export const CourierApply = ({ onBack }: { onBack: () => void }) => {
-  const { registerAsCourier, myCourierProfile, setMyOnline } = useCourierStore();
+  const { registerAsCourier, myCourierProfile, loaded, load } = useCourierStore();
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
   const profile = myCourierProfile();
+
+  /* Курьерский профиль, если он уже есть, лежит на сервере — экран
+     не должен предлагать регистрацию заново только потому, что до
+     сюда открыли напрямую, минуя другие экраны, которые уже успели
+     наполнить общий кэш логистики. */
+  useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
 
   const [step, setStep] = useState(0);
   const [vehicle, setVehicle] = useState<CourierVehicle>('bike');
@@ -30,6 +37,14 @@ export const CourierApply = ({ onBack }: { onBack: () => void }) => {
   const [submitting, setSubmitting] = useState(false);
 
   const city = CITIES.find(c => c.id === cityId) ?? CITIES[0];
+
+  if (!loaded) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <Loader2 size={22} className="animate-spin" style={{ color: 'var(--t3)' }} />
+      </div>
+    );
+  }
 
   const submit = () => {
     setSubmitting(true);
@@ -44,52 +59,23 @@ export const CourierApply = ({ onBack }: { onBack: () => void }) => {
     }, 700);
   };
 
-  /* ── Уже работает курьером ─────────────────────────────────────── */
+  /* ── Анкета уже подана: допуск к работе или рабочий кабинет ──────── */
   if (profile) {
     return (
-      <div className="flex h-full flex-col overflow-y-auto px-4 py-4">
-        <button type="button" onClick={onBack} className="mb-3 text-left text-[12.5px]" style={{ color: 'var(--t3)' }}>← Работа</button>
-
-        <div className="rounded-3xl p-5 text-center" style={{ background: 'linear-gradient(135deg, rgba(6,182,212,0.15), var(--bg-l1))', border: '1px solid rgba(6,182,212,0.25)' }}>
-          <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-full" style={{ background: 'var(--bg-l2)' }}>
-            {(() => { const Icon = VEHICLE_CFG[profile.vehicle].icon; return <Icon size={28} style={{ color:'var(--t2)' }}/>; })()}
-          </div>
-          <p className="text-lg font-black" style={{ color: 'var(--t1)' }}>{profile.name}</p>
-          <div className="mt-1 flex items-center justify-center gap-1 text-[12.5px]" style={{ color: 'var(--t3)' }}>
-            <Star size={12} fill="#f59e0b" color="#f59e0b"/>{profile.rating} · {profile.deliveriesCount} доставок
-          </div>
+      <div className="flex h-full flex-col">
+        <div className="shrink-0 px-4 pt-4">
+          <button type="button" onClick={onBack} className="mb-1 text-left text-[12.5px]" style={{ color: 'var(--t3)' }}>← Работа</button>
         </div>
-
-        <button type="button" onClick={() => setMyOnline(!profile.online)}
-          className="mt-4 flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[13.5px] font-bold"
-          style={{ background: profile.online ? 'rgba(34,197,94,0.15)' : 'var(--bg-l2)', color: profile.online ? 'var(--green)' : 'var(--t3)' }}>
-          <Power size={15}/>{profile.online ? 'Вы на линии' : 'Выйти на линию'}
-        </button>
-
-        <div className="mt-4 grid grid-cols-2 gap-2.5">
-          <div className="rounded-2xl p-3.5 text-center" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
-            <p className="text-lg font-black" style={{ color: 'var(--t1)' }}>{profile.pricePerDelivery} ₽</p>
-            <p className="text-[11px]" style={{ color: 'var(--t3)' }}>за доставку</p>
-          </div>
-          <div className="rounded-2xl p-3.5 text-center" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
-            <p className="text-lg font-black" style={{ color: 'var(--t1)' }}>{city?.name ?? profile.cityId}</p>
-            <p className="text-[11px]" style={{ color: 'var(--t3)' }}>{profile.district}</p>
-          </div>
+        <div className="min-h-0 flex-1">
+          {profile.status === 'approved'
+            ? <CourierDashboard courier={profile} />
+            : <CourierAdmission courier={profile} />}
         </div>
-
-        <div className="mt-4 rounded-2xl p-4" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
-          <p className="mb-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--t3)' }}>О себе</p>
-          <p className="text-[13px]" style={{ color: 'var(--t2)' }}>{profile.bio}</p>
-        </div>
-
-        <p className="mt-4 text-center text-[11.5px]" style={{ color: 'var(--t3)' }}>
-          Ваш профиль уже виден продавцам в разделе «Курьеры» — заказы будут поступать через тот же личный кабинет.
-        </p>
       </div>
     );
   }
 
-  /* ── Успешная подача заявки (мгновенное одобрение для демо) ──── */
+  /* ── Заявка отправляется на сервер ────────────────────────────── */
   if (submitting) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3">

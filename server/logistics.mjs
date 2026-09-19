@@ -22,6 +22,8 @@ import { generateId } from './security.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { marketText as text, marketInt as int, ORDER_ID_RE } from './market.mjs';
 import { pushMarket } from './signal.mjs';
+import { can } from './admin.mjs';
+import { profileAge, myVerification as myPassportVerification, MIN_COURIER_AGE } from './courierverify.mjs';
 
 export const COURIER_ID_RE = /^lc-[0-9a-f-]{36}$/;
 export const COLLAB_ID_RE = /^lcb-[0-9a-f-]{36}$/;
@@ -71,6 +73,10 @@ const toCourier = (row, { withPhone = false } = {}) => ({
   workTo: row.work_to,
   online: Boolean(row.online),
   bio: row.bio,
+  // Статус допуска решает администратор (courier_verifications +
+  // decideCourierApplication) — не сам курьер и не клиент.
+  status: row.status,
+  statusReason: row.status_reason ?? undefined,
   /*
    * Точка на карте — живое местоположение человека. Показывается,
    * только пока он сам объявил себя на связи: уйдя со связи, курьер
@@ -167,12 +173,27 @@ export const updateCourier = async (profileId, patch = {}) => {
  * Ставит только сам курьер и только про себя. Присланного courierId
  * здесь не читается: он берётся из профиля того, кто спрашивает, —
  * иначе любой желающий двигал бы чужую метку по карте.
+ *
+ * Выйти на связь (online=true) можно только когда все условия допуска
+ * выполнены прямо сейчас — не были выполнены когда-то при подаче
+ * заявки, а именно сейчас: статус approved, паспорт verified, возраст
+ * ≥16. Проверяется заново при каждом включении, а не один раз и
+ * навсегда, — потому что дата рождения или проверка паспорта могли
+ * измениться (см. courierverify.mjs::setDateOfBirth).
  */
 export const setCourierPresence = async (profileId, { online, lat, lng } = {}) => {
   const row = await courierRowByProfile(profileId);
   if (!row) return { error: 'not_a_courier' };
 
   const nextOnline = online === undefined ? row.online : online === true;
+  if (nextOnline && !row.online) {
+    if (row.status === 'suspended') return { error: 'suspended' };
+    if (row.status !== 'approved') return { error: 'not_approved' };
+    const age = await profileAge(profileId);
+    if (age === null || age < MIN_COURIER_AGE) return { error: 'underage' };
+    const verification = await myPassportVerification(profileId);
+    if (verification?.status !== 'verified') return { error: 'passport_unverified' };
+  }
   const okLat = Number.isFinite(Number(lat)) && Math.abs(Number(lat)) <= 90;
   const okLng = Number.isFinite(Number(lng)) && Math.abs(Number(lng)) <= 180;
 
@@ -185,6 +206,100 @@ export const setCourierPresence = async (profileId, { online, lat, lng } = {}) =
       WHERE profile_id = $1 RETURNING *`,
     [profileId, nextOnline, okLat ? Number(lat) : null, okLng ? Number(lng) : null]);
   return { courier: toCourier(rows[0], { withPhone: true }) };
+};
+
+/* ─── Допуск курьера: решает администратор ───────────────────────────── */
+
+/**
+ * Одобрить/отклонить заявку курьера.
+ *
+ * Право 'logistics', простой can() — как и решение по проверке
+ * паспорта (courierverify.mjs::decideVerification) и по любой другой
+ * модерации в проекте: это не выдача денег и не админских прав.
+ *
+ * Одобрить можно, только если паспорт уже verified и возраст ≥16 —
+ * тем же способом пересчитанный заново, а не унаследованный из заявки.
+ */
+export const decideCourierApplication = async (adminId, courierId, approve, reason = '') => {
+  if (!(await can(adminId, 'logistics'))) return { error: 'not_allowed' };
+  if (!COURIER_ID_RE.test(String(courierId ?? ''))) return { error: 'not_found' };
+
+  const { rows: cur } = await query(
+    `SELECT * FROM logi_couriers WHERE id = $1 AND status = 'pending'`, [courierId]);
+  const row = cur[0];
+  if (!row) return { error: 'not_found' };
+
+  if (approve) {
+    const age = await profileAge(row.profile_id);
+    if (age === null || age < MIN_COURIER_AGE) return { error: 'underage' };
+    const verification = await myPassportVerification(row.profile_id);
+    if (verification?.status !== 'verified') return { error: 'passport_unverified' };
+  }
+  const status = approve ? 'approved' : 'rejected';
+  const statusReason = approve ? null : (text(reason, 300) || 'Отклонено');
+
+  const { rows: upd } = await query(
+    `UPDATE logi_couriers SET status = $2, status_reason = $3, status_by = $4, status_at = now(), updated_at = now()
+      WHERE id = $1 AND status = 'pending' RETURNING *`,
+    [courierId, status, statusReason, adminId]);
+  if (!upd[0]) return { error: 'not_found' };
+
+  await notifyLogi(row.profile_id, courierId, null, status,
+    approve ? 'Заявка курьера одобрена — можно выходить на связь' : `Заявка курьера отклонена: ${statusReason}`);
+  await logLogi(adminId, approve ? 'courier_approved' : 'courier_rejected', courierId, { reason: statusReason });
+  return { courier: toCourier(upd[0], { withPhone: true }) };
+};
+
+/**
+ * Приостановить/восстановить уже одобренного курьера.
+ *
+ * Приостановленный курьер не может выйти на связь (setCourierPresence
+ * проверяет status) и не получает новых заказов из пула, но уже
+ * взятые поручения решаются по обычным правилам — блокировка не
+ * отменяет то, что уже делается.
+ */
+export const setCourierAdminStatus = async (adminId, courierId, status, reason = '') => {
+  if (!(await can(adminId, 'logistics'))) return { error: 'not_allowed' };
+  if (!COURIER_ID_RE.test(String(courierId ?? ''))) return { error: 'not_found' };
+  if (!['suspended', 'approved'].includes(String(status))) return { error: 'bad_status' };
+
+  const fromStatus = status === 'suspended' ? 'approved' : 'suspended';
+  const { rows } = await query(
+    `UPDATE logi_couriers SET status = $2, status_reason = $3, status_by = $4, status_at = now(),
+            online = CASE WHEN $2 = 'suspended' THEN FALSE ELSE online END, updated_at = now()
+      WHERE id = $1 AND status = $5 RETURNING *`,
+    [courierId, status, text(reason, 300) || null, adminId, fromStatus]);
+  if (!rows[0]) return { error: 'wrong_state' };
+
+  await notifyLogi(rows[0].profile_id, courierId, null, status,
+    status === 'suspended' ? `Работа приостановлена: ${text(reason, 300) || 'без причины'}` : 'Работа возобновлена');
+  await logLogi(adminId, status === 'suspended' ? 'courier_suspended' : 'courier_restored', courierId, { reason });
+  return { courier: toCourier(rows[0], { withPhone: true }) };
+};
+
+/** Очередь заявок курьеров для админ-панели. */
+export const adminListCouriers = async (adminId, { status, q, limit } = {}) => {
+  if (!(await can(adminId, 'logistics'))) return null;
+  const lim = int(limit, 1, 200) ?? 100;
+  const args = [];
+  const where = [];
+  if (status) { args.push(text(status, 20)); where.push(`c.status = $${args.length}`); }
+  const needle = text(q, 80).toLowerCase();
+  if (needle) {
+    args.push(`%${needle.replace(/([\\%_])/g, '\\$1')}%`);
+    where.push(`lower(c.name) LIKE $${args.length} ESCAPE '\\'`);
+  }
+  args.push(lim);
+  const { rows } = await query(
+    `SELECT c.*, p.date_of_birth
+       FROM logi_couriers c JOIN profiles p ON p.id = c.profile_id
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY (c.status = 'pending') DESC, c.created_at DESC
+      LIMIT $${args.length}`, args);
+  return rows.map((r) => ({
+    ...toCourier(r, { withPhone: true }),
+    age: r.date_of_birth ? Math.floor((Date.now() - new Date(r.date_of_birth).getTime()) / 31557600000) : null,
+  }));
 };
 
 /* ─── Каталог курьеров ─────────────────────────────────────────────── */
@@ -441,10 +556,17 @@ export const sendCourierMessage = async (courierId, actorId, body, sellerId) => 
 const toAssignment = (row) => ({
   id: row.id,
   orderId: row.order_id,
-  courierId: row.courier_id,
+  courierId: row.courier_id ?? null,
   sellerId: row.seller_id,
   status: row.status,
+  cityId: row.city_id ?? '',
+  district: row.district ?? '',
+  price: Number(row.price_kop ?? 0) / 100,
+  problemReason: row.problem_reason ?? undefined,
+  ticketId: row.ticket_id ?? undefined,
   assignedAt: row.assigned_at?.toISOString?.() ?? undefined,
+  pickedUpAt: row.picked_up_at?.toISOString?.() ?? undefined,
+  deliveredAt: row.delivered_at?.toISOString?.() ?? undefined,
   updatedAt: row.updated_at?.toISOString?.() ?? undefined,
 });
 
@@ -470,15 +592,19 @@ export const assignCourier = async (sellerId, orderId, courierId) => {
   const live = await collabBetween(courierId, sellerId);
   if (live !== 'accepted') return { error: 'no_collab' };
 
-  const { rows: c } = await query('SELECT profile_id FROM logi_couriers WHERE id = $1', [courierId]);
+  const { rows: c } = await query(
+    'SELECT profile_id, price_kop, city_id, district, status FROM logi_couriers WHERE id = $1', [courierId]);
+  if (!c[0]) return { error: 'not_found' };
+  if (c[0].status !== 'approved') return { error: 'courier_not_approved' };
+
   const { rows } = await query(
-    `INSERT INTO logi_courier_assignments (id, order_id, courier_id, seller_id)
-     VALUES ($1,$2,$3,$4)
+    `INSERT INTO logi_courier_assignments (id, order_id, courier_id, seller_id, city_id, district, price_kop)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
      ON CONFLICT (order_id) DO UPDATE
        SET courier_id = EXCLUDED.courier_id, status = 'assigned', updated_at = now()
-     WHERE logi_courier_assignments.status IN ('assigned', 'cancelled')
+     WHERE logi_courier_assignments.status IN ('open', 'assigned', 'cancelled')
      RETURNING *`,
-    [`lca-${generateId()}`, orderId, courierId, sellerId]);
+    [`lca-${generateId()}`, orderId, courierId, sellerId, c[0].city_id, c[0].district, c[0].price_kop]);
   if (!rows[0]) return { error: 'already_in_progress' };
 
   await notifyLogi(c[0].profile_id, courierId, orderId, 'assigned', 'Вам поручена доставка');
@@ -487,17 +613,20 @@ export const assignCourier = async (sellerId, orderId, courierId) => {
 };
 
 /**
- * Курьер двигает своё поручение.
+ * Отменить поручение. Курьер или продавец — это их сделка.
  *
- * Только тот курьер, которому поручили. Отменить может и продавец —
- * это его заказ.
+ * «Забрал» и «доставил» здесь больше не решаются: это подтверждает не
+ * кнопка, а код/QR у второй стороны (courierdelivery.mjs::
+ * confirmPickup/confirmDelivery) — иначе курьер сам себе засчитывал бы
+ * доставку без единого подтверждения со стороны продавца или
+ * покупателя, а именно так раньше и было.
  */
 export const setAssignmentStatus = async (actorId, assignmentId, status) => {
-  if (!['picked_up', 'delivered', 'cancelled'].includes(String(status))) return { error: 'bad_status' };
+  if (status !== 'cancelled') return { error: 'bad_status' };
 
   const { rows } = await query(
     `SELECT a.*, c.profile_id AS courier_profile
-       FROM logi_courier_assignments a JOIN logi_couriers c ON c.id = a.courier_id
+       FROM logi_courier_assignments a LEFT JOIN logi_couriers c ON c.id = a.courier_id
       WHERE a.id = $1`, [String(assignmentId ?? '')]);
   const row = rows[0];
   if (!row) return { error: 'not_found' };
@@ -508,22 +637,55 @@ export const setAssignmentStatus = async (actorId, assignmentId, status) => {
     await logLogi(actorId, 'assignment_denied', assignmentId);
     return { error: 'not_found' };
   }
-  if (status !== 'cancelled' && !byCourier) return { error: 'not_allowed' };
   if (['delivered', 'cancelled'].includes(row.status)) return { error: 'already_closed' };
 
   const { rows: upd } = await query(
-    'UPDATE logi_courier_assignments SET status = $2, updated_at = now() WHERE id = $1 RETURNING *',
-    [assignmentId, status]);
+    `UPDATE logi_courier_assignments SET status = 'cancelled', updated_at = now() WHERE id = $1 RETURNING *`,
+    [assignmentId]);
 
-  if (status === 'delivered') {
-    await query('UPDATE logi_couriers SET deliveries = deliveries + 1 WHERE id = $1', [row.courier_id]);
-  }
   const target = byCourier ? row.seller_id : row.courier_profile;
-  await notifyLogi(target, row.courier_id, row.order_id, status,
-    { picked_up: 'Курьер забрал заказ', delivered: 'Курьер доставил заказ',
-      cancelled: 'Доставка отменена' }[status]);
-  await logLogi(actorId, 'assignment_moved', assignmentId, { status });
+  if (target) await notifyLogi(target, row.courier_id, row.order_id, 'cancelled', 'Доставка отменена');
+  await logLogi(actorId, 'assignment_cancelled', assignmentId);
   return { assignment: toAssignment(upd[0]) };
+};
+
+/**
+ * Курьер сообщает о проблеме с доставкой — не отменяет заказ сам по
+ * себе, а переводит поручение в 'problem' и заводит обращение в
+ * существующую поддержку (server/support.mjs): дальше решает
+ * администратор, а не курьер и не клиент.
+ */
+export const reportAssignmentProblem = async (actorId, assignmentId, reason) => {
+  const { createTicket } = await import('./support.mjs');
+  const REASONS = {
+    no_answer: 'Получатель не отвечает', not_home: 'Получателя нет на месте',
+    bad_address: 'Неверный адрес', cannot_handoff: 'Невозможно передать заказ',
+    damaged: 'Повреждение отправления', other: 'Другая причина',
+  };
+  const label = REASONS[String(reason)] ?? REASONS.other;
+
+  const { rows } = await query(
+    `SELECT a.*, c.profile_id AS courier_profile
+       FROM logi_courier_assignments a JOIN logi_couriers c ON c.id = a.courier_id
+      WHERE a.id = $1`, [String(assignmentId ?? '')]);
+  const row = rows[0];
+  if (!row || row.courier_profile !== actorId) return { error: 'not_found' };
+  if (['delivered', 'cancelled'].includes(row.status)) return { error: 'already_closed' };
+
+  const { ticket } = await createTicket(actorId, {
+    subject: `Проблема с доставкой заказа ${row.order_id}`,
+    body: `Курьер сообщил о проблеме с заказом ${row.order_id}: ${label}`,
+    kind: 'report',
+  });
+
+  const { rows: upd } = await query(
+    `UPDATE logi_courier_assignments SET status = 'problem', problem_reason = $2, ticket_id = $3, updated_at = now()
+      WHERE id = $1 RETURNING *`,
+    [assignmentId, label, ticket?.id ?? null]);
+
+  await notifyLogi(row.seller_id, row.courier_id, row.order_id, 'problem', `Проблема с доставкой: ${label}`);
+  await logLogi(actorId, 'assignment_problem', assignmentId, { reason: label });
+  return { assignment: toAssignment(upd[0]), ticketId: ticket?.id };
 };
 
 export const listAssignments = async (profileId, { as = 'seller' } = {}) => {
@@ -536,6 +698,132 @@ export const listAssignments = async (profileId, { as = 'seller' } = {}) => {
           WHERE a.seller_id = $1 ORDER BY a.assigned_at DESC LIMIT 200`,
     [profileId]);
   return rows.map(toAssignment);
+};
+
+/* ─── Пул заказов: продавец выставляет, курьер берёт сам ─────────────── */
+
+/**
+ * Выставить заказ в пул — вместо того, чтобы звать конкретного
+ * курьера. Любой одобренный курьер в этом городе/районе сможет взять
+ * его сам (takeOrder). Цену за доставку называет продавец здесь же —
+ * так же, как в logi_couriers.price_kop называет её курьер в своём
+ * профиле, только на этот один заказ.
+ */
+export const postOrderToPool = async (sellerId, orderId, { priceKop, cityId, district } = {}) => {
+  if (!ORDER_ID_RE.test(String(orderId ?? ''))) return { error: 'not_found' };
+  const { rows: o } = await query('SELECT id, seller_id, status FROM market_orders WHERE id = $1', [orderId]);
+  if (!o[0] || o[0].seller_id !== sellerId) return { error: 'not_found' };
+  if (['completed', 'cancelled'].includes(o[0].status)) return { error: 'order_closed' };
+
+  const price = int(priceKop, 0, 10_000_00) ?? 0;
+  const { rows } = await query(
+    `INSERT INTO logi_courier_assignments (id, order_id, courier_id, seller_id, status, city_id, district, price_kop)
+     VALUES ($1,$2,NULL,$3,'open',$4,$5,$6)
+     ON CONFLICT (order_id) DO UPDATE
+       SET courier_id = NULL, status = 'open', city_id = EXCLUDED.city_id,
+           district = EXCLUDED.district, price_kop = EXCLUDED.price_kop, updated_at = now()
+     WHERE logi_courier_assignments.status IN ('cancelled')
+     RETURNING *`,
+    [`lca-${generateId()}`, orderId, sellerId, text(cityId, 60), text(district, 80), price]);
+  if (!rows[0]) return { error: 'already_in_progress' };
+
+  await logLogi(sellerId, 'order_posted_to_pool', orderId);
+  return { assignment: toAssignment(rows[0]) };
+};
+
+export const cancelPoolPosting = async (sellerId, orderId) => {
+  const { rows } = await query(
+    `UPDATE logi_courier_assignments SET status = 'cancelled', updated_at = now()
+      WHERE order_id = $1 AND seller_id = $2 AND status = 'open' RETURNING *`,
+    [String(orderId ?? ''), sellerId]);
+  if (!rows[0]) return { error: 'not_found' };
+  await logLogi(sellerId, 'pool_posting_cancelled', orderId);
+  return { assignment: toAssignment(rows[0]) };
+};
+
+/**
+ * Заказы, доступные курьеру: открытые, в его городе/районе, ещё не
+ * взятые. Фильтрация — здесь, на сервере: курьер не видит пул целиком,
+ * только то, что подходит ему.
+ */
+export const listOpenOrders = async (profileId, { limit } = {}) => {
+  const row = await courierRowByProfile(profileId);
+  if (!row) return { error: 'not_a_courier' };
+  if (row.status !== 'approved') return { error: 'not_approved' };
+
+  const lim = int(limit, 1, 100) ?? 50;
+  const { rows } = await query(
+    `SELECT a.*, mo.title_snap, mo.total_kop
+       FROM logi_courier_assignments a JOIN market_orders mo ON mo.id = a.order_id
+      WHERE a.status = 'open' AND a.city_id = $1
+        AND ($2 = '' OR a.district = $2)
+      ORDER BY a.assigned_at DESC LIMIT $3`,
+    [row.city_id, row.district, lim]);
+  return rows.map((r) => ({ ...toAssignment(r), orderTitle: r.title_snap, orderTotal: Number(r.total_kop) / 100 }));
+};
+
+/**
+ * Взять заказ из пула самому.
+ *
+ * Гонку двух одновременных «взять» решает условное обновление
+ * (WHERE status='open' AND courier_id IS NULL) — тот же приём, что и
+ * во всём остальном проекте с гонками за одну строку: выиграет ровно
+ * один UPDATE, второй получит already_taken.
+ */
+export const takeOrder = async (profileId, orderId) => {
+  if (!ORDER_ID_RE.test(String(orderId ?? ''))) return { error: 'not_found' };
+  const row = await courierRowByProfile(profileId);
+  if (!row) return { error: 'not_a_courier' };
+  if (row.status !== 'approved') return { error: 'not_approved' };
+  if (!row.online) return { error: 'not_online' };
+
+  const { rows } = await query(
+    `UPDATE logi_courier_assignments SET courier_id = $2, status = 'assigned', updated_at = now()
+      WHERE order_id = $1 AND status = 'open' AND courier_id IS NULL
+      RETURNING *`,
+    [orderId, row.id]);
+  if (!rows[0]) return { error: 'already_taken' };
+
+  await notifyLogi(rows[0].seller_id, row.id, orderId, 'assigned', 'Курьер взял заказ из пула');
+  await logLogi(profileId, 'order_taken', orderId);
+  return { assignment: toAssignment(rows[0]) };
+};
+
+/* ─── Статистика и заработок курьера ─────────────────────────────────── */
+
+export const courierStats = async (profileId) => {
+  const row = await courierRowByProfile(profileId);
+  if (!row) return null;
+  const { rows: agg } = await query(
+    `SELECT
+        count(*) FILTER (WHERE a.status = 'delivered')::int AS delivered,
+        count(*) FILTER (WHERE a.status = 'cancelled')::int AS cancelled,
+        count(*) FILTER (WHERE a.status IN ('assigned','picked_up','in_transit'))::int AS active
+       FROM logi_courier_assignments a WHERE a.courier_id = $1`, [row.id]);
+  const { rows: earn } = await query(
+    `SELECT coalesce(sum(amount_kop), 0)::bigint AS total FROM courier_earnings WHERE courier_id = $1`,
+    [row.id]);
+  return {
+    deliveredCount: agg[0]?.delivered ?? 0,
+    cancelledCount: agg[0]?.cancelled ?? 0,
+    activeCount: agg[0]?.active ?? 0,
+    totalEarned: Number(earn[0]?.total ?? 0) / 100,
+    rating: row.rating == null ? 0 : Math.round(Number(row.rating) * 10) / 10,
+  };
+};
+
+export const courierEarningsHistory = async (profileId, { limit } = {}) => {
+  const row = await courierRowByProfile(profileId);
+  if (!row) return [];
+  const lim = int(limit, 1, 200) ?? 100;
+  const { rows } = await query(
+    `SELECT e.*, mo.title_snap FROM courier_earnings e
+       JOIN market_orders mo ON mo.id = e.order_id
+      WHERE e.courier_id = $1 ORDER BY e.created_at DESC LIMIT $2`, [row.id, lim]);
+  return rows.map((r) => ({
+    id: r.id, orderId: r.order_id, orderTitle: r.title_snap,
+    amount: Number(r.amount_kop) / 100, createdAt: r.created_at?.toISOString?.() ?? undefined,
+  }));
 };
 
 /* ─── Уведомления логистики ────────────────────────────────────────── */

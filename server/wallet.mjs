@@ -144,6 +144,30 @@ export const wallet = {
     });
   },
 
+  /**
+   * Заработок курьера за подтверждённую доставку.
+   *
+   * Увеличивает баланс так же, как adminGrant, но по другому поводу:
+   * не решение администратора, а собственная работа человека,
+   * подтверждённая сервером (см. server/courierdelivery.mjs::
+   * confirmDelivery) — отдельный вид записи в журнале кошелька, чтобы
+   * по истории транзакций было видно, откуда деньги, не открывая
+   * заказ.
+   */
+  async earnDelivery(userId, amount, descr, ref) {
+    if (!validAmount(amount)) return { error: 'invalid_amount' };
+
+    return inTransaction(async (c) => {
+      await ensureAccount(c, userId);
+      const { rows } = await c.query(
+        'UPDATE wallet_accounts SET balance = balance + $2, updated_at = now() WHERE user_id = $1 RETURNING balance',
+        [userId, amount],
+      );
+      await addTx(c, userId, 'courier_earning', amount, descr, ref);
+      return { balance: Number(rows[0].balance) };
+    });
+  },
+
   /** Начисление баллов. Тоже создаёт ценность — гейт тот же. */
   async earnPoints(userId, amount, descr) {
     if (!validAmount(amount)) return { error: 'invalid_amount' };

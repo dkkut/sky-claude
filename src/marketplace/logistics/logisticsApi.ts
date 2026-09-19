@@ -12,10 +12,12 @@
  *   · код пропуска в обход склада — сканирование всегда привязано к
  *     тому складу, на котором стоит сканирующий.
  */
-import { apiCall } from '@/core/auth/api';
+import { apiCall, getAccessToken } from '@/core/auth/api';
 import type {
   Courier, CourierReview, CollabRequest, CollabStatus, CourierChatMessage,
-  CourierAssignment, DeliveryNotification,
+  CourierAssignment, DeliveryNotification, CourierStatus,
+  CourierVerification, VerificationQueueItem, AdminCourierListItem,
+  CourierStats, CourierEarning, PoolOrder,
   Warehouse, WarehouseStockItem, WarehouseTransfer, WarehouseStaff, WarehouseLogEntry,
   AccessPass, PassVisitLog, PassSendLog, PassSendChannel,
   Shipment, ShipmentStatus, ShipmentLogEntry,
@@ -104,6 +106,92 @@ export const apiLogiNotifications = () =>
 
 export const apiReadLogiNotification = (id: string) =>
   post<{ ok: boolean }>('/api/logistics/notifications/read', { id });
+
+export const apiReportAssignmentProblem = (assignmentId: string, reason: string) =>
+  post<{ assignment: CourierAssignment; ticketId?: string }>(
+    `/api/logistics/assignments/${enc(assignmentId)}/problem`, { reason });
+
+/* ─── Пул заказов: продавец выставляет, курьер берёт сам ───────────── */
+
+export const apiOpenPool = (limit?: number) =>
+  apiCall<{ items: PoolOrder[] }>(`/api/logistics/pool${q({ limit })}`);
+
+export const apiPostOrderToPool = (orderId: string, input: { priceKop: number; cityId: string; district: string }) =>
+  post<{ assignment: CourierAssignment }>(`/api/logistics/pool/${enc(orderId)}`, input);
+
+export const apiCancelPoolPosting = (orderId: string) =>
+  del<{ assignment: CourierAssignment }>(`/api/logistics/pool/${enc(orderId)}`);
+
+export const apiTakeOrder = (orderId: string) =>
+  post<{ assignment: CourierAssignment }>(`/api/logistics/pool/${enc(orderId)}/take`);
+
+/* ─── Получение от продавца / доставка покупателю — код или QR ─────── */
+
+export const apiCourierConfirmPickup = (orderId: string, proof: string) =>
+  post<{ ok: true }>(`/api/logistics/orders/${enc(orderId)}/courier-pickup`, { proof });
+
+export const apiCourierConfirmDelivery = (orderId: string, proof: string) =>
+  post<{ ok: true; earned: number }>(`/api/logistics/orders/${enc(orderId)}/courier-delivery`, { proof });
+
+/* ─── Возраст и проверка паспорта ───────────────────────────────────── */
+
+export const apiSetCourierBirthdate = (dateOfBirth: string) =>
+  post<{ ok: true; age: number }>('/api/logistics/courier/birthdate', { dateOfBirth });
+
+export const apiMyVerification = () =>
+  apiCall<{ verification: CourierVerification | null }>('/api/logistics/courier/verification');
+
+export const apiSubmitVerification = (fullName: string) =>
+  post<{ verification: CourierVerification }>('/api/logistics/courier/verification', { fullName });
+
+export const apiUploadVerificationDoc = (verificationId: string, file: Blob) =>
+  apiCall<{ ok: true; mime: string; bytes: number }>(
+    `/api/logistics/courier/verification/${enc(verificationId)}/doc`,
+    { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } });
+
+export const apiCourierStats = () => apiCall<{ stats: CourierStats }>('/api/logistics/courier/stats');
+
+export const apiCourierEarnings = (limit?: number) =>
+  apiCall<{ items: CourierEarning[] }>(`/api/logistics/courier/earnings${q({ limit })}`);
+
+/* ─── Админка: заявки курьеров и проверка паспорта ──────────────────── */
+
+export const apiAdminListCouriers = (filter: { status?: string; q?: string; limit?: number } = {}) =>
+  apiCall<{ items: AdminCourierListItem[] }>(`/api/logistics/admin/couriers${q(filter)}`);
+
+export const apiAdminDecideCourier = (courierId: string, approve: boolean, reason?: string) =>
+  post<{ courier: Courier }>(`/api/logistics/admin/couriers/${enc(courierId)}/decide`, { approve, reason });
+
+export const apiAdminSetCourierStatus = (courierId: string, status: CourierStatus, reason?: string) =>
+  post<{ courier: Courier }>(`/api/logistics/admin/couriers/${enc(courierId)}/status`, { status, reason });
+
+export const apiAdminVerificationQueue = (limit?: number) =>
+  apiCall<{ items: VerificationQueueItem[] }>(`/api/logistics/admin/verification-queue${q({ limit })}`);
+
+export const apiAdminDecideVerification = (verificationId: string, approve: boolean, reason?: string) =>
+  post<{ verification: CourierVerification }>(
+    `/api/logistics/admin/verification/${enc(verificationId)}/decide`, { approve, reason });
+
+/**
+ * Скан документа для администратора — не публичная ссылка, а защищённый
+ * запрос с тем же токеном, что и остальные вызовы: смотрит его только
+ * тот, у кого есть право 'logistics', и каждый просмотр остаётся в
+ * журнале (server/courierverify.mjs::verificationDocBytes).
+ */
+export const fetchVerificationDocBlob = async (verificationId: string) => {
+  const token = getAccessToken();
+  try {
+    const res = await fetch(`/api/logistics/admin/verification/${enc(verificationId)}/doc`, {
+      credentials: 'same-origin',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return { ok: false as const };
+    const blob = await res.blob();
+    return { ok: true as const, blob, mime: res.headers.get('Content-Type') ?? blob.type };
+  } catch {
+    return { ok: false as const };
+  }
+};
 
 /* ─── Склады ──────────────────────────────────────────────────────── */
 

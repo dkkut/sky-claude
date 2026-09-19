@@ -23,10 +23,18 @@ import {
   listCouriers, readCourier, setCourierFavorite,
   sendCollab, respondCollab, listCollabs,
   courierChat, sendCourierMessage,
-  assignCourier, setAssignmentStatus, listAssignments,
+  assignCourier, setAssignmentStatus, listAssignments, reportAssignmentProblem,
   listLogiNotifications, readLogiNotification,
   addCourierReview, listCourierReviews,
+  decideCourierApplication, setCourierAdminStatus, adminListCouriers,
+  postOrderToPool, cancelPoolPosting, listOpenOrders, takeOrder,
+  courierStats, courierEarningsHistory,
 } from './../logistics.mjs';
+import {
+  setDateOfBirth, submitVerification, attachVerificationDoc, myVerification,
+  decideVerification, verificationQueue, verificationDocBytes, MAX_DOC_BYTES,
+} from './../courierverify.mjs';
+import { confirmPickup, confirmDelivery } from './../courierdelivery.mjs';
 import {
   listWarehouses, listSortingCenters, createWarehouse, updateWarehouse, deleteWarehouse,
   addWarehousePhoto, readWarehousePhoto, deleteWarehousePhoto,
@@ -96,6 +104,21 @@ const CODES = {
   bad_position: 400,
   no_offer: 409,
   offer_taken: 409,
+  underage: 403,
+  passport_unverified: 403,
+  not_approved: 403,
+  suspended: 403,
+  courier_not_approved: 403,
+  no_document: 409,
+  not_online: 409,
+  bad_date: 400,
+  already_pending: 409,
+  unsupported_media: 415,
+  too_large: 413,
+  empty_file: 400,
+  no_birth_date: 409,
+  bad_code: 400,
+  not_courier_shipment: 409,
 };
 
 const fail = (res, result) => json(res, CODES[result.error] ?? 400, { error: result.error });
@@ -329,11 +352,162 @@ export const logisticsRoutes = async (req, res, url) => {
     return done.error ? fail(res, done) : json(res, 201, done);
   }
 
-  const assignPath = path.match(/^\/api\/logistics\/assignments\/(lca-[0-9a-f-]{36})$/);
-  if (req.method === 'POST' && assignPath) {
+  const assignPath = path.match(/^\/api\/logistics\/assignments\/(lca-[0-9a-f-]{36})(\/problem)?$/);
+  if (req.method === 'POST' && assignPath && !assignPath[2]) {
     if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
     const done = await setAssignmentStatus(me, assignPath[1], (await body()).status);
     return done.error ? fail(res, done) : json(res, 200, done);
+  }
+  if (req.method === 'POST' && assignPath && assignPath[2] === '/problem') {
+    if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await reportAssignmentProblem(me, assignPath[1], (await body()).reason);
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+
+  /* ══ Пул заказов: продавец выставляет, курьер берёт сам ═══════════ */
+
+  if (req.method === 'GET' && path === '/api/logistics/pool') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await listOpenOrders(me, { limit: params.get('limit') });
+    return done?.error ? fail(res, done) : json(res, 200, { items: done });
+  }
+
+  const poolPath = path.match(/^\/api\/logistics\/pool\/(mo-[0-9a-f-]{36})(\/take)?$/);
+  if (poolPath) {
+    const orderId = poolPath[1];
+    if (req.method === 'POST' && !poolPath[2]) {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      const b = await body();
+      const done = await postOrderToPool(me, orderId, { priceKop: b.priceKop, cityId: b.cityId, district: b.district });
+      return done.error ? fail(res, done) : json(res, 201, done);
+    }
+    if (req.method === 'DELETE' && !poolPath[2]) {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      const done = await cancelPoolPosting(me, orderId);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+    if (req.method === 'POST' && poolPath[2] === '/take') {
+      if (!rateLimit(`lg:take:${me}`, 30)) return json(res, 429, { error: 'too_many_requests' });
+      const done = await takeOrder(me, orderId);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+  }
+
+  /* ══ Получение от продавца / доставка покупателю ══════════════════ */
+
+  const pickupPath = path.match(/^\/api\/logistics\/orders\/(mo-[0-9a-f-]{36})\/(courier-pickup|courier-delivery)$/);
+  if (req.method === 'POST' && pickupPath) {
+    if (!rateLimit(`lg:scan:${me}`, SCAN_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+    const proof = (await body()).proof;
+    const done = pickupPath[2] === 'courier-pickup'
+      ? await confirmPickup(me, pickupPath[1], proof)
+      : await confirmDelivery(me, pickupPath[1], proof);
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+
+  /* ══ Возраст и проверка паспорта ═══════════════════════════════════ */
+
+  if (req.method === 'POST' && path === '/api/logistics/courier/birthdate') {
+    if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await setDateOfBirth(me, (await body()).dateOfBirth);
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+
+  if (path === '/api/logistics/courier/verification') {
+    if (req.method === 'GET') {
+      if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+      return json(res, 200, { verification: await myVerification(me) });
+    }
+    if (req.method === 'POST') {
+      if (!rateLimitPerHour(`lg:verify:${me}`, 6)) return json(res, 429, { error: 'too_many_requests' });
+      const done = await submitVerification(me, await body());
+      return done.error ? fail(res, done) : json(res, 201, done);
+    }
+  }
+
+  const verifyDocPath = path.match(/^\/api\/logistics\/courier\/verification\/(cvr-[0-9a-f-]{36})\/doc$/);
+  if (req.method === 'POST' && verifyDocPath) {
+    if (!rateLimitPerHour(`lg:vdoc:${me}`, UPLOAD_PER_HOUR)) return json(res, 429, { error: 'too_many_requests' });
+    const len = Number(req.headers['content-length'] || 0);
+    if (len > MAX_DOC_BYTES) return rejectBody(req, res, 413, { error: 'too_large' });
+    const chunks = [];
+    let size = 0;
+    let denied = false;
+    await new Promise((resolve) => {
+      req.on('data', (c) => {
+        size += c.length;
+        if (size > MAX_DOC_BYTES) { denied = true; req.pause(); return resolve(); }
+        chunks.push(c);
+      });
+      req.once('end', resolve);
+    });
+    if (denied) return rejectBody(req, res, 413, { error: 'too_large' });
+    const done = await attachVerificationDoc(verifyDocPath[1], me, Buffer.concat(chunks), req.headers['content-type']);
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+
+  if (req.method === 'GET' && path === '/api/logistics/courier/stats') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    const stats = await courierStats(me);
+    if (!stats) return json(res, 404, { error: 'not_a_courier' });
+    return json(res, 200, { stats });
+  }
+
+  if (req.method === 'GET' && path === '/api/logistics/courier/earnings') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { items: await courierEarningsHistory(me, { limit: params.get('limit') }) });
+  }
+
+  /* ══ Админка: заявки курьеров и проверка паспорта ═════════════════ */
+
+  if (req.method === 'GET' && path === '/api/logistics/admin/couriers') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    const items = await adminListCouriers(me, {
+      status: params.get('status'), q: params.get('q'), limit: params.get('limit'),
+    });
+    if (items === null) return json(res, 403, { error: 'not_allowed' });
+    return json(res, 200, { items });
+  }
+
+  const adminCourierPath = path.match(/^\/api\/logistics\/admin\/couriers\/(lc-[0-9a-f-]{36})\/(decide|status)$/);
+  if (req.method === 'POST' && adminCourierPath) {
+    if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+    const b = await body();
+    const done = adminCourierPath[2] === 'decide'
+      ? await decideCourierApplication(me, adminCourierPath[1], Boolean(b.approve), b.reason)
+      : await setCourierAdminStatus(me, adminCourierPath[1], b.status, b.reason);
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+
+  if (req.method === 'GET' && path === '/api/logistics/admin/verification-queue') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    const items = await verificationQueue(me, { limit: params.get('limit') });
+    if (items === null) return json(res, 403, { error: 'not_allowed' });
+    return json(res, 200, { items });
+  }
+
+  const adminVerifyPath = path.match(/^\/api\/logistics\/admin\/verification\/(cvr-[0-9a-f-]{36})(\/decide|\/doc)?$/);
+  if (adminVerifyPath) {
+    if (req.method === 'POST' && adminVerifyPath[2] === '/decide') {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      const b = await body();
+      const done = await decideVerification(adminVerifyPath[1], me, Boolean(b.approve), b.reason);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+    if (req.method === 'GET' && adminVerifyPath[2] === '/doc') {
+      if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+      const doc = await verificationDocBytes(adminVerifyPath[1], me);
+      if (!doc) return json(res, 404, { error: 'not_found' });
+      res.writeHead(200, {
+        'Content-Type': doc.mime,
+        'Content-Length': doc.data.length,
+        'Content-Disposition': 'inline',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
+      });
+      return res.end(doc.data);
+    }
   }
 
   if (req.method === 'GET' && path === '/api/logistics/notifications') {

@@ -318,11 +318,17 @@ export const readShipment = async (orderId, viewerId) => {
     ? await carrierPaymentForOrder(id, viewerId)
     : null;
 
-  /* Код получения видит только покупатель, и только пока заказ ждёт
-     его в пункте выдачи: продавцу, перевозчику и поддержке он ни к
-     чему, а сотрудник точки проверяет его на своей отдельной ручке,
-     не читая здесь. */
-  const pickupReady = viewerId === row.buyer_id && row.order_status === 'ready_for_pickup';
+  /* Код получения видит только покупатель, и только пока он ещё
+     действителен: заказ либо ждёт его в пункте выдачи, либо код заведён
+     курьеру, который уже забрал отправление у продавца
+     (courierdelivery.mjs::confirmPickup — доставка на адрес курьером,
+     без пункта выдачи, но тем же самым кодом). Продавцу, перевозчику и
+     поддержке он ни к чему; сотрудник точки проверяет его на своей
+     отдельной ручке, не читая здесь. Сам факт, что код заведён
+     (pickup_code_enc не пуст), — точный сигнал «сейчас актуален», пока
+     сделка не закрыта и не отменена. */
+  const pickupReady = viewerId === row.buyer_id && Boolean(row.pickup_code_enc)
+    && !['completed', 'cancelled'].includes(row.order_status);
   const pickupCode = (pickupReady && row.pickup_code_enc)
     ? (decryptContent(row.pickup_code_enc) || null)
     : null;
@@ -427,7 +433,7 @@ export const listMyCarriers = async (ownerId) => {
  * сам. Отличаются они только тем, кто записан в журнале действующим
  * лицом, — сами правила перехода одни и те же.
  */
-const moveShipment = async (client, order, shipment, key, { actorId, actorRole, detail = {} }) => {
+export const moveShipment = async (client, order, shipment, key, { actorId, actorRole, detail = {} }) => {
   const map = CARRIER_STATUS[key];
   if (!map) return { error: 'unknown_status' };
 

@@ -30,3 +30,4 @@ coverage/
 # локальные варианты образов для отладки сборки
 Dockerfile*.test
 ca-bundle.crt
+dump.rdb

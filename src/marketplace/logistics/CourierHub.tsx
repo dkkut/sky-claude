@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, SlidersHorizontal, Star, Heart, Send,
   CheckCircle2, Clock, MapPin, Bell, ChevronRight,
-  Truck, History, Check, AlertCircle,
+  Truck, History, Check, AlertCircle, Package, X as XIcon,
 } from 'lucide-react';
 import { C, fmt, fmtTs, Stars, StatCard } from '../SkyMarket';
 import { useCourierStore } from './courierStore';
@@ -15,8 +15,9 @@ import { CITIES, distanceKm } from './geo';
 import { SlidePanel, EmptyState, VEHICLE_CFG, OnlineDot } from './shared';
 import { SkyMap } from './SkyMap';
 import type { Courier } from './types';
+import type { Order } from '../types';
 
-type HubTab = 'search' | 'mine' | 'notifications';
+type HubTab = 'search' | 'mine' | 'notifications' | 'pool';
 
 /* ── Карточка курьера в списке ───────────────────────────────────── */
 const CourierRow = ({
@@ -200,7 +201,11 @@ const CourierDetail = ({
   const reviews = reviewsFor(courier.id);
   const Vehicle = VEHICLE_CFG[courier.vehicle].icon;
   const myAssignedOrders = sellerOrders.filter(o => assignmentForOrder(o.id)?.courierId === courier.id);
-  const assignable = sellerOrders.filter(o => ['confirmed','shipped'].includes(o.status) && assignmentForOrder(o.id)?.courierId !== courier.id);
+  /* Заказ можно отдать курьеру, только когда продавец уже выбрал
+     способ «Отвезу сам» (OrderScreens.tsx) — до этого момента о
+     передаче нечего говорить: 'confirmed'/'shipped' такими статусами
+     заказа не бывают вовсе, только 'seller_shipped'. */
+  const assignable = sellerOrders.filter(o => o.status === 'seller_shipped' && assignmentForOrder(o.id)?.courierId !== courier.id);
 
   return (
     <SlidePanel open onClose={onClose} title={courier.name}>
@@ -444,6 +449,106 @@ const MyCouriersList = ({ onOpen }: { onOpen: (c: Courier) => void }) => {
   );
 };
 
+/* ── Пул: продавец выставляет заказ, любой подходящий курьер берёт сам ── */
+const PoolPostForm = ({ order, onDone }: { order: Order; onDone: () => void }) => {
+  const { postOrderToPool } = useCourierStore();
+  const [cityId, setCityId] = useState(CITIES[0].id);
+  const [district, setDistrict] = useState(CITIES[0].districts[0]);
+  const [price, setPrice] = useState(200);
+  const [busy, setBusy] = useState(false);
+  const city = CITIES.find(c => c.id === cityId) ?? CITIES[0];
+
+  const submit = async () => {
+    setBusy(true);
+    const r = await postOrderToPool(order.id, price * 100, cityId, district);
+    setBusy(false);
+    if (r.ok) onDone();
+  };
+
+  return (
+    <div className="mt-2 rounded-xl p-3 space-y-2" style={{ background: C.l2 }}>
+      <div className="flex flex-wrap gap-1.5">
+        {CITIES.map(c => (
+          <button key={c.id} type="button" onClick={() => { setCityId(c.id); setDistrict(c.districts[0]); }}
+            className="rounded-lg px-2.5 py-1 text-[11px] font-semibold"
+            style={{ background: cityId === c.id ? C.acc : C.l1, color: cityId === c.id ? '#fff' : C.t3 }}>{c.name}</button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {city.districts.map(d => (
+          <button key={d} type="button" onClick={() => setDistrict(d)}
+            className="rounded-lg px-2.5 py-1 text-[11px] font-semibold"
+            style={{ background: district === d ? C.acc : C.l1, color: district === d ? '#fff' : C.t3 }}>{d}</button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <input type="range" min={100} max={600} step={10} value={price} onChange={e => setPrice(+e.target.value)} className="flex-1"/>
+        <span className="w-14 shrink-0 text-right text-xs font-black" style={{ color: C.t1 }}>{price} ₽</span>
+      </div>
+      <button type="button" disabled={busy} onClick={submit}
+        className="w-full rounded-lg py-2 text-xs font-bold disabled:opacity-50" style={{ background: C.acc, color: '#fff' }}>
+        Выставить в пул
+      </button>
+    </div>
+  );
+};
+
+const PoolTab = ({ orders }: { orders: Order[] }) => {
+  const { assignments, assignmentForOrder, cancelPoolPosting, load } = useCourierStore();
+  useEffect(() => { void load(); }, []);
+  const [openFormFor, setOpenFormFor] = useState<string | null>(null);
+
+  const openPostings = assignments.filter(a => a.status === 'open');
+  const eligible = orders.filter(o => o.status === 'seller_shipped' && !assignmentForOrder(o.id));
+
+  return (
+    <div className="p-4 space-y-4">
+      {openPostings.length > 0 && (
+        <div>
+          <p className="text-xs font-bold mb-2" style={{ color: C.t1 }}>В пуле, ждут курьера</p>
+          <div className="space-y-2">
+            {openPostings.map(a => (
+              <div key={a.id} className="flex items-center gap-3 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+                <Package size={16} style={{ color: C.acc }}/>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold truncate" style={{ color: C.t1 }}>Заказ {a.orderId.slice(-6)}</p>
+                  <p className="text-[11px]" style={{ color: C.t3 }}>{a.district || a.cityId} · {a.price} ₽</p>
+                </div>
+                <button type="button" onClick={() => cancelPoolPosting(a.orderId)}
+                  className="grid h-7 w-7 place-items-center rounded-lg shrink-0" style={{ background: 'rgba(239,68,68,0.1)' }}>
+                  <XIcon size={13} style={{ color: C.red }}/>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="text-xs font-bold mb-2" style={{ color: C.t1 }}>Можно выставить в пул</p>
+        {eligible.length === 0 ? (
+          <EmptyState icon={Package} title="Нечего выставить" sub="Сюда попадают подтверждённые заказы, ещё не отданные курьеру"/>
+        ) : (
+          <div className="space-y-2">
+            {eligible.map(o => (
+              <div key={o.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold truncate" style={{ color: C.t1 }}>{o.title ?? `Заказ ${o.id.slice(-6)}`}</p>
+                  <button type="button" onClick={() => setOpenFormFor(openFormFor === o.id ? null : o.id)}
+                    className="text-[11px] font-bold shrink-0" style={{ color: C.acc }}>
+                    {openFormFor === o.id ? 'Скрыть' : 'В пул'}
+                  </button>
+                </div>
+                {openFormFor === o.id && <PoolPostForm order={o} onDone={() => setOpenFormFor(null)}/>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 /* ══════════════════════════════════════════════════════════════════
    ROOT
 ══════════════════════════════════════════════════════════════════ */
@@ -478,10 +583,11 @@ export const CourierHub = ({ sellerId, orders }: { sellerId: string; orders: any
     return true;
   }).sort((a,b) => b.rating - a.rating), [couriers, filters, query, base]);
 
-  const assignableOrders = orders.filter(o => ['confirmed','shipped'].includes(o.status));
+  const assignableOrders = orders.filter(o => o.status === 'seller_shipped');
 
   const TABS: { key: HubTab; label: string; icon: any; badge?: number }[] = [
     { key:'search',        label:'Поиск',         icon:Search },
+    { key:'pool',          label:'Пул',           icon:Package },
     { key:'mine',          label:'Мои курьеры',   icon:Heart },
     { key:'notifications', label:'Уведомления',   icon:Bell, badge: unreadCount },
   ];
@@ -571,6 +677,7 @@ export const CourierHub = ({ sellerId, orders }: { sellerId: string; orders: any
           </>
         )}
 
+        {tab === 'pool' && <PoolTab orders={orders}/>}
         {tab === 'mine' && <MyCouriersList onOpen={setOpenCourier}/>}
         {tab === 'notifications' && <NotificationsList/>}
       </div>

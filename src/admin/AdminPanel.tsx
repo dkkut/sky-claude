@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 import {
   Shield, ShieldAlert, ShieldCheck, Loader2, Check, X, KeyRound,
   Wallet, Crown, ScrollText, AlertTriangle, RefreshCw, Users, Ban, Trophy,
+  Eye, Bike,
 } from 'lucide-react';
 import {
   adminCall, errorText, ROLE_LABEL, PERMISSION_LABEL,
@@ -1610,9 +1611,204 @@ const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
   );
 };
 
+/* ─── Курьеры: заявки на допуск и проверка паспорта ──────────────────
+   Не отдельная админка — те же REST-ручки логистики (server/logistics.mjs,
+   server/courierverify.mjs), что и остальной Sky Market. Скан документа
+   никогда не превращается в публичную ссылку: каждый показ идёт через
+   защищённый запрос с тем же токеном (fetchVerificationDocBlob), и
+   каждый такой просмотр остаётся в logi_log на сервере. */
+
+const CourierApplicationsQueue = () => {
+  const [items, setItems] = useState<import('@/marketplace/logistics/types').AdminCourierListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState('');
+  const [onlyPending, setOnlyPending] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { apiAdminListCouriers } = await import('@/marketplace/logistics/logisticsApi');
+    const r = await apiAdminListCouriers(onlyPending ? { status: 'pending' } : {});
+    setLoading(false);
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить заявки'); return; }
+    setItems(r.data.items);
+  }, [onlyPending]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const decide = async (courierId: string, approve: boolean) => {
+    const reason = approve ? '' : (window.prompt('Причина отказа') ?? '');
+    const { apiAdminDecideCourier } = await import('@/marketplace/logistics/logisticsApi');
+    const r = await apiAdminDecideCourier(courierId, approve, reason);
+    if (!r.ok) { setFailed(r.error === 'passport_unverified' ? 'Паспорт ещё не подтверждён' : r.error === 'underage' ? 'Курьеру нет 16 лет' : 'Не получилось решить заявку'); return; }
+    void load();
+  };
+
+  const setStatus = async (courierId: string, status: 'suspended' | 'approved') => {
+    const reason = window.prompt(status === 'suspended' ? 'Причина приостановки' : 'Комментарий (необязательно)') ?? '';
+    const { apiAdminSetCourierStatus } = await import('@/marketplace/logistics/logisticsApi');
+    const r = await apiAdminSetCourierStatus(courierId, status, reason);
+    if (!r.ok) { setFailed('Не получилось изменить статус'); return; }
+    void load();
+  };
+
+  if (loading) return <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />;
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={() => setOnlyPending((v) => !v)}
+        className="rounded-xl px-3 py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+        {onlyPending ? 'Показать все' : 'Только на рассмотрении'}
+      </button>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {items.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Заявок нет.</p>
+      ) : items.map((c) => (
+        <div key={c.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-center gap-2">
+            <Bike size={14} style={{ color: C.t3 }} />
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{c.name}</p>
+            <span className="text-[10px]" style={{ color: C.t3 }}>{c.status}</span>
+          </div>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            {c.cityId} · {c.district} · возраст {c.age ?? '—'} · {fmtTs(c.createdAt)}
+          </p>
+          <div className="mt-2 flex gap-2">
+            {c.status === 'pending' && (
+              <>
+                <button type="button" onClick={() => void decide(c.id, true)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
+                  style={{ background: C.green, color: '#fff' }}>
+                  <Check size={12} /> Одобрить
+                </button>
+                <button type="button" onClick={() => void decide(c.id, false)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
+                  style={{ background: C.l2, color: C.red }}>
+                  <X size={12} /> Отклонить
+                </button>
+              </>
+            )}
+            {c.status === 'approved' && (
+              <button type="button" onClick={() => void setStatus(c.id, 'suspended')}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
+                style={{ background: C.l2, color: C.red }}>
+                <Ban size={12} /> Приостановить
+              </button>
+            )}
+            {c.status === 'suspended' && (
+              <button type="button" onClick={() => void setStatus(c.id, 'approved')}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
+                style={{ background: C.green, color: '#fff' }}>
+                <Check size={12} /> Восстановить
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const CourierPassportQueue = () => {
+  const [items, setItems] = useState<import('@/marketplace/logistics/types').VerificationQueueItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState('');
+  const [docUrl, setDocUrl] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { apiAdminVerificationQueue } = await import('@/marketplace/logistics/logisticsApi');
+    const r = await apiAdminVerificationQueue();
+    setLoading(false);
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить очередь'); return; }
+    setItems(r.data.items);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => () => { if (docUrl) URL.revokeObjectURL(docUrl); }, [docUrl]);
+
+  const viewDoc = async (verificationId: string) => {
+    const { fetchVerificationDocBlob } = await import('@/marketplace/logistics/logisticsApi');
+    const r = await fetchVerificationDocBlob(verificationId);
+    if (!r.ok || !r.blob) { setFailed('Не удалось открыть документ'); return; }
+    if (docUrl) URL.revokeObjectURL(docUrl);
+    setDocUrl(URL.createObjectURL(r.blob));
+  };
+
+  const decide = async (verificationId: string, approve: boolean) => {
+    const reason = approve ? '' : (window.prompt('Причина отказа') ?? '');
+    const { apiAdminDecideVerification } = await import('@/marketplace/logistics/logisticsApi');
+    const r = await apiAdminDecideVerification(verificationId, approve, reason);
+    if (!r.ok) { setFailed(r.error === 'underage' ? 'Курьеру нет 16 лет' : r.error === 'no_document' ? 'Нет приложенного документа' : 'Не получилось решить заявку'); return; }
+    void load();
+  };
+
+  if (loading) return <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />;
+
+  return (
+    <div className="space-y-2">
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {docUrl && (
+        <div className="rounded-2xl p-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-[10px] font-bold" style={{ color: C.t3 }}>Документ</p>
+            <button type="button" onClick={() => { URL.revokeObjectURL(docUrl); setDocUrl(null); }} className="text-[10px] font-bold" style={{ color: C.t3 }}>Закрыть</button>
+          </div>
+          {/* Ссылка живёт только в этой вкладке (object URL), никуда не публикуется. */}
+          <img src={docUrl} alt="Скан документа" className="max-h-64 w-full rounded-xl object-contain" style={{ background: C.l2 }} />
+        </div>
+      )}
+      {items.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Заявок на проверку паспорта нет.</p>
+      ) : items.map((v) => (
+        <div key={v.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <p className="text-xs font-bold" style={{ color: C.t1 }}>{v.fullName || v.profileName}</p>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            @{v.username} · возраст {v.age ?? '—'} · {fmtTs(v.createdAt)}
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => void viewDoc(v.id)} disabled={!v.hasDoc}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold disabled:opacity-40"
+              style={{ background: C.l2, color: C.t2 }}>
+              <Eye size={12} /> {v.hasDoc ? 'Документ' : 'Нет скана'}
+            </button>
+            <button type="button" onClick={() => void decide(v.id, true)} disabled={!v.hasDoc}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold disabled:opacity-40"
+              style={{ background: C.green, color: '#fff' }}>
+              <Check size={12} /> Подтвердить
+            </button>
+            <button type="button" onClick={() => void decide(v.id, false)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
+              style={{ background: C.l2, color: C.red }}>
+              <X size={12} /> Отклонить
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const CourierAdminSection = () => {
+  const [sub, setSub] = useState<'applications' | 'passports'>('passports');
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        {([['passports', 'Проверка паспортов'], ['applications', 'Заявки курьеров']] as const).map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setSub(key)}
+            className="flex-1 rounded-xl py-2 text-xs font-bold"
+            style={{ background: sub === key ? C.acc : C.l2, color: sub === key ? '#fff' : C.t3 }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {sub === 'passports' ? <CourierPassportQueue /> : <CourierApplicationsQueue />}
+    </div>
+  );
+};
+
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'campaigns' | 'gifts' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -1734,6 +1930,7 @@ export const AdminPanel = () => {
     { key: 'pulse', label: 'Prime Pulse', show: has('content') },
     { key: 'campaigns', label: 'Мероприятия', show: has('campaigns') },
     { key: 'gifts', label: 'Подарки', show: has('gifts') },
+    { key: 'couriers', label: 'Курьеры', show: has('logistics') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
     { key: 'events', label: 'События', show: has('security') },
@@ -1863,6 +2060,7 @@ export const AdminPanel = () => {
       {tab === 'pulse' && <PrimePulseAdminSection />}
       {tab === 'campaigns' && <CampaignsAdminSection onPendingChanged={() => void loadPending()} />}
       {tab === 'gifts' && <GiftsAdminSection />}
+      {tab === 'couriers' && <CourierAdminSection />}
 
       {tab === 'admins' && (
         <>

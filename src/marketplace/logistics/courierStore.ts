@@ -14,14 +14,19 @@ import { useAuthStore } from '@/core/auth/store';
 import type {
   Courier, CourierReview, CollabRequest, CollabStatus, CourierChatMessage,
   CourierAssignment, DeliveryNotification, DeliveryEventType,
+  CourierVerification, PoolOrder, CourierStats, CourierEarning,
 } from './types';
 import {
   apiMyCourier, apiRegisterCourier, apiCourierPresence, apiCouriers, apiCourier,
   apiCourierFavorite, apiCourierReviews, apiAddCourierReview,
   apiSendCollab, apiCollabs, apiRespondCollab,
   apiCourierChat, apiSendCourierMessage,
-  apiAssignments, apiAssignCourier, apiSetAssignmentStatus,
+  apiAssignments, apiAssignCourier, apiSetAssignmentStatus, apiReportAssignmentProblem,
   apiLogiNotifications, apiReadLogiNotification,
+  apiOpenPool, apiPostOrderToPool, apiCancelPoolPosting, apiTakeOrder,
+  apiCourierConfirmPickup, apiCourierConfirmDelivery,
+  apiSetCourierBirthdate, apiMyVerification, apiSubmitVerification, apiUploadVerificationDoc,
+  apiCourierStats, apiCourierEarnings,
 } from './logisticsApi';
 
 const me = () => useAuthStore.getState().currentUserId ?? '';
@@ -36,6 +41,12 @@ interface CourierState {
   assignments: CourierAssignment[];
   myProfile: Courier | null;
   loaded: boolean;
+
+  /** Допуск к работе: возраст и паспорт — правду знает только сервер. */
+  verification: CourierVerification | null;
+  poolOrders: PoolOrder[];
+  stats: CourierStats | null;
+  earnings: CourierEarning[];
 
   load: () => Promise<void>;
   loadChat: (courierId: string, sellerId?: string) => Promise<void>;
@@ -74,7 +85,29 @@ interface CourierState {
     workFrom: string; workTo: string; bio: string;
   }) => Promise<void>;
   myCourierProfile: () => Courier | null;
-  setMyOnline: (online: boolean) => Promise<void>;
+  setMyOnline: (online: boolean) => Promise<{ ok: boolean; error?: string }>;
+
+  /* ── Допуск к работе: дата рождения и проверка паспорта ──────────── */
+  loadVerification: () => Promise<void>;
+  setBirthdate: (dateOfBirth: string) => Promise<{ ok: boolean; error?: string }>;
+  submitVerification: (fullName: string) => Promise<{ ok: boolean; error?: string }>;
+  uploadVerificationDoc: (verificationId: string, file: Blob) => Promise<{ ok: boolean; error?: string }>;
+
+  /* ── Пул заказов: доступные заказы и их самостоятельное взятие ───── */
+  loadPool: () => Promise<void>;
+  postOrderToPool: (orderId: string, priceKop: number, cityId: string, district: string) => Promise<{ ok: boolean; error?: string }>;
+  cancelPoolPosting: (orderId: string) => Promise<void>;
+  takeOrder: (orderId: string) => Promise<{ ok: boolean; error?: string }>;
+
+  /* ── Получение от продавца / доставка покупателю: код или QR ─────── */
+  confirmPickup: (orderId: string, proof: string) => Promise<{ ok: boolean; error?: string }>;
+  confirmDelivery: (orderId: string, proof: string) => Promise<{ ok: boolean; error?: string; earned?: number }>;
+  reportProblem: (assignmentId: string, reason: string) => Promise<{ ok: boolean; error?: string }>;
+  myActiveAssignment: () => CourierAssignment | null;
+
+  /* ── Статистика и заработок ────────────────────────────────────── */
+  loadStats: () => Promise<void>;
+  loadEarnings: () => Promise<void>;
 }
 
 export const useCourierStore = create<CourierState>((set, get) => ({
@@ -87,6 +120,11 @@ export const useCourierStore = create<CourierState>((set, get) => ({
   assignments: [],
   myProfile: null,
   loaded: false,
+
+  verification: null,
+  poolOrders: [],
+  stats: null,
+  earnings: [],
 
   load: async () => {
     const [list, mine, collabs, assignSeller, assignCourier, notes] = await Promise.all([
@@ -248,5 +286,114 @@ export const useCourierStore = create<CourierState>((set, get) => ({
     const r = await apiCourierPresence({ online });
     if (r.ok && r.data) set({ myProfile: r.data.courier });
     await get().simulateTick();
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  },
+
+  /* ── Допуск к работе: дата рождения и проверка паспорта ──────────── */
+
+  loadVerification: async () => {
+    const r = await apiMyVerification();
+    if (r.ok && r.data) set({ verification: r.data.verification });
+  },
+
+  setBirthdate: async (dateOfBirth) => {
+    const r = await apiSetCourierBirthdate(dateOfBirth);
+    await get().loadVerification();
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  },
+
+  submitVerification: async (fullName) => {
+    const r = await apiSubmitVerification(fullName);
+    if (r.ok && r.data) set({ verification: r.data.verification });
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  },
+
+  uploadVerificationDoc: async (verificationId, file) => {
+    const r = await apiUploadVerificationDoc(verificationId, file);
+    if (r.ok) await get().loadVerification();
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  },
+
+  /* ── Пул заказов ───────────────────────────────────────────────── */
+
+  loadPool: async () => {
+    const r = await apiOpenPool();
+    if (r.ok && r.data) set({ poolOrders: r.data.items });
+  },
+
+  postOrderToPool: async (orderId, priceKop, cityId, district) => {
+    const r = await apiPostOrderToPool(orderId, { priceKop, cityId, district });
+    const s = await apiAssignments('seller');
+    if (s.ok && s.data) {
+      set({ assignments: [...get().assignments.filter((a) => a.sellerId !== me()), ...s.data.assignments] });
+    }
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  },
+
+  cancelPoolPosting: async (orderId) => {
+    await apiCancelPoolPosting(orderId);
+    const s = await apiAssignments('seller');
+    if (s.ok && s.data) {
+      set({ assignments: [...get().assignments.filter((a) => a.sellerId !== me()), ...s.data.assignments] });
+    }
+  },
+
+  takeOrder: async (orderId) => {
+    const r = await apiTakeOrder(orderId);
+    await get().loadPool();
+    const c = await apiAssignments('courier');
+    if (c.ok && c.data) {
+      set({ assignments: [...get().assignments.filter((a) => a.courierId !== get().myProfile?.id), ...c.data.assignments] });
+    }
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  },
+
+  /* ── Получение от продавца / доставка покупателю ──────────────────── */
+
+  confirmPickup: async (orderId, proof) => {
+    const r = await apiCourierConfirmPickup(orderId, proof);
+    const c = await apiAssignments('courier');
+    if (c.ok && c.data) {
+      set({ assignments: [...get().assignments.filter((a) => a.courierId !== get().myProfile?.id), ...c.data.assignments] });
+    }
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  },
+
+  confirmDelivery: async (orderId, proof) => {
+    const r = await apiCourierConfirmDelivery(orderId, proof);
+    const c = await apiAssignments('courier');
+    if (c.ok && c.data) {
+      set({ assignments: [...get().assignments.filter((a) => a.courierId !== get().myProfile?.id), ...c.data.assignments] });
+    }
+    if (r.ok) await get().loadStats();
+    return r.ok ? { ok: true, earned: r.data?.earned } : { ok: false, error: r.error };
+  },
+
+  reportProblem: async (assignmentId, reason) => {
+    const r = await apiReportAssignmentProblem(assignmentId, reason);
+    const c = await apiAssignments('courier');
+    if (c.ok && c.data) {
+      set({ assignments: [...get().assignments.filter((a) => a.courierId !== get().myProfile?.id), ...c.data.assignments] });
+    }
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  },
+
+  myActiveAssignment: () => {
+    const mine = get().myProfile;
+    if (!mine) return null;
+    return get().assignments.find((a) => a.courierId === mine.id
+      && ['assigned', 'picked_up', 'in_transit', 'problem'].includes(a.status)) ?? null;
+  },
+
+  /* ── Статистика и заработок ───────────────────────────────────────── */
+
+  loadStats: async () => {
+    const r = await apiCourierStats();
+    if (r.ok && r.data) set({ stats: r.data.stats });
+  },
+
+  loadEarnings: async () => {
+    const r = await apiCourierEarnings();
+    if (r.ok && r.data) set({ earnings: r.data.items });
   },
 }));

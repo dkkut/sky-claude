@@ -26,7 +26,7 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   support: 'Поддержка',
   content: 'Содержимое',
   market: 'Маркет',
-  logistics: 'Склады',
+  logistics: 'Склады и курьеры',
   tickets: 'Билеты',
   bots: 'Боты',
   finance: 'Начисления',

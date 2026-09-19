@@ -18,6 +18,13 @@ export interface City {
 ══════════════════════════════════════════════════════════════════ */
 export type CourierVehicle = 'foot' | 'bike' | 'scooter' | 'car' | 'van';
 
+/**
+ * Статус допуска решает только администратор (server/logistics.mjs::
+ * decideCourierApplication/setCourierAdminStatus) — courier_id никогда
+ * не выставляет его себе сам.
+ */
+export type CourierStatus = 'pending' | 'approved' | 'rejected' | 'suspended';
+
 export interface Courier {
   id:               string;
   name:             string;
@@ -33,9 +40,54 @@ export interface Courier {
   workTo:           string;          // "21:00"
   online:           boolean;
   bio:              string;
+  status:           CourierStatus;
+  statusReason?:    string;
   location:         GeoPoint;        // текущая точка на карте
   updatedAt:        string;          // когда обновлялась геопозиция
   createdAt:        string;
+}
+
+/** Заявка курьера в очереди администратора: профиль плюс возраст, посчитанный сервером. */
+export interface AdminCourierListItem extends Courier {
+  age: number | null;
+}
+
+/* ── Проверка личности: возраст и паспорт ─────────────────────────── */
+export type VerificationStatus = 'pending' | 'verified' | 'rejected' | 'expired' | 'invalid';
+
+export interface CourierVerification {
+  id:          string;
+  profileId:   string;
+  status:      VerificationStatus;
+  rejectReason?: string;
+  reviewedAt?: string;
+  createdAt:   string;
+  updatedAt:   string;
+  hasDoc:      boolean;
+}
+
+/** Заявка на проверку в очереди администратора. */
+export interface VerificationQueueItem extends CourierVerification {
+  profileName: string;
+  username:    string;
+  age:         number | null;
+  fullName:    string;
+}
+
+export interface CourierStats {
+  deliveredCount: number;
+  cancelledCount: number;
+  activeCount:    number;
+  totalEarned:    number;   // ₽
+  rating:         number;
+}
+
+export interface CourierEarning {
+  id:        string;
+  orderId:   string;
+  orderTitle:string;
+  amount:    number;  // ₽
+  createdAt: string;
 }
 
 export interface CourierReview {
@@ -82,16 +134,36 @@ export interface DeliveryNotification {
   createdAt: string;
 }
 
-export type CourierAssignmentStatus = 'assigned' | 'picked_up' | 'delivered' | 'cancelled';
+export type CourierAssignmentStatus =
+  | 'open'        // выставлен в пул продавцом, курьер ещё не выбран
+  | 'assigned'    // отдан конкретному курьеру (продавцом или взят из пула)
+  | 'picked_up'   // курьер получил отправление от продавца (QR)
+  | 'in_transit'  // в пути к получателю
+  | 'delivered'   // доставлено, подтверждено кодом получателя
+  | 'cancelled'
+  | 'problem';    // курьер сообщил о проблеме — открыт тикет в поддержку
 
 export interface CourierAssignment {
-  id:        string;
-  orderId:   string;
-  courierId: string;
-  sellerId:  string;
-  status:    CourierAssignmentStatus;
-  assignedAt:string;
-  updatedAt: string;
+  id:           string;
+  orderId:      string;
+  courierId:    string | null;   // пусто, пока заказ лежит в пуле
+  sellerId:     string;
+  status:       CourierAssignmentStatus;
+  cityId:       string;
+  district:     string;
+  price:        number;          // ₽, курьеру за доставку
+  problemReason?: string;
+  ticketId?:    string;
+  assignedAt:   string;
+  pickedUpAt?:  string;
+  deliveredAt?: string;
+  updatedAt:    string;
+}
+
+/** Заказ в пуле — то же поручение плюс заголовок и сумма товара для списка. */
+export interface PoolOrder extends CourierAssignment {
+  orderTitle: string;
+  orderTotal: number;
 }
 
 /* ══════════════════════════════════════════════════════════════════
