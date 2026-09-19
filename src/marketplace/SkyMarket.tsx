@@ -34,6 +34,7 @@ import { CATEGORY_LABEL } from './types';
 import { OrdersList, OrderPage } from './OrderScreens';
 import { BecomeSeller, SellerCabinet } from './SellerCabinet';
 import { CarrierCabinet } from './CarrierCabinet';
+import { PvzCabinet } from './PvzCabinet';
 import { GamingMarket } from './SkyGamingMarket';
 import { ServicesMarket } from './SkyServicesMarket';
 
@@ -501,14 +502,14 @@ const Notifications = ({ onOpenOrder }: { onOpenOrder: (id: string) => void }) =
 
 /* ── Корень ───────────────────────────────────────────────────────── */
 
-type Tab = 'catalog' | 'gaming' | 'services' | 'orders' | 'fav' | 'seller' | 'carrier' | 'bell';
+type Tab = 'catalog' | 'gaming' | 'services' | 'orders' | 'fav' | 'seller' | 'carrier' | 'pvz' | 'bell';
 
 export const SkyMarket = () => {
   const { currentUserId } = useAuthStore();
   const meId = currentUserId ?? '';
   const {
     seller, sellerLoaded, loadSeller, loadConfig, notifications, loadNotifications,
-    myCarriers, loadCarrier,
+    myCarriers, loadCarrier, myPvz, loadMyPvz,
   } = useMarketStore();
   const [tab, setTab] = useState<Tab>('catalog');
   const [product, setProduct] = useState<string | null>(null);
@@ -522,8 +523,10 @@ export const SkyMarket = () => {
     void loadSeller();
     void loadNotifications();
     /* Вкладка своей транспортной компании появляется только у того, у
-       кого такая компания есть: остальным она не нужна. */
+       кого такая компания есть: остальным она не нужна. То же самое —
+       вкладка кабинета ПВЗ: только тем, кто где-то там работает. */
     void loadCarrier();
+    void loadMyPvz();
   }, []);
 
   const unreadNotes = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
@@ -558,6 +561,7 @@ export const SkyMarket = () => {
             { key: 'fav',      label: 'Избранное' },
             { key: 'seller',   label: seller ? 'Магазин' : 'Продавать' },
             ...(myCarriers.length > 0 ? [{ key: 'carrier' as Tab, label: 'Доставка' }] : []),
+            { key: 'pvz' as Tab, label: myPvz.length > 0 ? 'Пункт выдачи' : 'Открыть ПВЗ' },
           ] as { key: Tab; label: string }[]).map((t) => (
             <button key={t.key} type="button"
               onClick={() => { setProduct(null); setOrder(null); setTab(t.key); }}
@@ -591,6 +595,7 @@ export const SkyMarket = () => {
               {tab === 'fav' && <Favorites onOpen={setProduct} />}
               {tab === 'bell' && <Notifications onOpenOrder={openOrder} />}
               {tab === 'carrier' && <CarrierCabinet />}
+              {tab === 'pvz' && <PvzCabinet />}
               {tab === 'seller' && (
                 !sellerLoaded
                   ? <p className="p-4 text-[12px]" style={{ color: C.t3 }}>Загружаем…</p>

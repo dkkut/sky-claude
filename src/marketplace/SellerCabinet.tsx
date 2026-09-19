@@ -20,7 +20,7 @@ import {
   Store, Package, ShoppingBag, BarChart3, Settings, Plus, Trash2,
   Edit3, CheckCircle2, AlertCircle, Star, ImagePlus, CreditCard,
   Truck, Route, Warehouse as WarehouseIcon, PackageSearch, KeyRound, Zap,
-  Lock as LockIcon, Check, ScrollText,
+  Lock as LockIcon, Check, ScrollText, QrCode,
 } from 'lucide-react';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert, StatCard, Stars,
@@ -53,6 +53,7 @@ import { apiDocuments } from './logistics/sharedApi';
 import { SlidePanel } from './logistics/shared';
 import { ShipmentHub } from './logistics/ShipmentHub';
 import { PassHub } from './logistics/PassHub';
+import { SellerPvzShipments } from './SellerPvzShipments';
 
 /* ── Стать продавцом ──────────────────────────────────────────────── */
 
@@ -930,7 +931,7 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
 /* ── Кабинет ──────────────────────────────────────────────────────── */
 
 type CabTab = 'orders' | 'products' | 'stats'
-  | 'couriers' | 'transport' | 'warehouses' | 'cells' | 'shipments' | 'passes'
+  | 'couriers' | 'transport' | 'warehouses' | 'cells' | 'shipments' | 'pvzship' | 'passes'
   | 'ads' | 'settings';
 
 /* Логистика — часть кабинета продавца, как и была: курьеры, своя
@@ -945,6 +946,7 @@ const TABS: { key: CabTab; label: string; Icon: LucideIcon }[] = [
   { key: 'warehouses', label: 'Мои склады', Icon: WarehouseIcon },
   { key: 'cells',      label: 'Ячейки на складах', Icon: LockIcon },
   { key: 'shipments',  label: 'Поставки', Icon: PackageSearch },
+  { key: 'pvzship',    label: 'Поставка в ПВЗ', Icon: QrCode },
   { key: 'passes',     label: 'Пропуска и доступы', Icon: KeyRound },
   { key: 'ads',        label: 'Реклама',  Icon: Zap },
   { key: 'settings',   label: 'Магазин',  Icon: Settings },
@@ -1003,6 +1005,7 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
         {tab === 'warehouses' && <WarehouseHub />}
         {tab === 'cells' && <CellMarket />}
         {tab === 'shipments' && <ShipmentHub />}
+        {tab === 'pvzship' && <SellerPvzShipments />}
         {tab === 'passes' && <PassHub />}
         {tab === 'ads' && <SellerPromotions />}
         {tab === 'settings' && <SellerSettings seller={seller} />}
