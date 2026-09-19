@@ -42,7 +42,7 @@ const INNER_TABS: { key: InnerTab; label: string; icon: any }[] = [
 export const SkyPVZ = () => {
   const account = useAuthStore(s => s.accounts.find(a => a.id === s.currentUserId));
   const isAdmin = account?.isAdmin ?? false;
-  const { myPVZs, createDraft, getPVZ, notificationsFor, markNotificationRead } = usePVZStore();
+  const { myPVZs, getPVZ, notificationsFor, markNotificationRead } = usePVZStore();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [innerTab, setInnerTab] = useState<InnerTab>('dashboard');
@@ -55,7 +55,6 @@ export const SkyPVZ = () => {
   const notifs = notificationsFor(selectedId).sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
   const unread = notifs.filter(n=>!n.read).length;
 
-  const onCreate = () => { const id = createDraft(); setWizardId(id); };
   const onContinueWizard = (id: string) => setWizardId(id);
 
   if (selected) {
@@ -133,7 +132,7 @@ export const SkyPVZ = () => {
           </button>
         </div>
       )}
-      <MultiHub pvzList={pvzList} onSelect={setSelectedId} onCreate={onCreate} onContinueWizard={onContinueWizard}/>
+      <MultiHub pvzList={pvzList} onSelect={setSelectedId} onContinueWizard={onContinueWizard}/>
       {wizardId && <PVZWizard pvzId={wizardId} onClose={() => setWizardId(null)}/>}
       {isAdmin && showModeration && (
         <div className="absolute inset-0 z-40" style={{ background: C.bg }}>

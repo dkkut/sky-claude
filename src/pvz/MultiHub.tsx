@@ -3,7 +3,7 @@
 ====================================================================== */
 import { useState } from 'react';
 import {
-  Plus, MapPin, Star, ChevronRight, ShieldCheck,
+  MapPin, Star, ChevronRight, ShieldCheck,
   Video, FileText, MessageSquare, History as HistoryIcon,
   CheckCircle2, XCircle, AlertTriangle, Sparkles, Building2,
 } from 'lucide-react';
@@ -61,8 +61,8 @@ const PVZCard = ({ pvz, onOpen, onContinue }: { pvz: PVZ; onOpen: () => void; on
 };
 
 /* ── Мультиучёт: сравнение и сводка по всем ПВЗ владельца ─────────── */
-export const MultiHub = ({ pvzList, onSelect, onCreate, onContinueWizard }: {
-  pvzList: PVZ[]; onSelect: (id: string) => void; onCreate: () => void; onContinueWizard: (id: string) => void;
+export const MultiHub = ({ pvzList, onSelect, onContinueWizard }: {
+  pvzList: PVZ[]; onSelect: (id: string) => void; onContinueWizard: (id: string) => void;
 }) => {
   const { snapshotsFor, balanceFor } = usePVZStore();
   const active = pvzList.filter(p => ['active','approved'].includes(p.status));
@@ -75,9 +75,6 @@ export const MultiHub = ({ pvzList, onSelect, onCreate, onContinueWizard }: {
     <div className="h-full overflow-y-auto pb-10" style={{ scrollbarWidth:'none' }}>
       <div className="px-5 pt-5 flex items-center justify-between">
         <p className="text-lg font-black" style={{ color: C.t1 }}>Мои ПВЗ</p>
-        <button type="button" onClick={onCreate} className="flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white" style={{ background: C.acc }}>
-          <Plus size={14}/> Создать ПВЗ
-        </button>
       </div>
 
       {active.length > 1 && (
