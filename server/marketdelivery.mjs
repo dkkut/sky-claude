@@ -34,7 +34,7 @@ import { applyTransition, toOrder } from './marketorders.mjs';
 import { carrierPaymentForOrder } from './transportco.mjs';
 import { systemMessage } from './marketchat.mjs';
 import { pushMarket } from './signal.mjs';
-import { issuePickupCode } from './pvzops.mjs';
+import { issuePickupCode, pickupQrPayload } from './pvzops.mjs';
 
 const CARRIER_ID_RE = /^mcr-[0-9a-f-]{36}$/;
 const POINT_ID_RE = /^mpp-[0-9a-f-]{36}$/;
@@ -293,6 +293,7 @@ export const readShipment = async (orderId, viewerId) => {
   if (!ORDER_ID_RE.test(id)) return null;
   const { rows } = await query(
     `SELECT s.*, o.buyer_id, o.seller_id, o.pickup_until, o.status AS order_status, o.pickup_code_enc,
+            o.pickup_qr_token_enc,
             c.owner_id AS carrier_owner,
             c.title AS carrier_title, c.kind AS carrier_kind, c.code AS carrier_code,
             p.title AS point_title, p.city AS point_city, p.address AS point_address,
@@ -321,9 +322,17 @@ export const readShipment = async (orderId, viewerId) => {
      его в пункте выдачи: продавцу, перевозчику и поддержке он ни к
      чему, а сотрудник точки проверяет его на своей отдельной ручке,
      не читая здесь. */
-  const pickupCode = (viewerId === row.buyer_id && row.order_status === 'ready_for_pickup' && row.pickup_code_enc)
+  const pickupReady = viewerId === row.buyer_id && row.order_status === 'ready_for_pickup';
+  const pickupCode = (pickupReady && row.pickup_code_enc)
     ? (decryptContent(row.pickup_code_enc) || null)
     : null;
+  /* QR — то же самое доказательство, что код, только для сканера: пара
+     «id заказа + токен» в одну строку, которую verifyPickup разбирает
+     и проверяет заново на сервере, а не то, чему просто «доверили». */
+  const pickupQrToken = (pickupReady && row.pickup_qr_token_enc)
+    ? (decryptContent(row.pickup_qr_token_enc) || null)
+    : null;
+  const pickupQr = pickupQrToken ? pickupQrPayload(id, pickupQrToken) : null;
 
   return {
     orderId: row.order_id,
@@ -343,6 +352,7 @@ export const readShipment = async (orderId, viewerId) => {
     eta: row.eta?.toISOString?.() ?? null,
     pickupUntil: row.pickup_until?.toISOString?.() ?? null,
     pickupCode,
+    pickupQr,
     /* Кому и куда платить за доставку. Только продавцу этого заказа:
        платит он, напрямую перевозчику, мимо Sky. */
     carrierPayment,

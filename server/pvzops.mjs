@@ -1,5 +1,6 @@
 /**
- * Sky ПВЗ: сотрудники, ячейки, ключи, безопасная выдача заказа, журнал.
+ * Sky ПВЗ: владение точкой, сотрудники, ячейки, ключи, безопасная
+ * выдача заказа, журнал.
  *
  * Дополняет, а не заменяет, существующую машину заказов
  * (marketorders.mjs) и доставку (marketdelivery.mjs). Покупатель по-
@@ -10,16 +11,28 @@
  *
  * Обо всех правах.
  *
- * Сотрудник точки — не администратор Sky. Он получает только то, что
- * ему выдали для ЭТОЙ точки (`market_pvz_staff.permissions`), и это
- * никак не пересекается с ролями admin.mjs. Первого сотрудника точки
- * может завести только Sky-администрация (permission 'market') —
- * дальше уже сотрудник с правом 'admin' может звать и убирать других
- * для той же точки и только для неё.
+ * Сотрудник точки — не администратор Sky. Он получает роль ровно для
+ * ЭТОЙ точки (`market_pvz_staff.role`), и это никак не пересекается с
+ * ролями admin.mjs. Ролей четыре, по возрастанию:
+ *
+ *   read_only  — только смотреть;
+ *   employee   — приёмка, размещение, выдача, возвраты;
+ *   manager    — операционное управление: ячейки, ключи, видео,
+ *                временное закрытие, наём employee/read_only;
+ *   owner      — полный контроль точки: подписка, начисления,
+ *                наём manager, снятие с точки.
+ *
+ * Первого владельца точка получает при создании (createPvz) — это тот,
+ * кто её завёл. Sky-администрация (permission 'market') может править
+ * любую точку поверх этого — как администрация уже правит каталог
+ * (upsertPickupPoint) — но роль в самой панели Sky ей это не даёт и не
+ * может дать: pvzops.mjs прав admin.mjs не читает и не выдаёт.
  */
+import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { can } from './admin.mjs';
+import { wallet } from './wallet.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { generateNumericCode, hashCode, codesEqual } from './crypto.mjs';
 import { marketText as text, marketInt as int, ORDER_ID_RE, logMarket } from './market.mjs';
@@ -31,11 +44,24 @@ export const CELL_ID_RE = /^pzc-[0-9a-f-]{36}$/;
 export const KEY_ID_RE = /^pzk-[0-9a-f-]{36}$/;
 export const STAFF_ID_RE = /^pzs-[0-9a-f-]{36}$/;
 
-/** Закрытый список прав сотрудника точки. Ничего сверх этого списка не проверяется и не хранится. */
+/** Закрытый список прав — оставлен для 059: старые проверки (setCellStatus и т.п.) спрашивают их по имени, а не по рангу роли напрямую. */
 export const PERMISSIONS = ['view', 'receive', 'place', 'issue', 'cells', 'keys', 'returns', 'admin'];
+export const ROLES = ['read_only', 'employee', 'manager', 'owner'];
+const ROLE_RANK = { read_only: 0, employee: 1, manager: 2, owner: 3 };
+/** С какого ранга роли доступно каждое право из PERMISSIONS. */
+const PERM_MIN_RANK = {
+  view: 0, receive: 1, place: 1, issue: 1, returns: 1,
+  cells: 2, keys: 2, admin: 2,
+};
 
 const CELL_STATES = ['FREE', 'RESERVED', 'OCCUPIED', 'BLOCKED', 'MAINTENANCE'];
 const KEY_STATES = ['AVAILABLE', 'ISSUED', 'LOST', 'BLOCKED'];
+
+/** Сколько стоит держать точку активной. Системный параметр, не настройка владельца. */
+export const PVZ_SUBSCRIPTION_PRICE = 359;
+export const PVZ_SUBSCRIPTION_DAYS = 30;
+/** Комиссия владельцу точки с закрытого заказа. Применённый процент сохраняется в строке начисления — смена этой константы не пересчитывает прошлое. */
+export const PVZ_OWNER_COMMISSION_PERCENT = 10;
 
 /* ─── Журнал (только запись) ─────────────────────────────────────────── */
 
@@ -68,31 +94,43 @@ export const auditFor = async (pvzId, actorId, { limit } = {}) => {
 
 /* ─── Сотрудники / права ─────────────────────────────────────────────── */
 
-/** Чем этот человек может распоряжаться на этой точке. Пусто, если ничем. */
-export const permissionsOf = async (pvzId, profileId) => {
-  if (!PVZ_ID_RE.test(String(pvzId ?? '')) || !profileId) return [];
+/** Роль этого человека на этой точке — или null, если он там не работает. */
+export const roleOf = async (pvzId, profileId) => {
+  if (!PVZ_ID_RE.test(String(pvzId ?? '')) || !profileId) return null;
   const { rows } = await query(
-    `SELECT permissions FROM market_pvz_staff
+    `SELECT role FROM market_pvz_staff
       WHERE pvz_id = $1 AND profile_id = $2 AND status = 'active'`,
     [pvzId, profileId]);
-  return rows[0]?.permissions ?? [];
+  return rows[0]?.role ?? null;
+};
+
+const rankOf = async (pvzId, profileId) => {
+  const role = await roleOf(pvzId, profileId);
+  return role ? ROLE_RANK[role] : -1;
 };
 
 export const hasPermission = async (pvzId, profileId, perm) => {
-  const list = await permissionsOf(pvzId, profileId);
-  return list.includes(perm) || list.includes('admin');
+  const rank = await rankOf(pvzId, profileId);
+  return rank >= (PERM_MIN_RANK[perm] ?? 4);
 };
+
+export const hasRole = async (pvzId, profileId, minRole) =>
+  (await rankOf(pvzId, profileId)) >= ROLE_RANK[minRole];
 
 /**
  * Может ли распоряжаться точкой вообще (для видеообзора и общих
- * действий администрирования): либо сотрудник с правом 'admin' на
- * этой самой точке, либо Sky-администрация.
+ * действий администрирования): либо manager/owner на этой самой
+ * точке, либо Sky-администрация.
  */
 export const mayManagePvz = async (pvzId, actorId) =>
-  (await hasPermission(pvzId, actorId, 'admin')) || (await can(actorId, 'market'));
+  (await hasRole(pvzId, actorId, 'manager')) || (await can(actorId, 'market'));
+
+/** Владелец точки — для подписки, начислений, распоряжения точкой целиком. */
+export const isOwnerOf = async (pvzId, actorId) =>
+  (await hasRole(pvzId, actorId, 'owner')) || (await can(actorId, 'market'));
 
 /** Любой активный сотрудник этой точки — для видеообзора и справок, доступных «по месту работы». */
-export const isStaffOf = async (pvzId, actorId) => (await permissionsOf(pvzId, actorId)).length > 0;
+export const isStaffOf = async (pvzId, actorId) => (await roleOf(pvzId, actorId)) !== null;
 
 const pvzExists = async (pvzId) => {
   const { rows } = await query('SELECT id FROM market_pickup_points WHERE id = $1', [String(pvzId ?? '')]);
@@ -102,53 +140,86 @@ const pvzExists = async (pvzId) => {
 export const listStaff = async (pvzId, actorId) => {
   if (!(await isStaffOf(pvzId, actorId)) && !(await can(actorId, 'market'))) return null;
   const { rows } = await query(
-    `SELECT s.id, s.profile_id, s.permissions, s.status, s.created_at, s.revoked_at,
+    `SELECT s.id, s.profile_id, s.role, s.status, s.created_at, s.revoked_at,
             p.name, p.username
        FROM market_pvz_staff s JOIN profiles p ON p.id = s.profile_id
       WHERE s.pvz_id = $1 ORDER BY s.status, s.created_at`, [pvzId]);
   return rows.map((r) => ({
     id: r.id, profileId: r.profile_id, name: r.name, username: r.username,
-    permissions: r.permissions, status: r.status,
+    role: r.role, status: r.status,
     createdAt: r.created_at.toISOString(), revokedAt: r.revoked_at?.toISOString() ?? null,
   }));
 };
 
-export const addStaff = async (pvzId, actorId, targetProfileId, permissions) => {
+/**
+ * Нанять или переназначить сотрудника точки.
+ *
+ * Кто кого вправе назначить — решает ранг ролей, а не сам факт
+ * распоряжения точкой: manager вправе завести employee/read_only, но
+ * не другого manager и не owner — это назначение мог бы использовать
+ * для того, чтобы возвыситься самому через подставного человека.
+ * Только owner (или Sky-администрация) заводит owner/manager.
+ */
+export const addStaff = async (pvzId, actorId, targetProfileId, role) => {
   if (!(await pvzExists(pvzId))) return { error: 'not_found' };
-  if (!(await mayManagePvz(pvzId, actorId))) return { error: 'not_allowed' };
+  const r = ROLES.includes(String(role)) ? String(role) : null;
+  if (!r) return { error: 'bad_role' };
+
+  const callerRank = await rankOf(pvzId, actorId);
+  const isSkyAdmin = await can(actorId, 'market');
+  const effectiveCallerRank = isSkyAdmin ? ROLE_RANK.owner : callerRank;
+  if (effectiveCallerRank < ROLE_RANK.manager) return { error: 'not_allowed' };
+  if (ROLE_RANK[r] >= ROLE_RANK.manager && effectiveCallerRank < ROLE_RANK.owner) {
+    return { error: 'not_allowed' };
+  }
+
   const target = text(targetProfileId, 80);
   if (!target) return { error: 'bad_profile' };
-  const perms = Array.isArray(permissions)
-    ? [...new Set(permissions.map((p) => String(p)).filter((p) => PERMISSIONS.includes(p)))]
-    : [];
-  if (perms.length === 0) return { error: 'bad_permissions' };
-
   const { rows: p } = await query('SELECT id FROM profiles WHERE id = $1', [target]);
   if (!p[0]) return { error: 'bad_profile' };
 
   const id = `pzs-${generateId()}`;
   const { rows } = await query(
-    `INSERT INTO market_pvz_staff (id, pvz_id, profile_id, permissions, added_by)
-     VALUES ($1,$2,$3,$4,$5)
+    `INSERT INTO market_pvz_staff (id, pvz_id, profile_id, role, permissions, added_by)
+     VALUES ($1,$2,$3,$4,$5,$6)
      ON CONFLICT (pvz_id, profile_id) DO UPDATE SET
-       permissions = EXCLUDED.permissions, status = 'active', revoked_at = NULL, revoked_by = NULL
+       role = EXCLUDED.role, status = 'active', revoked_at = NULL, revoked_by = NULL
      RETURNING id`,
-    [id, pvzId, target, perms, actorId]);
-  await logPvz(null, pvzId, actorId, 'staff_added', { type: 'staff', id: rows[0].id }, { profileId: target, permissions: perms });
+    [id, pvzId, target, r, [], actorId]);
+  await logPvz(null, pvzId, actorId, 'staff_added', { type: 'staff', id: rows[0].id }, { profileId: target, role: r });
   return { id: rows[0].id };
 };
 
 export const revokeStaff = async (pvzId, actorId, staffId) => {
-  if (!(await mayManagePvz(pvzId, actorId))) return { error: 'not_allowed' };
   if (!STAFF_ID_RE.test(String(staffId ?? ''))) return { error: 'not_found' };
+  const { rows: targetRows } = await query(
+    `SELECT profile_id, role FROM market_pvz_staff WHERE id = $1 AND pvz_id = $2 AND status = 'active'`,
+    [staffId, pvzId]);
+  const target = targetRows[0];
+  if (!target) return { error: 'not_found' };
+
+  const callerRank = await rankOf(pvzId, actorId);
+  const isSkyAdmin = await can(actorId, 'market');
+  const effectiveCallerRank = isSkyAdmin ? ROLE_RANK.owner : callerRank;
+  if (effectiveCallerRank < ROLE_RANK.manager) return { error: 'not_allowed' };
+  if (ROLE_RANK[target.role] >= ROLE_RANK.manager && effectiveCallerRank < ROLE_RANK.owner) {
+    return { error: 'not_allowed' };
+  }
+  /* Точка без единого владельца — точка, в которую больше никто не
+     войдёт с полными правами. Последнего owner снять нельзя, даже
+     самому себе, даже Sky-администрации этой ручкой. */
+  if (target.role === 'owner') {
+    const { rows: owners } = await query(
+      `SELECT count(*)::int AS n FROM market_pvz_staff
+        WHERE pvz_id = $1 AND role = 'owner' AND status = 'active'`, [pvzId]);
+    if ((owners[0]?.n ?? 0) <= 1) return { error: 'last_owner' };
+  }
+
   const { rows } = await query(
     `UPDATE market_pvz_staff SET status = 'revoked', revoked_at = now(), revoked_by = $3
       WHERE id = $1 AND pvz_id = $2 AND status = 'active' RETURNING profile_id`,
     [staffId, pvzId, actorId]);
   if (!rows[0]) return { error: 'not_found' };
-  /* Себя разжаловать можно, соседа по другой точке — нет: WHERE pvz_id
-     выше уже это отсекает. Права Sky-панели это в любом случае не
-     трогает — их тут никогда и не было. */
   await logPvz(null, pvzId, actorId, 'staff_revoked', { type: 'staff', id: staffId }, { profileId: rows[0].profile_id });
   return { ok: true };
 };
@@ -156,19 +227,112 @@ export const revokeStaff = async (pvzId, actorId, staffId) => {
 /** Точки, где человек работает — чтобы кабинет знал, куда его пускать. */
 export const myPvzMemberships = async (profileId) => {
   const { rows } = await query(
-    `SELECT s.pvz_id, s.permissions, p.title, p.city, p.address, p.staff_closed
+    `SELECT s.pvz_id, s.role, p.title, p.city, p.address, p.staff_closed, p.owner_status
        FROM market_pvz_staff s JOIN market_pickup_points p ON p.id = s.pvz_id
       WHERE s.profile_id = $1 AND s.status = 'active' ORDER BY p.title`, [profileId]);
   return rows.map((r) => ({
-    pvzId: r.pvz_id, permissions: r.permissions, title: r.title, city: r.city,
-    address: r.address, staffClosed: r.staff_closed,
+    pvzId: r.pvz_id, role: r.role, title: r.title, city: r.city,
+    address: r.address, staffClosed: r.staff_closed, ownerStatus: r.owner_status,
   }));
+};
+
+/* ─── Создание и подписка точки ──────────────────────────────────────── */
+
+const MAX_TITLE = 120;
+const MAX_ADDR = 300;
+
+/**
+ * Владелец заводит свою точку. Она видна ему сразу (кабинет, сотрудники,
+ * ячейки), но в публичный каталог (listPickupPoints) не попадает, пока
+ * не оплачена подписка — owner_status начинается с pending_activation,
+ * и marketdelivery.mjs уже учитывает staff_closed/active тем же
+ * способом.
+ */
+export const createPvz = async (actorId, input = {}) => {
+  const title = text(input.title, MAX_TITLE);
+  const city = text(input.city, 80);
+  const address = text(input.address, MAX_ADDR);
+  if (!title || !city || !address) return { error: 'bad_pvz' };
+  const cellCount = int(input.cellCount, 0, 2000) ?? 0;
+
+  const id = `mpp-${generateId()}`;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO market_pickup_points
+         (id, title, city, address, phone, work_from, work_to, hold_days, active, owner_id, owner_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,FALSE,$9,'pending_activation')`,
+      [id, title, city, address, text(input.phone, 40),
+        text(input.workFrom, 5) || '09:00', text(input.workTo, 5) || '21:00',
+        int(input.holdDays, 1, 60) ?? 7, actorId]);
+    const staffId = `pzs-${generateId()}`;
+    await client.query(
+      `INSERT INTO market_pvz_staff (id, pvz_id, profile_id, role, permissions, added_by)
+       VALUES ($1,$2,$3,'owner',$4,$3)`,
+      [staffId, id, actorId, []]);
+    for (let n = 1; n <= cellCount; n += 1) {
+      await client.query(
+        `INSERT INTO market_pvz_cells (id, pvz_id, number) VALUES ($1,$2,$3)`,
+        [`pzc-${generateId()}`, id, String(n)]);
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+  await logPvz(null, id, actorId, 'pvz_created', { type: 'pvz', id }, { title, cellCount });
+  return { id };
+};
+
+/**
+ * Оплата активации — тем же способом, что подписка продавца
+ * (market.mjs, paySellerSubscription): списание с кошелька Sky, не
+ * внешний платёж. Sky не принимает деньги за товар и не держит их —
+ * это плата за место в каталоге ПВЗ, и платится она туда же, куда
+ * продавец платит за место на витрине.
+ */
+export const activatePvzSubscription = async (pvzId, actorId) => {
+  if (!(await isOwnerOf(pvzId, actorId))) return { error: 'not_allowed' };
+  const { rows: pvzRows } = await query('SELECT id FROM market_pickup_points WHERE id = $1', [pvzId]);
+  if (!pvzRows[0]) return { error: 'not_found' };
+
+  const paid = await wallet.spend(
+    actorId, PVZ_SUBSCRIPTION_PRICE, 'pvz_subscription',
+    `Sky ПВЗ: активация точки, ${PVZ_SUBSCRIPTION_DAYS} дн.`);
+  if (paid.error) return paid;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `UPDATE market_pickup_points
+          SET owner_status = 'active', active = TRUE
+        WHERE id = $1 RETURNING id`, [pvzId]);
+    const until = new Date(Date.now() + PVZ_SUBSCRIPTION_DAYS * 86400_000);
+    await client.query(
+      `INSERT INTO market_pvz_owner_payments (id, pvz_id, profile_id, amount, days, until)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [`mpo-${generateId()}`, pvzId, actorId, PVZ_SUBSCRIPTION_PRICE, PVZ_SUBSCRIPTION_DAYS, until]);
+    await client.query('COMMIT');
+    if (!rows[0]) throw new Error('pvz vanished mid-activation');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    await wallet.refund(actorId, PVZ_SUBSCRIPTION_PRICE, 'Sky ПВЗ: возврат за активацию').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+  await logPvz(null, pvzId, actorId, 'subscription_paid', { type: 'pvz', id: pvzId }, { days: PVZ_SUBSCRIPTION_DAYS });
+  return { ok: true, balance: paid.balance };
 };
 
 /* ─── Временное закрытие точки ───────────────────────────────────────── */
 
 export const setStaffClosed = async (pvzId, actorId, closed, reason = '') => {
-  if (!(await hasPermission(pvzId, actorId, 'admin')) && !(await can(actorId, 'market'))) {
+  if (!(await mayManagePvz(pvzId, actorId))) {
     return { error: 'not_allowed' };
   }
   await query(
@@ -309,6 +473,32 @@ export const placeInCell = async (pvzId, actorId, orderId, cellId) => {
       if (String(err.code) === '23505') return { error: 'order_already_placed' };
       throw err;
     }
+
+    /* Реальное размещение в ячейку и есть «готов к выдаче» — не слово
+       продавца, а факт, который здесь же проверил сотрудник. Старый
+       путь (продавец сам ставит ready_for_pickup в marketdelivery.mjs,
+       для точек без владельца и кабинета) никуда не делся и по-прежнему
+       работает — эта проверка просто не отступает назад и не дублирует
+       переход, если он уже случился. */
+    const ORDER_RANK = { fulfillment: 0, seller_shipped: 1, in_transit: 2 };
+    if (Object.prototype.hasOwnProperty.call(ORDER_RANK, order.status)) {
+      const { rows: pvzRows } = await client.query(
+        'SELECT hold_days FROM market_pickup_points WHERE id = $1', [pvzId]);
+      const holdDays = Number(pvzRows[0]?.hold_days ?? 7);
+      if (!order.pickup_code_enc) await issuePickupCode(client, order.id);
+      if (!order.pickup_qr_token_enc) await issuePickupQr(client, order.id);
+      const { notes } = await applyTransition(client, order, {
+        to: 'ready_for_pickup', actorId, actorRole: 'pvz_staff',
+        detail: { pvzId, cellId, auto: true },
+        extraSets: ['pickup_until = $$'],
+        extraArgs: [new Date(Date.now() + holdDays * 86400_000)],
+      });
+      await client.query('COMMIT');
+      for (const n of notes) pushMarket([n.userId], { type: 'market-notification', payload: n.note });
+      await logPvz(null, pvzId, actorId, 'order_placed', { type: 'order', id }, { cellId, cellNumber: cell.number });
+      return { ok: true };
+    }
+
     await client.query('COMMIT');
     await logPvz(null, pvzId, actorId, 'order_placed', { type: 'order', id }, { cellId, cellNumber: cell.number });
     return { ok: true };
@@ -470,18 +660,75 @@ export const pickupCodeFor = (order) => {
 };
 
 /**
- * Выдать заказ покупателю, проверив код на сервере.
+ * QR получения — тот же смысл, что код получения, только для сканера,
+ * а не для голоса: длинный случайный токен вместо шести цифр, потому
+ * что его не нужно произносить вслух или набирать руками. Оба
+ * привязаны к заказу и служат друг другу вторым фактором — раздел 26.
+ */
+export const issuePickupQr = async (client, orderId) => {
+  const token = crypto.randomBytes(24).toString('base64url');
+  await client.query(
+    `UPDATE market_orders SET pickup_qr_token_enc = $2 WHERE id = $1`,
+    [orderId, encryptContent(token)]);
+  return token;
+};
+
+export const pickupQrTokenFor = (order) => {
+  if (!order.pickup_qr_token_enc) return null;
+  return decryptContent(order.pickup_qr_token_enc) || null;
+};
+
+/** Что кодирует QR получения в приложении покупателя. */
+export const pickupQrPayload = (orderId, token) => `skypvz:pickup:${orderId}:${token}`;
+
+const parsePickupQrPayload = (raw) => {
+  const m = /^skypvz:pickup:(mo-[0-9a-f-]{36}):([\w-]{20,64})$/.exec(String(raw ?? '').trim());
+  return m ? { orderId: m[1], token: m[2] } : null;
+};
+
+/**
+ * Начислить владельцу точки комиссию с закрытого заказа — один раз,
+ * кто бы ни закрыл заказ: сотрудник по сканеру (verifyPickup) или сам
+ * покупатель кнопкой «Получил» (marketorders.mjs, actOnOrder). Заказ
+ * без владельца (точка администрации Sky) комиссии не создаёт —
+ * начислять её там некому. ON CONFLICT (order_id) страхует от
+ * повторного начисления, если оба пути каким-то образом сработают
+ * по одному заказу.
+ */
+export const accrueCommissionIfNeeded = async (client, order) => {
+  if (!order?.pickup_point_id) return;
+  const { rows } = await client.query(
+    `SELECT owner_id FROM market_pickup_points WHERE id = $1 AND owner_id IS NOT NULL`,
+    [order.pickup_point_id]);
+  const ownerId = rows[0]?.owner_id;
+  if (!ownerId) return;
+  const percent = PVZ_OWNER_COMMISSION_PERCENT;
+  const amountKop = Math.round((Number(order.total_kop) * percent) / 100);
+  await client.query(
+    `INSERT INTO market_pvz_commissions
+       (id, order_id, pvz_id, owner_id, seller_id, order_amount_kop, percent, amount_kop)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     ON CONFLICT (order_id) DO NOTHING`,
+    [`mpc-${generateId()}`, order.id, order.pickup_point_id, ownerId, order.seller_id,
+      order.total_kop, percent, amountKop]);
+};
+
+/**
+ * Выдать заказ покупателю, проверив код или QR на сервере.
  *
  * Сервер сам устанавливает всю цепочку покупатель ↔ заказ ↔ пункт ↔
  * ячейка по своим собственным записям: из запроса читаются только
- * orderId и code, ничего похожего на buyerId здесь не принимается.
+ * orderId и то, что предъявил покупатель (код или содержимое QR),
+ * ничего похожего на buyerId здесь не принимается.
  */
-export const verifyPickup = async (pvzId, actorId, orderId, code) => {
+export const verifyPickup = async (pvzId, actorId, orderId, proof) => {
   if (!(await hasPermission(pvzId, actorId, 'issue'))) return { error: 'not_allowed' };
-  const id = String(orderId ?? '');
+
+  const qr = parsePickupQrPayload(proof);
+  const id = qr ? qr.orderId : String(orderId ?? '');
   if (!ORDER_ID_RE.test(id)) return { error: 'not_found' };
-  const given = text(code, 20).replace(/\D/g, '');
-  if (!given) return { error: 'bad_code' };
+  const givenCode = qr ? '' : text(proof, 20).replace(/\D/g, '');
+  if (!qr && !givenCode) return { error: 'bad_code' };
 
   const client = await pool.connect();
   try {
@@ -496,10 +743,19 @@ export const verifyPickup = async (pvzId, actorId, orderId, code) => {
       await client.query('ROLLBACK');
       return { error: 'wrong_state', status: order.status };
     }
-    const real = pickupCodeFor(order);
-    if (!real || !codesEqual(hashCode(given, id), hashCode(real, id))) {
+
+    const ok = qr
+      ? (() => {
+          const real = pickupQrTokenFor(order);
+          return Boolean(real) && codesEqual(hashCode(qr.token, id), hashCode(real, id));
+        })()
+      : (() => {
+          const real = pickupCodeFor(order);
+          return Boolean(real) && codesEqual(hashCode(givenCode, id), hashCode(real, id));
+        })();
+    if (!ok) {
       await client.query('ROLLBACK');
-      await logPvz(null, pvzId, actorId, 'issue_denied', { type: 'order', id }, { reason: 'bad_code' }, true);
+      await logPvz(null, pvzId, actorId, 'issue_denied', { type: 'order', id }, { reason: 'bad_proof' }, true);
       return { error: 'bad_code' };
     }
 
@@ -519,6 +775,7 @@ export const verifyPickup = async (pvzId, actorId, orderId, code) => {
     await client.query(
       `UPDATE market_sellers SET orders_done = orders_done + 1, updated_at = now() WHERE profile_id = $1`,
       [order.seller_id]);
+    await accrueCommissionIfNeeded(client, done.row);
 
     await client.query(
       `UPDATE market_pvz_cells SET status = 'FREE', current_order_id = NULL, updated_at = now()
@@ -526,7 +783,7 @@ export const verifyPickup = async (pvzId, actorId, orderId, code) => {
 
     await client.query('COMMIT');
     for (const n of [...notes, ...done.notes]) pushMarket([n.userId], { type: 'market-notification', payload: n.note });
-    await logPvz(null, pvzId, actorId, 'order_issued', { type: 'order', id }, {});
+    await logPvz(null, pvzId, actorId, 'order_issued', { type: 'order', id }, { via: qr ? 'qr' : 'code' });
     await logMarket(actorId, 'pvz_order_issued', id, { pvzId });
     return { order: toOrder(done.row, 'support') };
   } catch (err) {
@@ -540,24 +797,136 @@ export const verifyPickup = async (pvzId, actorId, orderId, code) => {
 /* ─── Обзор точки для кабинета сотрудника ───────────────────────────── */
 
 export const pvzOverview = async (pvzId, actorId) => {
-  if (!(await isStaffOf(pvzId, actorId)) && !(await can(actorId, 'market'))) return null;
+  const role = await roleOf(pvzId, actorId);
+  if (!role && !(await can(actorId, 'market'))) return null;
   const { rows } = await query(
     `SELECT id, title, city, address, phone, work_from, work_to, hold_days,
-            active, staff_closed, staff_closed_reason
+            active, staff_closed, staff_closed_reason, owner_id, owner_status
        FROM market_pickup_points WHERE id = $1`, [pvzId]);
   const p = rows[0];
   if (!p) return null;
   const { rows: waiting } = await query(
     `SELECT id, title_snap, pickup_until FROM market_orders
       WHERE pickup_point_id = $1 AND status = 'ready_for_pickup' ORDER BY pickup_until`, [pvzId]);
+  const { rows: pending } = await query(
+    `SELECT count(*)::int AS n FROM market_pvz_cells WHERE pvz_id = $1`, [pvzId]);
   return {
     id: p.id, title: p.title, city: p.city, address: p.address, phone: p.phone,
     workFrom: p.work_from, workTo: p.work_to, holdDays: p.hold_days,
     active: p.active, staffClosed: p.staff_closed, staffClosedReason: p.staff_closed_reason,
+    hasOwner: Boolean(p.owner_id), ownerStatus: p.owner_status, myRole: role,
+    cellCount: pending[0]?.n ?? 0,
     waitingOrders: waiting.map((o) => ({
       id: o.id, title: o.title_snap, pickupUntil: o.pickup_until?.toISOString?.() ?? null,
     })),
   };
+};
+
+/* ─── QR заказа (продавец → ПВЗ) ─────────────────────────────────────── */
+
+/**
+ * QR, который продавец печатает на коробку. Тот же приём, что у кода
+ * получения: обратимо зашифрованный случайный токен, потому что
+ * продавцу нужно уметь открыть его снова, если он не распечатал сразу.
+ * Заводится по первому запросу — до этого момента заказу просто
+ * нечего печатать.
+ */
+export const sellerOrderQr = async (orderId, sellerId, { regenerate = false } = {}) => {
+  const id = String(orderId ?? '');
+  if (!ORDER_ID_RE.test(id)) return { error: 'not_found' };
+  const { rows } = await query(
+    'SELECT id, seller_id, pvz_ship_token_enc, status FROM market_orders WHERE id = $1', [id]);
+  const order = rows[0];
+  if (!order || order.seller_id !== sellerId) return { error: 'not_found' };
+
+  let tokenEnc = order.pvz_ship_token_enc;
+  /* Старый QR при замене инвалидируется самим фактом перезаписи — вторую
+     проверку заводить незачем: verifyShipmentScan сверяет только с тем,
+     что лежит в столбце сейчас. */
+  if (!tokenEnc || regenerate) {
+    const token = crypto.randomBytes(24).toString('base64url');
+    tokenEnc = encryptContent(token);
+    await query('UPDATE market_orders SET pvz_ship_token_enc = $2 WHERE id = $1', [id, tokenEnc]);
+    await logMarket(sellerId, regenerate ? 'pvz_qr_regenerated' : 'pvz_qr_issued', id);
+  }
+  const token = decryptContent(tokenEnc);
+  return { orderId: id, token, payload: `skypvz:order:${id}:${token}` };
+};
+
+export const parseOrderQrPayload = (raw) => {
+  const m = /^skypvz:order:(mo-[0-9a-f-]{36}):([\w-]{20,64})$/.exec(String(raw ?? '').trim());
+  return m ? { orderId: m[1], token: m[2] } : null;
+};
+
+export const orderShipTokenValid = (order, given) => {
+  if (!order.pvz_ship_token_enc || !given) return false;
+  const real = decryptContent(order.pvz_ship_token_enc);
+  return Boolean(real) && codesEqual(hashCode(given, order.id), hashCode(real, order.id));
+};
+
+/* ─── Комиссия владельцу: просмотр и заявление о выплате ─────────────── */
+
+export const commissionsForOwner = async (actorId, { limit } = {}) => {
+  const lim = int(limit, 1, 300) ?? 100;
+  const { rows } = await query(
+    `SELECT c.*, p.title AS pvz_title, o.title_snap AS order_title
+       FROM market_pvz_commissions c
+       JOIN market_pickup_points p ON p.id = c.pvz_id
+       JOIN market_orders o ON o.id = c.order_id
+      WHERE c.owner_id = $1 ORDER BY c.created_at DESC LIMIT $2`, [actorId, lim]);
+  return rows.map(toCommission);
+};
+
+export const commissionsForSeller = async (actorId, { limit } = {}) => {
+  const lim = int(limit, 1, 300) ?? 100;
+  const { rows } = await query(
+    `SELECT c.*, p.title AS pvz_title, o.title_snap AS order_title
+       FROM market_pvz_commissions c
+       JOIN market_pickup_points p ON p.id = c.pvz_id
+       JOIN market_orders o ON o.id = c.order_id
+      WHERE c.seller_id = $1 ORDER BY c.created_at DESC LIMIT $2`, [actorId, lim]);
+  return rows.map(toCommission);
+};
+
+function toCommission(r) {
+  return {
+    id: r.id, orderId: r.order_id, pvzId: r.pvz_id, pvzTitle: r.pvz_title, orderTitle: r.order_title,
+    orderAmountKop: Number(r.order_amount_kop), percent: Number(r.percent), amountKop: Number(r.amount_kop),
+    status: r.status, declaredPaidAt: r.declared_paid_at?.toISOString?.() ?? null,
+    createdAt: r.created_at.toISOString(),
+  };
+}
+
+/**
+ * Продавец заявляет, что выплатил комиссию владельцу точки — прямым
+ * переводом, мимо Sky, как и вся оплата сделки. Sky этого перевода не
+ * видит и не проверяет: это заявление, а не банковская верификация,
+ * тем же словом, каким уже помечено «отправил оплату» покупателя.
+ */
+export const declareCommissionPaid = async (commissionId, sellerId) => {
+  const { rows } = await query(
+    `UPDATE market_pvz_commissions SET status = 'declared_paid', declared_paid_at = now()
+      WHERE id = $1 AND seller_id = $2 AND status = 'accrued' RETURNING pvz_id`,
+    [String(commissionId ?? ''), sellerId]);
+  if (!rows[0]) return { error: 'not_found' };
+  await logPvz(null, rows[0].pvz_id, sellerId, 'commission_declared_paid', { type: 'commission', id: commissionId }, {});
+  return { ok: true };
+};
+
+export const disputeCommission = async (commissionId, actorId) => {
+  const { rows } = await query(
+    `SELECT owner_id, seller_id, pvz_id FROM market_pvz_commissions WHERE id = $1`,
+    [String(commissionId ?? '')]);
+  const c = rows[0];
+  if (!c) return { error: 'not_found' };
+  if (actorId !== c.owner_id && actorId !== c.seller_id && !(await can(actorId, 'market'))) {
+    return { error: 'not_allowed' };
+  }
+  await query(
+    `UPDATE market_pvz_commissions SET status = 'disputed' WHERE id = $1 AND status IN ('accrued','declared_paid')`,
+    [commissionId]);
+  await logPvz(null, c.pvz_id, actorId, 'commission_disputed', { type: 'commission', id: commissionId }, {}, true);
+  return { ok: true };
 };
 
 export { CELL_STATES, KEY_STATES };

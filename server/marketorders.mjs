@@ -40,6 +40,7 @@ import {
   readServicePackage, fulfilmentOf,
 } from './market.mjs';
 import { pushMarket } from './signal.mjs';
+import { accrueCommissionIfNeeded } from './pvzops.mjs';
 
 const MAX_ADDRESS = 400;
 const MAX_CONTACT = 200;
@@ -577,6 +578,12 @@ export const actOnOrder = async (orderId, actorId, action) => {
       await client.query(
         `UPDATE market_sellers SET orders_done = orders_done + 1, updated_at = now()
           WHERE profile_id = $1`, [order.seller_id]);
+      /* Заказ мог дойти до пункта выдачи с владельцем и без участия
+         сотрудника точки — например, покупатель сам нажал «Получил»,
+         не дожидаясь сканирования. Комиссия всё равно причитается, и
+         accrueCommissionIfNeeded сама решает, есть ли она вообще
+         (владелец есть) и не начислена ли уже (ON CONFLICT). */
+      await accrueCommissionIfNeeded(client, finalRow);
     }
 
     await client.query('COMMIT');
@@ -757,6 +764,7 @@ export const resolveDispute = async (orderId, actorId, outcome, note = '') => {
       await client.query(
         `UPDATE market_sellers SET orders_done = orders_done + 1, updated_at = now()
           WHERE profile_id = $1`, [order.seller_id]);
+      await accrueCommissionIfNeeded(client, row);
     }
     await client.query('COMMIT');
     fanout(notes);

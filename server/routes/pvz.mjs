@@ -1,26 +1,34 @@
 /**
- * Sky ПВЗ: сотрудники, ячейки, ключи, безопасная выдача — по HTTP.
+ * Sky ПВЗ: владение, сотрудники, ячейки, ключи, QR заказа,
+ * безопасная выдача, комиссия — по HTTP.
  *
  * Здесь только вход: кто спрашивает, не слишком ли часто и той ли формы
  * идентификатор. Кому что можно решает pvzops.mjs — каждая ручка ниже
  * лишь передаёт туда actorId, который взят из токена, и параметры пути.
- * buyerId, permissions «от себя» и prежнее состояние отсюда не читаются
+ * buyerId, роль «от себя» и прежнее состояние отсюда не читаются
  * никогда: цепочку сотрудник → точка → заказ → ячейка сервер строит сам.
+ *
+ * Поставки (несколько заказов одним разом) и приёмка по QR — в
+ * pvzshipments.mjs / routes/pvzshipments.mjs, отдельно: там другой
+ * род запросов и другая сущность.
  */
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
-  PVZ_ID_RE, CELL_ID_RE, KEY_ID_RE, STAFF_ID_RE, PERMISSIONS,
+  PVZ_ID_RE, CELL_ID_RE, KEY_ID_RE, STAFF_ID_RE, PERMISSIONS, ROLES,
+  PVZ_SUBSCRIPTION_PRICE, PVZ_OWNER_COMMISSION_PERCENT,
   myPvzMemberships, pvzOverview, listStaff, addStaff, revokeStaff, setStaffClosed,
+  createPvz, activatePvzSubscription,
   listCells, upsertCell, setCellStatus, reserveCell,
   receiveOrder, placeInCell, verifyPickup,
   listKeys, createKey, issueKeyToStaff, returnKeyFromStaff, reportKeyLost,
-  auditFor,
+  auditFor, sellerOrderQr, commissionsForOwner, commissionsForSeller,
+  declareCommissionPaid, disputeCommission,
 } from './../pvzops.mjs';
 
 const READ_PER_MIN = 120;
 const WRITE_PER_MIN = 60;
-/** Код получения — 6 цифр; без жёсткого предела его можно перебрать. */
+/** Код/QR получения — без жёсткого предела их можно перебрать. */
 const ISSUE_PER_HOUR = 20;
 
 const CODES = {
@@ -28,6 +36,8 @@ const CODES = {
   not_allowed: 403,
   bad_profile: 400,
   bad_permissions: 400,
+  bad_role: 400,
+  bad_pvz: 400,
   bad_cell: 400,
   bad_holder: 400,
   bad_code: 401,
@@ -41,6 +51,8 @@ const CODES = {
   key_not_issued: 409,
   order_already_placed: 409,
   wrong_state: 409,
+  last_owner: 409,
+  insufficient_funds: 402,
 };
 
 const fail = (res, result) => json(res, CODES[result.error] ?? 400, { error: result.error });
@@ -61,6 +73,57 @@ export const pvzRoutes = async (req, res, path) => {
     return json(res, 200, { pvzs: await myPvzMemberships(me) });
   }
 
+  if (req.method === 'POST' && path === '/api/pvz') {
+    if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+    const b = await body();
+    const done = await createPvz(me, b);
+    return done.error ? fail(res, done) : json(res, 201, { ...done, price: PVZ_SUBSCRIPTION_PRICE });
+  }
+
+  if (req.method === 'GET' && path === '/api/pvz/config') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { subscriptionPrice: PVZ_SUBSCRIPTION_PRICE, commissionPercent: PVZ_OWNER_COMMISSION_PERCENT, roles: ROLES });
+  }
+
+  /* ── QR заказа — продавец, из карточки заказа ─────────────────────── */
+
+  const orderQr = path.match(/^\/api\/pvz\/orders\/(mo-[0-9a-f-]{36})\/qr$/);
+  if (orderQr) {
+    if (req.method === 'GET') {
+      if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+      const done = await sellerOrderQr(orderQr[1], me);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+    if (req.method === 'POST') {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      const done = await sellerOrderQr(orderQr[1], me, { regenerate: true });
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+  }
+
+  /* ── Комиссия владельцу точки ─────────────────────────────────────── */
+
+  if (req.method === 'GET' && path === '/api/pvz/commissions/owner') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { commissions: await commissionsForOwner(me) });
+  }
+  if (req.method === 'GET' && path === '/api/pvz/commissions/seller') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { commissions: await commissionsForSeller(me) });
+  }
+  const commissionPaid = path.match(/^\/api\/pvz\/commissions\/(mpc-[0-9a-f-]{36})\/paid$/);
+  if (req.method === 'POST' && commissionPaid) {
+    if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await declareCommissionPaid(commissionPaid[1], me);
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+  const commissionDispute = path.match(/^\/api\/pvz\/commissions\/(mpc-[0-9a-f-]{36})\/dispute$/);
+  if (req.method === 'POST' && commissionDispute) {
+    if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await disputeCommission(commissionDispute[1], me);
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+
   const pvzMatch = path.match(/^\/api\/pvz\/(mpp-[0-9a-f-]{36})(\/.*)?$/);
   if (!pvzMatch) return false;
   const pvzId = pvzMatch[1];
@@ -71,6 +134,12 @@ export const pvzRoutes = async (req, res, path) => {
     if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
     const overview = await pvzOverview(pvzId, me);
     return overview ? json(res, 200, { pvz: overview }) : json(res, 404, { error: 'not_found' });
+  }
+
+  if (req.method === 'POST' && rest === '/activate') {
+    if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await activatePvzSubscription(pvzId, me);
+    return done.error ? fail(res, done) : json(res, 200, done);
   }
 
   if (req.method === 'POST' && rest === '/closed') {
@@ -90,7 +159,7 @@ export const pvzRoutes = async (req, res, path) => {
   if (req.method === 'POST' && rest === '/staff') {
     if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
     const b = await body();
-    const done = await addStaff(pvzId, me, b.profileId, b.permissions);
+    const done = await addStaff(pvzId, me, b.profileId, b.role);
     return done.error ? fail(res, done) : json(res, 201, done);
   }
   const staffRevoke = rest.match(/^\/staff\/(pzs-[0-9a-f-]{36})\/revoke$/);
@@ -151,7 +220,10 @@ export const pvzRoutes = async (req, res, path) => {
       return json(res, 429, { error: 'too_many_requests' });
     }
     const b = await body();
-    const done = await verifyPickup(pvzId, me, orderIssue[1], b.code);
+    /* Покупатель показывает либо QR получения (b.qr — приоритетно),
+       либо называет код вслух (b.code) — второй фактор на случай, если
+       сканер недоступен. verifyPickup разбирает сама, что пришло. */
+    const done = await verifyPickup(pvzId, me, orderIssue[1], b.qr || b.code);
     return done.error ? fail(res, done) : json(res, 200, done);
   }
 
