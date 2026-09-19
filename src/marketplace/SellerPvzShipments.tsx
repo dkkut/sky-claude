@@ -15,9 +15,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   PackagePlus, QrCode, Printer, ArrowLeft, Truck, CheckCircle2,
-  AlertTriangle, RefreshCw, X,
+  AlertTriangle, RefreshCw, X, Wallet, Check,
 } from 'lucide-react';
-import { C, fmtTime, Empty, Field, inputStyle, Alert } from './ui';
+import { C, fmt, fmtTime, Empty, Field, inputStyle, Alert } from './ui';
 import { useMarketStore } from './store';
 import { apiPickupPoints } from './marketApi';
 import type { PickupPoint } from './types';
@@ -26,7 +26,7 @@ import {
   apiPvzShipmentAddOrder, apiPvzShipmentRemoveOrder, apiPvzShipmentQr, apiPvzShipmentDispatch,
   type PvzShipment, type PvzShipmentDetail, type ShipmentMethod,
 } from './pvzShipmentsApi';
-import { apiOrderQr } from './pvzStaffApi';
+import { apiOrderQr, apiPvzCommissionsSeller, apiPvzCommissionPaid, type PvzCommission } from './pvzStaffApi';
 import { qrDataUri } from '@/shared/qr';
 import { ReportProblemButton } from './pvzSupport';
 
@@ -231,6 +231,83 @@ const ShipmentDetailView = ({ shipmentId, onBack, onChanged }:
   );
 };
 
+/* ── Комиссии владельцам точек — с их реквизитами ─────────────────── */
+
+const CommissionRow = ({ c, onPaid }: { c: PvzCommission; onPaid: () => void }) => {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const declarePaid = async () => {
+    setBusy(true); setError(null);
+    const r = await apiPvzCommissionPaid(c.id);
+    setBusy(false);
+    if (!r.ok) { setError(r.reason ?? 'Не получилось отметить оплату'); return; }
+    onPaid();
+  };
+
+  return (
+    <div className="space-y-1.5 rounded-xl p-2.5" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <div className="flex items-center justify-between">
+        <span className="truncate text-[11px] font-semibold" style={{ color: C.t1 }}>{c.pvzTitle}</span>
+        <span className="shrink-0 text-[11px] font-bold" style={{ color: C.t1 }}>{fmt(c.amountKop / 100)}</span>
+      </div>
+      <p className="truncate text-[10px]" style={{ color: C.t3 }}>{c.orderTitle} · {c.percent}%</p>
+      {c.status === 'accrued' && (
+        c.ownerPaymentDetails ? (
+          <div className="rounded-lg px-2.5 py-1.5 text-[10px]" style={{ background: C.l2, color: C.t2 }}>
+            {c.ownerPaymentDetails}
+          </div>
+        ) : (
+          <p className="text-[10px]" style={{ color: C.amber }}>Владелец точки ещё не указал реквизиты.</p>
+        )
+      )}
+      {error && <Alert text={error} />}
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold" style={{
+          color: c.status === 'declared_paid' ? C.green : c.status === 'disputed' ? C.red : C.t3,
+        }}>
+          {c.status === 'accrued' ? 'Ожидает оплаты' : c.status === 'declared_paid' ? 'Оплачено' : c.status === 'disputed' ? 'Спорно' : 'Отменено'}
+        </span>
+        {c.status === 'accrued' && (
+          <button type="button" disabled={busy} onClick={declarePaid}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-bold disabled:opacity-40"
+            style={{ background: C.accBg, color: C.acc }}>
+            <Check size={11} /> Я заплатил
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const SellerPvzCommissions = () => {
+  const [list, setList] = useState<PvzCommission[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    const r = await apiPvzCommissionsSeller();
+    if (r.ok && r.data) setList(r.data.commissions);
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const owed = list.filter((c) => c.status === 'accrued');
+  if (!loaded || list.length === 0) return null;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <Wallet size={13} style={{ color: C.t3 }} />
+        <p className="text-[11px] font-semibold" style={{ color: C.t3 }}>
+          Комиссии пунктам выдачи{owed.length > 0 ? ` · к оплате ${owed.length}` : ''}
+        </p>
+      </div>
+      {list.map((c) => <CommissionRow key={c.id} c={c} onPaid={load} />)}
+    </div>
+  );
+};
+
 /* ── Список поставок и создание новой ─────────────────────────────── */
 
 export const SellerPvzShipments = () => {
@@ -289,6 +366,8 @@ export const SellerPvzShipments = () => {
         Каждый физический заказ, который отправляется в ПВЗ, должен иметь QR-код этого заказа
         на упаковке. QR поставки открывает приёмку целиком, а QR заказа — отдельную коробку внутри неё.
       </div>
+
+      <SellerPvzCommissions />
 
       {!creating ? (
         <button type="button" onClick={() => setCreating(true)} disabled={pendingByPvz.size === 0}

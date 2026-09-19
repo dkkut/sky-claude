@@ -42,6 +42,10 @@ export interface PvzOverview {
   ownerStatus: PvzOwnerStatus;
   myRole: PvzRole;
   cellCount: number;
+  /** Заданы ли реквизиты — видно всем сотрудникам, сами реквизиты только владельцу. */
+  hasOwnerPaymentDetails: boolean;
+  /** Сами реквизиты — только когда myRole === 'owner'. */
+  ownerPaymentDetails?: string;
   waitingOrders: { id: string; title: string; pickupUntil: string | null }[];
 }
 
@@ -91,6 +95,8 @@ export interface PvzCommission {
   status: 'accrued' | 'declared_paid' | 'disputed' | 'cancelled';
   declaredPaidAt: string | null;
   createdAt: string;
+  /** Реквизиты владельца точки — только в собственных начислениях продавца. */
+  ownerPaymentDetails?: string;
 }
 
 export interface PvzConfig {
@@ -118,7 +124,7 @@ export const apiPvzSetClosed = (pvzId: string, closed: boolean, reason?: string)
   post<{ ok: true }>(`/api/pvz/${enc(pvzId)}/closed`, { closed, reason });
 
 export const apiPvzUpdateSettings = (pvzId: string, patch: {
-  phone?: string; workFrom?: string; workTo?: string; holdDays?: number;
+  phone?: string; workFrom?: string; workTo?: string; holdDays?: number; paymentDetails?: string;
 }) => post<{ ok: true }>(`/api/pvz/${enc(pvzId)}/settings`, patch);
 
 /* ─── Сотрудники ──────────────────────────────────────────────────────── */

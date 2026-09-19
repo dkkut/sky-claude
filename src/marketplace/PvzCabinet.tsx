@@ -705,15 +705,26 @@ const SettingsTab = ({ pvz, myRole, onChanged }: { pvz: PvzOverview; myRole: Pvz
   const [workFrom, setWorkFrom] = useState(pvz.workFrom);
   const [workTo, setWorkTo] = useState(pvz.workTo);
   const [holdDays, setHoldDays] = useState(String(pvz.holdDays));
+  const [paymentDetails, setPaymentDetails] = useState(pvz.ownerPaymentDetails ?? '');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payMsg, setPayMsg] = useState<string | null>(null);
 
   const save = async () => {
     setBusy(true); setMsg(null);
     const r = await apiPvzUpdateSettings(pvz.id, { phone, workFrom, workTo, holdDays: Number(holdDays) || undefined });
     setBusy(false);
     if (!r.ok) { setMsg(r.reason ?? 'Не получилось сохранить'); return; }
+    onChanged();
+  };
+
+  const savePayment = async () => {
+    setPayBusy(true); setPayMsg(null);
+    const r = await apiPvzUpdateSettings(pvz.id, { paymentDetails });
+    setPayBusy(false);
+    if (!r.ok) { setPayMsg(r.reason ?? 'Не получилось сохранить'); return; }
     onChanged();
   };
 
@@ -762,6 +773,27 @@ const SettingsTab = ({ pvz, myRole, onChanged }: { pvz: PvzOverview; myRole: Pvz
         </div>
       ) : (
         <p className="text-[11px]" style={{ color: C.t3 }}>Часы работы и реквизиты меняет только владелец точки.</p>
+      )}
+
+      {isOwner && (
+        <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <p className="text-[11px] font-semibold" style={{ color: C.t2 }}>Реквизиты для оплаты комиссии</p>
+          <p className="text-[10px]" style={{ color: C.t3 }}>
+            Продавцы платят комиссию вам напрямую, минуя Sky — как и всю сделку с покупателем. Эти
+            реквизиты видны только вам и продавцам с начислением по этой точке, каждому — вместе с его
+            собственной комиссией.
+          </p>
+          <textarea value={paymentDetails} onChange={(e) => setPaymentDetails(e.target.value)}
+            rows={3} maxLength={600}
+            placeholder="Например: СБП +7 900 000-00-00 (Т-Банк), получатель Иван И."
+            className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+          {!pvz.hasOwnerPaymentDetails && (
+            <Alert kind="info" text="Пока реквизиты не заданы, продавцы не узнают, куда переводить комиссию." />
+          )}
+          {payMsg && <Alert text={payMsg} />}
+          <button type="button" disabled={payBusy} onClick={savePayment}
+            className="w-full rounded-xl py-2.5 text-[12px] font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>Сохранить реквизиты</button>
+        </div>
       )}
     </div>
   );
