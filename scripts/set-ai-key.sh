@@ -54,7 +54,7 @@ echo
 # ── 1. Ключ модели ─────────────────────────────────────────
 echo "--- Шаг 1 из 3: ключ языковой модели ---"
 echo
-echo "Взять здесь: console.anthropic.com -> Settings -> API keys."
+echo "Взять здесь: platform.openai.com -> API keys."
 echo "Не забудьте пополнить счёт в разделе Billing, иначе ключ создастся,"
 echo "но запросы будут отбиваться."
 echo
@@ -67,23 +67,24 @@ echo
 
 # ── 2. Модель ──────────────────────────────────────────────
 #  Выбор цифрой, а не вводом идентификатора: опечатка в названии
-#  модели — самая частая причина «настроил, а не работает».
+#  модели — самая частая причина «настроил, а не работает». Точные
+#  цены здесь не печатаем: они меняются, а устаревшая цифра хуже,
+#  чем её отсутствие. Актуальные — на openai.com/api/pricing.
 echo "--- Шаг 2 из 3: какая модель ---"
 echo
-echo "  1) Opus 5     — самая умная        5 / 25 долларов за миллион слов"
-echo "  2) Sonnet 5   — заметно дешевле    2 / 10"
-echo "  3) Haiku 4.5  — самая дешёвая      1 / 5"
+echo "  1) gpt-4o       — самая умная, дороже"
+echo "  2) gpt-4o-mini  — заметно дешевле (по умолчанию)"
+echo "  3) своё название — если знаете, что вводите"
 echo
-echo "Левое число — за то, что присылают модели, правое — за её ответы."
 echo "Бесплатный чат ограничен 60 сообщениями в сутки на человека, так что"
 echo "счёт растёт предсказуемо. Поменять модель можно этим же скриптом."
 echo
-printf 'Выбор [1]: '
+printf 'Выбор [2]: '
 ask CHOICE
-case "${CHOICE:-1}" in
-  1|'') MODEL='claude-opus-5' ;;
-  2)    MODEL='claude-sonnet-5' ;;
-  3)    MODEL='claude-haiku-4-5' ;;
+case "${CHOICE:-2}" in
+  1)    MODEL='gpt-4o' ;;
+  2|'') MODEL='gpt-4o-mini' ;;
+  3)    printf 'Название модели: '; ask MODEL ;;
   *)    MODEL="$CHOICE" ;;   # своё название — если знаете, что вводите
 esac
 echo "Модель: $MODEL"
@@ -92,12 +93,11 @@ echo
 # ── Проба ──────────────────────────────────────────────────
 #  Короткий запрос: он стоит копейки и сразу отвечает, принят ли ключ.
 echo "Проверяю ключ пробным обращением ..."
-BODY="$(printf '{"model":"%s","max_tokens":16,"messages":[{"role":"user","content":"ответь словом: готово"}]}' "$MODEL")"
+BODY="$(printf '{"model":"%s","max_output_tokens":16,"input":"ответь словом: готово"}' "$MODEL")"
 HTTP="$(curl -sS -o /tmp/ai-answer.$$ -w '%{http_code}' \
-        -X POST 'https://api.anthropic.com/v1/messages' \
+        -X POST 'https://api.openai.com/v1/responses' \
         -H 'content-type: application/json' \
-        -H "x-api-key: $KEY" \
-        -H 'anthropic-version: 2023-06-01' \
+        -H "authorization: Bearer $KEY" \
         --data "$BODY" --max-time 30)" || true
 HTTP="${HTTP:-000}"
 ANSWER="$(head -c 300 /tmp/ai-answer.$$ 2>/dev/null || true)"
@@ -128,8 +128,8 @@ echo
 echo "Языковая модель речь не расшифровывает — для этого нужен отдельный"
 echo "поставщик. Подходит любой с ручкой /v1/audio/transcriptions:"
 echo
-echo "  · OpenAI Whisper — platform.openai.com -> API keys,"
-echo "    адрес https://api.openai.com;"
+echo "  · OpenAI Whisper — тот же ключ и адрес, что вы уже ввели в Шаге 1,"
+echo "    подойдёт и здесь: адрес https://api.openai.com;"
 echo "  · свой на сервере (faster-whisper-server, whisper.cpp) —"
 echo "    тогда записи вообще не покидают машину. Для голосовых в"
 echo "    переписке это важнее, чем кажется: люди не ждут, что их"

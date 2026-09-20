@@ -10,6 +10,12 @@
  * ключ берётся из окружения, а в браузер возвращается только готовый
  * ответ.
  *
+ * Поставщик — OpenAI, ручка /v1/responses: она, в отличие от более
+ * старой /v1/chat/completions, принимает PDF так же, как раньше
+ * принимала его Anthropic (файлом, без ручного извлечения текста), а
+ * вызывающему коду (aichat.mjs, aitools.mjs) это различие не видно —
+ * наружу всё так же смотрит askModel({system, user|messages, maxTokens}).
+ *
  * Что сюда не передаётся снаружи:
  *   • модель — её называет владелец сервера в AI_MODEL, не клиент;
  *   • адрес — тем более: присланным адресом наш ключ уводят на чужой
@@ -39,6 +45,71 @@ export const aiConfigured = () => Boolean(config.aiApiKey);
 export const aiInflight = () => inflight;
 
 /**
+ * Свой формат блока содержимого (Claude-подобный: { type, ... }) в
+ * формат, который принимает /v1/responses. Один блок — один элемент
+ * `content` внутри хода. Роль здесь важна для простого текста: то, что
+ * раньше сказала модель (роль assistant, из истории диалога), нужно
+ * отдать обратно как output_text, а не input_text, — иначе поставщик
+ * получает историю, где модель как будто сама себе присылала вход.
+ */
+const toInputPart = (block, role) => {
+  if (typeof block === 'string') {
+    return role === 'assistant'
+      ? { type: 'output_text', text: block }
+      : { type: 'input_text', text: block };
+  }
+  switch (block?.type) {
+    case 'text':
+      return role === 'assistant'
+        ? { type: 'output_text', text: String(block.text ?? '') }
+        : { type: 'input_text', text: String(block.text ?? '') };
+    case 'image':
+      return {
+        type: 'input_image',
+        image_url: `data:${block.source.media_type};base64,${block.source.data}`,
+      };
+    case 'document':
+      return {
+        type: 'input_file',
+        filename: 'document.pdf',
+        file_data: `data:${block.source.media_type};base64,${block.source.data}`,
+      };
+    default:
+      return { type: 'input_text', text: '' };
+  }
+};
+
+/** Ход диалога в своём формате → ход в формате /v1/responses. */
+const toResponsesTurn = ({ role, content }) => ({
+  role,
+  content: Array.isArray(content)
+    ? content.map((b) => toInputPart(b, role))
+    : [toInputPart(content, role)],
+});
+
+/**
+ * Достать текст ответа из тела /v1/responses.
+ *
+ * Форма разбирается терпимо: под `output` лежит список ходов модели,
+ * и текст может явиться как `output_text`, так и (после отказа
+ * модерации) как `refusal` — оба варианта всё равно текст для показа
+ * человеку, выдумывать вместо него нечего.
+ */
+const extractResponseText = (data) => {
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) return data.output_text;
+  const out = Array.isArray(data?.output) ? data.output : [];
+  const parts = [];
+  for (const item of out) {
+    if (!Array.isArray(item?.content)) continue;
+    for (const c of item.content) {
+      if (c?.type === 'output_text' && c.text) parts.push(String(c.text));
+      else if (c?.type === 'refusal' && c.refusal) parts.push(String(c.refusal));
+    }
+  }
+  return parts.join('');
+};
+
+/**
  * Спросить модель.
  *
  * Принимает либо один текст (user), либо готовый список ходов
@@ -61,20 +132,19 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
   const timer = setTimeout(() => control.abort(), long ? LONG_TIMEOUT_MS : TIMEOUT_MS);
   inflight += 1;
   try {
-    const res = await fetch(`${config.aiBaseUrl}/v1/messages`, {
+    const res = await fetch(`${config.aiBaseUrl}/v1/responses`, {
       method: 'POST',
       signal: control.signal,
       headers: {
         'content-type': 'application/json',
-        'x-api-key': config.aiApiKey,
-        'anthropic-version': '2023-06-01',
+        authorization: `Bearer ${config.aiApiKey}`,
       },
       body: JSON.stringify({
         model: config.aiModel,
-        max_tokens: Math.max(256, Math.min(8000, Number(maxTokens) || 2000)),
+        max_output_tokens: Math.max(256, Math.min(8000, Number(maxTokens) || 2000)),
         temperature: 0,
-        system,
-        messages: turns,
+        instructions: system,
+        input: turns.map(toResponsesTurn),
       }),
     });
 
@@ -94,11 +164,9 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
     let data;
     try { data = JSON.parse(raw); } catch { return { error: 'ai_failed' }; }
 
-    const text = Array.isArray(data?.content)
-      ? data.content.filter((c) => c?.type === 'text').map((c) => String(c.text ?? '')).join('')
-      : '';
+    const text = extractResponseText(data);
     if (!text.trim()) return { error: 'ai_failed' };
-    return { text, stopReason: data?.stop_reason ?? null };
+    return { text, stopReason: data?.status ?? null };
   } catch (err) {
     console.warn('[ai] запрос не удался:', err?.name === 'AbortError' ? 'превышено время' : 'ошибка связи');
     return { error: err?.name === 'AbortError' ? 'ai_timeout' : 'ai_failed' };
@@ -111,7 +179,9 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
 /* ─── Блоки содержимого ────────────────────────────────────────────
    Собираются здесь, а не в вызывающем коде, чтобы форма запроса к
    поставщику была описана в одном месте. Ничего из присланного
-   клиентом в роли и в типе блока не участвует. */
+   клиентом в роли и в типе блока не участвует. Формат — свой,
+   Claude-подобный ({type, source:{...}}); в формат /v1/responses его
+   переводит toInputPart() прямо перед отправкой. */
 
 export const textBlock = (text) => ({ type: 'text', text: String(text ?? '') });
 

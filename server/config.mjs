@@ -129,8 +129,8 @@ export const config = {
    * ручка так и отвечает, вместо того чтобы показать выдуманный текст.
    */
   aiApiKey: process.env.AI_API_KEY || '',
-  aiModel: process.env.AI_MODEL || 'claude-sonnet-4-5-20250929',
-  aiBaseUrl: process.env.AI_BASE_URL || 'https://api.anthropic.com',
+  aiModel: process.env.AI_MODEL || 'gpt-4o-mini',
+  aiBaseUrl: process.env.AI_BASE_URL || 'https://api.openai.com',
 
   // Расшифровка речи — отдельная работа и отдельный поставщик:
   // языковая модель этого не умеет. Ожидается обычная ручка
