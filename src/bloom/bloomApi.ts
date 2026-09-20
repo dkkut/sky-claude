@@ -149,3 +149,28 @@ export const apiBloomWrite = async (userId: string): Promise<{ chatId: string } 
   const r = await apiCall<{ chatId: string }>(`/api/bloom/write/${userId}`, { method: 'POST' });
   return r.ok && r.data ? r.data : { error: r.error ?? 'failed' };
 };
+
+/* ─── Админка: региональная доступность постов ────────────────────── */
+
+export interface AdminBloomPost {
+  id: string;
+  authorId: string;
+  authorName?: string;
+  authorUsername?: string;
+  text: string;
+  kind: string;
+  blockedRegions: string[];
+  createdAt: string;
+}
+
+export const apiBloomAdminSearchPosts = async (q?: string): Promise<AdminBloomPost[]> => {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  const r = await apiCall<{ items: AdminBloomPost[] }>(`/api/bloom/admin/posts?${params}`);
+  return r.ok ? r.data?.items ?? [] : [];
+};
+
+export const apiBloomSetPostRegions = async (postId: string, blockedRegions: string[], reason?: string) =>
+  apiCall<{ ok: true; blockedRegions: string[] }>(`/api/bloom/post/${postId}/regions`, {
+    method: 'POST', body: JSON.stringify({ blockedRegions, reason }),
+  });

@@ -12,13 +12,14 @@ import {
   feed, authorPosts, getPost, trending, suggestedUsers, hotComments, notificationsCount, recentEvents,
   createPost, deletePost, react, addComment, deleteComment, likeComment,
   toggleSave, toggleRepost, recordView, votePoll, toggleHide, hiddenAuthors, sendGift,
-  mediaMimeOf,
+  mediaMimeOf, adminSearchPosts, setPostRegions,
 } from './../bloom.mjs';
 import { saveStream, openStream, sizeOf, newMediaId } from './../bloomstore.mjs';
 import { parseRange } from './../skyvideostore.mjs';
 import { directChatId, createChat } from './../chats.mjs';
 import { userStore } from './../store.mjs';
 import { recentFollowers } from './../follows.mjs';
+import { logAdmin } from './../adminsec.mjs';
 
 const READ_PER_MIN = 120;
 const WRITE_PER_MIN = 40;
@@ -159,7 +160,7 @@ export const bloomRoutes = async (req, res, url) => {
 
   if (req.method === 'GET' && path === '/api/bloom/hot-comments') {
     if (!rateLimit(`bloom:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
-    return json(res, 200, { items: await hotComments() });
+    return json(res, 200, { items: await hotComments(me) });
   }
 
   if (req.method === 'GET' && path === '/api/bloom/notifications-count') {
@@ -285,6 +286,19 @@ export const bloomRoutes = async (req, res, url) => {
       return json(res, 200, r);
     }
 
+    if (req.method === 'POST' && tail === '/regions') {
+      if (!rateLimit(`bloom:admin:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const body = await parseBody(req);
+      const r = await setPostRegions(id, me, Array.isArray(body?.blockedRegions) ? body.blockedRegions : []);
+      if (r.error) return json(res, r.error === 'not_allowed' ? 403 : 404, r);
+      await logAdmin({
+        actorId: me, targetId: id, targetType: 'bloom_post', type: 'bloom_post_regions', result: 'ok',
+        detail: `было: ${r.before.join(',') || '—'} → стало: ${r.after.join(',') || '—'}`
+          + (body?.reason ? ` · причина: ${String(body.reason).slice(0, 200)}` : ''),
+      });
+      return json(res, 200, { ok: true, blockedRegions: r.after });
+    }
+
     return json(res, 404, { error: 'not_found' });
   }
 
@@ -337,6 +351,18 @@ export const bloomRoutes = async (req, res, url) => {
     if (!rateLimit(`bloom:react:${me}`, REACT_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     const authorId = hideMatch[1];
     return json(res, 200, await toggleHide(me, authorId));
+  }
+
+  /* ── Админка: региональная доступность постов ──────────────────────
+     Право проверяется внутри adminSearchPosts/setPostRegions (can(me,
+     'content')) — здесь только маршрутизация и запись в уже существующий
+     admin_log. Роль/право никогда не читаются из тела запроса. */
+
+  if (req.method === 'GET' && path === '/api/bloom/admin/posts') {
+    if (!rateLimit(`bloom:admin:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const r = await adminSearchPosts(me, { q: params.get('q'), limit: params.get('limit') });
+    if (r.error) return json(res, 403, r);
+    return json(res, 200, r);
   }
 
   return false;

@@ -317,3 +317,28 @@ export const apiDecideSkyVideoMonetization = async (requestId: string, approve: 
     { method: 'POST', body: JSON.stringify({ approve, reason }) });
   return r.ok;
 };
+
+/* ─── Админка: региональная доступность роликов ───────────────────── */
+
+export interface AdminSkyVideo {
+  id: string;
+  title: string;
+  ownerId?: string;
+  authorName?: string;
+  authorUsername?: string;
+  status: VideoStatus;
+  blockedRegions: string[];
+  createdAt: string;
+}
+
+export const apiSkyVideoAdminSearch = async (q?: string): Promise<AdminSkyVideo[]> => {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  const r = await apiCall<{ items: AdminSkyVideo[] }>(`/api/skyvideo/admin/videos?${params}`);
+  return r.ok ? r.data?.items ?? [] : [];
+};
+
+export const apiSkyVideoSetRegions = async (videoId: string, blockedRegions: string[], reason?: string) =>
+  apiCall<{ ok: true; blockedRegions: string[] }>(`/api/skyvideo/video/${encodeURIComponent(videoId)}/regions`, {
+    method: 'POST', body: JSON.stringify({ blockedRegions, reason }),
+  });

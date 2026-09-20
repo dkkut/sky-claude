@@ -25,6 +25,7 @@ import {
   type MyRights, type AdminRow, type PendingAction, type LogEntry, type SecurityEvent,
   type AdminPermission, type Person,
 } from './adminWire';
+import { COUNTRIES } from '@/region/types';
 
 const C = {
   bg: 'var(--bg-l1)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
@@ -33,6 +34,131 @@ const C = {
 };
 
 const inputStyle = { background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 };
+
+/* ─── Регионы: общий список кодов (src/region/types.ts) ──────────────
+   Тот же справочник стран, что и в уже существующем RegionPicker —
+   ничего здесь заново не заводится, только выбор из того же списка. */
+
+const RegionMultiSelect = ({ value, onChange }: { value: string[]; onChange: (codes: string[]) => void }) => {
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const list = needle
+    ? COUNTRIES.filter((c) => c.name.toLowerCase().includes(needle) || c.nameEn.toLowerCase().includes(needle) || c.code.toLowerCase() === needle)
+    : COUNTRIES;
+  const toggle = (code: string) => onChange(value.includes(code) ? value.filter((c) => c !== code) : [...value, code]);
+
+  return (
+    <div className="space-y-2">
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск региона"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <div className="max-h-44 space-y-0.5 overflow-y-auto rounded-xl p-2" style={{ background: C.l2 }}>
+        {list.map((c) => (
+          <label key={c.code} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px]" style={{ color: C.t2 }}>
+            <input type="checkbox" checked={value.includes(c.code)} onChange={() => toggle(c.code)} />
+            <span>{c.flag} {c.name}</span>
+          </label>
+        ))}
+        {list.length === 0 && <p className="px-2 py-3 text-center text-[11px]" style={{ color: C.t3 }}>Не найдено</p>}
+      </div>
+      <p className="text-[10px]" style={{ color: C.t3 }}>
+        {value.length === 0
+          ? 'Доступен во всех регионах.'
+          : `Заблокирован в: ${value.map((code) => COUNTRIES.find((c) => c.code === code)?.name ?? code).join(', ')}`}
+      </p>
+    </div>
+  );
+};
+
+/* ─── Bloom: региональная доступность постов ─────────────────────────── */
+
+const BloomAdminSection = () => {
+  const [q, setQ] = useState('');
+  const [items, setItems] = useState<import('@/bloom/bloomApi').AdminBloomPost[] | null>(null);
+  const [failed, setFailed] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [regions, setRegions] = useState<string[]>([]);
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiBloomAdminSearchPosts } = await import('@/bloom/bloomApi');
+    setItems(await apiBloomAdminSearchPosts(q.trim() || undefined));
+  }, [q]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const startEdit = (post: import('@/bloom/bloomApi').AdminBloomPost) => {
+    setEditing(post.id); setRegions(post.blockedRegions); setReason('');
+  };
+
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true); setFailed('');
+    const { apiBloomSetPostRegions } = await import('@/bloom/bloomApi');
+    const r = await apiBloomSetPostRegions(editing, regions, reason.trim() || undefined);
+    setSaving(false);
+    if (!r.ok) { setFailed('Не удалось сохранить региональные ограничения'); return; }
+    setEditing(null);
+    void load();
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px]" style={{ color: C.t3 }}>
+        По умолчанию пост доступен во всех регионах. Заблокированные регионы проверяются на
+        сервере при любой попытке получить пост — из ленты, профиля автора, поиска, «популярного»
+        или напрямую по ссылке; изменить id в запросе для обхода нельзя.
+      </p>
+      <div className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ник автора или id поста"
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <button type="button" onClick={() => void load()} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+          <RefreshCw size={12} />
+        </button>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {items === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : items.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Постов не найдено.</p>
+      ) : items.map((p) => (
+        <div key={p.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>
+                {p.authorName} <span className="font-normal" style={{ color: C.t3 }}>@{p.authorUsername}</span>
+              </p>
+              <p className="mt-0.5 truncate text-[11px]" style={{ color: C.t2 }}>{p.text || '(без текста)'}</p>
+            </div>
+            <button type="button" onClick={() => startEdit(p)}
+              className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold"
+              style={{ background: p.blockedRegions.length ? 'rgba(248,113,113,0.15)' : C.l2, color: p.blockedRegions.length ? C.red : C.t2 }}>
+              {p.blockedRegions.length ? `Заблокирован (${p.blockedRegions.length})` : 'Региональная доступность'}
+            </button>
+          </div>
+          {editing === p.id && (
+            <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: C.brd }}>
+              <RegionMultiSelect value={regions} onChange={setRegions} />
+              <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина (необязательно, для журнала)"
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              <div className="flex gap-2">
+                <button type="button" disabled={saving} onClick={() => void save()}
+                  className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+                  Сохранить
+                </button>
+                <button type="button" onClick={() => setEditing(null)}
+                  className="flex-1 rounded-xl py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
 
 /* ─── Sky Gifts: каталог обычных подарков и медиа карточки Prime ─────── */
 
@@ -1172,12 +1298,109 @@ const CampaignsAdminSection = ({ onPendingChanged }: { onPendingChanged: () => v
   );
 };
 
+/* ─── Sky Video: региональная доступность роликов ────────────────────── */
+
+const SkyVideoRegionsAdmin = () => {
+  const [q, setQ] = useState('');
+  const [items, setItems] = useState<import('@/video/skyVideoApi').AdminSkyVideo[] | null>(null);
+  const [failed, setFailed] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [regions, setRegions] = useState<string[]>([]);
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiSkyVideoAdminSearch } = await import('@/video/skyVideoApi');
+    setItems(await apiSkyVideoAdminSearch(q.trim() || undefined));
+  }, [q]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const startEdit = (v: import('@/video/skyVideoApi').AdminSkyVideo) => {
+    setEditing(v.id); setRegions(v.blockedRegions); setReason('');
+  };
+
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true); setFailed('');
+    const { apiSkyVideoSetRegions } = await import('@/video/skyVideoApi');
+    const r = await apiSkyVideoSetRegions(editing, regions, reason.trim() || undefined);
+    setSaving(false);
+    if (!r.ok) { setFailed('Не удалось сохранить региональные ограничения'); return; }
+    setEditing(null);
+    void load();
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px]" style={{ color: C.t3 }}>
+        По умолчанию ролик доступен во всех регионах. Ограничение проверяется на сервере при
+        просмотре, получении информации, воспроизведении файла, в ленте, поиске и подборках —
+        для заблокированного региона сам медиафайл не отдаётся даже по прямой ссылке.
+      </p>
+      <div className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ник автора, название или id ролика"
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <button type="button" onClick={() => void load()} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+          <RefreshCw size={12} />
+        </button>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {items === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : items.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Роликов не найдено.</p>
+      ) : items.map((v) => (
+        <div key={v.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>{v.title}</p>
+              <p className="mt-0.5 truncate text-[11px]" style={{ color: C.t3 }}>
+                {v.authorName ?? '—'} {v.authorUsername ? `@${v.authorUsername}` : ''}
+              </p>
+            </div>
+            <button type="button" onClick={() => startEdit(v)}
+              className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold"
+              style={{ background: v.blockedRegions.length ? 'rgba(248,113,113,0.15)' : C.l2, color: v.blockedRegions.length ? C.red : C.t2 }}>
+              {v.blockedRegions.length ? `Заблокирован (${v.blockedRegions.length})` : 'Региональная доступность'}
+            </button>
+          </div>
+          {editing === v.id && (
+            <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: C.brd }}>
+              <RegionMultiSelect value={regions} onChange={setRegions} />
+              <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина (необязательно, для журнала)"
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              <div className="flex gap-2">
+                <button type="button" disabled={saving} onClick={() => void save()}
+                  className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+                  Сохранить
+                </button>
+                <button type="button" onClick={() => setEditing(null)}
+                  className="flex-1 rounded-xl py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const SkyVideoAdminSection = ({ rights, onPendingChanged }: { rights: MyRights; onPendingChanged: () => void }) => (
   <div className="space-y-4">
     {rights.permissions.includes('content') && (
       <div>
         <p className="mb-2 text-xs font-bold" style={{ color: C.t1 }}>Заявки на монетизацию</p>
         <SkyVideoMonetizationQueue />
+      </div>
+    )}
+    {rights.permissions.includes('content') && (
+      <div>
+        <p className="mb-2 text-xs font-bold" style={{ color: C.t1 }}>Региональная доступность</p>
+        <SkyVideoRegionsAdmin />
       </div>
     )}
     {rights.permissions.includes('finance') && (
@@ -2232,9 +2455,363 @@ const GarantAdminSection = () => {
   );
 };
 
+/* ─── Рассылки ─────────────────────────────────────────────────────────
+   Показ уведомления не меняется — тот же useNotifStore/NotifBridge, что
+   и у лайков/комментариев Bloom. Здесь только создание, планирование,
+   аудитория и история: реальную отправку делает серверный worker
+   (server/notifyBroadcast.mjs), не браузер. */
+
+const BROADCAST_STATUS_LABEL: Record<import('@/notifications/broadcastApi').BroadcastStatus, string> = {
+  draft: 'Черновик', scheduled: 'Запланирована', processing: 'Отправляется',
+  sent: 'Отправлена', cancelled: 'Отменена', failed: 'Ошибка',
+};
+
+const BROADCAST_ERROR: Record<string, string> = {
+  empty: 'Заполните заголовок и текст',
+  bad_link: 'Ссылка должна вести на собственный раздел приложения (начинаться с /)',
+  bad_audience: 'Выберите аудиторию',
+  empty_audience: 'Укажите хотя бы одного пользователя',
+  too_many_users: 'Слишком много пользователей в списке',
+  bad_region: 'Выберите регион',
+  bad_schedule: 'Неверная дата и время',
+  not_allowed: 'Недостаточно прав',
+  not_found: 'Не найдено',
+  not_cancellable: 'Рассылку уже нельзя отменить — отправка началась или она уже решена',
+};
+
+const errBroadcast = (code?: string, unknown?: string[]) => {
+  if (code === 'unknown_usernames' && unknown?.length) return `Не найдены: ${unknown.join(', ')}`;
+  return BROADCAST_ERROR[String(code ?? '')] ?? 'Не получилось';
+};
+
+const fmtDT = (iso?: string) => iso ? new Date(iso).toLocaleString('ru', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
+const NotifyComposeForm = ({ onSent }: { onSent: () => void }) => {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [link, setLink] = useState('');
+  const [audienceType, setAudienceType] = useState<import('@/notifications/broadcastApi').AudienceType>('all');
+  const [usernames, setUsernames] = useState('');
+  const [region, setRegion] = useState('RU');
+  const [scheduleKind, setScheduleKind] = useState<import('@/notifications/broadcastApi').ScheduleKind>('once');
+  const [when, setWhen] = useState<'now' | 'later'>('now');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
+  const [reason, setReason] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [failed, setFailed] = useState('');
+  const [sent, setSent] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const valid = title.trim() && body.trim()
+    && (audienceType !== 'users' || usernames.trim())
+    && (when !== 'later' || (date && time));
+
+  const send = async () => {
+    setBusy(true); setFailed(''); setSent('');
+    const { apiAdminCreateBroadcast } = await import('@/notifications/broadcastApi');
+
+    let scheduledAt: string | undefined;
+    if (when === 'later') {
+      const local = new Date(`${date}T${time}`);
+      if (Number.isNaN(local.getTime())) { setBusy(false); setFailed('Неверная дата и время'); setConfirming(false); return; }
+      scheduledAt = local.toISOString();
+    }
+
+    const r = await apiAdminCreateBroadcast({
+      title: title.trim(), body: body.trim(), link: link.trim() || undefined,
+      audienceType,
+      usernames: audienceType === 'users'
+        ? usernames.split(/[\n,]/).map((s) => s.trim().replace(/^@/, '')).filter(Boolean) : undefined,
+      region: audienceType === 'region' ? region : undefined,
+      scheduleKind, sendNow: when === 'now', scheduledAt,
+      timezoneLabel: when === 'later' ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined,
+      reason: reason.trim() || undefined,
+    });
+    setBusy(false); setConfirming(false);
+    if (!r.ok || !r.data) { setFailed(errBroadcast(r.error, (r as { unknown?: string[] }).unknown)); return; }
+    setSent(when === 'now' ? 'Рассылка отправляется.' : 'Рассылка запланирована.');
+    setTitle(''); setBody(''); setLink(''); setUsernames(''); setReason(''); setDate(''); setTime('');
+    onSent();
+  };
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <p className="text-xs font-bold" style={{ color: C.t1 }}>Новая рассылка</p>
+
+      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Заголовок" maxLength={200}
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Текст уведомления" maxLength={1000} rows={3}
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Ссылка в приложении, необязательно (например /bloom)"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+
+      <p className="mt-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: C.t3 }}>Кому</p>
+      <div className="flex gap-1">
+        {([['all', 'Всем'], ['users', 'Пользователям'], ['region', 'По региону']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setAudienceType(k)}
+            className="flex-1 rounded-xl px-2 py-1.5 text-[11px] font-semibold"
+            style={{ background: audienceType === k ? C.acc : C.l2, color: audienceType === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {audienceType === 'users' && (
+        <textarea value={usernames} onChange={(e) => setUsernames(e.target.value)} rows={2}
+          placeholder="Ники через запятую или с новой строки: username1, username2"
+          className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      )}
+      {audienceType === 'region' && (
+        <select value={region} onChange={(e) => setRegion(e.target.value)}
+          className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle}>
+          {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.flag} {c.name}</option>)}
+        </select>
+      )}
+
+      <p className="mt-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: C.t3 }}>Когда</p>
+      <div className="flex gap-1">
+        <button type="button" onClick={() => setWhen('now')}
+          className="flex-1 rounded-xl px-2 py-1.5 text-[11px] font-semibold"
+          style={{ background: when === 'now' ? C.acc : C.l2, color: when === 'now' ? '#fff' : C.t3 }}>
+          Сейчас
+        </button>
+        <button type="button" onClick={() => setWhen('later')}
+          className="flex-1 rounded-xl px-2 py-1.5 text-[11px] font-semibold"
+          style={{ background: when === 'later' ? C.acc : C.l2, color: when === 'later' ? '#fff' : C.t3 }}>
+          Запланировать
+        </button>
+      </div>
+      {when === 'later' && (
+        <>
+          <div className="flex gap-2">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+              className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
+              className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+          </div>
+          <p className="text-[10px]" style={{ color: C.t3 }}>
+            Часовой пояс браузера: {Intl.DateTimeFormat().resolvedOptions().timeZone}
+          </p>
+          <p className="mt-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: C.t3 }}>Повтор</p>
+          <div className="flex gap-1">
+            {([['once', 'Один раз'], ['daily', 'Ежедневно'], ['weekly', 'Еженедельно']] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setScheduleKind(k)}
+                className="flex-1 rounded-xl px-2 py-1.5 text-[11px] font-semibold"
+                style={{ background: scheduleKind === k ? C.acc : C.l2, color: scheduleKind === k ? '#fff' : C.t3 }}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина/заметка (необязательно, для журнала)"
+        className="mt-2 w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {sent && <p className="text-[11px]" style={{ color: C.green }}>{sent}</p>}
+
+      {confirming ? (
+        <div className="space-y-2 rounded-xl p-2.5" style={{ background: 'rgba(248,113,113,0.08)', border: `1px solid ${C.red}` }}>
+          <p className="text-[11px]" style={{ color: C.t2 }}>
+            {audienceType === 'all' ? 'Уйдёт всем пользователям сервиса. ' : ''}
+            Подтвердите отправку — массовая рассылка необратима, отменить можно только то, что ещё не ушло.
+          </p>
+          <div className="flex gap-2">
+            <button type="button" disabled={busy} onClick={() => void send()}
+              className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.red, color: '#fff' }}>
+              Подтвердить и {when === 'now' ? 'отправить' : 'запланировать'}
+            </button>
+            <button type="button" onClick={() => setConfirming(false)}
+              className="flex-1 rounded-xl py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+              Отмена
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" disabled={!valid} onClick={() => setConfirming(true)}
+          className="w-full rounded-xl py-2.5 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+          {when === 'now' ? 'Отправить сейчас' : 'Запланировать'}
+        </button>
+      )}
+    </div>
+  );
+};
+
+const NotifyBroadcastDetail = ({ id, onBack, onChanged }: { id: string; onBack: () => void; onChanged: () => void }) => {
+  const [data, setData] = useState<{ broadcast: import('@/notifications/broadcastApi').Broadcast; runs: import('@/notifications/broadcastApi').BroadcastRun[] } | null>(null);
+  const [failed, setFailed] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+
+  const load = useCallback(async () => {
+    const { apiAdminGetBroadcast } = await import('@/notifications/broadcastApi');
+    const r = await apiAdminGetBroadcast(id);
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить'); return; }
+    setData(r.data);
+  }, [id]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const cancel = async () => {
+    const { apiAdminCancelBroadcast } = await import('@/notifications/broadcastApi');
+    const r = await apiAdminCancelBroadcast(id, cancelReason.trim() || undefined);
+    setCancelling(false);
+    if (!r.ok) { setFailed('Не удалось отменить'); return; }
+    void load(); onChanged();
+  };
+
+  if (!data) {
+    return failed
+      ? <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>
+      : <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />;
+  }
+  const b = data.broadcast;
+  const cancellable = b.status === 'draft' || b.status === 'scheduled';
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={onBack} className="text-[11px]" style={{ color: C.t3 }}>← Назад к истории</button>
+      <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-xs font-bold" style={{ color: C.t1 }}>{b.title}</p>
+          <span className="shrink-0 text-[10px] font-bold" style={{
+            color: b.status === 'sent' ? C.green : b.status === 'failed' ? C.red
+              : b.status === 'cancelled' ? C.t3 : C.amber,
+          }}>{BROADCAST_STATUS_LABEL[b.status]}</span>
+        </div>
+        <p className="mt-1 text-[11px]" style={{ color: C.t2 }}>{b.body}</p>
+        {b.link && <p className="mt-1 text-[11px]" style={{ color: C.acc }}>{b.link}</p>}
+        <div className="mt-2 space-y-0.5 text-[10px]" style={{ color: C.t3 }}>
+          <p>Создал: {b.creatorName ?? '—'} {b.creatorUsername ? `@${b.creatorUsername}` : ''} · {fmtDT(b.createdAt)}</p>
+          <p>Аудитория: {b.audienceType === 'all' ? 'все пользователи' : b.audienceType === 'region' ? `регион ${b.audienceRegion}` : `${b.audienceUserIds.length} чел.`}</p>
+          <p>Расписание: {b.scheduleKind === 'once' ? 'один раз' : b.scheduleKind === 'daily' ? 'ежедневно' : 'еженедельно'}
+            {b.scheduledAt ? ` · план: ${fmtDT(b.scheduledAt)}${b.timezoneLabel ? ` (${b.timezoneLabel})` : ''}` : ''}</p>
+          {b.lastSentAt && <p>Последняя отправка: {fmtDT(b.lastSentAt)}</p>}
+          {b.reason && <p>Причина: {b.reason}</p>}
+          {b.lastError && <p style={{ color: C.red }}>Ошибка: {b.lastError}</p>}
+          {b.cancelledAt && <p>Отменена: {fmtDT(b.cancelledAt)}{b.reason ? ` · ${b.reason}` : ''}</p>}
+        </div>
+
+        {cancellable && (
+          cancelling ? (
+            <div className="mt-2 space-y-2">
+              <input value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Причина отмены (необязательно)"
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              <div className="flex gap-2">
+                <button type="button" onClick={() => void cancel()} className="flex-1 rounded-xl py-2 text-xs font-bold" style={{ background: C.red, color: '#fff' }}>Подтвердить отмену</button>
+                <button type="button" onClick={() => setCancelling(false)} className="flex-1 rounded-xl py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>Назад</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setCancelling(true)}
+              className="mt-2 w-full rounded-xl py-2 text-xs font-bold" style={{ background: C.l2, color: C.red }}>
+              Отменить рассылку
+            </button>
+          )
+        )}
+      </div>
+
+      <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: C.t3 }}>Запуски</p>
+      {data.runs.length === 0 ? (
+        <p className="py-4 text-center text-[11px]" style={{ color: C.t3 }}>Ещё не запускалась.</p>
+      ) : data.runs.map((run) => (
+        <div key={run.id} className="rounded-xl p-2.5" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold" style={{ color: C.t1 }}>{fmtDT(run.scheduledFor)}</span>
+            <span className="text-[10px] font-bold" style={{ color: run.status === 'sent' ? C.green : run.status === 'failed' ? C.red : C.amber }}>
+              {run.status === 'sent' ? 'Отправлено' : run.status === 'failed' ? 'Ошибка' : 'В процессе'}
+            </span>
+          </div>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            Получателей: {run.recipientsTotal} · доставлено: {run.recipientsSent}
+            {run.recipientsFailed > 0 ? ` · ошибок: ${run.recipientsFailed}` : ''}
+          </p>
+          {run.error && <p className="mt-0.5 text-[10px]" style={{ color: C.red }}>{run.error}</p>}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const NotifyHistoryList = ({ openId, setOpenId }: { openId: string | null; setOpenId: (id: string | null) => void }) => {
+  const [status, setStatus] = useState<'' | import('@/notifications/broadcastApi').BroadcastStatus>('');
+  const [items, setItems] = useState<import('@/notifications/broadcastApi').Broadcast[] | null>(null);
+  const [failed, setFailed] = useState('');
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminListBroadcasts } = await import('@/notifications/broadcastApi');
+    const r = await apiAdminListBroadcasts({ status: status || undefined, limit: 50 });
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить историю'); return; }
+    setItems(r.data.items);
+  }, [status]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  if (openId) return <NotifyBroadcastDetail id={openId} onBack={() => setOpenId(null)} onChanged={() => void load()} />;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {([['', 'Все'], ['scheduled', 'Запланированы'], ['sent', 'Отправлены'], ['cancelled', 'Отменены'], ['failed', 'Ошибки']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setStatus(k)}
+            className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+            style={{ background: status === k ? C.acc : C.l2, color: status === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {items === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : items.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Рассылок нет.</p>
+      ) : items.map((b) => (
+        <button key={b.id} type="button" onClick={() => setOpenId(b.id)}
+          className="w-full rounded-2xl p-3 text-left" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{b.title}</p>
+            <span className="shrink-0 text-[10px] font-bold" style={{
+              color: b.status === 'sent' ? C.green : b.status === 'failed' ? C.red
+                : b.status === 'cancelled' ? C.t3 : C.amber,
+            }}>{BROADCAST_STATUS_LABEL[b.status]}</span>
+          </div>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            {b.audienceType === 'all' ? 'Всем' : b.audienceType === 'region' ? `Регион: ${b.audienceRegion}` : `${b.audienceUserIds.length} чел.`}
+            {' · '}{fmtDT(b.scheduledAt ?? b.createdAt)}
+          </p>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const NotifyAdminSection = () => {
+  const [sub, setSub] = useState<'compose' | 'history'>('compose');
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1">
+        {([['compose', 'Создать'], ['history', 'История']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => { setSub(k); setOpenId(null); }}
+            className="flex-1 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+            style={{ background: sub === k ? C.acc : C.l2, color: sub === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {sub === 'compose'
+        ? <NotifyComposeForm onSent={() => setSub('history')} />
+        : <NotifyHistoryList openId={openId} setOpenId={setOpenId} />}
+    </div>
+  );
+};
+
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'notify' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -2359,6 +2936,8 @@ export const AdminPanel = () => {
     { key: 'couriers', label: 'Курьеры', show: has('logistics') },
     { key: 'family', label: 'Sky Family', show: has('moderation') },
     { key: 'garant', label: 'Sky Garant', show: has('garant') },
+    { key: 'bloom', label: 'Bloom', show: has('content') },
+    { key: 'notify', label: 'Рассылки', show: has('notifications') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
     { key: 'events', label: 'События', show: has('security') },
@@ -2491,6 +3070,8 @@ export const AdminPanel = () => {
       {tab === 'couriers' && <CourierAdminSection />}
       {tab === 'family' && <FamilyAdminSection />}
       {tab === 'garant' && <GarantAdminSection />}
+      {tab === 'bloom' && <BloomAdminSection />}
+      {tab === 'notify' && <NotifyAdminSection />}
 
       {tab === 'admins' && (
         <>

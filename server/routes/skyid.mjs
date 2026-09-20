@@ -181,6 +181,9 @@ export const skyIdRoutes = async (req, res, url) => {
     const result = await updateProfile(s.skyId, patchMatch[1], {
       name:   body.name   !== undefined ? sanitizeInput(body.name) : undefined,
       avatar: body.avatar !== undefined ? sanitizeAvatar(body.avatar) : undefined,
+      // Регион существующей системы (src/region) — сохраняем то, что
+      // человек уже выбрал в RegionPicker, ничего не решая за него.
+      regionCode: body.regionCode !== undefined ? body.regionCode : undefined,
     });
     if (result.error === 'not_found') return json(res, 404, { error: 'not_found' });
     if (result.error) return json(res, 400, { error: result.error });

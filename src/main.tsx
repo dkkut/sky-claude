@@ -15,6 +15,7 @@ import { reloadMessengerForUser } from './messenger/store';
 import { reloadPlatformForUser }  from './platform/store';
 import { reloadNotifsForUser }    from './notifications/store';
 import { reloadWalletForUser }    from './wallet/store';
+import { syncRegionForProfile, watchRegionChanges } from './region/sync';
 import './styles.css';
 
 const SHIMMER_CSS = `
@@ -341,11 +342,21 @@ const Root = () => {
       // Кошелёк подтягиваем с сервера: в браузере он больше не хранится.
       void reloadWalletForUser(currentUserId);
       connectSocket(currentUserId);
+      // Регион уже существующей системы (src/region) — догоняем с
+      // сервером, ничего не меняя в самом выборе региона.
+      const account = useAuthStore.getState().accounts.find(a => a.id === currentUserId);
+      syncRegionForProfile(currentUserId, account?.regionCode);
     } else {
       void reloadWalletForUser(null);
       disconnectSocket();
     }
   }, [isAuthenticated, currentUserId]);
+
+  // Дальнейшие изменения региона через существующий RegionPicker —
+  // один слушатель на всё приложение, не пересоздаётся при каждом входе.
+  useEffect(() => {
+    watchRegionChanges(() => useAuthStore.getState().currentUserId);
+  }, []);
 
   if (!ready || !sessionChecked) return <Splash offline={offline} />;
 

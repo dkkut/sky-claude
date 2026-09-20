@@ -46,6 +46,9 @@ export interface ServerProfile {
   twoFactorEnabled: boolean;
   twoFactorMethod:  TwoFactorMethod;
   createdAt?:       string;
+  /** Регион уже существующей системы смены региона (src/region), если
+      сохранён на сервере — см. server/regions.mjs. */
+  regionCode?:      string;
 }
 
 /** Полное состояние входа, как его видит сервер. */
@@ -299,7 +302,7 @@ export const apiSelectProfile = async (profileId: string, code?: string) => {
   return res;
 };
 
-export const apiUpdateProfile = (profileId: string, p: { name?: string; avatar?: string }) =>
+export const apiUpdateProfile = (profileId: string, p: { name?: string; avatar?: string; regionCode?: string }) =>
   patch<{ profile: ServerProfile }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}`, p);
 
 /** То немногое, что видно о чужом профиле: имя, ник, аватар, Prime, приватность. */

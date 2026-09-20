@@ -19,10 +19,11 @@ import {
   createDraft, finishUpload, updateVideo, deleteVideo, setThumbnail, publishVideo,
   countView, setLiked, listComments, addComment, removeComment,
   requestMonetization, listMonetizationHistory, monetizationQueue, decideMonetization,
-  listRevenue,
+  listRevenue, adminSearchVideos, setVideoRegions,
 } from './../skyvideo.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, parseRange, thumbnailIdFor } from './../skyvideostore.mjs';
 import { ticketCookie, ticketFromCookies } from './../skyvideoticket.mjs';
+import { logAdmin } from './../adminsec.mjs';
 
 /** Четыре гигабайта по умолчанию — настраивается тем, кто видит диск сервера. */
 const MAX_VIDEO_BYTES = Math.max(
@@ -371,6 +372,19 @@ export const skyVideoRoutes = async (req, res, url) => {
       return streamFile(req, res, fileId, mime);
     }
 
+    if (req.method === 'POST' && tail === '/regions') {
+      if (!rateLimit(`svid:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const body = await parseBody(req);
+      const r = await setVideoRegions(id, me, Array.isArray(body?.blockedRegions) ? body.blockedRegions : []);
+      if (r.error) return json(res, errCode(r.error), r);
+      await logAdmin({
+        actorId: me, targetId: id, targetType: 'sky_video', type: 'skyvideo_regions', result: 'ok',
+        detail: `было: ${r.before.join(',') || '—'} → стало: ${r.after.join(',') || '—'}`
+          + (body?.reason ? ` · причина: ${String(body.reason).slice(0, 200)}` : ''),
+      });
+      return json(res, 200, { ok: true, blockedRegions: r.after });
+    }
+
     return json(res, 404, { error: 'not_found' });
   }
 
@@ -382,6 +396,15 @@ export const skyVideoRoutes = async (req, res, url) => {
     if (!rateLimit(`svid:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     const r = await removeComment(commentMatch[1], me);
     return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
+  }
+
+  /* ── Админка: региональная доступность роликов ─────────────────── */
+
+  if (req.method === 'GET' && path === '/api/skyvideo/admin/videos') {
+    if (!rateLimit(`svid:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const r = await adminSearchVideos(me, { q: params.get('q'), limit: params.get('limit') });
+    if (r.error) return json(res, 403, r);
+    return json(res, 200, r);
   }
 
   return json(res, 404, { error: 'not_found' });

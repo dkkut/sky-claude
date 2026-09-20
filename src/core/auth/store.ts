@@ -55,6 +55,9 @@ export interface Account {
   country?:        string;
   language?:       string;
   timezone?:       string;
+  /** Регион уже существующей системы смены региона (src/region), как
+      сохранён на сервере — см. server/regions.mjs. */
+  regionCode?:     string;
   equippedFrame?:  string;    // id рамки аватара, см. profile/viewer/cosmetics.ts
   /* ── Musician profile ── */
   isMusician?:    boolean;
@@ -270,6 +273,7 @@ const toAccount=(p:ServerProfile,phone:string,prev?:Account):Account=>({
   primeUntil:p.primeExpiresAt??undefined,
   twoFA:{enabled:p.twoFactorEnabled,method:'sms',failCount:0},
   password:undefined,
+  regionCode:p.regionCode??prev?.regionCode,
 });
 
 /** Кладёт в стор состояние входа, каким его прислал сервер. */

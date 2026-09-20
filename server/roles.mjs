@@ -27,6 +27,7 @@ export const PERMISSIONS = [
   'campaigns',       // мероприятия с наградой (не Sky Tickets — другая сущность)
   'gifts',           // каталог Sky Gifts, медиа подарков и карточки Prime, надзор за NFT
   'garant',          // сделки Sky Garant, споры и решения по ним
+  'notifications',   // рассылки: создание, планирование, отмена, история
 ];
 
 /**
@@ -52,6 +53,7 @@ export const ROLES = {
   campaigns_admin: ['campaigns', 'support'],
   gifts_admin:     ['gifts'],
   garant_admin:    ['garant', 'support'],
+  notifications_admin: ['notifications'],
   read_only_admin: [],
 };
 
@@ -69,5 +71,6 @@ export const ROLE_LABEL = {
   campaigns_admin: 'Мероприятия',
   gifts_admin: 'Подарки',
   garant_admin: 'Sky Garant',
+  notifications_admin: 'Рассылки',
   read_only_admin: 'Только чтение',
 };

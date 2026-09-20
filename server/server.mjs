@@ -52,6 +52,8 @@ import { followsRoutes } from './routes/follows.mjs';
 import { bloomRoutes } from './routes/bloom.mjs';
 import { sweepOrphanBloomMedia } from './bloom.mjs';
 import { weatherRoutes } from './routes/weather.mjs';
+import { notifyRoutes } from './routes/notify.mjs';
+import { dispatchDueBroadcasts, sweepStaleBroadcastRuns } from './notifyBroadcast.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanVideos } from './skyvideo.mjs';
@@ -79,7 +81,8 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
-                familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, bloomRoutes, weatherRoutes];
+                familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, bloomRoutes, weatherRoutes,
+                notifyRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -180,6 +183,7 @@ const server = http.createServer(async (req, res) => {
 let signalHub = null;
 let houseKeeping = null;
 let botRetry = null;
+let notifyDispatch = null;
 
 const start = async () => {
   // Содержимое переписки лежит в базе зашифрованным, и ключ для этого
@@ -226,6 +230,15 @@ const start = async () => {
     retryPendingWebhooks().catch((err) => console.error('[bots] досылка', err.message));
   }, 60 * 1000);
   botRetry.unref();
+
+  // Рассылки: та же логика «не лежать вечно, если только не пришли за
+  // ней сами» — запланированная отправка не должна ждать, пока кто-то
+  // откроет приложение. Раз в 20 секунд — достаточно быстро для
+  // «Отправить сейчас», не создавая нагрузки чаще, чем нужно.
+  notifyDispatch = setInterval(() => {
+    dispatchDueBroadcasts().catch((err) => console.error('[рассылки] worker', err.message));
+  }, 20 * 1000);
+  notifyDispatch.unref();
 
   // Раз в час убираем отработавшие коды и гасим истёкшие подписки Prime.
   houseKeeping = setInterval(async () => {
@@ -316,6 +329,10 @@ const start = async () => {
       await sweepStepUp();
       const staleRequests = await sweepPendingActions();
       if (staleRequests) console.log(`[админ] просрочено заявок: ${staleRequests}`);
+      // Запуск рассылки, зависший в processing дольше окна (сервер упал
+      // посреди отправки), — считаем упавшим, чтобы он не блокировал
+      // повторную попытку на этот же момент времени навсегда.
+      await sweepStaleBroadcastRuns();
     } catch (err) {
       console.error('[housekeeping]', err.message);
     }
@@ -339,6 +356,7 @@ const shutdown = async (signal) => {
   try {
     if (houseKeeping) clearInterval(houseKeeping);
     if (botRetry) clearInterval(botRetry);
+    if (notifyDispatch) clearInterval(notifyDispatch);
     await new Promise((resolve) => server.close(resolve));
     if (signalHub) await signalHub.close();
     closeMailer();

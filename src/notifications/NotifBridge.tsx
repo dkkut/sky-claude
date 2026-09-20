@@ -25,8 +25,10 @@ import { useCallStore }        from '@/calls/store';
 import { useModuleStore }      from '@/data/state/modules';
 import { usePushNotifications } from './usePushNotifications';
 import { apiBloomEvents } from '@/bloom/bloomApi';
+import { apiBroadcastEvents } from './broadcastApi';
 
 const BLOOM_POLL_MS = 20_000;
+const BROADCAST_POLL_MS = 20_000;
 
 export const NotifBridge = () => {
   const push          = useNotifStore(s => s.push);
@@ -175,6 +177,36 @@ export const NotifBridge = () => {
     void tick();
     return () => { stopped = true; clearInterval(id); };
   }, [currentUserId, push]);
+
+  // -- Рассылки из админ-панели -----------------------------------------
+  // Тот же опрос, что и у Bloom: сервер отправляет их фоновым worker'ом
+  // (см. server/notifyBroadcast.mjs), а здесь только забирается то, что
+  // реально дошло лично этому человеку, и кладётся в тот же useNotifStore.
+  const broadcastSinceRef = useRef<number>(Date.now());
+  useEffect(() => {
+    if (!currentUserId) return;
+    broadcastSinceRef.current = Date.now();
+    let stopped = false;
+
+    const tick = async () => {
+      if (stopped) return;
+      const { events, now } = await apiBroadcastEvents(broadcastSinceRef.current);
+      broadcastSinceRef.current = now;
+      for (const ev of events) {
+        push({
+          kind: 'system', title: ev.title, body: ev.body,
+          avatarLetter: 'S', color: 'var(--accent)',
+        });
+        if (settings.desktopNotifs) {
+          sendWebPush({ title: ev.title, body: ev.body, senderName: ev.title, senderLetter: 'S' });
+        }
+      }
+    };
+
+    const id = setInterval(tick, BROADCAST_POLL_MS);
+    void tick();
+    return () => { stopped = true; clearInterval(id); };
+  }, [currentUserId, push, sendWebPush, settings.desktopNotifs]);
 
   return null;
 };

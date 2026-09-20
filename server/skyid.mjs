@@ -19,6 +19,7 @@ import { mayClaimUsername } from './admin.mjs';
 import { issueCode, verifyCode } from './verification.mjs';
 import { isOwnerUsername } from './admin.mjs';
 import { getPrivacy, isContact } from './privacy.mjs';
+import { isValidRegion } from './regions.mjs';
 
 /** Максимум профилей в одном Sky ID. Дублируется триггером в БД. */
 export const MAX_PROFILES = 2;
@@ -71,6 +72,9 @@ const toProfile = (row) => row && ({
   twoFactorEnabled: row.two_factor_enabled,
   twoFactorMethod:  row.two_factor_method ?? 'app',
   createdAt: row.created_at.toISOString(),
+  // Регион уже существующей системы смены региона (src/region), просто
+  // сохранённый на сервере — см. server/regions.mjs.
+  regionCode: row.region_code ?? undefined,
 });
 
 /**
@@ -465,6 +469,14 @@ export const updateProfile = async (skyId, profileId, patch) => {
   }
   if (patch.avatar !== undefined) {
     values.push(patch.avatar ?? null); fields.push(`avatar = $${values.length}`);
+  }
+  if (patch.regionCode !== undefined) {
+    // Тот же список кодов, что и в уже существующем RegionPicker
+    // (src/region) — сервер только сохраняет то, что человек там уже
+    // выбрал, и отвергает всё, чего в этом списке нет.
+    const v = String(patch.regionCode ?? '').toUpperCase().trim();
+    if (v && !isValidRegion(v)) return { error: 'invalid_region' };
+    values.push(v || null); fields.push(`region_code = $${values.length}`);
   }
   if (fields.length === 0) return { profile: owned };
 

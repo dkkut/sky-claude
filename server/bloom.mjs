@@ -13,6 +13,8 @@ import { query, pool } from './db.mjs';
 import { generateId } from './security.mjs';
 import { wallet } from './wallet.mjs';
 import { remove as removeMedia } from './bloomstore.mjs';
+import { can } from './admin.mjs';
+import { regionOf, cleanRegionList } from './regions.mjs';
 
 export const POST_ID_RE = /^blp-[0-9a-f-]{36}$/;
 export const COMMENT_ID_RE = /^blc-[0-9a-f-]{36}$/;
@@ -66,6 +68,9 @@ const blockedSet = async (viewerId) => {
 const hydrate = async (postRows, viewerId) => {
   if (!postRows.length) return [];
   const ids = postRows.map((p) => p.id);
+  // «Региональная доступность» видна только автору и модерации —
+  // остальным незачем знать, в каких странах пост скрыт.
+  const canModerate = viewerId ? await can(viewerId, 'content') : false;
 
   const [tags, reactions, comments, saves, reposts, polls, votes, authors] = await Promise.all([
     query('SELECT post_id, tag FROM bloom_post_tags WHERE post_id = ANY($1::text[])', [ids]),
@@ -148,19 +153,31 @@ const hydrate = async (postRows, viewerId) => {
       isPinned: p.is_pinned,
       location: p.location ?? undefined,
       poll,
+      blockedRegions: (canModerate || p.author_id === viewerId) ? (p.blocked_regions ?? []) : undefined,
     };
   });
 };
 
-/** Строки постов + счётчик просмотров одним запросом. */
-const selectPosts = async (whereSql, params) => {
+/**
+ * Строки постов + счётчик просмотров одним запросом.
+ *
+ * Региональная блокировка проверяется прямо здесь — это единственная
+ * точка, через которую идут лента, профиль автора, прямое открытие
+ * поста и «популярное» (см. hotComments), так что подменить регион
+ * в отдельном запросе к чему-то из этого нельзя: он всегда берётся из
+ * серверной сессии (regionOf), не из тела запроса.
+ */
+const selectPosts = async (whereSql, params, viewerId = null, viewerRegion = null) => {
+  const a = params.length + 1;
+  const r = params.length + 2;
   const { rows } = await query(
     `SELECT bp.*, (SELECT count(*)::int FROM bloom_views v WHERE v.post_id = bp.id) AS view_count
        FROM bloom_posts bp
       WHERE bp.deleted_at IS NULL AND ${whereSql}
+        AND (bp.author_id = $${a} OR $${r}::text IS NULL OR NOT (bp.blocked_regions @> ARRAY[$${r}::text]))
       ORDER BY bp.created_at DESC
       LIMIT 500`,
-    params,
+    [...params, viewerId, viewerRegion],
   );
   return rows;
 };
@@ -180,21 +197,22 @@ const scorePost = (p, myId, interactions) => {
 };
 
 export const feed = async (viewerId, tab = 'algo', { tag = null } = {}) => {
-  const [hidden, blocked] = await Promise.all([
+  const [hidden, blocked, viewerRegion] = await Promise.all([
     query('SELECT hidden_author_id FROM bloom_hidden WHERE user_id = $1', [viewerId]),
     blockedSet(viewerId),
+    regionOf(viewerId),
   ]);
   const hiddenIds = new Set(hidden.rows.map((r) => r.hidden_author_id));
 
   let rows;
   if (tab === 'mine') {
-    rows = await selectPosts('bp.author_id = $1', [viewerId]);
+    rows = await selectPosts('bp.author_id = $1', [viewerId], viewerId, viewerRegion);
   } else if (tag) {
     rows = await selectPosts(
-      `bp.id IN (SELECT post_id FROM bloom_post_tags WHERE tag = $1)`, [tag],
+      `bp.id IN (SELECT post_id FROM bloom_post_tags WHERE tag = $1)`, [tag], viewerId, viewerRegion,
     );
   } else {
-    rows = await selectPosts('TRUE', []);
+    rows = await selectPosts('TRUE', [], viewerId, viewerRegion);
   }
 
   let posts = await hydrate(rows, viewerId);
@@ -224,17 +242,21 @@ export const feed = async (viewerId, tab = 'algo', { tag = null } = {}) => {
  * не только сама Bloom-лента). Блокировка проверяется здесь же: заблокированный
  * друг друга список постов не получает, даже зная его userId напрямую. */
 export const authorPosts = async (authorId, viewerId) => {
-  const blocked = await blockedSet(viewerId);
+  const [blocked, viewerRegion] = await Promise.all([blockedSet(viewerId), regionOf(viewerId)]);
   if (blocked.has(authorId)) return [];
-  const rows = await selectPosts('bp.author_id = $1', [authorId]);
+  const rows = await selectPosts('bp.author_id = $1', [authorId], viewerId, viewerRegion);
   const posts = await hydrate(rows, viewerId);
   return posts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 };
 
-/** Один пост по id — открыть карточку напрямую (например, из уведомления
- * или ссылки), не дожидаясь, пока он попадёт в закэшированную ленту. */
+/** Один пост по id — открыть карточку напрямую (например, из уведомления,
+ * поиска или ссылки — deep link), не дожидаясь, пока он попадёт в
+ * закэшированную ленту. Региональная блокировка проверяется тем же
+ * запросом (selectPosts): изменить id в адресной строке недостаточно,
+ * чтобы получить заблокированный для своего региона пост. */
 export const getPost = async (postId, viewerId) => {
-  const rows = await selectPosts('bp.id = $1', [postId]);
+  const viewerRegion = await regionOf(viewerId);
+  const rows = await selectPosts('bp.id = $1', [postId], viewerId, viewerRegion);
   if (!rows.length) return null;
   const blocked = await blockedSet(viewerId);
   if (rows[0].author_id !== viewerId && blocked.has(rows[0].author_id)) return null;
@@ -263,7 +285,7 @@ export const suggestedUsers = async (viewerId) => {
   return rows.map((r) => r.author_id);
 };
 
-export const hotComments = async () => {
+export const hotComments = async (viewerId = null) => {
   const { rows } = await query(
     `SELECT c.id AS comment_id, c.post_id, c.author_id, c.body, c.created_at, c.author_id AS c_author,
             (SELECT count(*)::int FROM bloom_comment_likes cl WHERE cl.comment_id = c.id) AS likes
@@ -275,7 +297,10 @@ export const hotComments = async () => {
   const top = rows.filter((r) => r.likes > 0).slice(0, 4);
   if (!top.length) return [];
   const postIds = [...new Set(top.map((r) => r.post_id))];
-  const posts = await hydrate(await selectPosts('bp.id = ANY($1::text[])', [postIds]), null);
+  const viewerRegion = await regionOf(viewerId);
+  const posts = await hydrate(
+    await selectPosts('bp.id = ANY($1::text[])', [postIds], viewerId, viewerRegion), viewerId,
+  );
   const postById = new Map(posts.map((p) => [p.id, p]));
   return top
     .map((r) => {
@@ -553,6 +578,65 @@ export const sendGift = async (fromId, postId, modelKey) => {
 export const mediaMimeOf = async (mediaId) => {
   const { rows } = await query('SELECT media_mime FROM bloom_posts WHERE media_id = $1', [mediaId]);
   return rows[0]?.media_mime ?? null;
+};
+
+/* ── Региональные ограничения (админка) ────────────────────────────
+   Право спрашивается здесь же, а не только в HTTP-ручке: у bloom.mjs
+   нет других вызывающих, но проверка права рядом с самим изменением —
+   тот же принцип, что и у deleteVideo/decideMonetization в skyvideo.mjs. */
+
+/** Найти посты для модерации: по автору или по началу id поста. Видно
+ * только с правом content — обычному человеку тут искать нечего. */
+export const adminSearchPosts = async (actorId, { q, limit } = {}) => {
+  if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
+  const lim = Math.max(1, Math.min(Number(limit) || 30, 100));
+  const needle = clean(q, 60).toLowerCase();
+  const rows = needle
+    ? (await query(
+        `SELECT bp.id, bp.author_id, bp.body, bp.kind, bp.blocked_regions, bp.created_at,
+                p.name AS author_name, p.username AS author_username
+           FROM bloom_posts bp JOIN profiles p ON p.id = bp.author_id
+          WHERE bp.deleted_at IS NULL
+            AND (bp.id = $1 OR lower(p.username) LIKE $2 OR lower(p.name) LIKE $2)
+          ORDER BY bp.created_at DESC LIMIT $3`,
+        [needle, `%${needle}%`, lim],
+      )).rows
+    : (await query(
+        `SELECT bp.id, bp.author_id, bp.body, bp.kind, bp.blocked_regions, bp.created_at,
+                p.name AS author_name, p.username AS author_username
+           FROM bloom_posts bp JOIN profiles p ON p.id = bp.author_id
+          WHERE bp.deleted_at IS NULL
+          ORDER BY bp.created_at DESC LIMIT $1`,
+        [lim],
+      )).rows;
+  return {
+    items: rows.map((r) => ({
+      id: r.id,
+      authorId: r.author_id,
+      authorName: r.author_name,
+      authorUsername: r.author_username,
+      text: r.body?.slice(0, 200) ?? '',
+      kind: r.kind,
+      blockedRegions: r.blocked_regions ?? [],
+      createdAt: r.created_at.toISOString(),
+    })),
+  };
+};
+
+/**
+ * Установить региональные ограничения поста. Пустой список — доступен
+ * везде. Логируется через уже существующий admin_log (logAdmin) вызывающей
+ * стороной (routes/bloom.mjs), где известен actorRole и request-контекст —
+ * здесь только само изменение и то, что было раньше, для записи в журнал.
+ */
+export const setPostRegions = async (postId, actorId, blockedRegions) => {
+  if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
+  const { rows } = await query('SELECT blocked_regions FROM bloom_posts WHERE id = $1 AND deleted_at IS NULL', [postId]);
+  if (!rows[0]) return { error: 'not_found' };
+  const before = rows[0].blocked_regions ?? [];
+  const after = cleanRegionList(blockedRegions);
+  await query('UPDATE bloom_posts SET blocked_regions = $2 WHERE id = $1', [postId, after]);
+  return { ok: true, before, after };
 };
 
 /* ── Уборка ─────────────────────────────────────────────────────── */
