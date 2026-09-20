@@ -58,6 +58,20 @@ echo "Взять здесь: platform.openai.com -> API keys."
 echo "Не забудьте пополнить счёт в разделе Billing, иначе ключ создастся,"
 echo "но запросы будут отбиваться."
 echo
+echo "Если это не сам OpenAI, а совместимый прокси на своём адресе —"
+echo "введите его ниже. Учтите: весь трафик Sky AI (переписка, файлы,"
+echo "картинки пользователей) тогда идёт через владельца этого адреса,"
+echo "а не только через OpenAI."
+echo
+printf 'Адрес поставщика [https://api.openai.com]: '
+ask AI_URL
+AI_URL="${AI_URL:-https://api.openai.com}"
+# Код сам добавляет /v1/... к этому адресу — если ввели адрес уже
+# с /v1 на конце (обычная запись для OpenAI-совместимых прокси),
+# срезаем его здесь, иначе выйдет двойной /v1/v1/....
+AI_URL="${AI_URL%/}"
+AI_URL="${AI_URL%/v1}"
+echo
 printf 'Вставьте ключ и нажмите Enter. На экране он не появится.\n\n'
 printf 'Ключ: '
 ask_secret KEY
@@ -95,7 +109,7 @@ echo
 echo "Проверяю ключ пробным обращением ..."
 BODY="$(printf '{"model":"%s","max_output_tokens":16,"input":"ответь словом: готово"}' "$MODEL")"
 HTTP="$(curl -sS -o /tmp/ai-answer.$$ -w '%{http_code}' \
-        -X POST 'https://api.openai.com/v1/responses' \
+        -X POST "$AI_URL/v1/responses" \
         -H 'content-type: application/json' \
         -H "authorization: Bearer $KEY" \
         --data "$BODY" --max-time 30)" || true
@@ -112,8 +126,15 @@ case "$HTTP" in
     echo "Ключ не принят (ответ $HTTP): $ANSWER"
     echo "Проверьте, что он скопирован целиком. Настройку не меняю."; exit 1 ;;
   404)
-    echo "Такой модели нет (ответ $HTTP): $ANSWER"
-    echo "Проверьте название модели. Настройку не меняю."; exit 1 ;;
+    echo "Такой модели нет, либо адрес не отвечает на /v1/responses (ответ $HTTP): $ANSWER"
+    if [ "$AI_URL" != "https://api.openai.com" ]; then
+      echo "Это не сам OpenAI — свои прокси часто понимают только старую"
+      echo "ручку /v1/chat/completions и не знают /v1/responses. Уточните"
+      echo "у владельца адреса, какую ручку он поддерживает."
+    else
+      echo "Проверьте название модели."
+    fi
+    echo "Настройку не меняю."; exit 1 ;;
   *)
     echo "Поставщик ответил $HTTP: $ANSWER"
     echo "Настройку не меняю."; exit 1 ;;
@@ -182,8 +203,9 @@ case "$YES" in
   *) echo "Не сохраняю."; exit 0 ;;
 esac
 
-set_env AI_API_KEY "$KEY"
-set_env AI_MODEL   "$MODEL"
+set_env AI_API_KEY  "$KEY"
+set_env AI_MODEL    "$MODEL"
+set_env AI_BASE_URL "$AI_URL"
 unset KEY
 
 if [ -n "$STT_KEY" ]; then
@@ -213,6 +235,7 @@ echo "============================================"
 echo "  Чат Sky AI        — работает у всех, подписка не нужна"
 echo "  Пересказ, файлы,"
 echo "  картинки          — работают у тех, у кого Sky Prime"
+echo "  Адрес поставщика  — $AI_URL"
 if [ -n "$STT_URL" ]; then
   echo "  Расшифровка       — включена ($STT_URL)"
 else
