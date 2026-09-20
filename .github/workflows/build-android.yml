@@ -41,10 +41,36 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
+      # Ставим Android SDK вручную, а не через android-actions/setup-android:
+      # эта версия действия по умолчанию тянет пакет 'tools' — устаревший
+      # standalone SDK Manager, которого в репозитории Google уже нет,
+      # и падает на этом ещё до сборки. sdkmanager напрямую просит только
+      # то, что реально нужно под compileSdk 36 (variables.gradle).
+      - name: Установка Android SDK
+        env:
+          ANDROID_HOME: /opt/android-sdk
+        run: |
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -sSL -o /tmp/cmdline-tools.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/cmdline-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          {
+            echo "$ANDROID_HOME/cmdline-tools/latest/bin"
+            echo "$ANDROID_HOME/platform-tools"
+          } >> "$GITHUB_PATH"
 
+      # Точную версию build-tools/platform под compileSdk (variables.gradle)
+      # не угадываем руками — после принятых лицензий Gradle сам просит
+      # AGP докачать то, что реально нужно.
       - name: Принять лицензии SDK
-        run: yes | sdkmanager --licenses > /dev/null || true
+        env:
+          ANDROID_HOME: /opt/android-sdk
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools"
 
       # Отладочная сборка: подписана встроенным debug-ключом Android,
       # ставится на телефон сразу — sideload или тестовый прогон, без
@@ -68,7 +94,7 @@ jobs:
 
       - name: Восстановить keystore
         if: steps.has_keystore.outputs.present == 'true'
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/release.keystore
 
       - name: Сборка релизного APK
         if: steps.has_keystore.outputs.present == 'true'
@@ -86,7 +112,7 @@ jobs:
 
       - name: Убрать keystore из воркера
         if: always()
-        run: rm -f android/app/release.keystore
+        run: rm -f android/release.keystore
 
       - uses: actions/upload-artifact@v4
         if: steps.has_keystore.outputs.present == 'true'
