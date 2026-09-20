@@ -8,6 +8,8 @@ import { usePlatformStore, type Track } from '@/platform/store';
 import { useAuthStore } from '@/core/auth/store';
 import { useMessengerStore } from '@/messenger/store';
 import { useSkyVideoStore } from '@/video/serverStore';
+import { useMusicStore } from '@/music/serverStore';
+import { apiMediaActivity, type MediaActivity } from '@/extras/mediaActivityApi';
 import { useModerationStore, type ModDomain, type WarningKind } from '@/shared/moderationStore';
 import { BlockedChannelBadge } from '@/shared/ContentWarningGate';
 import { useModuleStore } from '@/data/state/modules';
@@ -867,14 +869,22 @@ const MediaHomeTab = ({
 }: {
   onNav: (tab: string) => void;
 }) => {
-  const { tracks } = usePlatformStore();
+  // Реальный, серверный каталог Sky Music (src/music/serverStore.ts) —
+  // не локальный usePlatformStore, который остаётся сидом на случай,
+  // если сервер недоступен. history приходит уже отсортированной
+  // сервером по последнему прослушиванию (server/music.mjs::listHistory).
+  const { tracks, history, load: loadMusic } = useMusicStore();
+  useEffect(() => { void loadMusic(); }, [loadMusic]);
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
   const isPrime = me?.isPrime ?? false;
   const isMobile = useIsMobile();
   const hr = new Date().getHours();
   const greeting = hr < 6 ? 'Доброй ночи' : hr < 12 ? 'Доброе утро' : hr < 18 ? 'Добрый день' : 'Добрый вечер';
-  const recentTracks = tracks.slice(0, 8);
+  const recentTracks = history.slice(0, 8);
+
+  const [activity, setActivity] = React.useState<MediaActivity | null>(null);
+  useEffect(() => { void apiMediaActivity().then(setActivity); }, []);
 
   const [activeRec, setActiveRec] = React.useState<number|null>(null);
   const [scrollY, setScrollY]     = React.useState(0);
@@ -923,6 +933,11 @@ const MediaHomeTab = ({
   };
   const fmtPlays = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}М`
     : n >= 1_000 ? `${(n / 1_000).toFixed(1)}К` : String(n));
+  /* Секунды с сервера (server/mediaActivity.mjs) → «Хч Yм» / «Yм». */
+  const fmtMin = (totalSec: number) => {
+    const m = Math.round(totalSec / 60);
+    return m >= 60 ? `${Math.floor(m/60)}ч ${m%60}м` : `${m}м`;
+  };
 
   return (
     <div ref={scrollRef} onScroll={onScroll}
@@ -1113,7 +1128,7 @@ const MediaHomeTab = ({
             </button>
           </div>
           <div className={`flex overflow-x-auto pb-1 ${isMobile ? 'gap-2 px-3' : 'gap-2.5 px-4'}`} style={{ scrollbarWidth:'none' }}>
-            {recentTracks.map((track: any, i: number) => {
+            {recentTracks.map((track) => {
               const hue = ((track.id?.charCodeAt?.(0) ?? 200) * 47) % 360;
               const c1 = `hsl(${hue},55%,28%)`, c2 = `hsl(${(hue+50)%360},45%,18%)`;
               const size = isMobile ? 76 : 100;
@@ -1134,6 +1149,53 @@ const MediaHomeTab = ({
                 </motion.div>
               );
             })}
+          </div>
+        </motion.section>
+      )}
+
+      {/* ── АКТИВНОСТЬ (реальные секунды из server/mediaActivity.mjs) ── */}
+      {activity && (activity.today.music + activity.today.video + activity.today.podcasts
+                   + activity.week.music + activity.week.video + activity.week.podcasts) > 0 && (
+        <motion.section {...fu(4)} className="px-4 mt-6 mb-8">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] mb-3" style={{ color:'var(--t3)' }}>Активность</p>
+          <div className="rounded-2xl p-4" style={{ background:'var(--bg-l2)', border:'1px solid var(--border)' }}>
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              {[
+                { label:'Сегодня',   val:fmtMin(activity.today.music + activity.today.video + activity.today.podcasts), color:'#6366f1' },
+                { label:'За неделю', val:fmtMin(activity.week.music + activity.week.video + activity.week.podcasts), color:'#22d3ee' },
+              ].map(({ label, val, color }) => (
+                <div key={label} className="rounded-xl px-3 py-3"
+                  style={{ background:'var(--bg-l3)', border:'1px solid var(--border)' }}>
+                  <p className="text-[10px] mb-1" style={{ color:'var(--t3)' }}>{label}</p>
+                  <p className="text-lg font-black" style={{ color }}>{val}</p>
+                </div>
+              ))}
+            </div>
+            {(() => {
+              const w = activity.week;
+              const total = w.music + w.video + w.podcasts;
+              if (total === 0) return null;
+              const rows = [
+                { label:'Музыка',   sec:w.music,    color:'#6366f1' },
+                { label:'Видео',    sec:w.video,    color:'#f43f5e' },
+                { label:'Подкасты', sec:w.podcasts, color:'#10b981' },
+              ].filter(r => r.sec > 0);
+              return rows.map(({ label, sec: s, color }, i) => (
+                <div key={label} className={i>0?'mt-2.5':''}>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-[11px] font-semibold" style={{ color:'var(--t2)' }}>{label}</span>
+                    <span className="text-[11px]" style={{ color:'var(--t3)' }}>{Math.round(s/total*100)}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'var(--bg-l3)' }}>
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.round(s/total*100)}%` }}
+                      transition={{ duration: 0.7, delay: 0.4 + i * 0.12, ease: [0.22,1,0.36,1] }}
+                      style={{ height:'100%', background:color, borderRadius:3 }}/>
+                  </div>
+                </div>
+              ));
+            })()}
           </div>
         </motion.section>
       )}
