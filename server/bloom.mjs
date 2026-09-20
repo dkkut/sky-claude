@@ -216,7 +216,7 @@ export const feed = async (viewerId, tab = 'algo', { tag = null } = {}) => {
       WHERE c.author_id = $1 AND c.created_at > now() - interval '30 days'`,
     [viewerId],
   );
-  const interactions = new Set(inter.rows.map((r) => r.author_id));
+  const interactions = new Set(inter.map((r) => r.author_id));
   return posts.sort((a, b) => scorePost(b, viewerId, interactions) - scorePost(a, viewerId, interactions));
 };
 

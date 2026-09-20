@@ -9,6 +9,7 @@ import { useAuthStore } from '@/core/auth/store';
 import { useMessengerStore } from '@/messenger/store';
 import { useCallStore } from '@/calls/store';
 import { useBloomStore } from '@/bloom/store';
+import { useModuleStore } from '@/data/state/modules';
 import { useSocialGraph } from '../social';
 import { useProfileViewer } from '../store';
 import type { ProfileData } from '../useProfileData';
@@ -62,6 +63,10 @@ export const QuickActionsBar = ({ data, onEdit }: { data: ProfileData; onEdit?: 
   const goToChat = () => {
     startDM(acc);
     close();
+    // Открыть чат — значит реально его показать, а не просто завести
+    // запись в сторе: без переключения модуля человек остаётся там, где
+    // был (например, в Bloom), и решает, что кнопка ничего не сделала.
+    useModuleStore.getState().setActiveModule('messages');
   };
 
   const isBlocked = blocked.includes(acc.username);

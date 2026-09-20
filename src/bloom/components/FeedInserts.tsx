@@ -92,10 +92,16 @@ export const WhoToFollowCard = () => {
 };
 
 /* ── Новые авторы ──────────────────────────────────────────── */
+// accounts в useAuthStore — это учётки, добавленные на этом устройстве
+// (переключатель нескольких Sky ID в одном браузере), а не список всех
+// пользователей Sky, и в нём всегда сидят три демо-профиля Sky
+// (kutuzov/luna_nova/neon_driver) — их Bloom не должен показывать как
+// «новых авторов», это не настоящие люди.
+const DEMO_ACCOUNT_IDS = new Set(['acc-kutuzov', 'acc-luna', 'acc-neo']);
 export const NewAuthorsCard = () => {
   const { accounts, currentUserId } = useAuthStore();
   const list = [...accounts]
-    .filter(a => a.id !== currentUserId)
+    .filter(a => a.id !== currentUserId && !DEMO_ACCOUNT_IDS.has(a.id))
     .sort((a,b) => +new Date(b.createdAt) - +new Date(a.createdAt))
     .slice(0, 3);
   if (list.length === 0) return null;
