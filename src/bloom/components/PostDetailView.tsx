@@ -1,14 +1,16 @@
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Flower2 } from 'lucide-react';
-import { useBloomStore } from '../store';
+import { useBloomStore, useBloomPost } from '../store';
 import { PostCard } from './PostCard';
 
 export const PostDetailView = ({ postId, onClose, onAuthorClick, onTagClick }: {
   postId: string; onClose: () => void;
   onAuthorClick: (id: string) => void; onTagClick: (t: string) => void;
 }) => {
-  const { posts } = useBloomStore();
-  const post = posts.find(p => p.id === postId);
+  const loadPost = useBloomStore(s => s.loadPost);
+  useEffect(() => { void loadPost(postId); }, [postId, loadPost]);
+  const post = useBloomPost(postId);
 
   return (
     <motion.div

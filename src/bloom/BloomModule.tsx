@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Clock, Bookmark, User, Search, Hash, Plus, X, Flower2, Bell, PenLine } from 'lucide-react';
 import { FeedAd } from '@/ads/AdBlocks';
 import { useBloomStore, type FeedTab } from './store';
-import { useAuthStore } from '@/core/auth/store';
 import { PostCard }        from './components/PostCard';
 import { CreatePost }      from './components/CreatePost';
 import { ExploreView }     from './components/ExploreView';
@@ -36,9 +35,15 @@ const INSERT_MAP: Record<string, (props: { onOpenPost: (id:string)=>void; onTagC
 };
 
 export const BloomModule = () => {
-  const { feed, posts, notificationsCount } = useBloomStore();
-  const { currentUserId } = useAuthStore();
-  const uid = currentUserId ?? '';
+  const feedCache   = useBloomStore(s => s.feedCache);
+  const feedLoading = useBloomStore(s => s.feedLoading);
+  const tagCache    = useBloomStore(s => s.tagCache);
+  const tagLoading  = useBloomStore(s => s.tagLoading);
+  const notifCount = useBloomStore(s => s.notifCount);
+  const feedVersion = useBloomStore(s => s.feedVersion);
+  const loadFeed        = useBloomStore(s => s.loadFeed);
+  const loadTag         = useBloomStore(s => s.loadTag);
+  const loadNotifCount  = useBloomStore(s => s.loadNotifCount);
   const isMobile = useIsMobile();
 
   const [tab,        setTab]        = useState<FeedTab>('algo');
@@ -48,12 +53,25 @@ export const BloomModule = () => {
   const [notifOpen,  setNotifOpen]  = useState(false);
   const [detailPost, setDetailPost] = useState<string | null>(null);
 
-  const feedPosts = tagSearch
-    ? posts.filter(p => p.tags.includes(tagSearch))
-    : feed(tab);
+  // Счётчики на вкладках «Сохранённые»/«Мои посты» и переход между
+  // вкладками требуют своих постов — грузим все четыре разом, чтобы
+  // бейджи были видны, даже когда активна другая вкладка.
+  useEffect(() => {
+    loadFeed('algo'); loadFeed('fresh'); loadFeed('saved'); loadFeed('mine');
+    loadNotifCount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedVersion]);
+
+  useEffect(() => {
+    if (tagSearch) void loadTag(tagSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagSearch, feedVersion]);
+
+  const posts = feedCache[tab] ?? [];
+  const feedPosts = tagSearch ? (tagCache[tagSearch] ?? []) : posts;
+  const loading = tagSearch ? (tagLoading[tagSearch] ?? false) : (feedLoading[tab] ?? false);
 
   const rows = buildFeedRows(feedPosts);
-  const notifCount = notificationsCount();
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
@@ -95,8 +113,8 @@ export const BloomModule = () => {
         <div className={isMobile ? 'flex items-center gap-1 px-3 pb-2 overflow-x-auto' : 'flex items-center gap-1.5 px-4 pb-3 overflow-x-auto'} style={{scrollbarWidth:'none'}}>
           {TABS.map(({ key, label, icon: TabIcon }) => {
             const isActive = tab === key && !tagSearch && !explore;
-            const cnt = key === 'saved' ? posts.filter(p => p.saved.includes(uid)).length
-              : key === 'mine' ? posts.filter(p => p.authorId === uid).length : null;
+            const cnt = key === 'saved' ? (feedCache.saved?.length ?? null)
+              : key === 'mine' ? (feedCache.mine?.length ?? null) : null;
             return (
               <button key={key} type="button"
                 onClick={() => { setTab(key); setTagSearch(null); setExplore(false); }}
@@ -136,7 +154,7 @@ export const BloomModule = () => {
         <div className="flex-1 overflow-y-auto">
           {!tagSearch && tab === 'algo' && <FeedWidgets/>}
           <div className={isMobile ? 'px-2.5 py-2.5 space-y-2' : 'px-4 py-4 space-y-3'}>
-            {feedPosts.length === 0 && (
+            {feedPosts.length === 0 && !loading && (
               <div className="sky-empty">
                 <div className="sky-empty-icon">
                   {tab === 'saved' ? <Bookmark size={30}/>

@@ -1,12 +1,27 @@
 /* ===========================================================
-   BLOOM STORE  -  полноценная социальная лента
-   Алгоритм: score = likes×3 + comments×5 + reposts×4 + recency
-   Персонализация: boost постов от тех, с кем взаимодействовал
+   BLOOM STORE  -  реальная социальная лента на сервере.
+
+   Ничего здесь не решается на клиенте: кто автор, чей это пост,
+   сколько стоит подарок, кому что видно — всё решает сервер
+   (server/bloom.mjs). Стор только кэширует ответы и зовёт ручки.
+
+   Компоненты раньше читали ленту синхронной функцией feed(tab) —
+   теперь это сеть, поэтому стор хранит уже загруженное по вкладкам
+   (feedCache) и по тегам (tagCache), а компоненты вызывают load*
+   в useEffect и читают закэшированное.
 ============================================================ */
 import { create } from 'zustand';
 import { useAuthStore } from '@/core/auth/store';
 import { useMoney } from '@/wallet/store';
 import type { Rarity } from '@/gifts/types';
+import {
+  apiBloomFeed, apiBloomAuthorPosts, apiBloomGetPost, apiBloomTrending, apiBloomSuggested, apiBloomHotComments,
+  apiBloomNotifCount, apiBloomUploadMedia, apiBloomCreatePost, apiBloomDeletePost,
+  apiBloomReact, apiBloomComment, apiBloomDeleteComment, apiBloomLikeComment,
+  apiBloomToggleSave, apiBloomRepost, apiBloomView, apiBloomVote, apiBloomGift,
+  apiBloomHidden, apiBloomToggleHide, apiBloomWrite,
+  type CreatePostInput,
+} from './bloomApi';
 
 export type PostKind    = 'text'|'photo'|'video';
 export type ReactionKey = '❤️'|'🔥'|'😂'|'😮'|'👏'|'💯'|'🎉'|'🤔';
@@ -15,7 +30,8 @@ export const REACTIONS: ReactionKey[] = ['❤️','🔥','😂','😮','👏','�
 /* Небольшой каталог «социальных» подарков для комментариев Bloom —
    визуал переиспользует GiftBadge/GIFT_MODELS из NFT-модуля, но это
    лёгкие decorative-подарки, без связи с владением настоящими NFT.
-   Оплачиваются баллами Prime (тот же баланс, что в разделе Sky Prime). */
+   Оплачиваются баллами Prime (тот же баланс, что в разделе Sky Prime);
+   каталог и цены должны совпадать с server/bloom.mjs GIFT_CATALOG. */
 export interface BloomGiftOption { modelKey: string; label: string; rarity: Rarity; cost: number; }
 export const BLOOM_GIFT_CATALOG: BloomGiftOption[] = [
   { modelKey:'heart',  label:'Сердце',    rarity:'common',    cost:10   },
@@ -28,12 +44,6 @@ export const BLOOM_GIFT_CATALOG: BloomGiftOption[] = [
   { modelKey:'rocket', label:'Ракета',    rarity:'limited',   cost:750  },
 ];
 
-export interface BloomGift {
-  id: string; modelKey: string; rarity: Rarity;
-  fromId: string; fromName: string; toId: string;
-  postId: string; commentId?: string; createdAt: string;
-}
-
 export interface PostReaction { emoji: ReactionKey; userIds: string[]; }
 
 export interface BloomComment {
@@ -42,436 +52,399 @@ export interface BloomComment {
   gift?: { modelKey: string; rarity: Rarity };
 }
 
-export interface BloomPollOption { label: string; votes: string[]; }
+export interface BloomPollOption { id: string; label: string; votes: string[]; }
 export interface BloomPoll { question: string; options: BloomPollOption[]; }
 
 export interface BloomPost {
   id: string; authorId: string; authorName: string; authorUsername: string;
   kind: PostKind; text: string; mediaUrl?: string; mediaAspect?: number;
   reactions: PostReaction[]; comments: BloomComment[]; saved: string[];
-  reposts: number; views: number; createdAt: string; tags: string[];
+  reposts: number; repostedByMe?: boolean; views: number; createdAt: string; tags: string[];
   isPinned?: boolean; location?: string; poll?: BloomPoll;
 }
 
-/* --- Seed posts -------------------------------------------- */
-const T = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
-const mkReact = (emoji: ReactionKey, ids: string[]): PostReaction => ({ emoji, userIds: ids });
+export type FeedTab = 'algo'|'fresh'|'saved'|'mine';
+const FEED_TABS: FeedTab[] = ['algo', 'fresh', 'saved', 'mine'];
 
-const SEED: BloomPost[] = [
-  {
-    id:'bp-1', authorId:'acc-luna', authorName:'Luna Nova', authorUsername:'luna_nova',
-    kind:'text',
-    text:'Только что закрыла Diamond в Sky Arena 💎 367 матчей, 81% WR  -  это было нереально сложно, но мы сделали это. Спасибо всей команде! #skyarena #diamond #gaming',
-    reactions:[mkReact('❤️',['acc-neo','acc-kutuzov']),mkReact('🔥',['acc-neo'])],
-    comments:[{ id:'c1', authorId:'acc-neo', authorName:'Neo Driver', text:'Красавица! Ждём Master 🏆', likes:['acc-luna'], createdAt:T(1) }],
-    saved:['acc-kutuzov'], reposts:8, views:1240, createdAt:T(2), tags:['skyarena','diamond','gaming'],
-  },
-  {
-    id:'bp-2', authorId:'acc-neo', authorName:'Neo Driver', authorUsername:'neon_driver',
-    kind:'text',
-    text:'Новый рекорд на Neon Drift  -  1:47.3 на Токийском автодроме 🏎️ Физика дрифта после патча просто огонь. Скоро туториал по идеальной траектории #neondrift #racing #drift',
-    reactions:[mkReact('❤️',['acc-luna']),mkReact('🔥',['acc-luna','acc-kutuzov']),mkReact('💯',['acc-kutuzov'])],
-    comments:[
-      { id:'c2', authorId:'acc-kutuzov', authorName:'Kutuzov', text:'Как ты держишь такой контроль? 🤯', likes:[], createdAt:T(3) },
-      { id:'c3', authorId:'acc-luna', authorName:'Luna Nova', text:'Туториал ждём!!', likes:['acc-neo'], createdAt:T(2.5) },
-    ],
-    saved:['acc-luna'], reposts:14, views:3800, createdAt:T(5), tags:['neondrift','racing','drift'],
-  },
-  {
-    id:'bp-3', authorId:'acc-kutuzov', authorName:'Kutuzov', authorUsername:'kutuzov',
-    kind:'text',
-    text:'Sky v4.7  -  большое обновление:\n\nИгровой хаб с турнирами\nПитомцы в чате\nSky Market\nУведомления в реальном времени\n\nСпасибо всем кто тестировал! Следующий этап  -  расширенный Bloom #sky #update #v4',
-    reactions:[mkReact('❤️',['acc-luna','acc-neo']),mkReact('👏',['acc-luna','acc-neo']),mkReact('🔥',['acc-neo'])],
-    comments:[
-      { id:'c4', authorId:'acc-luna', authorName:'Luna Nova', text:'Bloom ждём больше всего', likes:['acc-kutuzov'], createdAt:T(20) },
-      { id:'c5', authorId:'acc-neo', authorName:'Neo Driver', text:'Питомцы  -  лучшее что было добавлено', likes:[], createdAt:T(19) },
-    ],
-    saved:['acc-luna','acc-neo'], reposts:23, views:8900, createdAt:T(24), tags:['sky','update','v4'], isPinned:true,
-  },
-  {
-    id:'bp-4', authorId:'acc-neo', authorName:'Neo Driver', authorUsername:'neon_driver',
-    kind:'text',
-    text:'Мой питомец Войд уже 21-я серия побед 🐺⚡ Такой зверь! Кормлю его каждый день, показатели на максимуме. Уход реально влияет на настроение в чате 😂 #skyпитомцы #wolf',
-    reactions:[mkReact('😂',['acc-luna','acc-kutuzov']),mkReact('❤️',['acc-kutuzov'])],
-    comments:[{ id:'c6', authorId:'acc-luna', authorName:'Luna Nova', text:'Мой Неон тоже максимал, соревнуемся 😸', likes:['acc-neo'], createdAt:T(6) }],
-    saved:[], reposts:5, views:920, createdAt:T(8), tags:['skyпитомцы','wolf'],
-  },
-  {
-    id:'bp-5', authorId:'acc-luna', authorName:'Luna Nova', authorUsername:'luna_nova',
-    kind:'text',
-    text:'Войд vs Неон  -  кто круче? 🐺 vs 🐱\n\nОба на максимальной дружбе, оба на 21+ серии. Пусть подписчики решат!',
-    reactions:[mkReact('❤️',['acc-neo']),mkReact('😂',['acc-neo','acc-kutuzov']),mkReact('🔥',['acc-kutuzov'])],
-    comments:[
-      { id:'c7', authorId:'acc-kutuzov', authorName:'Kutuzov', text:'🐺 однозначно', likes:['acc-neo'], createdAt:T(10) },
-      { id:'c8', authorId:'acc-neo', authorName:'Neo Driver', text:'Войд', likes:['acc-luna'], createdAt:T(9) },
-    ],
-    saved:['acc-neo'], reposts:11, views:2100, createdAt:T(12), tags:['battle','pets','sky'],
-    poll: { question:'Кто круче в этом сезоне?', options:[
-      { label:'🐺 Войд',  votes:['acc-kutuzov'] },
-      { label:'🐱 Неон',  votes:['acc-neo'] },
-      { label:'Оба хороши', votes:[] },
-    ]},
-  },
-];
+/* -- Патч поста во всех загруженных кэшах разом (вкладки + теги + чужие профили) -- */
+const mapCache = (posts: BloomPost[] | undefined, postId: string, fn: (p: BloomPost) => BloomPost) =>
+  posts?.map(p => p.id === postId ? fn(p) : p);
 
-/* --- Алгоритм ---------------------------------------------- */
-const score = (p: BloomPost, myId: string, interactions: Set<string>): number => {
-  const totalReacts = p.reactions.reduce((a, r) => a + r.userIds.length, 0);
-  const eng = totalReacts * 3 + p.comments.length * 5 + p.reposts * 4;
-  const hoursAgo = (Date.now() - new Date(p.createdAt).getTime()) / 3_600_000;
-  const recency  = Math.max(0, 100 - hoursAgo * 1.5);
-  const boost    = interactions.has(p.authorId) ? 30 : 0;
-  const ownBoost = p.authorId === myId ? -50 : 0; // свои посты не в топ-ленте
-  const pinned   = p.isPinned ? 200 : 0;
-  return eng + recency + boost + ownBoost + pinned;
-};
-
-const FOLLOW_KEY = 'sky:bloom:v4:following';
-const loadFollowing = (): Set<string> => {
-  try { return new Set(JSON.parse(localStorage.getItem(FOLLOW_KEY) || '[]')); } catch { return new Set(); }
-};
-const persistFollowing = (s: Set<string>) => {
-  try { localStorage.setItem(FOLLOW_KEY, JSON.stringify([...s])); } catch {}
-};
-
-const HIDDEN_KEY = 'sky:bloom:v4:hidden';
-const loadHidden = (): Set<string> => {
-  try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')); } catch { return new Set(); }
-};
-const persistHidden = (s: Set<string>) => {
-  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...s])); } catch {}
-};
-
-const GIFTS_KEY = 'sky:bloom:v4:gifts';
-const loadGifts = (): BloomGift[] => {
-  try { return JSON.parse(localStorage.getItem(GIFTS_KEY) || '[]'); } catch { return []; }
-};
-const persistGifts = (g: BloomGift[]) => {
-  try { localStorage.setItem(GIFTS_KEY, JSON.stringify(g)); } catch {}
-};
-
-/* --- Storage ----------------------------------------------- */
-const KEY       = 'sky:bloom:v4:posts';
-const MEDIA_KEY = 'sky:bloom:v4:media';
-const BC        = typeof BroadcastChannel !== 'undefined'
-  ? new BroadcastChannel('sky:bloom:bc:v1') : null;
-const TAB_ID    = Math.random().toString(36).slice(2);
-
-const loadPosts = (): BloomPost[] => {
-  try {
-    const raw = localStorage.getItem(KEY); if (!raw) return SEED;
-    const posts: BloomPost[] = JSON.parse(raw);
-    const media: Record<string,string> = JSON.parse(localStorage.getItem(MEDIA_KEY)||'{}');
-    return posts.map(p => {
-      if (!p.mediaUrl && media[p.id]) {
-        try {
-          const [hdr, data] = media[p.id].split(',');
-          const mime = hdr.match(/:(.*?);/)?.[1] || 'image/jpeg';
-          const bytes = atob(data); const arr = new Uint8Array(bytes.length);
-          for (let i=0;i<bytes.length;i++) arr[i]=bytes.charCodeAt(i);
-          return { ...p, mediaUrl: URL.createObjectURL(new Blob([arr],{type:mime})) };
-        } catch { return p; }
-      }
-      return p;
-    });
-  } catch { return SEED; }
-};
-const persist = (posts: BloomPost[]) => {
-  try { localStorage.setItem(KEY, JSON.stringify(
-    posts.map(p => ({ ...p, mediaUrl: p.mediaUrl?.startsWith('blob:') ? undefined : p.mediaUrl }))
-  )); } catch {}
-};
-const saveMedia = (id: string, b64: string) => {
-  try {
-    const m: Record<string,string> = JSON.parse(localStorage.getItem(MEDIA_KEY)||'{}');
-    m[id] = b64; localStorage.setItem(MEDIA_KEY, JSON.stringify(m));
-  } catch {}
-};
-const removeMedia = (id: string) => {
-  try {
-    const m: Record<string,string> = JSON.parse(localStorage.getItem(MEDIA_KEY)||'{}');
-    delete m[id]; localStorage.setItem(MEDIA_KEY, JSON.stringify(m));
-  } catch {}
-};
-
-/* --- Store ------------------------------------------------- */
 interface BloomState {
-  posts:         BloomPost[];
-  interactions:  Set<string>;  // authorIds с кем взаимодействовали
-  following:     Set<string>;  // authorIds, на кого подписан
-  hidden:        Set<string>;  // authorIds, скрытые из ленты текущего пользователя
-  gifts:         BloomGift[];
+  feedCache:   Partial<Record<FeedTab, BloomPost[]>>;
+  feedLoading: Partial<Record<FeedTab, boolean>>;
+  tagCache:    Record<string, BloomPost[]>;
+  tagLoading:  Record<string, boolean>;
+  authorPostsCache: Record<string, BloomPost[]>;
+  /** Отдельный пост, открытый напрямую (уведомление, ссылка) и не
+   *  найденный ни в одном уже загруженном кэше. */
+  postCache: Record<string, BloomPost>;
 
-  // Computed
-  feed:          (tab: FeedTab) => BloomPost[];
-  trending:      () => string[][];   // [[tag, count]]
-  suggestedUsers:() => string[];     // authorIds
-  hotComments:   () => { post: BloomPost; comment: BloomComment }[];
-  notificationsCount: () => number;
-  giftsFor:      (authorId: string) => BloomGift[];
+  trendingTags:   string[][];
+  trendingLoaded: boolean;
+  suggested:      string[];
+  suggestedLoaded:boolean;
+  hot:            { post: BloomPost; comment: BloomComment }[];
+  hotLoaded:      boolean;
+  notifCount:     number;
+  hiddenIds:      Set<string>;
+  hiddenLoaded:   boolean;
 
-  // Actions
-  addPost:       (p: BloomPost, mediaB64?: string) => void;
-  deletePost:    (id: string) => void;
-  react:         (postId: string, emoji: ReactionKey) => void;
-  unreact:       (postId: string, emoji: ReactionKey) => void;
-  addComment:    (postId: string, text: string) => void;
-  likeComment:   (postId: string, commentId: string) => void;
-  toggleSave:    (id: string) => void;
-  repost:        (id: string) => void;
-  incView:       (id: string) => void;
-  toggleFollow:  (authorId: string) => void;
-  toggleHide:    (authorId: string) => void;
-  votePoll:      (postId: string, optIdx: number) => void;
-  sendGift:      (toId: string, postId: string, modelKey: string) => boolean;
-  syncFromBC:    (posts: BloomPost[]) => void;
+  /** Растёт при любом действии, меняющем состав постов в вкладках
+   *  (новый пост, удаление, скрыть автора) — компоненты держат его
+   *  в зависимостях useEffect, чтобы перезагрузить активную вкладку. */
+  feedVersion: number;
+
+  loadFeed:       (tab: FeedTab, force?: boolean) => Promise<void>;
+  loadTag:        (tag: string, force?: boolean) => Promise<void>;
+  loadAuthorPosts:(authorId: string, force?: boolean) => Promise<void>;
+  /** Найти пост в уже загруженных кэшах; если нигде нет — попросить сервер. */
+  loadPost:       (postId: string) => Promise<void>;
+  loadTrending:   (force?: boolean) => Promise<void>;
+  loadSuggested:  (force?: boolean) => Promise<void>;
+  loadHot:        (force?: boolean) => Promise<void>;
+  loadNotifCount: () => Promise<void>;
+  loadHidden:     (force?: boolean) => Promise<void>;
+
+  addPost:      (input: Omit<CreatePostInput, 'mediaId'|'mediaMime'>, mediaFile?: File) => Promise<boolean>;
+  deletePost:   (id: string) => Promise<void>;
+  react:        (postId: string, emoji: ReactionKey) => Promise<void>;
+  addComment:   (postId: string, text: string) => Promise<void>;
+  deleteComment:(postId: string, commentId: string) => Promise<void>;
+  likeComment:  (postId: string, commentId: string) => Promise<void>;
+  toggleSave:   (postId: string) => Promise<void>;
+  repost:       (postId: string) => Promise<void>;
+  incView:      (postId: string) => Promise<void>;
+  votePoll:     (postId: string, optionId: string) => Promise<void>;
+  sendGift:     (toId: string, postId: string, modelKey: string) => Promise<boolean>;
+  toggleHide:   (authorId: string) => Promise<void>;
+  writeTo:      (userId: string) => Promise<{ chatId: string } | { error: string }>;
 }
 
-export type FeedTab = 'algo'|'fresh'|'saved'|'mine';
-
-const me = () => useAuthStore.getState().currentUserId ?? '';
-
 export const useBloomStore = create<BloomState>((set, get) => {
-  const mut = (fn: (posts: BloomPost[]) => BloomPost[]) => {
-    const next = fn(get().posts);
-    persist(next);
-    set({ posts: next });
-    return next;
+  /** Применить fn к посту postId во всех кэшах разом (вкладки, теги, авторские подборки). */
+  const patchEverywhere = (postId: string, fn: (p: BloomPost) => BloomPost) => {
+    set(s => ({
+      feedCache: Object.fromEntries(
+        FEED_TABS.map(tab => [tab, mapCache(s.feedCache[tab], postId, fn) ?? s.feedCache[tab]]),
+      ) as Partial<Record<FeedTab, BloomPost[]>>,
+      tagCache: Object.fromEntries(
+        Object.entries(s.tagCache).map(([tag, posts]) => [tag, mapCache(posts, postId, fn) ?? posts]),
+      ),
+      authorPostsCache: Object.fromEntries(
+        Object.entries(s.authorPostsCache).map(([id, posts]) => [id, mapCache(posts, postId, fn) ?? posts]),
+      ),
+      postCache: s.postCache[postId] ? { ...s.postCache, [postId]: fn(s.postCache[postId]) } : s.postCache,
+    }));
   };
 
+  /** Пост уже где-то закэширован — не ходим на сервер второй раз. */
+  const findCachedPost = (postId: string): BloomPost | undefined => {
+    const s = get();
+    for (const tab of FEED_TABS) {
+      const hit = s.feedCache[tab]?.find(p => p.id === postId);
+      if (hit) return hit;
+    }
+    for (const posts of Object.values(s.tagCache)) {
+      const hit = posts.find(p => p.id === postId);
+      if (hit) return hit;
+    }
+    for (const posts of Object.values(s.authorPostsCache)) {
+      const hit = posts.find(p => p.id === postId);
+      if (hit) return hit;
+    }
+    return s.postCache[postId];
+  };
+
+  /** Действие изменило состав постов в лентах (новый/удалён/скрыт автор) —
+   *  сбрасываем кэш вкладок и тегов, компоненты перезагрузят активную вкладку. */
+  const invalidateFeeds = () => set(s => ({
+    feedCache: {}, tagCache: {}, authorPostsCache: {}, postCache: {},
+    trendingLoaded: false, suggestedLoaded: false, hotLoaded: false,
+    feedVersion: s.feedVersion + 1,
+  }));
+
   return {
-    posts: loadPosts(),
-    interactions: new Set<string>(),
-    following: loadFollowing(),
-    hidden: loadHidden(),
-    gifts: loadGifts(),
+    feedCache: {}, feedLoading: {},
+    tagCache: {}, tagLoading: {},
+    authorPostsCache: {},
+    postCache: {},
+    trendingTags: [], trendingLoaded: false,
+    suggested: [], suggestedLoaded: false,
+    hot: [], hotLoaded: false,
+    notifCount: 0,
+    hiddenIds: new Set<string>(), hiddenLoaded: false,
+    feedVersion: 0,
 
-    feed: (tab) => {
-      const { posts, interactions, hidden } = get();
-      const uid = me();
-      const visible = hidden.size ? posts.filter(p => p.authorId === uid || !hidden.has(p.authorId)) : posts;
-      if (tab === 'algo') {
-        return [...visible].sort((a,b) => score(b,uid,interactions) - score(a,uid,interactions));
+    loadFeed: async (tab, force) => {
+      if (!force && (get().feedCache[tab] || get().feedLoading[tab])) return;
+      set(s => ({ feedLoading: { ...s.feedLoading, [tab]: true } }));
+      const posts = await apiBloomFeed(tab);
+      set(s => ({ feedCache: { ...s.feedCache, [tab]: posts }, feedLoading: { ...s.feedLoading, [tab]: false } }));
+    },
+
+    loadTag: async (tag, force) => {
+      if (!force && (get().tagCache[tag] || get().tagLoading[tag])) return;
+      set(s => ({ tagLoading: { ...s.tagLoading, [tag]: true } }));
+      const posts = await apiBloomFeed('fresh', tag);
+      set(s => ({ tagCache: { ...s.tagCache, [tag]: posts }, tagLoading: { ...s.tagLoading, [tag]: false } }));
+    },
+
+    loadAuthorPosts: async (authorId, force) => {
+      if (!force && get().authorPostsCache[authorId]) return;
+      const posts = await apiBloomAuthorPosts(authorId);
+      set(s => ({ authorPostsCache: { ...s.authorPostsCache, [authorId]: posts } }));
+    },
+
+    loadPost: async (postId) => {
+      if (findCachedPost(postId)) return;
+      const post = await apiBloomGetPost(postId);
+      if (!post) return;
+      set(s => ({ postCache: { ...s.postCache, [postId]: post } }));
+    },
+
+    loadTrending: async (force) => {
+      if (!force && get().trendingLoaded) return;
+      const trendingTags = await apiBloomTrending();
+      set({ trendingTags, trendingLoaded: true });
+    },
+
+    loadSuggested: async (force) => {
+      if (!force && get().suggestedLoaded) return;
+      const suggested = await apiBloomSuggested();
+      set({ suggested, suggestedLoaded: true });
+    },
+
+    loadHot: async (force) => {
+      if (!force && get().hotLoaded) return;
+      const hot = await apiBloomHotComments();
+      set({ hot, hotLoaded: true });
+    },
+
+    loadNotifCount: async () => {
+      const notifCount = await apiBloomNotifCount();
+      set({ notifCount });
+    },
+
+    loadHidden: async (force) => {
+      if (!force && get().hiddenLoaded) return;
+      const ids = await apiBloomHidden();
+      set({ hiddenIds: new Set(ids), hiddenLoaded: true });
+    },
+
+    addPost: async (input, mediaFile) => {
+      let mediaId: string | undefined;
+      let mediaMime: string | undefined;
+      const mediaAspect = input.mediaAspect;
+      if (mediaFile) {
+        const up = await apiBloomUploadMedia(mediaFile);
+        if (!up) return false;
+        mediaId = up.mediaId; mediaMime = up.mime;
       }
-      if (tab === 'fresh') return [...visible].sort((a,b) => b.createdAt.localeCompare(a.createdAt));
-      if (tab === 'saved') return visible.filter(p => p.saved.includes(uid));
-      if (tab === 'mine')  return visible.filter(p => p.authorId === uid);
-      return visible;
-    },
-
-    trending: () => {
-      const map = new Map<string,number>();
-      get().posts.forEach(p => p.tags.forEach(t => map.set(t,(map.get(t)||0)+1)));
-      return Array.from(map.entries()).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([t,n])=>[t,String(n)]);
-    },
-
-    suggestedUsers: () => {
-      const uid = me();
-      const ids = [...new Set(get().posts.map(p=>p.authorId))].filter(id=>id!==uid);
-      return ids.slice(0,5);
-    },
-
-    hotComments: () => {
-      const out: { post: BloomPost; comment: BloomComment }[] = [];
-      get().posts.forEach(p => p.comments.forEach(c => out.push({ post:p, comment:c })));
-      return out.sort((a,b) => b.comment.likes.length - a.comment.likes.length).slice(0,4);
-    },
-
-    notificationsCount: () => {
-      const uid = me();
-      let n = 0;
-      get().posts.filter(p => p.authorId === uid).forEach(p => {
-        n += p.comments.filter(c => c.authorId !== uid).length;
-        n += p.reactions.reduce((a, r) => a + r.userIds.filter(id => id !== uid).length, 0);
-      });
-      return n;
-    },
-
-    giftsFor: (authorId) => get().gifts
-      .filter(g => g.toId === authorId)
-      .sort((a,b) => b.createdAt.localeCompare(a.createdAt)),
-
-    addPost: (p, mediaB64) => {
-      if (mediaB64) saveMedia(p.id, mediaB64);
-      const next = mut(posts => [p, ...posts]);
-      BC?.postMessage({ type:'post-new', post:p, from:TAB_ID });
-    },
-
-    deletePost: (id) => {
-      // revoke blob URL before deleting to avoid memory leak
-      const post = get().posts.find(p => p.id === id);
-      if (post?.mediaUrl?.startsWith('blob:')) URL.revokeObjectURL(post.mediaUrl);
-      mut(posts => posts.filter(p=>p.id!==id));
-      removeMedia(id);
-      BC?.postMessage({ type:'post-delete', id, from:TAB_ID });
-    },
-
-    react: (postId, emoji) => {
-      const uid = me();
-      const next = mut(posts => posts.map(p => {
-        if (p.id !== postId) return p;
-        const exists = p.reactions.find(r=>r.emoji===emoji);
-        const reactions = exists
-          ? p.reactions.map(r => r.emoji===emoji
-              ? { ...r, userIds: r.userIds.includes(uid) ? r.userIds.filter(u=>u!==uid) : [...r.userIds,uid] }
-              : r)
-          : [...p.reactions, { emoji, userIds:[uid] }];
-        return { ...p, reactions: reactions.filter(r=>r.userIds.length>0) };
-      }));
-      set(s => ({ interactions: new Set([...s.interactions, postId]) }));
-      const updated = next.find(p=>p.id===postId);
-      if (updated) BC?.postMessage({ type:'post-react', post:updated, emoji, from:TAB_ID });
-    },
-
-    unreact: (postId, emoji) => get().react(postId, emoji),
-
-    addComment: (postId, text) => {
-      const uid  = me();
-      const accs = useAuthStore.getState().accounts;
-      const acc  = accs.find(a=>a.id===uid);
-      const next = mut(posts => posts.map(p => p.id!==postId ? p : {
-        ...p, comments: [...p.comments, {
-          id: crypto.randomUUID(), authorId:uid,
-          authorName: acc?.name ?? 'Вы', text,
-          likes:[], createdAt: new Date().toISOString(),
-        }]
-      }));
-      set(s => ({ interactions: new Set([...s.interactions, postId]) }));
-      const updated = next.find(p=>p.id===postId);
-      if (updated) BC?.postMessage({ type:'post-comment', post:updated, text, from:TAB_ID });
-    },
-
-    likeComment: (postId, commentId) => {
-      const uid = me();
-      mut(posts => posts.map(p => p.id!==postId ? p : {
-        ...p, comments: p.comments.map(c => c.id!==commentId ? c : {
-          ...c, likes: c.likes.includes(uid) ? c.likes.filter(u=>u!==uid) : [...c.likes,uid]
-        })
-      }));
-    },
-
-    toggleSave: (id) => {
-      const uid = me();
-      const next = mut(posts => posts.map(p => p.id!==id ? p : {
-        ...p, saved: p.saved.includes(uid) ? p.saved.filter(u=>u!==uid) : [...p.saved,uid]
-      }));
-      const updated = next.find(p=>p.id===id);
-      if (updated) BC?.postMessage({ type:'post-update', post:updated, from:TAB_ID });
-    },
-
-    repost: (id) => {
-      const next = mut(posts => posts.map(p => p.id!==id ? p : { ...p, reposts:p.reposts+1 }));
-      const updated = next.find(p=>p.id===id);
-      if (updated) BC?.postMessage({ type:'post-update', post:updated, from:TAB_ID });
-    },
-
-    incView: (id) => {
-      set(s => ({
-        posts: s.posts.map(p => p.id!==id ? p : { ...p, views:p.views+1 })
-      }));
-    },
-
-    toggleFollow: (authorId) => {
-      set(s => {
-        const next = new Set<string>(s.following);
-        next.has(authorId) ? next.delete(authorId) : next.add(authorId);
-        persistFollowing(next);
-        return { following: next };
-      });
-    },
-
-    toggleHide: (authorId) => {
-      set(s => {
-        const next = new Set<string>(s.hidden);
-        next.has(authorId) ? next.delete(authorId) : next.add(authorId);
-        persistHidden(next);
-        return { hidden: next };
-      });
-    },
-
-    votePoll: (postId, optIdx) => {
-      const uid = me();
-      mut(posts => posts.map(p => {
-        if (p.id !== postId || !p.poll) return p;
-        const already = p.poll.options.some(o => o.votes.includes(uid));
-        if (already) return p;
-        return { ...p, poll: { ...p.poll, options: p.poll.options.map((o,i) =>
-          i===optIdx ? { ...o, votes:[...o.votes, uid] } : o) } };
-      }));
-    },
-
-    sendGift: (toId, postId, modelKey) => {
-      const uid = me();
-      const opt = BLOOM_GIFT_CATALOG.find(g => g.modelKey === modelKey) ?? BLOOM_GIFT_CATALOG[0];
-      const paid = useMoney.getState().spendPoints(uid, opt.cost, `Подарок в Bloom: ${opt.label}`, postId);
-      if (!paid) return false;
-
-      const accounts = useAuthStore.getState().accounts;
-      const fromName = accounts.find(a => a.id === uid)?.name ?? 'Кто-то';
-      const giftId = crypto.randomUUID();
-      const commentId = crypto.randomUUID();
-
-      const gift: BloomGift = {
-        id: giftId, modelKey: opt.modelKey, rarity: opt.rarity,
-        fromId: uid, fromName, toId, postId, commentId, createdAt: new Date().toISOString(),
-      };
-      set(s => { const next = [gift, ...s.gifts]; persistGifts(next); return { gifts: next }; });
-
-      mut(posts => posts.map(p => p.id !== postId ? p : {
-        ...p,
-        comments: [...p.comments, {
-          id: commentId, authorId: uid, authorName: fromName,
-          text: `подарил(а) «${opt.label}»`, likes: [], createdAt: new Date().toISOString(),
-          gift: { modelKey: opt.modelKey, rarity: opt.rarity },
-        }],
-      }));
+      const r = await apiBloomCreatePost({ ...input, mediaId, mediaMime, mediaAspect });
+      if ('error' in r) return false;
+      invalidateFeeds();
       return true;
     },
 
-    syncFromBC: (incoming) => {
-      set(s => ({ posts: incoming }));
+    deletePost: async (id) => {
+      const ok = await apiBloomDeletePost(id);
+      if (!ok) return;
+      set(s => ({
+        feedCache: Object.fromEntries(
+          FEED_TABS.map(tab => [tab, s.feedCache[tab]?.filter(p => p.id !== id)]),
+        ) as Partial<Record<FeedTab, BloomPost[]>>,
+        tagCache: Object.fromEntries(
+          Object.entries(s.tagCache).map(([tag, posts]) => [tag, posts.filter(p => p.id !== id)]),
+        ),
+        authorPostsCache: Object.fromEntries(
+          Object.entries(s.authorPostsCache).map(([aid, posts]) => [aid, posts.filter(p => p.id !== id)]),
+        ),
+        postCache: Object.fromEntries(Object.entries(s.postCache).filter(([pid]) => pid !== id)),
+      }));
     },
+
+    react: async (postId, emoji) => {
+      const reacted = await apiBloomReact(postId, emoji);
+      if (reacted === null) return;
+      const uid = useAuthStore.getState().currentUserId ?? '';
+      patchEverywhere(postId, p => {
+        const exists = p.reactions.find(r => r.emoji === emoji);
+        let reactions: PostReaction[];
+        if (reacted) {
+          reactions = exists
+            ? p.reactions.map(r => r.emoji === emoji ? { ...r, userIds: r.userIds.includes(uid) ? r.userIds : [...r.userIds, uid] } : r)
+            : [...p.reactions, { emoji, userIds: [uid] }];
+        } else {
+          reactions = p.reactions
+            .map(r => r.emoji === emoji ? { ...r, userIds: r.userIds.filter(u => u !== uid) } : r)
+            .filter(r => r.userIds.length > 0);
+        }
+        return { ...p, reactions };
+      });
+    },
+
+    addComment: async (postId, text) => {
+      const res = await apiBloomComment(postId, text);
+      if (!res) return;
+      const uid = useAuthStore.getState().currentUserId ?? '';
+      const acc = useAuthStore.getState().accounts.find(a => a.id === uid);
+      patchEverywhere(postId, p => ({
+        ...p,
+        comments: [...p.comments, {
+          id: res.id, authorId: uid, authorName: acc?.name ?? 'Вы',
+          text, likes: [], createdAt: new Date().toISOString(),
+        }],
+      }));
+    },
+
+    deleteComment: async (postId, commentId) => {
+      const ok = await apiBloomDeleteComment(commentId);
+      if (!ok) return;
+      patchEverywhere(postId, p => ({ ...p, comments: p.comments.filter(c => c.id !== commentId) }));
+    },
+
+    likeComment: async (postId, commentId) => {
+      const liked = await apiBloomLikeComment(commentId);
+      if (liked === null) return;
+      const uid = useAuthStore.getState().currentUserId ?? '';
+      patchEverywhere(postId, p => ({
+        ...p,
+        comments: p.comments.map(c => c.id !== commentId ? c : {
+          ...c, likes: liked ? [...new Set([...c.likes, uid])] : c.likes.filter(u => u !== uid),
+        }),
+      }));
+    },
+
+    toggleSave: async (postId) => {
+      const saved = await apiBloomToggleSave(postId);
+      if (saved === null) return;
+      const uid = useAuthStore.getState().currentUserId ?? '';
+      patchEverywhere(postId, p => ({
+        ...p,
+        saved: saved ? Array.from(new Set([...p.saved, uid])) : p.saved.filter(u => u !== uid),
+      }));
+      // Отмена сохранения убирает пост из вкладки «Сохранённые» сразу;
+      // добавление туда попадёт при следующей загрузке этой вкладки —
+      // не переставляем пост между кэшами вручную ради сортировки.
+      if (!saved) {
+        set(s => (s.feedCache.saved
+          ? { feedCache: { ...s.feedCache, saved: s.feedCache.saved.filter(p => p.id !== postId) } }
+          : {}));
+      }
+    },
+
+    repost: async (postId) => {
+      const reposted = await apiBloomRepost(postId);
+      if (reposted === null) return;
+      patchEverywhere(postId, p => ({
+        ...p,
+        reposts: Math.max(0, p.reposts + (reposted ? 1 : -1)),
+        repostedByMe: reposted,
+      }));
+    },
+
+    incView: async (postId) => {
+      patchEverywhere(postId, p => ({ ...p, views: p.views + 1 }));
+      await apiBloomView(postId);
+    },
+
+    votePoll: async (postId, optionId) => {
+      const ok = await apiBloomVote(postId, optionId);
+      if (!ok) return;
+      const uid = useAuthStore.getState().currentUserId ?? '';
+      patchEverywhere(postId, p => {
+        if (!p.poll) return p;
+        return {
+          ...p,
+          poll: {
+            ...p.poll,
+            options: p.poll.options.map(o => o.id === optionId ? { ...o, votes: [...o.votes, uid] } : o),
+          },
+        };
+      });
+    },
+
+    sendGift: async (toId, postId, modelKey) => {
+      void toId;
+      const r = await apiBloomGift(postId, modelKey);
+      if ('error' in r) return false;
+      await useMoney.getState().refresh();
+      // Подарок добавляет реальный комментарий-подарок к посту — проще
+      // перезагрузить вкладку, чем собирать точную копию строки с сервера.
+      invalidateFeeds();
+      return true;
+    },
+
+    toggleHide: async (authorId) => {
+      const hidden = await apiBloomToggleHide(authorId);
+      if (hidden === null) return;
+      set(s => {
+        const next = new Set(s.hiddenIds);
+        if (hidden) next.add(authorId); else next.delete(authorId);
+        return { hiddenIds: next };
+      });
+      invalidateFeeds();
+    },
+
+    writeTo: (userId) => apiBloomWrite(userId),
   };
 });
 
-/* -- Update authorName/authorUsername in posts when profile changes ------- */
+/** Найти пост где угодно в уже загруженных кэшах (вкладки, теги, авторские
+ *  подборки, отдельно догруженный). Используется PostDetailView — пост туда
+ *  можно попасть из любого места, не только из активной вкладки ленты. */
+export const useBloomPost = (postId: string | null): BloomPost | undefined =>
+  useBloomStore(s => {
+    if (!postId) return undefined;
+    for (const tab of FEED_TABS) {
+      const hit = s.feedCache[tab]?.find(p => p.id === postId);
+      if (hit) return hit;
+    }
+    for (const posts of Object.values(s.tagCache)) {
+      const hit = posts.find(p => p.id === postId);
+      if (hit) return hit;
+    }
+    for (const posts of Object.values(s.authorPostsCache)) {
+      const hit = posts.find(p => p.id === postId);
+      if (hit) return hit;
+    }
+    return s.postCache[postId];
+  });
+
+/** Сразу поправить имя/username автора в уже загруженных постах после
+ *  редактирования профиля — чисто косметика для уже отрисованного: сервер
+ *  и так отдаст свежее имя при следующей загрузке ленты. */
 export const syncBloomAuthor = (authorId: string, name: string, username: string) => {
+  const patchOne = (p: BloomPost): BloomPost => {
+    const isAuthor = p.authorId === authorId;
+    const touchesComments = p.comments.some(c => c.authorId === authorId);
+    if (!isAuthor && !touchesComments) return p;
+    return {
+      ...p,
+      ...(isAuthor ? { authorName: name, authorUsername: username } : {}),
+      comments: touchesComments
+        ? p.comments.map(c => c.authorId === authorId ? { ...c, authorName: name } : c)
+        : p.comments,
+    };
+  };
+  const patchList = (posts: BloomPost[] | undefined) => posts?.map(patchOne);
+
   useBloomStore.setState(s => ({
-    posts: s.posts.map(p => {
-      if (p.authorId !== authorId) return p;
-      return {
-        ...p,
-        authorName: name,
-        authorUsername: username,
-        comments: p.comments.map(c =>
-          c.authorId === authorId ? { ...c, authorName: name } : c
-        ),
-      };
-    }),
+    feedCache: Object.fromEntries(
+      FEED_TABS.map(tab => [tab, patchList(s.feedCache[tab]) ?? s.feedCache[tab]]),
+    ) as Partial<Record<FeedTab, BloomPost[]>>,
+    tagCache: Object.fromEntries(
+      Object.entries(s.tagCache).map(([tag, posts]) => [tag, patchList(posts) ?? posts]),
+    ),
+    authorPostsCache: Object.fromEntries(
+      Object.entries(s.authorPostsCache).map(([id, posts]) => [id, patchList(posts) ?? posts]),
+    ),
+    postCache: Object.fromEntries(
+      Object.entries(s.postCache).map(([id, p]) => [id, patchOne(p)]),
+    ),
   }));
 };
-
-/* BroadcastChannel listener  -  отдельно, вне стора */
-if (BC) {
-  BC.addEventListener('message', (e) => {
-    if (!e.data || e.data.from === TAB_ID) return;
-    const { type, post, id } = e.data;
-    if (type === 'post-new') {
-      useBloomStore.setState(s => ({
-        posts: s.posts.find(p=>p.id===post.id) ? s.posts : [post,...s.posts]
-      }));
-    }
-    if (type === 'post-delete') {
-      useBloomStore.setState(s => ({ posts: s.posts.filter(p=>p.id!==id) }));
-    }
-    // post-react, post-comment, post-update all update the post object
-    if (type === 'post-react' || type === 'post-comment' || type === 'post-update') {
-      useBloomStore.setState(s => ({
-        posts: s.posts.map(p => p.id===post.id ? post : p)
-      }));
-    }
-  });
-}
 
 export const fmtAgo = (iso: string) => {
   const d = (Date.now() - new Date(iso).getTime()) / 1000;

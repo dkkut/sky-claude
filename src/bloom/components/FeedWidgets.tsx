@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Music2, CloudSun } from 'lucide-react';
 import { useBloomStore } from '../store';
 import { useAuthStore } from '@/core/auth/store';
@@ -26,16 +27,21 @@ const WLabel = ({ children }: { children: React.ReactNode }) => (
 );
 
 export const FeedWidgets = () => {
-  const { trending, suggestedUsers } = useBloomStore();
+  const suggested = useBloomStore(s => s.suggested);
+  const trendingTags = useBloomStore(s => s.trendingTags);
+  const loadSuggested = useBloomStore(s => s.loadSuggested);
+  const loadTrending = useBloomStore(s => s.loadTrending);
   const { accounts, currentUserId } = useAuthStore();
   const { item, isPlaying } = usePlayerStore();
   const { setActiveModule, setPendingExtrasTab } = useModuleStore();
   const isMobile = useIsMobile();
 
+  useEffect(() => { void loadSuggested(); void loadTrending(); }, [loadSuggested, loadTrending]);
+
   const goMusic = () => { setPendingExtrasTab('music'); setActiveModule('extras'); };
 
-  const activity = suggestedUsers().slice(0, 2).map(id => accounts.find(a => a.id === id)).filter(Boolean);
-  const tags = trending().slice(0, 3);
+  const activity = suggested.slice(0, 2).map(id => accounts.find(a => a.id === id)).filter(Boolean);
+  const tags = trendingTags.slice(0, 3);
   const mw = (desktop: number) => isMobile ? Math.round(desktop * 0.72) : desktop;
 
   return (

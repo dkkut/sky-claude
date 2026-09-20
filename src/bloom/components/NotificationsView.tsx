@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Bell } from 'lucide-react';
 import { useBloomStore, fmtAgo } from '../store';
@@ -9,11 +10,13 @@ type NotifRow =
   | { kind: 'reaction'; postId: string; authorName: string; emoji: string; at: string };
 
 export const NotificationsView = ({ onClose, onOpenPost }: { onClose: () => void; onOpenPost: (id: string) => void }) => {
-  const { posts } = useBloomStore();
+  const mine = useBloomStore(s => s.feedCache.mine) ?? [];
+  const loadFeed = useBloomStore(s => s.loadFeed);
   const { currentUserId } = useAuthStore();
   const uid = currentUserId ?? '';
 
-  const mine = posts.filter(p => p.authorId === uid);
+  useEffect(() => { void loadFeed('mine'); }, [loadFeed]);
+
   const rows: NotifRow[] = [];
 
   mine.forEach(p => {
@@ -22,7 +25,7 @@ export const NotificationsView = ({ onClose, onOpenPost }: { onClose: () => void
     });
     p.reactions.forEach(r => {
       r.userIds.filter(id => id !== uid).forEach(userId => {
-        const name = posts.flatMap(pp => pp.comments).find(c => c.authorId === userId)?.authorName
+        const name = mine.flatMap(pp => pp.comments).find(c => c.authorId === userId)?.authorName
           ?? (userId === p.authorId ? p.authorName : 'Подписчик');
         rows.push({ kind: 'reaction', postId: p.id, authorName: name, emoji: r.emoji, at: p.createdAt });
       });

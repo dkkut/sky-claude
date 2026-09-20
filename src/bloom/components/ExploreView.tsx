@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Hash, X, ChevronLeft } from 'lucide-react';
 import { useBloomStore } from '../store';
@@ -9,11 +9,21 @@ import { PostCard } from './PostCard';
 export const ExploreView = ({ onAuthorClick, onTagClick }: {
   onAuthorClick: (id: string) => void; onTagClick: (t: string) => void;
 }) => {
-  const { posts, trending, suggestedUsers } = useBloomStore();
+  const posts = useBloomStore(s => s.feedCache.fresh) ?? [];
+  const tags  = useBloomStore(s => s.trendingTags);
+  const sugg  = useBloomStore(s => s.suggested);
+  const loadFeed      = useBloomStore(s => s.loadFeed);
+  const loadTrending   = useBloomStore(s => s.loadTrending);
+  const loadSuggested  = useBloomStore(s => s.loadSuggested);
   const { accounts } = useAuthStore();
   const [search, setSearch] = useState('');
-  const tags = trending();
-  const sugg = suggestedUsers();
+
+  useEffect(() => {
+    void loadFeed('fresh');
+    void loadTrending();
+    void loadSuggested();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const results = search
     ? posts.filter(p =>

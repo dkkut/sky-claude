@@ -18,7 +18,15 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
   onAuthorClick: (id: string) => void;
   onTagClick: (tag: string) => void;
 }) => {
-  const { react, addComment, toggleSave, repost, deletePost, incView, likeComment, votePoll, sendGift } = useBloomStore();
+  const react        = useBloomStore(s => s.react);
+  const addComment   = useBloomStore(s => s.addComment);
+  const toggleSave   = useBloomStore(s => s.toggleSave);
+  const repost       = useBloomStore(s => s.repost);
+  const deletePost   = useBloomStore(s => s.deletePost);
+  const incView      = useBloomStore(s => s.incView);
+  const likeComment  = useBloomStore(s => s.likeComment);
+  const votePoll     = useBloomStore(s => s.votePoll);
+  const sendGift     = useBloomStore(s => s.sendGift);
   const { currentUserId, accounts } = useAuthStore();
   const myName = accounts.find(a => a.id === (currentUserId ?? ''))?.name ?? 'Вы';
   const uid = currentUserId ?? '';
@@ -64,8 +72,8 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
   };
 
   const heat = badgeFor(post.views);
-  const myVoteIdx = post.poll?.options.findIndex(o => o.votes.includes(uid));
-  const hasVoted = myVoteIdx !== undefined && myVoteIdx >= 0;
+  const myVote = post.poll?.options.find(o => o.votes.includes(uid));
+  const hasVoted = !!myVote;
   const pollTotal = post.poll?.options.reduce((a,o) => a + o.votes.length, 0) ?? 0;
 
   return (
@@ -188,12 +196,12 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
       {/* Опрос */}
       {post.poll && (
         <div className="px-4 pb-2 space-y-1.5">
-          {post.poll.options.map((opt, i) => {
+          {post.poll.options.map((opt) => {
             const pct = pollTotal > 0 ? Math.round((opt.votes.length / pollTotal) * 100) : 0;
-            const voted = myVoteIdx === i;
+            const voted = myVote?.id === opt.id;
             return (
-              <button key={i} type="button" disabled={hasVoted}
-                onClick={() => votePoll(post.id, i)}
+              <button key={opt.id} type="button" disabled={hasVoted}
+                onClick={() => void votePoll(post.id, opt.id)}
                 className="relative block w-full overflow-hidden rounded-full text-left"
                 style={{ border: `1.5px solid ${voted ? 'var(--accent)' : 'var(--border)'}`, cursor: hasVoted ? 'default' : 'pointer' }}>
                 {hasVoted && (

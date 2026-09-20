@@ -6,16 +6,17 @@ import { useAuthStore } from '@/core/auth/store';
 import { Av } from './Primitives';
 
 export const CreatePost = ({ onClose }: { onClose: () => void }) => {
-  const { addPost } = useBloomStore();
+  const addPost = useBloomStore(s => s.addPost);
   const { currentUserId, accounts } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
 
   const [text,       setText]       = useState('');
   const [mediaUrl,   setMediaUrl]   = useState<string>();
-  const [mediaB64,   setMediaB64]   = useState<string>();
+  const [mediaFile,  setMediaFile]  = useState<File>();
   const [kind,       setKind]       = useState<'text' | 'photo' | 'video'>('text');
   const [location,   setLocation]   = useState('');
   const [publishing, setPublishing] = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
   const [pollOn,     setPollOn]     = useState(false);
   const [pollQ,      setPollQ]      = useState('');
   const [pollOpts,   setPollOpts]   = useState(['', '']);
@@ -25,28 +26,25 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
     const f = e.target.files?.[0]; if (!f) return;
     setMediaUrl(prev => { if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev); return URL.createObjectURL(f); });
     setKind(f.type.startsWith('video') ? 'video' : 'photo');
-    const r = new FileReader(); r.onload = () => setMediaB64(r.result as string); r.readAsDataURL(f);
+    setMediaFile(f);
   };
 
   const validPollOpts = pollOpts.map(o => o.trim()).filter(Boolean);
   const pollValid = pollOn && pollQ.trim() && validPollOpts.length >= 2;
 
-  const publish = () => {
+  const publish = async () => {
     if (!text.trim() && !mediaUrl && !pollValid) return;
     setPublishing(true);
-    setTimeout(() => {
-      const tags = Array.from(text.matchAll(/#(\w+)/g)).map(m => m[1]);
-      addPost({
-        id: crypto.randomUUID(),
-        authorId: currentUserId!, authorName: me!.name, authorUsername: me!.username,
-        kind, text: text.trim(), mediaUrl,
-        reactions: [], comments: [], saved: [], reposts: 0, views: 0,
-        createdAt: new Date().toISOString(), tags,
-        location: location.trim() || undefined,
-        poll: pollValid ? { question: pollQ.trim(), options: validPollOpts.map(label => ({ label, votes: [] })) } : undefined,
-      }, mediaB64);
-      onClose();
-    }, 200);
+    setError(null);
+    const tags = Array.from(text.matchAll(/#(\w+)/g)).map(m => m[1]);
+    const ok = await addPost({
+      text: text.trim(), tags,
+      location: location.trim() || undefined,
+      poll: pollValid ? { question: pollQ.trim(), options: validPollOpts } : undefined,
+    }, mediaFile);
+    setPublishing(false);
+    if (!ok) { setError('Не получилось опубликовать. Попробуй ещё раз.'); return; }
+    onClose();
   };
 
   return (
@@ -84,7 +82,7 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
             {kind === 'video'
               ? <video src={mediaUrl} muted autoPlay loop className="w-full object-cover" style={{ maxHeight: 260 }}/>
               : <img src={mediaUrl} alt="" className="w-full object-cover" style={{ maxHeight: 260 }}/>}
-            <button type="button" onClick={() => { setMediaUrl(undefined); setKind('text'); setMediaB64(undefined); }}
+            <button type="button" onClick={() => { setMediaUrl(undefined); setKind('text'); setMediaFile(undefined); }}
               className="absolute top-2 right-2 grid h-7 w-7 place-items-center rounded-full"
               style={{ background: 'rgba(0,0,0,0.7)' }}><X size={12} className="text-white"/></button>
           </div>
@@ -119,6 +117,10 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
 
         <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFile}/>
 
+        {error && (
+          <p className="mx-5 mb-2 text-xs" style={{ color: 'var(--red)' }}>{error}</p>
+        )}
+
         <div className="flex items-center gap-2 border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
           <button type="button" onClick={() => { fileRef.current?.click(); setPollOn(false); }}
             className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs hover:bg-white/5"
@@ -132,7 +134,7 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
             <MapPin size={14}/>Место
           </button>
           <button type="button"
-            onClick={() => { if (!pollOn) { setMediaUrl(undefined); setMediaB64(undefined); setKind('text'); } setPollOn(v => !v); }}
+            onClick={() => { if (!pollOn) { setMediaUrl(undefined); setMediaFile(undefined); setKind('text'); } setPollOn(v => !v); }}
             className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs hover:bg-white/5"
             style={{ color: pollOn ? 'var(--accent)' : 'var(--t3)' }}>
             <BarChart2 size={14}/>Опрос

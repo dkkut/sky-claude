@@ -64,12 +64,14 @@ interface ProgressionResult {
 
 /** Собирает реальную статистику пользователя и считает по ней уровень + достижения. */
 export function useProgression(userId: string, account: Account | undefined): ProgressionResult {
-  const posts       = useBloomStore(s => s.posts);
+  // Кэш постов автора грузит useProfileData.ts (единственный вызывающий);
+  // здесь только читаем уже закэшированное, не дублируя загрузку.
+  const myPostsRaw  = useBloomStore(s => s.authorPostsCache[userId]);
+  const myPosts     = useMemo(() => myPostsRaw ?? [], [myPostsRaw]);
   const sent        = useGiftStore(s => s.sent);
   const friendEdges = useSocialGraph(s => s.friends); // подписываемся на «сырые» данные, а не на функцию-геттер
 
   return useMemo(() => {
-    const myPosts = posts.filter(p => p.authorId === userId);
     const reactionsReceived = myPosts.reduce(
       (sum, p) => sum + p.reactions.reduce((s2, r) => s2 + r.userIds.length, 0), 0,
     );
@@ -120,5 +122,5 @@ export function useProgression(userId: string, account: Account | undefined): Pr
       friendsCount,
       tenure,
     };
-  }, [posts, sent, friendEdges, userId, account]);
+  }, [myPosts, sent, friendEdges, userId, account]);
 }

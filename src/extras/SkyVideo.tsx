@@ -109,8 +109,10 @@ const Avatar = ({ name, size = 32 }: { name: string; size?: number }) => {
 /* -- Subscribe button (реальная подписка на автора канала) ----- */
 const SubscribeButton = ({ targetId }: { targetId?: string }) => {
   const currentUserId = useAuthStore(s => s.currentUserId);
-  const isFollowing = useSocialGraph(s => (currentUserId && targetId) ? s.follows.some(e => e.followerId === currentUserId && e.followingId === targetId) : false);
+  const isFollowing = useSocialGraph(s => targetId ? s.isFollowing(currentUserId ?? '', targetId) : false);
   const toggleFollow = useSocialGraph(s => s.toggleFollow);
+  const fetchFollows = useSocialGraph(s => s.fetchFollows);
+  useEffect(() => { if (targetId) void fetchFollows(targetId); }, [targetId, fetchFollows]);
   if (!currentUserId || !targetId || currentUserId === targetId) return null;
   return (
     <motion.button whileTap={{ scale: 0.95 }} type="button"

@@ -48,6 +48,9 @@ import { mapsRoutes } from './routes/maps.mjs';
 import { familyRoutes } from './routes/family.mjs';
 import { garantRoutes } from './routes/garant.mjs';
 import { mediaActivityRoutes } from './routes/mediaActivity.mjs';
+import { followsRoutes } from './routes/follows.mjs';
+import { bloomRoutes } from './routes/bloom.mjs';
+import { sweepOrphanBloomMedia } from './bloom.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanVideos } from './skyvideo.mjs';
@@ -75,7 +78,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
-                familyRoutes, garantRoutes, mediaActivityRoutes];
+                familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, bloomRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -269,6 +272,10 @@ const start = async () => {
       // один уже отправленный подарок к ней не привязан).
       const giftMedia = await sweepOrphanGiftMedia();
       if (giftMedia.removed) console.log(`[gifts] убрано осиротевших версий медиа: ${giftMedia.removed}`);
+      // Медиа поста Bloom, загруженное, но так и не привязанное ни к
+      // одному посту (человек закрыл вкладку между загрузкой и публикацией).
+      const bloomMedia = await sweepOrphanBloomMedia();
+      if (bloomMedia.removed) console.log(`[bloom] убрано осиротевшего медиа: ${bloomMedia.removed}`);
       // Файл, отданный Sky AI на разбор, живёт до разбора и не дольше.
       // Человек закрыл вкладку между загрузкой и разбором — держать
       // его документ сутками незачем.

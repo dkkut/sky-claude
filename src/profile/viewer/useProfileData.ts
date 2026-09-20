@@ -124,16 +124,30 @@ export function useProfileData(userId: string | null): ProfileData | null {
   const myMessages = useMessengerStore(s => s.messages);
   const blockedList = useMessengerStore(s => s.blocked);
 
-  const posts = useBloomStore(s => s.posts);
-  const hidden = useBloomStore(s => s.hidden);
+  const authorPostsRaw = useBloomStore(s => (userId ? s.authorPostsCache[userId] : undefined));
+  const authorPosts = useMemo(() => authorPostsRaw ?? [], [authorPostsRaw]);
+  const loadAuthorPosts = useBloomStore(s => s.loadAuthorPosts);
+  const hiddenIds = useBloomStore(s => s.hiddenIds);
+  const loadHidden = useBloomStore(s => s.loadHidden);
 
   const sent = useGiftStore(s => s.sent);
 
   const gamingActivity = useGamingAccounts(s => s.activity);
 
-  const follows = useSocialGraph(s => s.follows);
+  const followEntry = useSocialGraph(s => (userId ? s.followCache[userId] : undefined));
+  const fetchFollows = useSocialGraph(s => s.fetchFollows);
   const friends = useSocialGraph(s => s.friends);
   const views   = useSocialGraph(s => s.views);
+
+  useEffect(() => {
+    if (userId) void fetchFollows(userId);
+  }, [userId, fetchFollows]);
+
+  useEffect(() => {
+    if (userId) void loadAuthorPosts(userId);
+  }, [userId, loadAuthorPosts]);
+
+  useEffect(() => { void loadHidden(); }, [loadHidden]);
 
   const musicPresenceMap = useMediaPresence(s => s.music);
   const watchPresenceMap = useMediaPresence(s => s.watch);
@@ -195,17 +209,17 @@ export function useProfileData(userId: string | null): ProfileData | null {
 
     /* -- relationship -- */
     const friendStatus = useSocialGraph.getState().friendStatus(viewerId, userId);
-    const isFollowing  = follows.some(e => e.followerId === viewerId && e.followingId === userId);
-    const isFollowedBy = follows.some(e => e.followerId === userId && e.followingId === viewerId);
+    const isFollowing  = followEntry?.isFollowing ?? false;
+    const isFollowedBy = followEntry?.following.includes(viewerId) ?? false;
     const isBlocked = blockedList.includes(account.username);
-    const isHidden  = hidden.has(userId);
+    const isHidden  = hiddenIds.has(userId);
 
-    /* -- social lists (гранулярная приватность: друзья / подписки) -- */
-    const canSeeFriends    = isOwn || (account.privacy?.showFriends ?? true);
-    const canSeeFollowing  = isOwn || (account.privacy?.showFollowing ?? true);
-    const friendIds    = canSeeFriends   ? friends.filter(e => e.status === 'accepted' && (e.aId === userId || e.bId === userId)).map(e => e.aId === userId ? e.bId : e.aId) : [];
-    const followerIds  = canSeeFollowing ? follows.filter(e => e.followingId === userId).map(e => e.followerId) : [];
-    const followingIds = canSeeFollowing ? follows.filter(e => e.followerId === userId).map(e => e.followingId) : [];
+    /* -- social lists (гранулярная приватность: друзья — локально; подписки —
+       уже отфильтрованы сервером по showFollowing, см. server/routes/follows.mjs) -- */
+    const canSeeFriends = isOwn || (account.privacy?.showFriends ?? true);
+    const friendIds    = canSeeFriends ? friends.filter(e => e.status === 'accepted' && (e.aId === userId || e.bId === userId)).map(e => e.aId === userId ? e.bId : e.aId) : [];
+    const followerIds  = followEntry?.followers ?? [];
+    const followingIds = followEntry?.following ?? [];
     const myFriendIds  = friends.filter(e => e.status === 'accepted' && (e.aId === viewerId || e.bId === viewerId)).map(e => e.aId === viewerId ? e.bId : e.aId);
     const mutualFriendIds = friendIds.filter(id => myFriendIds.includes(id));
     const mutualGroups = myChats.filter(c =>
@@ -218,7 +232,7 @@ export function useProfileData(userId: string | null): ProfileData | null {
       isOwn || (account.privacy?.[key] ?? true);
     const showActivity = isOwn || (account.privacy?.showActivity ?? true);
     const lastStory = showActivity && canSee('showStories') ? readLastStory(userId) : null;
-    const recentPosts = canSee('showPosts') ? posts.filter(p => p.authorId === userId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3) : [];
+    const recentPosts = canSee('showPosts') ? authorPosts.slice(0, 3) : [];
     const gaming = (showActivity && canSee('showGames')) ? (gamingActivity[userId] ?? null) : null;
     const freshMusic = musicPresenceMap[userId];
     const freshWatch = watchPresenceMap[userId];
@@ -258,7 +272,7 @@ export function useProfileData(userId: string | null): ProfileData | null {
       },
     };
   }, [
-    userId, viewerId, account, loading, myChats, myMessages, blockedList, posts, hidden, sent,
-    gamingActivity, follows, friends, views, progression, musicPresenceMap, watchPresenceMap,
+    userId, viewerId, account, loading, myChats, myMessages, blockedList, authorPosts, hiddenIds, sent,
+    gamingActivity, followEntry, friends, views, progression, musicPresenceMap, watchPresenceMap,
   ]);
 }

@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { UserPlus, UserCheck, TrendingUp, Music2, MessageCircle, Sparkles, Megaphone, Hash, Heart } from 'lucide-react';
 import { useBloomStore, fmtViews, type BloomPost } from '../store';
 import { useAuthStore } from '@/core/auth/store';
+import { useSocialGraph } from '@/profile/viewer/social';
 import { usePlayerStore } from '@/player/playerStore';
 import { useModuleStore } from '@/data/state/modules';
 import { Av } from './Primitives';
@@ -15,11 +17,18 @@ const InsertShell = ({ icon: Icon, title, children }: { icon: any; title: string
   </div>
 );
 
+/* Подписка — та же единая таблица follows, что у SkyVideo и общего
+   профиля (server/follows.mjs), не своя копия внутри Bloom. */
 const FollowBtn = ({ authorId }: { authorId: string }) => {
-  const { following, toggleFollow } = useBloomStore();
-  const isF = following.has(authorId);
+  const currentUserId = useAuthStore(s => s.currentUserId) ?? '';
+  const isF = useSocialGraph(s => s.isFollowing(currentUserId, authorId));
+  const fetchFollows = useSocialGraph(s => s.fetchFollows);
+  const toggleFollow = useSocialGraph(s => s.toggleFollow);
+
+  useEffect(() => { void fetchFollows(authorId); }, [authorId, fetchFollows]);
+
   return (
-    <button type="button" onClick={() => toggleFollow(authorId)}
+    <button type="button" onClick={() => void toggleFollow(currentUserId, authorId)}
       className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold shrink-0"
       style={{
         background: isF ? 'transparent' : 'var(--accent)',
@@ -33,7 +42,9 @@ const FollowBtn = ({ authorId }: { authorId: string }) => {
 
 /* ── Популярное сегодня ────────────────────────────────────── */
 export const PopularTodayCard = ({ onOpenPost }: { onOpenPost: (id: string) => void }) => {
-  const { posts } = useBloomStore();
+  const posts = useBloomStore(s => s.feedCache.fresh) ?? [];
+  const loadFeed = useBloomStore(s => s.loadFeed);
+  useEffect(() => { void loadFeed('fresh'); }, [loadFeed]);
   const top = [...posts].sort((a,b) => b.views - a.views).slice(0, 3);
   if (top.length === 0) return null;
   return (
@@ -56,9 +67,11 @@ export const PopularTodayCard = ({ onOpenPost }: { onOpenPost: (id: string) => v
 
 /* ── Кого читать ───────────────────────────────────────────── */
 export const WhoToFollowCard = () => {
-  const { suggestedUsers } = useBloomStore();
+  const suggested = useBloomStore(s => s.suggested);
+  const loadSuggested = useBloomStore(s => s.loadSuggested);
+  useEffect(() => { void loadSuggested(); }, [loadSuggested]);
   const { accounts } = useAuthStore();
-  const list = suggestedUsers().map(id => accounts.find(a => a.id === id)).filter(Boolean).slice(0, 3);
+  const list = suggested.map(id => accounts.find(a => a.id === id)).filter(Boolean).slice(0, 3);
   if (list.length === 0) return null;
   return (
     <InsertShell icon={Sparkles} title="Кого читать">
@@ -106,8 +119,10 @@ export const NewAuthorsCard = () => {
 
 /* ── Тренды ────────────────────────────────────────────────── */
 export const TrendingCard = ({ onTagClick }: { onTagClick: (t: string) => void }) => {
-  const { trending } = useBloomStore();
-  const tags = trending().slice(0, 5);
+  const trendingTags = useBloomStore(s => s.trendingTags);
+  const loadTrending = useBloomStore(s => s.loadTrending);
+  useEffect(() => { void loadTrending(); }, [loadTrending]);
+  const tags = trendingTags.slice(0, 5);
   if (tags.length === 0) return null;
   return (
     <InsertShell icon={Hash} title="Тренды Bloom">
@@ -156,8 +171,10 @@ export const MusicFeedCard = () => {
 
 /* ── Горячие комментарии ──────────────────────────────────── */
 export const HotCommentsCard = ({ onOpenPost }: { onOpenPost: (id: string) => void }) => {
-  const { hotComments } = useBloomStore();
-  const list = hotComments().filter(x => x.comment.likes.length > 0);
+  const hot = useBloomStore(s => s.hot);
+  const loadHot = useBloomStore(s => s.loadHot);
+  useEffect(() => { void loadHot(); }, [loadHot]);
+  const list = hot.filter(x => x.comment.likes.length > 0);
   if (list.length === 0) return null;
   return (
     <InsertShell icon={MessageCircle} title="Горячие комментарии">
