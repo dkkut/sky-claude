@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Home, Users, Wallet, Target, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Home, Users, Wallet, Target, Sparkles, Check, X, Mail } from 'lucide-react';
 import { FamilyIcon } from '../familyIcons';
 import { useFamilyStore } from '../store';
+import { ROLE_LABEL } from '../types';
 
 const PERKS = [
   { icon: Wallet,  text: 'Общий счёт Sky Money с лимитами для детей' },
@@ -11,15 +12,76 @@ const PERKS = [
   { icon: Users,   text: 'До 8 участников, родительский контроль' },
 ];
 
+/** Входящие приглашения показываются здесь же: пока своей семьи нет,
+    это единственное, что можно сделать в Sky Family — принять чужое
+    приглашение или создать свою. */
+const IncomingInvitations = () => {
+  const { invitations, acceptInvitation, rejectInvitation } = useFamilyStore();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  if (invitations.length === 0) return null;
+
+  const accept = async (id: string) => {
+    setBusyId(id); setError('');
+    const r = await acceptInvitation(id);
+    setBusyId(null);
+    if (!r.ok) setError(r.error === 'member_limit' ? 'В семье уже нет мест' : r.error === 'expired' ? 'Приглашение устарело' : 'Не получилось принять приглашение');
+  };
+  const reject = async (id: string) => {
+    setBusyId(id);
+    await rejectInvitation(id);
+    setBusyId(null);
+  };
+
+  return (
+    <div className="mb-6 space-y-2.5">
+      <p className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: 'var(--t2)' }}>
+        <Mail size={13}/>Приглашения в семью
+      </p>
+      <AnimatePresence>
+        {invitations.map(inv => (
+          <motion.div key={inv.id} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="rounded-2xl p-3.5" style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent)' }}>
+            <p className="text-[13px] font-bold" style={{ color: 'var(--t1)' }}>«{inv.familyName}»</p>
+            <p className="text-[11.5px]" style={{ color: 'var(--t3)' }}>
+              {inv.senderName ?? 'Владелец'} приглашает вас как «{ROLE_LABEL[inv.role]}»
+            </p>
+            <div className="mt-2.5 flex gap-2">
+              <button type="button" disabled={busyId === inv.id} onClick={() => accept(inv.id)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-bold text-white disabled:opacity-50"
+                style={{ background: 'var(--accent)' }}>
+                <Check size={13}/>Принять
+              </button>
+              <button type="button" disabled={busyId === inv.id} onClick={() => reject(inv.id)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-bold disabled:opacity-50"
+                style={{ background: 'var(--bg-l2)', color: 'var(--t2)' }}>
+                <X size={13}/>Отклонить
+              </button>
+            </div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+      {error && <p className="text-[11.5px]" style={{ color: '#ef4444' }}>{error}</p>}
+    </div>
+  );
+};
+
 export const CreateFamily = () => {
-  const { createFamily } = useFamilyStore();
+  const { createFamily, invitations, load, loaded } = useFamilyStore();
   const [name, setName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState('');
 
-  const submit = () => {
+  useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
+
+  const submit = async () => {
     if (!name.trim()) return;
     setCreating(true);
-    setTimeout(() => createFamily(name.trim()), 500);
+    setError('');
+    const ok = await createFamily(name.trim());
+    setCreating(false);
+    if (!ok) setError('Не получилось создать семью — попробуйте ещё раз');
   };
 
   if (creating) {
@@ -45,6 +107,10 @@ export const CreateFamily = () => {
         </p>
       </div>
 
+      {invitations.length > 0 && (
+        <div className="mt-8"><IncomingInvitations/></div>
+      )}
+
       <div className="mt-8 space-y-3">
         {PERKS.map((p, i) => (
           <motion.div key={p.text} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i*0.08 }}
@@ -62,6 +128,8 @@ export const CreateFamily = () => {
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Например: Семья Ивановых" maxLength={30}
           className="w-full rounded-2xl px-4 py-3.5 text-[14px] outline-none" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)', color: 'var(--t1)' }}/>
       </div>
+
+      {error && <p className="mt-2 text-[11.5px]" style={{ color: '#ef4444' }}>{error}</p>}
 
       <motion.button type="button" whileTap={name.trim() ? { scale: 0.98 } : {}} disabled={!name.trim()} onClick={submit}
         className="sky-btn-primary mt-4 w-full justify-center py-4 text-[14.5px] disabled:opacity-40">

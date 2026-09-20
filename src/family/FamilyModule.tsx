@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Loader2 } from 'lucide-react';
 import { useFamilyStore } from './store';
 import { CreateFamily } from './components/CreateFamily';
 import { FamilyHome } from './components/FamilyHome';
@@ -24,8 +25,18 @@ import { FamilyTravel } from './components/FamilyTravel';
 type View = 'home'|'wallet'|'goals'|'achievements'|'members'|'approvals'|'prime'|'shopping'|'stats'|'calendar'|'security'|'location'|'allowance'|'safe'|'capsule'|'permissions'|'ai'|'travel';
 
 export const FamilyModule = () => {
-  const { family } = useFamilyStore();
+  const { family, loaded, load } = useFamilyStore();
   const [view, setView] = useState<View>('home');
+
+  useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
+
+  if (!loaded) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <Loader2 size={22} className="animate-spin" style={{ color: 'var(--t3)' }} />
+      </div>
+    );
+  }
 
   if (!family) return <CreateFamily/>;
 

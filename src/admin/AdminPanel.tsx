@@ -1806,9 +1806,194 @@ const CourierAdminSection = () => {
   );
 };
 
+/* ─── Sky Family: семьи, участники, приглашения, журнал ───────────────
+   Те же ручки, что и у клиента (server/family.mjs), просто через
+   /api/family/admin/*: список, деталь, приостановка/восстановление.
+   Ни ролью, ни владельцем, ни лимитом здесь не управляют напрямую —
+   это делает семья сама; администратору доступен только просмотр и
+   статус семьи целиком (например, при разборе жалобы). */
+
+const FAMILY_ROLE_LABEL: Record<string, string> = {
+  owner: 'Владелец', adult: 'Взрослый', teen: 'Подросток', child: 'Ребёнок', guest: 'Гость',
+};
+const FAMILY_STATUS_LABEL: Record<string, string> = {
+  active: 'Активна', suspended: 'Приостановлена', closed: 'Закрыта',
+};
+
+const FamilyAdminDetail = ({ familyId, onBack, onChanged }: { familyId: string; onBack: () => void; onChanged: () => void }) => {
+  const [detail, setDetail] = useState<import('@/family/familyApi').AdminFamilyDetail | null>(null);
+  const [failed, setFailed] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminFamilyDetail } = await import('@/family/familyApi');
+    const r = await apiAdminFamilyDetail(familyId);
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить семью'); return; }
+    setDetail(r.data);
+  }, [familyId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const setStatus = async (status: 'active' | 'suspended') => {
+    setBusy(true); setFailed('');
+    const { apiAdminSetFamilyStatus } = await import('@/family/familyApi');
+    const r = await apiAdminSetFamilyStatus(familyId, status);
+    setBusy(false);
+    if (!r.ok) { setFailed('Не получилось изменить статус'); return; }
+    void load();
+    onChanged();
+  };
+
+  if (!detail) {
+    return failed
+      ? <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>
+      : <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />;
+  }
+
+  const { family, members, invitations, log } = detail;
+  const activeMembers = members.filter((m) => m.status === 'active');
+
+  return (
+    <div className="space-y-3">
+      <button type="button" onClick={onBack} className="text-[11px] font-bold" style={{ color: C.t3 }}>← К списку семей</button>
+
+      <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-bold" style={{ color: C.t1 }}>{family.name}</p>
+          <span className="shrink-0 text-[10px] font-bold" style={{
+            color: family.status === 'active' ? C.green : family.status === 'suspended' ? C.red : C.t3,
+          }}>{FAMILY_STATUS_LABEL[family.status] ?? family.status}</span>
+        </div>
+        <p className="mt-1 text-[10px]" style={{ color: C.t3 }}>
+          {activeMembers.length}/{family.memberLimit} участников · до {family.adultLimit} взрослых
+          {family.primeUntil && <> · Prime до {fmtTs(family.primeUntil)}</>}
+        </p>
+        {failed && <p className="mt-1.5 text-[11px]" style={{ color: C.red }}>{failed}</p>}
+        <div className="mt-2 flex gap-2">
+          {family.status !== 'closed' && (
+            family.status === 'suspended' ? (
+              <button type="button" disabled={busy} onClick={() => void setStatus('active')}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold disabled:opacity-50"
+                style={{ background: C.green, color: '#fff' }}>
+                <Check size={12} /> Восстановить
+              </button>
+            ) : (
+              <button type="button" disabled={busy} onClick={() => void setStatus('suspended')}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold disabled:opacity-50"
+                style={{ background: C.l2, color: C.red }}>
+                <Ban size={12} /> Приостановить
+              </button>
+            )
+          )}
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-1.5 text-[10px] font-bold" style={{ color: C.t3 }}>УЧАСТНИКИ</p>
+        <div className="space-y-1.5">
+          {members.map((m) => (
+            <div key={m.id} className="flex items-center justify-between gap-2 rounded-xl px-3 py-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>
+                  {m.role === 'owner' && <Crown size={11} style={{ color: C.amber, display: 'inline', marginRight: 4 }} />}
+                  {m.name} {m.username && <span className="font-normal" style={{ color: C.t3 }}>@{m.username}</span>}
+                </p>
+                <p className="text-[10px]" style={{ color: C.t3 }}>{FAMILY_ROLE_LABEL[m.role] ?? m.role}</p>
+              </div>
+              <span className="shrink-0 text-[10px]" style={{ color: m.status === 'active' ? C.t3 : C.red }}>
+                {m.status === 'active' ? '' : m.status === 'left' ? 'вышел' : 'исключён'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {invitations.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-bold" style={{ color: C.t3 }}>ПРИГЛАШЕНИЯ</p>
+          <div className="space-y-1.5">
+            {invitations.map((inv) => (
+              <div key={inv.id} className="rounded-xl px-3 py-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+                <p className="text-[11px]" style={{ color: C.t2 }}>{FAMILY_ROLE_LABEL[inv.role] ?? inv.role} · {inv.status}</p>
+                <p className="text-[10px]" style={{ color: C.t3 }}>{fmtTs(inv.createdAt)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {log.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-bold" style={{ color: C.t3 }}>ЖУРНАЛ</p>
+          <div className="space-y-1.5">
+            {log.map((e) => (
+              <div key={e.id} className="rounded-xl px-3 py-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+                <p className="text-[11px]" style={{ color: C.t2 }}>{e.action}</p>
+                <p className="text-[10px]" style={{ color: C.t3 }}>{fmtTs(e.createdAt)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const FamilyAdminSection = () => {
+  const [families, setFamilies] = useState<import('@/family/familyApi').AdminFamilyRow[] | null>(null);
+  const [q, setQ] = useState('');
+  const [failed, setFailed] = useState('');
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminListFamilies } = await import('@/family/familyApi');
+    const r = await apiAdminListFamilies(q.trim() ? { q: q.trim() } : {});
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить семьи'); return; }
+    setFamilies(r.data.items);
+  }, [q]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  if (openId) return <FamilyAdminDetail familyId={openId} onBack={() => setOpenId(null)} onChanged={() => void load()} />;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Название семьи или @владелец"
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <button type="button" onClick={() => void load()} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+          <RefreshCw size={12} />
+        </button>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {families === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : families.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Семей не найдено.</p>
+      ) : families.map((f) => (
+        <button key={f.id} type="button" onClick={() => setOpenId(f.id)}
+          className="w-full rounded-2xl p-3 text-left" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{f.name}</p>
+            <span className="shrink-0 text-[10px] font-bold" style={{
+              color: f.status === 'active' ? C.green : f.status === 'suspended' ? C.red : C.t3,
+            }}>{FAMILY_STATUS_LABEL[f.status] ?? f.status}</span>
+          </div>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            {f.ownerName} @{f.ownerUsername} · {f.memberCount}/{f.memberLimit} участников
+            {f.primeUntil && <> · Prime до {fmtTs(f.primeUntil)}</>}
+          </p>
+        </button>
+      ))}
+    </div>
+  );
+};
+
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -1931,6 +2116,7 @@ export const AdminPanel = () => {
     { key: 'campaigns', label: 'Мероприятия', show: has('campaigns') },
     { key: 'gifts', label: 'Подарки', show: has('gifts') },
     { key: 'couriers', label: 'Курьеры', show: has('logistics') },
+    { key: 'family', label: 'Sky Family', show: has('moderation') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
     { key: 'events', label: 'События', show: has('security') },
@@ -2061,6 +2247,7 @@ export const AdminPanel = () => {
       {tab === 'campaigns' && <CampaignsAdminSection onPendingChanged={() => void loadPending()} />}
       {tab === 'gifts' && <GiftsAdminSection />}
       {tab === 'couriers' && <CourierAdminSection />}
+      {tab === 'family' && <FamilyAdminSection />}
 
       {tab === 'admins' && (
         <>

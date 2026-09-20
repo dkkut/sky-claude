@@ -1486,3 +1486,8 @@ export const pushGiftNotification = (userIds, note) => {
 export const pushChatCreated = async (userIds, chatId) => {
   await sendChatToEach(chatId, userIds);
 };
+
+/** Sky Family: приглашение, решение, изменение владения, Prime. */
+export const pushFamily = (userIds, msg) => {
+  broadcast(Array.isArray(userIds) ? userIds : [], msg);
+};

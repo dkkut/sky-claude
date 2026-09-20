@@ -7,6 +7,11 @@ import { PRIME_FAMILY_PLANS } from '../types';
 import { useMoney, fmt } from '@/wallet/store';
 import { useAuthStore } from '@/core/auth/store';
 
+/* Цена и срок показываем из того же справочника, что и раньше — они
+   совпадают с сервером (server/family.mjs::FAMILY_PRIME_PLANS) один в
+   один. Но платит и решает не эта таблица: сервер сам берёт цену по
+   planId и никогда не поверит присланной сумме. */
+
 const PERKS = [
   { icon: Crown,    text: 'Sky Prime для всех участников семьи' },
   { icon: Sparkles, text: 'Общий семейный уровень и ускоренный прогресс' },
@@ -20,15 +25,19 @@ export const FamilyPrime = ({ onBack }: { onBack: () => void }) => {
   const { currentUserId } = useAuthStore();
   const [planId, setPlanId] = useState(PRIME_FAMILY_PLANS.find(p=>p.popular)?.id ?? PRIME_FAMILY_PLANS[0].id);
   const [toast, setToast] = useState<string | null>(null);
+  const [buying, setBuying] = useState(false);
 
   if (!family) return null;
   const active = isPrimeFamilyActive();
   const balance = getBalance(currentUserId ?? '');
   const plan = PRIME_FAMILY_PLANS.find(p => p.id === planId)!;
+  const isOwner = family.ownerId === (currentUserId ?? '');
 
-  const buy = () => {
-    const ok = purchaseFamilyPrime(planId);
-    setToast(ok ? 'Sky Prime Family активирован для всей семьи' : 'Недостаточно средств на личном балансе');
+  const buy = async () => {
+    setBuying(true);
+    const ok = await purchaseFamilyPrime(planId);
+    setBuying(false);
+    setToast(ok ? 'Sky Prime Family активирован для всей семьи' : 'Не получилось оформить — проверьте баланс');
     setTimeout(() => setToast(null), 2600);
   };
 
@@ -71,7 +80,7 @@ export const FamilyPrime = ({ onBack }: { onBack: () => void }) => {
           </div>
         </div>
 
-        {!active && (
+        {!active && isOwner && (
           <>
             <div className="mt-5 grid grid-cols-2 gap-2.5">
               {PRIME_FAMILY_PLANS.map(p => (
@@ -88,12 +97,18 @@ export const FamilyPrime = ({ onBack }: { onBack: () => void }) => {
             </div>
 
             <p className="mt-3 text-center text-[11px]" style={{ color: 'var(--t3)' }}>Личный баланс: {fmt(balance)}</p>
-            <motion.button type="button" whileTap={{ scale: 0.98 }} onClick={buy}
-              className="mt-3 w-full rounded-2xl py-4 text-center text-[14.5px] font-bold text-white"
+            <motion.button type="button" whileTap={{ scale: 0.98 }} disabled={buying} onClick={buy}
+              className="mt-3 w-full rounded-2xl py-4 text-center text-[14.5px] font-bold text-white disabled:opacity-60"
               style={{ background: 'linear-gradient(135deg,#f59e0b,#eab308)' }}>
-              Оформить за {plan.price.toLocaleString('ru')} ₽
+              {buying ? 'Оформляем…' : `Оформить за ${plan.price.toLocaleString('ru')} ₽`}
             </motion.button>
           </>
+        )}
+
+        {!active && !isOwner && (
+          <p className="mt-5 text-center text-[12px]" style={{ color: 'var(--t3)' }}>
+            Sky Prime Family оформляет только владелец семьи
+          </p>
         )}
 
         {toast && (

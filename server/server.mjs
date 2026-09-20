@@ -45,6 +45,7 @@ import { sweepOrphanCampaignCovers } from './campaigns.mjs';
 import { giftRoutes } from './routes/gifts.mjs';
 import { sweepOrphanGiftMedia } from './gifts.mjs';
 import { mapsRoutes } from './routes/maps.mjs';
+import { familyRoutes } from './routes/family.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanVideos } from './skyvideo.mjs';
@@ -71,7 +72,8 @@ import { expirePrimeSubscriptions } from './skyid.mjs';
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
-                pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes];
+                pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
+                familyRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.

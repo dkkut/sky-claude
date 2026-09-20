@@ -8,7 +8,7 @@ import { fmtAgo } from '@/bloom/store';
 type FamilyView = 'wallet'|'goals'|'achievements'|'members'|'approvals'|'prime'|'shopping'|'stats'|'calendar'|'security'|'location'|'allowance'|'safe'|'capsule'|'permissions'|'ai'|'travel';
 
 export const FamilyHome = ({ onNav }: { onNav: (v: FamilyView) => void }) => {
-  const { family, cashbackPct, familyLevel, isAdult, myMember, isPrimeFamilyActive, triggerSOS, checkDuePayouts, openOrCreateFamilyChat } = useFamilyStore();
+  const { family, cashbackPct, familyLevel, myMember, isPrimeFamilyActive, triggerSOS, checkDuePayouts, openOrCreateFamilyChat } = useFamilyStore();
   const [sosConfirm, setSosConfirm] = useState(false);
   const [sosSent, setSosSent] = useState(false);
   useEffect(() => { checkDuePayouts(); }, [checkDuePayouts]);
@@ -24,7 +24,7 @@ export const FamilyHome = ({ onNav }: { onNav: (v: FamilyView) => void }) => {
     { key: 'wallet' as const,       label: 'Общий счёт',   icon: Wallet,  value: `${family.balance.toLocaleString('ru')} ₽` },
     { key: 'goals' as const,        label: 'Цели',          icon: Target,  value: `${family.goals.length}` },
     { key: 'achievements' as const, label: 'Достижения',    icon: Trophy,  value: `${family.achievements.filter(a=>a.unlocked).length}/${family.achievements.length}` },
-    { key: 'members' as const,      label: 'Участники',     icon: Users,   value: `${family.members.length}/8` },
+    { key: 'members' as const,      label: 'Участники',     icon: Users,   value: `${family.members.length}/${family.memberLimit}` },
     { key: 'shopping' as const,     label: 'Список покупок',icon: ShoppingCart, value: `${family.shoppingList.filter(i=>!i.bought).length}` },
     { key: 'stats' as const,        label: 'Статистика',    icon: BarChart3, value: '' },
     { key: 'calendar' as const,     label: 'Календарь',     icon: Calendar, value: '' },
@@ -71,7 +71,7 @@ export const FamilyHome = ({ onNav }: { onNav: (v: FamilyView) => void }) => {
               {m.name[0]}
             </div>
           ))}
-          {family.members.length < 8 && (
+          {family.members.length < family.memberLimit && (
             <button type="button" onClick={() => onNav('members')} className="grid h-10 w-10 shrink-0 place-items-center rounded-full" style={{ background: 'var(--bg-l2)', border: '1.5px dashed var(--border)' }}>
               <Plus size={15} style={{ color: 'var(--t3)' }}/>
             </button>

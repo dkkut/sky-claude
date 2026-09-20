@@ -1,8 +1,17 @@
 /* ===========================================================
    SKY FAMILY STORE
-   Единая семейная группа (можно создать только одну), общий счёт
-   Sky Money, накопления, баллы, кешбэк, достижения, родительский
-   контроль с лимитами и запросами на подтверждение.
+
+   Семья, участники, роли, приглашения, владение и Sky Prime Family —
+   реальная серверная сущность (server/family.mjs): кто в семье, кто
+   владелец, кому какая роль и активен ли Prime, решает сервер, а не
+   этот файл.
+
+   Общий счёт Sky Money, цели, баллы, достижения, лента, список
+   покупок, календарь, SOS, геопозиция, карманные деньги, сейф и
+   капсулы времени — отдельная, гораздо более крупная задача не по
+   текущему ТЗ (см. финальный отчёт). Они остаются как были: локальным
+   состоянием этой вкладки, просто теперь пристёгнутым к настоящему
+   id семьи и настоящему списку участников, а не к выдуманным.
 =========================================================== */
 import { create } from 'zustand';
 import { useAuthStore } from '@/core/auth/store';
@@ -10,12 +19,19 @@ import { useMoney } from '@/wallet/store';
 import { useMessengerStore } from '@/messenger/store';
 import { useModuleStore } from '@/data/state/modules';
 import type {
-  FamilyMember, FamilyRole, FamilyTx, FamilyTxKind, FamilyGoal, ApprovalRequest,
+  FamilyMember, FamilyRole, FamilyTx, FamilyGoal, ApprovalRequest,
   FamilyAchievement, ActivityItem, AutoTopupFreq, FamilyShoppingItem,
   FamilyCalendarEvent, SOSAlert, MemberLocation, Allowance, AllowanceFreq, SafeItem, TimeCapsule,
   PermissionKey, TripPlan, ChecklistItem,
 } from './types';
-import { CASHBACK_TIERS, AVATAR_COLORS, PRIME_FAMILY_PLANS, PERMISSIONS } from './types';
+import { CASHBACK_TIERS, AVATAR_COLORS, PERMISSIONS } from './types';
+import {
+  apiMyFamily, apiCreateFamily, apiCloseFamily, apiMyInvitations,
+  apiInviteMember, apiCancelInvitation, apiAcceptInvitation, apiRejectInvitation,
+  apiAddPlaceholderMember, apiRemoveMember, apiUpdateMember, apiLeaveFamily, apiTransferOwnership,
+  apiPurchaseFamilyPrime,
+  type ServerFamily, type ServerFamilyMember, type FamilyInvitation, type ServerFamilyStatus,
+} from './familyApi';
 
 const ACH_TEMPLATES: Omit<FamilyAchievement,'unlocked'|'unlockedAt'>[] = [
   { id:'first_topup',  title:'Первая покупка',        desc:'Пополните семейный счёт впервые',        kind:'trophy', reward:'Тема «Рассвет»' },
@@ -38,6 +54,10 @@ export interface Family {
   name: string;
   ownerId: string;
   createdAt: string;
+  /** Настоящий статус допуска семьи — решает сервер (active/closed/suspended). */
+  status: ServerFamilyStatus;
+  memberLimit: number;
+  adultLimit: number;
   members: FamilyMember[];
   balance: number;
   transactions: FamilyTx[];
@@ -46,8 +66,8 @@ export interface Family {
   achievements: FamilyAchievement[];
   activity: ActivityItem[];
   autoTopup: { freq: AutoTopupFreq; amount: number; memberId: string } | null;
-  totalTurnover: number; // для достижения "миллион оборота" и уровня
-  primeUntil?: string;   // подписка Sky Prime Family активна до
+  totalTurnover: number;
+  primeUntil?: string;
   shoppingList: FamilyShoppingItem[];
   calendar: FamilyCalendarEvent[];
   sosAlerts: SOSAlert[];
@@ -59,63 +79,136 @@ export interface Family {
   trips: TripPlan[];
 }
 
+/* Локальный кэш — только «довесок», которого нет на сервере (счёт,
+   цели, достижения и т.п.). Идентичность (id/имя/владелец/участники/
+   роли/Prime) на каждой загрузке перезаписывается ответом сервера. */
 const KEY = 'sky:family:v1';
-const load = (): Family | null => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; } };
-const persist = (f: Family | null) => { try { localStorage.setItem(KEY, JSON.stringify(f)); } catch {} };
+const loadLocal = (): Family | null => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; } };
+const persist = (f: Family | null) => { try { localStorage.setItem(KEY, JSON.stringify(f)); } catch { /* локальный кэш недоступен — не критично */ } };
+
+const roleDefaults = (role: FamilyRole) => ({
+  canWithdraw: role !== 'child',
+  canDepositOnly: role === 'child',
+  dailyLimit: role === 'child' ? 500 : role === 'teen' ? 2000 : undefined,
+  maxTransfer: role === 'child' ? 500 : role === 'teen' ? 3000 : undefined,
+  requireApprovalOver: role === 'child' ? 300 : role === 'teen' ? 2000 : undefined,
+});
+
+/** Серверный участник → форма, которую рисуют существующие экраны. Локальные «довески» (лимиты, баллы) сохраняются между обновлениями по id участника. */
+const mapMember = (m: ServerFamilyMember, prevById: Record<string, FamilyMember>): FamilyMember => {
+  const prev = prevById[m.id];
+  const defaults = roleDefaults(m.role);
+  return {
+    id: m.id,
+    accountId: m.profileId ?? undefined,
+    name: m.name,
+    avatarColor: prev?.avatarColor ?? AVATAR_COLORS[hashStr(m.id) % AVATAR_COLORS.length],
+    role: m.role,
+    joinedAt: m.joinedAt ?? nowISO(),
+    points: prev?.points ?? 0,
+    canWithdraw: prev?.canWithdraw ?? defaults.canWithdraw,
+    canDepositOnly: prev?.canDepositOnly ?? defaults.canDepositOnly,
+    dailyLimit: prev?.dailyLimit ?? defaults.dailyLimit,
+    weeklyLimit: prev?.weeklyLimit,
+    monthlyLimit: prev?.monthlyLimit,
+    maxTransfer: prev?.maxTransfer ?? defaults.maxTransfer,
+    requireApprovalOver: prev?.requireApprovalOver ?? defaults.requireApprovalOver,
+    permissions: m.permissions as Partial<Record<PermissionKey, boolean>>,
+  };
+};
+
+const hydrate = (serverFamily: ServerFamily, members: ServerFamilyMember[], prevLocal: Family | null): Family => {
+  const sameFamily = prevLocal && prevLocal.id === serverFamily.id;
+  const base: Family = sameFamily ? prevLocal! : {
+    id: serverFamily.id, name: serverFamily.name, ownerId: serverFamily.ownerId, createdAt: serverFamily.createdAt ?? nowISO(),
+    status: serverFamily.status, memberLimit: serverFamily.memberLimit, adultLimit: serverFamily.adultLimit,
+    members: [], balance: 0, transactions: [], goals: [], approvalRequests: [],
+    achievements: ACH_TEMPLATES.map(a => ({ ...a, unlocked: false })),
+    activity: [{ id: crypto.randomUUID(), memberId: serverFamily.ownerId, memberName: '', text: `семья «${serverFamily.name}» создана`, kind: 'home', createdAt: nowISO() }],
+    autoTopup: null, totalTurnover: 0, shoppingList: [], calendar: [], sosAlerts: [],
+    locations: [], allowances: [], safe: [], capsules: [], trips: [],
+  };
+  const prevById = Object.fromEntries((sameFamily ? prevLocal!.members : []).map(m => [m.id, m]));
+  return {
+    ...base,
+    id: serverFamily.id, name: serverFamily.name, ownerId: serverFamily.ownerId,
+    status: serverFamily.status, memberLimit: serverFamily.memberLimit, adultLimit: serverFamily.adultLimit,
+    primeUntil: serverFamily.primeUntil ?? undefined,
+    members: members.map(m => mapMember(m, prevById)),
+  };
+};
 
 interface FamilyState {
   family: Family | null;
+  /** Приглашения, ждущие моего решения (я — получатель). */
+  invitations: FamilyInvitation[];
+  /** Только у владельца: разосланные и ещё не решённые приглашения. */
+  pendingInvitations: FamilyInvitation[];
+  loaded: boolean;
+  busy: boolean;
+  lastError: string | null;
+
+  load: () => Promise<void>;
 
   // computed
   cashbackPct: () => number;
   familyLevel: () => { level: number; xp: number; xpForNext: number };
   myMember: () => FamilyMember | null;
   isAdult: (memberId: string) => boolean;
+  isOwner: () => boolean;
 
-  // жизненный цикл семьи
-  createFamily: (name: string) => void;
-  disbandFamily: () => void;
+  // жизненный цикл семьи — реальный, серверный
+  createFamily: (name: string) => Promise<boolean>;
+  closeFamily: () => Promise<boolean>;
 
-  // участники
-  addRealMember: (accountId: string, role: FamilyRole) => boolean;
-  addChildMember: (name: string, role: 'child'|'teen') => void;
-  removeMember: (memberId: string) => void;
+  // приглашения — реальные, серверные
+  inviteMember: (recipientId: string, role: 'adult'|'teen'|'guest') => Promise<{ ok: boolean; error?: string }>;
+  cancelInvitation: (invitationId: string) => Promise<void>;
+  acceptInvitation: (invitationId: string) => Promise<{ ok: boolean; error?: string }>;
+  rejectInvitation: (invitationId: string) => Promise<void>;
+
+  // участники — реальные
+  addChildMember: (name: string, role: 'child'|'teen') => Promise<boolean>;
+  removeMember: (memberId: string) => Promise<void>;
+  leaveFamily: () => Promise<{ ok: boolean; error?: string }>;
+  transferOwnership: (memberId: string) => Promise<{ ok: boolean; error?: string }>;
+  updateMemberRole: (memberId: string, role: 'adult'|'teen'|'child'|'guest') => Promise<{ ok: boolean; error?: string }>;
   updateMemberLimits: (memberId: string, patch: Partial<Pick<FamilyMember,'dailyLimit'|'weeklyLimit'|'monthlyLimit'|'maxTransfer'|'canWithdraw'|'canDepositOnly'|'requireApprovalOver'>>) => void;
 
-  // счёт
+  // счёт (локально — вне текущего ТЗ)
   topUp: (amount: number) => boolean;
   withdraw: (amount: number, reason: string) => boolean;
   setAutoTopup: (cfg: Family['autoTopup']) => void;
 
-  // цели
+  // цели (локально)
   createGoal: (title: string, kind: string, targetAmount: number, deadline?: string) => void;
   contributeToGoal: (goalId: string, amount: number) => boolean;
   deleteGoal: (goalId: string) => void;
 
-  // баллы / достижения
+  // баллы / достижения (локально)
   addPoints: (memberId: string, amount: number, reason: string) => void;
   totalPoints: () => number;
 
-  // запросы на одобрение
+  // запросы на одобрение (локально)
   requestApproval: (kind: ApprovalRequest['kind'], itemTitle: string, amount: number, reason?: string, category?: string) => void;
   resolveApproval: (id: string, approve: boolean) => void;
 
-  // Sky Prime Family
+  // Sky Prime Family — реально, через сервер
   isPrimeFamilyActive: () => boolean;
-  purchaseFamilyPrime: (planId: string) => boolean;
+  purchaseFamilyPrime: (planId: string) => Promise<boolean>;
 
-  // список покупок
+  // список покупок (локально)
   addShoppingItem: (title: string, price?: number, store?: string, assignedTo?: string) => void;
   toggleBought: (id: string) => void;
   removeShoppingItem: (id: string) => void;
   clearBought: () => void;
 
-  // календарь
+  // календарь (локально)
   addEvent: (title: string, kind: FamilyCalendarEvent['kind'], date: string, note?: string) => void;
   removeEvent: (id: string) => void;
   upcomingEvents: () => FamilyCalendarEvent[];
 
-  // SOS и безопасность
+  // SOS и безопасность (локально)
   triggerSOS: () => void;
   resolveSOS: (id: string) => void;
   blockMemberAccess: (memberId: string) => void;
@@ -123,34 +216,34 @@ interface FamilyState {
   logoutMemberEverywhere: (memberId: string) => void;
   securityFeed: () => { memberId: string; memberName: string; text: string; type: string; at: string }[];
 
-  // геопозиция
+  // геопозиция (локально)
   toggleShareLocation: (share: boolean) => void;
   markImHome: () => void;
   locationFor: (memberId: string) => MemberLocation | null;
 
-  // карманные деньги по расписанию
+  // карманные деньги (локально)
   setAllowance: (memberId: string, amount: number, freq: AllowanceFreq) => void;
   cancelAllowance: (memberId: string) => void;
   checkDuePayouts: () => void;
   payoutNow: (memberId: string) => boolean;
 
-  // семейный сейф
+  // семейный сейф (локально)
   addSafeItem: (kind: SafeItem['kind'], title: string, content: string, visibility: SafeItem['visibility']) => void;
   removeSafeItem: (id: string) => void;
   visibleSafeItems: () => SafeItem[];
 
-  // капсула времени
+  // капсула времени (локально)
   createCapsule: (title: string, message: string, unlockAt: string) => void;
   openCapsule: (id: string) => void;
 
-  // разрешения
+  // разрешения (локально; серверно сохраняется role, permissions — заготовка на будущее)
   hasPermission: (memberId: string, key: PermissionKey) => boolean;
   updateMemberPermission: (memberId: string, key: PermissionKey, value: boolean) => void;
 
-  // семейный чат (реальная интеграция с мессенджером Sky)
+  // семейный чат
   openOrCreateFamilyChat: () => string;
 
-  // режим путешествий
+  // режим путешествий (локально)
   createTrip: (title: string, destination: string, startDate: string, endDate: string, budget?: number) => void;
   deleteTrip: (id: string) => void;
   addChecklistItem: (tripId: string, text: string) => void;
@@ -163,8 +256,6 @@ interface FamilyState {
 }
 
 export const useFamilyStore = create<FamilyState>((set, get) => {
-  const save = () => persist(get().family);
-
   const mut = (fn: (f: Family) => Family) => {
     const f = get().family;
     if (!f) return;
@@ -174,7 +265,31 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
   };
 
   return {
-    family: load(),
+    family: null,
+    invitations: [],
+    pendingInvitations: [],
+    loaded: false,
+    busy: false,
+    lastError: null,
+
+    load: async () => {
+      const [famRes, invRes] = await Promise.all([apiMyFamily(), apiMyInvitations()]);
+      const data = famRes.ok ? famRes.data?.data ?? null : null;
+      if (!data) {
+        set({ family: null, invitations: invRes.ok ? invRes.data?.invitations ?? [] : [], pendingInvitations: [], loaded: true });
+        persist(null);
+        return;
+      }
+      const prevLocal = loadLocal();
+      const hydrated = hydrate(data.family, data.members, prevLocal);
+      set({
+        family: hydrated,
+        invitations: invRes.ok ? invRes.data?.invitations ?? [] : [],
+        pendingInvitations: data.pendingInvitations ?? [],
+        loaded: true,
+      });
+      persist(hydrated);
+    },
 
     cashbackPct: () => {
       const f = get().family;
@@ -200,70 +315,96 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       const m = get().family?.members.find(x => x.id === memberId);
       return m?.role === 'owner' || m?.role === 'adult';
     },
+    isOwner: () => get().family?.ownerId === me(),
 
-    createFamily: (name) => {
-      const uid = me();
-      const owner: FamilyMember = {
-        id: uid, accountId: uid, name: myName(), avatarColor: AVATAR_COLORS[0], role: 'owner',
-        joinedAt: nowISO(), points: 0, canWithdraw: true, canDepositOnly: false,
-      };
-      const family: Family = {
-        id: crypto.randomUUID(), name, ownerId: uid, createdAt: nowISO(),
-        members: [owner], balance: 0, transactions: [], goals: [], approvalRequests: [],
-        achievements: ACH_TEMPLATES.map(a => ({ ...a, unlocked: false })),
-        activity: [{ id: crypto.randomUUID(), memberId: uid, memberName: myName(), text: `создал(а) семью «${name}»`, kind: 'home', createdAt: nowISO() }],
-        autoTopup: null, totalTurnover: 0, shoppingList: [], calendar: [], sosAlerts: [],
-        locations: [], allowances: [], safe: [], capsules: [], trips: [],
-      };
-      set({ family });
-      persist(family);
-    },
-
-    disbandFamily: () => { set({ family: null }); persist(null); },
-
-    addRealMember: (accountId, role) => {
-      const f = get().family;
-      if (!f) return false;
-      if (f.members.length >= 8) return false;
-      if (f.members.some(m => m.accountId === accountId)) return false;
-      const adultsCount = f.members.filter(m => m.role === 'owner' || m.role === 'adult').length;
-      if ((role === 'owner' || role === 'adult') && adultsCount >= 2) return false;
-      const acc = useAuthStore.getState().accounts.find(a => a.id === accountId);
-      if (!acc) return false;
-      const member: FamilyMember = {
-        id: accountId, accountId, name: acc.name, avatarColor: AVATAR_COLORS[f.members.length % AVATAR_COLORS.length],
-        role, joinedAt: nowISO(), points: 0,
-        canWithdraw: role !== 'child', canDepositOnly: role === 'child',
-        dailyLimit: role === 'child' ? 500 : role === 'teen' ? 2000 : undefined,
-        maxTransfer: role === 'child' ? 500 : role === 'teen' ? 3000 : undefined,
-        requireApprovalOver: role === 'child' ? 300 : role === 'teen' ? 2000 : undefined,
-      };
-      mut(fam => ({ ...fam, members: [...fam.members, member] }));
-      if (get().isPrimeFamilyActive() && f.primeUntil) {
-        const days = Math.ceil((new Date(f.primeUntil).getTime() - Date.now()) / 86400000);
-        if (days > 0) useAuthStore.getState().grantPrime(accountId, days);
-      }
-      get()._log(`присоединился(ась) к семье`, 'join');
+    createFamily: async (name) => {
+      set({ busy: true, lastError: null });
+      const r = await apiCreateFamily(name);
+      set({ busy: false });
+      if (!r.ok || !r.data) { set({ lastError: r.error ?? 'error' }); return false; }
+      const hydrated = hydrate(r.data.data.family, r.data.data.members, null);
+      set({ family: hydrated, pendingInvitations: r.data.data.pendingInvitations ?? [] });
+      persist(hydrated);
       return true;
     },
 
-    addChildMember: (name, role) => {
+    closeFamily: async () => {
       const f = get().family;
-      if (!f || f.members.length >= 8) return;
-      const member: FamilyMember = {
-        id: crypto.randomUUID(), name, avatarColor: AVATAR_COLORS[f.members.length % AVATAR_COLORS.length],
-        role, joinedAt: nowISO(), points: 0,
-        canWithdraw: false, canDepositOnly: role === 'child',
-        dailyLimit: role === 'child' ? 300 : 1500,
-        maxTransfer: role === 'child' ? 300 : 1500,
-        requireApprovalOver: role === 'child' ? 200 : 1000,
-      };
-      mut(fam => ({ ...fam, members: [...fam.members, member] }));
-      get()._log(`добавил(а) ребёнка «${name}» в семью`, 'child');
+      if (!f) return false;
+      const r = await apiCloseFamily(f.id);
+      if (!r.ok) { set({ lastError: r.error }); return false; }
+      set({ family: null, pendingInvitations: [] });
+      persist(null);
+      return true;
     },
 
-    removeMember: (memberId) => {
-      mut(f => ({ ...f, members: f.members.filter(m => m.id !== memberId) }));
+    inviteMember: async (recipientId, role) => {
+      const f = get().family;
+      if (!f) return { ok: false, error: 'no_family' };
+      const r = await apiInviteMember(f.id, recipientId, role);
+      if (!r.ok) return { ok: false, error: r.error };
+      await get().load();
+      return { ok: true };
+    },
+
+    cancelInvitation: async (invitationId) => {
+      await apiCancelInvitation(invitationId);
+      await get().load();
+    },
+
+    acceptInvitation: async (invitationId) => {
+      const r = await apiAcceptInvitation(invitationId);
+      if (!r.ok) return { ok: false, error: r.error };
+      await get().load();
+      return { ok: true };
+    },
+
+    rejectInvitation: async (invitationId) => {
+      await apiRejectInvitation(invitationId);
+      await get().load();
+    },
+
+    addChildMember: async (name, role) => {
+      const f = get().family;
+      if (!f) return false;
+      const r = await apiAddPlaceholderMember(f.id, name, role);
+      if (!r.ok) { set({ lastError: r.error }); return false; }
+      await get().load();
+      get()._log(`добавил(а) ребёнка «${name}» в семью`, 'child');
+      return true;
+    },
+
+    removeMember: async (memberId) => {
+      const f = get().family;
+      if (!f) return;
+      await apiRemoveMember(f.id, memberId);
+      await get().load();
+    },
+
+    leaveFamily: async () => {
+      const r = await apiLeaveFamily();
+      if (!r.ok) return { ok: false, error: r.error };
+      set({ family: null, pendingInvitations: [] });
+      persist(null);
+      return { ok: true };
+    },
+
+    transferOwnership: async (memberId) => {
+      const f = get().family;
+      if (!f) return { ok: false, error: 'no_family' };
+      const r = await apiTransferOwnership(f.id, memberId);
+      if (!r.ok) return { ok: false, error: r.error };
+      await get().load();
+      return { ok: true };
+    },
+
+    updateMemberRole: async (memberId, role) => {
+      const f = get().family;
+      if (!f) return { ok: false, error: 'no_family' };
+      const r = await apiUpdateMember(f.id, memberId, { role });
+      if (!r.ok) return { ok: false, error: r.error };
+      await get().load();
+      return { ok: true };
     },
 
     updateMemberLimits: (memberId, patch) => {
@@ -338,7 +479,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
 
     deleteGoal: (goalId) => mut(f => ({ ...f, goals: f.goals.filter(g => g.id !== goalId) })),
 
-    addPoints: (memberId, amount, reason) => {
+    addPoints: (memberId, amount) => {
       if (amount <= 0) return;
       mut(f => ({ ...f, members: f.members.map(m => m.id === memberId ? { ...m, points: m.points + amount } : m) }));
     },
@@ -377,21 +518,13 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       return !!until && new Date(until).getTime() > Date.now();
     },
 
-    purchaseFamilyPrime: (planId) => {
+    purchaseFamilyPrime: async (planId) => {
       const f = get().family;
-      const plan = PRIME_FAMILY_PLANS.find(p => p.id === planId);
-      if (!f || !plan) return false;
-      const uid = me();
-      const ok = useMoney.getState().spend(uid, plan.price, 'prime', `Sky Prime Family · ${plan.label}`);
-      if (!ok) return false;
-
-      const currentUntil = f.primeUntil && new Date(f.primeUntil).getTime() > Date.now() ? new Date(f.primeUntil) : new Date();
-      const until = new Date(currentUntil.getTime() + plan.days * 86400000).toISOString();
-
-      f.members.forEach(m => { if (m.accountId) useAuthStore.getState().grantPrime(m.accountId, plan.days); });
-      mut(fam => ({ ...fam, primeUntil: until }));
-      get()._log(`оформил(а) Sky Prime Family (${plan.label}) — Prime теперь у всей семьи`, 'prime');
-      get().addPoints(uid, Math.round(plan.price/5), 'Sky Prime Family');
+      if (!f) return false;
+      const r = await apiPurchaseFamilyPrime(f.id, planId);
+      if (!r.ok) { set({ lastError: r.error }); return false; }
+      await get().load();
+      get()._log(`оформил(а) Sky Prime Family — Prime теперь у всей семьи`, 'prime');
       return true;
     },
 
@@ -544,6 +677,9 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
 
     updateMemberPermission: (memberId, key, value) => {
       mut(f => ({ ...f, members: f.members.map(m => m.id === memberId ? { ...m, permissions: { ...m.permissions, [key]: value } } : m) }));
+      const b = get().family;
+      const target = b?.members.find(m => m.id === memberId);
+      if (b && target) void apiUpdateMember(b.id, memberId, { permissions: { ...target.permissions, [key]: value } as Record<string, boolean> });
     },
 
     openOrCreateFamilyChat: () => {
