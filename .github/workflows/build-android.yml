@@ -1,0 +1,96 @@
+name: Сборка Android (.apk)
+
+# Локально собрать APK нельзя: нужен Android SDK (compileSdk 36), а он
+# качается с dl.google.com — в песочнице разработки эта разработка
+# зашла тупик из-за сетевой политики. GitHub-раннер видит интернет
+# целиком, поэтому именно здесь собирается настоящий, устанавливаемый
+# APK.
+on:
+  push:
+    branches: [claude/project-server-setup-opwwui]
+    paths:
+      - 'android/**'
+      - 'capacitor.config.ts'
+      - 'src/**'
+      - 'public/**'
+      - '.github/workflows/build-android.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Сборка APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci --no-audit --no-fund
+
+      # Собранный dist/ идёт в APK только как офлайн-заглушка — рабочее
+      # приложение открывает боевой адрес (capacitor.config.ts).
+      - name: Сборка веб-части и синхронизация Capacitor
+        run: npm run cap:sync
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Принять лицензии SDK
+        run: yes | sdkmanager --licenses > /dev/null || true
+
+      # Отладочная сборка: подписана встроенным debug-ключом Android,
+      # ставится на телефон сразу — sideload или тестовый прогон, без
+      # секретов в репозитории.
+      - name: Сборка отладочного APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sky-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      # Релизная сборка — только если в репозитории заданы секреты
+      # подписи. Без них шаг пропускается, а не падает: keystore для
+      # публикации в Google Play пока не существует.
+      - name: Есть ли ключ для релизной подписи
+        id: has_keystore
+        run: echo "present=${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Восстановить keystore
+        if: steps.has_keystore.outputs.present == 'true'
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+
+      - name: Сборка релизного APK
+        if: steps.has_keystore.outputs.present == 'true'
+        working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file=release.keystore \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+
+      - name: Убрать keystore из воркера
+        if: always()
+        run: rm -f android/app/release.keystore
+
+      - uses: actions/upload-artifact@v4
+        if: steps.has_keystore.outputs.present == 'true'
+        with:
+          name: sky-release.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error

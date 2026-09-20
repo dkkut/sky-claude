@@ -12,7 +12,11 @@
     "dev:win": "vite --host",
     "healthcheck": "node scripts/healthcheck.mjs",
     "start:api": "node server/server.mjs",
-    "healthcheck:api": "HEALTHCHECK_URL=http://127.0.0.1:8080/healthz node scripts/healthcheck.mjs"
+    "healthcheck:api": "HEALTHCHECK_URL=http://127.0.0.1:8080/healthz node scripts/healthcheck.mjs",
+    "electron:dev": "electron .",
+    "electron:build:win": "electron-builder --win nsis",
+    "electron:build:linux": "electron-builder --linux AppImage",
+    "cap:sync": "vite build && npx cap sync android"
   },
   "dependencies": {
     "framer-motion": "^11.0.8",
@@ -29,6 +33,9 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "@eslint/js": "^9.17.0",
     "@types/leaflet": "^1.9.8",
     "@types/react": "^18.3.12",
@@ -38,6 +45,8 @@
     "@typescript-eslint/parser": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
@@ -47,9 +56,34 @@
     "typescript-eslint": "^8.18.1",
     "vite": "^6.0.5"
   },
-  "main": "index.html",
+  "main": "electron/main.cjs",
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"
+  },
+  "build": {
+    "appId": "online.skymessenger.desktop",
+    "productName": "Sky",
+    "files": [
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build-resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "build-resources/icon.png",
+      "category": "Network"
+    }
   }
 }

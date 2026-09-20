@@ -234,6 +234,20 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # Sky Ads: рекламный материал — до 64 МБ видео (MAX_VIDEO_BYTES,
+    # см. routes/ads.mjs). Общий потолок тела в 1m обрезал бы загрузку
+    # ещё на nginx, и рекламодатель видел бы безымянную 413 вместо
+    # понятного отказа приложения.
+    location ^~ /api/ads/ {
+        limit_req zone=req_general burst=90 nodelay;
+        client_max_body_size 64m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/ {
         limit_req zone=req_general burst=60 nodelay;
         include /etc/nginx/snippets/proxy-common.conf;

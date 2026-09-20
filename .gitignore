@@ -31,3 +31,22 @@ coverage/
 Dockerfile*.test
 ca-bundle.crt
 dump.rdb
+
+# Android (Capacitor) — сборочные каталоги и локальные пути SDK
+android/app/build/
+android/build/
+android/.gradle/
+android/capacitor-cordova-android-plugins/build/
+android/local.properties
+*.apk
+*.aab
+
+# Electron — сборочный вывод, не исходники
+release/
+*.exe
+*.dmg
+*.AppImage
+
+# Ключи подписи — никогда не коммитить
+*.keystore
+*.jks

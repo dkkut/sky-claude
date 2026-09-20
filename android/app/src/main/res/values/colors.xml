@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Фирменные цвета Sky (src/styles.css: --accent, --bg). -->
+    <color name="colorPrimary">#4f6ef7</color>
+    <color name="colorPrimaryDark">#0e0e11</color>
+    <color name="colorAccent">#4f6ef7</color>
+</resources>

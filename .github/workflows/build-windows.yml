@@ -1,0 +1,47 @@
+name: Сборка Windows (.exe)
+
+# Собрано и на windows-latest намеренно, а не через electron-builder
+# + wine на Linux: в песочнице разработки NSIS-упаковка через wine
+# ловит несовместимость его экспериментального WoW64-режима с этим
+# хостом (ntdll.dll не грузится) — итоговый .exe получается неполным.
+# Настоящий Windows-раннер снимает проблему целиком.
+on:
+  push:
+    branches: [claude/project-server-setup-opwwui]
+    paths:
+      - 'electron/**'
+      - 'build-resources/**'
+      - 'package.json'
+      - '.github/workflows/build-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Сборка .exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci --no-audit --no-fund
+
+      # electron-builder не трогает dist/ (окно открывает боевой адрес),
+      # но tsc в build — дешёвая проверка, что ничего не сломано.
+      - name: Проверка типов
+        run: npx tsc --noEmit
+
+      - name: Сборка установщика
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npx electron-builder --win nsis
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sky-windows-installer
+          path: release/*.exe
+          if-no-files-found: error

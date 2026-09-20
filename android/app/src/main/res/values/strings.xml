@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Sky</string>
+    <string name="title_activity_main">Sky</string>
+    <string name="package_name">online.skymessenger.app</string>
+    <string name="custom_url_scheme">online.skymessenger.app</string>
+</resources>
