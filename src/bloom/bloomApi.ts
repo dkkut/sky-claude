@@ -132,6 +132,18 @@ export const apiBloomToggleHide = async (authorId: string): Promise<boolean | nu
   return r.ok ? r.data?.hidden ?? null : null;
 };
 
+export interface BloomEvent {
+  kind: 'like' | 'comment' | 'follow';
+  actorId: string; actorName: string;
+  postId?: string; text?: string; createdAt: string;
+}
+/** Реальные новые события (лайк/комментарий/подписка) — источник для
+ *  push() в существующий useNotifStore (см. NotifBridge.tsx). */
+export const apiBloomEvents = async (sinceMs: number): Promise<{ events: BloomEvent[]; now: number }> => {
+  const r = await apiCall<{ events: BloomEvent[]; now: number }>(`/api/bloom/events?since=${sinceMs}`);
+  return r.ok && r.data ? r.data : { events: [], now: Date.now() };
+};
+
 /** Bloom → «Написать» → открывает существующий чат Sky Messenger. */
 export const apiBloomWrite = async (userId: string): Promise<{ chatId: string } | { error: string }> => {
   const r = await apiCall<{ chatId: string }>(`/api/bloom/write/${userId}`, { method: 'POST' });

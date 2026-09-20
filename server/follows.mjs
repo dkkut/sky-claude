@@ -78,6 +78,19 @@ export const followingCount = async (userId) => {
   return rows[0].n;
 };
 
+/** Новые подписчики с такого-то момента — для уведомлений («новый подписчик»),
+ *  не для отображения списка (там followerIds без временного среза). */
+export const recentFollowers = async (userId, sinceIso) => {
+  const { rows } = await query(
+    `SELECT f.follower_id, f.created_at, p.name AS follower_name
+       FROM follows f JOIN profiles p ON p.id = f.follower_id
+      WHERE f.following_id = $1 AND f.created_at > $2
+      ORDER BY f.created_at DESC LIMIT 20`,
+    [userId, sinceIso],
+  );
+  return rows.map((r) => ({ actorId: r.follower_id, actorName: r.follower_name, createdAt: r.created_at.toISOString() }));
+};
+
 /** Кто из списка candidateIds подписан на targetId — для «общих подписок». */
 export const whichFollow = async (followerIdsList, targetId) => {
   if (!followerIdsList.length) return [];

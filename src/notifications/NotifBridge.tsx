@@ -7,7 +7,10 @@
  *   'sky:incoming-message'; раньше это был BroadcastChannel, но
  *   сообщения теперь приходят с сервера, а не из соседней вкладки)
  * - calls/store.ts  —  входящие и пропущенные звонки
- * - bloom  —  лайки и комментарии (через Bloom BC)
+ * - bloom  —  лайки, комментарии и подписки; Bloom не держит свой
+ *   websocket, поэтому реальные новые события опрашиваются периодически
+ *   через /api/bloom/events (см. server/bloom.mjs::recentEvents) —
+ *   не выдуманные данные, просто без сокета, как у мессенджера
  *
  * Новое:
  * - Web Notifications API (push при неактивной вкладке)
@@ -21,8 +24,9 @@ import { useAuthStore }        from '@/core/auth/store';
 import { useCallStore }        from '@/calls/store';
 import { useModuleStore }      from '@/data/state/modules';
 import { usePushNotifications } from './usePushNotifications';
+import { apiBloomEvents } from '@/bloom/bloomApi';
 
-const BLOOM_CHANNEL = 'sky:bloom:bc:v1';
+const BLOOM_POLL_MS = 20_000;
 
 export const NotifBridge = () => {
   const push          = useNotifStore(s => s.push);
@@ -135,50 +139,42 @@ export const NotifBridge = () => {
     return () => window.removeEventListener('sky:call-unavailable', onUnavailable);
   }, [push]);
 
-  // -- Bloom BC  —  лайки и комментарии -------------------------------
+  // -- Bloom  —  лайки, комментарии, новые подписчики -------------------
+  // Нет своего сокета (как у мессенджера) — опрашиваем реальные новые
+  // события с сервера и толкаем их в тот же useNotifStore. sinceRef
+  // двигаем по часам сервера (ответ возвращает now), а не клиента —
+  // иначе рассинхрон часов мог бы или потерять событие, или повторить.
+  const currentUserId = useAuthStore(s => s.currentUserId);
+  const bloomSinceRef = useRef<number>(Date.now());
   useEffect(() => {
-    const bc = typeof BroadcastChannel !== 'undefined'
-      ? new BroadcastChannel(BLOOM_CHANNEL) : null;
-    if (!bc) return;
+    if (!currentUserId) return;
+    bloomSinceRef.current = Date.now();
+    let stopped = false;
 
-    bc.onmessage = (e) => {
-      const { type, post, from, text: commentText } = e.data ?? {};
-      const myId = useAuthStore.getState().currentUserId;
-      if (!myId || from === myId) return;
-      if (!post || post.authorId !== myId) return;
-
-      const actor  = useAuthStore.getState().accounts.find(a => a.id === from);
-      const name   = actor?.name ?? 'Кто-то';
-      const letter = name[0]?.toUpperCase() ?? '?';
-
-      if (type === 'post-react') {
-        push({
-          kind:         'like',
-          title:        name,
-          body:         'Оценил ваш пост',
-          avatarLetter: letter,
-          color:        'var(--red)',
-          postId:       post.id,
-        });
-      }
-
-      if (type === 'post-comment') {
-        const preview = commentText
-          ? (commentText.length > 50 ? commentText.slice(0, 47) + '...' : commentText)
-          : 'Оставил комментарий';
-        push({
-          kind:         'comment',
-          title:        name,
-          body:         preview,
-          avatarLetter: letter,
-          color:        'var(--accent)',
-          postId:       post.id,
-        });
+    const tick = async () => {
+      if (stopped) return;
+      const { events, now } = await apiBloomEvents(bloomSinceRef.current);
+      bloomSinceRef.current = now;
+      for (const ev of events) {
+        const letter = ev.actorName[0]?.toUpperCase() ?? '?';
+        if (ev.kind === 'like') {
+          push({ kind: 'like', title: ev.actorName, body: 'Оценил ваш пост в Bloom',
+            avatarLetter: letter, color: 'var(--red)', postId: ev.postId });
+        } else if (ev.kind === 'comment') {
+          const preview = ev.text && ev.text.length > 50 ? ev.text.slice(0, 47) + '...' : (ev.text || 'Оставил комментарий');
+          push({ kind: 'comment', title: ev.actorName, body: preview,
+            avatarLetter: letter, color: 'var(--accent)', postId: ev.postId });
+        } else {
+          push({ kind: 'follow', title: ev.actorName, body: 'Подписался(-ась) на вас в Bloom',
+            avatarLetter: letter, color: 'var(--green)' });
+        }
       }
     };
 
-    return () => bc.close();
-  }, []);
+    const id = setInterval(tick, BLOOM_POLL_MS);
+    void tick();
+    return () => { stopped = true; clearInterval(id); };
+  }, [currentUserId, push]);
 
   return null;
 };

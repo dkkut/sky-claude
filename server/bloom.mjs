@@ -299,6 +299,36 @@ export const notificationsCount = async (userId) => {
   return rows[0].n;
 };
 
+/** Реальные события с такого-то момента — для пуша в уведомления (не для
+ * счётчика). Подарки не дублируем отдельно: подарок и так создаёт
+ * комментарий, и этот комментарий сюда попадёт. */
+export const recentEvents = async (userId, sinceIso) => {
+  const [reacts, comments] = await Promise.all([
+    query(
+      `SELECT r.post_id, r.user_id AS actor_id, p.name AS actor_name, r.created_at
+         FROM bloom_reactions r
+         JOIN bloom_posts bp ON bp.id = r.post_id
+         JOIN profiles p ON p.id = r.user_id
+        WHERE bp.author_id = $1 AND r.user_id <> $1 AND r.created_at > $2
+        ORDER BY r.created_at DESC LIMIT 20`,
+      [userId, sinceIso],
+    ),
+    query(
+      `SELECT c.post_id, c.author_id AS actor_id, p.name AS actor_name, c.body, c.created_at
+         FROM bloom_comments c
+         JOIN bloom_posts bp ON bp.id = c.post_id
+         JOIN profiles p ON p.id = c.author_id
+        WHERE bp.author_id = $1 AND c.author_id <> $1 AND c.deleted_at IS NULL AND c.created_at > $2
+        ORDER BY c.created_at DESC LIMIT 20`,
+      [userId, sinceIso],
+    ),
+  ]);
+  return [
+    ...reacts.rows.map((r) => ({ kind: 'like', postId: r.post_id, actorId: r.actor_id, actorName: r.actor_name, createdAt: r.created_at.toISOString() })),
+    ...comments.rows.map((c) => ({ kind: 'comment', postId: c.post_id, actorId: c.actor_id, actorName: c.actor_name, text: c.body, createdAt: c.created_at.toISOString() })),
+  ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+};
+
 /* ── Посты ──────────────────────────────────────────────────────── */
 
 export const createPost = async (authorId, body) => {

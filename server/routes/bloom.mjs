@@ -9,7 +9,7 @@ import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   POST_ID_RE, COMMENT_ID_RE, MEDIA_ID_RE,
-  feed, authorPosts, getPost, trending, suggestedUsers, hotComments, notificationsCount,
+  feed, authorPosts, getPost, trending, suggestedUsers, hotComments, notificationsCount, recentEvents,
   createPost, deletePost, react, addComment, deleteComment, likeComment,
   toggleSave, toggleRepost, recordView, votePoll, toggleHide, hiddenAuthors, sendGift,
   mediaMimeOf,
@@ -18,6 +18,7 @@ import { saveStream, openStream, sizeOf, newMediaId } from './../bloomstore.mjs'
 import { parseRange } from './../skyvideostore.mjs';
 import { directChatId, createChat } from './../chats.mjs';
 import { userStore } from './../store.mjs';
+import { recentFollowers } from './../follows.mjs';
 
 const READ_PER_MIN = 120;
 const WRITE_PER_MIN = 40;
@@ -164,6 +165,22 @@ export const bloomRoutes = async (req, res, url) => {
   if (req.method === 'GET' && path === '/api/bloom/notifications-count') {
     if (!rateLimit(`bloom:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     return json(res, 200, { count: await notificationsCount(me) });
+  }
+
+  // Реальные новые события (лайк/комментарий/подписка) для пуша в
+  // существующий useNotifStore — не отдельная система, просто данные
+  // для неё. Окно жёстко ограничено суткой: клиент не может попросить
+  // за произвольный период назад.
+  if (req.method === 'GET' && path === '/api/bloom/events') {
+    if (!rateLimit(`bloom:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const sinceMs = Math.max(Date.now() - 24 * 3_600_000, Number(params.get('since')) || 0);
+    const sinceIso = new Date(sinceMs).toISOString();
+    const [events, followers] = await Promise.all([recentEvents(me, sinceIso), recentFollowers(me, sinceIso)]);
+    const all = [
+      ...events,
+      ...followers.map((f) => ({ kind: 'follow', actorId: f.actorId, actorName: f.actorName, createdAt: f.createdAt })),
+    ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return json(res, 200, { events: all, now: Date.now() });
   }
 
   if (req.method === 'GET' && path === '/api/bloom/hidden') {
