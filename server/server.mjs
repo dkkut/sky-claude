@@ -51,6 +51,7 @@ import { mediaActivityRoutes } from './routes/mediaActivity.mjs';
 import { followsRoutes } from './routes/follows.mjs';
 import { bloomRoutes } from './routes/bloom.mjs';
 import { sweepOrphanBloomMedia } from './bloom.mjs';
+import { weatherRoutes } from './routes/weather.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanVideos } from './skyvideo.mjs';
@@ -78,7 +79,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
-                familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, bloomRoutes];
+                familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, bloomRoutes, weatherRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.

@@ -1,19 +1,33 @@
-import { useEffect } from 'react';
-import { Music2, CloudSun } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Music2, Sun, Cloud, CloudFog, CloudRain, CloudSnow, CloudLightning, MapPinOff } from 'lucide-react';
 import { useBloomStore } from '../store';
 import { useAuthStore } from '@/core/auth/store';
 import { usePlayerStore } from '@/player/playerStore';
 import { useModuleStore } from '@/data/state/modules';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { Av } from './Primitives';
+import { apiWeather, apiCurrency, type WeatherNow, type WeatherKind, type CurrencyRate } from '../weatherApi';
 
-/* Детерминированный «прогноз» и курсы — стабильны в рамках сессии, без внешних вызовов */
-const WEATHER = { Icon: CloudSun, temp: '+18°', city: 'Sky City' };
-const CURRENCY = [
-  { c: 'USD', d: '+0.4%', up: true },
-  { c: 'EUR', d: '-0.2%', up: false },
-  { c: 'BTC', d: '+2.1%', up: true },
-];
+const WEATHER_ICON: Record<WeatherKind, typeof Sun> = {
+  clear: Sun, cloudy: Cloud, fog: CloudFog, rain: CloudRain, snow: CloudSnow, storm: CloudLightning,
+};
+
+/** Реальная позиция браузера — один раз за монтирование виджета, без
+ *  повторных запросов: если человек отказал, честно молчим о погоде,
+ *  а не подставляем выдуманный город. */
+function useBrowserLocation() {
+  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [denied, setDenied] = useState(false);
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) { setDenied(true); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => setDenied(true),
+      { timeout: 8000, maximumAge: 10 * 60_000 },
+    );
+  }, []);
+  return { coords, denied };
+}
 
 const Widget = ({ children, minWidth, onClick, compact }: { children: React.ReactNode; minWidth: number; onClick?: () => void; compact?: boolean }) => (
   <div onClick={onClick}
@@ -31,12 +45,23 @@ export const FeedWidgets = () => {
   const trendingTags = useBloomStore(s => s.trendingTags);
   const loadSuggested = useBloomStore(s => s.loadSuggested);
   const loadTrending = useBloomStore(s => s.loadTrending);
-  const { accounts, currentUserId } = useAuthStore();
+  const { accounts } = useAuthStore();
   const { item, isPlaying } = usePlayerStore();
   const { setActiveModule, setPendingExtrasTab } = useModuleStore();
   const isMobile = useIsMobile();
 
+  const { coords, denied } = useBrowserLocation();
+  const [weather, setWeather] = useState<WeatherNow | null>(null);
+  const [rates, setRates] = useState<CurrencyRate[]>([]);
+
   useEffect(() => { void loadSuggested(); void loadTrending(); }, [loadSuggested, loadTrending]);
+  useEffect(() => {
+    if (!coords) return;
+    let cancelled = false;
+    void apiWeather(coords.lat, coords.lon).then(w => { if (!cancelled) setWeather(w); });
+    return () => { cancelled = true; };
+  }, [coords]);
+  useEffect(() => { void apiCurrency().then(setRates); }, []);
 
   const goMusic = () => { setPendingExtrasTab('music'); setActiveModule('extras'); };
 
@@ -50,9 +75,20 @@ export const FeedWidgets = () => {
 
         <Widget minWidth={mw(110)} compact={isMobile}>
           <WLabel>Погода</WLabel>
-          <WEATHER.Icon size={16} style={{ color: 'var(--t2)' }}/>
-          <p className="mt-1 text-sm font-extrabold" style={{ color: 'var(--t1)' }}>{WEATHER.temp}</p>
-          <p className="text-[9px]" style={{ color: 'var(--t3)' }}>{WEATHER.city}</p>
+          {weather ? (
+            <>
+              {(() => { const Icon = WEATHER_ICON[weather.kind]; return <Icon size={16} style={{ color: 'var(--t2)' }}/>; })()}
+              <p className="mt-1 text-sm font-extrabold" style={{ color: 'var(--t1)' }}>{weather.tempC >= 0 ? '+' : ''}{Math.round(weather.tempC)}°</p>
+              <p className="truncate text-[9px]" style={{ color: 'var(--t3)' }}>{weather.city ?? '—'}</p>
+            </>
+          ) : denied ? (
+            <>
+              <MapPinOff size={16} style={{ color: 'var(--t3)' }}/>
+              <p className="mt-1 text-[10px] leading-tight" style={{ color: 'var(--t3)' }}>Нет доступа к геопозиции</p>
+            </>
+          ) : (
+            <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Определяем…</p>
+          )}
         </Widget>
 
         <Widget minWidth={mw(150)} onClick={goMusic} compact={isMobile}>
@@ -77,15 +113,19 @@ export const FeedWidgets = () => {
           )}
         </Widget>
 
-        <Widget minWidth={mw(130)} compact={isMobile}>
-          <WLabel>Валюты</WLabel>
-          {CURRENCY.map(r => (
-            <div key={r.c} className="flex items-center justify-between mb-0.5">
-              <span className="text-[10px]" style={{ color: 'var(--t3)' }}>{r.c}</span>
-              <span className="text-[10px] font-bold" style={{ color: r.up ? 'var(--green)' : 'var(--red)' }}>{r.d}</span>
-            </div>
-          ))}
-        </Widget>
+        {rates.length > 0 && (
+          <Widget minWidth={mw(130)} compact={isMobile}>
+            <WLabel>Валюты</WLabel>
+            {rates.map(r => (
+              <div key={r.code} className="flex items-center justify-between mb-0.5">
+                <span className="text-[10px]" style={{ color: 'var(--t3)' }}>{r.code}</span>
+                <span className="text-[10px] font-bold" style={{ color: r.changePct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  {r.changePct >= 0 ? '+' : ''}{r.changePct.toFixed(1)}%
+                </span>
+              </div>
+            ))}
+          </Widget>
+        )}
 
         {activity.length > 0 && (
           <Widget minWidth={mw(175)} compact={isMobile}>
