@@ -5,7 +5,7 @@ import {
   Lock, Eye, Bell, ChevronRight, LogOut, Gamepad2, Trophy, Swords, ChevronDown,
   Settings, Moon, Globe, Volume2, Download, Palette, Info, ExternalLink, WifiOff, Wallet, Gift, EyeOff, PawPrint, Briefcase, Users,
   RotateCcw, CheckCheck, MessageSquare, Send, Fingerprint, Coffee, Timer, Pause, Tv,
-  ArrowLeftRight, LifeBuoy, ScrollText, Inbox, Video, ShieldHalf,
+  ArrowLeftRight, LifeBuoy, ScrollText, Inbox, Video, ShieldHalf, Flower2,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useModuleStore } from '@/data/state/modules';
@@ -759,6 +759,24 @@ export const ProfileModule = () => {
     ...(isAdminUser ? [{key:'admin_panel' as const, label:'Панель администратора', icon:ShieldHalf}] : []),
   ] as const;
 
+  // Bloom и Sky Video — отдельные модули, не разделы этого экрана: не
+  // переключают section, а уходят в свой модуль на вкладке «моё» —
+  // тем же приёмом (pendingExtrasTab), что уже используют для Sky Music.
+  const MODULE_LINKS = [
+    {key:'bloom' as const, label:'Мой Bloom',    icon:Flower2},
+    {key:'video' as const, label:'Мой Sky Video', icon:Video},
+  ];
+  const goToModule = (key: 'bloom' | 'video') => {
+    const m = useModuleStore.getState();
+    if (key === 'bloom') m.setPendingBloomTab('mine');
+    else m.setPendingVideoTab('mine');
+    m.setActiveModule(key);
+  };
+  const navigate = (key: Section | 'bloom' | 'video') => {
+    if (key === 'bloom' || key === 'video') goToModule(key);
+    else setSection(key);
+  };
+
   return (
     <div className="flex h-full flex-col overflow-hidden sm:flex-row">
       {/* Mobile top strip: user row + horizontal scrollable section pills */}
@@ -777,8 +795,8 @@ export const ProfileModule = () => {
             style={{color:'var(--red)'}}><LogOut size={15}/></button>
         </div>
         <div className="flex gap-1.5 overflow-x-auto px-3 pb-3" style={{ scrollbarWidth: 'none' }}>
-          {NAV.map(({key,label,icon:Icon})=>(
-            <button key={key} type="button" onClick={()=>setSection(key)}
+          {[...NAV, ...MODULE_LINKS].map(({key,label,icon:Icon})=>(
+            <button key={key} type="button" onClick={()=>navigate(key)}
               className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] transition-all"
               style={{
                 background: section===key ? 'var(--accent-bg)' : 'var(--bg-l2)',
@@ -806,8 +824,8 @@ export const ProfileModule = () => {
           </div>
         </div>
         <div className="flex-1 py-2 px-2 space-y-0.5">
-        {NAV.map(({key,label,icon:Icon})=>(
-          <button key={key} type="button" onClick={()=>setSection(key)}
+        {[...NAV, ...MODULE_LINKS].map(({key,label,icon:Icon})=>(
+          <button key={key} type="button" onClick={()=>navigate(key)}
             className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] text-left w-full transition-all"
             style={{
               background: section===key ? 'var(--accent-bg)' : 'rgba(0,0,0,0)',

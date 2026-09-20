@@ -15,6 +15,7 @@ import {
 } from './components/FeedInserts';
 import { openProfile } from '@/profile/viewer/store';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
+import { useModuleStore } from '@/data/state/modules';
 
 const TABS: { key: FeedTab; label: string; icon: any }[] = [
   { key: 'algo',  label: 'Для вас',       icon: Sparkles },
@@ -45,13 +46,17 @@ export const BloomModule = () => {
   const loadTag         = useBloomStore(s => s.loadTag);
   const loadNotifCount  = useBloomStore(s => s.loadNotifCount);
   const isMobile = useIsMobile();
+  const pendingBloomTab = useModuleStore(s => s.pendingBloomTab);
+  const setPendingBloomTab = useModuleStore(s => s.setPendingBloomTab);
 
-  const [tab,        setTab]        = useState<FeedTab>('algo');
+  const [tab,        setTab]        = useState<FeedTab>((pendingBloomTab as FeedTab) || 'algo');
   const [createOpen, setCreateOpen] = useState(false);
   const [tagSearch,  setTagSearch]  = useState<string | null>(null);
   const [explore,    setExplore]    = useState(false);
   const [notifOpen,  setNotifOpen]  = useState(false);
   const [detailPost, setDetailPost] = useState<string | null>(null);
+
+  useEffect(() => { if (pendingBloomTab) setPendingBloomTab(null); }, [pendingBloomTab, setPendingBloomTab]);
 
   // Счётчики на вкладках «Сохранённые»/«Мои посты» и переход между
   // вкладками требуют своих постов — грузим все четыре разом, чтобы

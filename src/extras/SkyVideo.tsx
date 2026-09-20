@@ -24,6 +24,7 @@ import {
 import { useAuthStore } from '@/core/auth/store';
 import { openProfile } from '@/profile/viewer/store';
 import { useSocialGraph } from '@/profile/viewer/social';
+import { useModuleStore } from '@/data/state/modules';
 import { ACCEPT_VIDEO, ACCEPT_IMAGE } from '@/shared/fileAccept';
 
 /* -- Design tokens ------------------------------------------- */
@@ -815,7 +816,9 @@ type VTab = 'home' | 'shorts' | 'upload' | 'mine';
 export const SkyVideo = () => {
   const { feed, categories, load } = useSkyVideoStore();
   const { currentUserId } = useAuthStore();
-  const [tab, setTab] = useState<VTab>('home');
+  const pendingVideoTab = useModuleStore(s => s.pendingVideoTab);
+  const setPendingVideoTab = useModuleStore(s => s.setPendingVideoTab);
+  const [tab, setTab] = useState<VTab>((pendingVideoTab as VTab) || 'home');
   const [activeVideo, setActiveVideo] = useState<ServerVideo | null>(null);
   const [activeShort, setActiveShort] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -824,6 +827,7 @@ export const SkyVideo = () => {
 
   useEffect(() => { load(); }, []);
   useEffect(() => () => { if (!currentUserId) resetSkyVideoForUser(); }, [currentUserId]);
+  useEffect(() => { if (pendingVideoTab) setPendingVideoTab(null); }, [pendingVideoTab, setPendingVideoTab]);
 
   const longVids = useMemo(() => feed.filter(v => !isShortVideo(v)), [feed]);
   const shorts = useMemo(() => feed.filter(v => isShortVideo(v)), [feed]);
