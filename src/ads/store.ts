@@ -1,10 +1,18 @@
 /* ===============================================================
    SKY ADS  -  Рекламный кабинет
-   Реклама в: Видеохостинге, Каналах, Bloom-ленте
+
+   Раньше кампании, модерация, показы и клики целиком жили в
+   localStorage браузера. Теперь источник истины — сервер
+   (server/ads.mjs): этот файл только держит последний ответ сервера
+   и зовёт adsApi.ts на каждое действие.
 =============================================================== */
 import { create } from 'zustand';
 import { Film, Tv, Flower2, Camera, Megaphone, Pin } from 'lucide-react';
 import type { IconComponent } from '@/shared/icon';
+import {
+  apiAdsTicket, apiMyCampaigns, apiCreateCampaign, apiPauseCampaign, apiResumeCampaign,
+  apiCancelCampaign, adMediaUrl, type CreateCampaignInput,
+} from './adsApi';
 
 export type AdPlacement =
   | 'video_preroll'   // перед видео
@@ -14,13 +22,17 @@ export type AdPlacement =
   | 'channel_post'    // пост в канале
   | 'channel_pin';    // закреплённый пост в канале
 
+/** Статусы сервера (server/ads.mjs) — полный жизненный цикл кампании. */
 export type AdStatus =
   | 'draft'
   | 'moderation'
+  | 'approved'
+  | 'rejected'
+  | 'scheduled'
   | 'active'
   | 'paused'
-  | 'finished'
-  | 'rejected';
+  | 'completed'
+  | 'cancelled';
 
 export type AdFormat =
   | 'video'       // до 30 сек
@@ -28,34 +40,30 @@ export type AdFormat =
   | 'text'        // текстовый пост
   | 'text_image'; // текст + картинка
 
+/** Форма кампании, как её отдаёт сервер (см. toCampaign в server/ads.mjs). */
 export interface AdCampaign {
   id:           string;
   userId:       string;
-  title:        string;          // название кампании
-  description:  string;         // рекламный текст
-  imageUrl?:    string;         // base64 или URL
-  videoUrl?:    string;
-  linkUrl?:     string;         // ссылка куда ведёт реклама
+  title:        string;
+  description:  string;
+  mediaId?:     string;
+  linkUrl?:     string;
   placement:    AdPlacement;
   format:       AdFormat;
-  budget:       number;         // общий бюджет ₽
-  spent:        number;         // потрачено ₽
-  dailyLimit:   number;         // дневной лимит ₽
-  startDate:    string;         // ISO date
-  endDate:      string;
+  budget:       number;
+  spent:        number;
+  dailyLimit:   number;
+  startDate?:   string;
+  endDate?:     string;
   durationDays: number;
   status:       AdStatus;
   createdAt:    string;
   moderatedAt?: string;
   rejectReason?: string;
-  // Статистика
+  targetRegions: string[];
   impressions:  number;
   clicks:       number;
-  ctr:          number;         // click-through rate %
-  // Таргетинг
-  targetAge?:   [number, number]; // [min, max]
-  targetGender?: 'all' | 'm' | 'f';
-  targetInterests?: string[];
+  ctr:          number;
 }
 
 export interface AdPricing {
@@ -69,6 +77,9 @@ export interface AdPricing {
   formats:      AdFormat[];
 }
 
+/** Отображение и подсказки в интерфейсе. Ценам и лимитам отсюда сервер
+ * не доверяет — при создании кампании он всегда считает сам по своей
+ * копии этой же таблицы (PLACEMENTS в server/ads.mjs). */
 export const AD_PLACEMENTS: AdPricing[] = [
   {
     placement:     'video_preroll',
@@ -142,92 +153,82 @@ export const AD_FORMAT_LABEL: Record<AdFormat, string> = {
 export const AD_STATUS_LABEL: Record<AdStatus, string> = {
   draft:      'Черновик',
   moderation: 'На модерации',
+  approved:   'Одобрена',
+  rejected:   'Отклонена',
+  scheduled:  'Запланирована',
   active:     'Активна',
   paused:     'На паузе',
-  finished:   'Завершена',
-  rejected:   'Отклонена',
+  completed:  'Завершена',
+  cancelled:  'Отменена',
 };
 
 export const AD_STATUS_COLOR: Record<AdStatus, string> = {
   draft:      '#8a8a96',
   moderation: '#f59e0b',
+  approved:   '#60a5fa',
+  rejected:   '#f87171',
+  scheduled:  '#818cf8',
   active:     '#34d399',
   paused:     '#8a8a96',
-  finished:   '#45454f',
-  rejected:   '#f87171',
+  completed:  '#45454f',
+  cancelled:  '#f87171',
 };
 
-/* -- Storage ----------------------------------------------- */
-const SK = 'sky:ads:v1';
-const W  = typeof window !== 'undefined';
-const load  = () => { if (!W) return []; try { return JSON.parse(localStorage.getItem(SK)||'[]'); } catch { return []; } };
-const save  = (d: AdCampaign[]) => { if (!W) return; try { localStorage.setItem(SK, JSON.stringify(d)); } catch {} };
+/** Адрес картинки/видео кампании — тег <img>/<video> тянет его сам. */
+export const campaignMediaUrl = (c: AdCampaign) => c.mediaId ? adMediaUrl(c.mediaId) : undefined;
 
 interface AdsState {
   campaigns: AdCampaign[];
-  create:    (c: Omit<AdCampaign,'id'|'createdAt'|'spent'|'impressions'|'clicks'|'ctr'|'status'>) => string;
-  update:    (id: string, patch: Partial<AdCampaign>) => void;
-  pause:     (id: string) => void;
-  resume:    (id: string) => void;
-  delete:    (id: string) => void;
+  loaded:    boolean;
+  loading:   boolean;
+  load:      (force?: boolean) => Promise<void>;
+  create:    (input: CreateCampaignInput) => Promise<{ ok: true; campaign: AdCampaign } | { ok: false; error?: string; reason?: string }>;
+  pause:     (id: string) => Promise<boolean>;
+  resume:    (id: string) => Promise<boolean>;
+  cancel:    (id: string) => Promise<boolean>;
   getMy:     (userId: string) => AdCampaign[];
-  // Admin
-  moderate:  (id: string, approve: boolean, reason?: string) => void;
-  getPending:() => AdCampaign[];
 }
 
 export const useAdsStore = create<AdsState>((set, get) => ({
-  campaigns: load(),
+  campaigns: [],
+  loaded: false,
+  loading: false,
 
-  create: (params) => {
-    const id = `ad-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-    const campaign: AdCampaign = {
-      ...params, id,
-      createdAt:   new Date().toISOString(),
-      spent:       0,
-      impressions: 0,
-      clicks:      0,
-      ctr:         0,
-      status:      'moderation',
-    };
-    set(s => { const next = [...s.campaigns, campaign]; save(next); return { campaigns: next }; });
-    return id;
+  load: async (force = false) => {
+    if (get().loading) return;
+    if (get().loaded && !force) return;
+    set({ loading: true });
+    await apiAdsTicket();
+    const items = await apiMyCampaigns();
+    set({ campaigns: items, loaded: true, loading: false });
   },
 
-  update: (id, patch) => {
-    set(s => { const next = s.campaigns.map(c => c.id===id ? {...c,...patch} : c); save(next); return { campaigns: next }; });
+  create: async (input) => {
+    const r = await apiCreateCampaign(input);
+    if (r.ok) await get().load(true);
+    return r;
   },
 
-  pause:  (id) => get().update(id, { status: 'paused' }),
-  resume: (id) => get().update(id, { status: 'active' }),
-  delete: (id) => {
-    set(s => { const next = s.campaigns.filter(c => c.id!==id); save(next); return { campaigns: next }; });
+  pause: async (id) => {
+    const ok = await apiPauseCampaign(id);
+    if (ok) await get().load(true);
+    return ok;
+  },
+  resume: async (id) => {
+    const ok = await apiResumeCampaign(id);
+    if (ok) await get().load(true);
+    return ok;
+  },
+  cancel: async (id) => {
+    const ok = await apiCancelCampaign(id);
+    if (ok) await get().load(true);
+    return ok;
   },
 
-  getMy: (userId) =>
-    get().campaigns.filter(c => c.userId === userId)
-      .sort((a,b) => b.createdAt.localeCompare(a.createdAt)),
-
-  moderate: (id, approve, reason) => {
-    get().update(id, {
-      status:      approve ? 'active' : 'rejected',
-      moderatedAt: new Date().toISOString(),
-      rejectReason: reason,
-    });
-    // Simulate impressions/clicks if active
-    if (approve) {
-      const c = get().campaigns.find(x => x.id===id);
-      if (c) {
-        setTimeout(() => {
-          const imp = Math.floor(Math.random() * 3000 + 500);
-          const clk = Math.floor(imp * (0.02 + Math.random()*0.06));
-          get().update(id, { impressions: imp, clicks: clk, ctr: parseFloat((clk/imp*100).toFixed(1)) });
-        }, 500);
-      }
-    }
-  },
-
-  getPending: () => get().campaigns.filter(c => c.status === 'moderation'),
+  /** Кампании уже принадлежат вызвавшему (сервер отдаёт только свои) —
+   * userId здесь не нужен для фильтрации, но оставлен для совместимости
+   * с прежним вызовом из SkyAdsCabinet. */
+  getMy: () => get().campaigns,
 }));
 
 export const fmtBudget = (n: number) =>

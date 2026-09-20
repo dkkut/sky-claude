@@ -1,7 +1,7 @@
 /* ===============================================================
    SKY ADS  -  Рекламный кабинет
 =============================================================== */
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, ChevronLeft, TrendingUp, Eye, MousePointer, Calendar,
@@ -10,8 +10,9 @@ import {
 } from 'lucide-react';
 import {
   useAdsStore, AD_PLACEMENTS, AD_FORMAT_LABEL, AD_STATUS_LABEL, AD_STATUS_COLOR,
-  fmtBudget, type AdCampaign, type AdPlacement, type AdFormat, type AdPricing,
+  fmtBudget, campaignMediaUrl, type AdCampaign, type AdPlacement, type AdFormat,
 } from './store';
+import { apiUploadAdMedia } from './adsApi';
 import { useMoney } from '@/wallet/store';
 import { useAuthStore } from '@/core/auth/store';
 
@@ -34,8 +35,10 @@ const Stat = ({ icon: Icon, label, value, color }: { icon: any; label: string; v
 );
 
 /* -- Campaign Card ------------------------------------------ */
+const CANCELLABLE: AdCampaign['status'][] = ['draft', 'moderation', 'approved', 'scheduled'];
+
 const CampaignCard = ({ c, onOpen }: { c: AdCampaign; onOpen: () => void }) => {
-  const { pause, resume, delete: del } = useAdsStore();
+  const { pause, resume, cancel } = useAdsStore();
   const [confirm, setConfirm] = useState(false);
   const p = AD_PLACEMENTS.find(x => x.placement === c.placement);
   const sc = AD_STATUS_COLOR[c.status];
@@ -97,8 +100,8 @@ const CampaignCard = ({ c, onOpen }: { c: AdCampaign; onOpen: () => void }) => {
           <div className="flex items-center gap-1">
             <Calendar size={10} style={{ color:C.t3 }}/>
             <span className="text-[10px]" style={{ color:C.t3 }}>
-              {new Date(c.startDate).toLocaleDateString('ru',{day:'numeric',month:'short'})} -{' '}
-              {new Date(c.endDate).toLocaleDateString('ru',{day:'numeric',month:'short'})}
+              {c.startDate ? new Date(c.startDate).toLocaleDateString('ru',{day:'numeric',month:'short'}) : '—'} -{' '}
+              {c.endDate ? new Date(c.endDate).toLocaleDateString('ru',{day:'numeric',month:'short'}) : '—'}
             </span>
           </div>
           <div className="flex gap-1" onClick={e => e.stopPropagation()}>
@@ -114,9 +117,9 @@ const CampaignCard = ({ c, onOpen }: { c: AdCampaign; onOpen: () => void }) => {
                 <Play size={13} style={{ color:C.green }}/>
               </button>
             )}
-            {confirm ? (
+            {CANCELLABLE.includes(c.status) && (confirm ? (
               <div className="flex gap-1">
-                <button type="button" onClick={() => del(c.id)}
+                <button type="button" onClick={() => cancel(c.id)}
                   className="grid h-7 w-7 place-items-center rounded-xl"
                   style={{ background:'rgba(248,113,113,0.15)' }}>
                   <Check size={13} style={{ color:C.red }}/>
@@ -131,7 +134,7 @@ const CampaignCard = ({ c, onOpen }: { c: AdCampaign; onOpen: () => void }) => {
                 className="grid h-7 w-7 place-items-center rounded-xl hover:bg-white/5">
                 <Trash2 size={13} style={{ color:C.t3 }}/>
               </button>
-            )}
+            ))}
           </div>
         </div>
       </div>
@@ -142,7 +145,7 @@ const CampaignCard = ({ c, onOpen }: { c: AdCampaign; onOpen: () => void }) => {
 /* -- Create Campaign Flow ---------------------------------- */
 const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
   const { currentUserId } = useAuthStore();
-  const { spend, getBalance } = useMoney();
+  const { getBalance } = useMoney();
   const { create } = useAdsStore();
 
   const [step, setStep] = useState<'placement'|'format'|'content'|'budget'|'review'|'done'>('placement');
@@ -151,42 +154,47 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
   const [title,     setTitle]       = useState('');
   const [desc,      setDesc]        = useState('');
   const [link,      setLink]        = useState('');
-  const [image,     setImage]       = useState<string|undefined>();
+  const [image,     setImage]       = useState<string|undefined>(); // превью — data URL для показа до отправки
+  const [imageFile, setImageFile]   = useState<File|undefined>();   // настоящие байты — грузятся на сервер при отправке
   const [days,      setDays]        = useState(7);
   const [daily,     setDaily]       = useState(500);
   const [err,       setErr]         = useState('');
+  const [busy,      setBusy]        = useState(false);
   const imgRef = useRef<HTMLInputElement>(null);
 
   const pricing = AD_PLACEMENTS.find(p => p.placement === placement);
-  const budget  = daily * days;
+  const budget  = daily * days; // оценка для интерфейса — настоящую цену всегда считает сервер
   const balance = getBalance(currentUserId ?? '');
 
   const STEP_LABELS = ['Площадка','Формат','Контент','Бюджет','Итого'];
   const stepIdx = ['placement','format','content','budget','review'].indexOf(step);
 
-  const submit = () => {
+  const submit = async () => {
     setErr('');
     if (!placement || !format || !title.trim()) { setErr('Заполните все поля'); return; }
     if (balance < budget) { setErr(`Недостаточно средств. Нужно ${fmtBudget(budget)}`); return; }
-    const ok = spend(currentUserId!, budget, 'market', `Реклама: ${title}`);
-    if (!ok) { setErr('Ошибка оплаты'); return; }
 
-    const start = new Date();
-    const end   = new Date(Date.now() + days * 86400000);
-    create({
-      userId:       currentUserId!,
+    setBusy(true);
+    let mediaId: string | undefined;
+    if (imageFile) {
+      const uploaded = await apiUploadAdMedia(imageFile);
+      if (!uploaded) { setBusy(false); setErr('Не удалось загрузить изображение'); return; }
+      mediaId = uploaded.mediaId;
+    }
+
+    const r = await create({
       title:        title.trim(),
       description:  desc.trim(),
-      imageUrl:     image,
+      mediaId,
       linkUrl:      link.trim() || undefined,
-      placement:    placement,
+      placement,
       format,
-      budget,
       dailyLimit:   daily,
       durationDays: days,
-      startDate:    start.toISOString().split('T')[0],
-      endDate:      end.toISOString().split('T')[0],
+      targetRegions: [],
     });
+    setBusy(false);
+    if (!r.ok) { setErr(r.reason ?? 'Не удалось создать кампанию'); return; }
     setStep('done');
   };
 
@@ -330,6 +338,7 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
                 <input ref={imgRef} type="file" accept="image/*" className="hidden"
                   onChange={e=>{
                     const f=e.target.files?.[0]; if(!f) return;
+                    setImageFile(f);
                     const r=new FileReader(); r.onload=()=>setImage(r.result as string); r.readAsDataURL(f);
                   }}/>
                 <div className="rounded-2xl cursor-pointer flex flex-col items-center justify-center gap-2 py-6 transition-colors"
@@ -462,10 +471,10 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
               </p>
             </div>
             {err && <p className="text-xs text-center" style={{ color:C.red }}>{err}</p>}
-            <motion.button whileTap={{ scale:.97 }} type="button" onClick={submit}
-              className="flex items-center justify-center gap-2 w-full rounded-2xl py-4 text-sm font-bold text-white"
+            <motion.button whileTap={{ scale:.97 }} type="button" onClick={submit} disabled={busy}
+              className="flex items-center justify-center gap-2 w-full rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-50"
               style={{ background:`linear-gradient(135deg,${C.accent},#818cf8)`, boxShadow:`0 6px 24px ${C.accent}40` }}>
-              <Rocket size={16}/> Запустить кампанию · {fmtBudget(budget)}
+              <Rocket size={16}/> {busy ? 'Отправка…' : `Запустить кампанию · ${fmtBudget(budget)}`}
             </motion.button>
           </div>
         )}
@@ -493,6 +502,11 @@ const CampaignDetail = ({ c, onBack }: { c: AdCampaign; onBack: () => void }) =>
         </span>
       </div>
       <div className="px-4 py-4 space-y-4">
+        {campaignMediaUrl(c) && (
+          c.format === 'video'
+            ? <video src={campaignMediaUrl(c)} controls className="w-full max-h-48 object-cover rounded-2xl"/>
+            : <img src={campaignMediaUrl(c)} alt="" className="w-full max-h-48 object-cover rounded-2xl"/>
+        )}
         {/* Stats */}
         <div className="flex gap-3">
           <Stat icon={Eye}            label="Показы"  value={c.impressions.toLocaleString('ru')} color={C.accent}/>
@@ -520,8 +534,8 @@ const CampaignDetail = ({ c, onBack }: { c: AdCampaign; onBack: () => void }) =>
           {[
             { l:'Площадка',  v:p?.label ?? '' },
             { l:'Формат',    v:AD_FORMAT_LABEL[c.format] },
-            { l:'Старт',     v:new Date(c.startDate).toLocaleDateString('ru',{day:'numeric',month:'long'}) },
-            { l:'Конец',     v:new Date(c.endDate).toLocaleDateString('ru',{day:'numeric',month:'long'}) },
+            { l:'Старт',     v:c.startDate ? new Date(c.startDate).toLocaleDateString('ru',{day:'numeric',month:'long'}) : '—' },
+            { l:'Конец',     v:c.endDate ? new Date(c.endDate).toLocaleDateString('ru',{day:'numeric',month:'long'}) : '—' },
             { l:'Дн. лимит', v:fmtBudget(c.dailyLimit) },
           ].map(({l,v})=>(
             <div key={l} className="flex justify-between text-sm">
@@ -543,13 +557,12 @@ const CampaignDetail = ({ c, onBack }: { c: AdCampaign; onBack: () => void }) =>
 
 /* === MAIN ADS CABINET ====================================== */
 export const SkyAdsCabinet = () => {
-  const { currentUserId, accounts } = useAuthStore();
-  const { getMy } = useAdsStore();
+  const { campaigns, load } = useAdsStore();
   const [view, setView] = useState<'list'|'create'|'detail'>('list');
   const [detail, setDetail] = useState<AdCampaign|null>(null);
 
-  const me = accounts.find(a => a.id === currentUserId);
-  const campaigns = getMy(currentUserId ?? '');
+  useEffect(() => { load(); }, [load]);
+
   const active  = campaigns.filter(c => c.status === 'active');
   const pending = campaigns.filter(c => c.status === 'moderation');
 

@@ -54,6 +54,8 @@ import { sweepOrphanBloomMedia } from './bloom.mjs';
 import { weatherRoutes } from './routes/weather.mjs';
 import { notifyRoutes } from './routes/notify.mjs';
 import { dispatchDueBroadcasts, sweepStaleBroadcastRuns } from './notifyBroadcast.mjs';
+import { adsRoutes } from './routes/ads.mjs';
+import { activateDueCampaigns, completeExpiredCampaigns, sweepOrphanAdMedia } from './ads.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanVideos } from './skyvideo.mjs';
@@ -82,7 +84,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, bloomRoutes, weatherRoutes,
-                notifyRoutes];
+                notifyRoutes, adsRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -184,6 +186,7 @@ let signalHub = null;
 let houseKeeping = null;
 let botRetry = null;
 let notifyDispatch = null;
+let adsSchedule = null;
 
 const start = async () => {
   // Содержимое переписки лежит в базе зашифрованным, и ключ для этого
@@ -239,6 +242,14 @@ const start = async () => {
     dispatchDueBroadcasts().catch((err) => console.error('[рассылки] worker', err.message));
   }, 20 * 1000);
   notifyDispatch.unref();
+
+  // Sky Ads: кампания должна сама перейти в active/completed по
+  // серверному времени, не дожидаясь, пока кто-то откроет приложение.
+  adsSchedule = setInterval(() => {
+    activateDueCampaigns().catch((err) => console.error('[ads] активация', err.message));
+    completeExpiredCampaigns().catch((err) => console.error('[ads] завершение', err.message));
+  }, 30 * 1000);
+  adsSchedule.unref();
 
   // Раз в час убираем отработавшие коды и гасим истёкшие подписки Prime.
   houseKeeping = setInterval(async () => {
@@ -333,6 +344,10 @@ const start = async () => {
       // посреди отправки), — считаем упавшим, чтобы он не блокировал
       // повторную попытку на этот же момент времени навсегда.
       await sweepStaleBroadcastRuns();
+      // Рекламный материал, загруженный, но так и не привязанный ни к
+      // одной кампании (человек закрыл вкладку между загрузкой и оплатой).
+      const adMedia = await sweepOrphanAdMedia();
+      if (adMedia.removed) console.log(`[ads] убрано осиротевшего медиа: ${adMedia.removed}`);
     } catch (err) {
       console.error('[housekeeping]', err.message);
     }
@@ -357,6 +372,7 @@ const shutdown = async (signal) => {
     if (houseKeeping) clearInterval(houseKeeping);
     if (botRetry) clearInterval(botRetry);
     if (notifyDispatch) clearInterval(notifyDispatch);
+    if (adsSchedule) clearInterval(adsSchedule);
     await new Promise((resolve) => server.close(resolve));
     if (signalHub) await signalHub.close();
     closeMailer();

@@ -6,8 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Bug, Lightbulb, Flag, Send, Check, X, Sparkles } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMessengerStore } from '@/messenger/store';
-import { useAdsStore, AD_PLACEMENTS } from '@/ads/store';
-import type { AdCampaign } from '@/ads/store';
+import { useServedAd } from '@/ads/AdBlocks';
+import type { AdPlacement } from '@/ads/store';
 
 const C = {
   bg:'var(--bg)', l1:'var(--bg-l1)', l2:'var(--bg-l2)',
@@ -176,17 +176,12 @@ interface AdBlockProps {
 }
 
 export const AdBlock = ({ placement, style }: AdBlockProps) => {
-  const { campaigns } = useAdsStore();
-  const active = campaigns.filter(c => c.status === 'active' && c.placement === placement);
-  if (active.length === 0) return null;
-
-  // Pick random active campaign
-  const ad = active[Math.floor(Date.now() / 30000) % active.length];
-  const p   = AD_PLACEMENTS.find(x => x.placement === ad.placement);
+  const { ad, click } = useServedAd(placement);
+  if (!ad) return null;
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}}
-      className="overflow-hidden rounded-2xl relative"
+      className="overflow-hidden rounded-2xl relative cursor-pointer" onClick={click}
       style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',...style}}>
       {/* Ad label */}
       <div className="absolute top-2 right-2 z-10">
@@ -196,8 +191,9 @@ export const AdBlock = ({ placement, style }: AdBlockProps) => {
         </span>
       </div>
       {/* Content */}
-      {ad.imageUrl && (
-        <img src={ad.imageUrl} alt={ad.title} className="w-full max-h-28 object-cover"/>
+      {ad.mediaUrl && (ad.format === 'video'
+        ? <video src={ad.mediaUrl} muted className="w-full max-h-28 object-cover"/>
+        : <img src={ad.mediaUrl} alt={ad.title} className="w-full max-h-28 object-cover"/>
       )}
       <div className="px-4 py-3">
         <p className="text-sm font-bold text-white pr-12">{ad.title}</p>
@@ -205,9 +201,8 @@ export const AdBlock = ({ placement, style }: AdBlockProps) => {
           <p className="text-[11px] mt-0.5 line-clamp-2" style={{color:C.t2}}>{ad.description}</p>
         )}
         {ad.linkUrl && (
-          <a href={ad.linkUrl} target="_blank" rel="noopener noreferrer"
-            className="inline-block mt-2 text-[11px] font-semibold"
-            style={{color:C.accent}}>Перейти →</a>
+          <span className="inline-block mt-2 text-[11px] font-semibold"
+            style={{color:C.accent}}>Перейти →</span>
         )}
       </div>
     </motion.div>
@@ -215,15 +210,13 @@ export const AdBlock = ({ placement, style }: AdBlockProps) => {
 };
 
 /* -- Ad Banner (horizontal strip) ---------------------------- */
-export const AdBanner = ({ placement }: { placement: AdCampaign['placement'] }) => {
-  const { campaigns } = useAdsStore();
-  const active = campaigns.filter(c => c.status === 'active' && c.placement === placement);
-  if (active.length === 0) return null;
-
-  const ad = active[Math.floor(Date.now() / 60000) % active.length];
+export const AdBanner = ({ placement }: { placement: AdPlacement }) => {
+  const { ad, click } = useServedAd(placement);
+  if (!ad) return null;
 
   return (
-    <div className="mx-4 my-2 overflow-hidden rounded-xl flex items-center gap-3 px-3 py-2.5"
+    <div onClick={click} role="button"
+      className="mx-4 my-2 overflow-hidden rounded-xl flex items-center gap-3 px-3 py-2.5 cursor-pointer"
       style={{background:'rgba(79,110,247,0.06)',border:'1px solid rgba(79,110,247,0.15)'}}>
       <Sparkles size={14} style={{color:C.accent,flexShrink: 0}}/>
       <div className="flex-1 min-w-0">

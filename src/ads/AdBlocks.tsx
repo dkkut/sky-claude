@@ -1,49 +1,68 @@
 /* ===============================================================
    SKY AD BLOCKS  -  реальные рекламные блоки по всему приложению
-   Читают активные кампании из ads/store и показывают их
+   Реклама приходит с сервера (/api/ads/serve) — Prime, регион,
+   частотные ограничения и период кампании уже применены на сервере.
 =============================================================== */
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { X, ExternalLink, Megaphone, Pin } from 'lucide-react';
-import { useAdsStore, type AdCampaign, type AdPlacement } from './store';
+import type { AdPlacement } from './store';
+import { apiServeAd, apiRecordImpression, apiRecordClick, type ServedAd } from './adsApi';
+
+/** Общий хук: получает рекламу под площадку, один раз пишет показ,
+ * отдаёт функцию клика, которая сама пишет клик и переходит по ссылке.
+ * Экспортирован — тем же пользуются рекламные блоки в Feedback.tsx. */
+export const useServedAd = (placement: AdPlacement) => {
+  const [ad, setAd] = useState<ServedAd | null>(null);
+  const [ready, setReady] = useState(false);
+  const impressionId = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const served = await apiServeAd(placement);
+      if (cancelled) return;
+      setAd(served);
+      setReady(true);
+      if (served) {
+        const id = await apiRecordImpression(served.campaignId, placement);
+        if (!cancelled) impressionId.current = id;
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placement]);
+
+  const click = async () => {
+    if (!ad) return;
+    const linkUrl = impressionId.current
+      ? await apiRecordClick(ad.campaignId, impressionId.current, placement)
+      : null;
+    const url = linkUrl ?? ad.linkUrl;
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  return { ad, ready, click };
+};
 
 /* -- Banner Ad (лента, шапки) ------------------------------- */
 export const BannerAd = ({ placement, className = '' }: { placement: AdPlacement; className?: string }) => {
-  const { campaigns, update } = useAdsStore();
+  const { ad, click } = useServedAd(placement);
   const [dismissed, setDismissed] = useState(false);
-  const [shown, setShown] = useState(false);
-
-  const ad = campaigns.find(c =>
-    c.status === 'active' &&
-    c.placement === placement &&
-    new Date(c.endDate) > new Date()
-  );
-
-  useEffect(() => {
-    if (ad && !shown) {
-      setShown(true);
-      // record impression
-      update(ad.id, { impressions: ad.impressions + 1, ctr: ad.clicks > 0 ? parseFloat(((ad.clicks / (ad.impressions + 1)) * 100).toFixed(1)) : 0 });
-    }
-  }, [ad?.id]);
 
   if (!ad || dismissed) return null;
-
-  const handleClick = () => {
-    update(ad.id, { clicks: ad.clicks + 1, ctr: parseFloat(((ad.clicks + 1) / (ad.impressions || 1) * 100).toFixed(1)) });
-    if (ad.linkUrl) window.open(ad.linkUrl, '_blank');
-  };
 
   return (
     <motion.div initial={{ opacity:0, y:-8 }} animate={{ opacity:1, y:0 }}
       className={`relative overflow-hidden ${className}`}
       style={{ background:'linear-gradient(135deg,rgba(79,110,247,0.08),rgba(79,110,247,0.04))',
         border:'1px solid rgba(79,110,247,0.18)', borderRadius:16 }}>
-      <div className="flex items-center gap-3 px-3 py-2.5 cursor-pointer" onClick={handleClick}>
-        {ad.imageUrl && (
-          <img src={ad.imageUrl} alt="" className="h-10 w-10 rounded-xl object-cover shrink-0"/>
+      <div className="flex items-center gap-3 px-3 py-2.5 cursor-pointer" onClick={click}>
+        {ad.mediaUrl && (ad.format === 'video'
+          ? <video src={ad.mediaUrl} muted className="h-10 w-10 rounded-xl object-cover shrink-0"/>
+          : <img src={ad.mediaUrl} alt="" className="h-10 w-10 rounded-xl object-cover shrink-0"/>
         )}
-        {!ad.imageUrl && (
+        {!ad.mediaUrl && (
           <div className="h-10 w-10 rounded-xl shrink-0 flex items-center justify-center"
             style={{ background:'rgba(79,110,247,0.15)' }}>
             <Megaphone size={18} style={{ color:'#818cf8' }}/>
@@ -72,25 +91,10 @@ export const BannerAd = ({ placement, className = '' }: { placement: AdPlacement
 
 /* -- Feed Ad (Bloom лента  -  карточка среди постов) ---------- */
 export const FeedAd = () => {
-  const { campaigns, update } = useAdsStore();
+  const { ad, click } = useServedAd('bloom_feed');
   const [dismissed, setDismissed] = useState(false);
 
-  const ad = campaigns.find(c =>
-    c.status === 'active' &&
-    (c.placement === 'bloom_feed' || c.placement === 'bloom_stories') &&
-    new Date(c.endDate) > new Date()
-  );
-
-  useEffect(() => {
-    if (ad) update(ad.id, { impressions: ad.impressions + 1 });
-  }, [ad?.id]);
-
   if (!ad || dismissed) return null;
-
-  const handleClick = () => {
-    update(ad.id, { clicks: ad.clicks + 1, ctr: parseFloat(((ad.clicks + 1) / Math.max(1, ad.impressions) * 100).toFixed(1)) });
-    if (ad.linkUrl) window.open(ad.linkUrl, '_blank');
-  };
 
   return (
     <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }}
@@ -116,9 +120,10 @@ export const FeedAd = () => {
           </button>
         </div>
       </div>
-      <div className="cursor-pointer" onClick={handleClick}>
-        {ad.imageUrl && (
-          <img src={ad.imageUrl} alt="" className="w-full max-h-48 object-cover"/>
+      <div className="cursor-pointer" onClick={click}>
+        {ad.mediaUrl && (ad.format === 'video'
+          ? <video src={ad.mediaUrl} muted loop autoPlay playsInline className="w-full max-h-48 object-cover"/>
+          : <img src={ad.mediaUrl} alt="" className="w-full max-h-48 object-cover"/>
         )}
         <div className="px-4 py-3">
           <p className="text-sm font-bold text-white">{ad.title}</p>
@@ -139,19 +144,13 @@ export const FeedAd = () => {
 
 /* -- Preroll Ad (перед видео) ------------------------------- */
 export const PrerollAd = ({ onSkip }: { onSkip: () => void }) => {
-  const { campaigns, update } = useAdsStore();
+  const { ad, ready, click } = useServedAd('video_preroll');
   const [secondsLeft, setSecondsLeft] = useState(5);
   const [canSkip, setCanSkip] = useState(false);
 
-  const ad = campaigns.find(c =>
-    c.status === 'active' &&
-    c.placement === 'video_preroll' &&
-    new Date(c.endDate) > new Date()
-  );
-
   useEffect(() => {
+    if (!ready) return;
     if (!ad) { onSkip(); return; }
-    update(ad.id, { impressions: ad.impressions + 1 });
     const t = setInterval(() => {
       setSecondsLeft(s => {
         if (s <= 1) { clearInterval(t); setCanSkip(true); return 0; }
@@ -159,22 +158,20 @@ export const PrerollAd = ({ onSkip }: { onSkip: () => void }) => {
       });
     }, 1000);
     return () => clearInterval(t);
-  }, [ad?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, ad?.campaignId]);
 
-  if (!ad) return null;
-
-  const handleClick = () => {
-    update(ad.id, { clicks: ad.clicks + 1 });
-    if (ad.linkUrl) window.open(ad.linkUrl, '_blank');
-  };
+  if (!ready || !ad) return null;
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col" style={{ background:'#000' }}>
       {/* Ad content */}
-      <div className="flex-1 relative cursor-pointer flex items-center justify-center" onClick={handleClick}
-        style={{ background: ad.imageUrl ? 'transparent' : 'linear-gradient(135deg,#0f172a,#1e3a5f)' }}>
-        {ad.imageUrl
-          ? <img src={ad.imageUrl} alt="" className="w-full h-full object-cover"/>
+      <div className="flex-1 relative cursor-pointer flex items-center justify-center" onClick={click}
+        style={{ background: ad.mediaUrl ? 'transparent' : 'linear-gradient(135deg,#0f172a,#1e3a5f)' }}>
+        {ad.mediaUrl
+          ? (ad.format === 'video'
+              ? <video src={ad.mediaUrl} autoPlay muted playsInline className="w-full h-full object-cover"/>
+              : <img src={ad.mediaUrl} alt="" className="w-full h-full object-cover"/>)
           : <div className="text-center px-8">
               <Megaphone size={46} className="mx-auto mb-4 text-white/80"/>
               <p className="text-xl font-black text-white">{ad.title}</p>
@@ -209,16 +206,8 @@ export const PrerollAd = ({ onSkip }: { onSkip: () => void }) => {
 
 /* -- Channel Post Ad (текстовый пост в каналах) ------------- */
 export const ChannelAdPost = () => {
-  const { campaigns, update } = useAdsStore();
+  const { ad, click } = useServedAd('channel_post');
   const [dismissed, setDismissed] = useState(false);
-
-  const ad = campaigns.find(c =>
-    c.status === 'active' &&
-    (c.placement === 'channel_post' || c.placement === 'channel_pin') &&
-    new Date(c.endDate) > new Date()
-  );
-
-  useEffect(() => { if (ad) update(ad.id, { impressions: ad.impressions + 1 }); }, [ad?.id]);
 
   if (!ad || dismissed) return null;
 
@@ -234,8 +223,7 @@ export const ChannelAdPost = () => {
           <X size={10} style={{ color:'rgba(255,255,255,0.3)' }}/>
         </button>
       </div>
-      <div className="px-3 py-2.5 cursor-pointer"
-        onClick={() => { update(ad.id, { clicks: ad.clicks+1 }); if(ad.linkUrl) window.open(ad.linkUrl,'_blank'); }}>
+      <div className="px-3 py-2.5 cursor-pointer" onClick={click}>
         <p className="text-sm font-semibold text-white">{ad.title}</p>
         {ad.description && <p className="text-xs mt-0.5" style={{ color:'rgba(255,255,255,0.5)' }}>{ad.description}</p>}
       </div>
@@ -243,12 +231,13 @@ export const ChannelAdPost = () => {
   );
 };
 
-/* -- No Ads state (if no active campaigns) ------------------- */
-export const hasActiveAds = (placement: AdPlacement): boolean => {
-  try {
-    const campaigns = JSON.parse(localStorage.getItem('sky:ads:v1') || '[]');
-    return campaigns.some((c: AdCampaign) =>
-      c.status === 'active' && c.placement === placement && new Date(c.endDate) > new Date()
-    );
-  } catch { return false; }
+/**
+ * Есть ли сейчас активная реклама под площадку — для условного рендера
+ * блока (например, не резервировать место под баннер, если рекламы
+ * нет). Реальный ответ только у сервера; здесь — быстрый предзапрос
+ * без записи показа (показ пишет сам компонент выше при монтировании).
+ */
+export const hasActiveAds = async (placement: AdPlacement): Promise<boolean> => {
+  const ad = await apiServeAd(placement);
+  return ad !== null;
 };

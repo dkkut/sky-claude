@@ -14,7 +14,6 @@ import { useModerationStore, type ModDomain, type WarningKind } from '@/shared/m
 import { BlockedChannelBadge } from '@/shared/ContentWarningGate';
 import { useModuleStore } from '@/data/state/modules';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
-import { useAdsStore, AD_PLACEMENTS, AD_STATUS_COLOR, AD_STATUS_LABEL } from '@/ads/store';
 
 /** Заглушка на время подгрузки чанка вкладки. */
 const TabFallback = () => (
@@ -438,9 +437,7 @@ const AdminPanel = () => {
   const bookPending    = useBookPendingCount();
   const ticketPending  = useTicketPendingCount();
   const botPending     = useBotPendingCount();
-  const { campaigns, moderate } = useAdsStore();
-  const pendingAds = campaigns.filter(c=>c.status==='moderation');
-  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'books_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'ads_mod'|'support'>('core');
+  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'books_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'support'>('core');
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -455,7 +452,6 @@ const AdminPanel = () => {
           ['tickets_mod',  `Билеты${ticketPending > 0 ? ` (${ticketPending})` : ''}`,   Ticket],
           ['content',    'Контент',                                                   Upload],
           ['channels',   'Каналы',                                                   Shield],
-          ['ads_mod',    `Реклама${pendingAds.length>0?` (${pendingAds.length})`:''}`, Megaphone],
           ['support',    'Поддержка',  MessageSquare],
         ] as const).map(([k,l,Icon])=>(
           <button key={k} type="button" onClick={()=>setAdminTab(k)}
@@ -497,45 +493,9 @@ const AdminPanel = () => {
 
         {adminTab==='support'    && <AdminSupportTab/>}
 
-        {/* ==== ADS MODERATION ==== */}
-        {adminTab==='ads_mod' && (
-          <div className="p-4 space-y-3">
-            {pendingAds.length===0&&(
-              <div className="py-12 text-center"><p className="text-sm" style={{color:'var(--t3)'}}>Нет рекламы на модерации</p></div>
-            )}
-            {pendingAds.map(ad=>(
-              <div key={ad.id} className="rounded-2xl p-4 space-y-3"
-                style={{background:'var(--bg-l1)',border:'1px solid rgba(245,158,11,0.2)'}}>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-white">{ad.title}</p>
-                    <p className="text-xs mt-0.5" style={{color:'var(--t2)'}}>{ad.description}</p>
-                    <div className="flex gap-2 mt-1.5 text-[10px]" style={{color:'var(--t3)'}}>
-                      <span className="inline-flex items-center gap-1"><MapPin size={11}/>{AD_PLACEMENTS.find(p=>p.placement===ad.placement)?.label}</span>
-                      <span>{ad.budget.toLocaleString('ru')} ₽</span>
-                      <span className="inline-flex items-center gap-1"><Calendar size={11}/>{ad.durationDays} дн.</span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0"
-                    style={{background:'rgba(245,158,11,0.15)',color:'var(--amber)'}}>Ожидает</span>
-                </div>
-                {ad.imageUrl&&<img src={ad.imageUrl} alt="" className="w-full max-h-24 object-cover rounded-xl"/>}
-                <div className="flex gap-2">
-                  <button type="button" onClick={()=>moderate(ad.id,true)}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
-                    style={{background:'rgba(34,197,94,0.15)',color:'#22c55e',border:'1px solid rgba(34,197,94,0.3)'}}>
-                    <Check size={13} className="inline mr-1"/>Одобрить
-                  </button>
-                  <button type="button" onClick={()=>moderate(ad.id,false,'Нарушение правил рекламы')}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold"
-                    style={{background:'rgba(239,68,68,0.1)',color:'var(--red)',border:'1px solid rgba(239,68,68,0.2)'}}>
-                    <X size={13} className="inline mr-1"/>Отклонить
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Модерация рекламы переехала в общую RBAC-панель (src/admin/AdminPanel.tsx,
+            раздел «Реклама»): там видно все кампании, а не только свои, и право
+            проверяет сервер, а не локальный флаг isAdmin этого экрана. */}
 
         {adminTab==='content' && <AdminContentTab tracks={tracks} approveTrack={approveTrack} rejectTrack={rejectTrack}/>}
         {adminTab==='channels' && <AdminChannelModerationTab/>}
