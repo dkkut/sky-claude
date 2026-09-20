@@ -26,6 +26,7 @@ export const PERMISSIONS = [
   'security',        // роли, права, журнал, аварийный режим
   'campaigns',       // мероприятия с наградой (не Sky Tickets — другая сущность)
   'gifts',           // каталог Sky Gifts, медиа подарков и карточки Prime, надзор за NFT
+  'garant',          // сделки Sky Garant, споры и решения по ним
 ];
 
 /**
@@ -50,6 +51,7 @@ export const ROLES = {
   // проверка в replyToTicket), а отдельного чата у мероприятий нет.
   campaigns_admin: ['campaigns', 'support'],
   gifts_admin:     ['gifts'],
+  garant_admin:    ['garant', 'support'],
   read_only_admin: [],
 };
 
@@ -66,5 +68,6 @@ export const ROLE_LABEL = {
   finance_admin: 'Начисления',
   campaigns_admin: 'Мероприятия',
   gifts_admin: 'Подарки',
+  garant_admin: 'Sky Garant',
   read_only_admin: 'Только чтение',
 };

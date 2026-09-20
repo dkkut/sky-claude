@@ -1,4 +1,4 @@
-import { Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Scale, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
+import { Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
 import { lazyChunk } from '@/app/lazyChunk';
 import { BotsBrowser } from '@/bots/SkyBots';
 import { BotCreatorPanel } from '@/bots/BotCreator';
@@ -55,7 +55,6 @@ import { BotModeration } from '@/bots/BotsAdmin';
 import { useBotPendingCount } from '@/bots/useBotPending';
 import { useFilmStore } from '@/film/serverStore';
 import { posterUrl } from '@/film/filmApi';
-import { AdminDisputesPanel, AdminGarantPanel } from '@/admin/AdminDisputes';
 import { qrDataUri } from '@/shared/qr';
 /* Реальная панель прав: роли, подтверждение личности, второй ключ
    владельца, второй фактор, журнал. Названа с приставкой Rbac здесь,
@@ -439,7 +438,7 @@ const AdminPanel = () => {
   const botPending     = useBotPendingCount();
   const { campaigns, moderate } = useAdsStore();
   const pendingAds = campaigns.filter(c=>c.status==='moderation');
-  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'books_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'ads_mod'|'disputes'|'support'|'garant_adm'>('core');
+  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'books_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'ads_mod'|'support'>('core');
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -455,8 +454,6 @@ const AdminPanel = () => {
           ['content',    'Контент',                                                   Upload],
           ['channels',   'Каналы',                                                   Shield],
           ['ads_mod',    `Реклама${pendingAds.length>0?` (${pendingAds.length})`:''}`, Megaphone],
-          ['disputes',   `Споры`,      Scale],
-          ['garant_adm', `Гарант`,     Shield],
           ['support',    'Поддержка',  MessageSquare],
         ] as const).map(([k,l,Icon])=>(
           <button key={k} type="button" onClick={()=>setAdminTab(k)}
@@ -495,10 +492,6 @@ const AdminPanel = () => {
 
         {/* ==== БИЛЕТЫ ==== */}
         {adminTab==='tickets_mod'  && <div className="p-4 overflow-y-auto"><TicketsModeration/></div>}
-
-        {/* ==== СПОРЫ И ГАРАНТ ==== */}
-        {adminTab==='disputes'    && <AdminDisputesPanel/>}
-        {adminTab==='garant_adm' && <AdminGarantPanel/>}
 
         {adminTab==='support'    && <AdminSupportTab/>}
 
@@ -883,7 +876,6 @@ const MediaHomeTab = ({
   const greeting = hr < 6 ? 'Доброй ночи' : hr < 12 ? 'Доброе утро' : hr < 18 ? 'Добрый день' : 'Добрый вечер';
   const recentTracks = tracks.slice(0, 8);
 
-  const [listenMin]  = React.useState(() => Math.floor(Math.random() * 120 + 20));
   const [activeRec, setActiveRec] = React.useState<number|null>(null);
   const [scrollY, setScrollY]     = React.useState(0);
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -914,15 +906,23 @@ const MediaHomeTab = ({
     { key:'ai',      Icon:Sparkles, label:'Sky AI',   color:'#8b5cf6', bg:'rgba(139,92,246,.12)'  },
   ] as const;
 
-  const FEATURED = [
-    { title:'Lo-Fi Chill 2026',  sub:'Плейлист · 38 треков', Icon:Music2,   g:['#1e1b4b','#312e81'] as [string,string] },
-    { title:'Sky Tech Podcast',  sub:'Еп. 54 · 42 мин',       Icon:Mic2,     g:['#052e16','#14532d'] as [string,string] },
-    { title:'Neon Racer OST',    sub:'Саундтрек · 22 трека',  Icon:Zap,      g:['#1c1917','#44403c'] as [string,string] },
-    { title:'Sky Hits · Апрель', sub:'Топ 50 · Каждую неделю',Icon:Sparkles, g:['#450a0a','#7f1d1d'] as [string,string] },
-    { title:'Midnight Vibes',    sub:'Плейлист · 18 треков',  Icon:Music2,   g:['#0c0a09','#292524'] as [string,string] },
-  ];
+  /* Раньше здесь были 5 выдуманных подборок с придуманными названиями и
+     цифрами ("Lo-Fi Chill 2026 · 38 треков" и т.п.) — витрины
+     реальных подборок в проекте нет, поэтому вместо неё показываем
+     настоящий топ по реальному счётчику прослушиваний трека (то же
+     поле `plays`, что и в профиле артиста). Если ни у одного трека
+     ещё нет прослушиваний, секция скрывается — это честное «данных
+     пока нет», а не подставная цифра. */
+  const topTracks = tracks.filter(t => t.plays > 0).sort((a,b) => b.plays - a.plays).slice(0, 8);
 
-  const fmtMin = (m: number) => m >= 60 ? `${Math.floor(m/60)}ч ${m%60}м` : `${m}м`;
+  const trackWord = (n: number) => {
+    const mod10 = n % 10, mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return 'трек';
+    if ([2,3,4].includes(mod10) && ![12,13,14].includes(mod100)) return 'трека';
+    return 'треков';
+  };
+  const fmtPlays = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}М`
+    : n >= 1_000 ? `${(n / 1_000).toFixed(1)}К` : String(n));
 
   return (
     <div ref={scrollRef} onScroll={onScroll}
@@ -981,9 +981,11 @@ const MediaHomeTab = ({
               <p className={isMobile ? 'text-[17px] font-black text-white leading-tight tracking-tight' : 'text-[22px] font-black text-white leading-tight tracking-tight'}>
                 {greeting}{me?.name ? `,\u00a0${me.name.split(' ')[0]}` : ''}
               </p>
-              <p className="text-[11px] mt-1.5" style={{ color:'rgba(255,255,255,.4)' }}>
-                Сегодня {fmtMin(listenMin)} медиа
-              </p>
+              {tracks.length > 0 && (
+                <p className="text-[11px] mt-1.5" style={{ color:'rgba(255,255,255,.4)' }}>
+                  {tracks.length} {trackWord(tracks.length)} в библиотеке
+                </p>
+              )}
             </div>
             {isPrime && (
               <div className="rounded-full px-2.5 py-1 shrink-0 mt-1"
@@ -1044,21 +1046,24 @@ const MediaHomeTab = ({
         </div>
       </motion.section>
 
-      {/* ── FEATURED HORIZONTAL ──────────────────────────────── */}
+      {/* ── ПОПУЛЯРНОЕ (реальный топ по прослушиваниям) ─────────── */}
+      {topTracks.length > 0 && (
       <motion.section {...fu(2)} className="mt-5">
         <div className={`flex items-center justify-between mb-2.5 ${isMobile ? 'px-3' : 'px-4'}`}>
           <p className="text-[10px] font-black uppercase tracking-[0.16em]"
-            style={{ color:'var(--t3)' }}>Подборки</p>
+            style={{ color:'var(--t3)' }}>Популярное</p>
           <button type="button" onClick={() => onNav('music')}
             className="text-[11px] font-bold" style={{ color:'var(--accent)', background:'none', border:'none', cursor:'pointer' }}>
             Все →
           </button>
         </div>
         <div className={`flex overflow-x-auto pb-1 ${isMobile ? 'gap-2 px-3' : 'gap-3 px-4'}`} style={{ scrollbarWidth:'none' }}>
-          {FEATURED.map((f, i) => {
+          {topTracks.map((f, i) => {
             const cardSize = isMobile ? 108 : 148;
+            const hue = ((f.id?.charCodeAt?.(0) ?? 200) * 47) % 360;
+            const g: [string,string] = [`hsl(${hue},45%,16%)`, `hsl(${(hue+40)%360},40%,24%)`];
             return (
-            <motion.div key={f.title}
+            <motion.div key={f.id}
               initial={{ opacity:0, x:16 }} animate={{ opacity:1, x:0 }}
               transition={{ delay:.15+i*.07, duration:.35, ease:[.22,1,.36,1] }}
               whileHover={{ y:-4 }} whileTap={{ scale:.96 }}
@@ -1066,11 +1071,13 @@ const MediaHomeTab = ({
               onClick={() => onNav('music')}>
               {/* Cover */}
               <div className="relative overflow-hidden rounded-2xl mb-2"
-                style={{ height:cardSize, background:`linear-gradient(155deg,${f.g[0]},${f.g[1]})`,
+                style={{ height:cardSize, background:f.coverUrl?undefined:`linear-gradient(155deg,${g[0]},${g[1]})`,
                   boxShadow:'0 8px 24px rgba(0,0,0,.45)', border:'1px solid rgba(255,255,255,.06)' }}>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <f.Icon size={isMobile?30:44} style={{ color:'rgba(255,255,255,0.85)' }}/>
-                </div>
+                {f.coverUrl
+                  ? <img src={f.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover"/>
+                  : <div className="absolute inset-0 flex items-center justify-center">
+                      <Music2 size={isMobile?30:44} style={{ color:'rgba(255,255,255,0.85)' }}/>
+                    </div>}
                 {/* Hover play overlay */}
                 <motion.div className="absolute inset-0 flex items-center justify-center opacity-0"
                   style={{ background:'rgba(0,0,0,.45)' }}
@@ -1087,12 +1094,13 @@ const MediaHomeTab = ({
                   style={{ background:'linear-gradient(transparent,rgba(0,0,0,.65))' }}/>
               </div>
               <p className="text-[11px] font-bold line-clamp-1" style={{ color:'var(--t1)' }}>{f.title}</p>
-              <p className="text-[10px] mt-0.5 truncate" style={{ color:'var(--t3)' }}>{f.sub}</p>
+              <p className="text-[10px] mt-0.5 truncate" style={{ color:'var(--t3)' }}>{f.artist} · {fmtPlays(f.plays)} прослушиваний</p>
             </motion.div>
             );
           })}
         </div>
       </motion.section>
+      )}
 
       {/* ── RECENT TRACKS ────────────────────────────────────── */}
       {recentTracks.length > 0 && (
@@ -1129,44 +1137,6 @@ const MediaHomeTab = ({
           </div>
         </motion.section>
       )}
-
-      {/* ── ACTIVITY ─────────────────────────────────────────── */}
-      <motion.section {...fu(4)} className="px-4 mt-6 mb-8">
-        <p className="text-[10px] font-black uppercase tracking-[0.16em] mb-3" style={{ color:'var(--t3)' }}>Активность</p>
-        <div className="rounded-2xl p-4" style={{ background:'var(--bg-l2)', border:'1px solid var(--border)' }}>
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            {[
-              { label:'Сегодня',    val:fmtMin(listenMin), color:'#6366f1' },
-              { label:'За неделю', val:fmtMin(listenMin*5), color:'#22d3ee' },
-            ].map(({ label, val, color }) => (
-              <div key={label} className="rounded-xl px-3 py-3"
-                style={{ background:'var(--bg-l3)', border:'1px solid var(--border)' }}>
-                <p className="text-[10px] mb-1" style={{ color:'var(--t3)' }}>{label}</p>
-                <p className="text-lg font-black" style={{ color }}>{val}</p>
-              </div>
-            ))}
-          </div>
-          {([
-            { label:'Музыка',   pct:58, color:'#6366f1' },
-            { label:'Видео',    pct:24, color:'#f43f5e' },
-            { label:'Подкасты', pct:18, color:'#10b981' },
-          ] as const).map(({ label, pct, color }, i) => (
-            <div key={label} className={i>0?'mt-2.5':''}>
-              <div className="flex justify-between mb-1">
-                <span className="text-[11px] font-semibold" style={{ color:'var(--t2)' }}>{label}</span>
-                <span className="text-[11px]" style={{ color:'var(--t3)' }}>{pct}%</span>
-              </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'var(--bg-l3)' }}>
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${pct}%` }}
-                  transition={{ duration: 0.7, delay: 0.4 + i * 0.12, ease: [0.22,1,0.36,1] }}
-                  style={{ height:'100%', background:color, borderRadius:3 }}/>
-              </div>
-            </div>
-          ))}
-        </div>
-      </motion.section>
 
       </div>{/* /content */}
     </div>

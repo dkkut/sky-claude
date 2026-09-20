@@ -1991,9 +1991,250 @@ const FamilyAdminSection = () => {
   );
 };
 
+/* ─── Sky Garant: сделки, споры, force-действия ────────────────────────
+   Те же ручки, что и у клиента (server/garant.mjs), через
+   /api/garant/admin/*. Решение спора и force-подтверждение двигают уже
+   удержанные в сделке деньги — не создают новые, поэтому здесь обычная
+   проверка права 'garant', без двух ключей (тот же подход, что и у
+   собственных споров Sky Market). */
+
+const GARANT_STATUS_LABEL: Record<string, string> = {
+  pending_seller: 'Ждём товар', pending_buyer: 'Ждём оплату', in_escrow: 'У гаранта',
+  completed: 'Завершена', cancelled: 'Отменена', disputed: 'Спор',
+};
+
+const GarantDealAdminDetail = ({ dealId, onBack, onChanged }: { dealId: string; onBack: () => void; onChanged: () => void }) => {
+  const [detail, setDetail] = useState<import('@/garant/garantApi').GarantDeal | null>(null);
+  const [log, setLog] = useState<import('@/garant/garantApi').GarantLogEntry[]>([]);
+  const [failed, setFailed] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [winner, setWinner] = useState<'seller_wins' | 'buyer_wins' | 'cancelled'>('seller_wins');
+  const [note, setNote] = useState('');
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminDealDetail } = await import('@/garant/garantApi');
+    const r = await apiAdminDealDetail(dealId);
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить сделку'); return; }
+    setDetail(r.data.deal); setLog(r.data.log);
+  }, [dealId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const forceConfirm = async (side: 'buyer' | 'seller') => {
+    setBusy(true); setFailed('');
+    const { apiAdminForceConfirm } = await import('@/garant/garantApi');
+    const r = await apiAdminForceConfirm(dealId, side);
+    setBusy(false);
+    if (!r.ok) { setFailed('Не получилось подтвердить'); return; }
+    void load(); onChanged();
+  };
+
+  const forceCancel = async () => {
+    setBusy(true); setFailed('');
+    const { apiAdminForceCancel } = await import('@/garant/garantApi');
+    const r = await apiAdminForceCancel(dealId);
+    setBusy(false);
+    if (!r.ok) { setFailed('Не получилось отменить'); return; }
+    void load(); onChanged();
+  };
+
+  const resolve = async () => {
+    if (!note.trim()) { setFailed('Укажите обоснование'); return; }
+    setBusy(true); setFailed('');
+    const { apiAdminResolveDispute } = await import('@/garant/garantApi');
+    const r = await apiAdminResolveDispute(dealId, winner, note.trim());
+    setBusy(false);
+    if (!r.ok) { setFailed('Не получилось вынести решение'); return; }
+    setResolving(false); setNote('');
+    void load(); onChanged();
+  };
+
+  if (!detail) {
+    return failed
+      ? <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>
+      : <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />;
+  }
+
+  return (
+    <div className="space-y-3">
+      <button type="button" onClick={onBack} className="text-[11px] font-bold" style={{ color: C.t3 }}>← К списку сделок</button>
+
+      <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-bold" style={{ color: C.t1 }}>{detail.title}</p>
+          <span className="shrink-0 text-[10px] font-bold" style={{
+            color: detail.status === 'completed' ? C.green : detail.status === 'disputed' ? C.red
+              : detail.status === 'cancelled' ? C.t3 : C.amber,
+          }}>{GARANT_STATUS_LABEL[detail.status] ?? detail.status}</span>
+        </div>
+        <p className="mt-1 text-[10px]" style={{ color: C.t3 }}>
+          {detail.itemName} · {detail.payType === 'rubles' ? `${detail.price.toLocaleString('ru')} ₽` : `${detail.price.toLocaleString('ru')} баллов`}
+        </p>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="rounded-xl p-2.5" style={{ background: C.l2 }}>
+            <p className="text-[9px] font-bold uppercase" style={{ color: C.t3 }}>Продавец</p>
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{detail.sellerName} <span style={{ color: C.t3 }}>@{detail.sellerUsername}</span></p>
+            <p className="text-[9px]" style={{ color: detail.sellerDeposited ? C.green : C.t3 }}>{detail.sellerDeposited ? 'Товар внесён' : 'Товар не внесён'}</p>
+            <p className="text-[9px]" style={{ color: detail.sellerConfirmed ? C.green : C.t3 }}>{detail.sellerConfirmed ? 'Подтвердил' : 'Не подтвердил'}</p>
+          </div>
+          <div className="rounded-xl p-2.5" style={{ background: C.l2 }}>
+            <p className="text-[9px] font-bold uppercase" style={{ color: C.t3 }}>Покупатель</p>
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{detail.buyerName} <span style={{ color: C.t3 }}>@{detail.buyerUsername}</span></p>
+            <p className="text-[9px]" style={{ color: detail.buyerDeposited ? C.green : C.t3 }}>{detail.buyerDeposited ? 'Оплата внесена' : 'Оплата не внесена'}</p>
+            <p className="text-[9px]" style={{ color: detail.buyerConfirmed ? C.green : C.t3 }}>{detail.buyerConfirmed ? 'Подтвердил' : 'Не подтвердил'}</p>
+          </div>
+        </div>
+
+        {detail.status === 'disputed' && detail.disputeReason && (
+          <div className="mt-2 rounded-xl p-2.5" style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
+            <p className="text-[9px] font-bold uppercase" style={{ color: C.red }}>Причина спора</p>
+            <p className="mt-0.5 text-[11px]" style={{ color: C.t2 }}>«{detail.disputeReason}»</p>
+          </div>
+        )}
+        {detail.disputeResult && (
+          <div className="mt-2 rounded-xl p-2.5" style={{ background: C.l2 }}>
+            <p className="text-[9px] font-bold uppercase" style={{ color: C.t3 }}>Решение спора</p>
+            <p className="mt-0.5 text-[11px]" style={{ color: C.t2 }}>{detail.disputeResult} — {detail.disputeNote}</p>
+          </div>
+        )}
+
+        {failed && <p className="mt-2 text-[11px]" style={{ color: C.red }}>{failed}</p>}
+
+        {detail.status === 'disputed' && !detail.disputeResult && (
+          resolving ? (
+            <div className="mt-3 space-y-2">
+              {([
+                ['seller_wins', 'Победа продавца'], ['buyer_wins', 'Победа покупателя'], ['cancelled', 'Отмена сделки'],
+              ] as const).map(([k, l]) => (
+                <button key={k} type="button" onClick={() => setWinner(k)}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold"
+                  style={{ background: winner === k ? C.acc : C.l2, color: winner === k ? '#fff' : C.t2 }}>
+                  {winner === k && <Check size={12} />}{l}
+                </button>
+              ))}
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Обоснование решения"
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              <div className="flex gap-2">
+                <button type="button" disabled={busy} onClick={() => void resolve()}
+                  className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-50" style={{ background: C.acc, color: '#fff' }}>
+                  Вынести решение
+                </button>
+                <button type="button" onClick={() => setResolving(false)} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>Отмена</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setResolving(true)}
+              className="mt-3 w-full rounded-xl py-2.5 text-xs font-bold" style={{ background: 'linear-gradient(135deg,#7c3aed,#4f6ef7)', color: '#fff' }}>
+              Вынести решение по спору
+            </button>
+          )
+        )}
+
+        {detail.status === 'in_escrow' && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {!detail.sellerConfirmed && (
+              <button type="button" disabled={busy} onClick={() => void forceConfirm('seller')}
+                className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.acc }}>
+                Force-подтвердить продавца
+              </button>
+            )}
+            {!detail.buyerConfirmed && (
+              <button type="button" disabled={busy} onClick={() => void forceConfirm('buyer')}
+                className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.acc }}>
+                Force-подтвердить покупателя
+              </button>
+            )}
+            <button type="button" disabled={busy} onClick={() => void forceCancel()}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.red }}>
+              Принудительно отменить
+            </button>
+          </div>
+        )}
+      </div>
+
+      {log.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-bold" style={{ color: C.t3 }}>ЖУРНАЛ</p>
+          <div className="space-y-1.5">
+            {log.map((e) => (
+              <div key={e.id} className="rounded-xl px-3 py-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+                <p className="text-[11px]" style={{ color: C.t2 }}>{e.action}</p>
+                <p className="text-[10px]" style={{ color: C.t3 }}>{fmtTs(e.createdAt)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const GarantAdminSection = () => {
+  const [deals, setDeals] = useState<import('@/garant/garantApi').GarantDeal[] | null>(null);
+  const [status, setStatus] = useState<'' | 'disputed' | 'in_escrow' | 'completed' | 'cancelled'>('disputed');
+  const [q, setQ] = useState('');
+  const [failed, setFailed] = useState('');
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminListDeals } = await import('@/garant/garantApi');
+    const r = await apiAdminListDeals({ status: status || undefined, q: q.trim() || undefined });
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить сделки'); return; }
+    setDeals(r.data.items);
+  }, [status, q]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  if (openId) return <GarantDealAdminDetail dealId={openId} onBack={() => setOpenId(null)} onChanged={() => void load()} />;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {([['disputed', 'Споры'], ['in_escrow', 'У гаранта'], ['completed', 'Завершены'], ['cancelled', 'Отменены'], ['', 'Все']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setStatus(k)}
+            className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+            style={{ background: status === k ? C.acc : C.l2, color: status === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Название сделки или @участник"
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <button type="button" onClick={() => void load()} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+          <RefreshCw size={12} />
+        </button>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {deals === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : deals.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Сделок не найдено.</p>
+      ) : deals.map((d) => (
+        <button key={d.id} type="button" onClick={() => setOpenId(d.id)}
+          className="w-full rounded-2xl p-3 text-left" style={{ background: C.l1, border: `1px solid ${d.status === 'disputed' ? 'rgba(248,113,113,0.3)' : C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{d.title}</p>
+            <span className="shrink-0 text-[10px] font-bold" style={{
+              color: d.status === 'completed' ? C.green : d.status === 'disputed' ? C.red
+                : d.status === 'cancelled' ? C.t3 : C.amber,
+            }}>{GARANT_STATUS_LABEL[d.status] ?? d.status}</span>
+          </div>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            {d.sellerName} → {d.buyerName} · {d.payType === 'rubles' ? `${d.price.toLocaleString('ru')} ₽` : `${d.price.toLocaleString('ru')} баллов`}
+          </p>
+        </button>
+      ))}
+    </div>
+  );
+};
+
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -2117,6 +2358,7 @@ export const AdminPanel = () => {
     { key: 'gifts', label: 'Подарки', show: has('gifts') },
     { key: 'couriers', label: 'Курьеры', show: has('logistics') },
     { key: 'family', label: 'Sky Family', show: has('moderation') },
+    { key: 'garant', label: 'Sky Garant', show: has('garant') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
     { key: 'events', label: 'События', show: has('security') },
@@ -2248,6 +2490,7 @@ export const AdminPanel = () => {
       {tab === 'gifts' && <GiftsAdminSection />}
       {tab === 'couriers' && <CourierAdminSection />}
       {tab === 'family' && <FamilyAdminSection />}
+      {tab === 'garant' && <GarantAdminSection />}
 
       {tab === 'admins' && (
         <>

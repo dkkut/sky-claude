@@ -2,207 +2,26 @@
    SKY GARANT  -  Гарант-сервис для безопасных сделок
    Скины · Подарки · NFT · Любые ценности между пользователями
 =============================================================== */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Plus, Check, ArrowRight,
   Package, DollarSign, Star, AlertCircle, Crown, Lock,
-  ChevronLeft, CheckCircle, XCircle, History,
+  ChevronLeft, CheckCircle, XCircle, History, Search as SearchIcon,
   Palette, Gift, Gem, Sparkles, Scale, Handshake,
-  Clock,
+  Clock, Loader2,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
-import { useMoney } from '@/wallet/store';
-import { create } from 'zustand';
-
-/* === TYPES ================================================== */
-export type DealStatus =
-  | 'pending_seller'    // ждём товар от продавца
-  | 'pending_buyer'     // ждём оплату от покупателя
-  | 'in_escrow'         // оба внесли  -  гарант держит
-  | 'completed'         // сделка завершена
-  | 'cancelled'         // отменена
-  | 'disputed';         // спор
-
-export type ItemType = 'skin' | 'gift' | 'nft' | 'currency' | 'item' | 'other';
-export type PayType  = 'rubles' | 'points';
-
-export interface GarantDeal {
-  id:          string;
-  title:       string;
-  description: string;
-  sellerId:    string;
-  sellerName:  string;
-  buyerId:     string;
-  buyerName:   string;
-  itemType:    ItemType;
-  itemName:    string;
-  price:       number;
-  payType:     PayType;
-  status:      DealStatus;
-  createdAt:   string;
-  completedAt?: string;
-  sellerDeposited: boolean;  // продавец внёс товар
-  buyerDeposited:  boolean;  // покупатель внёс оплату
-  sellerConfirmed: boolean;  // продавец подтвердил получение денег
-  buyerConfirmed:  boolean;  // покупатель подтвердил получение товара
-  comment?:    string;
-  // Dispute fields
-  disputeReason?:   string;
-  disputeOpenedBy?: string;  // userId
-  disputeAt?:       string;
-  disputeResult?:   'seller_wins' | 'buyer_wins' | 'cancelled';
-  disputeNote?:     string;  // admin resolution note
-}
-
-interface GarantState {
-  deals:          GarantDeal[];
-  subscriptions:  Record<string, { until: string }>;  // userId → sub
-
-  create:         (d: Omit<GarantDeal,'id'|'createdAt'|'sellerDeposited'|'buyerDeposited'|'sellerConfirmed'|'buyerConfirmed'|'status'>) => string;
-  depositSeller:  (id: string) => void;
-  depositBuyer:   (id: string, userId: string) => void;
-  confirmBuyer:   (id: string) => void;  // покупатель получил товар
-  confirmSeller:  (id: string) => void;  // продавец получил деньги
-  cancel:         (id: string) => void;
-  openDispute:    (id: string, reason: string, openedBy: string) => void;
-  resolveDispute: (id: string, winner: 'seller_wins' | 'buyer_wins' | 'cancelled', note: string) => void;
-  adminForceConfirm:(id: string, side: 'buyer' | 'seller') => void;
-
-  getMyDeals:     (userId: string) => GarantDeal[];
-  getMonthlyCount:(userId: string) => number;
-  hasSubscription:(userId: string) => boolean;
-  subscribe:      (userId: string) => void;
-}
-
-const SK = 'sky:garant:v1';
-const loadDeals = (): GarantDeal[] => { try { return JSON.parse(localStorage.getItem(SK)||'[]'); } catch { return []; } };
-const saveDeals = (d: GarantDeal[]) => { try { localStorage.setItem(SK, JSON.stringify(d)); } catch {} };
-const SK_SUBS   = 'sky:garant:subs:v1';
-const loadSubs  = (): Record<string,{until:string}> => { try { return JSON.parse(localStorage.getItem(SK_SUBS)||'{}'); } catch { return {}; } };
-const saveSubs  = (s: Record<string,{until:string}>) => { try { localStorage.setItem(SK_SUBS, JSON.stringify(s)); } catch {} };
-
-export const useGarantStore = create<GarantState>((set, get) => ({
-  deals:         loadDeals(),
-  subscriptions: loadSubs(),
-
-  create: (params) => {
-    const id = `grt-${Date.now()}-${Math.random().toString(36).slice(2,5)}`;
-    const deal: GarantDeal = {
-      ...params, id, createdAt: new Date().toISOString(),
-      sellerDeposited:false, buyerDeposited:false,
-      sellerConfirmed:false, buyerConfirmed:false,
-      status:'pending_seller',
-    };
-    const next = [...get().deals, deal];
-    saveDeals(next); set({ deals: next });
-    return id;
-  },
-
-  depositSeller: (id) => {
-    const next = get().deals.map(d =>
-      d.id===id ? { ...d, sellerDeposited:true, status: d.buyerDeposited?'in_escrow' as const:'pending_buyer' as const } : d
-    );
-    saveDeals(next); set({ deals: next });
-  },
-
-  depositBuyer: (id, _userId) => {
-    const next = get().deals.map(d =>
-      d.id===id ? { ...d, buyerDeposited:true, status: d.sellerDeposited?'in_escrow' as const:'pending_seller' as const } : d
-    );
-    saveDeals(next); set({ deals: next });
-  },
-
-  confirmBuyer: (id) => {
-    const d = get().deals.find(x=>x.id===id);
-    if (!d) return;
-    const sellerAlso = d.sellerConfirmed;
-    const next = get().deals.map(x =>
-      x.id===id ? { ...x, buyerConfirmed:true,
-        status: sellerAlso ? 'completed' as const : x.status,
-        completedAt: sellerAlso ? new Date().toISOString() : undefined,
-      } : x
-    );
-    saveDeals(next); set({ deals: next });
-  },
-
-  confirmSeller: (id) => {
-    const d = get().deals.find(x=>x.id===id);
-    if (!d) return;
-    const buyerAlso = d.buyerConfirmed;
-    const next = get().deals.map(x =>
-      x.id===id ? { ...x, sellerConfirmed:true,
-        status: buyerAlso ? 'completed' as const : x.status,
-        completedAt: buyerAlso ? new Date().toISOString() : undefined,
-      } : x
-    );
-    saveDeals(next); set({ deals: next });
-  },
-
-  cancel: (id) => {
-    const next = get().deals.map(d => d.id===id ? {...d, status:'cancelled' as const} : d);
-    saveDeals(next); set({ deals: next });
-  },
-  openDispute: (id, reason, openedBy) => {
-    const next = get().deals.map(d => d.id===id ? {
-      ...d, status:'disputed' as const,
-      disputeReason:reason, disputeOpenedBy:openedBy, disputeAt:new Date().toISOString()
-    } : d);
-    saveDeals(next); set({ deals: next });
-  },
-  resolveDispute: (id, winner, note) => {
-    const d = get().deals.find(x => x.id===id);
-    if (!d) return;
-    // Force-complete based on winner
-    const next = get().deals.map(x => x.id===id ? {
-      ...x,
-      status: 'completed' as const,
-      completedAt: new Date().toISOString(),
-      disputeResult: winner,
-      disputeNote: note,
-      buyerConfirmed:  true,
-      sellerConfirmed: true,
-    } : x);
-    saveDeals(next); set({ deals: next });
-  },
-  adminForceConfirm: (id, side) => {
-    const d = get().deals.find(x => x.id===id);
-    if (!d) return;
-    const buyerAlso  = side==='buyer'  ? true : d.buyerConfirmed;
-    const sellerAlso = side==='seller' ? true : d.sellerConfirmed;
-    const completed  = buyerAlso && sellerAlso;
-    const next = get().deals.map(x => x.id===id ? {
-      ...x,
-      buyerConfirmed:  buyerAlso,
-      sellerConfirmed: sellerAlso,
-      status: completed ? 'completed' as const : x.status,
-      completedAt: completed ? new Date().toISOString() : undefined,
-    } : x);
-    saveDeals(next); set({ deals: next });
-  },
-
-  getMyDeals: (uid) => get().deals.filter(d => d.sellerId===uid || d.buyerId===uid)
-    .sort((a,b) => b.createdAt.localeCompare(a.createdAt)),
-
-  getMonthlyCount: (uid) => {
-    const month = new Date().toISOString().slice(0,7);
-    return get().deals.filter(d => d.sellerId===uid && d.createdAt.startsWith(month)).length;
-  },
-
-  hasSubscription: (uid) => {
-    const sub = get().subscriptions[uid];
-    return !!sub && new Date(sub.until) > new Date();
-  },
-
-  subscribe: (uid) => {
-    const until = new Date(Date.now() + 30*86400000).toISOString();
-    const next  = { ...get().subscriptions, [uid]: { until } };
-    saveSubs(next); set({ subscriptions: next });
-  },
-}));
+import { useMoney, fmt } from '@/wallet/store';
+import { apiSearchPeople, type DirectoryPerson } from '@/core/auth/api';
+import { useGarantStore } from './store';
+import {
+  GARANT_PRO_PRICE, GARANT_PRO_DAYS,
+  type GarantDeal, type DealStatus, type ItemType, type PayType,
+} from './garantApi';
 
 /* === CONSTANTS ============================================== */
-const STATUS_INFO: Record<DealStatus, { label:string; color:string; icon:any; desc:string }> = {
+const STATUS_INFO: Record<DealStatus, { label:string; color:string; icon:typeof Package; desc:string }> = {
   pending_seller: { label:'Ждём товар',    color:'var(--amber)', icon:Package,     desc:'Продавец должен передать товар гаранту' },
   pending_buyer:  { label:'Ждём оплату',   color:'var(--amber)', icon:DollarSign,  desc:'Покупатель должен внести оплату' },
   in_escrow:      { label:'У гаранта',     color:'var(--accent)', icon:Lock,        desc:'Оба внесли  -  гарант держит до подтверждений' },
@@ -211,10 +30,6 @@ const STATUS_INFO: Record<DealStatus, { label:string; color:string; icon:any; de
   disputed:       { label:'Спор',          color:'var(--red)', icon:AlertCircle, desc:'Открыт спор  -  ожидайте решения администратора' },
 };
 
-/* Значок вида товара — из общего набора. Раньше у сделки было ещё и
-   своё поле с эмодзи, которое продавец вписывал руками: два источника
-   одной картинки, причём второй ничего не сообщал о товаре. Остался
-   один — вид сделки. */
 const ITEM_TYPES: { key:ItemType; label:string; Icon:typeof Package }[] = [
   { key:'skin',     label:'Скин',          Icon:Palette },
   { key:'gift',     label:'Подарок Sky',   Icon:Gift },
@@ -232,7 +47,7 @@ const C = {
   gold:'var(--amber)',
 };
 
-const fmtDate = (iso:string) => new Date(iso).toLocaleString('ru',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+const fmtDate = (iso?:string) => iso ? new Date(iso).toLocaleString('ru',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
 
 /* === DEAL CARD ============================================== */
 const DealCard = ({ deal, myId, onOpen }: { deal:GarantDeal; myId:string; onOpen:()=>void }) => {
@@ -244,11 +59,9 @@ const DealCard = ({ deal, myId, onOpen }: { deal:GarantDeal; myId:string; onOpen
     <motion.button type="button" whileTap={{ scale:.98 }} onClick={onOpen}
       className="w-full rounded-2xl overflow-hidden text-left"
       style={{ background:C.l1, border:`1.5px solid ${deal.status==='in_escrow'?C.accent+'40':deal.status==='completed'?C.green+'30':C.border}` }}>
-      {/* Status stripe */}
       <div className="h-0.5 w-full" style={{ background:si.color }}/>
       <div className="p-4">
         <div className="flex items-start gap-3 mb-3">
-          {/* Значок вида товара */}
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl"
             style={{ background:`${si.color}12` }}>
             {(() => { const I = ITEM_TYPES.find(t=>t.key===deal.itemType)?.Icon ?? Package;
@@ -269,12 +82,10 @@ const DealCard = ({ deal, myId, onOpen }: { deal:GarantDeal; myId:string; onOpen
             </p>
           </div>
         </div>
-        {/* Price + progress */}
         <div className="flex items-center justify-between">
           <span className="text-base font-black" style={{ color:C.amber }}>
             {deal.payType==='rubles' ? `${deal.price.toLocaleString('ru')} ₽` : `${deal.price.toLocaleString('ru')}`}
           </span>
-          {/* Deposit progress */}
           <div className="flex items-center gap-1.5">
             <div className="flex items-center gap-1">
               <div className="h-2 w-2 rounded-full" style={{ background:deal.sellerDeposited?C.green:C.border }}/>
@@ -294,15 +105,19 @@ const DealCard = ({ deal, myId, onOpen }: { deal:GarantDeal; myId:string; onOpen
 };
 
 /* --- DisputeButton with reason input ---------------------- */
-const DisputeButton = ({ dealId, myId }: { dealId:string; myId:string }) => {
+const DisputeButton = ({ dealId }: { dealId:string }) => {
   const { openDispute } = useGarantStore();
   const [open,   setOpen]   = useState(false);
   const [reason, setReason] = useState('');
   const [err,    setErr]    = useState('');
+  const [busy,   setBusy]   = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
     if (!reason.trim()) { setErr('Опишите причину спора'); return; }
-    openDispute(dealId, reason.trim(), myId);
+    setBusy(true);
+    const ok = await openDispute(dealId, reason.trim());
+    setBusy(false);
+    if (!ok) { setErr('Не получилось открыть спор'); return; }
     setOpen(false);
   };
 
@@ -332,10 +147,10 @@ const DisputeButton = ({ dealId, myId }: { dealId:string; myId:string }) => {
           style={{background:'rgba(0,0,0,0.3)',border:'1px solid rgba(248,113,113,0.25)',color:'var(--t1)'}}/>
         {err && <p className="text-[10px]" style={{color:'var(--red)'}}>{err}</p>}
         <div className="flex gap-2">
-          <motion.button whileTap={{scale:.96}} type="button" onClick={submit}
-            className="flex-1 rounded-xl py-2.5 text-xs font-bold"
+          <motion.button whileTap={{scale:.96}} type="button" disabled={busy} onClick={submit}
+            className="flex-1 rounded-xl py-2.5 text-xs font-bold disabled:opacity-50"
             style={{background:'rgba(248,113,113,0.15)',color:'var(--red)',border:'1px solid rgba(248,113,113,0.3)'}}>
-            Подать спор
+            {busy ? 'Отправляем…' : 'Подать спор'}
           </motion.button>
           <button type="button" onClick={()=>setOpen(false)}
             className="rounded-xl px-4 py-2.5 text-xs"
@@ -350,20 +165,21 @@ const DisputeButton = ({ dealId, myId }: { dealId:string; myId:string }) => {
 
 /* === DEAL DETAIL ============================================ */
 const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBack:()=>void }) => {
-  const { depositSeller, depositBuyer, confirmBuyer, confirmSeller, cancel, openDispute } = useGarantStore();
-  const { spend, getBalance } = useMoney();
+  const { depositSeller, depositBuyer, confirmBuyer, confirmSeller, cancelDeal, busy } = useGarantStore();
+  const { getBalance } = useMoney();
+  const [actionErr, setActionErr] = useState('');
   const si = STATUS_INFO[deal.status];
   const Icon = si.icon;
   const isSeller  = deal.sellerId === myId;
   const isBuyer   = deal.buyerId  === myId;
   const balance   = getBalance(myId);
 
-  const handleBuyerDeposit = () => {
-    if (deal.payType==='rubles') {
-      if (balance < deal.price) return;
-      spend(myId, deal.price, 'market', `Гарант: ${deal.title}`);
-    }
-    depositBuyer(deal.id, myId);
+  const run = async (fn: () => Promise<boolean | { ok:boolean; error?:string }>, insufficientMsg = 'Не получилось выполнить действие') => {
+    setActionErr('');
+    const r = await fn();
+    const ok = typeof r === 'boolean' ? r : r.ok;
+    const error = typeof r === 'boolean' ? undefined : r.error;
+    if (!ok) setActionErr(error === 'insufficient_funds' || error === 'insufficient_points' ? 'Недостаточно средств' : insufficientMsg);
   };
 
   const steps = [
@@ -377,7 +193,6 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
     <motion.div initial={{ opacity:0, x:24 }} animate={{ opacity:1, x:0 }}
       className="flex flex-col h-full overflow-y-auto" style={{ background:C.bg, scrollbarWidth:'none' }}>
 
-      {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3.5 shrink-0"
         style={{ borderBottom:`1px solid ${C.border}` }}>
         <button type="button" onClick={onBack}
@@ -394,7 +209,6 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
 
       <div className="px-4 py-4 space-y-4">
 
-        {/* Status banner */}
         <motion.div initial={{ scale:.95 }} animate={{ scale:1 }}
           className="rounded-2xl p-4 flex items-center gap-3"
           style={{ background:`${si.color}10`, border:`1.5px solid ${si.color}30` }}>
@@ -405,7 +219,6 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
           </div>
         </motion.div>
 
-        {/* Item card */}
         <div className="rounded-2xl p-4" style={{ background:C.l1, border:`1px solid ${C.border}` }}>
           <div className="flex items-center gap-3 mb-3">
             <div className="grid h-14 w-14 place-items-center rounded-2xl shrink-0"
@@ -420,7 +233,6 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
               </p>
             </div>
           </div>
-          {/* Parties */}
           <div className="grid grid-cols-3 gap-2 items-center">
             <div className="rounded-xl p-2.5 text-center" style={{ background:C.l2 }}>
               <p className="text-[9px] font-bold uppercase" style={{ color:C.t3 }}>Продавец</p>
@@ -436,7 +248,6 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
               <p className="text-xs font-bold text-white mt-0.5">{deal.buyerName}</p>
             </div>
           </div>
-          {/* Price */}
           <div className="mt-3 pt-3 flex items-center justify-between"
             style={{ borderTop:`1px solid ${C.border}` }}>
             <span className="text-xs" style={{ color:C.t3 }}>Стоимость сделки</span>
@@ -446,7 +257,6 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
           </div>
         </div>
 
-        {/* Steps */}
         <div className="rounded-2xl p-4" style={{ background:C.l1, border:`1px solid ${C.border}` }}>
           <p className="text-xs font-bold mb-3" style={{ color:C.t3 }}>Ход сделки</p>
           <div className="space-y-3">
@@ -474,7 +284,6 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
           </div>
         </div>
 
-        {/* Confirmations (in_escrow) */}
         {deal.status === 'in_escrow' && (
           <div className="rounded-2xl p-4" style={{ background:`${C.accent}08`, border:`1px solid ${C.accent}25` }}>
             <p className="text-xs font-bold mb-2" style={{ color:C.accent }}>Подтверждения получения</p>
@@ -495,7 +304,6 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
           </div>
         )}
 
-        {/* Completed */}
         {deal.status === 'completed' && (
           <div className="rounded-2xl p-4 text-center"
             style={{ background:`${C.green}08`, border:`1px solid ${C.green}25` }}>
@@ -505,19 +313,18 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
           </div>
         )}
 
-        {/* Action buttons */}
         <div className="space-y-2.5">
-          {/* Seller: deposit item */}
+          {actionErr && <p className="text-xs text-center" style={{ color:C.red }}>{actionErr}</p>}
+
           {isSeller && !deal.sellerDeposited && deal.status!=='cancelled' && (
-            <motion.button whileTap={{ scale:.97 }} type="button"
-              onClick={() => depositSeller(deal.id)}
-              className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white"
+            <motion.button whileTap={{ scale:.97 }} type="button" disabled={busy}
+              onClick={() => run(() => depositSeller(deal.id))}
+              className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-50"
               style={{ background:`linear-gradient(135deg,${C.accent},#818cf8)`, boxShadow:`0 6px 24px ${C.accent}35` }}>
-              <Package size={16}/>Передать товар гаранту
+              <Package size={16}/>{busy ? 'Передаём…' : 'Передать товар гаранту'}
             </motion.button>
           )}
 
-          {/* Buyer: deposit payment */}
           {isBuyer && deal.sellerDeposited && !deal.buyerDeposited && deal.status!=='cancelled' && (
             <>
               {deal.payType==='rubles' && balance < deal.price && (
@@ -526,49 +333,46 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
                 </p>
               )}
               <motion.button whileTap={{ scale:.97 }} type="button"
-                onClick={handleBuyerDeposit}
-                disabled={deal.payType==='rubles' && balance < deal.price}
+                onClick={() => run(() => depositBuyer(deal.id))}
+                disabled={busy || (deal.payType==='rubles' && balance < deal.price)}
                 className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-40"
                 style={{ background:`linear-gradient(135deg,${C.amber},#d97706)`, boxShadow:`0 6px 24px ${C.amber}35` }}>
                 <DollarSign size={16}/>
-                Внести {deal.payType==='rubles'?`${deal.price.toLocaleString('ru')} ₽`:`${deal.price.toLocaleString('ru')}`}
+                {busy ? 'Вносим…' : `Внести ${deal.payType==='rubles'?`${deal.price.toLocaleString('ru')} ₽`:`${deal.price.toLocaleString('ru')}`}`}
               </motion.button>
             </>
           )}
 
-          {/* In escrow confirmations */}
           {deal.status === 'in_escrow' && (
             <>
               {isBuyer && !deal.buyerConfirmed && (
-                <motion.button whileTap={{ scale:.97 }} type="button"
-                  onClick={() => confirmBuyer(deal.id)}
-                  className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white"
+                <motion.button whileTap={{ scale:.97 }} type="button" disabled={busy}
+                  onClick={() => run(() => confirmBuyer(deal.id))}
+                  className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-50"
                   style={{ background:`linear-gradient(135deg,${C.green},#059669)`, boxShadow:`0 6px 24px ${C.green}35` }}>
                   <CheckCircle size={16}/>Подтверждаю  -  получил товар
                 </motion.button>
               )}
               {isSeller && !deal.sellerConfirmed && (
-                <motion.button whileTap={{ scale:.97 }} type="button"
-                  onClick={() => confirmSeller(deal.id)}
-                  className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white"
+                <motion.button whileTap={{ scale:.97 }} type="button" disabled={busy}
+                  onClick={() => run(() => confirmSeller(deal.id))}
+                  className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-50"
                   style={{ background:`linear-gradient(135deg,${C.green},#059669)`, boxShadow:`0 6px 24px ${C.green}35` }}>
                   <CheckCircle size={16}/>Подтверждаю  -  получил оплату
                 </motion.button>
               )}
-              <DisputeButton dealId={deal.id} myId={myId}/>
+              <DisputeButton dealId={deal.id}/>
             </>
           )}
 
-          {/* Cancel (early stages) */}
           {['pending_seller','pending_buyer'].includes(deal.status) && (
-            <button type="button" onClick={() => cancel(deal.id)}
-              className="w-full rounded-xl py-3 text-xs font-semibold"
+            <button type="button" disabled={busy} onClick={() => run(() => cancelDeal(deal.id))}
+              className="w-full rounded-xl py-3 text-xs font-semibold disabled:opacity-50"
               style={{ background:`${C.red}08`, color:C.red, border:`1px solid ${C.red}15` }}>
               Отменить сделку
             </button>
           )}
 
-          {/* Dispute info when already disputed */}
           {deal.status === 'disputed' && (
             <div className="rounded-2xl p-4 space-y-2"
               style={{ background:`${C.red}08`, border:`1px solid ${C.red}20` }}>
@@ -583,7 +387,7 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
               )}
               {deal.disputeAt && (
                 <p className="text-[10px]" style={{ color:C.t3 }}>
-                  {new Date(deal.disputeAt).toLocaleString('ru',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}
+                  {fmtDate(deal.disputeAt)}
                 </p>
               )}
               <div className="rounded-xl px-3 py-2.5 mt-1"
@@ -596,7 +400,6 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
             </div>
           )}
 
-          {/* Dispute result */}
           {deal.disputeResult && (
             <div className="rounded-2xl p-4"
               style={{ background:deal.disputeResult==='cancelled'?`${C.t3}08`:(
@@ -628,9 +431,8 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
 
 /* === CREATE DEAL FORM ======================================= */
 const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
-  const { accounts, currentUserId } = useAuthStore();
-  const { create, getMonthlyCount, hasSubscription } = useGarantStore();
-  const me = accounts.find(a=>a.id===currentUserId);
+  const { currentUserId } = useAuthStore();
+  const { createDeal, status } = useGarantStore();
 
   const [step,      setStep]      = useState<'type'|'details'|'party'|'confirm'>('type');
   const [itemType,  setItemType]  = useState<ItemType>('skin');
@@ -638,18 +440,31 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
   const [desc,      setDesc]      = useState('');
   const [price,     setPrice]     = useState('');
   const [payType,   setPayType]   = useState<PayType>('rubles');
-  const [buyerUser, setBuyerUser] = useState('');
+  const [query,     setQuery]     = useState('');
+  const [results,   setResults]   = useState<DirectoryPerson[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [buyer,     setBuyer]     = useState<DirectoryPerson | null>(null);
   const [err,       setErr]       = useState('');
+  const [creating,  setCreating]  = useState(false);
   const [done,      setDone]      = useState<string|null>(null);
 
-  const monthly   = getMonthlyCount(currentUserId??'');
-  const hasSub    = hasSubscription(currentUserId??'');
-  const canCreate = hasSub || monthly < 3;
-
-  const buyerAcc = accounts.find(a => a.username.toLowerCase()===buyerUser.toLowerCase().replace('@','') && a.id!==currentUserId);
+  const monthly   = status?.monthlyUsed ?? 0;
+  const monthlyLimit = status?.monthlyLimit ?? 3;
+  const hasSub    = status?.hasSubscription ?? false;
+  const canCreate = hasSub || monthly < monthlyLimit;
 
   const STEPS = ['type','details','party','confirm'];
   const stepIdx = STEPS.indexOf(step);
+
+  const runSearch = async (q: string) => {
+    setQuery(q);
+    setBuyer(null);
+    if (q.trim().length < 2) { setResults([]); return; }
+    setSearching(true);
+    const r = await apiSearchPeople(q.trim());
+    setSearching(false);
+    if (r.ok && r.data) setResults(r.data.people.filter(p => p.id !== currentUserId));
+  };
 
   if (done) return (
     <div className="flex flex-col items-center gap-5 py-10 px-6">
@@ -670,21 +485,25 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
     </div>
   );
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     setErr('');
     if (!itemName.trim()) { setErr('Укажите название товара'); return; }
     if (!price || isNaN(+price) || +price<=0) { setErr('Укажите корректную цену'); return; }
-    if (!buyerAcc) { setErr('Покупатель не найден'); return; }
-    const id = create({
-      title:`${ITEM_TYPES.find(t=>t.key===itemType)?.label}: ${itemName.trim()}`,
-      description:desc.trim(),
-      sellerId:currentUserId??'', sellerName:me?.name??'',
-      buyerId:buyerAcc.id, buyerName:buyerAcc.name,
-      itemType, itemName:itemName.trim(),
-      price:+price, payType,
-      comment:desc.trim(),
+    if (!buyer) { setErr('Покупатель не найден'); return; }
+    setCreating(true);
+    const r = await createDeal({
+      title: `${ITEM_TYPES.find(t=>t.key===itemType)?.label}: ${itemName.trim()}`,
+      description: desc.trim(),
+      buyerId: buyer.id,
+      itemType, itemName: itemName.trim(),
+      price: +price, payType,
     });
-    setDone(id);
+    setCreating(false);
+    if (!r.ok || !r.deal) {
+      setErr(r.error === 'monthly_limit' ? 'Лимит бесплатных сделок исчерпан' : r.error === 'self_deal' ? 'Нельзя создать сделку с самим собой' : 'Не получилось создать сделку');
+      return;
+    }
+    setDone(r.deal.id);
   };
 
   const iSty = { background:C.l2, border:`1px solid ${C.border}`, color:C.t1 };
@@ -693,11 +512,10 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
     <div className="flex flex-col h-full overflow-hidden" style={{ background:C.bg }}>
       <div className="flex items-center gap-2 px-4 py-3.5 border-b shrink-0"
         style={{ borderColor:C.border }}>
-        <button type="button" onClick={()=>step==='type'?onDone():setStep(STEPS[stepIdx-1] as any)}
+        <button type="button" onClick={()=>step==='type'?onDone():setStep(STEPS[stepIdx-1] as typeof step)}
           className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/5">
           <ChevronLeft size={16} style={{ color:C.t2 }}/></button>
         <p className="text-sm font-bold text-white">Новая сделка</p>
-        {/* Progress */}
         <div className="flex gap-1 ml-auto">
           {STEPS.map((_,i) => (
             <div key={i} className="rounded-full transition-all"
@@ -710,13 +528,12 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
       {!canCreate && (
         <div className="mx-4 mt-3 rounded-2xl p-4" style={{ background:`${C.amber}08`, border:`1px solid ${C.amber}25` }}>
           <p className="inline-flex items-center gap-1 text-xs font-bold" style={{ color:C.amber }}><AlertCircle size={12}/>Лимит использован</p>
-          <p className="text-[11px] mt-0.5" style={{ color:C.t3 }}>Бесплатно  -  3 сделки в месяц. Использовано: {monthly}/3. Подключите подписку для безлимита.</p>
+          <p className="text-[11px] mt-0.5" style={{ color:C.t3 }}>Бесплатно  -  {monthlyLimit} сделки в месяц. Использовано: {monthly}/{monthlyLimit}. Подключите подписку для безлимита.</p>
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" style={{ scrollbarWidth:'none' }}>
 
-        {/* STEP 1: Type */}
         {step==='type'&&(
           <>
             <p className="text-sm font-bold text-white">Что продаёте?</p>
@@ -742,7 +559,6 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
           </>
         )}
 
-        {/* STEP 2: Details */}
         {step==='details'&&(
           <>
             <p className="text-sm font-bold text-white">Детали товара</p>
@@ -752,7 +568,6 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
             <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={3}
               placeholder="Описание (необязательно)..."
               className="w-full rounded-xl px-3 py-3 text-sm outline-none resize-none" style={iSty}/>
-            {/* Price */}
             <div>
               <p className="text-xs font-bold mb-2" style={{ color:C.t3 }}>Цена</p>
               <div className="flex gap-2 mb-2">
@@ -780,39 +595,51 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
           </>
         )}
 
-        {/* STEP 3: Party */}
         {step==='party'&&(
           <>
             <p className="text-sm font-bold text-white">Укажите покупателя</p>
             <div>
               <label className="text-[10px] font-bold uppercase tracking-wider block mb-1.5" style={{ color:C.t3 }}>
-                Никнейм покупателя
+                Ник или имя в Sky
               </label>
-              <input value={buyerUser} onChange={e=>setBuyerUser(e.target.value)}
-                placeholder="@username или username"
-                className="w-full rounded-xl px-3 py-3 text-sm outline-none" style={iSty}/>
-              {buyerUser && (
-                <div className="mt-2">
-                  {buyerAcc ? (
-                    <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5"
-                      style={{ background:`${C.green}10`, border:`1px solid ${C.green}25` }}>
-                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
-                        style={{ background:C.accent }}>{buyerAcc.name[0]}</div>
-                      <div>
-                        <p className="text-sm font-bold text-white">{buyerAcc.name}</p>
-                        <p className="inline-flex items-center gap-1 text-[10px]" style={{ color:C.green }}><Check size={10}/>Найден</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-xs" style={{ color:C.red }}>Пользователь не найден</p>
-                  )}
+              <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={iSty}>
+                <SearchIcon size={14} style={{ color:C.t3 }}/>
+                <input value={query} onChange={e=>void runSearch(e.target.value)}
+                  placeholder="@username или имя"
+                  className="flex-1 bg-transparent text-sm outline-none" style={{ color:C.t1 }}/>
+              </div>
+              {searching && <p className="mt-2 text-xs" style={{ color:C.t3 }}>Ищем…</p>}
+              {!searching && query.trim().length >= 2 && results.length === 0 && !buyer && (
+                <p className="mt-2 text-xs" style={{ color:C.t3 }}>Никого не нашлось</p>
+              )}
+              {!buyer && results.map(p => (
+                <button key={p.id} type="button" onClick={() => { setBuyer(p); setQuery(p.username ?? p.name); setResults([]); }}
+                  className="mt-2 flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left"
+                  style={{ background:C.l2, border:`1px solid ${C.border}` }}>
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
+                    style={{ background:C.accent }}>{p.name[0]}</div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-white">{p.name}</p>
+                    <p className="truncate text-[10px]" style={{ color:C.t3 }}>@{p.username}</p>
+                  </div>
+                </button>
+              ))}
+              {buyer && (
+                <div className="mt-2 flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+                  style={{ background:`${C.green}10`, border:`1px solid ${C.green}25` }}>
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
+                    style={{ background:C.accent }}>{buyer.name[0]}</div>
+                  <div>
+                    <p className="text-sm font-bold text-white">{buyer.name}</p>
+                    <p className="inline-flex items-center gap-1 text-[10px]" style={{ color:C.green }}><Check size={10}/>Выбран</p>
+                  </div>
                 </div>
               )}
             </div>
             {err&&<p className="text-xs" style={{ color:C.red }}>{err}</p>}
             <motion.button whileTap={{ scale:.97 }} type="button"
-              disabled={!buyerAcc}
-              onClick={()=>{ if(buyerAcc) setStep('confirm'); else setErr('Пользователь не найден'); }}
+              disabled={!buyer}
+              onClick={()=>{ if(buyer) setStep('confirm'); else setErr('Выберите покупателя из результатов поиска'); }}
               className="w-full rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-35"
               style={{ background:`linear-gradient(135deg,${C.accent},#818cf8)` }}>
               Далее →
@@ -820,11 +647,9 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
           </>
         )}
 
-        {/* STEP 4: Confirm */}
         {step==='confirm'&&(
           <>
             <p className="text-sm font-bold text-white">Подтвердите сделку</p>
-            {/* Summary card */}
             <div className="rounded-2xl overflow-hidden"
               style={{ background:`linear-gradient(135deg,${C.accent}12,${C.l1})`, border:`1px solid ${C.accent}25` }}>
               <div className="p-4 flex items-center gap-3">
@@ -837,8 +662,7 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
               </div>
               <div className="px-4 pb-4 space-y-2 border-t" style={{ borderColor:C.border }}>
                 {[
-                  { l:'Продавец', v:me?.name??'' },
-                  { l:'Покупатель', v:buyerAcc?.name??'' },
+                  { l:'Покупатель', v:buyer?.name??'' },
                   { l:'Стоимость', v:payType==='rubles'?`${(+price).toLocaleString('ru')} ₽`:`${(+price).toLocaleString('ru')}` },
                 ].map(({l,v})=>(
                   <div key={l} className="flex justify-between text-sm pt-2">
@@ -856,10 +680,10 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
             </div>
 
             {err&&<p className="text-xs text-center" style={{ color:C.red }}>{err}</p>}
-            <motion.button whileTap={{ scale:.97 }} type="button" onClick={handleCreate}
-              className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-base font-black text-white"
+            <motion.button whileTap={{ scale:.97 }} type="button" disabled={creating} onClick={handleCreate}
+              className="w-full flex items-center justify-center gap-2 rounded-2xl py-4 text-base font-black text-white disabled:opacity-50"
               style={{ background:`linear-gradient(135deg,${C.accent},#818cf8)`, boxShadow:`0 8px 32px ${C.accent}40` }}>
-              <Shield size={18}/>Создать сделку
+              <Shield size={18}/>{creating ? 'Создаём…' : 'Создать сделку'}
             </motion.button>
           </>
         )}
@@ -870,18 +694,20 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
 
 /* === SUBSCRIPTION MODAL ==================================== */
 const SubModal = ({ onClose }: { onClose:()=>void }) => {
-  const { currentUserId } = useAuthStore();
   const { subscribe } = useGarantStore();
-  const { spend, getBalance } = useMoney();
+  const { getBalance } = useMoney();
+  const { currentUserId } = useAuthStore();
   const [done, setDone] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [err, setErr] = useState('');
 
-  const price = 159;
-  const balance = getBalance(currentUserId??'');
+  const balance = getBalance(currentUserId ?? '');
 
-  const buy = () => {
-    if (balance < price) return;
-    spend(currentUserId!, price, 'market', 'Sky Garant  -  подписка');
-    subscribe(currentUserId!);
+  const buy = async () => {
+    setErr(''); setBuying(true);
+    const ok = await subscribe();
+    setBuying(false);
+    if (!ok) { setErr('Не получилось оформить — проверьте баланс'); return; }
     setDone(true);
   };
 
@@ -915,7 +741,7 @@ const SubModal = ({ onClose }: { onClose:()=>void }) => {
                 <p className="text-lg font-black text-white">Sky Garant Pro</p>
                 <p className="text-xs" style={{ color:C.t3 }}>Безлимитные сделки в месяц</p>
               </div>
-              <span className="ml-auto text-2xl font-black" style={{ color:C.amber }}>159 ₽</span>
+              <span className="ml-auto text-2xl font-black" style={{ color:C.amber }}>{GARANT_PRO_PRICE} ₽</span>
             </div>
             {[
               'Безлимитные сделки в месяц',
@@ -930,13 +756,14 @@ const SubModal = ({ onClose }: { onClose:()=>void }) => {
               </div>
             ))}
             <p className="text-[10px] text-center" style={{ color:C.t3 }}>
-              Баланс: {balance.toLocaleString('ru')} ₽ · {balance<price?`Нужно ещё ${price-balance} ₽`:'Достаточно'}
+              Баланс: {fmt(balance)} · {balance<GARANT_PRO_PRICE?`Нужно ещё ${GARANT_PRO_PRICE-balance} ₽`:'Достаточно'} · {GARANT_PRO_DAYS} дней
             </p>
+            {err && <p className="text-center text-[11px]" style={{ color:C.red }}>{err}</p>}
             <motion.button whileTap={{ scale:.97 }} type="button" onClick={buy}
-              disabled={balance<price}
+              disabled={buying || balance<GARANT_PRO_PRICE}
               className="w-full rounded-2xl py-4 text-base font-black text-white disabled:opacity-35"
               style={{ background:`linear-gradient(135deg,${C.accent},#818cf8)`, boxShadow:`0 8px 32px ${C.accent}40` }}>
-              Подключить за 159 ₽/мес
+              {buying ? 'Оформляем…' : `Подключить за ${GARANT_PRO_PRICE} ₽/мес`}
             </motion.button>
           </div>
         )}
@@ -947,32 +774,41 @@ const SubModal = ({ onClose }: { onClose:()=>void }) => {
 
 /* === MAIN SKYGARANT ======================================== */
 export const SkyGarant = () => {
-  const { currentUserId, accounts } = useAuthStore();
-  const { getMyDeals, getMonthlyCount, hasSubscription } = useGarantStore();
+  const { currentUserId } = useAuthStore();
+  const { deals, status, loaded, load } = useGarantStore();
 
   const [view,    setView]    = useState<'main'|'create'|'deal'>('main');
-  const [detail,  setDetail]  = useState<GarantDeal|null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [showSub, setShowSub] = useState(false);
   const [histTab, setHistTab] = useState<'active'|'history'|'disputes'>('active');
 
+  useEffect(() => { if (!loaded) void load(); }, [loaded, load]);
+
   const myId    = currentUserId ?? '';
-  const deals   = getMyDeals(myId);
-  const monthly = getMonthlyCount(myId);
-  const hasSub  = hasSubscription(myId);
+  const monthly = status?.monthlyUsed ?? 0;
+  const monthlyLimit = status?.monthlyLimit ?? 3;
+  const hasSub  = status?.hasSubscription ?? false;
   const active   = deals.filter(d=>!['completed','cancelled','disputed'].includes(d.status));
   const history  = deals.filter(d=>['completed','cancelled'].includes(d.status));
   const disputes = deals.filter(d=>d.status==='disputed');
 
   const shown = histTab==='active' ? active : histTab==='history' ? history : disputes;
+  const detail = detailId ? deals.find(d => d.id === detailId) : null;
 
-  if (view==='create') return <CreateDeal onDone={(id)=>{ if(id){const d=useGarantStore.getState().deals.find(x=>x.id===id);if(d){setDetail(d);setView('deal');}}else setView('main'); }}/>;
-  if (view==='deal'&&detail) return <DealDetail deal={useGarantStore.getState().deals.find(d=>d.id===detail.id)??detail} myId={myId} onBack={()=>{setView('main');setDetail(null);}}/>;
+  if (view==='create') return <CreateDeal onDone={(id)=>{ if(id){ setDetailId(id); setView('deal'); } else setView('main'); }}/>;
+  if (view==='deal'&&detail) return <DealDetail deal={detail} myId={myId} onBack={()=>{setView('main');setDetailId(null);}}/>;
+
+  if (!loaded) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3" style={{ background:C.bg }}>
+        <Loader2 size={22} className="animate-spin" style={{ color:C.t3 }}/>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background:C.bg }}>
-      {/* Header */}
       <div className="px-4 pt-5 pb-4 shrink-0">
-        {/* Logo row */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-2xl"
@@ -983,7 +819,7 @@ export const SkyGarant = () => {
             <div>
               <p className="text-base font-black text-white">Sky Garant</p>
               <p className="text-[10px]" style={{ color:C.t3 }}>
-                {hasSub ? 'Безлимит' : `${3-monthly} из 3 бесплатных`}
+                {hasSub ? 'Безлимит' : `${Math.max(0, monthlyLimit-monthly)} из ${monthlyLimit} бесплатных`}
               </p>
             </div>
           </div>
@@ -992,7 +828,7 @@ export const SkyGarant = () => {
               <button type="button" onClick={()=>setShowSub(true)}
                 className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold"
                 style={{ background:`${C.amber}15`, color:C.amber, border:`1px solid ${C.amber}25` }}>
-                <Crown size={11}/>Pro · 159₽
+                <Crown size={11}/>Pro · {GARANT_PRO_PRICE}₽
               </button>
             )}
             {hasSub && (
@@ -1008,12 +844,11 @@ export const SkyGarant = () => {
           </div>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-3 gap-2.5 mb-4">
           {[
             { label:'Активных',   val:active.length,                                    color:C.accent },
             { label:'Завершено',  val:deals.filter(d=>d.status==='completed').length,  color:C.green  },
-            { label:'В месяц',    val:hasSub?'∞':`${monthly}/3`,                        color:C.amber  },
+            { label:'В месяц',    val:hasSub?'∞':`${monthly}/${monthlyLimit}`,                        color:C.amber  },
           ].map(({label,val,color})=>(
             <div key={label} className="rounded-2xl px-3 py-3 text-center"
               style={{ background:C.l1, border:`1px solid ${C.border}` }}>
@@ -1023,10 +858,9 @@ export const SkyGarant = () => {
           ))}
         </div>
 
-        {/* Tabs */}
         <div className="flex rounded-2xl overflow-hidden" style={{ background:C.l1, border:`1px solid ${C.border}` }}>
           {([['active','Активные'],['history','История'],['disputes','Споры']] as const).map(([k,l],i)=>(
-            <button key={k} type="button" onClick={()=>setHistTab(k as any)}
+            <button key={k} type="button" onClick={()=>setHistTab(k)}
               className="flex-1 py-2.5 text-[11px] font-bold transition-all"
               style={{ background:histTab===k?C.accent:'transparent',
                 color:histTab===k?'white':C.t3,
@@ -1037,7 +871,6 @@ export const SkyGarant = () => {
         </div>
       </div>
 
-      {/* List */}
       <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3" style={{ scrollbarWidth:'none' }}>
         {shown.length===0 ? (
           <div className="flex flex-col items-center gap-4 py-12">
@@ -1066,12 +899,11 @@ export const SkyGarant = () => {
         ) : (
           shown.map(d=>(
             <DealCard key={d.id} deal={d} myId={myId}
-              onOpen={()=>{ setDetail(d); setView('deal'); }}/>
+              onOpen={()=>{ setDetailId(d.id); setView('deal'); }}/>
           ))
         )}
       </div>
 
-      {/* Sub modal */}
       <AnimatePresence>
         {showSub&&<SubModal onClose={()=>setShowSub(false)}/>}
       </AnimatePresence>

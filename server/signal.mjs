@@ -1491,3 +1491,8 @@ export const pushChatCreated = async (userIds, chatId) => {
 export const pushFamily = (userIds, msg) => {
   broadcast(Array.isArray(userIds) ? userIds : [], msg);
 };
+
+/** Sky Garant: создание сделки, депозит, подтверждение, спор, решение. */
+export const pushGarant = (userIds, msg) => {
+  broadcast(Array.isArray(userIds) ? userIds : [], msg);
+};

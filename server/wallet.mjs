@@ -168,6 +168,28 @@ export const wallet = {
     });
   },
 
+  /**
+   * Зачисление с указанным типом операции — для случаев, где деньги не
+   * дарит администратор и не платформа за работу (для этого уже есть
+   * adminGrant/earnDelivery), а высвобождает уже удержанный на счету
+   * другого участника эскроу (см. server/garant.mjs): статьи в журнале
+   * должны называться по смыслу, а не одним и тем же "courier_earning"
+   * для всего подряд.
+   */
+  async credit(userId, amount, type, descr, ref) {
+    if (!validAmount(amount)) return { error: 'invalid_amount' };
+
+    return inTransaction(async (c) => {
+      await ensureAccount(c, userId);
+      const { rows } = await c.query(
+        'UPDATE wallet_accounts SET balance = balance + $2, updated_at = now() WHERE user_id = $1 RETURNING balance',
+        [userId, amount],
+      );
+      await addTx(c, userId, type, amount, descr, ref ?? null);
+      return { balance: Number(rows[0].balance) };
+    });
+  },
+
   /** Начисление баллов. Тоже создаёт ценность — гейт тот же. */
   async earnPoints(userId, amount, descr) {
     if (!validAmount(amount)) return { error: 'invalid_amount' };
@@ -226,6 +248,21 @@ export const wallet = {
       await addTx(c, userId, 'points_earn', points,
         `Обмен ${rubles.toLocaleString('ru')} ₽ → ${points.toLocaleString('ru')} баллов`);
       return { balance: Number(upd.rows[0].balance), points: Number(upd.rows[0].points) };
+    });
+  },
+
+  /** Зачисление баллов с указанным типом — баллный аналог credit(). */
+  async creditPoints(userId, amount, type, descr, ref) {
+    if (!validAmount(amount)) return { error: 'invalid_amount' };
+
+    return inTransaction(async (c) => {
+      await ensureAccount(c, userId);
+      const { rows } = await c.query(
+        'UPDATE wallet_accounts SET points = points + $2, updated_at = now() WHERE user_id = $1 RETURNING points',
+        [userId, amount],
+      );
+      await addTx(c, userId, type, amount, descr, ref ?? null);
+      return { points: Number(rows[0].points) };
     });
   },
 
