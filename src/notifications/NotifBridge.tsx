@@ -26,9 +26,20 @@ import { useModuleStore }      from '@/data/state/modules';
 import { usePushNotifications } from './usePushNotifications';
 import { apiBloomEvents } from '@/bloom/bloomApi';
 import { apiBroadcastEvents } from './broadcastApi';
+import { apiAdEvents } from '@/ads/adsApi';
 
 const BLOOM_POLL_MS = 20_000;
 const BROADCAST_POLL_MS = 20_000;
+const ADS_POLL_MS = 20_000;
+
+const AD_EVENT_TEXT: Record<string, string> = {
+  approved: 'Кампания одобрена и запущена',
+  rejected: 'Кампания отклонена модератором',
+  paused_by_admin: 'Кампания приостановлена администрацией',
+  resumed_by_admin: 'Кампания возобновлена администрацией',
+  completed_by_admin: 'Кампания завершена администрацией',
+  cancelled_by_admin: 'Кампания отменена администрацией',
+};
 
 export const NotifBridge = () => {
   const push          = useNotifStore(s => s.push);
@@ -207,6 +218,34 @@ export const NotifBridge = () => {
     void tick();
     return () => { stopped = true; clearInterval(id); };
   }, [currentUserId, push, sendWebPush, settings.desktopNotifs]);
+
+  // -- Sky Ads: решения модерации и действия администрации по кампании --
+  // Тот же опрос, что у Bloom и рассылок — своего сокета у рекламы нет.
+  // Событие приходит только владельцу кампании (server/ads.mjs::recentAdEvents
+  // фильтрует по advertiser_id), поэтому обычный человек, не подававший
+  // рекламу, ничего не опрашивает и не получает.
+  const adsSinceRef = useRef<number>(Date.now());
+  useEffect(() => {
+    if (!currentUserId) return;
+    adsSinceRef.current = Date.now();
+    let stopped = false;
+
+    const tick = async () => {
+      if (stopped) return;
+      const { events, now } = await apiAdEvents(adsSinceRef.current);
+      adsSinceRef.current = now;
+      for (const ev of events) {
+        push({
+          kind: 'system', title: ev.title, body: AD_EVENT_TEXT[ev.kind] ?? ev.detail,
+          avatarLetter: 'A', color: 'var(--accent)',
+        });
+      }
+    };
+
+    const id = setInterval(tick, ADS_POLL_MS);
+    void tick();
+    return () => { stopped = true; clearInterval(id); };
+  }, [currentUserId, push]);
 
   return null;
 };

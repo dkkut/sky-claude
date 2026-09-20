@@ -26,6 +26,7 @@ import {
   type AdminPermission, type Person,
 } from './adminWire';
 import { COUNTRIES } from '@/region/types';
+import { AD_PLACEMENTS, AD_STATUS_LABEL, AD_STATUS_COLOR, AD_FORMAT_LABEL, fmtBudget, campaignMediaUrl } from '@/ads/store';
 
 const C = {
   bg: 'var(--bg-l1)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
@@ -2455,6 +2456,270 @@ const GarantAdminSection = () => {
   );
 };
 
+/* ─── Sky Ads: модерация и управление кампаниями ──────────────────────
+   Список площадок/цен, статусов и денежного расчёта — те же, что уже
+   есть на клиенте (src/ads/store.ts) и на сервере (server/ads.mjs):
+   здесь только просмотр и решения, всё считает и хранит сервер. */
+
+const AdsAdminDetail = ({ campaignId, onBack, onChanged }: { campaignId: string; onBack: () => void; onChanged: () => void }) => {
+  const [detail, setDetail] = useState<import('@/ads/adsApi').CampaignDetail | null>(null);
+  const [failed, setFailed] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiCampaignDetail } = await import('@/ads/adsApi');
+    const r = await apiCampaignDetail(campaignId);
+    if (!r) { setFailed('Не удалось загрузить кампанию'); return; }
+    setDetail(r);
+  }, [campaignId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const act = async (action: import('@/ads/adsApi').AdminAction, withReason = false) => {
+    if (withReason && !reason.trim()) { setFailed('Укажите причину'); return; }
+    setBusy(true); setFailed('');
+    const { apiAdminAction } = await import('@/ads/adsApi');
+    const ok = await apiAdminAction(campaignId, action, withReason ? reason.trim() : undefined);
+    setBusy(false);
+    if (!ok) { setFailed('Не получилось выполнить действие'); return; }
+    setRejecting(false); setReason('');
+    void load(); onChanged();
+  };
+
+  if (!detail) {
+    return failed
+      ? <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>
+      : <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />;
+  }
+
+  const { campaign: c, statsByRegion, events } = detail;
+  const mediaUrl = campaignMediaUrl(c);
+  const placementLabel = AD_PLACEMENTS.find((p) => p.placement === c.placement)?.label ?? c.placement;
+
+  return (
+    <div className="space-y-3">
+      <button type="button" onClick={onBack} className="text-[11px] font-bold" style={{ color: C.t3 }}>← К списку кампаний</button>
+
+      <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        {mediaUrl && (
+          c.format === 'video'
+            ? <video src={mediaUrl} controls className="mb-2 w-full max-h-48 rounded-xl object-cover" />
+            : <img src={mediaUrl} alt="" className="mb-2 w-full max-h-48 rounded-xl object-cover" />
+        )}
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-bold" style={{ color: C.t1 }}>{c.title}</p>
+          <span className="shrink-0 text-[10px] font-bold" style={{ color: AD_STATUS_COLOR[c.status] }}>
+            {AD_STATUS_LABEL[c.status]}
+          </span>
+        </div>
+        <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>id: {c.id} · рекламодатель: {c.userId}</p>
+        {c.description && <p className="mt-1 text-[11px]" style={{ color: C.t2 }}>{c.description}</p>}
+        {c.linkUrl && <p className="mt-1 truncate text-[11px]" style={{ color: C.acc }}>{c.linkUrl}</p>}
+
+        <div className="mt-2 grid grid-cols-4 gap-2">
+          <div className="rounded-xl p-2 text-center" style={{ background: C.l2 }}>
+            <p className="text-[9px] uppercase" style={{ color: C.t3 }}>Показы</p>
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{c.impressions.toLocaleString('ru')}</p>
+          </div>
+          <div className="rounded-xl p-2 text-center" style={{ background: C.l2 }}>
+            <p className="text-[9px] uppercase" style={{ color: C.t3 }}>Клики</p>
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{c.clicks.toLocaleString('ru')}</p>
+          </div>
+          <div className="rounded-xl p-2 text-center" style={{ background: C.l2 }}>
+            <p className="text-[9px] uppercase" style={{ color: C.t3 }}>CTR</p>
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{c.ctr}%</p>
+          </div>
+          <div className="rounded-xl p-2 text-center" style={{ background: C.l2 }}>
+            <p className="text-[9px] uppercase" style={{ color: C.t3 }}>Потрачено</p>
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{fmtBudget(c.spent)}</p>
+          </div>
+        </div>
+
+        <div className="mt-2 space-y-1 rounded-xl p-2.5" style={{ background: C.l2 }}>
+          {[
+            ['Площадка', placementLabel],
+            ['Формат', AD_FORMAT_LABEL[c.format]],
+            ['Бюджет', `${fmtBudget(c.budget)} (${fmtBudget(c.dailyLimit)}/день × ${c.durationDays} дн.)`],
+            ['Регионы', c.targetRegions.length ? c.targetRegions.join(', ') : 'Все регионы'],
+            ['Старт', c.startDate ? fmtTs(c.startDate) : '—'],
+            ['Конец', c.endDate ? fmtTs(c.endDate) : '—'],
+          ].map(([l, v]) => (
+            <div key={l} className="flex justify-between text-[11px]">
+              <span style={{ color: C.t3 }}>{l}</span>
+              <span style={{ color: C.t2 }}>{v}</span>
+            </div>
+          ))}
+        </div>
+
+        {c.rejectReason && (
+          <div className="mt-2 rounded-xl p-2.5" style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
+            <p className="text-[9px] font-bold uppercase" style={{ color: C.red }}>Причина отказа</p>
+            <p className="mt-0.5 text-[11px]" style={{ color: C.t2 }}>{c.rejectReason}</p>
+          </div>
+        )}
+
+        {failed && <p className="mt-2 text-[11px]" style={{ color: C.red }}>{failed}</p>}
+
+        {c.status === 'moderation' && (
+          rejecting ? (
+            <div className="mt-3 space-y-2">
+              <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина отказа"
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              <div className="flex gap-2">
+                <button type="button" disabled={busy} onClick={() => void act('reject', true)}
+                  className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-50" style={{ background: C.red, color: '#fff' }}>
+                  Отклонить
+                </button>
+                <button type="button" onClick={() => setRejecting(false)} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>Отмена</button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 flex gap-2">
+              <button type="button" disabled={busy} onClick={() => void act('approve')}
+                className="flex-1 rounded-xl py-2.5 text-xs font-bold disabled:opacity-50" style={{ background: C.green, color: '#fff' }}>
+                Одобрить
+              </button>
+              <button type="button" disabled={busy} onClick={() => setRejecting(true)}
+                className="flex-1 rounded-xl py-2.5 text-xs font-bold disabled:opacity-50" style={{ background: C.l2, color: C.red }}>
+                Отклонить
+              </button>
+            </div>
+          )
+        )}
+
+        {c.status === 'active' && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => void act('pause')}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.t2 }}>Пауза</button>
+            <button type="button" disabled={busy} onClick={() => void act('complete')}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.t2 }}>Завершить</button>
+            <button type="button" disabled={busy} onClick={() => void act('cancel')}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.red }}>Отменить</button>
+          </div>
+        )}
+
+        {c.status === 'paused' && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => void act('resume')}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.green }}>Возобновить</button>
+            <button type="button" disabled={busy} onClick={() => void act('complete')}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.t2 }}>Завершить</button>
+            <button type="button" disabled={busy} onClick={() => void act('cancel')}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.red }}>Отменить</button>
+          </div>
+        )}
+
+        {c.status === 'scheduled' && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => void act('cancel')}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.red }}>Отменить</button>
+          </div>
+        )}
+
+        {statsByRegion.length > 0 && (
+          <div className="mt-3">
+            <p className="text-[9px] font-bold uppercase" style={{ color: C.t3 }}>По регионам</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {statsByRegion.slice(0, 8).map((r) => (
+                <span key={r.region} className="rounded-lg px-2 py-0.5 text-[10px]" style={{ background: C.l2, color: C.t2 }}>
+                  {r.region}: {r.impressions}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {events.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-[10px] font-bold" style={{ color: C.t3 }}>ЖУРНАЛ</p>
+          <div className="space-y-1.5">
+            {events.map((e) => (
+              <div key={e.id} className="rounded-xl px-3 py-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+                <p className="text-[11px]" style={{ color: C.t2 }}>{e.kind}{e.detail ? ` — ${e.detail}` : ''}</p>
+                <p className="text-[10px]" style={{ color: C.t3 }}>{fmtTs(e.createdAt)}{e.actorName ? ` · ${e.actorName}` : ''}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const AdsAdminSection = () => {
+  const [items, setItems] = useState<import('@/ads/adsApi').AdminAdCampaign[] | null>(null);
+  const [status, setStatus] = useState<'' | 'moderation' | 'active' | 'paused' | 'scheduled' | 'rejected' | 'completed' | 'cancelled'>('moderation');
+  const [q, setQ] = useState('');
+  const [failed, setFailed] = useState('');
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminCampaigns } = await import('@/ads/adsApi');
+    setItems(await apiAdminCampaigns({ status: status || undefined, q: q.trim() || undefined }));
+  }, [status, q]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  if (openId) return <AdsAdminDetail campaignId={openId} onBack={() => setOpenId(null)} onChanged={() => void load()} />;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {([
+          ['moderation', 'На проверке'], ['active', 'Активные'], ['paused', 'На паузе'],
+          ['scheduled', 'Запланированы'], ['rejected', 'Отклонены'], ['completed', 'Завершены'],
+          ['cancelled', 'Отменены'], ['', 'Все'],
+        ] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setStatus(k)}
+            className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+            style={{ background: status === k ? C.acc : C.l2, color: status === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Название, id или ник рекламодателя"
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <button type="button" onClick={() => void load()} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+          <RefreshCw size={12} />
+        </button>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {items === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : items.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Кампаний не найдено.</p>
+      ) : items.map((c) => (
+        <button key={c.id} type="button" onClick={() => setOpenId(c.id)}
+          className="w-full rounded-2xl p-3 text-left"
+          style={{ background: C.l1, border: `1px solid ${c.status === 'moderation' ? 'rgba(245,158,11,0.35)' : C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>{c.title}</p>
+              <p className="mt-0.5 truncate text-[10px]" style={{ color: C.t3 }}>
+                {c.advertiserName} @{c.advertiserUsername} · {AD_PLACEMENTS.find((p) => p.placement === c.placement)?.label ?? c.placement}
+              </p>
+            </div>
+            <span className="shrink-0 text-[10px] font-bold" style={{ color: AD_STATUS_COLOR[c.status] }}>
+              {AD_STATUS_LABEL[c.status]}
+            </span>
+          </div>
+          <div className="mt-2 flex gap-3 text-[10px]" style={{ color: C.t3 }}>
+            <span>{fmtBudget(c.budget)}</span>
+            <span>{c.impressions.toLocaleString('ru')} показов</span>
+            <span>{c.clicks.toLocaleString('ru')} кликов</span>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+};
+
 /* ─── Рассылки ─────────────────────────────────────────────────────────
    Показ уведомления не меняется — тот же useNotifStore/NotifBridge, что
    и у лайков/комментариев Bloom. Здесь только создание, планирование,
@@ -2811,7 +3076,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'notify' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'ads' | 'notify' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -2937,6 +3202,7 @@ export const AdminPanel = () => {
     { key: 'family', label: 'Sky Family', show: has('moderation') },
     { key: 'garant', label: 'Sky Garant', show: has('garant') },
     { key: 'bloom', label: 'Bloom', show: has('content') },
+    { key: 'ads', label: 'Реклама', show: has('content') },
     { key: 'notify', label: 'Рассылки', show: has('notifications') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
@@ -3071,6 +3337,7 @@ export const AdminPanel = () => {
       {tab === 'family' && <FamilyAdminSection />}
       {tab === 'garant' && <GarantAdminSection />}
       {tab === 'bloom' && <BloomAdminSection />}
+      {tab === 'ads' && <AdsAdminSection />}
       {tab === 'notify' && <NotifyAdminSection />}
 
       {tab === 'admins' && (
