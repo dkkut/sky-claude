@@ -172,6 +172,11 @@ const sendImage = async (res, fileId, mime) => {
     /* Афиша опубликованного мероприятия видна всем, но между нами и
        гостем бывают общие кэши — держим ответ приватным. */
     'Cache-Control': 'private, max-age=600',
+    // Доступ проверяется по Authorization (requireProfile/readSession),
+    // не по куке — без Vary браузер мог бы отдать картинку черновика
+    // мероприятия чужому профилю того же Sky ID в том же браузере, обойдя
+    // проверку readEvent(id, me) выше.
+    'Vary': 'Authorization',
   });
   const stream = openStream(fileId);
   stream.on('error', () => res.destroy());

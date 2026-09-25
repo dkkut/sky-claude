@@ -129,6 +129,10 @@ export const fileRoutes = async (req, res, url) => {
       // Файл — часть переписки: ни прокси, ни общий кэш его хранить не
       // должны, а страница-получатель должна быть нашей.
       'Cache-Control': 'private, max-age=300, no-transform',
+      // Доступ проверяется по Authorization (requireProfile) — без Vary
+      // браузер мог бы отдать вложение, закешированное под одним
+      // профилем, другому профилю того же Sky ID в том же браузере.
+      'Vary': 'Authorization',
       'Cross-Origin-Resource-Policy': 'same-origin',
       'Content-Security-Policy': "default-src 'none'; sandbox",
       'Referrer-Policy': 'no-referrer',

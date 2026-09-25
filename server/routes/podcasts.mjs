@@ -183,6 +183,9 @@ const sendFile = async (req, res, fileId, type) => {
     // private: между слушателем и нами бывают общие кэши, и чужой
     // выпуск в них попадать не должен.
     'Cache-Control': 'private, max-age=600',
+    // См. film.mjs — тот же пропуск-в-куке, тот же риск межпрофильной
+    // путаницы без Vary.
+    'Vary': 'Cookie',
   };
 
   const range = parseRange(req.headers.range, size);

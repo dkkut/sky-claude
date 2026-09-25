@@ -126,6 +126,9 @@ const streamFile = async (req, res, fileId, mime) => {
     'Content-Security-Policy': "default-src 'none'; sandbox",
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'private, max-age=600',
+    // См. film.mjs — тот же пропуск-в-куке, тот же риск межпрофильной
+    // путаницы без Vary.
+    'Vary': 'Cookie',
   };
 
   const range = parseRange(req.headers.range, size);

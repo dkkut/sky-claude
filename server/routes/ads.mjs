@@ -104,6 +104,9 @@ const streamMedia = async (req, res, mediaId) => {
     'Content-Security-Policy': "default-src 'none'; sandbox",
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'private, max-age=3600',
+    // См. film.mjs — тот же пропуск-в-куке, тот же риск межпрофильной
+    // путаницы без Vary.
+    'Vary': 'Cookie',
   };
   const range = parseRange(req.headers.range, size);
   if (range?.invalid) {

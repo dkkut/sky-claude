@@ -70,6 +70,10 @@ const sendImage = async (res, fileId, mime) => {
     'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "default-src 'none'; sandbox",
     'Cache-Control': 'private, max-age=600',
+    // Доступ проверяется по Authorization (readSession/requireProfile),
+    // не по куке — Vary страхует ту же межпрофильную путаницу, что и
+    // в других медиа-ручках (см. server/routes/film.mjs).
+    'Vary': 'Authorization',
   });
   const stream = openStream(fileId);
   stream.on('error', () => res.destroy());

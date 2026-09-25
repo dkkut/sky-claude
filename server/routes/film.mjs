@@ -456,6 +456,11 @@ export const filmRoutes = async (req, res, url) => {
         // private: между зрителем и нами бывают общие кэши, и чужой
         // фильм в них попадать не должен.
         'Cache-Control': 'private, max-age=600',
+        // Пропуск — в куке, а не в заголовке Authorization (тег <video>
+        // его не отправит). Без Vary браузер отдал бы кино, закешированное
+        // под пропуском одного профиля, другому профилю того же Sky ID,
+        // открывшему тот же адрес в том же браузере после переключения.
+        'Vary': 'Cookie',
       };
 
       const range = parseRange(req.headers.range, size);

@@ -196,6 +196,10 @@ const sendImage = async (res, fileId, mime) => {
     'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "default-src 'none'; sandbox",
     'Cache-Control': 'private, max-age=600',
+    // См. server/routes/film.mjs — пропуск в куке, без Vary браузер мог
+    // бы отдать фото, закешированное под одним профилем, другому профилю
+    // того же Sky ID в том же браузере.
+    'Vary': 'Cookie',
   });
   const stream = openStream(fileId);
   stream.on('error', () => res.destroy());

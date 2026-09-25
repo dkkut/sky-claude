@@ -94,6 +94,10 @@ export const mapsRoutes = async (req, res, url) => {
       'Content-Security-Policy': "default-src 'none'; sandbox",
       /* Карта одних и тех же точек не меняется час от часу. */
       'Cache-Control': 'private, max-age=3600',
+      // См. server/routes/film.mjs — пропуск в куке, без Vary браузер мог
+      // бы отдать картинку, закешированную под одним профилем, другому
+      // профилю того же Sky ID в том же браузере.
+      'Vary': 'Cookie',
     });
     res.end(picture.body);
     return true;

@@ -99,6 +99,10 @@ const streamMedia = async (req, res, mediaId) => {
     'Content-Security-Policy': "default-src 'none'; sandbox",
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'private, max-age=3600, immutable',
+    // Доступ проверяется по Authorization (requireProfile) — без Vary
+    // браузер мог бы отдать медиа, закешированное под одним профилем,
+    // другому профилю того же Sky ID в том же браузере.
+    'Vary': 'Authorization',
   };
   const range = parseRange(req.headers.range, size);
   if (range?.invalid) {
