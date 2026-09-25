@@ -150,8 +150,9 @@ export const apiPatchSkyVideo = async (id: string, patch: {
   return r.ok ? (r.data?.video ?? null) : null;
 };
 
-export const apiDeleteSkyVideo = async (id: string) => {
-  const r = await apiCall(`/api/skyvideo/video/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const apiDeleteSkyVideo = async (id: string, reason?: string) => {
+  const r = await apiCall(`/api/skyvideo/video/${encodeURIComponent(id)}`,
+    { method: 'DELETE', body: JSON.stringify({ reason }) });
   return r.ok;
 };
 

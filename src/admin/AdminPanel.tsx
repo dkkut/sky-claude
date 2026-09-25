@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 import {
   Shield, ShieldAlert, ShieldCheck, Loader2, Check, X, KeyRound,
   Wallet, Crown, ScrollText, AlertTriangle, RefreshCw, Users, Ban, Trophy,
-  Eye, Bike,
+  Eye, Bike, Trash2, MessageCircle,
 } from 'lucide-react';
 import {
   adminCall, errorText, ROLE_LABEL, PERMISSION_LABEL,
@@ -1310,6 +1310,16 @@ const SkyVideoRegionsAdmin = () => {
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Удаление ролика и модерация комментариев — те же серверные функции
+  // (deleteVideo/removeComment в server/skyvideo.mjs), которыми автор
+  // уже убирает своё; здесь просто добавлена админская дверь к ним —
+  // раньше в панели была только региональная доступность.
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [openComments, setOpenComments] = useState<string | null>(null);
+  const [comments, setComments] = useState<import('@/video/skyVideoApi').VideoComment[] | null>(null);
+  const [commentsFailed, setCommentsFailed] = useState('');
+
   const load = useCallback(async () => {
     setFailed('');
     const { apiSkyVideoAdminSearch } = await import('@/video/skyVideoApi');
@@ -1320,6 +1330,7 @@ const SkyVideoRegionsAdmin = () => {
 
   const startEdit = (v: import('@/video/skyVideoApi').AdminSkyVideo) => {
     setEditing(v.id); setRegions(v.blockedRegions); setReason('');
+    setDeleting(null); setOpenComments(null);
   };
 
   const save = async () => {
@@ -1331,6 +1342,38 @@ const SkyVideoRegionsAdmin = () => {
     if (!r.ok) { setFailed('Не удалось сохранить региональные ограничения'); return; }
     setEditing(null);
     void load();
+  };
+
+  const startDelete = (id: string) => {
+    setDeleting(id); setDeleteReason('');
+    setEditing(null); setOpenComments(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setSaving(true); setFailed('');
+    const { apiDeleteSkyVideo } = await import('@/video/skyVideoApi');
+    const ok = await apiDeleteSkyVideo(deleting, deleteReason.trim() || undefined);
+    setSaving(false);
+    if (!ok) { setFailed('Не удалось удалить ролик'); return; }
+    setDeleting(null);
+    void load();
+  };
+
+  const toggleComments = async (id: string) => {
+    setEditing(null); setDeleting(null);
+    if (openComments === id) { setOpenComments(null); return; }
+    setOpenComments(id); setComments(null); setCommentsFailed('');
+    const { apiSkyVideoComments } = await import('@/video/skyVideoApi');
+    const list = await apiSkyVideoComments(id);
+    if (list === null) { setCommentsFailed('Не удалось загрузить комментарии'); return; }
+    setComments(list);
+  };
+
+  const removeComment = async (commentId: string) => {
+    const { apiDeleteSkyVideoComment } = await import('@/video/skyVideoApi');
+    const ok = await apiDeleteSkyVideoComment(commentId);
+    if (ok) setComments((cs) => (cs ? cs.filter((c) => c.id !== commentId) : cs));
   };
 
   return (
@@ -1361,11 +1404,21 @@ const SkyVideoRegionsAdmin = () => {
                 {v.authorName ?? '—'} {v.authorUsername ? `@${v.authorUsername}` : ''}
               </p>
             </div>
-            <button type="button" onClick={() => startEdit(v)}
-              className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold"
-              style={{ background: v.blockedRegions.length ? 'rgba(248,113,113,0.15)' : C.l2, color: v.blockedRegions.length ? C.red : C.t2 }}>
-              {v.blockedRegions.length ? `Заблокирован (${v.blockedRegions.length})` : 'Региональная доступность'}
-            </button>
+            <div className="flex shrink-0 gap-1.5">
+              <button type="button" onClick={() => startEdit(v)}
+                className="rounded-lg px-2.5 py-1.5 text-[11px] font-bold"
+                style={{ background: v.blockedRegions.length ? 'rgba(248,113,113,0.15)' : C.l2, color: v.blockedRegions.length ? C.red : C.t2 }}>
+                {v.blockedRegions.length ? `Заблокирован (${v.blockedRegions.length})` : 'Региональная доступность'}
+              </button>
+              <button type="button" onClick={() => void toggleComments(v.id)}
+                className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: C.l2, color: C.t2 }}>
+                <MessageCircle size={13} />
+              </button>
+              <button type="button" onClick={() => startDelete(v.id)}
+                className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: 'rgba(248,113,113,0.15)', color: C.red }}>
+                <Trash2 size={13} />
+              </button>
+            </div>
           </div>
           {editing === v.id && (
             <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: C.brd }}>
@@ -1384,6 +1437,51 @@ const SkyVideoRegionsAdmin = () => {
               </div>
             </div>
           )}
+          {deleting === v.id && (
+            <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: C.brd }}>
+              <p className="text-[11px]" style={{ color: C.red }}>
+                Ролик снимается с показа (не по DELETE — статус «removed»): файл и данные,
+                включая уже посчитанные начисления, остаются, видит их только автор и модерация.
+              </p>
+              <input value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="Причина удаления (для автора и журнала)"
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              <div className="flex gap-2">
+                <button type="button" disabled={saving} onClick={() => void confirmDelete()}
+                  className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.red, color: '#fff' }}>
+                  Подтвердить удаление
+                </button>
+                <button type="button" onClick={() => setDeleting(null)}
+                  className="flex-1 rounded-xl py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          )}
+          {openComments === v.id && (
+            <div className="mt-3 space-y-1.5 border-t pt-3" style={{ borderColor: C.brd }}>
+              {commentsFailed ? (
+                <p className="text-[11px]" style={{ color: C.red }}>{commentsFailed}</p>
+              ) : comments === null ? (
+                <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+              ) : comments.length === 0 ? (
+                <p className="text-[11px]" style={{ color: C.t3 }}>Комментариев нет.</p>
+              ) : comments.map((c) => (
+                <div key={c.id} className="flex items-start justify-between gap-2 rounded-xl px-2.5 py-2" style={{ background: C.l2 }}>
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] font-bold" style={{ color: C.t1 }}>
+                      {c.authorName ?? '—'} {c.authorUsername ? `@${c.authorUsername}` : ''}
+                    </p>
+                    <p className="mt-0.5 text-[11px] break-words" style={{ color: C.t2 }}>{c.body}</p>
+                  </div>
+                  <button type="button" onClick={() => void removeComment(c.id)}
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-lg" style={{ background: 'rgba(248,113,113,0.15)', color: C.red }}>
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -1400,7 +1498,7 @@ const SkyVideoAdminSection = ({ rights, onPendingChanged }: { rights: MyRights; 
     )}
     {rights.permissions.includes('content') && (
       <div>
-        <p className="mb-2 text-xs font-bold" style={{ color: C.t1 }}>Региональная доступность</p>
+        <p className="mb-2 text-xs font-bold" style={{ color: C.t1 }}>Ролики и комментарии</p>
         <SkyVideoRegionsAdmin />
       </div>
     )}

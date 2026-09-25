@@ -7,6 +7,7 @@ import { PlayerEngine }           from '@/player/PlayerEngine';
 import { PodcastPlayerHost }      from '@/podcasts/PodcastPlayer';
 import { useModuleStore }         from '@/data/state/modules';
 import { useAuthStore }           from '@/core/auth/store';
+import { useModerationStore }     from '@/shared/moderationStore';
 import { ChatList }               from '@/messenger/ChatList';
 import { ChatWindow }             from '@/messenger/ChatWindow';
 import { NotificationsScreen }    from '@/notifications/NotificationsScreen';
@@ -111,6 +112,13 @@ export const AppShell = () => {
     const valid = ['stories','messages','bloom','extras','profile','notifications','gaming','video','library','studio'];
     if (m && valid.includes(m)) setActiveModule(m as any);
   }, []);
+
+  // Пометки/блокировки модерации (видео-каналы, каналы мессенджера,
+  // фильмы) — один раз на сессию, здесь, а не в каждом из мест показа
+  // (SkyVideo/SkyFilm/ChatWindow/ChatList/AdminPanel): AppShell
+  // перемонтируется при смене currentUserId (key в main.tsx), так что
+  // и это состояние честно переспрашивается при входе другим человеком.
+  useEffect(() => { void useModerationStore.getState().fetchFlags(); }, []);
 
   if (deviceMode === 'tv') {
     return <ErrorBoundary><TVShell /></ErrorBoundary>;
