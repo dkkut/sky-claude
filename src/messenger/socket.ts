@@ -19,6 +19,7 @@ import { receiveTogether } from '@/together/togetherState';
 import { useAdminStore, ADMIN_ERRORS, POST_ERRORS } from './adminStore';
 import { useSettings } from '@/settings/store';
 import { usePrivacyStore } from '@/profile/privacyStore';
+import { useGamingStore, type MatchInfo } from '@/gaming/store';
 import type { MessageItem, ChatItem, ChatType } from './types';
 
 /* ─── Приведение серверных данных к виду интерфейса ───────────────────── */
@@ -336,6 +337,29 @@ const handle = (data: any) => {
       // «Скрыть был(а) в сети» на экране настроек — тот же самый
       // переключатель, только короткий: «никто» против «все».
       useSettings.getState().applyServerPrivacy(payload?.whoSeesOnline === 'nobody');
+      break;
+
+    /* ── Матчмейкинг Sky Games: решает сервер (server/matchmaking.mjs) ── */
+    case 'mm:queued':
+      useGamingStore.getState().applyQueued(payload?.gameId);
+      break;
+    case 'mm:found':
+      useGamingStore.getState().applyFound(payload?.match as MatchInfo);
+      break;
+    case 'mm:waiting':
+      useGamingStore.getState().applyWaiting(payload?.match as MatchInfo);
+      break;
+    case 'mm:confirmed':
+      useGamingStore.getState().applyConfirmed(payload?.match as MatchInfo);
+      break;
+    case 'mm:cancelled':
+      useGamingStore.getState().applyCancelled();
+      break;
+    case 'mm:cancelled-requeued':
+      useGamingStore.getState().applyCancelledRequeued(payload?.gameId);
+      break;
+    case 'mm:error':
+      useGamingStore.getState().applyMmError();
       break;
 
     /* ── Управление группой и каналом ── */

@@ -47,6 +47,9 @@ import {
   listJoinRequests, decideJoin, listLog, listMembers, markViewed, pinMessage,
   contextFor,
 } from './chatadmin.mjs';
+import {
+  joinQueue, leaveQueue, acceptMatch, declineMatch, sweepStaleMatches, myActiveMatch,
+} from './matchmaking.mjs';
 
 const PORT = Number(process.env.SIGNAL_PORT || 8081);
 
@@ -247,6 +250,14 @@ const sendSnapshot = async (ws, userId) => {
   // иначе на новом устройстве галочка показывала бы не то, что на самом
   // деле настроено.
   send(ws, { type: 'privacy', payload: await getPrivacy(userId) });
+
+  // Если человек обновил страницу или переподключился с телефона, пока
+  // матч ждал подтверждения (или уже подтверждён) — он не должен
+  // потерять его из вида и залипнуть в пустой очереди.
+  const activeMatch = await myActiveMatch(userId);
+  if (activeMatch) {
+    send(ws, { type: activeMatch.status === 'confirmed' ? 'mm:confirmed' : 'mm:found', payload: { match: activeMatch } });
+  }
 
   const chats = await listChats(userId);
   // Список запретов приезжает вместе с чатами: он теперь серверный, и
@@ -850,6 +861,64 @@ const handle = async (ws, session, msg) => {
       break;
     }
 
+    /* ── Матчмейкинг Sky Games ────────────────────────────────────
+       gameId/matchId приходят от клиента, но "кто я" — всегда me
+       (проверенная личность соединения, см. identify выше), никогда
+       payload.profileId. Иначе одно соединение могло бы поставить в
+       очередь или принять матч за другого человека. ── */
+
+    case 'mm:join': {
+      const gameId = String(payload?.gameId ?? '');
+      if (!gameId) return;
+      if (!rateLimit(`mm:write:${me}`, 30)) return;
+      const r = await joinQueue(me, gameId);
+      if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
+      if (r.matched) {
+        send(ws, { type: 'mm:found', payload: { match: r.match } });
+        // Соперник уже ждал в очереди на другом соединении — то же
+        // событие уходит и ему, не только тому, кто только что зашёл.
+        sendTo(r.opponentId, { type: 'mm:found', payload: { match: r.match } });
+      } else {
+        send(ws, { type: 'mm:queued', payload: { gameId } });
+      }
+      break;
+    }
+
+    case 'mm:leave': {
+      await leaveQueue(me);
+      send(ws, { type: 'mm:left' });
+      break;
+    }
+
+    case 'mm:accept': {
+      const matchId = String(payload?.matchId ?? '');
+      if (!matchId) return;
+      const r = await acceptMatch(me, matchId);
+      if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
+      if (r.confirmed) {
+        // Обеим сторонам сразу: кто принял вторым, узнаёт об этом же
+        // событием, а не только по своему ответу.
+        for (const uid of [...r.match.teamA, ...r.match.teamB]) {
+          sendTo(uid, { type: 'mm:confirmed', payload: { match: r.match } });
+        }
+      } else {
+        send(ws, { type: 'mm:waiting', payload: { match: r.match } });
+      }
+      break;
+    }
+
+    case 'mm:decline': {
+      const matchId = String(payload?.matchId ?? '');
+      if (!matchId) return;
+      const r = await declineMatch(me, matchId);
+      if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
+      send(ws, { type: 'mm:cancelled', payload: { matchId } });
+      for (const uid of r.requeued) {
+        sendTo(uid, { type: 'mm:cancelled-requeued', payload: { matchId, gameId: r.gameId } });
+      }
+      break;
+    }
+
     /* ── Приватность профиля ───────────────────────────────────────
        Настройка защищает человека от других, поэтому живёт на сервере,
        а не галочкой в браузере: свой клиент можно переписать. ── */
@@ -1376,6 +1445,11 @@ export const startSignalHub = () => {
       if (!uid) return;
       const wentOffline = removeClient(uid, session.sessionId, ws);
       if (!wentOffline) return;
+      // Отключился совсем (ни одной вкладки) — из очереди матчмейкинга
+      // тоже убираем: иначе после «Найти матч» и закрытия браузера
+      // человек оставался бы в очереди до перезапуска сервера, и его
+      // мог бы «найти» кто-то ещё, кому отвечать уже некому.
+      leaveQueue(uid).catch(() => {});
       // Тот же список, что и при входе: скрывшийся не «уходит» у других,
       // потому что он у них и не появлялся.
       for (const other of await presenceAudience(uid)) {
@@ -1405,11 +1479,29 @@ export const startSignalHub = () => {
   }, 5000);
   sweeper.unref();
 
+  // Матчи, которые повисли без ответа обеих сторон дольше таймаута —
+  // та самая защита от «застрявших игроков»: принявшего возвращаем в
+  // очередь и говорим ему об этом, неответившего просто выпускаем.
+  const mmSweeper = setInterval(() => {
+    sweepStaleMatches().then((expired) => {
+      for (const e of expired) {
+        for (const uid of e.requeued) {
+          sendTo(uid, { type: 'mm:cancelled-requeued', payload: { matchId: e.matchId, gameId: e.gameId } });
+        }
+        for (const uid of e.timedOut) {
+          sendTo(uid, { type: 'mm:cancelled', payload: { matchId: e.matchId } });
+        }
+      }
+    }).catch((err) => console.error('[ws] уборка матчмейкинга', err.message));
+  }, 5000);
+  mmSweeper.unref();
+
   console.log(`[ws] Hub on :${PORT}`);
 
   return {
     close: () => new Promise((resolve) => {
       clearInterval(sweeper);
+      clearInterval(mmSweeper);
       for (const set of clients.values()) {
         for (const ws of set) ws.close(1001, 'server shutting down');
       }

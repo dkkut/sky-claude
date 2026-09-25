@@ -4,6 +4,8 @@
 =================================================== */
 import { create } from 'zustand';
 import { useAuthStore } from '@/core/auth/store';
+import { wireSend } from '@/core/wire';
+import { apiGameRating, type GameRating } from './matchmakingApi';
 
 export type GameGenre = 'fps'|'moba'|'battle-royale'|'racing'|'rpg'|'strategy';
 export type TourneyStatus = 'upcoming'|'live'|'finished';
@@ -88,7 +90,18 @@ export interface MatchResult {
   timestamp:number;
 }
 
-export type QueueStatus = 'idle'|'searching'|'found'|'in_game';
+export type QueueStatus = 'idle'|'searching'|'found'|'waiting'|'in_game';
+
+/** Найденный или подтверждённый матч — с сервера (server/matchmaking.mjs),
+ *  teamA/teamB — настоящие id профилей, а не выдумка интерфейса. */
+export interface MatchInfo {
+  id: string;
+  gameId: string;
+  teamA: string[];
+  teamB: string[];
+  avgElo: number;
+  status: 'pending' | 'confirmed' | 'cancelled';
+}
 
 /* --- Seed: Игры ------------------------------------ */
 const SEED_MATCHES: MatchResult[] = [
@@ -171,9 +184,22 @@ interface GamingState {
   queueStatus:    QueueStatus;
   queueGame:      string | null;
   queueSeconds:   number;
+  currentMatch:   MatchInfo | null;
+  rating:         GameRating | null;
   startQueue:     (gameId: string) => void;
   cancelQueue:    () => void;
   acceptMatch:    () => void;
+  declineMatch:   () => void;
+  loadRating:     (gameId: string) => Promise<void>;
+  /* Приходит из socket.ts по входящим mm:* событиям — источник правды
+     сервер, эти методы только кладут то, что он прислал. */
+  applyQueued:            (gameId: string) => void;
+  applyFound:              (match: MatchInfo) => void;
+  applyWaiting:            (match: MatchInfo) => void;
+  applyConfirmed:          (match: MatchInfo) => void;
+  applyCancelled:          () => void;
+  applyCancelledRequeued:  (gameId: string) => void;
+  applyMmError:            () => void;
   setGameProfile:  (gameId: string, nickname: string) => void;
   createTourney:   (t: Omit<Tournament,'id'|'participants'|'teamsIn'>) => void;
   deleteTourney:   (id: string) => void;
@@ -181,14 +207,11 @@ interface GamingState {
 
 const stored = load();
 
-/* Матчмейкинга на сервере пока нет, поэтому очередь имитируется таймерами:
-   статусы и счётчик секунд — ровно те, что отрисовывает GamingModule. */
-let queueTick:  ReturnType<typeof setInterval> | null = null;
-let queueFound: ReturnType<typeof setTimeout>  | null = null;
-const stopQueueTimers = () => {
-  if (queueTick)  { clearInterval(queueTick); queueTick  = null; }
-  if (queueFound) { clearTimeout(queueFound); queueFound = null; }
-};
+/* Счётчик секунд поиска — чисто отображение, тикает локально, пока
+   идёт реальный поиск на сервере; сам факт «нашли/не нашли» решает
+   только сервер через WebSocket-события mm:*. */
+let queueTick: ReturnType<typeof setInterval> | null = null;
+const stopQueueTick = () => { if (queueTick) { clearInterval(queueTick); queueTick = null; } };
 
 export const useGamingStore = create<GamingState>((set, get) => {
   const flush = () => {
@@ -204,33 +227,80 @@ export const useGamingStore = create<GamingState>((set, get) => {
     queueStatus: 'idle' as QueueStatus,
     queueGame: null,
     queueSeconds: 0,
+    currentMatch: null,
+    rating: null,
     stats:    stored?.stats    ?? SEED_STATS,
     tourneys: stored?.tourneys ?? SEED_TOURNEYS,
     news:     SEED_NEWS,   // всегда из seed (новости не редактируются)
     invites:  stored?.invites  ?? SEED_INVITES,
 
+    // Сама постановка в очередь и поиск соперника — на сервере
+    // (server/matchmaking.mjs, joinQueue): ELO берётся из его
+    // таблицы, а не выдумывается на лету из wins/hours, которые
+    // раньше лежали в этом же браузере и правились им же.
     startQueue: (gameId) => {
-      stopQueueTimers();
-      set({ queueStatus: 'searching', queueGame: gameId, queueSeconds: 0 });
+      stopQueueTick();
+      set({ queueStatus: 'searching', queueGame: gameId, queueSeconds: 0, currentMatch: null });
       queueTick = setInterval(() => {
-        if (get().queueStatus !== 'searching') { stopQueueTimers(); return; }
+        if (get().queueStatus !== 'searching') { stopQueueTick(); return; }
         set(s => ({ queueSeconds: s.queueSeconds + 1 }));
       }, 1000);
-      queueFound = setTimeout(() => {
-        if (get().queueStatus !== 'searching') return;
-        stopQueueTimers();
-        set({ queueStatus: 'found' });
-      }, 6000 + Math.floor(Math.random() * 5000));
+      wireSend({ type: 'mm:join', payload: { gameId } });
     },
 
     cancelQueue: () => {
-      stopQueueTimers();
-      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0 });
+      stopQueueTick();
+      wireSend({ type: 'mm:leave' });
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null });
     },
 
     acceptMatch: () => {
-      stopQueueTimers();
-      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0 });
+      const matchId = get().currentMatch?.id;
+      if (!matchId) return;
+      wireSend({ type: 'mm:accept', payload: { matchId } });
+      set({ queueStatus: 'waiting' });
+    },
+
+    declineMatch: () => {
+      const matchId = get().currentMatch?.id;
+      if (!matchId) return;
+      wireSend({ type: 'mm:decline', payload: { matchId } });
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null });
+    },
+
+    loadRating: async (gameId) => {
+      const rating = await apiGameRating(gameId);
+      if (rating) set({ rating });
+    },
+
+    applyQueued: (gameId) => {
+      set({ queueStatus: 'searching', queueGame: gameId, currentMatch: null });
+    },
+    applyFound: (match) => {
+      stopQueueTick();
+      set({ queueStatus: 'found', queueGame: match.gameId, currentMatch: match });
+    },
+    applyWaiting: (match) => {
+      set({ queueStatus: 'waiting', currentMatch: match });
+    },
+    applyConfirmed: (match) => {
+      set({ queueStatus: 'in_game', currentMatch: match });
+    },
+    applyCancelled: () => {
+      stopQueueTick();
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null });
+    },
+    applyCancelledRequeued: (gameId) => {
+      set({ queueStatus: 'searching', queueGame: gameId, queueSeconds: 0, currentMatch: null });
+      stopQueueTick();
+      queueTick = setInterval(() => {
+        if (get().queueStatus !== 'searching') { stopQueueTick(); return; }
+        set(s => ({ queueSeconds: s.queueSeconds + 1 }));
+      }, 1000);
+    },
+    applyMmError: () => {
+      stopQueueTick();
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null });
     },
 
     myStats: (gameId) => {

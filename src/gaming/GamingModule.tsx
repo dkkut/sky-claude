@@ -6,6 +6,7 @@ import { RANK_GLOW } from './components/Primitives';
 import { GamingChannels } from './GamingChannels';
 import { TourneysView } from './components/TourneysView';
 import { VoicePartyModule } from '@/voiceparty/VoicePartyModule';
+import { useOtherProfiles } from '@/profile/viewer/otherProfiles';
 
 /* ── FACEIT colour tokens ─────────────────────────────────── */
 const FC = {
@@ -77,7 +78,10 @@ const ResultChip = ({ r }: { r: 'win'|'loss'|'draw' }) => (
    PLAY TAB — Queue, Recent matches, Live party
 ───────────────────────────────────────────────────────── */
 const PlayView = () => {
-  const { myStats, matchHistory, queueStatus, queueGame, queueSeconds, startQueue, cancelQueue, acceptMatch } = useGamingStore();
+  const {
+    myStats, matchHistory, queueStatus, queueGame, queueSeconds, currentMatch, rating,
+    startQueue, cancelQueue, acceptMatch, declineMatch, loadRating,
+  } = useGamingStore();
   const { currentUserId, accounts } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
   const accountName = me?.name;
@@ -87,6 +91,17 @@ const PlayView = () => {
   const mainGame = GAMES.find(g => g.id === mainStat?.gameId) ?? GAMES[0];
   const elo = 500 + (mainStat?.wins ?? 0) * 12 + (mainStat?.hours ?? 0) * 3;
   const rc = RANK_CFG[mainStat?.rank ?? 'Bronze'] ?? RANK_CFG.Bronze;
+
+  // Соперник — реальный id из currentMatch, а не выдумка: подгружаем его
+  // публичный профиль тем же кэшем, что и обычный просмотр профиля.
+  const opponentId = currentMatch
+    ? [...currentMatch.teamA, ...currentMatch.teamB].find(id => id !== currentUserId)
+    : undefined;
+  const opponentEntry = useOtherProfiles(s => (opponentId ? s.byId[opponentId] : undefined));
+  const fetchOther = useOtherProfiles(s => s.fetch);
+  useEffect(() => { if (opponentId) void fetchOther(opponentId); }, [opponentId, fetchOther]);
+  useEffect(() => { if (queueGame) void loadRating(queueGame); }, [queueGame, loadRating]);
+  const matchElo = currentMatch?.avgElo ?? rating?.elo ?? 1000;
 
   return (
     <div className="h-full overflow-y-auto pb-6" style={{ scrollbarWidth:'none', background: FC.bg }}>
@@ -201,7 +216,7 @@ const PlayView = () => {
               <div className="flex-1">
                 <p className="text-sm font-black" style={{ color: FC.t1 }}>Поиск матча...</p>
                 <p className="text-xs mt-0.5" style={{ color: FC.t2 }}>
-                  {GAMES.find(g=>g.id===queueGame)?.title} · 5v5 · {K(Math.floor(elo/100)*100)} ELO ±200
+                  {GAMES.find(g=>g.id===queueGame)?.title} · 1 на 1 · {K(matchElo)} ELO
                 </p>
               </div>
               <button type="button" onClick={cancelQueue}
@@ -213,7 +228,7 @@ const PlayView = () => {
           </div>
         )}
 
-        {queueStatus === 'found' && (
+        {(queueStatus === 'found' || queueStatus === 'waiting') && currentMatch && (
           <motion.div initial={{ scale:0.96, opacity:0 }} animate={{ scale:1, opacity:1 }}
             className="rounded-xl overflow-hidden"
             style={{ background: FC.card, border: `2px solid ${FC.green}` }}>
@@ -223,18 +238,13 @@ const PlayView = () => {
                 <motion.div className="h-2 w-2 rounded-full" style={{ background: FC.green }}
                   animate={{ scale:[1,1.4,1] }} transition={{ duration:0.8, repeat:Infinity }}/>
                 <p className="text-sm font-black uppercase tracking-wide" style={{ color: FC.green }}>
-                  Матч найден!
+                  {queueStatus === 'found' ? 'Матч найден!' : 'Ждём соперника...'}
                 </p>
-                <div className="ml-auto flex items-center gap-1">
-                  <p className="text-xs" style={{ color: FC.t2 }}>Принять через</p>
-                  <p className="text-xs font-black tabular-nums" style={{ color: FC.t1 }}>15с</p>
-                </div>
               </div>
-              <div className="grid grid-cols-3 gap-3 mb-4 text-center">
+              <div className="grid grid-cols-2 gap-3 mb-4 text-center">
                 {[
-                  { l:'КАРТА', v:'Mirage'  },
-                  { l:'РЕЖИМ', v:'5v5 Ranked' },
-                  { l:'AVG ELO', v:`${K(elo)}` },
+                  { l:'ИГРА', v: GAMES.find(g=>g.id===currentMatch.gameId)?.title ?? currentMatch.gameId },
+                  { l:'AVG ELO', v:`${K(currentMatch.avgElo)}` },
                 ].map(({l,v})=>(
                   <div key={l} className="rounded-lg py-2" style={{ background: FC.card2 }}>
                     <p className="text-xs font-black" style={{ color: FC.t1 }}>{v}</p>
@@ -242,19 +252,50 @@ const PlayView = () => {
                   </div>
                 ))}
               </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={acceptMatch}
-                  className="flex-1 rounded-lg py-2.5 text-sm font-black"
-                  style={{ background: FC.green, color:'#000' }}>
-                  ПРИНЯТЬ
-                </button>
-                <button type="button" onClick={cancelQueue}
-                  className="rounded-lg px-4 py-2.5 text-sm font-bold"
-                  style={{ background: FC.card2, color: FC.t2, border:`1px solid ${FC.border}` }}>
-                  Отказ
-                </button>
+              <div className="rounded-lg py-2 mb-4 text-center" style={{ background: FC.card2 }}>
+                <p className="text-xs font-black" style={{ color: FC.t1 }}>
+                  {opponentEntry?.name ?? (opponentEntry === null ? 'Игрок' : '…')}
+                  {opponentEntry?.username ? ` · @${opponentEntry.username}` : ''}
+                </p>
+                <p className="text-[8px] tracking-widest mt-0.5" style={{ color: FC.t3 }}>СОПЕРНИК</p>
               </div>
+              {queueStatus === 'found' ? (
+                <div className="flex gap-2">
+                  <button type="button" onClick={acceptMatch}
+                    className="flex-1 rounded-lg py-2.5 text-sm font-black"
+                    style={{ background: FC.green, color:'#000' }}>
+                    ПРИНЯТЬ
+                  </button>
+                  <button type="button" onClick={declineMatch}
+                    className="rounded-lg px-4 py-2.5 text-sm font-bold"
+                    style={{ background: FC.card2, color: FC.t2, border:`1px solid ${FC.border}` }}>
+                    Отказ
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-center" style={{ color: FC.t3 }}>
+                  Вы приняли — ждём подтверждения от соперника.
+                </p>
+              )}
             </div>
+          </motion.div>
+        )}
+
+        {queueStatus === 'in_game' && currentMatch && (
+          <motion.div initial={{ scale:0.96, opacity:0 }} animate={{ scale:1, opacity:1 }}
+            className="rounded-xl overflow-hidden p-4 text-center"
+            style={{ background: FC.card, border: `2px solid ${FC.green}` }}>
+            <p className="text-sm font-black uppercase tracking-wide mb-1" style={{ color: FC.green }}>
+              Матч подтверждён
+            </p>
+            <p className="text-xs mb-3" style={{ color: FC.t2 }}>
+              {GAMES.find(g=>g.id===currentMatch.gameId)?.title} против {opponentEntry?.name ?? 'соперника'}
+            </p>
+            <button type="button" onClick={cancelQueue}
+              className="rounded-lg px-4 py-2 text-xs font-bold"
+              style={{ background: FC.card2, color: FC.t2, border:`1px solid ${FC.border}` }}>
+              Готово
+            </button>
           </motion.div>
         )}
       </div>
