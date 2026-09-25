@@ -68,8 +68,10 @@ export const sessionStore = {
    * Активный профиль хранится отдельным полем и меняется при переключении,
    * не затрагивая саму сессию.
    */
-  async put({ id, userId, profileId = null }, ttlSec) {
-    const value = JSON.stringify({ id, userId, profileId, createdAt: Date.now() });
+  async put({ id, userId, profileId = null, ua = '', ip = '' }, ttlSec) {
+    const value = JSON.stringify({
+      id, userId, profileId, ua, ip, createdAt: Date.now(), lastSeenAt: Date.now(),
+    });
     await client
       .multi()
       .setEx(KEY_SESSION(id), ttlSec, value)
@@ -103,6 +105,26 @@ export const sessionStore = {
       JSON.stringify({ ...session, profileId }),
     );
     return true;
+  },
+
+  /**
+   * Настоящий список сессий Sky ID — то, что показывает экран
+   * «Устройства». Раньше он рисовался из localStorage и не отражал
+   * ничего реального: терминировать «устройство» там не значило ничего.
+   */
+  async listForUser(userId) {
+    const ids = await client.sMembers(KEY_USER_SESS(userId));
+    if (ids.length === 0) return [];
+    const sessions = await Promise.all(ids.map((id) => this.get(id)));
+    return sessions.filter(Boolean).sort((a, b) => (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0));
+  },
+
+  /** Отмечает сессию «видели только что» — вызывается при обновлении токена. */
+  async touch(id) {
+    const session = await this.get(id);
+    if (!session) return;
+    const ttl = await client.ttl(KEY_SESSION(id));
+    await client.setEx(KEY_SESSION(id), ttl > 0 ? ttl : 60, JSON.stringify({ ...session, lastSeenAt: Date.now() }));
   },
 
   async revoke(id) {

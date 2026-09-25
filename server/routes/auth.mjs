@@ -16,7 +16,7 @@ import { signToken, verifyToken } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
 import { generateId } from './../security.mjs';
 import { buildRefreshCookie, clearRefreshCookie } from './../cookies.mjs';
-import { json, parseBody, readRefreshToken, readSession, appBody } from './../http.mjs';
+import { json, parseBody, readRefreshToken, readSession, appBody, deviceMeta } from './../http.mjs';
 import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../verification.mjs';
 import {
   ensureSkyId, ensureSkyIdByEmail, findSkyIdById, publicSkyId, listProfiles,
@@ -106,7 +106,7 @@ export const issueTokens = (skyId, sessionId, profileId) => {
  * Начинает сессию Sky ID и выбирает профиль по умолчанию, если он один.
  * Экспортирована по той же причине, что и issueTokens выше.
  */
-export const startSession = async (skyIdRow) => {
+export const startSession = async (skyIdRow, req) => {
   const profiles = await listProfiles(skyIdRow.id);
 
   // Единственный незащищённый профиль открываем сразу: лишний экран
@@ -116,7 +116,7 @@ export const startSession = async (skyIdRow) => {
 
   const sessionId = generateId();
   await sessionStore.put(
-    { id: sessionId, userId: skyIdRow.id, profileId: auto?.id ?? null },
+    { id: sessionId, userId: skyIdRow.id, profileId: auto?.id ?? null, ...deviceMeta(req) },
     config.refreshTtlSec,
   );
 
@@ -211,7 +211,7 @@ export const authRoutes = async (req, res, url) => {
       });
     }
 
-    const session = await startSession(skyId);
+    const session = await startSession(skyId, req);
     return json(res, created ? 201 : 200,
                 appBody(req, { ...session.body, isNew: created }, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
@@ -269,7 +269,7 @@ export const authRoutes = async (req, res, url) => {
       });
     }
 
-    const session = await startSession(skyId);
+    const session = await startSession(skyId, req);
     return json(res, created ? 201 : 200,
                 appBody(req, { ...session.body, isNew: created }, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
@@ -289,7 +289,7 @@ export const authRoutes = async (req, res, url) => {
     const skyId = await findSkyIdById(payload.sub);
     if (!skyId) return json(res, 401, { error: 'unauthorized' });
 
-    const session = await startSession(skyId);
+    const session = await startSession(skyId, req);
     return json(res, 200, appBody(req, session.body, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
   }
@@ -342,6 +342,9 @@ export const authRoutes = async (req, res, url) => {
       ? await getProfileOfSkyId(skyId.id, stored.profileId)
       : null;
     if (stored.profileId && !active) await sessionStore.setActiveProfile(payload.sid, null);
+    // Обновление токена — самое частое обращение живой сессии: удобное
+    // место отметить «видели только что» для экрана «Устройства».
+    await sessionStore.touch(payload.sid);
 
     const tokens = issueTokens(skyId.id, payload.sid, active?.id ?? null);
     return json(res, 200, appBody(req, {
@@ -376,6 +379,47 @@ export const authRoutes = async (req, res, url) => {
     // Гасим серверную сессию: одного удаления куки мало, иначе украденный
     // токен продолжал бы работать.
     if (payload?.sid) await sessionStore.revoke(payload.sid);
+    return json(res, 200, { ok: true }, { 'Set-Cookie': clearRefreshCookie() });
+  }
+
+  /* ── Устройства: настоящий список сессий Sky ID ─────────────────────
+     Раньше «Устройства» рисовались из localStorage и не отражали ничего
+     реального — «завершить сессию» там не завершало её нигде, кроме
+     своего же браузера. IP не отдаём вовсе (тот же принцип, что и
+     раньше был на клиенте): достаточно браузера/ОС из ua и времени. */
+  if (req.method === 'GET' && url === '/api/auth/devices') {
+    const session = await readSession(req);
+    if (!session) return json(res, 401, { error: 'unauthorized' });
+    const list = await sessionStore.listForUser(session.skyId);
+    return json(res, 200, {
+      devices: list.map((d) => ({
+        id: d.id,
+        ua: d.ua ?? '',
+        createdAt: new Date(d.createdAt ?? Date.now()).toISOString(),
+        lastSeenAt: new Date(d.lastSeenAt ?? d.createdAt ?? Date.now()).toISOString(),
+        isCurrent: d.id === session.sessionId,
+      })),
+    });
+  }
+
+  /* ── Устройства: завершить одну сессию ──────────────────────────── */
+  const deviceMatch = /^\/api\/auth\/devices\/([a-zA-Z0-9-]{10,64})\/revoke$/.exec(url);
+  if (req.method === 'POST' && deviceMatch) {
+    const session = await readSession(req);
+    if (!session) return json(res, 401, { error: 'unauthorized' });
+    const target = await sessionStore.get(deviceMatch[1]);
+    // Чужая сессия и несуществующий id отвечают одинаково: подтверждать
+    // угаданный чужой идентификатор незачем.
+    if (!target || target.userId !== session.skyId) return json(res, 404, { error: 'not_found' });
+    await sessionStore.revoke(deviceMatch[1]);
+    return json(res, 200, { ok: true, isCurrent: deviceMatch[1] === session.sessionId });
+  }
+
+  /* ── Устройства: завершить все сессии, включая текущую ──────────── */
+  if (req.method === 'POST' && url === '/api/auth/devices/revoke-all') {
+    const session = await readSession(req);
+    if (!session) return json(res, 401, { error: 'unauthorized' });
+    await sessionStore.revokeAllForUser(session.skyId);
     return json(res, 200, { ok: true }, { 'Set-Cookie': clearRefreshCookie() });
   }
 

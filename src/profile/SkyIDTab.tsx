@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { ConfirmExit } from '@/auth/AuthScreen';
+import { apiListDevices, apiRevokeDevice, type ServerDevice } from '@/core/auth/api';
 import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
 
 /* ── helpers ─────────────────────────────────────────────────── */
@@ -32,6 +33,16 @@ const prettyPhone = (raw?: string) => {
 const DevIcon = ({ os }: { os: string }) => {
   if (os === 'Android' || os === 'iOS') return <Smartphone size={14} />;
   return <Monitor size={14} />;
+};
+
+/** Браузер и ОС по User-Agent, который сервер запомнил при входе. */
+const parseUa = (ua: string) => {
+  const browser = ua.includes('Edg') ? 'Edge' : ua.includes('Chrome') ? 'Chrome'
+    : ua.includes('Firefox') ? 'Firefox' : ua.includes('Safari') ? 'Safari' : 'Браузер';
+  const os = ua.includes('Windows') ? 'Windows' : ua.includes('Mac') ? 'macOS'
+    : ua.includes('Android') ? 'Android' : (ua.includes('iPhone') || ua.includes('iPad')) ? 'iOS'
+    : ua.includes('Linux') ? 'Linux' : 'Unknown';
+  return { browser, os };
 };
 
 const EVT_COLOR: Record<string, string> = {
@@ -84,7 +95,7 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
 
 /* ════════════════════════════════════════════════════════════ */
 export const SkyIDTab = () => {
-  const { accounts, currentUserId, terminateDevice, logoutAll, reloadSession } = useAuthStore();
+  const { accounts, currentUserId, logoutAll, reloadSession } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
   const [sub, setSub] = useState<SubTab>('skyid');
 
@@ -120,9 +131,7 @@ export const SkyIDTab = () => {
             {sub === 'profiles' && <ProfilesSection />}
             {sub === 'security' && <SecuritySection />}
             {sub === 'devices'  && (
-              <DevicesSection me={me}
-                onTerminate={id => terminateDevice(me.id, id)}
-                onLogoutAll={() => logoutAll()} />
+              <DevicesSection onLogoutAll={() => logoutAll()} />
             )}
             {sub === 'log'      && <SecurityLogSection me={me} />}
 
@@ -861,16 +870,32 @@ const SecuritySection = () => {
   );
 };
 
-/* ── Устройства этого браузера ───────────────────────────────── */
-const DevicesSection = ({ me, onTerminate, onLogoutAll }: { me: any; onTerminate: (id: string) => void; onLogoutAll: () => void }) => {
-  const devs: any[] = me.devices ?? [];
+/* ── Устройства: настоящие сессии Sky ID на сервере ──────────────
+   Раньше список рисовался из localStorage, а «завершить» ничего не
+   завершало нигде, кроме своего же браузера — теперь настоящий
+   server/sessions.mjs через /api/auth/devices. */
+const DevicesSection = ({ onLogoutAll }: { onLogoutAll: () => void }) => {
+  const [devs, setDevs] = useState<ServerDevice[]>([]);
+  const [loading, setLoading] = useState(true);
   const [confirm, setConfirm] = useState(false);
+
+  const load = async () => {
+    const res = await apiListDevices();
+    if (res.ok && res.data) setDevs(res.data.devices);
+    setLoading(false);
+  };
+  useEffect(() => { void load(); }, []);
+
+  const onTerminate = async (id: string) => {
+    setDevs(prev => prev.filter(d => d.id !== id));
+    await apiRevokeDevice(id);
+  };
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>
-          Входы с этого устройства · {devs.length}
+          Активные сессии · {devs.length}
         </p>
         <button type="button" onClick={() => setConfirm(true)}
           className="text-[11px] font-semibold flex items-center gap-1"
@@ -895,12 +920,16 @@ const DevicesSection = ({ me, onTerminate, onLogoutAll }: { me: any; onTerminate
         )}
       </AnimatePresence>
 
-      {devs.length === 0 ? (
+      {loading ? (
+        <div className="flex flex-col items-center py-12 gap-3 opacity-50">
+          <p className="text-sm" style={{ color: 'var(--t2)' }}>Загрузка…</p>
+        </div>
+      ) : devs.length === 0 ? (
         <div className="flex flex-col items-center py-12 gap-3 opacity-50">
           <Globe size={28} style={{ color: 'var(--t3)' }} />
           <p className="text-sm" style={{ color: 'var(--t2)' }}>Записей пока нет</p>
         </div>
-      ) : devs.map((d, i) => (
+      ) : devs.map((d, i) => { const { browser, os } = parseUa(d.ua); return (
         <motion.div key={d.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.05 }}
           className="flex items-start gap-3 rounded-2xl px-4 py-3"
@@ -910,33 +939,33 @@ const DevicesSection = ({ me, onTerminate, onLogoutAll }: { me: any; onTerminate
           }}>
           <div className="grid h-9 w-9 place-items-center rounded-xl shrink-0 mt-0.5"
             style={{ background: d.isCurrent ? 'rgba(79,110,247,0.12)' : 'var(--bg-l3)' }}>
-            <DevIcon os={d.os} />
+            <DevIcon os={os} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="text-[13px] font-semibold" style={{ color: 'var(--t1)' }}>{d.browser} · {d.os}</p>
+              <p className="text-[13px] font-semibold" style={{ color: 'var(--t1)' }}>{browser} · {os}</p>
               {d.isCurrent && (
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
                   style={{ background: 'rgba(79,110,247,0.18)', color: 'var(--accent)' }}>ТЕКУЩЕЕ</span>
               )}
             </div>
             <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'var(--t3)' }}>
-              <Clock size={9} /> Вход: {fmtDt(d.loginAt)}
+              <Clock size={9} /> Был(а) в сети: {fmtDt(d.lastSeenAt)}
             </p>
           </div>
           {!d.isCurrent && (
-            <button type="button" onClick={() => onTerminate(d.id)}
+            <button type="button" onClick={() => void onTerminate(d.id)}
               className="grid h-7 w-7 place-items-center rounded-xl transition-colors shrink-0"
               style={{ color: 'var(--t3)' }}>
               <Trash2 size={13} />
             </button>
           )}
         </motion.div>
-      ))}
+      ); })}
 
       <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
-        Это записи входов, сделанных в этом браузере. Чтобы закрыть доступ
-        везде, выйдите из Sky ID и смените код доступа к номеру.
+        Настоящие сессии Sky ID на сервере. Значок корзины завершает
+        конкретную сессию немедленно — на любом её устройстве.
       </p>
     </div>
   );
