@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { AppShell }      from './app/AppShell';
 import { AuthScreen }    from './auth/AuthScreen';
 import { BetaGate }      from './auth/BetaGate';
-import { setBetaRequiredHandler } from './core/auth/api';
+import { setBetaRequiredHandler, initNativeAuth } from './core/auth/api';
 import { OfflineMode }   from './offline/OfflineMode';
 import { BlockedScreen } from './moderation/BlockedScreen';
 import { apiSupportStatus, type Restrictions } from './moderation/supportApi';
@@ -309,7 +309,12 @@ const Root = () => {
 
   useEffect(() => {
     let cancelled = false;
-    useAuthStore.getState().restoreSession()
+    // В родном приложении сначала подгружаем сохранённый пропуск беты
+    // из защищённого хранилища в память (raw() кладёт его в заголовок
+    // синхронно) — иначе самый первый запрос (restoreSession) ушёл бы
+    // без него и упёрся в калитку. В веб-сборке initNativeAuth — no-op.
+    initNativeAuth()
+      .then(() => useAuthStore.getState().restoreSession())
       .finally(() => { if (!cancelled) setSessionChecked(true); });
     return () => { cancelled = true; };
   }, []);

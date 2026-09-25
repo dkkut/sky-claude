@@ -70,6 +70,36 @@ export const readRefreshToken = (req, body) => {
 };
 
 /**
+ * Родное приложение (Android/Windows) шлёт этот заголовок на каждый запрос:
+ * у него нет HttpOnly-куки (интерфейс вшит в приложение, а не открыт с
+ * боевого домена), поэтому refresh-токен и пропуск беты ему приходится
+ * носить с собой явно — в теле запроса и в заголовке X-Sky-Beta. Ставить
+ * их в ответ обычному браузеру незачем и не нужно: там куки достаточно.
+ */
+export const isAppClient = (req) => req.headers['x-sky-client'] === 'app';
+
+/**
+ * Подмешивает в тело ответа то, что нужно только родному приложению
+ * (сырой refresh-токен, пропуск беты) — и только ему: обычный браузер
+ * получает тело без изменений, токен для него по-прежнему только в
+ * HttpOnly-куке.
+ */
+export const appBody = (req, body, extra) => (isAppClient(req) ? { ...body, ...extra } : body);
+
+/**
+ * Откуда разрешено обращаться кросс-доменно: и HTTP (CORS), и WebSocket
+ * (рукопожатие не подчиняется правилам обмена между сайтами и проверяется
+ * отдельно). Один список на оба случая — сервер и родные приложения
+ * прописаны туда через DOMAIN/EXTRA_ORIGINS.
+ */
+export const originAllowed = (origin) => {
+  if (!origin) return true;            // не браузер: свои проверки, curl
+  const allowed = [config.publicOrigin, ...(config.extraOrigins ?? [])].filter(Boolean);
+  if (allowed.length === 0) return true;
+  return allowed.includes(origin);
+};
+
+/**
  * Разбирает access-токен и сверяет его с живой сессией.
  *
  * Одной подписи мало: после «Выйти из Sky ID» токен формально остаётся

@@ -16,9 +16,11 @@
     "electron:dev": "electron .",
     "electron:build:win": "electron-builder --win nsis",
     "electron:build:linux": "electron-builder --linux AppImage",
-    "cap:sync": "vite build && npx cap sync android"
+    "cap:sync": "npm run build:native && npx cap sync android",
+    "build:native": "vite build --mode native"
   },
   "dependencies": {
+    "@capacitor/preferences": "^8.0.1",
     "framer-motion": "^11.0.8",
     "hls.js": "^1.7.3",
     "leaflet": "^1.9.4",
@@ -65,7 +67,8 @@
     "appId": "online.skymessenger.desktop",
     "productName": "Sky",
     "files": [
-      "electron/**/*"
+      "electron/**/*",
+      "dist/**/*"
     ],
     "directories": {
       "output": "release"

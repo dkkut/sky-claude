@@ -11,6 +11,8 @@ on:
     paths:
       - 'android/**'
       - 'capacitor.config.ts'
+      - '.env.native'
+      - 'package.json'
       - 'src/**'
       - 'public/**'
       - '.github/workflows/build-android.yml'
@@ -31,8 +33,10 @@ jobs:
       - name: Установка зависимостей
         run: npm ci --no-audit --no-fund
 
-      # Собранный dist/ идёт в APK только как офлайн-заглушка — рабочее
-      # приложение открывает боевой адрес (capacitor.config.ts).
+      # cap:sync = build:native (vite build --mode native, см. .env.native)
+      # + cap sync android: интерфейс вшивается прямо в APK и обращается
+      # к API по абсолютному адресу (VITE_API_ORIGIN) вместо загрузки
+      # боевого сайта в WebView — см. capacitor.config.ts.
       - name: Сборка веб-части и синхронизация Capacitor
         run: npm run cap:sync
 

@@ -8,7 +8,7 @@
 import http from 'node:http';
 import { config } from './config.mjs';
 import { rateLimit } from './security.mjs';
-import { json } from './http.mjs';
+import { json, originAllowed } from './http.mjs';
 import { waitForDb, migrate, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
 import { connectRedis, closeRedis, redisAlive } from './sessions.mjs';
@@ -94,9 +94,35 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
  */
 const betaAllowed = (req) => {
   if (!betaEnabled()) return true;
-  const token = parseCookies(req.headers.cookie)[BETA_COOKIE];
+  // Родное приложение не носит куки (свой origin, не боевой домен) —
+  // держит пропуск сам и шлёт его заголовком X-Sky-Beta. Кука остаётся
+  // основным путём для браузера, заголовок — запасной, только для него.
+  const token = parseCookies(req.headers.cookie)[BETA_COOKIE]
+    || (typeof req.headers['x-sky-beta'] === 'string' ? req.headers['x-sky-beta'] : '');
   const payload = verifyToken(token ?? '', config.jwtSecret);
   return Boolean(payload && payload.typ === 'beta' && betaHashLive(payload.k));
+};
+
+/**
+ * CORS только для /api/*: до сих пор всё было same-origin (веб грузится с
+ * боевого домена, что и есть API), заголовков не было вовсе. Родное
+ * приложение живёт на другом origin (https://localhost у Capacitor,
+ * app://sky у Electron) — без явного разрешения браузер/WebView просто
+ * не отдаст ему ответ. Отражаем ровно тот origin, что уже разрешён для
+ * WebSocket-рукопожатия (originAllowed, см. http.mjs) — никогда wildcard,
+ * и без Allow-Credentials: нативные запросы не носят куки кросс-доменно,
+ * так что это не открывает CSRF.
+ */
+const applyCors = (req, res) => {
+  const origin = req.headers.origin;
+  if (!origin || !originAllowed(origin)) return;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sky-Client, X-Sky-Beta');
+    res.setHeader('Access-Control-Max-Age', '600');
+  }
 };
 
 const server = http.createServer(async (req, res) => {
@@ -108,6 +134,12 @@ const server = http.createServer(async (req, res) => {
 
     // Строку запроса отбрасываем: маршруты сравниваются по пути.
     const url = (req.url || '').split('?')[0];
+
+    applyCors(req, res);
+    if (req.method === 'OPTIONS' && url.startsWith('/api/')) {
+      res.writeHead(204);
+      return res.end();
+    }
 
     if (req.method === 'GET' && url === '/healthz') {
       return json(res, 200, { status: 'ok', uptime: process.uptime() });

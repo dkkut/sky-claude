@@ -16,7 +16,7 @@ import { signToken, verifyToken } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
 import { generateId } from './../security.mjs';
 import { buildRefreshCookie, clearRefreshCookie } from './../cookies.mjs';
-import { json, parseBody, readRefreshToken, readSession } from './../http.mjs';
+import { json, parseBody, readRefreshToken, readSession, appBody } from './../http.mjs';
 import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../verification.mjs';
 import {
   ensureSkyId, ensureSkyIdByEmail, findSkyIdById, publicSkyId, listProfiles,
@@ -77,22 +77,30 @@ const normalizePhone = (raw) => {
  * короткий доступ, sid внутри. Держать вторую копию этой сборки было бы
  * поводом однажды забыть обновить одну из двух одинаково.
  */
-export const issueTokens = (skyId, sessionId, profileId) => ({
-  body: {
-    accessToken: signToken(
-      // sid нужен, чтобы смена профиля меняла саму сессию: refresh-кука
-      // ограничена путём /api/auth и на другие маршруты не приходит.
-      // Знание sid без подписанного токена ничего не даёт.
-      { sub: profileId ?? null, sky: skyId, sid: sessionId, typ: 'access' },
-      config.jwtSecret, config.accessTtlSec,
-    ),
-    expiresIn: config.accessTtlSec,
-  },
-  cookie: buildRefreshCookie(
-    signToken({ sub: skyId, sid: sessionId, typ: 'refresh' }, config.refreshSecret, config.refreshTtlSec),
-    config.refreshTtlSec,
-  ),
-});
+export const issueTokens = (skyId, sessionId, profileId) => {
+  // Сырой refresh-токен выносим в переменную: он же уходит в куку для
+  // браузера, он же — в тело ответа для родного приложения (см. appBody
+  // в http.mjs). Кука привязана к пути /api/auth и HttpOnly, поэтому
+  // возврат того же значения в теле ничего не открывает обычной вкладке —
+  // JS там его и так не увидит.
+  const refreshToken = signToken(
+    { sub: skyId, sid: sessionId, typ: 'refresh' }, config.refreshSecret, config.refreshTtlSec,
+  );
+  return {
+    body: {
+      accessToken: signToken(
+        // sid нужен, чтобы смена профиля меняла саму сессию: refresh-кука
+        // ограничена путём /api/auth и на другие маршруты не приходит.
+        // Знание sid без подписанного токена ничего не даёт.
+        { sub: profileId ?? null, sky: skyId, sid: sessionId, typ: 'access' },
+        config.jwtSecret, config.accessTtlSec,
+      ),
+      expiresIn: config.accessTtlSec,
+    },
+    cookie: buildRefreshCookie(refreshToken, config.refreshTtlSec),
+    refreshToken,
+  };
+};
 
 /**
  * Начинает сессию Sky ID и выбирает профиль по умолчанию, если он один.
@@ -122,6 +130,7 @@ export const startSession = async (skyIdRow) => {
       ...tokens.body,
     },
     cookie: tokens.cookie,
+    refreshToken: tokens.refreshToken,
   };
 };
 
@@ -203,7 +212,8 @@ export const authRoutes = async (req, res, url) => {
     }
 
     const session = await startSession(skyId);
-    return json(res, created ? 201 : 200, { ...session.body, isNew: created },
+    return json(res, created ? 201 : 200,
+                appBody(req, { ...session.body, isNew: created }, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
   }
 
@@ -260,7 +270,8 @@ export const authRoutes = async (req, res, url) => {
     }
 
     const session = await startSession(skyId);
-    return json(res, created ? 201 : 200, { ...session.body, isNew: created },
+    return json(res, created ? 201 : 200,
+                appBody(req, { ...session.body, isNew: created }, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
   }
 
@@ -279,7 +290,8 @@ export const authRoutes = async (req, res, url) => {
     if (!skyId) return json(res, 401, { error: 'unauthorized' });
 
     const session = await startSession(skyId);
-    return json(res, 200, session.body, { 'Set-Cookie': session.cookie });
+    return json(res, 200, appBody(req, session.body, { refreshToken: session.refreshToken }),
+                { 'Set-Cookie': session.cookie });
   }
 
   /* ── Повторная отправка кода второго фактора на почту ───────────── */
@@ -332,13 +344,13 @@ export const authRoutes = async (req, res, url) => {
     if (stored.profileId && !active) await sessionStore.setActiveProfile(payload.sid, null);
 
     const tokens = issueTokens(skyId.id, payload.sid, active?.id ?? null);
-    return json(res, 200, {
+    return json(res, 200, appBody(req, {
       skyId: publicSkyId(skyId),
       profiles: await listProfiles(skyId.id),
       activeProfileId: active?.id ?? null,
       maxProfiles: 2,
       ...tokens.body,
-    }, { 'Set-Cookie': tokens.cookie });
+    }, { refreshToken: tokens.refreshToken }), { 'Set-Cookie': tokens.cookie });
   }
 
   /* ── Текущее состояние сессии ───────────────────────────────────── */

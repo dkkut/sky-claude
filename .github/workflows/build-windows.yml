@@ -12,6 +12,9 @@ on:
       - 'electron/**'
       - 'build-resources/**'
       - 'package.json'
+      - '.env.native'
+      - 'src/**'
+      - 'public/**'
       - '.github/workflows/build-windows.yml'
   workflow_dispatch:
 
@@ -30,10 +33,16 @@ jobs:
       - name: Установка зависимостей
         run: npm ci --no-audit --no-fund
 
-      # electron-builder не трогает dist/ (окно открывает боевой адрес),
-      # но tsc в build — дешёвая проверка, что ничего не сломано.
       - name: Проверка типов
         run: npx tsc --noEmit
+
+      # Интерфейс вшивается прямо в установщик и отдаётся с app://sky
+      # (см. electron/main.cjs) вместо загрузки боевого сайта — build:native
+      # собирает dist/ с абсолютным адресом API (VITE_API_ORIGIN, см.
+      # .env.native), electron-builder подхватывает его через build.files
+      # в package.json.
+      - name: Сборка веб-части (нативный режим)
+        run: npm run build:native
 
       # electron-builder сам публикует GitHub Release, если видит CI=true
       # и решает, что публикация подразумевается по умолчанию — без

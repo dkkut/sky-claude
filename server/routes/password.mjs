@@ -22,7 +22,7 @@ import { config } from './../config.mjs';
 import { query } from './../db.mjs';
 import { hashPassword, verifyPassword, generateId, rateLimit, rateLimitPerHour, signToken } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
-import { json, parseBody, readSession } from './../http.mjs';
+import { json, parseBody, readSession, appBody } from './../http.mjs';
 import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../verification.mjs';
 import { findSkyIdById, findSkyIdByEmail, sendTwoFactorCode } from './../skyid.mjs';
 import { maskEmail, normalizeEmail, startSession, issueTokens } from './auth.mjs';
@@ -161,7 +161,9 @@ export const passwordRoutes = async (req, res, url) => {
     const sessionId = generateId();
     await sessionStore.put({ id: sessionId, userId: skyId.id, profileId: session.profileId }, config.refreshTtlSec);
     const tokens = issueTokens(skyId.id, sessionId, session.profileId);
-    return json(res, 200, { ok: true, ...tokens.body }, { 'Set-Cookie': tokens.cookie });
+    return json(res, 200,
+                appBody(req, { ok: true, ...tokens.body }, { refreshToken: tokens.refreshToken }),
+                { 'Set-Cookie': tokens.cookie });
   }
 
   /* ══ Убрать пароль как способ входа ═══════════════════════════════ */
@@ -230,7 +232,8 @@ export const passwordRoutes = async (req, res, url) => {
     }
 
     const session = await startSession(skyId);
-    return json(res, 200, session.body, { 'Set-Cookie': session.cookie });
+    return json(res, 200, appBody(req, session.body, { refreshToken: session.refreshToken }),
+                { 'Set-Cookie': session.cookie });
   }
 
   /* ══ Забыли пароль ═════════════════════════════════════════════════

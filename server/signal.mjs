@@ -18,6 +18,7 @@ import { verifyToken, rateLimit, rateLimitPerHour } from './security.mjs';
 import { sessionStore, onSessionRevoked } from './sessions.mjs';
 import { query } from './db.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
+import { originAllowed } from './http.mjs';
 import { getPrivacy, setPrivacy, presenceBetween, mayCall } from './privacy.mjs';
 import {
   restrictionsOf, isBannedNow, isAdmin,
@@ -1179,19 +1180,13 @@ const shareAChat = async (a, b) => {
 /* ─── запуск ───────────────────────────────────────────────────────────── */
 
 /**
- * Откуда разрешено открывать сокет.
- *
- * Рукопожатие WebSocket не подчиняется правилам обмена между сайтами:
- * страница злоумышленника может открыть соединение к нашему хабу из
- * браузера жертвы. Предъявить токен она не сможет — он лежит в памяти
- * нашей вкладки, а не в куке, — но открывать соединения пачками вполне.
+ * Откуда разрешено открывать сокет — та же проверка origin, что и у HTTP
+ * CORS (см. originAllowed в http.mjs): рукопожатие WebSocket не
+ * подчиняется правилам обмена между сайтами, и без неё страница
+ * злоумышленника открывала бы соединение к нашему хабу из браузера жертвы.
+ * Предъявить токен она не сможет — он лежит в памяти нашей вкладки, а не в
+ * куке, — но открывать соединения пачками вполне.
  */
-const originAllowed = (origin) => {
-  if (!origin) return true;            // не браузер: свои проверки, curl
-  const allowed = [config.publicOrigin, ...(config.extraOrigins ?? [])].filter(Boolean);
-  if (allowed.length === 0) return true;
-  return allowed.includes(origin);
-};
 
 /**
  * Калитка закрытой беты действует и на сокете.

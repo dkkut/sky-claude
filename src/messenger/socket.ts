@@ -12,6 +12,7 @@
  */
 import { useMessengerStore } from './store';
 import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
+import { NATIVE_APP, API_ORIGIN } from '@/core/nativeApp';
 import { setWireSink, setVolatileSink, type Outgoing } from '@/core/wire';
 import { bsignal, type SignalMsg } from '@/calls/webrtc';
 import { receiveTogether } from '@/together/togetherState';
@@ -102,8 +103,17 @@ const toMessageItem = (raw: any, myId: string): MessageItem => {
 
 /* ─── Состояние соединения ────────────────────────────────────────────── */
 
-const WS_URL = () =>
-  `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
+/**
+ * Родное приложение открыто со своего origin (вшитый бандл, не боевой
+ * домен) — location.host там ничего не значит, хаб берём из того же
+ * абсолютного адреса, что и REST API (см. src/core/nativeApp.ts).
+ */
+const WS_URL = () => {
+  if (NATIVE_APP && API_ORIGIN) {
+    return `${API_ORIGIN.replace(/^http/, 'ws')}/ws`;
+  }
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
+};
 
 /** Пауза перед повторной попыткой: растёт до полуминуты. */
 const RECONNECT_MIN = 1_000;

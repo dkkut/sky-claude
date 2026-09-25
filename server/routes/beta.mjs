@@ -7,7 +7,7 @@
  */
 import { config } from './../config.mjs';
 import { signToken } from './../security.mjs';
-import { json, parseBody } from './../http.mjs';
+import { json, parseBody, appBody } from './../http.mjs';
 import { buildBetaCookie } from './../cookies.mjs';
 import { betaEnabled, checkBetaKey } from './../beta.mjs';
 
@@ -30,7 +30,10 @@ export const betaRoutes = async (req, res, url) => {
     // Отпечаток ключа кладём в пропуск: отозвали ключ — вместе с ним
     // перестают действовать и выданные по нему пропуска.
     const token = signToken({ typ: 'beta', k: found.hash }, config.jwtSecret, config.betaTtlSec);
-    return json(res, 200, { ok: true }, {
+    // Родному приложению кука ни к чему — оно живёт на своём origin и
+    // носит пропуск в заголовке X-Sky-Beta (см. betaAllowed в server.mjs),
+    // поэтому получает сырой токен в теле, а не только в куке.
+    return json(res, 200, appBody(req, { ok: true }, { betaToken: token }), {
       'Set-Cookie': buildBetaCookie(token, config.betaTtlSec),
     });
   }

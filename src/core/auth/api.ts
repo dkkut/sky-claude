@@ -14,6 +14,7 @@
    завести, есть ли Prime, нужен ли второй фактор — отвечает сервер.
    Этот файл только спрашивает и показывает ответ.
 =============================================================== */
+import { NATIVE_APP, API_ORIGIN, nativeStore, REFRESH_TOKEN_KEY, BETA_TOKEN_KEY } from '../nativeApp';
 
 /** Способ второго фактора: код из приложения или письмо на почту. */
 export type TwoFactorMethod = 'app' | 'email' | 'sms';
@@ -64,6 +65,22 @@ let accessToken: string | null = null;
 
 export const getAccessToken = () => accessToken;
 export const setAccessToken = (t: string | null) => { accessToken = t; };
+
+/**
+ * Только для родного приложения (Android/Windows): пропуск беты в памяти,
+ * чтобы raw() мог приложить его синхронно к каждому запросу. Refresh-
+ * токен в память не кладём — он читается из защищённого хранилища прямо
+ * перед отправкой (см. refreshOnce/apiRefreshSession), в памяти вкладки
+ * ему делать нечего по той же причине, что и access-токену.
+ */
+let nativeBetaToken: string | null = null;
+
+/** Подгружает сохранённый пропуск беты перед первым запросом. Вызывать
+ *  один раз при старте приложения, только когда NATIVE_APP. */
+export const initNativeAuth = async () => {
+  if (!NATIVE_APP) return;
+  nativeBetaToken = await nativeStore.get(BETA_TOKEN_KEY);
+};
 
 type Json = Record<string, unknown>;
 
@@ -125,15 +142,24 @@ const readJson = async (res: Response): Promise<any> => {
 };
 
 const raw = (path: string, init: RequestInit = {}) =>
-  fetch(path, {
+  fetch(NATIVE_APP ? API_ORIGIN + path : path, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      // Родное приложение метит каждый запрос: сервер по этому заголовку
+      // отличает его от браузера и кладёт refresh/beta-токен в тело
+      // ответа вместо (или вместе с) HttpOnly-кукой — см. appBody в
+      // server/http.mjs. Обычный браузер этот заголовок не шлёт и
+      // токены в теле не получает.
+      ...(NATIVE_APP ? { 'X-Sky-Client': 'app' } : {}),
+      ...(NATIVE_APP && nativeBetaToken ? { 'X-Sky-Beta': nativeBetaToken } : {}),
       ...(init.headers ?? {}),
     },
-    // Без этого браузер не отправит HttpOnly-куку с refresh-токеном.
-    credentials: 'same-origin',
+    // Родное приложение открыто с другого origin, чем API (свой бандл, а
+    // не боевой домен) — куки там всё равно нет и same-origin её не
+    // отправит; сессию оно носит явным токеном (см. refreshOnce ниже).
+    credentials: NATIVE_APP ? 'omit' : 'same-origin',
   });
 
 /** Чтобы несколько одновременных 401 не устроили гонку обновлений. */
@@ -141,10 +167,14 @@ let refreshing: Promise<boolean> | null = null;
 
 const refreshOnce = (): Promise<boolean> => {
   refreshing ??= (async () => {
-    const res  = await raw('/api/auth/refresh', { method: 'POST', body: '{}' });
+    const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(REFRESH_TOKEN_KEY)) ?? '' } : {};
+    const res  = await raw('/api/auth/refresh', { method: 'POST', body: JSON.stringify(body) });
     const data = await readJson(res);
     if (!res.ok) { setAccessToken(null); return false; }
     setAccessToken(data.accessToken ?? null);
+    if (NATIVE_APP && typeof data.refreshToken === 'string') {
+      await nativeStore.set(REFRESH_TOKEN_KEY, data.refreshToken);
+    }
     return true;
   })().finally(() => { refreshing = null; });
   return refreshing;
@@ -181,6 +211,21 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true): Prom
     if (res.status === 403 && data?.error === 'beta_required') onBetaRequired?.();
     return { ok: false, error: data?.error, reason: explain(data?.error, res.status), status: res.status, data };
   }
+
+  // Родное приложение подхватывает refresh/beta-токен из ЛЮБОГО ответа,
+  // который его несёт (вход, проверка кода, обновление сессии, разблок
+  // беты) — один общий перехват вместо правки каждой из этих ручек по
+  // отдельности. Сервер кладёт их в тело только вместе с заголовком
+  // X-Sky-Client: app (см. appBody в server/http.mjs), так что обычный
+  // браузер сюда никогда не попадает.
+  if (NATIVE_APP) {
+    if (typeof data?.refreshToken === 'string') void nativeStore.set(REFRESH_TOKEN_KEY, data.refreshToken);
+    if (typeof data?.betaToken === 'string') {
+      nativeBetaToken = data.betaToken;
+      void nativeStore.set(BETA_TOKEN_KEY, data.betaToken);
+    }
+  }
+
   return { ok: true, data, status: res.status };
 };
 
@@ -260,9 +305,15 @@ export const apiVerifySkyTwoFactor = (challenge: string, code: string) =>
 export const apiResendLoginTwoFactor = (challenge: string) =>
   post<{ ok: true; email: string; retryAfter: number }>('/api/auth/two-factor/send', { challenge });
 
-/** Восстановление сессии по куке — вызывается при старте приложения. */
+/**
+ * Восстановление сессии — вызывается при старте приложения. У обычного
+ * браузера это кука; у родного приложения своего origin нет куки, и оно
+ * посылает сохранённый refresh-токен явно (ответ подхватывается общим
+ * перехватом в call()).
+ */
 export const apiRefreshSession = async (): Promise<Reply<SkySession & { accessToken: string }>> => {
-  const res = await post<SkySession & { accessToken: string }>('/api/auth/refresh');
+  const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(REFRESH_TOKEN_KEY)) ?? '' } : {};
+  const res = await post<SkySession & { accessToken: string }>('/api/auth/refresh', body);
   if (res.ok && res.data) setAccessToken(res.data.accessToken ?? null);
   else setAccessToken(null);
   return res;
@@ -272,7 +323,15 @@ export const apiRefreshSession = async (): Promise<Reply<SkySession & { accessTo
 export const apiSession = () => get<SkySession>('/api/auth/session');
 
 export const apiLogout = async (): Promise<void> => {
-  try { await post('/api/auth/logout'); } finally { setAccessToken(null); }
+  try {
+    // Кука несёт refresh-токен у браузера сама; у родного приложения
+    // куки нет, и сервер не найдёт сессию для отзыва без явного токена.
+    const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(REFRESH_TOKEN_KEY)) ?? '' } : {};
+    await post('/api/auth/logout', body);
+  } finally {
+    setAccessToken(null);
+    if (NATIVE_APP) await nativeStore.remove(REFRESH_TOKEN_KEY);
+  }
 };
 
 /* ═══ Профили ════════════════════════════════════════════════ */
@@ -461,7 +520,8 @@ export const apiFetchFile = async (path: string): Promise<Blob | null> => {
 /** Доступен ли бэкенд. Нужно, чтобы отличить «нет сети» от «неверный код». */
 export const apiAvailable = async (): Promise<boolean> => {
   try {
-    const res = await fetch('/healthz', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+    const res = await fetch(NATIVE_APP ? `${API_ORIGIN}/healthz` : '/healthz',
+      { cache: 'no-store', signal: AbortSignal.timeout(4000) });
     return res.ok;
   } catch {
     return false;
