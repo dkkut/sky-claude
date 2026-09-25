@@ -311,7 +311,7 @@ export const skyVideoRoutes = async (req, res, url) => {
     if (req.method === 'POST' && tail === '/view') {
       if (!rateLimit(`svid:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
       if (!(await visibleVideo(id, me))) return json(res, 404, { error: 'not_found' });
-      await countView(id);
+      await countView(me, id);
       return json(res, 200, { ok: true });
     }
 

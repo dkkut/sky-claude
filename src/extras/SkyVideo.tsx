@@ -814,7 +814,7 @@ const ShortsPreview = ({ shorts, onOpen }: { shorts: ServerVideo[]; onOpen: (i: 
 type VTab = 'home' | 'shorts' | 'upload' | 'mine';
 
 export const SkyVideo = () => {
-  const { feed, categories, load } = useSkyVideoStore();
+  const { feed, categories, load, search } = useSkyVideoStore();
   const { currentUserId } = useAuthStore();
   const pendingVideoTab = useModuleStore(s => s.pendingVideoTab);
   const setPendingVideoTab = useModuleStore(s => s.setPendingVideoTab);
@@ -824,6 +824,10 @@ export const SkyVideo = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('all');
+  // Поиск и фильтр по категории идут на сервер (весь каталог), а не по
+  // первым 100 роликам, что успели загрузиться в feed при открытии
+  // вкладки — иначе искалось бы только среди уже подгруженного.
+  const [searchResults, setSearchResults] = useState<ServerVideo[] | null>(null);
 
   useEffect(() => { load(); }, []);
   useEffect(() => () => { if (!currentUserId) resetSkyVideoForUser(); }, [currentUserId]);
@@ -832,15 +836,23 @@ export const SkyVideo = () => {
   const longVids = useMemo(() => feed.filter(v => !isShortVideo(v)), [feed]);
   const shorts = useMemo(() => feed.filter(v => isShortVideo(v)), [feed]);
 
+  const [searchLoading, setSearchLoading] = useState(false);
+  const active = searchQuery.trim() !== '' || catFilter !== 'all';
+  useEffect(() => {
+    if (!active) { setSearchResults(null); setSearchLoading(false); return; }
+    let cancelled = false;
+    setSearchLoading(true);
+    const t = setTimeout(() => {
+      void search(searchQuery.trim(), { category: catFilter !== 'all' ? catFilter : undefined })
+        .then(r => { if (!cancelled) { setSearchResults(r); setSearchLoading(false); } });
+    }, searchQuery.trim() ? 300 : 0);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [active, searchQuery, catFilter, search]);
+
   const filtered = useMemo(() => {
-    let pool = longVids;
-    if (catFilter !== 'all') pool = pool.filter(v => v.category === catFilter);
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      pool = pool.filter(v => v.title.toLowerCase().includes(q) || (v.authorName ?? '').toLowerCase().includes(q));
-    }
-    return pool;
-  }, [longVids, catFilter, searchQuery]);
+    if (active) return (searchResults ?? []).filter(v => !isShortVideo(v));
+    return longVids;
+  }, [active, searchResults, longVids]);
 
   if (activeVideo) {
     return (
@@ -958,7 +970,12 @@ export const SkyVideo = () => {
                     </div>
                   )}
 
-                  {filtered.length === 0 ? (
+                  {active && searchLoading ? (
+                    <div className="flex flex-col items-center justify-center py-20 gap-3">
+                      <Play size={40} style={{ color: V.t3 }} />
+                      <p className="text-sm font-semibold" style={{ color: V.t2 }}>Ищем…</p>
+                    </div>
+                  ) : filtered.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-3">
                       <Play size={40} style={{ color: V.t3 }} />
                       <p className="text-sm font-semibold" style={{ color: V.t2 }}>

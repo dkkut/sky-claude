@@ -27,7 +27,7 @@ interface SkyVideoState {
 
   load: (opts?: { force?: boolean }) => Promise<void>;
   refreshMine: () => Promise<void>;
-  search: (q: string) => Promise<ServerVideo[]>;
+  search: (q: string, opts?: { category?: string }) => Promise<ServerVideo[]>;
 
   toggleLiked: (videoId: string) => Promise<void>;
   noteView: (videoId: string) => Promise<void>;
@@ -78,7 +78,7 @@ export const useSkyVideoStore = create<SkyVideoState>((set, get) => ({
     if (mine) set({ mine });
   },
 
-  search: async (q) => (await apiSkyVideoFeed({ q, limit: 60 })) ?? [],
+  search: async (q, opts) => (await apiSkyVideoFeed({ q, category: opts?.category, limit: 60 })) ?? [],
 
   toggleLiked: async (videoId) => {
     const current = [...get().feed, ...get().mine].find((v) => v.id === videoId);
