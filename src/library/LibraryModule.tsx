@@ -1,17 +1,15 @@
 /* ================================================================
    SKY LIBRARY — Единая библиотека контента
-   Музыка · Видео · Подкасты · Файлы · История · Избранное
+   Музыка · Видео · Подкасты · История · Избранное
 ================================================================ */
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Music2, Film, Mic2, FolderOpen, History, Heart,
-  Play, SkipForward, BookmarkCheck, Trash2, Search, Filter,
-  ChevronRight, Clock, Star, TrendingUp, Sparkles, X,
-  Grid3x3, List, Plus, RefreshCw,
+  Music2, Film, Mic2, BookOpen, History, Heart,
+  Play, SkipForward, BookmarkCheck, Trash2, Search,
+  X, Grid3x3, List, RefreshCw, Loader2,
 } from 'lucide-react';
-import { useMonetizationStore, type ContentItem } from './monetizationStore';
-import { useAuthStore } from '@/core/auth/store';
+import { useLibraryItems, type ContentItem, type LibKind } from './libraryData';
 
 /* ── Design tokens ─────────────────────────────────────────── */
 const V = { bg:'var(--bg)', bg1:'var(--bg-l1)', bg2:'var(--bg-l2)', bg3:'var(--bg-l3)',
@@ -20,28 +18,19 @@ const V = { bg:'var(--bg)', bg1:'var(--bg-l1)', bg2:'var(--bg-l2)', bg3:'var(--b
 
 const fadeUp = (i=0) => ({ initial:{opacity:0,y:12}, animate:{opacity:1,y:0}, transition:{duration:.22,delay:i*.05,ease:[.22,1,.36,1] as any} });
 
-const fmtAgo = (iso:string) => {
-  const d = Math.floor((Date.now()-new Date(iso).getTime())/86400000);
-  if(d===0) return 'Сегодня'; if(d===1) return 'Вчера';
-  if(d<7)  return `${d} дн. назад`;
-  if(d<30) return `${Math.floor(d/7)} нед. назад`;
-  return new Date(iso).toLocaleDateString('ru-RU',{day:'numeric',month:'short'});
-};
-
 /* ── Type config ────────────────────────────────────────────── */
-type LibFilter = 'all'|'music'|'video'|'podcast'|'file'|'favorites'|'history'|'continue';
+type LibFilter = 'all'|LibKind|'favorites'|'history'|'continue';
 
-const TYPE_CFG: Record<string,{ icon:any; label:string; color:string }> = {
-  music:   { icon:Music2,    label:'Музыка',   color:'#8b5cf6' },
-  video:   { icon:Film,      label:'Видео',    color:'#0ea5e9' },
-  podcast: { icon:Mic2,      label:'Подкасты', color:'#f59e0b' },
-  file:    { icon:FolderOpen,label:'Файлы',    color:'#64748b' },
+const TYPE_CFG: Record<LibKind,{ icon:any; label:string; color:string }> = {
+  music:   { icon:Music2,  label:'Музыка',   color:'#8b5cf6' },
+  video:   { icon:Film,    label:'Видео',    color:'#0ea5e9' },
+  podcast: { icon:Mic2,    label:'Подкасты', color:'#f59e0b' },
+  book:    { icon:BookOpen,label:'Книги',    color:'#10b981' },
 };
 
 /* ── Cover component ────────────────────────────────────────── */
 const Cover = ({ item, size=56 }: { item:ContentItem; size?:number }) => {
-  const Icon = TYPE_CFG[item.type]?.icon ?? Music2;
-  const c    = TYPE_CFG[item.type]?.color ?? V.accent;
+  const Icon = TYPE_CFG[item.type].icon;
   return (
     <div style={{ width:size, height:size, borderRadius:size*.16, flexShrink:0, overflow:'hidden', position:'relative',
       background:`linear-gradient(135deg,${item.coverGrad[0]},${item.coverGrad[1]})` }}>
@@ -63,8 +52,8 @@ const Cover = ({ item, size=56 }: { item:ContentItem; size?:number }) => {
 };
 
 /* ── Content card (list row) ────────────────────────────────── */
-const ContentRow = ({ item, index, onToggleFav, onRemove }:{
-  item:ContentItem; index:number; onToggleFav:()=>void; onRemove:()=>void;
+const ContentRow = ({ item, index, onPlay, onToggleFav, onRemove }:{
+  item:ContentItem; index:number; onPlay:()=>void; onToggleFav:()=>void; onRemove:()=>void;
 }) => {
   const [hover, setHover] = useState(false);
   const tc = TYPE_CFG[item.type];
@@ -72,7 +61,8 @@ const ContentRow = ({ item, index, onToggleFav, onRemove }:{
     <motion.div {...fadeUp(index)}
       className="flex items-center gap-3 rounded-2xl px-3 py-2.5 group"
       style={{ background: hover ? V.bg2 : 'transparent', transition:'background .15s', cursor:'pointer' }}
-      onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}>
+      onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+      onClick={onPlay}>
       <Cover item={item} size={48}/>
       <div className="flex-1 min-w-0">
         <p className="text-[13px] font-semibold truncate" style={{ color:V.t1 }}>{item.title}</p>
@@ -89,17 +79,18 @@ const ContentRow = ({ item, index, onToggleFav, onRemove }:{
         )}
       </div>
       <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-        <span className="text-[10px]" style={{ color:V.t3 }}>{fmtAgo(item.addedAt)}</span>
         <motion.button whileTap={{scale:.88}} type="button" onClick={e=>{e.stopPropagation();onToggleFav();}}
           className="grid h-7 w-7 place-items-center rounded-xl hover:bg-white/8 transition-colors"
           style={{ color: item.isFavorite ? '#ef4444' : V.t3 }}>
           <Heart size={13} fill={item.isFavorite?'#ef4444':'none'}/>
         </motion.button>
-        <motion.button whileTap={{scale:.88}} type="button" onClick={e=>{e.stopPropagation();onRemove();}}
-          className="grid h-7 w-7 place-items-center rounded-xl hover:bg-red-500/10 transition-colors"
-          style={{ color:V.t3 }}>
-          <Trash2 size={12}/>
-        </motion.button>
+        {item.isFavorite && (
+          <motion.button whileTap={{scale:.88}} type="button" onClick={e=>{e.stopPropagation();onRemove();}}
+            className="grid h-7 w-7 place-items-center rounded-xl hover:bg-red-500/10 transition-colors"
+            style={{ color:V.t3 }}>
+            <Trash2 size={12}/>
+          </motion.button>
+        )}
       </div>
       {/* Play button */}
       {hover && (
@@ -114,14 +105,13 @@ const ContentRow = ({ item, index, onToggleFav, onRemove }:{
 };
 
 /* ── Grid card ──────────────────────────────────────────────── */
-const ContentCard = ({ item, index, onToggleFav, onRemove }:{
-  item:ContentItem; index:number; onToggleFav:()=>void; onRemove:()=>void;
+const ContentCard = ({ item, index, onPlay, onToggleFav }:{
+  item:ContentItem; index:number; onPlay:()=>void; onToggleFav:()=>void;
 }) => {
   const tc = TYPE_CFG[item.type];
   return (
-    <motion.div {...fadeUp(index)} className="group cursor-pointer flex flex-col gap-2">
+    <motion.div {...fadeUp(index)} className="group cursor-pointer flex flex-col gap-2" onClick={onPlay}>
       <div className="relative">
-        <Cover item={item} size={0} />
         {/* Square cover */}
         <div className="relative overflow-hidden rounded-2xl aspect-square"
           style={{ background:`linear-gradient(135deg,${item.coverGrad[0]},${item.coverGrad[1]})` }}>
@@ -162,7 +152,7 @@ const ContentCard = ({ item, index, onToggleFav, onRemove }:{
 };
 
 /* ── Continue listening strip ────────────────────────────────── */
-const ContinueStrip = ({ items, onFav, onRemove }:{ items:ContentItem[]; onFav:(id:string)=>void; onRemove:(id:string)=>void; }) => {
+const ContinueStrip = ({ items, onPlay }:{ items:ContentItem[]; onPlay:(item:ContentItem)=>void; }) => {
   const inProgress = items.filter(x=>x.progress!=null&&x.progress>0&&x.progress<1).slice(0,6);
   if(!inProgress.length) return null;
   return (
@@ -179,7 +169,7 @@ const ContinueStrip = ({ items, onFav, onRemove }:{ items:ContentItem[]; onFav:(
           const tc=TYPE_CFG[item.type];
           return (
             <motion.div key={item.id} {...fadeUp(i)} className="shrink-0 cursor-pointer group"
-              style={{ width:140 }}>
+              style={{ width:140 }} onClick={()=>onPlay(item)}>
               <div className="relative overflow-hidden rounded-2xl mb-2" style={{ aspectRatio:'16/9',
                 background:`linear-gradient(135deg,${item.coverGrad[0]},${item.coverGrad[1]})` }}>
                 {item.coverUrl&&<img src={item.coverUrl} alt="" className="w-full h-full object-cover"/>}
@@ -208,20 +198,11 @@ const ContinueStrip = ({ items, onFav, onRemove }:{ items:ContentItem[]; onFav:(
   );
 };
 
-/* ── Recommendation row ─────────────────────────────────────── */
-const RECS = [
-  { title:'Sky Chill Vol.3', sub:'Плейлист · 24 трека',      grad:['#a855f7','#7c3aed'] as [string,string], type:'music' },
-  { title:'Документалки Tech', sub:'Подборка видео',          grad:['#0ea5e9','#0284c7'] as [string,string], type:'video' },
-  { title:'Стартап за 90 дней',sub:'Подкаст · 12 эп.',       grad:['#f59e0b','#d97706'] as [string,string], type:'podcast' },
-  { title:'Lo-Fi Beats 2026',  sub:'Плейлист · 40 треков',   grad:['#10b981','#059669'] as [string,string], type:'music' },
-  { title:'Дизайн-системы',    sub:'Мини-курс · 8 видео',    grad:['#ec4899','#be185d'] as [string,string], type:'video' },
-];
-
 /* ══════════════════════════════════════════════════════════════
    MAIN
 ══════════════════════════════════════════════════════════════ */
 export const LibraryModule = () => {
-  const { library, toggleFavorite, removeFromLib } = useMonetizationStore();
+  const { items: library, loading, toggleFavorite, remove, play } = useLibraryItems();
   const [filter,   setFilter]  = useState<LibFilter>('all');
   const [search,   setSearch]  = useState('');
   const [viewMode, setViewMode]= useState<'list'|'grid'>('list');
@@ -230,7 +211,7 @@ export const LibraryModule = () => {
   const filtered = useMemo(()=>{
     let items = library;
     if(filter==='favorites') items=items.filter(x=>x.isFavorite);
-    else if(filter==='history') items=[...items].sort((a,b)=>new Date(b.addedAt).getTime()-new Date(a.addedAt).getTime());
+    else if(filter==='history') items=items.filter(x=>x.isHistory);
     else if(filter==='continue') items=items.filter(x=>x.progress!=null&&x.progress>0&&x.progress<1);
     else if(filter!=='all') items=items.filter(x=>x.type===filter);
     if(search.trim()) { const q=search.toLowerCase(); items=items.filter(x=>x.title.toLowerCase().includes(q)||(x.subtitle??'').toLowerCase().includes(q)); }
@@ -244,7 +225,7 @@ export const LibraryModule = () => {
     { key:'music',    label:'Музыка',       icon:Music2 },
     { key:'video',    label:'Видео',        icon:Film },
     { key:'podcast',  label:'Подкасты',     icon:Mic2 },
-    { key:'file',     label:'Файлы',        icon:FolderOpen },
+    { key:'book',     label:'Книги',        icon:BookOpen },
     { key:'history',  label:'История',      icon:History },
   ];
 
@@ -267,6 +248,7 @@ export const LibraryModule = () => {
             </div>
           </div>
           <div className="flex items-center gap-1.5">
+            {loading && <Loader2 size={14} className="animate-spin" style={{ color:V.t3 }}/>}
             <motion.button whileTap={{scale:.9}} type="button" onClick={()=>setShowSearch(s=>!s)}
               className="grid h-8 w-8 place-items-center rounded-full transition-colors"
               style={{ background:showSearch?`${V.accent}18`:'transparent', color:showSearch?V.accent:V.t2 }}>
@@ -313,7 +295,7 @@ export const LibraryModule = () => {
 
         {/* Continue watching strip (only on 'all') */}
         {filter==='all'&&!search&&(
-          <ContinueStrip items={library} onFav={toggleFavorite} onRemove={removeFromLib}/>
+          <ContinueStrip items={library} onPlay={play}/>
         )}
 
         {/* Stats row */}
@@ -334,44 +316,19 @@ export const LibraryModule = () => {
           </div>
         )}
 
-        {/* Recommendations (all, no search) */}
-        {filter==='all'&&!search&&(
-          <div className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles size={14} style={{ color:V.accent }}/>
-              <p className="text-sm font-bold" style={{ color:V.t1 }}>Рекомендуем</p>
-            </div>
-            <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth:'none' }}>
-              {RECS.map((r,i)=>{
-                const Icon=TYPE_CFG[r.type]?.icon??Music2;
-                return (
-                  <motion.div key={r.title} {...fadeUp(i)} className="shrink-0 cursor-pointer group"
-                    style={{ width:110 }}>
-                    <div className="relative overflow-hidden rounded-2xl mb-2"
-                      style={{ aspectRatio:'1', background:`linear-gradient(135deg,${r.grad[0]},${r.grad[1]})` }}>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Icon size={28} style={{ color:'rgba(255,255,255,.7)' }}/>
-                      </div>
-                      <div className="absolute inset-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                        style={{ background:'rgba(0,0,0,.35)' }}>
-                        <Play size={22} className="text-white"/>
-                      </div>
-                    </div>
-                    <p className="text-[11px] font-semibold line-clamp-1" style={{ color:V.t1 }}>{r.title}</p>
-                    <p className="text-[10px] mt-0.5" style={{ color:V.t3 }}>{r.sub}</p>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Main list/grid */}
         {filtered.length===0 ? (
           <div className="flex flex-col items-center py-20 gap-3 opacity-50">
-            <RefreshCw size={28} style={{ color:V.t3 }}/>
+            {loading
+              ? <Loader2 size={28} className="animate-spin" style={{ color:V.t3 }}/>
+              : <RefreshCw size={28} style={{ color:V.t3 }}/>}
             <p className="text-sm" style={{ color:V.t2 }}>
-              {search?'Ничего не найдено':filter==='favorites'?'Нет избранного':filter==='continue'?'Нет незавершённого':'Библиотека пуста'}
+              {loading ? 'Загружаем библиотеку…'
+                : search?'Ничего не найдено'
+                : filter==='favorites'?'Нет избранного'
+                : filter==='continue'?'Нет незавершённого'
+                : filter==='history'?'История пуста'
+                : 'Библиотека пуста'}
             </p>
             {search&&<button type="button" onClick={()=>setSearch('')} className="text-xs" style={{ color:V.accent }}>Сбросить поиск</button>}
           </div>
@@ -382,8 +339,9 @@ export const LibraryModule = () => {
             </p>
             {filtered.map((item,i)=>(
               <ContentRow key={item.id} item={item} index={i}
-                onToggleFav={()=>toggleFavorite(item.id)}
-                onRemove={()=>removeFromLib(item.id)}/>
+                onPlay={()=>play(item)}
+                onToggleFav={()=>toggleFavorite(item)}
+                onRemove={()=>remove(item)}/>
             ))}
           </div>
         ) : (
@@ -392,8 +350,8 @@ export const LibraryModule = () => {
             <div className="grid grid-cols-3 gap-3">
               {filtered.map((item,i)=>(
                 <ContentCard key={item.id} item={item} index={i}
-                  onToggleFav={()=>toggleFavorite(item.id)}
-                  onRemove={()=>removeFromLib(item.id)}/>
+                  onPlay={()=>play(item)}
+                  onToggleFav={()=>toggleFavorite(item)}/>
               ))}
             </div>
           </div>

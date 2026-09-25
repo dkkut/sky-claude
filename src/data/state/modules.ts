@@ -10,6 +10,10 @@ interface S {
   pendingBloomTab: string | null; setPendingBloomTab: (t: string | null) => void;
   /** «Мои видео» в Sky Video — та же ссылка из основного профиля. */
   pendingVideoTab: string | null; setPendingVideoTab: (t: string | null) => void;
+  /** Конкретный фильм/книга, который надо открыть при заходе в нужную
+   *  подвкладку «Извне» (Библиотека) — тем же приёмом, что pendingExtrasTab,
+   *  только несёт id элемента, а не название вкладки. */
+  pendingExtrasItemId: string | null; setPendingExtrasItemId: (id: string | null) => void;
 }
 export const useModuleStore = create<S>(set=>({
   activeModule:'messages', setActiveModule:m=>set({activeModule:m}),
@@ -17,4 +21,5 @@ export const useModuleStore = create<S>(set=>({
   pendingSupportTicketId: null, setPendingSupportTicketId: id=>set({pendingSupportTicketId:id}),
   pendingBloomTab: null, setPendingBloomTab: t=>set({pendingBloomTab:t}),
   pendingVideoTab: null, setPendingVideoTab: t=>set({pendingVideoTab:t}),
+  pendingExtrasItemId: null, setPendingExtrasItemId: id=>set({pendingExtrasItemId:id}),
 }));

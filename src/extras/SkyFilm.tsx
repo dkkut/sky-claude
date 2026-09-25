@@ -39,9 +39,10 @@ import { sendTogether, type PlayerHandle } from '@/together/togetherState';
 import { useTogetherSync } from '@/together/useTogetherSync';
 import {
   videoUrl, posterUrl, fmtDuration, readVideoMeta, looksLikeShort,
-  MAX_SHORT_DURATION, apiFilmModerationQueue, apiModerateMovie,
+  MAX_SHORT_DURATION, apiFilmModerationQueue, apiModerateMovie, apiMovie,
   type ServerMovie, type VideoMeta,
 } from '@/film/filmApi';
+import { useModuleStore } from '@/data/state/modules';
 import { SkyShorts } from './SkyShorts';
 import { ACCEPT_VIDEO, ACCEPT_IMAGE } from '@/shared/fileAccept';
 
@@ -1528,6 +1529,19 @@ export const SkyFilm = () => {
   const [shortsStartId, setShortsStartId] = useState<string | null>(null);
 
   useEffect(() => { void load(); }, [load]);
+
+  /* Дипссылка из Библиотеки: «открой и играй именно вот этот фильм».
+     Тот же приём, что pendingExtrasTab, только несёт id элемента —
+     запрашиваем фильм напрямую, а не ищем в уже загруженных списках,
+     чтобы не зависеть от того, что именно успело подгрузиться. */
+  const pendingItemId = useModuleStore(s => s.pendingExtrasItemId);
+  const setPendingItemId = useModuleStore(s => s.setPendingExtrasItemId);
+  useEffect(() => {
+    if (!pendingItemId) return;
+    const id = pendingItemId;
+    setPendingItemId(null);
+    void apiMovie(id).then(m => { if (m) setPlaying(m); });
+  }, [pendingItemId, setPendingItemId]);
 
   /* Поиск идёт на сервере, а не по тому, что уже лежит на экране.
      Так он находит весь каталог, а не первую сотню, — и так личное в

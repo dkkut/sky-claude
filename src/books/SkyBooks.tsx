@@ -8,11 +8,12 @@ import {
   Library, PenLine, Rocket, Wand2, Drama, Brain, Landmark, Briefcase, Loader2,
 } from 'lucide-react';
 import {
-  apiCatalog, apiShelf, apiSetShelf, bookCoverUrl,
+  apiCatalog, apiShelf, apiSetShelf, apiBook, bookCoverUrl,
   fmtAudioDuration, fmtWords, CATEGORIES,
   type Book,
 } from './booksApi';
 import { BookPlayer } from './BookPlayer';
+import { useModuleStore } from '@/data/state/modules';
 
 type BookTab = 'home' | 'ebooks' | 'audio' | 'shelf';
 
@@ -181,6 +182,17 @@ export const SkyBooks = () => {
     void apiShelf().then((r) => { if (alive) setShelf(r); });
     return () => { alive = false; };
   }, []);
+
+  /* Дипссылка из Библиотеки: «открой именно вот эту книгу» — запрашиваем
+     её напрямую по id, тем же приёмом, что pendingExtrasTab. */
+  const pendingItemId = useModuleStore(s => s.pendingExtrasItemId);
+  const setPendingItemId = useModuleStore(s => s.setPendingExtrasItemId);
+  useEffect(() => {
+    if (!pendingItemId) return;
+    const id = pendingItemId;
+    setPendingItemId(null);
+    void apiBook(id).then((b) => { if (b) setDetail(b); });
+  }, [pendingItemId, setPendingItemId]);
 
   useEffect(() => {
     if (tab === 'shelf') return;
