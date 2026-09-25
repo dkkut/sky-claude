@@ -136,12 +136,27 @@ export function useProfileData(userId: string | null): ProfileData | null {
 
   const followEntry = useSocialGraph(s => (userId ? s.followCache[userId] : undefined));
   const fetchFollows = useSocialGraph(s => s.fetchFollows);
-  const friends = useSocialGraph(s => s.friends);
-  const views   = useSocialGraph(s => s.views);
+  // Друзья — кэш по каждому userId, источник правды сервер (см.
+  // social.ts). Для «общих друзей» нужен ещё и мой собственный список,
+  // поэтому просим сразу за обоих.
+  const targetFriends = useSocialGraph(s => (userId ? s.friendCache[userId] : undefined));
+  const myFriends     = useSocialGraph(s => (viewerId ? s.friendCache[viewerId] : undefined));
+  const fetchFriends  = useSocialGraph(s => s.fetchFriends);
+  const viewCount = useSocialGraph(s => (userId ? s.viewCache[userId] : undefined)) ?? 0;
+  const fetchViewCount = useSocialGraph(s => s.fetchViewCount);
 
   useEffect(() => {
     if (userId) void fetchFollows(userId);
   }, [userId, fetchFollows]);
+
+  useEffect(() => {
+    if (userId) void fetchFriends(userId);
+    if (viewerId) void fetchFriends(viewerId);
+  }, [userId, viewerId, fetchFriends]);
+
+  useEffect(() => {
+    if (userId && userId === viewerId) void fetchViewCount(userId);
+  }, [userId, viewerId, fetchViewCount]);
 
   useEffect(() => {
     if (userId) void loadAuthorPosts(userId);
@@ -214,18 +229,18 @@ export function useProfileData(userId: string | null): ProfileData | null {
     const isBlocked = blockedList.includes(account.username);
     const isHidden  = hiddenIds.has(userId);
 
-    /* -- social lists (гранулярная приватность: друзья — локально; подписки —
-       уже отфильтрованы сервером по showFollowing, см. server/routes/follows.mjs) -- */
-    const canSeeFriends = isOwn || (account.privacy?.showFriends ?? true);
-    const friendIds    = canSeeFriends ? friends.filter(e => e.status === 'accepted' && (e.aId === userId || e.bId === userId)).map(e => e.aId === userId ? e.bId : e.aId) : [];
+    /* -- social lists: друзья и подписки уже отфильтрованы сервером по
+       privacy.profileVisibility (showFriends / showFollowing — см.
+       server/routes/friends.mjs и server/routes/follows.mjs), здесь
+       только читаем то, что он посчитал нужным отдать. -- */
+    const friendIds    = targetFriends?.friendIds ?? [];
     const followerIds  = followEntry?.followers ?? [];
     const followingIds = followEntry?.following ?? [];
-    const myFriendIds  = friends.filter(e => e.status === 'accepted' && (e.aId === viewerId || e.bId === viewerId)).map(e => e.aId === viewerId ? e.bId : e.aId);
+    const myFriendIds  = myFriends?.friendIds ?? [];
     const mutualFriendIds = friendIds.filter(id => myFriendIds.includes(id));
     const mutualGroups = myChats.filter(c =>
       c.type !== 'direct' && (c.participants ?? []).includes(userId) && (c.participants ?? []).includes(viewerId),
     );
-    const viewCount = views[userId] ?? 0;
 
     /* -- activity (гранулярная приватность по каждому виду данных) -- */
     const canSee = (key: 'showGames'|'showMusic'|'showMovies'|'showGifts'|'showAchievements'|'showFollowing'|'showFriends'|'showPhotos'|'showStories'|'showPosts') =>
@@ -273,6 +288,6 @@ export function useProfileData(userId: string | null): ProfileData | null {
     };
   }, [
     userId, viewerId, account, loading, myChats, myMessages, blockedList, authorPosts, hiddenIds, sent,
-    gamingActivity, followEntry, friends, views, progression, musicPresenceMap, watchPresenceMap,
+    gamingActivity, followEntry, targetFriends, myFriends, viewCount, progression, musicPresenceMap, watchPresenceMap,
   ]);
 }

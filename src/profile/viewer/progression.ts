@@ -69,7 +69,9 @@ export function useProgression(userId: string, account: Account | undefined): Pr
   const myPostsRaw  = useBloomStore(s => s.authorPostsCache[userId]);
   const myPosts     = useMemo(() => myPostsRaw ?? [], [myPostsRaw]);
   const sent        = useGiftStore(s => s.sent);
-  const friendEdges = useSocialGraph(s => s.friends); // подписываемся на «сырые» данные, а не на функцию-геттер
+  // Сервер уже посчитал число принятых друзей (see server/friends.mjs) —
+  // здесь только читаем закэшированное для этого userId.
+  const friendsCount = useSocialGraph(s => s.friendCache[userId]?.friendCount ?? 0);
 
   return useMemo(() => {
     const reactionsReceived = myPosts.reduce(
@@ -77,7 +79,6 @@ export function useProgression(userId: string, account: Account | undefined): Pr
     );
     const giftsReceived = sent.filter(g => g.toId === userId).length;
     const giftsSent     = sent.filter(g => g.fromId === userId).length;
-    const friendsCount  = friendEdges.filter(e => e.status === 'accepted' && (e.aId === userId || e.bId === userId)).length;
     const tenure = account ? tenureDays(account.createdAt) : 0;
 
     const xp = Math.round(
@@ -122,5 +123,5 @@ export function useProgression(userId: string, account: Account | undefined): Pr
       friendsCount,
       tenure,
     };
-  }, [myPosts, sent, friendEdges, userId, account]);
+  }, [myPosts, sent, friendsCount, userId, account]);
 }

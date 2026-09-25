@@ -147,7 +147,7 @@ export const QuickActionsBar = ({ data, onEdit }: { data: ProfileData; onEdit?: 
       )}
       {sheet === 'inviteGroup' && <InviteToChatSheet targetId={acc.id} targetName={acc.name} kind="group" onClose={() => setSheet(null)} />}
       {sheet === 'inviteChannel' && <InviteToChatSheet targetId={acc.id} targetName={acc.name} kind="channel" onClose={() => setSheet(null)} />}
-      {sheet === 'report' && <ReportProfileSheet targetId={acc.id} onClose={() => setSheet(null)} />}
+      {sheet === 'report' && <ReportProfileSheet targetId={acc.id} targetName={acc.name} onClose={() => setSheet(null)} />}
     </>
   );
 };

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Users, Radio, Plus } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMessengerStore } from '@/messenger/store';
+import { apiCreateTicket } from '@/moderation/supportApi';
 
 const Backdrop = ({ children, onClose }: { children: React.ReactNode; onClose: () => void }) => (
   <AnimatePresence>
@@ -33,15 +34,29 @@ const SheetHeader = ({ title, onClose }: { title: string; onClose: () => void })
 /* ================================================================ Жалоба */
 const REPORT_REASONS = ['Спам', 'Оскорбления', 'Мошенничество', 'Ложный профиль', 'Нарушение правил Sky', 'Другое'];
 
-export const ReportProfileSheet = ({ targetId, onClose }: { targetId: string; onClose: () => void }) => {
-  const { addReport } = useMessengerStore();
-  const { currentUserId } = useAuthStore();
+export const ReportProfileSheet = ({ targetId, targetName, onClose }: {
+  targetId: string; targetName?: string; onClose: () => void;
+}) => {
   const [reason, setReason] = useState('');
+  const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const submit = () => {
-    if (!reason || !currentUserId) return;
-    addReport({ chatId: '', reporterId: currentUserId, reportedId: targetId, reason });
+  // Жалоба уходит в ту же очередь поддержки, что уже разбирает
+  // модерация (server/support.mjs, kind: 'report') — раньше addReport
+  // писал в локальный массив useMessengerStore, который никто никогда
+  // не читал: жалоба не доходила ни до кого.
+  const submit = async () => {
+    if (!reason || sending) return;
+    setSending(true);
+    setError(null);
+    const r = await apiCreateTicket({
+      subject: `Жалоба на профиль${targetName ? `: ${targetName}` : ''}`,
+      body: `Причина: ${reason}\nID профиля: ${targetId}`,
+      kind: 'report',
+    });
+    setSending(false);
+    if (!r.ok) { setError(r.reason ?? 'Не получилось'); return; }
     setSent(true);
     setTimeout(onClose, 1100);
   };
@@ -72,11 +87,12 @@ export const ReportProfileSheet = ({ targetId, onClose }: { targetId: string; on
               </button>
             ))}
           </div>
+          {error && <p className="px-4 pb-2 text-xs" style={{ color: 'var(--red)' }}>{error}</p>}
           <div className="px-4 pb-4 pt-1">
-            <button type="button" disabled={!reason} onClick={submit}
+            <button type="button" disabled={!reason || sending} onClick={() => void submit()}
               className="w-full py-2.5 rounded-xl font-semibold text-sm disabled:opacity-40"
               style={{ background: 'var(--red)', color: '#fff' }}>
-              Отправить жалобу
+              {sending ? 'Отправка…' : 'Отправить жалобу'}
             </button>
           </div>
         </>

@@ -1,50 +1,29 @@
 /* ===============================================================
    PROFILE SOCIAL GRAPH
-   Два независимых, но согласованных отношения между аккаунтами:
+   Три независимых, но согласованных отношения между аккаунтами —
+   follow, дружба и просмотры профиля. Источник правды для всех трёх —
+   сервер (server/follows.mjs, server/friends.mjs,
+   server/profileviews.mjs), здесь только кэш в памяти вкладки, как у
+   чужих профилей в otherProfiles.ts.
 
-   • Follow  — одностороннее «подписаться». Раньше жило в трёх
-     независимых копиях (эта общая, у Bloom-ленты, у SkyVideo-канала)
-     в localStorage и вручную синхронизировалось между ними. Теперь
-     это одна настоящая таблица на сервере (server/follows.mjs) —
-     кэш здесь только в памяти вкладки, как чужие профили в
-     otherProfiles.ts.
-
-   • Friend  — двусторонняя дружба с заявкой/подтверждением, отдельно
-     от подписки (как и просил бриф: «добавить в друзья» и
-     «подписаться» — разные действия). Это вне Bloom и осталось
-     локальным, как было.
+   Дружба (заявка/подтверждение) отдельно от подписки — как и просил
+   бриф: «добавить в друзья» и «подписаться» — разные действия.
+   Раньше дружба и просмотры жили в localStorage одним общим массивом
+   на браузер: заявка, отправленная одним человеком, физически не
+   могла попасть в браузер второго (localStorage не синхронизируется
+   между людьми и устройствами), а просмотр профиля считался в
+   браузере смотрящего, а не у того, чей профиль смотрят, — так что
+   владелец профиля свои же просмотры никогда не видел.
 =============================================================== */
 import { create } from 'zustand';
 import { apiFollowsOf, apiToggleFollow, type FollowsOf } from './followsApi';
+import {
+  apiFriendsOf, apiSendFriendRequest, apiRemoveFriend,
+  apiRecordProfileView, apiProfileViewCount,
+  type FriendsOf, type FriendStatus,
+} from './friendsApi';
 
-export interface FriendEdge { aId: string; bId: string; requestedBy: string; status: 'pending' | 'accepted'; createdAt: string; }
-
-export type FriendStatus = 'none' | 'pending_out' | 'pending_in' | 'friends';
-
-const W = typeof window !== 'undefined';
-const FRIEND_KEY = 'sky:profile:friends:v1';
-const VIEWS_KEY  = 'sky:profile:views:v1';
-
-const now = () => new Date().toISOString();
-const ago = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
-
-const SEED_FRIENDS: FriendEdge[] = [
-  { aId: 'acc-kutuzov', bId: 'acc-luna', requestedBy: 'acc-luna', status: 'accepted', createdAt: ago(38) },
-];
-
-function load<T>(key: string, seed: T): T {
-  if (!W) return seed;
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return seed;
-    return JSON.parse(raw) as T;
-  } catch { return seed; }
-}
-function persist<T>(key: string, value: T) {
-  if (!W) return;
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota / privacy mode */ }
-}
-const pairKey = (a: string, b: string) => [a, b].sort().join('::');
+export type { FriendStatus };
 
 interface SocialGraphState {
   /* -- follow: кэш по просматриваемому userId, источник правды — сервер -- */
@@ -59,16 +38,20 @@ interface SocialGraphState {
   followerCount: (userId: string) => number;
   followingCount:(userId: string) => number;
 
-  /* -- friend -- */
-  friends: FriendEdge[];
+  /* -- friend: кэш по просматриваемому userId, источник правды — сервер -- */
+  friendCache:   Record<string, FriendsOf | undefined>;
+  friendPending: Set<string>;
+  fetchFriends:  (userId: string) => Promise<void>;
   friendStatus:      (meId: string, otherId: string) => FriendStatus;
-  sendFriendRequest: (fromId: string, toId: string) => void;
-  removeFriend:       (aId: string, bId: string) => void;
+  sendFriendRequest: (fromId: string, toId: string) => Promise<void>;
+  removeFriend:       (aId: string, bId: string) => Promise<void>;
   friendIds:          (userId: string) => string[];
+  friendCount:        (userId: string) => number;
 
-  /* -- views -- */
-  views: Record<string, number>;
-  recordView: (userId: string, viewerId: string) => void;
+  /* -- views: сколько раз ПОСМОТРЕЛИ userId — знает только сам userId -- */
+  viewCache: Record<string, number | undefined>;
+  recordView: (userId: string, viewerId: string) => Promise<void>;
+  fetchViewCount: (userId: string) => Promise<void>;
   viewCount:  (userId: string) => number;
 }
 
@@ -124,52 +107,81 @@ export const useSocialGraph = create<SocialGraphState>((set, get) => ({
   followerCount: (userId) => get().followCache[userId]?.followerCount ?? 0,
   followingCount: (userId) => get().followCache[userId]?.followingCount ?? 0,
 
-  friends: load(FRIEND_KEY, SEED_FRIENDS),
+  friendCache: {},
+  friendPending: new Set(),
+
+  fetchFriends: async (userId) => {
+    if (!userId || userId in get().friendCache || get().friendPending.has(userId)) return;
+    set((s) => ({ friendPending: new Set(s.friendPending).add(userId) }));
+    const data = await apiFriendsOf(userId);
+    set((s) => {
+      const pending = new Set(s.friendPending);
+      pending.delete(userId);
+      return { friendCache: { ...s.friendCache, [userId]: data ?? undefined }, friendPending: pending };
+    });
+  },
 
   friendStatus: (meId, otherId) => {
-    const edge = get().friends.find(e => pairKey(e.aId, e.bId) === pairKey(meId, otherId));
-    if (!edge) return 'none';
-    if (edge.status === 'accepted') return 'friends';
-    return edge.requestedBy === meId ? 'pending_out' : 'pending_in';
+    void meId; // см. isFollowing выше — сервер сам знает "я" по сессии
+    return get().friendCache[otherId]?.status ?? 'none';
   },
 
-  sendFriendRequest: (fromId, toId) => {
+  sendFriendRequest: async (fromId, toId) => {
     if (!fromId || !toId || fromId === toId) return;
-    const { friends } = get();
-    const key = pairKey(fromId, toId);
-    const existing = friends.find(e => pairKey(e.aId, e.bId) === key);
-    let next: FriendEdge[];
-    if (!existing) {
-      next = [...friends, { aId: fromId, bId: toId, requestedBy: fromId, status: 'pending', createdAt: now() }];
-    } else if (existing.status === 'pending' && existing.requestedBy !== fromId) {
-      // встречная заявка уже была отправлена нам — принимаем её
-      next = friends.map(e => e === existing ? { ...e, status: 'accepted' as const } : e);
-    } else {
-      return; // заявка уже отправлена нами / уже друзья
-    }
-    persist(FRIEND_KEY, next);
-    set({ friends: next });
+    const r = await apiSendFriendRequest(toId);
+    if (!r) return;
+    set((s) => {
+      const prev = s.friendCache[toId];
+      const wasFriends = prev?.status === 'friends';
+      const nowFriends = r.status === 'friends';
+      const friendIds = !prev ? [] :
+        nowFriends && !wasFriends ? [fromId, ...prev.friendIds] : prev.friendIds;
+      return {
+        friendCache: {
+          ...s.friendCache,
+          [toId]: { status: r.status, friendIds, friendCount: (prev?.friendCount ?? 0) + (nowFriends && !wasFriends ? 1 : 0) },
+        },
+      };
+    });
   },
 
-  removeFriend: (aId, bId) => {
-    const key = pairKey(aId, bId);
-    const next = get().friends.filter(e => pairKey(e.aId, e.bId) !== key);
-    persist(FRIEND_KEY, next);
-    set({ friends: next });
+  removeFriend: async (aId, bId) => {
+    if (!aId || !bId) return;
+    const r = await apiRemoveFriend(bId);
+    if (!r) return;
+    set((s) => {
+      const prev = s.friendCache[bId];
+      if (!prev) return {};
+      const wasFriends = prev.status === 'friends';
+      return {
+        friendCache: {
+          ...s.friendCache,
+          [bId]: {
+            status: 'none',
+            friendIds: prev.friendIds.filter((id) => id !== aId),
+            friendCount: Math.max(0, prev.friendCount - (wasFriends ? 1 : 0)),
+          },
+        },
+      };
+    });
   },
 
-  friendIds: (userId) => get().friends
-    .filter(e => e.status === 'accepted' && (e.aId === userId || e.bId === userId))
-    .map(e => e.aId === userId ? e.bId : e.aId),
+  friendIds:   (userId) => get().friendCache[userId]?.friendIds ?? [],
+  friendCount: (userId) => get().friendCache[userId]?.friendCount ?? 0,
 
-  views: load(VIEWS_KEY, {} as Record<string, number>),
+  viewCache: {},
 
-  recordView: (userId, viewerId) => {
+  recordView: async (userId, viewerId) => {
     if (!userId || userId === viewerId) return;
-    const next = { ...get().views, [userId]: (get().views[userId] ?? 0) + 1 };
-    persist(VIEWS_KEY, next);
-    set({ views: next });
+    await apiRecordProfileView(userId);
   },
 
-  viewCount: (userId) => get().views[userId] ?? 0,
+  fetchViewCount: async (userId) => {
+    if (!userId || userId in get().viewCache) return;
+    const count = await apiProfileViewCount(userId);
+    if (count === null) return; // чужая страница — сервер не отдаёт чужие просмотры
+    set((s) => ({ viewCache: { ...s.viewCache, [userId]: count } }));
+  },
+
+  viewCount: (userId) => get().viewCache[userId] ?? 0,
 }));
