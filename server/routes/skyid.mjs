@@ -181,9 +181,17 @@ export const skyIdRoutes = async (req, res, url) => {
     const result = await updateProfile(s.skyId, patchMatch[1], {
       name:   body.name   !== undefined ? sanitizeInput(body.name) : undefined,
       avatar: body.avatar !== undefined ? sanitizeAvatar(body.avatar) : undefined,
+      // Баннер — та же картинка, что и аватар, просто другое поле; тот
+      // же приём проверки формата/размера.
+      banner: body.banner !== undefined ? sanitizeAvatar(body.banner) : undefined,
+      bio:    body.bio    !== undefined ? sanitizeInput(body.bio) : undefined,
       // Регион существующей системы (src/region) — сохраняем то, что
       // человек уже выбрал в RegionPicker, ничего не решая за него.
       regionCode: body.regionCode !== undefined ? body.regionCode : undefined,
+      // Косметика расширенного профиля — см. updateProfile/EXTRA_FIELDS
+      // в skyid.mjs: неизвестные ключи и слишком длинные значения там же
+      // отбрасываются, здесь только пропускаем объект как есть.
+      extra: body.extra !== undefined && typeof body.extra === 'object' ? body.extra : undefined,
     });
     if (result.error === 'not_found') return json(res, 404, { error: 'not_found' });
     if (result.error) return json(res, 400, { error: result.error });

@@ -48,6 +48,9 @@ const VISIBILITY_KEYS = new Set([
   'showPhone', 'showBirthDate', 'showGames', 'showMusic', 'showMovies',
   'showGifts', 'showAchievements', 'showFollowing', 'showFriends',
   'showPhotos', 'showStories', 'showPosts',
+  // Расширенный профиль (EditExtendedProfileSheet): раньше нигде не
+  // сохранялись, поэтому тумблеры молча ничего не значили.
+  'showCountry', 'showTimezone', 'showActivity',
 ]);
 
 /**

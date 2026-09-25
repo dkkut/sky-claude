@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, Plus, Trash2 } from 'lucide-react';
 import { useAuthStore, type Account } from '@/core/auth/store';
+import { usePrivacyStore } from '@/profile/privacyStore';
 
 const TIMEZONES = [
   'Калининград (UTC+2)', 'Москва (UTC+3)', 'Самара (UTC+4)', 'Екатеринбург (UTC+5)',
@@ -28,6 +29,8 @@ const Toggle = ({ on, onClick }: { on: boolean; onClick: () => void }) => (
 
 export const EditExtendedProfileSheet = ({ account, onClose }: { account: Account; onClose: () => void }) => {
   const updateProfile = useAuthStore(s => s.updateProfile);
+  const privacy = usePrivacyStore(s => s.privacy);
+  const savePrivacy = usePrivacyStore(s => s.save);
   const [customStatus, setCustomStatus] = useState(account.customStatus ?? '');
   const [statusEmoji, setStatusEmoji] = useState(account.statusEmoji ?? '');
   const [birthDate, setBirthDate] = useState(account.birthDate ?? '');
@@ -35,9 +38,14 @@ export const EditExtendedProfileSheet = ({ account, onClose }: { account: Accoun
   const [country, setCountry] = useState(account.country ?? '');
   const [language, setLanguage] = useState(account.language ?? '');
   const [timezone, setTimezone] = useState(account.timezone ?? '');
-  const [showCountry, setShowCountry] = useState(account.privacy?.showCountry ?? true);
-  const [showTimezone, setShowTimezone] = useState(account.privacy?.showTimezone ?? true);
-  const [showActivity, setShowActivity] = useState(account.privacy?.showActivity ?? true);
+  // Реальные тумблеры приватности живут на сервере (profile_visibility) и
+  // приходят сюда через usePrivacyStore, а не через account.privacy — тот
+  // объект собирается для ЧУЖОГO профиля из publicProfile() и для своего
+  // никогда не обновляется, так что читать из него тумблеры своей же
+  // приватности означало бы всегда видеть значение по умолчанию.
+  const [showCountry, setShowCountry] = useState(privacy.profileVisibility?.showCountry ?? true);
+  const [showTimezone, setShowTimezone] = useState(privacy.profileVisibility?.showTimezone ?? true);
+  const [showActivity, setShowActivity] = useState(privacy.profileVisibility?.showActivity ?? true);
 
   const save = () => {
     updateProfile({
@@ -48,8 +56,8 @@ export const EditExtendedProfileSheet = ({ account, onClose }: { account: Accoun
       country: country.trim() || undefined,
       language: language.trim() || undefined,
       timezone: timezone || undefined,
-      privacy: { ...(account.privacy ?? { whoCanWrite: 'all', whoSeesOnline: 'all', whoCanCall: 'all' }), showCountry, showTimezone, showActivity },
     });
+    savePrivacy({ profileVisibility: { ...privacy.profileVisibility, showCountry, showTimezone, showActivity } });
     onClose();
   };
 

@@ -40,6 +40,16 @@ export interface ServerProfile {
   name:             string;
   avatar?:          string | null;
   bio?:             string | null;
+  banner?:          string | null;
+  customStatus?:    string;
+  statusEmoji?:     string;
+  links?:           string[];
+  country?:         string;
+  language?:        string;
+  timezone?:        string;
+  nameSticker?:     string;
+  nameColor?:       string;
+  birthDate?:       string;
   isAdmin:          boolean;
   isPrime:          boolean;
   primeExpiresAt?:  string | null;
@@ -334,6 +344,24 @@ export const apiLogout = async (): Promise<void> => {
   }
 };
 
+/* ═══ Устройства ═════════════════════════════════════════════
+   Настоящий список сессий Sky ID (server/sessions.mjs) — раньше
+   «Устройства» рисовались из localStorage и «завершить сессию» ничего
+   не завершало нигде, кроме своего же браузера. */
+
+export interface ServerDevice {
+  id: string; ua: string; createdAt: string; lastSeenAt: string; isCurrent: boolean;
+}
+
+export const apiListDevices = () =>
+  get<{ devices: ServerDevice[] }>('/api/auth/devices');
+
+export const apiRevokeDevice = (id: string) =>
+  post<{ ok: true; isCurrent: boolean }>(`/api/auth/devices/${encodeURIComponent(id)}/revoke`);
+
+export const apiRevokeAllDevices = () =>
+  post<{ ok: true }>('/api/auth/devices/revoke-all');
+
 /* ═══ Профили ════════════════════════════════════════════════ */
 
 export const apiListProfiles = () =>
@@ -361,7 +389,16 @@ export const apiSelectProfile = async (profileId: string, code?: string) => {
   return res;
 };
 
-export const apiUpdateProfile = (profileId: string, p: { name?: string; avatar?: string; regionCode?: string }) =>
+export interface ProfileExtraPatch {
+  customStatus?: string; statusEmoji?: string; links?: string[];
+  country?: string; language?: string; timezone?: string;
+  nameSticker?: string; nameColor?: string; birthDate?: string;
+}
+
+export const apiUpdateProfile = (profileId: string, p: {
+  name?: string; avatar?: string; banner?: string; bio?: string;
+  regionCode?: string; extra?: ProfileExtraPatch;
+}) =>
   patch<{ profile: ServerProfile }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}`, p);
 
 /** То немногое, что видно о чужом профиле: имя, ник, аватар, Prime, приватность. */

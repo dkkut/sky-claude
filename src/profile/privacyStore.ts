@@ -20,7 +20,8 @@ export const PRIVACY_LABEL: Record<PrivacyVal, string> = {
 export type VisibilityKey =
   | 'showPhone' | 'showBirthDate' | 'showGames' | 'showMusic' | 'showMovies'
   | 'showGifts' | 'showAchievements' | 'showFollowing' | 'showFriends'
-  | 'showPhotos' | 'showStories' | 'showPosts';
+  | 'showPhotos' | 'showStories' | 'showPosts'
+  | 'showCountry' | 'showTimezone' | 'showActivity';
 
 export interface Privacy {
   whoCanWrite: PrivacyVal;

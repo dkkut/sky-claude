@@ -12,7 +12,7 @@
  * profile_id в запрос недостаточно — строка просто не найдётся.
  */
 import { query, pool } from './db.mjs';
-import { generateId } from './security.mjs';
+import { generateId, sanitizeInput } from './security.mjs';
 import { encryptSecret, decryptSecret } from './crypto.mjs';
 import { generateSecret, verifyTotp, otpauthUri } from './totp.mjs';
 import { mayClaimUsername } from './admin.mjs';
@@ -60,6 +60,24 @@ const toProfile = (row) => row && ({
   name:     row.name,
   username: row.username,
   avatar:   row.avatar ?? undefined,
+  bio:      row.bio ?? undefined,
+  banner:   row.banner ?? undefined,
+  // Косметика расширенного профиля (EditExtendedProfileSheet) — см.
+  // миграцию 074. Раньше жила только в localStorage, поэтому у другого
+  // человека и на другом устройстве не появлялась никогда.
+  customStatus: row.profile_extra?.customStatus ?? undefined,
+  statusEmoji:  row.profile_extra?.statusEmoji ?? undefined,
+  links:        Array.isArray(row.profile_extra?.links) ? row.profile_extra.links : undefined,
+  country:      row.profile_extra?.country ?? undefined,
+  language:     row.profile_extra?.language ?? undefined,
+  timezone:     row.profile_extra?.timezone ?? undefined,
+  nameSticker:  row.profile_extra?.nameSticker ?? undefined,
+  nameColor:    row.profile_extra?.nameColor ?? undefined,
+  // Самостоятельно указанный день рождения для социального отображения —
+  // не то же самое, что date_of_birth: та колонка подтверждается через
+  // courierverify.mjs для курьерской проверки совершеннолетия, и косметическая
+  // правка отсюда не должна иметь к ней никакого отношения.
+  birthDate:    row.profile_extra?.birthDate ?? undefined,
   // Право, а не колонка. Владелец — администратор по нику из .env, и
   // колонка is_admin у него при этом стоит в false. Сервер это знает
   // (isAdmin в admin.mjs) и пускал владельца всюду, а вот в профиль
@@ -456,6 +474,19 @@ export const createProfile = async (skyId, { name, username, avatar, ownerClaim 
   return { profile: await getProfileOfSkyId(skyId, id) };
 };
 
+/** Косметические поля расширенного профиля — см. миграцию 074. Список и
+    длины те же, что уже были у полей в EditExtendedProfileSheet, только
+    раньше их некому было проверить: значения оседали в localStorage. */
+const EXTRA_FIELDS = {
+  customStatus: 120,
+  statusEmoji:  16,
+  country:      60,
+  language:     30,
+  timezone:     60,
+  nameSticker:  30,
+  nameColor:    20,
+};
+
 export const updateProfile = async (skyId, profileId, patch) => {
   const owned = await getProfileOfSkyId(skyId, profileId);
   if (!owned) return { error: 'not_found' };
@@ -470,6 +501,16 @@ export const updateProfile = async (skyId, profileId, patch) => {
   if (patch.avatar !== undefined) {
     values.push(patch.avatar ?? null); fields.push(`avatar = $${values.length}`);
   }
+  if (patch.banner !== undefined) {
+    // Формат/размер уже проверены sanitizeAvatar в routes/skyid.mjs — тем
+    // же способом, что и у avatar.
+    values.push(patch.banner ?? null); fields.push(`banner = $${values.length}`);
+  }
+  if (patch.bio !== undefined) {
+    const v = String(patch.bio ?? '').trim();
+    if (v.length > 300) return { error: 'invalid_bio' };
+    values.push(v || null); fields.push(`bio = $${values.length}`);
+  }
   if (patch.regionCode !== undefined) {
     // Тот же список кодов, что и в уже существующем RegionPicker
     // (src/region) — сервер только сохраняет то, что человек там уже
@@ -477,6 +518,46 @@ export const updateProfile = async (skyId, profileId, patch) => {
     const v = String(patch.regionCode ?? '').toUpperCase().trim();
     if (v && !isValidRegion(v)) return { error: 'invalid_region' };
     values.push(v || null); fields.push(`region_code = $${values.length}`);
+  }
+  if (patch.extra && typeof patch.extra === 'object') {
+    // Известные ключи с проверкой длины сливаются в уже сохранённый
+    // объект (owned уже несёт его распакованным — см. toProfile выше);
+    // неизвестные ключи и слишком длинные значения отбрасываются молча —
+    // тот же приём, что и у VISIBILITY_KEYS в privacy.mjs.
+    const current = {};
+    for (const key of Object.keys(EXTRA_FIELDS)) if (owned[key] !== undefined) current[key] = owned[key];
+    if (Array.isArray(owned.links)) current.links = owned.links;
+    if (owned.birthDate !== undefined) current.birthDate = owned.birthDate;
+    for (const [key, max] of Object.entries(EXTRA_FIELDS)) {
+      if (patch.extra[key] === undefined) continue;
+      const v = sanitizeInput(patch.extra[key] ?? '');
+      if (v.length > max) return { error: 'invalid_extra' };
+      if (v) current[key] = v; else delete current[key];
+    }
+    if (patch.extra.links !== undefined) {
+      const links = Array.isArray(patch.extra.links) ? patch.extra.links : [];
+      if (links.length > 5 || links.some((l) => typeof l !== 'string' || l.length > 200)) {
+        return { error: 'invalid_extra' };
+      }
+      if (links.length) current.links = links.map((l) => sanitizeInput(l)).filter(Boolean);
+      else delete current.links;
+    }
+    if (patch.extra.birthDate !== undefined) {
+      const v = String(patch.extra.birthDate ?? '').trim();
+      if (v) {
+        // Косметическая дата, не проверка возраста — просто формат и
+        // разумные границы, чтобы не хранить мусор.
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+        const year = m ? Number(m[1]) : NaN;
+        if (!m || Number.isNaN(Date.parse(v)) || year < 1900 || year > new Date().getFullYear()) {
+          return { error: 'invalid_extra' };
+        }
+        current.birthDate = v;
+      } else {
+        delete current.birthDate;
+      }
+    }
+    values.push(JSON.stringify(current)); fields.push(`profile_extra = $${values.length}::jsonb`);
   }
   if (fields.length === 0) return { profile: owned };
 

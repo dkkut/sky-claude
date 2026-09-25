@@ -205,8 +205,9 @@ import {
   apiResendLoginTwoFactor, apiSkyTwoFactorSend, apiProfileTwoFactorSend,
   apiLoginWithPassword, apiStartPasswordSetup, apiFinishPasswordSetup,
   apiChangePassword, apiRemovePassword, apiForgotPassword, apiResetPassword,
+  apiUpdateProfile,
   setAccessToken,
-  type SkyIdInfo, type ServerProfile, type SkySession, type TwoFactorMethod,
+  type SkyIdInfo, type ServerProfile, type SkySession, type TwoFactorMethod, type ProfileExtraPatch,
 } from './api';
 
 /* helpers */
@@ -269,6 +270,16 @@ const toAccount=(p:ServerProfile,phone:string,prev?:Account):Account=>({
   phone,
   avatar:p.avatar??prev?.avatar,
   bio:p.bio??prev?.bio??'',
+  banner:p.banner??prev?.banner,
+  customStatus:p.customStatus??prev?.customStatus,
+  statusEmoji:p.statusEmoji??prev?.statusEmoji,
+  links:p.links??prev?.links,
+  country:p.country??prev?.country,
+  language:p.language??prev?.language,
+  timezone:p.timezone??prev?.timezone,
+  nameSticker:p.nameSticker??prev?.nameSticker,
+  nameColor:p.nameColor??prev?.nameColor,
+  birthDate:p.birthDate??prev?.birthDate,
   isAdmin:p.isAdmin, isPrime:p.isPrime,
   primeUntil:p.primeExpiresAt??undefined,
   twoFA:{enabled:p.twoFactorEnabled,method:'sms',failCount:0},
@@ -649,6 +660,36 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     const{currentUserId,accounts}=get();
     const updated=accounts.map(a=>a.id===currentUserId?{...a,...payload}:a);
     wA(updated);set({accounts:updated});
+
+    // Часть полей сервер уже знает (см. server/skyid.mjs updateProfile) —
+    // отправляем ему только их. Остальное (gameProfile, equippedFrame)
+    // пока живёт только в этом браузере — своего места на сервере у них
+    // ещё нет. Ответ сервера — источник правды: перечитываем профиль им,
+    // а не тем, что положили оптимистично.
+    if (!currentUserId) return;
+    const p:Parameters<typeof apiUpdateProfile>[1]={};
+    if('name' in payload) p.name=payload.name;
+    if('bio' in payload) p.bio=payload.bio;
+    if('avatar' in payload) p.avatar=payload.avatar;
+    if('banner' in payload) p.banner=payload.banner;
+    const extra:ProfileExtraPatch={};
+    if('nameSticker' in payload) extra.nameSticker=payload.nameSticker;
+    if('nameColor' in payload) extra.nameColor=payload.nameColor;
+    if('customStatus' in payload) extra.customStatus=payload.customStatus;
+    if('statusEmoji' in payload) extra.statusEmoji=payload.statusEmoji;
+    if('links' in payload) extra.links=payload.links;
+    if('country' in payload) extra.country=payload.country;
+    if('language' in payload) extra.language=payload.language;
+    if('timezone' in payload) extra.timezone=payload.timezone;
+    if('birthDate' in payload) extra.birthDate=payload.birthDate;
+    if(Object.keys(extra).length) p.extra=extra;
+    if(Object.keys(p).length===0) return;
+
+    void apiUpdateProfile(currentUserId,p).then(res=>{
+      if(!res.ok||!res.data)return;
+      const fresh=get().accounts.map(a=>a.id===currentUserId?toAccount(res.data!.profile,a.phone,a):a);
+      wA(fresh);set({accounts:fresh});
+    });
   },
 
   terminateDevice:(userId,deviceId)=>{
