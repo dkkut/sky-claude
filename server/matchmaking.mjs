@@ -29,7 +29,11 @@ const MATCH_ACCEPT_TIMEOUT_MS = 20_000;
  *  интерфейсе — иначе переписанный клиент мог бы подтвердить матч
  *  вдвоём там, где нужно по пять. Неизвестная игра — 1 на 1. */
 const TEAM_SIZE = { 'g-cs2': 5, 'g-dota2': 5, 'g-fortnite': 4 };
-const teamSizeFor = (gameId) => TEAM_SIZE[gameId] ?? 1;
+export const teamSizeFor = (gameId) => TEAM_SIZE[gameId] ?? 1;
+
+/** Название игры для подписей вне интерфейса (название авто-войс-пати
+ *  комнаты команды) — тот же список, что и в src/gaming/store.ts. */
+export const GAME_TITLE = { 'g-cs2': 'Counter-Strike 2', 'g-dota2': 'Dota 2', 'g-fortnite': 'Fortnite' };
 
 export const getRating = async (profileId, gameId) => {
   await query(

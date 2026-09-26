@@ -165,6 +165,10 @@ interface GamingState {
   queueGame:      string | null;
   queueSeconds:   number;
   currentMatch:   MatchInfo | null;
+  /* Комната войс-пати, которую сервер сам открыл для моей команды
+     после подтверждения матча (см. server/signal.mjs, case 'mm:accept').
+     null — комнаты нет (игра не командная) или матч ещё не подтверждён. */
+  voiceRoomId:    string | null;
   rating:         GameRating | null;
   startQueue:     (gameId: string) => void;
   cancelQueue:    () => void;
@@ -176,7 +180,7 @@ interface GamingState {
   applyQueued:            (gameId: string) => void;
   applyFound:              (match: MatchInfo) => void;
   applyWaiting:            (match: MatchInfo) => void;
-  applyConfirmed:          (match: MatchInfo) => void;
+  applyConfirmed:          (match: MatchInfo, voiceRoomId: string | null) => void;
   applyCancelled:          () => void;
   applyCancelledRequeued:  (gameId: string) => void;
   applyMmError:            () => void;
@@ -208,6 +212,7 @@ export const useGamingStore = create<GamingState>((set, get) => {
     queueGame: null,
     queueSeconds: 0,
     currentMatch: null,
+    voiceRoomId: null,
     rating: null,
     stats:    stored?.stats    ?? SEED_STATS,
     tourneys: stored?.tourneys ?? SEED_TOURNEYS,
@@ -231,7 +236,7 @@ export const useGamingStore = create<GamingState>((set, get) => {
     cancelQueue: () => {
       stopQueueTick();
       wireSend({ type: 'mm:leave' });
-      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null });
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null });
     },
 
     acceptMatch: () => {
@@ -245,7 +250,7 @@ export const useGamingStore = create<GamingState>((set, get) => {
       const matchId = get().currentMatch?.id;
       if (!matchId) return;
       wireSend({ type: 'mm:decline', payload: { matchId } });
-      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null });
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null });
     },
 
     loadRating: async (gameId) => {
@@ -258,20 +263,20 @@ export const useGamingStore = create<GamingState>((set, get) => {
     },
     applyFound: (match) => {
       stopQueueTick();
-      set({ queueStatus: 'found', queueGame: match.gameId, currentMatch: match });
+      set({ queueStatus: 'found', queueGame: match.gameId, currentMatch: match, voiceRoomId: null });
     },
     applyWaiting: (match) => {
       set({ queueStatus: 'waiting', currentMatch: match });
     },
-    applyConfirmed: (match) => {
-      set({ queueStatus: 'in_game', currentMatch: match });
+    applyConfirmed: (match, voiceRoomId) => {
+      set({ queueStatus: 'in_game', currentMatch: match, voiceRoomId });
     },
     applyCancelled: () => {
       stopQueueTick();
-      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null });
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null });
     },
     applyCancelledRequeued: (gameId) => {
-      set({ queueStatus: 'searching', queueGame: gameId, queueSeconds: 0, currentMatch: null });
+      set({ queueStatus: 'searching', queueGame: gameId, queueSeconds: 0, currentMatch: null, voiceRoomId: null });
       stopQueueTick();
       queueTick = setInterval(() => {
         if (get().queueStatus !== 'searching') { stopQueueTick(); return; }
@@ -280,7 +285,7 @@ export const useGamingStore = create<GamingState>((set, get) => {
     },
     applyMmError: () => {
       stopQueueTick();
-      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null });
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null });
     },
 
     myStats: (gameId) => {

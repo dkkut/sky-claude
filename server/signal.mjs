@@ -49,12 +49,14 @@ import {
 } from './chatadmin.mjs';
 import {
   joinQueue, leaveQueue, acceptMatch, declineMatch, sweepStaleMatches, myActiveMatch,
+  teamSizeFor, GAME_TITLE,
 } from './matchmaking.mjs';
 import {
   joinRoom as vpJoinRoom, leaveRoom as vpLeaveRoom, leaveAllRooms as vpLeaveAllRooms,
   memberIds as vpMemberIds, isMember as vpIsMember, bothInRoom as vpBothInRoom, roomIdFromCallId as vpRoomIdFromCallId,
   setMuted as vpSetMuted, setHandRaised as vpSetHandRaised, setRole as vpSetRole,
   kick as vpKick, ban as vpBan, canModerate as vpCanModerate, isOwner as vpIsOwner, updatePermissions as vpUpdatePermissions,
+  createRoom as vpCreateRoom,
 } from './voiceparty.mjs';
 
 const PORT = Number(process.env.SIGNAL_PORT || 8081);
@@ -904,10 +906,35 @@ const handle = async (ws, session, msg) => {
       const r = await acceptMatch(me, matchId);
       if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
       if (r.confirmed) {
+        // Войс-пати команды открываем сами, а не ждём, пока кто-то
+        // зайдёт во вкладку «Войс-пати» и создаст комнату руками: игроки
+        // должны договариваться до и во время игры, а не после того как
+        // кто-то вспомнит, что можно созвониться. Отдельная комната на
+        // каждую команду — соперник не должен слышать чужую связь.
+        // «Владелец» комнаты — чисто техническое требование схемы
+        // (voice_rooms.owner_id NOT NULL): первый в списке команды, не
+        // более того — комната всё равно закроется сама, как только все
+        // разойдутся (endIfEmpty).
+        const title = GAME_TITLE[r.match.gameId] ?? r.match.gameId;
+        const teams = teamSizeFor(r.match.gameId) > 1
+          ? [r.match.teamA, r.match.teamB]
+          : [];
+        const roomIdByUser = new Map();
+        for (const team of teams) {
+          if (team.length < 2) continue;
+          const created = await vpCreateRoom(team[0], {
+            title: `${title} — команда`,
+            description: 'Автоматическая комната для матча Sky Games',
+            category: 'gaming',
+            isPrivate: true,
+            maxParticipants: team.length,
+          });
+          if (created.room) for (const uid of team) roomIdByUser.set(uid, created.room.id);
+        }
         // Обеим сторонам сразу: кто принял вторым, узнаёт об этом же
         // событием, а не только по своему ответу.
         for (const uid of [...r.match.teamA, ...r.match.teamB]) {
-          sendTo(uid, { type: 'mm:confirmed', payload: { match: r.match } });
+          sendTo(uid, { type: 'mm:confirmed', payload: { match: r.match, voiceRoomId: roomIdByUser.get(uid) ?? null } });
         }
       } else {
         send(ws, { type: 'mm:waiting', payload: { match: r.match } });

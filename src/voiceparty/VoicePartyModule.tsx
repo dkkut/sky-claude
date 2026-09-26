@@ -7,10 +7,21 @@ import { useVoicePartyStore } from './store';
 
 type View = { screen: 'list' } | { screen: 'create' } | { screen: 'room'; roomId: string };
 
-export const VoicePartyModule = () => {
-  const [view, setView] = useState<View>({ screen: 'list' });
+interface Props {
+  /** Комната, которую нужно открыть сразу же (например, авто-созданная
+   *  сервером после подтверждения матча) — см. GamingModule.tsx. */
+  autoRoomId?: string | null;
+}
+
+export const VoicePartyModule = ({ autoRoomId }: Props = {}) => {
+  const [view, setView] = useState<View>(autoRoomId ? { screen: 'room', roomId: autoRoomId } : { screen: 'list' });
   const loadRooms = useVoicePartyStore((s) => s.loadRooms);
   useEffect(() => { void loadRooms(); }, [loadRooms]);
+  // Пришла новая авто-комната (новый матч) — переходим в неё, даже если
+  // сейчас открыт список или другая комната.
+  useEffect(() => {
+    if (autoRoomId) setView({ screen: 'room', roomId: autoRoomId });
+  }, [autoRoomId]);
 
   return (
     <div className="relative h-full overflow-hidden">

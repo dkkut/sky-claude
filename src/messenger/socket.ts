@@ -352,7 +352,7 @@ const handle = (data: any) => {
       useGamingStore.getState().applyWaiting(payload?.match as MatchInfo);
       break;
     case 'mm:confirmed':
-      useGamingStore.getState().applyConfirmed(payload?.match as MatchInfo);
+      useGamingStore.getState().applyConfirmed(payload?.match as MatchInfo, payload?.voiceRoomId ?? null);
       break;
     case 'mm:cancelled':
       useGamingStore.getState().applyCancelled();

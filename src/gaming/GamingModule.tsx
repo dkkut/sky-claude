@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGamingStore, GAMES, type MatchResult } from './store';
 import { useAuthStore } from '@/core/auth/store';
@@ -77,9 +77,9 @@ const ResultChip = ({ r }: { r: 'win'|'loss'|'draw' }) => (
 /* ─────────────────────────────────────────────────────────
    PLAY TAB — Queue, Recent matches, Live party
 ───────────────────────────────────────────────────────── */
-const PlayView = () => {
+const PlayView = ({ onOpenVoice }: { onOpenVoice: () => void }) => {
   const {
-    myStats, matchHistory, queueStatus, queueGame, queueSeconds, currentMatch, rating,
+    myStats, matchHistory, queueStatus, queueGame, queueSeconds, currentMatch, rating, voiceRoomId,
     startQueue, cancelQueue, acceptMatch, declineMatch, loadRating,
   } = useGamingStore();
   const { currentUserId, accounts } = useAuthStore();
@@ -291,11 +291,20 @@ const PlayView = () => {
             <p className="text-xs mb-3" style={{ color: FC.t2 }}>
               {GAMES.find(g=>g.id===currentMatch.gameId)?.title} против {opponentEntry?.name ?? 'соперника'}
             </p>
-            <button type="button" onClick={cancelQueue}
-              className="rounded-lg px-4 py-2 text-xs font-bold"
-              style={{ background: FC.card2, color: FC.t2, border:`1px solid ${FC.border}` }}>
-              Готово
-            </button>
+            <div className="flex gap-2 justify-center">
+              {voiceRoomId && (
+                <button type="button" onClick={onOpenVoice}
+                  className="rounded-lg px-4 py-2 text-xs font-bold"
+                  style={{ background: FC.green, color:'#000' }}>
+                  Войс-пати команды
+                </button>
+              )}
+              <button type="button" onClick={cancelQueue}
+                className="rounded-lg px-4 py-2 text-xs font-bold"
+                style={{ background: FC.card2, color: FC.t2, border:`1px solid ${FC.border}` }}>
+                Готово
+              </button>
+            </div>
           </motion.div>
         )}
       </div>
@@ -443,8 +452,19 @@ type Tab = 'play'|'voice'|'stats'|'tourneys'|'channels';
 
 export const GamingModule = () => {
   const [tab, setTab] = useState<Tab>('play');
-  const { invites } = useGamingStore();
+  const { invites, voiceRoomId } = useGamingStore();
   const pending = invites.filter(i => i.status === 'pending').length;
+
+  // Сервер сам открыл войс-пати команды после подтверждения матча
+  // (server/signal.mjs, case 'mm:accept') — переходим во вкладку сразу,
+  // не дожидаясь, пока игрок сам найдёт кнопку «Войс-пати».
+  const seenVoiceRoom = useRef<string | null>(null);
+  useEffect(() => {
+    if (voiceRoomId && voiceRoomId !== seenVoiceRoom.current) {
+      seenVoiceRoom.current = voiceRoomId;
+      setTab('voice');
+    }
+  }, [voiceRoomId]);
 
   const TABS: { key:Tab; label:string }[] = [
     { key:'play',     label:'Играть'    },
@@ -507,8 +527,8 @@ export const GamingModule = () => {
           <motion.div key={tab} className="h-full"
             initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
             transition={{ duration:0.1 }}>
-            {tab==='play'     && <PlayView/>}
-            {tab==='voice'    && <VoicePartyModule/>}
+            {tab==='play'     && <PlayView onOpenVoice={() => setTab('voice')}/>}
+            {tab==='voice'    && <VoicePartyModule autoRoomId={voiceRoomId}/>}
             {tab==='stats'    && <StatsView/>}
             {tab==='tourneys' && (
               <div className="h-full" style={{ background: FC.bg }}>
