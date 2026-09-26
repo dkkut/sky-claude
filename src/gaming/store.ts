@@ -89,7 +89,15 @@ export interface MatchResult {
   timestamp:number;
 }
 
-export type QueueStatus = 'idle'|'searching'|'found'|'waiting'|'in_game';
+export type QueueStatus = 'idle'|'searching'|'found'|'waiting'|'in_game'|'reported'|'result';
+
+/** Изменение рейтинга после подтверждённого самоотчёта — настоящая
+ *  дельта Эло с сервера (server/matchmaking.mjs, confirmResult), а не
+ *  выдуманное число из старой формулы 500+wins*12+hours*3. */
+export interface MatchResultChange {
+  delta: number;
+  won:   boolean;
+}
 
 /** Найденный или подтверждённый матч — с сервера (server/matchmaking.mjs),
  *  teamA/teamB — настоящие id профилей, а не выдумка интерфейса. */
@@ -99,7 +107,9 @@ export interface MatchInfo {
   teamA: string[];
   teamB: string[];
   avgElo: number;
-  status: 'pending' | 'confirmed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'reported' | 'completed' | 'disputed';
+  reportedBy?:     string | null;
+  reportedWinner?: 'a' | 'b' | null;
 }
 
 /* --- Игры: CS2 / Dota 2 / Fortnite ------------------
@@ -169,18 +179,34 @@ interface GamingState {
      после подтверждения матча (см. server/signal.mjs, case 'mm:accept').
      null — комнаты нет (игра не командная) или матч ещё не подтверждён. */
   voiceRoomId:    string | null;
-  rating:         GameRating | null;
+  /* Настоящий рейтинг с сервера (game_ratings), по каждой игре отдельно —
+     заменяет старую формулу 500+wins*12+hours*3, которая читала и
+     писала localStorage тем же браузером, что её и показывал. */
+  ratings:        Record<string, GameRating>;
+  ratingFor:      (gameId: string) => GameRating | undefined;
+  /* Результат подтверждённого/оспоренного самоотчёта — заполняется на
+     mm:result-confirmed/mm:result-disputed, показывается один раз и
+     сбрасывается вместе с матчем (cancelQueue). */
+  resultChange:   MatchResultChange | null;
+  resultDisputed: boolean;
   startQueue:     (gameId: string) => void;
   cancelQueue:    () => void;
   acceptMatch:    () => void;
   declineMatch:   () => void;
   loadRating:     (gameId: string) => Promise<void>;
+  /* Самоотчёт о результате — см. server/matchmaking.mjs. */
+  reportWinner:   (winnerTeam: 'a' | 'b') => void;
+  confirmResult:  () => void;
+  disputeResult:  () => void;
   /* Приходит из socket.ts по входящим mm:* событиям — источник правды
      сервер, эти методы только кладут то, что он прислал. */
   applyQueued:            (gameId: string) => void;
   applyFound:              (match: MatchInfo) => void;
   applyWaiting:            (match: MatchInfo) => void;
   applyConfirmed:          (match: MatchInfo, voiceRoomId: string | null) => void;
+  applyReported:           (match: MatchInfo) => void;
+  applyResultConfirmed:    (change: MatchResultChange) => void;
+  applyResultDisputed:     () => void;
   applyCancelled:          () => void;
   applyCancelledRequeued:  (gameId: string) => void;
   applyMmError:            () => void;
@@ -213,7 +239,10 @@ export const useGamingStore = create<GamingState>((set, get) => {
     queueSeconds: 0,
     currentMatch: null,
     voiceRoomId: null,
-    rating: null,
+    resultChange: null,
+    resultDisputed: false,
+    ratings: {},
+    ratingFor: (gameId) => get().ratings[gameId],
     stats:    stored?.stats    ?? SEED_STATS,
     tourneys: stored?.tourneys ?? SEED_TOURNEYS,
     news:     SEED_NEWS,   // всегда из seed (новости не редактируются)
@@ -236,7 +265,7 @@ export const useGamingStore = create<GamingState>((set, get) => {
     cancelQueue: () => {
       stopQueueTick();
       wireSend({ type: 'mm:leave' });
-      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null });
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null, resultChange: null, resultDisputed: false });
     },
 
     acceptMatch: () => {
@@ -250,12 +279,31 @@ export const useGamingStore = create<GamingState>((set, get) => {
       const matchId = get().currentMatch?.id;
       if (!matchId) return;
       wireSend({ type: 'mm:decline', payload: { matchId } });
-      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null });
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null, resultChange: null, resultDisputed: false });
     },
 
     loadRating: async (gameId) => {
       const rating = await apiGameRating(gameId);
-      if (rating) set({ rating });
+      if (rating) set(s => ({ ratings: { ...s.ratings, [gameId]: rating } }));
+    },
+
+    // Самоотчёт — сервер сам решает, кто вправе заявить и подтвердить
+    // (matchmaking.mjs: участник матча / обязательно другая команда),
+    // здесь только отправка команды; состояние меняется по ответу mm:*.
+    reportWinner: (winnerTeam) => {
+      const matchId = get().currentMatch?.id;
+      if (!matchId) return;
+      wireSend({ type: 'mm:report', payload: { matchId, winnerTeam } });
+    },
+    confirmResult: () => {
+      const matchId = get().currentMatch?.id;
+      if (!matchId) return;
+      wireSend({ type: 'mm:confirm-result', payload: { matchId } });
+    },
+    disputeResult: () => {
+      const matchId = get().currentMatch?.id;
+      if (!matchId) return;
+      wireSend({ type: 'mm:dispute-result', payload: { matchId } });
     },
 
     applyQueued: (gameId) => {
@@ -271,12 +319,23 @@ export const useGamingStore = create<GamingState>((set, get) => {
     applyConfirmed: (match, voiceRoomId) => {
       set({ queueStatus: 'in_game', currentMatch: match, voiceRoomId });
     },
+    applyReported: (match) => {
+      set({ queueStatus: 'reported', currentMatch: match });
+    },
+    applyResultConfirmed: (change) => {
+      set({ queueStatus: 'result', resultChange: change, resultDisputed: false });
+      const gameId = get().currentMatch?.gameId;
+      if (gameId) void get().loadRating(gameId);
+    },
+    applyResultDisputed: () => {
+      set({ queueStatus: 'result', resultChange: null, resultDisputed: true });
+    },
     applyCancelled: () => {
       stopQueueTick();
-      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null });
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null, resultChange: null, resultDisputed: false });
     },
     applyCancelledRequeued: (gameId) => {
-      set({ queueStatus: 'searching', queueGame: gameId, queueSeconds: 0, currentMatch: null, voiceRoomId: null });
+      set({ queueStatus: 'searching', queueGame: gameId, queueSeconds: 0, currentMatch: null, voiceRoomId: null, resultChange: null, resultDisputed: false });
       stopQueueTick();
       queueTick = setInterval(() => {
         if (get().queueStatus !== 'searching') { stopQueueTick(); return; }
@@ -285,7 +344,7 @@ export const useGamingStore = create<GamingState>((set, get) => {
     },
     applyMmError: () => {
       stopQueueTick();
-      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null });
+      set({ queueStatus: 'idle', queueGame: null, queueSeconds: 0, currentMatch: null, voiceRoomId: null, resultChange: null, resultDisputed: false });
     },
 
     myStats: (gameId) => {

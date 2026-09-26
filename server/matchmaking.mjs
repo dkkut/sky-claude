@@ -48,13 +48,14 @@ export const getRating = async (profileId, gameId) => {
   return rows[0];
 };
 
-/** Активный матч человека — pending или только что confirmed (клиент
- *  ещё не увидел ответ). Не даёт встать в очередь, уже кому-то
- *  назначенным. */
+/** Активный матч человека — pending, confirmed или уже reported (ждёт
+ *  подтверждения соперника). Не даёт встать в очередь, уже кому-то
+ *  назначенным, и позволяет переподключившемуся клиенту увидеть, что
+ *  отчёт о результате всё ещё не подтверждён. */
 export const myActiveMatch = async (profileId) => {
   const { rows } = await query(
     `SELECT * FROM matches
-      WHERE status IN ('pending','confirmed') AND ($1 = ANY(team_a) OR $1 = ANY(team_b))
+      WHERE status IN ('pending','confirmed','reported') AND ($1 = ANY(team_a) OR $1 = ANY(team_b))
       ORDER BY created_at DESC LIMIT 1`,
     [profileId],
   );
@@ -64,6 +65,7 @@ export const myActiveMatch = async (profileId) => {
 const toMatch = (r) => ({
   id: r.id, gameId: r.game_id, teamA: r.team_a, teamB: r.team_b,
   avgElo: r.avg_elo, status: r.status, createdAt: r.created_at.toISOString(),
+  reportedBy: r.reported_by ?? null, reportedWinner: r.reported_winner ?? null,
 });
 
 /**
@@ -234,4 +236,103 @@ export const sweepStaleMatches = async () => {
     results.push({ matchId: row.id, gameId: row.game_id, participants: [...row.team_a, ...row.team_b], requeued, timedOut });
   }
   return results;
+};
+
+/** Победная сторона по ELO своей команды — обычная формула Эло с
+ *  постоянным K, применённая к средним рейтингам двух команд, а не к
+ *  выдуманному числу: пересчитывается из настоящих текущих game_ratings
+ *  каждого участника в момент подтверждения, а не из значения на
+ *  момент старта матча (матч решается за минуты, разница пренебрежима,
+ *  а лишнюю колонку под «замороженный» рейтинг заводить незачем). */
+const K_FACTOR = 32;
+const eloDelta = (teamEloAvg, opponentEloAvg, won) => {
+  const expected = 1 / (1 + 10 ** ((opponentEloAvg - teamEloAvg) / 400));
+  return Math.round(K_FACTOR * ((won ? 1 : 0) - expected));
+};
+
+const avgElo = async (ids, gameId) => {
+  const ratings = await Promise.all(ids.map((id) => getRating(id, gameId)));
+  return Math.round(ratings.reduce((sum, r) => sum + r.elo, 0) / ratings.length);
+};
+
+/**
+ * Самоотчёт о результате. Любой участник заявляет, чья команда
+ * победила, — это ничего не меняет в рейтингах немедленно, только
+ * переводит матч в статус, когда остальные видят заявку и могут её
+ * подтвердить или оспорить.
+ */
+export const reportResult = async (profileId, matchId, winnerTeam) => {
+  if (winnerTeam !== 'a' && winnerTeam !== 'b') return { error: 'invalid_winner' };
+  const { rows } = await query(
+    `SELECT * FROM matches WHERE id = $1 AND status = 'confirmed'
+       AND ($2 = ANY(team_a) OR $2 = ANY(team_b))`,
+    [matchId, profileId],
+  );
+  const row = rows[0];
+  if (!row) return { error: 'not_found' };
+  await query(
+    `UPDATE matches SET status = 'reported', reported_by = $2, reported_winner = $3, reported_at = now() WHERE id = $1`,
+    [matchId, profileId, winnerTeam],
+  );
+  return { ok: true, match: toMatch({ ...row, status: 'reported', reported_by: profileId, reported_winner: winnerTeam }) };
+};
+
+/**
+ * Подтверждение результата — обязательно от кого-то из КОМАНДЫ,
+ * ПРОТИВОПОЛОЖНОЙ заявителю. Свой же союзник не в счёт: иначе два
+ * сговорившихся игрока одной стороны подтверждали бы друг другу любой
+ * исход. Здесь и только здесь рейтинг реально меняется.
+ */
+export const confirmResult = async (profileId, matchId) => {
+  const { rows } = await query(`SELECT * FROM matches WHERE id = $1 AND status = 'reported'`, [matchId]);
+  const row = rows[0];
+  if (!row) return { error: 'not_found' };
+  const reporterInA = row.team_a.includes(row.reported_by);
+  const confirmerInA = row.team_a.includes(profileId);
+  const confirmerInB = row.team_b.includes(profileId);
+  if (!confirmerInA && !confirmerInB) return { error: 'not_participant' };
+  if (confirmerInA === reporterInA) return { error: 'not_opponent' };
+
+  const winnerIsA = row.reported_winner === 'a';
+  const [eloA, eloB] = await Promise.all([avgElo(row.team_a, row.game_id), avgElo(row.team_b, row.game_id)]);
+  const deltaA = eloDelta(eloA, eloB, winnerIsA);
+  const deltaB = -deltaA;
+
+  const applyToTeam = async (ids, delta, won) => {
+    for (const id of ids) {
+      await query(
+        `INSERT INTO game_ratings (profile_id, game_id) VALUES ($1,$2) ON CONFLICT (profile_id, game_id) DO NOTHING`,
+        [id, row.game_id],
+      );
+      await query(
+        `UPDATE game_ratings SET elo = elo + $3, wins = wins + $4, losses = losses + $5, updated_at = now()
+           WHERE profile_id = $1 AND game_id = $2`,
+        [id, row.game_id, delta, won ? 1 : 0, won ? 0 : 1],
+      );
+    }
+  };
+  await applyToTeam(row.team_a, deltaA, winnerIsA);
+  await applyToTeam(row.team_b, deltaB, !winnerIsA);
+  await query(`UPDATE matches SET status = 'completed', resolved_at = now() WHERE id = $1`, [matchId]);
+
+  const changes = {};
+  for (const id of row.team_a) changes[id] = { delta: deltaA, won: winnerIsA };
+  for (const id of row.team_b) changes[id] = { delta: deltaB, won: !winnerIsA };
+  return { ok: true, matchId, gameId: row.game_id, winnerTeam: row.reported_winner, changes, participants: [...row.team_a, ...row.team_b] };
+};
+
+/** Оспаривание — рейтинг не трогаем: без своего игрового сервера у нас
+ *  нет способа честно рассудить, кто прав, а придумывать решение значило
+ *  бы вернуть фейковый исход под новым названием. */
+export const disputeResult = async (profileId, matchId) => {
+  const { rows } = await query(`SELECT * FROM matches WHERE id = $1 AND status = 'reported'`, [matchId]);
+  const row = rows[0];
+  if (!row) return { error: 'not_found' };
+  const reporterInA = row.team_a.includes(row.reported_by);
+  const disputerInA = row.team_a.includes(profileId);
+  const disputerInB = row.team_b.includes(profileId);
+  if (!disputerInA && !disputerInB) return { error: 'not_participant' };
+  if (disputerInA === reporterInA) return { error: 'not_opponent' };
+  await query(`UPDATE matches SET status = 'disputed', resolved_at = now() WHERE id = $1`, [matchId]);
+  return { ok: true, matchId, participants: [...row.team_a, ...row.team_b] };
 };

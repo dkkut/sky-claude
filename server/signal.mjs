@@ -49,7 +49,7 @@ import {
 } from './chatadmin.mjs';
 import {
   joinQueue, leaveQueue, acceptMatch, declineMatch, sweepStaleMatches, myActiveMatch,
-  teamSizeFor, GAME_TITLE,
+  teamSizeFor, GAME_TITLE, reportResult, confirmResult, disputeResult,
 } from './matchmaking.mjs';
 import {
   joinRoom as vpJoinRoom, leaveRoom as vpLeaveRoom, leaveAllRooms as vpLeaveAllRooms,
@@ -264,7 +264,9 @@ const sendSnapshot = async (ws, userId) => {
   // потерять его из вида и залипнуть в пустой очереди.
   const activeMatch = await myActiveMatch(userId);
   if (activeMatch) {
-    send(ws, { type: activeMatch.status === 'confirmed' ? 'mm:confirmed' : 'mm:found', payload: { match: activeMatch } });
+    const type = activeMatch.status === 'reported' ? 'mm:reported'
+      : activeMatch.status === 'confirmed' ? 'mm:confirmed' : 'mm:found';
+    send(ws, { type, payload: { match: activeMatch } });
   }
 
   const chats = await listChats(userId);
@@ -938,6 +940,46 @@ const handle = async (ws, session, msg) => {
         }
       } else {
         send(ws, { type: 'mm:waiting', payload: { match: r.match } });
+      }
+      break;
+    }
+
+    /* ── Самоотчёт о результате: заявляет любой участник, подтверждает
+       или оспаривает — обязательно кто-то из другой команды (проверка
+       внутри matchmaking.mjs). Рейтинг меняется только в confirm. ── */
+    case 'mm:report': {
+      const matchId = String(payload?.matchId ?? '');
+      const winnerTeam = payload?.winnerTeam;
+      if (!matchId) return;
+      const r = await reportResult(me, matchId, winnerTeam);
+      if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
+      for (const uid of [...r.match.teamA, ...r.match.teamB]) {
+        sendTo(uid, { type: 'mm:reported', payload: { match: r.match } });
+      }
+      break;
+    }
+
+    case 'mm:confirm-result': {
+      const matchId = String(payload?.matchId ?? '');
+      if (!matchId) return;
+      const r = await confirmResult(me, matchId);
+      if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
+      for (const uid of r.participants) {
+        sendTo(uid, {
+          type: 'mm:result-confirmed',
+          payload: { matchId: r.matchId, gameId: r.gameId, winnerTeam: r.winnerTeam, change: r.changes[uid] },
+        });
+      }
+      break;
+    }
+
+    case 'mm:dispute-result': {
+      const matchId = String(payload?.matchId ?? '');
+      if (!matchId) return;
+      const r = await disputeResult(me, matchId);
+      if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
+      for (const uid of r.participants) {
+        sendTo(uid, { type: 'mm:result-disputed', payload: { matchId: r.matchId } });
       }
       break;
     }

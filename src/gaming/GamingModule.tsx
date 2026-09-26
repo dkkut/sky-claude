@@ -79,8 +79,9 @@ const ResultChip = ({ r }: { r: 'win'|'loss'|'draw' }) => (
 ───────────────────────────────────────────────────────── */
 const PlayView = ({ onOpenVoice }: { onOpenVoice: () => void }) => {
   const {
-    myStats, matchHistory, queueStatus, queueGame, queueSeconds, currentMatch, rating, voiceRoomId,
-    startQueue, cancelQueue, acceptMatch, declineMatch, loadRating,
+    myStats, matchHistory, queueStatus, queueGame, queueSeconds, currentMatch, ratingFor, voiceRoomId,
+    resultChange, resultDisputed,
+    startQueue, cancelQueue, acceptMatch, declineMatch, loadRating, reportWinner, confirmResult, disputeResult,
   } = useGamingStore();
   const { currentUserId, accounts } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
@@ -89,7 +90,10 @@ const PlayView = ({ onOpenVoice }: { onOpenVoice: () => void }) => {
   const stats = myStats();
   const mainStat = stats[0];
   const mainGame = GAMES.find(g => g.id === mainStat?.gameId) ?? GAMES[0];
-  const elo = 500 + (mainStat?.wins ?? 0) * 12 + (mainStat?.hours ?? 0) * 3;
+  useEffect(() => { void loadRating(mainGame.id); }, [mainGame.id, loadRating]);
+  // Настоящий ELO с сервера (game_ratings) — 1000 до первого сыгранного
+  // и подтверждённого матча в этой игре, не выдумка из wins/hours.
+  const elo = ratingFor(mainGame.id)?.elo ?? 1000;
   const rc = RANK_CFG[mainStat?.rank ?? 'Bronze'] ?? RANK_CFG.Bronze;
 
   // Соперник — реальный id из currentMatch, а не выдумка: подгружаем его
@@ -101,7 +105,22 @@ const PlayView = ({ onOpenVoice }: { onOpenVoice: () => void }) => {
   const fetchOther = useOtherProfiles(s => s.fetch);
   useEffect(() => { if (opponentId) void fetchOther(opponentId); }, [opponentId, fetchOther]);
   useEffect(() => { if (queueGame) void loadRating(queueGame); }, [queueGame, loadRating]);
-  const matchElo = currentMatch?.avgElo ?? rating?.elo ?? 1000;
+  const matchElo = currentMatch?.avgElo ?? ratingFor(queueGame ?? mainGame.id)?.elo ?? 1000;
+
+  // Самоотчёт: моя команда, команда заявителя и «должен ли я видеть
+  // кнопки подтвердить/оспорить» — это ровно те, кто НЕ на стороне
+  // заявителя (сервер и так отклонит попытку союзника, но кнопки
+  // такому союзнику показывать незачем — сервер уже проверяет это в
+  // matchmaking.mjs, здесь просто не подсовываем лишний UI).
+  const myTeam: 'a'|'b'|undefined = currentMatch && currentUserId
+    ? (currentMatch.teamA.includes(currentUserId) ? 'a' : currentMatch.teamB.includes(currentUserId) ? 'b' : undefined)
+    : undefined;
+  const reporterTeam: 'a'|'b'|undefined = currentMatch?.reportedBy
+    ? (currentMatch.teamA.includes(currentMatch.reportedBy) ? 'a' : 'b')
+    : undefined;
+  const isReporter = currentMatch?.reportedBy === currentUserId;
+  const canReviewReport = reporterTeam !== undefined && myTeam !== undefined && myTeam !== reporterTeam;
+  const reportedMyTeamWon = currentMatch?.reportedWinner === myTeam;
 
   return (
     <div className="h-full overflow-y-auto pb-6" style={{ scrollbarWidth:'none', background: FC.bg }}>
@@ -291,7 +310,7 @@ const PlayView = ({ onOpenVoice }: { onOpenVoice: () => void }) => {
             <p className="text-xs mb-3" style={{ color: FC.t2 }}>
               {GAMES.find(g=>g.id===currentMatch.gameId)?.title} против {opponentEntry?.name ?? 'соперника'}
             </p>
-            <div className="flex gap-2 justify-center">
+            <div className="flex gap-2 justify-center mb-3">
               {voiceRoomId && (
                 <button type="button" onClick={onOpenVoice}
                   className="rounded-lg px-4 py-2 text-xs font-bold"
@@ -305,6 +324,95 @@ const PlayView = ({ onOpenVoice }: { onOpenVoice: () => void }) => {
                 Готово
               </button>
             </div>
+            {myTeam && (
+              <div className="pt-3" style={{ borderTop: `1px solid ${FC.border}` }}>
+                <p className="text-[10px] mb-2" style={{ color: FC.t3 }}>
+                  Отыграли — кто победил? Рейтинг изменится только после подтверждения соперником.
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => reportWinner(myTeam)}
+                    className="flex-1 rounded-lg py-2 text-xs font-bold"
+                    style={{ background: FC.green, color:'#000' }}>
+                    Победила моя команда
+                  </button>
+                  <button type="button" onClick={() => reportWinner(myTeam === 'a' ? 'b' : 'a')}
+                    className="flex-1 rounded-lg py-2 text-xs font-bold"
+                    style={{ background: 'rgba(255,59,92,0.12)', color: FC.red, border:`1px solid rgba(255,59,92,0.25)` }}>
+                    Победил соперник
+                  </button>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {queueStatus === 'reported' && currentMatch && (
+          <motion.div initial={{ scale:0.96, opacity:0 }} animate={{ scale:1, opacity:1 }}
+            className="rounded-xl overflow-hidden p-4 text-center"
+            style={{ background: FC.card, border: `2px solid ${FC.orange}` }}>
+            {canReviewReport ? (
+              <>
+                <p className="text-sm font-black uppercase tracking-wide mb-1" style={{ color: FC.orange }}>
+                  Соперник заявил результат
+                </p>
+                <p className="text-xs mb-3" style={{ color: FC.t2 }}>
+                  {isReporter ? '' : (reportedMyTeamWon ? 'Заявлено: победила ваша команда' : 'Заявлено: победила команда соперника')}
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={confirmResult}
+                    className="flex-1 rounded-lg py-2.5 text-xs font-bold"
+                    style={{ background: FC.green, color:'#000' }}>
+                    Подтвердить
+                  </button>
+                  <button type="button" onClick={disputeResult}
+                    className="flex-1 rounded-lg py-2.5 text-xs font-bold"
+                    style={{ background: 'rgba(255,59,92,0.12)', color: FC.red, border:`1px solid rgba(255,59,92,0.25)` }}>
+                    Оспорить
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-black uppercase tracking-wide mb-1" style={{ color: FC.orange }}>
+                  Отчёт отправлен
+                </p>
+                <p className="text-xs" style={{ color: FC.t2 }}>
+                  Ждём подтверждения от соперника — рейтинг изменится, как только он ответит.
+                </p>
+              </>
+            )}
+          </motion.div>
+        )}
+
+        {queueStatus === 'result' && (
+          <motion.div initial={{ scale:0.96, opacity:0 }} animate={{ scale:1, opacity:1 }}
+            className="rounded-xl overflow-hidden p-4 text-center"
+            style={{ background: FC.card, border: `2px solid ${resultDisputed ? FC.t3 : (resultChange && resultChange.won ? FC.green : FC.red)}` }}>
+            {resultDisputed ? (
+              <>
+                <p className="text-sm font-black uppercase tracking-wide mb-1" style={{ color: FC.t2 }}>
+                  Результат оспорен
+                </p>
+                <p className="text-xs mb-3" style={{ color: FC.t3 }}>
+                  Стороны не сошлись — рейтинг не менялся.
+                </p>
+              </>
+            ) : resultChange ? (
+              <>
+                <p className="text-sm font-black uppercase tracking-wide mb-1"
+                  style={{ color: resultChange.won ? FC.green : FC.red }}>
+                  {resultChange.won ? 'Победа' : 'Поражение'}
+                </p>
+                <p className="text-xs mb-3 font-bold tabular-nums" style={{ color: resultChange.delta > 0 ? FC.green : FC.red }}>
+                  {resultChange.delta > 0 ? '+' : ''}{resultChange.delta} ELO
+                </p>
+              </>
+            ) : null}
+            <button type="button" onClick={cancelQueue}
+              className="rounded-lg px-4 py-2 text-xs font-bold"
+              style={{ background: FC.card2, color: FC.t2, border:`1px solid ${FC.border}` }}>
+              Готово
+            </button>
           </motion.div>
         )}
       </div>
@@ -351,8 +459,9 @@ function RC(rank?: string) {
    STATS TAB — Leaderboard + per-game
 ───────────────────────────────────────────────────────── */
 const StatsView = () => {
-  const { myStats } = useGamingStore();
+  const { myStats, ratingFor, loadRating } = useGamingStore();
   const stats = myStats();
+  useEffect(() => { for (const s of stats) void loadRating(s.gameId); }, [stats, loadRating]);
 
   return (
     <div className="h-full overflow-y-auto pb-6 px-4" style={{ scrollbarWidth:'none', background: FC.bg }}>
@@ -363,7 +472,7 @@ const StatsView = () => {
         </div>
       ) : stats.map(s => {
         const game = GAMES.find(g => g.id === s.gameId)!;
-        const elo  = 500 + s.wins * 12 + s.hours * 3;
+        const elo  = ratingFor(s.gameId)?.elo ?? 1000;
         const rc   = RC(s.rank);
         const xpPct= Math.min(100, (s.xp % 10000) / 100);
         const wl   = s.wins + s.losses;

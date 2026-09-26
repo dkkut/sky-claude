@@ -19,7 +19,7 @@ import { receiveTogether } from '@/together/togetherState';
 import { useAdminStore, ADMIN_ERRORS, POST_ERRORS } from './adminStore';
 import { useSettings } from '@/settings/store';
 import { usePrivacyStore } from '@/profile/privacyStore';
-import { useGamingStore, type MatchInfo } from '@/gaming/store';
+import { useGamingStore, type MatchInfo, type MatchResultChange } from '@/gaming/store';
 import { useVoicePartyStore } from '@/voiceparty/store';
 import { toClientRoom, toClientParticipant } from '@/voiceparty/api';
 import type { MessageItem, ChatItem, ChatType } from './types';
@@ -353,6 +353,15 @@ const handle = (data: any) => {
       break;
     case 'mm:confirmed':
       useGamingStore.getState().applyConfirmed(payload?.match as MatchInfo, payload?.voiceRoomId ?? null);
+      break;
+    case 'mm:reported':
+      useGamingStore.getState().applyReported(payload?.match as MatchInfo);
+      break;
+    case 'mm:result-confirmed':
+      useGamingStore.getState().applyResultConfirmed(payload?.change as MatchResultChange);
+      break;
+    case 'mm:result-disputed':
+      useGamingStore.getState().applyResultDisputed();
       break;
     case 'mm:cancelled':
       useGamingStore.getState().applyCancelled();
