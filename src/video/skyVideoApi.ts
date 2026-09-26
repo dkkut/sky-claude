@@ -130,6 +130,50 @@ export const apiSkyVideoCategories = async () => {
   return r.ok ? (r.data?.categories ?? []) : null;
 };
 
+/* ─── Каналы ───────────────────────────────────────────────────────── */
+
+export interface ChannelInfo {
+  authorId: string;
+  authorName: string;
+  authorUsername: string;
+  avatar: string | null;
+  videoCount: number;
+  totalViews: number;
+  totalLikes: number;
+}
+
+export interface ChannelListEntry {
+  authorId: string;
+  authorName: string;
+  authorUsername: string;
+  avatar: string | null;
+  videoCount: number;
+  totalViews: number;
+}
+
+/** Раздел «Каналы» — авторы с хотя бы одним опубликованным роликом. */
+export const apiSkyVideoChannels = async (opts: { limit?: number; offset?: number } = {}) => {
+  const p = new URLSearchParams();
+  if (opts.limit) p.set('limit', String(opts.limit));
+  if (opts.offset) p.set('offset', String(opts.offset));
+  const qs = p.toString();
+  const r = await apiCall<{ channels: ChannelListEntry[] }>(`/api/skyvideo/channels${qs ? `?${qs}` : ''}`);
+  return r.ok ? (r.data?.channels ?? []) : null;
+};
+
+/** Страница канала — карточка автора и его опубликованные ролики. */
+export const apiSkyVideoChannel = async (authorId: string, opts: FeedOpts = {}) => {
+  const p = new URLSearchParams();
+  if (opts.sort) p.set('sort', opts.sort);
+  if (opts.limit) p.set('limit', String(opts.limit));
+  if (opts.offset) p.set('offset', String(opts.offset));
+  const qs = p.toString();
+  const r = await apiCall<{ channel: ChannelInfo; videos: ServerVideo[] }>(
+    `/api/skyvideo/channel/${encodeURIComponent(authorId)}${qs ? `?${qs}` : ''}`,
+  );
+  return r.ok ? (r.data ?? null) : null;
+};
+
 /** Кабинет автора — свои ролики любого статуса. */
 export const apiMySkyVideos = async () => {
   const r = await apiCall<{ videos: ServerVideo[] }>('/api/skyvideo/mine');

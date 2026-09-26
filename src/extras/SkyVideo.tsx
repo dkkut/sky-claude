@@ -20,6 +20,7 @@ import { useSkyVideoStore, resetSkyVideoForUser } from '@/video/serverStore';
 import { videoUrl, thumbnailUrl, fmtDuration, readVideoMeta, type ServerVideo, type VideoComment } from '@/video/skyVideoApi';
 import {
   apiSkyVideoComments, apiAddSkyVideoComment, apiDeleteSkyVideoComment,
+  apiSkyVideoChannels, apiSkyVideoChannel, type ChannelListEntry, type ChannelInfo,
 } from '@/video/skyVideoApi';
 import { useAuthStore } from '@/core/auth/store';
 import { openProfile } from '@/profile/viewer/store';
@@ -96,8 +97,12 @@ const Thumbnail = ({ video, size = 'md' }: { video: ServerVideo; size?: 'sm' | '
 };
 
 /* -- Avatar --------------------------------------------------- */
-const Avatar = ({ name, size = 32 }: { name: string; size?: number }) => {
+const Avatar = ({ name, size = 32, avatar }: { name: string; size?: number; avatar?: string | null }) => {
   const hue = [...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
+  if (avatar) {
+    return <img src={avatar} alt="" className="shrink-0 rounded-full object-cover"
+      style={{ width: size, height: size }} />;
+  }
   return (
     <div className="shrink-0 grid place-items-center rounded-full font-bold text-white"
       style={{ width: size, height: size, fontSize: size * 0.38,
@@ -810,8 +815,147 @@ const ShortsPreview = ({ shorts, onOpen }: { shorts: ServerVideo[]; onOpen: (i: 
   </div>
 );
 
+/* -- Каналы: список и страница автора --------------------------- */
+const ChannelsListView = ({ onOpen }: { onOpen: (authorId: string) => void }) => {
+  const [channels, setChannels] = useState<ChannelListEntry[] | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    apiSkyVideoChannels({ limit: 50 }).then(list => { if (live) setChannels(list ?? []); });
+    return () => { live = false; };
+  }, []);
+
+  if (channels === null) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <p className="text-sm" style={{ color: V.t2 }}>Загрузка…</p>
+      </div>
+    );
+  }
+
+  if (channels.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <Play size={40} style={{ color: V.t3 }} />
+        <p className="text-sm font-semibold" style={{ color: V.t2 }}>Пока нет каналов</p>
+        <p className="text-xs" style={{ color: V.t3 }}>Каналы появляются, как только у автора выходит первый ролик</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-3 space-y-2">
+      {channels.map(c => (
+        <motion.div key={c.authorId} whileTap={{ scale: 0.98 }} onClick={() => onOpen(c.authorId)}
+          className="flex items-center gap-3 rounded-2xl p-3 cursor-pointer"
+          style={{ background: V.bg1, border: `1px solid ${V.border}` }}>
+          <Avatar name={c.authorName} avatar={c.avatar} size={44} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold truncate" style={{ color: V.t1 }}>{c.authorName}</p>
+            <p className="text-xs" style={{ color: V.t3 }}>@{c.authorUsername}</p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-xs font-semibold" style={{ color: V.t2 }}>{c.videoCount} видео</p>
+            <p className="text-[11px]" style={{ color: V.t3 }}>{fmtViews(c.totalViews)} просм.</p>
+          </div>
+        </motion.div>
+      ))}
+    </div>
+  );
+};
+
+const ChannelPage = ({ authorId, onBack, onOpenVideo }: {
+  authorId: string; onBack: () => void; onOpenVideo: (v: ServerVideo) => void;
+}) => {
+  const [channel, setChannel] = useState<ChannelInfo | null>(null);
+  const [videos, setVideos] = useState<ServerVideo[] | null>(null);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setChannel(null); setVideos(null); setNotFound(false);
+    apiSkyVideoChannel(authorId, { limit: 50 }).then(r => {
+      if (!live) return;
+      if (!r) { setNotFound(true); return; }
+      setChannel(r.channel);
+      setVideos(r.videos);
+    });
+    return () => { live = false; };
+  }, [authorId]);
+
+  if (notFound) {
+    return (
+      <div className="flex h-full flex-col" style={{ background: V.bg }}>
+        <div className="flex items-center gap-2 px-4 py-3 shrink-0" style={{ borderBottom: `1px solid ${V.border}` }}>
+          <button type="button" onClick={onBack} className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/5">
+            <ChevronLeft size={20} style={{ color: V.t2 }} />
+          </button>
+        </div>
+        <div className="flex flex-1 items-center justify-center p-6">
+          <p className="text-sm" style={{ color: V.t3 }}>Канал не найден</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
+      className="flex flex-col h-full overflow-y-auto" style={{ background: V.bg, scrollbarWidth: 'none' }}>
+      <div className="flex items-center gap-2 px-4 py-3 shrink-0" style={{ borderBottom: `1px solid ${V.border}` }}>
+        <button type="button" onClick={onBack}
+          className="grid h-8 w-8 place-items-center rounded-full transition-colors hover:bg-white/5">
+          <ChevronLeft size={20} style={{ color: V.t2 }} />
+        </button>
+        <p className="text-sm font-semibold flex-1" style={{ color: V.t1 }}>Канал</p>
+      </div>
+
+      {channel && (
+        <div className="px-4 py-4 space-y-4">
+          <div className="flex items-center gap-3">
+            <Avatar name={channel.authorName} avatar={channel.avatar} size={56} />
+            <div className="flex-1 min-w-0">
+              <p className="text-base font-bold truncate" style={{ color: V.t1 }}>{channel.authorName}</p>
+              <p className="text-xs" style={{ color: V.t3 }}>@{channel.authorUsername}</p>
+            </div>
+            <SubscribeButton targetId={channel.authorId} />
+          </div>
+
+          <div className="flex items-center gap-4 rounded-2xl p-3" style={{ background: V.bg1, border: `1px solid ${V.border}` }}>
+            <div className="flex-1 text-center">
+              <p className="text-sm font-bold" style={{ color: V.t1 }}>{channel.videoCount}</p>
+              <p className="text-[10px]" style={{ color: V.t3 }}>видео</p>
+            </div>
+            <div className="flex-1 text-center">
+              <p className="text-sm font-bold" style={{ color: V.t1 }}>{fmtViews(channel.totalViews)}</p>
+              <p className="text-[10px]" style={{ color: V.t3 }}>просмотров</p>
+            </div>
+            <div className="flex-1 text-center">
+              <p className="text-sm font-bold" style={{ color: V.t1 }}>{fmtViews(channel.totalLikes)}</p>
+              <p className="text-[10px]" style={{ color: V.t3 }}>лайков</p>
+            </div>
+          </div>
+
+          <div>
+            {videos === null ? (
+              <p className="text-xs text-center py-6" style={{ color: V.t3 }}>Загрузка видео…</p>
+            ) : videos.length === 0 ? (
+              <p className="text-xs text-center py-6" style={{ color: V.t3 }}>У канала пока нет роликов</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-5">
+                {videos.map(v => (
+                  <VideoCard key={v.id} video={v} onClick={() => onOpenVideo(v)} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+};
+
 /* === MAIN MODULE ============================================ */
-type VTab = 'home' | 'shorts' | 'upload' | 'mine';
+type VTab = 'home' | 'shorts' | 'upload' | 'mine' | 'channels';
 
 export const SkyVideo = () => {
   const { feed, categories, load, search } = useSkyVideoStore();
@@ -821,6 +965,7 @@ export const SkyVideo = () => {
   const [tab, setTab] = useState<VTab>((pendingVideoTab as VTab) || 'home');
   const [activeVideo, setActiveVideo] = useState<ServerVideo | null>(null);
   const [activeShort, setActiveShort] = useState<number | null>(null);
+  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('all');
@@ -870,6 +1015,15 @@ export const SkyVideo = () => {
     );
   }
 
+  if (activeChannelId) {
+    return (
+      <AnimatePresence mode="wait">
+        <ChannelPage key={activeChannelId} authorId={activeChannelId}
+          onBack={() => setActiveChannelId(null)} onOpenVideo={setActiveVideo} />
+      </AnimatePresence>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: V.bg }}>
       <div className="shrink-0 px-4 pt-3 pb-2" style={{ borderBottom: `1px solid ${V.border}` }}>
@@ -905,6 +1059,7 @@ export const SkyVideo = () => {
           {([
             { key: 'home', label: 'Главная' },
             { key: 'shorts', label: 'Shorts' },
+            { key: 'channels', label: 'Каналы' },
             { key: 'upload', label: 'Загрузить' },
             { key: 'mine', label: 'Мои видео' },
           ] as { key: VTab; label: string }[]).map(({ key, label }) => {
@@ -1003,6 +1158,10 @@ export const SkyVideo = () => {
                     <ShortsPreview shorts={shorts} onOpen={setActiveShort} />
                   )}
                 </div>
+              )}
+
+              {tab === 'channels' && (
+                <ChannelsListView onOpen={setActiveChannelId} />
               )}
 
               {tab === 'upload' && (

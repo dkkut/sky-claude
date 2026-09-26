@@ -19,7 +19,7 @@ import {
   createDraft, finishUpload, updateVideo, deleteVideo, setThumbnail, publishVideo,
   countView, setLiked, listComments, addComment, removeComment,
   requestMonetization, listMonetizationHistory, monetizationQueue, decideMonetization,
-  listRevenue, adminSearchVideos, setVideoRegions,
+  listRevenue, adminSearchVideos, setVideoRegions, channelInfo, listChannels,
 } from './../skyvideo.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, parseRange, thumbnailIdFor } from './../skyvideostore.mjs';
 import { ticketCookie, ticketFromCookies } from './../skyvideoticket.mjs';
@@ -40,6 +40,7 @@ const UPLOAD_PER_HOUR = 20;
 const VIDEO_ID = /^svid-[0-9a-f-]{36}$/;
 const COMMENT_ID = /^svc-[0-9a-f-]{36}$/;
 const REQUEST_ID = /^svmr-[0-9a-f-]{36}$/;
+const AUTHOR_ID = /^acc-[0-9a-f-]{36}$/;
 
 const VIDEO_SIGNATURES = [
   { mime: 'video/mp4', test: (b) => b.subarray(4, 8).toString('latin1') === 'ftyp' },
@@ -194,6 +195,31 @@ export const skyVideoRoutes = async (req, res, url) => {
       videos: await listFeed(me, {
         q: params.get('q') ?? undefined,
         category: params.get('category') ?? undefined,
+        limit: params.get('limit'),
+        offset: params.get('offset'),
+        sort: params.get('sort') ?? undefined,
+      }),
+    });
+  }
+
+  if (req.method === 'GET' && path === '/api/skyvideo/channels') {
+    if (!rateLimit(`svid:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    return json(res, 200, {
+      channels: await listChannels({ limit: params.get('limit'), offset: params.get('offset') }),
+    });
+  }
+
+  const channelMatch = path.match(/^\/api\/skyvideo\/channel\/([^/]+)$/);
+  if (req.method === 'GET' && channelMatch) {
+    const authorId = channelMatch[1];
+    if (!AUTHOR_ID.test(authorId)) return json(res, 404, { error: 'not_found' });
+    if (!rateLimit(`svid:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const channel = await channelInfo(authorId);
+    if (!channel) return json(res, 404, { error: 'not_found' });
+    return json(res, 200, {
+      channel,
+      videos: await listFeed(me, {
+        authorId,
         limit: params.get('limit'),
         offset: params.get('offset'),
         sort: params.get('sort') ?? undefined,
