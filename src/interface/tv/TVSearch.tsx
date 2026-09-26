@@ -29,6 +29,17 @@ export const TVSearch = ({ onOpenMovie, onBack }: TVSearchProps) => {
   const [history, setHistory] = useState<string[]>(loadHistory());
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Реальный <input>, а не TVFocusable-div — регистрируем его вручную,
+  // чтобы геометрическая навигация (Down от крестика, Up от клавиатуры)
+  // реально находила это поле, а не пролетала мимо несуществующего узла.
+  useEffect(() => {
+    if (!inputRef.current) return;
+    const unregister = tvFocusManager.register({
+      id: 'search-input', el: inputRef.current,
+      onEnter: () => inputRef.current?.focus(),
+    });
+    return unregister;
+  }, []);
   useEffect(() => { tvFocusManager.focusDefault('search-input'); inputRef.current?.focus(); }, []);
 
   const results = useMemo(() => {

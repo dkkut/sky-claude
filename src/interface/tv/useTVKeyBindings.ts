@@ -16,37 +16,57 @@ export interface TVKeyHandlers {
   onShowControls?: () => void;
 }
 
+/** Настоящий текстовый ввод в фокусе (TVSearch — единственное место в
+    Sky TV, где реальный физический ввод печатает прямо в <input>).
+    Стрелки влево/вправо, Backspace и пробел там должны редактировать
+    текст как обычно, а не улетать в пультовую навигацию — иначе с
+    подключённой клавиатурой нельзя было бы ни двигать курсор по
+    введённому запросу, ни стереть букву, ни вставить пробел. */
+const isTypingTarget = () => {
+  const el = document.activeElement;
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+};
+
 export const useTVKeyBindings = (handlers: TVKeyHandlers) => {
   useEffect(() => {
     if (handlers.enabled === false) return;
     const onKeyDown = (e: KeyboardEvent) => {
       const player = handlers.mode === 'player';
+      const typing = !player && isTypingTarget();
       switch (e.key) {
         case 'ArrowUp':
           e.preventDefault();
-          if (player) handlers.onShowControls?.(); else tvFocusManager.move('up');
+          if (player) handlers.onShowControls?.();
+          else { (document.activeElement as HTMLElement | null)?.blur(); tvFocusManager.move('up'); }
           break;
         case 'ArrowDown':
           e.preventDefault();
-          if (player) handlers.onShowControls?.(); else tvFocusManager.move('down');
+          if (player) handlers.onShowControls?.();
+          else { (document.activeElement as HTMLElement | null)?.blur(); tvFocusManager.move('down'); }
           break;
         case 'ArrowLeft':
+          if (typing) break; // курсор по тексту — как обычно
           e.preventDefault();
           if (player) { handlers.onShowControls?.(); handlers.onSeek?.(-10); } else tvFocusManager.move('left');
           break;
         case 'ArrowRight':
+          if (typing) break;
           e.preventDefault();
           if (player) { handlers.onShowControls?.(); handlers.onSeek?.(10); } else tvFocusManager.move('right');
           break;
         case 'Enter':
         case ' ':
+          if (typing) break; // отправку/пробел в поле уже обрабатывает сам input
           e.preventDefault();
           if (player) { handlers.onShowControls?.(); handlers.onPlayPause?.(); if (tvFocusManager.getFocusedId()) tvFocusManager.activate(); }
           else tvFocusManager.activate();
           break;
         case 'Escape':
+          e.preventDefault(); handlers.onBack?.();
+          break;
         case 'Backspace':
         case 'GoBack':
+          if (e.key === 'Backspace' && typing) break; // стирает букву, а не «назад»
           e.preventDefault(); handlers.onBack?.();
           break;
         case 'MediaPlayPause':
