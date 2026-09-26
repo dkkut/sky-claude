@@ -1,34 +1,26 @@
 /* ===========================================================
    VOICE PARTY STORE
-   Комнаты синхронизируются между вкладками через BroadcastChannel
-   (тот же принцип, что и в src/bloom/store.ts). Голос — настоящий
-   P2P WebRTC-mesh поверх уже существующей сигнальной шины
-   src/calls/webrtc.ts (BroadcastChannel-сигналинг). Работает между
-   вкладками ОДНОГО браузера — реальных серверов сигналинга нет,
-   поэтому голос между разными устройствами пока недоступен.
+   Комнаты и их живое состояние (кто внутри, роли, чат, реакции) —
+   реальные, с сервера: HTTP для списка/создания/удаления
+   (src/voiceparty/api.ts, server/routes/voiceparty.mjs), WebSocket
+   для всего, что меняется, пока человек в комнате (server/voiceparty.mjs
+   + case 'vp:*' в server/signal.mjs) — тем же приёмом, что уже
+   применён к матчмейкингу игр (src/gaming/store.ts).
+   Голос — настоящий P2P WebRTC-mesh (src/calls/webrtc.ts), сигналинг
+   которого теперь тоже идёт через сервер, а не BroadcastChannel —
+   поэтому, в отличие от прежней версии, работает между разными
+   людьми и устройствами, а не только между вкладками одного браузера.
 =========================================================== */
 import { create } from 'zustand';
 import { useAuthStore } from '@/core/auth/store';
 import { SkyPeerConnection, bsignal } from '@/calls/webrtc';
+import { wireSend } from '@/core/wire';
+import { apiListRooms, apiCreateRoom, apiDeleteRoom } from './api';
 import type {
-  VPRoom, VPParticipant, VPChatMessage, VPReaction, VPRole, VPCategory, VPRoomPermissions,
+  VPRoom, VPParticipant, VPReaction, VPRole, VPCategory, VPRoomPermissions,
 } from './types';
 
-const KEY = 'sky:voiceparty:v1:rooms';
-const BC_CHANNEL = 'sky:voiceparty:bc:v1';
-const AVATAR_COLORS = ['#4f6ef7','#8b5cf6','#ec4899','#f59e0b','#22c55e','#06b6d4','#ef4444','#a78bfa'];
-
-const nowISO = () => new Date().toISOString();
 const me = () => useAuthStore.getState().currentUserId ?? '';
-const myName = () => useAuthStore.getState().accounts.find(a=>a.id===me())?.name ?? 'Вы';
-const myColor = () => AVATAR_COLORS[Math.abs(hash(me())) % AVATAR_COLORS.length];
-const hash = (s: string) => { let h=0; for (let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return h; };
-const genCode = () => Math.random().toString(36).slice(2,8).toUpperCase();
-
-const loadRooms = (): VPRoom[] => { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; } };
-const persistRooms = (r: VPRoom[]) => { try { localStorage.setItem(KEY, JSON.stringify(r)); } catch {} };
-
-const BC = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(BC_CHANNEL) : null;
 
 /* --- Реальный голос: не часть реактивного состояния (не сериализуется) --- */
 const peers = new Map<string, SkyPeerConnection>();
@@ -55,22 +47,26 @@ function detachRemoteAudio(peerId: string) {
 
 interface VPState {
   rooms: VPRoom[];
+  loading: boolean;
   activeRoomId: string | null;
   localSpeaking: boolean;
   micReady: boolean;
   pttMode: boolean;
+  reactions: VPReaction[];
 
   activeRoom: () => VPRoom | null;
   myParticipant: () => VPParticipant | null;
+  myRole: () => VPRole | null;
   liveRooms: () => VPRoom[];
   scheduledRooms: () => VPRoom[];
   popularRooms: () => VPRoom[];
   roomsByCategory: (c: VPCategory) => VPRoom[];
   searchRooms: (q: string) => VPRoom[];
 
-  createRoom: (title: string, description: string, category: VPCategory, isPrivate: boolean, maxParticipants: number, scheduledFor?: string) => string;
-  deleteRoom: (roomId: string) => void;
-  joinRoom: (roomId: string) => Promise<void>;
+  loadRooms: () => Promise<void>;
+  createRoom: (title: string, description: string, category: VPCategory, isPrivate: boolean, maxParticipants: number, scheduledFor?: string) => Promise<string | null>;
+  deleteRoom: (roomId: string) => Promise<void>;
+  joinRoom: (roomId: string) => void;
   leaveRoom: () => void;
 
   toggleMic: () => void;
@@ -79,7 +75,6 @@ interface VPState {
   raiseHand: () => void;
   lowerHand: () => void;
   sendReaction: (emoji: string) => void;
-  reactions: VPReaction[];
 
   sendChatMessage: (text: string) => void;
   pinMessage: (id: string) => void;
@@ -90,28 +85,32 @@ interface VPState {
   kickParticipant: (memberId: string) => void;
   banParticipant: (memberId: string) => void;
   updatePermissions: (p: Partial<VPRoomPermissions>) => void;
-  myRole: () => VPRole | null;
 
   _connectToPeer: (targetId: string, initiator: boolean) => Promise<void>;
   _teardownPeers: () => void;
+  _startMic: () => Promise<void>;
+
+  /* Применяются событиями с сервера (src/messenger/socket.ts, case 'vp:...') */
+  applyJoined: (room: VPRoom) => void;
+  applyParticipantJoined: (roomId: string, participant: VPParticipant) => void;
+  applyParticipantLeft: (roomId: string, profileId: string) => void;
+  applyParticipantUpdated: (roomId: string, profileId: string, patch: Partial<VPParticipant>) => void;
+  applyRoomUpdated: (roomId: string, permissions: VPRoomPermissions) => void;
+  applyChat: (roomId: string, message: { id: string; authorId: string; text: string; createdAt: string }) => void;
+  applyPin: (roomId: string, messageId: string, pinned: boolean) => void;
+  applyReaction: (roomId: string, reaction: VPReaction) => void;
+  applyKicked: () => void;
 }
 
-const mutRoom = (get: () => VPState, set: (fn: (s: VPState) => Partial<VPState>) => void, roomId: string, fn: (r: VPRoom) => VPRoom) => {
-  set(s => {
-    const rooms = s.rooms.map(r => r.id === roomId ? fn(r) : r);
-    persistRooms(rooms);
-    BC?.postMessage({ type: 'sync', rooms });
-    return { rooms };
-  });
+const upsertRoom = (rooms: VPRoom[], roomId: string, fn: (r: VPRoom) => VPRoom): VPRoom[] => {
+  const idx = rooms.findIndex((r) => r.id === roomId);
+  if (idx < 0) return rooms;
+  const next = [...rooms];
+  next[idx] = fn(next[idx]);
+  return next;
 };
 
 export const useVoicePartyStore = create<VPState>((set, get) => {
-  if (BC) {
-    BC.onmessage = (e) => {
-      if (e.data?.type === 'sync') set({ rooms: e.data.rooms });
-    };
-  }
-
   bsignal.on('__incoming__', async (msg: any) => {
     const uid = me();
     if (!msg.callId?.startsWith('vp:') || msg.to !== uid) return;
@@ -126,7 +125,7 @@ export const useVoicePartyStore = create<VPState>((set, get) => {
       await pc.getMedia(false);
       pc.setMuted(get().myParticipant()?.muted ?? false);
       const answer = await pc.handleOffer(msg.sdp);
-      bsignal.send({ type:'answer', callId: msg.callId, from: uid, to: msg.from, sdp: answer });
+      bsignal.send({ type: 'answer', callId: msg.callId, from: uid, to: msg.from, sdp: answer });
       return;
     }
 
@@ -137,63 +136,61 @@ export const useVoicePartyStore = create<VPState>((set, get) => {
   });
 
   return {
-    rooms: loadRooms(),
+    rooms: [],
+    loading: false,
     activeRoomId: null,
     localSpeaking: false,
     micReady: false,
     pttMode: false,
     reactions: [],
 
-    activeRoom: () => get().rooms.find(r => r.id === get().activeRoomId) ?? null,
-    myParticipant: () => get().activeRoom()?.participants.find(p => p.id === me()) ?? null,
+    activeRoom: () => get().rooms.find((r) => r.id === get().activeRoomId) ?? null,
+    myParticipant: () => get().activeRoom()?.participants.find((p) => p.id === me()) ?? null,
     myRole: () => get().myParticipant()?.role ?? null,
 
-    liveRooms: () => get().rooms.filter(r => !r.ended && !r.scheduledFor && !r.isPrivate),
-    scheduledRooms: () => get().rooms.filter(r => !r.ended && r.scheduledFor && new Date(r.scheduledFor).getTime() > Date.now())
-      .sort((a,b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime()),
-    popularRooms: () => [...get().liveRooms()].sort((a,b) => b.participants.length - a.participants.length).slice(0,6),
-    roomsByCategory: (c) => get().liveRooms().filter(r => r.category === c),
+    liveRooms: () => get().rooms.filter((r) => !r.ended && !r.scheduledFor && !r.isPrivate),
+    scheduledRooms: () => get().rooms.filter((r) => !r.ended && r.scheduledFor && new Date(r.scheduledFor).getTime() > Date.now())
+      .sort((a, b) => new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime()),
+    popularRooms: () => [...get().liveRooms()].sort((a, b) => b.participants.length - a.participants.length).slice(0, 6),
+    roomsByCategory: (c) => get().liveRooms().filter((r) => r.category === c),
     searchRooms: (q) => {
       const query = q.trim().toLowerCase();
       if (!query) return [];
-      return get().rooms.filter(r => !r.ended && (r.title.toLowerCase().includes(query) || r.description.toLowerCase().includes(query)));
+      return get().rooms.filter((r) => !r.ended && (r.title.toLowerCase().includes(query) || r.description.toLowerCase().includes(query)));
     },
 
-    createRoom: (title, description, category, isPrivate, maxParticipants, scheduledFor) => {
-      const uid = me();
-      const owner: VPParticipant = {
-        id: uid, name: myName(), avatarColor: myColor(), role: 'owner', muted: false, handRaised: false,
-        speaking: false, joinedAt: nowISO(), isReal: true,
-      };
-      const room: VPRoom = {
-        id: crypto.randomUUID(), title, description, category, isPrivate, inviteCode: genCode(), ownerId: uid,
-        maxParticipants, participants: scheduledFor ? [] : [owner], messages: [], banned: [],
-        permissions: { whoCanSpeak: 'everyone', whoCanReact: 'everyone', requireApprovalToSpeak: false },
-        createdAt: nowISO(), scheduledFor, ended: false,
-      };
-      set(s => { const rooms = [room, ...s.rooms]; persistRooms(rooms); BC?.postMessage({ type:'sync', rooms }); return { rooms }; });
+    loadRooms: async () => {
+      set({ loading: true });
+      const { live, scheduled } = await apiListRooms();
+      set({ rooms: [...live, ...scheduled], loading: false });
+    },
+
+    createRoom: async (title, description, category, isPrivate, maxParticipants, scheduledFor) => {
+      const room = await apiCreateRoom({ title, description, category, isPrivate, maxParticipants, scheduledFor });
+      if (!room) return null;
+      set((s) => ({ rooms: [room, ...s.rooms] }));
       return room.id;
     },
 
-    deleteRoom: (roomId) => set(s => { const rooms = s.rooms.filter(r => r.id !== roomId); persistRooms(rooms); BC?.postMessage({ type:'sync', rooms }); return { rooms }; }),
+    deleteRoom: async (roomId) => {
+      if (!(await apiDeleteRoom(roomId))) return;
+      set((s) => ({ rooms: s.rooms.filter((r) => r.id !== roomId) }));
+    },
 
-    joinRoom: async (roomId) => {
-      const uid = me();
-      const room = get().rooms.find(r => r.id === roomId);
-      if (!room || room.banned.includes(uid)) return;
-      if (room.participants.length >= room.maxParticipants) return;
-
-      const already = room.participants.some(p => p.id === uid);
-      const requireApproval = room.permissions.requireApprovalToSpeak && room.ownerId !== uid;
-      const participant: VPParticipant = already ? room.participants.find(p=>p.id===uid)! : {
-        id: uid, name: myName(), avatarColor: myColor(), role: requireApproval ? 'listener' : 'speaker',
-        muted: false, handRaised: false, speaking: false, joinedAt: nowISO(), isReal: true,
-      };
-
-      mutRoom(get, set, roomId, r => already ? r : { ...r, participants: [...r.participants, participant] });
+    joinRoom: (roomId) => {
       set({ activeRoomId: roomId });
+      wireSend({ type: 'vp:join', payload: { roomId } });
+    },
 
-      // локальный микрофон + анализ громкости (реально, через Web Audio API)
+    leaveRoom: () => {
+      const roomId = get().activeRoomId;
+      if (roomId) wireSend({ type: 'vp:leave', payload: { roomId } });
+      get()._teardownPeers();
+      set({ activeRoomId: null, localSpeaking: false, micReady: false, reactions: [] });
+    },
+
+    _startMic: async () => {
+      const uid = me();
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const ctx = new AudioContext();
@@ -206,30 +203,27 @@ export const useVoicePartyStore = create<VPState>((set, get) => {
         speakingTimer = setInterval(() => {
           if (!analyser) return;
           analyser.getByteFrequencyData(data);
-          const vol = data.reduce((a,b)=>a+b,0) / data.length;
+          const vol = data.reduce((a, b) => a + b, 0) / data.length;
           const speaking = vol > 12 && !get().myParticipant()?.muted;
           if (speaking !== get().localSpeaking) {
             set({ localSpeaking: speaking });
             const rid = get().activeRoomId;
-            if (rid) mutRoom(get, set, rid, r => ({ ...r, participants: r.participants.map(p => p.id === uid ? { ...p, speaking } : p) }));
+            if (rid) {
+              set((s) => ({ rooms: upsertRoom(s.rooms, rid, (r) => ({
+                ...r, participants: r.participants.map((p) => (p.id === uid ? { ...p, speaking } : p)),
+              })) }));
+            }
           }
         }, 300);
         set({ micReady: true });
       } catch { set({ micReady: false }); }
-
-      // Подключаемся ко всем существующим реальным участникам (mesh)
-      const others = room.participants.filter(p => p.isReal && p.id !== uid);
-      for (const other of others) {
-        const initiator = uid < other.id; // детерминированный tie-break, чтобы не было двойного offer
-        get()._connectToPeer(other.id, initiator);
-      }
     },
 
     _connectToPeer: async (targetId, initiator) => {
       const uid = me();
       const roomId = get().activeRoomId;
       if (!roomId) return;
-      const callId = `vp:${roomId}:${[uid,targetId].sort().join('-')}`;
+      const callId = `vp:${roomId}:${[uid, targetId].sort().join('-')}`;
       if (peers.has(callId)) return;
 
       const pc = new SkyPeerConnection({
@@ -242,129 +236,127 @@ export const useVoicePartyStore = create<VPState>((set, get) => {
 
       if (initiator) {
         const offer = await pc.createOffer();
-        bsignal.send({ type:'offer', callId, from: uid, to: targetId, sdp: offer, mode:'voiceparty', callerName: myName(), callerAvatar: '' });
+        bsignal.send({ type: 'offer', callId, from: uid, to: targetId, sdp: offer, mode: 'voiceparty', callerName: '', callerAvatar: '' });
       }
-    },
-
-    leaveRoom: () => {
-      const uid = me();
-      const roomId = get().activeRoomId;
-      if (roomId) {
-        mutRoom(get, set, roomId, r => ({ ...r, participants: r.participants.filter(p => p.id !== uid) }));
-      }
-      get()._teardownPeers();
-      set({ activeRoomId: null, localSpeaking: false, micReady: false });
     },
 
     _teardownPeers: () => {
-      peers.forEach(p => p.destroy());
+      peers.forEach((p) => p.destroy());
       peers.clear();
       audioEls.forEach((_, id) => detachRemoteAudio(id));
       if (speakingTimer) { clearInterval(speakingTimer); speakingTimer = null; }
-      localStream?.getTracks().forEach(t => t.stop());
+      localStream?.getTracks().forEach((t) => t.stop());
       localStream = null; analyser = null;
     },
 
     toggleMic: () => {
-      const uid = me();
       const roomId = get().activeRoomId;
       if (!roomId) return;
       const nextMuted = !(get().myParticipant()?.muted ?? false);
-      mutRoom(get, set, roomId, r => ({ ...r, participants: r.participants.map(p => p.id === uid ? { ...p, muted: nextMuted, speaking: false } : p) }));
-      peers.forEach(p => p.setMuted(nextMuted));
+      wireSend({ type: 'vp:mute', payload: { roomId, muted: nextMuted } });
+      peers.forEach((p) => p.setMuted(nextMuted));
     },
 
     setPTTMode: (v) => set({ pttMode: v }),
     pttPress: (down) => {
-      const uid = me();
       const roomId = get().activeRoomId;
       if (!roomId || !get().pttMode) return;
-      mutRoom(get, set, roomId, r => ({ ...r, participants: r.participants.map(p => p.id === uid ? { ...p, muted: !down } : p) }));
-      peers.forEach(p => p.setMuted(!down));
+      wireSend({ type: 'vp:mute', payload: { roomId, muted: !down } });
+      peers.forEach((p) => p.setMuted(!down));
     },
 
-    raiseHand: () => {
-      const uid = me(); const roomId = get().activeRoomId; if (!roomId) return;
-      mutRoom(get, set, roomId, r => ({ ...r, participants: r.participants.map(p => p.id === uid ? { ...p, handRaised: true } : p) }));
-    },
-    lowerHand: () => {
-      const uid = me(); const roomId = get().activeRoomId; if (!roomId) return;
-      mutRoom(get, set, roomId, r => ({ ...r, participants: r.participants.map(p => p.id === uid ? { ...p, handRaised: false } : p) }));
-    },
+    raiseHand: () => { const roomId = get().activeRoomId; if (roomId) wireSend({ type: 'vp:hand', payload: { roomId, raised: true } }); },
+    lowerHand: () => { const roomId = get().activeRoomId; if (roomId) wireSend({ type: 'vp:hand', payload: { roomId, raised: false } }); },
 
-    sendReaction: (emoji) => {
-      const reaction: VPReaction = { id: crypto.randomUUID(), emoji, memberId: me(), memberName: myName(), createdAt: nowISO() };
-      set(s => ({ reactions: [...s.reactions.filter(r => Date.now() - new Date(r.createdAt).getTime() < 4000), reaction] }));
-    },
+    sendReaction: (emoji) => { const roomId = get().activeRoomId; if (roomId) wireSend({ type: 'vp:reaction', payload: { roomId, emoji } }); },
 
     sendChatMessage: (text) => {
-      const uid = me();
       const roomId = get().activeRoomId;
       if (!roomId || !text.trim()) return;
-      const msg: VPChatMessage = { id: crypto.randomUUID(), authorId: uid, authorName: myName(), text: text.trim(), createdAt: nowISO(), pinned: false };
-      mutRoom(get, set, roomId, r => ({ ...r, messages: [...r.messages, msg] }));
+      wireSend({ type: 'vp:chat', payload: { roomId, text: text.trim() } });
     },
     pinMessage: (id) => {
-      const roomId = get().activeRoomId; if (!roomId) return;
-      mutRoom(get, set, roomId, r => ({ ...r, messages: r.messages.map(m => m.id === id ? { ...m, pinned: !m.pinned } : m) }));
+      const roomId = get().activeRoomId;
+      if (!roomId) return;
+      const pinned = !get().activeRoom()?.messages.find((m) => m.id === id)?.pinned;
+      wireSend({ type: 'vp:pin', payload: { roomId, messageId: id, pinned } });
     },
 
-    muteParticipant: (memberId) => {
-      const roomId = get().activeRoomId; if (!roomId) return;
-      mutRoom(get, set, roomId, r => ({ ...r, participants: r.participants.map(p => p.id === memberId ? { ...p, muted: true } : p) }));
+    muteParticipant: (memberId) => { const roomId = get().activeRoomId; if (roomId) wireSend({ type: 'vp:role', payload: { roomId, targetId: memberId, role: 'listener' } }); },
+    promoteToSpeaker: (memberId) => { const roomId = get().activeRoomId; if (roomId) wireSend({ type: 'vp:role', payload: { roomId, targetId: memberId, role: 'speaker' } }); },
+    demoteToListener: (memberId) => { const roomId = get().activeRoomId; if (roomId) wireSend({ type: 'vp:role', payload: { roomId, targetId: memberId, role: 'listener' } }); },
+    kickParticipant: (memberId) => { const roomId = get().activeRoomId; if (roomId) wireSend({ type: 'vp:kick', payload: { roomId, targetId: memberId } }); },
+    banParticipant: (memberId) => { const roomId = get().activeRoomId; if (roomId) wireSend({ type: 'vp:ban', payload: { roomId, targetId: memberId } }); },
+    updatePermissions: (p) => { const roomId = get().activeRoomId; if (roomId) wireSend({ type: 'vp:permissions', payload: { roomId, patch: p } }); },
+
+    /* ── Применение серверных событий ─────────────────────────── */
+
+    applyJoined: (room) => {
+      set((s) => {
+        const idx = s.rooms.findIndex((r) => r.id === room.id);
+        const rooms = idx < 0 ? [room, ...s.rooms]
+          : upsertRoom(s.rooms, room.id, (r) => ({ ...room, messages: r.messages }));
+        return { rooms };
+      });
+      void get()._startMic();
+      const uid = me();
+      for (const p of room.participants) {
+        if (p.id === uid) continue;
+        get()._connectToPeer(p.id, uid < p.id);
+      }
     },
-    promoteToSpeaker: (memberId) => {
-      const roomId = get().activeRoomId; if (!roomId) return;
-      mutRoom(get, set, roomId, r => ({ ...r, participants: r.participants.map(p => p.id === memberId ? { ...p, role: 'speaker', handRaised: false } : p) }));
+
+    applyParticipantJoined: (roomId, participant) => {
+      set((s) => ({ rooms: upsertRoom(s.rooms, roomId, (r) => (
+        r.participants.some((p) => p.id === participant.id) ? r : { ...r, participants: [...r.participants, participant] }
+      )) }));
+      if (get().activeRoomId === roomId) {
+        const uid = me();
+        get()._connectToPeer(participant.id, uid < participant.id);
+      }
     },
-    demoteToListener: (memberId) => {
-      const roomId = get().activeRoomId; if (!roomId) return;
-      mutRoom(get, set, roomId, r => ({ ...r, participants: r.participants.map(p => p.id === memberId ? { ...p, role: 'listener', muted: true } : p) }));
+
+    applyParticipantLeft: (roomId, profileId) => {
+      set((s) => ({ rooms: upsertRoom(s.rooms, roomId, (r) => ({ ...r, participants: r.participants.filter((p) => p.id !== profileId) })) }));
+      if (get().activeRoomId === roomId) {
+        const uid = me();
+        const callId = `vp:${roomId}:${[uid, profileId].sort().join('-')}`;
+        peers.get(callId)?.destroy();
+        peers.delete(callId);
+        detachRemoteAudio(profileId);
+      }
     },
-    kickParticipant: (memberId) => {
-      const roomId = get().activeRoomId; if (!roomId) return;
-      mutRoom(get, set, roomId, r => ({ ...r, participants: r.participants.filter(p => p.id !== memberId) }));
+
+    applyParticipantUpdated: (roomId, profileId, patch) => {
+      set((s) => ({ rooms: upsertRoom(s.rooms, roomId, (r) => ({
+        ...r, participants: r.participants.map((p) => (p.id === profileId ? { ...p, ...patch } : p)),
+      })) }));
+      if (get().activeRoomId === roomId && profileId === me() && patch.muted !== undefined) {
+        peers.forEach((p) => p.setMuted(patch.muted!));
+      }
     },
-    banParticipant: (memberId) => {
-      const roomId = get().activeRoomId; if (!roomId) return;
-      mutRoom(get, set, roomId, r => ({ ...r, participants: r.participants.filter(p => p.id !== memberId), banned: [...r.banned, memberId] }));
+
+    applyRoomUpdated: (roomId, permissions) => {
+      set((s) => ({ rooms: upsertRoom(s.rooms, roomId, (r) => ({ ...r, permissions })) }));
     },
-    updatePermissions: (p) => {
-      const roomId = get().activeRoomId; if (!roomId) return;
-      mutRoom(get, set, roomId, r => ({ ...r, permissions: { ...r.permissions, ...p } }));
+
+    applyChat: (roomId, message) => {
+      set((s) => ({ rooms: upsertRoom(s.rooms, roomId, (r) => {
+        const author = r.participants.find((p) => p.id === message.authorId);
+        return { ...r, messages: [...r.messages, { ...message, authorName: author?.name ?? 'Участник', pinned: false }] };
+      }) }));
+    },
+    applyPin: (roomId, messageId, pinned) => {
+      set((s) => ({ rooms: upsertRoom(s.rooms, roomId, (r) => ({ ...r, messages: r.messages.map((m) => (m.id === messageId ? { ...m, pinned } : m)) })) }));
+    },
+    applyReaction: (roomId, reaction) => {
+      set((s) => ({ reactions: [...s.reactions.filter((r) => Date.now() - new Date(r.createdAt).getTime() < 4000), reaction] }));
+      void roomId;
+    },
+
+    applyKicked: () => {
+      get()._teardownPeers();
+      set({ activeRoomId: null, localSpeaking: false, micReady: false, reactions: [] });
     },
   };
-});
-
-/* Синхронизация принудительного мьюта + автоподключение к новым участникам +
-   отключение от тех, кто покинул комнату (реагируем на изменения состояния
-   комнаты, синхронизированного между вкладками через BroadcastChannel). */
-useVoicePartyStore.subscribe((state, prev) => {
-  const uid = me();
-  const room = state.rooms.find(r => r.id === state.activeRoomId);
-  const prevRoom = prev.rooms.find(r => r.id === prev.activeRoomId);
-  if (!room || state.activeRoomId !== prev.activeRoomId) return;
-
-  const mutedNow = room.participants.find(p => p.id === uid)?.muted;
-  const mutedBefore = prevRoom?.participants.find(p => p.id === uid)?.muted;
-  if (mutedNow !== undefined && mutedNow !== mutedBefore) {
-    peers.forEach(p => p.setMuted(mutedNow));
-  }
-
-  const prevIds = new Set((prevRoom?.participants ?? []).map(p => p.id));
-  const nowIds = new Set(room.participants.map(p => p.id));
-
-  room.participants.forEach(p => {
-    if (p.isReal && p.id !== uid && !prevIds.has(p.id)) {
-      useVoicePartyStore.getState()._connectToPeer(p.id, uid < p.id);
-    }
-  });
-  (prevRoom?.participants ?? []).forEach(p => {
-    if (p.id !== uid && !nowIds.has(p.id)) {
-      const callId = `vp:${state.activeRoomId}:${[uid,p.id].sort().join('-')}`;
-      peers.get(callId)?.destroy();
-      peers.delete(callId);
-      detachRemoteAudio(p.id);
-    }
-  });
 });

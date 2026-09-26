@@ -18,10 +18,15 @@ export const CreateRoom = ({ onBack, onCreated }: { onBack: () => void; onCreate
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduledFor, setScheduledFor] = useState('');
 
-  const submit = () => {
-    if (!title.trim()) return;
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    if (!title.trim() || submitting) return;
+    setSubmitting(true);
     const scheduled = scheduleMode && !!scheduledFor;
-    const id = createRoom(title.trim(), description.trim(), category, isPrivate, maxParticipants, scheduled ? new Date(scheduledFor).toISOString() : undefined);
+    const id = await createRoom(title.trim(), description.trim(), category, isPrivate, maxParticipants, scheduled ? new Date(scheduledFor).toISOString() : undefined);
+    setSubmitting(false);
+    if (!id) return;
     if (scheduled) onBack(); else onCreated(id);
   };
 
@@ -92,9 +97,9 @@ export const CreateRoom = ({ onBack, onCreated }: { onBack: () => void; onCreate
       </div>
 
       <div className="shrink-0 p-4">
-        <motion.button type="button" whileTap={title.trim() ? { scale: 0.98 } : {}} disabled={!title.trim()} onClick={submit}
+        <motion.button type="button" whileTap={title.trim() ? { scale: 0.98 } : {}} disabled={!title.trim() || submitting} onClick={submit}
           className="sky-btn-primary w-full justify-center py-3.5 text-[14.5px] disabled:opacity-40">
-          <Check size={15}/>{scheduleMode ? 'Запланировать' : 'Создать и начать'}
+          <Check size={15}/>{submitting ? 'Секунду…' : scheduleMode ? 'Запланировать' : 'Создать и начать'}
         </motion.button>
       </div>
     </div>

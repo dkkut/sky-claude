@@ -25,23 +25,11 @@ export type SignalMsg =
   | { type: 'end';       callId: string; from: string; to: string }
   | { type: 'unavailable'; callId: string; from: string; to: string };
 
-/**
- * Голосовые комнаты пока живут только в браузере: их состав нигде на
- * сервере не хранится, и общего чата у участников может не быть. Пока
- * это так, их сигналинг остаётся на BroadcastChannel — то есть между
- * вкладками одного браузера, как и сама комната.
- */
-const PARTY_PREFIX = 'vp:';
-const isParty = (callId: string) => callId.startsWith(PARTY_PREFIX);
-
-const SIG_CHANNEL = 'sky:signal:v1';
-
 /** Сколько держим кандидатов, пришедших до ответа на звонок. */
 const PENDING_TTL_MS = 60_000;
 const PENDING_MAX = 100;
 
 class SkySignal {
-  private bc: BroadcastChannel | null = null;
   /**
    * На один звонок подписаны двое: сам SkyPeerConnection (ему нужны
    * ICE-кандидаты) и стор (ему нужны ответ, отказ, завершение). Раньше
@@ -52,14 +40,7 @@ class SkySignal {
   /** Пришло раньше, чем появился получатель, — придержим и отдадим потом. */
   private pending = new Map<string, { at: number; msgs: SignalMsg[] }>();
 
-  init() {
-    if (this.bc) return;
-    if (typeof BroadcastChannel === 'undefined') return;
-    this.bc = new BroadcastChannel(SIG_CHANNEL);
-    this.bc.onmessage = (e) => this.receive(e.data as SignalMsg);
-  }
-
-  /** Единая точка входа: сюда приходит и от хаба, и от комнат. */
+  /** Единая точка входа: сюда приходит всё от хаба (server/signal.mjs). */
   receive(msg: SignalMsg) {
     if (!msg?.callId) return;
     const set = this.handlers.get(msg.callId);
@@ -85,7 +66,6 @@ class SkySignal {
   }
 
   send(msg: SignalMsg) {
-    if (isParty(msg.callId)) { this.bc?.postMessage(msg); return; }
     // «to» — единственное, что сервер берёт от клиента: кому звоним.
     // Кто звонит, он знает сам из сессии.
     switch (msg.type) {
@@ -257,4 +237,3 @@ export class SkyPeerConnection {
 }
 
 // Инициализируем сигнал при импорте модуля
-bsignal.init();

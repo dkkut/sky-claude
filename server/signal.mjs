@@ -50,6 +50,12 @@ import {
 import {
   joinQueue, leaveQueue, acceptMatch, declineMatch, sweepStaleMatches, myActiveMatch,
 } from './matchmaking.mjs';
+import {
+  joinRoom as vpJoinRoom, leaveRoom as vpLeaveRoom, leaveAllRooms as vpLeaveAllRooms,
+  memberIds as vpMemberIds, isMember as vpIsMember, bothInRoom as vpBothInRoom, roomIdFromCallId as vpRoomIdFromCallId,
+  setMuted as vpSetMuted, setHandRaised as vpSetHandRaised, setRole as vpSetRole,
+  kick as vpKick, ban as vpBan, canModerate as vpCanModerate, isOwner as vpIsOwner, updatePermissions as vpUpdatePermissions,
+} from './voiceparty.mjs';
 
 const PORT = Number(process.env.SIGNAL_PORT || 8081);
 
@@ -919,6 +925,115 @@ const handle = async (ws, session, msg) => {
       break;
     }
 
+    /* ── Войс-пати ────────────────────────────────────────────────
+       Кто в комнате — держит этот же хаб в памяти (server/voiceparty.mjs),
+       а не localStorage браузера. roomId/targetId приходят от клиента,
+       но действие всегда проверяется от имени me — так же, как в
+       матчмейкинге выше. ── */
+
+    case 'vp:join': {
+      const roomId = String(payload?.roomId ?? '');
+      if (!roomId) return;
+      if (!rateLimit(`vp:write:${me}`, 30)) return;
+      const r = await vpJoinRoom(me, roomId);
+      if (r.error) { send(ws, { type: 'vp:error', payload: r }); break; }
+      send(ws, { type: 'vp:joined', payload: { room: r.room, participants: r.participants, myRole: r.myRole } });
+      const mine = r.participants.find((p) => p.id === me);
+      broadcast(vpMemberIds(roomId), { type: 'vp:participant-joined', payload: { roomId, participant: mine } }, me);
+      break;
+    }
+
+    case 'vp:leave': {
+      const roomId = String(payload?.roomId ?? '');
+      if (!roomId) return;
+      const others = vpMemberIds(roomId).filter((id) => id !== me);
+      await vpLeaveRoom(me, roomId);
+      send(ws, { type: 'vp:left', payload: { roomId } });
+      broadcast(others, { type: 'vp:participant-left', payload: { roomId, profileId: me } });
+      break;
+    }
+
+    case 'vp:mute':
+    case 'vp:hand': {
+      const roomId = String(payload?.roomId ?? '');
+      if (!roomId || !vpIsMember(roomId, me)) return;
+      const ok = type === 'vp:mute'
+        ? vpSetMuted(roomId, me, Boolean(payload?.muted))
+        : vpSetHandRaised(roomId, me, Boolean(payload?.raised));
+      if (!ok) return;
+      broadcast(vpMemberIds(roomId), {
+        type: 'vp:participant-updated',
+        payload: { roomId, profileId: me, patch: type === 'vp:mute' ? { muted: Boolean(payload?.muted) } : { handRaised: Boolean(payload?.raised) } },
+      });
+      break;
+    }
+
+    case 'vp:role': {
+      const roomId = String(payload?.roomId ?? '');
+      const targetId = String(payload?.targetId ?? '');
+      const role = String(payload?.role ?? '');
+      if (!roomId || !targetId) return;
+      const needsOwner = role === 'admin' || role === 'moderator';
+      const allowed = needsOwner ? await vpIsOwner(roomId, me) : vpCanModerate(roomId, me);
+      if (!allowed) { send(ws, { type: 'vp:error', payload: { error: 'not_allowed' } }); break; }
+      if (!vpSetRole(roomId, targetId, role)) { send(ws, { type: 'vp:error', payload: { error: 'not_found' } }); break; }
+      broadcast(vpMemberIds(roomId), { type: 'vp:participant-updated', payload: { roomId, profileId: targetId, patch: { role } } });
+      break;
+    }
+
+    case 'vp:kick':
+    case 'vp:ban': {
+      const roomId = String(payload?.roomId ?? '');
+      const targetId = String(payload?.targetId ?? '');
+      if (!roomId || !targetId || targetId === me) return;
+      const allowed = type === 'vp:ban' ? await vpIsOwner(roomId, me) : vpCanModerate(roomId, me);
+      if (!allowed) { send(ws, { type: 'vp:error', payload: { error: 'not_allowed' } }); break; }
+      const others = vpMemberIds(roomId).filter((id) => id !== targetId);
+      const ok = type === 'vp:ban' ? await vpBan(roomId, targetId) : vpKick(roomId, targetId);
+      if (!ok) { send(ws, { type: 'vp:error', payload: { error: 'not_found' } }); break; }
+      sendTo(targetId, { type: 'vp:kicked', payload: { roomId, banned: type === 'vp:ban' } });
+      broadcast(others, { type: 'vp:participant-left', payload: { roomId, profileId: targetId } });
+      break;
+    }
+
+    case 'vp:permissions': {
+      const roomId = String(payload?.roomId ?? '');
+      if (!roomId || !(await vpIsOwner(roomId, me))) return;
+      const next = await vpUpdatePermissions(roomId, payload?.patch ?? {});
+      if (!next) return;
+      broadcast(vpMemberIds(roomId), { type: 'vp:room-updated', payload: { roomId, permissions: next } });
+      break;
+    }
+
+    case 'vp:chat': {
+      const roomId = String(payload?.roomId ?? '');
+      const text = String(payload?.text ?? '').trim().slice(0, 500);
+      if (!roomId || !text || !vpIsMember(roomId, me)) return;
+      if (!rateLimit(`vp:chat:${me}`, 60)) return;
+      const message = { id: crypto.randomUUID(), authorId: me, text, createdAt: new Date().toISOString() };
+      broadcast(vpMemberIds(roomId), { type: 'vp:chat', payload: { roomId, message } });
+      break;
+    }
+
+    case 'vp:pin': {
+      const roomId = String(payload?.roomId ?? '');
+      const messageId = String(payload?.messageId ?? '');
+      if (!roomId || !messageId || !vpCanModerate(roomId, me)) return;
+      broadcast(vpMemberIds(roomId), { type: 'vp:pin', payload: { roomId, messageId, pinned: Boolean(payload?.pinned) } });
+      break;
+    }
+
+    case 'vp:reaction': {
+      const roomId = String(payload?.roomId ?? '');
+      const emoji = String(payload?.emoji ?? '').slice(0, 8);
+      if (!roomId || !emoji || !vpIsMember(roomId, me)) return;
+      broadcast(vpMemberIds(roomId), {
+        type: 'vp:reaction',
+        payload: { roomId, reaction: { id: crypto.randomUUID(), emoji, memberId: me, createdAt: new Date().toISOString() } },
+      });
+      break;
+    }
+
     /* ── Приватность профиля ───────────────────────────────────────
        Настройка защищает человека от других, поэтому живёт на сервере,
        а не галочкой в браузере: свой клиент можно переписать. ── */
@@ -1180,10 +1295,19 @@ const handle = async (ws, session, msg) => {
       const callId = String(payload?.callId ?? '');
       if (!callId || callId.length > 128) return;
 
-      if (!(await shareAChat(me, to))) {
-        // Звонить можно только тем, с кем есть общий чат: иначе по
-        // одному лишь идентификатору можно было бы дозвониться до
-        // любого. Звонящему отвечаем, чтобы он не слушал гудки.
+      // Войс-пати: звонить можно тем, кто прямо сейчас в той же комнате
+      // (roomId зашит в сам callId) — это уже проверенное сервером
+      // членство (server/voiceparty.mjs), не общий чат и не настройка
+      // «кто может звонить»: заходя в публичную комнату, человек уже
+      // согласился слышать её участников.
+      const partyRoom = vpRoomIdFromCallId(callId);
+      const isParty = partyRoom !== null;
+
+      if (isParty ? !vpBothInRoom(partyRoom, me, to) : !(await shareAChat(me, to))) {
+        // Звонить можно только тем, с кем есть общий чат (или общая
+        // войс-комната): иначе по одному лишь идентификатору можно было
+        // бы дозвониться до любого. Звонящему отвечаем, чтобы он не
+        // слушал гудки.
         if (type === 'call-offer') send(ws, { type: 'call-unavailable', from: to, callId });
         return;
       }
@@ -1198,10 +1322,9 @@ const handle = async (ws, session, msg) => {
         }
       }
 
-      // Настройка «кто может звонить» получателя. Проверяется на первом
-      // приглашении: дальше идут ответ и обмен адресами уже начатого
-      // разговора, и гонять запрос на каждый кандидат ICE незачем.
-      if (type === 'call-offer' && !(await mayCall(to, me))) {
+      // Настройка «кто может звонить» получателя — касается личных
+      // звонков. В войс-пати её нет: человек уже сам зашёл в комнату.
+      if (!isParty && type === 'call-offer' && !(await mayCall(to, me))) {
         send(ws, { type: 'call-unavailable', from: to, callId });
         return;
       }
@@ -1450,6 +1573,13 @@ export const startSignalHub = () => {
       // человек оставался бы в очереди до перезапуска сервера, и его
       // мог бы «найти» кто-то ещё, кому отвечать уже некому.
       leaveQueue(uid).catch(() => {});
+      // Полный оффлайн — выходим из всех войс-комнат сразу: иначе
+      // закрывший браузер человек оставался бы в списке участников
+      // навсегда, и комната с одним «призраком» никогда бы не считалась
+      // пустой.
+      vpLeaveAllRooms(uid).then((rooms) => {
+        for (const roomId of rooms) broadcast(vpMemberIds(roomId), { type: 'vp:participant-left', payload: { roomId, profileId: uid } });
+      }).catch(() => {});
       // Тот же список, что и при входе: скрывшийся не «уходит» у других,
       // потому что он у них и не появлялся.
       for (const other of await presenceAudience(uid)) {

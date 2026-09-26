@@ -20,6 +20,8 @@ import { useAdminStore, ADMIN_ERRORS, POST_ERRORS } from './adminStore';
 import { useSettings } from '@/settings/store';
 import { usePrivacyStore } from '@/profile/privacyStore';
 import { useGamingStore, type MatchInfo } from '@/gaming/store';
+import { useVoicePartyStore } from '@/voiceparty/store';
+import { toClientRoom, toClientParticipant } from '@/voiceparty/api';
 import type { MessageItem, ChatItem, ChatType } from './types';
 
 /* ─── Приведение серверных данных к виду интерфейса ───────────────────── */
@@ -360,6 +362,38 @@ const handle = (data: any) => {
       break;
     case 'mm:error':
       useGamingStore.getState().applyMmError();
+      break;
+
+    /* ── Войс-пати: кто внутри и живое состояние комнаты — с сервера ── */
+    case 'vp:joined':
+      useVoicePartyStore.getState().applyJoined(toClientRoom(payload?.room));
+      break;
+    case 'vp:participant-joined':
+      useVoicePartyStore.getState().applyParticipantJoined(payload?.roomId, toClientParticipant(payload?.participant));
+      break;
+    case 'vp:participant-left':
+      useVoicePartyStore.getState().applyParticipantLeft(payload?.roomId, payload?.profileId);
+      break;
+    case 'vp:participant-updated':
+      useVoicePartyStore.getState().applyParticipantUpdated(payload?.roomId, payload?.profileId, payload?.patch ?? {});
+      break;
+    case 'vp:room-updated':
+      useVoicePartyStore.getState().applyRoomUpdated(payload?.roomId, payload?.permissions);
+      break;
+    case 'vp:chat':
+      useVoicePartyStore.getState().applyChat(payload?.roomId, payload?.message);
+      break;
+    case 'vp:pin':
+      useVoicePartyStore.getState().applyPin(payload?.roomId, payload?.messageId, Boolean(payload?.pinned));
+      break;
+    case 'vp:reaction':
+      useVoicePartyStore.getState().applyReaction(payload?.roomId, payload?.reaction);
+      break;
+    case 'vp:kicked':
+      useVoicePartyStore.getState().applyKicked();
+      break;
+    case 'vp:left':
+    case 'vp:error':
       break;
 
     /* ── Управление группой и каналом ── */

@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RoomsList } from './components/RoomsList';
 import { CreateRoom } from './components/CreateRoom';
 import { RoomView } from './components/RoomView';
+import { useVoicePartyStore } from './store';
 
 type View = { screen: 'list' } | { screen: 'create' } | { screen: 'room'; roomId: string };
 
 export const VoicePartyModule = () => {
   const [view, setView] = useState<View>({ screen: 'list' });
+  const loadRooms = useVoicePartyStore((s) => s.loadRooms);
+  useEffect(() => { void loadRooms(); }, [loadRooms]);
 
   return (
     <div className="relative h-full overflow-hidden">
