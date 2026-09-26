@@ -33,27 +33,36 @@ const toCatalogItem = (r) => ({
   id: r.id, name: r.name, description: r.description, emoji: r.emoji,
   pricePoints: Number(r.price_points), gradient: r.gradient,
   mediaId: r.media_id, thumbMediaId: r.thumb_media_id,
+  // 'image' | 'video' | 'animation' | null — клиенту нужно знать это,
+  // чтобы решить, рисовать <img> или <video> (см. gift_media.kind).
+  mediaKind: r.media_kind ?? null, thumbKind: r.thumb_kind ?? null,
   rarity: r.rarity, seasonal: r.seasonal, active: r.active,
   sortOrder: r.sort_order,
 });
 
+const CATALOG_SELECT = `
+  SELECT c.*, mm.kind AS media_kind, tm.kind AS thumb_kind
+    FROM gift_catalog c
+    LEFT JOIN gift_media mm ON mm.id = c.media_id
+    LEFT JOIN gift_media tm ON tm.id = c.thumb_media_id`;
+
 /** Каталог для витрины — только активные подарки. */
 export const listCatalog = async () => {
   const { rows } = await query(
-    `SELECT * FROM gift_catalog WHERE active ORDER BY sort_order ASC, created_at ASC`,
+    `${CATALOG_SELECT} WHERE c.active ORDER BY c.sort_order ASC, c.created_at ASC`,
   );
   return rows.map(toCatalogItem);
 };
 
 /** Каталог для админки — включая выключенные. */
 export const adminListCatalog = async () => {
-  const { rows } = await query(`SELECT * FROM gift_catalog ORDER BY sort_order ASC, created_at ASC`);
+  const { rows } = await query(`${CATALOG_SELECT} ORDER BY c.sort_order ASC, c.created_at ASC`);
   return rows.map(toCatalogItem);
 };
 
 const readCatalogItem = async (id) => {
   if (!GIFT_ID_RE.test(String(id ?? ''))) return null;
-  const { rows } = await query('SELECT * FROM gift_catalog WHERE id = $1', [id]);
+  const { rows } = await query(`${CATALOG_SELECT} WHERE c.id = $1`, [id]);
   return rows[0] ? toCatalogItem(rows[0]) : null;
 };
 export { readCatalogItem as getCatalogItem };
@@ -430,6 +439,7 @@ const toInstanceView = (r) => ({
   senderId: r.sender_id, senderName: r.sender_name, recipientId: r.recipient_id, recipientName: r.recipient_name,
   chatId: r.chat_id, caption: r.caption,
   savedToProfile: r.saved_to_profile, createdAt: r.created_at.toISOString(),
+  mediaKind: r.media_kind ?? null, thumbKind: r.thumb_kind ?? null,
   status: r.status,
   cancelledAt: r.cancelled_at ? r.cancelled_at.toISOString() : null,
   // Крайний срок отмены считается на сервере из created_at — клиент
@@ -441,11 +451,14 @@ const toInstanceView = (r) => ({
 });
 
 const INSTANCE_SELECT = `
-  SELECT i.*, c.name, c.emoji, c.gradient, c.rarity, sp.name AS sender_name, rp.name AS recipient_name
+  SELECT i.*, c.name, c.emoji, c.gradient, c.rarity, sp.name AS sender_name, rp.name AS recipient_name,
+         mm.kind AS media_kind, tm.kind AS thumb_kind
     FROM gift_instances i
     JOIN gift_catalog c ON c.id = i.gift_catalog_id
     JOIN profiles sp ON sp.id = i.sender_id
-    JOIN profiles rp ON rp.id = i.recipient_id`;
+    JOIN profiles rp ON rp.id = i.recipient_id
+    LEFT JOIN gift_media mm ON mm.id = i.media_id
+    LEFT JOIN gift_media tm ON tm.id = i.thumb_media_id`;
 
 /** Экземпляр подарка — только его отправитель или получатель. */
 export const getInstance = async (viewerId, instanceId) => {

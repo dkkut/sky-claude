@@ -13,6 +13,8 @@ import type { SentGift, GiftRarity } from './store';
 const RARITIES: GiftRarity[] = ['common', 'rare', 'epic', 'legendary', 'unique'];
 const asRarity = (r: string): GiftRarity => (RARITIES.includes(r as GiftRarity) ? (r as GiftRarity) : 'common');
 
+export type GiftMediaKind = 'image' | 'video' | 'animation' | null;
+
 export interface GiftCatalogItem {
   id: string;
   name: string;
@@ -22,11 +24,15 @@ export interface GiftCatalogItem {
   gradient: string;
   mediaId: string | null;
   thumbMediaId: string | null;
+  mediaKind: GiftMediaKind;
+  thumbKind: GiftMediaKind;
   rarity: string;
   seasonal: boolean;
   active: boolean;
   sortOrder: number;
 }
+
+export type GiftInstanceStatus = 'delivered' | 'cancelled';
 
 export interface GiftInstance {
   id: string;
@@ -37,6 +43,8 @@ export interface GiftInstance {
   rarity: string;
   mediaId: string | null;
   thumbMediaId: string | null;
+  mediaKind: GiftMediaKind;
+  thumbKind: GiftMediaKind;
   senderId: string;
   senderName: string;
   recipientId: string;
@@ -45,6 +53,11 @@ export interface GiftInstance {
   caption: string;
   savedToProfile: boolean;
   createdAt: string;
+  status: GiftInstanceStatus;
+  cancelledAt: string | null;
+  cancelDeadline: string;
+  archivedBySender: boolean;
+  archivedByRecipient: boolean;
 }
 
 export interface PrimeTier { days: number; price: number }
@@ -59,12 +72,18 @@ export interface PrimeGiftInstance {
   theme: string;
   mediaId: string | null;
   thumbMediaId: string | null;
+  mediaKind: GiftMediaKind;
+  thumbKind: GiftMediaKind;
   message: string;
   chatId: string | null;
   status: PrimeGiftStatus;
   unavailableReason: string | null;
   activatedAt: string | null;
   createdAt: string;
+  cancelledAt: string | null;
+  cancelDeadline: string;
+  archivedBySender: boolean;
+  archivedByRecipient: boolean;
 }
 
 export interface NftOwner { id: string; name: string; since: string | null; transferred: boolean }
@@ -103,6 +122,8 @@ const ERRORS: Record<string, string> = {
   invalid_type: 'Неверный тип продажи',
   invalid_price: 'Неверная цена',
   already_listed: 'Уже выставлен на продажу',
+  already_cancelled: 'Уже отменён',
+  window_expired: 'Три часа на отмену уже прошли',
 };
 export const giftErrorText = (code?: string) => ERRORS[code ?? ''] ?? 'Не получилось';
 
@@ -152,6 +173,30 @@ export const apiMySentGifts = async (): Promise<GiftInstance[]> => {
   const r = await apiCall<{ items: GiftInstance[] }>('/api/gifts/mine/sent');
   return r.ok ? (r.data?.items ?? []) : [];
 };
+export const apiMyReceivedGiftsArchived = async (): Promise<GiftInstance[]> => {
+  const r = await apiCall<{ items: GiftInstance[] }>('/api/gifts/mine/received/archived');
+  return r.ok ? (r.data?.items ?? []) : [];
+};
+export const apiMySentGiftsArchived = async (): Promise<GiftInstance[]> => {
+  const r = await apiCall<{ items: GiftInstance[] }>('/api/gifts/mine/sent/archived');
+  return r.ok ? (r.data?.items ?? []) : [];
+};
+
+/** Отмена в течение 3 часов — только отправитель (см. server/gifts.mjs). */
+export const apiCancelGift = async (instanceId: string) => {
+  const r = await apiCall<{ instance: GiftInstance }>(
+    `/api/gifts/instances/${encodeURIComponent(instanceId)}/cancel`, { method: 'POST' });
+  if (r.ok) return { ok: true as const, instance: r.data?.instance ?? null };
+  return { ok: false as const, reason: giftErrorText(r.error), code: r.error };
+};
+
+/** Архив — по каждой стороне отдельно, отправитель и получатель независимо. */
+export const apiArchiveGift = async (instanceId: string, on: boolean) => {
+  const r = await apiCall(`/api/gifts/instances/${encodeURIComponent(instanceId)}/archive`, {
+    method: 'POST', body: JSON.stringify({ on }),
+  });
+  return r.ok ? { ok: true as const } : { ok: false as const, reason: giftErrorText(r.error) };
+};
 export const apiPublicProfileGifts = async (userId: string): Promise<{ hidden: boolean; items: GiftInstance[] }> => {
   const r = await apiCall<{ hidden: boolean; items: GiftInstance[] }>(`/api/gifts/profile/${encodeURIComponent(userId)}`);
   return r.ok ? (r.data ?? { hidden: false, items: [] }) : { hidden: false, items: [] };
@@ -191,6 +236,28 @@ export const apiMySentPrimeGifts = async (): Promise<PrimeGiftInstance[]> => {
 export const apiMyReceivedPrimeGifts = async (): Promise<PrimeGiftInstance[]> => {
   const r = await apiCall<{ items: PrimeGiftInstance[] }>('/api/gifts/prime/mine/received');
   return r.ok ? (r.data?.items ?? []) : [];
+};
+export const apiMySentPrimeGiftsArchived = async (): Promise<PrimeGiftInstance[]> => {
+  const r = await apiCall<{ items: PrimeGiftInstance[] }>('/api/gifts/prime/mine/sent/archived');
+  return r.ok ? (r.data?.items ?? []) : [];
+};
+export const apiMyReceivedPrimeGiftsArchived = async (): Promise<PrimeGiftInstance[]> => {
+  const r = await apiCall<{ items: PrimeGiftInstance[] }>('/api/gifts/prime/mine/received/archived');
+  return r.ok ? (r.data?.items ?? []) : [];
+};
+
+export const apiCancelPrimeGift = async (instanceId: string) => {
+  const r = await apiCall<{ instance: PrimeGiftInstance }>(
+    `/api/gifts/prime/instances/${encodeURIComponent(instanceId)}/cancel`, { method: 'POST' });
+  if (r.ok) return { ok: true as const, instance: r.data?.instance ?? null };
+  return { ok: false as const, reason: giftErrorText(r.error), code: r.error };
+};
+
+export const apiArchivePrimeGift = async (instanceId: string, on: boolean) => {
+  const r = await apiCall(`/api/gifts/prime/instances/${encodeURIComponent(instanceId)}/archive`, {
+    method: 'POST', body: JSON.stringify({ on }),
+  });
+  return r.ok ? { ok: true as const } : { ok: false as const, reason: giftErrorText(r.error) };
 };
 
 /* ─── NFT: владение, история, передача ──────────────────────────────── */
@@ -329,5 +396,7 @@ export const toSentGift = (i: GiftInstance): SentGift => {
     fromId: i.senderId, fromName: i.senderName, toId: i.recipientId, toName: i.recipientName,
     chatId: i.chatId ?? '', savedToProfile: i.savedToProfile, message: i.caption,
     sentAt: i.createdAt, price: 0,
+    mediaId: i.mediaId, mediaKind: i.mediaKind, status: i.status, cancelDeadline: i.cancelDeadline,
+    archivedBySender: i.archivedBySender, archivedByRecipient: i.archivedByRecipient,
   };
 };

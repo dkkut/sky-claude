@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, type TargetAndTransition } from 'framer-motion';
-import { X, ChevronLeft, Check, Heart, ShoppingCart, Star, Search } from 'lucide-react';
+import { X, ChevronLeft, Check, Heart, ShoppingCart, Star, Search, Ban, Clock3, Archive, ArchiveRestore } from 'lucide-react';
 import {
   GIFT_CATALOG, GIFT_RARITY_LABEL, GIFT_RARITY_COLOR, GIFT_RARITY_GLOW,
   RARITY_CARD_BG, RARITY_CARD_BORDER, RARITY_SHIMMER, RARITY_STARS,
@@ -14,7 +14,8 @@ import {
 } from './store';
 import {
   apiGiftCatalog, apiSendGift, apiMyProfileGifts, apiMyReceivedGifts, apiMySentGifts,
-  apiPublicProfileGifts, toSentGift, type GiftCatalogItem,
+  apiMyReceivedGiftsArchived, apiMySentGiftsArchived, apiArchiveGift,
+  apiPublicProfileGifts, toSentGift, giftMediaUrl, apiCancelGift, type GiftCatalogItem,
 } from './giftsApi';
 import { useMoney } from '@/wallet/store';
 import { useAuthStore } from '@/core/auth/store';
@@ -655,8 +656,26 @@ export const GiftModal = ({ toUserId, toName, onClose, onSent }: GiftModalProps)
   );
 };
 
+/** «2ч 14м» до конца окна отмены — пересчитывается раз в минуту, не чаще. */
+const useCountdown = (deadline?: string) => {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!deadline) return;
+    const id = setInterval(() => tick(t => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, [deadline]);
+  if (!deadline) return null;
+  const ms = new Date(deadline).getTime() - Date.now();
+  if (ms <= 0) return null;
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return h > 0 ? `${h}ч ${m}м` : `${m}м`;
+};
+
 /* -- Gift Bubble (in chat message) ---------------------------- */
-export const GiftBubble = ({ gift, fromMe }: { gift: SentGift; fromMe: boolean }) => {
+export const GiftBubble = ({ gift, fromMe, onCancelled }: {
+  gift: SentGift; fromMe: boolean; onCancelled?: (updated: SentGift) => void;
+}) => {
   const rc = GIFT_RARITY_COLOR[gift.giftRarity];
   const rg = GIFT_RARITY_GLOW[gift.giftRarity] ?? 'rgba(79,110,247,0.3)';
   const grad0 = gift.giftGrad?.[0] ?? 'var(--bg)';
@@ -664,6 +683,21 @@ export const GiftBubble = ({ gift, fromMe }: { gift: SentGift; fromMe: boolean }
   const isEpic = ['epic','legendary','unique'].includes(gift.giftRarity);
   const [hovered, setHovered] = useState(false);
   const isMobile = useIsMobile();
+  const isCancelled = gift.status === 'cancelled';
+  const timeLeft = useCountdown(isCancelled ? undefined : gift.cancelDeadline);
+  const canCancel = fromMe && !isCancelled && Boolean(onCancelled) && Boolean(timeLeft);
+  const [cancelling, setCancelling] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const mediaUrl = giftMediaUrl(gift.mediaId);
+  const isVideo = gift.mediaKind === 'video' && Boolean(mediaUrl);
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    const r = await apiCancelGift(gift.id);
+    setCancelling(false);
+    setConfirming(false);
+    if (r.ok && r.instance) onCancelled?.(toSentGift(r.instance));
+  };
 
   return (
     <motion.div initial={{ scale:.75, opacity:0, y:20 }} animate={{ scale:1, opacity:1, y:0 }}
@@ -710,7 +744,7 @@ export const GiftBubble = ({ gift, fromMe }: { gift: SentGift; fromMe: boolean }
           )}
 
           {/* Particles */}
-          {isEpic && (
+          {isEpic && !isCancelled && (
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
               {[...Array(6)].map((_,i) => (
                 <motion.div key={i} className="absolute rounded-full"
@@ -721,16 +755,35 @@ export const GiftBubble = ({ gift, fromMe }: { gift: SentGift; fromMe: boolean }
             </div>
           )}
 
-          <div className="px-5 pt-5 pb-4">
-            {/* 3D Emoji */}
-            <div style={{ transform:'translateZ(20px)', display:'inline-block', marginBottom:8 }}>
-              <motion.div style={{ fontSize:52, lineHeight:1, display:'block', textAlign:'center',
-                filter:`drop-shadow(0 8px 16px ${rc}60)` }}
-                animate={{ y:[0,-10,0], scale:[1,1.15,1], rotate:[0, hovered?5:2, 0] }}
-                transition={{ duration:1.8, repeat:Infinity, ease:'easeInOut' }}>
-                {gift.giftEmoji}
-              </motion.div>
-            </div>
+          {isCancelled && (
+            <div className="absolute inset-0 z-10 pointer-events-none"
+              style={{ background:'rgba(10,10,14,0.55)', filter:'saturate(0.4)' }}/>
+          )}
+
+          <div className="px-5 pt-5 pb-4 relative" style={{ opacity: isCancelled ? 0.75 : 1 }}>
+            {/* Видео-подарок анимируется само по себе — эмодзи-обёртка ему не нужна */}
+            {isVideo ? (
+              <div className="mx-auto mb-2 overflow-hidden rounded-2xl" style={{ width: 128, height: 128 }}>
+                <video src={mediaUrl ?? undefined} autoPlay loop muted playsInline
+                  className="h-full w-full object-cover" />
+              </div>
+            ) : (
+              <div style={{ transform:'translateZ(20px)', display:'inline-block', marginBottom:8 }}>
+                <motion.div style={{ fontSize:52, lineHeight:1, display:'block', textAlign:'center',
+                  filter:`drop-shadow(0 8px 16px ${rc}60)` }}
+                  animate={isCancelled ? undefined : { y:[0,-10,0], scale:[1,1.15,1], rotate:[0, hovered?5:2, 0] }}
+                  transition={{ duration:1.8, repeat:Infinity, ease:'easeInOut' }}>
+                  {gift.giftEmoji}
+                </motion.div>
+              </div>
+            )}
+
+            {isCancelled && (
+              <span className="mb-1.5 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9px] font-bold"
+                style={{ background:'rgba(248,113,113,0.18)', color:'#fca5a5' }}>
+                <Ban size={10}/> Отменён
+              </span>
+            )}
 
             {/* Rarity stars */}
             <div className="flex justify-center gap-0.5 mb-1.5">
@@ -768,6 +821,31 @@ export const GiftBubble = ({ gift, fromMe }: { gift: SentGift; fromMe: boolean }
                 {fromMe ? `для ${gift.toName}` : `от ${gift.fromName}`}
               </span>
             </div>
+
+            {canCancel && (
+              <div className="mt-2.5">
+                {confirming ? (
+                  <div className="flex items-center justify-center gap-1.5">
+                    <button type="button" disabled={cancelling} onClick={handleCancel}
+                      className="rounded-full px-3 py-1 text-[10px] font-bold"
+                      style={{ background:'rgba(248,113,113,0.25)', color:'#fca5a5' }}>
+                      {cancelling ? 'Отменяем…' : 'Точно отменить?'}
+                    </button>
+                    <button type="button" onClick={() => setConfirming(false)}
+                      className="rounded-full px-3 py-1 text-[10px] font-semibold"
+                      style={{ background:'rgba(255,255,255,0.08)', color:'rgba(255,255,255,0.6)' }}>
+                      Нет
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setConfirming(true)}
+                    className="mx-auto flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-semibold"
+                    style={{ background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.55)' }}>
+                    <Clock3 size={10}/> Отменить · ещё {timeLeft}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
@@ -944,10 +1022,29 @@ export const ProfileGiftsShowcase = ({ userId, isOwn }: { userId: string; isOwn:
 };
 
 /* -- My Gifts collection --------------------------------------- */
+type ArchivedGift = SentGift & { _dir: 'received' | 'sent' };
+
 export const MyGifts = ({ userId }: { userId: string }) => {
-  const [tab, setTab] = useState<'received'|'sent'>('received');
+  const [tab, setTab] = useState<'received'|'sent'|'archived'>('received');
   const [received, setReceived] = useState<SentGift[]>([]);
   const [sent,     setSent]     = useState<SentGift[]>([]);
+  const [archived, setArchived] = useState<ArchivedGift[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const loadActive = () => {
+    Promise.all([apiMyReceivedGifts(), apiMySentGifts()]).then(([r, s]) => {
+      setReceived(r.map(toSentGift));
+      setSent(s.map(toSentGift));
+    });
+  };
+  const loadArchived = () => {
+    Promise.all([apiMyReceivedGiftsArchived(), apiMySentGiftsArchived()]).then(([r, s]) => {
+      setArchived([
+        ...r.map(g => ({ ...toSentGift(g), _dir: 'received' as const })),
+        ...s.map(g => ({ ...toSentGift(g), _dir: 'sent' as const })),
+      ].sort((a, b) => b.sentAt.localeCompare(a.sentAt)));
+    });
+  };
 
   useEffect(() => {
     let alive = true;
@@ -959,13 +1056,34 @@ export const MyGifts = ({ userId }: { userId: string }) => {
     return () => { alive = false; };
   }, [userId]);
 
-  const list = tab === 'received' ? received : sent;
+  useEffect(() => {
+    if (tab === 'archived') loadArchived();
+  }, [tab, userId]);
+
+  const list: (SentGift | ArchivedGift)[] = tab === 'received' ? received : tab === 'sent' ? sent : archived;
+
+  const toggleArchive = async (g: SentGift, on: boolean) => {
+    setBusy(g.id);
+    const r = await apiArchiveGift(g.id, on);
+    setBusy(null);
+    if (!r.ok) return;
+    if (on) {
+      // Ушёл в архив — убираем из активного списка своей стороны.
+      setReceived(prev => prev.filter(x => x.id !== g.id));
+      setSent(prev => prev.filter(x => x.id !== g.id));
+      if (tab === 'archived') loadArchived();
+    } else {
+      // Восстановлен — убираем из архива, обновляем активные списки.
+      setArchived(prev => prev.filter(x => x.id !== g.id));
+      loadActive();
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
       {/* Tabs */}
       <div className="flex gap-2 px-4 pt-3 pb-2 shrink-0">
-        {(['received','sent'] as const).map(t => (
+        {(['received','sent','archived'] as const).map(t => (
           <button key={t} type="button" onClick={() => setTab(t)}
             className="flex-1 py-2.5 rounded-2xl text-xs font-bold transition-all"
             style={{
@@ -973,7 +1091,9 @@ export const MyGifts = ({ userId }: { userId: string }) => {
               border:     `1.5px solid ${tab===t ? C.accent+'45' : C.border}`,
               color:      tab===t ? C.accent : C.t3,
             }}>
-            {t === 'received' ? `Получено (${received.length})` : `Отправлено (${sent.length})`}
+            {t === 'received' ? `Получено (${received.length})`
+              : t === 'sent' ? `Отправлено (${sent.length})`
+              : 'Архив'}
           </button>
         ))}
       </div>
@@ -981,9 +1101,11 @@ export const MyGifts = ({ userId }: { userId: string }) => {
       <div className="flex-1 overflow-y-auto px-4 pb-4" style={{ scrollbarWidth:'none' }}>
         {list.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-14">
-            <span className="text-5xl">🎁</span>
+            <span className="text-5xl">{tab === 'archived' ? '🗂️' : '🎁'}</span>
             <p className="text-sm" style={{ color:C.t2 }}>
-              {tab === 'received' ? 'Нет полученных подарков' : 'Нет отправленных подарков'}
+              {tab === 'received' ? 'Нет полученных подарков'
+                : tab === 'sent' ? 'Нет отправленных подарков'
+                : 'В архиве пусто'}
             </p>
           </div>
         ) : (
@@ -994,13 +1116,22 @@ export const MyGifts = ({ userId }: { userId: string }) => {
               const gi = GIFT_CATALOG.find(x => x.id === g.giftId);
               const grad0 = g.giftGrad?.[0] ?? 'var(--bg)';
               const grad1 = g.giftGrad?.[1] ?? 'var(--bg-l2)';
+              const dir = tab === 'archived' ? (g as ArchivedGift)._dir : tab;
               return (
-                <div key={g.id} className="relative flex flex-col items-center gap-1.5 rounded-2xl p-3"
+                <div key={`${dir}-${g.id}`} className="relative flex flex-col items-center gap-1.5 rounded-2xl p-3"
                   style={{
                     background: `linear-gradient(155deg,${grad0},${grad1})`,
                     border:     `1px solid ${rc}35`,
                     boxShadow:  `0 4px 16px ${rg}`,
+                    opacity: g.status === 'cancelled' ? 0.55 : 1,
                   }}>
+                  <button type="button" disabled={busy === g.id}
+                    onClick={() => toggleArchive(g, tab !== 'archived')}
+                    title={tab === 'archived' ? 'Вернуть из архива' : 'В архив'}
+                    className="absolute top-1.5 right-1.5 p-1 rounded-full"
+                    style={{ background: 'rgba(0,0,0,0.35)', color: 'rgba(255,255,255,0.7)' }}>
+                    {tab === 'archived' ? <ArchiveRestore size={12} /> : <Archive size={12} />}
+                  </button>
                   <motion.div className="text-3xl select-none"
                     animate={gi ? ANIM[gi.animation] : ANIM.float}>
                     {g.giftEmoji}
@@ -1011,8 +1142,11 @@ export const MyGifts = ({ userId }: { userId: string }) => {
                     {GIFT_RARITY_LABEL[g.giftRarity]}
                   </span>
                   <p className="text-[9px] text-center" style={{ color:'rgba(255,255,255,0.4)' }}>
-                    {tab==='received' ? `от ${g.fromName}` : `для ${g.toName}`}
+                    {dir==='received' ? `от ${g.fromName}` : `для ${g.toName}`}
                   </p>
+                  {g.status === 'cancelled' && (
+                    <span className="text-[8px] font-bold" style={{ color: '#fca5a5' }}>Отменён</span>
+                  )}
                 </div>
               );
             })}

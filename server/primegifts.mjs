@@ -154,6 +154,7 @@ const sendPrimeGiftLocked = async (senderId, { recipientId, days, price, theme, 
 const toView = (r) => ({
   id: r.id, senderId: r.sender_id, recipientId: r.recipient_id, days: r.days, theme: r.theme,
   mediaId: r.media_id, thumbMediaId: r.thumb_media_id,
+  mediaKind: r.media_kind ?? null, thumbKind: r.thumb_kind ?? null,
   message: r.message, chatId: r.chat_id, status: r.status, unavailableReason: r.unavailable_reason,
   activatedAt: r.activated_at ? r.activated_at.toISOString() : null, createdAt: r.created_at.toISOString(),
   cancelledAt: r.cancelled_at ? r.cancelled_at.toISOString() : null,
@@ -162,9 +163,18 @@ const toView = (r) => ({
   archivedByRecipient: Boolean(r.archived_by_recipient_at),
 });
 
+// Медиа темы Prime хранится в gift_media (owner_type='prime_card') —
+// тот же приём, что и у INSTANCE_SELECT в gifts.mjs: LEFT JOIN, чтобы
+// клиент знал, <img> рисовать или <video>.
+const PRIME_SELECT = `
+  SELECT p.*, mm.kind AS media_kind, tm.kind AS thumb_kind
+    FROM prime_gift_instances p
+    LEFT JOIN gift_media mm ON mm.id = p.media_id
+    LEFT JOIN gift_media tm ON tm.id = p.thumb_media_id`;
+
 /** Карточка Prime — только её отправитель или получатель. */
 export const getPrimeGiftInstance = async (viewerId, instanceId) => {
-  const { rows } = await query('SELECT * FROM prime_gift_instances WHERE id = $1', [instanceId]);
+  const { rows } = await query(`${PRIME_SELECT} WHERE p.id = $1`, [instanceId]);
   const row = rows[0];
   if (!row) return { error: 'not_found' };
   if (row.sender_id !== viewerId && row.recipient_id !== viewerId) return { error: 'not_allowed' };
@@ -219,7 +229,7 @@ export const activatePrimeGift = async (userId, instanceId) => {
 
 export const mySentPrimeGifts = async (userId) => {
   const { rows } = await query(
-    `SELECT * FROM prime_gift_instances WHERE sender_id = $1 AND archived_by_sender_at IS NULL ORDER BY created_at DESC`,
+    `${PRIME_SELECT} WHERE p.sender_id = $1 AND p.archived_by_sender_at IS NULL ORDER BY p.created_at DESC`,
     [userId],
   );
   return rows.map(toView);
@@ -227,7 +237,7 @@ export const mySentPrimeGifts = async (userId) => {
 
 export const myReceivedPrimeGifts = async (userId) => {
   const { rows } = await query(
-    `SELECT * FROM prime_gift_instances WHERE recipient_id = $1 AND archived_by_recipient_at IS NULL ORDER BY created_at DESC`,
+    `${PRIME_SELECT} WHERE p.recipient_id = $1 AND p.archived_by_recipient_at IS NULL ORDER BY p.created_at DESC`,
     [userId],
   );
   return rows.map(toView);
@@ -235,7 +245,7 @@ export const myReceivedPrimeGifts = async (userId) => {
 
 export const archivedSentPrimeGifts = async (userId) => {
   const { rows } = await query(
-    `SELECT * FROM prime_gift_instances WHERE sender_id = $1 AND archived_by_sender_at IS NOT NULL ORDER BY archived_by_sender_at DESC`,
+    `${PRIME_SELECT} WHERE p.sender_id = $1 AND p.archived_by_sender_at IS NOT NULL ORDER BY p.archived_by_sender_at DESC`,
     [userId],
   );
   return rows.map(toView);
@@ -243,7 +253,7 @@ export const archivedSentPrimeGifts = async (userId) => {
 
 export const archivedReceivedPrimeGifts = async (userId) => {
   const { rows } = await query(
-    `SELECT * FROM prime_gift_instances WHERE recipient_id = $1 AND archived_by_recipient_at IS NOT NULL ORDER BY archived_by_recipient_at DESC`,
+    `${PRIME_SELECT} WHERE p.recipient_id = $1 AND p.archived_by_recipient_at IS NOT NULL ORDER BY p.archived_by_recipient_at DESC`,
     [userId],
   );
   return rows.map(toView);

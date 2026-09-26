@@ -14,11 +14,23 @@
  */
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Crown, Check, Clock } from 'lucide-react';
+import { Crown, Check, Clock, Ban } from 'lucide-react';
 import { GiftBubble } from './SkyGifts';
 import type { SentGift } from './store';
-import { apiGiftInstance, apiPrimeGiftInstance, apiActivatePrimeGift, giftMediaUrl, toSentGift } from './giftsApi';
+import {
+  apiGiftInstance, apiPrimeGiftInstance, apiActivatePrimeGift, apiCancelPrimeGift,
+  giftMediaUrl, toSentGift,
+} from './giftsApi';
 import { PRIME_GIFT_THEMES } from './GiftPrime';
+
+/** «2ч 14м» до конца окна отмены. */
+const cancelCountdown = (deadline: string) => {
+  const ms = new Date(deadline).getTime() - Date.now();
+  if (ms <= 0) return null;
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return h > 0 ? `${h}ч ${m}м` : `${m}м`;
+};
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
@@ -53,7 +65,7 @@ export const GiftMessageCard = ({ instanceId, fromMe }: { instanceId: string; fr
       </div>
     );
   }
-  return <GiftBubble gift={gift} fromMe={fromMe} />;
+  return <GiftBubble gift={gift} fromMe={fromMe} onCancelled={setGift} />;
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -66,6 +78,8 @@ export const GiftMessageCard = ({ instanceId, fromMe }: { instanceId: string; fr
 export const PrimeGiftMessageCard = ({ instanceId, fromMe }: { instanceId: string; fromMe: boolean }) => {
   const [inst, setInst] = useState<Awaited<ReturnType<typeof apiPrimeGiftInstance>> | 'error'>(null);
   const [activating, setActivating] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [err, setErr] = useState('');
   const motionOn = !prefersReducedMotion();
 
@@ -80,6 +94,16 @@ export const PrimeGiftMessageCard = ({ instanceId, fromMe }: { instanceId: strin
     setActivating(true);
     const r = await apiActivatePrimeGift(instanceId);
     setActivating(false);
+    if (!r.ok) { setErr(r.reason); return; }
+    if (r.instance) setInst(r.instance);
+  };
+
+  const handleCancel = async () => {
+    setErr('');
+    setCancelling(true);
+    const r = await apiCancelPrimeGift(instanceId);
+    setCancelling(false);
+    setConfirmingCancel(false);
     if (!r.ok) { setErr(r.reason); return; }
     if (r.instance) setInst(r.instance);
   };
@@ -120,6 +144,9 @@ export const PrimeGiftMessageCard = ({ instanceId, fromMe }: { instanceId: strin
   const isUnavailable = inst.status === 'unavailable';
   const canActivate = isNew && !fromMe;
   const mediaUrl = giftMediaUrl(inst.mediaId);
+  const isVideo = inst.mediaKind === 'video' && Boolean(mediaUrl);
+  const cancelLeft = isNew ? cancelCountdown(inst.cancelDeadline) : null;
+  const canCancel = isNew && fromMe && Boolean(cancelLeft);
   const expiresLabel = inst.activatedAt
     ? new Date(new Date(inst.activatedAt).getTime() + inst.days * 86400_000)
       .toLocaleDateString('ru', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -127,7 +154,9 @@ export const PrimeGiftMessageCard = ({ instanceId, fromMe }: { instanceId: strin
 
   return cardShell(
     <>
-      {mediaUrl && <img src={mediaUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-75" />}
+      {mediaUrl && (isVideo
+        ? <video src={mediaUrl} autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-cover opacity-75" />
+        : <img src={mediaUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-75" />)}
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.12), rgba(0,0,0,0.55))' }} />
       {isUnavailable && (
@@ -182,6 +211,28 @@ export const PrimeGiftMessageCard = ({ instanceId, fromMe }: { instanceId: strin
           <p className="mt-2 text-[10px] flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
             <Clock size={11} /> Ждём, когда получатель заберёт
           </p>
+        )}
+        {canCancel && (
+          confirmingCancel ? (
+            <div className="mt-2 flex items-center justify-center gap-1.5">
+              <button type="button" disabled={cancelling} onClick={handleCancel}
+                className="rounded-full px-3 py-1 text-[10px] font-bold"
+                style={{ background: 'rgba(248,113,113,0.25)', color: '#fca5a5' }}>
+                {cancelling ? 'Отменяем…' : 'Точно отменить?'}
+              </button>
+              <button type="button" onClick={() => setConfirmingCancel(false)}
+                className="rounded-full px-3 py-1 text-[10px] font-semibold"
+                style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}>
+                Нет
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirmingCancel(true)}
+              className="mt-2 flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-semibold"
+              style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.55)' }}>
+              <Ban size={10} /> Отменить · ещё {cancelLeft}
+            </button>
+          )
         )}
         {err && <p className="mt-1 text-[10px]" style={{ color: '#fca5a5' }}>{err}</p>}
       </div>

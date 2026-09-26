@@ -93,6 +93,15 @@ export interface SentGift {
   message?:    string;          // личное послание
   sentAt:      string;
   price:       number;
+  // Настоящие серверные подарки (см. gifts/giftsApi.ts::toSentGift) несут
+  // это дополнительно — старые локальные записи (useGiftStore.sent) нет,
+  // поэтому все поля необязательные.
+  mediaId?:    string | null;
+  mediaKind?:  'image' | 'video' | 'animation' | null;
+  status?:     'delivered' | 'cancelled';
+  cancelDeadline?: string;
+  archivedBySender?: boolean;
+  archivedByRecipient?: boolean;
 }
 
 /* -- Каталог подарков ------------------------------------------- */
