@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Flame, Check, X, Zap, Gift, Handshake, Trophy, ChevronRight, TrendingUp, Users } from 'lucide-react';
+import { Flame, Check, X, Zap, Gift, Handshake, Trophy, ChevronRight, Gamepad2 } from 'lucide-react';
 import { useGamingStore, GAMES, GENRE_LABEL, type GameEntry } from '../store';
-import { GameCard, GENRE_COLOR, K, ago } from './Primitives';
+import { GameCard, GENRE_COLOR, ago } from './Primitives';
 
 interface Props { onGame: (g: GameEntry) => void }
 
@@ -10,7 +10,6 @@ export const HomeView = ({ onGame }: Props) => {
   const { news, invites, answerInvite, myStats } = useGamingStore();
   const pending  = invites.filter(i => i.status === 'pending');
   const stats    = myStats();
-  const topGames = [...GAMES].sort((a, b) => b.players - a.players).slice(0, 3);
   const [dismissedNews, setDismissed] = useState<Set<string>>(new Set());
 
   const visibleNews = news.slice(0, 5).filter(n => !dismissedNews.has(n.id));
@@ -88,47 +87,16 @@ export const HomeView = ({ onGame }: Props) => {
         </section>
       )}
 
-      {/* ── Live activity bar ──────────────────────────────── */}
-      <section className="px-4 mt-5">
-        <div className="rounded-2xl p-3 flex items-center gap-3 overflow-hidden relative"
-          style={{ background: 'linear-gradient(135deg,rgba(244,63,94,0.08),rgba(139,92,246,0.06))',
-            border: '1px solid rgba(244,63,94,0.15)' }}>
-          <div className="absolute inset-0 pointer-events-none"
-            style={{ background: 'radial-gradient(ellipse at 0% 50%,rgba(244,63,94,0.07) 0%,transparent 70%)' }}/>
-          <div className="relative flex items-center gap-2 shrink-0">
-            <motion.div className="h-2 w-2 rounded-full bg-red-500"
-              animate={{ opacity: [1, 0.3, 1], scale: [1, 0.8, 1] }}
-              transition={{ duration: 1.2, repeat: Infinity }}/>
-            <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#f43f5e' }}>
-              Сейчас играют
-            </span>
-          </div>
-          <div className="flex items-center gap-3 flex-1 overflow-hidden relative">
-            {GAMES.slice(0, 3).map((g, i) => (
-              <div key={g.id} className="flex items-center gap-1.5 shrink-0">
-                <span className="text-base">{g.cover}</span>
-                <div>
-                  <p className="text-[10px] font-bold text-white leading-tight">{K(g.players)}</p>
-                  <p className="text-[9px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{g.title.slice(0,8)}</p>
-                </div>
-                {i < 2 && <div className="h-6 w-px mx-1" style={{ background: 'rgba(255,255,255,0.08)' }}/>}
-              </div>
-            ))}
-          </div>
-          <Users size={13} style={{ color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}/>
-        </div>
-      </section>
-
-      {/* ── Trending now ───────────────────────────────────── */}
+      {/* ── Игры ───────────────────────────────────────────── */}
       <section className="px-4 mt-5">
         <div className="flex items-center gap-1.5 mb-3">
-          <TrendingUp size={12} style={{ color: 'var(--amber)' }}/>
+          <Gamepad2 size={12} style={{ color: 'var(--amber)' }}/>
           <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'var(--t3)' }}>
-            Популярные
+            Игры
           </p>
         </div>
         <div className="space-y-1.5">
-          {topGames.map((g, i) => {
+          {GAMES.map((g) => {
             const col = GENRE_COLOR[g.genre];
             return (
               <motion.div key={g.id} whileHover={{ x: 2 }} whileTap={{ scale: 0.99 }}
@@ -137,11 +105,6 @@ export const HomeView = ({ onGame }: Props) => {
                 style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
                 <div className="absolute inset-0 pointer-events-none"
                   style={{ background: `linear-gradient(90deg,${col}08 0%,transparent 50%)` }}/>
-                {/* Rank number */}
-                <div className="grid h-7 w-7 place-items-center rounded-xl shrink-0 text-xs font-black relative"
-                  style={{ background: `${col}15`, color: col }}>
-                  {i + 1}
-                </div>
                 {/* Cover */}
                 <span className="text-xl relative" style={{ filter: `drop-shadow(0 2px 8px ${col}60)` }}>
                   {g.cover}
@@ -150,19 +113,10 @@ export const HomeView = ({ onGame }: Props) => {
                 <div className="flex-1 min-w-0 relative">
                   <p className="text-sm font-bold leading-tight" style={{ color: 'var(--t1)' }}>{g.title}</p>
                   <p className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>
-                    {K(g.players)} онлайн · {GENRE_LABEL[g.genre]}
+                    {g.format} · {GENRE_LABEL[g.genre]}
                   </p>
                 </div>
-                {/* Online bar */}
-                <div className="relative shrink-0 flex items-center gap-2">
-                  <div className="h-6 w-1 rounded-full overflow-hidden" style={{ background: 'var(--bg-l3)' }}>
-                    <motion.div className="w-full rounded-full"
-                      initial={{ height: 0 }}
-                      animate={{ height: `${Math.min(100, (g.players / 70000) * 100)}%` }}
-                      style={{ background: col, marginTop: 'auto', position: 'absolute', bottom: 0, left: 0, right: 0 }}/>
-                  </div>
-                  <ChevronRight size={13} style={{ color: 'var(--t3)' }}/>
-                </div>
+                <ChevronRight size={13} style={{ color: 'var(--t3)' }}/>
               </motion.div>
             );
           })}

@@ -44,11 +44,7 @@ export const GamePage = ({ game, onBack }: Props) => {
                 {game.developer} · {game.releaseYear} · {GENRE_LABEL[game.genre]}
               </p>
               <div className="flex items-center gap-3 mt-2">
-                <div className="flex items-center gap-1.5">
-                  <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse"/>
-                  <span className="text-xs text-white font-semibold">{K(game.players)} онлайн</span>
-                </div>
-                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>★ {game.rating}</span>
+                <span className="text-xs text-white font-semibold">{game.format}</span>
               </div>
             </div>
           </div>
@@ -141,7 +137,7 @@ export const GamePage = ({ game, onBack }: Props) => {
                     <p className="text-[9px]" style={{ color: 'var(--t3)' }}>@{f.username}</p>
                   </div>
                   <button type="button"
-                    onClick={() => sendInvite(f.id, game.id, game.genre === 'fps' ? 'Ранговый 5v5' : 'Обычный матч')}
+                    onClick={() => sendInvite(f.id, game.id, `Ранговый ${game.format}`)}
                     className="grid h-7 w-7 place-items-center rounded-xl text-white shrink-0"
                     style={{ background: col }}>
                     <Zap size={12}/>

@@ -176,7 +176,7 @@ const PlayView = () => {
                   <span className="text-xl">{g.cover}</span>
                   <div className="text-left">
                     <p className="text-xs font-bold truncate" style={{ color: FC.t1 }}>{g.title}</p>
-                    <p className="text-[9px]" style={{ color: FC.t3 }}>{K(g.players)} online</p>
+                    <p className="text-[9px]" style={{ color: FC.t3 }}>{g.format}</p>
                   </div>
                 </button>
               ))}
@@ -216,7 +216,7 @@ const PlayView = () => {
               <div className="flex-1">
                 <p className="text-sm font-black" style={{ color: FC.t1 }}>Поиск матча...</p>
                 <p className="text-xs mt-0.5" style={{ color: FC.t2 }}>
-                  {GAMES.find(g=>g.id===queueGame)?.title} · 1 на 1 · {K(matchElo)} ELO
+                  {GAMES.find(g=>g.id===queueGame)?.title} · {GAMES.find(g=>g.id===queueGame)?.format} · {K(matchElo)} ELO
                 </p>
               </div>
               <button type="button" onClick={cancelQueue}
@@ -445,7 +445,6 @@ export const GamingModule = () => {
   const [tab, setTab] = useState<Tab>('play');
   const { invites } = useGamingStore();
   const pending = invites.filter(i => i.status === 'pending').length;
-  const totalOnline = GAMES.reduce((a,g)=>a+g.players,0);
 
   const TABS: { key:Tab; label:string }[] = [
     { key:'play',     label:'Играть'    },
@@ -469,7 +468,7 @@ export const GamingModule = () => {
             <div>
               <p className="text-xs font-black tracking-tight" style={{ color: FC.t1 }}>SKY GAMING</p>
               <p className="text-[9px]" style={{ color: FC.t3 }}>
-                {(totalOnline/1000).toFixed(0)}K онлайн
+                CS2 · Dota 2 · Fortnite
               </p>
             </div>
           </div>

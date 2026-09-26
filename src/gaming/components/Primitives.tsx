@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { motion, useMotionValue } from 'framer-motion';
-import { Star } from 'lucide-react';
+import { Users } from 'lucide-react';
 import type { GameEntry } from '../store';
 import { GENRE_LABEL } from '../store';
 
@@ -77,15 +77,10 @@ export const GameCard = ({ game, rank, onClick }: { game: GameEntry; rank?: stri
           <p className="text-base font-bold text-white leading-tight mb-1">{game.title}</p>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <div className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse"/>
-              <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.5)' }}>{K(game.players)}</span>
+              <Users size={11} style={{ color: 'rgba(255,255,255,0.4)' }}/>
+              <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.5)' }}>{game.format}</span>
             </div>
-            <div className="flex gap-0.5">
-              {[1,2,3,4,5].map(i => (
-                <Star key={i} size={9} fill={i <= Math.round(game.rating) ? 'var(--amber)' : 'none'}
-                  style={{ color: i <= Math.round(game.rating) ? 'var(--amber)' : 'rgba(255,255,255,0.15)' }}/>
-              ))}
-            </div>
+            <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{game.releaseYear}</span>
           </div>
         </div>
       </div>

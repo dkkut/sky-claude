@@ -881,9 +881,11 @@ const handle = async (ws, session, msg) => {
       if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
       if (r.matched) {
         send(ws, { type: 'mm:found', payload: { match: r.match } });
-        // Соперник уже ждал в очереди на другом соединении — то же
-        // событие уходит и ему, не только тому, кто только что зашёл.
-        sendTo(r.opponentId, { type: 'mm:found', payload: { match: r.match } });
+        // Остальные участники матча (своя команда и соперники) уже
+        // ждали в очереди на других соединениях — то же событие уходит
+        // каждому из них, не только тому, кто только что зашёл и нашёл
+        // весь состав.
+        for (const uid of r.opponentIds) sendTo(uid, { type: 'mm:found', payload: { match: r.match } });
       } else {
         send(ws, { type: 'mm:queued', payload: { gameId } });
       }

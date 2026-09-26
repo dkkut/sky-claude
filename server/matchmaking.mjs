@@ -7,10 +7,12 @@
  * получал любой рейтинг, какой захочет. «Поиск матча» был таймером со
  * случайной задержкой без единого другого живого игрока.
  *
- * Формат — 1 на 1: при реальной, а не выдуманной, населённости этого
- * сервера ждать восьмерых для «5v5» означало бы никогда не находить
- * матч. Схема (team_a/team_b — массивы) готова к команде большего
- * размера позже, без миграции.
+ * Формат команды — по игре (TEAM_SIZE), а не выдуманное «5v5» на
+ * карточке без единого игрока за ним: CS2 и Dota2 — 5 на 5, Fortnite —
+ * отряд на отряд 4 на 4 (полноценный королевской-битвы режим с
+ * десятками отдельных отрядов — другая модель данных; здесь те же два
+ * противоборствующих состава, что и у остальных игр). Схема
+ * (team_a/team_b — массивы) годится для любого размера без миграции.
  *
  * Подтверждения результата (кто выиграл) здесь нет и не может быть
  * честно: за этими карточками игр не стоит ни одного настоящего
@@ -22,6 +24,12 @@ import { query, pool } from './db.mjs';
 
 const newId = (p) => `${p}-${crypto.randomUUID()}`;
 const MATCH_ACCEPT_TIMEOUT_MS = 20_000;
+
+/** Игроков в одной команде. Решает сервер, а не карточка игры в
+ *  интерфейсе — иначе переписанный клиент мог бы подтвердить матч
+ *  вдвоём там, где нужно по пять. Неизвестная игра — 1 на 1. */
+const TEAM_SIZE = { 'g-cs2': 5, 'g-dota2': 5, 'g-fortnite': 4 };
+const teamSizeFor = (gameId) => TEAM_SIZE[gameId] ?? 1;
 
 export const getRating = async (profileId, gameId) => {
   await query(
@@ -73,6 +81,8 @@ export const joinQueue = async (profileId, gameId) => {
   const already = await myActiveMatch(profileId);
   if (already && already.status === 'pending') return { error: 'in_active_match', match: already };
 
+  const teamSize = teamSizeFor(gameId);
+  const wanted = teamSize * 2;
   const rating = await getRating(profileId, gameId);
   const client = await pool.connect();
   try {
@@ -84,34 +94,44 @@ export const joinQueue = async (profileId, gameId) => {
       [profileId, gameId, rating.elo],
     );
 
-    // Ближайший по ELO соперник в той же игре — с блокировкой строки,
-    // чтобы два одновременных join не забрали одного и того же
-    // ожидающего дважды.
+    // Ближайшие по ELO в той же игре — с блокировкой строк, чтобы два
+    // одновременных join не забрали одного и того же ожидающего дважды.
+    // Себя явно не исключаем: он и так первый по расстоянию (0), и без
+    // него набор мог бы недосчитаться одного места.
     const { rows: candidates } = await client.query(
       `SELECT profile_id, elo FROM matchmaking_queue
-        WHERE game_id = $1 AND profile_id <> $2
-        ORDER BY abs(elo - $3) ASC LIMIT 1 FOR UPDATE SKIP LOCKED`,
-      [gameId, profileId, rating.elo],
+        WHERE game_id = $1
+        ORDER BY abs(elo - $2) ASC LIMIT $3 FOR UPDATE SKIP LOCKED`,
+      [gameId, rating.elo, wanted],
     );
-    const opponent = candidates[0];
-    if (!opponent) {
+    if (candidates.length < wanted) {
       await client.query('COMMIT');
       return { queued: true };
     }
 
-    await client.query('DELETE FROM matchmaking_queue WHERE profile_id = ANY($1)', [[profileId, opponent.profile_id]]);
+    // Составы — не «топ отдельно от низких»: сортируем по ELO и
+    // раздаём по очереди в две команды, чтобы силы вышли ровными, а не
+    // одна команда из полностью сильнейших против слабейших.
+    const sorted = [...candidates].sort((a, b) => a.elo - b.elo);
+    const teamA = [];
+    const teamB = [];
+    sorted.forEach((c, i) => (i % 2 === 0 ? teamA : teamB).push(c.profile_id));
+
+    const allIds = sorted.map((c) => c.profile_id);
+    await client.query('DELETE FROM matchmaking_queue WHERE profile_id = ANY($1)', [allIds]);
     const matchId = newId('match');
-    const avgElo = Math.round((rating.elo + opponent.elo) / 2);
+    const avgElo = Math.round(sorted.reduce((sum, c) => sum + c.elo, 0) / sorted.length);
     await client.query(
       `INSERT INTO matches (id, game_id, team_a, team_b, avg_elo) VALUES ($1,$2,$3,$4,$5)`,
-      [matchId, gameId, [profileId], [opponent.profile_id], avgElo],
+      [matchId, gameId, teamA, teamB, avgElo],
     );
     await client.query(
-      `INSERT INTO match_accepts (match_id, profile_id) VALUES ($1,$2),($1,$3)`,
-      [matchId, profileId, opponent.profile_id],
+      `INSERT INTO match_accepts (match_id, profile_id) SELECT $1, unnest($2::text[])`,
+      [matchId, allIds],
     );
     await client.query('COMMIT');
-    return { matched: true, match: { id: matchId, gameId, teamA: [profileId], teamB: [opponent.profile_id], avgElo, status: 'pending' }, opponentId: opponent.profile_id };
+    const match = { id: matchId, gameId, teamA, teamB, avgElo, status: 'pending' };
+    return { matched: true, match, opponentIds: allIds.filter((id) => id !== profileId) };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
