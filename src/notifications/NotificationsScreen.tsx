@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bell, Check, Trash2, MessageCircle, Phone, Heart,
-  AtSign, Repeat2, UserPlus, Shield, X, BellOff
+  AtSign, Repeat2, UserPlus, Shield, X, BellOff, Gift
 } from 'lucide-react';
 import { useNotifStore, SkyNotif, NotifKind } from './store';
 import { useModuleStore } from '@/data/state/modules';
@@ -38,6 +38,7 @@ const KindIcon = ({ kind, color }: { kind: NotifKind; color: string }) => {
   if (kind === 'comment')     return <MessageCircle {...p} />;
   if (kind === 'repost')      return <Repeat2       {...p} />;
   if (kind === 'follow')      return <UserPlus      {...p} />;
+  if (kind === 'gift')        return <Gift          {...p} />;
   return                             <Shield        {...p} />;
 };
 
@@ -51,6 +52,7 @@ const kindLabel: Record<NotifKind, string> = {
   repost:     'Репост',
   follow:     'Подписчик',
   system:     'Система',
+  gift:       'Подарок',
 };
 
 const fmtTime = (ts: number) => {

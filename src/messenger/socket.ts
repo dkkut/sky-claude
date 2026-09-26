@@ -320,6 +320,13 @@ const handle = (data: any) => {
       store.applyBlocked(payload?.blocked ?? []);
       break;
 
+    /* ── Подарки: сервер сам решает, кому и когда (server/giftnotify.mjs) ── */
+    case 'gift-notification':
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sky:gift-notification', { detail: payload }));
+      }
+      break;
+
     case 'messages-older':
       store.applyOlder(payload?.chatId,
         (payload?.messages ?? []).map((m: any) => toMessageItem(m, myId)),

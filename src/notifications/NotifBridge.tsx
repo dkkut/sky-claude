@@ -135,6 +135,24 @@ export const NotifBridge = () => {
     return () => window.removeEventListener('sky:incoming-message', onIncoming);
   }, [sendWebPush, push, settings.soundMessages, settings.soundMentions, settings.desktopNotifs]);
 
+  // -- Подарки: серверный push по WS (server/giftnotify.mjs) -----------
+  // Таблица gift_notifications и сам push существовали и раньше, но
+  // здесь их никто не слушал — событие 'gift-notification' терялось.
+  // Теперь socket.ts пробрасывает его window-событием 'sky:gift-notification',
+  // а этот эффект кладёт его в тот же useNotifStore, что и всё остальное.
+  useEffect(() => {
+    const onGift = (e: Event) => {
+      const note = (e as CustomEvent).detail ?? {};
+      if (!note.title) return;
+      push({
+        kind: 'gift', title: note.title, body: note.body ?? '',
+        avatarLetter: '🎁', color: 'var(--accent)',
+      });
+    };
+    window.addEventListener('sky:gift-notification', onGift);
+    return () => window.removeEventListener('sky:gift-notification', onGift);
+  }, [push]);
+
   // -- Не удалось дозвониться -----------------------------------------
   useEffect(() => {
     const onUnavailable = (e: Event) => {

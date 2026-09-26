@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 export type NotifKind =
   | 'message' | 'mention' | 'call_in' | 'call_missed'
-  | 'like' | 'comment' | 'repost' | 'follow' | 'system';
+  | 'like' | 'comment' | 'repost' | 'follow' | 'system' | 'gift';
 
 export interface SkyNotif {
   id:           string;

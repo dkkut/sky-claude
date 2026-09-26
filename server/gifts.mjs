@@ -195,7 +195,8 @@ const errCode = (error) => (
     : error === 'recipient_not_found' ? 404
       : error === 'not_allowed' || error === 'not_accepting' ? 403
         : error === 'insufficient_points' ? 402
-          : 400
+          : error === 'already_cancelled' ? 409
+            : 400
 );
 export { errCode };
 
@@ -325,16 +326,99 @@ const sendGiftLocked = async (senderId, { recipientId, target, giftCatalogId, me
 
     return { ok: true, orderId: realOrderId, instanceId };
   } catch (err) {
-    await wallet.refund(senderId, item.pricePoints, 'Возврат — не удалось доставить подарок', realOrderId);
+    // Возврат баллами, а не деньгами: списание было в баллах
+    // (wallet.spendPoints выше), значит и возврат должен идти туда же —
+    // wallet.refund трогает только денежный баланс.
+    await wallet.earnPoints(senderId, item.pricePoints, 'Возврат — не удалось доставить подарок');
     await query(`UPDATE gift_orders SET status = 'refunded' WHERE id = $1`, [realOrderId]);
     throw err;
   }
 };
 
+export const CANCEL_WINDOW = '3 hours';
+
+/**
+ * Отмена отправленного обычного подарка — только отправитель, только в
+ * течение 3 часов с момента доставки (created_at, серверное время;
+ * клиент это время не присылает и повлиять на него не может).
+ *
+ * Условный UPDATE — тот же приём, что у activatePrimeGift: гонка между
+ * несколькими одновременными попытками отмены (или отменой и, например,
+ * повторным сохранением в профиль) решается тем, что до перехода
+ * status='delivered'→'cancelled' доходит только один запрос — это
+ * атомарность одной SQL-команды, отдельная блокировка строки не нужна.
+ */
+export const cancelGiftInstance = async (senderId, instanceId) => {
+  if (!INSTANCE_ID_RE.test(String(instanceId ?? ''))) return { error: 'not_found' };
+
+  const { rows: flip } = await query(
+    `UPDATE gift_instances SET status = 'cancelled', cancelled_at = now()
+      WHERE id = $1 AND sender_id = $2 AND status = 'delivered'
+        AND created_at > now() - interval '${CANCEL_WINDOW}'
+      RETURNING *`,
+    [instanceId, senderId],
+  );
+
+  if (!flip[0]) {
+    const { rows: cur } = await query(
+      'SELECT sender_id, status, created_at FROM gift_instances WHERE id = $1', [instanceId],
+    );
+    if (!cur[0]) return { error: 'not_found' };
+    if (cur[0].sender_id !== senderId) return { error: 'not_allowed' };
+    if (cur[0].status === 'cancelled') return { error: 'already_cancelled' };
+    return { error: 'window_expired' };
+  }
+  const instance = flip[0];
+
+  const { rows: ord } = await query(
+    `UPDATE gift_orders SET status = 'refunded' WHERE id = $1 AND status = 'paid' RETURNING price`,
+    [instance.order_id],
+  );
+  // Заказ уже мог быть переведён в 'refunded' раньше (не должно
+  // случиться при живой доставке, но на всякий случай не списываем
+  // баллы второй раз, если строки заказа UPDATE не коснулся).
+  if (ord[0]) {
+    await wallet.earnPoints(senderId, ord[0].price, `Возврат — отменён подарок «${instance.gift_catalog_id}»`);
+  }
+
+  await notifyGift(instance.recipient_id, 'gift_cancelled', 'Подарок отменён',
+    'Отправитель отменил отправку подарка', instanceId);
+
+  const { rows: full } = await query(`${INSTANCE_SELECT} WHERE i.id = $1`, [instanceId]);
+  return { ok: true, instance: toInstanceView(full[0]) };
+};
+
+/**
+ * Архив — по каждой стороне отдельно: отправитель и получатель видят
+ * одну и ту же доставку каждый в своём списке и должны уметь убрать её
+ * из СВОЕГО списка независимо. Логическое состояние — строка никогда
+ * не удаляется и продолжает нести media/историю/статус.
+ */
+export const archiveGiftInstance = async (userId, instanceId, archived) => {
+  if (!INSTANCE_ID_RE.test(String(instanceId ?? ''))) return { error: 'not_found' };
+  const { rows } = await query('SELECT sender_id, recipient_id FROM gift_instances WHERE id = $1', [instanceId]);
+  const row = rows[0];
+  if (!row) return { error: 'not_found' };
+  if (row.sender_id !== userId && row.recipient_id !== userId) return { error: 'not_allowed' };
+
+  const setSender = row.sender_id === userId;
+  const setRecipient = row.recipient_id === userId;
+  const value = archived ? new Date() : null;
+  await query(
+    `UPDATE gift_instances SET
+       archived_by_sender_at = CASE WHEN $2 THEN $4 ELSE archived_by_sender_at END,
+       archived_by_recipient_at = CASE WHEN $3 THEN $4 ELSE archived_by_recipient_at END
+     WHERE id = $1`,
+    [instanceId, setSender, setRecipient, value],
+  );
+  return { ok: true };
+};
+
 /** Сохранить уже полученный в чате подарок в свой профиль. */
 export const saveInstanceToProfile = async (userId, instanceId) => {
   const { rows } = await query(
-    `UPDATE gift_instances SET saved_to_profile = TRUE WHERE id = $1 AND recipient_id = $2 RETURNING id`,
+    `UPDATE gift_instances SET saved_to_profile = TRUE
+      WHERE id = $1 AND recipient_id = $2 AND status != 'cancelled' RETURNING id`,
     [instanceId, userId],
   );
   return rows[0] ? { ok: true } : { error: 'not_found' };
@@ -346,6 +430,14 @@ const toInstanceView = (r) => ({
   senderId: r.sender_id, senderName: r.sender_name, recipientId: r.recipient_id, recipientName: r.recipient_name,
   chatId: r.chat_id, caption: r.caption,
   savedToProfile: r.saved_to_profile, createdAt: r.created_at.toISOString(),
+  status: r.status,
+  cancelledAt: r.cancelled_at ? r.cancelled_at.toISOString() : null,
+  // Крайний срок отмены считается на сервере из created_at — клиент
+  // получает готовую дату, а не сырой sent_at, чтобы не пересчитывать
+  // окно на своих часах.
+  cancelDeadline: new Date(r.created_at.getTime() + 3 * 60 * 60 * 1000).toISOString(),
+  archivedBySender: Boolean(r.archived_by_sender_at),
+  archivedByRecipient: Boolean(r.archived_by_recipient_at),
 });
 
 const INSTANCE_SELECT = `
@@ -364,21 +456,59 @@ export const getInstance = async (viewerId, instanceId) => {
   return toInstanceView(row);
 };
 
+/**
+ * Активный список получателя: отменённый подарок для него больше не
+ * действует (пункт задачи «подарок больше не считается активным у
+ * получателя»), архивированный — убран получателем в архив. У
+ * отправителя своя, независимая точка зрения — см. sentGifts.
+ */
 export const receivedGifts = async (userId) => {
-  const { rows } = await query(`${INSTANCE_SELECT} WHERE i.recipient_id = $1 ORDER BY i.created_at DESC`, [userId]);
-  return rows.map(toInstanceView);
-};
-
-export const profileGifts = async (userId) => {
   const { rows } = await query(
-    `${INSTANCE_SELECT} WHERE i.recipient_id = $1 AND i.saved_to_profile ORDER BY i.created_at DESC`,
+    `${INSTANCE_SELECT} WHERE i.recipient_id = $1 AND i.status != 'cancelled' AND i.archived_by_recipient_at IS NULL
+      ORDER BY i.created_at DESC`,
     [userId],
   );
   return rows.map(toInstanceView);
 };
 
+export const archivedReceivedGifts = async (userId) => {
+  const { rows } = await query(
+    `${INSTANCE_SELECT} WHERE i.recipient_id = $1 AND i.archived_by_recipient_at IS NOT NULL
+      ORDER BY i.archived_by_recipient_at DESC`,
+    [userId],
+  );
+  return rows.map(toInstanceView);
+};
+
+export const profileGifts = async (userId) => {
+  const { rows } = await query(
+    `${INSTANCE_SELECT} WHERE i.recipient_id = $1 AND i.saved_to_profile
+       AND i.status != 'cancelled' AND i.archived_by_recipient_at IS NULL
+      ORDER BY i.created_at DESC`,
+    [userId],
+  );
+  return rows.map(toInstanceView);
+};
+
+/**
+ * Список отправителя — своя собственная история действий: отменённый
+ * подарок в ней остаётся (это отправитель сам его отменил, прятать
+ * нечего), убирает из активного списка только архив.
+ */
 export const sentGifts = async (userId) => {
-  const { rows } = await query(`${INSTANCE_SELECT} WHERE i.sender_id = $1 ORDER BY i.created_at DESC`, [userId]);
+  const { rows } = await query(
+    `${INSTANCE_SELECT} WHERE i.sender_id = $1 AND i.archived_by_sender_at IS NULL ORDER BY i.created_at DESC`,
+    [userId],
+  );
+  return rows.map(toInstanceView);
+};
+
+export const archivedSentGifts = async (userId) => {
+  const { rows } = await query(
+    `${INSTANCE_SELECT} WHERE i.sender_id = $1 AND i.archived_by_sender_at IS NOT NULL
+      ORDER BY i.archived_by_sender_at DESC`,
+    [userId],
+  );
   return rows.map(toInstanceView);
 };
 

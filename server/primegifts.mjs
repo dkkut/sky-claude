@@ -22,7 +22,7 @@ import { grantPrime, PRIME_PRICES } from './skyid.mjs';
 import { saveMessage, createChat, directChatId, memberIds } from './chats.mjs';
 import { pushNewMessage } from './signal.mjs';
 import { notifyGift } from './giftnotify.mjs';
-import { currentPrimeCardMedia } from './gifts.mjs';
+import { currentPrimeCardMedia, CANCEL_WINDOW } from './gifts.mjs';
 
 export const PRIME_GIFT_ID_RE = /^pgi-[0-9a-f-]{36}$/;
 
@@ -35,7 +35,7 @@ const errCode = (error) => (
     : error === 'recipient_not_found' ? 404
       : error === 'not_allowed' ? 403
         : error === 'insufficient_funds' ? 402
-          : error === 'already_activated' || error === 'unavailable' ? 409
+          : error === 'already_activated' || error === 'unavailable' || error === 'already_cancelled' ? 409
             : 400
 );
 export { errCode };
@@ -156,6 +156,10 @@ const toView = (r) => ({
   mediaId: r.media_id, thumbMediaId: r.thumb_media_id,
   message: r.message, chatId: r.chat_id, status: r.status, unavailableReason: r.unavailable_reason,
   activatedAt: r.activated_at ? r.activated_at.toISOString() : null, createdAt: r.created_at.toISOString(),
+  cancelledAt: r.cancelled_at ? r.cancelled_at.toISOString() : null,
+  cancelDeadline: new Date(r.created_at.getTime() + 3 * 60 * 60 * 1000).toISOString(),
+  archivedBySender: Boolean(r.archived_by_sender_at),
+  archivedByRecipient: Boolean(r.archived_by_recipient_at),
 });
 
 /** Карточка Prime — только её отправитель или получатель. */
@@ -214,11 +218,99 @@ export const activatePrimeGift = async (userId, instanceId) => {
 };
 
 export const mySentPrimeGifts = async (userId) => {
-  const { rows } = await query('SELECT * FROM prime_gift_instances WHERE sender_id = $1 ORDER BY created_at DESC', [userId]);
+  const { rows } = await query(
+    `SELECT * FROM prime_gift_instances WHERE sender_id = $1 AND archived_by_sender_at IS NULL ORDER BY created_at DESC`,
+    [userId],
+  );
   return rows.map(toView);
 };
 
 export const myReceivedPrimeGifts = async (userId) => {
-  const { rows } = await query('SELECT * FROM prime_gift_instances WHERE recipient_id = $1 ORDER BY created_at DESC', [userId]);
+  const { rows } = await query(
+    `SELECT * FROM prime_gift_instances WHERE recipient_id = $1 AND archived_by_recipient_at IS NULL ORDER BY created_at DESC`,
+    [userId],
+  );
   return rows.map(toView);
+};
+
+export const archivedSentPrimeGifts = async (userId) => {
+  const { rows } = await query(
+    `SELECT * FROM prime_gift_instances WHERE sender_id = $1 AND archived_by_sender_at IS NOT NULL ORDER BY archived_by_sender_at DESC`,
+    [userId],
+  );
+  return rows.map(toView);
+};
+
+export const archivedReceivedPrimeGifts = async (userId) => {
+  const { rows } = await query(
+    `SELECT * FROM prime_gift_instances WHERE recipient_id = $1 AND archived_by_recipient_at IS NOT NULL ORDER BY archived_by_recipient_at DESC`,
+    [userId],
+  );
+  return rows.map(toView);
+};
+
+/**
+ * Отмена отправленного подарка Prime — только отправитель, только пока
+ * получатель ещё не нажал «Получить» (status='new') и только в
+ * течение 3 часов с доставки. Тот же приём условного UPDATE, что и у
+ * activatePrimeGift: если получатель активирует ровно в этот момент,
+ * выиграет только один из двух конкурирующих UPDATE (оба бьют в одну
+ * и ту же строку по одному и тому же условию status='new').
+ */
+export const cancelPrimeGiftInstance = async (senderId, instanceId) => {
+  if (!PRIME_GIFT_ID_RE.test(String(instanceId ?? ''))) return { error: 'not_found' };
+
+  const { rows: flip } = await query(
+    `UPDATE prime_gift_instances SET status = 'unavailable', unavailable_reason = 'cancelled_by_sender', cancelled_at = now()
+      WHERE id = $1 AND sender_id = $2 AND status = 'new'
+        AND created_at > now() - interval '${CANCEL_WINDOW}'
+      RETURNING *`,
+    [instanceId, senderId],
+  );
+
+  if (!flip[0]) {
+    const { rows: cur } = await query(
+      'SELECT sender_id, status, created_at FROM prime_gift_instances WHERE id = $1', [instanceId],
+    );
+    if (!cur[0]) return { error: 'not_found' };
+    if (cur[0].sender_id !== senderId) return { error: 'not_allowed' };
+    if (cur[0].status === 'activated') return { error: 'already_activated' };
+    if (cur[0].status === 'unavailable') return { error: 'already_cancelled' };
+    return { error: 'window_expired' };
+  }
+  const instance = flip[0];
+
+  const { rows: ord } = await query(
+    `UPDATE gift_orders SET status = 'refunded' WHERE id = $1 AND status = 'paid' RETURNING price`,
+    [instance.order_id],
+  );
+  if (ord[0]) {
+    await wallet.refund(senderId, ord[0].price, 'Возврат — отменён подарок Prime', instance.order_id);
+  }
+
+  await notifyGift(instance.recipient_id, 'gift_cancelled', 'Подарок Prime отменён',
+    'Отправитель отменил отправку подарка Prime', instanceId);
+
+  return { ok: true, instance: toView(instance) };
+};
+
+/** Архив — по каждой стороне отдельно, как и у обычных подарков. */
+export const archivePrimeGiftInstance = async (userId, instanceId, archived) => {
+  if (!PRIME_GIFT_ID_RE.test(String(instanceId ?? ''))) return { error: 'not_found' };
+  const { rows } = await query('SELECT sender_id, recipient_id FROM prime_gift_instances WHERE id = $1', [instanceId]);
+  const row = rows[0];
+  if (!row) return { error: 'not_found' };
+  if (row.sender_id !== userId && row.recipient_id !== userId) return { error: 'not_allowed' };
+
+  const setSender = row.sender_id === userId;
+  const setRecipient = row.recipient_id === userId;
+  const value = archived ? new Date() : null;
+  await query(
+    `UPDATE prime_gift_instances SET
+       archived_by_sender_at = CASE WHEN $2 THEN $4 ELSE archived_by_sender_at END,
+       archived_by_recipient_at = CASE WHEN $3 THEN $4 ELSE archived_by_recipient_at END
+     WHERE id = $1`,
+    [instanceId, setSender, setRecipient, value],
+  );
+  return { ok: true };
 };

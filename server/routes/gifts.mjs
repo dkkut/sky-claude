@@ -15,11 +15,14 @@ import {
   listCatalog, adminListCatalog, getCatalogItem, createGift, updateGift, setGiftActive,
   registerGiftMedia, registerPrimeCardMedia, mediaMime,
   sendGift, saveInstanceToProfile, getInstance, receivedGifts, profileGifts, sentGifts, publicProfileGifts,
+  cancelGiftInstance, archiveGiftInstance, archivedReceivedGifts, archivedSentGifts,
   errCode as giftErrCode,
 } from './../gifts.mjs';
 import {
   PRIME_GIFT_ID_RE, primePriceTiers, sendPrimeGift, getPrimeGiftInstance, activatePrimeGift,
-  mySentPrimeGifts, myReceivedPrimeGifts, errCode as primeErrCode,
+  mySentPrimeGifts, myReceivedPrimeGifts,
+  cancelPrimeGiftInstance, archivePrimeGiftInstance, archivedSentPrimeGifts, archivedReceivedPrimeGifts,
+  errCode as primeErrCode,
 } from './../primegifts.mjs';
 import {
   currentOwner, ownersOf, provenanceOf, transferNft, ownedByProfile, publicOwnedBy,
@@ -184,7 +187,7 @@ export const giftRoutes = async (req, res, url) => {
     return r.error ? json(res, errCode(r.error), r) : json(res, 201, r);
   }
 
-  const instanceMatch = /^\/api\/gifts\/instances\/(gi-[0-9a-f-]{36})(\/save)?$/.exec(path);
+  const instanceMatch = /^\/api\/gifts\/instances\/(gi-[0-9a-f-]{36})(\/save|\/cancel|\/archive)?$/.exec(path);
   if (instanceMatch) {
     const id = instanceMatch[1];
     if (!INSTANCE_ID_RE.test(id)) return json(res, 404, { error: 'not_found' });
@@ -196,6 +199,17 @@ export const giftRoutes = async (req, res, url) => {
     if (req.method === 'POST' && instanceMatch[2] === '/save') {
       if (!rateLimit(`gift:w:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
       const r = await saveInstanceToProfile(me, id);
+      return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
+    }
+    if (req.method === 'POST' && instanceMatch[2] === '/cancel') {
+      if (!rateLimit(`gift:w:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+      const r = await cancelGiftInstance(me, id);
+      return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
+    }
+    if (req.method === 'POST' && instanceMatch[2] === '/archive') {
+      if (!rateLimit(`gift:w:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+      const b = await body();
+      const r = await archiveGiftInstance(me, id, b?.on !== false);
       return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
     }
   }
@@ -211,6 +225,14 @@ export const giftRoutes = async (req, res, url) => {
   if (req.method === 'GET' && path === '/api/gifts/mine/sent') {
     if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
     return json(res, 200, { items: await sentGifts(me) });
+  }
+  if (req.method === 'GET' && path === '/api/gifts/mine/received/archived') {
+    if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { items: await archivedReceivedGifts(me) });
+  }
+  if (req.method === 'GET' && path === '/api/gifts/mine/sent/archived') {
+    if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { items: await archivedSentGifts(me) });
   }
 
   const publicGiftsMatch = /^\/api\/gifts\/profile\/([A-Za-z0-9_-]{1,64})$/.exec(path);
@@ -234,7 +256,7 @@ export const giftRoutes = async (req, res, url) => {
     });
     return r.error ? json(res, errCode(r.error), r) : json(res, 201, r);
   }
-  const primeInstanceMatch = /^\/api\/gifts\/prime\/instances\/(pgi-[0-9a-f-]{36})(\/activate)?$/.exec(path);
+  const primeInstanceMatch = /^\/api\/gifts\/prime\/instances\/(pgi-[0-9a-f-]{36})(\/activate|\/cancel|\/archive)?$/.exec(path);
   if (primeInstanceMatch) {
     const id = primeInstanceMatch[1];
     if (!PRIME_GIFT_ID_RE.test(id)) return json(res, 404, { error: 'not_found' });
@@ -248,6 +270,17 @@ export const giftRoutes = async (req, res, url) => {
       const r = await activatePrimeGift(me, id);
       return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
     }
+    if (req.method === 'POST' && primeInstanceMatch[2] === '/cancel') {
+      if (!rateLimit(`gift:w:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+      const r = await cancelPrimeGiftInstance(me, id);
+      return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
+    }
+    if (req.method === 'POST' && primeInstanceMatch[2] === '/archive') {
+      if (!rateLimit(`gift:w:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+      const b = await body();
+      const r = await archivePrimeGiftInstance(me, id, b?.on !== false);
+      return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
+    }
   }
   if (req.method === 'GET' && path === '/api/gifts/prime/mine/sent') {
     if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
@@ -256,6 +289,14 @@ export const giftRoutes = async (req, res, url) => {
   if (req.method === 'GET' && path === '/api/gifts/prime/mine/received') {
     if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
     return json(res, 200, { items: await myReceivedPrimeGifts(me) });
+  }
+  if (req.method === 'GET' && path === '/api/gifts/prime/mine/sent/archived') {
+    if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { items: await archivedSentPrimeGifts(me) });
+  }
+  if (req.method === 'GET' && path === '/api/gifts/prime/mine/received/archived') {
+    if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { items: await archivedReceivedPrimeGifts(me) });
   }
 
   /* ── NFT: владение, история, передача ─────────────────────────────── */
