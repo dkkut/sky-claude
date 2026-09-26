@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Flame, Swords, Trophy, Gamepad2, Clock, TrendingUp, Award } from 'lucide-react';
 import { useGamingStore, GAMES, type GameEntry } from '../store';
@@ -10,11 +10,12 @@ const RANK_ORDER = ['Bronze','Silver','Gold','Platinum','Diamond','Master'];
 interface Props { onGame: (g: GameEntry) => void }
 
 export const ProfileView = ({ onGame }: Props) => {
-  const { myStats, tourneys } = useGamingStore();
+  const { myStats, tourneys, loadTournaments } = useGamingStore();
+  useEffect(() => { void loadTournaments(); }, [loadTournaments]);
   const { accounts, currentUserId } = useAuthStore();
   const me         = accounts.find(a => a.id === currentUserId);
   const stats      = myStats();
-  const myT        = tourneys.filter(t => t.participants.includes(currentUserId ?? ''));
+  const myT        = tourneys.filter(t => t.isJoined);
   const totalWins  = stats.reduce((a, s) => a + s.wins,  0);
   const totalHours = stats.reduce((a, s) => a + s.hours, 0);
   const totalKills = stats.reduce((a, s) => a + Math.round(s.wins * s.kd), 0);

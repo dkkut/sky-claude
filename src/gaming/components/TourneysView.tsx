@@ -1,11 +1,10 @@
-import { useState } from 'react';
-import { Trophy, Plus, X, Users, Clock, ChevronRight, Zap } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Trophy, Plus, X, Users, Clock, ChevronRight, Zap, Flag } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGamingStore, GAMES } from '../store';
 import { useAuthStore } from '@/core/auth/store';
 import { GENRE_COLOR, countdown } from './Primitives';
 
-const FORMATS = ['1v1','2v2','5v5','Соло','Дуо','Трио','Квад'];
 const PRIZES  = ['500 ₽','1 000 ₽','5 000 ₽','10 000 ₽','50 000 ₽','Sky Prime 1 мес','Sky Prime 3 мес','Скин эпик','Скин легендарный'];
 
 const STATUS_CFG = {
@@ -15,28 +14,34 @@ const STATUS_CFG = {
 };
 
 export const TourneysView = () => {
-  const { tourneys, joinTourney, leaveTourney, createTourney } = useGamingStore();
+  const { tourneys, joinTourney, leaveTourney, createTourney, loadTournaments, setTourneyStatus } = useGamingStore();
   const { currentUserId } = useAuthStore();
   const [filter,     setFilter]     = useState<'all'|'live'|'upcoming'|'finished'>('all');
   const [showCreate, setShowCreate] = useState(false);
   const uid = currentUserId ?? '';
 
+  useEffect(() => { void loadTournaments(); }, [loadTournaments]);
+
   const [title,   setTitle]   = useState('');
   const [gameId,  setGameId]  = useState(GAMES[0]?.id ?? '');
-  const [format,  setFormat]  = useState('5v5');
+  const [format,  setFormat]  = useState(GAMES[0]?.format ?? '');
   const [teamsMax,setTeamsMax]= useState(16);
   const [prize,   setPrize]   = useState('5 000 ₽');
   const [startAt, setStartAt] = useState('');
   const [err,     setErr]     = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const sorted = [...tourneys]
     .filter(t => filter === 'all' || t.status === filter)
     .sort((a, b) => ({ live:0, upcoming:1, finished:2 }[a.status]) - ({ live:0, upcoming:1, finished:2 }[b.status]));
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!title.trim()) { setErr('Введите название'); return; }
     if (!startAt)       { setErr('Укажите дату');    return; }
-    createTourney({ gameId, title: title.trim(), status: 'upcoming', prize, prizeIcon: '🏆', teamsMax, format, startAt: new Date(startAt).toISOString() });
+    setSubmitting(true);
+    const r = await createTourney({ gameId, title: title.trim(), prize, teamsMax, format, startsAt: new Date(startAt).toISOString() });
+    setSubmitting(false);
+    if (r.error) { setErr(r.error === 'invalid_schedule' ? 'Дата должна быть в будущем' : 'Не удалось создать турнир'); return; }
     setTitle(''); setStartAt(''); setErr(''); setShowCreate(false);
   };
 
@@ -94,16 +99,15 @@ export const TourneysView = () => {
                 className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
                 style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }}/>
               <div className="grid grid-cols-2 gap-2">
-                <select value={gameId} onChange={e => setGameId(e.target.value)}
+                <select value={gameId} onChange={e => { setGameId(e.target.value); setFormat(GAMES.find(g => g.id === e.target.value)?.format ?? ''); }}
                   className="rounded-xl px-2 py-2 text-xs outline-none"
                   style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }}>
                   {GAMES.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
                 </select>
-                <select value={format} onChange={e => setFormat(e.target.value)}
-                  className="rounded-xl px-2 py-2 text-xs outline-none"
-                  style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }}>
-                  {FORMATS.map(f => <option key={f} value={f}>{f}</option>)}
-                </select>
+                <div className="rounded-xl px-3 py-2 text-xs flex items-center"
+                  style={{ background: 'var(--bg-l3)', border: '1px solid var(--border)', color: 'var(--t3)' }}>
+                  {format}
+                </div>
                 <select value={teamsMax} onChange={e => setTeamsMax(+e.target.value)}
                   className="rounded-xl px-2 py-2 text-xs outline-none"
                   style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }}>
@@ -119,10 +123,10 @@ export const TourneysView = () => {
                 className="w-full rounded-xl px-3 py-2 text-sm outline-none"
                 style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }}/>
               {err && <p className="text-xs" style={{ color: 'var(--red)' }}>{err}</p>}
-              <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={handleCreate}
-                className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white"
+              <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={handleCreate} disabled={submitting}
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white disabled:opacity-50"
                 style={{ background: 'var(--accent)' }}>
-                <Trophy size={14}/> Создать турнир
+                <Trophy size={14}/> {submitting ? 'Секунду…' : 'Создать турнир'}
               </motion.button>
             </div>
           </motion.div>
@@ -144,7 +148,8 @@ export const TourneysView = () => {
           const game = GAMES.find(g => g.id === t.gameId);
           const col  = game ? GENRE_COLOR[game.genre] : 'var(--accent)';
           const cfg  = STATUS_CFG[t.status];
-          const isIn = t.participants.includes(uid);
+          const isIn = t.isJoined;
+          const isOrganizer = t.organizerId === uid;
           const pct  = Math.min(100, (t.teamsIn / t.teamsMax) * 100);
 
           return (
@@ -237,6 +242,13 @@ export const TourneysView = () => {
                           <span className="h-1.5 w-1.5 rounded-full bg-green-400"/>
                           <span className="text-[10px] font-semibold" style={{ color: 'var(--green)' }}>Зарег.</span>
                         </div>
+                      )}
+                      {isOrganizer && (
+                        <button type="button" onClick={() => setTourneyStatus(t.id, 'finished')}
+                          className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold"
+                          style={{ background: 'var(--bg-l3)', color: 'var(--t2)', border: '1px solid var(--border)' }}>
+                          <Flag size={11}/> Завершить
+                        </button>
                       )}
                     </div>
                   )}

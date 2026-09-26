@@ -6,6 +6,10 @@ import { create } from 'zustand';
 import { useAuthStore } from '@/core/auth/store';
 import { wireSend } from '@/core/wire';
 import { apiGameRating, type GameRating } from './matchmakingApi';
+import {
+  apiListTournaments, apiCreateTournament, apiJoinTournament, apiLeaveTournament, apiSetTournamentStatus,
+  type ServerTournament,
+} from './tournamentsApi';
 
 export type GameGenre = 'fps'|'moba'|'battle-royale';
 export type TourneyStatus = 'upcoming'|'live'|'finished';
@@ -40,18 +44,26 @@ export interface PlayerStat {
 }
 
 export interface Tournament {
-  id:         string;
-  gameId:     string;
-  title:      string;
-  status:     TourneyStatus;
-  prize:      string;           // «50 000 ₽» | «Sky Prime 6 мес»
-  prizeIcon:  string;
-  teamsMax:   number;
-  teamsIn:    number;
-  startAt:    string;           // ISO
-  format:     string;           // «5v5» | «Соло» | «Дуо»
-  participants:string[];        // accountIds
+  id:          string;
+  gameId:      string;
+  title:       string;
+  status:      TourneyStatus;
+  prize:       string;           // «50 000 ₽» | «Sky Prime 6 мес»
+  teamsMax:    number;
+  teamsIn:     number;
+  startAt:     string;           // ISO
+  format:      string;           // «5 на 5» | «Отряд 4 на 4»
+  organizerId: string;
+  /* Список всех участников сервер не отдаёт (не всем нужно видеть
+     чужой состав) — только моё собственное участие. */
+  isJoined:    boolean;
 }
+
+const toClientTourney = (t: ServerTournament): Tournament => ({
+  id: t.id, gameId: t.gameId, title: t.title, status: t.status === 'cancelled' ? 'finished' : t.status,
+  prize: t.prize, teamsMax: t.teamsMax, teamsIn: t.teamsIn, startAt: t.startsAt, format: t.format,
+  organizerId: t.organizerId, isJoined: t.isJoined,
+});
 
 export interface NewsItem {
   id:        string;
@@ -148,7 +160,6 @@ export { GENRE_LABEL };
    не безобидную заглушку для своей же выдуманной игры. Пустой список
    — честное состояние; каждый экран уже умеет показывать «пусто». */
 const SEED_STATS: PlayerStat[] = [];
-const SEED_TOURNEYS: Tournament[] = [];
 const SEED_NEWS: NewsItem[] = [];
 const SEED_INVITES: Invite[] = [];
 
@@ -166,8 +177,10 @@ interface GamingState {
   invites:    Invite[];
 
   myStats:        (gameId?: string) => PlayerStat[];
-  joinTourney:    (id: string) => void;
-  leaveTourney:   (id: string) => void;
+  loadTournaments: () => Promise<void>;
+  joinTourney:    (id: string) => Promise<void>;
+  leaveTourney:   (id: string) => Promise<void>;
+  setTourneyStatus: (id: string, status: 'live' | 'finished' | 'cancelled') => Promise<void>;
   answerInvite:   (id: string, accept: boolean) => void;
   sendInvite:     (toId: string, gameId: string, mode: string) => void;
   matchHistory:   MatchResult[];
@@ -211,8 +224,7 @@ interface GamingState {
   applyCancelledRequeued:  (gameId: string) => void;
   applyMmError:            () => void;
   setGameProfile:  (gameId: string, nickname: string) => void;
-  createTourney:   (t: Omit<Tournament,'id'|'participants'|'teamsIn'>) => void;
-  deleteTourney:   (id: string) => void;
+  createTourney:   (t: { gameId: string; title: string; description?: string; format?: string; prize?: string; teamsMax: number; startsAt: string }) => Promise<{ error?: string }>;
 }
 
 const stored = load();
@@ -226,7 +238,7 @@ const stopQueueTick = () => { if (queueTick) { clearInterval(queueTick); queueTi
 export const useGamingStore = create<GamingState>((set, get) => {
   const flush = () => {
     const s = get();
-    save({ stats:s.stats, tourneys:s.tourneys, invites:s.invites });
+    save({ stats:s.stats, invites:s.invites });
   };
   const mut = (fn:(s:GamingState)=>Partial<GamingState>) => {
     set(s=>({...s,...fn(s)})); flush();
@@ -244,7 +256,9 @@ export const useGamingStore = create<GamingState>((set, get) => {
     ratings: {},
     ratingFor: (gameId) => get().ratings[gameId],
     stats:    stored?.stats    ?? SEED_STATS,
-    tourneys: stored?.tourneys ?? SEED_TOURNEYS,
+    // Турниры — не localStorage: общий для всех список с сервера
+    // (server/tournaments.mjs), заполняется через loadTournaments().
+    tourneys: [],
     news:     SEED_NEWS,   // всегда из seed (новости не редактируются)
     invites:  stored?.invites  ?? SEED_INVITES,
 
@@ -353,26 +367,28 @@ export const useGamingStore = create<GamingState>((set, get) => {
       return gameId ? all.filter(s=>s.gameId===gameId) : all;
     },
 
-    joinTourney: (id) => {
-      const uid = me();
-      mut(s => ({
-        tourneys: s.tourneys.map(t =>
-          t.id===id && !t.participants.includes(uid) && t.teamsIn < t.teamsMax
-            ? { ...t, participants:[...t.participants,uid], teamsIn:t.teamsIn+1 }
-            : t
-        )
-      }));
+    // Турниры — общий для всех список на сервере (server/tournaments.mjs),
+    // а не запись в localStorage того, кто нажал кнопку: joinTourney на
+    // одном устройстве теперь видно всем, включая другое устройство того
+    // же человека.
+    loadTournaments: async () => {
+      const list = await apiListTournaments();
+      set({ tourneys: list.map(toClientTourney) });
     },
 
-    leaveTourney: (id) => {
-      const uid = me();
-      mut(s => ({
-        tourneys: s.tourneys.map(t =>
-          t.id===id
-            ? { ...t, participants:t.participants.filter(p=>p!==uid), teamsIn:Math.max(0,t.teamsIn-1) }
-            : t
-        )
-      }));
+    joinTourney: async (id) => {
+      const t = await apiJoinTournament(id);
+      if (t) set(s => ({ tourneys: s.tourneys.map(x => x.id === id ? toClientTourney(t) : x) }));
+    },
+
+    leaveTourney: async (id) => {
+      const t = await apiLeaveTournament(id);
+      if (t) set(s => ({ tourneys: s.tourneys.map(x => x.id === id ? toClientTourney(t) : x) }));
+    },
+
+    setTourneyStatus: async (id, status) => {
+      const t = await apiSetTournamentStatus(id, status);
+      if (t) set(s => ({ tourneys: s.tourneys.map(x => x.id === id ? toClientTourney(t) : x) }));
     },
 
     answerInvite: (id, accept) => {
@@ -398,12 +414,10 @@ export const useGamingStore = create<GamingState>((set, get) => {
       mut(s => ({ invites:[inv,...s.invites] }));
     },
 
-    createTourney: (t) => {
-      const id = 'ct-' + Date.now();
-      mut(s => ({ tourneys: [...s.tourneys, { ...t, id, participants:[], teamsIn:0 }] }));
-    },
-    deleteTourney: (id) => {
-      mut(s => ({ tourneys: s.tourneys.filter(t => t.id !== id) }));
+    createTourney: async (t) => {
+      const r = await apiCreateTournament(t);
+      if (r.tournament) set(s => ({ tourneys: [toClientTourney(r.tournament!), ...s.tourneys] }));
+      return { error: r.error };
     },
     setGameProfile: (gameId, nickname) => {
       const uid = me();

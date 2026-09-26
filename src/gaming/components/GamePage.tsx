@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft, Flame, Zap } from 'lucide-react';
 import { useGamingStore, GAMES, GENRE_LABEL, type GameEntry } from '../store';
@@ -8,13 +9,13 @@ import { TourneyRow } from './TourneyRow';
 interface Props { game: GameEntry; onBack: () => void }
 
 export const GamePage = ({ game, onBack }: Props) => {
-  const { myStats, tourneys, joinTourney, leaveTourney, sendInvite } = useGamingStore();
+  const { myStats, tourneys, loadTournaments, joinTourney, leaveTourney, sendInvite } = useGamingStore();
   const { accounts, currentUserId } = useAuthStore();
   const stat      = myStats(game.id)[0];
   const col       = GENRE_COLOR[game.genre];
   const friends   = accounts.filter(a => a.id !== currentUserId).slice(0, 4);
   const gTourneys = tourneys.filter(t => t.gameId === game.id);
-  const uid       = currentUserId ?? '';
+  useEffect(() => { void loadTournaments(); }, [loadTournaments]);
 
   return (
     <motion.div className="flex h-full flex-col overflow-hidden"
@@ -156,7 +157,7 @@ export const GamePage = ({ game, onBack }: Props) => {
             </p>
             {gTourneys.map(t => (
               <TourneyRow key={t.id} t={t}
-                isIn={t.participants.includes(uid)}
+                isIn={t.isJoined}
                 onJoin={() => joinTourney(t.id)}
                 onLeave={() => leaveTourney(t.id)}/>
             ))}

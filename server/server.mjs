@@ -60,6 +60,7 @@ import { notifyRoutes } from './routes/notify.mjs';
 import { dispatchDueBroadcasts, sweepStaleBroadcastRuns } from './notifyBroadcast.mjs';
 import { adsRoutes } from './routes/ads.mjs';
 import { activateDueCampaigns, completeExpiredCampaigns, sweepOrphanAdMedia } from './ads.mjs';
+import { sweepStartedTournaments } from './tournaments.mjs';
 import { checkAllSources } from './tv.mjs';
 import { sweepOrphanFilms } from './film.mjs';
 import { sweepOrphanVideos } from './skyvideo.mjs';
@@ -223,6 +224,7 @@ let houseKeeping = null;
 let botRetry = null;
 let notifyDispatch = null;
 let adsSchedule = null;
+let tourneySchedule = null;
 
 const start = async () => {
   // Содержимое переписки лежит в базе зашифрованным, и ключ для этого
@@ -286,6 +288,14 @@ const start = async () => {
     completeExpiredCampaigns().catch((err) => console.error('[ads] завершение', err.message));
   }, 30 * 1000);
   adsSchedule.unref();
+
+  // Турнир Sky Games сам переходит upcoming → live, как только настало
+  // объявленное время начала — организатор не обязан заходить и жать
+  // кнопку, чтобы список честно показывал «идёт», а не вечное «скоро».
+  tourneySchedule = setInterval(() => {
+    sweepStartedTournaments().catch((err) => console.error('[games] турниры', err.message));
+  }, 30 * 1000);
+  tourneySchedule.unref();
 
   // Раз в час убираем отработавшие коды и гасим истёкшие подписки Prime.
   houseKeeping = setInterval(async () => {
