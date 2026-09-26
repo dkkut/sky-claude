@@ -10,7 +10,8 @@
  * Цена и остаток тоже приходят только отсюда: в запросе на покупку их
  * просто нет.
  */
-import { apiCall, getAccessToken } from '@/core/auth/api';
+import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
 
 /* ─── Что приходит с сервера ────────────────────────────────────── */
 
@@ -468,9 +469,10 @@ export const apiUploadCover = (
 ): { promise: Promise<{ ok: boolean; reason?: string }>; cancel: () => void } => {
   const xhr = new XMLHttpRequest();
   const promise = new Promise<{ ok: boolean; reason?: string }>((resolve) => {
-    xhr.open('POST', `/api/tickets/event/${encodeURIComponent(eventId)}/${kind}`);
-    xhr.withCredentials = true;
+    xhr.open('POST', uploadUrl(`/api/tickets/event/${encodeURIComponent(eventId)}/${kind}`));
+    xhr.withCredentials = !NATIVE_APP;
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    Object.entries(nativeXhrHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
     const token = getAccessToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 

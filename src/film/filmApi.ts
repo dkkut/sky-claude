@@ -11,7 +11,8 @@
  * Личное закрыто в базе и в запросах сервера; этот файл просто не
  * получит чужого, сколько бы ни просил.
  */
-import { apiCall, getAccessToken } from '@/core/auth/api';
+import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
 
 /** Состояния фильма. Всё, кроме 'published', видит только владелец. */
 export type FilmStatus = 'private' | 'pending' | 'published' | 'rejected';
@@ -308,9 +309,10 @@ export const apiUploadMovie = (
 
   const xhr = new XMLHttpRequest();
   const promise = new Promise<{ ok: boolean; movie?: ServerMovie; reason?: string }>((resolve) => {
-    xhr.open('POST', `/api/film/upload?${p}`);
-    xhr.withCredentials = true;
+    xhr.open('POST', uploadUrl(`/api/film/upload?${p}`));
+    xhr.withCredentials = !NATIVE_APP;
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    Object.entries(nativeXhrHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
     const token = getAccessToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 

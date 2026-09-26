@@ -4,7 +4,8 @@
  * Только вызовы. Кому что можно, решает сервер — этот файл живёт в
  * браузере и ни одна проверка отсюда его решение не заменяет.
  */
-import { apiCall, getAccessToken } from '@/core/auth/api';
+import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
 
 export interface Book {
   id: string;
@@ -229,9 +230,10 @@ export const apiUploadChapterAudio = (
 ): { promise: Promise<{ ok: boolean; chapter?: Chapter; reason?: string }>; cancel: () => void } => {
   const xhr = new XMLHttpRequest();
   const promise = new Promise<{ ok: boolean; chapter?: Chapter; reason?: string }>((resolve) => {
-    xhr.open('POST', `${chapterAudioUrl(chapterId)}?duration=${Math.round(durationSec)}`);
-    xhr.withCredentials = true;
+    xhr.open('POST', uploadUrl(`${chapterAudioUrl(chapterId)}?duration=${Math.round(durationSec)}`));
+    xhr.withCredentials = !NATIVE_APP;
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    Object.entries(nativeXhrHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
     const token = getAccessToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 

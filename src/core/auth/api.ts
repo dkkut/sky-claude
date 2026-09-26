@@ -172,6 +172,22 @@ const raw = (path: string, init: RequestInit = {}) =>
     credentials: NATIVE_APP ? 'omit' : 'same-origin',
   });
 
+/**
+ * То же самое (абсолютный адрес + пометка родного приложения) для сырых
+ * XMLHttpRequest-загрузок файлов (видео, аудио и т.п.) — raw() выше их
+ * не касается, а без этого upload в приложении просто не долетал бы до
+ * сервера: относительный путь резолвился бы в собственный origin
+ * приложения (https://localhost у Capacitor, app://sky у Electron), а
+ * калитка беты отклоняла бы запрос без X-Sky-Beta.
+ */
+export const uploadUrl = (path: string) => (NATIVE_APP ? API_ORIGIN + path : path);
+
+export const nativeXhrHeaders = (): Record<string, string> => (
+  NATIVE_APP
+    ? { 'X-Sky-Client': 'app', ...(nativeBetaToken ? { 'X-Sky-Beta': nativeBetaToken } : {}) }
+    : {}
+);
+
 /** Чтобы несколько одновременных 401 не устроили гонку обновлений. */
 let refreshing: Promise<boolean> | null = null;
 

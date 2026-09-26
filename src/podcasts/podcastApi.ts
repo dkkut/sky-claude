@@ -5,7 +5,8 @@
  * проверка отсюда не заменяет его проверку: этот файл живёт в браузере,
  * а браузер переписывается.
  */
-import { apiCall, getAccessToken } from '@/core/auth/api';
+import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
 
 export interface Host { name: string; role?: string }
 
@@ -396,9 +397,10 @@ export const apiUploadMedia = (
 
   const xhr = new XMLHttpRequest();
   const promise = new Promise<{ ok: boolean; episode?: Episode; reason?: string }>((resolve) => {
-    xhr.open('POST', `/api/podcasts/episode/${encodeURIComponent(episodeId)}/${kind}${qs ? `?${qs}` : ''}`);
-    xhr.withCredentials = true;
+    xhr.open('POST', uploadUrl(`/api/podcasts/episode/${encodeURIComponent(episodeId)}/${kind}${qs ? `?${qs}` : ''}`));
+    xhr.withCredentials = !NATIVE_APP;
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    Object.entries(nativeXhrHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
     const token = getAccessToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 

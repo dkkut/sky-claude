@@ -14,7 +14,8 @@
  * сервер. Раньше было иначе — старая функция callAI обращалась к
  * api.anthropic.com прямо отсюда, и именно поэтому Sky AI не работал.
  */
-import { apiCall, getAccessToken } from '@/core/auth/api';
+import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
 
 /* ─── Что приходит с сервера ────────────────────────────────────── */
 
@@ -256,9 +257,10 @@ export const apiAiUpload = (
 
   const xhr = new XMLHttpRequest();
   const promise = new Promise<{ ok: boolean; fileId?: string; reason?: string; code?: string }>((resolve) => {
-    xhr.open('POST', `/api/ai/upload?${p.toString()}`);
-    xhr.withCredentials = true;
+    xhr.open('POST', uploadUrl(`/api/ai/upload?${p.toString()}`));
+    xhr.withCredentials = !NATIVE_APP;
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    Object.entries(nativeXhrHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
     const token = getAccessToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 

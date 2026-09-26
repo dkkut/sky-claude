@@ -7,7 +7,8 @@
  * стороне — сервер откажет в чужом ролике сам, сколько бы браузер ни
  * попросил.
  */
-import { apiCall, getAccessToken } from '@/core/auth/api';
+import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
 
 export type VideoStatus = 'draft' | 'published' | 'hidden' | 'removed';
 export type VideoPrivacy = 'public' | 'unlisted' | 'private';
@@ -277,9 +278,10 @@ export const apiUploadSkyVideo = (
 
   const xhr = new XMLHttpRequest();
   const promise = new Promise<{ ok: boolean; video?: ServerVideo; reason?: string }>((resolve) => {
-    xhr.open('POST', `/api/skyvideo/upload?${p}`);
-    xhr.withCredentials = true;
+    xhr.open('POST', uploadUrl(`/api/skyvideo/upload?${p}`));
+    xhr.withCredentials = !NATIVE_APP;
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    Object.entries(nativeXhrHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
     const token = getAccessToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
