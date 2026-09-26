@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppShell }      from './app/AppShell';
 import { AuthScreen }    from './auth/AuthScreen';
+import { TVAuthScreen }  from './interface/tv/auth/TVAuthScreen';
+import { useDeviceMode } from './interface/tv/useDeviceMode';
 import { BetaGate }      from './auth/BetaGate';
 import { setBetaRequiredHandler, initNativeAuth } from './core/auth/api';
 import { OfflineMode }   from './offline/OfflineMode';
@@ -277,6 +279,11 @@ const Splash = ({ offline }: { offline: boolean }) => {
 const Root = () => {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
   const currentUserId   = useAuthStore(s => s.currentUserId);
+  // Раньше до входа TV всегда получал обычный AuthScreen — экран под
+  // мышь/тач/физическую клавиатуру, ни один элемент которого не был
+  // виден системе навигации пультом (TVFocusable/focusManager). На
+  // настоящем ТВ это означало, что войти вообще нельзя было.
+  const deviceMode = useDeviceMode();
   // Skip splash if already authenticated (page refresh) - show instantly
   // Always show splash on every load
   const [ready, setReady] = useState(false);
@@ -407,7 +414,7 @@ const Root = () => {
 
   return isAuthenticated
     ? <AppShell key={currentUserId ?? 'app'} />
-    : underLegal(<AuthScreen />);
+    : underLegal(deviceMode === 'tv' ? <TVAuthScreen /> : <AuthScreen />);
 };
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

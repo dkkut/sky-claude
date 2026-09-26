@@ -15,12 +15,13 @@ import { TVMusic } from './TVMusic';
 import { TVVideoHub } from './TVVideoHub';
 import { TVChannels } from './TVChannels';
 import { TVPodcasts } from './TVPodcasts';
+import { TVLibrary } from './TVLibrary';
 import { TVCatalogGrid } from './TVCatalogGrid';
 import { TVProfileSettings } from './TVProfileSettings';
 import { useFilmStore } from '@/film/serverStore';
 import { posterUrl, type ServerMovie } from '@/film/filmApi';
 
-const HEADER_KINDS = new Set<TVScreen['kind']>(['home', 'movies', 'series', 'music', 'video', 'channels', 'podcasts', 'favorites']);
+const HEADER_KINDS = new Set<TVScreen['kind']>(['home', 'movies', 'series', 'music', 'video', 'channels', 'podcasts', 'library', 'favorites']);
 
 export const TVShell = () => {
   const stack = useTVNavStore(s => s.stack);
@@ -99,6 +100,7 @@ export const TVShell = () => {
       {screen.kind === 'video' && <TVVideoHub onPlayVideo={goPlayVideo}/>}
       {screen.kind === 'channels' && <TVChannels/>}
       {screen.kind === 'podcasts' && <TVPodcasts/>}
+      {screen.kind === 'library' && <TVLibrary onPlayMovie={goPlayMovie}/>}
 
       {screen.kind === 'search' && <TVSearch onOpenMovie={goDetail} onBack={handleBack}/>}
 

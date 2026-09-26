@@ -13,6 +13,9 @@ interface Node {
   onEnter?: () => void;
   /** приоритет при авто-фокусе страницы: чем меньше, тем раньше */
   autoFocusPriority?: number;
+  /** см. setScope() ниже — узел без scope участвует только пока
+      активного scope нет вовсе (обычный экран, не модалка) */
+  scope?: string;
 }
 
 type Direction = 'up' | 'down' | 'left' | 'right';
@@ -22,11 +25,32 @@ class FocusManagerImpl {
   private focusedId: string | null = null;
   private listeners = new Set<() => void>();
   private enterListeners = new Map<string, () => void>();
+  /** Активная модалка поверх экрана (LegalNotice, подтверждение выхода
+      и т.п.): пока задана — стрелки/Enter видят только узлы с этим же
+      scope, остальной экран под модалкой временно «не существует» для
+      пульта. Без этого стрелка могла бы улететь под модалку — на
+      обычной странице такого нет и не нужно, поэтому по умолчанию
+      scope не задан и всё ведёт себя как раньше. */
+  private activeScope: string | null = null;
+
+  private eligible(node: Node) {
+    if (node.disabled) return false;
+    return this.activeScope == null ? true : node.scope === this.activeScope;
+  }
+
+  setScope(scope: string | null) {
+    this.activeScope = scope;
+    this.focusDefault();
+    this.emit();
+  }
+  getScope() { return this.activeScope; }
 
   register(node: Node) {
     this.nodes.set(node.id, node);
-    // если фокуса ещё нет вообще — сразу берём первый зарегистрированный
-    if (this.focusedId === null) this.setFocused(node.id);
+    // если фокуса ещё нет вообще, либо он «утёк» на узел не из текущей
+    // модалки (открылась новая поверх) — берём этот узел, если он
+    // подходит под текущий scope
+    if (this.focusedId === null && this.eligible(node)) this.setFocused(node.id);
     this.emit();
     return () => this.unregister(node.id);
   }
@@ -35,9 +59,9 @@ class FocusManagerImpl {
     this.nodes.delete(id);
     if (this.focusedId === id) {
       this.focusedId = null;
-      // передаём фокус любому оставшемуся узлу, чтобы он никогда не «пропадал»
-      const next = this.nodes.values().next().value as Node | undefined;
-      if (next) this.focusedId = next.id;
+      // передаём фокус любому оставшемуся подходящему под scope узлу,
+      // чтобы он никогда не «пропадал»
+      for (const n of this.nodes.values()) { if (this.eligible(n)) { this.focusedId = n.id; break; } }
     }
     this.emit();
   }
@@ -52,7 +76,7 @@ class FocusManagerImpl {
 
   setFocused(id: string) {
     const node = this.nodes.get(id);
-    if (!node || node.disabled) return;
+    if (!node || !this.eligible(node)) return;
     this.focusedId = id;
     this.emit();
   }
@@ -61,13 +85,13 @@ class FocusManagerImpl {
       либо самый верхний-левый, если приоритет не задан). Вызывается при
       монтировании каждого TV-экрана. */
   focusDefault(preferId?: string) {
-    if (preferId && this.nodes.has(preferId) && !this.nodes.get(preferId)!.disabled) {
+    if (preferId && this.nodes.has(preferId) && this.eligible(this.nodes.get(preferId)!)) {
       this.setFocused(preferId);
       return;
     }
     let best: Node | null = null;
     for (const n of this.nodes.values()) {
-      if (n.disabled) continue;
+      if (!this.eligible(n)) continue;
       if (!best) { best = n; continue; }
       const bp = best.autoFocusPriority, np = n.autoFocusPriority;
       if (np != null && (bp == null || np < bp)) { best = n; continue; }
@@ -98,7 +122,7 @@ class FocusManagerImpl {
 
     let best: { id: string; score: number } | null = null;
     for (const [id, node] of this.nodes) {
-      if (id === this.focusedId || node.disabled) continue;
+      if (id === this.focusedId || !this.eligible(node)) continue;
       const r = node.el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue; // не смонтирован визуально
       const nx = r.left + r.width / 2;

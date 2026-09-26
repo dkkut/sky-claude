@@ -15,6 +15,10 @@ interface TVFocusableProps {
   id?: string;
   disabled?: boolean;
   autoFocusPriority?: number;
+  /** см. focusManager.ts::setScope — узел модалки (LegalNotice,
+      подтверждение выхода), недоступный стрелкам, пока модалка не
+      активный scope. Обычным TV-экранам это не нужно. */
+  scope?: string;
   onEnter: () => void;
   className?: string;
   style?: React.CSSProperties;
@@ -24,7 +28,7 @@ interface TVFocusableProps {
 /** Внутри — обычный <div>: фокус здесь наш, программный (не нативный DOM
     focus), поэтому работает одинаково что с пультом, что с эмуляцией
     клавиатурой в браузере, без зависимости от tabIndex-порядка. */
-export const TVFocusable = ({ id: idProp, disabled, autoFocusPriority, onEnter, className, style, children }: TVFocusableProps) => {
+export const TVFocusable = ({ id: idProp, disabled, autoFocusPriority, scope, onEnter, className, style, children }: TVFocusableProps) => {
   const autoId = useId();
   const id = idProp ?? autoId;
   const ref = useRef<HTMLDivElement>(null);
@@ -32,9 +36,9 @@ export const TVFocusable = ({ id: idProp, disabled, autoFocusPriority, onEnter, 
 
   useEffect(() => {
     if (!ref.current) return;
-    const unregister = tvFocusManager.register({ id, el: ref.current, disabled, onEnter, autoFocusPriority });
+    const unregister = tvFocusManager.register({ id, el: ref.current, disabled, onEnter, autoFocusPriority, scope });
     return unregister;
-  }, [id, disabled, onEnter, autoFocusPriority]);
+  }, [id, disabled, onEnter, autoFocusPriority, scope]);
 
   return (
     <div

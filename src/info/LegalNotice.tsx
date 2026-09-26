@@ -10,11 +10,15 @@
  * создании первого профиля и хранит редакцию документов. Здесь только
  * то, что человек это видел.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollText } from 'lucide-react';
 import { LegalDocs } from './LegalDocs';
+import { useDeviceMode } from '@/interface/tv/useDeviceMode';
+import { TVFocusable } from '@/interface/tv/TVFocusable';
+import { tvFocusManager } from '@/interface/tv/focusManager';
+import { useTVKeyBindings } from '@/interface/tv/useTVKeyBindings';
 
 /** Отметка, что окно уже показывали на этом устройстве. */
 const SEEN_KEY = 'sky.legal.notice.v1';
@@ -47,8 +51,22 @@ export const LegalReader = ({ onClose }: { onClose: () => void }) =>
  */
 export const LegalNotice = ({ onDone }: { onDone: () => void }) => {
   const [reading, setReading] = useState(false);
+  // На ТВ нет ни мыши, ни тача — без этого окно с этими кнопками было
+  // непроходимым тупиком в TV-режиме (сами кнопки не видны системе
+  // навигации пультом, TVFocusable/focusManager). Полный текст документов
+  // (LegalDocs) сюда сознательно не тянем: читать многостраничные
+  // документы с пульта — плохой опыт при любом раскладе; прочитать их
+  // можно на телефоне/компьютере, а здесь пультом доступно только принять.
+  const isTV = useDeviceMode() === 'tv';
 
   const accept = () => { markSeen(); onDone(); };
+
+  useEffect(() => {
+    if (!isTV) return;
+    tvFocusManager.setScope('legal');
+    return () => tvFocusManager.setScope(null);
+  }, [isTV]);
+  useTVKeyBindings({ mode: 'nav', enabled: isTV });
 
   return (
     <>
@@ -86,11 +104,22 @@ export const LegalNotice = ({ onDone }: { onDone: () => void }) => {
                 style={{ background: 'var(--bg-l2)', color: 'var(--t2)' }}>
                 Читать
               </button>
-              <button type="button" onClick={accept}
-                className="flex-1 rounded-2xl py-2.5 text-[13px] font-bold text-white"
-                style={{ background: 'var(--accent)' }}>
-                Продолжить
-              </button>
+              {isTV ? (
+                <TVFocusable id="legal-accept" scope="legal" onEnter={accept}>
+                  {({ focused }) => (
+                    <div className="flex-1 rounded-2xl py-2.5 text-center text-[13px] font-bold text-white"
+                      style={{ background: 'var(--accent)', outline: focused ? '2px solid #fff' : 'none' }}>
+                      Продолжить
+                    </div>
+                  )}
+                </TVFocusable>
+              ) : (
+                <button type="button" onClick={accept}
+                  className="flex-1 rounded-2xl py-2.5 text-[13px] font-bold text-white"
+                  style={{ background: 'var(--accent)' }}>
+                  Продолжить
+                </button>
+              )}
             </div>
           </div>
         </motion.div>,

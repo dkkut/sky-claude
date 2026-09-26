@@ -14,6 +14,7 @@ const SECTIONS: { key: TVScreen['kind']; label: string }[] = [
   { key: 'video',     label: 'SkyVideo'   },
   { key: 'channels',  label: 'Sky TV'     },
   { key: 'podcasts',  label: 'Подкасты'   },
+  { key: 'library',   label: 'Библиотека' },
   { key: 'favorites', label: 'Избранное'  },
 ];
 
@@ -28,7 +29,7 @@ export const TVHeader = ({ active, onNavigate, onSearch, onProfile }: TVHeaderPr
   <div className="flex items-center gap-1 px-10 shrink-0" style={{ height: 76, background: 'linear-gradient(180deg, rgba(10,10,14,0.95), rgba(10,10,14,0.75))' }}>
     <p className="mr-8 text-[22px] font-extrabold shrink-0" style={{ color: 'var(--accent)' }}>Sky</p>
 
-    {SECTIONS.map((s, i) => (
+    {SECTIONS.map(s => (
       <TVFocusable key={s.key} id={`nav-${s.key}`} onEnter={() => onNavigate(s.key)} autoFocusPriority={active === s.key ? -1 : undefined}>
         {({ focused }) => (
           <div className="mx-1 rounded-lg px-4 py-2 text-[15px] font-bold transition-colors"
