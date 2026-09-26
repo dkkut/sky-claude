@@ -23,6 +23,8 @@ import { ProfileViewerLayer }     from '@/profile/viewer/ProfileViewerLayer';
 import { BreakReminderModal }     from '@/settings/BreakReminderModal';
 import { useDeviceMode } from '@/interface/tv/useDeviceMode';
 import { TVShell } from '@/interface/tv/TVShell';
+import { useCarMode } from '@/interface/car/useCarMode';
+import { CarShell } from '@/interface/car/CarShell';
 import { ErrorBoundary }          from './ErrorBoundary';
 import { useIsMobile }            from '@/interface/mobile/useIsMobile';
 import { MobileShell }            from '@/interface/mobile/MobileShell';
@@ -106,6 +108,7 @@ export const AppShell = () => {
   const welcome = useFirstLaunch();
   const isMobile = useIsMobile();
   const deviceMode = useDeviceMode();
+  const carMode = useCarMode();
 
   useEffect(() => {
     const m = new URLSearchParams(window.location.search).get('module');
@@ -122,6 +125,10 @@ export const AppShell = () => {
 
   if (deviceMode === 'tv') {
     return <ErrorBoundary><TVShell /></ErrorBoundary>;
+  }
+
+  if (carMode) {
+    return <ErrorBoundary><CarShell /></ErrorBoundary>;
   }
 
   if (isMobile) {

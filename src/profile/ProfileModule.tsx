@@ -4,7 +4,7 @@ import {
   Camera, Edit2, Check, X, Phone, Shield, Star, Crown, Clock,
   Lock, Eye, Bell, ChevronRight, LogOut, Gamepad2, Trophy, Swords, ChevronDown,
   Settings, Moon, Globe, Volume2, Download, Palette, Info, ExternalLink, WifiOff, Wallet, Gift, EyeOff, PawPrint, Briefcase, Users,
-  RotateCcw, CheckCheck, MessageSquare, Send, Fingerprint, Coffee, Timer, Pause, Tv,
+  RotateCcw, CheckCheck, MessageSquare, Send, Fingerprint, Coffee, Timer, Pause, Tv, Car,
   ArrowLeftRight, LifeBuoy, ScrollText, Inbox, Video, ShieldHalf, Flower2,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
@@ -19,6 +19,7 @@ import { ReferralPanel } from '@/referral/Referral';
 import { useSettings, ACCENT_COLORS, THEME_MODES, FONT_SIZES, type AccentColor, type ThemeMode, type FontSize } from '@/settings/store';
 import { useBreakReminderStore, INTERVAL_OPTIONS, SNOOZE_OPTIONS } from '@/settings/breakReminderStore';
 import { getTVModeSetting, setTVModeSetting, type TVModeSetting } from '@/interface/tv/useDeviceMode';
+import { useCarMode, setCarMode } from '@/interface/car/useCarMode';
 import { useCallStore } from '@/calls/store';
 import { SkyMoneyWallet } from '@/wallet/SkyMoneyWallet';
 import { ProfileGiftsShowcase } from '@/gifts/SkyGifts';
@@ -316,6 +317,20 @@ const TVModeSection = () => {
   );
 };
 
+/* -- Car Mode (крупный интерфейс для экрана в машине) --------------- */
+const CarModeSection = () => {
+  const on = useCarMode();
+  return (
+    <SectionBlock title="Car Mode">
+      <SettingsRow icon={Car} label="Включить Car Mode" sub={on ? 'Включён' : 'Выключен'}
+        right={<Toggle on={on} onToggle={() => setCarMode(!on)} />} />
+      <p className="px-4 pb-3 pt-1 text-[11px]" style={{ color: 'var(--t3)' }}>
+        Крупный интерфейс без лишних деталей: Музыка, Кино, Подкасты, Сообщения и Sky AI одним касанием. Включайте, когда экран телефона подключён к машине.
+      </p>
+    </SectionBlock>
+  );
+};
+
 const SettingsSection = ({ logout, username, onOpen, staff }: {
   logout:()=>void; username:string;
   onOpen:(section:Section)=>void;
@@ -453,6 +468,9 @@ const SettingsSection = ({ logout, username, onOpen, staff }: {
 
       {/* -- TV-ВЕРСИЯ ---------------------------- */}
       <TVModeSection/>
+
+      {/* -- CAR MODE ----------------------------- */}
+      <CarModeSection/>
 
       {/* -- МЕССЕНДЖЕР -------------------------- */}
       <SectionBlock title="Мессенджер">
