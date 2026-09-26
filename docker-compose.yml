@@ -28,6 +28,11 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:?нужно задать DOMAIN в .env}
+      # Второй вхост — KutRent Market (market.kutrent.online), см.
+      # nginx/market-template/market.conf.template. Не задан — используется
+      # заведомо недостижимый домен-заглушка: сайт партнёра просто никогда
+      # никому не отвечает, остальной Sky это не затрагивает никак.
+      MARKET_DOMAIN: ${MARKET_DOMAIN:-market.invalid.local}
     volumes:
       - certbot-certs:/etc/letsencrypt:ro
       - certbot-webroot:/var/www/certbot:ro

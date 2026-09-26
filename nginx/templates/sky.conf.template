@@ -23,8 +23,14 @@ map $http_upgrade $connection_upgrade {
 
 # -- :80 — только ACME и редирект на HTTPS --------------------
 server {
-    listen      80;
-    listen [::]:80;
+    # default_server — этот вхост первым появился и должен отвечать на
+    # любой запрос без совпавшего Host (в т.ч. Docker healthcheck: он
+    # бьёт по 127.0.0.1, а не по ${DOMAIN}). Без явного default_server
+    # порядок между этим файлом и conf.d/market.conf решил бы алфавит
+    # имён файлов — market.conf раньше sky.conf, и здоровье Sky
+    # неожиданно проверялось бы редиректом чужого вхоста.
+    listen      80 default_server;
+    listen [::]:80 default_server;
     # www.${DOMAIN} указан на случай домена второго уровня; для
     # поддомена такое имя просто никогда не придёт и ни на что не влияет.
     server_name ${DOMAIN} www.${DOMAIN};
@@ -49,8 +55,8 @@ server {
 
 # -- :443 — приложение ----------------------------------------
 server {
-    listen      443 ssl;
-    listen [::]:443 ssl;
+    listen      443 ssl default_server;
+    listen [::]:443 ssl default_server;
     http2       on;
     # www.${DOMAIN} указан на случай домена второго уровня; для
     # поддомена такое имя просто никогда не придёт и ни на что не влияет.

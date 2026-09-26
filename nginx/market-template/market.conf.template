@@ -1,0 +1,74 @@
+# ============================================================
+#  KutRent Market — сайт-партнёр, market.kutrent.online.
+#
+#  Отдельный вхост в том же nginx, что и Sky: своя статика, свой
+#  сертификат (домен другой — сертификат Sky на него не годится), но
+#  /api/kutrent-market/ проксируется в тот же upstream sky_api, что
+#  объявлен в sky.conf.template — второй Node-процесс не поднимается,
+#  это всё тот же Sky API (см. server/routes/kutrentmarket.mjs).
+#
+#  В отличие от sky.conf.template этот файл НЕ лежит в
+#  /etc/nginx/templates — его не трогает штатный envsubst-on-templates
+#  образа nginx. Разворачивает его сам docker-entrypoint.d/05-market-nginx.sh:
+#  ему кроме ${MARKET_DOMAIN} нужно ещё решить, откуда взять сертификат
+#  (${MARKET_CERT_DIR}) — из настоящего Let's Encrypt или из временной
+#  самоподписанной заглушки, пока настоящего ещё нет (подробности там).
+# ============================================================
+
+server {
+    listen      80;
+    listen [::]:80;
+    server_name ${MARKET_DOMAIN};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen      443 ssl;
+    listen [::]:443 ssl;
+    http2       on;
+    server_name ${MARKET_DOMAIN};
+
+    ssl_certificate     ${MARKET_CERT_DIR}/fullchain.pem;
+    ssl_certificate_key ${MARKET_CERT_DIR}/privkey.pem;
+
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_ciphers               ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_timeout       1d;
+    ssl_session_tickets       off;
+
+    include /etc/nginx/snippets/security-headers-market.conf;
+
+    limit_conn conn_per_ip 100;
+
+    root  /usr/share/nginx/html-market;
+    index index.html;
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 'ok';
+    }
+
+    # API сайта — тот же процесс api, что и у основного Sky.
+    location ^~ /api/kutrent-market/ {
+        limit_req zone=req_general burst=30 nodelay;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+        proxy_pass http://sky_api;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

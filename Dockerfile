@@ -29,11 +29,23 @@ COPY nginx/snippets/    /etc/nginx/snippets/
 # Шаблоны обрабатываются entrypoint-ом образа: envsubst подставит ${DOMAIN}
 # и положит результат в /etc/nginx/conf.d/ при старте контейнера.
 COPY nginx/templates/   /etc/nginx/templates/
+# KutRent Market (market.kutrent.online) — второй вхост, но НЕ через
+# штатный envsubst-on-templates (см. docker-entrypoint.d/05-market-nginx.sh
+# за подробностями, почему у него отдельная обработка): сюда, а не в
+# /etc/nginx/templates.
+COPY nginx/market-template/ /etc/nginx/market-template/
 # Скрипты отсюда entrypoint образа выполняет перед стартом nginx.
 COPY nginx/docker-entrypoint.d/ /docker-entrypoint.d/
 RUN chmod +x /docker-entrypoint.d/*.sh
+# openssl — 05-market-nginx.sh генерирует временный самоподписанный
+# сертификат, пока для market.kutrent.online не выпущен настоящий.
+RUN apk add --no-cache openssl
 
 COPY --from=build /app/dist /usr/share/nginx/html
+
+# KutRent Market — обычная статика (без сборки: чистые HTML/CSS/JS),
+# отдаётся market.conf.template отдельным вхостом, см. Root=выше.
+COPY market-site/ /usr/share/nginx/html-market
 
 # Каталог для ACME-челленджей Let's Encrypt.
 RUN mkdir -p /var/www/certbot

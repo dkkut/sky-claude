@@ -59,6 +59,7 @@ import { weatherRoutes } from './routes/weather.mjs';
 import { notifyRoutes } from './routes/notify.mjs';
 import { dispatchDueBroadcasts, sweepStaleBroadcastRuns } from './notifyBroadcast.mjs';
 import { adsRoutes } from './routes/ads.mjs';
+import { kutrentMarketRoutes } from './routes/kutrentmarket.mjs';
 import { activateDueCampaigns, completeExpiredCampaigns, sweepOrphanAdMedia } from './ads.mjs';
 import { sweepStartedTournaments } from './tournaments.mjs';
 import { checkAllSources } from './tv.mjs';
@@ -89,7 +90,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes,
-                notifyRoutes, adsRoutes];
+                notifyRoutes, adsRoutes, kutrentMarketRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
