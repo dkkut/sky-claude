@@ -35,13 +35,12 @@ import { AdminPanel }    from '@/admin/AdminPanel';
 import { LegalDocs }     from '@/info/LegalDocs';
 import { apiSupportStatus } from '@/moderation/supportApi';
 import { SkyIDTab }    from './SkyIDTab';
-import { BusinessTab } from './BusinessTab';
 
 const fmtDur = (s: number) => s < 60 ? `${s}с` : `${Math.floor(s/60)}м ${s%60}с`;
 const fmtDate = (iso: string) => { try { return new Date(iso).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}); } catch { return iso; } };
 
 type PrivacyVal = 'all'|'contacts'|'nobody';
-type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'business'|'customization'|'support'|'info'|'support_queue'|'video_queue'|'admin_panel';
+type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'customization'|'support'|'info'|'support_queue'|'video_queue'|'admin_panel';
 
 // --- Toggle row --------------------------------------------------------------
 const PrivRow = ({ label, sub, value, onChange }: { label:string; sub?:string; value:PrivacyVal; onChange:(v:PrivacyVal)=>void }) => {
@@ -750,7 +749,6 @@ export const ProfileModule = () => {
     {key:'proxy',         label:'Подключение',        icon:Shield},
     {key:'referral',      label:'Приглашения',          icon:Users},
     {key:'skyid',         label:'Sky ID',               icon:Fingerprint},
-    {key:'business',      label:'Бизнес',               icon:Briefcase},
     {key:'support',       label:'Тех. поддержка',       icon:LifeBuoy},
     {key:'info',          label:'Информация',           icon:ScrollText},
     // Очередь появляется только у того, кому её доверил сервер.
@@ -1170,12 +1168,6 @@ export const ProfileModule = () => {
         {section === 'skyid' && (
           <div className="flex flex-col h-full overflow-hidden">
             <SkyIDTab />
-          </div>
-        )}
-
-        {section === 'business' && (
-          <div className="flex flex-col h-full overflow-hidden">
-            <BusinessTab />
           </div>
         )}
 
