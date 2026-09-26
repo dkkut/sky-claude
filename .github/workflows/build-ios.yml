@@ -62,7 +62,9 @@ jobs:
       # закреплённой xcscheme, поэтому собираем по имени таргета
       # (-target), а не схемы (-scheme) — это не требует существования
       # файла схемы и не зависит от того, открывали ли этот проект в
-      # Xcode.app хоть раз.
+      # Xcode.app хоть раз. -derivedDataPath с -target несовместим
+      # (xcodebuild требует -scheme для него) — вместо этого продукт
+      # кладём явным SYMROOT, это работает и без схемы.
       - name: Сборка неподписанного .app
         run: |
           xcodebuild build \
@@ -70,7 +72,7 @@ jobs:
             -target App \
             -configuration Debug \
             -sdk iphoneos \
-            -derivedDataPath ios/build \
+            SYMROOT="$(pwd)/ios/build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -82,7 +84,7 @@ jobs:
       - name: Упаковка в .ipa
         run: |
           set -e
-          APP_PATH="ios/build/Build/Products/Debug-iphoneos/App.app"
+          APP_PATH="ios/build/Debug-iphoneos/App.app"
           test -d "$APP_PATH"
           mkdir -p ios/build/Payload
           cp -R "$APP_PATH" ios/build/Payload/
