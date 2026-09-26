@@ -16,6 +16,24 @@ export const NATIVE_APP = import.meta.env.VITE_NATIVE_APP === '1';
 /** Абсолютный адрес API. Пусто в веб-сборке — там пути и так относительные. */
 export const API_ORIGIN = NATIVE_APP ? (import.meta.env.VITE_API_ORIGIN ?? '') : '';
 
+/** Состояние единого плеера, которым основное окно Electron делится с overlay Quick Actions. */
+export interface SkyPlayerState {
+  kind: 'music' | 'podcast' | null;
+  title: string;
+  author: string;
+  coverUrl?: string;
+  isPlaying: boolean;
+  currentTime: number;
+  duration: number;
+}
+
+/** Команда, которую overlay Quick Actions шлёт основному окну — единственному, кто трогает настоящий <audio>. */
+export type SkyPlayerCommand =
+  | { type: 'toggle' }
+  | { type: 'next' }
+  | { type: 'prev' }
+  | { type: 'skip'; deltaSec: number };
+
 declare global {
   interface Window {
     Capacitor?: { isNativePlatform?: () => boolean };
@@ -25,12 +43,21 @@ declare global {
         set: (key: string, value: string) => Promise<void>;
         remove: (key: string) => Promise<void>;
       };
+      quickActions: {
+        hide: () => void;
+        focusMain: () => void;
+        sendPlayerState: (state: SkyPlayerState) => void;
+        requestPlayerState: () => void;
+        onPlayerState: (fn: (state: SkyPlayerState) => void) => () => void;
+        sendPlayerCommand: (cmd: SkyPlayerCommand) => void;
+        onPlayerCommand: (fn: (cmd: SkyPlayerCommand) => void) => () => void;
+      };
     };
   }
 }
 
 const isCapacitor = () => Boolean(window.Capacitor?.isNativePlatform?.());
-const isElectron = () => Boolean(window.sky?.secureStorage);
+export const isElectron = () => Boolean(window.sky?.secureStorage);
 
 /**
  * Защищённое хранилище токена — два бэкенда, один и тот же интерфейс.

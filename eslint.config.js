@@ -56,6 +56,25 @@ export default tseslint.config(
     },
   },
 
+  /* Главный процесс Electron: тот же пробел, что был у server/*.mjs —
+     CommonJS (require/__dirname), а не браузерный код. */
+  {
+    files: ['electron/**/*.cjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs',
+      globals: {
+        require: 'readonly', module: 'readonly', __dirname: 'readonly', __filename: 'readonly',
+        process: 'readonly', console: 'readonly', Buffer: 'readonly',
+        URL: 'readonly', URLSearchParams: 'readonly', Response: 'readonly', Request: 'readonly',
+        setTimeout: 'readonly', clearTimeout: 'readonly', setInterval: 'readonly', clearInterval: 'readonly',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {

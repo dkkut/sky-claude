@@ -25,6 +25,10 @@ import { useDeviceMode } from '@/interface/tv/useDeviceMode';
 import { TVShell } from '@/interface/tv/TVShell';
 import { useCarMode } from '@/interface/car/useCarMode';
 import { CarShell } from '@/interface/car/CarShell';
+import { isElectron } from '@/core/nativeApp';
+import { isQuickActionsWindow } from '@/interface/quickactions/useQuickActionsWindow';
+import { QuickActionsShell } from '@/interface/quickactions/QuickActionsShell';
+import { useMainWindowPlayerBridge } from '@/interface/quickactions/playerBridge';
 import { ErrorBoundary }          from './ErrorBoundary';
 import { useIsMobile }            from '@/interface/mobile/useIsMobile';
 import { MobileShell }            from '@/interface/mobile/MobileShell';
@@ -109,6 +113,9 @@ export const AppShell = () => {
   const isMobile = useIsMobile();
   const deviceMode = useDeviceMode();
   const carMode = useCarMode();
+  // Пуш состояния плеера в overlay Quick Actions (см. playerBridge.ts) —
+  // сам по себе ничего не делает вне Electron-основного окна.
+  useMainWindowPlayerBridge();
 
   useEffect(() => {
     const m = new URLSearchParams(window.location.search).get('module');
@@ -122,6 +129,14 @@ export const AppShell = () => {
   // перемонтируется при смене currentUserId (key в main.tsx), так что
   // и это состояние честно переспрашивается при входе другим человеком.
   useEffect(() => { void useModerationStore.getState().fetchFlags(); }, []);
+
+  // Overlay-окно Quick Actions — отдельный рендер-процесс Electron
+  // (app://sky/?quickActions=1, см. electron/main.cjs), никогда не
+  // Android/iOS/веб/TV/Car: там window.sky.quickActions просто не
+  // существует, и isQuickActionsWindow() всегда вернёт false.
+  if (isElectron() && isQuickActionsWindow()) {
+    return <ErrorBoundary><QuickActionsShell /></ErrorBoundary>;
+  }
 
   if (deviceMode === 'tv') {
     return <ErrorBoundary><TVShell /></ErrorBoundary>;
