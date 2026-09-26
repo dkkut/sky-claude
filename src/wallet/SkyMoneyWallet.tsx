@@ -466,36 +466,42 @@ const TopUpSheet = ({ onDone }: { onDone: () => void }) => {
       {/* Step: Amount */}
       {step === 'amount' && (
         <motion.div initial={{ opacity:0, x:-12 }} animate={{ opacity:1, x:0 }} className="space-y-4">
+          {/* Пополнение через карту/СБП не подключено к настоящей кассе —
+              честно ведём на работающий способ (сайт партнёра), а не
+              показываем форму, которая закончится ошибкой сервера. */}
+          <button type="button"
+            onClick={() => window.open('https://market.kutrent.online', '_blank', 'noopener,noreferrer')}
+            className="w-full py-3.5 rounded-2xl text-sm font-bold text-white"
+            style={{ background:`linear-gradient(135deg,${C.accent},#818cf8)` }}>
+            Пополнить через партнёра
+          </button>
+
           <p className="text-xs font-semibold uppercase tracking-wider" style={{ color:C.t3 }}>Сумма пополнения</p>
-          {/* Quick amounts */}
+          {/* Quick amounts — временно отключены */}
           <div className="grid grid-cols-3 gap-2">
             {QUICK_AMOUNTS_CASH.map(a => (
-              <button key={a} type="button" onClick={() => setAmount(String(a))}
-                className="rounded-xl py-2.5 text-sm font-semibold transition-all"
-                style={{
-                  background: amount===String(a) ? `${C.accent}18` : C.l2,
-                  border: `1px solid ${amount===String(a) ? C.accent+'50' : C.border}`,
-                  color: amount===String(a) ? C.accent : C.t2,
-                }}>
+              <button key={a} type="button" disabled
+                className="rounded-xl py-2.5 text-sm font-semibold cursor-not-allowed"
+                style={{ background:C.l2, border:`1px solid ${C.border}`, color:C.t3, opacity:0.45 }}>
                 {a.toLocaleString('ru')} ₽
               </button>
             ))}
           </div>
-          {/* Custom amount */}
+          {/* Custom amount — временно отключено */}
           <div className="relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-sm" style={{ color:C.t3 }}>₽</span>
-            <input type="number" min="50" max="500000"
+            <input type="number" min="50" max="500000" disabled
               value={amount} onChange={e => setAmount(e.target.value)}
               placeholder="Другая сумма (мин. 50 ₽)"
-              className="w-full rounded-2xl pl-8 pr-4 py-3 text-sm outline-none"
-              style={{ background:C.l2, border:`1px solid ${C.border}`, color:C.t1 }}/>
+              className="w-full rounded-2xl pl-8 pr-4 py-3 text-sm outline-none cursor-not-allowed"
+              style={{ background:C.l2, border:`1px solid ${C.border}`, color:C.t3, opacity:0.45 }}/>
           </div>
-          <button type="button" onClick={() => setStep('method')}
-            disabled={num < 50}
-            className="w-full py-3.5 rounded-2xl text-sm font-bold text-white disabled:opacity-35"
-            style={{ background:`linear-gradient(135deg,${C.accent},#818cf8)` }}>
+          <button type="button" disabled
+            className="w-full py-3.5 rounded-2xl text-sm font-bold cursor-not-allowed"
+            style={{ background:C.l2, color:C.t3, opacity:0.45 }}>
             Выбрать способ оплаты →
           </button>
+          <p className="text-center text-xs" style={{ color:C.t3 }}>Пополнение временно недоступно</p>
         </motion.div>
       )}
 
