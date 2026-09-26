@@ -116,14 +116,15 @@ Settings → Secrets and variables → Actions:
 
 ---
 
-## Android и Windows приложения
+## Android, Windows и iOS приложения
 
-Оба приложения (`.github/workflows/build-android.yml`,
-`build-windows.yml`) несут интерфейс внутри себя — Capacitor/Electron
-собирают его нативным режимом (`npm run build:native`, см. `.env.native`)
-и открывают со своего origin (`https://localhost` у Android,
-`app://sky` у Windows), а не с боевого домена. К серверу они обращаются
-как обычный кросс-доменный клиент: абсолютным адресом API
+Все три приложения (`.github/workflows/build-android.yml`,
+`build-windows.yml`, `build-ios.yml`) несут интерфейс внутри себя —
+Capacitor/Electron собирают его нативным режимом (`npm run
+build:native`, см. `.env.native`) и открывают со своего origin
+(`https://localhost` у Android, `app://sky` у Windows, `capacitor://
+localhost` у iOS), а не с боевого домена. К серверу они обращаются как
+обычный кросс-доменный клиент: абсолютным адресом API
 (`VITE_API_ORIGIN`) и явным токеном вместо HttpOnly-куки (см.
 `src/core/nativeApp.ts`).
 
@@ -133,7 +134,7 @@ Settings → Secrets and variables → Actions:
 
 ```
 # /opt/sky/.env
-EXTRA_ORIGINS=https://localhost,app://sky
+EXTRA_ORIGINS=https://localhost,app://sky,capacitor://localhost
 ```
 
 После правки — `docker compose up -d api`.
@@ -141,11 +142,27 @@ EXTRA_ORIGINS=https://localhost,app://sky
 **Важно про обновления.** Раньше приложения просто открывали боевой сайт,
 и любой веб-деплой обновлял их автоматически. Теперь интерфейс вшит в
 сборку — веб-деплой (`deploy.yml`) обновляет только сервер и API, а
-изменения интерфейса дойдут до Android/Windows только после того, как
-пересоберутся `build-android.yml`/`build-windows.yml` (тот же пуш их
-запускает — см. `paths` в файлах воркфлоу) и человек поставит новую
-версию поверх старой. Изменения самого сервера (цены, лимиты, новые
-ручки API) по-прежнему действуют сразу, без пересборки приложений.
+изменения интерфейса дойдут до Android/Windows/iOS только после того, как
+пересоберутся `build-android.yml`/`build-windows.yml`/`build-ios.yml`
+(тот же пуш их запускает — см. `paths` в файлах воркфлоу) и человек
+поставит новую версию поверх старой. Изменения самого сервера (цены,
+лимиты, новые ручки API) по-прежнему действуют сразу, без пересборки
+приложений.
+
+**iOS отдельно: нет Apple Developer аккаунта, и не нужен.**
+`build-ios.yml` собирает `.ipa` без какой-либо подписи
+(`CODE_SIGNING_ALLOWED=NO`) — такой файл не ставится через App Store
+или обычный `Install` и не рассчитан на это. Он рассчитан на локальную
+пересборку подписи на самом устройстве бесплатным Apple ID — это делают
+такие инструменты, как AltStore и SideStore: пользователь один раз
+ставит себе такой пересборщик, а дальше устанавливает через него любой
+`.ipa`, включая собранный здесь артефакт `sky-debug.ipa`. Настоящий
+платный Apple Developer Program аккаунт для этого не требуется; если он
+когда-нибудь появится, для App Store/TestFlight нужен будет отдельный
+блок реальной подписи (сертификат + provisioning profile + секреты) —
+по образцу release-подписи в `build-android.yml`, сейчас в `build-ios.yml`
+его нет специально, чтобы не заводить недостающую инфраструктуру
+подписи впустую.
 
 ---
 

@@ -5,7 +5,12 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default tseslint.config(
   {
-    ignores: ['dist'],
+    // android/ и ios/ — вшитая веб-сборка внутри нативных проектов
+    // (assets/public у Capacitor), появляется на диске после `cap
+    // sync` и сама в git не попадает (см. */.gitignore), но линтер
+    // этого не знает и разбирает уже собранный/минифицированный бандл
+    // как исходный код — тысячи ложных ошибок на ровном месте.
+    ignores: ['dist', 'android/**', 'ios/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

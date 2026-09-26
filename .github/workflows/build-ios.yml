@@ -1,0 +1,95 @@
+name: Сборка iOS (.ipa)
+
+# Xcode есть только на macOS, поэтому раннер здесь — macos-latest (в
+# отличие от Android/Windows), это единственная причина отдельного
+# файла. Шаблон `cap add ios` в Capacitor 8 — на Swift Package Manager
+# (CapApp-SPM), не CocoaPods: Podfile нет и не нужен, xcodebuild сам
+# качает пакеты (capacitor-swift-pm с GitHub + локальный путь на
+# node_modules/@capacitor/preferences) при первой сборке.
+#
+# .ipa получается без Apple Developer аккаунта и без подписи вообще
+# (CODE_SIGNING_ALLOWED=NO) — не для App Store, а для установки через
+# локальный пересборщик подписи на телефоне пользователя (AltStore,
+# SideStore и подобные): именно так распространяется собранный файл,
+# см. обсуждение в задаче. В отличие от build-android.yml здесь
+# сознательно нет второго, «настоящей подписью» блока: пользователь
+# явно попросил только простой .ipa, платного аккаунта нет и секретов
+# для него в репозитории не заводили. Понадобится — добавить по
+# образцу release-подписи APK (сертификат + профиль + `security
+# import` во временный keychain), когда появится реальный аккаунт.
+on:
+  push:
+    branches: [claude/project-server-setup-opwwui]
+    paths:
+      - 'ios/**'
+      - 'capacitor.config.ts'
+      - '.env.native'
+      - 'package.json'
+      - 'src/**'
+      - 'public/**'
+      - '.github/workflows/build-ios.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Сборка .ipa
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci --no-audit --no-fund
+
+      # cap:sync:ios = build:native (vite build --mode native, см.
+      # .env.native) + cap sync ios: интерфейс вшивается прямо в .ipa и
+      # обращается к API по абсолютному адресу (VITE_API_ORIGIN) вместо
+      # загрузки боевого сайта в WebView — см. capacitor.config.ts.
+      - name: Сборка веб-части и синхронизация Capacitor
+        run: npm run cap:sync:ios
+
+      # Отдельным шагом — чтобы сетевая ошибка загрузки
+      # capacitor-swift-pm была видна сама по себе, а не потонула в
+      # логе сборки.
+      - name: Загрузка Swift-пакетов
+        run: xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj
+
+      # Без подписи: свежедобавленный `cap add ios` не содержит
+      # закреплённой xcscheme, поэтому собираем по имени таргета
+      # (-target), а не схемы (-scheme) — это не требует существования
+      # файла схемы и не зависит от того, открывали ли этот проект в
+      # Xcode.app хоть раз.
+      - name: Сборка неподписанного .app
+        run: |
+          xcodebuild build \
+            -project ios/App/App.xcodeproj \
+            -target App \
+            -configuration Debug \
+            -sdk iphoneos \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
+
+      # .ipa — это просто zip с фиксированной структурой Payload/*.app.
+      # Именно такой файл ждут AltStore/SideStore при локальной
+      # пересборке подписи на устройстве пользователя.
+      - name: Упаковка в .ipa
+        run: |
+          set -e
+          APP_PATH="ios/build/Build/Products/Debug-iphoneos/App.app"
+          test -d "$APP_PATH"
+          mkdir -p ios/build/Payload
+          cp -R "$APP_PATH" ios/build/Payload/
+          (cd ios/build && zip -r -y ../../sky-debug.ipa Payload)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sky-debug.ipa
+          path: sky-debug.ipa
+          if-no-files-found: error
