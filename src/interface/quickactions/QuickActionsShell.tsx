@@ -10,7 +10,7 @@
    этот файл только собирает панель по тому, что вернул сервер.
 =========================================================== */
 import { useEffect, useState, Suspense } from 'react';
-import { Music2, MessageCircle, Clapperboard, Sparkles, Mic2, PawPrint, Gift, Video, BookOpen, Loader2 } from 'lucide-react';
+import { Music2, MessageCircle, Clapperboard, Sparkles, Mic2, Gift, Video, BookOpen, Loader2 } from 'lucide-react';
 import { lazyChunk } from '@/app/lazyChunk';
 import { QuickActionsPlayer } from './QuickActionsPlayer';
 import { QuickActionsMessenger } from './QuickActionsMessenger';
@@ -19,7 +19,6 @@ import { QuickActionsAI } from './QuickActionsAI';
 import { apiQuickMenuGet } from '@/quickmenu/quickMenuApi';
 
 const SkyPodcasts = lazyChunk(() => import('@/podcasts/SkyPodcasts').then(m => ({ default: m.SkyPodcasts })));
-const PetsScreen = lazyChunk(() => import('@/pets/PetsScreen').then(m => ({ default: m.PetsScreen })));
 const SkyGiftsNFT = lazyChunk(() => import('@/gifts/SkyGiftsNFT').then(m => ({ default: m.SkyGiftsNFT })));
 const SkyVideo = lazyChunk(() => import('@/extras/SkyVideo').then(m => ({ default: m.SkyVideo })));
 const LibraryModule = lazyChunk(() => import('@/library/LibraryModule').then(m => ({ default: m.LibraryModule })));
@@ -35,7 +34,6 @@ const TAB_DEFS: Record<string, Tab> = {
   watch:     { key: 'watch',     label: 'Кино',      icon: <Clapperboard size={16}/>,  render: () => <QuickActionsWatch/> },
   ai:        { key: 'ai',        label: 'Sky AI',    icon: <Sparkles size={16}/>,      render: () => <QuickActionsAI/> },
   podcasts:  { key: 'podcasts',  label: 'Подкасты',  icon: <Mic2 size={16}/>,          render: () => <SkyPodcasts/> },
-  pets:      { key: 'pets',      label: 'Питомцы',   icon: <PawPrint size={16}/>,      render: () => <PetsScreen/> },
   gifts:     { key: 'gifts',     label: 'Подарки',   icon: <Gift size={16}/>,          render: () => <SkyGiftsNFT/> },
   skyvideo:  { key: 'skyvideo',  label: 'SkyVideo',  icon: <Video size={16}/>,         render: () => <SkyVideo/> },
   library:   { key: 'library',   label: 'Библиотека', icon: <BookOpen size={16}/>,     render: () => <LibraryModule/> },

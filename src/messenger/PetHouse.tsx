@@ -504,6 +504,38 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
   const stRef = useRef<ReturnType<typeof setTimeout>|null>(null);
   const pid   = useRef(0);
 
+  // Комната нарисована в фиксированных пикселях (W×H) — на телефоне
+  // это шире и выше, чем есть места в колонке сцены, а сама колонка
+  // обрезает всё, что не влезло (overflow-hidden у общего родителя).
+  // Раньше от этого пропадала не картинка целиком, а именно нижняя
+  // половина — пол и стоящий на нём питомец, — потому что обрезка
+  // симметричная (items-center), а не пропорциональное уменьшение.
+  // Здесь считаем реальное свободное место и масштабируем всю сцену
+  // (комнату вместе с частицами — они делят одну систему координат)
+  // так, чтобы она целиком помещалась, вместо того чтобы обрезаться.
+  const sceneColRef = useRef<HTMLDivElement>(null);
+  const actionsRef  = useRef<HTMLDivElement>(null);
+  const [sceneScale, setSceneScale] = useState(1);
+  useEffect(() => {
+    const col = sceneColRef.current;
+    if (!col) return;
+    const recalc = () => {
+      const colRect = col.getBoundingClientRect();
+      const actionsH = actionsRef.current?.getBoundingClientRect().height ?? 0;
+      const reserveForBubbleAndGaps = 84; // речевой пузырь + отступы, даже когда сейчас скрыт
+      const availW = colRect.width - 16;
+      const availH = colRect.height - actionsH - reserveForBubbleAndGaps;
+      const next = Math.min(1, availW / W, availH / H);
+      setSceneScale(Number.isFinite(next) && next > 0 ? next : 1);
+    };
+    recalc();
+    const ro = new ResizeObserver(recalc);
+    ro.observe(col);
+    if (actionsRef.current) ro.observe(actionsRef.current);
+    window.addEventListener('orientationchange', recalc);
+    return () => { ro.disconnect(); window.removeEventListener('orientationchange', recalc); };
+  }, []);
+
   const activePet  = useMemo(()=>PETS.find(p=>p.id===prefs.active)??PETS[0],[prefs.active]);
   const petXP      = prefs.xp?.[activePet.id]??0;
   const petLevel   = lvl(petXP);
@@ -699,18 +731,25 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden sm:flex-row">
 
         {/* Scene column */}
-        <div className="flex-1 flex flex-col items-center justify-center relative p-4 min-w-0">
-          <Room
-            pet={activePet} theme={theme} items={room.items}
-            petState={petState} petPos={petPos} petMood={petMood}
-            onPetTap={handlePetTap} onFurnitureTap={handleFurnitureTap}
-          />
+        <div ref={sceneColRef} className="flex-1 flex flex-col items-center justify-center relative p-4 min-w-0">
+          {/* Внешняя обёртка занимает реальное (уменьшенное) место в
+              раскладке, внутренняя — исходные W×H с CSS-масштабом:
+              комната и частицы остаются в одной системе координат. */}
+          <div style={{ width: W * sceneScale, height: H * sceneScale, position: 'relative' }}>
+            <div style={{ width: W, height: H, position: 'relative', transform: `scale(${sceneScale})`, transformOrigin: 'top left' }}>
+              <Room
+                pet={activePet} theme={theme} items={room.items}
+                petState={petState} petPos={petPos} petMood={petMood}
+                onPetTap={handlePetTap} onFurnitureTap={handleFurnitureTap}
+              />
 
-          {/* Particles */}
-          {particles.map(p=>(
-            <Particle key={p.id} x={p.x} y={p.y} emoji={p.emoji}
-              done={()=>setParts(ps=>ps.filter(x=>x.id!==p.id))}/>
-          ))}
+              {/* Particles */}
+              {particles.map(p=>(
+                <Particle key={p.id} x={p.x} y={p.y} emoji={p.emoji}
+                  done={()=>setParts(ps=>ps.filter(x=>x.id!==p.id))}/>
+              ))}
+            </div>
+          </div>
 
           {/* Speech bubble */}
           <AnimatePresence>
@@ -731,7 +770,7 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
           </AnimatePresence>
 
           {/* Action buttons */}
-          <div className="flex flex-wrap justify-center gap-2 mt-4">
+          <div ref={actionsRef} className="flex flex-wrap justify-center gap-2 mt-4">
             {[
               {icon:'🍖',label:'Кормить', action:handleFeed,    cost:'🪙5', color:'#f59e0b'},
               {icon:'🎮',label:'Играть',  action:handlePlay,    cost:'',    color:'#8b5cf6'},

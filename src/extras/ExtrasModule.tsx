@@ -1,4 +1,4 @@
-import { Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, PawPrint, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
+import { Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
 import { lazyChunk } from '@/app/lazyChunk';
 import { BotsBrowser } from '@/bots/SkyBots';
 import { BotCreatorPanel } from '@/bots/BotCreator';
@@ -44,7 +44,6 @@ const MusicianHub = lazyChunk(() => import('@/music/MusicianHub').then(m => ({ d
 const SkyGarant = lazyChunk(() => import('@/garant/SkyGarant').then(m => ({ default: m.SkyGarant })));
 const SkyPVZ = lazyChunk(() => import('@/pvz/SkyPVZ').then(m => ({ default: m.SkyPVZ })));
 const SkyGiftsNFT = lazyChunk(() => import('@/gifts/SkyGiftsNFT').then(m => ({ default: m.SkyGiftsNFT })));
-const PetsScreen = lazyChunk(() => import('@/pets/PetsScreen').then(m => ({ default: m.PetsScreen })));
 import { AdminMusicPanel } from '@/music/ArtistSubmit';
 import { apiModerationQueue } from '@/music/musicApi';
 import { PodcastModeration } from '@/podcasts/PodcastsAdmin';
@@ -82,7 +81,7 @@ import { apiSupportStatus } from '@/moderation/supportApi';
    Оформление и порядок экранов сохранены: список карточками, кнопка
    создания, внутри плеер и колонка участников.                     */
 
-type Tab = 'garant'|'home'|'music'|'soundcloud'|'movies'|'prime'|'rooms'|'market'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'pets'|'more';
+type Tab = 'garant'|'home'|'music'|'soundcloud'|'movies'|'prime'|'rooms'|'market'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
 
 const fmtBytes = (b?: number) => b ? `${(b/1024/1024).toFixed(1)} MB` : '';
 const fmtSec = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -875,7 +874,6 @@ const MediaHomeTab = ({
     { key:'podcasts',Icon:Mic2,     label:'Подкасты', color:'#10b981', bg:'rgba(16,185,129,.12)'  },
     { key:'tickets', Icon:Ticket,   label:'Билеты',   color:'#f59e0b', bg:'rgba(245,158,11,.12)'  },
     { key:'ai',      Icon:Sparkles, label:'Sky AI',   color:'#8b5cf6', bg:'rgba(139,92,246,.12)'  },
-    { key:'pets',    Icon:PawPrint, label:'Питомцы',  color:'#ec4899', bg:'rgba(236,72,153,.12)'  },
   ] as const;
 
   /* Раньше здесь были 5 выдуманных подборок с придуманными названиями и
@@ -1294,7 +1292,6 @@ export const ExtrasModule = () => {
         {tab==='podcasts'   && <SkyPodcasts/>}
         {tab==='tickets'    && <SkyTickets/>}
         {tab==='ai'         && <SkyAITab/>}
-        {tab==='pets'       && <PetsScreen/>}
         {tab==='pulse'     && <PrimePulse/>}
         {tab==='campaigns' && <Campaigns/>}
         {tab==='musicians' && <MusicianHub/>}

@@ -14,9 +14,6 @@ interface S {
    *  подвкладку «Извне» (Библиотека) — тем же приёмом, что pendingExtrasTab,
    *  только несёт id элемента, а не название вкладки. */
   pendingExtrasItemId: string | null; setPendingExtrasItemId: (id: string | null) => void;
-  /** Открыть маркет скинов сразу при заходе в «Питомцы» — тем же приёмом,
-   *  что pendingExtrasTab (голосовая команда «покажи маркет скинов»). */
-  pendingPetsMarket: boolean; setPendingPetsMarket: (v: boolean) => void;
   /** Открыть конкретный раздел «Профиля» (например, «Настройки» — там
    *  живёт Quick Menu) сразу при переходе — тем же приёмом. */
   pendingProfileSection: string | null; setPendingProfileSection: (s: string | null) => void;
@@ -28,6 +25,5 @@ export const useModuleStore = create<S>(set=>({
   pendingBloomTab: null, setPendingBloomTab: t=>set({pendingBloomTab:t}),
   pendingVideoTab: null, setPendingVideoTab: t=>set({pendingVideoTab:t}),
   pendingExtrasItemId: null, setPendingExtrasItemId: id=>set({pendingExtrasItemId:id}),
-  pendingPetsMarket: false, setPendingPetsMarket: v=>set({pendingPetsMarket:v}),
   pendingProfileSection: null, setPendingProfileSection: s=>set({pendingProfileSection:s}),
 }));

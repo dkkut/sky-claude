@@ -57,8 +57,6 @@ import { bloomRoutes } from './routes/bloom.mjs';
 import { sweepOrphanBloomMedia } from './bloom.mjs';
 import { storiesRoutes } from './routes/stories.mjs';
 import { sweepOrphanStoryMedia } from './stories.mjs';
-import { petsRoutes } from './routes/pets.mjs';
-import { sweepOrphanPetMedia } from './pets.mjs';
 import { quickMenuRoutes } from './routes/quickmenu.mjs';
 import { weatherRoutes } from './routes/weather.mjs';
 import { notifyRoutes } from './routes/notify.mjs';
@@ -95,7 +93,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes,
-                notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, petsRoutes, quickMenuRoutes];
+                notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -357,10 +355,6 @@ const start = async () => {
       // истории — тот же случай, что и с Bloom выше.
       const storyMedia = await sweepOrphanStoryMedia();
       if (storyMedia.removed) console.log(`[stories] убрано осиротевшего медиа: ${storyMedia.removed}`);
-      // Превью/модель скина, загруженные в админке, но так и не
-      // привязанные ни к одному скину (карточку не сохранили).
-      const petMedia = await sweepOrphanPetMedia();
-      if (petMedia.removed) console.log(`[pets] убрано осиротевшего медиа: ${petMedia.removed}`);
       // Файл, отданный Sky AI на разбор, живёт до разбора и не дольше.
       // Человек закрыл вкладку между загрузкой и разбором — держать
       // его документ сутками незачем.

@@ -15,7 +15,6 @@ export const ITEM_REGISTRY = [
   { key: 'watch',     label: 'Кино' },
   { key: 'ai',        label: 'Sky AI' },
   { key: 'podcasts',  label: 'Подкасты' },
-  { key: 'pets',      label: 'Питомцы' },
   { key: 'gifts',     label: 'Подарки' },
   { key: 'skyvideo',  label: 'SkyVideo' },
   { key: 'library',   label: 'Библиотека' },
