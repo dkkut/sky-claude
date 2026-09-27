@@ -80,8 +80,24 @@ export interface RevenueEntry {
   createdAt: string;
 }
 
-export const videoUrl = (id: string) => `/api/skyvideo/video/${encodeURIComponent(id)}/video`;
-export const thumbnailUrl = (id: string) => `/api/skyvideo/video/${encodeURIComponent(id)}/thumbnail`;
+/**
+ * Тег <video>/<img> запрос выполняет браузер сам — заголовок Authorization
+ * туда не подставить, а в родном приложении страница и API вдобавок на
+ * разных origin (SameSite=Strict-кука с пропуском туда не доедет). Тогда
+ * пропуск едет в самом адресе (?t=), а адрес становится абсолютным —
+ * иначе относительный путь резолвился бы в собственный origin приложения,
+ * а не в API (см. apiSkyVideoTicket).
+ */
+let mediaTicket: string | null = null;
+
+const withMediaTicket = (path: string) => {
+  const url = uploadUrl(path);
+  if (!NATIVE_APP || !mediaTicket) return url;
+  return `${url}?t=${encodeURIComponent(mediaTicket)}`;
+};
+
+export const videoUrl = (id: string) => withMediaTicket(`/api/skyvideo/video/${encodeURIComponent(id)}/video`);
+export const thumbnailUrl = (id: string) => withMediaTicket(`/api/skyvideo/video/${encodeURIComponent(id)}/thumbnail`);
 
 /** Секунды → «ч:мм:сс» или «м:сс». */
 export const fmtDuration = (sec: number) => {
@@ -100,7 +116,8 @@ export const fmtDuration = (sec: number) => {
  * /api/skyvideo. Просим её один раз при открытии модуля.
  */
 export const apiSkyVideoTicket = async () => {
-  const r = await apiCall('/api/skyvideo/ticket', { method: 'POST', body: '{}' });
+  const r = await apiCall<{ ticket?: string }>('/api/skyvideo/ticket', { method: 'POST', body: '{}' });
+  if (r.ok && r.data?.ticket) mediaTicket = r.data.ticket;
   return r.ok;
 };
 

@@ -45,9 +45,10 @@ export const readTicket = (raw) => {
   }
 };
 
-export const ticketCookie = (profileId) => {
+/** Тикет можно передать готовым — см. musicticket.mjs::ticketCookie. */
+export const ticketCookie = (profileId, ticket = issueTicket(profileId)) => {
   const parts = [
-    `${COOKIE}=${issueTicket(profileId)}`,
+    `${COOKIE}=${ticket}`,
     'HttpOnly',
     'SameSite=Strict',
     'Path=/api/books',

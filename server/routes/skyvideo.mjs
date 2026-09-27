@@ -12,7 +12,7 @@
  * здесь ни при чём.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, appBody } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   listFeed, listCategories, listMine, readVideo, visibleVideo,
@@ -22,7 +22,7 @@ import {
   listRevenue, adminSearchVideos, setVideoRegions, channelInfo, listChannels,
 } from './../skyvideo.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, parseRange, thumbnailIdFor } from './../skyvideostore.mjs';
-import { ticketCookie, ticketFromCookies } from './../skyvideoticket.mjs';
+import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../skyvideoticket.mjs';
 import { logAdmin } from './../adminsec.mjs';
 
 /** Четыре гигабайта по умолчанию — настраивается тем, кто видит диск сервера. */
@@ -174,7 +174,10 @@ export const skyVideoRoutes = async (req, res, url) => {
   let me;
   if (isMedia) {
     const session = await readSession(req);
-    me = session?.profileId ?? ticketFromCookies(req.headers.cookie);
+    // Родное приложение — другой origin, SameSite=Strict-кука туда не
+    // дойдёт обратно, поэтому тот же пропуск ищем ещё и в ?t= (см.
+    // musicticket.mjs — тот же приём).
+    me = session?.profileId ?? ticketFromCookies(req.headers.cookie) ?? readTicket(params.get('t'));
     if (!me) return json(res, 401, { error: 'unauthorized' });
   } else {
     const session = await requireProfile(req, res);
@@ -183,8 +186,9 @@ export const skyVideoRoutes = async (req, res, url) => {
   }
 
   if (req.method === 'POST' && path === '/api/skyvideo/ticket') {
-    res.setHeader('Set-Cookie', ticketCookie(me));
-    return json(res, 200, { ok: true });
+    const ticket = issueTicket(me);
+    res.setHeader('Set-Cookie', ticketCookie(me, ticket));
+    return json(res, 200, appBody(req, { ok: true }, { ticket }));
   }
 
   /* ── Лента и категории ─────────────────────────────────────── */

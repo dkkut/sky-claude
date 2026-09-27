@@ -87,11 +87,26 @@ export interface SummaryState {
 
 /* ─── Адреса файлов ────────────────────────────────────────────────── */
 
-/** Файл сам по себе закрыт: сервер проверит право на каждый кусок. */
-export const audioUrl = (id: string) => `/api/podcasts/episode/${encodeURIComponent(id)}/audio`;
-export const videoUrl = (id: string) => `/api/podcasts/episode/${encodeURIComponent(id)}/video`;
-export const epCoverUrl = (id: string) => `/api/podcasts/episode/${encodeURIComponent(id)}/cover`;
-export const showCoverUrl = (id: string) => `/api/podcasts/show/${encodeURIComponent(id)}/cover`;
+/**
+ * Файл сам по себе закрыт: сервер проверит право на каждый кусок.
+ *
+ * В родном приложении страница и API — разные origin: относительный
+ * путь резолвился бы не туда (uploadUrl делает его абсолютным), а
+ * SameSite=Strict-кука с пропуском обратно кросс-доменно не долетит —
+ * поэтому пропуск там же едет в адресе (?t=), см. apiMediaTicket.
+ */
+let mediaTicket: string | null = null;
+
+const withMediaTicket = (path: string) => {
+  const url = uploadUrl(path);
+  if (!NATIVE_APP || !mediaTicket) return url;
+  return `${url}?t=${encodeURIComponent(mediaTicket)}`;
+};
+
+export const audioUrl = (id: string) => withMediaTicket(`/api/podcasts/episode/${encodeURIComponent(id)}/audio`);
+export const videoUrl = (id: string) => withMediaTicket(`/api/podcasts/episode/${encodeURIComponent(id)}/video`);
+export const epCoverUrl = (id: string) => withMediaTicket(`/api/podcasts/episode/${encodeURIComponent(id)}/cover`);
+export const showCoverUrl = (id: string) => withMediaTicket(`/api/podcasts/show/${encodeURIComponent(id)}/cover`);
 
 /**
  * Пропуск для медиа. Теги <audio>, <video> и <img> не умеют слать
@@ -99,7 +114,8 @@ export const showCoverUrl = (id: string) => `/api/podcasts/show/${encodeURICompo
  * ограниченную путём /api/podcasts. Просим её при открытии подкастов.
  */
 export const apiMediaTicket = async () => {
-  const r = await apiCall('/api/podcasts/ticket', { method: 'POST', body: '{}' });
+  const r = await apiCall<{ ticket?: string }>('/api/podcasts/ticket', { method: 'POST', body: '{}' });
+  if (r.ok && r.data?.ticket) mediaTicket = r.data.ticket;
   return r.ok;
 };
 

@@ -21,7 +21,7 @@
  *    человеку этот выпуск.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, appBody } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   listPodcasts, listCategories, listMine, readPodcast, visiblePodcast,
@@ -39,7 +39,7 @@ import {
   saveStream, saveBytes, sizeOf, openStream, parseRange,
   audioIdFor, videoIdFor, epCoverIdFor, showCoverIdFor, remove as removeFile,
 } from './../podcaststore.mjs';
-import { ticketCookie, ticketFromCookies } from './../podcastticket.mjs';
+import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../podcastticket.mjs';
 import { getSummary, buildSummary, dropSummary } from './../podcastsummary.mjs';
 
 /**
@@ -242,7 +242,10 @@ export const podcastRoutes = async (req, res, url) => {
   let me;
   if (isMedia) {
     const session = await readSession(req);
-    me = session?.profileId ?? ticketFromCookies(req.headers.cookie);
+    // Родное приложение — другой origin, SameSite=Strict-кука туда не
+    // дойдёт обратно, поэтому тот же пропуск ищем ещё и в ?t= (см.
+    // musicticket.mjs — тот же приём).
+    me = session?.profileId ?? ticketFromCookies(req.headers.cookie) ?? readTicket(params.get('t'));
     if (!me) return json(res, 401, { error: 'unauthorized' });
   } else {
     const session = await requireProfile(req, res);
@@ -253,8 +256,9 @@ export const podcastRoutes = async (req, res, url) => {
   /* Пропуск выдаётся отдельной ручкой: клиент просит его один раз при
      открытии подкастов, обычным запросом с токеном. */
   if (req.method === 'POST' && path === '/api/podcasts/ticket') {
-    res.setHeader('Set-Cookie', ticketCookie(me));
-    return json(res, 200, { ok: true });
+    const ticket = issueTicket(me);
+    res.setHeader('Set-Cookie', ticketCookie(me, ticket));
+    return json(res, 200, appBody(req, { ok: true }, { ticket }));
   }
 
   /* ── Каталог ───────────────────────────────────────────────── */

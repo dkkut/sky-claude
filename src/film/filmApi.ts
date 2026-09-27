@@ -65,9 +65,22 @@ export interface MovieProgress { movieId: string; position: number; duration: nu
 /**
  * Адреса видео и постера. Сами по себе они ничего не открывают: сервер
  * проверяет право на каждый кусок каждого файла.
+ *
+ * В родном приложении страница и API — разные origin: относительный
+ * путь резолвился бы не туда (uploadUrl делает его абсолютным), а
+ * SameSite=Strict-кука с пропуском обратно кросс-доменно не долетит —
+ * поэтому пропуск там же едет в адресе (?t=), см. apiFilmTicket.
  */
-export const videoUrl = (id: string) => `/api/film/movie/${encodeURIComponent(id)}/video`;
-export const posterUrl = (id: string) => `/api/film/movie/${encodeURIComponent(id)}/poster`;
+let mediaTicket: string | null = null;
+
+const withMediaTicket = (path: string) => {
+  const url = uploadUrl(path);
+  if (!NATIVE_APP || !mediaTicket) return url;
+  return `${url}?t=${encodeURIComponent(mediaTicket)}`;
+};
+
+export const videoUrl = (id: string) => withMediaTicket(`/api/film/movie/${encodeURIComponent(id)}/video`);
+export const posterUrl = (id: string) => withMediaTicket(`/api/film/movie/${encodeURIComponent(id)}/poster`);
 
 /** Секунды → «ч:мм:сс» или «м:сс». */
 export const fmtDuration = (sec: number) => {
@@ -86,7 +99,8 @@ export const fmtDuration = (sec: number) => {
  * Просим её один раз при открытии кино.
  */
 export const apiFilmTicket = async () => {
-  const r = await apiCall('/api/film/ticket', { method: 'POST', body: '{}' });
+  const r = await apiCall<{ ticket?: string }>('/api/film/ticket', { method: 'POST', body: '{}' });
+  if (r.ok && r.data?.ticket) mediaTicket = r.data.ticket;
   return r.ok;
 };
 

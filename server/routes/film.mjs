@@ -23,7 +23,7 @@
  *    человеку этот фильм.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, appBody } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import {
   listCatalog, listCategories, listShorts, listMine, readMovie, visibleMovie,
@@ -33,7 +33,7 @@ import {
   setProgress, listProgress, listContinue, posterIdFor,
 } from './../film.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, parseRange } from './../filmstore.mjs';
-import { ticketCookie, ticketFromCookies } from './../filmticket.mjs';
+import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../filmticket.mjs';
 import { hasPrime } from './../skyid.mjs';
 import { can } from './../admin.mjs';
 
@@ -171,7 +171,10 @@ export const filmRoutes = async (req, res, url) => {
   let me;
   if (isMedia) {
     const session = await readSession(req);
-    me = session?.profileId ?? ticketFromCookies(req.headers.cookie);
+    // Родное приложение — другой origin, SameSite=Strict-кука туда не
+    // дойдёт обратно, поэтому тот же пропуск ищем ещё и в ?t= (см.
+    // musicticket.mjs — тот же приём).
+    me = session?.profileId ?? ticketFromCookies(req.headers.cookie) ?? readTicket(params.get('t'));
     if (!me) return json(res, 401, { error: 'unauthorized' });
   } else {
     const session = await requireProfile(req, res);
@@ -192,8 +195,9 @@ export const filmRoutes = async (req, res, url) => {
   /* Пропуск выдаётся отдельной ручкой: клиент просит его один раз при
      открытии кино, обычным запросом с токеном. */
   if (req.method === 'POST' && path === '/api/film/ticket') {
-    res.setHeader('Set-Cookie', ticketCookie(me));
-    return json(res, 200, { ok: true });
+    const ticket = issueTicket(me);
+    res.setHeader('Set-Cookie', ticketCookie(me, ticket));
+    return json(res, 200, appBody(req, { ok: true }, { ticket }));
   }
 
   /* ── Каталог ───────────────────────────────────────────────── */

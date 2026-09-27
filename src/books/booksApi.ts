@@ -64,12 +64,27 @@ export const CATEGORIES = [
 
 /* ─── Адреса файлов ────────────────────────────────────────────────── */
 
-export const chapterAudioUrl = (id: string) => `/api/books/chapter/${encodeURIComponent(id)}/audio`;
-export const bookCoverUrl = (id: string) => `/api/books/book/${encodeURIComponent(id)}/cover`;
+/**
+ * Тег <audio> и <img> не шлют Authorization — сервер узнаёт по куке.
+ * В родном приложении страница и API — разные origin: относительный
+ * путь резолвился бы не туда (uploadUrl делает его абсолютным), а
+ * SameSite=Strict-кука с пропуском обратно кросс-доменно не долетит —
+ * поэтому пропуск там же едет в адресе (?t=), см. apiMediaTicket.
+ */
+let mediaTicket: string | null = null;
 
-/** Тег <audio> и <img> не шлют Authorization — сервер узнаёт по куке. */
+const withMediaTicket = (path: string) => {
+  const url = uploadUrl(path);
+  if (!NATIVE_APP || !mediaTicket) return url;
+  return `${url}?t=${encodeURIComponent(mediaTicket)}`;
+};
+
+export const chapterAudioUrl = (id: string) => withMediaTicket(`/api/books/chapter/${encodeURIComponent(id)}/audio`);
+export const bookCoverUrl = (id: string) => withMediaTicket(`/api/books/book/${encodeURIComponent(id)}/cover`);
+
 export const apiMediaTicket = async () => {
-  const r = await apiCall('/api/books/ticket', { method: 'POST', body: '{}' });
+  const r = await apiCall<{ ticket?: string }>('/api/books/ticket', { method: 'POST', body: '{}' });
+  if (r.ok && r.data?.ticket) mediaTicket = r.data.ticket;
   return r.ok;
 };
 
@@ -230,7 +245,10 @@ export const apiUploadChapterAudio = (
 ): { promise: Promise<{ ok: boolean; chapter?: Chapter; reason?: string }>; cancel: () => void } => {
   const xhr = new XMLHttpRequest();
   const promise = new Promise<{ ok: boolean; chapter?: Chapter; reason?: string }>((resolve) => {
-    xhr.open('POST', uploadUrl(`${chapterAudioUrl(chapterId)}?duration=${Math.round(durationSec)}`));
+    // Свой (не декорированный пропуском) путь: загрузка идёт через XHR
+    // с настоящим заголовком Authorization, ей ?t= ни к чему — это
+    // только для <audio src>, который заголовок отправить не может.
+    xhr.open('POST', uploadUrl(`/api/books/chapter/${encodeURIComponent(chapterId)}/audio?duration=${Math.round(durationSec)}`));
     xhr.withCredentials = !NATIVE_APP;
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
     Object.entries(nativeXhrHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
