@@ -48,6 +48,7 @@ import { grantPrime } from './skyid.mjs';
 import { adjustRevenue } from './skyvideo.mjs';
 import { sessionStore } from './sessions.mjs';
 import { grantForProposal, markGrantProposed, finalizeGrant, failGrant } from './campaigns.mjs';
+import { earnCoins as earnPetCoins } from './petEconomy.mjs';
 
 /* ─── Роли и права ─────────────────────────────────────────────────── */
 
@@ -503,6 +504,10 @@ export const MAX_GRANT_POINTS = 10_000_000;
 export const MAX_GRANT_PRIME_DAYS = 3650;
 /** Потолок разовой корректировки дохода по ролику, в копейках. */
 export const MAX_REVENUE_ADJUST_KOPECKS = 100_000_00;
+/** Потолок разовой выдачи Pet Coins — это игровая, а не настоящая
+ *  валюта, но массовая выдача всё равно обесценивает экономику, если
+ *  никто её не подтверждает. */
+export const MAX_GRANT_PET_COINS = 1_000_000;
 
 /**
  * Виды заявок и что для каждой нужно.
@@ -524,6 +529,7 @@ export const PENDING_KINDS = {
      выдать её сам, только оформить заявку — поворачивает ключ
      по-прежнему только владелец. */
   campaign_reward: { permission: 'campaigns', stepUp: true, title: 'Выдать награду мероприятия (Prime)' },
+  grant_pet_coins: { permission: 'content', stepUp: true, title: 'Начислить Pet Coins' },
 };
 
 /**
@@ -591,6 +597,12 @@ const checkPayload = (kind, raw = {}) => {
       if (days === null) return { error: 'bad_days' };
       const plan = ['standard', 'year'].includes(String(raw.plan)) ? String(raw.plan) : 'standard';
       return { ok: true, payload: { days, plan } };
+    }
+
+    case 'grant_pet_coins': {
+      const amount = whole(raw.amount, MAX_GRANT_PET_COINS);
+      if (amount === null) return { error: 'bad_amount' };
+      return { ok: true, payload: { amount } };
     }
 
     case 'campaign_reward': {
@@ -952,6 +964,14 @@ const executePending = async (row, payload, ownerId) => {
       const res = await grantPrime(skyId, target, payload.plan ?? 'standard', days);
       if (res.error) return { error: res.error };
       return { outcome: `Prime на ${days} дн.` };
+    }
+
+    case 'grant_pet_coins': {
+      const amount = Number(payload.amount);
+      const res = await earnPetCoins(target, amount, 'earn_admin_grant',
+        `Начисление Pet Coins по решению владельца (заявка ${row.id})`, `admin:${row.id}`);
+      if (res.error) return { error: res.error };
+      return { outcome: `Начислено ${amount} Pet Coins, баланс ${res.balance}` };
     }
 
     case 'skyvideo_revenue_adjust': {

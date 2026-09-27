@@ -58,6 +58,8 @@ import { sweepOrphanBloomMedia } from './bloom.mjs';
 import { storiesRoutes } from './routes/stories.mjs';
 import { sweepOrphanStoryMedia } from './stories.mjs';
 import { quickMenuRoutes } from './routes/quickmenu.mjs';
+import { petsRoutes } from './routes/pets.mjs';
+import { sweepOrphanSkinMedia } from './skinMarket.mjs';
 import { weatherRoutes } from './routes/weather.mjs';
 import { notifyRoutes } from './routes/notify.mjs';
 import { dispatchDueBroadcasts, sweepStaleBroadcastRuns } from './notifyBroadcast.mjs';
@@ -93,7 +95,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes,
-                notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes];
+                notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -355,6 +357,10 @@ const start = async () => {
       // истории — тот же случай, что и с Bloom выше.
       const storyMedia = await sweepOrphanStoryMedia();
       if (storyMedia.removed) console.log(`[stories] убрано осиротевшего медиа: ${storyMedia.removed}`);
+      // Превью/модель скина Sky Skin Market, загруженные администратором,
+      // но так и не привязанные к товару (закрыл форму до сохранения).
+      const skinMedia = await sweepOrphanSkinMedia();
+      if (skinMedia.removed) console.log(`[pets] убрано осиротевшего медиа скинов: ${skinMedia.removed}`);
       // Файл, отданный Sky AI на разбор, живёт до разбора и не дольше.
       // Человек закрыл вкладку между загрузкой и разбором — держать
       // его документ сутками незачем.
