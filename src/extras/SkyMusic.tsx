@@ -3,6 +3,7 @@ import React from 'react';
    SKY MUSIC  -  Редизайн в стиле Яндекс Музыки
 =========================================================== */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, X, Play, Pause, SkipForward,
@@ -1835,6 +1836,17 @@ const SkyFullPlayer = ({
   const lyricsRef    = React.useRef<HTMLDivElement>(null);
   const lyricItems   = React.useRef<(HTMLDivElement|null)[]>([]);
   const prevTrackRef = React.useRef(track.id);
+  const isMobile = useIsMobile();
+
+  /* Редактирование текста — только у своих же треков (canEdit с
+     сервера), не у чужих: показать чужой песне чужие слова уже
+     нельзя было (см. ниже), а вот дать редактировать чужую — отдельная
+     дыра, которую сервер и так закрывает через canEdit. */
+  const [lyricsCanEdit, setLyricsCanEdit] = React.useState(false);
+  const [lyricsRaw, setLyricsRaw] = React.useState('');
+  const [editingLyrics, setEditingLyrics] = React.useState(false);
+  const [lyricsDraft, setLyricsDraft] = React.useState('');
+  const [savingLyrics, setSavingLyrics] = React.useState(false);
 
   const h   = getHue(track.id);
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -1849,12 +1861,28 @@ const SkyFullPlayer = ({
   React.useEffect(() => {
     let alive = true;
     setServerLyrics(null);
+    setLyricsCanEdit(false);
+    setLyricsRaw('');
+    setEditingLyrics(false);
     void apiLyrics(track.id).then(res => {
       if (!alive || !res) return;
       setServerLyrics(parseTimedLyrics(res.lyrics));
+      setLyricsCanEdit(res.canEdit);
+      setLyricsRaw(res.lyrics ?? '');
     });
     return () => { alive = false; };
   }, [track.id]);
+
+  const openLyricsEditor = () => { setLyricsDraft(lyricsRaw); setEditingLyrics(true); };
+  const saveLyrics = async () => {
+    setSavingLyrics(true);
+    const saved = await apiPatchTrack(track.id, { lyrics: lyricsDraft });
+    setSavingLyrics(false);
+    if (!saved) return;
+    setLyricsRaw(lyricsDraft);
+    setServerLyrics(parseTimedLyrics(lyricsDraft));
+    setEditingLyrics(false);
+  };
 
   const lyrics = React.useMemo(() => {
     if (track.syncedLyrics && track.syncedLyrics.length > 0) return track.syncedLyrics;
@@ -1889,7 +1917,14 @@ const SkyFullPlayer = ({
     onSeek(((e.clientX - r.left) / r.width) * duration);
   };
 
-  return (
+  /* Портал прямо в body: без него этот fixed-оверлей остаётся потомком
+     нескольких вложенных position:relative/overflow:hidden контейнеров
+     ExtrasModule/MobileShell — на части WebView (в т.ч. мобильных) это
+     превращает "fixed" в позиционирование относительно ближайшего из
+     них, а не всего экрана, и верхние кнопки/шапка рисуются под ними.
+     Портал убирает эту зависимость целиком, как уже сделано для
+     BottomSheet/ChatWindow и других полноэкранных оверлеев. */
+  return createPortal((
     <motion.div
       initial={{ opacity:0, y:32 }}
       animate={{ opacity:1, y:0 }}
@@ -1916,7 +1951,8 @@ const SkyFullPlayer = ({
       }}/>
 
       {/* ── Top bar ──────────────────────────────────────────── */}
-      <div className="relative z-10 flex items-center justify-between px-6 pt-5 pb-3 shrink-0">
+      <div className="relative z-10 flex items-center justify-between px-6 pb-3 shrink-0"
+        style={{ paddingTop: 'calc(var(--safe-top) + 14px)' }}>
         <button type="button" onClick={onClose}
           className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors hover:bg-white/10"
           style={{ background:'rgba(255,255,255,0.07)', color:'rgba(255,255,255,0.65)', border:'1px solid rgba(255,255,255,0.1)', cursor:'pointer' }}>
@@ -1956,26 +1992,36 @@ const SkyFullPlayer = ({
       <div className="relative z-10 flex flex-1 min-h-0 overflow-hidden gap-0">
 
         {/* LEFT: Cover + Controls */}
-        <div className="flex flex-col items-center justify-center shrink-0"
-          style={{ width: showQueue || showLyrics ? '40%' : '100%', minWidth: 280, maxWidth: 480, padding:'12px 24px 8px', transition:'width 0.3s ease' }}>
+        <div className="flex flex-col items-center shrink-0"
+          style={{
+            width: !isMobile && (showQueue || showLyrics) ? '40%' : '100%',
+            minWidth: 280, maxWidth: 480,
+            padding: isMobile ? '8px 20px 4px' : '12px 24px 8px',
+            justifyContent: isMobile ? 'flex-end' : 'center',
+            paddingBottom: isMobile ? 'calc(var(--safe-bottom) + 22px)' : 8,
+            transition:'width 0.3s ease',
+          }}>
 
           {/* Track info */}
           <AnimatePresence mode="wait">
             <motion.div key={track.id}
               initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}}
               transition={{duration:0.3}}
-              style={{textAlign:'center', marginBottom:18, width:'100%'}}>
-              <p className="font-black text-white" style={{fontSize:20,letterSpacing:'-0.5px',margin:0,lineHeight:1.2}}>
+              style={{textAlign:'center', marginBottom: isMobile ? 12 : 18, width:'100%'}}>
+              <p className="font-black text-white" style={{
+                fontSize: isMobile ? 17 : 20, letterSpacing:'-0.5px', margin:0, lineHeight:1.25,
+                display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden',
+              }}>
                 {track.title}
               </p>
-              <p className="font-semibold" style={{fontSize:14,margin:'5px 0 0',color:hslAcc(h)}}>
+              <p className="font-semibold" style={{fontSize: isMobile ? 13 : 14, margin:'5px 0 0', color:hslAcc(h), overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
                 {track.artist}
               </p>
             </motion.div>
           </AnimatePresence>
 
           {/* Cover with overlaid controls */}
-          <div style={{position:'relative',width:'100%',maxWidth:300,aspectRatio:'1'}}>
+          <div style={{position:'relative', width:'100%', maxWidth: isMobile ? 260 : 300, aspectRatio:'1'}}>
             {/* Glow behind */}
             <div className="absolute pointer-events-none" style={{
               inset:-24, borderRadius:'50%',
@@ -2139,13 +2185,23 @@ const SkyFullPlayer = ({
           </div>
         </div>
 
-        {/* RIGHT: Lyrics / Queue */}
+        {/* RIGHT: Lyrics / Queue — на мобильном не отдельная колонка (там ей
+            попросту негде помещаться), а оверлей поверх обложки, поверх
+            уже отрисованных кнопок шапки (у него меньший z-index и он не
+            перекрывает их, а верхний отступ оставляет их кликабельными). */}
         <AnimatePresence mode="wait">
           {(showLyrics || showQueue) && (
             <motion.div key={showQueue?'queue':'lyrics'}
-              initial={{opacity:0,x:20}} animate={{opacity:1,x:0}} exit={{opacity:0,x:16}}
+              initial={isMobile ? {opacity:0,y:16} : {opacity:0,x:20}}
+              animate={isMobile ? {opacity:1,y:0} : {opacity:1,x:0}}
+              exit={isMobile ? {opacity:0,y:12} : {opacity:0,x:16}}
               transition={{duration:0.25}}
-              style={{
+              style={isMobile ? {
+                position:'absolute', inset:0, zIndex:2,
+                background:`linear-gradient(180deg, ${hslDk2(h)}f2 0%, ${hslDark(h)}f5 100%)`,
+                display:'flex', flexDirection:'column',
+                padding:'64px 20px calc(var(--safe-bottom) + 20px)', overflow:'hidden',
+              } : {
                 flex:1,minWidth:0,display:'flex',flexDirection:'column',
                 padding:'0 28px 20px 8px',overflow:'hidden',
               }}>
@@ -2203,14 +2259,53 @@ const SkyFullPlayer = ({
               ) : (
                 // ── Lyrics ──
                 <>
-                  <div style={{marginBottom:14}}>
-                    <p style={{color:'rgba(255,255,255,0.28)',fontSize:11,fontWeight:800,letterSpacing:'1.5px',textTransform:'uppercase',margin:0}}>
-                      Текст песни
-                    </p>
-                    <p style={{color:hslAcc(h),fontSize:13,fontWeight:600,margin:'4px 0 0'}}>
-                      {track.title} — {track.artist}
-                    </p>
+                  <div style={{marginBottom:14, display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12}}>
+                    <div>
+                      <p style={{color:'rgba(255,255,255,0.28)',fontSize:11,fontWeight:800,letterSpacing:'1.5px',textTransform:'uppercase',margin:0}}>
+                        Текст песни
+                      </p>
+                      <p style={{color:hslAcc(h),fontSize:13,fontWeight:600,margin:'4px 0 0'}}>
+                        {track.title} — {track.artist}
+                      </p>
+                    </div>
+                    {/* Добавить/поправить текст может только владелец
+                        трека — сервер решает через canEdit, не клиент. */}
+                    {lyricsCanEdit && !editingLyrics && (
+                      <button type="button" onClick={openLyricsEditor}
+                        className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-bold"
+                        style={{ background:`${hslAcc(h)}22`, color:hslAcc(h), border:`1px solid ${hslAcc(h)}55`, cursor:'pointer' }}>
+                        {lyricsRaw ? 'Изменить' : '+ Добавить текст'}
+                      </button>
+                    )}
                   </div>
+
+                  {editingLyrics ? (
+                    <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,gap:10}}>
+                      <textarea value={lyricsDraft} onChange={e=>setLyricsDraft(e.target.value)}
+                        placeholder="Каждая строка — отдельный фрагмент. Можно с тайм-кодами вида [мм:сс]."
+                        style={{
+                          flex:1,minHeight:120,resize:'none',outline:'none',
+                          background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.12)',
+                          borderRadius:14,padding:'10px 12px',color:'white',fontSize:14,lineHeight:1.5,
+                        }} />
+                      <div style={{display:'flex',gap:8}}>
+                        <button type="button" disabled={savingLyrics} onClick={() => void saveLyrics()}
+                          className="rounded-xl px-4 py-2 text-xs font-bold"
+                          style={{ background:hslAcc(h), color:'#0a0a10', border:'none', cursor:'pointer', opacity:savingLyrics?0.6:1 }}>
+                          {savingLyrics ? 'Сохраняем…' : 'Сохранить'}
+                        </button>
+                        <button type="button" onClick={()=>setEditingLyrics(false)}
+                          className="rounded-xl px-4 py-2 text-xs font-bold"
+                          style={{ background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.6)', border:'1px solid rgba(255,255,255,0.1)', cursor:'pointer' }}>
+                          Отмена
+                        </button>
+                      </div>
+                    </div>
+                  ) : lyrics.filter(l=>l.text).length === 0 ? (
+                    <p style={{color:'rgba(255,255,255,0.3)',fontSize:14,lineHeight:1.5}}>
+                      {lyricsCanEdit ? 'Текста пока нет — добавьте его кнопкой выше.' : 'Текст песни ещё не добавлен.'}
+                    </p>
+                  ) : (
                   <div ref={lyricsRef}
                     style={{flex:1,overflowY:'auto',scrollbarWidth:'none',paddingRight:4,paddingBottom:48}}>
                     {lyrics.filter(l=>l.text).map((line,i) => {
@@ -2246,6 +2341,7 @@ const SkyFullPlayer = ({
                       );
                     })}
                   </div>
+                  )}
                 </>
               )}
             </motion.div>
@@ -2261,7 +2357,7 @@ const SkyFullPlayer = ({
         }
       `}</style>
     </motion.div>
-  );
+  ), document.body);
 };
 
 
