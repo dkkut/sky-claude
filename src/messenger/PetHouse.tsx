@@ -425,9 +425,21 @@ const Room = ({ pet,theme,items,petState,petPos,petMood,onPetTap,onFurnitureTap 
         })}
 
         {/* ── CSS PET ──────────────────────────────────── */}
+        {/* Пол — это настоящая 3D-плоскость (perspective+rotateX), а не
+            плоская картинка: у родителя стоит transform-style:preserve-3d,
+            и мышиный параллакс (rotateX/rotateY всей сцены) поворачивает
+            всё в честном 3D. Ближний (нижний) край наклонённого пола
+            физически выступает вперёд, к зрителю, — а питомец без
+            собственного translateZ остаётся плоским на глубине 0 и на
+            определённых углах наклона проваливается ЗА пол, будто тонет
+            в нём. Раньше это лечилось только z-index, который в 3D-сцене
+            с реальной глубиной не спасает: нужно явно вынести питомца
+            вперёд по оси Z, а не понадеяться на порядок в разметке.
+            translateZ ставим ДО scaleX — тогда отражение по X (взгляд
+            питомца) не переворачивает знак сдвига по Z. */}
         <div className="absolute cursor-pointer" style={{
           left:petPos.x-36, top:petPos.y-56, zIndex:60,
-          transform:`scaleX(${petPos.facing})`,
+          transform:`translateZ(64px) scaleX(${petPos.facing})`,
           filter:`drop-shadow(0 ${petState==='jump'?12:6}px ${petState==='jump'?28:14}px ${pet.color}60)`,
         }} onClick={onPetTap}>
           <CSSPet pet={pet} state={petState} mood={petMood} size={80}/>
