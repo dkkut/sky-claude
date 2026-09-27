@@ -16,7 +16,7 @@
  *    идентификатор.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, appBody } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import {
   listTracks, readTrack, visibleTrack, createTrack, finishTrack, updateTrack,
@@ -27,7 +27,7 @@ import {
   listFavorites, setFavorite, addHistory, listHistory, setProgress, listProgress,
 } from './../music.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, remove, parseRange } from './../musicstore.mjs';
-import { ticketCookie, ticketFromCookies } from './../musicticket.mjs';
+import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../musicticket.mjs';
 import { hasPrime } from './../skyid.mjs';
 import { can } from './../admin.mjs';
 import {
@@ -139,7 +139,11 @@ export const musicRoutes = async (req, res, url) => {
   let me;
   if (isMedia) {
     const session = await readSession(req);
-    me = session?.profileId ?? ticketFromCookies(req.headers.cookie);
+    // Кука — для браузера. Родное приложение живёт на другом origin, и
+    // SameSite=Strict-кука туда никогда не долетит обратно — поэтому для
+    // него тот же пропуск ищем ещё и в строке адреса (?t=), куда клиент
+    // сам подставил значение, полученное в теле ответа /api/music/ticket.
+    me = session?.profileId ?? ticketFromCookies(req.headers.cookie) ?? readTicket(params.get('t'));
     if (!me) return json(res, 401, { error: 'unauthorized' });
   } else {
     const session = await requireProfile(req, res);
@@ -160,8 +164,9 @@ export const musicRoutes = async (req, res, url) => {
   /* Пропуск выдаётся отдельной ручкой: клиент просит его один раз при
      открытии музыки, обычным запросом с токеном. */
   if (req.method === 'POST' && path === '/api/music/ticket') {
-    res.setHeader('Set-Cookie', ticketCookie(me));
-    return json(res, 200, { ok: true });
+    const ticket = issueTicket(me);
+    res.setHeader('Set-Cookie', ticketCookie(me, ticket));
+    return json(res, 200, appBody(req, { ok: true }, { ticket }));
   }
 
   /* ── Каталог и поиск ───────────────────────────────────────── */

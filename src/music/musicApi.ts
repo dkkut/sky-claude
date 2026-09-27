@@ -4,7 +4,8 @@
  * Всё, что раньше лежало в localStorage браузера, теперь спрашивается у
  * сервера. Здесь только вызовы; кому что можно — решает он, а не мы.
  */
-import { apiCall } from '@/core/auth/api';
+import { apiCall, uploadUrl } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
 import type { Track, TrackStatus } from '@/platform/store';
 
 /** Трек в том виде, в каком его отдаёт сервер. */
@@ -41,9 +42,28 @@ export interface ServerPlaylist {
 
 export interface TrackProgress { trackId: string; position: number }
 
-/** Адреса звука и обложки. Файл сам по себе закрыт: сервер проверит право. */
-export const audioUrl = (id: string) => `/api/music/track/${encodeURIComponent(id)}/audio`;
-export const coverUrl = (id: string) => `/api/music/track/${encodeURIComponent(id)}/cover`;
+/**
+ * Адреса звука и обложки. Файл сам по себе закрыт: сервер проверит право.
+ *
+ * Тег <audio>/<img> запрос браузер выполняет сам и заголовок Authorization
+ * туда не подставить — вместо него короткий подписанный пропуск (см.
+ * apiMediaTicket). В обычном браузере он едет курьером в куке, но в
+ * родном приложении страница и API — разные origin, а кука на такой
+ * случай SameSite=Strict и попросту не доедет обратно. Поэтому там же
+ * пропуск подставляется в адрес строкой (?t=), и адрес становится
+ * абсолютным (uploadUrl) — без этого относительный путь резолвился бы
+ * не туда, а в собственный (пустой) origin самого приложения.
+ */
+let mediaTicket: string | null = null;
+
+const withMediaTicket = (path: string) => {
+  const url = uploadUrl(path);
+  if (!NATIVE_APP || !mediaTicket) return url;
+  return `${url}?t=${encodeURIComponent(mediaTicket)}`;
+};
+
+export const audioUrl = (id: string) => withMediaTicket(`/api/music/track/${encodeURIComponent(id)}/audio`);
+export const coverUrl = (id: string) => withMediaTicket(`/api/music/track/${encodeURIComponent(id)}/cover`);
 
 const mmss = (sec: number) => {
   const s = Math.max(0, Math.floor(sec || 0));
@@ -81,7 +101,8 @@ export const toClientTrack = (t: ServerTrack): Track => ({
  * /api/music. Просим её один раз при открытии музыки.
  */
 export const apiMediaTicket = async () => {
-  const r = await apiCall('/api/music/ticket', { method: 'POST', body: '{}' });
+  const r = await apiCall<{ ticket?: string }>('/api/music/ticket', { method: 'POST', body: '{}' });
+  if (r.ok && r.data?.ticket) mediaTicket = r.data.ticket;
   return r.ok;
 };
 

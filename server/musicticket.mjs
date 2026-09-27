@@ -58,9 +58,17 @@ export const readTicket = (raw) => {
   }
 };
 
-export const ticketCookie = (profileId) => {
+/**
+ * Кука для браузера — SameSite=Strict, поэтому родному приложению
+ * (другой origin) она никогда не долетит обратно с запросом за файлом.
+ * Для него та же самая подпись уходит ещё и в тело ответа (appBody),
+ * и там уже дело клиента — подставить её в адрес как ?t=.
+ * Тикет можно передать готовым, чтобы кука и тело ссылались на один и
+ * тот же пропуск, а не на два разных с чуть разным временем истечения.
+ */
+export const ticketCookie = (profileId, ticket = issueTicket(profileId)) => {
   const parts = [
-    `${COOKIE}=${issueTicket(profileId)}`,
+    `${COOKIE}=${ticket}`,
     'HttpOnly',
     'SameSite=Strict',
     // Путь узкий намеренно: кука уходит только к выдаче музыки.
