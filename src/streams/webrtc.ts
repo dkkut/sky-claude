@@ -1,9 +1,17 @@
 /* ===============================================================
    SKY STREAMS — WebRTC.
-   Собственный сигнальный канал (не пересекается со звонками),
-   один RTCPeerConnection на зрителя, единый обработчик всех типов
-   сообщений на соединение — без риска перезаписи хендлера.
+   Сигналинг идёт через тот же WS-хаб, что и весь остальной живой
+   трафик (server/signal.mjs, case 'live:offer'/'live:answer'/
+   'live:ice'/'live:viewer-request') — раньше это был BroadcastChannel,
+   то есть дозвониться можно было только до соседней вкладки того же
+   браузера, не до другого человека.
+
+   Сервер сам подставляет `from` из сессии и пересылает офер/ answer/
+   ICE только внутри пары автор↔зритель одного и того же эфира — см.
+   server/signal.mjs, case 'live:offer' и т.п.
 =============================================================== */
+import { wireSend } from '@/core/wire';
+
 const ICE: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
@@ -15,10 +23,15 @@ type SigMsg =
   | { type:'ice';    streamId:string; from:string; to:string; candidate:RTCIceCandidateInit }
   | { type:'viewer-request'; streamId:string; from:string };  // зритель просит offer у broadcaster
 
-const CH = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('sky:streams:signal:v1') : null;
 const listeners = new Set<(m: SigMsg) => void>();
-if (CH) CH.onmessage = (e) => listeners.forEach(l => l(e.data));
-const sigSend = (m: SigMsg) => CH?.postMessage(m);
+/** Сюда кладёт входящее src/messenger/socket.ts (диспетчер WS-сообщений). */
+export const receiveLiveSignal = (m: SigMsg) => { for (const l of [...listeners]) { try { l(m); } catch { /* один упал — остальные работают */ } } };
+
+const sigSend = (m: SigMsg) => {
+  if (m.type === 'viewer-request') { wireSend({ type: 'live:viewer-request', payload: { streamId: m.streamId } }); return; }
+  const rest = m.type === 'ice' ? { candidate: m.candidate } : { sdp: m.sdp };
+  wireSend({ type: `live:${m.type}`, payload: { streamId: m.streamId, to: m.to, ...rest } });
+};
 const sigOn = (fn: (m: SigMsg) => void) => { listeners.add(fn); return () => listeners.delete(fn); };
 
 /* -- Broadcaster: одно локальное медиа, N peer connections (по одному на зрителя) -- */

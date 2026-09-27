@@ -9,7 +9,7 @@ import {
   Video, Monitor, Mic, MicOff, VideoOff, MessageSquare,
   X, Clock, Eye, Zap} from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
-import { useStreamsStore, CATEGORY_LABEL, type StreamCategory, type LiveStreamEntry } from './store';
+import { useStreamsStore, CATEGORY_LABEL, type StreamCategory } from './store';
 import { StreamBroadcaster } from './webrtc';
 
 const S = { bg:'#0a0a0e', l1:'#131318', l2:'#1c1c22', border:'rgba(255,255,255,0.08)', accent:'var(--accent)', t1:'#f2f2f5', t2:'rgba(255,255,255,0.65)', t3:'rgba(255,255,255,0.4)', red:'#e0555f' };
@@ -20,7 +20,7 @@ interface StreamStudioProps { onClose: () => void; onGoLive?: (id: string) => vo
 export const StreamStudio = ({ onClose, onGoLive }: StreamStudioProps) => {
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
-  const { publish, unpublish, updateStream, sendChat, streams } = useStreamsStore();
+  const { create, end, sendChat, streams } = useStreamsStore();
 
   const [phase, setPhase] = useState<'setup' | 'live'>('setup');
   const [title, setTitle] = useState('');
@@ -51,29 +51,27 @@ export const StreamStudio = ({ onClose, onGoLive }: StreamStudioProps) => {
 
   const goLive = async () => {
     if (!title.trim() || !currentUserId || !me) return;
-    const b = new StreamBroadcaster(crypto.randomUUID(), currentUserId);
+    const entry = await create({
+      title: title.trim(), category, source,
+      tags: tags.split(/[,\s]+/).map(t=>t.trim()).filter(Boolean),
+    });
+    if (!entry) { alert('Не удалось начать трансляцию'); return; }
+
+    const b = new StreamBroadcaster(entry.id, currentUserId);
     b.onViewerCount = (n) => setViewerCount(n);
     const stream = source === 'camera' ? await b.startCamera().catch(() => null) : await b.startScreen();
-    if (!stream) { alert('Нет доступа к камере/микрофону или демонстрации экрана'); return; }
+    if (!stream) { alert('Нет доступа к камере/микрофону или демонстрации экрана'); await end(entry.id); return; }
     broadcasterRef.current = b;
     setPreviewStream(stream);
-
-    const entry: LiveStreamEntry = {
-      id: b.streamId, authorId: currentUserId, authorName: me.name, authorAvatar: me.name[0]?.toUpperCase() ?? '?',
-      title: title.trim(), category, tags: tags.split(/[,\s]+/).map(t=>t.trim()).filter(Boolean),
-      startedAt: Date.now(), viewerIds: [], peakViewers: 0, chat: [], reactions: {}, predictions: [],
-      source, totalDonations: 0,
-    };
-    publish(entry);
-    setStreamId(b.streamId);
+    setStreamId(entry.id);
     setPhase('live');
-    onGoLive?.(b.streamId);
+    onGoLive?.(entry.id);
   };
 
   const switchSource = async (kind: 'camera' | 'screen') => {
     const b = broadcasterRef.current; if (!b || !streamId) return;
     const next = await b.switchSource(kind);
-    if (next) { setSource(kind); setPreviewStream(next); updateStream(streamId, { source: kind }); }
+    if (next) { setSource(kind); setPreviewStream(next); }
   };
 
   const toggleMute = () => {
@@ -85,15 +83,15 @@ export const StreamStudio = ({ onClose, onGoLive }: StreamStudioProps) => {
     if (track) { track.enabled = camOff; setCamOff(!camOff); }
   };
 
-  const endStream = () => {
+  const endStream = async () => {
     broadcasterRef.current?.destroy();
-    if (streamId) unpublish(streamId);
+    if (streamId) await end(streamId);
     onClose();
   };
 
   const sendModChat = () => {
-    if (!chatInput.trim() || !streamId || !currentUserId || !me) return;
-    sendChat(streamId, { id: crypto.randomUUID(), userId: currentUserId, userName: me.name, text: chatInput.trim(), createdAt: Date.now() });
+    if (!chatInput.trim() || !streamId) return;
+    sendChat(streamId, chatInput.trim());
     setChatInput('');
   };
 

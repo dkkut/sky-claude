@@ -1,10 +1,19 @@
 /* ===============================================================
    SKY STREAMS — реестр активных трансляций.
-   Тот же паттерн BroadcastChannel, что уже используют Stories и
-   звонки (bsignal) — реальная кросс-вкладочная синхронизация,
-   а не фейковые данные.
+
+   Раньше синхронизация шла через BroadcastChannel — трансляция была
+   видна только соседним вкладкам того же браузера, не другим людям.
+   Теперь список и метаданные — с сервера (server/streams.mjs, HTTP),
+   а всё живое (чат/реакции/прогнозы/донаты/кто смотрит) — через тот же
+   WS-хаб, что и войс-пати (wireSend снаружи, applyX изнутри —
+   диспетчеризация в src/messenger/socket.ts).
 =============================================================== */
 import { create } from 'zustand';
+import { wireSend } from '@/core/wire';
+import {
+  apiStreamsList, apiStreamGet, apiStreamCreate, apiStreamEnd, apiStreamDonate,
+  type CreateStreamInput,
+} from './streamsApi';
 
 export type StreamCategory = 'gaming'|'talk'|'music'|'creative'|'sport'|'irl'|'other';
 export const CATEGORY_LABEL: Record<StreamCategory,string> = {
@@ -24,117 +33,120 @@ export interface StreamPrediction {
 
 export interface LiveStreamEntry {
   id: string;
-  authorId: string; authorName: string; authorAvatar: string;
-  title: string; category: StreamCategory; tags: string[];
+  authorId: string; authorName: string; authorUsername?: string; authorAvatar: string | null;
+  title: string; description?: string; category: StreamCategory; tags: string[];
   startedAt: number;
-  viewerIds: string[];        // реальные ID зрителей — не число «с потолка»
+  endedAt?: number | null;
+  ended: boolean;
+  viewerCount: number;         // реальное число с сервера — не массив ID (не наше дело, кто именно смотрит)
   peakViewers: number;
   chat: StreamChatMsg[];
   reactions: Record<string, number>;  // emoji -> count (нарастающим итогом)
   predictions: StreamPrediction[];
   source: 'camera' | 'screen';        // текущая «сцена»
-  ended?: boolean; endedAt?: number;
-  totalDonations: number;             // реальная сумма донатов SkyCoin за стрим
+  totalDonationsPoints: number;        // реальная сумма донатов SkyCoin за стрим
 }
-
-type WireMsg =
-  | { type:'stream-start'; entry: LiveStreamEntry }
-  | { type:'stream-end';   id: string }
-  | { type:'stream-update'; id: string; patch: Partial<LiveStreamEntry> }
-  | { type:'stream-join';  id: string; userId: string }
-  | { type:'stream-leave'; id: string; userId: string }
-  | { type:'stream-chat';  id: string; msg: StreamChatMsg }
-  | { type:'stream-react'; id: string; emoji: string }
-  | { type:'stream-predict-create'; id: string; prediction: StreamPrediction }
-  | { type:'stream-predict-vote';   id: string; predictionId: string; userId: string; optIdx: number }
-  | { type:'stream-predict-close';  id: string; predictionId: string };
-
-const BC = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('sky:streams:v1') : null;
 
 interface StreamsState {
   streams: Record<string, LiveStreamEntry>;
 
-  publish: (entry: LiveStreamEntry) => void;
-  unpublish: (id: string) => void;
-  updateStream: (id: string, patch: Partial<LiveStreamEntry>) => void;
-  join: (id: string, userId: string) => void;
-  leave: (id: string, userId: string) => void;
-  sendChat: (id: string, msg: StreamChatMsg) => void;
+  loadList: () => Promise<void>;
+  ensureLoaded: (id: string) => Promise<void>;
+  create: (input: CreateStreamInput) => Promise<LiveStreamEntry | null>;
+  end: (id: string) => Promise<void>;
+  donate: (id: string, amount: number, message: string) => Promise<{ ok: true } | { error: string }>;
+
+  join: (id: string) => void;
+  leave: (id: string) => void;
+  sendChat: (id: string, text: string) => void;
   react: (id: string, emoji: string) => void;
-  createPrediction: (id: string, prediction: StreamPrediction) => void;
-  voteOnPrediction: (id: string, predictionId: string, userId: string, optIdx: number) => void;
+  createPrediction: (id: string, question: string, options: string[]) => void;
+  voteOnPrediction: (id: string, predictionId: string, optIdx: number) => void;
   closePrediction: (id: string, predictionId: string) => void;
+  kick: (id: string, targetId: string) => void;
+  ban: (id: string, targetId: string) => void;
+
+  /* Входящее с сервера — зовёт src/messenger/socket.ts. */
+  applyJoined: (stream: LiveStreamEntry) => void;
+  applyViewerJoined: (streamId: string, viewerId: string, viewerCount: number) => void;
+  applyViewerLeft: (streamId: string, viewerCount?: number) => void;
+  applyChat: (streamId: string, message: StreamChatMsg) => void;
+  applyReact: (streamId: string, emoji: string, count: number) => void;
+  applyPredictionCreate: (streamId: string, prediction: StreamPrediction) => void;
+  applyPredictionUpdate: (streamId: string, prediction: StreamPrediction) => void;
+  applyKicked: (streamId: string) => void;
+  applyEnded: (streamId: string) => void;
+  applyDonation: (streamId: string, message: StreamChatMsg | null, totalDonationsPoints: number) => void;
 }
 
-export const useStreamsStore = create<StreamsState>((set, get) => {
-  if (BC) {
-    BC.onmessage = (e) => {
-      const msg: WireMsg = e.data;
-      set(s => {
-        const streams = { ...s.streams };
-        switch (msg.type) {
-          case 'stream-start': streams[msg.entry.id] = msg.entry; break;
-          case 'stream-end': if (streams[msg.id]) streams[msg.id] = { ...streams[msg.id], ended: true, endedAt: Date.now() }; break;
-          case 'stream-update': if (streams[msg.id]) streams[msg.id] = { ...streams[msg.id], ...msg.patch }; break;
-          case 'stream-join': if (streams[msg.id] && !streams[msg.id].viewerIds.includes(msg.userId)) {
-            const viewerIds = [...streams[msg.id].viewerIds, msg.userId];
-            streams[msg.id] = { ...streams[msg.id], viewerIds, peakViewers: Math.max(streams[msg.id].peakViewers, viewerIds.length) };
-          } break;
-          case 'stream-leave': if (streams[msg.id]) streams[msg.id] = { ...streams[msg.id], viewerIds: streams[msg.id].viewerIds.filter(v => v !== msg.userId) }; break;
-          case 'stream-chat': if (streams[msg.id]) streams[msg.id] = { ...streams[msg.id], chat: [...streams[msg.id].chat, msg.msg].slice(-200) }; break;
-          case 'stream-react': if (streams[msg.id]) streams[msg.id] = { ...streams[msg.id], reactions: { ...streams[msg.id].reactions, [msg.emoji]: (streams[msg.id].reactions[msg.emoji] ?? 0) + 1 } }; break;
-          case 'stream-predict-create': if (streams[msg.id]) streams[msg.id] = { ...streams[msg.id], predictions: [...streams[msg.id].predictions, msg.prediction] }; break;
-          case 'stream-predict-vote': if (streams[msg.id]) streams[msg.id] = { ...streams[msg.id], predictions: streams[msg.id].predictions.map(p => p.id !== msg.predictionId || p.votes[msg.userId] !== undefined ? p : { ...p, votes: { ...p.votes, [msg.userId]: msg.optIdx } }) }; break;
-          case 'stream-predict-close': if (streams[msg.id]) streams[msg.id] = { ...streams[msg.id], predictions: streams[msg.id].predictions.map(p => p.id === msg.predictionId ? { ...p, closed: true } : p) }; break;
-        }
-        return { streams };
-      });
-    };
-  }
+const patch = (
+  set: (fn: (s: StreamsState) => Partial<StreamsState>) => void,
+  id: string, fn: (e: LiveStreamEntry) => LiveStreamEntry,
+) => set((s) => (s.streams[id] ? { streams: { ...s.streams, [id]: fn(s.streams[id]) } } : s));
 
-  const post = (m: WireMsg) => BC?.postMessage(m);
+export const useStreamsStore = create<StreamsState>((set, get) => ({
+  streams: {},
 
-  return {
-    streams: {},
+  loadList: async () => {
+    const list = await apiStreamsList();
+    set((s) => {
+      const streams = { ...s.streams };
+      for (const entry of list) {
+        const prev = streams[entry.id];
+        // Уже открытый эфир держим на живом WS-состоянии (чат/реакции/
+        // прогнозы копятся инкрементально) — обновляем только то, что
+        // безопасно перезаписать снимком каталога.
+        streams[entry.id] = prev
+          ? { ...prev, ended: entry.ended, endedAt: entry.endedAt, viewerCount: entry.viewerCount, peakViewers: entry.peakViewers, totalDonationsPoints: entry.totalDonationsPoints, title: entry.title, category: entry.category, tags: entry.tags, source: entry.source }
+          : entry;
+      }
+      // Эфиры, которых больше нет в списке живых (кто-то другой снял с
+      // публикации, пока мы не смотрели) — оставляем в кэше как есть,
+      // это дело live:ended, а не каталога.
+      return { streams };
+    });
+  },
 
-    publish: (entry) => { set(s => ({ streams: { ...s.streams, [entry.id]: entry } })); post({ type:'stream-start', entry }); },
-    unpublish: (id) => { set(s => s.streams[id] ? ({ streams: { ...s.streams, [id]: { ...s.streams[id], ended:true, endedAt:Date.now() } } }) : s); post({ type:'stream-end', id }); },
-    updateStream: (id, patch) => { set(s => s.streams[id] ? ({ streams: { ...s.streams, [id]: { ...s.streams[id], ...patch } } }) : s); post({ type:'stream-update', id, patch }); },
+  ensureLoaded: async (id) => {
+    if (get().streams[id]) return;
+    const entry = await apiStreamGet(id);
+    if (entry) set((s) => ({ streams: { ...s.streams, [id]: entry } }));
+  },
 
-    join: (id, userId) => {
-      set(s => {
-        if (!s.streams[id] || s.streams[id].viewerIds.includes(userId)) return s;
-        const viewerIds = [...s.streams[id].viewerIds, userId];
-        return { streams: { ...s.streams, [id]: { ...s.streams[id], viewerIds, peakViewers: Math.max(s.streams[id].peakViewers, viewerIds.length) } } };
-      });
-      post({ type:'stream-join', id, userId });
-    },
-    leave: (id, userId) => {
-      set(s => s.streams[id] ? ({ streams: { ...s.streams, [id]: { ...s.streams[id], viewerIds: s.streams[id].viewerIds.filter(v=>v!==userId) } } }) : s);
-      post({ type:'stream-leave', id, userId });
-    },
-    sendChat: (id, msg) => {
-      set(s => s.streams[id] ? ({ streams: { ...s.streams, [id]: { ...s.streams[id], chat: [...s.streams[id].chat, msg].slice(-200) } } }) : s);
-      post({ type:'stream-chat', id, msg });
-    },
-    react: (id, emoji) => {
-      set(s => s.streams[id] ? ({ streams: { ...s.streams, [id]: { ...s.streams[id], reactions: { ...s.streams[id].reactions, [emoji]: (s.streams[id].reactions[emoji] ?? 0) + 1 } } } }) : s);
-      post({ type:'stream-react', id, emoji });
-    },
-    createPrediction: (id, prediction) => {
-      set(s => s.streams[id] ? ({ streams: { ...s.streams, [id]: { ...s.streams[id], predictions: [...s.streams[id].predictions, prediction] } } }) : s);
-      post({ type:'stream-predict-create', id, prediction });
-    },
-    voteOnPrediction: (id, predictionId, userId, optIdx) => {
-      set(s => {
-        if (!s.streams[id]) return s;
-        return { streams: { ...s.streams, [id]: { ...s.streams[id], predictions: s.streams[id].predictions.map(p => p.id !== predictionId || p.votes[userId] !== undefined ? p : { ...p, votes: { ...p.votes, [userId]: optIdx } }) } } };
-      });
-      post({ type:'stream-predict-vote', id, predictionId, userId, optIdx });
-    },
-    closePrediction: (id, predictionId) => {
-      set(s => s.streams[id] ? ({ streams: { ...s.streams, [id]: { ...s.streams[id], predictions: s.streams[id].predictions.map(p => p.id === predictionId ? { ...p, closed:true } : p) } } }) : s);
-      post({ type:'stream-predict-close', id, predictionId });
-    },
-  };
-});
+  create: async (input) => {
+    const r = await apiStreamCreate(input);
+    if ('error' in r) return null;
+    set((s) => ({ streams: { ...s.streams, [r.id]: r } }));
+    return r;
+  },
+
+  end: async (id) => {
+    await apiStreamEnd(id);
+    patch(set, id, (e) => ({ ...e, ended: true, endedAt: Date.now() }));
+  },
+
+  donate: async (id, amount, message) => apiStreamDonate(id, amount, message, crypto.randomUUID()),
+
+  join: (id) => wireSend({ type: 'live:join', payload: { streamId: id } }),
+  leave: (id) => wireSend({ type: 'live:leave', payload: { streamId: id } }),
+  sendChat: (id, text) => wireSend({ type: 'live:chat', payload: { streamId: id, text } }),
+  react: (id, emoji) => wireSend({ type: 'live:react', payload: { streamId: id, emoji } }),
+  createPrediction: (id, question, options) => wireSend({ type: 'live:predict-create', payload: { streamId: id, question, options } }),
+  voteOnPrediction: (id, predictionId, optIdx) => wireSend({ type: 'live:predict-vote', payload: { streamId: id, predictionId, optIdx } }),
+  closePrediction: (id, predictionId) => wireSend({ type: 'live:predict-close', payload: { streamId: id, predictionId } }),
+  kick: (id, targetId) => wireSend({ type: 'live:kick', payload: { streamId: id, targetId } }),
+  ban: (id, targetId) => wireSend({ type: 'live:ban', payload: { streamId: id, targetId } }),
+
+  applyJoined: (stream) => set((s) => ({ streams: { ...s.streams, [stream.id]: stream } })),
+  applyViewerJoined: (streamId, _viewerId, viewerCount) => patch(set, streamId, (e) => ({ ...e, viewerCount })),
+  applyViewerLeft: (streamId, viewerCount) => patch(set, streamId, (e) => ({ ...e, viewerCount: viewerCount ?? Math.max(0, e.viewerCount - 1) })),
+  applyChat: (streamId, message) => patch(set, streamId, (e) => ({ ...e, chat: [...e.chat, message].slice(-200) })),
+  applyReact: (streamId, emoji, count) => patch(set, streamId, (e) => ({ ...e, reactions: { ...e.reactions, [emoji]: count } })),
+  applyPredictionCreate: (streamId, prediction) => patch(set, streamId, (e) => ({ ...e, predictions: [...e.predictions, prediction] })),
+  applyPredictionUpdate: (streamId, prediction) => patch(set, streamId, (e) => ({ ...e, predictions: e.predictions.map((p) => (p.id === prediction.id ? prediction : p)) })),
+  applyKicked: (streamId) => patch(set, streamId, (e) => ({ ...e, ended: true, endedAt: Date.now() })),
+  applyEnded: (streamId) => patch(set, streamId, (e) => ({ ...e, ended: true, endedAt: Date.now() })),
+  applyDonation: (streamId, message, totalDonationsPoints) => patch(set, streamId, (e) => ({
+    ...e, totalDonationsPoints, chat: message ? [...e.chat, message].slice(-200) : e.chat,
+  })),
+}));

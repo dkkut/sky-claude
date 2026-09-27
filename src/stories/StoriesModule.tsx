@@ -671,7 +671,7 @@ const LiveStreamCard = ({ live, onClick }:{ live: import('../streams/store').Liv
           </div>
         </div>
         <div className="flex items-center gap-1" style={{color:'var(--t2)'}}>
-          <Users size={12}/><span className="text-xs">{live.viewerIds.length}</span>
+          <Users size={12}/><span className="text-xs">{live.viewerCount}</span>
         </div>
       </div>
       <p className="text-sm font-semibold text-white truncate mb-1">{live.title}</p>
@@ -698,6 +698,7 @@ export const StoriesModule = () => {
   const [studioOpen, setStudioOpen] = useState(false);
   const [watchingStreamId, setWatchingStreamId] = useState<string|null>(null);
   const liveStreamsMap = useStreamsStore(s=>s.streams);
+  const loadStreamsList = useStreamsStore(s=>s.loadList);
   const lives = useMemo(()=>Object.values(liveStreamsMap).filter(l=>!l.ended).sort((a,b)=>b.startedAt-a.startedAt),[liveStreamsMap]);
   const myActiveStream = lives.find(l=>l.authorId===currentUserId);
 
@@ -711,6 +712,14 @@ export const StoriesModule = () => {
     const id = window.setInterval(refresh, FEED_POLL_MS);
     return () => clearInterval(id);
   },[refresh]);
+
+  // Трансляции — реестр с сервера, не BroadcastChannel: видно с любого
+  // устройства и от любого человека, не только соседняя вкладка.
+  useEffect(()=>{
+    void loadStreamsList();
+    const id = window.setInterval(loadStreamsList, FEED_POLL_MS);
+    return () => clearInterval(id);
+  },[loadStreamsList]);
 
   const grouped = useMemo(()=>{
     const map=new Map<string,Story[]>();

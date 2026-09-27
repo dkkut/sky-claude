@@ -22,6 +22,8 @@ import { usePrivacyStore } from '@/profile/privacyStore';
 import { useGamingStore, type MatchInfo, type MatchResultChange } from '@/gaming/store';
 import { useVoicePartyStore } from '@/voiceparty/store';
 import { toClientRoom, toClientParticipant } from '@/voiceparty/api';
+import { useStreamsStore } from '@/streams/store';
+import { receiveLiveSignal } from '@/streams/webrtc';
 import type { MessageItem, ChatItem, ChatType } from './types';
 
 /* ─── Приведение серверных данных к виду интерфейса ───────────────────── */
@@ -410,6 +412,52 @@ const handle = (data: any) => {
       break;
     case 'vp:left':
     case 'vp:error':
+      break;
+
+    /* ── Трансляции: живое состояние — с сервера ── */
+    case 'live:joined':
+      useStreamsStore.getState().applyJoined(payload?.stream);
+      break;
+    case 'live:viewer-joined':
+      useStreamsStore.getState().applyViewerJoined(payload?.streamId, payload?.viewerId, payload?.viewerCount);
+      break;
+    case 'live:viewer-left':
+      useStreamsStore.getState().applyViewerLeft(payload?.streamId, payload?.viewerCount);
+      break;
+    case 'live:chat':
+      useStreamsStore.getState().applyChat(payload?.streamId, payload?.message);
+      break;
+    case 'live:react':
+      useStreamsStore.getState().applyReact(payload?.streamId, payload?.emoji, payload?.count);
+      break;
+    case 'live:predict-create':
+      useStreamsStore.getState().applyPredictionCreate(payload?.streamId, payload?.prediction);
+      break;
+    case 'live:predict-update':
+      useStreamsStore.getState().applyPredictionUpdate(payload?.streamId, payload?.prediction);
+      break;
+    case 'live:kicked':
+      useStreamsStore.getState().applyKicked(payload?.streamId);
+      break;
+    case 'live:ended':
+      useStreamsStore.getState().applyEnded(payload?.streamId);
+      break;
+    case 'live:donation':
+      useStreamsStore.getState().applyDonation(payload?.streamId, payload?.message ?? null, payload?.totalDonationsPoints);
+      break;
+    case 'live:error':
+      break;
+    case 'live:offer':
+      receiveLiveSignal({ type: 'offer', streamId: payload?.streamId, from: payload?.from, to: payload?.to, sdp: payload?.sdp });
+      break;
+    case 'live:answer':
+      receiveLiveSignal({ type: 'answer', streamId: payload?.streamId, from: payload?.from, to: payload?.to, sdp: payload?.sdp });
+      break;
+    case 'live:ice':
+      receiveLiveSignal({ type: 'ice', streamId: payload?.streamId, from: payload?.from, to: payload?.to, candidate: payload?.candidate });
+      break;
+    case 'live:viewer-request':
+      receiveLiveSignal({ type: 'viewer-request', streamId: payload?.streamId, from: payload?.from });
       break;
 
     /* ── Управление группой и каналом ── */

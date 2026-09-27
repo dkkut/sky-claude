@@ -14,9 +14,8 @@ const S = { bg:'#0a0a0e', l1:'#131318', l2:'#1c1c22', border:'rgba(255,255,255,0
 const REACTS = ['❤️','🔥','😂','👏','😮'];
 
 export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: string; onClose: () => void; onOpenProfile: (id: string) => void }) => {
-  const { accounts, currentUserId } = useAuthStore();
-  const me = accounts.find(a => a.id === currentUserId);
-  const { streams, join, leave, sendChat, react, voteOnPrediction } = useStreamsStore();
+  const { currentUserId } = useAuthStore();
+  const { streams, join, leave, sendChat, react, voteOnPrediction, ensureLoaded } = useStreamsStore();
 
   const live = streams[streamId];
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -28,15 +27,17 @@ export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: str
   const [floatingReacts, setFloatingReacts] = useState<{ id: number; emoji: string }[]>([]);
   const reactKey = useRef(0);
 
+  useEffect(() => { void ensureLoaded(streamId); }, [streamId, ensureLoaded]);
+
   useEffect(() => {
     if (!currentUserId || !live) return;
-    join(streamId, currentUserId);
+    join(streamId);
     const conn = new StreamViewerConn(streamId, currentUserId, live.authorId, (stream) => {
       if (videoRef.current) videoRef.current.srcObject = stream;
       setConnected(true);
     });
     connRef.current = conn;
-    return () => { conn.destroy(); leave(streamId, currentUserId); };
+    return () => { conn.destroy(); leave(streamId); };
   }, [streamId, currentUserId, live?.authorId]);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [live?.chat.length]);
@@ -51,8 +52,8 @@ export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: str
   }
 
   const sendMsg = () => {
-    if (!chatInput.trim() || !currentUserId || !me) return;
-    sendChat(streamId, { id: crypto.randomUUID(), userId: currentUserId, userName: me.name, text: chatInput.trim(), createdAt: Date.now() });
+    if (!chatInput.trim()) return;
+    sendChat(streamId, chatInput.trim());
     setChatInput('');
   };
 
@@ -96,7 +97,7 @@ export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: str
             <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse"/><span className="text-[11px] font-bold text-white">LIVE</span>
           </div>
           <div className="flex items-center gap-1 rounded-full px-2.5 py-1" style={{ background: 'rgba(0,0,0,0.55)' }}>
-            <Eye size={11} color="#fff"/><span className="text-[11px] font-bold text-white">{live.viewerIds.length}</span>
+            <Eye size={11} color="#fff"/><span className="text-[11px] font-bold text-white">{live.viewerCount}</span>
           </div>
           <div className="flex-1"/>
           {typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && (
@@ -123,7 +124,7 @@ export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: str
                 const pct = total > 0 ? Math.round(count / total * 100) : 0;
                 return (
                   <button key={i} type="button" disabled={myVote !== undefined}
-                    onClick={() => currentUserId && voteOnPrediction(streamId, openPrediction.id, currentUserId, i)}
+                    onClick={() => currentUserId && voteOnPrediction(streamId, openPrediction.id, i)}
                     className="relative flex-1 overflow-hidden rounded-lg px-2 py-1.5 text-[11px] font-semibold text-white" style={{ background: 'rgba(255,255,255,0.1)' }}>
                     {myVote !== undefined && <div className="absolute inset-y-0 left-0" style={{ width: `${pct}%`, background: i === myVote ? 'rgba(91,155,209,0.5)' : 'rgba(255,255,255,0.15)' }}/>}
                     <span className="relative">{opt} {myVote !== undefined && `${pct}%`}</span>

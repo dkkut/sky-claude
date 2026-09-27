@@ -58,6 +58,13 @@ import {
   kick as vpKick, ban as vpBan, canModerate as vpCanModerate, isOwner as vpIsOwner, updatePermissions as vpUpdatePermissions,
   createRoom as vpCreateRoom,
 } from './voiceparty.mjs';
+import {
+  join as liveJoin, leave as liveLeave, viewerIds as liveViewerIds, isViewer as liveIsViewer,
+  sendChat as liveSendChat, react as liveReact, createPrediction as liveCreatePrediction,
+  voteOnPrediction as liveVote, closePrediction as liveClosePrediction, ban as liveBan,
+  endStreamsByDisconnect as liveEndByDisconnect, leaveAllStreams as liveLeaveAllStreams,
+  getStream as liveGetStream,
+} from './streams.mjs';
 
 const PORT = Number(process.env.SIGNAL_PORT || 8081);
 
@@ -159,6 +166,13 @@ const sendTo = (userId, msg) => {
 };
 const broadcast = (userIds, msg, exceptId) => {
   for (const uid of userIds) if (uid !== exceptId) sendTo(uid, msg);
+};
+/** Зрители + сам вещатель — он не входит в список зрителей (не смотрит
+ *  свой же эфир), но должен видеть тот же чат/реакции/прогнозы. */
+const liveAudience = async (streamId) => {
+  const stream = await liveGetStream(streamId);
+  const ids = liveViewerIds(streamId);
+  return stream ? [...new Set([...ids, stream.authorId])] : ids;
 };
 /**
  * Рассылка участникам чата, кроме того самого соединения, откуда пришло
@@ -1105,6 +1119,138 @@ const handle = async (ws, session, msg) => {
       break;
     }
 
+    /* ── Трансляции ───────────────────────────────────────────────
+       Кто сейчас смотрит эфир — живое состояние в памяти хаба
+       (server/streams.mjs), метаданные самого эфира — в базе. Сам
+       видеопоток идёт через свой собственный протокол сигналинга
+       (offer/answer/ice/viewer-request с явным `to`) — не пересекается
+       с 1:1-звонками (case 'call-offer' и т.п.) и с войс-пати. ── */
+
+    case 'live:join': {
+      const streamId = String(payload?.streamId ?? '');
+      if (!streamId) return;
+      if (!rateLimit(`live:write:${me}`, 30)) return;
+      const r = await liveJoin(me, streamId);
+      if (r.error) { send(ws, { type: 'live:error', payload: r }); break; }
+      send(ws, { type: 'live:joined', payload: { stream: r.stream } });
+      const others = liveViewerIds(streamId).filter((id) => id !== me);
+      broadcast(others, { type: 'live:viewer-joined', payload: { streamId, viewerId: me, viewerCount: r.stream.viewerCount } });
+      // Автору эфира нужно узнать о новом зрителе, даже если сам автор
+      // не входит в список зрителей (он вещает, а не смотрит).
+      const stream = await liveGetStream(streamId);
+      if (stream && stream.authorId !== me) sendTo(stream.authorId, { type: 'live:viewer-request', payload: { streamId, from: me } });
+      break;
+    }
+
+    case 'live:leave': {
+      const streamId = String(payload?.streamId ?? '');
+      if (!streamId) return;
+      const others = liveViewerIds(streamId).filter((id) => id !== me);
+      liveLeave(me, streamId);
+      broadcast(others, { type: 'live:viewer-left', payload: { streamId, viewerId: me } });
+      break;
+    }
+
+    case 'live:chat': {
+      const streamId = String(payload?.streamId ?? '');
+      const text = String(payload?.text ?? '');
+      if (!streamId || !liveIsViewer(streamId, me)) return;
+      if (!rateLimit(`live:chat:${me}`, 60)) return;
+      const r = await liveSendChat(streamId, me, text);
+      if (r.error) return;
+      broadcast(await liveAudience(streamId), { type: 'live:chat', payload: { streamId, message: r.msg } });
+      break;
+    }
+
+    case 'live:react': {
+      const streamId = String(payload?.streamId ?? '');
+      const emoji = String(payload?.emoji ?? '');
+      if (!streamId || !liveIsViewer(streamId, me)) return;
+      const r = liveReact(streamId, emoji);
+      if (r.error) return;
+      broadcast(await liveAudience(streamId), { type: 'live:react', payload: { streamId, emoji: r.emoji, count: r.count } });
+      break;
+    }
+
+    case 'live:predict-create': {
+      const streamId = String(payload?.streamId ?? '');
+      if (!streamId) return;
+      const r = await liveCreatePrediction(me, streamId, payload?.question, payload?.options);
+      if (r.error) { send(ws, { type: 'live:error', payload: r }); break; }
+      broadcast(await liveAudience(streamId), { type: 'live:predict-create', payload: { streamId, prediction: r.prediction } });
+      break;
+    }
+
+    case 'live:predict-vote': {
+      const streamId = String(payload?.streamId ?? '');
+      const predictionId = String(payload?.predictionId ?? '');
+      const optIdx = Math.trunc(Number(payload?.optIdx));
+      if (!streamId || !predictionId || !liveIsViewer(streamId, me)) return;
+      const r = liveVote(streamId, predictionId, me, optIdx);
+      if (r.error) { send(ws, { type: 'live:error', payload: r }); break; }
+      broadcast(await liveAudience(streamId), { type: 'live:predict-update', payload: { streamId, prediction: r.prediction } });
+      break;
+    }
+
+    case 'live:predict-close': {
+      const streamId = String(payload?.streamId ?? '');
+      const predictionId = String(payload?.predictionId ?? '');
+      if (!streamId || !predictionId) return;
+      const r = await liveClosePrediction(me, streamId, predictionId);
+      if (r.error) { send(ws, { type: 'live:error', payload: r }); break; }
+      broadcast(await liveAudience(streamId), { type: 'live:predict-update', payload: { streamId, prediction: r.prediction } });
+      break;
+    }
+
+    case 'live:kick':
+    case 'live:ban': {
+      const streamId = String(payload?.streamId ?? '');
+      const targetId = String(payload?.targetId ?? '');
+      if (!streamId || !targetId || targetId === me) return;
+      if (type === 'live:kick') {
+        const stream = await liveGetStream(streamId);
+        if (!stream || stream.authorId !== me) { send(ws, { type: 'live:error', payload: { error: 'not_allowed' } }); break; }
+        liveLeave(targetId, streamId);
+      } else {
+        const r = await liveBan(me, streamId, targetId);
+        if (r.error) { send(ws, { type: 'live:error', payload: r }); break; }
+      }
+      sendTo(targetId, { type: 'live:kicked', payload: { streamId, banned: type === 'live:ban' } });
+      broadcast(liveViewerIds(streamId), { type: 'live:viewer-left', payload: { streamId, viewerId: targetId } });
+      break;
+    }
+
+    /* Видео/аудио идёт напрямую зритель↔вещатель, сервер только
+       передаёт сигналы дальше — тот же relay-приём, что и у 1:1-звонков,
+       но со своим адресатом (`to`), а не парой из callId. */
+    case 'live:offer':
+    case 'live:answer':
+    case 'live:ice': {
+      const streamId = String(payload?.streamId ?? '');
+      const to = String(payload?.to ?? '');
+      if (!streamId || !to || to === me) return;
+      // Пересылаем только внутри пары автор↔зритель одного и того же
+      // эфира — иначе по одному лишь streamId можно было бы прислать
+      // WebRTC-сигнал произвольному человеку, который этот эфир даже
+      // не смотрит (тот же принцип, что и у call-offer: shareAChat).
+      const stream = await liveGetStream(streamId);
+      if (!stream) return;
+      const meOk = stream.authorId === me || liveIsViewer(streamId, me);
+      const toOk = stream.authorId === to || liveIsViewer(streamId, to);
+      if (!meOk || !toOk) return;
+      sendTo(to, { type, payload: { ...payload, from: me } });
+      break;
+    }
+
+    case 'live:viewer-request': {
+      const streamId = String(payload?.streamId ?? '');
+      if (!streamId) return;
+      const stream = await liveGetStream(streamId);
+      if (!stream || !liveIsViewer(streamId, me)) return;
+      sendTo(stream.authorId, { type: 'live:viewer-request', payload: { streamId, from: me } });
+      break;
+    }
+
     /* ── Приватность профиля ───────────────────────────────────────
        Настройка защищает человека от других, поэтому живёт на сервере,
        а не галочкой в браузере: свой клиент можно переписать. ── */
@@ -1651,6 +1797,15 @@ export const startSignalHub = () => {
       vpLeaveAllRooms(uid).then((rooms) => {
         for (const roomId of rooms) broadcast(vpMemberIds(roomId), { type: 'vp:participant-left', payload: { roomId, profileId: uid } });
       }).catch(() => {});
+      // Трансляции: полный оффлайн зрителя — убрать его из всех эфиров,
+      // которые он смотрел; полный оффлайн автора — сам эфир без
+      // источника видео продолжаться не может, завершить его тоже.
+      for (const streamId of liveLeaveAllStreams(uid)) {
+        broadcast(liveViewerIds(streamId), { type: 'live:viewer-left', payload: { streamId, viewerId: uid } });
+      }
+      liveEndByDisconnect(uid).then((ended) => {
+        for (const e of ended) broadcast(e.viewerIds, { type: 'live:ended', payload: { streamId: e.id } });
+      }).catch(() => {});
       // Тот же список, что и при входе: скрывшийся не «уходит» у других,
       // потому что он у них и не появлялся.
       for (const other of await presenceAudience(uid)) {
@@ -1782,5 +1937,13 @@ export const pushFamily = (userIds, msg) => {
 
 /** Sky Garant: создание сделки, депозит, подтверждение, спор, решение. */
 export const pushGarant = (userIds, msg) => {
+  broadcast(Array.isArray(userIds) ? userIds : [], msg);
+};
+
+/** Sky Трансляции: донат — списание/зачисление идёт HTTP-ручкой (нужен
+ *  чёткий ответ и idempotency-key), а увидеть его в чате остальные
+ *  зрители должны сразу же, поэтому уведомление уходит в тот же WS-хаб,
+ *  что и живые live:* события. */
+export const pushLive = (userIds, msg) => {
   broadcast(Array.isArray(userIds) ? userIds : [], msg);
 };
