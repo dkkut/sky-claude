@@ -226,11 +226,11 @@ export const AppShell = () => {
         <main
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
           style={{ background: 'var(--bg-l1)' }}>
-          <AnimatePresence mode="wait">
+          <AnimatePresence>
             <ErrorBoundary key={activeModule}>
               <motion.div
                 key={activeModule + '_m'}
-                className="h-full w-full"
+                className="absolute inset-0 h-full w-full"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}

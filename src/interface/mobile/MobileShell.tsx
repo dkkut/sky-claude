@@ -45,9 +45,9 @@ export const MobileShell = () => {
       {!SELF_CHROME.has(activeModule) && <MobileHeader />}
 
       <main className="relative min-h-0 flex-1 overflow-hidden">
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           <ErrorBoundary key={activeModule}>
-            <motion.div key={activeModule + '_mob'} className="h-full w-full"
+            <motion.div key={activeModule + '_mob'} className="absolute inset-0 h-full w-full"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}>
               <Suspense fallback={<ModuleFallback />}>
                 {activeModule === 'stories'       && <StoriesModule />}

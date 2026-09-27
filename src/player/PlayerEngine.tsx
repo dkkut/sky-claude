@@ -11,16 +11,63 @@ import { useMediaPresence } from '@/profile/viewer/mediaPresence';
  * seekTo, volume, cmdPlay) — тот же контракт, которым уже пользуется
  * SkyMiniPlayer, так что переключать UI не пришлось.
  */
+const KIND_ALBUM: Record<string, string> = {
+  music: 'Sky Music', video: 'Sky Video', tv: 'Sky TV', voice: 'Sky', podcast: 'Sky Podcasts',
+};
+
 export const PlayerEngine = () => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const {
     item, isPlaying, volume, seekTo, cmdPlay, repeat,
-    syncTime, clearSeek, setPlaying, clearCmd, nextTrack,
+    syncTime, clearSeek, setPlaying, clearCmd, nextTrack, prevTrack, requestSeek, requestPlay,
   } = usePlayerStore();
   const { currentUserId, accounts } = useAuthStore();
   const setMusicPresence = useMediaPresence(s => s.setMusicPresence);
 
   const srcUrl = item?.srcUrl;
+
+  /* Экран блокировки / наушники / умные часы должны показывать РЕАЛЬНО
+     играющий трек, а не название приложения — раньше здесь вообще не
+     было Media Session API, поэтому ОС подставляла свой заголовок
+     страницы и иконку по умолчанию вместо обложки и названия трека. */
+  useEffect(() => {
+    const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession;
+    if (!ms) return;
+    if (!item) { try { ms.metadata = null; } catch { /* не везде есть */ } return; }
+    try {
+      ms.metadata = new MediaMetadata({
+        title: item.title,
+        artist: item.author || KIND_ALBUM[item.kind] || 'Sky',
+        album: KIND_ALBUM[item.kind] ?? 'Sky',
+        artwork: item.coverUrl ? [
+          { src: item.coverUrl, sizes: '512x512' },
+        ] : [],
+      });
+      ms.setActionHandler('play', () => requestPlay(true));
+      ms.setActionHandler('pause', () => requestPlay(false));
+      ms.setActionHandler('previoustrack', item.queue?.length ? () => prevTrack() : null);
+      ms.setActionHandler('nexttrack', item.queue?.length ? () => nextTrack() : null);
+      ms.setActionHandler('seekto', (details) => {
+        if (details.seekTime != null) requestSeek(details.seekTime);
+      });
+      ms.setActionHandler('seekbackward', () => {
+        const a = audioRef.current;
+        if (a) requestSeek(Math.max(0, a.currentTime - 10));
+      });
+      ms.setActionHandler('seekforward', () => {
+        const a = audioRef.current;
+        if (a) requestSeek(Math.min(a.duration || Infinity, a.currentTime + 10));
+      });
+    } catch { /* не везде есть */ }
+  }, [item?.id, item?.kind, item?.title, item?.author, item?.coverUrl, item?.queue?.length]);
+
+  /* Состояние play/pause на экране блокировки должно совпадать с тем,
+     что реально происходит — иначе кнопка там показывает противоположное. */
+  useEffect(() => {
+    const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession;
+    if (!ms || !item) return;
+    try { ms.playbackState = isPlaying ? 'playing' : 'paused'; } catch { /* не везде есть */ }
+  }, [isPlaying, item?.id]);
 
   /* Сколько треков подряд не заигралось и сколько раз мы пробовали
      переподключиться к текущему. Ref, а не state: перерисовывать плеер
@@ -116,7 +163,16 @@ export const PlayerEngine = () => {
       id="sky-player-audio"
       crossOrigin="anonymous"
       style={{ display: 'none' }}
-      onTimeUpdate={() => { const a = audioRef.current; if (a) syncTime(a.currentTime, a.duration || 0); }}
+      onTimeUpdate={() => {
+        const a = audioRef.current;
+        if (!a) return;
+        syncTime(a.currentTime, a.duration || 0);
+        const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession;
+        if (ms && Number.isFinite(a.duration) && a.duration > 0) {
+          try { ms.setPositionState({ duration: a.duration, position: Math.min(a.currentTime, a.duration), playbackRate: a.playbackRate }); }
+          catch { /* не везде есть */ }
+        }
+      }}
       onLoadedMetadata={() => { const a = audioRef.current; if (a) syncTime(a.currentTime, a.duration || 0); }}
       onPlaying={onPlaying}
       onError={() => {
