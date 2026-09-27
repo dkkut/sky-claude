@@ -44,6 +44,9 @@ export interface AiState {
   configured: boolean;
   /** Назван ли поставщик расшифровки речи. Это отдельный поставщик. */
   transcription: boolean;
+  /** Назван ли поставщик голосового ответа. Тоже отдельный поставщик:
+   *  без него голосовой режим работает, но отвечает только текстом. */
+  voiceReply: boolean;
   /** Решение сервера, не браузера. */
   prime: boolean;
   usage: Record<AiTool, AiQuota>;
@@ -65,6 +68,7 @@ const REASONS: Record<string, string> = {
   too_many_requests:   'Слишком часто. Подождите',
   ai_not_configured:   'Sky AI пока не настроен на этом сервере',
   stt_not_configured:  'Расшифровка на этом сервере пока не подключена',
+  tts_not_configured:  'Голосовой ответ на этом сервере пока не подключён',
   ai_busy:             'Сейчас много запросов. Попробуйте через минуту',
   ai_timeout:          'Ответ занял слишком много времени',
   ai_failed:           'Модель не ответила. Попробуйте позже',
@@ -232,6 +236,55 @@ export const apiAiTranscribe = async (fileId: string, chatId?: string, language 
   return r.ok
     ? { ok: true as const, text: r.data?.text ?? '', cues: r.data?.cues ?? [] }
     : { ok: false as const, reason: aiReason(r.error, r.reason), code: r.error };
+};
+
+/* ─── Голосовой режим ───────────────────────────────────────────── */
+
+export interface VoiceTurnResult {
+  chatId: string;
+  chat: AiChat;
+  recognizedText: string;
+  answer: AiMessage;
+  audio: string | null;
+  audioMime: string | null;
+  usage?: { kind: AiTool; used: number; limit: number };
+}
+
+/**
+ * Один голосовой ход: запись отправляется как есть, ответом приходят
+ * и распознанный текст, и реплика модели (в тот же диалог), и, если
+ * поставщик голоса назван, её озвучка (base64).
+ *
+ * XMLHttpRequest — тем же способом, что и apiAiUpload: запись хоть и
+ * короткая, но полоса хода отправки не помешает.
+ */
+export const apiAiVoice = (
+  audio: Blob,
+  chatId?: string,
+): { promise: Promise<{ ok: true; data: VoiceTurnResult } | { ok: false; reason: string; code?: string }>; cancel: () => void } => {
+  const p = new URLSearchParams();
+  if (chatId) p.set('chat', chatId);
+
+  const xhr = new XMLHttpRequest();
+  const promise = new Promise<{ ok: true; data: VoiceTurnResult } | { ok: false; reason: string; code?: string }>((resolve) => {
+    xhr.open('POST', uploadUrl(`/api/ai/voice?${p.toString()}`));
+    xhr.withCredentials = !NATIVE_APP;
+    xhr.setRequestHeader('Content-Type', audio.type || 'application/octet-stream');
+    Object.entries(nativeXhrHeaders()).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    const token = getAccessToken();
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+    xhr.onload = () => {
+      let body: Partial<VoiceTurnResult> & { error?: string } = {};
+      try { body = JSON.parse(xhr.responseText || '{}'); } catch { /* не JSON */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve({ ok: true, data: body as VoiceTurnResult });
+      else resolve({ ok: false, reason: aiReason(body.error, 'Не получилось'), code: body.error });
+    };
+    xhr.onerror = () => resolve({ ok: false, reason: 'Соединение оборвалось — попробуйте ещё раз' });
+    xhr.onabort = () => resolve({ ok: false, reason: 'Отменено' });
+    xhr.send(audio);
+  });
+  return { promise, cancel: () => xhr.abort() };
 };
 
 /* ─── Приём файла ───────────────────────────────────────────────── */

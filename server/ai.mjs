@@ -308,3 +308,85 @@ export const transcribeAudio = async ({ audio, mime, name = 'audio', language = 
     sttInflight -= 1;
   }
 };
+
+/* ══════════════════════════════════════════════════════════════════
+   Голосовой ответ (текст → речь)
+   ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * Речь из текста — для голосового режима Sky AI.
+ *
+ * Отдельный поставщик и отдельная настройка от языковой модели: адрес,
+ * ключ и голос называет владелец сервера (TTS_BASE_URL/TTS_API_KEY/
+ * TTS_VOICE), клиент их не выбирает. Пока поставщик не назван —
+ * голосового ответа нет, ручка отвечает `tts_not_configured` вместо
+ * того, чтобы промолчать необъяснимо.
+ */
+export const ttsConfigured = () => Boolean(config.ttsApiKey && config.ttsBaseUrl);
+
+const TTS_TIMEOUT_MS = 60_000;
+let ttsInflight = 0;
+const MAX_TTS_INFLIGHT = Math.max(1, Number(process.env.TTS_MAX_INFLIGHT) || 2);
+/** Ответ длиннее — не помещается в один голосовой ответ разумной длины. */
+const MAX_TTS_CHARS = 4000;
+/** Потолок на аудио-ответ поставщика. */
+const MAX_AUDIO_ANSWER_BYTES = 16 * 1024 * 1024;
+
+export const synthesizeSpeech = async ({ text: body }) => {
+  if (!ttsConfigured()) return { error: 'tts_not_configured' };
+  const clean = String(body ?? '').trim().slice(0, MAX_TTS_CHARS);
+  if (!clean) return { error: 'empty_message' };
+  if (ttsInflight >= MAX_TTS_INFLIGHT) return { error: 'ai_busy' };
+
+  const control = new AbortController();
+  const timer = setTimeout(() => control.abort(), TTS_TIMEOUT_MS);
+  ttsInflight += 1;
+  try {
+    const res = await fetch(`${config.ttsBaseUrl}/v1/audio/speech`, {
+      method: 'POST',
+      signal: control.signal,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${config.ttsApiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.ttsModel,
+        voice: config.ttsVoice,
+        input: clean,
+        response_format: 'mp3',
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn('[tts] отказ поставщика', res.status);
+      if (res.status === 429) return { error: 'ai_busy' };
+      return { error: 'tts_failed' };
+    }
+
+    const reader = res.body?.getReader?.();
+    const chunks = [];
+    let size = 0;
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.length;
+        if (size > MAX_AUDIO_ANSWER_BYTES) { await reader.cancel().catch(() => {}); return { error: 'tts_failed' }; }
+        chunks.push(value);
+      }
+    } else {
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > MAX_AUDIO_ANSWER_BYTES) return { error: 'tts_failed' };
+      chunks.push(buf);
+    }
+    const audio = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+    if (!audio.length) return { error: 'tts_failed' };
+    return { audio, mime: 'audio/mpeg' };
+  } catch (err) {
+    console.warn('[tts] запрос не удался:', err?.name === 'AbortError' ? 'превышено время' : 'ошибка связи');
+    return { error: err?.name === 'AbortError' ? 'ai_timeout' : 'tts_failed' };
+  } finally {
+    clearTimeout(timer);
+    ttsInflight -= 1;
+  }
+};

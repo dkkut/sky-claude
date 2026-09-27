@@ -55,6 +55,11 @@ import { gamesRoutes } from './routes/games.mjs';
 import { voicePartyRoutes } from './routes/voiceparty.mjs';
 import { bloomRoutes } from './routes/bloom.mjs';
 import { sweepOrphanBloomMedia } from './bloom.mjs';
+import { storiesRoutes } from './routes/stories.mjs';
+import { sweepOrphanStoryMedia } from './stories.mjs';
+import { petsRoutes } from './routes/pets.mjs';
+import { sweepOrphanPetMedia } from './pets.mjs';
+import { quickMenuRoutes } from './routes/quickmenu.mjs';
 import { weatherRoutes } from './routes/weather.mjs';
 import { notifyRoutes } from './routes/notify.mjs';
 import { dispatchDueBroadcasts, sweepStaleBroadcastRuns } from './notifyBroadcast.mjs';
@@ -90,7 +95,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes,
-                notifyRoutes, adsRoutes, kutrentMarketRoutes];
+                notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, petsRoutes, quickMenuRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -348,6 +353,14 @@ const start = async () => {
       // одному посту (человек закрыл вкладку между загрузкой и публикацией).
       const bloomMedia = await sweepOrphanBloomMedia();
       if (bloomMedia.removed) console.log(`[bloom] убрано осиротевшего медиа: ${bloomMedia.removed}`);
+      // Медиа истории, загруженное, но так и не привязанное ни к одной
+      // истории — тот же случай, что и с Bloom выше.
+      const storyMedia = await sweepOrphanStoryMedia();
+      if (storyMedia.removed) console.log(`[stories] убрано осиротевшего медиа: ${storyMedia.removed}`);
+      // Превью/модель скина, загруженные в админке, но так и не
+      // привязанные ни к одному скину (карточку не сохранили).
+      const petMedia = await sweepOrphanPetMedia();
+      if (petMedia.removed) console.log(`[pets] убрано осиротевшего медиа: ${petMedia.removed}`);
       // Файл, отданный Sky AI на разбор, живёт до разбора и не дольше.
       // Человек закрыл вкладку между загрузкой и разбором — держать
       // его документ сутками незачем.

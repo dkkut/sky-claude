@@ -24,7 +24,7 @@
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { hasPrime } from './../skyid.mjs';
-import { aiConfigured, sttConfigured } from './../ai.mjs';
+import { aiConfigured, sttConfigured, ttsConfigured } from './../ai.mjs';
 import {
   listChats, createChat, renameChat, deleteChat, readChat, sendMessage,
   usageToday, LIMITS, PRIME_TOOLS, MAX_MESSAGE_CHARS, CHAT_ID_RE, ask, ASK_TASKS,
@@ -35,6 +35,7 @@ import {
   SUMMARY_STYLES, MAX_DOC_BYTES, MAX_IMAGE_BYTES, MAX_AUDIO_BYTES, MAX_SUMMARY_CHARS,
 } from './../aitools.mjs';
 import { saveStream } from './../aistore.mjs';
+import { voiceTurn, sniffAudio, MAX_VOICE_BYTES } from './../aivoice.mjs';
 
 /* ─── Потолки ──────────────────────────────────────────────────────
    Дневные пределы считает aichat.mjs и хранит в базе. Здесь — защита
@@ -88,6 +89,23 @@ const rejectBody = (req, res, code, body) => {
 };
 
 /**
+ * Тело запроса целиком в память, с потолком по факту, а не по
+ * заголовку. Для голосового хода: запись короткая, и гонять её через
+ * диск (как файлы для «Расшифровки») незачем — разобрали и забыли.
+ */
+const readBodyCapped = (req, maxBytes) => new Promise((resolve, reject) => {
+  const chunks = [];
+  let size = 0;
+  req.on('data', (chunk) => {
+    size += chunk.length;
+    if (size > maxBytes) { reject(new Error('too_large')); req.destroy(); return; }
+    chunks.push(chunk);
+  });
+  req.once('end', () => resolve(Buffer.concat(chunks)));
+  req.once('error', reject);
+});
+
+/**
  * Коды ответа по причине отказа.
  *
  * 402 — «нужна подписка», и это единственное место, где Prime влияет
@@ -131,6 +149,7 @@ export const aiRoutes = async (req, res, url) => {
     return json(res, 200, {
       configured: aiConfigured(),
       transcription: sttConfigured(),
+      voiceReply: ttsConfigured(),
       prime,
       usage: await usageToday(me, prime),
       limits: LIMITS,
@@ -227,16 +246,47 @@ export const aiRoutes = async (req, res, url) => {
     || path === '/api/ai/summary'
     || path === '/api/ai/file'
     || path === '/api/ai/image'
-    || path === '/api/ai/transcribe';
+    || path === '/api/ai/transcribe'
+    || path === '/api/ai/voice';
 
   if (!primeArea) return json(res, 404, { error: 'not_found' });
 
   if (!(await hasPrime(me))) {
     /* Тело не читаем вовсе: незачем принимать мегабайты у того, кому
        уже отказано. */
-    return req.method === 'POST' && path === '/api/ai/upload'
+    return req.method === 'POST' && (path === '/api/ai/upload' || path === '/api/ai/voice')
       ? rejectBody(req, res, 402, { error: 'prime_required' })
       : json(res, 402, { error: 'prime_required' });
+  }
+
+  /* ══ Голосовой ход ══════════════════════════════════════════════
+     Один POST — запись целиком телом запроса — сразу отдаёт и
+     распознанный текст, и ответ модели (в тот же диалог), и голос
+     ответа. Никакого отдельного «сначала загрузить» — запись короткая. */
+  if (req.method === 'POST' && path === '/api/ai/voice') {
+    if (!rateLimit(`ai:voice:${me}`, TOOL_PER_MIN)) return rejectBody(req, res, 429, { error: 'rate_limited' });
+
+    const declared = Number(req.headers['content-length'] ?? 0);
+    if (declared > MAX_VOICE_BYTES) return rejectBody(req, res, 413, { error: 'too_large', limit: MAX_VOICE_BYTES });
+
+    let audio;
+    try {
+      audio = await readBodyCapped(req, MAX_VOICE_BYTES);
+    } catch {
+      return json(res, 413, { error: 'too_large', limit: MAX_VOICE_BYTES });
+    }
+
+    const mime = sniffAudio(audio);
+    if (!mime) return json(res, 415, { error: 'unsupported_audio' });
+
+    const chatId = params.get('chat');
+    const result = await voiceTurn(me, {
+      audio, mime,
+      chatId: CHAT_ID_RE.test(String(chatId)) ? chatId : undefined,
+      language: params.get('language') ?? '',
+    });
+    if (result.error) return fail(res, result);
+    return json(res, 200, result);
   }
 
   /* ══ Приём файла ════════════════════════════════════════════════

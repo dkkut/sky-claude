@@ -162,10 +162,17 @@ services:
       STT_API_KEY:           ${STT_API_KEY:-}
       STT_MODEL:             ${STT_MODEL:-whisper-1}
       STT_BASE_URL:          ${STT_BASE_URL:-}
+      # Голосовой ответ (текст → речь) — для голосового режима Sky AI.
+      # Тоже отдельный поставщик; пусто — ответ только текстом.
+      TTS_API_KEY:           ${TTS_API_KEY:-}
+      TTS_MODEL:             ${TTS_MODEL:-tts-1}
+      TTS_BASE_URL:          ${TTS_BASE_URL:-}
+      TTS_VOICE:             ${TTS_VOICE:-alloy}
       # Дневные пределы Sky AI. Бесплатный чат ограничен числом
       # сообщений, а не подпиской.
       AI_CHAT_PER_DAY:       ${AI_CHAT_PER_DAY:-60}
       AI_CHAT_PER_DAY_PRIME: ${AI_CHAT_PER_DAY_PRIME:-400}
+      AI_VOICE_PER_DAY:      ${AI_VOICE_PER_DAY:-200}
 
       # Сколько человек пускать в одну сессию «Вместе». Предел живёт
       # здесь, а не в коде страницы: поднять его должно быть можно, не

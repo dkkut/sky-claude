@@ -53,10 +53,15 @@ export const LIMITS = {
   file:       { free: 0, prime: Number(process.env.AI_FILE_PER_DAY) || 30 },
   image:      { free: 0, prime: Number(process.env.AI_IMAGE_PER_DAY) || 40 },
   transcribe: { free: 0, prime: Number(process.env.AI_TRANSCRIBE_PER_DAY) || 20 },
+  /* Голосовой ход (распознавание + озвучка ответа) — свой предел,
+     отдельный от обычного текстового 'chat': распознавание речи и
+     синтез голоса стоят серверу отдельных денег на КАЖДЫЙ ход, помимо
+     самого обращения к модели, которое всё равно спишет свой 'chat'. */
+  voice:      { free: 0, prime: Number(process.env.AI_VOICE_PER_DAY) || 200 },
 };
 
 /** Инструменты, требующие Prime. Обычного чата в списке нет намеренно. */
-export const PRIME_TOOLS = ['summary', 'file', 'image', 'transcribe'];
+export const PRIME_TOOLS = ['summary', 'file', 'image', 'transcribe', 'voice'];
 
 const text = (value, max) => String(value ?? '')
   .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')

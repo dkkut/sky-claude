@@ -1,39 +1,30 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus, X, Heart, Send, Eye, Radio, Mic, MicOff,
-  Camera, Users, Flame, Play, Pause, Upload,
+  Plus, X, Heart, Eye, Radio,
+  Camera, Users, Upload,
   Type, Image, Film, Trash2, ChevronLeft, ChevronRight,
-  MessageCircle, Volume2, VolumeX, Archive, Languages, Loader2, MapPin, Music
+  Archive, Languages, Loader2, MapPin, Music
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
+import { apiSearchPeople, apiPeopleByIds, type DirectoryPerson } from '@/core/auth/api';
+import { apiFriendsOf } from '@/profile/viewer/friendsApi';
 import { useStreamsStore, CATEGORY_LABEL } from '@/streams/store';
 import { StreamStudio } from '@/streams/StreamStudio';
 import { StreamView } from '@/streams/StreamView';
 import { usePlatformStore } from '@/platform/store';
 import { apiAiAsk } from '@/ai/aiApi';
 import { openProfile } from '@/profile/viewer/store';
+import {
+  type Story, type StoryKind,
+  apiStoriesFeed, apiStoriesArchive, apiStoriesUploadMedia, apiStoriesCreate,
+  apiStoriesDelete, apiStoriesLike, apiStoriesView, apiStoriesVote, apiStoriesAnswer,
+  apiStoriesCloseFriends, apiStoriesSetCloseFriends,
+} from './storiesApi';
 
-/* --- BroadcastChannel: синхронизация историй между вкладками ----------- */
-const STORIES_BC = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('sky:stories:v1') : null;
+// --- Utils -------------------------------------------------------------------
+const initial = (name: string) => (name || '?').trim()[0]?.toUpperCase() ?? '?';
 
-// --- Типы --------------------------------------------------------------------
-type StoryKind = 'photo'|'video'|'text';
-
-interface Story {
-  id: string; authorId: string; authorName: string; authorAvatar: string;
-  kind: StoryKind; mediaUrl?: string; text?: string; bg: string;
-  duration: number; createdAt: number; viewed: boolean; likes: string[]; views: number;
-  viewedBy?: string[];           // реальные ID просмотревших
-  visibility?: 'all' | 'closeFriends';
-  mentions?: string[];           // упомянутые userId
-  musicTrackId?: string;         // трек из каталога Sky Music
-  location?: string;             // геометка (текст)
-  poll?: { question: string; options: string[]; votes: Record<string, number> }; // userId -> optionIdx
-  question?: { prompt: string; answers: { userId: string; userName: string; text: string }[] };
-}
-
-// --- Seed ---------------------------------------------------------------------
 const DEMO_BG = [
   'linear-gradient(135deg,#1a0533,#2d1b69)',
   'linear-gradient(135deg,#0f2027,#2c5364)',
@@ -43,32 +34,16 @@ const DEMO_BG = [
   'linear-gradient(135deg,#0a3d2e,#1b7a54)',
 ];
 
-const mk = (authorId:string, name:string, av:string, text:string, bg:string): Story => ({
-  id:`demo-${Math.random().toString(36).slice(2)}`,
-  authorId, authorName:name, authorAvatar:av, kind:'text', text, bg,
-  duration:7, createdAt:Date.now()-Math.random()*3600000, viewed:false, likes:[], views:Math.floor(Math.random()*400+50),
-});
-
-const INITIAL_STORIES: Story[] = [
-  mk('acc-luna','Luna Nova','LU','Новый сетап  -  144fps стабильно!',DEMO_BG[0]),
-  mk('acc-neo','Neo Driver','NE','Тест стрима  -  результат топ',DEMO_BG[1]),
-  mk('acc-luna','Luna Nova','LU','Рейд в 21:00',DEMO_BG[2]),
-  mk('acc-neo','Neo Driver','NE','Новая карта вышла',DEMO_BG[3]),
-];
-
-// --- Utils -------------------------------------------------------------------
 const fmtAgo = (ts:number) => {
   const d=(Date.now()-ts)/1000;
   if(d<60)  return 'только что';
   if(d<3600)return `${Math.floor(d/60)} мин`;
   return `${Math.floor(d/3600)} ч`;
 };
-const fmtDur = (sec:number) => `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
 
 // --- StoryCircle --------------------------------------------------------------
-const StoryCircle = ({ story, hasNew, isLive, onClick }:{
-  story:{authorName:string;authorAvatar:string;viewed?:boolean};
-  hasNew:boolean; isLive?:boolean; onClick:()=>void;
+const StoryCircle = ({ authorName, hasNew, isLive, onClick }:{
+  authorName:string; hasNew:boolean; isLive?:boolean; onClick:()=>void;
 }) => (
   <motion.button type="button" whileHover={{scale:1.05}} whileTap={{scale:0.95}} onClick={onClick}
     className="flex flex-col items-center gap-1.5">
@@ -78,14 +53,14 @@ const StoryCircle = ({ story, hasNew, isLive, onClick }:{
         :'rgba(255,255,255,0.1)'}}>
         <div className="grid h-14 w-14 place-items-center rounded-full text-lg font-bold text-white border-2"
           style={{borderColor:'var(--bg)',background:'var(--bg-l1)'}}>
-          {story.authorAvatar}
+          {initial(authorName)}
         </div>
       </div>
       {isLive&&<div className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white"
         style={{background:'#ef4444'}}>LIVE</div>}
     </div>
     <p className="w-16 truncate text-center text-[11px]" style={{color:'var(--t2)'}}>
-      {story.authorName.split(' ')[0]}
+      {authorName.split(' ')[0]}
     </p>
   </motion.button>
 );
@@ -101,11 +76,10 @@ const MentionText = ({ text }: { text: string }) => (
   </>
 );
 
-const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDelete, onVote, onAnswer, accounts }:{
+const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDelete, onVote, onAnswer }:{
   stories:Story[]; startIdx:number; onClose:()=>void;
   currentUserId:string; onLike:(id:string)=>void; onDelete:(id:string)=>void;
-  onVote:(id:string,optIdx:number)=>void; onAnswer:(id:string,text:string)=>void;
-  accounts:{id:string;name:string}[];
+  onVote:(id:string,optionId:string)=>void; onAnswer:(id:string,text:string)=>void;
 }) => {
   const [idx, setIdx] = useState(startIdx);
   const [progress, setProgress] = useState(0);
@@ -145,6 +119,9 @@ const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDele
   if(!story){onClose();return null;}
   const liked = story.likes.includes(currentUserId);
   const isOwn = story.authorId===currentUserId;
+  const myPollOption = story.poll?.options.find(o=>o.votes.includes(currentUserId));
+  const pollTotal = story.poll?.options.reduce((n,o)=>n+o.votes.length,0) ?? 0;
+  const showPollResults = !!myPollOption || isOwn;
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
@@ -177,7 +154,7 @@ const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDele
         <div className="absolute top-8 left-0 right-0 z-20 flex items-center gap-3 px-4">
           <button type="button" onClick={() => openProfile(story.authorId)}
             className="grid h-9 w-9 place-items-center rounded-full text-sm font-bold text-white shrink-0"
-            style={{background:'rgba(255,255,255,0.2)'}}>{story.authorAvatar}</button>
+            style={{background:'rgba(255,255,255,0.2)'}}>{initial(story.authorName)}</button>
           <button type="button" onClick={() => openProfile(story.authorId)} className="flex-1 min-w-0 text-left">
             <p className="text-sm font-semibold text-white truncate">{story.authorName}</p>
             <p className="text-xs text-white/60">{fmtAgo(story.createdAt)}</p>
@@ -233,35 +210,30 @@ const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDele
               </div>
             </div>
           )}
-          {story.poll&&(()=>{
-            const myVote = story.poll!.votes[currentUserId];
-            const totalVotes = Object.keys(story.poll!.votes).length;
-            const showResults = myVote!==undefined || isOwn;
-            return (
-              <div className="absolute inset-x-6 bottom-28 rounded-2xl p-3.5" style={{background:'rgba(20,20,26,0.85)',backdropFilter:'blur(10px)'}}>
-                <p className="text-sm font-bold text-white mb-2.5 text-center">{story.poll!.question}</p>
-                <div className="space-y-1.5">
-                  {story.poll!.options.map((opt,i)=>{
-                    const count = Object.values(story.poll!.votes).filter(v=>v===i).length;
-                    const pct = totalVotes>0 ? Math.round(count/totalVotes*100) : 0;
-                    return (
-                      <button key={i} type="button" disabled={myVote!==undefined||isOwn}
-                        onClick={()=>onVote(story.id,i)}
-                        className="relative w-full rounded-xl overflow-hidden text-left px-3 py-2 text-xs font-semibold text-white"
-                        style={{background:'rgba(255,255,255,0.1)'}}>
-                        {showResults && (
-                          <div className="absolute inset-y-0 left-0 rounded-xl" style={{width:`${pct}%`,background:i===myVote?'rgba(91,155,209,0.5)':'rgba(255,255,255,0.15)'}}/>
-                        )}
-                        <span className="relative flex items-center justify-between">
-                          {opt} {showResults && <span>{pct}%</span>}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+          {story.poll&&(
+            <div className="absolute inset-x-6 bottom-28 rounded-2xl p-3.5" style={{background:'rgba(20,20,26,0.85)',backdropFilter:'blur(10px)'}}>
+              <p className="text-sm font-bold text-white mb-2.5 text-center">{story.poll.question}</p>
+              <div className="space-y-1.5">
+                {story.poll.options.map(opt=>{
+                  const count = opt.votes.length;
+                  const pct = pollTotal>0 ? Math.round(count/pollTotal*100) : 0;
+                  return (
+                    <button key={opt.id} type="button" disabled={!!myPollOption||isOwn}
+                      onClick={()=>onVote(story.id,opt.id)}
+                      className="relative w-full rounded-xl overflow-hidden text-left px-3 py-2 text-xs font-semibold text-white"
+                      style={{background:'rgba(255,255,255,0.1)'}}>
+                      {showPollResults && (
+                        <div className="absolute inset-y-0 left-0 rounded-xl" style={{width:`${pct}%`,background:opt.id===myPollOption?.id?'rgba(91,155,209,0.5)':'rgba(255,255,255,0.15)'}}/>
+                      )}
+                      <span className="relative flex items-center justify-between">
+                        {opt.label} {showPollResults && <span>{pct}%</span>}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            );
-          })()}
+            </div>
+          )}
           {story.question&&(
             <div className="absolute inset-x-6 bottom-28 rounded-2xl p-3.5" style={{background:'rgba(20,20,26,0.85)',backdropFilter:'blur(10px)'}}>
               <p className="text-sm font-bold text-white mb-2.5 text-center">{story.question.prompt}</p>
@@ -269,8 +241,8 @@ const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDele
                 <div className="space-y-1.5 max-h-28 overflow-y-auto">
                   {story.question.answers.length===0
                     ? <p className="text-xs text-white/40 text-center">Пока нет ответов</p>
-                    : story.question.answers.map((a,i)=>(
-                      <div key={i} className="rounded-lg px-2.5 py-1.5 text-xs text-white" style={{background:'rgba(255,255,255,0.1)'}}>
+                    : story.question.answers.map(a=>(
+                      <div key={a.id} className="rounded-lg px-2.5 py-1.5 text-xs text-white" style={{background:'rgba(255,255,255,0.1)'}}>
                         <span className="font-semibold">{a.userName}:</span> {a.text}
                       </div>
                     ))}
@@ -305,15 +277,14 @@ const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDele
                 <p className="text-xs text-white/40 py-3 text-center">Пока никто не посмотрел</p>
               ) : (
                 <div className="space-y-2">
-                  {(story.viewedBy??[]).map(uid=>{
-                    const acc = accounts.find(a=>a.id===uid);
-                    const didLike = story.likes.includes(uid);
+                  {(story.viewedBy??[]).map(v=>{
+                    const didLike = story.likes.includes(v.userId);
                     return (
-                      <div key={uid} className="flex items-center gap-2.5">
+                      <div key={v.userId} className="flex items-center gap-2.5">
                         <div className="grid h-7 w-7 place-items-center rounded-full text-[11px] font-bold text-white shrink-0" style={{background:'rgba(255,255,255,0.15)'}}>
-                          {(acc?.name??'?')[0]?.toUpperCase()}
+                          {initial(v.userName)}
                         </div>
-                        <span className="text-sm text-white flex-1 truncate">{acc?.name??uid}</span>
+                        <span className="text-sm text-white flex-1 truncate">{v.userName}</span>
                         {didLike && <Heart size={13} className="fill-red-400 text-red-400"/>}
                       </div>
                     );
@@ -363,23 +334,103 @@ const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDele
   );
 };
 
+// --- CloseFriendsEditor --------------------------------------------------------
+const CloseFriendsEditor = ({ myId, onClose }:{ myId:string; onClose:()=>void }) => {
+  const [loading, setLoading] = useState(true);
+  const [candidates, setCandidates] = useState<DirectoryPerson[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+
+  useEffect(()=>{
+    let cancelled = false;
+    (async ()=>{
+      const [friendsOf, current] = await Promise.all([apiFriendsOf(myId), apiStoriesCloseFriends()]);
+      const ids = friendsOf?.friendIds ?? [];
+      const people = ids.length ? (await apiPeopleByIds(ids)).data?.people ?? [] : [];
+      if (cancelled) return;
+      setCandidates(people);
+      setSelected(new Set(current));
+      setLoading(false);
+    })();
+    return ()=>{ cancelled = true; };
+  },[myId]);
+
+  const toggle = (id:string) => setSelected(s=>{
+    const n = new Set(s);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+
+  const save = async () => {
+    setSaving(true);
+    await apiStoriesSetCloseFriends([...selected]);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      style={{position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}
+      onClick={onClose}>
+      <motion.div initial={{scale:0.95,y:10}} animate={{scale:1,y:0}} onClick={e=>e.stopPropagation()}
+        className="w-full max-w-sm max-h-[70vh] overflow-hidden rounded-2xl flex flex-col"
+        style={{background:'var(--bg-l1)',border:'1px solid rgba(255,255,255,0.1)'}}>
+        <div className="flex items-center justify-between p-4 pb-2">
+          <p className="font-bold text-white">Близкие друзья</p>
+          <button type="button" onClick={onClose} style={{color:'var(--t3)'}}><X size={18}/></button>
+        </div>
+        <p className="px-4 pb-3 text-xs" style={{color:'var(--t3)'}}>
+          Истории с видимостью «Близкие друзья» увидят только выбранные ниже — из ваших подтверждённых друзей.
+        </p>
+        <div className="flex-1 overflow-y-auto px-4 pb-2 space-y-1">
+          {loading ? (
+            <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin" style={{color:'var(--accent)'}}/></div>
+          ) : candidates.length===0 ? (
+            <p className="text-sm text-center py-8" style={{color:'var(--t3)'}}>
+              У вас пока нет друзей, кого можно добавить — сначала подружитесь с кем-нибудь в профиле.
+            </p>
+          ) : candidates.map(p=>(
+            <button key={p.id} type="button" onClick={()=>toggle(p.id)}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-white/5">
+              <div className="grid h-9 w-9 place-items-center rounded-full text-sm font-bold text-white shrink-0"
+                style={{background:'rgba(255,255,255,0.15)'}}>{initial(p.name)}</div>
+              <span className="flex-1 truncate text-sm text-white">{p.name}</span>
+              <div className="grid h-5 w-5 place-items-center rounded-md border-2"
+                style={{borderColor:selected.has(p.id)?'var(--accent)':'var(--border)',background:selected.has(p.id)?'var(--accent)':'transparent'}}>
+                {selected.has(p.id)&&<span className="text-white text-xs font-bold">✓</span>}
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="p-4 pt-2">
+          <button type="button" onClick={save} disabled={saving||loading}
+            className="w-full rounded-2xl py-2.5 text-sm font-bold text-white disabled:opacity-50"
+            style={{background:'var(--accent)'}}>
+            {saving?'Сохраняем...':`Готово (${selected.size})`}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 // --- CreateStory --------------------------------------------------------------
-const CreateStory = ({ onPublish, onClose, authorId, authorName, authorAvatar }:{
-  onPublish:(s:Story)=>void; onClose:()=>void;
-  authorId:string; authorName:string; authorAvatar:string;
-}) => {
+const CreateStory = ({ onPublished, onClose }:{ onPublished:()=>void; onClose:()=>void }) => {
+  const { currentUserId } = useAuthStore();
   const [kind, setKind] = useState<StoryKind>('text');
   const [text, setText] = useState('');
   const [mediaUrl, setMediaUrl] = useState<string|undefined>();
+  const [mediaFile, setMediaFile] = useState<File|undefined>();
   const [bg, setBg] = useState(DEMO_BG[0]);
   const [publishing, setPublishing] = useState(false);
+  const [error, setError] = useState<string|null>(null);
   const [visibility, setVisibility] = useState<'all'|'closeFriends'>('all');
+  const [showCFEditor, setShowCFEditor] = useState(false);
   const [musicTrackId, setMusicTrackId] = useState<string|undefined>();
   const [showMusicPicker, setShowMusicPicker] = useState(false);
   const [location, setLocation] = useState('');
   const [translating, setTranslating] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const { accounts } = useAuthStore();
   const tracks = usePlatformStore(s=>s.tracks);
   const pickedTrack = tracks.find(t=>t.id===musicTrackId);
 
@@ -387,12 +438,9 @@ const CreateStory = ({ onPublish, onClose, authorId, authorName, authorAvatar }:
     const t = text.trim(); if(!t) return;
     setTranslating(true);
     try {
-      /* Задание выбирается из списка на сервере, а не составляется
-         здесь: свободный текст запроса, присланный браузером, — это
-         способ переписать правила модели целиком. */
       const r = await apiAiAsk('translate', t, /[а-яё]/i.test(t) ? 'English' : 'Русский');
       if (r.ok) setText(r.text);
-    } catch {}
+    } catch { /* сеть/лимит — оставляем исходный текст */ }
     setTranslating(false);
   };
 
@@ -400,27 +448,50 @@ const CreateStory = ({ onPublish, onClose, authorId, authorName, authorAvatar }:
     const f=e.target.files?.[0]; if(!f) return;
     setMediaUrl(prev=>{ if(prev?.startsWith('blob:')) URL.revokeObjectURL(prev); return URL.createObjectURL(f); });
     setKind(f.type.startsWith('video')?'video':'photo');
+    setMediaFile(f);
   };
 
-  const publish = ()=>{
-    if(!text.trim()&&!mediaUrl) return;
+  // Упоминания — реальные люди, найденные на сервере по @username,
+  // а не что попало из локального списка аккаунтов этого браузера.
+  const resolveMentions = async (body: string): Promise<string[]> => {
+    const names = [...new Set([...body.matchAll(/@(\w+)/g)].map(m=>m[1].toLowerCase()))];
+    if (!names.length) return [];
+    const ids: string[] = [];
+    for (const uname of names) {
+      const r = await apiSearchPeople(uname);
+      const hit = r.ok ? r.data?.people.find(p=>p.username.toLowerCase()===uname) : undefined;
+      if (hit) ids.push(hit.id);
+    }
+    return ids;
+  };
+
+  const publish = async () => {
+    if(!text.trim()&&!mediaFile) return;
     setPublishing(true);
-    // упоминания — реальные username, встреченные в тексте (@username)
-    const mentionedNames = [...text.matchAll(/@(\w+)/g)].map(m=>m[1].toLowerCase());
-    const mentions = accounts.filter(a=>mentionedNames.includes(a.username?.toLowerCase()??'')).map(a=>a.id);
-    setTimeout(()=>{
-      onPublish({
-        id:crypto.randomUUID(), authorId, authorName, authorAvatar,
-        kind, mediaUrl, text:text.trim()||undefined, bg,
-        duration:kind==='text'?7:kind==='photo'?5:15,
-        createdAt:Date.now(), viewed:false, likes:[], views:0,
-        visibility, mentions:mentions.length?mentions:undefined,
-        musicTrackId, location:location.trim()||undefined,
+    setError(null);
+    try {
+      let mediaId: string|undefined;
+      let mediaMime: string|undefined;
+      if (mediaFile) {
+        const uploaded = await apiStoriesUploadMedia(mediaFile);
+        if (!uploaded) { setError('Не получилось загрузить файл.'); return; }
+        mediaId = uploaded.mediaId; mediaMime = uploaded.mime;
+      }
+      const mentions = await resolveMentions(text);
+      const r = await apiStoriesCreate({
+        text: text.trim() || undefined,
+        mediaId, mediaMime, bg, visibility,
+        mentions: mentions.length ? mentions : undefined,
+        musicTrackId, location: location.trim() || undefined,
       });
-    },300);
+      if ('error' in r) { setError('Не получилось опубликовать историю.'); return; }
+      onPublished();
+    } finally {
+      setPublishing(false);
+    }
   };
 
-  const canPublish = !!(text.trim()||mediaUrl);
+  const canPublish = !!(text.trim()||mediaFile);
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
@@ -437,7 +508,7 @@ const CreateStory = ({ onPublish, onClose, authorId, authorName, authorAvatar }:
         {/* Тип */}
         <div className="flex gap-2 px-5 pb-4">
           {([['text','Текст',Type],['photo','Фото',Image],['video','Видео',Film]] as const).map(([k,lbl,Icon])=>(
-            <button key={k} type="button" onClick={()=>{setKind(k);setMediaUrl(undefined);}}
+            <button key={k} type="button" onClick={()=>{setKind(k);setMediaUrl(undefined);setMediaFile(undefined);}}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-2 text-xs font-medium transition-all"
               style={{background:kind===k?'var(--accent-bg)':'var(--bg-l2)',
                 border:kind===k?'1px solid var(--accent-bg)':'1px solid var(--border)',
@@ -537,7 +608,7 @@ const CreateStory = ({ onPublish, onClose, authorId, authorName, authorAvatar }:
         </div>
 
         {/* Приватность */}
-        <div className="px-5 pb-4 flex gap-2">
+        <div className="px-5 pb-2 flex gap-2">
           {([['all','Все'],['closeFriends','Близкие друзья']] as const).map(([v,l])=>(
             <button key={v} type="button" onClick={()=>setVisibility(v)}
               className="flex-1 rounded-2xl py-2 text-xs font-semibold"
@@ -548,6 +619,14 @@ const CreateStory = ({ onPublish, onClose, authorId, authorName, authorAvatar }:
             </button>
           ))}
         </div>
+        {visibility==='closeFriends' && currentUserId && (
+          <div className="px-5 pb-4">
+            <button type="button" onClick={()=>setShowCFEditor(true)}
+              className="w-full text-center text-xs font-medium py-1.5" style={{color:'var(--accent)'}}>
+              Настроить список близких друзей
+            </button>
+          </div>
+        )}
 
         <div className="flex gap-3 px-5 pb-5">
           {(kind==='photo'||kind==='video')&&(
@@ -563,7 +642,13 @@ const CreateStory = ({ onPublish, onClose, authorId, authorName, authorAvatar }:
             {publishing?'Публикуем...':'Опубликовать историю'}
           </motion.button>
         </div>
+        {error && <p className="px-5 pb-4 -mt-2 text-xs" style={{color:'var(--red)'}}>{error}</p>}
       </motion.div>
+      <AnimatePresence>
+        {showCFEditor && currentUserId && (
+          <CloseFriendsEditor myId={currentUserId} onClose={()=>setShowCFEditor(false)}/>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
@@ -596,208 +681,110 @@ const LiveStreamCard = ({ live, onClick }:{ live: import('../streams/store').Liv
 );
 
 // --- Главный модуль -----------------------------------------------------------
-// Глобальный ключ  -  истории видны всем пользователям
-const STORIES_KEY = 'sky:stories:v3:global';
-const MEDIA_KEY   = 'sky:stories:v3:media';
-const CLOSE_FRIENDS_KEY = 'sky:stories:closeFriends:v1';
-
-const loadCloseFriends = (): Record<string,string[]> => {
-  try { return JSON.parse(localStorage.getItem(CLOSE_FRIENDS_KEY)||'{}'); } catch { return {}; }
-};
-const saveCloseFriends = (d: Record<string,string[]>) => {
-  try { localStorage.setItem(CLOSE_FRIENDS_KEY, JSON.stringify(d)); } catch {}
-};
-
-// Track created blob URLs so we can revoke them when no longer needed
-const _blobUrls = new Set<string>();
-
-const revokeStaleBlobUrls = (activeUrls: string[]) => {
-  const activeSet = new Set(activeUrls);
-  for (const url of _blobUrls) {
-    if (!activeSet.has(url)) {
-      URL.revokeObjectURL(url);
-      _blobUrls.delete(url);
-    }
-  }
-};
-
-const saveStories = (ss: Story[]) => {
-  try {
-    localStorage.setItem(STORIES_KEY, JSON.stringify(
-      ss.map(s => ({ ...s, mediaUrl: s.mediaUrl?.startsWith('blob:') ? undefined : s.mediaUrl }))
-    ));
-    // Prune media entries for stories that no longer exist
-    const activeIds = new Set(ss.map(s => s.id));
-    const media: Record<string,string> = JSON.parse(localStorage.getItem(MEDIA_KEY)||'{}');
-    let pruned = false;
-    for (const id of Object.keys(media)) {
-      if (!activeIds.has(id)) { delete media[id]; pruned = true; }
-    }
-    if (pruned) localStorage.setItem(MEDIA_KEY, JSON.stringify(media));
-  } catch {}
-};
-
-const loadStories = (): Story[] => {
-  try {
-    const raw = localStorage.getItem(STORIES_KEY);
-    if (!raw) return INITIAL_STORIES;
-    const allSs: Story[] = JSON.parse(raw);
-    const cutoff = Date.now() - 24*60*60*1000;
-    const ss: Story[] = allSs.filter(s => s.createdAt > cutoff || s.authorId !== 'demo');
-    const media: Record<string,string> = JSON.parse(localStorage.getItem(MEDIA_KEY)||'{}');
-    return ss.map(s => {
-      if (!s.mediaUrl && media[s.id]) {
-        try {
-          const [header, data] = media[s.id].split(',');
-          const mime = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
-          const bytes = atob(data);
-          const arr = new Uint8Array(bytes.length);
-          for (let i=0;i<bytes.length;i++) arr[i]=bytes.charCodeAt(i);
-          const blobUrl = URL.createObjectURL(new Blob([arr],{type:mime}));
-          _blobUrls.add(blobUrl);
-          return { ...s, mediaUrl: blobUrl };
-        } catch { return s; }
-      }
-      return s;
-    });
-  } catch { return INITIAL_STORIES; }
-};
+const FEED_POLL_MS = 20_000;
 
 export const StoriesModule = () => {
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a=>a.id===currentUserId);
 
-  const [stories, setStories] = useState<Story[]>(loadStories);
+  const [stories, setStories] = useState<Story[]>([]);
+  const [archivedStories, setArchivedStories] = useState<Story[]>([]);
   const [tab, setTab] = useState<'stories'|'live'>('stories');
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIdx, setViewerIdx] = useState(0);
-  const [viewerGroup, setViewerGroup] = useState<Story[]>([]);
+  const [viewerAuthorId, setViewerAuthorId] = useState<string|null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
   const [watchingStreamId, setWatchingStreamId] = useState<string|null>(null);
   const liveStreamsMap = useStreamsStore(s=>s.streams);
   const lives = useMemo(()=>Object.values(liveStreamsMap).filter(l=>!l.ended).sort((a,b)=>b.startedAt-a.startedAt),[liveStreamsMap]);
   const myActiveStream = lives.find(l=>l.authorId===currentUserId);
 
-  // Сохраняем истории при изменении + очищаем устаревшие blob URLs
-  useEffect(()=>{
-    saveStories(stories);
-    revokeStaleBlobUrls(stories.map(s=>s.mediaUrl).filter(Boolean) as string[]);
-  },[stories]);
-
-  // Синхронизируем истории между вкладками
-  useEffect(()=>{
-    if(!STORIES_BC) return;
-    const handler = (e: MessageEvent) => {
-      const { type, payload } = e.data ?? {};
-      if (type === 'story-new') {
-        setStories(ss => ss.find(s => s.id === payload.id) ? ss : [payload, ...ss]);
-      }
-      if (type === 'story-delete') {
-        setStories(ss => ss.filter(s => s.id !== payload.id));
-      }
-      if (type === 'story-like') {
-        setStories(ss => ss.map(s => s.id === payload.storyId ? {...s, likes: payload.likes} : s));
-      }
-    };
-    STORIES_BC.onmessage = handler;
-    return () => { if(STORIES_BC) STORIES_BC.onmessage = null; };
+  const refresh = useCallback(async () => {
+    setStories(await apiStoriesFeed());
   }, []);
 
+  useEffect(()=>{
+    void refresh();
+    void (async () => setArchivedStories(await apiStoriesArchive()))();
+    const id = window.setInterval(refresh, FEED_POLL_MS);
+    return () => clearInterval(id);
+  },[refresh]);
+
   const grouped = useMemo(()=>{
-    const cutoff = Date.now() - 24*60*60*1000;
-    const closeFriends = loadCloseFriends();
-    const visible = stories.filter(s => {
-      if (s.createdAt <= cutoff) return false; // истёкшие — только в архиве
-      if (s.authorId === currentUserId) return true;
-      if (s.visibility === 'closeFriends') return (closeFriends[s.authorId]??[]).includes(currentUserId!);
-      return true;
-    });
     const map=new Map<string,Story[]>();
-    visible.forEach(s=>{const arr=map.get(s.authorId)??[];arr.push(s);map.set(s.authorId,arr);});
+    stories.forEach(s=>{const arr=map.get(s.authorId)??[];arr.push(s);map.set(s.authorId,arr);});
     return Array.from(map.entries()).map(([id,ss])=>({
-      authorId:id, authorName:ss[0].authorName, authorAvatar:ss[0].authorAvatar,
+      authorId:id, authorName:ss[0].authorName,
       stories:ss, hasNew:ss.some(s=>!s.viewed),
     }));
-  },[stories,currentUserId]);
-
-  /* Архив — собственные истёкшие истории (только владелец их видит) */
-  const archivedStories = useMemo(()=>{
-    const cutoff = Date.now() - 24*60*60*1000;
-    return stories.filter(s => s.authorId===currentUserId && s.createdAt <= cutoff)
-      .sort((a,b)=>b.createdAt-a.createdAt);
-  },[stories,currentUserId]);
-  const [archiveOpen, setArchiveOpen] = useState(false);
+  },[stories]);
 
   const myStoriesGroup = grouped.find(g=>g.authorId===currentUserId);
+  const viewerGroup = useMemo(
+    ()=> viewerAuthorId ? stories.filter(s=>s.authorId===viewerAuthorId) : [],
+    [stories,viewerAuthorId],
+  );
 
-  const openStories=(group:Story[])=>{
-    setViewerGroup(group);setViewerIdx(0);setViewerOpen(true);
+  const openStories=(authorId:string)=>{
+    const group = stories.filter(s=>s.authorId===authorId);
+    if(!group.length) return;
+    setViewerAuthorId(authorId);setViewerIdx(0);setViewerOpen(true);
     const uid = currentUserId;
     if (!uid) return;
+    for (const s of group) if (!s.viewed) void apiStoriesView(s.id);
     setStories(ss=>ss.map(s=>{
-      if (!group.find(g=>g.id===s.id)) return s;
-      const already = (s.viewedBy ?? []).includes(uid);
-      return {
-        ...s, viewed:true,
-        viewedBy: already ? s.viewedBy : [...(s.viewedBy ?? []), uid],
-        views: already ? s.views : s.views + (s.authorId===uid ? 0 : 1),
-      };
+      if (s.authorId!==authorId || s.viewed) return s;
+      return { ...s, viewed:true, views: s.authorId===uid ? s.views : s.views+1 };
     }));
   };
 
-  const publishStory = async (s: Story) => {
-    // Если медиа  -  blob, конвертируем в base64 для персистентности
-    if (s.mediaUrl?.startsWith('blob:')) {
-      try {
-        const resp = await fetch(s.mediaUrl);
-        const blob = await resp.blob();
-        const b64: string = await new Promise(res => {
-          const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(blob);
-        });
-        const media: Record<string,string> = JSON.parse(localStorage.getItem(MEDIA_KEY)||'{}');
-        media[s.id] = b64;
-        localStorage.setItem(MEDIA_KEY, JSON.stringify(media));
-      } catch {}
-    }
-    setStories(ss => [s, ...ss]);
-    STORIES_BC?.postMessage({ type: 'story-new', payload: s });
+  /** Применяет изменение и к живой ленте, и к архиву — своя история
+   *  может быть открыта в любом из двух просмотрщиков. */
+  const patchStory = (id:string, updater:(s:Story)=>Story) => {
+    const apply = (s:Story) => s.id===id ? updater(s) : s;
+    setStories(ss=>ss.map(apply));
+    setArchivedStories(ss=>ss.map(apply));
+  };
+
+  const publishStory = () => {
     setCreateOpen(false);
+    void refresh();
   };
 
-  const deleteStory = (id: string) => {
-    setStories(ss => ss.filter(s => s.id !== id));
-    STORIES_BC?.postMessage({ type: 'story-delete', payload: { id } });
-    try {
-      const media: Record<string,string> = JSON.parse(localStorage.getItem(MEDIA_KEY)||'{}');
-      delete media[id];
-      localStorage.setItem(MEDIA_KEY, JSON.stringify(media));
-    } catch {}
+  const deleteStory = async (id:string) => {
+    const ok = await apiStoriesDelete(id);
+    if (!ok) return;
+    setStories(ss=>ss.filter(s=>s.id!==id));
+    setArchivedStories(ss=>ss.filter(s=>s.id!==id));
   };
 
-  const toggleLike=(storyId:string)=>{
-    setStories(ss=>ss.map(s=>{
-      if(s.id!==storyId) return s;
-      const likes = s.likes.includes(currentUserId!)
-        ? s.likes.filter(l=>l!==currentUserId)
-        : [...s.likes,currentUserId!];
-      STORIES_BC?.postMessage({ type: 'story-like', payload: { storyId, likes } });
-      return {...s,likes};
+  const toggleLike = async (storyId:string) => {
+    const liked = await apiStoriesLike(storyId);
+    if (liked===null || !currentUserId) return;
+    patchStory(storyId, s=>({
+      ...s,
+      likes: liked ? [...s.likes,currentUserId] : s.likes.filter(l=>l!==currentUserId),
     }));
   };
 
-  const voteOnPoll = (storyId:string, optIdx:number) => {
-    setStories(ss=>ss.map(s=>{
-      if(s.id!==storyId||!s.poll||s.poll.votes[currentUserId!]!==undefined) return s;
-      return { ...s, poll:{ ...s.poll, votes:{ ...s.poll.votes, [currentUserId!]:optIdx } } };
+  const voteOnPoll = async (storyId:string, optionId:string) => {
+    const ok = await apiStoriesVote(storyId, optionId);
+    if (!ok || !currentUserId) return;
+    patchStory(storyId, s=>!s.poll ? s : ({
+      ...s,
+      poll: { ...s.poll, options: s.poll.options.map(o=>o.id===optionId ? { ...o, votes:[...o.votes,currentUserId] } : o) },
     }));
   };
 
-  const answerQuestion = (storyId:string, text:string) => {
-    const me2 = accounts.find(a=>a.id===currentUserId);
-    setStories(ss=>ss.map(s=>{
-      if(s.id!==storyId||!s.question) return s;
-      return { ...s, question:{ ...s.question, answers:[...s.question.answers,{userId:currentUserId!,userName:me2?.name??'Кто-то',text}] } };
+  const answerQuestion = async (storyId:string, text:string) => {
+    const r = await apiStoriesAnswer(storyId, text);
+    if (!r || !currentUserId) return;
+    const myName = me?.name ?? 'Кто-то';
+    patchStory(storyId, s=>!s.question ? s : ({
+      ...s,
+      question: { ...s.question, answers:[...s.question.answers,{id:r.id,userId:currentUserId,userName:myName,text,createdAt:Date.now()}] },
     }));
   };
 
@@ -826,7 +813,7 @@ export const StoriesModule = () => {
             {/* Моя история */}
             <div className="flex flex-col items-center gap-1.5">
               <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} type="button"
-                onClick={()=>myStoriesGroup?openStories(myStoriesGroup.stories):setCreateOpen(true)}
+                onClick={()=>myStoriesGroup?openStories(myStoriesGroup.authorId):setCreateOpen(true)}
                 className="relative">
                 <div className="rounded-full p-[2px]"
                   style={{background:myStoriesGroup?'var(--accent)':'rgba(255,255,255,0.1)'}}>
@@ -842,8 +829,8 @@ export const StoriesModule = () => {
             </div>
 
             {grouped.filter(g=>g.authorId!==currentUserId).map(g=>(
-              <StoryCircle key={g.authorId} story={g} hasNew={g.hasNew} isLive={false}
-                onClick={()=>openStories(g.stories)}/>
+              <StoryCircle key={g.authorId} authorName={g.authorName} hasNew={g.hasNew} isLive={false}
+                onClick={()=>openStories(g.authorId)}/>
             ))}
 
             {archivedStories.length>0 && (
@@ -877,7 +864,7 @@ export const StoriesModule = () => {
                   <motion.div key={s.id} whileHover={{scale:1.02}} whileTap={{scale:0.97}}
                     className="relative cursor-pointer overflow-hidden rounded-2xl"
                     style={{aspectRatio:'9/16',maxHeight:280}}
-                    onClick={()=>{const g=stories.filter(x=>x.authorId===s.authorId);openStories(g);}}>
+                    onClick={()=>openStories(s.authorId)}>
                     {s.kind==='photo'&&s.mediaUrl&&<img src={s.mediaUrl} alt="" className="h-full w-full object-cover"/>}
                     {s.kind==='video'&&s.mediaUrl&&<video src={s.mediaUrl} muted className="h-full w-full object-cover"/>}
                     {(s.kind==='text'||!s.mediaUrl)&&(
@@ -955,7 +942,7 @@ export const StoriesModule = () => {
           <StoryViewer stories={viewerGroup} startIdx={viewerIdx}
             onClose={()=>setViewerOpen(false)} currentUserId={currentUserId!}
             onLike={toggleLike} onDelete={deleteStory}
-            onVote={voteOnPoll} onAnswer={answerQuestion} accounts={accounts}/>
+            onVote={voteOnPoll} onAnswer={answerQuestion}/>
         )}
       </AnimatePresence>
       <AnimatePresence>
@@ -963,13 +950,12 @@ export const StoriesModule = () => {
           <StoryViewer stories={archivedStories} startIdx={0}
             onClose={()=>setArchiveOpen(false)} currentUserId={currentUserId!}
             onLike={toggleLike} onDelete={deleteStory}
-            onVote={voteOnPoll} onAnswer={answerQuestion} accounts={accounts}/>
+            onVote={voteOnPoll} onAnswer={answerQuestion}/>
         )}
       </AnimatePresence>
       <AnimatePresence>
         {createOpen&&me&&(
-          <CreateStory authorId={currentUserId!} authorName={me.name} authorAvatar={me.name[0]}
-            onPublish={publishStory} onClose={()=>setCreateOpen(false)}/>
+          <CreateStory onPublished={publishStory} onClose={()=>setCreateOpen(false)}/>
         )}
       </AnimatePresence>
       <AnimatePresence>

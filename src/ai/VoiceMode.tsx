@@ -1,0 +1,264 @@
+/**
+ * Sky AI — голосовой режим.
+ *
+ * Не отдельный ассистент: запись уходит на /api/ai/voice, который
+ * распознаёт речь и отправляет её как обычную реплику в тот же
+ * sendMessage() (aichat.mjs) — тот же диалог, та же история, тот же
+ * профиль. Этот экран только записывает, показывает состояние и
+ * проигрывает голосовой ответ, если сервер его прислал.
+ */
+import { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Mic, Square, X, Loader2, AlertTriangle, Volume2, Check } from 'lucide-react';
+import { apiAiVoice, type VoiceTurnResult } from './aiApi';
+import { refreshAiState } from './aiState';
+import { matchVoiceCommand } from './voiceCommands';
+
+type Phase = 'idle' | 'listening' | 'processing' | 'speaking' | 'error' | 'command';
+
+const MIME = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+  ? 'audio/webm;codecs=opus'
+  : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+
+export const VoiceMode = ({ chatId, onClose, onTurn }: {
+  chatId: string | null;
+  onClose: () => void;
+  onTurn: (result: VoiceTurnResult) => void;
+}) => {
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [level, setLevel] = useState(0);
+  const [recognized, setRecognized] = useState('');
+  const [answerText, setAnswerText] = useState('');
+  const [error, setError] = useState('');
+
+  const streamRef = useRef<MediaStream | null>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const cancelRef = useRef<() => void>(() => {});
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+
+  const stopVisualizer = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    analyserRef.current = null;
+  };
+
+  const stopStream = () => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+  };
+
+  useEffect(() => () => { stopVisualizer(); stopStream(); cancelRef.current?.(); }, []);
+
+  const visualize = (stream: MediaStream) => {
+    const ctx = new AudioContext();
+    const src = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    src.connect(analyser);
+    audioCtxRef.current = ctx;
+    analyserRef.current = analyser;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      analyser.getByteFrequencyData(data);
+      const avg = data.reduce((a, b) => a + b, 0) / data.length;
+      setLevel(Math.min(1, avg / 90));
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    tick();
+  };
+
+  const startListening = async () => {
+    setError(''); setRecognized(''); setAnswerText('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const rec = new MediaRecorder(stream, MIME ? { mimeType: MIME } : undefined);
+      rec.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      rec.onstop = () => { void handleStop(); };
+      rec.start();
+      recRef.current = rec;
+      visualize(stream);
+      setPhase('listening');
+    } catch {
+      setError('Нет доступа к микрофону');
+      setPhase('error');
+    }
+  };
+
+  const stopListening = () => {
+    recRef.current?.stop();
+    stopStream();
+    stopVisualizer();
+  };
+
+  const cancelListening = () => {
+    if (recRef.current) recRef.current.onstop = null;
+    recRef.current?.stop();
+    stopStream();
+    stopVisualizer();
+    chunksRef.current = [];
+    setPhase('idle');
+  };
+
+  const handleStop = async () => {
+    stopVisualizer();
+    if (!chunksRef.current.length) { setPhase('idle'); return; }
+    setPhase('processing');
+    const blob = new Blob(chunksRef.current, { type: MIME || 'audio/webm' });
+    const { promise, cancel } = apiAiVoice(blob, chatId ?? undefined);
+    cancelRef.current = cancel;
+    const r = await promise;
+    if (!r.ok) {
+      setError(r.reason);
+      setPhase('error');
+      return;
+    }
+    setRecognized(r.data.recognizedText);
+    void refreshAiState();
+
+    /* Команда навигации/управления — закрытый список (voiceCommands.ts).
+       Само распознавание и ответ модели уже ушли в обычную историю Sky
+       AI на сервере; здесь просто выполняем действие вместо того, чтобы
+       показывать и озвучивать болтовню модели поверх него. */
+    const command = matchVoiceCommand(r.data.recognizedText);
+    if (command) {
+      setPhase('command');
+      await command.run();
+      setAnswerText(command.label);
+      setTimeout(onClose, 1100);
+      return;
+    }
+
+    setAnswerText(r.data.answer.text);
+    onTurn(r.data);
+
+    if (r.data.audio) {
+      setPhase('speaking');
+      const src = `data:${r.data.audioMime ?? 'audio/mpeg'};base64,${r.data.audio}`;
+      const el = new Audio(src);
+      audioElRef.current = el;
+      el.onended = () => setPhase('idle');
+      el.onerror = () => setPhase('idle');
+      void el.play().catch(() => setPhase('idle'));
+    } else {
+      setPhase('idle');
+    }
+  };
+
+  const stopSpeaking = () => {
+    audioElRef.current?.pause();
+    audioElRef.current = null;
+    setPhase('idle');
+  };
+
+  const orbScale = phase === 'listening' ? 1 + level * 0.35 : phase === 'speaking' ? [1, 1.08, 1] : 1;
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'radial-gradient(circle at 50% 30%, rgba(99,60,180,0.35), rgba(8,6,20,0.97) 65%)',
+        backdropFilter: 'blur(16px)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      }}>
+      <button type="button" onClick={onClose} aria-label="Закрыть голосовой режим"
+        style={{ position: 'absolute', top: 20, right: 20, color: 'rgba(255,255,255,0.6)' }}>
+        <X size={22}/>
+      </button>
+
+      <div className="flex flex-col items-center gap-8 px-6 text-center" style={{ maxWidth: 380 }}>
+        <motion.div
+          animate={{ scale: orbScale }}
+          transition={phase === 'speaking' ? { duration: 1.4, repeat: Infinity, ease: 'easeInOut' } : { type: 'spring', stiffness: 200, damping: 20 }}
+          style={{
+            width: 132, height: 132, borderRadius: '50%',
+            background: 'linear-gradient(135deg,#a855f7,#6366f1)',
+            boxShadow: `0 0 ${40 + level * 60}px rgba(168,85,247,${0.35 + level * 0.35})`,
+            display: 'grid', placeItems: 'center',
+          }}>
+          {phase === 'processing'
+            ? <Loader2 size={40} className="animate-spin" color="#fff"/>
+            : phase === 'speaking'
+              ? <Volume2 size={40} color="#fff"/>
+              : phase === 'error'
+                ? <AlertTriangle size={36} color="#fff"/>
+                : phase === 'command'
+                  ? <Check size={40} color="#fff"/>
+                  : <Mic size={40} color="#fff"/>}
+        </motion.div>
+
+        {/* Волна — реальная амплитуда микрофона, не декорация */}
+        {phase === 'listening' && (
+          <div className="flex items-end gap-1" style={{ height: 28 }}>
+            {Array.from({ length: 24 }).map((_, i) => {
+              const jitter = 0.5 + Math.abs(Math.sin(i * 1.7 + Date.now() / 300)) * 0.5;
+              const h = 4 + level * 24 * jitter;
+              return <div key={i} style={{ width: 3, height: h, borderRadius: 2, background: 'rgba(255,255,255,0.7)' }}/>;
+            })}
+          </div>
+        )}
+
+        <div>
+          <p className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>
+            {phase === 'idle' && 'Нажмите и говорите'}
+            {phase === 'listening' && 'Слушаю...'}
+            {phase === 'processing' && 'Распознаю...'}
+            {phase === 'speaking' && 'Sky AI отвечает'}
+            {phase === 'command' && `Открываю: ${answerText}`}
+            {phase === 'error' && (error || 'Что-то пошло не так')}
+          </p>
+          {recognized && phase !== 'idle' && phase !== 'error' && phase !== 'command' && (
+            <p className="text-xs mt-3" style={{ color: 'rgba(255,255,255,0.55)' }}>«{recognized}»</p>
+          )}
+          {answerText && (phase === 'speaking' || phase === 'idle') && (
+            <p className="text-sm mt-3 leading-relaxed" style={{ color: 'rgba(255,255,255,0.9)' }}>{answerText}</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          {phase === 'idle' && (
+            <motion.button whileTap={{ scale: 0.92 }} type="button" onClick={() => void startListening()}
+              className="rounded-full px-6 py-3 text-sm font-bold"
+              style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>
+              Говорить
+            </motion.button>
+          )}
+          {phase === 'listening' && (
+            <>
+              <button type="button" onClick={cancelListening}
+                className="rounded-full px-5 py-3 text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                Отмена
+              </button>
+              <motion.button whileTap={{ scale: 0.92 }} type="button" onClick={stopListening}
+                className="grid h-14 w-14 place-items-center rounded-full"
+                style={{ background: '#ef4444' }}>
+                <Square size={20} color="#fff" fill="#fff"/>
+              </motion.button>
+            </>
+          )}
+          {phase === 'speaking' && (
+            <button type="button" onClick={stopSpeaking}
+              className="rounded-full px-5 py-2.5 text-sm font-bold"
+              style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>
+              Стоп
+            </button>
+          )}
+          {phase === 'error' && (
+            <button type="button" onClick={() => setPhase('idle')}
+              className="rounded-full px-6 py-3 text-sm font-bold"
+              style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>
+              Повторить
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};

@@ -140,6 +140,16 @@ export const config = {
   sttModel:   process.env.STT_MODEL    || 'whisper-1',
   sttBaseUrl: process.env.STT_BASE_URL || '',
 
+  // Голосовой ответ (текст → речь) — свой поставщик, отдельный и от
+  // языковой модели, и от расшифровки. У многих поставщиков это тот же
+  // адрес и ключ, что и у расшифровки, поэтому по умолчанию берём их же,
+  // если TTS_* не заданы отдельно. Ожидается обычная ручка
+  // /v1/audio/speech (формат OpenAI). Пока ключ не задан — ответа нет.
+  ttsApiKey:  process.env.TTS_API_KEY  || process.env.STT_API_KEY || '',
+  ttsModel:   process.env.TTS_MODEL    || 'tts-1',
+  ttsBaseUrl: process.env.TTS_BASE_URL || process.env.STT_BASE_URL || '',
+  ttsVoice:   process.env.TTS_VOICE    || 'alloy',
+
   /**
    * Google Карты.
    *

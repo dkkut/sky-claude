@@ -5,7 +5,7 @@ import {
   Lock, Eye, Bell, ChevronRight, LogOut, Gamepad2, Trophy, Swords, ChevronDown,
   Settings, Moon, Globe, Volume2, Download, Palette, Info, ExternalLink, WifiOff, Wallet, Gift, EyeOff, PawPrint, Briefcase, Users,
   RotateCcw, CheckCheck, MessageSquare, Send, Fingerprint, Coffee, Timer, Pause, Tv, Car,
-  ArrowLeftRight, LifeBuoy, ScrollText, Inbox, Video, ShieldHalf, Flower2,
+  ArrowLeftRight, LifeBuoy, ScrollText, Inbox, Video, ShieldHalf, Flower2, Sparkles, ChevronUp,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useModuleStore } from '@/data/state/modules';
@@ -28,6 +28,7 @@ import { PetSprite } from '@/messenger/PetSprite';
 import { CustomizationSettingsTab } from '@/customization/CustomizationSettingsTab';
 import { loadSkinData, getActiveSkin, SKIN_RARITY_COLOR, SKIN_RARITY_LABEL, PET_SKINS } from '@/messenger/petSkins';
 import { PETS } from '@/messenger/petData';
+import { apiQuickMenuGet, apiQuickMenuSet, apiQuickMenuReset, type QuickMenuItem } from '@/quickmenu/quickMenuApi';
 import { useMoney, fmt } from '@/wallet/store';
 import { SupportScreen } from '@/support/SupportScreen';
 import { AdminQueue }    from '@/support/AdminQueue';
@@ -331,6 +332,86 @@ const CarModeSection = () => {
   );
 };
 
+/* -- Quick Menu (набор разделов в PC Quick Actions) ------------------ */
+const QuickMenuSection = () => {
+  const [items, setItems] = useState<QuickMenuItem[] | null>(null);
+
+  useEffect(() => { void apiQuickMenuGet().then(r => setItems(r.items)); }, []);
+
+  const persist = (next: QuickMenuItem[]) => {
+    setItems(next);
+    void apiQuickMenuSet(next);
+  };
+
+  // Граница «закреплённых» — они всегда идут первыми, это же порядок
+  // потом использует и сама панель Quick Actions.
+  const boundary = (list: QuickMenuItem[]) => {
+    const idx = list.findIndex(i => !i.pinned);
+    return idx === -1 ? list.length : idx;
+  };
+
+  const toggleEnabled = (key: string) => {
+    if (!items) return;
+    persist(items.map(i => (i.key === key ? { ...i, enabled: !i.enabled } : i)));
+  };
+
+  const togglePinned = (key: string) => {
+    if (!items) return;
+    const item = items.find(i => i.key === key);
+    if (!item) return;
+    const rest = items.filter(i => i.key !== key);
+    const b = boundary(rest);
+    persist([...rest.slice(0, b), { ...item, pinned: !item.pinned }, ...rest.slice(b)]);
+  };
+
+  const move = (key: string, dir: -1 | 1) => {
+    if (!items) return;
+    const idx = items.findIndex(i => i.key === key);
+    const swapIdx = idx + dir;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= items.length) return;
+    if (items[idx].pinned !== items[swapIdx].pinned) return; // не пересекаем границу закреплённых
+    const next = [...items];
+    [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+    persist(next);
+  };
+
+  const restoreDefaults = () => { void apiQuickMenuReset().then(setItems); };
+
+  if (!items) return null;
+
+  return (
+    <SectionBlock title="Quick Menu">
+      <p className="px-4 pt-3 pb-2 text-[11px]" style={{ color: 'var(--t3)' }}>
+        Разделы для быстрого доступа в PC Quick Actions (Ctrl/Cmd+Shift+Space на компьютере) — включайте нужное, закрепляйте важное вперёд списка.
+      </p>
+      {items.map((it, i) => (
+        <div key={it.key}>
+          {i > 0 && <div className="h-px mx-4" style={{ background: 'var(--border)' }}/>}
+          <SettingsRow icon={Sparkles} label={it.label} sub={it.pinned ? 'Закреплён' : undefined}
+            right={
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => move(it.key, -1)} disabled={i === 0 || items[i - 1]?.pinned !== it.pinned}
+                  className="rounded-lg p-1 disabled:opacity-25" style={{ color: 'var(--t3)' }}><ChevronUp size={14}/></button>
+                <button type="button" onClick={() => move(it.key, 1)} disabled={i === items.length - 1 || items[i + 1]?.pinned !== it.pinned}
+                  className="rounded-lg p-1 disabled:opacity-25" style={{ color: 'var(--t3)' }}><ChevronDown size={14}/></button>
+                <button type="button" onClick={() => togglePinned(it.key)} className="rounded-lg p-1"
+                  style={{ color: it.pinned ? 'var(--accent)' : 'var(--t3)' }}>
+                  <Star size={14} fill={it.pinned ? 'currentColor' : 'none'}/>
+                </button>
+                <Toggle on={it.enabled} onToggle={() => toggleEnabled(it.key)}/>
+              </div>
+            }/>
+        </div>
+      ))}
+      <div className="px-4 pb-3 pt-1">
+        <button type="button" onClick={restoreDefaults} className="text-xs font-bold flex items-center gap-1" style={{ color: 'var(--t3)' }}>
+          <RotateCcw size={12}/>Вернуть по умолчанию
+        </button>
+      </div>
+    </SectionBlock>
+  );
+};
+
 const SettingsSection = ({ logout, username, onOpen, staff }: {
   logout:()=>void; username:string;
   onOpen:(section:Section)=>void;
@@ -471,6 +552,9 @@ const SettingsSection = ({ logout, username, onOpen, staff }: {
 
       {/* -- CAR MODE ----------------------------- */}
       <CarModeSection/>
+
+      {/* -- QUICK MENU --------------------------- */}
+      <QuickMenuSection/>
 
       {/* -- МЕССЕНДЖЕР -------------------------- */}
       <SectionBlock title="Мессенджер">
@@ -675,6 +759,14 @@ export const ProfileModule = () => {
     setSection('support');
     useModuleStore.getState().setPendingSupportTicketId(null);
   }, [openSupportTicketId]);
+  // Голосовая команда «открой быстрое меню» доносит сюда нужный раздел
+  // («Настройки», где живёт Quick Menu) — тем же приёмом.
+  const [openProfileSection] = useState(() => useModuleStore.getState().pendingProfileSection);
+  useEffect(() => {
+    if (!openProfileSection) return;
+    setSection(openProfileSection as Section);
+    useModuleStore.getState().setPendingProfileSection(null);
+  }, [openProfileSection]);
   // Владелец — администратор по нику, а не по колонке в профиле,
   // поэтому спрашиваем сервер, а не смотрим в свои же данные.
   //

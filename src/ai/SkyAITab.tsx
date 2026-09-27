@@ -20,9 +20,10 @@ import {
 import {
   apiAiChats, apiAiReadChat, apiAiRenameChat, apiAiDeleteChat,
   apiAiSend, apiAiSummary, apiAiUpload, apiAiAnalyzeFile, apiAiAnalyzeImage, apiAiTranscribe,
-  type AiChat, type AiMessage, type TranscriptCue,
+  type AiChat, type AiMessage, type TranscriptCue, type VoiceTurnResult,
 } from './aiApi';
 import { useAiState, refreshAiState } from './aiState';
+import { VoiceMode } from './VoiceMode';
 
 const C = {
   accent: '#a855f7',
@@ -110,6 +111,7 @@ export const SkyAITab = () => {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   /* Инструменты */
   const [style, setStyle] = useState('short');
@@ -209,6 +211,17 @@ export const SkyAITab = () => {
     if ('cues' in r) setToolCues(r.cues);
     void refreshAiState();
     if (chatId) void openChat(chatId);
+  };
+
+  /* ── Голосовой режим: тот же диалог, что и обычный чат ── */
+  const onVoiceTurn = (r: VoiceTurnResult) => {
+    if (!chatId && r.chatId) setChatId(r.chatId);
+    setMessages(h => [
+      ...h,
+      { id: `local-voice-${Date.now()}`, role: 'user', text: r.recognizedText, tool: 'chat', createdAt: new Date().toISOString() },
+      r.answer,
+    ]);
+    void loadChats();
   };
 
   const current = MODES.find(m => m.key === mode)!;
@@ -452,6 +465,16 @@ export const SkyAITab = () => {
             className="flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm outline-none"
             style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)', maxHeight: 120 }}
           />
+          {mode === 'chat' && state?.transcription && (
+            <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => setVoiceOpen(true)}
+              disabled={!prime} title={prime ? 'Голосовой режим' : 'Голосовой режим — в Sky Prime'}
+              aria-label="Голосовой режим"
+              data-ai-voice
+              className="grid h-10 w-10 place-items-center rounded-xl shrink-0 disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg,#a855f7,#6366f1)', border: '1px solid var(--border)', cursor: 'pointer' }}>
+              <Mic size={15} color="#fff"/>
+            </motion.button>
+          )}
           <motion.button whileTap={{ scale: 0.9 }} type="button"
             onClick={() => void (mode === 'chat' ? send() : runSummary())}
             disabled={!input.trim() || busy}
@@ -466,6 +489,12 @@ export const SkyAITab = () => {
           </motion.button>
         </div>
       )}
+
+      <AnimatePresence>
+        {voiceOpen && (
+          <VoiceMode chatId={chatId} onClose={() => setVoiceOpen(false)} onTurn={onVoiceTurn}/>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
