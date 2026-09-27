@@ -1144,7 +1144,12 @@ const handle = async (ws, session, msg) => {
 
     case 'live:leave': {
       const streamId = String(payload?.streamId ?? '');
-      if (!streamId) return;
+      // Без проверки членства и лимита частоты повторный live:leave от
+      // того, кто уже вышел (или никогда не заходил), рассылал бы
+      // live:viewer-left всем зрителям эфира бесплатно для отправителя —
+      // усилитель для флуда чужих соединений.
+      if (!streamId || !liveIsViewer(streamId, me)) return;
+      if (!rateLimit(`live:write:${me}`, 30)) return;
       const others = liveViewerIds(streamId).filter((id) => id !== me);
       liveLeave(me, streamId);
       broadcast(others, { type: 'live:viewer-left', payload: { streamId, viewerId: me } });
@@ -1166,6 +1171,7 @@ const handle = async (ws, session, msg) => {
       const streamId = String(payload?.streamId ?? '');
       const emoji = String(payload?.emoji ?? '');
       if (!streamId || !liveIsViewer(streamId, me)) return;
+      if (!rateLimit(`live:react:${me}`, 60)) return;
       const r = liveReact(streamId, emoji);
       if (r.error) return;
       broadcast(await liveAudience(streamId), { type: 'live:react', payload: { streamId, emoji: r.emoji, count: r.count } });
