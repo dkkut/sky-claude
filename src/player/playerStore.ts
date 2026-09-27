@@ -32,6 +32,9 @@ interface PlayerStore {
   volume:      number;
   shuffle:     boolean;
   repeat:      'off' | 'one' | 'all';
+  // Скрыт ли плавающий мини-плеер — сама музыка при этом продолжает играть,
+  // скрывается только виджет.
+  hidden:      boolean;
   // external control signals (music component reads these)
   seekTo:      number | null;   // set then cleared
   cmdPlay:     boolean | null;  // null = no cmd pending
@@ -39,6 +42,8 @@ interface PlayerStore {
   // actions
   push:       (item: PlayerItem) => void;
   clear:      () => void;
+  hide:       () => void;
+  show:       () => void;
   syncTime:   (t: number, dur: number) => void;
   setPlaying: (v: boolean) => void;
   setVolume:  (v: number) => void;
@@ -61,11 +66,16 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   volume:      0.85,
   shuffle:     false,
   repeat:      'off',
+  hidden:      false,
   seekTo:      null,
   cmdPlay:     null,
 
-  push:       (item) => set({ item, isPlaying: true, currentTime: 0 }),
+  // Новый трек всегда возвращает виджет — «скрыть» это «не сейчас», а не
+  // «больше никогда не показывай, что играет».
+  push:       (item) => set({ item, isPlaying: true, currentTime: 0, hidden: false }),
   clear:      ()     => set({ item: null, isPlaying: false, currentTime: 0, duration: 0 }),
+  hide:       ()     => set({ hidden: true }),
+  show:       ()     => set({ hidden: false }),
   syncTime:   (t, dur) => set({ currentTime: t, duration: dur }),
   setPlaying: (v)    => set({ isPlaying: v }),
   setVolume:  (v)    => set({ volume: v }),

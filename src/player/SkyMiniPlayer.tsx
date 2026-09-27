@@ -204,8 +204,8 @@ const VolumeSlider = ({ volume, onChange, color }: { volume: number; onChange: (
 /* ── Main component ────────────────────────────────────────────────────────── */
 export const SkyMiniPlayer = () => {
   const {
-    item, isPlaying, currentTime, duration, volume,
-    setPlaying, setVolume, requestSeek, nextTrack, prevTrack, clear, requestPlay,
+    item, isPlaying, currentTime, duration, volume, hidden,
+    setPlaying, setVolume, requestSeek, nextTrack, prevTrack, clear, requestPlay, hide,
   } = usePlayerStore();
 
   const [expanded, setExpanded] = useState(false);
@@ -228,7 +228,7 @@ export const SkyMiniPlayer = () => {
   // close expanded when item cleared
   useEffect(() => { if (!item) setExpanded(false); }, [item]);
 
-  if (!item) return null;
+  if (!item || hidden) return null;
 
   const pct     = duration > 0 ? (currentTime / duration) * 100 : 0;
   const accent  = accentOf(item.hue);
@@ -246,7 +246,7 @@ export const SkyMiniPlayer = () => {
             animate={{ opacity: 1, scale: 1,   y: 0 }}
             exit={{ opacity: 0, scale: 0.7, y: 8 }}
             transition={{ type: 'spring', stiffness: 460, damping: 32 }}
-            className="relative mx-auto cursor-pointer select-none"
+            className="group relative mx-auto cursor-pointer select-none"
             style={{ width: 46, height: 46 }}
             title={`${item.title} — ${item.author}`}
             onClick={() => setExpanded(true)}>
@@ -276,17 +276,20 @@ export const SkyMiniPlayer = () => {
               )}
             </div>
 
-            {/* Play/Pause micro-button overlay */}
-            <motion.div
-              className="absolute inset-0 rounded-[12px] grid place-items-center opacity-0 hover:opacity-100"
-              style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
-              whileTap={{ scale: 0.9 }}
-              onClick={e => { e.stopPropagation(); requestPlay(!isPlaying); }}>
+            {/* Play/Pause — только подсказка при наведении мышью (десктоп);
+                у всей таблетки один смысл клика — открыть панель с настоящими
+                кнопками. Раньше этот слой сам ловил клик поверх остальной
+                таблетки (opacity:0, но pointer-events остаются), поэтому тап
+                почти всегда попадал именно сюда и не открывал панель вовсе —
+                баг «не даёт нажать кнопки». */}
+            <div
+              className="pointer-events-none absolute inset-0 rounded-[12px] grid place-items-center opacity-0 transition-opacity group-hover:opacity-100"
+              style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
               {isPlaying
                 ? <Pause size={14} className="text-white" />
                 : <Play  size={14} className="text-white" style={{ marginLeft: 1 }} />
               }
-            </motion.div>
+            </div>
 
             {/* Kind badge */}
             <div className="absolute -bottom-0.5 -right-0.5 rounded-full grid place-items-center"
@@ -350,7 +353,7 @@ export const SkyMiniPlayer = () => {
                 </div>
 
                 {/* Title/author */}
-                <div className="absolute left-[84px] bottom-4 right-10 min-w-0">
+                <div className="absolute left-[84px] bottom-4 right-16 min-w-0">
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <span style={{ color: accent }}>{kindIcon(item.kind, 10)}</span>
                     <p className="text-[9px] font-bold uppercase tracking-widest truncate"
@@ -362,8 +365,20 @@ export const SkyMiniPlayer = () => {
                   <p className="text-[10px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{item.author}</p>
                 </div>
 
-                {/* Close */}
+                {/* Скрыть виджет целиком — музыка продолжает играть в фоне,
+                    просто плавающий плеер убирается с глаз. Появится снова
+                    сам, когда начнётся следующий трек. */}
                 <button type="button"
+                  title="Скрыть плеер"
+                  onClick={() => hide()}
+                  className="absolute top-3 right-12 grid h-7 w-7 place-items-center rounded-full hover:bg-white/15"
+                  style={{ background: 'rgba(255,255,255,0.08)', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)' }}>
+                  <X size={13} />
+                </button>
+
+                {/* Свернуть в таблетку */}
+                <button type="button"
+                  title="Свернуть"
                   onClick={() => setExpanded(false)}
                   className="absolute top-3 right-3 grid h-7 w-7 place-items-center rounded-full hover:bg-white/15"
                   style={{ background: 'rgba(255,255,255,0.08)', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)' }}>
