@@ -12,7 +12,7 @@
  * profile_id в запрос недостаточно — строка просто не найдётся.
  */
 import { query, pool } from './db.mjs';
-import { generateId, sanitizeInput } from './security.mjs';
+import { generateId, sanitizeInput, rateLimit, rateLimitPerHour } from './security.mjs';
 import { encryptSecret, decryptSecret } from './crypto.mjs';
 import { generateSecret, verifyTotp, otpauthUri } from './totp.mjs';
 import { mayClaimUsername } from './admin.mjs';
@@ -344,6 +344,17 @@ export const beginSkyTwoFactor = async (skyId, label, method = 'app') => {
   return { ok: true, method: 'app', secret, uri: otpauthUri(secret, label, 'Sky ID') };
 };
 
+/**
+ * Код из приложения-аутентификатора не похож на письмо или смс — для
+ * него нет отдельной строки в базе, по которой verifyCode() в
+ * verification.mjs сам считает попытки. Проверка здесь — голое
+ * сравнение с текущим TOTP, а 6 цифр без предела перебираются за
+ * разумное время. Тот же предел по ключу, что у входа по паролю
+ * (pwlogin в routes/password.mjs): на минуту и на час, по цели попытки,
+ * а не по IP атакующего — он может сменить IP, цель нет.
+ */
+const totpAttemptOk = (key) => rateLimit(`2fa:app:${key}`, 10) && rateLimitPerHour(`2fa:app:${key}`, 30);
+
 export const confirmSkyTwoFactor = async (skyId, code) => {
   const { rows } = await query(
     'SELECT two_factor_secret, two_factor_method FROM sky_ids WHERE id = $1', [skyId],
@@ -354,6 +365,7 @@ export const confirmSkyTwoFactor = async (skyId, code) => {
     const check = await checkTwoFactorCode(skyId, null, code, 'setup');
     if (check.error) return check;
   } else {
+    if (!totpAttemptOk(skyId)) return { error: 'too_many_attempts' };
     const secret = decryptSecret(rows[0].two_factor_secret);
     if (!secret) return { error: 'not_started' };
     if (!verifyTotp(secret, code)) return { error: 'invalid_code' };
@@ -372,6 +384,7 @@ export const verifySkyTwoFactor = async (skyId, code) => {
 
   if (rows[0].two_factor_method !== 'app') return checkTwoFactorCode(skyId, null, code, 'use');
 
+  if (!totpAttemptOk(skyId)) return { error: 'too_many_attempts' };
   const secret = decryptSecret(rows[0].two_factor_secret);
   if (!secret) return { error: 'not_configured' };
   return verifyTotp(secret, code) ? { ok: true } : { error: 'invalid_code' };
@@ -611,6 +624,7 @@ export const confirmProfileTwoFactor = async (skyId, profileId, code) => {
     const check = await checkTwoFactorCode(skyId, profileId, code, 'setup');
     if (check.error) return check;
   } else {
+    if (!totpAttemptOk(`${skyId}:${profileId}`)) return { error: 'too_many_attempts' };
     const secret = decryptSecret(rows[0].two_factor_secret);
     if (!secret) return { error: 'not_started' };
     if (!verifyTotp(secret, code)) return { error: 'invalid_code' };
@@ -634,6 +648,7 @@ export const verifyProfileTwoFactor = async (skyId, profileId, code) => {
 
   if (rows[0].two_factor_method !== 'app') return checkTwoFactorCode(skyId, profileId, code, 'use');
 
+  if (!totpAttemptOk(`${skyId}:${profileId}`)) return { error: 'too_many_attempts' };
   const secret = decryptSecret(rows[0].two_factor_secret);
   if (!secret) return { error: 'not_configured' };
   return verifyTotp(secret, code) ? { ok: true } : { error: 'invalid_code' };

@@ -284,7 +284,7 @@ export const authRoutes = async (req, res, url) => {
     }
 
     const check = await verifySkyTwoFactor(payload.sub, body.code);
-    if (check.error) return json(res, 401, { error: check.error });
+    if (check.error) return json(res, check.error === 'too_many_attempts' ? 429 : 401, { error: check.error });
 
     const skyId = await findSkyIdById(payload.sub);
     if (!skyId) return json(res, 401, { error: 'unauthorized' });

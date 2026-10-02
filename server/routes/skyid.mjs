@@ -159,7 +159,7 @@ export const skyIdRoutes = async (req, res, url) => {
         });
       }
       const check = await verifyProfileTwoFactor(s.skyId, profileId, body.code);
-      if (check.error) return json(res, 401, { error: check.error });
+      if (check.error) return json(res, check.error === 'too_many_attempts' ? 429 : 401, { error: check.error });
     }
 
     // Меняем профиль в самой сессии: иначе после обновления страницы
@@ -229,14 +229,14 @@ export const skyIdRoutes = async (req, res, url) => {
     const body = await parseBody(req);
     if (action === 'confirm') {
       const result = await confirmProfileTwoFactor(s.skyId, profileId, body.code);
-      if (result.error) return json(res, 400, { error: result.error });
+      if (result.error) return json(res, result.error === 'too_many_attempts' ? 429 : 400, { error: result.error });
       return json(res, 200, { ok: true, profile: await getProfileOfSkyId(s.skyId, profileId) });
     }
 
     // Отключение требует действующего кода: иначе тому, кто дорвался до
     // открытой вкладки, достаточно нажать кнопку.
     const check = await verifyProfileTwoFactor(s.skyId, profileId, body.code);
-    if (check.error) return json(res, 401, { error: check.error });
+    if (check.error) return json(res, check.error === 'too_many_attempts' ? 429 : 401, { error: check.error });
     const result = await disableProfileTwoFactor(s.skyId, profileId);
     if (result.error) return json(res, 404, { error: result.error });
     return json(res, 200, { ok: true, profile: await getProfileOfSkyId(s.skyId, profileId) });
@@ -268,7 +268,7 @@ export const skyIdRoutes = async (req, res, url) => {
     const s = await requireSkyId(req, res); if (!s) return true;
     const body = await parseBody(req);
     const result = await confirmSkyTwoFactor(s.skyId, body.code);
-    if (result.error) return json(res, 400, { error: result.error });
+    if (result.error) return json(res, result.error === 'too_many_attempts' ? 429 : 400, { error: result.error });
     return json(res, 200, { ok: true, skyId: publicSkyId(await findSkyIdById(s.skyId)) });
   }
 
@@ -278,7 +278,7 @@ export const skyIdRoutes = async (req, res, url) => {
     const sky = await findSkyIdById(s.skyId);
     if (sky.two_factor_enabled) {
       const check = await verifySkyTwoFactor(s.skyId, body.code);
-      if (check.error) return json(res, 401, { error: check.error });
+      if (check.error) return json(res, check.error === 'too_many_attempts' ? 429 : 401, { error: check.error });
     }
     await disableSkyTwoFactor(s.skyId);
     return json(res, 200, { ok: true, skyId: publicSkyId(await findSkyIdById(s.skyId)) });
