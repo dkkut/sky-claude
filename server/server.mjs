@@ -89,6 +89,7 @@ import { sweepOrphans } from './attachments.mjs';
 import { purgeExpiredCodes } from './verification.mjs';
 import { checkDeliverySetup, closeMailer } from './notify.mjs';
 import { expirePrimeSubscriptions } from './skyid.mjs';
+import { confirmSshLogin } from './breach.mjs';
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
@@ -177,6 +178,27 @@ const server = http.createServer(async (req, res) => {
       if (db && cache) return json(res, 200, { ready: true });
       console.error(`[readyz] не готово: база=${db}, кэш=${cache}`);
       return json(res, 503, { ready: false });
+    }
+
+    /*
+     * Подтверждение «это я входил по SSH» по ссылке из письма
+     * (server/breach.mjs, хук на хосте — ssh-login-hook.sh). Страница
+     * без входа в сайт: тот, кто получил письмо, мог не иметь под
+     * рукой открытой сессии Sky, а ждать 10 минут не вариант. Сам
+     * токен в ссылке — секрет, его одного достаточно.
+     */
+    if (req.method === 'GET' && url === '/ssh-confirm') {
+      const token = new URLSearchParams((req.url.split('?')[1] || '')).get('token');
+      const ok = await confirmSshLogin(token);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(ok
+        ? '<!doctype html><meta charset="utf-8"><title>Sky</title>' +
+          '<p>Подтверждено: вход по SSH — это были вы. Автоматическое ' +
+          'аварийное выключение сервера отменено.</p>'
+        : '<!doctype html><meta charset="utf-8"><title>Sky</title>' +
+          '<p>Ссылка недействительна или устарела (срок — 10 минут с ' +
+          'момента входа). Если вход не ваш, сервер будет выключен ' +
+          'автоматически по истечении этого времени.</p>');
     }
 
     /*

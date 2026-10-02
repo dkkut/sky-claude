@@ -23,6 +23,7 @@
  * инструкцию, выданную владельцу отдельно).
  */
 import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { sendEmail } from './notify.mjs';
 import { setLockdownSystem } from './adminsec.mjs';
@@ -114,4 +115,44 @@ export const noteAdminBreachSignal = async (skyId, reason) => {
   }
   events.delete(skyId);
   await triggerEmergencyShutdown(skyId, reason, list.length);
+};
+
+/**
+ * Подтверждение «это был я», для письма о входе по SSH
+ * (/opt/sky/ssh-login-hook.sh на хосте). Хук при каждом успешном входе
+ * кладёт в этот же /control случайный одноразовый токен — здесь он
+ * сверяется с тем, что пришло по ссылке из письма, постоянным временем
+ * (как остальные секретные сравнения в проекте, см. adminsec.mjs), и
+ * действует только 10 минут — ровно то окно, которое ждёт сам хук,
+ * прежде чем выключить машину.
+ */
+const CONFIRM_TOKEN_PATH = process.env.SSH_CONFIRM_TOKEN_PATH || '/control/ssh-confirm-token';
+const CONFIRM_DONE_PATH = process.env.SSH_CONFIRM_DONE_PATH || '/control/ssh-login-confirmed';
+const CONFIRM_WINDOW_MS = 10 * 60 * 1000;
+
+export const confirmSshLogin = async (token) => {
+  const given = String(token ?? '');
+  if (!given) return false;
+
+  let stored;
+  let fresh;
+  try {
+    stored = (await fs.readFile(CONFIRM_TOKEN_PATH, 'utf8')).trim();
+    const stat = await fs.stat(CONFIRM_TOKEN_PATH);
+    fresh = Date.now() - stat.mtimeMs <= CONFIRM_WINDOW_MS;
+  } catch {
+    return false;
+  }
+  if (!fresh) return false;
+
+  const a = Buffer.from(given);
+  const b = Buffer.from(stored);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+
+  // Токен одноразовый: после первого верного перехода по ссылке — удаляем,
+  // повторный переход (например, если письмо кто-то переслал) уже ничего
+  // не подтвердит.
+  await fs.rm(CONFIRM_TOKEN_PATH, { force: true });
+  await fs.writeFile(CONFIRM_DONE_PATH, `confirmed ${new Date().toISOString()}\n`);
+  return true;
 };
