@@ -1222,6 +1222,7 @@ const handle = async (ws, session, msg) => {
     case 'live:predict-create': {
       const streamId = String(payload?.streamId ?? '');
       if (!streamId) return;
+      if (!rateLimit(`live:write:${me}`, 30)) return;
       const r = await liveCreatePrediction(me, streamId, payload?.question, payload?.options);
       if (r.error) { send(ws, { type: 'live:error', payload: r }); break; }
       broadcast(await liveAudience(streamId), { type: 'live:predict-create', payload: { streamId, prediction: r.prediction } });
@@ -1233,6 +1234,7 @@ const handle = async (ws, session, msg) => {
       const predictionId = String(payload?.predictionId ?? '');
       const optIdx = Math.trunc(Number(payload?.optIdx));
       if (!streamId || !predictionId || !liveIsViewer(streamId, me)) return;
+      if (!rateLimit(`live:predict:${me}`, 60)) return;
       const r = liveVote(streamId, predictionId, me, optIdx);
       if (r.error) { send(ws, { type: 'live:error', payload: r }); break; }
       broadcast(await liveAudience(streamId), { type: 'live:predict-update', payload: { streamId, prediction: r.prediction } });
@@ -1243,6 +1245,7 @@ const handle = async (ws, session, msg) => {
       const streamId = String(payload?.streamId ?? '');
       const predictionId = String(payload?.predictionId ?? '');
       if (!streamId || !predictionId) return;
+      if (!rateLimit(`live:write:${me}`, 30)) return;
       const r = await liveClosePrediction(me, streamId, predictionId);
       if (r.error) { send(ws, { type: 'live:error', payload: r }); break; }
       broadcast(await liveAudience(streamId), { type: 'live:predict-update', payload: { streamId, prediction: r.prediction } });
@@ -1254,6 +1257,7 @@ const handle = async (ws, session, msg) => {
       const streamId = String(payload?.streamId ?? '');
       const targetId = String(payload?.targetId ?? '');
       if (!streamId || !targetId || targetId === me) return;
+      if (!rateLimit(`live:write:${me}`, 30)) return;
       if (type === 'live:kick') {
         const stream = await liveGetStream(streamId);
         if (!stream || stream.authorId !== me) { send(ws, { type: 'live:error', payload: { error: 'not_allowed' } }); break; }
@@ -1276,6 +1280,11 @@ const handle = async (ws, session, msg) => {
       const streamId = String(payload?.streamId ?? '');
       const to = String(payload?.to ?? '');
       if (!streamId || !to || to === me) return;
+      // ice на один relay-канал легитимно частый, offer/answer — по
+      // разу на подключение зрителя; тот же раздельный предел, что у
+      // call-offer/ice-candidate выше.
+      if (!rateLimit(type === 'live:ice' ? `live:ice:${me}` : `live:rtc:${me}`,
+        type === 'live:ice' ? 300 : 60)) return;
       // Пересылаем только внутри пары автор↔зритель одного и того же
       // эфира — иначе по одному лишь streamId можно было бы прислать
       // WebRTC-сигнал произвольному человеку, который этот эфир даже
@@ -1294,6 +1303,7 @@ const handle = async (ws, session, msg) => {
       if (!streamId) return;
       const stream = await liveGetStream(streamId);
       if (!stream || !liveIsViewer(streamId, me)) return;
+      if (!rateLimit(`live:rtc:${me}`, 60)) return;
       sendTo(stream.authorId, { type: 'live:viewer-request', payload: { streamId, from: me } });
       break;
     }
@@ -1303,6 +1313,7 @@ const handle = async (ws, session, msg) => {
        а не галочкой в браузере: свой клиент можно переписать. ── */
 
     case 'privacy': {
+      if (!rateLimit(`privacy:${me}`, 30)) return;
       const patch = (payload && typeof payload === 'object') ? payload : {};
       const changesPresence = patch.whoSeesOnline !== undefined;
       const next = await setPrivacy(me, patch);
@@ -1336,6 +1347,15 @@ const handle = async (ws, session, msg) => {
       const chatId = payload?.chatId;
       const action = String(payload?.action ?? '');
       if (!chatId || !action) return;
+
+      // Та же раздельная схема пределов, что у случая 'admin' выше:
+      // читать настройки/список участников можно часто, менять
+      // роль/банить/мьютить — реже. Без этого любое из действий ниже
+      // (все пишут в базу, некоторые рассылают всему чату) можно было
+      // дёргать без всякого предела.
+      const READ_ACTIONS = new Set(['get-settings', 'members', 'invites', 'requests', 'log']);
+      if (!rateLimit(READ_ACTIONS.has(action) ? `chatadm:r:${me}` : `chatadm:w:${me}`,
+        READ_ACTIONS.has(action) ? 120 : 30)) return;
 
       /** Отправить обновлённый чат всем, кто в нём состоит. */
       const pushChat = async (ids) => sendChatToEach(chatId, ids ?? await memberIds(chatId));
@@ -1438,6 +1458,7 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'revoke-invite': {
+      if (!rateLimit(`chat:invite:${me}`, 30)) return;
       const result = await revokeInvite(payload?.code, me);
       if (result.error) return;
       const invites = await listInvites(result.chatId, me);
@@ -1446,6 +1467,11 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'join-invite': {
+      // Код приглашения — 18 байт из crypto.randomBytes (createInvite в
+      // chatadmin.mjs), подбором его не найти; лимит здесь — та же
+      // защита от бесплатного перебора записи в базе, что и у остальных
+      // пишущих действий этого файла.
+      if (!rateLimit(`chat:invite:${me}`, 20)) return;
       const result = await joinByInvite(payload?.code, me, payload?.answer);
       if (result.error) {
         send(ws, { type: 'join-result', payload: { error: result.error } });
@@ -1466,6 +1492,7 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'pin-message': {
+      if (!rateLimit(`msg:pin:${me}`, 60)) return;
       const result = await pinMessage(payload?.chatId, me, payload?.messageId, payload?.pinned !== false);
       if (result.error) return;
       broadcast(await memberIds(payload.chatId), {
@@ -1478,6 +1505,7 @@ const handle = async (ws, session, msg) => {
 
     case 'viewed': {
       // Просмотры записей канала: считаются уникальные читатели.
+      if (!rateLimit(`msg:viewed:${me}`, 120)) return;
       const counts = await markViewed(payload?.chatId, me, payload?.messageIds);
       if (!counts?.length) return;
       broadcast(await memberIds(payload.chatId),
@@ -1558,6 +1586,14 @@ const handle = async (ws, session, msg) => {
 
       const callId = String(payload?.callId ?? '');
       if (!callId || callId.length > 128) return;
+
+      // call-offer — звонок, который звонит у получателя: без предела
+      // вызывающего можно было бы бесконечно «обзванивать» бесплатно для
+      // него самого. ICE-кандидатов на один звонок легитимно много, им
+      // отдельный, щедрый предел; answer/reject/end — по одному на звонок.
+      if (!rateLimit(type === 'call-offer' ? `call:offer:${me}`
+        : type === 'ice-candidate' ? `call:ice:${me}` : `call:ctrl:${me}`,
+        type === 'call-offer' ? 20 : type === 'ice-candidate' ? 300 : 60)) return;
 
       // Войс-пати: звонить можно тем, кто прямо сейчас в той же комнате
       // (roomId зашит в сам callId) — это уже проверенное сервером
