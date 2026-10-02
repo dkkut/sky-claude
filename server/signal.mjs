@@ -832,6 +832,7 @@ const handle = async (ws, session, msg) => {
        Своё у каждого, поэтому уходит только на свои устройства. ── */
 
     case 'favorite-message': {
+      if (!rateLimit(`msg:favorite:${me}`, 120)) return;
       const result = await toggleFavorite(payload?.messageId, me);
       if (!result) return;
       sendTo(me, { type: 'message-favorited', payload: result });
@@ -843,6 +844,7 @@ const handle = async (ws, session, msg) => {
        его прятал только браузер, а сама запись лежала вечно. ── */
 
     case 'consume-once': {
+      if (!rateLimit(`msg:consume:${me}`, 60)) return;
       const result = await consumeOnce(payload?.messageId, me);
       if (!result) return;
       broadcast(await memberIds(result.chatId), {
@@ -861,6 +863,7 @@ const handle = async (ws, session, msg) => {
        сообщению. Раньше голос никуда не уходил вовсе. ── */
 
     case 'poll-vote': {
+      if (!rateLimit(`msg:poll:${me}`, 60)) return;
       const result = await votePoll(payload?.messageId, me, payload?.optionId);
       if (!result) return;
       broadcast(await memberIds(result.chatId), {
@@ -882,6 +885,7 @@ const handle = async (ws, session, msg) => {
     case 'chat-flags': {
       const chatId = payload?.chatId;
       if (!chatId) return;
+      if (!rateLimit(`chat:flags:${me}`, 60)) return;
       const ok = await setChatFlags(chatId, me, payload ?? {});
       if (!ok) return;
       const view = await getChat(chatId, me);
@@ -896,6 +900,7 @@ const handle = async (ws, session, msg) => {
     case 'mark-unread': {
       const chatId = payload?.chatId;
       if (!chatId) return;
+      if (!rateLimit(`chat:unread:${me}`, 60)) return;
       const ok = await setMarkedUnread(chatId, me, payload?.value !== false);
       if (!ok) return;
       // Свой вид чата — на все свои устройства: пометка их касается.
@@ -930,6 +935,7 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'mm:leave': {
+      if (!rateLimit(`mm:write:${me}`, 30)) return;
       await leaveQueue(me);
       send(ws, { type: 'mm:left' });
       break;
@@ -938,6 +944,7 @@ const handle = async (ws, session, msg) => {
     case 'mm:accept': {
       const matchId = String(payload?.matchId ?? '');
       if (!matchId) return;
+      if (!rateLimit(`mm:write:${me}`, 30)) return;
       const r = await acceptMatch(me, matchId);
       if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
       if (r.confirmed) {
@@ -984,6 +991,7 @@ const handle = async (ws, session, msg) => {
       const matchId = String(payload?.matchId ?? '');
       const winnerTeam = payload?.winnerTeam;
       if (!matchId) return;
+      if (!rateLimit(`mm:write:${me}`, 30)) return;
       const r = await reportResult(me, matchId, winnerTeam);
       if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
       for (const uid of [...r.match.teamA, ...r.match.teamB]) {
@@ -995,6 +1003,7 @@ const handle = async (ws, session, msg) => {
     case 'mm:confirm-result': {
       const matchId = String(payload?.matchId ?? '');
       if (!matchId) return;
+      if (!rateLimit(`mm:write:${me}`, 30)) return;
       const r = await confirmResult(me, matchId);
       if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
       for (const uid of r.participants) {
@@ -1009,6 +1018,7 @@ const handle = async (ws, session, msg) => {
     case 'mm:dispute-result': {
       const matchId = String(payload?.matchId ?? '');
       if (!matchId) return;
+      if (!rateLimit(`mm:write:${me}`, 30)) return;
       const r = await disputeResult(me, matchId);
       if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
       for (const uid of r.participants) {
@@ -1020,6 +1030,7 @@ const handle = async (ws, session, msg) => {
     case 'mm:decline': {
       const matchId = String(payload?.matchId ?? '');
       if (!matchId) return;
+      if (!rateLimit(`mm:write:${me}`, 30)) return;
       const r = await declineMatch(me, matchId);
       if (r.error) { send(ws, { type: 'mm:error', payload: r }); break; }
       send(ws, { type: 'mm:cancelled', payload: { matchId } });
@@ -1049,7 +1060,12 @@ const handle = async (ws, session, msg) => {
 
     case 'vp:leave': {
       const roomId = String(payload?.roomId ?? '');
-      if (!roomId) return;
+      // Без проверки членства и лимита частоты vp:leave для чужой или
+      // покинутой комнаты рассылал бы vp:participant-left всем её
+      // участникам бесплатно для отправителя — тот же усилитель, что уже
+      // учтён ниже в live:leave этого файла.
+      if (!roomId || !vpIsMember(roomId, me)) return;
+      if (!rateLimit(`vp:write:${me}`, 30)) return;
       const others = vpMemberIds(roomId).filter((id) => id !== me);
       await vpLeaveRoom(me, roomId);
       send(ws, { type: 'vp:left', payload: { roomId } });
@@ -1061,6 +1077,7 @@ const handle = async (ws, session, msg) => {
     case 'vp:hand': {
       const roomId = String(payload?.roomId ?? '');
       if (!roomId || !vpIsMember(roomId, me)) return;
+      if (!rateLimit(`vp:write:${me}`, 60)) return;
       const ok = type === 'vp:mute'
         ? vpSetMuted(roomId, me, Boolean(payload?.muted))
         : vpSetHandRaised(roomId, me, Boolean(payload?.raised));
@@ -1077,6 +1094,7 @@ const handle = async (ws, session, msg) => {
       const targetId = String(payload?.targetId ?? '');
       const role = String(payload?.role ?? '');
       if (!roomId || !targetId) return;
+      if (!rateLimit(`vp:write:${me}`, 30)) return;
       const needsOwner = role === 'admin' || role === 'moderator';
       const allowed = needsOwner ? await vpIsOwner(roomId, me) : vpCanModerate(roomId, me);
       if (!allowed) { send(ws, { type: 'vp:error', payload: { error: 'not_allowed' } }); break; }
@@ -1090,6 +1108,7 @@ const handle = async (ws, session, msg) => {
       const roomId = String(payload?.roomId ?? '');
       const targetId = String(payload?.targetId ?? '');
       if (!roomId || !targetId || targetId === me) return;
+      if (!rateLimit(`vp:write:${me}`, 30)) return;
       const allowed = type === 'vp:ban' ? await vpIsOwner(roomId, me) : vpCanModerate(roomId, me);
       if (!allowed) { send(ws, { type: 'vp:error', payload: { error: 'not_allowed' } }); break; }
       const others = vpMemberIds(roomId).filter((id) => id !== targetId);
@@ -1103,6 +1122,7 @@ const handle = async (ws, session, msg) => {
     case 'vp:permissions': {
       const roomId = String(payload?.roomId ?? '');
       if (!roomId || !(await vpIsOwner(roomId, me))) return;
+      if (!rateLimit(`vp:write:${me}`, 30)) return;
       const next = await vpUpdatePermissions(roomId, payload?.patch ?? {});
       if (!next) return;
       broadcast(vpMemberIds(roomId), { type: 'vp:room-updated', payload: { roomId, permissions: next } });
@@ -1123,6 +1143,7 @@ const handle = async (ws, session, msg) => {
       const roomId = String(payload?.roomId ?? '');
       const messageId = String(payload?.messageId ?? '');
       if (!roomId || !messageId || !vpCanModerate(roomId, me)) return;
+      if (!rateLimit(`vp:write:${me}`, 30)) return;
       broadcast(vpMemberIds(roomId), { type: 'vp:pin', payload: { roomId, messageId, pinned: Boolean(payload?.pinned) } });
       break;
     }
@@ -1131,6 +1152,7 @@ const handle = async (ws, session, msg) => {
       const roomId = String(payload?.roomId ?? '');
       const emoji = String(payload?.emoji ?? '').slice(0, 8);
       if (!roomId || !emoji || !vpIsMember(roomId, me)) return;
+      if (!rateLimit(`vp:react:${me}`, 60)) return;
       broadcast(vpMemberIds(roomId), {
         type: 'vp:reaction',
         payload: { roomId, reaction: { id: crypto.randomUUID(), emoji, memberId: me, createdAt: new Date().toISOString() } },
