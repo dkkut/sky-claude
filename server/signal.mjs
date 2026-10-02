@@ -34,6 +34,7 @@ import {
   ROLE_NAMES, PERMISSIONS,
 } from './adminsec.mjs';
 import { grantForProposal } from './campaigns.mjs';
+import { adminGetOrder } from './kutrentmarket.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
@@ -653,6 +654,23 @@ const handle = async (ws, session, msg) => {
           if (!grant) return failAdm('not_found');
           const r = await createPendingAction(me, 'campaign_reward', grant.profile_id,
             { grantId },
+            { stepUpCode: payload?.code, reason: payload?.reason, meta });
+          if (r.error) return failAdm(r.error);
+          return send(ws, { type: 'admin-pending', payload: r });
+        }
+
+        /* ── KutRent Market: подтвердить оплату вручную ─────────────
+           Пока не подключена ни одна настоящая касса, это единственный
+           способ зачесть заказ оплаченным — то есть создать деньги без
+           реального платежа. Получателя не берём из того, что прислал
+           клиент, — только из самого заказа, чтобы чужой userId в
+           запросе не мог перенаправить зачисление на другой счёт. */
+        case 'kutrent-mark-paid': {
+          const orderId = String(payload?.orderId ?? '');
+          const order = await adminGetOrder(orderId);
+          if (!order) return failAdm('not_found');
+          const r = await createPendingAction(me, 'kutrent_mark_paid', order.sky_recipient_profile_id,
+            { orderId },
             { stepUpCode: payload?.code, reason: payload?.reason, meta });
           if (r.error) return failAdm(r.error);
           return send(ws, { type: 'admin-pending', payload: r });

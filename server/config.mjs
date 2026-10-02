@@ -97,6 +97,11 @@ export const config = {
   extraOrigins: (process.env.EXTRA_ORIGINS || '')
     .split(',').map((s) => s.trim()).filter(Boolean),
 
+  // Единственный адрес, на который разрешено увести посетителя с
+  // одноразовым токеном входа (server/kutrentmarket.mjs, issueSsoToken/
+  // /sso/start) — иначе «куда редиректить» решал бы запрос, а не сервер.
+  marketOrigin: process.env.MARKET_DOMAIN ? `https://${process.env.MARKET_DOMAIN}` : '',
+
   /**
    * Белый список узлов, куда Sky TV вообще имеет право ходить за
    * эфиром и телепрограммой.

@@ -59,6 +59,93 @@
     });
   }
 
+  /* ============ Вход через Sky ID (SSO) ============
+     Куки Sky-сессии и Market-сессии — на разных доменах, между собой
+     никак не связаны. Личность переносит одноразовый токен в адресе:
+     эта страница ("/sso-callback?token=...") гасит его на сервере и
+     получает взамен обычную сессию сайта (cookie krm_sid), как любая
+     другая — дальше работает одинаково независимо от того, как вошли. */
+  var me = null; // {authenticator, username, name, balance, createdAt} — null, если не вошли
+
+  function refreshMe() {
+    return api("/me").then(function (r) {
+      me = r.ok ? r.data : null;
+      renderSkyTab();
+      renderProfileHeader();
+      return me;
+    });
+  }
+
+  function renderSkyTab() {
+    var gate = el("#sky-login-gate");
+    var logged = el("#sky-logged-in");
+    if (!gate || !logged) return;
+    if (me) {
+      gate.style.display = "none";
+      logged.style.display = "";
+      el("#sky-me-username").textContent = "@" + me.username;
+      el("#sky-me-authenticator").textContent = me.authenticator;
+      el("#sky-me-balance").textContent = fmt(me.balance);
+    } else {
+      gate.style.display = "";
+      logged.style.display = "none";
+    }
+    updateSkyCta();
+  }
+
+  function renderProfileHeader() {
+    var letter = el("#profile-avatar-letter");
+    var username = el("#profile-username");
+    var auth = el("#profile-session-id");
+    if (!letter || !username || !auth) return;
+    if (me) {
+      letter.textContent = me.username.charAt(0).toUpperCase();
+      username.textContent = "@" + me.username;
+      auth.textContent = me.authenticator;
+    } else {
+      letter.textContent = "?";
+      username.textContent = "Вы не вошли";
+      auth.textContent = "Authenticator —";
+    }
+  }
+
+  function skyLoginUrl() {
+    return api("/config").then(function (r) {
+      if (!r.ok || !r.data.skyOrigin) { toast("Сайт Sky не настроен"); return null; }
+      var returnUrl = location.origin + "/sso-callback";
+      return r.data.skyOrigin + "/?module=kutrent-link&return=" + encodeURIComponent(returnUrl);
+    });
+  }
+
+  var loginBtn = el("#sky-login-btn");
+  if (loginBtn) {
+    loginBtn.addEventListener("click", function () {
+      loginBtn.disabled = true;
+      skyLoginUrl().then(function (url) {
+        loginBtn.disabled = false;
+        if (url) window.location.href = url;
+      });
+    });
+  }
+  var logoutBtn = el("#sky-logout-btn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", function () {
+      api("/logout", { method: "POST" }).then(function () { return refreshMe(); });
+    });
+  }
+
+  (function handleSsoCallback() {
+    if (location.pathname !== "/sso-callback") return;
+    var token = new URLSearchParams(location.search).get("token");
+    history.replaceState(null, "", "/");
+    if (!token) return;
+    api("/sso/consume", { method: "POST", body: { token: token } }).then(function (r) {
+      if (r.ok) { toast("Вход выполнен"); setTab("sky"); }
+      else toast("Ссылка для входа устарела, попробуйте снова");
+      void refreshMe();
+    });
+  })();
+
   /* ============ Beta gate (клиентский, как и был) ============ */
   var BETA_KEY = "SKYBETA2026";
 
@@ -129,8 +216,6 @@
     skyQuick.appendChild(b);
   });
 
-  var skyRecipient = null; // {username,name} — подтверждено сервером
-  var skyChecking = false;
   var skySubmitting = false;
   var lastSkyOrderId = null;
 
@@ -139,12 +224,12 @@
     var amount = parseInt(raw, 10) || 0;
     el("#sum-amount").textContent = fmt(amount);
     el("#sum-total").textContent = fmt(amount);
-    el("#sum-recipient").textContent = skyRecipient ? ("@" + skyRecipient.username) : "—";
     updateSkyCta();
   }
   function updateSkyCta() {
     var amount = parseInt(el("#sky-amount").value.replace(/\D/g, ""), 10) || 0;
-    el("#sky-submit").disabled = !(amount >= 10 && skyRecipient && !skyChecking && !skySubmitting);
+    var btn = el("#sky-submit");
+    if (btn) btn.disabled = !(amount >= 10 && me && !skySubmitting);
   }
 
   el("#sky-amount").addEventListener("input", function (e) {
@@ -157,46 +242,6 @@
     syncSkySummary();
   });
 
-  var skyIdInput = el("#sky-id");
-  var skyDebounce;
-  skyIdInput.addEventListener("input", function () {
-    var val = skyIdInput.value.trim();
-    var resultBox = el("#recipient-result");
-    clearTimeout(skyDebounce);
-    skyRecipient = null;
-    updateSkyCta();
-    if (!val) {
-      resultBox.innerHTML = "";
-      syncSkySummary();
-      return;
-    }
-    skyChecking = true;
-    updateSkyCta();
-    resultBox.innerHTML = '<div class="checking"><span class="spinner"></span>Проверяем получателя…</div>';
-    skyDebounce = setTimeout(function () {
-      api("/recipient?username=" + encodeURIComponent(val)).then(function (r) {
-        skyChecking = false;
-        if (r.ok && r.data.found) {
-          skyRecipient = { username: r.data.username, name: r.data.name };
-          resultBox.innerHTML =
-            '<div class="recipient-box found">' +
-            '<div class="recipient-avatar">' + r.data.username.charAt(0).toUpperCase() + '</div>' +
-            '<div class="recipient-text"><strong>@' + escapeHtml(r.data.username) + '</strong><span>' + escapeHtml(r.data.name) + '</span></div>' +
-            '<svg class="status-icon ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 13l4 4L19 7"/></svg>' +
-            '</div>';
-        } else {
-          skyRecipient = null;
-          resultBox.innerHTML =
-            '<div class="recipient-box notfound">' +
-            '<div class="recipient-text"><strong>Пользователь не найден</strong><span>Проверьте правильность Sky ID</span></div>' +
-            '<svg class="status-icon err" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18"/></svg>' +
-            '</div>';
-        }
-        syncSkySummary();
-      });
-    }, 500);
-  });
-
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -204,7 +249,9 @@
   }
 
   el("#sky-submit").addEventListener("click", function () {
-    if (el("#sky-submit").disabled || !skyRecipient) return;
+    if (el("#sky-submit").disabled || !me) return;
+    // Получателя не отправляем — сервер зачисляет на счёт вошедшего
+    // в этой сессии, по cookie, никак иначе.
     var amount = parseInt(el("#sky-amount").value.replace(/\D/g, ""), 10) || 0;
     var btn = el("#sky-submit");
     var originalText = btn.textContent;
@@ -212,15 +259,16 @@
     btn.disabled = true;
     btn.textContent = "Создаём заказ…";
 
-    api("/sky-topup", { method: "POST", body: { amount: amount, username: skyRecipient.username } }).then(function (r) {
+    api("/sky-topup", { method: "POST", body: { amount: amount } }).then(function (r) {
       skySubmitting = false;
       btn.textContent = originalText;
       if (!r.ok) {
-        var reason = r.data && r.data.error === "recipient_not_found" ? "Получатель не найден"
-          : r.data && r.data.error === "invalid_amount" ? "Некорректная сумма"
-            : r.data && r.data.error === "rate_limited" ? "Слишком много попыток, подождите немного"
+        var reason = r.data && r.data.error === "invalid_amount" ? "Некорректная сумма"
+          : r.data && r.data.error === "rate_limited" ? "Слишком много попыток, подождите немного"
+            : r.status === 401 ? "Сессия истекла — войдите снова"
               : "Не удалось создать заказ";
         toast(reason);
+        if (r.status === 401) void refreshMe();
         updateSkyCta();
         return;
       }
@@ -228,14 +276,11 @@
       lastSkyOrderId = order.id;
 
       el("#sky-result-amount").textContent = fmt(order.amount);
-      el("#sky-result-recipient").textContent = "@" + order.recipientUsername;
+      el("#sky-result-recipient").textContent = "себе, @" + (me ? me.username : "");
       el("#sky-result-id").textContent = "#" + order.id;
       el("#sky-result-status").textContent = "Ожидает оплаты";
       openOverlay("overlay-sky-result");
 
-      skyIdInput.value = "";
-      skyRecipient = null;
-      el("#recipient-result").innerHTML = "";
       syncSkySummary();
     }).catch(function () {
       skySubmitting = false;
@@ -250,6 +295,7 @@
   });
 
   syncSkySummary();
+  void refreshMe();
 
   /* ============ Game server items — витрина без изменений (заглушка) ============ */
   var SERVER_LABEL = { gta: "GTA V сервер", mc: "Minecraft сервер" };
@@ -271,6 +317,10 @@
     var body = el("#orders-body");
     body.innerHTML = '<div class="empty-state"><p>Загружаем…</p></div>';
     api("/orders").then(function (r) {
+      if (r.status === 401) {
+        body.innerHTML = '<div class="empty-state"><p>Войдите через Sky ID, чтобы увидеть свои операции</p></div>';
+        return;
+      }
       ordersCache = (r.ok && r.data.orders) || [];
       if (ordersCache.length === 0) {
         body.innerHTML = '<div class="empty-state"><p>Пока нет операций</p></div>';
@@ -284,7 +334,7 @@
         item.style.cssText = "width:100%;text-align:left;border-width:1px;cursor:pointer;background:var(--surface);color:inherit;";
         item.innerHTML =
           '<div class="order-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg></div>' +
-          '<div class="order-main"><strong>Пополнение Sky</strong><span>@' + escapeHtml(o.recipientUsername || "") + ' · ' + fmtDate(o.createdAt) + '</span></div>' +
+          '<div class="order-main"><strong>Пополнение Sky</strong><span>' + fmtDate(o.createdAt) + '</span></div>' +
           '<div class="order-right">' +
           '<div class="order-amount">+' + fmt(o.amount) + '</div>' +
           '<span class="status-pill ' + o.status + '">' + STATUS_LABEL[o.status] + '</span>' +
@@ -303,7 +353,6 @@
         '<div class="order-detail-card">' +
         '<div class="summary-row"><span>Тип</span><span>Пополнение Sky</span></div>' +
         '<div class="summary-row"><span>Номер</span><span>#' + order.id + '</span></div>' +
-        '<div class="summary-row"><span>Получатель</span><span>@' + escapeHtml(order.recipientUsername || "") + '</span></div>' +
         '<div class="summary-row"><span>Сумма</span><span>+' + fmt(order.amount) + '</span></div>' +
         '<div class="summary-row"><span>Статус</span><span class="status-pill ' + order.status + '">' + STATUS_LABEL[order.status] + '</span></div>' +
         '<div class="summary-row"><span>Создан</span><span>' + fmtDate(order.createdAt) + '</span></div>' +
@@ -349,12 +398,9 @@
     toast("Спасибо, обращение записано");
   });
 
-  /* ============ Profile (реальная сессия, не «Гость») ============ */
+  /* ============ Profile (настоящий вход через Sky ID) ============ */
   function renderProfile() {
-    api("/session").then(function (r) {
-      if (!r.ok) return;
-      el("#profile-session-id").textContent = "сессия " + r.data.sessionId.slice(0, 12) + "…";
-    });
+    void refreshMe();
   }
 
   /* ============ Init ============ */

@@ -2493,6 +2493,180 @@ const GarantDealAdminDetail = ({ dealId, onBack, onChanged }: { dealId: string; 
   );
 };
 
+/**
+ * KutRent Market — просмотр пользователей и заказов сайта-партнёра
+ * (market.kutrent.online). Право 'kutrent_market' — только читать;
+ * единственное действие, создающее деньги без реального платежа
+ * (подтвердить оплату вручную, пока не подключена касса), требует
+ * права 'finance' и второго ключа владельца — форма ниже, тот же
+ * приём, что у RevenueAdjustForm.
+ */
+const KutrentMarkPaidForm = ({ orderId, onSent }: { orderId: string; onSent: () => void }) => {
+  const [reason, setReason] = useState('');
+  const [step, setStep] = useState(false);
+  const [failed, setFailed] = useState('');
+
+  const send = async (code: string) => {
+    setStep(false); setFailed('');
+    const r = await adminCall({ action: 'kutrent-mark-paid', orderId, reason: reason.trim(), code });
+    if (r.type !== 'admin-pending') { setFailed(errorText(r.payload?.error)); return; }
+    onSent();
+  };
+
+  return (
+    <div className="mt-2 space-y-2 rounded-xl p-2" style={{ background: C.l2 }}>
+      <input value={reason} onChange={(e) => setReason(e.target.value)}
+        placeholder="Основание — его увидит владелец (например, номер операции в банке)"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {step ? (
+        <StepUp purpose="pending:kutrent_mark_paid" onCode={(c) => void send(c)} onCancel={() => setStep(false)} />
+      ) : (
+        <button type="button" disabled={!reason.trim()}
+          onClick={() => { setFailed(''); setStep(true); }}
+          className="w-full rounded-xl py-2 text-xs font-bold disabled:opacity-40"
+          style={{ background: C.acc, color: '#fff' }}>
+          Оформить заявку на подтверждение оплаты
+        </button>
+      )}
+    </div>
+  );
+};
+
+const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
+  const canFinance = rights?.permissions?.includes('finance') ?? false;
+  const [sub, setSub] = useState<'orders' | 'users'>('orders');
+  const [status, setStatus] = useState<'' | 'pending' | 'paid' | 'cancelled'>('pending');
+  const [q, setQ] = useState('');
+  const [orders, setOrders] = useState<import('@/kutrent/kutrentMarketApi').KutrentMarketOrder[] | null>(null);
+  const [users, setUsers] = useState<import('@/kutrent/kutrentMarketApi').KutrentMarketUser[] | null>(null);
+  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [failed, setFailed] = useState('');
+
+  const loadOrders = useCallback(async () => {
+    setFailed('');
+    const { apiAdminListKutrentOrders } = await import('@/kutrent/kutrentMarketApi');
+    const r = await apiAdminListKutrentOrders({ status: status || undefined, q: q.trim() || undefined });
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить заказы'); return; }
+    setOrders(r.data.orders);
+  }, [status, q]);
+
+  const loadUsers = useCallback(async () => {
+    setFailed('');
+    const { apiAdminListKutrentUsers } = await import('@/kutrent/kutrentMarketApi');
+    const r = await apiAdminListKutrentUsers(q.trim() || undefined);
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить пользователей'); return; }
+    setUsers(r.data.users);
+  }, [q]);
+
+  useEffect(() => { if (sub === 'orders') void loadOrders(); else void loadUsers(); }, [sub, loadOrders, loadUsers]);
+
+  const ORDER_STATUS_LABEL: Record<string, string> = { pending: 'Ожидает оплаты', paid: 'Оплачен', cancelled: 'Отменён' };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1">
+        {([['orders', 'Заказы'], ['users', 'Пользователи']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setSub(k)}
+            className="flex-1 rounded-xl py-1.5 text-[11px] font-semibold"
+            style={{ background: sub === k ? C.acc : C.l2, color: sub === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {sub === 'orders' && (
+        <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          {([['pending', 'Ожидают'], ['paid', 'Оплачены'], ['cancelled', 'Отменены'], ['', 'Все']] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setStatus(k)}
+              className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+              style={{ background: status === k ? C.acc : C.l2, color: status === k ? '#fff' : C.t3 }}>
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder={sub === 'orders' ? 'Номер заказа, @ник или Authenticator' : '@ник или Authenticator'}
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <button type="button" onClick={() => (sub === 'orders' ? void loadOrders() : void loadUsers())}
+          className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+          <RefreshCw size={12} />
+        </button>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+
+      {sub === 'orders' && (
+        orders === null ? <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+          : orders.length === 0 ? <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Заказов не найдено.</p>
+          : orders.map((o) => (
+            <div key={o.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold" style={{ color: C.t1 }}>{o.username ? `@${o.username}` : o.id}</p>
+                  <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+                    {o.id} · {o.authenticator ?? '—'} · {new Date(o.createdAt).toLocaleString('ru')}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-bold" style={{ color: C.t1 }}>{o.amount.toLocaleString('ru')} ₽</p>
+                  <span className="text-[10px] font-bold" style={{
+                    color: o.status === 'paid' ? C.green : o.status === 'cancelled' ? C.t3 : C.amber,
+                  }}>{ORDER_STATUS_LABEL[o.status] ?? o.status}</span>
+                </div>
+              </div>
+              {o.status === 'pending' && canFinance && (
+                openOrderId === o.id
+                  ? <KutrentMarkPaidForm orderId={o.id} onSent={() => { setOpenOrderId(null); void loadOrders(); }} />
+                  : (
+                    <button type="button" onClick={() => setOpenOrderId(o.id)}
+                      className="mt-2 w-full rounded-xl py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.acc }}>
+                      Подтвердить оплату
+                    </button>
+                  )
+              )}
+            </div>
+          ))
+      )}
+
+      {sub === 'users' && (
+        users === null ? <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+          : users.length === 0 ? <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Пользователей не найдено.</p>
+          : users.map((u) => (
+            <div key={u.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold" style={{ color: C.t1 }}>@{u.username} · {u.name}</p>
+                  <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+                    {u.authenticator} · вход {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('ru') : '—'}
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold" style={{ color: u.status === 'active' ? C.green : C.red }}>
+                  {u.status === 'active' ? 'Активен' : 'Приостановлен'}
+                </span>
+              </div>
+              {canFinance && (
+                <button type="button"
+                  onClick={async () => {
+                    const { apiAdminSetKutrentUserStatus } = await import('@/kutrent/kutrentMarketApi');
+                    const next = u.status === 'active' ? 'suspended' : 'active';
+                    const r = await apiAdminSetKutrentUserStatus(u.id, next);
+                    if (r.ok) void loadUsers();
+                  }}
+                  className="mt-2 w-full rounded-xl py-1.5 text-[11px] font-bold"
+                  style={{ background: C.l2, color: u.status === 'active' ? C.red : C.green }}>
+                  {u.status === 'active' ? 'Приостановить' : 'Восстановить'}
+                </button>
+              )}
+            </div>
+          ))
+      )}
+    </div>
+  );
+};
+
 const GarantAdminSection = () => {
   const [deals, setDeals] = useState<import('@/garant/garantApi').GarantDeal[] | null>(null);
   const [status, setStatus] = useState<'' | 'disputed' | 'in_escrow' | 'completed' | 'cancelled'>('disputed');
@@ -3174,7 +3348,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'ads' | 'notify' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'kutrent' | 'ads' | 'notify' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -3299,6 +3473,7 @@ export const AdminPanel = () => {
     { key: 'couriers', label: 'Курьеры', show: has('logistics') },
     { key: 'family', label: 'Sky Family', show: has('moderation') },
     { key: 'garant', label: 'Sky Garant', show: has('garant') },
+    { key: 'kutrent', label: 'KutRent Market', show: has('kutrent_market') },
     { key: 'bloom', label: 'Bloom', show: has('content') },
     { key: 'ads', label: 'Реклама', show: has('content') },
     { key: 'notify', label: 'Рассылки', show: has('notifications') },
@@ -3434,6 +3609,7 @@ export const AdminPanel = () => {
       {tab === 'couriers' && <CourierAdminSection />}
       {tab === 'family' && <FamilyAdminSection />}
       {tab === 'garant' && <GarantAdminSection />}
+      {tab === 'kutrent' && <KutrentMarketAdminSection rights={rights} />}
       {tab === 'bloom' && <BloomAdminSection />}
       {tab === 'ads' && <AdsAdminSection />}
       {tab === 'notify' && <NotifyAdminSection />}

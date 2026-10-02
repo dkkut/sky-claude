@@ -156,6 +156,10 @@ services:
       # чужая страница открывает соединения из браузера посетителя.
       DOMAIN:                ${DOMAIN:?нужно задать DOMAIN в .env}
       EXTRA_ORIGINS:         ${EXTRA_ORIGINS:-}
+      # Единственный адрес, куда разрешён редирект с одноразовым
+      # токеном входа KutRent Market (server/kutrentmarket.mjs) — тот
+      # же домен, что и у nginx-вхоста сайта-партнёра (см. web выше).
+      MARKET_DOMAIN:         ${MARKET_DOMAIN:-market.invalid.local}
       REDIS_URL:             redis://:${REDIS_PASSWORD:?нужно задать REDIS_PASSWORD в .env}@redis:6379
       # Расшифровка речи — отдельный поставщик: языковая модель этого
       # не умеет. Пусто — расшифровки нет, и сервер так и говорит.

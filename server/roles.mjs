@@ -28,6 +28,7 @@ export const PERMISSIONS = [
   'gifts',           // каталог Sky Gifts, медиа подарков и карточки Prime, надзор за NFT
   'garant',          // сделки Sky Garant, споры и решения по ним
   'notifications',   // рассылки: создание, планирование, отмена, история
+  'kutrent_market',  // KutRent Market: пользователи, заказы, поиск по Authenticator
 ];
 
 /**
@@ -54,6 +55,10 @@ export const ROLES = {
   gifts_admin:     ['gifts'],
   garant_admin:    ['garant', 'support'],
   notifications_admin: ['notifications'],
+  // Подтверждение оплаты (создание денег без реального платежа, пока
+  // не подключена касса) остаётся за 'finance' и двумя ключами — эта
+  // роль только смотрит пользователей и заказы.
+  kutrent_market_admin: ['kutrent_market'],
   read_only_admin: [],
 };
 
@@ -72,5 +77,6 @@ export const ROLE_LABEL = {
   gifts_admin: 'Подарки',
   garant_admin: 'Sky Garant',
   notifications_admin: 'Рассылки',
+  kutrent_market_admin: 'KutRent Market',
   read_only_admin: 'Только чтение',
 };

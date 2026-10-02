@@ -49,6 +49,7 @@ import { adjustRevenue } from './skyvideo.mjs';
 import { sessionStore } from './sessions.mjs';
 import { grantForProposal, markGrantProposed, finalizeGrant, failGrant } from './campaigns.mjs';
 import { earnCoins as earnPetCoins } from './petEconomy.mjs';
+import { markOrderPaid, adminGetOrder } from './kutrentmarket.mjs';
 
 /* ─── Роли и права ─────────────────────────────────────────────────── */
 
@@ -565,6 +566,12 @@ export const PENDING_KINDS = {
      по-прежнему только владелец. */
   campaign_reward: { permission: 'campaigns', stepUp: true, title: 'Выдать награду мероприятия (Prime)' },
   grant_pet_coins: { permission: 'content', stepUp: true, title: 'Начислить Pet Coins' },
+  /* Пока к KutRent Market не подключена ни одна настоящая касса, это
+     единственный способ зачесть заказ оплаченным — то есть создать
+     реальные деньги без реального платежа, ровно тот же риск, что у
+     grant_money. Поэтому тот же гейт: предлагает администратор с
+     правом finance, поворачивает ключ владелец. */
+  kutrent_mark_paid: { permission: 'finance', stepUp: true, title: 'Подтвердить оплату KutRent Market' },
 };
 
 /**
@@ -651,6 +658,12 @@ const checkPayload = (kind, raw = {}) => {
       return { ok: true, payload: { grantId } };
     }
 
+    case 'kutrent_mark_paid': {
+      const orderId = String(raw.orderId ?? '');
+      if (!/^krm-[0-9a-f-]{36}$/.test(orderId)) return { error: 'bad_order' };
+      return { ok: true, payload: { orderId } };
+    }
+
     case 'skyvideo_revenue_adjust': {
       const videoId = String(raw.videoId ?? '');
       if (!/^svid-[0-9a-f-]{36}$/.test(videoId)) return { error: 'bad_video' };
@@ -729,6 +742,17 @@ export const createPendingAction = async (actorId, kind, targetId, raw = {}, opt
     if (grant.profile_id !== target) return { error: 'grant_target_mismatch' };
     if (grant.status !== 'pending') return { error: 'already_decided' };
     checked.payload.days = grant.reward_days;
+  }
+
+  if (kind === 'kutrent_mark_paid') {
+    /* Получатель заказа должен совпадать с тем, на кого оформлена
+       заявка — иначе владелец подтверждал бы зачисление одному
+       человеку, глядя на имя другого. Заказ должен ещё ждать оплаты:
+       уже оплаченный или отменённый заявкой не поднять. */
+    const order = await adminGetOrder(checked.payload.orderId);
+    if (!order) return { error: 'not_found' };
+    if (order.sky_recipient_profile_id !== target) return { error: 'order_target_mismatch' };
+    if (order.status !== 'pending') return { error: 'already_decided' };
   }
 
   if (spec.stepUp) {
@@ -1007,6 +1031,12 @@ const executePending = async (row, payload, ownerId) => {
         `Начисление Pet Coins по решению владельца (заявка ${row.id})`, `admin:${row.id}`);
       if (res.error) return { error: res.error };
       return { outcome: `Начислено ${amount} Pet Coins, баланс ${res.balance}` };
+    }
+
+    case 'kutrent_mark_paid': {
+      const res = await markOrderPaid(payload.orderId);
+      if (res.error) return { error: res.error };
+      return { outcome: `Заказ ${payload.orderId} оплачен, зачислено ${res.order.amount} ₽, баланс ${res.balance}` };
     }
 
     case 'skyvideo_revenue_adjust': {

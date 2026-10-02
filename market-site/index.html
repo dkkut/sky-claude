@@ -463,35 +463,45 @@
     <section id="view-sky" style="display:none;">
       <div class="page-head">
         <h1>Пополнение Sky</h1>
-        <p>Пополните баланс Sky для покупок внутри экосистемы.</p>
+        <p>Пополните свой собственный баланс Sky для покупок внутри экосистемы.</p>
       </div>
 
-      <div class="amount-display">
-        <div class="label">Введите сумму</div>
-        <div class="value-row">
-          <input id="sky-amount" type="text" inputmode="numeric" value="100">
-          <span class="cur">₽</span>
-        </div>
-      </div>
-      <div class="quick-amounts" id="sky-quick"></div>
-
-      <div class="field" style="max-width:420px;margin:0 auto 4px;">
-        <label for="sky-id">Sky ID / логин получателя</label>
-        <div class="text-input" style="padding:0;display:flex;align-items:center;">
-          <input id="sky-id" placeholder="Например, artem_k" style="flex:1;border:none;background:transparent;padding:12px 14px;color:var(--text);font-size:14px;outline:none;">
-        </div>
-        <div id="recipient-result" style="margin-top:2px;"></div>
+      <!-- Не вошли через Sky ID -->
+      <div id="sky-login-gate" style="max-width:420px;margin:0 auto;text-align:center;">
+        <p class="hint" style="margin-bottom:12px;">Пополнение доступно только своему аккаунту — войдите через Sky ID, получателя сервер определит сам.</p>
+        <button class="cta" id="sky-login-btn">Войти через Sky ID</button>
       </div>
 
-      <div style="max-width:420px;margin:0 auto;">
-        <div class="summary-card">
-          <div class="summary-row"><span>Получатель</span><span id="sum-recipient">—</span></div>
-          <div class="summary-row"><span>Пополнение</span><span id="sum-amount">100 ₽</span></div>
-          <div class="summary-row"><span>Комиссия</span><span>0 ₽</span></div>
-          <div class="summary-row total"><span>К оплате</span><strong id="sum-total">100 ₽</strong></div>
+      <!-- Вошли: своя личность, свой Authenticator -->
+      <div id="sky-logged-in" style="display:none;">
+        <div class="field" style="max-width:420px;margin:0 auto 12px;">
+          <div class="summary-card">
+            <div class="summary-row"><span>Вы вошли как</span><span id="sky-me-username">—</span></div>
+            <div class="summary-row"><span>Authenticator</span><span id="sky-me-authenticator" style="font-size:11px;">—</span></div>
+            <div class="summary-row"><span>Текущий баланс Sky</span><span id="sky-me-balance">—</span></div>
+          </div>
+          <button class="cta ghost" id="sky-logout-btn" style="margin-top:8px;">Выйти</button>
         </div>
-        <button class="cta" id="sky-submit" disabled>Пополнить Sky</button>
-        <p class="hint">Сумма и получатель проверяются на сервере — итоговое зачисление происходит только после подтверждения оплаты.</p>
+
+        <div class="amount-display">
+          <div class="label">Введите сумму</div>
+          <div class="value-row">
+            <input id="sky-amount" type="text" inputmode="numeric" value="100">
+            <span class="cur">₽</span>
+          </div>
+        </div>
+        <div class="quick-amounts" id="sky-quick"></div>
+
+        <div style="max-width:420px;margin:0 auto;">
+          <div class="summary-card">
+            <div class="summary-row"><span>Получатель</span><span id="sum-recipient">вы сами</span></div>
+            <div class="summary-row"><span>Пополнение</span><span id="sum-amount">100 ₽</span></div>
+            <div class="summary-row"><span>Комиссия</span><span>0 ₽</span></div>
+            <div class="summary-row total"><span>К оплате</span><strong id="sum-total">100 ₽</strong></div>
+          </div>
+          <button class="cta" id="sky-submit" disabled>Пополнить Sky</button>
+          <p class="hint">Сумма проверяется на сервере — итоговое зачисление происходит только после подтверждения оплаты.</p>
+        </div>
       </div>
     </section>
 
@@ -618,15 +628,16 @@
       </div>
       <div class="sheet-body">
         <div class="profile-header">
-          <div class="profile-avatar">К</div>
+          <div class="profile-avatar" id="profile-avatar-letter">?</div>
           <div>
-            <strong>Ваш браузер</strong>
-            <span id="profile-session-id">сессия —</span>
+            <strong id="profile-username">Вы не вошли</strong>
+            <span id="profile-session-id">Authenticator —</span>
           </div>
         </div>
         <div class="profile-row" data-open="orders"><span class="lbl">История заказов</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
         <div class="profile-row" data-open="support"><span class="lbl">Поддержка</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
-        <p class="hint">Профиль — это ваш браузер, а не аккаунт: заказы привязаны к этой сессии и видны только с этого устройства.</p>
+        <p class="hint">Профиль привязан к вашему Sky ID: Authenticator — постоянный номер вашего аккаунта в KutRent Market, показываем поддержке при обращении.</p>
+        <p class="hint">Поддержка KutRent Market: <a href="https://t.me/kutlandcomp" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">@kutlandcomp</a> в Telegram.</p>
       </div>
     </div>
   </div>

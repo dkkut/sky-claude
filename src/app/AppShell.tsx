@@ -32,6 +32,7 @@ import { useMainWindowPlayerBridge } from '@/interface/quickactions/playerBridge
 import { ErrorBoundary }          from './ErrorBoundary';
 import { useIsMobile }            from '@/interface/mobile/useIsMobile';
 import { MobileShell }            from '@/interface/mobile/MobileShell';
+import { apiCall }                from '@/core/auth/api';
 
 // First-launch welcome notification
 const useFirstLaunch = () => {
@@ -121,6 +122,30 @@ export const AppShell = () => {
     const m = new URLSearchParams(window.location.search).get('module');
     const valid = ['stories','messages','bloom','extras','profile','notifications','gaming','video','library','studio'];
     if (m && valid.includes(m)) setActiveModule(m as any);
+  }, []);
+
+  /* Передача личности KutRent Market (market.kutrent.online) с этого
+   * домена: мы уже вошли (AppShell монтируется только после входа), а
+   * market.kutrent.online — другой домен, своей Sky-сессии у него нет и
+   * быть не должно. Выпускаем одноразовый токен и уводим браузер на
+   * ?return= — но только на тот адрес, который сервер сам проверит
+   * против MARKET_DOMAIN (см. server/routes/kutrentmarket.mjs,
+   * marketOriginAllowed): открыть эту ссылку с посторонним return
+   * можно сколько угодно, токен для него просто не выпустят. */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('module') !== 'kutrent-link') return;
+    const returnUrl = params.get('return') ?? '';
+    if (!returnUrl) return;
+    let returnOrigin = '';
+    try { returnOrigin = new URL(returnUrl).origin; } catch { return; }
+    void apiCall<{ token: string }>('/api/kutrent-market/sso/start', {
+      method: 'POST', body: JSON.stringify({ returnOrigin }),
+    }).then((r) => {
+      if (r.ok && r.data?.token) {
+        window.location.href = `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(r.data.token)}`;
+      }
+    });
   }, []);
 
   // Пометки/блокировки модерации (видео-каналы, каналы мессенджера,
