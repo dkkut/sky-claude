@@ -22,9 +22,18 @@ import {
   revokeMarketSession, createSkyTopupOrder, getOrder, listOrders,
   adminSearchUsers, adminGetUser, adminListOrders, setMarketUserStatus,
 } from './../kutrentmarket.mjs';
+import { documentMeta, readDocument, acceptDocument, hasAccepted } from './../agreements.mjs';
 import { rateLimit } from './../security.mjs';
 
 const KRM_COOKIE = 'krm_sid';
+
+/* Документы этого сайта в общем реестре server/agreements.mjs — та же
+   инфраструктура (текст один на диске, отпечаток, учёт согласия по
+   profile_id), что у правил продавцов и регламента склада, просто
+   другие два кода. Код документа в адресе сверяется с этим списком, а
+   не берётся из запроса как попало — так же, как и у остальных. */
+const KUTRENT_DOC_CODES = ['kutrent_terms', 'kutrent_privacy'];
+const docCodePattern = `(${KUTRENT_DOC_CODES.join('|')})`;
 
 const readSessionId = (req) => {
   const header = req.headers.cookie ?? '';
@@ -51,6 +60,20 @@ export const kutrentMarketRoutes = async (req, res, url) => {
      «Войти через Sky ID» без хардкода домена в самом HTML/JS. */
   if (req.method === 'GET' && url === '/api/kutrent-market/config') {
     return json(res, 200, { skyOrigin: config.publicOrigin });
+  }
+
+  /* Документы — читать может кто угодно, даже не вошедший: это
+     прозрачность условий сайта, а не часть личного кабинета. Полный
+     текст отдаётся по коду из фиксированного списка выше, а не по
+     имени файла из запроса. */
+  if (req.method === 'GET' && url === '/api/kutrent-market/docs') {
+    const docs = await Promise.all(KUTRENT_DOC_CODES.map(documentMeta));
+    return json(res, 200, { documents: docs });
+  }
+  const publicDocMatch = url.match(new RegExp(`^/api/kutrent-market/docs/${docCodePattern}$`));
+  if (req.method === 'GET' && publicDocMatch) {
+    const doc = await readDocument(publicDocMatch[1]);
+    return json(res, 200, { code: doc.code, title: doc.title, revision: doc.revision, text: doc.text });
   }
 
   /*
@@ -123,8 +146,26 @@ export const kutrentMarketRoutes = async (req, res, url) => {
       return json(res, 200, { ok: true });
     }
 
+    /* Своё согласие с документами — привязано к настоящему Sky-профилю
+       (me.profile_id), не к сессии сайта: согласие должно пережить
+       отзыв сессии и выход, как и у правил продавцов/склада. */
+    if (req.method === 'GET' && url === '/api/kutrent-market/docs/accepted') {
+      const accepted = {};
+      for (const code of KUTRENT_DOC_CODES) accepted[code] = await hasAccepted(me.profile_id, code);
+      return json(res, 200, { accepted });
+    }
+    const acceptMatch = url.match(new RegExp(`^/api/kutrent-market/docs/${docCodePattern}/accept$`));
+    if (req.method === 'POST' && acceptMatch) {
+      if (!rateLimit(`krm:docs:${me.profile_id}`, 20)) return json(res, 429, { error: 'rate_limited' });
+      const done = await acceptDocument(me.profile_id, acceptMatch[1]);
+      return json(res, done.error ? 400 : 200, done);
+    }
+
     if (req.method === 'POST' && url === '/api/kutrent-market/sky-topup') {
       if (!rateLimit(`krm:topup:${me.id}`, 10)) return json(res, 429, { error: 'rate_limited' });
+      const notAccepted = [];
+      for (const code of KUTRENT_DOC_CODES) if (!(await hasAccepted(me.profile_id, code))) notAccepted.push(code);
+      if (notAccepted.length) return json(res, 403, { error: 'documents_required', codes: notAccepted });
       const body = await parseBody(req);
       const result = await createSkyTopupOrder(me, body.amount);
       return json(res, result.error ? 400 : 201, result);

@@ -390,6 +390,27 @@
   .partner-placeholder h3{margin:0 0 6px;font-size:15px;font-weight:700;color:var(--text);}
   .partner-placeholder p{margin:0;font-size:13.5px;max-width:34ch;margin:0 auto;}
 
+  /* ---------- Documents ---------- */
+  .doc-list-item{
+    display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;
+    border:1px solid var(--border);background:var(--surface);border-radius:var(--radius-m);
+    padding:14px 16px;cursor:pointer;margin-bottom:10px;color:inherit;
+  }
+  .doc-list-item .main strong{display:block;font-size:13.5px;font-weight:700;}
+  .doc-list-item .main span{font-size:12px;color:var(--text-dim);}
+  .doc-status{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;flex:none;margin-left:10px;}
+  .doc-status.accepted{background:var(--success-soft);color:var(--success);}
+  .doc-status.pending{background:var(--surface-3);color:var(--text-faint);}
+  .doc-text{
+    max-height:42vh;overflow-y:auto;font-size:13px;line-height:1.6;color:var(--text-dim);
+    border:1px solid var(--border);border-radius:var(--radius-m);padding:16px;margin-top:12px;
+  }
+  .doc-text h2,.doc-text h3{color:var(--text);font-size:14px;margin:16px 0 8px;}
+  .doc-text h2:first-child,.doc-text h3:first-child{margin-top:0;}
+  .doc-text p{margin:0 0 10px;}
+  .doc-text ul{margin:0 0 10px;padding-left:18px;}
+  .doc-text li{margin:0 0 4px;}
+
   /* ---------- Toast ---------- */
   #toast{
     position:fixed;left:50%;bottom:28px;transform:translate(-50%,12px);
@@ -639,10 +660,38 @@
             <span id="profile-session-id">Authenticator —</span>
           </div>
         </div>
+        <div class="profile-row" data-open="docs"><span class="lbl">Документы</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
         <div class="profile-row" data-open="orders"><span class="lbl">История заказов</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
         <div class="profile-row" data-open="support"><span class="lbl">Поддержка</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
         <p class="hint">Профиль привязан к вашему Sky ID: Authenticator — постоянный номер вашего аккаунта в KutRent Market, показываем поддержке при обращении.</p>
         <p class="hint">Поддержка KutRent Market: <a href="https://t.me/kutlandcomp" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">@kutlandcomp</a> в Telegram.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- DOCUMENTS LIST SHEET -->
+  <div class="overlay" id="overlay-docs">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2>Документы</h2>
+        <button class="close-x" data-close="overlay-docs">✕</button>
+      </div>
+      <div class="sheet-body" id="docs-body"></div>
+    </div>
+  </div>
+
+  <!-- DOCUMENT DETAIL SHEET -->
+  <div class="overlay" id="overlay-doc-detail">
+    <div class="sheet">
+      <div class="sheet-head">
+        <button class="back-btn" data-back-to="docs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <h2 id="doc-detail-title">Документ</h2>
+        <button class="close-x" data-close="overlay-doc-detail">✕</button>
+      </div>
+      <div class="sheet-body">
+        <p class="hint" id="doc-detail-revision">Редакция —</p>
+        <div class="doc-text" id="doc-detail-text"></div>
+        <div id="doc-detail-accept" style="margin-top:16px;"></div>
       </div>
     </div>
   </div>

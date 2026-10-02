@@ -189,6 +189,7 @@
   els('[data-open="orders"]').forEach(function (b) { b.addEventListener("click", function () { renderOrders(); openOverlay("overlay-orders"); }); });
   els('[data-open="support"]').forEach(function (b) { b.addEventListener("click", function () { openSupport(null); }); });
   els('[data-open="profile"]').forEach(function (b) { b.addEventListener("click", function () { renderProfile(); openOverlay("overlay-profile"); }); });
+  els('[data-open="docs"]').forEach(function (b) { b.addEventListener("click", function () { renderDocsList(); openOverlay("overlay-docs"); }); });
 
   /* ============ Sky top-up ============ */
   var skyQuick = el("#sky-quick");
@@ -255,10 +256,12 @@
       if (!r.ok) {
         var reason = r.data && r.data.error === "invalid_amount" ? "Некорректная сумма"
           : r.data && r.data.error === "rate_limited" ? "Слишком много попыток, подождите немного"
-            : r.status === 401 ? "Сессия истекла — войдите снова"
-              : "Не удалось создать заказ";
+            : r.data && r.data.error === "documents_required" ? "Сначала примите документы — открываем раздел"
+              : r.status === 401 ? "Сессия истекла — войдите снова"
+                : "Не удалось создать заказ";
         toast(reason);
         if (r.status === 401) void refreshMe();
+        if (r.data && r.data.error === "documents_required") { renderDocsList(); openOverlay("overlay-docs"); }
         updateSkyCta();
         return;
       }
@@ -391,6 +394,140 @@
   /* ============ Profile (настоящий вход через Sky ID) ============ */
   function renderProfile() {
     void refreshMe();
+  }
+
+  /* ============ Документы (текст один на сервере, docs/ — см. server/agreements.mjs) ============
+     Читать может кто угодно, даже не вошедший — это условия сайта, а не
+     часть личного кабинета. Принять может только вошедший: согласие
+     пишется на его настоящий Sky-профиль. */
+  var docsCache = [];
+
+  /* Очень упрощённый markdown → HTML: ровно то подмножество, что есть в
+     текстах документов (## заголовки, - списки, абзацы). Ведущий `# ...`
+     (общий заголовок документа) пропускаем — он уже показан в шапке
+     шторки отдельно. Исходный текст экранируется целиком, собственного
+     HTML в документах нет и быть не может. */
+  function renderDocHtml(text) {
+    var lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
+    if (lines[0] && /^#\s+/.test(lines[0])) lines = lines.slice(1);
+    var html = "";
+    var para = [];
+    var list = [];
+    function flushPara() {
+      if (para.length) { html += "<p>" + para.join(" ") + "</p>"; para = []; }
+    }
+    function flushList() {
+      if (list.length) { html += "<ul>" + list.map(function (i) { return "<li>" + i + "</li>"; }).join("") + "</ul>"; list = []; }
+    }
+    lines.forEach(function (raw) {
+      var line = raw.trim();
+      var heading = line.match(/^(#{1,3})\s+(.*)$/);
+      var bullet = line.match(/^[-·]\s+(.*)$/);
+      if (heading) {
+        flushPara(); flushList();
+        html += "<h3>" + escapeHtml(heading[2]) + "</h3>";
+      } else if (bullet) {
+        flushPara();
+        list.push(escapeHtml(bullet[1]));
+      } else if (!line) {
+        flushPara(); flushList();
+      } else {
+        flushList();
+        para.push(escapeHtml(line));
+      }
+    });
+    flushPara(); flushList();
+    return html;
+  }
+
+  function renderDocsList() {
+    var body = el("#docs-body");
+    body.innerHTML = '<div class="empty-state"><p>Загружаем…</p></div>';
+    Promise.all([
+      api("/docs"),
+      me ? api("/docs/accepted") : Promise.resolve({ ok: false, data: {} }),
+    ]).then(function (results) {
+      var listRes = results[0];
+      var acceptedRes = results[1];
+      docsCache = (listRes.ok && listRes.data.documents) || [];
+      var accepted = (acceptedRes.ok && acceptedRes.data.accepted) || {};
+      if (!docsCache.length) {
+        body.innerHTML = '<div class="empty-state"><p>Документы не загрузились</p></div>';
+        return;
+      }
+      body.innerHTML = "";
+      docsCache.forEach(function (d) {
+        var item = document.createElement("button");
+        item.className = "doc-list-item";
+        var statusHtml = me
+          ? '<span class="doc-status ' + (accepted[d.code] ? "accepted" : "pending") + '">' + (accepted[d.code] ? "Принято" : "Не принято") + "</span>"
+          : "";
+        item.innerHTML =
+          '<div class="main"><strong>' + escapeHtml(d.title) + '</strong><span>Редакция от ' + escapeHtml(d.revision) + '</span></div>' +
+          statusHtml;
+        item.addEventListener("click", function () { openDocDetail(d.code); });
+        body.appendChild(item);
+      });
+    });
+  }
+
+  function openDocDetail(code) {
+    var titleEl = el("#doc-detail-title");
+    var revEl = el("#doc-detail-revision");
+    var textEl = el("#doc-detail-text");
+    var acceptEl = el("#doc-detail-accept");
+    titleEl.textContent = "Загрузка…";
+    revEl.textContent = "";
+    textEl.innerHTML = "";
+    acceptEl.innerHTML = "";
+    openOverlay("overlay-doc-detail");
+
+    api("/docs/" + encodeURIComponent(code)).then(function (r) {
+      if (!r.ok) { titleEl.textContent = "Документ не найден"; return; }
+      var doc = r.data;
+      titleEl.textContent = doc.title;
+      revEl.textContent = "Редакция от " + doc.revision;
+      textEl.innerHTML = renderDocHtml(doc.text);
+
+      if (!me) {
+        acceptEl.innerHTML = '<p class="hint">Войдите через Sky ID, чтобы принять документ.</p>';
+        return;
+      }
+
+      api("/docs/accepted").then(function (ar) {
+        var already = ar.ok && ar.data.accepted && ar.data.accepted[code];
+        if (already) {
+          acceptEl.innerHTML = '<button class="cta ghost" disabled>Уже принято</button>';
+          return;
+        }
+        var btn = document.createElement("button");
+        btn.className = "cta";
+        btn.textContent = "Принимаю";
+        btn.addEventListener("click", function () {
+          btn.disabled = true;
+          btn.textContent = "Записываем…";
+          api("/docs/" + encodeURIComponent(code) + "/accept", { method: "POST" }).then(function (dr) {
+            if (dr.ok) {
+              toast("Согласие записано");
+              acceptEl.innerHTML = '<button class="cta ghost" disabled>Уже принято</button>';
+            } else {
+              btn.disabled = false;
+              btn.textContent = "Принимаю";
+              toast("Не удалось записать согласие");
+            }
+          });
+        });
+        acceptEl.appendChild(btn);
+      });
+    });
+  }
+
+  var backToDocsBtn = document.querySelector('[data-back-to="docs"]');
+  if (backToDocsBtn) {
+    backToDocsBtn.addEventListener("click", function () {
+      closeOverlay("overlay-doc-detail");
+      openOverlay("overlay-docs");
+    });
   }
 
   /* ============ Init ============ */

@@ -55,6 +55,18 @@ export const DOCUMENTS = {
     revision: '2026-09-13',
     file: 'РЕГЛАМЕНТ_ОБЩЕГО_СКЛАДА.md',
   },
+  kutrent_terms: {
+    code: 'kutrent_terms',
+    title: 'Пользовательское соглашение KutRent Market',
+    revision: '2026-10-02',
+    file: 'KUTRENT_ПОЛЬЗОВАТЕЛЬСКОЕ_СОГЛАШЕНИЕ.md',
+  },
+  kutrent_privacy: {
+    code: 'kutrent_privacy',
+    title: 'Политика конфиденциальности KutRent Market',
+    revision: '2026-10-02',
+    file: 'KUTRENT_ПОЛИТИКА_КОНФИДЕНЦИАЛЬНОСТИ.md',
+  },
 };
 
 export const DOC_CODES = Object.keys(DOCUMENTS);
