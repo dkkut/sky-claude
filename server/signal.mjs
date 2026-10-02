@@ -361,6 +361,13 @@ const handle = async (ws, session, msg) => {
       const { chatId, message } = payload ?? {};
       if (!chatId || !message) return;
 
+      // Без предела отсюда можно было слать сколько угодно сообщений в
+      // секунду — ни один administrative-запрет этого не ловит, это не
+      // бан, а обычный поток. Предел щедрый для живого человека и тесен
+      // для скрипта: 120/мин — вдвое больше, чем у vp:chat/live:chat,
+      // потому что это основной мессенджер, а не комментарии к эфиру.
+      if (!rateLimit(`msg:send:${me}`, 120)) return;
+
       // Наказания администратора. Раньше сервер о них не знал вовсе:
       // забаненный продолжал писать как ни в чём не бывало.
       const limits = await restrictionsOf(me);
@@ -394,6 +401,7 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'edit-message': {
+      if (!rateLimit(`msg:edit:${me}`, 60)) return;
       const { messageId, text } = payload ?? {};
       const edited = await editMessage(messageId, me, text);
       if (!edited) return;
@@ -405,6 +413,7 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'delete-message': {
+      if (!rateLimit(`msg:delete:${me}`, 60)) return;
       const { messageId } = payload ?? {};
       const removed = await deleteMessage(messageId, me);
       if (!removed) return;
@@ -414,6 +423,7 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'react-message': {
+      if (!rateLimit(`msg:react:${me}`, 120)) return;
       const { messageId } = payload ?? {};
       // Реакция сохраняется, а не только рассылается: иначе она
       // исчезала после перезагрузки страницы и никогда не доезжала до
@@ -428,6 +438,11 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'typing': {
+      // Рассылается всем участникам чата и ничего не пишет в базу —
+      // дешевле всего отправить и дороже всего разослать большой группе.
+      // Без предела этим можно было устроить шторм рассылок практически
+      // бесплатно для отправителя.
+      if (!rateLimit(`msg:typing:${me}`, 120)) return;
       const chatId = payload?.chatId;
       if (!chatId || !(await isMember(chatId, me))) return;
       // В канале «печатает…» не показываем: у записи один автор и
@@ -444,6 +459,7 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'read-messages': {
+      if (!rateLimit(`msg:read:${me}`, 120)) return;
       const chatId = payload?.chatId;
       if (!chatId) return;
       const changed = await markRead(chatId, me);
@@ -457,6 +473,7 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'create-chat': {
+      if (!rateLimit(`chat:create:${me}`, 30)) return;
       const chat = payload?.chat;
       if (!chat?.id || !chat?.type) return;
       const created = await createChat(chat, me);
@@ -475,6 +492,7 @@ const handle = async (ws, session, msg) => {
     }
 
     case 'get-messages': {
+      if (!rateLimit(`msg:list:${me}`, 120)) return;
       const chatId = payload?.chatId;
       const messages = await listMessages(chatId, me, payload?.limit ?? 100, payload?.before ?? null);
       if (!messages) return;
@@ -489,6 +507,7 @@ const handle = async (ws, session, msg) => {
 
     /* ── Состав чата ── */
     case 'add-member': {
+      if (!rateLimit(`chat:member:${me}`, 30)) return;
       const { chatId, userId } = payload ?? {};
       if (!chatId || !userId) return;
       const result = await addMember(chatId, me, userId);
