@@ -25,6 +25,7 @@ import { sessionStore } from './../sessions.mjs';
 import { json, parseBody, readSession, appBody, deviceMeta } from './../http.mjs';
 import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../verification.mjs';
 import { findSkyIdById, findSkyIdByEmail, sendTwoFactorCode } from './../skyid.mjs';
+import { sendEmail } from './../notify.mjs';
 import { maskEmail, normalizeEmail, startSession, issueTokens } from './auth.mjs';
 
 /** Пароль: не короче, чтобы не подбирался за секунды, не длиннее
@@ -63,6 +64,27 @@ const noteFailure = async (skyId) => {
     [skyId, MAX_FAILS, LOCK_MINUTES],
   );
   return rows[0]?.password_fail_count ?? 0;
+};
+
+/**
+ * Письмо о блокировке — единственный момент, когда владелец узнаёт,
+ * что его пароль прямо сейчас подбирают: сама блокировка это не
+ * останавливает перебор, а делает его на время бессмысленным, но
+ * молча — без письма атакующий просто попробует через 15 минут снова,
+ * а владелец так и не узнает. Отправка не должна блокировать ответ:
+ * вызывается без await, ошибка только в журнал.
+ */
+const notifyLockout = async (skyId) => {
+  if (!skyId.email || !skyId.email_verified) return;
+  await sendEmail(
+    skyId.email,
+    'Подозрительная активность: вход в Sky ID временно заблокирован',
+    `Подряд ${MAX_FAILS} раз ввели неверный пароль от вашего Sky ID — похоже, кто-то его ` +
+    `подбирает. Вход паролем закрыт на ${LOCK_MINUTES} минут, остальные способы входа ` +
+    '(код на почту/телефон) работают как обычно.\n\n' +
+    'Если это были не вы — после снятия блокировки смените пароль и проверьте список ' +
+    'устройств в Настройках.',
+  );
 };
 
 const clearFailures = async (skyId) => {
@@ -210,7 +232,10 @@ export const passwordRoutes = async (req, res, url) => {
 
     const good = await verifyPassword(String(body.password ?? ''), skyId.password_hash);
     if (!good) {
-      await noteFailure(skyId.id);
+      const fails = await noteFailure(skyId.id);
+      if (fails === MAX_FAILS) {
+        notifyLockout(skyId).catch((err) => console.error('[password] письмо о блокировке:', err.message));
+      }
       return fail();
     }
     await clearFailures(skyId.id);

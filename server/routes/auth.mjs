@@ -18,6 +18,7 @@ import { generateId } from './../security.mjs';
 import { buildRefreshCookie, clearRefreshCookie } from './../cookies.mjs';
 import { json, parseBody, readRefreshToken, readSession, appBody, deviceMeta } from './../http.mjs';
 import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../verification.mjs';
+import { sendEmail } from './../notify.mjs';
 import {
   ensureSkyId, ensureSkyIdByEmail, findSkyIdById, publicSkyId, listProfiles,
   getProfileOfSkyId, verifySkyTwoFactor, sendTwoFactorCode,
@@ -103,6 +104,30 @@ export const issueTokens = (skyId, sessionId, profileId) => {
 };
 
 /**
+ * Письмо о входе с устройства, которого не было среди живых сессий.
+ *
+ * До этого вход создавал сессию молча: узнать о чужом входе владелец
+ * мог только сам, зайдя в «Устройства» и сверив список. Это ничего не
+ * блокирует — только даёт знать как можно раньше, пока вход ещё можно
+ * отменить (отозвать сессию, сменить пароль). Отправка не должна
+ * задерживать и тем более ронять сам вход, поэтому вызывается без
+ * await и падение логируется, а не прокидывается наружу.
+ */
+const notifyNewLogin = async (skyIdRow, meta) => {
+  if (!skyIdRow.email || !skyIdRow.email_verified) return;
+  const when = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const ua = (meta.ua || 'неизвестно').slice(0, 200);
+  const ip = meta.ip || 'неизвестен';
+  await sendEmail(
+    skyIdRow.email,
+    'Новый вход в Sky ID',
+    `Выполнен вход в ваш Sky ID.\n\nКогда: ${when} (UTC)\nС адреса: ${ip}\nУстройство: ${ua}\n\n` +
+    'Если это были вы — ничего делать не нужно. Если нет — зайдите в ' +
+    'Настройки → Устройства и завершите эту сессию, затем смените пароль.',
+  );
+};
+
+/**
  * Начинает сессию Sky ID и выбирает профиль по умолчанию, если он один.
  * Экспортирована по той же причине, что и issueTokens выше.
  */
@@ -115,10 +140,23 @@ export const startSession = async (skyIdRow, req) => {
   const auto = profiles.length === 1 && !profiles[0].twoFactorEnabled ? profiles[0] : null;
 
   const sessionId = generateId();
+  const meta = deviceMeta(req);
+
+  // Известное устройство — то, с чьего IP уже есть живая сессия. IP
+  // меняется у обычного человека чаще, чем хотелось бы (мобильная
+  // сеть, Wi-Fi дома/на работе), поэтому письма будут — это осознанный
+  // компромисс: пропустить настоящий чужой вход хуже, чем лишнее письмо.
+  const known = await sessionStore.listForUser(skyIdRow.id);
+  const isNewDevice = known.length > 0 && !known.some((s) => s.ip && s.ip === meta.ip);
+
   await sessionStore.put(
-    { id: sessionId, userId: skyIdRow.id, profileId: auto?.id ?? null, ...deviceMeta(req) },
+    { id: sessionId, userId: skyIdRow.id, profileId: auto?.id ?? null, ...meta },
     config.refreshTtlSec,
   );
+
+  if (isNewDevice) {
+    notifyNewLogin(skyIdRow, meta).catch((err) => console.error('[auth] письмо о новом входе:', err.message));
+  }
 
   const tokens = issueTokens(skyIdRow.id, sessionId, auto?.id ?? null);
   return {
