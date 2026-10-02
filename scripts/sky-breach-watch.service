@@ -1,0 +1,23 @@
+# ============================================================
+#  systemd-юнит для scripts/breach-watch.sh. Устанавливается вручную:
+#
+#    install -o root -g root -m 755 scripts/breach-watch.sh /opt/sky/breach-watch.sh
+#    install -o root -g root -m 644 scripts/sky-breach-watch.service \
+#      /etc/systemd/system/sky-breach-watch.service
+#    systemctl daemon-reload
+#    systemctl enable --now sky-breach-watch.service
+#
+#  См. DEPLOY.md, раздел «Аварийное выключение при подозрении на
+#  взлом» — там же инструкция по scripts/ssh-login-hook.sh.
+# ============================================================
+[Unit]
+Description=Sky: сторож аварийного выключения при подозрении на взлом администратора
+
+[Service]
+Type=simple
+ExecStart=/opt/sky/breach-watch.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
