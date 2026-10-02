@@ -190,16 +190,6 @@
   els('[data-open="support"]').forEach(function (b) { b.addEventListener("click", function () { openSupport(null); }); });
   els('[data-open="profile"]').forEach(function (b) { b.addEventListener("click", function () { renderProfile(); openOverlay("overlay-profile"); }); });
 
-  /* ============ Partners: payli ============ */
-  (function initPayli() {
-    var btn = el("#payli-open");
-    btn.addEventListener("click", function () {
-      var url = btn.getAttribute("data-payli-url");
-      if (!url) { toast("Ссылка на payli пока не настроена"); return; }
-      window.open(url, "_blank", "noopener,noreferrer");
-    });
-  })();
-
   /* ============ Sky top-up ============ */
   var skyQuick = el("#sky-quick");
   var quickValues = [100, 300, 500, 1000, 2000, 5000];

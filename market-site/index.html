@@ -453,9 +453,14 @@
           <h3>payli</h3>
           <p>Партнёрский сервис payli — оплата и переводы.</p>
         </div>
-        <!-- TODO: настоящий адрес сервиса ещё не передан — сейчас кнопка
-             никуда не ведёт (см. data-payli-url ниже и app.js). -->
-        <button class="cta" id="payli-open" data-payli-url="">Открыть</button>
+        <!-- Виджет рисует себя сам (data-mode="inline") — это весь
+             код, который дал партнёр. Никакого собственного клиентского
+             кода оплаты рядом нет: платёж обрабатывает домен payli.ru,
+             а начисление на нашей стороне ждёт их серверного
+             подтверждения (вебхук/колбэк), а не того, что скажет этот
+             виджет в браузере — см. server/kutrentmarket.mjs,
+             markOrderPaid. -->
+        <script src="https://payli.ru/widget/embed.js" data-widget="657749d7-10d9-445d-816f-e44459d2562a" data-mode="inline" defer></script>
       </div>
     </section>
 
