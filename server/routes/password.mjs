@@ -26,6 +26,7 @@ import { json, parseBody, readSession, appBody, deviceMeta } from './../http.mjs
 import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../verification.mjs';
 import { findSkyIdById, findSkyIdByEmail, sendTwoFactorCode } from './../skyid.mjs';
 import { sendEmail } from './../notify.mjs';
+import { noteAdminBreachSignal } from './../breach.mjs';
 import { maskEmail, normalizeEmail, startSession, issueTokens } from './auth.mjs';
 
 /** Пароль: не короче, чтобы не подбирался за секунды, не длиннее
@@ -235,6 +236,8 @@ export const passwordRoutes = async (req, res, url) => {
       const fails = await noteFailure(skyId.id);
       if (fails === MAX_FAILS) {
         notifyLockout(skyId).catch((err) => console.error('[password] письмо о блокировке:', err.message));
+        noteAdminBreachSignal(skyId.id, 'password')
+          .catch((err) => console.error('[password] сигнал о взломе администратора:', err.message));
       }
       return fail();
     }

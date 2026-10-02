@@ -478,6 +478,41 @@ export const setLockdown = async (actorId, on, reason = '', { meta = {} } = {}) 
   return { ...(await lockdownState()) };
 };
 
+/**
+ * Разлогинить вообще всех администраторов без исключения — включая
+ * владельца. В отличие от revokeOtherAdminSessions (которая держит
+ * включившего внутри, чтобы было кому выключить), здесь включающего
+ * нет вовсе: решение приняла не человек, а автоматика, и исключать
+ * тут некого — владелец всё равно пойдёт выключать и включать сервер
+ * через панель хостинга, а не через уже открытую вкладку админки.
+ */
+const revokeAllAdminSessions = async () => {
+  const { rows } = await query(
+    'SELECT s.id AS sky_id FROM profiles p JOIN sky_ids s ON s.id = p.sky_id WHERE p.is_admin');
+  let n = 0;
+  for (const row of rows) n += await sessionStore.revokeAllForUser(row.sky_id);
+  return n;
+};
+
+/**
+ * Аварийный режим, включённый самой системой, а не администратором —
+ * единственный путь, идущий не через setLockdown(), которая намеренно
+ * требует actorId живого владельца (см. выше). Вызывается только из
+ * server/breach.mjs при обнаружении вероятного подбора пароля/TOTP
+ * администраторского аккаунта: там нет «включающего» человека, и
+ * требовать его означало бы, что автоматика вообще не может сработать.
+ * actorId в журнале остаётся пустым — видно, что решение не чьё-то.
+ */
+export const setLockdownSystem = async (reason) => {
+  await query(
+    `UPDATE admin_lockdown SET active = TRUE, reason = $1, set_by = NULL, set_at = now()
+      WHERE id`, [String(reason ?? '').slice(0, 300)]);
+  const revoked = await revokeAllAdminSessions();
+  await logAdmin({ actorId: null, type: 'auto_lockdown', targetType: 'system',
+    detail: `${String(reason ?? '').slice(0, 250)} · сессий закрыто: ${revoked}` });
+  return { ...(await lockdownState()) };
+};
+
 /* ─── Два ключа: действие подтверждает владелец ────────────────────── */
 
 /**

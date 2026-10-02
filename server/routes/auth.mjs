@@ -19,6 +19,7 @@ import { buildRefreshCookie, clearRefreshCookie } from './../cookies.mjs';
 import { json, parseBody, readRefreshToken, readSession, appBody, deviceMeta } from './../http.mjs';
 import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../verification.mjs';
 import { sendEmail } from './../notify.mjs';
+import { noteAdminBreachSignal } from './../breach.mjs';
 import {
   ensureSkyId, ensureSkyIdByEmail, findSkyIdById, publicSkyId, listProfiles,
   getProfileOfSkyId, verifySkyTwoFactor, sendTwoFactorCode,
@@ -322,7 +323,13 @@ export const authRoutes = async (req, res, url) => {
     }
 
     const check = await verifySkyTwoFactor(payload.sub, body.code);
-    if (check.error) return json(res, check.error === 'too_many_attempts' ? 429 : 401, { error: check.error });
+    if (check.error) {
+      if (check.error === 'too_many_attempts') {
+        noteAdminBreachSignal(payload.sub, 'totp')
+          .catch((err) => console.error('[auth] сигнал о взломе администратора:', err.message));
+      }
+      return json(res, check.error === 'too_many_attempts' ? 429 : 401, { error: check.error });
+    }
 
     const skyId = await findSkyIdById(payload.sub);
     if (!skyId) return json(res, 401, { error: 'unauthorized' });
