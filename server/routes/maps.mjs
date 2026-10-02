@@ -18,7 +18,7 @@
  * где курьер — приходит другими ручками, и права там свои.
  */
 import { json, parseBody, requireProfile, readSession } from './../http.mjs';
-import { ticketFromCookies } from './../marketticket.mjs';
+import { ticketFromCookies, readTicket } from './../marketticket.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { mapsSettings, geocode, fetchStaticMap } from './../maps.mjs';
 
@@ -30,6 +30,8 @@ export const mapsRoutes = async (req, res, url) => {
   const path = url.split('?')[0];
   if (!path.startsWith('/api/maps')) return false;
 
+  const params = new URL(req.url, 'http://x').searchParams;
+
   /* Картинку карты браузер тянет тегом <img>. Пропуск здесь только
      говорит, чей это запрос: нарисовать можно лишь те точки, что
      прислали, а чужих координат отсюда не достать. */
@@ -38,7 +40,7 @@ export const mapsRoutes = async (req, res, url) => {
   let me;
   if (isPicture) {
     const got = await readSession(req);
-    me = got?.profileId ?? ticketFromCookies(req.headers.cookie);
+    me = got?.profileId ?? ticketFromCookies(req.headers.cookie) ?? readTicket(params.get('t'));
     if (!me) return json(res, 401, { error: 'unauthorized' });
   } else {
     const session = await requireProfile(req, res);
@@ -66,7 +68,6 @@ export const mapsRoutes = async (req, res, url) => {
     if (!rateLimit(`mp:i:${me}`, STILL_PER_MIN)) {
       return json(res, 429, { error: 'too_many_requests' });
     }
-    const params = new URL(req.url, 'http://x').searchParams;
     /* Точки приходят строкой «широта,долгота,вид;…»: разбирается она
        здесь, и в запрос к Google уходят только числа. */
     const points = [];

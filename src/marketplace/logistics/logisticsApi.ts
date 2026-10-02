@@ -12,7 +12,9 @@
  *   · код пропуска в обход склада — сканирование всегда привязано к
  *     тому складу, на котором стоит сканирующий.
  */
-import { apiCall, getAccessToken } from '@/core/auth/api';
+import { apiCall, getAccessToken, uploadUrl } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
+import { getMarketMediaTicket } from '../marketApi';
 import type {
   Courier, CourierReview, CollabRequest, CollabStatus, CourierChatMessage,
   CourierAssignment, DeliveryNotification, CourierStatus,
@@ -209,8 +211,20 @@ export const apiUpdateWarehouse = (id: string, input: Partial<Warehouse>) =>
 export const apiDeleteWarehouse = (id: string) =>
   del<{ ok: true }>(`/api/logistics/warehouses/${enc(id)}`);
 
-/** Адрес фотографии. Путей на диске клиент не знает и знать не должен. */
-export const warehousePhotoUrl = (photoId: string) => `/api/logistics/photos/${enc(photoId)}`;
+/**
+ * Адрес фотографии. Путей на диске клиент не знает и знать не должен.
+ *
+ * Тег <img> заголовок авторизации не отправляет — в родном приложении
+ * (страница и API на разных origin, кука SameSite=Strict туда не
+ * доедет) вместо неё в адрес подставляется пропуск, полученный при
+ * входе в маркет (см. marketApi.ts::getMarketMediaTicket).
+ */
+export const warehousePhotoUrl = (photoId: string) => {
+  const url = uploadUrl(`/api/logistics/photos/${enc(photoId)}`);
+  const ticket = getMarketMediaTicket();
+  if (!NATIVE_APP || !ticket) return url;
+  return `${url}?t=${encodeURIComponent(ticket)}`;
+};
 
 export const apiUploadWarehousePhoto = (warehouseId: string, file: Blob) =>
   apiCall<{ ok: true; photoId: string }>(`/api/logistics/warehouses/${enc(warehouseId)}/photos`,

@@ -6,7 +6,9 @@
  * превращает тоже он. В браузер ключ не попадает ни разу — значит его
  * нельзя ни прочитать из разметки, ни унести вместе со страницей.
  */
-import { apiCall } from '@/core/auth/api';
+import { apiCall, uploadUrl } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
+import { getMarketMediaTicket } from '../marketApi';
 import type { GeoPoint } from './types';
 
 /** Что умеет сервер по части карт. Пусто — карт нет, и это так и пишется. */
@@ -60,7 +62,12 @@ export const mapStillUrl = (
   if (zoom !== undefined) params.set('zoom', String(Math.round(zoom)));
   params.set('w', String(Math.round(width)));
   params.set('h', String(Math.round(height)));
-  return `/api/maps/still?${params}`;
+  /* Тег <img> заголовок авторизации не отправляет — в родном приложении
+     вместо него в адрес подставляется пропуск маркета (пропуск общий
+     на market/logistics/maps, см. marketApi.ts::getMarketMediaTicket). */
+  const ticket = NATIVE_APP ? getMarketMediaTicket() : null;
+  if (ticket) params.set('t', ticket);
+  return uploadUrl(`/api/maps/still?${params}`);
 };
 
 /** Настоящая ли это точка. Ноль-ноль в Гвинейском заливе — это «не задано». */

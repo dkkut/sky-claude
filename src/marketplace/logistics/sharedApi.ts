@@ -11,7 +11,9 @@
  *   · цена ячейки при аренде — её считает сервер по своей базе;
  *   · своя роль на складе — она берётся из базы.
  */
-import { apiCall } from '@/core/auth/api';
+import { apiCall, uploadUrl } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
+import { getMarketMediaTicket } from '../marketApi';
 
 const enc = encodeURIComponent;
 const post = <T>(path: string, body: unknown = {}) =>
@@ -64,8 +66,20 @@ export interface VideoReview {
 export const apiVideoReview = (warehouseId: string) =>
   apiCall<{ review: VideoReview | null }>(`/api/logistics/video/warehouse/${enc(warehouseId)}`);
 
-/** Адрес самой записи. Смотреть её вправе владелец объекта и администрация. */
-export const videoUrl = (reviewId: string) => `/api/logistics/video/${enc(reviewId)}`;
+/**
+ * Адрес самой записи. Смотреть её вправе владелец объекта и администрация.
+ *
+ * Тег <video> заголовок авторизации не отправляет — в родном приложении
+ * вместо него в адрес подставляется пропуск маркета (см.
+ * marketApi.ts::getMarketMediaTicket): страница и API там на разных
+ * origin, и кука SameSite=Strict обратно попросту не доедет.
+ */
+export const videoUrl = (reviewId: string) => {
+  const url = uploadUrl(`/api/logistics/video/${enc(reviewId)}`);
+  const ticket = getMarketMediaTicket();
+  if (!NATIVE_APP || !ticket) return url;
+  return `${url}?t=${encodeURIComponent(ticket)}`;
+};
 
 /**
  * Загрузка обзора. Файл уходит телом запроса целиком, без обёртки: тип

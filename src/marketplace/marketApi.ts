@@ -12,7 +12,8 @@
  *     выбирает машина переходов;
  *   · трек-номер и состояние посылки — их приносит перевозчик.
  */
-import { apiCall } from '@/core/auth/api';
+import { apiCall, uploadUrl } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
 import type {
   Product, Review, Seller, SellerStats, Order, OrderEvent, OrderAction,
   Game, PickupPoint, Carrier, Shipment, DealChat, ChatMessage,
@@ -63,28 +64,46 @@ export const apiProduct = (id: string) =>
 export const apiProductReviews = (id: string, limit = 50) =>
   apiCall<{ reviews: Review[] }>(`/api/market/products/${enc(id)}/reviews${q({ limit })}`);
 
-/** Адрес картинки. Собирается здесь, потому что путей на диске клиенту не отдают. */
-export const marketImageUrl = (imageId: string) => `/api/market/images/${enc(imageId)}`;
-export const sellerAvatarUrl = (sellerId: string) => `/api/market/sellers/${enc(sellerId)}/avatar`;
-
 /**
- * Пропуск для картинок.
+ * Пропуск для картинок маркета.
  *
  * Тег <img> заголовок авторизации отправить не умеет: адрес в src
  * браузер тянет сам. Без пропуска каждая картинка маркета получала в
  * ответ 401, срабатывала подстановка «не загрузилась», и витрина стояла
  * с серыми прямоугольниками вместо товара.
  *
- * Сервер в ответ кладёт короткую куку. Правами она не распоряжается:
- * снятый с витрины чужой товар по ней не откроется так же, как не
- * открывался по токену.
+ * В обычном браузере пропуск едет курьером в куке, но в родном
+ * приложении страница и API — разные origin, а кука SameSite=Strict
+ * туда попросту не доедет. Поэтому там же пропуск подставляется в адрес
+ * строкой (?t=), и адрес становится абсолютным (uploadUrl) — иначе
+ * относительный путь резолвился бы не туда, а в свой пустой origin.
  */
+let mediaTicket: string | null = null;
+
+/**
+ * Тот же пропуск нужен и логистике, и картам (server/marketticket.mjs
+ * выдаёт один пропуск сразу на все три пути) — поэтому его можно
+ * забрать отсюда, не выпрашивая заново.
+ */
+export const getMarketMediaTicket = () => mediaTicket;
+
+const withMediaTicket = (path: string) => {
+  const url = uploadUrl(path);
+  if (!NATIVE_APP || !mediaTicket) return url;
+  return `${url}?t=${encodeURIComponent(mediaTicket)}`;
+};
+
+/** Адрес картинки. Собирается здесь, потому что путей на диске клиенту не отдают. */
+export const marketImageUrl = (imageId: string) => withMediaTicket(`/api/market/images/${enc(imageId)}`);
+export const sellerAvatarUrl = (sellerId: string) => withMediaTicket(`/api/market/sellers/${enc(sellerId)}/avatar`);
+
 export const apiMarketTicket = async () => {
-  const r = await apiCall('/api/market/ticket', { method: 'POST', body: '{}' });
+  const r = await apiCall<{ ticket?: string }>('/api/market/ticket', { method: 'POST', body: '{}' });
+  if (r.ok && r.data?.ticket) mediaTicket = r.data.ticket;
   return r.ok;
 };
-export const productLogoUrl = (productId: string) => `/api/market/products/${enc(productId)}/logo`;
-export const gameCoverUrl = (gameId: string) => `/api/market/games/${enc(gameId)}/cover`;
+export const productLogoUrl = (productId: string) => withMediaTicket(`/api/market/products/${enc(productId)}/logo`);
+export const gameCoverUrl = (gameId: string) => withMediaTicket(`/api/market/games/${enc(gameId)}/cover`);
 
 /* ─── Избранное ───────────────────────────────────────────────────── */
 

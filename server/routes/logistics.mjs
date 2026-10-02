@@ -16,7 +16,7 @@
  */
 import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession } from './../http.mjs';
-import { ticketFromCookies } from './../marketticket.mjs';
+import { ticketFromCookies, readTicket } from './../marketticket.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   registerCourier, updateCourier, myCourier, setCourierPresence,
@@ -225,7 +225,7 @@ export const logisticsRoutes = async (req, res, url) => {
   let me;
   if (isPicture) {
     const session = await readSession(req);
-    me = session?.profileId ?? ticketFromCookies(req.headers.cookie);
+    me = session?.profileId ?? ticketFromCookies(req.headers.cookie) ?? readTicket(params.get('t'));
     if (!me) return json(res, 401, { error: 'unauthorized' });
   } else {
     const session = await requireProfile(req, res);

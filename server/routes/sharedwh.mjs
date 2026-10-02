@@ -19,7 +19,7 @@
  */
 import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession } from './../http.mjs';
-import { ticketFromCookies } from './../marketticket.mjs';
+import { ticketFromCookies, readTicket } from './../marketticket.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   DOC_CODES, readDocument, acceptDocument, acceptanceState,
@@ -211,7 +211,7 @@ export const sharedWarehouseRoutes = async (req, res, url) => {
   let me;
   if (isVideo) {
     const got = await readSession(req);
-    me = got?.profileId ?? ticketFromCookies(req.headers.cookie);
+    me = got?.profileId ?? ticketFromCookies(req.headers.cookie) ?? readTicket(params.get('t'));
     if (!me) return json(res, 401, { error: 'unauthorized' });
   } else {
     const session = await requireProfile(req, res);

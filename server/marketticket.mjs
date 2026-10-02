@@ -81,8 +81,9 @@ export const readTicket = (raw) => {
  */
 const PATHS = ['/api/market', '/api/logistics', '/api/maps'];
 
-export const ticketCookies = (profileId) => {
-  const value = issueTicket(profileId);
+/** Тикет можно передать готовым — см. musicticket.mjs::ticketCookie. */
+export const ticketCookies = (profileId, ticket = issueTicket(profileId)) => {
+  const value = ticket;
   return PATHS.map((path) => {
     const parts = [
       `${COOKIE}=${value}`,

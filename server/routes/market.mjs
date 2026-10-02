@@ -22,8 +22,8 @@
  * нет в Sky.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession } from './../http.mjs';
-import { ticketCookies, ticketFromCookies } from './../marketticket.mjs';
+import { json, parseBody, requireProfile, readSession, appBody } from './../http.mjs';
+import { ticketCookies, ticketFromCookies, issueTicket, readTicket } from './../marketticket.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { can } from './../admin.mjs';
 import {
@@ -290,7 +290,10 @@ export const marketRoutes = async (req, res, url) => {
   let me;
   if (isPicture) {
     const session = await readSession(req);
-    me = session?.profileId ?? ticketFromCookies(req.headers.cookie);
+    // Родное приложение — другой origin, SameSite=Strict-кука туда не
+    // дойдёт обратно, поэтому тот же пропуск ищем ещё и в ?t= (см.
+    // musicticket.mjs — тот же приём).
+    me = session?.profileId ?? ticketFromCookies(req.headers.cookie) ?? readTicket(params.get('t'));
     if (!me) return json(res, 401, { error: 'unauthorized' });
   } else {
     const session = await requireProfile(req, res);
@@ -304,8 +307,9 @@ export const marketRoutes = async (req, res, url) => {
   /* Пропуск выдаётся отдельной ручкой: клиент просит его один раз при
      открытии маркета, обычным запросом с токеном. */
   if (req.method === 'POST' && path === '/api/market/ticket') {
-    res.setHeader('Set-Cookie', ticketCookies(me));
-    return json(res, 200, { ok: true });
+    const ticket = issueTicket(me);
+    res.setHeader('Set-Cookie', ticketCookies(me, ticket));
+    return json(res, 200, appBody(req, { ok: true }, { ticket }));
   }
 
   /* ══ Что умеет сервер ═══════════════════════════════════════════
