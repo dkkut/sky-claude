@@ -220,10 +220,22 @@ const server = http.createServer(async (req, res) => {
      * тоже есть — случайный токен участника, который сверяется на
      * сервере constant-time сравнением; без него запрос ничего не
      * находит и ничего не считает.
+     *
+     * KutRent Market — отдельный сайт-партнёр на своём домене
+     * (market.kutrent.online), и это не послабление, а другой домен:
+     * кука с ключом беты Sky живёт на боевом домене Sky и сюда прийти
+     * не может, а экрана для ввода этого ключа на сайте партнёра нет и
+     * не должно быть — это чужой сайт, а не часть Sky. У него своя
+     * калитка (простой клиентский ключ на самом market-site) и своя
+     * настоящая проверка личности — вход только через Sky ID
+     * (requireProfile в /sso/start, одноразовый токен в /sso/consume),
+     * так что беспроверочно открытым для анонимного POST'а /api/kutrent-
+     * market/ всё равно не остаётся.
      */
     const isBotApi = url.startsWith('/api/bots/rt/');
     const isCampaignClick = /^\/api\/campaigns\/r\//.test(url);
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !betaAllowed(req)) {
+    const isKutrentMarket = url.startsWith('/api/kutrent-market/');
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
