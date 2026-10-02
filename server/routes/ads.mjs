@@ -10,7 +10,7 @@
  * маршрутизация, лимиты запросов и запись в уже существующий admin_log.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, appBody } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   PLACEMENT_KEYS, createCampaign, myCampaigns, campaignDetail,
@@ -20,7 +20,7 @@ import {
 } from './../ads.mjs';
 import { saveStream, openStream, sizeOf, newMediaId } from './../adstore.mjs';
 import { parseRange } from './../skyvideostore.mjs';
-import { ticketCookie, ticketFromCookies } from './../adticket.mjs';
+import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../adticket.mjs';
 import { logAdmin } from './../adminsec.mjs';
 
 const READ_PER_MIN = 120;
@@ -147,7 +147,7 @@ export const adsRoutes = async (req, res, url) => {
   let me;
   if (isMedia) {
     const session = await readSession(req);
-    me = session?.profileId ?? ticketFromCookies(req.headers.cookie);
+    me = session?.profileId ?? ticketFromCookies(req.headers.cookie) ?? readTicket(params.get('t'));
     if (!me) return json(res, 401, { error: 'unauthorized' });
     if (!rateLimit(`ads:stream:${me}`, STREAM_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     return streamMedia(req, res, mediaMatch[1]);
@@ -158,8 +158,9 @@ export const adsRoutes = async (req, res, url) => {
   me = session.profileId;
 
   if (req.method === 'POST' && path === '/api/ads/ticket') {
-    res.setHeader('Set-Cookie', ticketCookie(me));
-    return json(res, 200, { ok: true });
+    const ticket = issueTicket(me);
+    res.setHeader('Set-Cookie', ticketCookie(me, ticket));
+    return json(res, 200, appBody(req, { ok: true }, { ticket }));
   }
 
   if (req.method === 'POST' && path === '/api/ads/media') {

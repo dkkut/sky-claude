@@ -5,16 +5,31 @@
    человеку, регион, Prime, статус кампании — решает только сервер.
    Этот файл только зовёт ручки и приводит ответ к клиентским типам.
 =============================================================== */
-import { apiCall } from '@/core/auth/api';
+import { apiCall, uploadUrl } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
 import type { AdCampaign, AdPlacement, AdFormat } from './store';
 
-/** Тег <img>/<video> не шлёт Authorization — сервер узнаёт по куке. */
+/**
+ * Тег <img>/<video> не шлёт Authorization — сервер узнаёт по куке.
+ *
+ * В родном приложении страница и API — разные origin, и кука
+ * SameSite=Strict туда не доедет. Поэтому там же пропуск подставляется
+ * в адрес строкой (?t=), а адрес становится абсолютным (uploadUrl) —
+ * см. musicApi.ts::withMediaTicket, тот же приём.
+ */
+let mediaTicket: string | null = null;
+
 export const apiAdsTicket = async () => {
-  const r = await apiCall('/api/ads/ticket', { method: 'POST', body: '{}' });
+  const r = await apiCall<{ ticket?: string }>('/api/ads/ticket', { method: 'POST', body: '{}' });
+  if (r.ok && r.data?.ticket) mediaTicket = r.data.ticket;
   return r.ok;
 };
 
-export const adMediaUrl = (mediaId: string) => `/api/ads/media/${encodeURIComponent(mediaId)}`;
+export const adMediaUrl = (mediaId: string) => {
+  const url = uploadUrl(`/api/ads/media/${encodeURIComponent(mediaId)}`);
+  if (!NATIVE_APP || !mediaTicket) return url;
+  return `${url}?t=${encodeURIComponent(mediaTicket)}`;
+};
 
 export interface UploadedAdMedia { mediaId: string; mime: string; kind: 'image' | 'video'; bytes: number }
 
