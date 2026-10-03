@@ -24,6 +24,7 @@ import {
 } from './../kutrentmarket.mjs';
 import { documentMeta, readDocument, acceptDocument, hasAccepted } from './../agreements.mjs';
 import { rateLimit } from './../security.mjs';
+import { createTicket } from './../support.mjs';
 
 const KRM_COOKIE = 'krm_sid';
 
@@ -179,6 +180,34 @@ export const kutrentMarketRoutes = async (req, res, url) => {
 
     if (req.method === 'GET' && url === '/api/kutrent-market/orders') {
       return json(res, 200, { orders: await listOrders(me.id) });
+    }
+
+    /*
+     * Обращение в поддержку — то же самое support.mjs, что и у
+     * основного сайта (server/support.mjs, админ-очередь AdminQueue).
+     * Ticket ложится по me.profile_id — одна линия поддержки на весь
+     * Sky ID, а не отдельная для Market: раньше здесь был клиентский
+     * стаб без серверного приёмника (см. market-site/app.js), который
+     * просто показывал «спасибо» и ничего никуда не отправлял.
+     */
+    if (req.method === 'POST' && url === '/api/kutrent-market/support') {
+      if (!rateLimit(`krm:support:${me.profile_id}`, 10)) return json(res, 429, { error: 'rate_limited' });
+      const body = await parseBody(req);
+      const text = String(body?.text ?? '').trim();
+      if (!text) return json(res, 400, { error: 'empty' });
+
+      let note = '';
+      if (body?.orderId) {
+        const order = await getOrder(me.id, String(body.orderId));
+        if (!order) return json(res, 404, { error: 'not_found' });
+        note = `Заказ #${order.id} · ${order.amount} ₽ · ${order.status} · ${order.createdAt}\n\n`;
+      }
+
+      const result = await createTicket(me.profile_id, {
+        subject: 'KutRent Market', body: note + text, kind: 'report',
+      });
+      if (result.error) return json(res, 400, result);
+      return json(res, 201, { ok: true, ticketId: result.ticket.id });
     }
 
     return json(res, 404, { error: 'not_found' });

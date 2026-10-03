@@ -9,10 +9,11 @@
      раньше в этом файле был MOCK-объект и localStorage, удалено:
      сервер — единственный источник правды.
 
-     Поддержка (форма «Проблема с операцией?») и калитка беты —
-     единственное, что осталось клиентским: у формы поддержки нет
-     серверного приёмника (не входило в задачу), а калитка — тот же
-     самый простой клиентский ключ, что был в макете, не более.
+     Поддержка (форма «Проблема с операцией?») уходит в ту же очередь
+     обращений, что и у основного сайта (/api/kutrent-market/support →
+     server/support.mjs, одна линия поддержки на весь Sky ID). Калитка
+     беты — единственное, что осталось чисто клиентским: тот же самый
+     простой ключ, что был в макете, не более.
      ============================================================ */
 
   function el(sel) { return document.querySelector(sel); }
@@ -369,8 +370,15 @@
     });
   }
 
-  /* ============ Support (клиентская заглушка — нет серверного приёмника) ============ */
+  /* ============ Support ============
+     Тикет уходит в server/support.mjs — ту же очередь (AdminQueue),
+     что и обращения с основного сайта Sky: одна линия поддержки на
+     весь Sky ID, не отдельная для Market. Вход обязателен — тикет
+     пишется на profile_id, а анонимного обращения без Sky ID быть не
+     может (как и раньше у остального на этой странице). */
+  var currentSupportOrder = null;
   function openSupport(order) {
+    currentSupportOrder = order || null;
     var attach = el("#support-attach");
     if (order) {
       attach.innerHTML =
@@ -382,13 +390,32 @@
       attach.innerHTML = '<p class="hint">Опишите проблему — при необходимости уточним детали операции отдельно.</p>';
     }
     el("#support-text").value = "";
+    if (!me) {
+      openOverlay("overlay-support");
+      toast("Войдите через Sky ID, чтобы отправить обращение");
+      return;
+    }
     openOverlay("overlay-support");
   }
   el("#support-submit").addEventListener("click", function () {
     var text = el("#support-text").value.trim();
     if (!text) { toast("Опишите проблему"); return; }
-    closeOverlay("overlay-support");
-    toast("Спасибо, обращение записано");
+    if (!me) {
+      closeOverlay("overlay-support");
+      skyLoginUrl().then(function (url) { if (url) window.location.href = url; });
+      return;
+    }
+    var btn = el("#support-submit");
+    btn.disabled = true;
+    api("/support", {
+      method: "POST",
+      body: { text: text, orderId: currentSupportOrder ? currentSupportOrder.id : undefined },
+    }).then(function (r) {
+      btn.disabled = false;
+      if (!r.ok) { toast("Не получилось отправить — попробуйте ещё раз"); return; }
+      closeOverlay("overlay-support");
+      toast("Обращение отправлено в поддержку Sky");
+    });
   });
 
   /* ============ Profile (настоящий вход через Sky ID) ============ */
