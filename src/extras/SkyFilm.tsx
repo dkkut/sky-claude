@@ -26,6 +26,7 @@ import {
   SkipForward, Bookmark, BookmarkCheck, Info,
   Tv, TrendingUp, Award, Layers, Download, CheckCircle, Upload, Image as ImageIcon,
   Plus, Crown, ShieldAlert, ShieldCheck, Cloud, Zap, AlertTriangle, Lock, History, Music2, Users,
+  Share2,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { saveDownload, isDownloaded } from '@/offline/offlineDB';
@@ -35,6 +36,7 @@ import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
 import type { IconComponent } from '@/shared/icon';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
 import { useFilmStore } from '@/film/serverStore';
+import { ShareDialog } from '@/storage/ShareDialog';
 import { sendTogether, type PlayerHandle } from '@/together/togetherState';
 import { useTogetherSync } from '@/together/useTogetherSync';
 import {
@@ -927,6 +929,7 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
   const cancelRef = useRef<(() => void) | null>(null);
   const vRef   = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
+  const [sharingId, setSharingId] = useState<string | null>(null);
 
   /* Ссылка на предпросмотр постера — временная, и её надо отпускать:
      иначе каждый выбранный файл остаётся висеть в памяти вкладки. */
@@ -1093,6 +1096,12 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
                   )}
                 </div>
               </button>
+              {m.status === 'private' && (
+                <button type="button" onClick={() => setSharingId(m.id)}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-white/5">
+                  <Share2 size={14} style={{ color: K.dim }}/>
+                </button>
+              )}
               <button type="button" onClick={() => void removeMovie(m.id)}
                 className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-red-500/10">
                 <X size={14} style={{ color:'var(--red)' }}/>
@@ -1105,6 +1114,12 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
           <Lock size={34} style={{ color: K.dim }} />
           <p className="text-sm" style={{ color: K.sub }}>В коллекции пока пусто</p>
         </div>
+      )}
+
+      {sharingId && (
+        <ShareDialog kind="movie" fileId={sharingId}
+          title={mine.find(m => m.id === sharingId)?.title ?? ''}
+          onClose={() => setSharingId(null)} />
       )}
     </div>
   );

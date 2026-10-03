@@ -612,6 +612,8 @@ const handle = (data: any) => {
     case 'together-settings':
     case 'together-invited':
     case 'together-error':
+    case 'together-chat':
+    case 'together-chat-error':
       receiveTogether(type, payload);
       break;
 

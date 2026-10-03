@@ -21,22 +21,25 @@
  *     того, что он ответил;
  *   · плеера — оба берутся из своих модулей.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Users, Film, Music2, Plus, Search, X, Check, LogOut, Crown,
-  Clock, ChevronLeft, UserPlus, Trash2, Settings2,
+  Clock, ChevronLeft, UserPlus, Trash2, Settings2, MessageCircle,
+  SendHorizontal, KeyRound, Copy, RefreshCw,
 } from 'lucide-react';
+import { useAuthStore } from '@/core/auth/store';
 import { useFilmStore } from '@/film/serverStore';
 import { Player as FilmPlayer } from '@/extras/SkyFilm';
 import { apiTracks } from '@/music/musicApi';
 import { apiMovie, type ServerMovie } from '@/film/filmApi';
-import { useTogetherStore } from './togetherState';
+import { useTogetherStore, sendRoomMessage } from './togetherState';
 import { ListenTogether } from './ListenTogether';
 import {
   apiTogetherCreate, apiTogetherInvite, apiTogetherJoin, apiTogetherLeave,
   apiTogetherEnd, apiTogetherAnswer, apiTogetherRemove, apiTogetherSettings,
   apiTogetherLimits, apiFindPeople, explainTogether,
+  apiTogetherJoinCode, apiTogetherRevokeJoinCode, apiTogetherRedeemJoinCode,
   type TogetherSession, type ContentKind, type SessionType, type Limits,
 } from './togetherApi';
 
@@ -272,14 +275,202 @@ const CreateForm = ({ limits, onDone, onCancel }: {
   );
 };
 
+/* ─── Чат комнаты ────────────────────────────────────────────────── */
+
+/**
+ * Не замена Sky Messenger — переписка здесь живёт только внутри
+ * сеанса, и видна только тем, кто сейчас в нём. История подгружается
+ * по HTTP при открытии, новые сообщения приходят по сокету (see
+ * receiveTogether → 'together-chat').
+ */
+const ChatPanel = ({ sessionId, myId }: { sessionId: string; myId?: string }) => {
+  const messages = useTogetherStore(s => s.messages);
+  const refreshMessages = useTogetherStore(s => s.refreshMessages);
+  const participants = useTogetherStore(s => s.participants);
+  const [text, setText] = useState('');
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { void refreshMessages(sessionId); }, [sessionId, refreshMessages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }); }, [messages.length]);
+
+  const nameOf = (id: string) => participants.find(p => p.id === id)?.name ?? 'Участник';
+
+  const send = () => {
+    const body = text.trim();
+    if (!body) return;
+    sendRoomMessage(sessionId, body);
+    setText('');
+  };
+
+  return (
+    <div className="flex flex-1 min-h-0 flex-col">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {messages.length === 0 && (
+          <p className="text-center text-[11px] py-6" style={{ color: 'var(--t3)' }}>
+            Сообщений пока нет.
+          </p>
+        )}
+        {messages.map(m => (
+          <div key={m.id} data-tg-msg={m.id}
+            className="rounded-xl px-2.5 py-1.5"
+            style={{ background: m.senderId === myId ? 'var(--accent-bg)' : 'var(--bg-l2)' }}>
+            {m.senderId !== myId && (
+              <p className="text-[10px] font-semibold" style={{ color: 'var(--accent)' }}>
+                {nameOf(m.senderId)}
+              </p>
+            )}
+            <p className="text-xs break-words" style={{ color: 'var(--t1)' }}>{m.text}</p>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+      <div className="flex items-center gap-2 border-t p-2.5" style={{ borderColor: 'var(--border)' }}>
+        <input value={text} onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') send(); }}
+          placeholder="Сообщение…" data-tg-chat-input maxLength={1000}
+          className="flex-1 rounded-2xl px-3 py-2 text-xs text-white outline-none"
+          style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }} />
+        <button type="button" onClick={send} data-tg-chat-send disabled={!text.trim()}
+          className="rounded-xl p-2 disabled:opacity-30" style={{ background: 'var(--accent)' }}>
+          <SendHorizontal size={14} className="text-white" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ─── TV-код: показать владельцу, ввести гостю ──────────────────── */
+
+/** Владелец заказывает код и показывает его крупно — набирают с другого устройства. */
+const JoinCodePanel = ({ sessionId }: { sessionId: string }) => {
+  const [code, setCode] = useState<string | null>(null);
+  const [left, setLeft] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (left <= 0) return;
+    const t = window.setInterval(() => setLeft(v => Math.max(0, v - 1)), 1000);
+    return () => clearInterval(t);
+  }, [left]);
+
+  const create = async () => {
+    setBusy(true);
+    const r = await apiTogetherJoinCode(sessionId);
+    setBusy(false);
+    if (r.ok && r.data) { setCode(r.data.code); setLeft(r.data.expiresInSec); }
+  };
+
+  const revoke = async () => {
+    await apiTogetherRevokeJoinCode(sessionId);
+    setCode(null); setLeft(0);
+  };
+
+  const copy = () => {
+    if (!code) return;
+    void navigator.clipboard?.writeText(code).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  if (!code || left <= 0) {
+    return (
+      <button type="button" onClick={create} disabled={busy} data-tg-make-code
+        className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
+        style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t2)' }}>
+        <KeyRound size={13} />
+        {busy ? 'Создаю…' : 'Код для входа с другого устройства'}
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-xl p-3 space-y-2" data-tg-code-panel
+      style={{ background: 'var(--bg-l2)', border: '1px solid var(--accent-bg)' }}>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px]" style={{ color: 'var(--t3)' }}>
+          Действует {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
+        </p>
+        <div className="flex gap-1">
+          <button type="button" onClick={copy} data-tg-code-copy style={{ color: 'var(--t3)' }}>
+            <Copy size={13} />
+          </button>
+          <button type="button" onClick={create} data-tg-code-refresh style={{ color: 'var(--t3)' }}>
+            <RefreshCw size={13} />
+          </button>
+          <button type="button" onClick={revoke} data-tg-code-revoke style={{ color: 'var(--red)' }}>
+            <X size={13} />
+          </button>
+        </div>
+      </div>
+      <p className="text-center text-2xl font-bold tracking-[0.3em]" data-tg-code-value style={{ color: 'var(--accent)' }}>
+        {code}
+      </p>
+      {copied && <p className="text-center text-[10px]" style={{ color: 'var(--t3)' }}>Скопировано</p>}
+      <p className="text-[10px]" style={{ color: 'var(--t3)' }}>
+        Ввести на другом устройстве, чтобы присоединиться — без приглашения по имени.
+      </p>
+    </div>
+  );
+};
+
+/** Вход гостя по коду — отдельное маленькое окно на главном экране вкладки. */
+const JoinByCode = ({ onJoined, onCancel }: {
+  onJoined: (s: TogetherSession) => void;
+  onCancel: () => void;
+}) => {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    const digits = code.trim();
+    if (digits.length !== 6) { setError('Код — это 6 цифр.'); return; }
+    setBusy(true); setError(null);
+    const r = await apiTogetherRedeemJoinCode(digits);
+    setBusy(false);
+    if (!r.ok || !r.data) { setError(explainTogether(r.error)); return; }
+    onJoined(r.data.session);
+  };
+
+  return (
+    <div className="rounded-xl p-4 space-y-3" data-tg-join-code-form
+      style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
+      <p className="font-semibold text-white">Войти по коду</p>
+      <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+        onKeyDown={e => { if (e.key === 'Enter') void submit(); }}
+        placeholder="000000" inputMode="numeric" data-tg-join-code-input
+        className="w-full rounded-2xl px-4 py-3 text-center text-xl tracking-[0.3em] text-white outline-none"
+        style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }} />
+      {error && <p className="text-xs" style={{ color: 'var(--red)' }} data-tg-join-code-error>{error}</p>}
+      <div className="flex gap-2">
+        <button type="button" onClick={onCancel}
+          className="flex-1 rounded-2xl py-2.5 text-sm" style={{ background: 'var(--border)', color: 'var(--t2)' }}>
+          Отмена
+        </button>
+        <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={submit} disabled={busy}
+          data-tg-join-code-submit
+          className="flex-1 rounded-2xl py-2.5 text-sm font-bold text-white disabled:opacity-40"
+          style={{ background: 'var(--accent)' }}>
+          {busy ? 'Вхожу…' : 'Войти'}
+        </motion.button>
+      </div>
+    </div>
+  );
+};
+
 /* ─── Боковая колонка сессии: кто внутри ────────────────────────── */
 
-const SidePanel = ({ session, onChanged }: { session: TogetherSession; onChanged: () => void }) => {
+const SidePanel = ({ session, myId, onChanged }: {
+  session: TogetherSession; myId?: string; onChanged: () => void;
+}) => {
   const participants = useTogetherStore(s => s.participants);
   const refreshParticipants = useTogetherStore(s => s.refreshParticipants);
   const [adding, setAdding] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [note, setNote] = useState<string | null>(null);
+  const [tab, setTab] = useState<'people' | 'chat'>('people');
 
   const invite = async () => {
     if (!people.length) return;
@@ -312,56 +503,75 @@ const SidePanel = ({ session, onChanged }: { session: TogetherSession; onChanged
   };
 
   return (
-    <div className="flex w-full max-h-[40vh] shrink-0 flex-col border-t sm:w-64 sm:max-h-none sm:border-l sm:border-t-0"
+    <div className="flex w-full max-h-[60vh] shrink-0 flex-col border-t sm:w-72 sm:max-h-none sm:border-l sm:border-t-0"
       style={{ borderColor: 'var(--border)' }}>
-      <div className="flex items-center justify-between border-b px-3 py-2.5" style={{ borderColor: 'var(--border)' }}>
-        <p className="text-sm font-medium text-white flex items-center gap-1.5">
-          <Users size={13} /> Участники
-        </p>
-        {session.isOwner && session.status !== 'ended' && (
+      <div className="flex items-center border-b" style={{ borderColor: 'var(--border)' }}>
+        {([['people', 'Участники', Users], ['chat', 'Чат', MessageCircle]] as const).map(([k, l, Icon]) => (
+          <button key={k} type="button" onClick={() => setTab(k)} data-tg-tab={k}
+            className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium"
+            style={{
+              color: tab === k ? 'var(--accent)' : 'var(--t3)',
+              borderBottom: tab === k ? '2px solid var(--accent)' : '2px solid transparent',
+            }}>
+            <Icon size={13} /> {l}
+          </button>
+        ))}
+        {session.isOwner && session.status !== 'ended' && tab === 'people' && (
           <button type="button" onClick={() => setAdding(v => !v)} data-tg-add
-            style={{ color: 'var(--accent)' }}><UserPlus size={15} /></button>
+            className="pr-3" style={{ color: 'var(--accent)' }}><UserPlus size={15} /></button>
         )}
       </div>
 
-      {adding && (
-        <div className="border-b p-3 space-y-2" style={{ borderColor: 'var(--border)' }}>
-          <PeoplePicker chosen={people} onChange={setPeople}
-            max={Math.max(1, session.maxParticipants - participants.length)} />
-          <button type="button" onClick={invite} data-tg-send-invite
-            className="w-full rounded-2xl py-2 text-sm font-medium text-white"
-            style={{ background: 'var(--accent)' }}>Позвать</button>
-        </div>
-      )}
-
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {participants.map(p => (
-          <div key={p.id} className="flex items-center gap-2" data-tg-part={p.id}>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold truncate" style={{ color: 'var(--t1)' }}>
-                {p.name}
-                {p.role === 'owner' && <Crown size={10} className="inline ml-1" style={{ color: 'var(--accent)' }} />}
-              </p>
-              <p className="text-[10px]" style={{ color: 'var(--t3)' }}>{label[p.status] ?? p.status}</p>
+      {tab === 'chat' ? (
+        <ChatPanel sessionId={session.id} myId={myId} />
+      ) : (
+        <>
+          {session.isOwner && session.status !== 'ended' && (
+            <div className="border-b p-3" style={{ borderColor: 'var(--border)' }}>
+              <JoinCodePanel sessionId={session.id} />
             </div>
-            {session.isOwner && p.role !== 'owner' && ['joined', 'invited'].includes(p.status) && (
-              <button type="button" onClick={() => drop(p.id)} data-tg-drop={p.id}
-                style={{ color: 'var(--t3)' }}><Trash2 size={12} /></button>
-            )}
+          )}
+
+          {adding && (
+            <div className="border-b p-3 space-y-2" style={{ borderColor: 'var(--border)' }}>
+              <PeoplePicker chosen={people} onChange={setPeople}
+                max={Math.max(1, session.maxParticipants - participants.length)} />
+              <button type="button" onClick={invite} data-tg-send-invite
+                className="w-full rounded-2xl py-2 text-sm font-medium text-white"
+                style={{ background: 'var(--accent)' }}>Позвать</button>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {participants.map(p => (
+              <div key={p.id} className="flex items-center gap-2" data-tg-part={p.id}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold truncate" style={{ color: 'var(--t1)' }}>
+                    {p.name}
+                    {p.role === 'owner' && <Crown size={10} className="inline ml-1" style={{ color: 'var(--accent)' }} />}
+                  </p>
+                  <p className="text-[10px]" style={{ color: 'var(--t3)' }}>{label[p.status] ?? p.status}</p>
+                </div>
+                {session.isOwner && p.role !== 'owner' && ['joined', 'invited'].includes(p.status) && (
+                  <button type="button" onClick={() => drop(p.id)} data-tg-drop={p.id}
+                    style={{ color: 'var(--t3)' }}><Trash2 size={12} /></button>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {session.isOwner && session.status !== 'ended' && (
-        <button type="button" onClick={toggleControl} data-tg-toggle-control
-          className="flex items-center gap-2 border-t px-3 py-2.5 text-left text-xs"
-          style={{ borderColor: 'var(--border)', color: 'var(--t2)' }}>
-          <Settings2 size={13} />
-          {session.control === 'all' ? 'Управляют все' : 'Управляет только владелец'}
-        </button>
+          {session.isOwner && session.status !== 'ended' && (
+            <button type="button" onClick={toggleControl} data-tg-toggle-control
+              className="flex items-center gap-2 border-t px-3 py-2.5 text-left text-xs"
+              style={{ borderColor: 'var(--border)', color: 'var(--t2)' }}>
+              <Settings2 size={13} />
+              {session.control === 'all' ? 'Управляют все' : 'Управляет только владелец'}
+            </button>
+          )}
+
+          {note && <p className="px-3 pb-2 text-[11px]" style={{ color: 'var(--t3)' }} data-tg-note>{note}</p>}
+        </>
       )}
-
-      {note && <p className="px-3 pb-2 text-[11px]" style={{ color: 'var(--t3)' }} data-tg-note>{note}</p>}
     </div>
   );
 };
@@ -374,6 +584,7 @@ const SessionScreen = ({ session, onClose }: { session: TogetherSession; onClose
      попадает сюда прямо из приглашения, формы не открывает — и без
      этого экран честно, но бессмысленно сообщал бы, что фильма нет. */
   const loadFilm = useFilmStore(s => s.load);
+  const myId = useAuthStore(s => s.currentUserId) ?? undefined;
   const refreshSession = useTogetherStore(s => s.refreshSession);
   const refreshParticipants = useTogetherStore(s => s.refreshParticipants);
   const participants = useTogetherStore(s => s.participants);
@@ -477,7 +688,7 @@ const SessionScreen = ({ session, onClose }: { session: TogetherSession; onClose
         )}
       </div>
 
-      <SidePanel session={session} onChanged={() => void refreshSession(session.id)} />
+      <SidePanel session={session} myId={myId} onChanged={() => void refreshSession(session.id)} />
     </div>
   );
 };
@@ -495,6 +706,7 @@ export const TogetherTab = () => {
   const close = useTogetherStore(s => s.close);
 
   const [creating, setCreating] = useState(false);
+  const [joiningByCode, setJoiningByCode] = useState(false);
   const [limits, setLimits] = useState<Limits | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -574,12 +786,22 @@ export const TogetherTab = () => {
       {creating ? (
         <CreateForm limits={limits} onCancel={() => setCreating(false)}
           onDone={(s) => { setCreating(false); void enter(s.id); void refreshList(); }} />
+      ) : joiningByCode ? (
+        <JoinByCode onCancel={() => setJoiningByCode(false)}
+          onJoined={(s) => { setJoiningByCode(false); setSession(s); void refreshList(); }} />
       ) : (
-        <button type="button" onClick={() => setCreating(true)} data-tg-new
-          className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium text-white"
-          style={{ background: 'var(--accent)' }}>
-          <Plus size={15} /> Создать сессию
-        </button>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setCreating(true)} data-tg-new
+            className="flex flex-1 items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium text-white"
+            style={{ background: 'var(--accent)' }}>
+            <Plus size={15} /> Создать сессию
+          </button>
+          <button type="button" onClick={() => setJoiningByCode(true)} data-tg-join-by-code
+            className="flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium"
+            style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)', color: 'var(--t2)' }}>
+            <KeyRound size={15} /> По коду
+          </button>
+        </div>
       )}
 
       {note && <p className="text-xs" style={{ color: 'var(--red)' }} data-tg-note>{note}</p>}

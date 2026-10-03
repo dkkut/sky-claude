@@ -158,6 +158,31 @@ export const apiFindPeople = (q: string) =>
   apiCall<{ people: { id: string; name: string; username: string }[] }>(
     `/api/directory/search?q=${encodeURIComponent(q)}`);
 
+/* ─── Чат комнаты ───────────────────────────────────────────────────
+   Отправка — только по сокету (sendRoomMessage в useTogetherSync),
+   здесь только история для только что открытого экрана. */
+
+export interface RoomMessage { id: string; senderId: string; text: string; createdAt: string }
+
+export const apiTogetherMessages = (sessionId: string) =>
+  apiCall<{ messages: RoomMessage[] }>(
+    `/api/together/session/${encodeURIComponent(sessionId)}/messages`);
+
+/* ─── TV-код ─────────────────────────────────────────────────────── */
+
+export const apiTogetherJoinCode = (sessionId: string) =>
+  apiCall<{ code: string; expiresInSec: number }>(
+    `/api/together/session/${encodeURIComponent(sessionId)}/join-code`,
+    { method: 'POST', body: '{}' });
+
+export const apiTogetherRevokeJoinCode = (sessionId: string) =>
+  apiCall<{ ok: true }>(
+    `/api/together/session/${encodeURIComponent(sessionId)}/join-code`, { method: 'DELETE' });
+
+export const apiTogetherRedeemJoinCode = (code: string) =>
+  apiCall<{ session: TogetherSession }>('/api/together/join-code',
+    { method: 'POST', body: JSON.stringify({ code }) });
+
 /* ─── Понятные объяснения отказов ───────────────────────────────
    Коды приходят с сервера; человеку показывается то, что можно
    прочитать, а не machine-readable строка.                        */
@@ -181,6 +206,8 @@ export const TOGETHER_ERRORS: Record<string, string> = {
   queue_start: 'Это первая запись.',
   rate_limited: 'Слишком часто. Подождите немного.',
   network: 'Нет связи с сервером.',
+  invalid_code: 'Код неверный, устарел или уже использован.',
+  empty_message: 'Сообщение пустое.',
 };
 
 export const explainTogether = (code?: string) =>

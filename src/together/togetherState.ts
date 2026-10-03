@@ -22,11 +22,11 @@
  * все расчёты идут по времени сервера.
  */
 import { create } from 'zustand';
-import { wireSendVolatile } from '@/core/wire';
+import { wireSend, wireSendVolatile } from '@/core/wire';
 import {
   apiTogetherRead, apiTogetherParticipants, apiTogetherSessions,
-  apiTogetherInvitations, explainTogether,
-  type TogetherSession, type Playback, type Participant, type Invitation,
+  apiTogetherInvitations, apiTogetherMessages, explainTogether,
+  type TogetherSession, type Playback, type Participant, type Invitation, type RoomMessage,
 } from './togetherApi';
 
 /* ─── Насколько точно держим строй ──────────────────────────────────
@@ -76,6 +76,8 @@ interface TogetherState {
   playback: Playback | null;
   participants: Participant[];
   invitations: Invitation[];
+  /** Чат открытой сессии. Отдельно от истории — сервер её не хранит вне сессии. */
+  messages: RoomMessage[];
   /** История и текущие сессии для списка на вкладке. */
   sessions: TogetherSession[];
   /** Расхождение часов: столько прибавить к местному времени, чтобы получить серверное. */
@@ -92,6 +94,7 @@ interface TogetherState {
   refreshParticipants: (id: string) => Promise<void>;
   refreshList: () => Promise<void>;
   refreshInvitations: () => Promise<void>;
+  refreshMessages: (id: string) => Promise<void>;
   close: () => void;
 }
 
@@ -100,6 +103,7 @@ export const useTogetherStore = create<TogetherState>((set, get) => ({
   playback: null,
   participants: [],
   invitations: [],
+  messages: [],
   sessions: [],
   skewMs: 0,
   rttMs: 0,
@@ -150,7 +154,12 @@ export const useTogetherStore = create<TogetherState>((set, get) => ({
     if (r.ok && r.data) set({ invitations: r.data.invitations });
   },
 
-  close: () => set({ session: null, playback: null, participants: [], error: null }),
+  refreshMessages: async (id) => {
+    const r = await apiTogetherMessages(id);
+    if (r.ok && r.data) set({ messages: r.data.messages });
+  },
+
+  close: () => set({ session: null, playback: null, participants: [], messages: [], error: null }),
 }));
 
 /** Из полного вида сессии — только то, что одинаково у всех. */
@@ -183,6 +192,16 @@ export const sendTogether = (sessionId: string, action: Command,
   extra: { positionMs?: number; rate?: number; index?: number } = {}) => {
   if (action === 'sync') syncSentAt = Date.now();
   wireSendVolatile({ type: 'together', payload: { sessionId, action, ...extra } });
+};
+
+/**
+ * Сообщение в чат комнаты. Через обычную (не летучую) отправку: в
+ * отличие от команд воспроизведения, опоздавшее сообщение остаётся
+ * тем же сообщением — досылать его после восстановления связи правильно,
+ * а не терять.
+ */
+export const sendRoomMessage = (sessionId: string, text: string) => {
+  wireSend({ type: 'together-chat', payload: { sessionId, text } });
 };
 
 /* ─── Приём событий ────────────────────────────────────────────────
@@ -257,6 +276,22 @@ export const receiveTogether = (type: string, payload: any) => {
 
   if (type === 'together-invited') {
     void store.refreshInvitations();
+    return;
+  }
+
+  if (type === 'together-chat') {
+    const open = store.session;
+    const msg = payload?.message as RoomMessage | undefined;
+    if (!open || !msg || payload?.sessionId !== open.id) return;
+    /* Повтор того же сообщения (переподключение сокета могло прислать
+       событие дважды) не должен задваиваться в списке. */
+    if (store.messages.some(m => m.id === msg.id)) return;
+    useTogetherStore.setState({ messages: [...store.messages, msg] });
+    return;
+  }
+
+  if (type === 'together-chat-error') {
+    useTogetherStore.setState({ error: explainTogether(payload?.error) });
     return;
   }
 

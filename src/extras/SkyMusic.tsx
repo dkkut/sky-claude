@@ -9,7 +9,7 @@ import {
   Search, X, Play, Pause, SkipForward,
   Heart, Plus, MoreHorizontal, ChevronLeft,
   ListMusic, Upload, History, BarChart3, Music2, Mic2, Download, CheckCircle, Crown, ArrowDownToLine,
-  Sparkles, Flame, Star, Check, Clock, Film
+  Sparkles, Flame, Star, Check, Clock, Film, Share2
 } from 'lucide-react';
 import { saveDownloadFromDataUrl, isDownloaded } from '@/offline/offlineDB';
 import { loadAudioUrl } from '@/platform/audioDB';
@@ -33,6 +33,7 @@ import { SkyMusicLibrary } from './SkyMusicLibrary';
 import { SkyMusicSearch } from './SkyMusicSearch';
 import { usePlayerStore } from '@/player/playerStore';
 import type { IconComponent } from '@/shared/icon';
+import { ShareDialog } from '@/storage/ShareDialog';
 
 /* ── Tab types & nav config ─────────────────────────────────── */
 type TabKey = 'home' | 'collection' | 'charts' | 'upload' | 'import' | 'history' | 'musician';
@@ -737,6 +738,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
   const [tagsDetected, setTagsDetected] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [sharingId, setSharingId] = useState<string | null>(null);
   const [coverBlob, setCoverBlob] = useState<Blob | null>(null);
   const [editId,    setEditId]    = useState<string|null>(null);
 
@@ -1326,6 +1328,13 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                           {t.status === 'rejected' ? 'Отправить снова' : 'На проверку'}
                         </button>
                       )}
+                      {t.status === 'private' && (
+                        <button type="button" title="Поделиться" onClick={() => setSharingId(t.id)}
+                          className="grid h-8 w-8 place-items-center rounded-xl"
+                          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: YM.sub2, cursor: 'pointer' }}>
+                          <Share2 size={13} />
+                        </button>
+                      )}
                       <button type="button" onClick={() => { if (window.confirm('Удалить трек?')) void removeTrack(t.id); }}
                         className="grid h-8 w-8 place-items-center rounded-xl"
                         style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)', color: '#ef4444', cursor: 'pointer' }}>
@@ -1448,6 +1457,12 @@ const UploadTab = ({ playing, activeId, onPlay }: {
             })}
           </div>
         </div>
+      )}
+
+      {sharingId && (
+        <ShareDialog kind="track" fileId={sharingId}
+          title={mine.find(t => t.id === sharingId)?.title ?? ''}
+          onClose={() => setSharingId(null)} />
       )}
     </div>
   );
