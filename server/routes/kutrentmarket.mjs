@@ -24,7 +24,7 @@ import {
 } from './../kutrentmarket.mjs';
 import { documentMeta, readDocument, acceptDocument, hasAccepted } from './../agreements.mjs';
 import { rateLimit } from './../security.mjs';
-import { createTicket } from './../support.mjs';
+import { createTicket, listMyTickets, readTicket, replyToTicket } from './../support.mjs';
 
 const KRM_COOKIE = 'krm_sid';
 
@@ -186,9 +186,18 @@ export const kutrentMarketRoutes = async (req, res, url) => {
      * Обращение в поддержку — то же самое support.mjs, что и у
      * основного сайта (server/support.mjs, админ-очередь AdminQueue).
      * Ticket ложится по me.profile_id — одна линия поддержки на весь
-     * Sky ID, а не отдельная для Market: раньше здесь был клиентский
-     * стаб без серверного приёмника (см. market-site/app.js), который
-     * просто показывал «спасибо» и ничего никуда не отправлял.
+     * Sky ID, а не отдельная для Market.
+     *
+     * Изначально здесь была только отправка (POST .../support) без
+     * единого способа увидеть, что ответила поддержка: ответ
+     * администратора уходил в ту же переписку support_messages, но
+     * ни один из двух сайтов, кроме основного (SupportScreen.tsx), эту
+     * переписку не читал — на market.kutrent.online человек писал один
+     * раз и ответ «никуда не доходил» (не было экрана, который бы его
+     * показал). Ниже — список своих обращений, чтение одного и ответ в
+     * нём: тот же readTicket/replyToTicket, что у SupportScreen, с той
+     * же проверкой, что читать и отвечать может только автор или
+     * администратор с правом 'support'.
      */
     if (req.method === 'POST' && url === '/api/kutrent-market/support') {
       if (!rateLimit(`krm:support:${me.profile_id}`, 10)) return json(res, 429, { error: 'rate_limited' });
@@ -207,7 +216,27 @@ export const kutrentMarketRoutes = async (req, res, url) => {
         subject: 'KutRent Market', body: note + text, kind: 'report',
       });
       if (result.error) return json(res, 400, result);
-      return json(res, 201, { ok: true, ticketId: result.ticket.id });
+      return json(res, 201, { ticket: result.ticket });
+    }
+
+    if (req.method === 'GET' && url === '/api/kutrent-market/support') {
+      return json(res, 200, { tickets: await listMyTickets(me.profile_id) });
+    }
+
+    const supportIdMatch = url.match(/^\/api\/kutrent-market\/support\/([^/]+)$/);
+    if (req.method === 'GET' && supportIdMatch) {
+      const ticket = await readTicket(supportIdMatch[1], me.profile_id);
+      if (!ticket) return json(res, 404, { error: 'not_found' });
+      return json(res, 200, { ticket });
+    }
+
+    const supportReplyMatch = url.match(/^\/api\/kutrent-market\/support\/([^/]+)\/reply$/);
+    if (req.method === 'POST' && supportReplyMatch) {
+      if (!rateLimit(`krm:support-reply:${me.profile_id}`, 30)) return json(res, 429, { error: 'rate_limited' });
+      const body = await parseBody(req);
+      const result = await replyToTicket(supportReplyMatch[1], me.profile_id, body?.text);
+      if (result.error) return json(res, result.error === 'not_found' ? 404 : 400, result);
+      return json(res, 200, { ticket: result.ticket });
     }
 
     return json(res, 404, { error: 'not_found' });

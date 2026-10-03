@@ -448,7 +448,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
           Заказы
         </button>
-        <button class="icon-btn hide-mobile" data-open="support">
+        <button class="icon-btn hide-mobile" data-open="support-list">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.7-2 1.8-2 3.5M12 17h.01"/></svg>
           Поддержка
         </button>
@@ -626,11 +626,25 @@
     </div>
   </div>
 
-  <!-- SUPPORT SHEET -->
+  <!-- SUPPORT LIST SHEET -->
+  <div class="overlay" id="overlay-support-list">
+    <div class="sheet">
+      <div class="sheet-head">
+        <h2>Поддержка</h2>
+        <button class="back-btn" id="support-new-btn" title="Новое обращение" aria-label="Новое обращение">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button class="close-x" data-close="overlay-support-list">✕</button>
+      </div>
+      <div class="sheet-body" id="support-list-body"></div>
+    </div>
+  </div>
+
+  <!-- SUPPORT NEW TICKET SHEET -->
   <div class="overlay" id="overlay-support">
     <div class="sheet">
       <div class="sheet-head">
-        <h2>Проблема с операцией?</h2>
+        <h2>Новое обращение</h2>
         <button class="close-x" data-close="overlay-support">✕</button>
       </div>
       <div class="sheet-body">
@@ -641,6 +655,22 @@
         </div>
         <button class="cta" id="support-submit">Отправить в поддержку</button>
         <p class="hint">Номер заказа, сумма, статус и время операции прикрепятся автоматически — повторно их указывать не нужно.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUPPORT THREAD SHEET -->
+  <div class="overlay" id="overlay-support-thread">
+    <div class="sheet">
+      <div class="sheet-head">
+        <button class="back-btn" data-back-to="support-list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <h2 id="support-thread-title">Обращение</h2>
+        <button class="close-x" data-close="overlay-support-thread">✕</button>
+      </div>
+      <div class="sheet-body">
+        <p class="hint" id="support-thread-status" style="margin-top:0;">—</p>
+        <div id="support-thread-messages"></div>
+        <div id="support-thread-composer" style="margin-top:14px;"></div>
       </div>
     </div>
   </div>
@@ -662,7 +692,7 @@
         </div>
         <div class="profile-row" data-open="docs"><span class="lbl">Документы</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
         <div class="profile-row" data-open="orders"><span class="lbl">История заказов</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
-        <div class="profile-row" data-open="support"><span class="lbl">Поддержка</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
+        <div class="profile-row" data-open="support-list"><span class="lbl">Поддержка</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
         <p class="hint">Профиль привязан к вашему Sky ID: Authenticator — постоянный номер вашего аккаунта в KutRent Market, показываем поддержке при обращении.</p>
         <p class="hint">Поддержка KutRent Market: <a href="https://t.me/kutlandcomp" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">@kutlandcomp</a> в Telegram.</p>
       </div>

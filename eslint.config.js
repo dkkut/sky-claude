@@ -75,6 +75,26 @@ export default tseslint.config(
     },
   },
 
+  /* market-site/app.js — клиент сайта-партнёра KutRent Market: обычный
+     браузерный скрипт без сборки (см. комментарий в начале файла), а
+     не часть React-приложения. Тот же пробел, что был у server/*.mjs и
+     electron/*.cjs до соответствующих блоков выше: без globals файл
+     разбирался как код без document/fetch/таймеров вовсе, и настоящая
+     ошибка (опечатка в имени, забытый импорт) тонула среди сотен
+     no-undef на `document`. */
+  {
+    files: ['market-site/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: 'script',
+      globals: {
+        window: 'readonly', document: 'readonly', location: 'readonly', history: 'readonly',
+        localStorage: 'readonly', fetch: 'readonly', URLSearchParams: 'readonly',
+        setTimeout: 'readonly', clearTimeout: 'readonly', setInterval: 'readonly', clearInterval: 'readonly',
+      },
+    },
+  },
+
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {

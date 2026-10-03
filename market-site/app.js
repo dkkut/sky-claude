@@ -376,8 +376,134 @@
      что и обращения с основного сайта Sky: одна линия поддержки на
      весь Sky ID, не отдельная для Market. Вход обязателен — тикет
      пишется на profile_id, а анонимного обращения без Sky ID быть не
-     может (как и раньше у остального на этой странице). */
+     может (как и раньше у остального на этой странице).
+
+     Раньше здесь была только отправка: форма писала тикет и сама себе
+     рисовала «спасибо», закрывалась — и всё. Когда администратор
+     отвечал, ответ ложился в ту же переписку support_messages, но на
+     этом сайте не было ни одного экрана, который бы её показал: ответ
+     физически существовал на сервере и «никуда не доходил» до
+     человека. Ниже — список обращений и переписка по каждому, тот же
+     принцип, что у SupportScreen.tsx на основном сайте: открыли
+     обращение — увидели всю историю, ответили — ответ лёг тем же
+     сообщением, что и у администратора. */
+  var SUPPORT_STATUS_LABEL = { open: "Открыто", in_progress: "В работе", waiting: "Ждём ответа", closed: "Закрыто" };
   var currentSupportOrder = null;
+  var supportTicketsCache = [];
+  var openSupportTicketId = null;
+  var supportThreadTimer = null;
+
+  function renderSupportList() {
+    var body = el("#support-list-body");
+    if (!me) {
+      body.innerHTML = '<div class="empty-state"><p>Войдите через Sky ID, чтобы увидеть свои обращения</p></div>';
+      return;
+    }
+    body.innerHTML = '<div class="empty-state"><p>Загружаем…</p></div>';
+    api("/support").then(function (r) {
+      supportTicketsCache = (r.ok && r.data.tickets) || [];
+      if (supportTicketsCache.length === 0) {
+        body.innerHTML = '<div class="empty-state"><p>Обращений пока нет</p></div>';
+        return;
+      }
+      body.innerHTML = '<div class="order-list"></div>';
+      var list = body.querySelector(".order-list");
+      supportTicketsCache.forEach(function (t) {
+        var item = document.createElement("button");
+        item.className = "doc-list-item";
+        item.innerHTML =
+          '<div class="main"><strong>' + escapeHtml(t.subject) + '</strong><span>' + fmtDate(t.updatedAt) + '</span></div>' +
+          '<span class="doc-status ' + (t.status === "closed" ? "accepted" : "pending") + '">' +
+          escapeHtml(SUPPORT_STATUS_LABEL[t.status] || t.status) + '</span>';
+        item.addEventListener("click", function () { openSupportThread(t.id); });
+        list.appendChild(item);
+      });
+    });
+  }
+
+  function renderSupportMessages(ticket) {
+    var box = el("#support-thread-messages");
+    box.innerHTML = (ticket.messages || []).map(function (m) {
+      var mine = !m.fromStaff;
+      return '<div style="margin:0 0 10px;max-width:85%;' + (mine ? "margin-left:auto;text-align:right;" : "") + '">' +
+        '<div style="display:inline-block;text-align:left;padding:10px 13px;border-radius:14px;font-size:13px;line-height:1.45;white-space:pre-wrap;background:' +
+        (mine ? "var(--accent-soft)" : "var(--surface)") + ';border:1px solid var(--border);">' +
+        escapeHtml(m.body) + '</div>' +
+        '<div class="hint" style="margin:3px 2px 0;">' + (mine ? "Вы" : "Поддержка") + ' · ' + fmtDate(m.createdAt) + '</div>' +
+        '</div>';
+    }).join("");
+  }
+
+  function renderSupportComposer(ticket) {
+    var slot = el("#support-thread-composer");
+    if (ticket.status === "closed") {
+      slot.innerHTML = '<p class="hint" style="margin:0;">Обращение закрыто. Если вопрос остался — создайте новое.</p>';
+      return;
+    }
+    slot.innerHTML =
+      '<textarea class="text-input" id="support-reply-text" placeholder="Ответить" style="min-height:70px;"></textarea>' +
+      '<button class="cta" id="support-reply-submit" style="margin-top:8px;">Отправить</button>';
+    el("#support-reply-submit").addEventListener("click", function () {
+      var text = el("#support-reply-text").value.trim();
+      if (!text) return;
+      var btn = el("#support-reply-submit");
+      btn.disabled = true;
+      api("/support/" + encodeURIComponent(ticket.id) + "/reply", { method: "POST", body: { text: text } })
+        .then(function (r) {
+          btn.disabled = false;
+          if (!r.ok || !r.data.ticket) { toast("Не получилось отправить — попробуйте ещё раз"); return; }
+          renderSupportThread(r.data.ticket);
+        });
+    });
+  }
+
+  function renderSupportThread(ticket) {
+    el("#support-thread-title").textContent = ticket.subject;
+    el("#support-thread-status").textContent = SUPPORT_STATUS_LABEL[ticket.status] || ticket.status;
+    renderSupportMessages(ticket);
+    renderSupportComposer(ticket);
+  }
+
+  function openSupportThread(id) {
+    openSupportTicketId = id;
+    el("#support-thread-title").textContent = "Загрузка…";
+    el("#support-thread-messages").innerHTML = "";
+    el("#support-thread-composer").innerHTML = "";
+    openOverlay("overlay-support-thread");
+    api("/support/" + encodeURIComponent(id)).then(function (r) {
+      if (!r.ok || !r.data.ticket) { toast("Обращение не найдено"); closeOverlay("overlay-support-thread"); return; }
+      renderSupportThread(r.data.ticket);
+    });
+    // Пока обращение открыто на экране, подтягиваем ответ поддержки сам —
+    // иначе человек сидел бы в переписке и не узнал, что ему ответили,
+    // пока не перезайдёт.
+    clearInterval(supportThreadTimer);
+    supportThreadTimer = setInterval(function () {
+      if (openSupportTicketId !== id) { clearInterval(supportThreadTimer); return; }
+      api("/support/" + encodeURIComponent(id)).then(function (r) {
+        if (r.ok && r.data.ticket) renderSupportThread(r.data.ticket);
+      });
+    }, 20000);
+  }
+
+  els('[data-open="support-list"]').forEach(function (b) {
+    b.addEventListener("click", function () { renderSupportList(); openOverlay("overlay-support-list"); });
+  });
+  el("#support-new-btn").addEventListener("click", function () {
+    closeOverlay("overlay-support-list");
+    openSupport(null);
+  });
+  var backToSupportListBtn = document.querySelector('[data-back-to="support-list"]');
+  if (backToSupportListBtn) {
+    backToSupportListBtn.addEventListener("click", function () {
+      openSupportTicketId = null;
+      clearInterval(supportThreadTimer);
+      closeOverlay("overlay-support-thread");
+      renderSupportList();
+      openOverlay("overlay-support-list");
+    });
+  }
+
   function openSupport(order) {
     currentSupportOrder = order || null;
     var attach = el("#support-attach");
@@ -391,12 +517,8 @@
       attach.innerHTML = '<p class="hint">Опишите проблему — при необходимости уточним детали операции отдельно.</p>';
     }
     el("#support-text").value = "";
-    if (!me) {
-      openOverlay("overlay-support");
-      toast("Войдите через Sky ID, чтобы отправить обращение");
-      return;
-    }
     openOverlay("overlay-support");
+    if (!me) toast("Войдите через Sky ID, чтобы отправить обращение");
   }
   el("#support-submit").addEventListener("click", function () {
     var text = el("#support-text").value.trim();
@@ -413,9 +535,12 @@
       body: { text: text, orderId: currentSupportOrder ? currentSupportOrder.id : undefined },
     }).then(function (r) {
       btn.disabled = false;
-      if (!r.ok) { toast("Не получилось отправить — попробуйте ещё раз"); return; }
+      if (!r.ok || !r.data.ticket) { toast("Не получилось отправить — попробуйте ещё раз"); return; }
       closeOverlay("overlay-support");
       toast("Обращение отправлено в поддержку Sky");
+      // Открываем переписку сразу — иначе снова придётся объяснять, где
+      // искать ответ, которого ждать может минуты, а может и дни.
+      openSupportThread(r.data.ticket.id);
     });
   });
 
