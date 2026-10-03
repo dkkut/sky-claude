@@ -5,10 +5,32 @@
 import { create } from 'zustand';
 import {
   CreditCard, Crown, ShoppingBag, Music2, Home, RotateCcw,
-  ArrowDownLeft, ArrowUpRight, Star, Gift,
+  ArrowDownLeft, ArrowUpRight, Star, Gift, Landmark, Truck,
+  Megaphone, ShieldCheck, Gem, Radio, Wallet,
 } from 'lucide-react';
 import type { IconComponent } from '@/shared/icon';
 
+/**
+ * Виды операций кошелька — должны покрывать каждую строку, которую
+ * пишет server/wallet.mjs (addTx) и все вызовы wallet.credit/spend/
+ * creditPoints по всему серверу (ads.mjs, family.mjs, garant.mjs,
+ * kutrentmarket.mjs, market.mjs, nftmarket.mjs, primegifts.mjs,
+ * pvzops.mjs, skinMarket.mjs, streams.mjs, ticketorders.mjs — список
+ * растёт с каждым новым местом, которое трогает кошелёк). Раньше тут
+ * было 10 типов, хотя сервер пишет больше двадцати — для неизвестного
+ * типа TX_ICON[tx.type] был undefined, и `<Icon />` с undefined валил
+ * весь экран кошелька (minified React #130: «Element type is
+ * invalid… got: undefined») — ровно это случалось каждому, кому
+ * владелец начислял деньги через панель администратора (тип
+ * 'admin_grant' сюда не входил), и точно так же свалило бы на
+ * возврате/подписке Sky Garant, подписке/продвижении Market, подписке
+ * ПВЗ, покупке NFT, подарке Prime, скине питомца или донате на
+ * трансляции. TX_ICON/TX_LABEL ниже — лучшее, что можно сделать:
+ * держать актуальный список; TxItem в SkyMoneyWallet.tsx берёт отсюда
+ * значения с запасным вариантом, чтобы следующий тип, про который тут
+ * забудут, не ронял экран, а просто показывался подписанным дженерик-
+ * значком.
+ */
 export type TxType =
   | 'topup'          // пополнение
   | 'prime'          // покупка Prime
@@ -19,7 +41,24 @@ export type TxType =
   | 'transfer_in'    // входящий перевод
   | 'transfer_out'   // исходящий перевод
   | 'points_earn'    // начисление баллов
-  | 'points_spend';  // трата баллов
+  | 'points_spend'   // трата баллов
+  | 'admin_grant'           // начисление по решению владельца (панель администратора)
+  | 'admin_points'          // начисление баллов по решению владельца
+  | 'courier_earning'       // заработок курьера за доставку
+  | 'ads'                   // списание за рекламную кампанию
+  | 'family_prime'          // Sky Prime Family
+  | 'garant_refund'         // возврат по сделке Sky Garant
+  | 'garant_subscription'   // подписка Sky Garant Pro
+  | 'kutrent_topup'         // пополнение через KutRent Market
+  | 'market_subscription'   // подписка продавца Sky Market
+  | 'market_promotion'      // продвижение товара в Sky Market
+  | 'pvz_subscription'      // активация точки Sky ПВЗ
+  | 'nft_purchase'          // покупка NFT
+  | 'points_refund'         // возврат баллов
+  | 'prime_gift'            // подарок Prime
+  | 'skin_purchase'         // покупка скина питомца
+  | 'skin_purchase_refund'  // возврат за скин питомца
+  | 'stream_donation';      // донат на трансляции
 
 export const TX_LABEL: Record<TxType, string> = {
   topup:        'Пополнение',
@@ -32,7 +71,29 @@ export const TX_LABEL: Record<TxType, string> = {
   transfer_out:  'Перевод',
   points_earn:   'Начислены баллы',
   points_spend:  'Потрачены баллы',
+  admin_grant:          'Начисление администрации',
+  admin_points:         'Начислены баллы администрацией',
+  courier_earning:      'Заработок курьера',
+  ads:                  'Реклама',
+  family_prime:         'Sky Prime Family',
+  garant_refund:        'Возврат Sky Garant',
+  garant_subscription:  'Sky Garant Pro',
+  kutrent_topup:        'Пополнение KutRent Market',
+  market_subscription:  'Подписка Sky Market',
+  market_promotion:     'Продвижение в Sky Market',
+  pvz_subscription:     'Активация Sky ПВЗ',
+  nft_purchase:         'Покупка NFT',
+  points_refund:        'Возврат баллов',
+  prime_gift:           'Подарок Prime',
+  skin_purchase:        'Скин питомца',
+  skin_purchase_refund: 'Возврат за скин питомца',
+  stream_donation:      'Донат на трансляции',
 };
+
+/** Запасной значок и подпись для вида операции, которого ещё нет в
+ *  TX_ICON/TX_LABEL — чтобы незнакомый тип не ронял экран кошелька. */
+export const TX_ICON_FALLBACK: IconComponent = Wallet;
+export const TX_LABEL_FALLBACK = 'Операция';
 
 /**
  * Значок вида операции.
@@ -53,6 +114,23 @@ export const TX_ICON: Record<TxType, IconComponent> = {
   transfer_out: ArrowUpRight,
   points_earn:  Star,
   points_spend: Gift,
+  admin_grant:          Landmark,
+  admin_points:         Landmark,
+  courier_earning:      Truck,
+  ads:                  Megaphone,
+  family_prime:         Home,
+  garant_refund:        RotateCcw,
+  garant_subscription:  ShieldCheck,
+  kutrent_topup:        CreditCard,
+  market_subscription:  ShoppingBag,
+  market_promotion:     Megaphone,
+  pvz_subscription:     ShieldCheck,
+  nft_purchase:         Gem,
+  points_refund:        RotateCcw,
+  prime_gift:           Gift,
+  skin_purchase:        ShoppingBag,
+  skin_purchase_refund: RotateCcw,
+  stream_donation:      Radio,
 };
 
 export interface Transaction {

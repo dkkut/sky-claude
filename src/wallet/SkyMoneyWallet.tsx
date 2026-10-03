@@ -9,7 +9,10 @@ import {
   CreditCard, Smartphone, Building2, Users, Star, ArrowLeftRight,
   Globe, Zap, Landmark, Lock, Gift,
 } from 'lucide-react';
-import { useMoney, TX_ICON, TX_LABEL, fmt, fmtSigned, type TxType } from './store';
+import {
+  useMoney, TX_ICON, TX_LABEL, TX_ICON_FALLBACK, TX_LABEL_FALLBACK,
+  fmt, fmtSigned, type TxType,
+} from './store';
 import { useAuthStore } from '@/core/auth/store';
 import { MyGifts } from '@/gifts/SkyGifts';
 import { SkyPayCheckout, PayHistory } from '@/payment/SkyPay';
@@ -153,8 +156,13 @@ const SpendingStats = ({ txs }: { txs: ReturnType<typeof useMoney.getState>['tra
 
 /* -- Recent Transactions ------------------------------------------- */
 const TxItem = ({ tx }: { tx: ReturnType<typeof useMoney.getState>['transactions'][0] }) => {
-  const Icon  = TX_ICON[tx.type];
-  const label = TX_LABEL[tx.type];
+  // Сервер пишет виды операций шире, чем клиент успевает завести здесь
+  // (TxType — не рантайм-проверка, а подсказка типов): запасной значок
+  // и подпись не дают незнакомому типу уронить весь экран кошелька
+  // (см. комментарий у TxType в ./store — именно так падал экран после
+  // начисления владельцем через панель администратора).
+  const Icon  = TX_ICON[tx.type] ?? TX_ICON_FALLBACK;
+  const label = TX_LABEL[tx.type] ?? TX_LABEL_FALLBACK;
   const plus  = tx.amount > 0;
   const d = new Date(tx.createdAt);
   const dateStr = d.toLocaleDateString('ru', { day:'numeric', month:'short' });
