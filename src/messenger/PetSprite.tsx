@@ -3,10 +3,45 @@
    Анимированные: idle (дыхание), happy (прыжки), excited (вибрация),
    sleepy (зевота), love (сердечки), angry (дрожь)
 =============================================================== */
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { motion, AnimatePresence, type TargetAndTransition, type Transition } from 'framer-motion';
-import type { PetMood } from './petData';
-import type { PetSkin } from './petSkins';
+import type { PetMood } from './petsApi';
+
+/* Раньше SVG-перекраска питомца шла по локальному мок-каталогу скинов
+   (petSkins.ts: bodyColor/accentColor/eyeColor на выбор за Баллы
+   Прайма) — отдельная, чисто косметическая система, никак не связанная
+   с настоящим Sky Skin Market (server/skinMarket.mjs — надеваемые
+   предметы с реальным медиа: skin/outfit/headwear/… а не перекраска).
+   Тип питомца с сервера несёт только один цвет (pet_types.base_color),
+   поэтому раскраска тела теперь считается от него же — тон акцента и
+   подсветка выводятся автоматически, а не выбираются из каталога. */
+interface SpriteSkin { bodyColor: string; accentColor: string; eyeColor: string; extraColor?: string; glow: string; badge?: string }
+
+const clampByte = (n: number) => Math.max(0, Math.min(255, n));
+const shade = (hex: string, amt: number): string => {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = clampByte(((n >> 16) & 255) + amt);
+  const g = clampByte(((n >> 8) & 255) + amt);
+  const b = clampByte((n & 255) + amt);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+};
+const toRgba = (hex: string, alpha: number): string => {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return `rgba(139,92,246,${alpha})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+};
+/** Из одного базового цвета типа питомца собираем ту же палитру, которую
+ *  раньше задавал локальный скин, — акцент темнее тела, глаза — тёмные. */
+const deriveSkin = (color: string, badge?: string): SpriteSkin => ({
+  bodyColor: color,
+  accentColor: shade(color, -36),
+  eyeColor: '#2d1a0e',
+  glow: toRgba(color, 0.5),
+  badge,
+});
 
 /* -- Emotion overlays -------------------------------------- */
 const EmotionParticles = ({ mood, color }: { mood: PetMood; color: string }) => {
@@ -38,7 +73,7 @@ const EmotionParticles = ({ mood, color }: { mood: PetMood; color: string }) => 
 };
 
 /* -- SVG Cat ----------------------------------------------- */
-const SvgCat = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: number }) => {
+const SvgCat = ({ skin, mood, size }: { skin: SpriteSkin; mood: PetMood; size: number }) => {
   const s = size;
   const blinkState = useBlinkState();
   const eyeClosed = blinkState || mood === 'sleepy';
@@ -114,7 +149,7 @@ const SvgCat = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: numb
 };
 
 /* -- SVG Fox ----------------------------------------------- */
-const SvgFox = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: number }) => {
+const SvgFox = ({ skin, mood, size }: { skin: SpriteSkin; mood: PetMood; size: number }) => {
   const s = size;
   const blinkState = useBlinkState();
   const eyeClosed = blinkState || mood === 'sleepy';
@@ -184,7 +219,7 @@ const SvgFox = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: numb
 };
 
 /* -- SVG Dragon -------------------------------------------- */
-const SvgDragon = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: number }) => {
+const SvgDragon = ({ skin, mood, size }: { skin: SpriteSkin; mood: PetMood; size: number }) => {
   const s = size;
   const blinkState = useBlinkState();
   const happy = mood === 'happy' || mood === 'love';
@@ -263,7 +298,7 @@ const SvgDragon = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: n
 };
 
 /* -- SVG Bunny --------------------------------------------- */
-const SvgBunny = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: number }) => {
+const SvgBunny = ({ skin, mood, size }: { skin: SpriteSkin; mood: PetMood; size: number }) => {
   const s = size;
   const blinkState = useBlinkState();
   const happy = mood === 'happy' || mood === 'love';
@@ -332,7 +367,7 @@ const SvgBunny = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: nu
 };
 
 /* -- SVG Shark ----------------------------------------------- */
-const SvgShark = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: number }) => {
+const SvgShark = ({ skin, mood, size }: { skin: SpriteSkin; mood: PetMood; size: number }) => {
   const s = size;
   const blinkState = useBlinkState();
   const happy = mood === 'happy' || mood === 'love';
@@ -387,7 +422,7 @@ const SvgShark = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: nu
 };
 
 /* -- SVG Capybara ----------------------------------------------- */
-const SvgCapybara = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: number }) => {
+const SvgCapybara = ({ skin, mood, size }: { skin: SpriteSkin; mood: PetMood; size: number }) => {
   const s = size;
   const blinkState = useBlinkState();
   const happy = mood === 'happy' || mood === 'love';
@@ -432,7 +467,7 @@ const SvgCapybara = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size:
 };
 
 /* -- SVG Robot ----------------------------------------------- */
-const SvgRobot = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: number }) => {
+const SvgRobot = ({ skin, mood, size }: { skin: SpriteSkin; mood: PetMood; size: number }) => {
   const s = size;
   const excited = mood === 'excited';
   const sleepy = mood === 'sleepy';
@@ -480,7 +515,7 @@ const SvgRobot = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: nu
 };
 
 /* -- SVG Ghost ----------------------------------------------- */
-const SvgGhost = ({ skin, mood, size }: { skin: PetSkin; mood: PetMood; size: number }) => {
+const SvgGhost = ({ skin, mood, size }: { skin: SpriteSkin; mood: PetMood; size: number }) => {
   const s = size;
   const blinkState = useBlinkState();
   const happy = mood === 'happy' || mood === 'love';
@@ -548,10 +583,12 @@ const BODY_ANIM: Record<PetMood, TargetAndTransition> = {
   excited: { y: [0, -8, 0],            x: [-3, 3, -3],  scale: [1, 1.06, 1] },
   sleepy:  { y: [0, 2, 0],            scale: [1, 0.97, 1]         },
   love:    { y: [0, -8, 0],            scale: [1, 1.05, 1]         },
+  angry:   { y: [0, -3, 0],            x: [-2, 2, -2, 2, 0],  rotate: [-2, 2, -2, 0] },
 };
 const BODY_TRANS: Record<PetMood, Transition> = {
   idle:    { duration: 2.5, repeat: Infinity, ease: 'easeInOut'  },
   happy:   { duration: 0.65, repeat: Infinity, ease: 'easeInOut' },
+  angry:   { duration: 0.3, repeat: Infinity, ease: 'easeInOut'  },
   excited: { duration: 0.35, repeat: Infinity, ease: 'linear'    },
   sleepy:  { duration: 3.5, repeat: Infinity, ease: 'easeInOut'  },
   love:    { duration: 1.0, repeat: Infinity, ease: 'easeInOut'  },
@@ -567,21 +604,30 @@ const GlowPulse = ({ color, mood }: { color: string; mood: PetMood }) => (
 
 /* === MAIN PETSPRITE COMPONENT ============================== */
 interface PetSpriteProps {
-  petId: string;
-  skin:  PetSkin;
+  /** typeId реального типа (pet_types.id) — только чтобы выбрать форму
+   *  SVG-силуэта (кот/лиса/дракон/…); у неизвестных типов — заяц. */
+  typeId: string;
+  /** Базовый цвет реального типа (pet_types.base_color) — вся палитра
+   *  тела/акцентов выводится из него (см. deriveSkin выше). */
+  color: string;
   mood:  PetMood;
   size?: number;
   showParticles?: boolean;
+  /** Необязательный эмодзи-бейдж — напр. подсказка про надетый предмет
+   *  из Sky Skin Market (у настоящих предметов нет recolor-параметров,
+   *  только медиа, поэтому бейдж — не более чем маленькая подсказка). */
+  badge?: string;
 }
 
-export const PetSprite = ({ petId, skin, mood, size = 80, showParticles = true }: PetSpriteProps) => {
-  const SvgComp = petId.startsWith('cat') ? SvgCat
-    : petId.startsWith('fox') ? SvgFox
-    : petId.startsWith('dragon') ? SvgDragon
-    : petId.startsWith('shark') ? SvgShark
-    : petId.startsWith('capybara') ? SvgCapybara
-    : petId.startsWith('robot') ? SvgRobot
-    : petId.startsWith('ghost') ? SvgGhost
+export const PetSprite = ({ typeId, color, mood, size = 80, showParticles = true, badge }: PetSpriteProps) => {
+  const skin = useMemo(() => deriveSkin(color, badge), [color, badge]);
+  const SvgComp = typeId.startsWith('cat') ? SvgCat
+    : typeId.startsWith('fox') ? SvgFox
+    : typeId.startsWith('dragon') ? SvgDragon
+    : typeId.startsWith('shark') ? SvgShark
+    : typeId.startsWith('capybara') ? SvgCapybara
+    : typeId.startsWith('robot') ? SvgRobot
+    : typeId.startsWith('ghost') ? SvgGhost
     : SvgBunny;
 
   return (

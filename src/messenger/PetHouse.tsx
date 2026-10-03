@@ -4,33 +4,44 @@
 =================================================================== */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from 'framer-motion';
-import { X, ShoppingBag, Palette, Users, Heart, Zap } from 'lucide-react';
-import { PETS, RARITY_CFG, type Pet, type PetMood } from './petData';
+import { X, ShoppingBag, Palette, Users, Heart, Zap, Coins, Sparkles } from 'lucide-react';
+import {
+  apiMyPets, apiCareForPet, apiPetWallet, apiSetActivePet,
+  CARE_ACTION_EMOJI, CARE_ACTION_COOLDOWN,
+  type PetInstance, type PetMood, type CareAction,
+} from './petsApi';
+import { petVisual, RARITY_VISUAL } from './petVisuals';
+import { PetSkinShop } from './PetSkinShop';
 import { useAuthStore } from '@/core/auth/store';
 
-/* ── Storage ─────────────────────────────────────────────────── */
-const PREFS_KEY = 'sky:pets3d:v5';
-const COIN_KEY  = 'sky:pet:coins:v1';
+/* ── Storage ─────────────────────────────────────────────────────
+   Комната (тема/мебель) — чисто декоративный, локальный слой: у Sky
+   Pets на сервере (server/pets.mjs, petEconomy.mjs) нет понятия
+   «мебель» или «тема комнаты», только сам питомец, его характеристики
+   и настоящие Pet Coins. Выдумывать для декора серверную экономику
+   никто не просил, а тратить настоящие Pet Coins на то, что сервер не
+   видит, значило бы расходовать реальную валюту мимо её же учёта.
+   Поэтому комната финансируется отдельными, чисто косметическими
+   «очками уюта» (decorPoints) — свои, маленькие, никогда не смешиваются
+   с показанным ниже настоящим балансом Pet Coins. */
 const ROOM_KEY  = 'sky:pet:room:v3';
+const DECOR_KEY = 'sky:pet:decor:v1';
 
-interface PetNeeds  { hunger:number; happiness:number; energy:number; hygiene:number; }
-interface PetPrefs  { owned:string[]; active:string|null; friendship:Record<string,number>; xp:Record<string,number>; needs:Record<string,PetNeeds>; }
 interface RoomState { theme:string; items:string[]; }
 
-const DEF_NEEDS:PetNeeds = { hunger:72, happiness:65, energy:80, hygiene:70 };
 const lsGet = (k:string,d:any) => { try{ const r=localStorage.getItem(k); return r?JSON.parse(r):d; }catch{ return d; }};
 const lsSet = (k:string,v:any) => { try{ localStorage.setItem(k,JSON.stringify(v)); }catch{} };
-const loadPrefs = ():PetPrefs => lsGet(PREFS_KEY,{owned:['cat-neon','bunny-pixel'],active:'cat-neon',friendship:{},xp:{},needs:{}});
-const savePrefs = (p:PetPrefs) => lsSet(PREFS_KEY,p);
 const loadRoom  = ():RoomState=> lsGet(ROOM_KEY,{theme:'cozy',items:['bed','bookshelf','plant']});
 const saveRoom  = (r:RoomState)=> lsSet(ROOM_KEY,r);
-const getCoins  = (uid:string):number => { try{ return JSON.parse(localStorage.getItem(COIN_KEY)||'{}')[uid]??0; }catch{ return 0; }};
-const addCoins  = (uid:string,n:number)=>{ try{ const a=JSON.parse(localStorage.getItem(COIN_KEY)||'{}'); a[uid]=(a[uid]??0)+n; lsSet(COIN_KEY,a); }catch{} };
-const spendCoins= (uid:string,n:number):boolean=>{ try{ const a=JSON.parse(localStorage.getItem(COIN_KEY)||'{}'); if((a[uid]??0)<n)return false; a[uid]=(a[uid]??0)-n; lsSet(COIN_KEY,a); return true; }catch{ return false; }};
+const getDecor  = (uid:string):number => { try{ return JSON.parse(localStorage.getItem(DECOR_KEY)||'{}')[uid]??0; }catch{ return 0; }};
+const addDecor  = (uid:string,n:number)=>{ try{ const a=JSON.parse(localStorage.getItem(DECOR_KEY)||'{}'); a[uid]=(a[uid]??0)+n; lsSet(DECOR_KEY,a); }catch{} };
+const spendDecor= (uid:string,n:number):boolean=>{ try{ const a=JSON.parse(localStorage.getItem(DECOR_KEY)||'{}'); if((a[uid]??0)<n)return false; a[uid]=(a[uid]??0)-n; lsSet(DECOR_KEY,a); return true; }catch{ return false; }};
 
-const XP_LVL=100;
-const lvl    =(xp:number)=>Math.floor(xp/XP_LVL)+1;
-const lvlPct =(xp:number)=>((xp%XP_LVL)/XP_LVL)*100;
+/* Уровень/XP — те же формулы, что и на сервере (server/pets.mjs,
+   xp_per_level_base=200 по умолчанию); реальные level/xp всегда с
+   сервера, здесь только перевод в проценты для полоски. */
+const xpForLevel = (level:number) => level*200;
+const lvlPct = (level:number, xp:number) => Math.min(100, (xp / xpForLevel(level)) * 100);
 
 /* ── Themes ─────────────────────────────────────────────────── */
 const THEMES:{[k:string]:{label:string;emoji:string;price:number;wall:string;wall2:string;floor:string;floor2:string;accent:string;trim:string;light:string}} = {
@@ -68,8 +79,8 @@ type PetState = 'idle'|'walk'|'sit'|'sleep'|'jump'|'dance'|'eat'|'happy';
 /* ═══════════════════════════════════════════════════════════════
    CSS-RENDERED PET CHARACTER
 ═══════════════════════════════════════════════════════════════ */
-const CSSPet = ({ pet, state, mood, size=80 }: { pet:Pet; state:PetState; mood:PetMood; size?:number }) => {
-  const c  = pet.color;
+const CSSPet = ({ color, state, mood, size=80 }: { color:string; state:PetState; mood:PetMood; size?:number }) => {
+  const c  = color;
   const c2 = `${c}cc`;
   const s  = size / 80; // scale factor
   const sc = (n:number) => Math.round(n * s);
@@ -229,8 +240,8 @@ const CSSPet = ({ pet, state, mood, size=80 }: { pet:Pet; state:PetState; mood:P
 ═══════════════════════════════════════════════════════════════ */
 const W=530, H=370, FH=116;
 
-const Room = ({ pet,theme,items,petState,petPos,petMood,onPetTap,onFurnitureTap }:{
-  pet:Pet; theme:typeof THEMES[string]; items:string[];
+const Room = ({ petColor,theme,items,petState,petPos,petMood,onPetTap,onFurnitureTap }:{
+  petColor:string; theme:typeof THEMES[string]; items:string[];
   petState:PetState; petPos:{x:number;y:number;facing:-1|1};
   petMood:PetMood; onPetTap:()=>void; onFurnitureTap:(id:string)=>void;
 }) => {
@@ -440,9 +451,9 @@ const Room = ({ pet,theme,items,petState,petPos,petMood,onPetTap,onFurnitureTap 
         <div className="absolute cursor-pointer" style={{
           left:petPos.x-36, top:petPos.y-56, zIndex:60,
           transform:`translateZ(64px) scaleX(${petPos.facing})`,
-          filter:`drop-shadow(0 ${petState==='jump'?12:6}px ${petState==='jump'?28:14}px ${pet.color}60)`,
+          filter:`drop-shadow(0 ${petState==='jump'?12:6}px ${petState==='jump'?28:14}px ${petColor}60)`,
         }} onClick={onPetTap}>
-          <CSSPet pet={pet} state={petState} mood={petMood} size={80}/>
+          <CSSPet color={petColor} state={petState} mood={petMood} size={80}/>
         </div>
 
         {/* ── Ambient light overlay ─────────────────────── */}
@@ -496,18 +507,26 @@ const CSS_ANIM = `
 /* ══════════════════════════════════════════════════════════════
    MAIN COMPONENT
 ══════════════════════════════════════════════════════════════ */
-export interface PetHouseProps { onClose:()=>void; onSendSticker:(petId:string,mood:PetMood,sound:string)=>void; }
+export interface PetHouseProps {
+  onClose:()=>void;
+  onSendSticker:(typeId:string,mood:PetMood,sound:string,petName:string,petColor:string)=>void;
+}
 
 export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
   const { currentUserId } = useAuthStore();
   const uid = currentUserId ?? 'guest';
 
-  const [prefs,  setPrefs] = useState<PetPrefs>(loadPrefs);
-  const [room,   setRoom]  = useState<RoomState>(loadRoom);
-  const [coins,  setCoins] = useState(()=>getCoins(uid));
-  const [panel,  setPanel] = useState<'info'|'shop'|'themes'|'pets'>('info');
-  const [msg,    setMsg]   = useState('');
-  const [shopMsg,setSM]    = useState('');
+  const [pets,    setPets]   = useState<PetInstance[]|null>(null);
+  const [activeId,setActiveId]=useState<string|null>(null);
+  const [wallet,  setWallet] = useState(0);
+  const [room,    setRoom]   = useState<RoomState>(loadRoom);
+  const [decor,   setDecor]  = useState(()=>getDecor(uid));
+  const [panel,   setPanel]  = useState<'info'|'shop'|'themes'|'pets'>('info');
+  const [msg,     setMsg]    = useState('');
+  const [shopMsg, setSM]     = useState('');
+  const [cooldownUntil, setCooldownUntil] = useState<Partial<Record<CareAction,number>>>({});
+  const [busyAction, setBusyAction] = useState<CareAction|null>(null);
+  const [showMarket, setShowMarket] = useState(false);
 
   const [petState, setPetSt]  = useState<PetState>('idle');
   const [petMood,  setPetMd]  = useState<PetMood>('idle');
@@ -548,17 +567,22 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
     return () => { ro.disconnect(); window.removeEventListener('orientationchange', recalc); };
   }, []);
 
-  const activePet  = useMemo(()=>PETS.find(p=>p.id===prefs.active)??PETS[0],[prefs.active]);
-  const petXP      = prefs.xp?.[activePet.id]??0;
-  const petLevel   = lvl(petXP);
-  const petLvlPct  = lvlPct(petXP);
-  const needs      = prefs.needs?.[activePet.id]??DEF_NEEDS;
-  const friendship = prefs.friendship?.[activePet.id]??0;
+  const load = useCallback(async () => {
+    const [petsR, walletR] = await Promise.all([apiMyPets(), apiPetWallet()]);
+    if (petsR.ok && petsR.data) {
+      setPets(petsR.data.pets);
+      setActiveId(cur => cur ?? (petsR.data!.pets.find(p=>p.isActive) ?? petsR.data!.pets[0])?.id ?? null);
+    }
+    if (walletR.ok && walletR.data) setWallet(walletR.data.balance);
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const activePet  = useMemo(() => pets?.find(p=>p.id===activeId) ?? pets?.[0] ?? null, [pets, activeId]);
+  const visual     = useMemo(() => petVisual(activePet?.typeId ?? '', activePet?.type?.species), [activePet]);
+  const petColor   = activePet?.type?.color ?? '#8b5cf6';
+  const rarityCfg  = RARITY_VISUAL[activePet?.rarity ?? 'common'];
   const theme      = THEMES[room.theme]??THEMES.cozy;
-  const rc = useCallback(()=>setCoins(getCoins(uid)),[uid]);
-  const upd = useCallback((fn:(p:PetPrefs)=>PetPrefs)=>{
-    setPrefs(prev=>{ const n=fn(prev); savePrefs(n); return n; });
-  },[]);
+  const rd = useCallback(()=>setDecor(getDecor(uid)),[uid]);
   const spawn = useCallback((emoji:string,x?:number,y?:number)=>{
     const id=++pid.current;
     setParts(p=>[...p,{id,x:x??petPos.x+100,y:y??petPos.y-20,emoji}]);
@@ -582,29 +606,43 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
     return()=>{ if(stRef.current)clearTimeout(stRef.current); };
   },[]);
 
-  /* Daily bonus */
-  useEffect(()=>{
-    const k=`sky:pet:daily:${uid}:${new Date().toDateString()}`;
-    if(!localStorage.getItem(k)){
-      addCoins(uid,20); localStorage.setItem(k,'1'); rc();
-      setMsg('🎁 +20 монет за вход!'); setTimeout(()=>setMsg(''),2500);
-    }
-  },[uid]);
-
   const showMsg=(m:string,ms=2200)=>{ setMsg(m); setTimeout(()=>setMsg(''),ms); };
 
-  const handlePetTap=useCallback(()=>{
-    const icons=['😸','💖','⭐','✨','💫','🎉','🫶'];
-    spawn(icons[Math.floor(Math.random()*icons.length)]);
-    setPetSt('happy'); setPetMd(friendship>70?'love':'excited');
-    showMsg(activePet.sounds[Math.floor(Math.random()*activePet.sounds.length)]);
-    upd(p=>({...p,
-      xp:{...p.xp,[activePet.id]:(p.xp?.[activePet.id]??0)+3},
-      friendship:{...p.friendship,[activePet.id]:Math.min(100,(p.friendship?.[activePet.id]??0)+1)},
-    }));
-    if(Math.random()<.25){ addCoins(uid,1); rc(); spawn('🪙'); }
-    setTimeout(()=>{ setPetSt('idle'); setPetMd('idle'); },2000);
-  },[activePet,spawn,upd,uid,rc,friendship]);
+  /* Уход — настоящий запрос на сервер (server/pets.mjs::careForPet).
+   *  Кулдаун/эффект на характеристики/XP/шанс Pet Coins считает только
+   *  сервер — здесь только показ результата и локальный отсчёт между
+   *  попытками, чтобы не долбить ручку без толку. */
+  const doCare = useCallback(async (action: CareAction, state: PetState, mood: PetMood, reactionMsg: string) => {
+    if (!activePet || busyAction) return;
+    const remaining = (cooldownUntil[action] ?? 0) - Date.now();
+    if (remaining > 0) { showMsg('Рано — питомец пока отдыхает от этого'); return; }
+
+    setBusyAction(action);
+    const r = await apiCareForPet(activePet.id, action);
+    setBusyAction(null);
+
+    if (!r.ok || !r.data || 'error' in r.data) {
+      const remainingSeconds = (r.data && 'remainingSeconds' in r.data) ? r.data.remainingSeconds : undefined;
+      if (remainingSeconds) setCooldownUntil(c => ({ ...c, [action]: Date.now() + remainingSeconds * 1000 }));
+      showMsg('Не получилось — попробуй чуть позже');
+      return;
+    }
+
+    const { pet: updated, coinsEarned, leveledUp } = r.data;
+    setPets(prev => prev?.map(p => p.id===updated.id ? updated : p) ?? prev);
+    setCooldownUntil(c => ({ ...c, [action]: Date.now() + CARE_ACTION_COOLDOWN[action]*1000 }));
+    setPetSt(state); setPetMd(mood);
+    spawn(CARE_ACTION_EMOJI[action]);
+    showMsg(coinsEarned > 0 ? `${reactionMsg} · +${coinsEarned} 🪙` : reactionMsg);
+    if (coinsEarned > 0) { setWallet(w => w + coinsEarned); spawn('🪙'); }
+    if (leveledUp) { setTimeout(() => showMsg(`Новый уровень — ${updated.level}! 🎉`), 1400); }
+    setTimeout(()=>{ setPetSt('idle'); setPetMd('idle'); },2200);
+  }, [activePet, busyAction, cooldownUntil, spawn]);
+
+  const handleFeed    = () => void doCare('feed', 'eat', 'happy', 'Ням-ням! Очень вкусно! 😋');
+  const handlePlay     = () => void doCare('play', 'jump', 'excited', 'Ура! Играем! 🎉');
+  const handlePetTap   = () => void doCare('pet', 'happy', (activePet?.loyalty ?? 0) > 70 ? 'love' : 'excited', 'Обнимашки! 🥰');
+  const handleToy       = () => void doCare('toy', 'dance', 'happy', 'Любимая игрушка! 🧸');
 
   const handleFurnitureTap=useCallback((id:string)=>{
     const map:{[k:string]:{msg:string;e:string;s:PetState;m:PetMood}}={
@@ -617,69 +655,38 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
     };
     const a=map[id]; if(!a)return;
     setPetSt(a.s); setPetMd(a.m); showMsg(a.msg); spawn(a.e);
-    upd(p=>({...p,xp:{...p.xp,[activePet.id]:(p.xp?.[activePet.id]??0)+2}}));
     setTimeout(()=>{ setPetSt('idle'); setPetMd('idle'); },3000);
-  },[activePet,spawn,upd]);
-
-  const handleFeed=()=>{
-    if(!spendCoins(uid,5)){ setSM('❌ Мало монет (нужно 🪙5)'); setTimeout(()=>setSM(''),1600); return; }
-    rc(); setPetSt('eat'); setPetMd('happy'); spawn('🍖');
-    showMsg('Ням-ням! Очень вкусно! 😋');
-    upd(p=>({...p,
-      needs:{...p.needs,[activePet.id]:{...(p.needs?.[activePet.id]??DEF_NEEDS),hunger:Math.min(100,(p.needs?.[activePet.id]?.hunger??72)+22)}},
-      xp:{...p.xp,[activePet.id]:(p.xp?.[activePet.id]??0)+5},
-    }));
-    setTimeout(()=>{ setPetSt('idle'); setPetMd('idle'); },2500);
-  };
-
-  const handlePlay=()=>{
-    setPetSt('jump'); setPetMd('excited'); spawn('🎮');
-    showMsg('Ура! Играем! 🎉');
-    upd(p=>({...p,
-      needs:{...p.needs,[activePet.id]:{...(p.needs?.[activePet.id]??DEF_NEEDS),happiness:Math.min(100,(p.needs?.[activePet.id]?.happiness??65)+16)}},
-      xp:{...p.xp,[activePet.id]:(p.xp?.[activePet.id]??0)+4},
-    }));
-    addCoins(uid,3); rc();
-    setTimeout(()=>setPetSt('dance'),640);
-    setTimeout(()=>{ setPetSt('idle'); setPetMd('idle'); },3000);
-  };
+  },[spawn]);
 
   const handleSticker=()=>{
+    if (!activePet) return;
     const mood:PetMood=petMood==='idle'?'happy':petMood;
-    onSendSticker(activePet.id,mood,activePet.sounds[Math.floor(Math.random()*activePet.sounds.length)]);
+    const sound = visual.sounds[Math.floor(Math.random()*visual.sounds.length)];
+    onSendSticker(activePet.typeId, mood, sound, activePet.name, petColor);
     spawn('💌'); showMsg('Стикер отправлен! 💌');
-    addCoins(uid,2); rc();
-    upd(p=>({...p,xp:{...p.xp,[activePet.id]:(p.xp?.[activePet.id]??0)+2}}));
-  };
-
-  const handleClean=()=>{
-    if(!spendCoins(uid,3)){ setSM('❌ Нужно 🪙3'); setTimeout(()=>setSM(''),1400); return; }
-    rc(); spawn('🫧'); showMsg('Чистый и пушистый! 🫧✨');
-    upd(p=>({...p,
-      needs:{...p.needs,[activePet.id]:{...(p.needs?.[activePet.id]??DEF_NEEDS),hygiene:Math.min(100,(p.needs?.[activePet.id]?.hygiene??70)+25)}},
-      xp:{...p.xp,[activePet.id]:(p.xp?.[activePet.id]??0)+3},
-    }));
+    addDecor(uid,1); rd();
   };
 
   const buyFurni=(id:string)=>{
     const fd=FURNI[id]; if(!fd||room.items.includes(id))return;
-    if(!spendCoins(uid,fd.price)){ setSM('❌ Недостаточно монет!'); setTimeout(()=>setSM(''),1800); return; }
-    rc(); const nr={...room,items:[...room.items,id]}; setRoom(nr); saveRoom(nr);
+    if(!spendDecor(uid,fd.price)){ setSM('❌ Недостаточно очков уюта!'); setTimeout(()=>setSM(''),1800); return; }
+    rd(); const nr={...room,items:[...room.items,id]}; setRoom(nr); saveRoom(nr);
     setSM(`✓ ${fd.label} куплен!`); setTimeout(()=>setSM(''),1800);
     spawn('🎁',W/2+120,180);
   };
 
   const buyTheme=(key:string)=>{
     const td=THEMES[key]; if(!td||room.theme===key)return;
-    if(td.price>0&&!spendCoins(uid,td.price)){ setSM('❌ Недостаточно монет!'); setTimeout(()=>setSM(''),1800); return; }
-    if(td.price>0) rc();
+    if(td.price>0&&!spendDecor(uid,td.price)){ setSM('❌ Недостаточно очков уюта!'); setTimeout(()=>setSM(''),1800); return; }
+    if(td.price>0) rd();
     const nr={...room,theme:key}; setRoom(nr); saveRoom(nr);
     setSM(`✓ Тема «${td.label}» применена!`); setTimeout(()=>setSM(''),1800);
   };
 
   const activatePet=(id:string)=>{
-    upd(p=>({...p,active:id}));
-    const p=PETS.find(x=>x.id===id);
+    setActiveId(id);
+    void apiSetActivePet(id);
+    const p=pets?.find(x=>x.id===id);
     if(p){ showMsg(`Привет! Я ${p.name}! 👋`); }
   };
 
@@ -689,6 +696,28 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
     {k:'themes', icon:<Palette size={13}/>, label:'Темы'},
     {k:'pets',   icon:<Users size={13}/>,   label:'Питомцы'},
   ] as const;
+
+  if (pets === null) {
+    return (
+      <div className="fixed inset-0 z-[300] flex items-center justify-center" style={{ background:'rgba(0,0,0,.92)' }}>
+        <p className="text-sm" style={{ color:'rgba(255,255,255,.5)' }}>Загрузка питомцев…</p>
+      </div>
+    );
+  }
+  if (!activePet) {
+    return (
+      <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center gap-3" style={{ background:'rgba(0,0,0,.92)' }}>
+        <p className="text-3xl">🐾</p>
+        <p className="text-sm" style={{ color:'rgba(255,255,255,.6)' }}>Питомца пока нет — загляни в Магазин.</p>
+        <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-xs font-bold"
+          style={{ background:'rgba(255,255,255,.08)', color:'#fff' }}>Закрыть</button>
+      </div>
+    );
+  }
+
+  const petXP = activePet.xp, petLevel = activePet.level;
+  const petLvlPct = lvlPct(petLevel, petXP);
+  const xpNeeded = xpForLevel(petLevel);
 
   return (
     <div className="fixed inset-0 z-[300] flex flex-col overflow-hidden"
@@ -700,7 +729,7 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
         style={{ borderBottom:'1px solid rgba(255,255,255,.08)', background:'rgba(0,0,0,.4)', paddingTop: 'calc(var(--safe-top) + 12px)' }}>
         <div className="flex items-center gap-3">
           <div className="relative">
-            <CSSPet pet={activePet} state="idle" mood={petMood} size={36}/>
+            <CSSPet color={petColor} state="idle" mood={petMood} size={36}/>
             <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2"
               style={{ background:'#22c55e', borderColor:'rgba(0,0,0,.8)' }}/>
           </div>
@@ -708,28 +737,31 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
             <div className="flex items-center gap-2">
               <p className="text-sm font-black text-white">{activePet.name}</p>
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                style={{ background:`${RARITY_CFG[activePet.rarity].color}22`, color:RARITY_CFG[activePet.rarity].color }}>
-                Lv.{petLevel} · {RARITY_CFG[activePet.rarity].label}
+                style={{ background:`${rarityCfg.color}22`, color:rarityCfg.color }}>
+                Lv.{petLevel} · {rarityCfg.label}
               </span>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <div className="w-28 h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(255,255,255,.1)' }}>
-                <div className="h-full rounded-full" style={{ width:petLvlPct+'%', background:`linear-gradient(90deg,${activePet.color},#22d3ee)` }}/>
+                <div className="h-full rounded-full" style={{ width:petLvlPct+'%', background:`linear-gradient(90deg,${petColor},#22d3ee)` }}/>
               </div>
-              <span className="text-[10px]" style={{ color:'var(--t3)' }}>{petXP%XP_LVL}/{XP_LVL} XP</span>
+              <span className="text-[10px]" style={{ color:'var(--t3)' }}>{petXP}/{xpNeeded} XP</span>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
-            style={{ background:'rgba(245,158,11,.12)', border:'1px solid rgba(245,158,11,.2)' }}>
-            <span className="text-base">🪙</span>
-            <span className="text-sm font-black" style={{ color:'#f59e0b' }}>{coins}</span>
-          </div>
+          <button type="button" onClick={() => setShowMarket(true)}
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
+            style={{ background:'rgba(245,158,11,.12)', border:'1px solid rgba(245,158,11,.2)', cursor:'pointer' }}
+            title="Настоящие Pet Coins — открыть Sky Skin Market">
+            <Coins size={14} style={{ color:'#f59e0b' }}/>
+            <span className="text-sm font-black" style={{ color:'#f59e0b' }}>{wallet}</span>
+            <Sparkles size={11} style={{ color:'#f59e0b', opacity:.7 }}/>
+          </button>
           <div className="flex items-center gap-1 rounded-full px-2.5 py-1.5"
-            style={{ background:'rgba(244,63,94,.1)', border:'1px solid rgba(244,63,94,.2)' }}>
+            style={{ background:'rgba(244,63,94,.1)', border:'1px solid rgba(244,63,94,.2)' }} title="Привязанность питомца">
             <span className="text-sm">❤️</span>
-            <span className="text-xs font-bold" style={{ color:'#f43f5e' }}>{friendship}</span>
+            <span className="text-xs font-bold" style={{ color:'#f43f5e' }}>{activePet.loyalty}</span>
           </div>
           <button type="button" onClick={onClose}
             className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10"
@@ -750,7 +782,7 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
           <div style={{ width: W * sceneScale, height: H * sceneScale, position: 'relative' }}>
             <div style={{ width: W, height: H, position: 'relative', transform: `scale(${sceneScale})`, transformOrigin: 'top left' }}>
               <Room
-                pet={activePet} theme={theme} items={room.items}
+                petColor={petColor} theme={theme} items={room.items}
                 petState={petState} petPos={petPos} petMood={petMood}
                 onPetTap={handlePetTap} onFurnitureTap={handleFurnitureTap}
               />
@@ -770,36 +802,41 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
                 initial={{ opacity:0, y:14, scale:.85 }} animate={{ opacity:1, y:0, scale:1 }}
                 exit={{ opacity:0, y:-8 }} transition={{ type:'spring', stiffness:420, damping:26 }}
                 className="mt-3 rounded-3xl px-5 py-3 text-sm font-bold text-white text-center relative"
-                style={{ background:`linear-gradient(135deg,${activePet.color}dd,${activePet.color}99)`,
-                  boxShadow:`0 6px 24px ${activePet.color}55`, maxWidth:320, backdropFilter:'blur(10px)',
+                style={{ background:`linear-gradient(135deg,${petColor}dd,${petColor}99)`,
+                  boxShadow:`0 6px 24px ${petColor}55`, maxWidth:320, backdropFilter:'blur(10px)',
                   border:'1px solid rgba(255,255,255,.15)' }}>
                 {/* Tail */}
                 <div className="absolute -top-2 left-1/2 w-4 h-4 rotate-45 -translate-x-1/2"
-                  style={{ background:activePet.color }}/>
+                  style={{ background:petColor }}/>
                 {msg}
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Action buttons */}
+          {/* Action buttons — настоящий уход через server/pets.mjs::careForPet,
+              кроме «Стикер» (просто отправка в чат, без сервера). */}
           <div ref={actionsRef} className="flex flex-wrap justify-center gap-2 mt-4">
-            {[
-              {icon:'🍖',label:'Кормить', action:handleFeed,    cost:'🪙5', color:'#f59e0b'},
-              {icon:'🎮',label:'Играть',  action:handlePlay,    cost:'',    color:'#8b5cf6'},
-              {icon:'🫧',label:'Купать',  action:handleClean,   cost:'🪙3', color:'#22d3ee'},
-              {icon:'💌',label:'Стикер',  action:handleSticker, cost:'',    color:'#f43f5e'},
-              {icon:'🫶',label:'Обнять',  action:handlePetTap,  cost:'',    color:'#ec4899'},
-            ].map(({icon,label,action,cost,color})=>(
-              <motion.button key={label} type="button"
-                whileHover={{ scale:1.1, y:-3 }} whileTap={{ scale:.88 }}
-                onClick={action}
-                className="flex flex-col items-center gap-1 rounded-2xl px-3 py-2.5"
-                style={{ background:'rgba(255,255,255,.06)', border:`1px solid ${color}28`, cursor:'pointer', minWidth:54 }}>
-                <span style={{ fontSize:20 }}>{icon}</span>
-                <span className="text-[9px] font-bold whitespace-nowrap" style={{ color:'rgba(255,255,255,.65)' }}>{label}</span>
-                {cost && <span className="text-[8px]" style={{ color:'#f59e0b' }}>{cost}</span>}
-              </motion.button>
-            ))}
+            {([
+              {action:'feed' as const,icon:CARE_ACTION_EMOJI.feed,label:'Кормить', run:handleFeed,  color:'#f59e0b'},
+              {action:'play' as const,icon:CARE_ACTION_EMOJI.play,label:'Играть',  run:handlePlay,  color:'#8b5cf6'},
+              {action:'toy' as const, icon:CARE_ACTION_EMOJI.toy, label:'Игрушка', run:handleToy,   color:'#22d3ee'},
+              {action:null,            icon:'💌',                  label:'Стикер',  run:handleSticker, color:'#f43f5e'},
+              {action:'pet' as const,  icon:CARE_ACTION_EMOJI.pet, label:'Обнять',  run:handlePetTap, color:'#ec4899'},
+            ]).map(({icon,label,run,color,action})=>{
+              const cdRemaining = action ? (cooldownUntil[action] ?? 0) - Date.now() : 0;
+              const onCooldown = cdRemaining > 0;
+              return (
+                <motion.button key={label} type="button" disabled={onCooldown || busyAction!==null}
+                  whileHover={!onCooldown ? { scale:1.1, y:-3 } : {}} whileTap={!onCooldown ? { scale:.88 } : {}}
+                  onClick={run}
+                  className="flex flex-col items-center gap-1 rounded-2xl px-3 py-2.5 disabled:opacity-40"
+                  style={{ background:'rgba(255,255,255,.06)', border:`1px solid ${color}28`, cursor:onCooldown?'default':'pointer', minWidth:54 }}>
+                  <span style={{ fontSize:20 }}>{busyAction===action ? '⏳' : icon}</span>
+                  <span className="text-[9px] font-bold whitespace-nowrap" style={{ color:'rgba(255,255,255,.65)' }}>{label}</span>
+                  {onCooldown && <span className="text-[8px]" style={{ color:'rgba(255,255,255,.4)' }}>{Math.ceil(cdRemaining/60000)}м</span>}
+                </motion.button>
+              );
+            })}
           </div>
         </div>
 
@@ -813,9 +850,9 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
               <button key={t.k} type="button" onClick={()=>setPanel(t.k as typeof panel)}
                 className="flex-1 py-2.5 text-[9px] font-bold flex flex-col items-center gap-0.5"
                 style={{ background:panel===t.k?'rgba(255,255,255,.04)':'transparent',
-                  borderBottom:panel===t.k?`2px solid ${activePet.color}`:'2px solid transparent',
+                  borderBottom:panel===t.k?`2px solid ${petColor}`:'2px solid transparent',
                   color:panel===t.k?'#fff':'rgba(255,255,255,.3)', cursor:'pointer' }}>
-                <span style={{ color:panel===t.k?activePet.color:'rgba(255,255,255,.35)' }}>{t.icon}</span>
+                <span style={{ color:panel===t.k?petColor:'rgba(255,255,255,.35)' }}>{t.icon}</span>
                 <span>{t.label}</span>
               </button>
             ))}
@@ -826,46 +863,46 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
             {/* ── PET INFO ─── */}
             {panel==='info' && <>
               {/* Mini pet card */}
-              <div className="rounded-2xl p-4" style={{ background:`${activePet.color}10`, border:`1px solid ${activePet.color}25` }}>
+              <div className="rounded-2xl p-4" style={{ background:`${petColor}10`, border:`1px solid ${petColor}25` }}>
                 <div className="flex items-center gap-3 mb-2">
-                  <CSSPet pet={activePet} state="idle" mood="happy" size={44}/>
+                  <CSSPet color={petColor} state="idle" mood="happy" size={44}/>
                   <div>
                     <p className="text-sm font-black text-white">{activePet.name}</p>
-                    <p className="text-[10px]" style={{ color:'var(--t3)' }}>{activePet.species}</p>
+                    <p className="text-[10px]" style={{ color:'var(--t3)' }}>{activePet.type?.species ?? ''}</p>
                     <div className="flex gap-1 mt-0.5">
                       {[...Array(Math.min(5,petLevel))].map((_,i)=>(
-                        <Zap key={i} size={8} style={{ color:activePet.color }} fill={activePet.color}/>
+                        <Zap key={i} size={8} style={{ color:petColor }} fill={petColor}/>
                       ))}
                     </div>
                   </div>
                 </div>
-                <p className="text-[10px] leading-relaxed" style={{ color:'rgba(255,255,255,.45)' }}>{activePet.description}</p>
+                <p className="text-[10px] leading-relaxed" style={{ color:'rgba(255,255,255,.45)' }}>{activePet.type?.description ?? ''}</p>
               </div>
 
-              {/* Needs */}
+              {/* Характеристики — настоящие, с сервера (server/pets.mjs). */}
               <div className="space-y-2.5">
                 <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color:'var(--t3)' }}>Состояние</p>
-                <NBar label="Сытость"  v={needs.hunger}    c="#f59e0b" emoji="🍖"/>
-                <NBar label="Счастье"  v={needs.happiness} c="#f43f5e" emoji="💖"/>
-                <NBar label="Энергия"  v={needs.energy}    c="#22d3ee" emoji="⚡"/>
-                <NBar label="Чистота"  v={needs.hygiene}   c="#34d399" emoji="🫧"/>
+                <NBar label="Сытость"  v={activePet.hunger}    c="#f59e0b" emoji="🍖"/>
+                <NBar label="Счастье"  v={activePet.happiness} c="#f43f5e" emoji="💖"/>
+                <NBar label="Энергия"  v={activePet.energy}    c="#22d3ee" emoji="⚡"/>
+                <NBar label="Привязанность" v={activePet.loyalty} c="#a855f7" emoji="🫶"/>
               </div>
 
-              {/* Friendship */}
+              {/* Привязанность — то же поле, что и бейдж в хедере (loyalty). */}
               <div className="rounded-xl p-3" style={{ background:'rgba(244,63,94,.08)', border:'1px solid rgba(244,63,94,.15)' }}>
                 <div className="flex justify-between mb-1.5">
-                  <p className="text-[10px] font-bold" style={{ color:'#f43f5e' }}>❤️ Дружба</p>
-                  <p className="text-[10px]" style={{ color:'var(--t3)' }}>{friendship}/100</p>
+                  <p className="text-[10px] font-bold" style={{ color:'#f43f5e' }}>❤️ Привязанность</p>
+                  <p className="text-[10px]" style={{ color:'var(--t3)' }}>{activePet.loyalty}/100</p>
                 </div>
                 <div className="h-1.5 rounded-full overflow-hidden" style={{ background:'rgba(255,255,255,.08)' }}>
-                  <div className="h-full rounded-full" style={{ width:friendship+'%', background:'linear-gradient(90deg,#f43f5e,#ec4899)' }}/>
+                  <div className="h-full rounded-full" style={{ width:activePet.loyalty+'%', background:'linear-gradient(90deg,#f43f5e,#ec4899)' }}/>
                 </div>
                 <p className="text-[9px] mt-1.5" style={{ color:'rgba(255,255,255,.3)' }}>
-                  {friendship<30?'Только познакомились':friendship<60?'Хорошие друзья':friendship<90?'Лучшие друзья':'Неразлучны! 💖'}
+                  {activePet.loyalty<30?'Только познакомились':activePet.loyalty<60?'Хорошие друзья':activePet.loyalty<90?'Лучшие друзья':'Неразлучны! 💖'}
                 </p>
               </div>
 
-              {/* Items in room */}
+              {/* Items in room — чисто декоративная комната, см. комментарий у ROOM_KEY. */}
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color:'var(--t3)' }}>В комнате</p>
                 <div className="flex flex-wrap gap-2">
@@ -879,13 +916,19 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
               <div className="rounded-xl px-3 py-2.5" style={{ background:'rgba(79,110,247,.08)', border:'1px solid rgba(79,110,247,.15)' }}>
                 <p className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color:'rgba(79,110,247,.8)' }}>💡 Совет</p>
                 <p className="text-[10px] leading-relaxed" style={{ color:'rgba(255,255,255,.4)' }}>
-                  Пиши сообщения в чате — питомец получает монеты! 5 сообщений = 🪙3
+                  Уход (кормить/играть/обнять/игрушка) иногда приносит настоящие Pet Coins — их можно потратить в Sky Skin Market.
                 </p>
               </div>
             </>}
 
-            {/* ── SHOP ─── */}
+            {/* ── SHOP (мебель) ───────────────────────────────────────
+                Чисто декоративная, за локальные «очки уюта» — у этого
+                обустройства нет серверного аналога (см. комментарий у
+                ROOM_KEY), поэтому ценник не трогает настоящие Pet Coins. */}
             {panel==='shop' && <>
+              <p className="text-[9px]" style={{ color:'rgba(255,255,255,.35)' }}>
+                За очки уюта (сейчас: {decor}) — зарабатываются отправкой стикеров в чат. Отдельно от настоящих Pet Coins выше.
+              </p>
               {shopMsg && (
                 <div className="rounded-xl px-3 py-2 text-xs font-bold text-center"
                   style={{ background:shopMsg.startsWith('✓')?'rgba(34,197,94,.1)':'rgba(244,63,94,.1)',
@@ -894,7 +937,7 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
               )}
               {Object.entries(FURNI).map(([id,fd])=>{
                 const owned=room.items.includes(id);
-                const can=coins>=fd.price;
+                const can=decor>=fd.price;
                 return(
                   <div key={id} className="flex items-center gap-2.5 rounded-2xl p-3"
                     style={{ background:'rgba(255,255,255,.04)', border:'1px solid rgba(255,255,255,.07)' }}>
@@ -912,7 +955,7 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
                         border:`1px solid ${owned?'rgba(34,197,94,.2)':can||fd.price===0?'rgba(245,158,11,.2)':'rgba(255,255,255,.06)'}`,
                         cursor:owned?'default':'pointer',
                       }}>
-                      {owned?'✓':fd.price===0?'Бесп.':`🪙${fd.price}`}
+                      {owned?'✓':fd.price===0?'Бесп.':`✨${fd.price}`}
                     </motion.button>
                   </div>
                 );
@@ -927,7 +970,7 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
               )}
               {Object.entries(THEMES).map(([key,td])=>{
                 const active=room.theme===key;
-                const can=coins>=td.price||td.price===0;
+                const can=decor>=td.price||td.price===0;
                 return(
                   <div key={key} className="flex items-center gap-3 rounded-2xl p-3"
                     style={{ background:active?`${td.accent}15`:'rgba(255,255,255,.04)',
@@ -939,7 +982,7 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-white">{td.emoji} {td.label}</p>
-                      <p className="text-[10px]" style={{ color:'var(--t3)' }}>{td.price===0?'Бесплатно':`🪙${td.price}`}</p>
+                      <p className="text-[10px]" style={{ color:'var(--t3)' }}>{td.price===0?'Бесплатно':`✨${td.price}`}</p>
                     </div>
                     <motion.button whileTap={{ scale:.9 }} type="button" disabled={active}
                       onClick={()=>buyTheme(key)}
@@ -950,7 +993,7 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
                         border:`1px solid ${active?td.accent+'40':can?'rgba(79,110,247,.2)':'rgba(255,255,255,.06)'}`,
                         cursor:active?'default':'pointer',
                       }}>
-                      {active?'✓':td.price===0?'Выбр.':`🪙${td.price}`}
+                      {active?'✓':td.price===0?'Выбр.':`✨${td.price}`}
                     </motion.button>
                   </div>
                 );
@@ -960,47 +1003,53 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
             {/* ── PETS ─── */}
             {panel==='pets' && <>
               <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color:'var(--t3)' }}>
-                Питомцы ({PETS.length})
+                Питомцы ({pets.length})
               </p>
-              {PETS.map(pet=>{
-                // Весь каталог видов открыт на выбор каждому — локального
-                // замка по pet.id больше нет (раньше здесь были «открыты»
-                // только 2 из 12 навечно, без единого способа разблокировать
-                // остальные: ни покупки, ни прогресса, просто недоделанная
-                // заглушка).
-                const active=prefs.active===pet.id;
-                const xp=prefs.xp?.[pet.id]??0;
+              {pets.map(p=>{
+                const active=p.id===activeId;
+                const rc = RARITY_VISUAL[p.rarity];
+                const color = p.type?.color ?? '#8b5cf6';
                 return(
-                  <motion.div key={pet.id} whileHover={{x:2}}
+                  <motion.div key={p.id} whileHover={{x:2}}
                     className="flex items-center gap-3 rounded-2xl p-3 cursor-pointer"
-                    style={{ background:active?`${pet.color}14`:'rgba(255,255,255,.04)',
-                      border:`1px solid ${active?pet.color+'35':'rgba(255,255,255,.07)'}` }}
-                    onClick={()=>!active&&activatePet(pet.id)}>
+                    style={{ background:active?`${color}14`:'rgba(255,255,255,.04)',
+                      border:`1px solid ${active?color+'35':'rgba(255,255,255,.07)'}` }}
+                    onClick={()=>!active&&activatePet(p.id)}>
                     <div className="relative shrink-0">
-                      <CSSPet pet={pet} state="idle" mood="idle" size={32}/>
+                      <CSSPet color={color} state="idle" mood="idle" size={32}/>
                       {active && <div className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full"
                         style={{ background:'#22c55e', border:'1.5px solid rgba(0,0,0,.5)' }}/>}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold truncate text-white">{pet.name}</p>
-                        <span className="text-[9px] font-bold" style={{ color:RARITY_CFG[pet.rarity].color }}>Lv.{lvl(xp)}</span>
+                        <p className="text-xs font-bold truncate text-white">{p.name}</p>
+                        <span className="text-[9px] font-bold" style={{ color:rc.color }}>Lv.{p.level}</span>
                       </div>
                       <p className="text-[10px] truncate" style={{ color:'var(--t3)' }}>
-                        {pet.species}
+                        {p.type?.species ?? ''}
                       </p>
                       <div className="mt-1 h-0.5 rounded-full overflow-hidden" style={{ background:'rgba(255,255,255,.1)' }}>
-                        <div className="h-full rounded-full" style={{ width:lvlPct(xp)+'%', background:pet.color }}/>
+                        <div className="h-full rounded-full" style={{ width:lvlPct(p.level,p.xp)+'%', background:color }}/>
                       </div>
                     </div>
                   </motion.div>
                 );
               })}
+              {pets.length===0 && (
+                <p className="py-6 text-center text-[11px]" style={{ color:'var(--t3)' }}>Пока пусто — загляни в «Магазин».</p>
+              )}
             </>}
 
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showMarket && (
+          <PetSkinShop activePetId={activePet.id} onClose={() => setShowMarket(false)}
+            onEquipped={() => void load()} />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

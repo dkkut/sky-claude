@@ -26,8 +26,12 @@ import { ProfileGiftsShowcase } from '@/gifts/SkyGifts';
 import { GamingAccountsPanel, GamingActivityCard } from '@/gaming/GamingUI';
 import { PetSprite } from '@/messenger/PetSprite';
 import { CustomizationSettingsTab } from '@/customization/CustomizationSettingsTab';
-import { loadSkinData, getActiveSkin, SKIN_RARITY_COLOR, SKIN_RARITY_LABEL, PET_SKINS } from '@/messenger/petSkins';
-import { PETS } from '@/messenger/petData';
+import {
+  apiMyPets, apiMySkins, apiPetVisibility, apiSetPetVisibility,
+  PET_RARITY_LABEL, PET_RARITY_COLOR,
+  type PetInstance, type SkinInventoryEntry,
+} from '@/messenger/petsApi';
+import { usePetMedia } from '@/messenger/petMedia';
 import { apiQuickMenuGet, apiQuickMenuSet, apiQuickMenuReset, type QuickMenuItem } from '@/quickmenu/quickMenuApi';
 import { useMoney, fmt } from '@/wallet/store';
 import { SupportScreen } from '@/support/SupportScreen';
@@ -81,22 +85,33 @@ const PrivRow = ({ label, sub, value, onChange }: { label:string; sub?:string; v
 
 // --- Профиль -----------------------------------------------------------------
 
-/* -- Profile Pets Section ----------------------------------- */
-const SK_HIDE = 'sky:profile:hide-pets';
-
+/* -- Profile Pets Section -----------------------------------
+   Раньше «мои питомцы» были фиксированным каталогом из 12 имён, а
+   «скины» — локальной перекраской за Баллы Прайма (petSkins.ts).
+   Теперь и то, и другое — настоящие данные: владение питомцами с
+   /api/pets/mine, инвентарь — с реального Sky Skin Market
+   (/api/pets/market/mine), видимость в профиле — тот же переключатель,
+   что читает/пишет сервер (server/pets.mjs::getVisibility/setVisibility),
+   а не отдельный локальный флаг. */
 const ProfilePetsSection = () => {
-  const [skinData, setSkinData] = useState(loadSkinData);
-  const [hidden, setHidden] = useState<boolean>(() => {
-    try { return localStorage.getItem(SK_HIDE) === '1'; } catch { return false; }
-  });
+  const [pets, setPets] = useState<PetInstance[] | null>(null);
+  const [skins, setSkins] = useState<SkinInventoryEntry[] | null>(null);
+  const [hidden, setHidden] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const toggleHidden = () => {
+  useEffect(() => {
+    void apiMyPets().then(r => { if (r.ok && r.data) setPets(r.data.pets); });
+    void apiMySkins().then(r => { if (r.ok && r.data) setSkins(r.data.skins); });
+    void apiPetVisibility().then(r => { if (r.ok && r.data) setHidden(!r.data.showInProfile); });
+  }, []);
+
+  const toggleHidden = async () => {
+    setBusy(true);
     const next = !hidden;
-    setHidden(next);
-    try { localStorage.setItem(SK_HIDE, next ? '1' : '0'); } catch {}
+    const r = await apiSetPetVisibility({ showInProfile: !next });
+    setBusy(false);
+    if (r.ok) setHidden(next);
   };
-
-  const ownedSkins = PET_SKINS.filter(s => skinData.owned.includes(s.id) && s.pricePoints > 0);
 
   return (
     <div className="flex flex-col h-full overflow-y-auto px-4 py-4 space-y-4" style={{ scrollbarWidth:'none' }}>
@@ -105,8 +120,8 @@ const ProfilePetsSection = () => {
         <p className="text-xs font-bold uppercase tracking-wider" style={{ color:'var(--t3)' }}>
           <PawPrint size={13} className="inline mr-1"/>Мои питомцы
         </p>
-        <button type="button" onClick={toggleHidden}
-          className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all"
+        <button type="button" disabled={busy} onClick={() => void toggleHidden()}
+          className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all disabled:opacity-50"
           style={{
             background: hidden ? 'rgba(248,113,113,0.1)' : 'rgba(52,211,153,0.1)',
             border: `1px solid ${hidden ? 'rgba(248,113,113,0.25)' : 'rgba(52,211,153,0.25)'}`,
@@ -125,70 +140,69 @@ const ProfilePetsSection = () => {
         </div>
       )}
 
-      {/* Active pets */}
+      {/* Активные питомцы */}
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-wider mb-3" style={{ color:'var(--t3)' }}>
-          Активные питомцы
+          Мои питомцы {pets ? `(${pets.length})` : ''}
         </p>
-        <div className="grid grid-cols-2 gap-3">
-          {PETS.map(pet => {
-            const activeSkin = getActiveSkin(pet.id, skinData);
-            const rc = SKIN_RARITY_COLOR[activeSkin.rarity ?? 'common'];
-            return (
-              <div key={pet.id} className="rounded-2xl p-3 flex flex-col items-center gap-2 relative"
-                style={{
-                  background: `linear-gradient(155deg,${activeSkin.bodyColor}12,${activeSkin.accentColor}08)`,
-                  border: `1.5px solid ${rc}30`,
-                }}>
-                <PetSprite petId={pet.id} skin={activeSkin} mood="idle" size={72} showParticles={false}/>
-                <div className="text-center">
-                  <p className="text-xs font-bold text-white">{pet.name}</p>
-                  <p className="text-[9px] mt-0.5" style={{ color:rc }}>{activeSkin.name}</p>
+        {pets === null ? (
+          <p className="text-xs py-4 text-center" style={{ color:'var(--t3)' }}>Загрузка…</p>
+        ) : pets.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-6">
+            <PawPrint size={28} className="opacity-40" style={{ color:'var(--t3)' }}/>
+            <p className="text-xs" style={{ color:'var(--t3)' }}>Пока нет питомцев</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {pets.map(pet => {
+              const color = pet.type?.color ?? '#8b5cf6';
+              const rc = PET_RARITY_COLOR[pet.rarity];
+              return (
+                <div key={pet.id} className="rounded-2xl p-3 flex flex-col items-center gap-2 relative"
+                  style={{ background: `linear-gradient(155deg,${color}12,${color}08)`, border: `1.5px solid ${rc}30` }}>
+                  <PetSprite typeId={pet.typeId} color={color} mood="idle" size={72} showParticles={false}/>
+                  <div className="text-center">
+                    <p className="text-xs font-bold text-white">{pet.name}</p>
+                    <p className="text-[9px] mt-0.5" style={{ color:rc }}>Ур.{pet.level} · {PET_RARITY_LABEL[pet.rarity]}</p>
+                  </div>
+                  {pet.isActive && (
+                    <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full" style={{ background:'#22c55e' }}/>
+                  )}
                 </div>
-                {activeSkin.badge && (
-                  <span className="absolute top-1.5 right-1.5 text-sm">{activeSkin.badge}</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Owned skins */}
+      {/* Инвентарь Sky Skin Market */}
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-wider mb-3" style={{ color:'var(--t3)' }}>
-          Коллекция скинов ({ownedSkins.length})
+          Sky Skin Market ({skins?.length ?? 0})
         </p>
-        {ownedSkins.length === 0 ? (
+        {skins === null ? (
+          <p className="text-xs py-4 text-center" style={{ color:'var(--t3)' }}>Загрузка…</p>
+        ) : skins.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-6">
             <Palette size={28} className="opacity-40" style={{ color:'var(--t3)' }}/>
-            <p className="text-xs" style={{ color:'var(--t3)' }}>Нет купленных скинов</p>
+            <p className="text-xs" style={{ color:'var(--t3)' }}>Нет купленных предметов</p>
           </div>
         ) : (
           <div className="grid grid-cols-4 gap-2">
-            {ownedSkins.map(skin => {
-              const rc = SKIN_RARITY_COLOR[skin.rarity];
-              const isActive = Object.values(skinData.active).includes(skin.id);
+            {skins.map(skin => {
+              const rc = PET_RARITY_COLOR[skin.rarity];
               return (
-                <div key={skin.id}
+                <div key={skin.inventoryId}
                   className="rounded-2xl p-2.5 flex flex-col items-center gap-1"
-                  style={{
-                    background: `linear-gradient(155deg,${skin.bodyColor}15,${skin.accentColor}08)`,
-                    border: `1.5px solid ${isActive ? rc : rc+'35'}`,
-                    boxShadow: isActive ? `0 0 0 2px ${rc}25` : 'none',
-                  }}>
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white"
-                    style={{ background: skin.bodyColor }}>
-                    {skin.badge ?? skin.name[0]}
+                  style={{ background: `${rc}10`, border: `1.5px solid ${rc}35` }}>
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white overflow-hidden"
+                    style={{ background: rc }}>
+                    {skin.previewUrl ? <SkinThumb path={skin.previewUrl}/> : skin.name[0]}
                   </div>
-                  <p className="text-[8px] font-bold text-white text-center truncate w-full">
-                    {skin.name}
-                  </p>
-                  <span className="text-[7px] font-bold" style={{ color:rc }}>
-                    {SKIN_RARITY_LABEL[skin.rarity]}
-                  </span>
-                  {isActive && (
-                    <span className="text-[7px] font-bold" style={{ color:'var(--green)' }}>Надет</span>
+                  <p className="text-[8px] font-bold text-white text-center truncate w-full">{skin.name}</p>
+                  <span className="text-[7px] font-bold" style={{ color:rc }}>{PET_RARITY_LABEL[skin.rarity]}</span>
+                  {skin.instanceNumber != null && (
+                    <span className="text-[7px]" style={{ color:'var(--t3)' }}>#{skin.instanceNumber}</span>
                   )}
                 </div>
               );
@@ -198,6 +212,13 @@ const ProfilePetsSection = () => {
       </div>
     </div>
   );
+};
+
+/** Маленькая превьюшка предмета Sky Skin Market — медиа авторизовано
+ *  токеном, поэтому обычный <img src> не сработает (см. petMedia.ts). */
+const SkinThumb = ({ path }: { path: string }) => {
+  const url = usePetMedia(path);
+  return url ? <img src={url} alt="" className="w-full h-full object-cover"/> : null;
 };
 
 

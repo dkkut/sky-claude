@@ -21,7 +21,7 @@ import { broadcast }         from './socket';
 import { safeMediaUrl }      from './safeUrl';
 import { useAttachment }     from './mediaCache';
 import { apiUploadFile, MAX_FILE_BYTES } from '@/core/auth/api';
-import { PetPanel, PetBubble, PETS } from './PetPanel';
+import { PetBubble } from './PetPanel';
 import { PetHouse }          from './PetHouse';
 import { SpoilerText, OnceViewText, SelfDestructTimer, PollBubble, MsgOptionsPanel, CreatePollModal } from './MsgFeatures';
 import { LiquidCursor, ThemePicker } from './LiquidCursor';
@@ -624,8 +624,12 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
           {msg.kind === 'file'       && <FileBubble  msg={msg} fromMe={fromMe} />}
           {msg.kind === 'pet'   && (() => {
             try {
+              // typeId/petName/petColor присылаются прямо в сообщении (не из
+              // локального каталога): отправитель и получатель могут быть
+              // разными людьми, а значит разными владельцами питомцев —
+              // инстанс отправителя получателю не виден и не должен быть.
               const d = JSON.parse(msg.text);
-              return <PetBubble petId={d.petId} mood={d.mood} sound={d.sound} petName={PETS.find(p=>p.id===d.petId)?.name??''} petColor={PETS.find(p=>p.id===d.petId)?.color??theme.accent} />;
+              return <PetBubble typeId={d.typeId ?? d.petId ?? ''} mood={d.mood} sound={d.sound} petName={d.petName ?? ''} petColor={d.petColor ?? theme.accent} />;
             } catch { return null; }
           })()}
           {msg.kind === 'gift' && (
@@ -1437,8 +1441,8 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
         {showPets && (
           <PetHouse
             onClose={() => setShowPets(false)}
-            onSendSticker={(petId, mood, sound) => {
-              const m = sendMessage({ text: JSON.stringify({ petId, mood, sound }), kind: 'pet' });
+            onSendSticker={(typeId, mood, sound, petName, petColor) => {
+              const m = sendMessage({ text: JSON.stringify({ typeId, mood, sound, petName, petColor }), kind: 'pet' });
               if (m) broadcast.message(m);
               setShowPets(false);
             }}
