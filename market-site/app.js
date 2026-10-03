@@ -73,6 +73,7 @@
       me = r.ok ? r.data : null;
       renderSkyTab();
       renderProfileHeader();
+      maybePromptDocs();
       return me;
     });
   }
@@ -546,6 +547,32 @@
         });
         acceptEl.appendChild(btn);
       });
+    });
+  }
+
+  /*
+   * Всплывающее окно принятия соглашений.
+   *
+   * Раньше раздел «Документы» открывался только по своей кнопке в
+   * профиле или реактивно — после отказа сервера на /sky-topup с
+   * documents_required (см. обработчик #sky-submit выше). Между входом
+   * и первой попыткой пополнения человек мог пользоваться сайтом сколько
+   * угодно, не увидев условия вовсе. Теперь при каждом подтверждённом
+   * входе (первая загрузка страницы с живой сессией и сразу после
+   * SSO-входа) сверяем, приняты ли оба документа, и если нет — окно
+   * открывается само, без ожидания отказа на конкретном действии.
+   *
+   * Не хард-гейт: окно можно закрыть крестиком и продолжить читать
+   * витрину — настоящую проверку всё равно делает сервер на
+   * /sky-topup, это окно только не даёт условиям остаться незамеченными.
+   */
+  function maybePromptDocs() {
+    if (!me) return;
+    api("/docs/accepted").then(function (r) {
+      if (!r.ok) return;
+      var accepted = r.data.accepted || {};
+      var pending = Object.keys(accepted).some(function (code) { return !accepted[code]; });
+      if (pending) { renderDocsList(); openOverlay("overlay-docs"); }
     });
   }
 
