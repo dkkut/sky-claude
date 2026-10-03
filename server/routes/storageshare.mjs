@@ -7,6 +7,7 @@
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { grantShare, revokeShare, listSharesForFile, listSharedWithMe } from './../storageshare.mjs';
+import { checkQuota } from './../storagequota.mjs';
 
 const READ_PER_MIN = 60;
 const WRITE_PER_MIN = 30;
@@ -29,6 +30,15 @@ export const storageShareRoutes = async (req, res, url) => {
   if (req.method === 'GET' && url === '/api/storage/shared-with-me') {
     if (!rateLimit(`storageshare:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     return json(res, 200, await listSharedWithMe(me));
+  }
+
+  // Сколько места есть и сколько занято — кино и музыка вместе
+  // (storagequota.mjs). incomingBytes=0: это чтение, а не резерв под
+  // новую загрузку, quota.ok всегда true при нулевом приросте.
+  if (req.method === 'GET' && url === '/api/storage/quota') {
+    if (!rateLimit(`storageshare:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const { quota, used } = await checkQuota(me, 0);
+    return json(res, 200, { quotaBytes: quota, usedBytes: used });
   }
 
   const match = url.split('?')[0].match(FILE_MATCH);

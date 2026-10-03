@@ -36,6 +36,10 @@ export interface SharedTrack { id: string; title: string; artist: string; can_do
 export const apiSharedWithMe = () =>
   apiCall<{ movies: SharedMovie[]; tracks: SharedTrack[] }>('/api/storage/shared-with-me');
 
+/** Сколько места есть и сколько занято — одна квота на кино и музыку вместе. */
+export const apiStorageQuota = () =>
+  apiCall<{ quotaBytes: number; usedBytes: number }>('/api/storage/quota');
+
 export const STORAGE_SHARE_ERRORS: Record<string, string> = {
   invalid_kind: 'Так делиться нельзя.',
   invalid_recipient: 'Выберите, с кем поделиться.',

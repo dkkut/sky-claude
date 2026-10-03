@@ -34,6 +34,7 @@ import { SkyMusicSearch } from './SkyMusicSearch';
 import { usePlayerStore } from '@/player/playerStore';
 import type { IconComponent } from '@/shared/icon';
 import { ShareDialog } from '@/storage/ShareDialog';
+import { StorageQuotaBar } from '@/storage/StorageQuotaBar';
 
 /* ── Tab types & nav config ─────────────────────────────────── */
 type TabKey = 'home' | 'collection' | 'charts' | 'upload' | 'import' | 'history' | 'musician';
@@ -1254,6 +1255,9 @@ const UploadTab = ({ playing, activeId, onPlay }: {
       )}
 
       {/* ── MY TRACKS ────────────────────────────────────────────────────── */}
+      <div className="mx-3 mt-6">
+        <StorageQuotaBar />
+      </div>
       {mine.length > 0 && (
         <div className="mx-3 mt-6">
           <p className="text-sm font-black mb-3" style={{ color: YM.text }}>Мои треки</p>

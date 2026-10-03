@@ -37,6 +37,7 @@ import type { IconComponent } from '@/shared/icon';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
 import { useFilmStore } from '@/film/serverStore';
 import { ShareDialog } from '@/storage/ShareDialog';
+import { StorageQuotaBar } from '@/storage/StorageQuotaBar';
 import { sendTogether, type PlayerHandle } from '@/together/togetherState';
 import { useTogetherSync } from '@/together/useTogetherSync';
 import {
@@ -1069,6 +1070,8 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
           <Plus size={15}/>{busy ? `${percent}%…` : 'Добавить в коллекцию'}
         </motion.button>
       </div>
+
+      <StorageQuotaBar />
 
       {mine.length > 0 ? (
         <div className="space-y-2">
