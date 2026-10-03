@@ -537,6 +537,25 @@ export const cancelPenalty = async (actorId, penaltyId, reason) => {
   return { penalty: toPenalty(updated[0]) };
 };
 
+/**
+ * Кого затронет отмена — только это, для оформления заявки на второй
+ * ключ (см. PENDING_KINDS.cancel_violation/cancel_penalty в
+ * adminsec.mjs): аннулирование нарушения снимает уже начисленный штраф
+ * и действующую санкцию, то есть прощает долг тому же счёту, что и
+ * grant_money/grant_points, — тот же риск, тот же гейт. Сама отмена
+ * выполняется только там, где заявку подтвердил владелец, а не прямо
+ * из HTTP-ручки.
+ */
+export const violatorOf = async (violationId) => {
+  const { rows } = await query('SELECT violator_id FROM violations WHERE id = $1', [String(violationId ?? '')]);
+  return rows[0]?.violator_id ?? null;
+};
+
+export const penaltyOwnerOf = async (penaltyId) => {
+  const { rows } = await query('SELECT profile_id FROM penalties WHERE id = $1', [String(penaltyId ?? '')]);
+  return rows[0]?.profile_id ?? null;
+};
+
 /* ─── Чтение — своё (вкладка в магазине/ПВЗ) или админское ─────────────── */
 
 /**

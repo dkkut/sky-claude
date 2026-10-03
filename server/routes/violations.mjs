@@ -8,11 +8,13 @@
  */
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
+import { createPendingAction } from './../adminsec.mjs';
 import {
   listRules, createRule, updateRule,
   getPaymentSettings, setPaymentSettings,
-  createViolation, decideViolation, cancelViolation,
-  declarePenaltyPaid, confirmPenaltyPaid, cancelPenalty,
+  createViolation, decideViolation,
+  declarePenaltyPaid, confirmPenaltyPaid,
+  violatorOf, penaltyOwnerOf,
   listViolationsForProfile, listViolationsForOrg, getViolationDetail, listViolationsForAdmin, violationStats,
   VIOLATION_ID_RE, PENALTY_ID_RE, RULE_ID_RE,
 } from './../violations.mjs';
@@ -161,7 +163,15 @@ export const violationsRoutes = async (req, res, url) => {
     }
     if (req.method === 'POST' && tail === '/cancel') {
       if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
-      const done = await cancelViolation(me, violationId, (await body()).reason);
+      const b = await body();
+      /* Аннулирование снимает уже начисленный штраф — тот же риск, что
+         у выдачи денег, так что отсюда оно только предлагается, а не
+         выполняется: исполняет executePending в adminsec.mjs вторым
+         ключом владельца (см. PENDING_KINDS.cancel_violation). */
+      const target = await violatorOf(violationId);
+      if (!target) return json(res, 404, { error: 'not_found' });
+      const done = await createPendingAction(me, 'cancel_violation', target,
+        { violationId, reason: b.reason });
       return done.error ? fail(res, done) : json(res, 200, done);
     }
   }
@@ -186,7 +196,11 @@ export const violationsRoutes = async (req, res, url) => {
     }
     if (req.method === 'POST' && tail === '/cancel') {
       if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
-      const done = await cancelPenalty(me, penaltyId, (await body()).reason);
+      const b = await body();
+      const target = await penaltyOwnerOf(penaltyId);
+      if (!target) return json(res, 404, { error: 'not_found' });
+      const done = await createPendingAction(me, 'cancel_penalty', target,
+        { penaltyId, reason: b.reason });
       return done.error ? fail(res, done) : json(res, 200, done);
     }
   }

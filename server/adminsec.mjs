@@ -50,6 +50,7 @@ import { sessionStore } from './sessions.mjs';
 import { grantForProposal, markGrantProposed, finalizeGrant, failGrant } from './campaigns.mjs';
 import { earnCoins as earnPetCoins } from './petEconomy.mjs';
 import { markOrderPaid, adminGetOrder } from './kutrentmarket.mjs';
+import { cancelViolation, cancelPenalty, VIOLATION_ID_RE, PENALTY_ID_RE } from './violations.mjs';
 
 /* ─── Роли и права ─────────────────────────────────────────────────── */
 
@@ -587,6 +588,16 @@ export const PENDING_KINDS = {
      grant_money. Поэтому тот же гейт: предлагает администратор с
      правом finance, поворачивает ключ владелец. */
   kutrent_mark_paid: { permission: 'finance', stepUp: true, title: 'Подтвердить оплату KutRent Market' },
+  /* Аннулирование нарушения снимает уже начисленный штраф (отменяет
+     обязательство) и действующую санкцию — тот же риск прощения долга,
+     что у grant_money/grant_points, только в обратную сторону, поэтому
+     тот же гейт: предлагает администратор с правом violations,
+     поворачивает ключ владелец. Решение о самом нарушении
+     (decideViolation, подтвердить/отклонить) и обычное подтверждение
+     оплаты штрафа (confirmPenaltyPaid) под этот гейт не попадают — это
+     рядовая модерация, а не прощение уже начисленного долга. */
+  cancel_violation: { permission: 'violations', stepUp: true, title: 'Аннулировать нарушение' },
+  cancel_penalty:   { permission: 'violations', stepUp: true, title: 'Отменить штраф' },
 };
 
 /**
@@ -677,6 +688,22 @@ const checkPayload = (kind, raw = {}) => {
       const orderId = String(raw.orderId ?? '');
       if (!/^krm-[0-9a-f-]{36}$/.test(orderId)) return { error: 'bad_order' };
       return { ok: true, payload: { orderId } };
+    }
+
+    case 'cancel_violation': {
+      const violationId = String(raw.violationId ?? '');
+      if (!VIOLATION_ID_RE.test(violationId)) return { error: 'bad_violation' };
+      const reason = String(raw.reason ?? '').trim().slice(0, 500);
+      if (!reason) return { error: 'reason_required' };
+      return { ok: true, payload: { violationId, reason } };
+    }
+
+    case 'cancel_penalty': {
+      const penaltyId = String(raw.penaltyId ?? '');
+      if (!PENALTY_ID_RE.test(penaltyId)) return { error: 'bad_penalty' };
+      const reason = String(raw.reason ?? '').trim().slice(0, 500);
+      if (!reason) return { error: 'reason_required' };
+      return { ok: true, payload: { penaltyId, reason } };
     }
 
     case 'skyvideo_revenue_adjust': {
@@ -1058,6 +1085,18 @@ const executePending = async (row, payload, ownerId) => {
       const res = await markOrderPaid(payload.orderId);
       if (res.error) return { error: res.error };
       return { outcome: `Заказ ${payload.orderId} оплачен, зачислено ${res.order.amount} ₽, баланс ${res.balance}` };
+    }
+
+    case 'cancel_violation': {
+      const res = await cancelViolation(ownerId, payload.violationId, payload.reason);
+      if (res.error) return { error: res.error };
+      return { outcome: `Нарушение ${payload.violationId} аннулировано` };
+    }
+
+    case 'cancel_penalty': {
+      const res = await cancelPenalty(ownerId, payload.penaltyId, payload.reason);
+      if (res.error) return { error: res.error };
+      return { outcome: `Штраф ${payload.penaltyId} отменён` };
     }
 
     case 'skyvideo_revenue_adjust': {
