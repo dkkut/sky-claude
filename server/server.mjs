@@ -48,6 +48,7 @@ import { mapsRoutes } from './routes/maps.mjs';
 import { familyRoutes } from './routes/family.mjs';
 import { garantRoutes } from './routes/garant.mjs';
 import { violationsRoutes } from './routes/violations.mjs';
+import { storageShareRoutes } from './routes/storageshare.mjs';
 import { mediaActivityRoutes } from './routes/mediaActivity.mjs';
 import { followsRoutes } from './routes/follows.mjs';
 import { friendsRoutes } from './routes/friends.mjs';
@@ -77,6 +78,7 @@ import { sweepBots } from './bots.mjs';
 import { expireOrganizers, closePastEvents, sweepOrphanTicketImages } from './tickets.mjs';
 import { sweepAiUsage } from './aichat.mjs';
 import { sweepTogether } from './together.mjs';
+import { sweepUnusedPersonalFiles } from './storagequota.mjs';
 import { sweepSellerSubscriptions, liveFileIds } from './market.mjs';
 import { sweepOrphans as sweepMarketFiles } from './marketstore.mjs';
 import { sweepOrphans as sweepVideoFiles } from './videostore.mjs';
@@ -99,7 +101,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes];
+                violationsRoutes, storageShareRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -445,6 +447,13 @@ const start = async () => {
       // одной кампании (человек закрыл вкладку между загрузкой и оплатой).
       const adMedia = await sweepOrphanAdMedia();
       if (adMedia.removed) console.log(`[ads] убрано осиротевшего медиа: ${adMedia.removed}`);
+      // Личное кино и музыка, которые владелец сам не открывал 20 дней
+      // и не защитил от уборки — см. storagequota.mjs: активная комната
+      // «Вместе» спасает файл от удаления даже тогда.
+      const personal = await sweepUnusedPersonalFiles();
+      if (personal.films || personal.tracks) {
+        console.log(`[storage] убрано неиспользуемого личного: кино ${personal.films}, музыка ${personal.tracks}`);
+      }
     } catch (err) {
       console.error('[housekeeping]', err.message);
     }

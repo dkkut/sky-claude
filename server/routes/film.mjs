@@ -36,6 +36,7 @@ import { saveStream, saveBytes, sizeOf, openStream, parseRange } from './../film
 import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../filmticket.mjs';
 import { hasPrime } from './../skyid.mjs';
 import { can } from './../admin.mjs';
+import { checkQuota, touchOwnerUsage, setRetentionKeep } from './../storagequota.mjs';
 
 /**
  * Потолок на фильм. Настраивается: сколько поместится, знает тот, кто
@@ -333,6 +334,21 @@ export const filmRoutes = async (req, res, url) => {
       return rejectBody(req, res, created.error === 'too_many' ? 409 : 400, created);
     }
 
+    // Квота личного хранилища — кино и музыка вместе, см. storagequota.mjs.
+    // Резерв ставится заявленным размером (а если его не прислали —
+    // предельным для одного файла): так второй одновременный аплоуд той
+    // же квоты увидит резерв этого в сумме, а не старое значение. Файл
+    // ещё не записан ни байтом — отказ здесь ничего не оставляет на диске.
+    const reserve = declared > 0 ? declared : MAX_VIDEO_BYTES;
+    const quota = await checkQuota(me, reserve);
+    if (!quota.ok) {
+      await deleteMovie(created.id, me);
+      return rejectBody(req, res, 507, {
+        error: 'quota_exceeded', quotaBytes: quota.quota, usedBytes: quota.used,
+      });
+    }
+    await finishMovie(created.id, me, { bytes: reserve, mime });
+
     // resume() здесь звать нельзя: поток снова пошёл бы в режим потока
     // без единого слушателя, и всё, что успело прийти, утекло бы в
     // никуда — файл сохранился бы обрезанным. Чтение продолжит сам
@@ -344,6 +360,8 @@ export const filmRoutes = async (req, res, url) => {
       await deleteMovie(created.id, me);
       return json(res, saved.error === 'file_too_large' ? 413 : 400, saved);
     }
+    // Резерв уточняется реальным размером — обычно меньше него: выше
+    // предел одного файла всё равно не даёт уйти saveStream.
     await finishMovie(created.id, me, { bytes: saved.bytes, mime });
     return json(res, 201, { movie: await readMovie(created.id, me) });
   }
@@ -407,8 +425,20 @@ export const filmRoutes = async (req, res, url) => {
 
     if (req.method === 'POST' && tail === '/view') {
       if (!rateLimit(`film:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
-      if (!(await visibleMovie(id, me))) return json(res, 404, { error: 'not_found' });
+      const row = await visibleMovie(id, me);
+      if (!row) return json(res, 404, { error: 'not_found' });
       await countView(id);
+      // Личный файл живёт ещё RETENTION_DAYS, только если смотрит сам
+      // владелец — просмотр гостем в сеансе «Вместе» на этот срок не влияет.
+      if (row.owner_id === me) await touchOwnerUsage('movie', id, me);
+      return json(res, 200, { ok: true });
+    }
+
+    if (req.method === 'POST' && tail === '/retention-keep') {
+      if (!rateLimit(`film:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const body = await parseBody(req);
+      const ok = await setRetentionKeep('movie', id, me, body?.keep === true);
+      if (!ok) return json(res, 404, { error: 'not_found' });
       return json(res, 200, { ok: true });
     }
 

@@ -34,6 +34,7 @@ import {
   readArtist, readArtistByName, saveArtist, followArtist,
   listFollowing, listArtists, newFromFollowed,
 } from './../musicartists.mjs';
+import { checkQuota, touchOwnerUsage, setRetentionKeep } from './../storagequota.mjs';
 
 /** Потолок на трек. Больше — это уже не песня, а фильм. */
 const MAX_AUDIO_BYTES = 30 * 1024 * 1024;
@@ -310,6 +311,18 @@ export const musicRoutes = async (req, res, url) => {
       const r = await addHistory(me, id);
       if (r.error) return json(res, 404, r);
       await countPlay(id);
+      // Условие — в самом WHERE внутри touchOwnerUsage (owner_id, status):
+      // прослушивание гостем своего не продлевает, и запрос безопасен
+      // звать для любого трека, не только своего.
+      await touchOwnerUsage('track', id, me);
+      return json(res, 200, { ok: true });
+    }
+
+    if (req.method === 'POST' && tail === '/retention-keep') {
+      if (!rateLimit(`music:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const body = await parseBody(req);
+      const ok = await setRetentionKeep('track', id, me, body?.keep === true);
+      if (!ok) return json(res, 404, { error: 'not_found' });
       return json(res, 200, { ok: true });
     }
 
@@ -406,6 +419,19 @@ export const musicRoutes = async (req, res, url) => {
 
     const created = await createTrack(me, { ...meta, mime });
     if (created.error) { req.destroy(); return json(res, 400, created); }
+
+    // Квота личного хранилища — та же, что и у кино, см.
+    // storagequota.mjs: сумма bytes private-кино и private-музыки
+    // вместе. Резерв до записи на диск — тем же способом, что и у
+    // фильма: второй параллельный аплоуд увидит эту резервацию.
+    const reserve = declared > 0 ? declared : MAX_AUDIO_BYTES;
+    const quota = await checkQuota(me, reserve);
+    if (!quota.ok) {
+      await deleteTrack(created.id, me);
+      req.destroy();
+      return json(res, 507, { error: 'quota_exceeded', quotaBytes: quota.quota, usedBytes: quota.used });
+    }
+    await finishTrack(created.id, me, { bytes: reserve, mime });
 
     // resume() здесь звать нельзя: поток снова пошёл бы в режим потока
     // без единого слушателя, и всё, что успело прийти, утекло бы в

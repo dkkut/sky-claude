@@ -158,7 +158,13 @@ const resolveContent = async (type, kind, contentId, ownerId) => {
   if (kind === 'track') {
     const track = await readTrack(contentId, ownerId);
     if (!track) return { error: 'content_not_found' };
-    if (track.status !== 'published') return { error: 'content_private' };
+    // Личную загрузку — только свою, как и у фильма: owner здесь
+    // смотрит собственным пропуском (readTrack(contentId, ownerId)),
+    // own=true означает ровно «это трек владельца сеанса».
+    if (track.status !== 'published') {
+      if (!track.own) return { error: 'content_forbidden' };
+      if (track.status !== 'private') return { error: 'content_not_shareable' };
+    }
     return {
       title: `${track.artist} — ${track.title}`,
       queue: [{ id: track.id, ms: Math.max(0, Math.round(Number(track.duration || 0) * 1000)) }],
@@ -168,12 +174,15 @@ const resolveContent = async (type, kind, contentId, ownerId) => {
   if (kind === 'album') {
     const name = text(contentId, 200);
     if (!name) return { error: 'bad_content' };
+    // Публичные треки альбома — всем; свои private с тем же названием
+    // альбома — владельцу сеанса. Чужого private сюда не попадёт: для
+    // него owner_id <> $2.
     const { rows } = await query(
       `SELECT id, duration_sec FROM music_tracks
-        WHERE album = $1 AND status = 'published'
+        WHERE album = $1 AND (status = 'published' OR (status = 'private' AND owner_id = $2))
         ORDER BY year NULLS LAST, title
         LIMIT ${MAX_QUEUE}`,
-      [name],
+      [name, ownerId],
     );
     if (rows.length === 0) return { error: 'content_not_found' };
     return {
@@ -185,10 +194,12 @@ const resolveContent = async (type, kind, contentId, ownerId) => {
   if (kind === 'playlist') {
     const list = await readPlaylist(contentId, ownerId);
     if (!list) return { error: 'content_not_found' };
-    const shared = (list.tracks ?? []).filter((t) => t.status === 'published').slice(0, MAX_QUEUE);
-    /* Личные треки владельца из общей очереди выпадают: остальным их
-       всё равно не отдадут. Молча подменять список было бы хуже —
-       отвечаем честно, что делить нечего. */
+    // readPlaylist уже отдаёт личные треки владельцу (own=true для них);
+    // здесь оставляем опубликованное и свои private — чужое private в
+    // плейлисте и так не придёт (readPlaylist сам фильтрует по owner_id).
+    const shared = (list.tracks ?? [])
+      .filter((t) => t.status === 'published' || t.own)
+      .slice(0, MAX_QUEUE);
     if (shared.length === 0) return { error: 'content_private' };
     return {
       title: list.name || 'Плейлист',
@@ -236,10 +247,15 @@ const mayUseContent = async (row, userId) => {
     return movie.status === 'private' && movie.owner_id === row.owner_id;
   }
   /* Музыка: право нужно на текущий трек. Остальные проверятся, когда до
-     них дойдёт очередь, — к тому времени права могут и измениться. */
+     них дойдёт очередь, — к тому времени права могут и измениться.
+     Глазами владельца сеанса, по той же причине, что и у кино выше:
+     позванный участник своего пропуска на чужую личную загрузку не
+     имеет и не должен. */
   const idx = Math.min(Math.max(0, Number(row.queue_index) || 0), queue.length - 1);
-  const track = await visibleTrack(queue[idx].id, userId);
-  return Boolean(track) && track.status === 'published';
+  const track = await visibleTrack(queue[idx].id, row.owner_id);
+  if (!track) return false;
+  if (track.status === 'published') return true;
+  return track.status === 'private' && track.owner_id === row.owner_id;
 };
 
 /**
@@ -250,14 +266,30 @@ const mayUseContent = async (row, userId) => {
  * заканчивается вместе с тем, кто её показывал.
  */
 const ownsPrivateContent = async (row) => {
-  if (row.content_kind !== 'movie') return false;
   const queue = Array.isArray(row.queue) ? row.queue : [];
   if (queue.length === 0) return false;
-  const { rows } = await query(
-    "SELECT 1 FROM film_movies WHERE id = $1 AND owner_id = $2 AND status = 'private'",
-    [queue[0].id, row.owner_id],
-  );
-  return rows.length > 0;
+
+  if (row.content_kind === 'movie') {
+    const { rows } = await query(
+      "SELECT 1 FROM film_movies WHERE id = $1 AND owner_id = $2 AND status = 'private'",
+      [queue[0].id, row.owner_id],
+    );
+    return rows.length > 0;
+  }
+
+  if (['track', 'album', 'playlist'].includes(row.content_kind)) {
+    // Трек, альбом или плейлист может смешивать опубликованное со
+    // своим private (см. resolveContent) — «показывает личное», если в
+    // очереди есть хотя бы один такой трек, независимо от его позиции.
+    const ids = queue.map((q) => q.id);
+    const { rows } = await query(
+      "SELECT 1 FROM music_tracks WHERE id = ANY($1) AND owner_id = $2 AND status = 'private' LIMIT 1",
+      [ids, row.owner_id],
+    );
+    return rows.length > 0;
+  }
+
+  return false;
 };
 
 /* ─── Состояние воспроизведения ─────────────────────────────────────── */
@@ -441,6 +473,173 @@ export const liveMemberIds = async (sessionId) => {
     [sessionId],
   );
   return rows.map((r) => r.user_id);
+};
+
+/* ─── Чат комнаты ──────────────────────────────────────────────────────
+   Маленький чат внутри сеанса — не замена Sky Messenger (§24 брифа).
+   Писать может только участник со статусом 'joined': позванный, но не
+   вошедший, ещё не в разговоре, вышедший и убранный — уже не в нём, та
+   же проверка, что и у команд воспроизведения. */
+
+const MAX_MESSAGE = 1000;
+const MAX_CHAT_HISTORY = 200;
+
+const cleanMessage = (v) => String(v ?? '')
+  .replace(/[\u0000-\u001f\u007f]/g, '')
+  .trim()
+  .slice(0, MAX_MESSAGE);
+
+export const sendRoomMessage = async (sessionId, userId, text) => {
+  const body = cleanMessage(text);
+  if (!body) return { error: 'empty_message' };
+
+  const { rows } = await query(
+    `SELECT 1 FROM together_sessions s
+       JOIN together_participants p
+         ON p.session_id = s.id AND p.user_id = $2 AND p.status = 'joined'
+      WHERE s.id = $1 AND s.status = 'live'`,
+    [sessionId, userId],
+  );
+  if (!rows[0]) return { error: 'not_found' };
+
+  const { rows: inserted } = await query(
+    `INSERT INTO together_messages (session_id, sender_id, text) VALUES ($1,$2,$3)
+     RETURNING id, created_at`,
+    [sessionId, userId, body],
+  );
+  // Журнал фиксирует факт сообщения, не его текст — см. правило модуля
+  // «не логировать содержимое личных файлов»: переписка комнаты того же
+  // порядка.
+  await logTogether(sessionId, userId, 'chat');
+
+  return {
+    ok: true,
+    message: {
+      id: String(inserted[0].id), senderId: userId, text: body,
+      createdAt: inserted[0].created_at,
+    },
+    recipients: await liveMemberIds(sessionId),
+  };
+};
+
+/** Последние сообщения — для того, кто только что вошёл или обновил экран. */
+export const listRoomMessages = async (sessionId, userId) => {
+  const { rows: part } = await query(
+    `SELECT 1 FROM together_participants WHERE session_id = $1 AND user_id = $2 AND status = 'joined'`,
+    [sessionId, userId],
+  );
+  if (!part[0]) return { error: 'not_found' };
+
+  const { rows } = await query(
+    `SELECT id, sender_id, text, created_at FROM together_messages
+      WHERE session_id = $1 ORDER BY created_at DESC LIMIT ${MAX_CHAT_HISTORY}`,
+    [sessionId],
+  );
+  return {
+    messages: rows.reverse().map((r) => ({
+      id: String(r.id), senderId: r.sender_id, text: r.text,
+      createdAt: r.created_at,
+    })),
+  };
+};
+
+/* ─── TV-код ───────────────────────────────────────────────────────────
+   Короткий числовой код для входа с Android TV, где вводить именное
+   приглашение неудобно (§45 брифа). В базе лежит только его отпечаток —
+   как и у приглашений, см. 038_together.sql. По умолчанию одноразовый:
+   attempts растёт на каждое успешное применение, а не на угаданные
+   неверные цифры — угадывание само ограничено частотой запросов на
+   уровне HTTP-ручки (routes/together.mjs), а не этим счётчиком: по
+   хэшу нельзя понять, какой код угадывали, если угадали неверно. */
+
+export const JOIN_CODE_TTL_MS = 10 * 60 * 1000;
+const JOIN_CODE_RE = /^\d{6}$/;
+
+export const createJoinCode = async (sessionId, ownerId) => {
+  const row = await sessionRow(sessionId);
+  if (!row) return { error: 'not_found' };
+  if (row.owner_id !== ownerId) return { error: 'forbidden' };
+  if (row.status === 'ended') return { error: 'session_ended' };
+
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+  const hash = crypto.createHash('sha256').update(code).digest('hex');
+  const id = `tgc-${crypto.randomUUID()}`;
+
+  await query(
+    `INSERT INTO together_join_codes (id, session_id, created_by, code_hash, expires_at)
+     VALUES ($1,$2,$3,$4, now() + ($5 || ' milliseconds')::interval)`,
+    [id, sessionId, ownerId, hash, String(JOIN_CODE_TTL_MS)],
+  );
+  await logTogether(sessionId, ownerId, 'join_code_created');
+  return { ok: true, code, expiresInSec: Math.round(JOIN_CODE_TTL_MS / 1000) };
+};
+
+/**
+ * Применить код — сразу вход, без промежуточного «пригласили, жду
+ * ответа». Код от владельца это и есть ответ: по этой же причине
+ * joinSession здесь не годится — он отказывает статусу 'invited'
+ * (invitation_pending), ожидая отдельного принятия приглашения через
+ * answerInvitation. Код — не именное приглашение, и этого шага у него
+ * нет: участника заводим прямо как 'joined', проверив то же самое, что
+ * проверил бы joinSession (счётчик мест и право на содержимое).
+ */
+export const redeemJoinCode = async (code, userId) => {
+  const raw = String(code ?? '').trim();
+  if (!JOIN_CODE_RE.test(raw)) return { error: 'invalid_code' };
+  const hash = crypto.createHash('sha256').update(raw).digest('hex');
+
+  const { rows } = await query(
+    `SELECT id, session_id FROM together_join_codes
+      WHERE code_hash = $1 AND revoked_at IS NULL
+        AND expires_at > now() AND attempts < max_attempts
+      LIMIT 1`,
+    [hash],
+  );
+  if (!rows[0]) return { error: 'invalid_code' };
+  const { id: codeId, session_id: sessionId } = rows[0];
+
+  const row = await sessionRow(sessionId);
+  if (!row) return { error: 'not_found' };
+  if (row.status === 'ended') return { error: 'session_ended' };
+  if (!(await mayUseContent(row, userId))) return { error: 'content_forbidden' };
+
+  const existing = await partRow(sessionId, userId);
+  if (existing?.status !== 'joined') {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT 1 FROM together_sessions WHERE id = $1 FOR UPDATE', [sessionId]);
+      const { rows: c } = await client.query(
+        "SELECT count(*)::int AS n FROM together_participants WHERE session_id = $1 AND status = 'joined'",
+        [sessionId]);
+      if ((c[0]?.n ?? 0) >= Number(row.max_participants)) {
+        await client.query('ROLLBACK');
+        return { error: 'session_full' };
+      }
+      await client.query(
+        `INSERT INTO together_participants (session_id, user_id, role, status, invited_by, joined_at)
+         VALUES ($1,$2,'participant','joined',$3,now())
+         ON CONFLICT (session_id, user_id) DO UPDATE SET
+           status = 'joined', joined_at = COALESCE(together_participants.joined_at, now()), left_at = NULL`,
+        [sessionId, userId, row.owner_id],
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+    await logTogether(sessionId, userId, 'joined_by_code');
+  }
+
+  await query(
+    `UPDATE together_join_codes SET attempts = attempts + 1, used_at = now(), used_by = $2 WHERE id = $1`,
+    [codeId, userId],
+  );
+
+  const fresh = await accessSession(sessionId, userId);
+  return { session: toSession(fresh.row, fresh.part), recipients: await liveMemberIds(sessionId) };
 };
 
 /* ─── Создание ─────────────────────────────────────────────────────── */

@@ -15,6 +15,8 @@ import crypto from 'node:crypto';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can } from './admin.mjs';
+import { sharedTrackInSession } from './watchgrant.mjs';
+import { sharedDirectly } from './storageshare.mjs';
 
 const newId = (p) => `${p}-${crypto.randomUUID()}`;
 
@@ -78,6 +80,16 @@ export const visibleTrack = async (trackId, viewerId) => {
   if (row.status === 'published') return row;
   if (row.owner_id && row.owner_id === viewerId) return { ...row, own: true };
   if (await can(viewerId, 'content')) return row;
+
+  if (row.status === 'private') {
+    // Слушательский аналог sharedInSession у кино: участник живого
+    // listen-сеанса, в котором звучит именно этот трек.
+    if (await sharedTrackInSession(row.id, viewerId)) return { ...row, viaSession: true };
+    // Прямой доступ («Поделиться») — не зависит от сеанса.
+    const share = await sharedDirectly('track', row.id, viewerId);
+    if (share.view) return { ...row, viaShare: true, canDownload: share.download };
+  }
+
   return null;
 };
 

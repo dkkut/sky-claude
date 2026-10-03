@@ -22,6 +22,7 @@ import {
   createSession, readSession, listMySessions, participantsOf,
   inviteToSession, removeParticipant, listInvitations, answerInvitation,
   joinSession, leaveSession, endSession, updateSettings,
+  listRoomMessages, createJoinCode, redeemJoinCode,
   SESSION_ID_RE, INVITE_ID_RE, SESSION_TYPES,
   MAX_PARTICIPANTS_DEFAULT, MAX_PARTICIPANTS_HARD, MAX_QUEUE,
 } from './../together.mjs';
@@ -34,6 +35,11 @@ const READ_PER_MIN = 120;
 const WRITE_PER_MIN = 60;
 const CREATE_PER_HOUR = 20;
 const INVITE_PER_HOUR = 200;
+/** Угадывание 6-значного кода ограничено здесь, а не счётчиком в базе:
+    по отпечатку неверный код не опознать, чей он — считать можно только
+    попытки самого запроса. 10 в час с одного Sky ID хватает на опечатку
+    и не хватает на подбор миллиона комбинаций. */
+const JOIN_CODE_REDEEM_PER_HOUR = 10;
 
 /** Ответ на ошибку слоя данных. Один список на весь файл: иначе коды расходятся между ручками. */
 const CODES = {
@@ -79,6 +85,24 @@ export const togetherRoutes = async (req, res, url) => {
       maxParticipantsHard: MAX_PARTICIPANTS_HARD,
       maxQueue: MAX_QUEUE,
     });
+  }
+
+  /* ── TV-код: применить ──────────────────────────────────────
+     Без sessionId в адресе: код сам говорит, в какую сессию ведёт —
+     знать идентификатор заранее не нужно ни TV, ни тому, кто вводит
+     цифры с телефона. Предел здесь строгий (см. JOIN_CODE_REDEEM_PER_HOUR):
+     это единственная защита от подбора 6 цифр, помимо срока жизни кода. */
+  if (req.method === 'POST' && path === '/api/together/join-code') {
+    if (!rateLimitPerHour(`tg:joincode:${me}`, JOIN_CODE_REDEEM_PER_HOUR)) {
+      return json(res, 429, { error: 'rate_limited' });
+    }
+    const body = await parseBody(req);
+    const result = await redeemJoinCode(body?.code, me);
+    if (result.error) return fail(res, result);
+    pushTogether(result.recipients ?? [], {
+      type: 'together-join', payload: { sessionId: result.session?.id, userId: me },
+    });
+    return json(res, 200, { session: result.session });
   }
 
   /* ── Мои сессии ─────────────────────────────────────────────
@@ -152,6 +176,26 @@ export const togetherRoutes = async (req, res, url) => {
       if (!rateLimit(`tg:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
       const people = await participantsOf(sessionId, me);
       return people ? json(res, 200, { participants: people }) : json(res, 404, { error: 'not_found' });
+    }
+
+    // Отправка — только по сокету (case 'together-chat' в signal.mjs),
+    // как и у команд воспроизведения. Здесь — только история для
+    // только что вошедшего или обновившего экран.
+    if (req.method === 'GET' && tail === '/messages') {
+      if (!rateLimit(`tg:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const result = await listRoomMessages(sessionId, me);
+      if (result.error) return fail(res, result);
+      return json(res, 200, result);
+    }
+
+    // Только владелец сеанса заказывает код — показывает его на экране
+    // TV, остальные вводят цифры с другого устройства (см. /join-code
+    // ниже, без привязки к конкретному sessionId в адресе).
+    if (req.method === 'POST' && tail === '/join-code') {
+      if (!rateLimit(`tg:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const result = await createJoinCode(sessionId, me);
+      if (result.error) return fail(res, result);
+      return json(res, 200, { code: result.code, expiresInSec: result.expiresInSec });
     }
 
     if (req.method === 'POST' && tail === '/invite') {

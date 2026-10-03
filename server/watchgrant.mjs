@@ -64,3 +64,33 @@ export const sharedInSession = async (movieId, viewerId) => {
   );
   return rows.length > 0;
 };
+
+/**
+ * То же самое, но для музыки — слушательский аналог sharedInSession
+ * выше. Разница только в том, где искать идентификатор трека: у кино
+ * в сеансе содержимое — ровно один фильм (content_id), а у музыки
+ * сеанс может быть на треке, альбоме или плейлисте, и тогда нужный
+ * трек лежит не в content_id, а где-то в JSONB-очереди (queue).
+ * Проверяем оба места одним условием, а не два раза.
+ */
+export const sharedTrackInSession = async (trackId, viewerId) => {
+  if (!trackId || !viewerId) return false;
+  const { rows } = await query(
+    `SELECT 1
+       FROM together_sessions s
+       JOIN together_participants p
+         ON p.session_id = s.id AND p.user_id = $2 AND p.status = 'joined'
+       JOIN music_tracks t
+         ON t.id = $1 AND t.owner_id = s.owner_id
+      WHERE s.session_type = 'listen'
+        AND s.status = 'live'
+        AND t.status = 'private'
+        AND (
+          s.content_id = $1
+          OR EXISTS (SELECT 1 FROM jsonb_array_elements(s.queue) elem WHERE elem->>'id' = $1)
+        )
+      LIMIT 1`,
+    [String(trackId), String(viewerId)],
+  );
+  return rows.length > 0;
+};

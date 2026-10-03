@@ -41,7 +41,7 @@ import {
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
   blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags, votePoll, consumeOnce, sweepExpired, toggleFavorite,
 } from './chats.mjs';
-import { applyCommand } from './together.mjs';
+import { applyCommand, sendRoomMessage } from './together.mjs';
 import {
   getSettings, updateSettings, setRole, kickMember, unbanMember, muteMember,
   createInvite, revokeInvite, listInvites, joinByInvite,
@@ -143,6 +143,19 @@ const allowTogether = (userId) => {
   if (!slot || now - slot.at > 60_000) { togetherRate.set(userId, { at: now, n: 1 }); return true; }
   slot.n += 1;
   return slot.n <= TOGETHER_PER_MIN;
+};
+
+/** Чат комнаты — свой счётчик, отдельно от команд воспроизведения:
+    кто-то, спамящий сообщениями, не должен мешать никому отправлять
+    play/pause/seek, и наоборот. */
+const TOGETHER_CHAT_PER_MIN = 30;
+const togetherChatRate = new Map();
+const allowTogetherChat = (userId) => {
+  const now = Date.now();
+  const slot = togetherChatRate.get(userId);
+  if (!slot || now - slot.at > 60_000) { togetherChatRate.set(userId, { at: now, n: 1 }); return true; }
+  slot.n += 1;
+  return slot.n <= TOGETHER_CHAT_PER_MIN;
 };
 
 const pending = new Map();
@@ -1590,6 +1603,32 @@ const handle = async (ws, session, msg) => {
       broadcast(result.recipients, {
         type: 'together-state',
         payload: { action: result.event, by: me, state: result.shared },
+      });
+      break;
+    }
+
+    /* Чат комнаты. Проверка прав — та же, что у applyCommand: один
+       источник правды для обычного запроса и для сокета, только здесь
+       входа по HTTP для отправки нет вовсе (history — да, отправка —
+       только отсюда). */
+    case 'together-chat': {
+      const sessionId = String(payload?.sessionId ?? '');
+      if (!sessionId) return;
+
+      if (!allowTogetherChat(me)) {
+        send(ws, { type: 'together-chat-error', payload: { sessionId, error: 'rate_limited' } });
+        return;
+      }
+
+      const result = await sendRoomMessage(sessionId, me, payload?.text);
+      if (result.error) {
+        send(ws, { type: 'together-chat-error', payload: { sessionId, error: result.error } });
+        return;
+      }
+
+      broadcast(result.recipients, {
+        type: 'together-chat',
+        payload: { sessionId, message: result.message },
       });
       break;
     }

@@ -33,6 +33,7 @@ import { query } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can } from './admin.mjs';
 import { sharedInSession } from './watchgrant.mjs';
+import { sharedDirectly } from './storageshare.mjs';
 import { removeMovieFiles, listStoredIds, posterIdFor } from './filmstore.mjs';
 
 const newId = () => `mov-${crypto.randomUUID()}`;
@@ -177,6 +178,13 @@ export const visibleMovie = async (movieId, viewerId) => {
      прямо сейчас». */
   if (row.status === 'private' && await sharedInSession(row.id, viewerId)) {
     return { ...row, viaSession: true };
+  }
+
+  // Прямой доступ («Поделиться») — отдельно от сеанса и не зависит от
+  // него: действует, пока владелец не отзовёт или не истечёт срок.
+  if (row.status === 'private') {
+    const share = await sharedDirectly('movie', row.id, viewerId);
+    if (share.view) return { ...row, viaShare: true, canDownload: share.download };
   }
 
   // Чужой закрытый фильм неотличим от несуществующего: разница в
