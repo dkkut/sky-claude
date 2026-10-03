@@ -960,20 +960,23 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
             {/* ── PETS ─── */}
             {panel==='pets' && <>
               <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color:'var(--t3)' }}>
-                Питомцы ({prefs.owned.length}/{PETS.length})
+                Питомцы ({PETS.length})
               </p>
               {PETS.map(pet=>{
-                const owned=prefs.owned.includes(pet.id);
+                // Весь каталог видов открыт на выбор каждому — локального
+                // замка по pet.id больше нет (раньше здесь были «открыты»
+                // только 2 из 12 навечно, без единого способа разблокировать
+                // остальные: ни покупки, ни прогресса, просто недоделанная
+                // заглушка).
                 const active=prefs.active===pet.id;
                 const xp=prefs.xp?.[pet.id]??0;
                 return(
-                  <motion.div key={pet.id} whileHover={owned?{x:2}:{}}
+                  <motion.div key={pet.id} whileHover={{x:2}}
                     className="flex items-center gap-3 rounded-2xl p-3 cursor-pointer"
                     style={{ background:active?`${pet.color}14`:'rgba(255,255,255,.04)',
-                      border:`1px solid ${active?pet.color+'35':'rgba(255,255,255,.07)'}`,
-                      opacity:owned?1:.45 }}
-                    onClick={()=>owned&&!active&&activatePet(pet.id)}>
-                    <div className="relative shrink-0" style={{ filter:owned?undefined:'grayscale(100%)' }}>
+                      border:`1px solid ${active?pet.color+'35':'rgba(255,255,255,.07)'}` }}
+                    onClick={()=>!active&&activatePet(pet.id)}>
+                    <div className="relative shrink-0">
                       <CSSPet pet={pet} state="idle" mood="idle" size={32}/>
                       {active && <div className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full"
                         style={{ background:'#22c55e', border:'1.5px solid rgba(0,0,0,.5)' }}/>}
@@ -981,18 +984,15 @@ export const PetHouse = ({ onClose, onSendSticker }:PetHouseProps) => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <p className="text-xs font-bold truncate text-white">{pet.name}</p>
-                        {owned && <span className="text-[9px] font-bold" style={{ color:RARITY_CFG[pet.rarity].color }}>Lv.{lvl(xp)}</span>}
+                        <span className="text-[9px] font-bold" style={{ color:RARITY_CFG[pet.rarity].color }}>Lv.{lvl(xp)}</span>
                       </div>
                       <p className="text-[10px] truncate" style={{ color:'var(--t3)' }}>
-                        {owned?pet.species:'🔒 Не разблокирован'}
+                        {pet.species}
                       </p>
-                      {owned && (
-                        <div className="mt-1 h-0.5 rounded-full overflow-hidden" style={{ background:'rgba(255,255,255,.1)' }}>
-                          <div className="h-full rounded-full" style={{ width:lvlPct(xp)+'%', background:pet.color }}/>
-                        </div>
-                      )}
+                      <div className="mt-1 h-0.5 rounded-full overflow-hidden" style={{ background:'rgba(255,255,255,.1)' }}>
+                        <div className="h-full rounded-full" style={{ width:lvlPct(xp)+'%', background:pet.color }}/>
+                      </div>
                     </div>
-                    {!owned && <span className="text-xs shrink-0">🔒</span>}
                   </motion.div>
                 );
               })}

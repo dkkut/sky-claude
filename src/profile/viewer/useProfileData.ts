@@ -43,6 +43,13 @@ const toAccountFromPublic = (p: PublicProfile): Account => ({
   id: p.id, name: p.name, username: p.username, phone: '',
   avatar: p.avatar, isAdmin: p.isAdmin, isPrime: p.isPrime, primeUntil: p.primeUntil,
   createdAt: p.createdAt, privacy: p.privacy,
+  // Косметика расширенного профиля — раньше publicProfile() их не
+  // отдавал вовсе, и то, что человек настраивал у себя (баннер,
+  // цвет ника, стикер, статус, ссылки, страна/часовой пояс/язык,
+  // день рождения), другие никогда не видели.
+  bio: p.bio, banner: p.banner, nameSticker: p.nameSticker, nameColor: p.nameColor,
+  customStatus: p.customStatus, statusEmoji: p.statusEmoji, links: p.links,
+  country: p.country, language: p.language, timezone: p.timezone, birthDate: p.birthDate,
 });
 
 export type Platform = 'desktop' | 'mobile' | null;

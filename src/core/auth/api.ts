@@ -423,6 +423,17 @@ export interface PublicProfile {
   name: string;
   username: string;
   avatar?: string;
+  bio?: string;
+  banner?: string;
+  nameSticker?: string;
+  nameColor?: string;
+  customStatus?: string;
+  statusEmoji?: string;
+  links?: string[];
+  country?: string;
+  language?: string;
+  timezone?: string;
+  birthDate?: string;
   isAdmin: boolean;
   isPrime: boolean;
   primeUntil?: string;

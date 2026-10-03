@@ -64,6 +64,18 @@ const EMOJIS  = [
 const fmtS = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 const fmtB = (b?: number) => !b ? '' : b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`;
 
+/**
+ * Видимый ли текст в черновике — не то же самое, что просто непустой
+ * после trim(). Мобильная клавиатура (автокоррекция, голосовой ввод)
+ * иногда оставляет невидимые Unicode-символы (zero-width space и
+ * похожие) после удаления видимого текста: поле выглядит пустым, но
+ * draft.trim() всё равно truthy — кнопка «Отправить» не уступает место
+ * кнопке микрофона, хотя человек её не видит и не печатает. trim() их
+ * не убирает, они не входят в Unicode White_Space.
+ */
+const INVISIBLE_RE = /[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g;
+const hasVisibleText = (s: string) => s.replace(INVISIBLE_RE, '').trim().length > 0;
+
 /* -- TG colours --------------------------------------------------- */
 const TG = {
   bg:          '#0d0d0f',
@@ -1005,7 +1017,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     const t = draftRef.current.trim();
     const { editingId: eid, messages: msgs } = useMessengerStore.getState();
     const em = eid ? msgs.find(m => m.id === eid) : null;
-    if ((!t && !em) || isBlocked) return;
+    if ((!hasVisibleText(t) && !em) || isBlocked) return;
     if (em) {
       editMessage(em.id, t); broadcast.edit(em.id, t, 'изм.'); startEdit(null);
     } else {
@@ -2337,7 +2349,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
 
             {/* Send / Mic */}
             <div className="mb-0.5 shrink-0">
-              {draft.trim()
+              {hasVisibleText(draft)
                 ? <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => submit()}
                     disabled={isBlocked}
                     className="grid h-11 w-11 place-items-center rounded-full disabled:opacity-40"

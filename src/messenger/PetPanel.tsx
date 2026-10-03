@@ -120,8 +120,11 @@ export const PetPanel = ({ onSend, onClose }: PetPanelProps) => {
   const save = (p: PetPrefs) => { setPrefs(p); savePrefs(p); };
 
   const pet  = PETS.find(p=>p.id===selected);
-  const owned = PETS.filter(p=>prefs.owned.includes(p.id));
-  const shop  = PETS.filter(p=>!prefs.owned.includes(p.id));
+  // Весь каталог открыт на выбор сразу — раньше по умолчанию были
+  // видны только 2 из PETS.length, а остальные требовали зайти в
+  // «Магазин» и нажать adopt по одному; теперь владение не ограничено.
+  const owned = PETS;
+  const shop: typeof PETS = [];
   const friendship = prefs.friendship[selected??''] ?? 0;
 
   const handleSend = (mood: PetMood) => {

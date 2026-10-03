@@ -430,7 +430,18 @@ export const getProfileById = async (profileId) => {
  * это устройство защиты владельца, а не что-то для показа посторонним.
  * Настройки приватности отдаются как есть, а не применяются здесь —
  * решение, что после них можно показать (друзей, посты, игры), остаётся
- * за экраном профиля: сами эти разделы сервер пока не хранит.
+ * за экраном профиля.
+ *
+ * Косметика расширенного профиля (banner/bio/nameColor/nameSticker/
+ * customStatus/statusEmoji/links/country/language/timezone/birthDate)
+ * сервер хранит с миграции 074 (см. toProfile выше), но эта функция
+ * раньше их не отдавала — владелец настраивал их в своём профиле,
+ * они сохранялись, а другие люди всё равно видели старый пустой
+ * профиль. showCountry/showTimezone/showActivity — то же самое, что
+ * уже решает клиентский canSee() по privacy.profileVisibility; для
+ * полей без отдельного тумблера (banner/bio/nameColor/nameSticker/
+ * customStatus/links) видимость та же, что у аватара — показываются
+ * всем, потому что отдельного переключателя для них ещё нет.
  */
 export const publicProfile = async (viewerId, targetId) => {
   const p = await getProfileById(String(targetId ?? ''));
@@ -441,6 +452,17 @@ export const publicProfile = async (viewerId, targetId) => {
     name: p.name,
     username: p.username,
     avatar: p.avatar,
+    bio: p.bio,
+    banner: p.banner,
+    nameSticker: p.nameSticker,
+    nameColor: p.nameColor,
+    customStatus: p.customStatus,
+    statusEmoji: p.statusEmoji,
+    links: p.links,
+    country: p.country,
+    language: p.language,
+    timezone: p.timezone,
+    birthDate: p.birthDate,
     isAdmin: p.isAdmin,
     isPrime: p.isPrime,
     primeUntil: p.primeUntil,

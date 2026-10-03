@@ -18,15 +18,45 @@ import { apiAiState, type AiState } from './aiApi';
 
 let cached: AiState | null = null;
 let loading: Promise<AiState | null> | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryCount = 0;
 const listeners = new Set<() => void>();
 
 const notify = () => { for (const f of listeners) f(); };
 
+/**
+ * Сетевой сбой (не «ответ сервера — без Prime») не должен навсегда
+ * гасить кнопку микрофона без какого-либо способа ожить: apiAiState
+ * возвращает null и на честный ответ без подписки, и на упавший
+ * запрос, а refreshAiState раньше вызывался только один раз при
+ * монтировании — без повтора кэш оставался null до следующей
+ * ручной команды (покупка Prime и т.п.), и кнопка простаивала
+ * disabled без всякой подсказки. Повтор с нарастающей паузой чинит
+ * именно сбой; если сервер действительно ответил «нет подписки», это
+ * был бы не null, а объект с prime:false — и ретрай не включался бы.
+ */
+const RETRY_DELAYS_MS = [3000, 8000, 20000];
+
+const scheduleRetry = () => {
+  if (retryTimer || retryCount >= RETRY_DELAYS_MS.length) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    retryCount += 1;
+    void refreshAiState();
+  }, RETRY_DELAYS_MS[retryCount]);
+};
+
 /** Спросить сервер заново — после покупки Prime или после расхода. */
 export const refreshAiState = async (): Promise<AiState | null> => {
   loading ??= apiAiState().finally(() => { loading = null; });
-  cached = await loading;
+  const result = await loading;
+  cached = result;
   notify();
+  if (result) {
+    retryCount = 0;
+  } else {
+    scheduleRetry();
+  }
   return cached;
 };
 
