@@ -29,6 +29,7 @@ export const PERMISSIONS = [
   'garant',          // сделки Sky Garant, споры и решения по ним
   'notifications',   // рассылки: создание, планирование, отмена, история
   'kutrent_market',  // KutRent Market: пользователи, заказы, поиск по Authenticator
+  'violations',      // нарушения и штрафы Market/Warehouse/PVZ, регламент, апелляции
 ];
 
 /**
@@ -44,7 +45,7 @@ export const ROLES = {
   moderation_admin:['moderation', 'support'],
   support_admin:   ['support'],
   content_admin:   ['content'],
-  market_admin:    ['market', 'logistics'],
+  market_admin:    ['market', 'logistics', 'violations'],
   tickets_admin:   ['tickets'],
   finance_admin:   ['finance'],
   // 'support' — вместе с решением по заявке на награду (одобрить,
