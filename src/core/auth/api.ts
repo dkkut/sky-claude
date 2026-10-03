@@ -225,7 +225,18 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true): Prom
   try {
     res = await raw(path, init);
   } catch {
-    return { ok: false, error: 'network', reason: 'Нет связи с сервером', status: 0 };
+    /* В родном приложении fetch к чужому origin бросает ровно то же
+       исключение и при обрыве сети, и при отказе CORS (сервер не
+       прислал Access-Control-Allow-Origin для этого origin — см.
+       EXTRA_ORIGINS в DEPLOY.md) — но на практике для устройства с
+       интернетом второе куда вероятнее первого, и générique «нет
+       связи» выглядит как баг приложения, а не как то, что сервер
+       ещё не знает об этом origin. Подсказываем ровно это, не завышая
+       уверенность: сеть тоже может быть ни при чём. */
+    const reason = NATIVE_APP
+      ? 'Сервер не отвечает этому приложению (возможно, не настроен на его стороне) — либо нет связи с интернетом'
+      : 'Нет связи с сервером';
+    return { ok: false, error: 'network', reason, status: 0 };
   }
 
   if (res.status === 401 && retry && path !== '/api/auth/refresh') {
