@@ -208,6 +208,24 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # Sky Video/Studio. Та же причина и тот же лимит, что у кино и
+    # подкастов (routes/skyvideo.mjs: до 4 ГБ по умолчанию,
+    # SKYVIDEO_MAX_BYTES) — этого блока не было вовсе, и загрузка ролика
+    # шла через общий location /api/ с потолком 1m. При таком лимите
+    # nginx обрывает соединение прямо посреди отправки тела, браузер не
+    # получает вообще никакого ответа (ни 413, ни что-то осмысленное) и
+    # XMLHttpRequest сообщает это как onerror — в клиенте это превращалось
+    # в «Нет связи с сервером», хотя сервер тут ни при чём.
+    location ^~ /api/skyvideo/ {
+        limit_req zone=req_general burst=180 nodelay;
+        client_max_body_size 4096m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_pass http://sky_api;
+    }
+
     # Афиши мероприятий. Обложка — до 6 МБ (см. routes/tickets.mjs), и
     # общий потолок тела в 1m обрезал бы её ещё на nginx: организатор
     # видел бы безымянную 413 вместо понятного отказа приложения.
