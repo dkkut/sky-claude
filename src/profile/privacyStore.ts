@@ -21,7 +21,8 @@ export type VisibilityKey =
   | 'showPhone' | 'showBirthDate' | 'showGames' | 'showMusic' | 'showMovies'
   | 'showGifts' | 'showAchievements' | 'showFollowing' | 'showFriends'
   | 'showPhotos' | 'showStories' | 'showPosts'
-  | 'showCountry' | 'showTimezone' | 'showActivity';
+  | 'showCountry' | 'showTimezone' | 'showActivity'
+  | 'showBio' | 'showBanner' | 'showNameCustomization' | 'showLinks' | 'showCustomStatus';
 
 export interface Privacy {
   whoCanWrite: PrivacyVal;

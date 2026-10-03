@@ -44,6 +44,12 @@ export interface Account {
     showPhotos?:       boolean;
     showStories?:      boolean;
     showPosts?:        boolean;
+    /* ── Косметика профиля (см. server/privacy.mjs::VISIBILITY_KEYS) ── */
+    showBio?:               boolean;
+    showBanner?:            boolean;
+    showNameCustomization?: boolean;
+    showLinks?:             boolean;
+    showCustomStatus?:      boolean;
   };
   gameProfile?: { nickname:string; rank:string; game:string; wins:number; };
   nameSticker?: string; nameColor?: string;

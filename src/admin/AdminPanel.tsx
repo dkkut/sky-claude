@@ -2609,6 +2609,11 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
                   <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
                     {o.id} · {o.authenticator ?? '—'} · {new Date(o.createdAt).toLocaleString('ru')}
                   </p>
+                  {/* Sky ID — для срочных действий в основной админке (бан/блокировка
+                      Sky ID), где Authenticator Маркета ничего не значит. */}
+                  {o.skyId && (
+                    <p className="mt-0.5 text-[10px] font-mono" style={{ color: C.t3 }}>Sky ID: {o.skyId}</p>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-xs font-bold" style={{ color: C.t1 }}>{o.amount.toLocaleString('ru')} ₽</p>
@@ -2642,6 +2647,10 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
                   <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
                     {u.authenticator} · вход {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('ru') : '—'}
                   </p>
+                  {/* Sky ID — чтобы администрация могла сразу перейти к действиям
+                      в основной панели (бан/блокировка), не разыскивая его отдельно
+                      по нику: Authenticator — внутренний код только Маркета. */}
+                  <p className="mt-0.5 text-[10px] font-mono" style={{ color: C.t3 }}>Sky ID: {u.skyId}</p>
                 </div>
                 <span className="text-[10px] font-bold" style={{ color: u.status === 'active' ? C.green : C.red }}>
                   {u.status === 'active' ? 'Активен' : 'Приостановлен'}

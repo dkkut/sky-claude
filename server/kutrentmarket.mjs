@@ -329,7 +329,7 @@ export const adminListOrders = async ({ status, q, limit } = {}) => {
   }
   args.push(n);
   const { rows } = await query(
-    `SELECT o.*, p.username, u.authenticator FROM kutrent_market_orders o
+    `SELECT o.*, p.username, u.authenticator, u.sky_id FROM kutrent_market_orders o
        LEFT JOIN kutrent_market_users u ON u.id = o.market_user_id
        LEFT JOIN profiles p ON p.id = u.profile_id
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
@@ -338,6 +338,7 @@ export const adminListOrders = async ({ status, q, limit } = {}) => {
   );
   return rows.map((r) => ({
     ...toView(r), username: r.username ?? undefined, authenticator: r.authenticator ?? undefined,
+    skyId: r.sky_id ?? undefined,
   }));
 };
 

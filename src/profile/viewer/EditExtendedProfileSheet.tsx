@@ -46,6 +46,15 @@ export const EditExtendedProfileSheet = ({ account, onClose }: { account: Accoun
   const [showCountry, setShowCountry] = useState(privacy.profileVisibility?.showCountry ?? true);
   const [showTimezone, setShowTimezone] = useState(privacy.profileVisibility?.showTimezone ?? true);
   const [showActivity, setShowActivity] = useState(privacy.profileVisibility?.showActivity ?? true);
+  // Та же косметика, что показывается в ProfileHero.tsx чужим зрителям
+  // (bio/banner/цвет и стикер ника/ссылки/статус) — раньше её не от кого
+  // было скрывать, потому что она до publicProfile() вообще не долетала.
+  const [showBio, setShowBio] = useState(privacy.profileVisibility?.showBio ?? true);
+  const [showBanner, setShowBanner] = useState(privacy.profileVisibility?.showBanner ?? true);
+  const [showNameCustomization, setShowNameCustomization] = useState(
+    privacy.profileVisibility?.showNameCustomization ?? true);
+  const [showLinks, setShowLinks] = useState(privacy.profileVisibility?.showLinks ?? true);
+  const [showCustomStatus, setShowCustomStatus] = useState(privacy.profileVisibility?.showCustomStatus ?? true);
 
   const save = () => {
     updateProfile({
@@ -57,7 +66,12 @@ export const EditExtendedProfileSheet = ({ account, onClose }: { account: Accoun
       language: language.trim() || undefined,
       timezone: timezone || undefined,
     });
-    savePrivacy({ profileVisibility: { ...privacy.profileVisibility, showCountry, showTimezone, showActivity } });
+    savePrivacy({
+      profileVisibility: {
+        ...privacy.profileVisibility, showCountry, showTimezone, showActivity,
+        showBio, showBanner, showNameCustomization, showLinks, showCustomStatus,
+      },
+    });
     onClose();
   };
 
@@ -145,6 +159,26 @@ export const EditExtendedProfileSheet = ({ account, onClose }: { account: Accoun
               <div className="flex items-center justify-between">
                 <span className="text-sm" style={{ color: 'var(--t1)' }}>Показывать активность (видео, сообщества)</span>
                 <Toggle on={showActivity} onClick={() => setShowActivity(v => !v)} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm" style={{ color: 'var(--t1)' }}>Показывать описание (bio)</span>
+                <Toggle on={showBio} onClick={() => setShowBio(v => !v)} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm" style={{ color: 'var(--t1)' }}>Показывать баннер</span>
+                <Toggle on={showBanner} onClick={() => setShowBanner(v => !v)} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm" style={{ color: 'var(--t1)' }}>Показывать цвет и стикер ника</span>
+                <Toggle on={showNameCustomization} onClick={() => setShowNameCustomization(v => !v)} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm" style={{ color: 'var(--t1)' }}>Показывать ссылки</span>
+                <Toggle on={showLinks} onClick={() => setShowLinks(v => !v)} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm" style={{ color: 'var(--t1)' }}>Показывать статус</span>
+                <Toggle on={showCustomStatus} onClick={() => setShowCustomStatus(v => !v)} />
               </div>
             </div>
           </div>

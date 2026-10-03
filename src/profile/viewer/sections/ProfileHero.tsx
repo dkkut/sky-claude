@@ -25,7 +25,7 @@ export const ProfileHero = ({ data, onEdit }: { data: ProfileData; onEdit?: () =
       {/* -- Обложка -- */}
       <div className="h-24 sm:h-44 relative"
         style={{
-          background: acc.banner
+          background: (acc.banner && (data.isOwn || (acc.privacy?.showBanner ?? true)))
             ? `url(${acc.banner}) center/cover`
             : 'linear-gradient(135deg,#2a3350,#1a2038)',
         }}>
@@ -63,8 +63,13 @@ export const ProfileHero = ({ data, onEdit }: { data: ProfileData; onEdit?: () =
 
         {/* -- Имя и бейджи -- */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <h2 className="text-base sm:text-xl font-extrabold" style={{ color: acc.nameColor || 'var(--t1)' }}>{acc.name}</h2>
-          {acc.nameSticker && <span className="text-base sm:text-lg leading-none">{acc.nameSticker}</span>}
+          <h2 className="text-base sm:text-xl font-extrabold"
+            style={{ color: (data.isOwn || (acc.privacy?.showNameCustomization ?? true)) ? (acc.nameColor || 'var(--t1)') : 'var(--t1)' }}>
+            {acc.name}
+          </h2>
+          {acc.nameSticker && (data.isOwn || (acc.privacy?.showNameCustomization ?? true)) && (
+            <span className="text-base sm:text-lg leading-none">{acc.nameSticker}</span>
+          )}
           {acc.isPrime && <Crown size={15} className="sm:hidden" style={{ color: 'var(--amber)' }} />}
           {acc.isPrime && <Crown size={17} className="hidden sm:block" style={{ color: 'var(--amber)' }} />}
           {acc.isPrimeBusiness && <Briefcase size={14} className="sm:hidden" style={{ color: '#60a5fa' }} />}
@@ -75,7 +80,7 @@ export const ProfileHero = ({ data, onEdit }: { data: ProfileData; onEdit?: () =
         <div className="text-[12.5px] sm:text-sm mt-0.5" style={{ color: 'var(--t3)' }}>@{acc.username}</div>
 
         {/* -- Custom status -- */}
-        {(acc.customStatus || acc.statusEmoji) && (
+        {(acc.customStatus || acc.statusEmoji) && (data.isOwn || (acc.privacy?.showCustomStatus ?? true)) && (
           <div className="mt-1.5 sm:mt-2 inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-medium"
             style={{ background: 'var(--bg-l2)', color: 'var(--t2)' }}>
             {acc.statusEmoji && <span>{acc.statusEmoji}</span>}
@@ -93,10 +98,12 @@ export const ProfileHero = ({ data, onEdit }: { data: ProfileData; onEdit?: () =
         )}
 
         {/* -- Bio -- */}
-        {acc.bio && <p className="mt-2 sm:mt-3 text-[12.5px] sm:text-sm leading-relaxed" style={{ color: 'var(--t2)' }}>{acc.bio}</p>}
+        {acc.bio && (data.isOwn || (acc.privacy?.showBio ?? true)) && (
+          <p className="mt-2 sm:mt-3 text-[12.5px] sm:text-sm leading-relaxed" style={{ color: 'var(--t2)' }}>{acc.bio}</p>
+        )}
 
         {/* -- Links -- */}
-        {!!acc.links?.length && (
+        {!!acc.links?.length && (data.isOwn || (acc.privacy?.showLinks ?? true)) && (
           <div className="mt-1.5 sm:mt-2 flex flex-col gap-1">
             {acc.links.map((l, i) => (
               <a key={i} href={l.startsWith('http') ? l : `https://${l}`} target="_blank" rel="noreferrer"

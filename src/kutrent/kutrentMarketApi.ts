@@ -31,6 +31,7 @@ export interface KutrentMarketOrder {
   paidAt: string | null;
   username?: string;
   authenticator?: string;
+  skyId?: string;
 }
 
 export interface KutrentMarketUserDetail extends KutrentMarketUser {

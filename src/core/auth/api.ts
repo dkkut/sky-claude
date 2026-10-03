@@ -446,6 +446,8 @@ export interface PublicProfile {
     showPhone?: boolean; showBirthDate?: boolean; showGames?: boolean; showMusic?: boolean;
     showMovies?: boolean; showGifts?: boolean; showAchievements?: boolean; showFollowing?: boolean;
     showFriends?: boolean; showPhotos?: boolean; showStories?: boolean; showPosts?: boolean;
+    showBio?: boolean; showBanner?: boolean; showNameCustomization?: boolean;
+    showLinks?: boolean; showCustomStatus?: boolean;
   };
 }
 

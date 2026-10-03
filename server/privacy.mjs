@@ -51,6 +51,12 @@ const VISIBILITY_KEYS = new Set([
   // Расширенный профиль (EditExtendedProfileSheet): раньше нигде не
   // сохранялись, поэтому тумблеры молча ничего не значили.
   'showCountry', 'showTimezone', 'showActivity',
+  // Косметика своего профиля (bio/banner/nameColor+nameSticker/links/
+  // customStatus) раньше вообще не долетала до publicProfile() — её
+  // не от кого было скрывать, и тумблеров под неё не было. Теперь
+  // долетает (см. skyid.mjs::publicProfile), и ей нужна та же
+  // видимость, что у остальных разделов.
+  'showBio', 'showBanner', 'showNameCustomization', 'showLinks', 'showCustomStatus',
 ]);
 
 /**
