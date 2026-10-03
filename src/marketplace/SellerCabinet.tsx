@@ -107,7 +107,7 @@ export const BecomeSeller = () => {
   }
 
   return (
-    <div className="space-y-3 p-4">
+    <div className="h-full space-y-3 overflow-y-auto p-4">
       <div className="rounded-2xl p-4" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
         <Store size={22} style={{ color: C.acc }} />
         <p className="mt-2 text-base font-bold" style={{ color: C.t1 }}>Открыть магазин</p>
