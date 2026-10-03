@@ -489,10 +489,13 @@
   els('[data-open="support-list"]').forEach(function (b) {
     b.addEventListener("click", function () { renderSupportList(); openOverlay("overlay-support-list"); });
   });
-  el("#support-new-btn").addEventListener("click", function () {
-    closeOverlay("overlay-support-list");
-    openSupport(null);
-  });
+  var supportNewBtn = el("#support-new-btn");
+  if (supportNewBtn) {
+    supportNewBtn.addEventListener("click", function () {
+      closeOverlay("overlay-support-list");
+      openSupport(null);
+    });
+  }
   var backToSupportListBtn = document.querySelector('[data-back-to="support-list"]');
   if (backToSupportListBtn) {
     backToSupportListBtn.addEventListener("click", function () {
