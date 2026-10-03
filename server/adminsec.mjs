@@ -551,6 +551,21 @@ export const MAX_GRANT_PET_COINS = 1_000_000;
  * `permission` — право, без которого заявку даже не оформить;
  * `stepUp`     — нужно ли подтвердить личность при создании заявки.
  */
+/**
+ * Начисления, которые можно адресовать и владельцу.
+ *
+ * Общая защита «владельца не трогает никакая заявка» (ниже, в
+ * createPendingAction/executePending) задумана для прав и ролей — тех
+ * вещей, которые у владельца и так есть целиком, а значит заявка на
+ * них могла быть только ошибкой или попыткой что-то у него отобрать.
+ * Деньги, Prime и баллы — другое: это не право, а остаток на счету,
+ * тот же самый счёт, что и у любого человека на платформе, и владелец
+ * имеет право на него точно так же. Второй ключ (подтверждает он же)
+ * не теряет смысла: его цель — не дать администратору начислить
+ * что-то без спроса, а не запретить начисление самому владельцу.
+ */
+const GRANT_KINDS_OWNER_ALLOWED = new Set(['grant_money', 'grant_points', 'grant_prime']);
+
 export const PENDING_KINDS = {
   admin_grant:   { permission: 'security', stepUp: true,  title: 'Выдать права администратора' },
   admin_revoke:  { permission: 'security', stepUp: true,  title: 'Снять права администратора' },
@@ -709,9 +724,13 @@ export const createPendingAction = async (actorId, kind, targetId, raw = {}, opt
     'SELECT id, username, is_admin FROM profiles WHERE id = $1', [target]);
   if (!who[0]) return { error: 'not_found' };
 
-  /* Владельца не трогает никакая заявка. Ни выдать ему роль, ни снять
-     права, ни «начислить» — он вне очереди по определению. */
-  if (await isOwner(target)) return { error: 'owner_protected' };
+  /* Владельца не трогает никакая заявка — кроме начисления денег, Prime
+     и баллов на тот же счёт, что и у всех (см. GRANT_KINDS_OWNER_ALLOWED
+     выше). Ни выдать ему роль, ни снять права — он вне очереди по
+     определению. */
+  if (!GRANT_KINDS_OWNER_ALLOWED.has(kind) && await isOwner(target)) {
+    return { error: 'owner_protected' };
+  }
 
   /* Себе — нельзя. Ни прав, ни роли, ни денег: заявка на себя, которую
      подтверждает владелец, всё равно остаётся способом попросить у
@@ -958,12 +977,14 @@ export const sweepPendingActions = async () => {
  * Владелец при этом остаётся неприкосновенным и здесь — проверка стоит
  * второй раз. Первая была при создании заявки, но между созданием и
  * подтверждением проходят часы, и за это время человек мог стать
- * владельцем.
+ * владельцем. Исключение то же, что и там: GRANT_KINDS_OWNER_ALLOWED.
  */
 const executePending = async (row, payload, ownerId) => {
   const target = row.target_id;
   if (!target) return { error: 'not_found' };
-  if (await isOwner(target)) return { error: 'owner_protected' };
+  if (!GRANT_KINDS_OWNER_ALLOWED.has(row.kind) && await isOwner(target)) {
+    return { error: 'owner_protected' };
+  }
 
   switch (row.kind) {
     case 'admin_grant': {
