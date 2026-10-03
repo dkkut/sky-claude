@@ -27,6 +27,7 @@ import {
 } from './adminWire';
 import { COUNTRIES } from '@/region/types';
 import { AD_PLACEMENTS, AD_STATUS_LABEL, AD_STATUS_COLOR, AD_FORMAT_LABEL, fmtBudget, campaignMediaUrl } from '@/ads/store';
+import type { PetRarity, PetAvailability, SkinItemType, SkinAvailability } from '@/messenger/petsApi';
 
 const C = {
   bg: 'var(--bg-l1)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
@@ -365,6 +366,457 @@ const GiftsAdminSection = () => {
         ))}
       </div>
       {sub === 'catalog' ? <GiftsCatalogList /> : <PrimeCardMediaPanel />}
+    </div>
+  );
+};
+
+/* ─── Sky Pets + Sky Skin Market ──────────────────────────────────────
+   Та же гейтовка правом content, что сервер проверяет сам
+   (server/routes/pets.mjs: can(me,'content')) — у фичи нет отдельного
+   права, своего админ-роутера тоже нет, см. комментарий там же.
+   Выдача Pet Coins — ВСЕГДА заявка в очередь владельца
+   (adminsec.createPendingAction), поэтому форма ниже не утверждает
+   «начислено», а прямо говорит «отправлено на подтверждение». */
+
+const PET_RARITIES = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic', 'secret'] as const;
+const SKIN_ITEM_TYPES = ['skin', 'outfit', 'headwear', 'accessory', 'aura', 'effect', 'animation', 'background', 'trail', 'emote'] as const;
+const SKIN_AVAILABILITIES = ['unlimited', 'limited', 'event', 'exclusive'] as const;
+
+const PetTypesAdminSection = () => {
+  const [types, setTypes] = useState<import('@/messenger/petsApi').PetType[] | null>(null);
+  const [failed, setFailed] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({ name: '', species: '', description: '', color: '#8b5cf6', rarity: 'common', availableFrom: 'shop', pricePetCoins: '' });
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiPetTypes } = await import('@/messenger/petsApi');
+    const r = await apiPetTypes();
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить каталог типов'); return; }
+    setTypes(r.data.types);
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const create = async () => {
+    setSaving(true); setFailed('');
+    const { apiAdminCreatePetType } = await import('@/messenger/petsApi');
+    const r = await apiAdminCreatePetType({
+      name: form.name.trim(), species: form.species.trim(), description: form.description.trim(),
+      color: form.color, rarity: form.rarity as PetRarity, availableFrom: form.availableFrom as PetAvailability,
+      pricePetCoins: form.availableFrom === 'shop' ? Math.max(0, Math.trunc(Number(form.pricePetCoins) || 0)) : undefined,
+    });
+    setSaving(false);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось создать тип — проверь поля'); return; }
+    setCreating(false);
+    setForm({ name: '', species: '', description: '', color: '#8b5cf6', rarity: 'common', availableFrom: 'shop', pricePetCoins: '' });
+    void load();
+  };
+
+  const retire = async (id: string) => {
+    const { apiAdminRetirePetType } = await import('@/messenger/petsApi');
+    await apiAdminRetirePetType(id);
+    void load();
+  };
+
+  return (
+    <div className="space-y-2">
+      {creating ? (
+        <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex gap-2">
+            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Имя"
+              className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+            <input value={form.species} onChange={(e) => setForm((f) => ({ ...f, species: e.target.value }))} placeholder="Вид (напр. Кот)"
+              className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+          </div>
+          <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Описание" rows={2}
+            className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+          <div className="flex gap-2">
+            <input type="color" value={form.color} onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+              className="h-9 w-12 rounded-xl" style={{ background: C.l2, border: `1px solid ${C.brd}` }} />
+            <select value={form.rarity} onChange={(e) => setForm((f) => ({ ...f, rarity: e.target.value }))}
+              className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle}>
+              {PET_RARITIES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <select value={form.availableFrom} onChange={(e) => setForm((f) => ({ ...f, availableFrom: e.target.value }))}
+              className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle}>
+              {(['shop', 'starter', 'event', 'achievement'] as const).map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          {form.availableFrom === 'shop' && (
+            <input value={form.pricePetCoins} onChange={(e) => setForm((f) => ({ ...f, pricePetCoins: e.target.value }))}
+              type="number" min={0} placeholder="Цена, Pet Coins"
+              className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+          )}
+          {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+          <div className="flex gap-2">
+            <button type="button" disabled={saving || !form.name.trim() || !form.species.trim()} onClick={() => void create()}
+              className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+              Создать тип
+            </button>
+            <button type="button" onClick={() => setCreating(false)} className="rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>
+              Отмена
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setCreating(true)}
+          className="w-full rounded-2xl py-2.5 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>
+          + Новый тип питомца
+        </button>
+      )}
+
+      {failed && !creating && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {types === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : types.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Каталог пуст.</p>
+      ) : types.map((t) => (
+        <div key={t.id} className="flex items-center gap-2.5 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="h-8 w-8 shrink-0 rounded-full" style={{ background: t.color }} />
+          <div className="flex-1 min-w-0">
+            <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>{t.name} <span className="font-normal" style={{ color: C.t3 }}>· {t.species}</span></p>
+            <p className="text-[10px]" style={{ color: C.t3 }}>{t.rarity} · {t.availableFrom}{t.pricePetCoins != null ? ` · ${t.pricePetCoins} 🪙` : ''}</p>
+          </div>
+          {t.status !== 'retired' && (
+            <button type="button" onClick={() => void retire(t.id)}
+              className="shrink-0 rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.red }}>
+              Снять с продажи
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const PetEconomyAdminSection = () => {
+  const [stats, setStats] = useState<import('@/messenger/petsApi').PetEconomyStats | null>(null);
+  const [failed, setFailed] = useState('');
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminEconomyStats } = await import('@/messenger/petsApi');
+    const r = await apiAdminEconomyStats();
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить статистику'); return; }
+    setStats(r.data);
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={() => void load()} className="flex items-center gap-1.5 text-[11px]" style={{ color: C.t3 }}>
+        <RefreshCw size={11} /> Обновить
+      </button>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {stats === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            ['Выпущено', stats.generated, C.green],
+            ['Потрачено', stats.spent, C.t2],
+            ['Сожжено', stats.burned, C.red],
+            ['В обороте', stats.circulating, C.amber],
+          ] as const).map(([label, value, color]) => (
+            <div key={label} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+              <p className="text-[10px] font-bold" style={{ color: C.t3 }}>{label.toUpperCase()}</p>
+              <p className="mt-1 text-lg font-black" style={{ color }}>{value.toLocaleString('ru')} 🪙</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[11px]" style={{ color: C.t3 }}>
+        Pet Coins — отдельная от Sky Money валюта: не выводится, не обменивается на рубли, не переводится между пользователями напрямую.
+      </p>
+    </div>
+  );
+};
+
+const PetCoinsGrantForm = () => {
+  const [profileId, setProfileId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const [sent, setSent] = useState(false);
+
+  const send = async () => {
+    setBusy(true); setFailed(''); setSent(false);
+    const { apiAdminGrantPetCoins } = await import('@/messenger/petsApi');
+    const r = await apiAdminGrantPetCoins(profileId.trim(), Math.max(0, Math.trunc(Number(amount) || 0)), reason.trim());
+    setBusy(false);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не получилось оформить заявку'); return; }
+    setSent(true); setProfileId(''); setAmount(''); setReason('');
+  };
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <p className="text-[11px]" style={{ color: C.t3 }}>
+        Это НЕ прямое начисление: заявка уходит в очередь владельца (второй ключ) — Pet Coins появятся
+        на счету только после его подтверждения, как и обычные деньги/баллы/Prime.
+      </p>
+      <input value={profileId} onChange={(e) => setProfileId(e.target.value)} placeholder="Sky ID получателя"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min={1} placeholder="Сумма, Pet Coins"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина (для журнала и владельца)"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {sent && <p className="text-[11px]" style={{ color: C.green }}>Заявка отправлена в очередь владельца.</p>}
+      <button type="button" disabled={busy || !profileId.trim() || !amount} onClick={() => void send()}
+        className="w-full rounded-xl py-2.5 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+        Оформить заявку на начисление
+      </button>
+    </div>
+  );
+};
+
+const emptySkinItemForm = () => ({
+  name: '', description: '', itemType: 'skin', rarity: 'common', availability: 'unlimited',
+  supply: '', petTypeId: '', pricePetCoins: '', priceSkyMoneyKopecks: '',
+  previewMediaId: '', previewMime: '', modelMediaId: '', modelMime: '',
+});
+
+const SkinItemForm = ({ onCancel, onSaved }: { onCancel: () => void; onSaved: () => void }) => {
+  const [form, setForm] = useState(emptySkinItemForm);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+
+  const save = async () => {
+    setBusy(true); setFailed('');
+    const { apiAdminCreateSkinItem } = await import('@/messenger/petsApi');
+    const r = await apiAdminCreateSkinItem({
+      name: form.name.trim(), description: form.description.trim() || undefined,
+      itemType: form.itemType as SkinItemType, rarity: form.rarity as PetRarity, availability: form.availability as SkinAvailability,
+      supply: form.availability === 'limited' ? Math.max(1, Math.trunc(Number(form.supply) || 0)) : undefined,
+      petTypeId: form.petTypeId.trim() || undefined,
+      pricePetCoins: form.pricePetCoins ? Math.max(0, Math.trunc(Number(form.pricePetCoins))) : undefined,
+      priceSkyMoneyKopecks: form.priceSkyMoneyKopecks ? Math.max(0, Math.trunc(Number(form.priceSkyMoneyKopecks))) : undefined,
+      previewMediaId: form.previewMediaId.trim() || undefined, previewMime: form.previewMime.trim() || undefined,
+      modelMediaId: form.modelMediaId.trim() || undefined, modelMime: form.modelMime.trim() || undefined,
+    });
+    setBusy(false);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось создать — проверь поля (нужна хотя бы одна цена)'); return; }
+    onSaved();
+  };
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <div className="flex gap-2">
+        <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Название"
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <select value={form.itemType} onChange={(e) => setForm((f) => ({ ...f, itemType: e.target.value }))}
+          className="rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle}>
+          {SKIN_ITEM_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+      <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Описание" rows={2}
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <div className="flex gap-2">
+        <select value={form.rarity} onChange={(e) => setForm((f) => ({ ...f, rarity: e.target.value }))}
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle}>
+          {PET_RARITIES.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={form.availability} onChange={(e) => setForm((f) => ({ ...f, availability: e.target.value }))}
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle}>
+          {SKIN_AVAILABILITIES.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </div>
+      {form.availability === 'limited' && (
+        <input value={form.supply} onChange={(e) => setForm((f) => ({ ...f, supply: e.target.value }))} type="number" min={1}
+          placeholder="Лимит экземпляров" className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      )}
+      <input value={form.petTypeId} onChange={(e) => setForm((f) => ({ ...f, petTypeId: e.target.value }))}
+        placeholder="Привязать к типу питомца (id, необязательно)" className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <div className="flex gap-2">
+        <input value={form.pricePetCoins} onChange={(e) => setForm((f) => ({ ...f, pricePetCoins: e.target.value }))} type="number" min={0}
+          placeholder="Цена, Pet Coins" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <input value={form.priceSkyMoneyKopecks} onChange={(e) => setForm((f) => ({ ...f, priceSkyMoneyKopecks: e.target.value }))} type="number" min={0}
+          placeholder="или цена, копейки Sky Money" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      </div>
+      {/* Настоящей загрузки файла здесь нет: у server/routes/pets.mjs нет
+          ручки, принимающей байты и зовущей skinstore.saveStream — только
+          adminCreateItem, который ждёт уже готовый media id. Это серверная
+          доработка вне рамок этой задачи (клиент); пока — id/MIME текстом. */}
+      <p className="text-[10px]" style={{ color: C.t3 }}>
+        Медиа (необязательно, до серверной доработки загрузки — указать id/MIME уже готового файла):
+      </p>
+      <div className="flex gap-2">
+        <input value={form.previewMediaId} onChange={(e) => setForm((f) => ({ ...f, previewMediaId: e.target.value }))}
+          placeholder="previewMediaId (skm-…)" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <input value={form.previewMime} onChange={(e) => setForm((f) => ({ ...f, previewMime: e.target.value }))}
+          placeholder="image/png" className="w-28 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      <div className="flex gap-2">
+        <button type="button" disabled={busy || !form.name.trim()} onClick={() => void save()}
+          className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+          Создать предмет
+        </button>
+        <button type="button" onClick={onCancel} className="rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>
+          Отмена
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const SkinItemSalesView = ({ itemId, onBack }: { itemId: string; onBack: () => void }) => {
+  const [owners, setOwners] = useState<import('@/messenger/petsApi').SkinSaleOwner[] | null>(null);
+  useEffect(() => {
+    void (async () => {
+      const { apiAdminSkinItemSales } = await import('@/messenger/petsApi');
+      const r = await apiAdminSkinItemSales(itemId);
+      if (r.ok && r.data) setOwners(r.data.owners);
+    })();
+  }, [itemId]);
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={onBack} className="text-[11px]" style={{ color: C.t3 }}>← Назад</button>
+      {owners === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : owners.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Пока никто не купил.</p>
+      ) : owners.map((o, i) => (
+        <div key={i} className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <p className="text-xs" style={{ color: C.t1 }}>{o.name} <span style={{ color: C.t3 }}>@{o.username}</span></p>
+          <p className="text-[10px]" style={{ color: C.t3 }}>{o.instanceNumber != null ? `#${o.instanceNumber} · ` : ''}{o.acquiredVia} · {fmtTs(o.acquiredAt)}</p>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const SkinMarketAdminSection = () => {
+  const [items, setItems] = useState<import('@/messenger/petsApi').SkinItem[] | null>(null);
+  const [failed, setFailed] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', description: '', pricePetCoins: '', priceSkyMoneyKopecks: '', supply: '' });
+  const [salesOf, setSalesOf] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminListSkinItems } = await import('@/messenger/petsApi');
+    const r = await apiAdminListSkinItems();
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить предметы'); return; }
+    setItems(r.data.items);
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const startEdit = (it: import('@/messenger/petsApi').SkinItem) => {
+    setEditing(it.id);
+    setEditForm({ name: it.name, description: it.description, pricePetCoins: String(it.pricePetCoins ?? ''), priceSkyMoneyKopecks: String(it.priceSkyMoneyKopecks ?? ''), supply: String(it.supply ?? '') });
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const { apiAdminUpdateSkinItem } = await import('@/messenger/petsApi');
+    const r = await apiAdminUpdateSkinItem(editing, {
+      name: editForm.name.trim(), description: editForm.description.trim(),
+      pricePetCoins: editForm.pricePetCoins ? Math.max(0, Math.trunc(Number(editForm.pricePetCoins))) : null,
+      priceSkyMoneyKopecks: editForm.priceSkyMoneyKopecks ? Math.max(0, Math.trunc(Number(editForm.priceSkyMoneyKopecks))) : null,
+      supply: editForm.supply ? Math.max(1, Math.trunc(Number(editForm.supply))) : undefined,
+    });
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось сохранить'); return; }
+    setEditing(null);
+    void load();
+  };
+
+  const retire = async (id: string) => {
+    const { apiAdminRetireSkinItem } = await import('@/messenger/petsApi');
+    await apiAdminRetireSkinItem(id);
+    void load();
+  };
+
+  if (salesOf) return <SkinItemSalesView itemId={salesOf} onBack={() => setSalesOf(null)} />;
+
+  return (
+    <div className="space-y-2">
+      {creating ? (
+        <SkinItemForm onCancel={() => setCreating(false)} onSaved={() => { setCreating(false); void load(); }} />
+      ) : (
+        <button type="button" onClick={() => setCreating(true)}
+          className="w-full rounded-2xl py-2.5 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>
+          + Новый предмет
+        </button>
+      )}
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {items === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : items.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Предметов пока нет.</p>
+      ) : items.map((it) => (
+        <div key={it.id} className="rounded-2xl p-3 space-y-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>{it.name}</p>
+              <p className="text-[10px]" style={{ color: C.t3 }}>
+                {it.itemType} · {it.rarity} · {it.availability}
+                {it.supply != null ? ` · ${it.remaining ?? 0}/${it.supply}` : ''}
+                {it.pricePetCoins != null ? ` · ${it.pricePetCoins} 🪙` : ''}
+                {it.priceSkyMoneyKopecks != null ? ` · ${(it.priceSkyMoneyKopecks / 100).toLocaleString('ru')} ₽` : ''}
+              </p>
+            </div>
+            <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: it.status === 'active' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: it.status === 'active' ? C.green : C.red }}>
+              {it.status === 'active' ? 'активен' : 'снят'}
+            </span>
+          </div>
+
+          {editing === it.id ? (
+            <div className="space-y-2 border-t pt-2" style={{ borderColor: C.brd }}>
+              <input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              <textarea value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} rows={2}
+                className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              {it.remaining === null || it.remaining === it.supply ? null : (
+                <p className="text-[10px]" style={{ color: C.amber }}>Уже были продажи — цену/лимит менять нельзя (сервер заблокирует).</p>
+              )}
+              <div className="flex gap-2">
+                <input value={editForm.pricePetCoins} onChange={(e) => setEditForm((f) => ({ ...f, pricePetCoins: e.target.value }))}
+                  type="number" placeholder="Pet Coins" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+                <input value={editForm.priceSkyMoneyKopecks} onChange={(e) => setEditForm((f) => ({ ...f, priceSkyMoneyKopecks: e.target.value }))}
+                  type="number" placeholder="копейки ₽" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => void saveEdit()} className="flex-1 rounded-xl py-1.5 text-[11px] font-bold" style={{ background: C.acc, color: '#fff' }}>Сохранить</button>
+                <button type="button" onClick={() => setEditing(null)} className="rounded-xl px-3 py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.t3 }}>Отмена</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => startEdit(it)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>Изменить</button>
+              <button type="button" onClick={() => setSalesOf(it.id)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>Продажи</button>
+              {it.status === 'active' && (
+                <button type="button" onClick={() => void retire(it.id)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.red }}>Снять с продажи</button>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const PetsAdminSection = () => {
+  const [sub, setSub] = useState<'types' | 'economy' | 'grant' | 'market'>('types');
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {([['types', 'Типы питомцев'], ['economy', 'Экономика'], ['grant', 'Начислить'], ['market', 'Skin Market']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setSub(k)}
+            className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+            style={{ background: sub === k ? C.acc : C.l2, color: sub === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {sub === 'types' && <PetTypesAdminSection />}
+      {sub === 'economy' && <PetEconomyAdminSection />}
+      {sub === 'grant' && <PetCoinsGrantForm />}
+      {sub === 'market' && <SkinMarketAdminSection />}
     </div>
   );
 };
@@ -3606,7 +4058,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'ads' | 'notify' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'ads' | 'notify' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -3733,6 +4185,7 @@ export const AdminPanel = () => {
     { key: 'garant', label: 'Sky Garant', show: has('garant') },
     { key: 'market', label: 'Sky Market', show: has('market') },
     { key: 'kutrent', label: 'KutRent Market', show: has('kutrent_market') },
+    { key: 'pets', label: 'Pets и Skin Market', show: has('content') },
     { key: 'bloom', label: 'Bloom', show: has('content') },
     { key: 'ads', label: 'Реклама', show: has('content') },
     { key: 'notify', label: 'Рассылки', show: has('notifications') },
@@ -3870,6 +4323,7 @@ export const AdminPanel = () => {
       {tab === 'garant' && <GarantAdminSection />}
       {tab === 'market' && <MarketAdminSection />}
       {tab === 'kutrent' && <KutrentMarketAdminSection rights={rights} />}
+      {tab === 'pets' && <PetsAdminSection />}
       {tab === 'bloom' && <BloomAdminSection />}
       {tab === 'ads' && <AdsAdminSection />}
       {tab === 'notify' && <NotifyAdminSection />}
