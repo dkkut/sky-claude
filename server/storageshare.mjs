@@ -49,6 +49,12 @@ export const grantShare = async (ownerId, sharedWithId, fileKind, fileId, {
   );
   if (!rows[0]) return { error: 'not_found' };
 
+  // Получатель должен существовать: иначе вставка упала бы по внешнему
+  // ключу — честный отказ, а не необработанная ошибка базы на вход
+  // несуществующего Sky ID.
+  const { rows: who } = await query('SELECT 1 FROM profiles WHERE id = $1', [String(sharedWithId)]);
+  if (!who[0]) return { error: 'recipient_not_found' };
+
   await query(
     `INSERT INTO storage_shares (id, owner_id, shared_with_id, file_kind, file_id, can_download, expires_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7)

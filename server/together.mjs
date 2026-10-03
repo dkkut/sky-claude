@@ -575,6 +575,25 @@ export const createJoinCode = async (sessionId, ownerId) => {
 };
 
 /**
+ * Снять код досрочно — владелец решил, что он больше не нужен (ушёл с
+ * экрана TV, позвал кого не хотел). Без этого код оставался бы живым
+ * до истечения срока, что бы владелец ни сделал на экране.
+ */
+export const revokeJoinCode = async (sessionId, ownerId) => {
+  const row = await sessionRow(sessionId);
+  if (!row) return { error: 'not_found' };
+  if (row.owner_id !== ownerId) return { error: 'forbidden' };
+
+  const { rowCount } = await query(
+    `UPDATE together_join_codes SET revoked_at = now()
+      WHERE session_id = $1 AND revoked_at IS NULL AND used_at IS NULL AND expires_at > now()`,
+    [sessionId],
+  );
+  await logTogether(sessionId, ownerId, 'join_code_revoked');
+  return { ok: true, revoked: rowCount };
+};
+
+/**
  * Применить код — сразу вход, без промежуточного «пригласили, жду
  * ответа». Код от владельца это и есть ответ: по этой же причине
  * joinSession здесь не годится — он отказывает статусу 'invited'

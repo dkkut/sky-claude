@@ -14,6 +14,7 @@ const WRITE_PER_MIN = 30;
 const CODES = {
   invalid_kind: 400,
   invalid_recipient: 400,
+  recipient_not_found: 404,
   not_found: 404,
 };
 const fail = (res, result) => json(res, CODES[result.error] ?? 400, { error: result.error });

@@ -22,7 +22,7 @@ import {
   createSession, readSession, listMySessions, participantsOf,
   inviteToSession, removeParticipant, listInvitations, answerInvitation,
   joinSession, leaveSession, endSession, updateSettings,
-  listRoomMessages, createJoinCode, redeemJoinCode,
+  listRoomMessages, createJoinCode, revokeJoinCode, redeemJoinCode,
   SESSION_ID_RE, INVITE_ID_RE, SESSION_TYPES,
   MAX_PARTICIPANTS_DEFAULT, MAX_PARTICIPANTS_HARD, MAX_QUEUE,
 } from './../together.mjs';
@@ -196,6 +196,14 @@ export const togetherRoutes = async (req, res, url) => {
       const result = await createJoinCode(sessionId, me);
       if (result.error) return fail(res, result);
       return json(res, 200, { code: result.code, expiresInSec: result.expiresInSec });
+    }
+
+    // Снять код досрочно — владелец ушёл с экрана или позвал не того.
+    if (req.method === 'DELETE' && tail === '/join-code') {
+      if (!rateLimit(`tg:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const result = await revokeJoinCode(sessionId, me);
+      if (result.error) return fail(res, result);
+      return json(res, 200, { ok: true });
     }
 
     if (req.method === 'POST' && tail === '/invite') {
