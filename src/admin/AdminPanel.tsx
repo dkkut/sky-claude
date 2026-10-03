@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
 import {
   Shield, ShieldAlert, ShieldCheck, Loader2, Check, X, KeyRound,
   Wallet, Crown, ScrollText, AlertTriangle, RefreshCw, Users, Ban, Trophy,
-  Eye, Bike, Trash2, MessageCircle,
+  Eye, Bike, Trash2, MessageCircle, Copy,
 } from 'lucide-react';
 import {
   adminCall, errorText, ROLE_LABEL, PERMISSION_LABEL,
@@ -1734,6 +1734,30 @@ const HOURS: { label: string; minutes: number }[] = [
   { label: 'год', minutes: 60 * 24 * 365 },
 ];
 
+/**
+ * Sky ID строкой — чтобы его можно было скопировать и вставить в другую
+ * форму (начисление, рассылка и т.п.), где получателя всё ещё вводят
+ * руками по идентификатору профиля (acc-…). Раньше findPerson уже
+ * отдавал id, но нигде в этом экране он не показывался — искать
+ * приходилось по нику, а действовать где-то ещё — снова по памяти.
+ */
+const CopyId = ({ id }: { id: string }) => {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button type="button" onClick={(e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(id).catch(() => {});
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    }}
+      className="flex items-center gap-1 rounded-lg px-1.5 py-0.5 font-mono"
+      style={{ color: C.t3, background: 'transparent' }}>
+      {copied ? <Check size={10} style={{ color: C.green }} /> : <Copy size={10} />}
+      {id}
+    </button>
+  );
+};
+
 const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
   const [q, setQ] = useState('');
   const [people, setPeople] = useState<Person[] | null>(null);
@@ -1750,6 +1774,15 @@ const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
     if (r.type !== 'admin-people') { setFailed(errorText(r.payload?.error)); setPeople([]); return; }
     setPeople(r.payload.people ?? []);
   };
+
+  // Список при открытии вкладки — пустой запрос отдаёт последних
+  // зарегистрированных (см. findPerson в adminsec.mjs), а не ничего:
+  // «все пользователи» значит видно сразу, а поиск — чтобы сузить, а не
+  // чтобы увидеть хоть кого-то. Запускаем ровно один раз на открытие
+  // вкладки — именно поэтому search (меняется от q на каждый ввод) в
+  // зависимостях не нужен, иначе набор в поле заново вызывал бы этот эффект.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (canModerate) void search(); }, [canModerate]);
 
   const refresh = async (id: string) => {
     const r = await adminCall({ action: 'find', q: id });
@@ -1793,7 +1826,7 @@ const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
       <div className="flex gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void search(); }}
-          placeholder="Ник или идентификатор профиля"
+          placeholder="Ник или идентификатор — пусто показывает всех по очереди регистрации"
           className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
         <button type="button" onClick={() => void search()}
           className="rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>
@@ -1803,6 +1836,10 @@ const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
 
       {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
       {done && <p className="text-[11px]" style={{ color: C.green }}>{done}</p>}
+
+      {people === null && (
+        <div className="py-6 text-center"><Loader2 size={16} className="mx-auto animate-spin" style={{ color: C.t3 }} /></div>
+      )}
 
       {people?.length === 0 && (
         <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Никого не нашлось.</p>
@@ -1827,6 +1864,7 @@ const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
             {p.admin ? 'администратор · ' : ''}
             профилей в учётной записи: {p.profiles}
           </p>
+          <div className="mt-1 text-[10px]"><CopyId id={p.id} /></div>
         </button>
       ))}
 
@@ -1835,6 +1873,7 @@ const PeopleTab = ({ canModerate }: { canModerate: boolean }) => {
           <p className="text-xs font-bold" style={{ color: C.t1 }}>
             {picked.name} <span className="font-normal" style={{ color: C.t3 }}>@{picked.username}</span>
           </p>
+          <div className="text-[10px]"><CopyId id={picked.id} /></div>
 
           <div>
             <p className="mb-1 text-[10px] font-bold" style={{ color: C.t3 }}>НА СКОЛЬКО</p>

@@ -1118,22 +1118,35 @@ export const listAdminsWithRoles = async (actorId) => {
  * право модерации, и только то, что нужно для решения: кто это, и что с
  * ним уже сделано.
  *
+ * Пустой запрос — не «ничего», а последние зарегистрированные: тот же
+ * приём, что у adminSearchUsers в kutrentmarket.mjs (там тоже пустой q
+ * отдаёт недавних, а не пустой список). Это и есть «все пользователи с
+ * поиском» — список по умолчанию, который поиск сужает, а не обязанность
+ * сперва угадать ник, чтобы увидеть хоть кого-то.
+ *
  * Ни почты, ни телефона, ни заметок — для запрета они не нужны, а как
  * сведения о человеке ценны.
  */
 export const findPerson = async (actorId, queryText) => {
   if (!(await can(actorId, 'moderation'))) return null;
   const raw = String(queryText ?? '').trim().replace(/^@/, '').slice(0, 64);
-  if (raw.length < 2) return [];
 
-  const { rows } = await query(
-    `SELECT p.id, p.username, p.name, p.is_admin, p.banned_until,
-            s.blocked_until, s.blocked_reason,
-            (SELECT count(*) FROM profiles o WHERE o.sky_id = p.sky_id)::int AS profiles
-       FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
-      WHERE p.id = $1 OR lower(p.username) = lower($1) OR p.username ILIKE $2
-      ORDER BY (lower(p.username) = lower($1)) DESC, p.username
-      LIMIT 20`, [raw, `%${raw}%`]);
+  const { rows } = raw
+    ? await query(
+        `SELECT p.id, p.username, p.name, p.is_admin, p.banned_until,
+                s.blocked_until, s.blocked_reason,
+                (SELECT count(*) FROM profiles o WHERE o.sky_id = p.sky_id)::int AS profiles
+           FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
+          WHERE p.id = $1 OR lower(p.username) = lower($1) OR p.username ILIKE $2
+          ORDER BY (lower(p.username) = lower($1)) DESC, p.username
+          LIMIT 20`, [raw, `%${raw}%`])
+    : await query(
+        `SELECT p.id, p.username, p.name, p.is_admin, p.banned_until,
+                s.blocked_until, s.blocked_reason,
+                (SELECT count(*) FROM profiles o WHERE o.sky_id = p.sky_id)::int AS profiles
+           FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
+          ORDER BY p.created_at DESC
+          LIMIT 20`);
 
   const now = new Date();
   const out = [];
