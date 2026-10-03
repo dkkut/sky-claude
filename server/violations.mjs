@@ -23,6 +23,7 @@ import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { can, isOwner } from './admin.mjs';
 import { pushViolation } from './signal.mjs';
+import { isOwnerOf as isPvzOwner } from './pvzops.mjs';
 
 export const RULE_ID_RE = /^vr-[0-9a-f-]{36}$/;
 export const VIOLATION_ID_RE = /^vio-[0-9a-f-]{36}$/;
@@ -566,6 +567,42 @@ export const listViolationsForProfile = async (actorId, profileId, { module } = 
   return {
     violations: violations.map((v) => ({
       ...toViolation(v),
+      penalties: penalties.filter((p) => p.violation_id === v.id).map(toPenalty),
+      sanctions: sanctions.filter((s) => s.violation_id === v.id).map(toSanction),
+    })),
+  };
+};
+
+/**
+ * Нарушения конкретной организации (ПВЗ/склад) — то, что покажет вкладка
+ * «Нарушения и штрафы» в кабинете самого ПВЗ: не только нарушения
+ * владельца, но и его сотрудников, зафиксированные в рамках этой точки.
+ * Видит владелец этой точки (isOwnerOf — та же проверка, что остальные
+ * владельческие ручки ПВЗ) или администратор с правом 'violations'.
+ * Склад пока не подключён (нет вкладки в клиенте), поэтому только 'pvz'.
+ */
+export const listViolationsForOrg = async (actorId, orgKind, orgId) => {
+  if (orgKind !== 'pvz') return { error: 'bad_org_kind' };
+  const allowed = (await can(actorId, 'violations')) || (await isPvzOwner(orgId, actorId));
+  if (!allowed) return { error: 'not_allowed' };
+
+  const { rows: violations } = await query(
+    `SELECT v.*, p.name AS violator_name FROM violations v
+       LEFT JOIN profiles p ON p.id = v.violator_id
+      WHERE v.org_kind = $1 AND v.org_id = $2
+      ORDER BY v.created_at DESC LIMIT 200`,
+    [orgKind, orgId]);
+  if (!violations.length) return { violations: [] };
+
+  const ids = violations.map((v) => v.id);
+  const { rows: penalties } = await query(
+    'SELECT * FROM penalties WHERE violation_id = ANY($1) ORDER BY issued_at', [ids]);
+  const { rows: sanctions } = await query(
+    'SELECT * FROM violation_sanctions WHERE violation_id = ANY($1) ORDER BY applied_at', [ids]);
+
+  return {
+    violations: violations.map((v) => ({
+      ...toViolation(v, { withActor: true }),
       penalties: penalties.filter((p) => p.violation_id === v.id).map(toPenalty),
       sanctions: sanctions.filter((s) => s.violation_id === v.id).map(toSanction),
     })),

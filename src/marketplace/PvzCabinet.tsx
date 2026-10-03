@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { C, fmt, fmtTime, Empty, Field, inputStyle, Alert } from './ui';
 import { useMarketStore } from './store';
+import { PvzViolationsTab } from './ViolationsTab';
 import {
   apiPvzConfig, apiPvzCreate, apiPvzActivate, apiPvzOverview, apiPvzSetClosed,
   apiPvzUpdateSettings, apiPvzStaff, apiPvzAddStaff, apiPvzRevokeStaff,
@@ -43,7 +44,7 @@ const ROLE_LABEL: Record<PvzRole, string> = {
   read_only: 'Только просмотр', employee: 'Сотрудник', manager: 'Менеджер', owner: 'Владелец',
 };
 
-type PvzTab = 'overview' | 'receiving' | 'cells' | 'issue' | 'staff' | 'commissions' | 'video' | 'audit' | 'settings';
+type PvzTab = 'overview' | 'receiving' | 'cells' | 'issue' | 'staff' | 'commissions' | 'video' | 'audit' | 'violations' | 'settings';
 
 /* ── Создание новой точки ─────────────────────────────────────────── */
 
@@ -810,6 +811,7 @@ const TABS: { key: PvzTab; label: string; Icon: typeof Store; minRole: PvzRole }
   { key: 'commissions', label: 'Комиссии',    Icon: Wallet,       minRole: 'owner' },
   { key: 'video',       label: 'Видеообзор',  Icon: Video,        minRole: 'manager' },
   { key: 'audit',       label: 'Журнал',      Icon: ScrollText,   minRole: 'manager' },
+  { key: 'violations',  label: 'Нарушения и штрафы', Icon: ShieldAlert, minRole: 'owner' },
   { key: 'settings',    label: 'Настройки',   Icon: Settings,     minRole: 'employee' },
 ];
 
@@ -882,6 +884,7 @@ export const PvzCabinet = () => {
         {tab === 'commissions' && <CommissionsTab />}
         {tab === 'video' && <VideoTab pvzId={pvz.id} />}
         {tab === 'audit' && <AuditTab pvzId={pvz.id} />}
+        {tab === 'violations' && <PvzViolationsTab pvzId={pvz.id} />}
         {tab === 'settings' && <SettingsTab pvz={pvz} myRole={pvz.myRole} onChanged={refreshAll} />}
       </div>
     </div>

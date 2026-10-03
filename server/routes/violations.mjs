@@ -13,7 +13,7 @@ import {
   getPaymentSettings, setPaymentSettings,
   createViolation, decideViolation, cancelViolation,
   declarePenaltyPaid, confirmPenaltyPaid, cancelPenalty,
-  listViolationsForProfile, getViolationDetail, listViolationsForAdmin, violationStats,
+  listViolationsForProfile, listViolationsForOrg, getViolationDetail, listViolationsForAdmin, violationStats,
   VIOLATION_ID_RE, PENALTY_ID_RE, RULE_ID_RE,
 } from './../violations.mjs';
 
@@ -122,6 +122,15 @@ export const violationsRoutes = async (req, res, url) => {
   if (profilePath && req.method === 'GET') {
     if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
     const done = await listViolationsForProfile(me, profilePath[1], { module: params.get('module') });
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+
+  /* Вкладка «Нарушения и штрафы» внутри кабинета ПВЗ — нарушения всей
+     точки (владельца и сотрудников), не только текущего пользователя. */
+  const orgPath = path.match(/^\/api\/violations\/org\/(pvz|warehouse)\/([a-zA-Z0-9_-]{1,64})$/);
+  if (orgPath && req.method === 'GET') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await listViolationsForOrg(me, orgPath[1], orgPath[2]);
     return done.error ? fail(res, done) : json(res, 200, done);
   }
 

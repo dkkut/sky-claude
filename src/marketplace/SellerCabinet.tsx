@@ -20,8 +20,9 @@ import {
   Store, Package, ShoppingBag, BarChart3, Settings, Plus, Trash2,
   Edit3, CheckCircle2, AlertCircle, Star, ImagePlus, CreditCard,
   Truck, Route, Warehouse as WarehouseIcon, PackageSearch, KeyRound, Zap,
-  Lock as LockIcon, Check, ScrollText, QrCode,
+  Lock as LockIcon, Check, ScrollText, QrCode, ShieldAlert,
 } from 'lucide-react';
+import { SellerViolations } from './ViolationsTab';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert, StatCard, Stars,
   ProductImage, ProductLogo, rublesToKop, kopToRubles,
@@ -932,7 +933,7 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
 
 type CabTab = 'orders' | 'products' | 'stats'
   | 'couriers' | 'transport' | 'warehouses' | 'cells' | 'shipments' | 'pvzship' | 'passes'
-  | 'ads' | 'settings';
+  | 'ads' | 'violations' | 'settings';
 
 /* Логистика — часть кабинета продавца, как и была: курьеры, своя
    транспортная компания, склады, поставки и пропуска. Теперь всё это
@@ -949,6 +950,7 @@ const TABS: { key: CabTab; label: string; Icon: LucideIcon }[] = [
   { key: 'pvzship',    label: 'Поставка в ПВЗ', Icon: QrCode },
   { key: 'passes',     label: 'Пропуска и доступы', Icon: KeyRound },
   { key: 'ads',        label: 'Реклама',  Icon: Zap },
+  { key: 'violations', label: 'Нарушения и штрафы', Icon: ShieldAlert },
   { key: 'settings',   label: 'Магазин',  Icon: Settings },
 ];
 
@@ -1008,6 +1010,7 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
         {tab === 'pvzship' && <SellerPvzShipments />}
         {tab === 'passes' && <PassHub />}
         {tab === 'ads' && <SellerPromotions />}
+        {tab === 'violations' && <SellerViolations />}
         {tab === 'settings' && <SellerSettings seller={seller} />}
       </div>
     </div>
