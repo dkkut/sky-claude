@@ -723,6 +723,23 @@ export const openDispute = async (orderId, actorId, reason = '') => {
  * Ни покупатель, ни продавец не могут вывести заказ из спора сами:
  * иначе спор заканчивался бы тем, кто быстрее нажал.
  */
+/**
+ * Открытые споры — для раздела «Нарушения» в панели администратора.
+ *
+ * listOrders() выше всегда смотрит с точки зрения одной стороны
+ * (buyer/seller: только свои заказы) — у администрации нет своей
+ * стороны, ей нужны все споры сразу, независимо от того, кто покупатель
+ * и кто продавец. role='support' даёт тот же доступ к контактам/адресу,
+ * что уже есть у поддержки — медиатору спора нужно видеть то же, что ей.
+ */
+export const listDisputedOrders = async (actorId, { limit } = {}) => {
+  if (!(await can(actorId, 'market'))) return { error: 'not_allowed' };
+  const lim = int(limit, 1, 100) ?? 50;
+  const { rows } = await query(
+    `SELECT * FROM market_orders WHERE status = 'disputed' ORDER BY updated_at DESC LIMIT $1`, [lim]);
+  return { orders: rows.map((r) => toOrder(r, 'support')) };
+};
+
 export const resolveDispute = async (orderId, actorId, outcome, note = '') => {
   const id = String(orderId ?? '');
   if (!ORDER_ID_RE.test(id)) return { error: 'not_found' };

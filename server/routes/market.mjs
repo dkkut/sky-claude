@@ -42,7 +42,7 @@ import {
   sellerAvatarIdFor, gameCoverIdFor, productLogoIdFor,
 } from './../marketstore.mjs';
 import {
-  createOrder, actOnOrder, cancelOrder, openDispute, resolveDispute,
+  createOrder, actOnOrder, cancelOrder, openDispute, resolveDispute, listDisputedOrders,
   markPacking, listOrders, accessOrder, orderHistory, toOrder,
   leaveReview, sellerStats, listNotifications, readNotification, readAllNotifications,
   orderPaymentDetails, putOrderInSupply, ordersInSupply,
@@ -814,6 +814,11 @@ export const marketRoutes = async (req, res, url) => {
 
   if (path.startsWith('/api/market/admin/')) {
     if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+
+    if (req.method === 'GET' && path === '/api/market/admin/disputes') {
+      const done = await listDisputedOrders(me, { limit: params.get('limit') });
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
 
     if (req.method === 'POST' && path === '/api/market/admin/games') {
       const done = await createGame(me, await parseBody(req));

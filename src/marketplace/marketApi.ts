@@ -264,6 +264,10 @@ export const apiDisputeOrder = (id: string, reason: string) =>
   apiCall<{ order: Order }>(`/api/market/orders/${enc(id)}/dispute`,
     { method: 'POST', body: JSON.stringify({ reason }) });
 
+/** Все открытые споры сразу — для раздела «Sky Market» в админ-панели. */
+export const apiDisputedOrders = (limit = 50) =>
+  apiCall<{ orders: Order[] }>(`/api/market/admin/disputes${q({ limit })}`);
+
 export const apiResolveDispute = (id: string, outcome: 'completed' | 'cancelled', note = '') =>
   apiCall<{ order: Order }>(`/api/market/orders/${enc(id)}/resolve`,
     { method: 'POST', body: JSON.stringify({ outcome, note }) });

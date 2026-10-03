@@ -2715,6 +2715,216 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
   );
 };
 
+/* ─── Sky Market: споры и игровой каталог ─────────────────────────────
+   Право 'market' (роль market_admin) до сих пор не имело раздела в
+   этой панели: resolveDispute/createGame/updateGame/apiUploadGameCover
+   на сервере и в клиентском marketApi.ts существовали, но ни одна из
+   них никогда не вызывалась — администратор с этим правом физически
+   не мог разрешить спор по заказу. KutRent Market (отдельная вкладка
+   выше) — другой магазин-партнёр, сюда не относится. */
+
+const MarketDisputeDetail = ({ order, onBack, onChanged }: {
+  order: import('@/marketplace/types').Order;
+  onBack: () => void;
+  onChanged: () => void;
+}) => {
+  const [reason, setReason] = useState('');
+  const [failed, setFailed] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    void (async () => {
+      const { apiOrderHistory } = await import('@/marketplace/marketApi');
+      const r = await apiOrderHistory(order.id);
+      if (!r.ok || !r.data) return;
+      const opened = r.data.events.find((e) => e.to === 'disputed');
+      const why = opened?.detail?.reason;
+      setReason(typeof why === 'string' ? why : '');
+    })();
+  }, [order.id]);
+
+  const resolve = async (outcome: 'completed' | 'cancelled') => {
+    if (!note.trim()) { setFailed('Укажите обоснование'); return; }
+    setBusy(true); setFailed('');
+    const { apiResolveDispute } = await import('@/marketplace/marketApi');
+    const r = await apiResolveDispute(order.id, outcome, note.trim());
+    setBusy(false);
+    if (!r.ok) { setFailed(errorText(r.error)); return; }
+    onChanged();
+  };
+
+  return (
+    <div className="space-y-3">
+      <button type="button" onClick={onBack} className="text-[11px] font-bold" style={{ color: C.t3 }}>← К списку споров</button>
+      <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <p className="text-sm font-bold" style={{ color: C.t1 }}>{order.title}</p>
+        <p className="mt-0.5 text-[11px]" style={{ color: C.t3 }}>
+          {order.total.toLocaleString('ru')} ₽ · заказ <CopyId id={order.id} />
+        </p>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="rounded-xl p-2.5" style={{ background: C.l2 }}>
+            <p className="text-[9px] font-bold uppercase" style={{ color: C.t3 }}>Продавец</p>
+            <CopyId id={order.sellerId} />
+          </div>
+          <div className="rounded-xl p-2.5" style={{ background: C.l2 }}>
+            <p className="text-[9px] font-bold uppercase" style={{ color: C.t3 }}>Покупатель</p>
+            <CopyId id={order.buyerId} />
+          </div>
+        </div>
+        {reason && (
+          <div className="mt-2 rounded-xl p-2.5" style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
+            <p className="text-[9px] font-bold uppercase" style={{ color: C.red }}>Причина спора</p>
+            <p className="mt-0.5 text-[11px]" style={{ color: C.t2 }}>«{reason}»</p>
+          </div>
+        )}
+        {failed && <p className="mt-2 text-[11px]" style={{ color: C.red }}>{failed}</p>}
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Обоснование решения"
+          className="mt-3 w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <div className="mt-2 flex gap-2">
+          <button type="button" disabled={busy} onClick={() => void resolve('completed')}
+            className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-50" style={{ background: C.green, color: '#fff' }}>
+            Завершить (продавцу)
+          </button>
+          <button type="button" disabled={busy} onClick={() => void resolve('cancelled')}
+            className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-50" style={{ background: C.red, color: '#fff' }}>
+            Отменить (покупателю)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MarketDisputesTab = () => {
+  const [orders, setOrders] = useState<import('@/marketplace/types').Order[] | null>(null);
+  const [failed, setFailed] = useState('');
+  const [openOrder, setOpenOrder] = useState<import('@/marketplace/types').Order | null>(null);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiDisputedOrders } = await import('@/marketplace/marketApi');
+    const r = await apiDisputedOrders(100);
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить споры'); return; }
+    setOrders(r.data.orders);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  if (openOrder) {
+    return (
+      <MarketDisputeDetail order={openOrder} onBack={() => setOpenOrder(null)}
+        onChanged={() => { setOpenOrder(null); void load(); }} />
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {orders === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : orders.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Открытых споров нет.</p>
+      ) : orders.map((o) => (
+        <button key={o.id} type="button" onClick={() => setOpenOrder(o)}
+          className="w-full rounded-2xl p-3 text-left" style={{ background: C.l1, border: '1px solid rgba(248,113,113,0.3)' }}>
+          <p className="text-xs font-bold" style={{ color: C.t1 }}>{o.title}</p>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>{o.total.toLocaleString('ru')} ₽ · заказ {o.id}</p>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const MarketGamesTab = () => {
+  const [games, setGames] = useState<import('@/marketplace/types').Game[] | null>(null);
+  const [failed, setFailed] = useState('');
+  const [title, setTitle] = useState('');
+  const [slug, setSlug] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiGames } = await import('@/marketplace/marketApi');
+    const r = await apiGames();
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить игры'); return; }
+    setGames(r.data.games);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const create = async () => {
+    if (!title.trim() || !slug.trim()) { setFailed('Укажите название и slug'); return; }
+    setBusy(true); setFailed('');
+    const { apiCreateGame } = await import('@/marketplace/marketApi');
+    const r = await apiCreateGame({ title: title.trim(), slug: slug.trim() });
+    setBusy(false);
+    if (!r.ok) { setFailed(errorText(r.error)); return; }
+    setTitle(''); setSlug('');
+    void load();
+  };
+
+  const toggleHidden = async (g: import('@/marketplace/types').Game) => {
+    setFailed('');
+    const { apiUpdateGame } = await import('@/marketplace/marketApi');
+    const r = await apiUpdateGame(g.id, { hidden: !g.hidden });
+    if (!r.ok) { setFailed(errorText(r.error)); return; }
+    void load();
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <p className="text-[11px] font-bold" style={{ color: C.t2 }}>Новая игра</p>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название"
+          className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="slug (латиница, например cs2)"
+          className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <button type="button" disabled={busy} onClick={() => void create()}
+          className="w-full rounded-xl py-2 text-xs font-bold disabled:opacity-50" style={{ background: C.acc, color: '#fff' }}>
+          Добавить игру
+        </button>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {games === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : games.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Игр пока нет.</p>
+      ) : games.map((g) => (
+        <div key={g.id} className="flex items-center justify-between gap-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div>
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>{g.title}</p>
+            <p className="text-[10px]" style={{ color: C.t3 }}>/{g.slug}{g.hidden ? ' · скрыта' : ''}</p>
+          </div>
+          <button type="button" onClick={() => void toggleHidden(g)}
+            className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-bold"
+            style={{ background: C.l2, color: g.hidden ? C.green : C.t3 }}>
+            {g.hidden ? 'Показать' : 'Скрыть'}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const MarketAdminSection = () => {
+  const [tab, setTab] = useState<'disputes' | 'games'>('disputes');
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1">
+        {([['disputes', 'Споры'], ['games', 'Игровой каталог']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setTab(k)}
+            className="rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+            style={{ background: tab === k ? C.acc : C.l2, color: tab === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {tab === 'disputes' ? <MarketDisputesTab /> : <MarketGamesTab />}
+    </div>
+  );
+};
+
 const GarantAdminSection = () => {
   const [deals, setDeals] = useState<import('@/garant/garantApi').GarantDeal[] | null>(null);
   const [status, setStatus] = useState<'' | 'disputed' | 'in_escrow' | 'completed' | 'cancelled'>('disputed');
@@ -3396,7 +3606,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'kutrent' | 'ads' | 'notify' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'ads' | 'notify' | 'log' | 'events';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -3521,6 +3731,7 @@ export const AdminPanel = () => {
     { key: 'couriers', label: 'Курьеры', show: has('logistics') },
     { key: 'family', label: 'Sky Family', show: has('moderation') },
     { key: 'garant', label: 'Sky Garant', show: has('garant') },
+    { key: 'market', label: 'Sky Market', show: has('market') },
     { key: 'kutrent', label: 'KutRent Market', show: has('kutrent_market') },
     { key: 'bloom', label: 'Bloom', show: has('content') },
     { key: 'ads', label: 'Реклама', show: has('content') },
@@ -3657,6 +3868,7 @@ export const AdminPanel = () => {
       {tab === 'couriers' && <CourierAdminSection />}
       {tab === 'family' && <FamilyAdminSection />}
       {tab === 'garant' && <GarantAdminSection />}
+      {tab === 'market' && <MarketAdminSection />}
       {tab === 'kutrent' && <KutrentMarketAdminSection rights={rights} />}
       {tab === 'bloom' && <BloomAdminSection />}
       {tab === 'ads' && <AdsAdminSection />}
