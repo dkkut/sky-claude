@@ -320,7 +320,7 @@ export const violationsRoutes = async (req, res, url) => {
     /* Доказательство к самому нарушению — прикладывает расследующий
        администратор (beginEvidence проверяет право 'violations' сама). */
     if (req.method === 'POST' && tail === '/evidence') {
-      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      if (!writeOk()) return rejectBody(req, res, 429, { error: 'too_many_requests' });
       return handleEvidenceUpload(req, res, me, { violationId });
     }
   }
@@ -377,7 +377,7 @@ export const violationsRoutes = async (req, res, url) => {
        защита) или администратор, решающий апелляцию (beginEvidence
        проверяет это сама по submitted_by). */
     if (req.method === 'POST' && tail === '/evidence') {
-      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      if (!writeOk()) return rejectBody(req, res, 429, { error: 'too_many_requests' });
       return handleEvidenceUpload(req, res, me, { appealId });
     }
   }
