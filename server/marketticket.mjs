@@ -1,5 +1,6 @@
 /**
- * Пропуск для картинок маркета, карт и видеообзоров складов.
+ * Пропуск для картинок маркета, карт, видеообзоров складов и
+ * доказательств по нарушениям.
  *
  * Тот же приём, что в кино и в музыке, и по той же причине: всё API
  * просит заголовок Authorization, а теги <img> и <video> его отправить
@@ -79,7 +80,7 @@ export const readTicket = (raw) => {
  * значит выдавать три куки на три тех же права — а права всё равно
  * проверяются по базе на каждой картинке.
  */
-const PATHS = ['/api/market', '/api/logistics', '/api/maps'];
+const PATHS = ['/api/market', '/api/logistics', '/api/maps', '/api/violations'];
 
 /** Тикет можно передать готовым — см. musicticket.mjs::ticketCookie. */
 export const ticketCookies = (profileId, ticket = issueTicket(profileId)) => {

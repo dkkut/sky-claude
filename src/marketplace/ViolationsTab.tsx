@@ -4,13 +4,20 @@
  * (apiMyViolations — свои, apiPvzViolations — всей точки). Сама карточка
  * нарушения и штрафа — общая, см. server/violations.mjs.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import { ShieldAlert, Clock, CheckCircle2 } from 'lucide-react';
 import { C, fmt, fmtTime, Empty, inputStyle } from './ui';
 import {
   apiMyViolations, apiPvzViolations, apiWarehouseViolations, apiDeclarePenaltyPaid, apiSubmitAppeal,
-  type ViolationItem, type ViolationPenalty,
+  apiUploadAppealEvidence, apiViolationsTicket,
+  type ViolationItem, type ViolationPenalty, type EvidenceKind,
 } from './violationsApi';
+
+const EVIDENCE_KIND_LABEL: Record<EvidenceKind, string> = {
+  photo: 'Фото', video: 'Видео', document: 'Документ', screenshot: 'Скриншот',
+  order_data: 'Данные заказа', tracking: 'Трек', qr_operation: 'QR-операция',
+  system_event: 'Событие системы', message: 'Сообщение',
+};
 
 const STATUS_LABEL: Record<string, string> = {
   DETECTED: 'Выявлено', UNDER_REVIEW: 'На рассмотрении', CONFIRMED: 'Подтверждено',
@@ -81,10 +88,55 @@ const PenaltyCard = ({ penalty, onDeclared }: { penalty: ViolationPenalty; onDec
   );
 };
 
+/** Приложить своё доказательство к уже поданной апелляции — необязательный шаг. */
+const AppealEvidenceStep = ({ appealId, onDone }: { appealId: string; onDone: () => void }) => {
+  const [kind, setKind] = useState<EvidenceKind>('screenshot');
+  const [busy, setBusy] = useState(false);
+  const [uploaded, setUploaded] = useState(0);
+  const [failed, setFailed] = useState('');
+
+  useEffect(() => { void apiViolationsTicket(); }, []);
+
+  const pick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true); setFailed('');
+    const r = await apiUploadAppealEvidence(appealId, kind, file);
+    setBusy(false);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось загрузить файл'); return; }
+    setUploaded((n) => n + 1);
+  };
+
+  return (
+    <div className="mt-2 rounded-xl p-2" style={{ background: C.l2 }}>
+      <p className="text-[11px] font-bold" style={{ color: C.t1 }}>Апелляция подана. Можно приложить доказательство (необязательно).</p>
+      {uploaded > 0 && <p className="mt-1 text-[10px]" style={{ color: C.green }}>Загружено файлов: {uploaded}</p>}
+      {failed && <p className="mt-1 text-[10px]" style={{ color: C.red }}>{failed}</p>}
+      <div className="mt-1.5 flex gap-1.5">
+        <select value={kind} onChange={(e) => setKind(e.target.value as EvidenceKind)}
+          className="rounded-lg px-2 py-1.5 text-[11px]" style={inputStyle}>
+          {Object.entries(EVIDENCE_KIND_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+        <label className="flex-1 cursor-pointer rounded-lg py-1.5 text-center text-[11px] font-bold"
+          style={{ background: busy ? C.l1 : C.acc, color: busy ? C.t3 : '#fff' }}>
+          {busy ? 'Загружаем…' : 'Выбрать файл'}
+          <input type="file" className="hidden" disabled={busy} onChange={(e) => void pick(e)} />
+        </label>
+      </div>
+      <button type="button" onClick={onDone}
+        className="mt-1.5 w-full rounded-lg py-1.5 text-[11px] font-bold" style={{ background: C.l1, color: C.t3 }}>
+        Готово
+      </button>
+    </div>
+  );
+};
+
 const AppealForm = ({ violationId, onSent, onCancel }: { violationId: string; onSent: () => void; onCancel: () => void }) => {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');
+  const [sentId, setSentId] = useState<string | null>(null);
 
   const send = async () => {
     if (!reason.trim()) { setFailed('Опишите, почему решение неверно'); return; }
@@ -92,8 +144,10 @@ const AppealForm = ({ violationId, onSent, onCancel }: { violationId: string; on
     const r = await apiSubmitAppeal(violationId, reason.trim());
     setBusy(false);
     if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось отправить апелляцию'); return; }
-    onSent();
+    setSentId(r.data.appeal.id);
   };
+
+  if (sentId) return <AppealEvidenceStep appealId={sentId} onDone={onSent} />;
 
   return (
     <div className="mt-2 rounded-xl p-2" style={{ background: C.l2 }}>

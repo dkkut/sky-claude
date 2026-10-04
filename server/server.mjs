@@ -48,6 +48,8 @@ import { mapsRoutes } from './routes/maps.mjs';
 import { familyRoutes } from './routes/family.mjs';
 import { garantRoutes } from './routes/garant.mjs';
 import { violationsRoutes } from './routes/violations.mjs';
+import { liveEvidenceIds } from './violations.mjs';
+import { sweepOrphans as sweepEvidenceFiles } from './evidencestore.mjs';
 import { storageShareRoutes } from './routes/storageshare.mjs';
 import { mediaActivityRoutes } from './routes/mediaActivity.mjs';
 import { followsRoutes } from './routes/follows.mjs';
@@ -433,6 +435,12 @@ const start = async () => {
       // Оборвавшаяся загрузка обзора оставляет файл без строки в базе.
       const videos = await sweepVideoFiles(liveVideoIds);
       if (videos) console.log(`[склады] убрано осиротевших обзоров: ${videos}`);
+      // То же самое для доказательств по нарушениям: оборванная загрузка
+      // (beginEvidence прошёл, saveStream не дописал) убирается сама в
+      // handleEvidenceUpload, а здесь — на случай, если процесс упал
+      // посреди записи и dropEvidence не успел выполниться.
+      const evidenceFiles = await sweepEvidenceFiles(liveEvidenceIds);
+      if (evidenceFiles) console.log(`[нарушения] убрано осиротевших доказательств: ${evidenceFiles}`);
       // Панель администратора: отработавшие подтверждения личности и
       // заявки, о которых забыли. Заявка, ждущая вечно, однажды будет
       // подтверждена не глядя.

@@ -6,7 +6,8 @@
  * файл: сумма, статус и реквизиты оплаты всегда приходят из ответа, а
  * не придумываются на клиенте.
  */
-import { apiCall } from '@/core/auth/api';
+import { apiCall, uploadUrl } from '@/core/auth/api';
+import { NATIVE_APP } from '@/core/nativeApp';
 
 export type ViolationModule = 'market' | 'warehouse' | 'pvz';
 export type ViolationStatus = 'DETECTED' | 'UNDER_REVIEW' | 'CONFIRMED' | 'REJECTED' | 'APPEALED' | 'CANCELLED' | 'CLOSED';
@@ -97,6 +98,51 @@ export const apiSubmitAppeal = (violationId: string, reason: string, comment?: s
 /** Свои апелляции — отдельный список, если понадобится вне карточки нарушения. */
 export const apiMyAppeals = () => apiCall<{ appeals: ViolationAppeal[] }>('/api/violations/appeals/mine');
 
+/* ═══ Доказательства ═══════════════════════════════════════════════════
+ *
+ * Фото/видео/документ может показывать посторонних людей (камера
+ * склада, переписка с покупателем) — видеть байты должны только две
+ * стороны конкретного дела и администрация, тот же периметр, что у
+ * остальных данных нарушения/апелляции. Поэтому байты тянутся не
+ * обычным apiCall (заголовок Authorization тег <img>/<video> не
+ * понесёт), а через пропуск — тот же приём, что у картинок маркета и
+ * видеообзора складов (см. server/marketticket.mjs, marketApi.ts::
+ * apiMarketTicket). Пропуск свой, под путь /api/violations.
+ */
+export type EvidenceKind = 'photo' | 'video' | 'document' | 'screenshot'
+  | 'order_data' | 'tracking' | 'qr_operation' | 'system_event' | 'message';
+
+export interface ViolationEvidence {
+  id: string; kind: EvidenceKind; mime: string; bytes: number; description: string; createdAt: string;
+}
+
+let evidenceTicket: string | null = null;
+
+export const apiViolationsTicket = async () => {
+  const r = await apiCall<{ ticket?: string }>('/api/violations/ticket', { method: 'POST', body: '{}' });
+  if (r.ok && r.data?.ticket) evidenceTicket = r.data.ticket;
+  return r.ok;
+};
+
+/** Адрес байт доказательства — собирается здесь, путь на диске клиенту не отдают. */
+export const evidenceFileUrl = (evidenceId: string) => {
+  const url = uploadUrl(`/api/violations/evidence/${enc(evidenceId)}`);
+  if (!NATIVE_APP || !evidenceTicket) return url;
+  return `${url}?t=${encodeURIComponent(evidenceTicket)}`;
+};
+
+/** К самому нарушению — прикладывает расследующий администратор (право 'violations'). */
+export const apiUploadViolationEvidence = (violationId: string, kind: EvidenceKind, file: Blob, description = '') =>
+  apiCall<{ id: string; bytes: number; mime: string } | { error: string }>(
+    `/api/violations/${enc(violationId)}/evidence?kind=${enc(kind)}&description=${enc(description)}`,
+    { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } });
+
+/** К апелляции — прикладывает сам обжалующий (своя защита) или администратор, решающий апелляцию. */
+export const apiUploadAppealEvidence = (appealId: string, kind: EvidenceKind, file: Blob, description = '') =>
+  apiCall<{ id: string; bytes: number; mime: string } | { error: string }>(
+    `/api/violations/appeals/${enc(appealId)}/evidence?kind=${enc(kind)}&description=${enc(description)}`,
+    { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } });
+
 /* ═══ Админка: право 'violations' ═════════════════════════════════════
  *
  * Отсюда и дальше — только то, что видит администратор, не сам
@@ -148,7 +194,7 @@ export const apiSetPaymentSettings = (requisites: Record<string, string>) =>
     '/api/violations/payment-settings', { method: 'POST', body: JSON.stringify({ requisites }) });
 
 export interface ViolationDetail extends ViolationItem {
-  evidence: { id: string; kind: string; mime: string; bytes: number; description: string; createdAt: string }[];
+  evidence: ViolationEvidence[];
 }
 
 export const apiViolationDetail = (violationId: string) =>
@@ -192,6 +238,14 @@ export interface ViolationAppealAdminRow extends ViolationAppeal {
 
 export const apiAdminAppeals = (status?: AppealStatus) =>
   apiCall<{ appeals: ViolationAppealAdminRow[] }>(`/api/violations/admin/appeals${status ? `?status=${enc(status)}` : ''}`);
+
+export interface ViolationAppealDetail extends ViolationAppeal {
+  evidence: ViolationEvidence[];
+}
+
+/** Полная карточка апелляции вместе с её доказательствами — свой взгляд (self) или администратор. */
+export const apiAppealDetail = (appealId: string) =>
+  apiCall<{ appeal: ViolationAppealDetail } | { error: string }>(`/api/violations/appeals/${enc(appealId)}`);
 
 /** REJECTED решается прямо, без кода. APPROVED/PARTIALLY_APPROVED снимают
  *  уже назначенное наказание — заявка владельцу, нужен код подтверждения

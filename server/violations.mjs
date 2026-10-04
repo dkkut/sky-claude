@@ -711,12 +711,109 @@ export const getAppealDetail = async (actorId, appealId) => {
   return {
     appeal: {
       ...toAppeal(appeal, { withActor: !self }),
-      evidence: evidence.map((e) => ({
-        id: e.id, kind: e.kind, mime: e.mime, bytes: e.bytes,
-        description: e.description, createdAt: e.created_at.toISOString(),
-      })),
+      evidence: evidence.map(toEvidence),
     },
   };
+};
+
+/* ─── Доказательства (server/evidencestore.mjs — файл на диске, здесь только
+ * метаданные и приватность) ───────────────────────────────────────────
+ *
+ * Строка не может принадлежать и нарушению, и апелляции одновременно
+ * (CHECK в 091_violations.sql) — это две разные роли: к нарушению
+ * доказательство прикладывает тот, кто его расследует (администратор
+ * с правом 'violations'), к апелляции — тот, кто обжалует (сам
+ * нарушитель, который и подал апелляцию), либо тот же администратор,
+ * когда решает апелляцию.
+ *
+ * Приватность: кто угодно с ссылкой на файл не читает его никогда —
+ * фото/видео нарушения может показывать посторонних людей (камера
+ * склада, скриншот переписки с покупателем), и видеть его должны
+ * только две стороны конкретного дела — тот, кого оно касается,
+ * и администрация, — тот же периметр, что уже защищает метаданные в
+ * getViolationDetail/getAppealDetail выше.
+ */
+export const EVIDENCE_ID_RE = /^vev-[0-9a-f-]{36}$/;
+export const EVIDENCE_KINDS = ['photo', 'video', 'document', 'screenshot',
+  'order_data', 'tracking', 'qr_operation', 'system_event', 'message'];
+export const MAX_EVIDENCE_BYTES = 200 * 1024 * 1024; // 200 МБ — фото/документ много меньше, видео с камеры склада может быть крупным
+
+const toEvidence = (e) => ({
+  id: e.id, kind: e.kind, mime: e.mime, bytes: e.bytes,
+  description: e.description, createdAt: e.created_at.toISOString(),
+});
+
+/**
+ * Завести строку метаданных до записи файла на диск — тот же порядок,
+ * что у видеообзора (startReview/finishReview в videoreview.mjs):
+ * строка существует раньше файла, чтобы оборванная загрузка не
+ * оставила на диске файл без идентификатора, который можно выдать.
+ */
+export const beginEvidence = async (actorId, { violationId, appealId, kind, mime, description }) => {
+  const cleanKind = String(kind ?? '');
+  if (!EVIDENCE_KINDS.includes(cleanKind)) return { error: 'bad_kind' };
+  if (Boolean(violationId) === Boolean(appealId)) return { error: 'bad_target' };
+
+  if (violationId) {
+    const { rows } = await query('SELECT violator_id FROM violations WHERE id = $1', [String(violationId)]);
+    const violation = rows[0];
+    if (!violation) return { error: 'not_found' };
+    // Доказательство к нарушению прикладывает расследующий администратор,
+    // не сам нарушитель — у него для защиты есть апелляция со своим
+    // доказательством (appealId), подделать улики по себе он не должен.
+    if (!(await can(actorId, 'violations'))) return { error: 'not_allowed' };
+  } else {
+    const { rows } = await query('SELECT submitted_by FROM violation_appeals WHERE id = $1', [String(appealId)]);
+    const appeal = rows[0];
+    if (!appeal) return { error: 'not_found' };
+    const self = actorId === appeal.submitted_by;
+    if (!self && !(await can(actorId, 'violations'))) return { error: 'not_allowed' };
+  }
+
+  const id = `vev-${generateId()}`;
+  await query(
+    `INSERT INTO violation_evidence (id, violation_id, appeal_id, kind, mime, description, uploaded_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [id, violationId ?? null, appealId ?? null, cleanKind, text(mime, 100), text(description, MAX_TEXT), actorId]);
+  if (violationId) await logViolation(actorId, 'evidence', id, 'evidence_add', { violationId }, violationId);
+  return { id };
+};
+
+/** Записать реальный размер файла после потоковой записи на диск (см. routes/violations.mjs). */
+export const finishEvidence = async (evidenceId, bytes) => {
+  await query('UPDATE violation_evidence SET bytes = $2 WHERE id = $1', [evidenceId, Math.max(0, Math.trunc(bytes))]);
+};
+
+/** Заведённую, но не дописанную строку — убрать, если запись на диск не удалась. */
+export const dropEvidence = async (evidenceId) => {
+  await query('DELETE FROM violation_evidence WHERE id = $1', [evidenceId]);
+};
+
+/**
+ * Можно ли этому профилю получить байты конкретного доказательства —
+ * тот же периметр self/can('violations'), что у чтения метаданных.
+ */
+export const evidenceAccess = async (evidenceId, actorId) => {
+  const { rows } = await query(
+    `SELECT e.id, e.mime,
+            v.violator_id AS violation_violator_id,
+            a.submitted_by AS appeal_submitted_by
+       FROM violation_evidence e
+       LEFT JOIN violations v ON v.id = e.violation_id
+       LEFT JOIN violation_appeals a ON a.id = e.appeal_id
+      WHERE e.id = $1`,
+    [String(evidenceId ?? '')]);
+  const row = rows[0];
+  if (!row) return null;
+  const self = actorId === row.violation_violator_id || actorId === row.appeal_submitted_by;
+  if (!self && !(await can(actorId, 'violations'))) return null;
+  return { mime: row.mime };
+};
+
+/** Все id из базы — чтобы убрать с диска файлы без строки (см. sweepOrphans в evidencestore.mjs). */
+export const liveEvidenceIds = async () => {
+  const { rows } = await query('SELECT id FROM violation_evidence');
+  return new Set(rows.map((r) => r.id));
 };
 
 /** Апелляции конкретного нарушителя — своя вкладка или админский взгляд. */
@@ -850,10 +947,7 @@ export const getViolationDetail = async (actorId, violationId) => {
       ...toViolation(violation, { withActor: !self }),
       penalties: penalties.map(toPenalty),
       sanctions: sanctions.map(toSanction),
-      evidence: evidence.map((e) => ({
-        id: e.id, kind: e.kind, mime: e.mime, bytes: e.bytes,
-        description: e.description, createdAt: e.created_at.toISOString(),
-      })),
+      evidence: evidence.map(toEvidence),
     },
   };
 };

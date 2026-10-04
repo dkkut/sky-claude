@@ -28,6 +28,11 @@ import {
 import { COUNTRIES } from '@/region/types';
 import { AD_PLACEMENTS, AD_STATUS_LABEL, AD_STATUS_COLOR, AD_FORMAT_LABEL, fmtBudget, campaignMediaUrl } from '@/ads/store';
 import type { PetRarity, PetAvailability, SkinItemType, SkinAvailability } from '@/messenger/petsApi';
+/* Остальное из violationsApi.ts грузится по требованию (dynamic import,
+   см. ниже) — файл большой, а открывает его не каждый администратор.
+   evidenceFileUrl — чистая функция (собирает адрес, байтов не носит),
+   её держим статической: она нужна прямо в JSX, а не в обработчике. */
+import { evidenceFileUrl } from '@/marketplace/violationsApi';
 
 const C = {
   bg: 'var(--bg-l1)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
@@ -3497,6 +3502,72 @@ const SANCTION_LABEL: Record<string, string> = {
 const VIOLATION_MODULES = ['market', 'warehouse', 'pvz'] as const;
 const SEVERITIES = ['warning', 'minor', 'moderate', 'severe', 'critical'] as const;
 
+const EVIDENCE_KIND_LABEL: Record<string, string> = {
+  photo: 'Фото', video: 'Видео', document: 'Документ', screenshot: 'Скриншот',
+  order_data: 'Данные заказа', tracking: 'Трек', qr_operation: 'QR-операция',
+  system_event: 'Событие системы', message: 'Сообщение',
+};
+
+/**
+ * Список уже приложенных доказательств плюс форма добавить своё.
+ *
+ * Байты тянутся не обычным apiCall (см. violationsApi.ts::evidenceFileUrl)
+ * — нужен пропуск, и прежде чем показывать ссылки, его надо получить
+ * хотя бы раз за это открытие панели.
+ */
+const EvidenceSection = ({ evidence, onUpload }: {
+  evidence: import('@/marketplace/violationsApi').ViolationEvidence[];
+  onUpload: (kind: import('@/marketplace/violationsApi').EvidenceKind, file: Blob) => Promise<boolean>;
+}) => {
+  const [kind, setKind] = useState<import('@/marketplace/violationsApi').EvidenceKind>('photo');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+
+  useEffect(() => {
+    void (async () => {
+      const { apiViolationsTicket } = await import('@/marketplace/violationsApi');
+      await apiViolationsTicket();
+    })();
+  }, []);
+
+  const pick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true); setFailed('');
+    const ok = await onUpload(kind, file);
+    setBusy(false);
+    if (!ok) setFailed('Не удалось загрузить доказательство');
+  };
+
+  return (
+    <div className="space-y-1.5 rounded-xl p-2" style={{ background: C.l2 }}>
+      <p className="text-[10px] font-bold" style={{ color: C.t3 }}>Доказательства</p>
+      {evidence.length === 0 && <p className="text-[10px]" style={{ color: C.t3 }}>Пока ничего не приложено.</p>}
+      {evidence.map((e) => (
+        <div key={e.id} className="flex items-center justify-between gap-2 text-[10px]" style={{ color: C.t2 }}>
+          <a href={evidenceFileUrl(e.id)} target="_blank" rel="noreferrer" className="truncate underline">
+            {EVIDENCE_KIND_LABEL[e.kind] ?? e.kind}{e.description ? ` — ${e.description}` : ''}
+          </a>
+          <span className="shrink-0" style={{ color: C.t3 }}>{(e.bytes / 1024).toFixed(0)} КБ</span>
+        </div>
+      ))}
+      <div className="flex gap-1.5">
+        <select value={kind} onChange={(ev) => setKind(ev.target.value as import('@/marketplace/violationsApi').EvidenceKind)}
+          className="rounded-lg px-2 py-1.5 text-[10px]" style={inputStyle}>
+          {Object.entries(EVIDENCE_KIND_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+        <label className="flex-1 cursor-pointer rounded-lg py-1.5 text-center text-[10px] font-bold"
+          style={{ background: busy ? C.l1 : C.acc, color: busy ? C.t3 : '#fff' }}>
+          {busy ? 'Загружаем…' : 'Приложить файл'}
+          <input type="file" className="hidden" disabled={busy} onChange={(e) => void pick(e)} />
+        </label>
+      </div>
+      {failed && <p className="text-[10px]" style={{ color: C.red }}>{failed}</p>}
+    </div>
+  );
+};
+
 const ViolationDecideForm = ({ violationId, onDone }: { violationId: string; onDone: () => void }) => {
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
@@ -3535,10 +3606,22 @@ const ViolationAdminCard = ({ v, onChanged }: {
   v: import('@/marketplace/violationsApi').ViolationItem; onChanged: () => void;
 }) => {
   const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState<import('@/marketplace/violationsApi').ViolationDetail | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [stepping, setStepping] = useState(false);
   const [reason, setReason] = useState('');
   const [failed, setFailed] = useState('');
+
+  const loadDetail = useCallback(async () => {
+    const { apiViolationDetail } = await import('@/marketplace/violationsApi');
+    const r = await apiViolationDetail(v.id);
+    if (r.ok && r.data && 'violation' in r.data) setDetail(r.data.violation);
+  }, [v.id]);
+
+  const toggle = () => {
+    setOpen((o) => !o);
+    if (!detail) void loadDetail();
+  };
 
   const requestCancel = async (code: string) => {
     setStepping(false);
@@ -3550,7 +3633,7 @@ const ViolationAdminCard = ({ v, onChanged }: {
 
   return (
     <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
-      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full text-left">
+      <button type="button" onClick={toggle} className="w-full text-left">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>{v.ruleSnapshot.title}</p>
@@ -3565,15 +3648,27 @@ const ViolationAdminCard = ({ v, onChanged }: {
       </button>
       {open && (
         <div className="mt-2 space-y-2 border-t pt-2" style={{ borderColor: C.brd }}>
-          {v.description && <p className="text-[11px]" style={{ color: C.t2 }}>{v.description}</p>}
-          <p className="text-[10px]" style={{ color: C.t3 }}>
-            Повторность: {v.repeatCount} · Санкция: {v.sanctionApplied ? SANCTION_LABEL[v.sanctionApplied] ?? v.sanctionApplied : '—'}
-          </p>
-          {v.penalties.map((p) => (
-            <p key={p.id} className="text-[10px]" style={{ color: C.t3 }}>
-              Штраф {p.amountKop != null ? `${(p.amountKop / 100).toLocaleString('ru')} ₽` : '—'} · {p.status}
-            </p>
-          ))}
+          {!detail ? (
+            <p className="text-[11px]" style={{ color: C.t3 }}>Загружаем…</p>
+          ) : (
+            <>
+              {detail.description && <p className="text-[11px]" style={{ color: C.t2 }}>{detail.description}</p>}
+              <p className="text-[10px]" style={{ color: C.t3 }}>
+                Повторность: {detail.repeatCount} · Санкция: {detail.sanctionApplied ? SANCTION_LABEL[detail.sanctionApplied] ?? detail.sanctionApplied : '—'}
+              </p>
+              {detail.penalties.map((p) => (
+                <p key={p.id} className="text-[10px]" style={{ color: C.t3 }}>
+                  Штраф {p.amountKop != null ? `${(p.amountKop / 100).toLocaleString('ru')} ₽` : '—'} · {p.status}
+                </p>
+              ))}
+              <EvidenceSection evidence={detail.evidence} onUpload={async (kind, file) => {
+                const { apiUploadViolationEvidence } = await import('@/marketplace/violationsApi');
+                const r = await apiUploadViolationEvidence(v.id, kind, file);
+                if (r.ok) void loadDetail();
+                return r.ok;
+              }} />
+            </>
+          )}
           {failed && <p className="text-[10px]" style={{ color: C.red }}>{failed}</p>}
 
           {['DETECTED', 'UNDER_REVIEW'].includes(v.status) && (
@@ -3664,11 +3759,23 @@ const AppealAdminCard = ({ a, onChanged }: {
   a: import('@/marketplace/violationsApi').ViolationAppealAdminRow; onChanged: () => void;
 }) => {
   const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState<import('@/marketplace/violationsApi').ViolationAppealDetail | null>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [stepping, setStepping] = useState(false);
   const [failed, setFailed] = useState('');
   const open_ = ['SUBMITTED', 'UNDER_REVIEW'].includes(a.status);
+
+  const loadDetail = useCallback(async () => {
+    const { apiAppealDetail } = await import('@/marketplace/violationsApi');
+    const r = await apiAppealDetail(a.id);
+    if (r.ok && r.data && 'appeal' in r.data) setDetail(r.data.appeal);
+  }, [a.id]);
+
+  const toggle = () => {
+    setOpen((o) => !o);
+    if (!detail) void loadDetail();
+  };
 
   const decide = async (decision: 'APPROVED' | 'REJECTED', code?: string) => {
     setBusy(true); setFailed(''); setStepping(false);
@@ -3686,7 +3793,7 @@ const AppealAdminCard = ({ a, onChanged }: {
 
   return (
     <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
-      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full text-left">
+      <button type="button" onClick={toggle} className="w-full text-left">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>{a.violationTitle}</p>
@@ -3704,6 +3811,14 @@ const AppealAdminCard = ({ a, onChanged }: {
           <p className="text-[11px]" style={{ color: C.t2 }}>{a.reason}</p>
           {a.comment && <p className="text-[10px]" style={{ color: C.t3 }}>{a.comment}</p>}
           {a.decisionReason && <p className="text-[10px]" style={{ color: C.t3 }}>Решение: {a.decisionReason}</p>}
+          {detail && (
+            <EvidenceSection evidence={detail.evidence} onUpload={async (kind, file) => {
+              const { apiUploadAppealEvidence } = await import('@/marketplace/violationsApi');
+              const r = await apiUploadAppealEvidence(a.id, kind, file);
+              if (r.ok) void loadDetail();
+              return r.ok;
+            }} />
+          )}
           {failed && <p className="text-[10px]" style={{ color: C.red }}>{failed}</p>}
           {open_ && (
             stepping ? (
