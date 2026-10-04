@@ -10,11 +10,19 @@
  * Путь никогда не собирается из того, что прислал клиент: имя файла —
  * это идентификатор трека, а он выдан сервером и проверен по образцу.
  * Поэтому выйти из каталога через ../ невозможно в принципе.
+ *
+ * На диске файлы лежат зашифрованными (server/mediacrypto.mjs,
+ * AES-256-GCM, конвертная схема, посегментно — Range работает без
+ * расшифровки всего файла). Получивший доступ к тому/бэкапу видит
+ * только шифротекст — не трек. Ключ шифрования никогда не уходит
+ * клиенту: тот получает только расшифрованный поток байт после
+ * обычной проверки доступа, как и раньше.
  */
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rm, stat } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
+import {
+  encryptStreamToFile, encryptBytesToFile, openDecryptedRangeStream, plaintextSizeOf,
+} from './mediacrypto.mjs';
 
 /** Куда складывать. В контейнере это отдельный том, а не образ. */
 const ROOT = process.env.MUSIC_DIR || '/data/music';
@@ -34,53 +42,35 @@ const checkId = (id) => {
 
 export const musicRoot = () => ROOT;
 
-/** Сохранить поток запроса в файл, не поднимая его в память целиком. */
+/** Сохранить поток запроса в файл, не поднимая его в память целиком.
+ *  На диске окажется уже зашифрованный файл — см. mediacrypto.mjs. */
 export const saveStream = async (id, source, limitBytes) => {
   const safe = checkId(id);
   await mkdir(dirFor(safe), { recursive: true });
-  let written = 0;
-  let tooLarge = false;
-  source.on('data', (chunk) => {
-    written += chunk.length;
-    if (written > limitBytes && !tooLarge) {
-      tooLarge = true;
-      source.destroy(new Error('too_large'));
-    }
-  });
-  try {
-    await pipeline(source, createWriteStream(pathFor(safe)));
-  } catch (err) {
-    await remove(safe).catch(() => {});
-    if (tooLarge) return { error: 'file_too_large' };
-    throw err;
-  }
-  return { bytes: written };
+  const result = await encryptStreamToFile(source, pathFor(safe), limitBytes);
+  if (result.error) await remove(safe).catch(() => {});
+  return result;
 };
 
-/** Записать уже прочитанные байты (обложки — они маленькие). */
+/** Записать уже прочитанные байты (обложки — они маленькие), тоже зашифрованными. */
 export const saveBytes = async (id, buf) => {
   const safe = checkId(id);
   await mkdir(dirFor(safe), { recursive: true });
-  await pipeline(
-    (async function* () { yield buf; })(),
-    createWriteStream(pathFor(safe)),
-  );
-  return { bytes: buf.length };
+  return encryptBytesToFile(buf, pathFor(safe));
 };
 
-export const sizeOf = async (id) => {
-  try { return (await stat(pathFor(checkId(id)))).size; } catch { return null; }
-};
+/** Настоящий (расшифрованный) размер — не размер файла на диске. */
+export const sizeOf = async (id) => plaintextSizeOf(pathFor(checkId(id)));
 
 /**
- * Поток на чтение. `range` — уже проверенные границы включительно;
- * без него читается весь файл.
+ * Поток расшифрованных байт на чтение. `range` — уже проверенные
+ * границы включительно; без него читается весь файл. Расшифровываются
+ * только те сегменты файла, что перекрывают запрошенный диапазон —
+ * перемотка не тянет файл целиком.
  */
 export const openStream = (id, range) => {
   const safe = checkId(id);
-  return range
-    ? createReadStream(pathFor(safe), { start: range.start, end: range.end })
-    : createReadStream(pathFor(safe));
+  return openDecryptedRangeStream(pathFor(safe), range ?? null);
 };
 
 export const remove = async (id) => {
