@@ -8,6 +8,9 @@ import { wireSend } from '@/core/wire';
 export type AccentColor = 'blue' | 'purple' | 'green' | 'pink' | 'orange' | 'cyan' | 'red';
 export type FontSize    = 'small' | 'normal' | 'large';
 export type ThemeMode   = 'dark' | 'amoled' | 'dim';
+/* Светлая/тёмная — отдельная ось от ThemeMode: AMOLED и Dim — это
+   поднастройки тёмной темы, светлой у них нет. */
+export type ColorScheme = 'dark' | 'light';
 
 export const ACCENT_COLORS: Record<AccentColor, { hex: string; bg: string; label: string }> = {
   blue:   { hex: '#4f6ef7', bg: 'rgba(79,110,247,0.12)',  label: 'Синий'     },
@@ -33,6 +36,7 @@ export const FONT_SIZES: Record<FontSize, { size: string; label: string }> = {
 
 export interface AppSettings {
   // Внешний вид
+  colorScheme:     ColorScheme;
   theme:           ThemeMode;
   accent:          AccentColor;
   fontSize:        FontSize;
@@ -61,6 +65,7 @@ const SK = 'sky:settings:v1';
 const W  = typeof window !== 'undefined';
 
 const defaults: AppSettings = {
+  colorScheme:      'dark',
   theme:            'dark',
   accent:           'blue',
   fontSize:         'normal',
@@ -89,14 +94,27 @@ const load = (): AppSettings => {
 export const applySettings = (s: AppSettings) => {
   if (!W) return;
   const root = document.documentElement;
-  const theme = THEME_MODES[s.theme];
   const accent = ACCENT_COLORS[s.accent];
   const font = FONT_SIZES[s.fontSize];
 
-  root.style.setProperty('--bg',      theme.bg);
-  root.style.setProperty('--bg-l1',   theme.l1);
-  root.style.setProperty('--bg-l2',   theme.l2);
-  root.style.setProperty('--bg-l3',   theme.l3);
+  /* Светлая/тёмная — атрибут на корне, светлую палитру задаёт CSS
+     (:root[data-theme='light'] в styles.css). AMOLED/Dim — поднастройки
+     самой тёмной темы, у светлой их нет, поэтому инлайновый --bg* ставим
+     только в тёмном режиме: иначе он перебил бы светлую палитру из CSS
+     (инлайновый style всегда сильнее обычного правила). */
+  root.dataset.theme = s.colorScheme;
+  if (s.colorScheme === 'dark') {
+    const theme = THEME_MODES[s.theme];
+    root.style.setProperty('--bg',    theme.bg);
+    root.style.setProperty('--bg-l1', theme.l1);
+    root.style.setProperty('--bg-l2', theme.l2);
+    root.style.setProperty('--bg-l3', theme.l3);
+  } else {
+    root.style.removeProperty('--bg');
+    root.style.removeProperty('--bg-l1');
+    root.style.removeProperty('--bg-l2');
+    root.style.removeProperty('--bg-l3');
+  }
   root.style.setProperty('--accent',  accent.hex);
   root.style.setProperty('--accent-bg', accent.bg);
   document.body.style.fontSize = font.size;

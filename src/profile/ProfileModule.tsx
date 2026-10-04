@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Camera, Edit2, Check, X, Phone, Shield, Star, Crown, Clock,
   Lock, Eye, Bell, ChevronRight, LogOut, Gamepad2, Trophy, Swords, ChevronDown,
-  Settings, Moon, Globe, Volume2, Download, Palette, Info, ExternalLink, WifiOff, Wallet, Gift, EyeOff, PawPrint, Briefcase, Users,
+  Settings, Moon, Sun, Globe, Volume2, Download, Palette, Info, ExternalLink, WifiOff, Wallet, Gift, EyeOff, PawPrint, Briefcase, Users,
   RotateCcw, CheckCheck, MessageSquare, Send, Fingerprint, Coffee, Timer, Pause, Tv, Car,
   ArrowLeftRight, LifeBuoy, ScrollText, Inbox, Video, Flower2, Sparkles, ChevronUp,
 } from 'lucide-react';
@@ -16,7 +16,7 @@ import { syncBloomAuthor } from '@/bloom/store';
 import { useMessengerStore } from '@/messenger/store';
 import { ConnectionPanel } from '@/proxy/ConnectionPanel';
 import { ReferralPanel } from '@/referral/Referral';
-import { useSettings, ACCENT_COLORS, THEME_MODES, FONT_SIZES, type AccentColor, type ThemeMode, type FontSize } from '@/settings/store';
+import { useSettings, ACCENT_COLORS, THEME_MODES, FONT_SIZES, type AccentColor, type ThemeMode, type FontSize, type ColorScheme } from '@/settings/store';
 import { useBreakReminderStore, INTERVAL_OPTIONS, SNOOZE_OPTIONS } from '@/settings/breakReminderStore';
 import { getTVModeSetting, setTVModeSetting, type TVModeSetting } from '@/interface/tv/useDeviceMode';
 import { useCarMode, setCarMode } from '@/interface/car/useCarMode';
@@ -472,6 +472,28 @@ const SettingsSection = ({ logout, username, onOpen, staff }: {
       {/* -- ТЕМА ------------------------------- */}
       <SectionBlock title="Тема оформления">
         <div className="px-4 pb-3 pt-1">
+          {/* Светлая/тёмная — отдельный переключатель: AMOLED и Dim ниже
+              это поднастройки именно тёмной, у светлой темы их нет. */}
+          <div className="grid grid-cols-2 gap-2.5 mb-3">
+            {([['dark', 'Тёмная', Moon], ['light', 'Светлая', Sun]] as [ColorScheme, string, typeof Moon][]).map(([key, label, Icon]) => {
+              const isActive = s.colorScheme === key;
+              return (
+                <button key={key} type="button" onClick={() => set({ colorScheme: key })}
+                  className="flex items-center justify-center gap-2 rounded-2xl py-3 transition-all"
+                  style={{
+                    background: isActive ? `${ACCENT_COLORS[s.accent].hex}18` : 'rgba(255,255,255,0.04)',
+                    border: `2px solid ${isActive ? ACCENT_COLORS[s.accent].hex : 'var(--border)'}`,
+                  }}>
+                  <Icon size={15} style={{ color: isActive ? ACCENT_COLORS[s.accent].hex : 'var(--t2)' }} />
+                  <span className="text-[12px] font-bold"
+                    style={{ color: isActive ? ACCENT_COLORS[s.accent].hex : 'var(--t2)' }}>
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {s.colorScheme === 'dark' && (
           <div className="grid grid-cols-3 gap-2.5">
             {(Object.entries(THEME_MODES) as [ThemeMode, any][]).map(([key, t]) => {
               const isActive = s.theme === key;
@@ -501,6 +523,7 @@ const SettingsSection = ({ logout, username, onOpen, staff }: {
               );
             })}
           </div>
+          )}
         </div>
       </SectionBlock>
 

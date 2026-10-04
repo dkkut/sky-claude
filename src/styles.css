@@ -57,6 +57,42 @@
   --r:          cubic-bezier(0.4,0,0.2,1);
 }
 
+/* ─── Светлая тема ───────────────────────────────────────────────
+   Переключается атрибутом data-theme на <html> (см. applySettings
+   в src/settings/store.ts), а не классом: он не конкурирует с
+   инлайновыми --bg/--accent, которые для тёмных поднастроек
+   (AMOLED/Dim) всё равно ставятся через style.setProperty.
+
+   Переопределяем только то, что реально меняет знак яркости: фон,
+   границы, текст и то немногое вне переменных, что в styles.css
+   жёстко считало фон тёмным (стекло, скроллбар, hover-подложки).
+   Акцент и семантические цвета (green/red/amber) оставляем общими —
+   они работают как плашки/иконки на обоих фонах, отдельной палитры
+   под каждый не заводим. */
+:root[data-theme='light'] {
+  --bg:        #f4f5f7;
+  --bg-l1:     #ffffff;
+  --bg-l2:     #eceef1;
+  --bg-l3:     #e1e3e8;
+  --bg-l4:     #d2d5db;
+  --border:    rgba(15,15,20,0.08);
+  --border-m:  rgba(15,15,20,0.14);
+  --border-s:  rgba(15,15,20,0.22);
+  --t1:  #15161a;
+  --t2:  #5b5d68;
+  --t3:  #8d909b;
+  --t4:  #c7c9d0;
+  --shadow-sm:  0 1px 3px rgba(15,15,20,0.08), 0 1px 2px rgba(15,15,20,0.05);
+  --shadow-md:  0 4px 12px rgba(15,15,20,0.10), 0 2px 4px rgba(15,15,20,0.06);
+  --shadow-lg:  0 8px 24px rgba(15,15,20,0.12), 0 4px 8px rgba(15,15,20,0.08);
+  --shadow-xl:  0 16px 48px rgba(15,15,20,0.16), 0 8px 16px rgba(15,15,20,0.10);
+}
+:root[data-theme='light'] ::-webkit-scrollbar-thumb         { background: rgba(15,15,20,0.14); }
+:root[data-theme='light'] ::-webkit-scrollbar-thumb:hover   { background: rgba(15,15,20,0.22); }
+:root[data-theme='light'] .sky-glass                        { background: rgba(255,255,255,0.82); border-color: rgba(15,15,20,0.08); }
+:root[data-theme='light'] .sky-btn-ghost:hover               { background: rgba(15,15,20,0.045); }
+:root[data-theme='light'] .sky-btn-ghost:active              { background: rgba(15,15,20,0.08); }
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #root { height: 100%; }
 html, body { overflow-x: hidden; }
