@@ -4404,13 +4404,23 @@ const ViolationsStatsTab = () => {
 };
 
 const ViolationsAdminSection = ({ rights }: { rights: MyRights }) => {
-  const [sub, setSub] = useState<'violations' | 'appeals' | 'rules' | 'payment' | 'stats'>('violations');
+  const [sub, setSub] = useState<'violations' | 'appeals' | 'rules' | 'payment' | 'stats' | 'manual'>('violations');
+  const [mf, setMf] = useState({ entityId: '', ruleId: '' });
+  const [mb, setMb] = useState(false);
+  const submit = async () => {
+    if (!mf.entityId || !mf.ruleId) return;
+    setMb(true);
+    const { apiCall } = await import('@/core/auth/api');
+    await apiCall('/api/violations', { method: 'POST', body: JSON.stringify({ targetId: mf.entityId, ruleId: mf.ruleId }) });
+    setMb(false);
+    setMf({ entityId: '', ruleId: '' });
+  };
   return (
     <div className="space-y-2">
       <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {([
           ['violations', 'Нарушения'], ['appeals', 'Апелляции'], ['rules', 'Регламент'],
-          ['payment', 'Реквизиты'], ['stats', 'Статистика'],
+          ['payment', 'Реквизиты'], ['stats', 'Статистика'], ['manual', 'Штраф'],
         ] as const).map(([k, l]) => (
           <button key={k} type="button" onClick={() => setSub(k)}
             className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
@@ -4424,6 +4434,16 @@ const ViolationsAdminSection = ({ rights }: { rights: MyRights }) => {
       {sub === 'rules' && <RulesAdminTab />}
       {sub === 'payment' && <PaymentSettingsTab rights={rights} />}
       {sub === 'stats' && <ViolationsStatsTab />}
+      {sub === 'manual' && (
+        <div className="space-y-2" style={{ background: C.l2, padding: 16, borderRadius: 12 }}>
+          <input placeholder="ID магазина/ПВЗ" value={mf.entityId} onChange={(e) => setMf({...mf, entityId: e.target.value})}
+            className="w-full px-3 py-2 text-xs rounded-xl outline-none" style={{ background: C.bg, color: C.t1 }} />
+          <input placeholder="ID правила" value={mf.ruleId} onChange={(e) => setMf({...mf, ruleId: e.target.value})}
+            className="w-full px-3 py-2 text-xs rounded-xl outline-none" style={{ background: C.bg, color: C.t1 }} />
+          <button type="button" onClick={submit} disabled={mb} className="w-full py-2 text-xs font-bold rounded-xl text-white"
+            style={{ background: C.acc, opacity: mb ? 0.6 : 1 }}>{mb ? '...' : 'Создать'}</button>
+        </div>
+      )}
     </div>
   );
 };
