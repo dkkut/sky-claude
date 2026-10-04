@@ -48,6 +48,7 @@
 import crypto from 'node:crypto';
 import { query, pool } from './db.mjs';
 import { generateId } from './security.mjs';
+import { encryptContent, decryptContent } from './crypto.mjs';
 import { wallet } from './wallet.mjs';
 import { isOwner } from './admin.mjs';
 import { logAdmin, consumeStepUp } from './adminsec.mjs';
@@ -213,7 +214,7 @@ const toView = (r) => ({
   id: r.id, kind: r.kind, amount: Number(r.amount_rub), status: r.status,
   createdAt: r.created_at.toISOString(),
   paidAt: r.paid_at ? r.paid_at.toISOString() : null,
-  senderPhone: r.sender_phone ?? null,
+  senderPhone: r.sender_phone ? decryptContent(r.sender_phone) : null,
   proofSubmittedAt: r.proof_submitted_at ? r.proof_submitted_at.toISOString() : null,
 });
 
@@ -303,7 +304,7 @@ export const submitPaymentProof = async (marketUser, orderId, rawPhone) => {
             status = CASE WHEN status = 'rejected' THEN 'pending' ELSE status END
       WHERE id = $2 AND market_user_id = $3 AND status IN ('pending', 'rejected')
       RETURNING *`,
-    [phone, orderId, marketUser.id],
+    [encryptContent(phone), orderId, marketUser.id],
   );
   if (!rows[0]) {
     const { rows: existing } = await query(

@@ -826,7 +826,7 @@ export const createPendingAction = async (actorId, kind, targetId, raw = {}, opt
        перевод — заявка «проверьте, пришли ли деньги» без единого
        ориентира для поиска операции в банке владельцу не нужна. */
     if (!order.sender_phone) return { error: 'no_payment_proof' };
-    checked.payload.senderPhone = order.sender_phone;
+    checked.payload.senderPhone = decryptContent(order.sender_phone);
     checked.payload.amount = Number(order.amount_rub);
   }
 
