@@ -143,6 +143,9 @@ const ERRORS: Record<string, string> = {
   wrong_password:        'Неверный текущий пароль',
   no_password_set:       'Пароль ещё не задан',
   email_required:        'Сначала привяжите и подтвердите почту',
+  insufficient_points:   'Не хватает баллов',
+  already_owned:         'Уже куплено',
+  not_owned:             'Сначала нужно купить',
 };
 
 export const explain = (code?: string, status?: number) =>

@@ -51,6 +51,7 @@ import { familyRoutes } from './routes/family.mjs';
 import { garantRoutes } from './routes/garant.mjs';
 import { violationsRoutes } from './routes/violations.mjs';
 import { platformRoutes } from './routes/platform.mjs';
+import { customizationRoutes } from './routes/customization.mjs';
 import { liveEvidenceIds } from './violations.mjs';
 import { sweepOrphans as sweepEvidenceFiles } from './evidencestore.mjs';
 import { storageShareRoutes } from './routes/storageshare.mjs';
@@ -106,7 +107,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageShareRoutes, platformRoutes];
+                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.

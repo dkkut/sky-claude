@@ -19,6 +19,7 @@ import { reloadMessengerForUser } from './messenger/store';
 import { reloadPlatformForUser }  from './platform/store';
 import { reloadNotifsForUser }    from './notifications/store';
 import { reloadWalletForUser }    from './wallet/store';
+import { reloadCustomizationForUser } from './customization/store';
 import { syncRegionForProfile, watchRegionChanges } from './region/sync';
 import './styles.css';
 
@@ -383,6 +384,7 @@ const Root = () => {
       reloadNotifsForUser(currentUserId);
       // Кошелёк подтягиваем с сервера: в браузере он больше не хранится.
       void reloadWalletForUser(currentUserId);
+      reloadCustomizationForUser(currentUserId);
       connectSocket(currentUserId);
       // Регион уже существующей системы (src/region) — догоняем с
       // сервером, ничего не меняя в самом выборе региона.

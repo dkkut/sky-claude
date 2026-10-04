@@ -1,29 +1,24 @@
 /* ===============================================================
    CUSTOMIZATION INVENTORY
-   Кто чем владеет и что сейчас надето, по каждой категории отдельно.
-   Общий for-all-accounts датасет (как gifts/bloom-posts) — совместимо
-   с однобраузерной демо-моделью Sky (несколько аккаунтов в одном браузере).
+   Кто чем владеет и что сейчас надето — зеркало серверного
+   состояния (server/customization.mjs). Раньше весь этот модуль был
+   чисто клиентским (localStorage): владение не стоило ничего и не
+   переживало смену браузера. Теперь владение — платное (баллы) и
+   хранится на сервере; здесь только кэш для синхронных селекторов
+   (src/customization/selectors.ts, src/profile/viewer/cosmetics.ts) и
+   отправка команд.
+
+   Избранное (favorites) остаётся локальным — это не владение, а личная
+   закладка на витрине, ей незачем на сервер.
 =============================================================== */
 import { create } from 'zustand';
 import type { ItemCategory, UnlockCondition } from './types';
 import { meetsStaticUnlock } from './types';
 import type { Account } from '@/core/auth/store';
+import { apiMyCustomization, apiEquipCustomization, apiBuyCustomization, apiCustomizationCatalog, type CatalogPrice } from './customizationApi';
 
 const W = typeof window !== 'undefined';
-const OWNED_KEY    = 'sky:customization:owned:v1';
-const EQUIPPED_KEY = 'sky:customization:equipped:v1';
 const FAVORITES_KEY = 'sky:customization:favorites:v1';
-
-/* Немного стартовых предметов у демо-аккаунтов — иначе «owned»-часть
-   каталога (то, что выдаёт будущий Маркет) негде посмотреть до того,
-   как Маркет появится. В духе остальных SEED_* в проекте. */
-const SEED_OWNED: OwnedMap = {
-  'acc-kutuzov': ['frame-neon', 'frame-liquid', 'banner-galaxy', 'banner-neon', 'theme-galaxy', 'theme-neon', 'cls-neon-strip'],
-  'acc-luna':    ['frame-flowers', 'banner-sakura', 'theme-cloud', 'cls-glass-card'],
-};
-const SEED_EQUIPPED: EquippedMap = {
-  'acc-kutuzov': { frame: 'frame-liquid', banner: 'banner-galaxy', profileTheme: 'theme-galaxy', chatListStyle: 'cls-neon-strip' },
-};
 
 type OwnedMap    = Record<string, string[]>;                              // accountId -> itemIds
 type EquippedMap = Record<string, Partial<Record<ItemCategory, string>>>; // accountId -> category -> itemId
@@ -42,13 +37,26 @@ interface CustomizationState {
   owned:    OwnedMap;
   equipped: EquippedMap;
   favorites: FavoritesMap;
+  catalog:  CatalogPrice[];
+  /** Какие accountId уже подтянули инвентарь с сервера. */
+  synced:   Record<string, boolean>;
 
   ownsItem:   (accountId: string, itemId: string) => boolean;
-  grantItem:  (accountId: string, itemId: string) => void;
-  revokeItem: (accountId: string, itemId: string) => void;
+  priceOf:    (itemId: string) => number | undefined;
+
+  /** Подтягивает владение/экипировку/цены с сервера. Безопасно звать
+   *  повторно — например при входе в маркет, если main.tsx почему-то
+   *  ещё не успел. */
+  loadFromServer: (accountId: string) => Promise<void>;
 
   getEquipped: (accountId: string, category: ItemCategory) => string | undefined;
-  equip:       (accountId: string, category: ItemCategory, itemId: string | null) => void;
+  /** Надеть предмет. Показывает сразу (оптимистично), истина — ответ
+   *  сервера: при отказе (не куплено) откатывает обратно. */
+  equip: (accountId: string, category: ItemCategory, itemId: string | null) => void;
+
+  /** Купить за баллы. Возвращает результат — экран сам решит, что
+   *  показать (не хватает баллов, уже куплено). */
+  buyItem: (accountId: string, itemId: string) => Promise<{ ok: boolean; error?: string }>;
 
   isFavorite:     (accountId: string, itemId: string) => boolean;
   toggleFavorite: (accountId: string, itemId: string) => void;
@@ -65,33 +73,50 @@ interface CustomizationState {
 }
 
 export const useCustomization = create<CustomizationState>((set, get) => ({
-  owned:    load(OWNED_KEY, SEED_OWNED),
-  equipped: load(EQUIPPED_KEY, SEED_EQUIPPED),
+  owned:    {},
+  equipped: {},
   favorites: load(FAVORITES_KEY, {} as FavoritesMap),
+  catalog:  [],
+  synced:   {},
 
   ownsItem: (accountId, itemId) => (get().owned[accountId] ?? []).includes(itemId),
 
-  grantItem: (accountId, itemId) => {
-    if (get().ownsItem(accountId, itemId)) return;
-    const next = { ...get().owned, [accountId]: [...(get().owned[accountId] ?? []), itemId] };
-    persist(OWNED_KEY, next);
-    set({ owned: next });
-  },
+  priceOf: (itemId) => get().catalog.find((c) => c.id === itemId)?.pricePoints,
 
-  revokeItem: (accountId, itemId) => {
-    const next = { ...get().owned, [accountId]: (get().owned[accountId] ?? []).filter(id => id !== itemId) };
-    persist(OWNED_KEY, next);
-    set({ owned: next });
+  loadFromServer: async (accountId) => {
+    const [mine, catalog] = await Promise.all([apiMyCustomization(), apiCustomizationCatalog()]);
+    if (!mine) return;
+    set({
+      owned: { ...get().owned, [accountId]: mine.inventory.map((r) => r.itemId) },
+      equipped: { ...get().equipped, [accountId]: mine.equipped },
+      catalog,
+      synced: { ...get().synced, [accountId]: true },
+    });
   },
 
   getEquipped: (accountId, category) => get().equipped[accountId]?.[category],
 
   equip: (accountId, category, itemId) => {
+    const prior = get().equipped[accountId]?.[category];
     const forAcc = { ...(get().equipped[accountId] ?? {}) };
     if (itemId) forAcc[category] = itemId; else delete forAcc[category];
-    const next = { ...get().equipped, [accountId]: forAcc };
-    persist(EQUIPPED_KEY, next);
-    set({ equipped: next });
+    set({ equipped: { ...get().equipped, [accountId]: forAcc } });
+
+    void apiEquipCustomization(category, itemId).then((r) => {
+      if (r.ok) return;
+      // Сервер отказал (не куплено и т.п.) — откатываем оптимистичный показ.
+      const reverted = { ...(get().equipped[accountId] ?? {}) };
+      if (prior) reverted[category] = prior; else delete reverted[category];
+      set({ equipped: { ...get().equipped, [accountId]: reverted } });
+    });
+  },
+
+  buyItem: async (accountId, itemId) => {
+    const r = await apiBuyCustomization(itemId);
+    if (!r.ok) return { ok: false, error: r.error };
+    const next = { ...get().owned, [accountId]: [...(get().owned[accountId] ?? []), itemId] };
+    set({ owned: next });
+    return { ok: true };
   },
 
   isUnlocked: (accountId, itemId, acc, unlock, unlockedAchievements = []) => {
@@ -110,3 +135,10 @@ export const useCustomization = create<CustomizationState>((set, get) => ({
     set({ favorites: next });
   },
 }));
+
+/** Подтянуть инвентарь текущего пользователя — зовётся из main.tsx при
+ *  входе, рядом с reloadWalletForUser/reloadMessengerForUser и т.п. */
+export const reloadCustomizationForUser = (accountId: string | null) => {
+  if (!accountId) return;
+  void useCustomization.getState().loadFromServer(accountId);
+};

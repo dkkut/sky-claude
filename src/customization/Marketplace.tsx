@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, Star, Lock, Check, Sparkles, CircleUserRound, PawPrint } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
+import { useMoney } from '@/wallet/store';
 import { useCustomization } from './store';
 import { RARITY_COLOR, RARITY_LABEL, type Rarity, type ItemCategory, type CosmeticItem } from './types';
 import { FRAME_CATALOG } from './catalog/frames';
@@ -58,13 +59,20 @@ const Preview = ({ category, item }: { category: MarketCategory; item: any }) =>
 export const CustomizationMarket = ({ onClose }: { onClose: () => void }) => {
   const { currentUserId, accounts } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
-  const { owned, favorites, grantItem, equip, toggleFavorite, getEquipped, isFavorite } = useCustomization();
+  const { owned, favorites, priceOf, loadFromServer, buyItem, equip, toggleFavorite, getEquipped, isFavorite } = useCustomization();
+  const { getPoints } = useMoney();
+  const points = getPoints(currentUserId ?? '');
 
   const [cat, setCat] = useState<MarketCategory>('frame');
   const [q, setQ] = useState('');
   const [rarity, setRarity] = useState<Rarity | null>(null);
   const [onlyFav, setOnlyFav] = useState(false);
   const [preview, setPreview] = useState<CosmeticItem | null>(null);
+  const [buying, setBuying] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- грузим один раз на смену аккаунта, не на каждый ре-рендер
+  useEffect(() => { if (me) void loadFromServer(me.id); }, [me?.id]);
 
   const catalog = useMemo(() => {
     switch (cat) {
@@ -213,6 +221,7 @@ export const CustomizationMarket = ({ onClose }: { onClose: () => void }) => {
                   </span>
                   <span className="text-[11px]" style={{ color: 'var(--t3)' }}>{preview.obtainLabel}</span>
                 </div>
+                {buyError && <p className="mt-2 text-[11px]" style={{ color: 'var(--red)' }}>{buyError}</p>}
               </div>
               <div className="p-4 pt-0">
                 {unlockedOf(preview) ? (
@@ -221,13 +230,30 @@ export const CustomizationMarket = ({ onClose }: { onClose: () => void }) => {
                     className="w-full py-2.5 rounded-xl font-semibold text-sm" style={{ background: 'var(--accent)', color: '#fff' }}>
                     {equippedId === preview.id ? 'Уже надето' : 'Применить'}
                   </button>
-                ) : preview.unlock.type === 'owned' ? (
-                  <button type="button"
-                    onClick={() => { grantItem(me.id, preview.id); equip(me.id, cat as ItemCategory, preview.id); setPreview(null); }}
-                    className="w-full py-2.5 rounded-xl font-semibold text-sm" style={{ background: 'var(--accent)', color: '#fff' }}>
-                    Получить и применить
-                  </button>
-                ) : (
+                ) : preview.unlock.type === 'owned' ? (() => {
+                  const price = priceOf(preview.id);
+                  const canAfford = price !== undefined && points >= price;
+                  return (
+                    <button type="button" disabled={buying || !canAfford}
+                      onClick={async () => {
+                        setBuying(true); setBuyError(null);
+                        const r = await buyItem(me.id, preview.id);
+                        setBuying(false);
+                        if (!r.ok) {
+                          setBuyError(r.error === 'insufficient_points' ? 'Не хватает баллов' : r.error === 'already_owned' ? 'Уже куплено' : 'Не получилось купить');
+                          return;
+                        }
+                        equip(me.id, cat as ItemCategory, preview.id);
+                        setPreview(null);
+                      }}
+                      className="w-full py-2.5 rounded-xl font-semibold text-sm disabled:opacity-45"
+                      style={{ background: 'var(--accent)', color: '#fff' }}>
+                      {buying ? 'Покупаем…' : price === undefined ? 'Недоступно'
+                        : canAfford ? `Купить за ${price.toLocaleString('ru')} баллов`
+                          : `Не хватает баллов (нужно ${price.toLocaleString('ru')})`}
+                    </button>
+                  );
+                })() : (
                   <div className="w-full py-2.5 rounded-xl font-semibold text-sm text-center" style={{ background: 'var(--bg-l2)', color: 'var(--t3)' }}>
                     {preview.obtainLabel}
                   </div>
