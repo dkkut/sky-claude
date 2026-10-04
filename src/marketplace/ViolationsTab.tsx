@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { ShieldAlert, Clock, CheckCircle2 } from 'lucide-react';
 import { C, fmt, fmtTime, Empty, inputStyle } from './ui';
 import {
-  apiMyViolations, apiPvzViolations, apiDeclarePenaltyPaid, apiSubmitAppeal,
+  apiMyViolations, apiPvzViolations, apiWarehouseViolations, apiDeclarePenaltyPaid, apiSubmitAppeal,
   type ViolationItem, type ViolationPenalty,
 } from './violationsApi';
 
@@ -194,4 +194,16 @@ export const PvzViolationsTab = ({ pvzId }: { pvzId: string }) => {
   useEffect(() => { void load(); }, [pvzId]);
   return <ViolationsList items={items} onChanged={load}
     emptyHint="Здесь появятся нарушения, зафиксированные по этой точке — у владельца и сотрудников." />;
+};
+
+/** Та же вкладка в кабинете общего склада — видна владельцу склада. */
+export const WarehouseViolationsTab = ({ warehouseId }: { warehouseId: string }) => {
+  const [items, setItems] = useState<ViolationItem[] | null>(null);
+  const load = async () => {
+    const r = await apiWarehouseViolations(warehouseId);
+    if (r.ok && r.data) setItems(r.data.violations);
+  };
+  useEffect(() => { void load(); }, [warehouseId]);
+  return <ViolationsList items={items} onChanged={load}
+    emptyHint="Здесь появятся нарушения регламента общего склада, зафиксированные за владельцем и сотрудниками." />;
 };

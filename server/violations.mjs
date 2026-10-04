@@ -24,6 +24,7 @@ import { generateId } from './security.mjs';
 import { can, isOwner } from './admin.mjs';
 import { pushViolation } from './signal.mjs';
 import { isOwnerOf as isPvzOwner } from './pvzops.mjs';
+import { warehouseAccess } from './warehouses.mjs';
 
 export const RULE_ID_RE = /^vr-[0-9a-f-]{36}$/;
 export const VIOLATION_ID_RE = /^vio-[0-9a-f-]{36}$/;
@@ -797,8 +798,13 @@ export const listViolationsForProfile = async (actorId, profileId, { module } = 
  * Склад пока не подключён (нет вкладки в клиенте), поэтому только 'pvz'.
  */
 export const listViolationsForOrg = async (actorId, orgKind, orgId) => {
-  if (orgKind !== 'pvz') return { error: 'bad_org_kind' };
-  const allowed = (await can(actorId, 'violations')) || (await isPvzOwner(orgId, actorId));
+  if (!['pvz', 'warehouse'].includes(orgKind)) return { error: 'bad_org_kind' };
+  let allowed = await can(actorId, 'violations');
+  if (!allowed && orgKind === 'pvz') allowed = await isPvzOwner(orgId, actorId);
+  if (!allowed && orgKind === 'warehouse') {
+    const access = await warehouseAccess(orgId, actorId);
+    allowed = access?.role === 'owner' || access?.role === 'support';
+  }
   if (!allowed) return { error: 'not_allowed' };
 
   const { rows: violations } = await query(

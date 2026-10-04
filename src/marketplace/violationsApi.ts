@@ -66,6 +66,10 @@ export const apiMyViolations = (module?: ViolationModule) =>
 export const apiPvzViolations = (pvzId: string) =>
   apiCall<{ violations: ViolationItem[] }>(`/api/violations/org/pvz/${enc(pvzId)}`);
 
+/** Та же вкладка в кабинете общего склада — видна владельцу склада. */
+export const apiWarehouseViolations = (warehouseId: string) =>
+  apiCall<{ violations: ViolationItem[] }>(`/api/violations/org/warehouse/${enc(warehouseId)}`);
+
 /** «Я оплатил» — заявление, не подтверждение: решает администрация. */
 export const apiDeclarePenaltyPaid = (penaltyId: string, paymentReference: string) =>
   apiCall<{ penalty: ViolationPenalty }>(`/api/violations/penalties/${enc(penaltyId)}/declare-paid`,

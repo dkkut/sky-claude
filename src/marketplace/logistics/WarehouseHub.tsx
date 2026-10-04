@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import {
   Plus, Warehouse as WhIcon, MapPin, Camera, Clock, Package,
   ArrowRightLeft, Users, History, Trash2, Pencil, ChevronRight,
-  Crosshair, X, UserPlus, AlertTriangle, Boxes, Building2, ShieldCheck,
+  Crosshair, X, UserPlus, AlertTriangle, Boxes, Building2, ShieldCheck, ShieldAlert,
 } from 'lucide-react';
 import { C, fmtTs, StatCard } from '../SkyMarket';
 import { useAuthStore } from '@/core/auth/store';
@@ -18,6 +18,7 @@ import { SlidePanel, EmptyState, ConfirmModal } from './shared';
 import { SkyMap } from './SkyMap';
 import { apiGeocode } from './mapsApi';
 import { SharedWarehouseTab } from './SharedWarehouseTab';
+import { WarehouseViolationsTab } from '../ViolationsTab';
 import type { Warehouse, DaySchedule, WarehouseStaff, GeoPoint } from './types';
 
 /* ── Прогресс-бар загрузки склада ────────────────────────────────── */
@@ -525,10 +526,12 @@ const AnalyticsTab = ({ wh }: { wh: Warehouse }) => {
 };
 
 /* ── Детальная карточка склада ────────────────────────────────────── */
-type WhTab = 'overview' | 'shared' | 'stock' | 'transfers' | 'staff' | 'analytics' | 'history';
+type WhTab = 'overview' | 'shared' | 'stock' | 'transfers' | 'staff' | 'violations' | 'analytics' | 'history';
 
 const WarehouseDetail = ({ wh, onClose }: { wh: Warehouse; onClose: () => void }) => {
   const { deleteWarehouse, occupied } = useWarehouseStore();
+  const myId = useAuthStore(s => s.currentUserId);
+  const isOwner = wh.sellerId === myId;
   const [tab, setTab] = useState<WhTab>('overview');
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -540,6 +543,11 @@ const WarehouseDetail = ({ wh, onClose }: { wh: Warehouse; onClose: () => void }
     { key:'stock',     label:'Остатки',   icon:Package },
     { key:'transfers', label:'Перемещ.',  icon:ArrowRightLeft },
     { key:'staff',     label:'Персонал',  icon:Users },
+    /* Нарушения и штрафы по складу видит только владелец — так же,
+       как в кабинете ПВЗ (см. PvzCabinet.tsx, minRole: 'owner'): сервер
+       всё равно это проверит сам (listViolationsForOrg), вкладку здесь
+       просто не показываем сотруднику, чтобы не звать ручку впустую. */
+    ...(isOwner ? [{ key:'violations' as const, label:'Нарушения', icon:ShieldAlert }] : []),
     { key:'analytics', label:'Аналитика', icon:Boxes },
     { key:'history',   label:'История',   icon:History },
   ];
@@ -606,6 +614,7 @@ const WarehouseDetail = ({ wh, onClose }: { wh: Warehouse; onClose: () => void }
       {tab === 'stock' && <StockTab wh={wh}/>}
       {tab === 'transfers' && <TransfersTab wh={wh}/>}
       {tab === 'staff' && <StaffTab wh={wh}/>}
+      {tab === 'violations' && isOwner && <WarehouseViolationsTab warehouseId={wh.id}/>}
       {tab === 'analytics' && <AnalyticsTab wh={wh}/>}
       {tab === 'history' && <HistoryTab wh={wh}/>}
 
