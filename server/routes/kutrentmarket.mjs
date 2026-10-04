@@ -21,6 +21,7 @@ import {
   issueSsoToken, consumeSsoToken, createMarketSession, marketUserForSession,
   revokeMarketSession, createSkyTopupOrder, getOrder, listOrders,
   adminSearchUsers, adminGetUser, adminListOrders, setMarketUserStatus,
+  submitPaymentProof, getRequisites, setRequisites,
 } from './../kutrentmarket.mjs';
 import { documentMeta, readDocument, acceptDocument, hasAccepted } from './../agreements.mjs';
 import { rateLimit } from './../security.mjs';
@@ -182,6 +183,25 @@ export const kutrentMarketRoutes = async (req, res, url) => {
       return json(res, 200, { orders: await listOrders(me.id) });
     }
 
+    /* Реквизиты расчётного счёта — показываются сразу после создания
+       заказа, чтобы было куда перевести деньги. Не секрет: номер счёта,
+       на который и так переводят все покупатели. */
+    if (req.method === 'GET' && url === '/api/kutrent-market/requisites') {
+      const requisites = await getRequisites();
+      return json(res, 200, { requisites });
+    }
+
+    /* Покупатель перевёл деньги и указывает номер телефона, с которого
+       придёт перевод — дальше администратор ищет операцию в банке по
+       этому номеру, прежде чем просить владельца подтвердить. */
+    const proofMatch = url.match(/^\/api\/kutrent-market\/orders\/([^/]+)\/proof$/);
+    if (req.method === 'POST' && proofMatch) {
+      if (!rateLimit(`krm:proof:${me.id}`, 20)) return json(res, 429, { error: 'rate_limited' });
+      const body = await parseBody(req);
+      const result = await submitPaymentProof(me, proofMatch[1], body.phone);
+      return json(res, result.error ? 400 : 200, result);
+    }
+
     /*
      * Обращение в поддержку — то же самое support.mjs, что и у
      * основного сайта (server/support.mjs, админ-очередь AdminQueue).
@@ -283,6 +303,21 @@ export const kutrentMarketRoutes = async (req, res, url) => {
     if (req.method === 'GET' && url === '/api/kutrent-market/admin/orders') {
       const orders = await adminListOrders({ status: qs.get('status'), q: qs.get('q'), limit: qs.get('limit') });
       return json(res, 200, { orders });
+    }
+
+    /* Реквизиты расчётного счёта — смотреть может любой с правом
+       'kutrent_market' (как и остальная эта вкладка), а менять — только
+       владелец со вторым подтверждением личности; setRequisites это
+       проверяет сама, роль 'kutrent_market' здесь только допускает до
+       маршрута, а не до самого действия. */
+    if (req.method === 'GET' && url === '/api/kutrent-market/admin/requisites') {
+      const requisites = await getRequisites();
+      return json(res, 200, { requisites });
+    }
+    if (req.method === 'POST' && url === '/api/kutrent-market/admin/requisites') {
+      const body = await parseBody(req);
+      const result = await setRequisites(session.profileId, body, body.stepUpCode);
+      return json(res, result.error ? (result.error === 'owner_only' ? 403 : 400) : 200, result);
     }
 
     return json(res, 404, { error: 'not_found' });

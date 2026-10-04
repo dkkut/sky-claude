@@ -3168,7 +3168,9 @@ const KutrentMarkPaidForm = ({ orderId, onSent }: { orderId: string; onSent: () 
   );
 };
 
-const KUTRENT_ORDER_STATUS_LABEL: Record<string, string> = { pending: 'Ожидает оплаты', paid: 'Оплачен', cancelled: 'Отменён' };
+const KUTRENT_ORDER_STATUS_LABEL: Record<string, string> = {
+  pending: 'Ожидание подтверждения', paid: 'Оплачен', rejected: 'Отклонён', cancelled: 'Отменён',
+};
 
 const KutrentUserDetail = ({ userId, onBack }: { userId: string; onBack: () => void }) => {
   const [detail, setDetail] = useState<import('@/kutrent/kutrentMarketApi').KutrentMarketUserDetail | null>(null);
@@ -3212,7 +3214,8 @@ const KutrentUserDetail = ({ userId, onBack }: { userId: string; onBack: () => v
               <div className="text-right">
                 <p className="text-xs font-bold" style={{ color: C.t1 }}>{o.amount.toLocaleString('ru')} ₽</p>
                 <span className="text-[10px] font-bold" style={{
-                  color: o.status === 'paid' ? C.green : o.status === 'cancelled' ? C.t3 : C.amber,
+                  color: o.status === 'paid' ? C.green : o.status === 'rejected' ? C.red
+                    : o.status === 'cancelled' ? C.t3 : C.amber,
                 }}>{KUTRENT_ORDER_STATUS_LABEL[o.status] ?? o.status}</span>
               </div>
             </div>
@@ -3223,10 +3226,127 @@ const KutrentUserDetail = ({ userId, onBack }: { userId: string; onBack: () => v
   );
 };
 
+const KUTRENT_REQUISITES_FIELDS: [string, string][] = [
+  ['accountNumber', 'Счёт получателя в банке получателя'],
+  ['bankName', 'Наименование Банка получателя'],
+  ['bik', 'БИК Банка получателя'],
+  ['bankInn', 'ИНН Банка получателя'],
+  ['bankKpp', 'КПП Банка получателя'],
+  ['corrAccount', 'К/С Банка получателя'],
+  ['recipientName', 'Получатель'],
+];
+
+/**
+ * Реквизиты расчётного счёта — показываются каждому покупателю сразу
+ * после создания заказа (см. market-site/app.js). Смотреть может любой
+ * с правом 'kutrent_market', менять — только владелец со вторым
+ * подтверждением личности: сюда идут настоящие переводы, ошибка или
+ * подмена значит потерянные или уведённые деньги у всех будущих
+ * покупателей разом.
+ */
+const KutrentRequisitesSection = ({ rights, onBack }: { rights: MyRights | null; onBack: () => void }) => {
+  const [req, setReq] = useState<Record<string, string> | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState(false);
+  const [step, setStep] = useState(false);
+  const [failed, setFailed] = useState('');
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminGetKutrentRequisites } = await import('@/kutrent/kutrentMarketApi');
+    const r = await apiAdminGetKutrentRequisites();
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить реквизиты'); return; }
+    const { updatedAt: ua, ...fields } = r.data.requisites ?? {};
+    setReq(fields as Record<string, string>);
+    setUpdatedAt(ua ?? null);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const startEdit = () => {
+    if (!req) return;
+    setDraft({ ...req });
+    setEditing(true);
+  };
+
+  const save = async (code: string) => {
+    setStep(false); setFailed('');
+    const { apiAdminSetKutrentRequisites } = await import('@/kutrent/kutrentMarketApi');
+    const r = await apiAdminSetKutrentRequisites({
+      accountNumber: draft.accountNumber ?? '', bankName: draft.bankName ?? '', bik: draft.bik ?? '',
+      bankInn: draft.bankInn ?? '', bankKpp: draft.bankKpp ?? '', corrAccount: draft.corrAccount ?? '',
+      recipientName: draft.recipientName ?? '',
+    }, code);
+    if (!r.ok || !r.data) { setFailed(errorText(r.error)); return; }
+    const { updatedAt: ua, ...fields } = r.data.requisites;
+    setReq(fields as Record<string, string>);
+    setUpdatedAt(ua ?? null);
+    setEditing(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={onBack} className="text-[11px] font-bold" style={{ color: C.t3 }}>← К заказам</button>
+      <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <p className="text-[10px] font-bold" style={{ color: C.t3 }}>РЕКВИЗИТЫ РАСЧЁТНОГО СЧЁТА</p>
+        <p className="mt-1 text-[11px]" style={{ color: C.t2 }}>
+          Показываются каждому покупателю сразу после создания заказа — это не секрет.
+          Менять может только владелец: ошибка или подмена здесь значит потерянные или
+          уведённые деньги у всех будущих покупателей разом.
+        </p>
+        {failed && <p className="mt-1.5 text-[11px]" style={{ color: C.red }}>{failed}</p>}
+        {!req ? (
+          <Loader2 size={14} className="mt-2 animate-spin" style={{ color: C.t3 }} />
+        ) : !editing ? (
+          <>
+            <div className="mt-2 space-y-1">
+              {KUTRENT_REQUISITES_FIELDS.map(([k, label]) => (
+                <div key={k} className="flex items-center justify-between gap-2 text-[11px]">
+                  <span style={{ color: C.t3 }}>{label}</span>
+                  <span className="text-right font-semibold" style={{ color: C.t1, wordBreak: 'break-all' }}>{req[k] || '—'}</span>
+                </div>
+              ))}
+            </div>
+            {updatedAt && <p className="mt-1.5 text-[10px]" style={{ color: C.t3 }}>Изменено {fmtTs(updatedAt)}</p>}
+            {rights?.owner && (
+              <button type="button" onClick={startEdit}
+                className="mt-2 w-full rounded-xl py-2 text-xs font-bold" style={{ background: C.l2, color: C.acc }}>
+                Изменить
+              </button>
+            )}
+          </>
+        ) : (
+          <div className="mt-2 space-y-2">
+            {KUTRENT_REQUISITES_FIELDS.map(([k, label]) => (
+              <input key={k} value={draft[k] ?? ''} onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))}
+                placeholder={label} className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+            ))}
+            {step ? (
+              <StepUp purpose="kutrent_requisites" onCode={(c) => void save(c)} onCancel={() => setStep(false)} />
+            ) : (
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setStep(true)}
+                  className="flex-1 rounded-xl py-2 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>
+                  Сохранить
+                </button>
+                <button type="button" onClick={() => setEditing(false)}
+                  className="flex-1 rounded-xl py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+                  Отмена
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
   const canFinance = rights?.permissions?.includes('finance') ?? false;
-  const [sub, setSub] = useState<'orders' | 'users'>('orders');
-  const [status, setStatus] = useState<'' | 'pending' | 'paid' | 'cancelled'>('pending');
+  const [sub, setSub] = useState<'orders' | 'users' | 'requisites'>('orders');
+  const [status, setStatus] = useState<'' | 'pending' | 'paid' | 'rejected' | 'cancelled'>('pending');
   const [q, setQ] = useState('');
   const [orders, setOrders] = useState<import('@/kutrent/kutrentMarketApi').KutrentMarketOrder[] | null>(null);
   const [users, setUsers] = useState<import('@/kutrent/kutrentMarketApi').KutrentMarketUser[] | null>(null);
@@ -3252,14 +3372,15 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
 
   useEffect(() => { if (sub === 'orders') void loadOrders(); else void loadUsers(); }, [sub, loadOrders, loadUsers]);
 
-  const ORDER_STATUS_LABEL: Record<string, string> = { pending: 'Ожидает оплаты', paid: 'Оплачен', cancelled: 'Отменён' };
+  const ORDER_STATUS_LABEL = KUTRENT_ORDER_STATUS_LABEL;
 
   if (openUserId) return <KutrentUserDetail userId={openUserId} onBack={() => setOpenUserId(null)} />;
+  if (sub === 'requisites') return <KutrentRequisitesSection rights={rights} onBack={() => setSub('orders')} />;
 
   return (
     <div className="space-y-2">
       <div className="flex gap-1">
-        {([['orders', 'Заказы'], ['users', 'Пользователи']] as const).map(([k, l]) => (
+        {([['orders', 'Заказы'], ['users', 'Пользователи'], ['requisites', 'Реквизиты']] as const).map(([k, l]) => (
           <button key={k} type="button" onClick={() => setSub(k)}
             className="flex-1 rounded-xl py-1.5 text-[11px] font-semibold"
             style={{ background: sub === k ? C.acc : C.l2, color: sub === k ? '#fff' : C.t3 }}>
@@ -3270,7 +3391,7 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
 
       {sub === 'orders' && (
         <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-          {([['pending', 'Ожидают'], ['paid', 'Оплачены'], ['cancelled', 'Отменены'], ['', 'Все']] as const).map(([k, l]) => (
+          {([['pending', 'Ожидают'], ['paid', 'Оплачены'], ['rejected', 'Отклонены'], ['cancelled', 'Отменены'], ['', 'Все']] as const).map(([k, l]) => (
             <button key={k} type="button" onClick={() => setStatus(k)}
               className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
               style={{ background: status === k ? C.acc : C.l2, color: status === k ? '#fff' : C.t3 }}>
@@ -3311,11 +3432,21 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
                 <div className="text-right">
                   <p className="text-xs font-bold" style={{ color: C.t1 }}>{o.amount.toLocaleString('ru')} ₽</p>
                   <span className="text-[10px] font-bold" style={{
-                    color: o.status === 'paid' ? C.green : o.status === 'cancelled' ? C.t3 : C.amber,
+                    color: o.status === 'paid' ? C.green : o.status === 'rejected' ? C.red
+                      : o.status === 'cancelled' ? C.t3 : C.amber,
                   }}>{ORDER_STATUS_LABEL[o.status] ?? o.status}</span>
                 </div>
               </div>
-              {o.status === 'pending' && canFinance && (
+              {/* Телефон, с которого должен прийти перевод — покупатель
+                  указывает его сам после создания заказа; без него искать
+                  операцию в банке не по чему, и заявку на подтверждение
+                  сервер всё равно отклонит (no_payment_proof). */}
+              {o.status === 'pending' && (
+                <p className="mt-1.5 text-[11px]" style={{ color: o.senderPhone ? C.t2 : C.t3 }}>
+                  Телефон перевода: {o.senderPhone ? <span style={{ color: C.t1, fontWeight: 700 }}>{o.senderPhone}</span> : 'ещё не указан'}
+                </p>
+              )}
+              {o.status === 'pending' && canFinance && o.senderPhone && (
                 openOrderId === o.id
                   ? <KutrentMarkPaidForm orderId={o.id} onSent={() => { setOpenOrderId(null); void loadOrders(); }} />
                   : (

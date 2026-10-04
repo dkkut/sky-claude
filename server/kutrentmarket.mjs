@@ -32,19 +32,25 @@
  * админки. Знание чужого Authenticator само по себе ничего не даёt —
  * он не участвует ни в одной проверке доступа.
  *
- * Оплата: сюда ещё не подключена ни одна касса (нужны реальные
- * реквизиты партнёра — см. TODO у markOrderPaid) — заказ создаётся в
- * статусе 'pending' и остаётся в нём, пока markOrderPaid() не будет
- * вызван настоящим подтверждением платежа или (пока кассы нет)
- * заявкой администратора с правом 'finance', подтверждённой владельцем
- * (см. server/adminsec.mjs, PENDING_KINDS.kutrent_mark_paid) — то же
- * правило, что у любого другого начисления денег из ничего в этом
- * проекте.
+ * Оплата: подключённой кассы по-прежнему нет, но заказ больше не
+ * «зависает» без единого шага — после создания покупателю показываются
+ * реквизиты расчётного счёта (kutrent_market_requisites), он переводит
+ * деньги и указывает номер телефона, с которого придёт перевод
+ * (submitPaymentProof). Дальше администратор с правом 'finance' ищет
+ * операцию в банке по этому номеру и оформляет заявку владельцу —
+ * markOrderPaid() вызывается только подтверждённой заявкой (см.
+ * server/adminsec.mjs, PENDING_KINDS.kutrent_mark_paid), то же правило,
+ * что у любого другого начисления денег из ничего в этом проекте. Если
+ * владелец перевод не нашёл — rejectOrderPaid() возвращает заказ
+ * покупателю, а не хоронит его: номер телефона можно уточнить и
+ * отправить заново.
  */
 import crypto from 'node:crypto';
 import { query, pool } from './db.mjs';
 import { generateId } from './security.mjs';
 import { wallet } from './wallet.mjs';
+import { isOwner } from './admin.mjs';
+import { logAdmin, consumeStepUp } from './adminsec.mjs';
 
 const MIN_AMOUNT = 10;
 const MAX_AMOUNT = 500_000;
@@ -207,6 +213,8 @@ const toView = (r) => ({
   id: r.id, kind: r.kind, amount: Number(r.amount_rub), status: r.status,
   createdAt: r.created_at.toISOString(),
   paidAt: r.paid_at ? r.paid_at.toISOString() : null,
+  senderPhone: r.sender_phone ?? null,
+  proofSubmittedAt: r.proof_submitted_at ? r.proof_submitted_at.toISOString() : null,
 });
 
 export const getOrder = async (marketUserId, orderId) => {
@@ -270,6 +278,112 @@ export const markOrderPaid = async (orderId) => {
   } finally {
     client.release();
   }
+};
+
+/* ─── Подтверждение платежа покупателем ─────────────────────────────── */
+
+const PHONE_RE = /^[0-9+()\s-]{5,20}$/;
+
+/**
+ * Покупатель перевёл деньги по реквизитам (getRequisites ниже) и
+ * указывает номер телефона, с которого придёт перевод — администратор
+ * потом ищет по нему операцию в банке, прежде чем просить владельца
+ * подтвердить (createPendingAction 'kutrent_mark_paid'). Разрешено и
+ * для уже отклонённого заказа ('rejected' → 'pending'): то, что владелец
+ * не нашёл перевод с первого раза, не значит, что заказ закрыт навсегда
+ * — покупатель может уточнить номер и отправить его заново.
+ */
+export const submitPaymentProof = async (marketUser, orderId, rawPhone) => {
+  const phone = String(rawPhone ?? '').trim();
+  if (!PHONE_RE.test(phone)) return { error: 'bad_phone' };
+
+  const { rows } = await query(
+    `UPDATE kutrent_market_orders
+        SET sender_phone = $1, proof_submitted_at = now(),
+            status = CASE WHEN status = 'rejected' THEN 'pending' ELSE status END
+      WHERE id = $2 AND market_user_id = $3 AND status IN ('pending', 'rejected')
+      RETURNING *`,
+    [phone, orderId, marketUser.id],
+  );
+  if (!rows[0]) {
+    const { rows: existing } = await query(
+      'SELECT status FROM kutrent_market_orders WHERE id = $1 AND market_user_id = $2',
+      [orderId, marketUser.id],
+    );
+    if (!existing[0]) return { error: 'not_found' };
+    return { error: existing[0].status === 'paid' ? 'already_paid' : 'not_pending' };
+  }
+  return { ok: true, order: toView(rows[0]) };
+};
+
+/**
+ * Владелец не нашёл перевод по заявке администратора — заказ
+ * возвращается покупателю (не остаётся «Ожидание подтверждения»
+ * навечно), тот увидит отказ и сможет указать номер телефона заново
+ * (submitPaymentProof выше). Вызывается только из decidePendingAction
+ * при отклонении заявки 'kutrent_mark_paid' (server/adminsec.mjs).
+ */
+export const rejectOrderPaid = async (orderId) => {
+  const { rows } = await query(
+    `UPDATE kutrent_market_orders SET status = 'rejected' WHERE id = $1 AND status = 'pending' RETURNING *`,
+    [orderId],
+  );
+  return rows[0] ? { ok: true, order: toView(rows[0]) } : { error: 'not_pending' };
+};
+
+/* ─── Реквизиты расчётного счёта ─────────────────────────────────────
+   Показываются каждому покупателю сразу после создания заказа — это не
+   секрет, это номер счёта, на который и так переводят деньги все
+   покупатели. Изменить их может только владелец, с повторным
+   подтверждением личности: это ровно то место, куда идут настоящие
+   переводы, подменить его — украсть деньги у всех будущих покупателей
+   разом (тот же принцип, что у server/platform.mjs::setShutdown). */
+
+const toRequisites = (r) => ({
+  accountNumber: r.account_number, bankName: r.bank_name, bik: r.bik,
+  bankInn: r.bank_inn, bankKpp: r.bank_kpp, corrAccount: r.corr_account,
+  recipientName: r.recipient_name,
+  updatedAt: r.updated_at ? r.updated_at.toISOString() : null,
+});
+
+export const getRequisites = async () => {
+  const { rows } = await query('SELECT * FROM kutrent_market_requisites WHERE id');
+  return rows[0] ? toRequisites(rows[0]) : null;
+};
+
+const REQ_FIELD_MAX = 200;
+const cleanField = (v) => String(v ?? '').trim().slice(0, REQ_FIELD_MAX);
+
+export const setRequisites = async (actorId, fields, stepUpCode) => {
+  if (!(await isOwner(actorId))) {
+    await logAdmin({ actorId, type: 'kutrent_requisites', targetType: 'system',
+      result: 'denied', detail: 'Не владелец' });
+    return { error: 'owner_only' };
+  }
+  const step = await consumeStepUp(actorId, 'kutrent_requisites', stepUpCode);
+  if (step.error) return { error: step.error };
+
+  const clean = {
+    accountNumber: cleanField(fields?.accountNumber),
+    bankName: cleanField(fields?.bankName),
+    bik: cleanField(fields?.bik),
+    bankInn: cleanField(fields?.bankInn),
+    bankKpp: cleanField(fields?.bankKpp),
+    corrAccount: cleanField(fields?.corrAccount),
+    recipientName: cleanField(fields?.recipientName),
+  };
+  await query(
+    `UPDATE kutrent_market_requisites SET
+       account_number = $1, bank_name = $2, bik = $3, bank_inn = $4,
+       bank_kpp = $5, corr_account = $6, recipient_name = $7,
+       updated_by = $8, updated_at = now()
+     WHERE id`,
+    [clean.accountNumber, clean.bankName, clean.bik, clean.bankInn,
+      clean.bankKpp, clean.corrAccount, clean.recipientName, actorId],
+  );
+  await logAdmin({ actorId, type: 'kutrent_requisites_set', targetType: 'system',
+    detail: 'Изменены реквизиты оплаты KutRent Market' });
+  return { ok: true, requisites: await getRequisites() };
 };
 
 /* ─── Поиск и списки для админ-панели (просмотр, право 'kutrent_market') ─ */

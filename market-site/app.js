@@ -273,7 +273,12 @@
       el("#sky-result-amount").textContent = fmt(order.amount);
       el("#sky-result-recipient").textContent = "себе, @" + (me ? me.username : "");
       el("#sky-result-id").textContent = "#" + order.id;
-      el("#sky-result-status").textContent = "Ожидает оплаты";
+      el("#sky-result-status").textContent = STATUS_LABEL[order.status] || order.status;
+      var reqSlot = el("#sky-result-requisites");
+      reqSlot.innerHTML = "";
+      reqSlot.appendChild(renderPaymentProofBlock(order, function (updated) {
+        el("#sky-result-status").textContent = STATUS_LABEL[updated.status] || updated.status;
+      }));
       openOverlay("overlay-sky-result");
 
       syncSkySummary();
@@ -305,8 +310,104 @@
   });
 
   /* ============ Orders (реальные, с сервера) ============ */
-  var STATUS_LABEL = { pending: "Ожидает оплаты", paid: "Оплачено", cancelled: "Отменено" };
+  var STATUS_LABEL = { pending: "Ожидание подтверждения", paid: "Оплачено", rejected: "Отклонено", cancelled: "Отменено" };
   var ordersCache = [];
+  var requisitesCache = null;
+
+  /* ============ Реквизиты расчётного счёта + номер телефона перевода ============
+     После создания заказа показываем, куда переводить деньги, и даём
+     указать номер телефона, с которого придёт перевод — администратор
+     ищет по нему операцию в банке, прежде чем попросить владельца
+     подтвердить (см. server/kutrentmarket.mjs::submitPaymentProof).
+     Тот же блок используется и в карточке заказа из истории — номер
+     можно указать не сразу, а позже, вернувшись к заказу. */
+  var REQUISITES_FIELDS = [
+    ["accountNumber", "Счёт получателя в банке получателя"],
+    ["bankName", "Наименование Банка получателя"],
+    ["bik", "БИК Банка получателя"],
+    ["bankInn", "ИНН Банка получателя"],
+    ["bankKpp", "КПП Банка получателя"],
+    ["corrAccount", "К/С Банка получателя"],
+    ["recipientName", "Получатель"],
+  ];
+
+  function getRequisites() {
+    if (requisitesCache) return Promise.resolve(requisitesCache);
+    return api("/requisites").then(function (r) {
+      requisitesCache = (r.ok && r.data.requisites) || null;
+      return requisitesCache;
+    });
+  }
+
+  function requisitesHtml(req) {
+    return '<div class="requisites-block">' +
+      REQUISITES_FIELDS.map(function (f) {
+        var val = (req && req[f[0]]) || "—";
+        return '<div class="summary-row requisites-row"><span>' + f[1] + '</span>' +
+          '<span class="requisites-value" data-copy="' + escapeHtml(val) + '">' + escapeHtml(val) + '</span></div>';
+      }).join("") + '</div>';
+  }
+
+  /** Блок «реквизиты + номер телефона» для заказа, ещё не подтверждённого
+   *  (pending/rejected). Возвращает узел; вызывающий сам решает, куда его
+   *  вставить, и передаёт onSubmitted — обновить экран после отправки. */
+  function renderPaymentProofBlock(order, onSubmitted) {
+    var wrap = document.createElement("div");
+    wrap.className = "payment-proof-block";
+    wrap.innerHTML = '<p class="hint" style="margin:10px 0 6px;">Загружаем реквизиты…</p>';
+
+    getRequisites().then(function (req) {
+      var rejectedNote = order.status === "rejected"
+        ? '<p class="hint" style="color:var(--danger,#e5484d);margin:10px 0 6px;">Мы не нашли перевод по прошлому номеру. Проверьте номер телефона и отправьте ещё раз.</p>'
+        : "";
+      var already = order.senderPhone
+        ? '<div class="summary-row"><span>Телефон перевода</span><span>' + escapeHtml(order.senderPhone) + '</span></div>'
+        : "";
+      wrap.innerHTML =
+        '<p class="hint" style="margin:10px 0 6px;">Переведите сумму заказа по реквизитам ниже, затем укажите номер телефона, с которого придёт перевод — мы сверим его с операцией в банке.</p>' +
+        requisitesHtml(req) +
+        rejectedNote + already +
+        '<div class="proof-form" style="margin-top:10px;display:flex;gap:8px;">' +
+        '<input class="text-input" id="proof-phone-input" type="tel" placeholder="+7 900 000-00-00" style="flex:1;" value="' + (order.senderPhone ? escapeHtml(order.senderPhone) : "") + '">' +
+        '<button class="cta" id="proof-phone-submit">' + (order.senderPhone ? "Изменить" : "Отправить") + '</button>' +
+        '</div>' +
+        '<p class="hint" id="proof-phone-error" style="color:var(--danger,#e5484d);margin:6px 0 0;"></p>';
+
+      wrap.querySelectorAll("[data-copy]").forEach(function (node) {
+        node.style.cursor = "pointer";
+        node.title = "Нажмите, чтобы скопировать";
+        node.addEventListener("click", function () {
+          var text = node.getAttribute("data-copy");
+          if (navigator.clipboard && text && text !== "—") {
+            navigator.clipboard.writeText(text).then(function () { toast("Скопировано"); });
+          }
+        });
+      });
+
+      var submitBtn = wrap.querySelector("#proof-phone-submit");
+      submitBtn.addEventListener("click", function () {
+        var phone = wrap.querySelector("#proof-phone-input").value.trim();
+        var errEl = wrap.querySelector("#proof-phone-error");
+        errEl.textContent = "";
+        if (!phone) { errEl.textContent = "Укажите номер телефона"; return; }
+        submitBtn.disabled = true;
+        api("/orders/" + encodeURIComponent(order.id) + "/proof", { method: "POST", body: { phone: phone } })
+          .then(function (r) {
+            submitBtn.disabled = false;
+            if (!r.ok || !r.data.order) {
+              errEl.textContent = r.data && r.data.error === "bad_phone" ? "Проверьте номер телефона"
+                : r.data && r.data.error === "already_paid" ? "Заказ уже оплачен"
+                  : "Не удалось отправить, попробуйте ещё раз";
+              return;
+            }
+            toast("Номер телефона отправлен — ждите подтверждения");
+            if (onSubmitted) onSubmitted(r.data.order);
+          });
+      });
+    });
+
+    return wrap;
+  }
 
   function renderOrders() {
     var body = el("#orders-body");
@@ -353,7 +454,15 @@
         '<div class="summary-row"><span>Создан</span><span>' + fmtDate(order.createdAt) + '</span></div>' +
         (order.paidAt ? '<div class="summary-row"><span>Оплачен</span><span>' + fmtDate(order.paidAt) + '</span></div>' : '') +
         '</div>' +
-        '<button class="cta ghost" id="order-support-btn">Проблема с этим заказом?</button>';
+        '<div id="order-detail-proof"></div>' +
+        '<button class="cta ghost" id="order-support-btn" style="margin-top:10px;">Проблема с этим заказом?</button>';
+      if (order.status === "pending" || order.status === "rejected") {
+        body.querySelector("#order-detail-proof").appendChild(renderPaymentProofBlock(order, function (updated) {
+          var idx = ordersCache.findIndex(function (x) { return x.id === updated.id; });
+          if (idx !== -1) ordersCache[idx] = updated;
+          render(updated);
+        }));
+      }
       body.querySelector("#order-support-btn").addEventListener("click", function () { openSupport(order); });
       openOverlay("overlay-order-detail");
     }

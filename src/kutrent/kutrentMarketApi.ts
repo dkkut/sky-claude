@@ -20,7 +20,7 @@ export interface KutrentMarketUser {
   lastLoginAt: string | null;
 }
 
-export type KutrentOrderStatus = 'pending' | 'paid' | 'cancelled';
+export type KutrentOrderStatus = 'pending' | 'paid' | 'rejected' | 'cancelled';
 
 export interface KutrentMarketOrder {
   id: string;
@@ -29,6 +29,8 @@ export interface KutrentMarketOrder {
   status: KutrentOrderStatus;
   createdAt: string;
   paidAt: string | null;
+  senderPhone?: string | null;
+  proofSubmittedAt?: string | null;
   username?: string;
   authenticator?: string;
   skyId?: string;
@@ -36,6 +38,17 @@ export interface KutrentMarketOrder {
 
 export interface KutrentMarketUserDetail extends KutrentMarketUser {
   orders: KutrentMarketOrder[];
+}
+
+export interface KutrentMarketRequisites {
+  accountNumber: string;
+  bankName: string;
+  bik: string;
+  bankInn: string;
+  bankKpp: string;
+  corrAccount: string;
+  recipientName: string;
+  updatedAt: string | null;
 }
 
 const enc = (s: string) => encodeURIComponent(s);
@@ -64,3 +77,15 @@ export const apiAdminListKutrentOrders = (params: { status?: string; q?: string;
   const s = qs.toString();
   return apiCall<{ orders: KutrentMarketOrder[] }>(`/api/kutrent-market/admin/orders${s ? `?${s}` : ''}`);
 };
+
+/* Реквизиты расчётного счёта — смотреть может любой с правом
+   'kutrent_market', менять только владелец (сервер сам это проверяет,
+   второе подтверждение личности — stepUpCode). */
+export const apiAdminGetKutrentRequisites = () =>
+  apiCall<{ requisites: KutrentMarketRequisites | null }>('/api/kutrent-market/admin/requisites');
+
+export const apiAdminSetKutrentRequisites = (
+  fields: Omit<KutrentMarketRequisites, 'updatedAt'>, stepUpCode: string,
+) => apiCall<{ requisites: KutrentMarketRequisites }>('/api/kutrent-market/admin/requisites', {
+  method: 'POST', body: JSON.stringify({ ...fields, stepUpCode }),
+});

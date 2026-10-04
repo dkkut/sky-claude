@@ -49,7 +49,7 @@ import { adjustRevenue } from './skyvideo.mjs';
 import { sessionStore } from './sessions.mjs';
 import { grantForProposal, markGrantProposed, finalizeGrant, failGrant } from './campaigns.mjs';
 import { earnCoins as earnPetCoins } from './petEconomy.mjs';
-import { markOrderPaid, adminGetOrder } from './kutrentmarket.mjs';
+import { markOrderPaid, adminGetOrder, rejectOrderPaid } from './kutrentmarket.mjs';
 import { cancelViolation, cancelPenalty, decideAppeal, VIOLATION_ID_RE, PENALTY_ID_RE, APPEAL_ID_RE } from './violations.mjs';
 
 /* ─── Роли и права ─────────────────────────────────────────────────── */
@@ -822,6 +822,12 @@ export const createPendingAction = async (actorId, kind, targetId, raw = {}, opt
     if (!order) return { error: 'not_found' };
     if (order.sky_recipient_profile_id !== target) return { error: 'order_target_mismatch' };
     if (order.status !== 'pending') return { error: 'already_decided' };
+    /* Нечего подтверждать, если покупатель ещё не сказал, откуда ждать
+       перевод — заявка «проверьте, пришли ли деньги» без единого
+       ориентира для поиска операции в банке владельцу не нужна. */
+    if (!order.sender_phone) return { error: 'no_payment_proof' };
+    checked.payload.senderPhone = order.sender_phone;
+    checked.payload.amount = Number(order.amount_rub);
   }
 
   if (spec.stepUp) {
@@ -967,6 +973,15 @@ export const decidePendingAction = async (actorId, id, approve, opts = {}) => {
   }
 
   if (!approve) {
+    if (row.kind === 'kutrent_mark_paid') {
+      /* Владелец не нашёл перевод — заказ возвращается покупателю, а не
+         остаётся «Ожидание подтверждения» навсегда: он увидит отказ и
+         сможет указать номер телефона заново. */
+      try {
+        const declinedPayload = JSON.parse(decryptContent(row.payload_enc) ?? '{}');
+        if (declinedPayload.orderId) await rejectOrderPaid(declinedPayload.orderId);
+      } catch { /* заявка всё равно останется отклонённой в очереди */ }
+    }
     await logAdmin({ actorId, targetId: row.target_id, type: `${row.kind}_rejected`,
       targetType: 'pending', detail: String(note ?? '').slice(0, 300), meta });
     const after = await query(`${SELECT_PENDING} WHERE a.id = $1`, [row.id]);

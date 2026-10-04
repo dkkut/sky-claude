@@ -302,6 +302,13 @@
   .success-meta .summary-row{border-bottom:1px solid var(--border-soft);}
   .success-actions{display:flex;flex-direction:column;gap:10px;}
 
+  /* ---------- Реквизиты оплаты + форма номера телефона ---------- */
+  .payment-proof-block{margin-top:10px;}
+  .requisites-block{border:1px solid var(--border);border-radius:var(--radius-m);padding:4px 18px;margin:6px 0;}
+  .requisites-row{border-bottom:1px solid var(--border-soft);}
+  .requisites-row:last-child{border-bottom:none;}
+  .requisites-value{font-weight:700;text-align:right;word-break:break-all;max-width:60%;}
+
   /* ---------- Orders ---------- */
   .order-list{display:flex;flex-direction:column;gap:8px;}
   .order-item{
@@ -593,8 +600,9 @@
         <div class="success-meta">
           <div class="summary-row"><span>Получатель</span><span id="sky-result-recipient">@username</span></div>
           <div class="summary-row"><span>Номер заказа</span><span id="sky-result-id">#krm-000001</span></div>
-          <div class="summary-row"><span>Статус</span><span id="sky-result-status">Ожидает оплаты</span></div>
+          <div class="summary-row"><span>Статус</span><span id="sky-result-status">Ожидание подтверждения</span></div>
         </div>
+        <div id="sky-result-requisites" style="text-align:left;"></div>
         <div class="success-actions">
           <button class="cta" data-close="overlay-sky-result">Готово</button>
           <button class="cta ghost" id="sky-view-order">Посмотреть заказ</button>
