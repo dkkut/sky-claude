@@ -4888,6 +4888,37 @@ export const AdminPanel = () => {
   const [lockStep, setLockStep] = useState(false);
   const [failed, setFailed] = useState('');
 
+  const [platformStatus, setPlatformStatus] = useState<import('@/core/platform').PlatformStatus | null>(null);
+  const [shutdownStep, setShutdownStep] = useState(false);
+  const [maintenanceStep, setMaintenanceStep] = useState(false);
+  const [shutdownReason, setShutdownReason] = useState('');
+  const [maintenanceReason, setMaintenanceReason] = useState('');
+  const [platformFailed, setPlatformFailed] = useState('');
+
+  const loadPlatformStatus = useCallback(async () => {
+    const { apiPlatformStatus } = await import('@/core/platform');
+    const s = await apiPlatformStatus();
+    if (s) setPlatformStatus(s);
+  }, []);
+
+  const doSetShutdown = async (code: string) => {
+    setShutdownStep(false); setPlatformFailed('');
+    const { apiSetPlatformShutdown } = await import('@/core/platform');
+    const r = await apiSetPlatformShutdown(!(platformStatus?.shutdown.active), shutdownReason.trim(), code);
+    if (!r.ok) { setPlatformFailed(errorText(r.error)); return; }
+    setPlatformStatus((p) => (p ? { ...p, shutdown: r.state } : p));
+    setShutdownReason('');
+  };
+
+  const doSetMaintenance = async (code: string) => {
+    setMaintenanceStep(false); setPlatformFailed('');
+    const { apiSetPlatformMaintenance } = await import('@/core/platform');
+    const r = await apiSetPlatformMaintenance(!(platformStatus?.maintenance.active), maintenanceReason.trim(), code);
+    if (!r.ok) { setPlatformFailed(errorText(r.error)); return; }
+    setPlatformStatus((p) => (p ? { ...p, maintenance: r.state } : p));
+    setMaintenanceReason('');
+  };
+
   const loadRights = useCallback(async () => {
     const r = await adminCall({ action: 'whoami' });
     /* Панель рисует то, что ответил сервер, и ничего сверх: поля,
@@ -4912,6 +4943,7 @@ export const AdminPanel = () => {
   }, []);
 
   useEffect(() => { void loadRights(); }, [loadRights]);
+  useEffect(() => { if (rights?.owner) void loadPlatformStatus(); }, [rights?.owner, loadPlatformStatus]);
 
   const has = (p: AdminPermission) => rights?.permissions?.includes(p) ?? false;
 
@@ -5111,6 +5143,80 @@ export const AdminPanel = () => {
                     color: rights.lockdown.active ? C.green : '#fff',
                   }}>
                   {rights.lockdown.active ? 'Снять аварийный режим' : 'Включить аварийный режим'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {rights.owner && (
+            <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+              <p className="text-[10px] font-bold" style={{ color: C.t3 }}>АВАРИЙНЫЕ РАБОТЫ</p>
+              <p className="mt-1 text-[11px]" style={{ color: C.t2 }}>
+                Не путать с аварийным режимом выше: тот закрывает только панель.
+                Это — сайт целиком, недоступен вообще никому, кроме вас. Крайняя
+                мера для тяжёлого инцидента, не для плановых работ.
+              </p>
+              {platformFailed && <p className="mt-1.5 text-[11px]" style={{ color: C.red }}>{platformFailed}</p>}
+              {platformStatus?.shutdown.active ? (
+                <p className="mt-1.5 text-[11px]" style={{ color: C.red }}>
+                  Включено {fmtTs(platformStatus.shutdown.set_at)}
+                  {platformStatus.shutdown.reason ? `: ${platformStatus.shutdown.reason}` : ''}
+                </p>
+              ) : (
+                <textarea value={shutdownReason} onChange={(e) => setShutdownReason(e.target.value.slice(0, 300))}
+                  placeholder="Причина — её увидят все на экране" rows={2}
+                  className="mt-2 w-full resize-none rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              )}
+              {shutdownStep ? (
+                <div className="mt-2">
+                  <StepUp purpose="platform_shutdown"
+                    onCode={(c) => void doSetShutdown(c)}
+                    onCancel={() => setShutdownStep(false)} />
+                </div>
+              ) : (
+                <button type="button" onClick={() => setShutdownStep(true)}
+                  className="mt-2 w-full rounded-xl py-2.5 text-xs font-bold"
+                  style={{
+                    background: platformStatus?.shutdown.active ? C.l2 : C.red,
+                    color: platformStatus?.shutdown.active ? C.green : '#fff',
+                  }}>
+                  {platformStatus?.shutdown.active ? 'Снять аварийные работы' : 'Включить аварийные работы'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {rights.owner && (
+            <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+              <p className="text-[10px] font-bold" style={{ color: C.t3 }}>ТЕХНИЧЕСКИЕ РАБОТЫ</p>
+              <p className="mt-1 text-[11px]" style={{ color: C.t2 }}>
+                Сайт недоступен обычным людям, но администрация продолжает
+                работать. Плановое обслуживание, а не авария.
+              </p>
+              {platformStatus?.maintenance.active ? (
+                <p className="mt-1.5 text-[11px]" style={{ color: C.amber }}>
+                  Включено {fmtTs(platformStatus.maintenance.set_at)}
+                  {platformStatus.maintenance.reason ? `: ${platformStatus.maintenance.reason}` : ''}
+                </p>
+              ) : (
+                <textarea value={maintenanceReason} onChange={(e) => setMaintenanceReason(e.target.value.slice(0, 300))}
+                  placeholder="Причина — её увидят все на экране" rows={2}
+                  className="mt-2 w-full resize-none rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+              )}
+              {maintenanceStep ? (
+                <div className="mt-2">
+                  <StepUp purpose="platform_maintenance"
+                    onCode={(c) => void doSetMaintenance(c)}
+                    onCancel={() => setMaintenanceStep(false)} />
+                </div>
+              ) : (
+                <button type="button" onClick={() => setMaintenanceStep(true)}
+                  className="mt-2 w-full rounded-xl py-2.5 text-xs font-bold"
+                  style={{
+                    background: platformStatus?.maintenance.active ? C.l2 : C.amber,
+                    color: platformStatus?.maintenance.active ? C.green : '#fff',
+                  }}>
+                  {platformStatus?.maintenance.active ? 'Снять технические работы' : 'Включить технические работы'}
                 </button>
               )}
             </div>

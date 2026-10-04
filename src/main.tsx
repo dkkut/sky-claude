@@ -5,7 +5,9 @@ import { AuthScreen }    from './auth/AuthScreen';
 import { TVAuthScreen }  from './interface/tv/auth/TVAuthScreen';
 import { useDeviceMode } from './interface/tv/useDeviceMode';
 import { BetaGate }      from './auth/BetaGate';
-import { setBetaRequiredHandler, initNativeAuth } from './core/auth/api';
+import { setBetaRequiredHandler, setPlatformBlockedHandler, initNativeAuth, type PlatformBlock } from './core/auth/api';
+import { apiPlatformStatus } from './core/platform';
+import { PlatformBlockScreen } from './core/PlatformBlockScreen';
 import { OfflineMode }   from './offline/OfflineMode';
 import { BlockedScreen } from './moderation/BlockedScreen';
 import { apiSupportStatus, type Restrictions } from './moderation/supportApi';
@@ -314,6 +316,24 @@ const Root = () => {
     return () => setBetaRequiredHandler(null);
   }, []);
 
+  // «Аварийные работы» / «Технические работы» — сайт целиком, не путать
+  // с аварийным режимом панели администратора (тот виден только внутри
+  // самой панели). Владельца/администрацию сервер пропускает мимо этого
+  // гейта сам, так что их обычные запросы просто не дают 503 — сюда это
+  // долетает только теми, кого режим действительно касается.
+  const [platformBlock, setPlatformBlock] = useState<PlatformBlock>(null);
+  useEffect(() => {
+    setPlatformBlockedHandler(setPlatformBlock);
+    return () => setPlatformBlockedHandler(null);
+  }, []);
+  const checkPlatformStatus = async () => {
+    const s = await apiPlatformStatus();
+    if (!s) return;
+    if (s.shutdown.active) setPlatformBlock({ kind: 'shutdown', reason: s.shutdown.reason });
+    else if (s.maintenance.active) setPlatformBlock({ kind: 'maintenance', reason: s.maintenance.reason });
+    else setPlatformBlock(null);
+  };
+
   useEffect(() => {
     let cancelled = false;
     // В родном приложении сначала подгружаем сохранённый пропуск беты
@@ -322,7 +342,17 @@ const Root = () => {
     // без него и упёрся в калитку. В веб-сборке initNativeAuth — no-op.
     initNativeAuth()
       .then(() => useAuthStore.getState().restoreSession())
-      .finally(() => { if (!cancelled) setSessionChecked(true); });
+      .finally(() => {
+        if (cancelled) return;
+        setSessionChecked(true);
+        // До входа собственные гейтованные запросы не идут, поэтому
+        // анонимный браузер иначе так и не узнал бы, почему сайт не
+        // отвечает — спрашиваем открытую ручку статуса сами, один раз.
+        // Уже вошедшего так не трогаем: у него источник правды — настоящие
+        // 503 на реальных запросах (иначе владельца/админку задело бы
+        // этим экраном по ошибке, пока их же запросы проходят мимо гейта).
+        if (!useAuthStore.getState().isAuthenticated) void checkPlatformStatus();
+      });
     return () => { cancelled = true; };
   }, []);
 
@@ -398,6 +428,13 @@ const Root = () => {
         setBetaLocked(false);
         void useAuthStore.getState().restoreSession();
       }} />,
+    );
+  }
+
+  if (platformBlock) {
+    return underLegal(
+      <PlatformBlockScreen block={platformBlock} onRetry={checkPlatformStatus}
+        onDismiss={!isAuthenticated ? () => setPlatformBlock(null) : undefined} />,
     );
   }
 

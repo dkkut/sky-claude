@@ -97,6 +97,8 @@ type Json = Record<string, unknown>;
 /* ─── Сообщения об ошибках ───────────────────────────────────── */
 const ERRORS: Record<string, string> = {
   beta_required:         'Нужен ключ доступа к закрытой бете',
+  platform_shutdown:     'Идут аварийные работы',
+  platform_maintenance:  'Идут технические работы',
   invalid_beta_key:      'Такой ключ не подходит',
   invalid_phone:         'Проверьте номер телефона',
   invalid_email:         'Проверьте адрес почты',
@@ -216,6 +218,15 @@ export interface Reply<T> { ok: boolean; data?: T; error?: string; reason?: stri
 let onBetaRequired: (() => void) | null = null;
 export const setBetaRequiredHandler = (fn: (() => void) | null) => { onBetaRequired = fn; };
 
+/* ─── «Аварийные работы» / «Технические работы» ───────────────────
+   Сайт целиком, не путать с аварийным режимом панели администратора
+   (тот виден только внутри самой панели). Сервер отвечает 503 с одним
+   из двух кодов на любой запрос — замечаем и показываем нужный экран. */
+
+export type PlatformBlock = { kind: 'shutdown' | 'maintenance'; reason: string } | null;
+let onPlatformBlocked: ((block: PlatformBlock) => void) | null = null;
+export const setPlatformBlockedHandler = (fn: ((block: PlatformBlock) => void) | null) => { onPlatformBlocked = fn; };
+
 /**
  * Запрос к API. Если access протух — обновляемся один раз и повторяем;
  * второй неудачи достаточно, чтобы считать сессию законченной.
@@ -246,6 +257,8 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true): Prom
   const data = await readJson(res);
   if (!res.ok) {
     if (res.status === 403 && data?.error === 'beta_required') onBetaRequired?.();
+    if (res.status === 503 && data?.error === 'platform_shutdown') onPlatformBlocked?.({ kind: 'shutdown', reason: String(data?.reason ?? '') });
+    if (res.status === 503 && data?.error === 'platform_maintenance') onPlatformBlocked?.({ kind: 'maintenance', reason: String(data?.reason ?? '') });
     return { ok: false, error: data?.error, reason: explain(data?.error, res.status), status: res.status, data };
   }
 

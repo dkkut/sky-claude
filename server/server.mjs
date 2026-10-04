@@ -8,7 +8,9 @@
 import http from 'node:http';
 import { config } from './config.mjs';
 import { rateLimit } from './security.mjs';
-import { json, originAllowed } from './http.mjs';
+import { json, originAllowed, readSession } from './http.mjs';
+import { isOwner, isAdmin } from './admin.mjs';
+import { shutdownState, maintenanceState } from './platform.mjs';
 import { waitForDb, migrate, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
 import { connectRedis, closeRedis, redisAlive } from './sessions.mjs';
@@ -48,6 +50,7 @@ import { mapsRoutes } from './routes/maps.mjs';
 import { familyRoutes } from './routes/family.mjs';
 import { garantRoutes } from './routes/garant.mjs';
 import { violationsRoutes } from './routes/violations.mjs';
+import { platformRoutes } from './routes/platform.mjs';
 import { liveEvidenceIds } from './violations.mjs';
 import { sweepOrphans as sweepEvidenceFiles } from './evidencestore.mjs';
 import { storageShareRoutes } from './routes/storageshare.mjs';
@@ -103,7 +106,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageShareRoutes];
+                violationsRoutes, storageShareRoutes, platformRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -243,6 +246,32 @@ const server = http.createServer(async (req, res) => {
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
     if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
+    }
+
+    /*
+     * «Аварийные работы» и «Технические работы» — два отдельных
+     * системных режима для сайта целиком (server/platform.mjs), не
+     * путать с аварийным режимом панели администратора (admin_lockdown
+     * в server/adminsec.mjs — тот закрывает только саму панель и
+     * пускает владельца всегда). Вход (/api/auth/...) и собственная
+     * ручка статуса режима остаются открытыми всегда: иначе владелец
+     * не смог бы ни войти и выключить режим, ни браузер — понять,
+     * почему сайт не отвечает, и показать нужный экран.
+     */
+    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status') {
+      const shutdown = await shutdownState();
+      if (shutdown.active) {
+        const session = await readSession(req);
+        const owner = session?.profileId ? await isOwner(session.profileId) : false;
+        if (!owner) return json(res, 503, { error: 'platform_shutdown', reason: shutdown.reason });
+      } else {
+        const maintenance = await maintenanceState();
+        if (maintenance.active) {
+          const session = await readSession(req);
+          const admin = session?.profileId ? await isAdmin(session.profileId) : false;
+          if (!admin) return json(res, 503, { error: 'platform_maintenance', reason: maintenance.reason });
+        }
+      }
     }
 
     for (const route of ROUTES) {
