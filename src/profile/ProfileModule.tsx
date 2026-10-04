@@ -457,7 +457,7 @@ const SettingsSection = ({ logout, username, onOpen, staff }: {
   };
   const buyPrime = async () => {
     setSubNotice(null); setBuying(true);
-    const res = await useAuthStore.getState().purchasePrime('standard', 30);
+    const res = await useAuthStore.getState().purchasePrime('standard', 730);
     setBuying(false);
     if (!res.ok) setSubNotice(REASONS[res.reason ?? ''] ?? 'Не получилось оформить подписку.');
   };
