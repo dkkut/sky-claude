@@ -575,7 +575,7 @@ const PetCoinsGrantForm = () => {
 const emptySkinItemForm = () => ({
   name: '', description: '', itemType: 'skin', rarity: 'common', availability: 'unlimited',
   supply: '', petTypeId: '', pricePetCoins: '', priceSkyMoneyKopecks: '',
-  previewMediaId: '', previewMime: '', modelMediaId: '', modelMime: '',
+  modelMediaId: '', modelMime: '',
 });
 
 const SkinItemForm = ({ onCancel, onSaved }: { onCancel: () => void; onSaved: () => void }) => {
@@ -593,7 +593,6 @@ const SkinItemForm = ({ onCancel, onSaved }: { onCancel: () => void; onSaved: ()
       petTypeId: form.petTypeId.trim() || undefined,
       pricePetCoins: form.pricePetCoins ? Math.max(0, Math.trunc(Number(form.pricePetCoins))) : undefined,
       priceSkyMoneyKopecks: form.priceSkyMoneyKopecks ? Math.max(0, Math.trunc(Number(form.priceSkyMoneyKopecks))) : undefined,
-      previewMediaId: form.previewMediaId.trim() || undefined, previewMime: form.previewMime.trim() || undefined,
       modelMediaId: form.modelMediaId.trim() || undefined, modelMime: form.modelMime.trim() || undefined,
     });
     setBusy(false);
@@ -635,19 +634,9 @@ const SkinItemForm = ({ onCancel, onSaved }: { onCancel: () => void; onSaved: ()
         <input value={form.priceSkyMoneyKopecks} onChange={(e) => setForm((f) => ({ ...f, priceSkyMoneyKopecks: e.target.value }))} type="number" min={0}
           placeholder="или цена, копейки Sky Money" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
       </div>
-      {/* Настоящей загрузки файла здесь нет: у server/routes/pets.mjs нет
-          ручки, принимающей байты и зовущей skinstore.saveStream — только
-          adminCreateItem, который ждёт уже готовый media id. Это серверная
-          доработка вне рамок этой задачи (клиент); пока — id/MIME текстом. */}
       <p className="text-[10px]" style={{ color: C.t3 }}>
-        Медиа (необязательно, до серверной доработки загрузки — указать id/MIME уже готового файла):
+        Превью-картинку можно загрузить после создания предмета — кнопкой «Превью» в списке.
       </p>
-      <div className="flex gap-2">
-        <input value={form.previewMediaId} onChange={(e) => setForm((f) => ({ ...f, previewMediaId: e.target.value }))}
-          placeholder="previewMediaId (skm-…)" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
-        <input value={form.previewMime} onChange={(e) => setForm((f) => ({ ...f, previewMime: e.target.value }))}
-          placeholder="image/png" className="w-28 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
-      </div>
       {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
       <div className="flex gap-2">
         <button type="button" disabled={busy || !form.name.trim()} onClick={() => void save()}
@@ -659,6 +648,33 @@ const SkinItemForm = ({ onCancel, onSaved }: { onCancel: () => void; onSaved: ()
         </button>
       </div>
     </div>
+  );
+};
+
+const SkinPreviewUpload = ({ itemId }: { itemId: string }) => {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const pick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true); setFailed(false); setDone(false);
+    const { apiAdminUploadSkinPreview } = await import('@/messenger/petsApi');
+    const r = await apiAdminUploadSkinPreview(itemId, file);
+    setBusy(false);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed(true); return; }
+    setDone(true);
+  };
+
+  return (
+    <label className="flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold"
+      style={{ background: C.l2, color: failed ? C.red : C.t2 }}>
+      {busy ? <Loader2 size={11} className="animate-spin" /> : done ? <Check size={11} style={{ color: C.green }} /> : null}
+      Превью
+      <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => void pick(e)} />
+    </label>
   );
 };
 
@@ -788,6 +804,7 @@ const SkinMarketAdminSection = () => {
           ) : (
             <div className="flex flex-wrap gap-1.5">
               <button type="button" onClick={() => startEdit(it)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>Изменить</button>
+              <SkinPreviewUpload itemId={it.id} />
               <button type="button" onClick={() => setSalesOf(it.id)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>Продажи</button>
               {it.status === 'active' && (
                 <button type="button" onClick={() => void retire(it.id)} className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold" style={{ background: C.l2, color: C.red }}>Снять с продажи</button>
@@ -3024,6 +3041,61 @@ const KutrentMarkPaidForm = ({ orderId, onSent }: { orderId: string; onSent: () 
   );
 };
 
+const KUTRENT_ORDER_STATUS_LABEL: Record<string, string> = { pending: 'Ожидает оплаты', paid: 'Оплачен', cancelled: 'Отменён' };
+
+const KutrentUserDetail = ({ userId, onBack }: { userId: string; onBack: () => void }) => {
+  const [detail, setDetail] = useState<import('@/kutrent/kutrentMarketApi').KutrentMarketUserDetail | null>(null);
+  const [failed, setFailed] = useState('');
+
+  useEffect(() => {
+    void (async () => {
+      setFailed(''); setDetail(null);
+      const { apiAdminKutrentUserDetail } = await import('@/kutrent/kutrentMarketApi');
+      const r = await apiAdminKutrentUserDetail(userId);
+      if (!r.ok || !r.data) { setFailed('Не удалось загрузить карточку'); return; }
+      setDetail(r.data.user);
+    })();
+  }, [userId]);
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={onBack} className="text-[11px] font-bold" style={{ color: C.t3 }}>← К списку пользователей</button>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {!detail ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : (
+        <>
+          <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+            <p className="text-xs font-bold" style={{ color: C.t1 }}>@{detail.username} · {detail.name}</p>
+            <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+              {detail.authenticator} · вход {detail.lastLoginAt ? new Date(detail.lastLoginAt).toLocaleString('ru') : '—'}
+              {' · регистрация '}{new Date(detail.createdAt).toLocaleString('ru')}
+            </p>
+            <p className="mt-0.5 text-[10px] font-mono" style={{ color: C.t3 }}>Sky ID: {detail.skyId}</p>
+            <span className="mt-1 inline-block text-[10px] font-bold" style={{ color: detail.status === 'active' ? C.green : C.red }}>
+              {detail.status === 'active' ? 'Активен' : 'Приостановлен'}
+            </span>
+          </div>
+          <p className="text-[11px] font-bold" style={{ color: C.t2 }}>Заказы ({detail.orders.length})</p>
+          {detail.orders.length === 0 ? (
+            <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Заказов пока нет.</p>
+          ) : detail.orders.map((o) => (
+            <div key={o.id} className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+              <p className="text-[10px]" style={{ color: C.t3 }}>{o.id} · {new Date(o.createdAt).toLocaleString('ru')}</p>
+              <div className="text-right">
+                <p className="text-xs font-bold" style={{ color: C.t1 }}>{o.amount.toLocaleString('ru')} ₽</p>
+                <span className="text-[10px] font-bold" style={{
+                  color: o.status === 'paid' ? C.green : o.status === 'cancelled' ? C.t3 : C.amber,
+                }}>{KUTRENT_ORDER_STATUS_LABEL[o.status] ?? o.status}</span>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+};
+
 const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
   const canFinance = rights?.permissions?.includes('finance') ?? false;
   const [sub, setSub] = useState<'orders' | 'users'>('orders');
@@ -3032,6 +3104,7 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
   const [orders, setOrders] = useState<import('@/kutrent/kutrentMarketApi').KutrentMarketOrder[] | null>(null);
   const [users, setUsers] = useState<import('@/kutrent/kutrentMarketApi').KutrentMarketUser[] | null>(null);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [openUserId, setOpenUserId] = useState<string | null>(null);
   const [failed, setFailed] = useState('');
 
   const loadOrders = useCallback(async () => {
@@ -3053,6 +3126,8 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
   useEffect(() => { if (sub === 'orders') void loadOrders(); else void loadUsers(); }, [sub, loadOrders, loadUsers]);
 
   const ORDER_STATUS_LABEL: Record<string, string> = { pending: 'Ожидает оплаты', paid: 'Оплачен', cancelled: 'Отменён' };
+
+  if (openUserId) return <KutrentUserDetail userId={openUserId} onBack={() => setOpenUserId(null)} />;
 
   return (
     <div className="space-y-2">
@@ -3147,19 +3222,25 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
                   {u.status === 'active' ? 'Активен' : 'Приостановлен'}
                 </span>
               </div>
-              {canFinance && (
-                <button type="button"
-                  onClick={async () => {
-                    const { apiAdminSetKutrentUserStatus } = await import('@/kutrent/kutrentMarketApi');
-                    const next = u.status === 'active' ? 'suspended' : 'active';
-                    const r = await apiAdminSetKutrentUserStatus(u.id, next);
-                    if (r.ok) void loadUsers();
-                  }}
-                  className="mt-2 w-full rounded-xl py-1.5 text-[11px] font-bold"
-                  style={{ background: C.l2, color: u.status === 'active' ? C.red : C.green }}>
-                  {u.status === 'active' ? 'Приостановить' : 'Восстановить'}
+              <div className="mt-2 flex gap-1.5">
+                <button type="button" onClick={() => setOpenUserId(u.id)}
+                  className="flex-1 rounded-xl py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+                  Подробнее
                 </button>
-              )}
+                {canFinance && (
+                  <button type="button"
+                    onClick={async () => {
+                      const { apiAdminSetKutrentUserStatus } = await import('@/kutrent/kutrentMarketApi');
+                      const next = u.status === 'active' ? 'suspended' : 'active';
+                      const r = await apiAdminSetKutrentUserStatus(u.id, next);
+                      if (r.ok) void loadUsers();
+                    }}
+                    className="flex-1 rounded-xl py-1.5 text-[11px] font-bold"
+                    style={{ background: C.l2, color: u.status === 'active' ? C.red : C.green }}>
+                    {u.status === 'active' ? 'Приостановить' : 'Восстановить'}
+                  </button>
+                )}
+              </div>
             </div>
           ))
       )}
@@ -3288,6 +3369,33 @@ const MarketDisputesTab = () => {
   );
 };
 
+const GameCoverUpload = ({ gameId }: { gameId: string }) => {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const pick = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true); setFailed(false); setDone(false);
+    const { apiUploadGameCover } = await import('@/marketplace/marketApi');
+    const r = await apiUploadGameCover(gameId, file);
+    setBusy(false);
+    if (!r.ok) { setFailed(true); return; }
+    setDone(true);
+  };
+
+  return (
+    <label className="flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-bold"
+      style={{ background: C.l2, color: failed ? C.red : C.t3 }}>
+      {busy ? <Loader2 size={11} className="animate-spin" /> : done ? <Check size={11} style={{ color: C.green }} /> : null}
+      Обложка
+      <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => void pick(e)} />
+    </label>
+  );
+};
+
 const MarketGamesTab = () => {
   const [games, setGames] = useState<import('@/marketplace/types').Game[] | null>(null);
   const [failed, setFailed] = useState('');
@@ -3348,11 +3456,14 @@ const MarketGamesTab = () => {
             <p className="text-xs font-bold" style={{ color: C.t1 }}>{g.title}</p>
             <p className="text-[10px]" style={{ color: C.t3 }}>/{g.slug}{g.hidden ? ' · скрыта' : ''}</p>
           </div>
-          <button type="button" onClick={() => void toggleHidden(g)}
-            className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-bold"
-            style={{ background: C.l2, color: g.hidden ? C.green : C.t3 }}>
-            {g.hidden ? 'Показать' : 'Скрыть'}
-          </button>
+          <div className="flex shrink-0 gap-1.5">
+            <GameCoverUpload gameId={g.id} />
+            <button type="button" onClick={() => void toggleHidden(g)}
+              className="rounded-xl px-3 py-1.5 text-[11px] font-bold"
+              style={{ background: C.l2, color: g.hidden ? C.green : C.t3 }}>
+              {g.hidden ? 'Показать' : 'Скрыть'}
+            </button>
+          </div>
         </div>
       ))}
     </div>

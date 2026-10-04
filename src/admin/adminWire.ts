@@ -48,6 +48,7 @@ export const ROLE_LABEL: Record<string, string> = {
   content_admin: 'Содержимое',
   market_admin: 'Маркет и склады',
   tickets_admin: 'Билеты',
+  bots_admin: 'Боты',
   finance_admin: 'Начисления',
   campaigns_admin: 'Мероприятия',
   gifts_admin: 'Подарки',

@@ -281,6 +281,12 @@ export const apiAdminUpdateSkinItem = (itemId: string, patchBody: {
 
 export const apiAdminRetireSkinItem = (itemId: string) => post<{ ok: true }>(`/api/pets/admin/market/items/${enc(itemId)}/retire`);
 
+/** Превью-картинка скина — отдельно от остальных полей: шлётся не JSON,
+ *  а байтами файла (см. server/routes/pets.mjs). */
+export const apiAdminUploadSkinPreview = (itemId: string, file: Blob) =>
+  apiCall<{ ok: true; mediaId: string } | { error: string }>(`/api/pets/admin/market/items/${enc(itemId)}/preview`,
+    { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } });
+
 export interface SkinSaleOwner { username: string; name: string; instanceNumber: number | null; acquiredVia: string; acquiredAt: string }
 export const apiAdminSkinItemSales = (itemId: string) => apiCall<{ owners: SkinSaleOwner[] }>(`/api/pets/admin/market/items/${enc(itemId)}/sales`);
 

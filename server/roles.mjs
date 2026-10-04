@@ -47,6 +47,7 @@ export const ROLES = {
   content_admin:   ['content'],
   market_admin:    ['market', 'logistics', 'violations'],
   tickets_admin:   ['tickets'],
+  bots_admin:      ['bots'],
   finance_admin:   ['finance'],
   // 'support' — вместе с решением по заявке на награду (одобрить,
   // отклонить) в тот же тикет уходит объяснение; без права 'support'
@@ -73,6 +74,7 @@ export const ROLE_LABEL = {
   content_admin: 'Содержимое',
   market_admin: 'Маркет и склады',
   tickets_admin: 'Билеты',
+  bots_admin: 'Боты',
   finance_admin: 'Начисления',
   campaigns_admin: 'Мероприятия',
   gifts_admin: 'Подарки',

@@ -368,6 +368,24 @@ export const adminUpdateItem = async (actorId, itemId, patch) => {
   return { ok: true, locked };
 };
 
+/**
+ * Превью-картинка предмета — отдельно от остальных полей, потому что
+ * приходит не JSON-телом, а байтами файла (routes/pets.mjs). Старый
+ * файл стираем сразу: файлы, на которые никто больше не ссылается,
+ * не должны накапливаться на диске.
+ */
+export const adminSetItemPreview = async (actorId, itemId, mediaId, mime) => {
+  if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
+  const { rows } = await query('SELECT preview_media_id FROM skin_items WHERE id = $1', [itemId]);
+  if (!rows[0]) return { error: 'not_found' };
+  const old = rows[0].preview_media_id;
+  await query(
+    `UPDATE skin_items SET preview_media_id = $2, preview_mime = $3, updated_at = now() WHERE id = $1`,
+    [itemId, mediaId, mime]);
+  if (old && old !== mediaId) await removeMedia(old);
+  return { ok: true };
+};
+
 /** «Удаление» — это retire: у уже купивших предмет остаётся, просто
  *  пропадает из витрины и больше не продаётся. */
 export const adminRetireItem = async (actorId, itemId) => {

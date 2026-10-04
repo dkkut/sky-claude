@@ -4,6 +4,7 @@
  * `can(me, 'content')` прямо здесь, по образцу routes/campaigns.mjs —
  * своего отдельного админ-роутера у фичи нет.
  */
+import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { can } from './../admin.mjs';
@@ -21,12 +22,99 @@ import {
   listItems, getItem, purchaseItem, getMySkins, equipItem, unequipSlot, getEquipment,
   createListing, cancelListing, mediaMimeOf,
   adminListItems, adminCreateItem, adminUpdateItem, adminRetireItem, adminItemSales,
+  adminSetItemPreview,
 } from './../skinMarket.mjs';
-import { openStream, sizeOf } from './../skinstore.mjs';
+import { openStream, sizeOf, newMediaId, saveStream } from './../skinstore.mjs';
 
 const READ_PER_MIN = 120;
 const WRITE_PER_MIN = 40;
 const STREAM_PER_MIN = 300;
+
+/* ─── Загрузка превью скина ────────────────────────────────────────
+   Тот же приём, что и в routes/market.mjs: тип картинки определяется
+   по первым байтам файла, а не по присланным Content-Type/имени.    */
+
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+
+const IMAGE_SIGNATURES = [
+  { mime: 'image/jpeg', test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  { mime: 'image/png',  test: (b) => b.subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+  { mime: 'image/webp', test: (b) => b.subarray(0, 4).toString('latin1') === 'RIFF'
+      && b.subarray(8, 12).toString('latin1') === 'WEBP' },
+];
+
+const sniff = (buf) => {
+  if (!buf || buf.length < 16) return null;
+  for (const s of IMAGE_SIGNATURES) {
+    try { if (s.test(buf)) return s.mime; } catch { /* короткий буфер */ }
+  }
+  return null;
+};
+
+/** Первые байты потока — чтобы опознать тип до записи на диск. */
+const peek = (req, bytes) => new Promise((resolve) => {
+  const chunks = [];
+  let size = 0;
+  const onData = (c) => {
+    chunks.push(c);
+    size += c.length;
+    if (size >= bytes) {
+      req.pause();
+      req.off('data', onData);
+      resolve(Buffer.concat(chunks));
+    }
+  };
+  const onEnd = () => { req.off('data', onData); resolve(Buffer.concat(chunks)); };
+  req.on('data', onData);
+  req.once('end', onEnd);
+});
+
+/** Поток, у которого впереди уже прочитанная голова. */
+const withHead = (head, rest) => Readable.from((async function* () {
+  yield head;
+  for await (const chunk of rest) yield chunk;
+})());
+
+const DRAIN_LIMIT = MAX_IMAGE_BYTES + 1024 * 1024;
+const DRAIN_MS = 10_000;
+
+/**
+ * Отказ, когда тело ещё идёт.
+ *
+ * Клиент в этот момент пишет файл и ответ не читает. Оборвать
+ * соединение сразу — значит уронить его запись с EPIPE, и вместо
+ * «файл слишком большой» человек увидит «соединение разорвано».
+ * Поэтому остаток дочитываем и выбрасываем — но не сколько угодно.
+ */
+const rejectBody = (req, res, code, body) => {
+  json(res, code, body);
+
+  let drained = 0;
+  let done = false;
+  let timer = null;
+
+  const finish = (hard) => {
+    if (done) return;
+    done = true;
+    if (timer) clearTimeout(timer);
+    req.off('data', onData);
+    if (hard === true) req.destroy();
+  };
+
+  const onData = (chunk) => {
+    drained += chunk.length;
+    if (drained > DRAIN_LIMIT) finish(true);
+  };
+
+  timer = setTimeout(() => finish(true), DRAIN_MS);
+  timer.unref();
+  req.on('data', onData);
+  req.once('end', () => finish(false));
+  req.once('error', () => finish(false));
+  req.once('close', () => finish(false));
+  return true;
+};
 
 const PET_ID_RE = /^pet-[0-9a-f-]{36}$/;
 const ITEM_ID_RE = /^ski-[0-9a-f-]{36}$/;
@@ -158,6 +246,25 @@ export const petsRoutes = async (req, res, url) => {
       const r = await adminItemSales(me, itemId);
       if (r.error) return json(res, errCode(r.error), r);
       return json(res, 200, r);
+    }
+    if (req.method === 'POST' && tail === '/preview') {
+      if (!rateLimit(`pets:admin:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const declared = Number(req.headers['content-length'] ?? 0);
+      if (declared > MAX_IMAGE_BYTES) {
+        return rejectBody(req, res, 413, { error: 'too_large', limit: MAX_IMAGE_BYTES });
+      }
+      const head = await peek(req, 32);
+      const mime = sniff(head);
+      if (!mime) return rejectBody(req, res, 415, { error: 'unsupported_image' });
+
+      const newId = newMediaId();
+      const set = await adminSetItemPreview(me, itemId, newId, mime);
+      if (set.error) return rejectBody(req, res, errCode(set.error), set);
+
+      req.resume();
+      const saved = await saveStream(newId, withHead(head, req), MAX_IMAGE_BYTES);
+      if (saved.error) return json(res, saved.error === 'too_large' ? 413 : 500, { error: saved.error });
+      return json(res, 200, { ok: true, mediaId: newId, bytes: saved.bytes });
     }
   }
 
