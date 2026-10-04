@@ -9,11 +9,14 @@
  * Путь никогда не собирается из присланного клиентом: имя файла — это
  * идентификатор, который выдал сервер, и он сверяется с образцом до
  * любого обращения к диску.
+ *
+ * На диске файлы лежат зашифрованными (server/mediacrypto.mjs).
  */
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rm, stat, readdir } from 'node:fs/promises';
+import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
+import {
+  encryptStreamToFile, encryptBytesToFile, openDecryptedRangeStream, plaintextSizeOf,
+} from './mediacrypto.mjs';
 
 const ROOT = process.env.BOOKS_DIR || '/data/books';
 
@@ -42,46 +45,37 @@ export const saveStream = async (id, source, limitBytes) => {
     console.error('[books] хранилище недоступно:', err.code ?? err.message);
     return { error: 'storage_unavailable' };
   }
-  let written = 0;
-  let tooLarge = false;
-  source.on('data', (chunk) => {
-    written += chunk.length;
-    if (written > limitBytes && !tooLarge) {
-      tooLarge = true;
-      source.destroy(new Error('too_large'));
-    }
-  });
+  let result;
   try {
-    await pipeline(source, createWriteStream(pathFor(safe)));
+    result = await encryptStreamToFile(source, pathFor(safe), limitBytes);
   } catch {
     await remove(safe).catch(() => {});
-    if (tooLarge) return { error: 'file_too_large' };
     return { error: 'upload_interrupted' };
   }
-  if (written === 0) {
+  if (result.error) {
+    await remove(safe).catch(() => {});
+    return result;
+  }
+  if (result.bytes === 0) {
     await remove(safe).catch(() => {});
     return { error: 'empty_file' };
   }
-  return { bytes: written };
+  return result;
 };
 
 /** Записать уже прочитанные байты. Только для обложек: они маленькие. */
 export const saveBytes = async (id, buf) => {
   const safe = checkId(id);
   await mkdir(dirFor(safe), { recursive: true });
-  await pipeline((async function* () { yield buf; })(), createWriteStream(pathFor(safe)));
-  return { bytes: buf.length };
+  return encryptBytesToFile(buf, pathFor(safe));
 };
 
-export const sizeOf = async (id) => {
-  try { return (await stat(pathFor(checkId(id)))).size; } catch { return null; }
-};
+/** Настоящий (расшифрованный) размер — не размер файла на диске. */
+export const sizeOf = async (id) => plaintextSizeOf(pathFor(checkId(id)));
 
 export const openStream = (id, range) => {
   const safe = checkId(id);
-  return range
-    ? createReadStream(pathFor(safe), { start: range.start, end: range.end })
-    : createReadStream(pathFor(safe));
+  return openDecryptedRangeStream(pathFor(safe), range ?? null);
 };
 
 export const remove = async (id) => {

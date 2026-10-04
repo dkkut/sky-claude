@@ -260,3 +260,12 @@ export const encryptExistingFile = async (srcPath, destPath, maxBytes) =>
 export const decryptToFile = async (encPath, outPath) => {
   await pipeline(openDecryptedRangeStream(encPath, null), createWriteStream(outPath));
 };
+
+/** Расшифровать файл целиком в память — только там, где вызывающему и
+ *  так нужен весь файл сразу (например, передать документ модели на
+ *  разбор), не для обычной раздачи. */
+export const decryptToBuffer = async (path) => {
+  const chunks = [];
+  for await (const chunk of openDecryptedRangeStream(path, null)) chunks.push(chunk);
+  return Buffer.concat(chunks);
+};

@@ -16,11 +16,15 @@
  * недолго. Его разбирают и сразу удаляют — держать чужой паспорт,
  * присланный «посмотри, что тут написано», дольше необходимого не
  * нужно никому.
+ *
+ * На диске файлы лежат зашифрованными (server/mediacrypto.mjs) — живут
+ * недолго, но пока лежат, тоже видны только как шифротекст.
  */
-import { createWriteStream, createReadStream } from 'node:fs';
-import { mkdir, rm, stat, readdir, readFile } from 'node:fs/promises';
+import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
+import {
+  encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf, decryptToBuffer,
+} from './mediacrypto.mjs';
 
 const ROOT = process.env.AI_FILES_DIR || '/data/aifiles';
 
@@ -51,41 +55,28 @@ export const saveStream = async (id, source, limitBytes) => {
   }
 
   const target = pathFor(safe);
-  let written = 0;
-  let tooBig = false;
-
-  const counter = async function* (stream) {
-    for await (const chunk of stream) {
-      written += chunk.length;
-      if (written > limitBytes) { tooBig = true; throw new Error('too_large'); }
-      yield chunk;
-    }
-  };
-
+  let result;
   try {
-    await pipeline(source, counter, createWriteStream(target));
+    result = await encryptStreamToFile(source, target, limitBytes);
   } catch (err) {
     /* Недописанный файл убираем: иначе на диске копились бы огрызки
        от каждой неудачной попытки. */
     await rm(target, { force: true }).catch(() => {});
-    if (tooBig) return { error: 'too_large' };
     return { error: err?.message === 'too_large' ? 'too_large' : 'write_failed' };
   }
-  if (written === 0) {
+  if (result.error) {
+    await rm(target, { force: true }).catch(() => {});
+    return { error: 'too_large' };
+  }
+  if (result.bytes === 0) {
     await rm(target, { force: true }).catch(() => {});
     return { error: 'empty_file' };
   }
-  return { bytes: written };
+  return result;
 };
 
-export const sizeOf = async (id) => {
-  try {
-    const info = await stat(pathFor(checkId(id)));
-    return info.size;
-  } catch {
-    return null;
-  }
-};
+/** Настоящий (расшифрованный) размер — не размер файла на диске. */
+export const sizeOf = async (id) => plaintextSizeOf(pathFor(checkId(id)));
 
 /**
  * Прочитать файл целиком.
@@ -101,13 +92,13 @@ export const readWhole = async (id, maxBytes) => {
   if (size === null) return { error: 'not_found' };
   if (size > maxBytes) return { error: 'too_large' };
   try {
-    return { data: await readFile(pathFor(safe)) };
+    return { data: await decryptToBuffer(pathFor(safe)) };
   } catch {
     return { error: 'not_found' };
   }
 };
 
-export const openStream = (id) => createReadStream(pathFor(checkId(id)));
+export const openStream = (id) => openDecryptedRangeStream(pathFor(checkId(id)), null);
 
 export const remove = async (id) => {
   try { await rm(pathFor(checkId(id)), { force: true }); } catch { /* уже нет */ }

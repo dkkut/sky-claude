@@ -10,10 +10,9 @@
  * Присланное имя файла не используется нигде — ни в пути, ни в заголовках
  * ответа.
  */
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rm, stat, readdir } from 'node:fs/promises';
+import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
+import { encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf } from './mediacrypto.mjs';
 
 const ROOT = process.env.MARKET_DIR || '/data/market';
 
@@ -72,39 +71,26 @@ export const saveStream = async (id, source, limitBytes) => {
   }
 
   const target = pathFor(safe);
-  let written = 0;
-  let tooBig = false;
-
-  const counter = async function* (stream) {
-    for await (const chunk of stream) {
-      written += chunk.length;
-      if (written > limitBytes) { tooBig = true; throw new Error('too_large'); }
-      yield chunk;
-    }
-  };
-
+  let result;
   try {
-    await pipeline(source, counter, createWriteStream(target));
+    result = await encryptStreamToFile(source, target, limitBytes);
   } catch (err) {
     /* Недописанный файл убираем: иначе на диске копились бы огрызки от
        каждой неудачной попытки. */
     await rm(target, { force: true }).catch(() => {});
-    if (tooBig) return { error: 'too_large' };
     return { error: err?.message === 'too_large' ? 'too_large' : 'write_failed' };
   }
-  return { bytes: written };
-};
-
-export const sizeOf = async (id) => {
-  try {
-    const info = await stat(pathFor(checkId(id)));
-    return info.size;
-  } catch {
-    return null;
+  if (result.error) {
+    await rm(target, { force: true }).catch(() => {});
+    return { error: 'too_large' };
   }
+  return result;
 };
 
-export const openStream = (id) => createReadStream(pathFor(checkId(id)));
+/** Настоящий (расшифрованный) размер — не размер файла на диске. */
+export const sizeOf = async (id) => plaintextSizeOf(pathFor(checkId(id)));
+
+export const openStream = (id) => openDecryptedRangeStream(pathFor(checkId(id)), null);
 
 export const remove = async (id) => {
   try { await rm(pathFor(checkId(id)), { force: true }); } catch { /* уже нет */ }

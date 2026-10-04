@@ -13,11 +13,16 @@
  * идентификатор, который выдал сервер, и он сверяется с образцом до
  * любого обращения к диску: строка вроде ../../etc/passwd образцу не
  * соответствует и до файловой системы не доходит.
+ *
+ * На диске файлы лежат зашифрованными (server/mediacrypto.mjs,
+ * AES-256-GCM, конвертная схема, посегментно — Range работает без
+ * расшифровки всего файла).
  */
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rm, stat, readdir } from 'node:fs/promises';
+import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
+import {
+  encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf,
+} from './mediacrypto.mjs';
 
 const ROOT = process.env.VIDEO_DIR || '/data/video';
 
@@ -47,40 +52,27 @@ export const videoRoot = () => ROOT;
 export const saveStream = async (id, source, limitBytes) => {
   const safe = checkId(id);
   await mkdir(dirFor(safe), { recursive: true });
-  let written = 0;
-  let tooBig = false;
-  const out = createWriteStream(pathFor(safe));
-  const guard = async function* (src) {
-    for await (const chunk of src) {
-      written += chunk.length;
-      if (written > limitBytes) { tooBig = true; break; }
-      yield chunk;
-    }
-  };
+  let result;
   try {
-    await pipeline(source, guard, out);
+    result = await encryptStreamToFile(source, pathFor(safe), limitBytes);
   } catch (err) {
     await rm(pathFor(safe), { force: true });
     return { error: 'write_failed', detail: err.message };
   }
-  if (tooBig) {
+  if (result.error) {
     await rm(pathFor(safe), { force: true });
     return { error: 'too_large' };
   }
-  return { bytes: written };
+  return result;
 };
 
-export const sizeOf = async (id) => {
-  try { return (await stat(pathFor(checkId(id)))).size; }
-  catch { return null; }
-};
+/** Настоящий (расшифрованный) размер — не размер файла на диске. */
+export const sizeOf = async (id) => plaintextSizeOf(pathFor(checkId(id)));
 
 /** Поток на чтение. `range` — уже проверенные границы включительно. */
 export const openStream = (id, range) => {
   const safe = checkId(id);
-  return range
-    ? createReadStream(pathFor(safe), { start: range.start, end: range.end })
-    : createReadStream(pathFor(safe));
+  return openDecryptedRangeStream(pathFor(safe), range ?? null);
 };
 
 export const remove = async (id) => {

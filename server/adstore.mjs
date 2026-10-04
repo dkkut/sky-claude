@@ -4,11 +4,10 @@
  * выдаёт сервер; путь никогда не собирается из присланного клиентом
  * имени файла (защита от path traversal).
  */
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rm, stat, readdir } from 'node:fs/promises';
+import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
 import crypto from 'node:crypto';
+import { encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf } from './mediacrypto.mjs';
 
 const ROOT = process.env.ADS_DIR || '/data/ads';
 
@@ -34,44 +33,30 @@ export const saveStream = async (id, source, limitBytes) => {
   }
 
   const target = pathFor(safe);
-  let written = 0;
-  let tooBig = false;
-
-  const counter = async function* (stream) {
-    for await (const chunk of stream) {
-      written += chunk.length;
-      if (written > limitBytes) { tooBig = true; throw new Error('too_large'); }
-      yield chunk;
-    }
-  };
-
+  let result;
   try {
-    await pipeline(source, counter, createWriteStream(target));
-  } catch (err) {
+    result = await encryptStreamToFile(source, target, limitBytes);
+  } catch {
     await rm(target, { force: true }).catch(() => {});
-    if (tooBig) return { error: 'too_large' };
-    return { error: err?.message === 'too_large' ? 'too_large' : 'write_failed' };
+    return { error: 'write_failed' };
   }
-  if (written === 0) {
+  if (result.error) {
+    await rm(target, { force: true }).catch(() => {});
+    return { error: 'too_large' };
+  }
+  if (result.bytes === 0) {
     await rm(target, { force: true }).catch(() => {});
     return { error: 'empty_file' };
   }
-  return { bytes: written };
+  return result;
 };
 
-export const sizeOf = async (id) => {
-  try {
-    return (await stat(pathFor(checkId(id)))).size;
-  } catch {
-    return null;
-  }
-};
+/** Настоящий (расшифрованный) размер — не размер файла на диске. */
+export const sizeOf = async (id) => plaintextSizeOf(pathFor(checkId(id)));
 
 export const openStream = (id, range) => {
   const safe = checkId(id);
-  return range
-    ? createReadStream(pathFor(safe), { start: range.start, end: range.end })
-    : createReadStream(pathFor(safe));
+  return openDecryptedRangeStream(pathFor(safe), range ?? null);
 };
 
 export const remove = async (id) => {
