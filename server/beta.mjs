@@ -29,7 +29,7 @@ const liveHashes = () => new Set(config.betaKeys.map((raw) => hashKey(raw.split(
 export const betaHashLive = (hash) => Boolean(hash) && liveHashes().has(hash);
 
 /** Включена ли калитка. Пустой список ключей означает «открыто всем». */
-export const betaEnabled = () => config.betaKeys.length > 0;
+export const betaEnabled = () => false;
 
 /**
  * Приводит таблицу в соответствие со списком из .env: недостающие
