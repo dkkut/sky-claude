@@ -1188,6 +1188,17 @@ export const ProfileModule = () => {
                 {([
                   ['showPhone',        'Телефон'],
                   ['showBirthDate',    'Дата рождения'],
+                  ['showBio',          'О себе'],
+                  ['showBanner',       'Баннер'],
+                  ['showNameCustomization', 'Оформление ника'],
+                  ['showCustomStatus', 'Статус'],
+                  ['showLinks',        'Ссылки'],
+                  ['showCountry',      'Страну'],
+                  ['showTimezone',     'Часовой пояс'],
+                  // Общий выключатель: гасит игры/музыку/фильмы/истории разом,
+                  // даже если каждый из них включён отдельно ниже — см.
+                  // showActivity в src/profile/viewer/useProfileData.ts.
+                  ['showActivity',     'Активность (игры, музыка, фильмы, истории)'],
                   ['showGames',        'Игры'],
                   ['showMusic',        'Музыку'],
                   ['showMovies',       'Фильмы'],
