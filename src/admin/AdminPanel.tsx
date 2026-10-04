@@ -14,7 +14,7 @@
  * Скрытая кнопка защитой не является, поэтому спрятанное здесь спрятано
  * ради порядка на экране, а не ради безопасности.
  */
-import { useCallback, useEffect, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import {
   Shield, ShieldAlert, ShieldCheck, Loader2, Check, X, KeyRound,
   Wallet, Crown, ScrollText, AlertTriangle, RefreshCw, Users, Ban, Trophy,
@@ -816,6 +816,128 @@ const SkinMarketAdminSection = () => {
               )}
             </div>
           )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const CUSTOMIZATION_CATEGORY_LABEL: Record<string, string> = {
+  frame: 'Рамки', banner: 'Баннеры чата', profileTheme: 'Темы профиля', chatListStyle: 'Список чатов',
+};
+
+const CustomizationAdminSection = () => {
+  const [items, setItems] = useState<import('@/customization/customizationApi').AdminCatalogItem[] | null>(null);
+  const [failed, setFailed] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [priceDraft, setPriceDraft] = useState('');
+  const [grantProfile, setGrantProfile] = useState('');
+  const [grantItem, setGrantItem] = useState('');
+  const [grantMsg, setGrantMsg] = useState('');
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminCustomizationCatalog } = await import('@/customization/customizationApi');
+    const list = await apiAdminCustomizationCatalog();
+    if (!list.length) { setFailed('Не удалось загрузить каталог'); return; }
+    setItems(list);
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const savePrice = async (id: string) => {
+    const { apiAdminSetCustomizationPrice } = await import('@/customization/customizationApi');
+    const price = Math.max(1, Math.trunc(Number(priceDraft)));
+    const r = await apiAdminSetCustomizationPrice(id, price);
+    if (!r.ok) { setFailed(errorText(r.error)); return; }
+    setEditing(null);
+    void load();
+  };
+
+  const toggleActive = async (id: string, active: boolean) => {
+    const { apiAdminSetCustomizationActive } = await import('@/customization/customizationApi');
+    const r = await apiAdminSetCustomizationActive(id, active);
+    if (!r.ok) { setFailed(errorText(r.error)); return; }
+    void load();
+  };
+
+  const doGrant = async () => {
+    setGrantMsg('');
+    const { apiAdminGrantCustomization } = await import('@/customization/customizationApi');
+    const r = await apiAdminGrantCustomization(grantProfile.trim(), grantItem.trim());
+    setGrantMsg(r.ok ? 'Выдано' : errorText(r.error));
+    if (r.ok) { setGrantProfile(''); setGrantItem(''); }
+  };
+
+  const grouped = useMemo(() => {
+    const byCat = new Map<string, import('@/customization/customizationApi').AdminCatalogItem[]>();
+    for (const it of items ?? []) {
+      const arr = byCat.get(it.category) ?? [];
+      arr.push(it);
+      byCat.set(it.category, arr);
+    }
+    return byCat;
+  }, [items]);
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl p-3 space-y-2" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <p className="text-[10px] font-bold" style={{ color: C.t3 }}>ВЫДАТЬ ПРЕДМЕТ БЕЗ ОПЛАТЫ</p>
+        <div className="flex gap-2">
+          <input value={grantProfile} onChange={(e) => setGrantProfile(e.target.value)} placeholder="id профиля (acc-…)"
+            className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+          <input value={grantItem} onChange={(e) => setGrantItem(e.target.value)} placeholder="id предмета"
+            className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        </div>
+        <button type="button" onClick={() => void doGrant()} disabled={!grantProfile.trim() || !grantItem.trim()}
+          className="w-full rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+          Выдать
+        </button>
+        {grantMsg && <p className="text-[11px]" style={{ color: grantMsg === 'Выдано' ? C.green : C.red }}>{grantMsg}</p>}
+      </div>
+
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {items === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : [...grouped.entries()].map(([cat, list]) => (
+        <div key={cat}>
+          <p className="mb-1.5 text-[10px] font-bold" style={{ color: C.t3 }}>
+            {CUSTOMIZATION_CATEGORY_LABEL[cat] ?? cat}
+          </p>
+          <div className="space-y-1.5">
+            {list.map((it) => (
+              <div key={it.id} className="rounded-2xl p-2.5" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>{it.id}</p>
+                    <p className="text-[10px]" style={{ color: C.t3 }}>
+                      {it.owners} куплено{it.locked ? ' · цена зафиксирована' : ''}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => void toggleActive(it.id, !it.active)}
+                    className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={{ background: it.active ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', color: it.active ? C.green : C.red }}>
+                    {it.active ? 'в продаже' : 'снят'}
+                  </button>
+                </div>
+                {editing === it.id ? (
+                  <div className="mt-2 flex gap-2">
+                    <input value={priceDraft} onChange={(e) => setPriceDraft(e.target.value)} type="number"
+                      className="flex-1 rounded-xl px-3 py-1.5 text-xs outline-none" style={inputStyle} />
+                    <button type="button" onClick={() => void savePrice(it.id)}
+                      className="rounded-xl px-3 py-1.5 text-[11px] font-bold" style={{ background: C.acc, color: '#fff' }}>OK</button>
+                    <button type="button" onClick={() => setEditing(null)}
+                      className="rounded-xl px-3 py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.t3 }}>×</button>
+                  </div>
+                ) : (
+                  <button type="button" disabled={it.locked}
+                    onClick={() => { setEditing(it.id); setPriceDraft(String(it.pricePoints)); }}
+                    className="mt-1.5 text-[11px] font-semibold disabled:opacity-50" style={{ color: C.acc }}>
+                    {it.pricePoints.toLocaleString('ru')} баллов{!it.locked ? ' · изменить' : ''}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       ))}
     </div>
@@ -4874,7 +4996,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'ads' | 'notify' | 'log' | 'events' | 'violations';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'notify' | 'log' | 'events' | 'violations';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5035,6 +5157,7 @@ export const AdminPanel = () => {
     { key: 'violations', label: 'Нарушения и штрафы', show: has('violations') },
     { key: 'kutrent', label: 'KutRent Market', show: has('kutrent_market') },
     { key: 'pets', label: 'Pets и Skin Market', show: has('content') },
+    { key: 'customization', label: 'Кастомизация', show: has('content') },
     { key: 'bloom', label: 'Bloom', show: has('content') },
     { key: 'ads', label: 'Реклама', show: has('content') },
     { key: 'notify', label: 'Рассылки', show: has('notifications') },
@@ -5248,6 +5371,7 @@ export const AdminPanel = () => {
       {tab === 'violations' && <ViolationsAdminSection rights={rights} />}
       {tab === 'kutrent' && <KutrentMarketAdminSection rights={rights} />}
       {tab === 'pets' && <PetsAdminSection />}
+      {tab === 'customization' && <CustomizationAdminSection />}
       {tab === 'bloom' && <BloomAdminSection />}
       {tab === 'ads' && <AdsAdminSection />}
       {tab === 'notify' && <NotifyAdminSection />}

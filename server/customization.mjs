@@ -18,6 +18,7 @@
 import { query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { wallet } from './wallet.mjs';
+import { can } from './admin.mjs';
 
 export const CATEGORIES = ['frame', 'banner', 'profileTheme', 'chatListStyle'];
 export const ITEM_ID_RE = /^[a-z0-9-]{3,60}$/;
@@ -156,16 +157,64 @@ export const purchaseItem = async (profileId, itemId, { idempotencyKey } = {}) =
   return record('ok', { ok: true, itemId, category: item.category, pricePoints: item.price_points });
 };
 
-/** Выдача администратором — без списания, для будущей раздачи/грантов. */
-export const adminGrantItem = async (profileId, itemId) => {
+/* ─── Админка ──────────────────────────────────────────────────────────
+   Та же роль 'content', что у Sky Skin Market (server/skinMarket.mjs) —
+   кастомизация профиля такой же витринный контент, как скины питомцев,
+   и управляется тем же кругом администраторов, тем же экраном. Цену
+   нельзя менять, если предмет уже у кого-то куплен — по той же причине,
+   что и в skinMarket.mjs::adminUpdateItem: задним числом менять условия
+   уже совершённой сделки нельзя в принципе, не вопрос дисциплины. */
+
+export const adminListCatalog = async (actorId) => {
+  if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
+  const { rows } = await query(
+    `SELECT c.id, c.category, c.price_points, c.active,
+            EXISTS(SELECT 1 FROM customization_inventory i WHERE i.item_id = c.id) AS locked,
+            (SELECT COUNT(*)::int FROM customization_inventory i WHERE i.item_id = c.id) AS owners
+       FROM customization_catalog c ORDER BY c.category, c.price_points`,
+  );
+  return {
+    items: rows.map((r) => ({
+      id: r.id, category: r.category, pricePoints: Number(r.price_points),
+      active: r.active, locked: r.locked, owners: r.owners,
+    })),
+  };
+};
+
+export const adminSetPrice = async (actorId, itemId, pricePoints) => {
+  if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
+  const price = Math.trunc(Number(pricePoints));
+  if (!Number.isFinite(price) || price <= 0) return { error: 'bad_price' };
+
+  const { rowCount: owned } = await query(
+    'SELECT 1 FROM customization_inventory WHERE item_id = $1 LIMIT 1', [itemId]);
+  if (owned) return { error: 'already_sold' };
+
+  const { rowCount } = await query(
+    'UPDATE customization_catalog SET price_points = $2 WHERE id = $1', [itemId, price]);
+  if (!rowCount) return { error: 'not_found' };
+  return { ok: true };
+};
+
+export const adminSetActive = async (actorId, itemId, active) => {
+  if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
+  const { rowCount } = await query(
+    'UPDATE customization_catalog SET active = $2 WHERE id = $1', [itemId, Boolean(active)]);
+  if (!rowCount) return { error: 'not_found' };
+  return { ok: true };
+};
+
+/** Выдача администратором — без списания баллов. */
+export const adminGrantItem = async (actorId, targetProfileId, itemId) => {
+  if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
   if (!ITEM_ID_RE.test(String(itemId ?? ''))) return { error: 'bad_item' };
   const { rows: itemRows } = await query('SELECT category FROM customization_catalog WHERE id = $1', [itemId]);
   if (!itemRows[0]) return { error: 'not_found' };
-  if (await ownsItem(profileId, itemId)) return { error: 'already_owned' };
+  if (await ownsItem(targetProfileId, itemId)) return { error: 'already_owned' };
 
   await query(
     `INSERT INTO customization_inventory (id, profile_id, item_id, acquired_via) VALUES ($1,$2,$3,'admin_grant')`,
-    [`cinv-${generateId()}`, profileId, itemId],
+    [`cinv-${generateId()}`, targetProfileId, itemId],
   );
   return { ok: true };
 };
