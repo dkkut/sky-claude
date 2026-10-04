@@ -22,7 +22,7 @@ const FEATURES = [
 const PLANS = [
   { id: 'month', label: 'Месяц', price: '299₽', period: '/мес', days: 30, popular: false },
   { id: 'year', label: 'Год', price: '1990₽', period: '/год', sub: 'Экономия 598₽', days: 365, popular: true },
-  { id: 'forever', label: 'Навсегда', price: '4990₽', period: '', sub: 'Разовая оплата', days: 36500, popular: false },
+  { id: 'forever', label: '2 года', price: '4990₽', period: '', sub: 'Разовая оплата', days: 730, popular: false },
 ];
 
 const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
