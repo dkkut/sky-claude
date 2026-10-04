@@ -356,13 +356,6 @@ export const skyIdRoutes = async (req, res, url) => {
     const s = await requireProfile(req, res); if (!s) return true;
     const body = await parseBody(req);
 
-    // Начисление создаёт ценность, поэтому закрыто тем же флагом, что и
-    // пополнение кошелька: открывать его можно только вместе с реальной
-    // оплатой.
-    if (config.paymentsMode !== 'demo') {
-      return json(res, 501, { error: 'payments_not_configured' });
-    }
-
     // Срок и цена — из таблицы сервера. Если бы цену присылал браузер,
     // подписку можно было бы купить за рубль, поправив запрос.
     const days = Number(body.days);
