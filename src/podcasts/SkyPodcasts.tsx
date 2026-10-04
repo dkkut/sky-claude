@@ -672,7 +672,7 @@ export const SkyPodcasts = () => {
         <h2 style={{ color: C.t1, fontSize: '20px', fontWeight: 'bold', marginBottom: 8 }}>Sky Podcasts  -  только для Prime</h2>
         <p style={{ color: C.t3, fontSize: '14px', marginBottom: 24, textAlign: 'center', maxWidth: 280 }}>Мир подкастов доступен с подпиской Sky Prime.</p>
         <motion.button whileTap={{ scale: 0.95 }} type="button"
-          onClick={() => purchasePrime('standard')}
+          onClick={() => purchasePrime('standard', 365)}
           className="px-6 py-2 rounded-xl font-bold text-white"
           style={{ background: C.purple }}>Активировать Prime</motion.button>
       </div>

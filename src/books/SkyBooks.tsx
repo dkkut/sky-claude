@@ -171,8 +171,9 @@ const BookDetail = ({ book, onBack, onShelfChanged }: {
 
 /* === MAIN SkyBooks ======================================= */
 export const SkyBooks = () => {
-  const isPrime = useAuthStore(state => state.account?.isPrime ?? false);
-  const { purchasePrime } = useAuthStore();
+  const { accounts, currentUserId, purchasePrime } = useAuthStore();
+  const me = accounts.find((a) => a.id === currentUserId);
+  const isPrime = me?.isPrime ?? false;
 
   if (!isPrime) {
     return (
@@ -181,7 +182,7 @@ export const SkyBooks = () => {
         <h2 style={{ color: B.t1, fontSize: '20px', fontWeight: 'bold', marginBottom: 8 }}>Sky Books  -  только для Prime</h2>
         <p style={{ color: B.t3, fontSize: '14px', marginBottom: 24, textAlign: 'center', maxWidth: 280 }}>Каталог книг и аудиокниг входит в подписку Sky Prime.</p>
         <motion.button whileTap={{ scale: 0.95 }} type="button"
-          onClick={() => purchasePrime('standard')}
+          onClick={() => purchasePrime('standard', 365)}
           className="px-6 py-2 rounded-xl font-bold text-white"
           style={{ background: B.accent }}>Активировать Prime</motion.button>
       </div>
