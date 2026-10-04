@@ -668,7 +668,6 @@ export const SkyPodcasts = () => {
   useEffect(() => {
     if (!isPrime) purchasePrime('standard', 730);
   }, [isPrime, purchasePrime]);
-  }
 
   const [tab, setTab] = useState<Tab>('home');
   const [openShow, setOpenShow] = useState<string | null>(null);
