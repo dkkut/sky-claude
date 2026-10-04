@@ -3470,6 +3470,596 @@ const MarketGamesTab = () => {
   );
 };
 
+/* ─── Нарушения и штрафы (право 'violations') ─────────────────────────
+ *
+ * Аннулирование нарушения/штрафа и одобрение апелляции целиком или
+ * частично прощают уже назначенное наказание — это заявки во вкладку
+ * «Заявки» (PendingList выше), не прямые действия: решает владелец
+ * вторым ключом. Здесь — только то, что администратор может сам:
+ * подтвердить/отклонить новое нарушение, отклонить апелляцию (решение
+ * остаётся в силе, ничего не прощается), вести регламент и реквизиты.
+ */
+
+const VIOLATION_STATUS_LABEL: Record<string, string> = {
+  DETECTED: 'Выявлено', UNDER_REVIEW: 'На рассмотрении', CONFIRMED: 'Подтверждено',
+  REJECTED: 'Отклонено', APPEALED: 'Обжалуется', CANCELLED: 'Аннулировано', CLOSED: 'Закрыто',
+};
+const APPEAL_STATUS_LABEL: Record<string, string> = {
+  SUBMITTED: 'Подана', UNDER_REVIEW: 'На рассмотрении', APPROVED: 'Одобрена',
+  REJECTED: 'Отклонена', PARTIALLY_APPROVED: 'Частично одобрена',
+};
+const SANCTION_LABEL: Record<string, string> = {
+  none: 'без санкции', warning: 'предупреждение', remove_listing: 'снятие объявления',
+  restrict_publishing: 'ограничение публикации', restrict_feature: 'ограничение функций',
+  suspend: 'приостановка', restrict_staff: 'ограничение сотрудника',
+  temp_block: 'временная блокировка', perm_block: 'постоянная блокировка',
+};
+const VIOLATION_MODULES = ['market', 'warehouse', 'pvz'] as const;
+const SEVERITIES = ['warning', 'minor', 'moderate', 'severe', 'critical'] as const;
+
+const ViolationDecideForm = ({ violationId, onDone }: { violationId: string; onDone: () => void }) => {
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+
+  const decide = async (decision: 'CONFIRMED' | 'REJECTED') => {
+    setBusy(true); setFailed('');
+    const { apiDecideViolation } = await import('@/marketplace/violationsApi');
+    const r = await apiDecideViolation(violationId, decision, { comment: comment.trim() });
+    setBusy(false);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось сохранить решение'); return; }
+    onDone();
+  };
+
+  return (
+    <div className="mt-2 space-y-2 rounded-xl p-2" style={{ background: C.l2 }}>
+      <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2}
+        placeholder="Комментарий к решению (необязательно)"
+        className="w-full rounded-lg px-2 py-1.5 text-[11px] outline-none" style={inputStyle} />
+      {failed && <p className="text-[10px]" style={{ color: C.red }}>{failed}</p>}
+      <div className="flex gap-1.5">
+        <button type="button" disabled={busy} onClick={() => void decide('CONFIRMED')}
+          className="flex-1 rounded-lg py-1.5 text-[11px] font-bold disabled:opacity-40" style={{ background: C.red, color: '#fff' }}>
+          Подтвердить нарушение
+        </button>
+        <button type="button" disabled={busy} onClick={() => void decide('REJECTED')}
+          className="flex-1 rounded-lg py-1.5 text-[11px] font-bold disabled:opacity-40" style={{ background: C.l1, color: C.t2 }}>
+          Отклонить
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const ViolationAdminCard = ({ v, onChanged }: {
+  v: import('@/marketplace/violationsApi').ViolationItem; onChanged: () => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [stepping, setStepping] = useState(false);
+  const [reason, setReason] = useState('');
+  const [failed, setFailed] = useState('');
+
+  const requestCancel = async (code: string) => {
+    setStepping(false);
+    const { apiRequestCancelViolation } = await import('@/marketplace/violationsApi');
+    const r = await apiRequestCancelViolation(v.id, reason.trim(), code);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось оформить заявку'); return; }
+    setCancelling(false); setReason(''); onChanged();
+  };
+
+  return (
+    <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full text-left">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>{v.ruleSnapshot.title}</p>
+            <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+              {v.module} · {v.violatorName ?? v.violatorId} · {fmtTs(v.createdAt)}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+            {VIOLATION_STATUS_LABEL[v.status] ?? v.status}
+          </span>
+        </div>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 border-t pt-2" style={{ borderColor: C.brd }}>
+          {v.description && <p className="text-[11px]" style={{ color: C.t2 }}>{v.description}</p>}
+          <p className="text-[10px]" style={{ color: C.t3 }}>
+            Повторность: {v.repeatCount} · Санкция: {v.sanctionApplied ? SANCTION_LABEL[v.sanctionApplied] ?? v.sanctionApplied : '—'}
+          </p>
+          {v.penalties.map((p) => (
+            <p key={p.id} className="text-[10px]" style={{ color: C.t3 }}>
+              Штраф {p.amountKop != null ? `${(p.amountKop / 100).toLocaleString('ru')} ₽` : '—'} · {p.status}
+            </p>
+          ))}
+          {failed && <p className="text-[10px]" style={{ color: C.red }}>{failed}</p>}
+
+          {['DETECTED', 'UNDER_REVIEW'].includes(v.status) && (
+            <ViolationDecideForm violationId={v.id} onDone={onChanged} />
+          )}
+
+          {v.status === 'CONFIRMED' && (
+            cancelling ? (
+              stepping ? (
+                <StepUp purpose="pending:cancel_violation" onCode={(c) => void requestCancel(c)}
+                  onCancel={() => setStepping(false)} />
+              ) : (
+                <div className="space-y-1.5">
+                  <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина аннулирования"
+                    className="w-full rounded-lg px-2 py-1.5 text-[11px] outline-none" style={inputStyle} />
+                  <div className="flex gap-1.5">
+                    <button type="button" disabled={!reason.trim()} onClick={() => setStepping(true)}
+                      className="flex-1 rounded-lg py-1.5 text-[11px] font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+                      Оформить заявку владельцу
+                    </button>
+                    <button type="button" onClick={() => setCancelling(false)}
+                      className="rounded-lg px-3 py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.t3 }}>
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )
+            ) : (
+              <button type="button" onClick={() => setCancelling(true)}
+                className="w-full rounded-lg py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.red }}>
+                Запросить аннулирование
+              </button>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ViolationsListTab = () => {
+  const [items, setItems] = useState<import('@/marketplace/violationsApi').ViolationItem[] | null>(null);
+  const [module, setModule] = useState<'' | typeof VIOLATION_MODULES[number]>('');
+  const [status, setStatus] = useState('');
+  const [failed, setFailed] = useState('');
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminViolations } = await import('@/marketplace/violationsApi');
+    const r = await apiAdminViolations({
+      module: module || undefined,
+      status: (status || undefined) as import('@/marketplace/violationsApi').ViolationStatus | undefined,
+    });
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить список'); return; }
+    setItems(r.data.violations);
+  }, [module, status]);
+  useEffect(() => { void load(); }, [load]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        <select value={module} onChange={(e) => setModule(e.target.value as typeof module)}
+          className="rounded-xl px-2 py-1.5 text-[11px]" style={inputStyle}>
+          <option value="">Все модули</option>
+          {VIOLATION_MODULES.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select value={status} onChange={(e) => setStatus(e.target.value)}
+          className="rounded-xl px-2 py-1.5 text-[11px]" style={inputStyle}>
+          <option value="">Все статусы</option>
+          {Object.entries(VIOLATION_STATUS_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+        <button type="button" onClick={() => void load()}
+          className="rounded-xl px-3 py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+          <RefreshCw size={12} />
+        </button>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {items === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : items.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Нарушений не найдено.</p>
+      ) : items.map((v) => <ViolationAdminCard key={v.id} v={v} onChanged={() => void load()} />)}
+    </div>
+  );
+};
+
+const AppealAdminCard = ({ a, onChanged }: {
+  a: import('@/marketplace/violationsApi').ViolationAppealAdminRow; onChanged: () => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [stepping, setStepping] = useState(false);
+  const [failed, setFailed] = useState('');
+  const open_ = ['SUBMITTED', 'UNDER_REVIEW'].includes(a.status);
+
+  const decide = async (decision: 'APPROVED' | 'REJECTED', code?: string) => {
+    setBusy(true); setFailed(''); setStepping(false);
+    const { apiDecideAppeal } = await import('@/marketplace/violationsApi');
+    const r = await apiDecideAppeal(a.id, decision, { reason: reason.trim(), code });
+    setBusy(false);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось отправить решение'); return; }
+    setReason(''); onChanged();
+  };
+
+  const startApprove = () => {
+    if (!reason.trim()) { setFailed('Укажите основание решения'); return; }
+    setFailed(''); setStepping(true);
+  };
+
+  return (
+    <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full text-left">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-bold" style={{ color: C.t1 }}>{a.violationTitle}</p>
+            <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+              {a.module} · {a.violatorName ?? a.violatorId} · {fmtTs(a.createdAt)}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+            {APPEAL_STATUS_LABEL[a.status] ?? a.status}
+          </span>
+        </div>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 border-t pt-2" style={{ borderColor: C.brd }}>
+          <p className="text-[11px]" style={{ color: C.t2 }}>{a.reason}</p>
+          {a.comment && <p className="text-[10px]" style={{ color: C.t3 }}>{a.comment}</p>}
+          {a.decisionReason && <p className="text-[10px]" style={{ color: C.t3 }}>Решение: {a.decisionReason}</p>}
+          {failed && <p className="text-[10px]" style={{ color: C.red }}>{failed}</p>}
+          {open_ && (
+            stepping ? (
+              <StepUp purpose="pending:resolve_appeal" onCode={(c) => void decide('APPROVED', c)}
+                onCancel={() => setStepping(false)} />
+            ) : (
+            <div className="space-y-1.5">
+              <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2}
+                placeholder="Основание решения (увидит нарушитель)"
+                className="w-full rounded-lg px-2 py-1.5 text-[11px] outline-none" style={inputStyle} />
+              <div className="flex gap-1.5">
+                <button type="button" disabled={busy || !reason.trim()} onClick={() => void decide('REJECTED')}
+                  className="flex-1 rounded-lg py-1.5 text-[11px] font-bold disabled:opacity-40" style={{ background: C.l2, color: C.t2 }}>
+                  Отклонить апелляцию
+                </button>
+                <button type="button" disabled={busy} onClick={startApprove}
+                  className="flex-1 rounded-lg py-1.5 text-[11px] font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+                  Одобрить (заявка владельцу)
+                </button>
+              </div>
+              <p className="text-[10px]" style={{ color: C.t3 }}>
+                Частичное одобрение (снять только санкцию или только штраф) — через API, отдельной формы здесь пока нет.
+              </p>
+            </div>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const AppealsAdminTab = () => {
+  const [items, setItems] = useState<import('@/marketplace/violationsApi').ViolationAppealAdminRow[] | null>(null);
+  const [status, setStatus] = useState('');
+  const [failed, setFailed] = useState('');
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminAppeals } = await import('@/marketplace/violationsApi');
+    const r = await apiAdminAppeals((status || undefined) as import('@/marketplace/violationsApi').AppealStatus | undefined);
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить апелляции'); return; }
+    setItems(r.data.appeals);
+  }, [status]);
+  useEffect(() => { void load(); }, [load]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        <select value={status} onChange={(e) => setStatus(e.target.value)}
+          className="rounded-xl px-2 py-1.5 text-[11px]" style={inputStyle}>
+          <option value="">Все статусы</option>
+          {Object.entries(APPEAL_STATUS_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+        <button type="button" onClick={() => void load()}
+          className="rounded-xl px-3 py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+          <RefreshCw size={12} />
+        </button>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {items === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : items.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Апелляций не найдено.</p>
+      ) : items.map((a) => <AppealAdminCard key={a.id} a={a} onChanged={() => void load()} />)}
+    </div>
+  );
+};
+
+const emptyRuleForm = () => ({
+  module: 'market' as typeof VIOLATION_MODULES[number], code: '', title: '', description: '',
+  severity: 'minor' as typeof SEVERITIES[number], defaultSanction: 'warning', defaultPenaltyKop: '', repeatMultiplier: '1',
+});
+
+const RuleCreateForm = ({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) => {
+  const [form, setForm] = useState(emptyRuleForm);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+
+  const create = async () => {
+    if (!form.code.trim() || !form.title.trim()) { setFailed('Код и название обязательны'); return; }
+    setBusy(true); setFailed('');
+    const { apiCreateRule } = await import('@/marketplace/violationsApi');
+    const r = await apiCreateRule({
+      module: form.module, code: form.code.trim(), title: form.title.trim(), description: form.description.trim(),
+      severity: form.severity, defaultSanction: form.defaultSanction,
+      defaultPenaltyKop: form.defaultPenaltyKop ? Math.round(Number(form.defaultPenaltyKop) * 100) : null,
+      repeatMultiplier: Number(form.repeatMultiplier) || 1,
+    });
+    setBusy(false);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось создать правило — проверьте код (должен быть уникален в модуле)'); return; }
+    onCreated();
+  };
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <div className="flex gap-2">
+        <select value={form.module} onChange={(e) => setForm((f) => ({ ...f, module: e.target.value as typeof form.module }))}
+          className="rounded-xl px-2 py-2 text-xs" style={inputStyle}>
+          {VIOLATION_MODULES.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} placeholder="Код пункта (M-12)"
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      </div>
+      <input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Название правила"
+        className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2}
+        placeholder="Описание" className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <div className="flex gap-2">
+        <select value={form.severity} onChange={(e) => setForm((f) => ({ ...f, severity: e.target.value as typeof form.severity }))}
+          className="flex-1 rounded-xl px-2 py-2 text-xs" style={inputStyle}>
+          {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={form.defaultSanction} onChange={(e) => setForm((f) => ({ ...f, defaultSanction: e.target.value }))}
+          className="flex-1 rounded-xl px-2 py-2 text-xs" style={inputStyle}>
+          {Object.keys(SANCTION_LABEL).map((s) => <option key={s} value={s}>{SANCTION_LABEL[s]}</option>)}
+        </select>
+      </div>
+      <div className="flex gap-2">
+        <input value={form.defaultPenaltyKop} onChange={(e) => setForm((f) => ({ ...f, defaultPenaltyKop: e.target.value }))}
+          type="number" min={0} placeholder="Штраф по умолчанию, ₽ (необязательно)"
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <input value={form.repeatMultiplier} onChange={(e) => setForm((f) => ({ ...f, repeatMultiplier: e.target.value }))}
+          type="number" min={1} max={10} step={0.1} placeholder="Множитель повтора"
+          className="w-36 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      <div className="flex gap-2">
+        <button type="button" disabled={busy} onClick={() => void create()}
+          className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+          Создать правило
+        </button>
+        <button type="button" onClick={onCancel} className="rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>
+          Отмена
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const RulesAdminTab = () => {
+  const [rules, setRules] = useState<import('@/marketplace/violationsApi').ViolationRule[] | null>(null);
+  const [module, setModule] = useState<typeof VIOLATION_MODULES[number]>('market');
+  const [creating, setCreating] = useState(false);
+  const [failed, setFailed] = useState('');
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiListRules } = await import('@/marketplace/violationsApi');
+    const r = await apiListRules(module);
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить правила'); return; }
+    setRules(r.data.rules);
+  }, [module]);
+  useEffect(() => { void load(); }, [load]);
+
+  const toggleActive = async (rule: import('@/marketplace/violationsApi').ViolationRule) => {
+    const { apiUpdateRule } = await import('@/marketplace/violationsApi');
+    const r = await apiUpdateRule(rule.id, { active: !rule.active });
+    if (r.ok) void load();
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1">
+        {VIOLATION_MODULES.map((m) => (
+          <button key={m} type="button" onClick={() => setModule(m)}
+            className="flex-1 rounded-xl py-1.5 text-[11px] font-semibold"
+            style={{ background: module === m ? C.acc : C.l2, color: module === m ? '#fff' : C.t3 }}>
+            {m}
+          </button>
+        ))}
+      </div>
+      {creating ? (
+        <RuleCreateForm onCreated={() => { setCreating(false); void load(); }} onCancel={() => setCreating(false)} />
+      ) : (
+        <button type="button" onClick={() => setCreating(true)}
+          className="w-full rounded-2xl py-2.5 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>
+          + Новое правило
+        </button>
+      )}
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {rules === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : rules.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Правил пока нет.</p>
+      ) : rules.map((rule) => (
+        <div key={rule.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-bold" style={{ color: C.t1 }}>{rule.code} · {rule.title}</p>
+              <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+                {rule.severity} · {SANCTION_LABEL[rule.defaultSanction] ?? rule.defaultSanction}
+                {rule.defaultPenaltyKop != null ? ` · ${(rule.defaultPenaltyKop / 100).toLocaleString('ru')} ₽` : ''}
+                {' · ×'}{rule.repeatMultiplier} за повтор · v{rule.version}
+              </p>
+            </div>
+            <button type="button" onClick={() => void toggleActive(rule)}
+              className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold"
+              style={{ background: C.l2, color: rule.active ? C.green : C.t3 }}>
+              {rule.active ? 'активно' : 'выключено'}
+            </button>
+          </div>
+          {rule.description && <p className="mt-1.5 text-[11px]" style={{ color: C.t2 }}>{rule.description}</p>}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const PaymentSettingsTab = ({ rights }: { rights: MyRights }) => {
+  const [settings, setSettings] = useState<{ id: string; requisites: Record<string, string>; setAt: string } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [fields, setFields] = useState([{ k: 'recipient', v: '' }, { k: 'inn', v: '' }, { k: 'bank_name', v: '' }, { k: 'account_number', v: '' }]);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const [ok, setOk] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const { apiPaymentSettings } = await import('@/marketplace/violationsApi');
+      const r = await apiPaymentSettings();
+      if (r.ok && r.data?.settings) {
+        setSettings(r.data.settings);
+        setFields(Object.entries(r.data.settings.requisites).map(([k, v]) => ({ k, v })));
+      }
+      setLoaded(true);
+    })();
+  }, []);
+
+  if (!rights.owner) {
+    return (
+      <div className="space-y-2">
+        <p className="text-[11px]" style={{ color: C.t3 }}>
+          Реквизиты для оплаты штрафов задаёт только владелец. Текущие (если заданы):
+        </p>
+        {!loaded ? <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} /> : settings ? (
+          <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+            {Object.entries(settings.requisites).map(([k, v]) => (
+              <p key={k} className="text-[11px]" style={{ color: C.t1 }}>{k}: {v}</p>
+            ))}
+          </div>
+        ) : <p className="text-[11px]" style={{ color: C.t3 }}>Не заданы.</p>}
+      </div>
+    );
+  }
+
+  const save = async () => {
+    setBusy(true); setFailed(''); setOk(false);
+    const requisites: Record<string, string> = {};
+    for (const { k, v } of fields) if (k.trim() && v.trim()) requisites[k.trim()] = v.trim();
+    const { apiSetPaymentSettings } = await import('@/marketplace/violationsApi');
+    const r = await apiSetPaymentSettings(requisites);
+    setBusy(false);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось сохранить реквизиты'); return; }
+    setSettings(r.data.settings); setOk(true);
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px]" style={{ color: C.t3 }}>
+        Куда переводят штраф нарушители. Смена реквизитов не меняет уже выставленные штрафы —
+        у них место оплаты заморожено на момент начисления.
+      </p>
+      {fields.map((f, i) => (
+        <div key={i} className="flex gap-2">
+          <input value={f.k} onChange={(e) => setFields((arr) => arr.map((x, j) => j === i ? { ...x, k: e.target.value } : x))}
+            placeholder="поле" className="w-36 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+          <input value={f.v} onChange={(e) => setFields((arr) => arr.map((x, j) => j === i ? { ...x, v: e.target.value } : x))}
+            placeholder="значение" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        </div>
+      ))}
+      <button type="button" onClick={() => setFields((arr) => [...arr, { k: '', v: '' }])}
+        className="text-[11px] font-bold" style={{ color: C.acc }}>
+        + поле
+      </button>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {ok && <p className="text-[11px]" style={{ color: C.green }}>Сохранено.</p>}
+      <button type="button" disabled={busy} onClick={() => void save()}
+        className="w-full rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+        Сохранить реквизиты
+      </button>
+    </div>
+  );
+};
+
+const ViolationsStatsTab = () => {
+  const [stats, setStats] = useState<Awaited<ReturnType<typeof import('@/marketplace/violationsApi').apiViolationStats>>['data'] | null>(null);
+  const [failed, setFailed] = useState('');
+
+  useEffect(() => {
+    void (async () => {
+      const { apiViolationStats } = await import('@/marketplace/violationsApi');
+      const r = await apiViolationStats();
+      if (!r.ok || !r.data) { setFailed('Не удалось загрузить статистику'); return; }
+      setStats(r.data);
+    })();
+  }, []);
+
+  if (failed) return <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>;
+  if (!stats) return <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />;
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <p className="text-[10px] font-bold" style={{ color: C.t3 }}>ПО МОДУЛЮ / СТАТУСУ / ТЯЖЕСТИ</p>
+        {stats.byModule.map((row, i) => (
+          <p key={i} className="mt-1 text-[11px]" style={{ color: C.t2 }}>
+            {row.module} · {VIOLATION_STATUS_LABEL[row.status] ?? row.status} · {row.severity}: {row.n}
+          </p>
+        ))}
+      </div>
+      <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <p className="text-[10px] font-bold" style={{ color: C.t3 }}>ШТРАФЫ</p>
+        {stats.penaltySums.map((row, i) => (
+          <p key={i} className="mt-1 text-[11px]" style={{ color: C.t2 }}>
+            {row.status}: {row.n} шт., {(Number(row.sum_kop) / 100).toLocaleString('ru')} ₽
+          </p>
+        ))}
+      </div>
+      <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+        <p className="text-[10px] font-bold" style={{ color: C.t3 }}>АПЕЛЛЯЦИИ</p>
+        {stats.appeals.map((row, i) => (
+          <p key={i} className="mt-1 text-[11px]" style={{ color: C.t2 }}>
+            {APPEAL_STATUS_LABEL[row.status] ?? row.status}: {row.n}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ViolationsAdminSection = ({ rights }: { rights: MyRights }) => {
+  const [sub, setSub] = useState<'violations' | 'appeals' | 'rules' | 'payment' | 'stats'>('violations');
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {([
+          ['violations', 'Нарушения'], ['appeals', 'Апелляции'], ['rules', 'Регламент'],
+          ['payment', 'Реквизиты'], ['stats', 'Статистика'],
+        ] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setSub(k)}
+            className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+            style={{ background: sub === k ? C.acc : C.l2, color: sub === k ? '#fff' : C.t3 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {sub === 'violations' && <ViolationsListTab />}
+      {sub === 'appeals' && <AppealsAdminTab />}
+      {sub === 'rules' && <RulesAdminTab />}
+      {sub === 'payment' && <PaymentSettingsTab rights={rights} />}
+      {sub === 'stats' && <ViolationsStatsTab />}
+    </div>
+  );
+};
+
 const MarketAdminSection = () => {
   const [tab, setTab] = useState<'disputes' | 'games'>('disputes');
   return (
@@ -4169,7 +4759,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'ads' | 'notify' | 'log' | 'events';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'ads' | 'notify' | 'log' | 'events' | 'violations';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -4295,6 +4885,7 @@ export const AdminPanel = () => {
     { key: 'family', label: 'Sky Family', show: has('moderation') },
     { key: 'garant', label: 'Sky Garant', show: has('garant') },
     { key: 'market', label: 'Sky Market', show: has('market') },
+    { key: 'violations', label: 'Нарушения и штрафы', show: has('violations') },
     { key: 'kutrent', label: 'KutRent Market', show: has('kutrent_market') },
     { key: 'pets', label: 'Pets и Skin Market', show: has('content') },
     { key: 'bloom', label: 'Bloom', show: has('content') },
@@ -4433,6 +5024,7 @@ export const AdminPanel = () => {
       {tab === 'family' && <FamilyAdminSection />}
       {tab === 'garant' && <GarantAdminSection />}
       {tab === 'market' && <MarketAdminSection />}
+      {tab === 'violations' && <ViolationsAdminSection rights={rights} />}
       {tab === 'kutrent' && <KutrentMarketAdminSection rights={rights} />}
       {tab === 'pets' && <PetsAdminSection />}
       {tab === 'bloom' && <BloomAdminSection />}

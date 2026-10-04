@@ -16,7 +16,8 @@ import {
   declarePenaltyPaid, confirmPenaltyPaid,
   violatorOf, penaltyOwnerOf,
   listViolationsForProfile, listViolationsForOrg, getViolationDetail, listViolationsForAdmin, violationStats,
-  VIOLATION_ID_RE, PENALTY_ID_RE, RULE_ID_RE,
+  submitAppeal, decideAppeal, appealSubmitterOf, getAppealDetail, listAppealsForProfile, listAppealsForAdmin,
+  VIOLATION_ID_RE, PENALTY_ID_RE, RULE_ID_RE, APPEAL_ID_RE,
 } from './../violations.mjs';
 
 const READ_PER_MIN = 60;
@@ -46,6 +47,9 @@ const CODES = {
   already_final: 409,
   no_payment_settings: 409,
   code_taken: 409,
+  already_appealed: 409,
+  already_decided: 409,
+  nothing_to_change: 400,
 };
 
 const fail = (res, result) => json(res, CODES[result.error] ?? 400, { error: result.error });
@@ -171,8 +175,67 @@ export const violationsRoutes = async (req, res, url) => {
       const target = await violatorOf(violationId);
       if (!target) return json(res, 404, { error: 'not_found' });
       const done = await createPendingAction(me, 'cancel_violation', target,
-        { violationId, reason: b.reason });
+        { violationId, reason: b.reason }, { stepUpCode: b.code });
       return done.error ? fail(res, done) : json(res, 200, done);
+    }
+    /* Подать апелляцию на своё подтверждённое нарушение — сам
+       нарушитель, без права 'violations' (submitAppeal проверяет это
+       сама по violator_id). */
+    if (req.method === 'POST' && tail === '/appeal') {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      const b = await body();
+      const done = await submitAppeal(me, violationId, b.reason, b.comment);
+      return done.error ? fail(res, done) : json(res, 201, done);
+    }
+  }
+
+  /* ══ Апелляции ══════════════════════════════════════════════════════ */
+
+  if (req.method === 'GET' && path === '/api/violations/appeals/mine') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await listAppealsForProfile(me, me);
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+  if (req.method === 'GET' && path === '/api/violations/admin/appeals') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await listAppealsForAdmin(me, { status: params.get('status') });
+    return done.error ? fail(res, done) : json(res, 200, done);
+  }
+
+  const appealPath = path.match(/^\/api\/violations\/appeals\/(vap-[0-9a-f-]{36})(\/[a-z-]+)?$/);
+  if (appealPath) {
+    const appealId = appealPath[1];
+    const tail = appealPath[2] ?? '';
+    if (!APPEAL_ID_RE.test(appealId)) return json(res, 404, { error: 'not_found' });
+
+    if (req.method === 'GET' && !tail) {
+      if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+      const done = await getAppealDetail(me, appealId);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+    if (req.method === 'POST' && tail === '/decide') {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      const b = await body();
+      const decision = String(b.decision ?? '');
+      /* REJECTED ничего не прощает (решение остаётся в силе) — решается
+         прямо здесь, как и обычное decideViolation. APPROVED и
+         PARTIALLY_APPROVED снимают уже назначенное наказание — тот же
+         риск прощения долга, что у cancel_violation/cancel_penalty,
+         поэтому только через заявку на второй ключ владельца. */
+      if (decision === 'REJECTED') {
+        const done = await decideAppeal(me, appealId, 'REJECTED', { reason: b.reason, comment: b.comment });
+        return done.error ? fail(res, done) : json(res, 200, done);
+      }
+      if (decision === 'APPROVED' || decision === 'PARTIALLY_APPROVED') {
+        const target = await appealSubmitterOf(appealId);
+        if (!target) return json(res, 404, { error: 'not_found' });
+        const done = await createPendingAction(me, 'resolve_appeal', target, {
+          appealId, decision, reason: b.reason, comment: b.comment,
+          liftSanctionId: b.liftSanctionId, cancelPenaltyId: b.cancelPenaltyId,
+        }, { stepUpCode: b.code });
+        return done.error ? fail(res, done) : json(res, 200, done);
+      }
+      return json(res, 400, { error: 'bad_decision' });
     }
   }
 
@@ -200,7 +263,7 @@ export const violationsRoutes = async (req, res, url) => {
       const target = await penaltyOwnerOf(penaltyId);
       if (!target) return json(res, 404, { error: 'not_found' });
       const done = await createPendingAction(me, 'cancel_penalty', target,
-        { penaltyId, reason: b.reason });
+        { penaltyId, reason: b.reason }, { stepUpCode: b.code });
       return done.error ? fail(res, done) : json(res, 200, done);
     }
   }

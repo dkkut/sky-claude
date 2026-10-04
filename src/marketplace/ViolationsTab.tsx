@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { ShieldAlert, Clock, CheckCircle2 } from 'lucide-react';
 import { C, fmt, fmtTime, Empty, inputStyle } from './ui';
 import {
-  apiMyViolations, apiPvzViolations, apiDeclarePenaltyPaid,
+  apiMyViolations, apiPvzViolations, apiDeclarePenaltyPaid, apiSubmitAppeal,
   type ViolationItem, type ViolationPenalty,
 } from './violationsApi';
 
@@ -81,34 +81,85 @@ const PenaltyCard = ({ penalty, onDeclared }: { penalty: ViolationPenalty; onDec
   );
 };
 
-const ViolationCard = ({ v, onChanged }: { v: ViolationItem; onChanged: () => void }) => (
-  <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
-    <div className="flex items-start justify-between gap-2">
-      <div>
-        <p className="text-[12px] font-bold" style={{ color: C.t1 }}>{v.ruleSnapshot.title}</p>
-        <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
-          {SEVERITY_LABEL[v.severity] ?? v.severity} · {fmtTime(v.createdAt)}
-          {v.violatorName ? ` · ${v.violatorName}` : ''}
-        </p>
+const AppealForm = ({ violationId, onSent, onCancel }: { violationId: string; onSent: () => void; onCancel: () => void }) => {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+
+  const send = async () => {
+    if (!reason.trim()) { setFailed('Опишите, почему решение неверно'); return; }
+    setBusy(true); setFailed('');
+    const r = await apiSubmitAppeal(violationId, reason.trim());
+    setBusy(false);
+    if (!r.ok || !r.data || 'error' in r.data) { setFailed('Не удалось отправить апелляцию'); return; }
+    onSent();
+  };
+
+  return (
+    <div className="mt-2 rounded-xl p-2" style={{ background: C.l2 }}>
+      <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
+        placeholder="Почему это решение, по-вашему, неверно?"
+        className="w-full rounded-lg px-2 py-1.5 text-[11px] outline-none" style={inputStyle} />
+      {failed && <p className="mt-1 text-[10px]" style={{ color: C.red }}>{failed}</p>}
+      <div className="mt-1.5 flex gap-1.5">
+        <button type="button" disabled={busy} onClick={() => void send()}
+          className="flex-1 rounded-lg py-1.5 text-[11px] font-bold disabled:opacity-40"
+          style={{ background: C.acc, color: '#fff' }}>
+          Отправить апелляцию
+        </button>
+        <button type="button" onClick={onCancel}
+          className="rounded-lg px-3 py-1.5 text-[11px] font-bold" style={{ background: C.l1, color: C.t3 }}>
+          Отмена
+        </button>
       </div>
-      <span className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold"
-        style={{
-          background: v.status === 'CONFIRMED' ? 'rgba(239,68,68,0.12)' : C.l2,
-          color: v.status === 'CONFIRMED' ? C.red : C.t3,
-        }}>
-        {STATUS_LABEL[v.status] ?? v.status}
-      </span>
     </div>
-    {v.description && <p className="mt-2 text-[11px]" style={{ color: C.t2 }}>{v.description}</p>}
-    {v.reviewComment && <p className="mt-1 text-[11px]" style={{ color: C.t3 }}>Комментарий: {v.reviewComment}</p>}
-    {v.cancelReason && <p className="mt-1 text-[11px]" style={{ color: C.t3 }}>Аннулировано: {v.cancelReason}</p>}
-    {v.penalties.length > 0 && (
-      <div className="mt-2 flex flex-col gap-2">
-        {v.penalties.map((p) => <PenaltyCard key={p.id} penalty={p} onDeclared={onChanged} />)}
+  );
+};
+
+const ViolationCard = ({ v, onChanged }: { v: ViolationItem; onChanged: () => void }) => {
+  const [appealing, setAppealing] = useState(false);
+  return (
+    <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[12px] font-bold" style={{ color: C.t1 }}>{v.ruleSnapshot.title}</p>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            {SEVERITY_LABEL[v.severity] ?? v.severity} · {fmtTime(v.createdAt)}
+            {v.violatorName ? ` · ${v.violatorName}` : ''}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold"
+          style={{
+            background: v.status === 'CONFIRMED' ? 'rgba(239,68,68,0.12)' : C.l2,
+            color: v.status === 'CONFIRMED' ? C.red : C.t3,
+          }}>
+          {STATUS_LABEL[v.status] ?? v.status}
+        </span>
       </div>
-    )}
-  </div>
-);
+      {v.description && <p className="mt-2 text-[11px]" style={{ color: C.t2 }}>{v.description}</p>}
+      {v.reviewComment && <p className="mt-1 text-[11px]" style={{ color: C.t3 }}>Комментарий: {v.reviewComment}</p>}
+      {v.cancelReason && <p className="mt-1 text-[11px]" style={{ color: C.t3 }}>Аннулировано: {v.cancelReason}</p>}
+      {v.penalties.length > 0 && (
+        <div className="mt-2 flex flex-col gap-2">
+          {v.penalties.map((p) => <PenaltyCard key={p.id} penalty={p} onDeclared={onChanged} />)}
+        </div>
+      )}
+      {v.status === 'CONFIRMED' && !appealing && (
+        <button type="button" onClick={() => setAppealing(true)}
+          className="mt-2 w-full rounded-lg py-1.5 text-[11px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+          Обжаловать
+        </button>
+      )}
+      {appealing && (
+        <AppealForm violationId={v.id} onCancel={() => setAppealing(false)}
+          onSent={() => { setAppealing(false); onChanged(); }} />
+      )}
+      {v.status === 'APPEALED' && (
+        <p className="mt-2 text-[10px]" style={{ color: C.amber }}>Апелляция отправлена, ждём решения администрации.</p>
+      )}
+    </div>
+  );
+};
 
 const ViolationsList = ({ items, onChanged, emptyHint }:
 { items: ViolationItem[] | null; onChanged: () => void; emptyHint: string }) => {

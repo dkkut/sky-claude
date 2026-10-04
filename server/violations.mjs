@@ -28,6 +28,7 @@ import { isOwnerOf as isPvzOwner } from './pvzops.mjs';
 export const RULE_ID_RE = /^vr-[0-9a-f-]{36}$/;
 export const VIOLATION_ID_RE = /^vio-[0-9a-f-]{36}$/;
 export const PENALTY_ID_RE = /^pen-[0-9a-f-]{36}$/;
+export const APPEAL_ID_RE = /^vap-[0-9a-f-]{36}$/;
 
 const MODULES = ['market', 'warehouse', 'pvz'];
 const SEVERITIES = ['warning', 'minor', 'moderate', 'severe', 'critical'];
@@ -109,6 +110,17 @@ const toSanction = (s) => ({
   expiresAt: s.expires_at ? s.expires_at.toISOString() : null,
   liftedAt: s.lifted_at ? s.lifted_at.toISOString() : null,
   liftReason: s.lift_reason,
+});
+
+const toAppeal = (a, { withActor = false } = {}) => ({
+  id: a.id, violationId: a.violation_id,
+  reason: a.reason, comment: a.comment, status: a.status,
+  decidedAt: a.decided_at ? a.decided_at.toISOString() : null,
+  decisionReason: a.decision_reason || undefined,
+  decisionComment: a.decision_comment || undefined,
+  sanctionChange: a.sanction_change ?? undefined,
+  createdAt: a.created_at.toISOString(),
+  ...(withActor ? { submittedBy: a.submitted_by, decidedBy: a.decided_by ?? undefined } : {}),
 });
 
 const toViolation = (v, { withActor = false } = {}) => ({
@@ -554,6 +566,190 @@ export const violatorOf = async (violationId) => {
 export const penaltyOwnerOf = async (penaltyId) => {
   const { rows } = await query('SELECT profile_id FROM penalties WHERE id = $1', [String(penaltyId ?? '')]);
   return rows[0]?.profile_id ?? null;
+};
+
+/* ─── Обжалование ───────────────────────────────────────────────────────
+ *
+ * Подать апелляцию может только сам нарушитель на своё подтверждённое
+ * нарушение — без права 'violations' (решение по чужому нарушению не
+ * спрашивают у администратора, спрашивают у того, кого оно коснулось).
+ * Пока апелляция открыта (SUBMITTED/UNDER_REVIEW), нарушение помечено
+ * APPEALED — это и видно нарушителю, и защищает от второй апелляции
+ * (violation_appeals_one_open_idx в 091_violations.sql).
+ */
+export const submitAppeal = async (actorId, violationId, reason, comment) => {
+  const cleanReason = text(reason, MAX_TEXT);
+  if (!cleanReason) return { error: 'reason_required' };
+  const { rows } = await query('SELECT * FROM violations WHERE id = $1', [String(violationId ?? '')]);
+  const violation = rows[0];
+  if (!violation) return { error: 'not_found' };
+  if (violation.violator_id !== actorId) return { error: 'not_allowed' };
+  if (violation.status !== 'CONFIRMED') return { error: 'bad_status' };
+
+  const id = `vap-${generateId()}`;
+  let appealRow;
+  try {
+    const { rows: inserted } = await query(
+      `INSERT INTO violation_appeals (id, violation_id, submitted_by, reason, comment)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [id, violation.id, actorId, cleanReason, text(comment, MAX_TEXT)]);
+    appealRow = inserted[0];
+  } catch (err) {
+    // violation_appeals_one_open_idx — уже есть незакрытая апелляция.
+    if (err?.code === '23505') return { error: 'already_appealed' };
+    throw err;
+  }
+  await query(`UPDATE violations SET status = 'APPEALED', updated_at = now() WHERE id = $1`, [violation.id]);
+  await logViolation(actorId, 'appeal', id, 'appeal_submit', { violationId: violation.id }, violation.id);
+  return { appeal: toAppeal(appealRow) };
+};
+
+const liftSanctionRow = async (sanctionId, violationId, actorId, reason) => {
+  await query(
+    `UPDATE violation_sanctions SET status = 'lifted', lifted_at = now(), lifted_by = $3, lift_reason = $4
+      WHERE id = $1 AND violation_id = $2 AND status = 'active'`,
+    [sanctionId, violationId, actorId, reason]);
+};
+
+const cancelPenaltyRow = async (penaltyId, violationId, actorId, reason) => {
+  await query(
+    `UPDATE penalties SET status = 'cancelled', cancelled_at = now(), cancelled_by = $3, cancel_reason = $4
+      WHERE id = $1 AND violation_id = $2 AND status IN ('accrued','payment_declared')`,
+    [penaltyId, violationId, actorId, reason]);
+};
+
+/**
+ * Решение по апелляции.
+ *
+ * REJECTED ничего не прощает — нарушение просто возвращается в
+ * CONFIRMED, решение остаётся в силе, второй ключ не нужен (та же
+ * граница, что у decideViolation). APPROVED и PARTIALLY_APPROVED
+ * снимают уже назначенное наказание целиком или частично — тот же риск
+ * прощения долга, что у cancelViolation/cancelPenalty, поэтому в
+ * routes/violations.mjs эти два исхода идут только через заявку на
+ * второй ключ (PENDING_KINDS.resolve_appeal в adminsec.mjs), а сюда
+ * actorId приходит уже владельцем, подтвердившим заявку.
+ */
+export const decideAppeal = async (actorId, appealId, decision, opts = {}) => {
+  if (!(await can(actorId, 'violations'))) return { error: 'not_allowed' };
+  if (!['APPROVED', 'REJECTED', 'PARTIALLY_APPROVED'].includes(String(decision))) return { error: 'bad_decision' };
+  const { rows } = await query('SELECT * FROM violation_appeals WHERE id = $1', [String(appealId ?? '')]);
+  const appeal = rows[0];
+  if (!appeal) return { error: 'not_found' };
+  if (!['SUBMITTED', 'UNDER_REVIEW'].includes(appeal.status)) return { error: 'already_decided' };
+
+  const { rows: vrows } = await query('SELECT * FROM violations WHERE id = $1', [appeal.violation_id]);
+  const violation = vrows[0];
+  if (!violation) return { error: 'not_found' };
+
+  const decisionReason = text(opts.reason, 500);
+  const decisionComment = text(opts.comment, MAX_TEXT);
+  if (!decisionReason) return { error: 'reason_required' };
+
+  let sanctionChange = null;
+
+  if (decision === 'REJECTED') {
+    await query(`UPDATE violations SET status = 'CONFIRMED', updated_at = now() WHERE id = $1`, [violation.id]);
+  } else if (decision === 'APPROVED') {
+    await query(
+      `UPDATE violations SET status = 'CANCELLED', cancelled_by = $2, cancelled_at = now(),
+              cancel_reason = $3, updated_at = now()
+        WHERE id = $1`,
+      [violation.id, actorId, `Апелляция ${appeal.id} одобрена: ${decisionReason}`]);
+    await query(
+      `UPDATE penalties SET status = 'cancelled', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3
+        WHERE violation_id = $1 AND status IN ('accrued','payment_declared')`,
+      [violation.id, actorId, `Апелляция ${appeal.id} одобрена`]);
+    await query(
+      `UPDATE violation_sanctions SET status = 'lifted', lifted_at = now(), lifted_by = $2, lift_reason = $3
+        WHERE violation_id = $1 AND status = 'active'`,
+      [violation.id, actorId, `Апелляция ${appeal.id} одобрена`]);
+    sanctionChange = { outcome: 'violation_cancelled' };
+  } else {
+    // PARTIALLY_APPROVED: нарушение остаётся подтверждённым, но снимается
+    // конкретная санкция и/или штраф, указанные в решении — не всё целиком.
+    const liftSanctionId = opts.liftSanctionId ? String(opts.liftSanctionId) : null;
+    const cancelPenaltyId = opts.cancelPenaltyId ? String(opts.cancelPenaltyId) : null;
+    if (!liftSanctionId && !cancelPenaltyId) return { error: 'nothing_to_change' };
+    if (liftSanctionId) await liftSanctionRow(liftSanctionId, violation.id, actorId, `Апелляция ${appeal.id} частично одобрена`);
+    if (cancelPenaltyId) await cancelPenaltyRow(cancelPenaltyId, violation.id, actorId, `Апелляция ${appeal.id} частично одобрена`);
+    await query(`UPDATE violations SET status = 'CONFIRMED', updated_at = now() WHERE id = $1`, [violation.id]);
+    sanctionChange = { liftedSanctionId: liftSanctionId ?? undefined, cancelledPenaltyId: cancelPenaltyId ?? undefined };
+  }
+
+  const { rows: updated } = await query(
+    `UPDATE violation_appeals SET status = $2, decided_by = $3, decided_at = now(),
+            decision_reason = $4, decision_comment = $5, sanction_change = $6::jsonb
+      WHERE id = $1 RETURNING *`,
+    [appeal.id, decision, actorId, decisionReason, decisionComment, sanctionChange ? JSON.stringify(sanctionChange) : null]);
+
+  await logViolation(actorId, 'appeal', appeal.id, 'appeal_decide', { decision, sanctionChange }, violation.id);
+
+  const DECISION_LABEL = { APPROVED: 'одобрена', REJECTED: 'отклонена', PARTIALLY_APPROVED: 'частично одобрена' };
+  await notifyViolator(violation.violator_id, violation.id, 'appeal_decided',
+    `Апелляция по нарушению «${violation.rule_snapshot.title}» ${DECISION_LABEL[decision]}. ${decisionReason}`);
+
+  return { appeal: toAppeal(updated[0]) };
+};
+
+/** Кого затронет одобрение апелляции — для заявки на второй ключ. */
+export const appealSubmitterOf = async (appealId) => {
+  const { rows } = await query('SELECT submitted_by FROM violation_appeals WHERE id = $1', [String(appealId ?? '')]);
+  return rows[0]?.submitted_by ?? null;
+};
+
+export const getAppealDetail = async (actorId, appealId) => {
+  const { rows } = await query('SELECT * FROM violation_appeals WHERE id = $1', [String(appealId ?? '')]);
+  const appeal = rows[0];
+  if (!appeal) return { error: 'not_found' };
+  const self = actorId === appeal.submitted_by;
+  if (!self && !(await can(actorId, 'violations'))) return { error: 'not_allowed' };
+  const { rows: evidence } = await query(
+    'SELECT id, kind, mime, bytes, description, created_at FROM violation_evidence WHERE appeal_id = $1 ORDER BY created_at',
+    [appeal.id]);
+  return {
+    appeal: {
+      ...toAppeal(appeal, { withActor: !self }),
+      evidence: evidence.map((e) => ({
+        id: e.id, kind: e.kind, mime: e.mime, bytes: e.bytes,
+        description: e.description, createdAt: e.created_at.toISOString(),
+      })),
+    },
+  };
+};
+
+/** Апелляции конкретного нарушителя — своя вкладка или админский взгляд. */
+export const listAppealsForProfile = async (actorId, profileId) => {
+  const self = actorId === profileId;
+  if (!self && !(await can(actorId, 'violations'))) return { error: 'not_allowed' };
+  const { rows } = await query(
+    `SELECT a.* FROM violation_appeals a WHERE a.submitted_by = $1 ORDER BY a.created_at DESC LIMIT 200`,
+    [profileId]);
+  return { appeals: rows.map((a) => toAppeal(a)) };
+};
+
+/** Админский список апелляций — фильтр по статусу. */
+export const listAppealsForAdmin = async (actorId, filters = {}) => {
+  if (!(await can(actorId, 'violations'))) return { error: 'not_allowed' };
+  const conds = [];
+  const params = [];
+  if (filters.status) { params.push(String(filters.status)); conds.push(`a.status = $${params.length}`); }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  const { rows } = await query(
+    `SELECT a.*, v.module, v.rule_snapshot, v.violator_id, p.name AS violator_name
+       FROM violation_appeals a
+       JOIN violations v ON v.id = a.violation_id
+       LEFT JOIN profiles p ON p.id = v.violator_id
+       ${where} ORDER BY a.created_at DESC LIMIT 300`, params);
+  return {
+    appeals: rows.map((a) => ({
+      ...toAppeal(a, { withActor: true }),
+      module: a.module,
+      violationTitle: a.rule_snapshot?.title ?? '',
+      violatorId: a.violator_id,
+      violatorName: a.violator_name ?? undefined,
+    })),
+  };
 };
 
 /* ─── Чтение — своё (вкладка в магазине/ПВЗ) или админское ─────────────── */

@@ -50,7 +50,7 @@ import { sessionStore } from './sessions.mjs';
 import { grantForProposal, markGrantProposed, finalizeGrant, failGrant } from './campaigns.mjs';
 import { earnCoins as earnPetCoins } from './petEconomy.mjs';
 import { markOrderPaid, adminGetOrder } from './kutrentmarket.mjs';
-import { cancelViolation, cancelPenalty, VIOLATION_ID_RE, PENALTY_ID_RE } from './violations.mjs';
+import { cancelViolation, cancelPenalty, decideAppeal, VIOLATION_ID_RE, PENALTY_ID_RE, APPEAL_ID_RE } from './violations.mjs';
 
 /* ─── Роли и права ─────────────────────────────────────────────────── */
 
@@ -598,6 +598,12 @@ export const PENDING_KINDS = {
      рядовая модерация, а не прощение уже начисленного долга. */
   cancel_violation: { permission: 'violations', stepUp: true, title: 'Аннулировать нарушение' },
   cancel_penalty:   { permission: 'violations', stepUp: true, title: 'Отменить штраф' },
+  /* Одобрение (целиком или частично) апелляции снимает уже назначенное
+     наказание — тот же риск прощения долга, что у cancel_violation/
+     cancel_penalty выше, тем же гейтом. Отклонение апелляции (решение
+     остаётся в силе, ничего не прощается) под этот гейт не попадает —
+     решает прямо routes/violations.mjs, как и обычное decideViolation. */
+  resolve_appeal:   { permission: 'violations', stepUp: true, title: 'Решить апелляцию' },
 };
 
 /**
@@ -704,6 +710,23 @@ const checkPayload = (kind, raw = {}) => {
       const reason = String(raw.reason ?? '').trim().slice(0, 500);
       if (!reason) return { error: 'reason_required' };
       return { ok: true, payload: { penaltyId, reason } };
+    }
+
+    case 'resolve_appeal': {
+      const appealId = String(raw.appealId ?? '');
+      if (!APPEAL_ID_RE.test(appealId)) return { error: 'bad_appeal' };
+      const decision = String(raw.decision ?? '');
+      if (!['APPROVED', 'PARTIALLY_APPROVED'].includes(decision)) return { error: 'bad_decision' };
+      const reason = String(raw.reason ?? '').trim().slice(0, 500);
+      if (!reason) return { error: 'reason_required' };
+      const comment = String(raw.comment ?? '').trim().slice(0, 2000);
+      const payload = { appealId, decision, reason, comment };
+      if (decision === 'PARTIALLY_APPROVED') {
+        if (raw.liftSanctionId !== undefined) payload.liftSanctionId = String(raw.liftSanctionId).trim().slice(0, 80);
+        if (raw.cancelPenaltyId !== undefined) payload.cancelPenaltyId = String(raw.cancelPenaltyId).trim().slice(0, 80);
+        if (!payload.liftSanctionId && !payload.cancelPenaltyId) return { error: 'nothing_to_change' };
+      }
+      return { ok: true, payload };
     }
 
     case 'skyvideo_revenue_adjust': {
@@ -1097,6 +1120,16 @@ const executePending = async (row, payload, ownerId) => {
       const res = await cancelPenalty(ownerId, payload.penaltyId, payload.reason);
       if (res.error) return { error: res.error };
       return { outcome: `Штраф ${payload.penaltyId} отменён` };
+    }
+
+    case 'resolve_appeal': {
+      const res = await decideAppeal(ownerId, payload.appealId, payload.decision, {
+        reason: payload.reason, comment: payload.comment,
+        liftSanctionId: payload.liftSanctionId, cancelPenaltyId: payload.cancelPenaltyId,
+      });
+      if (res.error) return { error: res.error };
+      const label = payload.decision === 'APPROVED' ? 'одобрена' : 'частично одобрена';
+      return { outcome: `Апелляция ${payload.appealId} ${label}` };
     }
 
     case 'skyvideo_revenue_adjust': {
