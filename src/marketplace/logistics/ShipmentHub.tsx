@@ -32,9 +32,9 @@ const buildLabelHtml = (s: Shipment, qrUrl: string) => `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0a0a0a;padding-bottom:8px;margin-bottom:8px;">
       <div>
         <div style="font-size:9px;letter-spacing:0.08em;font-weight:700;color:#555;">ПОСТАВКА</div>
-        <div style="font-size:16px;font-weight:800;font-family:monospace;">${s.number}</div>
+        <div style="font-size:16px;font-weight:800;font-family:monospace;">${escapeHtml(String(s.number))}</div>
       </div>
-      <img src="${qrUrl}" width="72" height="72" style="display:block;"/>
+      <img src="${escapeHtml(qrUrl)}" width="72" height="72" style="display:block;"/>
     </div>
     <div style="font-size:14px;font-weight:700;margin-bottom:6px;">${escapeHtml(s.name)}</div>
     <table style="width:100%;font-size:11px;border-collapse:collapse;">
@@ -43,14 +43,14 @@ const buildLabelHtml = (s: Shipment, qrUrl: string) => `
       <tr><td style="color:#555;padding:2px 0;">Получатель</td><td style="font-weight:600;">${escapeHtml(s.recipientName)}</td></tr>
       ${s.recipientAddress ? `<tr><td style="color:#555;padding:2px 0;">Адрес получ.</td><td>${escapeHtml(s.recipientAddress)}</td></tr>` : ''}
       <tr><td style="color:#555;padding:2px 0;">Сортировочный центр</td><td style="font-weight:600;">${escapeHtml(s.sortingCenterName || '—')}</td></tr>
-      <tr><td style="color:#555;padding:2px 0;">Мест</td><td>${s.placesCount}</td></tr>
-      ${s.weightKg != null ? `<tr><td style="color:#555;padding:2px 0;">Вес</td><td>${s.weightKg} кг</td></tr>` : ''}
-      ${s.volumeM3 != null ? `<tr><td style="color:#555;padding:2px 0;">Объём</td><td>${s.volumeM3} м³</td></tr>` : ''}
+      <tr><td style="color:#555;padding:2px 0;">Мест</td><td>${escapeHtml(String(s.placesCount))}</td></tr>
+      ${s.weightKg != null ? `<tr><td style="color:#555;padding:2px 0;">Вес</td><td>${escapeHtml(String(s.weightKg))} кг</td></tr>` : ''}
+      ${s.volumeM3 != null ? `<tr><td style="color:#555;padding:2px 0;">Объём</td><td>${escapeHtml(String(s.volumeM3))} м³</td></tr>` : ''}
       <tr><td style="color:#555;padding:2px 0;">Дата создания</td><td>${new Date(s.createdAt).toLocaleDateString('ru-RU')}</td></tr>
     </table>
     <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #999;display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-size:9px;color:#555;">ID: ${s.id}</div>
-      <div style="font-size:12px;font-weight:800;font-family:monospace;letter-spacing:0.1em;">${s.code}</div>
+      <div style="font-size:9px;color:#555;">ID: ${escapeHtml(String(s.id))}</div>
+      <div style="font-size:12px;font-weight:800;font-family:monospace;letter-spacing:0.1em;">${escapeHtml(String(s.code))}</div>
     </div>
   </div>`;
 
@@ -63,7 +63,7 @@ const escapeHtml = (str: string) => str.replace(/[&<>"']/g, c => ({
 const printLabel = (s: Shipment): boolean => {
   const win = window.open('', '_blank', 'width=420,height=560');
   if (!win) return false;
-  const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Наклейка ${s.number}</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Наклейка ${escapeHtml(String(s.number))}</title>
     <style>
       @page { margin: 10mm; }
       body { margin:0; padding:16px; display:flex; align-items:center; justify-content:center; background:#f2f2f2; }

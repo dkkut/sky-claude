@@ -107,7 +107,10 @@ export const appBody = (req, body, extra) => (isAppClient(req) ? { ...body, ...e
 export const originAllowed = (origin) => {
   if (!origin) return true;            // не браузер: свои проверки, curl
   const allowed = [config.publicOrigin, ...(config.extraOrigins ?? [])].filter(Boolean);
-  if (allowed.length === 0) return true;
+  // Список пуст — открыто только вне продакшена (локальная разработка). В
+  // продакшене без DOMAIN чужие страницы не должны получать ни ответы
+  // API, ни WebSocket.
+  if (allowed.length === 0) return config.nodeEnv !== 'production';
   return allowed.includes(origin);
 };
 

@@ -45,13 +45,27 @@ protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
+/**
+ * В обычный браузер уходят только веб-ссылки и почта. Ссылка приходит из
+ * чужого сообщения или рекламы, а shell.openExternal отдаёт её системе как
+ * есть: file:, smb:, ms-msdt: и другие протоколы запускают программы и
+ * открывают файлы — это известный путь к выполнению кода в Electron.
+ */
+const openExternalSafe = (raw) => {
+  let u;
+  try { u = new URL(String(raw)); } catch { return; }
+  if (['http:', 'https:', 'mailto:', 'tel:'].includes(u.protocol)) shell.openExternal(u.toString());
+};
+
 /** Отдаёт файлы из вшитого dist/ с откатом на index.html для клиентской маршрутизации. */
 const serveDist = (request) => {
   const url = new URL(request.url);
   const decoded = decodeURIComponent(url.pathname);
   let filePath = path.normalize(path.join(DIST_DIR, decoded === '/' ? '' : decoded));
   // Выход за пределы dist/ через "../" в адресе невозможен: откатываемся на index.html.
-  if (!filePath.startsWith(DIST_DIR)) filePath = path.join(DIST_DIR, 'index.html');
+  // Сравнение с разделителем: голый startsWith(DIST_DIR) пропускал бы и
+  // соседний каталог с тем же началом имени (dist-old, dist2).
+  if (filePath !== DIST_DIR && !filePath.startsWith(DIST_DIR + path.sep)) filePath = path.join(DIST_DIR, 'index.html');
   if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
     filePath = path.join(DIST_DIR, 'index.html');
   }
@@ -244,7 +258,7 @@ if (!gotLock) {
     // Любая внешняя ссылка (реклама, ссылка в тексте, window.open) уходит
     // в обычный браузер ОС, а не открывает второе окно приложения.
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-      shell.openExternal(url);
+      openExternalSafe(url);
       return { action: 'deny' };
     });
 
@@ -257,7 +271,7 @@ if (!gotLock) {
       try { target = new URL(url); } catch { event.preventDefault(); return; }
       if (target.protocol !== `${APP_SCHEME}:`) {
         event.preventDefault();
-        shell.openExternal(url);
+        openExternalSafe(url);
       }
     });
 
