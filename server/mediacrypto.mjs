@@ -45,16 +45,34 @@ const HEADER_LEN = 4 + 4 + 8 + 8 + 12 + TAG_LEN + DEK_LEN; // 84
  * гарантирует, что компрометация одного производного ключа не отдаёт
  * остальные, даже если исходный материал общий (запасной путь ниже).
  */
-const masterKeyMaterial = () => {
-  if (config.encryptionKey) return Buffer.from(config.encryptionKey, 'utf8');
-  console.warn('[mediacrypto] ENCRYPTION_KEY не задан — ключ медиахранилища выводится из '
-    + 'JWT_SECRET. Задайте отдельный ключ для продакшена.');
-  return Buffer.from(config.jwtSecret, 'utf8');
+const deriveKey = (material) => Buffer.from(
+  crypto.hkdfSync('sha256', material, Buffer.alloc(0), Buffer.from('sky-media-storage-v1'), 32),
+);
+
+let warnedNoKey = false;
+
+/**
+ * Ключи в порядке предпочтения: первым пишем, всеми пробуем читать.
+ * Пока ENCRYPTION_KEY не задан, ключ выводится из JWT_SECRET. Когда
+ * его задают позже (scripts/set-encryption-key.sh), файлы, обёрнутые
+ * старым ключом, иначе перестали бы открываться вовсе — «видео не
+ * загружено» на каждом файле. Старый ключ остаётся в списке для чтения,
+ * а mediabackfill.mjs перепаковывает такие файлы под новый.
+ */
+const masterKeys = () => {
+  const keys = [];
+  if (config.encryptionKey) keys.push(deriveKey(Buffer.from(config.encryptionKey, 'utf8')));
+  else if (!warnedNoKey) {
+    warnedNoKey = true;
+    console.warn('[mediacrypto] ENCRYPTION_KEY не задан — ключ медиахранилища выводится из '
+      + 'JWT_SECRET. Задайте отдельный ключ для продакшена.');
+  }
+  const fromJwt = deriveKey(Buffer.from(config.jwtSecret, 'utf8'));
+  if (!keys.some((k) => k.equals(fromJwt))) keys.push(fromJwt);
+  return keys;
 };
 
-const masterKey = () => Buffer.from(
-  crypto.hkdfSync('sha256', masterKeyMaterial(), Buffer.alloc(0), Buffer.from('sky-media-storage-v1'), 32),
-);
+const masterKey = () => masterKeys()[0];
 
 const chunkAad = (index, isLast) => {
   const b = Buffer.alloc(5);
@@ -169,12 +187,21 @@ export const encryptStreamToFile = async (source, destPath, limitBytes, { chunkS
 export const encryptBytesToFile = (buf, destPath, opts) =>
   encryptStreamToFile(Readable.from([buf]), destPath, buf.length + 1, opts);
 
+/**
+ * Файл, записанный до перехода на шифрование, лежит на диске открытым и
+ * не начинается с метки SKE1. Раньше такой файл считался «не найденным»,
+ * и всё загруженное до шифрования не открывалось. Теперь он читается как
+ * есть, пока mediabackfill.mjs не зашифрует его на месте.
+ */
 const readHeader = async (path) => {
   const fh = await fsOpen(path, 'r');
   try {
     const buf = Buffer.alloc(HEADER_LEN);
-    await fh.read(buf, 0, HEADER_LEN, 0);
-    if (!buf.subarray(0, 4).equals(MAGIC)) throw new Error('not_encrypted_media');
+    const { bytesRead } = await fh.read(buf, 0, HEADER_LEN, 0);
+    if (bytesRead < 4 || !buf.subarray(0, 4).equals(MAGIC)) {
+      return { legacy: true, plaintextSize: (await fh.stat()).size };
+    }
+    if (bytesRead < HEADER_LEN) throw new Error('media_header_truncated');
     const chunkSize = buf.readUInt32LE(4);
     const plaintextSize = Number(buf.readBigUInt64LE(8));
     const salt = buf.subarray(16, 24);
@@ -182,15 +209,43 @@ const readHeader = async (path) => {
     const wrapTag = buf.subarray(36, 52);
     const wrappedDek = buf.subarray(52, 52 + DEK_LEN);
 
-    const mk = masterKey();
-    const unwrap = crypto.createDecipheriv('aes-256-gcm', mk, wrapIv);
-    unwrap.setAuthTag(wrapTag);
-    const dek = Buffer.concat([unwrap.update(wrappedDek), unwrap.final()]);
-
-    return { chunkSize, plaintextSize, salt, dek };
+    const keys = masterKeys();
+    for (let i = 0; i < keys.length; i += 1) {
+      try {
+        const unwrap = crypto.createDecipheriv('aes-256-gcm', keys[i], wrapIv);
+        unwrap.setAuthTag(wrapTag);
+        const dek = Buffer.concat([unwrap.update(wrappedDek), unwrap.final()]);
+        return { chunkSize, plaintextSize, salt, dek, keyIndex: i, wrapIv, wrapTag, wrappedDek };
+      } catch { /* ключ не тот — пробуем следующий */ }
+    }
+    throw new Error('media_key_mismatch');
   } finally {
     await fh.close();
   }
+};
+
+/** Лежит ли файл открытым (записан до шифрования). */
+export const isLegacyMedia = async (path) => (await readHeader(path)).legacy === true;
+
+/**
+ * Файл обёрнут не основным ключом (его сменили после записи) —
+ * перепаковать ключ файла под основной прямо в заголовке. Сами данные
+ * не трогаются: шифруются они ключом файла, а не мастер-ключом.
+ */
+export const rewrapMediaKey = async (path) => {
+  const h = await readHeader(path);
+  if (h.legacy || h.keyIndex === 0) return false;
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', masterKey(), iv);
+  const wrapped = Buffer.concat([c.update(h.dek), c.final()]);
+  const tag = c.getAuthTag();
+  const fh = await fsOpen(path, 'r+');
+  try {
+    await fh.write(Buffer.concat([iv, tag, wrapped]), 0, 12 + TAG_LEN + DEK_LEN, 24);
+  } finally {
+    await fh.close();
+  }
+  return true;
 };
 
 /** Настоящий (расшифрованный) размер файла — то, что нужно parseRange
@@ -211,7 +266,13 @@ export const openDecryptedRangeStream = (path, range) => {
   // цикл и закрывает файл. Иначе запрос «bytes=0-» на большом фильме
   // расшифровывал бы его весь в память, даже если зритель уже перемотал.
   async function* generate() {
-    const { chunkSize, plaintextSize, salt, dek } = await readHeader(path);
+    const header = await readHeader(path);
+    if (header.legacy) {
+      const rs = createReadStream(path, range ? { start: range.start, end: range.end } : {});
+      try { for await (const chunk of rs) yield chunk; } finally { rs.destroy(); }
+      return;
+    }
+    const { chunkSize, plaintextSize, salt, dek } = header;
     const start = range ? range.start : 0;
     const end = range ? range.end : plaintextSize - 1;
     const onDiskChunkLen = chunkSize + TAG_LEN;

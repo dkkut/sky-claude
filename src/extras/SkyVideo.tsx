@@ -17,7 +17,8 @@ import {
 import { AiVideoSummarize, AiVideoQA } from '@/ai/SkyAI';
 import { AdBanner } from '@/feedback/Feedback';
 import { useSkyVideoStore, resetSkyVideoForUser } from '@/video/serverStore';
-import { videoUrl, thumbnailUrl, fmtDuration, readVideoMeta, type ServerVideo, type VideoComment } from '@/video/skyVideoApi';
+import { videoUrl, thumbnailUrl, fmtDuration, readVideoMeta, apiSkyVideoTicket, type ServerVideo, type VideoComment } from '@/video/skyVideoApi';
+import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 import {
   apiSkyVideoComments, apiAddSkyVideoComment, apiDeleteSkyVideoComment,
   apiSkyVideoChannels, apiSkyVideoChannel, type ChannelListEntry, type ChannelInfo,
@@ -162,6 +163,8 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [showCtrl, setShowCtrl] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const passTried = useRef(false);
   const hideTimer = useRef<number>(0);
   const noteView = useSkyVideoStore(s => s.noteView);
 
@@ -178,7 +181,7 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
 
   const toggle = () => {
     const v = vidRef.current; if (!v) return;
-    if (v.paused) { v.play(); setPlaying(true); } else { v.pause(); setPlaying(false); }
+    if (v.paused) { v.play().then(() => setPlaying(true)).catch(() => setPlaying(false)); } else { v.pause(); setPlaying(false); }
     resetHide();
   };
 
@@ -192,7 +195,36 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
       <video ref={vidRef} src={videoUrl(video.id)} className="w-full h-full object-contain"
         onTimeUpdate={e => setProgress((e.currentTarget.currentTime / e.currentTarget.duration) || 0)}
         onLoadedMetadata={e => setDuration(e.currentTarget.duration)}
-        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} playsInline />
+        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} playsInline
+        onPlaying={() => { passTried.current = false; setFailed(false); }}
+        onError={() => {
+          // Без этого обработчика ролик, который не открылся, оставался
+          // чёрным квадратом без единого объяснения. Сначала один раз
+          // обновляем пропуск (он мог просто протухнуть), потом честно
+          // говорим, что файл не открылся.
+          const v = vidRef.current;
+          if (v && !passTried.current) {
+            passTried.current = true;
+            void reloadWithFreshTicket(v, apiSkyVideoTicket, () => videoUrl(video.id)).then((ok) => { if (!ok) setFailed(true); });
+            return;
+          }
+          setFailed(true); setPlaying(false);
+        }} />
+      {failed && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center"
+          style={{ background: 'rgba(0,0,0,0.82)' }} onClick={e => e.stopPropagation()}>
+          <p className="text-sm font-bold text-white">Видео не удалось загрузить</p>
+          <button className="rounded-full px-4 py-2 text-xs font-bold"
+            style={{ background: 'rgba(255,255,255,0.14)', color: '#fff' }}
+            onClick={() => {
+              const v = vidRef.current; if (!v) return;
+              passTried.current = false; setFailed(false);
+              void reloadWithFreshTicket(v, apiSkyVideoTicket, () => videoUrl(video.id)).then((ok) => {
+                if (ok) v.play().catch(() => {}); else setFailed(true);
+              });
+            }}>Повторить</button>
+        </div>
+      )}
       {isMobile && (
         <MobileVideoGestures videoRef={vidRef} onSingleTap={toggle} />
       )}
@@ -503,12 +535,16 @@ const ShortsPlayer = ({ shorts, initialIndex = 0, onClose }: { shorts: ServerVid
 
       <div className="relative w-full max-w-sm h-full flex items-center justify-center"
         onClick={() => {
-          if (vidRef.current?.paused) { vidRef.current.play(); setPlaying(true); }
+          if (vidRef.current?.paused) { vidRef.current.play().then(() => setPlaying(true)).catch(() => setPlaying(false)); }
           else { vidRef.current?.pause(); setPlaying(false); }
         }}>
         <video ref={vidRef} src={videoUrl(video.id)} loop playsInline autoPlay
           className="max-h-full max-w-full object-contain"
-          onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
+          onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+          onError={() => {
+            const v = vidRef.current;
+            if (v) void reloadWithFreshTicket(v, apiSkyVideoTicket, () => videoUrl(video.id));
+          }} />
 
         <AnimatePresence>
           {!playing && (
@@ -591,7 +627,7 @@ const ShortsPlayer = ({ shorts, initialIndex = 0, onClose }: { shorts: ServerVid
 };
 
 /* -- Мои видео (черновики и опубликованное) --------------------- */
-const MineTab = () => {
+const MineTab = ({ onOpen }: { onOpen: (v: ServerVideo) => void }) => {
   const { mine, publish, removeVideo } = useSkyVideoStore();
   const drafts = mine.filter(v => v.status === 'draft');
   const published = mine.filter(v => v.status === 'published' || v.status === 'hidden');
@@ -604,7 +640,11 @@ const MineTab = () => {
           <div className="space-y-2">
             {drafts.map(v => (
               <div key={v.id} className="rounded-2xl p-3 flex items-center gap-3" style={{ background: V.bg1, border: `1px solid ${V.border}` }}>
-                <div className="min-w-0 flex-1">
+                {/* Черновик нужно уметь открыть: иначе загруженный ролик нельзя
+                    проверить до публикации, и «видео не включается» не
+                    отличить от «я его просто не могу посмотреть». */}
+                <div className="w-24 shrink-0 cursor-pointer" onClick={() => onOpen(v)}><Thumbnail video={v} size="sm" /></div>
+                <div className="min-w-0 flex-1 cursor-pointer" onClick={() => onOpen(v)}>
                   <p className="text-sm font-semibold truncate" style={{ color: V.t1 }}>{v.title || 'Без названия'}</p>
                   <p className="text-[11px]" style={{ color: V.t3 }}>{fmtDuration(v.duration)}</p>
                 </div>
@@ -626,7 +666,7 @@ const MineTab = () => {
           <div className="space-y-2">
             {published.map(v => (
               <div key={v.id} className="rounded-2xl p-3" style={{ background: V.bg1, border: `1px solid ${V.border}` }}>
-                <p className="text-sm font-semibold truncate mb-1.5" style={{ color: V.t1 }}>{v.title}</p>
+                <p className="text-sm font-semibold truncate mb-1.5 cursor-pointer" style={{ color: V.t1 }} onClick={() => onOpen(v)}>{v.title}</p>
                 <div className="flex items-center gap-3 text-[11px]" style={{ color: V.t3 }}>
                   <span>{fmtViews(v.views)} просм.</span>
                   <span><ThumbsUp size={11} className="inline mr-0.5" /> {v.likes}</span>
@@ -1168,7 +1208,7 @@ export const SkyVideo = () => {
                 <UploadTab onDone={() => setTab('mine')} />
               )}
 
-              {tab === 'mine' && <MineTab />}
+              {tab === 'mine' && <MineTab onOpen={setActiveVideo} />}
 
             </motion.div>
           </AnimatePresence>

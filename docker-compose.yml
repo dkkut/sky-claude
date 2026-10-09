@@ -108,6 +108,19 @@ services:
       # Видеообзоры помещений, которые владельцы общих складов снимают
       # на проверку администрации. Десятки и сотни мегабайт на запись.
       VIDEO_DIR:                   /data/video
+      # Остальные хранилища. Раньше для них не было ни переменных, ни
+      # томов: файлы писались в слой контейнера и стирались при каждом
+      # деплое, а записи в базе оставались — человек видел «видео не
+      # загружено» на всём, что загрузил до последней пересборки.
+      SKYVIDEO_DIR:                /data/skyvideo
+      BOOKS_DIR:                   /data/books
+      BLOOM_DIR:                   /data/bloom
+      STORY_DIR:                   /data/stories
+      GIFTS_DIR:                   /data/gifts
+      ADS_DIR:                     /data/ads
+      CAMPAIGNS_DIR:               /data/campaigns
+      SKIN_DIR:                    /data/skins
+      EVIDENCE_DIR:                /data/evidence
       # Google Карты. Ключ серверный: им подписаны запросы, которые
       # делает сам сервер, — разбор адреса и картинка карты. В браузер
       # он не уходит ни разу. Пусто — приложение честно пишет «карта не
@@ -199,6 +212,15 @@ services:
       # которым склады открывали.
       - market-data:/data/market
       - video-data:/data/video
+      - skyvideo-data:/data/skyvideo
+      - books-data:/data/books
+      - bloom-data:/data/bloom
+      - stories-data:/data/stories
+      - gifts-data:/data/gifts
+      - ads-data:/data/ads
+      - campaigns-data:/data/campaigns
+      - skins-data:/data/skins
+      - evidence-data:/data/evidence
       # Единственный том-бинд в этом файле, не именованный том: сигнал
       # «выключить сервер при вероятном взломе администратора»
       # (server/breach.mjs) должен дойти до сторожа на самом хосте, вне
@@ -328,5 +350,14 @@ volumes:
   ai-data:
   market-data:
   video-data:
+  skyvideo-data:
+  books-data:
+  bloom-data:
+  stories-data:
+  gifts-data:
+  ads-data:
+  campaigns-data:
+  skins-data:
+  evidence-data:
   certbot-certs:
   certbot-webroot:

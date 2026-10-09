@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react';
 import { usePlayerStore } from './playerStore';
 import { useAuthStore } from '@/core/auth/store';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
+import { apiMediaTicket as apiMusicTicket } from '@/music/musicApi';
+import { apiMediaTicket as apiPodcastTicket } from '@/podcasts/podcastApi';
+import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 
 /**
  * Единственный реальный <audio> элемент в приложении.
@@ -74,6 +77,7 @@ export const PlayerEngine = () => {
      из-за счётчика незачем. */
   const failsRef = useRef(0);
   const retryRef = useRef(0);
+  const passTriedRef = useRef('');
 
   /* «Сейчас слушает музыку» — реальный live-статус в профиле,
      выключается автоматически, если владелец скрыл showMusic. */
@@ -179,6 +183,23 @@ export const PlayerEngine = () => {
         const a = audioRef.current;
         if (!a || !srcUrl) return;
         const code = a.error?.code ?? 0;
+
+        // Пропуск на выдачу мог протухнуть (вкладка открыта давно) — тогда
+        // файл отвечает 401 и браузер сообщает «формат не поддерживается».
+        // Один раз на трек обновляем пропуск и продолжаем с того же места,
+        // прежде чем считать трек сломанным и перескакивать дальше.
+        const refresh = srcUrl.includes('/api/music/') ? apiMusicTicket
+          : srcUrl.includes('/api/podcasts/') ? apiPodcastTicket : null;
+        if (refresh && passTriedRef.current !== srcUrl) {
+          passTriedRef.current = srcUrl;
+          void reloadWithFreshTicket(a, refresh, () => usePlayerStore.getState().item?.srcUrl ?? srcUrl).then((ok) => {
+            // Первая попытка уже сбросила «играет» (play() отклонился вместе с
+            // загрузкой), а трек выбрали, чтобы слушать, — запускаем заново.
+            if (ok) { setPlaying(true); a.play().catch(() => setPlaying(false)); return; }
+            failsRef.current = 0; setPlaying(false);
+          });
+          return;
+        }
 
         // Обрыв связи посреди трека — не повод его выкидывать: связь
         // возвращается. Пробуем один раз с того же места.

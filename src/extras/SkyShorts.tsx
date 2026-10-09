@@ -18,7 +18,8 @@ import {
 } from 'lucide-react';
 import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
 import { useFilmStore } from '@/film/serverStore';
-import { videoUrl, posterUrl, type ServerMovie } from '@/film/filmApi';
+import { videoUrl, posterUrl, apiFilmTicket, type ServerMovie } from '@/film/filmApi';
+import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 
 const K = {
   text: '#FFFFFF',
@@ -40,6 +41,7 @@ const ShortItem = ({
   saved: boolean; onToggleSave: () => void; onEnded: () => void;
 }) => {
   const vRef = useRef<HTMLVideoElement>(null);
+  const passTried = useRef(false);
   const [playing, setPlaying] = useState(true);
   const [progress, setProgress] = useState(0);
   const [flash, setFlash] = useState(false);
@@ -100,8 +102,16 @@ const ShortItem = ({
           poster={movie.hasPoster ? posterUrl(movie.id) : undefined}
           preload="auto"
           onTimeUpdate={() => { const v = vRef.current; if (v?.duration) setProgress(v.currentTime / v.duration); }}
-          onError={() => setBroken(true)}
-          onPlaying={() => setBroken(false)}
+          onError={() => {
+            const v = vRef.current;
+            if (v && !passTried.current) {
+              passTried.current = true;
+              void reloadWithFreshTicket(v, apiFilmTicket, () => videoUrl(movie.id)).then((ok) => { if (!ok) setBroken(true); });
+              return;
+            }
+            setBroken(true);
+          }}
+          onPlaying={() => { passTried.current = false; setBroken(false); }}
           onEnded={onEnded}/>
       ) : (
         <div className="h-full w-full flex flex-col items-center justify-center gap-3"

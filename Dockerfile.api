@@ -27,7 +27,15 @@ COPY docs/    ./docs/
 # образа — иначе он появился бы принадлежащим root, а процесс работает
 # не от root и писать в него не смог бы: загрузка отвечала бы отказом
 # на ровном месте.
-RUN mkdir -p /data/music /data/film /data/podcasts && chown -R node:node /data
+#
+# Каталоги — для ВСЕХ хранилищ, а не только музыки и кино: у остальных
+# (market, video, tickets, aifiles, skyvideo, books, ...) их в образе не
+# было, и именованный том создавался принадлежащим root — писать в него
+# процесс node не мог.
+RUN mkdir -p /data/music /data/film /data/podcasts /data/skyvideo /data/books \
+      /data/bloom /data/stories /data/gifts /data/ads /data/campaigns /data/skins \
+      /data/evidence /data/market /data/video /data/tickets /data/aifiles \
+    && chown -R node:node /data
 
 # Работаем не от root: образ node уже содержит пользователя node.
 USER node

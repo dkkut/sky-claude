@@ -152,7 +152,7 @@ server {
     #  413 вместо понятного ответа. Потолок здесь с запасом над
     #  серверным (30 МБ), чтобы отказ по размеру давало приложение.
     location ^~ /api/music/ {
-        limit_req zone=req_general burst=90 nodelay;
+        limit_req zone=req_general burst=300 nodelay;
         client_max_body_size 32m;
         # Тело идёт потоком: буферизация означала бы держать весь трек
         # в памяти или во временном файле дважды.

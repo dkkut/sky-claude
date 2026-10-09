@@ -29,3 +29,22 @@ export const withTicketRefresh = (request: () => Promise<boolean>) => {
     return ok;
   };
 };
+
+/**
+ * Файл не открылся — чаще всего просто протух пропуск (вкладка открыта
+ * давно, телефон вышел из сна). Обновляем его и перезагружаем элемент с
+ * того же места; решать, показывать ли ошибку, остаётся за вызывающим:
+ * false — пропуск не выдали, повтор бессмысленен.
+ */
+export const reloadWithFreshTicket = async (
+  el: HTMLMediaElement,
+  refresh: () => Promise<boolean>,
+  url: () => string,
+): Promise<boolean> => {
+  const at = el.currentTime;
+  if (!(await refresh())) return false;
+  el.src = url();
+  el.load();
+  if (at > 0) el.addEventListener('loadedmetadata', () => { el.currentTime = at; }, { once: true });
+  return true;
+};

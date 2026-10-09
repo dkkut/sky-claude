@@ -13,6 +13,7 @@ import { isOwner, isAdmin } from './admin.mjs';
 import { shutdownState, maintenanceState } from './platform.mjs';
 import { waitForDb, migrate, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
+import { encryptLegacyMedia } from './mediabackfill.mjs';
 import { connectRedis, closeRedis, redisAlive } from './sessions.mjs';
 import { startSignalHub, isOnline } from './signal.mjs';
 import { verifyToken } from './security.mjs';
@@ -319,6 +320,11 @@ const start = async () => {
   await waitForDb();
   await migrate();
   await encryptExistingContent();
+  // Файлы, загруженные до шифрования, читаются и так; дошифровываем их в
+  // фоне, не задерживая запуск API.
+  encryptLegacyMedia()
+    .then((r) => console.log(`[mediabackfill] зашифровано: ${r.encrypted}, перепаковано: ${r.rewrapped}, пропущено: ${r.skipped}, ошибок: ${r.failed}`))
+    .catch((err) => console.error('[mediabackfill] сбой прохода:', err.message));
   await connectRedis();
 
   // Список ключей беты приводим в соответствие с .env при каждом

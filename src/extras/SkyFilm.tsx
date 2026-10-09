@@ -43,8 +43,9 @@ import { useTogetherSync } from '@/together/useTogetherSync';
 import {
   videoUrl, posterUrl, fmtDuration, readVideoMeta, looksLikeShort,
   MAX_SHORT_DURATION, apiFilmModerationQueue, apiModerateMovie, apiMovie,
-  type ServerMovie, type VideoMeta,
+  apiFilmTicket, type ServerMovie, type VideoMeta,
 } from '@/film/filmApi';
+import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 import { useModuleStore } from '@/data/state/modules';
 import { SkyShorts } from './SkyShorts';
 import { ACCEPT_VIDEO, ACCEPT_IMAGE } from '@/shared/fileAccept';
@@ -202,6 +203,7 @@ export const Player = ({ movie, onClose, together = null }: {
   together?: WatchTogether | null;
 }) => {
   const vRef  = useRef<HTMLVideoElement>(null);
+  const passTried = useRef(false);
   const cRef  = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
   const [pl,  setPl]  = useState(false);
@@ -360,9 +362,21 @@ export const Player = ({ movie, onClose, together = null }: {
             saveProgress(movie.id, v.currentTime, v.duration || movie.duration || 0);
           }}
           onLoadedMetadata={onMeta}
-          onPlaying={() => { setFailed(false); setPl(true); }}
+          onPlaying={() => { passTried.current = false; setFailed(false); setPl(true); }}
           onPause={() => setPl(false)}
-          onError={() => { setFailed(true); setPl(false); }}
+          onError={() => {
+            // Чаще всего файл не открылся из-за протухшего пропуска, а не
+            // связи: один раз обновляем его и продолжаем с того же места.
+            const v = vRef.current;
+            if (v && !passTried.current) {
+              passTried.current = true;
+              void reloadWithFreshTicket(v, apiFilmTicket, () => videoUrl(movie.id)).then((ok) => {
+                if (!ok) { setFailed(true); setPl(false); }
+              });
+              return;
+            }
+            setFailed(true); setPl(false);
+          }}
           onStalled={() => setFailed(false)}
           onEnded={() => {
             setPl(false);
