@@ -80,7 +80,7 @@ GiftBadge.displayName = 'GiftBadge';
 /* ── Глянцевая 3D-иконка подарка ─────────────────────────────────────
    Круглая «сфера» с радиальным градиентом + блик сверху + мягкая тень —
    даёт ощущение объёма без canvas/3D-движка, в стиле моделек Telegram. */
-export const GiftModel = memo(({ seed, rarity, size=88 }: { seed: string; rarity: Rarity; size?: number }) => {
+export const GiftModel = memo(({ seed, rarity, size=88, animated=true }: { seed: string; rarity: Rarity; size?: number; animated?: boolean }) => {
   const model = useMemo(() => modelForSeed(seed), [seed]);
   const Icon = model.icon;
   const scale = RARITY_SCALE[rarity];
@@ -89,7 +89,7 @@ export const GiftModel = memo(({ seed, rarity, size=88 }: { seed: string; rarity
   return (
     <motion.div
       className="absolute inset-0 grid place-items-center pointer-events-none select-none"
-      initial={{ y:0 }} animate={{ y:[0,-6,0] }} transition={{ duration:4.5, repeat:Infinity, ease:'easeInOut' }}>
+      initial={{ y:0 }} animate={animated ? { y:[0,-6,0] } : { y:0 }} transition={animated ? { duration:4.5, repeat:Infinity, ease:'easeInOut' } : { duration:0 }}>
       <div className="relative grid place-items-center rounded-full" style={{
         height: dim, width: dim,
         background: `radial-gradient(circle at 35% 28%, ${model.from}, ${model.to} 72%)`,

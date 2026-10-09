@@ -85,11 +85,17 @@ const GiftCard = ({ gift, selected, onClick }: {
   const shim  = RARITY_SHIMMER[gift.rarity];
   const stars = RARITY_STARS[gift.rarity];
   const epic  = gift.rarity === 'epic' || gift.rarity === 'legendary' || gift.rarity === 'unique';
+  // Бесконечные анимации — только у выбранной карточки. Раньше их крутила
+  // каждая (по две-три на карточку): на каталоге из десятков подарков всё
+  // это шло одновременно в основном потоке, и экран зависал.
+  const live  = selected;
 
   return (
     <motion.button type="button" onClick={onClick} whileTap={{ scale:.93 }}
       className="relative flex flex-col rounded-3xl overflow-hidden transition-all"
       style={{
+        // Карточки за пределами экрана не рисуются, пока до них не докрутили.
+        contentVisibility: 'auto', containIntrinsicSize: 'auto 150px',
         background: bg,
         border:     `2px solid ${selected ? rc : bdr}`,
         boxShadow:  selected
@@ -101,7 +107,7 @@ const GiftCard = ({ gift, selected, onClick }: {
       <div className="absolute inset-0 pointer-events-none"
         style={{ background:`linear-gradient(135deg,${shim} 0%,transparent 60%,${shim} 100%)` }}/>
       {/* Epic sparkle */}
-      {epic && (
+      {epic && live && (
         <motion.div className="absolute inset-0 pointer-events-none overflow-hidden rounded-3xl"
           animate={{ opacity:[0.2,0.6,0.2] }} transition={{ duration:3, repeat:Infinity }}>
           <div style={{ position:'absolute', inset:0, background:`linear-gradient(120deg,transparent 20%,${rc}15 50%,transparent 80%)` }}/>
@@ -124,13 +130,14 @@ const GiftCard = ({ gift, selected, onClick }: {
       <div className="relative flex items-center justify-center py-2 w-full">
         <motion.div className="absolute rounded-full pointer-events-none"
           style={{ width:48, height:48, background:`radial-gradient(circle,${rc}28,transparent 70%)` }}
-          animate={{ scale:[0.9,1.15,0.9], opacity:[0.4,0.8,0.4] }}
-          transition={{ duration:2.5, repeat:Infinity, ease:'easeInOut' }}/>
+          animate={live ? { scale:[0.9,1.15,0.9], opacity:[0.4,0.8,0.4] } : { scale:1, opacity:0.5 }}
+          transition={live ? { duration:2.5, repeat:Infinity, ease:'easeInOut' } : { duration:0 }}/>
         <motion.div className="text-[38px] select-none relative z-10"
-          animate={ANIM[gift.animation]}
-          transition={gift.animation==='spin'
-            ? { duration:3, repeat:Infinity, ease:'linear' }
-            : { duration:2, repeat:Infinity, ease:'easeInOut' }}>
+          animate={live ? ANIM[gift.animation] : { y:0, rotate:0, scale:1 }}
+          transition={!live ? { duration:0 }
+            : gift.animation==='spin'
+              ? { duration:3, repeat:Infinity, ease:'linear' }
+              : { duration:2, repeat:Infinity, ease:'easeInOut' }}>
           {gift.emoji}
         </motion.div>
       </div>
@@ -267,7 +274,7 @@ export const GiftMarket = ({ onClose }: { onClose: () => void }) => {
                     <Check size={11} className="text-white"/>
                   </motion.div>
                 )}
-                <motion.div className="text-4xl select-none" animate={ANIM[gift.animation]}>
+                <motion.div className="text-4xl select-none" animate={selected?.id===gift.id ? ANIM[gift.animation] : undefined}>
                   {gift.emoji}
                 </motion.div>
                 <p className="text-[10px] font-bold text-white text-center leading-tight">{gift.name}</p>
@@ -1149,7 +1156,7 @@ export const MyGifts = ({ userId }: { userId: string }) => {
                     </button>
                   )}
                   <motion.div className="text-3xl select-none"
-                    animate={gi ? ANIM[gi.animation] : ANIM.float}>
+                    animate={undefined}>
                     {g.giftEmoji}
                   </motion.div>
                   <p className="text-[10px] font-bold text-white text-center">{g.giftName}</p>

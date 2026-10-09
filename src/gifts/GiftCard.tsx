@@ -52,8 +52,8 @@ export const GiftCard = memo(({ gift, size='md', onClick, showFavorite=true }: {
         whileTap={{ scale:0.97 }} className="relative overflow-hidden"
         animate={{ boxShadow: hovering ? `0 18px 50px rgba(0,0,0,0.5), 0 0 36px ${rc.glow}` : `0 8px 28px rgba(0,0,0,0.4), 0 0 14px ${rc.glow}` }}>
         <div className="absolute inset-0 rounded-[22px] z-10 pointer-events-none" style={{ border:`1.5px solid ${rc.color}55` }}/>
-        <GiftBackground theme={gift.background} rarity={gift.rarity} className="rounded-[22px]"/>
-        <GiftModel seed={gift.id} rarity={gift.rarity} size={dims.w*0.5}/>
+        <GiftBackground theme={gift.background} rarity={gift.rarity} className="rounded-[22px]" animated={hovering}/>
+        <GiftModel seed={gift.id} rarity={gift.rarity} size={dims.w*0.5} animated={hovering}/>
 
         {/* блик / отражение, следующее за курсором */}
         <motion.div className="absolute inset-y-0 w-1/2 pointer-events-none" style={{ left: shineX, background:'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)', mixBlendMode:'overlay' }}/>

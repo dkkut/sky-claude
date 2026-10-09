@@ -22,7 +22,7 @@ const CollectionCard = memo(({ col, onOpen }: { col: GiftCollection; onOpen: () 
 
   return (
     <button type="button" onClick={onOpen} className="relative shrink-0 overflow-hidden rounded-3xl text-left" style={{ width:200, height:140, scrollSnapAlign:'start' }}>
-      <GiftBackground theme={col.cover} rarity="epic"/>
+      <GiftBackground theme={col.cover} rarity="epic" animated={false}/>
       <div className="absolute inset-0" style={{ background:'linear-gradient(180deg, transparent 30%, rgba(5,5,10,0.9))' }}/>
       <div className="absolute bottom-2.5 left-3 right-3">
         <p className="text-xs font-bold truncate" style={{ color:'#fff' }}>{col.name}</p>
@@ -126,7 +126,7 @@ export const GiftsHome = memo(({ onOpenGift, onOpenCollection, onOpenSearch, onO
         <div className="flex gap-3 overflow-x-auto px-5 pb-1" style={{ scrollbarWidth:'none' }}>
           {comingSoon.map(c => (
             <div key={c.id} className="relative shrink-0 overflow-hidden rounded-3xl" style={{ width:160, height:120 }}>
-              <GiftBackground theme={c.cover} rarity="legendary"/>
+              <GiftBackground theme={c.cover} rarity="legendary" animated={false}/>
               <div className="absolute inset-0 grid place-items-center" style={{ background:'rgba(5,5,10,0.55)', backdropFilter:'blur(2px)' }}>
                 <Pill label="Скоро" color={C.amber}/>
               </div>

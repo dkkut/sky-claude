@@ -53,7 +53,11 @@ const THEME_BASE: Record<BackgroundTheme, string> = {
   particles:    'radial-gradient(circle at 50% 40%, #0b0b16, #020205)',
 };
 
-export const GiftBackground = memo(({ theme, rarity, className='' }: { theme: BackgroundTheme; rarity: Rarity; className?: string }) => {
+/** `animated=false` — только базовый градиент, без слоёв анимации. В списках
+ *  каждая карточка несла 6–32 бесконечно анимированных слоя; на экране из
+ *  десятков карточек это сотни анимаций сразу, и телефон зависал. */
+export const GiftBackground = memo(({ theme, rarity, className='', animated=true }: { theme: BackgroundTheme; rarity: Rarity; className?: string; animated?: boolean }) => {
+  if (!animated) return <div className={`absolute inset-0 overflow-hidden ${className}`} style={{ background: THEME_BASE[theme] }}/>;
   const cfg = RARITY_CONFIG[rarity];
   const intensity = 0.5 + cfg.weight*0.7;
   const particleCount = Math.round(6 + cfg.weight*26);
