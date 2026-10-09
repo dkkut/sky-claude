@@ -147,6 +147,7 @@ const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => 
   const [playing, setPlaying] = useState(false);
   const [pct, setPct]         = useState(0);
   const [dur, setDur]         = useState(0);
+  const [speed, setSpeed]     = useState(1);
   const ref = useRef<HTMLAudioElement>(null);
   const bars = useRef(Array.from({ length: 30 }, () => 20 + Math.random() * 70));
   const { getTheme } = useChatTheme();
@@ -189,9 +190,16 @@ const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => 
             ))}
           </div>
         </div>
-        <p className="text-[11px] mt-0.5" style={{ color: fromMe ? `${accent}99` : 'var(--t2)' }}>
-          {fmtS(Math.floor(dur > 0 ? pct / 100 * dur : 0))} / {fmtS(Math.floor(dur || parseInt(msg.text || '0')))}
-        </p>
+        <div className="mt-0.5 flex items-center justify-between">
+          <p className="text-[11px]" style={{ color: fromMe ? `${accent}99` : 'var(--t2)' }}>
+            {fmtS(Math.floor(dur > 0 ? pct / 100 * dur : 0))} / {fmtS(Math.floor(dur || parseInt(msg.text || '0')))}
+          </p>
+          <button type="button" aria-label="Скорость воспроизведения"
+            onClick={() => { const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1; setSpeed(next); if (ref.current) ref.current.playbackRate = next; }}
+            className="rounded-full px-1.5 text-[10px] font-bold" style={{ background: `${accent}22`, color: accent }}>
+            {speed}×
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -223,7 +231,105 @@ const FileBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
 
 
 /* -- Video Note (кружочек) ------------------------------------------- */
-const VideoNoteBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
+/* Какой формат запишет именно этот браузер. Раньше стоял жёсткий webm: на
+   iPhone он не поддерживается, видео-кружок не записывался вовсе («нет
+   доступа к камере»), а голосовое уходило с mp4-данными под именем .webm. */
+const pickRecMime = (list: string[]) =>
+  (typeof MediaRecorder === 'undefined' ? undefined : list.find(m => MediaRecorder.isTypeSupported(m))) ?? '';
+const extFor = (mime: string, video: boolean) =>
+  mime.includes('mp4') ? (video ? 'mp4' : 'm4a') : mime.includes('ogg') ? 'ogg' : 'webm';
+
+/* -- Видео-кружок на весь экран ----------------------------------- */
+const VideoNoteViewer = ({ msg, onClose, onReply, onForward, onDelete }: {
+  msg: MessageItem; onClose: () => void;
+  onReply: () => void; onForward: () => void; onDelete: () => void;
+}) => {
+  const { url: media } = useAttachment(safeMediaUrl(msg.mediaUrl));
+  const ref = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [menu, setMenu] = useState(false);
+  const SIZE = typeof window === 'undefined' ? 320 : Math.min(window.innerWidth * 0.92, window.innerHeight * 0.7, 520);
+  const R = SIZE / 2 - 4;
+  const CIRC = 2 * Math.PI * R;
+
+  useEffect(() => {
+    const v = ref.current; if (!v) return;
+    v.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    const key = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [media, onClose]);
+
+  const toggle = () => {
+    const v = ref.current; if (!v) return;
+    if (v.paused) v.play().then(() => setPlaying(true)).catch(() => {}); else { v.pause(); setPlaying(false); }
+  };
+
+  const item = (label: string, run: () => void, danger = false) => (
+    <button type="button" onClick={() => { setMenu(false); run(); }}
+      className="flex w-full items-center px-4 py-3 text-sm text-left hover:bg-white/10"
+      style={{ color: danger ? '#f87171' : '#fff' }}>{label}</button>
+  );
+
+  return createPortal(
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[10050] flex flex-col items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.94)' }} onClick={onClose}>
+      <div className="absolute left-0 right-0 top-0 flex items-center justify-between px-3"
+        style={{ paddingTop: 'calc(var(--safe-top, 0px) + 10px)' }} onClick={e => e.stopPropagation()}>
+        <button type="button" onClick={onClose} aria-label="Закрыть"
+          className="grid h-10 w-10 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }}>
+          <X size={18} color="#fff" />
+        </button>
+        <div className="relative">
+          <button type="button" onClick={() => setMenu(v => !v)} aria-label="Действия"
+            className="grid h-10 w-10 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }}>
+            <MoreVertical size={18} color="#fff" />
+          </button>
+          {menu && (
+            <div className="absolute right-0 top-12 z-10 overflow-hidden rounded-2xl shadow-2xl"
+              style={{ background: 'rgba(30,32,40,0.98)', border: '1px solid rgba(255,255,255,0.12)', minWidth: 190 }}>
+              {item('Ответить', () => { onReply(); onClose(); })}
+              {item('Переслать', () => { onForward(); onClose(); })}
+              {media && (
+                <a href={media} download={msg.fileName || 'video-note'} onClick={() => setMenu(false)}
+                  className="flex w-full items-center px-4 py-3 text-sm hover:bg-white/10" style={{ color: '#fff' }}>Скачать</a>
+              )}
+              {msg.fromMe && item('Удалить', () => { onDelete(); onClose(); }, true)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="relative cursor-pointer select-none" style={{ width: SIZE, height: SIZE }}
+        onClick={e => { e.stopPropagation(); toggle(); }}>
+        <div className="absolute inset-0 overflow-hidden rounded-full">
+          <video ref={ref} src={media} playsInline className="h-full w-full object-cover"
+            onTimeUpdate={e => { const v = e.currentTarget; if (v.duration) setPct(v.currentTime / v.duration); }}
+            onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+            onEnded={() => { setPlaying(false); setPct(0); if (ref.current) ref.current.currentTime = 0; }} />
+        </div>
+        <svg className="pointer-events-none absolute inset-0" width={SIZE} height={SIZE} style={{ transform: 'rotate(-90deg)' }}>
+          <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={4} />
+          <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke="#fff" strokeWidth={4}
+            strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - pct)} strokeLinecap="round" />
+        </svg>
+        {!playing && (
+          <div className="pointer-events-none absolute inset-0 grid place-items-center rounded-full" style={{ background: 'rgba(0,0,0,0.3)' }}>
+            <div className="grid h-16 w-16 place-items-center rounded-full" style={{ background: 'rgba(0,0,0,0.55)' }}>
+              <Play size={28} fill="white" style={{ color: 'white', marginLeft: 4 }} />
+            </div>
+          </div>
+        )}
+      </div>
+      <p className="mt-4 text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>{msg.text}</p>
+    </motion.div>,
+    document.body,
+  );
+};
+
+const VideoNoteBubble = ({ msg, fromMe, onOpen }: { msg: MessageItem; fromMe: boolean; onOpen: () => void }) => {
   const { url: media, withhold, request } = useAttachment(safeMediaUrl(msg.mediaUrl));
   const ref  = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -235,11 +341,9 @@ const VideoNoteBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean })
   const R    = SIZE / 2 - 4;
   const CIRC = 2 * Math.PI * R;
 
-  const toggle = () => {
-    if (!ref.current) return;
-    if (playing) { ref.current.pause(); setPlaying(false); }
-    else { ref.current.play(); setPlaying(true); }
-  };
+  // Тап открывает кружок на весь экран, а не играет в 200-пиксельном круге.
+  const toggle = onOpen;
+  void setPlaying;
 
   if (!msg.mediaUrl) return (
     <div className="flex items-center justify-center rounded-full text-xs"
@@ -256,7 +360,7 @@ const VideoNoteBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean })
       {/* circular clip */}
       <div className="absolute inset-0 rounded-full overflow-hidden"
         style={{ boxShadow: `0 0 0 2.5px ${accent}55` }}>
-        <video ref={ref} src={media} playsInline
+        <video ref={ref} src={media ? `${media}#t=0.1` : media} playsInline muted preload="metadata"
           className="w-full h-full object-cover"
           onTimeUpdate={e => {
             const v = e.currentTarget;
@@ -510,6 +614,7 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
   replyCount?: number; onOpenThread?: () => void;
 }) => {
   const [showCtx, setShowCtx] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
   const [hover,   setHover]   = useState(false);
   const isMobile = useIsMobile();
   const longPressTimer = useRef<number | null>(null);
@@ -571,6 +676,13 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
           )}
         </AnimatePresence>
 
+        <AnimatePresence>
+          {noteOpen && msg.kind === 'video-note' && (
+            <VideoNoteViewer msg={msg} onClose={() => setNoteOpen(false)}
+              onReply={onReply} onForward={onForward} onDelete={onDelete}/>
+          )}
+        </AnimatePresence>
+
         {/* author label for groups */}
         {!fromMe && authorName && (
           <button type="button" onClick={() => openProfile(msg.authorId)}
@@ -594,8 +706,18 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
 
         {/* video-note renders as standalone circle, no bubble */}
         {msg.kind === 'video-note' && (
-          <div>
-            <VideoNoteBubble msg={msg} fromMe={fromMe}/>
+          <div className="relative"
+            onTouchStart={isMobile ? () => { longPressTimer.current = window.setTimeout(() => setShowCtx(true), 420); } : undefined}
+            onTouchEnd={isMobile ? () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); } : undefined}
+            onTouchMove={isMobile ? () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); } : undefined}>
+            <VideoNoteBubble msg={msg} fromMe={fromMe} onOpen={() => setNoteOpen(true)}/>
+            {/* На тач-экранах нет hover, а долгое нажатие не очевидно: кнопка
+                действий всегда на виду. */}
+            <button type="button" aria-label="Действия" onClick={() => setShowCtx(true)}
+              className="absolute right-0 top-0 grid h-8 w-8 place-items-center rounded-full"
+              style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
+              <MoreVertical size={15} color="#fff" />
+            </button>
             {/* Адрес записи нужен по-настоящему: расшифровка теперь
                 настоящая, а не заготовленный текст после паузы. */}
             <AiVideoNoteButton duration={parseInt(msg.text||'0')||15} msgId={msg.id} mediaUrl={msg.mediaUrl}/>
@@ -620,7 +742,13 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
           {msg.kind === 'photo'      && <PhotoBubble msg={msg} />}
           {msg.kind === 'voice'      && (
             <div className="min-w-0 max-w-full">
-              <VoiceBubble msg={msg} fromMe={fromMe}/>
+              <div className="flex items-start gap-1">
+                <VoiceBubble msg={msg} fromMe={fromMe}/>
+                <button type="button" aria-label="Действия" onClick={() => setShowCtx(true)}
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full" style={{ color: 'var(--t2)' }}>
+                  <MoreVertical size={15} />
+                </button>
+              </div>
               <AiTranscribeButton duration={parseInt(msg.text||'0')||30} msgId={msg.id} mediaUrl={msg.mediaUrl}/>
             </div>
           )}
@@ -1193,15 +1321,17 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recStream.current = stream; recChunks.current = []; cancelRef.current = false;
-      const rec = new MediaRecorder(stream);
+      const mime = pickRecMime(['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']);
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       rec.ondataavailable = e => { if (e.data.size > 0) recChunks.current.push(e.data); };
       rec.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
         if (!cancelRef.current && recChunks.current.length) {
-          const blob = new Blob(recChunks.current, { type: 'audio/webm' });
+          const real = rec.mimeType || mime || 'audio/webm';
+          const blob = new Blob(recChunks.current, { type: real.split(';')[0] });
           const sec = recSecRef.current;
           void sendAttachment(blob, {
-            kind: 'voice', text: fmtS(sec), fileName: `voice-${Date.now()}.webm`,
+            kind: 'voice', text: fmtS(sec), fileName: `voice-${Date.now()}.${extFor(real, false)}`,
           });
         }
         recStream.current = null; setRecSec(0); recSecRef.current = 0;
@@ -1218,16 +1348,17 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 400, height: 400 }, audio: true });
       recStream.current = stream; recChunks.current = []; cancelRef.current = false;
-      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
-      const rec = new MediaRecorder(stream, { mimeType: mime });
+      const mime = pickRecMime(['video/webm;codecs=vp9,opus', 'video/webm', 'video/mp4']);
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       rec.ondataavailable = e => { if (e.data.size > 0) recChunks.current.push(e.data); };
       rec.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
         if (!cancelRef.current && recChunks.current.length) {
-          const blob = new Blob(recChunks.current, { type: 'video/webm' });
+          const real = rec.mimeType || mime || 'video/webm';
+          const blob = new Blob(recChunks.current, { type: real.split(';')[0] });
           const sec = recSecRef.current;
           void sendAttachment(blob, {
-            kind: 'video-note', text: fmtS(sec), fileName: `video-note-${Date.now()}.webm`,
+            kind: 'video-note', text: fmtS(sec), fileName: `video-note-${Date.now()}.${extFor(real, true)}`,
           });
         }
         recStream.current = null; setRecSec(0); recSecRef.current = 0;
