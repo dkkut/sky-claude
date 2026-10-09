@@ -133,7 +133,10 @@ export const encryptStreamToFile = async (source, destPath, limitBytes, { chunkS
         throw new Error('too_large');
       }
       pending = pending.length ? Buffer.concat([pending, chunk]) : chunk;
-      while (pending.length >= chunkSize) {
+      // Строго «больше»: последний чанк обязан остаться в pending, иначе у
+      // файла кратного размеру появляется лишний пустой «последний» чанк,
+      // а настоящий последний при чтении не сходится по AAD.
+      while (pending.length > chunkSize) {
         const piece = pending.subarray(0, chunkSize);
         pending = pending.subarray(chunkSize);
         await writeChunk(piece, false);
@@ -203,9 +206,11 @@ export const plaintextSizeOf = async (path) => {
  * запрошенный диапазон — перемотка в большом файле не тянет его целиком.
  */
 export const openDecryptedRangeStream = (path, range) => {
-  const stream = new Readable({ read() {} });
-
-  (async () => {
+  // Генератор, а не push в цикле: Readable.from тянет следующий чанк
+  // только когда потребитель освободил буфер, а destroy() прерывает
+  // цикл и закрывает файл. Иначе запрос «bytes=0-» на большом фильме
+  // расшифровывал бы его весь в память, даже если зритель уже перемотал.
+  async function* generate() {
     const { chunkSize, plaintextSize, salt, dek } = await readHeader(path);
     const start = range ? range.start : 0;
     const end = range ? range.end : plaintextSize - 1;
@@ -234,15 +239,14 @@ export const openDecryptedRangeStream = (path, range) => {
         const chunkStart = i * chunkSize;
         const sliceStart = Math.max(0, start - chunkStart);
         const sliceEnd = Math.min(plain.length, end - chunkStart + 1);
-        stream.push(plain.subarray(sliceStart, sliceEnd));
+        yield plain.subarray(sliceStart, sliceEnd);
       }
-      stream.push(null);
     } finally {
       await fh.close();
     }
-  })().catch((err) => stream.destroy(err));
+  }
 
-  return stream;
+  return Readable.from(generate(), { objectMode: false });
 };
 
 /**

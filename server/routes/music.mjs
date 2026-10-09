@@ -42,7 +42,7 @@ const MAX_AUDIO_BYTES = 30 * 1024 * 1024;
 const MAX_COVER_BYTES = 3 * 1024 * 1024;
 
 /** Сколько запросов в минуту на профиль. Прослушивание идёт кусками, поэтому щедро. */
-const STREAM_PER_MIN = 600;
+const STREAM_PER_MIN = 1200;
 const WRITE_PER_MIN = 120;
 const UPLOAD_PER_HOUR = 40;
 

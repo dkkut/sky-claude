@@ -7,6 +7,7 @@
  * стороне — сервер откажет в чужом ролике сам, сколько бы браузер ни
  * попросил.
  */
+import { withTicketRefresh } from '@/core/mediaTicketRefresh';
 import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
 import { NATIVE_APP } from '@/core/nativeApp';
 
@@ -115,11 +116,11 @@ export const fmtDuration = (sec: number) => {
  * Authorization, поэтому сервер кладёт короткую куку, ограниченную путём
  * /api/skyvideo. Просим её один раз при открытии модуля.
  */
-export const apiSkyVideoTicket = async () => {
+export const apiSkyVideoTicket = withTicketRefresh(async () => {
   const r = await apiCall<{ ticket?: string }>('/api/skyvideo/ticket', { method: 'POST', body: '{}' });
   if (r.ok && r.data?.ticket) mediaTicket = r.data.ticket;
   return r.ok;
-};
+});
 
 /* ─── Лента и категории ────────────────────────────────────────────── */
 

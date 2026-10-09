@@ -4,6 +4,7 @@
  * Всё, что раньше лежало в localStorage браузера, теперь спрашивается у
  * сервера. Здесь только вызовы; кому что можно — решает он, а не мы.
  */
+import { withTicketRefresh } from '@/core/mediaTicketRefresh';
 import { apiCall, uploadUrl } from '@/core/auth/api';
 import { NATIVE_APP } from '@/core/nativeApp';
 import type { Track, TrackStatus } from '@/platform/store';
@@ -100,11 +101,11 @@ export const toClientTrack = (t: ServerTrack): Track => ({
  * авторизации, поэтому сервер кладёт короткую куку, ограниченную путём
  * /api/music. Просим её один раз при открытии музыки.
  */
-export const apiMediaTicket = async () => {
+export const apiMediaTicket = withTicketRefresh(async () => {
   const r = await apiCall<{ ticket?: string }>('/api/music/ticket', { method: 'POST', body: '{}' });
   if (r.ok && r.data?.ticket) mediaTicket = r.data.ticket;
   return r.ok;
-};
+});
 
 /* ─── Каталог ──────────────────────────────────────────────────────── */
 

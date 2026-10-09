@@ -11,6 +11,7 @@
  * Личное закрыто в базе и в запросах сервера; этот файл просто не
  * получит чужого, сколько бы ни просил.
  */
+import { withTicketRefresh } from '@/core/mediaTicketRefresh';
 import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
 import { NATIVE_APP } from '@/core/nativeApp';
 
@@ -98,11 +99,11 @@ export const fmtDuration = (sec: number) => {
  * поэтому сервер кладёт короткую куку, ограниченную путём /api/film.
  * Просим её один раз при открытии кино.
  */
-export const apiFilmTicket = async () => {
+export const apiFilmTicket = withTicketRefresh(async () => {
   const r = await apiCall<{ ticket?: string }>('/api/film/ticket', { method: 'POST', body: '{}' });
   if (r.ok && r.data?.ticket) mediaTicket = r.data.ticket;
   return r.ok;
-};
+});
 
 /* ─── Каталог ──────────────────────────────────────────────────────── */
 
