@@ -23,7 +23,7 @@ import {
   type AiChat, type AiMessage, type TranscriptCue, type VoiceTurnResult,
 } from './aiApi';
 import { useAiState, refreshAiState } from './aiState';
-import { VoiceMode } from './VoiceMode';
+import { VoiceMode, browserVoiceAvailable } from './VoiceMode';
 
 const C = {
   accent: '#a855f7',
@@ -465,9 +465,9 @@ export const SkyAITab = () => {
             className="flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm outline-none"
             style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)', maxHeight: 120 }}
           />
-          {mode === 'chat' && state?.transcription && (
+          {mode === 'chat' && (state?.transcription || browserVoiceAvailable()) && (
             <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => setVoiceOpen(true)}
-              disabled={!prime} title={prime ? 'Голосовой режим' : 'Голосовой режим — в Sky Prime'}
+              disabled={!prime && !!state?.transcription} title={prime ? 'Голосовой режим' : 'Голосовой режим — в Sky Prime'}
               aria-label="Голосовой режим"
               data-ai-voice
               className="grid h-10 w-10 place-items-center rounded-xl shrink-0 disabled:opacity-40"
@@ -492,7 +492,7 @@ export const SkyAITab = () => {
 
       <AnimatePresence>
         {voiceOpen && (
-          <VoiceMode chatId={chatId} onClose={() => setVoiceOpen(false)} onTurn={onVoiceTurn}/>
+          <VoiceMode chatId={chatId} onClose={() => setVoiceOpen(false)} onTurn={onVoiceTurn} serverStt={!!state?.transcription}/>
         )}
       </AnimatePresence>
     </div>

@@ -10,18 +10,42 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Mic, Square, X, Loader2, AlertTriangle, Volume2, Check } from 'lucide-react';
-import { apiAiVoice, type VoiceTurnResult } from './aiApi';
+import { apiAiVoice, apiAiSend, type VoiceTurnResult } from './aiApi';
 import { refreshAiState } from './aiState';
 import { matchVoiceCommand } from './voiceCommands';
 
 type Phase = 'idle' | 'listening' | 'processing' | 'speaking' | 'error' | 'command';
 
-const MIME = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-  ? 'audio/webm;codecs=opus'
-  : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+// Проверка MediaRecorder — не при загрузке модуля: там, где его нет (часть
+// встроенных браузеров), обращение на верхнем уровне роняло весь раздел.
+const pickMime = () => {
+  if (typeof MediaRecorder === 'undefined') return '';
+  if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) return 'audio/webm;codecs=opus';
+  if (MediaRecorder.isTypeSupported('audio/webm')) return 'audio/webm';
+  if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
+  return '';
+};
 
-export const VoiceMode = ({ chatId, onClose, onTurn }: {
+/* Распознавание речи самого браузера — запасной путь, когда на сервере не
+   подключён поставщик расшифровки: тогда кнопки голоса не было вовсе. */
+interface BrowserRecognition {
+  lang: string; continuous: boolean; interimResults: boolean;
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void; stop: () => void; abort: () => void;
+}
+const getRecognitionCtor = (): (new () => BrowserRecognition) | null => {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as Record<string, unknown>;
+  return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => BrowserRecognition) | null;
+};
+export const browserVoiceAvailable = () => getRecognitionCtor() !== null;
+
+export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
   chatId: string | null;
+  /** Есть ли на сервере расшифровка речи; нет — работаем на речи браузера. */
+  serverStt?: boolean;
   onClose: () => void;
   onTurn: (result: VoiceTurnResult) => void;
 }) => {
@@ -39,6 +63,9 @@ export const VoiceMode = ({ chatId, onClose, onTurn }: {
   const rafRef = useRef<number | null>(null);
   const cancelRef = useRef<() => void>(() => {});
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const recogRef = useRef<BrowserRecognition | null>(null);
+  const transcriptRef = useRef('');
+  const mimeRef = useRef(pickMime());
 
   const stopVisualizer = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -53,7 +80,11 @@ export const VoiceMode = ({ chatId, onClose, onTurn }: {
     streamRef.current = null;
   };
 
-  useEffect(() => () => { stopVisualizer(); stopStream(); cancelRef.current?.(); }, []);
+  useEffect(() => () => {
+    stopVisualizer(); stopStream(); cancelRef.current?.();
+    if (recogRef.current) { recogRef.current.onend = null; recogRef.current.abort(); }
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  }, []);
 
   const visualize = (stream: MediaStream) => {
     const ctx = new AudioContext();
@@ -73,13 +104,79 @@ export const VoiceMode = ({ chatId, onClose, onTurn }: {
     tick();
   };
 
+  const speakInBrowser = (text: string) => {
+    if (typeof speechSynthesis === 'undefined' || !text.trim()) { setPhase('idle'); return; }
+    setPhase('speaking');
+    const u = new SpeechSynthesisUtterance(text.slice(0, 1200));
+    u.lang = 'ru-RU';
+    u.onend = () => setPhase('idle');
+    u.onerror = () => setPhase('idle');
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  };
+
+  /* Ход без серверной расшифровки: слова уже распознал браузер, дальше —
+     обычное сообщение в тот же чат Sky AI. */
+  const handleBrowserText = async () => {
+    const text = transcriptRef.current.trim();
+    if (!text) { setPhase('idle'); return; }
+    setRecognized(text);
+    setPhase('processing');
+    const r = await apiAiSend(text, chatId ?? undefined);
+    if (!r.ok || !r.answer) { setError(r.reason ?? 'Не получилось'); setPhase('error'); return; }
+    void refreshAiState();
+    const command = matchVoiceCommand(text);
+    if (command) {
+      setPhase('command');
+      await command.run();
+      setAnswerText(command.label);
+      setTimeout(onClose, 1100);
+      return;
+    }
+    setAnswerText(r.answer.text);
+    onTurn({ chatId: r.chatId ?? '', chat: r.chat as VoiceTurnResult['chat'], recognizedText: text, answer: r.answer, audio: null, audioMime: null });
+    speakInBrowser(r.answer.text);
+  };
+
+  const startBrowserListening = () => {
+    const Ctor = getRecognitionCtor();
+    if (!Ctor) { setError('Этот браузер не умеет распознавать речь'); setPhase('error'); return; }
+    transcriptRef.current = '';
+    const rec = new Ctor();
+    rec.lang = 'ru-RU';
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.onresult = (e) => {
+      let finalText = ''; let interim = '';
+      for (let i = 0; i < e.results.length; i += 1) {
+        const part = e.results[i][0]?.transcript ?? '';
+        if (e.results[i].isFinal) finalText += part; else interim += part;
+      }
+      transcriptRef.current = finalText || interim;
+      setRecognized(transcriptRef.current);
+    };
+    rec.onerror = (e) => {
+      rec.onend = null;
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') setError('Нет доступа к микрофону');
+      else if (e.error === 'no-speech') { setPhase('idle'); return; }
+      else if (e.error === 'network') setError('Служба распознавания речи браузера недоступна — проверьте интернет');
+      else setError('Не удалось распознать речь');
+      setPhase('error');
+    };
+    rec.onend = () => { void handleBrowserText(); };
+    recogRef.current = rec;
+    try { rec.start(); setPhase('listening'); }
+    catch { setError('Не удалось включить микрофон'); setPhase('error'); }
+  };
+
   const startListening = async () => {
     setError(''); setRecognized(''); setAnswerText('');
+    if (!serverStt) { startBrowserListening(); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       chunksRef.current = [];
-      const rec = new MediaRecorder(stream, MIME ? { mimeType: MIME } : undefined);
+      const rec = new MediaRecorder(stream, mimeRef.current ? { mimeType: mimeRef.current } : undefined);
       rec.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       rec.onstop = () => { void handleStop(); };
       rec.start();
@@ -93,12 +190,18 @@ export const VoiceMode = ({ chatId, onClose, onTurn }: {
   };
 
   const stopListening = () => {
+    if (!serverStt) { recogRef.current?.stop(); return; }
     recRef.current?.stop();
     stopStream();
     stopVisualizer();
   };
 
   const cancelListening = () => {
+    if (!serverStt) {
+      if (recogRef.current) { recogRef.current.onend = null; recogRef.current.abort(); }
+      setPhase('idle');
+      return;
+    }
     if (recRef.current) recRef.current.onstop = null;
     recRef.current?.stop();
     stopStream();
@@ -111,7 +214,8 @@ export const VoiceMode = ({ chatId, onClose, onTurn }: {
     stopVisualizer();
     if (!chunksRef.current.length) { setPhase('idle'); return; }
     setPhase('processing');
-    const blob = new Blob(chunksRef.current, { type: MIME || 'audio/webm' });
+    // Тип — тот, что реально выбрал браузер: на iPhone это mp4, а не webm.
+    const blob = new Blob(chunksRef.current, { type: recRef.current?.mimeType || mimeRef.current || 'audio/webm' });
     const { promise, cancel } = apiAiVoice(blob, chatId ?? undefined);
     cancelRef.current = cancel;
     const r = await promise;
@@ -153,6 +257,7 @@ export const VoiceMode = ({ chatId, onClose, onTurn }: {
   };
 
   const stopSpeaking = () => {
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
     audioElRef.current?.pause();
     audioElRef.current = null;
     setPhase('idle');
