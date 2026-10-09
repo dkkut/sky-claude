@@ -1,3 +1,4 @@
+import { OwnProfileView } from './viewer/FullProfilePage';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -53,25 +54,27 @@ const PrivRow = ({ label, sub, value, onChange }: { label:string; sub?:string; v
   const opts:[PrivacyVal,string][] = [['all','Все'],['contacts','Контакты'],['nobody','Никто']];
   const cur = opts.find(o=>o[0]===value)?.[1]??'Все';
   return (
-    <div className="relative">
+    <div>
       <button type="button" onClick={()=>setOpen(v=>!v)}
-        className="flex w-full items-center justify-between rounded-2xl px-4 py-3 transition-colors hover:bg-white/5">
+        className="flex w-full items-center justify-between rounded-2xl px-4 py-3 transition-colors hover:bg-[color:var(--bg-l2)]">
         <div>
-          <p className="text-sm text-white">{label}</p>
+          <p className="text-sm text-[color:var(--t1)]">{label}</p>
           {sub&&<p className="text-xs mt-0.5" style={{color:'var(--t3)'}}>{sub}</p>}
         </div>
         <div className="flex items-center gap-1.5" style={{color:'var(--accent)'}}>
           <span className="text-sm">{cur}</span><ChevronDown size={14} className={`transition-transform ${open?'rotate-180':''}`}/>
         </div>
       </button>
-      <AnimatePresence>
+      {/* Список раскрывается в потоке, а не абсолютно: карточка вокруг строк
+          обрезает всё, что выходит за её края (overflow-hidden), и «Никто»
+          оказывался за краем и не нажимался. */}
+      <AnimatePresence initial={false}>
         {open&&(
-          <motion.div initial={{opacity:0,y:-6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}}
-            className="absolute right-0 z-20 overflow-hidden rounded-2xl shadow-xl" style={{top:'calc(100% + 4px)',
-              background:'rgba(18,20,30,0.98)',border:'1px solid rgba(255,255,255,0.1)',minWidth:160}}>
+          <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}}
+            className="overflow-hidden mx-4 mb-2 rounded-2xl" style={{background:'var(--bg-l2)',border:'1px solid var(--border)'}}>
             {opts.map(([k,l])=>(
               <button key={k} type="button" onClick={()=>{onChange(k);setOpen(false);}}
-                className="flex w-full items-center justify-between px-4 py-2.5 text-sm transition-colors hover:bg-white/5"
+                className="flex w-full items-center justify-between px-4 py-2.5 text-sm transition-colors hover:bg-[color:var(--bg-l3)]"
                 style={{color:value===k?'var(--accent)':'var(--t1)'}}>
                 {l}{value===k&&<Check size={13} style={{color:'var(--accent)'}}/>}
               </button>
@@ -162,7 +165,7 @@ const ProfilePetsSection = () => {
                   style={{ background: `linear-gradient(155deg,${color}12,${color}08)`, border: `1.5px solid ${rc}30` }}>
                   <PetSprite typeId={pet.typeId} color={color} mood="idle" size={72} showParticles={false}/>
                   <div className="text-center">
-                    <p className="text-xs font-bold text-white">{pet.name}</p>
+                    <p className="text-xs font-bold text-[color:var(--t1)]">{pet.name}</p>
                     <p className="text-[9px] mt-0.5" style={{ color:rc }}>Ур.{pet.level} · {PET_RARITY_LABEL[pet.rarity]}</p>
                   </div>
                   {pet.isActive && (
@@ -199,7 +202,7 @@ const ProfilePetsSection = () => {
                     style={{ background: rc }}>
                     {skin.previewUrl ? <SkinThumb path={skin.previewUrl}/> : skin.name[0]}
                   </div>
-                  <p className="text-[8px] font-bold text-white text-center truncate w-full">{skin.name}</p>
+                  <p className="text-[8px] font-bold text-[color:var(--t1)] text-center truncate w-full">{skin.name}</p>
                   <span className="text-[7px] font-bold" style={{ color:rc }}>{PET_RARITY_LABEL[skin.rarity]}</span>
                   {skin.instanceNumber != null && (
                     <span className="text-[7px]" style={{ color:'var(--t3)' }}>#{skin.instanceNumber}</span>
@@ -248,7 +251,7 @@ const SettingsRow = ({ icon:Icon, iconColor='var(--accent)', label, sub, right, 
       <Icon size={isMobile ? 14 : 16} style={{ color:iconColor }}/>
     </div>
     <div className="flex-1 text-left min-w-0">
-      <p className={isMobile ? 'text-[13px] text-white' : 'text-sm text-white'}>{label}</p>
+      <p className={isMobile ? 'text-[13px] text-[color:var(--t1)]' : 'text-sm text-[color:var(--t1)]'}>{label}</p>
       {sub && <p className={isMobile ? 'text-[10.5px] mt-0.5 truncate' : 'text-xs mt-0.5 truncate'} style={{ color:'var(--t3)' }}>{sub}</p>}
     </div>
     {right}
@@ -654,7 +657,7 @@ const SettingsSection = ({ logout, username, onOpen, staff }: {
             <Crown size={16} style={{ color:'var(--amber)' }}/>
           </div>
           <div className="flex-1">
-            <p className="text-sm font-bold text-white">Sky Prime</p>
+            <p className="text-sm font-bold text-[color:var(--t1)]">Sky Prime</p>
             <p className="text-xs" style={{ color: isPrime ? 'var(--green)' : 'var(--t3)' }}>
               {isPrime ? 'Активна' : 'Не активна'}
             </p>
@@ -674,7 +677,7 @@ const SettingsSection = ({ logout, username, onOpen, staff }: {
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-1.5">
-              <p className="text-sm font-bold text-white">Prime Business</p>
+              <p className="text-sm font-bold text-[color:var(--t1)]">Prime Business</p>
               <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full"
                 style={{ background:'rgba(79,110,247,0.2)', color:'var(--accent)' }}>NEW</span>
             </div>
@@ -791,6 +794,7 @@ export const ProfileModule = () => {
   const isMobile = useIsMobile();
 
   const [section, setSection] = useState<Section>('main');
+  const [legacyOpen, setLegacyOpen] = useState(false);
   // Пришли сюда из другого раздела с заявкой на подарок мероприятия —
   // открываем «Поддержку» сразу на её тикете, тем же приёмом, что
   // pendingExtrasTab открывает вкладку внутри «Прочего». Значение забираем
@@ -996,6 +1000,20 @@ export const ProfileModule = () => {
         {/* -- MAIN -- */}
         {section === 'main' && (
           <div>
+            {/* Тот же модуль, что видят другие у чужого профиля. Прежний
+                редактор (аватар, баннер, имя, история звонков) остался
+                ниже под переключателем, чтобы ничего не пропало. */}
+            <OwnProfileView userId={currentUserId ?? me.id}/>
+            <div className="max-w-xl mx-auto px-2.5 sm:px-4 pb-4">
+              <button type="button" onClick={()=>setLegacyOpen(v=>!v)}
+                className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-semibold"
+                style={{background:'var(--bg-l1)',border:'1px solid var(--border)',color:'var(--t1)'}}>
+                Имя, аватар, баннер и история звонков
+                <ChevronDown size={16} className={`transition-transform ${legacyOpen?'rotate-180':''}`} style={{color:'var(--t3)'}}/>
+              </button>
+            </div>
+            {legacyOpen && (
+          <div>
             {/* Banner */}
             <div className={isMobile ? 'relative h-24 w-full overflow-hidden' : 'relative h-36 w-full overflow-hidden'}
               style={{background: me.banner ? undefined : 'linear-gradient(135deg,var(--accent-bg),var(--accent-bg),rgba(54,224,190,0.08))'}}>
@@ -1052,7 +1070,7 @@ export const ProfileModule = () => {
                 {editing
                   ? <div className="space-y-2">
                       <input value={nameVal} onChange={e=>setNameVal(e.target.value)}
-                        className={isMobile ? 'w-full rounded-xl px-3 py-2 text-[13px] text-white font-bold outline-none' : 'w-full rounded-2xl px-4 py-2.5 text-sm text-white font-bold outline-none'}
+                        className={isMobile ? 'w-full rounded-xl px-3 py-2 text-[13px] text-[color:var(--t1)] font-bold outline-none' : 'w-full rounded-2xl px-4 py-2.5 text-sm text-[color:var(--t1)] font-bold outline-none'}
                         style={{background:'var(--border)',border:'1px solid var(--accent-bg)'}}/>
                       <textarea value={bioVal} onChange={e=>setBioVal(e.target.value)} rows={2}
                         placeholder="О себе..."
@@ -1088,7 +1106,7 @@ export const ProfileModule = () => {
                     </div>
                   : <>
                       <div className="flex items-center gap-1.5 sm:gap-2">
-                        <h2 className={isMobile ? 'text-[15px] font-bold text-white' : 'text-xl font-bold text-white'}>{me.name}</h2>
+                        <h2 className={isMobile ? 'text-[15px] font-bold text-[color:var(--t1)]' : 'text-xl font-bold text-[color:var(--t1)]'}>{me.name}</h2>
                         {me.isPrime && <Crown size={14} style={{color:'var(--amber)'}}/>}
                         {me.isAdmin && <Shield size={14} style={{color:'var(--accent)'}}/>}
                       </div>
@@ -1106,7 +1124,7 @@ export const ProfileModule = () => {
                 ].map(s=>(
                   <div key={s.label} className={isMobile ? 'rounded-xl px-2 py-2 text-center' : 'rounded-2xl px-3 py-3 text-center'}
                     style={{background:'var(--bg-l2)',border:'1px solid var(--border)'}}>
-                    <p className={isMobile ? 'text-base font-bold text-white' : 'text-xl font-bold text-white'}>{s.val}</p>
+                    <p className={isMobile ? 'text-base font-bold text-[color:var(--t1)]' : 'text-xl font-bold text-[color:var(--t1)]'}>{s.val}</p>
                     <p className={isMobile ? 'text-[10.5px]' : 'text-xs'} style={{color:'var(--t3)'}}>{s.label}</p>
                   </div>
                 ))}
@@ -1128,7 +1146,7 @@ export const ProfileModule = () => {
                           <Phone size={13} style={{color:h.status==='missed'?'var(--red)':'var(--accent)'}}/>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={isMobile ? 'text-[12.5px] text-white truncate' : 'text-sm text-white truncate'}>{h.peerName}</p>
+                          <p className={isMobile ? 'text-[12.5px] text-[color:var(--t1)] truncate' : 'text-sm text-[color:var(--t1)] truncate'}>{h.peerName}</p>
                           <p className={isMobile ? 'text-[10.5px]' : 'text-xs'} style={{color:'var(--t3)'}}>
                             {h.direction==='in'?'Входящий':'Исходящий'} · {h.mode==='video'?'Видео':'Голос'} · {h.status==='missed'?'Пропущен':fmtDur(h.durationSec)}
                           </p>
@@ -1142,12 +1160,14 @@ export const ProfileModule = () => {
             </div>
           </div>
         )}
+          </div>
+        )}
 
         {/* -- PRIVACY -- */}
         {section === 'privacy' && (
           <div className="p-5 space-y-2">
             <div className="mb-4">
-              <h3 className="font-semibold text-white">Конфиденциальность</h3>
+              <h3 className="font-semibold text-[color:var(--t1)]">Конфиденциальность</h3>
               <p className="text-sm mt-1" style={{color:'var(--t3)'}}>Управляй тем, кто видит твою информацию</p>
             </div>
             <div className="rounded-xl overflow-hidden" style={{background:'var(--bg-l1)',border:'1px solid var(--border)'}}>
@@ -1175,7 +1195,7 @@ export const ProfileModule = () => {
             </div>
 
             <div className="mt-5 mb-2">
-              <h3 className="font-semibold text-white">Кто видит информацию профиля</h3>
+              <h3 className="font-semibold text-[color:var(--t1)]">Кто видит информацию профиля</h3>
               <p className="text-sm mt-1" style={{color:'var(--t3)'}}>
                 Отдельно по каждому разделу. Сейчас сервер и так сообщает о вас
                 другим только имя и ник — эти разделы никуда не уходят с
@@ -1231,7 +1251,7 @@ export const ProfileModule = () => {
         {section === 'game' && (
           <div className="p-5 space-y-4">
             <div>
-              <h3 className="font-semibold text-white">Игровой профиль</h3>
+              <h3 className="font-semibold text-[color:var(--t1)]">Игровой профиль</h3>
               <p className="text-sm mt-1" style={{color:'var(--t3)'}}>Твои данные в играх</p>
             </div>
 
@@ -1244,7 +1264,7 @@ export const ProfileModule = () => {
                   <Gamepad2 size={26} style={{color:'var(--accent)'}}/>
                 </div>
                 <div>
-                  <p className="font-bold text-white">{me.gameProfile.nickname}</p>
+                  <p className="font-bold text-[color:var(--t1)]">{me.gameProfile.nickname}</p>
                   <p className="text-sm" style={{color:'var(--t2)'}}>{me.gameProfile.game}</p>
                   <div className="mt-1 flex items-center gap-3">
                     <span className="flex items-center gap-1 text-xs" style={{color:'var(--amber)'}}><Trophy size={11}/>{me.gameProfile.rank}</span>
@@ -1263,7 +1283,7 @@ export const ProfileModule = () => {
                 <div key={f.label}>
                   <label className="text-xs mb-1 block" style={{color:'var(--t3)'}}>{f.label}</label>
                   <input value={f.val} onChange={e=>f.set(e.target.value)} placeholder={f.ph}
-                    className="w-full rounded-2xl px-4 py-2.5 text-sm text-white outline-none"
+                    className="w-full rounded-2xl px-4 py-2.5 text-sm text-[color:var(--t1)] outline-none"
                     style={{background:'var(--bg-l2)',border:'1px solid var(--border)'}}/>
                 </div>
               ))}

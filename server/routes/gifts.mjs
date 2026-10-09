@@ -198,7 +198,8 @@ export const giftRoutes = async (req, res, url) => {
     }
     if (req.method === 'POST' && instanceMatch[2] === '/save') {
       if (!rateLimit(`gift:w:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
-      const r = await saveInstanceToProfile(me, id);
+      const b = await body();
+      const r = await saveInstanceToProfile(me, id, b?.on !== false);
       return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
     }
     if (req.method === 'POST' && instanceMatch[2] === '/cancel') {

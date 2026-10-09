@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, MessageCircle, Repeat2, Bookmark, MoreHorizontal,
@@ -35,6 +36,20 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
   const [showPicker,   setShowPicker]   = useState(false);
   const [showReactors, setShowReactors] = useState(false);
   const [showMenu,     setShowMenu]     = useState(false);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const toggleMenu = () => {
+    const r = menuBtnRef.current?.getBoundingClientRect();
+    if (r) setMenuPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) });
+    setShowMenu(v => !v);
+  };
+  useEffect(() => {
+    if (!showMenu) return;
+    const close = () => setShowMenu(false);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); };
+  }, [showMenu]);
   const [showComments, setShowComments] = useState(false);
   const [commentText,  setCommentText]  = useState('');
   const [imgExpanded,  setImgExpanded]  = useState(false);
@@ -126,38 +141,43 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
           </div>
         </div>
         <div className="relative">
-          <button type="button" onClick={() => setShowMenu(v => !v)}
-            className="grid h-7 w-7 place-items-center rounded-lg hover:bg-white/5"
+          <button ref={menuBtnRef} type="button" onClick={toggleMenu}
+            className="grid h-7 w-7 place-items-center rounded-lg hover:bg-[color:var(--bg-l2)]"
             style={{ color: 'var(--t3)' }}><MoreHorizontal size={15}/></button>
-          <AnimatePresence>
-            {showMenu && (
-              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="absolute right-0 z-30 overflow-hidden rounded-2xl shadow-2xl"
-                style={{ top: '100%', background: 'var(--bg-l1)', border: '1px solid var(--border-m)', minWidth: 160 }}>
+          {/* Меню выносим в body: карточка поста режет всё, что выходит за её
+              рамку (overflow-hidden), и пункты «Репост»/«Удалить» не были видны. */}
+          {showMenu && menuPos && createPortal(
+            <>
+              <div className="fixed inset-0 z-[190]" onClick={() => setShowMenu(false)}/>
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                className="fixed z-[200] overflow-hidden rounded-2xl shadow-2xl"
+                style={{ top: menuPos.top, right: menuPos.right, background: 'var(--bg-l1)', border: '1px solid var(--border-m)', minWidth: 180 }}>
                 <button type="button" onClick={() => { toggleSave(post.id); setShowMenu(false); }}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-white/5"
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-[color:var(--bg-l2)]"
                   style={{ color: isSaved ? 'var(--accent)' : 'var(--t1)' }}>
-                  <Bookmark size={13} className={isSaved ? 'fill-current' : ''}/>{isSaved ? 'Убрать' : 'Сохранить'}
+                  <Bookmark size={14} className={isSaved ? 'fill-current' : ''}/>{isSaved ? 'Убрать' : 'Сохранить'}
                 </button>
                 <button type="button" onClick={() => { repost(post.id); setShowMenu(false); }}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-white/5 text-white">
-                  <Repeat2 size={13}/>Репост
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-[color:var(--bg-l2)]"
+                  style={{ color: 'var(--t1)' }}>
+                  <Repeat2 size={14}/>Репост
                 </button>
-                <button type="button" onClick={() => onAuthorClick(post.authorId)}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-white/5 text-white">
-                  <User size={13}/>Профиль
+                <button type="button" onClick={() => { setShowMenu(false); onAuthorClick(post.authorId); }}
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-[color:var(--bg-l2)]"
+                  style={{ color: 'var(--t1)' }}>
+                  <User size={14}/>Профиль
                 </button>
                 {isOwn && (
                   <button type="button" onClick={() => { deletePost(post.id); setShowMenu(false); }}
-                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-white/5"
+                    className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-[color:var(--bg-l2)]"
                     style={{ color: 'var(--red)' }}>
-                    <X size={13}/>Удалить
+                    <X size={14}/>Удалить
                   </button>
                 )}
               </motion.div>
-            )}
-          </AnimatePresence>
+            </>,
+            document.body,
+          )}
         </div>
       </div>
 

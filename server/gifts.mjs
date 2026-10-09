@@ -324,7 +324,9 @@ const sendGiftLocked = async (senderId, { recipientId, target, giftCatalogId, me
     await query(
       `INSERT INTO gift_instances (id, order_id, gift_catalog_id, media_id, thumb_media_id, sender_id, recipient_id, chat_id, message_id, caption, saved_to_profile)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [instanceId, realOrderId, giftCatalogId, item.mediaId, item.thumbMediaId, senderId, recipientId, chatId, messageId, message, target === 'profile'],
+      // Полученный подарок сразу виден в профиле получателя (его приватность
+      // `showGifts` проверяется при показе); спрятать его можно переключателем.
+      [instanceId, realOrderId, giftCatalogId, item.mediaId, item.thumbMediaId, senderId, recipientId, chatId, messageId, message, true],
     );
 
     if (target === 'chat') {
@@ -423,12 +425,12 @@ export const archiveGiftInstance = async (userId, instanceId, archived) => {
   return { ok: true };
 };
 
-/** Сохранить уже полученный в чате подарок в свой профиль. */
-export const saveInstanceToProfile = async (userId, instanceId) => {
+/** Показать полученный подарок в своём профиле или убрать оттуда. */
+export const saveInstanceToProfile = async (userId, instanceId, on = true) => {
   const { rows } = await query(
-    `UPDATE gift_instances SET saved_to_profile = TRUE
+    `UPDATE gift_instances SET saved_to_profile = $3
       WHERE id = $1 AND recipient_id = $2 AND status != 'cancelled' RETURNING id`,
-    [instanceId, userId],
+    [instanceId, userId, on !== false],
   );
   return rows[0] ? { ok: true } : { error: 'not_found' };
 };

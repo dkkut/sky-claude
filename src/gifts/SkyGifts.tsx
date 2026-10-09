@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, type TargetAndTransition } from 'framer-motion';
-import { X, ChevronLeft, Check, Heart, ShoppingCart, Star, Search, Ban, Clock3, Archive, ArchiveRestore } from 'lucide-react';
+import { X, ChevronLeft, Check, Heart, ShoppingCart, Star, Search, Ban, Clock3, Archive, ArchiveRestore, Eye, EyeOff } from 'lucide-react';
 import {
   GIFT_CATALOG, GIFT_RARITY_LABEL, GIFT_RARITY_COLOR, GIFT_RARITY_GLOW,
   RARITY_CARD_BG, RARITY_CARD_BORDER, RARITY_SHIMMER, RARITY_STARS,
@@ -14,7 +14,7 @@ import {
 } from './store';
 import {
   apiGiftCatalog, apiSendGift, apiMyProfileGifts, apiMyReceivedGifts, apiMySentGifts,
-  apiMyReceivedGiftsArchived, apiMySentGiftsArchived, apiArchiveGift,
+  apiMyReceivedGiftsArchived, apiMySentGiftsArchived, apiArchiveGift, apiSaveGiftToProfile,
   apiPublicProfileGifts, toSentGift, giftMediaUrl, apiCancelGift, type GiftCatalogItem,
 } from './giftsApi';
 import { useMoney } from '@/wallet/store';
@@ -1062,6 +1062,14 @@ export const MyGifts = ({ userId }: { userId: string }) => {
 
   const list: (SentGift | ArchivedGift)[] = tab === 'received' ? received : tab === 'sent' ? sent : archived;
 
+  const toggleProfile = async (g: SentGift) => {
+    const on = !g.savedToProfile;
+    setBusy(g.id);
+    const r = await apiSaveGiftToProfile(g.id, on);
+    setBusy(null);
+    if (r.ok) setReceived(prev => prev.map(x => (x.id === g.id ? { ...x, savedToProfile: on } : x)));
+  };
+
   const toggleArchive = async (g: SentGift, on: boolean) => {
     setBusy(g.id);
     const r = await apiArchiveGift(g.id, on);
@@ -1132,6 +1140,14 @@ export const MyGifts = ({ userId }: { userId: string }) => {
                     style={{ background: 'rgba(0,0,0,0.35)', color: 'rgba(255,255,255,0.7)' }}>
                     {tab === 'archived' ? <ArchiveRestore size={12} /> : <Archive size={12} />}
                   </button>
+                  {dir === 'received' && g.status !== 'cancelled' && (
+                    <button type="button" disabled={busy === g.id} onClick={() => toggleProfile(g)}
+                      title={g.savedToProfile ? 'Скрыть из профиля' : 'Показать в профиле'}
+                      className="absolute top-1.5 left-1.5 p-1 rounded-full"
+                      style={{ background: 'rgba(0,0,0,0.35)', color: g.savedToProfile ? '#86efac' : 'rgba(255,255,255,0.7)' }}>
+                      {g.savedToProfile ? <Eye size={12} /> : <EyeOff size={12} />}
+                    </button>
+                  )}
                   <motion.div className="text-3xl select-none"
                     animate={gi ? ANIM[gi.animation] : ANIM.float}>
                     {g.giftEmoji}

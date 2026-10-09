@@ -151,8 +151,8 @@ export const apiSendGift = async (opts: {
   return { ok: false as const, reason: giftErrorText(r.error) };
 };
 
-export const apiSaveGiftToProfile = async (instanceId: string) => {
-  const r = await apiCall(`/api/gifts/instances/${encodeURIComponent(instanceId)}/save`, { method: 'POST' });
+export const apiSaveGiftToProfile = async (instanceId: string, on = true) => {
+  const r = await apiCall(`/api/gifts/instances/${encodeURIComponent(instanceId)}/save`, { method: 'POST', body: JSON.stringify({ on }) });
   return r.ok ? { ok: true as const } : { ok: false as const, reason: giftErrorText(r.error) };
 };
 

@@ -6,7 +6,7 @@
    там, где данных объективно нет (например, публичного «сейчас
    слушает музыку»), поле просто отсутствует, и секция это учитывает.
 =============================================================== */
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuthStore, type Account } from '@/core/auth/store';
 import type { PublicProfile } from '@/core/auth/api';
 import { useOtherProfiles } from './otherProfiles';
@@ -15,6 +15,7 @@ import type { ChatItem } from '@/messenger/types';
 import { useBloomStore } from '@/bloom/store';
 import type { BloomPost } from '@/bloom/store';
 import { useGiftStore, GIFT_CATALOG, type SentGift } from '@/gifts/store';
+import { apiPublicProfileGifts, toSentGift } from '@/gifts/giftsApi';
 import { useGamingAccounts } from '@/gaming/accounts';
 import type { GameActivity } from '@/gaming/accounts';
 import { useSocialGraph, type FriendStatus } from './social';
@@ -139,6 +140,24 @@ export function useProfileData(userId: string | null): ProfileData | null {
 
   const sent = useGiftStore(s => s.sent);
 
+  // Подарки в профиле — серверные: «сохранить в профиль» и получение
+  // подарка пишутся на сервере, а локальный список `sent` знает только
+  // то, что отправлено с этого устройства, поэтому у получателя и у всех
+  // зрителей раздел всегда был пустым.
+  const [serverGifts, setServerGifts] = useState<{ userId: string; hidden: boolean; items: SentGift[] } | null>(null);
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+    const load = () => apiPublicProfileGifts(userId).then((r) => {
+      if (alive) setServerGifts({ userId, hidden: r.hidden, items: r.items.map(toSentGift) });
+    });
+    void load();
+    // Подарок могли сохранить в профиль на другой вкладке или устройстве.
+    const onFocus = () => { void load(); };
+    window.addEventListener('focus', onFocus);
+    return () => { alive = false; window.removeEventListener('focus', onFocus); };
+  }, [userId, sent.length]);
+
   const gamingActivity = useGamingAccounts(s => s.activity);
 
   const followEntry = useSocialGraph(s => (userId ? s.followCache[userId] : undefined));
@@ -262,7 +281,10 @@ export function useProfileData(userId: string | null): ProfileData | null {
     const nowWatching = (showActivity && canSee('showMovies') && freshWatch && Date.now() - freshWatch.updatedAt < 120_000) ? freshWatch : null;
 
     /* -- gifts -- */
-    const myGifts = canSee('showGifts') ? sent.filter(g => g.toId === userId && g.savedToProfile).sort((a, b) => b.sentAt.localeCompare(a.sentAt)) : [];
+    const fromServer = serverGifts && serverGifts.userId === userId ? serverGifts : null;
+    const myGifts = fromServer
+      ? (fromServer.hidden && !isOwn ? [] : [...fromServer.items].sort((a, b) => b.sentAt.localeCompare(a.sentAt)))
+      : canSee('showGifts') ? sent.filter(g => g.toId === userId && g.savedToProfile).sort((a, b) => b.sentAt.localeCompare(a.sentAt)) : [];
     const catalogOf = (g: SentGift) => GIFT_CATALOG.find(c => c.id === g.giftId);
     const gifts: GiftBuckets = {
       all: myGifts,
@@ -295,6 +317,6 @@ export function useProfileData(userId: string | null): ProfileData | null {
     };
   }, [
     userId, viewerId, account, loading, myChats, myMessages, blockedList, authorPosts, hiddenIds, sent,
-    gamingActivity, followEntry, targetFriends, myFriends, viewCount, progression, musicPresenceMap, watchPresenceMap,
+    gamingActivity, followEntry, targetFriends, myFriends, viewCount, progression, musicPresenceMap, watchPresenceMap, serverGifts,
   ]);
 }

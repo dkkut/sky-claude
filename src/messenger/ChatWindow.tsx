@@ -156,7 +156,10 @@ const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => 
   if (withhold) return <TapToLoad onLoad={request} label="Загрузить голосовое" size={56} />;
 
   return (
-    <div className="flex items-center gap-2.5" style={{ minWidth: 200, maxWidth: 280 }}>
+    // Ширина от экрана, а не фиксированные 200–280px: пузырь сам стоит в
+    // колонке max-w-[68%], и на узком телефоне жёсткий minWidth выталкивал
+    // голосовое за край интерфейса.
+    <div className="flex items-center gap-2.5 min-w-0 max-w-full" style={{ width: 'min(260px, 52vw)' }}>
       <audio ref={ref} src={media}
         onLoadedMetadata={e => setDur(e.currentTarget.duration)}
         onEnded={() => { setPlaying(false); setPct(0); }}
@@ -616,7 +619,7 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
           {/* content */}
           {msg.kind === 'photo'      && <PhotoBubble msg={msg} />}
           {msg.kind === 'voice'      && (
-            <div>
+            <div className="min-w-0 max-w-full">
               <VoiceBubble msg={msg} fromMe={fromMe}/>
               <AiTranscribeButton duration={parseInt(msg.text||'0')||30} msgId={msg.id} mediaUrl={msg.mediaUrl}/>
             </div>
