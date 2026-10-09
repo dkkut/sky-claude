@@ -2897,6 +2897,105 @@ const FamilyAdminDetail = ({ familyId, onBack, onChanged }: { familyId: string; 
   );
 };
 
+export const ChannelsAdminSection = () => {
+  const [items, setItems] = useState<import('./channelsApi').AdminChannel[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [q, setQ] = useState('');
+  const [kind, setKind] = useState<'channel' | 'group' | 'all'>('channel');
+  const [failed, setFailed] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setFailed('');
+    const { apiAdminChannels } = await import('./channelsApi');
+    const r = await apiAdminChannels({ q: q.trim() || undefined, type: kind, limit: 200 });
+    if (!r.ok || !r.data) { setFailed('Не удалось загрузить список'); return; }
+    setItems(r.data.items);
+    setTotal(r.data.total);
+  }, [q, kind]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => { void load(); }, q ? 250 : 0);
+    return () => window.clearTimeout(t);
+  }, [load, q]);
+
+  const copy = async (text: string, what: string) => {
+    try { await navigator.clipboard.writeText(text); setNote(`${what} скопирован`); }
+    catch { setNote('Не удалось скопировать'); }
+    window.setTimeout(() => setNote(''), 1800);
+  };
+
+  const remove = async (c: import('./channelsApi').AdminChannel) => {
+    if (!window.confirm(`Удалить «${c.name}» вместе со всеми сообщениями и участниками? Это нельзя отменить.`)) return;
+    setBusy(c.id);
+    const { apiAdminDeleteChannel } = await import('./channelsApi');
+    const r = await apiAdminDeleteChannel(c.id);
+    setBusy(null);
+    if (r.ok) { setItems((prev) => prev?.filter((x) => x.id !== c.id) ?? prev); setTotal((n) => Math.max(0, n - 1)); setNote('Удалено'); window.setTimeout(() => setNote(''), 1800); }
+    else setFailed('Не удалось удалить');
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1.5">
+        {([['channel', 'Каналы'], ['group', 'Группы'], ['all', 'Все']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setKind(k)}
+            className="rounded-full px-3 py-1.5 text-[11px] font-bold"
+            style={{ background: kind === k ? 'color-mix(in srgb, var(--accent) 16%, transparent)' : C.l2, color: kind === k ? C.acc : C.t2 }}>{l}</button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Название, @ник, ID или владелец"
+          className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <button type="button" onClick={() => void load()} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>
+          <RefreshCw size={12} />
+        </button>
+      </div>
+      <p className="text-[10px]" style={{ color: C.t3 }}>Всего: {total}{note && <span style={{ color: C.green }}> · {note}</span>}</p>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {items === null ? (
+        <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
+      ) : items.length === 0 ? (
+        <p className="py-6 text-center text-[11px]" style={{ color: C.t3 }}>Ничего не найдено.</p>
+      ) : items.map((c) => (
+        <div key={c.id} className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <div className="flex items-start justify-between gap-2">
+            <p className="min-w-0 truncate text-xs font-bold" style={{ color: C.t1 }}>{c.name}</p>
+            <span className="shrink-0 text-[10px] font-bold" style={{ color: c.type === 'channel' ? C.acc : C.t3 }}>
+              {c.type === 'channel' ? 'Канал' : 'Группа'}
+            </span>
+          </div>
+          <p className="mt-0.5 break-all font-mono text-[10px]" style={{ color: C.t3 }}>{c.id}</p>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            {c.username ? `@${c.username} · ` : ''}{c.memberCount} уч. · {c.messageCount} сообщ.
+            {' · '}создан {fmtTs(c.createdAt)}{c.lastMessageAt && <> · последнее {fmtTs(c.lastMessageAt)}</>}
+          </p>
+          <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
+            Владелец: {c.ownerName ? `${c.ownerName} @${c.ownerUsername}` : 'нет'}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <button type="button" onClick={() => void copy(c.id, 'ID')}
+              className="rounded-lg px-2.5 py-1 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>Копировать ID</button>
+            {c.username && (
+              <button type="button" onClick={() => void copy(`@${c.username}`, 'Ник')}
+                className="rounded-lg px-2.5 py-1 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>Копировать @ник</button>
+            )}
+            {c.ownerId && (
+              <button type="button" onClick={() => void copy(c.ownerId as string, 'ID владельца')}
+                className="rounded-lg px-2.5 py-1 text-[10px] font-bold" style={{ background: C.l2, color: C.t2 }}>ID владельца</button>
+            )}
+            <button type="button" disabled={busy === c.id} onClick={() => void remove(c)}
+              className="rounded-lg px-2.5 py-1 text-[10px] font-bold" style={{ background: 'color-mix(in srgb, var(--red) 12%, transparent)', color: C.red }}>
+              {busy === c.id ? '...' : 'Удалить'}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const FamilyAdminSection = () => {
   const [families, setFamilies] = useState<import('@/family/familyApi').AdminFamilyRow[] | null>(null);
   const [q, setQ] = useState('');

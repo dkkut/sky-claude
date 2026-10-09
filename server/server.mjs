@@ -49,6 +49,7 @@ import { giftRoutes } from './routes/gifts.mjs';
 import { sweepOrphanGiftMedia } from './gifts.mjs';
 import { mapsRoutes } from './routes/maps.mjs';
 import { familyRoutes } from './routes/family.mjs';
+import { adminChannelRoutes } from './routes/adminchannels.mjs';
 import { garantRoutes } from './routes/garant.mjs';
 import { violationsRoutes } from './routes/violations.mjs';
 import { platformRoutes } from './routes/platform.mjs';
@@ -108,7 +109,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes];
+                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.

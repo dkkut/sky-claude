@@ -61,7 +61,8 @@ import { qrDataUri } from '@/shared/qr';
    владельца, второй фактор, журнал. Названа с приставкой Rbac здесь,
    чтобы не столкнуться с локальным именем AdminPanel ниже — тем самым,
    которое эта панель и заменяет. */
-import { AdminPanel as RbacAdminPanel } from '@/admin/AdminPanel';
+import { AdminPanel as RbacAdminPanel, ChannelsAdminSection } from '@/admin/AdminPanel';
+import { apiSkyVideoChannels, type ChannelListEntry } from '@/video/skyVideoApi';
 import { apiSupportStatus } from '@/moderation/supportApi';
 
 
@@ -105,6 +106,8 @@ const toBase64 = (file: File): Promise<string> => new Promise((res,rej)=>{
 const WARNING_LABEL: Record<NonNullable<WarningKind>, string> = { casino: 'Казино', '18+': '18+', casino18: 'Казино + 18+' };
 
 const ModRow = ({ domain, id, title, sub }: { domain: ModDomain; id: string; title: string; sub: string }) => {
+  const [copied, setCopied] = useState(false);
+  const copyId = async () => { try { await navigator.clipboard.writeText(id); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { /* буфер недоступен */ } };
   const { warningFor, setWarning, isBlocked, blockForScam, unblock, blockReason } = useModerationStore();
   const { currentUserId } = useAuthStore();
   const warning = warningFor(domain, id);
@@ -114,6 +117,11 @@ const ModRow = ({ domain, id, title, sub }: { domain: ModDomain; id: string; tit
     <div className="rounded-2xl p-3" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
       <p className="truncate text-[13px] font-bold" style={{ color: 'var(--t1)' }}>{title}</p>
       <p className="truncate text-[11px]" style={{ color: 'var(--t3)' }}>{sub}</p>
+      <p className="break-all font-mono text-[10px]" style={{ color: 'var(--t3)' }}>{id}</p>
+      <button type="button" onClick={() => void copyId()} className="mt-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-semibold"
+        style={{ background: 'var(--bg-l2)', color: copied ? 'var(--green)' : 'var(--t2)' }}>
+        {copied ? 'ID скопирован' : 'Копировать ID'}
+      </button>
       {blocked ? (
         <div className="mt-2 space-y-2">
           <BlockedChannelBadge reason={blockReason(domain, id)} size="sm"/>
@@ -149,21 +157,19 @@ const ModRow = ({ domain, id, title, sub }: { domain: ModDomain; id: string; tit
 };
 
 const AdminChannelModerationTab = () => {
-  const { chats } = useMessengerStore();
-  // Кино и Sky Video берём из общего каталога на сервере: модерировать
-  // можно то, что выложено на всех. Личные коллекции и черновики сюда
-  // не попадают — сервер их не отдаёт никому, включая администратора.
+  // Кино берём из общего каталога на сервере: модерировать можно то, что
+  // выложено на всех. Каналы мессенджера и видеохостинга — тоже с сервера,
+  // целиком, а не только те, в которых состоит сам администратор или что
+  // попало в первую сотню ленты (раньше список был почти всегда пуст).
   const movies = useFilmStore(s => s.catalog);
   const loadFilm = useFilmStore(s => s.load);
-  const skyVideos = useSkyVideoStore(s => s.feed);
-  const loadSkyVideo = useSkyVideoStore(s => s.load);
   const [sub, setSub] = useState<'messenger'|'video'|'movies'>('messenger');
-  useEffect(() => { void loadFilm(); void loadSkyVideo(); }, [loadFilm, loadSkyVideo]);
-
-  const channels = chats.filter(c => c.type === 'channel');
-  const videoChannels = [...new Map(
-    skyVideos.filter(v => v.authorId).map(v => [v.authorId as string, v.authorName ?? v.authorId as string]),
-  ).entries()];
+  const [videoChannels, setVideoChannels] = useState<ChannelListEntry[] | null>(null);
+  useEffect(() => { void loadFilm(); }, [loadFilm]);
+  useEffect(() => {
+    if (sub !== 'video' || videoChannels) return;
+    void apiSkyVideoChannels({ limit: 200 }).then(r => setVideoChannels(r ?? []));
+  }, [sub, videoChannels]);
 
   return (
     <div className="space-y-3 p-4">
@@ -177,15 +183,16 @@ const AdminChannelModerationTab = () => {
         ))}
       </div>
 
-      {sub === 'messenger' && (
-        channels.length === 0
-          ? <p className="py-6 text-center text-xs" style={{ color: 'var(--t3)' }}>Каналов пока нет</p>
-          : channels.map(c => <ModRow key={c.id} domain="messenger-channel" id={c.id} title={c.name} sub={`@${c.username} · ${c.members ?? 0} участников`}/>)
-      )}
+      {sub === 'messenger' && <ChannelsAdminSection/>}
       {sub === 'video' && (
-        videoChannels.length === 0
-          ? <p className="py-6 text-center text-xs" style={{ color: 'var(--t3)' }}>Каналов пока нет</p>
-          : videoChannels.map(([id, name]) => <ModRow key={id} domain="video-channel" id={id} title={name as string} sub="Канал видеохостинга"/>)
+        videoChannels === null
+          ? <p className="py-6 text-center text-xs" style={{ color: 'var(--t3)' }}>Загрузка…</p>
+          : videoChannels.length === 0
+            ? <p className="py-6 text-center text-xs" style={{ color: 'var(--t3)' }}>Каналов пока нет</p>
+            : videoChannels.map(c => (
+                <ModRow key={c.authorId} domain="video-channel" id={c.authorId} title={c.authorName}
+                  sub={`@${c.authorUsername} · ${c.videoCount} видео · ${c.totalViews} просм.`}/>
+              ))
       )}
       {sub === 'movies' && (
         movies.length === 0
