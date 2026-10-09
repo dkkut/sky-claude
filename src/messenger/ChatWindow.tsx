@@ -239,6 +239,16 @@ const pickRecMime = (list: string[]) =>
 const extFor = (mime: string, video: boolean) =>
   mime.includes('mp4') ? (video ? 'mp4' : 'm4a') : mime.includes('ogg') ? 'ogg' : 'webm';
 
+/* Иконка голосового сообщения: три дуги «)))» по нарастающей. */
+const VoiceWavesIcon = ({ size = 20 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth={2} strokeLinecap="round" aria-hidden="true">
+    <path d="M6 9.5c1.2 1.4 1.2 3.6 0 5" />
+    <path d="M10.5 7c2.4 2.9 2.4 7.1 0 10" />
+    <path d="M15 4.5c3.6 4.4 3.6 10.6 0 15" />
+  </svg>
+);
+
 /* -- Видео-кружок на весь экран ----------------------------------- */
 const VideoNoteViewer = ({ msg, onClose, onReply, onForward, onDelete }: {
   msg: MessageItem; onClose: () => void;
@@ -2494,20 +2504,23 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                     style={{ background: theme.accent, boxShadow: `0 4px 16px ${theme.liquidColor}` }}>
                     <Send size={18} className="text-white" style={{ marginLeft: 2 }} />
                   </motion.button>
-                : <div className="flex items-center gap-1">
-                    <motion.button type="button" whileTap={{ scale: 0.9 }}
-                      onClick={startVideoNote} disabled={isBlocked}
-                      title="Видео-кружок"
-                      className="grid h-9 w-9 place-items-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-40"
-                      style={{ color: 'var(--t2)' }}>
-                      <Video size={18} />
-                    </motion.button>
+                // Колонкой, а не рядом: в ряд две кнопки не помещались в узкий
+                // экран, и голосовое сообщение выпадало за край. Микрофон в
+                // самом поле — это диктовка, поэтому у голосового своя иконка.
+                : <div className="flex flex-col items-center gap-1">
                     <motion.button type="button" whileTap={{ scale: 0.9 }}
                       onClick={startRec} disabled={isBlocked}
-                      title="Голосовое"
-                      className="grid h-11 w-11 place-items-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-40"
+                      title="Голосовое сообщение" aria-label="Голосовое сообщение"
+                      className="grid h-10 w-10 place-items-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-40"
                       style={{ color: 'var(--t2)' }}>
-                      <Mic size={20} />
+                      <VoiceWavesIcon size={22} />
+                    </motion.button>
+                    <motion.button type="button" whileTap={{ scale: 0.9 }}
+                      onClick={startVideoNote} disabled={isBlocked}
+                      title="Видео-кружок" aria-label="Видео-кружок"
+                      className="grid h-10 w-10 place-items-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-40"
+                      style={{ color: 'var(--t2)' }}>
+                      <Video size={20} />
                     </motion.button>
                   </div>}
             </div>
