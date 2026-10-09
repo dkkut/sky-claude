@@ -53,9 +53,16 @@ export const storageShareRoutes = async (req, res, url) => {
   if (req.method === 'POST' && !targetUserId) {
     if (!rateLimit(`storageshare:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     const body = await parseBody(req);
+    let expiresAt = null;
+    if (body?.expiresAt) {
+      expiresAt = new Date(body.expiresAt);
+      if (typeof body.expiresAt === 'object' || Number.isNaN(expiresAt.getTime())) {
+        return json(res, 400, { error: 'invalid_expires_at' });
+      }
+    }
     const result = await grantShare(me, String(body?.userId ?? ''), kind, fileId, {
       canDownload: body?.canDownload === true,
-      expiresAt: body?.expiresAt ? new Date(body.expiresAt) : null,
+      expiresAt,
     });
     if (result.error) return fail(res, result);
     return json(res, 200, { ok: true });
