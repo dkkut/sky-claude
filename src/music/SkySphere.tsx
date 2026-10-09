@@ -250,8 +250,8 @@ export const SkySphere = ({ color1, color2, active = false, className }: SkySphe
        меньшем буфере и с двумя слоями шума вместо четырёх. */
     const cores = (navigator as any).hardwareConcurrency ?? 4;
     const weak = cores <= 4 || Math.min(window.innerWidth, window.innerHeight) < 500;
-    const dprCap = weak ? 1.6 : 2.0;
-    const scale = weak ? 0.85 : 1.0;
+    const dprCap = weak ? 1.2 : 2.0;
+    const scale = weak ? 0.7 : 1.0;
     gl.uniform1f(u.detail, weak ? 0.0 : 1.0);
 
     const resize = () => {
@@ -281,9 +281,15 @@ export const SkySphere = ({ color1, color2, active = false, className }: SkySphe
     let visible = true;
     const start = performance.now();
 
-    const frame = () => {
+    let last = 0;
+    const frame = (now = 0) => {
       raf = requestAnimationFrame(frame);
       if (!visible || document.hidden) return;
+      // Шейдер с шумом — самое дорогое, что есть на экране музыки. Играет —
+      // ~30 кадров в секунду, на паузе шар почти замирает (~12): рисовать
+      // 60 раз в секунду спокойный шар незачем, и телефон от этого зависал.
+      if (now - last < (colors.current.active ? 33 : 80)) return;
+      last = now;
 
       const t = (performance.now() - start) / 1000;
       const on = colors.current.active;

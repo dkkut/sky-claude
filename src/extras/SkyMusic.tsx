@@ -2420,10 +2420,18 @@ const MusicBg = ({ trackColor1 = '#4f46e5', trackColor2 = '#7c3aed' }: {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const pr = window.devicePixelRatio || 1;
+    // Фон — размытые градиенты: в полном разрешении экрана (на телефоне это
+    // втрое по каждой оси) он перерисовывался 60 раз в секунду и съедал
+    // процессор. Холст в половину css-пикселя выглядит так же и в ~36 раз
+    // дешевле на экране телефона.
+    const pr = 0.5;
+    let cw = canvas.offsetWidth;
+    let ch = canvas.offsetHeight;
     const resize = () => {
-      canvas.width  = canvas.offsetWidth  * pr;
-      canvas.height = canvas.offsetHeight * pr;
+      cw = canvas.offsetWidth;
+      ch = canvas.offsetHeight;
+      canvas.width  = Math.max(1, Math.round(cw * pr));
+      canvas.height = Math.max(1, Math.round(ch * pr));
       ctx.scale(pr, pr);
     };
     resize();
@@ -2436,10 +2444,17 @@ const MusicBg = ({ trackColor1 = '#4f46e5', trackColor2 = '#7c3aed' }: {
       { ax:0.35, ay:0.50, fx:0.15, fy:0.26, px:3.2,  py:1.8,  size:0.42, col:1 },
     ];
 
-    const draw = () => {
-      const w  = canvas.offsetWidth;
-      const h  = canvas.offsetHeight;
-      tRef.current += 0.004;
+    let lastFrame = 0;
+    const draw = (now = 0) => {
+      rafRef.current = requestAnimationFrame(draw);
+      // ~20 кадров в секунду хватает для медленного дрейфа, а во вкладке
+      // в фоне рисовать нечего.
+      if (document.hidden || now - lastFrame < 50) return;
+      const dt = lastFrame ? Math.min(now - lastFrame, 200) : 50;
+      lastFrame = now;
+      const w  = cw;
+      const h  = ch;
+      tRef.current += 0.004 * (dt / 16.7);
       const t = tRef.current;
 
       /* slowly lerp current colours toward target */
@@ -2475,13 +2490,11 @@ const MusicBg = ({ trackColor1 = '#4f46e5', trackColor2 = '#7c3aed' }: {
       /* subtle grain overlay for "depth" */
       ctx.fillStyle = 'rgba(0,0,0,0.18)';
       ctx.fillRect(0, 0, w, h);
-
-      rafRef.current = requestAnimationFrame(draw);
     };
 
     const ro = new ResizeObserver(() => { resize(); });
     ro.observe(canvas);
-    draw();
+    rafRef.current = requestAnimationFrame(draw);
 
     return () => { cancelAnimationFrame(rafRef.current); ro.disconnect(); };
   }, []);
