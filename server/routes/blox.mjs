@@ -119,6 +119,7 @@ export const bloxRoutes = async (req, res, url) => {
     me = session.profileId;
   }
 
+  if (/%00|\u0000/i.test(req.url ?? '')) return json(res, 400, { error: 'bad_request' });
   const userRpm = await limit('userRpm');
   if (!rateLimit(`blox:u:${me}`, Math.max(userRpm, READ_PER_MIN))) return json(res, 429, { error: 'too_many_requests' });
   if (!isPicture && req.method !== 'GET') {
@@ -128,7 +129,7 @@ export const bloxRoutes = async (req, res, url) => {
     if (!upload && declared > maxBody) return reject(req, res, 413, { error: 'too_large', limit: maxBody });
   }
   const meta = requestMeta(req);
-  const body = () => parseBody(req);
+  const body = async () => { const b = await parseBody(req); if (!b || typeof b !== 'object' || Array.isArray(b)) return {}; return JSON.stringify(b).includes('\\u0000') ? {} : b; };
   const done = (r, code = 200) => (r.error ? fail(res, r) : json(res, code, r));
 
   if (isPicture) {
