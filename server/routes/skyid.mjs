@@ -374,7 +374,7 @@ export const skyIdRoutes = async (req, res, url) => {
     const paid = await wallet.spend(target, price, 'prime', `Sky Prime · ${days} дн.`);
     if (paid.error) return json(res, 400, paid);
 
-    const result = await grantPrime(s.skyId, target, sanitizeInput(body.plan ?? 'standard'), days);
+    const result = await grantPrime(s.skyId, target, sanitizeInput(body.plan ?? 'standard'), days, { additive: true });
     if (result.error) {
       // Списали, но не выдали — возвращаем деньги, иначе они пропадут.
       await wallet.refund(target, price, 'Возврат за Sky Prime');
