@@ -36,6 +36,10 @@ import {
 } from './../courierverify.mjs';
 import { confirmPickup, confirmDelivery } from './../courierdelivery.mjs';
 import {
+  eligibleOrders, createBatch, listBatches, listOpenBatches, readBatch, cancelBatch,
+  handoffBatch, takeBatch, buildRoute, batchMap,
+} from './../logibatches.mjs';
+import {
   listWarehouses, listSortingCenters, createWarehouse, updateWarehouse, deleteWarehouse,
   addWarehousePhoto, readWarehousePhoto, deleteWarehousePhoto,
   listStock, warehouseFill, setStock,
@@ -73,6 +77,9 @@ const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
 const CODES = {
   not_found: 404,
+  no_orders: 400, too_many_orders: 400, origin_required: 400, orders_not_ready: 409,
+  no_origin: 422, no_stops: 422, too_many_stops: 400, maps_not_configured: 501, route_failed: 502,
+  route_service_denied: 502, no_route: 422,
   not_allowed: 403,
   no_collab: 403,
   not_a_courier: 403,
@@ -220,7 +227,7 @@ export const logisticsRoutes = async (req, res, url) => {
      подставить — принимаем подписанный пропуск, как и в маркете. Права
      на саму фотографию всё равно проверяются по базе. */
   const isPicture = (req.method === 'GET' || req.method === 'HEAD')
-    && /^\/api\/logistics\/photos\/lwp-[0-9a-f-]{36}$/.test(path);
+    && /^\/api\/logistics\/(photos\/lwp-[0-9a-f-]{36}|batches\/lb-[0-9a-f-]{36}\/map)$/.test(path);
 
   let me;
   if (isPicture) {
@@ -366,6 +373,70 @@ export const logisticsRoutes = async (req, res, url) => {
     if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
     const done = await reportAssignmentProblem(me, assignPath[1], (await body()).reason);
     return done.error ? fail(res, done) : json(res, 200, done);
+  }
+
+  /* ══ Поставки: пакет заказов для развоза ═══════════════════════════ */
+
+  if (req.method === 'GET' && path === '/api/logistics/batches/eligible') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { orders: await eligibleOrders(me) });
+  }
+  if (req.method === 'GET' && path === '/api/logistics/batches') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { batches: await listBatches(me, { as: params.get('as') === 'courier' ? 'courier' : 'seller' }) });
+  }
+  if (req.method === 'POST' && path === '/api/logistics/batches') {
+    if (!rateLimit(`lg:bc:${me}`, 30)) return json(res, 429, { error: 'too_many_requests' });
+    const done = await createBatch(me, await body());
+    return done.error ? fail(res, done) : json(res, 201, done);
+  }
+  if (req.method === 'GET' && path === '/api/logistics/batches/pool') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    const done = await listOpenBatches(me);
+    return done?.error ? fail(res, done) : json(res, 200, { batches: done });
+  }
+  const batchPath = path.match(/^\/api\/logistics\/batches\/(lb-[0-9a-f-]{36})(\/(handoff|take|route|map))?$/);
+  if (batchPath) {
+    const id = batchPath[1]; const tail = batchPath[3];
+    if (req.method === 'GET' && !tail) {
+      if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+      const done = await readBatch(me, id);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+    if (req.method === 'DELETE' && !tail) {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      const done = await cancelBatch(me, id);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+    if (req.method === 'POST' && tail === 'handoff') {
+      if (!rateLimit(`lg:bh:${me}`, 20)) return json(res, 429, { error: 'too_many_requests' });
+      const b = await body();
+      const done = await handoffBatch(me, id, { courierId: b.courierId, pool: b.pool === true, priceKop: b.priceKop, cityId: b.cityId, district: b.district });
+      return done.error ? json(res, CODES[done.error] ?? 400, { error: done.error, orderId: done.orderId }) : json(res, 200, done);
+    }
+    if (req.method === 'POST' && tail === 'take') {
+      if (!rateLimit(`lg:take:${me}`, 30)) return json(res, 429, { error: 'too_many_requests' });
+      const done = await takeBatch(me, id);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+    if (req.method === 'POST' && tail === 'route') {
+      // Каждое построение — запросы к Google: частота ограничена на человека.
+      if (!rateLimit(`lg:route:${me}`, 12)) return json(res, 429, { error: 'too_many_requests' });
+      const done = await buildRoute(me, id);
+      if (done.error) return fail(res, done);
+      return json(res, 200, await readBatch(me, id));
+    }
+    if ((req.method === 'GET' || req.method === 'HEAD') && tail === 'map') {
+      if (!rateLimit(`lg:map:${me}`, 60)) return json(res, 429, { error: 'too_many_requests' });
+      const picture = await batchMap(me, id, { width: params.get('w'), height: params.get('h') });
+      if (!picture) return json(res, 404, { error: 'map_unavailable' });
+      res.writeHead(200, {
+        'Content-Type': picture.mime, 'Content-Length': String(picture.body.length), 'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox", 'Cache-Control': 'private, max-age=300', 'Vary': 'Cookie',
+      });
+      res.end(req.method === 'HEAD' ? undefined : picture.body);
+      return true;
+    }
   }
 
   /* ══ Пул заказов: продавец выставляет, курьер берёт сам ═══════════ */

@@ -148,7 +148,7 @@ const round = (n) => Number(n).toFixed(6);
  *
  * Возвращает null без ключа — и клиент покажет «карта не настроена».
  */
-export const staticMapUrl = ({ points = [], center, width = 640, height = 360, zoom } = {}) => {
+export const staticMapUrl = ({ points = [], center, width = 640, height = 360, zoom, pathEnc } = {}) => {
   if (!config.mapsKey) return null;
 
   const params = new URLSearchParams();
@@ -164,7 +164,14 @@ export const staticMapUrl = ({ points = [], center, width = 640, height = 360, z
       lat: Number(p.lat),
       lng: Number(p.lng),
       kind: MARKER_COLORS[p?.kind] ? p.kind : 'default',
+      // Подпись метки — один символ A–Z/0–9 (порядковый номер остановки).
+      label: /^[A-Z0-9]$/.test(String(p?.label ?? '')) ? String(p.label) : '',
     });
+  }
+  /* Линия маршрута — закодированная ломаная Google; проверяется и по алфавиту, и по длине:
+     иначе в адрес картинки с нашим ключом можно было бы дописать чужие параметры. */
+  if (typeof pathEnc === 'string' && /^[\x3f-\x7e]{2,6000}$/.test(pathEnc)) {
+    params.append('path', `weight:5|color:0x3b82f6cc|enc:${pathEnc}`);
   }
   /* Середина задана — значит карту двигают кнопками, и показать её надо
      даже там, где ни одной метки не осталось: иначе край карты был бы
@@ -177,6 +184,7 @@ export const staticMapUrl = ({ points = [], center, width = 640, height = 360, z
      уже на десятке складов. */
   const byKind = new Map();
   for (const p of good) {
+    if (p.label) { params.append('markers', `color:${MARKER_COLORS[p.kind]}|label:${p.label}|${round(p.lat)},${round(p.lng)}`); continue; }
     if (!byKind.has(p.kind)) byKind.set(p.kind, []);
     byKind.get(p.kind).push(p);
   }
@@ -222,4 +230,70 @@ export const fetchStaticMap = async (opts) => {
   } catch {
     return null;
   }
+};
+
+
+/* ─── Маршрут по точкам (Google Directions) ────────────────────────── */
+
+const TRAVEL_MODES = { foot: 'walking', bike: 'bicycling', scooter: 'bicycling', car: 'driving', truck: 'driving' };
+const MAX_STOPS = 20;
+const haversine = (a, b) => {
+  const R = 6371000; const rad = (x) => (x * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat); const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+
+/**
+ * Маршрут от точки старта через остановки: Google сам подбирает порядок
+ * (optimize:true), а последней остановкой ставим самую дальнюю от старта —
+ * так маршрут не требует возврата. Ходит сервер своим ключом; в запрос
+ * уходят только числа и название вида транспорта из белого списка.
+ *
+ * Возвращает { ok, order:[id…], legs:[{id,distanceM,durationS}], distanceM,
+ * durationS, polyline } или { error }.
+ */
+export const computeRoute = async ({ origin, stops, vehicle } = {}) => {
+  if (!config.mapsKey) return { error: 'maps_not_configured' };
+  if (!isRealPoint(origin?.lat, origin?.lng)) return { error: 'no_origin' };
+  const pts = (Array.isArray(stops) ? stops : []).filter((s) => s?.id && isRealPoint(s.lat, s.lng))
+    .map((s) => ({ id: String(s.id), lat: Number(s.lat), lng: Number(s.lng) }));
+  if (pts.length === 0) return { error: 'no_stops' };
+  if (pts.length > MAX_STOPS) return { error: 'too_many_stops' };
+  const o = { lat: Number(origin.lat), lng: Number(origin.lng) };
+
+  let far = 0;
+  pts.forEach((p, i) => { if (haversine(o, p) > haversine(o, pts[far])) far = i; });
+  const last = pts[far];
+  const mid = pts.filter((_, i) => i !== far);
+
+  const params = new URLSearchParams({
+    origin: `${round(o.lat)},${round(o.lng)}`,
+    destination: `${round(last.lat)},${round(last.lng)}`,
+    mode: TRAVEL_MODES[vehicle] ?? 'driving',
+    language: 'ru', units: 'metric', key: config.mapsKey,
+  });
+  if (mid.length) params.set('waypoints', `optimize:true|${mid.map((p) => `${round(p.lat)},${round(p.lng)}`).join('|')}`);
+
+  let data;
+  try {
+    const res = await fetch(`${config.mapsBaseUrl}/maps/api/directions/json?${params}`, { signal: AbortSignal.timeout(12_000) });
+    if (!res.ok) return { error: 'route_failed' };
+    data = await res.json();
+  } catch { return { error: 'route_failed' }; }
+
+  if (data?.status === 'REQUEST_DENIED') return { error: 'route_service_denied' };
+  if (data?.status !== 'OK' || !data.routes?.[0]) return { error: data?.status === 'ZERO_RESULTS' ? 'no_route' : 'route_failed' };
+
+  const route = data.routes[0];
+  const wp = Array.isArray(route.waypoint_order) ? route.waypoint_order : mid.map((_, i) => i);
+  const order = [...wp.map((i) => mid[i]), last];
+  const legs = (route.legs ?? []).map((l, i) => ({
+    id: order[i]?.id, distanceM: Number(l.distance?.value ?? 0), durationS: Number(l.duration?.value ?? 0),
+  }));
+  return {
+    ok: true, order: order.map((p) => ({ id: p.id, lat: p.lat, lng: p.lng })), legs,
+    distanceM: legs.reduce((a, l) => a + l.distanceM, 0), durationS: legs.reduce((a, l) => a + l.durationS, 0),
+    polyline: String(route.overview_polyline?.points ?? ''),
+  };
 };
