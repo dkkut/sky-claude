@@ -893,7 +893,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const isMobile = useIsMobile();
   const {
     chats, messages, activeChatId, sendMessage, react, addReport,
-    blockUser: blockChatUser, unblockUser: unblockChatUser, loadOlder, leaveChat: leaveChatOnServer,
+    blockUser: blockChatUser, unblockUser: unblockChatUser, loadOlder, leaveChat: leaveChatOnServer, deleteChatForAll: deleteChatForAllOnServer,
     replyToId, setReplyTo, editingId, startEdit,
     editMessage, deleteMessage, pinMessage, forward,
     typing: typingMap, setTyping, markRead, blocked,
@@ -1877,13 +1877,13 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
               onClick={e => e.stopPropagation()}>
               <p className="text-sm font-semibold mb-1" style={{ color: 'var(--t1)' }}>
                 {chat.type === 'direct' ? 'Убрать переписку у себя?'
-                 : chat.ownerId === myId ? 'Удалить чат?' : 'Выйти из чата?'}
+                 : chat.ownerId === myId ? 'Удалить чат у всех?' : 'Выйти из чата?'}
               </p>
               <p className="text-xs mb-4" style={{ color: 'var(--t2)' }}>
                 {chat.type === 'direct'
                   ? 'Чат пропадёт у вас на всех устройствах. У собеседника переписка останется; вернуться можно, написав ему снова.'
                   : chat.ownerId === myId
-                    ? 'Чат и вся переписка пропадут у всех участников.'
+                    ? 'Чат исчезнет у всех участников. Вернуть его можно из «Корзины» в списке чатов в течение 30 дней.'
                     : 'Вы перестанете получать сообщения этого чата.'}
               </p>
               <div className="flex gap-2">
@@ -1891,7 +1891,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                   className="flex-1 py-2 rounded-xl text-sm font-medium"
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t1)' }}>Отмена</button>
                 <button type="button"
-                  onClick={() => { leaveChatOnServer(chat.id); setConfirmLeave(false); }}
+                  onClick={() => { if (chat.type !== 'direct' && chat.ownerId === myId) deleteChatForAllOnServer(chat.id); else leaveChatOnServer(chat.id); setConfirmLeave(false); }}
                   className="flex-1 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--red)' }}>
                   {chat.type !== 'direct' && chat.ownerId === myId ? 'Удалить' : 'Убрать'}

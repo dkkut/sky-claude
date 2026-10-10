@@ -15,6 +15,7 @@ import { activeChatListStyle } from '@/customization/selectors';
 import { useGamingAccounts } from '@/gaming/accounts';
 import { usePeopleSearch } from './usePeopleSearch';
 import { useAdminStore } from './adminStore';
+import { useTrashStore, daysLeft } from './trashStore';
 
 const fmtTime = (ts: number) => {
   const d = new Date(ts), now = new Date();
@@ -268,7 +269,7 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
   onClose: () => void;
   onManage: (chatId: string) => void;
 }) => {
-  const { chats, messages, pinChat, muteChat, archiveChat, markRead, markUnread, leaveChat } = useMessengerStore();
+  const { chats, messages, pinChat, muteChat, archiveChat, markRead, markUnread, leaveChat, deleteChatForAll } = useMessengerStore();
   const chat = chats.find(c => c.id === chatId);
   // Сколько в чате действительно непрочитанного — по нему решаем, какая
   // из двух кнопок сейчас что-то меняет.
@@ -277,6 +278,7 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
     [messages, chatId]);
   const myId = useAuthStore(st => st.currentUserId);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmTrash, setConfirmTrash] = useState(false);
   if (!chat) return null;
 
   const isDirect = chat.type === 'direct';
@@ -318,22 +320,27 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
   const profile: ChatAction = {
     icon: UserPlus, label: 'Открыть профиль', fn: act(() => { if (peerId) openProfile(peerId); }),
   };
+  // Владелец группы или канала только удаляет чат у всех (с корзиной);
+  // остальные уходят из него. В личном чате есть оба действия.
   const remove: ChatAction = {
     icon: Trash2,
-    label: isDirect ? 'Убрать переписку у себя' : isOwner ? 'Удалить чат' : 'Выйти из чата',
+    label: isDirect ? 'Убрать переписку у себя' : isOwner ? 'Удалить у всех' : 'Выйти из чата',
     danger: true,
-    fn: () => setConfirmLeave(true),
+    fn: () => (isOwner && !isDirect ? setConfirmTrash(true) : setConfirmLeave(true)),
+  };
+  const removeBoth: ChatAction = {
+    icon: Trash2, label: 'Удалить у обоих', danger: true, fn: () => setConfirmTrash(true),
   };
 
   /* Свой набор на каждый сегмент. */
   const items: ChatAction[] =
-      segment === 'archived' ? [fromArchive, pin, sound, read, unread, remove]
-    : segment === 'unread'   ? [read, unread, pin, sound, toArchive, remove]
-    : segment === 'direct'   ? [profile, pin, sound, read, unread, toArchive, remove]
+      segment === 'archived' ? [fromArchive, pin, sound, read, unread, remove, ...(isDirect ? [removeBoth] : [])]
+    : segment === 'unread'   ? [read, unread, pin, sound, toArchive, remove, ...(isDirect ? [removeBoth] : [])]
+    : segment === 'direct'   ? [profile, pin, sound, read, unread, toArchive, remove, removeBoth]
     : segment === 'group'    ? [...(runsChat ? [manage] : []), pin, sound,
                                 read, unread, toArchive, remove]
     : [pin, sound, read, unread, toArchive,
-       ...(!isDirect && runsChat ? [manage] : []), remove];
+       ...(!isDirect && runsChat ? [manage] : []), remove, ...(isDirect ? [removeBoth] : [])];
 
   /* Размещение: меню под превью чата, а если внизу не помещается — над ним. */
   const vw = typeof window === 'undefined' ? 380 : window.innerWidth;
@@ -403,11 +410,10 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
               style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}
               onClick={e => e.stopPropagation()}>
               <p className="mb-1 text-sm font-semibold" style={{ color: 'var(--t1)' }}>
-                {isDirect ? 'Убрать переписку у себя?' : isOwner ? 'Удалить чат?' : 'Выйти из чата?'}
+                {isDirect ? 'Убрать переписку у себя?' : 'Выйти из чата?'}
               </p>
               <p className="mb-4 text-xs" style={{ color: 'var(--t2)' }}>
                 {isDirect ? 'У собеседника переписка останется. Написав снова, вы её вернёте.'
-                  : isOwner ? 'Чат исчезнет у всех участников вместе с перепиской.'
                   : 'Вернуться можно будет по приглашению.'}
               </p>
               <div className="flex gap-2">
@@ -417,8 +423,38 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
                 <button type="button" onClick={() => { leaveChat(chatId); setConfirmLeave(false); onClose(); }}
                   className="flex-1 rounded-xl py-2 text-sm font-semibold text-white"
                   style={{ background: 'var(--red)' }}>
-                  {isDirect ? 'Убрать' : isOwner ? 'Удалить' : 'Выйти'}
+                  {isDirect ? 'Убрать' : 'Выйти'}
                 </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Удаление у всех: чат уходит в корзину на 30 дней */}
+      <AnimatePresence>
+        {confirmTrash && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.7)' }} onClick={e => { e.stopPropagation(); setConfirmTrash(false); }}>
+            <div className="w-full max-w-xs rounded-2xl p-5"
+              style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}
+              onClick={e => e.stopPropagation()}>
+              <p className="mb-1 text-sm font-semibold" style={{ color: 'var(--t1)' }}>
+                {isDirect ? 'Удалить переписку у обоих?' : 'Удалить чат у всех?'}
+              </p>
+              <p className="mb-4 text-xs" style={{ color: 'var(--t2)' }}>
+                {isDirect
+                  ? 'Переписка исчезнет и у вас, и у собеседника. Вернуть её сможете вы оба из «Корзины» в течение 30 дней, потом она удалится навсегда.'
+                  : 'Чат исчезнет у всех участников. Вернуть его можно из «Корзины» в течение 30 дней, потом он удалится навсегда.'}
+              </p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setConfirmTrash(false)}
+                  className="flex-1 rounded-xl py-2 text-sm font-semibold"
+                  style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>Отмена</button>
+                <button type="button" onClick={() => { deleteChatForAll(chatId); setConfirmTrash(false); onClose(); }}
+                  className="flex-1 rounded-xl py-2 text-sm font-semibold text-white"
+                  style={{ background: 'var(--red)' }}>Удалить</button>
               </div>
             </div>
           </motion.div>
@@ -430,12 +466,44 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
 };
 
 /* ===================================================================
+   Корзина: удалённые у всех чаты, 30 дней на восстановление
+=================================================================== */
+const TrashList = () => {
+  const items = useTrashStore(s => s.items);
+  const loaded = useTrashStore(s => s.loaded);
+  const restoreChat = useMessengerStore(s => s.restoreChat);
+  return (
+    <div className="px-3 py-2">
+      <p className="mb-2 px-1 text-[11px]" style={{ color: 'var(--t2)' }}>
+        Удалённые чаты хранятся 30 дней, потом исчезают навсегда.
+      </p>
+      {loaded && items.length === 0 && (
+        <p className="py-12 text-center text-sm" style={{ color: 'var(--t2)' }}>Корзина пуста</p>
+      )}
+      {items.map(c => (
+        <div key={c.id} className="mb-1.5 flex items-center gap-3 rounded-2xl px-3 py-2.5"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}><span translate="no">{c.name}</span></p>
+            <p className="text-[11px]" style={{ color: 'var(--t2)' }}>{`Осталось дней: ${daysLeft(c.deleteAt)}`}</p>
+          </div>
+          {c.canRestore
+            ? <button type="button" onClick={() => restoreChat(c.id)}
+                className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold text-white" style={{ background: 'var(--accent)' }}>Восстановить</button>
+            : <span className="shrink-0 text-[10px]" style={{ color: 'var(--t3, var(--t2))' }}>Вернёт владелец</span>}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ===================================================================
    ChatList
 =================================================================== */
-type Filter = 'all' | 'unread' | 'direct' | 'group' | 'archived';
+type Filter = 'all' | 'unread' | 'direct' | 'group' | 'archived' | 'trash';
 
 export const ChatList = () => {
-  const { chats, messages, activeChatId, setActiveChat, markRead } = useMessengerStore();
+  const { chats, messages, activeChatId, setActiveChat, markRead, loadTrash } = useMessengerStore();
   const connected = useMessengerStore(s => s.connected);
   // accounts здесь только для косметики профиля (рамки, оформление);
   // поиск людей идёт на сервере.
@@ -490,6 +558,7 @@ export const ChatList = () => {
       .filter(c => {
         // Архив — отдельный сегмент. Раньше архивные отсеивались из всех
         // фильтров, а вкладки для них не было: чат исчезал навсегда.
+        if (filter === 'trash') return false;
         if (filter === 'archived') return Boolean(c.archived);
         if (c.archived) return false;
         if (filter === 'unread')  return (unreadMap[c.id] ?? 0) > 0;
@@ -518,6 +587,7 @@ export const ChatList = () => {
   const FILTERS: [Filter, string][] = [
     ['all', 'Все'], ['unread', 'Непрочит.'], ['direct', 'Личные'], ['group', 'Группы'],
     ...(archivedCount > 0 ? [['archived', 'Архив'] as [Filter, string]] : []),
+    ['trash', 'Корзина'],
   ];
 
   return (
@@ -618,7 +688,7 @@ export const ChatList = () => {
       {/* Filter tabs */}
       <div className="flex gap-1.5 px-3 pb-2.5 shrink-0 overflow-x-auto scroll-none">
         {FILTERS.map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setFilter(k)}
+          <button key={k} type="button" onClick={() => { setFilter(k); if (k === 'trash') loadTrash(); }}
             className="shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-all"
             style={{
               background: filter === k ? 'var(--accent-bg)' : 'rgba(255,255,255,0.04)',
@@ -632,7 +702,8 @@ export const ChatList = () => {
 
       {/* Chat list */}
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }} onClick={() => setCtx(null)}>
-        {visible.length === 0 && (
+        {filter === 'trash' && <TrashList />}
+        {filter !== 'trash' && visible.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-16">
             <p className="text-sm" style={{ color: 'var(--t2)' }}>
               {search ? 'Ничего не найдено' : 'Нет чатов'}
@@ -640,7 +711,7 @@ export const ChatList = () => {
           </div>
         )}
 
-        {visible.map(chat => {
+        {filter !== 'trash' && visible.map(chat => {
           const last   = lastMsgMap[chat.id];
           const unread = unreadMap[chat.id] ?? 0;
           const active = activeChatId === chat.id;

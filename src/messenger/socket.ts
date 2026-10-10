@@ -17,6 +17,7 @@ import { setWireSink, setVolatileSink, type Outgoing } from '@/core/wire';
 import { bsignal, type SignalMsg } from '@/calls/webrtc';
 import { receiveTogether } from '@/together/togetherState';
 import { useAdminStore, ADMIN_ERRORS, POST_ERRORS } from './adminStore';
+import { useTrashStore } from './trashStore';
 import { useSettings } from '@/settings/store';
 import { usePrivacyStore } from '@/profile/privacyStore';
 import { useGamingStore, type MatchInfo, type MatchResultChange } from '@/gaming/store';
@@ -340,6 +341,24 @@ const handle = (data: any) => {
       // Чат распустили, или из него вышли мы сами. У остальных
       // участников чат остаётся — им приходит обновлённый состав.
       if (type === 'chat-removed' || payload?.userId === myId) store.applyChatGone(payload?.chatId);
+      break;
+
+    case 'chat-trashed':
+      // Чат удалён у всех: убираем из списка, а корзину, если её уже
+      // открывали, просим обновить.
+      store.applyChatGone(payload?.chatId);
+      if (useTrashStore.getState().loaded) store.loadTrash();
+      break;
+
+    case 'trash-snapshot':
+      useTrashStore.getState().set((payload?.chats ?? []).map((raw: any) => {
+        const c = toChatItem(raw, myId);
+        return { id: c.id, name: c.name, type: c.type, trashedAt: raw.trashedAt, deleteAt: raw.deleteAt, canRestore: raw.canRestore === true };
+      }));
+      break;
+
+    case 'chat-restored':
+      useTrashStore.getState().drop(payload?.chatId);
       break;
 
     /* ── Приватность профиля: решает сервер ── */

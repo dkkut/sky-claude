@@ -64,8 +64,11 @@ export const directChatId = (a, b) => `dm-${[String(a), String(b)].sort().join('
 
 /** Проверка участия. Основа всех прав в мессенджере. */
 export const isMember = async (chatId, userId) => {
+  // Чат в корзине участникам недоступен: писать, читать и слать в него
+  // нельзя, пока его не восстановят.
   const { rowCount } = await query(
-    'SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2',
+    `SELECT 1 FROM chat_members m JOIN chats c ON c.id = m.chat_id
+      WHERE m.chat_id = $1 AND m.user_id = $2 AND c.trashed_at IS NULL`,
     [chatId, userId],
   );
   return rowCount > 0;
@@ -190,6 +193,7 @@ export const listChats = async (userId) => {
             me.pinned, me.archived, me.muted, ${PEOPLE_SELECT}
        FROM chats c
        JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $1
+      WHERE c.trashed_at IS NULL
       ORDER BY c.created_at DESC`,
     [userId],
   );
@@ -204,7 +208,7 @@ export const getChat = async (chatId, userId) => {
     `SELECT c.*, me.role AS my_role, me.marked_unread,
             me.pinned, me.archived, me.muted, ${PEOPLE_SELECT}
        FROM chats c JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $2
-      WHERE c.id = $1`,
+      WHERE c.id = $1 AND c.trashed_at IS NULL`,
     [chatId, userId],
   );
   return rows[0] ? toChat(rows[0]) : null;
@@ -370,6 +374,10 @@ export const createChat = async (chat, creatorId) => {
     'SELECT id FROM profiles WHERE id = ANY($1::text[])', [participants],
   );
   if (known.length !== participants.length) return null;
+
+  // Чат в корзине заново не создать: его сначала восстанавливают.
+  const { rowCount: inTrash } = await query('SELECT 1 FROM chats WHERE id = $1 AND trashed_at IS NOT NULL', [id]);
+  if (inTrash) return { error: 'chat_trashed' };
 
   if (type !== 'direct' && others.length) {
     const allowed = await knownTo(creatorId, others);
@@ -1010,4 +1018,79 @@ export const leaveChat = async (chatId, userId) => {
     await query('DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2', [chatId, userId]);
   }
   return { members, dissolved: dissolve };
+};
+
+/* ═══ Удаление у всех и корзина ═════════════════════════════════════ */
+
+export const TRASH_DAYS = 30;
+
+/**
+ * Удаление чата у всех участников с возможностью вернуть его
+ * TRASH_DAYS дней. Личный чат может убрать любой из двоих — именно
+ * поэтому ничего не стирается: второй участник тоже вправе его вернуть.
+ * Группу и канал убирает только владелец.
+ */
+export const trashChat = async (chatId, userId) => {
+  const { rows } = await query(
+    `SELECT c.type, c.owner_id, c.trashed_at,
+            (SELECT array_agg(user_id) FROM chat_members WHERE chat_id = c.id) AS members
+       FROM chats c JOIN chat_members m ON m.chat_id = c.id AND m.user_id = $2
+      WHERE c.id = $1`,
+    [chatId, userId],
+  );
+  const chat = rows[0];
+  if (!chat) return { error: 'not_found' };
+  if (chat.trashed_at) return { error: 'already_trashed' };
+  if (chat.type !== 'direct' && chat.owner_id !== userId) return { error: 'not_owner' };
+  const upd = await query(
+    'UPDATE chats SET trashed_at = now(), trashed_by = $2 WHERE id = $1 AND trashed_at IS NULL', [chatId, userId]);
+  if (!upd.rowCount) return { error: 'already_trashed' };
+  return { members: chat.members ?? [] };
+};
+
+/** Возврат из корзины: личный — любой из двоих, группа и канал — владелец. */
+export const restoreChat = async (chatId, userId) => {
+  const { rows } = await query(
+    `SELECT c.type, c.owner_id, c.trashed_at,
+            (SELECT array_agg(user_id) FROM chat_members WHERE chat_id = c.id) AS members
+       FROM chats c JOIN chat_members m ON m.chat_id = c.id AND m.user_id = $2
+      WHERE c.id = $1`,
+    [chatId, userId],
+  );
+  const chat = rows[0];
+  if (!chat || !chat.trashed_at) return { error: 'not_found' };
+  if (new Date(chat.trashed_at).getTime() < Date.now() - TRASH_DAYS * 86400_000) return { error: 'expired' };
+  if (chat.type !== 'direct' && chat.owner_id !== userId) return { error: 'not_owner' };
+  await query('UPDATE chats SET trashed_at = NULL, trashed_by = NULL WHERE id = $1', [chatId]);
+  return { members: chat.members ?? [] };
+};
+
+/** Корзина пользователя: чаты, убранные не больше TRASH_DAYS дней назад. */
+export const listTrashed = async (userId) => {
+  const { rows } = await query(
+    `SELECT c.*, me.role AS my_role, me.marked_unread,
+            me.pinned, me.archived, me.muted, ${PEOPLE_SELECT}
+       FROM chats c
+       JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $1
+      WHERE c.trashed_at IS NOT NULL AND c.trashed_at > now() - ($2 || ' days')::interval
+      ORDER BY c.trashed_at DESC`,
+    [userId, String(TRASH_DAYS)],
+  );
+  return rows.map((row) => {
+    const trashedAt = row.trashed_at.getTime();
+    return {
+      ...toChat(row),
+      trashedAt: new Date(trashedAt).toISOString(),
+      deleteAt: new Date(trashedAt + TRASH_DAYS * 86400_000).toISOString(),
+      canRestore: row.type === 'direct' || row.owner_id === userId,
+    };
+  });
+};
+
+/** Окончательное удаление чатов, пролежавших в корзине дольше срока (каскадом). */
+export const purgeTrashed = async () => {
+  const { rowCount } = await query(
+    `DELETE FROM chats WHERE trashed_at IS NOT NULL AND trashed_at < now() - ($1 || ' days')::interval`,
+    [String(TRASH_DAYS)]);
+  return rowCount;
 };

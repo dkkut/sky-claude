@@ -39,7 +39,7 @@ import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
-  blockUser, unblockUser, listBlocked, addMember, leaveChat, getChat, setMarkedUnread, setChatFlags, votePoll, consumeOnce, sweepExpired, toggleFavorite,
+  blockUser, unblockUser, listBlocked, addMember, leaveChat, trashChat, restoreChat, listTrashed, purgeTrashed, getChat, setMarkedUnread, setChatFlags, votePoll, consumeOnce, sweepExpired, toggleFavorite,
 } from './chats.mjs';
 import { applyCommand, sendRoomMessage } from './together.mjs';
 import {
@@ -544,6 +544,35 @@ const handle = async (ws, session, msg) => {
           payload: { chatId, userId: me },
         });
       }
+      break;
+    }
+
+    /* ── Удаление у всех и корзина (30 дней) ── */
+    case 'delete-chat': {
+      if (!rateLimit(`chat:trash:${me}`, 30)) return;
+      const chatId = payload?.chatId;
+      if (!chatId) return;
+      const result = await trashChat(chatId, me);
+      if (result.error) { send(ws, { type: 'chat-error', payload: { chatId, error: result.error } }); return; }
+      // У всех участников чат исчезает; в корзине он появится по запросу.
+      for (const uid of result.members) sendTo(uid, { type: 'chat-trashed', payload: { chatId, by: me } });
+      break;
+    }
+
+    case 'get-trash': {
+      if (!rateLimit(`chat:trashlist:${me}`, 60)) return;
+      send(ws, { type: 'trash-snapshot', payload: { chats: await listTrashed(me) } });
+      break;
+    }
+
+    case 'restore-chat': {
+      if (!rateLimit(`chat:restore:${me}`, 30)) return;
+      const chatId = payload?.chatId;
+      if (!chatId) return;
+      const result = await restoreChat(chatId, me);
+      if (result.error) { send(ws, { type: 'chat-error', payload: { chatId, error: result.error } }); return; }
+      await sendChatToEach(chatId, result.members);
+      for (const uid of result.members) sendTo(uid, { type: 'chat-restored', payload: { chatId } });
       break;
     }
 
@@ -1979,6 +2008,13 @@ export const startSignalHub = () => {
     }).catch((err) => console.error('[ws] уборка просроченных', err.message));
   }, 5000);
   sweeper.unref();
+
+  // Корзина чатов: окончательно убираем то, что пролежало дольше срока.
+  const trashPurger = setInterval(() => {
+    purgeTrashed().catch((err) => console.error('[ws] очистка корзины чатов', err.message));
+  }, 3600_000);
+  trashPurger.unref();
+  setTimeout(() => purgeTrashed().catch(() => {}), 60_000).unref();
 
   // Матчи, которые повисли без ответа обеих сторон дольше таймаута —
   // та самая защита от «застрявших игроков»: принявшего возвращаем в

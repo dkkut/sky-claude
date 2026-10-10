@@ -364,6 +364,9 @@ export const joinByInvite = async (code, userId, answer = '') => {
       return { error: 'invalid_invite' };
     }
 
+    const { rowCount: trashed } = await client.query('SELECT 1 FROM chats WHERE id = $1 AND trashed_at IS NOT NULL', [inv.chat_id]);
+    if (trashed) { await client.query('ROLLBACK'); return { error: 'invalid_invite' }; }
+
     const { rowCount: banned } = await client.query(
       `SELECT 1 FROM chat_bans WHERE chat_id = $1 AND user_id = $2
         AND (until IS NULL OR until > now())`,

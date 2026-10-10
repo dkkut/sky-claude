@@ -71,6 +71,9 @@ export const ADMIN_ERRORS: Record<string, string> = {
   invalid_invite:   'Ссылка недействительна',
   banned:           'Вход в этот чат закрыт',
   chat_full:        'В чате уже максимум участников',
+  already_trashed:  'Чат уже удалён',
+  not_owner:        'Это может сделать только владелец чата',
+  expired:          'Срок восстановления истёк',
 };
 
 /** Почему сообщение не ушло. */

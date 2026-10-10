@@ -79,6 +79,10 @@ interface S {
   unblockUser:   (userId:string)=>void;
   loadOlder:     (chatId:string)=>void;
   leaveChat:     (chatId:string)=>void;
+  /** Удалить чат у всех: 30 дней его можно восстановить из корзины. */
+  deleteChatForAll: (chatId:string)=>void;
+  loadTrash:     ()=>void;
+  restoreChat:   (chatId:string)=>void;
   addMember:     (chatId:string,userId:string)=>void;
   react:         (msgId:string,emoji:string)=>void;
   forward:       (id:string)=>MessageItem|null;
@@ -326,6 +330,9 @@ export const useMessengerStore = create<S>((set,get) => {
     },
 
     leaveChat: (chatId) => { if (chatId) wireSend({type:'leave-chat',payload:{chatId}}); },
+    deleteChatForAll: (chatId) => { if (chatId) wireSend({type:'delete-chat',payload:{chatId}}); },
+    loadTrash: () => wireSend({type:'get-trash',payload:{}}),
+    restoreChat: (chatId) => { if (chatId) wireSend({type:'restore-chat',payload:{chatId}}); },
     addMember: (chatId,userId) => {
       if (chatId && userId) wireSend({type:'add-member',payload:{chatId,userId}});
     },
