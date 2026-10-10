@@ -145,6 +145,10 @@ const ERRORS: Record<string, string> = {
   no_password_set:       'Пароль ещё не задан',
   email_required:        'Сначала привяжите и подтвердите почту',
   insufficient_points:   'Не хватает баллов',
+  insufficient_funds:    'Недостаточно средств на балансе — пополните кошелёк',
+  invalid_plan:          'Такого тарифа нет',
+  grant_failed:          'Не удалось оформить подписку, деньги возвращены на баланс',
+  not_active_profile:    'Подписку можно оформить только на активный профиль',
   already_owned:         'Уже куплено',
   not_owned:             'Сначала нужно купить',
 };
