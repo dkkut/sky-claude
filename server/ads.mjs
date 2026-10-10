@@ -294,6 +294,35 @@ export const pauseCampaign = (actorId, id) =>
 export const resumeCampaign = (actorId, id) =>
   advertiserTransition(actorId, id, ['paused'], 'active', 'resumed', { paused_at: null });
 
+
+/**
+ * Перевод кампании в конечный статус И возврат бюджета — одной транзакцией.
+ * Раньше статус менялся одним запросом, а возврат шёл следом отдельным
+ * вызовом с `.catch(() => {})`: сбой кошелька после смены статуса молча
+ * оставлял рекламодателя без денег и без кампании. Теперь либо оба шага,
+ * либо ни одного (и статус не меняется, пока возврат не прошёл).
+ * Возвращает { ok: true } или { error: 'bad_status' | 'refund_failed' }.
+ */
+const finishWithRefund = async ({ id, advertiserId, budget, title, fromStatuses, set, params, descr }) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rowCount } = await client.query(
+      `UPDATE ad_campaigns SET ${set}, updated_at = now() WHERE id = $1 AND status = ANY($2::text[])`,
+      [id, fromStatuses, ...params]);
+    if (rowCount === 0) { await client.query('ROLLBACK'); return { error: 'bad_status' }; }
+    const credited = await wallet.creditIn(client, advertiserId, budget, 'refund', descr, id);
+    if (credited.error) { await client.query('ROLLBACK'); return { error: 'refund_failed' }; }
+    await client.query('COMMIT');
+    return { ok: true };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 /** Отмена — только пока кампания ещё не пошла в реальный показ; деньги
  * возвращаются (wallet.refund), как и при отклонении модерацией. */
 export const cancelCampaign = async (actorId, id) => {
@@ -303,13 +332,13 @@ export const cancelCampaign = async (actorId, id) => {
   if (row.advertiser_id !== actorId) return { error: 'not_allowed' };
   if (!['draft', 'moderation', 'approved', 'scheduled'].includes(row.status)) return { error: 'bad_status' };
 
-  const { rowCount } = await query(
-    `UPDATE ad_campaigns SET status = 'cancelled', cancelled_by = $2, cancelled_at = now(), updated_at = now()
-      WHERE id = $1 AND status = ANY($3::text[])`,
-    [id, actorId, ['draft', 'moderation', 'approved', 'scheduled']],
-  );
-  if (rowCount === 0) return { error: 'bad_status' };
-  await wallet.refund(actorId, Number(row.budget), `Возврат: отменена кампания «${row.title}»`, id).catch(() => {});
+  const done = await finishWithRefund({
+    id, advertiserId: row.advertiser_id, budget: Number(row.budget), title: row.title,
+    fromStatuses: ['draft', 'moderation', 'approved', 'scheduled'],
+    set: `status = 'cancelled', cancelled_by = $3, cancelled_at = now()`, params: [actorId],
+    descr: `Возврат: отменена кампания «${row.title}»`,
+  });
+  if (done.error) return done;
   await logEvent(id, 'cancelled', actorId);
   return { ok: true };
 };
@@ -533,13 +562,13 @@ export const adminReject = async (actorId, id, reason) => {
   if (row.status !== 'moderation') return { error: 'bad_status' };
 
   const why = clean(reason, MAX_REASON);
-  const { rowCount } = await query(
-    `UPDATE ad_campaigns SET status = 'rejected', reject_reason = $2, updated_at = now()
-      WHERE id = $1 AND status = 'moderation'`,
-    [id, why || null],
-  );
-  if (rowCount === 0) return { error: 'bad_status' };
-  await wallet.refund(row.advertiser_id, Number(row.budget), `Возврат: отклонена кампания «${row.title}»`, id).catch(() => {});
+  const done = await finishWithRefund({
+    id, advertiserId: row.advertiser_id, budget: Number(row.budget), title: row.title,
+    fromStatuses: ['moderation'],
+    set: `status = 'rejected', reject_reason = $3`, params: [why || null],
+    descr: `Возврат: отклонена кампания «${row.title}»`,
+  });
+  if (done.error) return done;
   await logEvent(id, 'rejected', actorId, why);
   return { ok: true };
 };
@@ -555,13 +584,13 @@ export const adminCancel = async (actorId, id) => {
   if (!row) return { error: 'not_found' };
   if (!['moderation', 'approved', 'scheduled', 'active', 'paused'].includes(row.status)) return { error: 'bad_status' };
 
-  const { rowCount } = await query(
-    `UPDATE ad_campaigns SET status = 'cancelled', cancelled_by = $2, cancelled_at = now(), updated_at = now()
-      WHERE id = $1 AND status = ANY($3::text[])`,
-    [id, actorId, ['moderation', 'approved', 'scheduled', 'active', 'paused']],
-  );
-  if (rowCount === 0) return { error: 'bad_status' };
-  await wallet.refund(row.advertiser_id, Number(row.budget), `Возврат: кампания «${row.title}» отменена администрацией`, id).catch(() => {});
+  const done = await finishWithRefund({
+    id, advertiserId: row.advertiser_id, budget: Number(row.budget), title: row.title,
+    fromStatuses: ['moderation', 'approved', 'scheduled', 'active', 'paused'],
+    set: `status = 'cancelled', cancelled_by = $3, cancelled_at = now()`, params: [actorId],
+    descr: `Возврат: кампания «${row.title}» отменена администрацией`,
+  });
+  if (done.error) return done;
   await logEvent(id, 'cancelled_by_admin', actorId);
   return { ok: true };
 };

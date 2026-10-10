@@ -265,13 +265,17 @@ export const markOrderPaid = async (orderId) => {
       if (!existing[0]) return { error: 'not_found' };
       return { error: existing[0].status === 'paid' ? 'already_paid' : 'not_pending' };
     }
-    await client.query('COMMIT');
-
     const order = rows[0];
-    const credit = await wallet.credit(
-      order.sky_recipient_profile_id, Number(order.amount_rub), 'kutrent_topup',
+    // Статус «оплачен» и зачисление — одна транзакция. Раньше COMMIT шёл до
+    // зачисления: сбой между ними оставлял заказ оплаченным, а деньги —
+    // незачисленными (человек перевёл их банком, а повторно подтвердить
+    // заказ уже нельзя).
+    const credit = await wallet.creditIn(
+      client, order.sky_recipient_profile_id, Number(order.amount_rub), 'kutrent_topup',
       `Пополнение через KutRent Market (${order.id})`, order.id,
     );
+    if (credit.error) throw new Error(`kutrent_credit_${credit.error}`);
+    await client.query('COMMIT');
     return { ok: true, order: toView(order), balance: credit.balance };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

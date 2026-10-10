@@ -84,6 +84,7 @@ const errCode = (error) => (
   error === 'not_found' ? 404
     : error === 'not_allowed' ? 403
       : error === 'insufficient_funds' ? 402
+        : error === 'refund_failed' ? 500
         : error === 'bad_status' ? 409
           : 400
 );

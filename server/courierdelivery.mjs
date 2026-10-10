@@ -178,11 +178,16 @@ export const confirmDelivery = async (courierProfileId, orderId, proof) => {
       [`ce-${generateId()}`, row.assign_courier_id, courierProfileId, row.assignment_id, id, row.courier_price_kop || 0]);
     if (ins[0] && Number(ins[0].amount_kop) > 0) earned = Number(ins[0].amount_kop);
 
+    // Заработок курьера зачисляется той же транзакцией, что и запись о нём:
+    // раньше COMMIT шёл раньше, сбой кошелька оставлял строку courier_earnings
+    // (повторно её уже не создать — ON CONFLICT) без денег на балансе.
+    if (earned > 0 && Math.round(earned / 100) > 0) {
+      const credited = await wallet.creditIn(
+        client, courierProfileId, Math.round(earned / 100), 'courier_earning', `Доставка заказа ${id}`, id);
+      if (credited.error) throw new Error(`courier_credit_${credited.error}`);
+    }
     await client.query('COMMIT');
 
-    if (earned > 0) {
-      await wallet.earnDelivery(courierProfileId, Math.round(earned / 100), `Доставка заказа ${id}`, id);
-    }
     for (const n of [...notes, ...done.notes]) pushMarket([n.userId], { type: 'market-notification', payload: n.note });
     pushMarket([row.seller_id], { type: 'logi-notification', payload: { kind: 'delivered', text: 'Курьер доставил заказ', orderId: id } });
     await logMarket(courierProfileId, 'courier_delivery_confirmed', id, { earnedKop: earned });
