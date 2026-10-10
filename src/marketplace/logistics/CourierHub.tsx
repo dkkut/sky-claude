@@ -376,7 +376,15 @@ const getNotifCfg = (): Record<string,{label:string;color:string;icon:any}> => (
   on_way:    { label:'В пути',    color:'#8b5cf6', icon:Truck },
   delivered: { label:'Доставлено',color:C.green, icon:CheckCircle2 },
   cancelled: { label:'Отменено',  color:C.red,   icon:AlertCircle },
+  /* Типы, которые шлёт сервер (server/logistics.mjs → notifyLogi). Тип —
+     произвольная строка из базы, поэтому ниже есть и запасной вариант. */
+  assigned:  { label:'Назначено', color:C.acc,   icon:Package },
+  problem:   { label:'Проблема',  color:C.red,   icon:AlertCircle },
+  approved:  { label:'Одобрено',  color:C.green, icon:CheckCircle2 },
+  rejected:  { label:'Отклонено', color:C.red,   icon:AlertCircle },
+  suspended: { label:'Приостановлено', color:C.red, icon:AlertCircle },
 });
+const NOTIF_FALLBACK = { label:'Уведомление', color:'var(--t2)', icon:Bell };
 
 const NotificationsList = () => {
   const { myNotifications, markNotificationRead, couriers } = useCourierStore();
@@ -388,7 +396,7 @@ const NotificationsList = () => {
   return (
     <div className="p-4 space-y-2">
       {notifs.map(n => {
-        const cfg = NOTIF_CFG[n.type];
+        const cfg = NOTIF_CFG[n.type] ?? NOTIF_FALLBACK;
         const Icon = cfg.icon;
         const courier = couriers.find(c => c.id === n.courierId);
         return (
