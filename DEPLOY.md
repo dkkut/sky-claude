@@ -290,7 +290,12 @@ docker compose logs -f web              # логи nginx
 docker compose restart api              # перезапуск сервиса
 docker compose exec web nginx -t        # проверить конфиг nginx
 
-# бэкап базы
+# полная копия: база + загруженные файлы (музыка, кино, видео, документы)
+bash /opt/sky-src/scripts/backup.sh     # кладёт в /var/backups/sky, хранит последние 7
+# ВАЖНО: файлы и часть полей зашифрованы — сохраните ENCRYPTION_KEY из .env ОТДЕЛЬНО
+# от копий, без него копия не восстанавливается. И вынесите копии с этого сервера.
+
+# только база (быстро)
 docker compose exec -T postgres pg_dump -U sky sky | gzip > backup-$(date +%F).sql.gz
 
 # восстановление
