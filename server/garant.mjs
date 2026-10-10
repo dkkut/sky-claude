@@ -73,11 +73,23 @@ const notifyGarant = async (userId, dealId, kind, textLine) => {
  * `refundFn = payType==='points' ? null : wallet.refund` молча теряла
  * баллы покупателя при сбое или решении не в его пользу.
  */
-const refundDeal = async (deal, descr) => {
+/**
+ * Возврат покупателю — ТОЛЬКО внутри транзакции сделки (client держит
+ * вызывающий). Раньше возврат шёл отдельной транзакцией кошелька и
+ * фиксировался сразу; если дальше что-то падало или два администратора
+ * решали спор одновременно, деньги возвращались дважды.
+ */
+const refundDeal = (client, deal, descr) => {
   if (deal.pay_type === 'points') {
-    return wallet.creditPoints(deal.buyer_id, deal.price, 'garant_refund', descr, deal.id);
+    return wallet.creditPointsIn(client, deal.buyer_id, deal.price, 'garant_refund', descr, deal.id);
   }
-  return wallet.refund(deal.buyer_id, deal.price, descr, deal.id);
+  return wallet.creditIn(client, deal.buyer_id, deal.price, 'refund', descr, deal.id);
+};
+
+/** Строка сделки под блокировкой до конца транзакции: решения по одной сделке идут по очереди. */
+const lockDeal = async (client, dealId) => {
+  const { rows } = await client.query('SELECT * FROM garant_deals WHERE id = $1 FOR UPDATE', [dealId]);
+  return rows[0] ?? null;
 };
 
 /* ─── Выдача наружу ────────────────────────────────────────────────── */
@@ -235,26 +247,24 @@ export const depositBuyer = async (actorId, dealId) => {
   if (!deal || deal.buyer_id !== actorId) return { error: 'not_found' };
   if (deal.status !== 'pending_buyer') return { error: 'bad_status' };
 
-  const spendFn = deal.pay_type === 'points' ? wallet.spendPoints : wallet.spend;
-  const args = deal.pay_type === 'points'
-    ? [actorId, deal.price, `Sky Garant: ${deal.title}`, dealId]
-    : [actorId, deal.price, 'garant_escrow', `Sky Garant: ${deal.title}`, dealId];
-  const paid = await spendFn(...args);
-  if (paid.error) return paid;
-
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows } = await client.query(
-      `UPDATE garant_deals SET buyer_deposited = TRUE, status = 'in_escrow'
-        WHERE id = $1 AND status = 'pending_buyer' RETURNING *`, [dealId]);
-    if (!rows[0]) throw Object.assign(new Error('bad_status'), { code: 'GARANT_BAD_STATUS' });
+    // Списание и переход в эскроу — одной транзакцией: либо оба, либо ничего.
+    const locked = await lockDeal(client, dealId);
+    if (!locked || locked.status !== 'pending_buyer' || locked.buyer_id !== actorId) {
+      await client.query('ROLLBACK');
+      return { error: 'bad_status' };
+    }
+    const paid = deal.pay_type === 'points'
+      ? await wallet.spendPointsIn(client, actorId, deal.price, 'points_spend', `Sky Garant: ${deal.title}`, dealId)
+      : await wallet.spendIn(client, actorId, deal.price, 'garant_escrow', `Sky Garant: ${deal.title}`, dealId);
+    if (paid.error) { await client.query('ROLLBACK'); return paid; }
+    await client.query(
+      `UPDATE garant_deals SET buyer_deposited = TRUE, status = 'in_escrow' WHERE id = $1`, [dealId]);
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    // Деньги списаны, а сделка не перешла в эскроу — возвращаем.
-    await refundDeal(deal, 'Sky Garant: возврат за сбой внесения оплаты').catch(() => {});
-    if (err.code === 'GARANT_BAD_STATUS') return { error: 'bad_status' };
     throw err;
   } finally {
     client.release();
@@ -274,9 +284,13 @@ export const depositBuyer = async (actorId, dealId) => {
  * переходят от «удержаны» к «у продавца» ровно один раз.
  */
 const completeDeal = async (client, deal) => {
-  const creditFn = deal.pay_type === 'points' ? wallet.creditPoints : wallet.credit;
+  // Зачисление — в той же транзакции, что и перевод сделки в completed:
+  // раньше оно фиксировалось отдельно, и сбой между двумя шагами оставлял
+  // деньги у продавца при незавершённой сделке (повторное подтверждение
+  // платило бы второй раз).
+  const creditFn = deal.pay_type === 'points' ? wallet.creditPointsIn : wallet.creditIn;
   const credited = await creditFn(
-    deal.seller_id, deal.price, 'garant_payout', `Sky Garant: получено за «${deal.title}»`, deal.id);
+    client, deal.seller_id, deal.price, 'garant_payout', `Sky Garant: получено за «${deal.title}»`, deal.id);
   if (credited.error) throw Object.assign(new Error('credit_failed'), { code: 'GARANT_CREDIT_FAILED' });
   await client.query(
     `UPDATE garant_deals SET status = 'completed', completed_at = now() WHERE id = $1`, [deal.id]);
@@ -503,12 +517,22 @@ export const adminResolveDispute = async (adminId, dealId, winner, note) => {
   const clean = text(note, MAX_NOTE);
   if (!clean) return { error: 'bad_note' };
 
-  const deal = await dealRow(dealId);
-  if (!deal || deal.status !== 'disputed') return { error: 'bad_status' };
+  const pre = await dealRow(dealId);
+  if (!pre) return { error: 'bad_status' };
+  let deal = pre;
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Блокировка строки: два администратора (или двойной клик) решают спор
+    // по очереди, и второй видит уже не 'disputed'. Раньше оба читали статус
+    // до записи, оба платили и деньги уходили дважды — в том числе
+    // «и продавцу, и покупателю».
+    deal = await lockDeal(client, dealId);
+    if (!deal || deal.status !== 'disputed') {
+      await client.query('ROLLBACK');
+      return { error: 'bad_status' };
+    }
     if (winner === 'seller_wins') {
       await completeDeal(client, deal);
       await client.query(
@@ -516,7 +540,7 @@ export const adminResolveDispute = async (adminId, dealId, winner, note) => {
                 dispute_result = $2, dispute_note = $3, dispute_resolved_by = $4, dispute_resolved_at = now()
           WHERE id = $1`, [dealId, winner, clean, adminId]);
     } else if (winner === 'buyer_wins') {
-      const refunded = await refundDeal(deal, `Sky Garant: спор решён в пользу покупателя — «${deal.title}»`);
+      const refunded = await refundDeal(client, deal, `Sky Garant: спор решён в пользу покупателя — «${deal.title}»`);
       if (refunded.error) throw Object.assign(new Error('refund_failed'), { code: 'GARANT_REFUND_FAILED' });
       await client.query(
         `UPDATE garant_deals SET status = 'completed', completed_at = now(),
@@ -524,7 +548,7 @@ export const adminResolveDispute = async (adminId, dealId, winner, note) => {
                 dispute_result = $2, dispute_note = $3, dispute_resolved_by = $4, dispute_resolved_at = now()
           WHERE id = $1`, [dealId, winner, clean, adminId]);
     } else {
-      const refunded = await refundDeal(deal, `Sky Garant: сделка отменена администратором — «${deal.title}»`);
+      const refunded = await refundDeal(client, deal, `Sky Garant: сделка отменена администратором — «${deal.title}»`);
       if (refunded.error) throw Object.assign(new Error('refund_failed'), { code: 'GARANT_REFUND_FAILED' });
       await client.query(
         `UPDATE garant_deals SET status = 'cancelled', cancelled_at = now(), cancelled_by = $4,
@@ -534,7 +558,7 @@ export const adminResolveDispute = async (adminId, dealId, winner, note) => {
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
-    if (err.code === 'GARANT_REFUND_FAILED') return { error: 'refund_failed' };
+    if (err.code === 'GARANT_REFUND_FAILED' || err.code === 'GARANT_CREDIT_FAILED') return { error: 'refund_failed' };
     throw err;
   } finally {
     client.release();
@@ -583,18 +607,34 @@ export const adminForceCancel = async (adminId, dealId) => {
   if (!(await can(adminId, 'garant'))) return { error: 'not_allowed' };
   if (!DEAL_ID_RE.test(String(dealId ?? ''))) return { error: 'not_found' };
 
-  const deal = await dealRow(dealId);
-  if (!deal || !['pending_seller', 'pending_buyer', 'in_escrow'].includes(deal.status)) return { error: 'bad_status' };
+  if (!(await dealRow(dealId))) return { error: 'not_found' };
 
-  if (deal.buyer_deposited) {
-    const refunded = await refundDeal(deal, `Sky Garant: сделка отменена администратором — «${deal.title}»`);
-    if (refunded.error) return { error: 'refund_failed' };
+  let deal;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Та же очередность, что и при решении спора: возврат и отмена в одной
+    // транзакции под блокировкой строки — повторный запрос уже ничего не вернёт.
+    deal = await lockDeal(client, dealId);
+    if (!deal || !['pending_seller', 'pending_buyer', 'in_escrow'].includes(deal.status)) {
+      await client.query('ROLLBACK');
+      return { error: 'bad_status' };
+    }
+    if (deal.buyer_deposited) {
+      const refunded = await refundDeal(client, deal, `Sky Garant: сделка отменена администратором — «${deal.title}»`);
+      if (refunded.error) throw Object.assign(new Error('refund_failed'), { code: 'GARANT_REFUND_FAILED' });
+    }
+    await client.query(
+      `UPDATE garant_deals SET status = 'cancelled', cancelled_at = now(), cancelled_by = $2 WHERE id = $1`,
+      [dealId, adminId]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err.code === 'GARANT_REFUND_FAILED') return { error: 'refund_failed' };
+    throw err;
+  } finally {
+    client.release();
   }
-
-  const { rows } = await query(
-    `UPDATE garant_deals SET status = 'cancelled', cancelled_at = now(), cancelled_by = $2
-      WHERE id = $1 RETURNING *`, [dealId, adminId]);
-  if (!rows[0]) return { error: 'not_found' };
   await logGarant(dealId, adminId, 'admin_force_cancel', {});
   await notifyGarant(deal.seller_id, dealId, 'cancelled', `Сделка «${deal.title}» отменена администратором`);
   await notifyGarant(deal.buyer_id, dealId, 'cancelled', `Сделка «${deal.title}» отменена администратором`);

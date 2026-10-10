@@ -251,6 +251,24 @@ export const wallet = {
     });
   },
 
+  /**
+   * Списание рублей внутри ЧУЖОЙ транзакции — парное к spendPointsIn:
+   * списание и действие, ради которого оно сделано, подтверждаются или
+   * откатываются вместе (эскроу Sky Garant), без «списали, а потом
+   * вернули отдельным запросом».
+   */
+  async spendIn(client, userId, amount, type, descr, ref) {
+    if (!validAmount(amount)) return { error: 'invalid_amount' };
+    await ensureAccount(client, userId);
+    const { rows } = await client.query('SELECT balance FROM wallet_accounts WHERE user_id = $1 FOR UPDATE', [userId]);
+    const balance = Number(rows[0].balance);
+    if (balance < amount) return { error: 'insufficient_funds', balance };
+    const upd = await client.query(
+      'UPDATE wallet_accounts SET balance = balance - $2, updated_at = now() WHERE user_id = $1 RETURNING balance', [userId, amount]);
+    await addTx(client, userId, type, -amount, descr, ref ?? null);
+    return { balance: Number(upd.rows[0].balance) };
+  },
+
   /** Обмен рублей на баллы по фиксированному курсу. */
   async exchangeToPoints(userId, rubles) {
     if (!validAmount(rubles)) return { error: 'invalid_amount' };
