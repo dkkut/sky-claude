@@ -48,7 +48,14 @@ export const parseBody = (req) => new Promise((resolve, reject) => {
   });
   req.on('end', () => {
     try {
-      resolve(raw ? JSON.parse(raw) : {});
+      const parsed = raw ? JSON.parse(raw) : {};
+      // Тело `null`, число, строка или массив раньше доходили до обработчиков
+      // как есть, и первое же `body.поле` давало 500. Обработчики ждут объект.
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        reject(new BadRequest('invalid_json'));
+        return;
+      }
+      resolve(parsed);
     } catch {
       reject(new BadRequest('invalid_json'));
     }

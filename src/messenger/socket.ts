@@ -330,6 +330,14 @@ const handle = (data: any) => {
       }
       break;
 
+    /* Логистика: сервер шлёт событие, но список уведомлений курьера сам не
+       обновлялся — новое появлялось только после перезахода на вкладку. */
+    case 'logi-notification':
+      void import('@/marketplace/logistics/courierStore')
+        .then((m) => m.useCourierStore.getState().pushNotification())
+        .catch(() => {});
+      break;
+
     case 'messages-older':
       store.applyOlder(payload?.chatId,
         (payload?.messages ?? []).map((m: any) => toMessageItem(m, myId)),

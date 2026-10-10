@@ -389,7 +389,11 @@ const NOTIF_FALLBACK = { label:'Уведомление', color:'var(--t2)', icon
 
 const NotificationsList = () => {
   const { myNotifications, markNotificationRead, couriers } = useCourierStore();
-  const notifs = myNotifications().sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // Копия, не сам массив из хранилища: sort() на месте менял состояние
+  // Zustand. Дата может отсутствовать — тогда считаем её нулевой, иначе
+  // NaN ломает порядок.
+  const ts = (v?: string) => { const t = v ? new Date(v).getTime() : 0; return Number.isFinite(t) ? t : 0; };
+  const notifs = [...(myNotifications() ?? [])].filter(Boolean).sort((a,b) => ts(b.createdAt) - ts(a.createdAt));
 
   if (notifs.length === 0) return <EmptyState icon={Bell} title="Пока нет уведомлений" sub="Здесь появятся события о принятии, выполнении или отмене доставок"/>;
 
@@ -397,7 +401,9 @@ const NotificationsList = () => {
   return (
     <div className="p-4 space-y-2">
       {notifs.map(n => {
-        const cfg = NOTIF_CFG[n.type] ?? NOTIF_FALLBACK;
+        // Тип — произвольная строка из базы: hasOwnProperty не даёт подобрать
+        // 'constructor'/'toString' из прототипа (у них нет .icon — как раз падение).
+        const cfg = Object.prototype.hasOwnProperty.call(NOTIF_CFG, String(n.type)) ? NOTIF_CFG[n.type] : NOTIF_FALLBACK;
         const Icon = cfg.icon;
         const courier = couriers.find(c => c.id === n.courierId);
         return (

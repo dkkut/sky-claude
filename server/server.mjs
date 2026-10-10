@@ -172,6 +172,10 @@ const server = http.createServer((req, res) => runWithLang(req, async () => {
     // Строку запроса отбрасываем: маршруты сравниваются по пути.
     const url = (req.url || '').split('?')[0];
 
+    // NUL-байт (%00) в адресе или параметрах Postgres не принимает — запрос
+    // падал бы 500 в любом обработчике, где значение доходит до SQL.
+    if (/%00|\u0000/i.test(req.url || '')) return json(res, 400, { error: 'bad_request' });
+
     applyCors(req, res);
     if (req.method === 'OPTIONS' && url.startsWith('/api/')) {
       res.writeHead(204);

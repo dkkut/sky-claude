@@ -141,7 +141,7 @@ export const useCourierStore = create<CourierState>((set, get) => ({
         ...(assignSeller.ok && assignSeller.data ? assignSeller.data.assignments : []),
         ...(assignCourier.ok && assignCourier.data ? assignCourier.data.assignments : []),
       ],
-      notifications: notes.ok && notes.data ? notes.data.items : [],
+      notifications: notes.ok && Array.isArray(notes.data?.items) ? notes.data!.items : [],
       loaded: true,
     });
   },
@@ -249,11 +249,14 @@ export const useCourierStore = create<CourierState>((set, get) => ({
 
   pushNotification: async () => {
     const r = await apiLogiNotifications();
-    if (r.ok && r.data) set({ notifications: r.data.items });
+    if (r.ok && Array.isArray(r.data?.items)) set({ notifications: r.data!.items });
   },
 
   markNotificationRead: async (id) => {
-    await apiReadLogiNotification(id);
+    const r = await apiReadLogiNotification(id);
+    // Прочитанным считаем, только если сервер подтвердил: иначе после
+    // перезагрузки уведомление снова окажется непрочитанным.
+    if (!r.ok) return;
     set({ notifications: get().notifications.map((n) => (n.id === id ? { ...n, read: true } : n)) });
   },
 
