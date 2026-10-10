@@ -73,6 +73,7 @@ export interface Batch {
 export interface CodeRow {
   id: string;
   hint: string;
+  label: string;
   status: 'active' | 'revoked';
   uses: number;
   maxUses: number;
@@ -131,6 +132,13 @@ export const apiRevokeCode = (id: string, reason: string) =>
 
 export const apiRevokeBatch = (id: string, reason: string) =>
   req<{ ok: true; revoked: number }>(`/api/admin/codes/batches/${id}/revoke`, { method: 'POST', body: JSON.stringify({ reason }) });
+
+export const apiRenameCode = (id: string, label: string) =>
+  req<{ ok: true; label: string }>(`/api/admin/codes/codes/${id}/label`, { method: 'POST', body: JSON.stringify({ label }) });
+
+/** Отозвать выбранные коды (по id) или один код по его тексту. */
+export const apiRevokeSelected = (b: { ids?: string[]; code?: string; reason: string }) =>
+  req<{ ok: true; revoked: number; skipped: number }>('/api/admin/codes/revoke', { method: 'POST', body: JSON.stringify(b) });
 
 export const apiCodeRedemptions = () => req<{ items: AdminRedemption[] }>('/api/admin/codes/redemptions?limit=100');
 export const apiCodeLog = () => req<{ items: CodeLogRow[] }>('/api/admin/codes/log');

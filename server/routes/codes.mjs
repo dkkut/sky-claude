@@ -24,7 +24,7 @@ import { requestMeta, beginStepUp } from './../adminsec.mjs';
 import {
   redeemCode, listMyRedemptions, listMyCoupons, createBatch, listBatches, listCodes,
   listRedemptions, revokeCode, revokeBatchUnused, exportBatchCsv, codesLog, listItemChoices,
-  mayCreate, STEP_UP_PURPOSE,
+  mayCreate, STEP_UP_PURPOSE, renameCode, revokeSelected,
 } from './../skycodes.mjs';
 
 const STATUS = {
@@ -34,7 +34,7 @@ const STATUS = {
   bad_custom_code: 400, custom_code_taken: 409, exposure_too_high: 400, reason_required: 400,
   not_allowed: 403, lockdown: 403, unauthorized: 401,
   step_up_required: 401, step_up_invalid: 401, step_up_exhausted: 429, no_second_factor: 409,
-  not_found: 404, already_revoked: 409,
+  not_found: 404, already_revoked: 409, bad_label: 400, bad_selection: 400,
   code_expired: 410, code_revoked: 410, code_exhausted: 409, already_redeemed: 409,
   item_already_owned: 409, too_many_attempts: 429, reward_failed: 500, reward_unavailable: 409,
   activation_failed: 500, create_failed: 500, generation_failed: 500,
@@ -132,6 +132,19 @@ export const codesRoutes = async (req, res, url) => {
   if (req.method === 'POST' && one) {
     const body = await parseBody(req);
     const r = await revokeCode(me, one[1], body?.reason, { meta });
+    return r.error ? fail(res, r) : json(res, 200, r);
+  }
+
+  const lab = /^\/api\/admin\/codes\/codes\/(scd-[0-9a-f-]{36})\/label$/.exec(path);
+  if (req.method === 'POST' && lab) {
+    const body = await parseBody(req);
+    const r = await renameCode(me, lab[1], body?.label, { meta });
+    return r.error ? fail(res, r) : json(res, 200, r);
+  }
+
+  if (req.method === 'POST' && path === '/api/admin/codes/revoke') {
+    const body = await parseBody(req);
+    const r = await revokeSelected(me, { ids: body?.ids, code: body?.code, reason: body?.reason }, { meta });
     return r.error ? fail(res, r) : json(res, 200, r);
   }
 

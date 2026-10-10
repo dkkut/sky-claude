@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Copy, Download, KeyRound, Loader2, Plus, Ticket, Ban } from 'lucide-react';
 import {
   apiBatchCodes, apiBatches, apiCodeItems, apiCodeLog, apiCodeRedemptions, apiCodesStepUp,
-  apiCreateBatch, apiExportBatch, apiRevokeBatch, apiRevokeCode, downloadText, rewardText,
+  apiCreateBatch, apiExportBatch, apiRevokeBatch, apiRevokeCode, apiRenameCode, apiRevokeSelected, downloadText, rewardText,
   type AdminRedemption, type Batch, type CodeLogRow, type CodeRow, type RewardType,
 } from './codesApi';
 
@@ -33,6 +33,9 @@ const ERR: Record<string, string> = {
   exposure_too_high: 'Суммарная выдача серии превышает допустимый предел.',
   reason_required: 'Укажите причину (от 3 символов).',
   already_revoked: 'Код уже отозван.',
+  bad_label: 'Имя указано неверно.',
+  bad_selection: 'Выберите коды (не больше 500).',
+  not_found: 'Такой код не найден.',
   too_many_attempts: 'Слишком часто. Подождите минуту.',
   network: 'Нет связи с сервером.',
 };
@@ -237,6 +240,9 @@ const BatchCard = ({ b, onChanged }: { b: Batch; onChanged: () => void }) => {
   const [reason, setReason] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
   const s = b.stats;
 
   const loadCodes = useCallback(async () => {
@@ -259,6 +265,19 @@ const BatchCard = ({ b, onChanged }: { b: Batch; onChanged: () => void }) => {
     setBusy(true); const r = await apiRevokeBatch(b.id, reason.trim()); setBusy(false);
     if (!r.ok) { setMsg(errText(r.error)); return; }
     setMsg(`Отозвано кодов: ${r.data.revoked}`); void loadCodes(); onChanged();
+  };
+  const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const revokePicked = async () => {
+    if (!need() || picked.size === 0) return;
+    if (!window.confirm(`Отозвать выбранные коды: ${picked.size}?`)) return;
+    setBusy(true); const r = await apiRevokeSelected({ ids: [...picked], reason: reason.trim() }); setBusy(false);
+    if (!r.ok) { setMsg(errText(r.error)); return; }
+    setMsg(`Отозвано кодов: ${r.data.revoked}`); setPicked(new Set()); void loadCodes(); onChanged();
+  };
+  const saveLabel = async (id: string) => {
+    const r = await apiRenameCode(id, draft);
+    if (!r.ok) { setMsg(errText(r.error)); return; }
+    setEditing(null); void loadCodes();
   };
   const exportCsv = async () => {
     const r = await apiExportBatch(b.id);
@@ -299,13 +318,34 @@ const BatchCard = ({ b, onChanged }: { b: Batch; onChanged: () => void }) => {
               style={{ background: 'color-mix(in srgb, var(--red) 14%, transparent)', color: 'var(--red)' }}>
               <Ban size={12} /> Отозвать неиспользованные
             </button>
+            {picked.size > 0 && (
+              <button type="button" disabled={busy} onClick={() => void revokePicked()} className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-bold disabled:opacity-40"
+                style={{ background: 'var(--red)', color: '#fff' }}>
+                <Ban size={12} /> {`Отозвать выбранные (${picked.size})`}
+              </button>
+            )}
           </div>
           {msg && <p className="text-[11px]" style={{ color: 'var(--t2)' }}>{msg}</p>}
           {codes === null ? <Loader2 size={14} className="animate-spin" style={{ color: 'var(--t3)' }} /> : (
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {codes.map((c) => (
                 <div key={c.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px]" style={{ background: 'var(--bg-l1)' }}>
+                  {c.status === 'active' && (
+                    <input type="checkbox" aria-label="Выбрать код" checked={picked.has(c.id)} onChange={() => toggle(c.id)} />
+                  )}
                   <span className="font-mono" translate="no" style={{ color: 'var(--t1)' }}>…{c.hint}</span>
+                  {editing === c.id ? (
+                    <input autoFocus value={draft} maxLength={60} translate="no" onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') void saveLabel(c.id); if (e.key === 'Escape') setEditing(null); }}
+                      onBlur={() => void saveLabel(c.id)}
+                      className="min-w-0 flex-1 rounded-md px-2 py-0.5 text-[11px] outline-none" style={input} />
+                  ) : (
+                    <button type="button" translate="no" onClick={() => { setEditing(c.id); setDraft(c.label); }}
+                      title="Изменить имя" className="max-w-[40%] truncate rounded-md px-1.5 py-0.5 text-[11px] font-semibold"
+                      style={{ background: 'color-mix(in srgb, var(--accent) 12%, transparent)', color: c.label ? 'var(--accent)' : 'var(--t3)' }}>
+                      {c.label || '+ имя'}
+                    </button>
+                  )}
                   <span style={{ color: c.status === 'revoked' ? 'var(--red)' : c.uses >= c.maxUses ? 'var(--t3)' : 'var(--green)' }}>
                     {c.status === 'revoked' ? 'отозван' : c.uses >= c.maxUses ? 'использован' : 'активен'}
                   </span>
@@ -329,6 +369,36 @@ const BatchCard = ({ b, onChanged }: { b: Batch; onChanged: () => void }) => {
 /* ─── Вкладка ──────────────────────────────────────────────────────── */
 
 type Sub = 'batches' | 'uses' | 'log';
+
+const RevokeByCode = ({ onDone }: { onDone: () => void }) => {
+  const [code, setCode] = useState('');
+  const [reason, setReason] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setBusy(true); setMsg('');
+    const r = await apiRevokeSelected({ code, reason: reason.trim() });
+    setBusy(false);
+    if (!r.ok) { setMsg(errText(r.error)); return; }
+    setMsg('Код отозван.'); setCode(''); onDone();
+  };
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={card}>
+      <p className="text-xs font-bold" style={{ color: 'var(--t1)' }}>Отозвать конкретный ключ по его тексту</p>
+      <div className="flex flex-wrap gap-2">
+        <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="SKY-XXXX-XXXX-XXXX-XXXX" translate="no" autoComplete="off"
+          className="min-w-[12rem] flex-1 rounded-xl px-3 py-1.5 font-mono text-xs outline-none" style={input} />
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина"
+          className="min-w-[8rem] flex-1 rounded-xl px-3 py-1.5 text-xs outline-none" style={input} />
+        <button type="button" disabled={busy || code.trim().length < 4} onClick={() => void go()}
+          className="rounded-xl px-3 py-1.5 text-[11px] font-bold disabled:opacity-40" style={{ background: 'var(--red)', color: '#fff' }}>
+          Отозвать
+        </button>
+      </div>
+      {msg && <p className="text-[11px]" style={{ color: 'var(--t2)' }}>{msg}</p>}
+    </div>
+  );
+};
 
 export const CodesAdminSection = ({ owner }: { owner: boolean }) => {
   const [sub, setSub] = useState<Sub>('batches');
@@ -370,6 +440,7 @@ export const CodesAdminSection = ({ owner }: { owner: boolean }) => {
         <>
           {!owner && <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Создавать серии кодов может только владелец. Вы можете просматривать, отзывать и выгружать.</p>}
           {owner && creating && <CreateForm onDone={() => { setCreating(false); void loadBatches(); }} />}
+          <RevokeByCode onDone={() => void loadBatches()} />
           {batches === null && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--t3)' }} />}
           {batches?.length === 0 && !error && <p className="text-xs" style={{ color: 'var(--t3)' }}>Серий пока нет.</p>}
           {batches?.map((b) => <BatchCard key={b.id} b={b} onChanged={() => void loadBatches()} />)}

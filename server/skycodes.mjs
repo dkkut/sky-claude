@@ -550,7 +550,7 @@ export const listCodes = async (actorId, batchId, { status, limit, offset } = {}
   const off = Math.max(Number(offset) || 0, 0);
   args.push(lim, off);
   const { rows } = await query(
-    `SELECT c.id, c.hint, c.status, c.uses, c.revoked_at, c.revoke_reason, c.created_at,
+    `SELECT c.id, c.hint, c.label, c.status, c.uses, c.revoked_at, c.revoke_reason, c.created_at,
             b.max_uses,
             (SELECT max(redeemed_at) FROM sky_code_redemptions r WHERE r.code_id = c.id) AS last_used
        FROM sky_codes c JOIN sky_code_batches b ON b.id = c.batch_id
@@ -558,7 +558,7 @@ export const listCodes = async (actorId, batchId, { status, limit, offset } = {}
       ORDER BY c.created_at, c.id LIMIT $${args.length - 1} OFFSET $${args.length}`, args);
   return {
     items: rows.map((r) => ({
-      id: r.id, hint: r.hint, status: r.status, uses: r.uses, maxUses: r.max_uses,
+      id: r.id, hint: r.hint, label: r.label, status: r.status, uses: r.uses, maxUses: r.max_uses,
       lastUsedAt: iso(r.last_used), revokedAt: iso(r.revoked_at), revokeReason: r.revoke_reason,
       createdAt: iso(r.created_at),
     })),
@@ -698,4 +698,54 @@ export const listItemChoices = async (actorId) => {
   const { rows } = await query(
     'SELECT id, category FROM customization_catalog WHERE active ORDER BY category, id');
   return rows.map((r) => ({ id: r.id, category: r.category }));
+};
+
+/** Дать отдельному коду имя (или убрать, если пусто). */
+export const renameCode = async (actorId, codeId, label, { meta = {} } = {}) => {
+  if (!(await mayView(actorId))) return { error: 'not_allowed' };
+  if (!CODE_ID_RE.test(String(codeId ?? ''))) return { error: 'not_found' };
+  if (typeof label !== 'string') return { error: 'bad_label' };
+  const name = clean(label, 60);
+  const { rows } = await query(
+    'UPDATE sky_codes SET label = $2 WHERE id = $1 RETURNING hint', [codeId, name]);
+  if (!rows[0]) return { error: 'not_found' };
+  await logAdmin({
+    actorId, targetId: codeId, targetType: 'sky_code', type: 'code_rename',
+    detail: `«…${rows[0].hint}» → «${name || '—'}»`, meta,
+  });
+  return { ok: true, label: name };
+};
+
+/**
+ * Отозвать выбранные коды: списком id или по самому коду (тот, что человек
+ * прислал, — находим по хешу). Уже начисленное не отменяется.
+ */
+export const revokeSelected = async (actorId, { ids, code, reason } = {}, { meta = {} } = {}) => {
+  if (!(await mayView(actorId))) return { error: 'not_allowed' };
+  const why = clean(reason, 200);
+  if (why.length < 3) return { error: 'reason_required' };
+
+  let list = [];
+  if (code !== undefined && code !== null && code !== '') {
+    const canonical = normalizeCode(code);
+    if (!canonical) return { error: 'not_found' };
+    const { rows } = await query('SELECT id FROM sky_codes WHERE code_hash = $1', [codeHash(canonical)]);
+    if (!rows[0]) return { error: 'not_found' };
+    list = [rows[0].id];
+  } else {
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 500) return { error: 'bad_selection' };
+    list = [...new Set(ids.map(String))];
+    if (!list.every((x) => CODE_ID_RE.test(x))) return { error: 'bad_selection' };
+  }
+
+  const { rows } = await query(
+    `UPDATE sky_codes SET status = 'revoked', revoked_at = now(), revoked_by = $2, revoke_reason = $3
+      WHERE id = ANY($1::text[]) AND status = 'active' RETURNING id, hint`,
+    [list, actorId, why]);
+  await logAdmin({
+    actorId, targetId: list[0], targetType: 'sky_code', type: 'code_revoke',
+    detail: `выбранные коды: отозвано ${rows.length} из ${list.length}${rows.length === 1 ? ` («…${rows[0].hint}»)` : ''} · ${why}`, meta,
+  });
+  if (!rows.length) return { error: 'already_revoked' };
+  return { ok: true, revoked: rows.length, skipped: list.length - rows.length };
 };
