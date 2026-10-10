@@ -196,3 +196,26 @@ export const config = {
   },
   mapsBaseUrl: process.env.GOOGLE_MAPS_BASE_URL || 'https://maps.googleapis.com',
 };
+
+/**
+ * В бою нельзя работать на секретах-заглушках. Подпись токенов тогда
+ * известна каждому, кто читал исходники: достаточно выписать себе токен
+ * с любым профилем (в том числе владельца). docker-compose и так не
+ * запускается без JWT_SECRET, но `node server.mjs` напрямую молча брал
+ * 'change_me'. Короткие, но заданные секреты не отвергаем — это не повод
+ * ронять работающий сервис, только предупреждение в журнал.
+ */
+if (config.nodeEnv === 'production') {
+  const placeholders = new Set(['change_me', 'change_me_too', 'changeme', 'secret', 'password', '']);
+  if (placeholders.has(config.jwtSecret) || placeholders.has(config.refreshSecret)) {
+    console.error('[config] JWT_SECRET / REFRESH_TOKEN_SECRET не заданы (или остались заглушкой). '
+      + 'В production запуск запрещён: задайте длинные случайные значения (openssl rand -base64 48).');
+    process.exit(1);
+  }
+  if (config.jwtSecret === config.refreshSecret) {
+    console.error('[config] JWT_SECRET и REFRESH_TOKEN_SECRET совпадают: утечка одного раскрывает оба типа токенов.');
+  }
+  if (config.jwtSecret.length < 32 || config.refreshSecret.length < 32) {
+    console.error('[config] секреты короче 32 символов — смените их (scripts/rotate-secrets.sh).');
+  }
+}
