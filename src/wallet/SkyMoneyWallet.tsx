@@ -859,7 +859,7 @@ export const SkyMoneyWallet = () => {
         </p>
         <div className="space-y-2">
           {[
-            { icon:Crown,      color:'var(--amber)', label:'Sky Prime', sub:'Подписка от 400 ₽/мес' },
+            { icon:Crown,      color:'var(--amber)', label:'Sky Prime', sub:'Подписка от 399 ₽/мес' },
             { icon:ShoppingBag,color:C.accent,  label:'Sky Market', sub:'Товары и сервисы' },
             { icon:Music2,     color:'#a855f7', label:'Sky Music', sub:'Эксклюзивные треки' },
           ].map(({ icon:Icon, color, label, sub }) => (

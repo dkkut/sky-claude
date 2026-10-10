@@ -20,9 +20,9 @@ const FEATURES = [
 ];
 
 const PLANS = [
-  { id: 'month', label: 'Месяц', price: '299₽', period: '/мес', days: 30, popular: false },
-  { id: 'year', label: 'Год', price: '1990₽', period: '/год', sub: 'Экономия 598₽', days: 365, popular: true },
-  { id: 'forever', label: '2 года', price: '4990₽', period: '', sub: 'Разовая оплата', days: 730, popular: false },
+  { id: 'month', label: 'Месяц', price: '399₽', period: '/мес', days: 30, popular: false },
+  { id: 'year', label: 'Год', price: '3790₽', period: '/год', sub: 'Экономия 998₽', days: 365, popular: true },
+  { id: 'two-years', label: '2 года', price: '6990₽', period: '', sub: 'Разовая оплата', days: 730, popular: false },
 ];
 
 const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
@@ -161,7 +161,7 @@ export const SkyPrime = () => {
   const { getBalance } = useMoney();
   const walletBalance = getBalance(currentUserId ?? '');
 
-  const PRICES: Record<number, number> = { 30: 400, 365: 3790, 730: 6990 };
+  const PRICES: Record<number, number> = { 30: 399, 365: 3790, 730: 6990 };
 
   // Покупку проводит сервер: он берёт цену из своей таблицы, списывает
   // с кошелька профиля и только потом выписывает подписку. Раньше списание
@@ -314,7 +314,7 @@ export const SkyPrime = () => {
               </span>
             </p>
           </div>
-          {walletBalance < 400 && (
+          {walletBalance < 399 && (
             <p className="text-[10px] px-2 py-1 rounded-full" style={{ background:'rgba(248,113,113,0.15)', color:'var(--red)' }}>
               Недостаточно
             </p>
