@@ -13,6 +13,8 @@ import { sanitizeInput } from './../security.mjs';
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { wallet } from './../wallet.mjs';
 
+const CLIENT_SPEND_TYPES = new Set(['market', 'music', 'family']);
+
 export const walletRoutes = async (req, res, url) => {
   if (!url.startsWith('/api/wallet')) return false;
 
@@ -52,8 +54,13 @@ export const walletRoutes = async (req, res, url) => {
 
   if (req.method === 'POST' && url === '/api/wallet/spend') {
     const body = await parseBody(req);
+    // Тип операции попадает в историю и в аналитику (покупки Prime, подарков,
+    // NFT…). Служебные типы выставляет только сервер своими ручками —
+    // клиентскому списанию доступны лишь типы самого интерфейса кошелька.
+    const type = String(body.type || 'market');
+    if (!CLIENT_SPEND_TYPES.has(type)) return json(res, 400, { error: 'invalid_type' });
     const result = await wallet.spend(
-      uid, body.amount, sanitizeInput(body.type || 'market'),
+      uid, body.amount, type,
       sanitizeInput(body.desc || ''), body.ref ? sanitizeInput(body.ref) : null,
     );
     return result.error ? json(res, 400, result) : json(res, 200, result);

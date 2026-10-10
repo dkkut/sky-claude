@@ -337,7 +337,11 @@ export const readVideoMeta = (file: Blob) => new Promise<VideoMeta>((resolve) =>
   const url = URL.createObjectURL(file);
   const v = document.createElement('video');
   v.preload = 'metadata';
-  const done = (m: VideoMeta) => { URL.revokeObjectURL(url); resolve(m); };
+  // Не каждый браузер шлёт и loadedmetadata, и error на файл с непонятным
+  // кодеком: без таймера загрузка вечно висела бы на «Читаем файл».
+  let finished = false;
+  const done = (m: VideoMeta) => { if (finished) return; finished = true; clearTimeout(timer); URL.revokeObjectURL(url); resolve(m); };
+  const timer = setTimeout(() => done({ duration: 0, width: 0, height: 0 }), 10_000);
   v.onloadedmetadata = () => done({
     duration: Number.isFinite(v.duration) ? v.duration : 0,
     width: v.videoWidth || 0,
