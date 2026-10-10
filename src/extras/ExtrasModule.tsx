@@ -383,54 +383,6 @@ const AdminContentTab = ({ tracks, approveTrack, rejectTrack }: {
 
 // --- Admin Panel --------------------------------------------------------------
 
-const AdminSupportTab = () => {
-  const [selUid, setSelUid] = useState<string|null>(null);
-  const [reply, setReply] = useState("");
-  const [tick, setTick] = useState(0);
-  useEffect(() => { const id = setInterval(() => setTick(t => t+1), 4000); return () => clearInterval(id); }, []);
-  const supUsers = (() => { try { return JSON.parse(localStorage.getItem("sky:sup:users")||"{}") as Record<string,{name:string;username:string;ts:number}>; } catch { return {}; } })();
-  const userIds = Object.keys(supUsers).sort((a,b)=>(supUsers[b]?.ts??0)-(supUsers[a]?.ts??0));
-  const getMsgs = (uid:string) => { try { return JSON.parse(localStorage.getItem(`sky:sup:${uid}`)||"[]") as {id:string;text:string;from:"user"|"support";ts:number}[]; } catch { return []; } };
-  const sendReply = () => {
-    if (!reply.trim() || !selUid) return;
-    const updated = [...getMsgs(selUid), {id:Date.now().toString(),text:reply.trim(),from:"support" as const,ts:Date.now()}];
-    try { localStorage.setItem(`sky:sup:${selUid}`, JSON.stringify(updated)); } catch {}
-    setReply(""); setTick(t=>t+1);
-  };
-  const msgs = selUid ? getMsgs(selUid) : [];
-  return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden sm:flex-row">
-      <div className="w-full max-h-[38vh] shrink-0 border-b overflow-y-auto sm:w-44 sm:max-h-none sm:border-b-0 sm:border-r" style={{borderColor:"var(--border)",scrollbarWidth:"none"}}>
-        <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest" style={{color:"var(--t3)"}}>Обращения ({userIds.length})</p>
-        {userIds.length===0&&<p className="px-3 py-4 text-xs" style={{color:"var(--t3)"}}>Пусто</p>}
-        {userIds.map(uid=>{
-          const unread=getMsgs(uid).filter(m=>m.from==="user").length;
-          return (<button key={uid} type="button" onClick={()=>setSelUid(uid)} className="w-full text-left px-3 py-2.5 hover:bg-white/5" style={{background:selUid===uid?"rgba(79,110,247,0.1)":"none",border:"none",cursor:"pointer",borderBottom:"1px solid var(--border)"}}>
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold truncate" style={{color:"var(--t1)"}}>{supUsers[uid]?.name??uid}</p>
-              {unread>0&&<span className="text-[9px] font-bold px-1 rounded-full" style={{background:"var(--accent)",color:"#fff"}}>{unread}</span>}
-            </div>
-            <p className="text-[10px] truncate" style={{color:"var(--t3)"}}>@{supUsers[uid]?.username??uid}</p>
-          </button>);
-        })}
-      </div>
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {!selUid?(
-          <div className="grid flex-1 place-items-center"><p className="text-xs" style={{color:"var(--t3)"}}>Выберите обращение</p></div>
-        ):(<>
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2" style={{scrollbarWidth:"none"}}>
-            {msgs.map(msg=>(<div key={msg.id} className={`flex ${msg.from==="support"?"justify-end":"justify-start"}`}><div className="max-w-[80%] rounded-xl px-3 py-2" style={{background:msg.from==="support"?"var(--accent)":"var(--bg-l2)",border:msg.from==="support"?"none":"1px solid var(--border)"}}><p className="text-xs" style={{color:msg.from==="support"?"#fff":"var(--t1)"}}>{msg.text}</p></div></div>))}
-          </div>
-          <div className="flex gap-2 px-3 py-2 border-t shrink-0" style={{borderColor:"var(--border)"}}>
-            <input value={reply} onChange={e=>setReply(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendReply();}} placeholder="Ответить..." className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={{background:"var(--bg-l2)",border:"1px solid var(--border)",color:"var(--t1)"}}/>
-            <button type="button" onClick={sendReply} disabled={!reply.trim()} className="rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-40" style={{background:"var(--accent)",color:"#fff",border:"none",cursor:"pointer"}}>→</button>
-          </div>
-        </>)}
-      </div>
-    </div>
-  );
-};
-
 
 const AdminPanel = () => {
   const { tracks, approveTrack, rejectTrack } = usePlatformStore();
@@ -446,7 +398,7 @@ const AdminPanel = () => {
   const bookPending    = useBookPendingCount();
   const ticketPending  = useTicketPendingCount();
   const botPending     = useBotPendingCount();
-  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'books_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'support'|'support_queue'|'video_queue'>('core');
+  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'books_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'support_queue'|'video_queue'>('core');
   // Очередь поддержки и видеообзоры складов: вкладка видна тому, кому
   // сервер дал право (support / logistics); решает всё равно сервер.
   const [staff, setStaff] = useState(false);
@@ -470,7 +422,6 @@ const AdminPanel = () => {
           ['tickets_mod',  `Билеты${ticketPending > 0 ? ` (${ticketPending})` : ''}`,   Ticket],
           ['content',    'Контент',                                                   Upload],
           ['channels',   'Каналы',                                                   Shield],
-          ['support',    'Поддержка',  MessageSquare],
           ...(staff ? [['support_queue', 'Очередь поддержки', Inbox] as const] : []),
           ...(logistics ? [['video_queue', 'Видеообзоры', Video] as const] : []),
         ] as const).map(([k,l,Icon])=>(
@@ -510,8 +461,6 @@ const AdminPanel = () => {
 
         {/* ==== БИЛЕТЫ ==== */}
         {adminTab==='tickets_mod'  && <div className="p-4 overflow-y-auto"><TicketsModeration/></div>}
-
-        {adminTab==='support'    && <AdminSupportTab/>}
 
         {/* Модерация рекламы переехала в общую RBAC-панель (src/admin/AdminPanel.tsx,
             раздел «Реклама»): там видно все кампании, а не только свои, и право
