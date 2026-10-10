@@ -114,6 +114,33 @@ Settings → Secrets and variables → Actions:
 прогоняет `npm run build` (`tsc` + `vite`) — сломанный по типам код до
 сервера не доедет.
 
+### Выкладка без GitHub Actions
+
+Если минуты Actions кончились или платёж не проходит («The job was not
+started because recent account payments have failed…»), сайт можно
+выложить прямо с сервера — `scripts/deploy-local.sh` делает то же, что
+пайплайн, но собирает образы на месте.
+
+Один раз, на сервере:
+
+```
+git clone https://github.com/dkkut/sky-claude /opt/sky-src
+```
+
+(репозиторий приватный — нужен токен доступа или deploy key.) Дальше
+после каждой пачки изменений:
+
+```
+bash /opt/sky-src/scripts/deploy-local.sh
+```
+
+Скрипт тянет ветку, собирает `sky-web:<sha>` и `sky-api:<sha>`,
+прописывает их в `/opt/sky/.env` (`WEB_IMAGE`, `API_IMAGE`),
+перезапускает сервисы и ждёт healthy. Не поднялось — сам возвращает
+прежние образы. `SKIP_PULL=1` — собрать то, что уже лежит в клоне;
+`BRANCH=...` — другая ветка. Сборка идёт на самом сервере, нужно
+~2 ГБ свободной памяти и несколько минут.
+
 ---
 
 ## Android, Windows и iOS приложения
