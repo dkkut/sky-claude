@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Loader2, Crown, MessageCircle, FileText, Image as ImageIcon,
   Mic, Plus, Trash2, Pencil, PanelLeft, X, AlertTriangle, Paperclip, Send,
+  Code2, Copy, Check,
 } from 'lucide-react';
 import {
   apiAiChats, apiAiReadChat, apiAiRenameChat, apiAiDeleteChat,
@@ -30,10 +31,11 @@ const C = {
   border: 'rgba(168,85,247,0.3)',
 };
 
-type Mode = 'chat' | 'summary' | 'file' | 'image' | 'transcribe';
+type Mode = 'chat' | 'code' | 'summary' | 'file' | 'image' | 'transcribe';
 
 const MODES: { key: Mode; label: string; Icon: typeof MessageCircle; desc: string; prime: boolean }[] = [
   { key: 'chat',       label: 'Чат',        Icon: MessageCircle, desc: 'Свободный диалог с Sky AI',            prime: false },
+  { key: 'code',       label: 'Код',        Icon: Code2,         desc: 'Написать, объяснить и исправить код',  prime: false },
   { key: 'summary',    label: 'Пересказ',   Icon: FileText,      desc: 'Кратко, подробно, тезисы или вывод',   prime: true },
   { key: 'file',       label: 'Документ',   Icon: Paperclip,     desc: 'PDF, DOCX, XLSX, PPTX и текст',        prime: true },
   { key: 'image',      label: 'Изображение', Icon: ImageIcon,    desc: 'Описание и распознавание текста',      prime: true },
@@ -41,6 +43,41 @@ const MODES: { key: Mode; label: string; Icon: typeof MessageCircle; desc: strin
 ];
 
 /* ─── Мелочи оформления ─────────────────────────────────────────── */
+
+/* Блоки ```код``` — моноширинно, с кнопкой «Копировать». Остальное —
+   обычный текст. Текст ответа — пользовательский, не словарный. */
+const CodeBlock = ({ lang, code }: { lang: string; code: string }) => {
+  const [done, setDone] = useState(false);
+  const copy = () => {
+    void navigator.clipboard?.writeText(code).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); }).catch(() => {});
+  };
+  return (
+    <div className="my-2 rounded-xl overflow-hidden" data-keep-dark translate="no"
+      style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.1)' }}>
+      <div className="flex items-center justify-between px-3 py-1.5" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#9aa4b2' }}>{lang || 'code'}</span>
+        <button onClick={copy} className="flex items-center gap-1 text-[11px]" style={{ color: '#c9d1d9' }}>
+          {done ? <Check size={12}/> : <Copy size={12}/>}{done ? 'Скопировано' : 'Копировать'}
+        </button>
+      </div>
+      <pre className="px-3 py-2.5 overflow-x-auto text-[12px] leading-relaxed" style={{ color: '#e6edf3', fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace' }}>
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+};
+
+const RichText = ({ text, user }: { text: string; user: boolean }) => {
+  const parts = text.split(/```([^\n`]*)\n?([\s\S]*?)```/g);
+  const out: React.ReactNode[] = [];
+  for (let i = 0; i < parts.length; i += 3) {
+    if (parts[i]?.trim()) out.push(
+      <p key={i} translate="no" className="text-sm leading-relaxed whitespace-pre-wrap"
+        style={{ color: user ? '#fff' : 'var(--t1)' }}>{parts[i].trim()}</p>);
+    if (i + 2 < parts.length) out.push(<CodeBlock key={`c${i}`} lang={parts[i + 1].trim()} code={parts[i + 2].replace(/\n$/, '')}/>);
+  }
+  return <>{out}</>;
+};
 
 const Bubble = ({ m }: { m: AiMessage }) => (
   <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -60,10 +97,7 @@ const Bubble = ({ m }: { m: AiMessage }) => (
           {m.tool === 'summary' ? 'Пересказ' : m.tool === 'file' ? 'Документ' : m.tool === 'image' ? 'Изображение' : 'Расшифровка'}
         </p>
       )}
-      <p className="text-sm leading-relaxed whitespace-pre-wrap"
-        style={{ color: m.role === 'user' ? '#fff' : 'var(--t1)' }}>
-        {m.text}
-      </p>
+      <RichText text={m.text} user={m.role === 'user'}/>
     </div>
   </div>
 );
@@ -167,7 +201,7 @@ export const SkyAITab = () => {
     };
     setMessages(h => [...h, mine]);
 
-    const r = await apiAiSend(text, chatId ?? undefined);
+    const r = await apiAiSend(text, chatId ?? undefined, mode === 'code' ? { mode: 'code' } : {});
     setBusy(false);
     if (!r.ok || !r.answer) {
       setErr(r.reason ?? 'Не получилось');
@@ -225,7 +259,8 @@ export const SkyAITab = () => {
   };
 
   const current = MODES.find(m => m.key === mode)!;
-  const usage = state?.usage?.[mode === 'chat' ? 'chat' : mode];
+  const chatLike = mode === 'chat' || mode === 'code';
+  const usage = state?.usage?.[chatLike ? 'chat' : mode as 'summary'];
 
   const accept = mode === 'image'
     ? 'image/jpeg,image/png,image/webp,image/gif'
@@ -342,7 +377,7 @@ export const SkyAITab = () => {
             </div>
           )}
 
-          {mode === 'chat' && (
+          {chatLike && (
             <>
               {messages.length === 0 && (
                 <div className="grid place-items-center h-full py-12 text-center">
@@ -363,9 +398,9 @@ export const SkyAITab = () => {
             </>
           )}
 
-          {mode !== 'chat' && !prime && <PrimeOffer what={current.label}/>}
+          {!chatLike && !prime && <PrimeOffer what={current.label}/>}
 
-          {mode !== 'chat' && prime && (
+          {!chatLike && prime && (
             <div className="space-y-3">
               <p className="text-xs" style={{ color: 'var(--t3)' }}>{current.desc}</p>
 
@@ -446,7 +481,7 @@ export const SkyAITab = () => {
       </div>
 
       {/* Ввод. В режиме чата активен всегда — подписка на это не влияет. */}
-      {(mode === 'chat' || (mode === 'summary' && prime)) && (
+      {(chatLike || (mode === 'summary' && prime)) && (
         <div className="flex gap-2 items-end px-5 py-3 shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
           <textarea
             value={input}
@@ -454,10 +489,10 @@ export const SkyAITab = () => {
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                void (mode === 'chat' ? send() : runSummary());
+                void (chatLike ? send() : runSummary());
               }
             }}
-            placeholder={mode === 'summary' ? 'Вставьте текст для пересказа...' : 'Спросите что-нибудь...'}
+            placeholder={mode === 'summary' ? 'Вставьте текст для пересказа...' : mode === 'code' ? 'Опишите задачу или вставьте код и ошибку...' : 'Спросите что-нибудь...'}
             aria-label="Сообщение для Sky AI"
             data-ai-input
             rows={1}
@@ -465,7 +500,7 @@ export const SkyAITab = () => {
             className="flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm outline-none"
             style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)', maxHeight: 120 }}
           />
-          {mode === 'chat' && (state?.transcription || browserVoiceAvailable()) && (
+          {chatLike && (state?.transcription || browserVoiceAvailable()) && (
             <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => setVoiceOpen(true)}
               disabled={!prime && !!state?.transcription} title={prime ? 'Голосовой режим' : 'Голосовой режим — в Sky Prime'}
               aria-label="Голосовой режим"
@@ -476,7 +511,7 @@ export const SkyAITab = () => {
             </motion.button>
           )}
           <motion.button whileTap={{ scale: 0.9 }} type="button"
-            onClick={() => void (mode === 'chat' ? send() : runSummary())}
+            onClick={() => void (chatLike ? send() : runSummary())}
             disabled={!input.trim() || busy}
             aria-label="Отправить"
             data-ai-send

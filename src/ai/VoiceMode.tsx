@@ -105,12 +105,19 @@ export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
     tick();
   };
 
+  /* Ассистент задал уточняющий вопрос — после реплики сразу слушаем
+     ответ, не заставляя нажимать кнопку ещё раз. */
+  const followUp = (text: string) => {
+    setPhase('idle');
+    if (/\?\s*$/.test(text.trim())) setTimeout(() => { void startListening().catch(() => {}); }, 350);
+  };
+
   const speakInBrowser = (text: string) => {
-    if (typeof speechSynthesis === 'undefined' || !text.trim()) { setPhase('idle'); return; }
+    if (typeof speechSynthesis === 'undefined' || !text.trim()) { followUp(text); return; }
     setPhase('speaking');
     const u = new SpeechSynthesisUtterance(text.slice(0, 1200));
     u.lang = speechLocale();
-    u.onend = () => setPhase('idle');
+    u.onend = () => followUp(text);
     u.onerror = () => setPhase('idle');
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
@@ -123,7 +130,7 @@ export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
     if (!text) { setPhase('idle'); return; }
     setRecognized(text);
     setPhase('processing');
-    const r = await apiAiSend(text, chatId ?? undefined);
+    const r = await apiAiSend(text, chatId ?? undefined, { voice: true, assist: true });
     if (!r.ok || !r.answer) { setError(r.reason ?? 'Не получилось'); setPhase('error'); return; }
     void refreshAiState();
     const command = matchVoiceCommand(text);
@@ -249,11 +256,11 @@ export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
       const src = `data:${r.data.audioMime ?? 'audio/mpeg'};base64,${r.data.audio}`;
       const el = new Audio(src);
       audioElRef.current = el;
-      el.onended = () => setPhase('idle');
+      el.onended = () => followUp(r.data.answer.text);
       el.onerror = () => setPhase('idle');
       void el.play().catch(() => setPhase('idle'));
     } else {
-      setPhase('idle');
+      speakInBrowser(r.data.answer.text);
     }
   };
 

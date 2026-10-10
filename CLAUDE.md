@@ -170,3 +170,33 @@ WS-сообщения `delete-chat`, `get-trash`, `restore-chat` (ответы
   по `trashed_at` и проверку в `restoreChat`.
 - Личный чат убирает и возвращает любой из двоих; группу и канал —
   только владелец. «Убрать у себя» (`leaveChat`) работает как раньше.
+
+## Поставки курьеру (маршрут по заказам)
+
+`server/logibatches.mjs`, маршруты в `server/routes/logistics.mjs`,
+миграция `107_logi_batches.sql`; клиент — `src/marketplace/logistics/Batches.tsx`
+(`SellerBatches`, `CourierBatches`), вкладка «Поставки» в `CourierHub`.
+
+- Продавец собирает поставку из СВОИХ заказов, передаёт курьеру кнопкой;
+  у курьера строится маршрут (`maps.computeRoute`, Google Directions с
+  `optimize:true`). Нужен ключ `GOOGLE_MAPS_KEY` с включённым Directions API.
+- Адреса заказов лежат зашифрованными; ключ нужен и тестам (`env.sh`).
+
+## Мониторинг и аналитика (главная вкладка админки)
+
+`server/analytics.mjs`, `server/routes/analytics.mjs`, миграция
+`108_monitoring.sql`; клиент — `src/admin/MonitoringTab.tsx`. Право
+`analytics` (есть у `super_admin`). Онлайн считается по живым WS-соединениям
+(`signal.setOnlineSource`), замер раз в минуту в `metrics_online`; сделки,
+покупки, регистрации — агрегаты по реальным таблицам. Рубли и баллы не
+смешиваются, выдуманных цифр нет.
+
+## Sky AI: режим «Код» и голосовой ассистент
+
+`server/aiassist.mjs` (режимы, стиль голоса, `accountBrief`), `sendMessage`
+принимает `mode: 'code'`, `voice`, `assist`. «Код» — та же модель
+(`AI_API_KEY`/`AI_MODEL`), код на сервере НЕ выполняется. Голосовой ход
+всегда идёт с `assist` — справка о собственном аккаунте человека
+(кошелёк, заказы, уведомления), только чтение, по `profileId` из токена.
+Озвучка: серверный TTS (`TTS_*`) или, если его нет, голос браузера;
+вопрос в конце ответа → микрофон включается сам.

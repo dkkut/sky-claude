@@ -217,6 +217,9 @@ export const aiRoutes = async (req, res, url) => {
       chatId: body.chatId,
       body: body.text,
       prime: await hasPrime(me),
+      mode: body.mode === 'code' ? 'code' : 'chat',
+      voice: body.voice === true,
+      assist: body.assist === true,
     });
     if (result.error) return fail(res, result);
     return json(res, 200, result);

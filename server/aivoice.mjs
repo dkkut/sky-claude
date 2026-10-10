@@ -60,7 +60,7 @@ export const voiceTurn = async (profileId, { audio, mime, chatId, language = '' 
   /* Дальше — обычный чат: та же квота 'chat', та же история, то же
      право на диалог. Голосовой ход не даёт ничего сверх того, что дал
      бы точно такой же текст, набранный руками. */
-  const result = await sendMessage(profileId, { chatId, body: recognized.text, prime: true });
+  const result = await sendMessage(profileId, { chatId, body: recognized.text, prime: true, voice: true, assist: true });
   if (result.error) {
     await refundQuota(profileId, 'voice');
     return { ...result, recognizedText: recognized.text };

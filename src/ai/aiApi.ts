@@ -150,9 +150,12 @@ export interface SendResult {
   code?: string;
 }
 
-export const apiAiSend = async (text: string, chatId?: string): Promise<SendResult> => {
+export const apiAiSend = async (
+  text: string, chatId?: string,
+  opts: { mode?: 'chat' | 'code'; voice?: boolean; assist?: boolean } = {},
+): Promise<SendResult> => {
   const r = await apiCall<SendResult>('/api/ai/send', {
-    method: 'POST', body: JSON.stringify({ text, chatId }),
+    method: 'POST', body: JSON.stringify({ text, chatId, ...opts }),
   });
   if (!r.ok) return { ok: false, reason: aiReason(r.error, r.reason), code: r.error };
   /* ok ставим после разворота: в теле ответа его нет, но если однажды

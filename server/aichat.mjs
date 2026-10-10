@@ -23,6 +23,7 @@ import { query, pool } from './db.mjs';
 import { generateId } from './security.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { askModel, aiConfigured } from './ai.mjs';
+import { MODES, VOICE_STYLE, accountBrief } from './aiassist.mjs';
 
 /* ─── Формы идентификаторов ───────────────────────────────────────
    Идентификатор приходит от клиента и может быть любым. Форму
@@ -325,7 +326,7 @@ const titleFrom = (body) => {
  *
  * Prime здесь не спрашивается вовсе. Это и есть обычный чат.
  */
-export const sendMessage = async (profileId, { chatId, body, prime }) => {
+export const sendMessage = async (profileId, { chatId, body, prime, mode = 'chat', voice = false, assist = false }) => {
   if (!aiConfigured()) return { error: 'ai_not_configured' };
 
   const clean = text(body, MAX_MESSAGE_CHARS);
@@ -350,10 +351,18 @@ export const sendMessage = async (profileId, { chatId, body, prime }) => {
   const history = await buildContext(chat, profileId);
   await addMessage(chat, profileId, 'user', clean, 'chat');
 
+  /* Системная часть: режим из закрытого списка, при голосе — стиль
+     устной речи, для ассистента — сводка по ЕГО аккаунту (чтение). */
+  const system = [
+    MODES[mode] ?? SYSTEM_CHAT,
+    voice ? VOICE_STYLE : '',
+    assist ? await accountBrief(profileId) : '',
+  ].filter(Boolean).join('\n\n');
+
   const answer = await askModel({
-    system: SYSTEM_CHAT,
+    system,
     messages: [...history, { role: 'user', content: clean }],
-    maxTokens: 2000,
+    maxTokens: mode === 'code' ? 4000 : 2000,
   });
 
   if (answer.error) {
