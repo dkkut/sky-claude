@@ -293,3 +293,6 @@ body {
    на светлом фоне не видны — подменяем их тёмными. */
 [data-chat-light] .hover\:bg-white\/5:hover,
 [data-chat-light] .hover\:bg-white\/10:hover { background: rgba(15,15,20,0.06); }
+/* Ссылка в сообщении (#6ab4f5) теряется и на цветном своём пузыре, и на
+   белом чужом — в светлых темах берёт цвет самого пузыря. */
+[data-chat-light] a.underline { color: inherit !important; font-weight: 600; }

@@ -784,11 +784,11 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
               : null
           )}
           {msg.kind === 'text' && !msg.deleted && (() => {
-            if (msg.spoiler) return <SpoilerText text={msg.text} color={theme.otherText}/>;
-            if (msg.once)    return <OnceViewText msg={msg} fromMe={fromMe} color={theme.otherText}/>;
+            if (msg.spoiler) return <SpoilerText text={msg.text} color={(fromMe ? theme.mineText : theme.otherText)}/>;
+            if (msg.once)    return <OnceViewText msg={msg} fromMe={fromMe} color={(fromMe ? theme.mineText : theme.otherText)}/>;
             return (
               <div>
-                <p className="text-[14px] leading-relaxed whitespace-pre-wrap break-words" style={{ color: theme.otherText }}>
+                <p className="text-[14px] leading-relaxed whitespace-pre-wrap break-words" style={{ color: (fromMe ? theme.mineText : theme.otherText) }}>
                   <RT t={msg.text}/>
                 </p>
                 <div className="flex flex-wrap items-center gap-1.5">
