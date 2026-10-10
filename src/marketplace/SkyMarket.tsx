@@ -32,6 +32,7 @@ import type {
 } from './types';
 import { CATEGORY_LABEL } from './types';
 import { OrdersList, OrderPage } from './OrderScreens';
+import { ParcelLookup } from './ParcelTracking';
 import { BecomeSeller, SellerCabinet } from './SellerCabinet';
 import { CarrierCabinet } from './CarrierCabinet';
 import { PvzCabinet } from './PvzCabinet';
@@ -446,7 +447,12 @@ const MyOrders = ({ meId }: { meId: string }) => {
         onChanged={patchOrder} />
     );
   }
-  return <OrdersList orders={ordersBuy} onOpen={setOpen} empty="Заказов пока нет" />;
+  return (
+    <div className="h-full overflow-y-auto">
+      <OrdersList orders={ordersBuy} onOpen={setOpen} empty="Заказов пока нет" />
+      <ParcelLookup />
+    </div>
+  );
 };
 
 /* ── Избранное ────────────────────────────────────────────────────── */

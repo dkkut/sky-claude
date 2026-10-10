@@ -126,6 +126,12 @@ services:
       # он не уходит ни разу. Пусто — приложение честно пишет «карта не
       # настроена» вместо того, чтобы рисовать выдуманные точки.
       GOOGLE_MAPS_KEY:             ${GOOGLE_MAPS_KEY:-}
+      CDEK_API_BASE:               ${CDEK_API_BASE:-}
+      CDEK_CLIENT_ID:              ${CDEK_CLIENT_ID:-}
+      CDEK_CLIENT_SECRET:          ${CDEK_CLIENT_SECRET:-}
+      RUSSIANPOST_API_LOGIN:       ${RUSSIANPOST_API_LOGIN:-}
+      RUSSIANPOST_API_PASSWORD:    ${RUSSIANPOST_API_PASSWORD:-}
+      TRACK17_API_KEY:             ${TRACK17_API_KEY:-}
       # Одноразовый ключ, которым владелец занимает свой ник при первой
       # регистрации. Занять его обычной регистрацией нельзя: из ника
       # выводятся права владельца всей экосистемы. После первого входа

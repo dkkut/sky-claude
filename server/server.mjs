@@ -72,6 +72,7 @@ import { petsRoutes } from './routes/pets.mjs';
 import { sweepOrphanSkinMedia } from './skinMarket.mjs';
 import { streamsRoutes } from './routes/streams.mjs';
 import { weatherRoutes } from './routes/weather.mjs';
+import { trackingRoutes } from './routes/tracking.mjs';
 import { notifyRoutes } from './routes/notify.mjs';
 import { dispatchDueBroadcasts, sweepStaleBroadcastRuns } from './notifyBroadcast.mjs';
 import { adsRoutes } from './routes/ads.mjs';
@@ -107,7 +108,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
-                familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes,
+                familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes, trackingRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
                 violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes];
 

@@ -33,6 +33,7 @@ import type {
   PickupPoint, Carrier, ShipMethod, ShipDestination,
 } from './types';
 import { ORDER_LABEL } from './types';
+import { ParcelTracking } from './ParcelTracking';
 
 /* ── Что кому можно нажать ────────────────────────────────────────
    Это повторение серверной таблицы переходов — только для того,
@@ -819,6 +820,13 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
         {shipment && (
           <ShipmentCard shipment={shipment} canMove={iam === 'seller'}
             onMoved={(s) => { setShipment(s); void reload(); }} />
+        )}
+
+        {/* Настоящий трек службы (СДЭК, Почта России, зарубежные): продавец
+            указывает номер, стороны видят состояние посылки. */}
+        {order.marketType === 'standard'
+          && ['seller_payment_confirmed', 'fulfillment', 'seller_shipped', 'in_transit', 'ready_for_pickup', 'buyer_received', 'completed'].includes(order.status) && (
+          <ParcelTracking key={`${order.id}-${order.status}`} orderId={order.id} />
         )}
 
         {order.status === 'completed' && iam === 'buyer' && !reviewed && (

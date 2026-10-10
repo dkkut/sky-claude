@@ -141,6 +141,22 @@ bash /opt/sky-src/scripts/deploy-local.sh
 `BRANCH=...` — другая ветка. Сборка идёт на самом сервере, нужно
 ~2 ГБ свободной памяти и несколько минут.
 
+### Отслеживание посылок (СДЭК, Почта России, зарубежные)
+
+Продавец указывает трек-номер службы в заказе, покупатель видит историю
+перемещений. Заказ состояние посылки не двигает — только показывается.
+Источники включаются ключами в `/opt/sky/.env` (без них остаётся ссылка
+на страницу службы):
+
+| Служба | Переменные |
+|---|---|
+| СДЭК | `CDEK_CLIENT_ID`, `CDEK_CLIENT_SECRET` (тест: `CDEK_API_BASE=https://api.edu.cdek.ru/v2`) |
+| Почта России | `RUSSIANPOST_API_LOGIN`, `RUSSIANPOST_API_PASSWORD` |
+| DHL, UPS, FedEx, USPS, Royal Mail, China Post и др. | `TRACK17_API_KEY` (17TRACK) |
+
+После правки `.env`: `docker compose up -d api`. Миграция 099 создаёт
+таблицы `parcel_tracking` и `parcel_tracking_cache` сама.
+
 ---
 
 ## Android, Windows и iOS приложения

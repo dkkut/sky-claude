@@ -175,5 +175,20 @@ export const config = {
    * Рисовать вместо карты выдуманные точки нельзя — по ним поедут.
    */
   mapsKey: process.env.GOOGLE_MAPS_KEY || '',
+
+  // Отслеживание посылок (server/trackingproviders.mjs). Каждый источник
+  // включается своими ключами; без них ручка отдаёт только ссылку на
+  // страницу самой службы.
+  tracking: {
+    // СДЭК: https://api.cdek.ru/v2 (бой) или https://api.edu.cdek.ru/v2 (тест)
+    cdekBase:             process.env.CDEK_API_BASE            || '',
+    cdekClientId:         process.env.CDEK_CLIENT_ID           || '',
+    cdekClientSecret:     process.env.CDEK_CLIENT_SECRET       || '',
+    // Почта России — «Единый доступ» (трекинг), логин и пароль API
+    russianPostLogin:     process.env.RUSSIANPOST_API_LOGIN    || '',
+    russianPostPassword:  process.env.RUSSIANPOST_API_PASSWORD || '',
+    // 17TRACK — зарубежные службы
+    track17Key:           process.env.TRACK17_API_KEY          || '',
+  },
   mapsBaseUrl: process.env.GOOGLE_MAPS_BASE_URL || 'https://maps.googleapis.com',
 };
