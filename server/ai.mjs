@@ -88,6 +88,30 @@ const toResponsesTurn = ({ role, content }) => ({
     : [toInputPart(content, role)],
 });
 
+/** Ход диалога → ход в формате /v1/chat/completions (текст и картинки). */
+const toChatTurn = ({ role, content }) => {
+  const blocks = Array.isArray(content) ? content : [content];
+  const parts = blocks.map((b) => {
+    if (typeof b === 'string') return { type: 'text', text: b };
+    if (b?.type === 'text') return { type: 'text', text: String(b.text ?? '') };
+    if (b?.type === 'image') {
+      return { type: 'image_url', image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } };
+    }
+    return { type: 'text', text: '' };
+  });
+  return parts.every((p) => p.type === 'text')
+    ? { role, content: parts.map((p) => p.text).join('\n') }
+    : { role, content: parts };
+};
+
+/** Текст ответа из тела /v1/chat/completions. */
+const extractChatText = (data) => {
+  const c = data?.choices?.[0]?.message?.content;
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) return c.map((p) => String(p?.text ?? '')).join('');
+  return '';
+};
+
 /**
  * Достать текст ответа из тела /v1/responses.
  *
@@ -133,20 +157,28 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
   const timer = setTimeout(() => control.abort(), long ? LONG_TIMEOUT_MS : TIMEOUT_MS);
   inflight += 1;
   try {
-    const res = await fetch(`${config.aiBaseUrl}/v1/responses`, {
+    const chatStyle = config.aiApiStyle === 'chat';
+    const limit = Math.max(256, Math.min(8000, Number(maxTokens) || 2000));
+    const res = await fetch(`${config.aiBaseUrl}${chatStyle ? '/v1/chat/completions' : '/v1/responses'}`, {
       method: 'POST',
       signal: control.signal,
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${config.aiApiKey}`,
       },
-      body: JSON.stringify({
-        model: config.aiModel,
-        max_output_tokens: Math.max(256, Math.min(8000, Number(maxTokens) || 2000)),
-        temperature: 0,
-        instructions: `${system}${aiLangNote()}`,
-        input: turns.map(toResponsesTurn),
-      }),
+      body: JSON.stringify(chatStyle
+        ? {
+          model: config.aiModel,
+          max_tokens: limit,
+          messages: [{ role: 'system', content: `${system}${aiLangNote()}` }, ...turns.map(toChatTurn)],
+        }
+        : {
+          model: config.aiModel,
+          max_output_tokens: limit,
+          temperature: 0,
+          instructions: `${system}${aiLangNote()}`,
+          input: turns.map(toResponsesTurn),
+        }),
     });
 
     if (!res.ok) {
@@ -165,7 +197,7 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
     let data;
     try { data = JSON.parse(raw); } catch { return { error: 'ai_failed' }; }
 
-    const text = extractResponseText(data);
+    const text = config.aiApiStyle === 'chat' ? extractChatText(data) : extractResponseText(data);
     if (!text.trim()) return { error: 'ai_failed' };
     return { text, stopReason: data?.status ?? null };
   } catch (err) {

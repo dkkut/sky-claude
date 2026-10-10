@@ -135,7 +135,11 @@ export const config = {
    */
   aiApiKey: process.env.AI_API_KEY || '',
   aiModel: process.env.AI_MODEL || 'gpt-4o-mini',
-  aiBaseUrl: process.env.AI_BASE_URL || 'https://api.openai.com',
+  // Адрес без хвоста /v1: путь добавляется в ai.mjs (так же, как у STT/TTS).
+  aiBaseUrl: (process.env.AI_BASE_URL || 'https://api.openai.com').replace(/\/+$/, '').replace(/\/v1$/, ''),
+  // 'responses' — /v1/responses (OpenAI), 'chat' — /v1/chat/completions
+  // (почти все посредники и совместимые шлюзы, в том числе для Claude).
+  aiApiStyle: process.env.AI_API_STYLE === 'chat' ? 'chat' : 'responses',
 
   // Расшифровка речи — отдельная работа и отдельный поставщик:
   // языковая модель этого не умеет. Ожидается обычная ручка
