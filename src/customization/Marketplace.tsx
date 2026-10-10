@@ -117,7 +117,7 @@ export const CustomizationMarket = ({ onClose }: { onClose: () => void }) => {
     <AnimatePresence>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="fixed inset-0 z-[10040] flex flex-col" style={{ background: 'var(--bg)' }}>
-        <div className="flex items-center justify-between px-4 sm:px-6 py-3 shrink-0 sky-glass" style={{ borderBottom: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between px-4 sm:px-6 pb-3 shrink-0 sky-glass" style={{ borderBottom: '1px solid var(--border)', paddingTop: 'calc(var(--safe-top) + 12px)' }}>
           <div className="flex items-center gap-2">
             <Sparkles size={18} style={{ color: 'var(--accent)' }} />
             <h2 className="font-bold text-base" style={{ color: 'var(--t1)' }}>Маркет кастомизации</h2>

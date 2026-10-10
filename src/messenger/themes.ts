@@ -50,6 +50,14 @@ export const LIGHT_VARS: Record<string, string> = {
   '--border': 'rgba(15,15,20,0.08)', '--border-m': 'rgba(15,15,20,0.14)', '--border-s': 'rgba(15,15,20,0.22)',
 };
 
+/** Тёмная палитра для тёмных тем чата: при светлой теме приложения переменные --t1/--bg-l*
+ *  светлые, а панели чата нарисованы тёмными — без этого текст на них получался тёмным на тёмном. */
+export const DARK_VARS: Record<string, string> = {
+  '--t1': '#ebebed', '--t2': '#8b8b97', '--t3': '#4a4a55', '--t4': '#2e2e36',
+  '--bg-l1': '#131316', '--bg-l2': '#18181c', '--bg-l3': '#1e1e23', '--bg-l4': '#25252b',
+  '--border': 'rgba(255,255,255,0.055)', '--border-m': 'rgba(255,255,255,0.10)', '--border-s': 'rgba(255,255,255,0.16)',
+};
+
 export const THEMES: ChatTheme[] = [
   {
     id: 'default', name: 'Sky Dark',

@@ -45,7 +45,7 @@ import {
   MAX_SHORT_DURATION, apiFilmModerationQueue, apiModerateMovie, apiMovie,
   apiFilmTicket, type ServerMovie, type VideoMeta,
 } from '@/film/filmApi';
-import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
+import { reloadWithFreshTicket, describeMediaFailure } from '@/core/mediaTicketRefresh';
 import { useModuleStore } from '@/data/state/modules';
 import { SkyShorts } from './SkyShorts';
 import { ACCEPT_VIDEO, ACCEPT_IMAGE } from '@/shared/fileAccept';
@@ -214,6 +214,7 @@ export const Player = ({ movie, onClose, together = null }: {
   const [fs,  setFs]  = useState(false);
   const [ui,  setUi]  = useState(true);
   const [failed, setFailed] = useState(false);
+  const [failInfo, setFailInfo] = useState('');
   const [c1, c2] = grad(movie.id);
   const pct = dur > 0 ? (cur / dur) * 100 : 0;
   const { setPlaying, setPauseHandler } = useRegisterWatchActivity();
@@ -339,6 +340,7 @@ export const Player = ({ movie, onClose, together = null }: {
 
   /** Связь оборвалась — предлагаем продолжить с того же места, а не начать заново. */
   const retry = () => {
+    setFailInfo('');
     const v = vRef.current; if (!v) return;
     const from = last.current.pos;
     setFailed(false);
@@ -348,7 +350,7 @@ export const Player = ({ movie, onClose, together = null }: {
   };
 
   return (
-    <motion.div ref={cRef} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    <motion.div ref={cRef} data-keep-dark="" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-[100] bg-black flex items-center justify-center"
       onMouseMove={bump} style={{ cursor: ui ? 'default' : 'none' }}>
 
@@ -371,11 +373,12 @@ export const Player = ({ movie, onClose, together = null }: {
             if (v && !passTried.current) {
               passTried.current = true;
               void reloadWithFreshTicket(v, apiFilmTicket, () => videoUrl(movie.id)).then((ok) => {
-                if (!ok) { setFailed(true); setPl(false); }
+                if (!ok) { setFailed(true); setPl(false); void describeMediaFailure(v, videoUrl(movie.id)).then(setFailInfo); }
               });
               return;
             }
             setFailed(true); setPl(false);
+            void describeMediaFailure(v, videoUrl(movie.id)).then(setFailInfo);
           }}
           onStalled={() => setFailed(false)}
           onEnded={() => {
@@ -411,6 +414,7 @@ export const Player = ({ movie, onClose, together = null }: {
           <p className="text-[12.5px]" style={{ color: K.sub, maxWidth: 300 }}>
             Похоже, пропала связь. Можно продолжить с того места, где остановились — {fmtT(last.current.pos)}.
           </p>
+          {failInfo && <p className="text-[11px]" style={{ color: K.sub, maxWidth: 300, opacity: 0.8 }}>{failInfo}</p>}
           <div className="mt-1 flex gap-2">
             <button type="button" onClick={retry}
               className="rounded-full px-6 py-2.5 text-[13px] font-bold text-white" style={{ background: K.orange }}>
@@ -430,8 +434,8 @@ export const Player = ({ movie, onClose, together = null }: {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="absolute inset-0 z-10 flex flex-col justify-between pointer-events-none">
             {/* верх */}
-            <div className="flex items-center gap-3 px-5 py-4 pointer-events-auto"
-              style={{ background: 'linear-gradient(rgba(0,0,0,0.78),transparent)' }}>
+            <div className="flex items-center gap-3 px-5 pb-4 pointer-events-auto"
+              style={{ background: 'linear-gradient(rgba(0,0,0,0.78),transparent)', paddingTop: 'calc(var(--safe-top) + 12px)' }}>
               <button type="button" onClick={onClose}
                 className="grid h-10 w-10 place-items-center rounded-full hover:bg-white/15"
                 style={{ background: 'rgba(0,0,0,0.5)' }}>

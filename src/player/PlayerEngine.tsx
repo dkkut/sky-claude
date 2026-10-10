@@ -4,7 +4,8 @@ import { useAuthStore } from '@/core/auth/store';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
 import { apiMediaTicket as apiMusicTicket } from '@/music/musicApi';
 import { apiMediaTicket as apiPodcastTicket } from '@/podcasts/podcastApi';
-import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
+import { reloadWithFreshTicket, describeMediaFailure } from '@/core/mediaTicketRefresh';
+import { flash } from '@/shared/flash';
 
 /**
  * Единственный реальный <audio> элемент в приложении.
@@ -113,9 +114,17 @@ export const PlayerEngine = () => {
       a.src = srcUrl;
       a.currentTime = 0;
       retryRef.current = 0;
-      if (isPlaying) a.play().catch(() => setPlaying(false));
+      if (isPlaying) a.play().catch(onPlayRejected);
     }
   }, [srcUrl]);
+
+  /* Браузер (особенно Safari на iPhone) может не дать запустить звук не по нажатию:
+     без объяснения кнопка просто «не работает». */
+  const onPlayRejected = (e: unknown) => {
+    setPlaying(false);
+    const name = (e as { name?: string } | null)?.name;
+    if (name === 'NotAllowedError') flash('Браузер не дал запустить звук — нажмите ▶ ещё раз.');
+  };
 
   /* Трек заиграл — значит, очередь жива: счётчик неудач обнуляем. */
   const onPlaying = () => { failsRef.current = 0; retryRef.current = 0; };
@@ -139,7 +148,7 @@ export const PlayerEngine = () => {
   useEffect(() => {
     const a = audioRef.current;
     if (!a || !srcUrl) return;
-    if (isPlaying) a.play().catch(() => setPlaying(false));
+    if (isPlaying) a.play().catch(onPlayRejected);
     else a.pause();
   }, [isPlaying, srcUrl]);
 
@@ -195,7 +204,7 @@ export const PlayerEngine = () => {
           void reloadWithFreshTicket(a, refresh, () => usePlayerStore.getState().item?.srcUrl ?? srcUrl).then((ok) => {
             // Первая попытка уже сбросила «играет» (play() отклонился вместе с
             // загрузкой), а трек выбрали, чтобы слушать, — запускаем заново.
-            if (ok) { setPlaying(true); a.play().catch(() => setPlaying(false)); return; }
+            if (ok) { setPlaying(true); a.play().catch(onPlayRejected); return; }
             failsRef.current = 0; setPlaying(false);
           });
           return;
@@ -208,7 +217,7 @@ export const PlayerEngine = () => {
           retryRef.current = 1;
           a.load();
           a.currentTime = at;
-          if (isPlaying) a.play().catch(() => setPlaying(false));
+          if (isPlaying) a.play().catch(onPlayRejected);
           return;
         }
 
@@ -221,6 +230,7 @@ export const PlayerEngine = () => {
         if (len > 1 && failsRef.current < len && advanceOrStop()) return;
         failsRef.current = 0;
         setPlaying(false);
+        void describeMediaFailure(a, srcUrl).then((why) => flash(`Не удалось воспроизвести трек. ${why}`));
       }}
       onEnded={() => {
         const a = audioRef.current;

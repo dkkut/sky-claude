@@ -16,6 +16,7 @@ import {
   ProfileModule, StoriesModule, GamingModule, SkyVideo, ModuleFallback,
 } from './lazyModules';
 import { NotifToastLayer }        from '@/notifications/NotifToast';
+import { FlashLayer }             from '@/shared/flash';
 import { FloatingChatLayer }      from '@/notifications/FloatingChat';
 import { ActiveCallPanel, IncomingCallOverlay, MiniCallOverlay, CallAudio } from '@/calls/CallUI';
 import { NotifBridge }            from '@/notifications/NotifBridge';
@@ -282,6 +283,7 @@ export const AppShell = () => {
           <CallAudio />
         </main>
         <NotifToastLayer />
+        <FlashLayer />
         <FloatingChatLayer />
         <ProfileViewerLayer />
         <ErrorBoundary>

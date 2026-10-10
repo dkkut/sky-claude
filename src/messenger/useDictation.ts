@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { speechLocale } from '@/i18n/lang';
 import { apiAiState, apiAiUpload, apiAiTranscribe } from '@/ai/aiApi';
-import { useAdminStore } from './adminStore';
+import { flash } from '@/shared/flash';
 
 type Recognition = {
   lang: string; continuous: boolean; interimResults: boolean;
@@ -45,7 +45,7 @@ export const useDictation = ({ onText, oneShot = false }: { onText: (text: strin
   const brokenRef = useRef(false); // встроенное распознавание отвечает ошибкой — дальше только запись
   const onTextRef = useRef(onText);
   onTextRef.current = onText;
-  const say = (text: string) => useAdminStore.getState().notify(text);
+  const say = (text: string) => flash(text);
 
   const stop = useCallback(() => {
     wantRef.current = false;
