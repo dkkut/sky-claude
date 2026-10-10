@@ -22,7 +22,7 @@
  * нет в Sky.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession, appBody } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
 import { ticketCookies, ticketFromCookies, issueTicket, readTicket } from './../marketticket.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { can } from './../admin.mjs';
@@ -318,7 +318,7 @@ export const marketRoutes = async (req, res, url) => {
   if (req.method === 'POST' && path === '/api/market/ticket') {
     const ticket = issueTicket(me);
     res.setHeader('Set-Cookie', ticketCookies(me, ticket));
-    return json(res, 200, appBody(req, { ok: true }, { ticket }));
+    return json(res, 200, mediaBody(req, { ok: true }, { ticket }));
   }
 
   /* ══ Что умеет сервер ═══════════════════════════════════════════

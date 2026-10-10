@@ -15,7 +15,7 @@
    Этот файл только спрашивает и показывает ответ.
 =============================================================== */
 import { isEnglish } from '@/i18n/lang';
-import { NATIVE_APP, API_ORIGIN, nativeStore, REFRESH_TOKEN_KEY, BETA_TOKEN_KEY } from '../nativeApp';
+import { NATIVE_APP, IOS_WEB, API_ORIGIN, nativeStore, REFRESH_TOKEN_KEY, BETA_TOKEN_KEY } from '../nativeApp';
 
 /** Способ второго фактора: код из приложения или письмо на почту. */
 export type TwoFactorMethod = 'app' | 'email' | 'sms';
@@ -170,6 +170,8 @@ const raw = (path: string, init: RequestInit = {}) =>
       // токены в теле не получает.
       ...(isEnglish() ? { 'X-Sky-Lang': 'en' } : {}),
       ...(NATIVE_APP ? { 'X-Sky-Client': 'app' } : {}),
+      // iPhone в браузере: пропуск медиа нужен и в теле ответа — см. mediaBody в server/http.mjs.
+      ...(IOS_WEB ? { 'X-Sky-Media-Url': '1' } : {}),
       ...(NATIVE_APP && nativeBetaToken ? { 'X-Sky-Beta': nativeBetaToken } : {}),
       ...(init.headers ?? {}),
     },

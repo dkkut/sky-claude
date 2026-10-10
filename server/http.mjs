@@ -96,6 +96,14 @@ export const deviceMeta = (req) => ({
  * получает тело без изменений, токен для него по-прежнему только в
  * HttpOnly-куке.
  */
+/**
+ * Пропуск на медиа в теле ответа: родному приложению и iPhone в браузере. Системный загрузчик
+ * iOS не присылает HttpOnly-куку при запросе файла, поэтому там пропуск едет в адресе (?t=).
+ * Пропуск короткий и годится только для выдачи медиа, но обычному браузеру его не показываем.
+ */
+export const mediaBody = (req, body, extra) =>
+  (isAppClient(req) || req.headers['x-sky-media-url'] === '1' ? { ...body, ...extra } : body);
+
 export const appBody = (req, body, extra) => (isAppClient(req) ? { ...body, ...extra } : body);
 
 /**

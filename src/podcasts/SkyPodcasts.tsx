@@ -24,7 +24,6 @@ import {
 import { useAuthStore } from '@/core/auth/store';
 import { usePlayer, prefersReducedMotion } from './playerStore';
 import { parseSubtitles } from './subtitles';
-import { PodcastModeration } from './PodcastsAdmin';
 import {
   ACCEPT_AUDIO, ACCEPT_VIDEO, ACCEPT_IMAGE, ACCEPT_SUBTITLES,
 } from '@/shared/fileAccept';
@@ -657,12 +656,11 @@ const Studio = () => {
 
 /* ─── Главный экран ────────────────────────────────────────────────── */
 
-type Tab = 'home' | 'subs' | 'favorites' | 'studio' | 'moderation';
+type Tab = 'home' | 'subs' | 'favorites' | 'studio';
 
 export const SkyPodcasts = () => {
   const { accounts, currentUserId, purchasePrime } = useAuthStore();
   const me = accounts.find((a) => a.id === currentUserId);
-  const isAdmin = me?.isAdmin ?? false;
   const isPrime = me?.isPrime ?? false;
 
   useEffect(() => {
@@ -751,7 +749,6 @@ export const SkyPodcasts = () => {
     { id: 'subs', label: 'Подписки' },
     { id: 'favorites', label: 'Избранное' },
     { id: 'studio', label: 'Моя студия' },
-    ...(isAdmin ? [{ id: 'moderation' as Tab, label: 'Проверка' }] : []),
   ];
 
   return (
@@ -944,7 +941,6 @@ export const SkyPodcasts = () => {
         )}
 
         {!found && !openShow && tab === 'studio' && <Studio/>}
-        {!found && !openShow && tab === 'moderation' && isAdmin && <PodcastModeration/>}
       </div>
     </div>
   );

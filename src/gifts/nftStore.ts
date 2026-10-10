@@ -5,8 +5,9 @@
 ====================================================================== */
 import { create } from 'zustand';
 import { useAuthStore } from '@/core/auth/store';
+import { deviceLabel } from './safety';
 import {
-  apiNftTransfer, apiNftOwners, apiNftActiveListings, apiNftCreateListing,
+  apiNftBuyMint, apiNftTransfer, apiNftOwners, apiNftActiveListings, apiNftCreateListing,
   apiNftCancelListing, apiNftBuyListing, apiNftHistory, type NftListing,
 } from './giftsApi';
 import {
@@ -63,6 +64,10 @@ const buildCollections = (): GiftCollection[] => COLLECTION_SEEDS.map((c,i) => (
   createdAt: new Date(Date.now() - 86400000 * (700 - i*40)).toISOString(),
 }));
 
+/** Нераспроданные подарки принадлежат платформе и продаются по цене каталога (server/nftgenesis.mjs). */
+export const MINT_ID = 'sky-mint';
+const MINT_OWNER = { id: MINT_ID, name: 'Sky Mint' };
+
 const OWNER_POOL = [
   { id:'acc-luna', name:'Luna Nova' }, { id:'acc-neo', name:'Neon Driver' }, { id:'acc-kutuzov', name:'Kutuzov' },
   { id:'col-mira', name:'Mira Vetrova' }, { id:'col-arkin', name:'Arkin Sol' }, { id:'col-zima', name:'Zima Hollow' },
@@ -86,7 +91,8 @@ const buildGifts = (collections: GiftCollection[]): { gifts: Gift[]; provenance:
       const background = pick(seed+'bg', ALL_BACKGROUNDS);
       const edition = Math.max(1, Math.round(seeded(seed+'ed', 1, col.totalSupply*0.6)));
       const basePrice = Math.round((50 + rc.weight*rc.weight*4500) * (1 + seeded(seed+'price',0,0.4)));
-      const owner = pick(seed+'owner', OWNER_POOL);
+      // Без демонстрационных владельцев: всё, что ещё не купили, принадлежит платформе.
+      const owner = MINT_OWNER;
       const name = `${pick(seed+'pfx', GIFT_NAME_PARTS.prefix)} ${pick(seed+'noun', GIFT_NAME_PARTS.noun)}`;
       const releasedAt = new Date(Date.parse(col.createdAt) + 86400000*Math.round(seeded(seed+'rel',1,300))).toISOString();
 
@@ -123,16 +129,8 @@ const toLocalListing = (l: NftListing): Listing => ({
   createdAt: l.createdAt, endsAt: l.endsAt, soldAt: l.soldAt, soldPrice: l.soldPrice,
 });
 
-const seedComments = (gifts: Gift[]): GiftComment[] => gifts.slice(0,18).map((g,i) => ({
-  id: genId('cmt'), giftId: g.id, authorId: OWNER_POOL[i%OWNER_POOL.length].id, authorName: OWNER_POOL[i%OWNER_POOL.length].name,
-  text: pick(g.id+'ctxt', ['Невероятная редкость!','Хочу себе такой 🔥','Фон просто космос','Сколько готовы продать?','Топовый экземпляр коллекции']),
-  createdAt: new Date(Date.now()-3600000*seeded(g.id+'ct',1,400)).toISOString(),
-}));
-
-const seedReactions = (gifts: Gift[]): GiftReaction[] => gifts.map(g => ({
-  giftId: g.id, emoji: pick(g.id+'remo', ['🔥','😍','👏','💎','🚀'] as ReactionEmoji[]),
-  userIds: OWNER_POOL.slice(0, Math.round(seeded(g.id+'rusers',0,5))).map(o=>o.id),
-}));
+/** Демонстрационные аккаунты прежней витрины — настоящих людей среди них нет. */
+const DEMO_IDS = new Set(OWNER_POOL.map(o => o.id));
 
 /* ══════════════════════════════════════════════════════════════════
    AI-ОЦЕНКА (детерминированная)
@@ -192,6 +190,7 @@ interface NftGiftsState {
   // покупателя и атомарно переносит собственность — эта витрина только
   // отражает то, что он подтвердил, как и giftToUser ниже.
   createListing:   (giftId: string, p: { type: ListingType; price: number; reservePrice?: number; decayPct?: number; durationH: number }) => Promise<{ ok: boolean; reason?: string }>;
+  buyFromMint:     (giftId: string) => Promise<{ ok: boolean; reason?: string }>;
   cancelListing:   (listingId: string) => Promise<{ ok: boolean; reason?: string }>;
   buyListing:      (listingId: string) => Promise<{ ok: boolean; reason?: string }>;
   syncListings:    () => Promise<void>;
@@ -267,8 +266,7 @@ export const useNftGiftsStore = create<NftGiftsState>((set, get) => {
   const writeLog = (action: string, description: string) => {
     const entry: ActionLogEntry = {
       id: genId('log'), userId: me(), userName: myName(), action, description,
-      ip: `10.${hash(me()+action)%255}.${hash(description)%255}.${hash(action)%255}`,
-      device: 'Sky PC App / Chromium', createdAt: nowISO(),
+      ip: '', device: deviceLabel(), createdAt: nowISO(),
     };
     set(s => ({ actionLog: [entry, ...s.actionLog].slice(0,500) }));
   };
@@ -287,8 +285,9 @@ export const useNftGiftsStore = create<NftGiftsState>((set, get) => {
     offers:      stored?.offers ?? [],
     favorites:   stored?.favorites ?? [],
     archivedIds: stored?.archivedIds ?? [],
-    comments:    stored?.comments ?? seedComments(seedGiftsData.gifts),
-    reactions:   stored?.reactions ?? seedReactions(seedGiftsData.gifts),
+    // Выдуманных «комментаторов» и реакции больше нет; то, что сохранилось на устройстве от них, вычищаем.
+    comments:    (stored?.comments ?? []).filter((c: GiftComment) => !DEMO_IDS.has(c.authorId)),
+    reactions:   (stored?.reactions ?? []).map((r: GiftReaction) => ({ ...r, userIds: r.userIds.filter((u: string) => !DEMO_IDS.has(u)) })).filter((r: GiftReaction) => r.userIds.length > 0),
     follows:     stored?.follows ?? [],
     showcases:   stored?.showcases ?? {},
     notifications: stored?.notifications ?? [],
@@ -314,6 +313,24 @@ export const useNftGiftsStore = create<NftGiftsState>((set, get) => {
       mut(s => ({ listings: [listing, ...s.listings.filter(l => l.giftId !== giftId)] }));
       const gift = get().giftById(giftId);
       writeLog('listing_created', `Подарок «${gift?.name ?? giftId}» выставлен на продажу (${p.type})`); flush();
+      return { ok: true };
+    },
+
+    // Покупка у платформы: подарок ещё не имел настоящего владельца.
+    buyFromMint: async (giftId) => {
+      const r = await apiNftBuyMint(giftId);
+      if (!r.ok) return { ok: false, reason: r.reason };
+      const price = r.price;
+      mut(s => ({
+        gifts: s.gifts.map(g => g.id===giftId ? { ...g, ownerId: r.ownerId, ownerName: r.ownerName, price,
+          priceHistory: [...g.priceHistory, { at: nowISO(), price }] } : g),
+        provenance: [...s.provenance, { id: genId('prov'), giftId, type:'sale' as const, fromId: MINT_ID, fromName: 'Sky Mint', toId: r.ownerId, toName: r.ownerName, price, at: nowISO() }],
+        transactions: [...s.transactions, { id: genId('tx'), userId: r.ownerId, giftId, type:'buy' as const, amount: price, at: nowISO() }],
+      }));
+      const gift = get().giftById(giftId);
+      writeLog('purchase', `Куплен подарок «${gift?.name ?? giftId}» за ${price.toLocaleString('ru-RU')} ₽`);
+      notify(r.ownerId, 'purchase', 'Покупка совершена', `Вы приобрели «${gift?.name ?? giftId}» за ${price.toLocaleString('ru-RU')} ₽`, giftId);
+      flush();
       return { ok: true };
     },
 

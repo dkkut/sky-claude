@@ -2,11 +2,11 @@
    SKY GIFTS NFT  —  Главный экран
 ====================================================================== */
 import { memo, useMemo } from 'react';
-import { Bell, ArrowUpRight, Search as SearchIcon, Clock } from 'lucide-react';
+import { Bell, ArrowUpRight, Search as SearchIcon } from 'lucide-react';
 import { C, fmt } from '@/marketplace/SkyMarket';
 import { useAuthStore } from '@/core/auth/store';
 import { useNftGiftsStore } from './nftStore';
-import { GlassCard, HRow, Pill } from './shared';
+import { GlassCard, HRow } from './shared';
 import { GiftBackground } from './backgrounds';
 import { GiftCard } from './GiftCard';
 import { RARITY_CONFIG, RARITY_ORDER } from './types';
@@ -70,7 +70,6 @@ export const GiftsHome = memo(({ onOpenGift, onOpenCollection, onOpenSearch, onO
     return cb-ca;
   }).slice(0,10), [gifts]);
   const recentlySoldGifts = useMemo(() => recentSales.map(l=>gifts.find(g=>g.id===l.giftId)).filter(Boolean) as Gift[], [recentSales, gifts]);
-  const comingSoon = useMemo(() => [...collections].sort((a,b)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime()).slice(0,4), [collections]);
 
   return (
     <div className="h-full overflow-y-auto pb-10" style={{ scrollbarWidth:'none' }}>
@@ -121,20 +120,6 @@ export const GiftsHome = memo(({ onOpenGift, onOpenCollection, onOpenSearch, onO
       <HRow title="Тренды дня">{trends.map(g => <GiftCard key={g.id} gift={g} onClick={() => onOpenGift(g.id)}/>)}</HRow>
       {recentlySoldGifts.length > 0 && <HRow title="Недавно проданные">{recentlySoldGifts.map(g => <GiftCard key={g.id} gift={g} onClick={() => onOpenGift(g.id)}/>)}</HRow>}
 
-      <div className="mt-5">
-        <div className="px-5 flex items-center gap-1.5 mb-2.5"><Clock size={13} style={{ color: C.t3 }}/><p className="text-sm font-bold" style={{ color: C.t1 }}>Скоро появятся</p></div>
-        <div className="flex gap-3 overflow-x-auto px-5 pb-1" style={{ scrollbarWidth:'none' }}>
-          {comingSoon.map(c => (
-            <div key={c.id} className="relative shrink-0 overflow-hidden rounded-3xl" style={{ width:160, height:120 }}>
-              <GiftBackground theme={c.cover} rarity="legendary" animated={false}/>
-              <div className="absolute inset-0 grid place-items-center" style={{ background:'rgba(5,5,10,0.55)', backdropFilter:'blur(2px)' }}>
-                <Pill label="Скоро" color={C.amber}/>
-              </div>
-              <p className="absolute bottom-2 left-2.5 right-2.5 text-[11px] font-bold truncate" style={{ color:'#fff' }}>{c.name}</p>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 });

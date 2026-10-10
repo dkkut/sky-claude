@@ -150,7 +150,7 @@ export const GiftDetail = ({ giftId, onClose, onTrade, onOpenProfile }: {
                 <button type="button" onClick={() => setConfirmDelete(true)} className="flex items-center justify-center gap-1.5 rounded-xl py-3 text-xs font-bold" style={{ background: 'rgba(244,63,94,0.12)', color: '#f43f5e' }}><Trash2 size={14}/> Удалить</button>
               )
             ) : (
-              <button type="button" disabled={!listing} onClick={() => onTrade('buy', gift.id)} className="flex items-center justify-center gap-1.5 rounded-xl py-3 text-xs font-bold disabled:opacity-40" style={{ background: C.l2, color: C.t1 }}><ShoppingBag size={14}/> {listing ? 'Купить' : 'Не продаётся'}</button>
+              <button type="button" disabled={!listing && gift.ownerId !== 'sky-mint'} onClick={() => onTrade('buy', gift.id)} className="flex items-center justify-center gap-1.5 rounded-xl py-3 text-xs font-bold disabled:opacity-40" style={{ background: C.l2, color: C.t1 }}><ShoppingBag size={14}/> {listing ? 'Купить' : 'Не продаётся'}</button>
             )}
           </div>
           {isOwner && !canSellFor(gift.id) && (

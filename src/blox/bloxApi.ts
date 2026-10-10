@@ -1,5 +1,5 @@
 import { apiCall, uploadUrl } from '@/core/auth/api';
-import { NATIVE_APP } from '@/core/nativeApp';
+import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 import { apiMarketTicket, getMarketMediaTicket } from '@/marketplace/marketApi';
 
 /* Клиент Sky Blox. Ничего тут не решается: видимость, цены, права и
@@ -24,7 +24,7 @@ export const ensureBloxMedia = () => apiMarketTicket();
 export const bloxImageUrl = (id: string) => {
   const url = uploadUrl(`/api/blox/images/${enc(id)}`);
   const t = getMarketMediaTicket();
-  return NATIVE_APP && t ? `${url}?t=${enc(t)}` : url;
+  return MEDIA_BY_URL && t ? `${url}?t=${enc(t)}` : url;
 };
 
 export type Status = 'draft' | 'pending' | 'needs_changes' | 'approved' | 'published' | 'hidden' | 'blocked' | 'archived';

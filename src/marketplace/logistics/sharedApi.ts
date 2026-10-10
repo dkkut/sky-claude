@@ -12,7 +12,7 @@
  *   · своя роль на складе — она берётся из базы.
  */
 import { apiCall, uploadUrl } from '@/core/auth/api';
-import { NATIVE_APP } from '@/core/nativeApp';
+import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 import { getMarketMediaTicket } from '../marketApi';
 
 const enc = encodeURIComponent;
@@ -77,7 +77,7 @@ export const apiVideoReview = (warehouseId: string) =>
 export const videoUrl = (reviewId: string) => {
   const url = uploadUrl(`/api/logistics/video/${enc(reviewId)}`);
   const ticket = getMarketMediaTicket();
-  if (!NATIVE_APP || !ticket) return url;
+  if (!MEDIA_BY_URL || !ticket) return url;
   return `${url}?t=${encodeURIComponent(ticket)}`;
 };
 

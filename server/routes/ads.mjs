@@ -10,7 +10,7 @@
  * маршрутизация, лимиты запросов и запись в уже существующий admin_log.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession, appBody } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   PLACEMENT_KEYS, createCampaign, myCampaigns, campaignDetail,
@@ -160,7 +160,7 @@ export const adsRoutes = async (req, res, url) => {
   if (req.method === 'POST' && path === '/api/ads/ticket') {
     const ticket = issueTicket(me);
     res.setHeader('Set-Cookie', ticketCookie(me, ticket));
-    return json(res, 200, appBody(req, { ok: true }, { ticket }));
+    return json(res, 200, mediaBody(req, { ok: true }, { ticket }));
   }
 
   if (req.method === 'POST' && path === '/api/ads/media') {

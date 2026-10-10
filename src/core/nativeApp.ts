@@ -13,6 +13,16 @@
 
 export const NATIVE_APP = import.meta.env.VITE_NATIVE_APP === '1';
 
+/**
+ * iPhone/iPad (Safari, PWA): медиаэлементы там берут файл через системный загрузчик, который
+ * не присылает наши HttpOnly SameSite-куки пропуска — файл отвечает «доступ запрещён», а плеер
+ * пишет «браузер не может открыть файл». Поэтому на этих устройствах пропуск едет в адресе (?t=),
+ * как и в нативном приложении. Пропуск короткий и узкий: только выдача медиа, 6 часов.
+ */
+export const IOS_WEB = !NATIVE_APP && typeof navigator !== 'undefined'
+  && (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints ?? 0) > 1));
+export const MEDIA_BY_URL = NATIVE_APP || IOS_WEB;
+
 /** Абсолютный адрес API. Пусто в веб-сборке — там пути и так относительные. */
 export const API_ORIGIN = NATIVE_APP ? (import.meta.env.VITE_API_ORIGIN ?? '') : '';
 

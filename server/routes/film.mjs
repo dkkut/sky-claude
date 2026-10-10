@@ -23,7 +23,7 @@
  *    человеку этот фильм.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession, appBody } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import {
   listCatalog, listCategories, listShorts, listMine, readMovie, visibleMovie,
@@ -198,7 +198,7 @@ export const filmRoutes = async (req, res, url) => {
   if (req.method === 'POST' && path === '/api/film/ticket') {
     const ticket = issueTicket(me);
     res.setHeader('Set-Cookie', ticketCookie(me, ticket));
-    return json(res, 200, appBody(req, { ok: true }, { ticket }));
+    return json(res, 200, mediaBody(req, { ok: true }, { ticket }));
   }
 
   /* ── Каталог ───────────────────────────────────────────────── */

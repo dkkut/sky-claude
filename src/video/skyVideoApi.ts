@@ -9,7 +9,7 @@
  */
 import { withTicketRefresh } from '@/core/mediaTicketRefresh';
 import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
-import { NATIVE_APP } from '@/core/nativeApp';
+import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 
 export type VideoStatus = 'draft' | 'published' | 'hidden' | 'removed';
 export type VideoPrivacy = 'public' | 'unlisted' | 'private';
@@ -93,7 +93,7 @@ let mediaTicket: string | null = null;
 
 const withMediaTicket = (path: string) => {
   const url = uploadUrl(path);
-  if (!NATIVE_APP || !mediaTicket) return url;
+  if (!MEDIA_BY_URL || !mediaTicket) return url;
   return `${url}?t=${encodeURIComponent(mediaTicket)}`;
 };
 

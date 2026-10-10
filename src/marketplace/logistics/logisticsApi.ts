@@ -13,7 +13,7 @@
  *     тому складу, на котором стоит сканирующий.
  */
 import { apiCall, getAccessToken, uploadUrl } from '@/core/auth/api';
-import { NATIVE_APP } from '@/core/nativeApp';
+import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 import { getMarketMediaTicket } from '../marketApi';
 import type {
   Courier, CourierReview, CollabRequest, CollabStatus, CourierChatMessage,
@@ -222,7 +222,7 @@ export const apiDeleteWarehouse = (id: string) =>
 export const warehousePhotoUrl = (photoId: string) => {
   const url = uploadUrl(`/api/logistics/photos/${enc(photoId)}`);
   const ticket = getMarketMediaTicket();
-  if (!NATIVE_APP || !ticket) return url;
+  if (!MEDIA_BY_URL || !ticket) return url;
   return `${url}?t=${encodeURIComponent(ticket)}`;
 };
 

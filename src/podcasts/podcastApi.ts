@@ -6,7 +6,7 @@
  * а браузер переписывается.
  */
 import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
-import { NATIVE_APP } from '@/core/nativeApp';
+import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 
 export interface Host { name: string; role?: string }
 
@@ -99,7 +99,7 @@ let mediaTicket: string | null = null;
 
 const withMediaTicket = (path: string) => {
   const url = uploadUrl(path);
-  if (!NATIVE_APP || !mediaTicket) return url;
+  if (!MEDIA_BY_URL || !mediaTicket) return url;
   return `${url}?t=${encodeURIComponent(mediaTicket)}`;
 };
 

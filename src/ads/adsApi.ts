@@ -6,7 +6,7 @@
    Этот файл только зовёт ручки и приводит ответ к клиентским типам.
 =============================================================== */
 import { apiCall, uploadUrl } from '@/core/auth/api';
-import { NATIVE_APP } from '@/core/nativeApp';
+import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 import type { AdCampaign, AdPlacement, AdFormat } from './store';
 
 /**
@@ -27,7 +27,7 @@ export const apiAdsTicket = async () => {
 
 export const adMediaUrl = (mediaId: string) => {
   const url = uploadUrl(`/api/ads/media/${encodeURIComponent(mediaId)}`);
-  if (!NATIVE_APP || !mediaTicket) return url;
+  if (!MEDIA_BY_URL || !mediaTicket) return url;
   return `${url}?t=${encodeURIComponent(mediaTicket)}`;
 };
 

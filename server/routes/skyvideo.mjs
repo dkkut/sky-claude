@@ -12,7 +12,7 @@
  * здесь ни при чём.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession, appBody } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   listFeed, listCategories, listMine, readVideo, visibleVideo,
@@ -188,7 +188,7 @@ export const skyVideoRoutes = async (req, res, url) => {
   if (req.method === 'POST' && path === '/api/skyvideo/ticket') {
     const ticket = issueTicket(me);
     res.setHeader('Set-Cookie', ticketCookie(me, ticket));
-    return json(res, 200, appBody(req, { ok: true }, { ticket }));
+    return json(res, 200, mediaBody(req, { ok: true }, { ticket }));
   }
 
   /* ── Лента и категории ─────────────────────────────────────── */

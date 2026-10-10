@@ -7,7 +7,7 @@
  * нельзя ни прочитать из разметки, ни унести вместе со страницей.
  */
 import { apiCall, uploadUrl } from '@/core/auth/api';
-import { NATIVE_APP } from '@/core/nativeApp';
+import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 import { getMarketMediaTicket } from '../marketApi';
 import type { GeoPoint } from './types';
 
@@ -65,7 +65,7 @@ export const mapStillUrl = (
   /* Тег <img> заголовок авторизации не отправляет — в родном приложении
      вместо него в адрес подставляется пропуск маркета (пропуск общий
      на market/logistics/maps, см. marketApi.ts::getMarketMediaTicket). */
-  const ticket = NATIVE_APP ? getMarketMediaTicket() : null;
+  const ticket = MEDIA_BY_URL ? getMarketMediaTicket() : null;
   if (ticket) params.set('t', ticket);
   return uploadUrl(`/api/maps/still?${params}`);
 };

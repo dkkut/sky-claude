@@ -13,7 +13,7 @@
  *   · трек-номер и состояние посылки — их приносит перевозчик.
  */
 import { apiCall, uploadUrl } from '@/core/auth/api';
-import { NATIVE_APP } from '@/core/nativeApp';
+import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 import type {
   Product, Review, Seller, SellerStats, Order, OrderEvent, OrderAction,
   Game, PickupPoint, Carrier, Shipment, DealChat, ChatMessage,
@@ -91,7 +91,7 @@ export const getMarketMediaTicket = () => mediaTicket;
 
 const withMediaTicket = (path: string) => {
   const url = uploadUrl(path);
-  if (!NATIVE_APP || !mediaTicket) return url;
+  if (!MEDIA_BY_URL || !mediaTicket) return url;
   return `${url}?t=${encodeURIComponent(mediaTicket)}`;
 };
 

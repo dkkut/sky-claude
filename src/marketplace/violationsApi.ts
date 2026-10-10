@@ -7,7 +7,7 @@
  * не придумываются на клиенте.
  */
 import { apiCall, uploadUrl } from '@/core/auth/api';
-import { NATIVE_APP } from '@/core/nativeApp';
+import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 
 export type ViolationModule = 'market' | 'warehouse' | 'pvz';
 export type ViolationStatus = 'DETECTED' | 'UNDER_REVIEW' | 'CONFIRMED' | 'REJECTED' | 'APPEALED' | 'CANCELLED' | 'CLOSED';
@@ -127,7 +127,7 @@ export const apiViolationsTicket = async () => {
 /** Адрес байт доказательства — собирается здесь, путь на диске клиенту не отдают. */
 export const evidenceFileUrl = (evidenceId: string) => {
   const url = uploadUrl(`/api/violations/evidence/${enc(evidenceId)}`);
-  if (!NATIVE_APP || !evidenceTicket) return url;
+  if (!MEDIA_BY_URL || !evidenceTicket) return url;
   return `${url}?t=${encodeURIComponent(evidenceTicket)}`;
 };
 

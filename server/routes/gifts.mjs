@@ -25,7 +25,7 @@ import {
   errCode as primeErrCode,
 } from './../primegifts.mjs';
 import {
-  currentOwner, ownersOf, provenanceOf, transferNft, ownedByProfile, publicOwnedBy,
+  currentOwner, ownersOf, provenanceOf, transferNft, ownedByProfile, publicOwnedBy, buyFromMint,
 } from './../nft.mjs';
 import {
   activeListings, listingFor, createListing, cancelListing, buyListing,
@@ -320,7 +320,7 @@ export const giftRoutes = async (req, res, url) => {
     const r = target === me ? { hidden: false, items: await ownedByProfile(me) } : await publicOwnedBy(me, target);
     return json(res, 200, r);
   }
-  const nftMatch = /^\/api\/gifts\/nft\/([a-z0-9-]{1,32})(\/owner|\/history|\/transfer)?$/.exec(path);
+  const nftMatch = /^\/api\/gifts\/nft\/([a-z0-9-]{1,32})(\/owner|\/history|\/transfer|\/buy)?$/.exec(path);
   if (nftMatch) {
     const nftId = nftMatch[1];
     if (!isKnownNftId(nftId)) return json(res, 404, { error: 'not_found' });
@@ -331,6 +331,11 @@ export const giftRoutes = async (req, res, url) => {
     if (req.method === 'GET' && nftMatch[2] === '/history') {
       if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
       return json(res, 200, { provenance: await provenanceOf(nftId) });
+    }
+    if (req.method === 'POST' && nftMatch[2] === '/buy') {
+      if (!rateLimit(`gift:buy:${me}`, BUY_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+      const r = await buyFromMint(me, nftId);
+      return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
     }
     if (req.method === 'POST' && nftMatch[2] === '/transfer') {
       if (!rateLimitPerHour(`gift:transfer:${me}`, TRANSFER_PER_HOUR)) return json(res, 429, { error: 'too_many_requests' });

@@ -12,23 +12,26 @@ import { useAuthStore } from '@/core/auth/store';
 import { useNftGiftsStore } from './nftStore';
 import { GiftSlide, GlassCard, EmptyState } from './shared';
 import type { ListingType } from './types';
+import { MINT_ID } from './nftStore';
+import { getConfirmSale } from './safety';
 
 /* ── Покупка ──────────────────────────────────────────────────────── */
 const BuyFlow = ({ giftId, onDone }: { giftId: string; onDone: () => void }) => {
-  const { giftById, listingFor, buyListing, provenanceFor } = useNftGiftsStore();
+  const { giftById, listingFor, buyListing, buyFromMint, provenanceFor } = useNftGiftsStore();
   const gift = giftById(giftId);
-  const listing = listingFor(giftId);
+  const mintSale = gift?.ownerId === MINT_ID;       // подарок ещё не куплен — продаёт платформа
+  const listing = mintSale ? null : listingFor(giftId);
   const [confirmed, setConfirmed] = useState(false);
   const [buying, setBuying] = useState(false);
   const [err, setErr] = useState('');
-  if (!gift || !listing) return <EmptyState icon={ShoppingBag} title="Лот недоступен"/>;
+  if (!gift || (!listing && !mintSale)) return <EmptyState icon={ShoppingBag} title="Лот недоступен"/>;
 
-  const price = listing.type==='auction' ? (listing.currentBid ?? listing.price) : listing.price;
+  const price = listing ? (listing.type==='auction' ? (listing.currentBid ?? listing.price) : listing.price) : gift.price;
   const sales = provenanceFor(giftId).filter(p=>p.type==='sale').slice(-5).reverse();
 
   const confirm = async () => {
     setErr(''); setBuying(true);
-    const r = await buyListing(listing.id);
+    const r = listing ? await buyListing(listing.id) : await buyFromMint(gift.id);
     setBuying(false);
     if (!r.ok) { setErr(r.reason ?? 'Не удалось купить подарок'); return; }
     setConfirmed(true); setTimeout(onDone, 1400);
@@ -82,6 +85,8 @@ const SellFlow = ({ giftId, onDone }: { giftId: string; onDone: () => void }) =>
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [armed, setArmed] = useState(false);          // «защита от случайной продажи»: первое нажатие только просит подтвердить
+  const myId = useAuthStore(s => s.currentUserId);
 
   if (!gift) return null;
 
@@ -180,13 +185,14 @@ const SellFlow = ({ giftId, onDone }: { giftId: string; onDone: () => void }) =>
       )}
       {err && <p className="text-xs text-center" style={{ color: C.red }}>{err}</p>}
       <button type="button" disabled={busy} onClick={async () => {
+        if (!armed && myId && getConfirmSale(myId)) { setArmed(true); return; }
         setErr(''); setBusy(true);
         const r = await createListing(giftId, { type, price, reservePrice: type==='reserve'?reservePrice:undefined, decayPct: decayOn?decayPct:0, durationH });
         setBusy(false);
         if (!r.ok) { setErr(r.reason ?? 'Не удалось выставить лот'); return; }
         setDone(true); setTimeout(onDone, 1200);
       }} className="w-full flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white disabled:opacity-50" style={{ background: C.acc }}>
-        <Tag size={16}/> {busy ? 'Публикация…' : 'Опубликовать лот'}
+        <Tag size={16}/> {busy ? 'Публикация…' : armed ? `Подтвердить: выставить за ${fmt(price)}` : 'Опубликовать лот'}
       </button>
     </div>
   );

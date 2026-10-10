@@ -15,7 +15,8 @@
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { getPrivacy } from './privacy.mjs';
-import { isKnownNftId, genesisOwner } from './nftgenesis.mjs';
+import { isKnownNftId, genesisOwner, MINT_ID, mintPrice } from './nftgenesis.mjs';
+import { wallet } from './wallet.mjs';
 import { notifyGift } from './giftnotify.mjs';
 
 const materializeGenesis = async (client, nftId) => {
@@ -171,4 +172,28 @@ export const transferNft = async (senderId, nftId, recipientId, source = 'gift',
   } finally {
     client.release();
   }
+};
+
+/**
+ * Покупка у платформы: подарок, которого ещё никто не купил, принадлежит
+ * Sky Mint и стоит ровно столько, сколько насчитал каталог (mintPrice,
+ * цену клиент не присылает). Порядок тот же, что в nftmarket.mjs::buyListing:
+ * списали деньги → передали → если передать не вышло (кто-то купил
+ * раньше), вернули деньги.
+ */
+export const buyFromMint = async (buyerId, nftId) => {
+  if (!isKnownNftId(nftId)) return { error: 'not_found' };
+  const owner = await currentOwner(nftId);
+  if (!owner || owner.id !== MINT_ID) return { error: 'unavailable' };
+  const price = mintPrice(nftId);
+  if (!Number.isInteger(price) || price < 1) return { error: 'unavailable' };
+  const ref = `mint:${nftId}:${buyerId}`;
+  const paid = await wallet.spend(buyerId, price, 'nft_purchase', `Покупка NFT «${nftId}» у Sky Mint`, ref);
+  if (paid.error) return { error: paid.error };
+  const t = await transferNft(MINT_ID, nftId, buyerId, 'mint', { price, type: 'sale' });
+  if (!t.ok) {
+    await wallet.refund(buyerId, price, 'Возврат — подарок уже куплен', ref);
+    return { error: t.error === 'not_owner' ? 'unavailable' : (t.error ?? 'unavailable') };
+  }
+  return { ok: true, nftId, price, ownerId: t.ownerId, ownerName: t.ownerName };
 };

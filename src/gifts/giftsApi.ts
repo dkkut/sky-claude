@@ -292,6 +292,14 @@ export const apiNftProfile = async (userId: string): Promise<{ hidden: boolean; 
   return r.ok ? (r.data ?? { hidden: false, items: [] }) : { hidden: false, items: [] };
 };
 
+/** Покупка у платформы (Sky Mint): цену определяет сервер. */
+export const apiNftBuyMint = async (nftId: string) => {
+  const r = await apiCall<{ nftId: string; price: number; ownerId: string; ownerName: string }>(
+    `/api/gifts/nft/${encodeURIComponent(nftId)}/buy`, { method: 'POST' });
+  if (r.ok) return { ok: true as const, ...(r.data as { nftId: string; price: number; ownerId: string; ownerName: string }) };
+  return { ok: false as const, reason: giftErrorText(r.error) };
+};
+
 /* ─── NFT: маркет (выставить / снять / купить) ──────────────────────── */
 
 export const apiNftActiveListings = async (): Promise<NftListing[]> => {
