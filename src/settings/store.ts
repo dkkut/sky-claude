@@ -2,6 +2,7 @@
    SKY SETTINGS  -  настройки приложения
    Реально работающие настройки с сохранением
 =============================================================== */
+import { startLightNormalizer, stopLightNormalizer } from './lightNormalizer';
 import { create } from 'zustand';
 import { wireSend } from '@/core/wire';
 
@@ -103,6 +104,7 @@ export const applySettings = (s: AppSettings) => {
      только в тёмном режиме: иначе он перебил бы светлую палитру из CSS
      (инлайновый style всегда сильнее обычного правила). */
   root.dataset.theme = s.colorScheme;
+  if (s.colorScheme === 'light') startLightNormalizer(); else stopLightNormalizer();
   if (s.colorScheme === 'dark') {
     const theme = THEME_MODES[s.theme];
     root.style.setProperty('--bg',    theme.bg);

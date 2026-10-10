@@ -12,7 +12,7 @@ import { useAuthStore } from '@/core/auth/store';
 import { useStreamsStore, CATEGORY_LABEL, type StreamCategory } from './store';
 import { StreamBroadcaster } from './webrtc';
 
-const S = { bg:'#0a0a0e', l1:'#131318', l2:'#1c1c22', border:'rgba(255,255,255,0.08)', accent:'var(--accent)', t1:'#f2f2f5', t2:'rgba(255,255,255,0.65)', t3:'rgba(255,255,255,0.4)', red:'#e0555f' };
+const S = { bg:'var(--bg)', l1:'var(--bg-l1)', l2:'var(--bg-l2)', border:'rgba(255,255,255,0.08)', accent:'var(--accent)', t1:'#f2f2f5', t2:'rgba(255,255,255,0.65)', t3:'rgba(255,255,255,0.4)', red:'#e0555f' };
 const CATS = Object.keys(CATEGORY_LABEL) as StreamCategory[];
 
 interface StreamStudioProps { onClose: () => void; onGoLive?: (id: string) => void; }

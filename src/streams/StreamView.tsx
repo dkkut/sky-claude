@@ -10,7 +10,7 @@ import { useAuthStore } from '@/core/auth/store';
 import { useStreamsStore } from './store';
 import { StreamViewerConn } from './webrtc';
 
-const S = { bg:'#0a0a0e', l1:'#131318', l2:'#1c1c22', border:'rgba(255,255,255,0.08)', accent:'var(--accent)', t1:'#f2f2f5', t2:'rgba(255,255,255,0.65)', t3:'rgba(255,255,255,0.4)', red:'#e0555f', gold:'#f5b942' };
+const S = { bg:'var(--bg)', l1:'var(--bg-l1)', l2:'var(--bg-l2)', border:'rgba(255,255,255,0.08)', accent:'var(--accent)', t1:'#f2f2f5', t2:'rgba(255,255,255,0.65)', t3:'rgba(255,255,255,0.4)', red:'#e0555f', gold:'#f5b942' };
 const REACTS = ['❤️','🔥','😂','👏','😮'];
 
 export const StreamView = ({ streamId, onClose, onOpenProfile }: { streamId: string; onClose: () => void; onOpenProfile: (id: string) => void }) => {

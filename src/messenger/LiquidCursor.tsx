@@ -128,7 +128,7 @@ export const ThemePicker = ({ chatId, onClose }: ThemePickerProps) => {
         exit={{ y: 60, opacity: 0 }}
         transition={{ type: 'spring', damping: 28, stiffness: 320 }}
         className="w-full max-w-lg overflow-hidden"
-        style={{ borderRadius: '24px 24px 0 0', background: '#121215', maxHeight: '80vh' }}
+        style={{ borderRadius: '24px 24px 0 0', background: 'var(--bg-l1)', maxHeight: '80vh' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

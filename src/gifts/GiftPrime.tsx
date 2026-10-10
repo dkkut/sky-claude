@@ -189,7 +189,7 @@ export const GiftPrimeModal = ({ toUserId, toName, onClose }: GiftPrimeProps) =>
         <motion.div initial={{ y:80, opacity:0 }} animate={{ y:0, opacity:1 }}
           exit={{ y:80 }} transition={{ type:'spring', damping:28, stiffness:300 }}
           className="w-full max-w-md overflow-hidden"
-          style={{ background:'#0f0f16', borderRadius:'28px 28px 0 0', maxHeight:'90vh' }}
+          style={{ background:'var(--bg-l1)', borderRadius:'28px 28px 0 0', maxHeight:'90vh' }}
           onClick={e => e.stopPropagation()}>
 
           {/* Handle */}

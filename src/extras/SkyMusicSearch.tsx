@@ -113,7 +113,7 @@ export const SkyMusicSearch = ({
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="sky-music-scope absolute inset-0 z-30 flex flex-col" style={{ background: '#0a0a0f' }}>
+      className="sky-music-scope absolute inset-0 z-30 flex flex-col" style={{ background: 'var(--bg)' }}>
       <div className="flex shrink-0 items-center gap-2 px-4 pt-4 pb-2">
         <div className="flex flex-1 items-center gap-2 rounded-2xl px-3.5 py-2.5" style={{ background: 'rgba(255,255,255,0.06)' }}>
           <Search size={16} color="#5c626e"/>

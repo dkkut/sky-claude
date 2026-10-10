@@ -19,12 +19,12 @@ import { useAuthStore } from '@/core/auth/store';
 
 /* -- Tokens --------------------------------------------------- */
 const P = {
-  bg:     '#0f0f11',
+  bg:     'var(--bg)',
   l1:     'var(--bg-l1)',
-  l2:     '#1c1c20',
-  l3:     '#222227',
+  l2:     'var(--bg-l2)',
+  l3:     'var(--bg-l3)',
   border: 'var(--border)',
-  b2:     'rgba(255,255,255,0.14)',
+  b2:     'var(--border-m)',
   t1:     'var(--t1)',
   t2:     'var(--t2)',
   t3:     'var(--t3)',

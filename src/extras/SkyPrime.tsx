@@ -116,7 +116,7 @@ const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
             onClick={() => setShowRewards(false)}>
             <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30 }}
               onClick={e => e.stopPropagation()}
-              className={isMobile ? 'max-h-[75vh] w-full overflow-y-auto rounded-t-2xl p-3.5' : 'max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-3xl p-5'} style={{ background: '#12141c' }}>
+              className={isMobile ? 'max-h-[75vh] w-full overflow-y-auto rounded-t-2xl p-3.5' : 'max-h-[80vh] w-full max-w-md overflow-y-auto rounded-t-3xl p-5'} style={{ background: 'var(--bg-l1)' }}>
               <div className={isMobile ? 'mb-3 flex items-center justify-between' : 'mb-4 flex items-center justify-between'}>
                 <p className={isMobile ? 'text-sm font-black text-white' : 'text-base font-black text-white'}>Каталог наград</p>
                 <button type="button" onClick={() => setShowRewards(false)}><X size={16} style={{ color: 'var(--t3)' }}/></button>

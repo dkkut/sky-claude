@@ -225,7 +225,7 @@ const PassDetail = ({ pass, whName, onClose }: { pass: AccessPass; whName: strin
   // Поэтому QR рисуется здесь же, на устройстве, и наружу не уходит.
   const qrUrl = qrDataUri(
     JSON.stringify({ code: pass.code, warehouseId: pass.warehouseId, level: pass.accessLevel }),
-    { size: 200, background: '#141420', color: '#ffffff', quietZone: 2 },
+    { size: 200, background: 'var(--bg-l2)', color: '#ffffff', quietZone: 2 },
   );
 
   return (

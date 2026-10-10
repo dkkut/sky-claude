@@ -271,7 +271,7 @@ export const SkyTickets = () => {
           </div>
           <div className="flex justify-center px-6 pb-4">
             <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-              <img src={qrDataUri(t.qr ?? t.code, { size: 200, background: '#141420', color: '#ffffff', quietZone: 2 })}
+              <img src={qrDataUri(t.qr ?? t.code, { size: 200, background: 'var(--bg-l2)', color: '#ffffff', quietZone: 2 })}
                 alt="QR" width={200} height={200} style={{ display: 'block' }} />
             </div>
           </div>

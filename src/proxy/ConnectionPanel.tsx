@@ -17,7 +17,7 @@ import {
 
 /* ── Theme ──────────────────────────────────────────────────────── */
 const C = {
-  bg:'#0f0f14', l1:'#161619', l2:'#1c1c22', l3:'#232328',
+  bg:'var(--bg)', l1:'var(--bg-l1)', l2:'var(--bg-l2)', l3:'var(--bg-l3)',
   brd:'var(--border)', t1:'var(--t1)', t2:'var(--t2)', t3:'var(--t3)',
   acc:'var(--accent)', green:'var(--green)', amber:'var(--amber)', red:'var(--red)',
 };

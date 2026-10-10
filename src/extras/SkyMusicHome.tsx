@@ -66,7 +66,7 @@ const WaveSheet = ({ pool, c1, c2, playing, activeId, onPlay, onClose }: {
   onPlay: (t: Track) => void; onClose: () => void;
 }) => (
   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-    className="absolute inset-0 z-40 flex flex-col" style={{ background: '#0a0a0f' }}>
+    className="absolute inset-0 z-40 flex flex-col" style={{ background: 'var(--bg)' }}>
     <div className="relative shrink-0 overflow-hidden" style={{ height: 208 }}>
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <SkySphere color1={c1} color2={c2} active={playing}/>
@@ -214,7 +214,7 @@ export const SkyMusicHome = ({
   // в самом браузере и не умел ни грузиться, ни отказывать.
   if (loading && tracks.length === 0) {
     return (
-      <div className="sky-music-scope grid h-full place-items-center" style={{ background: '#0a0a0f' }}>
+      <div className="sky-music-scope grid h-full place-items-center" style={{ background: 'var(--bg)' }}>
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 rounded-full border-2 border-white/10 border-t-white/60 sky-spin"/>
           <p className="text-[13px]" style={{ color: '#7d818c' }}>Загружаем музыку…</p>
@@ -225,7 +225,7 @@ export const SkyMusicHome = ({
 
   if (error && tracks.length === 0) {
     return (
-      <div className="sky-music-scope grid h-full place-items-center px-8 text-center" style={{ background: '#0a0a0f' }}>
+      <div className="sky-music-scope grid h-full place-items-center px-8 text-center" style={{ background: 'var(--bg)' }}>
         <div>
           <p className="text-[15px] font-bold" style={{ color: '#fafafb' }}>Музыка не загрузилась</p>
           <p className="mt-1.5 text-[13px]" style={{ color: '#7d818c' }}>{error}</p>
@@ -243,7 +243,7 @@ export const SkyMusicHome = ({
 
   if (pub.length === 0) {
     return (
-      <div className="sky-music-scope relative h-full" style={{ background: '#0a0a0f' }}>
+      <div className="sky-music-scope relative h-full" style={{ background: 'var(--bg)' }}>
         <div className="absolute inset-x-0 top-0 h-56">
           <SkySphere color1={c1} color2={c2} active={playing}/>
         </div>
@@ -268,7 +268,7 @@ export const SkyMusicHome = ({
   }
 
   return (
-    <div className="sky-music-scope relative h-full" style={{ background: '#0a0a0f' }}>
+    <div className="sky-music-scope relative h-full" style={{ background: 'var(--bg)' }}>
       <div className="h-full overflow-y-auto pb-8" style={{ scrollbarWidth: 'none' }}>
       {/* Top bar */}
       <div className="flex items-center justify-between px-5 pt-5 pb-1">

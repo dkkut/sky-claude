@@ -10,7 +10,7 @@ import { useAuthStore } from '@/core/auth/store';
 import type { ChatItem } from '@/messenger/types';
 
 const T = {
-  bg: '#0d0d0f', panel: '#121215', l2: '#1c1c20',
+  bg: 'var(--bg)', panel: 'var(--bg-l1)', l2: 'var(--bg-l2)',
   border: 'var(--border)', accent: '#5b9bd1',
   t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)',
   mine: 'linear-gradient(135deg,#1d4ed8,#2563eb)', other: '#1e1e26',

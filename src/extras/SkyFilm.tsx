@@ -52,14 +52,14 @@ import { ACCEPT_VIDEO, ACCEPT_IMAGE } from '@/shared/fileAccept';
 
 /* -- токены ----------------------------------------------- */
 const K = {
-  bg:     '#060609',
-  card:   '#111116',
-  card2:  '#1a1a22',
+  bg:     'var(--bg)',
+  card:   'var(--bg-l1)',
+  card2:  'var(--bg-l2)',
   orange: '#FF5500',
   orange2:'#FF8C42',
-  text:   '#FFFFFF',
-  sub:    '#9898b0',
-  dim:    '#50506a',
+  text:   'var(--t1)',
+  sub:    'var(--t2)',
+  dim:    'var(--t3)',
   gold:   '#F5C518',
   border: 'var(--border)',
 };

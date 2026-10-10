@@ -194,7 +194,7 @@ export const GiftMarket = ({ onClose }: { onClose: () => void }) => {
   return (
     <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
       className="fixed inset-0 z-[500] flex flex-col"
-      style={{ background:'#0d0d0f' }}>
+      style={{ background:'var(--bg-l1)' }}>
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-4 shrink-0"
@@ -295,7 +295,7 @@ export const GiftMarket = ({ onClose }: { onClose: () => void }) => {
         {selected && (
           <motion.div initial={{ y:80, opacity:0 }} animate={{ y:0, opacity:1 }} exit={{ y:80, opacity:0 }}
             className="shrink-0 px-4 pb-6 pt-3 space-y-2.5"
-            style={{ borderTop:'1px solid rgba(255,255,255,0.06)', background:'#121215' }}>
+            style={{ borderTop:'1px solid rgba(255,255,255,0.06)', background:'var(--bg-l1)' }}>
             {err && <p className="text-xs text-center" style={{ color:'var(--red)' }}>{err}</p>}
             {done ? (
               <div className="flex items-center justify-center gap-2 py-3">

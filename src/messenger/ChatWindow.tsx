@@ -1450,7 +1450,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   }
 
   return (
-    <section data-chat-light={theme.light ? '' : undefined} className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+    <section data-chat-light={theme.light ? '' : undefined} data-keep-dark={theme.light ? undefined : ''} className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden"
       style={{ background: theme.bg, backgroundImage: theme.bgImage !== 'none' ? theme.bgImage : undefined, backgroundSize: theme.bgSize,
         ...(theme.light ? ({ ...LIGHT_VARS, colorScheme: 'light', color: '#15161a' } as import('react').CSSProperties) : null) }}
       onDragOver={e => { e.preventDefault(); setDragging(true); }}

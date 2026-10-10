@@ -296,3 +296,10 @@ body {
 /* Ссылка в сообщении (#6ab4f5) теряется и на цветном своём пузыре, и на
    белом чужом — в светлых темах берёт цвет самого пузыря. */
 [data-chat-light] a.underline { color: inherit !important; font-weight: 600; }
+
+/* Светлая тема: метки из settings/lightNormalizer.ts. Тёмные нейтральные
+   фоны становятся светлыми, почти белый текст на светлом — тёмным. */
+:root[data-theme='light'] [data-ln-bg='1'] { background-color: var(--bg-l1) !important; }
+:root[data-theme='light'] [data-ln-bg='2'] { background-color: var(--bg-l2) !important; }
+:root[data-theme='light'] [data-ln-fg='1'] { color: var(--t1) !important; }
+:root[data-theme='light'] [data-ln-fg='2'] { color: var(--t2) !important; }

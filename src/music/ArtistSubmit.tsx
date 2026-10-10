@@ -25,7 +25,7 @@ const Card = ({ icon, title, children }: {
   icon: React.ReactNode; title: string; children: React.ReactNode;
 }) => (
   <div className="flex h-full flex-col items-center justify-center px-8 text-center"
-    style={{ background: '#0a0a0f' }}>
+    style={{ background: 'var(--bg)' }}>
     <div className="grid h-16 w-16 place-items-center rounded-3xl"
       style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
       {icon}
@@ -39,7 +39,7 @@ const Card = ({ icon, title, children }: {
 
 /** Подача трека артистом. */
 export const ArtistSubmitTrack = ({ onDone }: { onDone: () => void }) => (
-  <div className="flex h-full flex-col" style={{ background: '#0a0a0f' }}>
+  <div className="flex h-full flex-col" style={{ background: 'var(--bg)' }}>
     <Card icon={<FileText size={26} style={{ color: 'var(--t3)' }} />}
       title="Подача на проверку пока не работает">
       <p>
@@ -100,7 +100,7 @@ export const AdminMusicPanel = () => {
   };
 
   return (
-    <div className="flex h-full flex-col" style={{ background: '#0a0a0f' }}>
+    <div className="flex h-full flex-col" style={{ background: 'var(--bg)' }}>
       <div className="shrink-0 px-4 pt-4">
         <div className="flex items-start gap-3 rounded-2xl p-3"
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>

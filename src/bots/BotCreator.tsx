@@ -350,7 +350,7 @@ const ServerPanel = ({ bot, onChanged }: { bot: BotRow; onChanged: () => void })
                   Введите его на своём сервере один раз:
                 </p>
                 <pre className="mt-1.5 rounded-lg px-2.5 py-2 text-[10.5px] font-mono overflow-x-auto"
-                  style={{ background: '#0d0d14', color: '#9ca3af' }}>
+                  style={{ background: 'var(--bg-l1)', color: '#9ca3af' }}>
 {`npm install sky-bot-sdk
 SKY_BOT_PAIRING_CODE=${pairing.code} node bot.mjs`}
                 </pre>
@@ -736,7 +736,7 @@ export const BotCreatorPanel = () => {
             </p>
           </div>
 
-          <div className="rounded-2xl overflow-hidden" style={{ background: '#0d0d14', border: '1px solid var(--border)' }}>
+          <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
             <div className="px-4 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <Code2 size={12} style={{ color: 'var(--t3)' }}/>
               <span className="text-xs font-mono" style={{ color: 'var(--t3)' }}>bot.mjs</span>

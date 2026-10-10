@@ -95,7 +95,7 @@ export const PetSkinShop = ({ activePetId, onClose, onEquipped }: PetSkinShopPro
 
   return (
     <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
-      className="fixed inset-0 z-[310] flex flex-col" style={{ background:'#0a0a0c' }}>
+      className="fixed inset-0 z-[310] flex flex-col" style={{ background:'var(--bg)' }}>
 
       <div className="flex items-center justify-between px-4 py-4 shrink-0" style={{ borderBottom:`1px solid ${C.border}` }}>
         <div className="flex items-center gap-3">
@@ -207,7 +207,7 @@ export const PetSkinShop = ({ activePetId, onClose, onEquipped }: PetSkinShopPro
       <AnimatePresence>
         {preview && (
           <motion.div initial={{ y:80, opacity:0 }} animate={{ y:0, opacity:1 }} exit={{ y:80, opacity:0 }}
-            className="shrink-0 px-4 pb-6 pt-4 space-y-3" style={{ borderTop:`1px solid ${C.border}`, background:'#121215' }}>
+            className="shrink-0 px-4 pb-6 pt-4 space-y-3" style={{ borderTop:`1px solid ${C.border}`, background:'var(--bg-l1)' }}>
             <div className="flex items-center gap-3">
               <div className="shrink-0"><ItemMedia item={preview} size={56}/></div>
               <div className="flex-1">

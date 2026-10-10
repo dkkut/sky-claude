@@ -232,7 +232,7 @@ const roleColor = (server: GServer, userId: string) =>
   server.roles.find(r => r.memberIds.includes(userId) && r.color !== 'var(--t2)')?.color ?? 'var(--t1)';
 
 const C = {
-  sidebar:'#111115', content:'#16161a', input:'#1c1c22',
+  sidebar:'var(--bg-l1)', content:'var(--bg)', input:'var(--bg-l2)',
   border:'var(--border)', accent:'#5865f2',
   t1:'var(--t1)', t2:'var(--t2)', t3:'var(--t3)',
 };
@@ -309,7 +309,7 @@ export const GamingChannels = () => {
 
       {/* -- Server list (left strip) ----------------------- */}
       <div className="flex flex-col gap-2 p-2 shrink-0 overflow-y-auto"
-        style={{ width:52, background:'#0d0d10', scrollbarWidth:'none' }}>
+        style={{ width:52, background:'var(--bg-l1)', scrollbarWidth:'none' }}>
         {servers.map(sv => (
           <motion.button key={sv.id} type="button" whileTap={{ scale:.9 }}
             onClick={() => { setServerId(sv.id); setChannelId(sv.channels.find(c=>c.type==='text')?.id ?? ''); }}
@@ -547,7 +547,7 @@ export const GamingChannels = () => {
   {showCreateCh && (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
       onClick={() => setShowCreateCh(false)}>
-      <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl p-5 space-y-4" style={{ background:'#1e1e24', border:'1px solid rgba(255,255,255,0.1)' }}
+      <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl p-5 space-y-4" style={{ background:'var(--bg-l3)', border:'1px solid rgba(255,255,255,0.1)' }}
         onClick={e => e.stopPropagation()}>
         <p className="text-base font-bold" style={{ color: C.t1 }}>Создать канал</p>
         <div className="grid grid-cols-2 gap-2">
@@ -583,7 +583,7 @@ export const GamingChannels = () => {
   {showCreateSrv && (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
       onClick={() => setShowCreateSrv(false)}>
-      <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl p-5 space-y-4" style={{ background:'#1e1e24', border:'1px solid rgba(255,255,255,0.1)' }}
+      <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl p-5 space-y-4" style={{ background:'var(--bg-l3)', border:'1px solid rgba(255,255,255,0.1)' }}
         onClick={e => e.stopPropagation()}>
         <p className="text-base font-bold" style={{ color: C.t1 }}>Создать сервер</p>
         <div className="flex gap-2 flex-wrap">

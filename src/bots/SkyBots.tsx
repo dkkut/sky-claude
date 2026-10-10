@@ -85,7 +85,7 @@ export const HashInlineMenu = ({ query, onSelect, onClose }:
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
       transition={{ duration: 0.12 }}
       className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl overflow-hidden z-50"
-      style={{ background: '#1c1c28', border: '1px solid rgba(255,255,255,0.1)',
+      style={{ background: 'var(--bg-l2)', border: '1px solid rgba(255,255,255,0.1)',
         boxShadow: '0 -12px 40px rgba(0,0,0,0.6)', maxHeight: 320 }}>
       <div className="flex items-center justify-between px-4 py-2.5"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
@@ -340,13 +340,13 @@ export const BotChatOverlay = ({ bot, onClose }: { bot: Bot; onClose: () => void
         animate={{ opacity: 1, x: 0, y: 0, scale: 1 }} exit={{ opacity: 0, x: isMobile ? 0 : 20, y: isMobile ? 20 : 0 }}
         className={`pointer-events-auto flex flex-col overflow-hidden shadow-2xl ${isMobile ? 'w-full h-full rounded-none' : 'rounded-2xl'}`}
         style={isMobile
-          ? { background: '#0f0f18', paddingTop: 'var(--safe-top)', paddingBottom: 'var(--safe-bottom)' }
-          : { width: 360, height: 520, background: '#0f0f18', border: '1px solid rgba(255,255,255,0.1)',
+          ? { background: 'var(--bg-l1)', paddingTop: 'var(--safe-top)', paddingBottom: 'var(--safe-bottom)' }
+          : { width: 360, height: 520, background: 'var(--bg-l1)', border: '1px solid rgba(255,255,255,0.1)',
               margin: '0 16px 80px 0', boxShadow: '0 20px 60px rgba(0,0,0,0.8)' }}>
 
         {/* Шапка */}
         <div className="flex items-center gap-3 px-4 py-3 shrink-0"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: '#111' }}>
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'var(--bg-l1)' }}>
           <div className="grid h-9 w-9 place-items-center rounded-xl shrink-0"
             style={{ background: `${bot.accent}20`, border: `1px solid ${bot.accent}35` }}>
             <BotIcon kind={bot.icon} size={20} color={bot.accent}/>
@@ -430,7 +430,7 @@ export const BotChatOverlay = ({ bot, onClose }: { bot: Bot; onClose: () => void
               </div>
               <div className="flex flex-col gap-1 min-w-0">
                 <div className="rounded-2xl rounded-bl-sm px-4 py-2.5"
-                  style={{ background: '#1c1c28', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  style={{ background: 'var(--bg-l2)', border: '1px solid rgba(255,255,255,0.08)' }}>
                   <p className="text-sm leading-relaxed whitespace-pre-wrap break-words"
                     style={{ color: 'rgba(255,255,255,0.88)' }}>{m.text}</p>
                 </div>
@@ -444,7 +444,7 @@ export const BotChatOverlay = ({ bot, onClose }: { bot: Bot; onClose: () => void
                 <BotIcon kind={bot.icon} size={16} color={bot.accent}/>
               </div>
               <div className="rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1.5 items-center"
-                style={{ background: '#1c1c28', border: '1px solid rgba(255,255,255,0.08)' }}>
+                style={{ background: 'var(--bg-l2)', border: '1px solid rgba(255,255,255,0.08)' }}>
                 {[0, 1, 2].map((i) => (
                   <div key={i} className="h-1.5 w-1.5 rounded-full animate-bounce"
                     style={{ background: 'rgba(255,255,255,0.4)', animationDelay: `${i * 0.15}s` }}/>

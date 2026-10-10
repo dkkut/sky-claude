@@ -33,7 +33,7 @@ const CATEGORY_ICON: Record<string, typeof Library> = {
 };
 
 const B = {
-  bg: '#0a0a0f', l1: '#111118', l2: 'var(--bg-l2)',
+  bg: 'var(--bg)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
   accent: '#a855f7', amber: 'var(--amber)',
   t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)',
   border: 'var(--border)',

@@ -40,7 +40,7 @@ const ITEM_TYPES: { key:ItemType; label:string; Icon:typeof Package }[] = [
 ];
 
 const C = {
-  bg:'#09090f', l1:'#111118', l2:'#17171f', l3:'#1e1e28',
+  bg:'var(--bg)', l1:'var(--bg-l1)', l2:'var(--bg-l2)', l3:'var(--bg-l3)',
   border:'var(--border)', b2:'var(--border-m)',
   t1:'var(--t1)', t2:'var(--t2)', t3:'var(--t3)',
   accent:'var(--accent)', green:'var(--green)', amber:'var(--amber)', red:'var(--red)',
@@ -719,7 +719,7 @@ const SubModal = ({ onClose }: { onClose:()=>void }) => {
       <motion.div initial={{ y:60 }} animate={{ y:0 }} exit={{ y:60 }}
         transition={{ type:'spring', damping:28, stiffness:300 }}
         className="max-h-[85vh] w-full max-w-md overflow-y-auto overflow-x-hidden"
-        style={{ background:'#0f0f18', borderRadius:'28px 28px 0 0' }}
+        style={{ background:'var(--bg-l1)', borderRadius:'28px 28px 0 0' }}
         onClick={e=>e.stopPropagation()}>
         {done ? (
           <div className="flex flex-col items-center gap-4 py-10 px-6">

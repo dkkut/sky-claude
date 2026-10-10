@@ -13,7 +13,7 @@ import { Mic2, Users, Music2, UserPlus, UserMinus } from 'lucide-react';
 import { apiArtists, apiFollowArtist, type ServerArtist } from './musicApi';
 
 const C = {
-  bg: '#0a0a0f', card: 'var(--bg-l2)', border: 'var(--border)',
+  bg: 'var(--bg)', card: 'var(--bg-l2)', border: 'var(--border)',
   t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)', accent: 'var(--accent)',
 };
 

@@ -149,7 +149,7 @@ export const SkyMusicLibrary = ({
     const pl = playlists.find(p => p.id === openPlaylist);
     const pool = pl ? (pl.trackIds.map(id => pub.find(t => t.id === id)).filter(Boolean) as Track[]) : [];
     return (
-      <div className="sky-music-scope flex h-full flex-col" style={{ background: '#0a0a0f' }}>
+      <div className="sky-music-scope flex h-full flex-col" style={{ background: 'var(--bg)' }}>
         <div className="flex shrink-0 items-center gap-3 px-4 py-3">
           <button type="button" onClick={() => setOpenPlaylist(null)}><ChevronLeft size={20} color="#8a8f9a"/></button>
           <p className="flex-1 truncate text-[15px] font-semibold" style={{ color:'#f2f5f8' }}>{pl?.name ?? 'Плейлист'}</p>
@@ -174,7 +174,7 @@ export const SkyMusicLibrary = ({
   const isTrackCat = cat==='liked' || cat==='mine' || cat==='downloaded' || cat==='history';
 
   return (
-    <div className="sky-music-scope flex h-full flex-col overflow-hidden" style={{ background: '#0a0a0f' }}>
+    <div className="sky-music-scope flex h-full flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
       {/* Главные разделы */}
       <div className="flex shrink-0 gap-2 px-3 pt-3">
         {MAIN.map(m => (
@@ -392,7 +392,7 @@ export const SkyMusicLibrary = ({
         {selectMode && selected.size > 0 && (
           <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
             className="absolute inset-x-3 bottom-3 flex items-center gap-2 rounded-2xl p-2.5"
-            style={{ background: '#1a1a22', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
+            style={{ background: 'var(--bg-l2)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
             <span className="px-2 text-[12px] font-medium" style={{ color:'#c7ccd6' }}>{selected.size} выбрано</span>
             <button type="button" onClick={bulkLikeAll} className="flex items-center gap-1 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background:'rgba(244,63,94,0.12)', color:'#f43f5e' }}>
               <Heart size={13} fill="#f43f5e"/>В любимые

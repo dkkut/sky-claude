@@ -14,7 +14,7 @@ import {
 } from './store';
 
 const C = {
-  bg:'#0f0f14', l1:'#161619', l2:'#1c1c22',
+  bg:'var(--bg)', l1:'var(--bg-l1)', l2:'var(--bg-l2)',
   border:'var(--border)', b2:'var(--border-m)',
   t1:'var(--t1)', t2:'var(--t2)', t3:'var(--t3)',
   accent:'var(--accent)', green:'var(--green)', amber:'var(--amber)', red:'var(--red)',

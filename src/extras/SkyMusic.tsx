@@ -50,14 +50,14 @@ const NAV_TABS: { key: TabKey; icon: IconComponent; label: string }[] = [
 
 /* -- design tokens (YM-style dark) ------------------------ */
 const YM = {
-  bg:       '#0a0a0f',
+  bg:       'var(--bg)',
   card:     'var(--bg-l2)',
-  card2:    '#22222c',
+  card2:    'var(--bg-l3)',
   accent:   'var(--purple)',
   accentFg: '#ffffff',
-  text:     '#FFFFFF',
-  sub:      '#b3b3b3',
-  sub2:     '#6a6a6a',
+  text:     'var(--t1)',
+  sub:      'var(--t2)',
+  sub2:     'var(--t3)',
   border:   'var(--border)',
 };
 

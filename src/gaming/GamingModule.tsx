@@ -10,9 +10,9 @@ import { useOtherProfiles } from '@/profile/viewer/otherProfiles';
 
 /* ── FACEIT colour tokens ─────────────────────────────────── */
 const FC = {
-  bg:      '#0f0f13',
-  card:    '#161619',
-  card2:   '#1c1c21',
+  bg:      'var(--bg-l1)',
+  card:    'var(--bg-l2)',
+  card2:   'var(--bg-l2)',
   border:  'rgba(255,255,255,0.07)',
   border2: 'rgba(255,255,255,0.12)',
   orange:  '#f5771f',
@@ -527,7 +527,7 @@ const StatsView = () => {
                   {K(s.xp)} XP
                 </p>
               </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#1e1e25' }}>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-l3)' }}>
                 <motion.div initial={{ width:0 }} animate={{ width:`${xpPct}%` }}
                   transition={{ duration:1, ease:'easeOut' }}
                   className="h-full rounded-full"

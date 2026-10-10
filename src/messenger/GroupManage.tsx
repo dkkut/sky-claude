@@ -18,7 +18,7 @@ import {
 } from './adminStore';
 import type { ChatItem } from './types';
 
-const C = { l1: '#121215', l2: '#1e1e24', border: 'rgba(255,255,255,0.08)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)', accent: 'var(--accent)', red: 'var(--red)' };
+const C = { l1: 'var(--bg-l1)', l2: 'var(--bg-l2)', border: 'var(--border-m)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)', accent: 'var(--accent)', red: 'var(--red)' };
 
 type Tab = 'members' | 'invites' | 'requests' | 'log' | 'settings' | 'analytics';
 
@@ -267,7 +267,7 @@ const RolePicker = ({ current, onChange }: { current: ChatRole; onChange: (r: Ch
         {open && (
           <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
             className="absolute right-0 z-10 mt-1 rounded-xl overflow-hidden"
-            style={{ background: '#252529', border: `1px solid ${C.border}` }}>
+            style={{ background: 'var(--bg-l3)', border: `1px solid ${C.border}` }}>
             {ASSIGNABLE.map(r => (
               <button key={r} type="button" onClick={() => { onChange(r); setOpen(false); }}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs whitespace-nowrap hover:brightness-125"

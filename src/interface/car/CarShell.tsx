@@ -41,7 +41,7 @@ export const CarShell = () => {
   const openPlayer = (source: TVPlayerSource) => setScreen({ kind: 'player', source });
 
   return (
-    <div className="fixed inset-0 z-[600] overflow-hidden select-none" style={{ background: CAR_BG }}>
+    <div data-keep-dark="" className="fixed inset-0 z-[600] overflow-hidden select-none" style={{ background: CAR_BG }}>
       {/* Единственный реальный <audio> для музыки — тот же движок, что и
           в обычном интерфейсе, чтобы не завести второй параллельный плеер
           (см. PlayerEngine.tsx). Подкаст-элемент живёт вне React и не

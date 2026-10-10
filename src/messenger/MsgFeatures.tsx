@@ -9,7 +9,7 @@ import { useMessengerStore } from './store';
 import { useAuthStore } from '@/core/auth/store';
 import type { MessageItem } from './types';
 
-const C = { accent:'#5b9bd1', t1:'var(--t1)', t2:'var(--t2)', t3:'var(--t3)', border:'var(--border)', l2:'#1e1e24' };
+const C = { accent:'#5b9bd1', t1:'var(--t1)', t2:'var(--t2)', t3:'var(--t3)', border:'var(--border)', l2:'var(--bg-l2)' };
 
 /* === SPOILER TEXT ========================================== */
 export const SpoilerText = ({ text, color }: { text: string; color: string }) => {
@@ -361,7 +361,7 @@ export const CreatePollModal = ({ onSend, onClose }: CreatePollProps) => {
       <motion.div initial={{ y:50 }} animate={{ y:0 }} exit={{ y:50 }}
         transition={{ type:'spring', damping:28, stiffness:300 }}
         className="w-full max-w-md rounded-t-3xl overflow-hidden"
-        style={{ background:'#121215', maxHeight:'80vh' }}
+        style={{ background:'var(--bg-l1)', maxHeight:'80vh' }}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4"
           style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>

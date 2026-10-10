@@ -79,7 +79,7 @@ export const MUSIC_PLATFORMS: MusicPlatform[] = [
  */
 export const MusicImport = () => (
   <div className="flex h-full flex-col items-center justify-center px-8 text-center"
-    style={{ background: '#0a0a0f' }}>
+    style={{ background: 'var(--bg)' }}>
     <div className="grid h-16 w-16 place-items-center rounded-3xl"
       style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
       <Download size={26} style={{ color: '#7d818c' }} />
