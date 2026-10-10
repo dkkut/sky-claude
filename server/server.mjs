@@ -112,6 +112,18 @@ import { checkDeliverySetup, closeMailer } from './notify.mjs';
 import { expirePrimeSubscriptions } from './skyid.mjs';
 import { confirmSshLogin } from './breach.mjs';
 
+/*
+ * Брошенный и никем не пойманный rejection (забытый .catch в фоновой
+ * задаче, ошибка внутри обработчика потока) в Node ≥ 15 завершает процесс:
+ * все открытые сокеты рвутся, а запросы в полёте теряются — со стороны это
+ * выглядит как «сайт иногда не открывается». Пишем причину в журнал и
+ * продолжаем работу; uncaughtException (синхронный сбой с неизвестным
+ * состоянием) по-прежнему завершает процесс — его лечит перезапуск.
+ */
+process.on('unhandledRejection', (reason) => {
+  console.error('[process] необработанный rejection:', reason instanceof Error ? (reason.stack ?? reason.message) : reason);
+});
+
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
