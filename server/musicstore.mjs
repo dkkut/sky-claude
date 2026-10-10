@@ -47,7 +47,16 @@ export const musicRoot = () => ROOT;
 export const saveStream = async (id, source, limitBytes) => {
   const safe = checkId(id);
   await mkdir(dirFor(safe), { recursive: true });
-  const result = await encryptStreamToFile(source, pathFor(safe), limitBytes);
+  let result;
+  try {
+    result = await encryptStreamToFile(source, pathFor(safe), limitBytes);
+  } catch {
+    // Связь оборвалась на середине загрузки: исключение раньше уходило
+    // наверх, запись о треке с зарезервированным местом оставалась
+    // в базе (и съедала квоту), а в хранилище — неполный файл.
+    await remove(safe).catch(() => {});
+    return { error: 'upload_interrupted' };
+  }
   if (result.error) await remove(safe).catch(() => {});
   return result;
 };

@@ -339,7 +339,7 @@ export const musicRoutes = async (req, res, url) => {
     }
 
     /* Обложка и звук — потоком. */
-    if (req.method === 'GET' && (tail === '/cover' || tail === '/audio')) {
+    if ((req.method === 'GET' || req.method === 'HEAD') && (tail === '/cover' || tail === '/audio')) {
       if (!rateLimit(`music:stream:${me}`, STREAM_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
       const row = await visibleTrack(id, me);
       if (!row) return json(res, 404, { error: 'not_found' });
@@ -384,6 +384,7 @@ export const musicRoutes = async (req, res, url) => {
       }
 
       res.writeHead(200, { ...common, 'Content-Length': String(size) });
+      if (req.method === 'HEAD') { res.end(); return true; }
       const stream = openStream(fileId);
       stream.on('error', () => res.destroy());
       res.on('close', () => stream.destroy());
@@ -440,7 +441,7 @@ export const musicRoutes = async (req, res, url) => {
     const saved = await saveStream(created.id, withHead(head, req), MAX_AUDIO_BYTES);
     if (saved.error) {
       await deleteTrack(created.id, me);
-      return json(res, 413, saved);
+      return json(res, saved.error === 'file_too_large' ? 413 : 400, saved);
     }
     await finishTrack(created.id, me, { bytes: saved.bytes, mime });
     return json(res, 201, { track: await readTrack(created.id, me) });
