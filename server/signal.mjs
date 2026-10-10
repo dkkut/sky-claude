@@ -36,6 +36,7 @@ import {
 import { grantForProposal } from './campaigns.mjs';
 import { adminGetOrder } from './kutrentmarket.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
+import { markActive, setOnlineSource } from './analytics.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
@@ -162,6 +163,8 @@ const pending = new Map();
 
 // userId → набор соединений (у человека может быть открыто несколько вкладок)
 const clients = new Map();
+// Мониторинг считает онлайн по живым соединениям (server/analytics.mjs).
+setOnlineSource(() => ({ users: clients.size, sessions: [...clients.values()].reduce((n, set) => n + set.size, 0) }));
 // sessionId → сокеты этой сессии: нужен, чтобы закрыть их при выходе,
 // не дожидаясь очередной проверки.
 const bySession = new Map();
@@ -1912,6 +1915,7 @@ export const startSignalHub = () => {
         clearTimeout(authTimer);
         uncount();                       // соединение больше не «ожидающее»
         addClient(userId, who.sessionId, ws);
+        markActive(userId);
 
         // Список онлайна — только те, с кем есть общий чат: иначе по
         // одному подключению можно было бы снять всех, кто сейчас в сети.

@@ -20,7 +20,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -45,6 +45,7 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   blox: 'Sky Blox',
   blox_moderation: 'Модерация Sky Blox',
   blox_finance: 'Финансы Sky Blox',
+  analytics: 'Мониторинг и аналитика',
 };
 
 export const ROLE_LABEL: Record<string, string> = {

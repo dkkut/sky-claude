@@ -76,6 +76,8 @@ import { runWithLang } from './lang.mjs';
 import { marketVerifyRoutes } from './routes/marketverify.mjs';
 import { codesRoutes } from './routes/codes.mjs';
 import { bloxRoutes } from './routes/blox.mjs';
+import { analyticsRoutes } from './routes/analytics.mjs';
+import { sampleOnce } from './analytics.mjs';
 import { recordRequest, optionalAllowed, loadLimits } from './bloxlimits.mjs';
 import { pruneNonces } from './bloxshop.mjs';
 import { probeGame } from './bloxnet.mjs';
@@ -113,7 +115,7 @@ import { confirmSshLogin } from './breach.mjs';
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
-                botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, primePulseRoutes,
+                botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
@@ -313,6 +315,7 @@ const server = http.createServer((req, res) => runWithLang(req, async () => {
 let signalHub = null;
 let houseKeeping = null;
 let bloxSchedule;
+let analyticsSchedule;
 let botRetry = null;
 let notifyDispatch = null;
 let adsSchedule = null;
@@ -411,6 +414,10 @@ const start = async () => {
     } catch (err) { console.error('[blox] фон', err.message); }
   }, 60 * 1000);
   bloxSchedule.unref();
+
+  // Мониторинг: раз в минуту замер «сколько онлайн» и сохранение активных за день.
+  analyticsSchedule = setInterval(() => { sampleOnce().catch((err) => console.error('[analytics] замер', err.message)); }, 60 * 1000);
+  analyticsSchedule.unref();
 
   // Раз в час убираем отработавшие коды и гасим истёкшие подписки Prime.
   houseKeeping = setInterval(async () => {

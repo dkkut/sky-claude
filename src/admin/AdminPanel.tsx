@@ -14,7 +14,7 @@
  * Скрытая кнопка защитой не является, поэтому спрятанное здесь спрятано
  * ради порядка на экране, а не ради безопасности.
  */
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
   Shield, ShieldAlert, ShieldCheck, Loader2, Check, X, KeyRound,
   Wallet, Crown, ScrollText, AlertTriangle, RefreshCw, Users, Ban, Trophy,
@@ -37,6 +37,7 @@ import { evidenceFileUrl } from '@/marketplace/violationsApi';
 import { CodesAdminSection } from '@/codes/CodesAdmin';
 import { MarketVerifyAdmin } from '@/marketplace/MarketVerifyAdmin';
 import { BloxAdminSection } from '@/blox/BloxAdmin';
+import { MonitoringTab } from './MonitoringTab';
 
 const C = {
   bg: 'var(--bg-l1)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
@@ -5250,7 +5251,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5294,6 +5295,14 @@ export const AdminPanel = () => {
     setPlatformStatus((p) => (p ? { ...p, maintenance: r.state } : p));
     setMaintenanceReason('');
   };
+
+  // Мониторинг — главная вкладка: при первой загрузке прав открываем её тем, у кого она есть.
+  const monitorOpened = useRef(false);
+  useEffect(() => {
+    if (!rights || monitorOpened.current) return;
+    monitorOpened.current = true;
+    if (rights.permissions.includes('analytics')) setTab('monitor');
+  }, [rights]);
 
   const loadRights = useCallback(async () => {
     const r = await adminCall({ action: 'whoami' });
@@ -5396,6 +5405,7 @@ export const AdminPanel = () => {
   }
 
   const TABS: { key: Tab; label: string; show: boolean }[] = [
+    { key: 'monitor', label: 'Мониторинг', show: has('analytics') },
     { key: 'overview', label: 'Обзор', show: true },
     { key: 'people', label: 'Люди', show: has('moderation') },
     { key: 'pending', label: 'Заявки', show: true },
@@ -5632,6 +5642,7 @@ export const AdminPanel = () => {
       {tab === 'bloom' && <BloomAdminSection />}
       {tab === 'ads' && <AdsAdminSection />}
       {tab === 'codes' && <CodesAdminSection owner={rights.owner} />}
+      {tab === 'monitor' && <MonitoringTab />}
       {tab === 'blox' && <BloxAdminSection can={(p) => has(p as AdminPermission)} owner={rights.owner} />}
       {tab === 'sellers' && <MarketVerifyAdmin can={(p) => has(p as AdminPermission)} />}
       {tab === 'notify' && <NotifyAdminSection />}
