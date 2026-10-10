@@ -37,6 +37,16 @@ type State = {
 let state: State = null;
 /** Пробовали и не смогли — второй раз не пытаемся, чтобы не долбиться каждый кадр. */
 let failed = false;
+let lastTry = 0;
+
+/**
+ * iPhone/iPad: после createMediaElementSource звук идёт ТОЛЬКО через Web Audio, а контекст
+ * там создаётся приостановленным и «просыпается» лишь от касания; звонок или режим «без
+ * звука» усыпляют его снова. Результат — музыка «играет», но тишина. Визуализация не стоит
+ * молчащего плеера, поэтому на этих устройствах граф не строим вовсе: сфера просто дышит.
+ */
+const IS_IOS = typeof navigator !== 'undefined'
+  && (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints ?? 0) > 1));
 
 const AudioCtx: typeof AudioContext | undefined =
   typeof window !== 'undefined'
@@ -49,13 +59,23 @@ const AudioCtx: typeof AudioContext | undefined =
  */
 const attach = (): boolean => {
   if (state) return true;
-  if (failed || !AudioCtx) return false;
+  if (failed || IS_IOS || !AudioCtx) return false;
 
   const el = document.getElementById('sky-player-audio') as HTMLAudioElement | null;
   if (!el) return false;
+  // Не чаще раза в две секунды: пока страницу не коснулись, контекст не запускается.
+  if (Date.now() - lastTry < 2000) return false;
+  lastTry = Date.now();
 
   try {
     const ctx = new AudioCtx();
+    // Приостановленный контекст после createMediaElementSource заглушил бы плеер: подключаем
+    // только работающий, иначе пробуем позже (после касания страницы).
+    if (ctx.state !== 'running') {
+      void ctx.resume().catch(() => {});
+      void ctx.close().catch(() => {});
+      return false;
+    }
     const source = ctx.createMediaElementSource(el);
     const analyser = ctx.createAnalyser();
     // 1024 точек — достаточно для трёх полос и дёшево на телефоне.
