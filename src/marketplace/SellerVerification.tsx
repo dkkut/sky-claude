@@ -310,10 +310,14 @@ export const VerificationPanel = ({ onChanged }: { onChanged?: () => void }) => 
     if (c.ok) setConfig(c.data);
     if (m.ok) { setMy(m.data); setLoadFailed(false); } else setLoadFailed(true);
     if (r.ok) setReports(r.data.items);
-    onChanged?.();
-  }, [onChanged]);
+  }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  /* Состояние магазина в кабинете обновляется после действий, но не при
+     каждой загрузке: иначе обновление магазина перерисовывало бы панель
+     и запускало загрузку снова по кругу. */
+  const reload = useCallback(async () => { await load(); onChanged?.(); }, [load, onChanged]);
 
   if (loadFailed) return <div className="p-4"><Alert text="Не удалось загрузить статус проверки." /></div>;
   if (!config || !my) return <div className="grid place-items-center p-8"><Loader2 className="animate-spin" style={{ color: C.t3 }} /></div>;
@@ -387,14 +391,14 @@ export const VerificationPanel = ({ onChanged }: { onChanged?: () => void }) => 
         </div>
       )}
 
-      {editable && !['approved', 'legacy', 'reverify'].includes(v) && <ApplicationForm config={config} my={my} onChanged={() => void load()} />}
-      {editable && ['approved', 'legacy', 'reverify'].includes(v) && app && <ApplicationForm config={config} my={my} onChanged={() => void load()} />}
+      {editable && !['approved', 'legacy', 'reverify'].includes(v) && <ApplicationForm config={config} my={my} onChanged={() => void reload()} />}
+      {editable && ['approved', 'legacy', 'reverify'].includes(v) && app && <ApplicationForm config={config} my={my} onChanged={() => void reload()} />}
 
       {app && !editable && app.status !== 'approved' && app.status !== 'rejected' && (
         <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
           <p className="text-[12px] font-bold" style={{ color: C.t1 }}>{app.kindLabel}</p>
           <p className="text-[11px]" style={{ color: C.t2 }}>Заявка на проверке. Её можно будет изменить, если администратор запросит исправления.</p>
-          <DocList docs={app.docs} editable={false} onChanged={() => void load()} />
+          <DocList docs={app.docs} editable={false} onChanged={() => void reload()} />
         </div>
       )}
 

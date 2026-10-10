@@ -959,7 +959,7 @@ type CabTab = 'verify' | 'orders' | 'products' | 'stats'
    транспортная компания, склады, поставки и пропуска. Теперь всё это
    живёт на сервере, но стоит там же, где стояло. */
 const TABS: { key: CabTab; label: string; Icon: LucideIcon }[] = [
-  { key: 'verify',     label: 'Проверка', Icon: ShieldCheck },
+  { key: 'verify',     label: 'Проверка статуса', Icon: ShieldCheck },
   { key: 'orders',     label: 'Заказы',   Icon: ShoppingBag },
   { key: 'products',   label: 'Товары',   Icon: Package },
   { key: 'stats',      label: 'Счётчики', Icon: BarChart3 },
@@ -996,7 +996,7 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
     <div className="flex h-full flex-col">
       {!verified && (
         <div className="shrink-0 px-4 pt-3">
-          <Alert text="Магазин ещё не прошёл проверку: торговать и публиковать товары можно после одобрения заявки. Заполните вкладку «Проверка»." />
+          <Alert text="Магазин ещё не прошёл проверку: торговать и публиковать товары можно после одобрения заявки. Заполните вкладку «Проверка статуса»." />
         </div>
       )}
 

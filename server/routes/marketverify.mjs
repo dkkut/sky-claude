@@ -27,8 +27,8 @@ import {
   rulesOverview, setCategoryRule, setMarketSetting,
 } from './../marketmod.mjs';
 
-const READ_PER_MIN = 120;
-const WRITE_PER_MIN = 40;
+const READ_PER_MIN = Number(process.env.MV_READ_PER_MIN) || 120;
+const WRITE_PER_MIN = Number(process.env.MV_WRITE_PER_MIN) || 40;
 const SUBMIT_PER_HOUR = 20;
 const UPLOAD_PER_HOUR = 40;
 const MAX_DOC_BYTES = 10 * 1024 * 1024;
@@ -43,6 +43,12 @@ const STATUS = {
   subscription_required: 402, payment_details_required: 409,
   pvz_needs_ip_or_legal: 403,
 };
+
+/** Значение из запроса — только слово из строчных букв: всё прочее заменяется умолчанием. */
+const word = (v, fallback) => (/^[a-z_]{1,24}$/.test(String(v ?? '')) ? String(v) : fallback);
+
+/** Идентификатор из запроса: только безопасные символы, иначе пусто. */
+const ref = (v) => (/^[A-Za-z0-9_-]{1,80}$/.test(String(v ?? '')) ? String(v) : '');
 
 const fail = (res, r) => json(res, STATUS[r.error] ?? 400, r);
 
@@ -129,7 +135,7 @@ export const marketVerifyRoutes = async (req, res, url) => {
     const mime = sniff(head);
     if (!mime) return rejectBody(req, res, 415, { error: 'unsupported_document', message: 'Допустимы PDF, JPEG и PNG.' });
     const slot = await reserveDoc(me, {
-      scope: params.get('scope'), refId: params.get('refId'), docType: params.get('type'),
+      scope: word(params.get('scope'), ''), refId: ref(params.get('refId')), docType: word(params.get('type'), ''),
       label: params.get('label'), mime,
     });
     if (slot.error) return rejectBody(req, res, STATUS[slot.error] ?? 400, slot);
@@ -145,7 +151,7 @@ export const marketVerifyRoutes = async (req, res, url) => {
 
   if (req.method === 'GET' && path === '/api/market/docs') {
     if (!readOk()) return tooMany();
-    const r = await listMyDocs(me, params.get('scope'), params.get('refId'));
+    const r = await listMyDocs(me, word(params.get('scope'), ''), ref(params.get('refId')));
     return r.error ? fail(res, r) : json(res, 200, r);
   }
 
@@ -243,7 +249,7 @@ export const marketVerifyRoutes = async (req, res, url) => {
 
   if (req.method === 'GET' && path === '/api/market/verify/applications') {
     const r = await listApplications(me, {
-      status: params.get('status') ?? 'submitted', kind: params.get('kind'), requestType: params.get('requestType'),
+      status: word(params.get('status'), 'submitted'), kind: word(params.get('kind'), undefined), requestType: word(params.get('requestType'), undefined),
     });
     return r.error ? fail(res, r) : json(res, 200, r);
   }
@@ -272,7 +278,7 @@ export const marketVerifyRoutes = async (req, res, url) => {
 
   if (req.method === 'GET' && path === '/api/market/moderation/products') {
     const r = await moderationQueue(me, {
-      status: params.get('status') ?? 'pending', foreign: params.get('foreign'), q: params.get('q'),
+      status: word(params.get('status'), 'pending'), foreign: params.get('foreign') === 'true', q: params.get('q'),
     });
     return r.error ? fail(res, r) : json(res, 200, r);
   }
@@ -289,7 +295,7 @@ export const marketVerifyRoutes = async (req, res, url) => {
   }
 
   if (req.method === 'GET' && path === '/api/market/moderation/reports') {
-    const r = await listReports(me, { status: params.get('status') ?? 'open' });
+    const r = await listReports(me, { status: word(params.get('status'), 'open') });
     return r.error ? fail(res, r) : json(res, 200, r);
   }
   const repAct = path.match(/^\/api\/market\/moderation\/reports\/(mrp-[0-9a-f-]{36})\/resolve$/);
@@ -299,7 +305,7 @@ export const marketVerifyRoutes = async (req, res, url) => {
     return r.error ? fail(res, r) : json(res, 200, r);
   }
   if (req.method === 'GET' && path === '/api/market/moderation/appeals') {
-    const r = await listAppeals(me, { status: params.get('status') ?? 'open' });
+    const r = await listAppeals(me, { status: word(params.get('status'), 'open') });
     return r.error ? fail(res, r) : json(res, 200, r);
   }
   const apAct = path.match(/^\/api\/market\/moderation\/appeals\/(map-[0-9a-f-]{36})\/decide$/);
@@ -325,7 +331,7 @@ export const marketVerifyRoutes = async (req, res, url) => {
   }
 
   if (req.method === 'GET' && path === '/api/market/pvz-applications') {
-    const r = await listPvzApplications(me, { status: params.get('status') ?? 'submitted' });
+    const r = await listPvzApplications(me, { status: word(params.get('status'), 'submitted') });
     return r.error ? fail(res, r) : json(res, 200, r);
   }
   const pvzOne = path.match(/^\/api\/market\/pvz-applications\/(mpa-[0-9a-f-]{36})$/);
