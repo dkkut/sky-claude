@@ -1,4 +1,4 @@
-import { Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown } from 'lucide-react';
+import { Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
 import { lazyChunk } from '@/app/lazyChunk';
 import { BotsBrowser } from '@/bots/SkyBots';
 import { BotCreatorPanel } from '@/bots/BotCreator';
@@ -62,6 +62,8 @@ import { qrDataUri } from '@/shared/qr';
    чтобы не столкнуться с локальным именем AdminPanel ниже — тем самым,
    которое эта панель и заменяет. */
 import { AdminPanel as RbacAdminPanel, ChannelsAdminSection } from '@/admin/AdminPanel';
+import { AdminQueue } from '@/support/AdminQueue';
+import { VideoQueue } from '@/marketplace/logistics/VideoQueue';
 import { apiSkyVideoChannels, type ChannelListEntry } from '@/video/skyVideoApi';
 import { apiSupportStatus } from '@/moderation/supportApi';
 
@@ -444,7 +446,16 @@ const AdminPanel = () => {
   const bookPending    = useBookPendingCount();
   const ticketPending  = useTicketPendingCount();
   const botPending     = useBotPendingCount();
-  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'books_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'support'>('core');
+  const [adminTab, setAdminTab] = useState<'core'|'moderation'|'podcasts_mod'|'books_mod'|'bots_mod'|'tickets_mod'|'content'|'channels'|'support'|'support_queue'|'video_queue'>('core');
+  // Очередь поддержки и видеообзоры складов: вкладка видна тому, кому
+  // сервер дал право (support / logistics); решает всё равно сервер.
+  const [staff, setStaff] = useState(false);
+  const [logistics, setLogistics] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void apiSupportStatus().then(r => { if (alive) { setStaff(r.staff); setLogistics(r.logistics); } });
+    return () => { alive = false; };
+  }, []);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -460,6 +471,8 @@ const AdminPanel = () => {
           ['content',    'Контент',                                                   Upload],
           ['channels',   'Каналы',                                                   Shield],
           ['support',    'Поддержка',  MessageSquare],
+          ...(staff ? [['support_queue', 'Очередь поддержки', Inbox] as const] : []),
+          ...(logistics ? [['video_queue', 'Видеообзоры', Video] as const] : []),
         ] as const).map(([k,l,Icon])=>(
           <button key={k} type="button" onClick={()=>setAdminTab(k)}
             className="flex shrink-0 items-center gap-1.5 rounded-t-xl px-3 py-2 text-xs font-medium"
@@ -506,6 +519,8 @@ const AdminPanel = () => {
 
         {adminTab==='content' && <AdminContentTab tracks={tracks} approveTrack={approveTrack} rejectTrack={rejectTrack}/>}
         {adminTab==='channels' && <AdminChannelModerationTab/>}
+        {adminTab==='support_queue' && staff && <div className="flex h-full flex-col overflow-hidden"><AdminQueue/></div>}
+        {adminTab==='video_queue' && logistics && <div className="p-4"><VideoQueue/></div>}
       </div>
     </div>
   );

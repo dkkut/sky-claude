@@ -6,7 +6,7 @@ import {
   Lock, Eye, Bell, ChevronRight, LogOut, Gamepad2, Trophy, Swords, ChevronDown,
   Settings, Moon, Sun, Globe, Volume2, Download, Palette, Info, ExternalLink, WifiOff, Wallet, Gift, EyeOff, PawPrint, Briefcase, Users,
   RotateCcw, CheckCheck, MessageSquare, Send, Fingerprint, Coffee, Timer, Pause, Tv, Car,
-  ArrowLeftRight, LifeBuoy, ScrollText, Inbox, Video, Flower2, Sparkles, ChevronUp,
+  ArrowLeftRight, LifeBuoy, ScrollText, Video, Flower2, Sparkles, ChevronUp,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useModuleStore } from '@/data/state/modules';
@@ -36,17 +36,14 @@ import { usePetMedia } from '@/messenger/petMedia';
 import { apiQuickMenuGet, apiQuickMenuSet, apiQuickMenuReset, type QuickMenuItem } from '@/quickmenu/quickMenuApi';
 import { useMoney, fmt } from '@/wallet/store';
 import { SupportScreen } from '@/support/SupportScreen';
-import { AdminQueue }    from '@/support/AdminQueue';
-import { VideoQueue }    from '@/marketplace/logistics/VideoQueue';
 import { LegalDocs }     from '@/info/LegalDocs';
-import { apiSupportStatus } from '@/moderation/supportApi';
 import { SkyIDTab }    from './SkyIDTab';
 
 const fmtDur = (s: number) => s < 60 ? `${s}с` : `${Math.floor(s/60)}м ${s%60}с`;
 const fmtDate = (iso: string) => { try { return new Date(iso).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}); } catch { return iso; } };
 
 type PrivacyVal = 'all'|'contacts'|'nobody';
-type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'customization'|'support'|'info'|'support_queue'|'video_queue';
+type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'customization'|'support'|'info';
 
 // --- Toggle row --------------------------------------------------------------
 const PrivRow = ({ label, sub, value, onChange }: { label:string; sub?:string; value:PrivacyVal; onChange:(v:PrivacyVal)=>void }) => {
@@ -435,11 +432,9 @@ const QuickMenuSection = () => {
   );
 };
 
-const SettingsSection = ({ logout, username, onOpen, staff }: {
+const SettingsSection = ({ logout, username, onOpen }: {
   logout:()=>void; username:string;
   onOpen:(section:Section)=>void;
-  /** Разбирает ли этот человек обращения — решает сервер. */
-  staff:boolean;
 }) => {
   const switchProfile = useAuthStore(s=>s.switchProfile);
   const [confirmExit, setConfirmExit] = useState(false);
@@ -712,13 +707,6 @@ const SettingsSection = ({ logout, username, onOpen, staff }: {
           sub="Правила · Оферта · Политика · Контакты"
           onClick={() => onOpen('info')}
           right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
-        {staff && <div className="h-px mx-4" style={{ background:'var(--border)' }}/>}
-        {staff && (
-          <SettingsRow icon={Inbox} iconColor="var(--amber)" label="Очередь поддержки"
-            sub="Разбор обращений"
-            onClick={() => onOpen('support_queue')}
-            right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
-        )}
       </SectionBlock>
 
       {/* -- О ПРИЛОЖЕНИИ ------------------------ */}
@@ -814,22 +802,6 @@ export const ProfileModule = () => {
     setSection(openProfileSection as Section);
     useModuleStore.getState().setPendingProfileSection(null);
   }, [openProfileSection]);
-  // Владелец — администратор по нику, а не по колонке в профиле,
-  // поэтому спрашиваем сервер, а не смотрим в свои же данные.
-  //
-  // Три признака разные: роли развели права по направлениям, и пункт
-  // меню должен появляться у того, кому он вообще что-то откроет.
-  const [staff, setStaff] = useState(false);
-  const [logistics, setLogistics] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    void apiSupportStatus().then(r => {
-      if (!alive) return;
-      setStaff(r.staff);
-      setLogistics(r.logistics);
-    });
-    return () => { alive = false; };
-  }, []);
   const [editing, setEditing] = useState(false);
   const [nameVal,     setNameVal]     = useState(me?.name ?? '');
   const [bioVal,      setBioVal]      = useState(me?.bio ?? '');
@@ -902,9 +874,6 @@ export const ProfileModule = () => {
     {key:'skyid',         label:'Sky ID',               icon:Fingerprint},
     {key:'support',       label:'Тех. поддержка',       icon:LifeBuoy},
     {key:'info',          label:'Информация',           icon:ScrollText},
-    // Очередь появляется только у того, кому её доверил сервер.
-    ...(staff ? [{key:'support_queue' as const, label:'Очередь поддержки', icon:Inbox}] : []),
-    ...(logistics ? [{key:'video_queue' as const, label:'Видеообзоры складов', icon:Video}] : []),
   ] as const;
 
   // Bloom и Sky Video — отдельные модули, не разделы этого экрана: не
@@ -1302,7 +1271,7 @@ export const ProfileModule = () => {
           <div className="flex flex-col min-h-0 h-full overflow-hidden">
             <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:'none'}}>
               <SettingsSection logout={logout} username={me.username}
-                onOpen={setSection} staff={staff}/>
+                onOpen={setSection}/>
             </div>
           </div>
         )}
@@ -1360,22 +1329,6 @@ export const ProfileModule = () => {
           </div>
         )}
 
-        {/* Очередь рисуется только сотруднику, но решает всё равно
-            сервер: без прав он не отдаст ни одного чужого обращения. */}
-        {section === 'support_queue' && staff && (
-          <div className="flex flex-col h-full overflow-hidden">
-            <AdminQueue />
-          </div>
-        )}
-
-        {/* Очередь видеообзоров общих складов. Рисуется тому, у кого
-            есть право logistics, но решает всё равно сервер: без прав
-            он не отдаст ни одной заявки и не примет ни одного решения. */}
-        {section === 'video_queue' && logistics && (
-          <div className="flex flex-col h-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-            <VideoQueue />
-          </div>
-        )}
 
 
       </div>
