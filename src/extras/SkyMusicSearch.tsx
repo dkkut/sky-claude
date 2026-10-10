@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { speechLocale } from '@/i18n/lang';
+import { useDictation } from '@/messenger/useDictation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Mic, Clock, TrendingUp, Mic2, ListMusic, FileText } from 'lucide-react';
 import type { Track } from '@/platform/store';
@@ -37,9 +37,7 @@ export const SkyMusicSearch = ({
   const [searchError, setSearchError] = useState(false);
   const [q, setQ] = useState('');
   const [history, setHistory] = useState<string[]>([]);
-  const [listening, setListening] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const recogRef = useRef<any>(null);
 
   useEffect(() => { setHistory(loadHist()); inputRef.current?.focus(); }, []);
 
@@ -60,15 +58,8 @@ export const SkyMusicSearch = ({
     setHistory(next); saveHist(next);
   };
 
-  const startVoice = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { setListening('unsupported' as any); setTimeout(() => setListening(false), 1800); return; }
-    const r = new SR(); r.lang = speechLocale(); r.interimResults = false; r.maxAlternatives = 1;
-    r.onresult = (ev: any) => { const text = ev.results[0][0].transcript; setQ(text); commit(text); };
-    r.onend = () => setListening(false);
-    r.onerror = () => setListening(false);
-    recogRef.current = r; setListening(true); r.start();
-  };
+  const dictation = useDictation({ oneShot: true, onText: (text) => { setQ(text); commit(text); } });
+  const startVoice = () => { void dictation.toggle(); };
 
   const query = q.toLowerCase().trim();
 
@@ -124,15 +115,12 @@ export const SkyMusicSearch = ({
             className="flex-1 bg-transparent text-[13.5px] outline-none" style={{ color: '#f2f5f8' }}/>
           {q && <button type="button" onClick={() => setQ('')}><X size={15} color="#5c626e"/></button>}
           <button type="button" onClick={startVoice}>
-            <Mic size={16} color={listening === true ? '#4fe3d0' : '#5c626e'}/>
+            <Mic size={16} color={dictation.active ? '#4fe3d0' : '#5c626e'}/>
           </button>
         </div>
         <button type="button" onClick={onClose} className="shrink-0 text-[13px] font-medium" style={{ color: '#8a8f9a' }}>Отмена</button>
       </div>
 
-      {listening === ('unsupported' as any) && (
-        <p className="px-5 pb-2 text-[11.5px]" style={{ color: '#f59e0b' }}>Голосовой поиск не поддерживается этим браузером</p>
-      )}
 
       <div className="flex-1 overflow-y-auto px-4 pb-8" style={{ scrollbarWidth: 'none' }}>
         {!query && (

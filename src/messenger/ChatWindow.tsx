@@ -37,6 +37,7 @@ import { AiSummarizeButton, AiTranscribeButton, AiVideoNoteButton, AiSuggestRepl
 import { runAiComposerAction, type AiComposerAction } from '@/ai/aiApi';
 import { GroupManage } from './GroupManage';
 import { useAdminStore, canDo } from './adminStore';
+import { useDictation } from './useDictation';
 import { GameActivityBadge } from '@/gaming/GamingUI';
 import { useGamingAccounts } from '@/gaming/accounts';
 import { openProfile } from '@/profile/viewer/store';
@@ -1070,33 +1071,9 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const isBlocked = !!peerIdForBlock && blocked.includes(peerIdForBlock);
   const isPrime = accounts.find(a => a.id === currentUserId)?.isPrime ?? false;
   const [aiComposerBusy, setAiComposerBusy] = useState<AiComposerAction | null>(null);
-  const [dictating, setDictating] = useState(false);
-  const recognitionRef = useRef<any>(null);
-
-  const toggleDictation = () => {
-    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return;
-    if (dictating) {
-      recognitionRef.current?.stop();
-      return;
-    }
-    const rec = new SR();
-    rec.lang = 'ru-RU';
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.onresult = (e: any) => {
-      let chunk = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) chunk += e.results[i][0].transcript;
-      if (chunk.trim()) onDraftChange((draftRef.current ? draftRef.current + ' ' : '') + chunk.trim());
-    };
-    rec.onerror = () => { setDictating(false); };
-    rec.onend = () => { setDictating(false); };
-    recognitionRef.current = rec;
-    rec.start();
-    setDictating(true);
-  };
-
-  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
+  const dictation = useDictation({ onText: (chunk) => onDraftChange((draftRef.current ? draftRef.current + ' ' : '') + chunk) });
+  const dictating = dictation.active;
+  const toggleDictation = () => { void dictation.toggle(); };
 
   const URL_RE = /https?:\/\/[^\s]+/i;
   const filteredMsgs = useMemo(() => {
@@ -2480,8 +2457,8 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 className="flex-1 resize-none bg-transparent py-1 text-sm outline-none leading-relaxed disabled:opacity-40"
                 style={{ color: theme.otherText, maxHeight: 160 }} />
 
-              {(('webkitSpeechRecognition' in window) || ('SpeechRecognition' in window)) && (
-                <motion.button type="button" whileTap={{ scale: 0.9 }} disabled={isBlocked}
+              {dictation.available && (
+                <motion.button type="button" whileTap={{ scale: 0.9 }} disabled={isBlocked || dictation.busy}
                   onClick={toggleDictation}
                   title="Голосовой ввод — диктовка текста"
                   className="grid h-9 w-9 shrink-0 place-items-center self-end mb-0.5 rounded-full transition-all disabled:opacity-40"
