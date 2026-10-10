@@ -15,6 +15,7 @@ import {
 import { VEHICLE_CFG } from '@/marketplace/logistics/shared';
 import { useCourierStore } from '@/marketplace/logistics/courierStore';
 import type { Courier } from '@/marketplace/logistics/types';
+import { CourierBatches } from '@/marketplace/logistics/Batches';
 
 const PROBLEM_REASONS: { key: string; label: string }[] = [
   { key: 'no_answer',     label: 'Получатель не отвечает' },
@@ -133,6 +134,8 @@ export const CourierDashboard = ({ courier }: { courier: Courier }) => {
           <p className="text-[10.5px]" style={{ color: 'var(--t3)' }}>заработано</p>
         </button>
       </div>
+
+      <CourierBatches online={courier.online} />
 
       {showEarnings && (
         <div className="mt-3 rounded-2xl p-4" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>

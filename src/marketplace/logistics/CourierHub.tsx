@@ -10,6 +10,7 @@ import {
   Truck, History, Check, AlertCircle, Package, X as XIcon,
 } from 'lucide-react';
 import { C, fmt, fmtTs, Stars, StatCard } from '../SkyMarket';
+import { SellerBatches } from './Batches';
 import { useCourierStore } from './courierStore';
 import { CITIES, distanceKm } from './geo';
 import { SlidePanel, EmptyState, VEHICLE_CFG, OnlineDot } from './shared';
@@ -17,7 +18,7 @@ import { SkyMap } from './SkyMap';
 import type { Courier } from './types';
 import type { Order } from '../types';
 
-type HubTab = 'search' | 'mine' | 'notifications' | 'pool';
+type HubTab = 'search' | 'mine' | 'notifications' | 'pool' | 'batches';
 
 /* ── Карточка курьера в списке ───────────────────────────────────── */
 const CourierRow = ({
@@ -596,6 +597,7 @@ export const CourierHub = ({ sellerId, orders }: { sellerId: string; orders: any
   const TABS: { key: HubTab; label: string; icon: any; badge?: number }[] = [
     { key:'search',        label:'Поиск',         icon:Search },
     { key:'pool',          label:'Пул',           icon:Package },
+    { key:'batches',       label:'Поставки',      icon:Truck },
     { key:'mine',          label:'Мои курьеры',   icon:Heart },
     { key:'notifications', label:'Уведомления',   icon:Bell, badge: unreadCount },
   ];
@@ -686,6 +688,7 @@ export const CourierHub = ({ sellerId, orders }: { sellerId: string; orders: any
         )}
 
         {tab === 'pool' && <PoolTab orders={orders}/>}
+        {tab === 'batches' && <SellerBatches/>}
         {tab === 'mine' && <MyCouriersList onOpen={setOpenCourier}/>}
         {tab === 'notifications' && <NotificationsList/>}
       </div>
