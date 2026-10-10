@@ -178,7 +178,7 @@ const NewChatModal = ({ onClose }: { onClose: () => void }) => {
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
                     style={{ background: avatarColor(u.name) }}>{u.name[0]}</div>
                   <div className="flex-1 min-w-0 text-left">
-                    <p className="text-sm font-medium truncate" style={{ color: 'var(--t1)' }}>{u.name}</p>
+                    <p translate="no" className="text-sm font-medium truncate" style={{ color: 'var(--t1)' }}>{u.name}</p>
                     <p className="text-xs" style={{ color: 'var(--t2)' }}>@{u.username}</p>
                   </div>
                 </button>
@@ -219,7 +219,7 @@ const NewChatModal = ({ onClose }: { onClose: () => void }) => {
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
                     style={{ background: avatarColor(u.name) }}>{u.name[0]}</div>
                   <div className="flex-1 min-w-0 text-left">
-                    <p className="text-sm font-medium truncate" style={{ color: 'var(--t1)' }}>{u.name}</p>
+                    <p translate="no" className="text-sm font-medium truncate" style={{ color: 'var(--t1)' }}>{u.name}</p>
                     <p className="text-xs" style={{ color: 'var(--t2)' }}>@{u.username}</p>
                   </div>
                   <div className="grid h-5 w-5 place-items-center rounded-full shrink-0"
@@ -364,7 +364,7 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
         <div className="flex items-center gap-3 px-4 py-3">
           <TgAvatar chat={chat} size={46} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}>{chat.name}</p>
+            <p translate="no" className="truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}>{chat.name}</p>
             <p className="truncate text-xs" style={{ color: 'var(--t3)' }}>
               {isDirect ? (chat.username ? `@${chat.username}` : 'Личная переписка')
                         : `${chat.members ?? chat.participants?.length ?? 0} участников`}
@@ -597,7 +597,7 @@ export const ChatList = () => {
                         style={{ background: avatarColor(u.name) }}
                         onClick={e => { e.stopPropagation(); openProfile(u.id); }}>{u.name[0]}</div>
                       <div className="flex-1 min-w-0 text-left">
-                        <p className="text-sm font-medium truncate" style={{ color: 'var(--t1)' }}>{u.name}</p>
+                        <p translate="no" className="text-sm font-medium truncate" style={{ color: 'var(--t1)' }}>{u.name}</p>
                         <p className="text-xs" style={{ color: 'var(--t2)' }}>@{u.username}</p>
                       </div>
                       <ChevronRight size={13} style={{ color: 'var(--accent)' }} />
@@ -699,7 +699,7 @@ export const ChatList = () => {
                         style={{ background: 'linear-gradient(135deg,#ffd66b,#f5a623)', color: '#000' }}>{peerStyle.badge}</span>
                     )}
                     <span className="text-sm font-semibold truncate" style={{ color: 'var(--t1)' }}>
-                      {chat.name}
+                      <span translate="no">{chat.name}</span>
                     </span>
                     {chat.muted  && <BellOff size={12} style={{ color: 'var(--t2)', flexShrink: 0 }} />}
                     {chat.pinned && <Pin size={11} style={{ color: 'var(--t2)', flexShrink: 0 }} />}
@@ -725,7 +725,7 @@ export const ChatList = () => {
                         {last?.fromMe && last.kind !== 'system' && (
                           <span style={{ color: active ? '#93c5fd' : 'var(--accent)' }}>Вы: </span>
                         )}
-                        {preview(last)}
+                        <span translate={last && !last.deleted && (last.kind === 'text' || !last.kind) ? 'no' : undefined}>{preview(last)}</span>
                       </>
                     )}
                   </p>

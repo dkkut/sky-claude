@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
+import { speechLocale } from '@/i18n/lang';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, Mic, Clock, TrendingUp, Mic2, ListMusic, FileText } from 'lucide-react';
 import type { Track } from '@/platform/store';
@@ -62,7 +63,7 @@ export const SkyMusicSearch = ({
   const startVoice = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { setListening('unsupported' as any); setTimeout(() => setListening(false), 1800); return; }
-    const r = new SR(); r.lang = 'ru-RU'; r.interimResults = false; r.maxAlternatives = 1;
+    const r = new SR(); r.lang = speechLocale(); r.interimResults = false; r.maxAlternatives = 1;
     r.onresult = (ev: any) => { const text = ev.results[0][0].transcript; setQ(text); commit(text); };
     r.onend = () => setListening(false);
     r.onerror = () => setListening(false);

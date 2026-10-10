@@ -7,6 +7,7 @@
  * профиль. Этот экран только записывает, показывает состояние и
  * проигрывает голосовой ответ, если сервер его прислал.
  */
+import { speechLocale } from '@/i18n/lang';
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Mic, Square, X, Loader2, AlertTriangle, Volume2, Check } from 'lucide-react';
@@ -108,7 +109,7 @@ export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
     if (typeof speechSynthesis === 'undefined' || !text.trim()) { setPhase('idle'); return; }
     setPhase('speaking');
     const u = new SpeechSynthesisUtterance(text.slice(0, 1200));
-    u.lang = 'ru-RU';
+    u.lang = speechLocale();
     u.onend = () => setPhase('idle');
     u.onerror = () => setPhase('idle');
     speechSynthesis.cancel();
@@ -143,7 +144,7 @@ export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
     if (!Ctor) { setError('Этот браузер не умеет распознавать речь'); setPhase('error'); return; }
     transcriptRef.current = '';
     const rec = new Ctor();
-    rec.lang = 'ru-RU';
+    rec.lang = speechLocale();
     rec.continuous = false;
     rec.interimResults = true;
     rec.onresult = (e) => {

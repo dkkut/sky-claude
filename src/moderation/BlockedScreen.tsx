@@ -120,7 +120,7 @@ export const BlockedScreen = ({ bannedUntil }: { bannedUntil?: string }) => {
             </button>
             {tickets.length > 0 && (
               <p className="text-xs" style={{ color: 'var(--t3)' }}>
-                У вас {tickets.length} обращени{tickets.length === 1 ? 'е' : 'я'}
+                {`У вас ${tickets.length} обращени${tickets.length === 1 ? 'е' : 'я'}`}
               </p>
             )}
           </motion.div>

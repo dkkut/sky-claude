@@ -72,6 +72,7 @@ import { petsRoutes } from './routes/pets.mjs';
 import { sweepOrphanSkinMedia } from './skinMarket.mjs';
 import { streamsRoutes } from './routes/streams.mjs';
 import { weatherRoutes } from './routes/weather.mjs';
+import { runWithLang } from './lang.mjs';
 import { trackingRoutes } from './routes/tracking.mjs';
 import { notifyRoutes } from './routes/notify.mjs';
 import { dispatchDueBroadcasts, sweepStaleBroadcastRuns } from './notifyBroadcast.mjs';
@@ -146,12 +147,12 @@ const applyCors = (req, res) => {
   res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sky-Client, X-Sky-Beta');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sky-Client, X-Sky-Beta, X-Sky-Lang');
     res.setHeader('Access-Control-Max-Age', '600');
   }
 };
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => runWithLang(req, async () => {
   try {
     const ip = req.socket.remoteAddress || 'unknown';
     if (!rateLimit(ip, config.rateLimitPerMinute)) {
@@ -294,7 +295,7 @@ const server = http.createServer(async (req, res) => {
     const message = config.nodeEnv === 'production' ? 'internal_error' : error.message;
     return json(res, 500, { error: message });
   }
-});
+}));
 
 /* ─── Запуск ─────────────────────────────────────────────────────────────
    БД и Redis должны быть готовы до приёма запросов, иначе первые из них

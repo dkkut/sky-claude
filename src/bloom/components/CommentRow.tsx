@@ -39,7 +39,7 @@ export const CommentRow = ({ comment, postId, onLike, onAuthorClick }: {
           <button type="button" onClick={goToAuthor} className="text-[11px] font-bold mb-0.5 block" style={{ color: 'var(--accent)' }}>
             {comment.authorName}
           </button>
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--t1)' }}>{comment.text}</p>
+          <p translate="no" className="text-xs leading-relaxed" style={{ color: 'var(--t1)' }}>{comment.text}</p>
         </div>
         <div className="flex items-center gap-3 mt-1 px-1">
           <span className="text-[10px]" style={{ color: 'var(--t3)' }}>{fmtAgo(comment.createdAt)}</span>

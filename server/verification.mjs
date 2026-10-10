@@ -12,6 +12,7 @@
  *
  * Сам код в базе не лежит: хранится HMAC (см. server/crypto.mjs).
  */
+import { L } from './lang.mjs';
 import { query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { generateNumericCode, hashCode, codesEqual } from './crypto.mjs';
@@ -76,12 +77,18 @@ export const issueCode = async (channel, destination, purpose) => {
   );
 
   const delivery = channel === 'phone'
-    ? await sendSms(destination, `Код Sky ID: ${code}. Никому его не сообщайте.`)
-    : await sendEmail(destination, 'Код Sky ID',
-        `Ваш код подтверждения: ${code}\n\n` +
-        `Код действует ${Math.round(TTL_SEC / 60)} минут. Никому его не сообщайте — ` +
-        `сотрудники Sky никогда не спрашивают код.\n` +
-        `Если вы ничего не запрашивали, просто не отвечайте на это письмо.`);
+    ? await sendSms(destination, L(`Код Sky ID: ${code}. Никому его не сообщайте.`, `Sky ID code: ${code}. Do not share it with anyone.`))
+    : await sendEmail(destination, L('Код Sky ID', 'Sky ID code'),
+        L(
+          `Ваш код подтверждения: ${code}\n\n` +
+          `Код действует ${Math.round(TTL_SEC / 60)} минут. Никому его не сообщайте — ` +
+          `сотрудники Sky никогда не спрашивают код.\n` +
+          `Если вы ничего не запрашивали, просто не отвечайте на это письмо.`,
+          `Your confirmation code: ${code}\n\n` +
+          `The code is valid for ${Math.round(TTL_SEC / 60)} minutes. Do not share it with anyone — ` +
+          `Sky staff never ask for the code.\n` +
+          `If you did not request anything, just do not reply to this email.`,
+        ));
 
   if (!delivery.ok) {
     // Провайдер не настроен — это наша поломка, а не поведение человека.

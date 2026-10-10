@@ -788,7 +788,7 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
             if (msg.once)    return <OnceViewText msg={msg} fromMe={fromMe} color={(fromMe ? theme.mineText : theme.otherText)}/>;
             return (
               <div>
-                <p className="text-[14px] leading-relaxed whitespace-pre-wrap break-words" style={{ color: (fromMe ? theme.mineText : theme.otherText) }}>
+                <p translate="no" className="text-[14px] leading-relaxed whitespace-pre-wrap break-words" style={{ color: (fromMe ? theme.mineText : theme.otherText) }}>
                   <RT t={msg.text}/>
                 </p>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1508,7 +1508,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-[14px] sm:text-[16px] font-bold truncate leading-tight" style={{ color: '#fff' }}>{chat.name}</p>
+                <p className="text-[14px] sm:text-[16px] font-bold truncate leading-tight" style={{ color: '#fff' }} translate="no">{chat.name}</p>
                 {typing.length > 0 ? (
                   <p className="text-xs truncate" style={{ color: theme.accent }}>
                     {typing.join(', ')} печатает...
@@ -1666,7 +1666,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
               <div className="w-0.5 self-stretch rounded-full shrink-0" style={{ background: theme.accent }} />
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-semibold" style={{ color: theme.accent }}>
-                  {scheduledMsgs.length} отложенн{scheduledMsgs.length === 1 ? 'ое' : 'ых'} сообщени{scheduledMsgs.length === 1 ? 'е' : 'я'}
+                  {`${scheduledMsgs.length} отложенн${scheduledMsgs.length === 1 ? 'ое' : 'ых'} сообщени${scheduledMsgs.length === 1 ? 'е' : 'я'}`}
                 </p>
                 <p className="truncate text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>
                   Ближайшее — {new Date(scheduledMsgs[0].scheduledAt!).toLocaleString('ru-RU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}
@@ -1800,7 +1800,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
               <div className="flex flex-col items-center gap-2 py-4">
                 <div className="grid h-20 w-20 place-items-center rounded-full text-3xl font-bold text-white"
                   style={{ background: '#2563eb' }}>{chat.avatar?.[0]?.toUpperCase()}</div>
-                <p className="text-base font-semibold" style={{ color: theme.otherText }}>{chat.name}</p>
+                <p className="text-base font-semibold" style={{ color: theme.otherText }} translate="no">{chat.name}</p>
                 <p className="text-xs" style={{ color: 'var(--t2)' }}>
                   {chat.type === 'direct' ? `@${chat.username}` : `${chat.members ?? (chat.participants?.length ?? 0)} участников`}
                 </p>

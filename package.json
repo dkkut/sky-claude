@@ -18,7 +18,8 @@
     "electron:build:linux": "electron-builder --linux AppImage",
     "cap:sync": "npm run build:native && npx cap sync android",
     "cap:sync:ios": "npm run build:native && npx cap sync ios",
-    "build:native": "vite build --mode native"
+    "build:native": "vite build --mode native",
+    "i18n:check": "node scripts/i18n-check.mjs"
   },
   "dependencies": {
     "@capacitor/preferences": "^8.0.1",

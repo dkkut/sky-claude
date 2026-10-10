@@ -1,3 +1,4 @@
+import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -468,6 +469,10 @@ const SettingsSection = ({ logout, username, onOpen }: {
     <div className="flex flex-col px-4 py-4 pb-10 space-y-3" style={{ scrollbarWidth:'none' }}>
 
       {/* -- ТЕМА ------------------------------- */}
+      <SectionBlock title="Язык / Language">
+        <LanguageButtons />
+      </SectionBlock>
+
       <SectionBlock title="Тема оформления">
         <div className="px-4 pb-3 pt-1">
           {/* Светлая/тёмная — отдельный переключатель: AMOLED и Dim ниже

@@ -14,6 +14,7 @@
    завести, есть ли Prime, нужен ли второй фактор — отвечает сервер.
    Этот файл только спрашивает и показывает ответ.
 =============================================================== */
+import { isEnglish } from '@/i18n/lang';
 import { NATIVE_APP, API_ORIGIN, nativeStore, REFRESH_TOKEN_KEY, BETA_TOKEN_KEY } from '../nativeApp';
 
 /** Способ второго фактора: код из приложения или письмо на почту. */
@@ -167,6 +168,7 @@ const raw = (path: string, init: RequestInit = {}) =>
       // ответа вместо (или вместе с) HttpOnly-кукой — см. appBody в
       // server/http.mjs. Обычный браузер этот заголовок не шлёт и
       // токены в теле не получает.
+      ...(isEnglish() ? { 'X-Sky-Lang': 'en' } : {}),
       ...(NATIVE_APP ? { 'X-Sky-Client': 'app' } : {}),
       ...(NATIVE_APP && nativeBetaToken ? { 'X-Sky-Beta': nativeBetaToken } : {}),
       ...(init.headers ?? {}),

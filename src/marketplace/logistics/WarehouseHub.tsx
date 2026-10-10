@@ -518,7 +518,7 @@ const AnalyticsTab = ({ wh }: { wh: Warehouse }) => {
       {lowStock > 0 && (
         <div className="rounded-2xl p-3 flex items-start gap-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
           <AlertTriangle size={14} style={{ color: C.amber }} className="mt-0.5 shrink-0"/>
-          <p className="text-xs" style={{ color: C.t2 }}>{lowStock} позици{lowStock===1?'я':'и'} с низким остатком (≤3 шт.) — пополните запасы.</p>
+          <p className="text-xs" style={{ color: C.t2 }}>{`${lowStock} позици${lowStock===1?'я':'и'} с низким остатком (≤3 шт.) — пополните запасы.`}</p>
         </div>
       )}
     </div>

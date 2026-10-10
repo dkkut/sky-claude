@@ -21,6 +21,7 @@ import { reloadNotifsForUser }    from './notifications/store';
 import { reloadWalletForUser }    from './wallet/store';
 import { reloadCustomizationForUser } from './customization/store';
 import { syncRegionForProfile, watchRegionChanges } from './region/sync';
+import { initI18n } from './i18n';
 import './styles.css';
 
 const SHIMMER_CSS = `
@@ -456,7 +457,8 @@ const Root = () => {
     : underLegal(deviceMode === 'tv' ? <TVAuthScreen /> : <AuthScreen />);
 };
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+/* Язык и словарь — до первого кадра: английский не должен мелькать русским. */
+void initI18n().finally(() => ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary fallback={
       <div style={{
@@ -486,4 +488,4 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Root />
     </ErrorBoundary>
   </React.StrictMode>
-);
+));

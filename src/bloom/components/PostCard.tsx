@@ -184,7 +184,7 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
       {/* Текст */}
       {post.text && (
         <div className="px-4 pb-2">
-          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--t1)' }}>
+          <p translate="no" className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--t1)' }}>
             <Tagged text={expanded || !longText ? post.text : post.text.slice(0, TEXT_LIMIT) + '...'} onTag={onTagClick}/>
           </p>
           {longText && (

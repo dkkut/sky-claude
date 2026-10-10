@@ -54,7 +54,7 @@ export const GamesView = ({ onGame }: Props) => {
       {/* Results count */}
       <div className="px-4 pb-2">
         <p className="text-[10px]" style={{ color: 'var(--t3)' }}>
-          {visible.length} игр{visible.length === 1 ? 'а' : visible.length < 5 ? 'ы' : ''}
+          {`${visible.length} игр${visible.length === 1 ? 'а' : visible.length < 5 ? 'ы' : ''}`}
         </p>
       </div>
 

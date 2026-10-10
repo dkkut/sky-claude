@@ -1,3 +1,4 @@
+import { isEnglish } from '@/i18n/lang';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Sparkles, Send, Lock, Loader } from 'lucide-react';
@@ -51,7 +52,7 @@ export const FamilyAI = ({ onBack }: { onBack: () => void }) => {
     const events = upcomingEvents().filter(e => new Date(e.date) >= new Date()).slice(0,5).map(e => `${e.title} (${new Date(e.date).toLocaleDateString('ru-RU')})`).join('; ') || 'событий не запланировано';
     const { level } = familyLevel();
 
-    return `Ты — семейный финансовый и бытовой ассистент внутри приложения Sky Family. Отвечай кратко, дружелюбно, по-русски, только на основе данных ниже. Не выдумывай цифры, которых нет в контексте.
+    return `Ты — семейный финансовый и бытовой ассистент внутри приложения Sky Family. Отвечай кратко, дружелюбно, ${isEnglish() ? 'по-английски' : 'по-русски'}, только на основе данных ниже. Не выдумывай цифры, которых нет в контексте.
 
 Данные семьи «${family.name}»:
 - Баланс общего счёта: ${family.balance} ₽

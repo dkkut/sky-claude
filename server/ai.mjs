@@ -26,6 +26,7 @@
  * Ответ читается с потолком по размеру и по времени: зависший или
  * бесконечный ответ иначе держал бы соединение и память.
  */
+import { aiLangNote } from './lang.mjs';
 import { config } from './config.mjs';
 
 /** Минута: дольше ждать нечего, человек уже ушёл с экрана. */
@@ -143,7 +144,7 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
         model: config.aiModel,
         max_output_tokens: Math.max(256, Math.min(8000, Number(maxTokens) || 2000)),
         temperature: 0,
-        instructions: system,
+        instructions: `${system}${aiLangNote()}`,
         input: turns.map(toResponsesTurn),
       }),
     });
