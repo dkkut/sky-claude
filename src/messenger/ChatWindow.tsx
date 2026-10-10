@@ -1100,7 +1100,9 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
 
   const URL_RE = /https?:\/\/[^\s]+/i;
   const filteredMsgs = useMemo(() => {
-    let list = chatMsgs;
+    /* Удалённые сообщения в ленте не показываем: вместо плашки
+       «Сообщение удалено» строка растворяется (exit в AnimatePresence). */
+    let list = chatMsgs.filter(m => !m.deleted);
     if (searchFilter !== 'all') {
       list = list.filter(m => {
         if (searchFilter === 'link') return URL_RE.test(m.text || '');
@@ -1975,6 +1977,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           </div>
         )}
 
+        <AnimatePresence initial={false}>
         {filteredMsgs.map((msg, i) => {
           const prev     = filteredMsgs[i - 1];
           const showDate = !prev || new Date(prev.timestamp).toDateString() !== new Date(msg.timestamp).toDateString();
@@ -1992,7 +1995,16 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           };
 
           return (
-            <div key={msg.id} ref={el => { msgRefs.current[msg.id] = el; }} style={{ transition: 'background 0.4s' }}>
+            <motion.div key={msg.id} ref={el => { msgRefs.current[msg.id] = el; }} style={{ transition: 'background 0.4s', transformOrigin: msg.fromMe ? 'right center' : 'left center' }}
+              exit={{
+                opacity: 0, scale: 0.7, filter: 'blur(8px)', x: msg.fromMe ? 40 : -40,
+                height: 0, overflow: 'hidden',
+                transition: {
+                  opacity: { duration: 0.35 }, scale: { duration: 0.4, ease: [0.4, 0, 0.2, 1] },
+                  filter: { duration: 0.4 }, x: { duration: 0.4 },
+                  height: { duration: 0.35, delay: 0.25, ease: 'easeInOut' },
+                },
+              }}>
               {showDate && (
                 <div className="flex justify-center my-3">
                   <span className="rounded-full px-4 py-1 text-xs font-medium"
@@ -2017,9 +2029,10 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 replyCount={replyCounts[msg.id]}
                 onOpenThread={() => setThreadRootId(msg.id)}
               />
-            </div>
+            </motion.div>
           );
         })}
+        </AnimatePresence>
 
         {/* Typing */}
         <AnimatePresence>
