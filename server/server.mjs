@@ -563,6 +563,26 @@ const start = async () => {
   }, 60 * 60 * 1000);
   houseKeeping.unref();
 
+  /*
+   * Тайм-ауты соединений — две давние причины «иногда не открывается»:
+   *
+   * 1. keepAliveTimeout у Node по умолчанию 5 с, а nginx держит
+   *    соединение с upstream простаивающим до 60 с (upstream sky_api,
+   *    keepalive 32). Node закрывает «спящее» соединение ровно тогда, когда
+   *    nginx шлёт по нему следующий запрос, — это 502 на случайный запрос
+   *    после паузы в 5–60 с (обложка, кусок аудио, любой fetch). Сервер
+   *    должен держать соединение дольше прокси: 65 с > 60 с.
+   * 2. requestTimeout по умолчанию 300 с — на ВЕСЬ запрос, включая тело.
+   *    Загрузка фильма до 4 ГБ (nginx разрешает 3600 с) обрывалась через
+   *    5 минут на любом не очень быстром канале. Для медленных клиентов
+   *    граница прежняя по смыслу (headersTimeout 60 с остаётся), но
+   *    общий предел поднят; REQUEST_TIMEOUT_MS=0 снимает его совсем.
+   */
+  server.keepAliveTimeout = Number(process.env.KEEPALIVE_TIMEOUT_MS) || 65_000;
+  server.headersTimeout = Math.max(server.keepAliveTimeout + 1_000, 66_000);
+  const rt = process.env.REQUEST_TIMEOUT_MS;
+  server.requestTimeout = rt === undefined || rt === '' ? 4 * 60 * 60 * 1000 : Math.max(0, Number(rt) || 0);
+
   server.listen(config.apiPort, () => {
     console.log(`[api] listening on :${config.apiPort}`);
   });
