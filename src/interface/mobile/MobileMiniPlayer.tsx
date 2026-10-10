@@ -1,14 +1,14 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, SkipForward, Music2} from 'lucide-react';
+import { Play, Pause, SkipForward, Music2, X } from 'lucide-react';
 import { usePlayerStore } from '@/player/playerStore';
 import { haptic } from './haptics';
 
 export const MobileMiniPlayer = ({ onOpen }: { onOpen: () => void }) => {
-  const { item, isPlaying, currentTime, duration, setPlaying, nextTrack } = usePlayerStore();
+  const { item, hidden, isPlaying, currentTime, duration, setPlaying, nextTrack, hide } = usePlayerStore();
 
   return (
     <AnimatePresence>
-      {item && (
+      {item && !hidden && (
         <motion.button type="button" onClick={() => { haptic('light'); onOpen(); }}
           initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
           transition={{ type: 'spring', damping: 28, stiffness: 320 }}
@@ -32,6 +32,12 @@ export const MobileMiniPlayer = ({ onOpen }: { onOpen: () => void }) => {
           <button type="button" onClick={(e) => { e.stopPropagation(); haptic('selection'); nextTrack(); }}
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
             <SkipForward size={14} style={{ color: 'var(--t2)' }}/>
+          </button>
+          {/* Скрыть мини-плеер с экрана: музыка продолжает играть, плеер
+              вернётся сам, когда начнётся следующий трек. */}
+          <button type="button" aria-label="Hide player" onClick={(e) => { e.stopPropagation(); haptic('selection'); hide(); }}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full">
+            <X size={14} style={{ color: 'var(--t3)' }}/>
           </button>
         </motion.button>
       )}

@@ -1760,10 +1760,10 @@ interface SkyFullPlayerProps {
 }
 
 /* ── MiniBar — bottom mini player ─────────────────────────── */
-const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLike }: {
+const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLike, onHide }: {
   track: Track; playing: boolean; cur: number; dur: number;
   liked: boolean; onPlay: () => void; onNext: () => void;
-  onOpen: () => void; onLike: () => void;
+  onOpen: () => void; onLike: () => void; onHide: () => void;
 }) => {
   const pct = dur > 0 ? (cur / dur) * 100 : 0;
   const fmtT = (s: number) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
@@ -1835,6 +1835,13 @@ const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLi
           className="grid h-8 w-8 place-items-center rounded-full"
           style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: YM.sub2 }}>
           <SkipForward size={16} />
+        </motion.button>
+
+        {/* Скрыть мини-плеер с экрана (музыка продолжает играть) */}
+        <motion.button whileTap={{ scale: 0.88 }} type="button" onClick={onHide} aria-label="Hide player"
+          className="grid h-8 w-8 place-items-center rounded-full"
+          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: YM.sub2 }}>
+          <X size={15} />
         </motion.button>
       </div>
     </motion.div>
@@ -2543,6 +2550,8 @@ export const SkyMusic = () => {
      постоянно), поэтому переключение вкладок больше не обрывает звук.
      Здесь мы просто читаем/пишем в общий usePlayerStore. */
   const gItem      = usePlayerStore(s => s.item);
+  const gHidden    = usePlayerStore(s => s.hidden);
+  const gHide      = usePlayerStore(s => s.hide);
   const playing    = usePlayerStore(s => s.isPlaying);
   const curTime    = usePlayerStore(s => s.currentTime);
   const durTime    = usePlayerStore(s => s.duration);
@@ -2722,8 +2731,8 @@ export const SkyMusic = () => {
           MiniBar — с лайком, таймером и т.д. Глобальный MobileMiniPlayer в это время
           скрыт (см. MobileShell.tsx), чтобы не было двух плееров разом. */}
       <AnimatePresence>
-        {cur && !showNP && (
-          <MiniBar track={cur} playing={playing} cur={curTime} dur={durTime}
+        {cur && !showNP && !gHidden && (
+          <MiniBar track={cur} onHide={gHide} playing={playing} cur={curTime} dur={durTime}
             liked={favorites.includes(cur.id)}
             onPlay={() => setPlaying(!playing)} onNext={skipNext} onOpen={() => setShowNP(true)}
             onLike={() => onLike(cur.id)} />

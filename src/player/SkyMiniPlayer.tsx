@@ -291,6 +291,14 @@ export const SkyMiniPlayer = () => {
               }
             </div>
 
+            {/* Крестик: скрыть плеер с экрана (музыка продолжает играть) */}
+            <button type="button" aria-label="Hide player"
+              onClick={(e) => { e.stopPropagation(); hide(); }}
+              className="absolute -right-1.5 -top-1.5 grid h-[18px] w-[18px] place-items-center rounded-full opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100"
+              style={{ background: 'var(--bg-l3)', boxShadow: '0 0 0 1.5px var(--border-m)', color: 'var(--t2)' }}>
+              <X size={10} />
+            </button>
+
             {/* Kind badge */}
             <div className="absolute -bottom-0.5 -right-0.5 rounded-full grid place-items-center"
               style={{
