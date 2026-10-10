@@ -39,7 +39,7 @@ import { betaEnabled, betaHashLive } from './beta.mjs';
 import {
   listChats, listMessages, createChat, saveMessage,
   editMessage, deleteMessage, markRead, memberIds, isMember, toggleReaction,
-  blockUser, unblockUser, listBlocked, addMember, leaveChat, trashChat, restoreChat, listTrashed, purgeTrashed, getChat, setMarkedUnread, setChatFlags, votePoll, consumeOnce, sweepExpired, toggleFavorite,
+  blockUser, unblockUser, listBlocked, addMember, leaveChat, trashChat, restoreChat, listTrashed, getChat, setMarkedUnread, setChatFlags, votePoll, consumeOnce, sweepExpired, toggleFavorite,
 } from './chats.mjs';
 import { applyCommand, sendRoomMessage } from './together.mjs';
 import {
@@ -2008,13 +2008,6 @@ export const startSignalHub = () => {
     }).catch((err) => console.error('[ws] уборка просроченных', err.message));
   }, 5000);
   sweeper.unref();
-
-  // Корзина чатов: окончательно убираем то, что пролежало дольше срока.
-  const trashPurger = setInterval(() => {
-    purgeTrashed().catch((err) => console.error('[ws] очистка корзины чатов', err.message));
-  }, 3600_000);
-  trashPurger.unref();
-  setTimeout(() => purgeTrashed().catch(() => {}), 60_000).unref();
 
   // Матчи, которые повисли без ответа обеих сторон дольше таймаута —
   // та самая защита от «застрявших игроков»: принявшего возвращаем в

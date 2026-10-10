@@ -15,7 +15,7 @@ import { activeChatListStyle } from '@/customization/selectors';
 import { useGamingAccounts } from '@/gaming/accounts';
 import { usePeopleSearch } from './usePeopleSearch';
 import { useAdminStore } from './adminStore';
-import { useTrashStore, daysLeft } from './trashStore';
+import { useTrashStore } from './trashStore';
 
 const fmtTime = (ts: number) => {
   const d = new Date(ts), now = new Date();
@@ -431,7 +431,7 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
         )}
       </AnimatePresence>
 
-      {/* Удаление у всех: чат уходит в корзину на 30 дней */}
+      {/* Удаление у всех: чат уходит в корзину */}
       <AnimatePresence>
         {confirmTrash && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -445,8 +445,8 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
               </p>
               <p className="mb-4 text-xs" style={{ color: 'var(--t2)' }}>
                 {isDirect
-                  ? 'Переписка исчезнет и у вас, и у собеседника. Вернуть её сможете вы оба из «Корзины» в течение 30 дней, потом она удалится навсегда.'
-                  : 'Чат исчезнет у всех участников. Вернуть его можно из «Корзины» в течение 30 дней, потом он удалится навсегда.'}
+                  ? 'Переписка исчезнет и у вас, и у собеседника. Вернуть её сможете вы оба из «Корзины» в любой момент: переписка сохраняется на сервере.'
+                  : 'Чат исчезнет у всех участников. Вернуть его можно из «Корзины» в любой момент: переписка сохраняется на сервере.'}
               </p>
               <div className="flex gap-2">
                 <button type="button" onClick={() => setConfirmTrash(false)}
@@ -466,7 +466,7 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
 };
 
 /* ===================================================================
-   Корзина: удалённые у всех чаты, 30 дней на восстановление
+   Корзина: удалённые у всех чаты, переписка сохраняется
 =================================================================== */
 const TrashList = () => {
   const items = useTrashStore(s => s.items);
@@ -475,7 +475,7 @@ const TrashList = () => {
   return (
     <div className="px-3 py-2">
       <p className="mb-2 px-1 text-[11px]" style={{ color: 'var(--t2)' }}>
-        Удалённые чаты хранятся 30 дней, потом исчезают навсегда.
+        Удалённые чаты и их переписка сохраняются, пока вы их не восстановите.
       </p>
       {loaded && items.length === 0 && (
         <p className="py-12 text-center text-sm" style={{ color: 'var(--t2)' }}>Корзина пуста</p>
@@ -485,7 +485,7 @@ const TrashList = () => {
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}><span translate="no">{c.name}</span></p>
-            <p className="text-[11px]" style={{ color: 'var(--t2)' }}>{`Осталось дней: ${daysLeft(c.deleteAt)}`}</p>
+            <p className="text-[11px]" style={{ color: 'var(--t2)' }}>{`Удалён ${new Date(c.trashedAt).toLocaleDateString()}`}</p>
           </div>
           {c.canRestore
             ? <button type="button" onClick={() => restoreChat(c.id)}

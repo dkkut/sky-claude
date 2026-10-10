@@ -1022,11 +1022,10 @@ export const leaveChat = async (chatId, userId) => {
 
 /* ═══ Удаление у всех и корзина ═════════════════════════════════════ */
 
-export const TRASH_DAYS = 30;
 
 /**
- * Удаление чата у всех участников с возможностью вернуть его
- * TRASH_DAYS дней. Личный чат может убрать любой из двоих — именно
+ * Удаление чата у всех участников с возможностью вернуть его в любой
+ * момент: переписка хранится на сервере и сама не удаляется. Личный чат может убрать любой из двоих — именно
  * поэтому ничего не стирается: второй участник тоже вправе его вернуть.
  * Группу и канал убирает только владелец.
  */
@@ -1059,38 +1058,28 @@ export const restoreChat = async (chatId, userId) => {
   );
   const chat = rows[0];
   if (!chat || !chat.trashed_at) return { error: 'not_found' };
-  if (new Date(chat.trashed_at).getTime() < Date.now() - TRASH_DAYS * 86400_000) return { error: 'expired' };
   if (chat.type !== 'direct' && chat.owner_id !== userId) return { error: 'not_owner' };
   await query('UPDATE chats SET trashed_at = NULL, trashed_by = NULL WHERE id = $1', [chatId]);
   return { members: chat.members ?? [] };
 };
 
-/** Корзина пользователя: чаты, убранные не больше TRASH_DAYS дней назад. */
+/** Корзина пользователя: все чаты, удалённые у всех; срока хранения нет. */
 export const listTrashed = async (userId) => {
   const { rows } = await query(
     `SELECT c.*, me.role AS my_role, me.marked_unread,
             me.pinned, me.archived, me.muted, ${PEOPLE_SELECT}
        FROM chats c
        JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $1
-      WHERE c.trashed_at IS NOT NULL AND c.trashed_at > now() - ($2 || ' days')::interval
+      WHERE c.trashed_at IS NOT NULL
       ORDER BY c.trashed_at DESC`,
-    [userId, String(TRASH_DAYS)],
+    [userId],
   );
   return rows.map((row) => {
     const trashedAt = row.trashed_at.getTime();
     return {
       ...toChat(row),
       trashedAt: new Date(trashedAt).toISOString(),
-      deleteAt: new Date(trashedAt + TRASH_DAYS * 86400_000).toISOString(),
       canRestore: row.type === 'direct' || row.owner_id === userId,
     };
   });
-};
-
-/** Окончательное удаление чатов, пролежавших в корзине дольше срока (каскадом). */
-export const purgeTrashed = async () => {
-  const { rowCount } = await query(
-    `DELETE FROM chats WHERE trashed_at IS NOT NULL AND trashed_at < now() - ($1 || ' days')::interval`,
-    [String(TRASH_DAYS)]);
-  return rowCount;
 };

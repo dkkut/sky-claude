@@ -353,7 +353,7 @@ const handle = (data: any) => {
     case 'trash-snapshot':
       useTrashStore.getState().set((payload?.chats ?? []).map((raw: any) => {
         const c = toChatItem(raw, myId);
-        return { id: c.id, name: c.name, type: c.type, trashedAt: raw.trashedAt, deleteAt: raw.deleteAt, canRestore: raw.canRestore === true };
+        return { id: c.id, name: c.name, type: c.type, trashedAt: raw.trashedAt, canRestore: raw.canRestore === true };
       }));
       break;
 

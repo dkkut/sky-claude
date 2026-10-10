@@ -152,19 +152,21 @@ Android- и Windows-сборках.
 - Новые тексты: `npm run i18n:check`; серверные русские сообщения
   (ошибки, диагностика, советы по хостингу) тоже лежат в `en.json`.
 
-## Корзина чатов (удаление у всех, 30 дней)
+## Корзина чатов (удаление у всех, переписка сохраняется)
 
-`trashChat` / `restoreChat` / `listTrashed` / `purgeTrashed` в
-`server/chats.mjs`, WS-сообщения `delete-chat`, `get-trash`,
-`restore-chat` (ответы `chat-trashed`, `trash-snapshot`, `chat-restored`)
-в `server/signal.mjs`, миграция `105_chat_trash.sql` (`chats.trashed_at`);
-клиент — `src/messenger/trashStore.ts`, сегмент «Корзина» и пункты меню
-в `ChatList.tsx`.
+`trashChat` / `restoreChat` / `listTrashed` в `server/chats.mjs`,
+WS-сообщения `delete-chat`, `get-trash`, `restore-chat` (ответы
+`chat-trashed`, `trash-snapshot`, `chat-restored`) в `server/signal.mjs`,
+миграция `105_chat_trash.sql` (`chats.trashed_at`); клиент —
+`src/messenger/trashStore.ts`, сегмент «Корзина» и пункты меню в
+`ChatList.tsx`.
 
 - Удаление у всех ничего не стирает: чат скрыт у всех (`isMember`,
   `listChats`, `getChat` и вход по приглашению его не видят), читать и
   писать нельзя, заново создать тот же личный чат — тоже (`chat_trashed`).
+- Срока хранения нет: переписка лежит на сервере и сама не удаляется,
+  вернуть её можно в любой момент (решение владельца; раньше было 30
+  дней с окончательной очисткой). Если понадобится срок — вернуть уборку
+  по `trashed_at` и проверку в `restoreChat`.
 - Личный чат убирает и возвращает любой из двоих; группу и канал —
   только владелец. «Убрать у себя» (`leaveChat`) работает как раньше.
-- Через 30 дней чат удаляет каскадом `purgeTrashed` (раз в час и через
-  минуту после старта сервера); восстановить просроченный нельзя.

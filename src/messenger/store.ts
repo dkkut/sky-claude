@@ -79,7 +79,7 @@ interface S {
   unblockUser:   (userId:string)=>void;
   loadOlder:     (chatId:string)=>void;
   leaveChat:     (chatId:string)=>void;
-  /** Удалить чат у всех: 30 дней его можно восстановить из корзины. */
+  /** Удалить чат у всех: его можно восстановить из корзины в любой момент. */
   deleteChatForAll: (chatId:string)=>void;
   loadTrash:     ()=>void;
   restoreChat:   (chatId:string)=>void;
