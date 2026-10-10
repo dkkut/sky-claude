@@ -722,46 +722,54 @@ export const hasPrime = async (profileId) => {
  * начисление, награда мероприятия, самостоятельная покупка) поведение
  * не меняется: старая подписка истекает, новая считает от «сейчас».
  */
-export const grantPrime = async (skyId, profileId, plan, days, opts = {}) => {
+/**
+ * Ядро выдачи Prime внутри ЧУЖОЙ транзакции (BEGIN/COMMIT держит
+ * вызывающий). Возвращает { skipped: true }, если подписка уже
+ * бессрочная и прибавлять дни некуда.
+ */
+export const grantPrimeIn = async (client, profileId, plan, days, opts = {}) => {
   const additive = opts?.additive === true;
+  let base = Date.now();
+  if (additive) {
+    const { rows: activeRows } = await client.query(
+      `SELECT expires_at FROM prime_subscriptions
+        WHERE profile_id = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > now())
+        FOR UPDATE`,
+      [profileId],
+    );
+    if (activeRows[0] && activeRows[0].expires_at === null) {
+      // Уже бессрочный Prime — добавлять дни некуда, но подарок не пропадает:
+      // подписка остаётся такой же бессрочной.
+      return { skipped: true };
+    }
+    const currentExpiry = activeRows[0]?.expires_at;
+    if (currentExpiry && currentExpiry.getTime() > base) base = currentExpiry.getTime();
+  }
+
+  await client.query(
+    `UPDATE prime_subscriptions SET status = 'expired' WHERE profile_id = $1 AND status = 'active'`,
+    [profileId],
+  );
+  const expires = days ? new Date(base + days * 86400_000) : null;
+  await client.query(
+    `INSERT INTO prime_subscriptions (id, profile_id, status, plan, expires_at)
+     VALUES ($1,$2,'active',$3,$4)`,
+    [`prime-${generateId()}`, profileId, String(plan ?? 'standard'), expires],
+  );
+  // Флаг в профиле — производное значение, держим его в согласии
+  // с подпиской, чтобы существующий код приложения не расходился с БД.
+  await client.query('UPDATE profiles SET is_prime = TRUE, updated_at = now() WHERE id = $1', [profileId]);
+  return { expires };
+};
+
+export const grantPrime = async (skyId, profileId, plan, days, opts = {}) => {
   const owned = await getProfileOfSkyId(skyId, profileId);
   if (!owned) return { error: 'not_found' };
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    let base = Date.now();
-    if (additive) {
-      const { rows: activeRows } = await client.query(
-        `SELECT expires_at FROM prime_subscriptions
-          WHERE profile_id = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > now())
-          FOR UPDATE`,
-        [profileId],
-      );
-      if (activeRows[0] && activeRows[0].expires_at === null) {
-        // Уже бессрочный Prime — добавлять дни некуда, но подарок не пропадает:
-        // подписка остаётся такой же бессрочной.
-        await client.query('COMMIT');
-        return { profile: await getProfileOfSkyId(skyId, profileId) };
-      }
-      const currentExpiry = activeRows[0]?.expires_at;
-      if (currentExpiry && currentExpiry.getTime() > base) base = currentExpiry.getTime();
-    }
-
-    await client.query(
-      `UPDATE prime_subscriptions SET status = 'expired' WHERE profile_id = $1 AND status = 'active'`,
-      [profileId],
-    );
-    const expires = days ? new Date(base + days * 86400_000) : null;
-    await client.query(
-      `INSERT INTO prime_subscriptions (id, profile_id, status, plan, expires_at)
-       VALUES ($1,$2,'active',$3,$4)`,
-      [`prime-${generateId()}`, profileId, String(plan ?? 'standard'), expires],
-    );
-    // Флаг в профиле — производное значение, держим его в согласии
-    // с подпиской, чтобы существующий код приложения не расходился с БД.
-    await client.query('UPDATE profiles SET is_prime = TRUE, updated_at = now() WHERE id = $1', [profileId]);
+    await grantPrimeIn(client, profileId, plan, days, opts);
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

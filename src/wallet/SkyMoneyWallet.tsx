@@ -3,11 +3,12 @@
 =============================================================== */
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { SkyCodes } from '@/codes/SkyCodes';
 import {
   Wallet, Plus, ArrowUpRight, ArrowDownLeft, RotateCcw,
   Crown, ShoppingBag, Music2, ChevronRight, X, Check,
   CreditCard, Smartphone, Building2, Users, Star, ArrowLeftRight,
-  Globe, Zap, Landmark, Lock, Gift,
+  Globe, Zap, Landmark, Lock, Gift, Ticket,
 } from 'lucide-react';
 import {
   useMoney, TX_ICON, TX_LABEL, TX_ICON_FALLBACK, TX_LABEL_FALLBACK,
@@ -43,7 +44,7 @@ const TOP_UP_METHODS = [
 /* QUICK_AMOUNTS moved to TopUpSheet */
 
 /* -- Toplevel section type --------------------------------------- */
-type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange';
+type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes';
 
 /* -- Balance Card ----------------------------------------------- */
 const BalanceCard = ({ balance, points, userId, onExchange }: {
@@ -101,13 +102,14 @@ const BalanceCard = ({ balance, points, userId, onExchange }: {
 );
 
 /* -- Quick Actions ----------------------------------------------- */
-const QuickActions = ({ onTopUp, onHistory }: {
-  onTopUp: () => void; onHistory: () => void;
+const QuickActions = ({ onTopUp, onHistory, onCodes }: {
+  onTopUp: () => void; onHistory: () => void; onCodes: () => void;
 }) => (
-  <div className="grid grid-cols-2 gap-3">
+  <div className="grid grid-cols-3 gap-3">
     {[
       { icon:Plus,           label:'Пополнить', onClick:onTopUp,    color:C.accent },
       { icon:RotateCcw,      label:'История',   onClick:onHistory,  color:C.amber  },
+      { icon:Ticket,         label:'Sky Codes', onClick:onCodes,    color:'var(--purple)' },
     ].map(({ icon:Icon, label, onClick, color }) => (
       <motion.button key={label} type="button" onClick={onClick} whileTap={{ scale:0.94 }}
         className="flex flex-col items-center gap-2 rounded-2xl py-4 transition-colors"
@@ -780,6 +782,10 @@ export const SkyMoneyWallet = () => {
     </div>
   );
 
+  if (view === 'codes') return (
+    <SkyCodes onClose={() => setView('main')} onRedeemed={() => void useMoney.getState().refresh()} />
+  );
+
   if (view === 'gifts') return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3 shrink-0" style={{ borderBottom:`1px solid ${C.border}` }}>
@@ -841,6 +847,7 @@ export const SkyMoneyWallet = () => {
         <QuickActions
           onTopUp={() => setView('topup')}
           onHistory={() => setView('history')}
+          onCodes={() => setView('codes')}
         />
       </div>
 

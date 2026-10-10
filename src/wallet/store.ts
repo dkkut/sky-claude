@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import {
   CreditCard, Crown, ShoppingBag, Music2, Home, RotateCcw,
   ArrowDownLeft, ArrowUpRight, Star, Gift, Landmark, Truck,
-  Megaphone, ShieldCheck, Gem, Radio, Wallet,
+  Megaphone, ShieldCheck, Gem, Radio, Wallet, Ticket,
 } from 'lucide-react';
 import type { IconComponent } from '@/shared/icon';
 
@@ -58,7 +58,9 @@ export type TxType =
   | 'prime_gift'            // подарок Prime
   | 'skin_purchase'         // покупка скина питомца
   | 'skin_purchase_refund'  // возврат за скин питомца
-  | 'stream_donation';      // донат на трансляции
+  | 'stream_donation'       // донат на трансляции
+  | 'code_topup'            // пополнение по коду Sky Codes
+  | 'code_points';          // баллы по коду Sky Codes
 
 export const TX_LABEL: Record<TxType, string> = {
   topup:        'Пополнение',
@@ -88,6 +90,8 @@ export const TX_LABEL: Record<TxType, string> = {
   skin_purchase:        'Скин питомца',
   skin_purchase_refund: 'Возврат за скин питомца',
   stream_donation:      'Донат на трансляции',
+  code_topup:           'Пополнение по коду',
+  code_points:          'Баллы по коду',
 };
 
 /** Запасной значок и подпись для вида операции, которого ещё нет в
@@ -131,6 +135,8 @@ export const TX_ICON: Record<TxType, IconComponent> = {
   skin_purchase:        ShoppingBag,
   skin_purchase_refund: RotateCcw,
   stream_donation:      Radio,
+  code_topup:           Ticket,
+  code_points:          Ticket,
 };
 
 export interface Transaction {

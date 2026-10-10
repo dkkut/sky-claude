@@ -30,6 +30,7 @@ export const PERMISSIONS = [
   'notifications',   // рассылки: создание, планирование, отмена, история
   'kutrent_market',  // KutRent Market: пользователи, заказы, поиск по Authenticator
   'violations',      // нарушения и штрафы Market/Warehouse/PVZ, регламент, апелляции
+  'codes',           // Sky Codes: серии, коды, журнал; отзыв. Создаёт серии только владелец
 ];
 
 /**
@@ -48,7 +49,7 @@ export const ROLES = {
   market_admin:    ['market', 'logistics', 'violations'],
   tickets_admin:   ['tickets'],
   bots_admin:      ['bots'],
-  finance_admin:   ['finance'],
+  finance_admin:   ['finance', 'codes'],
   // 'support' — вместе с решением по заявке на награду (одобрить,
   // отклонить) в тот же тикет уходит объяснение; без права 'support'
   // ответ в чат поддержки молча не доходит (см. support.mjs, staff-

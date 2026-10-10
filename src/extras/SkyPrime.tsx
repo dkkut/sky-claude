@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
+import { PrimeCouponNote } from '@/codes/PrimeCouponNote';
 import { Crown, Check, Star, Zap, Shield, Music2, Film, Radio, Sparkles, Gift, TrendingUp, X, CreditCard } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMoney, fmt as fmtMoney, reloadWalletForUser } from '@/wallet/store';
@@ -261,6 +262,7 @@ export const SkyPrime = () => {
           ))}
         </div>
 
+        <PrimeCouponNote />
         {/* Планы */}
         <div className={isMobile ? 'space-y-2' : 'space-y-3'}>
           {PLANS.map((plan, i) => (

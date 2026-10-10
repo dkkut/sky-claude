@@ -291,6 +291,16 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true): Prom
  */
 export const apiCall = call;
 
+/** GET, ответ которого — не JSON (выгрузка CSV): та же сессия и то же обновление токена. */
+export const apiText = async (path: string): Promise<{ ok: boolean; status: number; text: string }> => {
+  let res: Response;
+  try {
+    res = await raw(path);
+    if (res.status === 401 && await refreshOnce()) res = await raw(path);
+  } catch { return { ok: false, status: 0, text: '' }; }
+  return { ok: res.ok, status: res.status, text: await res.text() };
+};
+
 const post = <T>(path: string, body: Json = {}) =>
   call<T>(path, { method: 'POST', body: JSON.stringify(body) });
 const patch = <T>(path: string, body: Json = {}) =>

@@ -51,6 +51,26 @@ const inTransaction = async (fn) => {
   }
 };
 
+const creditTx = async (c, userId, amount, type, descr, ref) => {
+  await ensureAccount(c, userId);
+  const { rows } = await c.query(
+    'UPDATE wallet_accounts SET balance = balance + $2, updated_at = now() WHERE user_id = $1 RETURNING balance',
+    [userId, amount],
+  );
+  await addTx(c, userId, type, amount, descr, ref ?? null);
+  return { balance: Number(rows[0].balance) };
+};
+
+const creditPointsTx = async (c, userId, amount, type, descr, ref) => {
+  await ensureAccount(c, userId);
+  const { rows } = await c.query(
+    'UPDATE wallet_accounts SET points = points + $2, updated_at = now() WHERE user_id = $1 RETURNING points',
+    [userId, amount],
+  );
+  await addTx(c, userId, type, amount, descr, ref ?? null);
+  return { points: Number(rows[0].points) };
+};
+
 export const wallet = {
   async getState(userId, txLimit = 50) {
     await inTransaction((c) => ensureAccount(c, userId));
@@ -178,16 +198,18 @@ export const wallet = {
    */
   async credit(userId, amount, type, descr, ref) {
     if (!validAmount(amount)) return { error: 'invalid_amount' };
+    return inTransaction((c) => creditTx(c, userId, amount, type, descr, ref));
+  },
 
-    return inTransaction(async (c) => {
-      await ensureAccount(c, userId);
-      const { rows } = await c.query(
-        'UPDATE wallet_accounts SET balance = balance + $2, updated_at = now() WHERE user_id = $1 RETURNING balance',
-        [userId, amount],
-      );
-      await addTx(c, userId, type, amount, descr, ref ?? null);
-      return { balance: Number(rows[0].balance) };
-    });
+  /**
+   * То же начисление, но внутри ЧУЖОЙ транзакции: вызывающий сам держит
+   * BEGIN/COMMIT. Нужно там, где деньги и другое действие обязаны
+   * случиться вместе или не случиться вовсе (активация кода Sky Codes:
+   * пометить код использованным и начислить — одним целым).
+   */
+  creditIn(client, userId, amount, type, descr, ref) {
+    if (!validAmount(amount)) return Promise.resolve({ error: 'invalid_amount' });
+    return creditTx(client, userId, amount, type, descr, ref);
   },
 
   /** Начисление баллов. Тоже создаёт ценность — гейт тот же. */
@@ -254,16 +276,13 @@ export const wallet = {
   /** Зачисление баллов с указанным типом — баллный аналог credit(). */
   async creditPoints(userId, amount, type, descr, ref) {
     if (!validAmount(amount)) return { error: 'invalid_amount' };
+    return inTransaction((c) => creditPointsTx(c, userId, amount, type, descr, ref));
+  },
 
-    return inTransaction(async (c) => {
-      await ensureAccount(c, userId);
-      const { rows } = await c.query(
-        'UPDATE wallet_accounts SET points = points + $2, updated_at = now() WHERE user_id = $1 RETURNING points',
-        [userId, amount],
-      );
-      await addTx(c, userId, type, amount, descr, ref ?? null);
-      return { points: Number(rows[0].points) };
-    });
+  /** creditPoints внутри чужой транзакции — см. creditIn. */
+  creditPointsIn(client, userId, amount, type, descr, ref) {
+    if (!validAmount(amount)) return Promise.resolve({ error: 'invalid_amount' });
+    return creditPointsTx(client, userId, amount, type, descr, ref);
   },
 
   async spendPoints(userId, amount, descr, ref) {

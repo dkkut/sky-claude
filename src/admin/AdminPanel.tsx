@@ -34,6 +34,8 @@ import type { PetRarity, PetAvailability, SkinItemType, SkinAvailability } from 
    её держим статической: она нужна прямо в JSX, а не в обработчике. */
 import { evidenceFileUrl } from '@/marketplace/violationsApi';
 
+import { CodesAdminSection } from '@/codes/CodesAdmin';
+
 const C = {
   bg: 'var(--bg-l1)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
   brd: 'var(--border)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)',
@@ -5246,7 +5248,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'notify' | 'log' | 'events' | 'violations';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'notify' | 'log' | 'events' | 'violations';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5410,6 +5412,7 @@ export const AdminPanel = () => {
     { key: 'customization', label: 'Кастомизация', show: has('content') },
     { key: 'bloom', label: 'Bloom', show: has('content') },
     { key: 'ads', label: 'Реклама', show: has('content') },
+    { key: 'codes', label: 'Sky Codes', show: has('codes') },
     { key: 'notify', label: 'Рассылки', show: has('notifications') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
@@ -5624,6 +5627,7 @@ export const AdminPanel = () => {
       {tab === 'customization' && <CustomizationAdminSection />}
       {tab === 'bloom' && <BloomAdminSection />}
       {tab === 'ads' && <AdsAdminSection />}
+      {tab === 'codes' && <CodesAdminSection owner={rights.owner} />}
       {tab === 'notify' && <NotifyAdminSection />}
 
       {tab === 'admins' && (

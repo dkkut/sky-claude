@@ -6,6 +6,7 @@
  * getProfileOfSkyId, который ищет строку с условием принадлежности.
  * Поэтому подстановка чужого id даёт «не найдено», а не чужой профиль.
  */
+import { claimPrimeCoupon, releaseCoupon, discountedPrice } from './../skycodes.mjs';
 import { config } from './../config.mjs';
 import { signToken, sanitizeInput } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
@@ -371,18 +372,29 @@ export const skyIdRoutes = async (req, res, url) => {
     const owned = await getProfileOfSkyId(s.skyId, target);
     if (!owned) return json(res, 404, { error: 'not_found' });
 
-    const paid = await wallet.spend(target, price, 'prime', `Sky Prime · ${days} дн.`);
-    if (paid.error) return json(res, 400, paid);
+    /* Купон Sky Codes: скидка читается из базы, а не из запроса. Купон
+       занимается атомарно ДО списания и возвращается, если покупка не
+       состоялась. */
+    const coupon = await claimPrimeCoupon(target, `prime:${days}`);
+    const charge = coupon ? discountedPrice(price, coupon.percent) : price;
+
+    const paid = await wallet.spend(target, charge, 'prime', `Sky Prime · ${days} дн.`);
+    if (paid.error) {
+      if (coupon) await releaseCoupon(coupon.id);
+      return json(res, 400, paid);
+    }
 
     const result = await grantPrime(s.skyId, target, sanitizeInput(body.plan ?? 'standard'), days, { additive: true });
     if (result.error) {
       // Списали, но не выдали — возвращаем деньги, иначе они пропадут.
-      await wallet.refund(target, price, 'Возврат за Sky Prime');
+      await wallet.refund(target, charge, 'Возврат за Sky Prime');
+      if (coupon) await releaseCoupon(coupon.id);
       return json(res, 500, { error: 'grant_failed' });
     }
     return json(res, 200, {
       profile: result.profile, profiles: await listProfiles(s.skyId),
-      balance: paid.balance, price,
+      balance: paid.balance, price: charge,
+      ...(coupon ? { discount: { percent: coupon.percent, listPrice: price } } : {}),
     });
   }
 
