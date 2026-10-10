@@ -37,6 +37,7 @@ import {
   addProductImage, readProductImage, deleteProductImage, listReviews,
   setProductLogo, productLogoMime, dropProductLogo,
 } from './../market.mjs';
+import { afterSellerEdit } from './../marketmod.mjs';
 import {
   saveStream, sizeOf, openStream, remove,
   sellerAvatarIdFor, gameCoverIdFor, productLogoIdFor,
@@ -86,6 +87,14 @@ const CODES = {
   insufficient_funds: 402,
   seller_suspended: 403,
   seller_pending: 403,
+  seller_not_verified: 403,
+  reverification_required: 403,
+  bad_country: 400,
+  bad_condition: 400,
+  bad_source: 400,
+  bad_marking: 400,
+  bad_delivery_days: 400,
+  use_publish: 409,
   not_a_seller: 403,
   already_seller: 409,
   already_reviewed: 409,
@@ -347,6 +356,7 @@ export const marketRoutes = async (req, res, url) => {
       offset: params.get('offset'),
       minPrice: params.get('minPrice'),
       maxPrice: params.get('maxPrice'),
+      shipping: params.get('shipping'),
     });
     return json(res, 200, { items });
   }
@@ -386,7 +396,10 @@ export const marketRoutes = async (req, res, url) => {
       if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
       const body = await parseBody(req);
       const done = await updateProduct(productId, me, body);
-      return done.error ? fail(res, done) : json(res, 200, done);
+      if (done.error) return fail(res, done);
+      /* Изменилось то, от чего зависит допуск, — карточка проходит проверку заново. */
+      await afterSellerEdit(productId, me, done.changed ?? []);
+      return json(res, 200, { product: await readProduct(productId, me) });
     }
 
     if (req.method === 'DELETE' && tail === '') {

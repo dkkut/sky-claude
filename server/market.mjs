@@ -28,6 +28,9 @@ import { wallet } from './wallet.mjs';
 import { can } from './admin.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { hasAccepted } from './agreements.mjs';
+import {
+  ITEM_SOURCES, ITEM_CONDITIONS, MARKING_DECLARED, validCountry,
+} from './sellerrules.mjs';
 
 /* ─── Подписка продавца ────────────────────────────────────────────── */
 
@@ -138,6 +141,12 @@ const toSeller = (row, own = false) => row && ({
   description: row.description,
   hasAvatar: Boolean(row.has_avatar),
   status: row.status,
+  /* Налоговый статус виден покупателю только когда он подтверждён
+     проверкой: заявленное словами за подтверждённое не выдаём. */
+  taxKind: ['approved'].includes(row.verification_status) ? (row.tax_kind ?? undefined) : undefined,
+  verification: own ? row.verification_status : undefined,
+  activities: own ? (row.activities ?? []) : undefined,
+  suspendReason: own && row.status === 'suspended' ? (row.suspend_reason ?? '') : undefined,
   rating: row.rating == null ? null : Math.round(Number(row.rating) * 10) / 10,
   reviewCount: Number(row.review_count ?? 0),
   ordersTotal: Number(row.orders_total ?? 0),
@@ -196,8 +205,13 @@ const sellerRow = async (profileId) => {
 export const canSell = async (profileId) => {
   const row = await sellerRow(profileId);
   if (!row) return { ok: false, error: 'not_a_seller' };
-  if (row.status === 'suspended') return { ok: false, error: 'seller_suspended' };
+  if (row.status === 'suspended' || row.verification_status === 'suspended') return { ok: false, error: 'seller_suspended' };
   if (row.status === 'pending') return { ok: false, error: 'seller_pending' };
+  /* Подтверждённый статус — условие торговли. Старые магазины
+     ('legacy') работают как работали, пока администрация не вернула их
+     на проверку. */
+  if (row.verification_status === 'reverify') return { ok: false, error: 'reverification_required' };
+  if (!['approved', 'legacy'].includes(row.verification_status)) return { ok: false, error: 'seller_not_verified' };
   if (!subscriptionOf(row).active) return { ok: false, error: 'subscription_required' };
   /* Sky денег не держит, и единственный путь оплаты — прямой перевод
      продавцу. Продавец без реквизитов получить деньги не может, а
@@ -246,8 +260,9 @@ export const createSeller = async (profileId, { shopName, description, paymentDe
   const details = text(paymentDetails, MAX_PAYMENT_DETAILS);
   const { rows } = await query(
     `INSERT INTO market_sellers
-       (profile_id, shop_name, description, payment_details_enc, has_payment_details)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+       (profile_id, shop_name, description, payment_details_enc, has_payment_details,
+        status, verification_status)
+     VALUES ($1,$2,$3,$4,$5,'pending','none') RETURNING *`,
     [profileId, name, text(description, MAX_SHOP_DESC),
       details ? encryptContent(details) : null, Boolean(details)],
   );
@@ -340,7 +355,11 @@ export const sellerAvatarMime = async (sellerId) => {
 export const paySellerSubscription = async (profileId) => {
   const row = await sellerRow(profileId);
   if (!row) return { error: 'not_a_seller' };
-  if (row.status === 'suspended') return { error: 'seller_suspended' };
+  if (row.status === 'suspended' || row.verification_status === 'suspended') return { error: 'seller_suspended' };
+  /* Платить за место на витрине до проверки незачем: торговать нельзя. */
+  if (!['approved', 'legacy', 'reverify'].includes(row.verification_status) || row.status === 'pending') {
+    return { error: 'seller_not_verified' };
+  }
 
   const paid = await wallet.spend(
     profileId, SELLER_PRICE, 'market_subscription',
@@ -490,6 +509,7 @@ export const toProduct = (row) => ({
      спрашивать картинку наугад: тридцать карточек без аватара — это
      тридцать запросов, каждый из которых заканчивается ничем. */
   sellerHasAvatar: row.seller_has_avatar === true,
+  sellerTaxKind: row.seller_verification === 'approved' ? (row.seller_tax_kind ?? undefined) : undefined,
   gameHasCover: row.game_has_cover === true,
   marketType: row.market_type,
   title: row.title,
@@ -510,6 +530,22 @@ export const toProduct = (row) => ({
   promoted: row.promoted_until ? new Date(row.promoted_until).getTime() > Date.now() : false,
   packages: Array.isArray(row.packages) ? row.packages : undefined,
   active: Boolean(row.active),
+  moderationStatus: row.moderation_status,
+  moderationReason: row.own === true ? (row.moderation_reason ?? '') : undefined,
+  itemCondition: row.item_condition ?? undefined,
+  itemSource: row.own === true ? (row.item_source ?? undefined) : undefined,
+  markingDeclared: row.own === true ? (row.marking_declared ?? undefined) : undefined,
+  /* Происхождение и отправка — два разных факта. Отметки считаются
+     здесь из сведений о товаре и от клиента не принимаются никогда. */
+  originCountry: row.origin_country ?? undefined,
+  shipFromCountry: row.ship_from_country ?? undefined,
+  itemLocationCountry: row.item_location_country ?? undefined,
+  shipsFromAbroad: row.ship_from_country ? row.ship_from_country !== 'RU' : undefined,
+  locatedAbroad: row.item_location_country ? row.item_location_country !== 'RU' : undefined,
+  intlShipping: row.ship_from_country ? row.intl_shipping === true : undefined,
+  deliveryDaysMin: row.delivery_days_min ?? undefined,
+  deliveryDaysMax: row.delivery_days_max ?? undefined,
+  importInfo: row.import_info ? row.import_info : undefined,
   sold: Number(row.sold ?? 0),
   rating: row.rating == null ? null : Math.round(Number(row.rating) * 10) / 10,
   reviewCount: Number(row.review_count ?? 0),
@@ -531,6 +567,8 @@ const SELECT_PRODUCT = `
          s.shop_name,
          s.rating AS seller_rating,
          s.has_avatar AS seller_has_avatar,
+         s.tax_kind AS seller_tax_kind,
+         s.verification_status AS seller_verification,
          g.title AS game_title,
          g.has_cover AS game_has_cover,
          p.seller_id = $1 AS own,
@@ -579,12 +617,12 @@ export const readProduct = async (productId, viewerId) => {
  */
 export const listCatalog = async (viewerId, {
   marketType = 'standard', q, category, gameId, gameCategory, serviceCategory,
-  sellerId, sort, limit, offset, minPrice, maxPrice,
+  sellerId, sort, limit, offset, minPrice, maxPrice, shipping,
 } = {}) => {
   const lim = int(limit, 1, 100) ?? 40;
   const off = int(offset, 0, 100000) ?? 0;
   const args = [viewerId ?? ''];
-  const where = ['p.active', "s.status = 'active'"];
+  const where = ['p.active', "p.moderation_status = 'published'", "s.status = 'active'"];
 
   args.push(MARKET_TYPES.includes(marketType) ? marketType : 'standard');
   where.push(`p.market_type = $${args.length}`);
@@ -607,6 +645,13 @@ export const listCatalog = async (viewerId, {
     args.push(String(serviceCategory)); where.push(`p.service_category = $${args.length}`);
   }
   if (sellerId) { args.push(String(sellerId)); where.push(`p.seller_id = $${args.length}`); }
+
+  /* Фильтр по месту отправки идёт по сведениям, которые продавец указал
+     у товара, а не по стране производства: товар китайского
+     производства со склада в России — это «отправка из России». */
+  if (shipping === 'ru') where.push("p.ship_from_country = 'RU'");
+  else if (shipping === 'abroad') where.push("p.ship_from_country IS NOT NULL AND p.ship_from_country <> 'RU'");
+  else if (shipping === 'intl') where.push('p.intl_shipping');
 
   const lo = int(minPrice, 0, MAX_PRICE_KOP);
   if (lo !== null) { args.push(lo); where.push(`p.price_kop >= $${args.length}`); }
@@ -653,7 +698,7 @@ export const listFavorites = async (userId, { limit } = {}) => {
   const { rows } = await query(
     `${SELECT_PRODUCT}
        JOIN market_favorites f2 ON f2.product_id = p.id AND f2.user_id = $1
-      WHERE p.active AND s.status = 'active'
+      WHERE p.active AND p.moderation_status = 'published' AND s.status = 'active'
       ORDER BY f2.created_at DESC LIMIT $2`,
     [userId, lim],
   );
@@ -708,8 +753,40 @@ const validateProduct = async (input, { partial = false } = {}) => {
     if (s === null) return { error: 'bad_stock' };
     out.stock = s;
   }
-  if (input.active !== undefined) out.active = input.active === true;
   if (input.region !== undefined) out.region = text(input.region, 60) || null;
+
+  /* Происхождение, место отправки и состояние. Страны — двухбуквенные
+     коды ISO; всё, что на код не похоже, отклоняется, а не молча
+     превращается в пустое. */
+  for (const [key, col] of [['originCountry', 'origin_country'], ['shipFromCountry', 'ship_from_country'],
+    ['itemLocationCountry', 'item_location_country']]) {
+    if (input[key] === undefined) continue;
+    if (input[key] === null || input[key] === '') { out[col] = null; continue; }
+    const c = String(input[key]).toUpperCase();
+    if (!validCountry(c)) return { error: 'bad_country' };
+    out[col] = c;
+  }
+  if (input.intlShipping !== undefined) out.intl_shipping = input.intlShipping === true;
+  for (const [key, col] of [['deliveryDaysMin', 'delivery_days_min'], ['deliveryDaysMax', 'delivery_days_max']]) {
+    if (input[key] === undefined) continue;
+    if (input[key] === null || input[key] === '') { out[col] = null; continue; }
+    const d = int(input[key], 1, 365);
+    if (d === null) return { error: 'bad_delivery_days' };
+    out[col] = d;
+  }
+  if (input.importInfo !== undefined) out.import_info = text(input.importInfo, 1000);
+  if (input.itemCondition !== undefined) {
+    if (input.itemCondition !== null && !ITEM_CONDITIONS.includes(input.itemCondition)) return { error: 'bad_condition' };
+    out.item_condition = input.itemCondition;
+  }
+  if (input.itemSource !== undefined) {
+    if (input.itemSource !== null && !ITEM_SOURCES.includes(input.itemSource)) return { error: 'bad_source' };
+    out.item_source = input.itemSource;
+  }
+  if (input.markingDeclared !== undefined) {
+    if (input.markingDeclared !== null && !MARKING_DECLARED.includes(input.markingDeclared)) return { error: 'bad_marking' };
+    out.marking_declared = input.markingDeclared;
+  }
   if (input.serviceCategory !== undefined) {
     const c = String(input.serviceCategory ?? '');
     out.service_category = SERVICE_CATEGORIES.includes(c) ? c : null;
@@ -766,13 +843,24 @@ export const createProduct = async (sellerId, input = {}) => {
   await query(
     `INSERT INTO market_products
        (id, seller_id, market_type, title, description, price_kop, old_price_kop,
-        category, stock, game_id, game_category, region, service_category, tags, search_text)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)`,
+        category, stock, game_id, game_category, region, service_category, tags, search_text,
+        active, moderation_status, item_condition, item_source, origin_country,
+        ship_from_country, item_location_country, intl_shipping, delivery_days_min,
+        delivery_days_max, import_info, marking_declared)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,
+             FALSE,'draft',$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
     [id, sellerId, marketType, f.title, f.description, f.price_kop, f.old_price_kop ?? null,
       f.category, f.stock, gameId, gameCategory, f.region ?? null,
       f.service_category ?? null, f.tags ?? '[]',
-      searchTextFor([f.title, f.description, ...(JSON.parse(f.tags ?? '[]'))])],
+      searchTextFor([f.title, f.description, ...(JSON.parse(f.tags ?? '[]'))]),
+      f.item_condition ?? null, f.item_source ?? null, f.origin_country ?? null,
+      f.ship_from_country ?? null, f.item_location_country ?? null,
+      f.intl_shipping === true, f.delivery_days_min ?? null, f.delivery_days_max ?? null,
+      f.import_info ?? '', f.marking_declared ?? null],
   );
+  await query(
+    `INSERT INTO market_product_events (product_id, actor_id, actor_role, action, to_status)
+     VALUES ($1,$2,'seller','created','draft')`, [id, sellerId]);
   await logMarket(sellerId, 'product_created', id, { marketType });
   return { product: await readProduct(id, sellerId) };
 };
@@ -815,7 +903,7 @@ export const updateProduct = async (productId, sellerId, patch = {}) => {
 
   await query(`UPDATE market_products SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`, args);
   await logMarket(sellerId, 'product_updated', productId);
-  return { product: await readProduct(productId, sellerId) };
+  return { product: await readProduct(productId, sellerId), changed: Object.keys(f) };
 };
 
 /**
@@ -831,7 +919,13 @@ export const archiveProduct = async (productId, actorId) => {
   if (!rows[0]) return { error: 'not_found' };
   if (rows[0].seller_id !== actorId && !(await can(actorId, 'market'))) return { error: 'not_allowed' };
 
-  await query('UPDATE market_products SET active = FALSE, updated_at = now() WHERE id = $1', [productId]);
+  await query(
+    `UPDATE market_products SET active = FALSE, moderation_status = 'archived', updated_at = now()
+      WHERE id = $1`, [productId]);
+  await query(
+    `INSERT INTO market_product_events (product_id, actor_id, actor_role, action, to_status)
+     VALUES ($1,$2,$3,'archived','archived')`,
+    [productId, actorId, rows[0].seller_id === actorId ? 'seller' : 'staff']);
   await logMarket(actorId, 'product_archived', productId);
   return { ok: true };
 };
@@ -1233,7 +1327,11 @@ export const liveFileIds = async () => {
   for (const r of logos) alive.add(`mpl-${String(r.id).slice(3)}`);
   const { rows: photos } = await query('SELECT id FROM logi_warehouse_photos');
   for (const r of photos) alive.add(r.id);
+  /* Документы продавцов (заявки, товары, ПВЗ). Удалённые с витрины
+     остаются: по ним принималось решение, и стирать их уборкой нельзя. */
+  const { rows: docs } = await query('SELECT file_id FROM market_docs');
+  for (const r of docs) alive.add(r.file_id);
   return alive;
 };
 
-export { text as marketText, int as marketInt, searchTextFor, encryptContent, decryptContent };
+export { text as marketText, int as marketInt, searchTextFor, encryptContent, decryptContent, sellerRow };

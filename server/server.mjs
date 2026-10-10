@@ -73,6 +73,7 @@ import { sweepOrphanSkinMedia } from './skinMarket.mjs';
 import { streamsRoutes } from './routes/streams.mjs';
 import { weatherRoutes } from './routes/weather.mjs';
 import { runWithLang } from './lang.mjs';
+import { marketVerifyRoutes } from './routes/marketverify.mjs';
 import { codesRoutes } from './routes/codes.mjs';
 import { trackingRoutes } from './routes/tracking.mjs';
 import { notifyRoutes } from './routes/notify.mjs';
@@ -108,7 +109,7 @@ import { confirmSshLogin } from './breach.mjs';
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
-                botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketRoutes, primePulseRoutes,
+                botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,

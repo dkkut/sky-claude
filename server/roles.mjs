@@ -31,6 +31,9 @@ export const PERMISSIONS = [
   'kutrent_market',  // KutRent Market: пользователи, заказы, поиск по Authenticator
   'violations',      // нарушения и штрафы Market/Warehouse/PVZ, регламент, апелляции
   'codes',           // Sky Codes: серии, коды, журнал; отзыв. Создаёт серии только владелец
+  'seller_docs',     // заявки продавцов: проверка документов, запрос исправлений
+  'market_moderation', // карточки товаров и жалобы Market
+  'pvz_manage',      // заявки на открытие ПВЗ
 ];
 
 /**
@@ -46,7 +49,13 @@ export const ROLES = {
   moderation_admin:['moderation', 'support'],
   support_admin:   ['support'],
   content_admin:   ['content'],
-  market_admin:    ['market', 'logistics', 'violations'],
+  market_admin:    ['market', 'logistics', 'violations', 'seller_docs', 'market_moderation', 'pvz_manage'],
+  // Сотрудник проверки документов: смотрит заявки и документы, просит
+  // исправления; одобрять и отклонять заявки, приостанавливать магазины
+  // и менять правила допуска он не может — это право 'market'.
+  docs_reviewer:   ['seller_docs'],
+  market_moderator:['market_moderation'],
+  pvz_manager:     ['pvz_manage'],
   tickets_admin:   ['tickets'],
   bots_admin:      ['bots'],
   finance_admin:   ['finance', 'codes'],
@@ -74,6 +83,9 @@ export const ROLE_LABEL = {
   support_admin: 'Поддержка',
   content_admin: 'Содержимое',
   market_admin: 'Маркет и склады',
+  docs_reviewer: 'Проверка документов продавцов',
+  market_moderator: 'Модерация Market',
+  pvz_manager: 'Управление ПВЗ',
   tickets_admin: 'Билеты',
   bots_admin: 'Боты',
   finance_admin: 'Начисления',

@@ -34,6 +34,8 @@ const ISSUE_PER_HOUR = 20;
 const CODES = {
   not_found: 404,
   not_allowed: 403,
+  pvz_application_required: 403,
+  pvz_needs_ip_or_legal: 403,
   bad_profile: 400,
   bad_permissions: 400,
   bad_role: 400,

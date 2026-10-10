@@ -20,7 +20,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -39,6 +39,9 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   kutrent_market: 'KutRent Market',
   violations: 'Нарушения и штрафы',
   codes: 'Sky Codes',
+  seller_docs: 'Проверка продавцов',
+  market_moderation: 'Модерация Market',
+  pvz_manage: 'Заявки ПВЗ',
 };
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -49,6 +52,9 @@ export const ROLE_LABEL: Record<string, string> = {
   support_admin: 'Поддержка',
   content_admin: 'Содержимое',
   market_admin: 'Маркет и склады',
+  docs_reviewer: 'Проверка документов продавцов',
+  market_moderator: 'Модерация Market',
+  pvz_manager: 'Управление ПВЗ',
   tickets_admin: 'Билеты',
   bots_admin: 'Боты',
   finance_admin: 'Начисления',

@@ -38,6 +38,7 @@ import { generateNumericCode, hashCode, codesEqual } from './crypto.mjs';
 import { marketText as text, marketInt as int, ORDER_ID_RE, logMarket } from './market.mjs';
 import { applyTransition, toOrder } from './marketorders.mjs';
 import { pushMarket } from './signal.mjs';
+import { approvedPvzApplicationFor } from './sellerapps.mjs';
 
 export const PVZ_ID_RE = /^mpp-[0-9a-f-]{36}$/;
 export const CELL_ID_RE = /^pzc-[0-9a-f-]{36}$/;
@@ -250,11 +251,18 @@ const MAX_PAYMENT_DETAILS = 600;
  * способом.
  */
 export const createPvz = async (actorId, input = {}) => {
-  const title = text(input.title, MAX_TITLE);
-  const city = text(input.city, 80);
-  const address = text(input.address, MAX_ADDR);
+  /* Точку заводят только по ОДОБРЕННОЙ заявке ИП или юрлица. Обычный
+     продавец, самозанятый и физлицо сюда не проходят: статус проверяется
+     по базе, а не по присланному полю. */
+  const application = await approvedPvzApplicationFor(actorId, input.applicationId);
+  if (!application) return { error: 'pvz_application_required' };
+
+  const title = text(application.title, MAX_TITLE);
+  const city = text(application.city, 80);
+  const address = text(application.address, MAX_ADDR);
   if (!title || !city || !address) return { error: 'bad_pvz' };
   const cellCount = int(input.cellCount, 0, 2000) ?? 0;
+  input = { ...input, phone: application.phone };
 
   const id = `mpp-${generateId()}`;
   const client = await pool.connect();
@@ -267,6 +275,11 @@ export const createPvz = async (actorId, input = {}) => {
       [id, title, city, address, text(input.phone, 40),
         text(input.workFrom, 5) || '09:00', text(input.workTo, 5) || '21:00',
         int(input.holdDays, 1, 60) ?? 7, actorId]);
+    /* Заявка расходуется ровно один раз. */
+    const used = await client.query(
+      'UPDATE market_pvz_applications SET pvz_id = $2, updated_at = now() WHERE id = $1 AND pvz_id IS NULL',
+      [application.id, id]);
+    if (used.rowCount !== 1) throw new Error('pvz_application_already_used');
     const staffId = `pzs-${generateId()}`;
     await client.query(
       `INSERT INTO market_pvz_staff (id, pvz_id, profile_id, role, permissions, added_by)

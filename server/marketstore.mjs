@@ -22,9 +22,10 @@ const ROOT = process.env.MARKET_DIR || '/data/market';
  *   mpl — логотип товара,
  *   msa — витрина продавца (аватар магазина),
  *   mgc — обложка игры,
- *   lwp — фотография склада.
+ *   lwp — фотография склада,
+ *   mdf — документ продавца (заявка, товар, ПВЗ).
  */
-const ID_RE = /^(mpi|mpl|msa|mgc|lwp)-[0-9a-f-]{36}$/;
+const ID_RE = /^(mpi|mpl|msa|mgc|lwp|mdf)-[0-9a-f-]{36}$/;
 
 const dirFor = (id) => join(ROOT, id.slice(4, 6));
 const pathFor = (id) => join(dirFor(id), id);
