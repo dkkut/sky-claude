@@ -1,0 +1,20 @@
+import { call, mkuser, B } from './lib.mjs';
+let pass = 0, fail = 0; const ok = (c, m, x = '') => { if (c) { pass++; console.log('ok  ', m); } else { fail++; console.log('FAIL', m, x); } };
+const U = await mkuser(process.argv[2], 'pgt');
+const g = (p, m = 'GET', b) => call(p, { method: m, body: b }, U.tok);
+const wav = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVE'), Buffer.alloc(100)]);
+const raw = (p, buf) => fetch(B + p, { method: 'POST', headers: { authorization: `Bearer ${U.tok}`, 'content-type': 'application/octet-stream' }, body: buf }).then(async (r) => ({ status: r.status, data: await r.json().catch(() => ({})) }));
+let r = await g('/api/music/tracks'); ok(r.status === 403 && r.data.error === 'prime_required', `музыка без Prime закрыта (${r.status})`);
+r = await g('/api/music/ticket', 'POST', '{}'); ok(r.status === 403, `музыкальный пропуск без Prime не выдаётся (${r.status})`);
+r = await raw('/api/music/upload?title=x&artist=y', wav); ok(r.status === 403, `загрузка музыки без Prime (${r.status})`);
+r = await raw('/api/ai/voice', wav); ok([402, 403, 501, 400].includes(r.status), `ИИ-голос без Prime (${r.status} ${r.data.error})`);
+r = await g('/api/ai/summary', 'POST', JSON.stringify({ text: 'a'.repeat(300), style: 'short' })); ok([402, 403, 501].includes(r.status), `пересказ без Prime (${r.status} ${r.data.error})`);
+r = await g('/api/ai/ask', 'POST', JSON.stringify({ task: 'translate', text: 'привет' })); ok([200, 501, 502, 429].includes(r.status), `ask доступен всем (${r.status})`);
+// подмена: признак Prime в теле/заголовках не действует
+r = await call('/api/music/tracks', { headers: { 'X-Sky-Prime': '1', 'X-Prime': 'true' } }, U.tok); ok(r.status === 403, 'заголовки X-Prime не обходят проверку');
+r = await call('/api/skyid/profiles/' + U.pid, { method: 'PATCH', body: JSON.stringify({ isPrime: true, primeUntil: '2099-01-01', prime_until: '2099-01-01' }) }, U.tok);
+r = await g('/api/music/tracks'); ok(r.status === 403, 'PATCH профиля не выдаёт Prime');
+r = await g('/api/skyid/prime/grant', 'POST', JSON.stringify({ plan: 'standard', days: 30 })); ok(r.status === 400 && r.data.error === 'insufficient_funds', 'покупка Prime без денег невозможна');
+r = await g('/api/skyid/prime/grant', 'POST', JSON.stringify({ plan: 'standard', days: 3650, price: 0 })); ok(r.status === 400 && r.data.error === 'invalid_plan', 'произвольный срок/цена отклонены');
+r = await g('/api/skyid/prime/grant', 'POST', JSON.stringify({ plan: 'standard', days: 30, profileId: 'someone-else' })); ok(r.status === 403, 'Prime «за другого» не покупается');
+console.log(`\nИТОГО: ${pass} ok, ${fail} fail`);

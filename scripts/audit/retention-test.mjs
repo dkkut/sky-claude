@@ -1,0 +1,22 @@
+import { execSync } from 'node:child_process';
+import { call, mkuser, B } from './lib.mjs';
+const q = (s) => execSync(`psql ${process.env.TEST_DATABASE_URL || 'postgres://sky:sky@127.0.0.1/sky'} -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
+let pass = 0, fail = 0; const ok = (c, m, x = '') => { if (c) { pass++; console.log('ok  ', m); } else { fail++; console.log('FAIL', m, x); } };
+const A = await mkuser(process.argv[2], 'rta'); q(`INSERT INTO prime_subscriptions(id,profile_id,status,plan) VALUES ('p${Date.now()}rt','${A.pid}','active','test')`);
+const mp3 = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(5000, 3)]);
+const up = await fetch(B + '/api/music/upload?title=Ret&artist=Z&duration=5', { method: 'POST', headers: { authorization: `Bearer ${A.tok}`, 'content-type': 'application/octet-stream' }, body: mp3 }); const id = (await up.json()).track.id;
+let r = await call(`/api/music/track/${id}`, {}, A.tok);
+const days = (new Date(r.data.track.expiresAt) - Date.now()) / 86400000;
+ok(r.data.track.retentionKeep === false && days > 19 && days <= 20.01, `владелец видит срок уборки (~${days.toFixed(1)} дн.)`, JSON.stringify(r.data.track).slice(0, 200));
+r = await call(`/api/music/track/${id}/retention-keep`, { method: 'POST', body: JSON.stringify({ keep: true }) }, A.tok); ok(r.status === 200, 'включить хранение без срока', r.status + ' ' + r.text);
+r = await call(`/api/music/track/${id}`, {}, A.tok); ok(r.data.track.retentionKeep === true && !r.data.track.expiresAt, 'после включения срока нет, защита true');
+// уборка: просрочим и проверим, что защищённый не удаляется, а незащищённый удаляется
+q(`update music_tracks set owner_last_used_at = now() - interval '40 days' where id='${id}'`);
+const id2 = (await (await fetch(B + '/api/music/upload?title=Ret2&artist=Z&duration=5', { method: 'POST', headers: { authorization: `Bearer ${A.tok}`, 'content-type': 'application/octet-stream' }, body: mp3 })).json()).track.id;
+q(`update music_tracks set owner_last_used_at = now() - interval '40 days' where id='${id2}'`);
+const { sweepUnusedPersonalFiles } = await import('../../server/storagequota.mjs');
+const res = await sweepUnusedPersonalFiles();
+ok(q(`select count(*) from music_tracks where id='${id}'`) === '1', 'защищённый трек пережил уборку');
+ok(q(`select count(*) from music_tracks where id='${id2}'`) === '0', 'незащищённый просроченный — убран (политика сохранена)');
+r = await call(`/api/music/track/${id}/retention-keep`, { method: 'POST', body: JSON.stringify({ keep: true }) }, (await mkuser(process.argv[2], 'rtb')).tok); ok(r.status === 404 || r.status === 403, 'чужой не может включать защиту', String(r.status));
+console.log(`\nИТОГО: ${pass} ok, ${fail} fail`); process.exit(0);

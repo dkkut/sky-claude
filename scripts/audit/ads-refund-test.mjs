@@ -1,0 +1,18 @@
+import { execSync } from 'node:child_process';
+import { call, mkuser } from './lib.mjs';
+const q = (s) => execSync(`psql ${process.env.TEST_DATABASE_URL || 'postgres://sky:sky@127.0.0.1/sky'} -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
+let pass = 0, fail = 0; const ok = (c, m, x = '') => { if (c) { pass++; console.log('ok  ', m); } else { fail++; console.log('FAIL', m, x); } };
+const A = await mkuser(process.argv[2], 'adr'), adm = await mkuser(process.argv[2], 'adm');
+q(`update profiles set is_admin=true, admin_role='super_admin' where id='${adm.pid}'`);
+await call('/api/wallet', {}, A.tok);
+const bal = () => Number(q(`select balance from wallet_accounts where user_id='${A.pid}'`));
+const mk = (status) => { const id = 'adc-' + Math.random().toString(36).slice(2, 10); q(`insert into ad_campaigns(id,advertiser_id,title,format,placement,status,budget,daily_limit,duration_days,max_impressions_per_day) values ('${id}','${A.pid}','T','image','bloom_feed','${status}',1000,100,10,1000)`); return id; };
+const P = (path, u, b = {}) => call(path, { method: 'POST', body: JSON.stringify(b) }, u.tok);
+let id = mk('moderation'); let b0 = bal();
+let rs = await Promise.all(Array.from({ length: 6 }, () => P(`/api/ads/campaigns/${id}/cancel`, A)));
+ok(bal() === b0 + 1000 && q(`select status from ad_campaigns where id='${id}'`) === 'cancelled', `6 параллельных отмен: вернулось +${bal() - b0} (ждём +1000)`, rs.map((r) => r.status).join(','));
+id = mk('moderation'); b0 = bal();
+rs = await Promise.all([...Array.from({ length: 3 }, () => P(`/api/ads/admin/campaigns/${id}/reject`, adm, { reason: 'нет' })), P(`/api/ads/campaigns/${id}/cancel`, A), P(`/api/ads/admin/campaigns/${id}/cancel`, adm)]);
+ok(bal() === b0 + 1000, `отклонение/отмена вперемешку: вернулось +${bal() - b0} (ждём +1000)`, rs.map((r) => r.status).join(','));
+const bx = bal(); await P(`/api/ads/campaigns/${id}/cancel`, A); ok(bal() === bx, 'повторная отмена конечного статуса ничего не возвращает');
+console.log(`\nИТОГО: ${pass} ok, ${fail} fail`);

@@ -1,0 +1,22 @@
+import { execSync } from 'node:child_process';
+import { call, mkuser } from './lib.mjs';
+const q = (s) => execSync(`psql ${process.env.TEST_DATABASE_URL || 'postgres://sky:sky@127.0.0.1/sky'} -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
+let pass = 0, fail = 0; const ok = (c, m, x = '') => { if (c) { pass++; console.log('ok  ', m); } else { fail++; console.log('FAIL', m, x); } };
+const A = await mkuser(process.argv[2], 'lna'), B = await mkuser(process.argv[2], 'lnb');
+for (const [i, k] of ['constructor', 'toString', 'assigned', 'batch_handed', ''].entries())
+  q(`insert into logi_courier_notifications(id,user_id,kind,text) values ('lcn-t${Date.now()}${i}','${A.pid}','${k}','текст ${i}')`);
+let r = await call('/api/logistics/notifications', {}, A.tok);
+ok(r.status === 200 && Array.isArray(r.data.items) && r.data.items.length === 5, 'список: 5 уведомлений, в т.ч. с «опасными» типами', r.text.slice(0, 150));
+ok(r.data.items.every((n) => typeof n.id === 'string' && typeof n.text === 'string' && typeof n.read === 'boolean' && n.createdAt), 'у каждого есть id/text/read/createdAt');
+const id = r.data.items[0].id;
+r = await call('/api/logistics/notifications', {}, B.tok);
+ok(r.status === 200 && r.data.items.length === 0, 'у другого пользователя список пуст (изоляция)');
+r = await call('/api/logistics/notifications/read', { method: 'POST', body: JSON.stringify({ id }) }, B.tok);
+ok(!(r.status === 200 && r.data.ok === true), 'чужое уведомление прочитать нельзя', r.text.slice(0, 100));
+ok(q(`select read_at is null from logi_courier_notifications where id='${id}'`) === 't', 'после чужой попытки оно осталось непрочитанным');
+r = await call('/api/logistics/notifications/read', { method: 'POST', body: JSON.stringify({ id }) }, A.tok);
+ok(r.status === 200, 'владелец отмечает прочитанным');
+r = await call('/api/logistics/notifications', {}, undefined); ok(r.status === 401, 'без входа — 401');
+r = await call('/api/logistics/notifications?limit=-5', {}, A.tok); ok(r.status === 200, 'limit=-5 не роняет');
+r = await call('/api/logistics/notifications/read', { method: 'POST', body: 'null' }, A.tok); ok(r.status < 500, 'тело null не даёт 500', String(r.status));
+console.log(`\n${pass} ok, ${fail} fail`);
