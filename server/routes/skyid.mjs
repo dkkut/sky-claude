@@ -51,6 +51,21 @@ const AVATAR_URL  = /^https:\/\/[\w.-]+(:\d{1,5})?\/[\w\-./%~+]*$/;
 const AVATAR_DATA = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/;
 const AVATAR_MAX  = 256 * 1024;   // ~190 КБ картинки после base64
 
+/**
+ * Проверка с различием «убрать» и «не подошло». Раньше любое неподходящее
+ * значение (слишком большой снимок, чужой формат) превращалось в null, то
+ * есть в «стереть аватар», а сервер отвечал 200: человек видел успех, а
+ * после обновления страницы аватара не было вовсе.
+ *   undefined → поле не меняем; '' / null → убрать; иначе строка либо
+ *   проходит проверку, либо PATCH отклоняется с invalid_avatar.
+ */
+const avatarPatch = (raw) => {
+  if (raw === undefined) return { value: undefined };
+  if (raw === null || String(raw).trim() === '') return { value: null };
+  const value = sanitizeAvatar(raw);
+  return value === null ? { error: true } : { value };
+};
+
 const sanitizeAvatar = (raw) => {
   const value = String(raw ?? '').trim();
   if (!value || value.length > AVATAR_MAX) return null;
@@ -179,12 +194,15 @@ export const skyIdRoutes = async (req, res, url) => {
   if (req.method === 'PATCH' && patchMatch) {
     const s = await requireSkyId(req, res); if (!s) return true;
     const body = await parseBody(req);
+    const av = avatarPatch(body.avatar), bn = avatarPatch(body.banner);
+    if (av.error) return json(res, 400, { error: 'invalid_avatar', maxBytes: AVATAR_MAX });
+    if (bn.error) return json(res, 400, { error: 'invalid_banner', maxBytes: AVATAR_MAX });
     const result = await updateProfile(s.skyId, patchMatch[1], {
       name:   body.name   !== undefined ? sanitizeInput(body.name) : undefined,
-      avatar: body.avatar !== undefined ? sanitizeAvatar(body.avatar) : undefined,
+      avatar: av.value,
       // Баннер — та же картинка, что и аватар, просто другое поле; тот
       // же приём проверки формата/размера.
-      banner: body.banner !== undefined ? sanitizeAvatar(body.banner) : undefined,
+      banner: bn.value,
       bio:    body.bio    !== undefined ? sanitizeInput(body.bio) : undefined,
       // Регион существующей системы (src/region) — сохраняем то, что
       // человек уже выбрал в RegionPicker, ничего не решая за него.

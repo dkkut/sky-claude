@@ -1,3 +1,5 @@
+import { fitImageToDataUrl } from '../shared/imageFit';
+import { flash } from '../shared/flash';
 import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
 import { useState, useRef, useEffect } from 'react';
@@ -856,9 +858,11 @@ export const ProfileModule = () => {
 
   const onFile = (ref: React.RefObject<HTMLInputElement>, key: 'avatar'|'banner') => {
     const f = ref.current?.files?.[0]; if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => updateProfile({ [key]: reader.result as string });
-    reader.readAsDataURL(f);
+    // Сжимаем до лимита сервера (~190 КБ): исходное фото весит мегабайты.
+    void fitImageToDataUrl(f, key === 'avatar' ? { maxSide: 512, maxChars: 250_000 } : { maxSide: 1280, maxChars: 250_000 })
+      .then((url) => updateProfile({ [key]: url }))
+      .catch(() => flash('Не удалось подготовить картинку. Выберите другое изображение (PNG, JPEG или WebP).'))
+      .finally(() => { if (ref.current) ref.current.value = ''; });
   };
 
   const saveGame = () =>

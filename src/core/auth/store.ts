@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { flash } from '../../shared/flash';
 
 /* ─────────────────────────────────────────────────────────────
    TYPES
@@ -692,7 +693,14 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     if(Object.keys(p).length===0) return;
 
     void apiUpdateProfile(currentUserId,p).then(res=>{
-      if(!res.ok||!res.data)return;
+      if(!res.ok||!res.data){
+        // Сервер отказал (слишком большая картинка, сеть, сессия): не
+        // оставляем на экране то, чего на сервере нет, — после обновления
+        // страницы оно бы «пропало». Показываем причину и перечитываем профиль.
+        flash(res.reason??'Не удалось сохранить профиль');
+        void get().reloadSession();
+        return;
+      }
       const fresh=get().accounts.map(a=>a.id===currentUserId?toAccount(res.data!.profile,a.phone,a):a);
       wA(fresh);set({accounts:fresh});
     });
