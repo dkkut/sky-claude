@@ -14,7 +14,7 @@ import { create } from 'zustand';
 import {
   apiCatalog, apiCategories, apiMyFilms, apiSavedFilms, apiSetSaved,
   apiContinue, apiProgress, apiSetProgress, apiCountView, apiRateMovie,
-  apiUploadMovie, apiPatchMovie, apiDeleteMovie, apiSubmitMovie,
+  apiUploadMovie, apiMovieKeep, apiPatchMovie, apiDeleteMovie, apiSubmitMovie,
   apiUploadPoster, apiFilmTicket, apiShorts,
   type ServerMovie, type UploadMeta, type CatalogOpts, type MovieProgress,
 } from './filmApi';
@@ -69,6 +69,8 @@ interface FilmState {
   upload: (file: Blob, meta: UploadMeta, onProgress?: (p: number) => void)
     => { promise: Promise<{ ok: boolean; reason?: string; id?: string }>; cancel: () => void };
   setPoster: (movieId: string, file: Blob) => Promise<boolean>;
+  /** «Хранить без срока» для личного фильма; после успеха список перечитывается. */
+  setKeep: (movieId: string, keep: boolean) => Promise<boolean>;
   submitForReview: (movieId: string, p: {
     license: 'open' | 'personal'; explicit?: boolean; ageRestricted18?: boolean;
   }) => Promise<{ ok: boolean; reason?: string }>;
@@ -241,6 +243,12 @@ export const useFilmStore = create<FilmState>((set, get) => ({
         return { ok: true, id: res.movie.id };
       }),
     };
+  },
+
+  setKeep: async (movieId, keep) => {
+    if (!(await apiMovieKeep(movieId, keep))) return false;
+    await get().refreshMine();
+    return true;
   },
 
   setPoster: async (movieId, file) => {

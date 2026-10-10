@@ -29,6 +29,7 @@
  * owner_user_id — всё это проходит через те же условия в SQL.
  */
 import crypto from 'node:crypto';
+import { retentionOf } from './storagequota.mjs';
 import { query } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can } from './admin.mjs';
@@ -89,6 +90,7 @@ const num = (v, min, max) => {
  * фильме.
  */
 export const toMovie = (row) => ({
+  ...retentionOf(row),
   id: row.id,
   title: row.title,
   description: row.description ? (decryptContent(row.description) ?? '') : undefined,

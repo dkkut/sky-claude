@@ -15,7 +15,7 @@ import {
   apiTracks, apiFavorites, apiSetFavorite, apiHistory, apiNotePlay,
   apiPlaylists, apiCreatePlaylist, apiRenamePlaylist, apiDeletePlaylist,
   apiAddToPlaylist, apiRemoveFromPlaylist, apiReorderPlaylist,
-  apiProgress, apiSetProgress, apiUploadTrack, apiPatchTrack, apiDeleteTrack, apiSubmitTrack,
+  apiProgress, apiSetProgress, apiUploadTrack, apiPatchTrack, apiDeleteTrack, apiSubmitTrack, apiTrackKeep, apiTrack,
   apiMediaTicket, toClientTrack, type ServerPlaylist, type UploadMeta,
 } from './musicApi';
 
@@ -68,6 +68,8 @@ interface MusicState {
   /** Снять с публикации или отозвать заявку. */
   publish: (trackId: string, published: boolean) => Promise<void>;
   removeTrack: (trackId: string) => Promise<void>;
+  /** «Хранить без срока» для личного трека. */
+  setKeep: (trackId: string, keep: boolean) => Promise<boolean>;
 }
 
 /**
@@ -197,6 +199,13 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     const t = await apiPatchTrack(trackId, { status: published ? 'published' : 'private' });
     if (!t) return;
     set((s) => ({ tracks: s.tracks.map((x) => (x.id === trackId ? toClientTrack(t) : x)) }));
+  },
+
+  setKeep: async (trackId, keep) => {
+    if (!(await apiTrackKeep(trackId, keep))) return false;
+    const t = await apiTrack(trackId);
+    if (t) set((s) => ({ tracks: s.tracks.map((x) => (x.id === trackId ? toClientTrack(t) : x)) }));
+    return true;
   },
 
   removeTrack: async (trackId) => {

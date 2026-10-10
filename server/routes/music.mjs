@@ -250,7 +250,7 @@ export const musicRoutes = async (req, res, url) => {
 
   /* ── Один трек ─────────────────────────────────────────────── */
 
-  const trackMatch = path.match(/^\/api\/music\/track\/([^/]+)(\/[a-z]+)?$/);
+  const trackMatch = path.match(/^\/api\/music\/track\/([^/]+)(\/[a-z-]+)?$/);
   if (trackMatch) {
     const id = trackMatch[1];
     const tail = trackMatch[2] ?? '';

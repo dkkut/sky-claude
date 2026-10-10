@@ -1,3 +1,4 @@
+import { RetentionNote } from '@/shared/RetentionNote';
 import React from 'react';
 /* ===========================================================
    SKY MUSIC  -  Редизайн в стиле Яндекс Музыки
@@ -1294,6 +1295,10 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                           </span>
                         )}
                       </div>
+                      {t.status === 'private' && (
+                        <RetentionNote compact expiresAt={t.expiresAt} keep={t.retentionKeep}
+                          onKeep={(keep) => useMusicStore.getState().setKeep(t.id, keep)} />
+                      )}
                       {t.status === 'rejected' && t.rejectReason && (
                         <p className="mt-1 text-[11px] leading-snug" style={{ color: '#ef4444' }}>
                           Причина: {t.rejectReason}

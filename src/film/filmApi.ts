@@ -20,6 +20,9 @@ export type FilmStatus = 'private' | 'pending' | 'published' | 'rejected';
 
 /** Фильм в том виде, в каком его отдаёт сервер. */
 export interface ServerMovie {
+  /** Только для своего личного фильма: защита от автоматической уборки и дата уборки. */
+  retentionKeep?: boolean;
+  expiresAt?: string;
   id: string;
   title: string;
   description?: string;
@@ -231,6 +234,13 @@ export const apiContinue = async () => {
 };
 
 /* ─── Публикация и проверка ────────────────────────────────────────── */
+
+/** Включить/снять «хранить без срока» для личного фильма. */
+export const apiMovieKeep = async (id: string, keep: boolean) => {
+  const r = await apiCall(`/api/film/movie/${encodeURIComponent(id)}/retention-keep`,
+    { method: 'POST', body: JSON.stringify({ keep }) });
+  return r.ok;
+};
 
 /** Владелец просит проверку. Сам себя опубликовать он не может. */
 export const apiSubmitMovie = async (id: string, p: {

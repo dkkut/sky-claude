@@ -18,6 +18,7 @@
    чужого: проверка стоит в базе и в запросах сервера, а этот файл
    можно переписать в браузере сколько угодно.
 =========================================================== */
+import { RetentionNote } from '@/shared/RetentionNote';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -695,6 +696,10 @@ const Detail = ({ movie, onPlay, onClose, saved, onSave }: {
                 ни в поиске, ни у других людей. Он доступен на всех ваших устройствах.
               </span>
             </div>
+          )}
+          {movie.private && (
+            <RetentionNote expiresAt={movie.expiresAt} keep={movie.retentionKeep}
+              onKeep={(keep) => useFilmStore.getState().setKeep(movie.id, keep)} />
           )}
 
           {movie.license && !movie.private && (

@@ -27,6 +27,9 @@ export interface ServerTrack {
   /** Причину отказа сервер отдаёт только владельцу. */
   rejectReason?: string;
   submittedAt?: string;
+  /** Только для своего личного трека: защита от автоматической уборки и дата уборки. */
+  retentionKeep?: boolean;
+  expiresAt?: string;
   /** В очереди проверки — чей это трек. */
   ownerName?: string;
 }
@@ -90,6 +93,8 @@ export const toClientTrack = (t: ServerTrack): Track => ({
   addedAt: t.createdAt ?? new Date().toISOString(),
   status: t.status as TrackStatus,
   rejectReason: t.rejectReason,
+  retentionKeep: t.retentionKeep,
+  expiresAt: t.expiresAt,
   submittedAt: t.submittedAt,
   plays: t.plays,
   likes: [],
@@ -131,6 +136,12 @@ export const apiPatchTrack = async (id: string, patch: {
   const r = await apiCall<{ track: ServerTrack }>(`/api/music/track/${encodeURIComponent(id)}`,
     { method: 'PATCH', body: JSON.stringify(patch) });
   return r.ok ? (r.data?.track ?? null) : null;
+};
+
+export const apiTrackKeep = async (id: string, keep: boolean) => {
+  const r = await apiCall(`/api/music/track/${encodeURIComponent(id)}/retention-keep`,
+    { method: 'POST', body: JSON.stringify({ keep }) });
+  return r.ok;
 };
 
 export const apiDeleteTrack = async (id: string) => {

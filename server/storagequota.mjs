@@ -30,7 +30,23 @@ export const QUOTA_FREE_BYTES  = 5  * 1024 * 1024 * 1024;
 export const QUOTA_PRIME_BYTES = 10 * 1024 * 1024 * 1024;
 
 /** Сколько дней личный файл может не открываться владельцем, прежде чем попасть в уборку. */
-export const RETENTION_DAYS = 20;
+/**
+ * 0 — автоматическую уборку личных файлов выключить совсем (файлы лежат,
+ * пока их не удалит владелец; место ограничено квотой). По умолчанию 20 —
+ * как в исходном задании; владелец сервиса переключает переменной
+ * PERSONAL_RETENTION_DAYS. Уборка стирает файл безвозвратно, поэтому
+ * человек обязан видеть срок и иметь кнопку «хранить всегда» (retentionOf).
+ */
+const rawDays = Number(process.env.PERSONAL_RETENTION_DAYS ?? 20);
+export const RETENTION_DAYS = Number.isFinite(rawDays) && rawDays >= 0 ? Math.floor(rawDays) : 20;
+
+/** Что показать владельцу о судьбе личного файла: защита и дата уборки. */
+export const retentionOf = (row) => {
+  if (row.own !== true || row.status !== 'private') return {};
+  if (RETENTION_DAYS === 0 || row.retention_keep === true) return { retentionKeep: row.retention_keep === true };
+  const last = row.owner_last_used_at ? new Date(row.owner_last_used_at).getTime() : Date.now();
+  return { retentionKeep: false, expiresAt: new Date(last + RETENTION_DAYS * 86_400_000).toISOString() };
+};
 
 export const quotaBytesFor = async (userId) => (
   (await hasPrime(userId)) ? QUOTA_PRIME_BYTES : QUOTA_FREE_BYTES
@@ -98,6 +114,7 @@ export const setRetentionKeep = async (kind, fileId, ownerId, keep) => {
  * только через JSONB-очередь сессии.
  */
 export const sweepUnusedPersonalFiles = async () => {
+  if (RETENTION_DAYS === 0) return { films: 0, tracks: 0 };
   const { rows: films } = await query(
     `DELETE FROM film_movies m
       WHERE status = 'private' AND retention_keep = FALSE

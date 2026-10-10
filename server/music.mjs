@@ -12,6 +12,7 @@
  *   • избранное, история и позиция прослушивания — строго свои.
  */
 import crypto from 'node:crypto';
+import { retentionOf } from './storagequota.mjs';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can } from './admin.mjs';
@@ -41,6 +42,7 @@ const text = (v, max) => String(v ?? '')
  * внутренних отметок — только то, что нужно показать.
  */
 export const toTrack = (row) => ({
+  ...retentionOf(row),
   id: row.id,
   title: row.title,
   artist: row.artist,

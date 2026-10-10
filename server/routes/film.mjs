@@ -368,7 +368,7 @@ export const filmRoutes = async (req, res, url) => {
 
   /* ── Один фильм ────────────────────────────────────────────── */
 
-  const movieMatch = path.match(/^\/api\/film\/movie\/([^/]+)(\/[a-z]+)?$/);
+  const movieMatch = path.match(/^\/api\/film\/movie\/([^/]+)(\/[a-z-]+)?$/);
   if (movieMatch) {
     const id = movieMatch[1];
     const tail = movieMatch[2] ?? '';

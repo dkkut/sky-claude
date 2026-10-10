@@ -40,6 +40,9 @@ export interface Track {
   submittedAt?:   string;
   syncedLyrics?:  { t: number; text: string }[];  // timed lyrics
   lyricsStatus?:  'pending' | 'approved' | 'rejected';  // separate lyrics moderation
+  // Личный файл: защита от автоматической уборки и дата уборки (сервер)
+  retentionKeep?: boolean;
+  expiresAt?:     string;
 }
 
 export interface Playlist {
