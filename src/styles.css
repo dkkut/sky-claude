@@ -288,3 +288,8 @@ body {
 }
 :root[data-compact='on'] { line-height: 1.25; }
 :root[data-compact='on'] .sky-gap-tight > * + * { margin-top: 0.25rem !important; }
+
+/* Светлые темы чата (messenger/themes.ts): hover-подложки белого цвета
+   на светлом фоне не видны — подменяем их тёмными. */
+[data-chat-light] .hover\:bg-white\/5:hover,
+[data-chat-light] .hover\:bg-white\/10:hover { background: rgba(15,15,20,0.06); }

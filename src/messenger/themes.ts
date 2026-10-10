@@ -15,6 +15,10 @@ export type ChatThemeId =
   | 'cherry'
   | 'monochrome'
   | 'vapor'
+  | 'daylight'
+  | 'peach'
+  | 'mint'
+  | 'lavender'
   | 'custom';
 
 export interface ChatTheme {
@@ -33,7 +37,18 @@ export interface ChatTheme {
   border:      string;
   inputBg:     string;
   liquidColor: string;             // liquid glass cursor color
+  /** Светлая тема: на корне чата переопределяются переменные текста и границ, см. LIGHT_VARS. */
+  light?:      boolean;
 }
+
+/** Переменные интерфейса для светлых тем — те же значения, что у
+ *  :root[data-theme='light'] в styles.css, чтобы тексты внутри чата
+ *  читались на светлом фоне независимо от общей темы приложения. */
+export const LIGHT_VARS: Record<string, string> = {
+  '--t1': '#15161a', '--t2': '#5b5d68', '--t3': '#8d909b', '--t4': '#c7c9d0',
+  '--bg-l1': '#ffffff', '--bg-l2': '#eceef1', '--bg-l3': '#e1e3e8', '--bg-l4': '#d2d5db',
+  '--border': 'rgba(15,15,20,0.08)', '--border-m': 'rgba(15,15,20,0.14)', '--border-s': 'rgba(15,15,20,0.22)',
+};
 
 export const THEMES: ChatTheme[] = [
   {
@@ -145,6 +160,42 @@ export const THEMES: ChatTheme[] = [
     other: '#150035', mineText: '#ffffff', otherText: '#ffd6f0',
     accent: '#ff71ce', border: 'rgba(255,113,206,0.15)',
     inputBg: '#150035', liquidColor: 'rgba(255,113,206,0.45)',
+  },
+  {
+    id: 'daylight', name: 'Daylight', light: true,
+    preview: ['#f4f6fb','#2563eb','#ffffff'],
+    bg: '#f1f4f9', bgImage: 'radial-gradient(circle at 1px 1px, rgba(37,99,235,0.07) 1px, transparent 0)', bgSize: '28px 28px',
+    panel: '#ffffff', mine: 'linear-gradient(135deg,#3b82f6,#2563eb)',
+    other: '#ffffff', mineText: '#ffffff', otherText: '#15161a',
+    accent: '#2563eb', border: 'rgba(15,15,20,0.08)',
+    inputBg: '#e8ecf3', liquidColor: 'rgba(37,99,235,0.28)',
+  },
+  {
+    id: 'peach', name: 'Peach', light: true,
+    preview: ['#fff4ec','#f97316','#ffffff'],
+    bg: '#fff5ee', bgImage: 'radial-gradient(ellipse at 15% 20%, rgba(251,146,60,0.14) 0%, transparent 55%), radial-gradient(ellipse at 85% 80%, rgba(244,114,182,0.10) 0%, transparent 55%)',
+    panel: '#fffaf6', mine: 'linear-gradient(135deg,#fb923c,#f97316)',
+    other: '#ffffff', mineText: '#ffffff', otherText: '#2b1a10',
+    accent: '#ea6a0a', border: 'rgba(120,53,15,0.10)',
+    inputBg: '#fdeadb', liquidColor: 'rgba(249,115,22,0.30)',
+  },
+  {
+    id: 'mint', name: 'Mint', light: true,
+    preview: ['#effaf5','#10b981','#ffffff'],
+    bg: '#eefaf4', bgImage: 'radial-gradient(ellipse at 80% 15%, rgba(16,185,129,0.14) 0%, transparent 55%), radial-gradient(ellipse at 10% 90%, rgba(56,189,248,0.10) 0%, transparent 55%)',
+    panel: '#f8fffb', mine: 'linear-gradient(135deg,#10b981,#059669)',
+    other: '#ffffff', mineText: '#ffffff', otherText: '#10261c',
+    accent: '#059669', border: 'rgba(6,78,59,0.10)',
+    inputBg: '#dcf3e8', liquidColor: 'rgba(16,185,129,0.30)',
+  },
+  {
+    id: 'lavender', name: 'Lavender', light: true,
+    preview: ['#f5f1ff','#8b5cf6','#ffffff'],
+    bg: '#f4f0ff', bgImage: 'radial-gradient(ellipse at 20% 15%, rgba(139,92,246,0.14) 0%, transparent 55%), radial-gradient(ellipse at 85% 85%, rgba(244,114,182,0.10) 0%, transparent 55%)',
+    panel: '#fbf9ff', mine: 'linear-gradient(135deg,#8b5cf6,#7c3aed)',
+    other: '#ffffff', mineText: '#ffffff', otherText: '#1d1433',
+    accent: '#7c3aed', border: 'rgba(76,29,149,0.10)',
+    inputBg: '#e9e1fb', liquidColor: 'rgba(139,92,246,0.30)',
   },
 ];
 
