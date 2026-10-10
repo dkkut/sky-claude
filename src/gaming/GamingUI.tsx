@@ -286,7 +286,7 @@ export const GamingAccountsPanel = ({ userId }: { userId: string }) => {
                   </div>
                   <div className="flex items-center gap-1">
                     {acc.profileUrl && (
-                      <a href={acc.profileUrl} target="_blank" rel="noopener noreferrer"
+                      <a href={/^https?:\/\//i.test(acc.profileUrl) ? acc.profileUrl : `https://${acc.profileUrl.replace(/^[a-z][a-z0-9+.-]*:/i, '')}`} target="_blank" rel="noopener noreferrer"
                         className="grid h-7 w-7 place-items-center rounded-lg hover:bg-white/5"
                         onClick={e => e.stopPropagation()}>
                         <ExternalLink size={12} style={{ color:C.t3 }}/>
