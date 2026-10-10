@@ -11,8 +11,8 @@ import { ArrowLeft, Check, Copy, Eye, ImagePlus, Loader2, Plus, RefreshCw, Send,
 import { Alert, BloxImage, C, Field, StatusBadge, Spinner, errText, fmtDt, fmtN, glass, inputStyle } from './ui';
 import {
   apiAddVersion, apiArchive, apiBecomeDeveloper, apiCheckConn, apiCreateGame, apiCreatePlace, apiCreateProduct, apiDeleteImage, apiDeveloper, apiDevReports,
-  apiDevStats, apiDisconnect, apiFinance, apiHistoryOf, apiInfo, apiMyGame, apiMyGames, apiMyProducts, apiPayoutCancel, apiPayoutDraft, apiPayoutEdit, apiPayoutEvents,
-  apiPayoutInfo, apiPayoutSubmit, apiPublish, apiRotateSecret, apiSubmit, apiUpdateGame, apiUpdatePlace, apiUpdateProduct, apiUploadImage, apiVersions, apiMyAppeals, apiAppeal,
+  apiDevStats, apiDisconnect, apiFinance, apiHistoryOf, apiInfo, apiMyGame, apiMyGames, apiMyProducts, apiPayoutCancel, apiPayoutEvents,
+  apiPayoutInfo, apiPayoutNow, apiPublish, apiRotateSecret, apiSubmit, apiUpdateGame, apiUpdatePlace, apiUpdateProduct, apiUploadImage, apiVersions, apiMyAppeals, apiAppeal,
   CATEGORY_LABEL, type Developer, type Finance, type Game, type Info, type Place, type Product, type Requisites,
 } from './bloxApi';
 
@@ -404,13 +404,13 @@ const FinanceTab = ({ info }: { info: Info | null }) => {
 
   const submit = async () => {
     setErr(''); setMsg('');
-    const d = await apiPayoutDraft({ amount: Number(amount), requisites: req });
-    if (!d.ok) { setErr(errText(d)); return; }
     const key = `po-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    const s = await apiPayoutSubmit(d.data.payout.id, key);
-    if (!s.ok) { setErr(errText(s)); void load(); return; }
-    setMsg('Заявка отправлена на рассмотрение. Сумма зарезервирована.'); setAmount(''); setTerms(false); void load();
+    const r = await apiPayoutNow({ amount: Number(amount), idempotencyKey: key, acceptTerms: terms });
+    if (!r.ok) { setErr(errText(r)); void load(); return; }
+    setMsg(`Выплачено: на ваш кошелёк зачислено ${r.data.payout.net.toLocaleString('ru-RU')} баллов, удержано ${r.data.payout.fee.toLocaleString('ru-RU')}.`); setAmount(''); setTerms(false); void load();
   };
+  const feePct = fin.rules.payoutFeePercent;
+  const amt = Number(amount) || 0; const feePreview = Math.round((amt * feePct) / 100);
   const Stat = ({ l, v, hint }: { l: string; v: number; hint?: string }) => <div className="rounded-2xl p-3" style={glass}><p className="text-lg font-black" style={{ color: C.t1 }}>{v.toLocaleString('ru-RU')}</p><p className="text-[11px]" style={{ color: C.t2 }}>{l}</p>{hint && <p className="text-[10px]" style={{ color: C.t3 }}>{hint}</p>}</div>;
 
   return (
@@ -423,30 +423,24 @@ const FinanceTab = ({ info }: { info: Info | null }) => {
         <Stat l="В заявках (резерв)" v={b.reserved} />
         <Stat l="Выплачено" v={b.paid} />
       </div>
-      <p className="text-[11px]" style={{ color: C.t3 }}>Суммы в Prime Points. Деньги не переводятся автоматически: заявку проверяет сотрудник, перевод выполняется вручную вне платформы, после чего фиксируется факт выплаты. Одобрение заявки ≠ выплата. Курс «баллы → рубли» платформа не задаёт: порядок и условия выплаты определяются условиями разработчика.</p>
+      <p className="text-[11px]" style={{ color: C.t3 }}>Суммы в Prime Points. Выплата — это перевод доступного вознаграждения баллами на ваш кошелёк в Sky с удержанием {feePct}%. Деньги платформа не переводит и курс «баллы → рубли» не задаёт.</p>
 
       <div className="space-y-2 rounded-2xl p-4" style={glass}>
-        <p className="text-[13px] font-bold" style={{ color: C.t1 }}>Заявка на выплату</p>
-        {!fin.rules.payoutsEnabled && <Alert text="Приём заявок на выплату сейчас выключен администрацией." />}
+        <p className="text-[13px] font-bold" style={{ color: C.t1 }}>Выплата баллами</p>
+        {!fin.rules.payoutsEnabled && <Alert text="Выплаты сейчас выключены администрацией." />}
         <Field label={`Сумма, баллы (доступно ${b.available.toLocaleString('ru-RU')}, минимум ${fin.rules.minPayoutPoints.toLocaleString('ru-RU')})`}><input value={amount} inputMode="numeric" onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} className="w-full rounded-xl px-3 py-2 text-[13px]" style={inputStyle} /></Field>
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Способ получения"><input value={req.method} onChange={(e) => setReq({ ...req, method: e.target.value })} placeholder="СБП, карта, счёт…" className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} translate="no" /></Field>
-          <Field label="Получатель"><input value={req.holder} onChange={(e) => setReq({ ...req, holder: e.target.value })} className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} translate="no" /></Field>
-          <Field label="Номер счёта / телефона"><input value={req.account} onChange={(e) => setReq({ ...req, account: e.target.value })} autoComplete="off" className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} translate="no" /></Field>
-          <Field label="Банк (необязательно)"><input value={req.bank} onChange={(e) => setReq({ ...req, bank: e.target.value })} className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} translate="no" /></Field>
-        </div>
-        <p className="text-[10px]" style={{ color: C.t3 }}>Реквизиты хранятся зашифрованными и видны только уполномоченным сотрудникам; в списках показываются лишь последние цифры.</p>
-        <label className="flex items-start gap-2 text-[12px]" style={{ color: C.t2 }}><input type="checkbox" className="mt-0.5" checked={terms} onChange={(e) => setTerms(e.target.checked)} /> Я ознакомился(ась) с условиями выплат и подтверждаю заявку. После подачи сумма не меняется, а баллы резервируются.</label>
+        {amt > 0 && <p className="text-[12px]" style={{ color: C.t2 }}>{`Удержание ${feePct}%: ${feePreview.toLocaleString('ru-RU')} · вы получите ${(amt - feePreview).toLocaleString('ru-RU')} баллов`}</p>}
+        <label className="flex items-start gap-2 text-[12px]" style={{ color: C.t2 }}><input type="checkbox" className="mt-0.5" checked={terms} onChange={(e) => setTerms(e.target.checked)} /> Я согласен(на) с удержанием при выплате и условиями разработчика. Выплата выполняется сразу и не отменяется.</label>
         {err && <Alert text={err} />}{msg && <Alert kind="info" text={msg} />}
-        <button type="button" disabled={!terms || !amount || !req.method || !req.holder || !req.account || !fin.rules.payoutsEnabled} onClick={() => void submit()} className="rounded-xl px-5 py-2.5 text-[13px] font-bold text-white disabled:opacity-40" style={{ background: C.acc }}>Отправить заявку</button>
+        <button type="button" disabled={!terms || !amount || !fin.rules.payoutsEnabled} onClick={() => void submit()} className="rounded-xl px-5 py-2.5 text-[13px] font-bold text-white disabled:opacity-40" style={{ background: C.acc }}>Выплатить</button>
       </div>
 
       <div className="space-y-2">
-        <p className="text-[13px] font-bold" style={{ color: C.t1 }}>Мои заявки</p>
-        {fin.payouts.length === 0 && <p className="text-[12px]" style={{ color: C.t3 }}>Заявок пока нет.</p>}
+        <p className="text-[13px] font-bold" style={{ color: C.t1 }}>История выплат</p>
+        {fin.payouts.length === 0 && <p className="text-[12px]" style={{ color: C.t3 }}>Выплат пока нет.</p>}
         {fin.payouts.map((p) => (
           <div key={p.id} className="space-y-2 rounded-2xl p-3" style={glass}>
-            <div className="flex items-center gap-2"><div className="flex-1"><p className="text-[13px] font-semibold" style={{ color: C.t1 }}>{p.amount.toLocaleString('ru-RU')} баллов · …{p.requisitesTail}</p><p className="text-[11px]" style={{ color: C.t3 }}>{fmtDt(p.submittedAt ?? p.createdAt)}</p></div>
+            <div className="flex items-center gap-2"><div className="flex-1"><p className="text-[13px] font-semibold" style={{ color: C.t1 }}>{p.instant ? `${p.amount.toLocaleString('ru-RU')} баллов → ${p.net.toLocaleString('ru-RU')} на кошелёк (удержано ${p.fee.toLocaleString('ru-RU')}, ${p.feePercent}%)` : `${p.amount.toLocaleString('ru-RU')} баллов · …${p.requisitesTail}`}</p><p className="text-[11px]" style={{ color: C.t3 }}>{fmtDt(p.submittedAt ?? p.createdAt)}</p></div>
               <span className="rounded-md px-2 py-0.5 text-[10px] font-bold" style={{ background: C.l2, color: p.status === 'paid' ? C.green : p.status === 'rejected' ? C.red : C.acc }}>{PAYOUT_LABEL[p.status] ?? p.status}</span></div>
             {p.adminComment && <p className="text-[12px]" style={{ color: C.t2 }} translate="no">Комментарий: {p.adminComment}</p>}
             {p.status === 'paid' && <p className="text-[11px]" style={{ color: C.green }}>Выплата зафиксирована {fmtDt(p.paidAt)} · <span translate="no">{p.paidRef}</span></p>}

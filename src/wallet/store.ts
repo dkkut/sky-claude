@@ -62,7 +62,10 @@ export type TxType =
   | 'code_topup'            // пополнение по коду Sky Codes
   | 'code_points'           // баллы по коду Sky Codes
   | 'blox_purchase'         // покупка в игре Sky Blox
-  | 'blox_refund';          // возврат за покупку в Sky Blox
+  | 'blox_refund'          // возврат за покупку в Sky Blox
+  | 'blox_payout'          // выплата вознаграждения разработчику Sky Blox
+  | 'blox_commission_payout' // выплата с баланса комиссий Sky Blox
+  | 'blox_commission_topup'; // пополнение баланса комиссий Sky Blox
 
 export const TX_LABEL: Record<TxType, string> = {
   topup:        'Пополнение',
@@ -96,6 +99,9 @@ export const TX_LABEL: Record<TxType, string> = {
   code_points:          'Баллы по коду',
   blox_purchase:        'Покупка в Sky Blox',
   blox_refund:          'Возврат за покупку в Sky Blox',
+  blox_payout:          'Выплата вознаграждения Sky Blox',
+  blox_commission_payout: 'Выплата от платформы Sky Blox',
+  blox_commission_topup: 'Пополнение баланса комиссий Sky Blox',
 };
 
 /** Запасной значок и подпись для вида операции, которого ещё нет в
@@ -143,6 +149,9 @@ export const TX_ICON: Record<TxType, IconComponent> = {
   code_points:          Ticket,
   blox_purchase:        Gamepad2,
   blox_refund:          RotateCcw,
+  blox_payout:          Gamepad2,
+  blox_commission_payout: Gamepad2,
+  blox_commission_topup: Gamepad2,
 };
 
 export interface Transaction {

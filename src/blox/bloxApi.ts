@@ -112,14 +112,15 @@ export const apiDevReports = () => req<{ items: { id: string; targetType: string
 
 /* — финансы разработчика — */
 export interface Balances { accrued: number; gross: number; commission: number; held: number; confirmed: number; reserved: number; paid: number; available: number }
-export interface PayoutRow { id: string; amount: number; status: string; requisitesTail: string; adminComment: string; rejectReason: string; paidAt: string | null; paidRef: string; submittedAt: string | null; createdAt: string; developerName?: string; developerId?: string; username?: string }
+export interface PayoutRow { id: string; amount: number; fee: number; net: number; feePercent: number; instant: boolean; status: string; requisitesTail: string; adminComment: string; rejectReason: string; paidAt: string | null; paidRef: string; submittedAt: string | null; createdAt: string; developerName?: string; developerId?: string; username?: string }
 export interface Finance {
-  balances: Balances; rules: { commissionPercent: number; holdDays: number; minPayoutPoints: number; payoutsEnabled: boolean; termsVersion: string };
+  balances: Balances; rules: { commissionPercent: number; payoutFeePercent: number; holdDays: number; minPayoutPoints: number; payoutsEnabled: boolean; termsVersion: string };
   earnings: { id: number; kind: string; gross: number; commission: number; amount: number; availableAt: string; held: boolean; note: string; gameTitle: string | null; at: string }[];
   payouts: PayoutRow[];
 }
 export interface Requisites { method: string; holder: string; account: string; bank?: string; note?: string }
 export const apiFinance = () => req<Finance>('/api/blox/dev/finance');
+export const apiPayoutNow = (b: { amount: number; idempotencyKey: string; acceptTerms: boolean }) => req<{ payout: PayoutRow }>('/api/blox/dev/payouts/now', j('POST', b));
 export const apiPayoutDraft = (b: { amount: number; requisites: Requisites }) => req<{ payout: PayoutRow }>('/api/blox/dev/payouts', j('POST', b));
 export const apiPayoutEdit = (id: string, b: { amount: number; requisites: Requisites }) => req<{ payout: PayoutRow }>(`/api/blox/dev/payouts/${enc(id)}`, j('PATCH', b));
 export const apiPayoutSubmit = (id: string, idempotencyKey: string) => req<{ payout: PayoutRow }>(`/api/blox/dev/payouts/${enc(id)}/submit`, j('POST', { idempotencyKey, acceptTerms: true }));
@@ -178,3 +179,12 @@ export const REPORT_LABEL: Record<string, string> = {
   malware: 'Вредоносное содержимое', scam: 'Мошенничество', illegal: 'Незаконный контент', adult: 'Контент для взрослых',
   copyright: 'Нарушение авторских прав', hate: 'Оскорбления и ненависть', cheating: 'Читы и обман игроков', bug: 'Неработающая игра', other: 'Другое',
 };
+
+export interface CommissionOverview {
+  balance: number; sales: number; fees: number; topups: number; paidOut: number; feePercent: number; salesPercent: number;
+  items: { id: number; kind: 'payout_fee' | 'topup' | 'payout_to_user'; amount: number; reason: string; user: string | null; actor: string | null; at: string }[];
+}
+export const apiAdminCommission = () => req<CommissionOverview>('/api/blox/admin/commission');
+export const apiAdminCommissionStepUp = () => req<{ ok?: boolean; method?: string }>('/api/blox/admin/commission/step-up', j('POST'));
+export const apiAdminCommissionPayout = (b: { username: string; amount: number; reason: string; stepUpCode: string }) => req<{ ok: true; balance: number }>('/api/blox/admin/commission/payout', j('POST', b));
+export const apiAdminCommissionTopup = (b: { amount: number; reason: string; stepUpCode: string }) => req<{ ok: true; balance: number }>('/api/blox/admin/commission/topup', j('POST', b));

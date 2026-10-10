@@ -20,7 +20,7 @@ import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { generateId, rateLimit } from './security.mjs';
 import { wallet } from './wallet.mjs';
-import { can } from './admin.mjs';
+import { can, isOwner } from './admin.mjs';
 import { logAdmin, consumeStepUp, beginStepUp } from './adminsec.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { marketText as text } from './market.mjs';
@@ -463,7 +463,7 @@ export const financeOverview = async (devId) => {
   ]);
   return {
     balances,
-    rules: { commissionPercent: l.commissionPercent, holdDays: l.holdDays, minPayoutPoints: l.minPayoutPoints, payoutsEnabled: l.payoutsEnabled === 1, termsVersion: TERMS_VERSION },
+    rules: { commissionPercent: l.commissionPercent, payoutFeePercent: l.payoutFeePercent, holdDays: l.holdDays, minPayoutPoints: l.minPayoutPoints, payoutsEnabled: l.payoutsEnabled === 1, termsVersion: TERMS_VERSION },
     earnings: earn.map((r) => ({ id: r.id, kind: r.kind, gross: r.gross_points, commission: r.commission_points, amount: r.amount_points, availableAt: iso(r.available_at), held: new Date(r.available_at) > new Date(), note: r.note, gameTitle: r.game_title, at: iso(r.created_at) })),
     payouts: pay.map(payoutView),
   };
@@ -473,7 +473,7 @@ export const financeOverview = async (devId) => {
 
 const payoutView = (r) => ({
   id: r.id, amount: r.amount_points, status: r.status, requisitesTail: r.requisites_tail, adminComment: r.admin_comment,
-  rejectReason: r.reject_reason, paidAt: iso(r.paid_at), paidRef: r.paid_ref, submittedAt: iso(r.submitted_at), createdAt: iso(r.created_at),
+  rejectReason: r.reject_reason, fee: r.fee_points ?? 0, net: r.net_points ?? 0, feePercent: r.fee_percent ?? 0, instant: r.instant === true, paidAt: iso(r.paid_at), paidRef: r.paid_ref, submittedAt: iso(r.submitted_at), createdAt: iso(r.created_at),
 });
 
 const cleanRequisites = (r) => {
@@ -483,6 +483,7 @@ const cleanRequisites = (r) => {
 };
 
 export const payoutDraft = async (devId, { amount, requisites, payoutId } = {}) => {
+  return { error: 'use_instant_payout' }; // выплата теперь баллами внутри Sky — payoutNow
   const a = Number(amount);
   if (!Number.isInteger(a) || a < 1) return { error: 'bad_amount' };
   const req = cleanRequisites(requisites);
@@ -511,6 +512,7 @@ export const payoutDraft = async (devId, { amount, requisites, payoutId } = {}) 
  * баллы невозможны.
  */
 export const payoutSubmit = async (devId, payoutId, { idempotencyKey, acceptTerms } = {}) => {
+  if (payoutId !== undefined) return { error: 'use_instant_payout' };
   if (!PAYOUT_ID_RE.test(String(payoutId ?? ''))) return { error: 'not_found' };
   if (acceptTerms !== true) return { error: 'terms_required' };
   const l = await loadLimits();
@@ -707,4 +709,128 @@ export const adminEarningsSummary = async (actorId) => {
        FROM blox_developers d JOIN profiles p ON p.id = d.profile_id LEFT JOIN blox_earnings e ON e.developer_id = d.profile_id
       GROUP BY d.profile_id, d.display_name, p.username ORDER BY total DESC LIMIT 200`);
   return { items: rows.map((r) => ({ developerId: r.profile_id, displayName: r.display_name, username: r.username, accrued: r.total, held: r.held, commission: r.commission, gross: r.gross })) };
+};
+
+/* ═══ Выплата баллами внутри экосистемы и баланс комиссий ═════════════ */
+
+export const COMMISSION_STEP_UP = 'blox_commission';
+
+/**
+ * Выплата разработчику: доступные начисления превращаются в Prime Points
+ * на его кошельке за вычетом удержания (payoutFeePercent). Удержание
+ * уходит на баланс комиссий. Всё — одна транзакция под замком
+ * разработчика; повтор с тем же ключом ничего не удвоит.
+ */
+export const payoutNow = async (devId, { amount, idempotencyKey, acceptTerms } = {}) => {
+  if (acceptTerms !== true) return { error: 'terms_required' };
+  const a = Number(amount);
+  if (!Number.isInteger(a) || a < 1 || a > 100_000_000) return { error: 'bad_amount' };
+  const ik = String(idempotencyKey ?? '');
+  if (!/^[A-Za-z0-9_.:-]{8,80}$/.test(ik)) return { error: 'bad_idempotency_key' };
+  const l = await loadLimits();
+  if (l.payoutsEnabled !== 1) return { error: 'payouts_disabled' };
+  if (a < l.minPayoutPoints) return { error: 'below_minimum', min: l.minPayoutPoints };
+  return tx(async (c) => {
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`bloxpay:${devId}`]);
+    const { rows: dv } = await c.query('SELECT status FROM blox_developers WHERE profile_id = $1', [devId]);
+    if (!dv[0]) return { error: 'not_a_developer' };
+    if (dv[0].status !== 'active') return { error: 'developer_suspended' };
+    const { rows: prev } = await c.query('SELECT * FROM blox_payouts WHERE developer_id = $1 AND idem_key = $2', [devId, ik]);
+    if (prev[0]) return { payout: payoutView(prev[0]), replay: true };
+    const b = await balancesFor(devId, c);
+    if (a > b.available) return { error: 'insufficient_available', available: b.available };
+    const fee = Math.round((a * l.payoutFeePercent) / 100);
+    const net = a - fee;
+    if (net < 1) return { error: 'bad_amount' };
+    const id = `bpo-${generateId()}`;
+    const { rows } = await c.query(
+      `INSERT INTO blox_payouts (id, developer_id, amount_points, status, idem_key, terms_version, fee_points, net_points, fee_percent, instant, paid_at, paid_ref, submitted_at)
+       VALUES ($1,$2,$3,'paid',$4,$5,$6,$7,$8,true,now(),$9,now()) RETURNING *`,
+      [id, devId, a, ik, TERMS_VERSION, fee, net, l.payoutFeePercent, `wallet:${id}`]);
+    const cr = await wallet.creditPointsIn(c, devId, net, 'blox_payout', `Sky Blox · выплата вознаграждения (удержано ${fee})`, `blox:payout:${id}`);
+    if (cr?.error) throw new Error(`payout credit failed: ${cr.error}`);
+    if (fee > 0) await c.query(`INSERT INTO blox_commission_ledger (kind, amount_points, ref, user_id, reason) VALUES ('payout_fee',$1,$2,$3,$4)`, [fee, id, devId, `Удержание ${l.payoutFeePercent}% при выплате`]);
+    await c.query(`INSERT INTO blox_payout_events (payout_id, actor_id, actor_role, action, to_status, comment) VALUES ($1,$2,'developer','paid_instant','paid',$3)`, [id, devId, `${a} → ${net} баллов, удержано ${fee}`]);
+    return { payout: payoutView(rows[0]) };
+  });
+};
+
+const commissionBalance = async (c = null) => {
+  const run = (sql) => (c ? c.query(sql) : query(sql));
+  const { rows: s } = await run('SELECT coalesce(sum(commission_points),0)::bigint AS n FROM blox_earnings');
+  const { rows: l } = await run(
+    `SELECT coalesce(sum(amount_points) FILTER (WHERE kind = 'payout_fee'),0)::bigint AS fees,
+            coalesce(sum(amount_points) FILTER (WHERE kind = 'topup'),0)::bigint AS topups,
+            coalesce(-sum(amount_points) FILTER (WHERE kind = 'payout_to_user'),0)::bigint AS paid_out
+       FROM blox_commission_ledger`);
+  const sales = Number(s[0].n); const fees = Number(l[0].fees); const topups = Number(l[0].topups); const paidOut = Number(l[0].paid_out);
+  return { balance: sales + fees + topups - paidOut, sales, fees, topups, paidOut };
+};
+
+export const commissionOverview = async (actorId) => {
+  if (!(await isOwner(actorId))) return { error: 'owner_only' };
+  const { rows } = await query(
+    `SELECT l.id, l.kind, l.amount_points, l.reason, l.created_at, p.username AS user_name, a.username AS actor_name
+       FROM blox_commission_ledger l LEFT JOIN profiles p ON p.id = l.user_id LEFT JOIN profiles a ON a.id = l.actor_id
+      ORDER BY l.id DESC LIMIT 100`);
+  const l = await loadLimits();
+  return {
+    ...(await commissionBalance()), feePercent: l.payoutFeePercent, salesPercent: l.commissionPercent,
+    items: rows.map((r) => ({ id: Number(r.id), kind: r.kind, amount: r.amount_points, reason: r.reason, user: r.user_name, actor: r.actor_name, at: iso(r.created_at) })),
+  };
+};
+
+export const commissionStepUp = async (actorId, meta) => {
+  if (!(await isOwner(actorId))) return { error: 'owner_only' };
+  return beginStepUp(actorId, COMMISSION_STEP_UP, { meta });
+};
+
+/** Выплата с баланса комиссий конкретному пользователю: только владелец, причина и подтверждение личности обязательны. */
+export const commissionPayout = async (actorId, { username, amount, reason, stepUpCode } = {}, { meta = {} } = {}) => {
+  if (!(await isOwner(actorId))) { await logAdmin({ actorId, type: 'blox_commission_payout', targetType: 'system', result: 'denied', detail: 'Не владелец', meta }); return { error: 'owner_only' }; }
+  const n = Number(amount);
+  if (!Number.isInteger(n) || n < 1 || n > 100_000_000) return { error: 'bad_amount' };
+  const why = text(reason, 300);
+  if (why.length < 5) return { error: 'reason_required' };
+  const uname = String(username ?? '').trim().replace(/^@/, '').toLowerCase();
+  if (!/^[a-z0-9_.-]{2,40}$/.test(uname)) return { error: 'user_not_found' };
+  const { rows: u } = await query('SELECT id FROM profiles WHERE lower(username) = $1', [uname]);
+  if (!u[0]) return { error: 'user_not_found' };
+  const st = await consumeStepUp(actorId, COMMISSION_STEP_UP, stepUpCode, { meta });
+  if (st.error) return st;
+  const ref = `bcp-${generateId()}`;
+  const r = await tx(async (c) => {
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['bloxcommission']);
+    const b = await commissionBalance(c);
+    if (n > b.balance) return { error: 'insufficient_commission', balance: b.balance };
+    const cr = await wallet.creditPointsIn(c, u[0].id, n, 'blox_commission_payout', `Sky Blox · выплата от платформы: ${why}`, `blox:comm:${ref}`);
+    if (cr?.error) throw new Error(`commission payout credit failed: ${cr.error}`);
+    await c.query(`INSERT INTO blox_commission_ledger (kind, amount_points, ref, user_id, actor_id, reason) VALUES ('payout_to_user',$1,$2,$3,$4,$5)`, [-n, ref, u[0].id, actorId, why]);
+    return { ok: true, balance: b.balance - n };
+  });
+  if (r.error) return r;
+  await logAdmin({ actorId, targetId: u[0].id, targetType: 'profile', type: 'blox_commission_payout', detail: `${n} → @${uname} · ${why}`, meta });
+  return r;
+};
+
+/** Пополнение баланса комиссий: списываются настоящие Prime Points владельца — баллы из воздуха не создаются. */
+export const commissionTopup = async (actorId, { amount, reason, stepUpCode } = {}, { meta = {} } = {}) => {
+  if (!(await isOwner(actorId))) { await logAdmin({ actorId, type: 'blox_commission_topup', targetType: 'system', result: 'denied', detail: 'Не владелец', meta }); return { error: 'owner_only' }; }
+  const n = Number(amount);
+  if (!Number.isInteger(n) || n < 1 || n > 100_000_000) return { error: 'bad_amount' };
+  const why = text(reason, 300);
+  if (why.length < 5) return { error: 'reason_required' };
+  const st = await consumeStepUp(actorId, COMMISSION_STEP_UP, stepUpCode, { meta });
+  if (st.error) return st;
+  const ref = `bct-${generateId()}`;
+  const r = await tx(async (c) => {
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['bloxcommission']);
+    const sp = await wallet.spendPointsIn(c, actorId, n, 'blox_commission_topup', `Sky Blox · пополнение баланса комиссий: ${why}`, `blox:comm:${ref}`);
+    if (sp.error) return { error: sp.error === 'insufficient_points' ? 'insufficient_points' : sp.error, points: sp.points };
+    await c.query(`INSERT INTO blox_commission_ledger (kind, amount_points, ref, user_id, actor_id, reason) VALUES ('topup',$1,$2,$3,$3,$4)`, [n, ref, actorId, why]);
+    return { ok: true, ...(await commissionBalance(c)) };
+  });
+  if (r.error) return r;
+  await logAdmin({ actorId, targetId: actorId, targetType: 'profile', type: 'blox_commission_topup', detail: `+${n} · ${why}`, meta });
+  return r;
 };

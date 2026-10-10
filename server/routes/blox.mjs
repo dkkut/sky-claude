@@ -13,7 +13,7 @@ import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { requestMeta } from './../adminsec.mjs';
 import { ticketFromCookies, readTicket } from './../marketticket.mjs';
 import { saveStream, sizeOf, openStream, remove } from './../marketstore.mjs';
-import { limit, loadLimits, setLimit, LIMITS, collectMetrics, warningsFor, loadLevel, optionalAllowed, recordRequest } from './../bloxlimits.mjs';
+import { limit, loadLimits, setLimit, FINANCE_KEYS, LIMITS, collectMetrics, warningsFor, loadLevel, optionalAllowed, recordRequest } from './../bloxlimits.mjs';
 import { query } from './../db.mjs';
 import { can } from './../admin.mjs';
 import * as B from './../blox.mjs';
@@ -27,7 +27,7 @@ const STATUS = {
   too_many_places: 409, too_many_products: 409, too_many_images: 409, too_many_pending: 429, too_many_open: 409, cooldown: 429, busy: 503,
   play_first: 409, play_longer: 409, different_moderator_required: 409,
   insufficient_points: 402, insufficient_available: 409, insufficient_earnings: 409, price_changed: 409, already_owned: 409,
-  already_paid: 409, expired: 410, shop_unavailable: 409, game_unavailable: 409, product_unavailable: 409, payouts_disabled: 403,
+  already_paid: 409, expired: 410, shop_unavailable: 409, game_unavailable: 409, product_unavailable: 409, payouts_disabled: 403, use_instant_payout: 410, owner_only: 403, user_not_found: 404, insufficient_commission: 409, developer_suspended: 403,
   step_up_required: 401, step_up_invalid: 401, step_up_exhausted: 429, no_second_factor: 409,
   bad_auth: 401, bad_signature: 401, stale_request: 401, replayed_request: 409, rate_limited: 429, game_disabled: 403,
   token_used: 409, already_fulfilled: 409, bad_amount: 400, bad_token: 401, unknown_player: 404, insufficient_quantity: 409, idempotency_conflict: 409, duplicate_request: 409,
@@ -231,6 +231,7 @@ export const bloxRoutes = async (req, res, url) => {
     if (req.method === 'PATCH' && prod) return done(await S.updateProduct(me, prod[1], await body()));
 
     /* Финансы разработчика */
+    if (req.method === 'POST' && path === '/api/blox/dev/payouts/now') { if (!rateLimitPerHour(`blox:paynow:${me}`, 30)) return json(res, 429, { error: 'too_many_requests' }); return done(await S.payoutNow(me, await body()), 201); }
     if (req.method === 'POST' && path === '/api/blox/dev/payouts') { if (!rateLimitPerHour(`blox:pay:${me}`, 30)) return json(res, 429, { error: 'too_many_requests' }); return done(await S.payoutDraft(me, await body()), 201); }
     const po = path.match(/^\/api\/blox\/dev\/payouts\/(bpo-[0-9a-f-]{36})(\/[a-z]+)?$/);
     if (po) {
@@ -278,6 +279,10 @@ export const bloxRoutes = async (req, res, url) => {
     if (req.method === 'POST' && path === '/api/blox/admin/step-up') return done(await S.financeStepUp(me, meta));
     const adj = path.match(/^\/api\/blox\/admin\/developers\/(acc-[0-9a-f-]{36})\/adjust$/);
     if (req.method === 'POST' && adj) { const b = await body(); return done(await S.adminAdjust(me, adj[1], b.amount, b.reason, b.stepUpCode, { meta })); }
+    if (path === '/api/blox/admin/commission' && req.method === 'GET') return done(await S.commissionOverview(me));
+    if (path === '/api/blox/admin/commission/step-up' && req.method === 'POST') return done(await S.commissionStepUp(me, meta));
+    if (path === '/api/blox/admin/commission/payout' && req.method === 'POST') { if (!rateLimitPerHour(`blox:commpay:${me}`, 60)) return json(res, 429, { error: 'too_many_requests' }); return done(await S.commissionPayout(me, await body(), { meta })); }
+    if (path === '/api/blox/admin/commission/topup' && req.method === 'POST') { if (!rateLimitPerHour(`blox:commtop:${me}`, 60)) return json(res, 429, { error: 'too_many_requests' }); return done(await S.commissionTopup(me, await body(), { meta })); }
     if (req.method === 'GET' && path === '/api/blox/admin/payouts') return done(await S.adminPayouts(me, { status: params.get('status') ?? 'review' }));
     const pd = path.match(/^\/api\/blox\/admin\/payouts\/(bpo-[0-9a-f-]{36})(\/([a-z_]+))?$/);
     if (pd) {
@@ -292,10 +297,10 @@ export const bloxRoutes = async (req, res, url) => {
     }
     if (req.method === 'PUT' && path === '/api/blox/admin/limits') {
       const b = await body();
-      const isFin = ['commissionPercent', 'holdDays', 'minPayoutPoints', 'payoutsEnabled'].includes(b.key);
+      const isFin = FINANCE_KEYS.includes(b.key);
       if (!(await can(me, isFin ? 'blox_finance' : 'blox'))) return json(res, 403, { error: 'not_allowed' });
       /* Финансовые параметры — только с подтверждением личности и в журнал. */
-      const finance = ['commissionPercent', 'holdDays', 'minPayoutPoints', 'payoutsEnabled'].includes(b.key);
+      const finance = FINANCE_KEYS.includes(b.key);
       if (finance) {
         if (!(await can(me, 'blox_finance'))) return json(res, 403, { error: 'not_allowed' });
         const { consumeStepUp } = await import('./../adminsec.mjs');

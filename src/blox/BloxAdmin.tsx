@@ -398,17 +398,63 @@ const AuditTab = () => {
   return <div className="space-y-1">{d.data.items.map((e) => <p key={e.id} className="rounded-lg px-3 py-1.5 text-[11px]" style={{ background: C.l2, color: C.t2 }}>{fmtDt(e.at)} · <b translate="no">{e.actor ?? 'система'}</b> · {e.type}{e.result !== 'ok' ? ` (${e.result})` : ''} · <span translate="no">{e.target}</span></p>)}</div>;
 };
 
+
+/* ── Баланс комиссий (только владелец) ───────────────────────────── */
+
+const CommissionTab = () => {
+  const [d, setD] = useState<Awaited<ReturnType<typeof A.apiAdminCommission>> | null>(null);
+  const [mode, setMode] = useState<'payout' | 'topup'>('payout');
+  const [username, setUsername] = useState(''); const [amount, setAmount] = useState(''); const [reason, setReason] = useState('');
+  const [step, setStep] = useState(false); const [msg, setMsg] = useState('');
+  const load = useCallback(async () => setD(await A.apiAdminCommission()), []);
+  useEffect(() => { void load(); }, [load]);
+  if (!d) return <Wait />;
+  if (!d.ok) return <Alert text={errText(d)} />;
+  const c = d.data;
+  const send = async (code: string) => {
+    const n = Number(amount);
+    const r = mode === 'payout' ? await A.apiAdminCommissionPayout({ username: username.trim(), amount: n, reason: reason.trim(), stepUpCode: code }) : await A.apiAdminCommissionTopup({ amount: n, reason: reason.trim(), stepUpCode: code });
+    setStep(false); setMsg(r.ok ? `Готово. Баланс комиссий: ${r.data.balance ?? ''}` : errText(r));
+    if (r.ok) { setAmount(''); setReason(''); setUsername(''); void load(); }
+  };
+  const ready = Number(amount) > 0 && reason.trim().length >= 5 && (mode === 'topup' || username.trim().length >= 2);
+  const kindLabel = { payout_fee: 'Удержание при выплате', topup: 'Пополнение', payout_to_user: 'Выплата пользователю' } as const;
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl p-4" style={card}>
+        <p className="text-[11px]" style={{ color: C.t3 }}>Общий баланс комиссий, Prime Points</p>
+        <p className="text-2xl font-black" style={{ color: C.t1 }}>{c.balance.toLocaleString('ru-RU')}</p>
+        <p className="mt-1 text-[11px]" style={{ color: C.t3 }}>{`Комиссия с покупок ${c.sales.toLocaleString('ru-RU')} (${c.salesPercent}%) · удержания при выплатах ${c.fees.toLocaleString('ru-RU')} (${c.feePercent}%) · пополнено ${c.topups.toLocaleString('ru-RU')} · выплачено ${c.paidOut.toLocaleString('ru-RU')}`}</p>
+      </div>
+      <div className="space-y-2 rounded-2xl p-4" style={card}>
+        <div className="flex gap-1"><Chip on={mode === 'payout'} onClick={() => setMode('payout')}>Выплатить пользователю</Chip><Chip on={mode === 'topup'} onClick={() => setMode('topup')}>Пополнить баланс</Chip></div>
+        {mode === 'payout' && <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Имя пользователя (@username)" autoComplete="off" className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} translate="no" />}
+        <input value={amount} inputMode="numeric" onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} placeholder="Сумма, баллы" className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300} placeholder="Причина (обязательно, попадёт в журнал и в историю кошелька)" className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+        {mode === 'topup' && <p className="text-[10px]" style={{ color: C.t3 }}>Пополнение списывает баллы с вашего собственного кошелька — баллы из воздуха не создаются.</p>}
+        {step ? <StepUp onCode={(code) => void send(code)} onCancel={() => setStep(false)} /> : <button type="button" disabled={!ready} onClick={() => { setMsg(''); setStep(true); }} className="rounded-xl px-5 py-2 text-[12px] font-bold text-white disabled:opacity-40" style={{ background: C.acc }}>{mode === 'payout' ? 'Выплатить' : 'Пополнить'}</button>}
+        {msg && <p className="text-[11px]" style={{ color: msg.startsWith('Готово') ? C.green : C.red }}>{msg}</p>}
+      </div>
+      <div className="space-y-1">
+        <p className="text-[12px] font-bold" style={{ color: C.t1 }}>Движения по балансу</p>
+        {c.items.length === 0 && <p className="text-[12px]" style={{ color: C.t3 }}>Движений пока нет.</p>}
+        {c.items.map((i) => <p key={i.id} className="rounded-lg px-3 py-1.5 text-[11px]" style={{ background: C.l2, color: C.t2 }}>{fmtDt(i.at)} · {kindLabel[i.kind]} · <b style={{ color: i.amount < 0 ? C.red : C.green }}>{i.amount > 0 ? '+' : ''}{i.amount}</b>{i.user && <span translate="no"> · @{i.user}</span>}{i.reason && <span style={{ color: C.t3 }} translate="no"> · {i.reason}</span>}</p>)}
+      </div>
+    </div>
+  );
+};
+
 /* ── Корень ──────────────────────────────────────────────────────── */
 
-type Sub = 'games' | 'moderation' | 'reports' | 'developers' | 'purchases' | 'earnings' | 'payouts' | 'limits' | 'monitor' | 'audit';
+type Sub = 'games' | 'moderation' | 'reports' | 'developers' | 'purchases' | 'earnings' | 'payouts' | 'limits' | 'monitor' | 'audit' | 'commission';
 
-export const BloxAdminSection = ({ can }: { can: (perm: string) => boolean }) => {
+export const BloxAdminSection = ({ can, owner }: { can: (perm: string) => boolean; owner?: boolean }) => {
   const adm = can('blox'); const mod = can('blox_moderation') || adm; const fin = can('blox_finance');
   const tabs: { key: Sub; label: string; show: boolean }[] = [
     { key: 'moderation', label: 'Модерация', show: mod }, { key: 'reports', label: 'Жалобы и апелляции', show: mod },
     { key: 'games', label: 'Игры и серверы', show: adm }, { key: 'developers', label: 'Разработчики', show: adm },
     { key: 'purchases', label: 'Покупки', show: adm || fin }, { key: 'earnings', label: 'Вознаграждения', show: adm || fin },
-    { key: 'payouts', label: 'Выплаты', show: fin }, { key: 'limits', label: 'Ограничения', show: adm || fin },
+    { key: 'payouts', label: 'Выплаты', show: fin }, { key: 'commission', label: 'Баланс комиссий', show: owner === true }, { key: 'limits', label: 'Ограничения', show: adm || fin },
     { key: 'monitor', label: 'Мониторинг', show: adm }, { key: 'audit', label: 'Журнал', show: adm || mod || fin },
   ];
   const vis = tabs.filter((t) => t.show);
@@ -419,7 +465,7 @@ export const BloxAdminSection = ({ can }: { can: (perm: string) => boolean }) =>
       <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>{vis.map((t) => <Chip key={t.key} on={sub === t.key} onClick={() => setSub(t.key)}>{t.label}</Chip>)}</div>
       {sub === 'moderation' && <ModerationTab />}{sub === 'reports' && <ReportsTab />}{sub === 'games' && <GamesTab />}{sub === 'developers' && <DevelopersTab />}
       {sub === 'purchases' && <PurchasesTab finance={fin} />}{sub === 'earnings' && <EarningsTab finance={fin} />}{sub === 'payouts' && <PayoutsTab />}
-      {sub === 'limits' && <LimitsTab can={can} />}{sub === 'monitor' && <MonitorTab />}{sub === 'audit' && <AuditTab />}
+      {sub === 'limits' && <LimitsTab can={can} />}{sub === 'monitor' && <MonitorTab />}{sub === 'audit' && <AuditTab />}{sub === 'commission' && owner && <CommissionTab />}
     </div>
   );
 };

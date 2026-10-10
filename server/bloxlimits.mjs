@@ -35,11 +35,15 @@ export const LIMITS = {
   launchesPerMinute:   [30, 1, 600, 'Запусков игр в минуту на игрока'],
   intentTtlSec:        [900, 60, 86400, 'Срок жизни запроса на покупку, сек'],
   launchTokenTtlSec:   [120, 30, 3600, 'Срок жизни токена запуска, сек'],
-  commissionPercent:   [30, 0, 90, 'Комиссия платформы, %'],
+  commissionPercent:   [0, 0, 90, 'Комиссия платформы с каждой покупки, %'],
+  payoutFeePercent:    [15, 0, 90, 'Удержание при выплате баллов разработчику, %'],
   holdDays:            [14, 0, 180, 'Удержание вознаграждения до доступности, дней'],
   minPayoutPoints:     [1000, 1, 10_000_000, 'Минимальная заявка на выплату, баллов'],
-  payoutsEnabled:      [0, 0, 1, 'Приём заявок на выплату (1 — включён)'],
+  payoutsEnabled:      [1, 0, 1, 'Выплата баллов разработчикам (1 — включена)'],
 };
+
+/** Финансовые параметры: меняет только финансовый сотрудник с подтверждением личности. */
+export const FINANCE_KEYS = ['commissionPercent', 'payoutFeePercent', 'holdDays', 'minPayoutPoints', 'payoutsEnabled'];
 
 let cache = { at: 0, values: null };
 const TTL = 5000;

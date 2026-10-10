@@ -5415,7 +5415,7 @@ export const AdminPanel = () => {
     { key: 'bloom', label: 'Bloom', show: has('content') },
     { key: 'ads', label: 'Реклама', show: has('content') },
     { key: 'codes', label: 'Sky Codes', show: has('codes') },
-    { key: 'blox', label: 'Sky Blox', show: has('blox') || has('blox_moderation') || has('blox_finance') },
+    { key: 'blox', label: 'Sky Blox', show: has('blox') || has('blox_moderation') || has('blox_finance') || rights.owner },
     { key: 'sellers', label: 'Продавцы Market', show: has('seller_docs') || has('market_moderation') || has('pvz_manage') || has('market') },
     { key: 'notify', label: 'Рассылки', show: has('notifications') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
@@ -5632,7 +5632,7 @@ export const AdminPanel = () => {
       {tab === 'bloom' && <BloomAdminSection />}
       {tab === 'ads' && <AdsAdminSection />}
       {tab === 'codes' && <CodesAdminSection owner={rights.owner} />}
-      {tab === 'blox' && <BloxAdminSection can={(p) => has(p as AdminPermission)} />}
+      {tab === 'blox' && <BloxAdminSection can={(p) => has(p as AdminPermission)} owner={rights.owner} />}
       {tab === 'sellers' && <MarketVerifyAdmin can={(p) => has(p as AdminPermission)} />}
       {tab === 'notify' && <NotifyAdminSection />}
 
