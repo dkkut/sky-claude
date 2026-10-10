@@ -75,6 +75,10 @@ import { weatherRoutes } from './routes/weather.mjs';
 import { runWithLang } from './lang.mjs';
 import { marketVerifyRoutes } from './routes/marketverify.mjs';
 import { codesRoutes } from './routes/codes.mjs';
+import { bloxRoutes } from './routes/blox.mjs';
+import { recordRequest, optionalAllowed, loadLimits } from './bloxlimits.mjs';
+import { pruneNonces } from './bloxshop.mjs';
+import { probeGame } from './bloxnet.mjs';
 import { trackingRoutes } from './routes/tracking.mjs';
 import { notifyRoutes } from './routes/notify.mjs';
 import { dispatchDueBroadcasts, sweepStaleBroadcastRuns } from './notifyBroadcast.mjs';
@@ -109,7 +113,7 @@ import { confirmSshLogin } from './breach.mjs';
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
-                botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, primePulseRoutes,
+                botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
@@ -155,6 +159,8 @@ const applyCors = (req, res) => {
 };
 
 const server = http.createServer((req, res) => runWithLang(req, async () => {
+  const t0 = Date.now();
+  res.on('finish', () => recordRequest(res.statusCode, Date.now() - t0));
   try {
     const ip = req.socket.remoteAddress || 'unknown';
     if (!rateLimit(ip, config.rateLimitPerMinute)) {
@@ -251,7 +257,9 @@ const server = http.createServer((req, res) => runWithLang(req, async () => {
     const isBotApi = url.startsWith('/api/bots/rt/');
     const isCampaignClick = /^\/api\/campaigns\/r\//.test(url);
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !betaAllowed(req)) {
+    /* Игровые серверы Sky Blox — программы, а не люди: у них подпись запроса вместо ключа беты. */
+    const isBloxServer = url.startsWith('/api/blox/server/');
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -304,6 +312,7 @@ const server = http.createServer((req, res) => runWithLang(req, async () => {
    упадут с 500.                                                          */
 let signalHub = null;
 let houseKeeping = null;
+let bloxSchedule;
 let botRetry = null;
 let notifyDispatch = null;
 let adsSchedule = null;
@@ -384,6 +393,24 @@ const start = async () => {
     sweepStartedTournaments().catch((err) => console.error('[games] турниры', err.message));
   }, 30 * 1000);
   tourneySchedule.unref();
+
+  // Sky Blox: раз в минуту — чистка одноразовых меток, просроченные запросы на покупку
+  // и фоновая проверка доступности опубликованных игр. Частота и число параллельных
+  // задач берутся из «Ограничений»; при высокой нагрузке проверки пропускаются.
+  bloxSchedule = setInterval(async () => {
+    try {
+      await pruneNonces();
+      await query(`UPDATE blox_purchases SET status = 'expired' WHERE status = 'pending' AND intent_expires_at < now()`);
+      if (!optionalAllowed()) return;
+      const l = await loadLimits();
+      const { rows } = await query(
+        `SELECT * FROM blox_games WHERE moderation_status IN ('published','approved') AND (client_url <> '' OR server_url <> '')
+            AND (conn_checked_at IS NULL OR conn_checked_at < now() - ($1 || ' minutes')::interval) AND conn_status <> 'checking'
+          ORDER BY conn_checked_at NULLS FIRST LIMIT $2`, [String(l.probeIntervalMin), l.maxBgJobs]);
+      await Promise.all(rows.map((g) => probeGame(g, { source: 'background' }).catch((e) => console.error('[blox] проверка', e.message))));
+    } catch (err) { console.error('[blox] фон', err.message); }
+  }, 60 * 1000);
+  bloxSchedule.unref();
 
   // Раз в час убираем отработавшие коды и гасим истёкшие подписки Prime.
   houseKeeping = setInterval(async () => {

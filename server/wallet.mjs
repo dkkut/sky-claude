@@ -285,6 +285,22 @@ export const wallet = {
     return creditPointsTx(client, userId, amount, type, descr, ref);
   },
 
+  /**
+   * Списание баллов внутри чужой транзакции — чтобы покупка и списание
+   * подтверждались или откатывались вместе. Счёт блокируется строкой, а
+   * CHECK (points >= 0) в базе не даёт уйти в минус даже при гонке.
+   */
+  async spendPointsIn(client, userId, amount, type, descr, ref) {
+    if (!validAmount(amount)) return { error: 'invalid_amount' };
+    await ensureAccount(client, userId);
+    const { rows } = await client.query('SELECT points FROM wallet_accounts WHERE user_id = $1 FOR UPDATE', [userId]);
+    if (Number(rows[0].points) < amount) return { error: 'insufficient_points', points: Number(rows[0].points) };
+    const upd = await client.query(
+      'UPDATE wallet_accounts SET points = points - $2, updated_at = now() WHERE user_id = $1 RETURNING points', [userId, amount]);
+    await addTx(client, userId, type, -amount, descr, ref ?? null);
+    return { points: Number(upd.rows[0].points) };
+  },
+
   async spendPoints(userId, amount, descr, ref) {
     if (!validAmount(amount)) return { error: 'invalid_amount' };
 

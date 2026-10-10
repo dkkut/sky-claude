@@ -80,7 +80,7 @@ export const readTicket = (raw) => {
  * значит выдавать три куки на три тех же права — а права всё равно
  * проверяются по базе на каждой картинке.
  */
-const PATHS = ['/api/market', '/api/logistics', '/api/maps', '/api/violations'];
+const PATHS = ['/api/market', '/api/logistics', '/api/maps', '/api/violations', '/api/blox'];
 
 /** Тикет можно передать готовым — см. musicticket.mjs::ticketCookie. */
 export const ticketCookies = (profileId, ticket = issueTicket(profileId)) => {

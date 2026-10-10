@@ -20,7 +20,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -42,6 +42,9 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   seller_docs: 'Проверка продавцов',
   market_moderation: 'Модерация Market',
   pvz_manage: 'Заявки ПВЗ',
+  blox: 'Sky Blox',
+  blox_moderation: 'Модерация Sky Blox',
+  blox_finance: 'Финансы Sky Blox',
 };
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -55,6 +58,9 @@ export const ROLE_LABEL: Record<string, string> = {
   docs_reviewer: 'Проверка документов продавцов',
   market_moderator: 'Модерация Market',
   pvz_manager: 'Управление ПВЗ',
+  blox_admin: 'Sky Blox: администратор',
+  blox_moderator: 'Sky Blox: модератор',
+  blox_finance_staff: 'Sky Blox: финансы',
   tickets_admin: 'Билеты',
   bots_admin: 'Боты',
   finance_admin: 'Начисления',

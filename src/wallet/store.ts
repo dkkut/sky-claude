@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import {
   CreditCard, Crown, ShoppingBag, Music2, Home, RotateCcw,
   ArrowDownLeft, ArrowUpRight, Star, Gift, Landmark, Truck,
-  Megaphone, ShieldCheck, Gem, Radio, Wallet, Ticket,
+  Megaphone, ShieldCheck, Gem, Radio, Wallet, Ticket, Gamepad2,
 } from 'lucide-react';
 import type { IconComponent } from '@/shared/icon';
 
@@ -60,7 +60,9 @@ export type TxType =
   | 'skin_purchase_refund'  // возврат за скин питомца
   | 'stream_donation'       // донат на трансляции
   | 'code_topup'            // пополнение по коду Sky Codes
-  | 'code_points';          // баллы по коду Sky Codes
+  | 'code_points'           // баллы по коду Sky Codes
+  | 'blox_purchase'         // покупка в игре Sky Blox
+  | 'blox_refund';          // возврат за покупку в Sky Blox
 
 export const TX_LABEL: Record<TxType, string> = {
   topup:        'Пополнение',
@@ -92,6 +94,8 @@ export const TX_LABEL: Record<TxType, string> = {
   stream_donation:      'Донат на трансляции',
   code_topup:           'Пополнение по коду',
   code_points:          'Баллы по коду',
+  blox_purchase:        'Покупка в Sky Blox',
+  blox_refund:          'Возврат за покупку в Sky Blox',
 };
 
 /** Запасной значок и подпись для вида операции, которого ещё нет в
@@ -137,6 +141,8 @@ export const TX_ICON: Record<TxType, IconComponent> = {
   stream_donation:      Radio,
   code_topup:           Ticket,
   code_points:          Ticket,
+  blox_purchase:        Gamepad2,
+  blox_refund:          RotateCcw,
 };
 
 export interface Transaction {

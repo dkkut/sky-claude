@@ -1331,6 +1331,9 @@ export const liveFileIds = async () => {
      остаются: по ним принималось решение, и стирать их уборкой нельзя. */
   const { rows: docs } = await query('SELECT file_id FROM market_docs');
   for (const r of docs) alive.add(r.file_id);
+  /* Картинки Sky Blox лежат в том же каталоге. */
+  const { rows: bx } = await query('SELECT id FROM blox_images');
+  for (const r of bx) alive.add(r.id);
   return alive;
 };
 

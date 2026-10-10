@@ -34,6 +34,9 @@ export const PERMISSIONS = [
   'seller_docs',     // заявки продавцов: проверка документов, запрос исправлений
   'market_moderation', // карточки товаров и жалобы Market
   'pvz_manage',      // заявки на открытие ПВЗ
+  'blox',            // Sky Blox: игры, серверы, разработчики, ограничения, мониторинг
+  'blox_moderation', // Sky Blox: очередь проверки, жалобы, апелляции
+  'blox_finance',    // Sky Blox: вознаграждения, возвраты, заявки на выплату
 ];
 
 /**
@@ -56,6 +59,9 @@ export const ROLES = {
   docs_reviewer:   ['seller_docs'],
   market_moderator:['market_moderation'],
   pvz_manager:     ['pvz_manage'],
+  blox_admin:      ['blox', 'blox_moderation'],
+  blox_moderator:  ['blox_moderation'],
+  blox_finance_staff: ['blox_finance'],
   tickets_admin:   ['tickets'],
   bots_admin:      ['bots'],
   finance_admin:   ['finance', 'codes'],
@@ -86,6 +92,9 @@ export const ROLE_LABEL = {
   docs_reviewer: 'Проверка документов продавцов',
   market_moderator: 'Модерация Market',
   pvz_manager: 'Управление ПВЗ',
+  blox_admin: 'Sky Blox: администратор',
+  blox_moderator: 'Sky Blox: модератор',
+  blox_finance_staff: 'Sky Blox: финансы',
   tickets_admin: 'Билеты',
   bots_admin: 'Боты',
   finance_admin: 'Начисления',
