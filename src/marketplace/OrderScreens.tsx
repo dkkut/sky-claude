@@ -34,6 +34,7 @@ import type {
 } from './types';
 import { ORDER_LABEL } from './types';
 import { ParcelTracking } from './ParcelTracking';
+import { AddressMap } from '@/shared/AddressMap';
 
 /* ── Что кому можно нажать ────────────────────────────────────────
    Это повторение серверной таблицы переходов — только для того,
@@ -191,7 +192,7 @@ const ShipForm = ({ order, onDone, onlySelf = false }: {
 
       {method === 'carrier' && (
         <Field label="Служба доставки"
-          hint="У внешней службы появится трек-номер — его выдаёт она, а не мы.">
+          hint="Настоящий трек-номер службы (СДЭК, Почта России …) укажите в заказе после сдачи посылки — покупатель увидит, где она.">
           <select value={carrierId} onChange={(e) => setCarrierId(e.target.value)}
             className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle}>
             <option value="">Выберите службу</option>
@@ -213,12 +214,17 @@ const ShipForm = ({ order, onDone, onlySelf = false }: {
               <option key={p.id} value={p.id}>{p.city}, {p.address} · {p.title}</option>
             ))}
           </select>
+          {pointId && (() => {
+            const sel = points.find((p) => p.id === pointId);
+            return sel ? <div className="mt-2"><AddressMap address={`${sel.city}, ${sel.address}`} label={sel.title} kind="pickup" height={140} /></div> : null;
+          })()}
         </Field>
       )}
 
       {destination === 'buyer_address' && (
         <div className="rounded-xl px-3 py-2 text-[11px]" style={{ background: C.l2, color: C.t2 }}>
-          Адрес покупателя: {order.address || '—'}
+          <p>Адрес покупателя: {order.address || '—'}</p>
+          {order.address && <div className="mt-2"><AddressMap address={order.address} label="Покупатель" kind="target" height={140} /></div>}
         </div>
       )}
 
@@ -386,6 +392,8 @@ const ShipmentCard = ({ shipment, canMove, onMoved }:
             <p>{shipment.pickupPoint.city}, {shipment.pickupPoint.address}</p>
             <p>Работает {shipment.pickupPoint.workFrom}–{shipment.pickupPoint.workTo}</p>
             {shipment.pickupUntil && <p>Забрать до {fmtTime(shipment.pickupUntil)}</p>}
+            <AddressMap address={`${shipment.pickupPoint.city}, ${shipment.pickupPoint.address}`}
+              label={shipment.pickupPoint.title} kind="pickup" height={150} />
           </div>
           {shipment.pickupCode && (
             <div className="flex items-center gap-2 rounded-xl px-3 py-2"

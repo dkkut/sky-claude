@@ -21,6 +21,7 @@ import {
   QrCode, CheckCircle, Search, X, Briefcase, Eye, Loader2,
 } from 'lucide-react';
 import { qrDataUri } from '@/shared/qr';
+import { AddressMap } from '@/shared/AddressMap';
 import {
   apiCatalog, apiEvent, apiFavorites, apiSetFavorite, apiBuy, apiMyTickets,
   apiOrganizer, newIdemKey, coverUrl,
@@ -422,6 +423,11 @@ export const SkyTickets = () => {
                 {ev.address && <p className="text-xs" style={{ color: 'var(--t2)' }}>{ev.address}</p>}
                 {ev.venueNote && <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>{ev.venueNote}</p>}
               </div>
+            )}
+
+            {/* Карта площадки: картинка Google с нашего сервера + ссылки в Google Карты */}
+            {(ev.address || ev.venue) && (
+              <AddressMap address={[ev.city, ev.address || ev.venue].filter(Boolean).join(', ')} label={ev.venue} kind="target" />
             )}
 
             {ev.desc && <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--t2)' }}>{ev.desc}</p>}
