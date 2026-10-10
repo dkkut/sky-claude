@@ -244,11 +244,21 @@ export const setPlatformBlockedHandler = (fn: ((block: PlatformBlock) => void) |
  * Запрос к API. Если access протух — обновляемся один раз и повторяем;
  * второй неудачи достаточно, чтобы считать сессию законченной.
  */
-const call = async <T>(path: string, init: RequestInit = {}, retry = true): Promise<Reply<T>> => {
+/** Короткие сбои сети и прокси (502/503/504) у чтения: повторяем, а не оставляем пустой экран. */
+const TRANSIENT_RETRY_MS = [400, 1200];
+const isRead = (init: RequestInit) => !init.method || init.method.toUpperCase() === 'GET';
+const sleepMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+const call = async <T>(path: string, init: RequestInit = {}, retry = true, transient = 0): Promise<Reply<T>> => {
   let res: Response;
   try {
     res = await raw(path, init);
   } catch {
+    // Только чтение: повтор записи мог бы выполнить действие дважды.
+    if (isRead(init) && transient < TRANSIENT_RETRY_MS.length && typeof navigator !== 'undefined' && navigator.onLine !== false) {
+      await sleepMs(TRANSIENT_RETRY_MS[transient]);
+      return call<T>(path, init, retry, transient + 1);
+    }
     /* В родном приложении fetch к чужому origin бросает ровно то же
        исключение и при обрыве сети, и при отказе CORS (сервер не
        прислал Access-Control-Allow-Origin для этого origin — см.
@@ -264,7 +274,18 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true): Prom
   }
 
   if (res.status === 401 && retry && path !== '/api/auth/refresh') {
-    if (await refreshOnce()) return call<T>(path, init, false);
+    if (await refreshOnce()) return call<T>(path, init, false, transient);
+  }
+
+  // nginx на рестарте/деплое api отвечает 502/504, перегрузка — 503 без
+  // кода площадки: подождать долю секунды дешевле, чем показать ошибку.
+  if (isRead(init) && (res.status === 502 || res.status === 504 || res.status === 503)
+      && transient < TRANSIENT_RETRY_MS.length) {
+    const peek = await res.clone().json().catch(() => null) as { error?: string } | null;
+    if (!peek?.error?.startsWith('platform_')) {
+      await sleepMs(TRANSIENT_RETRY_MS[transient]);
+      return call<T>(path, init, retry, transient + 1);
+    }
   }
 
   const data = await readJson(res);
