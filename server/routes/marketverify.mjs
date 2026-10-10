@@ -15,7 +15,7 @@ import { requestMeta } from './../adminsec.mjs';
 import { saveStream, sizeOf, openStream, remove } from './../marketstore.mjs';
 import {
   verificationConfig, myVerification, saveApplication, startChangeRequest, submitApplication,
-  reserveDoc, finishDoc, dropDoc, removeMyDoc, docForReading, reviewDoc,
+  reserveDoc, finishDoc, listMyDocs, dropDoc, removeMyDoc, docForReading, reviewDoc,
   listApplications, readApplicationAdmin, decideApplication, sellerAdminAction,
   myPvzApplication, savePvzApplication, submitPvzApplication,
   listPvzApplications, readPvzApplicationAdmin, decidePvzApplication,
@@ -141,6 +141,12 @@ export const marketVerifyRoutes = async (req, res, url) => {
     }
     await finishDoc(slot.id, saved.bytes);
     return json(res, 200, { ok: true, id: slot.id, bytes: saved.bytes, mime });
+  }
+
+  if (req.method === 'GET' && path === '/api/market/docs') {
+    if (!readOk()) return tooMany();
+    const r = await listMyDocs(me, params.get('scope'), params.get('refId'));
+    return r.error ? fail(res, r) : json(res, 200, r);
   }
 
   const docPath = path.match(/^\/api\/market\/docs\/(mdc-[0-9a-f-]{36})(\/file)?$/);

@@ -34,6 +34,8 @@ import { CATEGORY_LABEL } from './types';
 import { OrdersList, OrderPage } from './OrderScreens';
 import { ParcelLookup } from './ParcelTracking';
 import { BecomeSeller, SellerCabinet } from './SellerCabinet';
+import { OriginBlock } from './ProductCompliance';
+import { ReportButton } from './ReportButton';
 import { CarrierCabinet } from './CarrierCabinet';
 import { PvzCabinet } from './PvzCabinet';
 import { GamingMarket } from './SkyGamingMarket';
@@ -275,7 +277,14 @@ export const ProductPage = ({ productId, onBack, onOrdered }:
             style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
             <Store size={15} style={{ color: C.acc }} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12px] font-semibold" style={{ color: C.t1 }}>{product.sellerName}</p>
+              <p className="truncate text-[12px] font-semibold" style={{ color: C.t1 }}>
+                {product.sellerName}
+                {product.sellerTaxKind && (
+                  <span className="ml-1.5 rounded px-1.5 py-0.5 text-[9px] font-bold" style={{ background: C.l2, color: C.t2 }}>
+                    {({ individual: 'Частное лицо', npd: 'Самозанятый', ip: 'ИП', legal: 'Организация' } as Record<string, string>)[product.sellerTaxKind]}
+                  </span>
+                )}
+              </p>
               {product.sellerRating != null && (
                 <div className="flex items-center gap-1">
                   <Stars rating={product.sellerRating} size={10} />
@@ -309,12 +318,16 @@ export const ProductPage = ({ productId, onBack, onOrdered }:
             <p className="whitespace-pre-wrap text-[12px]" style={{ color: C.t2 }}>{product.description}</p>
           )}
 
+          {product.marketType === 'standard' && <OriginBlock product={product} />}
+
           <div className="rounded-2xl px-3 py-2 text-[11px]"
             style={{ background: C.l2, color: C.t2, border: `1px solid ${C.brd}` }}>
             {product.marketType === 'game'
               ? 'Игровой лот: доставки и трек-номера нет. Продавец выдаёт товар в игре, вы подтверждаете выдачу.'
               : 'Доставку выбирает продавец: службой в пункт выдачи или до двери, либо привезёт сам.'}
           </div>
+
+          {!product.own && <ReportButton targetType="product" targetId={product.id} />}
 
           {reviews.length > 0 && (
             <div className="space-y-2">
@@ -353,14 +366,15 @@ export const Catalog = ({ marketType = 'standard', onOpen }:
   const [q, setQ] = useState('');
   const [category, setCategory] = useState<ProductCategory | ''>('');
   const [sort, setSort] = useState<'new' | 'cheap' | 'expensive' | 'popular' | 'rating'>('new');
+  const [shipping, setShipping] = useState<'' | 'ru' | 'abroad' | 'intl'>('');
   const [filters, setFilters] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      void loadCatalog({ type: marketType, q: q.trim() || undefined, category: category || undefined, sort });
+      void loadCatalog({ type: marketType, q: q.trim() || undefined, category: category || undefined, sort, shipping: shipping || undefined });
     }, 250);
     return () => clearTimeout(timer);
-  }, [q, category, sort, marketType]);
+  }, [q, category, sort, marketType, shipping]);
 
   return (
     <div className="flex h-full flex-col">
@@ -393,6 +407,17 @@ export const Catalog = ({ marketType = 'standard', onOpen }:
                 </button>
               ))}
             </div>
+            {marketType === 'standard' && (
+              <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                {([['', 'Все товары'], ['ru', 'Отправка из России'], ['abroad', 'Отправка из-за рубежа'], ['intl', 'Международная доставка']] as const).map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => setShipping(k)}
+                    className="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
+                    style={{ background: shipping === k ? C.accBg : C.l2, color: shipping === k ? C.acc : C.t3 }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
             {marketType === 'standard' && (
               <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                 <button type="button" onClick={() => setCategory('')}

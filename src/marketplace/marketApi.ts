@@ -53,6 +53,8 @@ export interface CatalogQuery {
   offset?: number;
   minPrice?: number;
   maxPrice?: number;
+  /** ru — отправка из России, abroad — из-за рубежа, intl — международная доставка. */
+  shipping?: 'ru' | 'abroad' | 'intl';
 }
 
 export const apiCatalog = (query: CatalogQuery = {}) =>
@@ -176,7 +178,16 @@ export interface ProductInput {
   gameId?: string;
   gameCategory?: GameCategoryKey;
   region?: string;
-  active?: boolean;
+  itemCondition?: 'new' | 'used' | null;
+  itemSource?: 'personal' | 'own_production' | 'resale' | null;
+  markingDeclared?: 'not_required' | 'required' | 'unsure' | null;
+  originCountry?: string | null;
+  shipFromCountry?: string | null;
+  itemLocationCountry?: string | null;
+  intlShipping?: boolean;
+  deliveryDaysMin?: number | null;
+  deliveryDaysMax?: number | null;
+  importInfo?: string;
 }
 
 export const apiCreateProduct = (input: ProductInput) =>

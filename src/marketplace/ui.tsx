@@ -258,6 +258,16 @@ export const ProductCard = ({ product, onOpen, onFavorite }:
               {product.reviewCount > 0 ? product.reviewCount : 'нет отзывов'}
             </span>
           </div>
+          {(product.shipsFromAbroad === true || product.intlShipping === true) && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {product.shipsFromAbroad === true && (
+                <span className="rounded px-1.5 py-0.5 text-[9px] font-bold" style={{ background: C.accBg, color: C.acc }}>Из-за рубежа</span>
+              )}
+              {product.intlShipping === true && (
+                <span className="rounded px-1.5 py-0.5 text-[9px] font-bold" style={{ background: C.accBg, color: C.acc }}>Международная доставка</span>
+              )}
+            </div>
+          )}
           {product.sellerName && (
             <p className="mt-1 truncate text-[10px]" style={{ color: C.t3 }}>{product.sellerName}</p>
           )}

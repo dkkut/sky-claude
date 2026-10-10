@@ -111,7 +111,8 @@ export const apiPvzMine = () => apiCall<{ pvzs: PvzMembership[] }>('/api/pvz/min
 export const apiPvzConfig = () => apiCall<PvzConfig>('/api/pvz/config');
 
 export const apiPvzCreate = (input: {
-  title: string; city: string; address: string; phone?: string;
+  /** Одобренная заявка ПВЗ: без неё сервер точку не заведёт. */
+  applicationId: string;
   workFrom?: string; workTo?: string; holdDays?: number; cellCount?: number;
 }) => apiCall<{ id: string; price: number }>('/api/pvz', { method: 'POST', body: JSON.stringify(input) });
 

@@ -291,6 +291,16 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true): Prom
  */
 export const apiCall = call;
 
+/** GET двоичного файла (документ, скан): та же сессия, результат — Blob. */
+export const apiBlob = async (path: string): Promise<{ ok: boolean; status: number; blob: Blob | null }> => {
+  let res: Response;
+  try {
+    res = await raw(path);
+    if (res.status === 401 && await refreshOnce()) res = await raw(path);
+  } catch { return { ok: false, status: 0, blob: null }; }
+  return { ok: res.ok, status: res.status, blob: res.ok ? await res.blob() : null };
+};
+
 /** GET, ответ которого — не JSON (выгрузка CSV): та же сессия и то же обновление токена. */
 export const apiText = async (path: string): Promise<{ ok: boolean; status: number; text: string }> => {
   let res: Response;

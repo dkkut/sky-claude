@@ -35,6 +35,7 @@ import type { PetRarity, PetAvailability, SkinItemType, SkinAvailability } from 
 import { evidenceFileUrl } from '@/marketplace/violationsApi';
 
 import { CodesAdminSection } from '@/codes/CodesAdmin';
+import { MarketVerifyAdmin } from '@/marketplace/MarketVerifyAdmin';
 
 const C = {
   bg: 'var(--bg-l1)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
@@ -5248,7 +5249,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'notify' | 'log' | 'events' | 'violations';
+type Tab = 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'notify' | 'log' | 'events' | 'violations';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5413,6 +5414,7 @@ export const AdminPanel = () => {
     { key: 'bloom', label: 'Bloom', show: has('content') },
     { key: 'ads', label: 'Реклама', show: has('content') },
     { key: 'codes', label: 'Sky Codes', show: has('codes') },
+    { key: 'sellers', label: 'Продавцы Market', show: has('seller_docs') || has('market_moderation') || has('pvz_manage') || has('market') },
     { key: 'notify', label: 'Рассылки', show: has('notifications') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
     { key: 'log', label: 'Журнал', show: has('security') },
@@ -5628,6 +5630,7 @@ export const AdminPanel = () => {
       {tab === 'bloom' && <BloomAdminSection />}
       {tab === 'ads' && <AdsAdminSection />}
       {tab === 'codes' && <CodesAdminSection owner={rights.owner} />}
+      {tab === 'sellers' && <MarketVerifyAdmin can={(p) => has(p as AdminPermission)} />}
       {tab === 'notify' && <NotifyAdminSection />}
 
       {tab === 'admins' && (

@@ -20,7 +20,7 @@ import {
   Store, Package, ShoppingBag, BarChart3, Settings, Plus, Trash2,
   Edit3, CheckCircle2, AlertCircle, Star, ImagePlus, CreditCard,
   Truck, Route, Warehouse as WarehouseIcon, PackageSearch, KeyRound, Zap,
-  Lock as LockIcon, Check, ScrollText, QrCode, ShieldAlert,
+  Lock as LockIcon, Check, ScrollText, QrCode, ShieldAlert, ShieldCheck,
 } from 'lucide-react';
 import { SellerViolations } from './ViolationsTab';
 import {
@@ -55,6 +55,10 @@ import { SlidePanel } from './logistics/shared';
 import { ShipmentHub } from './logistics/ShipmentHub';
 import { PassHub } from './logistics/PassHub';
 import { SellerPvzShipments } from './SellerPvzShipments';
+import { VerificationPanel } from './SellerVerification';
+import {
+  OriginSection, ListingPanel, ModerationBadge, originFromProduct, originToInput, type OriginState,
+} from './ProductCompliance';
 
 /* ── Стать продавцом ──────────────────────────────────────────────── */
 
@@ -114,6 +118,10 @@ export const BecomeSeller = () => {
         <p className="mt-1 text-[12px]" style={{ color: C.t2 }}>
           Место на витрине стоит {config?.sellerPrice ?? 79} ₽ за {config?.sellerDays ?? 7} дней.
           Это плата Sky за витрину и хранение — с ваших продаж мы ничего не берём.
+        </p>
+        <p className="mt-2 text-[11px]" style={{ color: C.t2 }}>
+          После создания магазина выберите свой статус (физлицо, самозанятый, ИП или организация) и
+          отправьте анкету на проверку: торговать можно будет после одобрения заявки.
         </p>
         <p className="mt-2 text-[11px]" style={{ color: C.t3 }}>
           Покупатель платит вам напрямую. Sky не принимает, не хранит и не переводит
@@ -225,6 +233,11 @@ const ProductForm = ({ product, onDone, onCancel }:
   /* Пакеты услуги. Уходят отдельным запросом после сохранения самой
      услуги: без неё им не к чему прикрепиться. */
   const [packages, setPackages] = useState<ServicePackage[]>(product?.packages ?? []);
+  const [origin, setOrigin] = useState<OriginState>(originFromProduct(product));
+  /* Только что созданная карточка: форма остаётся открытой, чтобы
+     продавец сразу мог отправить её на публикацию. */
+  const [created, setCreated] = useState<Product | null>(null);
+  const current = product ?? created;
   const [games, setGames] = useState<Game[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -248,6 +261,7 @@ const ProductForm = ({ product, onDone, onCancel }:
       category,
       stock: Number(stock) || 0,
       region: region.trim() || undefined,
+      ...originToInput(origin, marketType),
     };
     if (marketType === 'game') {
       input.gameId = gameId;
@@ -259,8 +273,8 @@ const ProductForm = ({ product, onDone, onCancel }:
     }
 
     setBusy(true); setError(null);
-    const r = product
-      ? await apiUpdateProduct(product.id, input)
+    const r = current
+      ? await apiUpdateProduct(current.id, input)
       : await apiCreateProduct(input);
     if (!r.ok || !r.data) { setBusy(false); setError(r.reason ?? 'Товар не сохранился'); return; }
 
@@ -269,7 +283,9 @@ const ProductForm = ({ product, onDone, onCancel }:
       if (!saved.ok) { setBusy(false); setError(saved.reason ?? 'Пакеты не сохранились'); return; }
     }
     setBusy(false);
-    onDone();
+    /* Новая карточка — черновик: остаёмся в форме и показываем публикацию. */
+    setCreated(r.data.product);
+    if (current) onDone();
   };
 
   return (
@@ -387,13 +403,17 @@ const ProductForm = ({ product, onDone, onCancel }:
         </>
       )}
 
+      <OriginSection marketType={marketType} value={origin} onChange={setOrigin} />
+
       {error && <Alert text={error} />}
+
+      {current && <ListingPanel product={current} onChanged={() => void useMarketStore.getState().loadSellerData()} />}
 
       <div className="flex gap-2 pb-4">
         <button type="button" onClick={onCancel}
           className="flex-1 rounded-xl py-2.5 text-[12px] font-bold"
           style={{ background: C.l2, color: C.t1, border: `1px solid ${C.brd}` }}>
-          Отмена
+          {created ? 'Готово' : 'Отмена'}
         </button>
         <button type="button" disabled={busy} onClick={save}
           className="flex-1 rounded-xl py-2.5 text-[12px] font-bold disabled:opacity-40"
@@ -620,14 +640,14 @@ const SellerProducts = () => {
               <p className="truncate text-[12px] font-semibold" style={{ color: C.t1 }}>{p.title}</p>
               <p className="text-[11px]" style={{ color: C.t3 }}>
                 {fmt(p.price)} · остаток {p.stock} · продано {p.sold}
-                {!p.active && <span style={{ color: C.red }}> · снят с витрины</span>}
               </p>
+              <ModerationBadge status={p.moderationStatus} />
             </div>
             <button type="button" onClick={() => setEditing(p)}
               className="grid h-8 w-8 place-items-center rounded-lg" style={{ background: C.l2, color: C.t2 }}>
               <Edit3 size={13} />
             </button>
-            {p.active && (
+            {p.moderationStatus !== 'archived' && (
               <button type="button"
                 onClick={async () => { await apiArchiveProduct(p.id); void loadSellerData(); }}
                 className="grid h-8 w-8 place-items-center rounded-lg" style={{ background: C.l2, color: C.red }}>
@@ -931,7 +951,7 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
 
 /* ── Кабинет ──────────────────────────────────────────────────────── */
 
-type CabTab = 'orders' | 'products' | 'stats'
+type CabTab = 'verify' | 'orders' | 'products' | 'stats'
   | 'couriers' | 'transport' | 'warehouses' | 'cells' | 'shipments' | 'pvzship' | 'passes'
   | 'ads' | 'violations' | 'settings';
 
@@ -939,6 +959,7 @@ type CabTab = 'orders' | 'products' | 'stats'
    транспортная компания, склады, поставки и пропуска. Теперь всё это
    живёт на сервере, но стоит там же, где стояло. */
 const TABS: { key: CabTab; label: string; Icon: LucideIcon }[] = [
+  { key: 'verify',     label: 'Проверка', Icon: ShieldCheck },
   { key: 'orders',     label: 'Заказы',   Icon: ShoppingBag },
   { key: 'products',   label: 'Товары',   Icon: Package },
   { key: 'stats',      label: 'Счётчики', Icon: BarChart3 },
@@ -956,7 +977,8 @@ const TABS: { key: CabTab; label: string; Icon: LucideIcon }[] = [
 
 export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }) => {
   const { loadSellerData, ordersSell, loadOrders } = useMarketStore();
-  const [tab, setTab] = useState<CabTab>('orders');
+  const verified = seller.verification === 'approved' || seller.verification === 'legacy';
+  const [tab, setTab] = useState<CabTab>(verified ? 'orders' : 'verify');
 
   useEffect(() => { void loadSellerData(); }, []);
 
@@ -972,7 +994,13 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
 
   return (
     <div className="flex h-full flex-col">
-      {!sub?.active && (
+      {!verified && (
+        <div className="shrink-0 px-4 pt-3">
+          <Alert text="Магазин ещё не прошёл проверку: торговать и публиковать товары можно после одобрения заявки. Заполните вкладку «Проверка»." />
+        </div>
+      )}
+
+      {verified && !sub?.active && (
         <div className="shrink-0 px-4 pt-3">
           <SubscriptionCard seller={seller} />
         </div>
@@ -999,6 +1027,7 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {tab === 'verify' && <VerificationPanel onChanged={() => void useMarketStore.getState().loadSeller()} />}
         {tab === 'orders' && <SellerOrders meId={meId} />}
         {tab === 'products' && <SellerProducts />}
         {tab === 'stats' && <SellerStatsView />}

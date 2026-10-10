@@ -116,6 +116,7 @@ export const myVerification = async (profileId) => {
     'SELECT * FROM market_seller_applications WHERE profile_id = $1 AND is_current', [profileId]);
   const shown = open[0] ?? last[0] ?? null;
   return {
+    profileId,
     verification: seller.verification_status,
     shopStatus: seller.status,
     suspendReason: seller.status === 'suspended' || seller.verification_status === 'suspended' ? seller.suspend_reason : '',
@@ -307,6 +308,21 @@ export const reserveDoc = async (profileId, { scope, refId, docType, label, mime
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
     [id, profileId, scope, refId, docType, text(label, 120), fileId, mime]);
   return { id, fileId };
+};
+
+/** Документы по своей заявке/карточке/ПВЗ — только владельцу. */
+export const listMyDocs = async (profileId, scope, refId) => {
+  if (!['application', 'product', 'pvz'].includes(scope)) return { error: 'bad_scope' };
+  const { rows } = await query(
+    `SELECT id, doc_type, label, mime, bytes, status, review_comment, created_at FROM market_docs
+      WHERE profile_id = $1 AND scope = $2 AND ref_id = $3 AND removed_at IS NULL ORDER BY created_at`,
+    [profileId, scope, String(refId ?? '')]);
+  return {
+    items: rows.map((d) => ({
+      id: d.id, type: d.doc_type, typeLabel: DOC_TYPES[d.doc_type] ?? d.doc_type, label: d.label,
+      mime: d.mime, bytes: Number(d.bytes), status: d.status, comment: d.review_comment, createdAt: iso(d.created_at),
+    })),
+  };
 };
 
 export const finishDoc = (docId, bytes) =>

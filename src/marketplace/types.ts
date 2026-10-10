@@ -144,12 +144,34 @@ export interface Product {
   serviceCategory?: ServiceCategory;
   tags: string[];
   packages?: ServicePackage[];
+  /** Статус публикации. Видна ли карточка, решает сервер, а не флажок. */
+  moderationStatus?: ModerationStatus;
+  moderationReason?: string;
+  itemCondition?: 'new' | 'used';
+  itemSource?: 'personal' | 'own_production' | 'resale';
+  markingDeclared?: 'not_required' | 'required' | 'unsure';
+  /** Происхождение и отправка — разные сведения. Отметки приходят от сервера готовыми. */
+  originCountry?: string;
+  shipFromCountry?: string;
+  itemLocationCountry?: string;
+  shipsFromAbroad?: boolean;
+  locatedAbroad?: boolean;
+  intlShipping?: boolean;
+  deliveryDaysMin?: number;
+  deliveryDaysMax?: number;
+  importInfo?: string;
+  sellerTaxKind?: TaxKind;
   /** Продвигается ли товар прямо сейчас. Решает сервер. */
   promoted?: boolean;
   favorite?: boolean;
   own?: boolean;
   createdAt?: string;
 }
+
+export type ModerationStatus =
+  'draft' | 'pending' | 'needs_changes' | 'approved' | 'published' | 'hidden' | 'blocked' | 'archived';
+
+export type TaxKind = 'individual' | 'npd' | 'ip' | 'legal';
 
 export interface Review {
   id: string;
@@ -167,6 +189,10 @@ export interface Subscription {
   days: number;
 }
 
+export type VerificationState =
+  'none' | 'draft' | 'submitted' | 'in_review' | 'needs_changes' | 'approved'
+  | 'rejected' | 'suspended' | 'reverify' | 'legacy';
+
 export interface Seller {
   id: string;
   shopName: string;
@@ -181,6 +207,12 @@ export interface Seller {
   /** Только в своём профиле. Покупателю они приходят по его заказу. */
   paymentDetails?: string;
   status: SellerStatus;
+  /** Подтверждённый проверкой налоговый статус — виден и покупателям. */
+  taxKind?: TaxKind;
+  /** Состояние проверки — только в своём профиле. */
+  verification?: VerificationState;
+  activities?: string[];
+  suspendReason?: string;
   rating: number | null;
   reviewCount: number;
   ordersTotal?: number;

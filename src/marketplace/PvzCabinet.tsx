@@ -22,6 +22,7 @@ import {
 import { C, fmt, fmtTime, Empty, Field, inputStyle, Alert } from './ui';
 import { useMarketStore } from './store';
 import { PvzViolationsTab } from './ViolationsTab';
+import { PvzApplicationFlow } from './PvzApplication';
 import {
   apiPvzConfig, apiPvzCreate, apiPvzActivate, apiPvzOverview, apiPvzSetClosed,
   apiPvzUpdateSettings, apiPvzStaff, apiPvzAddStaff, apiPvzRevokeStaff,
@@ -45,71 +46,6 @@ const ROLE_LABEL: Record<PvzRole, string> = {
 };
 
 type PvzTab = 'overview' | 'receiving' | 'cells' | 'issue' | 'staff' | 'commissions' | 'video' | 'audit' | 'violations' | 'settings';
-
-/* ── Создание новой точки ─────────────────────────────────────────── */
-
-const CreatePvz = ({ onCreated }: { onCreated: () => void }) => {
-  const [title, setTitle] = useState('');
-  const [city, setCity] = useState('');
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
-  const [cellCount, setCellCount] = useState('10');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [price, setPrice] = useState<number | null>(null);
-
-  useEffect(() => { void (async () => {
-    const r = await apiPvzConfig();
-    if (r.ok && r.data) setPrice(r.data.subscriptionPrice);
-  })(); }, []);
-
-  const create = async () => {
-    if (!title.trim() || !city.trim() || !address.trim()) return;
-    setBusy(true); setError(null);
-    const r = await apiPvzCreate({
-      title: title.trim(), city: city.trim(), address: address.trim(),
-      phone: phone.trim() || undefined, cellCount: Number(cellCount) || 0,
-    });
-    setBusy(false);
-    if (!r.ok) { setError(r.reason ?? 'Не получилось завести точку'); return; }
-    onCreated();
-  };
-
-  return (
-    <div className="h-full space-y-3 overflow-y-auto p-4">
-      <div className="flex items-center gap-2">
-        <Store size={18} style={{ color: C.acc }} />
-        <p className="text-sm font-bold" style={{ color: C.t1 }}>Завести пункт выдачи</p>
-      </div>
-      <p className="text-[11px]" style={{ color: C.t3 }}>
-        Точка сразу видна вам в кабинете, но в публичный каталог не попадёт, пока не оплачена
-        активация{price != null ? ` — ${fmt(price)}/мес` : ''}. Оплата спишется с кошелька Sky,
-        так же как подписка продавца.
-      </p>
-
-      <Field label="Название"><input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120}
-        className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} /></Field>
-      <Field label="Город"><input value={city} onChange={(e) => setCity(e.target.value)} maxLength={80}
-        className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} /></Field>
-      <Field label="Адрес"><input value={address} onChange={(e) => setAddress(e.target.value)} maxLength={300}
-        className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} /></Field>
-      <Field label="Телефон (необязательно)"><input value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={40}
-        className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} /></Field>
-      <Field label="Сколько ячеек завести сразу">
-        <input value={cellCount} onChange={(e) => setCellCount(e.target.value.replace(/\D/g, ''))}
-          inputMode="numeric" className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
-      </Field>
-
-      {error && <Alert text={error} />}
-
-      <button type="button" disabled={busy || !title.trim() || !city.trim() || !address.trim()} onClick={create}
-        className="w-full rounded-xl py-3 text-[13px] font-bold disabled:opacity-40"
-        style={{ background: C.acc, color: '#fff' }}>
-        {busy ? 'Заводим…' : 'Завести точку'}
-      </button>
-    </div>
-  );
-};
 
 /* ── Обзор точки + активация подписки ─────────────────────────────── */
 
@@ -837,7 +773,7 @@ export const PvzCabinet = () => {
   const refreshAll = () => { void loadOverview(); void loadMyPvz(); };
 
   if (creating || (myPvz.length === 0 && !pvz)) {
-    return <CreatePvz onCreated={() => { setCreating(false); void loadMyPvz(); }} />;
+    return <PvzApplicationFlow onCreated={() => { setCreating(false); void loadMyPvz(); }} />;
   }
   if (!selected || !pvz) return <p className="p-4 text-[12px]" style={{ color: C.t3 }}>Загружаем…</p>;
 
