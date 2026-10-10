@@ -18,7 +18,7 @@ import { verifyToken, rateLimit, rateLimitPerHour } from './security.mjs';
 import { sessionStore, onSessionRevoked } from './sessions.mjs';
 import { query } from './db.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
-import { originAllowed } from './http.mjs';
+import { originAllowed, clientIp } from './http.mjs';
 import { getPrivacy, setPrivacy, presenceBetween, mayCall } from './privacy.mjs';
 import {
   restrictionsOf, isBannedNow, isAdmin,
@@ -1790,8 +1790,7 @@ const betaAllowed = (req) => {
 const ipOf = (req) => {
   // За nginx настоящий адрес приходит заголовком; сам nginx его
   // перезаписывает, поэтому подделать его снаружи нельзя.
-  const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
-  return fwd || req.socket.remoteAddress || 'unknown';
+  return clientIp(req);
 };
 
 export const startSignalHub = () => {

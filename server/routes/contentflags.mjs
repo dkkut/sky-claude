@@ -19,7 +19,7 @@ export const contentFlagsRoutes = async (req, res, url) => {
 
   if (req.method === 'GET' && url === '/api/moderation/flags') {
     if (!rateLimit(`modflags:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
-    return json(res, 200, { flags: await listFlags() });
+    return json(res, 200, { flags: await listFlags(me) });
   }
 
   if (req.method === 'POST' && url === '/api/moderation/flags/warning') {

@@ -4,6 +4,7 @@
  * Вынесено отдельно, чтобы модули маршрутов не тянули друг друга ради
  * пары функций и чтобы заголовки безопасности задавались в одном месте.
  */
+import net from 'node:net';
 import { config } from './config.mjs';
 import { verifyToken, rateLimit } from './security.mjs';
 import { REFRESH_COOKIE, parseCookies } from './cookies.mjs';
@@ -36,6 +37,31 @@ export const json = (res, code, body, extraHeaders = {}) => {
 export class BadRequest extends Error {
   constructor(code) { super(code); this.status = 400; this.code = code; }
 }
+
+/**
+ * Настоящий адрес клиента.
+ *
+ * За nginx (docker-compose) прямой сосед API — сам nginx, и
+ * `socket.remoteAddress` у ВСЕХ запросов один и тот же адрес контейнера.
+ * Пределы по IP тогда превращались в один общий счётчик на всю платформу:
+ * несколько человек вместе упирались в 120 запросов в минуту, и страницы,
+ * картинки и треки то открывались, то отвечали 429.
+ * Заголовкам верим только если сосед — локальный/внутрисетевой прокси;
+ * `X-Real-IP` nginx выставляет сам ($remote_addr), клиент его не задаёт.
+ * Первый элемент X-Forwarded-For клиент подделывает, поэтому берём
+ * последний (его дописал наш nginx).
+ */
+const LOCAL_PEER = /^(::1$|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|f[cd][0-9a-f]{2}:|::ffff:(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.))/i;
+export const clientIp = (req) => {
+  const peer = String(req?.socket?.remoteAddress ?? '');
+  if (!peer) return 'unknown';
+  if (!LOCAL_PEER.test(peer)) return peer;
+  const real = String(req.headers?.['x-real-ip'] ?? '').trim();
+  if (net.isIP(real)) return real;
+  const fwd = String(req.headers?.['x-forwarded-for'] ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  const last = fwd[fwd.length - 1];
+  return last && net.isIP(last) ? last : peer;
+};
 
 export const parseBody = (req) => new Promise((resolve, reject) => {
   let raw = '';
@@ -94,7 +120,7 @@ export const isAppClient = (req) => req.headers['x-sky-client'] === 'app';
  */
 export const deviceMeta = (req) => ({
   ua: String(req.headers['user-agent'] ?? '').slice(0, 300),
-  ip: String(req.socket?.remoteAddress ?? '').slice(0, 100),
+  ip: clientIp(req).slice(0, 100),
 });
 
 /**

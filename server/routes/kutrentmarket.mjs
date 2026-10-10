@@ -13,7 +13,7 @@
  * войти — ни анонимной кассы, ни произвольного получателя по нику
  * здесь больше нет (см. server/kutrentmarket.mjs).
  */
-import { json, parseBody, requireProfile } from './../http.mjs';
+import { json, parseBody, requireProfile, clientIp } from './../http.mjs';
 import { can } from './../admin.mjs';
 import { config } from './../config.mjs';
 import { wallet } from './../wallet.mjs';
@@ -108,7 +108,7 @@ export const kutrentMarketRoutes = async (req, res, url) => {
    * доказывает личность.
    */
   if (req.method === 'POST' && url === '/api/kutrent-market/sso/consume') {
-    if (!rateLimit(`krm:sso-consume:${req.socket.remoteAddress || 'unknown'}`, 20)) {
+    if (!rateLimit(`krm:sso-consume:${clientIp(req)}`, 20)) {
       return json(res, 429, { error: 'rate_limited' });
     }
     const body = await parseBody(req);

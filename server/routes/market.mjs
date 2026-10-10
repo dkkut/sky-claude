@@ -22,7 +22,7 @@
  * нет в Sky.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, mediaBody, clientIp } from './../http.mjs';
 import { ticketCookies, ticketFromCookies, issueTicket, readTicket } from './../marketticket.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { can } from './../admin.mjs';
@@ -270,7 +270,7 @@ export const marketRoutes = async (req, res, url) => {
   const hook = path.match(/^\/api\/market\/webhook\/([a-z]+)$/);
   if (hook) {
     if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
-    const ip = req.socket.remoteAddress || 'unknown';
+    const ip = clientIp(req);
     if (!rateLimit(`mk:hook:${ip}`, WEBHOOK_PER_MIN)) {
       return json(res, 429, { error: 'too_many_requests' });
     }

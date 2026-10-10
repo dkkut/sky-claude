@@ -8,7 +8,7 @@
 import http from 'node:http';
 import { config } from './config.mjs';
 import { rateLimit } from './security.mjs';
-import { json, originAllowed, readSession } from './http.mjs';
+import { json, originAllowed, readSession, clientIp } from './http.mjs';
 import { isOwner, isAdmin } from './admin.mjs';
 import { shutdownState, maintenanceState } from './platform.mjs';
 import { waitForDb, migrate, closeDb, query } from './db.mjs';
@@ -164,8 +164,12 @@ const server = http.createServer((req, res) => runWithLang(req, async () => {
   const t0 = Date.now();
   res.on('finish', () => recordRequest(res.statusCode, Date.now() - t0));
   try {
-    const ip = req.socket.remoteAddress || 'unknown';
-    if (!rateLimit(ip, config.rateLimitPerMinute)) {
+    const ip = clientIp(req);
+    // Картинки, обложки и куски аудио/видео: страница с лентой тянет их
+    // десятками, и общий предел на API она выбирала бы за секунды. У самих
+    // потоков есть свой предел на человека (STREAM_PER_MIN в маршрутах).
+    const mediaGet = req.method === 'GET' && /^\/api\/[\w/-]+\/(cover|audio|poster|thumb|thumbnail|avatar|media|file|stream|segment|image)(\/[\w.-]*)?(\?|$)/.test(req.url || '');
+    if (!rateLimit(mediaGet ? `media:${ip}` : ip, mediaGet ? config.rateLimitPerMinute * 10 : config.rateLimitPerMinute)) {
       return json(res, 429, { error: 'rate_limited' });
     }
 

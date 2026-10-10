@@ -25,11 +25,14 @@ const toFlag = (r) => ({
  *  много целей, отдельный запрос на каждую был бы лишним. Только
  *  непустые строки (blocked или с warning) — молчаливое большинство
  *  контента без пометок сюда не попадает. */
-export const listFlags = async () => {
+export const listFlags = async (viewerId) => {
   const { rows } = await query(
     `SELECT * FROM content_flags WHERE blocked OR warning IS NOT NULL`,
   );
-  return rows.map(toFlag);
+  // Кто именно заблокировал — внутренняя информация персонала: обычному
+  // пользователю отдаём пометку и причину, но не идентификатор модератора.
+  const staff = viewerId ? await can(viewerId, 'content') : false;
+  return rows.map((r) => { const f = toFlag(r); if (!staff) delete f.blockedBy; return f; });
 };
 
 export const setWarning = async (actorId, domain, targetId, warning) => {

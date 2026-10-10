@@ -37,6 +37,7 @@
 import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { config } from './config.mjs';
+import { clientIp } from './http.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { isAdmin, isOwner, setAdminLogSink, rightsOf, can } from './admin.mjs';
 import { ROLE_NAMES, ROLE_LABEL } from './roles.mjs';
@@ -78,8 +79,7 @@ const fingerprint = (value) => {
 
 /** Приметы запроса из сокета или из HTTP. Оба места зовут одно и то же. */
 export const requestMeta = (req) => ({
-  ip: fingerprint(req?.headers?.['x-forwarded-for']?.split(',')[0]
-    ?? req?.socket?.remoteAddress ?? ''),
+  ip: fingerprint(clientIp(req)),
   ua: fingerprint(req?.headers?.['user-agent'] ?? ''),
 });
 

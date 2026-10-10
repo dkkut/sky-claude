@@ -10,7 +10,7 @@
  * требует обычной сессии.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, clientIp } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   listActiveCampaigns, campaignDetail, joinCampaign, myLink, myParticipation,
@@ -100,11 +100,11 @@ export const campaignRoutes = async (req, res, url) => {
      кликает зритель ролика, а не вошедший в Sky человек. */
   const clickMatch = /^\/api\/campaigns\/r\/(.+)$/.exec(path);
   if (req.method === 'GET' && clickMatch) {
-    if (!rateLimit(`camp:click:${req.socket.remoteAddress || 'unknown'}`, CLICK_PER_MIN)) {
+    if (!rateLimit(`camp:click:${clientIp(req)}`, CLICK_PER_MIN)) {
       return json(res, 429, { error: 'too_many_requests' });
     }
     const done = await recordClick(decodeURIComponent(clickMatch[1]), {
-      ip: req.socket.remoteAddress, userAgent: req.headers['user-agent'],
+      ip: clientIp(req), userAgent: req.headers['user-agent'],
     });
     // Признак принятого перехода клиенту не нужен и не показывается —
     // это не квитанция для зрителя, а просто редирект на витрину.
