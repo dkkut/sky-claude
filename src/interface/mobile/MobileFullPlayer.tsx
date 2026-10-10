@@ -56,7 +56,7 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
           drag="y" dragElastic={0.08} dragConstraints={{ top: 0, bottom: 0 }}
           onDragEnd={(_, info) => { if (info.offset.y > 120 || info.velocity.y > 700) { haptic('light'); onClose(); } }}
           style={{ y: dragY, background: `linear-gradient(160deg, ${g1}, ${g2} 70%)` }}
-          initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+          initial={{ y: '100%', opacity: 1 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '100%', opacity: 0 }}
           transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           className="fixed inset-0 z-[95] flex flex-col overflow-hidden">
 
