@@ -338,3 +338,9 @@ body {
   background: transparent; border: 0; cursor: pointer;
 }
 .sidebar-nav-btn.wide { flex-direction: row; gap: 12px; padding: 8px 12px; text-align: left; }
+
+/* Клавиатура открыта над полем ввода (см. shared/keyboardInset.ts): корень ужат до видимой области,
+   страница не прокручивается, нижняя панель и мини-плеер уступают место. */
+html.kb-open, html.kb-open body { overflow: hidden; overscroll-behavior: none; }
+html.kb-open .kb-hide { display: none !important; }
+.app-root-h { height: 100dvh; height: var(--app-h, 100dvh); position: relative; top: var(--vv-top, 0px); }

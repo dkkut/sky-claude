@@ -137,7 +137,10 @@ const TapToLoad = ({ onLoad, label, round = false, size }: {
  */
 const Ticks = ({ s, fromMe }: { s: string; fromMe: boolean }) => {
   const show = useSettings(st => st.settings.showReadReceipts);
-  if (!fromMe || !show) return null;
+  if (!fromMe) return null;
+  /* Ещё не ушло на сервер (нет сети) — это не квитанция, показываем всегда. */
+  if (s === 'queued') return <span title="Отправится при подключении" style={{ display: 'inline-flex' }}><Clock size={13} style={{ color: 'var(--t2)' }} /></span>;
+  if (!show) return null;
   if (s === 'read')      return <CheckCheck size={15} style={{ color: '#4FC3F7' }} />;
   if (s === 'delivered') return <CheckCheck size={15} style={{ color: 'var(--t2)' }} />;
   return <Check size={15} style={{ color: 'var(--t2)' }} />;
@@ -1115,6 +1118,19 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     if (near || newMsgs) el.scrollTo({ top: el.scrollHeight, behavior: newMsgs ? 'smooth' : 'auto' });
   }, [chatMsgs.length]);
 
+  /* Список сжался или вырос (открылась клавиатура, сменилась высота панели ввода) — если человек был внизу,
+     остаёмся внизу: последние сообщения не должны оказаться под панелью ввода. */
+  const stickBottom = useRef(true);
+  useEffect(() => {
+    const el = listRef.current; if (!el) return undefined;
+    const onScroll = () => { stickBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    const ro = new ResizeObserver(() => { if (stickBottom.current) el.scrollTop = el.scrollHeight; });
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => { el.removeEventListener('scroll', onScroll); ro.disconnect(); };
+  }, [activeChatId]);
+
   const prevChatIdRef = useRef(activeChatId);
   useEffect(() => {
     const prevId = prevChatIdRef.current;
@@ -1754,7 +1770,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                   if (m) broadcast.message(m);
                   setThreadDraft('');
                 } }}
-                placeholder="Ответить в ветке..." className="flex-1 rounded-xl px-3 py-2 text-sm bg-transparent outline-none"
+                placeholder="Ответить в ветке..." className="flex-1 rounded-full px-4 py-2 text-sm bg-transparent outline-none"
                 style={{ background: 'rgba(255,255,255,0.05)', color: theme.otherText }} />
               <button type="button" disabled={!threadDraft.trim()}
                 onClick={() => {
@@ -2287,7 +2303,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           показывать поле ввода, которое всё равно ответит отказом, —
           только путать. */}
       {!recording && canPost && (
-        <footer className="shrink-0 px-3 py-3 border-t sky-chat-font" style={{ borderColor: theme.border, background: theme.panel }}>
+        <footer className="shrink-0 rounded-t-[28px] px-3 pt-3 border-t sky-chat-font" style={{ borderColor: theme.border, background: theme.panel, paddingBottom: 12, boxShadow: '0 -6px 24px rgba(0,0,0,0.18)' }}>
           {isBlocked && (
             <p className="mb-2 text-center text-xs font-medium" style={{ color: 'var(--red)' }}>
               Пользователь заблокирован
@@ -2415,7 +2431,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
             </div>
 
             {/* Text input */}
-            <div className="relative flex flex-1 items-end gap-2 rounded-3xl px-4 py-2.5"
+            <div className="relative flex flex-1 items-end gap-2 rounded-[28px] px-4 py-2.5"
               style={{ background: theme.inputBg, border: `1px solid ${theme.border}`, minHeight: 46 }}>
               {/* Hash Bot Menu */}
               <AnimatePresence>{showHash && (

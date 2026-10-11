@@ -36,7 +36,7 @@ export const MobileShell = () => {
   const islandMode = useSettings(s => s.settings.islandMode);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden" style={{ background: 'var(--bg)', height: '100dvh' }}>
+    <div className="app-root-h flex h-screen flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
       {/* height: 100dvh поверх h-screen (100vh) — на реальных мобильных
           браузерах 100vh не учитывает скрывающуюся адресную строку,
           из-за чего нижняя панель (и «Ещё») может оказаться частично за
@@ -81,8 +81,8 @@ export const MobileShell = () => {
       {/* Подкаст продолжает играть при уходе с экрана, поэтому его
           проигрыватель живёт здесь, в оболочке, а не внутри модуля. */}
       <PodcastPlayerHost />
-      {activeModule !== 'extras' && islandMode !== 'island' && <MobileMiniPlayer onOpen={() => setPlayerOpen(true)} />}
-      <MobileTabBar onMore={() => setMoreOpen(true)} />
+      {activeModule !== 'extras' && islandMode !== 'island' && <div className="kb-hide"><MobileMiniPlayer onOpen={() => setPlayerOpen(true)} /></div>}
+      <div className="kb-hide"><MobileTabBar onMore={() => setMoreOpen(true)} /></div>
       <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />
       <MobileFullPlayer open={playerOpen} onClose={() => setPlayerOpen(false)} />
 

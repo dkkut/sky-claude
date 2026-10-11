@@ -19,6 +19,7 @@ import { receiveTogether } from '@/together/togetherState';
 import { useAdminStore, ADMIN_ERRORS, POST_ERRORS } from './adminStore';
 import { useTrashStore } from './trashStore';
 import { useSettings } from '@/settings/store';
+import { useAuthStore } from '@/core/auth/store';
 import { usePrivacyStore } from '@/profile/privacyStore';
 import { useGamingStore, type MatchInfo, type MatchResultChange } from '@/gaming/store';
 import { useVoicePartyStore } from '@/voiceparty/store';
@@ -169,6 +170,24 @@ const flushQueue = () => {
   }
 };
 
+/**
+ * Сообщения со статусом «в очереди» лежат в сохранённой переписке: очередь выше живёт только в памяти
+ * вкладки и пропадает при перезагрузке. После подключения досылаем и их — иначе написанное без сети
+ * так и осталось бы «ожидает отправки». Сервер вставляет сообщение по id один раз (ON CONFLICT DO NOTHING),
+ * так что повтор безвреден.
+ */
+const resendPersistedQueued = () => {
+  const inMemory = new Set(queue.map((m) => (m as { payload?: { message?: { id?: string } } }).payload?.message?.id).filter(Boolean));
+  flushQueue();
+  const me = useAuthStore.getState().currentUserId;
+  if (!me) return;
+  for (const m of useMessengerStore.getState().messages) {
+    if (!m.fromMe || m.status !== 'queued' || m.isScheduled || inMemory.has(m.id)) continue;
+    if (!authorized || ws?.readyState !== WebSocket.OPEN) break;
+    ws.send(JSON.stringify({ type: 'send-message', payload: { chatId: m.chatId, message: m } }));
+  }
+};
+
 const stopTimers = () => {
   if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
   if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
@@ -289,7 +308,7 @@ const handle = (data: any) => {
       online.clear();
       (payload?.onlineUsers ?? []).forEach((id: string) => online.add(id));
       notifyOnline();
-      flushQueue();
+      resendPersistedQueued();
       break;
     }
 
@@ -691,6 +710,16 @@ const handle = (data: any) => {
 };
 
 /* ─── Жизненный цикл ──────────────────────────────────────────────────── */
+
+/* Сеть вернулась — не ждём конца паузы переподключения: человек написал сообщения без связи и ждёт их отправки. */
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    if (!wantOpen || authorized) return;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    attempt = 0;
+    open();
+  });
+}
 
 const open = () => {
   if (!wantOpen || typeof WebSocket === 'undefined') return;

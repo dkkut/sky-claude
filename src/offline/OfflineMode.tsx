@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, FolderOpen, Wifi, WifiOff } from 'lucide-react';
+import { MessageCircle, FolderOpen, Package, Wifi, WifiOff } from 'lucide-react';
 import { OfflineChats } from './OfflineChats';
 import { OfflineMedia } from './OfflineMedia';
+import { OfflineOrders } from './OfflineOrders';
 
-type OfflineTab = 'chats' | 'media';
+type OfflineTab = 'chats' | 'orders' | 'media';
 
 interface Props {
   onRetryOnline: () => void;
@@ -42,6 +43,7 @@ export const OfflineMode = ({ onRetryOnline }: Props) => {
         <div className="flex gap-2 mt-3">
           {([
             { key: 'chats', label: 'Чаты', Icon: MessageCircle },
+            { key: 'orders', label: 'Заказы', Icon: Package },
             { key: 'media', label: 'Медиа', Icon: FolderOpen },
           ] as { key: OfflineTab; label: string; Icon: typeof MessageCircle }[]).map(({ key, label, Icon }) => {
             const active = tab === key;
@@ -77,6 +79,7 @@ export const OfflineMode = ({ onRetryOnline }: Props) => {
             transition={{ duration: 0.18 }}
             className="h-full">
             {tab === 'chats' && <OfflineChats />}
+            {tab === 'orders' && <OfflineOrders />}
             {tab === 'media' && <OfflineMedia />}
           </motion.div>
         </AnimatePresence>

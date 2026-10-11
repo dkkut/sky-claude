@@ -532,13 +532,13 @@ export const DealChatView = ({ orderId, meId }: { orderId: string; meId: string 
 
       {error && <div className="px-3 pb-2"><Alert text={error} /></div>}
 
-      <div className="flex items-center gap-2 p-2" style={{ borderTop: `1px solid ${C.brd}` }}>
+      <div className="flex items-center gap-2 rounded-b-2xl p-2" style={{ borderTop: `1px solid ${C.brd}` }}>
         <input value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
           placeholder="Сообщение продавцу…" maxLength={4000}
-          className="flex-1 rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+          className="flex-1 rounded-full px-4 py-2 text-[12px]" style={inputStyle} />
         <button type="button" onClick={send} disabled={busy || !text.trim()}
-          className="grid h-9 w-9 place-items-center rounded-xl disabled:opacity-40"
+          className="grid h-9 w-9 place-items-center rounded-full disabled:opacity-40"
           style={{ background: C.acc, color: '#fff' }}>
           <Send size={15} />
         </button>

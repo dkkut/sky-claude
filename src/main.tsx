@@ -22,6 +22,8 @@ import { ErrorBoundary } from './app/ErrorBoundary';
 import { LegalNotice, legalNoticeSeen } from './info/LegalNotice';
 import { useAuthStore }  from './core/auth/store';
 import { connectSocket, disconnectSocket } from './messenger/socket';
+import { startOrdersSync } from './offline/ordersCache';
+import { startKeyboardInset } from './shared/keyboardInset';
 import { reloadMessengerForUser } from './messenger/store';
 import { reloadPlatformForUser }  from './platform/store';
 import { reloadNotifsForUser }    from './notifications/store';
@@ -422,6 +424,15 @@ const Root = () => {
       void reloadWalletForUser(null);
       disconnectSocket();
     }
+  }, [isAuthenticated, currentUserId]);
+
+  // Клавиатура на телефоне: интерфейс не уезжает, поле ввода садится над клавиатурой.
+  useEffect(() => startKeyboardInset(), []);
+
+  // Копия заказов для офлайна (трек-номер, последнее сообщение) и досылка сообщений по заказу после возврата связи.
+  useEffect(() => {
+    if (!isAuthenticated || !currentUserId) return undefined;
+    return startOrdersSync();
   }, [isAuthenticated, currentUserId]);
 
   // Дальнейшие изменения региона через существующий RegionPicker —

@@ -483,7 +483,7 @@ export const SkyAITab = () => {
 
       {/* Ввод. В режиме чата активен всегда — подписка на это не влияет. */}
       {(chatLike || (mode === 'summary' && prime)) && (
-        <div className="flex gap-2 items-end px-5 py-3 shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
+        <div className="flex gap-2 items-end px-5 py-3 shrink-0 rounded-t-[28px]" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-l1)' }}>
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
@@ -498,7 +498,7 @@ export const SkyAITab = () => {
             data-ai-input
             rows={1}
             maxLength={mode === 'summary' ? (state?.maxSummaryChars ?? 100000) : (state?.maxMessageChars ?? 16000)}
-            className="flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm outline-none"
+            className="flex-1 resize-none rounded-[24px] px-5 py-2.5 text-sm outline-none"
             style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)', maxHeight: 120 }}
           />
           {chatLike && (state?.transcription || browserVoiceAvailable()) && (
@@ -506,7 +506,7 @@ export const SkyAITab = () => {
               disabled={!prime && !!state?.transcription} title={prime ? 'Голосовой режим' : 'Голосовой режим — в Sky Prime'}
               aria-label="Голосовой режим"
               data-ai-voice
-              className="grid h-10 w-10 place-items-center rounded-xl shrink-0 disabled:opacity-40"
+              className="grid h-10 w-10 place-items-center rounded-full shrink-0 disabled:opacity-40"
               style={{ background: 'linear-gradient(135deg,#a855f7,#6366f1)', border: '1px solid var(--border)', cursor: 'pointer' }}>
               <Mic size={15} color="#fff"/>
             </motion.button>

@@ -437,7 +437,7 @@ export const GamingChannels = () => {
                 {channel?.type === 'announce' && !isStaff ? (
                   <p className="text-center text-xs" style={{ color: C.t3 }}>В этот канал пишут только владелец и модераторы.</p>
                 ) : (
-                  <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: C.input, border: `1px solid ${C.border}` }}>
+                  <div className="flex items-center gap-2 rounded-full px-4 py-2.5" style={{ background: C.input, border: `1px solid ${C.border}` }}>
                     <input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={2000}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
                       placeholder={`Сообщение в #${channel?.name ?? ''}`} className="flex-1 bg-transparent text-sm outline-none" style={{ color: C.t1 }} />
