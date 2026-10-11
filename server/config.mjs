@@ -147,7 +147,8 @@ export const config = {
   // сервер так и отвечает — выдумывать текст вместо неё нельзя.
   sttApiKey:  process.env.STT_API_KEY  || '',
   sttModel:   process.env.STT_MODEL    || 'whisper-1',
-  sttBaseUrl: process.env.STT_BASE_URL || '',
+  // Адрес без хвоста /v1: путь добавляется в ai.mjs (как и для AI_BASE_URL).
+  sttBaseUrl: (process.env.STT_BASE_URL || '').replace(/\/+$/, '').replace(/\/v1$/, ''),
 
   // Голосовой ответ (текст → речь) — свой поставщик, отдельный и от
   // языковой модели, и от расшифровки. У многих поставщиков это тот же
@@ -156,7 +157,7 @@ export const config = {
   // /v1/audio/speech (формат OpenAI). Пока ключ не задан — ответа нет.
   ttsApiKey:  process.env.TTS_API_KEY  || process.env.STT_API_KEY || '',
   ttsModel:   process.env.TTS_MODEL    || 'tts-1',
-  ttsBaseUrl: process.env.TTS_BASE_URL || process.env.STT_BASE_URL || '',
+  ttsBaseUrl: (process.env.TTS_BASE_URL || process.env.STT_BASE_URL || '').replace(/\/+$/, '').replace(/\/v1$/, ''),
   ttsVoice:   process.env.TTS_VOICE    || 'alloy',
 
   /**
