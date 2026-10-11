@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, Download, ListMusic, Mic2, History as HistoryIcon, Radio, BookOpen,
-  Pin, Check, ArrowUpDown, ChevronLeft, Play, Trash2, X, FolderLock, Upload,
+  Pin, Check, ArrowUpDown, ChevronLeft, Play, Trash2, X, FolderLock, Upload, CheckCircle,
 } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { useMusicStore } from '@/music/serverStore';
 import { PrivateUpload } from '@/music/PrivateUpload';
 import { getG } from '@/music/utils';
+import { useOfflineMusic } from '@/offline/musicOffline';
 
 type Category = 'liked'|'mine'|'downloaded'|'albums'|'artists'|'playlists'|'history'|'podcasts'|'audiobooks';
 type SortKey = 'added'|'title'|'artist';
@@ -33,7 +34,9 @@ const PIN_KEY = 'sky:music:pins:v1';
 const loadPins = (): string[] => { try { return JSON.parse(localStorage.getItem(PIN_KEY) || '[]'); } catch { return []; } };
 const savePins = (ids: string[]) => { try { localStorage.setItem(PIN_KEY, JSON.stringify(ids)); } catch {} };
 
-const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, onToggleSelect, note }: {
+const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, onToggleSelect, note, offline }: {
+  /** Скачан на устройство — играет без сети. */
+  offline?: boolean;
   t: Track; active: boolean; playing: boolean; onPlay: () => void; liked: boolean; onLike: () => void;
   selectMode: boolean; selected: boolean; onToggleSelect: () => void;
   /** Подпись справа: например, лежит ли трек в общем каталоге. */
@@ -57,6 +60,7 @@ const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, 
         <p className="truncate text-[13.5px] font-medium" style={{ color: active ? '#4fe3d0' : '#f2f5f8' }}>{t.title}</p>
         <p className="truncate text-[11.5px]" style={{ color: '#8a8f9a' }}>{t.artist}</p>
       </div>
+      {offline && <CheckCircle size={14} className="shrink-0" style={{ color:'#4fe3d0' }} aria-label="Скачано"/>}
       {note && (
         <span className="shrink-0 rounded-full px-2 py-0.5 text-[10.5px]"
           style={{ background:'rgba(255,255,255,0.05)', color:'#8a8f9a' }}>{note}</span>
@@ -67,6 +71,68 @@ const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, 
         </button>
       )}
     </button>
+  );
+};
+
+/** Скачивание в офлайн: «Скачать всё» для списка, прогресс пачки и место на устройстве. */
+const fmtMb = (b: number) => b >= 1024 * 1024 * 1024 ? `${(b / 1024 / 1024 / 1024).toFixed(1)} ГБ` : `${Math.max(1, Math.round(b / 1024 / 1024))} МБ`;
+const OfflineBar = ({ cat, list, ids, bytes, bulk, progress, onDownload, onCancel, onRemoveAll }: {
+  cat: Category; list: Track[]; ids: Set<string>; bytes: number; bulk: import('@/offline/musicOffline').BulkState;
+  progress: Record<string, number>; onDownload: () => void; onCancel: () => void; onRemoveAll: () => void;
+}) => {
+  const todo = list.filter(t => !t.isLocal && !ids.has(t.id)).length;
+  const running = bulk?.running === true;
+  const part = running ? Object.values(progress).reduce((a, b) => a + b, 0) : 0;
+  const pct = running && bulk!.total > 0 ? Math.min(100, Math.round(((bulk!.done + bulk!.failed + part) / bulk!.total) * 100)) : 0;
+  const card = { background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.07)' } as const;
+
+  if (cat === 'downloaded') {
+    return (
+      <div className="mx-4 mb-2 mt-1 flex items-center gap-2 rounded-2xl px-3 py-2.5" style={card}>
+        <Download size={15} style={{ color:'#4fe3d0' }}/>
+        <p className="flex-1 text-[12px]" style={{ color:'#c7ccd6' }}>
+          {ids.size > 0 ? `На устройстве ${ids.size} · ${fmtMb(bytes)}. Играют без сети.` : 'Пока ничего не скачано.'}
+        </p>
+        {ids.size > 0 && (
+          <button type="button" onClick={onRemoveAll} className="rounded-xl px-2.5 py-1.5 text-[11.5px] font-medium" style={{ background:'rgba(255,255,255,0.06)', color:'#c7ccd6' }}>
+            Удалить все
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (list.length === 0) return null;
+  return (
+    <div className="mx-4 mb-2 mt-1 rounded-2xl px-3 py-2.5" style={card}>
+      {running ? (
+        <>
+          <div className="flex items-center gap-2">
+            <p className="flex-1 text-[12px]" style={{ color:'#c7ccd6' }}>
+              {bulk!.failed > 0
+                ? `Скачано ${bulk!.done} из ${bulk!.total}, ошибок ${bulk!.failed}`
+                : `Скачано ${bulk!.done} из ${bulk!.total}`}
+            </p>
+            <button type="button" onClick={onCancel} className="rounded-xl px-2.5 py-1.5 text-[11.5px] font-medium" style={{ background:'rgba(255,255,255,0.06)', color:'#c7ccd6' }}>
+              Отмена
+            </button>
+          </div>
+          <div className="mt-2 h-1 overflow-hidden rounded-full" style={{ background:'rgba(255,255,255,0.1)' }}>
+            <div className="h-full rounded-full" style={{ width:`${pct}%`, background:'#4fe3d0', transition:'width 0.3s' }}/>
+          </div>
+        </>
+      ) : (
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-[12px]" style={{ color:'#8a8f9a' }}>
+            {todo > 0 ? `Не скачано ${todo} из ${list.length}. После скачивания играют без сети.` : `Все ${list.length} скачаны — играют без сети.`}
+          </p>
+          {todo > 0 && (
+            <button type="button" onClick={onDownload} className="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-bold" style={{ background:'#4fe3d0', color:'#0a0a0f' }}>
+              <Download size={13}/>Скачать всё
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -84,6 +150,12 @@ export const SkyMusicLibrary = ({
   const [newName, setNewName] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameTo, setRenameTo] = useState('');
+  const offIds    = useOfflineMusic(st => st.ids);
+  const offBytes  = useOfflineMusic(st => st.bytes);
+  const offBulk   = useOfflineMusic(st => st.bulk);
+  const offProg   = useOfflineMusic(st => st.progress);
+  const offStore  = useOfflineMusic;
+  useEffect(() => { void offStore.getState().hydrate(); }, []);
   const [cat, setCat] = useState<Category>('liked');
   const [sort, setSort] = useState<SortKey>('added');
   const [genreFilter, setGenreFilter] = useState<string | null>(null);
@@ -111,7 +183,9 @@ export const SkyMusicLibrary = ({
   const applyGenre = (list: Track[]) => genreFilter ? list.filter(t => t.genre === genreFilter) : list;
 
   const likedTracks   = useMemo(() => applySort(applyGenre(pub.filter(t => favorites.includes(t.id)))), [pub, favorites, sort, genreFilter]);
-  const downloaded    = useMemo(() => applySort(applyGenre(pub.filter(t => t.isLocal))), [pub, sort, genreFilter]);
+  // «Скачанные»: то, что лежит на устройстве, — и загруженное с него же. Берём из всех
+  // треков (а не только опубликованных): в личной коллекции они закрытые.
+  const downloaded    = useMemo(() => applySort(applyGenre(tracks.filter(t => t.isLocal || offIds.has(t.id)))), [tracks, offIds, sort, genreFilter]);
   const historyTracks = useMemo(() => historyIds.map(id => pub.find(t => t.id===id)).filter(Boolean) as Track[], [historyIds, pub]);
 
   // Личная коллекция: то, что человек загрузил сам. Сервер отдаёт свои
@@ -142,6 +216,8 @@ export const SkyMusicLibrary = ({
   );
 
   const toggleSelect = (id: string) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const bulkDownload = () => { void offStore.getState().downloadAll(tracks.filter(t => selected.has(t.id)), 'Выбранное'); setSelected(new Set()); setSelectMode(false); };
+  const bulkRemoveOffline = () => { selected.forEach(id => { void offStore.getState().remove(id); }); setSelected(new Set()); setSelectMode(false); };
   const bulkLikeAll = () => { selected.forEach(id => { if (!favorites.includes(id)) onLike(id); }); setSelected(new Set()); setSelectMode(false); };
   const bulkUnlikeAll = () => { selected.forEach(id => { if (favorites.includes(id)) onLike(id); }); setSelected(new Set()); setSelectMode(false); };
 
@@ -255,17 +331,25 @@ export const SkyMusicLibrary = ({
           </div>
         )}
 
+        {(cat==='liked' || cat==='mine' || cat==='downloaded') && (
+          <OfflineBar cat={cat} list={trackList} ids={offIds} bytes={offBytes} bulk={offBulk} progress={offProg}
+            onDownload={() => void offStore.getState().downloadAll(trackList, cat==='liked' ? 'Избранное' : 'Моя музыка')}
+            onCancel={() => offStore.getState().cancel()}
+            onRemoveAll={() => { if (window.confirm('Удалить все скачанные треки с этого устройства? В облаке они останутся.')) void offStore.getState().removeAll(); }}/>
+        )}
+
         {isTrackCat && (
           <>
             {trackList.map(t => (
               <Row key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, trackList)}
                 liked={favorites.includes(t.id)} onLike={() => onLike(t.id)}
                 selectMode={selectMode} selected={selected.has(t.id)} onToggleSelect={() => toggleSelect(t.id)}
+                offline={offIds.has(t.id)}
                 note={cat==='mine' ? (t.status === 'published' ? 'в каталоге' : 'только у вас') : undefined}/>
             ))}
             {trackList.length === 0 && (
               <p className="py-12 text-center text-[12.5px]" style={{ color:'#5c626e' }}>
-                {cat==='downloaded' ? 'Загруженные с устройства треки появятся здесь'
+                {cat==='downloaded' ? 'Скачанные треки появятся здесь. Откройте «Избранное» или «Моя музыка» и нажмите «Скачать всё»'
                   : cat==='mine' ? 'Здесь пока пусто — загрузите свой первый трек'
                   : cat==='history' ? 'Пока ничего не прослушано' : 'Добавляйте треки в любимые'}
               </p>
@@ -394,6 +478,14 @@ export const SkyMusicLibrary = ({
             className="absolute inset-x-3 bottom-3 flex items-center gap-2 rounded-2xl p-2.5"
             style={{ background: 'var(--bg-l2)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
             <span className="px-2 text-[12px] font-medium" style={{ color:'#c7ccd6' }}>{selected.size} выбрано</span>
+            <button type="button" onClick={bulkDownload} className="flex items-center gap-1 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background:'rgba(79,227,208,0.14)', color:'#4fe3d0' }}>
+              <Download size={13}/>Скачать
+            </button>
+            {cat==='downloaded' && (
+              <button type="button" onClick={bulkRemoveOffline} className="flex items-center gap-1 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background:'rgba(255,255,255,0.06)', color:'#c7ccd6' }}>
+                <Trash2 size={13}/>С устройства
+              </button>
+            )}
             <button type="button" onClick={bulkLikeAll} className="flex items-center gap-1 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background:'rgba(244,63,94,0.12)', color:'#f43f5e' }}>
               <Heart size={13} fill="#f43f5e"/>В любимые
             </button>

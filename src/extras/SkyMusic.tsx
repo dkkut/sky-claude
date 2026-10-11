@@ -12,7 +12,9 @@ import {
   ListMusic, Upload, History, BarChart3, Music2, Mic2, Download, CheckCircle, Crown, ArrowDownToLine,
   Sparkles, Flame, Star, Check, Clock, Film, Share2
 } from 'lucide-react';
-import { saveDownloadFromDataUrl, isDownloaded } from '@/offline/offlineDB';
+import { saveDownload, isDownloaded } from '@/offline/offlineDB';
+import { useOfflineMusic } from '@/offline/musicOffline';
+import { flash } from '@/shared/flash';
 import { loadAudioUrl } from '@/platform/audioDB';
 import { usePlatformStore } from '@/platform/store';
 import { useMusicStore } from '@/music/serverStore';
@@ -143,47 +145,51 @@ const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNu
   /** Открыть страницу исполнителя. Без неё имя — просто подпись. */
   onArtist?: (name: string) => void;
 }) => {
-  const [dlState, setDlState] = useState<'idle'|'loading'|'done'>('idle');
+  const offHas  = useOfflineMusic(st => st.ids.has(track.id));
+  const offProg = useOfflineMusic(st => st.progress[track.id]);
+  const [localDone, setLocalDone] = useState(false);
+  const [localBusy, setLocalBusy] = useState(false);
+  const dlState: 'idle'|'loading'|'done' = (offHas || localDone) ? 'done' : (offProg !== undefined || localBusy) ? 'loading' : 'idle';
 
   useEffect(() => {
-    if (track.isLocal) { isDownloaded(track.id).then(d => d && setDlState('done')).catch(() => {}); }
+    if (!useOfflineMusic.getState().loaded) void useOfflineMusic.getState().hydrate();
+    if (track.isLocal) { isDownloaded(track.id).then(d => d && setLocalDone(true)).catch(() => {}); }
   }, [track.id, track.isLocal]);
 
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (dlState !== 'idle') return;
-    setDlState('loading');
-    try {
-      let dataUrl: string | null = null;
-      // Для локальных треков получаем из IndexedDB
-      if (track.isLocal) {
+    if (dlState === 'loading') return;
+    if (dlState === 'done') {
+      // Повторное нажатие на галочку — убрать с устройства.
+      if (window.confirm('Удалить скачанный трек с этого устройства?')) {
+        await useOfflineMusic.getState().remove(track.id);
+        setLocalDone(false);
+      }
+      return;
+    }
+    // Треки, загруженные с самого устройства, уже лежат в его хранилище —
+    // копируем их в офлайн-раздел; серверные забираем потоком с сервера.
+    if (track.isLocal) {
+      setLocalBusy(true);
+      try {
         const blobUrl = await loadAudioUrl(track.id);
         if (blobUrl) {
-          const resp = await fetch(blobUrl);
-          const blob = await resp.blob();
-          dataUrl = await new Promise<string>(r => { const fr = new FileReader(); fr.onload = () => r(fr.result as string); fr.readAsDataURL(blob); });
+          const blob = await (await fetch(blobUrl)).blob();
+          const [g1, g2] = getG(track.id);
+          await saveDownload({
+            id: track.id, kind: 'track', title: track.title, artist: track.artist,
+            duration: track.duration, mimeType: track.mimeType ?? (blob.type || 'audio/mpeg'),
+            bytes: blob.size, addedAt: new Date().toISOString(), coverGrad: [g1, g2],
+          }, blob);
+          setLocalDone(true);
         }
-      } else if (track.sourceUrl) {
-        const resp = await fetch(track.sourceUrl);
-        const blob = await resp.blob();
-        dataUrl = await new Promise<string>(r => { const fr = new FileReader(); fr.onload = () => r(fr.result as string); fr.readAsDataURL(blob); });
-      }
-      if (dataUrl) {
-        const [g1, g2] = getG(track.id);
-        await saveDownloadFromDataUrl({
-          id: track.id, kind: 'track',
-          title: track.title, artist: track.artist,
-          duration: track.duration,
-          mimeType: track.mimeType ?? 'audio/mpeg',
-          bytes: track.bytes ?? 0,
-          addedAt: new Date().toISOString(),
-          coverGrad: [g1, g2],
-        }, dataUrl);
-        setDlState('done');
-      } else {
-        setDlState('idle');
-      }
-    } catch { setDlState('idle'); }
+      } catch { flash('Не получилось сохранить трек'); }
+      setLocalBusy(false);
+      return;
+    }
+    const r = await useOfflineMusic.getState().download(track);
+    if (r === 'no_space') flash('Не хватило места на устройстве. Удалите ненужное и повторите.');
+    else if (r === 'fail') flash('Не получилось скачать трек — проверьте связь и повторите.');
   };
 
   const isMobile = useIsMobile();
@@ -229,16 +235,19 @@ const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNu
         <Plus size={15} />
       </button>
       {/* Download for offline */}
-      {!isMobile && (
+      {(
       <button type="button" onClick={handleDownload}
         className="grid h-7 w-7 place-items-center rounded-full transition-colors hover:bg-white/10"
         style={{ color: dlState === 'done' ? 'var(--green)' : dlState === 'loading' ? YM.accent : YM.sub }}
-        title={dlState === 'done' ? 'Скачано' : 'Скачать офлайн'}>
+        title={dlState === 'done' ? 'Скачано — нажмите, чтобы удалить с устройства' : 'Скачать офлайн'}
+        aria-label={dlState === 'done' ? 'Скачано' : 'Скачать офлайн'}>
         {dlState === 'done'
           ? <CheckCircle size={15} />
-          : <motion.div animate={dlState === 'loading' ? { rotate: 360 } : {}} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
-              <Download size={15} />
-            </motion.div>
+          : dlState === 'loading' && offProg !== undefined && offProg > 0
+            ? <span className="text-[9px] font-bold tabular-nums">{Math.round(offProg * 100)}%</span>
+            : <motion.div animate={dlState === 'loading' ? { rotate: 360 } : {}} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
+                <Download size={15} />
+              </motion.div>
         }
       </button>
       )}

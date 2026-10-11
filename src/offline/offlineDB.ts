@@ -17,6 +17,8 @@ export interface DownloadedItem {
   bytes:     number;
   addedAt:   string;
   coverGrad?: [string, string];
+  /** Обложка сохранена отдельным блобом под ключом cover:<id>. */
+  hasCover?: boolean;
 }
 
 export interface OfflineSmsMessage {
@@ -53,14 +55,27 @@ async function openDB(): Promise<IDBDatabase> {
 
 /* -- Media downloads ---------------------------------------------- */
 
-export async function saveDownload(meta: DownloadedItem, blob: Blob): Promise<void> {
+export async function saveDownload(meta: DownloadedItem, blob: Blob, cover?: Blob | null): Promise<void> {
   const db = await openDB();
   await new Promise<void>((res, rej) => {
     const tx = db.transaction(['media', 'blobs'], 'readwrite');
-    tx.objectStore('media').put(meta);
+    tx.objectStore('media').put({ ...meta, hasCover: Boolean(cover) || meta.hasCover });
     tx.objectStore('blobs').put(blob, meta.id);
+    if (cover) tx.objectStore('blobs').put(cover, `cover:${meta.id}`);
     tx.oncomplete = () => res();
+    // Нехватка места приходит именно сюда (QuotaExceededError) — пусть увидит вызывающий.
     tx.onerror    = () => rej(tx.error);
+    tx.onabort    = () => rej(tx.error ?? new Error('abort'));
+  });
+}
+
+/** Обложка скачанного трека (blob: URL) или null. */
+export async function getDownloadCoverUrl(id: string): Promise<string | null> {
+  const db = await openDB();
+  return new Promise((res) => {
+    const req = db.transaction('blobs', 'readonly').objectStore('blobs').get(`cover:${id}`);
+    req.onsuccess = () => res(req.result instanceof Blob ? URL.createObjectURL(req.result) : null);
+    req.onerror   = () => res(null);
   });
 }
 
@@ -100,6 +115,7 @@ export async function deleteDownload(id: string): Promise<void> {
     const tx = db.transaction(['media', 'blobs'], 'readwrite');
     tx.objectStore('media').delete(id);
     tx.objectStore('blobs').delete(id);
+    tx.objectStore('blobs').delete(`cover:${id}`);
     tx.oncomplete = () => res();
     tx.onerror    = () => rej(tx.error);
   });

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from './playerStore';
 import { useAuthStore } from '@/core/auth/store';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
@@ -6,6 +6,7 @@ import { apiMediaTicket as apiMusicTicket } from '@/music/musicApi';
 import { apiMediaTicket as apiPodcastTicket } from '@/podcasts/podcastApi';
 import { reloadWithFreshTicket, describeMediaFailure } from '@/core/mediaTicketRefresh';
 import { flash } from '@/shared/flash';
+import { getDownloadUrl } from '@/offline/offlineDB';
 
 /**
  * Единственный реальный <audio> элемент в приложении.
@@ -28,7 +29,27 @@ export const PlayerEngine = () => {
   const { currentUserId, accounts } = useAuthStore();
   const setMusicPresence = useMediaPresence(s => s.setMusicPresence);
 
-  const srcUrl = item?.srcUrl;
+  /* Скачанный трек играет из хранилища устройства: без сети, без трафика и
+     без пропуска на выдачу. Пока идёт проверка (миллисекунды), источник не
+     подставляем — иначе сначала стартовала бы сетевая копия. */
+  const [local, setLocal] = useState<{ id: string; url: string | null } | null>(null);
+  const localUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!item || item.kind !== 'music') { setLocal(null); return; }
+    let alive = true;
+    getDownloadUrl(item.id)
+      .then((url) => {
+        if (!alive) { if (url) URL.revokeObjectURL(url); return; }
+        if (localUrlRef.current) URL.revokeObjectURL(localUrlRef.current);
+        localUrlRef.current = url;
+        setLocal({ id: item.id, url });
+      })
+      .catch(() => { if (alive) setLocal({ id: item.id, url: null }); });
+    return () => { alive = false; };
+  }, [item?.id, item?.kind]);
+
+  const waitingLocal = !!item && item.kind === 'music' && local?.id !== item.id;
+  const srcUrl = !item || waitingLocal ? undefined : (local?.url ?? item.srcUrl);
 
   /* Экран блокировки / наушники / умные часы должны показывать РЕАЛЬНО
      играющий трек, а не название приложения — раньше здесь вообще не

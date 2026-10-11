@@ -224,3 +224,15 @@ WS-сообщения `delete-chat`, `get-trash`, `restore-chat` (ответы
   «Хранить всегда». `PERSONAL_RETENTION_DAYS=0` отключает уборку.
 - **Резервная копия** — `scripts/backup.sh` (база + файлы). Без `ENCRYPTION_KEY`
   копия бесполезна: ключ хранить отдельно.
+
+## Офлайн-музыка (скачивание избранного и личной коллекции)
+
+`src/offline/musicOffline.ts` (хранилище Zustand: `download`, `downloadAll`,
+`cancel`, `remove`), `src/offline/offlineDB.ts` (IndexedDB: `media` — описание,
+`blobs` — файл и `cover:<id>`), кнопки — `src/extras/SkyMusicLibrary.tsx`
+(«Скачать всё» в «Избранном» и «Моей музыке», вкладка «Скачанные», выбор
+треков) и значок в `TrackRow` (`SkyMusic.tsx`). Файл забирается потоком и
+кладётся блобом (без base64); пачка идёт по 2 трека, пропускает скачанное,
+останавливается при нехватке места (`navigator.storage.estimate`) и по
+«Отмена». `PlayerEngine` играет локальную копию, если она есть (`getDownloadUrl`),
+а экран `OfflineMode` читает то же хранилище — без сети скачанное играет.
