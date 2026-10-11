@@ -286,6 +286,14 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # Sky GO: документы исполнителей (до 8 МБ). Общий потолок 1m обрывал бы загрузку фото СТС/прав.
+    location ^~ /api/go/executors/ {
+        limit_req zone=req_general burst=30 nodelay;
+        client_max_body_size 9m;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/ {
         limit_req zone=req_general burst=60 nodelay;
         include /etc/nginx/snippets/proxy-common.conf;

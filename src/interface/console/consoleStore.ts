@@ -1,7 +1,7 @@
 /* Состояние оболочки Sky Console: этап запуска, открытый сервис, настройки. */
 import { create } from 'zustand';
 
-export type ServiceKey = 'film' | 'music' | 'calls' | 'games' | 'blox' | 'video' | 'podcasts' | 'messenger' | 'ai' | 'prime' | 'market' | 'notifications';
+export type ServiceKey = 'film' | 'music' | 'calls' | 'games' | 'blox' | 'video' | 'podcasts' | 'messenger' | 'ai' | 'prime' | 'market' | 'go' | 'notifications';
 
 export interface ConsolePrefs {
   /** Полная заставка при холодном запуске. */

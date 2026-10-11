@@ -33,7 +33,7 @@ const SCALE = 1.25;
 const Host = ({ messenger }: { messenger: React.ReactNode }) => {
   const service = useConsoleStore((s) => s.service);
   switch (service) {
-    case 'film': case 'music': case 'podcasts': case 'blox': case 'ai': case 'prime': case 'market': return <ExtrasModule />;
+    case 'film': case 'music': case 'podcasts': case 'blox': case 'ai': case 'prime': case 'market': case 'go': return <ExtrasModule />;
     case 'games': return <GamingModule />;
     case 'video': return <SkyVideo />;
     case 'messenger': return <>{messenger}</>;

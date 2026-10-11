@@ -1,4 +1,4 @@
-import { Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
+import { Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
 import { useSettings } from '@/settings/store';
 import { lazyChunk } from '@/app/lazyChunk';
 import { BotsBrowser } from '@/bots/SkyBots';
@@ -32,6 +32,7 @@ const SkyFilm = lazyChunk(() => import('./SkyFilm').then(m => ({ default: m.SkyF
 const SkyPrime = lazyChunk(() => import('./SkyPrime').then(m => ({ default: m.SkyPrime })));
 const TogetherTab = lazyChunk(() => import('@/together/TogetherTab').then(m => ({ default: m.TogetherTab })));
 const SkyBlox = lazyChunk(() => import('@/blox/SkyBlox').then(m => ({ default: m.SkyBlox })));
+const SkyGo = lazyChunk(() => import('@/go/GoModule').then(m => ({ default: m.SkyGo })));
 const SkyMarket = lazyChunk(() => import('@/marketplace/SkyMarket').then(m => ({ default: m.SkyMarket })));
 const SkyAdsCabinet = lazyChunk(() => import('@/ads/SkyAds').then(m => ({ default: m.SkyAdsCabinet })));
 const SkyBooks = lazyChunk(() => import('@/books/SkyBooks').then(m => ({ default: m.SkyBooks })));
@@ -85,7 +86,7 @@ import { apiSupportStatus } from '@/moderation/supportApi';
    Оформление и порядок экранов сохранены: список карточками, кнопка
    создания, внутри плеер и колонка участников.                     */
 
-type Tab = 'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
+type Tab = 'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
 
 const fmtBytes = (b?: number) => b ? `${(b/1024/1024).toFixed(1)} MB` : '';
 const fmtSec = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -562,6 +563,7 @@ const TABS = [
   {key:'ai',       label:'Sky AI',    icon:Sparkles},
   {key:'prime',  label:'Prime',  icon:Crown},
   {key:'rooms',  label:'Вместе', icon:Users},
+  {key:'go',     label:'Sky GO', icon:Car},
   {key:'market', label:'Market', icon:ShoppingCart},
   {key:'blox',   label:'Sky Blox', icon:Gamepad2},
   {key:'pvz',    label:'Sky ПВЗ', icon:Building2},
@@ -1257,6 +1259,7 @@ export const ExtrasModule = () => {
         {tab==='movies' && <SkyFilm/>}
         {tab==='prime'  && <SkyPrime/>}
         {tab==='rooms'  && <TogetherTab/>}
+        {tab==='go' && <SkyGo/>}
         {tab==='market' && <SkyMarket/>}
         {tab==='blox'   && <SkyBlox/>}
         {tab==='pvz'    && <SkyPVZ/>}
