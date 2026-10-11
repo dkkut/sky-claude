@@ -35,9 +35,9 @@ const Actions = ({ actions, onRun, placeholder = 'Комментарий / пр�
 };
 
 /** Подтверждение личности: код из приложения или письма. */
-const StepUp = ({ onCode, onCancel }: { onCode: (c: string) => void; onCancel: () => void }) => {
+const StepUp = ({ onCode, onCancel, begin = A.apiAdminStepUp }: { onCode: (c: string) => void; onCancel: () => void; begin?: typeof A.apiAdminStepUp }) => {
   const [method, setMethod] = useState<string | null>(null); const [code, setCode] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(true);
-  useEffect(() => { void A.apiAdminStepUp().then((r) => { setBusy(false); if (r.ok) setMethod(r.data.method ?? 'email'); else setErr(errText(r)); }); }, []);
+  useEffect(() => { void begin().then((r) => { setBusy(false); if (r.ok) setMethod(r.data.method ?? 'email'); else setErr(errText(r)); }); }, []);
   return (
     <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.acc}` }}>
       <p className="text-[12px] font-bold" style={{ color: C.t1 }}>Подтвердите личность</p>
@@ -432,7 +432,7 @@ const CommissionTab = () => {
         <input value={amount} inputMode="numeric" onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} placeholder="Сумма, баллы" className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300} placeholder="Причина (обязательно, попадёт в журнал и в историю кошелька)" className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
         {mode === 'topup' && <p className="text-[10px]" style={{ color: C.t3 }}>Пополнение списывает баллы с вашего собственного кошелька — баллы из воздуха не создаются.</p>}
-        {step ? <StepUp onCode={(code) => void send(code)} onCancel={() => setStep(false)} /> : <button type="button" disabled={!ready} onClick={() => { setMsg(''); setStep(true); }} className="rounded-xl px-5 py-2 text-[12px] font-bold text-white disabled:opacity-40" style={{ background: C.acc }}>{mode === 'payout' ? 'Выплатить' : 'Пополнить'}</button>}
+        {step ? <StepUp begin={A.apiAdminCommissionStepUp} onCode={(code) => void send(code)} onCancel={() => setStep(false)} /> : <button type="button" disabled={!ready} onClick={() => { setMsg(''); setStep(true); }} className="rounded-xl px-5 py-2 text-[12px] font-bold text-white disabled:opacity-40" style={{ background: C.acc }}>{mode === 'payout' ? 'Выплатить' : 'Пополнить'}</button>}
         {msg && <p className="text-[11px]" style={{ color: msg.startsWith('Готово') ? C.green : C.red }}>{msg}</p>}
       </div>
       <div className="space-y-1">

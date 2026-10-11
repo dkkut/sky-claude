@@ -1,4 +1,5 @@
 import { Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
+import { useSettings } from '@/settings/store';
 import { lazyChunk } from '@/app/lazyChunk';
 import { BotsBrowser } from '@/bots/SkyBots';
 import { BotCreatorPanel } from '@/bots/BotCreator';
@@ -685,7 +686,9 @@ const _LOGO_CSS =
    Uses requestAnimationFrame + transform/opacity only.
    Zero DOM nodes for stars → smooth 60fps.
 ══════════════════════════════════════════════════════════════ */
-const StarCanvas = ({ scrollY = 0 }: { scrollY?: number }) => {
+const StarCanvas = ({ scrollY = 0, light = false }: { scrollY?: number; light?: boolean }) => {
+  const lightRef = React.useRef(light);
+  lightRef.current = light;
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const rafRef    = React.useRef<number>(0);
   const starsRef  = React.useRef<Array<{
@@ -756,14 +759,18 @@ const StarCanvas = ({ scrollY = 0 }: { scrollY?: number }) => {
         const hue = s.layer === 2 ? 220 : s.layer === 1 ? 240 : 260;
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${hue},70%,90%,${op.toFixed(3)})`;
+        ctx.fillStyle = lightRef.current
+          ? `hsla(${hue},65%,58%,${(op * 0.55).toFixed(3)})`
+          : `hsla(${hue},70%,90%,${op.toFixed(3)})`;
         ctx.fill();
 
         /* halo on bright stars */
         if (s.r > 1.2 && op > 0.65) {
           ctx.beginPath();
           ctx.arc(s.x, s.y, s.r * 2.6, 0, Math.PI * 2);
-          ctx.fillStyle = `hsla(${hue},80%,90%,${(op * 0.12).toFixed(3)})`;
+          ctx.fillStyle = lightRef.current
+            ? `hsla(${hue},80%,60%,${(op * 0.10).toFixed(3)})`
+            : `hsla(${hue},80%,90%,${(op * 0.12).toFixed(3)})`;
           ctx.fill();
         }
       }
@@ -856,6 +863,7 @@ const MediaHomeTab = ({
      поле `plays`, что и в профиле артиста). Если ни у одного трека
      ещё нет прослушиваний, секция скрывается — это честное «данных
      пока нет», а не подставная цифра. */
+  const lightBg = useSettings((st) => st.settings.colorScheme === 'light');
   const topTracks = tracks.filter(t => t.plays > 0).sort((a,b) => b.plays - a.plays).slice(0, 8);
 
   const trackWord = (n: number) => {
@@ -880,19 +888,19 @@ const MediaHomeTab = ({
       <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex:0 }}>
         {/* Deep space gradient base */}
         <div className="absolute inset-0"
-          style={{ background:'linear-gradient(175deg,#04050f 0%,#080b18 40%,#0a0618 100%)' }}/>
+          style={{ background: lightBg ? 'linear-gradient(175deg,#f6f7ff 0%,#eef1fc 40%,#f4effc 100%)' : 'linear-gradient(175deg,#04050f 0%,#080b18 40%,#0a0618 100%)' }}/>
         {/* Nebula glows */}
         <div className="absolute pointer-events-none"
           style={{ top:'-10%', right:'-5%', width:'55%', height:'55%', borderRadius:'50%',
-            background:'radial-gradient(circle,rgba(79,70,229,.08) 0%,transparent 65%)' }}/>
+            background:`radial-gradient(circle,rgba(79,70,229,${lightBg ? .16 : .08}) 0%,transparent 65%)` }}/>
         <div className="absolute pointer-events-none"
           style={{ bottom:'10%', left:'-8%', width:'45%', height:'45%', borderRadius:'50%',
-            background:'radial-gradient(circle,rgba(139,92,246,.06) 0%,transparent 65%)' }}/>
+            background:`radial-gradient(circle,rgba(139,92,246,${lightBg ? .13 : .06}) 0%,transparent 65%)` }}/>
         <div className="absolute pointer-events-none"
           style={{ top:'35%', left:'30%', width:'40%', height:'40%', borderRadius:'50%',
-            background:'radial-gradient(circle,rgba(59,130,246,.04) 0%,transparent 65%)' }}/>
+            background:`radial-gradient(circle,rgba(59,130,246,${lightBg ? .10 : .04}) 0%,transparent 65%)` }}/>
         {/* Stars canvas */}
-        <StarCanvas scrollY={scrollY}/>
+        <StarCanvas scrollY={scrollY} light={lightBg}/>
       </div>
 
       {/* Content sits above the star field */}

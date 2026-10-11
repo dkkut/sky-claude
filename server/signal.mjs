@@ -2122,6 +2122,11 @@ export const pushViolation = (userIds, msg) => {
   broadcast(Array.isArray(userIds) ? userIds : [], msg);
 };
 
+/** Игровые серверы: новое сообщение канала, правки устройства сервера. */
+export const pushGameServer = (userIds, msg) => {
+  broadcast(Array.isArray(userIds) ? userIds : [], msg);
+};
+
 /** Sky Трансляции: донат — списание/зачисление идёт HTTP-ручкой (нужен
  *  чёткий ответ и idempotency-key), а увидеть его в чате остальные
  *  зрители должны сразу же, поэтому уведомление уходит в тот же WS-хаб,

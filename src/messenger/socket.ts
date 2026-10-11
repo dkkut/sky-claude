@@ -22,6 +22,7 @@ import { useSettings } from '@/settings/store';
 import { usePrivacyStore } from '@/profile/privacyStore';
 import { useGamingStore, type MatchInfo, type MatchResultChange } from '@/gaming/store';
 import { useVoicePartyStore } from '@/voiceparty/store';
+import { useGameServers } from '@/gaming/serversStore';
 import { toClientRoom, toClientParticipant } from '@/voiceparty/api';
 import { useStreamsStore } from '@/streams/store';
 import { receiveLiveSignal } from '@/streams/webrtc';
@@ -407,6 +408,20 @@ const handle = (data: any) => {
       break;
     case 'mm:error':
       useGamingStore.getState().applyMmError();
+      break;
+
+    /* ── Игровые серверы: сообщения каналов и перемены на сервере ── */
+    case 'gs:message':
+      useGameServers.getState().applyMessage(payload?.serverId, payload?.message);
+      break;
+    case 'gs:message-deleted':
+      useGameServers.getState().applyMessageDeleted(payload?.channelId, payload?.id);
+      break;
+    case 'gs:changed':
+      useGameServers.getState().applyChanged(payload?.serverId);
+      break;
+    case 'gs:removed':
+      useGameServers.getState().applyRemoved(payload?.serverId);
       break;
 
     /* ── Войс-пати: кто внутри и живое состояние комнаты — с сервера ── */

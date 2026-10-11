@@ -236,3 +236,37 @@ WS-сообщения `delete-chat`, `get-trash`, `restore-chat` (ответы
 останавливается при нехватке места (`navigator.storage.estimate`) и по
 «Отмена». `PlayerEngine` играет локальную копию, если она есть (`getDownloadUrl`),
 а экран `OfflineMode` читает то же хранилище — без сети скачанное играет.
+
+## Игровые серверы (вкладка «Каналы» в играх)
+
+`server/gameservers.mjs`, маршруты `server/routes/gameservers.mjs`
+(`/api/gaming/servers|channels|messages`), миграция `109_game_servers.sql`;
+клиент — `src/gaming/GamingChannels.tsx`, `serversStore.ts`, `serversApi.ts`.
+Раньше вкладка была чистой картинкой (серверы зашиты в код, сообщения в
+localStorage) — теперь всё лежит на сервере.
+
+- Права решает только сервер по `game_server_members.role`
+  (`owner` / `moderator` / `member`): создавать и удалять каналы — владелец и
+  модератор, назначать модераторов — владелец, в «объявления» пишут только они.
+  Закрытый сервер — только по коду приглашения; бан запоминается.
+- Новые сообщения и перемены идут участникам по WebSocket (`gs:message`,
+  `gs:changed`, `gs:removed`, `pushGameServer` в `signal.mjs`); экран ещё раз
+  перечитывает сервер раз в 12 с — страховка, заодно обновляет число людей в голосовых.
+- Голосовой канал — комната войс-пати (`voiceparty.mjs`), приватная: заводится при
+  первом входе (`voiceRoomFor`, строка канала под `FOR UPDATE`, чтобы двое не создали
+  по комнате), закрывается, когда выходит последний. Звук — тот же P2P WebRTC.
+- Тест: `scripts/audit/gameservers-test.mjs`.
+
+## Видеообзоры складов и реклама (заметки по правкам)
+
+- `<video>` не шлёт заголовок — обзору нужен пропуск (`apiMarketTicket`);
+  использовать `ReviewVideo` (`src/marketplace/logistics/ReviewVideo.tsx`), а не голый тег.
+- Загрузка обзора — до 512 МБ: nginx-блок `location ^~ /api/logistics/video/` в
+  `nginx/templates/sky.conf.template` (без него общий потолок 1m обрывал загрузку).
+  После обновления шаблона nginx нужно пересоздать (deploy-local делает это сам).
+- Реклама: дневной лимит по умолчанию подстраивается под цену выбранной площадки
+  (раньше 500 ₽ при цене 600 давали `bad_daily_limit`). Оплата — только с кошелька
+  (`wallet.spend`), баланс на экране перечитывается после попытки.
+- Вкладка «Баланс комиссий» Blox запрашивает код под назначением `blox_commission`
+  (`apiAdminCommissionStepUp`); общий `StepUp` принимает `begin` — другим формам
+  комиссий нужен тот же приём.

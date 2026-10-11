@@ -11,6 +11,7 @@
  * переводит продавцу напрямую, и подтверждения «отправил» и «получил» —
  * это слова сторон, а не проверка перевода.
  */
+import { ReviewVideo } from './logistics/ReviewVideo';
 import { useEffect, useState, useRef } from 'react';
 import { apiCall } from '@/core/auth/api';
 import {
@@ -351,8 +352,7 @@ const PvzVideoLink = ({ pvzId }: { pvzId: string }) => {
         <Video size={12} /> {loading ? 'Загрузка…' : open ? 'Скрыть видео пункта' : 'Видеообзор пункта'}
       </button>
       {open && reviewId && (
-        <video src={videoUrl(reviewId)} controls preload="metadata"
-          className="mt-2 w-full rounded-xl" style={{ maxHeight: 220, background: '#000' }} />
+        <ReviewVideo id={reviewId} maxHeight={220} />
       )}
     </div>
   );

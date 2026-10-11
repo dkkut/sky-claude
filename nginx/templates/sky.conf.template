@@ -272,6 +272,20 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # Видеообзоры складов и пунктов выдачи — до 512 МБ (MAX_VIDEO_BYTES в
+    # videoreview.mjs). Без этого блока загрузка шла через общий /api/ с
+    # потолком 1m: nginx обрывал её посреди тела, и продавец видел только
+    # «Не удалось загрузить», а в очереди администрации записи не было.
+    location ^~ /api/logistics/video/ {
+        limit_req zone=req_general burst=90 nodelay;
+        client_max_body_size 512m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 900s;
+        proxy_send_timeout 900s;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/ {
         limit_req zone=req_general burst=60 nodelay;
         include /etc/nginx/snippets/proxy-common.conf;

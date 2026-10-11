@@ -194,6 +194,7 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
       targetRegions: [],
     });
     setBusy(false);
+    void useMoney.getState().refresh();
     if (!r.ok) { setErr(r.reason ?? 'Не удалось создать кампанию'); return; }
     setStep('done');
   };
@@ -256,7 +257,7 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
             </p>
             {AD_PLACEMENTS.map(p => (
               <motion.button key={p.placement} type="button" whileTap={{ scale:.97 }}
-                onClick={() => { setPlacement(p.placement); setStep('format'); }}
+                onClick={() => { setPlacement(p.placement); setDaily(p.pricePerDay); setDays((d) => Math.max(d, p.minDays)); setFormat(null); setStep('format'); }}
                 className="flex items-center gap-4 w-full rounded-2xl px-4 py-4 transition-all"
                 style={{ background:C.l1, border:`1.5px solid ${placement===p.placement?C.accent:C.border}` }}>
                 <div className="grid h-12 w-12 place-items-center rounded-2xl shrink-0"

@@ -13,6 +13,7 @@
  * прочитала камера телефона. Декоративный «сканер», рисующий
  * прогресс-бар без реального разбора кадра, был бы обманом интерфейса.
  */
+import { ReviewVideo } from './logistics/ReviewVideo';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Store, Plus, Users, Box, PackageCheck, Wallet, Video,
@@ -587,7 +588,7 @@ const VideoTab = ({ pvzId }: { pvzId: string }) => {
           {review.status === 'rejected' && review.rejectReason && (
             <p className="mt-1.5 text-[11px]" style={{ color: C.t2 }}>Причина: {review.rejectReason}</p>
           )}
-          <video src={videoUrl(review.id)} controls preload="metadata" className="mt-2 w-full rounded-xl" style={{ maxHeight: 200, background: '#000' }} />
+          <ReviewVideo id={review.id} maxHeight={200} />
         </div>
       )}
       {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}

@@ -1,617 +1,538 @@
 /* ===============================================================
-   SKY GAMING CHANNELS  -  как Discord
-   Серверы · Голосовые комнаты · Текстовые каналы · Роли
+   SKY GAMING CHANNELS  -  серверы, каналы, голос
+   Всё настоящее: серверы, участники, роли и сообщения лежат на сервере
+   (server/gameservers.mjs), новые сообщения приходят по WebSocket
+   (gs:*). Голосовой канал — комната войс-пати: звук идёт P2P WebRTC
+   между людьми, которые сейчас в канале.
 =============================================================== */
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
-  Hash, Volume2, Plus, Users, Crown, Settings, Mic, MicOff,
-  Headphones, PhoneOff, Send, ChevronDown, ChevronRight, Shield,
-  Gamepad2, Swords, MessageSquare,
+  Hash, Volume2, Plus, Users, Mic, MicOff, PhoneOff, Send, ChevronDown, ChevronRight,
+  Trash2, X, Copy, LogOut, Search, Crown, Shield, ChevronLeft,
 } from 'lucide-react';
+import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { useAuthStore } from '@/core/auth/store';
-import { create } from 'zustand';
-
-/* -- Types ------------------------------------------------ */
-interface GChannel {
-  id: string; name: string; type: 'text' | 'voice' | 'announce';
-  categoryId: string; position: number; memberCount?: number;
-}
-interface GCategory { id: string; name: string; collapsed: boolean; }
-interface GServer {
-  id: string; name: string; icon: string;
-  ownerId: string; members: string[];
-  categories: GCategory[]; channels: GChannel[];
-  roles: { id:string; name:string; color:string; memberIds:string[] }[];
-  createdAt: string;
-}
-interface GMessage { id:string; channelId:string; authorId:string; authorName:string; text:string; timestamp:number; }
-
-interface GamingChannelsState {
-  servers: GServer[];
-  messages: Record<string, GMessage[]>;   // channelId → messages
-  voiceChannelId: string | null;           // joined voice channel
-  voiceMuted: boolean;
-  voiceDeaf: boolean;
-
-  joinServer:     (serverId: string, userId: string) => void;
-  leaveServer:    (serverId: string, userId: string) => void;
-  sendMsg:        (channelId: string, authorId: string, authorName: string, text: string) => void;
-  joinVoice:      (channelId: string) => void;
-  leaveVoice:     () => void;
-  toggleMute:     () => void;
-  toggleDeaf:     () => void;
-  createChannel:  (serverId: string, categoryId: string, name: string, type: 'text'|'voice') => GChannel;
-  createServer:   (name: string, icon: string, ownerId: string) => GServer;
-  deleteChannel:  (serverId: string, channelId: string) => void;
-  broadcastMsg:   (channelId: string, msg: GMessage) => void;
-}
-
-/* -- Seed servers ------------------------------------------- */
-const SEED_SERVERS: GServer[] = [
-  {
-    id: 'gs-csgo', name: 'CS2 Russia', icon: '🔫',
-    ownerId: 'neo', members: ['kutuzov','luna_nova','neo'],
-    createdAt: new Date().toISOString(),
-    categories: [
-      { id:'cat-1', name:'ИНФОРМАЦИЯ', collapsed:false },
-      { id:'cat-2', name:'ОБЩЕНИЕ',    collapsed:false },
-      { id:'cat-3', name:'ГОЛОСОВЫЕ',  collapsed:false },
-    ],
-    channels: [
-      { id:'ch-rules',    name:'правила',      type:'announce', categoryId:'cat-1', position:0 },
-      { id:'ch-general',  name:'общий',        type:'text',     categoryId:'cat-2', position:1 },
-      { id:'ch-cs2',      name:'cs2-тактики',  type:'text',     categoryId:'cat-2', position:2 },
-      { id:'ch-lfg',      name:'поиск-игроков',type:'text',     categoryId:'cat-2', position:3 },
-      { id:'ch-voice1',   name:'Лобби #1',     type:'voice',    categoryId:'cat-3', position:4, memberCount:2 },
-      { id:'ch-voice2',   name:'Лобби #2',     type:'voice',    categoryId:'cat-3', position:5, memberCount:0 },
-      { id:'ch-voice-mm', name:'Matchmaking',  type:'voice',    categoryId:'cat-3', position:6, memberCount:1 },
-    ],
-    roles: [
-      { id:'r-owner', name:'Владелец',  color:'var(--amber)', memberIds:['neo'] },
-      { id:'r-mod',   name:'Модератор', color:'#22c55e', memberIds:['kutuzov'] },
-      { id:'r-member',name:'Участник',  color:'var(--t2)', memberIds:['luna_nova'] },
-    ],
-  },
-  {
-    id: 'gs-dota', name: 'Dota 2 CIS', icon: '🏆',
-    ownerId: 'kutuzov', members: ['kutuzov','luna_nova'],
-    createdAt: new Date().toISOString(),
-    categories: [
-      { id:'cat-d1', name:'ОБЩЕЕ',    collapsed:false },
-      { id:'cat-d2', name:'ГОЛОСОВЫЕ',collapsed:false },
-    ],
-    channels: [
-      { id:'ch-dota-gen', name:'общий',     type:'text',  categoryId:'cat-d1', position:0 },
-      { id:'ch-dota-meta',name:'мета',      type:'text',  categoryId:'cat-d1', position:1 },
-      { id:'ch-dota-v1',  name:'Lobby',     type:'voice', categoryId:'cat-d2', position:2, memberCount:3 },
-    ],
-    roles: [
-      { id:'r-d-owner', name:'Владелец', color:'var(--amber)', memberIds:['kutuzov'] },
-    ],
-  },
-];
-
-const SEED_MSGS: Record<string,GMessage[]> = {
-  'ch-general': [
-    { id:'m1', channelId:'ch-general', authorId:'neo', authorName:'Neo',
-      text:'Всем привет! Кто идёт на MM?', timestamp: Date.now()-120000 },
-    { id:'m2', channelId:'ch-general', authorId:'kutuzov', authorName:'Kutuzov',
-      text:'Я в деле, ищем ещё 2 человек', timestamp: Date.now()-60000 },
-  ],
-  'ch-dota-gen': [
-    { id:'m3', channelId:'ch-dota-gen', authorId:'luna_nova', authorName:'Luna Nova',
-      text:'Кто хочет сыграть? Рейтинг ~3к MMR', timestamp: Date.now()-90000 },
-  ],
-};
-
-const SK = 'sky:gchannels:v1';
-const loadGC = () => { try { return JSON.parse(localStorage.getItem(SK)||'{}'); } catch { return {}; } };
-const saveGC = (data: { messages: Record<string,GMessage[]> }) => {
-  try { localStorage.setItem(SK, JSON.stringify(data)); } catch {}
-};
-
-export const useGamingChannels = create<GamingChannelsState>((set, get) => {
-  const stored = loadGC();
-
-  // Cross-tab real-time via BroadcastChannel
-  if (typeof window !== 'undefined') {
-    try {
-      const bc = new BroadcastChannel('sky:gchannels:rt');
-      bc.onmessage = (e) => {
-        const { type, channelId, msg } = e.data ?? {};
-        if (type === 'msg' && channelId && msg) {
-          set(s => {
-            const msgs = { ...s.messages, [channelId]: [...(s.messages[channelId]??[]).filter(m=>m.id!==msg.id), msg] };
-            return { messages: msgs };
-          });
-        }
-      };
-    } catch {}
-  }
-
-  return {
-    servers:       SEED_SERVERS,
-    messages:      { ...SEED_MSGS, ...(stored.messages ?? {}) },
-    voiceChannelId:null, voiceMuted:false, voiceDeaf:false,
-
-    joinServer: (serverId, userId) => {
-      set(s => ({ servers: s.servers.map(sv =>
-        sv.id === serverId && !sv.members.includes(userId)
-          ? { ...sv, members:[...sv.members, userId] } : sv
-      )}));
-    },
-    leaveServer: (serverId, userId) => {
-      set(s => ({ servers: s.servers.map(sv =>
-        sv.id === serverId ? { ...sv, members:sv.members.filter(m=>m!==userId) } : sv
-      )}));
-    },
-    sendMsg: (channelId, authorId, authorName, text) => {
-      if (!text.trim()) return;
-      const msg: GMessage = {
-        id: `gm-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,
-        channelId, authorId, authorName, text: text.trim(), timestamp: Date.now(),
-      };
-      set(s => {
-        const prev = s.messages[channelId] ?? [];
-        // Deduplicate by id just in case
-        const next = [...prev.filter(m => m.id !== msg.id), msg];
-        const msgs = { ...s.messages, [channelId]: next };
-        saveGC({ messages: msgs });
-        return { messages: msgs };
-      });
-    },
-    joinVoice:  (id) => set({ voiceChannelId: id }),
-    leaveVoice: ()  => set({ voiceChannelId:null, voiceMuted:false, voiceDeaf:false }),
-    toggleMute: ()  => set(s => ({ voiceMuted: !s.voiceMuted })),
-    toggleDeaf: ()  => set(s => ({ voiceDeaf: !s.voiceDeaf })),
-
-    createChannel: (serverId, categoryId, name, type) => {
-      const ch: GChannel = {
-        id: `ch-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,
-        name: name.toLowerCase().replace(/[^a-zа-яё0-9-_]/gi, '-').replace(/-+/g, '-').slice(0, 32),
-        type, categoryId, position: Date.now(), memberCount: 0,
-      };
-      set(s => ({
-        servers: s.servers.map(sv =>
-          sv.id === serverId ? { ...sv, channels: [...sv.channels, ch] } : sv
-        )
-      }));
-      return ch;
-    },
-
-    createServer: (name, icon, ownerId) => {
-      const ts = Date.now();
-      const catText  = `cat-${ts}-text`;
-      const catVoice = `cat-${ts}-voice`;
-      const sv: GServer = {
-        id: `gs-${ts}`, name, icon, ownerId, members: [ownerId],
-        createdAt: new Date().toISOString(),
-        categories: [
-          { id: catText,  name: 'ТЕКСТОВЫЕ', collapsed: false },
-          { id: catVoice, name: 'ГОЛОСОВЫЕ', collapsed: false },
-        ],
-        channels: [
-          { id: `ch-${ts}-gen`, name: 'общий', type: 'text',  categoryId: catText,  position: 0 },
-          { id: `ch-${ts}-voc`, name: 'Лобби', type: 'voice', categoryId: catVoice, position: 1, memberCount: 0 },
-        ],
-        roles: [{ id: 'r-owner', name: 'Владелец', color: 'var(--amber)', memberIds: [ownerId] }],
-      };
-      set(s => ({ servers: [...s.servers, sv] }));
-      return sv;
-    },
-
-    deleteChannel: (serverId, channelId) => {
-      set(s => ({ servers: s.servers.map(sv =>
-        sv.id === serverId ? { ...sv, channels: sv.channels.filter(ch => ch.id !== channelId) } : sv
-      )}));
-    },
-
-    broadcastMsg: (channelId, msg) => {
-      // BroadcastChannel for cross-tab sync
-      try {
-        const bc = new BroadcastChannel('sky:gchannels:rt');
-        bc.postMessage({ type: 'msg', channelId, msg });
-        bc.close();
-      } catch {}
-      set(s => {
-        const msgs = { ...s.messages, [channelId]: [...(s.messages[channelId]??[]), msg] };
-        saveGC({ messages: msgs });
-        return { messages: msgs };
-      });
-    },
-  };
-});
-
-/* --- Helpers ---------------------------------------------- */
-const fmtTime = (ts: number) => {
-  const d = new Date(ts);
-  return d.toLocaleTimeString('ru', { hour:'2-digit', minute:'2-digit' });
-};
-const roleColor = (server: GServer, userId: string) =>
-  server.roles.find(r => r.memberIds.includes(userId) && r.color !== 'var(--t2)')?.color ?? 'var(--t1)';
+import { flash } from '@/shared/flash';
+import { useVoicePartyStore } from '@/voiceparty/store';
+import { useGameServers } from './serversStore';
+import {
+  apiChannelVoice, apiKickMember, apiSetMemberRole, gsError, type GChannel, type GMember, type GChannelType,
+} from './serversApi';
 
 const C = {
-  sidebar:'var(--bg-l1)', content:'var(--bg)', input:'var(--bg-l2)',
-  border:'var(--border)', accent:'#5865f2',
-  t1:'var(--t1)', t2:'var(--t2)', t3:'var(--t3)',
+  sidebar: 'var(--bg-l1)', content: 'var(--bg)', input: 'var(--bg-l2)',
+  border: 'var(--border)', accent: '#5865f2',
+  t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)',
+};
+const ICONS = ['🎮', '🔫', '🏆', '⚔️', '🎯', '🎲', '🌟', '🔥', '🛡️', '🚀', '👾', '🧩'];
+const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+const memberWord = (n: number) => {
+  const a = n % 10, b = n % 100;
+  if (a === 1 && b !== 11) return 'участник';
+  if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return 'участника';
+  return 'участников';
 };
 
-/* === MAIN GAMING CHANNELS ================================ */
+const Modal = ({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={onClose}>
+    <div className="max-h-[85vh] w-full max-w-sm space-y-4 overflow-y-auto rounded-2xl p-5"
+      style={{ background: 'var(--bg-l3)', border: `1px solid ${C.border}` }} onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-between">
+        <p className="text-base font-bold" style={{ color: C.t1 }}>{title}</p>
+        <button type="button" onClick={onClose} aria-label="Закрыть" style={{ color: C.t3 }}><X size={16} /></button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+const inputCls = 'w-full rounded-xl px-3 py-2.5 text-sm outline-none';
+const inputStyle = { background: C.input, border: `1px solid ${C.border}`, color: C.t1 };
+
+/* === MAIN ================================================ */
 export const GamingChannels = () => {
   const { currentUserId, accounts } = useAuthStore();
-  const { servers, messages, sendMsg, joinVoice, leaveVoice, voiceChannelId, voiceMuted, voiceDeaf,
-    toggleMute, toggleDeaf, joinServer, createChannel, createServer } = useGamingChannels();
-  const me = accounts.find(a => a.id === currentUserId);
+  const me = accounts.find((a) => a.id === currentUserId);
+  const gs = useGameServers();
+  const isMobile = useIsMobile();
+  /* На телефоне список каналов и чат — два экрана: на трёх колонках чату остаётся ~150 px. */
+  const [pane, setPane] = useState<'channels' | 'chat'>('channels');
+  const showList = !isMobile || pane === 'channels';
+  const showChat = !isMobile || pane === 'chat';
+  const vp = useVoicePartyStore();
+  const { detail, channelId, messages, mine, open, loaded } = gs;
 
-  const [serverId, setServerId] = useState(servers[0]?.id ?? '');
-  const [channelId, setChannelId] = useState('ch-general');
   const [draft, setDraft] = useState('');
-  const [collapsed, setCollapsed] = useState<Record<string,boolean>>({});
-  const [showCreateCh, setShowCreateCh] = useState(false);
-  const [newChName, setNewChName] = useState('');
-  const [newChType, setNewChType] = useState<'text'|'voice'>('text');
-  const [showCreateSrv, setShowCreateSrv] = useState(false);
-  const [newSrvName, setNewSrvName] = useState('');
-  const [newSrvIcon, setNewSrvIcon] = useState('🎮');
-  const msgEndRef = useRef<HTMLDivElement>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [modal, setModal] = useState<null | 'channel' | 'server' | 'members' | 'menu'>(null);
+  const [tab, setTab] = useState<'find' | 'create' | 'code'>('find');
+  const [chName, setChName] = useState(''); const [chType, setChType] = useState<GChannelType>('text');
+  const [srvName, setSrvName] = useState(''); const [srvIcon, setSrvIcon] = useState('🎮');
+  const [srvDesc, setSrvDesc] = useState(''); const [srvPublic, setSrvPublic] = useState(true);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
 
-  const handleCreateChannel = () => {
-    if (!newChName.trim() || !server) return;
-    const catId = newChType === 'voice'
-      ? server.categories.find(cat => cat.name.toLowerCase().includes('голос'))?.id
-        ?? server.categories.find(cat => cat.name.toLowerCase().includes('voice'))?.id
-        ?? server.categories[server.categories.length - 1]?.id
-        ?? server.categories[0]?.id
-      : server.categories.find(cat => !cat.name.toLowerCase().includes('голос') && !cat.name.toLowerCase().includes('voice'))?.id
-        ?? server.categories[0]?.id;
-    if (!catId) return;
-    const ch = createChannel(serverId, catId, newChName.trim(), newChType);
-    if (newChType === 'text') setChannelId(ch.id);
-    setNewChName('');
-    setNewChType('text');
-    setShowCreateCh(false);
+  useEffect(() => { void gs.load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  /* Страховка к WebSocket: число людей в голосовых и пропущенные сообщения. */
+  useEffect(() => {
+    const t = setInterval(() => { if (document.visibilityState === 'visible') void gs.refreshDetail(); }, 12000);
+    return () => clearInterval(t);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, []);
+
+  const server = detail?.server ?? null;
+  const channel = detail?.channels.find((c) => c.id === channelId) ?? null;
+  const msgs = channelId ? messages[channelId] ?? [] : [];
+  const isStaff = server?.myRole === 'owner' || server?.myRole === 'moderator';
+  useEffect(() => { endRef.current?.scrollIntoView(); }, [msgs.length, channelId]);
+
+  const voiceRoom = vp.activeRoom();
+  const [joinedCh, setJoinedCh] = useState<string | null>(null);
+  const voiceChannel = voiceRoom && joinedCh ? detail?.channels.find((c) => c.id === joinedCh) ?? null : null;
+  const [voiceView, setVoiceView] = useState<string | null>(null);
+  /* Исключили из комнаты или связь оборвалась — не висим на «Подключение…». */
+  useEffect(() => {
+    if (!joinedCh || vp.activeRoomId) return undefined;
+    const t = setTimeout(() => { setJoinedCh(null); setVoiceView(null); }, 6000);
+    return () => clearTimeout(t);
+  }, [joinedCh, vp.activeRoomId]);
+  const me2 = voiceRoom?.participants.find((p) => p.id === currentUserId);
+
+  const roleColor = (id: string) => {
+    const r = detail?.members.find((m) => m.id === id)?.role;
+    return r === 'owner' ? 'var(--amber)' : r === 'moderator' ? '#22c55e' : C.t1;
   };
 
-  const handleCreateServer = () => {
-    if (!newSrvName.trim() || !currentUserId) return;
-    const sv = createServer(newSrvName.trim(), newSrvIcon, currentUserId);
-    setServerId(sv.id);
-    setNewSrvName(''); setShowCreateSrv(false);
+  const joinVoice = async (ch: GChannel) => {
+    setVoiceView(ch.id); setPane('chat');
+    if (voiceChannel?.id === ch.id) return;
+    if (voiceRoom) vp.leaveRoom();
+    const r = await apiChannelVoice(ch.id);
+    if (!r.ok || !r.data) { flash(gsError(r.error)); setVoiceView(null); return; }
+    setJoinedCh(ch.id);
+    vp.joinRoom(r.data.roomId);
+    setTimeout(() => void gs.refreshDetail(), 1200);
   };
+  const leaveVoice = () => { vp.leaveRoom(); setJoinedCh(null); setVoiceView(null); setTimeout(() => void gs.refreshDetail(), 600); };
 
-  const handleSend = () => {
-    if (!draft.trim() || !currentUserId || !me) return;
-    const msg: GMessage = { id:`gm-${Date.now()}`, channelId, authorId:currentUserId, authorName:me.name, text:draft.trim(), timestamp:Date.now() };
-    sendMsg(channelId, currentUserId, me.name, draft.trim());
-    // Broadcast to other tabs
-    try { const bc=new BroadcastChannel('sky:gchannels:rt'); bc.postMessage({type:'msg',channelId,msg}); bc.close(); } catch {}
+  const send = async () => {
+    const t = draft.trim();
+    if (!t) return;
     setDraft('');
+    if (!(await gs.send(t))) setDraft(t);
   };
 
-  const server  = servers.find(s => s.id === serverId);
-  const channel = server?.channels.find(c => c.id === channelId);
-  const msgs    = messages[channelId] ?? [];
-
-  useEffect(() => { msgEndRef.current?.scrollIntoView(); }, [msgs.length, channelId]);
-
-  const send = () => {
-    if (!draft.trim() || !currentUserId || !me) return;
-    sendMsg(channelId, currentUserId, me.name, draft.trim());
-    setDraft('');
+  const submitChannel = async () => {
+    if (!chName.trim() || busy) return;
+    setBusy(true);
+    const ok = await gs.addChannel(chName.trim(), chType);
+    setBusy(false);
+    if (ok) { setChName(''); setChType('text'); setModal(null); }
   };
 
-  const isMember = server?.members.includes(currentUserId ?? '') ?? false;
+  const submitServer = async () => {
+    if (srvName.trim().length < 2 || busy) return;
+    setBusy(true);
+    const ok = await gs.create({ name: srvName.trim(), icon: srvIcon, description: srvDesc.trim(), isPublic: srvPublic });
+    setBusy(false);
+    if (ok) { setSrvName(''); setSrvDesc(''); setModal(null); }
+  };
 
-  return (
-    <>
-    <div className="flex h-full overflow-hidden" style={{ background:C.content }}>
+  const submitCode = async () => {
+    if (!code.trim() || busy) return;
+    setBusy(true);
+    const ok = await gs.joinCode(code.trim());
+    setBusy(false);
+    if (ok) { setCode(''); setModal(null); }
+  };
 
-      {/* -- Server list (left strip) ----------------------- */}
-      <div className="flex flex-col gap-2 p-2 shrink-0 overflow-y-auto"
-        style={{ width:52, background:'var(--bg-l1)', scrollbarWidth:'none' }}>
-        {servers.map(sv => (
-          <motion.button key={sv.id} type="button" whileTap={{ scale:.9 }}
-            onClick={() => { setServerId(sv.id); setChannelId(sv.channels.find(c=>c.type==='text')?.id ?? ''); }}
-            title={sv.name}
-            className="grid h-10 w-10 place-items-center rounded-2xl text-xl shrink-0 transition-all"
-            style={{
-              background: serverId===sv.id ? C.accent : 'var(--border)',
-              borderRadius: serverId===sv.id ? '14px' : '24px',
-              boxShadow: serverId===sv.id ? `0 4px 16px ${C.accent}50` : 'none',
-            }}>
-            {sv.icon}
-          </motion.button>
-        ))}
-        <div className="h-px mx-1" style={{ background:'rgba(255,255,255,0.1)' }}/>
-        <button type="button" onClick={() => setShowCreateSrv(true)}
-          className="grid h-10 w-10 place-items-center rounded-full text-xl hover:bg-green-500/20 transition-colors shrink-0"
-          title="Создать сервер" style={{ color:'#22c55e' }}>
-          <Plus size={20}/>
+  const copyInvite = async () => {
+    if (!server?.inviteCode) return;
+    try { await navigator.clipboard.writeText(server.inviteCode); flash('Код приглашения скопирован'); }
+    catch { flash(`Код приглашения: ${server.inviteCode}`); }
+  };
+
+  const manage = async (m: GMember, act: 'kick' | 'ban' | 'mod' | 'unmod') => {
+    if (!server) return;
+    const r = act === 'mod' || act === 'unmod'
+      ? await apiSetMemberRole(server.id, m.id, act === 'mod' ? 'moderator' : 'member')
+      : await apiKickMember(server.id, m.id, act === 'ban');
+    if (!r.ok) { flash(gsError(r.error)); return; }
+    void gs.refreshDetail();
+  };
+
+  /* ── Нет ни одного сервера: показываем, куда вступить ── */
+  if (loaded && mine.length === 0) {
+    return (
+      <div className="h-full overflow-y-auto px-4 py-5 space-y-4" style={{ background: C.content }}>
+        <div className="text-center">
+          <p className="text-lg font-black" style={{ color: C.t1 }}>Игровые серверы</p>
+          <p className="mt-1 text-sm" style={{ color: C.t2 }}>Текстовые и голосовые каналы для вашей команды</p>
+        </div>
+        <button type="button" onClick={() => { setTab('create'); setModal('server'); }}
+          className="w-full rounded-2xl py-3 text-sm font-bold text-white" style={{ background: C.accent }}>
+          Создать свой сервер
         </button>
-      </div>
-
-      {/* -- Channel sidebar -------------------------------- */}
-      {server && (
-        <div className="flex flex-col shrink-0 overflow-hidden"
-          style={{ width:180, background:C.sidebar, borderRight:`1px solid ${C.border}` }}>
-          {/* Server name */}
-          <div className="flex items-center justify-between px-3 py-3 border-b shrink-0"
-            style={{ borderColor:C.border }}>
-            <div className="min-w-0">
-              <p className="text-sm font-bold truncate" style={{ color:C.t1 }}>{server.name}</p>
-              <p className="text-[10px]" style={{ color:C.t3 }}>{server.members.length} участников</p>
+        <button type="button" onClick={() => { setTab('code'); setModal('server'); }}
+          className="w-full rounded-2xl py-3 text-sm font-semibold" style={{ background: C.input, color: C.t1, border: `1px solid ${C.border}` }}>
+          У меня есть код приглашения
+        </button>
+        {open.length > 0 && <p className="pt-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: C.t3 }}>Открытые серверы</p>}
+        {open.map((s) => (
+          <div key={s.id} className="flex items-center gap-3 rounded-2xl p-3" style={{ background: C.sidebar, border: `1px solid ${C.border}` }}>
+            <div className="text-3xl">{s.icon}</div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold" style={{ color: C.t1 }} translate="no">{s.name}</p>
+              <p className="text-[11px]" style={{ color: C.t3 }}>{s.members} {memberWord(s.members)}</p>
             </div>
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={() => setShowCreateCh(true)}
-                className="grid h-6 w-6 place-items-center rounded-md transition-colors hover:bg-white/10"
-                title="Создать канал" style={{ color:C.t3 }}>
-                <Plus size={13}/>
-              </button>
-              <ChevronDown size={14} style={{ color:C.t3 }}/>
-            </div>
+            <button type="button" onClick={() => void gs.join(s.id)} className="rounded-xl px-3 py-1.5 text-xs font-bold text-white" style={{ background: C.accent }}>
+              Вступить
+            </button>
           </div>
+        ))}
+        {modal === 'server' && serverModal()}
+      </div>
+    );
+  }
 
-          {/* Channels */}
-          <div className="flex-1 overflow-y-auto py-2" style={{ scrollbarWidth:'none' }}>
-            {server.categories.map(cat => (
-              <div key={cat.id} className="mb-1">
-                <button type="button"
-                  onClick={() => setCollapsed(c => ({ ...c, [cat.id]: !c[cat.id] }))}
-                  className="flex items-center gap-1 w-full px-3 py-1.5">
-                  <ChevronRight size={10} style={{ color:C.t3,
-                    transform: collapsed[cat.id] ? 'rotate(0deg)' : 'rotate(90deg)',
-                    transition:'transform 0.15s' }}/>
-                  <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color:C.t3 }}>
-                    {cat.name}
-                  </span>
-                </button>
-                {!collapsed[cat.id] && server.channels
-                  .filter(ch => ch.categoryId === cat.id)
-                  .map(ch => (
-                    <motion.button key={ch.id} type="button" whileTap={{ scale:.97 }}
-                      onClick={() => { if(ch.type==='voice'){joinVoice(ch.id);}else{setChannelId(ch.id);} }}
-                      className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-lg mx-1 transition-all"
-                      style={{
-                        width:'calc(100% - 8px)',
-                        background: channelId===ch.id ? `${C.accent}20` : voiceChannelId===ch.id ? 'rgba(34,197,94,0.12)' : 'transparent',
-                        color: channelId===ch.id ? C.t1 : voiceChannelId===ch.id ? '#22c55e' : C.t2,
-                      }}>
-                      {ch.type==='text' ? <Hash size={14}/> : ch.type==='announce' ? <span className="text-xs">📢</span> : <Volume2 size={14}/>}
-                      <span className="text-[12px] font-medium truncate flex-1 text-left">{ch.name}</span>
-                      {ch.type==='voice' && ch.memberCount && ch.memberCount > 0 && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full"
-                          style={{ background:'rgba(34,197,94,0.2)', color:'#22c55e' }}>
-                          {ch.memberCount}
-                        </span>
-                      )}
-                    </motion.button>
-                  ))
-                }
+  function serverModal() {
+    return (
+      <Modal title="Серверы" onClose={() => setModal(null)}>
+        <div className="grid grid-cols-3 gap-1 rounded-xl p-1" style={{ background: C.input }}>
+          {([['find', 'Найти'], ['create', 'Создать'], ['code', 'По коду']] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setTab(k)} className="rounded-lg py-1.5 text-xs font-semibold"
+              style={{ background: tab === k ? C.accent : 'transparent', color: tab === k ? '#fff' : C.t3 }}>{l}</button>
+          ))}
+        </div>
+        {tab === 'find' && (
+          <div className="space-y-2">
+            {open.length === 0 && <p className="py-4 text-center text-xs" style={{ color: C.t3 }}>Открытых серверов пока нет — создайте первый.</p>}
+            {open.map((s) => (
+              <div key={s.id} className="flex items-center gap-2 rounded-xl p-2" style={{ background: C.input }}>
+                <span className="text-2xl">{s.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-bold" style={{ color: C.t1 }} translate="no">{s.name}</p>
+                  <p className="text-[10px]" style={{ color: C.t3 }}>{s.members} {memberWord(s.members)}</p>
+                </div>
+                <button type="button" onClick={async () => { if (await gs.join(s.id)) setModal(null); }}
+                  className="rounded-lg px-3 py-1 text-[11px] font-bold text-white" style={{ background: C.accent }}>Вступить</button>
               </div>
             ))}
           </div>
-
-          {/* User bar */}
-          <div className="flex items-center gap-2 px-3 py-2.5 border-t shrink-0"
-            style={{ borderColor:C.border, background:'rgba(0,0,0,0.2)' }}>
-            <div className="grid h-7 w-7 place-items-center rounded-full text-xs font-bold text-white shrink-0"
-              style={{ background:C.accent }}>{me?.name[0]}</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold truncate text-white">{me?.name}</p>
-              {voiceChannelId
-                ? <p className="text-[9px]" style={{ color:'#22c55e' }}>● В голосовом</p>
-                : <p className="text-[9px]" style={{ color:C.t3 }}>В сети</p>
-              }
+        )}
+        {tab === 'create' && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {ICONS.map((ico) => (
+                <button key={ico} type="button" onClick={() => setSrvIcon(ico)} className="grid h-9 w-9 place-items-center rounded-xl text-lg"
+                  style={{ background: srvIcon === ico ? 'rgba(88,101,242,0.2)' : C.input, border: `1px solid ${srvIcon === ico ? C.accent : 'transparent'}` }}>{ico}</button>
+              ))}
             </div>
-            <div className="flex gap-1">
-              {voiceChannelId ? (
-                <>
-                  <button type="button" onClick={toggleMute}
-                    className="grid h-6 w-6 place-items-center rounded" title="Мут"
-                    style={{ color:voiceMuted?'var(--red)':C.t3, background:voiceMuted?'rgba(239,68,68,0.2)':'transparent' }}>
-                    {voiceMuted ? <MicOff size={13}/> : <Mic size={13}/>}
-                  </button>
-                  <button type="button" onClick={leaveVoice}
-                    className="grid h-6 w-6 place-items-center rounded hover:bg-red-500/20"
-                    title="Выйти" style={{ color:'var(--red)' }}>
-                    <PhoneOff size={13}/>
-                  </button>
-                </>
-              ) : (
-                <button type="button" onClick={toggleMute}
-                  className="grid h-6 w-6 place-items-center rounded hover:bg-white/5"
-                  style={{ color:C.t3 }}>
-                  <Mic size={13}/>
-                </button>
-              )}
-            </div>
+            <input value={srvName} onChange={(e) => setSrvName(e.target.value)} maxLength={40} placeholder="Название сервера" className={inputCls} style={inputStyle} translate="no" />
+            <input value={srvDesc} onChange={(e) => setSrvDesc(e.target.value)} maxLength={200} placeholder="Описание (необязательно)" className={inputCls} style={inputStyle} translate="no" />
+            <label className="flex items-center gap-2 text-xs" style={{ color: C.t2 }}>
+              <input type="checkbox" checked={srvPublic} onChange={(e) => setSrvPublic(e.target.checked)} />
+              Открытый: любой может найти и вступить. Закрытый — только по коду.
+            </label>
+            <button type="button" onClick={() => void submitServer()} disabled={srvName.trim().length < 2 || busy}
+              className="w-full rounded-xl py-2.5 text-sm font-bold text-white disabled:opacity-40" style={{ background: C.accent }}>Создать</button>
           </div>
+        )}
+        {tab === 'code' && (
+          <div className="space-y-3">
+            <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={10} placeholder="Код приглашения" className={inputCls} style={inputStyle} />
+            <button type="button" onClick={() => void submitCode()} disabled={!code.trim() || busy}
+              className="w-full rounded-xl py-2.5 text-sm font-bold text-white disabled:opacity-40" style={{ background: C.accent }}>Вступить</button>
+          </div>
+        )}
+      </Modal>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex h-full overflow-hidden" style={{ background: C.content }}>
+
+        {/* -- Server list ------------------------------------ */}
+        <div className="flex shrink-0 flex-col gap-2 overflow-y-auto p-2" style={{ width: 52, background: C.sidebar, scrollbarWidth: 'none' }}>
+          {mine.map((sv) => (
+            <motion.button key={sv.id} type="button" whileTap={{ scale: .9 }} onClick={() => { setPane('channels'); void gs.select(sv.id); }} title={sv.name}
+              className="grid h-10 w-10 shrink-0 place-items-center text-xl transition-all"
+              style={{
+                background: server?.id === sv.id ? C.accent : 'var(--border)',
+                borderRadius: server?.id === sv.id ? 14 : 24,
+                boxShadow: server?.id === sv.id ? `0 4px 16px ${C.accent}50` : 'none',
+              }}>{sv.icon}</motion.button>
+          ))}
+          <div className="mx-1 h-px" style={{ background: C.border }} />
+          <button type="button" onClick={() => { setTab('find'); setModal('server'); }} title="Найти или создать сервер"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full" style={{ color: '#22c55e' }}><Plus size={20} /></button>
         </div>
-      )}
 
-      {/* -- Main content ----------------------------------- */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {!isMember && server ? (
-          /* Join prompt */
-          <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6">
-            <div className="text-5xl">{server.icon}</div>
-            <div className="text-center">
-              <p className="text-lg font-black text-white">{server.name}</p>
-              <p className="text-sm mt-1" style={{ color:C.t2 }}>{server.members.length} участников</p>
-            </div>
-            <motion.button whileTap={{ scale:.96 }} type="button"
-              onClick={() => currentUserId && joinServer(server.id, currentUserId)}
-              className="rounded-2xl px-8 py-3 text-sm font-bold text-white"
-              style={{ background:C.accent }}>
-              Присоединиться к серверу
-            </motion.button>
-          </div>
-        ) : channel?.type === 'voice' || voiceChannelId ? (
-          /* Voice channel UI */
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            <Volume2 size={48} style={{ color:'#22c55e', opacity:0.6 }}/>
-            <p className="text-base font-bold" style={{ color:C.t1 }}>
-              {voiceChannelId ? `Голосовой канал: ${server?.channels.find(c=>c.id===voiceChannelId)?.name}` : 'Голосовой канал'}
-            </p>
-            <div className="flex gap-3">
-              <button type="button" onClick={toggleMute}
-                className="flex flex-col items-center gap-1.5">
-                <div className="grid h-12 w-12 place-items-center rounded-full"
-                  style={{ background: voiceMuted ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.1)' }}>
-                  {voiceMuted ? <MicOff size={22} style={{ color:'var(--red)' }}/> : <Mic size={22} style={{ color:C.t2 }}/>}
-                </div>
-                <span className="text-[10px]" style={{ color:C.t3 }}>{voiceMuted?'Вкл':'Выкл'}</span>
+        {/* -- Channel sidebar -------------------------------- */}
+        {server && detail && showList && (
+          <div className={isMobile ? 'flex min-w-0 flex-1 flex-col overflow-hidden' : 'flex shrink-0 flex-col overflow-hidden'}
+            style={{ width: isMobile ? undefined : 180, background: C.sidebar, borderRight: `1px solid ${C.border}` }}>
+            <div className="flex shrink-0 items-center justify-between border-b px-3 py-3" style={{ borderColor: C.border }}>
+              <button type="button" className="min-w-0 text-left" onClick={() => setModal('menu')}>
+                <p className="truncate text-sm font-bold" style={{ color: C.t1 }} translate="no">{server.name}</p>
+                <p className="text-[10px]" style={{ color: C.t3 }}>{server.members} {memberWord(server.members)}</p>
               </button>
-              <button type="button" onClick={leaveVoice}
-                className="flex flex-col items-center gap-1.5">
-                <div className="grid h-12 w-12 place-items-center rounded-full"
-                  style={{ background:'rgba(239,68,68,0.15)' }}>
-                  <PhoneOff size={22} style={{ color:'var(--red)' }}/>
-                </div>
-                <span className="text-[10px]" style={{ color:C.t3 }}>Выйти</span>
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* Text channel */
-          <>
-            {/* Channel header */}
-            <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0"
-              style={{ borderColor:C.border, background:C.content }}>
-              <Hash size={16} style={{ color:C.t3 }}/>
-              <p className="text-sm font-bold" style={{ color:C.t1 }}>{channel?.name ?? 'канал'}</p>
-              <div className="flex-1"/>
-              <div className="flex items-center gap-1" style={{ color:C.t3 }}>
-                <Users size={13}/>
-                <span className="text-[10px]">{server?.members.length}</span>
+              <div className="flex items-center gap-1">
+                {isStaff && (
+                  <button type="button" onClick={() => setModal('channel')} className="grid h-6 w-6 place-items-center rounded-md" title="Создать канал" style={{ color: C.t3 }}><Plus size={13} /></button>
+                )}
+                <button type="button" onClick={() => setModal('menu')} aria-label="Меню сервера" style={{ color: C.t3 }}><ChevronDown size={14} /></button>
               </div>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" style={{ scrollbarWidth:'none' }}>
-              {msgs.length === 0 && (
-                <div className="flex flex-col items-center gap-2 py-8 opacity-50">
-                  <Hash size={32} style={{ color:C.t3 }}/>
-                  <p className="text-sm" style={{ color:C.t3 }}>Начало канала #{channel?.name}</p>
+            <div className="flex-1 overflow-y-auto py-2" style={{ scrollbarWidth: 'none' }}>
+              {detail.categories.map((cat) => (
+                <div key={cat.id} className="mb-1">
+                  <button type="button" onClick={() => setCollapsed((c) => ({ ...c, [cat.id]: !c[cat.id] }))} className="flex w-full items-center gap-1 px-3 py-1.5">
+                    <ChevronRight size={10} style={{ color: C.t3, transform: collapsed[cat.id] ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform .15s' }} />
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: C.t3 }} translate="no">{cat.name}</span>
+                  </button>
+                  {!collapsed[cat.id] && detail.channels.filter((ch) => ch.categoryId === cat.id).map((ch) => (
+                    <div key={ch.id}>
+                      <button type="button"
+                        onClick={() => { if (ch.type === 'voice') void joinVoice(ch); else { setVoiceView(null); setPane('chat'); void gs.openChannel(ch.id); } }}
+                        className="mx-1 flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-all"
+                        style={{
+                          width: 'calc(100% - 8px)',
+                          background: channelId === ch.id && !voiceView ? `${C.accent}20` : voiceChannel?.id === ch.id ? 'rgba(34,197,94,0.12)' : 'transparent',
+                          color: channelId === ch.id && !voiceView ? C.t1 : voiceChannel?.id === ch.id ? '#22c55e' : C.t2,
+                        }}>
+                        {ch.type === 'text' ? <Hash size={14} /> : ch.type === 'announce' ? <span className="text-xs">📢</span> : <Volume2 size={14} />}
+                        <span className="flex-1 truncate text-left text-[12px] font-medium" translate="no">{ch.name}</span>
+                        {ch.type === 'voice' && ch.voiceMembers.length > 0 && (
+                          <span className="rounded-full px-1.5 py-0.5 text-[9px]" style={{ background: 'rgba(34,197,94,0.2)', color: '#22c55e' }}>{ch.voiceMembers.length}</span>
+                        )}
+                      </button>
+                      {ch.type === 'voice' && ch.voiceMembers.map((m) => (
+                        <p key={m.id} className="truncate pl-9 pr-2 text-[11px]" style={{ color: C.t3 }} translate="no">{m.name}</p>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            {/* User bar */}
+            <div className="flex shrink-0 items-center gap-2 border-t px-3 py-2.5" style={{ borderColor: C.border, background: 'rgba(0,0,0,0.08)' }}>
+              <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold text-white" style={{ background: C.accent }} translate="no">{me?.name?.[0]}</div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[11px] font-semibold" style={{ color: C.t1 }} translate="no">{me?.name}</p>
+                {voiceChannel ? <p className="text-[9px]" style={{ color: '#22c55e' }}>● В голосовом</p> : <p className="text-[9px]" style={{ color: C.t3 }}>В сети</p>}
+              </div>
+              {voiceChannel && (
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => vp.toggleMic()} title={me2?.muted ? 'Включить микрофон' : 'Выключить микрофон'}
+                    className="grid h-6 w-6 place-items-center rounded"
+                    style={{ color: me2?.muted ? 'var(--red)' : C.t3, background: me2?.muted ? 'rgba(239,68,68,0.2)' : 'transparent' }}>
+                    {me2?.muted ? <MicOff size={13} /> : <Mic size={13} />}
+                  </button>
+                  <button type="button" onClick={leaveVoice} title="Выйти из голосового" className="grid h-6 w-6 place-items-center rounded" style={{ color: 'var(--red)' }}><PhoneOff size={13} /></button>
                 </div>
               )}
-              {msgs.map((msg, i) => {
-                const prev = msgs[i-1];
-                const grouped = prev && prev.authorId === msg.authorId && msg.timestamp - prev.timestamp < 300000;
-                const color = server ? roleColor(server, msg.authorId) : C.t1;
-                return (
-                  <div key={msg.id} className={grouped ? 'flex gap-2.5 hover:bg-white/[0.02] rounded-lg px-2 py-0.5 -mx-2' : 'flex gap-2.5'}>
-                    {!grouped && (
-                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold text-white mt-0.5"
-                        style={{ background:`${color}30` }}>
-                        {msg.authorName[0]}
-                      </div>
-                    )}
-                    {grouped && <div className="w-8 shrink-0"/>}
-                    <div className="flex-1 min-w-0">
-                      {!grouped && (
-                        <div className="flex items-baseline gap-2 mb-0.5">
-                          <span className="text-sm font-bold" style={{ color }}>{msg.authorName}</span>
-                          <span className="text-[10px]" style={{ color:C.t3 }}>{fmtTime(msg.timestamp)}</span>
-                        </div>
-                      )}
-                      <p className="text-sm leading-relaxed" style={{ color:C.t1 }}>{msg.text}</p>
-                    </div>
-                  </div>
-                );
-              })}
-              <div ref={msgEndRef}/>
             </div>
+          </div>
+        )}
 
-            {/* Input */}
-            <div className="px-4 py-3 shrink-0">
-              <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
-                style={{ background:C.input, border:`1px solid ${C.border}` }}>
-                <input value={draft} onChange={e=>setDraft(e.target.value)}
-                  onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();} }}
-                  placeholder={`Сообщение в #${channel?.name}`}
-                  className="flex-1 bg-transparent text-sm outline-none"
-                  style={{ color:C.t1 }}/>
-                <motion.button whileTap={{ scale:.9 }} type="button" onClick={send} disabled={!draft.trim()}>
-                  <Send size={16} style={{ color:draft.trim()?C.accent:C.t3 }}/>
-                </motion.button>
+        {/* -- Main content ----------------------------------- */}
+        {showChat && (
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {isMobile && server && (
+            <button type="button" onClick={() => setPane('channels')}
+              className="flex shrink-0 items-center gap-1 border-b px-3 py-2 text-xs font-semibold" style={{ borderColor: C.border, color: C.accent }}>
+              <ChevronLeft size={14} /> Каналы
+            </button>
+          )}
+          {!server ? (
+            <div className="flex flex-1 items-center justify-center px-6 text-center text-sm" style={{ color: C.t3 }}>
+              {loaded ? 'Выберите сервер слева.' : 'Загрузка…'}
+            </div>
+          ) : voiceView && voiceChannel ? (
+            <div className="flex flex-1 flex-col items-center gap-4 overflow-y-auto px-4 py-6">
+              <Volume2 size={40} style={{ color: '#22c55e', opacity: .7 }} />
+              <p className="text-base font-bold" style={{ color: C.t1 }} translate="no">{voiceChannel.name}</p>
+              {!vp.micReady && <p className="text-center text-[11px]" style={{ color: C.t3 }}>Разрешите доступ к микрофону, чтобы вас слышали.</p>}
+              <div className="w-full space-y-1.5">
+                {(voiceRoom?.participants ?? []).map((p) => (
+                  <div key={p.id} className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: C.input, outline: p.speaking ? '2px solid #22c55e' : 'none' }}>
+                    <div className="grid h-7 w-7 place-items-center rounded-full text-xs font-bold text-white" style={{ background: p.avatarColor }} translate="no">{p.name[0]}</div>
+                    <span className="flex-1 truncate text-sm" style={{ color: C.t1 }} translate="no">{p.name}</span>
+                    {p.muted && <MicOff size={13} style={{ color: 'var(--red)' }} />}
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => vp.toggleMic()} className="flex flex-col items-center gap-1.5">
+                  <div className="grid h-12 w-12 place-items-center rounded-full" style={{ background: me2?.muted ? 'rgba(239,68,68,0.2)' : C.input }}>
+                    {me2?.muted ? <MicOff size={22} style={{ color: 'var(--red)' }} /> : <Mic size={22} style={{ color: C.t2 }} />}
+                  </div>
+                  <span className="text-[10px]" style={{ color: C.t3 }}>{me2?.muted ? 'Включить' : 'Выключить'}</span>
+                </button>
+                <button type="button" onClick={leaveVoice} className="flex flex-col items-center gap-1.5">
+                  <div className="grid h-12 w-12 place-items-center rounded-full" style={{ background: 'rgba(239,68,68,0.15)' }}><PhoneOff size={22} style={{ color: 'var(--red)' }} /></div>
+                  <span className="text-[10px]" style={{ color: C.t3 }}>Выйти</span>
+                </button>
               </div>
             </div>
-          </>
+          ) : voiceView ? (
+            <div className="flex flex-1 items-center justify-center text-sm" style={{ color: C.t3 }}>Подключение к голосовому каналу…</div>
+          ) : (
+            <>
+              <div className="flex shrink-0 items-center gap-2 border-b px-4 py-3" style={{ borderColor: C.border }}>
+                <Hash size={16} style={{ color: C.t3 }} />
+                <p className="text-sm font-bold" style={{ color: C.t1 }} translate="no">{channel?.name ?? 'канал'}</p>
+                <div className="flex-1" />
+                <button type="button" onClick={() => setModal('members')} className="flex items-center gap-1" style={{ color: C.t3 }}>
+                  <Users size={13} /><span className="text-[10px]">{server.members}</span>
+                </button>
+              </div>
+
+              <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4" style={{ scrollbarWidth: 'none' }}>
+                {channelId && gs.hasMore[channelId] && (
+                  <button type="button" onClick={() => void gs.loadOlder()} className="mx-auto block text-xs font-semibold" style={{ color: C.accent }}>Показать более ранние</button>
+                )}
+                {msgs.length === 0 && (
+                  <div className="flex flex-col items-center gap-2 py-8 opacity-60">
+                    <Hash size={32} style={{ color: C.t3 }} />
+                    <p className="text-sm" style={{ color: C.t3 }}>Здесь пока тихо. Напишите первым.</p>
+                  </div>
+                )}
+                {msgs.map((msg, i) => {
+                  const prev = msgs[i - 1];
+                  const grouped = prev && prev.authorId === msg.authorId && new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime() < 300000;
+                  const color = roleColor(msg.authorId);
+                  const canDelete = msg.authorId === currentUserId || isStaff;
+                  return (
+                    <div key={msg.id} className="group flex gap-2.5">
+                      {grouped ? <div className="w-8 shrink-0" /> : (
+                        <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold" style={{ background: `${color === C.t1 ? 'rgba(88,101,242,.25)' : color}`, color: C.t1 }} translate="no">{msg.authorName[0]}</div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        {!grouped && (
+                          <div className="mb-0.5 flex items-baseline gap-2">
+                            <span className="text-sm font-bold" style={{ color }} translate="no">{msg.authorName}</span>
+                            <span className="text-[10px]" style={{ color: C.t3 }}>{fmtTime(msg.createdAt)}</span>
+                          </div>
+                        )}
+                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed" style={{ color: C.t1 }} translate="no">{msg.text}</p>
+                      </div>
+                      {canDelete && (
+                        <button type="button" onClick={() => void gs.removeMessage(msg.id)} aria-label="Удалить сообщение"
+                          className="self-start opacity-40 hover:opacity-100" style={{ color: C.t3 }}><Trash2 size={13} /></button>
+                      )}
+                    </div>
+                  );
+                })}
+                <div ref={endRef} />
+              </div>
+
+              <div className="shrink-0 px-4 py-3">
+                {channel?.type === 'announce' && !isStaff ? (
+                  <p className="text-center text-xs" style={{ color: C.t3 }}>В этот канал пишут только владелец и модераторы.</p>
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: C.input, border: `1px solid ${C.border}` }}>
+                    <input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={2000}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+                      placeholder={`Сообщение в #${channel?.name ?? ''}`} className="flex-1 bg-transparent text-sm outline-none" style={{ color: C.t1 }} />
+                    <motion.button whileTap={{ scale: .9 }} type="button" onClick={() => void send()} disabled={!draft.trim()} aria-label="Отправить">
+                      <Send size={16} style={{ color: draft.trim() ? C.accent : C.t3 }} />
+                    </motion.button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
         )}
       </div>
-    </div>
 
-  {/* Create Channel Modal */}
-  {showCreateCh && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-      onClick={() => setShowCreateCh(false)}>
-      <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl p-5 space-y-4" style={{ background:'var(--bg-l3)', border:'1px solid rgba(255,255,255,0.1)' }}
-        onClick={e => e.stopPropagation()}>
-        <p className="text-base font-bold" style={{ color: C.t1 }}>Создать канал</p>
-        <div className="grid grid-cols-2 gap-2">
-          {(['text','voice'] as const).map(t => (
-            <button key={t} type="button" onClick={() => setNewChType(t)}
-              className="rounded-xl p-3 text-center transition-all"
-              style={{ background: newChType===t ? 'rgba(88,101,242,0.15)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${newChType===t ? 'rgba(88,101,242,0.5)' : 'rgba(255,255,255,0.08)'}`,
-                color: newChType===t ? C.accent : C.t3 }}>
-              <div className="text-xl mb-1">{t==='text'?'#':'🔊'}</div>
-              <div className="text-xs font-semibold">{t==='text'?'Текстовый':'Голосовой'}</div>
-            </button>
-          ))}
-        </div>
-        <input value={newChName} onChange={e=>setNewChName(e.target.value)}
-          onKeyDown={e=>e.key==='Enter'&&handleCreateChannel()}
-          placeholder="Название канала" autoFocus
-          className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-          style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', color:C.t1 }}/>
-        <div className="flex gap-2">
-          <button type="button" onClick={()=>setShowCreateCh(false)}
-            className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
-            style={{ background:'rgba(255,255,255,0.06)', color:C.t3 }}>Отмена</button>
-          <button type="button" onClick={handleCreateChannel} disabled={!newChName.trim()}
-            className="flex-1 rounded-xl py-2.5 text-sm font-bold text-white disabled:opacity-40"
-            style={{ background: C.accent }}>Создать</button>
-        </div>
-      </div>
-    </div>
-  )}
+      {modal === 'server' && serverModal()}
 
-  {/* Create Server Modal */}
-  {showCreateSrv && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-      onClick={() => setShowCreateSrv(false)}>
-      <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl p-5 space-y-4" style={{ background:'var(--bg-l3)', border:'1px solid rgba(255,255,255,0.1)' }}
-        onClick={e => e.stopPropagation()}>
-        <p className="text-base font-bold" style={{ color: C.t1 }}>Создать сервер</p>
-        <div className="flex gap-2 flex-wrap">
-          {['🎮','🔫','🏆','⚔️','🎯','🎲','🌟','🔥'].map(ico => (
-            <button key={ico} type="button" onClick={()=>setNewSrvIcon(ico)}
-              className="w-10 h-10 rounded-xl text-xl grid place-items-center transition-all"
-              style={{ background: newSrvIcon===ico ? 'rgba(88,101,242,0.2)' : 'rgba(255,255,255,0.05)',
-                border: `1px solid ${newSrvIcon===ico ? 'rgba(88,101,242,0.5)' : 'transparent'}` }}>
-              {ico}
+      {modal === 'channel' && (
+        <Modal title="Создать канал" onClose={() => setModal(null)}>
+          <div className="grid grid-cols-3 gap-2">
+            {([['text', '#', 'Текстовый'], ['voice', '🔊', 'Голосовой'], ['announce', '📢', 'Объявления']] as const).map(([t, ico, label]) => (
+              <button key={t} type="button" onClick={() => setChType(t)} className="rounded-xl p-2.5 text-center"
+                style={{ background: chType === t ? 'rgba(88,101,242,0.15)' : C.input, border: `1px solid ${chType === t ? C.accent : C.border}`, color: chType === t ? C.accent : C.t3 }}>
+                <div className="mb-1 text-lg">{ico}</div><div className="text-[10px] font-semibold">{label}</div>
+              </button>
+            ))}
+          </div>
+          <input value={chName} onChange={(e) => setChName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void submitChannel()}
+            placeholder="Название канала" autoFocus maxLength={32} className={inputCls} style={inputStyle} translate="no" />
+          <button type="button" onClick={() => void submitChannel()} disabled={!chName.trim() || busy}
+            className="w-full rounded-xl py-2.5 text-sm font-bold text-white disabled:opacity-40" style={{ background: C.accent }}>Создать</button>
+        </Modal>
+      )}
+
+      {modal === 'members' && detail && (
+        <Modal title={`Участники · ${detail.members.length}`} onClose={() => setModal(null)}>
+          <div className="space-y-1.5">
+            {detail.members.map((m) => (
+              <div key={m.id} className="flex items-center gap-2 rounded-xl px-2.5 py-2" style={{ background: C.input }}>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-bold" style={{ color: roleColor(m.id) }} translate="no">{m.name}</p>
+                  <p className="text-[10px]" style={{ color: C.t3 }}>{m.role === 'owner' ? 'Владелец' : m.role === 'moderator' ? 'Модератор' : 'Участник'}</p>
+                </div>
+                {m.role === 'owner' && <Crown size={13} style={{ color: 'var(--amber)' }} />}
+                {m.role === 'moderator' && <Shield size={13} style={{ color: '#22c55e' }} />}
+                {isStaff && m.role !== 'owner' && m.id !== currentUserId && (server?.myRole === 'owner' || m.role === 'member') && (
+                  <div className="flex gap-1">
+                    {server?.myRole === 'owner' && (
+                      <button type="button" onClick={() => void manage(m, m.role === 'moderator' ? 'unmod' : 'mod')}
+                        className="rounded-lg px-2 py-1 text-[10px] font-semibold" style={{ background: C.sidebar, color: C.t2 }}>{m.role === 'moderator' ? 'Снять' : 'В модеры'}</button>
+                    )}
+                    <button type="button" onClick={() => void manage(m, 'kick')} className="rounded-lg px-2 py-1 text-[10px] font-semibold" style={{ background: C.sidebar, color: 'var(--red)' }}>Исключить</button>
+                    <button type="button" onClick={() => void manage(m, 'ban')} className="rounded-lg px-2 py-1 text-[10px] font-semibold" style={{ background: C.sidebar, color: 'var(--red)' }}>Бан</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      {modal === 'menu' && server && detail && (
+        <Modal title={server.name} onClose={() => setModal(null)}>
+          {server.description && <p className="text-xs" style={{ color: C.t2 }} translate="no">{server.description}</p>}
+          <p className="text-[11px]" style={{ color: C.t3 }}>
+            {server.isPublic ? 'Открытый сервер' : 'Закрытый сервер'} · {server.members} {memberWord(server.members)}
+          </p>
+          {isStaff && server.inviteCode && (
+            <button type="button" onClick={() => void copyInvite()} className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm"
+              style={{ background: C.input, color: C.t1 }}>
+              <span>Код приглашения: <b className="tracking-widest">{server.inviteCode}</b></span><Copy size={14} />
             </button>
-          ))}
-        </div>
-        <input value={newSrvName} onChange={e=>setNewSrvName(e.target.value)}
-          onKeyDown={e=>e.key==='Enter'&&handleCreateServer()}
-          placeholder="Название сервера" autoFocus
-          className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
-          style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', color:C.t1 }}/>
-        <div className="flex gap-2">
-          <button type="button" onClick={()=>setShowCreateSrv(false)}
-            className="flex-1 rounded-xl py-2.5 text-sm font-semibold"
-            style={{ background:'rgba(255,255,255,0.06)', color:C.t3 }}>Отмена</button>
-          <button type="button" onClick={handleCreateServer} disabled={!newSrvName.trim()}
-            className="flex-1 rounded-xl py-2.5 text-sm font-bold text-white disabled:opacity-40"
-            style={{ background: C.accent }}>Создать</button>
-        </div>
-      </div>
-    </div>
-  )}
-  </>
+          )}
+          <button type="button" onClick={() => setModal('members')} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm" style={{ background: C.input, color: C.t1 }}>
+            <Search size={14} /> Участники
+          </button>
+          {isStaff && channel && channel.type !== 'voice' && (
+            <button type="button" onClick={async () => { setModal(null); await gs.removeChannel(channel.id); }}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm" style={{ background: C.input, color: 'var(--red)' }}>
+              <Trash2 size={14} /> Удалить канал #{channel.name}
+            </button>
+          )}
+          {server.myRole === 'owner' ? (
+            <button type="button" onClick={async () => { if (window.confirm('Удалить сервер вместе со всеми каналами и перепиской? Это нельзя отменить.')) { setModal(null); await gs.destroy(); } }}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold" style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}>
+              <Trash2 size={14} /> Удалить сервер
+            </button>
+          ) : (
+            <button type="button" onClick={async () => { setModal(null); await gs.leave(); }}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold" style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}>
+              <LogOut size={14} /> Покинуть сервер
+            </button>
+          )}
+        </Modal>
+      )}
+    </>
   );
 };

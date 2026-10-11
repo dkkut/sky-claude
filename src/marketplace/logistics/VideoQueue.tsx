@@ -9,6 +9,7 @@
  * отдаёт только сотруднику, и решение принимает тоже он — нажатие
  * постороннего вернётся отказом.
  */
+import { ReviewVideo } from './ReviewVideo';
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Check, X, ShieldOff } from 'lucide-react';
 import { C, fmtTs } from '@/marketplace/SkyMarket';
@@ -91,8 +92,7 @@ export const VideoQueue = () => {
           </div>
           {r.subjectCity && <p className="text-[10px]" style={{ color: C.t3 }}>{r.subjectCity}</p>}
 
-          <video src={videoUrl(r.id)} controls preload="metadata"
-            className="mt-2 w-full rounded-xl" style={{ maxHeight: 260, background: '#000' }} />
+          <ReviewVideo id={r.id} />
 
           <input value={reason[r.id] ?? ''} onChange={(e) => setReason((w) => ({ ...w, [r.id]: e.target.value }))}
             placeholder="Причина отказа — обязательна при отклонении"
