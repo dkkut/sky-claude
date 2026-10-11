@@ -1,0 +1,133 @@
+/**
+ * Sky GO — администрирование: заявки исполнителей, тарифы, подписки, заказы, споры, настройки, интеграции.
+ * Право `go` — работа с заявками, заказами и спорами; `go_finance` — тарифы и стоимость. Критические действия — в журнал
+ * администрации (цепочка с хешами) и в go_log.
+ */
+import { query } from './db.mjs';
+import { can } from './admin.mjs';
+import { logAdmin } from './adminsec.mjs';
+import { mapsSettings } from './maps.mjs';
+import { flightsStatus } from './goflights.mjs';
+import { fuelStatus } from './gofuel.mjs';
+import { clean, getSetting, setSetting, goLog, ROLES } from './gocore.mjs';
+import { orderView, resolveDispute } from './gopay.mjs';
+
+const KEYS = {
+  cities: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 200 && v.every((x) => typeof x === 'string' && x.trim().length >= 2 && x.length <= 60) ? v.map((x) => x.trim()) : null,
+  taxi_tariffs: (v) => {
+    if (!v || typeof v !== 'object') return null;
+    const out = {};
+    for (const [code, t] of Object.entries(v)) {
+      if (!/^[a-z_]{2,20}$/.test(code)) return null;
+      const n = (k) => Number(t?.[k]);
+      if (![n('base'), n('perKm'), n('perMin'), n('min')].every((x) => Number.isFinite(x) && x >= 0 && x <= 100000)) return null;
+      out[code] = { title: clean(t.title, 40) || code, base: n('base'), perKm: n('perKm'), perMin: n('perMin'), min: n('min') };
+    }
+    return Object.keys(out).length ? out : null;
+  },
+  delivery_tariff: (v) => {
+    const f = ['base', 'perKm', 'minRub', 'foodBase', 'foodPerKm', 'foodMin'];
+    if (!v || !f.every((k) => Number.isFinite(Number(v[k])) && Number(v[k]) >= 0 && Number(v[k]) <= 100000)) return null;
+    const sur = v.sizeSurcharge ?? {};
+    return { ...Object.fromEntries(f.map((k) => [k, Number(v[k])])), sizeSurcharge: { s: Number(sur.s) || 0, m: Number(sur.m) || 0, l: Number(sur.l) || 0 } };
+  },
+  payment_terms: (v) => {
+    const ok = (x) => ['before', 'after', 'on_accept', 'after_ride', 'after_delivery'].includes(x);
+    if (!v || !ok(v.taxi) || !ok(v.food) || !ok(v.delivery)) return null;
+    return { taxi: 'after_ride', food: v.food === 'before' || v.food === 'on_accept' ? 'before' : 'after', delivery: v.delivery === 'before' || v.delivery === 'on_accept' ? 'before' : 'after' };
+  },
+};
+
+export const getSettings = async (adminId) => {
+  if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
+  const out = {};
+  for (const k of Object.keys(KEYS)) out[k] = await getSetting(k, null);
+  const t = await query('SELECT code, title, price_rub, period_days FROM go_tariffs ORDER BY code');
+  const rt = await query('SELECT role, tariff_code FROM go_role_tariff');
+  return { settings: out, tariffs: t.rows.map((r) => ({ code: r.code, title: r.title, priceRub: r.price_rub, periodDays: r.period_days })), roleTariff: Object.fromEntries(rt.rows.map((r) => [r.role, r.tariff_code])) };
+};
+
+export const putSetting = async (adminId, key, value) => {
+  if (!(await can(adminId, 'go_finance'))) return { error: 'not_allowed' };
+  if (!KEYS[key]) return { error: 'bad_key' };
+  const v = KEYS[key](value);
+  if (v === null) return { error: 'invalid_value' };
+  await setSetting(key, v, adminId);
+  await logAdmin({ actorId: adminId, type: 'go_setting', targetType: 'system', targetId: key, detail: JSON.stringify(v).slice(0, 180) });
+  await goLog(adminId, 'setting', key, {});
+  return { ok: true };
+};
+
+export const putTariff = async (adminId, code, { priceRub, periodDays, title }) => {
+  if (!(await can(adminId, 'go_finance'))) return { error: 'not_allowed' };
+  const price = Number(priceRub); const days = Number(periodDays);
+  if (!Number.isInteger(price) || price < 0 || price > 100000) return { error: 'bad_price' };
+  if (!Number.isInteger(days) || days < 1 || days > 366) return { error: 'bad_period' };
+  const { rows } = await query('SELECT price_rub, period_days FROM go_tariffs WHERE code = $1', [String(code ?? '')]);
+  if (!rows[0]) return { error: 'not_found' };
+  await query('UPDATE go_tariffs SET price_rub = $2, period_days = $3, title = COALESCE(NULLIF($4, \'\'), title), updated_at = now(), updated_by = $5 WHERE code = $1', [code, price, days, clean(title, 80), adminId]);
+  await logAdmin({ actorId: adminId, type: 'go_tariff', targetType: 'system', targetId: code, detail: `${rows[0].price_rub}→${price} ₽, ${rows[0].period_days}→${days} дн.` });
+  await goLog(adminId, 'tariff', code, { from: rows[0].price_rub, to: price });
+  return { ok: true };
+};
+
+export const putRoleTariff = async (adminId, role, code) => {
+  if (!(await can(adminId, 'go_finance'))) return { error: 'not_allowed' };
+  if (!ROLES.includes(role)) return { error: 'bad_role' };
+  const { rows } = await query('SELECT 1 FROM go_tariffs WHERE code = $1', [String(code ?? '')]);
+  if (!rows[0]) return { error: 'not_found' };
+  await query('UPDATE go_role_tariff SET tariff_code = $2 WHERE role = $1', [role, code]);
+  await logAdmin({ actorId: adminId, type: 'go_role_tariff', targetType: 'system', targetId: role, detail: code });
+  return { ok: true };
+};
+
+export const listSubscriptions = async (adminId, { q, limit } = {}) => {
+  if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
+  const args = [];
+  let where = '';
+  if (q) { args.push(`%${clean(q, 40).toLowerCase()}%`); where = `WHERE lower(p.username) LIKE $1 OR lower(p.name) LIKE $1`; }
+  args.push(Math.min(Math.max(Number(limit) || 100, 1), 300));
+  const { rows } = await query(
+    `SELECT s.profile_id, s.role, p.username, p.name, max(s.expires_at) AS until, count(*)::int AS payments, sum(s.price_rub)::int AS total
+       FROM go_subscriptions s JOIN profiles p ON p.id = s.profile_id ${where}
+      GROUP BY s.profile_id, s.role, p.username, p.name ORDER BY until DESC LIMIT $${args.length}`, args);
+  return { items: rows.map((r) => ({ profileId: r.profile_id, role: r.role, username: r.username, name: r.name, expiresAt: r.until.toISOString(), active: r.until > new Date(), payments: r.payments, totalRub: r.total })) };
+};
+
+export const listOrders = async (adminId, { kind, status, q, limit } = {}) => {
+  if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
+  const args = []; const where = [];
+  if (['taxi', 'food', 'delivery'].includes(kind)) { args.push(kind); where.push(`o.kind = $${args.length}`); }
+  if (status && /^[a-z_]{3,24}$/.test(status)) { args.push(status); where.push(`o.status = $${args.length}`); }
+  if (q) { args.push(`%${clean(q, 40).toLowerCase()}%`); where.push(`(lower(o.id) LIKE $${args.length} OR lower(c.username) LIKE $${args.length})`); }
+  args.push(Math.min(Math.max(Number(limit) || 100, 1), 300));
+  const { rows } = await query(
+    `SELECT o.*, c.username AS cu FROM go_orders o JOIN profiles c ON c.id = o.customer_id ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY o.created_at DESC LIMIT $${args.length}`, args);
+  return { items: rows.map((r) => ({ id: r.id, kind: r.kind, status: r.status, priceRub: r.price_rub, city: r.city, customer: r.cu, executorId: r.executor_id, createdAt: r.created_at.toISOString() })) };
+};
+
+export const orderDetail = async (adminId, id) => {
+  if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
+  const { rows } = await query('SELECT * FROM go_orders WHERE id = $1', [String(id ?? '')]);
+  if (!rows[0]) return { error: 'not_found' };
+  await goLog(adminId, 'order_view', id, {});
+  return { order: await orderView(rows[0], adminId, { events: true, staff: true }) };
+};
+
+export const adminResolve = resolveDispute;
+
+export const integrations = async (adminId) => {
+  if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
+  return { maps: { ...mapsSettings(), note: 'Геокодирование и маршруты: GOOGLE_MAPS_KEY (серверный ключ).' },
+    flights: flightsStatus(), fuel: fuelStatus(),
+    push: { note: 'Пуши: VAPID_* / FCM — см. раздел уведомлений.' } };
+};
+
+export const overview = async (adminId) => {
+  if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
+  const { rows: ex } = await query(`SELECT status, count(*)::int AS n FROM go_executors GROUP BY status`);
+  const { rows: ord } = await query(`SELECT kind, status, count(*)::int AS n FROM go_orders WHERE created_at > now() - interval '30 days' GROUP BY kind, status`);
+  const { rows: sub } = await query(`SELECT count(DISTINCT (profile_id, role))::int AS active FROM go_subscriptions WHERE expires_at > now()`);
+  return { executors: Object.fromEntries(ex.map((r) => [r.status, r.n])), orders30d: ord, activeSubscriptions: sub[0].active };
+};

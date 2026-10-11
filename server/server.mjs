@@ -52,6 +52,10 @@ import { familyRoutes } from './routes/family.mjs';
 import { adminChannelRoutes } from './routes/adminchannels.mjs';
 import { contentModRoutes } from './routes/contentmod.mjs';
 import { adminGateRoutes } from './routes/admingate.mjs';
+import { goRoutes } from './routes/go.mjs';
+import { goAdminRoutes } from './routes/goadmin.mjs';
+import { sweepExpired as goSweepExpired } from './gosubs.mjs';
+import { sweepFuel as goSweepFuel } from './gofuel.mjs';
 import { runWithSession } from './reqctx.mjs';
 import { readAccessToken } from './http.mjs';
 import { sweepAdminGate } from './admingate.mjs';
@@ -138,7 +142,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes];
+                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, goAdminRoutes, goRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -548,6 +552,8 @@ const start = async () => {
       // подтверждена не глядя.
       await sweepStepUp();
       await sweepAdminGate();
+      await goSweepExpired().catch(() => {});
+      await goSweepFuel().catch(() => {});
       const staleRequests = await sweepPendingActions();
       if (staleRequests) console.log(`[админ] просрочено заявок: ${staleRequests}`);
       // Запуск рассылки, зависший в processing дольше окна (сервер упал

@@ -20,7 +20,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -46,6 +46,8 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   blox_moderation: 'Модерация Sky Blox',
   blox_finance: 'Финансы Sky Blox',
   analytics: 'Мониторинг и аналитика',
+  go: 'Sky GO',
+  go_finance: 'Тарифы Sky GO',
 };
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -70,6 +72,8 @@ export const ROLE_LABEL: Record<string, string> = {
   garant_admin: 'Sky Garant',
   notifications_admin: 'Рассылки',
   kutrent_market_admin: 'KutRent Market',
+  go_admin: 'Sky GO: администратор',
+  go_finance_staff: 'Sky GO: тарифы',
   read_only_admin: 'Только чтение',
 };
 

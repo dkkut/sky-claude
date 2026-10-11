@@ -38,6 +38,8 @@ export const PERMISSIONS = [
   'blox_moderation', // Sky Blox: очередь проверки, жалобы, апелляции
   'blox_finance',    // Sky Blox: вознаграждения, возвраты, заявки на выплату
   'analytics',       // мониторинг и аналитика платформы: онлайн, сделки, покупки, здоровье сервера
+  'go',              // Sky GO: заявки исполнителей, подписки, заказы, споры, интеграции
+  'go_finance',      // Sky GO: тарифы активации и параметры стоимости
 ];
 
 /**
@@ -78,6 +80,8 @@ export const ROLES = {
   // не подключена касса) остаётся за 'finance' и двумя ключами — эта
   // роль только смотрит пользователей и заказы.
   kutrent_market_admin: ['kutrent_market'],
+  go_admin:        ['go', 'support'],
+  go_finance_staff:['go_finance'],
   read_only_admin: [],
 };
 
@@ -104,5 +108,7 @@ export const ROLE_LABEL = {
   garant_admin: 'Sky Garant',
   notifications_admin: 'Рассылки',
   kutrent_market_admin: 'KutRent Market',
+  go_admin: 'Sky GO: администратор',
+  go_finance_staff: 'Sky GO: тарифы',
   read_only_admin: 'Только чтение',
 };
