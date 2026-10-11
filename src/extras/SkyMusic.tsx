@@ -1695,6 +1695,10 @@ const hslMid  = (h:number) => `hsl(${(h+35)%360},55%,45%)`;
 const hslDark = (h:number) => `hsl(${h},55%,12%)`;
 const hslDk2  = (h:number) => `hsl(${(h+40)%360},45%,8%)`;
 const hslGlow = (h:number) => `hsl(${h},58%,36%)`;
+/** hsl(...) + две шестнадцатеричные цифры прозрачности → hsla(...). Дописанное к hsl() «55»
+ *  (`hsl(...)55`) — недопустимый цвет, браузер его отбрасывал: ни свечения, ни подложки. */
+const hslA = (color: string, hex: string) =>
+  color.replace(/^hsl\((.*)\)$/, (_m, inner) => `hsla(${inner},${(parseInt(hex, 16) / 255).toFixed(2)})`);
 
 /**
  * Разбор текста песни. Поддерживаются метки времени в общепринятом
@@ -1972,7 +1976,7 @@ const SkyFullPlayer = ({
       {/* Glow */}
       <div className="absolute pointer-events-none" style={{
         top:'-10%', left:'15%', width:'70%', height:'55%', zIndex:1,
-        background:`radial-gradient(ellipse, ${hslGlow(h)}50 0%, transparent 70%)`,
+        background:`radial-gradient(ellipse, ${hslA(hslGlow(h),'50')} 0%, transparent 70%)`,
         filter:'blur(64px)', transition:'background 1.1s ease',
       }}/>
       {/* Grain */}
@@ -1995,18 +1999,18 @@ const SkyFullPlayer = ({
             onClick={() => { setShowLyrics(v=>!v); setShowQueue(false); }}
             className="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors"
             style={{
-              background: showLyrics&&!showQueue ? `${hslAcc(h)}22` : 'rgba(255,255,255,0.06)',
+              background: showLyrics&&!showQueue ? `${hslA(hslAcc(h),'22')}` : 'rgba(255,255,255,0.06)',
               color: showLyrics&&!showQueue ? hslAcc(h) : 'rgba(255,255,255,0.5)',
-              border: `1px solid ${showLyrics&&!showQueue ? hslAcc(h)+'55' : 'rgba(255,255,255,0.1)'}`,
+              border: `1px solid ${showLyrics&&!showQueue ? hslA(hslAcc(h),'55') : 'rgba(255,255,255,0.1)'}`,
               cursor:'pointer',
             }}>Текст</button>
           <button type="button"
             onClick={() => { setShowQueue(v=>!v); setShowLyrics(false); }}
             className="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors"
             style={{
-              background: showQueue ? `${hslAcc(h)}22` : 'rgba(255,255,255,0.06)',
+              background: showQueue ? `${hslA(hslAcc(h),'22')}` : 'rgba(255,255,255,0.06)',
               color: showQueue ? hslAcc(h) : 'rgba(255,255,255,0.5)',
-              border:`1px solid ${showQueue ? hslAcc(h)+'55' : 'rgba(255,255,255,0.1)'}`,
+              border:`1px solid ${showQueue ? hslA(hslAcc(h),'55') : 'rgba(255,255,255,0.1)'}`,
               cursor:'pointer',
             }}>Очередь</button>
         </div>
@@ -2023,8 +2027,14 @@ const SkyFullPlayer = ({
       <div className="relative z-10 flex flex-1 min-h-0 overflow-hidden gap-0">
 
         {/* LEFT: Cover + Controls */}
+        {/* На телефоне панель «Текст/Очередь» — оверлей на всю область (absolute inset-0,
+            zIndex 2) и целиком перехватывала касания: кнопки плеера под ней «не работали».
+            Колонку с обложкой поднимаем над оверлеем, а сама колонка касаний не ловит
+            (pointer-events: none), кроме обложки с кнопками и блока названия — так
+            текст песни по-прежнему прокручивается там, где плеера нет. */}
         <div className="flex flex-col items-center shrink-0"
           style={{
+            ...(isMobile ? { position: 'relative', zIndex: 3, pointerEvents: 'none' as const } : {}),
             width: !isMobile && (showQueue || showLyrics) ? '40%' : '100%',
             minWidth: 280, maxWidth: 480,
             padding: isMobile ? '8px 20px 4px' : '12px 24px 8px',
@@ -2052,11 +2062,11 @@ const SkyFullPlayer = ({
           </AnimatePresence>
 
           {/* Cover with overlaid controls */}
-          <div style={{position:'relative', width:'100%', maxWidth: isMobile ? 260 : 300, aspectRatio:'1'}}>
+          <div style={{position:'relative', width:'100%', maxWidth: isMobile ? 260 : 300, aspectRatio:'1', pointerEvents:'auto'}}>
             {/* Glow behind */}
             <div className="absolute pointer-events-none" style={{
               inset:-24, borderRadius:'50%',
-              background:`radial-gradient(ellipse, ${hslGlow(h)}55 0%, transparent 65%)`,
+              background:`radial-gradient(ellipse, ${hslA(hslGlow(h),'55')} 0%, transparent 65%)`,
               filter:'blur(28px)', zIndex:0,
             }}/>
             <AnimatePresence mode="wait">
@@ -2068,7 +2078,7 @@ const SkyFullPlayer = ({
                 style={{
                   position:'relative',zIndex:1,
                   borderRadius:22,overflow:'hidden',
-                  boxShadow:`0 36px 80px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.07), 0 10px 40px ${hslGlow(h)}55`,
+                  boxShadow:`0 36px 80px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.07), 0 10px 40px ${hslA(hslGlow(h),'55')}`,
                   width:'100%', aspectRatio:'1',
                 }}>
                 {/* Cover art */}
@@ -2119,7 +2129,7 @@ const SkyFullPlayer = ({
                       width:62,height:62,borderRadius:'50%',display:'grid',placeItems:'center',
                       background:`linear-gradient(135deg,${hslAcc(h)},${hslMid(h)})`,
                       border:'none',cursor:'pointer',
-                      boxShadow:`0 6px 30px ${hslGlow(h)}80`,
+                      boxShadow:`0 6px 30px ${hslA(hslGlow(h),'80')}`,
                     }}>
                       {playing
                         ? <Pause size={24} color="white"/>
@@ -2167,7 +2177,7 @@ const SkyFullPlayer = ({
           </div>
 
           {/* Progress */}
-          <div style={{width:'100%',maxWidth:300,marginTop:18,padding:'0 2px'}}>
+          <div style={{width:'100%',maxWidth:300,marginTop:18,padding:'0 2px',pointerEvents:'auto'}}>
             <div
               onClick={handleSeekClick}
               onMouseDown={()=>setSeeking(true)}
@@ -2195,7 +2205,7 @@ const SkyFullPlayer = ({
           </div>
 
           {/* Volume */}
-          <div style={{
+          <div style={{pointerEvents:'auto',
             display:'flex',alignItems:'center',gap:10,marginTop:10,
             width:'100%',maxWidth:300,padding:'0 2px',
           }}>
@@ -2229,7 +2239,7 @@ const SkyFullPlayer = ({
               transition={{duration:0.25}}
               style={isMobile ? {
                 position:'absolute', inset:0, zIndex:2,
-                background:`linear-gradient(180deg, ${hslDk2(h)}f2 0%, ${hslDark(h)}f5 100%)`,
+                background:`linear-gradient(180deg, ${hslA(hslDk2(h),'f2')} 0%, ${hslA(hslDark(h),'f5')} 100%)`,
                 display:'flex', flexDirection:'column',
                 padding:'64px 20px calc(var(--safe-bottom) + 20px)', overflow:'hidden',
               } : {
@@ -2253,11 +2263,11 @@ const SkyFullPlayer = ({
                           style={{
                             display:'flex',alignItems:'center',gap:14,padding:'10px 12px',
                             borderRadius:14,marginBottom:4,cursor:'pointer',
-                            background: isActive ? `${hslAcc(th)}18` : 'transparent',
-                            border:`1px solid ${isActive ? hslAcc(th)+'40' : 'transparent'}`,
+                            background: isActive ? `${hslA(hslAcc(th),'18')}` : 'transparent',
+                            border:`1px solid ${isActive ? hslA(hslAcc(th),'40') : 'transparent'}`,
                           }}>
                           <div style={{width:44,height:44,borderRadius:10,overflow:'hidden',flexShrink:0,
-                            boxShadow:isActive?`0 4px 16px ${hslGlow(th)}55`:'none',
+                            boxShadow:isActive?`0 4px 16px ${hslA(hslGlow(th),'55')}`:'none',
                             background: t.coverUrl?undefined:`linear-gradient(135deg,${tc1},${tc2})`,
                             position:'relative',display:'grid',placeItems:'center',
                           }}>
@@ -2304,7 +2314,7 @@ const SkyFullPlayer = ({
                     {lyricsCanEdit && !editingLyrics && (
                       <button type="button" onClick={openLyricsEditor}
                         className="shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-bold"
-                        style={{ background:`${hslAcc(h)}22`, color:hslAcc(h), border:`1px solid ${hslAcc(h)}55`, cursor:'pointer' }}>
+                        style={{ background:`${hslA(hslAcc(h),'22')}`, color:hslAcc(h), border:`1px solid ${hslA(hslAcc(h),'55')}`, cursor:'pointer' }}>
                         {lyricsRaw ? 'Изменить' : '+ Добавить текст'}
                       </button>
                     )}
@@ -2354,7 +2364,7 @@ const SkyFullPlayer = ({
                             lineHeight:1.3, margin:0,
                             letterSpacing: isActive?'-0.4px':'0',
                             transition:'all 0.3s ease',
-                            textShadow: isActive?`0 0 32px ${hslAcc(h)}90`:'none',
+                            textShadow: isActive?`0 0 32px ${hslA(hslAcc(h),'90')}`:'none',
                           }}>
                             {line.text==='...'
                               ? <span style={{letterSpacing:5,opacity:0.35}}>···</span>
