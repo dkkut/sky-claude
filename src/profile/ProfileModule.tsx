@@ -590,6 +590,8 @@ const SettingsSection = ({ logout, username, onOpen }: {
       <SectionBlock title="Интерфейс">
         <SettingsRow icon={Palette} label="Анимации" sub={s.animationsOn ? "Включены" : "Выключены"}
           right={<Toggle on={s.animationsOn} onToggle={() => set({ animationsOn: !s.animationsOn })}/>}/>
+        <SettingsRow icon={Sparkles} label="Заставка при запуске" sub={s.introAnim ? "Показывать анимацию" : "Сразу открывать приложение"}
+          right={<Toggle on={s.introAnim} onToggle={() => set({ introAnim: !s.introAnim })}/>}/>
         <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
         <SettingsRow icon={Settings} label="Компактный режим" sub={s.compactMode ? "Включён" : "Выключен"}
           right={<Toggle on={s.compactMode} onToggle={() => set({ compactMode: !s.compactMode })}/>}/>

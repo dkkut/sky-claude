@@ -42,6 +42,8 @@ export interface AppSettings {
   accent:          AccentColor;
   fontSize:        FontSize;
   animationsOn:    boolean;
+  /** Анимация-заставка при запуске приложения. */
+  introAnim:       boolean;
   compactMode:     boolean;
   // Уведомления
   soundMessages:   boolean;
@@ -71,6 +73,7 @@ const defaults: AppSettings = {
   accent:           'blue',
   fontSize:         'normal',
   animationsOn:     true,
+  introAnim:        true,
   compactMode:      false,
   soundMessages:    true,
   soundCalls:       true,

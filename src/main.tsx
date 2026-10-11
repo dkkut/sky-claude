@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSettings } from './settings/store';
 import ReactDOM from 'react-dom/client';
 import { AppShell }      from './app/AppShell';
 import { AuthScreen }    from './auth/AuthScreen';
@@ -152,7 +153,8 @@ const SplashCloud = ({ waving }: { waving: boolean }) => {
   );
 };
 
-const Splash = ({ offline }: { offline: boolean }) => {
+const Splash = ({ offline, minimal, onSkip }: { offline: boolean; minimal?: boolean; onSkip?: () => void }) => {
+  const light = useSettings((st) => st.settings.colorScheme === 'light');
   const [phase, setPhase] = useState(0);
   const [showOffline, setShowOffline] = useState(false);
 
@@ -174,14 +176,18 @@ const Splash = ({ offline }: { offline: boolean }) => {
   const shimmer     = phase >= 3;
 
   // Pre-compute all style values to avoid esbuild regex false-positives with slash chars
-  const GLOW_FULL  = 'drop-shadow(0 0 24px rgba(79,110,247,0.85))';
-  const GLOW_MID   = 'drop-shadow(0 0 14px rgba(79,110,247,0.5))';
-  const BG         = 'radial-gradient(ellipse 80% 60% at 50% 40%, #15152a 0%, #0d0d12 60%, #09090f 100%)';
-  const SHIMMER_GR = 'linear-gradient(90deg, #ededef 10%, #4f6ef7 35%, #a78bfa 55%, #ededef 80%)';
+  const GLOW_FULL  = `drop-shadow(0 0 24px rgba(79,110,247,${light ? 0.5 : 0.85}))`;
+  const GLOW_MID   = `drop-shadow(0 0 14px rgba(79,110,247,${light ? 0.3 : 0.5}))`;
+  const BG         = light
+    ? 'radial-gradient(ellipse 80% 60% at 50% 40%, #ffffff 0%, #f6f7fb 60%, #eceef6 100%)'
+    : 'radial-gradient(ellipse 80% 60% at 50% 40%, #15152a 0%, #0d0d12 60%, #09090f 100%)';
+  const SHIMMER_GR = light
+    ? 'linear-gradient(90deg, #1b1d2a 10%, #4f6ef7 35%, #a78bfa 55%, #1b1d2a 80%)'
+    : 'linear-gradient(90deg, #ededef 10%, #4f6ef7 35%, #a78bfa 55%, #ededef 80%)';
   const OFFLINE_GR = 'linear-gradient(90deg, #8a8a96 20%, #4f6ef7 45%, #8a8a96 70%)';
   const STRIPE     = 'linear-gradient(90deg, transparent, rgba(79,110,247,0.6), rgba(167,139,250,0.4), transparent)';
-  const PARTICLE_BG_EVEN = 'radial-gradient(circle, rgba(79,110,247,0.12) 0%, transparent 70%)';
-  const PARTICLE_BG_ODD  = 'radial-gradient(circle, rgba(167,139,250,0.08) 0%, transparent 70%)';
+  const PARTICLE_BG_EVEN = `radial-gradient(circle, rgba(79,110,247,${light ? 0.16 : 0.12}) 0%, transparent 70%)`;
+  const PARTICLE_BG_ODD  = `radial-gradient(circle, rgba(167,139,250,${light ? 0.14 : 0.08}) 0%, transparent 70%)`;
 
   const logoFilter: string = shimmer ? GLOW_FULL : logoVisible ? GLOW_MID : 'none';
   const logoTransform: string = logoVisible ? 'scale(1)' : 'scale(0.4)';
@@ -194,7 +200,7 @@ const Splash = ({ offline }: { offline: boolean }) => {
     WebkitTextFillColor: 'transparent',
     backgroundClip: 'text',
     animation: 'sky-shimmer 2.2s linear infinite',
-  } : { color: '#ededef' };
+  } : { color: light ? '#1b1d2a' : '#ededef' };
 
   const offlineTextStyle: React.CSSProperties = {
     display: 'block', fontSize: 12, fontWeight: 500,
@@ -210,10 +216,11 @@ const Splash = ({ offline }: { offline: boolean }) => {
   };
 
   return (
-    <div style={{ height:'100vh', display:'flex', flexDirection:'column',
+    <div onClick={onSkip} style={{ height:'100vh', display:'flex', flexDirection:'column',
       alignItems:'center', justifyContent:'center',
-      background: BG, overflow:'hidden', position:'relative' }}>
+      background: BG, overflow:'hidden', position:'relative', cursor: onSkip ? 'pointer' : undefined }}>
       <style>{SHIMMER_CSS}</style>
+      {minimal ? null : <>
 
       {/* Background particles */}
       <div style={{ position:'absolute', inset:0, pointerEvents:'none', overflow:'hidden' }}>
@@ -257,7 +264,8 @@ const Splash = ({ offline }: { offline: boolean }) => {
 
       {/* Mascot */}
       <div style={{ marginTop:18, opacity: textVisible ? 1 : 0,
-        transition:'opacity 0.8s ease 0.6s', zIndex:1, position:'relative' }}>
+        transition:'opacity 0.8s ease 0.6s', zIndex:1, position:'relative',
+        filter: light ? 'drop-shadow(0 6px 12px rgba(79,110,247,0.35))' : undefined }}>
         <SplashCloud waving={shimmer}/>
       </div>
 
@@ -265,7 +273,7 @@ const Splash = ({ offline }: { offline: boolean }) => {
       <div style={{ marginTop:6, opacity: textVisible ? 0.4 : 0,
         transition:'opacity 0.6s ease 0.3s',
         fontSize:11, letterSpacing:'0.12em', fontWeight:500,
-        color:'#8a8a96', textTransform:'uppercase',
+        color: light ? '#6b6e80' : '#8a8a96', textTransform:'uppercase',
         zIndex:1, position:'relative' }}>Sky v4.6</div>
 
       {/* Offline */}
@@ -276,6 +284,7 @@ const Splash = ({ offline }: { offline: boolean }) => {
       {/* Bottom stripe */}
       <div style={{ position:'absolute', bottom:0, left:0, right:0, height:2,
         background: STRIPE, opacity: shimmer ? 1 : 0, transition:'opacity 0.8s ease' }}/>
+      </>}
     </div>
   );
 };
@@ -358,10 +367,13 @@ const Root = () => {
     return () => { cancelled = true; };
   }, []);
 
+  const introAnim = useSettings((st) => st.settings.introAnim);
   useEffect(() => {
+    // Заставку можно выключить в настройках: тогда ждём только ответ сервера о сессии.
+    if (!introAnim) { setReady(true); return undefined; }
     const t = setTimeout(() => setReady(true), 2600);
     return () => clearTimeout(t);
-  }, []);
+  }, [introAnim]);
 
   // Ограничения решает сервер, поэтому спрашиваем его, а не смотрим в
   // сохранённый профиль: снятый бан должен действовать сразу, а
@@ -403,7 +415,7 @@ const Root = () => {
     watchRegionChanges(() => useAuthStore.getState().currentUserId);
   }, []);
 
-  if (!ready || !sessionChecked) return <Splash offline={offline} />;
+  if (!ready || !sessionChecked) return <Splash offline={offline} minimal={!introAnim} onSkip={introAnim ? () => setReady(true) : undefined} />;
 
   // Окно о документах всплывает поверх любого экрана до входа — беты,
   // входа, выбора профиля: согласие относится не к экрану, а к
