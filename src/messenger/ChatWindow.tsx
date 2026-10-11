@@ -4,7 +4,7 @@ import {
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Phone, Video, Search, MoreVertical, Paperclip, Mic, Square, Images, PawPrint, Gift, ShoppingCart,
+  Phone, Video, Search, MoreVertical, Paperclip, Mic, Square, Images, PawPrint, Sticker as StickerIcon, Gift, ShoppingCart,
   Send, X, Pencil, Trash2, Pin, Forward, Check, CheckCheck, FileText, Camera,
   ChevronDown, ChevronLeft, Flag, BellOff, Archive, UserMinus, UserPlus, Reply, Palette, Settings2, BarChart2, Crown,
   Copy, Smile, Ban, Play, Radio, Users, Info, Clock, Star, Zap, Plus, Wand2, Loader2, Lock, MessagesSquare, Shield, LogOut, Eye, EyeOff, Download, MicOff,
@@ -22,6 +22,7 @@ import { safeMediaUrl }      from './safeUrl';
 import { useAttachment }     from './mediaCache';
 import { apiUploadFile, MAX_FILE_BYTES } from '@/core/auth/api';
 import { PetBubble } from './PetPanel';
+import { StickerPanel, MascotSticker, stickerById } from './mascotStickers';
 import { PetHouse }          from './PetHouse';
 import { SpoilerText, OnceViewText, SelfDestructTimer, PollBubble, MsgOptionsPanel, CreatePollModal } from './MsgFeatures';
 import { LiquidCursor, ThemePicker } from './LiquidCursor';
@@ -740,8 +741,9 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
         <div className={`relative px-3.5 py-2.5`}
           style={{
             borderRadius: fromMe ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-            background: bubbleBg,
-            boxShadow: fromMe ? '0 2px 8px rgba(37,99,235,0.3)' : 'none',
+            // Стикер лежит прямо на фоне чата, без пузыря.
+            background: msg.kind === 'sticker' ? 'transparent' : bubbleBg,
+            boxShadow: fromMe && msg.kind !== 'sticker' ? '0 2px 8px rgba(37,99,235,0.3)' : 'none',
           }}
           onTouchStart={isMobile ? () => {
             longPressTimer.current = window.setTimeout(() => setShowCtx(true), 420);
@@ -764,6 +766,13 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
             </div>
           )}
           {msg.kind === 'file'       && <FileBubble  msg={msg} fromMe={fromMe} />}
+          {msg.kind === 'sticker' && (() => {
+            try {
+              const def = stickerById(JSON.parse(msg.text).id);
+              if (!def) return null;
+              return <div className={`flex ${fromMe ? 'justify-end' : 'justify-start'}`}><MascotSticker def={def} size={150} /></div>;
+            } catch { return null; }
+          })()}
           {msg.kind === 'pet'   && (() => {
             try {
               // typeId/petName/petColor присылаются прямо в сообщении (не из
@@ -930,6 +939,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const [showReport, setShowReport] = useState(false);
   const [showEmoji,  setShowEmoji]  = useState(false);
   const [showPets,   setShowPets]   = useState(false);
+  const [showStickers, setShowStickers] = useState(false);
   const [showGifts,  setShowGifts]  = useState(false);
   const [showMarket, setShowMarket] = useState(false);
   const [showTheme,  setShowTheme]  = useState(false);
@@ -1527,7 +1537,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
               {[
                 { icon: Search, label: 'Поиск в чате', fn: () => { setSearchOpen(o => !o); setMenuOpen(false); } },
                 ...(chat.type === 'direct' ? [{ icon: Video, label: 'Видеозвонок', fn: () => { startCall(peerId, peerName, peerAv, 'video'); setMenuOpen(false); } }] : []),
-                { icon: PawPrint, label: 'Питомцы', fn: () => { setShowPets(v => !v); setMenuOpen(false); } },
+                { icon: Smile, label: 'Стикеры', fn: () => { setShowStickers(true); setMenuOpen(false); } },
                 { icon: Gift, label: 'Отправить подарок', fn: () => { setShowGifts(true); setMenuOpen(false); } },
                 { icon: ShoppingCart, label: 'Магазин подарков', fn: () => { setShowMarket(true); setMenuOpen(false); } },
                 ...(chat.type === 'direct' ? [{ icon: Crown, label: 'Подарить Prime', fn: () => { setShowGiftPrime(true); setMenuOpen(false); }, tone: 'var(--amber)' }] : []),
@@ -2469,9 +2479,28 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
 
               {/* Pets moved to header → PetHouse */}
 
+              {/* Стикеры с маскотом */}
+              <div className="relative mb-0.5 shrink-0">
+                <button type="button" onClick={() => { setShowStickers(v => !v); setShowEmoji(false); setShowAttach(false); }} disabled={isBlocked}
+                  title="Стикеры" aria-label="Стикеры"
+                  className="grid h-8 w-8 place-items-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-40"
+                  style={{ color: showStickers ? theme.accent : 'var(--t2)' }}>
+                  <StickerIcon size={18} />
+                </button>
+                <AnimatePresence>
+                  {showStickers && (
+                    <StickerPanel onClose={() => setShowStickers(false)}
+                      onPick={(id) => {
+                        const m = sendMessage({ text: JSON.stringify({ id }), kind: 'sticker' });
+                        if (m) broadcast.message(m);
+                      }} />
+                  )}
+                </AnimatePresence>
+              </div>
+
               {/* Emoji */}
               <div className="relative mb-0.5 shrink-0">
-                <button type="button" onClick={() => { setShowEmoji(v => !v); setShowAttach(false); }} disabled={isBlocked}
+                <button type="button" onClick={() => { setShowEmoji(v => !v); setShowAttach(false); setShowStickers(false); }} disabled={isBlocked}
                   className="grid h-8 w-8 place-items-center rounded-full transition-colors hover:bg-white/10 disabled:opacity-40"
                   style={{ color: showEmoji ? theme.accent : 'var(--t2)' }}>
                   <Smile size={18} />

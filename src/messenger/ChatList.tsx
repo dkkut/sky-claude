@@ -66,6 +66,7 @@ const preview = (msg?: MessageItem): string => {
   if (msg.kind === 'video-note') return 'Видеосообщение';
   if (msg.kind === 'file') return msg.fileName ?? 'Файл';
   if (msg.kind === 'pet') return 'Питомец';
+  if (msg.kind === 'sticker') return 'Стикер';
   if (msg.kind === 'system') return msg.text;
   return msg.text.length > 55 ? msg.text.slice(0, 55) + '...' : msg.text;
 };

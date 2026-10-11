@@ -1,5 +1,5 @@
 export type ChatType    = 'direct' | 'group' | 'channel';
-export type MessageKind = 'text' | 'photo' | 'voice' | 'video-note' | 'file' | 'system' | 'pet' | 'gift' | 'prime_gift' | 'poll' | 'location';
+export type MessageKind = 'text' | 'photo' | 'voice' | 'video-note' | 'file' | 'system' | 'pet' | 'gift' | 'prime_gift' | 'poll' | 'location' | 'sticker';
 export type ChatFolder  = 'all' | 'work' | 'social' | 'news' | 'support';
 
 export interface ChatItem {

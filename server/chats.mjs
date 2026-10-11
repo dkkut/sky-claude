@@ -475,7 +475,7 @@ export const createChat = async (chat, creatorId) => {
  */
 const KINDS = new Set([
   'text', 'photo', 'voice', 'video-note', 'file',
-  'pet', 'gift', 'prime_gift', 'poll', 'location',
+  'pet', 'gift', 'prime_gift', 'poll', 'location', 'sticker',
 ]);
 
 const SERVER_OWNED = new Set([
