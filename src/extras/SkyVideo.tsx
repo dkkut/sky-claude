@@ -17,6 +17,7 @@ import {
 import { AiVideoSummarize, AiVideoQA } from '@/ai/SkyAI';
 import { AdBanner } from '@/feedback/Feedback';
 import { useSkyVideoStore, resetSkyVideoForUser } from '@/video/serverStore';
+import { ChannelAnalyticsView } from '@/video/ChannelAnalytics';
 import { useRegisterMedia } from '@/island/mediaRegistry';
 import { videoUrl, thumbnailUrl, fmtDuration, readVideoMeta, apiSkyVideoTicket, type ServerVideo, type VideoComment } from '@/video/skyVideoApi';
 import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
@@ -908,17 +909,22 @@ const ChannelsListView = ({ onOpen }: { onOpen: (authorId: string) => void }) =>
   );
 };
 
-const ChannelPage = ({ authorId, onBack, onOpenVideo }: {
-  authorId: string; onBack: () => void; onOpenVideo: (v: ServerVideo) => void;
+type ChTab = 'home' | 'videos' | 'shorts';
+
+const ChannelPage = ({ authorId, onBack, onOpenVideo, initialAnalytics }: {
+  authorId: string; onBack: () => void; onOpenVideo: (v: ServerVideo) => void; initialAnalytics?: boolean;
 }) => {
+  const me = useAuthStore(s => s.currentUserId);
   const [channel, setChannel] = useState<ChannelInfo | null>(null);
   const [videos, setVideos] = useState<ServerVideo[] | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [tab, setTab] = useState<ChTab>('home');
+  const [analytics, setAnalytics] = useState(Boolean(initialAnalytics));
 
   useEffect(() => {
     let live = true;
     setChannel(null); setVideos(null); setNotFound(false);
-    apiSkyVideoChannel(authorId, { limit: 50 }).then(r => {
+    apiSkyVideoChannel(authorId, { limit: 100 }).then(r => {
       if (!live) return;
       if (!r) { setNotFound(true); return; }
       setChannel(r.channel);
@@ -926,6 +932,14 @@ const ChannelPage = ({ authorId, onBack, onOpenVideo }: {
     });
     return () => { live = false; };
   }, [authorId]);
+
+  const longs = useMemo(() => (videos ?? []).filter(v => !isShortVideo(v)), [videos]);
+  const shortsList = useMemo(() => (videos ?? []).filter(v => isShortVideo(v)), [videos]);
+  const isOwner = Boolean(me) && me === authorId;
+
+  if (analytics && channel) {
+    return <ChannelAnalyticsView name={channel.authorName} avatar={channel.avatar} onBack={() => setAnalytics(false)} onOpenVideo={onOpenVideo} />;
+  }
 
   if (notFound) {
     return (
@@ -942,63 +956,117 @@ const ChannelPage = ({ authorId, onBack, onOpenVideo }: {
     );
   }
 
+  const shortsRow = (list: ServerVideo[]) => (
+    <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+      {list.map(v => {
+        const [g1, g2] = gradFor(v.id);
+        return (
+          <motion.div key={v.id} whileTap={{ scale: 0.96 }} onClick={() => onOpenVideo(v)} className="relative shrink-0 cursor-pointer overflow-hidden rounded-xl"
+            style={{ width: 118, aspectRatio: '9/16', background: `linear-gradient(160deg,${g1},${g2})` }}>
+            {v.hasThumbnail && <img src={thumbnailUrl(v.id)} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+            <div className="absolute inset-0 flex flex-col justify-end p-2" style={{ background: 'linear-gradient(transparent 45%,rgba(0,0,0,0.75))' }}>
+              <p className="line-clamp-2 text-[11px] font-semibold leading-tight text-white" translate="no">{v.title}</p>
+              <p className="mt-0.5 text-[10px]" style={{ color: 'rgba(255,255,255,0.65)' }}>{fmtViews(v.views)} просм.</p>
+            </div>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+
+  /* Ролик в списке канала: слева превью, справа название и счётчики — как в привычных видеосервисах. */
+  const row = (v: ServerVideo) => (
+    <motion.div key={v.id} whileTap={{ scale: 0.98 }} onClick={() => onOpenVideo(v)} className="flex cursor-pointer gap-3">
+      <div className="w-[44%] shrink-0"><Thumbnail video={v} size="md" /></div>
+      <div className="min-w-0 flex-1 py-0.5">
+        <p className="line-clamp-3 text-sm font-semibold leading-snug" style={{ color: V.t1 }} translate="no">{v.title}</p>
+        <p className="mt-1 text-xs" style={{ color: V.t3 }}>{fmtViews(v.views)} просм. · {fmtAgo(v.publishedAt ?? v.createdAt)}</p>
+      </div>
+    </motion.div>
+  );
+
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
       className="flex flex-col h-full overflow-y-auto" style={{ background: V.bg, scrollbarWidth: 'none' }}>
-      <div className="flex items-center gap-2 px-4 py-3 shrink-0" style={{ borderBottom: `1px solid ${V.border}` }}>
-        <button type="button" onClick={onBack}
+      <div className="flex items-center gap-2 px-4 py-3 shrink-0">
+        <button type="button" onClick={onBack} aria-label="Назад"
           className="grid h-8 w-8 place-items-center rounded-full transition-colors hover:bg-white/5">
           <ChevronLeft size={20} style={{ color: V.t2 }} />
         </button>
-        <p className="text-sm font-semibold flex-1" style={{ color: V.t1 }}>Канал</p>
       </div>
 
       {channel && (
-        <div className="px-4 py-4 space-y-4">
-          <div className="flex items-center gap-3">
-            <Avatar name={channel.authorName} avatar={channel.avatar} size={56} />
-            <div className="flex-1 min-w-0">
-              <p className="text-base font-bold truncate" style={{ color: V.t1 }}>{channel.authorName}</p>
-              <p className="text-xs" style={{ color: V.t3 }}>@{channel.authorUsername}</p>
+        <div className="px-4 pb-6 space-y-4">
+          <div className="flex items-center gap-4">
+            <Avatar name={channel.authorName} avatar={channel.avatar} size={76} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[22px] font-extrabold" style={{ color: V.t1 }} translate="no">{channel.authorName}</p>
+              <p className="text-xs" style={{ color: V.t3 }} translate="no">@{channel.authorUsername}</p>
+              <p className="mt-1 text-xs" style={{ color: V.t2 }}>
+                {`${fmtViews(channel.subscribers ?? 0)} подписчиков · ${channel.videoCount} видео · ${fmtViews(channel.totalViews)} просмотров`}
+              </p>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
             <SubscribeButton targetId={channel.authorId} />
-          </div>
-
-          <div className="flex items-center gap-4 rounded-2xl p-3" style={{ background: V.bg1, border: `1px solid ${V.border}` }}>
-            <div className="flex-1 text-center">
-              <p className="text-sm font-bold" style={{ color: V.t1 }}>{channel.videoCount}</p>
-              <p className="text-[10px]" style={{ color: V.t3 }}>видео</p>
-            </div>
-            <div className="flex-1 text-center">
-              <p className="text-sm font-bold" style={{ color: V.t1 }}>{fmtViews(channel.totalViews)}</p>
-              <p className="text-[10px]" style={{ color: V.t3 }}>просмотров</p>
-            </div>
-            <div className="flex-1 text-center">
-              <p className="text-sm font-bold" style={{ color: V.t1 }}>{fmtViews(channel.totalLikes)}</p>
-              <p className="text-[10px]" style={{ color: V.t3 }}>лайков</p>
-            </div>
-          </div>
-
-          <div>
-            {videos === null ? (
-              <p className="text-xs text-center py-6" style={{ color: V.t3 }}>Загрузка видео…</p>
-            ) : videos.length === 0 ? (
-              <p className="text-xs text-center py-6" style={{ color: V.t3 }}>У канала пока нет роликов</p>
-            ) : (
-              <div className="grid grid-cols-1 gap-5">
-                {videos.map(v => (
-                  <VideoCard key={v.id} video={v} onClick={() => onOpenVideo(v)} />
-                ))}
-              </div>
+            {isOwner && (
+              <button type="button" onClick={() => setAnalytics(true)} className="rounded-full px-4 py-2 text-xs font-bold" style={{ background: V.bg2, color: V.t1 }}>Аналитика</button>
             )}
           </div>
+
+          <div className="flex gap-0.5 overflow-x-auto" style={{ borderBottom: `1px solid ${V.border}`, scrollbarWidth: 'none' }}>
+            {([['home', 'Главная'], ['videos', 'Видео'], ['shorts', 'Shorts']] as [ChTab, string][]).map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setTab(k)} className="relative shrink-0 px-4 py-2.5 text-[13px] font-semibold" style={{ color: tab === k ? V.t1 : V.t3 }}>
+                {label}
+                {tab === k && <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full" style={{ background: V.t1 }} />}
+              </button>
+            ))}
+          </div>
+
+          {videos === null ? (
+            <p className="text-xs text-center py-6" style={{ color: V.t3 }}>Загрузка видео…</p>
+          ) : videos.length === 0 ? (
+            <p className="text-xs text-center py-6" style={{ color: V.t3 }}>У канала пока нет роликов</p>
+          ) : (
+            <>
+              {tab === 'home' && (
+                <div className="space-y-6">
+                  {longs.length > 0 && <div className="space-y-4">{longs.slice(0, 4).map(row)}</div>}
+                  {longs.length > 4 && <button type="button" onClick={() => setTab('videos')} className="text-xs font-semibold" style={{ color: V.accent }}>{`Все видео (${longs.length})`}</button>}
+                  {shortsList.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-lg font-bold" style={{ color: V.t1 }}>Shorts</p>
+                      {shortsRow(shortsList)}
+                    </div>
+                  )}
+                </div>
+              )}
+              {tab === 'videos' && (longs.length ? <div className="space-y-4">{longs.map(row)}</div> : <p className="text-xs text-center py-6" style={{ color: V.t3 }}>Обычных видео пока нет</p>)}
+              {tab === 'shorts' && (shortsList.length ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {shortsList.map(v => {
+                    const [g1, g2] = gradFor(v.id);
+                    return (
+                      <motion.div key={v.id} whileTap={{ scale: 0.96 }} onClick={() => onOpenVideo(v)} className="relative cursor-pointer overflow-hidden rounded-xl"
+                        style={{ aspectRatio: '9/16', background: `linear-gradient(160deg,${g1},${g2})` }}>
+                        {v.hasThumbnail && <img src={thumbnailUrl(v.id)} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+                        <div className="absolute inset-0 flex flex-col justify-end p-2" style={{ background: 'linear-gradient(transparent 45%,rgba(0,0,0,0.75))' }}>
+                          <p className="line-clamp-2 text-[11px] font-semibold leading-tight text-white" translate="no">{v.title}</p>
+                          <p className="mt-0.5 text-[10px]" style={{ color: 'rgba(255,255,255,0.65)' }}>{fmtViews(v.views)} просм.</p>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              ) : <p className="text-xs text-center py-6" style={{ color: V.t3 }}>Shorts пока нет</p>)}
+            </>
+          )}
         </div>
       )}
     </motion.div>
   );
 };
 
-/* === MAIN MODULE ============================================ */
 type VTab = 'home' | 'shorts' | 'upload' | 'mine' | 'channels';
 
 export const SkyVideo = () => {
@@ -1010,6 +1078,7 @@ export const SkyVideo = () => {
   const [activeVideo, setActiveVideo] = useState<ServerVideo | null>(null);
   const [activeShort, setActiveShort] = useState<number | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+  const [channelAnalytics, setChannelAnalytics] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [catFilter, setCatFilter] = useState<string>('all');
@@ -1062,8 +1131,8 @@ export const SkyVideo = () => {
   if (activeChannelId) {
     return (
       <AnimatePresence mode="wait">
-        <ChannelPage key={activeChannelId} authorId={activeChannelId}
-          onBack={() => setActiveChannelId(null)} onOpenVideo={setActiveVideo} />
+        <ChannelPage key={activeChannelId + String(channelAnalytics)} authorId={activeChannelId} initialAnalytics={channelAnalytics}
+          onBack={() => { setActiveChannelId(null); setChannelAnalytics(false); }} onOpenVideo={setActiveVideo} />
       </AnimatePresence>
     );
   }
@@ -1212,7 +1281,17 @@ export const SkyVideo = () => {
                 <UploadTab onDone={() => setTab('mine')} />
               )}
 
-              {tab === 'mine' && <MineTab onOpen={setActiveVideo} />}
+              {tab === 'mine' && (
+                <>
+                  {currentUserId && (
+                    <div className="flex gap-2 px-4 pt-3">
+                      <button type="button" onClick={() => { setChannelAnalytics(false); setActiveChannelId(currentUserId); }} className="rounded-full px-4 py-2 text-xs font-bold" style={{ background: V.bg2, color: V.t1 }}>Мой канал</button>
+                      <button type="button" onClick={() => { setChannelAnalytics(true); setActiveChannelId(currentUserId); }} className="rounded-full px-4 py-2 text-xs font-bold" style={{ background: V.accent, color: '#fff' }}>Аналитика</button>
+                    </div>
+                  )}
+                  <MineTab onOpen={setActiveVideo} />
+                </>
+              )}
 
             </motion.div>
           </AnimatePresence>

@@ -19,7 +19,7 @@ import {
   createDraft, finishUpload, updateVideo, deleteVideo, setThumbnail, publishVideo,
   countView, setLiked, listComments, addComment, removeComment,
   requestMonetization, listMonetizationHistory, monetizationQueue, decideMonetization,
-  listRevenue, adminSearchVideos, setVideoRegions, channelInfo, listChannels,
+  listRevenue, adminSearchVideos, setVideoRegions, channelInfo, listChannels, channelAnalytics,
 } from './../skyvideo.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, parseRange, thumbnailIdFor } from './../skyvideostore.mjs';
 import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../skyvideoticket.mjs';
@@ -211,6 +211,11 @@ export const skyVideoRoutes = async (req, res, url) => {
     return json(res, 200, {
       channels: await listChannels({ limit: params.get('limit'), offset: params.get('offset') }),
     });
+  }
+
+  if (req.method === 'GET' && path === '/api/skyvideo/analytics') {
+    if (!rateLimit(`svid:read:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    return json(res, 200, await channelAnalytics(me, { days: params.get('days') }));
   }
 
   const channelMatch = path.match(/^\/api\/skyvideo\/channel\/([^/]+)$/);

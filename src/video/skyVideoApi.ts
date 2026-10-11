@@ -159,6 +159,7 @@ export interface ChannelInfo {
   videoCount: number;
   totalViews: number;
   totalLikes: number;
+  subscribers?: number;
 }
 
 export interface ChannelListEntry {
@@ -190,6 +191,17 @@ export const apiSkyVideoChannel = async (authorId: string, opts: FeedOpts = {}) 
   const r = await apiCall<{ channel: ChannelInfo; videos: ServerVideo[] }>(
     `/api/skyvideo/channel/${encodeURIComponent(authorId)}${qs ? `?${qs}` : ''}`,
   );
+  return r.ok ? (r.data ?? null) : null;
+};
+
+export interface ChannelAnalytics {
+  subscribers: number; videos: number; views: number; likes: number; comments: number;
+  perDay: { day: string; views: number }[]; last7: number; trackingSince: string | null;
+  lastVideo: ServerVideo | null; topShorts: ServerVideo[];
+}
+/** Аналитика своего канала (только владельцу). */
+export const apiSkyVideoAnalytics = async () => {
+  const r = await apiCall<ChannelAnalytics>('/api/skyvideo/analytics');
   return r.ok ? (r.data ?? null) : null;
 };
 

@@ -12,6 +12,7 @@
  * главы (0..10000): столбик текста у всех разной ширины и кегля, а
  * доля прокрутки одна и та же что на телефоне, что на мониторе.
  */
+import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -72,6 +73,7 @@ export const BookPlayer = ({ book, onClose }: { book: Book; onClose: () => void 
   const audioRef = useRef<HTMLAudioElement>(null);
   const restoreFrac = useRef<number | null>(null);
   const restoreSeconds = useRef<number | null>(null);
+  const ticketTried = useRef<Set<string>>(new Set());
   const notedRef = useRef<Set<string>>(new Set());
   /* В остров попадает только слушание: у чтения текста нет звука, и выдумывать его незачем. */
   useRegisterMedia(audioRef, mode === 'audio' ? { id: book.id, kind: 'book', title: book.title, subtitle: currentMetaTitle(chapters, chapterNumber), cover: book.hasCover ? bookCoverUrl(book.id) : undefined, canSeek: true, open: openBooks } : null);
@@ -181,7 +183,7 @@ export const BookPlayer = ({ book, onClose }: { book: Book; onClose: () => void 
     };
     const onTime = () => setCurrentTime(el.currentTime);
     const onWaiting = () => setWaiting(true);
-    const onPlaying = () => { setWaiting(false); noteOnce('audio'); };
+    const onPlaying = () => { setWaiting(false); ticketTried.current.clear(); noteOnce('audio'); };
     const onEnded = () => {
       setPlaying(false);
       void apiSetProgress(book.id, {
@@ -191,7 +193,19 @@ export const BookPlayer = ({ book, onClose }: { book: Book; onClose: () => void 
       const next = chs.find((c) => c.number === chapterNumber + 1 && c.hasAudio);
       if (next) setChapterNumber(next.number);
     };
-    const onErr = () => setAudioError('Не получилось загрузить озвучку');
+    const onErr = () => {
+      // Протухший пропуск — самая частая причина: один раз обновляем и продолжаем с того же места.
+      const ch = (chapters ?? []).find((c) => c.number === chapterNumber);
+      if (ch && !ticketTried.current.has(ch.id)) {
+        ticketTried.current.add(ch.id);
+        void reloadWithFreshTicket(el, apiMediaTicket, () => chapterAudioUrl(ch.id)).then((ok) => {
+          if (ok) void el.play().catch(() => { /* без действия человека */ });
+          else setAudioError('Не получилось загрузить озвучку');
+        });
+        return;
+      }
+      setAudioError('Не получилось загрузить озвучку');
+    };
 
     el.addEventListener('loadedmetadata', onLoaded);
     el.addEventListener('timeupdate', onTime);

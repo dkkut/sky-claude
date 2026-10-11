@@ -8,10 +8,11 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Volume2, VolumeX, Subtitles, Settings2, ChevronLeft } from 'lucide-react';
 import { useSkyVideoStore } from '@/video/serverStore';
-import { videoUrl as skyVideoUrl } from '@/video/skyVideoApi';
+import { videoUrl as skyVideoUrl, apiSkyVideoTicket } from '@/video/skyVideoApi';
+import { reloadWithFreshTicket, describeMediaFailure } from '@/core/mediaTicketRefresh';
 import { recordProgress } from './watchProgressStore';
 import { useFilmStore } from '@/film/serverStore';
-import { videoUrl } from '@/film/filmApi';
+import { videoUrl, apiFilmTicket } from '@/film/filmApi';
 import { useTVKeyBindings } from './useTVKeyBindings';
 import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
 
@@ -50,6 +51,8 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [failedText, setFailedText] = useState('');
+  const ticketTried = useRef(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const { setPlaying: registerActive, setPauseHandler } = useRegisterWatchActivity();
 
@@ -137,6 +140,12 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
 
   return (
     <div className="fixed inset-0 z-[200] bg-black" onMouseMove={showControls}>
+      {failedText && (
+        <div className="absolute inset-x-0 top-1/3 z-10 mx-auto max-w-[900px] rounded-3xl px-8 py-6 text-center" style={{ background: 'rgba(0,0,0,0.75)' }} role="alert">
+          <p className="text-[32px] font-bold text-white">Не удалось воспроизвести</p>
+          <p className="mt-2 text-[20px] text-white/70">{failedText}</p>
+        </div>
+      )}
       {sourceUrl ? (
         <video ref={vRef} src={sourceUrl} autoPlay className="h-full w-full object-contain"
           onTimeUpdate={e => setCur(e.currentTarget.currentTime)}
@@ -150,7 +159,20 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
             const d = e.currentTarget.duration;
             if (from > 30 && (!d || from < d - 60)) e.currentTarget.currentTime = from;
           }}
-          onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+          onPlay={() => { setPlaying(true); setFailedText(''); }} onPause={() => setPlaying(false)}
+          onError={e => {
+            // Протухший пропуск на выдачу — самая частая причина: обновляем один раз и продолжаем с того же места.
+            const v = e.currentTarget;
+            if (!ticketTried.current) {
+              ticketTried.current = true;
+              void reloadWithFreshTicket(v, movie ? apiFilmTicket : apiSkyVideoTicket, () => sourceUrl).then(ok => {
+                if (ok) void v.play().catch(() => {});
+                else void describeMediaFailure(v, sourceUrl).then(setFailedText);
+              });
+              return;
+            }
+            void describeMediaFailure(v, sourceUrl).then(setFailedText);
+          }}
           onEnded={onBack}/>
       ) : (
         <div className="h-full w-full flex flex-col items-center justify-center gap-3">

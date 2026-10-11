@@ -31,6 +31,7 @@ import {
   type Episode, type Cue, type Chapter,
 } from './podcastApi';
 import { usePlayerStore as useMusicPlayer } from '@/player/playerStore';
+import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 
 export type PlayMode = 'audio' | 'video';
 
@@ -68,6 +69,8 @@ const writeStyle = (s: CueStyle) => {
 
 /* ─── Единственный элемент ─────────────────────────────────────────── */
 
+/** Выпуски, для которых пропуск уже обновляли после ошибки (по одному разу за попытку воспроизведения). */
+const ticketRetried = new Set<string>();
 let element: HTMLMediaElement | null = null;
 let elementKind: PlayMode | null = null;
 /** Куда сейчас вставлена картинка видео. null — нигде, висит в стороне. */
@@ -196,7 +199,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     el.addEventListener('play', () => set({ playing: true, error: null }));
     el.addEventListener('pause', () => { set({ playing: false }); flush(true); });
     el.addEventListener('waiting', () => set({ waiting: true }));
-    el.addEventListener('playing', () => set({ waiting: false, error: null }));
+    el.addEventListener('playing', () => { ticketRetried.clear(); set({ waiting: false, error: null }); });
     el.addEventListener('canplay', () => set({ waiting: false }));
     el.addEventListener('ended', () => {
       const { episode, duration } = get();
@@ -205,6 +208,17 @@ export const usePlayer = create<PlayerState>((set, get) => {
     });
     el.addEventListener('error', () => {
       const code = (el.error?.code ?? 0) as number;
+      // Чаще всего выпуск не открылся из-за протухшего пропуска (вкладка давно открыта, телефон был во сне):
+      // один раз обновляем пропуск и продолжаем с того же места, прежде чем показывать ошибку.
+      const ep = get().episode;
+      if (ep && el.currentSrc !== '' && !ticketRetried.has(ep.id)) {
+        ticketRetried.add(ep.id);
+        void reloadWithFreshTicket(el, apiMediaTicket, () => (elementKind === 'video' ? videoUrl : audioUrl)(ep.id)).then((ok) => {
+          if (ok) { set({ error: null, waiting: true }); void el.play().catch(() => { /* без действия человека */ }); }
+          else set({ playing: false, waiting: false, error: MEDIA_ERRORS[code] ?? 'Выпуск не воспроизводится' });
+        });
+        return;
+      }
       set({
         playing: false,
         waiting: false,
@@ -222,7 +236,9 @@ export const usePlayer = create<PlayerState>((set, get) => {
       ? document.createElement('video')
       : document.createElement('audio');
     el.preload = 'metadata';
-    el.crossOrigin = 'use-credentials';
+    // anonymous, а не use-credentials: родное приложение живёт на другом origin, а сервер намеренно не шлёт
+    // Allow-Credentials — выпуск с use-credentials там просто не открывался. На своём origin куки и так идут.
+    el.crossOrigin = 'anonymous';
     el.setAttribute('playsinline', '');
     el.setAttribute('data-podcast-media', kind);
     if (kind === 'video') {
