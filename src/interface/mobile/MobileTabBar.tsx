@@ -31,16 +31,15 @@ export const MobileTabBar = ({ onMore }: { onMore: () => void }) => {
           <motion.button key="tab" type="button" aria-label="Показать панель"
             initial={{ x: 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 40, opacity: 0 }}
             onClick={() => { haptic('selection'); setHidden(false); }}
-            className="nav-tab absolute right-0 grid h-14 w-6 place-items-center"
-            style={{ bottom: 'calc(var(--safe-bottom) + 14px)', borderRadius: '16px 0 0 16px', borderRight: 0 }}>
+            className="nav-tab fixed right-0 grid h-14 w-6 place-items-center"
+            style={{ bottom: 'calc(var(--safe-bottom) + 14px)', borderRadius: '16px 0 0 16px', borderRight: 0, zIndex: 40 }}>
             <ChevronLeft size={15} />
           </motion.button>
         ) : (
           <motion.div key="bar" className="px-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 4px)', paddingTop: 6 }}
             initial={{ x: '110%' }} animate={{ x: 0 }} exit={{ x: '110%' }}
             transition={{ type: 'spring', stiffness: 380, damping: 34 }}
-            drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={{ left: 0, right: 0.6 }}
-            onDragEnd={(_, i) => { if (i.offset.x > 70 || i.velocity.x > 500) { haptic('selection'); setHidden(true); } }}>
+>
             <div className="nav-panel flex items-center justify-around px-1.5 py-1" style={{ borderRadius: 30, backdropFilter: 'blur(24px) saturate(180%)' }}>
               {PRIMARY.map(({ key, label, icon: Icon }) => {
                 const active = activeModule === key;
