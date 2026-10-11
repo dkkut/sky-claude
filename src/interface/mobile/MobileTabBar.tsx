@@ -1,7 +1,8 @@
-import { motion } from 'framer-motion';
-import { MessageCircle, Sparkles, LayoutGrid, Bell, User, Grid3x3 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { MessageCircle, Sparkles, LayoutGrid, Bell, User, Grid3x3, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useModuleStore } from '@/data/state/modules';
 import type { ModuleKey } from '@/data/state/modules';
+import { useNavPrefs, useNavBadges, fmtBadge } from '@/interface/layout/navPrefs';
 import { haptic } from './haptics';
 
 const PRIMARY: { key: ModuleKey; label: string; icon: any }[] = [
@@ -12,36 +13,70 @@ const PRIMARY: { key: ModuleKey; label: string; icon: any }[] = [
   { key: 'profile',       label: 'Профиль', icon: User },
 ];
 
+/**
+ * Нижняя панель: плавающая, скруглённая, с объёмом. Её можно спрятать за
+ * правый край (кнопка-язычок или свайп вправо) — остаётся язычок у края,
+ * он возвращает панель. Состояние запоминается.
+ */
 export const MobileTabBar = ({ onMore }: { onMore: () => void }) => {
   const { activeModule, setActiveModule } = useModuleStore();
+  const hidden = useNavPrefs((s) => s.mobileHidden);
+  const setHidden = useNavPrefs((s) => s.setMobileHidden);
+  const badges = useNavBadges();
 
   return (
-    <div className="shrink-0" style={{ paddingBottom: 'var(--safe-bottom)', background: 'rgba(10,10,15,0.82)', backdropFilter: 'blur(24px) saturate(180%)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-      <div className="flex items-center justify-around px-1 pt-1.5 pb-1">
-        {PRIMARY.map(({ key, label, icon: Icon }) => {
-          const active = activeModule === key;
-          return (
-            <button key={key} type="button"
-              onClick={() => { haptic('selection'); setActiveModule(key); }}
-              className="relative flex flex-1 flex-col items-center gap-0.5 py-1.5">
-              {active && (
-                <motion.div initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute -top-1.5 h-1 w-6 rounded-full" style={{ background: 'var(--accent)' }}/>
-              )}
-              <motion.div animate={{ scale: active ? 1.08 : 1, y: active ? -1 : 0 }} transition={{ type: 'spring', stiffness: 500, damping: 25 }}>
-                <Icon size={22} strokeWidth={active ? 2.4 : 1.8} style={{ color: active ? 'var(--accent)' : 'var(--t3)' }}/>
-              </motion.div>
-              <span className="text-[9.5px] font-semibold" style={{ color: active ? 'var(--accent)' : 'var(--t3)' }}>{label}</span>
-            </button>
-          );
-        })}
-        <button type="button" onClick={() => { haptic('selection'); onMore(); }}
-          className="relative flex flex-1 flex-col items-center gap-0.5 py-1.5">
-          <Grid3x3 size={22} strokeWidth={1.8} style={{ color: 'var(--t3)' }}/>
-          <span className="text-[9.5px] font-semibold" style={{ color: 'var(--t3)' }}>Ещё</span>
-        </button>
-      </div>
+    <div className="relative shrink-0" style={{ zIndex: 30 }}>
+      <AnimatePresence initial={false}>
+        {hidden ? (
+          <motion.button key="tab" type="button" aria-label="Показать панель"
+            initial={{ x: 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 40, opacity: 0 }}
+            onClick={() => { haptic('selection'); setHidden(false); }}
+            className="nav-tab absolute right-0 grid h-14 w-6 place-items-center"
+            style={{ bottom: 'calc(var(--safe-bottom) + 14px)', borderRadius: '16px 0 0 16px', borderRight: 0 }}>
+            <ChevronLeft size={15} />
+          </motion.button>
+        ) : (
+          <motion.div key="bar" className="px-3" style={{ paddingBottom: 'calc(var(--safe-bottom) + 4px)', paddingTop: 6 }}
+            initial={{ x: '110%' }} animate={{ x: 0 }} exit={{ x: '110%' }}
+            transition={{ type: 'spring', stiffness: 380, damping: 34 }}
+            drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={{ left: 0, right: 0.6 }}
+            onDragEnd={(_, i) => { if (i.offset.x > 70 || i.velocity.x > 500) { haptic('selection'); setHidden(true); } }}>
+            <div className="nav-panel flex items-center justify-around px-1.5 py-1" style={{ borderRadius: 30, backdropFilter: 'blur(24px) saturate(180%)' }}>
+              {PRIMARY.map(({ key, label, icon: Icon }) => {
+                const active = activeModule === key;
+                const badge = badges[key] ?? 0;
+                return (
+                  <button key={key} type="button"
+                    onClick={() => { haptic('selection'); setActiveModule(key); }}
+                    className="relative flex flex-1 flex-col items-center gap-0.5 py-1.5">
+                    {active && (
+                      <motion.div layoutId="mtab-line" transition={{ type: 'spring', stiffness: 500, damping: 36 }}
+                        className="absolute -top-0.5 h-[3px] w-6 rounded-full" style={{ background: 'var(--accent)' }} />
+                    )}
+                    <motion.div className="relative" animate={{ scale: active ? 1.08 : 1, y: active ? -1 : 0 }} transition={{ type: 'spring', stiffness: 500, damping: 25 }}>
+                      <Icon size={22} strokeWidth={active ? 2.4 : 1.8} style={{ color: active ? 'var(--accent)' : 'var(--t3)' }} />
+                      {badge > 0 && (
+                        <span className="absolute -right-3 -top-2 grid h-[17px] min-w-[17px] place-items-center rounded-full px-1 text-[9.5px] font-bold leading-none text-white"
+                          style={{ background: '#ef4444', boxShadow: '0 0 0 1.5px var(--bg-l1)' }}>{fmtBadge(badge)}</span>
+                      )}
+                    </motion.div>
+                    <span className="text-[9.5px] font-semibold" style={{ color: active ? 'var(--accent)' : 'var(--t3)' }}>{label}</span>
+                  </button>
+                );
+              })}
+              <button type="button" onClick={() => { haptic('selection'); onMore(); }}
+                className="relative flex flex-1 flex-col items-center gap-0.5 py-1.5">
+                <Grid3x3 size={22} strokeWidth={1.8} style={{ color: 'var(--t3)' }} />
+                <span className="text-[9.5px] font-semibold" style={{ color: 'var(--t3)' }}>Ещё</span>
+              </button>
+              <button type="button" aria-label="Спрятать панель" onClick={() => { haptic('selection'); setHidden(true); }}
+                className="grid h-9 w-6 shrink-0 place-items-center" style={{ color: 'var(--t3)' }}>
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
