@@ -347,3 +347,32 @@ Windows (`electron/main.cjs`); полностью закрытое Windows-пр�
   это честно написано в настройках. Без `SpeechRecognition` остаётся ручной вызов.
 - Тесты: `node scripts/audit/island-test.mjs` (очередь/приоритеты/фраза). Интерфейс проверялся
   Playwright-ом на dev-сервере vite (сторы доступны через `import('/src/...')`).
+
+## Sky Console (оболочка для игровых консолей)
+
+`src/interface/console/` — отдельный режим; Sky TV (`src/interface/tv/`) и Car Mode не затронуты и
+друг с другом не смешиваются. Включение: `?console=true` (запоминается), настройка в Профиле →
+«Sky Console», автоопределение по User-Agent (PlayStation/Xbox/Nintendo). В `AppShell` проверяется
+РАНЬШЕ TV; в `main.tsx` вместо обычной заставки идёт `ConsoleIntro`.
+
+- Запуск: `ConsoleIntro` (тьма → звёзды → свет → логотип `/logo.png` → «Твоя экосистема»; пропуск
+  любой кнопкой после 1 с; проверка сессии идёт параллельно) → `ConsoleProfilePicker` («КТО ИГРАЕТ?»,
+  настоящие `useAuthStore.profiles`, доступ проверяет сервер через `selectProfile`, защищённому
+  профилю нужен код) → `ConsoleShell`/`ConsoleHome`. Заставка — только при холодном запуске
+  (`consoleStore.introDone` живёт до перезагрузки); возврат из сна её не повторяет.
+- Смена профиля (`ConsoleSettings`): останавливает плееры, `resetForProfileChange`, `switchProfile()` —
+  сессия Sky ID жива, `AppShell` перемонтируется по `currentUserId`, сторы пользователя перезагружаются
+  штатно (`main.tsx`).
+- Сервисы НЕ копируются: `services.ts` → `openService()` выставляет `useModuleStore`/`pendingExtrasTab`
+  и `ConsoleShell` рендерит тот же `ExtrasModule`/`GamingModule`/`SkyVideo`/мессенджер. Плееры, звонки,
+  уведомления и Sky Island — общие.
+- Управление: `input/spatial.ts` + `nav.ts` — навигация по реально видимым интерактивным элементам
+  (закрытое слоем/модалкой не участвует), `gamepad.ts` — Gamepad API («standard») + клавиатура.
+  A/✕ выбрать, B/○ назад (закрыть окно → «Назад/Закрыть» → главная), X/□ пауза/играть,
+  LB/RB вкладки или предыдущий/следующий трек, Start/Options/Guide — главная, правый стик — прокрутка.
+  Поле ввода по A открывает `ConsoleKeyboard` (пишет в настоящее поле). Новый интерактивный
+  элемент в сервисе работает сам, если это `button`/`a`/`input`/`[role=…]`.
+- Фокус рисуется классом `.console-focused` (стили в `console.css`, только под `body.console-mode`).
+- Тест: Playwright с подменой `navigator.getGamepads` (см. `scripts/audit/console-ui-test.mjs`).
+- Не проверено на настоящих PlayStation/Xbox: браузер PS5 не отдаёт приложениям Gamepad API и не
+  умеет ставить PWA; Xbox (Edge) — умеет; на Windows/Android/Steam Deck режим включается настройкой.

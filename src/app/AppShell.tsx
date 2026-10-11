@@ -28,6 +28,8 @@ import { BreakReminderModal }     from '@/settings/BreakReminderModal';
 import { useDeviceMode } from '@/interface/tv/useDeviceMode';
 import { TVShell } from '@/interface/tv/TVShell';
 import { useCarMode } from '@/interface/car/useCarMode';
+import { useConsoleMode } from '@/interface/console/consoleMode';
+import { ConsoleShell } from '@/interface/console/ConsoleShell';
 import { CarShell } from '@/interface/car/CarShell';
 import { isElectron } from '@/core/nativeApp';
 import { isQuickActionsWindow } from '@/interface/quickactions/useQuickActionsWindow';
@@ -108,6 +110,7 @@ export const AppShell = () => {
   const isMobile = useIsMobile();
   const deviceMode = useDeviceMode();
   const carMode = useCarMode();
+  const consoleMode = useConsoleMode();
   // Пуш состояния плеера в overlay Quick Actions (см. playerBridge.ts) —
   // сам по себе ничего не делает вне Electron-основного окна.
   useMainWindowPlayerBridge();
@@ -155,6 +158,11 @@ export const AppShell = () => {
   // существует, и isQuickActionsWindow() всегда вернёт false.
   if (isElectron() && isQuickActionsWindow()) {
     return <ErrorBoundary><QuickActionsShell /></ErrorBoundary>;
+  }
+
+  // Sky Console — отдельная оболочка для консолей; приоритет выше Sky TV, сам Sky TV не затронут.
+  if (consoleMode) {
+    return <ErrorBoundary><ConsoleShell messenger={<MessengerScreen />} /></ErrorBoundary>;
   }
 
   if (deviceMode === 'tv') {

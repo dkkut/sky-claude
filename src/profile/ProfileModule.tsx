@@ -29,6 +29,7 @@ import { useSettings, ACCENT_COLORS, THEME_MODES, FONT_SIZES, type AccentColor, 
 import { useBreakReminderStore, INTERVAL_OPTIONS, SNOOZE_OPTIONS } from '@/settings/breakReminderStore';
 import { getTVModeSetting, setTVModeSetting, type TVModeSetting } from '@/interface/tv/useDeviceMode';
 import { useCarMode, setCarMode } from '@/interface/car/useCarMode';
+import { useConsoleModeSetting, setConsoleModeSetting } from '@/interface/console/consoleMode';
 import { useCallStore } from '@/calls/store';
 import { SkyMoneyWallet } from '@/wallet/SkyMoneyWallet';
 import { ProfileGiftsShowcase } from '@/gifts/SkyGifts';
@@ -434,6 +435,22 @@ const TVModeSection = () => {
   );
 };
 
+/* -- Sky Console (оболочка для игровых консолей) -------------------- */
+const ConsoleModeSection = () => {
+  const mode = useConsoleModeSetting();
+  const on = mode === 'on';
+  return (
+    <SectionBlock title="Sky Console">
+      <SettingsRow icon={Gamepad2} label="Режим Sky Console"
+        sub={mode === 'on' ? 'Включён вручную' : mode === 'off' ? 'Выключен вручную' : 'Автоопределение по устройству (консоли)'}
+        right={<Toggle on={on} onToggle={() => setConsoleModeSetting(on ? 'off' : 'on')} />} />
+      <p className="px-4 pb-3 pt-1 text-[11px]" style={{ color: 'var(--t3)' }}>
+        Полноэкранная оболочка для консолей и больших экранов с геймпадом: заставка, выбор профиля, главное меню и управление геймпадом. Обычный интерфейс и Sky TV не меняются. Вернуться можно в настройках консоли.
+      </p>
+    </SectionBlock>
+  );
+};
+
 /* -- Car Mode (крупный интерфейс для экрана в машине) --------------- */
 const CarModeSection = () => {
   const on = useCarMode();
@@ -695,6 +712,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
 
       {/* -- TV-ВЕРСИЯ ---------------------------- */}
       <TVModeSection/>
+      <ConsoleModeSection/>
 
       {/* -- CAR MODE ----------------------------- */}
       <CarModeSection/>

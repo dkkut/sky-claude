@@ -1,0 +1,36 @@
+/* SKY CONSOLE — только внутри body.console-mode, чтобы не задеть остальные версии. */
+body.console-mode { overflow: hidden; cursor: default; }
+body.console-mode.console-pad { cursor: none; }
+body.console-mode ::-webkit-scrollbar { display: none; }
+body.console-mode * { scrollbar-width: none; }
+
+body.console-mode .console-focused,
+body.console-mode :focus-visible {
+  outline: 3px solid #b3a7ff !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px rgba(139,124,255,.22), 0 0 34px rgba(139,124,255,.6) !important;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+body.console-mode .console-card { transition: transform .22s cubic-bezier(.2,.8,.2,1), opacity .22s, box-shadow .22s; }
+body.console-mode .console-card.console-focused,
+body.console-mode .console-card:focus-visible { transform: scale(1.08); z-index: 3; }
+
+@keyframes console-twinkle { 0%,100% { opacity: .15 } 50% { opacity: .95 } }
+@keyframes console-drift { from { transform: translateY(0) } to { transform: translateY(-30px) } }
+body.console-mode.console-light *, body.console-light .console-fx { animation-duration: 0s !important; }
+@media (prefers-reduced-motion: reduce) {
+  body.console-mode .console-card { transition: none; }
+  .console-fx { animation: none !important; }
+}
+
+
+body.console-mode .console-zoom { transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+body.console-mode .console-focused .console-zoom, body.console-mode :focus-visible .console-zoom { transform: scale(1.12); }
+body.console-mode .console-picker:has(.console-focused) button:not(.console-focused) { opacity: .6; }
+
+/* Кольцо фокуса рисуем на самой увеличенной карточке, а не на неподвижной кнопке — иначе они расходятся. */
+body.console-mode .console-focused:has(> .console-zoom), body.console-mode :focus-visible:has(> .console-zoom) { outline: none !important; box-shadow: none !important; }
+body.console-mode .console-focused > .console-zoom:not(.console-noring), body.console-mode :focus-visible > .console-zoom:not(.console-noring) {
+  outline: 3px solid #b3a7ff; outline-offset: 3px; box-shadow: 0 0 0 7px rgba(139,124,255,.22), 0 0 34px rgba(139,124,255,.6);
+}
+body.console-mode .console-focused .console-avatar, body.console-mode :focus-visible .console-avatar { box-shadow: 0 0 0 5px #b3a7ff, 0 0 60px rgba(139,124,255,.8) !important; }

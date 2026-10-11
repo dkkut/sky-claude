@@ -5,6 +5,11 @@ import { AppShell }      from './app/AppShell';
 import { AuthScreen }    from './auth/AuthScreen';
 import { TVAuthScreen }  from './interface/tv/auth/TVAuthScreen';
 import { useDeviceMode } from './interface/tv/useDeviceMode';
+import { useConsoleMode } from './interface/console/consoleMode';
+import { useConsoleStore } from './interface/console/consoleStore';
+import { ConsoleRoot } from './interface/console/ConsoleRoot';
+import { ConsoleIntro } from './interface/console/ConsoleIntro';
+import { ConsoleProfilePicker } from './interface/console/ConsoleProfilePicker';
 import { BetaGate }      from './auth/BetaGate';
 import { setBetaRequiredHandler, setPlatformBlockedHandler, initNativeAuth, type PlatformBlock } from './core/auth/api';
 import { apiPlatformStatus } from './core/platform';
@@ -297,6 +302,14 @@ const Root = () => {
   // виден системе навигации пультом (TVFocusable/focusManager). На
   // настоящем ТВ это означало, что войти вообще нельзя было.
   const deviceMode = useDeviceMode();
+  const consoleMode = useConsoleMode();
+  const introDone = useConsoleStore((st) => st.introDone);
+  const picked = useConsoleStore((st) => st.picked);
+  const authStep = useAuthStore((st) => st.step);
+  const profileCount = useAuthStore((st) => st.profiles.length);
+  const authShown = useConsoleStore((st) => st.authShown);
+  /* Консоль: оболочка нужна и экранам входа/ошибок — там тоже работает геймпад. */
+  const wrap = (n: React.ReactNode) => (consoleMode ? <ConsoleRoot>{n}</ConsoleRoot> : n);
   // Skip splash if already authenticated (page refresh) - show instantly
   // Always show splash on every load
   const [ready, setReady] = useState(false);
@@ -415,7 +428,12 @@ const Root = () => {
     watchRegionChanges(() => useAuthStore.getState().currentUserId);
   }, []);
 
-  if (!ready || !sessionChecked) return <Splash offline={offline} minimal={!introAnim} onSkip={introAnim ? () => setReady(true) : undefined} />;
+  // Sky Console: своя заставка вместо обычной; не блокирует проверку сессии, идущую параллельно.
+  if (consoleMode && !introDone) {
+    return <ConsoleRoot><ConsoleIntro sessionReady={sessionChecked} onDone={() => useConsoleStore.getState().setIntroDone()} /></ConsoleRoot>;
+  }
+
+  if (!consoleMode && (!ready || !sessionChecked)) return <Splash offline={offline} minimal={!introAnim} onSkip={introAnim ? () => setReady(true) : undefined} />;
 
   // Окно о документах всплывает поверх любого экрана до входа — беты,
   // входа, выбора профиля: согласие относится не к экрану, а к
@@ -438,35 +456,49 @@ const Root = () => {
   );
 
   if (betaLocked) {
-    return underLegal(
+    return wrap(underLegal(
       <BetaGate onUnlocked={() => {
         setBetaLocked(false);
         void useAuthStore.getState().restoreSession();
       }} />,
-    );
+    ));
   }
 
   if (platformBlock) {
-    return underLegal(
+    return wrap(underLegal(
       <PlatformBlockScreen block={platformBlock} onRetry={checkPlatformStatus}
         onDismiss={!isAuthenticated ? () => setPlatformBlock(null) : undefined} />,
-    );
+    ));
   }
 
   // Блокировка перекрывает всё: выхода в экосистему с этого экрана нет,
   // но обращение в поддержку оттуда доступно — решение надо чем-то
   // оспаривать.
   if (isAuthenticated && limits.bannedUntil !== undefined) {
-    return <BlockedScreen bannedUntil={limits.bannedUntil} />;
+    return wrap(<BlockedScreen bannedUntil={limits.bannedUntil} />);
   }
 
   if (offline && isAuthenticated) {
-    return <OfflineMode onRetryOnline={() => { if (navigator.onLine) setOffline(false); }} />;
+    return wrap(<OfflineMode onRetryOnline={() => { if (navigator.onLine) setOffline(false); }} />);
+  }
+
+  if (consoleMode) {
+    // «Кто играет?»: на холодном запуске и при смене профиля. Доступ проверяет сервер (selectProfile).
+    const needsPicker = profileCount > 0 && (authStep === 'profiles' || (isAuthenticated && !picked && !authShown));
+    if (needsPicker) return <ConsoleRoot><ConsoleProfilePicker /></ConsoleRoot>;
+    if (!isAuthenticated) return <ConsoleRoot>{underLegal(<ConsoleAuth />)}</ConsoleRoot>;
+    return <ConsoleRoot><AppShell key={currentUserId ?? 'app'} /></ConsoleRoot>;
   }
 
   return isAuthenticated
     ? <AppShell key={currentUserId ?? 'app'} />
     : underLegal(deviceMode === 'tv' ? <TVAuthScreen /> : <AuthScreen />);
+};
+
+/** Экран входа в консоли: помечаем, что профиль человек выбирал на нём, и «Кто играет?» не повторяем. */
+const ConsoleAuth = () => {
+  useEffect(() => { useConsoleStore.getState().markAuthShown(); }, []);
+  return <AuthScreen />;
 };
 
 /* Язык и словарь — до первого кадра: английский не должен мелькать русским. */
