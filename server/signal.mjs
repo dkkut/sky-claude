@@ -15,6 +15,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.mjs';
 import { verifyToken, rateLimit, rateLimitPerHour } from './security.mjs';
+import { runWithSession } from './reqctx.mjs';
 import { sessionStore, onSessionRevoked } from './sessions.mjs';
 import { query } from './db.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
@@ -1982,7 +1983,7 @@ export const startSignalHub = () => {
       // не дожидаясь, пока истечёт срок токена.
       if (!(await sessionAlive())) { ws.close(4401, 'session ended'); return; }
 
-      await handle(ws, session, msg);
+      await runWithSession(session.sessionId, () => handle(ws, session, msg));
     };
 
     ws.on('message', (raw) => {

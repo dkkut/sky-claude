@@ -53,7 +53,6 @@ interface Rule { test: RegExp; label: string; confirm?: string; run: () => void 
 const NAV_RULES: Rule[] = [
   { test: /messenger|мессендж|сообщени/i, label: 'Messenger', run: openModule('messages') },
   { test: /музык/i, label: 'Музыка', run: openExtras('music') },
-  { test: /soundcloud|саундклауд/i, label: 'SkySoundCloud', run: openExtras('soundcloud') },
   { test: /кино|фильм|cinema/i, label: 'Кино', run: openExtras('movies') },
   { test: /подкаст/i, label: 'Подкасты', run: openExtras('podcasts') },
   { test: /книг|sky\s*books/i, label: 'Sky Books', run: openExtras('books') },

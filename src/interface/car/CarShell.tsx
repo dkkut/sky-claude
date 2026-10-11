@@ -15,7 +15,7 @@ import { CarMusic } from './CarMusic';
 import { CarPodcasts } from './CarPodcasts';
 import { CarMessenger } from './CarMessenger';
 import { CarAI } from './CarAI';
-import { CarNowBar, useCarNow } from './CarNow';
+import { CarNowBar, CarFullPlayer, useCarNow } from './CarNow';
 import { CAR_ACCENT, CAR_BG, CAR_BLUR, CAR_GLASS, CAR_GLASS_BORDER } from './carTheme';
 import { NetBanner } from '@/shared/NetBanner';
 import { PlayerEngine } from '@/player/PlayerEngine';
@@ -99,6 +99,8 @@ export const CarShell = () => {
         </div>
         {screen !== 'home' && <CarNowBar now={now} />}
       </main>
+
+      <CarFullPlayer now={now} />
 
       {menu && (
         <div className="fixed inset-0 z-[700] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Профиль" style={{ background: 'rgba(3,3,12,0.75)', backdropFilter: 'blur(8px)' }} onClick={() => setMenu(false)}>

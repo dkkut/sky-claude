@@ -28,7 +28,6 @@ const TabFallback = () => (
 const WorkModule = lazyChunk(() => import('@/work/WorkModule').then(m => ({ default: m.WorkModule })));
 const FamilyModule = lazyChunk(() => import('@/family/FamilyModule').then(m => ({ default: m.FamilyModule })));
 const SkyMusic = lazyChunk(() => import('./SkyMusic').then(m => ({ default: m.SkyMusic })));
-const SkySoundCloud = lazyChunk(() => import('./SkySoundCloud').then(m => ({ default: m.SkySoundCloud })));
 const SkyFilm = lazyChunk(() => import('./SkyFilm').then(m => ({ default: m.SkyFilm })));
 const SkyPrime = lazyChunk(() => import('./SkyPrime').then(m => ({ default: m.SkyPrime })));
 const TogetherTab = lazyChunk(() => import('@/together/TogetherTab').then(m => ({ default: m.TogetherTab })));
@@ -86,7 +85,7 @@ import { apiSupportStatus } from '@/moderation/supportApi';
    Оформление и порядок экранов сохранены: список карточками, кнопка
    создания, внутри плеер и колонка участников.                     */
 
-type Tab = 'garant'|'home'|'music'|'soundcloud'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
+type Tab = 'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
 
 const fmtBytes = (b?: number) => b ? `${(b/1024/1024).toFixed(1)} MB` : '';
 const fmtSec = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -554,7 +553,6 @@ const MoreTab = () => {
 const TABS = [
   {key:'home',   label:'Главная', icon:Home},
   {key:'music',  label:'Музыка', icon:Music2},
-  {key:'soundcloud', label:'SkySound', icon:Cloud},
   {key:'movies', label:'Кино',   icon:Film},
   {key:'tv',      label:'ТВ',       icon:Tv2},
   {key:'bots',     label:'Боты',     icon:Bot},
@@ -1256,7 +1254,6 @@ export const ExtrasModule = () => {
         <React.Suspense fallback={<TabFallback/>}>
         {tab==='home' && <MediaHomeTab onNav={handleNav}/>}
         {tab==='music'  && <SkyMusic/>}
-        {tab==='soundcloud' && <SkySoundCloud/>}
         {tab==='movies' && <SkyFilm/>}
         {tab==='prime'  && <SkyPrime/>}
         {tab==='rooms'  && <TogetherTab/>}

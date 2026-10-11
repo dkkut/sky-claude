@@ -88,6 +88,8 @@ export interface MyRights {
   /** Срок наступил, а второго фактора нет — permissions уже пуст, это
       только объяснение почему. */
   twoFactorRequired: boolean;
+  /** Вход в панель ещё не подтверждён ссылкой с почты и кодом аутентификатора — прав пока нет. */
+  gateRequired?: boolean;
   lockdown: { active: boolean; reason: string; since: string | null };
 }
 
@@ -187,6 +189,7 @@ export interface Answer {
     twoFactor?: boolean;
     twoFactorDue?: string | null;
     twoFactorRequired?: boolean;
+    gateRequired?: boolean;
     lockdown?: MyRights['lockdown'];
     /** step-up */
     method?: 'app' | 'email';

@@ -33,7 +33,7 @@ const SCALE = 1.25;
 const Host = ({ messenger }: { messenger: React.ReactNode }) => {
   const service = useConsoleStore((s) => s.service);
   switch (service) {
-    case 'film': case 'music': case 'podcasts': case 'blox': case 'ai': return <ExtrasModule />;
+    case 'film': case 'music': case 'podcasts': case 'blox': case 'ai': case 'prime': case 'market': return <ExtrasModule />;
     case 'games': return <GamingModule />;
     case 'video': return <SkyVideo />;
     case 'messenger': return <>{messenger}</>;
@@ -72,6 +72,9 @@ export const ConsoleShell = ({ messenger }: { messenger: React.ReactNode }) => {
     return () => { consoleNav.onHome = () => {}; consoleNav.onBackFallback = () => false; consoleNav.onMedia = () => {}; consoleNav.onShoulder = () => {}; };
   }, [open]);
 
+  /* Выход из аккаунта размонтирует оболочку: открытый сервис/настройки не должны переехать в следующий вход. */
+  useEffect(() => () => { const st = useConsoleStore.getState(); st.setSettingsOpen(false); st.open(null); }, []);
+
   /* Вернулись из сервиса — фокус на главной восстанавливает сама карточка. После смены экрана
      фокус не должен остаться на исчезнувшем элементе. */
   useEffect(() => { if (service) { const t = setTimeout(() => consoleNav.ensureFocus(), 350); return () => clearTimeout(t); } return undefined; }, [service]);
@@ -94,7 +97,7 @@ export const ConsoleShell = ({ messenger }: { messenger: React.ReactNode }) => {
           <motion.div key={'svc-' + service} className="absolute inset-0" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
             <div className="absolute inset-x-0 top-0 bottom-[68px] overflow-hidden" style={{ background: 'var(--bg-l1)' }}>
               {/* Существующие интерфейсы рассчитаны на монитор вплотную: на экране в трёх метрах крупнее. */}
-              <div className="console-scale" style={{ zoom: SCALE, width: "100%", height: "100%" }}>
+              <div className="console-scale" style={{ width: `${100 / SCALE}%`, height: `${100 / SCALE}%`, transform: `scale(${SCALE})`, transformOrigin: '0 0' }}>
                 <ErrorBoundary>
                   <React.Suspense fallback={<ModuleFallback />}><Host messenger={messenger} /></React.Suspense>
                 </ErrorBoundary>

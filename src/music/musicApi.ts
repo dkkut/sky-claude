@@ -16,6 +16,8 @@ export interface ServerTrack {
   artist: string;
   album?: string;
   genre?: string;
+  license?: string;
+  licenseSource?: string;
   year?: number;
   /** Длительность в секундах. */
   duration: number;
@@ -84,6 +86,8 @@ export const toClientTrack = (t: ServerTrack): Track => ({
   title: t.title,
   artist: t.artist,
   genre: t.genre || 'Другое',
+  license: t.license ?? 'own',
+  licenseSource: t.licenseSource,
   album: t.album,
   year: t.year,
   coverUrl: t.hasCover ? coverUrl(t.id) : undefined,
@@ -131,7 +135,7 @@ export const apiTrack = async (id: string) => {
 
 export const apiPatchTrack = async (id: string, patch: {
   title?: string; artist?: string; album?: string; genre?: string;
-  lyrics?: string; status?: 'published' | 'private';
+  lyrics?: string; status?: 'published' | 'private'; license?: string; licenseSource?: string;
 }) => {
   const r = await apiCall<{ track: ServerTrack }>(`/api/music/track/${encodeURIComponent(id)}`,
     { method: 'PATCH', body: JSON.stringify(patch) });
@@ -252,7 +256,7 @@ export const apiLyrics = async (id: string) => {
 
 export interface UploadMeta {
   title: string; artist: string; album?: string; genre?: string;
-  year?: string | number; duration?: number;
+  year?: string | number; duration?: number; license?: string; licenseSource?: string;
 }
 
 /**
@@ -266,6 +270,8 @@ export const apiUploadTrack = async (
   const p = new URLSearchParams({ title: meta.title, artist: meta.artist });
   if (meta.album) p.set('album', meta.album);
   if (meta.genre) p.set('genre', meta.genre);
+  if (meta.license) p.set('license', meta.license);
+  if (meta.licenseSource) p.set('source', meta.licenseSource);
   if (meta.year) p.set('year', String(meta.year));
   if (meta.duration) p.set('duration', String(Math.round(meta.duration)));
 

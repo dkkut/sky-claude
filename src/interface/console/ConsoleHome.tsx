@@ -99,11 +99,11 @@ export const ConsoleHome = () => {
         </header>
 
         {/* Ряд сервисов */}
-        <div className="mt-[3vh] flex items-end gap-5 px-2 py-4" role="list" aria-label="Сервисы">
+        <div className="mt-[3vh] flex items-end gap-5 overflow-x-auto overflow-y-visible px-2 py-4 [scrollbar-width:none]" role="list" aria-label="Сервисы">
           {list.map((s) => (
             <button key={s.key} type="button" role="listitem" aria-label={s.label} data-console-autofocus={s.key === focused.key ? '' : undefined}
-              onFocus={() => { setFocusKey(s.key); lastFocusKey = s.key; }} onClick={() => openService(s.key)}
-              className="relative shrink-0 rounded-[28px] outline-none" style={{ width: 'clamp(120px, 11vw, 190px)', aspectRatio: '1' }}>
+              onFocus={(e) => { setFocusKey(s.key); lastFocusKey = s.key; e.currentTarget.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); }} onClick={() => openService(s.key)}
+              className="relative shrink-0 rounded-[28px] outline-none" style={{ width: 'clamp(110px, 10vw, 180px)', aspectRatio: '1' }}>
               <span className="console-zoom grid h-full w-full place-items-center rounded-[28px]" style={{ background: `linear-gradient(145deg, ${s.color}, ${s.color}88 60%, #0b0b24)`, boxShadow: '0 14px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.25)' }}>
                 <s.icon size={64} strokeWidth={1.6} />
               </span>

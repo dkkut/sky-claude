@@ -7,9 +7,11 @@
  * отдаёт никому, ни списком, ни файлом.
  */
 import { useRef, useState } from 'react';
-import { Upload, Loader, Check, X } from 'lucide-react';
+import { Upload, Loader, Check, X, ImagePlus } from 'lucide-react';
 import { parseBlob } from 'music-metadata-browser';
 import { useMusicStore } from './serverStore';
+import { shrinkCover } from './TrackEditor';
+import { LicensePicker } from './licenses';
 
 /** Тот же потолок, что и на сервере: не гоняем файл впустую. */
 const MAX_BYTES = 30 * 1024 * 1024;
@@ -23,12 +25,21 @@ export const PrivateUpload = () => {
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const [duration, setDuration] = useState(0);
+  const [license, setLicense] = useState('own');
+  const [licenseSource, setLicenseSource] = useState('');
+  const [cover, setCover] = useState<Blob | null>(null);
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
+  const setCoverBlob = (b: Blob | null) => {
+    setCover(b);
+    setCoverUrl((old) => { if (old) URL.revokeObjectURL(old); return b ? URL.createObjectURL(b) : null; });
+  };
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
-    setFile(null); setTitle(''); setArtist(''); setDuration(0);
+    setFile(null); setTitle(''); setArtist(''); setDuration(0); setCoverBlob(null); setLicense('own'); setLicenseSource('');
     setError(null); setDone(false);
     if (fileRef.current) fileRef.current.value = '';
   };
@@ -62,6 +73,9 @@ export const PrivateUpload = () => {
       const meta = await parseBlob(f);
       gotTitle = meta.common.title ?? '';
       gotArtist = meta.common.artist ?? '';
+      // Обложка, вшитая в сам файл, — берём её: так в коллекции не будет серых квадратов.
+      const pic = meta.common.picture?.[0];
+      if (pic?.data?.length) setCoverBlob(await shrinkCover(new Blob([pic.data], { type: pic.format || 'image/jpeg' })));
     } catch { /* файл без читаемых тегов — не беда */ }
 
     if (!gotTitle || !gotArtist) {
@@ -86,7 +100,12 @@ export const PrivateUpload = () => {
       title: title.trim(),
       artist: artist.trim() || 'Неизвестный исполнитель',
       duration: Math.round(duration),
+      license, licenseSource: licenseSource.trim() || undefined,
     });
+    if (res.ok && res.id && cover) {
+      const okCover = await useMusicStore.getState().setCover(res.id, cover);
+      if (!okCover) setError('Трек сохранён, но обложку загрузить не удалось — добавьте её через «Изменить».');
+    }
     setBusy(false);
     if (!res.ok) { setError(res.reason ?? 'Не получилось загрузить'); return; }
     setDone(true);
@@ -114,12 +133,22 @@ export const PrivateUpload = () => {
             <button type="button" aria-label="Отменить выбор файла" onClick={reset}
               className="shrink-0 p-1" style={{ color: '#5c626e' }}><X size={14}/></button>
           </div>
+          <input ref={coverRef} type="file" accept="image/*" className="hidden"
+            onChange={async e => { const f = e.target.files?.[0]; if (f) setCoverBlob(await shrinkCover(f)); e.target.value = ''; }}/>
+          <button type="button" onClick={() => coverRef.current?.click()} className="flex items-center gap-3 rounded-2xl p-1.5 pr-3 text-left"
+            style={{ background: 'rgba(128,128,128,0.12)' }}>
+            <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl" style={{ background: 'rgba(128,128,128,0.25)' }}>
+              {coverUrl ? <img src={coverUrl} alt="" className="h-full w-full object-cover"/> : <ImagePlus size={18} style={{ opacity: 0.6 }}/>}
+            </span>
+            <span className="text-[12px] font-medium" style={{ color: 'var(--t1)' }}>{coverUrl ? 'Обложка выбрана — нажмите, чтобы заменить' : 'Добавить обложку (необязательно)'}</span>
+          </button>
           <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Название" maxLength={200}
-            className="w-full rounded-xl px-3 py-2 text-[13px] outline-none"
-            style={{ background: 'rgba(255,255,255,0.05)', color: '#f2f5f8', border: '1px solid rgba(255,255,255,0.07)' }}/>
+            className="w-full rounded-full px-4 py-2 text-[13px] outline-none"
+            style={{ background: 'rgba(128,128,128,0.14)', color: 'var(--t1)', border: '1px solid rgba(128,128,128,0.35)' }}/>
           <input value={artist} onChange={e => setArtist(e.target.value)} placeholder="Исполнитель" maxLength={200}
-            className="w-full rounded-xl px-3 py-2 text-[13px] outline-none"
-            style={{ background: 'rgba(255,255,255,0.05)', color: '#f2f5f8', border: '1px solid rgba(255,255,255,0.07)' }}/>
+            className="w-full rounded-full px-4 py-2 text-[13px] outline-none"
+            style={{ background: 'rgba(128,128,128,0.14)', color: 'var(--t1)', border: '1px solid rgba(128,128,128,0.35)' }}/>
+          <LicensePicker license={license} source={licenseSource} onChange={(l, src) => { setLicense(l); setLicenseSource(src); }}/>
           <button type="button" disabled={busy || !title.trim()} onClick={() => void send()}
             className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[12.5px] font-bold disabled:opacity-40"
             style={{ background: '#fff', color: '#0a0a0f' }}>

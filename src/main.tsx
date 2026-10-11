@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSettings } from './settings/store';
+import { useSettings, setForceDark } from './settings/store';
 import ReactDOM from 'react-dom/client';
 import { AppShell }      from './app/AppShell';
 import { AuthScreen }    from './auth/AuthScreen';
@@ -297,6 +297,9 @@ const Splash = ({ offline, minimal, onSkip }: { offline: boolean; minimal?: bool
   );
 };
 
+const AdminVerifyPage = React.lazy(() => import('./admin/AdminGate').then((m) => ({ default: m.AdminVerifyPage })));
+const AdminVerifyLazy = () => <React.Suspense fallback={null}><AdminVerifyPage /></React.Suspense>;
+
 const Root = () => {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
   const currentUserId   = useAuthStore(s => s.currentUserId);
@@ -312,6 +315,13 @@ const Root = () => {
   const authStep = useAuthStore((st) => st.step);
   const profileCount = useAuthStore((st) => st.profiles.length);
   const authShown = useConsoleStore((st) => st.authShown);
+  /* ТВ и Car Mode — всегда тёмная тема (консоль делает то же в ConsoleRoot). */
+  useEffect(() => {
+    if (consoleMode) return undefined;
+    const on = deviceMode === 'tv' || carMode;
+    setForceDark(on);
+    return () => setForceDark(false);
+  }, [deviceMode, carMode, consoleMode]);
   /* Консоль: оболочка нужна и экранам входа/ошибок — там тоже работает геймпад. */
   const wrap = (n: React.ReactNode) => (consoleMode ? <ConsoleRoot>{n}</ConsoleRoot> : n);
   // Skip splash if already authenticated (page refresh) - show instantly
@@ -548,7 +558,7 @@ void initI18n().finally(() => ReactDOM.createRoot(document.getElementById('root'
         </button>
       </div>
     }>
-      <Root />
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : <Root />}
     </ErrorBoundary>
   </React.StrictMode>
 ));

@@ -5,6 +5,7 @@ import { startGamepad } from './input/gamepad';
 import { useInputState } from './input/gamepad';
 import { ConsoleKeyboard } from './input/ConsoleKeyboard';
 import { useConsoleStore } from './consoleStore';
+import { setForceDark } from '@/settings/store';
 
 const GLYPH = {
   playstation: { select: '✕', back: '○', media: '□', home: 'OPTIONS' },
@@ -33,8 +34,9 @@ export const ConsoleRoot = ({ children }: { children: ReactNode }) => {
   const source = useInputState((s) => s.source);
   useEffect(() => {
     document.body.classList.add('console-mode');
+    setForceDark(true);
     const stop = startGamepad();
-    return () => { stop(); document.body.classList.remove('console-mode', 'console-pad', 'console-light'); };
+    return () => { stop(); setForceDark(false); document.body.classList.remove('console-mode', 'console-pad', 'console-light'); };
   }, []);
   useEffect(() => { document.body.classList.toggle('console-light', fx === 'light'); }, [fx]);
   useEffect(() => { document.body.classList.toggle('console-pad', source === 'pad'); }, [source]);

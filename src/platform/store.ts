@@ -15,6 +15,8 @@ export interface Track {
   genre: string;
   album?: string;
   year?: number;
+  license?: string;
+  licenseSource?: string;
   lyrics?: string;
   coverUrl?: string;
   duration: string;

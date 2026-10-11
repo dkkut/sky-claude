@@ -11,6 +11,8 @@ import { useMusicStore } from '@/music/serverStore';
 import { playMusicQueue } from '@/music/useMusicSync';
 import { usePlayerStore } from '@/player/playerStore';
 import type { Track } from '@/platform/store';
+import { Maximize2 } from 'lucide-react';
+import { useFullNow } from '@/player/fullNowStore';
 import { TVFocusable } from './TVFocusable';
 import { TVCarousel } from './TVCarousel';
 import { TVCard } from './TVCard';
@@ -107,6 +109,7 @@ export const TVMusic = () => {
             <p className="text-[16px] font-semibold tabular-nums" style={{ color: 'var(--t3)' }}>{fmt(currentTime)} / {fmt(duration ?? 0)}</p>
           </div>
           <div className="flex items-center gap-4">
+            <Btn id="music-full" label="На весь экран" onEnter={() => useFullNow.getState().show()}>{() => <Maximize2 size={24} color="#fff"/>}</Btn>
             <Btn id="music-fav" label="В избранное" onEnter={() => { void toggleFavorite(item.id); }}>{() => <Heart size={26} color="#fff" fill={nowIsFav ? '#ff5d8f' : 'none'}/>}</Btn>
             <Btn id="music-prev" label="Предыдущий" onEnter={prevTrack}>{() => <SkipBack size={26} color="#fff"/>}</Btn>
             <Btn id="music-play" label={isPlaying ? 'Пауза' : 'Играть'} big prio={0} onEnter={() => usePlayerStore.getState().requestPlay(!isPlaying)}>

@@ -8,7 +8,7 @@ export const adminChannelRoutes = async (req, res, url) => {
   const session = await requireProfile(req, res);
   if (!session) return true;
   const me = session.profileId;
-  const u = new URL(url, 'http://x');
+  const u = new URL(req.url, 'http://x');
 
   if (req.method === 'GET' && u.pathname === '/api/admin/channels') {
     if (!rateLimit(`adm:chan:r:${me}`, 60)) return json(res, 429, { error: 'too_many_requests' });

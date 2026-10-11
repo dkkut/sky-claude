@@ -18,6 +18,8 @@ import { query } from './db.mjs';
 import { config } from './config.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { PERMISSIONS, ROLES } from './roles.mjs';
+import { currentSession } from './reqctx.mjs';
+import { sessionStore } from './sessions.mjs';
 
 /** Ник владельца из .env, приведённый к нижнему регистру. */
 const ownerName = () => String(config.ownerUsername ?? '').trim().toLowerCase();
@@ -77,13 +79,19 @@ export const mayClaimUsername = async (username, claimToken) => {
  * ник владельца в .env — законный способ передать сервис, а вот
  * подменить строку в базе не должно быть достаточно.
  */
-export const isOwner = async (userId) => {
+export const isOwnerRaw = async (userId) => {
   const name = ownerName();
   if (!name || !userId) return false;
   const { rowCount } = await query(
     'SELECT 1 FROM profiles WHERE id = $1 AND lower(username) = $2', [userId, name],
   );
   return rowCount > 0;
+};
+
+export const isOwner = async (userId) => {
+  if (!(await isOwnerRaw(userId))) return false;
+  // Владельцу с закрытым шлюзом владельческие действия недоступны так же, как и обычные права.
+  return !(await gateLocked(userId));
 };
 
 /**
@@ -135,6 +143,37 @@ const startTwoFactorClock = async (profileId) => {
       WHERE id = $1 AND admin_2fa_due IS NULL`, [profileId]);
 };
 
+
+/* ─── Шлюз входа в панель ────────────────────────────────────────────
+   Каждая сессия администратора проходит двухэтапный вход: ссылка на почту + код
+   аутентификатора (server/admingate.mjs). Пока шлюз закрыт, права из этого файла
+   не выдаются — ни панели, ни любому другому модулю, ведь спрашивают все здесь.
+   Отключается только переменной ADMIN_GATE=off (тесты и локальная отладка).
+   Шлюз не применяется к тем, кто не может его пройти (нет подтверждённой почты или
+   аутентификатора): иначе владелец без настройки оказался бы за дверью без ключа.
+   Для них панель показывает подсказку, что настроить. */
+const gateOn = () => process.env.ADMIN_GATE !== 'off';
+const gateOpenUntil = new Map();   // sid → мс; короткая память, чтобы не ходить в базу на каждое право
+
+export const forgetGate = (sid) => { gateOpenUntil.delete(String(sid)); };
+
+/** Закрыт ли шлюз для ЭТОЙ сессии именно для этого человека. */
+export const gateLocked = async (userId) => {
+  if (!gateOn() || !userId) return false;
+  const st = currentSession();
+  if (!st?.sid) return false;                  // фоновая задача, тест напрямую — без запроса
+  if (st.profile === undefined) st.profile = (await sessionStore.get(st.sid))?.profileId ?? null;
+  if (st.profile !== userId) return false;     // спрашивают про другого человека
+  if ((gateOpenUntil.get(st.sid) ?? 0) > Date.now()) return false;
+  const { rows } = await query(
+    'SELECT expires_at FROM admin_gate_open WHERE sid = $1 AND profile_id = $2 AND expires_at > now()', [st.sid, userId]);
+  if (rows[0]) { gateOpenUntil.set(st.sid, Math.min(Date.now() + 5000, rows[0].expires_at.getTime())); return false; }
+  const { rows: acc } = await query(
+    `SELECT s.two_factor_enabled, s.email_verified FROM profiles p JOIN sky_ids s ON s.id = p.sky_id WHERE p.id = $1`, [userId]);
+  if (!acc[0]?.two_factor_enabled || !acc[0]?.email_verified) return false;   // пройти шлюз нечем
+  return true;
+};
+
 export const rightsOf = async (actorId) => {
   if (!actorId) return { ...NOBODY };
 
@@ -174,6 +213,12 @@ export const rightsOf = async (actorId) => {
     twoFactorDue: row.admin_2fa_due ? row.admin_2fa_due.toISOString() : null,
     twoFactorRequired: Boolean(overdue),
   };
+
+  /* Шлюз входа закрыт — права не выдаются, но признак admin остаётся: панель объяснит, что нужно. */
+  if (await gateLocked(actorId)) {
+    return { ...base, owner: Boolean(row.owner), role: row.owner ? 'owner' : (row.admin_role ?? 'super_admin'),
+      permissions: [], gateRequired: true };
+  }
 
   if (row.owner) {
     return { ...base, owner: true, role: 'owner',

@@ -21,6 +21,7 @@ import { useMusicStore } from '@/music/serverStore';
 import { TVHome } from './TVHome';
 import { TVMovieDetail } from './TVMovieDetail';
 import { TVPlayer } from './TVPlayer';
+import { TVFullPlayer } from './TVFullPlayer';
 import { TVSearch } from './TVSearch';
 import { TVMusic } from './TVMusic';
 import { TVVideoHub } from './TVVideoHub';
@@ -96,7 +97,7 @@ export const TVShell = () => {
 
   return (
     <div className="fixed inset-0 z-[500] overflow-hidden" style={{ background: 'radial-gradient(120% 90% at 80% 0%, #14123a 0%, #0a0a14 55%, #05050c 100%)' }} data-keep-dark>
-      <div style={{ zoom: scale, width: '100%', height: '100%' }} className="flex">
+      <div style={{ width: `${100 / scale}%`, height: `${100 / scale}%`, transform: `scale(${scale})`, transformOrigin: '0 0' }} className="flex">
         <NotifBridge />
         <PlayerEngine />
         <PodcastPlayerHost />
@@ -131,6 +132,7 @@ export const TVShell = () => {
               ? { kind: 'movie', id: screen.movieId } : { kind: 'video', id: screen.movieId }}
             onBack={handleBack}/>
         )}
+        <TVFullPlayer />
         <TVActionSheetHost />
         <NetBanner />
         <NotifToastLayer />

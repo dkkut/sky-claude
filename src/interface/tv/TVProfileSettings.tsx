@@ -35,7 +35,7 @@ export const TVProfileSettings = () => {
   return (
     <div className="px-10 pt-8 pb-10 max-w-[720px]">
       <div className="flex items-center gap-4 mb-10">
-        <div className="grid h-16 w-16 place-items-center rounded-full" style={{ background: 'var(--bg-l2)' }}>
+        <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full" style={{ background: 'var(--bg-l2)' }}>
           {me?.avatar ? <img src={me.avatar} className="h-full w-full rounded-full object-cover" alt=""/> : <User size={26} color="var(--t2)"/>}
         </div>
         <div>

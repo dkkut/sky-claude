@@ -274,6 +274,7 @@ export const musicRoutes = async (req, res, url) => {
       const r = await deleteTrack(id, me);
       if (r.error) return json(res, r.error === 'not_allowed' ? 403 : 404, r);
       await remove(id).catch(() => {});
+      await remove(`cov-${String(id).slice(4)}`).catch(() => {});
       return json(res, 200, { ok: true });
     }
 
@@ -407,6 +408,8 @@ export const musicRoutes = async (req, res, url) => {
       artist: params.get('artist'),
       album: params.get('album'),
       genre: params.get('genre'),
+      license: params.get('license'),
+      licenseSource: params.get('source'),
       year: params.get('year'),
       duration: params.get('duration'),
     };

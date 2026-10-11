@@ -1,0 +1,14 @@
+/**
+ * Контекст запроса: какая сессия его прислала.
+ *
+ * Нужен шлюзу входа в админку (admingate.mjs): право администратора спрашивается
+ * в десятках мест через can()/rightsOf(), и ни одно из них не знает, с какого устройства
+ * пришёл вопрос. Контекст живёт через await (как язык в lang.mjs), поэтому единственная
+ * проверка в admin.mjs закрывает панель везде сразу, а не там, где о ней вспомнили.
+ */
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+const als = new AsyncLocalStorage();
+
+export const runWithSession = (sid, fn) => als.run({ sid: sid ? String(sid) : null, profile: undefined }, fn);
+export const currentSession = () => als.getStore() ?? null;

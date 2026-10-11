@@ -8,6 +8,7 @@
    На ТВ у пользователя может быть чужой гость в комнате — поэтому личное
    показано только здесь и не попадает на главную.
 =========================================================== */
+import { flash } from '@/shared/flash';
 import { useEffect, useMemo } from 'react';
 import { Bookmark, RefreshCw } from 'lucide-react';
 import { useFilmStore } from '@/film/serverStore';
@@ -77,7 +78,7 @@ export const TVCollection = ({ onOpenMovie, onPlayMovie }: Props) => {
     actions: [
       { label: 'Слушать', run: () => playMusicQueue(pool, t.id) },
       ...(favorites.includes(t.id) ? [{ label: 'Убрать из избранного', run: () => toggleFavorite(t.id) }] : [{ label: 'В избранное', run: () => toggleFavorite(t.id) }]),
-      ...(own ? [{ label: 'Удалить трек', danger: true, keepOpen: true, run: () => { confirmDelete(t.title, () => removeTrack(t.id)); } }] : []),
+      ...(own ? [{ label: 'Удалить трек', danger: true, keepOpen: true, run: () => { confirmDelete(t.title, async () => { if (!(await removeTrack(t.id))) flash('Не удалось удалить трек. Попробуйте ещё раз.'); }); } }] : []),
     ],
   });
 

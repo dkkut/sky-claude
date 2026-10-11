@@ -20,6 +20,7 @@ export const useMusicSync = () => {
   useEffect(() => {
     if (!id || dur <= 0 || restored.current === id) return;
     restored.current = id;
+    if (usePlayerStore.getState().currentTime > 3) return; // трек уже играет — не перематываем назад
     const at = useMusicStore.getState().progress[id] ?? 0;
     // Самое начало и хвост не восстанавливаем: возвращать некуда / трек уже дослушан.
     if (at > 5 && at < dur - 10) usePlayerStore.getState().requestSeek(at);

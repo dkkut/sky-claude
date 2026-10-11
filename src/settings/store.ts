@@ -125,9 +125,17 @@ const load = (): AppSettings => {
 };
 
 /* Apply settings to CSS variables */
-export const applySettings = (s: AppSettings) => {
+/** Консоль, ТВ и Car Mode всегда тёмные: на экране в трёх метрах светлая тема даёт тёмный текст на тёмном фоне. */
+export const setForceDark = (on: boolean) => {
+  if (!W) return;
+  document.documentElement.dataset.forceDark = on ? '1' : '';
+  applySettings(useSettings.getState().settings);
+};
+
+export const applySettings = (input: AppSettings) => {
   if (!W) return;
   const root = document.documentElement;
+  const s = root.dataset.forceDark === '1' ? { ...input, colorScheme: 'dark' as const } : input;
   const accent = ACCENT_COLORS[s.accent];
   const font = FONT_SIZES[s.fontSize];
 

@@ -39,6 +39,8 @@ import { MarketVerifyAdmin } from '@/marketplace/MarketVerifyAdmin';
 import { BloxAdminSection } from '@/blox/BloxAdmin';
 import { MonitoringTab } from './MonitoringTab';
 
+import { ContentModTab } from './ContentModTab';
+import { AdminGateScreen } from './AdminGate';
 const C = {
   bg: 'var(--bg-l1)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
   brd: 'var(--border)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)',
@@ -5445,7 +5447,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5512,6 +5514,7 @@ export const AdminPanel = () => {
       twoFactor: r.payload.twoFactor === true,
       twoFactorDue: r.payload.twoFactorDue ?? null,
       twoFactorRequired: r.payload.twoFactorRequired === true,
+      gateRequired: r.payload.gateRequired === true,
       lockdown: r.payload.lockdown ?? { active: false, reason: '', since: null },
     } : {
       admin: false, owner: false, role: null, roleLabel: '',
@@ -5579,6 +5582,10 @@ export const AdminPanel = () => {
     );
   }
 
+  if (rights.gateRequired) {
+    return <AdminGateScreen onOpened={() => void loadRights()} />;
+  }
+
   if (rights.twoFactorRequired) {
     /* Прав здесь уже нет — сервер вернул пустой набор permissions.
        Это единственный экран, который объясняет, почему: без него
@@ -5614,6 +5621,7 @@ export const AdminPanel = () => {
     { key: 'market', label: 'Sky Market', show: has('market') },
     { key: 'violations', label: 'Нарушения и штрафы', show: has('violations') },
     { key: 'kutrent', label: 'KutRent Market', show: has('kutrent_market') },
+    { key: 'content', label: 'Контент', show: has('content') },
     { key: 'pets', label: 'Pets и Skin Market', show: has('content') },
     { key: 'customization', label: 'Кастомизация', show: has('content') },
     { key: 'bloom', label: 'Bloom', show: has('content') },
@@ -5827,6 +5835,7 @@ export const AdminPanel = () => {
         </div>
       )}
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
+      {tab === 'content' && <ContentModTab />}
       {tab === 'pulse' && <PrimePulseAdminSection />}
       {tab === 'campaigns' && <CampaignsAdminSection onPendingChanged={() => void loadPending()} />}
       {tab === 'gifts' && <GiftsAdminSection />}

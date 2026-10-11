@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, Download, ListMusic, Mic2, History as HistoryIcon, Radio, BookOpen,
-  Pin, Check, ArrowUpDown, ChevronLeft, Play, Trash2, X, FolderLock, Upload, CheckCircle,
+  Pin, Check, ArrowUpDown, ChevronLeft, Play, Trash2, X, FolderLock, Upload, CheckCircle, Pencil, Music2,
 } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { useMusicStore } from '@/music/serverStore';
 import { PrivateUpload } from '@/music/PrivateUpload';
+import { TrackEditor } from '@/music/TrackEditor';
 import { getG } from '@/music/utils';
 import { useOfflineMusic } from '@/offline/musicOffline';
 
@@ -34,7 +35,8 @@ const PIN_KEY = 'sky:music:pins:v1';
 const loadPins = (): string[] => { try { return JSON.parse(localStorage.getItem(PIN_KEY) || '[]'); } catch { return []; } };
 const savePins = (ids: string[]) => { try { localStorage.setItem(PIN_KEY, JSON.stringify(ids)); } catch {} };
 
-const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, onToggleSelect, note, offline }: {
+const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, onToggleSelect, note, offline, onEdit }: {
+  onEdit?: () => void;
   /** Скачан на устройство — играет без сети. */
   offline?: boolean;
   t: Track; active: boolean; playing: boolean; onPlay: () => void; liked: boolean; onLike: () => void;
@@ -52,9 +54,9 @@ const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, 
           {selected && <Check size={12} color="#0a0a0f"/>}
         </div>
       )}
-      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl"
+      <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl"
         style={{ background: t.coverUrl ? undefined : `linear-gradient(145deg,${c1},${c2})` }}>
-        {t.coverUrl && <img src={t.coverUrl} alt="" className="h-full w-full rounded-xl object-cover"/>}
+        {t.coverUrl ? <img src={t.coverUrl} alt="" className="h-full w-full rounded-xl object-cover"/> : <Music2 size={18} color="rgba(255,255,255,0.65)"/>}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13.5px] font-medium" style={{ color: active ? '#4fe3d0' : '#f2f5f8' }}>{t.title}</p>
@@ -64,6 +66,12 @@ const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, 
       {note && (
         <span className="shrink-0 rounded-full px-2 py-0.5 text-[10.5px]"
           style={{ background:'rgba(255,255,255,0.05)', color:'#8a8f9a' }}>{note}</span>
+      )}
+      {!selectMode && onEdit && (
+        <span role="button" tabIndex={0} aria-label="Изменить трек" onClick={e => { e.stopPropagation(); onEdit(); }}
+          onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); onEdit(); } }} className="shrink-0 cursor-pointer p-1.5">
+          <Pencil size={15} color="#8a8f9a"/>
+        </span>
       )}
       {!selectMode && (
         <button type="button" onClick={e => { e.stopPropagation(); onLike(); }} className="shrink-0 p-1">
@@ -160,6 +168,7 @@ export const SkyMusicLibrary = ({
   const [sort, setSort] = useState<SortKey>('added');
   const [genreFilter, setGenreFilter] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
+  const [editing, setEditing] = useState<Track | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pins, setPins] = useState<string[]>([]);
   const [openPlaylist, setOpenPlaylist] = useState<string | null>(null);
@@ -345,6 +354,7 @@ export const SkyMusicLibrary = ({
                 liked={favorites.includes(t.id)} onLike={() => onLike(t.id)}
                 selectMode={selectMode} selected={selected.has(t.id)} onToggleSelect={() => toggleSelect(t.id)}
                 offline={offIds.has(t.id)}
+                onEdit={cat==='mine' && t.uploadedBy==='me' ? () => setEditing(t) : undefined}
                 note={cat==='mine' ? (t.status === 'published' ? 'в каталоге' : 'только у вас') : undefined}/>
             ))}
             {trackList.length === 0 && (
@@ -496,6 +506,7 @@ export const SkyMusicLibrary = ({
           </motion.div>
         )}
       </AnimatePresence>
+      {editing && <TrackEditor track={editing} onClose={() => setEditing(null)}/>}
     </div>
   );
 };

@@ -9,7 +9,7 @@ import http from 'node:http';
 import { config } from './config.mjs';
 import { rateLimit } from './security.mjs';
 import { json, originAllowed, readSession, clientIp } from './http.mjs';
-import { isOwner, isAdmin } from './admin.mjs';
+import { isOwnerRaw, isAdmin } from './admin.mjs';
 import { shutdownState, maintenanceState } from './platform.mjs';
 import { waitForDb, migrate, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
@@ -50,6 +50,11 @@ import { sweepOrphanGiftMedia } from './gifts.mjs';
 import { mapsRoutes } from './routes/maps.mjs';
 import { familyRoutes } from './routes/family.mjs';
 import { adminChannelRoutes } from './routes/adminchannels.mjs';
+import { contentModRoutes } from './routes/contentmod.mjs';
+import { adminGateRoutes } from './routes/admingate.mjs';
+import { runWithSession } from './reqctx.mjs';
+import { readAccessToken } from './http.mjs';
+import { sweepAdminGate } from './admingate.mjs';
 import { garantRoutes } from './routes/garant.mjs';
 import { violationsRoutes } from './routes/violations.mjs';
 import { platformRoutes } from './routes/platform.mjs';
@@ -133,7 +138,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes];
+                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -174,7 +179,7 @@ const applyCors = (req, res) => {
   }
 };
 
-const server = http.createServer((req, res) => runWithLang(req, async () => {
+const server = http.createServer((req, res) => runWithLang(req, () => runWithSession(verifyToken(readAccessToken(req), config.jwtSecret)?.sid ?? null, async () => {
   const t0 = Date.now();
   res.on('finish', () => recordRequest(res.statusCode, Date.now() - t0));
   try {
@@ -297,11 +302,11 @@ const server = http.createServer((req, res) => runWithLang(req, async () => {
      * не смог бы ни войти и выключить режим, ни браузер — понять,
      * почему сайт не отвечает, и показать нужный экран.
      */
-    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status') {
+    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate')) {
       const shutdown = await shutdownState();
       if (shutdown.active) {
         const session = await readSession(req);
-        const owner = session?.profileId ? await isOwner(session.profileId) : false;
+        const owner = session?.profileId ? await isOwnerRaw(session.profileId) : false;
         if (!owner) return json(res, 503, { error: 'platform_shutdown', reason: shutdown.reason });
       } else {
         const maintenance = await maintenanceState();
@@ -329,7 +334,7 @@ const server = http.createServer((req, res) => runWithLang(req, async () => {
     const message = config.nodeEnv === 'production' ? 'internal_error' : error.message;
     return json(res, 500, { error: message });
   }
-}));
+})));
 
 /* ─── Запуск ─────────────────────────────────────────────────────────────
    БД и Redis должны быть готовы до приёма запросов, иначе первые из них
@@ -542,6 +547,7 @@ const start = async () => {
       // заявки, о которых забыли. Заявка, ждущая вечно, однажды будет
       // подтверждена не глядя.
       await sweepStepUp();
+      await sweepAdminGate();
       const staleRequests = await sweepPendingActions();
       if (staleRequests) console.log(`[админ] просрочено заявок: ${staleRequests}`);
       // Запуск рассылки, зависший в processing дольше окна (сервер упал

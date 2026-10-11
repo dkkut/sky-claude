@@ -15,6 +15,7 @@ import {
 import { saveDownload, isDownloaded } from '@/offline/offlineDB';
 import { useOfflineMusic } from '@/offline/musicOffline';
 import { flash } from '@/shared/flash';
+import { LicenseBadge, RightsholderNotice } from '@/music/licenses';
 import { loadAudioUrl } from '@/platform/audioDB';
 import { usePlatformStore } from '@/platform/store';
 import { useMusicStore } from '@/music/serverStore';
@@ -1353,7 +1354,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                           <Share2 size={13} />
                         </button>
                       )}
-                      <button type="button" onClick={() => { if (window.confirm('Удалить трек?')) void removeTrack(t.id); }}
+                      <button type="button" onClick={() => { if (window.confirm('Удалить трек?')) void removeTrack(t.id).then(ok => { if (!ok) flash('Не удалось удалить трек. Попробуйте ещё раз.'); }); }}
                         className="grid h-8 w-8 place-items-center rounded-xl"
                         style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)', color: '#ef4444', cursor: 'pointer' }}>
                         <X size={13} />
@@ -1946,23 +1947,20 @@ export const SkyFullPlayer = ({
   const lyrics = React.useMemo(() => {
     const base = track.syncedLyrics && track.syncedLyrics.length > 0 ? track.syncedLyrics : (serverLyrics ?? []);
     const lines = base.filter(l => l.text);
-    /* Текст без меток времени: у всех строк время 0, и «текущей» всегда становилась
-       последняя. Растягиваем строки равномерно по песне, чтобы подсветка шла по ходу
-       (точнее — кнопкой «Расставить» в редакторе текста). */
-    const untimed = lines.length > 1 && lines.every(l => l.t <= 0);
-    if (!untimed) return lines;
-    const per = duration > 0 ? duration / lines.length : 4;
-    return lines.map((l, i) => ({ ...l, t: i * per }));
-  }, [track.id, track.syncedLyrics, serverLyrics, duration]);
+    return lines;
+  }, [track.id, track.syncedLyrics, serverLyrics]);
 
+  /* Без меток времени текст показывается целиком и сам не листается: придумывать,
+     какая строка поётся сейчас, нельзя — подсветка и прокрутка только по настоящим меткам. */
+  const lyricsTimed = React.useMemo(() => lyrics.some(l => l.t > 0), [lyrics]);
   const activeLyric = React.useMemo(
-    () => lyrics.reduce((best, l, i) => l.t <= currentTime ? i : best, 0),
-    [lyrics, currentTime]
+    () => lyricsTimed ? lyrics.reduce((best, l, i) => l.t <= currentTime ? i : best, 0) : -1,
+    [lyrics, currentTime, lyricsTimed]
   );
 
   /* Auto-scroll */
   React.useEffect(() => {
-    const el = lyricItems.current[activeLyric];
+    const el = activeLyric >= 0 ? lyricItems.current[activeLyric] : null;
     if (el && lyricsRef.current) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
@@ -2067,6 +2065,8 @@ export const SkyFullPlayer = ({
         <div className="flex flex-col items-center shrink-0"
           style={{
             ...(isMobile ? { position: 'relative', zIndex: 3, pointerEvents: 'none' as const } : {}),
+            // Пока правится текст, карточка плеера не должна лежать поверх редактора.
+            ...(editingLyrics ? { display: 'none' } : {}),
             width: !isMobile && (showQueue || showLyrics) ? '40%' : '100%',
             minWidth: 280, maxWidth: 480,
             padding: isMobile ? '8px 20px 4px' : '12px 24px 8px',
@@ -2090,6 +2090,12 @@ export const SkyFullPlayer = ({
               <p className="font-semibold" style={{fontSize: isMobile ? 13 : 14, margin:'5px 0 0', color:hslAcc(h), overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
                 {track.artist}
               </p>
+              {(track.uploadedBy || track.license) && (
+                <div style={{marginTop:8, display:'flex', flexDirection:'column', alignItems:'center', gap:6, color:'rgba(255,255,255,0.7)'}}>
+                  <LicenseBadge license={track.license} source={track.licenseSource}/>
+                  <RightsholderNotice/>
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
 
@@ -2399,16 +2405,16 @@ export const SkyFullPlayer = ({
                     style={{flex:1,overflowY:'auto',scrollbarWidth:'none',paddingRight:4,paddingBottom:48}}>
                     {lyrics.filter(l=>l.text).map((line,i) => {
                       const isActive = i === activeLyric && line.text !== '...';
-                      const isPast   = line.t < currentTime;
+                      const isPast   = lyricsTimed && line.t < currentTime;
                       return (
                         <div key={i}
                           ref={el=>lyricItems.current[i]=el}
-                          onClick={()=>onSeek(line.t)}
-                          style={{padding:isActive?'6px 0':'2px 0',cursor:'pointer'}}>
+                          onClick={()=>{ if (lyricsTimed) onSeek(line.t); }}
+                          style={{padding:isActive?'6px 0':'2px 0',cursor:lyricsTimed?'pointer':'default'}}>
                           <p style={{
                             fontSize: isActive ? 28 : 20,
                             fontWeight: isActive ? 800 : isPast ? 500 : 400,
-                            color: isActive ? 'white' : isPast ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.5)',
+                            color: isActive ? 'white' : !lyricsTimed ? 'rgba(255,255,255,0.85)' : isPast ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.5)',
                             lineHeight:1.3, margin:0,
                             letterSpacing: isActive?'-0.4px':'0',
                             transition:'all 0.3s ease',
@@ -2687,6 +2693,9 @@ export const SkyMusic = () => {
     if (!cur?.id || durTime <= 0) return;
     if (restoredRef.current === cur.id) return;
     restoredRef.current = cur.id;
+    // Зашли на вкладку, пока трек уже играет, — перематывать нельзя: сохранённая позиция
+    // на сервере старее живой, и трек «включался заново». Возвращаемся только на старте.
+    if (curTime > 3) return;
     const at = progressMap[cur.id] ?? 0;
     // Совсем начало и самый хвост не восстанавливаем: в первом случае
     // возвращать некуда, во втором человек трек уже дослушал.

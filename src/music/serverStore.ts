@@ -15,7 +15,7 @@ import {
   apiTracks, apiFavorites, apiSetFavorite, apiHistory, apiNotePlay,
   apiPlaylists, apiCreatePlaylist, apiRenamePlaylist, apiDeletePlaylist,
   apiAddToPlaylist, apiRemoveFromPlaylist, apiReorderPlaylist,
-  apiProgress, apiSetProgress, apiUploadTrack, apiPatchTrack, apiDeleteTrack, apiSubmitTrack, apiTrackKeep, apiTrack,
+  apiProgress, apiSetProgress, apiUploadTrack, apiUploadCover, apiPatchTrack, apiDeleteTrack, apiSubmitTrack, apiTrackKeep, apiTrack,
   apiMediaTicket, toClientTrack, type ServerPlaylist, type UploadMeta,
 } from './musicApi';
 
@@ -67,7 +67,11 @@ interface MusicState {
   submitForReview: (trackId: string) => Promise<void>;
   /** Снять с публикации или отозвать заявку. */
   publish: (trackId: string, published: boolean) => Promise<void>;
-  removeTrack: (trackId: string) => Promise<void>;
+  removeTrack: (trackId: string) => Promise<boolean>;
+  /** Правка своего трека: название, исполнитель, жанр, текст. */
+  editTrack: (trackId: string, patch: { title?: string; artist?: string; album?: string; genre?: string; lyrics?: string; license?: string; licenseSource?: string }) => Promise<boolean>;
+  /** Своя обложка для трека. */
+  setCover: (trackId: string, file: Blob) => Promise<boolean>;
   /** «Хранить без срока» для личного трека. */
   setKeep: (trackId: string, keep: boolean) => Promise<boolean>;
 }
@@ -213,12 +217,32 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   removeTrack: async (trackId) => {
-    if (!(await apiDeleteTrack(trackId))) return;
+    if (!(await apiDeleteTrack(trackId))) return false;
     set((s) => ({
       tracks: s.tracks.filter((t) => t.id !== trackId),
       favorites: s.favorites.filter((f) => f !== trackId),
       history: s.history.filter((t) => t.id !== trackId),
     }));
+    return true;
+  },
+
+  editTrack: async (trackId, patch) => {
+    const t = await apiPatchTrack(trackId, patch);
+    if (!t) return false;
+    set((s) => ({ tracks: s.tracks.map((x) => (x.id === trackId ? { ...toClientTrack(t), coverUrl: x.coverUrl ?? toClientTrack(t).coverUrl } : x)) }));
+    return true;
+  },
+
+  setCover: async (trackId, file) => {
+    if (!(await apiUploadCover(trackId, file))) return false;
+    const t = await apiTrack(trackId);
+    if (t) {
+      const made = toClientTrack(t);
+      // Адрес обложки тот же, что и раньше, — без метки браузер показал бы старую картинку из кэша.
+      const bust = made.coverUrl ? `${made.coverUrl}${made.coverUrl.includes('?') ? '&' : '?'}v=${Date.now()}` : made.coverUrl;
+      set((s) => ({ tracks: s.tracks.map((x) => (x.id === trackId ? { ...made, coverUrl: bust } : x)) }));
+    }
+    return true;
   },
 }));
 

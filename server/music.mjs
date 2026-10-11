@@ -35,6 +35,15 @@ const text = (v, max) => String(v ?? '')
   .trim()
   .slice(0, max);
 
+/** Допустимые лицензии трека. 'own' — загружено самим правообладателем. */
+export const MUSIC_LICENSES = ['own', 'cc0', 'cc-by', 'cc-by-sa', 'cc-by-nc', 'cc-by-nd', 'cc-by-nc-sa', 'cc-by-nc-nd', 'public-domain'];
+const cleanLicense = (v) => (MUSIC_LICENSES.includes(String(v)) ? String(v) : 'own');
+/** Ссылка на источник/автора — только http(s): иначе в карточку попало бы что угодно. */
+const cleanSource = (v) => {
+  const t = text(v, 300);
+  return /^https?:\/\/[^\s]+$/i.test(t) ? t : '';
+};
+
 /* ─── Представление наружу ─────────────────────────────────────────── */
 
 /**
@@ -48,6 +57,8 @@ export const toTrack = (row) => ({
   artist: row.artist,
   album: row.album || undefined,
   genre: row.genre || undefined,
+  license: row.license || 'own',
+  licenseSource: row.license_source || undefined,
   year: row.year ?? undefined,
   duration: row.duration_sec ?? 0,
   hasCover: Boolean(row.has_cover),
@@ -146,12 +157,13 @@ export const createTrack = async (ownerId, meta) => {
   const id = newId('trk');
   await query(
     `INSERT INTO music_tracks
-       (id, owner_id, title, artist, album, genre, year, duration_sec, mime, bytes, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'private')`,
+       (id, owner_id, title, artist, album, genre, year, duration_sec, mime, bytes, status, license, license_source)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'private',$11,$12)`,
     [id, ownerId, title, artist, text(meta.album, MAX_TITLE), text(meta.genre, 60),
       Number.isFinite(Number(meta.year)) ? Number(meta.year) : null,
       Math.max(0, Math.min(86400, Number(meta.duration) || 0)),
-      String(meta.mime ?? 'audio/mpeg'), Math.max(0, Number(meta.bytes) || 0)],
+      String(meta.mime ?? 'audio/mpeg'), Math.max(0, Number(meta.bytes) || 0),
+      cleanLicense(meta.license), cleanSource(meta.licenseSource)],
   );
   return { id };
 };
@@ -178,6 +190,8 @@ export const updateTrack = async (trackId, ownerId, patch) => {
   if (patch.artist !== undefined) put('artist', text(patch.artist, MAX_ARTIST));
   if (patch.album !== undefined) put('album', text(patch.album, MAX_TITLE));
   if (patch.genre !== undefined) put('genre', text(patch.genre, 60));
+  if (patch.license !== undefined) put('license', cleanLicense(patch.license));
+  if (patch.licenseSource !== undefined) put('license_source', cleanSource(patch.licenseSource));
   if (patch.lyrics !== undefined) {
     const l = String(patch.lyrics ?? '').slice(0, MAX_LYRICS);
     put('lyrics', l ? encryptContent(l) : null);

@@ -1413,6 +1413,7 @@ export const myRights = async (actorId) => {
     twoFactor: Boolean(rights.twoFactor),
     twoFactorDue: rights.twoFactorDue ?? null,
     twoFactorRequired: Boolean(rights.twoFactorRequired),
+    gateRequired: Boolean(rights.gateRequired),
     lockdown: await lockdownState(),
   };
 };
