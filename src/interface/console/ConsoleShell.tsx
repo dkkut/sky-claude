@@ -8,6 +8,7 @@
 import React, { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Home } from 'lucide-react';
+import { NetBanner } from '@/shared/NetBanner';
 import { PlayerEngine } from '@/player/PlayerEngine';
 import { PodcastPlayerHost } from '@/podcasts/PodcastPlayer';
 import { NotifToastLayer } from '@/notifications/NotifToast';
@@ -78,6 +79,7 @@ export const ConsoleShell = ({ messenger }: { messenger: React.ReactNode }) => {
   return (
     <div className="fixed inset-0 z-[500]" style={{ background: 'var(--bg)' }}>
       <NotifBridge />
+      <NetBanner />
       <IslandBridge />
       <SkyIsland />
       <PlayerEngine />

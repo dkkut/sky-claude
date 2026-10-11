@@ -26,7 +26,7 @@ const fmt = (s: number) => {
 
 export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
   const movie = useFilmStore(s => (source.kind === 'movie'
-    ? s.catalog.find(m => m.id === source.id) ?? s.mine.find(m => m.id === source.id)
+    ? s.catalog.find(m => m.id === source.id) ?? s.mine.find(m => m.id === source.id) ?? s.saved.find(m => m.id === source.id) ?? s.continueWatching.find(m => m.id === source.id)
     : undefined));
   const video = useSkyVideoStore(s => source.kind === 'video' ? s.feed.find(v => v.id === source.id) : undefined);
   const noteSkyVideoView = useSkyVideoStore(s => s.noteView);

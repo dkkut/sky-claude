@@ -155,3 +155,11 @@ export const useTVFocused = (id: string) =>
     () => tvFocusManager.isFocused(id),
     () => false,
   );
+
+/** id элемента в фокусе (или null) — реактивно; нужен боковой панели, чтобы раскрываться. */
+export const useTVFocusedId = () =>
+  useSyncExternalStore(
+    cb => tvFocusManager.subscribe(cb),
+    () => tvFocusManager.getFocusedId(),
+    () => null,
+  );

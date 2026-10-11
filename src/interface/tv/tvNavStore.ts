@@ -15,6 +15,7 @@ export type TVScreen =
   | { kind: 'channels' }
   | { kind: 'podcasts' }
   | { kind: 'library' }
+  | { kind: 'collection' }
   | { kind: 'favorites' }
   | { kind: 'search' }
   | { kind: 'profile' }

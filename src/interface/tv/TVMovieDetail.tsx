@@ -34,7 +34,10 @@ export const TVMovieDetail = ({ movieId, onPlay, onOpenMovie }: TVMovieDetailPro
 
   useEffect(() => { void load(); }, [load]);
 
-  const movie = catalog.find(m => m.id === movieId);
+  const mineList = useFilmStore(s => s.mine);
+  const cont = useFilmStore(s => s.continueWatching);
+  // Фильм может быть не в первой странице каталога: личный или сохранённый открываем так же.
+  const movie = catalog.find(m => m.id === movieId) ?? saved.find(m => m.id === movieId) ?? mineList.find(m => m.id === movieId) ?? cont.find(m => m.id === movieId);
   const isSaved = saved.some(m => m.id === movieId);
   const position = progress[movieId] ?? movie?.position ?? 0;
   const hasProgress = Boolean(movie && position > 30 && (!movie.duration || position < movie.duration - 60));
@@ -92,7 +95,7 @@ export const TVMovieDetail = ({ movieId, onPlay, onOpenMovie }: TVMovieDetailPro
             <TVFocusable id="detail-fav" onEnter={() => void toggleSaved(movie.id)} autoFocusPriority={1}>
               {({ focused }) => (
                 <div className="flex items-center gap-2 rounded-xl px-6 py-3 text-[16px] font-bold text-white" style={{ background: focused ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.12)', transform: focused ? 'scale(1.06)' : 'scale(1)', boxShadow: focused ? '0 0 0 3px var(--accent)' : 'none', transition: 'transform 0.16s' }}>
-                  {isSaved ? <><Check size={19}/> В закладках</> : <><Plus size={19}/> В закладки</>}
+                  {isSaved ? <><Check size={19}/> В коллекции</> : <><Plus size={19}/> В коллекцию</>}
                 </div>
               )}
             </TVFocusable>

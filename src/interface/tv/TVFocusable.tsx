@@ -33,12 +33,16 @@ export const TVFocusable = ({ id: idProp, disabled, autoFocusPriority, scope, on
   const id = idProp ?? autoId;
   const ref = useRef<HTMLDivElement>(null);
   const focused = useTVFocused(id);
+  /* onEnter держим в ref: у большинства вызовов это новая стрелка на каждый рендер, и перерегистрация узла
+     (с «передачей фокуса любому оставшемуся» при снятии) крала бы фокус на каждом обновлении экрана. */
+  const enterRef = useRef(onEnter);
+  enterRef.current = onEnter;
 
   useEffect(() => {
     if (!ref.current) return;
-    const unregister = tvFocusManager.register({ id, el: ref.current, disabled, onEnter, autoFocusPriority, scope });
+    const unregister = tvFocusManager.register({ id, el: ref.current, disabled, onEnter: () => enterRef.current(), autoFocusPriority, scope });
     return unregister;
-  }, [id, disabled, onEnter, autoFocusPriority, scope]);
+  }, [id, disabled, autoFocusPriority, scope]);
 
   return (
     <div

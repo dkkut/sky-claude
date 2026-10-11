@@ -102,8 +102,12 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       set({ loading: false, error: 'Не удалось загрузить музыку' });
       return;
     }
+    // Любимое и история могут лежать за пределами первой страницы каталога — добавляем их в общий список,
+    // иначе «Любимые» на любом устройстве теряли бы такие треки.
+    const known = new Set(tracks.map((t) => t.id));
+    const extra = [...(favs ?? []), ...(hist ?? [])].filter((t) => !known.has(t.id) && (known.add(t.id), true));
     set({
-      tracks: tracks.map(toClientTrack),
+      tracks: [...tracks, ...extra].map(toClientTrack),
       favorites: (favs ?? []).map((t) => t.id),
       history: (hist ?? []).map(toClientTrack),
       playlists: (pls ?? []).map(toPlaylist),

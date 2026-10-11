@@ -6,6 +6,7 @@ import { AuthScreen }    from './auth/AuthScreen';
 import { TVAuthScreen }  from './interface/tv/auth/TVAuthScreen';
 import { useDeviceMode } from './interface/tv/useDeviceMode';
 import { useConsoleMode } from './interface/console/consoleMode';
+import { useCarMode } from './interface/car/useCarMode';
 import { useConsoleStore } from './interface/console/consoleStore';
 import { ConsoleRoot } from './interface/console/ConsoleRoot';
 import { ConsoleIntro } from './interface/console/ConsoleIntro';
@@ -303,6 +304,7 @@ const Root = () => {
   // настоящем ТВ это означало, что войти вообще нельзя было.
   const deviceMode = useDeviceMode();
   const consoleMode = useConsoleMode();
+  const carMode = useCarMode();
   const introDone = useConsoleStore((st) => st.introDone);
   const picked = useConsoleStore((st) => st.picked);
   const authStep = useAuthStore((st) => st.step);
@@ -478,16 +480,22 @@ const Root = () => {
     return wrap(<BlockedScreen bannedUntil={limits.bannedUntil} />);
   }
 
-  if (offline && isAuthenticated) {
+  // На ТВ, в консоли и в машине крупный интерфейс остаётся: загруженное видно, а о потере связи сообщает
+  // плашка. Мелкий экран офлайн-режима для телефона там не годится.
+  if (offline && isAuthenticated && !(consoleMode || deviceMode === 'tv' || carMode)) {
     return wrap(<OfflineMode onRetryOnline={() => { if (navigator.onLine) setOffline(false); }} />);
   }
 
-  if (consoleMode) {
-    // «Кто играет?»: на холодном запуске и при смене профиля. Доступ проверяет сервер (selectProfile).
+  // «Кто играет?» при холодном запуске и смене профиля — в консоли, на ТВ и в автомобиле:
+  // это общие экраны, где за устройством бывает несколько человек. Доступ проверяет сервер (selectProfile).
+  if (consoleMode || deviceMode === 'tv' || carMode) {
     const needsPicker = profileCount > 0 && (authStep === 'profiles' || (isAuthenticated && !picked && !authShown));
     if (needsPicker) return <ConsoleRoot><ConsoleProfilePicker /></ConsoleRoot>;
-    if (!isAuthenticated) return <ConsoleRoot>{underLegal(<ConsoleAuth />)}</ConsoleRoot>;
-    return <ConsoleRoot><AppShell key={currentUserId ?? 'app'} /></ConsoleRoot>;
+    if (!isAuthenticated) {
+      if (consoleMode) return <ConsoleRoot>{underLegal(<ConsoleAuth><AuthScreen /></ConsoleAuth>)}</ConsoleRoot>;
+      return underLegal(<ConsoleAuth>{deviceMode === 'tv' ? <TVAuthScreen /> : <AuthScreen />}</ConsoleAuth>);
+    }
+    if (consoleMode) return <ConsoleRoot><AppShell key={currentUserId ?? 'app'} /></ConsoleRoot>;
   }
 
   return isAuthenticated
@@ -496,9 +504,9 @@ const Root = () => {
 };
 
 /** Экран входа в консоли: помечаем, что профиль человек выбирал на нём, и «Кто играет?» не повторяем. */
-const ConsoleAuth = () => {
+const ConsoleAuth = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => { useConsoleStore.getState().markAuthShown(); }, []);
-  return <AuthScreen />;
+  return <>{children}</>;
 };
 
 /* Язык и словарь — до первого кадра: английский не должен мелькать русским. */

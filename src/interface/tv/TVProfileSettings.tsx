@@ -2,7 +2,10 @@
    SKY TV — Профиль / Настройки
 =========================================================== */
 import { useEffect } from 'react';
-import { User, LogOut, Tv } from 'lucide-react';
+import { User, LogOut, Tv, Users } from 'lucide-react';
+import { usePlayerStore } from '@/player/playerStore';
+import { usePlayer as usePodcastPlayer } from '@/podcasts/playerStore';
+import { useTVNavStore } from './tvNavStore';
 import { useAuthStore } from '@/core/auth/store';
 import { TVFocusable } from './TVFocusable';
 import { tvFocusManager } from './focusManager';
@@ -18,7 +21,16 @@ export const TVProfileSettings = () => {
   const { accounts, currentUserId, logout } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
 
-  useEffect(() => { tvFocusManager.focusDefault('tv-mode-auto'); }, []);
+  useEffect(() => { tvFocusManager.focusDefault('tv-switch'); }, []);
+
+  /* Смена профиля: всё, что играет от имени прошлого, останавливаем; сессия Sky ID остаётся —
+     дальше экран «Кто играет?» и серверная проверка доступа к новому профилю. */
+  const switchProfile = () => {
+    usePlayerStore.getState().clear();
+    usePodcastPlayer.getState().close();
+    useTVNavStore.getState().replaceHome();
+    useAuthStore.getState().switchProfile();
+  };
 
   return (
     <div className="px-10 pt-8 pb-10 max-w-[720px]">
@@ -50,13 +62,22 @@ export const TVProfileSettings = () => {
       </div>
       <p className="mb-10 text-[13px]" style={{ color: 'var(--t3)' }}>«Выключен» вернёт обычную версию сайта при следующей загрузке страницы.</p>
 
-      <TVFocusable id="tv-logout" onEnter={logout}>
+      <div className="flex gap-4">
+      <TVFocusable id="tv-switch" onEnter={switchProfile}>
+        {({ focused }) => (
+          <div className="flex items-center gap-2 rounded-xl px-6 py-4 text-[18px] font-bold" style={{ background: focused ? '#8b7cff' : 'var(--bg-l2)', color: '#fff', boxShadow: focused ? '0 0 0 3px rgba(179,167,255,0.9)' : 'none' }}>
+            <Users size={20}/> Сменить профиль
+          </div>
+        )}
+      </TVFocusable>
+      <TVFocusable id="tv-logout" onEnter={() => { usePlayerStore.getState().clear(); usePodcastPlayer.getState().close(); useTVNavStore.getState().replaceHome(); logout(); }}>
         {({ focused }) => (
           <div className="flex items-center gap-2 rounded-xl px-5 py-3 text-[15px] font-bold" style={{ background: focused ? 'var(--red)' : 'var(--bg-l2)', color: focused ? '#fff' : 'var(--red)', boxShadow: focused ? '0 0 0 2px var(--red)' : 'none' }}>
             <LogOut size={17}/> Выйти
           </div>
         )}
       </TVFocusable>
+      </div>
     </div>
   );
 };

@@ -2,11 +2,22 @@
    SKY TV — корневая оболочка.
    Связывает все TV-экраны через единый стек навигации.
 =========================================================== */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTVNavStore, type TVScreen } from './tvNavStore';
 import { tvFocusManager } from './focusManager';
 import { useTVKeyBindings } from './useTVKeyBindings';
-import { TVHeader } from './TVHeader';
+import { TVSidebar, navKindFor, type NavKind } from './TVSidebar';
+import { TVCollection } from './TVCollection';
+import { NetBanner } from '@/shared/NetBanner';
+import { TVActionSheetHost, useTVSheet } from './TVActionSheet';
+import { useTvScale } from './tvScale';
+import { useMusicSync } from '@/music/useMusicSync';
+import { PlayerEngine } from '@/player/PlayerEngine';
+import { PodcastPlayerHost } from '@/podcasts/PodcastPlayer';
+import { NotifBridge } from '@/notifications/NotifBridge';
+import { NotifToastLayer } from '@/notifications/NotifToast';
+import { FlashLayer } from '@/shared/flash';
+import { useMusicStore } from '@/music/serverStore';
 import { TVHome } from './TVHome';
 import { TVMovieDetail } from './TVMovieDetail';
 import { TVPlayer } from './TVPlayer';
@@ -19,9 +30,8 @@ import { TVLibrary } from './TVLibrary';
 import { TVCatalogGrid } from './TVCatalogGrid';
 import { TVProfileSettings } from './TVProfileSettings';
 import { useFilmStore } from '@/film/serverStore';
-import { posterUrl, type ServerMovie } from '@/film/filmApi';
+import { posterUrl } from '@/film/filmApi';
 
-const HEADER_KINDS = new Set<TVScreen['kind']>(['home', 'movies', 'series', 'music', 'video', 'channels', 'podcasts', 'library', 'favorites']);
 
 export const TVShell = () => {
   const stack = useTVNavStore(s => s.stack);
@@ -29,92 +39,103 @@ export const TVShell = () => {
   const back = useTVNavStore(s => s.back);
   const setTopLevel = useTVNavStore(s => s.setTopLevel);
   const saveFocusForCurrent = useTVNavStore(s => s.saveFocusForCurrent);
-  // Каталог и закладки кино — с сервера. Раньше «избранное» здесь
-  // было списком избранной музыки: в общем сторе он один на всё.
+  const scale = useTvScale();
+  const contentRef = useRef<HTMLDivElement>(null);
+  // Каталог кино и музыки — с сервера, как в приложении на телефоне.
   const movies = useFilmStore(s => s.catalog);
-  const savedFilms = useFilmStore(s => s.saved);
   const loadFilm = useFilmStore(s => s.load);
-  useEffect(() => { void loadFilm(); }, [loadFilm]);
+  const loadMusic = useMusicStore(s => s.load);
+  useEffect(() => { void loadFilm(); void loadMusic(); }, [loadFilm, loadMusic]);
+  useMusicSync();
+
+  /* Личное меняется на другом устройстве, пока телевизор включён: при возврате в приложение
+     и раз в пять минут перечитываем коллекции с сервера, а не показываем вчерашнее. */
+  useEffect(() => {
+    const refresh = () => { void useFilmStore.getState().load({ force: true }); void useMusicStore.getState().load({ force: true }); void useFilmStore.getState().refreshMine(); };
+    const vis = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', vis);
+    window.addEventListener('online', refresh);
+    const t = setInterval(refresh, 5 * 60_000);
+    return () => { document.removeEventListener('visibilitychange', vis); window.removeEventListener('online', refresh); clearInterval(t); };
+  }, []);
 
   const screen = stack[stack.length - 1].screen;
   const isPlayer = screen.kind === 'player';
+  const active = navKindFor(screen.kind);
 
   /* при любом уходе с текущего экрана — запоминаем, что было в фокусе
-     и на какой позиции скролла, чтобы Back вернул именно туда (п.17 ТЗ) */
+     и на какой позиции скролла, чтобы Back вернул именно туда */
   const snapshot = () => {
     const id = tvFocusManager.getFocusedId() ?? undefined;
-    saveFocusForCurrent(id, window.scrollY);
+    saveFocusForCurrent(id, contentRef.current?.scrollTop ?? 0);
   };
 
   const goDetail = (movieId: string) => { snapshot(); push({ kind: 'movieDetail', movieId }); };
   const goPlayMovie = (movieId: string) => { snapshot(); push({ kind: 'player', movieId }); };
   const goPlayVideo = (videoId: string) => { snapshot(); push({ kind: 'player', movieId: videoId }); };
-  const goSearch = () => { snapshot(); setTopLevel({ kind: 'search' }); };
-  const goProfile = () => { snapshot(); setTopLevel({ kind: 'profile' }); };
-  const goNav = (kind: TVScreen['kind']) => { snapshot(); setTopLevel({ kind } as TVScreen); };
+  const goNav = (kind: NavKind) => { snapshot(); setTopLevel({ kind } as TVScreen); };
 
   const handleBack = () => {
-    const ok = back();
-    // стек пуст дальше некуда — просто остаёмся на главной, ничего не закрываем
-    if (!ok) return;
+    if (useTVSheet.getState().close()) return;
+    // Дальше назад некуда — фокус уходит на боковую панель, а не «в никуда».
+    if (!back()) tvFocusManager.setFocused(`nav-${active}`);
   };
 
   useTVKeyBindings({ mode: 'nav', enabled: !isPlayer, onBack: handleBack });
 
-  /* после смены экрана (кроме плеера, у него свой фулскрин) — скроллим
-     страницу в восстановленную/нулевую позицию */
+  /* после смены экрана (кроме плеера) — восстановленная или нулевая позиция прокрутки */
   useEffect(() => {
     if (isPlayer) return;
-    window.scrollTo({ top: stack[stack.length - 1].scrollY ?? 0 });
+    contentRef.current?.scrollTo({ top: stack[stack.length - 1].scrollY ?? 0 });
   }, [screen, isPlayer]);
 
-  const card = (m: ServerMovie) => ({
+  const allMovies = movies.filter(m => !m.isShort).map(m => ({
     id: m.id, title: m.title, subtitle: m.genre,
     imageUrl: m.hasPoster ? posterUrl(m.id) : undefined, rating: m.rating,
-  });
-  const favoriteMovies = savedFilms.filter(m => !m.isShort).map(card);
-  const allMovies = movies.filter(m => !m.isShort).map(card);
+  }));
 
   return (
-    <div className="fixed inset-0 z-[500] overflow-y-auto" style={{ background: 'var(--bg)' }}>
-      {!isPlayer && HEADER_KINDS.has(screen.kind) && (
-        <TVHeader active={screen.kind} onNavigate={goNav} onSearch={goSearch} onProfile={goProfile}/>
-      )}
+    <div className="fixed inset-0 z-[500] overflow-hidden" style={{ background: 'radial-gradient(120% 90% at 80% 0%, #14123a 0%, #0a0a14 55%, #05050c 100%)' }} data-keep-dark>
+      <div style={{ zoom: scale, width: '100%', height: '100%' }} className="flex">
+        <NotifBridge />
+        <PlayerEngine />
+        <PodcastPlayerHost />
 
-      {screen.kind === 'home' && <TVHome onOpenMovie={goDetail} onPlayMovie={goPlayMovie}/>}
+        {!isPlayer && <TVSidebar active={active} onNavigate={(k) => (k === 'search' ? (snapshot(), setTopLevel({ kind: 'search' })) : goNav(k))} />}
 
-      {screen.kind === 'movies' && (
-        <TVCatalogGrid items={allMovies} onOpen={goDetail} emptyTitle="Каталог пока пуст"/>
-      )}
+        <div ref={contentRef} className="relative h-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden" style={{ scrollbarWidth: 'none' }}>
+          {screen.kind === 'home' && <TVHome onOpenMovie={goDetail} onPlayMovie={goPlayMovie}/>}
 
-      {screen.kind === 'series' && (
-        <TVCatalogGrid items={[]} onOpen={goDetail} emptyTitle="Сериалы появятся здесь" emptySub="Пока в каталоге только фильмы и видео"/>
-      )}
+          {(screen.kind === 'movies' || screen.kind === 'series') && (
+            <TVCatalogGrid items={allMovies} onOpen={goDetail} emptyTitle="Каталог пока пуст"/>
+          )}
 
-      {screen.kind === 'favorites' && (
-        <TVCatalogGrid items={favoriteMovies} onOpen={goDetail} emptyTitle="В избранном пока пусто" emptySub="Добавляйте фильмы кнопкой «В избранное» на странице фильма"/>
-      )}
+          {(screen.kind === 'collection' || screen.kind === 'favorites') && <TVCollection onOpenMovie={goDetail} onPlayMovie={goPlayMovie}/>}
 
-      {screen.kind === 'music' && <TVMusic/>}
+          {screen.kind === 'music' && <TVMusic/>}
+          {screen.kind === 'video' && <TVVideoHub onPlayVideo={goPlayVideo}/>}
+          {screen.kind === 'channels' && <TVChannels/>}
+          {screen.kind === 'podcasts' && <TVPodcasts/>}
+          {screen.kind === 'library' && <TVLibrary onPlayMovie={goPlayMovie}/>}
+          {screen.kind === 'search' && <TVSearch onOpenMovie={goDetail} onBack={handleBack}/>}
+          {(screen.kind === 'profile' || screen.kind === 'settings') && <TVProfileSettings/>}
 
-      {screen.kind === 'video' && <TVVideoHub onPlayVideo={goPlayVideo}/>}
-      {screen.kind === 'channels' && <TVChannels/>}
-      {screen.kind === 'podcasts' && <TVPodcasts/>}
-      {screen.kind === 'library' && <TVLibrary onPlayMovie={goPlayMovie}/>}
+          {screen.kind === 'movieDetail' && (
+            <TVMovieDetail movieId={screen.movieId} onPlay={goPlayMovie} onOpenMovie={goDetail}/>
+          )}
+        </div>
 
-      {screen.kind === 'search' && <TVSearch onOpenMovie={goDetail} onBack={handleBack}/>}
-
-      {screen.kind === 'profile' && <TVProfileSettings/>}
-
-      {screen.kind === 'movieDetail' && (
-        <TVMovieDetail movieId={screen.movieId} onPlay={goPlayMovie} onOpenMovie={goDetail}/>
-      )}
-
-      {screen.kind === 'player' && (
-        <TVPlayer
-          source={movies.some(m => m.id === screen.movieId) ? { kind: 'movie', id: screen.movieId } : { kind: 'video', id: screen.movieId }}
-          onBack={handleBack}/>
-      )}
+        {screen.kind === 'player' && (
+          <TVPlayer
+            source={movies.some(m => m.id === screen.movieId) || useFilmStore.getState().mine.some(m => m.id === screen.movieId) || useFilmStore.getState().saved.some(m => m.id === screen.movieId)
+              ? { kind: 'movie', id: screen.movieId } : { kind: 'video', id: screen.movieId }}
+            onBack={handleBack}/>
+        )}
+        <TVActionSheetHost />
+        <NetBanner />
+        <NotifToastLayer />
+        <FlashLayer />
+      </div>
     </div>
   );
 };

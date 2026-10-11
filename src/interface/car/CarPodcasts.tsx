@@ -7,21 +7,21 @@ import { useEffect, useState } from 'react';
 import { Podcast, Play, Pause, RotateCcw, RotateCw } from 'lucide-react';
 import { usePlayer } from '@/podcasts/playerStore';
 import { apiContinue, apiNewFromSubscriptions, apiMediaTicket, epCoverUrl, type Episode } from '@/podcasts/podcastApi';
-import { CAR_GLASS, CAR_GLASS_BORDER, CAR_BLUR } from './CarShell';
+import { CAR_GLASS, CAR_GLASS_BORDER, CAR_BLUR } from './carTheme';
 
 const fmt = (s: number) => { if (!isFinite(s) || s < 0) s = 0; const m = Math.floor(s / 60), sec = Math.floor(s % 60); return `${m}:${String(sec).padStart(2, '0')}`; };
 
 const Row = ({ ep, active, onPlay }: { ep: Episode; active: boolean; onPlay: () => void }) => (
   <button type="button" onClick={onPlay}
-    className="flex w-full items-center gap-4 rounded-2xl px-4 py-3 text-left transition-transform active:scale-[0.98]"
-    style={{ background: active ? 'rgba(255,255,255,0.10)' : 'transparent' }}>
-    <div className="h-14 w-14 shrink-0 rounded-xl overflow-hidden"
+    className="flex w-full items-center gap-5 rounded-3xl px-4 text-left outline-none transition-transform active:scale-[0.985] focus-visible:ring-4 focus-visible:ring-violet-300" aria-label={ep.title}
+    style={{ minHeight: 96, background: active ? 'rgba(139,124,255,0.22)' : 'transparent' }}>
+    <div className="h-[76px] w-[76px] shrink-0 rounded-2xl overflow-hidden"
       style={{ background: ep.hasCover ? `center/cover no-repeat url(${epCoverUrl(ep.id)})` : 'linear-gradient(160deg,#2b2440,#12101f)' }}>
       {!ep.hasCover && <div className="grid h-full w-full place-items-center"><Podcast size={20} color="rgba(255,255,255,0.4)" /></div>}
     </div>
     <div className="min-w-0 flex-1">
-      <p className="truncate text-[17px] font-bold" style={{ color: active ? 'var(--accent)' : '#fff' }}>{ep.title}</p>
-      <p className="truncate text-[14px]" style={{ color: 'rgba(255,255,255,0.5)' }}>{ep.podcastTitle ?? ''}</p>
+      <p className="truncate text-[26px] font-bold" style={{ color: active ? '#d5ceff' : '#fff' }} translate="no">{ep.title}</p>
+      <p className="truncate text-[19px]" style={{ color: 'rgba(255,255,255,0.55)' }} translate="no">{ep.podcastTitle ?? ''}</p>
     </div>
   </button>
 );
