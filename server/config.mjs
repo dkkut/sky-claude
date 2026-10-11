@@ -155,7 +155,10 @@ export const config = {
   // адрес и ключ, что и у расшифровки, поэтому по умолчанию берём их же,
   // если TTS_* не заданы отдельно. Ожидается обычная ручка
   // /v1/audio/speech (формат OpenAI). Пока ключ не задан — ответа нет.
-  ttsApiKey:  process.env.TTS_API_KEY  || process.env.STT_API_KEY || '',
+  // TTS_DISABLED=1 — озвучки на сервере нет вовсе (ответ читает голос устройства),
+  // даже если задан STT: у некоторых поставщиков (Groq) распознавание есть,
+  // а озвучки под модель по умолчанию нет.
+  ttsApiKey:  process.env.TTS_DISABLED === '1' ? '' : (process.env.TTS_API_KEY  || process.env.STT_API_KEY || ''),
   ttsModel:   process.env.TTS_MODEL    || 'tts-1',
   ttsBaseUrl: (process.env.TTS_BASE_URL || process.env.STT_BASE_URL || '').replace(/\/+$/, '').replace(/\/v1$/, ''),
   ttsVoice:   process.env.TTS_VOICE    || 'alloy',

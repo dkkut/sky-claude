@@ -112,15 +112,72 @@ export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
     if (/\?\s*$/.test(text.trim())) setTimeout(() => { void startListening().catch(() => {}); }, 350);
   };
 
+  /* iOS Safari разрешает speechSynthesis и audio.play() только из обработчика
+     касания. Ответ приходит после сетевого запроса, то есть уже вне касания,
+     и озвучка молча не запускалась. Поэтому в момент нажатия «разбудить»:
+     беззвучная реплика синтеза и один и тот же <audio>, который потом
+     получает настоящий звук. */
+  const unlockedRef = useRef(false);
+  const unlockAudio = () => {
+    if (unlockedRef.current) return;
+    unlockedRef.current = true;
+    try {
+      if (typeof speechSynthesis !== 'undefined') {
+        const u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0;
+        speechSynthesis.speak(u);
+      }
+    } catch { /* нет синтеза — не страшно */ }
+    try {
+      const el = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+      el.volume = 0;
+      void el.play().catch(() => {});
+      audioElRef.current = el;
+    } catch { /* нет аудио — не страшно */ }
+  };
+
+  /* Что читать вслух: без кода и разметки, предложениями — длинную реплику
+     Safari обрывает на середине. */
+  const speakable = (text: string) => text
+    .replace(/```[\s\S]*?```/g, speechLocale().toLowerCase().startsWith('ru') ? ' Код показан на экране. ' : ' The code is shown on screen. ')
+    .replace(/[*_`#>|~]+/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ').trim();
+  const chunks = (text: string) => {
+    const parts = text.match(/[^.!?…]+[.!?…]*\s*/g) ?? [text];
+    const out: string[] = [];
+    for (const part of parts) {
+      let rest = part.trim();
+      while (rest.length > 180) {
+        const cut = rest.lastIndexOf(' ', 180);
+        out.push(rest.slice(0, cut > 40 ? cut : 180)); rest = rest.slice(cut > 40 ? cut : 180).trim();
+      }
+      if (rest) out.push(rest);
+    }
+    return out.slice(0, 12);
+  };
+  const pickVoice = (lang: string) => {
+    const voices = speechSynthesis.getVoices();
+    const base = lang.slice(0, 2).toLowerCase();
+    return voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase())
+      ?? voices.find((v) => v.lang.toLowerCase().startsWith(base)) ?? null;
+  };
+
   const speakInBrowser = (text: string) => {
-    if (typeof speechSynthesis === 'undefined' || !text.trim()) { followUp(text); return; }
+    const clean = speakable(text);
+    if (typeof speechSynthesis === 'undefined' || !clean) { followUp(text); return; }
     setPhase('speaking');
-    const u = new SpeechSynthesisUtterance(text.slice(0, 1200));
-    u.lang = speechLocale();
-    u.onend = () => followUp(text);
-    u.onerror = () => setPhase('idle');
+    const lang = speechLocale();
+    const queue = chunks(clean);
     speechSynthesis.cancel();
-    speechSynthesis.speak(u);
+    queue.forEach((piece, i) => {
+      const u = new SpeechSynthesisUtterance(piece);
+      u.lang = lang;
+      const v = pickVoice(lang); if (v) u.voice = v;
+      if (i === queue.length - 1) { u.onend = () => followUp(text); }
+      u.onerror = (e) => { if (e.error !== 'canceled' && e.error !== 'interrupted') setPhase('idle'); };
+      speechSynthesis.speak(u);
+    });
   };
 
   /* Ход без серверной расшифровки: слова уже распознал браузер, дальше —
@@ -178,6 +235,7 @@ export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
   };
 
   const startListening = async () => {
+    unlockAudio();
     setError(''); setRecognized(''); setAnswerText('');
     if (!serverStt) { startBrowserListening(); return; }
     try {
@@ -254,11 +312,13 @@ export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
     if (r.data.audio) {
       setPhase('speaking');
       const src = `data:${r.data.audioMime ?? 'audio/mpeg'};base64,${r.data.audio}`;
-      const el = new Audio(src);
+      // Тот же элемент, что «разбудили» по нажатию: новый <audio> iOS не пустил бы.
+      const el = audioElRef.current ?? new Audio();
       audioElRef.current = el;
+      el.pause(); el.volume = 1; el.src = src;
       el.onended = () => followUp(r.data.answer.text);
-      el.onerror = () => setPhase('idle');
-      void el.play().catch(() => setPhase('idle'));
+      el.onerror = () => speakInBrowser(r.data.answer.text);
+      void el.play().catch(() => speakInBrowser(r.data.answer.text));
     } else {
       speakInBrowser(r.data.answer.text);
     }
