@@ -4,6 +4,9 @@ import { useModuleStore } from '@/data/state/modules';
 import { PlayerEngine } from '@/player/PlayerEngine';
 import { PodcastPlayerHost } from '@/podcasts/PodcastPlayer';
 import { NotifBridge } from '@/notifications/NotifBridge';
+import { IslandBridge } from '@/island/IslandBridge';
+import { SkyIsland } from '@/island/SkyIsland';
+import { useSettings } from '@/settings/store';
 import { NotifToastLayer } from '@/notifications/NotifToast';
 import { FloatingChatLayer } from '@/notifications/FloatingChat';
 import { ActiveCallPanel, IncomingCallOverlay, MiniCallOverlay, CallAudio } from '@/calls/CallUI';
@@ -30,6 +33,7 @@ export const MobileShell = () => {
   const activeModule = useModuleStore(s => s.activeModule);
   const [moreOpen, setMoreOpen] = useState(false);
   const [playerOpen, setPlayerOpen] = useState(false);
+  const islandMode = useSettings(s => s.settings.islandMode);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden" style={{ background: 'var(--bg)', height: '100dvh' }}>
@@ -40,6 +44,8 @@ export const MobileShell = () => {
           поддерживается движком — значение отбрасывается как невалидное
           и остаётся h-screen, безопасный откат без побочных эффектов. */}
       <NotifBridge />
+      <IslandBridge />
+      <SkyIsland />
       <PlayerEngine />
 
       {!SELF_CHROME.has(activeModule) && <MobileHeader />}
@@ -75,7 +81,7 @@ export const MobileShell = () => {
       {/* Подкаст продолжает играть при уходе с экрана, поэтому его
           проигрыватель живёт здесь, в оболочке, а не внутри модуля. */}
       <PodcastPlayerHost />
-      {activeModule !== 'extras' && <MobileMiniPlayer onOpen={() => setPlayerOpen(true)} />}
+      {activeModule !== 'extras' && islandMode !== 'island' && <MobileMiniPlayer onOpen={() => setPlayerOpen(true)} />}
       <MobileTabBar onMore={() => setMoreOpen(true)} />
       <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />
       <MobileFullPlayer open={playerOpen} onClose={() => setPlayerOpen(false)} />

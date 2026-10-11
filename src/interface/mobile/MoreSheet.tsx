@@ -1,3 +1,4 @@
+import { AiCallButton } from '@/island/AiCallButton';
 import { Camera, Gamepad2, Film, Library, Palette, ChevronRight } from 'lucide-react';
 import { BottomSheet } from './BottomSheet';
 import { useModuleStore } from '@/data/state/modules';
@@ -18,6 +19,7 @@ export const MoreSheet = ({ open, onClose }: { open: boolean; onClose: () => voi
   return (
     <BottomSheet open={open} onClose={onClose} title="Ещё" snapPoints={[0.5]}>
       <div className="space-y-1.5 px-3 pb-5">
+        <AiCallButton className="w-full rounded-xl p-2.5 justify-start" />
         {SECONDARY.map(({ key, label, desc, icon: Icon, color }) => (
           <button key={key} type="button"
             onClick={() => { haptic('selection'); setActiveModule(key); onClose(); }}

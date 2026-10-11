@@ -34,6 +34,7 @@ import { saveDownload, isDownloaded } from '@/offline/offlineDB';
 import { useModerationStore } from '@/shared/moderationStore';
 import { ContentWarningGate, BlockedChannelBadge } from '@/shared/ContentWarningGate';
 import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
+import { useRegisterMedia } from '@/island/mediaRegistry';
 import type { IconComponent } from '@/shared/icon';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
 import { useFilmStore } from '@/film/serverStore';
@@ -198,6 +199,11 @@ export interface WatchTogether {
   onEnd?: () => void;
 }
 
+const openFilmPlayer = () => {
+  useModuleStore.getState().setActiveModule('extras');
+  useModuleStore.getState().setPendingExtrasTab('movies');
+};
+
 export const Player = ({ movie, onClose, together = null }: {
   movie: ServerMovie;
   onClose: () => void;
@@ -219,6 +225,7 @@ export const Player = ({ movie, onClose, together = null }: {
   const [c1, c2] = grad(movie.id);
   const pct = dur > 0 ? (cur / dur) * 100 : 0;
   const { setPlaying, setPauseHandler } = useRegisterWatchActivity();
+  useRegisterMedia(vRef, { id: movie.id, kind: 'film', title: movie.title, subtitle: [movie.genre, movie.year].filter(Boolean).join(' · '), cover: movie.hasPoster ? posterUrl(movie.id) : undefined, canSeek: true, open: openFilmPlayer });
   const savedPos = useFilmStore(s => s.progress[movie.id]);
   const saveProgress = useFilmStore(s => s.saveProgress);
   const flushProgress = useFilmStore(s => s.flushProgress);

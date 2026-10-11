@@ -24,7 +24,8 @@ import {
   type AiChat, type AiMessage, type TranscriptCue, type VoiceTurnResult,
 } from './aiApi';
 import { useAiState, refreshAiState } from './aiState';
-import { VoiceMode, browserVoiceAvailable } from './VoiceMode';
+import { VoiceMode } from './VoiceMode';
+import { browserVoiceAvailable } from './speech';
 
 const C = {
   accent: '#a855f7',

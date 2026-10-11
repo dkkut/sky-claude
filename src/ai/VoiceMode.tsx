@@ -13,6 +13,7 @@ import { motion } from 'framer-motion';
 import { Mic, Square, X, Loader2, AlertTriangle, Volume2, Check } from 'lucide-react';
 import { apiAiVoice, apiAiSend, type VoiceTurnResult } from './aiApi';
 import { refreshAiState } from './aiState';
+import { getRecognitionCtor, speakable, chunks, pickVoice, type BrowserRecognition } from './speech';
 import { matchVoiceCommand } from './voiceCommands';
 
 type Phase = 'idle' | 'listening' | 'processing' | 'speaking' | 'error' | 'command';
@@ -26,22 +27,6 @@ const pickMime = () => {
   if (MediaRecorder.isTypeSupported('audio/mp4')) return 'audio/mp4';
   return '';
 };
-
-/* Распознавание речи самого браузера — запасной путь, когда на сервере не
-   подключён поставщик расшифровки: тогда кнопки голоса не было вовсе. */
-interface BrowserRecognition {
-  lang: string; continuous: boolean; interimResults: boolean;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
-  onerror: ((e: { error: string }) => void) | null;
-  onend: (() => void) | null;
-  start: () => void; stop: () => void; abort: () => void;
-}
-const getRecognitionCtor = (): (new () => BrowserRecognition) | null => {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as Record<string, unknown>;
-  return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => BrowserRecognition) | null;
-};
-export const browserVoiceAvailable = () => getRecognitionCtor() !== null;
 
 export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
   chatId: string | null;
@@ -138,31 +123,6 @@ export const VoiceMode = ({ chatId, onClose, onTurn, serverStt = true }: {
 
   /* Что читать вслух: без кода и разметки, предложениями — длинную реплику
      Safari обрывает на середине. */
-  const speakable = (text: string) => text
-    .replace(/```[\s\S]*?```/g, speechLocale().toLowerCase().startsWith('ru') ? ' Код показан на экране. ' : ' The code is shown on screen. ')
-    .replace(/[*_`#>|~]+/g, ' ')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/\s+/g, ' ').trim();
-  const chunks = (text: string) => {
-    const parts = text.match(/[^.!?…]+[.!?…]*\s*/g) ?? [text];
-    const out: string[] = [];
-    for (const part of parts) {
-      let rest = part.trim();
-      while (rest.length > 180) {
-        const cut = rest.lastIndexOf(' ', 180);
-        out.push(rest.slice(0, cut > 40 ? cut : 180)); rest = rest.slice(cut > 40 ? cut : 180).trim();
-      }
-      if (rest) out.push(rest);
-    }
-    return out.slice(0, 12);
-  };
-  const pickVoice = (lang: string) => {
-    const voices = speechSynthesis.getVoices();
-    const base = lang.slice(0, 2).toLowerCase();
-    return voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase())
-      ?? voices.find((v) => v.lang.toLowerCase().startsWith(base)) ?? null;
-  };
-
   const speakInBrowser = (text: string) => {
     const clean = speakable(text);
     if (typeof speechSynthesis === 'undefined' || !clean) { followUp(text); return; }

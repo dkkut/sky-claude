@@ -44,6 +44,23 @@ export interface AppSettings {
   animationsOn:    boolean;
   /** Анимация-заставка при запуске приложения. */
   introAnim:       boolean;
+  /* Sky Island: где показывать воспроизведение и события. */
+  islandMode:      'both' | 'island' | 'side';
+  islandNotifs:    boolean;
+  islandTracks:    boolean;
+  islandDownloads: boolean;
+  islandMessages:  boolean;
+  /** Сколько секунд висит обычное событие (3–10). */
+  islandSeconds:   number;
+  /** Что видно в сообщении на острове: всё / только имя / ничего. */
+  islandPrivacy:   'full' | 'sender' | 'hidden';
+  islandAnim:      'full' | 'simple';
+  /* Sky AI на острове. */
+  aiManualCall:    boolean;
+  aiWake:          boolean;
+  aiVoiceAnswers:  boolean;
+  aiContinue:      boolean;
+  aiIdleEnd:       boolean;
   compactMode:     boolean;
   // Уведомления
   soundMessages:   boolean;
@@ -74,6 +91,19 @@ const defaults: AppSettings = {
   fontSize:         'normal',
   animationsOn:     true,
   introAnim:        true,
+  islandMode:       'both',
+  islandNotifs:     true,
+  islandTracks:     true,
+  islandDownloads:  true,
+  islandMessages:   true,
+  islandSeconds:    4,
+  islandPrivacy:    'sender',
+  islandAnim:       'full',
+  aiManualCall:     true,
+  aiWake:           false,
+  aiVoiceAnswers:   true,
+  aiContinue:       true,
+  aiIdleEnd:        true,
   compactMode:      false,
   soundMessages:    true,
   soundCalls:       true,

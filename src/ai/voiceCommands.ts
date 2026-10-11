@@ -15,9 +15,12 @@
  */
 import { useModuleStore, type ModuleKey } from '@/data/state/modules';
 import { apiQuickMenuSetItem } from '@/quickmenu/quickMenuApi';
+import { pickNowPlaying } from '@/island/mediaAdapter';
 
 export interface VoiceCommand {
   label: string;
+  /** Нужно подтверждение перед выполнением (деструктивное действие). */
+  confirm?: string;
   run: () => void | Promise<void>;
 }
 
@@ -41,7 +44,7 @@ const findQuickMenuItem = (text: string): string | null => {
   return null;
 };
 
-interface Rule { test: RegExp; label: string; run: () => void | Promise<void> }
+interface Rule { test: RegExp; label: string; confirm?: string; run: () => void | Promise<void> }
 
 /**
  * Порядок важен: более специфичные фразы — раньше общих, иначе
@@ -77,15 +80,50 @@ const quickMenuItemRule = (text: string): Rule | null => {
   if (!key) return null;
   return {
     test: /./, label: `Quick Menu: ${key} ${add ? 'включён' : 'выключен'}`,
+    confirm: add ? undefined : 'Убрать пункт из быстрого меню?',
     run: async () => { await apiQuickMenuSetItem(key, add); },
   };
 };
 
 const DYNAMIC_RULES: ((text: string) => Rule | null)[] = [quickMenuItemRule];
 
+/**
+ * Управление тем, что уже играет: только через единый адаптер, то есть
+ * теми же кнопками, что на плеере. Если играть нечему — честный отказ.
+ */
+const MEDIA_RULES: { test: RegExp; label: string; act: (n: NonNullable<ReturnType<typeof pickNowPlaying>>) => string | null }[] = [
+  { test: /^(поставь\s+на\s+паузу|пауза|останови|стоп|выключи\s+(музыку|трек|плеер))\b/i, label: 'Пауза',
+    act: (n) => { if (n.playing) n.toggle(); return null; } },
+  { test: /^(продолж(и|ай)|возобнови|играй|включи\s+(музыку|трек|плеер)|сними\s+с\s+паузы)\b/i, label: 'Продолжаю',
+    act: (n) => { if (!n.playing) n.toggle(); return null; } },
+  { test: /^(следующ(ий|ую|ее)|дальше|включи\s+следующ|переключи\s+(трек|вперёд|вперед))/i, label: 'Дальше',
+    act: (n) => (n.canNext ? (n.next(), null) : 'Дальше ничего нет') },
+  { test: /^(предыдущ|назад|верни\s+(трек|предыдущ)|включи\s+предыдущ)/i, label: 'Назад',
+    act: (n) => (n.canPrev ? (n.prev(), null) : 'Это первый трек') },
+];
+
+const matchMediaCommand = (clean: string): VoiceCommand | null => {
+  if (clean.length > 40) return null;
+  for (const r of MEDIA_RULES) {
+    if (!r.test.test(clean)) continue;
+    return {
+      label: r.label,
+      run: () => {
+        const n = pickNowPlaying();
+        if (!n) throw new Error('Сейчас ничего не играет');
+        const fail = r.act(n);
+        if (fail) throw new Error(fail);
+      },
+    };
+  }
+  return null;
+};
+
 /** Пусто — фраза не команда, значит это обычный вопрос к Sky AI. */
 export const matchVoiceCommand = (text: string): VoiceCommand | null => {
-  const clean = text.trim();
+  const clean = text.trim().replace(/[.!?…,]+$/g, '');
+  const media = matchMediaCommand(clean);
+  if (media) return media;
   // Команда — короткая фраза-инструкция («открой…», «покажи…», «включи…»,
   // «добавь…», «убери…», «настрой…»), а не что угодно, где случайно
   // встретилось слово «музыка» посреди длинного предложения.
@@ -94,7 +132,7 @@ export const matchVoiceCommand = (text: string): VoiceCommand | null => {
 
   for (const dynamic of DYNAMIC_RULES) {
     const r = dynamic(clean);
-    if (r) return { label: r.label, run: r.run };
+    if (r) return { label: r.label, confirm: r.confirm, run: r.run };
   }
   for (const rule of NAV_RULES) {
     if (rule.test.test(clean)) return { label: rule.label, run: rule.run };

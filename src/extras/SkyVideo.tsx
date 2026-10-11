@@ -17,6 +17,7 @@ import {
 import { AiVideoSummarize, AiVideoQA } from '@/ai/SkyAI';
 import { AdBanner } from '@/feedback/Feedback';
 import { useSkyVideoStore, resetSkyVideoForUser } from '@/video/serverStore';
+import { useRegisterMedia } from '@/island/mediaRegistry';
 import { videoUrl, thumbnailUrl, fmtDuration, readVideoMeta, apiSkyVideoTicket, type ServerVideo, type VideoComment } from '@/video/skyVideoApi';
 import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 import {
@@ -154,6 +155,8 @@ const VideoCard = ({ video, onClick }: { video: ServerVideo; onClick: () => void
   );
 };
 
+const openSkyVideo = () => useModuleStore.getState().setActiveModule('video');
+
 /* -- Custom Video Player --------------------------------------- */
 const VideoPlayer = ({ video }: { video: ServerVideo }) => {
   const vidRef = useRef<HTMLVideoElement>(null);
@@ -167,6 +170,7 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
   const passTried = useRef(false);
   const hideTimer = useRef<number>(0);
   const noteView = useSkyVideoStore(s => s.noteView);
+  useRegisterMedia(vidRef, { id: video.id, kind: 'video', title: video.title, subtitle: video.authorName ?? '', cover: video.hasThumbnail ? thumbnailUrl(video.id) : undefined, canSeek: true, open: openSkyVideo });
 
   useEffect(() => {
     noteView(video.id);

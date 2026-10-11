@@ -21,6 +21,8 @@ import { FlashLayer }             from '@/shared/flash';
 import { FloatingChatLayer }      from '@/notifications/FloatingChat';
 import { ActiveCallPanel, IncomingCallOverlay, MiniCallOverlay, CallAudio } from '@/calls/CallUI';
 import { NotifBridge }            from '@/notifications/NotifBridge';
+import { IslandBridge }           from '@/island/IslandBridge';
+import { SkyIsland }              from '@/island/SkyIsland';
 import { ProfileViewerLayer }     from '@/profile/viewer/ProfileViewerLayer';
 import { BreakReminderModal }     from '@/settings/BreakReminderModal';
 import { useDeviceMode } from '@/interface/tv/useDeviceMode';
@@ -235,6 +237,8 @@ export const AppShell = () => {
       </AnimatePresence>
       <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)', height: '100dvh' }}>
         <NotifBridge />
+        <IslandBridge />
+        <SkyIsland />
         <PlayerEngine />
         {/* Подкаст продолжает играть при уходе с экрана, поэтому его
             проигрыватель живёт здесь, в оболочке, а не внутри модуля. */}

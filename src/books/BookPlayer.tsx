@@ -20,9 +20,11 @@ import {
 } from 'lucide-react';
 import {
   apiChapters, apiChapter, apiProgress, apiSetProgress, apiNotePlayed, apiMediaTicket,
-  chapterAudioUrl, fmtTime,
+  chapterAudioUrl, fmtTime, bookCoverUrl,
   type Book, type ChapterMeta, type Chapter,
 } from './booksApi';
+import { useRegisterMedia } from '@/island/mediaRegistry';
+import { useModuleStore } from '@/data/state/modules';
 
 const C = {
   bg: 'var(--bg)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
@@ -39,6 +41,12 @@ const scrollFrac = (el: HTMLDivElement) => {
   if (range <= 0) return 0;
   return Math.max(0, Math.min(10000, Math.round((el.scrollTop / range) * 10000)));
 };
+
+const openBooks = () => {
+  useModuleStore.getState().setActiveModule('extras');
+  useModuleStore.getState().setPendingExtrasTab('books');
+};
+const currentMetaTitle = (chs: { number: number; title?: string }[] | null, n: number) => chs?.find((c) => c.number === n)?.title ?? '';
 
 export const BookPlayer = ({ book, onClose }: { book: Book; onClose: () => void }) => {
   const [chapters, setChapters] = useState<ChapterMeta[] | null>(null);
@@ -65,6 +73,8 @@ export const BookPlayer = ({ book, onClose }: { book: Book; onClose: () => void 
   const restoreFrac = useRef<number | null>(null);
   const restoreSeconds = useRef<number | null>(null);
   const notedRef = useRef<Set<string>>(new Set());
+  /* В остров попадает только слушание: у чтения текста нет звука, и выдумывать его незачем. */
+  useRegisterMedia(audioRef, mode === 'audio' ? { id: book.id, kind: 'book', title: book.title, subtitle: currentMetaTitle(chapters, chapterNumber), cover: book.hasCover ? bookCoverUrl(book.id) : undefined, canSeek: true, open: openBooks } : null);
 
   /* Список глав, стартовая глава и вид — из сохранённого прогресса. */
   useEffect(() => {

@@ -2,6 +2,9 @@ import { fitImageToDataUrl } from '../shared/imageFit';
 import { enablePush, disablePush, PUSH_TEXT } from '@/notifications/pushClient';
 import { useCursorPet, CURSOR_ANIMALS } from '@/shared/cursorPet';
 import { flash } from '../shared/flash';
+import { Mic as MicIcon, PanelTop } from 'lucide-react';
+import { useWake, requestMicForWake } from '@/island/wake';
+import { recognitionMode } from '@/ai/speech';
 import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
 import { useState, useRef, useEffect } from 'react';
@@ -238,6 +241,94 @@ const Toggle = ({ on, onToggle, disabled=false }: { on:boolean; onToggle:()=>voi
       animate={{ left: on ? 22 : 2 }} transition={{ type:'spring', stiffness:500, damping:30 }}/>
   </div>
 );
+
+/* ── Sky Island: где показывать плеер и события, Sky AI ──────────────── */
+const Seg = <T extends string | number>({ value, options, onChange, label }: {
+  value: T; options: { v: T; t: string }[]; onChange: (v: T) => void; label: string;
+}) => (
+  <div role="radiogroup" aria-label={label} className="flex shrink-0 gap-1 rounded-xl p-1" style={{ background: 'var(--bg-l2)' }}>
+    {options.map(o => (
+      <button key={String(o.v)} type="button" role="radio" aria-checked={value === o.v} onClick={() => onChange(o.v)}
+        className="rounded-lg px-2.5 py-1 text-[11.5px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        style={{ background: value === o.v ? 'var(--accent)' : 'transparent', color: value === o.v ? '#fff' : 'var(--t2)' }}>{o.t}</button>
+    ))}
+  </div>
+);
+
+const IslandSection = () => {
+  const s = useSettings(st => st.settings);
+  const set = useSettings(st => st.set);
+  const wake = useWake(w => w.state);
+  const wakeMode = useWake(w => w.mode);
+  const [mic, setMic] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
+  const [canListen, setCanListen] = useState(true);
+
+  useEffect(() => {
+    let off = false;
+    void recognitionMode().then(m => { if (!off) setCanListen(m !== 'none'); });
+    navigator.permissions?.query({ name: 'microphone' as PermissionName })
+      .then(q => { if (off) return; setMic(q.state as typeof mic); q.onchange = () => setMic(q.state as typeof mic); })
+      .catch(() => {});
+    return () => { off = true; };
+  }, []);
+
+  const askMic = async () => {
+    const ok = await requestMicForWake();
+    setMic(ok ? 'granted' : 'denied');
+    if (!ok) flash('Микрофон не разрешён. Разрешите его для этого сайта в настройках браузера.');
+    return ok;
+  };
+  const toggleWake = async () => {
+    if (s.aiWake) { set({ aiWake: false }); return; }
+    if (!(await askMic())) return;
+    set({ aiWake: true });
+  };
+  const wakeSub = !s.aiWake ? 'Выключено — слушает только по кнопке'
+    : wake === 'unsupported' ? 'Этот браузер не умеет слушать фразу — вызывайте кнопкой'
+      : wake === 'no-permission' ? 'Нет доступа к микрофону'
+        : wake === 'error' ? 'Служба распознавания недоступна — вызывайте кнопкой'
+          : wakeMode === 'local' ? 'Слушает на устройстве, пока приложение открыто. Ничего не записывается'
+            : 'Слушает, пока приложение открыто. В этом браузере распознавание речи выполняет сервис браузера. Ничего не записывается';
+
+  return (
+    <SectionBlock title="Sky Island и Sky AI">
+      <SettingsRow icon={PanelTop} label="Где показывать плеер" sub="Остров сверху или боковой плеер"
+        right={<Seg label="Где показывать плеер" value={s.islandMode} onChange={v => set({ islandMode: v })}
+          options={[{ v: 'both', t: 'Оба' }, { v: 'island', t: 'Остров' }, { v: 'side', t: 'Сбоку' }]}/>}/>
+      <SettingsRow icon={Bell} label="Уведомления на острове" sub={s.islandNotifs ? 'Сообщения, звонки, события' : 'Обычные всплывающие уведомления'}
+        right={<Toggle on={s.islandNotifs} onToggle={() => set({ islandNotifs: !s.islandNotifs })}/>}/>
+      <SettingsRow icon={Bell} label="Сообщения мессенджера" sub={s.islandMessages ? 'Показывать' : 'Не показывать на острове'}
+        right={<Toggle on={s.islandMessages} onToggle={() => set({ islandMessages: !s.islandMessages })}/>}/>
+      <SettingsRow icon={Bell} label="Смена трека" sub={s.islandTracks ? 'Показывать на 3 секунды' : 'Не показывать'}
+        right={<Toggle on={s.islandTracks} onToggle={() => set({ islandTracks: !s.islandTracks })}/>}/>
+      <SettingsRow icon={Bell} label="Завершение скачиваний" sub={s.islandDownloads ? 'Показывать' : 'Не показывать'}
+        right={<Toggle on={s.islandDownloads} onToggle={() => set({ islandDownloads: !s.islandDownloads })}/>}/>
+      <SettingsRow icon={Bell} label="Время показа события" sub="Секунд на экране"
+        right={<Seg label="Время показа" value={s.islandSeconds} onChange={v => set({ islandSeconds: v })}
+          options={[{ v: 3, t: '3' }, { v: 4, t: '4' }, { v: 6, t: '6' }, { v: 10, t: '10' }]}/>}/>
+      <SettingsRow icon={Bell} label="Текст сообщений на острове" sub="Что видно посторонним на экране"
+        right={<Seg label="Текст сообщений" value={s.islandPrivacy} onChange={v => set({ islandPrivacy: v })}
+          options={[{ v: 'full', t: 'Весь' }, { v: 'sender', t: 'Имя' }, { v: 'hidden', t: 'Скрыть' }]}/>}/>
+      <SettingsRow icon={Palette} label="Анимация острова" sub="Упрощённая — без пружин и растяжения"
+        right={<Seg label="Анимация острова" value={s.islandAnim} onChange={v => set({ islandAnim: v })}
+          options={[{ v: 'full', t: 'Обычная' }, { v: 'simple', t: 'Простая' }]}/>}/>
+      <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
+      <SettingsRow icon={MicIcon} label="Позвать Sky AI кнопкой" sub={s.aiManualCall ? 'Кнопка в боковой панели и в меню «Ещё»' : 'Выключено'}
+        right={<Toggle on={s.aiManualCall} onToggle={() => set({ aiManualCall: !s.aiManualCall })}/>}/>
+      <SettingsRow icon={MicIcon} label="Фраза «Привет, Скай»" sub={wakeSub}
+        right={<Toggle on={s.aiWake} disabled={!canListen} onToggle={() => { void toggleWake(); }}/>}/>
+      <SettingsRow icon={MicIcon} label="Микрофон"
+        sub={mic === 'granted' ? 'Разрешён. Используется только во время разговора с Sky AI и пока включена фраза' : mic === 'denied' ? 'Запрещён — разрешите в настройках браузера' : 'Разрешение запросим, когда понадобится'}
+        right={mic !== 'granted' ? <button type="button" onClick={() => { void askMic(); }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style={{ background:'var(--accent)' }}>Разрешить</button> : undefined}/>
+      <SettingsRow icon={Sparkles} label="Голосовые ответы" sub={s.aiVoiceAnswers ? 'Sky AI отвечает голосом' : 'Только текстом на острове'}
+        right={<Toggle on={s.aiVoiceAnswers} onToggle={() => set({ aiVoiceAnswers: !s.aiVoiceAnswers })}/>}/>
+      <SettingsRow icon={Sparkles} label="Продолжать диалог" sub={s.aiContinue ? 'Слушает ответ, если Sky AI задал вопрос' : 'Один вопрос — один ответ'}
+        right={<Toggle on={s.aiContinue} onToggle={() => set({ aiContinue: !s.aiContinue })}/>}/>
+      <SettingsRow icon={Sparkles} label="Завершать при тишине" sub={s.aiIdleEnd ? 'Через 12 секунд' : 'Через минуту'}
+        right={<Toggle on={s.aiIdleEnd} onToggle={() => set({ aiIdleEnd: !s.aiIdleEnd })}/>}/>
+    </SectionBlock>
+  );
+};
 
 const SettingsRow = ({ icon:Icon, iconColor='var(--accent)', label, sub, right, onClick }: {
   icon:any; iconColor?:string; label:string; sub?:string;
@@ -596,6 +687,8 @@ const SettingsSection = ({ logout, username, onOpen }: {
         <SettingsRow icon={Settings} label="Компактный режим" sub={s.compactMode ? "Включён" : "Выключен"}
           right={<Toggle on={s.compactMode} onToggle={() => set({ compactMode: !s.compactMode })}/>}/>
       </SectionBlock>
+
+      <IslandSection/>
 
       {/* -- ПЕРЕРЫВ ОТ ПРОСМОТРА ----------------- */}
       <BreakReminderSection/>

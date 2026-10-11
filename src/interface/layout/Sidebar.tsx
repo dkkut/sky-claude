@@ -7,6 +7,8 @@ import { useAuthStore }    from '@/core/auth/store';
 import { useNavPrefs, useNavBadges, fmtBadge } from './navPrefs';
 import type { ModuleKey }  from '@/data/state/modules';
 import { SkyMiniPlayer }  from '@/player/SkyMiniPlayer';
+import { AiCallButton }   from '@/island/AiCallButton';
+import { useSettings }    from '@/settings/store';
 import { usePlayerStore } from '@/player/playerStore';
 
 const DESC: Record<string, string> = {
@@ -35,6 +37,7 @@ const avatarGrad = (name: string) => {
 
 export const Sidebar = () => {
   const { activeModule, setActiveModule } = useModuleStore();
+  const islandMode    = useSettings(s => s.settings.islandMode);
   const accounts      = useAuthStore(s => s.accounts);
   const currentUserId = useAuthStore(s => s.currentUserId);
   const account       = accounts.find(a => a.id === currentUserId);
@@ -140,8 +143,9 @@ export const Sidebar = () => {
         <div className="sky-divider my-2 w-10 shrink-0" />
 
         <div className="relative mb-2 flex w-full shrink-0 justify-center">
-          <SkyMiniPlayer />
+          {islandMode !== 'island' && <SkyMiniPlayer />}
         </div>
+        <AiCallButton compact className="mb-2 h-9 w-9 shrink-0 rounded-xl" />
 
         <div className="flex shrink-0 flex-col items-center gap-2">
           <motion.button
