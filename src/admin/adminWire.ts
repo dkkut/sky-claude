@@ -222,7 +222,7 @@ export interface Answer {
  */
 const ANSWERS = new Set([
   'admin-me', 'admin-done', 'admin-error', 'admin-log', 'admin-pending',
-  'admin-pending-list', 'admin-list', 'admin-step-up', 'admin-lockdown',
+  'admin-pending-list', 'admin-user-money', 'admin-list', 'admin-step-up', 'admin-lockdown',
   'admin-security-events', 'admin-log-verified', 'admin-people',
 ]);
 
@@ -272,6 +272,19 @@ export const ADMIN_ERROR: Record<string, string> = {
   video_owner_mismatch: 'Ролик принадлежит не тому человеку, кто указан в заявке',
   grant_target_mismatch: 'Заявка на награду принадлежит другому человеку',
   not_found: 'Не найдено',
+  reason_required: 'Укажите основание (не короче 5 знаков)',
+  bad_tx: 'Неверный номер операции',
+  bad_gift: 'Неверный номер подарка',
+  not_reversible: 'Эту операцию откатить нельзя',
+  already_reversed: 'Операция уже отменена',
+  reverse_insufficient_funds: 'Откатить нельзя: у человека уже нет этих денег на счёте',
+  reverse_insufficient_points: 'Откатить нельзя: у человека уже нет этих баллов',
+  insufficient_funds: 'На счёте человека не хватает денег для списания',
+  insufficient_points: 'У человека не хватает баллов для списания',
+  no_active_prime: 'У человека нет действующего Prime',
+  no_family: 'У человека нет активной семьи',
+  already_cancelled: 'Подарок уже отозван',
+  gift_target_mismatch: 'Подарок отправил другой человек',
   account_blocked: 'Учётная запись заблокирована',
   banned: 'Профиль забанен',
   too_many_requests: 'Слишком часто, подождите',

@@ -43,6 +43,9 @@ export type TxType =
   | 'points_earn'    // начисление баллов
   | 'points_spend'   // трата баллов
   | 'admin_grant'           // начисление по решению владельца (панель администратора)
+  | 'admin_adjust'          // корректировка баланса администрацией
+  | 'admin_reversal'        // откат операции администрацией
+  | 'admin_refund'          // возврат администрацией (Prime, подарок)
   | 'admin_points'          // начисление баллов по решению владельца
   | 'courier_earning'       // заработок курьера за доставку
   | 'ads'                   // списание за рекламную кампанию
@@ -79,6 +82,9 @@ export const TX_LABEL: Record<TxType, string> = {
   points_earn:   'Начислены баллы',
   points_spend:  'Потрачены баллы',
   admin_grant:          'Начисление администрации',
+  admin_adjust:         'Корректировка администрацией',
+  admin_reversal:       'Отмена операции администрацией',
+  admin_refund:         'Возврат администрацией',
   admin_points:         'Начислены баллы администрацией',
   courier_earning:      'Заработок курьера',
   ads:                  'Реклама',
@@ -129,6 +135,9 @@ export const TX_ICON: Record<TxType, IconComponent> = {
   points_earn:  Star,
   points_spend: Gift,
   admin_grant:          Landmark,
+  admin_adjust:         Landmark,
+  admin_reversal:       RotateCcw,
+  admin_refund:         RotateCcw,
   admin_points:         Landmark,
   courier_earning:      Truck,
   ads:                  Megaphone,

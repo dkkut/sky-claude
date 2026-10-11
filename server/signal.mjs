@@ -34,6 +34,7 @@ import {
   ROLE_NAMES, PERMISSIONS,
 } from './adminsec.mjs';
 import { grantForProposal } from './campaigns.mjs';
+import { userMoneySummary } from './adminmoney.mjs';
 import { adminGetOrder } from './kutrentmarket.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
 import { markActive, setOnlineSource } from './analytics.mjs';
@@ -619,7 +620,7 @@ const handle = async (ws, session, msg) => {
          подтверждать личность — совсем редко. Один общий предел либо
          мешает работе, либо не мешает подбору. */
       const READS = new Set(['whoami', 'log', 'security-events', 'pending', 'admins',
-        'lockdown', 'find']);
+        'lockdown', 'find', 'user-money']);
       const limitOk = READS.has(action)
         ? rateLimit(`adm:r:${me}`, 120)
         : action === 'step-up'
@@ -682,6 +683,37 @@ const handle = async (ws, session, msg) => {
           if (!kind) return failAdm('bad_kind');
           const r = await createPendingAction(me, kind, target,
             { amount: payload?.amount, days: payload?.days, plan: payload?.plan },
+            { stepUpCode: payload?.code, reason: payload?.reason, meta });
+          if (r.error) return failAdm(r.error);
+          return send(ws, { type: 'admin-pending', payload: r });
+        }
+
+        /* ── Деньги человека: сводка и правки ───────────────────────
+           Сводка — чтение (право finance). Любая правка — заявка того же
+           вида, что и начисление: оформляет сотрудник, подтверждает
+           владелец с кодом (adminsec.mjs, server/adminmoney.mjs). */
+        case 'user-money': {
+          if (!(await can(me, 'finance'))) return failAdm('not_allowed');
+          const qv = String(payload?.query ?? '').trim().replace(/^@/, '').slice(0, 80);
+          if (!qv) return failAdm('not_found');
+          const { rows } = await query(
+            'SELECT id FROM profiles WHERE id = $1 OR lower(username) = lower($1) LIMIT 1', [qv]);
+          if (!rows[0]) return failAdm('not_found');
+          const data = await userMoneySummary(rows[0].id);
+          if (!data) return failAdm('not_found');
+          return send(ws, { type: 'admin-user-money', payload: data });
+        }
+
+        case 'money-op': {
+          const kind = {
+            adjust: 'adjust_balance', reverse: 'reverse_tx', revoke_prime: 'revoke_prime',
+            revoke_gift: 'revoke_gift', cancel_subscription: 'cancel_subscription',
+          }[String(payload?.op ?? '')];
+          if (!kind) return failAdm('bad_kind');
+          const r = await createPendingAction(me, kind, target,
+            { amount: payload?.amount, currency: payload?.currency, txId: payload?.txId,
+              refund: payload?.refund, instanceId: payload?.instanceId, what: payload?.what,
+              reason: payload?.reason },
             { stepUpCode: payload?.code, reason: payload?.reason, meta });
           if (r.error) return failAdm(r.error);
           return send(ws, { type: 'admin-pending', payload: r });

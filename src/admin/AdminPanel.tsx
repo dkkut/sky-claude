@@ -1126,6 +1126,195 @@ const GrantForm = ({ onSent }: { onSent: () => void }) => {
   );
 };
 
+
+/* ─── Деньги человека: баланс, откат операций, Prime, подарки ─────────── */
+
+interface MoneyTx { id: string; type: string; amount: number; desc: string; createdAt: string; points: boolean; reversible: boolean }
+interface MoneyGift { id: string; kind: 'gift' | 'prime'; title: string; status: string; price: number; currency: string; recipientId: string; createdAt: string; revocable: boolean }
+interface UserMoney {
+  profile: { id: string; name: string; username: string };
+  balance: number; points: number;
+  transactions: MoneyTx[]; gifts: MoneyGift[];
+  prime: { active: boolean; plan?: string; expiresAt?: string | null; refundPreview?: number };
+}
+
+type MoneyOp =
+  | { op: 'adjust'; label: string; extra: Record<string, unknown> }
+  | { op: 'reverse'; label: string; extra: Record<string, unknown> }
+  | { op: 'revoke_prime'; label: string; extra: Record<string, unknown> }
+  | { op: 'revoke_gift'; label: string; extra: Record<string, unknown> }
+  | { op: 'cancel_subscription'; label: string; extra: Record<string, unknown> };
+
+const OP_PURPOSE: Record<MoneyOp['op'], string> = {
+  adjust: 'pending:adjust_balance', reverse: 'pending:reverse_tx', revoke_prime: 'pending:revoke_prime',
+  revoke_gift: 'pending:revoke_gift', cancel_subscription: 'pending:cancel_subscription',
+};
+
+/**
+ * Правки денег и услуг конкретного человека. Как и начисление, ничего не
+ * происходит сразу: каждая кнопка оформляет заявку, а владелец подтверждает
+ * её своим кодом в разделе «Заявки». Откат операции кошелька не трогает сам
+ * заказ или подписку — для них есть свои кнопки ниже.
+ */
+const UserMoneyOps = ({ onSent }: { onSent: () => void }) => {
+  const [q, setQ] = useState('');
+  const [data, setData] = useState<UserMoney | null>(null);
+  const [failed, setFailed] = useState('');
+  const [sent, setSent] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [op, setOp] = useState<MoneyOp | null>(null);
+  const [reason, setReason] = useState('');
+  const [amount, setAmount] = useState('');
+  const [sign, setSign] = useState<1 | -1>(1);
+  const [currency, setCurrency] = useState<'money' | 'points'>('money');
+
+  const find = async (query = q) => {
+    setFailed(''); setSent(''); setBusy(true);
+    const r = await adminCall({ action: 'user-money', query: query.trim() });
+    setBusy(false);
+    if (r.type !== 'admin-user-money') { setData(null); setFailed(errorText(r.payload?.error)); return; }
+    setData(r.payload as UserMoney);
+  };
+
+  const send = async (code: string) => {
+    if (!op || !data) return;
+    const cur = op; setOp(null); setFailed(''); setSent('');
+    const r = await adminCall({ action: 'money-op', op: cur.op, userId: data.profile.id, code, reason: reason.trim(), ...cur.extra });
+    if (r.type !== 'admin-pending') { setFailed(errorText(r.payload?.error)); return; }
+    setSent('Заявка отправлена владельцу. Изменение произойдёт только после его подтверждения в разделе «Заявки».');
+    setReason(''); setAmount('');
+    onSent();
+  };
+
+  const start = (o: MoneyOp) => { setFailed(''); setSent(''); setReason(''); setOp(o); };
+  const rub = (n: number) => `${n.toLocaleString('ru-RU')} ₽`;
+  const reasonOk = reason.trim().length >= 5;
+
+  return (
+    <div className="space-y-3 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <p className="flex items-center gap-2 text-xs font-bold" style={{ color: C.t1 }}>
+        <Wallet size={13} style={{ color: C.acc }} /> Баланс и операции человека
+      </p>
+      <p className="text-[11px]" style={{ color: C.t3 }}>
+        Изменить баланс, отменить операцию кошелька, снять Prime, отозвать подарок или отменить подписку.
+        Каждое действие — заявка с основанием: оформляете вы, подтверждает владелец.
+      </p>
+      <div className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void find(); }}
+          placeholder="@имя пользователя или acc-…" className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <button type="button" disabled={!q.trim() || busy} onClick={() => void find()}
+          className="rounded-xl px-4 py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>Найти</button>
+      </div>
+      {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
+      {sent && <p className="text-[11px]" style={{ color: C.green }}>{sent}</p>}
+
+      {data && (
+        <div className="space-y-3">
+          <div className="rounded-xl p-3" style={{ background: C.l2 }}>
+            <p className="text-xs font-bold" style={{ color: C.t1 }} translate="no">{data.profile.name} · @{data.profile.username}</p>
+            <p className="mt-0.5 text-[11px]" style={{ color: C.t2 }}>Баланс: <b>{rub(data.balance)}</b> · Баллы: <b>{data.points.toLocaleString('ru-RU')}</b></p>
+            <button type="button" onClick={() => void find(data.profile.id)} className="mt-1 text-[10px]" style={{ color: C.acc }}>Обновить</button>
+          </div>
+
+          {/* Правка баланса */}
+          <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2 }}>
+            <p className="text-[11px] font-bold" style={{ color: C.t1 }}>Изменить баланс</p>
+            <div className="flex gap-1">
+              {([['money', 'Рубли'], ['points', 'Баллы']] as const).map(([k, l]) => (
+                <button key={k} type="button" onClick={() => setCurrency(k)} className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold"
+                  style={{ background: currency === k ? C.acc : C.l1, color: currency === k ? '#fff' : C.t3 }}>{l}</button>
+              ))}
+              {([[1, 'Начислить'], [-1, 'Списать']] as const).map(([k, l]) => (
+                <button key={k} type="button" onClick={() => setSign(k)} className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold"
+                  style={{ background: sign === k ? (k === 1 ? C.green : C.red) : C.l1, color: sign === k ? '#fff' : C.t3 }}>{l}</button>
+              ))}
+            </div>
+            <input value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} inputMode="numeric"
+              placeholder="Сумма" className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+            <button type="button" disabled={!amount || Number(amount) <= 0}
+              onClick={() => start({ op: 'adjust', label: `${sign === 1 ? 'Начислить' : 'Списать'} ${Number(amount).toLocaleString('ru-RU')} ${currency === 'points' ? 'баллов' : '₽'}`, extra: { amount: sign * Number(amount), currency } })}
+              className="w-full rounded-xl py-2 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>Оформить заявку</button>
+          </div>
+
+          {/* Prime и подписки */}
+          <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2 }}>
+            <p className="text-[11px] font-bold" style={{ color: C.t1 }}>Prime и подписки</p>
+            {data.prime.active ? (
+              <>
+                <p className="text-[11px]" style={{ color: C.t2 }}>
+                  Prime действует{data.prime.expiresAt ? ` до ${fmtTs(data.prime.expiresAt)}` : ' бессрочно'}
+                  {data.prime.plan ? ` · тариф ${data.prime.plan}` : ''}.
+                  {(data.prime.refundPreview ?? 0) > 0 ? ` Возврат за неиспользованные дни: ${rub(data.prime.refundPreview!)}.` : ' Возвращать нечего (не оплачено с кошелька).'}
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => start({ op: 'revoke_prime', label: 'Снять Prime и вернуть деньги за остаток', extra: { refund: true } })}
+                    className="flex-1 rounded-lg py-2 text-[11px] font-bold" style={{ background: C.l1, color: C.red }}>Снять с возвратом</button>
+                  <button type="button" onClick={() => start({ op: 'cancel_subscription', label: 'Отменить подписку Prime без возврата', extra: { what: 'prime' } })}
+                    className="flex-1 rounded-lg py-2 text-[11px] font-bold" style={{ background: C.l1, color: C.t2 }}>Отменить без возврата</button>
+                </div>
+              </>
+            ) : <p className="text-[11px]" style={{ color: C.t3 }}>Действующего Prime нет.</p>}
+            <button type="button" onClick={() => start({ op: 'cancel_subscription', label: 'Отменить семейную подписку без возврата', extra: { what: 'family' } })}
+              className="w-full rounded-lg py-2 text-[11px] font-bold" style={{ background: C.l1, color: C.t2 }}>Отменить семейный Prime (без возврата)</button>
+          </div>
+
+          {/* Подарки */}
+          <div className="space-y-1.5 rounded-xl p-3" style={{ background: C.l2 }}>
+            <p className="text-[11px] font-bold" style={{ color: C.t1 }}>Отправленные подарки</p>
+            {data.gifts.length === 0 && <p className="text-[11px]" style={{ color: C.t3 }}>Подарков нет.</p>}
+            {data.gifts.map((g) => (
+              <div key={g.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: C.l1 }}>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[11px] font-semibold" style={{ color: C.t1 }} translate="no">{g.title}</p>
+                  <p className="text-[10px]" style={{ color: C.t3 }}>{fmtTs(g.createdAt)} · {g.price} {g.currency === 'points' ? 'баллов' : '₽'} · {g.status}</p>
+                </div>
+                {g.revocable && (
+                  <button type="button" onClick={() => start({ op: 'revoke_gift', label: `Отозвать подарок «${g.title}» и вернуть оплату отправителю`, extra: { instanceId: g.id } })}
+                    className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold" style={{ background: C.l2, color: C.red }}>Отозвать</button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Операции кошелька */}
+          <div className="space-y-1.5 rounded-xl p-3" style={{ background: C.l2 }}>
+            <p className="text-[11px] font-bold" style={{ color: C.t1 }}>Последние операции кошелька</p>
+            <p className="text-[10px]" style={{ color: C.t3 }}>Откат меняет только запись кошелька: приход снимается, расход возвращается. Заказ или подписку он не затрагивает.</p>
+            {data.transactions.map((t) => (
+              <div key={t.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: C.l1 }}>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[11px]" style={{ color: C.t1 }} translate="no">{t.desc || t.type}</p>
+                  <p className="text-[10px]" style={{ color: C.t3 }}>{fmtTs(t.createdAt)} · {t.type}</p>
+                </div>
+                <span className="shrink-0 text-[11px] font-bold" style={{ color: t.amount > 0 ? C.green : C.red }}>
+                  {t.amount > 0 ? '+' : ''}{t.amount.toLocaleString('ru-RU')} {t.points ? 'б.' : '₽'}
+                </span>
+                {t.reversible && (
+                  <button type="button" onClick={() => start({ op: 'reverse', label: `Отменить операцию: ${t.desc || t.type} (${t.amount > 0 ? '+' : ''}${t.amount})`, extra: { txId: t.id } })}
+                    className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold" style={{ background: C.l2, color: C.red }}>Отменить</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {op && (
+        <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.acc}` }}>
+          <p className="text-[12px] font-bold" style={{ color: C.t1 }}>{op.label}</p>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Основание (от 5 знаков) — его увидит владелец и пользователь в истории"
+            className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+          {reasonOk ? (
+            <StepUp purpose={OP_PURPOSE[op.op]} onCode={(c) => void send(c)} onCancel={() => setOp(null)} />
+          ) : (
+            <button type="button" onClick={() => setOp(null)} className="text-[11px]" style={{ color: C.t3 }}>Отмена</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ─── Sky Video: монетизация и корректировка дохода ───────────────── */
 
 /**
@@ -2111,6 +2300,11 @@ const SkyVideoAdminSection = ({ rights, onPendingChanged }: { rights: MyRights; 
 
 /* ─── Очередь заявок ───────────────────────────────────────────────── */
 
+const PAYLOAD_LABEL: Record<string, string> = {
+  amount: 'сумма', currency: 'валюта', txId: 'операция', refund: 'вернуть деньги', instanceId: 'подарок',
+  what: 'подписка', reason: 'основание', days: 'дней', plan: 'тариф',
+};
+
 const STATUS_LABEL: Record<PendingAction['status'], string> = {
   pending: 'Ждёт владельца', approved: 'Подтверждена', rejected: 'Отклонена',
   executed: 'Выполнена', failed: 'Не выполнена', expired: 'Просрочена',
@@ -2158,7 +2352,7 @@ const PendingList = ({ rights, actions, onChanged }: {
 
           {Object.keys(a.payload).length > 0 && (
             <p className="mt-1 text-[11px]" style={{ color: C.t2 }}>
-              {Object.entries(a.payload).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+              {Object.entries(a.payload).map(([k, v]) => `${PAYLOAD_LABEL[k] ?? k}: ${typeof v === 'boolean' ? (v ? 'да' : 'нет') : v}`).join(' · ')}
             </p>
           )}
           {a.reason && <p className="mt-1 text-[11px]" style={{ color: C.t2 }}>Основание: {a.reason}</p>}
@@ -5626,7 +5820,12 @@ export const AdminPanel = () => {
 
       {tab === 'people' && <PeopleTab canModerate={has('moderation')} />}
 
-      {tab === 'grant' && <GrantForm onSent={() => void loadPending()} />}
+      {tab === 'grant' && (
+        <div className="space-y-4">
+          <GrantForm onSent={() => void loadPending()} />
+          <UserMoneyOps onSent={() => void loadPending()} />
+        </div>
+      )}
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
       {tab === 'pulse' && <PrimePulseAdminSection />}
       {tab === 'campaigns' && <CampaignsAdminSection onPendingChanged={() => void loadPending()} />}

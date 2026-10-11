@@ -45,6 +45,10 @@ import { decryptSecret } from './crypto.mjs';
 import { verifyTotp } from './totp.mjs';
 import { sendEmail } from './notify.mjs';
 import { wallet } from './wallet.mjs';
+import {
+  adjustBalance, reverseTransaction, reversibleTx, revokePrimeAdmin, cancelSubscriptionAdmin,
+  revokeGiftAdmin, giftForRevoke, MAX_ADJUST,
+} from './adminmoney.mjs';
 import { grantPrime } from './skyid.mjs';
 import { adjustRevenue } from './skyvideo.mjs';
 import { sessionStore } from './sessions.mjs';
@@ -581,6 +585,15 @@ export const PENDING_KINDS = {
      выдать её сам, только оформить заявку — поворачивает ключ
      по-прежнему только владелец. */
   campaign_reward: { permission: 'campaigns', stepUp: true, title: 'Выдать награду мероприятия (Prime)' },
+  /* Правка баланса, откат операции, снятие Prime, отзыв подарка и отмена
+     подписки — деньги и услуги вручную, поэтому тот же гейт, что у
+     grant_money: оформляет сотрудник с правом finance, подтверждает
+     владелец с кодом. Само действие — server/adminmoney.mjs. */
+  adjust_balance:      { permission: 'finance', stepUp: true, title: 'Изменить баланс пользователя' },
+  reverse_tx:          { permission: 'finance', stepUp: true, title: 'Отменить операцию кошелька' },
+  revoke_prime:        { permission: 'finance', stepUp: true, title: 'Снять Prime досрочно' },
+  revoke_gift:         { permission: 'finance', stepUp: true, title: 'Отозвать подарок' },
+  cancel_subscription: { permission: 'finance', stepUp: true, title: 'Отменить подписку без возврата' },
   grant_pet_coins: { permission: 'content', stepUp: true, title: 'Начислить Pet Coins' },
   /* Пока к KutRent Market не подключена ни одна настоящая касса, это
      единственный способ зачесть заказ оплаченным — то есть создать
@@ -671,6 +684,45 @@ const checkPayload = (kind, raw = {}) => {
       if (days === null) return { error: 'bad_days' };
       const plan = ['standard', 'year'].includes(String(raw.plan)) ? String(raw.plan) : 'standard';
       return { ok: true, payload: { days, plan } };
+    }
+
+    case 'adjust_balance': {
+      const amount = Math.trunc(Number(raw.amount));
+      if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount) > MAX_ADJUST) return { error: 'bad_amount' };
+      const currency = raw.currency === 'points' ? 'points' : 'money';
+      const reason = String(raw.reason ?? '').trim().slice(0, 200);
+      if (reason.length < 5) return { error: 'reason_required' };
+      return { ok: true, payload: { amount, currency, reason } };
+    }
+
+    case 'reverse_tx': {
+      const txId = String(raw.txId ?? '');
+      if (!/^tx-[0-9a-zA-Z-]{6,80}$/.test(txId)) return { error: 'bad_tx' };
+      const reason = String(raw.reason ?? '').trim().slice(0, 200);
+      if (reason.length < 5) return { error: 'reason_required' };
+      return { ok: true, payload: { txId, reason } };
+    }
+
+    case 'revoke_prime': {
+      const reason = String(raw.reason ?? '').trim().slice(0, 200);
+      if (reason.length < 5) return { error: 'reason_required' };
+      return { ok: true, payload: { refund: raw.refund === true, reason } };
+    }
+
+    case 'revoke_gift': {
+      const instanceId = String(raw.instanceId ?? '');
+      if (!/^p?gi-[0-9a-f-]{36}$/.test(instanceId)) return { error: 'bad_gift' };
+      const reason = String(raw.reason ?? '').trim().slice(0, 200);
+      if (reason.length < 5) return { error: 'reason_required' };
+      return { ok: true, payload: { instanceId, reason } };
+    }
+
+    case 'cancel_subscription': {
+      const what = ['prime', 'family'].includes(String(raw.what)) ? String(raw.what) : null;
+      if (!what) return { error: 'bad_kind' };
+      const reason = String(raw.reason ?? '').trim().slice(0, 200);
+      if (reason.length < 5) return { error: 'reason_required' };
+      return { ok: true, payload: { what, reason } };
     }
 
     case 'grant_pet_coins': {
@@ -799,6 +851,20 @@ export const createPendingAction = async (actorId, kind, targetId, raw = {}, opt
       'SELECT owner_id FROM sky_videos WHERE id = $1', [checked.payload.videoId]);
     if (!vids[0]) return { error: 'not_found' };
     if (vids[0].owner_id !== target) return { error: 'video_owner_mismatch' };
+  }
+
+  if (kind === 'reverse_tx') {
+    /* Операция должна быть именно этого человека и ещё не откатываться. */
+    const found = await reversibleTx(target, checked.payload.txId);
+    if (found.error) return found;
+  }
+
+  if (kind === 'revoke_gift') {
+    /* Отправитель подарка — тот, на кого оформлена заявка: возврат пойдёт
+       ему, и владелец должен видеть именно его. */
+    const g = await giftForRevoke(checked.payload.instanceId);
+    if (!g) return { error: 'not_found' };
+    if (g.sender_id !== target) return { error: 'gift_target_mismatch' };
   }
 
   if (kind === 'campaign_reward') {
@@ -1109,6 +1175,36 @@ const executePending = async (row, payload, ownerId) => {
       const res = await grantPrime(skyId, target, payload.plan ?? 'standard', days);
       if (res.error) return { error: res.error };
       return { outcome: `Prime на ${days} дн.` };
+    }
+
+    case 'adjust_balance': {
+      const res = await adjustBalance(target, payload.currency, payload.amount, payload.reason, row.id);
+      if (res.error) return { error: res.error };
+      return { outcome: res.outcome };
+    }
+
+    case 'reverse_tx': {
+      const res = await reverseTransaction(target, payload.txId, payload.reason, row.id);
+      if (res.error) return { error: res.error };
+      return { outcome: res.outcome };
+    }
+
+    case 'revoke_prime': {
+      const res = await revokePrimeAdmin(target, payload.refund === true, payload.reason, row.id);
+      if (res.error) return { error: res.error };
+      return { outcome: res.outcome };
+    }
+
+    case 'revoke_gift': {
+      const res = await revokeGiftAdmin(target, payload.instanceId, payload.reason, row.id);
+      if (res.error) return { error: res.error };
+      return { outcome: res.outcome };
+    }
+
+    case 'cancel_subscription': {
+      const res = await cancelSubscriptionAdmin(target, payload.what, payload.reason);
+      if (res.error) return { error: res.error };
+      return { outcome: res.outcome };
     }
 
     case 'grant_pet_coins': {
