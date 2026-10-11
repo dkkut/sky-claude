@@ -315,6 +315,10 @@ const Root = () => {
   const authStep = useAuthStore((st) => st.step);
   const profileCount = useAuthStore((st) => st.profiles.length);
   const authShown = useConsoleStore((st) => st.authShown);
+  /* Режим для сервера: на доверенном устройстве Car/Console/TV профиль можно открыть без кода (если владелец разрешил). */
+  useEffect(() => {
+    document.documentElement.dataset.skyMode = consoleMode ? 'console' : carMode ? 'car' : deviceMode === 'tv' ? 'tv' : '';
+  }, [consoleMode, carMode, deviceMode]);
   /* ТВ и Car Mode — всегда тёмная тема (консоль делает то же в ConsoleRoot). */
   useEffect(() => {
     if (consoleMode) return undefined;

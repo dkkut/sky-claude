@@ -77,7 +77,7 @@ export const CarHome = ({ now, onOpen }: { now: CarNowState | null; onOpen: (s: 
       )}
 
       <div className="flex min-h-0 flex-col gap-5">
-        <Card label="Подкасты" onClick={() => (cont && !podPlaying ? void playPod(cont) : onOpen('podcasts'))}>
+        <Card label="Подкасты" onClick={() => (cont && !podPlaying ? void playPod(cont).then(() => usePodcast.getState().setExpanded(false)) : onOpen('podcasts'))}>
           <IconBox color="#10b981"><Mic2 size={34} color="#fff" /></IconBox>
           <span className="min-w-0 flex-1">
             <span className="block text-[26px] font-extrabold text-white">Подкасты</span>

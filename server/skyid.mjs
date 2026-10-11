@@ -89,6 +89,7 @@ const toProfile = (row) => row && ({
   primePlan:  row.prime_plan ?? undefined,
   twoFactorEnabled: row.two_factor_enabled,
   twoFactorMethod:  row.two_factor_method ?? 'app',
+  skipCodeTrusted:  Boolean(row.skip_code_trusted),
   createdAt: row.created_at.toISOString(),
   // Регион уже существующей системы смены региона (src/region), просто
   // сохранённый на сервере — см. server/regions.mjs.

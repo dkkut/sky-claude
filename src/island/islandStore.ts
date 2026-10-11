@@ -50,6 +50,8 @@ interface IslandState {
   expanded: boolean;
   /** Идёт ли взаимодействие (наведение/касание) — таймер стоит. */
   holding: boolean;
+  /** Остров смонтирован в этой оболочке (в ТВ и Car его нет — там плашки показываются как обычно). */
+  mounted: boolean;
   push: (e: NewIslandEvent) => void;
   /** Снять событие источника (звонок закончился и т.п.). */
   resolve: (key: string) => void;
@@ -73,7 +75,7 @@ export const pickNext = (queue: IslandEvent[], now = Date.now()): { next: Island
 const sameSource = (a: IslandEvent, b: IslandEvent) => !!a.mergeKey && a.mergeKey === b.mergeKey;
 
 export const useIslandStore = create<IslandState>((set, get) => ({
-  current: null, queue: [], expanded: false, holding: false,
+  current: null, queue: [], expanded: false, holding: false, mounted: false,
 
   push: (input) => {
     seq += 1;

@@ -57,6 +57,8 @@ export interface ServerProfile {
   primePlan?:       string | null;
   twoFactorEnabled: boolean;
   twoFactorMethod:  TwoFactorMethod;
+  /** Не спрашивать код профиля в Car/Console/TV на доверенных устройствах. */
+  skipCodeTrusted?: boolean;
   createdAt?:       string;
   /** Регион уже существующей системы смены региона (src/region), если
       сохранён на сервере — см. server/regions.mjs. */
@@ -168,6 +170,20 @@ const readJson = async (res: Response): Promise<any> => {
   try { return await res.json(); } catch { return {}; }
 };
 
+/** Случайный идентификатор этого устройства: сервер хранит только его хеш (доверенные устройства). */
+const deviceId = (): string => {
+  try {
+    let id = localStorage.getItem('sky:device:v1') ?? '';
+    if (!/^[A-Za-z0-9_-]{16,64}$/.test(id)) {
+      const b = new Uint8Array(24); crypto.getRandomValues(b);
+      id = btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      localStorage.setItem('sky:device:v1', id);
+    }
+    return id;
+  } catch { return ''; }
+};
+const skyMode = (): string => (typeof document !== 'undefined' ? document.documentElement.dataset.skyMode ?? '' : '');
+
 const raw = (path: string, init: RequestInit = {}) =>
   fetch(NATIVE_APP ? API_ORIGIN + path : path, {
     ...init,
@@ -180,6 +196,8 @@ const raw = (path: string, init: RequestInit = {}) =>
       // server/http.mjs. Обычный браузер этот заголовок не шлёт и
       // токены в теле не получает.
       ...(isEnglish() ? { 'X-Sky-Lang': 'en' } : {}),
+      ...(deviceId() ? { 'X-Sky-Device': deviceId() } : {}),
+      ...(skyMode() ? { 'X-Sky-Mode': skyMode() } : {}),
       ...(NATIVE_APP ? { 'X-Sky-Client': 'app' } : {}),
       // iPhone в браузере: пропуск медиа нужен и в теле ответа — см. mediaBody в server/http.mjs.
       ...(IOS_WEB ? { 'X-Sky-Media-Url': '1' } : {}),
@@ -457,6 +475,13 @@ export const apiListDevices = () =>
 
 export const apiRevokeDevice = (id: string) =>
   post<{ ok: true; isCurrent: boolean }>(`/api/auth/devices/${encodeURIComponent(id)}/revoke`);
+
+/* ─── Доверенные устройства ─── */
+export interface TrustedDevice { id: string; label: string; firstSeen: string; lastSeen: string; current: boolean }
+export const apiTrustedDevices = () => get<{ devices: TrustedDevice[] }>('/api/skyid/trusted-devices');
+export const apiRevokeTrusted = (id: string) => call<{ ok: true }>(`/api/skyid/trusted-devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const apiSetSkipCode = (profileId: string, on: boolean, code?: string) =>
+  post<{ ok: true; skipCodeTrusted: boolean }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}/skip-code`, { on, ...(code ? { code } : {}) });
 
 export const apiRevokeAllDevices = () =>
   post<{ ok: true }>('/api/auth/devices/revoke-all');

@@ -19,7 +19,7 @@ import { CarNowBar, CarFullPlayer, useCarNow } from './CarNow';
 import { CAR_ACCENT, CAR_BG, CAR_BLUR, CAR_GLASS, CAR_GLASS_BORDER } from './carTheme';
 import { NetBanner } from '@/shared/NetBanner';
 import { PlayerEngine } from '@/player/PlayerEngine';
-import { PodcastPlayerHost } from '@/podcasts/PodcastPlayer';
+import { ActiveCallPanel, IncomingCallOverlay, MiniCallOverlay, CallAudio } from '@/calls/CallUI';
 import { NotifBridge } from '@/notifications/NotifBridge';
 import { useMusicSync } from '@/music/useMusicSync';
 import { useMusicStore } from '@/music/serverStore';
@@ -64,7 +64,6 @@ export const CarShell = () => {
     <div data-keep-dark="" className="fixed inset-0 z-[600] flex select-none overflow-hidden" style={{ background: CAR_BG }}>
       {/* Единственный реальный <audio> для музыки — тот же движок, что и в обычном интерфейсе. */}
       <PlayerEngine />
-      <PodcastPlayerHost />
       <NotifBridge />
       <NetBanner />
 
@@ -100,6 +99,10 @@ export const CarShell = () => {
         {screen !== 'home' && <CarNowBar now={now} />}
       </main>
 
+      <IncomingCallOverlay />
+      <ActiveCallPanel />
+      <MiniCallOverlay />
+      <CallAudio />
       <CarFullPlayer now={now} />
 
       {menu && (

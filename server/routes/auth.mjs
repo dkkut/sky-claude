@@ -11,6 +11,7 @@
  * Про перебор номеров: ответ на запрос кода одинаков и для существующего
  * номера, и для нового. Узнать по нему, заведён ли аккаунт, нельзя.
  */
+import { trustDevice } from './../trusteddevices.mjs';
 import { config } from './../config.mjs';
 import { signToken, verifyToken } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
@@ -132,7 +133,7 @@ const notifyNewLogin = async (skyIdRow, meta) => {
  * Начинает сессию Sky ID и выбирает профиль по умолчанию, если он один.
  * Экспортирована по той же причине, что и issueTokens выше.
  */
-export const startSession = async (skyIdRow, req) => {
+export const startSession = async (skyIdRow, req, { viaCode = false } = {}) => {
   const profiles = await listProfiles(skyIdRow.id);
 
   // Единственный незащищённый профиль открываем сразу: лишний экран
@@ -158,6 +159,9 @@ export const startSession = async (skyIdRow, req) => {
   if (isNewDevice) {
     notifyNewLogin(skyIdRow, meta).catch((err) => console.error('[auth] письмо о новом входе:', err.message));
   }
+
+  // Вход по коду делает устройство доверенным (см. trusteddevices.mjs).
+  if (viaCode) await trustDevice(skyIdRow.id, req).catch((err) => console.error('[auth] доверенное устройство:', err.message));
 
   const tokens = issueTokens(skyIdRow.id, sessionId, auto?.id ?? null);
   return {
@@ -250,7 +254,7 @@ export const authRoutes = async (req, res, url) => {
       });
     }
 
-    const session = await startSession(skyId, req);
+    const session = await startSession(skyId, req, { viaCode: true });
     return json(res, created ? 201 : 200,
                 appBody(req, { ...session.body, isNew: created }, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
@@ -308,7 +312,7 @@ export const authRoutes = async (req, res, url) => {
       });
     }
 
-    const session = await startSession(skyId, req);
+    const session = await startSession(skyId, req, { viaCode: true });
     return json(res, created ? 201 : 200,
                 appBody(req, { ...session.body, isNew: created }, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
@@ -334,7 +338,7 @@ export const authRoutes = async (req, res, url) => {
     const skyId = await findSkyIdById(payload.sub);
     if (!skyId) return json(res, 401, { error: 'unauthorized' });
 
-    const session = await startSession(skyId, req);
+    const session = await startSession(skyId, req, { viaCode: true });
     return json(res, 200, appBody(req, session.body, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
   }

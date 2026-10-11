@@ -5,6 +5,8 @@
  */
 import { useEffect } from 'react';
 import { create } from 'zustand';
+import { useSettings } from '@/settings/store';
+import { useIslandStore } from '@/island/islandStore';
 
 interface FlashState { text: string | null; id: number; show: (text: string) => void; hide: () => void }
 export const useFlash = create<FlashState>((set) => ({
@@ -19,12 +21,20 @@ export const FlashLayer = () => {
   const text = useFlash((s) => s.text);
   const id = useFlash((s) => s.id);
   const hide = useFlash((s) => s.hide);
+  const hosted = useIslandStore((st) => st.mounted);
+  const islandOn = useSettings((st) => st.settings.islandMode !== 'side') && hosted;
+  /* Остров включён — короткие сообщения показывает он сам: отдельная плашка вставала бы поверх капсулы. */
   useEffect(() => {
-    if (!text) return;
+    if (!text || !islandOn) return;
+    useIslandStore.getState().push({ kind: 'system', mergeKey: 'flash', title: text, ttl: 5000, color: '#8b7cff', userText: false });
+    hide();
+  }, [text, id, islandOn, hide]);
+  useEffect(() => {
+    if (!text || islandOn) return;
     const t = window.setTimeout(hide, 6000);
     return () => window.clearTimeout(t);
-  }, [text, id, hide]);
-  if (!text) return null;
+  }, [text, id, hide, islandOn]);
+  if (!text || islandOn) return null;
   return (
     <div role="status" onClick={hide} data-keep-dark=""
       className="fixed left-3 right-3 z-[10100] mx-auto max-w-md rounded-2xl px-4 py-3 text-[13px] font-medium"

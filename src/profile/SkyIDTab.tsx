@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { ConfirmExit } from '@/auth/AuthScreen';
-import { apiListDevices, apiRevokeDevice, type ServerDevice } from '@/core/auth/api';
+import { apiListDevices, apiRevokeDevice, apiTrustedDevices, apiRevokeTrusted, apiSetSkipCode, type ServerDevice, type TrustedDevice } from '@/core/auth/api';
 import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
 
 /* ── helpers ─────────────────────────────────────────────────── */
@@ -421,6 +421,69 @@ const ProfilesSection = () => {
  * Один блок включения защиты. Порядок один и тот же для Sky ID и для
  * профиля, различается только тем, куда уходят вызовы.
  */
+/** Не спрашивать код профиля в Car Mode и Console Mode на доверенных устройствах (где уже был вход по коду). */
+const TrustedDevicesBlock = ({ profile }: { profile: ServerProfile }) => {
+  const [on, setOn] = useState(Boolean(profile.skipCodeTrusted));
+  const [devices, setDevices] = useState<TrustedDevice[] | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [code, setCode] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { setOn(Boolean(profile.skipCodeTrusted)); }, [profile.id, profile.skipCodeTrusted]);
+  const load = () => { void apiTrustedDevices().then((r) => setDevices(r.ok ? (r.data?.devices ?? []) : [])); };
+  useEffect(load, []);
+
+  const apply = async (next: boolean, c?: string) => {
+    setBusy(true); setMsg('');
+    const r = await apiSetSkipCode(profile.id, next, c);
+    setBusy(false);
+    if (!r.ok) { setMsg(r.reason ?? 'Не удалось сохранить'); return; }
+    setOn(next); setAsking(false); setCode('');
+    useAuthStore.setState((st) => ({ profiles: st.profiles.map((p) => (p.id === profile.id ? { ...p, skipCodeTrusted: next } : p)) }));
+  };
+  const toggle = () => { if (on) void apply(false); else if (profile.twoFactorEnabled) setAsking(true); else void apply(true); };
+
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-bold" style={{ color: 'var(--t1)' }}>Доверенные устройства</p>
+          <p className="mt-0.5 text-[11.5px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+            Не спрашивать код профиля в Car Mode и Console Mode на устройствах, где вы уже входили по коду. В обычном приложении и на сайте код спрашивается всегда.
+          </p>
+        </div>
+        <button type="button" role="switch" aria-checked={on} disabled={busy} onClick={toggle} className="relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50" style={{ background: on ? 'var(--accent)' : 'var(--bg-l3, rgba(128,128,128,0.35))' }}>
+          <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all" style={{ left: on ? 22 : 2 }} />
+        </button>
+      </div>
+      {asking && (
+        <div className="flex items-center gap-2">
+          <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="Код профиля" aria-label="Код профиля"
+            className="min-w-0 flex-1 rounded-full px-4 py-2 text-[13px] outline-none" style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }} />
+          <button type="button" disabled={busy || code.length < 6} onClick={() => void apply(true, code)} className="rounded-full px-4 py-2 text-[12px] font-bold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>Включить</button>
+        </div>
+      )}
+      {msg && <p className="text-[11.5px]" style={{ color: 'var(--red)' }}>{msg}</p>}
+      {devices && devices.length > 0 && (
+        <ul className="space-y-1.5 pt-1">
+          {devices.map((d) => {
+            const u = parseUa(d.label);
+            return (
+              <li key={d.id} className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--t2)' }}>
+                <DevIcon os={u.os} />
+                <span className="min-w-0 flex-1 truncate" translate="no">{u.browser} · {u.os}{d.current ? ' (это устройство)' : ''}</span>
+                <span style={{ color: 'var(--t3)' }}>{fmtDt(d.lastSeen)}</span>
+                <button type="button" aria-label="Убрать устройство" onClick={() => void apiRevokeTrusted(d.id).then(load)} className="rounded-full p-1" style={{ color: 'var(--red)' }}><XCircle size={14} /></button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+};
+
 const TwoFactorBlock = ({
   title, hint, enabled, method, emailReady, phoneReady, begin, confirm, disable, resend,
 }: {
@@ -858,6 +921,8 @@ const SecuritySection = () => {
           resend={() => sendProfileTwoFactorCode(active.id)}
         />
       )}
+
+      {active && active.twoFactorEnabled && <TrustedDevicesBlock profile={active} />}
 
       <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
         Две защиты независимы: можно включить только на профиль, только на вход

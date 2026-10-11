@@ -19,6 +19,7 @@
  * preload.cjs остаются CommonJS, весь остальной проект как был ESM.
  */
 const { app, BrowserWindow, shell, Menu, session, protocol, ipcMain, safeStorage, globalShortcut, screen, Tray, nativeImage } = require('electron');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -254,6 +255,8 @@ if (!gotLock) {
         nodeIntegration: false,
         sandbox: true,
         spellcheck: true,
+        // Окно свёрнуто или закрыто в трей — музыка, статус «сейчас слушает» и уведомления продолжают работать.
+        backgroundThrottling: false,
       },
     });
 

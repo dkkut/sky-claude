@@ -5,7 +5,10 @@
    отвлечение.
 =========================================================== */
 import { useEffect, useMemo, useState } from 'react';
-import { MessageCircle, Users, Send } from 'lucide-react';
+import { MessageCircle, Users, Send, Phone } from 'lucide-react';
+import { useAuthStore } from '@/core/auth/store';
+import { useCallStore } from '@/calls/store';
+import { CarVoice, CarVideoNote } from './CarMedia';
 import { useMessengerStore } from '@/messenger/store';
 import type { ChatItem, MessageKind } from '@/messenger/types';
 import { CAR_ACCENT, CAR_BLUR, CAR_GLASS, CAR_GLASS_BORDER } from './carTheme';
@@ -34,6 +37,9 @@ const Thread = ({ chat, onBack }: { chat: ChatItem; onBack: () => void }) => {
   const setActiveChat = useMessengerStore((s) => s.setActiveChat);
   const markRead = useMessengerStore((s) => s.markRead);
   const [sent, setSent] = useState('');
+  const myId = useAuthStore((st) => st.currentUserId);
+  const startCall = useCallStore((st) => st.startCall);
+  const peerId = chat.type === 'direct' ? (chat.participants?.find((p) => p !== myId) ?? chat.id) : null;
   useEffect(() => { setActiveChat(chat.id); markRead(chat.id); }, [chat.id, setActiveChat, markRead]);
   const thread = useMemo(() => all.filter((m) => m.chatId === chat.id && !m.deleted).slice(-6), [all, chat.id]);
 
@@ -41,13 +47,18 @@ const Thread = ({ chat, onBack }: { chat: ChatItem; onBack: () => void }) => {
     <div className="flex h-full flex-col gap-4">
       <div className="flex shrink-0 items-center gap-4">
         <button type="button" onClick={onBack} aria-label="Назад" className="grid h-[72px] w-[72px] place-items-center rounded-full text-[34px] font-bold text-white" style={{ background: CAR_GLASS, border: CAR_GLASS_BORDER }}>‹</button>
-        <p className="truncate text-[30px] font-extrabold text-white" translate="no">{chat.name}</p>
+        <p className="min-w-0 flex-1 truncate text-[30px] font-extrabold text-white" translate="no">{chat.name}</p>
+        {peerId && (
+          <button type="button" onClick={() => void startCall(peerId, chat.name, chat.avatar, 'voice')} aria-label="Позвонить" className="flex shrink-0 items-center gap-3 rounded-full px-8 text-[24px] font-bold text-[#0b0b14] outline-none active:scale-95 focus-visible:ring-4 focus-visible:ring-violet-300" style={{ minHeight: 72, background: '#34d399' }}>
+            <Phone size={28} /> Позвонить
+          </button>
+        )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col justify-end gap-3 overflow-hidden rounded-[32px] p-5" style={{ background: CAR_GLASS, border: CAR_GLASS_BORDER, backdropFilter: CAR_BLUR }}>
         {thread.length === 0 && <p className="text-center text-[22px] text-white/45">Сообщений пока нет</p>}
         {thread.map((m) => (
           <div key={m.id} className={`max-w-[78%] rounded-3xl px-6 py-3 text-[24px] leading-snug ${m.fromMe ? 'self-end' : 'self-start'}`} style={{ background: m.fromMe ? CAR_ACCENT : 'rgba(255,255,255,0.1)', color: '#fff' }} translate={m.kind === 'text' ? 'no' : undefined}>
-            {m.kind === 'text' ? m.text : (KIND_LABEL[m.kind] ?? 'Сообщение')}
+            {m.kind === 'text' ? m.text : m.kind === 'voice' ? <CarVoice msg={m} /> : m.kind === 'video-note' ? <CarVideoNote msg={m} /> : (KIND_LABEL[m.kind] ?? 'Сообщение')}
           </div>
         ))}
       </div>

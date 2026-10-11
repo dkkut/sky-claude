@@ -6,6 +6,7 @@
  * getProfileOfSkyId, который ищет строку с условием принадлежности.
  * Поэтому подстановка чужого id даёт «не найдено», а не чужой профиль.
  */
+import { mayOpenWithoutCode, listTrusted, revokeTrusted, setSkipFlag } from './../trusteddevices.mjs';
 import { claimPrimeCoupon, releaseCoupon, discountedPrice } from './../skycodes.mjs';
 import { config } from './../config.mjs';
 import { signToken, sanitizeInput } from './../security.mjs';
@@ -158,7 +159,9 @@ export const skyIdRoutes = async (req, res, url) => {
     const profile = await getProfileOfSkyId(s.skyId, profileId);
     if (!profile) return json(res, 404, { error: 'not_found' });
 
-    if (profile.twoFactorEnabled) {
+    // Car/Console/TV на доверенном устройстве: код профиля не спрашиваем, если владелец это включил.
+    const skipCode = profile.twoFactorEnabled && !body.code && await mayOpenWithoutCode(s.skyId, profileId, req);
+    if (profile.twoFactorEnabled && !skipCode) {
       if (!body.code) {
         // Если второй фактор приходит письмом — сразу и отправляем,
         // чтобы человек не искал отдельную кнопку.
@@ -188,6 +191,32 @@ export const skyIdRoutes = async (req, res, url) => {
       accessToken: accessTokenFor(s.skyId, profileId, s.sessionId),
       expiresIn: config.accessTtlSec,
     });
+  }
+
+  /* ── Доверенные устройства: пропуск кода профиля в Car/Console/TV ── */
+  if (req.method === 'GET' && url === '/api/skyid/trusted-devices') {
+    const s = await requireSkyId(req, res); if (!s) return true;
+    return json(res, 200, { devices: await listTrusted(s.skyId, req) });
+  }
+  const trustedDel = url.match(/^\/api\/skyid\/trusted-devices\/([a-f0-9]{16})$/);
+  if (req.method === 'DELETE' && trustedDel) {
+    const s = await requireSkyId(req, res); if (!s) return true;
+    return (await revokeTrusted(s.skyId, trustedDel[1])) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'not_found' });
+  }
+  const skipMatch = url.match(/^\/api\/skyid\/profiles\/([\w.-]+)\/skip-code$/);
+  if (req.method === 'POST' && skipMatch) {
+    const s = await requireSkyId(req, res); if (!s) return true;
+    const body = await parseBody(req);
+    const profile = await getProfileOfSkyId(s.skyId, skipMatch[1]);
+    if (!profile) return json(res, 404, { error: 'not_found' });
+    // Включить пропуск — ослабить защиту: просим код профиля, пока он стоит. Выключить можно без кода.
+    if (body.on === true && profile.twoFactorEnabled) {
+      if (!body.code) return json(res, 401, { error: 'profile_code_required', method: profile.twoFactorMethod ?? 'app' });
+      const check = await verifyProfileTwoFactor(s.skyId, skipMatch[1], body.code);
+      if (check.error) return json(res, check.error === 'too_many_attempts' ? 429 : 401, { error: check.error });
+    }
+    await setSkipFlag(s.skyId, skipMatch[1], body.on === true);
+    return json(res, 200, { ok: true, skipCodeTrusted: body.on === true });
   }
 
   const patchMatch = url.match(/^\/api\/skyid\/profiles\/([\w.-]+)$/);

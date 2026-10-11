@@ -272,7 +272,10 @@ export const SkyIsland = () => {
   const wake = useWake((s) => s.state);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [mediaShown, setMediaShown] = useState(true);
+  /* Крестик: капсулу этого трека убрали — вернётся с новым треком/выпуском. */
+  const [closedKey, setClosedKey] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { useIslandStore.setState({ mounted: true }); return () => useIslandStore.setState({ mounted: false }); }, []);
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* Пауза дольше 8 секунд прячет капсулу, если рядом есть боковой плеер. */
@@ -288,7 +291,7 @@ export const SkyIsland = () => {
     : current?.kind === 'call' ? 'event'
       : current?.kind === 'ai' || ai.phase !== 'off' ? 'ai'
         : current ? 'event'
-          : np && mediaShown ? 'media' : 'hidden';
+          : np && mediaShown && closedKey !== np.key ? 'media' : 'hidden';
 
   const open = view === 'media' ? mediaOpen : expanded || view === 'ai';
 
@@ -422,11 +425,23 @@ export const SkyIsland = () => {
               data-sky-island={view}
             >
               {!open ? (
-                <button type="button" onClick={toggleOpen} aria-label={label} aria-expanded={false}
-                  className="block cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
-                  style={{ borderRadius: 22 }}>
-                  {compact}
-                </button>
+                <div className="flex items-center">
+                  <button type="button" onClick={toggleOpen} aria-label={label} aria-expanded={false}
+                    className="block cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                    style={{ borderRadius: 22 }}>
+                    {compact}
+                  </button>
+                  {current?.kind !== 'call' && (
+                    <button type="button" aria-label="Убрать" onClick={() => {
+                      if (view === 'media' && np) { setClosedKey(np.key); setMediaOpen(false); }
+                      else if (view === 'ai') useAiSession.getState().stop();
+                      else useIslandStore.getState().dismiss(current?.id);
+                    }} className="mr-1.5 grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+                      style={{ background: 'rgba(255,255,255,0.12)' }}>
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
               ) : view === 'ai' ? <AiPanel />
                 : view === 'event' && current ? <EventPanel e={current} onClose={closePanel} />
                   : np ? <MediaPanel np={np} onClose={closePanel} /> : null}
