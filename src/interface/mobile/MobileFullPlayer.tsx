@@ -25,7 +25,15 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
   const lyricsRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
 
-  const lyrics = item?.lyrics ?? [];
+  const lyrics = useMemo(() => {
+    const base = (item?.lyrics ?? []).filter((l) => l.text);
+    // Без меток времени все строки имеют время 0 — растягиваем равномерно по песне.
+    if (base.length > 1 && base.every((l) => l.t <= 0)) {
+      const per = duration > 0 ? duration / base.length : 4;
+      return base.map((l, i) => ({ ...l, t: i * per }));
+    }
+    return base;
+  }, [item?.lyrics, duration]);
   const activeLine = useMemo(() => lyrics.reduce((best, l, i) => l.t <= currentTime ? i : best, -1), [lyrics, currentTime]);
 
   useEffect(() => {
@@ -80,7 +88,7 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
             ) : lyrics.map((l, i) => (
               <p key={i} ref={el => { lineRefs.current[i] = el; }}
                 className="my-2.5 text-[16px] font-bold leading-snug transition-all"
-                style={{ color: i === activeLine ? '#fff' : 'rgba(255,255,255,0.35)', transform: i === activeLine ? 'scale(1.04)' : 'scale(1)' }}>
+                style={{ color: i === activeLine ? '#fff' : i < activeLine ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.5)', transform: i === activeLine ? 'scale(1.04)' : 'scale(1)' }}>
                 {l.text}
               </p>
             ))}

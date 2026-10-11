@@ -9,7 +9,7 @@
  * сервер. Даже список профилей и признак Prime приходят оттуда, поэтому
  * подправить их в браузере бессмысленно.
  */
-import { LanguagePill } from '@/i18n/LanguageSwitch';
+import { LanguagePill, ThemePill } from '@/i18n/LanguageSwitch';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -828,6 +828,7 @@ export const AuthScreen = () => {
   return (
     <>
     <LanguagePill />
+    <ThemePill />
     <AnimatePresence mode="wait">
       <div key={step}>
         {step === 'twofa'    ? <SkyTwoFactorStep /> :

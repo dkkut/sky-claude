@@ -1,4 +1,5 @@
 import { Sparkles } from 'lucide-react';
+import { useCursorPet } from '@/shared/cursorPet';
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createPortal }           from 'react-dom';
@@ -58,31 +59,21 @@ const PetCursor = () => {
   const isMobile = useIsMobile();
   const [pos,     setPos]     = useState({ x: -200, y: -200 });
   const [visible, setVisible] = useState(false);
-  const [emoji,   setEmoji]   = useState('🐱');
+  const { enabled, animal: emoji } = useCursorPet();
 
   useEffect(() => {
     // На тач-устройствах нет надёжного mouseleave — курсор-питомец
     // залипает на месте последнего тапа (синтетический mousemove от тача).
     // Это чисто десктопная фича, на мобильном её не показываем.
-    if (!isPrime || isMobile) return;
-    try {
-      const prefs = JSON.parse(localStorage.getItem('sky:pets:v1') || '{}');
-      const MAP: Record<string, string> = {
-        'cat-neon':'🐱','bunny-pixel':'🐰','fox-cyber':'🦊','dog-retro':'🐶',
-        'dino-8bit':'🦕','bear-astro':'🐻','dragon-mini':'🐲','owl-neon':'🦉',
-      };
-      const e = MAP[prefs.active];
-      if (e) setEmoji(e);
-    } catch {}
-
+    if (!isPrime || isMobile || !enabled) return;
     const move  = (e: MouseEvent) => { setPos({ x: e.clientX, y: e.clientY }); setVisible(true); };
     const leave = () => setVisible(false);
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseleave', leave);
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseleave', leave); };
-  }, [isPrime, isMobile]);
+  }, [isPrime, isMobile, enabled]);
 
-  if (!isPrime || isMobile || !visible) return null;
+  if (!isPrime || isMobile || !enabled || !visible) return null;
   return createPortal(
     <div style={{
       position: 'fixed', pointerEvents: 'none', zIndex: 99999,

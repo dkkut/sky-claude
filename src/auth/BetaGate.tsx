@@ -6,6 +6,7 @@
  * отказывает всему API, пока пропуска нет. Поэтому обойти калитку,
  * пропустив этот экран, не получится.
  */
+import { LanguagePill, ThemePill } from '@/i18n/LanguageSwitch';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { KeyRound } from 'lucide-react';
@@ -26,6 +27,9 @@ export const BetaGate = ({ onUnlocked }: { onUnlocked: () => void }) => {
   };
 
   return (
+    <>
+    <LanguagePill />
+    <ThemePill />
     <div
       className="flex items-center justify-center px-4 py-8"
       style={{
@@ -98,5 +102,6 @@ export const BetaGate = ({ onUnlocked }: { onUnlocked: () => void }) => {
         </div>
       </motion.div>
     </div>
+    </>
   );
 };

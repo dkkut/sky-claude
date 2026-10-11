@@ -5,7 +5,10 @@ import {
   Package, Truck, CheckCircle, Clock, MoreVertical, Volume2,
   ChevronRight
 } from 'lucide-react';
-import { listDownloads, getDownloadUrl, deleteDownload, type DownloadedItem } from './offlineDB';
+import { listDownloads, getDownloadUrl, getDownloadCoverUrl, deleteDownload, type DownloadedItem } from './offlineDB';
+import { SkyFullPlayer } from '@/extras/SkyMusic';
+import type { Track } from '@/platform/store';
+import type { RepeatMode } from '@/music/types';
 import { useMarketStore } from '@/marketplace/store';
 import { ORDER_LABEL } from '@/marketplace/types';
 
@@ -35,6 +38,13 @@ const getGrad = (id: string): [string,string] => {
   return PALETTE[h % PALETTE.length];
 };
 
+/** Скачанный трек в виде обычного трека — для полноэкранного плеера. */
+const asTrack = (d: DownloadedItem, coverUrl?: string): Track => ({
+  id: d.id, title: d.title, artist: d.artist ?? 'Неизвестный исполнитель', duration: d.duration,
+  mimeType: d.mimeType, bytes: d.bytes, addedAt: d.addedAt, status: 'published', plays: 0, likes: [],
+  coverUrl, isLocal: true, genre: '', premium: false,
+});
+
 /* -- Форматирование размера --------------------------------------- */
 const fmtBytes = (b: number) =>
   b > 1_000_000 ? `${(b / 1_000_000).toFixed(1)} МБ`
@@ -53,13 +63,30 @@ const OfflineMusic = () => {
   const [volume, setVolume]     = useState(0.85);
   const [blobUrls, setBlobUrls] = useState<Record<string, string>>({});
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [full, setFull] = useState(false);
+  const [shuffle, setShuffle] = useState(false);
+  const [repeat, setRepeat] = useState<RepeatMode>('off');
+  const [covers, setCovers] = useState<Record<string, string>>({});
+  const repeatRef = useRef<RepeatMode>('off');
+  const shuffleRef = useRef(false);
 
   useEffect(() => {
     listDownloads('track').then(setTracks).catch(() => {});
     return () => { audioRef.current?.pause(); };
   }, []);
 
+  repeatRef.current = repeat; shuffleRef.current = shuffle;
   const cur = tracks[queueIdx] ?? null;
+
+  /* Обложки скачанных треков — из хранилища устройства, без сети. */
+  useEffect(() => {
+    let alive = true;
+    tracks.filter((t) => t.hasCover && !covers[t.id]).forEach((t) => {
+      void getDownloadCoverUrl(t.id).then((u) => { if (alive && u) setCovers((c) => ({ ...c, [t.id]: u })); });
+    });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracks]);
 
   const loadAndPlay = async (idx: number, autoplay = true) => {
     const item = tracks[idx];
@@ -76,6 +103,12 @@ const OfflineMusic = () => {
     a.ontimeupdate = () => { setCurTime(a.currentTime); };
     a.onloadedmetadata = () => { setDurTime(a.duration); };
     a.onended = () => {
+      if (repeatRef.current === 'one') { a.currentTime = 0; void a.play(); return; }
+      if (shuffleRef.current && tracks.length > 1) {
+        let n = idx; while (n === idx) n = Math.floor(Math.random() * tracks.length);
+        setQueueIdx(n); loadAndPlay(n, true); return;
+      }
+      if (idx >= tracks.length - 1 && repeatRef.current === 'all') { setQueueIdx(0); loadAndPlay(0, true); return; }
       if (idx < tracks.length - 1) { setQueueIdx(idx + 1); loadAndPlay(idx + 1, true); }
       else setPlaying(false);
     };
@@ -124,48 +157,61 @@ const OfflineMusic = () => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* -- Full Player -- */}
-      {cur && (
-        <div className="shrink-0 mx-3 mt-3 rounded-3xl overflow-hidden"
-          style={{ background: `linear-gradient(155deg,${(cur.coverGrad??getGrad(cur.id))[0]},${(cur.coverGrad??getGrad(cur.id))[1]})`,
-            boxShadow: `0 8px 32px rgba(0,0,0,0.5)` }}>
-          <div className="p-4" style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(8px)' }}>
+      {/* -- Мини-плеер: разноцветная карточка, по нажатию — полноэкранный плеер -- */}
+      {cur && (() => {
+        const hue = [...cur.id].reduce((a, c) => a + c.charCodeAt(0) * 7, 0) % 360;
+        const cover = covers[cur.id];
+        return (
+        <div data-keep-dark className="shrink-0 mx-3 mt-3 rounded-3xl overflow-hidden cursor-pointer"
+          role="button" tabIndex={0} aria-label="Открыть плеер"
+          onClick={() => setFull(true)}
+          onKeyDown={(e) => { if (e.key === 'Enter') setFull(true); }}
+          style={{
+            background: `radial-gradient(120% 140% at 0% 0%, hsl(${hue},85%,52%) 0%, transparent 55%),
+              radial-gradient(120% 140% at 100% 0%, hsl(${(hue + 80) % 360},85%,50%) 0%, transparent 55%),
+              radial-gradient(140% 140% at 50% 120%, hsl(${(hue + 200) % 360},80%,48%) 0%, transparent 60%),
+              hsl(${(hue + 30) % 360},45%,18%)`,
+            boxShadow: `0 10px 34px hsla(${hue},80%,40%,0.45), inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -3px 10px rgba(0,0,0,0.25)` }}>
+          <div className="p-4" style={{ background: 'rgba(0,0,0,0.22)', backdropFilter: 'blur(6px)' }}>
             {/* Cover + info */}
             <div className="flex items-center gap-3 mb-4">
-              <div className="h-16 w-16 shrink-0 rounded-2xl flex items-center justify-center"
-                style={{ background: 'rgba(255,255,255,0.1)' }}>
-                <Music size={28} style={{ color: 'rgba(255,255,255,0.7)' }}/>
+              <div className="h-16 w-16 shrink-0 rounded-2xl flex items-center justify-center overflow-hidden"
+                style={{ background: 'rgba(255,255,255,0.18)' }}>
+                {cover
+                  ? <img src={cover} alt="" className="h-full w-full object-cover" />
+                  : <Music size={28} style={{ color: 'rgba(255,255,255,0.85)' }}/>}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-base font-bold text-white truncate">{cur.title}</p>
-                <p className="text-sm truncate" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                <p className="text-base font-bold text-white truncate" translate="no">{cur.title}</p>
+                <p className="text-sm truncate" style={{ color: 'rgba(255,255,255,0.75)' }} translate="no">
                   {cur.artist ?? 'Неизвестный исполнитель'}
                 </p>
               </div>
             </div>
             {/* Progress bar */}
             <div className="h-1.5 w-full rounded-full mb-2 cursor-pointer"
-              style={{ background: 'rgba(255,255,255,0.2)' }}
+              style={{ background: 'rgba(255,255,255,0.25)' }}
               onClick={e => {
+                e.stopPropagation();
                 const r = e.currentTarget.getBoundingClientRect();
                 seek((e.clientX - r.left) / r.width);
               }}>
               <div className="h-full rounded-full transition-all" style={{ width: `${pct*100}%`, background: '#fff' }}/>
             </div>
-            <div className="flex justify-between text-[11px] mb-3" style={{ color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace' }}>
+            <div className="flex justify-between text-[11px] mb-3" style={{ color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>
               <span>{fmtS(curTime)}</span><span>{fmtS(durTime)}</span>
             </div>
             {/* Controls */}
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex items-center justify-center gap-4" onClick={(e) => e.stopPropagation()}>
               <button type="button" onClick={skipPrev}
                 disabled={queueIdx === 0}
                 className="grid h-10 w-10 place-items-center rounded-full disabled:opacity-30"
-                style={{ background: 'rgba(255,255,255,0.1)' }}>
+                style={{ background: 'rgba(255,255,255,0.18)' }}>
                 <ChevronRight size={18} className="text-white rotate-180"/>
               </button>
               <motion.button whileTap={{ scale: 0.92 }} type="button" onClick={togglePlay}
                 className="grid h-14 w-14 place-items-center rounded-full"
-                style={{ background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+                style={{ background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.35)' }}>
                 {playing
                   ? <Pause size={24} style={{ color: '#111' }}/>
                   : <Play size={24} style={{ color: '#111', marginLeft: 2 }}/>}
@@ -173,13 +219,30 @@ const OfflineMusic = () => {
               <button type="button" onClick={skipNext}
                 disabled={queueIdx === tracks.length - 1}
                 className="grid h-10 w-10 place-items-center rounded-full disabled:opacity-30"
-                style={{ background: 'rgba(255,255,255,0.1)' }}>
+                style={{ background: 'rgba(255,255,255,0.18)' }}>
                 <ChevronRight size={18} className="text-white"/>
               </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
+      <AnimatePresence>
+        {full && cur && (
+          <SkyFullPlayer
+            track={asTrack(cur, covers[cur.id])}
+            playing={playing} currentTime={curTime} duration={durTime} volume={volume}
+            shuffle={shuffle} repeat={repeat} favorites={[]}
+            queue={tracks.map((t) => asTrack(t, covers[t.id]))} queueIdx={queueIdx}
+            onPlay={togglePlay} onPrev={skipPrev} onNext={skipNext}
+            onSeek={(t) => { if (audioRef.current) audioRef.current.currentTime = t; }}
+            onVolume={(v) => { setVolume(v); if (audioRef.current) audioRef.current.volume = v; }}
+            onShuffle={() => setShuffle((v) => !v)}
+            onRepeat={() => setRepeat((r) => (r === 'off' ? 'all' : r === 'all' ? 'one' : 'off'))}
+            onLike={() => {}} onAdd={() => {}}
+            onClose={() => setFull(false)} />
+        )}
+      </AnimatePresence>
       {/* -- Track list -- */}
       <div className="flex-1 overflow-y-auto mt-3" style={{ scrollbarWidth: 'none' }}>
         <p className="px-4 pb-2 text-xs font-semibold uppercase tracking-wider" style={{ color: C.t3 }}>

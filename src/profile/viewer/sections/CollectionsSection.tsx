@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { Gift as GiftIcon, Trophy, CircleUserRound, Lock } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
-import { GIFT_RARITY_COLOR } from '@/gifts/store';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X } from 'lucide-react';
+import { GIFT_RARITY_COLOR, GIFT_RARITY_LABEL, type SentGift } from '@/gifts/store';
+import { GiftBubble } from '@/gifts/SkyGifts';
+import { giftMediaUrl } from '@/gifts/giftsApi';
 import { SectionHead } from './Head';
 import { availableFrames, FRAMES } from '../cosmetics';
 import { RARITY_COLOR, RARITY_LABEL } from '@/customization/types';
@@ -19,12 +24,45 @@ const FILTERS: { id: GiftFilter; label: string }[] = [
   { id: 'seasonal', label: 'Сезонные' },
 ];
 
+/** Подарок крупной красивой карточкой — той же, что в чате, с подробностями. */
+const GiftModal = ({ gift, onClose }: { gift: SentGift; onClose: () => void }) => {
+  const rc = GIFT_RARITY_COLOR[gift.giftRarity];
+  return createPortal(
+    <motion.div className="fixed inset-0 z-[600] flex items-center justify-center px-5"
+      style={{ background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(6px)' }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+      <motion.div initial={{ scale: 0.8, y: 30, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+        className="relative w-full max-w-[320px] rounded-[32px] p-5 text-center"
+        style={{ background: 'var(--bg-l1)', border: `1px solid ${rc}55`, boxShadow: `0 30px 80px ${rc}44, inset 0 1px 0 rgba(255,255,255,0.12)` }}
+        onClick={(e) => e.stopPropagation()}>
+        <button type="button" onClick={onClose} aria-label="Закрыть"
+          className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full" style={{ background: 'var(--bg-l2)', color: 'var(--t2)' }}>
+          <X size={15} />
+        </button>
+        <div className="flex justify-center py-3" style={{ transform: 'scale(1.25)', transformOrigin: 'center', margin: '14px 0' }}>
+          <GiftBubble gift={gift} fromMe={false} />
+        </div>
+        <p className="mt-4 text-lg font-black" style={{ color: 'var(--t1)' }} translate="no">{gift.giftName}</p>
+        <p className="mt-0.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: rc }}>{GIFT_RARITY_LABEL[gift.giftRarity]}</p>
+        <div className="mt-3 space-y-1 rounded-2xl p-3 text-left text-xs" style={{ background: 'var(--bg-l2)', color: 'var(--t2)' }}>
+          <p>От: <b style={{ color: 'var(--t1)' }} translate="no">{gift.fromName}</b></p>
+          <p>Дата: <b style={{ color: 'var(--t1)' }}>{new Date(gift.sentAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</b></p>
+          {gift.message && <p className="pt-1 italic" style={{ color: 'var(--t1)' }} translate="no">«{gift.message}»</p>}
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body,
+  );
+};
+
 export const hasCollections = (data: ProfileData) =>
   data.gifts.all.length > 0 || data.progression.achievements.length > 0 || data.isOwn;
 
 export const CollectionsSection = ({ data }: { data: ProfileData }) => {
   const [filter, setFilter] = useState<GiftFilter>('all');
   const [tab, setTab] = useState<'gifts' | 'achievements' | 'frames' | 'theme'>('gifts');
+  const [openGift, setOpenGift] = useState<SentGift | null>(null);
   const updateProfile = useAuthStore(s => s.updateProfile);
   const equip = useCustomization(s => s.equip);
 
@@ -76,13 +114,23 @@ export const CollectionsSection = ({ data }: { data: ProfileData }) => {
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {list.map(g => (
-                <div key={g.id} className="rounded-xl p-3 flex flex-col items-center gap-1"
-                  style={{ background: `linear-gradient(160deg, ${g.giftGrad[0]}22, ${g.giftGrad[1]}11)`, border: `1px solid ${GIFT_RARITY_COLOR[g.giftRarity]}44` }}>
-                  <div className="text-2xl">{g.giftEmoji}</div>
-                  <div className="text-[10px] font-medium text-center truncate w-full" style={{ color: 'var(--t2)' }}>{g.giftName}</div>
-                </div>
-              ))}
+              {list.map(g => {
+                const rc = GIFT_RARITY_COLOR[g.giftRarity];
+                const media = giftMediaUrl(g.mediaId);
+                return (
+                  <motion.button key={g.id} type="button" whileTap={{ scale: 0.95 }} whileHover={{ y: -3 }}
+                    onClick={() => setOpenGift(g)} aria-label={g.giftName}
+                    className="relative overflow-hidden rounded-2xl p-3 flex flex-col items-center gap-1"
+                    style={{ background: `linear-gradient(155deg, ${g.giftGrad[0]}, ${g.giftGrad[1]})`, border: `1.5px solid ${rc}66`,
+                      boxShadow: `0 8px 22px ${rc}33, inset 0 1px 0 rgba(255,255,255,0.18)` }}>
+                    <div className="absolute inset-x-0 top-0 h-1/2 pointer-events-none" style={{ background: 'linear-gradient(180deg,rgba(255,255,255,0.14),transparent)' }} />
+                    {media && g.mediaKind !== 'video'
+                      ? <img src={media} alt="" className="h-10 w-10 object-contain" />
+                      : <div className="text-3xl" style={{ filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.4))' }}>{g.giftEmoji}</div>}
+                    <div className="text-[10px] font-semibold text-center truncate w-full text-white" translate="no">{g.giftName}</div>
+                  </motion.button>
+                );
+              })}
             </div>
           )}
         </>
@@ -158,6 +206,7 @@ export const CollectionsSection = ({ data }: { data: ProfileData }) => {
           })}
         </div>
       )}
+      <AnimatePresence>{openGift && <GiftModal gift={openGift} onClose={() => setOpenGift(null)} />}</AnimatePresence>
     </div>
   );
 };

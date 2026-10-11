@@ -1867,7 +1867,7 @@ const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLi
 };
 
 
-const SkyFullPlayer = ({
+export const SkyFullPlayer = ({
   track, playing, currentTime, duration, volume,
   shuffle, repeat, favorites, queue, queueIdx,
   onPlay, onPrev, onNext, onSeek, onVolume,
@@ -1917,6 +1917,21 @@ const SkyFullPlayer = ({
     return () => { alive = false; };
   }, [track.id]);
 
+  /* «Расставить»: строки получают метки времени [мм:сс]. Шаг — сколько секунд строка
+     «висит» на экране; 0 — растянуть строки равномерно по всей песне. */
+  const [holdSec, setHoldSec] = React.useState('4');
+  const tagLyrics = (raw: string, hold: number) => {
+    const lines = raw.split('\n').map(l => l.replace(/^\s*\[\d{1,2}:\d{2}(?:[.:]\d{1,2})?\]\s*/, '').trimEnd()).filter(l => l.trim() !== '');
+    if (!lines.length) return raw;
+    const step = hold > 0 ? hold : (duration > 0 ? duration / lines.length : 4);
+    return lines.map((text, i) => {
+      const t = Math.round(i * step * 10) / 10;
+      const mm = String(Math.floor(t / 60)).padStart(2, '0');
+      const ss = (t % 60).toFixed(1).padStart(4, '0');
+      return `[${mm}:${ss}] ${text}`;
+    }).join('\n');
+  };
+
   const openLyricsEditor = () => { setLyricsDraft(lyricsRaw); setEditingLyrics(true); };
   const saveLyrics = async () => {
     setSavingLyrics(true);
@@ -1929,9 +1944,16 @@ const SkyFullPlayer = ({
   };
 
   const lyrics = React.useMemo(() => {
-    if (track.syncedLyrics && track.syncedLyrics.length > 0) return track.syncedLyrics;
-    return serverLyrics ?? [];
-  }, [track.id, track.syncedLyrics, serverLyrics]);
+    const base = track.syncedLyrics && track.syncedLyrics.length > 0 ? track.syncedLyrics : (serverLyrics ?? []);
+    const lines = base.filter(l => l.text);
+    /* Текст без меток времени: у всех строк время 0, и «текущей» всегда становилась
+       последняя. Растягиваем строки равномерно по песне, чтобы подсветка шла по ходу
+       (точнее — кнопкой «Расставить» в редакторе текста). */
+    const untimed = lines.length > 1 && lines.every(l => l.t <= 0);
+    if (!untimed) return lines;
+    const per = duration > 0 ? duration / lines.length : 4;
+    return lines.map((l, i) => ({ ...l, t: i * per }));
+  }, [track.id, track.syncedLyrics, serverLyrics, duration]);
 
   const activeLyric = React.useMemo(
     () => lyrics.reduce((best, l, i) => l.t <= currentTime ? i : best, 0),
@@ -1975,6 +1997,7 @@ const SkyFullPlayer = ({
       exit={{ opacity:0, y:24 }}
       transition={{ type:'spring', stiffness:320, damping:32 }}
       className="fixed inset-0 z-[500] flex flex-col overflow-hidden"
+      data-keep-dark
       style={{ fontFamily: "'Manrope','Nunito',system-ui,sans-serif" }}
     >
       {/* ── Background ───────────────────────────────────────── */}
@@ -2338,6 +2361,22 @@ const SkyFullPlayer = ({
                           background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.12)',
                           borderRadius:14,padding:'10px 12px',color:'white',fontSize:14,lineHeight:1.5,
                         }} />
+                      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                        <span style={{fontSize:12,color:'rgba(255,255,255,0.7)'}}>Строка висит</span>
+                        <input value={holdSec} onChange={e=>setHoldSec(e.target.value.replace(/[^\d.]/g,'').slice(0,5))} inputMode="decimal"
+                          aria-label="Секунд на строку"
+                          style={{width:56,borderRadius:10,padding:'6px 8px',background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',color:'white',fontSize:13,outline:'none'}} />
+                        <span style={{fontSize:12,color:'rgba(255,255,255,0.7)'}}>сек</span>
+                        <button type="button" onClick={()=>setLyricsDraft(d=>tagLyrics(d, Math.max(0.5, Number(holdSec) || 4)))}
+                          className="rounded-xl px-3 py-1.5 text-xs font-bold"
+                          style={{background:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.15)',cursor:'pointer'}}>Расставить</button>
+                        <button type="button" onClick={()=>setLyricsDraft(d=>tagLyrics(d, 0))}
+                          className="rounded-xl px-3 py-1.5 text-xs font-bold"
+                          style={{background:'rgba(255,255,255,0.1)',color:'white',border:'1px solid rgba(255,255,255,0.15)',cursor:'pointer'}}>По всей песне</button>
+                      </div>
+                      <p style={{fontSize:11,lineHeight:1.4,color:'rgba(255,255,255,0.5)',margin:0}}>
+                        Метку времени [мм:сс] у любой строки можно поправить вручную — так задаётся, сколько она висит.
+                      </p>
                       <div style={{display:'flex',gap:8}}>
                         <button type="button" disabled={savingLyrics} onClick={() => void saveLyrics()}
                           className="rounded-xl px-4 py-2 text-xs font-bold"
@@ -2369,7 +2408,7 @@ const SkyFullPlayer = ({
                           <p style={{
                             fontSize: isActive ? 28 : 20,
                             fontWeight: isActive ? 800 : isPast ? 500 : 400,
-                            color: isActive ? 'white' : isPast ? 'rgba(255,255,255,0.42)' : 'rgba(255,255,255,0.16)',
+                            color: isActive ? 'white' : isPast ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.5)',
                             lineHeight:1.3, margin:0,
                             letterSpacing: isActive?'-0.4px':'0',
                             transition:'all 0.3s ease',

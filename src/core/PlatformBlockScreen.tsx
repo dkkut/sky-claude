@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { AlertOctagon, Wrench, RefreshCw, LogIn } from 'lucide-react';
 import type { PlatformBlock } from './auth/api';
+import { LanguagePill, ThemePill } from '@/i18n/LanguageSwitch';
 
 const COPY = {
   shutdown: {
@@ -51,6 +52,8 @@ export const PlatformBlockScreen = ({ block, onRetry, onDismiss }: Props) => {
   return (
     <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center gap-5 px-6 text-center"
       style={{ background: 'var(--bg)', color: 'var(--t1)' }}>
+      <LanguagePill />
+      <ThemePill />
       <div className="grid h-20 w-20 place-items-center rounded-3xl"
         style={{ background: copy.tintBg, border: `1px solid ${copy.tintBorder}` }}>
         <Icon size={34} style={{ color: copy.tint }} />

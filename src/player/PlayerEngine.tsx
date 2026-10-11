@@ -7,6 +7,9 @@ import { apiMediaTicket as apiPodcastTicket } from '@/podcasts/podcastApi';
 import { reloadWithFreshTicket, describeMediaFailure } from '@/core/mediaTicketRefresh';
 import { flash } from '@/shared/flash';
 import { getDownloadUrl } from '@/offline/offlineDB';
+import { saveResume, loadResume, clearResume } from './resume';
+import { nativeMediaSet, nativeMediaElapsed, isAndroidApp } from './nativeMedia';
+import { API_ORIGIN } from '@/core/nativeApp';
 
 /**
  * Единственный реальный <audio> элемент в приложении.
@@ -64,9 +67,10 @@ export const PlayerEngine = () => {
         title: item.title,
         artist: item.author || KIND_ALBUM[item.kind] || 'Sky',
         album: KIND_ALBUM[item.kind] ?? 'Sky',
-        artwork: item.coverUrl ? [
-          { src: item.coverUrl, sizes: '512x512' },
-        ] : [],
+        // Без обложки — логотип Sky: система не должна показывать пустой квадрат.
+        artwork: ['96x96', '256x256', '512x512'].map((sizes) => ({
+          src: item.coverUrl || `${API_ORIGIN || location.origin}/logo.png`, sizes,
+        })),
       });
       ms.setActionHandler('play', () => requestPlay(true));
       ms.setActionHandler('pause', () => requestPlay(false));
@@ -94,9 +98,38 @@ export const PlayerEngine = () => {
     try { ms.playbackState = isPlaying ? 'playing' : 'paused'; } catch { /* не везде есть */ }
   }, [isPlaying, item?.id]);
 
+  /* Android-приложение: настоящее медиа-уведомление с кнопками (nativeMedia.ts). */
+  useEffect(() => {
+    if (!isAndroidApp()) return;
+    void nativeMediaSet(item ? {
+      id: item.id, title: item.title, artist: item.author || 'Sky', album: KIND_ALBUM[item.kind] ?? 'Sky',
+      cover: item.coverUrl, duration: usePlayerStore.getState().duration, elapsed: usePlayerStore.getState().currentTime,
+      isPlaying, hasPrev: Boolean(item.queue?.length), hasNext: Boolean(item.queue?.length),
+    } : null, {
+      play: () => requestPlay(true), pause: () => requestPlay(false),
+      next: () => nextTrack(), prev: () => prevTrack(), seek: (sec) => requestSeek(sec),
+    });
+  }, [item?.id, isPlaying]);
+  useEffect(() => {
+    if (!isAndroidApp() || !item) return;
+    const t = setInterval(() => { const a = audioRef.current; if (a) void nativeMediaElapsed(a.currentTime, !a.paused); }, 2000);
+    return () => clearInterval(t);
+  }, [item?.id]);
+
   /* Сколько треков подряд не заигралось и сколько раз мы пробовали
      переподключиться к текущему. Ref, а не state: перерисовывать плеер
      из-за счётчика незачем. */
+  const lastSaveRef = useRef(0);
+  const resumedRef = useRef('');
+  useEffect(() => {
+    const flush = () => {
+      const a = audioRef.current; const it = usePlayerStore.getState().item;
+      if (a && it && (it.kind === 'music' || it.kind === 'podcast') && a.currentTime > 0) saveResume(it.id, a.currentTime, a.duration || 0);
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+    return () => window.removeEventListener('pagehide', flush);
+  }, []);
   const failsRef = useRef(0);
   const retryRef = useRef(0);
   const passTriedRef = useRef('');
@@ -201,13 +234,27 @@ export const PlayerEngine = () => {
         const a = audioRef.current;
         if (!a) return;
         syncTime(a.currentTime, a.duration || 0);
+        if (item && (item.kind === 'music' || item.kind === 'podcast') && Date.now() - lastSaveRef.current > 3000) {
+          lastSaveRef.current = Date.now();
+          saveResume(item.id, a.currentTime, a.duration || 0);
+        }
         const ms = (navigator as Navigator & { mediaSession?: MediaSession }).mediaSession;
         if (ms && Number.isFinite(a.duration) && a.duration > 0) {
           try { ms.setPositionState({ duration: a.duration, position: Math.min(a.currentTime, a.duration), playbackRate: a.playbackRate }); }
           catch { /* не везде есть */ }
         }
       }}
-      onLoadedMetadata={() => { const a = audioRef.current; if (a) syncTime(a.currentTime, a.duration || 0); }}
+      onLoadedMetadata={() => {
+        const a = audioRef.current;
+        if (!a) return;
+        // Продолжить с того места, где остановились (один раз на трек).
+        if (item && (item.kind === 'music' || item.kind === 'podcast') && resumedRef.current !== item.id) {
+          resumedRef.current = item.id;
+          const pos = loadResume(item.id);
+          if (pos > 0 && a.duration > pos + 8 && a.currentTime < 1) a.currentTime = pos;
+        }
+        syncTime(a.currentTime, a.duration || 0);
+      }}
       onPlaying={onPlaying}
       onError={() => {
         const a = audioRef.current;
@@ -254,6 +301,8 @@ export const PlayerEngine = () => {
         void describeMediaFailure(a, srcUrl).then((why) => flash(`Не удалось воспроизвести трек. ${why}`));
       }}
       onEnded={() => {
+        if (item) clearResume(item.id);
+        resumedRef.current = '';
         const a = audioRef.current;
         if (repeat === 'one' && a) { a.currentTime = 0; a.play().catch(() => {}); return; }
         advanceOrStop();

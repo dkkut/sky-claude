@@ -1,5 +1,6 @@
 import { fitImageToDataUrl } from '../shared/imageFit';
 import { enablePush, disablePush, PUSH_TEXT } from '@/notifications/pushClient';
+import { useCursorPet, CURSOR_ANIMALS } from '@/shared/cursorPet';
 import { flash } from '../shared/flash';
 import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
@@ -443,6 +444,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
   const switchProfile = useAuthStore(s=>s.switchProfile);
   const [confirmExit, setConfirmExit] = useState(false);
   const { settings, set, reset } = useSettings();
+  const cursorPet = useCursorPet();
   const s = settings;
 
   const { accounts, currentUserId } = useAuthStore();
@@ -641,6 +643,21 @@ const SettingsSection = ({ logout, username, onOpen }: {
               flash(PUSH_TEXT[r]);
             });
           }}/>}/>
+      </SectionBlock>
+
+      {/* -- КУРСОР-ПИТОМЕЦ ------------------ */}
+      <SectionBlock title="Курсор-питомец">
+        <SettingsRow icon={Sparkles} label="Питомец бегает за курсором"
+          sub="Для Prime на компьютере"
+          right={<Toggle on={cursorPet.enabled} onToggle={() => cursorPet.setEnabled(!cursorPet.enabled)}/>}/>
+        <div className="flex flex-wrap gap-1.5 px-4 pb-3">
+          {CURSOR_ANIMALS.map((a) => (
+            <button key={a} type="button" onClick={() => cursorPet.setAnimal(a)} aria-label={a}
+              className="grid h-9 w-9 place-items-center rounded-xl text-lg"
+              style={{ background: cursorPet.enabled && cursorPet.animal === a ? 'color-mix(in srgb, var(--accent) 22%, transparent)' : 'var(--bg-l2)',
+                border: `1px solid ${cursorPet.enabled && cursorPet.animal === a ? 'var(--accent)' : 'var(--border)'}` }}>{a}</button>
+          ))}
+        </div>
       </SectionBlock>
 
       {/* -- КОНФИДЕНЦИАЛЬНОСТЬ ------------------ */}

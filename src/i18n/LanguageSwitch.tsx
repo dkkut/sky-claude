@@ -1,6 +1,7 @@
 /* Переключатель языка RU / EN. Подписи не переводятся (translate="no"):
    «Русский» должен оставаться «Русский» для того, кто ищет свой язык. */
-import { Languages } from 'lucide-react';
+import { Languages, Sun, Moon } from 'lucide-react';
+import { useSettings } from '@/settings/store';
 import { getLang, chooseLang, type Lang } from './lang';
 
 const LANGS: [Lang, string][] = [['ru', 'Русский'], ['en', 'English']];
@@ -29,7 +30,7 @@ export const LanguageButtons = () => {
 export const LanguagePill = () => {
   const cur = getLang();
   return (
-    <div translate="no" className="fixed right-3 top-3 z-[700] flex overflow-hidden rounded-full text-[11px] font-bold"
+    <div translate="no" className="fixed right-3 top-3 z-[1100] flex overflow-hidden rounded-full text-[11px] font-bold"
       style={{ background: 'var(--bg-l2)', border: '1px solid var(--border-m)' }}>
       {LANGS.map(([code]) => (
         <button key={code} type="button" onClick={() => { if (code !== cur) chooseLang(code); }}
@@ -40,5 +41,20 @@ export const LanguagePill = () => {
         </button>
       ))}
     </div>
+  );
+};
+
+/** Светлая / тёмная тема — рядом с переключателем языка на экранах входа и технических работ. */
+export const ThemePill = () => {
+  const scheme = useSettings((s) => s.settings.colorScheme);
+  const set = useSettings((s) => s.set);
+  const light = scheme === 'light';
+  return (
+    <button type="button" onClick={() => set({ colorScheme: light ? 'dark' : 'light' })}
+      aria-label={light ? 'Тёмная тема' : 'Светлая тема'} title={light ? 'Тёмная тема' : 'Светлая тема'}
+      className="fixed right-[104px] top-3 z-[1100] grid h-[30px] w-[30px] place-items-center rounded-full"
+      style={{ background: 'var(--bg-l2)', border: '1px solid var(--border-m)', color: 'var(--t2)' }}>
+      {light ? <Moon size={14} /> : <Sun size={14} />}
+    </button>
   );
 };
