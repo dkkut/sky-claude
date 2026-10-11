@@ -139,6 +139,13 @@ export const config = {
   aiBaseUrl: (process.env.AI_BASE_URL || 'https://api.openai.com').replace(/\/+$/, '').replace(/\/v1$/, ''),
   // 'responses' — /v1/responses (OpenAI), 'chat' — /v1/chat/completions
   // (почти все посредники и совместимые шлюзы, в том числе для Claude).
+  /* Пуши при закрытом приложении. Web Push (сайт, ПК, PWA) — ключи VAPID
+     (npm run push:keys); Android — Firebase Cloud Messaging (сервисный
+     аккаунт). Без ключей пуши тихо выключены, остальное работает. */
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? '',
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? '',
+  vapidSubject: process.env.VAPID_SUBJECT ?? 'mailto:admin@localhost',
+  fcmServiceAccount: process.env.FCM_SERVICE_ACCOUNT_JSON ?? '',
   aiApiStyle: process.env.AI_API_STYLE === 'chat' ? 'chat' : 'responses',
 
   // Расшифровка речи — отдельная работа и отдельный поставщик:

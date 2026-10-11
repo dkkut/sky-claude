@@ -270,3 +270,31 @@ localStorage) — теперь всё лежит на сервере.
 - Вкладка «Баланс комиссий» Blox запрашивает код под назначением `blox_commission`
   (`apiAdminCommissionStepUp`); общий `StepUp` принимает `begin` — другим формам
   комиссий нужен тот же приём.
+
+## Админка: деньги человека, пуши и уведомления
+
+**Деньги человека** — `server/adminmoney.mjs`; заявки `adjust_balance`, `reverse_tx`,
+`revoke_prime`, `revoke_gift`, `cancel_subscription` объявлены в `PENDING_KINDS`
+(`adminsec.mjs`): оформляет сотрудник с правом `finance` + код, подтверждает владелец
+с кодом, как и начисления. WS-действия `user-money` (сводка) и `money-op` (заявка) в
+`signal.mjs`; экран — «Начисления» → «Баланс и операции человека» (`UserMoneyOps` в
+`AdminPanel.tsx`). Типы записей кошелька: `admin_adjust`, `admin_reversal`, `admin_refund`.
+- Всё — одна транзакция под `FOR UPDATE` счёта; повторить нельзя: откат помечен ссылкой
+  `reverse:<id>`, подарок — статусом, Prime — статусом подписки. Откат меняет только запись
+  кошелька (заказ/подписку не трогает).
+- Возврат за Prime — только от реально оплаченной с кошелька покупки (тип `prime`),
+  пропорционально остатку дней; подарочный/семейный/выданный/бессрочный возврата не даёт.
+- Отзыв подарка Prime, уже активированного получателем, убирает у него подаренные дни.
+- Человек получает уведомление о решении (`USER_VISIBLE_KINDS`), владелец — о новой заявке.
+- Тест: `scripts/audit/adminmoney-test.mjs` (29 проверок, гонки).
+
+**Пуши** — `server/webpush.mjs`, `server/routes/push.mjs`, миграция `110_push.sql`;
+клиент — `src/notifications/pushClient.ts`, `public/sw.js`. Шлются только тем, у кого
+нет живого WebSocket (`pushToOffline`). Каналы: Web Push (ключи `VAPID_*`,
+`npm run push:keys`) и FCM для Android (`FCM_SERVICE_ACCOUNT_JSON`, плюс
+`google-services.json` в `android/app/`). Без ключей тихо выключено. Источники: новые
+сообщения (не заглушённые чаты), пропущенные звонки, подарки/Prime, заказы Market,
+Garant, Family, нарушения, рассылки, решения по рекламе, заявки владельцу и решения админки.
+Windows-приложение при закрытии окна уходит в трей и продолжает показывать уведомления
+Windows (`electron/main.cjs`); полностью закрытое Windows-приложение пушей не получает.
+Тест: `scripts/audit/push-test.mjs`.

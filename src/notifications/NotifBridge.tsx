@@ -24,6 +24,7 @@ import { useAuthStore }        from '@/core/auth/store';
 import { useCallStore }        from '@/calls/store';
 import { useModuleStore }      from '@/data/state/modules';
 import { usePushNotifications } from './usePushNotifications';
+import { syncPush } from './pushClient';
 import { apiBloomEvents } from '@/bloom/bloomApi';
 import { apiBroadcastEvents } from './broadcastApi';
 import { apiAdEvents } from '@/ads/adsApi';
@@ -144,14 +145,31 @@ export const NotifBridge = () => {
     const onGift = (e: Event) => {
       const note = (e as CustomEvent).detail ?? {};
       if (!note.title) return;
+      if (settings.desktopNotifs) sendWebPush({ title: note.title, body: note.body ?? '', senderName: note.title, senderLetter: 'S' });
       push({
         kind: 'gift', title: note.title, body: note.body ?? '',
-        avatarLetter: '🎁', color: 'var(--accent)',
+        avatarLetter: String(note.kind ?? '').startsWith('admin_') ? 'S' : '🎁', color: 'var(--accent)',
       });
     };
     window.addEventListener('sky:gift-notification', onGift);
     return () => window.removeEventListener('sky:gift-notification', onGift);
-  }, [push]);
+  }, [push, sendWebPush, settings.desktopNotifs]);
+
+  // -- Заказы, сделки, семья, нарушения: серверные события (socket.ts) ----
+  useEffect(() => {
+    const seen = new Set<string>();
+    const onNote = (e: Event) => {
+      const n = (e as CustomEvent).detail ?? {};
+      if (!n.title && !n.body) return;
+      if (n.id) { if (seen.has(n.id)) return; seen.add(n.id); }
+      push({ kind: 'system', title: n.title ?? 'Sky', body: n.body ?? '', avatarLetter: 'S', color: 'var(--accent)' });
+      if (settings.desktopNotifs) {
+        sendWebPush({ title: n.title ?? 'Sky', body: n.body ?? '', senderName: n.title ?? 'Sky', senderLetter: 'S' });
+      }
+    };
+    window.addEventListener('sky:server-notification', onNote);
+    return () => window.removeEventListener('sky:server-notification', onNote);
+  }, [push, sendWebPush, settings.desktopNotifs]);
 
   // -- Не удалось дозвониться -----------------------------------------
   useEffect(() => {
@@ -176,6 +194,12 @@ export const NotifBridge = () => {
   // двигаем по часам сервера (ответ возвращает now), а не клиента —
   // иначе рассинхрон часов мог бы или потерять событие, или повторить.
   const currentUserId = useAuthStore(s => s.currentUserId);
+
+  // -- Пуши при закрытом приложении: подписать устройство при входе -----
+  useEffect(() => {
+    if (currentUserId && settings.desktopNotifs) void syncPush();
+  }, [currentUserId, settings.desktopNotifs]);
+
   const bloomSinceRef = useRef<number>(Date.now());
   useEffect(() => {
     if (!currentUserId) return;

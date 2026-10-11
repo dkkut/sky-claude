@@ -25,6 +25,7 @@ import { hasPrime } from './skyid.mjs';
 import { wallet } from './wallet.mjs';
 import { regionOf, cleanRegionList } from './regions.mjs';
 import { createTicket } from './support.mjs';
+import { pushToOffline } from './webpush.mjs';
 
 /* ─── Площадки и цены — единственный источник истины (сервер) ───────
    Та же таблица, что в src/ads/store.ts (AD_PLACEMENTS) — оставлена в
@@ -83,11 +84,25 @@ const cleanLink = (v) => {
   }
 };
 
-const logEvent = (campaignId, kind, actorId, detail = '') =>
-  query(
+const AD_PUSH = {
+  approved: 'Кампания одобрена и запущена', rejected: 'Кампания отклонена модератором',
+  paused_by_admin: 'Кампания приостановлена администрацией', resumed_by_admin: 'Кампания возобновлена администрацией',
+  completed_by_admin: 'Кампания завершена администрацией', cancelled_by_admin: 'Кампания отменена администрацией',
+};
+
+const logEvent = async (campaignId, kind, actorId, detail = '') => {
+  await query(
     'INSERT INTO ad_campaign_events (id, campaign_id, kind, actor_id, detail) VALUES ($1,$2,$3,$4,$5)',
     [newEventId(), campaignId, kind, actorId ?? null, clean(detail, 300)],
   );
+  /* Решения по кампании рекламодатель получает пушем, если приложение закрыто. */
+  if (AD_PUSH[kind]) {
+    const { rows } = await query('SELECT advertiser_id, title FROM ad_campaigns WHERE id = $1', [campaignId]);
+    if (rows[0] && rows[0].advertiser_id !== actorId) {
+      void pushToOffline([rows[0].advertiser_id], { title: 'Sky Ads', body: `${AD_PUSH[kind]}: ${rows[0].title}`, url: '/', tag: `ad:${campaignId}` });
+    }
+  }
+};
 
 /* ─── Представление наружу ────────────────────────────────────────── */
 

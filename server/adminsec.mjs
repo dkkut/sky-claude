@@ -45,6 +45,7 @@ import { decryptSecret } from './crypto.mjs';
 import { verifyTotp } from './totp.mjs';
 import { sendEmail } from './notify.mjs';
 import { wallet } from './wallet.mjs';
+import { notifyGift } from './giftnotify.mjs';
 import {
   adjustBalance, reverseTransaction, reversibleTx, revokePrimeAdmin, cancelSubscriptionAdmin,
   revokeGiftAdmin, giftForRevoke, MAX_ADJUST,
@@ -918,6 +919,15 @@ export const createPendingAction = async (actorId, kind, targetId, raw = {}, opt
     await markGrantProposed(checked.payload.grantId, id);
   }
 
+  /* Владелец узнаёт о новой заявке сразу — уведомлением и пушем, если приложение закрыто. */
+  try {
+    const { rows: owners } = await query(
+      'SELECT id FROM profiles WHERE lower(username) = $1', [String(config.ownerUsername ?? '').trim().toLowerCase()]);
+    for (const o of owners) {
+      if (o.id !== actorId) await notifyGift(o.id, 'admin_pending', 'Новая заявка на подтверждение', spec.title, id);
+    }
+  } catch { /* уведомление не должно мешать заявке */ }
+
   return { id, kind, targetId: target, status: 'pending', payload: checked.payload };
 };
 
@@ -1082,6 +1092,11 @@ export const decidePendingAction = async (actorId, id, approve, opts = {}) => {
     result: done.error ? 'failed' : 'ok',
     detail: done.error ? String(done.error) : String(done.outcome ?? ''), meta });
 
+  if (!done.error && USER_VISIBLE_KINDS.has(row.kind) && row.target_id) {
+    await notifyGift(row.target_id, `admin_${row.kind}`, USER_VISIBLE_KINDS.get(row.kind),
+      String(done.outcome ?? '').slice(0, 200), row.id).catch(() => {});
+  }
+
   const after = await query(`${SELECT_PENDING} WHERE a.id = $1`, [row.id]);
   return done.error ? { error: done.error, action: toPending(after.rows[0]) }
     : { action: toPending(after.rows[0]) };
@@ -1110,6 +1125,14 @@ export const sweepPendingActions = async () => {
  * подтверждением проходят часы, и за это время человек мог стать
  * владельцем. Исключение то же, что и там: GRANT_KINDS_OWNER_ALLOWED.
  */
+/** Какие решения администрации человек должен увидеть у себя в уведомлениях. */
+const USER_VISIBLE_KINDS = new Map([
+  ['grant_money', 'Вам начислены деньги'], ['grant_points', 'Вам начислены баллы'],
+  ['grant_prime', 'Вам выдан Prime'], ['adjust_balance', 'Баланс изменён администрацией'],
+  ['reverse_tx', 'Операция отменена администрацией'], ['revoke_prime', 'Prime снят администрацией'],
+  ['revoke_gift', 'Подарок отозван администрацией'], ['cancel_subscription', 'Подписка отменена администрацией'],
+]);
+
 const executePending = async (row, payload, ownerId) => {
   const target = row.target_id;
   if (!target) return { error: 'not_found' };

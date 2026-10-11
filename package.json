@@ -19,10 +19,12 @@
     "cap:sync": "npm run build:native && npx cap sync android",
     "cap:sync:ios": "npm run build:native && npx cap sync ios",
     "build:native": "vite build --mode native",
+    "push:keys": "node scripts/gen-vapid.mjs",
     "i18n:check": "node scripts/i18n-check.mjs"
   },
   "dependencies": {
     "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.1.3",
     "framer-motion": "^11.0.8",
     "hls.js": "^1.7.3",
     "leaflet": "^1.9.4",

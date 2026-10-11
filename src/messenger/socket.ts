@@ -331,6 +331,23 @@ const handle = (data: any) => {
       }
       break;
 
+    /* Заказы Market, сделки Garant, Family, нарушения: раньше событие приходило,
+       но пользователь его не видел. Теперь оно попадает в «Уведомления». */
+    case 'market-notification':
+    case 'garant-notification':
+    case 'family-notification':
+    case 'violation-notification':
+      if (typeof window !== 'undefined') {
+        const title = payload?.title ?? ({
+          'market-notification': 'Sky Market', 'garant-notification': 'Sky Garant',
+          'family-notification': 'Sky Family', 'violation-notification': 'Нарушение',
+        } as Record<string, string>)[type];
+        window.dispatchEvent(new CustomEvent('sky:server-notification', {
+          detail: { title, body: payload?.body ?? payload?.text ?? '', id: payload?.id },
+        }));
+      }
+      break;
+
     /* Логистика: сервер шлёт событие, но список уведомлений курьера сам не
        обновлялся — новое появлялось только после перезахода на вкладку. */
     case 'logi-notification':

@@ -2,6 +2,7 @@
 // правка баланса, откат операции, снятие Prime с возвратом, отзыв подарков, отмена подписки.
 // Запуск: из каталога стенда с env.sh — node scripts/audit/adminmoney-test.mjs <каталог>
 import { execSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import { mkuser } from './lib.mjs';
 const S = process.argv[2];
 const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
@@ -12,6 +13,7 @@ const t = (n, c, x = '') => { if (c) ok++; else { bad++; console.log('FAIL', n, 
 const bal = (id) => Number(q(`select balance from wallet_accounts where user_id='${id}'`) || 0);
 const pts = (id) => Number(q(`select points from wallet_accounts where user_id='${id}'`) || 0);
 
+const U = Date.now().toString(36);
 const A = await mkuser(S, 'AmA'); const B = await mkuser(S, 'AmB');
 
 // ── правка баланса
@@ -57,7 +59,7 @@ t('откат отката запрещён', (await M.reversibleTx(A.pid, rev))
 // ── Prime: покупка 30 дней за 300, осталось ~15 дней => возврат ~150
 await wallet.credit(B.pid, 300, 'topup', 'на Prime', null);
 await wallet.spend(B.pid, 300, 'prime', 'Sky Prime · 30 дн.');
-q(`insert into prime_subscriptions(id,profile_id,status,plan,expires_at) values ('prime-t1','${B.pid}','active','standard', now() + interval '15 days')`);
+q(`insert into prime_subscriptions(id,profile_id,status,plan,expires_at) values ('prime-t1-${U}','${B.pid}','active','standard', now() + interval '15 days')`);
 q(`update profiles set is_prime=true where id='${B.pid}'`);
 const info = await M.primeInfo(B.pid);
 t('сводка Prime показывает возврат', info.active && info.refundPreview === 150, JSON.stringify(info));
@@ -68,12 +70,12 @@ t('флаг Prime снят', q(`select is_prime from profiles where id='${B.pid}
 r = await M.revokePrimeAdmin(B.pid, true, 'ещё раз', 'apa-p2');
 t('повторно снять нечего', r.error === 'no_active_prime' && bal(B.pid) - before === 150, JSON.stringify(r));
 // Prime без оплаты: возврата нет
-q(`insert into prime_subscriptions(id,profile_id,status,plan,expires_at) values ('prime-t2','${A.pid}','active','standard', now() + interval '10 days')`);
+q(`insert into prime_subscriptions(id,profile_id,status,plan,expires_at) values ('prime-t2-${U}','${A.pid}','active','standard', now() + interval '10 days')`);
 const aBefore = bal(A.pid);
 r = await M.revokePrimeAdmin(A.pid, true, 'выдан админом', 'apa-p3');
 t('выданный Prime возврата не даёт', r.ok && bal(A.pid) === aBefore, JSON.stringify(r));
 // отмена подписки без возврата
-q(`insert into prime_subscriptions(id,profile_id,status,plan,expires_at) values ('prime-t3','${A.pid}','active','standard', now() + interval '10 days')`);
+q(`insert into prime_subscriptions(id,profile_id,status,plan,expires_at) values ('prime-t3-${U}','${A.pid}','active','standard', now() + interval '10 days')`);
 r = await M.cancelSubscriptionAdmin(A.pid, 'prime', 'отмена');
 t('подписка Prime отменена без возврата', r.ok && bal(A.pid) === aBefore, JSON.stringify(r));
 r = await M.cancelSubscriptionAdmin(A.pid, 'family', 'нет семьи');
@@ -82,11 +84,11 @@ t('нет семьи — отказ', r.error === 'no_family');
 // ── подарки
 q(`insert into gift_catalog(id,name,price_points) values ('gc-00000000-0000-0000-0000-000000000001','Тест',80) on conflict do nothing`);
 const mkOrder = (id, kind, price, cur, extra = '') => q(`insert into gift_orders(id,idem_key,buyer_id,kind,gift_catalog_id,recipient_id,price,currency,status,prime_days${extra}) values ('${id}','k-${id}','${A.pid}','${kind}',${kind === 'gift' ? "'gc-00000000-0000-0000-0000-000000000001'" : 'NULL'},'${B.pid}',${price},'${cur}','paid',${kind === 'prime' ? 30 : 'NULL'})`);
-const gid = 'gi-11111111-1111-1111-1111-111111111111', pid = 'pgi-22222222-2222-2222-2222-222222222222';
-mkOrder('go-1', 'gift', 80, 'points'); mkOrder('go-2', 'prime', 300, 'money');
-q(`insert into gift_instances(id,order_id,gift_catalog_id,sender_id,recipient_id) values ('${gid}','go-1','gc-00000000-0000-0000-0000-000000000001','${A.pid}','${B.pid}')`);
-q(`insert into prime_gift_instances(id,order_id,sender_id,recipient_id,days,status) values ('${pid}','go-2','${A.pid}','${B.pid}',30,'activated')`);
-q(`insert into prime_subscriptions(id,profile_id,status,plan,expires_at) values ('prime-t4','${B.pid}','active','standard', now() + interval '40 days')`);
+const gid = `gi-${crypto.randomUUID()}`, pid = `pgi-${crypto.randomUUID()}`;
+mkOrder(`go-1-${U}`, 'gift', 80, 'points'); mkOrder(`go-2-${U}`, 'prime', 300, 'money');
+q(`insert into gift_instances(id,order_id,gift_catalog_id,sender_id,recipient_id) values ('${gid}','go-1-${U}','gc-00000000-0000-0000-0000-000000000001','${A.pid}','${B.pid}')`);
+q(`insert into prime_gift_instances(id,order_id,sender_id,recipient_id,days,status) values ('${pid}','go-2-${U}','${A.pid}','${B.pid}',30,'activated')`);
+q(`insert into prime_subscriptions(id,profile_id,status,plan,expires_at) values ('prime-t4-${U}','${B.pid}','active','standard', now() + interval '40 days')`);
 const pBefore = pts(A.pid), bBefore = bal(A.pid);
 const gs = await M.giftForRevoke(gid);
 t('подарок находится по отправителю', gs?.sender_id === A.pid && gs.kind === 'gift');
@@ -98,9 +100,9 @@ r = await M.revokeGiftAdmin(B.pid, gid, 'чужой', 'apa-g3');
 t('отзыв от чужого имени — не найден', r.error === 'not_found');
 r = await M.revokeGiftAdmin(A.pid, pid, 'нарушение', 'apa-g4');
 t('активированный Prime-подарок отозван, деньги вернулись', r.ok && bal(A.pid) - bBefore === 300, JSON.stringify(r));
-const exp = q(`select extract(day from expires_at - now())::int from prime_subscriptions where id='prime-t4'`);
+const exp = q(`select extract(day from expires_at - now())::int from prime_subscriptions where id='prime-t4-${U}'`);
 t('у получателя убраны подаренные дни (40 -> ~10)', Number(exp) >= 9 && Number(exp) <= 10, exp);
-t('статус подарка и заказа', q(`select status from prime_gift_instances where id='${pid}'`) === 'unavailable' && q("select status from gift_orders where id='go-2'") === 'refunded');
+t('статус подарка и заказа', q(`select status from prime_gift_instances where id='${pid}'`) === 'unavailable' && q(`select status from gift_orders where id='go-2-${U}'`) === 'refunded');
 const sum = await M.userMoneySummary(A.pid);
 t('сводка собирается', sum.balance === bal(A.pid) && sum.transactions.length > 0 && sum.gifts.length === 2, JSON.stringify(sum).slice(0, 200));
 

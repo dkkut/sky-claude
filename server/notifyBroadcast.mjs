@@ -18,6 +18,7 @@ import { query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { can } from './admin.mjs';
 import { isValidRegion } from './regions.mjs';
+import { pushToOffline } from './webpush.mjs';
 
 export const MAX_TITLE = 200;
 export const MAX_BODY = 1000;
@@ -302,6 +303,10 @@ const dispatchOne = async (b) => {
         WHERE id = $1`,
       [runId, recipients.length],
     );
+    /* Пуш тем, у кого приложение закрыто (остальные получат опросом). */
+    for (let i = 0; i < recipients.length; i += 500) {
+      void pushToOffline(recipients.slice(i, i + 500), { title: b.title, body: b.body, url: b.link ?? '/', tag: `nb:${b.id}` });
+    }
 
     if (b.schedule_kind === 'once') {
       await query(

@@ -64,6 +64,7 @@ import { contentFlagsRoutes } from './routes/contentflags.mjs';
 import { gamesRoutes } from './routes/games.mjs';
 import { voicePartyRoutes } from './routes/voiceparty.mjs';
 import { gameServerRoutes } from './routes/gameservers.mjs';
+import { pushRoutes } from './routes/push.mjs';
 import { bloomRoutes } from './routes/bloom.mjs';
 import { sweepOrphanBloomMedia } from './bloom.mjs';
 import { storiesRoutes } from './routes/stories.mjs';
@@ -130,7 +131,7 @@ const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoute
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
-                familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
+                familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
                 violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes];
 

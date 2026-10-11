@@ -1,4 +1,5 @@
 import { fitImageToDataUrl } from '../shared/imageFit';
+import { enablePush, disablePush, PUSH_TEXT } from '@/notifications/pushClient';
 import { flash } from '../shared/flash';
 import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
@@ -630,14 +631,15 @@ const SettingsSection = ({ logout, username, onOpen }: {
         <SettingsRow icon={Bell} iconColor="#f59e0b" label="Упоминания (@)"
           right={<Toggle on={s.soundMentions} onToggle={() => set({ soundMentions: !s.soundMentions })}/>}/>
         <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
-        <SettingsRow icon={Globe} label="Push-уведомления браузера"
-          sub={s.desktopNotifs ? "Включены" : "Запросить разрешение"}
+        <SettingsRow icon={Globe} label="Push-уведомления"
+          sub={s.desktopNotifs ? "Включены — придут и при закрытом приложении" : "Запросить разрешение"}
           right={<Toggle on={s.desktopNotifs} onToggle={() => {
-            if (!s.desktopNotifs && 'Notification' in window) {
-              Notification.requestPermission().then(p => set({ desktopNotifs: p === 'granted' }));
-            } else {
-              set({ desktopNotifs: !s.desktopNotifs });
-            }
+            if (s.desktopNotifs) { set({ desktopNotifs: false }); void disablePush(); return; }
+            void enablePush().then((r) => {
+              const local = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+              set({ desktopNotifs: r === 'ok' || local });
+              flash(PUSH_TEXT[r]);
+            });
           }}/>}/>
       </SectionBlock>
 

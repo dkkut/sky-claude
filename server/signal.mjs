@@ -35,6 +35,8 @@ import {
 } from './adminsec.mjs';
 import { grantForProposal } from './campaigns.mjs';
 import { userMoneySummary } from './adminmoney.mjs';
+import { pushToOffline, setOnlineProbe } from './webpush.mjs';
+import { decryptContent } from './crypto.mjs';
 import { adminGetOrder } from './kutrentmarket.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
 import { markActive, setOnlineSource } from './analytics.mjs';
@@ -415,6 +417,7 @@ const handle = async (ws, session, msg) => {
 
       fanout(await memberIds(chatId), { type: 'new-message', payload: { chatId, message: saved } }, ws);
       send(ws, { type: 'message-sent', payload: { messageId: saved.id, chatId, message: saved } });
+      void pushMessageOffline(chatId, saved, me);
       break;
     }
 
@@ -1779,6 +1782,8 @@ const handle = async (ws, session, msg) => {
       // Звонок в закрытое приложение иначе означал бы гудки без конца.
       if (!delivered && type === 'call-offer') {
         send(ws, { type: 'call-unavailable', from: to, callId });
+        void query('SELECT name FROM profiles WHERE id = $1', [me]).then(({ rows }) =>
+          pushToOffline([to], { title: 'Пропущенный звонок', body: `Вам звонил(а) ${rows[0]?.name ?? 'собеседник'}`, url: '/', tag: `call:${me}`, urgent: true }));
       }
       break;
     }
@@ -1826,6 +1831,7 @@ const ipOf = (req) => {
 };
 
 export const startSignalHub = () => {
+  setOnlineProbe((id) => isOnline(id));
   wss = new WebSocketServer({ port: PORT, maxPayload: MAX_MESSAGE_BYTES });
 
   /*
@@ -2118,6 +2124,7 @@ export const pushTogether = (userIds, msg) => {
  */
 export const pushMarket = (userIds, msg) => {
   broadcast(Array.isArray(userIds) ? userIds : [], msg);
+  pushNote(userIds, msg?.payload, 'Sky Market');
 };
 
 export const pushNewMessage = (userIds, chatId, message) => {
@@ -2132,6 +2139,7 @@ export const pushNewMessage = (userIds, chatId, message) => {
  */
 export const pushGiftNotification = (userIds, note) => {
   broadcast(Array.isArray(userIds) ? userIds : [], { type: 'gift-notification', payload: note });
+  pushNote(userIds, note, 'Sky');
 };
 
 /** Тем же путём уходит новоиспечённый чат с ботом. */
@@ -2142,16 +2150,53 @@ export const pushChatCreated = async (userIds, chatId) => {
 /** Sky Family: приглашение, решение, изменение владения, Prime. */
 export const pushFamily = (userIds, msg) => {
   broadcast(Array.isArray(userIds) ? userIds : [], msg);
+  pushNote(userIds, msg?.payload, 'Sky Family');
 };
 
 /** Sky Garant: создание сделки, депозит, подтверждение, спор, решение. */
 export const pushGarant = (userIds, msg) => {
   broadcast(Array.isArray(userIds) ? userIds : [], msg);
+  pushNote(userIds, msg?.payload, 'Sky Garant');
 };
 
 /** Нарушения и штрафы Market/Warehouse/PVZ: фиксация, решение, апелляция. */
 export const pushViolation = (userIds, msg) => {
   broadcast(Array.isArray(userIds) ? userIds : [], msg);
+  pushNote(userIds, msg?.payload, 'Нарушение');
+};
+
+/* ─── Пуши тем, кого нет в сети ───────────────────────────────────────
+   Живым соединениям уведомление показывает само приложение; тем, у кого
+   приложение закрыто, уходит пуш (server/webpush.mjs). Ошибки пуша ничего
+   не ломают. */
+
+const PUSH_KIND_LABEL = { photo: 'Фото', voice: 'Голосовое сообщение', 'video-note': 'Видеосообщение', file: 'Файл', sticker: 'Стикер' };
+
+const pushMessageOffline = async (chatId, saved, senderId) => {
+  try {
+    const { rows } = await query(
+      `SELECT m.user_id, c.type, c.name, p.name AS sender
+         FROM chat_members m JOIN chats c ON c.id = m.chat_id JOIN profiles p ON p.id = $2
+        WHERE m.chat_id = $1 AND m.user_id <> $2 AND NOT m.muted AND c.trashed_at IS NULL`,
+      [chatId, senderId]);
+    if (!rows.length) return;
+    const first = rows[0];
+    const preview = saved.once ? 'Одноразовое сообщение'
+      : saved.kind === 'text' ? String(saved.text ?? '').slice(0, 120)
+        : PUSH_KIND_LABEL[saved.kind] ?? 'Новое сообщение';
+    const dm = first.type === 'direct' || first.type === 'private' || first.type === 'dm';
+    const title = dm ? first.sender : (decryptContent(first.name) ?? first.sender);
+    const body = dm ? preview : `${first.sender}: ${preview}`;
+    await pushToOffline(rows.map((r) => r.user_id), { title, body, url: '/', tag: `chat:${chatId}` });
+  } catch (e) { console.error('[push] сообщение:', e.message); }
+};
+
+/** Из уведомления любого раздела берём заголовок и текст и шлём пуш. */
+const pushNote = (userIds, note, fallbackTitle, url = '/') => {
+  const title = note?.title ?? fallbackTitle;
+  const body = note?.body ?? note?.text ?? '';
+  if (!title && !body) return;
+  void pushToOffline(userIds, { title: title || fallbackTitle, body, url, tag: note?.id ? `n:${note.id}` : '' });
 };
 
 /** Игровые серверы: новое сообщение канала, правки устройства сервера. */

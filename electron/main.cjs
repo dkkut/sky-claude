@@ -18,9 +18,12 @@
  * не зависит от "type": "module" в package.json — только этот файл и
  * preload.cjs остаются CommonJS, весь остальной проект как был ESM.
  */
-const { app, BrowserWindow, shell, Menu, session, protocol, ipcMain, safeStorage, globalShortcut, screen } = require('electron');
+const { app, BrowserWindow, shell, Menu, session, protocol, ipcMain, safeStorage, globalShortcut, screen, Tray, nativeImage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+
+let tray = null;
+let quitting = false;
 
 const APP_SCHEME = 'app';
 const APP_ORIGIN = `${APP_SCHEME}://sky`;
@@ -230,6 +233,7 @@ if (!gotLock) {
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
     }
   });
@@ -276,6 +280,38 @@ if (!gotLock) {
     });
 
     mainWindow.on('closed', () => { mainWindow = null; });
+
+    // Закрытие окна уводит приложение в трей, а не завершает его: так
+    // оно продолжает принимать сообщения и показывает уведомления Windows,
+    // пока окно закрыто. Выход — из меню значка в трее или «Файл → Выход».
+    mainWindow.on('close', (event) => {
+      if (process.platform === 'win32' && !quitting && tray) {
+        event.preventDefault();
+        mainWindow.hide();
+      }
+    });
+  };
+
+  const showMainWindow = () => {
+    if (!mainWindow) { createWindow(); return; }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  };
+
+  const createTray = () => {
+    if (process.platform !== 'win32' || tray) return;
+    try {
+      const icon = nativeImage.createFromPath(path.join(DIST_DIR, 'logo.png')).resize({ width: 16, height: 16 });
+      tray = new Tray(icon);
+      tray.setToolTip('Sky');
+      tray.setContextMenu(Menu.buildFromTemplate([
+        { label: 'Открыть Sky', click: showMainWindow },
+        { type: 'separator' },
+        { label: 'Выход', click: () => { quitting = true; app.quit(); } },
+      ]));
+      tray.on('click', showMainWindow);
+    } catch (e) { console.error('[tray]', e.message); tray = null; }
   };
 
   const buildMenu = () => {
@@ -333,6 +369,7 @@ if (!gotLock) {
 
     buildMenu();
     createWindow();
+    createTray();
 
     // Регистрация может не удаться, если сочетание уже занято другим
     // приложением — тогда просто не заводим глобальный хоткей вместо
@@ -348,11 +385,14 @@ if (!gotLock) {
     });
   });
 
+  app.on('before-quit', () => { quitting = true; });
+
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
   });
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+    // В Windows окно закрывается только при выходе (иначе оно прячется в трей).
+    if (process.platform !== 'darwin' && !tray) app.quit();
   });
 }
