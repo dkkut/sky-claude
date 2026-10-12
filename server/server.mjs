@@ -67,6 +67,7 @@ import { readAccessToken } from './http.mjs';
 import { sweepAdminGate } from './admingate.mjs';
 import { sweepSshGate } from './sshgate.mjs';
 import { deviceLinkRoutes } from './routes/devicelink.mjs';
+import { registrationRoutes } from './routes/registration.mjs';
 import * as musicTicket from './musicticket.mjs';
 import * as filmTicket from './filmticket.mjs';
 import * as podcastTicket from './podcastticket.mjs';
@@ -173,7 +174,7 @@ const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, authRoutes, p
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes];
+                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -381,6 +382,8 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // послать «не json», чтобы получить 500 и строчку в журнале.
     if (error?.status === 400) return json(res, 400, { error: error.code ?? 'bad_request' });
     // Вход в замороженный аккаунт (accountfreeze.mjs): не сбой, а решение владельца.
+    // Регистрация новых аккаунтов ограничена (registration.mjs): решение администрации, не сбой.
+    if (error?.status === 403 && String(error.code ?? '').startsWith('registration_')) return json(res, 403, { error: error.code, message: error.message === error.code ? '' : error.message });
     if (error?.status === 423) return json(res, 423, { error: 'account_frozen', until: error.until });
     console.error('[api]', error);
     const message = config.nodeEnv === 'production' ? 'internal_error' : error.message;

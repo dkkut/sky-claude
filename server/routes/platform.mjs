@@ -4,6 +4,7 @@
  * диспетчеризации по маршрутам — см. комментарий там же.
  */
 import { json, parseBody, requireProfile } from './../http.mjs';
+import { publicStatus as registrationStatus } from './../registration.mjs';
 import { shutdownState, maintenanceState, setShutdown, setMaintenance } from './../platform.mjs';
 
 export const platformRoutes = async (req, res, url) => {
@@ -12,8 +13,8 @@ export const platformRoutes = async (req, res, url) => {
   /* Читает кто угодно, даже без сессии — это и есть ручка, по которой
      браузер без сессии понимает, какой экран показать. */
   if (req.method === 'GET' && url === '/api/platform/status') {
-    const [shutdown, maintenance] = await Promise.all([shutdownState(), maintenanceState()]);
-    return json(res, 200, { shutdown, maintenance });
+    const [shutdown, maintenance, registration] = await Promise.all([shutdownState(), maintenanceState(), registrationStatus()]);
+    return json(res, 200, { shutdown, maintenance, registration });
   }
 
   const session = await requireProfile(req, res);

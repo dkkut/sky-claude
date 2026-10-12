@@ -40,6 +40,7 @@ export const PERMISSIONS = [
   'analytics',       // мониторинг и аналитика платформы: онлайн, сделки, покупки, здоровье сервера
   'go',              // Sky GO: заявки исполнителей, подписки, заказы, споры, интеграции
   'go_finance',      // Sky GO: тарифы активации и параметры стоимости
+  'registration',    // ограничение регистрации новых аккаунтов: вкл/выкл, пределы, сообщение
 ];
 
 /**
@@ -51,7 +52,7 @@ export const PERMISSIONS = [
  */
 export const ROLES = {
   super_admin:     PERMISSIONS,
-  security_admin:  ['security', 'moderation', 'support'],
+  security_admin:  ['security', 'moderation', 'support', 'registration'],
   moderation_admin:['moderation', 'support'],
   support_admin:   ['support'],
   content_admin:   ['content'],

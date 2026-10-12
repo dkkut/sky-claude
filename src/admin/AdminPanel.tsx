@@ -40,6 +40,8 @@ import { BloxAdminSection } from '@/blox/BloxAdmin';
 import { MonitoringTab } from './MonitoringTab';
 
 import { ContentModTab } from './ContentModTab';
+import { ScrollTabs } from './ScrollTabs';
+import { RegistrationTab } from './RegistrationTab';
 import { GoAdminTab } from './GoAdmin';
 import { AdminGateScreen } from './AdminGate';
 const C = {
@@ -956,7 +958,7 @@ const PetsAdminSection = () => {
   const [sub, setSub] = useState<'types' | 'economy' | 'grant' | 'market'>('types');
   return (
     <div className="space-y-3">
-      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      <ScrollTabs>
         {([['types', 'Типы питомцев'], ['economy', 'Экономика'], ['grant', 'Начислить'], ['market', 'Skin Market']] as const).map(([k, l]) => (
           <button key={k} type="button" onClick={() => setSub(k)}
             className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
@@ -964,7 +966,7 @@ const PetsAdminSection = () => {
             {l}
           </button>
         ))}
-      </div>
+      </ScrollTabs>
       {sub === 'types' && <PetTypesAdminSection />}
       {sub === 'economy' && <PetEconomyAdminSection />}
       {sub === 'grant' && <PetCoinsGrantForm />}
@@ -3691,7 +3693,7 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
       </div>
 
       {sub === 'orders' && (
-        <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        <ScrollTabs>
           {([['pending', 'Ожидают'], ['paid', 'Оплачены'], ['rejected', 'Отклонены'], ['cancelled', 'Отменены'], ['', 'Все']] as const).map(([k, l]) => (
             <button key={k} type="button" onClick={() => setStatus(k)}
               className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
@@ -3699,7 +3701,7 @@ const KutrentMarketAdminSection = ({ rights }: { rights: MyRights | null }) => {
               {l}
             </button>
           ))}
-        </div>
+        </ScrollTabs>
       )}
 
       <div className="flex gap-2">
@@ -4718,7 +4720,7 @@ const ViolationsAdminSection = ({ rights }: { rights: MyRights }) => {
   };
   return (
     <div className="space-y-2">
-      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      <ScrollTabs>
         {([
           ['violations', 'Нарушения'], ['appeals', 'Апелляции'], ['rules', 'Регламент'],
           ['payment', 'Реквизиты'], ['stats', 'Статистика'], ['manual', 'Штраф'],
@@ -4729,7 +4731,7 @@ const ViolationsAdminSection = ({ rights }: { rights: MyRights }) => {
             {l}
           </button>
         ))}
-      </div>
+      </ScrollTabs>
       {sub === 'violations' && <ViolationsListTab />}
       {sub === 'appeals' && <AppealsAdminTab />}
       {sub === 'rules' && <RulesAdminTab />}
@@ -4788,7 +4790,7 @@ const GarantAdminSection = () => {
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      <ScrollTabs>
         {([['disputed', 'Споры'], ['in_escrow', 'У гаранта'], ['completed', 'Завершены'], ['cancelled', 'Отменены'], ['', 'Все']] as const).map(([k, l]) => (
           <button key={k} type="button" onClick={() => setStatus(k)}
             className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
@@ -4796,7 +4798,7 @@ const GarantAdminSection = () => {
             {l}
           </button>
         ))}
-      </div>
+      </ScrollTabs>
       <div className="flex gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Название сделки или @участник"
           className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
@@ -5041,7 +5043,7 @@ const AdsAdminSection = () => {
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      <ScrollTabs>
         {([
           ['moderation', 'На проверке'], ['active', 'Активные'], ['paused', 'На паузе'],
           ['scheduled', 'Запланированы'], ['rejected', 'Отклонены'], ['completed', 'Завершены'],
@@ -5053,7 +5055,7 @@ const AdsAdminSection = () => {
             {l}
           </button>
         ))}
-      </div>
+      </ScrollTabs>
       <div className="flex gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Название, id или ник рекламодателя"
           className="flex-1 rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
@@ -5390,7 +5392,7 @@ const NotifyHistoryList = ({ openId, setOpenId }: { openId: string | null; setOp
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      <ScrollTabs>
         {([['', 'Все'], ['scheduled', 'Запланированы'], ['sent', 'Отправлены'], ['cancelled', 'Отменены'], ['failed', 'Ошибки']] as const).map(([k, l]) => (
           <button key={k} type="button" onClick={() => setStatus(k)}
             className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
@@ -5398,7 +5400,7 @@ const NotifyHistoryList = ({ openId, setOpenId }: { openId: string | null; setOp
             {l}
           </button>
         ))}
-      </div>
+      </ScrollTabs>
       {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
       {items === null ? (
         <Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} />
@@ -5448,7 +5450,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5624,6 +5626,7 @@ export const AdminPanel = () => {
     { key: 'kutrent', label: 'KutRent Market', show: has('kutrent_market') },
     { key: 'content', label: 'Контент', show: has('content') },
     { key: 'go', label: 'Sky GO', show: has('go') },
+    { key: 'registration', label: 'Регистрация', show: has('registration') },
     { key: 'pets', label: 'Pets и Skin Market', show: has('content') },
     { key: 'customization', label: 'Кастомизация', show: has('content') },
     { key: 'bloom', label: 'Bloom', show: has('content') },
@@ -5652,7 +5655,7 @@ export const AdminPanel = () => {
           </span>
         </div>
       )}
-      <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      <ScrollTabs>
         {TABS.filter((t) => t.show).map((t) => (
           <button key={t.key} type="button" onClick={() => setTab(t.key)}
             className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold"
@@ -5660,7 +5663,7 @@ export const AdminPanel = () => {
             {t.label}
           </button>
         ))}
-      </div>
+      </ScrollTabs>
 
       {failed && <p className="text-[11px]" style={{ color: C.red }}>{failed}</p>}
 
@@ -5838,6 +5841,7 @@ export const AdminPanel = () => {
       )}
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
       {tab === 'content' && <ContentModTab />}
+      {tab === 'registration' && <RegistrationTab />}
       {tab === 'go' && <GoAdminTab />}
       {tab === 'pulse' && <PrimePulseAdminSection />}
       {tab === 'campaigns' && <CampaignsAdminSection onPendingChanged={() => void loadPending()} />}

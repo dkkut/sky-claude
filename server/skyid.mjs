@@ -18,6 +18,7 @@ import { generateSecret, verifyTotp, otpauthUri } from './totp.mjs';
 import { mayClaimUsername } from './admin.mjs';
 import { issueCode, verifyCode } from './verification.mjs';
 import { isOwnerUsername } from './admin.mjs';
+import { registerLimited } from './registration.mjs';
 import { getPrivacy, isContact } from './privacy.mjs';
 import { isValidRegion } from './regions.mjs';
 
@@ -139,22 +140,23 @@ export const findSkyIdByEmail = async (email) => {
  * Остаётся для аккаунтов, заведённых до перехода на почту, и для тех,
  * кто предпочитает вход по SMS.
  */
-export const ensureSkyId = async (phone) => {
+export const ensureSkyId = async (phone, { ip } = {}) => {
   const existing = await findSkyIdByPhone(phone);
   if (existing) return { skyId: existing, created: false };
 
   const id = `sky-${generateId()}`;
-  const { rows } = await query(
+  // Предел регистрации (registration.mjs) проверяется здесь, в момент создания: вход существующих он не трогает.
+  const row = await registerLimited(ip, async (c) => (await c.query(
     // Без указания столбца: уникальный индекс на телефон теперь
     // частичный (только для непустых), и вывести его по имени столбца
     // Postgres не берётся.
     `INSERT INTO sky_ids (id, phone, phone_verified) VALUES ($1,$2,TRUE)
      ON CONFLICT DO NOTHING RETURNING *`,
     [id, String(phone)],
-  );
+  )).rows[0]);
   // Конфликт значит, что параллельный запрос успел раньше — берём его.
-  if (!rows[0]) return { skyId: await findSkyIdByPhone(phone), created: false };
-  return { skyId: rows[0], created: true };
+  if (!row) return { skyId: await findSkyIdByPhone(phone), created: false };
+  return { skyId: row, created: true };
 };
 
 /**
@@ -163,19 +165,19 @@ export const ensureSkyId = async (phone) => {
  * Адрес считается подтверждённым сразу: сюда попадают только после
  * верного кода из письма, а он и есть подтверждение.
  */
-export const ensureSkyIdByEmail = async (email) => {
+export const ensureSkyIdByEmail = async (email, { ip } = {}) => {
   const clean = String(email).toLowerCase();
   const existing = await findSkyIdByEmail(clean);
   if (existing) return { skyId: existing, created: false };
 
   const id = `sky-${generateId()}`;
-  const { rows } = await query(
+  const row = await registerLimited(ip, async (c) => (await c.query(
     `INSERT INTO sky_ids (id, email, email_verified) VALUES ($1,$2,TRUE)
      ON CONFLICT DO NOTHING RETURNING *`,
     [id, clean],
-  );
-  if (!rows[0]) return { skyId: await findSkyIdByEmail(clean), created: false };
-  return { skyId: rows[0], created: true };
+  )).rows[0]);
+  if (!row) return { skyId: await findSkyIdByEmail(clean), created: false };
+  return { skyId: row, created: true };
 };
 
 /** Привязывает подтверждённый номер к существующему Sky ID. */

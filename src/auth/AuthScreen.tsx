@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { DeviceLinkLogin } from './DeviceLinkLogin';
+import { apiPlatformStatus } from '@/core/platform';
 import { useConsoleMode } from '@/interface/console/consoleMode';
 import { useCarMode } from '@/interface/car/useCarMode';
 import { LegalCheckbox } from '@/info/LegalNotice';
@@ -244,6 +245,20 @@ const ForgotPasswordBlock = ({ email, onDone }: { email: string; onDone: () => v
   );
 };
 
+/* Когда регистрация новых аккаунтов закрыта или предел исчерпан — говорим об этом до ввода почты, а не после кода. */
+const RegistrationNotice = () => {
+  const [st, setSt] = useState<{ open: boolean; message: string } | null>(null);
+  useEffect(() => { void apiPlatformStatus().then((p) => setSt(p?.registration ?? null)); }, []);
+  if (!st || st.open) return null;
+  return (
+    <div role="status" className="mb-4 rounded-2xl px-4 py-3 text-sm" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t2)' }}>
+      <p className="font-semibold" style={{ color: 'var(--t1)' }}>Регистрация новых аккаунтов сейчас закрыта</p>
+      {st.message && <p translate="no" className="mt-1">{st.message}</p>}
+      <p className="mt-1 text-xs" style={{ color: 'var(--t3)' }}>Если аккаунт уже есть — входите как обычно.</p>
+    </div>
+  );
+};
+
 const LoginStep = () => {
   const {
     loginChannel, setLoginChannel,
@@ -275,6 +290,7 @@ const LoginStep = () => {
   if (byPassword) {
     return (
       <Shell title="Sky ID" subtitle="Почта и пароль — без кода на каждый вход.">
+        <RegistrationNotice />
         <div className="space-y-3">
           {/* Предупреждение стоит рядом с формой, а не только в
               подсказке под кнопкой: это ровно то место, где решение
@@ -342,6 +358,7 @@ const LoginStep = () => {
         ? 'Один аккаунт для всей экосистемы. Пришлём код на почту.'
         : 'Пришлём код в SMS на этот номер.'}
     >
+      <RegistrationNotice />
       <div className="space-y-3">
         <div className="relative">
           {byEmail

@@ -18,7 +18,7 @@ import { signToken, verifyToken } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
 import { generateId } from './../security.mjs';
 import { buildRefreshCookie, clearRefreshCookie } from './../cookies.mjs';
-import { json, parseBody, readRefreshToken, readSession, appBody, deviceMeta } from './../http.mjs';
+import { json, parseBody, readRefreshToken, readSession, appBody, deviceMeta, clientIp } from './../http.mjs';
 import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../verification.mjs';
 import { sendEmail } from './../notify.mjs';
 import { noteAdminBreachSignal } from './../breach.mjs';
@@ -234,7 +234,7 @@ export const authRoutes = async (req, res, url) => {
       return json(res, 401, { error: check.error, attemptsLeft: check.attemptsLeft });
     }
 
-    const { skyId, created } = await ensureSkyIdByEmail(email);
+    const { skyId, created } = await ensureSkyIdByEmail(email, { ip: clientIp(req) });
 
     if (skyId.two_factor_enabled) {
       const challenge = signToken(
@@ -286,7 +286,7 @@ export const authRoutes = async (req, res, url) => {
     }
 
     // Аккаунт заводится при первом успешном входе: отдельной регистрации нет.
-    const { skyId, created } = await ensureSkyId(phone);
+    const { skyId, created } = await ensureSkyId(phone, { ip: clientIp(req) });
 
     // Включена защита Sky ID — сессию пока не выдаём.
     if (skyId.two_factor_enabled) {

@@ -127,6 +127,9 @@ const ERRORS: Record<string, string> = {
   two_factor_required:   'Введите код из приложения',
   challenge_expired:     'Время вышло — начните вход заново',
   not_found:             'Не найдено',
+  registration_closed:   'Регистрация новых аккаунтов временно закрыта. Войти могут только уже зарегистрированные',
+  registration_daily_limit: 'Сегодня регистрации новых аккаунтов уже закончились. Попробуйте позже',
+  registration_ip_limit: 'С этого адреса уже создано максимум аккаунтов. Попробуйте позже',
   account_frozen:        'Новые входы в этот аккаунт заморожены его владельцем. Разморозить можно на устройстве, где вход уже выполнен: Профиль → Sky ID → Устройства',
   nothing_to_do:         'Выберите, что сделать',
   bad_period:            'Выберите период из списка',
@@ -341,7 +344,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
     if (res.status === 403 && data?.error === 'pin_required') onPinRequired?.();
     if (res.status === 503 && data?.error === 'platform_shutdown') onPlatformBlocked?.({ kind: 'shutdown', reason: String(data?.reason ?? '') });
     if (res.status === 503 && data?.error === 'platform_maintenance') onPlatformBlocked?.({ kind: 'maintenance', reason: String(data?.reason ?? '') });
-    return { ok: false, error: data?.error, reason: explain(data?.error, res.status), status: res.status, data };
+    return { ok: false, error: data?.error, reason: (data?.message && String(data?.error).startsWith('registration_')) ? String(data.message) : explain(data?.error, res.status), status: res.status, data };
   }
 
   // Родное приложение подхватывает refresh/beta-токен из ЛЮБОГО ответа,

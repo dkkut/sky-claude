@@ -647,3 +647,20 @@ freeze_link_ok_until`, журнал `account_freeze_log`); клиент — `src
 «Технические/Аварийные работы» в `server.mjs` узнаёт владельца и администратора и по такому пропуску (`mediaProfile`: музыка, кино, подкасты, книги,
 Sky Video). Раньше при включённом режиме им отвечало 503 на всю музыку и кино, хотя остальной интерфейс работал. Остальным в режиме по-прежнему 503.
 Новый тип медиа с собственным пропуском — добавить его модуль в `mediaProfile`.
+
+## Ограничение регистрации новых аккаунтов и стрелки в админке
+
+`server/registration.mjs`, маршрут `server/routes/registration.mjs` (`GET/PUT /api/admin/registration`), миграция `122_registration_limits.sql`
+(`registration_settings`, `sky_ids.reg_ip_hash`, `registration_blocked`); клиент — `src/admin/RegistrationTab.tsx` (вкладка «Регистрация»,
+право `registration`: есть у `super_admin` и `security_admin`), `RegistrationNotice` на экране входа (`AuthScreen.tsx`), статус — `registration`
+в публичном `/api/platform/status`.
+
+- Проверка стоит ТОЛЬКО в момент создания Sky ID (`ensureSkyId*` → `registerLimited`): проверка и вставка в одной транзакции под advisory-замком,
+  поэтому пределы не обходятся гонкой. Вход существующих, привязка почты/телефона и профили не затрагиваются.
+- Настройки: вкл/выкл; не больше N новых аккаунтов за последние 24 часа; не больше N с одного адреса за M часов (хранится только HMAC-хеш адреса);
+  своё сообщение (до 300 знаков). 403 с кодом `registration_closed | registration_daily_limit | registration_ip_limit` и сообщением; клиент
+  показывает сообщение администрации, иначе стандартный текст. Правка пишется в журнал администрации (`registration_settings`).
+- Предел с адреса — грубый: не защищает от смены адреса и может задеть общий Wi-Fi/оператора; интерфейс об этом говорит.
+- `ScrollTabs` (`src/admin/ScrollTabs.tsx`) — лента вкладок со стрелками (видны в сторону, куда ещё можно прокрутить; колесо мыши листает вбок);
+  все ленты админки (`flex gap-1 overflow-x-auto`) сделаны через него — новую ленту делать так же.
+- Тесты: `scripts/audit/registration-test.mjs` (22, включая гонку), `registration-ui-test.mjs` (Playwright, 10).
