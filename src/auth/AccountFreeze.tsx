@@ -2,6 +2,7 @@
    Баннер «Разморозка аккаунта» появляется только после перехода по ссылке из письма.
    Серверная часть — server/accountfreeze.mjs. */
 import { useCallback, useEffect, useState } from 'react';
+import { useModuleStore } from '@/data/state/modules';
 import { ShieldAlert, Snowflake, Mail } from 'lucide-react';
 import {
   apiFreezeState, apiProtectAccount, apiFreezeResend, apiUnfreeze, apiFreezeLink,
@@ -169,6 +170,22 @@ export const AccountProtection = ({ onChanged }: { onChanged: () => void }) => {
   );
 };
 
+/** Следующий заход в приложение откроется на «Профиль → Sky ID → Устройства» (баннер разморозки). */
+export const openDevicesNext = () => {
+  try { sessionStorage.setItem('sky:open', 'devices'); } catch { /* без памяти вкладки просто откроется главная */ }
+};
+
+/** Вошедшему человеку с флагом `sky:open=devices` открывает «Устройства» (вызывается один раз после входа). */
+export const useOpenDevicesIfAsked = () => {
+  useEffect(() => {
+    let want = false;
+    try { want = sessionStorage.getItem('sky:open') === 'devices'; if (want) sessionStorage.removeItem('sky:open'); } catch { /* нет */ }
+    if (!want) return;
+    const m = useModuleStore.getState();
+    m.setPendingProfileSection('skyid'); m.setPendingSkyIdSub('devices'); m.setActiveModule('profile');
+  }, []);
+};
+
 /** Страница по ссылке из письма (/unfreeze?t=…). Сама ничего не размораживает — только подтверждает ссылку. */
 export const UnfreezeLinkPage = () => {
   const t = new URLSearchParams(location.search).get('t') ?? '';
@@ -177,7 +194,11 @@ export const UnfreezeLinkPage = () => {
   const go = async () => {
     setState('busy');
     const r = await apiFreezeLink(t);
-    if (r.ok && r.data) { setMinutes(r.data.minutes); setState('ok'); } else setState('bad');
+    if (!(r.ok && r.data)) { setState('bad'); return; }
+    setMinutes(r.data.minutes); setState('ok');
+    // Если в этом браузере уже есть вход — сразу ведём в Профиль → Sky ID → Устройства, где появился баннер «Разморозка аккаунта».
+    const s = await apiFreezeState();
+    if (s.ok) { openDevicesNext(); setTimeout(() => location.assign('/'), 1200); }
   };
   return (
     <div className="grid min-h-screen place-items-center px-4" style={{ background: 'var(--bg)' }}>
@@ -185,9 +206,12 @@ export const UnfreezeLinkPage = () => {
         <img src="/logo.png" alt="Sky" className="mx-auto h-14 w-14 object-contain" />
         <h1 className="text-xl font-bold" style={{ color: 'var(--t1)' }}>Разморозка аккаунта</h1>
         {state === 'ok' ? (
-          <p className="text-sm leading-snug" style={{ color: 'var(--t2)' }}>
-            {`Ссылка подтверждена на ${minutes} минут. Откройте Sky на устройстве, где вы уже вошли: Профиль → Sky ID → Устройства. Там появится баннер «Разморозка аккаунта».`}
-          </p>
+          <>
+            <p className="text-sm leading-snug" style={{ color: 'var(--t2)' }}>
+              {`Ссылка подтверждена на ${minutes} минут. Откройте Sky на устройстве, где вы уже вошли: Профиль → Sky ID → Устройства. Там появится баннер «Разморозка аккаунта».`}
+            </p>
+            <button type="button" onClick={() => { openDevicesNext(); location.assign('/'); }} className="w-full rounded-2xl py-3 font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>Открыть «Устройства»</button>
+          </>
         ) : state === 'bad' || !t ? (
           <p className="text-sm" style={{ color: 'var(--red)' }}>Ссылка недействительна, уже использована или заморозка закончилась.</p>
         ) : (

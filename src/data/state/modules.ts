@@ -17,6 +17,8 @@ interface S {
   /** Открыть конкретный раздел «Профиля» (например, «Настройки» — там
    *  живёт Quick Menu) сразу при переходе — тем же приёмом. */
   pendingProfileSection: string | null; setPendingProfileSection: (s: string | null) => void;
+  /** Подраздел внутри «Sky ID» (например, «devices») — открывается ссылкой из письма о разморозке. */
+  pendingSkyIdSub: string | null; setPendingSkyIdSub: (s: string | null) => void;
 }
 export const useModuleStore = create<S>(set=>({
   activeModule:'messages', setActiveModule:m=>set({activeModule:m}),
@@ -26,4 +28,5 @@ export const useModuleStore = create<S>(set=>({
   pendingVideoTab: null, setPendingVideoTab: t=>set({pendingVideoTab:t}),
   pendingExtrasItemId: null, setPendingExtrasItemId: id=>set({pendingExtrasItemId:id}),
   pendingProfileSection: null, setPendingProfileSection: s=>set({pendingProfileSection:s}),
+  pendingSkyIdSub: null, setPendingSkyIdSub: s=>set({pendingSkyIdSub:s}),
 }));

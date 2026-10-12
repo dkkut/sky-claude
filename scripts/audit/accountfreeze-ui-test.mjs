@@ -61,12 +61,14 @@ t('ссылка подтверждена, сказано куда идти да�
 await p2.screenshot({ path: S + '/frz-link.png' });
 t('аккаунт всё ещё заморожен после ссылки', q(`select login_frozen_until > now() from sky_ids where id='${sky}'`) === 't');
 
-// Баннер появляется в «Устройствах» (обновление раз в 20 с, либо при заходе)
-await p.reload(); await p.waitForTimeout(3500);
-await p.getByText('Профиль', { exact: true }).last().click().catch(() => {}); await p.waitForTimeout(1200);
-await p.getByText('Sky ID', { exact: true }).first().click({ timeout: 3000 }).catch(() => {}); await p.waitForTimeout(600);
-await p.getByText('Устройства', { exact: true }).first().click({ timeout: 3000 }).catch(() => {}); await p.waitForTimeout(1800);
-t('теперь в «Устройствах» баннер «Разморозка аккаунта»', (await p.getByRole('alert').filter({ hasText: 'Разморозка аккаунта' }).count()) === 1, (await body()).slice(0, 300));
+// Письмо ещё раз → ссылка открывается в браузере, где уже есть вход: сразу попадаем в «Устройства» с баннером
+await call('/api/auth/freeze/resend', { method: 'POST', body: '{}' }, tok); await sleep(700);
+const log2 = readFileSync(S + '/api.log', 'utf8'); const k2 = log2.lastIndexOf(email + ' | Новые входы');
+const token2 = /\/unfreeze\?t=([A-Za-z0-9_-]+)/.exec(log2.slice(k2))[1];
+t('новая ссылка отличается от прежней', token2 !== token);
+await p.goto(F + `/unfreeze?t=${token2}`); await p.waitForTimeout(2000);
+await p.getByRole('button', { name: 'Подтвердить ссылку' }).click(); await p.waitForTimeout(4500);
+t('после ссылки в браузере со входом — сразу «Профиль → Sky ID → Устройства» с баннером «Разморозка аккаунта»', (await p.getByRole('alert').filter({ hasText: 'Разморозка аккаунта' }).count()) === 1 && /Активные сессии/i.test(await body()), (await body()).slice(0, 300));
 await p.screenshot({ path: S + '/frz-banner.png' });
 await p.getByRole('button', { name: 'Разморозить новые входы' }).click(); await p.waitForTimeout(1500);
 t('после «Разморозить» баннера нет, заморозка снята', (await p.getByRole('alert').count()) === 0 && q(`select login_frozen_until is null from sky_ids where id='${sky}'`) === 't');

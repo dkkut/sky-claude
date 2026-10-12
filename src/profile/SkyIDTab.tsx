@@ -16,6 +16,7 @@ import {
   Fingerprint, XCircle, Users, ArrowLeftRight,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
+import { useModuleStore } from '@/data/state/modules';
 import { ConfirmExit } from '@/auth/AuthScreen';
 import { apiListDevices, apiRevokeDevice, apiTrustedDevices, apiRevokeTrusted, apiSetSkipCode, type ServerDevice, type TrustedDevice } from '@/core/auth/api';
 import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
@@ -100,7 +101,12 @@ const SUB_TABS: { key: SubTab; label: string }[] = [
 export const SkyIDTab = () => {
   const { accounts, currentUserId, logoutAll, reloadSession } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
-  const [sub, setSub] = useState<SubTab>('skyid');
+  const [sub, setSub] = useState<SubTab>(() => {
+    // Ссылка из письма о разморозке открывает сразу «Устройства», где ждёт баннер «Разморозка аккаунта».
+    const want = useModuleStore.getState().pendingSkyIdSub;
+    if (want) useModuleStore.getState().setPendingSkyIdSub(null);
+    return (want === 'devices' || want === 'security' || want === 'profiles' || want === 'log') ? want : 'skyid';
+  });
 
   // Состояние Sky ID могло измениться в другой вкладке — перечитываем.
   useEffect(() => { void reloadSession(); }, [reloadSession]);
