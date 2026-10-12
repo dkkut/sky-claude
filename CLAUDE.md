@@ -725,3 +725,13 @@ Sky Podcasts, Sky Books и режим «Код» в Sky AI входят в Sky P
 - Клиент: `SkyPodcasts`/`SkyBooks` — обёртки с проверкой `isPrime` над `…Content`; раньше они молча вызывали `purchasePrime('standard', 730)` на каждом открытии — убрано.
   В ТВ и Car (`TVPodcasts`, `CarPodcasts`) вместо покупки пультом — подсказка оформить Prime на телефоне. «Код» в `SkyAITab` помечен короной, без Prime — `PrimeGate`.
 - Тест: `scripts/audit/prime-gates-test.mjs` (12).
+
+## Sky Gaming Cloud и Sky Cloud — заглушки будущих сервисов
+
+`src/cloud/`: `CloudGaming.tsx` (Sky Gaming Cloud), `SkyCloud.tsx` (четыре карточки: Sky VPS, Mail, Drive, Business Analytics + информационная панель), `cloudNotice.ts`
+(`CLOUD_SERVICES`, хук `useCloudNotice`). Вкладки `cloudgaming` и `cloud` в `ExtrasModule` (лента вкладок и плитки «Разделы» — на телефоне Extras открывается плитками).
+- Сервисы НЕ запущены: ни API, ни БД, ни тарифов, ни оплаты, ни каталога игр. Формулировки — «временно недоступно / готовим запуск», не авария.
+- Островок — существующий `Sky Island` (`useIslandStore.push`, kind `system`, `mergeKey` `cloud:gaming|cloud` — дубли склеиваются): компактный → раскрывается через 0,6 с →
+  сворачивается через 5 с → уходит по ttl; кнопка «Показать уведомление» показывает снова; при уходе с вкладки событие снимается. Уважает настройки острова и «уменьшить анимацию».
+- Запуск настоящего сервиса: поставить `live: true` в `CLOUD_SERVICES` и подменить экран в `ExtrasModule` — навигацию трогать не нужно.
+- Тест: `scripts/audit/cloud-stubs-ui-test.mjs` (Playwright, ПК и телефон, 26 проверок).

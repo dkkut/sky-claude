@@ -1,4 +1,4 @@
-import { Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
+import { Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, HardDrive, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
 import { useSettings } from '@/settings/store';
 import { lazyChunk } from '@/app/lazyChunk';
 import { BotsBrowser } from '@/bots/SkyBots';
@@ -32,6 +32,8 @@ const SkyFilm = lazyChunk(() => import('./SkyFilm').then(m => ({ default: m.SkyF
 const SkyPrime = lazyChunk(() => import('./SkyPrime').then(m => ({ default: m.SkyPrime })));
 const TogetherTab = lazyChunk(() => import('@/together/TogetherTab').then(m => ({ default: m.TogetherTab })));
 const SkyBlox = lazyChunk(() => import('@/blox/SkyBlox').then(m => ({ default: m.SkyBlox })));
+const CloudGaming = lazyChunk(() => import('@/cloud/CloudGaming').then(m => ({ default: m.CloudGaming })));
+const SkyCloud = lazyChunk(() => import('@/cloud/SkyCloud').then(m => ({ default: m.SkyCloud })));
 const SkyGo = lazyChunk(() => import('@/go/GoModule').then(m => ({ default: m.SkyGo })));
 const SkyMarket = lazyChunk(() => import('@/marketplace/SkyMarket').then(m => ({ default: m.SkyMarket })));
 const SkyAdsCabinet = lazyChunk(() => import('@/ads/SkyAds').then(m => ({ default: m.SkyAdsCabinet })));
@@ -87,7 +89,7 @@ import { apiSupportStatus } from '@/moderation/supportApi';
    Оформление и порядок экранов сохранены: список карточками, кнопка
    создания, внутри плеер и колонка участников.                     */
 
-type Tab = 'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
+type Tab = 'cloudgaming'|'cloud'|'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
 
 const fmtBytes = (b?: number) => b ? `${(b/1024/1024).toFixed(1)} MB` : '';
 const fmtSec = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -567,6 +569,8 @@ const TABS = [
   {key:'go',     label:'Sky GO', icon:Car},
   {key:'market', label:'Market', icon:ShoppingCart},
   {key:'blox',   label:'Sky Blox', icon:Gamepad2},
+  {key:'cloudgaming', label:'Gaming Cloud', icon:Cloud},
+  {key:'cloud',  label:'Sky Cloud', icon:HardDrive},
   {key:'pvz',    label:'Sky ПВЗ', icon:Building2},
   {key:'nftgifts', label:'Sky Gifts', icon:Gem},
   {key:'work',     label:'Работа',    icon:Briefcase},
@@ -858,6 +862,8 @@ const MediaHomeTab = ({
     { key:'market',  Icon:ShoppingCart, label:'Market', color:'#ec4899', bg:'rgba(236,72,153,.12)' },
     { key:'go',      Icon:Car,      label:'Sky GO',   color:'#14b8a6', bg:'rgba(20,184,166,.12)'  },
     { key:'blox',    Icon:Gamepad2, label:'Sky Blox', color:'#22c55e', bg:'rgba(34,197,94,.12)'   },
+    { key:'cloudgaming', Icon:Cloud,  label:'Gaming Cloud', color:'#8b5cf6', bg:'rgba(139,92,246,.12)' },
+    { key:'cloud',   Icon:HardDrive, label:'Sky Cloud', color:'#4f6ef7', bg:'rgba(79,110,247,.12)'  },
   ] as const;
 
   /* Раньше здесь были 5 выдуманных подборок с придуманными названиями и
@@ -1272,6 +1278,8 @@ export const ExtrasModule = () => {
         {tab==='go' && <SkyGo/>}
         {tab==='market' && <SkyMarket/>}
         {tab==='blox'   && <SkyBlox/>}
+        {tab==='cloudgaming' && <CloudGaming/>}
+        {tab==='cloud'  && <SkyCloud/>}
         {tab==='pvz'    && <SkyPVZ/>}
         {tab==='nftgifts' && <SkyGiftsNFT/>}
         {tab==='work'     && <WorkModule/>}
