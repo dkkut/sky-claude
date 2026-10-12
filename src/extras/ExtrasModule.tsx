@@ -854,6 +854,9 @@ const MediaHomeTab = ({
     { key:'podcasts',Icon:Mic2,     label:'Подкасты', color:'#10b981', bg:'rgba(16,185,129,.12)'  },
     { key:'tickets', Icon:Ticket,   label:'Билеты',   color:'#f59e0b', bg:'rgba(245,158,11,.12)'  },
     { key:'ai',      Icon:Sparkles, label:'Sky AI',   color:'#8b5cf6', bg:'rgba(139,92,246,.12)'  },
+    { key:'market',  Icon:ShoppingCart, label:'Market', color:'#ec4899', bg:'rgba(236,72,153,.12)' },
+    { key:'go',      Icon:Car,      label:'Sky GO',   color:'#14b8a6', bg:'rgba(20,184,166,.12)'  },
+    { key:'blox',    Icon:Gamepad2, label:'Sky Blox', color:'#22c55e', bg:'rgba(34,197,94,.12)'   },
   ] as const;
 
   /* Раньше здесь были 5 выдуманных подборок с придуманными названиями и
@@ -985,7 +988,7 @@ const MediaHomeTab = ({
       <motion.section {...fu(1)} className={isMobile ? 'px-3 mt-4' : 'px-4 mt-5'}>
         <p className="text-[10px] font-black uppercase tracking-[0.16em] mb-2.5"
           style={{ color:'var(--t3)' }}>Разделы</p>
-        <div className={isMobile ? 'grid grid-cols-4 gap-1.5' : 'grid grid-cols-3 gap-2'}>
+        <div className={isMobile ? 'grid grid-cols-3 gap-1.5' : 'grid grid-cols-3 gap-2'}>
           {SECTIONS.map(({ key, Icon, label, color, bg }) => (
             <motion.button key={key} type="button"
               whileHover={{ scale:1.04, y:-2 }} whileTap={{ scale:.93 }}

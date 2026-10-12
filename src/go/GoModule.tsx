@@ -94,7 +94,7 @@ export const SkyGo = () => {
   return (
     <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', background: C.bg }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 24px', maxWidth: 680, width: '100%', margin: '0 auto' }}>{body()}</div>
-      <nav style={{ display: 'flex', borderTop: `1px solid ${C.brd}`, background: C.l1, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <nav style={{ display: 'flex', borderTop: `1px solid ${C.brd}`, background: C.l1, }}>
         {TABS.map(([k, t, Icon]) => (
           <button key={k} onClick={() => goTab(k)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '9px 0', border: 'none', background: 'none', color: tab === k && !screen ? GO : C.t3, fontSize: 11.5, fontWeight: 700 }}>
             <Icon size={21} />{t}

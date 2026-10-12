@@ -1876,12 +1876,22 @@ export const SkyFullPlayer = ({
 }: SkyFullPlayerProps) => {
   const [showQueue,   setShowQueue]   = React.useState(false);
   const [showLyrics,  setShowLyrics]  = React.useState(true);
+  // Высота колонки с плеером на телефоне: окно текста/очереди кончается над ней, а не лежит под обложкой и кнопками.
+  const ctlRef = React.useRef<HTMLDivElement>(null);
+  const [ctlH, setCtlH] = React.useState(0);
   const [muted,       setMuted]       = React.useState(false);
   const [seeking,     setSeeking]     = React.useState(false);
   const lyricsRef    = React.useRef<HTMLDivElement>(null);
   const lyricItems   = React.useRef<(HTMLDivElement|null)[]>([]);
   const prevTrackRef = React.useRef(track.id);
   const isMobile = useIsMobile();
+  React.useEffect(() => {
+    const el = ctlRef.current;
+    if (!isMobile || !el || typeof ResizeObserver === 'undefined') { setCtlH(0); return undefined; }
+    const ro = new ResizeObserver(() => setCtlH(el.offsetHeight));
+    ro.observe(el); setCtlH(el.offsetHeight);
+    return () => ro.disconnect();
+  }, [isMobile, showLyrics, showQueue]);
 
   /* Редактирование текста — только у своих же треков (canEdit с
      сервера), не у чужих: показать чужой песне чужие слова уже
@@ -2062,7 +2072,7 @@ export const SkyFullPlayer = ({
             Колонку с обложкой поднимаем над оверлеем, а сама колонка касаний не ловит
             (pointer-events: none), кроме обложки с кнопками и блока названия — так
             текст песни по-прежнему прокручивается там, где плеера нет. */}
-        <div className="flex flex-col items-center shrink-0"
+        <div ref={ctlRef} className="flex flex-col items-center shrink-0"
           style={{
             ...(isMobile ? { position: 'relative', zIndex: 3, pointerEvents: 'none' as const } : {}),
             // Пока правится текст, карточка плеера не должна лежать поверх редактора.
@@ -2276,10 +2286,10 @@ export const SkyFullPlayer = ({
               exit={isMobile ? {opacity:0,y:12} : {opacity:0,x:16}}
               transition={{duration:0.25}}
               style={isMobile ? {
-                position:'absolute', inset:0, zIndex:2,
+                position:'absolute', top:0, left:0, right:0, bottom: ctlH, zIndex:2,
                 background:`linear-gradient(180deg, ${hslA(hslDk2(h),'f2')} 0%, ${hslA(hslDark(h),'f5')} 100%)`,
                 display:'flex', flexDirection:'column',
-                padding:'64px 20px calc(var(--safe-bottom) + 20px)', overflow:'hidden',
+                padding:'64px 20px 12px', overflow:'hidden',
               } : {
                 flex:1,minWidth:0,display:'flex',flexDirection:'column',
                 padding:'0 28px 20px 8px',overflow:'hidden',
