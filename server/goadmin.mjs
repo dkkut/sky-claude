@@ -12,6 +12,7 @@ import { fuelStatus } from './gofuel.mjs';
 import { clean, getSetting, setSetting, goLog, ROLES } from './gocore.mjs';
 import { orderView, resolveDispute } from './gopay.mjs';
 import * as stay from './gostay.mjs';
+import { cargoTariff } from './godelivery.mjs';
 
 const KEYS = {
   cities: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 200 && v.every((x) => typeof x === 'string' && x.trim().length >= 2 && x.length <= 60) ? v.map((x) => x.trim()) : null,
@@ -32,6 +33,17 @@ const KEYS = {
     const sur = v.sizeSurcharge ?? {};
     return { ...Object.fromEntries(f.map((k) => [k, Number(v[k])])), sizeSurcharge: { s: Number(sur.s) || 0, m: Number(sur.m) || 0, l: Number(sur.l) || 0 } };
   },
+  cargo_tariff: (v) => {
+    const n = (x) => Number(x);
+    if (!v || ![v.base, v.perKm, v.minRub, v.loaderRub].every((x) => Number.isFinite(n(x)) && n(x) >= 0 && n(x) <= 100000)) return null;
+    const bodies = {};
+    for (const k of ['s', 'm', 'l']) {
+      const b = v.bodies?.[k];
+      if (!b || !Number.isFinite(n(b.maxKg)) || n(b.maxKg) < 1 || n(b.maxKg) > 50000 || !Number.isFinite(n(b.surcharge)) || n(b.surcharge) < 0 || n(b.surcharge) > 100000) return null;
+      bodies[k] = { maxKg: n(b.maxKg), dims: clean(b.dims, 30), surcharge: n(b.surcharge) };
+    }
+    return { base: n(v.base), perKm: n(v.perKm), minRub: n(v.minRub), loaderRub: n(v.loaderRub), bodies };
+  },
   payment_terms: (v) => {
     const ok = (x) => ['before', 'after', 'on_accept', 'after_ride', 'after_delivery'].includes(x);
     if (!v || !ok(v.taxi) || !ok(v.food) || !ok(v.delivery)) return null;
@@ -43,6 +55,7 @@ export const getSettings = async (adminId) => {
   if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
   const out = {};
   for (const k of Object.keys(KEYS)) out[k] = await getSetting(k, null);
+  out.cargo_tariff = await cargoTariff();
   const t = await query('SELECT code, title, price_rub, period_days FROM go_tariffs ORDER BY code');
   const rt = await query('SELECT role, tariff_code FROM go_role_tariff');
   return { settings: out, tariffs: t.rows.map((r) => ({ code: r.code, title: r.title, priceRub: r.price_rub, periodDays: r.period_days })), roleTariff: Object.fromEntries(rt.rows.map((r) => [r.role, r.tariff_code])) };

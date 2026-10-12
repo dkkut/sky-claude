@@ -92,7 +92,7 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
         </Col></Card>
         {EXTRA[role] && <Card><Col><div style={{ fontWeight: 800, color: C.t1 }}>{role === 'taxi_driver' ? 'Автомобиль' : role === 'food_seller' ? 'Заведение' : role === 'hotel' ? 'Отель' : role === 'tour_operator' ? 'Туроператор' : 'Компания'}</div>{render(EXTRA[role]!, x, setX)}</Col></Card>}
         {role === 'courier' && <Card><div style={{ fontWeight: 800, color: C.t1, marginBottom: 8 }}>Как доставляете</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{[['foot', 'Пешком'], ['bike', 'Велосипед'], ['scooter', 'Самокат/мото'], ['car', 'Авто']].map(([k, t]) => <Btn key={k} kind={(x.transport ?? 'foot') === k ? 'main' : 'soft'} onClick={() => setX({ ...x, transport: k })} style={{ height: 38, fontSize: 13 }}>{t}</Btn>)}</div></Card>}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{[['foot', 'Пешком'], ['bike', 'Велосипед'], ['scooter', 'Самокат/мото'], ['car', 'Авто'], ['truck', 'Грузовой']].map(([k, t]) => <Btn key={k} kind={(x.transport ?? 'foot') === k ? 'main' : 'soft'} onClick={() => setX({ ...x, transport: k })} style={{ height: 38, fontSize: 13 }}>{t}</Btn>)}</div></Card>}
         {role === 'taxi_driver' && <Card><div style={{ fontWeight: 800, color: C.t1, marginBottom: 8 }}>Класс автомобиля</div>
           <div style={{ display: 'flex', gap: 6 }}>{[['economy', 'Эконом'], ['comfort', 'Комфорт'], ['business', 'Бизнес']].map(([k, t]) => <Btn key={k} kind={(x.carClass ?? 'economy') === k ? 'main' : 'soft'} onClick={() => setX({ ...x, carClass: k })} style={{ height: 38, fontSize: 13 }}>{t}</Btn>)}</div></Card>}
         {required.length > 0 && (

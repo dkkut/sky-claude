@@ -11,6 +11,7 @@ import * as subs from './../gosubs.mjs';
 import * as pay from './../gopay.mjs';
 import * as taxi from './../gotaxi.mjs';
 import * as delivery from './../godelivery.mjs';
+import { cargoTariff } from './../godelivery.mjs';
 import * as food from './../gofood.mjs';
 import * as flights from './../goflights.mjs';
 import * as fuel from './../gofuel.mjs';
@@ -51,7 +52,7 @@ export const goRoutes = async (req, res, url) => {
   if (method === 'GET' && path === '/api/go/config') {
     const t = await subs.tariffs();
     return json(res, 200, { cities: await cities(), tariffs: t, taxiTariffs: await getSetting('taxi_tariffs', {}), maps: mapsSettings(),
-      flights: flights.flightsStatus(), fuel: fuel.fuelStatus(), paymentTerms: await getSetting('payment_terms', {}), roles: ROLES });
+      cargo: await cargoTariff(), flights: flights.flightsStatus(), fuel: fuel.fuelStatus(), paymentTerms: await getSetting('payment_terms', {}), roles: ROLES });
   }
 
   /* ── Регистрация исполнителей ─────────────────────────────────── */
@@ -178,6 +179,10 @@ export const goRoutes = async (req, res, url) => {
   /* ── Заправки ─────────────────────────────────────────────────── */
   if (path === '/api/go/fuel/status' && method === 'GET') return json(res, 200, fuel.fuelStatus());
   if (path === '/api/go/fuel/nearby' && method === 'POST') { if (!rateLimit(`go:fu:${me}`, 20)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await fuel.nearby(await parseBody(req))); }
+  if (path === '/api/go/fuel/route' && method === 'POST') { if (!rateLimit(`go:fr:${me}`, 30)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await fuel.routeTo(await parseBody(req))); }
+  if (path === '/api/go/car' && method === 'GET') return json(res, 200, await fuel.getCar(me));
+  if (path === '/api/go/car' && method === 'PUT') return reply(res, await fuel.saveCar(me, await parseBody(req)));
+  if (path === '/api/go/car' && method === 'DELETE') return reply(res, await fuel.removeCar(me));
   if (path === '/api/go/fuel/report' && method === 'POST') { const b = await parseBody(req); return reply(res, await fuel.report(me, b?.key, b?.level)); }
 
   return json(res, 404, { error: 'not_found' });

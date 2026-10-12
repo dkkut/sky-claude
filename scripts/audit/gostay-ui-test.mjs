@@ -45,7 +45,7 @@ ok(r.status === 200, 'UI 0. подготовка: объявление опуб�
 
 const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
 const open = async (u) => {
-  const ctx = await br.newContext({ viewport: { width: 420, height: 860 }, locale: 'ru-RU' });
+  const ctx = await br.newContext({ viewport: { width: 420, height: 860 }, locale: 'ru-RU', geolocation: { latitude: 55.7558, longitude: 37.6176 }, permissions: ['geolocation'] });
   await ctx.addCookies(u.cookies);
   await ctx.addInitScript(() => { try { localStorage.setItem('sky:settings:v1', JSON.stringify({ colorScheme: 'light', introAnim: false })); } catch {} });
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message.slice(0, 160)));
@@ -60,13 +60,14 @@ const g = await open(Gu); await toGo(g);
 let t = await body(g);
 ok(/Жилье и отдых/.test(t) && /Квартиры и дома/.test(t) && /Туры/.test(t) && /Отели/.test(t), 'UI 1. под основными кнопками — «Жилье и отдых» с тремя кнопками');
 await g.screenshot({ path: S + '/stay1.png' });
-await tap(g, 'Квартиры и дома', 0); await g.waitForTimeout(1200);
+await tap(g, 'Квартиры и дома', 0); await g.waitForTimeout(800);
+await tap(g, 'Найти'); await g.waitForTimeout(1500);
 t = await body(g);
 ok(/Квартира у парка/.test(t) && /3[\s\u00a0]?500/.test(t), 'UI 2. каталог: объявление и цена');
 await g.screenshot({ path: S + '/stay2.png' });
 await tap(g, 'Квартира у парка'); await g.waitForTimeout(1200);
 ok(/Заявка на бронирование/.test(await body(g)), 'UI 3. страница объявления с формой заявки');
-const dates = g.locator('input[type=date]');
+const dates = g.locator('input[type=date]:visible');
 await dates.nth(0).fill(new Date(Date.now() + 8 * 864e5).toISOString().slice(0, 10));
 await dates.nth(1).fill(new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10));
 await tap(g, 'Рассчитать'); await g.waitForTimeout(1200);

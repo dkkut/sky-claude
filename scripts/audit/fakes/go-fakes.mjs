@@ -12,6 +12,10 @@ http.createServer((req, res) => {
     const lat = m ? Number(m[2]) : 55; const lng = m ? Number(m[3]) : 37;
     res.setHeader('content-type', 'application/json');
     if (lat > 80) { res.statusCode = 500; return res.end('{}'); }   // имитация сбоя поставщика
+    if (/car_wash/.test(q)) return res.end(JSON.stringify({ elements: [
+      { type: 'node', id: 101, lat: lat + 0.003, lon: lng + 0.001, tags: { amenity: 'car_wash', name: 'Тест-Мойка 1', opening_hours: '24/7' } },
+      { type: 'way', id: 102, center: { lat: lat - 0.006, lon: lng + 0.004 }, tags: { amenity: 'car_wash' } },
+    ] }));
     res.end(JSON.stringify({ elements: [
       { type: 'node', id: 1, lat: lat + 0.004, lon: lng + 0.002, tags: { amenity: 'fuel', name: 'Тест-АЗС 1', brand: 'Тест', 'addr:street': 'Тестовая', 'addr:housenumber': '1', opening_hours: '24/7', 'fuel:diesel': 'yes', 'fuel:octane_95': 'yes', shop: 'convenience', toilets: 'yes' } },
       { type: 'way', id: 2, center: { lat: lat - 0.01, lon: lng + 0.01 }, tags: { amenity: 'fuel', name: 'Тест-АЗС 2', 'fuel:octane_92': 'yes', opening_hours: 'Mo-Su 07:00-23:00' } },

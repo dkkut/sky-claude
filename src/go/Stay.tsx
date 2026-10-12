@@ -26,41 +26,33 @@ export const Photo = ({ id, admin, style }: { id: string | null; admin?: boolean
 
 const dayLabel = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 
-export const StayScreen = ({ kind, city, onBack, onBooked }: { kind: StayKind; city: string; onBack: () => void; onBooked: (orderId: string) => void }) => {
-  const [q, setQ] = useState(''); const [guests, setGuests] = useState(''); const [ci, setCi] = useState(''); const [co, setCo] = useState('');
+/** Результаты поиска жилья/туров по условиям из формы «Путешествия» и переход к странице объявления. */
+export const StayResults = ({ kind, city, q, guests, ci, co, onBooked, onDetail }: { kind: StayKind; city: string; q: string; guests: string; ci: string; co: string; onBooked: (orderId: string) => void; onDetail?: (open: boolean) => void }) => {
   const [openId, setOpenId] = useState<string | null>(null);
+  useEffect(() => { onDetail?.(openId !== null); }, [openId, onDetail]);
   const dated = kind !== 'tour';
   const [res] = useLoad(() => goApi.stayList({ kind, city, q, guests: guests || undefined, checkIn: dated ? ci || undefined : undefined, checkOut: dated ? co || undefined : undefined }), [kind, city, q, guests, ci, co]);
   if (openId) return <ListingScreen id={openId} onBack={() => setOpenId(null)} onBooked={onBooked} />;
   const list: StayCard[] | null = res?.ok ? res.data!.listings : null;
   return (
-    <>
-      <Back onClick={onBack} title={STAY_LABEL[kind]} />
-      <Col>
-        <Card><Col>
-          <Input value={q} onChange={setQ} placeholder="Название или описание" />
-          {dated && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <Input label="Заезд" type="date" value={ci} onChange={setCi} /><Input label="Выезд" type="date" value={co} onChange={setCo} /></div>}
-          {kind !== 'tour' && <Input label="Гостей" value={guests} onChange={(v) => setGuests(v.replace(/\D/g, '').slice(0, 2))} />}
-        </Col></Card>
-        {!list ? <Empty text="Загрузка…" /> : list.length === 0
-          ? <Empty text={`В городе «${city}» пока нет объявлений в этом разделе. Они появляются после проверки владельца и оформления подписки.`} />
-          : list.map((l) => (
-            <Card key={l.id} onClick={() => setOpenId(l.id)} style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ height: 160 }}><Photo id={l.photo} /></div>
-              <div style={{ padding: 12 }}>
-                <div translate="no" style={{ fontWeight: 800, color: C.t1 }}>{l.title}</div>
-                <div style={{ fontSize: 13, color: C.t2, display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
-                  {l.maxGuests ? <span><Users size={12} /> до {l.maxGuests}</span> : null}
-                  {l.stars ? <span><Star size={12} /> {l.stars}</span> : null}
-                  {l.durationDays ? <span>{l.durationDays} дн.</span> : null}
-                  {l.nextDeparture ? <span><CalendarDays size={12} /> {dayLabel(l.nextDeparture)}</span> : null}
-                </div>
-                <div style={{ marginTop: 6, fontWeight: 800, color: GO }}>от {fmt(l.priceRub)} <span style={{ fontWeight: 500, color: C.t3, fontSize: 12 }}>/ {l.unit}</span></div>
+    <Col>
+      {!list ? <Empty text="Загрузка…" /> : list.length === 0
+        ? <Empty text={`В городе «${city}» пока нет объявлений в этом разделе. Они появляются после проверки владельца и оформления подписки.`} />
+        : list.map((l) => (
+          <Card key={l.id} onClick={() => setOpenId(l.id)} style={{ padding: 0, overflow: 'hidden', borderRadius: 22 }}>
+            <div style={{ height: 170 }}><Photo id={l.photo} /></div>
+            <div style={{ padding: 12 }}>
+              <div translate="no" style={{ fontWeight: 800, fontSize: 17, color: C.t1 }}>{l.title}</div>
+              <div style={{ fontSize: 13, color: C.t2, display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
+                {l.maxGuests ? <span><Users size={12} /> до {l.maxGuests}</span> : null}
+                {l.stars ? <span><Star size={12} /> {l.stars}</span> : null}
+                {l.durationDays ? <span>{l.durationDays} дн.</span> : null}
+                {l.nextDeparture ? <span><CalendarDays size={12} /> {dayLabel(l.nextDeparture)}</span> : null}
               </div>
-            </Card>))}
-      </Col>
-    </>
+              <div style={{ marginTop: 6, fontWeight: 800, color: GO }}>от {fmt(l.priceRub)} <span style={{ fontWeight: 500, color: C.t3, fontSize: 12 }}>/ {l.unit}</span></div>
+            </div>
+          </Card>))}
+    </Col>
   );
 };
 

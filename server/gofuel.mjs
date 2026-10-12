@@ -12,7 +12,7 @@
  */
 import { query } from './db.mjs';
 import { config } from './config.mjs';
-import { newId, clean, haversineKm, goLog } from './gocore.mjs';
+import { newId, clean, haversineKm, goLog, sealJson, openJson, routeBetween } from './gocore.mjs';
 import { isRealPoint } from './maps.mjs';
 import { rateLimitPerHour } from './security.mjs';
 
@@ -30,43 +30,44 @@ export const fuelStatus = () => ({
 const FUEL_TAGS = { 'fuel:diesel': 'ДТ', 'fuel:octane_92': 'АИ-92', 'fuel:octane_95': 'АИ-95', 'fuel:octane_98': 'АИ-98', 'fuel:octane_100': 'АИ-100', 'fuel:lpg': 'Газ (пропан)', 'fuel:cng': 'Метан', 'fuel:electricity': 'Зарядка' };
 const SERVICE_TAGS = { shop: 'Магазин', car_wash: 'Автомойка', toilets: 'Туалет', compressed_air: 'Подкачка шин', atm: 'Банкомат', cafe: 'Кафе' };
 
-const fromOsm = (el) => {
+const fromOsm = (el, kind = 'fuel') => {
   const lat = el.lat ?? el.center?.lat; const lng = el.lon ?? el.center?.lon;
   if (!isRealPoint(lat, lng)) return null;
   const t = el.tags ?? {};
   const addr = [t['addr:city'], t['addr:street'], t['addr:housenumber']].filter(Boolean).join(', ');
   const fuels = Object.entries(FUEL_TAGS).filter(([k]) => t[k] === 'yes').map(([, v]) => v);
   const services = Object.entries(SERVICE_TAGS).filter(([k]) => t[k] === 'yes' || (k === 'shop' && t.shop)).map(([, v]) => v);
-  return { key: `osm:${el.type}${el.id}`, provider: 'osm', name: clean(t.name || t.brand || t.operator || 'АЗС', 100), brand: clean(t.brand ?? '', 60), address: clean(addr, 200),
+  return { key: `osm:${el.type}${el.id}`, provider: 'osm', kind, name: clean(t.name || t.brand || t.operator || (kind === 'wash' ? 'Автомойка' : 'АЗС'), 100), brand: clean(t.brand ?? '', 60), address: clean(addr, 200),
     lat: Number(lat), lng: Number(lng), info: { hours: t.opening_hours ? clean(t.opening_hours, 120) : null, fuels, services, always: t.opening_hours === '24/7' } };
 };
 
-const fromGoogle = (p) => {
+const fromGoogle = (p, kind = 'fuel') => {
   const lat = p.geometry?.location?.lat; const lng = p.geometry?.location?.lng;
   if (!isRealPoint(lat, lng)) return null;
-  return { key: `google:${p.place_id}`, provider: 'google', name: clean(p.name ?? 'АЗС', 100), brand: '', address: clean(p.vicinity ?? '', 200), lat: Number(lat), lng: Number(lng),
+  return { key: `google:${p.place_id}`, provider: 'google', kind, name: clean(p.name ?? (kind === 'wash' ? 'Автомойка' : 'АЗС'), 100), brand: '', address: clean(p.vicinity ?? '', 200), lat: Number(lat), lng: Number(lng),
     info: { hours: null, openNow: p.opening_hours?.open_now ?? null, fuels: [], services: [], always: false } };
 };
 
-const fetchProvider = async (lat, lng, radiusM) => {
+const fetchProvider = async (lat, lng, radiusM, kind = 'fuel') => {
   if (provider() === 'google') {
     if (!config.mapsKey) return { error: 'provider_not_configured' };
-    const params = new URLSearchParams({ location: `${lat},${lng}`, radius: String(radiusM), type: 'gas_station', language: 'ru', key: config.mapsKey });
+    const params = new URLSearchParams({ location: `${lat},${lng}`, radius: String(radiusM), type: kind === 'wash' ? 'car_wash' : 'gas_station', language: 'ru', key: config.mapsKey });
     try {
       const res = await fetch(`${config.mapsBaseUrl}/maps/api/place/nearbysearch/json?${params}`, { signal: AbortSignal.timeout(10_000) });
       if (!res.ok) return { error: 'provider_error' };
       const data = await res.json();
       if (data.status === 'REQUEST_DENIED') return { error: 'provider_denied' };
-      return { stations: (data.results ?? []).map(fromGoogle).filter(Boolean) };
+      return { stations: (data.results ?? []).map((x) => fromGoogle(x, kind)).filter(Boolean) };
     } catch { return { error: 'provider_unreachable' }; }
   }
   if (provider() !== 'osm') return { error: 'provider_not_configured' };
-  const q = `[out:json][timeout:20];(node(around:${radiusM},${lat},${lng})["amenity"="fuel"];way(around:${radiusM},${lat},${lng})["amenity"="fuel"];);out center tags 80;`;
+  const amenity = kind === 'wash' ? 'car_wash' : 'fuel';
+  const q = `[out:json][timeout:20];(node(around:${radiusM},${lat},${lng})["amenity"="${amenity}"];way(around:${radiusM},${lat},${lng})["amenity"="${amenity}"];);out center tags 80;`;
   try {
     const res = await fetch(overpass(), { method: 'POST', body: new URLSearchParams({ data: q }), signal: AbortSignal.timeout(25_000), headers: { 'User-Agent': 'SkyGO/1.0 (fuel finder)' } });
     if (!res.ok) return { error: 'provider_error' };
     const data = await res.json();
-    return { stations: (data.elements ?? []).map(fromOsm).filter(Boolean) };
+    return { stations: (data.elements ?? []).map((x) => fromOsm(x, kind)).filter(Boolean) };
   } catch { return { error: 'provider_unreachable' }; }
 };
 
@@ -91,25 +92,26 @@ export const nearby = async (input) => {
   const lat = Number(input?.lat); const lng = Number(input?.lng);
   if (!isRealPoint(lat, lng)) return { error: 'location_required' };
   const radius = Math.min(10_000, Math.max(500, Math.floor(Number(input?.radiusM) || 4000)));
-  const areaKey = `${provider()}:${lat.toFixed(2)}:${lng.toFixed(2)}:${radius}`;
+  const kind = input?.kind === 'wash' ? 'wash' : 'fuel';
+  const areaKey = `${provider()}:${kind}:${lat.toFixed(2)}:${lng.toFixed(2)}:${radius}`;
   let providerError = null;
   if ((areas.get(areaKey) ?? 0) < Date.now() - AREA_TTL_MS) {
-    const r = await fetchProvider(lat, lng, radius);
+    const r = await fetchProvider(lat, lng, radius, kind);
     if (r.error) providerError = r.error;
     else {
       areas.set(areaKey, Date.now());
       for (const s of r.stations) {
         await query(
-          `INSERT INTO go_fuel_stations (key, provider, name, brand, address, lat, lng, info, fetched_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb, now())
-           ON CONFLICT (key) DO UPDATE SET name=$3, brand=$4, address=$5, lat=$6, lng=$7, info=$8::jsonb, fetched_at = now()`,
-          [s.key, s.provider, s.name, s.brand, s.address, s.lat, s.lng, JSON.stringify(s.info)]);
+          `INSERT INTO go_fuel_stations (key, provider, name, brand, address, lat, lng, info, kind, fetched_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9, now())
+           ON CONFLICT (key) DO UPDATE SET name=$3, brand=$4, address=$5, lat=$6, lng=$7, info=$8::jsonb, kind=$9, fetched_at = now()`,
+          [s.key, s.provider, s.name, s.brand, s.address, s.lat, s.lng, JSON.stringify(s.info), kind]);
       }
     }
   }
   const deg = radius / 111_000;
   const { rows } = await query(
-    `SELECT * FROM go_fuel_stations WHERE provider = $1 AND lat BETWEEN $2 AND $3 AND lng BETWEEN $4 AND $5 LIMIT 200`,
-    [provider(), lat - deg, lat + deg, lng - deg * 1.8, lng + deg * 1.8]);
+    `SELECT * FROM go_fuel_stations WHERE provider = $1 AND kind = $6 AND lat BETWEEN $2 AND $3 AND lng BETWEEN $4 AND $5 LIMIT 200`,
+    [provider(), lat - deg, lat + deg, lng - deg * 1.8, lng + deg * 1.8, kind]);
   if (!rows.length && providerError) return { error: providerError };
   const keys = rows.map((r) => r.key);
   const { rows: reps } = keys.length ? await query(
@@ -130,7 +132,7 @@ export const nearby = async (input) => {
   const rank = { low: 0, medium: 1, high: 2 };
   if (input?.sort === 'load') list.sort((a, b) => (rank[a.load.level] ?? 1.5) - (rank[b.load.level] ?? 1.5) || a.distanceKm - b.distanceKm);
   else list.sort((a, b) => a.distanceKm - b.distanceKm);
-  return { ok: true, stations: list.slice(0, 40), provider: provider(), stale: Boolean(providerError), providerError, notice: st.note };
+  return { ok: true, kind, stations: list.slice(0, 40), provider: provider(), stale: Boolean(providerError), providerError, notice: st.note };
 };
 
 export const report = async (profileId, stationKey, level) => {
@@ -149,3 +151,29 @@ export const sweepFuel = async () => {
   await query(`DELETE FROM go_fuel_reports WHERE created_at < now() - interval '2 days'`);
   await query(`DELETE FROM go_fuel_stations WHERE fetched_at < now() - interval '30 days'`);
 };
+
+/** Время и расстояние в пути до станции (настоящий маршрут, если подключены карты; иначе оценка по прямой — с пометкой). */
+export const routeTo = async (input) => {
+  const { rows } = await query('SELECT key, name, lat, lng FROM go_fuel_stations WHERE key = $1', [String(input?.key ?? '')]);
+  const st = rows[0]; if (!st) return { error: 'station_not_found' };
+  const from = { lat: Number(input?.lat), lng: Number(input?.lng) };
+  if (!isRealPoint(from.lat, from.lng)) return { error: 'location_required' };
+  const r = await routeBetween(from, { lat: st.lat, lng: st.lng });
+  return { ok: true, km: Math.round(r.km * 10) / 10, minutes: r.min, estimated: Boolean(r.estimated) };
+};
+
+/* ─── Моё авто ──────────────────────────────────────────────────────── */
+const FUELS = ['АИ-92', 'АИ-95', 'АИ-98', 'АИ-100', 'ДТ', 'Газ (пропан)', 'Метан', 'Зарядка'];
+export const getCar = async (profileId) => {
+  const { rows } = await query('SELECT data_enc FROM go_cars WHERE profile_id = $1', [profileId]);
+  return { car: rows[0] ? openJson(rows[0].data_enc) : null };
+};
+export const saveCar = async (profileId, input) => {
+  const make = clean(input?.make, 40); const model = clean(input?.model, 40);
+  if (make.length < 2 || model.length < 1) return { error: 'car_required' };
+  const plate = clean(input?.plate, 12).toUpperCase();
+  const fuel = FUELS.includes(input?.fuel) ? input.fuel : '';
+  await query(`INSERT INTO go_cars (profile_id, data_enc) VALUES ($1,$2) ON CONFLICT (profile_id) DO UPDATE SET data_enc = $2, updated_at = now()`, [profileId, sealJson({ make, model, plate, fuel })]);
+  return { ok: true };
+};
+export const removeCar = async (profileId) => { await query('DELETE FROM go_cars WHERE profile_id = $1', [profileId]); return { ok: true }; };

@@ -54,6 +54,7 @@ const ERR: Record<string, string> = {
   legal_form_not_allowed: 'Туры и отели — только для ИП и организаций.', no_rooms: 'Добавьте хотя бы один номер.', no_departures: 'Добавьте будущее отправление.',
   too_many_photos: 'Не больше 8 фотографий.', too_many_listings: 'Слишком много объявлений.', title_required: 'Укажите название.', address_required: 'Укажите адрес.',
   bad_price: 'Цена — от 100 ₽.', bad_room: 'Проверьте данные номера.', bad_departure: 'Проверьте даты и места отправлений.',
+  car_required: 'Укажите марку и модель.', parcel_required: 'Опишите, что везём (от 2 символов).',
   bad_iata: 'Выберите город из подсказок.', same_city: 'Города совпадают.', bad_offer: 'Предложение недействительно — повторите поиск.',
 };
 export const goError = (r: { error?: string; reason?: string; status?: number }) =>
@@ -76,7 +77,10 @@ export interface GoConfig {
   flights: { configured: boolean; canBook: boolean; provider?: string };
   fuel: { configured: boolean; provider?: string };
   paymentTerms: Record<string, string>;
+  cargo: CargoTariff;
 }
+export interface CargoTariff { base: number; perKm: number; minRub: number; loaderRub: number; bodies: Record<'s' | 'm' | 'l', { maxKg: number; dims: string; surcharge: number }> }
+export interface Car { make: string; model: string; plate: string; fuel: string }
 export interface Point { address?: string; lat?: number; lng?: number }
 export interface ExecutorRow {
   id: string; role: GoRole; legalForm: LegalForm; city: string; status: string; reviewNote?: string;
@@ -120,14 +124,14 @@ export const goApi = {
   presenceOf: (role: GoRole) => get<{ online: boolean }>(`/api/go/presence/${role}`),
   stats: (role: GoRole) => get<{ done: number; earnedRub: number }>(`/api/go/stats/${role}`),
 
-  taxiQuote: (b: unknown) => post<{ km: number; minutes: number; estimated: boolean; offers: { code: string; title: string; priceRub: number }[] }>('/api/go/taxi/quote', b),
+  taxiQuote: (b: unknown) => post<{ from?: { lat: number; lng: number; address?: string }; to?: { lat: number; lng: number; address?: string }; km: number; minutes: number; estimated: boolean; offers: { code: string; title: string; priceRub: number }[] }>('/api/go/taxi/quote', b),
   taxiCreate: (b: unknown) => post<{ orderId: string; priceRub: number }>('/api/go/taxi/orders', { ...(b as object), idemKey: crypto.randomUUID() }),
   taxiAvailable: () => get<{ orders: any[] }>('/api/go/taxi/available'),
   taxiAccept: (id: string) => post(`/api/go/taxi/orders/${id}/accept`),
   taxiAct: (id: string, action: string) => post(`/api/go/taxi/orders/${id}/act`, { action }),
   taxiCancel: (id: string, reason?: string) => post(`/api/go/taxi/orders/${id}/cancel`, { reason }),
 
-  deliveryQuote: (b: unknown) => post<{ km: number; minutes: number; priceRub: number }>('/api/go/delivery/quote', b),
+  deliveryQuote: (b: unknown) => post<{ from?: { lat: number; lng: number }; to?: { lat: number; lng: number }; km: number; minutes: number; priceRub: number; prices: Record<'s' | 'm' | 'l', number>; estimated: boolean; body?: string; loaders?: number; loaderRub?: number; bodies?: CargoTariff['bodies'] }>('/api/go/delivery/quote', b),
   deliveryCreate: (b: unknown) => post<{ orderId: string; priceRub: number }>('/api/go/delivery/orders', { ...(b as object), idemKey: crypto.randomUUID() }),
   deliveryAvailable: () => get<{ orders: any[] }>('/api/go/delivery/available'),
   deliveryAccept: (id: string) => post(`/api/go/delivery/orders/${id}/accept`),
@@ -174,6 +178,10 @@ export const goApi = {
   flightsCancel: (id: string) => post(`/api/go/flights/orders/${id}/cancel`),
 
   fuelNearby: (b: unknown) => post<{ stations: any[]; notice: string }>('/api/go/fuel/nearby', b),
+  fuelRoute: (key: string, lat: number, lng: number) => post<{ km: number; minutes: number; estimated: boolean }>('/api/go/fuel/route', { key, lat, lng }),
+  car: () => get<{ car: Car | null }>('/api/go/car'),
+  saveCar: (c: Car) => put('/api/go/car', c),
+  removeCar: () => del('/api/go/car'),
   fuelReport: (key: string, level: string) => post('/api/go/fuel/report', { key, level }),
 };
 export type R<T> = Reply<T>;

@@ -94,3 +94,56 @@ export const CitySelect = ({ cities, city, onChange }: { cities: string[]; city:
     {cities.map((c) => <option key={c} value={c}>{c}</option>)}
   </select>
 );
+
+
+/* ─── Заголовок экрана в стиле «Яндекс Go»: крупно, значок слева, закрытие справа ─── */
+export const Head = ({ title, sub, icon, onBack }: { title: string; sub?: string; icon?: ReactNode; onBack: () => void }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+    {icon && <div style={{ width: 46, height: 46, borderRadius: '50%', background: GO_BG, color: GO, display: 'grid', placeItems: 'center', flexShrink: 0 }}>{icon}</div>}
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ fontSize: 24, fontWeight: 900, color: C.t1, lineHeight: 1.1 }}>{title}</div>
+      {sub && <div translate="no" style={{ fontSize: 13, color: C.t2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
+    </div>
+    <button onClick={onBack} aria-label="Закрыть" style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: C.l2, color: C.t2, display: 'grid', placeItems: 'center', fontSize: 18 }}>✕</button>
+  </div>
+);
+
+/** Крупная плитка-карточка: название, подпись, значок внизу. */
+export const Tile = ({ title, hint, icon, onClick, disabled }: { title: string; hint: string; icon: ReactNode; onClick: () => void; disabled?: boolean }) => (
+  <button onClick={onClick} disabled={disabled} style={{ textAlign: 'left', minHeight: 132, borderRadius: 22, border: 'none', background: C.l2, padding: 14, display: 'flex', flexDirection: 'column',
+    justifyContent: 'space-between', opacity: disabled ? 0.5 : 1, cursor: 'pointer' }}>
+    <div><div style={{ fontSize: 17, fontWeight: 800, color: C.t1 }}>{title}</div><div style={{ fontSize: 12.5, color: C.t2, marginTop: 3, lineHeight: 1.3 }}>{hint}</div></div>
+    <div style={{ color: GO, marginTop: 10 }}>{icon}</div>
+  </button>
+);
+
+/** Сегмент-переключатель (S/M/L, «Нет/1/2», вкладки). */
+export function Segmented<T extends string | number>({ value, options, onChange }: { value: T; options: { v: T; t: string }[]; onChange: (v: T) => void }) {
+  return (
+    <div style={{ display: 'flex', background: C.l2, borderRadius: 14, padding: 3, gap: 2 }}>
+      {options.map((o) => (
+        <button key={String(o.v)} onClick={() => onChange(o.v)} style={{ flex: 1, height: 40, minWidth: 48, borderRadius: 11, border: 'none', fontWeight: 700, fontSize: 15,
+          background: value === o.v ? C.l1 : 'transparent', color: value === o.v ? C.t1 : C.t3, boxShadow: value === o.v ? '0 1px 4px rgba(0,0,0,.18)' : 'none' }}>{o.t}</button>))}
+    </div>
+  );
+}
+
+/** Строка формы: значок, подпись, значение, шеврон. */
+export const PickRow = ({ icon, label, value, onClick }: { icon: ReactNode; label: string; value?: string; onClick?: () => void }) => (
+  <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: '10px 0', color: C.t1 }}>
+    <div style={{ width: 40, height: 40, borderRadius: 12, background: C.l2, display: 'grid', placeItems: 'center', color: C.t2, flexShrink: 0 }}>{icon}</div>
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ fontSize: 12.5, color: C.t3 }}>{label}</div>
+      <div translate="no" style={{ fontSize: 16, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value || '—'}</div>
+    </div>
+    <span style={{ color: C.t3, fontSize: 18 }}>›</span>
+  </button>
+);
+
+/** Нижняя «липкая» панель с главным действием: остаётся видимой при прокрутке формы. */
+export const StickyBar = ({ left, children }: { left?: ReactNode; children: ReactNode }) => (
+  <div style={{ position: 'sticky', bottom: -24, margin: '14px -16px -24px', padding: '12px 16px calc(12px + 8px)', background: C.bg, borderTop: `1px solid ${C.brd}`, display: 'flex', alignItems: 'center', gap: 12, zIndex: 3 }}>
+    {left && <div style={{ flexShrink: 0 }}>{left}</div>}
+    <div style={{ flex: 1, display: 'flex' }}>{children}</div>
+  </div>
+);

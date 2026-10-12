@@ -4,24 +4,25 @@ import { Car, UtensilsCrossed, Package, Plane, Fuel, Home, ClipboardList, Briefc
 import { goApi, ROLE_LABEL, STAY_LABEL, type GoRole, type StayKind } from './api';
 import { Back, Card, Chip, Col, CitySelect, Empty, Notice, useCity, useLoad, C, GO, fmt } from './ui';
 import { OrdersTab, OrderScreen } from './Orders';
-import { TaxiScreen, DeliveryScreen } from './Ride';
+import { TaxiScreen } from './Ride';
+import { DeliveryHub, DeliveryForm, type DeliveryMode } from './Delivery';
 import { FoodScreen } from './Food';
 import { FlightsScreen } from './Flights';
-import { FuelScreen } from './Fuel';
+import { AutoScreen, FuelScreen, type AutoKind } from './Fuel';
 import { RegisterScreen, StatusChip } from './Register';
-import { StayScreen } from './Stay';
+import { TravelScreen, type TravelTab } from './Travel';
 import { StayCabinet } from './StayCabinet';
 import { DriverCabinet, SellerCabinet, CompanyCabinet, PayDetailsCard } from './Cabinet';
 
 type Tab = 'home' | 'orders' | 'work' | 'profile';
-type Screen = null | 'taxi' | 'food' | 'delivery' | 'flights' | 'fuel' | { order: string } | { stay: StayKind } | { role: GoRole; mode: 'register' | 'cabinet' };
+type Screen = null | 'taxi' | 'food' | 'delivery' | { delivery: DeliveryMode } | { auto: AutoKind | null } | 'flights' | 'fuel' | { order: string } | { travel: TravelTab } | { role: GoRole; mode: 'register' | 'cabinet' };
 
 const SERVICES = [
   { key: 'taxi', title: 'Такси', hint: 'Поездка по городу', Icon: Car },
   { key: 'food', title: 'Еда', hint: 'Из заведений города', Icon: UtensilsCrossed },
   { key: 'delivery', title: 'Доставка', hint: 'Курьером из точки в точку', Icon: Package },
   { key: 'flights', title: 'Авиабилеты', hint: 'Поиск предложений', Icon: Plane },
-  { key: 'fuel', title: 'Заправки', hint: 'Рядом с вами', Icon: Fuel },
+  { key: 'fuel', title: 'Моё авто', hint: 'Заправки и мойки рядом', Icon: Fuel },
 ] as const;
 
 export const SkyGo = () => {
@@ -39,10 +40,12 @@ export const SkyGo = () => {
     if (!config) return <Empty text={cfg && !cfg.ok ? 'Sky GO сейчас недоступен.' : 'Загрузка…'} />;
     if (screen === 'taxi') return <TaxiScreen city={city} onBack={() => setScreen(null)} onCreated={open} />;
     if (screen === 'food') return <FoodScreen city={city} onBack={() => setScreen(null)} onCreated={open} />;
-    if (screen === 'delivery') return <DeliveryScreen city={city} hasCompany={executors.some((e) => e.role === 'company' && e.status === 'approved')} onBack={() => setScreen(null)} onCreated={open} />;
-    if (screen === 'flights') return <FlightsScreen onBack={() => setScreen(null)} />;
-    if (screen === 'fuel') return <FuelScreen city={city} onBack={() => setScreen(null)} />;
-    if (screen && typeof screen === 'object' && 'stay' in screen) return <StayScreen kind={screen.stay} city={city} onBack={() => setScreen(null)} onBooked={open} />;
+    if (screen === 'delivery') return <DeliveryHub hasCompany={executors.some((e) => e.role === 'company' && e.status === 'approved')} onBack={() => setScreen(null)} onPick={(m) => setScreen({ delivery: m })} />;
+    if (screen && typeof screen === 'object' && 'delivery' in screen) return <DeliveryForm mode={screen.delivery} city={city} cargo={config.cargo} onBack={() => setScreen('delivery')} onCreated={open} />;
+    if (screen === 'flights') return <TravelScreen initial="flights" cities={config.cities} city={city} onCity={setCity} onBack={() => setScreen(null)} onBooked={open} onOrders={() => goTab('orders')} />;
+    if (screen === 'fuel') return <AutoScreen city={city} onBack={() => setScreen(null)} onOpen={(k) => setScreen({ auto: k })} />;
+    if (screen && typeof screen === 'object' && 'auto' in screen && screen.auto) return <FuelScreen city={city} kind={screen.auto} onBack={() => setScreen('fuel')} />;
+    if (screen && typeof screen === 'object' && 'travel' in screen) return <TravelScreen initial={screen.travel} cities={config.cities} city={city} onCity={setCity} onBack={() => setScreen(null)} onBooked={open} onOrders={() => goTab('orders')} />;
     if (screen && typeof screen === 'object' && 'order' in screen) return <OrderScreen id={screen.order} onBack={() => setScreen(null)} />;
     if (screen && typeof screen === 'object' && 'role' in screen) {
       const ex = executors.find((e) => e.role === screen.role) ?? null;
@@ -81,7 +84,7 @@ export const SkyGo = () => {
           <div style={{ fontSize: 12, color: C.t2, marginBottom: 10 }}>Бронь напрямую у владельцев</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
             {([['home', BedDouble], ['tour', MapIcon], ['hotel', Hotel]] as const).map(([k, Icon]) => (
-              <button key={k} onClick={() => setScreen({ stay: k })} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px 4px', borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, fontSize: 12, fontWeight: 700, lineHeight: 1.2, textAlign: 'center' }}>
+              <button key={k} onClick={() => setScreen({ travel: k === 'hotel' ? 'hotel' : k })} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px 4px', borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, fontSize: 12, fontWeight: 700, lineHeight: 1.2, textAlign: 'center' }}>
                 <Icon size={20} color={GO} />{STAY_LABEL[k]}</button>))}
           </div>
         </Card>

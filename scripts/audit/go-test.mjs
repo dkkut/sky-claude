@@ -10,6 +10,7 @@ let ok = 0, bad = 0;
 const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, typeof x === 'string' ? x.slice(0, 200) : JSON.stringify(x).slice(0, 200)); } };
 const G = (path, o, tok) => call('/api/go' + path, o, tok);
 const J = (b) => ({ method: 'POST', body: JSON.stringify(b) });
+const PUT = (b) => ({ method: 'PUT', body: JSON.stringify(b) });
 
 const gen = (len, fn) => { for (let i = 0; i < 100000; i += 1) { const s = String(Math.floor(Math.random() * 10 ** len)).padStart(len, '0'); if (fn(s)) return s; } throw new Error('gen'); };
 const inn12 = () => gen(12, (s) => validInn(s, { length: 12 }));
@@ -586,6 +587,75 @@ t('другой водитель остаётся на общем тарифе',
 r = await call('/api/admin/go/executor-tariffs', { method: 'PUT', body: JSON.stringify({ username: q(`select username from profiles where id='${D.pid}'`), role: 'taxi_driver', reset: true }) }, A.tok);
 r = await G('/subscription/taxi_driver', {}, D.tok);
 t('сброс возвращает общий тариф', r.data.subscription.tariff.priceRub === 69 && !r.data.subscription.tariff.personal);
+
+/* ═══ Доставка по макетам: цены по размерам, поручения, грузовой ═══ */
+r = await G('/delivery/quote', J({ city: CITY, from: pickup, to: drop }), C.tok);
+t('расчёт доставки: цены всех размеров (S ≤ M ≤ L)', r.status === 200 && r.data.prices && r.data.prices.s <= r.data.prices.m && r.data.prices.m <= r.data.prices.l && r.data.priceRub === r.data.prices.s, JSON.stringify(r.data).slice(0, 160));
+const dprices = r.data.prices;
+r = await G('/delivery/orders', J({ scenario: 'errand', city: CITY, from: pickup, to: drop, size: 'm', parcel: { description: 'Забрать заказ из магазина' }, recipient: rec }), C.tok);
+t('поручение: можно без контакта отправителя; цена по размеру с сервера', r.status === 201 && r.data.priceRub === dprices.m, JSON.stringify(r.data));
+const errId = r.data.orderId;
+r = await G('/delivery/orders', J({ scenario: 'errand', city: CITY, from: pickup, to: drop, parcel: { description: '' }, recipient: rec }), C2.tok);
+t('поручение без описания отклонено', r.status === 400 && r.data.error === 'parcel_required');
+await G(`/delivery/orders/${errId}/cancel`, J({}), C.tok);
+const cfg = await G('/config', {}, C.tok);
+t('конфиг: грузовой тариф (кузова, вместимость)', cfg.data.cargo?.bodies?.s?.maxKg > 0 && cfg.data.cargo.loaderRub > 0, JSON.stringify(cfg.data.cargo).slice(0, 120));
+r = await G('/delivery/quote', J({ scenario: 'cargo', city: CITY, from: pickup, to: drop, body: 'm', loaders: 0 }), C.tok);
+const cM0 = r.data.priceRub;
+r = await G('/delivery/quote', J({ scenario: 'cargo', city: CITY, from: pickup, to: drop, body: 'm', loaders: 2 }), C.tok);
+t('грузовой: два грузчика добавляют 2 × стоимость грузчика', r.data.priceRub === cM0 + 2 * cfg.data.cargo.loaderRub, `${r.data.priceRub} ${cM0}`);
+r = await G('/delivery/quote', J({ scenario: 'cargo', city: CITY, from: pickup, to: drop, body: 'l', loaders: 9 }), C.tok);
+t('грузчиков не больше двух; кузов L дороже M', r.data.loaders === 2 && r.data.priceRub > cM0 + 2 * cfg.data.cargo.loaderRub);
+r = await G('/delivery/orders', J({ scenario: 'cargo', city: CITY, from: pickup, to: drop, body: 'm', loaders: 1, price: 1, parcel: { description: 'Диван' }, recipient: rec, sender: snd }), C.tok);
+t('грузовой заказ создан, цена с сервера', r.status === 201 && r.data.priceRub === cM0 + cfg.data.cargo.loaderRub, JSON.stringify(r.data));
+const cargoId = r.data.orderId;
+await G('/presence', J({ role: 'courier', online: true, lat: 55.75, lng: 37.62 }), K.tok);
+r = await G('/delivery/available', {}, K.tok);
+t('обычный курьер грузового заказа не видит', !r.data.orders.some((o) => o.id === cargoId));
+r = await G(`/delivery/orders/${cargoId}/accept`, J({}), K.tok);
+t('и принять его не может', r.status === 409 && r.data.error === 'already_taken', JSON.stringify(r.data));
+const rkt = await register(K2, 'courier', 'npd', { transport: 'truck' }, ['id_doc']);
+await approve(rkt.id); fund(K2, 100); await G('/subscription/courier/buy', J({}), K2.tok); await setCard(K2);
+await G('/presence', J({ role: 'courier', online: true, lat: 55.76, lng: 37.62 }), K2.tok);
+r = await G('/delivery/available', {}, K2.tok);
+t('курьер на грузовом видит грузовой заказ (кузов и грузчики)', r.data.orders.some((o) => o.id === cargoId && o.cargo?.body === 'm' && o.cargo?.loaders === 1), JSON.stringify(r.data).slice(0, 160));
+r = await G(`/delivery/orders/${cargoId}/accept`, J({}), K2.tok);
+t('курьер на грузовом принял', r.status === 200);
+await G(`/delivery/orders/${cargoId}/act`, J({ action: 'release' }), K2.tok); await G(`/delivery/orders/${cargoId}/cancel`, J({}), C.tok);
+r = await call('/api/admin/go/settings/cargo_tariff', { method: 'PUT', body: JSON.stringify({ value: { ...cfg.data.cargo, loaderRub: 900 } }) }, AF.tok);
+t('грузовой тариф: только go_finance', r.status === 403);
+r = await call('/api/admin/go/settings/cargo_tariff', { method: 'PUT', body: JSON.stringify({ value: { ...cfg.data.cargo, loaderRub: -5 } }) }, A.tok);
+t('грузовой тариф: отрицательная цена отклонена', r.status === 400);
+r = await call('/api/admin/go/settings/cargo_tariff', { method: 'PUT', body: JSON.stringify({ value: { ...cfg.data.cargo, loaderRub: 900 } }) }, A.tok);
+t('грузовой тариф изменён администрацией', r.status === 200);
+q(`delete from go_settings where key = 'cargo_tariff'`);
+
+/* ═══ Моё авто: машина, мойки, маршрут до станции ═══ */
+r = await G('/car', {}, C.tok);
+t('машины нет — null', r.status === 200 && r.data.car === null);
+r = await G('/car', PUT({ make: '', model: '' }), C.tok);
+t('машина без марки отклонена', r.status === 400 && r.data.error === 'car_required');
+r = await G('/car', PUT({ make: 'Kia', model: 'Rio', plate: 'а123вс77', fuel: 'АИ-95' }), C.tok);
+t('машина сохранена', r.status === 200);
+r = await G('/car', {}, C.tok);
+t('машина: номер в верхнем регистре, топливо из списка', r.data.car.plate === 'А123ВС77' && r.data.car.fuel === 'АИ-95');
+t('данные машины зашифрованы в базе', !q(`select data_enc from go_cars where profile_id='${C.pid}'`).includes('Kia'));
+r = await G('/car', {}, X.tok);
+t('чужая машина недоступна', r.data.car === null);
+r = await G('/car', PUT({ make: 'Kia', model: 'Rio', fuel: 'вода' }), C.tok);
+r = await G('/car', {}, C.tok);
+t('неизвестное топливо отбрасывается', r.data.car.fuel === '');
+r = await G('/fuel/nearby', J({ lat: 55.75, lng: 37.62, kind: 'wash' }), C.tok);
+t('автомойки рядом (данные поставщика, без выдуманных цен)', r.status === 200 && r.data.kind === 'wash' && r.data.stations.length === 2 && r.data.stations[0].name === 'Тест-Мойка 1' && !('price' in r.data.stations[0]), JSON.stringify(r.data).slice(0, 200));
+r = await G('/fuel/nearby', J({ lat: 55.75, lng: 37.62 }), C.tok);
+t('АЗС и мойки не смешиваются', r.data.stations.every((s) => !/Мойка/.test(s.name)) && r.data.stations.length === 3);
+const stKey = r.data.stations[0].key;
+r = await G('/fuel/route', J({ key: stKey, lat: 55.75, lng: 37.62 }), C.tok);
+t('маршрут до станции: километры и минуты', r.status === 200 && r.data.km > 0 && r.data.minutes > 0, JSON.stringify(r.data));
+r = await G('/fuel/route', J({ key: 'osm:none', lat: 55.75, lng: 37.62 }), C.tok);
+t('маршрут до неизвестной станции — отказ', r.status === 400 && r.data.error === 'station_not_found');
+r = await G('/car', { method: 'DELETE' }, C.tok);
+t('машина удалена', r.status === 200 && (await G('/car', {}, C.tok)).data.car === null);
 
 /* ═══ Безопасность: общий обход ═══ */
 const forbidden = ['/executors', '/pay-details'];

@@ -23,7 +23,7 @@ const City = ({ label, value, onPick }: { label: string; value: { code: string; 
   );
 };
 
-export const FlightsScreen = ({ onBack }: { onBack: () => void }) => {
+export const FlightsScreen = ({ onBack, embedded }: { onBack?: () => void; embedded?: boolean }) => {
   const [from, setFrom] = useState<{ code: string; name: string } | null>(null);
   const [to, setTo] = useState<{ code: string; name: string } | null>(null);
   const [date, setDate] = useState(''); const [back, setBack] = useState(''); const [adults, setAdults] = useState(1);
@@ -43,7 +43,7 @@ export const FlightsScreen = ({ onBack }: { onBack: () => void }) => {
   };
   return (
     <>
-      <Back onClick={onBack} title="Авиабилеты" />
+      {!embedded && onBack && <Back onClick={onBack} title="Авиабилеты" />}
       <Col>
         <Card><Col>
           <City label="Откуда" value={from} onPick={setFrom} />

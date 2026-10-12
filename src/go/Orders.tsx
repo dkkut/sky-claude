@@ -117,6 +117,7 @@ export const OrderScreen = ({ id, onBack }: { id: string; onBack: () => void }) 
             </>}
             {o.data.comment && <div>Комментарий: {o.data.comment}</div>}
             {o.data.parcel?.description && <div>Отправление: {o.data.parcel.description}</div>}
+            {o.data.cargo && <div>Кузов {String(o.data.cargo.body).toUpperCase()}, грузчиков: {o.data.cargo.loaders}</div>}
           </div>
           {(o.data.recipient?.phone || o.data.sender?.phone) && mine && (
             <div translate="no" style={{ marginTop: 8, fontSize: 14, color: C.t2 }}>

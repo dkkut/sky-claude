@@ -248,9 +248,9 @@ const Tariffs = () => {
         <textarea rows={2} value={cities ?? (d.settings.cities ?? []).join(', ')} onChange={(e) => setCities(e.target.value)} style={{ ...inp, width: '100%', marginTop: 6 }} />
         <button style={{ ...btn(), marginTop: 6 }} onClick={() => saveSetting('cities', (cities ?? '').split(',').map((s) => s.trim()).filter(Boolean))} disabled={cities == null}>Сохранить города</button>
       </div>
-      {(['taxi_tariffs', 'delivery_tariff'] as const).map((k) => (
+      {(['taxi_tariffs', 'delivery_tariff', 'cargo_tariff'] as const).map((k) => (
         <div key={k} style={box}>
-          <b style={{ color: C.t1 }}>{k === 'taxi_tariffs' ? 'Цены такси' : 'Цены доставки'}</b> <span style={{ fontSize: 12, color: C.t3 }}>(JSON; сервер проверит значения)</span>
+          <b style={{ color: C.t1 }}>{k === 'taxi_tariffs' ? 'Цены такси' : k === 'cargo_tariff' ? 'Цены грузового (кузов S/M/L, грузчики)' : 'Цены доставки'}</b> <span style={{ fontSize: 12, color: C.t3 }}>(JSON; сервер проверит значения)</span>
           <textarea rows={8} value={json[k] ?? JSON.stringify(d.settings[k], null, 1)} onChange={(e) => setJson({ ...json, [k]: e.target.value })} style={{ ...inp, width: '100%', marginTop: 6, fontFamily: 'monospace' }} />
           <button style={{ ...btn(), marginTop: 6 }} disabled={json[k] == null} onClick={() => { try { void saveSetting(k, JSON.parse(json[k])); } catch { flash('Неверный JSON'); } }}>Сохранить</button>
         </div>))}

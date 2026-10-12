@@ -7,9 +7,9 @@ import { query } from './db.mjs';
 import { canAccept } from './gosubs.mjs';
 import { openPayment } from './gopay.mjs';
 import { executorStatus } from './goreg.mjs';
-import { getSetting, cityOk, newId, inTx, lockOrder, setStatus, addEvent, resolvePoint, routeBetween, issueCode, checkCode, notifyGo, clean, haversineKm, cleanPoint } from './gocore.mjs';
+import { openJson, getSetting, cityOk, newId, inTx, lockOrder, setStatus, addEvent, resolvePoint, routeBetween, issueCode, checkCode, notifyGo, clean, haversineKm, cleanPoint } from './gocore.mjs';
 
-const SCENARIOS = ['pvz', 'p2p', 'company', 'food'];
+const SCENARIOS = ['pvz', 'p2p', 'company', 'errand', 'cargo', 'food'];
 const ACTIVE = ['searching', 'assigned', 'heading_pickup', 'at_pickup', 'picked_up', 'delivering', 'at_recipient', 'awaiting_payment', 'payment_reported'];
 const SIZES = ['s', 'm', 'l'];
 
@@ -28,6 +28,15 @@ export const deliveryPrice = async (km, size, food) => {
   return Math.max(Number(t.minRub) || 0, Math.round((Number(t.base) || 0) + km * (Number(t.perKm) || 0) + sur));
 };
 
+/** Грузовой тариф: правит администрация (go_finance). Значения по умолчанию — заготовка, цены владелец задаёт сам. */
+export const CARGO_DEFAULT = {
+  base: 800, perKm: 40, minRub: 1200, loaderRub: 700,
+  bodies: { s: { maxKg: 300, dims: '170×100×90', surcharge: 0 }, m: { maxKg: 700, dims: '250×150×150', surcharge: 500 }, l: { maxKg: 1500, dims: '400×200×200', surcharge: 1300 } },
+};
+export const cargoTariff = async () => ({ ...CARGO_DEFAULT, ...((await getSetting('cargo_tariff', null)) ?? {}) });
+export const cargoPrice = (t, km, body, loaders) =>
+  Math.max(Number(t.minRub) || 0, Math.round((Number(t.base) || 0) + km * (Number(t.perKm) || 0) + (Number(t.bodies?.[body]?.surcharge) || 0) + loaders * (Number(t.loaderRub) || 0)));
+
 export const payTerm = async (kind) => {
   const t = (await getSetting('payment_terms', {})) ?? {};
   const v = t[kind];
@@ -43,7 +52,17 @@ export const quote = async (input) => {
   const size = SIZES.includes(rawSize) ? rawSize : 's';
   const r = await routeBetween(a.point, b.point);
   if (r.km > 300) return { error: 'too_far' };
-  return { ok: true, from: a.point, to: b.point, km: Math.round(r.km * 10) / 10, minutes: r.min, estimated: r.estimated, size, priceRub: await deliveryPrice(r.km, size, false) };
+  const base = { ok: true, from: a.point, to: b.point, km: Math.round(r.km * 10) / 10, minutes: r.min, estimated: r.estimated, size };
+  if (input?.scenario === 'cargo') {
+    const t = await cargoTariff();
+    const body = SIZES.includes(input?.body) ? input.body : 's';
+    const loaders = Math.min(2, Math.max(0, Math.floor(Number(input?.loaders) || 0)));
+    return { ...base, body, loaders, priceRub: cargoPrice(t, r.km, body, loaders),
+      prices: Object.fromEntries(SIZES.map((k) => [k, cargoPrice(t, r.km, k, loaders)])), loaderRub: t.loaderRub, bodies: t.bodies };
+  }
+  // Цена каждого размера — чтобы человек видел её на карточках, а выбор не менял сумму неожиданно.
+  const prices = Object.fromEntries(await Promise.all(SIZES.map(async (k) => [k, await deliveryPrice(r.km, k, false)])));
+  return { ...base, priceRub: prices[size], prices };
 };
 
 /** Заказ доставки. company — только для одобренной компании. food создаётся Sky Едой (createFoodDelivery), а не человеком. */
@@ -60,7 +79,10 @@ export const create = async (customerId, input) => {
   if (q.error) return q;
   const rec = contact(input?.recipient, 'recipient'); if (rec.error) return rec;
   let sender = null;
-  if (scenario !== 'pvz') { const s = contact(input?.sender, 'sender'); if (s.error) return s; sender = s.value; }
+  // Поручение («забрать заказ или что-то купить»): отправитель — место/магазин, его контакт необязателен.
+  if (scenario === 'errand') { const s = contact(input?.sender, 'sender'); sender = s.ok ? s.value : null; }
+  else if (scenario !== 'pvz') { const s = contact(input?.sender, 'sender'); if (s.error) return s; sender = s.value; }
+
   const parcel = { description: clean(input?.parcel?.description, 200), weightKg: Math.min(100, Math.max(0, Number(input?.parcel?.weightKg) || 0)), size: q.size };
   if (parcel.description.length < 2) return { error: 'parcel_required' };
   const pvzInfo = scenario === 'pvz' ? clean(input?.pvzInfo, 200) : '';
@@ -78,6 +100,7 @@ export const create = async (customerId, input) => {
     if (act[0].n >= 10) return { error: 'too_many_active' };
     const id = newId('go');
     const data = { scenario, from: q.from, to: q.to, km: q.km, minutes: q.minutes, estimated: q.estimated, parcel, pvzInfo, sender, recipient: rec.value,
+      cargo: scenario === 'cargo' ? { body: q.body, loaders: q.loaders } : undefined,
       comment: clean(input?.comment, 200), desiredTime: clean(input?.desiredTime, 60), payTerm: term,
       company: scenario === 'company' ? clean(input?.company, 120) : undefined };
     await c.query(`INSERT INTO go_orders (id, kind, customer_id, status, price_rub, city, data, idem_key) VALUES ($1,'delivery',$2,'searching',$3,$4,$5::jsonb,$6)`,
@@ -106,16 +129,21 @@ export const createFoodDelivery = async (client, foodOrder, place) => {
   return { id, price };
 };
 
+/** Грузовые заказы видят и принимают только курьеры с транспортом «грузовой» (anketa → extra.transport). */
+const canCargo = (ex) => openJson(ex?.data_enc).extra?.transport === 'truck';
+
 export const availableFor = async (courierId) => {
   const ok = await canAccept(courierId, 'courier');
   if (ok.error) return ok;
   const ex = await executorStatus(courierId, 'courier');
   const { rows: pres } = await query(`SELECT online, lat, lng FROM go_presence WHERE profile_id = $1 AND role = 'courier'`, [courierId]);
   if (!pres[0]?.online) return { error: 'offline' };
-  const { rows } = await query(`SELECT * FROM go_orders WHERE kind = 'delivery' AND status = 'searching' AND executor_id IS NULL AND city = $1 ORDER BY created_at LIMIT 40`, [ex.city]);
+  const cargoOk = canCargo(ex);
+  const { rows: all } = await query(`SELECT * FROM go_orders WHERE kind = 'delivery' AND status = 'searching' AND executor_id IS NULL AND city = $1 ORDER BY created_at LIMIT 60`, [ex.city]);
+  const rows = all.filter((r) => r.data.scenario !== 'cargo' || cargoOk).slice(0, 40);
   const here = pres[0].lat != null ? { lat: pres[0].lat, lng: pres[0].lng } : null;
   return { orders: rows.map((r) => ({
-    id: r.id, scenario: r.data.scenario, priceRub: r.price_rub, createdAt: r.created_at.toISOString(),
+    id: r.id, scenario: r.data.scenario, cargo: r.data.cargo, priceRub: r.price_rub, createdAt: r.created_at.toISOString(),
     from: { address: r.data.from.address }, to: { address: r.data.to.address }, km: r.data.km, minutes: r.data.minutes,
     parcel: { description: r.data.parcel?.description, size: r.data.parcel?.size, weightKg: r.data.parcel?.weightKg }, comment: r.data.comment || undefined,
     distanceToPickupKm: here ? Math.round(haversineKm(here, r.data.from) * 10) / 10 : null })) };
@@ -133,7 +161,8 @@ export const accept = async (courierId, orderId) => {
     const ex = await executorStatus(courierId, 'courier');
     const { rows } = await c.query(
       `UPDATE go_orders SET status = 'assigned', executor_id = $2, updated_at = now()
-        WHERE id = $1 AND kind = 'delivery' AND status = 'searching' AND executor_id IS NULL AND city = $3 RETURNING *`, [orderId, courierId, ex.city]);
+        WHERE id = $1 AND kind = 'delivery' AND status = 'searching' AND executor_id IS NULL AND city = $3
+          AND (data->>'scenario' <> 'cargo' OR $4::boolean) RETURNING *`, [orderId, courierId, ex.city, canCargo(ex)]);
     if (!rows[0]) return { error: 'already_taken' };
     await addEvent(c, orderId, courierId, 'searching', 'assigned', 'Курьер назначен');
     if (rows[0].data.payTerm === 'before' && rows[0].data.scenario !== 'food') {

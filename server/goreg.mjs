@@ -49,7 +49,7 @@ const cleanExtra = (role, extra, { strict }) => {
     if (strict && !out.carYear) problems.push({ field: 'carYear', message: 'Укажите год выпуска автомобиля.' });
     out.carClass = ['economy', 'comfort', 'business'].includes(e.carClass) ? e.carClass : 'economy';
   }
-  if (role === 'courier') out.transport = ['foot', 'bike', 'scooter', 'car'].includes(e.transport) ? e.transport : 'foot';
+  if (role === 'courier') out.transport = ['foot', 'bike', 'scooter', 'car', 'truck'].includes(e.transport) ? e.transport : 'foot';
   if (role === 'food_seller') need('placeName', 'Название заведения', 120);
   if (role === 'company') need('brand', 'Название для заказов', 120);
   if (role === 'tour_operator' || role === 'hotel') need('brand', 'Название организации', 120);

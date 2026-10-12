@@ -1,30 +1,48 @@
 /** Sky GO: еда — каталог заведений и корзина. Сумма считается сервером по актуальному меню. */
 import { useState } from 'react';
-import { Minus, Plus, Store } from 'lucide-react';
+import { Minus, Plus, Search, Store, UtensilsCrossed } from 'lucide-react';
 import { goApi } from './api';
-import { Back, Btn, Card, Chip, Col, Empty, Input, Notice, fail, fmt, locate, useLoad, C, GO } from './ui';
+import { Back, Btn, Card, Chip, Col, Empty, Head, Input, Notice, StickyBar, fail, fmt, locate, useLoad, C, GO } from './ui';
 import { flash } from '@/shared/flash';
 
 export const FoodScreen = ({ city, onBack, onCreated }: { city: string; onBack: () => void; onCreated: (id: string) => void }) => {
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(''); const [cat, setCat] = useState('');
   const [placeId, setPlaceId] = useState<string | null>(null);
   const [list] = useLoad(() => goApi.places(city, q), [city, q]);
   if (placeId) return <PlaceScreen id={placeId} onBack={() => setPlaceId(null)} onCreated={onCreated} />;
   const places = list?.ok ? list.data!.places : null;
+  // Категории — из настоящих заведений города (а не придуманный список): сколько их и сколько заведений в каждой.
+  const cats = new Map<string, number>();
+  for (const p of places ?? []) cats.set(p.category || 'Другое', (cats.get(p.category || 'Другое') ?? 0) + 1);
+  const shown = (places ?? []).filter((p) => !cat || (p.category || 'Другое') === cat);
   return (
     <>
-      <Back onClick={onBack} title="Еда" />
-      <Col>
-        <Input value={q} onChange={setQ} placeholder="Заведение или кухня" />
-        {!places ? <Empty text="Загрузка…" /> : places.length === 0
+      <Head title="Еда" sub={city} icon={<UtensilsCrossed size={22} />} onBack={onBack} />
+      <Col gap={14}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, height: 52, borderRadius: 26, background: C.l2, padding: '0 18px' }}>
+          <Search size={20} color={C.t2} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск" maxLength={60} style={{ flex: 1, border: 'none', background: 'transparent', color: C.t1, fontSize: 17, fontWeight: 600, outline: 'none' }} />
+        </div>
+        {cats.size > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {[...cats.entries()].map(([name, n]) => (
+              <button key={name} onClick={() => setCat(cat === name ? '' : name)} style={{ textAlign: 'left', minHeight: 96, borderRadius: 22, padding: 14, border: `2px solid ${cat === name ? GO : 'transparent'}`, background: C.l2, color: C.t1,
+                display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <span translate="no" style={{ fontSize: 17, fontWeight: 800 }}>{name}</span>
+                <span style={{ fontSize: 12.5, color: C.t2 }}>{`Заведений: ${n}`}</span>
+              </button>))}
+          </div>)}
+        <div style={{ fontSize: 22, fontWeight: 900, color: C.t1 }}>{cat || 'Заведения'}</div>
+        {!places ? <Empty text="Загрузка…" /> : shown.length === 0
           ? <Empty text={`В городе «${city}» пока нет заведений. Они появляются после проверки и оформления подписки продавцом.`} />
-          : places.map((p) => (
-            <Card key={p.id} onClick={() => setPlaceId(p.id)}>
+          : shown.map((p) => (
+            <Card key={p.id} onClick={() => setPlaceId(p.id)} style={{ borderRadius: 22 }}>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ width: 46, height: 46, borderRadius: 14, background: 'rgba(14,165,164,.12)', display: 'grid', placeItems: 'center', color: GO }}><Store size={22} /></div>
+                <div style={{ width: 54, height: 54, borderRadius: 18, background: 'rgba(14,165,164,.12)', display: 'grid', placeItems: 'center', color: GO }}><Store size={24} /></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div translate="no" style={{ fontWeight: 700, color: C.t1 }}>{p.name}</div>
-                  <div translate="no" style={{ fontSize: 12.5, color: C.t2 }}>{p.category}{p.hours ? ` · ${p.hours}` : ''}</div>
+                  <div translate="no" style={{ fontWeight: 800, fontSize: 17, color: C.t1 }}>{p.name}</div>
+                  <div translate="no" style={{ fontSize: 13, color: C.t2 }}>{p.category}{p.hours ? ` · ${p.hours}` : ''}</div>
+                  {p.descr && <div translate="no" style={{ fontSize: 12.5, color: C.t3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.descr}</div>}
                 </div>
               </div>
             </Card>))}

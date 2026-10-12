@@ -68,6 +68,7 @@ const AvailableList = ({ role, onOpen }: { role: 'taxi_driver' | 'courier'; onOp
       <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, color: C.t1 }}><span>{fmt(o.priceRub)}</span><span style={{ fontSize: 13, color: C.t2 }}>{o.km} км · ~{o.minutes} мин</span></div>
       <div translate="no" style={{ fontSize: 13.5, color: C.t1 }}>{o.from.address} → {o.to.address}</div>
       {o.tariff && <Chip>{o.tariff}</Chip>}
+      {o.cargo && <Chip color="#f59e0b">Грузовой: кузов {String(o.cargo.body).toUpperCase()}, грузчиков {o.cargo.loaders}</Chip>}
       {o.parcel && <div translate="no" style={{ fontSize: 13, color: C.t2 }}>{o.parcel.description} · {o.parcel.size?.toUpperCase()} · {o.parcel.weightKg} кг</div>}
       {o.distanceToPickupKm != null && <div style={{ fontSize: 12.5, color: C.t3 }}>До места забора {o.distanceToPickupKm} км</div>}
       <Btn busy={busy === o.id} onClick={() => accept(o.id)}>Принять заказ</Btn>
