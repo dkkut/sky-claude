@@ -39,6 +39,7 @@ const ERR: Record<string, string> = {
   code_used: 'Код уже использован.', code_expired: 'Срок кода вышел.', rate_limited: 'Слишком часто. Подождите минуту.',
   docs_missing: 'Не хватает обязательных документов.', dob_required: 'Укажите дату рождения в анкете.', invalid_dob: 'Неверная дата рождения.', too_young: 'Исполнителем может быть только совершеннолетний.',
   invalid_fields: 'Проверьте поля анкеты.', bad_card: 'Неверный номер карты.', bank_required: 'Укажите банк.', holder_required: 'Укажите владельца.',
+  not_editable: 'Заявка уже отправлена — править её сейчас нельзя.', too_many_docs: 'Слишком много документов в заявке.', bad_doc_kind: 'Неизвестный вид документа.', bad_role: 'Неизвестный кабинет.', bad_legal_form: 'Выберите статус налогоплательщика.',
   file_too_large: 'Файл слишком большой (до 8 МБ).', unsupported_type: 'Нужно изображение (JPG, PNG, WebP) или PDF.',
   provider_not_configured: 'Сервис пока не подключён администрацией.', provider_unreachable: 'Поставщик данных недоступен. Попробуйте позже.',
   provider_error: 'Поставщик данных вернул ошибку. Попробуйте позже.', location_required: 'Нужна геолокация или город.',
@@ -69,7 +70,7 @@ const ERR: Record<string, string> = {
   bad_iata: 'Выберите город из подсказок.', same_city: 'Города совпадают.', bad_offer: 'Предложение недействительно — повторите поиск.',
 };
 export const goError = (r: { error?: string; reason?: string; status?: number }) =>
-  (r.error && ERR[r.error]) || r.reason || (r.error ? `Не получилось (${r.error})` : 'Ошибка сервера');
+  (r.error && ERR[r.error]) || (r.status === 413 ? 'Файл слишком большой для сервера.' : '') || r.reason || (r.error ? `Не получилось (${r.error})` : 'Ошибка сервера');
 
 const j = (b: unknown) => JSON.stringify(b ?? {});
 const get = <T>(p: string) => apiCall<T>(p);

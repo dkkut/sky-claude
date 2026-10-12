@@ -5,6 +5,26 @@ import { goApi, goError, DOC_LABEL, LEGAL_LABEL, ROLE_LABEL, type ExecutorRow, t
 import { Back, Btn, Card, Chip, Col, Input, Notice, fail, C } from './ui';
 import { flash } from '@/shared/flash';
 
+/** Фото с телефона бывают по 5–15 МБ: уменьшаем до ~1,5 МБ, чтобы загрузка не упиралась в лимиты сервера и в слабую сеть. PDF и небольшие файлы не трогаем. */
+const prepareDoc = async (f: File): Promise<{ file: File } | { error: string }> => {
+  const MAX = 8 * 1024 * 1024;
+  if (f.type === 'application/pdf') return f.size > MAX ? { error: 'PDF слишком большой (до 8 МБ). Сожмите файл или сфотографируйте документ.' } : { file: f };
+  const ok = /^image\/(jpeg|png|webp)$/.test(f.type);
+  if (ok && f.size <= 1.5 * 1024 * 1024) return { file: f };
+  try {
+    const bmp = await createImageBitmap(f);
+    const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+    const blob: Blob | null = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.85));
+    if (!blob) throw new Error('encode');
+    return { file: new File([blob], 'doc.jpg', { type: 'image/jpeg' }) };
+  } catch {
+    if (ok && f.size <= MAX) return { file: f };
+    return { error: /heic|heif/i.test(f.type + f.name) ? 'Формат HEIC не поддерживается. Выберите JPG или PNG либо сделайте фото через камеру.' : 'Не удалось открыть изображение. Нужен JPG, PNG, WebP или PDF до 8 МБ.' };
+  }
+};
+
 type Field = [key: string, label: string, opts?: { type?: string; max?: number; ph?: string }];
 const FIELDS: Record<LegalForm, Field[]> = {
   npd: [['fullName', 'ФИО полностью'], ['inn', 'ИНН (12 цифр)', { max: 12 }], ['phone', 'Телефон', { type: 'tel', ph: '+7…' }]],
@@ -33,6 +53,7 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
   const [docs, setDocs] = useState(existing?.docs ?? []);
   const [busy, setBusy] = useState(false); const [problems, setProblems] = useState<string[]>([]);
   const [dob, setDob] = useState(''); const [submitErr, setSubmitErr] = useState('');
+  const [docErr, setDocErr] = useState('');
   const needsAge = role === 'taxi_driver' || role === 'courier';
   const file = useRef<HTMLInputElement>(null); const kindRef = useRef('');
 
@@ -49,10 +70,16 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
     setProblems([]); setId(r.data!.id); return r.data!.id;
   };
   const upload = async (file0: File) => {
-    setBusy(true); const eid = id || await save();
-    if (!eid) return setBusy(false);
-    const r = await goApi.uploadDoc(eid, kindRef.current, file0);
-    if (!r.ok) { setBusy(false); return fail(r); }
+    setBusy(true); setDocErr('');
+    const prepared = await prepareDoc(file0);
+    if ('error' in prepared) { setBusy(false); setDocErr(prepared.error); return; }
+    const eid = id || await save();
+    if (!eid) {
+      // Причина видна рядом с кнопкой «Загрузить», а не только внизу экрана.
+      setBusy(false); setDocErr('Анкета пока не сохраняется — исправьте поля выше и загрузите документ снова.'); return;
+    }
+    const r = await goApi.uploadDoc(eid, kindRef.current, prepared.file);
+    if (!r.ok) { setBusy(false); setDocErr(r.status === 413 ? 'Файл слишком большой для сервера. Выберите фото поменьше или PDF до 8 МБ.' : r.status === 0 ? 'Нет связи с сервером. Проверьте интернет и повторите.' : goError(r)); return fail(r); }
     const fresh = await goApi.executors(); setBusy(false);
     if (fresh.ok) setDocs(fresh.data!.executors.find((e) => e.id === eid)?.docs ?? docs);
   };
@@ -98,7 +125,7 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
         {required.length > 0 && (
           <Card><Col>
             <div style={{ fontWeight: 800, color: C.t1 }}>Документы</div>
-            <Notice>Фото или PDF (до 8 МБ). Документы хранятся зашифрованными и видны только проверяющим.</Notice>
+            <Notice>Фото или PDF (до 8 МБ; большие фото уменьшаются сами). Документы хранятся зашифрованными и видны только проверяющим.</Notice>
             {required.map((k) => {
               const d = docs.find((x2) => x2.kind === k);
               return (
@@ -108,6 +135,7 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
                     : <Btn kind="soft" busy={busy} onClick={() => { kindRef.current = k; file.current?.click(); }} style={{ height: 38, fontSize: 13 }}><FileUp size={15} /> Загрузить</Btn>}
                 </div>);
             })}
+            {docErr && <Notice tone="warn"><div>{docErr}</div>{problems.map((p2, i) => <div key={i} translate="no">{p2}</div>)}</Notice>}
             <input ref={file} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) void upload(fl); }} />
           </Col></Card>)}
         {needsAge && <Card><Col>
