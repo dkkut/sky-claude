@@ -8,6 +8,8 @@
 # ============================================================
 set -e
 
+# Домен приложения (DOMAIN из окружения) — запоминаем до того, как имя DOMAIN займёт домен лендинга ниже.
+APP_DOMAIN="${DOMAIN:-}"
 DOMAIN="${SITE_DOMAIN:-site.invalid.local}"
 LE_DIR="/etc/letsencrypt/live/${DOMAIN}"
 DUMMY_DIR="/etc/nginx/dummy-cert/${DOMAIN}"
@@ -26,7 +28,10 @@ else
   fi
 fi
 
-SITE_DOMAIN="${DOMAIN}" SITE_CERT_DIR="${CERT_DIR}" \
-  envsubst '${SITE_DOMAIN} ${SITE_CERT_DIR}' \
+# Если домен приложения не задан или совпадает с лендингом, перенаправлять некуда — ссылки остаются на месте.
+[ -n "${APP_DOMAIN}" ] && [ "${APP_DOMAIN}" != "${DOMAIN}" ] || APP_DOMAIN="${DOMAIN}"
+
+SITE_DOMAIN="${DOMAIN}" SITE_CERT_DIR="${CERT_DIR}" APP_DOMAIN="${APP_DOMAIN}" \
+  envsubst '${SITE_DOMAIN} ${SITE_CERT_DIR} ${APP_DOMAIN}' \
   < /etc/nginx/site-template/site.conf.template \
   > /etc/nginx/conf.d/site.conf

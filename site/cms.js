@@ -10,6 +10,17 @@
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
 
+  /* Ссылка из письма (вход в панель, вход по SSH, разморозка) — это страница ПРИЛОЖЕНИЯ. Если она открылась на лендинге,
+     уходим на «Веб-версию» (адрес берётся из админки). Запасной путь к редиректу nginx. */
+  if (/^\/(admin-verify|ssh-verify|unfreeze)$/.test(location.pathname)) {
+    document.documentElement.style.visibility = 'hidden';
+    fetch(API + '/public', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      var web = d && d.links && d.links.web;
+      if (web && /^https:\/\//.test(web) && web.replace(/\/$/, '').indexOf(location.origin) !== 0) { location.replace(web.replace(/\/$/, '') + location.pathname + location.search); return; }
+      document.documentElement.style.visibility = '';
+    }).catch(function () { document.documentElement.style.visibility = ''; });
+  }
+
   /* ── Ссылки ─────────────────────────────────────────────── */
   function applyLinks(links) {
     $$('[data-cms-link]').forEach(function (el) {
