@@ -133,7 +133,7 @@ const notifyNewLogin = async (skyIdRow, meta) => {
  * Начинает сессию Sky ID и выбирает профиль по умолчанию, если он один.
  * Экспортирована по той же причине, что и issueTokens выше.
  */
-export const startSession = async (skyIdRow, req, { viaCode = false } = {}) => {
+export const startSession = async (skyIdRow, req, { viaCode = false, via = null } = {}) => {
   const profiles = await listProfiles(skyIdRow.id);
 
   // Единственный незащищённый профиль открываем сразу: лишний экран
@@ -152,7 +152,7 @@ export const startSession = async (skyIdRow, req, { viaCode = false } = {}) => {
   const isNewDevice = known.length > 0 && !known.some((s) => s.ip && s.ip === meta.ip);
 
   await sessionStore.put(
-    { id: sessionId, userId: skyIdRow.id, profileId: auto?.id ?? null, ...meta },
+    { id: sessionId, userId: skyIdRow.id, profileId: auto?.id ?? null, ...meta, via },
     config.refreshTtlSec,
   );
 
@@ -444,6 +444,7 @@ export const authRoutes = async (req, res, url) => {
       devices: list.map((d) => ({
         id: d.id,
         ua: d.ua ?? '',
+        via: d.via ?? null,
         createdAt: new Date(d.createdAt ?? Date.now()).toISOString(),
         lastSeenAt: new Date(d.lastSeenAt ?? d.createdAt ?? Date.now()).toISOString(),
         isCurrent: d.id === session.sessionId,

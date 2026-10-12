@@ -69,9 +69,9 @@ export const sessionStore = {
    * Активный профиль хранится отдельным полем и меняется при переключении,
    * не затрагивая саму сессию.
    */
-  async put({ id, userId, profileId = null, ua = '', ip = '' }, ttlSec) {
+  async put({ id, userId, profileId = null, ua = '', ip = '', via = null }, ttlSec) {
     const value = JSON.stringify({
-      id, userId, profileId, ua, ip, createdAt: Date.now(), lastSeenAt: Date.now(),
+      id, userId, profileId, ua, ip, via, createdAt: Date.now(), lastSeenAt: Date.now(),
     });
     await client
       .multi()

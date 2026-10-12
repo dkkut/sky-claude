@@ -26,6 +26,7 @@ import { TVFocusable } from '../TVFocusable';
 import { tvFocusManager } from '../focusManager';
 import { useTVKeyBindings } from '../useTVKeyBindings';
 import { TVKeyboard, TVKeypad } from './TVKeyboard';
+import { DeviceLinkLogin, type LinkAction } from '@/auth/DeviceLinkLogin';
 
 const useCountdown = (seconds: number) => {
   const [left, setLeft] = useState(seconds);
@@ -54,7 +55,30 @@ const ErrorLine = ({ text }: { text?: string }) =>
 
 /* ── шаг 1: почта ─────────────────────────────────────────────── */
 
+const tvAction: LinkAction = (label, onClick, id) => (
+  <TVFocusable key={id} id={id} onEnter={onClick}>
+    {({ focused }) => (
+      <div className="text-[16px] font-semibold" style={{ color: focused ? '#fff' : 'var(--accent)', background: focused ? 'var(--accent)' : 'var(--bg-l2)', padding: '10px 22px', borderRadius: 14 }}>
+        {label}
+      </div>
+    )}
+  </TVFocusable>
+);
+
+/* Основной путь на ТВ: QR и код на экране, подтверждение с телефона. Почта с экранной клавиатурой — запасной. */
 const TVLoginStep = () => {
+  const [byMail, setByMail] = useState(false);
+  useEffect(() => { tvFocusManager.focusDefault(); }, [byMail]);
+  if (byMail) return <TVMailStep onBack={() => setByMail(false)}/>;
+  return (
+    <Frame title="Вход в Sky" subtitle="Подтвердите вход на телефоне">
+      <DeviceLinkLogin kind="tv" big action={tvAction}
+        extra={tvAction('Войти по почте', () => setByMail(true), 'login-by-mail')}/>
+    </Frame>
+  );
+};
+
+const TVMailStep = ({ onBack }: { onBack: () => void }) => {
   const { emailInput, setEmailInput, setLoginChannel, requestCode } = useAuthStore();
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -82,6 +106,7 @@ const TVLoginStep = () => {
         onChar={c => setEmailInput(emailInput + c)}
         onBackspace={() => setEmailInput(emailInput.slice(0, -1))}
         onSubmit={submit} submitLabel={busy ? 'Отправляем…' : 'Получить код'} submitDisabled={busy || !ready}/>
+      {tvAction('Войти по QR с телефона', onBack, 'login-by-qr')}
     </Frame>
   );
 };

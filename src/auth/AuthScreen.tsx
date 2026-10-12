@@ -16,6 +16,9 @@ import {
   ArrowLeft, ChevronRight, Crown, Eye, EyeOff, KeyRound, LogOut, Mail, Plus, ShieldAlert, ShieldCheck, Smartphone, X,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
+import { DeviceLinkLogin } from './DeviceLinkLogin';
+import { useConsoleMode } from '@/interface/console/consoleMode';
+import { useCarMode } from '@/interface/car/useCarMode';
 import { LegalCheckbox } from '@/info/LegalNotice';
 import type { ServerProfile } from '@/core/auth/api';
 
@@ -822,13 +825,41 @@ const CreateProfileStep = ({
 
 /* ═══ Точка входа ══════════════════════════════════════════════ */
 
+/* Консоль и машина: клавиатуры нет, поэтому основной путь — QR и код с подтверждением на телефоне. */
+const LinkStep = ({ kind, onMail }: { kind: 'console' | 'car'; onMail: () => void }) => (
+  <Shell title="Вход в Sky" subtitle="Подтвердите вход на телефоне">
+    <DeviceLinkLogin kind={kind} big
+      extra={<button type="button" onClick={onMail} className="rounded-2xl px-5 py-2.5 text-sm font-semibold"
+        style={{ background: 'var(--bg-l3)', color: 'var(--t1)', border: '1px solid var(--border)' }}>Войти по почте</button>} />
+  </Shell>
+);
+
 export const AuthScreen = () => {
   const step = useAuthStore(s => s.step);
+  const consoleMode = useConsoleMode();
+  const carMode = useCarMode();
+  const linkKind = consoleMode ? 'console' : carMode ? 'car' : null;
+  const [byMail, setByMail] = useState(false);
+
+  if (linkKind && !byMail && step === 'login') return (
+    <>
+      <LanguagePill />
+      <ThemePill />
+      <LinkStep kind={linkKind} onMail={() => setByMail(true)} />
+    </>
+  );
 
   return (
     <>
     <LanguagePill />
     <ThemePill />
+    {linkKind && byMail && step === 'login' && (
+      <button type="button" onClick={() => setByMail(false)}
+        className="fixed left-4 top-4 z-10 rounded-2xl px-4 py-2 text-sm font-semibold"
+        style={{ background: 'var(--bg-l3)', color: 'var(--t1)', border: '1px solid var(--border)' }}>
+        Войти по QR с телефона
+      </button>
+    )}
     <AnimatePresence mode="wait">
       <div key={step}>
         {step === 'twofa'    ? <SkyTwoFactorStep /> :

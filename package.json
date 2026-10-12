@@ -28,6 +28,7 @@
     "capacitor-music-controls-plugin": "^8.0.0",
     "framer-motion": "^11.0.8",
     "hls.js": "^1.7.3",
+    "jsqr": "^1.4.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.469.0",
     "music-metadata-browser": "^2.5.10",

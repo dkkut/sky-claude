@@ -127,6 +127,10 @@ const ERRORS: Record<string, string> = {
   two_factor_required:   'Введите код из приложения',
   challenge_expired:     'Время вышло — начните вход заново',
   not_found:             'Не найдено',
+  wrong_verify:          'Число не совпало с тем, что на экране устройства',
+  bad_verify:            'Введите двузначное число с экрана устройства',
+  totp_required:         'Введите код из приложения-аутентификатора',
+  exhausted:             'Слишком много неверных чисел — запрос закрыт, начните заново на устройстве',
   unauthorized:          'Сессия закончилась, войдите заново',
   no_active_profile:     'Сначала выберите профиль',
   sms_not_configured:    'Отправка кодов пока не настроена',
@@ -482,6 +486,7 @@ export const apiLogout = async (): Promise<void> => {
 
 export interface ServerDevice {
   id: string; ua: string; createdAt: string; lastSeenAt: string; isCurrent: boolean;
+  via?: { kind: string; label: string } | null;
 }
 
 export const apiListDevices = () =>
@@ -715,3 +720,32 @@ export const apiAvailable = async (): Promise<boolean> => {
     return false;
   }
 };
+
+
+/* ═══ Вход на ТВ, консоли и в машине по QR / коду ════════════════
+   Устройство просит код (/api/auth/link/*), телефон с уже выполненным
+   входом подтверждает его (/api/skyid/link/*). См. server/devicelink.mjs. */
+
+export type LinkKind = 'tv' | 'console' | 'car' | 'other';
+export interface LinkStart { id: string; code: string; pollKey: string; verify: string; expiresIn: number; url: string }
+export interface LinkDevice {
+  id: string; kind: LinkKind; label: string; model: string; os: string; browser: string;
+  ua: string; ip: string; lang: string; app: boolean; requestedAt: string; expiresAt: string; status: string;
+}
+export type LinkPoll =
+  | { status: 'pending'; scanned?: boolean }
+  | { status: 'approved'; session: SkySession & { accessToken?: string } }
+  | { status: 'denied' | 'expired' | 'cancelled' | 'exhausted' | 'consumed' };
+
+export const apiLinkStart = (kind: LinkKind, label?: string, lang?: string) =>
+  post<LinkStart>('/api/auth/link/start', { kind, label, lang });
+export const apiLinkPoll = (id: string, pollKey: string) =>
+  post<LinkPoll>('/api/auth/link/poll', { id, pollKey });
+export const apiLinkCancel = (id: string, pollKey: string) =>
+  post<{ ok: true }>('/api/auth/link/cancel', { id, pollKey });
+export const apiLinkLookup = (code: string) =>
+  post<{ ok: true; device: LinkDevice; needsTotp: boolean }>('/api/skyid/link/lookup', { code });
+export const apiLinkDecide = (id: string, approve: boolean, verify?: string, totp?: string) =>
+  post<{ ok: true; status: string; attemptsLeft?: number }>('/api/skyid/link/decide', { id, approve, verify, totp });
+export const apiLinkHistory = () =>
+  get<{ items: (LinkDevice & { decidedAt: string | null; signedIn: boolean })[] }>('/api/skyid/link/history');

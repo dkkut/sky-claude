@@ -3,6 +3,7 @@ import { useSettings, setForceDark } from './settings/store';
 import ReactDOM from 'react-dom/client';
 import { AppShell }      from './app/AppShell';
 import { AuthScreen }    from './auth/AuthScreen';
+import { DeviceLinkDeepLink } from './auth/DeviceLinkPhone';
 import { TVAuthScreen }  from './interface/tv/auth/TVAuthScreen';
 import { useDeviceMode } from './interface/tv/useDeviceMode';
 import { useConsoleMode } from './interface/console/consoleMode';
@@ -543,6 +544,12 @@ const ConsoleAuth = ({ children }: { children: React.ReactNode }) => {
 };
 
 /* Язык и словарь — до первого кадра: английский не должен мелькать русским. */
+/** Показывается только вошедшему: неавторизованный сначала видит обычный вход. */
+const LinkDeepLinkGate = () => {
+  const ok = useAuthStore((s) => s.isAuthenticated);
+  return ok ? <DeviceLinkDeepLink /> : null;
+};
+
 void initI18n().finally(() => ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary fallback={
@@ -570,7 +577,7 @@ void initI18n().finally(() => ReactDOM.createRoot(document.getElementById('root'
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : <><Root /><IpPinOverlay /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : <><Root /><IpPinOverlay /><LinkDeepLinkGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));

@@ -22,6 +22,7 @@ import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
 
 /* ── helpers ─────────────────────────────────────────────────── */
 import { IpPinSettings } from '@/auth/IpPin';
+import { DeviceLinkButton } from '@/auth/DeviceLinkPhone';
 const fmtDt = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
 
@@ -961,6 +962,7 @@ const DevicesSection = ({ onLogoutAll }: { onLogoutAll: () => void }) => {
 
   return (
     <div className="space-y-3">
+      <DeviceLinkButton />
       <div className="flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>
           Активные сессии · {devs.length}
@@ -1017,6 +1019,11 @@ const DevicesSection = ({ onLogoutAll }: { onLogoutAll: () => void }) => {
                   style={{ background: 'rgba(79,110,247,0.18)', color: 'var(--accent)' }}>ТЕКУЩЕЕ</span>
               )}
             </div>
+            {d.via && (
+              <p className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>
+                {`Вход по QR/коду · ${d.via.kind === 'tv' ? 'телевизор' : d.via.kind === 'console' ? 'консоль' : d.via.kind === 'car' ? 'автомобиль' : 'устройство'}`}
+              </p>
+            )}
             <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'var(--t3)' }}>
               <Clock size={9} /> Был(а) в сети: {fmtDt(d.lastSeenAt)}
             </p>

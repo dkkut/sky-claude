@@ -66,6 +66,8 @@ import { runWithSession } from './reqctx.mjs';
 import { readAccessToken } from './http.mjs';
 import { sweepAdminGate } from './admingate.mjs';
 import { sweepSshGate } from './sshgate.mjs';
+import { deviceLinkRoutes } from './routes/devicelink.mjs';
+import { sweepDeviceLinks } from './devicelink.mjs';
 import { sweepGameSessions } from './gameactivity.mjs';
 import { garantRoutes } from './routes/garant.mjs';
 import { violationsRoutes } from './routes/violations.mjs';
@@ -144,7 +146,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [betaRoutes, deviceLinkRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -574,6 +576,7 @@ const start = async () => {
       await sweepStepUp();
       await sweepAdminGate();
       await sweepSshGate();
+      await sweepDeviceLinks();
       await sweepIpPin();
       await sweepGameSessions();
       await goSweepExpired().catch(() => {});

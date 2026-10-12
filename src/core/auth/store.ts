@@ -134,6 +134,8 @@ interface AuthState {
   passwordInput:string;
   setPasswordInput:(v:string)=>void;
   loginWithPassword:()=>Promise<{ok:boolean;reason?:string}>;
+  /** Вход, подтверждённый с телефона: сервер прислал готовую сессию. */
+  loginWithLinkedSession:(session:any)=>void;
   /** Задать пароль на своём аккаунте: сперва код на почту. */
   startPasswordSetup:()=>Promise<{ok:boolean;reason?:string;email?:string;retryAfter?:number}>;
   finishPasswordSetup:(password:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
@@ -410,6 +412,11 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     setAccessToken(data.accessToken??null);
     applySession(set,get,data,true);
     return{ok:true};
+  },
+
+  loginWithLinkedSession:(session)=>{
+    setAccessToken(session?.accessToken??null);
+    applySession(set,get,session,true);
   },
 
   /* ── Вход почтой и паролем: сразу, без промежуточного кода ── */
