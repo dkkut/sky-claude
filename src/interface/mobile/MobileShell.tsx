@@ -1,4 +1,5 @@
 import { useState, Suspense } from 'react';
+import { ModuleGate } from '@/core/moduleClosures';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useModuleStore } from '@/data/state/modules';
 import { PlayerEngine } from '@/player/PlayerEngine';
@@ -56,6 +57,7 @@ export const MobileShell = () => {
             <motion.div key={activeModule + '_mob'} className="absolute inset-0 h-full w-full"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}>
               <Suspense fallback={<ModuleFallback />}>
+                <ModuleGate id={activeModule}>
                 {activeModule === 'stories'       && <StoriesModule />}
                 {activeModule === 'messages'      && <MobileMessenger />}
                 {activeModule === 'notifications' && <NotificationsScreen />}
@@ -66,6 +68,7 @@ export const MobileShell = () => {
                 {activeModule === 'studio'        && <BusinessStudio />}
                 {activeModule === 'profile'       && <ProfileModule />}
                 {activeModule === 'video'         && <SkyVideo />}
+                </ModuleGate>
               </Suspense>
             </motion.div>
           </ErrorBoundary>

@@ -41,6 +41,7 @@ export const PERMISSIONS = [
   'go',              // Sky GO: заявки исполнителей, подписки, заказы, споры, интеграции
   'go_finance',      // Sky GO: тарифы активации и параметры стоимости
   'registration',    // ограничение регистрации новых аккаунтов: вкл/выкл, пределы, сообщение
+  'modules',         // закрытие модулей: баннер «Сервис временно недоступен» вместо раздела или сервиса
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -77,6 +78,7 @@ export const ROLES = {
   campaigns_admin: ['campaigns', 'support'],
   gifts_admin:     ['gifts'],
   site_admin:      ['site'],
+  modules_admin:   ['modules'],
   garant_admin:    ['garant', 'support'],
   notifications_admin: ['notifications'],
   // Подтверждение оплаты (создание денег без реального платежа, пока
@@ -92,6 +94,8 @@ export const ROLE_NAMES = Object.keys(ROLES);
 
 export const ROLE_LABEL = {
   super_admin: 'Полные права',
+  modules_admin: 'Закрытие модулей',
+  site_admin: 'Сайт',
   security_admin: 'Безопасность',
   moderation_admin: 'Модерация',
   support_admin: 'Поддержка',

@@ -1,4 +1,5 @@
 import { Sparkles } from 'lucide-react';
+import { ModuleGate } from '@/core/moduleClosures';
 import { useCursorPet } from '@/shared/cursorPet';
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -265,6 +266,7 @@ export const AppShell = () => {
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.1 }}>
                 <React.Suspense fallback={<ModuleFallback />}>
+                  <ModuleGate id={activeModule}>
                   {activeModule === 'stories'       && <StoriesModule />}
                   {activeModule === 'messages'      && <MessengerScreen />}
                   {activeModule === 'notifications' && <NotificationsScreen />}
@@ -275,6 +277,7 @@ export const AppShell = () => {
                   {activeModule === 'studio'        && <BusinessStudio />}
                   {activeModule === 'profile'       && <ProfileModule />}
                   {activeModule === 'video'         && <SkyVideo />}
+                </ModuleGate>
                 </React.Suspense>
               </motion.div>
             </ErrorBoundary>

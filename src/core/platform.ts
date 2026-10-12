@@ -17,6 +17,8 @@ export interface PlatformStatus {
   shutdown: PlatformModeState;
   maintenance: PlatformModeState;
   /** Можно ли сейчас завести новый аккаунт (server/registration.mjs). Вход существующих это не затрагивает. */
+  /** Закрытые из админки модули: ключ → причина (только если разрешено показывать). */
+  closedModules?: Record<string, { reason?: string }>;
   registration?: { open: boolean; message: string; reason: 'closed' | 'daily_limit' | null };
 }
 

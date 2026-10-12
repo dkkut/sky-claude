@@ -1,4 +1,5 @@
 import { Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, HardDrive, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
+import { ModuleGate } from '@/core/moduleClosures';
 import { useSettings } from '@/settings/store';
 import { lazyChunk } from '@/app/lazyChunk';
 import { BotsBrowser } from '@/bots/SkyBots';
@@ -498,7 +499,9 @@ const MoreTab = () => {
         <p className="text-sm font-bold" style={{color:'var(--t1)'}}>Sky Garant</p>
       </div>
       <div className="flex-1 overflow-hidden">
+        <ModuleGate id="garant">
         <React.Suspense fallback={<TabFallback/>}><SkyGarant/></React.Suspense>
+        </ModuleGate>
       </div>
     </div>
   );
@@ -1269,6 +1272,7 @@ export const ExtrasModule = () => {
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           >
+        <ModuleGate id={tab}>
         <React.Suspense fallback={<TabFallback/>}>
         {tab==='home' && <MediaHomeTab onNav={handleNav}/>}
         {tab==='music'  && <SkyMusic/>}
@@ -1304,6 +1308,7 @@ export const ExtrasModule = () => {
           </div>
         )}
         </React.Suspense>
+        </ModuleGate>
           </motion.div>
         </AnimatePresence>
       </div>

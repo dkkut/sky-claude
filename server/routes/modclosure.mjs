@@ -1,0 +1,23 @@
+import { json, requireProfile, parseBody } from './../http.mjs';
+import { requestMeta } from './../adminsec.mjs';
+import * as mc from './../modclosure.mjs';
+
+const ERR = { not_allowed: 403, unknown_module: 404, reason_required: 400 };
+
+export const modClosureRoutes = async (req, res, url) => {
+  if (!url.startsWith('/api/admin/modules')) return false;
+  const session = await requireProfile(req, res);
+  if (!session) return true;
+  const me = session.profileId;
+  const path = new URL(req.url, 'http://x').pathname;
+  if (req.method === 'GET' && path === '/api/admin/modules') {
+    const list = await mc.adminList(me);
+    return list ? json(res, 200, { modules: list }) : json(res, 403, { error: 'not_allowed' });
+  }
+  const m = /^\/api\/admin\/modules\/([a-z0-9_-]+)$/.exec(path);
+  if (req.method === 'PUT' && m) {
+    const r = await mc.adminSet(me, m[1], (await parseBody(req)) ?? {}, requestMeta(req));
+    return json(res, r.error ? (ERR[r.error] ?? 400) : 200, r);
+  }
+  return json(res, 404, { error: 'not_found' });
+};
