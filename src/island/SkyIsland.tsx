@@ -295,6 +295,12 @@ export const SkyIsland = () => {
 
   const open = view === 'media' ? mediaOpen : expanded || view === 'ai';
 
+  /* Пока капсула на экране, оболочки сдвигают содержимое вниз на её высоту (--island-pad), чтобы она не закрывала кнопки. */
+  useEffect(() => {
+    document.documentElement.style.setProperty('--island-pad', view === 'hidden' ? '0px' : '52px');
+  }, [view]);
+  useEffect(() => () => { document.documentElement.style.setProperty('--island-pad', '0px'); }, []);
+
   /* Таймер события: стоит, пока человек взаимодействует или панель раскрыта. */
   const left = useRef<{ id: string; ms: number } | null>(null);
   useEffect(() => {

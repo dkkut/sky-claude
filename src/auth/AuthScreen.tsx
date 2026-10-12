@@ -123,7 +123,7 @@ const Shell = ({
   <div
     className="flex items-center justify-center px-4 py-8"
     style={{
-      minHeight: '100dvh', overflowX: 'hidden',
+      minHeight: '100dvh', overflowX: 'hidden', paddingTop: 'calc(2rem + var(--island-pad, 0px))',
       background: 'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(79,110,247,0.10) 0%, var(--bg) 70%)',
     }}
   >

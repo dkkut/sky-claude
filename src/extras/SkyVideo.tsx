@@ -134,19 +134,20 @@ const SubscribeButton = ({ targetId }: { targetId?: string }) => {
 };
 
 /* -- Video Card (grid) --------------------------------------- */
-const VideoCard = ({ video, onClick }: { video: ServerVideo; onClick: () => void }) => {
+const VideoCard = ({ video, onClick, onOpenChannel }: { video: ServerVideo; onClick: () => void; onOpenChannel?: (authorId: string) => void }) => {
   const isBlocked = useModerationStore(s => (video.own || !video.authorId) ? false : s.isBlocked('video-channel', video.authorId));
   if (isBlocked) return <div className="mb-2.5"><BlockedChannelBadge size="sm" /></div>;
   return (
     <motion.div className="cursor-pointer" whileTap={{ scale: 0.97 }} onClick={onClick}>
       <div className="mb-2.5"><Thumbnail video={video} size="md" /></div>
       <div className="flex gap-2.5">
-        <span onClick={e => { e.stopPropagation(); if (video.authorId) openProfile(video.authorId); }}>
+        <span onClick={e => { e.stopPropagation(); if (video.authorId) (onOpenChannel ?? openProfile)(video.authorId); }}>
           <Avatar name={video.authorName ?? '?'} />
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold leading-snug line-clamp-2" style={{ color: V.t1 }}>{video.title}</p>
-          <p className="text-xs mt-1" style={{ color: V.t2 }}>{video.authorName}</p>
+          <p className="text-xs mt-1 cursor-pointer" style={{ color: V.t2 }}
+            onClick={e => { e.stopPropagation(); if (video.authorId) (onOpenChannel ?? openProfile)(video.authorId); }}>{video.authorName}</p>
           <p className="text-xs" style={{ color: V.t3 }}>
             {fmtViews(video.views)} просм. · {fmtAgo(video.publishedAt ?? video.createdAt)}
           </p>
@@ -286,7 +287,7 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
 };
 
 /* -- Full Video View ------------------------------------------- */
-const VideoView = ({ video, onBack }: { video: ServerVideo; onBack: () => void }) => {
+const VideoView = ({ video, onBack, onOpenChannel }: { video: ServerVideo; onBack: () => void; onOpenChannel?: (authorId: string) => void }) => {
   const { toggleLiked, removeVideo, requestMonetization } = useSkyVideoStore();
   const { currentUserId } = useAuthStore();
   const [comments, setComments] = useState<VideoComment[]>([]);
@@ -390,12 +391,12 @@ const VideoView = ({ video, onBack }: { video: ServerVideo; onBack: () => void }
         </div>
 
         <div className="flex items-center gap-3 py-3" style={{ borderTop: `1px solid ${V.border}`, borderBottom: `1px solid ${V.border}` }}>
-          <button type="button" onClick={() => video.authorId && openProfile(video.authorId)}>
+          <button type="button" onClick={() => video.authorId && (onOpenChannel ?? openProfile)(video.authorId)}>
             <Avatar name={video.authorName ?? '?'} size={40} />
           </button>
-          <button type="button" onClick={() => video.authorId && openProfile(video.authorId)} className="flex-1 min-w-0 text-left">
+          <button type="button" onClick={() => video.authorId && (onOpenChannel ?? openProfile)(video.authorId)} className="flex-1 min-w-0 text-left">
             <p className="text-sm font-semibold" style={{ color: V.t1 }}>{video.authorName}</p>
-            <p className="text-xs" style={{ color: V.t3 }}>Sky Creator</p>
+            <p className="text-xs" style={{ color: V.t3 }}>Открыть канал</p>
           </button>
           <SubscribeButton targetId={video.authorId} />
         </div>
@@ -504,7 +505,7 @@ const VideoView = ({ video, onBack }: { video: ServerVideo; onBack: () => void }
 };
 
 /* -- Shorts Player --------------------------------------------- */
-const ShortsPlayer = ({ shorts, initialIndex = 0, onClose }: { shorts: ServerVideo[]; initialIndex?: number; onClose: () => void }) => {
+const ShortsPlayer = ({ shorts, initialIndex = 0, onClose, onOpenChannel }: { shorts: ServerVideo[]; initialIndex?: number; onClose: () => void; onOpenChannel?: (authorId: string) => void }) => {
   const [idx, setIdx] = useState(initialIndex);
   const [playing, setPlaying] = useState(true);
   const vidRef = useRef<HTMLVideoElement>(null);
@@ -567,10 +568,10 @@ const ShortsPlayer = ({ shorts, initialIndex = 0, onClose }: { shorts: ServerVid
           style={{ background: 'linear-gradient(transparent,rgba(0,0,0,0.75))' }}
           onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-2 mb-2">
-            <button type="button" onClick={() => video.authorId && openProfile(video.authorId)}>
+            <button type="button" onClick={() => video.authorId && (onOpenChannel ?? openProfile)(video.authorId)}>
               <Avatar name={video.authorName ?? '?'} size={28} />
             </button>
-            <button type="button" onClick={() => video.authorId && openProfile(video.authorId)}
+            <button type="button" onClick={() => video.authorId && (onOpenChannel ?? openProfile)(video.authorId)}
               className="text-sm font-semibold text-white">{video.authorName}</button>
             <SubscribeButton targetId={video.authorId} />
           </div>
@@ -918,7 +919,7 @@ const ChannelPage = ({ authorId, onBack, onOpenVideo, initialAnalytics }: {
   const [channel, setChannel] = useState<ChannelInfo | null>(null);
   const [videos, setVideos] = useState<ServerVideo[] | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [tab, setTab] = useState<ChTab>('home');
+  const [tab, setTab] = useState<ChTab>('videos');
   const [analytics, setAnalytics] = useState(Boolean(initialAnalytics));
 
   useEffect(() => {
@@ -1112,10 +1113,13 @@ export const SkyVideo = () => {
     return longVids;
   }, [active, searchResults, longVids]);
 
+  // Нажатие на автора (карточка, страница ролика, Shorts) открывает его канал: все видео и «Подписаться».
+  const openChannel = (authorId: string) => { setActiveVideo(null); setActiveShort(null); setChannelAnalytics(false); setActiveChannelId(authorId); };
+
   if (activeVideo) {
     return (
       <AnimatePresence mode="wait">
-        <VideoView key={activeVideo.id} video={activeVideo} onBack={() => setActiveVideo(null)} />
+        <VideoView key={activeVideo.id} video={activeVideo} onBack={() => setActiveVideo(null)} onOpenChannel={openChannel} />
       </AnimatePresence>
     );
   }
@@ -1123,7 +1127,7 @@ export const SkyVideo = () => {
   if (activeShort !== null) {
     return (
       <AnimatePresence>
-        <ShortsPlayer shorts={shorts} initialIndex={activeShort} onClose={() => setActiveShort(null)} />
+        <ShortsPlayer shorts={shorts} initialIndex={activeShort} onClose={() => setActiveShort(null)} onOpenChannel={openChannel} />
       </AnimatePresence>
     );
   }
@@ -1253,7 +1257,7 @@ export const SkyVideo = () => {
                   ) : (
                     <div className="grid grid-cols-1 gap-5 px-4 py-3">
                       {filtered.map(v => (
-                        <VideoCard key={v.id} video={v} onClick={() => setActiveVideo(v)} />
+                        <VideoCard key={v.id} video={v} onClick={() => setActiveVideo(v)} onOpenChannel={openChannel} />
                       ))}
                     </div>
                   )}

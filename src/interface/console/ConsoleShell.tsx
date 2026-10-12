@@ -80,7 +80,7 @@ export const ConsoleShell = ({ messenger }: { messenger: React.ReactNode }) => {
   useEffect(() => { if (service) { const t = setTimeout(() => consoleNav.ensureFocus(), 350); return () => clearTimeout(t); } return undefined; }, [service]);
 
   return (
-    <div className="fixed inset-0 z-[500]" style={{ background: 'var(--bg)' }}>
+    <div className="fixed inset-0 z-[500]" style={{ background: 'var(--bg)', top: 'var(--island-pad, 0px)', transition: 'top .2s ease' }}>
       <NotifBridge />
       <NetBanner />
       <IslandBridge />

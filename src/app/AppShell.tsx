@@ -243,7 +243,7 @@ export const AppShell = () => {
           </motion.div>
         )}
       </AnimatePresence>
-      <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)', height: '100dvh' }}>
+      <div className="island-pad-shell flex h-screen overflow-hidden" style={{ background: 'var(--bg)', height: '100dvh' }}>
         <NotifBridge />
         <IslandBridge />
         <SkyIsland />

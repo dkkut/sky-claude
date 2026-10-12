@@ -671,3 +671,10 @@ Sky Video). Раньше при включённом режиме им отве�
 - `ScrollTabs` (`src/admin/ScrollTabs.tsx`) — лента вкладок со стрелками (видны в сторону, куда ещё можно прокрутить; колесо мыши листает вбок);
   все ленты админки (`flex gap-1 overflow-x-auto`) сделаны через него — новую ленту делать так же.
 - Тесты: `scripts/audit/registration-test.mjs` (26, включая гонку), `registration-ui-test.mjs` (Playwright, 16).
+
+## Sky Island: отступ под капсулу; Sky Video: нажатие на автора открывает канал
+
+- Пока остров виден, `SkyIsland.tsx` ставит `--island-pad` (52px) на `<html>`; корни оболочек сдвигаются на неё: `.island-pad-shell` (`AppShell`),
+  `.app-root-h` (`MobileShell`), `top` у `ConsoleShell`, `paddingTop` у экрана входа. Новая оболочка с островом — сдвигать так же.
+- Sky Video: автор на карточке, на странице ролика и в Shorts ведёт на канал (`ChannelPage`: все видео, вкладка «Видео» по умолчанию,
+  «Подписаться» — `useSocialGraph`), а не в общий профиль. Тест: `scripts/audit/skyvideo-channel-ui-test.mjs` (Playwright, 7).
