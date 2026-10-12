@@ -29,6 +29,7 @@ export const RegistrationTab = () => {
   const [form, setForm] = useState<Settings | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string>();
+  const [confirm, setConfirm] = useState(false);
 
   const load = useCallback(async () => {
     const r = await apiCall<Overview>('/api/admin/registration');
@@ -46,16 +47,49 @@ export const RegistrationTab = () => {
     setBusy(true);
     const r = await apiCall<{ settings: Settings }>('/api/admin/registration', {
       method: 'PUT',
-      body: JSON.stringify({ enabled: form.enabled, dailyLimit: form.dailyLimit, perIpLimit: form.perIpLimit, perIpHours: form.perIpHours, message: form.message }),
+      body: JSON.stringify({ dailyLimit: form.dailyLimit, perIpLimit: form.perIpLimit, perIpHours: form.perIpHours, message: form.message }),
     });
     setBusy(false);
     if (!r.ok) { flash(r.reason ?? 'Не удалось сохранить'); return; }
     flash('Сохранено'); void load();
   };
 
+  const toggle = async () => {
+    setBusy(true);
+    const r = await apiCall<{ settings: Settings }>('/api/admin/registration', { method: 'PUT', body: JSON.stringify({ enabled: !ov.settings.enabled }) });
+    setBusy(false); setConfirm(false);
+    if (!r.ok) { flash(r.reason ?? 'Не удалось применить'); return; }
+    flash(ov.settings.enabled ? 'Регистрация новых аккаунтов запрещена' : 'Регистрация снова разрешена'); void load();
+  };
+
   const s = ov.stats;
   return (
     <div className="space-y-3">
+      {/* Главная кнопка: действует сразу и для всех. Текст людям — из поля «Сообщение» ниже. */}
+      <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${ov.settings.enabled ? C.brd : C.red}` }}>
+        {confirm ? (
+          <>
+            <p className="text-sm" style={{ color: C.t1 }}>
+              {ov.settings.enabled
+                ? 'Новые люди не смогут создать аккаунт: после ввода почты Sky Island покажет баннер о запрете. Уже зарегистрированные входят как обычно. Запретить?'
+                : 'Регистрация новых аккаунтов снова откроется для всех. Разрешить?'}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setConfirm(false)} className="rounded-xl py-2 text-sm font-semibold" style={{ background: C.l2, color: C.t2 }}>Отмена</button>
+              <button type="button" disabled={busy} onClick={() => void toggle()} className="rounded-xl py-2 text-sm font-bold"
+                style={{ background: ov.settings.enabled ? C.red : C.green, color: '#fff' }}>{ov.settings.enabled ? 'Да, запретить' : 'Да, разрешить'}</button>
+            </div>
+          </>
+        ) : (
+          <button type="button" disabled={busy} onClick={() => setConfirm(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold" style={{ background: ov.settings.enabled ? C.red : C.green, color: '#fff' }}>
+            <UserPlus size={15} /> {ov.settings.enabled ? 'Временно запретить регистрацию' : 'Снова разрешить регистрацию'}
+          </button>
+        )}
+        <p className="text-[11px]" style={{ color: C.t3 }}>
+          {ov.settings.enabled ? 'Кнопка действует сразу, без перезапуска.' : 'Сейчас новые аккаунты не создаются. Эту кнопку можно нажать в любой момент, чтобы открыть регистрацию.'}
+        </p>
+      </div>
       <div className="rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
         <p className="flex items-center gap-2 text-xs font-bold" style={{ color: C.t1 }}>
           <UserPlus size={14} style={{ color: ov.open ? C.green : C.red }} />
@@ -76,10 +110,6 @@ export const RegistrationTab = () => {
       </div>
 
       <div className="space-y-3 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
-        <label className="flex items-center justify-between gap-3 text-sm" style={{ color: C.t1 }}>
-          <span>Принимать новые регистрации</span>
-          <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} aria-label="Принимать новые регистрации" />
-        </label>
         <div>
           <p className="mb-1 text-[11px] font-semibold" style={{ color: C.t2 }}>Не больше новых аккаунтов за последние 24 часа (0 — без предела)</p>
           <input type="number" min={0} value={form.dailyLimit} onChange={(e) => setForm({ ...form, dailyLimit: num(e.target.value) })}

@@ -126,7 +126,7 @@ interface AuthState {
   setLoginChannel:(c:LoginChannel)=>void;
 
   /** Шаг 1: просим код — на почту или на телефон, смотря чем входим. */
-  requestCode:(value?:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
+  requestCode:(value?:string)=>Promise<{ok:boolean;reason?:string;error?:string;retryAfter?:number}>;
   /** Шаг 2: проверяем пришедший код. */
   verifyCode:(code:string)=>Promise<{ok:boolean;reason?:string}>;
 
@@ -364,7 +364,7 @@ export const useAuthStore=create<AuthState>((set,get)=>({
           set({pendingEmail:email,emailInput:email,step:'code'});
           return{ok:true,retryAfter};
         }
-        return{ok:false,reason:res.reason,retryAfter};
+        return{ok:false,reason:res.reason,error:res.error,retryAfter};
       }
       set({
         pendingEmail:email,emailInput:email,step:'code',
@@ -381,7 +381,7 @@ export const useAuthStore=create<AuthState>((set,get)=>({
         set({pendingPhone:phone,phoneInput:phone,step:'code'});
         return{ok:true,retryAfter};
       }
-      return{ok:false,reason:res.reason,retryAfter};
+      return{ok:false,reason:res.reason,error:res.error,retryAfter};
     }
     set({
       pendingPhone:phone,phoneInput:phone,step:'code',

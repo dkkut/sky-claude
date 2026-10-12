@@ -46,11 +46,15 @@ await p.getByLabel('Прокрутить влево').first().click(); await p.w
 await p.getByRole('button', { name: 'Регистрация', exact: true }).first().click(); await p.waitForTimeout(1500);
 let txt = await body();
 t('вкладка показывает «Регистрация открыта» и настоящие числа', /Регистрация открыта/.test(txt) && /Всего аккаунтов/.test(txt) && /Новых за 24 часа/.test(txt), txt.slice(0, 300));
-await p.getByLabel('Принимать новые регистрации').uncheck();
 await p.getByLabel('Предел в сутки').fill('5');
 await p.getByLabel('Сообщение людям').fill('Набор откроется в понедельник');
 await p.getByRole('button', { name: 'Сохранить' }).click(); await p.waitForTimeout(1500);
-t('сохранено на сервере', q(`select enabled::text||daily_limit||message from registration_settings where id`) === 'false5Набор откроется в понедельник', q(`select enabled::text||daily_limit||message from registration_settings where id`));
+t('поля сохранены, регистрация всё ещё открыта', q(`select enabled::text||daily_limit||message from registration_settings where id`) === 'true5Набор откроется в понедельник', q(`select enabled::text||daily_limit||message from registration_settings where id`));
+await p.getByRole('button', { name: 'Временно запретить регистрацию' }).click(); await p.waitForTimeout(400);
+t('кнопка сначала просит подтверждение', /Sky Island покажет баннер/.test(await body()));
+await p.getByRole('button', { name: 'Да, запретить' }).click(); await p.waitForTimeout(1500);
+t('кнопка закрыла регистрацию на сервере', q(`select enabled from registration_settings where id`) === 'f');
+t('на кнопке теперь «Снова разрешить регистрацию»', await p.getByRole('button', { name: 'Снова разрешить регистрацию' }).count() === 1);
 txt = await body();
 t('вкладка сразу показывает «закрыта»', /закрыта для новых людей/.test(txt));
 await p.screenshot({ path: S + '/rg-tab.png' });
@@ -61,8 +65,18 @@ await p2.goto(F + '/'); await p2.waitForTimeout(4000);
 const t2 = (await p2.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
 t('экран входа предупреждает, что регистрация закрыта, и показывает сообщение', /Регистрация новых аккаунтов сейчас закрыта/.test(t2) && /Набор откроется в понедельник/.test(t2) && /входите как обычно/.test(t2), t2.slice(0, 300));
 await p2.screenshot({ path: S + '/rg-login.png' });
-// Новый человек получает понятный отказ
-await p2.getByPlaceholder(/почт|mail|@/i).first().fill(`newbie${Date.now()}@example.com`).catch(() => {});
+// Незнакомая почта: после ввода — баннер на Sky Island
+await p2.locator('input[type=email], input[inputmode=email], input[type=text]').first().fill(`newbie${Date.now()}@example.com`);
+await p2.getByRole('button', { name: /Получить код|Продолжить|Далее/ }).first().click(); await p2.waitForTimeout(1800);
+const t3 = (await p2.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
+t('после ввода незнакомой почты остров показывает баннер о запрете регистраций', /Регистрация временно закрыта/.test(t3) && /Набор откроется в понедельник|временно запрещены/.test(t3), t3.slice(0, 300));
+await p2.screenshot({ path: S + '/rg-island.png' });
+t('код не запрашивался: остались на шаге почты', !/Введите код|Код из письма|Отправить код ещё раз/.test(t3));
+// Зарегистрированная почта проходит дальше
+await p2.locator('input[type=email], input[inputmode=email], input[type=text]').first().fill(email);
+await p2.getByRole('button', { name: /Получить код|Продолжить|Далее/ }).first().click(); await p2.waitForTimeout(1800);
+const t4 = (await p2.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
+t('зарегистрированная почта проходит к вводу кода', /Код из письма/.test(t4) && /Отправили на/.test(t4), t4.slice(0, 200));
 t('нет ошибок страницы', errs.length === 0, errs.join(' | '));
 q(`update registration_settings set enabled=true, daily_limit=0, message='' where id`);
 await br.close();

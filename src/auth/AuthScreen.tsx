@@ -18,6 +18,8 @@ import {
 import { useAuthStore } from '@/core/auth/store';
 import { DeviceLinkLogin } from './DeviceLinkLogin';
 import { apiPlatformStatus } from '@/core/platform';
+import { SkyIsland } from '@/island/SkyIsland';
+import { useIslandStore } from '@/island/islandStore';
 import { useConsoleMode } from '@/interface/console/consoleMode';
 import { useCarMode } from '@/interface/car/useCarMode';
 import { LegalCheckbox } from '@/info/LegalNotice';
@@ -277,7 +279,19 @@ const LoginStep = () => {
     if (busy) return;
     setErr(undefined); setBusy(true);
     const res = byPassword ? await loginWithPassword() : await requestCode();
-    if (!res.ok) setErr(res.reason);
+    if (!res.ok) {
+      setErr(res.reason);
+      // Регистрация закрыта кнопкой в админке, а этой почты в системе нет — баннер на Sky Island.
+      if ('error' in res && String(res.error ?? '').startsWith('registration_')) {
+        useIslandStore.getState().push({
+          kind: 'system', mergeKey: 'registration-closed', ttl: 10000,
+          title: 'Регистрация временно закрыта',
+          body: res.reason && !/^Регистрация новых аккаунтов временно закрыта/.test(res.reason) ? res.reason
+            : 'На сервере временно запрещены регистрации новых аккаунтов. Если аккаунт уже есть — войдите как обычно.',
+          userText: false,
+        });
+      }
+    }
     setBusy(false);
   };
 
@@ -868,6 +882,7 @@ export const AuthScreen = () => {
 
   return (
     <>
+    <SkyIsland />
     <LanguagePill />
     <ThemePill />
     {linkKind && byMail && step === 'login' && (

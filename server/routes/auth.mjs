@@ -13,8 +13,9 @@
  */
 import { trustDevice } from './../trusteddevices.mjs';
 import { assertLoginAllowed } from './../accountfreeze.mjs';
+import { publicStatus as registrationStatus } from './../registration.mjs';
 import { config } from './../config.mjs';
-import { signToken, verifyToken } from './../security.mjs';
+import { signToken, verifyToken, rateLimit, rateLimitPerHour } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
 import { generateId } from './../security.mjs';
 import { buildRefreshCookie, clearRefreshCookie } from './../cookies.mjs';
@@ -23,7 +24,7 @@ import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../v
 import { sendEmail } from './../notify.mjs';
 import { noteAdminBreachSignal } from './../breach.mjs';
 import {
-  ensureSkyId, ensureSkyIdByEmail, findSkyIdById, publicSkyId, listProfiles,
+  ensureSkyId, ensureSkyIdByEmail, findSkyIdById, findSkyIdByEmail, findSkyIdByPhone, publicSkyId, listProfiles,
   getProfileOfSkyId, verifySkyTwoFactor, sendTwoFactorCode,
 } from './../skyid.mjs';
 
@@ -134,6 +135,22 @@ const notifyNewLogin = async (skyIdRow, meta) => {
  * Начинает сессию Sky ID и выбирает профиль по умолчанию, если он один.
  * Экспортирована по той же причине, что и issueTokens выше.
  */
+/**
+ * Если новые аккаунты сейчас не создаются и такой почты/номера в системе нет — отвечает 403 и возвращает false.
+ * Для зарегистрированных ответ прежний. Пока регистрация открыта, ничего не проверяется и ответ одинаков для всех.
+ * Пока она закрыта, ответ различает «есть/нет» — это осознанная цена понятного сообщения; число таких проверок ограничено.
+ */
+const newcomerAllowed = async (req, res, exists) => {
+  const st = await registrationStatus();
+  if (st.open) return true;
+  if (!rateLimit(`regprobe:${clientIp(req)}`, 20) || !rateLimitPerHour(`regprobe:${clientIp(req)}`, 120)) {
+    json(res, 429, { error: 'too_many_requests' }); return false;
+  }
+  if (await exists()) return true;
+  json(res, 403, { error: `registration_${st.reason}`, message: st.message });
+  return false;
+};
+
 export const startSession = async (skyIdRow, req, { viaCode = false, via = null } = {}) => {
   // Заморозка новых входов: единое место для всех способов входа (код, пароль, QR). Бросает 423 — см. server.mjs.
   await assertLoginAllowed(skyIdRow.id, deviceMeta(req));
@@ -187,6 +204,9 @@ export const authRoutes = async (req, res, url) => {
     const phone = normalizePhone(body.phone);
     if (!phone) return json(res, 400, { error: 'invalid_phone' });
 
+    // Регистрация закрыта кнопкой в админке: незнакомому номеру говорим сразу, не отправляя код (registration.mjs).
+    if (!(await newcomerAllowed(req, res, () => findSkyIdByPhone(phone)))) return true;
+
     const result = await issueCode('phone', phone, 'login');
     if (result.error === 'too_soon') {
       return json(res, 429, { error: 'too_soon', retryAfter: result.retryAfter });
@@ -209,6 +229,9 @@ export const authRoutes = async (req, res, url) => {
     const body = await parseBody(req);
     const email = normalizeEmail(body.email);
     if (!email) return json(res, 400, { error: 'invalid_email' });
+
+    // Регистрация закрыта кнопкой в админке: незнакомой почте говорим сразу, не отправляя код (registration.mjs).
+    if (!(await newcomerAllowed(req, res, () => findSkyIdByEmail(email)))) return true;
 
     const result = await issueCode('email', email, 'login');
     if (result.error === 'too_soon') {
