@@ -64,10 +64,17 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
     if (legal === 'ooo' && f.repIsHead !== true) need.push('authority_doc');
     return need;
   })();
+  // Причина последнего отказа сохранения анкеты — показываем её целиком рядом с кнопкой, а не только всплывающей плашкой.
+  const [saveWhy, setSaveWhy] = useState('');
   const save = async (): Promise<string | null> => {
     const r = await goApi.saveExecutor({ role, legalForm: legal, city, fields: f, extra: x });
-    if (!r.ok) { setProblems(((r.data as any)?.problems ?? []).map((p: any) => p.message)); fail(r); return null; }
-    setProblems([]); setId(r.data!.id); return r.data!.id;
+    if (!r.ok) {
+      const list: string[] = ((r.data as any)?.problems ?? []).map((p: any) => p.message);
+      setProblems(list);
+      setSaveWhy(list.length ? '' : (r.status === 0 ? 'Нет связи с сервером. Проверьте интернет и повторите.' : goError(r)));
+      fail(r); return null;
+    }
+    setSaveWhy(''); setProblems([]); setId(r.data!.id); return r.data!.id;
   };
   const upload = async (file0: File) => {
     setBusy(true); setDocErr('');
@@ -135,7 +142,7 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
                     : <Btn kind="soft" busy={busy} onClick={() => { kindRef.current = k; file.current?.click(); }} style={{ height: 38, fontSize: 13 }}><FileUp size={15} /> Загрузить</Btn>}
                 </div>);
             })}
-            {docErr && <Notice tone="warn"><div>{docErr}</div>{problems.map((p2, i) => <div key={i} translate="no">{p2}</div>)}</Notice>}
+            {docErr && <Notice tone="warn"><div>{docErr}</div>{saveWhy && <div style={{ marginTop: 6, fontWeight: 700 }}>{saveWhy}</div>}{problems.map((p2, i) => <div key={i} translate="no">{p2}</div>)}</Notice>}
             <input ref={file} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) void upload(fl); }} />
           </Col></Card>)}
         {needsAge && <Card><Col>

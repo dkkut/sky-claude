@@ -33,7 +33,7 @@ export const Input = ({ label, value, onChange, placeholder, type = 'text', max,
       ? <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} maxLength={max} rows={3}
           style={{ width: '100%', borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, padding: '10px 14px', fontSize: 15, resize: 'none' }} />
       : <input value={value} type={type} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} maxLength={max}
-          style={{ width: '100%', height: 46, borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, padding: '0 14px', fontSize: 15 }} />}
+          style={{ width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', WebkitAppearance: 'none', appearance: 'none', height: 46, borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, padding: '0 14px', fontSize: 15, textAlign: 'left' }} />}
   </label>
 );
 

@@ -177,8 +177,9 @@ const EventPanel = ({ e, onClose }: { e: IslandEvent; onClose: () => void }) => 
     <div className="flex items-start gap-3">
       <Cover src={e.cover} letter={e.letter} size={48} icon={<EventIcon e={e} />} />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-semibold text-white" translate={e.userText ? 'no' : undefined}>{e.title}</div>
-        {e.body && <div className="mt-0.5 line-clamp-3 text-[13px] text-white/60" translate={e.userText ? 'no' : undefined}>{e.body}</div>}
+        {/* В раскрытом виде текст показывается целиком (до 4 строк), а не обрезается в одну: так читаются и тексты ошибок. */}
+        <div className="line-clamp-4 break-words text-[15px] font-semibold text-white" translate={e.userText ? 'no' : undefined}>{e.title}</div>
+        {e.body && <div className="mt-0.5 line-clamp-6 break-words text-[13px] text-white/60" translate={e.userText ? 'no' : undefined}>{e.body}</div>}
       </div>
       <IconBtn label="Закрыть" onClick={onClose} size={30}><X size={15} /></IconBtn>
     </div>
