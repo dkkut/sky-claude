@@ -2317,7 +2317,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           <input ref={fileRef} type="file" className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) sendFile(f); e.target.value = ''; }} />
 
-          <div className="flex items-end gap-2">
+          <div className="flex min-w-0 items-end gap-1 sm:gap-2">
             {/* Attach popup button */}
             <div className="relative mb-1 shrink-0">
               {/* Msg options */}
@@ -2325,7 +2325,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 <motion.button type="button" whileTap={{ scale:0.9 }}
                   onClick={() => setShowMsgOpts(v => !v)}
                   disabled={isBlocked}
-                  className="grid h-9 w-9 place-items-center rounded-full transition-all disabled:opacity-40"
+                  className="grid h-8 w-8 place-items-center rounded-full transition-all disabled:opacity-40 sm:h-9 sm:w-9"
                   style={{ color: (msgOptions.once||msgOptions.spoiler||msgOptions.silent||msgOptions.selfDestruct>0||msgOptions.scheduled) ? theme.accent : 'var(--t2)',
                     background: showMsgOpts ? `${theme.accent}20` : 'transparent' }}>
                   <Settings2 size={18}/>
@@ -2344,7 +2344,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
               <motion.button type="button" whileTap={{ scale: 0.9 }}
                 onClick={() => { setShowQuickReplies(v => !v); setShowAttach(false); setShowEmoji(false); setShowPets(false); }}
                 disabled={isBlocked}
-                className="grid h-9 w-9 place-items-center rounded-full transition-all disabled:opacity-40"
+                className="grid h-8 w-8 place-items-center rounded-full transition-all disabled:opacity-40 sm:h-9 sm:w-9"
                 style={{ color: showQuickReplies ? theme.accent : 'var(--t2)',
                   background: showQuickReplies ? `${theme.accent}20` : 'transparent' }}>
                 <Zap size={17} />
@@ -2394,7 +2394,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
               <motion.button type="button" whileTap={{ scale: 0.9 }}
                 onClick={() => { setShowAttach(v => !v); setShowEmoji(false); setShowPets(false); }}
                 disabled={isBlocked}
-                className="grid h-9 w-9 place-items-center rounded-full transition-all disabled:opacity-40"
+                className="grid h-8 w-8 place-items-center rounded-full transition-all disabled:opacity-40 sm:h-9 sm:w-9"
                 style={{ color: showAttach ? theme.accent : 'var(--t2)',
                   background: showAttach ? `${theme.accent}20` : 'transparent' }}>
                 <motion.div animate={{ rotate: showAttach ? 45 : 0 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }}>
@@ -2431,7 +2431,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
             </div>
 
             {/* Text input */}
-            <div className="relative flex flex-1 items-end gap-2 rounded-[28px] px-4 py-2.5"
+            <div className="relative flex min-w-0 flex-1 items-end gap-1 rounded-[28px] px-3 py-2.5 sm:gap-2 sm:px-4"
               style={{ background: theme.inputBg, border: `1px solid ${theme.border}`, minHeight: 46 }}>
               {/* Hash Bot Menu */}
               <AnimatePresence>{showHash && (
@@ -2480,14 +2480,14 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
               <textarea ref={taRef} value={draft} onChange={e => onDraftChange(e.target.value)} onKeyDown={onKey}
                 placeholder={isBlocked ? 'Заблокировано' : editMsg ? 'Редактировать...' : 'Написать сообщение...'}
                 disabled={isBlocked} rows={1}
-                className="flex-1 resize-none bg-transparent py-1 text-sm outline-none leading-relaxed disabled:opacity-40"
+                className="min-w-0 flex-1 resize-none bg-transparent py-1 text-sm outline-none leading-relaxed disabled:opacity-40"
                 style={{ color: theme.otherText, maxHeight: 160 }} />
 
               {dictation.available && (
                 <motion.button type="button" whileTap={{ scale: 0.9 }} disabled={isBlocked || dictation.busy}
                   onClick={toggleDictation}
                   title="Голосовой ввод — диктовка текста"
-                  className="grid h-9 w-9 shrink-0 place-items-center self-end mb-0.5 rounded-full transition-all disabled:opacity-40"
+                  className="hidden h-9 w-9 shrink-0 place-items-center self-end mb-0.5 rounded-full transition-all disabled:opacity-40 min-[420px]:grid"
                   style={{ color: dictating ? '#fff' : 'var(--t2)', background: dictating ? 'var(--red)' : 'transparent' }}>
                   {dictating ? <Square size={14} fill="#fff"/> : <Mic size={17} />}
                 </motion.button>
