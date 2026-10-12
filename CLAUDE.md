@@ -678,3 +678,11 @@ Sky Video). Раньше при включённом режиме им отве�
   `.app-root-h` (`MobileShell`), `top` у `ConsoleShell`, `paddingTop` у экрана входа. Новая оболочка с островом — сдвигать так же.
 - Sky Video: автор на карточке, на странице ролика и в Shorts ведёт на канал (`ChannelPage`: все видео, вкладка «Видео» по умолчанию,
   «Подписаться» — `useSocialGraph`), а не в общий профиль. Тест: `scripts/audit/skyvideo-channel-ui-test.mjs` (Playwright, 7).
+
+## Страницы по ссылкам из писем — отдельный HTML (`verify.html`)
+
+`/admin-verify` (вход в панель), `/ssh-verify` (вход по SSH), `/unfreeze` (разморозка аккаунта) отдаёт nginx из `verify.html` (отдельный вход Vite,
+`src/verify.tsx`), а не из `index.html`: приложение Sky (оболочка, плееры, сокет) не грузится, поэтому ссылка всегда открывает именно подтверждение, а не
+главную сайта — что бы ни творилось в приложении (заставка, закрытая бета, техработы, старый кэш). nginx-блок `location ~ ^/(admin-verify|ssh-verify|unfreeze)$`
+в `sky.conf.template` — после обновления шаблона nginx пересоздать (deploy-local делает сам). В dev-сервере Vite те же адреса отдаёт плагин `sky-verify-pages`
+(`vite.config.ts`). Новая страница для письма — добавить путь в nginx-блок, в `VERIFY_PATHS` и в `Page` из `src/verify.tsx`.

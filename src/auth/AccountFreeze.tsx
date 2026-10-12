@@ -196,9 +196,6 @@ export const UnfreezeLinkPage = () => {
     const r = await apiFreezeLink(t);
     if (!(r.ok && r.data)) { setState('bad'); return; }
     setMinutes(r.data.minutes); setState('ok');
-    // Если в этом браузере уже есть вход — сразу ведём в Профиль → Sky ID → Устройства, где появился баннер «Разморозка аккаунта».
-    const s = await apiFreezeState();
-    if (s.ok) { openDevicesNext(); setTimeout(() => location.assign('/'), 1200); }
   };
   return (
     <div className="grid min-h-screen place-items-center px-4" style={{ background: 'var(--bg)' }}>

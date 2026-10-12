@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru" style="height:100%;margin:0;padding:0;">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#0a0a0f" />
+    <title>Sky — подтверждение</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body, #root { height: 100%; margin: 0; padding: 0; }
+      body { background: #0a0a0f; }
+    </style>
+  </head>
+  <body>
+    <!--
+      Отдельная страница для ссылок из писем: вход в панель администратора, вход по SSH, разморозка аккаунта.
+      Не загружает приложение Sky (ни оболочку, ни плееры, ни сокет), поэтому открывается одинаково, что бы ни творилось в самом приложении:
+      заставка, закрытая бета, техработы, старый кэш. nginx отдаёт её по /admin-verify, /ssh-verify и /unfreeze.
+    -->
+    <div id="root"></div>
+    <script type="module" src="/src/verify.tsx"></script>
+  </body>
+</html>

@@ -67,8 +67,10 @@ const log2 = readFileSync(S + '/api.log', 'utf8'); const k2 = log2.lastIndexOf(e
 const token2 = /\/unfreeze\?t=([A-Za-z0-9_-]+)/.exec(log2.slice(k2))[1];
 t('новая ссылка отличается от прежней', token2 !== token);
 await p.goto(F + `/unfreeze?t=${token2}`); await p.waitForTimeout(2000);
-await p.getByRole('button', { name: 'Подтвердить ссылку' }).click(); await p.waitForTimeout(4500);
-t('после ссылки в браузере со входом — сразу «Профиль → Sky ID → Устройства» с баннером «Разморозка аккаунта»', (await p.getByRole('alert').filter({ hasText: 'Разморозка аккаунта' }).count()) === 1 && /Активные сессии/i.test(await body()), (await body()).slice(0, 300));
+await p.getByRole('button', { name: 'Подтвердить ссылку' }).click(); await p.waitForTimeout(2000);
+t('в браузере со входом остаёмся на отдельной странице (приложение не открывается само)', /Ссылка подтверждена на 30 минут/.test(await body()) && p.url().includes('/unfreeze'));
+await p.getByRole('button', { name: 'Открыть «Устройства»' }).click(); await p.waitForTimeout(4500);
+t('кнопка «Открыть Устройства» ведёт в «Профиль → Sky ID → Устройства» с баннером «Разморозка аккаунта»', (await p.getByRole('alert').filter({ hasText: 'Разморозка аккаунта' }).count()) === 1 && /Активные сессии/i.test(await body()), (await body()).slice(0, 300));
 await p.screenshot({ path: S + '/frz-banner.png' });
 await p.getByRole('button', { name: 'Разморозить новые входы' }).click(); await p.waitForTimeout(1500);
 t('после «Разморозить» баннера нет, заморозка снята', (await p.getByRole('alert').count()) === 0 && q(`select login_frozen_until is null from sky_ids where id='${sky}'`) === 't');
