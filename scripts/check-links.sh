@@ -9,8 +9,12 @@
 #  Скрипт ничего не меняет, только читает и делает запросы; секреты не печатает.
 # ============================================================
 set -uo pipefail
-cd "$(dirname "$0")/.."
-[ -f .env ] || { echo "Нет .env — запускайте из каталога приложения (где docker-compose.yml)."; exit 1; }
+# Где лежит .env: текущий каталог, потом каталог скрипта, потом /opt/sky (сервер с исходниками в /opt/sky-src и приложением в /opt/sky).
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+for d in "$PWD" "$HERE" /opt/sky; do
+  if [ -f "$d/.env" ]; then cd "$d" && break; fi
+done
+[ -f .env ] || { echo "Нет .env ни в $PWD, ни в $HERE, ни в /opt/sky — запустите из каталога приложения (где .env и docker-compose.yml)."; exit 1; }
 
 get_env() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' || true; }
 FAIL=0
