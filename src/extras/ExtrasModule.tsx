@@ -90,7 +90,7 @@ import { apiSupportStatus } from '@/moderation/supportApi';
    Оформление и порядок экранов сохранены: список карточками, кнопка
    создания, внутри плеер и колонка участников.                     */
 
-type Tab = 'cloudgaming'|'cloud'|'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
+type Tab = 'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'more';
 
 const fmtBytes = (b?: number) => b ? `${(b/1024/1024).toFixed(1)} MB` : '';
 const fmtSec = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -483,33 +483,36 @@ const AdminPanel = () => {
 
 
 /* === MORE TAB  -  Прочее ==================================== */
-type MoreView = 'hub' | 'garant';
+type MoreView = 'hub' | 'cloudgaming' | 'cloud';
 
 const MoreTab = () => {
   const [view, setView] = useState<MoreView>('hub');
 
-  if (view === 'garant') return (
+  if (view !== 'hub') return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0" style={{borderColor:'var(--border)'}}>
-        <button type="button" onClick={()=>setView('hub')}
+        <button type="button" onClick={()=>setView('hub')} aria-label="Назад"
           className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/5">
           <ChevronLeft size={16} style={{color:'var(--t2)'}}/>
         </button>
-        <Shield size={22} style={{color:'var(--t1)'}}/>
-        <p className="text-sm font-bold" style={{color:'var(--t1)'}}>Sky Garant</p>
+        {view === 'cloud' ? <HardDrive size={22} style={{color:'var(--t1)'}}/> : <Cloud size={22} style={{color:'var(--t1)'}}/>}
+        <p className="text-sm font-bold" style={{color:'var(--t1)'}}>{view === 'cloud' ? 'Sky Cloud' : 'Sky Gaming Cloud'}</p>
       </div>
       <div className="flex-1 overflow-hidden">
-        <ModuleGate id="garant">
-        <React.Suspense fallback={<TabFallback/>}><SkyGarant/></React.Suspense>
+        <ModuleGate id={view}>
+          <React.Suspense fallback={<TabFallback/>}>{view === 'cloud' ? <SkyCloud/> : <CloudGaming/>}</React.Suspense>
         </ModuleGate>
       </div>
     </div>
   );
 
   const MORE_APPS = [
-    { key:'garant' as MoreView, Icon:Shield, label:'Sky Garant',
-      desc:'Безопасные сделки между пользователями',
-      color:'var(--accent)', badge:0 },
+    { key:'cloudgaming' as MoreView, Icon:Cloud, label:'Sky Gaming Cloud',
+      desc:'Облачный гейминг — скоро',
+      color:'#8b5cf6', badge:0 },
+    { key:'cloud' as MoreView, Icon:HardDrive, label:'Sky Cloud',
+      desc:'VPS, почта, диск и аналитика — скоро',
+      color:'#4f6ef7', badge:0 },
     { key:'hub' as MoreView, Icon:Clock, label:'Скоро',
       desc:'Новые сервисы в разработке', color:'var(--t2)', badge:0, disabled:true },
     { key:'hub' as MoreView, Icon:Clock, label:'Скоро',
@@ -572,8 +575,6 @@ const TABS = [
   {key:'go',     label:'Sky GO', icon:Car},
   {key:'market', label:'Market', icon:ShoppingCart},
   {key:'blox',   label:'Sky Blox', icon:Gamepad2},
-  {key:'cloudgaming', label:'Gaming Cloud', icon:Cloud},
-  {key:'cloud',  label:'Sky Cloud', icon:HardDrive},
   {key:'pvz',    label:'Sky ПВЗ', icon:Building2},
   {key:'nftgifts', label:'Sky Gifts', icon:Gem},
   {key:'work',     label:'Работа',    icon:Briefcase},
@@ -583,9 +584,9 @@ const TABS = [
   {key:'campaigns',label:'Мероприятия', icon:Gift},
   {key:'musicians',label:'Артисты',  icon:Mic2},
   {key:'ads',      label:'Реклама',  icon:Megaphone},
-  {key:'more',   label:'Прочее', icon:MoreHorizontal},
   {key:'admin',  label:'Admin',  icon:Shield},
   {key:'garant', label:'Гарант', icon:Shield},
+  {key:'more',   label:'Прочее', icon:MoreHorizontal},
 ] as const;
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -865,8 +866,6 @@ const MediaHomeTab = ({
     { key:'market',  Icon:ShoppingCart, label:'Market', color:'#ec4899', bg:'rgba(236,72,153,.12)' },
     { key:'go',      Icon:Car,      label:'Sky GO',   color:'#14b8a6', bg:'rgba(20,184,166,.12)'  },
     { key:'blox',    Icon:Gamepad2, label:'Sky Blox', color:'#22c55e', bg:'rgba(34,197,94,.12)'   },
-    { key:'cloudgaming', Icon:Cloud,  label:'Gaming Cloud', color:'#8b5cf6', bg:'rgba(139,92,246,.12)' },
-    { key:'cloud',   Icon:HardDrive, label:'Sky Cloud', color:'#4f6ef7', bg:'rgba(79,110,247,.12)'  },
   ] as const;
 
   /* Раньше здесь были 5 выдуманных подборок с придуманными названиями и
@@ -1282,8 +1281,6 @@ export const ExtrasModule = () => {
         {tab==='go' && <SkyGo/>}
         {tab==='market' && <SkyMarket/>}
         {tab==='blox'   && <SkyBlox/>}
-        {tab==='cloudgaming' && <CloudGaming/>}
-        {tab==='cloud'  && <SkyCloud/>}
         {tab==='pvz'    && <SkyPVZ/>}
         {tab==='nftgifts' && <SkyGiftsNFT/>}
         {tab==='work'     && <WorkModule/>}

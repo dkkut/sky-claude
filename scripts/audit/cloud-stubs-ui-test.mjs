@@ -31,10 +31,15 @@ const run = async (name, vp) => {
     await p.goto(F + '/'); await p.waitForTimeout(3500);
     for (const lbl of ['Медиа', 'Sky', 'Сервисы']) { const el = p.getByText(lbl, { exact: true }).first(); if (await el.count()) { await el.click().catch(() => {}); break; } }
     await p.waitForTimeout(1200);
-    await p.locator(`text="${label}" >> visible=true`).last().click({ timeout: 6000 }); await p.waitForTimeout(900);
+    if (label.includes('Cloud')) {
+      // Облачные сервисы лежат во вкладке «Прочее» (последняя в ленте Sky)
+      await p.locator('text="Прочее" >> visible=true').last().click({ timeout: 6000 }); await p.waitForTimeout(800);
+      await p.locator(`text="${label}" >> visible=true`).first().click({ timeout: 6000 });
+    } else await p.locator(`text="${label}" >> visible=true`).last().click({ timeout: 6000 });
+    await p.waitForTimeout(900);
   };
   for (const lbl of ['Медиа', 'Sky', 'Сервисы']) { const el = p.getByText(lbl, { exact: true }).first(); if (await el.count()) { await el.click().catch(() => {}); break; } }
-  await openTab('Gaming Cloud');
+  await openTab('Sky Gaming Cloud');
   let txt = await body();
   t(`${name}: Sky Gaming Cloud открылся, статус «Скоро»`, /Sky Gaming Cloud/.test(txt) && /Скоро/.test(txt) && /готовится к запуску/.test(txt), txt.slice(0, 200));
   t(`${name}: нет кнопок оплаты, каталога и «Играть»`, !/Играть|Купить|Оплат|Тариф/.test(txt));

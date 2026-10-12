@@ -32,7 +32,7 @@ const open = async (who, label) => {
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', (e) => errs.push(e.message.slice(0, 160)));
   await p.goto(F + '/'); await p.waitForTimeout(3500);
   if (label === 'Видео') await p.getByText('Видео', { exact: true }).first().click();
-  else { await p.getByText('Медиа', { exact: true }).first().click(); await p.waitForTimeout(1200); await p.locator(`text="${label}" >> visible=true`).first().click(); }
+  else { await p.getByText('Медиа', { exact: true }).first().click(); await p.waitForTimeout(1200); if (label === 'Sky Cloud') { await p.locator('text="Прочее" >> visible=true').last().click(); await p.waitForTimeout(800); } await p.locator(`text="${label}" >> visible=true`).first().click(); }
   await p.waitForTimeout(1500);
   const txt = (await p.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
   return { txt, p, ctx, errs };
