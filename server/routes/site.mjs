@@ -93,6 +93,10 @@ export const siteAdminRoutes = async (req, res, url) => {
     if (req.method === 'POST') return reply(res, await site.adminUploadFile(me, m[1], u.searchParams.get('name'), req, meta));
     if (req.method === 'DELETE') return reply(res, await site.adminDeleteFile(me, m[1], meta));
   }
+  if (path === '/api/admin/site/maintenance') {
+    if (req.method === 'GET') { const r = await site.adminMaintenance(me); return r ? json(res, 200, r) : deny(); }
+    if (req.method === 'PUT') return reply(res, await site.adminSaveMaintenance(me, (await parseBody(req)) ?? {}, meta));
+  }
   if (path === '/api/admin/site/status') {
     if (req.method === 'GET') { const r = await site.adminStatus(me); return r ? json(res, 200, r) : deny(); }
     if (req.method === 'PUT') return reply(res, await site.adminSaveStatus(me, (await parseBody(req)) ?? {}, meta));

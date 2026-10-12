@@ -62,10 +62,32 @@
     $$('.nav-status-btn .nav-status-dot').forEach(function (d) { d.style.background = o.c; d.style.boxShadow = '0 0 8px ' + o.c; });
   }
 
-  fetch(API + '/public', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
-    if (!d) return;
-    applyLinks(d.links || {}); applyDownloads(d.downloads || []); applyStatus(d.status || { components: [] });
-  }).catch(function () { /* сайт остаётся как есть */ });
+  /* ── Технические работы: баннер поверх сайта, включается из админки ── */
+  function applyMaintenance(m) {
+    var el = document.getElementById('cms-maint');
+    if (!m || !m.active) { if (el) { el.remove(); document.documentElement.style.overflow = ''; } return; }
+    if (!el) { el = document.createElement('div'); el.id = 'cms-maint'; document.body.appendChild(el); }
+    var until = '';
+    if (m.until) { try { until = new Date(m.until).toLocaleString(document.documentElement.lang === 'en' ? 'en-GB' : 'ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }); } catch (e) { until = ''; } }
+    el.setAttribute('role', 'alertdialog'); el.setAttribute('aria-modal', 'true');
+    el.style.cssText = 'position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg,#0b0d14);';
+    el.innerHTML = '<div style="max-width:420px;text-align:center"><div style="width:72px;height:72px;margin:0 auto 20px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:34px;background:rgba(79,110,247,.1);border:1px solid rgba(79,110,247,.25)">🔧</div>' +
+      '<h2 style="font-family:Syne,sans-serif;font-size:24px;margin:0 0 10px;color:var(--t1,#fff)">' + esc(m.title || T('Технические работы', 'Maintenance')) + '</h2>' +
+      '<p style="color:var(--t2,#aab);line-height:1.6;margin:0 0 8px">' + esc(m.text || T('Проводим плановое обслуживание. Скоро всё заработает — попробуйте зайти позже.', 'We are doing scheduled maintenance. Everything will be back soon — please try again later.')) + '</p>' +
+      (until ? '<p style="color:var(--t3,#889);font-size:13px;margin:0 0 8px">' + T('Ориентировочно до ', 'Expected until ') + esc(until) + '</p>' : '') +
+      '<button id="cms-maint-retry" style="margin-top:14px;padding:11px 22px;border-radius:14px;border:0;background:#4f6ef7;color:#fff;font-weight:700;cursor:pointer">' + T('Проверить снова', 'Check again') + '</button></div>';
+    document.documentElement.style.overflow = 'hidden';
+    var b = document.getElementById('cms-maint-retry'); if (b) b.onclick = function () { load(); };
+  }
+  function load() {
+    return fetch(API + '/public', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (!d) return;
+      applyMaintenance(d.maintenance);
+      applyLinks(d.links || {}); applyDownloads(d.downloads || []); applyStatus(d.status || { components: [] });
+    }).catch(function () { /* сайт остаётся как есть */ });
+  }
+  load();
+  setInterval(load, 60000);
 
   /* ── Формы ──────────────────────────────────────────────── */
   var ERR = {

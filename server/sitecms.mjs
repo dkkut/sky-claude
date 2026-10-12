@@ -83,13 +83,20 @@ const sniff = (b) => {
 
 const STATE_ORDER = ['outage', 'degraded', 'maintenance', 'dev', 'operational'];
 
+/** Работы идут, пока включены и срок (если задан) не вышел: забытый выключатель не закроет сайт навсегда. */
+const maintView = (m) => {
+  const until = m?.maint_until ? new Date(m.maint_until) : null;
+  const active = Boolean(m?.maint_active) && (!until || until.getTime() > Date.now());
+  return { active, title: m?.maint_title ?? '', text: m?.maint_text ?? '', until: until ? until.toISOString() : null };
+};
+
 export const publicContent = async () => {
   const [links, dl, comps, meta] = await Promise.all([
     query('SELECT key, label, url FROM site_links ORDER BY sort, key'),
     query(`SELECT d.*, f.name AS file_name, f.size AS file_size, f.sha256 AS file_sha FROM site_downloads d
              LEFT JOIN site_files f ON f.id = d.file_id WHERE d.status <> 'hidden' ORDER BY d.sort, d.platform`),
     query('SELECT id, name, icon, state, note FROM site_status_components ORDER BY sort, id'),
-    query('SELECT headline, note, updated_at FROM site_status_meta WHERE id'),
+    query('SELECT headline, note, updated_at, maint_active, maint_title, maint_text, maint_until FROM site_status_meta WHERE id'),
   ]);
   const states = comps.rows.map((c) => c.state);
   const overall = STATE_ORDER.find((s) => states.includes(s)) ?? 'operational';
@@ -101,6 +108,7 @@ export const publicContent = async () => {
       href: d.file_id ? `/api/site/download/${d.platform}` : d.url,
       file: d.file_id ? { name: d.file_name, size: Number(d.file_size), sha256: d.file_sha } : null,
     })),
+    maintenance: maintView(meta.rows[0]),
     status: {
       overall, headline: meta.rows[0]?.headline ?? '', note: meta.rows[0]?.note ?? '', updatedAt: meta.rows[0]?.updated_at?.toISOString?.() ?? null,
       components: comps.rows,
@@ -310,6 +318,27 @@ export const adminSaveStatus = async (me, b, meta) => {
   await query('DELETE FROM site_status_components WHERE NOT (id = ANY($1))', [rows.map((r) => r[0])]);
   await query('UPDATE site_status_meta SET headline=$1, note=$2, updated_by=$3, updated_at=now() WHERE id', [clean(b?.headline, 120), cleanMulti(b?.note, 600), me]);
   await log(me, 'site_status', `${rows.length} сервисов`, meta);
+  return { ok: true };
+};
+
+export const adminMaintenance = async (me) => {
+  if (!(await allowed(me))) return null;
+  const m = (await query('SELECT maint_active, maint_title, maint_text, maint_until FROM site_status_meta WHERE id')).rows[0];
+  const v = maintView(m);
+  return { ...v, enabled: Boolean(m?.maint_active), expired: Boolean(m?.maint_active) && !v.active };
+};
+export const adminSaveMaintenance = async (me, b, meta) => {
+  if (!(await allowed(me))) return { error: 'not_allowed' };
+  const on = b?.active === true;
+  let until = null;
+  if (b?.until) {
+    until = new Date(b.until);
+    if (Number.isNaN(until.getTime())) return { error: 'bad_until' };
+    if (on && until.getTime() <= Date.now()) return { error: 'until_in_past' };
+  }
+  await query('UPDATE site_status_meta SET maint_active=$1, maint_title=$2, maint_text=$3, maint_until=$4, maint_by=$5, maint_at=now() WHERE id',
+    [on, clean(b?.title, 120), cleanMulti(b?.text, 600), until, me]);
+  await log(me, on ? 'site_maintenance_on' : 'site_maintenance_off', clean(b?.title, 120), meta);
   return { ok: true };
 };
 

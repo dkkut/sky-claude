@@ -80,6 +80,25 @@ r = await pub('/api/site/public');
 t('статус на сайте: общий «работы», заголовок и заметка', r.data.status.overall === 'maintenance' && r.data.status.headline === 'Плановые работы' && r.data.status.components.find((c) => c.id === 'music').state === 'maintenance');
 await put('/api/admin/site/status', { headline: '', note: '', components: st0.components }, own.tok);
 
+// ── Технические работы на сайте
+r = await pub('/api/site/public');
+t('работы по умолчанию выключены', r.data.maintenance && r.data.maintenance.active === false);
+t('человек не включит работы', (await put('/api/admin/site/maintenance', { active: true }, usr.tok)).status === 403);
+r = await put('/api/admin/site/maintenance', { active: true, until: new Date(Date.now() - 1000).toISOString() }, own.tok);
+t('срок в прошлом отклоняется', r.status >= 400 && r.data.error === 'until_in_past', JSON.stringify(r.data));
+r = await put('/api/admin/site/maintenance', { active: true, title: 'Плановые работы', text: 'Вернёмся вечером', until: new Date(Date.now() + 3600e3).toISOString() }, own.tok);
+t('владелец включает работы', r.status === 200, JSON.stringify(r.data));
+r = await pub('/api/site/public');
+t('сайт видит работы с текстом и сроком', r.data.maintenance.active === true && r.data.maintenance.title === 'Плановые работы' && !!r.data.maintenance.until);
+q(`update site_status_meta set maint_until = now() - interval '1 minute'`);
+r = await pub('/api/site/public');
+t('по истечении срока работы гаснут сами', r.data.maintenance.active === false);
+r = await call('/api/admin/site/maintenance', {}, own.tok);
+t('админка помечает истёкший срок', r.data.expired === true && r.data.enabled === true);
+await put('/api/admin/site/maintenance', { active: false }, own.tok);
+r = await pub('/api/site/public');
+t('работы выключены', r.data.maintenance.active === false);
+
 // ── Апелляции
 r = await post('/api/site/appeals', { kind: 'zzz', email: 'a@b.ru', body: 'достаточно длинный текст' });
 t('неизвестный тип апелляции — отказ', r.status === 400 && r.data.error === 'bad_kind');

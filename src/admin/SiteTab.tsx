@@ -3,7 +3,7 @@
  * ссылки, статус сервисов, апелляции и заявки на релиз контента, поданные с сайта. Сервер — server/sitecms.mjs, право `site`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Upload, Trash2, Save, Plus, Paperclip, Check } from 'lucide-react';
+import { Loader2, Upload, Trash2, Save, Plus, Paperclip, Check, Wrench } from 'lucide-react';
 import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
 import { NATIVE_APP } from '@/core/nativeApp';
 import { flash } from '@/shared/flash';
@@ -17,7 +17,7 @@ const inp = 'w-full rounded-xl px-3 py-2 text-sm outline-none';
 const ERR: Record<string, string> = {
   not_allowed: 'Недостаточно прав.', bad_url: 'Адрес должен начинаться с https:// (или mailto:).', bad_key: 'Ключ: латиница, цифры и _, от 2 знаков.', bad_extension: 'Файл не того типа: нужны apk, exe, msi, dmg, deb, ipa, zip или AppImage.',
   file_too_large: 'Файл слишком большой (до 600 МБ).', upload_interrupted: 'Загрузка оборвалась — повторите.', empty_file: 'Файл пустой.', answer_required: 'Напишите ответ человеку (от 3 знаков).',
-  bad_status: 'Неизвестный статус.', bad_state: 'Неизвестное состояние сервиса.', too_many_requests: 'Слишком часто. Подождите минуту.', name_required: 'У сервиса должно быть название.',
+  bad_until: 'Не удалось разобрать дату окончания.', until_in_past: 'Время окончания уже прошло.', bad_status: 'Неизвестный статус.', bad_state: 'Неизвестное состояние сервиса.', too_many_requests: 'Слишком часто. Подождите минуту.', name_required: 'У сервиса должно быть название.',
 };
 const msg = (r: { error?: string; reason?: string; status: number }) => (r.status === 413 ? ERR.file_too_large : ERR[r.error ?? ''] ?? r.reason ?? 'Не получилось');
 const fmtSize = (n: number) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(n / 1024))} КБ`);
@@ -150,6 +150,52 @@ const LinksPane = () => {
 /* ── Статус ───────────────────────────────────────────────────── */
 interface Comp { id: string; name: string; icon: string; state: string; note: string }
 const STATES: Record<string, string> = { operational: 'Работает', degraded: 'Сбои', outage: 'Не работает', maintenance: 'Работы', dev: 'В разработке' };
+const toLocalInput = (iso: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+/* Технические работы на сайте: баннер закрывает лендинг, приложение не затрагивается. */
+const MaintenancePane = () => {
+  const [m, setM] = useState<{ active: boolean; enabled: boolean; expired: boolean; title: string; text: string; until: string | null } | null>(null);
+  const [f, setF] = useState({ title: '', text: '', until: '' }); const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    const r = await apiCall<NonNullable<typeof m>>('/api/admin/site/maintenance');
+    if (!r.ok || !r.data) { flash(msg(r)); return; }
+    setM(r.data); setF({ title: r.data.title, text: r.data.text, until: toLocalInput(r.data.until) });
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  if (!m) return <Wait />;
+  const send = async (active: boolean) => {
+    if (active && !window.confirm('Включить технические работы? Сайт скроется за баннером для всех посетителей.')) return;
+    setBusy(true);
+    const r = await apiCall('/api/admin/site/maintenance', { method: 'PUT', body: JSON.stringify({ active, title: f.title, text: f.text, until: f.until ? new Date(f.until).toISOString() : null }) });
+    setBusy(false);
+    if (!r.ok) { flash(msg(r)); return; }
+    flash(active ? 'Технические работы включены на сайте' : 'Технические работы выключены'); void load();
+  };
+  return (
+    <div className="mb-3 space-y-2 rounded-2xl p-3" style={{ ...card, borderColor: m.active ? C.acc : C.brd }}>
+      <div className="flex items-center gap-2">
+        <Wrench size={15} style={{ color: C.acc }} />
+        <p className="flex-1 text-sm font-bold" style={{ color: C.t1 }}>Технические работы на сайте</p>
+        <span className="rounded-lg px-2 py-0.5 text-[10px] font-bold" style={{ background: m.active ? C.acc : C.l2, color: m.active ? '#fff' : C.t3 }}>{m.active ? 'Идут' : m.expired ? 'Срок вышел' : 'Выключены'}</span>
+      </div>
+      <p className="text-[11px]" style={{ color: C.t3 }}>Посетители сайта увидят баннер вместо страниц. Приложение Sky это не затрагивает — для него есть общий режим работ на вкладке платформы.</p>
+      <input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Заголовок (по умолчанию «Технические работы»)" className={inp} style={field} aria-label="Заголовок работ" />
+      <textarea value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} rows={2} placeholder="Что происходит и когда вернёмся (необязательно)" className={inp} style={field} aria-label="Текст работ" />
+      <label className="flex items-center gap-2 text-[11px]" style={{ color: C.t2 }}>Закончить сами в
+        <input type="datetime-local" value={f.until} onChange={(e) => setF({ ...f, until: e.target.value })} className="rounded-lg px-2 py-1 text-xs" style={field} aria-label="Время окончания работ" />
+      </label>
+      <div className="flex gap-2">
+        <button type="button" disabled={busy} onClick={() => void send(true)} className="flex-1 rounded-xl py-2 text-sm font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>{m.active ? 'Обновить баннер' : 'Включить работы'}</button>
+        {(m.active || m.enabled) && <button type="button" disabled={busy} onClick={() => void send(false)} className="rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-40" style={{ background: C.l2, color: C.t1, border: `1px solid ${C.brd}` }}>Выключить</button>}
+      </div>
+    </div>
+  );
+};
+
 const StatusPane = () => {
   const [st, setSt] = useState<{ headline: string; note: string; components: Comp[] } | null>(null); const [orig, setOrig] = useState('');
   const load = useCallback(async () => { const r = await apiCall<{ headline: string; note: string; components: Comp[] }>('/api/admin/site/status'); if (r.ok && r.data) { setSt(r.data); setOrig(JSON.stringify(r.data)); } else flash(msg(r)); }, []);
@@ -162,6 +208,7 @@ const StatusPane = () => {
   };
   return (
     <div className="space-y-2">
+      <MaintenancePane />
       <input value={st.headline} onChange={(e) => setSt({ ...st, headline: e.target.value })} placeholder="Заголовок (необязательно): например, «Плановые работы»" className={inp} style={field} aria-label="Заголовок статуса" />
       <textarea value={st.note} onChange={(e) => setSt({ ...st, note: e.target.value })} rows={2} placeholder="Что происходит (необязательно)" className={inp} style={field} aria-label="Заметка статуса" />
       {st.components.map((c, i) => (
