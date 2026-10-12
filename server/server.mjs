@@ -67,6 +67,8 @@ import { readAccessToken } from './http.mjs';
 import { sweepAdminGate } from './admingate.mjs';
 import { sweepSshGate } from './sshgate.mjs';
 import { deviceLinkRoutes } from './routes/devicelink.mjs';
+import { accountFreezeRoutes } from './routes/accountfreeze.mjs';
+import { sweepFreezeLog } from './accountfreeze.mjs';
 import { sweepDeviceLinks } from './devicelink.mjs';
 import { sweepGameSessions } from './gameactivity.mjs';
 import { garantRoutes } from './routes/garant.mjs';
@@ -146,7 +148,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, deviceLinkRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -357,6 +359,8 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // отвечаем 400 и молча, без записи о сбое. Иначе достаточно было
     // послать «не json», чтобы получить 500 и строчку в журнале.
     if (error?.status === 400) return json(res, 400, { error: error.code ?? 'bad_request' });
+    // Вход в замороженный аккаунт (accountfreeze.mjs): не сбой, а решение владельца.
+    if (error?.status === 423) return json(res, 423, { error: 'account_frozen', until: error.until });
     console.error('[api]', error);
     const message = config.nodeEnv === 'production' ? 'internal_error' : error.message;
     return json(res, 500, { error: message });
@@ -577,6 +581,7 @@ const start = async () => {
       await sweepAdminGate();
       await sweepSshGate();
       await sweepDeviceLinks();
+      await sweepFreezeLog();
       await sweepIpPin();
       await sweepGameSessions();
       await goSweepExpired().catch(() => {});

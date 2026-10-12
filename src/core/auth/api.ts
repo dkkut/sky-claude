@@ -127,6 +127,13 @@ const ERRORS: Record<string, string> = {
   two_factor_required:   'Введите код из приложения',
   challenge_expired:     'Время вышло — начните вход заново',
   not_found:             'Не найдено',
+  account_frozen:        'Новые входы в этот аккаунт заморожены его владельцем. Разморозить можно на устройстве, где вход уже выполнен: Профиль → Sky ID → Устройства',
+  nothing_to_do:         'Выберите, что сделать',
+  bad_period:            'Выберите период из списка',
+  bad_freeze:            'Выберите срок заморозки из списка',
+  link_required:         'Сначала откройте ссылку из письма и подтвердите её',
+  invalid_link:          'Ссылка недействительна, уже использована или заморозка закончилась',
+  not_frozen:            'Новые входы не заморожены',
   wrong_verify:          'Число не совпало с тем, что на экране устройства',
   bad_verify:            'Введите двузначное число с экрана устройства',
   totp_required:         'Введите код из приложения-аутентификатора',
@@ -749,3 +756,22 @@ export const apiLinkDecide = (id: string, approve: boolean, verify?: string, tot
   post<{ ok: true; status: string; attemptsLeft?: number }>('/api/skyid/link/decide', { id, approve, verify, totp });
 export const apiLinkHistory = () =>
   get<{ items: (LinkDevice & { decidedAt: string | null; signedIn: boolean })[] }>('/api/skyid/link/history');
+
+
+/* ═══ Защита аккаунта: очистка сессий и заморозка новых входов ═══
+   См. server/accountfreeze.mjs. Разморозка вручную — ссылка из письма
+   + баннер «Разморозка аккаунта» в «Устройствах». */
+
+export interface FreezeEvent { kind: 'freeze' | 'cleanup' | 'link_opened' | 'unfreeze' | 'blocked_login'; ip: string; ua: string; detail: Record<string, unknown>; at: string }
+export interface FreezeState {
+  frozen: boolean; until: string | null; linkConfirmed: boolean; linkUntil: string | null;
+  hasEmail: boolean; needsTotp: boolean; events: FreezeEvent[];
+}
+export interface ProtectRequest { remove: 'none' | 'last' | 'period'; hours?: number; freezeHours?: number }
+
+export const apiFreezeState = () => get<FreezeState>('/api/auth/freeze');
+export const apiProtectAccount = (b: ProtectRequest) =>
+  post<{ ok: true; removed: number; frozenUntil: string | null }>('/api/auth/devices/protect', b as unknown as Json);
+export const apiFreezeResend = () => post<{ ok: true }>('/api/auth/freeze/resend');
+export const apiUnfreeze = (totp?: string) => post<{ ok: true }>('/api/auth/freeze/unfreeze', totp ? { totp } : {});
+export const apiFreezeLink = (t: string) => post<{ ok: true; minutes: number }>('/api/auth/freeze/link', { t });

@@ -4,6 +4,7 @@ import { startLink, lookupLink, decideLink, pollLink, cancelLink, linkHistory, n
 import { findSkyIdById } from './../skyid.mjs';
 import { startSession } from './auth.mjs';
 import { config } from './../config.mjs';
+import { isFrozen } from './../accountfreeze.mjs';
 import { buildRefreshCookie } from './../cookies.mjs';
 
 const STATUS = { not_found: 404, wrong_verify: 400, bad_verify: 400, totp_required: 400, bad_code: 400, exhausted: 410 };
@@ -58,6 +59,8 @@ export const deviceLinkRoutes = async (req, res, url) => {
     }
     if (url === '/api/skyid/link/decide') {
       if (!rateLimit(`dlink:dec:${s.skyId}`, 20) || !rateLimitPerHour(`dlink:dec:h:${s.skyId}`, 30)) return json(res, 429, { error: 'too_many_requests' });
+      // Пока новые входы заморожены, подтвердить чужое устройство нельзя (отказ — и есть смысл заморозки).
+      if (b.approve === true && await isFrozen(s.skyId)) return json(res, 423, { error: 'account_frozen' });
       const r = await decideLink(s.skyId, s.sessionId, ip, { id: b.id, approve: b.approve === true, verify: b.verify, totp: b.totp });
       return json(res, r.error ? STATUS[r.error] ?? 400 : 200, r);
     }

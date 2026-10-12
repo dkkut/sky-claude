@@ -12,6 +12,7 @@
  * номера, и для нового. Узнать по нему, заведён ли аккаунт, нельзя.
  */
 import { trustDevice } from './../trusteddevices.mjs';
+import { assertLoginAllowed } from './../accountfreeze.mjs';
 import { config } from './../config.mjs';
 import { signToken, verifyToken } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
@@ -134,6 +135,8 @@ const notifyNewLogin = async (skyIdRow, meta) => {
  * Экспортирована по той же причине, что и issueTokens выше.
  */
 export const startSession = async (skyIdRow, req, { viaCode = false, via = null } = {}) => {
+  // Заморозка новых входов: единое место для всех способов входа (код, пароль, QR). Бросает 423 — см. server.mjs.
+  await assertLoginAllowed(skyIdRow.id, deviceMeta(req));
   const profiles = await listProfiles(skyIdRow.id);
 
   // Единственный незащищённый профиль открываем сразу: лишний экран
