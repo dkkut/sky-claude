@@ -337,7 +337,7 @@ t('неверный код передачи отклонён, попытки с�
 r = await G(`/delivery/orders/${dId}/act`, J({ action: 'pickup', code: pickCode }), K.tok);
 t('верный код — отправление принято', r.status === 200);
 r = await G(`/delivery/orders/${dId}/act`, J({ action: 'pickup', code: pickCode }), K.tok);
-t('код одноразовый', r.status === 409);
+t('повтор действия после получения — идемпотентно (код второй раз не проверяется)', r.status === 200 && r.data.duplicate === true);
 await G(`/delivery/orders/${dId}/act`, J({ action: 'start_delivery' }), K.tok);
 await G(`/delivery/orders/${dId}/act`, J({ action: 'arrived_recipient' }), K.tok);
 for (let i = 0; i < 5; i++) r = await G(`/delivery/orders/${dId}/act`, J({ action: 'deliver', code: '11111' + i }), K.tok);

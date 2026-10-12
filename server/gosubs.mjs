@@ -91,12 +91,28 @@ export const canAccept = async (profileId, role) => {
   return { ok: true };
 };
 
+/**
+ * Может ли исполнитель получать назначение от организации: одобрен и подписка действует. Реквизиты для оплаты не нужны:
+ * своему сотруднику организация не платит через Sky, а доход исполнителя от организации — их внутреннее дело.
+ */
+export const canWork = async (profileId, role) => {
+  const { rows } = await query('SELECT status FROM go_executors WHERE profile_id = $1 AND role = $2', [profileId, role]);
+  if (!rows[0]) return { error: 'not_registered' };
+  if (rows[0].status !== 'approved') return { error: 'not_approved', status: rows[0].status };
+  const sub = await subscriptionState(profileId, role);
+  if (!sub.active) return { error: 'subscription_required', expired: sub.expired };
+  return { ok: true };
+};
+
 /** Просроченные подписки уходят с линии: следующая уборка. */
 export const sweepExpired = async () => {
   await query(
-    `UPDATE go_presence p SET online = FALSE, updated_at = now()
+    `UPDATE go_presence p SET online = FALSE, lat = NULL, lng = NULL, updated_at = now()
       WHERE p.online AND NOT EXISTS (
         SELECT 1 FROM go_subscriptions s WHERE s.profile_id = p.profile_id AND s.role = p.role AND s.expires_at > now())`);
+  // Смена, о которой 8 часов ничего не слышно (приложение закрыто, телефон выключен), заканчивается сама: слежения нет.
+  await query(`UPDATE go_presence SET online = FALSE, lat = NULL, lng = NULL, updated_at = now() WHERE online AND updated_at < now() - interval '8 hours'`);
+  await query(`UPDATE go_shifts s SET ended_at = now() WHERE ended_at IS NULL AND NOT EXISTS (SELECT 1 FROM go_presence p WHERE p.profile_id = s.profile_id AND p.role = s.role AND p.online)`);
 };
 
 /** Выход на линию / уход с линии (водитель и курьер). Выйти может только тот, кто может принимать заказы. */
@@ -104,16 +120,41 @@ export const setPresence = async (profileId, role, online, point) => {
   if (!['taxi_driver', 'courier'].includes(role)) return { error: 'bad_role' };
   if (online) {
     const ok = await canAccept(profileId, role);
-    if (ok.error) return ok;
+    // Сотруднику организации реквизиты не нужны: он работает по назначениям (canWork), а не берёт заказы из общего потока.
+    if (ok.error === 'pay_details_required' && role === 'courier' && (await memberOfAnyOrg(profileId))) {
+      const w = await canWork(profileId, role); if (w.error) return w;
+    } else if (ok.error) return ok;
   }
   const lat = Number(point?.lat); const lng = Number(point?.lng);
   const hasPoint = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001);
   const { rows } = await query('SELECT city FROM go_executors WHERE profile_id = $1 AND role = $2', [profileId, role]);
+  /* Ушёл с линии — координаты стираются: слежения после смены нет, а последнее место не должно висеть в базе. */
   await query(
     `INSERT INTO go_presence (profile_id, role, online, lat, lng, city) VALUES ($1,$2,$3,$4,$5,$6)
-     ON CONFLICT (profile_id, role) DO UPDATE SET online = $3, lat = COALESCE($4, go_presence.lat), lng = COALESCE($5, go_presence.lng), city = $6, updated_at = now()`,
-    [profileId, role, Boolean(online), hasPoint ? lat : null, hasPoint ? lng : null, rows[0]?.city ?? '']);
+     ON CONFLICT (profile_id, role) DO UPDATE SET online = $3,
+       lat = CASE WHEN $3 THEN COALESCE($4, go_presence.lat) ELSE NULL END,
+       lng = CASE WHEN $3 THEN COALESCE($5, go_presence.lng) ELSE NULL END, city = $6, updated_at = now()`,
+    [profileId, role, Boolean(online), online && hasPoint ? lat : null, online && hasPoint ? lng : null, rows[0]?.city ?? '']);
+  if (online) {
+    await query(`INSERT INTO go_shifts (profile_id, role) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [profileId, role]);
+    if (role === 'courier') void import('./goorg.mjs').then((m) => m.autoAssignForMember(profileId)).catch(() => {});
+  } else {
+    await query(`UPDATE go_shifts SET ended_at = now() WHERE profile_id = $1 AND role = $2 AND ended_at IS NULL`, [profileId, role]);
+  }
   return { ok: true, online: Boolean(online) };
+};
+
+const memberOfAnyOrg = async (profileId) => {
+  const { rows } = await query(`SELECT 1 FROM go_org_members WHERE profile_id = $1 AND status = 'active' LIMIT 1`, [profileId]);
+  return Boolean(rows[0]);
+};
+
+/** Положение на линии: только пока человек на линии. Больше ничего не хранится (истории перемещений нет). */
+export const updateLocation = async (profileId, point) => {
+  const lat = Number(point?.lat); const lng = Number(point?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001)) return { error: 'bad_point' };
+  const { rowCount } = await query(`UPDATE go_presence SET lat = $2, lng = $3, updated_at = now() WHERE profile_id = $1 AND online`, [profileId, lat, lng]);
+  return rowCount ? { ok: true } : { error: 'offline' };
 };
 
 export const presenceOf = async (profileId, role) => {

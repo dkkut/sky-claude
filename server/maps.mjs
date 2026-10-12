@@ -297,3 +297,33 @@ export const computeRoute = async ({ origin, stops, vehicle } = {}) => {
     polyline: String(route.overview_polyline?.points ?? ''),
   };
 };
+
+
+/**
+ * Маршрут по точкам В ЗАДАННОМ порядке (без перестановок): нужен курьеру, у которого забор всегда раньше вручения.
+ * Возвращает { ok, legs:[{distanceM,durationS}], distanceM, durationS, polyline } или { error }.
+ */
+export const computeOrdered = async ({ origin, points, vehicle } = {}) => {
+  if (!config.mapsKey) return { error: 'maps_not_configured' };
+  if (!isRealPoint(origin?.lat, origin?.lng)) return { error: 'no_origin' };
+  const pts = (Array.isArray(points) ? points : []).filter((p) => isRealPoint(p?.lat, p?.lng)).map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }));
+  if (pts.length === 0) return { error: 'no_stops' };
+  if (pts.length > MAX_STOPS) return { error: 'too_many_stops' };
+  const last = pts[pts.length - 1]; const mid = pts.slice(0, -1);
+  const params = new URLSearchParams({
+    origin: `${round(origin.lat)},${round(origin.lng)}`, destination: `${round(last.lat)},${round(last.lng)}`,
+    mode: TRAVEL_MODES[vehicle] ?? 'driving', language: 'ru', units: 'metric', key: config.mapsKey,
+  });
+  if (mid.length) params.set('waypoints', mid.map((p) => `via:${round(p.lat)},${round(p.lng)}`.replace('via:', '')).join('|'));
+  let data;
+  try {
+    const res = await fetch(`${config.mapsBaseUrl}/maps/api/directions/json?${params}`, { signal: AbortSignal.timeout(12_000) });
+    if (!res.ok) return { error: 'route_failed' };
+    data = await res.json();
+  } catch { return { error: 'route_failed' }; }
+  if (data?.status === 'REQUEST_DENIED') return { error: 'route_service_denied' };
+  if (data?.status !== 'OK' || !data.routes?.[0]) return { error: data?.status === 'ZERO_RESULTS' ? 'no_route' : 'route_failed' };
+  const route = data.routes[0];
+  const legs = (route.legs ?? []).map((l) => ({ distanceM: Number(l.distance?.value ?? 0), durationS: Number(l.duration?.value ?? 0) }));
+  return { ok: true, legs, distanceM: legs.reduce((a, l) => a + l.distanceM, 0), durationS: legs.reduce((a, l) => a + l.durationS, 0), polyline: String(route.overview_polyline?.points ?? '') };
+};

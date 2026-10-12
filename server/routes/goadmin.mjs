@@ -2,6 +2,9 @@ import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import * as reg from './../goreg.mjs';
 import * as adm from './../goadmin.mjs';
+import * as org from './../goorg.mjs';
+import * as work from './../gowork.mjs';
+import { can } from './../admin.mjs';
 
 /** /api/admin/go/*: администрирование Sky GO (права go и go_finance проверяют модули). */
 export const goAdminRoutes = async (req, res, url) => {
@@ -45,6 +48,21 @@ export const goAdminRoutes = async (req, res, url) => {
     res.writeHead(200, { 'Content-Type': r.mime, 'Content-Length': r.data.length, 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' });
     res.end(r.data);
     return true;
+  }
+  if (req.method === 'GET' && path === '/api/admin/go/orgs') return (await can(me, 'go')) ? json(res, 200, await org.adminOrgs()) : json(res, 403, { error: 'not_allowed' });
+  if ((m = path.match(/^\/api\/admin\/go\/orgs\/([\w-]+)\/suspend$/)) && req.method === 'POST') {
+    if (!(await can(me, 'go'))) return json(res, 403, { error: 'not_allowed' });
+    const b = await parseBody(req); return reply(await org.adminSuspendOrg(me, m[1], b?.suspended === true, b?.reason));
+  }
+  if (req.method === 'GET' && path === '/api/admin/go/problems') return (await can(me, 'go')) ? json(res, 200, await work.adminProblems()) : json(res, 403, { error: 'not_allowed' });
+  if ((m = path.match(/^\/api\/admin\/go\/problems\/([\w-]+)\/resolve$/)) && req.method === 'POST') {
+    if (!(await can(me, 'go'))) return json(res, 403, { error: 'not_allowed' });
+    const b = (await parseBody(req)) ?? {};
+    const { rows } = await (await import('./../db.mjs')).query('SELECT order_id FROM go_order_problems WHERE id = $1', [m[1]]);
+    if (!rows[0]) return json(res, 404, { error: 'not_found' });
+    if (!['resume', 'cancel', 'escalate', 'reassign'].includes(b.action)) return json(res, 400, { error: 'bad_action' });
+    const text = String(b.note ?? '').trim().slice(0, 300); if (text.length < 3) return json(res, 400, { error: 'note_required' });
+    return reply(await org.resolveProblemCore({ problemId: m[1], orderId: rows[0].order_id, actorId: me, action: b.action, text }));
   }
   if (req.method === 'GET' && path === '/api/admin/go/integrations') return reply(await adm.integrations(me));
   return json(res, 404, { error: 'not_found' });

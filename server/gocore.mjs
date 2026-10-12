@@ -9,6 +9,7 @@ import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { notifyGift } from './giftnotify.mjs';
 import { pushToOffline } from './webpush.mjs';
+import { pushGoEvent } from './signal.mjs';
 import { computeRoute, isRealPoint, geocode } from './maps.mjs';
 
 export const newId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
@@ -70,11 +71,33 @@ export const goLog = async (actorId, action, subject, detail = {}) => {
   } catch { /* журнал не должен ронять описываемое */ }
 };
 
-/** Уведомление через существующий механизм Sky (экран уведомлений + пуш тем, кого нет в сети). */
-export const notifyGo = async (userId, kind, title, body, refId = null) => {
+/**
+ * Уведомление через существующий механизм Sky (экран уведомлений + пуш тем, кого нет в сети).
+ * dedupe — ключ события: по одному ключу человеку уходит одно уведомление, сколько бы раз событие ни повторилось
+ * (повторный запрос, повтор события, гонка двух вкладок).
+ */
+export const notifyGo = async (userId, kind, title, body, refId = null, dedupe = null) => {
   if (!userId) return;
+  if (dedupe) {
+    const { rowCount } = await query('INSERT INTO go_notified (user_id, key) VALUES ($1,$2) ON CONFLICT DO NOTHING', [userId, clean(dedupe, 160)]).catch(() => ({ rowCount: 1 }));
+    if (!rowCount) return;
+  }
   try { await notifyGift(userId, `go_${kind}`, clean(title, 120), clean(body, 300), refId); } catch { /* уведомление — не повод откатывать действие */ }
   try { await pushToOffline([userId], { title, body, url: '/?go=1', tag: `go:${refId ?? kind}` }); } catch { /* пуши не настроены */ }
+};
+
+/** Сообщить открытым экранам, что заказ изменился: они перечитают его с сервера (сокет — ускорение, опрос остаётся запасом). */
+export const pushOrderChanged = async (orderId) => {
+  try {
+    const { rows } = await query('SELECT customer_id, executor_id, org_id, status FROM go_orders WHERE id = $1', [orderId]);
+    const r = rows[0]; if (!r) return;
+    const ids = new Set([r.customer_id, r.executor_id].filter(Boolean));
+    if (r.org_id) {
+      const { rows: st } = await query(`SELECT profile_id FROM go_org_members WHERE org_id = $1 AND status = 'active' AND role IN ('owner','admin','manager')`, [r.org_id]);
+      for (const m of st) ids.add(m.profile_id);
+    }
+    pushGoEvent([...ids], { type: 'go:order', payload: { orderId, status: r.status } });
+  } catch { /* живое обновление — необязательное */ }
 };
 
 /* ─── Гео ──────────────────────────────────────────────────────────── */

@@ -16,6 +16,10 @@ import * as food from './../gofood.mjs';
 import * as flights from './../goflights.mjs';
 import * as fuel from './../gofuel.mjs';
 import * as stay from './../gostay.mjs';
+import * as org from './../goorg.mjs';
+import * as work from './../gowork.mjs';
+import { pushOrderChanged } from './../gocore.mjs';
+import { can } from './../admin.mjs';
 import { query } from './../db.mjs';
 
 const MAX_DOC = 8 * 1024 * 1024;
@@ -29,9 +33,12 @@ const readBytes = (req, limit) => new Promise((resolve) => {
 const STATUS_OF = {
   dates_taken: 409, has_bookings: 409, not_found: 404, not_allowed: 403, rate_limited: 429, too_many_requests: 429,
   already_taken: 409, bad_state: 409, active_order_exists: 409, driver_busy: 409, courier_busy: 409, not_editable: 409,
+  incompatible_order: 409, executor_offline: 409, executor_in_delivery: 409, payment_in_progress: 409, already_member: 409, confirm_required: 409, assignment_not_accepted: 409,
+  org_suspended: 403, owner_immutable: 403, self_change: 403, role_not_allowed: 403, executor_not_member: 409, executor_not_approved: 409,
   subscription_required: 402, insufficient_funds: 402, not_approved: 403, not_registered: 403,
   provider_not_configured: 503, provider_unreachable: 502, provider_error: 502, provider_denied: 502,
 };
+const touch = async (id, r) => { if (r?.ok && id) await pushOrderChanged(id); return r; };
 const reply = (res, r, okCode = 200) => {
   if (!r || !r.error) return json(res, okCode, r ?? { ok: true });
   return json(res, STATUS_OF[r.error] ?? 400, r);
@@ -88,9 +95,9 @@ export const goRoutes = async (req, res, url) => {
   if (path === '/api/go/taxi/quote' && method === 'POST') { if (!rateLimit(`go:q:${me}`, 30)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await taxi.quote(await parseBody(req))); }
   if (path === '/api/go/taxi/orders' && method === 'POST') return reply(res, await taxi.create(me, await parseBody(req)), 201);
   if (path === '/api/go/taxi/available' && method === 'GET') return reply(res, await taxi.availableFor(me));
-  if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/accept$/)) && method === 'POST') return reply(res, await taxi.accept(me, m[1]));
-  if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/act$/)) && method === 'POST') return reply(res, await taxi.driverAct(me, m[1], String((await parseBody(req))?.action ?? '')));
-  if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/cancel$/)) && method === 'POST') return reply(res, await taxi.customerCancel(me, m[1], (await parseBody(req))?.reason));
+  if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/accept$/)) && method === 'POST') return reply(res, await touch(m[1], await taxi.accept(me, m[1])));
+  if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/act$/)) && method === 'POST') return reply(res, await touch(m[1], await taxi.driverAct(me, m[1], String((await parseBody(req))?.action ?? ''))));
+  if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/cancel$/)) && method === 'POST') return reply(res, await touch(m[1], await taxi.customerCancel(me, m[1], (await parseBody(req))?.reason)));
 
   /* ── Доставка ─────────────────────────────────────────────────── */
   if (path === '/api/go/delivery/quote' && method === 'POST') { if (!rateLimit(`go:q:${me}`, 30)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await delivery.quote(await parseBody(req))); }
@@ -99,11 +106,11 @@ export const goRoutes = async (req, res, url) => {
   if ((m = path.match(/^\/api\/go\/delivery\/orders\/([\w-]+)\/accept$/)) && method === 'POST') return reply(res, await delivery.accept(me, m[1]));
   if ((m = path.match(/^\/api\/go\/delivery\/orders\/([\w-]+)\/act$/)) && method === 'POST') {
     const b = await parseBody(req);
-    const r = await delivery.courierAct(me, m[1], String(b?.action ?? ''), b?.code);
+    const r = await delivery.courierAct(me, m[1], String(b?.action ?? ''), b?.code, b?.reason);
     if (r.ok && r.foodSync) await food.syncFromDelivery(r.foodSync.parent, r.foodSync.to, me).catch((e) => console.error('[go] синхронизация еды', e.message));
     return reply(res, r);
   }
-  if ((m = path.match(/^\/api\/go\/delivery\/orders\/([\w-]+)\/cancel$/)) && method === 'POST') return reply(res, await delivery.customerCancel(me, m[1], (await parseBody(req))?.reason));
+  if ((m = path.match(/^\/api\/go\/delivery\/orders\/([\w-]+)\/cancel$/)) && method === 'POST') return reply(res, await delivery.customerCancel(await org.effectiveCustomer(me, m[1]), m[1], (await parseBody(req))?.reason));
 
   /* ── Еда ──────────────────────────────────────────────────────── */
   if (path === '/api/go/food/places' && method === 'GET') return json(res, 200, await food.catalog({ city: u.searchParams.get('city'), q: u.searchParams.get('q'), category: u.searchParams.get('category') }));
@@ -127,9 +134,61 @@ export const goRoutes = async (req, res, url) => {
   /* ── Заказы и оплата ──────────────────────────────────────────── */
   if (path === '/api/go/orders' && method === 'GET') return json(res, 200, await pay.listMine(me, { side: u.searchParams.get('side'), status: u.searchParams.get('status'), limit: u.searchParams.get('limit'), offset: u.searchParams.get('offset') }));
   if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)$/)) && method === 'GET') return reply(res, await pay.getOrder(me, m[1]));
-  if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)\/paid$/)) && method === 'POST') return reply(res, await pay.reportPaid(me, m[1]));
-  if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)\/confirm-paid$/)) && method === 'POST') return reply(res, await pay.confirmPaid(me, m[1]));
-  if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)\/dispute$/)) && method === 'POST') return reply(res, await pay.openDispute(me, m[1], (await parseBody(req))?.reason));
+  if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)\/paid$/)) && method === 'POST') return reply(res, await touch(m[1], await pay.reportPaid(await org.effectiveCustomer(me, m[1]), m[1])));
+  if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)\/confirm-paid$/)) && method === 'POST') return reply(res, await touch(m[1], await pay.confirmPaid(me, m[1])));
+  if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)\/dispute$/)) && method === 'POST') return reply(res, await touch(m[1], await pay.openDispute(await org.effectiveCustomer(me, m[1]), m[1], (await parseBody(req))?.reason)));
+
+
+  /* ── Рабочие пространства и организация (бизнес) ──────────────── */
+  if (path === '/api/go/workspaces' && method === 'GET') return json(res, 200, await org.workspaces(me));
+  if ((m = path.match(/^\/api\/go\/org\/invites\/([\w-]+)\/respond$/)) && method === 'POST') return reply(res, await org.respondInvite(me, m[1], (await parseBody(req))?.accept === true));
+  if ((m = path.match(/^\/api\/go\/org\/([\w-]+)(\/[\w/-]*)?$/))) {
+    const id = m[1]; const sub = m[2] ?? '';
+    if (sub === '/dashboard' && method === 'GET') return reply(res, await org.dashboard(me, id));
+    if (sub === '/settings' && method === 'GET') return reply(res, await org.getSettings(me, id));
+    if (sub === '/settings' && method === 'PATCH') return reply(res, await org.updateSettings(me, id, await parseBody(req)));
+    if (sub === '/points' && method === 'POST') return reply(res, await org.addPoint(me, id, await parseBody(req)), 201);
+    let k;
+    if ((k = sub.match(/^\/points\/([\w-]+)$/)) && method === 'DELETE') return reply(res, await org.removePoint(me, id, k[1]));
+    if (sub === '/members' && method === 'GET') return reply(res, await org.listMembers(me, id));
+    if (sub === '/members/invite' && method === 'POST') return reply(res, await org.invite(me, id, (await parseBody(req)) ?? {}));
+    if ((k = sub.match(/^\/members\/([\w-]+)$/)) && method === 'PATCH') return reply(res, await org.changeMember(me, id, k[1], (await parseBody(req)) ?? {}));
+    if (sub === '/leave' && method === 'POST') return reply(res, await org.leave(me, id));
+    if (sub === '/audit' && method === 'GET') return reply(res, await org.auditLog(me, id, { limit: u.searchParams.get('limit') }));
+    if (sub === '/orders' && method === 'GET') return reply(res, await org.listOrders(me, id, Object.fromEntries(['group', 'q', 'sort', 'executor', 'limit', 'offset'].map((x) => [x, u.searchParams.get(x)]))));
+    if (sub === '/orders' && method === 'POST') return reply(res, await org.createOrder(me, id, (await parseBody(req)) ?? {}), 201);
+    if ((k = sub.match(/^\/orders\/([\w-]+)$/)) && method === 'GET') return reply(res, await org.getOrder(me, id, k[1]));
+    if ((k = sub.match(/^\/orders\/([\w-]+)\/(assign|unassign|open-pool|cancel|notes)$/)) && method === 'POST') {
+      const b = (await parseBody(req)) ?? {};
+      const r = k[2] === 'assign' ? await org.assignOrder(me, id, k[1], String(b.executorId ?? ''))
+        : k[2] === 'unassign' ? await org.unassignOrder(me, id, k[1], b.reason)
+        : k[2] === 'open-pool' ? await org.openToPool(me, id, k[1])
+        : k[2] === 'cancel' ? await org.cancelOrder(me, id, k[1], b.reason)
+        : await org.addNote(me, id, k[1], b);
+      return reply(res, await touch(k[1], r));
+    }
+    if ((k = sub.match(/^\/problems\/([\w-]+)\/resolve$/)) && method === 'POST') return reply(res, await org.resolveProblem(me, id, k[1], (await parseBody(req)) ?? {}));
+    return json(res, 404, { error: 'not_found' });
+  }
+
+  /* ── Рабочее пространство исполнителя ─────────────────────────── */
+  if (path === '/api/go/work/state' && method === 'GET') return reply(res, await work.workState(me, String(u.searchParams.get('role') ?? '')));
+  if (path === '/api/go/work/route' && method === 'GET') { if (!rateLimit(`go:route:${me}`, 20)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await work.workRoute(me, String(u.searchParams.get('role') ?? ''))); }
+  if (path === '/api/go/work/history' && method === 'GET') return reply(res, await work.workHistory(me, String(u.searchParams.get('role') ?? ''), { limit: u.searchParams.get('limit'), offset: u.searchParams.get('offset') }));
+  if (path === '/api/go/work/location' && method === 'POST') { if (!rateLimit(`go:loc:${me}`, 12)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await subs.updateLocation(me, await parseBody(req))); }
+  if ((m = path.match(/^\/api\/go\/work\/orders\/([\w-]+)\/problem$/)) && method === 'POST') return reply(res, await touch(m[1], await work.reportProblem(me, m[1], (await parseBody(req)) ?? {})), 201);
+  if ((m = path.match(/^\/api\/go\/work\/problems\/([\w-]+)\/photo$/)) && method === 'POST') {
+    const bytes = await readBytes(req, 3 * 1024 * 1024);
+    if (!bytes) return json(res, 413, { error: 'file_too_large' });
+    return reply(res, await work.attachProblemPhoto(me, m[1], bytes));
+  }
+  if ((m = path.match(/^\/api\/go\/problems\/([\w-]+)\/photo$/)) && method === 'GET') {
+    const r = await work.problemPhoto(me, m[1], await can(me, 'go'));
+    if (r.error) return json(res, 404, r);
+    res.writeHead(200, { 'Content-Type': r.mime, 'Content-Length': r.data.length, 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' });
+    res.end(r.data);
+    return true;
+  }
 
   /* ── Статистика исполнителя (только настоящие закрытые заказы) ── */
   if ((m = path.match(/^\/api\/go\/stats\/(taxi_driver|courier|food_seller)$/)) && method === 'GET') {

@@ -120,7 +120,14 @@ export const getOrder = async (viewerId, id) => {
     const { rows: p } = await query('SELECT executor_id FROM go_orders WHERE id = $1', [row.parent_id]);
     related = p[0]?.executor_id === viewerId;
   }
-  if (!part && !staff && !related) return { error: 'not_found' };   // чужой заказ неотличим от несуществующего
+  // Сотрудники организации (владелец, администратор, менеджер) видят заказы своей организации как заказчик.
+  let orgStaff = false;
+  if (!part && row.org_id) {
+    const { rows: m } = await query(`SELECT 1 FROM go_org_members WHERE org_id = $1 AND profile_id = $2 AND status = 'active' AND role IN ('owner','admin','manager')`, [row.org_id, viewerId]);
+    orgStaff = Boolean(m[0]);
+  }
+  if (!part && !staff && !related && !orgStaff) return { error: 'not_found' };   // чужой заказ неотличим от несуществующего
+  if (orgStaff) return { order: await orderView(row, row.customer_id, { events: true }) };
   return { order: await orderView(row, viewerId, { events: true, staff: staff && !part }) };
 };
 

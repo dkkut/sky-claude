@@ -7,7 +7,7 @@ import { query } from './db.mjs';
 import { canAccept } from './gosubs.mjs';
 import { openPayment } from './gopay.mjs';
 import { executorStatus } from './goreg.mjs';
-import { openJson, getSetting, cityOk, newId, inTx, lockOrder, setStatus, addEvent, resolvePoint, routeBetween, issueCode, checkCode, notifyGo, clean, haversineKm, cleanPoint } from './gocore.mjs';
+import { openJson, getSetting, cityOk, newId, inTx, lockOrder, setStatus, addEvent, resolvePoint, routeBetween, issueCode, checkCode, notifyGo, clean, haversineKm, cleanPoint, pushOrderChanged } from './gocore.mjs';
 
 const SCENARIOS = ['pvz', 'p2p', 'company', 'errand', 'cargo', 'food'];
 const ACTIVE = ['searching', 'assigned', 'heading_pickup', 'at_pickup', 'picked_up', 'delivering', 'at_recipient', 'awaiting_payment', 'payment_reported'];
@@ -66,7 +66,7 @@ export const quote = async (input) => {
 };
 
 /** Заказ доставки. company — только для одобренной компании. food создаётся Sky Едой (createFoodDelivery), а не человеком. */
-export const create = async (customerId, input) => {
+export const create = async (customerId, input, ctx = {}) => {
   const scenario = String(input?.scenario ?? '');
   if (!SCENARIOS.includes(scenario) || scenario === 'food') return { error: 'bad_scenario' };
   if (scenario === 'company') {
@@ -97,15 +97,17 @@ export const create = async (customerId, input) => {
       if (rows[0]) return { ok: true, orderId: rows[0].id, duplicate: true };
     }
     const { rows: act } = await c.query(`SELECT count(*)::int AS n FROM go_orders WHERE customer_id = $1 AND kind = 'delivery' AND status = ANY($2::text[])`, [customerId, ACTIVE]);
-    if (act[0].n >= 10) return { error: 'too_many_active' };
+    if (act[0].n >= (ctx.orgId ? 200 : 10)) return { error: 'too_many_active' };
     const id = newId('go');
     const data = { scenario, from: q.from, to: q.to, km: q.km, minutes: q.minutes, estimated: q.estimated, parcel, pvzInfo, sender, recipient: rec.value,
       cargo: scenario === 'cargo' ? { body: q.body, loaders: q.loaders } : undefined,
       comment: clean(input?.comment, 200), desiredTime: clean(input?.desiredTime, 60), payTerm: term,
-      company: scenario === 'company' ? clean(input?.company, 120) : undefined };
-    await c.query(`INSERT INTO go_orders (id, kind, customer_id, status, price_rub, city, data, idem_key) VALUES ($1,'delivery',$2,'searching',$3,$4,$5::jsonb,$6)`,
-      [id, customerId, q.priceRub, clean(input.city, 60), JSON.stringify(data), idem]);
-    await addEvent(c, id, customerId, null, 'searching', 'Заказ создан');
+      company: scenario === 'company' ? clean(input?.company, 120) : undefined,
+      // Заказ организации: в общий поток курьеров попадает, только если организация так решила (poolOpen).
+      ...(ctx.orgId ? { org: { id: ctx.orgId, name: ctx.orgName }, poolOpen: Boolean(ctx.poolOpen) } : {}) };
+    await c.query(`INSERT INTO go_orders (id, kind, customer_id, status, price_rub, city, data, idem_key, org_id, created_by) VALUES ($1,'delivery',$2,'searching',$3,$4,$5::jsonb,$6,$7,$8)`,
+      [id, customerId, q.priceRub, clean(input.city, 60), JSON.stringify(data), idem, ctx.orgId ?? null, ctx.createdBy ?? null]);
+    await addEvent(c, id, ctx.createdBy ?? customerId, null, 'searching', ctx.orgId ? 'Заказ создан в кабинете организации' : 'Заказ создан');
     await issueCode(c, id, 'pickup'); await issueCode(c, id, 'handover');
     return { ok: true, orderId: id, priceRub: q.priceRub };
   });
@@ -139,7 +141,7 @@ export const availableFor = async (courierId) => {
   const { rows: pres } = await query(`SELECT online, lat, lng FROM go_presence WHERE profile_id = $1 AND role = 'courier'`, [courierId]);
   if (!pres[0]?.online) return { error: 'offline' };
   const cargoOk = canCargo(ex);
-  const { rows: all } = await query(`SELECT * FROM go_orders WHERE kind = 'delivery' AND status = 'searching' AND executor_id IS NULL AND city = $1 ORDER BY created_at LIMIT 60`, [ex.city]);
+  const { rows: all } = await query(`SELECT * FROM go_orders WHERE kind = 'delivery' AND status = 'searching' AND executor_id IS NULL AND city = $1 AND (org_id IS NULL OR data->>'poolOpen' = 'true') ORDER BY created_at LIMIT 60`, [ex.city]);
   const rows = all.filter((r) => r.data.scenario !== 'cargo' || cargoOk).slice(0, 40);
   const here = pres[0].lat != null ? { lat: pres[0].lat, lng: pres[0].lng } : null;
   return { orders: rows.map((r) => ({
@@ -159,9 +161,14 @@ export const accept = async (courierId, orderId) => {
     const { rows: busy } = await c.query(`SELECT count(*)::int AS n FROM go_orders WHERE kind = 'delivery' AND executor_id = $1 AND status IN ('assigned','heading_pickup','at_pickup','picked_up','delivering','at_recipient')`, [courierId]);
     if (busy[0].n >= 3) return { error: 'courier_busy' };
     const ex = await executorStatus(courierId, 'courier');
+    const { rows: cand } = await c.query(`SELECT data->>'scenario' AS sc FROM go_orders WHERE id = $1`, [orderId]);
+    const { rows: mine } = await c.query(`SELECT data->>'scenario' AS sc FROM go_orders WHERE kind = 'delivery' AND executor_id = $1 AND status IN ('assigned','heading_pickup','at_pickup','picked_up','delivering','at_recipient')`, [courierId]);
+    // Грузовой заказ едет отдельным рейсом: совмещать его с другими нельзя ни в ту, ни в другую сторону.
+    if ((cand[0]?.sc === 'cargo' && mine.length > 0) || mine.some((m) => m.sc === 'cargo')) return { error: 'incompatible_order' };
     const { rows } = await c.query(
       `UPDATE go_orders SET status = 'assigned', executor_id = $2, updated_at = now()
         WHERE id = $1 AND kind = 'delivery' AND status = 'searching' AND executor_id IS NULL AND city = $3
+          AND (org_id IS NULL OR data->>'poolOpen' = 'true')
           AND (data->>'scenario' <> 'cargo' OR $4::boolean) RETURNING *`, [orderId, courierId, ex.city, canCargo(ex)]);
     if (!rows[0]) return { error: 'already_taken' };
     await addEvent(c, orderId, courierId, 'searching', 'assigned', 'Курьер назначен');
@@ -169,46 +176,83 @@ export const accept = async (courierId, orderId) => {
       const opened = await openPayment(c, rows[0], rows[0].customer_id, courierId, rows[0].price_rub);
       if (opened.error) throw Object.assign(new Error(opened.error), { goError: opened.error });
     }
-    return { ok: true, customerId: rows[0].customer_id, parentId: rows[0].parent_id };
+    return { ok: true, customerId: rows[0].customer_id, parentId: rows[0].parent_id, orgId: rows[0].org_id };
   }).catch((e) => (e.goError ? { error: e.goError } : Promise.reject(e))).then(async (r) => {
-    if (r.ok) await notifyGo(r.customerId, 'delivery', 'Курьер назначен', 'Курьер принял ваш заказ.', orderId);
+    if (r.ok) {
+      await notifyGo(r.customerId, 'delivery', 'Курьер назначен', 'Курьер принял ваш заказ.', orderId, `${orderId}:assigned:${courierId}`);
+      if (r.orgId) await (await import('./goorg.mjs')).notifyStaff(r.orgId, 'Курьер принял заказ', 'Заказ из общего потока взял внешний курьер.', orderId, `${orderId}:pool-accepted:${courierId}`);
+      await pushOrderChanged(orderId);
+    }
     return r;
   });
 };
 
 const STEPS = {
-  heading: { from: 'assigned', to: 'heading_pickup', note: 'Курьер направляется к месту получения', msg: 'Курьер едет за отправлением.' },
-  arrived_pickup: { from: 'heading_pickup', to: 'at_pickup', note: 'Курьер прибыл к месту получения', msg: 'Курьер на месте получения.' },
-  start_delivery: { from: 'picked_up', to: 'delivering', note: 'Доставка началась', msg: 'Доставка началась.' },
-  arrived_recipient: { from: 'delivering', to: 'at_recipient', note: 'Курьер прибыл к получателю', msg: 'Курьер прибыл к получателю — назовите ему код вручения.' },
+  heading: { from: 'assigned', to: 'heading_pickup', note: 'Курьер направляется к месту получения', msg: 'Курьер едет за отправлением.', org: 'Исполнитель выехал за отправлением' },
+  arrived_pickup: { from: 'heading_pickup', to: 'at_pickup', note: 'Курьер прибыл к месту получения', msg: 'Курьер на месте получения.', org: 'Исполнитель на месте получения' },
+  start_delivery: { from: 'picked_up', to: 'delivering', note: 'Доставка началась', msg: 'Доставка началась.', org: 'Доставка началась' },
+  arrived_recipient: { from: 'delivering', to: 'at_recipient', note: 'Курьер прибыл к получателю', msg: 'Курьер прибыл к получателю — назовите ему код вручения.', org: 'Исполнитель прибыл к получателю' },
 };
+const AFTER_PICKUP = ['picked_up', 'delivering', 'at_recipient', 'awaiting_payment', 'payment_reported', 'paid'];
+const FINISHED = ['awaiting_payment', 'payment_reported', 'paid'];
 
-/** Шаги курьера. pickup: код передачи (кроме еды), deliver: код вручения. */
-export const courierAct = async (courierId, orderId, action, code) => inTx(async (c) => {
+/**
+ * Шаги курьера. pickup: код передачи (кроме еды), deliver: код вручения.
+ * Повтор того же действия (двойной тап, повтор после обрыва связи) не ошибка: заказ уже там, куда его вело действие, — отвечаем ok без побочных эффектов.
+ * Заказ, назначенный диспетчером организации, сначала нужно принять (accept_assignment); отказаться от него — только с причиной.
+ */
+export const courierAct = async (courierId, orderId, action, code, reason) => inTx(async (c) => {
   const o = await lockOrder(c, orderId);
   if (!o || o.kind !== 'delivery' || o.executor_id !== courierId) return { error: 'not_found' };
   const food = o.data.scenario === 'food';
+  const dispatch = o.data.dispatch;
+  const internal = Boolean(o.data.internal);
+  const out = (extra = {}) => ({ ok: true, orgId: o.org_id, ...extra });
+
+  if (action === 'accept_assignment') {
+    if (!dispatch) return { error: 'bad_action' };
+    if (dispatch.accepted) return out({ duplicate: true });
+    if (o.status !== 'assigned') return { error: 'bad_state', status: o.status };
+    await c.query(`UPDATE go_orders SET data = jsonb_set(data, '{dispatch,accepted}', 'true'::jsonb), updated_at = now() WHERE id = $1`, [o.id]);
+    await addEvent(c, o.id, courierId, 'assigned', 'assigned', 'Исполнитель принял назначение');
+    return out({ orgNotify: ['Исполнитель принял заказ', 'Назначение принято, исполнитель приступает.'] });
+  }
   if (action === 'release') {
     if (!['assigned', 'heading_pickup', 'at_pickup'].includes(o.status)) return { error: 'bad_state', status: o.status };
-    await c.query(`UPDATE go_orders SET status = 'searching', executor_id = NULL, updated_at = now() WHERE id = $1`, [o.id]);
+    const why = clean(reason, 200);
+    if (o.org_id && why.length < 3) return { error: 'reason_required' };
+    if (o.org_id && !o.data.poolOpen) {
+      // Заказ организации: возвращается диспетчеру, а не в общий поток курьеров.
+      await c.query(`UPDATE go_orders SET status = 'searching', executor_id = NULL, updated_at = now(),
+        data = (data - 'dispatch') || jsonb_build_object('internal', false, 'declinedBy', coalesce(data->'declinedBy', '[]'::jsonb) || to_jsonb($2::text)) WHERE id = $1`, [o.id, courierId]);
+    } else {
+      await c.query(`UPDATE go_orders SET status = 'searching', executor_id = NULL, data = data - 'dispatch', updated_at = now() WHERE id = $1`, [o.id]);
+    }
     await c.query(`DELETE FROM go_order_pay WHERE order_id = $1 AND state = 'awaiting'`, [o.id]);
-    await addEvent(c, o.id, courierId, o.status, 'searching', 'Курьер отказался — поиск продолжается');
-    return { ok: true, notify: [o.customer_id, 'Курьер отказался', 'Ищем другого курьера.'] };
+    await addEvent(c, o.id, courierId, o.status, 'searching', why ? `Исполнитель отказался: ${why}` : 'Курьер отказался — поиск продолжается');
+    return out({ released: true, notify: o.org_id ? null : [o.customer_id, 'Курьер отказался', 'Ищем другого курьера.'],
+      orgNotify: ['Исполнитель отказался от заказа', `Причина: ${why || 'не указана'}. Назначьте другого исполнителя.`] });
   }
   if (action === 'pickup') {
+    if (AFTER_PICKUP.includes(o.status)) return out({ duplicate: true });
     if (o.status !== 'at_pickup') return { error: 'bad_state', status: o.status };
-    if (o.data.payTerm === 'before' && !food) {
+    if (o.data.payTerm === 'before' && !food && !internal) {
       const { rows: p } = await c.query(`SELECT state FROM go_order_pay WHERE order_id = $1`, [o.id]);
       if (p[0]?.state !== 'confirmed') return { error: 'payment_required' };
     }
     if (!food) { const ck = await checkCode(c, o.id, 'pickup', code); if (ck.error) return ck; }
     await setStatus(c, o, 'picked_up', courierId, 'Отправление принято');
-    return { ok: true, notify: [o.customer_id, 'Отправление принято', 'Курьер забрал отправление.'], foodSync: o.parent_id ? { parent: o.parent_id, to: 'handed_to_courier' } : null };
+    return out({ notify: [o.customer_id, 'Отправление принято', 'Курьер забрал отправление.'], orgNotify: ['Отправление получено', 'Исполнитель забрал отправление.'],
+      foodSync: o.parent_id ? { parent: o.parent_id, to: 'handed_to_courier' } : null });
   }
   if (action === 'deliver') {
+    if (FINISHED.includes(o.status)) return out({ duplicate: true });
     if (o.status !== 'at_recipient') return { error: 'bad_state', status: o.status };
     const ck = await checkCode(c, o.id, 'handover', code); if (ck.error) return ck;
-    if (o.data.payTerm === 'before') {
+    if (internal) {
+      // Свой сотрудник организации: денег между организацией и исполнителем через Sky нет, платить некому — доставка закрывается вручением.
+      await setStatus(c, o, 'paid', courierId, 'Отправление вручено (оплата не требуется: исполнитель — сотрудник организации)', { completed_at: new Date() });
+    } else if (o.data.payTerm === 'before') {
       const { rows: p } = await c.query(`SELECT state FROM go_order_pay WHERE order_id = $1`, [o.id]);
       const confirmed = food ? false : p[0]?.state === 'confirmed';
       if (confirmed) { await setStatus(c, o, 'paid', courierId, 'Отправление вручено', { completed_at: new Date() }); }
@@ -222,15 +266,26 @@ export const courierAct = async (courierId, orderId, action, code) => inTx(async
       if (opened.error) return opened;
       await setStatus(c, o, 'awaiting_payment', courierId, 'Отправление вручено — ожидается оплата', { completed_at: new Date() });
     }
-    return { ok: true, notify: [o.customer_id, 'Отправление вручено', `К оплате курьеру ${o.price_rub} ₽ — реквизиты в заказе.`], foodSync: o.parent_id ? { parent: o.parent_id, to: 'delivered' } : null };
+    await c.query(`UPDATE go_orders SET data = data - 'problemOpen' WHERE id = $1`, [o.id]);
+    return out({ notify: [o.customer_id, 'Отправление вручено', internal ? 'Отправление вручено получателю.' : `К оплате курьеру ${o.price_rub} ₽ — реквизиты в заказе.`],
+      orgNotify: ['Доставка завершена', 'Отправление вручено получателю.'], foodSync: o.parent_id ? { parent: o.parent_id, to: 'delivered' } : null });
   }
   const step = STEPS[action];
   if (!step) return { error: 'bad_action' };
+  if (o.status === step.to) return out({ duplicate: true });
   if (o.status !== step.from) return { error: 'bad_state', status: o.status };
+  if (action === 'heading' && dispatch && !dispatch.accepted) return { error: 'assignment_not_accepted' };
   await setStatus(c, o, step.to, courierId, step.note);
-  return { ok: true, notify: [o.customer_id, 'Доставка', step.msg], foodSync: action === 'start_delivery' && o.parent_id ? { parent: o.parent_id, to: 'delivering' } : null };
+  return out({ notify: [o.customer_id, 'Доставка', step.msg], orgNotify: [step.org, step.note],
+    foodSync: action === 'start_delivery' && o.parent_id ? { parent: o.parent_id, to: 'delivering' } : null });
 }).then(async (r) => {
-  if (r.ok && r.notify) await notifyGo(r.notify[0], 'delivery', r.notify[1], r.notify[2], orderId);
+  if (!r.ok || r.duplicate) return r;
+  const org = await import('./goorg.mjs');
+  // Заказ организации уведомляет её сотрудников; личного заказчика (он же владелец) вторым письмом не дублируем.
+  if (r.orgId && r.orgNotify) await org.notifyStaff(r.orgId, r.orgNotify[0], r.orgNotify[1], orderId, `${orderId}:${action}`);
+  else if (r.notify) await notifyGo(r.notify[0], 'delivery', r.notify[1], r.notify[2], orderId, `${orderId}:${action}`);
+  if (r.released && r.orgId) await org.afterRelease(orderId).catch(() => {});
+  await pushOrderChanged(orderId);
   return r;
 });
 
@@ -240,8 +295,9 @@ export const customerCancel = async (customerId, orderId, reason) => inTx(async 
   if (o.parent_id) return { error: 'cancel_via_food_order' };
   if (!['searching', 'assigned', 'heading_pickup', 'at_pickup'].includes(o.status)) return { error: 'bad_state', status: o.status };
   await setStatus(c, o, 'cancelled', customerId, clean(reason, 200) || 'Отменён заказчиком', { cancelled_by: customerId, cancel_reason: clean(reason, 200) });
-  return { ok: true, courierId: o.executor_id };
+  return { ok: true, courierId: o.executor_id, orgId: o.org_id };
 }).then(async (r) => {
-  if (r.ok && r.courierId) await notifyGo(r.courierId, 'delivery', 'Заказ отменён', 'Заказчик отменил доставку.', orderId);
+  if (r.ok && r.courierId) await notifyGo(r.courierId, 'delivery', 'Заказ отменён', 'Заказчик отменил доставку.', orderId, `${orderId}:cancelled`);
+  if (r.ok) await pushOrderChanged(orderId);
   return r;
 });

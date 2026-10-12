@@ -59,6 +59,7 @@ import { sessionStore } from './sessions.mjs';
 import { goRoutes } from './routes/go.mjs';
 import { goAdminRoutes } from './routes/goadmin.mjs';
 import { sweepExpired as goSweepExpired } from './gosubs.mjs';
+import { sweepOrgs } from './goorg.mjs';
 import { sweepFuel as goSweepFuel } from './gofuel.mjs';
 import { sweepStay as goSweepStay } from './gostay.mjs';
 import { runWithSession } from './reqctx.mjs';
@@ -576,6 +577,7 @@ const start = async () => {
       await sweepIpPin();
       await sweepGameSessions();
       await goSweepExpired().catch(() => {});
+      await sweepOrgs().catch(() => {});
       await goSweepFuel().catch(() => {});
       await goSweepStay().catch(() => {});
       const staleRequests = await sweepPendingActions();

@@ -2208,6 +2208,11 @@ export const pushGameServer = (userIds, msg) => {
   broadcast(Array.isArray(userIds) ? userIds : [], msg);
 };
 
+/** Sky GO: заказ изменился — открытые экраны исполнителя, заказчика и сотрудников организации перечитают его. */
+export const pushGoEvent = (userIds, msg) => {
+  broadcast(Array.isArray(userIds) ? userIds : [], msg);
+};
+
 /** Sky Трансляции: донат — списание/зачисление идёт HTTP-ручкой (нужен
  *  чёткий ответ и idempotency-key), а увидеть его в чате остальные
  *  зрители должны сразу же, поэтому уведомление уходит в тот же WS-хаб,
