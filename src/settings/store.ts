@@ -40,6 +40,8 @@ export interface AppSettings {
   colorScheme:     ColorScheme;
   /** Автопереключение светлой/тёмной темы по времени суток (местное время устройства). */
   autoTheme:       boolean;
+  /** Карты: auto — по месту (РФ и соседи — Яндекс, остальное — Google); выбор работает, если у сервера есть ключ этого поставщика. */
+  mapProvider:     'auto' | 'google' | 'yandex';
   /** С какого часа светлая тема (ЧЧ:ММ) и с какого — тёмная. */
   autoThemeLight:  string;
   autoThemeDark:   string;
@@ -94,6 +96,7 @@ const W  = typeof window !== 'undefined';
 const defaults: AppSettings = {
   colorScheme:      'dark',
   autoTheme:        false,
+  mapProvider:      'auto',
   autoThemeLight:   '07:00',
   autoThemeDark:    '21:00',
   theme:            'dark',

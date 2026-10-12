@@ -772,6 +772,21 @@ const SettingsSection = ({ logout, username, onOpen }: {
           }}/>}/>
       </SectionBlock>
 
+      {/* -- КАРТЫ ------------------ */}
+      <SectionBlock title="Карты">
+        <div className="px-4 py-3">
+          <p className="text-xs mb-2" style={{ color: 'var(--t3)' }}>Какой сервис рисует карты. «Авто» выбирает по месту: Россия и соседи — Яндекс Карты, остальной мир — Google Карты. Выбор действует, если сервер подключил ключ этого сервиса.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {([['auto', 'Авто'], ['yandex', 'Яндекс Карты'], ['google', 'Google Карты']] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => set({ mapProvider: k })}
+                className="rounded-xl px-3 py-1.5 text-xs font-semibold"
+                style={{ background: s.mapProvider === k ? 'color-mix(in srgb, var(--accent) 22%, transparent)' : 'var(--bg-l2)',
+                  border: `1px solid ${s.mapProvider === k ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--t1)' }}>{l}</button>
+            ))}
+          </div>
+        </div>
+      </SectionBlock>
+
       {/* -- КУРСОР-ПИТОМЕЦ ------------------ */}
       <SectionBlock title="Курсор-питомец">
         <SettingsRow icon={Sparkles} label="Питомец бегает за курсором"

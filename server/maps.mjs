@@ -33,7 +33,37 @@ const MAX_ADDRESS = 300;
 /** Сколько держать разобранный адрес. Дома не переезжают. */
 const CACHE_DAYS = 90;
 
-export const mapsConfigured = () => Boolean(config.mapsKey);
+export const mapsConfigured = () => Boolean(config.mapsKey || config.yandexMapsKey);
+
+/* ─── Поставщики карт ─────────────────────────────────────────────── */
+
+/** Какие поставщики подключены ключами. */
+export const providersAvailable = () => [
+  ...(config.mapsKey ? ['google'] : []),
+  ...(config.yandexMapsKey ? ['yandex'] : []),
+];
+
+/**
+ * «Страны Яндекса»: Россия и ближайшие соседи, где его карта подробнее. Грубый прямоугольник — это подсказка, а не граница:
+ * Яндекс отвечает и за пределами, а человек может выбрать поставщика сам.
+ */
+export const nearYandexRegion = (lat, lng) => {
+  const a = Number(lat); const b = Number(lng);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return a >= 41 && a <= 82 && b >= 19.5 && b <= 180;
+};
+
+/**
+ * Выбрать поставщика: явный выбор человека, если такой ключ есть; иначе по месту (первая точка/середина карты);
+ * иначе — что подключено. Нет ни одного — null.
+ */
+export const pickProvider = (requested, hint) => {
+  const have = providersAvailable();
+  if (!have.length) return null;
+  if (have.includes(requested)) return requested;
+  if (have.length === 1) return have[0];
+  return nearYandexRegion(hint?.lat, hint?.lng) ? 'yandex' : 'google';
+};
 
 /**
  * Что знать клиенту о картах.
@@ -41,7 +71,7 @@ export const mapsConfigured = () => Boolean(config.mapsKey);
  * Ключа здесь нет и быть не может: карта приходит картинкой от нашего
  * же сервера, и ключ нужен только ему.
  */
-export const mapsSettings = () => ({ enabled: Boolean(config.mapsKey) });
+export const mapsSettings = () => ({ enabled: mapsConfigured(), providers: providersAvailable() });
 
 /* Управляющие символы в адресе — это попытка разорвать строку или
    спрятать в ней лишнее. Образец собирается из кодов, чтобы сам файл
@@ -72,7 +102,7 @@ export const isRealPoint = (lat, lng) => {
  * честное «не нашлось»: подставлять вместо ненайденного адреса центр
  * города нельзя — по такой точке поедут.
  */
-export const geocode = async (rawAddress) => {
+export const geocode = async (rawAddress, requested) => {
   const address = clean(rawAddress, MAX_ADDRESS);
   if (address.length < 4) return null;
 
@@ -86,28 +116,50 @@ export const geocode = async (rawAddress) => {
       : null;
   }
 
-  if (!config.mapsKey) return null;
+  const have = providersAvailable();
+  if (!have.length) return null;
+
+  /* Порядок опроса: явный выбор → по письму адреса (кириллица — сначала Яндекс) → остальные. Не нашёл первый — спрашивает второй. */
+  const first = have.includes(requested) ? requested : (/[А-Яа-яЁё]/.test(address) && have.includes('yandex') ? 'yandex' : have[0]);
+  const order = [first, ...have.filter((x) => x !== first)];
 
   /* Адрес человека уходит третьей стороне. Это неизбежно для карт, но
      уходит именно адрес и ничего сверх: ни кто спросил, ни по какому
      заказу. */
-  const params = new URLSearchParams({ address, key: config.mapsKey, language: 'ru' });
-  const url = `${config.mapsBaseUrl}/maps/api/geocode/json?${params}`;
-
-  let data;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    data = await res.json();
-  } catch {
-    /* Сеть подвела — не запоминаем: через минуту ответ может быть. */
-    return null;
+  let net = false;
+  for (const who of order) {
+    const r = who === 'yandex' ? await geocodeYandex(address) : await geocodeGoogle(address);
+    if (r === 'net') { net = true; continue; }
+    if (r) { await remember(address, r.lat, r.lng, true); return { ...r, cached: false }; }
   }
+  /* Сеть подвела — не запоминаем: через минуту ответ может быть. «Не нашёл» запоминаем. */
+  if (!net) await remember(address, null, null, false);
+  return null;
+};
 
-  const spot = data?.results?.[0]?.geometry?.location;
-  const found = data?.status === 'OK' && Number.isFinite(Number(spot?.lat));
-  await remember(address, found ? Number(spot.lat) : null, found ? Number(spot.lng) : null, found);
-  return found ? { lat: Number(spot.lat), lng: Number(spot.lng), cached: false } : null;
+/** → {lat,lng} | null (не нашёл) | 'net' (сеть/отказ — не запоминать). */
+const geocodeGoogle = async (address) => {
+  const params = new URLSearchParams({ address, key: config.mapsKey, language: 'ru' });
+  try {
+    const res = await fetch(`${config.mapsBaseUrl}/maps/api/geocode/json?${params}`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return 'net';
+    const data = await res.json();
+    const spot = data?.results?.[0]?.geometry?.location;
+    return data?.status === 'OK' && Number.isFinite(Number(spot?.lat)) ? { lat: Number(spot.lat), lng: Number(spot.lng) } : null;
+  } catch { return 'net'; }
+};
+
+/** HTTP Геокодер Яндекса: ответ — «долгота широта» строкой. */
+const geocodeYandex = async (address) => {
+  const params = new URLSearchParams({ apikey: config.yandexGeocoderKey, geocode: address, format: 'json', results: '1', lang: 'ru_RU' });
+  try {
+    const res = await fetch(`${config.yandexGeocodeBase}/1.x/?${params}`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return 'net';
+    const data = await res.json();
+    const pos = data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject?.Point?.pos;
+    const [lng, lat] = String(pos ?? '').split(' ').map(Number);
+    return Number.isFinite(lat) && Number.isFinite(lng) && isRealPoint(lat, lng) ? { lat, lng } : null;
+  } catch { return 'net'; }
 };
 
 const remember = async (address, lat, lng, found) => {
@@ -148,7 +200,9 @@ const round = (n) => Number(n).toFixed(6);
  *
  * Возвращает null без ключа — и клиент покажет «карта не настроена».
  */
-export const staticMapUrl = ({ points = [], center, width = 640, height = 360, zoom, pathEnc } = {}) => {
+export const staticMapUrl = ({ points = [], center, width = 640, height = 360, zoom, pathEnc, provider } = {}) => {
+  const who = pickProvider(provider, isRealPoint(center?.lat, center?.lng) ? center : points?.[0]);
+  if (who === 'yandex') return yandexStaticUrl({ points, center, width, height, zoom, pathEnc });
   if (!config.mapsKey) return null;
 
   const params = new URLSearchParams();
@@ -210,8 +264,57 @@ export const staticMapUrl = ({ points = [], center, width = 640, height = 360, z
   return `${config.mapsBaseUrl}/maps/api/staticmap?${params}`;
 };
 
+
+/* ─── Картинка карты Яндекса (Static API) ─────────────────────────── */
+
+/** Метки Яндекса: стиль pm2 + цвет + размер (+ номер 1–99). */
+const YANDEX_PIN = { warehouse: 'vv', courier: 'db', pickup: 'gn', target: 'rd', default: 'gr' };
+
+/** Закодированная ломаная Google → список [lng,lat] (маршрут считает Google, рисуется он и на карте Яндекса). */
+const decodePolyline = (enc) => {
+  const out = []; let i = 0; let lat = 0; let lng = 0;
+  while (i < enc.length) {
+    let shift = 0; let result = 0; let b;
+    do { b = enc.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20 && i < enc.length);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+    shift = 0; result = 0;
+    do { b = enc.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20 && i < enc.length);
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+    out.push([lng / 1e5, lat / 1e5]);
+  }
+  return out;
+};
+
+export const yandexStaticUrl = ({ points = [], center, width = 640, height = 360, zoom, pathEnc } = {}) => {
+  if (!config.yandexMapsKey) return null;
+  const good = [];
+  for (const p of (Array.isArray(points) ? points : []).slice(0, 40)) {
+    if (!isRealPoint(p?.lat, p?.lng)) continue;
+    good.push({ lat: Number(p.lat), lng: Number(p.lng), kind: YANDEX_PIN[p?.kind] ? p.kind : 'default', label: /^[1-9]$/.test(String(p?.label ?? '')) ? String(p.label) : '' });
+  }
+  const centred = isRealPoint(center?.lat, center?.lng);
+  if (good.length === 0 && !centred) return null;
+  const params = new URLSearchParams();
+  // У Статического API Яндекса потолок 650×450; картинку просим вдвое чётче.
+  params.set('size', `${clampInt(width, 80, 650)},${clampInt(height, 80, 450)}`);
+  params.set('scale', '2');
+  params.set('lang', 'ru_RU');
+  params.set('l', 'map');
+  if (good.length) params.set('pt', good.map((p) => `${round(p.lng)},${round(p.lat)},pm2${YANDEX_PIN[p.kind]}m${p.label}`).join('~'));
+  if (typeof pathEnc === 'string' && /^[\x3f-\x7e]{2,6000}$/.test(pathEnc)) {
+    const pts = decodePolyline(pathEnc);
+    const step = Math.max(1, Math.ceil(pts.length / 150));
+    const flat = pts.filter((_, i) => i % step === 0 || i === pts.length - 1).map(([lng, lat]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join(',');
+    if (flat) params.set('pl', `c:3b82f6cc,w:5,${flat}`);
+  }
+  if (centred) { params.set('ll', `${round(center.lng)},${round(center.lat)}`); params.set('z', String(clampInt(zoom ?? 12, 1, 21))); }
+  else if (good.length === 1) { params.set('ll', `${round(good[0].lng)},${round(good[0].lat)}`); params.set('z', String(clampInt(zoom ?? 14, 1, 21))); }
+  params.set('apikey', config.yandexMapsKey);
+  return `${config.yandexStaticBase}/v1?${params}`;
+};
+
 /**
- * Забрать картинку карты у Google.
+ * Забрать картинку карты у поставщика (Google или Яндекс).
  *
  * Ходит сервер, а не браузер: иначе серверный ключ оказался бы в адресе
  * картинки на странице, то есть у всех.

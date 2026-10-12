@@ -133,7 +133,7 @@ export const adminResolve = resolveDispute;
 
 export const integrations = async (adminId) => {
   if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
-  return { maps: { ...mapsSettings(), note: 'Геокодирование и маршруты: GOOGLE_MAPS_KEY (серверный ключ).' },
+  return { maps: { ...mapsSettings(), note: 'Карты и адреса: GOOGLE_MAPS_KEY и/или YANDEX_MAPS_KEY (серверные ключи); маршруты — только Google.' },
     flights: flightsStatus(), fuel: fuelStatus(),
     push: { note: 'Пуши: VAPID_* / FCM — см. раздел уведомлений.' } };
 };

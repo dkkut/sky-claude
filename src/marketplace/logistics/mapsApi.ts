@@ -12,7 +12,8 @@ import { getMarketMediaTicket } from '../marketApi';
 import type { GeoPoint } from './types';
 
 /** Что умеет сервер по части карт. Пусто — карт нет, и это так и пишется. */
-export interface MapsSettings { enabled: boolean }
+export interface MapsSettings { enabled: boolean; /** Подключённые поставщики: google и/или yandex. */ providers?: MapProvider[] }
+export type MapProvider = 'google' | 'yandex';
 
 export const apiMapsSettings = async (): Promise<MapsSettings> => {
   const r = await apiCall<MapsSettings>('/api/maps/settings');
@@ -26,9 +27,9 @@ export const apiMapsSettings = async (): Promise<MapsSettings> => {
  * вместо ненайденного адреса центр города значит отправить человека не
  * туда.
  */
-export const apiGeocode = async (address: string): Promise<GeoPoint | null> => {
+export const apiGeocode = async (address: string, provider?: MapProvider): Promise<GeoPoint | null> => {
   const r = await apiCall<{ point: (GeoPoint & { cached?: boolean }) | null }>(
-    '/api/maps/geocode', { method: 'POST', body: JSON.stringify({ address }) });
+    '/api/maps/geocode', { method: 'POST', body: JSON.stringify({ address, provider }) });
   const p = r.ok ? r.data?.point : null;
   return p ? { lat: p.lat, lng: p.lng } : null;
 };
@@ -48,8 +49,8 @@ export interface MapPin { lat: number; lng: number; kind?: MapPinKind; /** Од�
  */
 export const mapStillUrl = (
   pins: MapPin[],
-  { center, zoom, width = 640, height = 320, path }:
-  { center?: GeoPoint; zoom?: number; width?: number; height?: number; /** Линия маршрута — закодированная ломаная Google. */ path?: string } = {},
+  { center, zoom, width = 640, height = 320, path, provider }:
+  { center?: GeoPoint; zoom?: number; width?: number; height?: number; /** Линия маршрута — закодированная ломаная Google. */ path?: string; provider?: MapProvider } = {},
 ) => {
   const params = new URLSearchParams();
   const points = pins
@@ -61,6 +62,7 @@ export const mapStillUrl = (
   if (center) params.set('center', `${center.lat.toFixed(6)},${center.lng.toFixed(6)}`);
   if (zoom !== undefined) params.set('zoom', String(Math.round(zoom)));
   if (path && /^[\x3f-\x7e]{2,3500}$/.test(path)) params.set('path', path);
+  if (provider) params.set('p', provider);
   params.set('w', String(Math.round(width)));
   params.set('h', String(Math.round(height)));
   /* Тег <img> заголовок авторизации не отправляет — в родном приложении
@@ -75,3 +77,14 @@ export const mapStillUrl = (
 export const isRealPoint = (p?: GeoPoint | null): p is GeoPoint =>
   Boolean(p) && Number.isFinite(p!.lat) && Number.isFinite(p!.lng)
   && (Math.abs(p!.lat) > 0.0001 || Math.abs(p!.lng) > 0.0001);
+
+/**
+ * Какой поставщик рисует карту: выбор человека (если такой ключ у сервера есть), иначе по месту — Россия и соседи
+ * на Яндексе, остальное на Google. Тот же прямоугольник, что `nearYandexRegion` на сервере.
+ */
+export const pickMapProvider = (have: MapProvider[], pref: string | undefined, at?: GeoPoint | null): MapProvider => {
+  if (pref === 'google' || pref === 'yandex') { if (have.includes(pref)) return pref; }
+  if (have.length === 1) return have[0];
+  const near = !!at && at.lat >= 41 && at.lat <= 82 && at.lng >= 19.5 && at.lng <= 180;
+  return near ? 'yandex' : 'google';
+};

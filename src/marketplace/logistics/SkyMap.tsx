@@ -25,7 +25,8 @@ import { MapPin, MapPinOff, Plus, Minus, Crosshair } from 'lucide-react';
 import type { IconComponent } from '@/shared/icon';
 import { C } from '@/marketplace/SkyMarket';
 import type { GeoPoint } from './types';
-import { apiMapsSettings, mapStillUrl, isRealPoint, type MapPin as Pin, type MapPinKind } from './mapsApi';
+import { useSettings } from '@/settings/store';
+import { apiMapsSettings, mapStillUrl, isRealPoint, pickMapProvider, type MapPin as Pin, type MapPinKind, type MapProvider } from './mapsApi';
 
 export interface MapPoint {
   id: string;
@@ -50,19 +51,40 @@ export interface MapPoint {
  */
 const WORLD = 256;
 
-const project = (p: GeoPoint) => {
+/** Яндекс рисует в эллипсоидальном Меркаторе (EPSG:3395), Google — в сферическом: подписи кладутся по формуле своего поставщика. */
+const E = 0.0818191908426;
+const project = (p: GeoPoint, prov: MapProvider = 'google') => {
   const x = (p.lng + 180) / 360;
   const s = Math.sin((p.lat * Math.PI) / 180);
-  const y = 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+  const y = prov === 'yandex'
+    ? 0.5 - Math.log(((1 + s) / (1 - s)) * (((1 - E * s) / (1 + E * s)) ** E)) / (4 * Math.PI)
+    : 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
   return { x: x * WORLD, y: y * WORLD };
 };
 
+/** Обратно: мировые координаты (0..WORLD) → точка. Для Яндекса — итерацией (формула без явного обратного вида). */
+const unproject = (wx: number, wy: number, prov: MapProvider = 'google'): GeoPoint => {
+  const lng = (wx / WORLD) * 360 - 180;
+  const n = Math.PI - (2 * Math.PI * wy) / WORLD;
+  let lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+  if (prov === 'yandex') {
+    const t = Math.exp(-n);
+    let phi = Math.PI / 2 - 2 * Math.atan(t);
+    for (let i = 0; i < 6; i += 1) {
+      const es = E * Math.sin(phi);
+      phi = Math.PI / 2 - 2 * Math.atan(t * (((1 - es) / (1 + es)) ** (E / 2)));
+    }
+    lat = (phi * 180) / Math.PI;
+  }
+  return { lat, lng };
+};
+
 /** Насколько приблизить, чтобы все точки поместились в кадр. */
-const fitZoom = (points: GeoPoint[], width: number, height: number) => {
+const fitZoom = (points: GeoPoint[], width: number, height: number, prov: MapProvider = 'google') => {
   if (points.length < 2) return 13;
   let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
   for (const p of points) {
-    const q = project(p);
+    const q = project(p, prov);
     minX = Math.min(minX, q.x); maxX = Math.max(maxX, q.x);
     minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y);
   }
@@ -76,15 +98,10 @@ const fitZoom = (points: GeoPoint[], width: number, height: number) => {
   return Math.max(2, Math.min(17, Math.floor(z)));
 };
 
-const middle = (points: GeoPoint[]): GeoPoint => {
+const middle = (points: GeoPoint[], prov: MapProvider = 'google'): GeoPoint => {
   let x = 0; let y = 0;
-  for (const p of points) { const q = project(p); x += q.x; y += q.y; }
-  const cx = x / points.length;
-  const cy = y / points.length;
-  const lng = (cx / WORLD) * 360 - 180;
-  const n = Math.PI - (2 * Math.PI * cy) / WORLD;
-  const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
-  return { lat, lng };
+  for (const p of points) { const q = project(p, prov); x += q.x; y += q.y; }
+  return unproject(x / points.length, y / points.length, prov);
 };
 
 /* ─── Карта ────────────────────────────────────────────────────────── */
@@ -102,6 +119,8 @@ export const SkyMap = ({
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [have, setHave] = useState<MapProvider[]>(['google']);
+  const pref = useSettings((st) => st.settings.mapProvider);
   const [broken, setBroken] = useState(false);
 
   /* Настоящие точки — те, у которых есть координаты. Остальные на карту
@@ -111,7 +130,11 @@ export const SkyMap = ({
 
   const [view, setView] = useState<{ center: GeoPoint; zoom: number } | null>(null);
 
-  useEffect(() => { void apiMapsSettings().then((s) => setEnabled(s.enabled)); }, []);
+  useEffect(() => { void apiMapsSettings().then((s) => { setEnabled(s.enabled); if (s.providers?.length) setHave(s.providers); }); }, []);
+  const prov = pickMapProvider(have, pref, real[0]?.pos);
+  // У Яндекса картинка не больше 650×450 — рисуем по центру блока такого размера, подписи кладутся на неё.
+  const mw = prov === 'yandex' ? Math.min(width, 650) : width;
+  const mh = prov === 'yandex' ? Math.min(height, 450) : height;
 
   useEffect(() => {
     const el = box.current;
@@ -127,8 +150,8 @@ export const SkyMap = ({
   const auto = useMemo(() => {
     if (real.length === 0) return null;
     const list = real.map((p) => p.pos);
-    return { center: middle(list), zoom: fitZoom(list, width, height) };
-  }, [real, width, height]);
+    return { center: middle(list, prov), zoom: fitZoom(list, mw, mh, prov) };
+  }, [real, mw, mh, prov]);
 
   const frame = view ?? auto;
 
@@ -148,7 +171,7 @@ export const SkyMap = ({
 
   if (enabled === null) return note('Карта загружается…', MapPin);
   if (!enabled) {
-    return note('Карта не настроена: у сервера нет ключа Google Карт. '
+    return note('Карта не настроена: у сервера нет ключа Google или Яндекс Карт. '
       + 'Показывать вместо неё выдуманные точки нельзя — по ним поедут.');
   }
   if (!frame) {
@@ -159,17 +182,17 @@ export const SkyMap = ({
   if (broken) return note('Карта не пришла. Попробуйте ещё раз чуть позже.');
 
   const src = mapStillUrl(pins, {
-    center: frame.center, zoom: frame.zoom, width, height, path,
+    center: frame.center, zoom: frame.zoom, width: mw, height: mh, path, provider: prov,
   });
 
   /* Подписи кладутся поверх картинки: метки рисует Google, имена — мы. */
-  const centrePx = project(frame.center);
+  const centrePx = project(frame.center, prov);
   const scale = 2 ** frame.zoom;
   const place = (p: GeoPoint) => {
-    const q = project(p);
+    const q = project(p, prov);
     return {
-      left: width / 2 + (q.x - centrePx.x) * scale,
-      top: height / 2 + (q.y - centrePx.y) * scale,
+      left: mw / 2 + (q.x - centrePx.x) * scale,
+      top: mh / 2 + (q.y - centrePx.y) * scale,
     };
   };
 
@@ -189,29 +212,25 @@ export const SkyMap = ({
     <div>
       <div ref={box} className="relative overflow-hidden rounded-2xl"
         style={{ height, border: `1px solid ${C.brd}`, background: C.l2 }}>
-        <img src={src} alt="Карта" width={width} height={height}
+        <div className="absolute" style={{ left: (width - mw) / 2, top: (height - mh) / 2, width: mw, height: mh }}>
+        <img src={src} alt="Карта" width={mw} height={mh}
           onError={() => setBroken(true)}
           onClick={onPick ? (e) => {
             /* Щелчок в точку: обратный ход той же проекции. */
             const r = (e.target as HTMLImageElement).getBoundingClientRect();
-            const dx = e.clientX - r.left - width / 2;
-            const dy = e.clientY - r.top - height / 2;
-            const wx = centrePx.x + dx / scale;
-            const wy = centrePx.y + dy / scale;
-            const lng = (wx / WORLD) * 360 - 180;
-            const n = Math.PI - (2 * Math.PI * wy) / WORLD;
-            const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
-            onPick({ lat, lng });
+            const dx = e.clientX - r.left - mw / 2;
+            const dy = e.clientY - r.top - mh / 2;
+            onPick(unproject(centrePx.x + dx / scale, centrePx.y + dy / scale, prov));
           } : undefined}
           style={{
-            display: 'block', width: '100%', height: '100%', objectFit: 'cover',
+            display: 'block', width: '100%', height: '100%',
             cursor: onPick ? 'crosshair' : 'default',
           }} />
 
-        {/* Имена точек поверх меток Google. */}
+        {/* Имена точек поверх меток поставщика карты. */}
         {real.map((p) => {
           const at = place(p.pos);
-          if (at.left < -40 || at.left > width + 40 || at.top < -30 || at.top > height + 30) return null;
+          if (at.left < -40 || at.left > mw + 40 || at.top < -30 || at.top > mh + 30) return null;
           return (
             <span key={p.id}
               className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[9px] font-bold"
@@ -224,6 +243,7 @@ export const SkyMap = ({
             </span>
           );
         })}
+        </div>
 
         <div className="absolute right-2 top-2 flex flex-col gap-1">
           <button type="button" className={btn} style={btnStyle} onClick={() => zoomBy(1)} aria-label="Ближе">

@@ -58,7 +58,7 @@ export const mapsRoutes = async (req, res, url) => {
       return json(res, 429, { error: 'too_many_requests' });
     }
     const body = await parseBody(req);
-    const point = await geocode(body.address);
+    const point = await geocode(body.address, typeof body.provider === 'string' ? body.provider : undefined);
     /* Не нашлось — так и говорим. Подставить центр города вместо
        ненайденного адреса означало бы отправить человека не туда. */
     return json(res, 200, { point });
@@ -86,6 +86,7 @@ export const mapsRoutes = async (req, res, url) => {
       height: params.get('h'),
       zoom: params.get('zoom') ?? undefined,
       pathEnc: params.get('path') ?? undefined,
+      provider: params.get('p') ?? undefined,
     });
     if (!picture) return json(res, 404, { error: 'map_unavailable' });
 

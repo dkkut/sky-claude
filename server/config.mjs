@@ -190,6 +190,13 @@ export const config = {
    * Рисовать вместо карты выдуманные точки нельзя — по ним поедут.
    */
   mapsKey: process.env.GOOGLE_MAPS_KEY || '',
+  /* Яндекс Карты — второй поставщик (картинка карты и разбор адресов), как и Google, только на сервере: ключ в браузер не уходит.
+     YANDEX_MAPS_KEY — «Static API», YANDEX_GEOCODER_KEY — «HTTP Геокодер» (если пусто, берётся первый). Какой поставщик
+     рисует карту, решает место: РФ и соседи — Яндекс, остальное — Google; человек может выбрать сам (см. server/maps.mjs). */
+  yandexMapsKey: process.env.YANDEX_MAPS_KEY || '',
+  yandexGeocoderKey: process.env.YANDEX_GEOCODER_KEY || process.env.YANDEX_MAPS_KEY || '',
+  yandexStaticBase: process.env.YANDEX_STATIC_BASE_URL || 'https://static-maps.yandex.ru',
+  yandexGeocodeBase: process.env.YANDEX_GEOCODE_BASE_URL || 'https://geocode-maps.yandex.ru',
 
   // Отслеживание посылок (server/trackingproviders.mjs). Каждый источник
   // включается своими ключами; без них ручка отдаёт только ссылку на

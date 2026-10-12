@@ -133,6 +133,9 @@ services:
       # он не уходит ни разу. Пусто — приложение честно пишет «карта не
       # настроена» вместо того, чтобы рисовать выдуманные точки.
       GOOGLE_MAPS_KEY:             ${GOOGLE_MAPS_KEY:-}
+      # Яндекс Карты (Static API и HTTP Геокодер) — второй поставщик, тоже только на сервере.
+      YANDEX_MAPS_KEY:             ${YANDEX_MAPS_KEY:-}
+      YANDEX_GEOCODER_KEY:         ${YANDEX_GEOCODER_KEY:-}
       CDEK_API_BASE:               ${CDEK_API_BASE:-}
       CDEK_CLIENT_ID:              ${CDEK_CLIENT_ID:-}
       CDEK_CLIENT_SECRET:          ${CDEK_CLIENT_SECRET:-}
