@@ -41,6 +41,7 @@ export const PERMISSIONS = [
   'go',              // Sky GO: заявки исполнителей, подписки, заказы, споры, интеграции
   'go_finance',      // Sky GO: тарифы активации и параметры стоимости
   'registration',    // ограничение регистрации новых аккаунтов: вкл/выкл, пределы, сообщение
+  'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
 /**
@@ -75,6 +76,7 @@ export const ROLES = {
   // проверка в replyToTicket), а отдельного чата у мероприятий нет.
   campaigns_admin: ['campaigns', 'support'],
   gifts_admin:     ['gifts'],
+  site_admin:      ['site'],
   garant_admin:    ['garant', 'support'],
   notifications_admin: ['notifications'],
   // Подтверждение оплаты (создание денег без реального платежа, пока

@@ -68,6 +68,8 @@ import { sweepAdminGate } from './admingate.mjs';
 import { sweepSshGate } from './sshgate.mjs';
 import { deviceLinkRoutes } from './routes/devicelink.mjs';
 import { registrationRoutes } from './routes/registration.mjs';
+import { siteRoutes, siteAdminRoutes } from './routes/site.mjs';
+import { sweepSite } from './sitecms.mjs';
 import * as musicTicket from './musicticket.mjs';
 import * as filmTicket from './filmticket.mjs';
 import * as podcastTicket from './podcastticket.mjs';
@@ -174,7 +176,7 @@ const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, authRoutes, p
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes];
+                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -234,7 +236,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // PIN при смене IP (ippin.mjs): у тех, кто его включил, сессия с нового адреса закрыта до ввода PIN.
     // Выход, обновление токена, вход, ввод самого PIN и ссылки шлюзов остаются открытыми.
     if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && !url.startsWith('/api/skyid/pin') && !url.startsWith('/api/platform/status')
-        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/admin/gate/')) {
+        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/')) {
       const tok = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tok?.typ === 'access' && tok.sky && tok.sid) {
         const stored = await sessionStore.get(tok.sid);
@@ -337,7 +339,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
     /* Игровые серверы Sky Blox — программы, а не люди: у них подпись запроса вместо ключа беты. */
     const isBloxServer = url.startsWith('/api/blox/server/');
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !betaAllowed(req)) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -351,7 +353,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
      * не смог бы ни войти и выключить режим, ни браузер — понять,
      * почему сайт не отвечает, и показать нужный экран.
      */
-    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate')) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/site/')) {
       const shutdown = await shutdownState();
       if (shutdown.active) {
         const session = await readSession(req);
@@ -606,6 +608,7 @@ const start = async () => {
       await sweepSshGate();
       await sweepDeviceLinks();
       await sweepFreezeLog();
+      await sweepSite().catch((e) => console.error('[site] уборка:', e.message));
       await sweepIpPin();
       await sweepGameSessions();
       await goSweepExpired().catch(() => {});

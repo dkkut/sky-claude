@@ -303,6 +303,17 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # Админка сайта: загрузка файлов приложений (apk/exe/… до 600 МБ) потоком.
+    location ^~ /api/admin/site/downloads/ {
+        limit_req zone=req_general burst=20 nodelay;
+        client_max_body_size 600m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 900s;
+        proxy_send_timeout 900s;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/go/executors/ {
         limit_req zone=req_general burst=30 nodelay;
         client_max_body_size 9m;

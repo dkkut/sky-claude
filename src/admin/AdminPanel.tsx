@@ -42,6 +42,7 @@ import { MonitoringTab } from './MonitoringTab';
 import { ContentModTab } from './ContentModTab';
 import { ScrollTabs } from './ScrollTabs';
 import { RegistrationTab } from './RegistrationTab';
+import { SiteTab } from './SiteTab';
 import { GoAdminTab } from './GoAdmin';
 import { AdminGateScreen } from './AdminGate';
 const C = {
@@ -5450,7 +5451,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5627,6 +5628,7 @@ export const AdminPanel = () => {
     { key: 'content', label: 'Контент', show: has('content') },
     { key: 'go', label: 'Sky GO', show: has('go') },
     { key: 'registration', label: 'Регистрация', show: has('registration') },
+    { key: 'site', label: 'Сайт', show: has('site') },
     { key: 'pets', label: 'Pets и Skin Market', show: has('content') },
     { key: 'customization', label: 'Кастомизация', show: has('content') },
     { key: 'bloom', label: 'Bloom', show: has('content') },
@@ -5842,6 +5844,7 @@ export const AdminPanel = () => {
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
       {tab === 'content' && <ContentModTab />}
       {tab === 'registration' && <RegistrationTab />}
+      {tab === 'site' && <SiteTab />}
       {tab === 'go' && <GoAdminTab />}
       {tab === 'pulse' && <PrimePulseAdminSection />}
       {tab === 'campaigns' && <CampaignsAdminSection onPendingChanged={() => void loadPending()} />}

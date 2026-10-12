@@ -20,7 +20,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'site';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -49,6 +49,7 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   go: 'Sky GO',
   go_finance: 'Тарифы Sky GO',
   registration: 'Регистрация аккаунтов',
+  site: 'Сайт (скачивание, статус, апелляции)',
 };
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -70,6 +71,7 @@ export const ROLE_LABEL: Record<string, string> = {
   finance_admin: 'Начисления',
   campaigns_admin: 'Мероприятия',
   gifts_admin: 'Подарки',
+  site_admin: 'Сайт',
   garant_admin: 'Sky Garant',
   notifications_admin: 'Рассылки',
   kutrent_market_admin: 'KutRent Market',

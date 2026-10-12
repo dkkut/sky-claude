@@ -54,6 +54,18 @@ server {
         return 200 'ok';
     }
 
+    # Открытое API сайта (статус, скачивание, апелляции, заявки на релиз) — тот же api, что и у приложения. Прокси на этом же домене:
+    # лендингу не нужны CORS и второй адрес. Вложения заявок (до 500 МБ видео) идут потоком, без буферизации.
+    location ^~ /api/site/ {
+        limit_req zone=req_general burst=40 nodelay;
+        client_max_body_size 520m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_pass http://sky_api;
+    }
+
     location / {
         # Свой add_header отменяет унаследованные — сниппет нужен повторно. Файлы без хеша в имени: без ревалидации
         # после выкладки браузер мог бы отдать старую страницу вместе с новыми картинками.

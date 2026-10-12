@@ -1241,6 +1241,7 @@ nav{
     <span class="nav-link" data-page="about" onclick="goToSection('page-home', this)">О проекте</span>
   </div>
   <div class="lang-switcher"><button class="lang-btn active" onclick="setLang('ru')">RU</button><button class="lang-btn" onclick="setLang('en')">EN</button></div>
+  <a class="nav-status-btn" data-cms-link="web" href="https://web.skymessenger.online" target="_blank" rel="noopener" aria-label="Веб-версия Sky" style="text-decoration:none;padding:0 14px;width:auto"><span class="nav-status-text" style="display:inline">🌐 Веб-версия</span></a>
   <button class="nav-status-btn" onclick="goTo('status')" aria-label="Статус сервисов"><span class="nav-status-dot"></span><span class="nav-status-text">Статус</span></button>
   <button class="nav-cta" data-ru="↑ Prime" data-en="↑ Prime" onclick="goTo('prime')">↑ Prime</button>
 </nav>
@@ -1249,7 +1250,7 @@ nav{
   <div class="container">
 <section class="sky-youtube-news" aria-label="Новости проекта">
   <div class="sky-youtube-news-title">Новости проекта</div>
-  <a class="sky-youtube-card" href="https://www.youtube.com/@kutlandru" target="_blank" rel="noopener noreferrer">
+  <a class="sky-youtube-card" data-cms-link="youtube" href="https://www.youtube.com/@kutlandru" target="_blank" rel="noopener noreferrer">
     <span class="sky-youtube-logo" aria-hidden="true">
       <svg viewBox="0 0 68 48" xmlns="http://www.w3.org/2000/svg">
         <rect x="1" y="1" width="66" height="46" rx="13" fill="#fff"/>
@@ -1262,7 +1263,7 @@ nav{
     </span>
     <span class="sky-youtube-arrow" aria-hidden="true">→</span>
   </a>
-  <a class="sky-tiktok-card" href="https://www.tiktok.com/@sky_messenger" target="_blank" rel="noopener noreferrer" aria-label="TikTok Sky Messenger">
+  <a class="sky-tiktok-card" data-cms-link="tiktok" href="https://www.tiktok.com/@sky_messenger" target="_blank" rel="noopener noreferrer" aria-label="TikTok Sky Messenger">
     <span class="sky-tiktok-logo" aria-hidden="true">
       <svg viewBox="0 0 48 54" xmlns="http://www.w3.org/2000/svg">
         <path d="M29 2c2 8 6 13 15 14v9c-5 0-10-2-14-5v20c0 8-6 14-14 14S2 48 2 40s6-14 14-14c2 0 4 .4 6 1.2v9.2c-1.6-.9-3.1-1.4-5-1.4-3.1 0-5.5 2.2-5.5 5s2.4 5 5.5 5c3.6 0 5.8-2.7 5.8-6.1V2H29z" fill="#25F4EE"/>
@@ -1277,15 +1278,15 @@ nav{
     <span class="sky-youtube-arrow" aria-hidden="true">→</span>
   </a>
   <div class="sky-social-row" aria-label="Мы в соцсетях">
-    <a class="sky-social-btn" href="https://t.me/kutlandcompanies" target="_blank" rel="noopener noreferrer" aria-label="Telegram" style="--sb-color:#2AABEE">
+    <a class="sky-social-btn" data-cms-link="telegram" href="https://t.me/kutlandcompanies" target="_blank" rel="noopener noreferrer" aria-label="Telegram" style="--sb-color:#2AABEE">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.5 4.5 2.7 11.9c-1.3.5-1.3 1.2-.2 1.5l4.8 1.5 1.8 5.6c.2.6.4.8.9.8.4 0 .6-.2.9-.5l2.2-2.1 4.6 3.4c.8.5 1.4.2 1.6-.8l3-14c.3-1.2-.4-1.8-1.8-1.8ZM8.6 14.3l9.3-5.9c.5-.3.9-.1.6.3l-7.6 6.9-.3 3.3-1.3-4.6Z"/></svg>
     </a>
-    <a class="sky-social-btn" href="https://discord.gg/ZEvBtqTTk" target="_blank" rel="noopener noreferrer" aria-label="Discord" style="--sb-color:#5865F2">
+    <a class="sky-social-btn" data-cms-link="discord" href="https://discord.gg/ZEvBtqTTk" target="_blank" rel="noopener noreferrer" aria-label="Discord" style="--sb-color:#5865F2">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.3 5.4A17.5 17.5 0 0 0 15.9 4l-.3.6a13 13 0 0 1 3.8 1.4c-1.7-.8-3.5-1.4-5.4-1.6a13 13 0 0 0-4 0A16.9 16.9 0 0 0 4.6 6c1.3-.6 2.6-1 4-1.3l-.2-.3A17.5 17.5 0 0 0 3.7 5.4C1.9 8.7 1.4 12 1.6 15.1a17.7 17.7 0 0 0 5.3 2.6l.7-1.1a11 11 0 0 1-1.7-.8l.4-.3a12.6 12.6 0 0 0 10.4 0l.4.3c-.5.3-1.1.6-1.7.8l.7 1.1a17.6 17.6 0 0 0 5.3-2.6c.3-3.6-.5-6.8-2.1-9.7ZM8.7 13.6c-.8 0-1.5-.8-1.5-1.7 0-1 .6-1.7 1.5-1.7.8 0 1.5.8 1.5 1.7 0 1-.7 1.7-1.5 1.7Zm6.6 0c-.8 0-1.5-.8-1.5-1.7 0-1 .6-1.7 1.5-1.7.8 0 1.5.8 1.5 1.7 0 1-.7 1.7-1.5 1.7Z"/></svg>
     </a>
   </div>
 
-  <a class="sky-manager-card" href="https://t.me/kutlandcomp" target="_blank" rel="noopener noreferrer">
+  <a class="sky-manager-card" data-cms-link="manager" href="https://t.me/kutlandcomp" target="_blank" rel="noopener noreferrer">
     <span class="sky-manager-ico" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.5 4.5 2.7 11.9c-1.3.5-1.3 1.2-.2 1.5l4.8 1.5 1.8 5.6c.2.6.4.8.9.8.4 0 .6-.2.9-.5l2.2-2.1 4.6 3.4c.8.5 1.4.2 1.6-.8l3-14c.3-1.2-.4-1.8-1.8-1.8ZM8.6 14.3l9.3-5.9c.5-.3.9-.1.6.3l-7.6 6.9-.3 3.3-1.3-4.6Z"/></svg>
     </span>
@@ -1309,7 +1310,7 @@ nav{
         <div class="hero-btns">
           <button id="btn-download" class="btn btn-primary" onclick="goTo('downloads')">⬇ Скачать Sky</button>
           <button id="btn-prime" class="btn btn-ghost" onclick="goTo('prime')">★ Prime</button>
-          <button id="btn-obt" class="btn btn-ghost" onclick="goTo('obt-register')">📋 Регистрация на ОБТ</button>
+          <a id="btn-web" class="btn btn-ghost" data-cms-link="web" href="https://web.skymessenger.online" target="_blank" rel="noopener" style="text-decoration:none">🌐 Веб-версия</a>
         </div>
       </div>
       <div class="sky-hero-visual" aria-hidden="true">
@@ -2679,7 +2680,7 @@ nav{
       <p id="dl-sub" style="color:var(--t2);font-size:15px;margin-top:12px;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.6">Доступно для всех платформ. Выберите нужную и установите за минуту.</p>
     </section>
 
-    <div class="platforms-grid animate">
+    <div class="platforms-grid animate" id="cms-platforms">
       <div class="card platform-card">
         <div class="plat-icon">🌐</div>
         <div class="plat-name">Web</div>
@@ -3202,7 +3203,7 @@ nav{
     </div>
 
     <!-- Music form -->
-    <div id="release-music" class="release-form animate">
+    <div id="release-music" class="release-form animate" data-cms-form="release-music">
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Название трека *</label>
@@ -3274,7 +3275,7 @@ nav{
     </div>
 
     <!-- Film form -->
-    <div id="release-film" class="release-form animate" style="display:none">
+    <div id="release-film" class="release-form animate" data-cms-form="release-film" style="display:none">
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Название *</label>
@@ -3413,7 +3414,7 @@ nav{
       </div>
     </div>
 
-    <div class="card animate" style="padding:32px;max-width:680px;margin-top:8px">
+    <div class="card animate" data-cms-form="appeal" style="padding:32px;max-width:680px;margin-top:8px">
       <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;margin-bottom:20px">Форма апелляции</div>
       <div style="display:flex;flex-direction:column;gap:14px">
         <div class="form-row">
@@ -3644,9 +3645,9 @@ nav{
     <div class="sky-status-header animate">
       <p class="section-label" style="justify-content:center;display:flex">Статус сервисов</p>
       <h2 class="section-title">Что сейчас <span class="gradient-text">происходит</span></h2>
-      <div class="sky-status-overall"><span class="nav-status-dot"></span>Платформа в стадии разработки</div>
+      <div class="sky-status-overall" id="cms-status-overall"><span class="nav-status-dot"></span>Платформа в стадии разработки</div>
     </div>
-    <div class="sky-status-list animate">
+    <div class="sky-status-list animate" id="cms-status-list">
       <div class="sky-status-row"><div class="sky-status-name"><span class="sky-status-icon">💬</span>Sky Messenger</div><div class="sky-status-badge"><span class="nav-status-dot"></span>В разработке</div></div>
       <div class="sky-status-row"><div class="sky-status-name"><span class="sky-status-icon">🎵</span>Sky Music</div><div class="sky-status-badge"><span class="nav-status-dot"></span>В разработке</div></div>
       <div class="sky-status-row"><div class="sky-status-name"><span class="sky-status-icon">🎬</span>Sky Film</div><div class="sky-status-badge"><span class="nav-status-dot"></span>В разработке</div></div>
@@ -3656,97 +3657,10 @@ nav{
       <div class="sky-status-row"><div class="sky-status-name"><span class="sky-status-icon">✨</span>Sky AI</div><div class="sky-status-badge"><span class="nav-status-dot"></span>В разработке</div></div>
       <div class="sky-status-row"><div class="sky-status-name"><span class="sky-status-icon">🖥️</span>Серверная инфраструктура</div><div class="sky-status-badge"><span class="nav-status-dot"></span>В разработке</div></div>
     </div>
-    <div class="sky-status-note animate">Проект находится в активной разработке — статусы будут обновляться по мере готовности сервисов к запуску.</div>
+    <div class="sky-status-note animate" id="cms-status-note">Проект находится в активной разработке — статусы будут обновляться по мере готовности сервисов к запуску.</div>
   </div>
 </div>
 
-<!-- OBT Register -->
-<style id="sky-obt-style">
-  .obt-wrap{max-width:420px;margin:0 auto;padding-top:60px;padding-bottom:80px}
-  .obt-card{
-    background:linear-gradient(160deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
-    border:1px solid var(--border2);border-radius:22px;padding:34px 30px;
-    box-shadow:0 28px 70px rgba(0,0,0,.4);
-  }
-  .obt-eyebrow{font-family:'DM Mono',monospace;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent2);margin-bottom:10px}
-  .obt-title{font-family:'Syne',sans-serif;font-weight:800;font-size:26px;margin-bottom:6px}
-  .obt-sub{font-size:13.5px;color:var(--t2);line-height:1.5;margin-bottom:26px}
-  .obt-field-err{font-size:11.5px;color:var(--red);min-height:14px;margin-top:-2px}
-  .form-input.obt-err{border-color:var(--red)}
-  .obt-consent-row{display:flex;align-items:flex-start;gap:10px;margin:6px 0 22px}
-  .obt-consent-check{
-    flex-shrink:0;width:19px;height:19px;border-radius:6px;margin-top:1px;
-    border:1px solid var(--border2);background:var(--glass);
-    display:grid;place-items:center;cursor:pointer;transition:border-color .2s ease,background .2s ease;
-  }
-  .obt-consent-check svg{width:12px;height:12px;color:#fff;opacity:0;transition:opacity .15s ease}
-  .obt-consent-check.on{background:linear-gradient(135deg,var(--accent),var(--violet));border-color:transparent}
-  .obt-consent-check.on svg{opacity:1}
-  .obt-consent-label{font-size:12.5px;color:var(--t2);line-height:1.5;cursor:pointer;user-select:none}
-  .obt-submit{
-    width:100%;padding:13px;border-radius:13px;
-    background:linear-gradient(135deg,var(--accent),var(--violet));
-    color:#fff;font-size:14.5px;font-weight:700;
-    transition:opacity .2s ease,transform .2s ease;
-  }
-  .obt-submit:hover{opacity:.9;transform:translateY(-1px)}
-  .obt-submit:disabled{opacity:.55;cursor:default;transform:none}
-  .obt-note{font-size:11.5px;color:var(--t3);text-align:center;margin-top:16px;line-height:1.5}
-  .obt-success{display:none;text-align:center}
-  .obt-success.show{display:block}
-  .obt-success-ico{width:58px;height:58px;border-radius:50%;margin:0 auto 18px;background:linear-gradient(135deg,var(--accent),var(--violet));display:grid;place-items:center;color:#fff}
-  .obt-success-ico svg{width:26px;height:26px}
-  .obt-success-title{font-family:'Syne',sans-serif;font-weight:700;font-size:19px;margin-bottom:8px}
-  .obt-success-sub{font-size:13.5px;color:var(--t2);line-height:1.6}
-  .obt-form-body.hide{display:none}
-</style>
-<div class="page" id="page-obt-register">
-  <div class="container obt-wrap">
-    <div class="obt-card animate">
-
-      <div class="obt-form-body" id="obtFormBody">
-        <p class="obt-eyebrow">ОБТ</p>
-        <h1 class="obt-title">Регистрация</h1>
-        <p class="obt-sub">Создайте аккаунт для регистрации на ОБТ</p>
-
-        <form id="obtForm" novalidate>
-          <div class="form-group">
-            <label class="form-label" for="obtUsername">Никнейм</label>
-            <input class="form-input" type="text" id="obtUsername" name="username" placeholder="Ваш никнейм" autocomplete="username"/>
-            <div class="obt-field-err" id="err-username"></div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="obtEmail">Email</label>
-            <input class="form-input" type="email" id="obtEmail" name="email" placeholder="you@example.com" autocomplete="email"/>
-            <div class="obt-field-err" id="err-email"></div>
-          </div>
-
-          <div class="obt-consent-row">
-            <span class="obt-consent-check" id="obtConsentCheck">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            </span>
-            <label class="obt-consent-label" id="obtConsentLabel">Согласен(на) получать рассылку и новости Sky на почту</label>
-          </div>
-
-          <button type="submit" class="obt-submit" id="obtSubmit">Создать аккаунт</button>
-          <p class="obt-note">Нажимая «Создать аккаунт», вы соглашаетесь с <span style="color:var(--accent2);cursor:pointer" onclick="goTo('agreements')">условиями использования</span> Sky.</p>
-        </form>
-      </div>
-
-      <div class="obt-success" id="obtSuccess">
-        <div class="obt-success-ico">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        </div>
-        <div class="obt-success-title">Аккаунт создан</div>
-        <p class="obt-success-sub" id="obtSuccessSub">Добро пожаловать! Регистрация на ОБТ прошла успешно.</p>
-      </div>
-
-    </div>
-  </div>
-</div>
-
-<!-- FOOTER (shared) -->
 <footer id="site-footer" style="display:none">
   <div class="container">
     <div class="footer-grid">
@@ -3841,7 +3755,7 @@ nav{
 <script>
 /* ═══ AURORA CANVAS ═══════════════════════════════════════════════ */
 /* ═══ NAVIGATION ═══════════════════════════════════════════════════ */
-const PAGES = ['home','downloads','prime','support','contacts','release','appeals','agreements','status','obt-register'];
+const PAGES = ['home','downloads','prime','support','contacts','release','appeals','agreements','status'];
 
 function goTo(pageId) {
   PAGES.forEach(p => {
@@ -3943,113 +3857,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (cookieBanner && !localStorage.getItem('sky:cookieChoice')) {
     setTimeout(() => cookieBanner.classList.add('show'), 900);
   }
-});
-
-/* ═══ OBT REGISTER ═══════════════════════════════════════════════
-   Статический сайт (GitHub Pages) — сервера и БД нет. Форма без
-   пароля: сохраняются только никнейм + email + согласие на
-   рассылку — через Formspree (бесплатный приём форм для
-   статических сайтов).
-
-   ПЕРЕД ПУБЛИКАЦИЕЙ:
-   1. Зарегистрируйтесь на https://formspree.io (бесплатно)
-   2. Создайте форму, скопируйте её ID (вида "mzzXXXXX")
-   3. Вставьте его вместо YOUR_FORM_ID ниже
-   Пока ID не заменён — форма не отправляет данные по-настоящему
-   (в консоли будет предупреждение), но UI работает как демо.
-   ═══════════════════════════════════════════════════════════════ */
-const OBT_FORMSPREE_ENDPOINT = 'https://formspree.io/f/xdendkyd';
-
-document.addEventListener('DOMContentLoaded', () => {
-  const consentCheck = document.getElementById('obtConsentCheck');
-  const consentLabel = document.getElementById('obtConsentLabel');
-  const obtForm = document.getElementById('obtForm');
-  if (!consentCheck || !obtForm) return;
-
-  let mailingConsent = false;
-  function toggleConsent() {
-    mailingConsent = !mailingConsent;
-    consentCheck.classList.toggle('on', mailingConsent);
-  }
-  consentCheck.addEventListener('click', toggleConsent);
-  consentLabel.addEventListener('click', toggleConsent);
-
-  function setFieldError(inputId, errId, message) {
-    const input = document.getElementById(inputId);
-    const err = document.getElementById(errId);
-    input.classList.toggle('obt-err', !!message);
-    err.textContent = message || '';
-  }
-
-  function validateObt() {
-    let ok = true;
-    const username = document.getElementById('obtUsername').value.trim();
-    const email = document.getElementById('obtEmail').value.trim();
-
-    if (!username || username.length < 3) {
-      setFieldError('obtUsername', 'err-username', 'Минимум 3 символа');
-      ok = false;
-    } else setFieldError('obtUsername', 'err-username', '');
-
-    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRe.test(email)) {
-      setFieldError('obtEmail', 'err-email', 'Введите корректный email');
-      ok = false;
-    } else setFieldError('obtEmail', 'err-email', '');
-
-    return ok;
-  }
-
-  obtForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!validateObt()) return;
-
-    const submitBtn = document.getElementById('obtSubmit');
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Создаём аккаунт…';
-
-    const username = document.getElementById('obtUsername').value.trim();
-    const email = document.getElementById('obtEmail').value.trim();
-
-    const payload = {
-      username: username,
-      email: email,
-      mailing_consent: mailingConsent,
-      source: 'obt-register',
-      created_at: new Date().toISOString()
-    };
-
-    let saved = false;
-    if (!OBT_FORMSPREE_ENDPOINT.includes('YOUR_FORM_ID')) {
-      try {
-        const res = await fetch(OBT_FORMSPREE_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        saved = res.ok;
-        if (!res.ok) {
-          const bodyText = await res.text().catch(() => '');
-          console.error('Sky OBT: Formspree ответил ошибкой', res.status, bodyText);
-        } else {
-          console.info('Sky OBT: отправлено успешно ✓', payload);
-        }
-      } catch (err) {
-        console.error('Sky OBT: fetch не выполнился (сеть/CORS/адрес)', err);
-      }
-    } else {
-      console.warn('Sky OBT: OBT_FORMSPREE_ENDPOINT не настроен — email не был реально сохранён.');
-    }
-
-    document.getElementById('obtFormBody').classList.add('hide');
-    document.getElementById('obtSuccess').classList.add('show');
-    document.getElementById('obtSuccessSub').textContent = saved
-      ? `Добро пожаловать, ${username}! Мы сохранили ваш email.`
-      : `Не удалось сохранить email — попробуйте ещё раз чуть позже. Если ошибка повторяется, откройте консоль браузера (F12 → Console) для деталей.`;
-
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Создать аккаунт';
-  });
 });
 
 /* ═══ DEAL GUARANTEE STEPS REVEAL ═══════════════════════════════════ */
@@ -4826,5 +4633,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 </script>
+<script src="/cms.js" defer></script>
 </body>
 </html>
