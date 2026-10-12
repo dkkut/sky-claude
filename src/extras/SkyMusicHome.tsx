@@ -384,12 +384,6 @@ export const SkyMusicHome = ({
         ))}
       </Section>
 
-      <Section title="Плейлисты" icon={ListMusic} index={6} empty="Плейлисты появятся во вкладке «Коллекция»"/>
-
-      <Section title="Подкасты" icon={Mic2} index={7} empty="Раздел подкастов скоро появится"/>
-
-      <Section title="Музыка по настроению" icon={Sparkles} index={8} empty="Подборки по настроению скоро появятся"/>
-
       <Section title="Популярное сейчас" icon={Heart} index={9}>
         {popularNow.map(t => (
           <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, popularNow)}/>

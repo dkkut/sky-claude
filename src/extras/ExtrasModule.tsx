@@ -47,7 +47,8 @@ const SkyGarant = lazyChunk(() => import('@/garant/SkyGarant').then(m => ({ defa
 const SkyPVZ = lazyChunk(() => import('@/pvz/SkyPVZ').then(m => ({ default: m.SkyPVZ })));
 const SkyGiftsNFT = lazyChunk(() => import('@/gifts/SkyGiftsNFT').then(m => ({ default: m.SkyGiftsNFT })));
 import { AdminMusicPanel } from '@/music/ArtistSubmit';
-import { apiModerationQueue } from '@/music/musicApi';
+import { apiModerationQueue, apiMediaTicket as apiMusicTicket } from '@/music/musicApi';
+import { playMusicQueue } from '@/music/useMusicSync';
 import { PodcastModeration } from '@/podcasts/PodcastsAdmin';
 import { BookModeration } from '@/books/BooksAdmin';
 import { TicketsModeration } from '@/tickets/TicketsAdmin';
@@ -1027,7 +1028,7 @@ const MediaHomeTab = ({
               transition={{ delay:.15+i*.07, duration:.35, ease:[.22,1,.36,1] }}
               whileHover={{ y:-4 }} whileTap={{ scale:.96 }}
               className="shrink-0 cursor-pointer" style={{ width:cardSize }}
-              onClick={() => onNav('music')}>
+              onClick={() => { void apiMusicTicket().finally(() => playMusicQueue(topTracks, f.id)); }}>
               {/* Cover */}
               <div className="relative overflow-hidden rounded-2xl mb-2"
                 style={{ height:cardSize, background:f.coverUrl?undefined:`linear-gradient(155deg,${g[0]},${g[1]})`,
