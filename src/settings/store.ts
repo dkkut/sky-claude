@@ -38,6 +38,11 @@ export const FONT_SIZES: Record<FontSize, { size: string; label: string }> = {
 export interface AppSettings {
   // Внешний вид
   colorScheme:     ColorScheme;
+  /** Автопереключение светлой/тёмной темы по времени суток (местное время устройства). */
+  autoTheme:       boolean;
+  /** С какого часа светлая тема (ЧЧ:ММ) и с какого — тёмная. */
+  autoThemeLight:  string;
+  autoThemeDark:   string;
   theme:           ThemeMode;
   accent:          AccentColor;
   fontSize:        FontSize;
@@ -88,6 +93,9 @@ const W  = typeof window !== 'undefined';
 
 const defaults: AppSettings = {
   colorScheme:      'dark',
+  autoTheme:        false,
+  autoThemeLight:   '07:00',
+  autoThemeDark:    '21:00',
   theme:            'dark',
   accent:           'blue',
   fontSize:         'normal',
@@ -195,9 +203,12 @@ export const useSettings = create<SettingsState>((setState, get) => {
     settings: initial,
     set: (patch) => {
       const next = { ...get().settings, ...patch };
+      // Ручной выбор темы выключает автопереключение: человек сказал, какая тема ему нужна сейчас.
+      if (patch.colorScheme !== undefined && patch.autoTheme === undefined) next.autoTheme = false;
       setState({ settings: next });
       try { localStorage.setItem(SK, JSON.stringify(next)); } catch {}
       applySettings(next);
+      if (next.autoTheme && (patch.autoTheme !== undefined || patch.autoThemeLight !== undefined || patch.autoThemeDark !== undefined)) setTimeout(syncAutoTheme, 0);
 
       // «Был(а) в сети» скрывает сервер, а не браузер: здесь только
       // просьба. Придёт ответ — applyServerPrivacy запишет, как вышло
@@ -225,3 +236,25 @@ export const useSettings = create<SettingsState>((setState, get) => {
     },
   };
 });
+
+
+/* ─── Автопереключение темы по времени ─────────────────────────────── */
+const toMin = (v: string, d: number) => { const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(v ?? ''); return m ? Number(m[1]) * 60 + Number(m[2]) : d; };
+/** Какая тема должна быть сейчас: светлая с autoThemeLight до autoThemeDark (интервал может переходить через полночь). */
+export const scheduledScheme = (s: Pick<AppSettings, 'autoThemeLight' | 'autoThemeDark'>, now = new Date()): ColorScheme => {
+  const from = toMin(s.autoThemeLight, 420); const to = toMin(s.autoThemeDark, 1260); const t = now.getHours() * 60 + now.getMinutes();
+  const light = from === to ? true : from < to ? t >= from && t < to : !(t >= to && t < from);
+  return light ? 'light' : 'dark';
+};
+export const syncAutoTheme = () => {
+  const st = useSettings.getState(); const s = st.settings;
+  if (!s.autoTheme) return;
+  const want = scheduledScheme(s);
+  if (want !== s.colorScheme) st.set({ colorScheme: want, autoTheme: true });
+};
+if (W) {
+  setTimeout(syncAutoTheme, 0);
+  setInterval(syncAutoTheme, 30_000);
+  document.addEventListener('visibilitychange', syncAutoTheme);
+  window.addEventListener('focus', syncAutoTheme);
+}

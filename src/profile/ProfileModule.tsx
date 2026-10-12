@@ -609,6 +609,20 @@ const SettingsSection = ({ logout, username, onOpen }: {
               );
             })}
           </div>
+          <SettingsRow icon={Moon} label="Автопереключение по времени"
+            sub={s.autoTheme ? `Светлая с ${s.autoThemeLight}, тёмная с ${s.autoThemeDark}` : 'Тема меняется сама в выбранные часы'}
+            right={<Toggle on={s.autoTheme} onToggle={() => set({ autoTheme: !s.autoTheme })}/>}/>
+          {s.autoTheme && (
+            <div className="grid grid-cols-2 gap-2.5 mb-3 px-1">
+              {([['autoThemeLight', 'Светлая с', Sun], ['autoThemeDark', 'Тёмная с', Moon]] as const).map(([key, label, Icon]) => (
+                <label key={key} className="flex flex-col gap-1 rounded-2xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)' }}>
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: 'var(--t2)' }}><Icon size={12}/>{label}</span>
+                  <input type="time" value={s[key]} onChange={e => { if (e.target.value) set({ [key]: e.target.value }); }}
+                    className="bg-transparent text-base font-bold outline-none" style={{ color: 'var(--t1)', colorScheme: s.colorScheme }}/>
+                </label>
+              ))}
+            </div>
+          )}
           {s.colorScheme === 'dark' && (
           <div className="grid grid-cols-3 gap-2.5">
             {(Object.entries(THEME_MODES) as [ThemeMode, any][]).map(([key, t]) => {
