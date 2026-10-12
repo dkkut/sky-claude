@@ -16,6 +16,7 @@ import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can, adminsWith, writeAdminLog } from './admin.mjs';
+import { emailGuestReply } from './sitesupport.mjs';
 
 const KINDS = new Set(['question', 'bug', 'idea', 'report', 'appeal']);
 const STATUSES = new Set(['open', 'in_progress', 'waiting', 'closed']);
@@ -40,6 +41,10 @@ const toTicket = (row) => ({
   updatedAt: row.updated_at.toISOString(),
   closedAt: row.closed_at ? row.closed_at.toISOString() : undefined,
   messages: row.messages ?? undefined,
+  // Обращение с лендинга (server/sitesupport.mjs): контакт — почта; видно только сотрудникам (читать такой тикет больше некому).
+  source: row.source ?? 'app',
+  guestEmail: row.source === 'site' && row.guest_email ? decryptContent(row.guest_email) ?? undefined : undefined,
+  guestCode: row.guest_code ?? undefined,
 });
 
 const toMessage = (row) => ({
@@ -188,6 +193,7 @@ export const replyToTicket = async (ticketId, authorId, body) => {
     'UPDATE support_tickets SET status = $2, updated_at = now() WHERE id = $1',
     [ticket.id, nextStatus],
   );
+  if (staff) void emailGuestReply(ticket, text);
   return { ticket: await readTicket(ticket.id, authorId) };
 };
 

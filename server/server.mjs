@@ -69,6 +69,7 @@ import { sweepSshGate } from './sshgate.mjs';
 import { deviceLinkRoutes } from './routes/devicelink.mjs';
 import { registrationRoutes } from './routes/registration.mjs';
 import { modClosureRoutes } from './routes/modclosure.mjs';
+import { ownerNotifyRoutes } from './routes/ownernotify.mjs';
 import { siteRoutes, siteAdminRoutes } from './routes/site.mjs';
 import { sweepSite } from './sitecms.mjs';
 import * as musicTicket from './musicticket.mjs';
@@ -177,7 +178,7 @@ const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, authRoutes, p
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes];
+                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.

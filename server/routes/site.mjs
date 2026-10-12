@@ -2,8 +2,9 @@ import { json, requireProfile, parseBody, clientIp } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { requestMeta } from './../adminsec.mjs';
 import * as site from './../sitecms.mjs';
+import * as supp from './../sitesupport.mjs';
 
-const ERR_STATUS = { not_allowed: 403, not_found: 404, file_too_large: 413, upload_interrupted: 400, empty_file: 400, unsupported_type: 415, too_many_files: 409, bad_extension: 400 };
+const ERR_STATUS = { too_many: 429, closed: 409, bad_topic: 400, not_allowed: 403, not_found: 404, file_too_large: 413, upload_interrupted: 400, empty_file: 400, unsupported_type: 415, too_many_files: 409, bad_extension: 400 };
 const reply = (res, r) => json(res, r.error ? (ERR_STATUS[r.error] ?? 400) : 200, r);
 
 /** Отдача файла с поддержкой Range (apk/exe — десятки мегабайт, докачка на слабой сети обязательна). */
@@ -59,6 +60,16 @@ export const siteRoutes = async (req, res, url) => {
   if (path === '/api/site/check') {
     if (!rateLimit(`site:chk:${ip}`, 20) || !rateLimitPerHour(`site:chk:h:${ip}`, 100)) return json(res, 429, { error: 'too_many_requests' });
     return reply(res, await site.checkAppeal(b.code, b.email));
+  }
+  /* Тех. поддержка: обращение создаёт настоящий тикет в основной очереди поддержки (server/sitesupport.mjs). */
+  if (path === '/api/site/support') {
+    if (b.website) return json(res, 200, { ok: true, code: 'SUP-0000-0000' });
+    if (!rateLimitPerHour(`site:sup:${ip}`, 6) || !rateLimit(`site:sup:m:${ip}`, 3)) return json(res, 429, { error: 'too_many_requests' });
+    return reply(res, await supp.submitSiteTicket(b, { ip }));
+  }
+  if (path === '/api/site/support/check' || path === '/api/site/support/reply') {
+    if (!rateLimit(`site:supchk:${ip}`, 20) || !rateLimitPerHour(`site:supchk:h:${ip}`, 120)) return json(res, 429, { error: 'too_many_requests' });
+    return reply(res, path.endsWith('check') ? await supp.checkSiteTicket(b.code, b.email) : await supp.replySiteTicket(b.code, b.email, b.body));
   }
   if (path === '/api/site/appeals' || path === '/api/site/releases') {
     // Ловушка для ботов: настоящий человек это поле не видит и не заполняет.

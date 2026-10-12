@@ -1,0 +1,43 @@
+// Лендинг: страница «Поддержка» — форма создаёт настоящее обращение, статус по номеру и почте (Playwright).
+//   Нужны API :8080 и лендинг на :4180 (sitefront.mjs). Запускать из каталога с playwright-core.
+import { chromium } from 'playwright-core';
+import { execSync } from 'node:child_process';
+const F = 'http://localhost:4180';
+const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/["$]/g, '\\$&')}"`).toString().trim();
+let ok = 0, bad = 0; const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
+const email = `supui${Date.now()}@example.com`;
+const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
+const p = await (await br.newContext({ viewport: { width: 1100, height: 900 }, locale: 'ru-RU' })).newPage();
+const errs = []; p.on('pageerror', (e) => errs.push(e.message.slice(0, 160)));
+await p.goto(F + '/'); await p.waitForTimeout(1500);
+await p.evaluate(() => goTo('support')); await p.waitForTimeout(800);
+t('на странице «Поддержка» есть форма и подсказка, что указать', (await p.locator('#sp-send').isVisible()) && /Что указать/.test(await p.locator('#cms-support').innerText()));
+await p.locator('#sp-email').fill(email); await p.locator('#sp-topic').selectOption('bug'); await p.locator('#sp-plat').selectOption('windows');
+await p.locator('#sp-ver').fill('4.0.1'); await p.locator('#sp-user').fill('@tester'); await p.locator('#sp-subj').fill('Не запускается');
+await p.locator('#sp-send').click(); await p.waitForTimeout(600);
+t('без описания форма не отправляется', /не короче 10/.test(await p.locator('#sp-msg').innerText()));
+await p.locator('#sp-body').fill('Приложение закрывается сразу после запуска на Windows 11.');
+await p.locator('#sp-send').click(); await p.waitForTimeout(1500);
+const txt = await p.locator('#cms-support').innerText();
+const code = (txt.match(/SUP-[A-Z0-9]{4}-[A-Z0-9]{4}/) || [])[0];
+t('обращение принято, показан номер', !!code, txt.slice(0, 200));
+t('в основной очереди появился тикет с сайта', q(`select count(*) from support_tickets where guest_code='${code}' and source='site' and author_id is null`) === '1');
+await p.locator('#sp-check').click(); await p.waitForTimeout(1200);
+t('проверка по номеру и почте показывает статус и сообщение', /Принято/.test(await p.locator('#sp-thread').innerText()) && /Windows 11/.test(await p.locator('#sp-thread').innerText()));
+await p.locator('#sp-reply').fill('Добавляю: ошибка появляется сразу.'); await p.locator('#sp-reply-btn').click(); await p.waitForTimeout(1200);
+t('ответ человека виден в переписке', /Добавляю/.test(await p.locator('#sp-thread').innerText()));
+await p.locator('#sp-cemail').fill('other@example.com'); await p.locator('#sp-check').click(); await p.waitForTimeout(900);
+t('с чужой почтой — «не найдено»', /Не найдено/.test(await p.locator('#sp-thread').innerText()));
+await p.screenshot({ path: process.argv[2] + '/site-support.png', fullPage: false });
+// «Контакты» тоже отправляет обращение
+await p.evaluate(() => goTo('contacts')); await p.waitForTimeout(700);
+const inputs = p.locator('#page-contacts input.form-input');
+await inputs.nth(0).fill('Тест'); await inputs.nth(1).fill(email);
+await p.locator('#page-contacts textarea.form-input').fill('Вопрос по Prime: как отменить подписку?');
+await p.locator('#form-send').click(); await p.waitForTimeout(1500);
+t('форма «Контакты» создаёт обращение и показывает номер', /SUP-[A-Z0-9]{4}-[A-Z0-9]{4}/.test(await p.locator('#page-contacts').innerText()));
+t('ошибок в консоли нет', errs.length === 0, errs.join(' | '));
+await p.setViewportSize({ width: 390, height: 780 }); await p.evaluate(() => goTo('support')); await p.waitForTimeout(600);
+t('на телефоне нет горизонтальной прокрутки', !(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2)));
+await br.close();
+console.log(`\nИтого: ${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

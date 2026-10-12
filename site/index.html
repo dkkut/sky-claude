@@ -3053,7 +3053,7 @@ nav{
     </div>
 
     <div class="support-grid animate">
-      <div class="card support-card" onclick="goTo('contacts')">
+      <div class="card support-card" onclick="var f=document.getElementById('cms-support');if(f)f.scrollIntoView({behavior:'smooth',block:'start'})">
         <span class="support-icon">📧</span>
         <div class="support-q">Написать в поддержку</div>
         <div class="support-a">Отправьте запрос — мы ответим в течение 24 часов. Prime-пользователи получают ответ в течение 2 часов.</div>
@@ -3069,6 +3069,8 @@ nav{
         <div class="support-a">Хотите опубликовать музыку или фильм на платформе? Подайте заявку и наша команда рассмотрит её.</div>
       </div>
     </div>
+
+    <div id="cms-support" class="animate" style="margin-bottom:32px"></div>
 
     <div class="glow-line animate"></div>
 

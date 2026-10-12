@@ -117,6 +117,7 @@ export const AdminQueue = () => {
             <p className="truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}>{open.subject}</p>
             <p className="text-[11px]" style={{ color: 'var(--t3)' }}>
               {KIND_LABEL[open.kind]} · {STATUS_LABEL[open.status]}
+              {open.source === 'site' && <> · С сайта{open.guestEmail ? <> · <span translate="no">{open.guestEmail}</span></> : null}{open.guestCode ? <> · <span translate="no">{open.guestCode}</span></> : null} · ответ уйдёт на почту</>}
               {open.assigneeId && ` · ${mine ? 'на мне' : nameOf(open.assigneeId)}`}
             </p>
           </div>
@@ -259,7 +260,7 @@ export const AdminQueue = () => {
               <StatusChip status={t.status} />
             </div>
             <p className="mt-0.5 text-[11px]" style={{ color: 'var(--t3)' }}>
-              {KIND_LABEL[t.kind]} · {fmtWhen(t.updatedAt)}
+              {KIND_LABEL[t.kind]} · {fmtWhen(t.updatedAt)}{t.source === 'site' ? ' · С сайта' : ''}
               {t.assigneeId
                 ? ` · ${t.assigneeId === meId ? 'на мне' : (nameOf(t.assigneeId) ?? 'назначено')}`
                 : ' · без ответственного'}

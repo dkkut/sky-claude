@@ -163,7 +163,103 @@
     });
   }
 
+
+  /* ── Тех. поддержка: форма создаёт настоящий тикет в основной очереди поддержки Sky; статус и переписка — по номеру и почте ── */
+  var TOPICS = [['login', 'Вход и аккаунт', 'Sign-in and account'], ['blocked', 'Блокировка', 'Block'], ['payment', 'Платежи и Prime', 'Payments and Prime'], ['bug', 'Ошибка в приложении', 'App bug'], ['download', 'Скачивание и установка', 'Download and install'], ['idea', 'Предложение', 'Suggestion'], ['other', 'Другое', 'Other']];
+  var PLATS = [['', 'Не указано', 'Not specified'], ['web', 'Веб-версия', 'Web'], ['android', 'Android', 'Android'], ['windows', 'Windows', 'Windows'], ['ios', 'iOS', 'iOS'], ['macos', 'macOS', 'macOS'], ['linux', 'Linux', 'Linux'], ['other', 'Другое', 'Other']];
+  Object.assign(ERR, { bad_topic: ['Выберите тему.', 'Choose a topic.'], too_many: ['Слишком много обращений. Попробуйте позже.', 'Too many requests. Try again later.'], closed: ['Обращение закрыто — создайте новое.', 'This request is closed — please create a new one.'] });
+  function opts(list) { return list.map(function (o) { return '<option value="' + o[0] + '">' + esc(T(o[1], o[2])) + '</option>'; }).join(''); }
+  function field(id, label, inner) { return '<div class="form-group"><label class="form-label" for="' + id + '">' + esc(label) + '</label>' + inner + '</div>'; }
+  function initSupport() {
+    var root = $('#cms-support'); if (!root || root.getAttribute('data-ready')) return; root.setAttribute('data-ready', '1');
+    var tips = [T('Платформа и версия приложения (Веб, Android, Windows…)', 'Platform and app version (Web, Android, Windows…)'), T('Что вы делали и что пошло не так — по шагам', 'What you were doing and what went wrong — step by step'), T('Текст ошибки на экране, если он есть', 'The error text on screen, if any'), T('Ваш @ник в Sky — чтобы мы нашли аккаунт (пароли и коды НЕ присылайте)', 'Your @username in Sky so we can find the account (never send passwords or codes)')];
+    root.innerHTML =
+      '<div class="card" style="padding:28px"><div style="font-family:Syne,sans-serif;font-size:20px;font-weight:700;margin-bottom:6px">' + T('Написать в техническую поддержку', 'Contact technical support') + '</div>' +
+      '<p style="color:var(--t2);font-size:13px;line-height:1.6;margin-bottom:14px">' + T('Обращение попадает в ту же очередь поддержки, что и обращения из приложения. Войти в аккаунт для этого не нужно.', 'Your request goes to the same support queue as requests from the app. You do not need to sign in.') + '</p>' +
+      '<div style="padding:14px 16px;border-radius:14px;background:rgba(79,110,247,0.07);border:1px solid rgba(79,110,247,0.2);margin-bottom:18px"><div style="font-size:12px;font-weight:700;margin-bottom:6px">' + T('Что указать, чтобы мы помогли быстрее', 'What to include so we can help faster') + '</div><ul style="margin:0;padding-left:18px;color:var(--t2);font-size:12.5px;line-height:1.7">' + tips.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul></div>' +
+      '<div id="sp-form" style="display:flex;flex-direction:column;gap:14px">' +
+      field('sp-email', T('Email для ответа', 'Email for the reply'), '<input class="form-input" id="sp-email" type="email" placeholder="your@email.com" autocomplete="email"/>') +
+      field('sp-topic', T('Тема', 'Topic'), '<select class="form-input" id="sp-topic">' + opts(TOPICS) + '</select>') +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' + field('sp-plat', T('Платформа', 'Platform'), '<select class="form-input" id="sp-plat">' + opts(PLATS) + '</select>') + field('sp-ver', T('Версия приложения', 'App version'), '<input class="form-input" id="sp-ver" placeholder="4.0.1" maxlength="40"/>') + '</div>' +
+      field('sp-user', T('Ваш @ник в Sky (если есть)', 'Your @username in Sky (if any)'), '<input class="form-input" id="sp-user" placeholder="@username" maxlength="64"/>') +
+      field('sp-subj', T('Кратко о проблеме', 'Short summary'), '<input class="form-input" id="sp-subj" maxlength="120"/>') +
+      field('sp-body', T('Подробно', 'Details'), '<textarea class="form-input" id="sp-body" rows="6" maxlength="4000" placeholder="' + esc(T('Опишите ситуацию подробно…', 'Describe the situation in detail…')) + '"></textarea>') +
+      '<button class="btn btn-primary" id="sp-send" style="width:100%">' + T('Отправить обращение →', 'Send request →') + '</button><div id="sp-msg" role="status" style="font-size:13px;line-height:1.5"></div></div></div>' +
+      '<div class="card" style="padding:24px;margin-top:18px"><div style="font-family:Syne,sans-serif;font-size:16px;font-weight:700;margin-bottom:12px">' + T('Статус обращения и переписка', 'Request status and replies') + '</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap"><input class="form-input" id="sp-code" placeholder="SUP-XXXX-XXXX" style="flex:1;min-width:160px"/><input class="form-input" id="sp-cemail" type="email" placeholder="email" style="flex:1;min-width:160px"/><button class="btn btn-ghost" id="sp-check">' + T('Проверить', 'Check') + '</button></div><div id="sp-thread" style="margin-top:14px"></div></div>';
+    var msg = $('#sp-msg');
+    var say = function (t, bad) { msg.style.color = bad ? '#ef4444' : 'var(--t2)'; msg.textContent = t; };
+    try { var last = localStorage.getItem('sky:support:last'); if (last) { var o = JSON.parse(last); $('#sp-code').value = o.code || ''; $('#sp-cemail').value = o.email || ''; } } catch (e) { /* без памяти */ }
+    var hp = document.createElement('input'); hp.type = 'text'; hp.name = 'website'; hp.tabIndex = -1; hp.autocomplete = 'off'; hp.setAttribute('aria-hidden', 'true'); hp.style.cssText = 'position:absolute;left:-9999px;width:1px;height:1px;opacity:0'; $('#sp-form').appendChild(hp);
+
+    function render(j, email) {
+      var box = $('#sp-thread');
+      var thread = j.messages.map(function (m) { return '<div style="margin:8px 0;padding:10px 14px;border-radius:12px;background:' + (m.fromStaff ? 'rgba(52,211,153,0.08)' : 'rgba(255,255,255,0.04)') + ';border:1px solid ' + (m.fromStaff ? 'rgba(52,211,153,0.25)' : 'var(--border,rgba(255,255,255,0.08))') + '"><div style="font-size:11px;color:var(--t3);margin-bottom:4px">' + esc(m.fromStaff ? T('Поддержка Sky', 'Sky support') : T('Вы', 'You')) + ' · ' + esc(new Date(m.createdAt).toLocaleString()) + '</div><div style="white-space:pre-wrap;font-size:13px;line-height:1.55">' + esc(m.body) + '</div></div>'; }).join('');
+      box.innerHTML = '<div style="font-size:14px;margin-bottom:6px"><b>' + esc(j.code) + '</b> — ' + esc(statusText(j.status)) + '</div>' + thread +
+        (j.status === 'closed' ? '<p style="color:var(--t3);font-size:12.5px">' + T('Обращение закрыто. Нужна помощь ещё — создайте новое.', 'This request is closed. Need more help — create a new one.') + '</p>'
+          : '<textarea class="form-input" id="sp-reply" rows="3" maxlength="4000" placeholder="' + esc(T('Ваш ответ…', 'Your reply…')) + '" style="margin-top:8px"></textarea><button class="btn btn-ghost" id="sp-reply-btn" style="margin-top:8px">' + T('Ответить', 'Reply') + '</button><div id="sp-reply-msg" style="font-size:13px;margin-top:6px"></div>');
+      var rb = $('#sp-reply-btn');
+      if (rb) rb.addEventListener('click', function () {
+        var rm = $('#sp-reply-msg'); rb.disabled = true;
+        post('/support/reply', { code: j.code, email: email, body: $('#sp-reply').value }).then(function (r) {
+          rb.disabled = false;
+          if (!r.ok) { rm.style.color = '#ef4444'; rm.textContent = errText(r.error || (r.__status === 429 ? 'too_many_requests' : '')); return; }
+          check(j.code, email);
+        }).catch(function () { rb.disabled = false; rm.style.color = '#ef4444'; rm.textContent = T('Нет связи с сервером.', 'No connection to the server.'); });
+      });
+    }
+    var ST = { open: ['Принято', 'Received'], in_progress: ['В работе', 'In progress'], waiting: ['Ждём вашего ответа', 'Waiting for your reply'], closed: ['Закрыто', 'Closed'] };
+    function statusText(s) { var n = ST[s]; return n ? T(n[0], n[1]) : s; }
+    function check(code, email) {
+      var box = $('#sp-thread'); box.textContent = '…';
+      post('/support/check', { code: code, email: email }).then(function (j) {
+        if (!j.ok) { box.innerHTML = '<span style="color:#ef4444">' + esc(errText(j.error || (j.__status === 429 ? 'too_many_requests' : ''))) + '</span>'; return; }
+        try { localStorage.setItem('sky:support:last', JSON.stringify({ code: code, email: email })); } catch (e) { /* без памяти */ }
+        render(j, email);
+      }).catch(function () { box.textContent = T('Нет связи с сервером.', 'No connection to the server.'); });
+    }
+    $('#sp-check').addEventListener('click', function () { check($('#sp-code').value, $('#sp-cemail').value); });
+    var send = $('#sp-send'); var label = send.textContent;
+    send.addEventListener('click', function (e) {
+      e.preventDefault();
+      var email = $('#sp-email').value.trim(); var body = $('#sp-body').value.trim();
+      if (!email || body.length < 10) { say(T('Укажите почту и опишите ситуацию (не короче 10 знаков).', 'Enter your email and describe the situation (at least 10 characters).'), true); return; }
+      send.disabled = true; send.textContent = T('Отправляем…', 'Sending…'); say('');
+      post('/support', { email: email, topic: $('#sp-topic').value, platform: $('#sp-plat').value, version: $('#sp-ver').value, username: $('#sp-user').value, subject: $('#sp-subj').value, body: body, website: hp.value, lang: lang() === 'en' ? 'en' : 'ru' }).then(function (j) {
+        send.disabled = false; send.textContent = label;
+        if (!j.code) { say(errText(j.error || (j.__status === 429 ? 'too_many_requests' : '')), true); return; }
+        $('#sp-form').innerHTML = '<div style="text-align:center;padding:18px 8px"><div style="font-size:42px">✅</div><h3 style="font-family:Syne,sans-serif;margin:10px 0">' + T('Обращение принято', 'Request received') + '</h3><p style="color:var(--t2)">' + T('Ваш номер:', 'Your number:') + '</p><p style="font-family:\'DM Mono\',monospace;font-size:22px;font-weight:700;margin:6px 0 12px">' + esc(j.code) + '</p><p style="color:var(--t2);font-size:13px">' + T('Сохраните номер: по нему и вашей почте ниже можно смотреть статус и отвечать. Ответ поддержки придёт и на почту.', 'Keep this number: with your email you can check the status and reply below. Our answer will also arrive by email.') + '</p></div>';
+        $('#sp-code').value = j.code; $('#sp-cemail').value = email;
+        try { localStorage.setItem('sky:support:last', JSON.stringify({ code: j.code, email: email })); } catch (e2) { /* без памяти */ }
+      }).catch(function () { send.disabled = false; send.textContent = label; say(T('Нет связи с сервером.', 'No connection to the server.'), true); });
+    });
+
+    // Форма на странице «Контакты» тоже работает как обращение в поддержку (раньше кнопка ничего не отправляла).
+    var cs = $('#form-send');
+    if (cs && !cs.getAttribute('data-wired')) {
+      cs.setAttribute('data-wired', '1');
+      var card = cs.parentNode; var inputs = $$('input.form-input', card); var sel = $('select.form-input', card); var ta = $('textarea.form-input', card);
+      var MAP = { 'Техническая проблема': 'bug', 'Вопрос по Prime': 'payment', 'Жалоба на пользователя': 'other', 'Партнёрство': 'other', 'Другое': 'other' };
+      var cm = document.createElement('div'); cm.setAttribute('role', 'status'); cm.style.cssText = 'font-size:13px;line-height:1.5;margin-top:10px;color:var(--t2)'; cs.parentNode.appendChild(cm);
+      var chp = document.createElement('input'); chp.type = 'text'; chp.name = 'website'; chp.tabIndex = -1; chp.autocomplete = 'off'; chp.setAttribute('aria-hidden', 'true'); chp.style.cssText = 'position:absolute;left:-9999px;width:1px;height:1px;opacity:0'; card.appendChild(chp);
+      var clabel = cs.textContent;
+      cs.addEventListener('click', function (e) {
+        e.preventDefault();
+        var name = inputs[0] ? inputs[0].value.trim() : ''; var mail = inputs[1] ? inputs[1].value.trim() : ''; var text = ta ? ta.value.trim() : '';
+        if (!mail || text.length < 10) { cm.style.color = '#ef4444'; cm.textContent = T('Укажите почту и сообщение (не короче 10 знаков).', 'Enter your email and a message (at least 10 characters).'); return; }
+        cs.disabled = true; cs.textContent = T('Отправляем…', 'Sending…');
+        post('/support', { email: mail, topic: MAP[(sel && sel.value) || ''] || 'other', subject: sel ? sel.value : '', body: (name ? (T('Имя: ', 'Name: ') + name + '\n\n') : '') + text, website: chp.value, lang: lang() === 'en' ? 'en' : 'ru' }).then(function (j) {
+          cs.disabled = false; cs.textContent = clabel;
+          if (!j.code) { cm.style.color = '#ef4444'; cm.textContent = errText(j.error || (j.__status === 429 ? 'too_many_requests' : '')); return; }
+          cm.style.color = 'var(--green,#34d399)'; cm.textContent = T('Принято. Номер обращения: ', 'Received. Request number: ') + j.code + T(' — статус смотрите на странице «Поддержка».', ' — check the status on the Support page.');
+          if (ta) ta.value = '';
+          try { localStorage.setItem('sky:support:last', JSON.stringify({ code: j.code, email: mail })); } catch (e2) { /* без памяти */ }
+        }).catch(function () { cs.disabled = false; cs.textContent = clabel; cm.style.color = '#ef4444'; cm.textContent = T('Нет связи с сервером.', 'No connection to the server.'); });
+      });
+    }
+  }
   function init() {
+    initSupport();
     // роли файловых зон
     $$('[data-cms-form="release-music"] input[type=file]').forEach(function (i) { i.setAttribute('data-role', /audio/.test(i.accept) ? 'audio' : 'cover'); });
     $$('[data-cms-form="release-film"] input[type=file]').forEach(function (i) { i.setAttribute('data-role', 'video'); });

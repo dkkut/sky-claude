@@ -2141,9 +2141,10 @@ export const pushNewMessage = (userIds, chatId, message) => {
  * и подарок Prime и так поднимают уведомление через новое сообщение —
  * см. server/giftnotify.mjs).
  */
-export const pushGiftNotification = (userIds, note) => {
-  broadcast(Array.isArray(userIds) ? userIds : [], { type: 'gift-notification', payload: note });
-  pushNote(userIds, note, 'Sky');
+export const pushGiftNotification = (userIds, note, channels = {}) => {
+  // channels — когда получатель сам выбирает, куда слать (владелец, server/ownernotify.mjs); по умолчанию — оба.
+  if (channels.inApp !== false) broadcast(Array.isArray(userIds) ? userIds : [], { type: 'gift-notification', payload: note });
+  if (channels.push !== false) pushNote(userIds, note, 'Sky');
 };
 
 /** Тем же путём уходит новоиспечённый чат с ботом. */

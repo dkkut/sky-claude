@@ -662,3 +662,11 @@ BETA_KEYS=Ab3xY...:мой,Qw9zT...:команда
 
 Миграция 123 и том `site-data` (`SITE_DIR=/data/site`) подхватываются обычным `scripts/deploy-local.sh`. Выдайте сотруднику право `site`
 (роль «Сайт» / `site_admin`) — вкладка «Сайт» в админке. Загруженные файлы скачивания лежат в томе; включите его в резервную копию.
+
+## Скрипты настройки push и лендинга
+
+```
+bash scripts/setup-push.sh                    # ключи Web Push (VAPID); --fcm файл.json для Android; --check — что настроено
+bash scripts/setup-landing.sh skymessenger.online   # SITE_DOMAIN, DNS, стек, сертификат, проверка; --check, --no-cert
+```
+После `setup-push.sh` — `bash scripts/deploy-local.sh`. Тех. поддержка с сайта и уведомления владельца работают на тех же миграциях (126, 127).

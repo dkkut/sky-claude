@@ -1,4 +1,5 @@
 import { fitImageToDataUrl } from '../shared/imageFit';
+import { OwnerNotifySettings } from './OwnerNotifySettings';
 import { enablePush, disablePush, PUSH_TEXT } from '@/notifications/pushClient';
 import { useCursorPet, CURSOR_ANIMALS } from '@/shared/cursorPet';
 import { flash } from '../shared/flash';
@@ -771,6 +772,8 @@ const SettingsSection = ({ logout, username, onOpen }: {
             });
           }}/>}/>
       </SectionBlock>
+
+      <OwnerNotifySettings/>
 
       {/* -- КАРТЫ ------------------ */}
       <SectionBlock title="Карты">

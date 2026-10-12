@@ -1,0 +1,42 @@
+// Уведомления владельца: режимы «заявки / все действия», каналы, предел.  (. env.sh; node scripts/audit/ownernotify-test.mjs <каталог>)
+import { execSync } from 'node:child_process';
+import { call, mkuser } from './lib.mjs';
+const S = process.argv[2];
+const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/["$]/g, '\\$&')}"`).toString().trim();
+let ok = 0, bad = 0; const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
+q(`update profiles set username='old'||substr(md5(random()::text),1,6) where lower(username)='ownertest'`);
+const own = await mkuser(S, 'onown'); q(`update profiles set username='ownertest' where id='${own.pid}'`);
+const adm = await mkuser(S, 'onadm'); const usr = await mkuser(S, 'onusr');
+q(`update profiles set is_admin=true where id='${adm.pid}'`);
+q(`delete from owner_notify_prefs`); q(`delete from gift_notifications where user_id='${own.pid}'`);
+const put = (b, u) => call('/api/owner/notify-prefs', { method: 'PUT', body: JSON.stringify(b) }, u.tok);
+const cnt = (kind) => Number(q(`select count(*) from gift_notifications where user_id='${own.pid}' and kind='${kind}'`));
+t('человек не видит настройки владельца', (await call('/api/owner/notify-prefs', {}, usr.tok)).status === 403);
+let r = await call('/api/owner/notify-prefs', {}, own.tok);
+t('по умолчанию — только заявки, оба канала', r.data.mode === 'requests' && r.data.inApp && r.data.push, JSON.stringify(r.data));
+t('нельзя выключить оба канала', (await put({ mode: 'all', inApp: false, push: false }, own)).status === 400);
+t('неверный режим отклоняется', (await put({ mode: 'x' }, own)).status === 400);
+t('не владелец не сохранит', (await put({ mode: 'all' }, adm)).status === 403);
+// администратор делает действие, попадающее в журнал: закрывает модуль (нужно право modules)
+q(`update profiles set admin_role='super_admin' where id='${adm.pid}'`);
+const act = () => call('/api/admin/modules/music', { method: 'PUT', body: JSON.stringify({ closed: false }) }, adm.tok);
+let a = await act();
+await new Promise((x) => setTimeout(x, 400));
+t('режим «заявки»: действие администратора владельцу не приходит', cnt('admin_action') === 0, `status ${a.status}`);
+t('сохраняется «Все действия»', (await put({ mode: 'all', inApp: true, push: false }, own)).data.mode === 'all');
+await act(); await new Promise((x) => setTimeout(x, 500));
+t('режим «все действия»: действие администратора пришло в «Уведомления»', cnt('admin_action') >= 1, String(cnt('admin_action')));
+const before = cnt('admin_action');
+await put({ mode: 'all', inApp: false, push: true }, own);
+await act(); await new Promise((x) => setTimeout(x, 500));
+t('канал «Уведомления» выключен — строка не создаётся (только push)', cnt('admin_action') === before);
+await put({ mode: 'all', inApp: true, push: true }, own);
+for (let i = 0; i < 30; i++) await act();
+await new Promise((x) => setTimeout(x, 800));
+t('предел 20 в минуту: поток действий не засыпает владельца', cnt('admin_action') - before <= 21, String(cnt('admin_action') - before));
+const own2 = cnt('admin_action');
+await act(); // собственные действия владельца не присылаются
+await call('/api/admin/modules/music', { method: 'PUT', body: JSON.stringify({ closed: false }) }, own.tok); await new Promise((x) => setTimeout(x, 400));
+t('собственные действия владельца не присылаются', cnt('admin_action') - own2 <= 1);
+await put({ mode: 'requests', inApp: true, push: true }, own);
+console.log(`\nИтого: ${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

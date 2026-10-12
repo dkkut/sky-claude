@@ -135,6 +135,12 @@ services:
       GOOGLE_MAPS_KEY:             ${GOOGLE_MAPS_KEY:-}
       # Яндекс Карты (Static API и HTTP Геокодер) — второй поставщик, тоже только на сервере.
       YANDEX_MAPS_KEY:             ${YANDEX_MAPS_KEY:-}
+      # Push-уведомления при закрытом приложении (server/webpush.mjs). Раньше эти ключи в .env попадали
+      # на хост, но не в контейнер — push молча оставался выключенным. Настройка: scripts/setup-push.sh.
+      VAPID_PUBLIC_KEY:            ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY:           ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT:               ${VAPID_SUBJECT:-mailto:admin@localhost}
+      FCM_SERVICE_ACCOUNT_JSON:    ${FCM_SERVICE_ACCOUNT_JSON:-}
       YANDEX_GEOCODER_KEY:         ${YANDEX_GEOCODER_KEY:-}
       CDEK_API_BASE:               ${CDEK_API_BASE:-}
       CDEK_CLIENT_ID:              ${CDEK_CLIENT_ID:-}

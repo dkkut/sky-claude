@@ -29,7 +29,12 @@ export interface SupportEvent {
 
 export interface SupportTicket {
   id: string;
-  authorId: string;
+  /** Нет у обращения с сайта (человек писал без входа в аккаунт). */
+  authorId?: string;
+  /** `site` — обращение с лендинга; контакт — почта (видна только сотрудникам). */
+  source?: 'app' | 'site';
+  guestEmail?: string;
+  guestCode?: string;
   subject: string;
   kind: TicketKind;
   status: TicketStatus;

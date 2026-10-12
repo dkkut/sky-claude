@@ -755,3 +755,22 @@ Sky Podcasts, Sky Books и режим «Код» в Sky AI входят в Sky P
 - Яндекс рисует в эллипсоидальном Меркаторе, Google — в сферическом: подписи поверх картинки считаются по формуле своего поставщика (`project/unproject` в `SkyMap`). У Яндекса картинка до 650×450 (блок по центру), метки — цифры 1–9 (буквы A–Z только у Google).
 - Маршруты (`computeRoute/computeOrdered`, Directions) считает ТОЛЬКО Google; линия маршрута рисуется и на карте Яндекса (ломаная раскодируется). Картинка — всё равно с нашего сервера, CSP не менялась.
 - Тест: `scripts/audit/maps-yandex-test.mjs` (10, поставщик-подделка на :9933).
+
+## Уведомления владельца, скрипты настройки push и лендинга, тех. поддержка с сайта
+
+**Уведомления владельца** — `server/ownernotify.mjs`, `server/routes/ownernotify.mjs` (`GET/PUT /api/owner/notify-prefs`, только владелец), миграция `126_owner_notify.sql`
+(`owner_notify_prefs`), клиент — `src/profile/OwnerNotifySettings.tsx` (Профиль → Настройки, у остальных блока нет). Две версии: «Заявки на подтверждение» (по умолчанию) и «Все действия»
+(каждая запись журнала администрации, кроме собственных и самих заявок; не чаще 20/мин на владельца — журнал при этом полный). Два канала независимо: раздел «Уведомления» (`gift_notifications`)
+и push (`pushToOffline`); оба выключить нельзя. Хук — `logAdmin` → `notifyOwnerAction`; заявки — `createPendingAction` → `notifyOwnerRequest`. Тест: `scripts/audit/ownernotify-test.mjs` (11).
+
+**Push раньше не работал на сервере**: `VAPID_*` / `FCM_SERVICE_ACCOUNT_JSON` из `.env` не попадали в контейнер (их не было в `docker-compose.yml`) — теперь добавлены.
+
+**Скрипты настройки** (оба идемпотентны, секреты не печатают, `.env` → 600, есть `--check`):
+- `scripts/setup-push.sh` — ключи VAPID (существующие НЕ трогает, `--regen` — новые), `VAPID_SUBJECT`, `--fcm файл.json` (проверка сервисного аккаунта Firebase, одной строкой в `FCM_SERVICE_ACCOUNT_JSON`).
+- `scripts/setup-landing.sh <домен>` — `SITE_DOMAIN`, проверка DNS, подъём стека, выпуск сертификата (`add-site-cert.sh`, `--no-cert` пропускает), проверка `/api/site/public`.
+
+**Тех. поддержка на лендинге** — страница «Поддержка» (`site/cms.js`: `initSupport`, форма + статус/переписка по номеру и почте), `server/sitesupport.mjs`, маршруты `POST /api/site/support|support/check|support/reply`
+(в `routes/site.mjs`), миграция `127_site_support.sql`. Это НЕ отдельная система: обращение — обычный тикет `support_tickets` (`source='site'`, `author_id` NULL, почта зашифрована + HMAC, код `SUP-XXXX-XXXX`),
+он виден в общей очереди «Поддержка» с пометкой «С сайта» и почтой. Ответ сотрудника (`replyToTicket`) дублируется человеку на почту (`emailGuestReply`); человек смотрит статус и отвечает на сайте.
+Форма «Контакты» тоже создаёт обращение. Пределы: 6/час и 3/мин с адреса, 5/сутки с почты; ловушка `website`. Тест: `scripts/audit/site-support-test.mjs` (22), `site-support-ui-test.mjs` (Playwright, 10).
+Код поддержки/ответы доходят по почте только при настроенной почте (`scripts/set-email.sh`); без неё письма пишутся в журнал сервера, а статус на сайте работает.

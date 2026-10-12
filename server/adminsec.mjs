@@ -46,6 +46,7 @@ import { verifyTotp } from './totp.mjs';
 import { sendEmail } from './notify.mjs';
 import { wallet } from './wallet.mjs';
 import { notifyGift } from './giftnotify.mjs';
+import { notifyOwnerRequest, notifyOwnerAction } from './ownernotify.mjs';
 import {
   adjustBalance, reverseTransaction, reversibleTx, revokePrimeAdmin, cancelSubscriptionAdmin,
   revokeGiftAdmin, giftForRevoke, MAX_ADJUST,
@@ -149,6 +150,7 @@ export const logAdmin = async (entry) => {
         meta.ip ?? null, meta.ua ?? null, requestId,
         last[0]?.hash ?? null, hash, at]);
     await client.query('COMMIT');
+    void notifyOwnerAction({ actorId, type, result, detail: shortDetail, id });
     return { id, hash };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -919,14 +921,8 @@ export const createPendingAction = async (actorId, kind, targetId, raw = {}, opt
     await markGrantProposed(checked.payload.grantId, id);
   }
 
-  /* Владелец узнаёт о новой заявке сразу — уведомлением и пушем, если приложение закрыто. */
-  try {
-    const { rows: owners } = await query(
-      'SELECT id FROM profiles WHERE lower(username) = $1', [String(config.ownerUsername ?? '').trim().toLowerCase()]);
-    for (const o of owners) {
-      if (o.id !== actorId) await notifyGift(o.id, 'admin_pending', 'Новая заявка на подтверждение', spec.title, id);
-    }
-  } catch { /* уведомление не должно мешать заявке */ }
+  /* Владелец узнаёт о новой заявке сразу — раздел «Уведомления» и/или push по его настройкам (server/ownernotify.mjs). */
+  await notifyOwnerRequest(actorId, spec.title, id);
 
   return { id, kind, targetId: target, status: 'pending', payload: checked.payload };
 };
