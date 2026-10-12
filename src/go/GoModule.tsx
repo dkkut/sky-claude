@@ -1,7 +1,7 @@
 /** Sky GO: оболочка раздела. Нижняя навигация: Главная / Заказы / Работа / Профиль. */
 import { useState } from 'react';
-import { Car, UtensilsCrossed, Package, Plane, Fuel, Home, ClipboardList, Briefcase, User, LifeBuoy } from 'lucide-react';
-import { goApi, ROLE_LABEL, type GoRole } from './api';
+import { Car, UtensilsCrossed, Package, Plane, Fuel, Home, ClipboardList, Briefcase, User, LifeBuoy, BedDouble, Map as MapIcon, Hotel } from 'lucide-react';
+import { goApi, ROLE_LABEL, STAY_LABEL, type GoRole, type StayKind } from './api';
 import { Back, Card, Chip, Col, CitySelect, Empty, Notice, useCity, useLoad, C, GO, fmt } from './ui';
 import { OrdersTab, OrderScreen } from './Orders';
 import { TaxiScreen, DeliveryScreen } from './Ride';
@@ -9,10 +9,12 @@ import { FoodScreen } from './Food';
 import { FlightsScreen } from './Flights';
 import { FuelScreen } from './Fuel';
 import { RegisterScreen, StatusChip } from './Register';
+import { StayScreen } from './Stay';
+import { StayCabinet } from './StayCabinet';
 import { DriverCabinet, SellerCabinet, CompanyCabinet, PayDetailsCard } from './Cabinet';
 
 type Tab = 'home' | 'orders' | 'work' | 'profile';
-type Screen = null | 'taxi' | 'food' | 'delivery' | 'flights' | 'fuel' | { order: string } | { role: GoRole; mode: 'register' | 'cabinet' };
+type Screen = null | 'taxi' | 'food' | 'delivery' | 'flights' | 'fuel' | { order: string } | { stay: StayKind } | { role: GoRole; mode: 'register' | 'cabinet' };
 
 const SERVICES = [
   { key: 'taxi', title: 'Такси', hint: 'Поездка по городу', Icon: Car },
@@ -40,6 +42,7 @@ export const SkyGo = () => {
     if (screen === 'delivery') return <DeliveryScreen city={city} hasCompany={executors.some((e) => e.role === 'company' && e.status === 'approved')} onBack={() => setScreen(null)} onCreated={open} />;
     if (screen === 'flights') return <FlightsScreen onBack={() => setScreen(null)} />;
     if (screen === 'fuel') return <FuelScreen city={city} onBack={() => setScreen(null)} />;
+    if (screen && typeof screen === 'object' && 'stay' in screen) return <StayScreen kind={screen.stay} city={city} onBack={() => setScreen(null)} onBooked={open} />;
     if (screen && typeof screen === 'object' && 'order' in screen) return <OrderScreen id={screen.order} onBack={() => setScreen(null)} />;
     if (screen && typeof screen === 'object' && 'role' in screen) {
       const ex = executors.find((e) => e.role === screen.role) ?? null;
@@ -50,6 +53,8 @@ export const SkyGo = () => {
           <Back onClick={back} title={ROLE_LABEL[screen.role]} />
           {screen.role === 'food_seller' ? <SellerCabinet onOpen={open} />
             : screen.role === 'company' ? <CompanyCabinet onDeliver={() => setScreen('delivery')} />
+            : screen.role === 'host' || screen.role === 'tour_operator' || screen.role === 'hotel'
+              ? <StayCabinet kind={screen.role === 'host' ? 'home' : screen.role === 'tour_operator' ? 'tour' : 'hotel'} cities={config.cities} onOpen={open} />
             : <DriverCabinet role={screen.role} onOpen={open} />}
         </>
       );
@@ -71,6 +76,15 @@ export const SkyGo = () => {
               <div style={{ fontSize: 12.5, color: C.t2 }}>{hint}</div>
             </Card>))}
         </div>
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, color: C.t1, marginBottom: 2 }}>Жилье и отдых</div>
+          <div style={{ fontSize: 12, color: C.t2, marginBottom: 10 }}>Бронь напрямую у владельцев</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {([['home', BedDouble], ['tour', MapIcon], ['hotel', Hotel]] as const).map(([k, Icon]) => (
+              <button key={k} onClick={() => setScreen({ stay: k })} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px 4px', borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, fontSize: 12, fontWeight: 700, lineHeight: 1.2, textAlign: 'center' }}>
+                <Icon size={20} color={GO} />{STAY_LABEL[k]}</button>))}
+          </div>
+        </Card>
         {config.cities.length === 0 && <Notice tone="warn">Города ещё не подключены администрацией.</Notice>}
       </Col>
     );
@@ -97,6 +111,9 @@ const WorkTab = ({ executors, tariffs, onPick }: { executors: any[]; tariffs: { 
     { role: 'courier', group: 'Курьер', text: 'Развозите заказы и доставки' },
     { role: 'food_seller', group: 'Продавец еды', text: 'Своё заведение в каталоге Sky Еда' },
     { role: 'company', group: 'Компания', text: 'Доставки от организации получателям' },
+    { role: 'host', group: 'Квартиры и дома', text: 'Сдавайте жильё посуточно' },
+    { role: 'tour_operator', group: 'Туры', text: 'Размещайте туры и принимайте заявки (ИП и организации)' },
+    { role: 'hotel', group: 'Отель', text: 'Номера и бронь напрямую (ИП и организации)' },
   ];
   return (
     <Col>

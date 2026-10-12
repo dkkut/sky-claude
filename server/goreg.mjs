@@ -52,6 +52,7 @@ const cleanExtra = (role, extra, { strict }) => {
   if (role === 'courier') out.transport = ['foot', 'bike', 'scooter', 'car'].includes(e.transport) ? e.transport : 'foot';
   if (role === 'food_seller') need('placeName', 'Название заведения', 120);
   if (role === 'company') need('brand', 'Название для заказов', 120);
+  if (role === 'tour_operator' || role === 'hotel') need('brand', 'Название организации', 120);
   return { extra: out, problems };
 };
 
@@ -87,6 +88,8 @@ export const saveDraft = async (profileId, input) => {
   const legalForm = String(input?.legalForm ?? '');
   if (!ROLES.includes(role)) return { error: 'bad_role' };
   if (!LEGAL_FORMS.includes(legalForm)) return { error: 'bad_legal_form' };
+  // Туры и отели — только для ИП и организаций (нижний предел Sky; реестры туроператоров/гостиниц не сверяются).
+  if ((role === 'tour_operator' || role === 'hotel') && legalForm === 'npd') return { error: 'legal_form_not_allowed' };
   const city = clean(input?.city, 60);
   if (city && !(await cityOk(city))) return { error: 'bad_city' };
 

@@ -56,6 +56,7 @@ import { goRoutes } from './routes/go.mjs';
 import { goAdminRoutes } from './routes/goadmin.mjs';
 import { sweepExpired as goSweepExpired } from './gosubs.mjs';
 import { sweepFuel as goSweepFuel } from './gofuel.mjs';
+import { sweepStay as goSweepStay } from './gostay.mjs';
 import { runWithSession } from './reqctx.mjs';
 import { readAccessToken } from './http.mjs';
 import { sweepAdminGate } from './admingate.mjs';
@@ -556,6 +557,7 @@ const start = async () => {
       await sweepGameSessions();
       await goSweepExpired().catch(() => {});
       await goSweepFuel().catch(() => {});
+      await goSweepStay().catch(() => {});
       const staleRequests = await sweepPendingActions();
       if (staleRequests) console.log(`[админ] просрочено заявок: ${staleRequests}`);
       // Запуск рассылки, зависший в processing дольше окна (сервер упал

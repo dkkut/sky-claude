@@ -1,11 +1,15 @@
 /** Sky GO: клиент API (server/routes/go.mjs). Цены, статусы и права решает сервер — здесь только запросы. */
 import { apiCall, type Reply } from '@/core/auth/api';
 
-export type GoRole = 'taxi_driver' | 'courier' | 'food_seller' | 'company';
+export type GoRole = 'taxi_driver' | 'courier' | 'food_seller' | 'company' | 'host' | 'tour_operator' | 'hotel';
+export type StayKind = 'home' | 'tour' | 'hotel';
+export const STAY_LABEL: Record<StayKind, string> = { home: 'Квартиры и дома', tour: 'Туры', hotel: 'Отели' };
+export const STAY_ROLE: Record<StayKind, GoRole> = { home: 'host', tour: 'tour_operator', hotel: 'hotel' };
 export type LegalForm = 'npd' | 'ip' | 'ooo';
 
 export const ROLE_LABEL: Record<GoRole, string> = {
   taxi_driver: 'Водитель такси', courier: 'Курьер', food_seller: 'Продавец еды', company: 'Компания (доставки)',
+  host: 'Квартиры и дома', tour_operator: 'Туры', hotel: 'Отель',
 };
 export const LEGAL_LABEL: Record<LegalForm, string> = { npd: 'Самозанятый (НПД)', ip: 'ИП', ooo: 'ООО' };
 export const DOC_LABEL: Record<string, string> = {
@@ -18,7 +22,7 @@ export const STATUS_LABEL: Record<string, string> = {
   cancelled: 'Отменён', dispute: 'Спор', pending: 'Ждёт ответа заведения', accepted: 'Принят заведением', cooking: 'Готовится',
   ready: 'Готов, ищем курьера', handed_to_courier: 'Передан курьеру', delivering: 'Курьер в пути', delivered: 'Доставлен',
   new: 'Ищем курьера', heading_pickup: 'Курьер едет за заказом', at_pickup: 'Курьер на месте забора', picked_up: 'Принято курьером',
-  at_recipient: 'Курьер у получателя',
+  at_recipient: 'Курьер у получателя', requested: 'Ждёт ответа владельца',
 };
 
 const ERR: Record<string, string> = {
@@ -43,6 +47,13 @@ const ERR: Record<string, string> = {
   payment_required: 'Сначала подтвердите оплату.', own_place: 'Нельзя заказывать у самого себя.', item_unavailable: 'Одно из блюд недоступно.',
   company_not_approved: 'Компания ещё не одобрена.', recipient_phone_invalid: 'Неверный телефон получателя.', pvz_info_required: 'Опишите отправление в ПВЗ.',
   reason_required: 'Опишите причину (не короче 5 символов).', not_reported: 'Плательщик ещё не сообщил об оплате.', date_in_past: 'Дата в прошлом.',
+  dates_taken: 'Эти даты (или места) уже заняты.', own_listing: 'Нельзя бронировать своё объявление.', bad_dates: 'Проверьте даты заезда и выезда.',
+  too_many_guests: 'Больше гостей, чем помещается.', min_nights: 'Меньше минимального срока проживания.', room_not_found: 'Выберите номер.',
+  departure_not_found: 'Выберите отправление.', departure_passed: 'Отправление уже прошло.', bad_guests: 'Укажите число гостей.', photo_required: 'Добавьте хотя бы одну фотографию.',
+  hidden_by_admin: 'Объявление снято администрацией — смотрите причину в кабинете.', has_bookings: 'По этому объявлению есть активные брони.',
+  legal_form_not_allowed: 'Туры и отели — только для ИП и организаций.', no_rooms: 'Добавьте хотя бы один номер.', no_departures: 'Добавьте будущее отправление.',
+  too_many_photos: 'Не больше 8 фотографий.', too_many_listings: 'Слишком много объявлений.', title_required: 'Укажите название.', address_required: 'Укажите адрес.',
+  bad_price: 'Цена — от 100 ₽.', bad_room: 'Проверьте данные номера.', bad_departure: 'Проверьте даты и места отправлений.',
   bad_iata: 'Выберите город из подсказок.', same_city: 'Города совпадают.', bad_offer: 'Предложение недействительно — повторите поиск.',
 };
 export const goError = (r: { error?: string; reason?: string; status?: number }) =>
@@ -76,7 +87,7 @@ export interface SubState {
   active: boolean; expired: boolean; expiresAt: string | null; tariff: Tariff | null; role?: GoRole;
 }
 export interface GoOrder {
-  id: string; kind: 'taxi' | 'food' | 'delivery'; parentId: string | null; status: string; priceRub: number; city: string;
+  id: string; kind: 'taxi' | 'food' | 'delivery' | 'stay'; parentId: string | null; status: string; priceRub: number; city: string;
   createdAt: string; cancelReason?: string; role: 'customer' | 'executor' | 'staff' | 'viewer';
   data: Record<string, any>;
   customer?: { id: string; username: string; name?: string };
@@ -85,6 +96,12 @@ export interface GoOrder {
   codes?: { pickup?: { code: string }; handover?: { code: string } };
   events?: { from: string; to: string; note: string; at: string; byYou: boolean }[];
 }
+
+export interface StayCard { id: string; kind: StayKind; title: string; city: string; priceRub: number; unit: string; photo: string | null; maxGuests?: number; stars?: number; durationDays?: number; nextDeparture?: string | null }
+export interface StayDetail extends StayCard { descr: string; photos: string[]; owner: { username: string; name: string };
+  data: { maxGuests?: number; rooms?: any; beds?: number; areaM2?: number; minNights?: number; checkInTime?: string; checkOutTime?: string; rules?: string; amenities?: string[];
+    stars?: number; durationDays?: number; program?: string; includes?: string; minAge?: number; departures?: { id: string; date: string; priceRub: number; seats: number; seatsLeft: number }[] } }
+export interface MyListing { id: string; kind: StayKind; title: string; descr: string; city: string; address: string; priceRub: number; status: 'draft' | 'published' | 'hidden'; modNote?: string; data: Record<string, any>; photos: string[] }
 
 export const goApi = {
   config: () => get<GoConfig>('/api/go/config'),
@@ -135,6 +152,20 @@ export const goApi = {
   paid: (id: string) => post(`/api/go/orders/${id}/paid`),
   confirmPaid: (id: string) => post(`/api/go/orders/${id}/confirm-paid`),
   dispute: (id: string, reason: string) => post(`/api/go/orders/${id}/dispute`, { reason }),
+
+  stayList: (f: { kind: StayKind; city?: string; q?: string; guests?: string; checkIn?: string; checkOut?: string; sort?: string }) =>
+    get<{ listings: StayCard[] }>(`/api/go/stay/listings${qs(f as Record<string, string | undefined>)}`),
+  stayGet: (id: string) => get<{ listing: StayDetail }>(`/api/go/stay/listings/${id}`),
+  stayQuote: (b: unknown) => post<{ totalRub: number; nights: number; available: boolean; label: string }>('/api/go/stay/quote', b),
+  stayBook: (b: unknown) => post<{ orderId: string; totalRub: number }>('/api/go/stay/bookings', { ...(b as object), idemKey: crypto.randomUUID() }),
+  stayAct: (id: string, action: string, reason?: string) => post(`/api/go/stay/bookings/${id}/act`, { action, reason }),
+  stayCancel: (id: string, reason?: string) => post(`/api/go/stay/bookings/${id}/cancel`, { reason }),
+  stayMine: () => get<{ listings: MyListing[] }>('/api/go/stay/my/listings'),
+  staySave: (b: unknown) => put<{ id: string }>('/api/go/stay/my/listings', b),
+  stayRemove: (id: string) => del(`/api/go/stay/my/listings/${id}`),
+  stayPublish: (id: string, on: boolean) => post(`/api/go/stay/my/listings/${id}/publish`, { on }),
+  stayAddPhoto: (id: string, file: File) => apiCall<{ id: string }>(`/api/go/stay/my/listings/${id}/photos`, { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } }),
+  stayRemovePhoto: (id: string, photoId: string) => del(`/api/go/stay/my/listings/${id}/photos/${photoId}`),
 
   flightsSuggest: (term: string) => get<{ places: { code: string; name: string; country?: string }[] }>(`/api/go/flights/suggest${qs({ term })}`),
   flightsSearch: (b: unknown) => post<{ offers: any[]; cached: boolean; notice?: string }>('/api/go/flights/search', b),

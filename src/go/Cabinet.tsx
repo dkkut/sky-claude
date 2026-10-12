@@ -5,7 +5,7 @@ import { Btn, Card, Chip, Col, Empty, Input, Notice, fail, fmt, locate, useLoad,
 import { OrderRow } from './Orders';
 import { flash } from '@/shared/flash';
 
-const SubscriptionCard = ({ role, onChange }: { role: GoRole; onChange: () => void }) => {
+export const SubscriptionCard = ({ role, onChange }: { role: GoRole; onChange: () => void }) => {
   const [s, reload] = useLoad(() => goApi.subscription(role), [role]);
   const [busy, setBusy] = useState(false);
   if (!s?.ok) return null;

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiBlob, apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
 import { goError, ROLE_LABEL, STATUS_LABEL, type GoRole } from '@/go/api';
+import { Photo } from '@/go/Stay';
 
 const C = { l1: 'var(--bg-l1)', l2: 'var(--bg-l2)', brd: 'var(--border)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)', acc: 'var(--accent)', red: 'var(--red)', green: 'var(--green)' };
 const box = { background: C.l1, border: `1px solid ${C.brd}`, borderRadius: 14, padding: 12 } as const;
@@ -17,18 +18,18 @@ const get = <T,>(p: string) => apiCall<T>(`${A}${p}`);
 const send = <T,>(m: string, p: string, b: unknown) => apiCall<T>(`${A}${p}`, { method: m, body: JSON.stringify(b) });
 const bad = (r: { error?: string; reason?: string }) => flash(({ not_allowed: 'Недостаточно прав.', note_required: 'Укажите причину.', bad_transition: 'Переход невозможен.', bad_price: 'Неверная цена.' } as Record<string, string>)[r.error ?? ''] ?? goError(r));
 
-type Sub = 'apps' | 'orders' | 'subs' | 'tariffs' | 'integrations';
+type Sub = 'apps' | 'orders' | 'stay' | 'subs' | 'tariffs' | 'integrations';
 
 export const GoAdminTab = () => {
   const [sub, setSub] = useState<Sub>('apps');
   const [ov, setOv] = useState<any>(null);
   useEffect(() => { void get<any>('/overview').then((r) => r.ok && setOv(r.data)); }, [sub]);
-  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['orders', 'Заказы и споры'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
+  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['orders', 'Заказы и споры'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {ov && <div style={{ ...box, fontSize: 13, color: C.t2 }}>Активных подписок: <b style={{ color: C.t1 }}>{ov.activeSubscriptions}</b> · На проверке: <b style={{ color: C.t1 }}>{(ov.executors.submitted ?? 0) + (ov.executors.in_review ?? 0)}</b> · Заказов за 30 дней: <b style={{ color: C.t1 }}>{ov.orders30d.reduce((s: number, r: any) => s + r.n, 0)}</b></div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{TABS.map(([k, t]) => <button key={k} onClick={() => setSub(k)} style={btn(sub === k ? C.acc : C.l2, sub === k ? '#fff' : C.t1)}>{t}</button>)}</div>
-      {sub === 'apps' && <Apps />}{sub === 'orders' && <Orders />}{sub === 'subs' && <Subs />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
+      {sub === 'apps' && <Apps />}{sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
     </div>
   );
 };
@@ -120,13 +121,45 @@ const Orders = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <select value={kind} onChange={(e) => setKind(e.target.value)} style={inp}><option value="">Все виды</option><option value="taxi">Такси</option><option value="food">Еда</option><option value="delivery">Доставка</option></select>
+        <select value={kind} onChange={(e) => setKind(e.target.value)} style={inp}><option value="">Все виды</option><option value="taxi">Такси</option><option value="food">Еда</option><option value="delivery">Доставка</option><option value="stay">Жильё и отдых</option></select>
         <select value={status} onChange={(e) => setStatus(e.target.value)} style={inp}><option value="">Все статусы</option><option value="dispute">Споры</option><option value="searching">Поиск</option><option value="awaiting_payment">Ожидают оплаты</option><option value="paid">Оплачены</option><option value="cancelled">Отменены</option></select>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="id или @логин заказчика" style={{ ...inp, flex: 1, minWidth: 140 }} />
       </div>
       {!items ? <div style={{ color: C.t3 }}>Загрузка…</div> : items.length === 0 ? <div style={{ color: C.t3 }}>Заказов нет.</div> : items.map((o) => (
         <div key={o.id} onClick={() => show(o.id)} style={{ ...box, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
           <span translate="no" style={{ color: C.t1 }}>{o.kind} · @{o.customer} · {o.city}</span><span style={{ color: o.status === 'dispute' ? C.red : C.t2 }}>{o.priceRub} ₽ · {STATUS_LABEL[o.status] ?? o.status}</span>
+        </div>))}
+    </div>
+  );
+};
+
+/** Объявления «Жилье и отдых»: просмотр и снятие с публикации с причиной (право go). */
+const StayListings = () => {
+  const [status, setStatus] = useState('published'); const [q, setQ] = useState('');
+  const [items, setItems] = useState<any[] | null>(null); const [note, setNote] = useState<Record<string, string>>({});
+  const load = useCallback(async () => { const r = await get<{ items: any[] }>(`/listings?status=${status}&q=${encodeURIComponent(q)}`); setItems(r.ok ? r.data!.items : []); }, [status, q]);
+  useEffect(() => { void load(); }, [load]);
+  const act = async (id: string, action: 'hide' | 'restore') => { const r = await send('POST', `/listings/${id}/moderate`, { action, note: note[id] ?? '' }); if (!r.ok) return bad(r); flash(action === 'hide' ? 'Объявление снято' : 'Возвращено владельцу'); void load(); };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} style={inp}>{[['published', 'Опубликованы'], ['hidden', 'Сняты'], ['draft', 'Черновики'], ['', 'Все']].map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Название или @владелец" style={{ ...inp, flex: 1 }} />
+      </div>
+      {!items ? <div style={{ color: C.t3 }}>Загрузка…</div> : items.length === 0 ? <div style={{ color: C.t3 }}>Объявлений нет.</div> : items.map((l) => (
+        <div key={l.id} style={box}>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {l.photos[0] && <div style={{ width: 90, height: 68, borderRadius: 10, overflow: 'hidden', flex: '0 0 90px' }}><Photo id={l.photos[0]} admin /></div>}
+            <div style={{ minWidth: 0 }}>
+              <b translate="no" style={{ color: C.t1 }}>{l.title}</b>
+              <div translate="no" style={{ fontSize: 12.5, color: C.t2 }}>{l.kind} · {l.city} · @{l.owner} · от {l.priceRub} ₽ · {l.status}</div>
+              {l.modNote && <div style={{ fontSize: 12.5, color: C.red }}>Снято: {l.modNote}</div>}
+            </div>
+          </div>
+          <div translate="no" style={{ fontSize: 12.5, color: C.t2, margin: '6px 0', whiteSpace: 'pre-wrap' }}>{String(l.descr).slice(0, 300)}</div>
+          {l.status !== 'hidden'
+            ? <div style={{ display: 'flex', gap: 6 }}><input value={note[l.id] ?? ''} onChange={(e) => setNote({ ...note, [l.id]: e.target.value })} placeholder="Причина снятия" style={{ ...inp, flex: 1 }} /><button onClick={() => act(l.id, 'hide')} style={btn(C.red)}>Снять</button></div>
+            : <button onClick={() => act(l.id, 'restore')} style={btn(C.green)}>Вернуть владельцу</button>}
         </div>))}
     </div>
   );
@@ -164,7 +197,7 @@ const PersonalTariffs = () => {
       <b style={{ color: C.t1 }}>Персональный тариф исполнителя</b> <span style={{ fontSize: 12, color: C.t3 }}>(право go_finance; вместо общего, со следующей оплаты)</span>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
         <input placeholder="@логин" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} style={{ ...inp, width: 130 }} />
-        <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} style={inp}>{(['taxi_driver', 'courier', 'food_seller', 'company'] as GoRole[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select>
+        <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} style={inp}>{(['taxi_driver', 'courier', 'food_seller', 'company', 'host', 'tour_operator', 'hotel'] as GoRole[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select>
         <input placeholder="₽" value={f.priceRub} onChange={(e) => setF({ ...f, priceRub: e.target.value.replace(/\D/g, '') })} style={{ ...inp, width: 70 }} />
         <input placeholder="дней" value={f.periodDays} onChange={(e) => setF({ ...f, periodDays: e.target.value.replace(/\D/g, '') })} style={{ ...inp, width: 60 }} />
         <input placeholder="Примечание" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} style={{ ...inp, flex: 1, minWidth: 120 }} />

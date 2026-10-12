@@ -15,6 +15,8 @@ const EXTRA: Partial<Record<GoRole, Field[]>> = {
   taxi_driver: [['carMake', 'Марка'], ['carModel', 'Модель'], ['carColor', 'Цвет'], ['plate', 'Госномер', { max: 12 }], ['licenseNumber', 'Номер водительского удостоверения', { max: 20 }], ['carYear', 'Год выпуска', { max: 4 }]],
   food_seller: [['placeName', 'Название заведения']],
   company: [['brand', 'Название для заказов']],
+  tour_operator: [['brand', 'Название организации']],
+  hotel: [['brand', 'Название организации']],
 };
 const STATUS: Record<string, [string, string]> = {
   draft: ['Черновик', '#64748b'], submitted: ['На проверке', '#f59e0b'], in_review: ['На проверке', '#f59e0b'], needs_info: ['Нужны уточнения', '#f59e0b'],
@@ -23,7 +25,7 @@ const STATUS: Record<string, [string, string]> = {
 export const StatusChip = ({ s }: { s: string }) => <Chip color={(STATUS[s] ?? ['', '#64748b'])[1]}>{(STATUS[s] ?? [s])[0]}</Chip>;
 
 export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { role: GoRole; existing: ExecutorRow | null; cities: string[]; onBack: () => void; onDone: () => void }) => {
-  const [legal, setLegal] = useState<LegalForm>(existing?.legalForm ?? 'npd');
+  const [legal, setLegal] = useState<LegalForm>(existing?.legalForm ?? (role === 'tour_operator' || role === 'hotel' ? 'ip' : 'npd'));
   const [city, setCity] = useState(existing?.city ?? cities[0] ?? '');
   const [f, setF] = useState<Record<string, any>>(existing?.fields ?? {});
   const [x, setX] = useState<Record<string, any>>(existing?.extra ?? {});
@@ -75,7 +77,7 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
         <Card><Col>
           <div style={{ fontWeight: 800, color: C.t1 }}>Статус налогоплательщика</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {(Object.keys(LEGAL_LABEL) as LegalForm[]).map((k) => <Btn key={k} kind={legal === k ? 'main' : 'soft'} onClick={() => setLegal(k)} style={{ height: 38, fontSize: 13 }}>{LEGAL_LABEL[k]}</Btn>)}
+            {(Object.keys(LEGAL_LABEL) as LegalForm[]).filter((k) => !(k === 'npd' && (role === 'tour_operator' || role === 'hotel'))).map((k) => <Btn key={k} kind={legal === k ? 'main' : 'soft'} onClick={() => setLegal(k)} style={{ height: 38, fontSize: 13 }}>{LEGAL_LABEL[k]}</Btn>)}
           </div>
           <label style={{ fontSize: 12, color: C.t2 }}>Город работы
             <select value={city} onChange={(e) => setCity(e.target.value)} style={{ display: 'block', width: '100%', height: 46, borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, padding: '0 12px', fontSize: 15, marginTop: 5 }}>
@@ -83,7 +85,7 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
           {render(FIELDS[legal], f, setF)}
           {legal === 'ooo' && <label style={{ display: 'flex', gap: 8, color: C.t1, fontSize: 14 }}><input type="checkbox" checked={f.repIsHead === true} onChange={(e) => setF({ ...f, repIsHead: e.target.checked })} />Представитель — руководитель организации (доверенность не нужна)</label>}
         </Col></Card>
-        {EXTRA[role] && <Card><Col><div style={{ fontWeight: 800, color: C.t1 }}>{role === 'taxi_driver' ? 'Автомобиль' : role === 'food_seller' ? 'Заведение' : 'Компания'}</div>{render(EXTRA[role]!, x, setX)}</Col></Card>}
+        {EXTRA[role] && <Card><Col><div style={{ fontWeight: 800, color: C.t1 }}>{role === 'taxi_driver' ? 'Автомобиль' : role === 'food_seller' ? 'Заведение' : role === 'hotel' ? 'Отель' : role === 'tour_operator' ? 'Туроператор' : 'Компания'}</div>{render(EXTRA[role]!, x, setX)}</Col></Card>}
         {role === 'courier' && <Card><div style={{ fontWeight: 800, color: C.t1, marginBottom: 8 }}>Как доставляете</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{[['foot', 'Пешком'], ['bike', 'Велосипед'], ['scooter', 'Самокат/мото'], ['car', 'Авто']].map(([k, t]) => <Btn key={k} kind={(x.transport ?? 'foot') === k ? 'main' : 'soft'} onClick={() => setX({ ...x, transport: k })} style={{ height: 38, fontSize: 13 }}>{t}</Btn>)}</div></Card>}
         {role === 'taxi_driver' && <Card><div style={{ fontWeight: 800, color: C.t1, marginBottom: 8 }}>Класс автомобиля</div>

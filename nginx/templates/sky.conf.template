@@ -287,6 +287,14 @@ server {
     }
 
     # Sky GO: документы исполнителей (до 8 МБ). Общий потолок 1m обрывал бы загрузку фото СТС/прав.
+    # Sky GO «Жилье и отдых»: фото объявлений (до 4 МБ).
+    location ^~ /api/go/stay/my/ {
+        limit_req zone=req_general burst=30 nodelay;
+        client_max_body_size 6m;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/go/executors/ {
         limit_req zone=req_general burst=30 nodelay;
         client_max_body_size 9m;

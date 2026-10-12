@@ -13,8 +13,9 @@ import { computeRoute, isRealPoint, geocode } from './maps.mjs';
 
 export const newId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
 
-export const ROLES = ['taxi_driver', 'courier', 'food_seller', 'company'];
-export const ROLE_LABEL = { taxi_driver: 'Водитель такси', courier: 'Курьер', food_seller: 'Продавец еды', company: 'Компания (доставки)' };
+export const ROLES = ['taxi_driver', 'courier', 'food_seller', 'company', 'host', 'tour_operator', 'hotel'];
+export const ROLE_LABEL = { taxi_driver: 'Водитель такси', courier: 'Курьер', food_seller: 'Продавец еды', company: 'Компания (доставки)',
+  host: 'Квартиры и дома', tour_operator: 'Туры', hotel: 'Отель' };
 export const LEGAL_FORMS = ['npd', 'ip', 'ooo'];
 export const LEGAL_LABEL = { npd: 'Самозанятый (НПД)', ip: 'ИП', ooo: 'ООО' };
 export const EXEC_STATUSES = ['draft', 'submitted', 'in_review', 'needs_info', 'approved', 'rejected', 'suspended', 'blocked'];

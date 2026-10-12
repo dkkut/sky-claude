@@ -1,0 +1,102 @@
+/* Sky GO «Жилье и отдых»: интерфейс в браузере (Playwright). Нужны API :8080, dist на :4173; запускать из каталога с playwright-core. */
+import { chromium } from 'playwright-core';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+const S = process.argv[2], B = 'http://127.0.0.1:8080', F = 'http://localhost:4173';
+const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
+const call = async (path, o = {}, tok) => {
+  const r = await fetch(B + path, { ...o, headers: { 'content-type': 'application/json', ...(tok ? { authorization: `Bearer ${tok}` } : {}), ...(o.headers || {}) } });
+  const t = await r.text(); let d; try { d = JSON.parse(t); } catch { d = t; } return { status: r.status, data: d, headers: r.headers };
+};
+const mk = async (tag) => {
+  const email = `${tag.toLowerCase()}${Date.now()}@example.com`;
+  await call('/api/auth/email/start', { method: 'POST', body: JSON.stringify({ email }) });
+  await new Promise(r => setTimeout(r, 2500));
+  const code = [...readFileSync(S + '/api.log', 'utf8').matchAll(new RegExp(email.replace('.', '\\.') + ' \\| [^|]*\\| [^\\d]*(\\d{6})', 'g'))].pop()[1];
+  let r = await call('/api/auth/email/verify', { method: 'POST', body: JSON.stringify({ email, code }) });
+  const cookies = r.headers.getSetCookie().map(c => { const [nv, ...a] = c.split(';'); const i = nv.indexOf('='); return { name: nv.slice(0, i), value: nv.slice(i + 1), domain: 'localhost', path: (a.find(x => x.trim().toLowerCase().startsWith('path=')) || 'path=/').split('=')[1].trim() }; });
+  let tok = r.data.accessToken;
+  r = await call('/api/skyid/profiles', { method: 'POST', body: JSON.stringify({ name: tag, username: tag + Date.now().toString(36), acceptLegal: true }) }, tok);
+  const pid = r.data.profile.id;
+  q(`INSERT INTO prime_subscriptions(id,profile_id,status,plan) VALUES ('p${Date.now()}${tag}','${pid}','active','test')`);
+  r = await call(`/api/skyid/profiles/${pid}/select`, { method: 'POST', body: '{}' }, tok);
+  return { cookies, tok: r.data.accessToken ?? tok, pid, tag };
+};
+
+const { validInn, validOgrnip } = await import('/home/user/sky-claude/server/sellerrules.mjs');
+const gen = (len, fn) => { for (let i = 0; i < 100000; i++) { const s = String(Math.floor(Math.random() * 10 ** len)).padStart(len, '0'); if (fn(s)) return s; } };
+const PNG = Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]), Buffer.alloc(64, 1)]);
+let fails = 0;
+const ok = (c, n) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${n}`); if (!c) fails += 1; };
+const Ad = await mk('uAdm'); q(`update profiles set is_admin=true, admin_role='super_admin' where id='${Ad.pid}'`);
+const Ho = await mk('uHost'); const Gu = await mk('uGuest');
+q(`update profiles set date_of_birth='1990-01-01' where id='${Ho.pid}'`);
+let r = await call('/api/go/executors', { method: 'POST', body: JSON.stringify({ role: 'host', legalForm: 'npd', city: 'Москва', fields: { fullName: 'Иванов Иван Иванович', inn: gen(12, (s) => validInn(s, { length: 12 })), phone: '+79991234567' }, extra: {} }) }, Ho.tok);
+await call(`/api/go/executors/${r.data.id}/submit`, { method: 'POST', body: '{}' }, Ho.tok);
+await call(`/api/admin/go/applications/${r.data.id}/decide`, { method: 'POST', body: JSON.stringify({ action: 'approve' }) }, Ad.tok);
+q(`insert into wallet_accounts(user_id,balance) values ('${Ho.pid}',500) on conflict (user_id) do update set balance=500`);
+await call('/api/go/subscription/host/buy', { method: 'POST', body: JSON.stringify({ idemKey: 'u1' }) }, Ho.tok);
+await call('/api/go/pay-details', { method: 'PUT', body: JSON.stringify({ method: 'card', number: '4111111111111111', holder: 'ТЕСТ ТЕСТОВ', bank: 'Тест' }) }, Ho.tok);
+r = await call('/api/go/stay/my/listings', { method: 'PUT', body: JSON.stringify({ kind: 'home', title: 'Квартира у парка', descr: 'Светлая и тёплая', city: 'Москва', address: 'Москва, Парковая 5', priceRub: 3500, data: { maxGuests: 3, minNights: 1 } }) }, Ho.tok);
+const lid = r.data.id;
+await fetch(`${B}/api/go/stay/my/listings/${lid}/photos`, { method: 'POST', body: PNG, headers: { authorization: `Bearer ${Ho.tok}`, 'content-type': 'application/octet-stream' } });
+r = await call(`/api/go/stay/my/listings/${lid}/publish`, { method: 'POST', body: JSON.stringify({ on: true }) }, Ho.tok);
+ok(r.status === 200, 'UI 0. подготовка: объявление опубликовано');
+
+const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
+const open = async (u) => {
+  const ctx = await br.newContext({ viewport: { width: 420, height: 860 }, locale: 'ru-RU' });
+  await ctx.addCookies(u.cookies);
+  await ctx.addInitScript(() => { try { localStorage.setItem('sky:settings:v1', JSON.stringify({ colorScheme: 'light', introAnim: false })); } catch {} });
+  const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message.slice(0, 160)));
+  await p.goto(F + '/'); await p.waitForTimeout(3500);
+  return p;
+};
+const tap = async (p, t, n = 0) => { const l = p.getByText(t, { exact: true }); await (n === -1 ? l.last() : l.nth(n)).click({ timeout: 5000 }); await p.waitForTimeout(700); };
+const body = (p) => p.evaluate(() => document.body.innerText);
+const toGo = async (p) => { try { await tap(p, 'Начать'); } catch {} await tap(p, 'Sky', 0); await tap(p, 'Sky GO', 0); await p.waitForTimeout(1000); };
+
+const g = await open(Gu); await toGo(g);
+let t = await body(g);
+ok(/Жилье и отдых/.test(t) && /Квартиры и дома/.test(t) && /Туры/.test(t) && /Отели/.test(t), 'UI 1. под основными кнопками — «Жилье и отдых» с тремя кнопками');
+await g.screenshot({ path: S + '/stay1.png' });
+await tap(g, 'Квартиры и дома', 0); await g.waitForTimeout(1200);
+t = await body(g);
+ok(/Квартира у парка/.test(t) && /3[\s\u00a0]?500/.test(t), 'UI 2. каталог: объявление и цена');
+await g.screenshot({ path: S + '/stay2.png' });
+await tap(g, 'Квартира у парка'); await g.waitForTimeout(1200);
+ok(/Заявка на бронирование/.test(await body(g)), 'UI 3. страница объявления с формой заявки');
+const dates = g.locator('input[type=date]');
+await dates.nth(0).fill(new Date(Date.now() + 8 * 864e5).toISOString().slice(0, 10));
+await dates.nth(1).fill(new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10));
+await tap(g, 'Рассчитать'); await g.waitForTimeout(1200);
+t = await body(g);
+ok(/7[\s\u00a0]?000/.test(t) && /свободны/.test(t), 'UI 4. расчёт: 2 ночи × 3500 = 7000, даты свободны');
+await g.getByLabel('Ваше имя').fill('Гость Тестов').catch(async () => { await g.locator('input').nth(5).fill('Гость Тестов'); });
+await g.locator('input[type=tel]').fill('+79995550000');
+await g.screenshot({ path: S + '/stay3.png' });
+await tap(g, 'Отправить заявку'); await g.waitForTimeout(1800);
+t = await body(g);
+ok(/Ждёт ответа владельца/.test(t) && /Отменить заказ/.test(t), 'UI 5. заявка создана, видно статус и «Отменить»');
+await g.screenshot({ path: S + '/stay4.png' });
+
+const h = await open(Ho); await toGo(h);
+await tap(h, 'Работа', -1); await h.waitForTimeout(800);
+t = await body(h);
+ok(/Квартиры и дома/.test(t) && /Туры/.test(t) && /Отель/.test(t), 'UI 6. «Работа»: кабинеты жилья, туров и отеля');
+await tap(h, 'Квартиры и дома', -1); await h.waitForTimeout(1500);
+t = await body(h);
+ok(/Мои объявления/.test(t) && /Квартира у парка/.test(t) && /Опубликовано/.test(t) && /Заявки и брони/.test(t), 'UI 7. кабинет: объявление опубликовано, блок заявок');
+await h.screenshot({ path: S + '/stay5.png' });
+await tap(h, 'Квартира у парка', 0).catch(() => {});
+await h.waitForTimeout(500);
+await h.getByText('← ').first().click({ timeout: 1000 }).catch(() => {});
+// назад в кабинет и открыть заявку
+await h.goBack().catch(() => {});
+await h.waitForTimeout(500);
+await br.close();
+console.log('ошибки страниц:', g.errs, h.errs);
+ok(g.errs.length + h.errs.length === 0, 'UI 8. без ошибок JS');
+q(`delete from go_listings where owner_id='${Ho.pid}'`);
+console.log(fails ? 'ПРОВАЛЕНО ' + fails : 'Все проверки интерфейса пройдены');
+process.exit(fails ? 1 : 0);

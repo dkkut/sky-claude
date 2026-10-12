@@ -1,17 +1,18 @@
 /** Sky GO: «Заказы» и карточка заказа (общая для заказчика и исполнителя). Оплата — напрямую по реквизитам, подтверждает получатель денег. */
 import { useState } from 'react';
-import { Car, UtensilsCrossed, Package, Copy } from 'lucide-react';
+import { Car, UtensilsCrossed, Package, Copy, BedDouble } from 'lucide-react';
 import { goApi, STATUS_LABEL, type GoOrder } from './api';
 import { Back, Btn, Card, Chip, Col, Empty, Input, Notice, fail, fmt, useLoad, C, GO } from './ui';
 import { flash } from '@/shared/flash';
 
-const KIND = { taxi: { Icon: Car, label: 'Такси' }, food: { Icon: UtensilsCrossed, label: 'Еда' }, delivery: { Icon: Package, label: 'Доставка' } };
+const KIND = { taxi: { Icon: Car, label: 'Такси' }, food: { Icon: UtensilsCrossed, label: 'Еда' }, delivery: { Icon: Package, label: 'Доставка' }, stay: { Icon: BedDouble, label: 'Жильё и отдых' } };
 const label = (s: string, kind?: string) => (s === 'searching' && kind && kind !== 'taxi' ? 'Ищем курьера' : s === 'assigned' && kind && kind !== 'taxi' ? 'Курьер назначен' : STATUS_LABEL[s] ?? s);
-const addr = (o: GoOrder) => `${o.data.from?.address ?? o.data.place?.name ?? ''}${o.data.to?.address ? ` → ${o.data.to.address}` : o.data.address?.address ? ` → ${o.data.address.address}` : ''}`;
+const addr = (o: GoOrder) => (o.kind === 'stay' ? `${o.data.title ?? ''} · ${o.data.label ?? ''}` : `${o.data.from?.address ?? o.data.place?.name ?? ''}${o.data.to?.address ? ` → ${o.data.to.address}` : o.data.address?.address ? ` → ${o.data.address.address}` : ''}`);
 
 /** Что исполнитель может сделать на каждом шаге. */
-export const executorActions = (o: GoOrder): { action: string; text: string; code?: 'pickup' | 'handover'; danger?: boolean; kind: 'taxi' | 'delivery' | 'seller' }[] => {
+export const executorActions = (o: GoOrder): { action: string; text: string; code?: 'pickup' | 'handover'; danger?: boolean; kind: 'taxi' | 'delivery' | 'seller' | 'stay' }[] => {
   const s = o.status;
+  if (o.kind === 'stay') return s === 'requested' ? [{ action: 'confirm', text: 'Подтвердить бронь', kind: 'stay' }, { action: 'decline', text: 'Отклонить', danger: true, kind: 'stay' }] : [];
   if (o.kind === 'taxi') return ({
     assigned: [{ action: 'en_route', text: 'Выехал к пассажиру' }, { action: 'release', text: 'Отказаться', danger: true }],
     en_route: [{ action: 'arrived', text: 'Я на месте' }, { action: 'release', text: 'Отказаться', danger: true }],
@@ -87,9 +88,10 @@ export const OrderScreen = ({ id, onBack }: { id: string; onBack: () => void }) 
   const mine = o.role === 'executor';
   const acts = mine ? executorActions(o) : [];
   const payer = o.role === 'customer';
-  const cancelable = payer && (o.kind === 'taxi' ? ['searching', 'assigned', 'en_route', 'arrived'] : o.kind === 'delivery' ? ['searching', 'assigned', 'heading_pickup', 'at_pickup'] : ['pending', 'accepted']).includes(o.status);
+  const cancelable = payer && (o.kind === 'stay' ? ['requested', 'awaiting_payment'] : o.kind === 'taxi' ? ['searching', 'assigned', 'en_route', 'arrived'] : o.kind === 'delivery' ? ['searching', 'assigned', 'heading_pickup', 'at_pickup'] : ['pending', 'accepted']).includes(o.status);
 
   const doAct = (a: ReturnType<typeof executorActions>[number], withCode?: string) => {
+    if (a.kind === 'stay') return run(() => goApi.stayAct(o.id, a.action, a.action === 'decline' ? reason : undefined));
     if (a.kind === 'taxi') return run(() => goApi.taxiAct(o.id, a.action));
     if (a.kind === 'delivery') return run(() => goApi.deliveryAct(o.id, a.action, withCode));
     return run(() => goApi.sellerAct(o.id, a.action, a.action === 'reject' ? reason : undefined));
@@ -106,6 +108,13 @@ export const OrderScreen = ({ id, onBack }: { id: string; onBack: () => void }) 
             {o.data.from?.address && <div>Откуда: {o.data.from.address}</div>}
             {(o.data.to?.address || o.data.address?.address) && <div>Куда: {o.data.to?.address ?? o.data.address.address}</div>}
             {o.data.items && o.data.items.map((i: any) => <div key={i.id}>{i.name} × {i.qty} — {fmt(i.priceRub * i.qty)}</div>)}
+            {o.kind === 'stay' && <>
+              <div>{o.data.title}</div>
+              {o.data.listingKind === 'tour' ? <div>Отправление: {o.data.date} · человек: {o.data.people}</div> : <div>Даты: {o.data.checkIn} — {o.data.checkOut} ({o.data.nights} н.) · гостей: {o.data.guests}{o.data.roomName ? ` · ${o.data.roomName}` : ''}</div>}
+              {o.data.address && (o.role === 'executor' || o.status === 'awaiting_payment' || o.status === 'payment_reported' || o.status === 'paid') && <div>Адрес: {o.data.address}</div>}
+              {o.role === 'executor' && o.data.contact && <div>Гость: {o.data.contact.name}, <a href={`tel:${o.data.contact.phone}`}>{o.data.contact.phone}</a></div>}
+              {o.data.holdUntil && o.status === 'awaiting_payment' && <div>Оплатить до: {new Date(o.data.holdUntil).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>}
+            </>}
             {o.data.comment && <div>Комментарий: {o.data.comment}</div>}
             {o.data.parcel?.description && <div>Отправление: {o.data.parcel.description}</div>}
           </div>
@@ -153,7 +162,7 @@ export const OrderScreen = ({ id, onBack }: { id: string; onBack: () => void }) 
         {acts.length > 0 && (
           <Card>
             <Col>
-              {acts.some((a) => a.action === 'reject') && <Input label="Причина отказа (для отказа)" value={reason} onChange={setReason} />}
+              {acts.some((a) => a.action === 'reject' || a.action === 'decline') && <Input label="Причина отказа (для отказа)" value={reason} onChange={setReason} />}
               {acts.map((a) => a.code
                 ? <Btn key={a.action} busy={busy} onClick={() => setCodeFor(a.action)}>{a.text}</Btn>
                 : <Btn key={a.action} kind={a.danger ? 'danger' : 'main'} busy={busy} onClick={() => void doAct(a)}>{a.text}</Btn>)}
@@ -167,7 +176,7 @@ export const OrderScreen = ({ id, onBack }: { id: string; onBack: () => void }) 
           </Card>
         )}
 
-        {cancelable && <Btn kind="danger" busy={busy} onClick={() => run(() => (o.kind === 'taxi' ? goApi.taxiCancel(o.id) : o.kind === 'delivery' ? goApi.deliveryCancel(o.id) : goApi.foodCancel(o.id)), 'Заказ отменён')}>Отменить заказ</Btn>}
+        {cancelable && <Btn kind="danger" busy={busy} onClick={() => run(() => (o.kind === 'stay' ? goApi.stayCancel(o.id) : o.kind === 'taxi' ? goApi.taxiCancel(o.id) : o.kind === 'delivery' ? goApi.deliveryCancel(o.id) : goApi.foodCancel(o.id)), 'Заказ отменён')}>Отменить заказ</Btn>}
 
         {o.events && o.events.length > 0 && (
           <Card>

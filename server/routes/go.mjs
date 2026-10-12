@@ -14,6 +14,7 @@ import * as delivery from './../godelivery.mjs';
 import * as food from './../gofood.mjs';
 import * as flights from './../goflights.mjs';
 import * as fuel from './../gofuel.mjs';
+import * as stay from './../gostay.mjs';
 import { query } from './../db.mjs';
 
 const MAX_DOC = 8 * 1024 * 1024;
@@ -25,7 +26,7 @@ const readBytes = (req, limit) => new Promise((resolve) => {
 });
 
 const STATUS_OF = {
-  not_found: 404, not_allowed: 403, rate_limited: 429, too_many_requests: 429,
+  dates_taken: 409, has_bookings: 409, not_found: 404, not_allowed: 403, rate_limited: 429, too_many_requests: 429,
   already_taken: 409, bad_state: 409, active_order_exists: 409, driver_busy: 409, courier_busy: 409, not_editable: 409,
   subscription_required: 402, insufficient_funds: 402, not_approved: 403, not_registered: 403,
   provider_not_configured: 503, provider_unreachable: 502, provider_error: 502, provider_denied: 502,
@@ -69,10 +70,10 @@ export const goRoutes = async (req, res, url) => {
   }
 
   /* ── Подписки и линия ─────────────────────────────────────────── */
-  if ((m = path.match(/^\/api\/go\/subscription\/(taxi_driver|courier|food_seller|company)$/)) && method === 'GET') {
+  if ((m = path.match(/^\/api\/go\/subscription\/(taxi_driver|courier|food_seller|company|host|tour_operator|hotel)$/)) && method === 'GET') {
     return json(res, 200, { subscription: await subs.subscriptionState(me, m[1]), history: await subs.subscriptionHistory(me, m[1]), canAccept: await subs.canAccept(me, m[1]) });
   }
-  if ((m = path.match(/^\/api\/go\/subscription\/(taxi_driver|courier|food_seller|company)\/buy$/)) && method === 'POST') {
+  if ((m = path.match(/^\/api\/go\/subscription\/(taxi_driver|courier|food_seller|company|host|tour_operator|hotel)\/buy$/)) && method === 'POST') {
     const body = await parseBody(req);
     return reply(res, await subs.buy(me, m[1], body?.idemKey));
   }
@@ -138,6 +139,33 @@ export const goRoutes = async (req, res, url) => {
          FROM go_orders WHERE executor_id = $1 AND kind = $2`, [me, kind]);
     return json(res, 200, { done: rows[0].done, earnedRub: rows[0].earned, cancelled: rows[0].cancelled, active: rows[0].active });
   }
+
+  /* ── Жильё и отдых ────────────────────────────────────────────── */
+  if (path === '/api/go/stay/listings' && method === 'GET') {
+    return reply(res, await stay.catalog(Object.fromEntries(['kind', 'city', 'q', 'guests', 'checkIn', 'checkOut', 'sort'].map((k) => [k, u.searchParams.get(k)]))));
+  }
+  if ((m = path.match(/^\/api\/go\/stay\/listings\/([\w-]+)$/)) && method === 'GET') return reply(res, await stay.getListing(m[1]));
+  if (path === '/api/go/stay/quote' && method === 'POST') { if (!rateLimit(`go:sq:${me}`, 40)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await stay.quote(await parseBody(req))); }
+  if (path === '/api/go/stay/bookings' && method === 'POST') { if (!rateLimit(`go:sb:${me}`, 12)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await stay.book(me, await parseBody(req)), 201); }
+  if ((m = path.match(/^\/api\/go\/stay\/bookings\/([\w-]+)\/act$/)) && method === 'POST') { const b = await parseBody(req); return reply(res, await stay.hostAct(me, m[1], String(b?.action ?? ''), b?.reason)); }
+  if ((m = path.match(/^\/api\/go\/stay\/bookings\/([\w-]+)\/cancel$/)) && method === 'POST') return reply(res, await stay.guestCancel(me, m[1], (await parseBody(req))?.reason));
+  if ((m = path.match(/^\/api\/go\/stay\/photos\/([\w-]+)$/)) && method === 'GET') {
+    const r = await stay.getPhoto(me, m[1], false);
+    if (r.error) return json(res, 404, r);
+    res.writeHead(200, { 'Content-Type': r.mime, 'Content-Length': r.data.length, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff' });
+    res.end(r.data);
+    return true;
+  }
+  if (path === '/api/go/stay/my/listings' && method === 'GET') return json(res, 200, await stay.myListings(me));
+  if (path === '/api/go/stay/my/listings' && method === 'PUT') return reply(res, await stay.saveListing(me, await parseBody(req)));
+  if ((m = path.match(/^\/api\/go\/stay\/my\/listings\/([\w-]+)$/)) && method === 'DELETE') return reply(res, await stay.removeListing(me, m[1]));
+  if ((m = path.match(/^\/api\/go\/stay\/my\/listings\/([\w-]+)\/publish$/)) && method === 'POST') return reply(res, await stay.setPublished(me, m[1], (await parseBody(req))?.on === true));
+  if ((m = path.match(/^\/api\/go\/stay\/my\/listings\/([\w-]+)\/photos$/)) && method === 'POST') {
+    const bytes = await readBytes(req, 5 * 1024 * 1024);
+    if (!bytes) return json(res, 413, { error: 'file_too_large' });
+    return reply(res, await stay.addPhoto(me, m[1], bytes), 201);
+  }
+  if ((m = path.match(/^\/api\/go\/stay\/my\/listings\/([\w-]+)\/photos\/([\w-]+)$/)) && method === 'DELETE') return reply(res, await stay.removePhoto(me, m[1], m[2]));
 
   /* ── Авиабилеты ───────────────────────────────────────────────── */
   if (path === '/api/go/flights/status' && method === 'GET') return json(res, 200, flights.flightsStatus());

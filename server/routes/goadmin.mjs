@@ -37,6 +37,15 @@ export const goAdminRoutes = async (req, res, url) => {
   if (req.method === 'GET' && path === '/api/admin/go/orders') return reply(await adm.listOrders(me, { kind: u.searchParams.get('kind'), status: u.searchParams.get('status'), q: u.searchParams.get('q') }));
   if ((m = path.match(/^\/api\/admin\/go\/orders\/([\w-]+)$/)) && req.method === 'GET') return reply(await adm.orderDetail(me, m[1]));
   if ((m = path.match(/^\/api\/admin\/go\/orders\/([\w-]+)\/resolve$/)) && req.method === 'POST') { const b = await parseBody(req); return reply(await adm.adminResolve(me, m[1], String(b?.outcome ?? ''), b?.note)); }
+  if (req.method === 'GET' && path === '/api/admin/go/listings') return reply(await adm.stayListings(me, { status: u.searchParams.get('status'), kind: u.searchParams.get('kind'), q: u.searchParams.get('q') }));
+  if ((m = path.match(/^\/api\/admin\/go\/listings\/([\w-]+)\/moderate$/)) && req.method === 'POST') { const b = await parseBody(req); return reply(await adm.stayModerate(me, m[1], String(b?.action ?? ''), b?.note)); }
+  if ((m = path.match(/^\/api\/admin\/go\/listing-photos\/([\w-]+)$/)) && req.method === 'GET') {
+    const r = await adm.stayPhoto(me, m[1]);
+    if (r.error) return json(res, 404, r);
+    res.writeHead(200, { 'Content-Type': r.mime, 'Content-Length': r.data.length, 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' });
+    res.end(r.data);
+    return true;
+  }
   if (req.method === 'GET' && path === '/api/admin/go/integrations') return reply(await adm.integrations(me));
   return json(res, 404, { error: 'not_found' });
 };

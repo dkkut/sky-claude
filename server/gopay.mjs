@@ -77,6 +77,8 @@ export const orderView = async (row, viewerId, { events = false, staff = false }
   const data = row.data ?? {};
   let safe = data;
   if (!isCustomer && !isExecutor && !staff) safe = strip(data, ['sender', 'recipient', 'contact']);
+  // Точный адрес жилья гость получает только после подтверждения брони владельцем.
+  if (row.kind === 'stay' && isCustomer && !isExecutor && !['awaiting_payment', 'payment_reported', 'paid'].includes(row.status)) safe = strip(safe, ['address']);
   const cards = await profileCards([row.customer_id, row.executor_id]);
   const out = {
     id: row.id, kind: row.kind, parentId: row.parent_id ?? null, status: row.status, priceRub: row.price_rub, city: row.city,

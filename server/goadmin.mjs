@@ -11,6 +11,7 @@ import { flightsStatus } from './goflights.mjs';
 import { fuelStatus } from './gofuel.mjs';
 import { clean, getSetting, setSetting, goLog, ROLES } from './gocore.mjs';
 import { orderView, resolveDispute } from './gopay.mjs';
+import * as stay from './gostay.mjs';
 
 const KEYS = {
   cities: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 200 && v.every((x) => typeof x === 'string' && x.trim().length >= 2 && x.length <= 60) ? v.map((x) => x.trim()) : null,
@@ -97,7 +98,7 @@ export const listSubscriptions = async (adminId, { q, limit } = {}) => {
 export const listOrders = async (adminId, { kind, status, q, limit } = {}) => {
   if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
   const args = []; const where = [];
-  if (['taxi', 'food', 'delivery'].includes(kind)) { args.push(kind); where.push(`o.kind = $${args.length}`); }
+  if (['taxi', 'food', 'delivery', 'stay'].includes(kind)) { args.push(kind); where.push(`o.kind = $${args.length}`); }
   if (status && /^[a-z_]{3,24}$/.test(status)) { args.push(status); where.push(`o.status = $${args.length}`); }
   if (q) { args.push(`%${clean(q, 40).toLowerCase()}%`); where.push(`(lower(o.id) LIKE $${args.length} OR lower(c.username) LIKE $${args.length})`); }
   args.push(Math.min(Math.max(Number(limit) || 100, 1), 300));
@@ -161,3 +162,7 @@ export const listExecutorTariffs = async (adminId) => {
   const { rows } = await query(`SELECT t.*, p.username FROM go_executor_tariffs t JOIN profiles p ON p.id = t.profile_id ORDER BY t.updated_at DESC LIMIT 200`);
   return { items: rows.map((r) => ({ profileId: r.profile_id, username: r.username, role: r.role, priceRub: r.price_rub, periodDays: r.period_days, note: r.note })) };
 };
+
+export const stayListings = async (adminId, f) => (await can(adminId, 'go')) ? stay.adminListings(f) : { error: 'not_allowed' };
+export const stayModerate = async (adminId, id, action, note) => (await can(adminId, 'go')) ? stay.adminModerate(adminId, id, action, note) : { error: 'not_allowed' };
+export const stayPhoto = async (adminId, photoId) => stay.getPhoto(adminId, photoId, await can(adminId, 'go'));
