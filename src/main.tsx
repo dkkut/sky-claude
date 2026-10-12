@@ -12,6 +12,7 @@ import { ConsoleRoot } from './interface/console/ConsoleRoot';
 import { ConsoleIntro } from './interface/console/ConsoleIntro';
 import { ConsoleProfilePicker } from './interface/console/ConsoleProfilePicker';
 import { BetaGate }      from './auth/BetaGate';
+import { IpPinOverlay } from './auth/IpPin';
 import { setBetaRequiredHandler, setPlatformBlockedHandler, initNativeAuth, type PlatformBlock } from './core/auth/api';
 import { apiPlatformStatus } from './core/platform';
 import { PlatformBlockScreen } from './core/PlatformBlockScreen';
@@ -299,7 +300,7 @@ const Splash = ({ offline, minimal, onSkip }: { offline: boolean; minimal?: bool
 };
 
 const AdminVerifyPage = React.lazy(() => import('./admin/AdminGate').then((m) => ({ default: m.AdminVerifyPage })));
-const AdminVerifyLazy = () => <React.Suspense fallback={null}><AdminVerifyPage /></React.Suspense>;
+const AdminVerifyLazy = ({ kind }: { kind?: 'admin' | 'ssh' }) => <React.Suspense fallback={null}><AdminVerifyPage kind={kind} /></React.Suspense>;
 
 const Root = () => {
   const isAuthenticated = useAuthStore(s => s.isAuthenticated);
@@ -569,7 +570,7 @@ void initI18n().finally(() => ReactDOM.createRoot(document.getElementById('root'
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : <Root />}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : <><Root /><IpPinOverlay /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));

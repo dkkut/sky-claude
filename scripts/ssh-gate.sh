@@ -1,0 +1,79 @@
+#!/bin/bash
+# =====================================================================
+#  Подтверждение входа по SSH владельцем (Sky) — крючок PAM для sshd.
+#
+#  Каждый вход по SSH (shell, scp, sftp, команда) ждёт, пока владелец откроет
+#  ссылку из письма и введёт код аутентификатора — как при входе в панель
+#  администратора. Без подтверждения сессия не открывается.
+#
+#  Установка (один раз, под root):  sudo bash scripts/ssh-gate.sh --install
+#  Отключить:                       sudo bash scripts/ssh-gate.sh --uninstall
+#  Аварийно (с консоли хостера):    sudo touch /etc/sky-ssh-gate.off
+#
+#  Конфиг /etc/sky-ssh-gate.conf (root, 600):
+#     SKY_API=https://web.skymessenger.online     # адрес API
+#     SKY_SECRET=...                               # тот же, что SSH_GATE_SECRET в .env сервера (от 24 знаков)
+#     SKY_TIMEOUT=300                              # сколько ждать подтверждения, сек
+#     SKY_FAILOPEN=0                               # 1 — пускать, если API недоступен (небезопасно)
+#
+#  Если API недоступен, а SKY_FAILOPEN=0, вход закрыт: зайти можно только с консоли
+#  хостера (она sshd не использует) или после «touch /etc/sky-ssh-gate.off».
+# =====================================================================
+set -u
+CONF="${SKY_GATE_CONF:-/etc/sky-ssh-gate.conf}"
+OFF="${SKY_GATE_OFF:-/etc/sky-ssh-gate.off}"
+SELF="$(readlink -f "$0")"
+
+if [ "${1:-}" = "--install" ] || [ "${1:-}" = "--uninstall" ]; then
+  [ "$(id -u)" = 0 ] || { echo "Нужен root" >&2; exit 1; }
+  PAM=/etc/pam.d/sshd
+  LINE="session required pam_exec.so quiet $SELF"
+  if [ "$1" = "--uninstall" ]; then
+    sed -i "\#$SELF#d" "$PAM"; echo "Шлюз SSH отключён (строка убрана из $PAM)."; exit 0
+  fi
+  [ -f "$CONF" ] || { echo "Нет $CONF — создайте его (см. шапку скрипта) и запустите ещё раз." >&2; exit 1; }
+  chmod 600 "$CONF"
+  grep -qs "UsePAM yes" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null || echo "ВНИМАНИЕ: в sshd_config должно быть «UsePAM yes»." >&2
+  grep -qF "$SELF" "$PAM" || echo "$LINE" >> "$PAM"
+  echo "Готово. Откройте ВТОРОЙ терминал и проверьте вход ДО закрытия текущей сессии."
+  echo "Если что-то не так: sudo touch $OFF (или с консоли хостера: bash $SELF --uninstall)."
+  exit 0
+fi
+
+# ── крючок PAM ──────────────────────────────────────────────────────
+[ "${PAM_TYPE:-}" = "open_session" ] || exit 0
+[ "${PAM_SERVICE:-}" = "sshd" ] || exit 0
+[ -e "$OFF" ] && exit 0
+[ -r "$CONF" ] || exit 1      # конфига нет — закрыто, а не открыто
+# shellcheck disable=SC1090
+. "$CONF"
+: "${SKY_TIMEOUT:=300}" "${SKY_FAILOPEN:=0}"
+[ -n "${SKY_API:-}" ] && [ "${#SKY_SECRET}" -ge 24 ] || exit 1
+
+clean() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._:@/-' | cut -c1-"$2"; }
+U="$(clean "${PAM_USER:-}" 40)"; R="$(clean "${PAM_RHOST:-}" 60)"; T="$(clean "${PAM_TTY:-}" 40)"; H="$(clean "$(hostname)" 80)"
+TS="$(date +%s)"
+SIG="$(printf '%s\n%s\n%s\n%s\n%s' "$TS" "$U" "$H" "$R" "$T" | openssl dgst -sha256 -hmac "$SKY_SECRET" -hex | awk '{print $NF}')"
+api() { curl -sS -m 10 -H 'Content-Type: application/json' -X POST -d "$2" "${SKY_API%/}$1" 2>/dev/null; }
+field() { printf '%s' "$1" | sed -n "s/.*\"$2\":\"\([^\"]*\)\".*/\1/p"; }
+
+RES="$(api /api/ssh-gate/request "{\"ts\":\"$TS\",\"user\":\"$U\",\"host\":\"$H\",\"rhost\":\"$R\",\"tty\":\"$T\",\"sig\":\"$SIG\"}")"
+ID="$(field "$RES" id)"; POLL="$(field "$RES" poll)"
+if [ -z "$ID" ] || [ -z "$POLL" ]; then
+  # API ответил отказом (нет почты/аутентификатора, подпись) — закрыто. Не ответил вовсе — по настройке.
+  if [ -z "$RES" ] && [ "$SKY_FAILOPEN" = "1" ]; then logger -t sky-ssh-gate "API недоступен, SKY_FAILOPEN=1: вход $U пропущен"; exit 0; fi
+  logger -t sky-ssh-gate "вход $U@$R закрыт: ${RES:-API недоступен}"
+  exit 1
+fi
+
+END=$(( $(date +%s) + SKY_TIMEOUT ))
+while [ "$(date +%s)" -lt "$END" ]; do
+  ST="$(field "$(api /api/ssh-gate/poll "{\"id\":\"$ID\",\"poll\":\"$POLL\"}")" status)"
+  case "$ST" in
+    approved) logger -t sky-ssh-gate "вход $U@$R подтверждён владельцем"; exit 0 ;;
+    denied|expired|unknown) logger -t sky-ssh-gate "вход $U@$R отклонён ($ST)"; exit 1 ;;
+  esac
+  sleep 2
+done
+logger -t sky-ssh-gate "вход $U@$R: подтверждения не дождались"
+exit 1

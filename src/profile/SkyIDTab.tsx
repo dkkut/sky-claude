@@ -21,6 +21,7 @@ import { apiListDevices, apiRevokeDevice, apiTrustedDevices, apiRevokeTrusted, a
 import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
 
 /* ── helpers ─────────────────────────────────────────────────── */
+import { IpPinSettings } from '@/auth/IpPin';
 const fmtDt = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
 
@@ -923,6 +924,8 @@ const SecuritySection = () => {
       )}
 
       {active && active.twoFactorEnabled && <TrustedDevicesBlock profile={active} />}
+
+      <IpPinSettings />
 
       <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
         Две защиты независимы: можно включить только на профиль, только на вход

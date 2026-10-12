@@ -31,7 +31,7 @@ const tokenHash = (t) => crypto.createHash('sha256').update(`${config.jwtSecret}
 const clip = (v, n) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n);
 
 /** Администратор (или владелец) сейчас — без оглядки на шлюз. */
-const adminNow = async (profileId) => {
+export const adminNow = async (profileId) => {
   const name = String(config.ownerUsername ?? '').trim().toLowerCase();
   const { rows } = await query(
     `SELECT p.id, p.name, p.username, p.is_admin, lower(p.username) = $2 AS owner,
@@ -43,7 +43,7 @@ const adminNow = async (profileId) => {
     email: r.email_verified ? String(r.email ?? '') : '', twoFactor: Boolean(r.two_factor_enabled), secret: r.two_factor_secret };
 };
 
-const publicOrigin = (req) => {
+export const publicOrigin = (req) => {
   if (config.publicOrigin) return config.publicOrigin;
   const o = String(req?.headers?.origin ?? '');
   return config.nodeEnv !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o) ? o : '';
@@ -163,6 +163,26 @@ const revokeAdmins = async (actor) => {
 };
 
 /**
+ * Система безопасности по кнопке «Это не я»: общая для входа в панель и для входа по SSH
+ * (sshgate.mjs). 'lockdown' — закрыть панель и завершить сессии администраторов,
+ * 'shutdown' — ещё и выключить сервер для всех (решать это вправе только владелец —
+ * проверяет вызывающий).
+ */
+export const enactPanic = async (who, action, { ip, source } = {}) => {
+  const reason = L(`Включено по ссылке «Это не я» (@${who.username}${source ? `, ${source}` : ''})`,
+    `Enabled via “It’s not me” link (@${who.username}${source ? `, ${source}` : ''})`).slice(0, 280);
+  if (action === 'shutdown') {
+    await query('UPDATE platform_shutdown SET active = TRUE, reason = $1, set_by = $2, set_at = now() WHERE id', [reason, who.id]);
+  }
+  // Панель закрывается в обоих случаях: выключенный сервер без закрытой панели смысла не имеет.
+  await query('UPDATE admin_lockdown SET active = TRUE, reason = $1, set_by = $2, set_at = now() WHERE id', [reason, who.id]);
+  const revoked = await revokeAdmins(who);
+  await logAdmin({ actorId: who.id, type: action === 'shutdown' ? 'gate_panic_shutdown' : 'gate_panic_lockdown', targetType: 'system',
+    detail: `${reason} · сессий закрыто: ${revoked} · ${clip(ip, 40)}` });
+  return { revoked, reason };
+};
+
+/**
  * «Это не я». action: 'lockdown' — «аварийные работы» для панели (любой администратор),
  * 'shutdown' — выключить сервер (только владелец). Ссылка — единственное, что нужно:
  * человек мог остаться без кода, а время важнее.
@@ -175,17 +195,8 @@ export const panicLink = async (token, action, { ip } = {}) => {
   if (action !== 'lockdown' && action !== 'shutdown') return { error: 'bad_action' };
   if (action === 'shutdown' && !who.owner) return { error: 'owner_only' };
 
-  const reason = L(`Включено по ссылке «Это не я» (@${who.username})`, `Enabled via “It’s not me” link (@${who.username})`).slice(0, 280);
   await query('UPDATE admin_gate_requests SET used_at = now(), outcome = $2 WHERE id = $1', [r.id, `panic_${action}`]);
-
-  if (action === 'shutdown') {
-    await query('UPDATE platform_shutdown SET active = TRUE, reason = $1, set_by = $2, set_at = now() WHERE id', [reason, who.id]);
-  }
-  // Панель закрывается в обоих случаях: выключенный сервер без закрытой панели смысла не имеет.
-  await query('UPDATE admin_lockdown SET active = TRUE, reason = $1, set_by = $2, set_at = now() WHERE id', [reason, who.id]);
-  const revoked = await revokeAdmins(who);
-  await logAdmin({ actorId: who.id, type: action === 'shutdown' ? 'gate_panic_shutdown' : 'gate_panic_lockdown', targetType: 'system',
-    detail: `${reason} · сессий закрыто: ${revoked} · ${clip(ip, 40)}` });
+  const { revoked } = await enactPanic(who, action, { ip });
 
   // Владелец узнаёт, если кнопку нажал не он сам.
   if (!who.owner) {

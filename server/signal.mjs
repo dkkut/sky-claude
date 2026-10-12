@@ -20,6 +20,7 @@ import { sessionStore, onSessionRevoked } from './sessions.mjs';
 import { query } from './db.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
 import { originAllowed, clientIp } from './http.mjs';
+import { pinRequired } from './ippin.mjs';
 import { getPrivacy, setPrivacy, presenceBetween, mayCall } from './privacy.mjs';
 import {
   restrictionsOf, isBannedNow, isAdmin,
@@ -271,12 +272,14 @@ onSessionRevoked((sessionId) => {
  *
  * Возвращает { userId, sessionId } либо null.
  */
-const identify = async (token) => {
+const identify = async (token, ip) => {
   const payload = verifyToken(token, config.jwtSecret);
   if (!payload || payload.typ !== 'access' || !payload.sky || !payload.sid) return null;
 
   const stored = await sessionStore.get(payload.sid);
   if (!stored || stored.userId !== payload.sky || !stored.profileId) return null;
+  // PIN при смене IP (ippin.mjs): сессия с адреса, где PIN ещё не вводили, не получает сокет.
+  if (await pinRequired(payload.sky, payload.sid, stored, ip)) return null;
 
   return { userId: stored.profileId, sessionId: payload.sid };
 };
@@ -1920,7 +1923,7 @@ export const startSignalHub = () => {
       /* ── Авторизация ── */
       if (msg.type === 'auth') {
         if (session.userId) return;
-        const who = await identify(msg.payload?.token);
+        const who = await identify(msg.payload?.token, ip);
         if (!who) {
           send(ws, { type: 'auth-failed' });
           ws.close(4401, 'unauthorized');

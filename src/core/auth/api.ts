@@ -160,6 +160,15 @@ const ERRORS: Record<string, string> = {
   not_active_profile:    'Подписку можно оформить только на активный профиль',
   already_owned:         'Уже куплено',
   not_owned:             'Сначала нужно купить',
+  pin_required:          'Подтвердите PIN-код: вы зашли с нового адреса',
+  wrong_pin:             'Неверный PIN-код',
+  locked:                'Слишком много неверных попыток — ввод PIN временно заблокирован',
+  bad_pin:               'PIN — ровно четыре цифры',
+  bad_code:              'Код не подошёл',
+  bad_codes:             'Коды не подошли — проверьте код с почты и код из аутентификатора',
+  no_request:            'Сначала запросите код на почту (он живёт 15 минут)',
+  authenticator_required:'Для PIN нужен включённый аутентификатор (Профиль → Sky ID → Защита)',
+  session_ended:         'Слишком много неверных попыток — сессия завершена. Войдите заново',
 };
 
 export const explain = (code?: string, status?: number) =>
@@ -251,6 +260,10 @@ export interface Reply<T> { ok: boolean; data?: T; error?: string; reason?: stri
    отказом beta_required, если у браузера нет пропуска. Здесь мы лишь
    замечаем этот отказ и сообщаем о нём приложению — решает сервер. */
 
+/** PIN при смене IP (server/ippin.mjs): сервер закрыл сессию, пока не введён PIN. */
+let onPinRequired: (() => void) | null = null;
+export const setPinRequiredHandler = (fn: (() => void) | null) => { onPinRequired = fn; };
+
 let onBetaRequired: (() => void) | null = null;
 export const setBetaRequiredHandler = (fn: (() => void) | null) => { onBetaRequired = fn; };
 
@@ -314,6 +327,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
   const data = await readJson(res);
   if (!res.ok) {
     if (res.status === 403 && data?.error === 'beta_required') onBetaRequired?.();
+    if (res.status === 403 && data?.error === 'pin_required') onPinRequired?.();
     if (res.status === 503 && data?.error === 'platform_shutdown') onPlatformBlocked?.({ kind: 'shutdown', reason: String(data?.reason ?? '') });
     if (res.status === 503 && data?.error === 'platform_maintenance') onPlatformBlocked?.({ kind: 'maintenance', reason: String(data?.reason ?? '') });
     return { ok: false, error: data?.error, reason: explain(data?.error, res.status), status: res.status, data };

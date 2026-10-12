@@ -9,6 +9,7 @@ import { createClient } from 'redis';
 
 const KEY_SESSION   = (id)  => `sess:${id}`;
 const KEY_USER_SESS = (uid) => `user-sess:${uid}`;
+const KEY_SESS_IPS  = (id)  => `sess-ips:${id}`;
 
 let client = null;
 
@@ -127,9 +128,21 @@ export const sessionStore = {
     await client.setEx(KEY_SESSION(id), ttl > 0 ? ttl : 60, JSON.stringify({ ...session, lastSeenAt: Date.now() }));
   },
 
+  /**
+   * Адреса, с которых человек уже подтвердил PIN в этой сессии (см. ippin.mjs). Адрес входа
+   * сюда не кладётся — он и так «свой». Список живёт столько же, сколько сессия.
+   */
+  async ipKnown(id, ipKey) {
+    return Boolean(await client.sIsMember(KEY_SESS_IPS(id), ipKey));
+  },
+  async ipAllow(id, ipKey) {
+    const ttl = await client.ttl(KEY_SESSION(id));
+    await client.multi().sAdd(KEY_SESS_IPS(id), ipKey).expire(KEY_SESS_IPS(id), ttl > 0 ? ttl : 3600).exec();
+  },
+
   async revoke(id) {
     const session = await this.get(id);
-    const multi = client.multi().del(KEY_SESSION(id));
+    const multi = client.multi().del(KEY_SESSION(id)).del(KEY_SESS_IPS(id));
     if (session?.userId) multi.sRem(KEY_USER_SESS(session.userId), id);
     await multi.exec();
     announceRevoked([id]);

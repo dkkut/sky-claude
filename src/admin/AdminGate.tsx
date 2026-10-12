@@ -80,7 +80,10 @@ const CONFIRM_ERR: Record<string, string> = {
   too_many_requests: 'Слишком часто. Подождите минуту.',
 };
 
-export const AdminVerifyPage = () => {
+/** Один экран для двух входов: в панель (kind='admin') и по SSH (kind='ssh'). */
+export const AdminVerifyPage = ({ kind = 'admin' }: { kind?: 'admin' | 'ssh' }) => {
+  const base = kind === 'ssh' ? '/api/ssh-gate' : '/api/admin/gate';
+  const ssh = kind === 'ssh';
   const token = new URLSearchParams(location.search).get('t') ?? '';
   const [phase, setPhase] = useState<Phase>('loading');
   const [info, setInfo] = useState<LinkInfo | null>(null);
@@ -89,40 +92,40 @@ export const AdminVerifyPage = () => {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void apiCall<LinkInfo>(`/api/admin/gate/link?t=${encodeURIComponent(token)}`).then((r) => {
+    void apiCall<LinkInfo>(`${base}/link?t=${encodeURIComponent(token)}`).then((r) => {
       if (r.ok && r.data) { setInfo(r.data); setPhase('ready'); } else setPhase('invalid');
     });
   }, [token]);
 
   const confirm = async () => {
     setBusy(true); setErr('');
-    const r = await apiCall<{ left?: number }>('/api/admin/gate/confirm', { method: 'POST', body: JSON.stringify({ t: token, code: code.trim() }) });
+    const r = await apiCall<{ left?: number }>(`${base}/confirm`, { method: 'POST', body: JSON.stringify({ t: token, code: code.trim() }) });
     setBusy(false);
     if (r.ok) { setPhase('done'); return; }
     if (r.error === 'invalid_link') { setPhase('invalid'); return; }
     setErr((CONFIRM_ERR[r.error ?? ''] ?? 'Не удалось подтвердить.') + (r.error === 'bad_code' && r.data?.left != null ? ` Осталось попыток: ${r.data.left}.` : ''));
   };
-  const panic = async (action: 'lockdown' | 'shutdown') => {
-    if (!window.confirm(action === 'shutdown' ? 'Выключить сервер для всех пользователей? Сессии администраторов будут завершены.' : 'Включить аварийные работы? Панель закроется, сессии администраторов будут завершены.')) return;
+  const panic = async (action: 'lockdown' | 'shutdown' | 'deny') => {
+    if (action !== 'deny' && !window.confirm(action === 'shutdown' ? 'Выключить сервер для всех пользователей? Сессии администраторов будут завершены.' : 'Включить аварийные работы? Панель закроется, сессии администраторов будут завершены.')) return;
     setBusy(true); setErr('');
-    const r = await apiCall('/api/admin/gate/panic', { method: 'POST', body: JSON.stringify({ t: token, action }) });
+    const r = await apiCall(`${base}/panic`, { method: 'POST', body: JSON.stringify({ t: token, action }) });
     setBusy(false);
     if (r.ok) { setPhase('panicDone'); return; }
     if (r.error === 'invalid_link') { setPhase('invalid'); return; }
     setErr(r.error === 'owner_only' ? 'Выключить сервер может только владелец.' : 'Не удалось включить режим. Попробуйте ещё раз.');
   };
 
-  const Card = ({ children }: { children: React.ReactNode }) => (
+  const card = (children: React.ReactNode) => (
     <div className="mx-auto w-full max-w-[420px] rounded-[28px] p-6" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)', color: 'var(--t1)' }}>{children}</div>
   );
   const btn = 'flex w-full items-center justify-center gap-2 rounded-full py-3 text-[14px] font-bold disabled:opacity-50';
 
   return (
     <div className="grid min-h-[100dvh] place-items-center px-4 py-10" style={{ background: 'var(--bg)' }}>
-      <Card>
-        <div className="mb-4 flex items-center gap-2"><Shield size={20} style={{ color: 'var(--accent)' }} /><p className="text-[16px] font-bold">Вход в панель администратора</p></div>
+      {card(<>
+        <div className="mb-4 flex items-center gap-2"><Shield size={20} style={{ color: 'var(--accent)' }} /><p className="text-[16px] font-bold">{ssh ? 'Вход на сервер по SSH' : 'Вход в панель администратора'}</p></div>
         {phase === 'loading' && <Loader2 size={18} className="animate-spin" />}
-        {phase === 'invalid' && <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Ссылка недействительна: она уже использована, устарела или доступ к панели закрыт. Откройте панель и запросите новую.</p>}
+        {phase === 'invalid' && <p className="text-[13px]" style={{ color: 'var(--t2)' }}>{ssh ? 'Ссылка недействительна: она уже использована, устарела (живёт 5 минут) или вход отклонён. Войдите по SSH заново — придёт новое письмо.' : 'Ссылка недействительна: она уже использована, устарела или доступ к панели закрыт. Откройте панель и запросите новую.'}</p>}
         {(phase === 'ready' || phase === 'code' || phase === 'panic') && info && (
           <>
             <div className="mb-4 space-y-1 rounded-2xl p-3 text-[12.5px]" style={{ background: 'var(--bg-l2)', color: 'var(--t2)' }}>
@@ -148,7 +151,8 @@ export const AdminVerifyPage = () => {
             )}
             {phase === 'panic' && (
               <div className="space-y-2">
-                <p className="text-[12.5px]" style={{ color: 'var(--t2)' }}>Выберите, что сделать. Все сессии вашего аккаунта и других администраторов будут завершены.</p>
+                <p className="text-[12.5px]" style={{ color: 'var(--t2)' }}>{ssh ? 'Вход по SSH будет отклонён. Дальше выберите, нужно ли закрыть панель и сервер.' : 'Выберите, что сделать. Все сессии вашего аккаунта и других администраторов будут завершены.'}</p>
+                {ssh && <button type="button" disabled={busy} onClick={() => void panic('deny')} className={btn} style={{ background: 'var(--bg-l2)', color: 'var(--t1)' }}><ShieldAlert size={16} /> Только отклонить вход</button>}
                 {info.owner && <button type="button" disabled={busy} onClick={() => void panic('shutdown')} className={btn} style={{ background: 'var(--red)', color: '#fff' }}><Power size={16} /> Выключить сервер</button>}
                 <button type="button" disabled={busy} onClick={() => void panic('lockdown')} className={btn} style={{ background: 'rgba(239,68,68,0.14)', color: 'var(--red)' }}><Siren size={16} /> Ввести аварийные работы</button>
                 {!info.owner && <p className="text-[11.5px]" style={{ color: 'var(--t3)' }}>Выключить сервер может только владелец.</p>}
@@ -158,9 +162,9 @@ export const AdminVerifyPage = () => {
             {err && <p className="mt-3 text-[12.5px]" style={{ color: 'var(--red)' }}>{err}</p>}
           </>
         )}
-        {phase === 'done' && <p className="text-[13.5px]" style={{ color: 'var(--t1)' }}>Вход подтверждён. Вернитесь в панель — она откроется сама.</p>}
-        {phase === 'panicDone' && <p className="text-[13.5px]" style={{ color: 'var(--t1)' }}>Система безопасности включена, сессии администраторов завершены. Владелец уведомлён.</p>}
-      </Card>
+        {phase === 'done' && <p className="text-[13.5px]" style={{ color: 'var(--t1)' }}>{ssh ? 'Вход подтверждён. SSH-сессия откроется сама в течение нескольких секунд.' : 'Вход подтверждён. Вернитесь в панель — она откроется сама.'}</p>}
+        {phase === 'panicDone' && <p className="text-[13.5px]" style={{ color: 'var(--t1)' }}>{ssh ? 'Вход по SSH отклонён. Если вы выбрали аварийный режим, панель закрыта, сессии администраторов завершены.' : 'Система безопасности включена, сессии администраторов завершены. Владелец уведомлён.'}</p>}
+      </>)}
     </div>
   );
 };
