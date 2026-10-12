@@ -67,6 +67,8 @@ export interface AppSettings {
   soundCalls:      boolean;
   soundMentions:   boolean;
   desktopNotifs:   boolean;
+  /** Windows-приложение: определять запущенные известные игры и отмечать их как «играет сейчас». */
+  gameDetect:      boolean;
   // Мессенджер
   enterToSend:     boolean;
   showReadReceipts:boolean;
@@ -109,6 +111,7 @@ const defaults: AppSettings = {
   soundCalls:       true,
   soundMentions:    true,
   desktopNotifs:    false,
+  gameDetect:       false,
   enterToSend:      true,
   showReadReceipts: true,
   showTyping:       true,

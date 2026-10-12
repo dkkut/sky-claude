@@ -1,0 +1,283 @@
+[
+ {
+  "id": "cs2",
+  "title": "Counter-Strike 2",
+  "icon": "🔫",
+  "platform": "steam",
+  "exe": [
+   "cs2.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "dota2",
+  "title": "Dota 2",
+  "icon": "🏆",
+  "platform": "steam",
+  "exe": [
+   "dota2.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "cyberpunk2077",
+  "title": "Cyberpunk 2077",
+  "icon": "🌆",
+  "platform": "steam",
+  "exe": [
+   "Cyberpunk2077.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "eldenring",
+  "title": "Elden Ring",
+  "icon": "⚔️",
+  "platform": "steam",
+  "exe": [
+   "eldenring.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "gta5",
+  "title": "GTA V",
+  "icon": "🚗",
+  "platform": "steam",
+  "exe": [
+   "GTA5.exe",
+   "GTAV.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "fortnite",
+  "title": "Fortnite",
+  "icon": "🎯",
+  "platform": "epic",
+  "exe": [
+   "FortniteClient-Win64-Shipping.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "rocketleague",
+  "title": "Rocket League",
+  "icon": "🚀",
+  "platform": "epic",
+  "exe": [
+   "RocketLeague.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "valorant",
+  "title": "Valorant",
+  "icon": "🎯",
+  "platform": "riot",
+  "exe": [
+   "VALORANT-Win64-Shipping.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "lol",
+  "title": "League of Legends",
+  "icon": "⚔️",
+  "platform": "riot",
+  "exe": [
+   "League of Legends.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "overwatch2",
+  "title": "Overwatch 2",
+  "icon": "🦸",
+  "platform": "battlenet",
+  "exe": [
+   "Overwatch.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "minecraft",
+  "title": "Minecraft",
+  "icon": "⛏️",
+  "platform": "custom",
+  "exe": [
+   "Minecraft.Windows.exe",
+   "Minecraft.exe"
+  ],
+  "pkg": [
+   "com.mojang.minecraftpe"
+  ]
+ },
+ {
+  "id": "apex",
+  "title": "Apex Legends",
+  "icon": "🔥",
+  "platform": "epic",
+  "exe": [
+   "r5apex.exe",
+   "r5apex_dx12.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "roblox",
+  "title": "Roblox",
+  "icon": "🧱",
+  "platform": "custom",
+  "exe": [
+   "RobloxPlayerBeta.exe"
+  ],
+  "pkg": [
+   "com.roblox.client"
+  ]
+ },
+ {
+  "id": "genshin",
+  "title": "Genshin Impact",
+  "icon": "🌸",
+  "platform": "custom",
+  "exe": [
+   "GenshinImpact.exe"
+  ],
+  "pkg": [
+   "com.miHoYo.GenshinImpact"
+  ]
+ },
+ {
+  "id": "pubg",
+  "title": "PUBG",
+  "icon": "🪖",
+  "platform": "steam",
+  "exe": [
+   "TslGame.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "rust",
+  "title": "Rust",
+  "icon": "🪓",
+  "platform": "steam",
+  "exe": [
+   "RustClient.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "terraria",
+  "title": "Terraria",
+  "icon": "🌳",
+  "platform": "steam",
+  "exe": [
+   "Terraria.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "stardew",
+  "title": "Stardew Valley",
+  "icon": "🌾",
+  "platform": "steam",
+  "exe": [
+   "Stardew Valley.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "amongus",
+  "title": "Among Us",
+  "icon": "🚀",
+  "platform": "steam",
+  "exe": [
+   "Among Us.exe"
+  ],
+  "pkg": [
+   "com.innersloth.spacemafia"
+  ]
+ },
+ {
+  "id": "witcher3",
+  "title": "The Witcher 3",
+  "icon": "🐺",
+  "platform": "steam",
+  "exe": [
+   "witcher3.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "wot",
+  "title": "World of Tanks",
+  "icon": "🛡️",
+  "platform": "custom",
+  "exe": [
+   "WorldOfTanks.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "warframe",
+  "title": "Warframe",
+  "icon": "🥷",
+  "platform": "steam",
+  "exe": [
+   "Warframe.x64.exe"
+  ],
+  "pkg": []
+ },
+ {
+  "id": "pubgm",
+  "title": "PUBG Mobile",
+  "icon": "🪖",
+  "platform": "custom",
+  "exe": [],
+  "pkg": [
+   "com.tencent.ig"
+  ]
+ },
+ {
+  "id": "brawlstars",
+  "title": "Brawl Stars",
+  "icon": "⭐",
+  "platform": "custom",
+  "exe": [],
+  "pkg": [
+   "com.supercell.brawlstars"
+  ]
+ },
+ {
+  "id": "clashroyale",
+  "title": "Clash Royale",
+  "icon": "👑",
+  "platform": "custom",
+  "exe": [],
+  "pkg": [
+   "com.supercell.clashroyale"
+  ]
+ },
+ {
+  "id": "cod_mobile",
+  "title": "Call of Duty: Mobile",
+  "icon": "🔫",
+  "platform": "custom",
+  "exe": [],
+  "pkg": [
+   "com.activision.callofduty.shooter"
+  ]
+ },
+ {
+  "id": "subway",
+  "title": "Subway Surfers",
+  "icon": "🏃",
+  "platform": "custom",
+  "exe": [],
+  "pkg": [
+   "com.kiloo.subwaysurf"
+  ]
+ }
+]

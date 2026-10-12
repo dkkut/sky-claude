@@ -558,6 +558,24 @@ t('сбой поставщика без кэша — честная ошибка
 r = await G('/fuel/nearby', J({ lat: 55.751, lng: 37.621 }), C.tok);
 t('при доступном поставщике работает снова (кэш станций)', r.status === 200 && r.data.stations.length >= 1);
 
+/* ═══ Персональный тариф исполнителя ═══ */
+r = await call('/api/admin/go/executor-tariffs', { method: 'PUT', body: JSON.stringify({ username: q(`select username from profiles where id='${D.pid}'`), role: 'taxi_driver', priceRub: 10, periodDays: 3 }) }, AF.tok);
+t('персональный тариф: нужен go_finance', r.status === 403);
+r = await call('/api/admin/go/executor-tariffs', { method: 'PUT', body: JSON.stringify({ username: q(`select username from profiles where id='${D.pid}'`), role: 'taxi_driver', priceRub: -5, periodDays: 3 }) }, A.tok);
+t('персональный тариф: отрицательная цена отклонена', r.status === 400);
+r = await call('/api/admin/go/executor-tariffs', { method: 'PUT', body: JSON.stringify({ username: q(`select username from profiles where id='${D.pid}'`), role: 'taxi_driver', priceRub: 10, periodDays: 3, note: 'Акция' }) }, A.tok);
+t('персональный тариф задан администрацией', r.status === 200, JSON.stringify(r.data));
+r = await G('/subscription/taxi_driver', {}, D.tok);
+t('исполнитель видит персональный тариф', r.data.subscription.tariff.priceRub === 10 && r.data.subscription.tariff.personal === true && r.data.subscription.tariff.periodDays === 3, JSON.stringify(r.data.subscription.tariff));
+fund(D, 100); const wb = wallet(D);
+r = await G('/subscription/taxi_driver/buy', J({ idemKey: 'pers1' }), D.tok);
+t('списано ровно персональные 10 ₽', r.status === 200 && wallet(D) === wb - 10, `${wallet(D)} ${wb}`);
+r = await G('/subscription/taxi_driver', {}, D2.tok);
+t('другой водитель остаётся на общем тарифе', r.data.subscription.tariff.priceRub === 69 && !r.data.subscription.tariff.personal);
+r = await call('/api/admin/go/executor-tariffs', { method: 'PUT', body: JSON.stringify({ username: q(`select username from profiles where id='${D.pid}'`), role: 'taxi_driver', reset: true }) }, A.tok);
+r = await G('/subscription/taxi_driver', {}, D.tok);
+t('сброс возвращает общий тариф', r.data.subscription.tariff.priceRub === 69 && !r.data.subscription.tariff.personal);
+
 /* ═══ Безопасность: общий обход ═══ */
 const forbidden = ['/executors', '/pay-details'];
 r = await call('/api/go/config');

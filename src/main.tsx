@@ -23,6 +23,7 @@ import { LegalNotice, legalNoticeSeen } from './info/LegalNotice';
 import { useAuthStore }  from './core/auth/store';
 import { connectSocket, disconnectSocket } from './messenger/socket';
 import { startOrdersSync } from './offline/ordersCache';
+import { startGameActivity } from './gaming/gameSync';
 import { startKeyboardInset } from './shared/keyboardInset';
 import { reloadMessengerForUser } from './messenger/store';
 import { reloadPlatformForUser }  from './platform/store';
@@ -447,6 +448,12 @@ const Root = () => {
   useEffect(() => {
     if (!isAuthenticated || !currentUserId) return undefined;
     return startOrdersSync();
+  }, [isAuthenticated, currentUserId]);
+
+  // Активность в играх: пульс отмеченной игры, свои итоги, присутствие собеседников, определение игр в Windows-приложении.
+  useEffect(() => {
+    if (!isAuthenticated || !currentUserId) return undefined;
+    return startGameActivity();
   }, [isAuthenticated, currentUserId]);
 
   // Дальнейшие изменения региона через существующий RegionPicker —

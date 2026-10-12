@@ -18,7 +18,12 @@ export const tariffs = async () => {
     roleTariff: Object.fromEntries(map.map((m) => [m.role, m.tariff_code])) };
 };
 
-export const tariffFor = async (role) => {
+export const tariffFor = async (role, profileId) => {
+  if (profileId) {
+    const { rows: o } = await query('SELECT price_rub, period_days, note FROM go_executor_tariffs WHERE profile_id = $1 AND role = $2', [profileId, role]);
+    const base = await tariffFor(role);
+    if (o[0] && base) return { ...base, priceRub: o[0].price_rub, periodDays: o[0].period_days, personal: true, personalNote: o[0].note || undefined };
+  }
   const { rows } = await query(
     `SELECT t.code, t.title, t.price_rub, t.period_days FROM go_role_tariff r JOIN go_tariffs t ON t.code = r.tariff_code WHERE r.role = $1`, [role]);
   return rows[0] ? { code: rows[0].code, title: rows[0].title, priceRub: rows[0].price_rub, periodDays: rows[0].period_days } : null;
@@ -28,7 +33,7 @@ export const subscriptionState = async (profileId, role) => {
   const { rows } = await query(
     `SELECT tariff_code, expires_at, started_at FROM go_subscriptions WHERE profile_id = $1 AND role = $2 ORDER BY expires_at DESC LIMIT 1`, [profileId, role]);
   const r = rows[0];
-  const t = await tariffFor(role);
+  const t = await tariffFor(role, profileId);
   const active = Boolean(r && r.expires_at > new Date());
   return { role, active, expiresAt: r?.expires_at?.toISOString?.() ?? null, tariff: t, expired: Boolean(r) && !active };
 };
@@ -49,7 +54,7 @@ export const buy = async (profileId, role, idemKey) => {
     if (ex[0].status !== 'approved') return { error: 'not_approved', status: ex[0].status };
     const { rows: dup } = await c.query('SELECT expires_at FROM go_subscriptions WHERE profile_id = $1 AND role = $2 AND payment_ref = $3', [profileId, role, key]);
     if (dup[0]) return { ok: true, duplicate: true, expiresAt: dup[0].expires_at.toISOString() };
-    const t = await tariffFor(role);
+    const t = await tariffFor(role, profileId);
     if (!t) return { error: 'no_tariff' };
     const { rows: cur } = await c.query('SELECT max(expires_at) AS until FROM go_subscriptions WHERE profile_id = $1 AND role = $2', [profileId, role]);
     const now = new Date();

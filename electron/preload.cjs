@@ -14,6 +14,14 @@ contextBridge.exposeInMainWorld('sky', {
     set:    (key, value) => ipcRenderer.invoke('secure-storage:set', key, value),
     remove: (key) => ipcRenderer.invoke('secure-storage:remove', key),
   },
+  gameDetect: {
+    set: (on) => ipcRenderer.send('sky:game-detect', Boolean(on)),
+    onDetected: (fn) => {
+      const listener = (_event, id) => fn(typeof id === 'string' ? id : null);
+      ipcRenderer.on('sky:game-detected', listener);
+      return () => ipcRenderer.removeListener('sky:game-detected', listener);
+    },
+  },
   quickActions: {
     hide: () => ipcRenderer.send('quick-actions:hide'),
     focusMain: () => ipcRenderer.send('quick-actions:focus-main'),

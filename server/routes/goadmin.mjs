@@ -31,6 +31,8 @@ export const goAdminRoutes = async (req, res, url) => {
   if ((m = path.match(/^\/api\/admin\/go\/settings\/([a-z_]+)$/)) && req.method === 'PUT') return reply(await adm.putSetting(me, m[1], (await parseBody(req))?.value));
   if ((m = path.match(/^\/api\/admin\/go\/tariffs\/([a-z_]+)$/)) && req.method === 'PUT') return reply(await adm.putTariff(me, m[1], await parseBody(req)));
   if (req.method === 'PUT' && path === '/api/admin/go/role-tariff') { const b = await parseBody(req); return reply(await adm.putRoleTariff(me, String(b?.role ?? ''), String(b?.code ?? ''))); }
+  if (req.method === 'GET' && path === '/api/admin/go/executor-tariffs') return reply(await adm.listExecutorTariffs(me));
+  if (req.method === 'PUT' && path === '/api/admin/go/executor-tariffs') return reply(await adm.putExecutorTariff(me, await parseBody(req)));
   if (req.method === 'GET' && path === '/api/admin/go/subscriptions') return reply(await adm.listSubscriptions(me, { q: u.searchParams.get('q') }));
   if (req.method === 'GET' && path === '/api/admin/go/orders') return reply(await adm.listOrders(me, { kind: u.searchParams.get('kind'), status: u.searchParams.get('status'), q: u.searchParams.get('q') }));
   if ((m = path.match(/^\/api\/admin\/go\/orders\/([\w-]+)$/)) && req.method === 'GET') return reply(await adm.orderDetail(me, m[1]));

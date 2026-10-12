@@ -2,7 +2,9 @@
    GAMING ACCOUNTS UI
    Профиль: привязка аккаунтов + текущая игра
 =============================================================== */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSettings } from '@/settings/store';
+import { isElectron } from '@/core/nativeApp';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, Check, X, ExternalLink, ChevronRight,
@@ -54,6 +56,12 @@ export const GamingAccountsPanel = ({ userId }: { userId: string }) => {
 
   const linked   = getAccounts(userId);
   const activity = getActivity(userId);
+  const share = useGamingAccounts(st => st.share);
+  const setShare = useGamingAccounts(st => st.setShare);
+  const refreshOwn = useGamingAccounts(st => st.refreshOwn);
+  const detect = useSettings(st => st.settings.gameDetect);
+  const setSetting = useSettings(st => st.set);
+  useEffect(() => { void refreshOwn(userId); }, [userId, refreshOwn]);
 
   const handleAdd = () => {
     if (!selPlatform || !username.trim()) return;
@@ -68,8 +76,8 @@ export const GamingAccountsPanel = ({ userId }: { userId: string }) => {
     setProfileUrl('');
   };
 
-  const handleSetGame = (gameName: string, icon: string, platform: GamingPlatform) => {
-    setPlaying(userId, gameName, icon, platform);
+  const handleSetGame = (gameName: string, icon: string, platform: GamingPlatform, id?: string) => {
+    setPlaying(userId, gameName, icon, platform, id);
     setView('main');
   };
 
@@ -147,7 +155,7 @@ export const GamingAccountsPanel = ({ userId }: { userId: string }) => {
             const hasLinked = linked.some(a => a.platform === g.platform);
             return (
               <button key={g.name} type="button"
-                onClick={() => handleSetGame(g.name, g.icon, g.platform)}
+                onClick={() => handleSetGame(g.name, g.icon, g.platform, g.id)}
                 className="flex items-center gap-3 w-full rounded-xl px-3 py-2.5 transition-colors hover:bg-white/[0.04]"
                 style={{ background:C.l2 }}>
                 <span className="text-xl">{g.icon}</span>
@@ -239,6 +247,28 @@ export const GamingAccountsPanel = ({ userId }: { userId: string }) => {
               <Gamepad2 size={13}/> Установить игру
             </button>
           </div>
+        )}
+      </div>
+
+      {/* -- Настройки активности ------------------------------ */}
+      <div className="rounded-2xl overflow-hidden" style={{ background:C.l1, border:`1px solid ${C.border}` }}>
+        <p className="px-4 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color:C.t3 }}>Показ активности</p>
+        <label className="flex items-center justify-between gap-3 px-4 py-3">
+          <span className="text-sm" style={{ color:C.t1 }}>Показывать другим, во что я играю
+            <span className="block text-[11px]" style={{ color:C.t3 }}>В чатах и профиле. Выключено — вижу только я.</span></span>
+          <input type="checkbox" checked={share} onChange={e => { void setShare(e.target.checked); }}/>
+        </label>
+        {isElectron() ? (
+          <label className="flex items-center justify-between gap-3 px-4 py-3">
+            <span className="text-sm" style={{ color:C.t1 }}>Определять запущенные игры на этом компьютере
+              <span className="block text-[11px]" style={{ color:C.t3 }}>Приложение смотрит имена запущенных программ и сверяет с известным списком игр. Список программ с компьютера не отправляется — только название найденной игры.</span></span>
+            <input type="checkbox" checked={detect} onChange={e => setSetting({ gameDetect: e.target.checked })}/>
+          </label>
+        ) : (
+          <p className="px-4 pb-3 text-[11px]" style={{ color:C.t3 }}>
+            Игры на телефоне и в браузере отмечайте вручную («Установить игру»): Sky не может увидеть запущенные приложения Android.
+            Отметка действует, пока Sky открыт, и гаснет через 3 часа. Игры Sky Blox учитываются сами.
+          </p>
         )}
       </div>
 

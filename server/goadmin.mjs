@@ -131,3 +131,33 @@ export const overview = async (adminId) => {
   const { rows: sub } = await query(`SELECT count(DISTINCT (profile_id, role))::int AS active FROM go_subscriptions WHERE expires_at > now()`);
   return { executors: Object.fromEntries(ex.map((r) => [r.status, r.n])), orders30d: ord, activeSubscriptions: sub[0].active };
 };
+
+/** Персональный тариф: цена и срок для одного исполнителя и кабинета (право go_finance). Пустая цена — сброс на общий. */
+export const putExecutorTariff = async (adminId, { username, profileId, role, priceRub, periodDays, note, reset }) => {
+  if (!(await can(adminId, 'go_finance'))) return { error: 'not_allowed' };
+  if (!ROLES.includes(role)) return { error: 'bad_role' };
+  const { rows } = await query(profileId ? 'SELECT id, username FROM profiles WHERE id = $1' : 'SELECT id, username FROM profiles WHERE lower(username) = lower($1)', [profileId || String(username ?? '').replace(/^@/, '')]);
+  if (!rows[0]) return { error: 'not_found' };
+  const pid = rows[0].id;
+  if (reset) {
+    await query('DELETE FROM go_executor_tariffs WHERE profile_id = $1 AND role = $2', [pid, role]);
+    await logAdmin({ actorId: adminId, type: 'go_exec_tariff', targetType: 'user', targetId: pid, detail: `${role}: сброс на общий` });
+    return { ok: true, reset: true };
+  }
+  const price = Number(priceRub); const days = Number(periodDays);
+  if (!Number.isInteger(price) || price < 0 || price > 100000) return { error: 'bad_price' };
+  if (!Number.isInteger(days) || days < 1 || days > 366) return { error: 'bad_period' };
+  await query(
+    `INSERT INTO go_executor_tariffs (profile_id, role, price_rub, period_days, note, set_by) VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (profile_id, role) DO UPDATE SET price_rub = $3, period_days = $4, note = $5, set_by = $6, updated_at = now()`,
+    [pid, role, price, days, clean(note, 160), adminId]);
+  await logAdmin({ actorId: adminId, type: 'go_exec_tariff', targetType: 'user', targetId: pid, detail: `${role}: ${price} ₽ / ${days} дн.` });
+  await goLog(adminId, 'exec_tariff', pid, { role, price, days });
+  return { ok: true, username: rows[0].username };
+};
+
+export const listExecutorTariffs = async (adminId) => {
+  if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
+  const { rows } = await query(`SELECT t.*, p.username FROM go_executor_tariffs t JOIN profiles p ON p.id = t.profile_id ORDER BY t.updated_at DESC LIMIT 200`);
+  return { items: rows.map((r) => ({ profileId: r.profile_id, username: r.username, role: r.role, priceRub: r.price_rub, periodDays: r.period_days, note: r.note })) };
+};

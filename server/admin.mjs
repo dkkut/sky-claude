@@ -149,9 +149,8 @@ const startTwoFactorClock = async (profileId) => {
    аутентификатора (server/admingate.mjs). Пока шлюз закрыт, права из этого файла
    не выдаются — ни панели, ни любому другому модулю, ведь спрашивают все здесь.
    Отключается только переменной ADMIN_GATE=off (тесты и локальная отладка).
-   Шлюз не применяется к тем, кто не может его пройти (нет подтверждённой почты или
-   аутентификатора): иначе владелец без настройки оказался бы за дверью без ключа.
-   Для них панель показывает подсказку, что настроить. */
+   Шлюз обязателен и для тех, у кого нет подтверждённой почты или аутентификатора: права не
+   выдаются, пока не настроят (панель показывает, чего не хватает; настройка — в Профиле → Sky ID). */
 const gateOn = () => process.env.ADMIN_GATE !== 'off';
 const gateOpenUntil = new Map();   // sid → мс; короткая память, чтобы не ходить в базу на каждое право
 
@@ -168,9 +167,6 @@ export const gateLocked = async (userId) => {
   const { rows } = await query(
     'SELECT expires_at FROM admin_gate_open WHERE sid = $1 AND profile_id = $2 AND expires_at > now()', [st.sid, userId]);
   if (rows[0]) { gateOpenUntil.set(st.sid, Math.min(Date.now() + 5000, rows[0].expires_at.getTime())); return false; }
-  const { rows: acc } = await query(
-    `SELECT s.two_factor_enabled, s.email_verified FROM profiles p JOIN sky_ids s ON s.id = p.sky_id WHERE p.id = $1`, [userId]);
-  if (!acc[0]?.two_factor_enabled || !acc[0]?.email_verified) return false;   // пройти шлюз нечем
   return true;
 };
 

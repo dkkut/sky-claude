@@ -17,6 +17,7 @@ const SubscriptionCard = ({ role, onChange }: { role: GoRole; onChange: () => vo
         <div style={{ fontWeight: 800, color: C.t1 }}>Подписка · {sub.tariff?.title}</div>
         {sub.active ? <Chip color="#10b981">Активна</Chip> : <Chip color="#ef4444">{sub.expired ? 'Истекла' : 'Не оформлена'}</Chip>}
       </div>
+      {(sub.tariff as any)?.personal && <Notice>Для вас действует персональный тариф{(sub.tariff as any).personalNote ? ` (${(sub.tariff as any).personalNote})` : ''}.</Notice>}
       {sub.expiresAt && <div style={{ fontSize: 13, color: C.t2 }}>{sub.active ? 'Действует до' : 'Закончилась'} {new Date(sub.expiresAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</div>}
       {!sub.active && <Notice tone="warn">Без активной подписки новые заказы недоступны. Начатые заказы можно довести до конца, история остаётся.</Notice>}
       <Btn busy={busy} onClick={buy}>{sub.active ? 'Продлить' : 'Оформить'} на {sub.tariff?.periodDays} дн. — {fmt(sub.tariff?.priceRub ?? 0)}</Btn>

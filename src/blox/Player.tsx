@@ -18,6 +18,7 @@ import { Alert, C, errText, glass } from './ui';
 import { apiCancelIntent, apiConfirm, apiLaunch, apiPending, type Game, type Launch, type Place, type Purchase } from './bloxApi';
 import { useMoney } from '@/wallet/store';
 import { useAuthStore } from '@/core/auth/store';
+import { apiGamePing } from '@/extras/mediaActivityApi';
 
 export const PlayerScreen = ({ place, game, onClose }: { place: Place; game: Game; onClose: () => void }) => {
   const [launch, setLaunch] = useState<Launch | null>(null);
@@ -38,6 +39,15 @@ export const PlayerScreen = ({ place, game, onClose }: { place: Place; game: Gam
     setLaunch(r.data);
   }, [place.id]);
   useEffect(() => { void start(); }, [start]);
+
+  /* Учёт времени в игре: пульс, пока игра открыта. В фоне (свёрнутое окно, другое приложение) таймер идёт реже,
+     но сервер склеивает пульсы с разрывом до 150 с в одну сессию. */
+  useEffect(() => {
+    if (!launch) return;
+    void apiGamePing('blox', place.id);
+    const t = setInterval(() => void apiGamePing('blox', place.id), 30_000);
+    return () => clearInterval(t);
+  }, [launch, place.id]);
 
   /* Рукопожатие: токен уходит игре только по её запросу и только на её origin. */
   useEffect(() => {

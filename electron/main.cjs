@@ -22,6 +22,7 @@ const { app, BrowserWindow, shell, Menu, session, protocol, ipcMain, safeStorage
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 const path = require('node:path');
 const fs = require('node:fs');
+const { execFile } = require('node:child_process');
 
 let tray = null;
 let quitting = false;
@@ -229,6 +230,32 @@ if (!gotLock) {
   ipcMain.on('sky:player-command', (event, cmd) => {
     if (event.sender !== quickActionsWindow?.webContents) return; // только из overlay
     mainWindow?.webContents.send('sky:player-command', cmd);
+  });
+
+  /* Определение запущенных игр. Включается только по настройке в Sky; читаем лишь имена процессов и сверяем с известным
+     списком (electron/known-games.json). Наружу уходит ТОЛЬКО id найденной игры — список программ остаётся на компьютере. */
+  const KNOWN_GAMES = require('./known-games.json');
+  const EXE_TO_GAME = new Map(KNOWN_GAMES.flatMap((g) => g.exe.map((e) => [e.toLowerCase(), g.id])));
+  let gameTimer = null;
+  const scanGames = () => {
+    const win = process.platform === 'win32';
+    execFile(win ? 'tasklist' : 'ps', win ? ['/FO', 'CSV', '/NH'] : ['-A', '-o', 'comm='],
+      { windowsHide: true, timeout: 8000, maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
+        if (err || !mainWindow || mainWindow.isDestroyed()) return;
+        let found = null;
+        for (const line of String(out).split(/\r?\n/)) {
+          const name = (win ? (line.match(/^"([^"]+)"/)?.[1] ?? '') : path.basename(line.trim())).toLowerCase();
+          if (name && EXE_TO_GAME.has(name)) { found = EXE_TO_GAME.get(name); break; }
+        }
+        mainWindow.webContents.send('sky:game-detected', found);
+        if (tray) tray.setToolTip(found ? `Sky — играет: ${KNOWN_GAMES.find((g) => g.id === found)?.title ?? ''}` : 'Sky');
+      });
+  };
+  ipcMain.on('sky:game-detect', (event, on) => {
+    if (event.sender !== mainWindow?.webContents) return;
+    if (gameTimer) { clearInterval(gameTimer); gameTimer = null; }
+    if (on) { scanGames(); gameTimer = setInterval(scanGames, 30_000); }
+    else if (tray) tray.setToolTip('Sky');
   });
 
   app.on('second-instance', () => {

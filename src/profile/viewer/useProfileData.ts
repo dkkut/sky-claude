@@ -17,6 +17,7 @@ import type { BloomPost } from '@/bloom/store';
 import { useGiftStore, GIFT_CATALOG, type SentGift } from '@/gifts/store';
 import { apiPublicProfileGifts, toSentGift } from '@/gifts/giftsApi';
 import { useGamingAccounts } from '@/gaming/accounts';
+import { watchGamePresence } from '@/gaming/gameSync';
 import type { GameActivity } from '@/gaming/accounts';
 import { useSocialGraph, type FriendStatus } from './social';
 import { useProgression } from './progression';
@@ -159,6 +160,7 @@ export function useProfileData(userId: string | null): ProfileData | null {
   }, [userId, sent.length]);
 
   const gamingActivity = useGamingAccounts(s => s.activity);
+  useEffect(() => { if (userId) { watchGamePresence(userId); void useGamingAccounts.getState().refreshPresence([userId]); } }, [userId]);
 
   const followEntry = useSocialGraph(s => (userId ? s.followCache[userId] : undefined));
   const fetchFollows = useSocialGraph(s => s.fetchFollows);

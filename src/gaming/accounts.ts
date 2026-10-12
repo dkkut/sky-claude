@@ -3,6 +3,8 @@
    Steam, Epic, PlayStation, Xbox, VK Play и другие
 =============================================================== */
 import { create } from 'zustand';
+import { flash } from '@/shared/flash';
+import { apiGamePing, apiGameStop, apiGameSummary, apiGameShare, apiGamePresence } from '@/extras/mediaActivityApi';
 
 export type GamingPlatform =
   | 'steam' | 'epic' | 'psn' | 'xbox' | 'vkplay'
@@ -46,25 +48,15 @@ export const PLATFORMS: Record<GamingPlatform, {
   custom:    { name:'Другая',         icon:'🎯', color:'#4f6ef7', placeholder:'Никнейм / ссылка',          urlPrefix:'' },
 };
 
-/* -- Popular games for activity simulation --------------- */
-export const POPULAR_GAMES: { name:string; icon:string; platform:GamingPlatform }[] = [
-  { name:'Counter-Strike 2',    icon:'🔫', platform:'steam'     },
-  { name:'Dota 2',              icon:'🏆', platform:'steam'     },
-  { name:'Cyberpunk 2077',      icon:'🌆', platform:'steam'     },
-  { name:'Elden Ring',          icon:'⚔️', platform:'steam'     },
-  { name:'GTA V',               icon:'🚗', platform:'steam'     },
-  { name:'Fortnite',            icon:'🎯', platform:'epic'      },
-  { name:'Rocket League',       icon:'🚀', platform:'epic'      },
-  { name:'Valorant',            icon:'🎯', platform:'riot'      },
-  { name:'League of Legends',   icon:'⚔️', platform:'riot'      },
-  { name:'Overwatch 2',         icon:'🦸', platform:'battlenet' },
-  { name:'Minecraft',           icon:'⛏️', platform:'custom'    },
-  { name:'Apex Legends',        icon:'🔥', platform:'epic'      },
-];
+/* -- Известные игры: тот же список, что у сервера и у Windows-приложения (electron/known-games.json) -- */
+import KNOWN from '../../electron/known-games.json';
+export interface KnownGame { id: string; title: string; icon: string; platform: GamingPlatform; exe: string[]; pkg: string[] }
+export const KNOWN_GAMES = KNOWN as KnownGame[];
+export const POPULAR_GAMES = KNOWN_GAMES.map(g => ({ id: g.id, name: g.title, icon: g.icon, platform: g.platform }));
+export const iconOf = (refId: string, kind: string) => (kind === 'blox' ? '🧱' : KNOWN_GAMES.find(g => g.id === refId)?.icon ?? '🎮');
 
 /* -- Storage ----------------------------------------------- */
 const ACC_KEY = 'sky:gaming-accounts:v1';
-const ACT_KEY = 'sky:gaming-activity:v1';
 const W = typeof window !== 'undefined';
 
 const loadAccounts = (): Record<string, GamingAccount[]> => {
@@ -75,15 +67,6 @@ const saveAccounts = (d: Record<string, GamingAccount[]>) => {
   if (!W) return;
   try { localStorage.setItem(ACC_KEY, JSON.stringify(d)); } catch {}
 };
-const loadActivity = (): Record<string, GameActivity> => {
-  if (!W) return {};
-  try { return JSON.parse(localStorage.getItem(ACT_KEY) || '{}'); } catch { return {}; }
-};
-const saveActivity = (d: Record<string, GameActivity>) => {
-  if (!W) return;
-  try { localStorage.setItem(ACT_KEY, JSON.stringify(d)); } catch {}
-};
-
 interface GamingState {
   accounts:  Record<string, GamingAccount[]>;  // userId → accounts
   activity:  Record<string, GameActivity>;      // userId → current activity
@@ -93,14 +76,24 @@ interface GamingState {
   removeAccount:(userId: string, platform: GamingPlatform) => void;
 
   getActivity: (userId: string) => GameActivity | null;
-  setPlaying:  (userId: string, game: string, icon: string, platform: GamingPlatform) => void;
+  setPlaying:  (userId: string, game: string, icon: string, platform: GamingPlatform, id?: string) => void;
   stopPlaying: (userId: string) => void;
+  /** Игра, которую человек отметил сам: пока Sky открыт, шлёт пульс (до 3 часов). */
+  manual: { id: string; title: string; until: number } | null;
+  share: boolean;
+  setShare: (on: boolean) => Promise<void>;
+  /** Свои итоги и текущая игра с сервера. */
+  refreshOwn: (userId: string) => Promise<void>;
+  /** Что играют другие (только те, кто включил показ). */
+  refreshPresence: (ids: string[]) => Promise<void>;
   isPlaying:   (userId: string) => boolean;
 }
 
 export const useGamingAccounts = create<GamingState>((set, get) => ({
   accounts: loadAccounts(),
-  activity: loadActivity(),
+  activity: {},
+  manual: null,
+  share: false,
 
   getAccounts: (userId) => get().accounts[userId] ?? [],
 
@@ -127,33 +120,51 @@ export const useGamingAccounts = create<GamingState>((set, get) => ({
 
   getActivity: (userId) => get().activity[userId] ?? null,
 
-  setPlaying: (userId, game, icon, platform) => {
-    const prev = get().activity[userId];
-    const now  = Date.now();
-    const entry: GameActivity = {
-      userId, gameName: game, gameIcon: icon, platform,
-      startedAt:     prev?.startedAt ?? now,
-      lastUpdated:   now,
-      isPlaying:     true,
-      sessionMinutes:prev ? Math.floor((now - prev.startedAt) / 60000) : 0,
-      totalHours:    prev?.totalHours ?? Math.floor(Math.random() * 500 + 10),
-    };
-    const next = { ...get().activity, [userId]: entry };
-    saveActivity(next);
-    set({ activity: next });
+  setPlaying: (userId, game, icon, platform, id) => {
+    const now = Date.now();
+    const entry: GameActivity = { userId, gameName: game, gameIcon: icon, platform, startedAt: now, lastUpdated: now, isPlaying: true, sessionMinutes: 0, totalHours: 0 };
+    set({ activity: { ...get().activity, [userId]: entry }, manual: { id: id ?? 'custom', title: game, until: now + 3 * 3600_000 } });
+    void apiGamePing('game', id ?? 'custom', game).then((r) => { if (!r.ok) flash(r.reason ?? 'Не удалось отметить игру'); });
   },
 
   stopPlaying: (userId) => {
     const prev = get().activity[userId];
-    if (!prev) return;
-    const entry: GameActivity = {
-      ...prev, isPlaying: false,
-      lastUpdated:   Date.now(),
-      sessionMinutes: Math.floor((Date.now() - prev.startedAt) / 60000),
-      totalHours:    prev.totalHours + Math.floor((Date.now() - prev.startedAt) / 3600000),
-    };
-    const next = { ...get().activity, [userId]: entry };
-    saveActivity(next);
+    set({ manual: null, activity: prev ? { ...get().activity, [userId]: { ...prev, isPlaying: false } } : get().activity });
+    void apiGameStop();
+  },
+
+  setShare: async (on) => {
+    const prev = get().share;
+    set({ share: on });
+    const r = await apiGameShare(on);
+    if (!r.ok) { set({ share: prev }); flash(r.reason ?? 'Не удалось сохранить'); }
+  },
+
+  refreshOwn: async (userId) => {
+    const r = await apiGameSummary();
+    if (!r) return;
+    const pl = r.playing;
+    const stat = pl ? r.games.find(g => g.refId === pl.refId && g.kind === pl.kind) : null;
+    const prev = get().activity[userId];
+    const next = { ...get().activity };
+    if (pl) {
+      next[userId] = { userId, gameName: pl.title, gameIcon: iconOf(pl.refId, pl.kind), platform: 'custom', startedAt: new Date(pl.since).getTime(),
+        lastUpdated: Date.now(), isPlaying: true, sessionMinutes: Math.floor((Date.now() - new Date(pl.since).getTime()) / 60000),
+        totalHours: Math.floor((stat?.totalSec ?? 0) / 3600) };
+    } else if (prev?.isPlaying && !get().manual) next[userId] = { ...prev, isPlaying: false };
+    set({ activity: next, share: r.share });
+  },
+
+  refreshPresence: async (ids) => {
+    const r = await apiGamePresence(ids);
+    if (!r) return;
+    const next = { ...get().activity };
+    for (const id of ids) {
+      const pl = r[id];
+      if (pl) next[id] = { userId: id, gameName: pl.title, gameIcon: iconOf(pl.refId, pl.kind), platform: 'custom', startedAt: new Date(pl.since).getTime(),
+        lastUpdated: Date.now(), isPlaying: true, sessionMinutes: 0, totalHours: 0 };
+      else if (next[id]?.isPlaying) next[id] = { ...next[id], isPlaying: false };
+    }
     set({ activity: next });
   },
 

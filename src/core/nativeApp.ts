@@ -53,6 +53,11 @@ declare global {
         set: (key: string, value: string) => Promise<void>;
         remove: (key: string) => Promise<void>;
       };
+      /** Определение запущенных игр (Windows-приложение, только по настройке gameDetect). */
+      gameDetect?: {
+        set: (on: boolean) => void;
+        onDetected: (fn: (gameId: string | null) => void) => () => void;
+      };
       quickActions: {
         hide: () => void;
         focusMain: () => void;

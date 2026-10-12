@@ -1095,15 +1095,20 @@ const MediaHomeTab = ({
       )}
 
       {/* ── АКТИВНОСТЬ (реальные секунды из server/mediaActivity.mjs) ── */}
-      {activity && (activity.today.music + activity.today.video + activity.today.podcasts
-                   + activity.week.music + activity.week.video + activity.week.podcasts) > 0 && (
+      {activity && (activity.today.music + activity.today.video + activity.today.podcasts + activity.today.games
+                   + activity.week.music + activity.week.video + activity.week.podcasts + activity.week.games) > 0 && (
         <motion.section {...fu(4)} className="px-4 mt-6 mb-8">
           <p className="text-[10px] font-black uppercase tracking-[0.16em] mb-3" style={{ color:'var(--t3)' }}>Активность</p>
+          {activity.playing && (
+            <p className="text-[12px] font-semibold mb-3" style={{ color:'#f59e0b' }}>
+              Сейчас в игре: <span translate="no">{activity.playing.title}</span>
+            </p>
+          )}
           <div className="rounded-2xl p-4" style={{ background:'var(--bg-l2)', border:'1px solid var(--border)' }}>
             <div className="grid grid-cols-2 gap-2 mb-4">
               {[
-                { label:'Сегодня',   val:fmtMin(activity.today.music + activity.today.video + activity.today.podcasts), color:'#6366f1' },
-                { label:'За неделю', val:fmtMin(activity.week.music + activity.week.video + activity.week.podcasts), color:'#22d3ee' },
+                { label:'Сегодня',   val:fmtMin(activity.today.music + activity.today.video + activity.today.podcasts + activity.today.games), color:'#6366f1' },
+                { label:'За неделю', val:fmtMin(activity.week.music + activity.week.video + activity.week.podcasts + activity.week.games), color:'#22d3ee' },
               ].map(({ label, val, color }) => (
                 <div key={label} className="rounded-xl px-3 py-3"
                   style={{ background:'var(--bg-l3)', border:'1px solid var(--border)' }}>
@@ -1114,12 +1119,13 @@ const MediaHomeTab = ({
             </div>
             {(() => {
               const w = activity.week;
-              const total = w.music + w.video + w.podcasts;
+              const total = w.music + w.video + w.podcasts + w.games;
               if (total === 0) return null;
               const rows = [
                 { label:'Музыка',   sec:w.music,    color:'#6366f1' },
                 { label:'Видео',    sec:w.video,    color:'#f43f5e' },
                 { label:'Подкасты', sec:w.podcasts, color:'#10b981' },
+                { label:'Игры',     sec:w.games,    color:'#f59e0b' },
               ].filter(r => r.sec > 0);
               return rows.map(({ label, sec: s, color }, i) => (
                 <div key={label} className={i>0?'mt-2.5':''}>

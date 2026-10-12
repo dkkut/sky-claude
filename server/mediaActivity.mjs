@@ -15,6 +15,7 @@
  * без выдумывания отдельного лога событий ради вкладки на главной.
  */
 import { query } from './db.mjs';
+import { gameSeconds, nowPlaying } from './gameactivity.mjs';
 
 const sec = (rows) => Number(rows[0]?.sec ?? 0);
 
@@ -41,13 +42,15 @@ export const myMediaActivity = async (userId) => {
   const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
   const weekStart = new Date(Date.now() - 7 * 86400000);
 
-  const [musicDay, podcastDay, videoDay, musicWeek, podcastWeek, videoWeek] = await Promise.all([
+  const [musicDay, podcastDay, videoDay, musicWeek, podcastWeek, videoWeek, gamesDay, gamesWeek, playing] = await Promise.all([
     musicSeconds(userId, dayStart), podcastSeconds(userId, dayStart), videoSeconds(userId, dayStart),
     musicSeconds(userId, weekStart), podcastSeconds(userId, weekStart), videoSeconds(userId, weekStart),
+    gameSeconds(userId, dayStart), gameSeconds(userId, weekStart), nowPlaying(userId),
   ]);
 
   return {
-    today: { music: musicDay, video: videoDay, podcasts: podcastDay },
-    week: { music: musicWeek, video: videoWeek, podcasts: podcastWeek },
+    today: { music: musicDay, video: videoDay, podcasts: podcastDay, games: gamesDay },
+    week: { music: musicWeek, video: videoWeek, podcasts: podcastWeek, games: gamesWeek },
+    playing,
   };
 };

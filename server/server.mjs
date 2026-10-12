@@ -59,6 +59,7 @@ import { sweepFuel as goSweepFuel } from './gofuel.mjs';
 import { runWithSession } from './reqctx.mjs';
 import { readAccessToken } from './http.mjs';
 import { sweepAdminGate } from './admingate.mjs';
+import { sweepGameSessions } from './gameactivity.mjs';
 import { garantRoutes } from './routes/garant.mjs';
 import { violationsRoutes } from './routes/violations.mjs';
 import { platformRoutes } from './routes/platform.mjs';
@@ -552,6 +553,7 @@ const start = async () => {
       // подтверждена не глядя.
       await sweepStepUp();
       await sweepAdminGate();
+      await sweepGameSessions();
       await goSweepExpired().catch(() => {});
       await goSweepFuel().catch(() => {});
       const staleRequests = await sweepPendingActions();

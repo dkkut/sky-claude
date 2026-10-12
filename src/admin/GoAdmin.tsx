@@ -137,11 +137,43 @@ const Subs = () => {
   useEffect(() => { void get<{ items: any[] }>(`/subscriptions?q=${encodeURIComponent(q)}`).then((r) => setItems(r.ok ? r.data!.items : [])); }, [q]);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <PersonalTariffs />
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="@логин или имя" style={inp} />
       {!items ? <div style={{ color: C.t3 }}>Загрузка…</div> : items.length === 0 ? <div style={{ color: C.t3 }}>Подписок нет.</div> : items.map((s) => (
         <div key={s.profileId + s.role} style={{ ...box, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
           <span translate="no" style={{ color: C.t1 }}>@{s.username} · {ROLE_LABEL[s.role as GoRole]}</span>
           <span style={{ color: s.active ? C.green : C.red, fontSize: 13 }}>{s.active ? 'до ' : 'истекла '}{new Date(s.expiresAt).toLocaleDateString('ru-RU')} · платежей: {s.payments} · {s.totalRub} ₽</span>
+        </div>))}
+    </div>
+  );
+};
+
+/** Персональный тариф: цена и срок для одного исполнителя (право go_finance). Действует при следующей оплате. */
+const PersonalTariffs = () => {
+  const [items, setItems] = useState<any[]>([]);
+  const [f, setF] = useState({ username: '', role: 'taxi_driver', priceRub: '', periodDays: '7', note: '' });
+  const load = useCallback(async () => { const r = await get<{ items: any[] }>('/executor-tariffs'); if (r.ok) setItems(r.data!.items); }, []);
+  useEffect(() => { void load(); }, [load]);
+  const save = async (reset = false, over?: { username: string; role: string }) => {
+    const b = reset ? { ...over, reset: true } : { ...f, priceRub: Number(f.priceRub), periodDays: Number(f.periodDays) };
+    const r = await send('PUT', '/executor-tariffs', b); if (!r.ok) return bad(r);
+    flash(reset ? 'Возвращён общий тариф' : 'Персональный тариф сохранён'); void load();
+  };
+  return (
+    <div style={box}>
+      <b style={{ color: C.t1 }}>Персональный тариф исполнителя</b> <span style={{ fontSize: 12, color: C.t3 }}>(право go_finance; вместо общего, со следующей оплаты)</span>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+        <input placeholder="@логин" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} style={{ ...inp, width: 130 }} />
+        <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} style={inp}>{(['taxi_driver', 'courier', 'food_seller', 'company'] as GoRole[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select>
+        <input placeholder="₽" value={f.priceRub} onChange={(e) => setF({ ...f, priceRub: e.target.value.replace(/\D/g, '') })} style={{ ...inp, width: 70 }} />
+        <input placeholder="дней" value={f.periodDays} onChange={(e) => setF({ ...f, periodDays: e.target.value.replace(/\D/g, '') })} style={{ ...inp, width: 60 }} />
+        <input placeholder="Примечание" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} style={{ ...inp, flex: 1, minWidth: 120 }} />
+        <button onClick={() => save()} style={btn()} disabled={!f.username || f.priceRub === ''}>Сохранить</button>
+      </div>
+      {items.map((t) => (
+        <div key={t.profileId + t.role} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 6, fontSize: 13, color: C.t1 }}>
+          <span translate="no">@{t.username} · {ROLE_LABEL[t.role as GoRole]} · {t.priceRub} ₽ / {t.periodDays} дн.{t.note ? ` · ${t.note}` : ''}</span>
+          <button onClick={() => save(true, { username: t.username, role: t.role })} style={btn(C.l2, C.t1)}>Сбросить</button>
         </div>))}
     </div>
   );

@@ -100,6 +100,16 @@ t('снятому с админки старая ссылка не работа�
 r = await call('/api/admin/gate/request', { method: 'POST', headers: { origin: 'http://localhost:4173' } }, adm2.tok);
 t('и новую ссылку ему не высылают', r.status === 403);
 
+// Без аутентификатора шлюз обязателен: права не выдаются, панель говорит, чего не хватает.
+const noTotp = await mkuser(S, 'gtNoT');
+q(`update profiles set is_admin=true, admin_role='super_admin' where id='${noTotp.pid}'`);
+r = await call('/api/admin/content/queue', {}, noTotp.tok);
+t('нет аутентификатора: права не выдаются', r.status === 403, JSON.stringify(r.data));
+r = await call('/api/admin/gate', {}, noTotp.tok);
+t('панель сообщает, чего не хватает (аутентификатор)', r.data.admin && r.data.canPass === false && r.data.missing?.twoFactor === true, JSON.stringify(r.data));
+r = await call('/api/admin/gate/request', { method: 'POST', headers: { origin: 'http://localhost:4173' } }, noTotp.tok);
+t('ссылка без аутентификатора не высылается', r.status === 400 && r.data.error === 'two_factor_required', JSON.stringify(r.data));
+
 if (ownerOk) {
   const ot = own.tok;
   await call('/api/admin/gate/request', { method: 'POST', headers: { origin: 'http://localhost:4173' } }, ot);
