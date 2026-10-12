@@ -1633,7 +1633,9 @@ interface SkyFullPlayerProps {
 }
 
 /* ── MiniBar — bottom mini player ─────────────────────────── */
-const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLike, onHide }: {
+const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLike, onHide, bottom = 0 }: {
+  /** Отступ снизу: мини-плеер стоит НАД нижней панелью Sky Music, а не перекрывает её. */
+  bottom?: number;
   track: Track; playing: boolean; cur: number; dur: number;
   liked: boolean; onPlay: () => void; onNext: () => void;
   onOpen: () => void; onLike: () => void; onHide: () => void;
@@ -1647,8 +1649,8 @@ const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLi
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 80, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-      className="absolute bottom-0 left-0 right-0 z-50"
-      style={{ padding: '0 8px 8px' }}>
+      className="absolute left-0 right-0 z-50"
+      style={{ bottom, padding: '0 8px 8px' }}>
       <div
         className="flex items-center gap-3 rounded-2xl px-3 py-2.5"
         style={{
@@ -2477,6 +2479,16 @@ export const SkyMusic = () => {
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
   const isPrime = me?.isPrime ?? false;
+  // Высота нижней панели: мини-плеер встаёт над ней.
+  const navRef = React.useRef<HTMLElement>(null);
+  const [navH, setNavH] = React.useState(0);
+  React.useEffect(() => {
+    const el = navRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(() => setNavH(el.offsetHeight));
+    ro.observe(el); setNavH(el.offsetHeight);
+    return () => ro.disconnect();
+  }, [isPrime]);
   const uid = currentUserId ?? '';
   const isMobile = useIsMobile();
 
@@ -2652,7 +2664,7 @@ export const SkyMusic = () => {
       </div>
 
       {/* -- Bottom nav --------------------------------------- */}
-      <nav className="shrink-0 flex items-center justify-around border-t"
+      <nav ref={navRef} className="shrink-0 flex items-center justify-around border-t"
         style={{ background: YM.card, borderColor: 'var(--border)', minHeight: isMobile ? 50 : 56 }}>
         {NAV_TABS.map(({ key, icon: Icon, label }) => (
           <button key={key} type="button" onClick={() => setTab(key)}
@@ -2670,7 +2682,7 @@ export const SkyMusic = () => {
           скрыт (см. MobileShell.tsx), чтобы не было двух плееров разом. */}
       <AnimatePresence>
         {cur && !showNP && !gHidden && (
-          <MiniBar track={cur} onHide={gHide} playing={playing} cur={curTime} dur={durTime}
+          <MiniBar bottom={navH} track={cur} onHide={gHide} playing={playing} cur={curTime} dur={durTime}
             liked={favorites.includes(cur.id)}
             onPlay={() => setPlaying(!playing)} onNext={skipNext} onOpen={() => setShowNP(true)}
             onLike={() => onLike(cur.id)} />
