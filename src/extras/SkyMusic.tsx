@@ -1928,7 +1928,9 @@ export const SkyFullPlayer = ({
             текст песни по-прежнему прокручивается там, где плеера нет. */}
         <div ref={ctlRef} className="flex flex-col items-center shrink-0"
           style={{
-            ...(isMobile ? { position: 'relative', zIndex: 3, pointerEvents: 'none' as const } : {}),
+            // alignSelf: колонка не растягивается на всю высоту экрана — иначе её offsetHeight (а по нему считается низ окна
+            // текста, `ctlH`) захватывал пустое место над названием, и окно текста обрывалось высоко над ним.
+            ...(isMobile ? { position: 'relative', zIndex: 3, pointerEvents: 'none' as const, alignSelf: 'flex-end' } : {}),
             // Пока правится текст, карточка плеера не должна лежать поверх редактора.
             ...(editingLyrics ? { display: 'none' } : {}),
             width: !isMobile && (showQueue || showLyrics) ? '40%' : '100%',
