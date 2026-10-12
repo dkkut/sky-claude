@@ -15,6 +15,7 @@ import {
 import { BookPlayer } from './BookPlayer';
 import { useModuleStore } from '@/data/state/modules';
 import { useAuthStore } from '@/core/auth/store';
+import { PrimeGate } from '@/prime/PrimeGate';
 
 type BookTab = 'home' | 'ebooks' | 'audio' | 'shelf';
 
@@ -170,14 +171,15 @@ const BookDetail = ({ book, onBack, onShelfChanged }: {
 };
 
 /* === MAIN SkyBooks ======================================= */
+/* Раздел входит в Sky Prime. Экран — вежливость: файлы и каталог закрывает сервер (`prime_required`). */
 export const SkyBooks = () => {
-  const { accounts, currentUserId, purchasePrime } = useAuthStore();
+  const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find((a) => a.id === currentUserId);
-  const isPrime = me?.isPrime ?? false;
+  if (!(me?.isPrime ?? false) && !(me?.isAdmin ?? false)) return <div className="flex h-full flex-col overflow-hidden"><PrimeGate service="books"/></div>;
+  return <SkyBooksContent />;
+};
 
-  useEffect(() => {
-    if (!isPrime) purchasePrime('standard', 730);
-  }, [isPrime, purchasePrime]);
+const SkyBooksContent = () => {
 
   const [tab, setTab] = useState<BookTab>('home');
   const [category, setCategory] = useState('Все');

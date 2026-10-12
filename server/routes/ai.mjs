@@ -213,10 +213,13 @@ export const aiRoutes = async (req, res, url) => {
   if (req.method === 'POST' && path === '/api/ai/send') {
     if (!rateLimit(`ai:chat:${me}`, CHAT_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     const body = await parseBody(req);
+    const prime = await hasPrime(me);
+    /* Режим «Код» входит в Prime; обычный чат бесплатный. */
+    if (body.mode === 'code' && !prime) return json(res, 402, { error: 'prime_required' });
     const result = await sendMessage(me, {
       chatId: body.chatId,
       body: body.text,
-      prime: await hasPrime(me),
+      prime,
       mode: body.mode === 'code' ? 'code' : 'chat',
       voice: body.voice === true,
       assist: body.assist === true,

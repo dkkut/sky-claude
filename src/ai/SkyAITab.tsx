@@ -25,6 +25,7 @@ import {
 } from './aiApi';
 import { useAiState, refreshAiState } from './aiState';
 import { VoiceMode } from './VoiceMode';
+import { PrimeGate } from '@/prime/PrimeGate';
 import { browserVoiceAvailable } from './speech';
 
 const C = {
@@ -36,7 +37,7 @@ type Mode = 'chat' | 'code' | 'summary' | 'file' | 'image' | 'transcribe';
 
 const MODES: { key: Mode; label: string; Icon: typeof MessageCircle; desc: string; prime: boolean }[] = [
   { key: 'chat',       label: 'Чат',        Icon: MessageCircle, desc: 'Свободный диалог с Sky AI',            prime: false },
-  { key: 'code',       label: 'Код',        Icon: Code2,         desc: 'Написать, объяснить и исправить код',  prime: false },
+  { key: 'code',       label: 'Код',        Icon: Code2,         desc: 'Написать, объяснить и исправить код',  prime: true },
   { key: 'summary',    label: 'Пересказ',   Icon: FileText,      desc: 'Кратко, подробно, тезисы или вывод',   prime: true },
   { key: 'file',       label: 'Документ',   Icon: Paperclip,     desc: 'PDF, DOCX, XLSX, PPTX и текст',        prime: true },
   { key: 'image',      label: 'Изображение', Icon: ImageIcon,    desc: 'Описание и распознавание текста',      prime: true },
@@ -260,7 +261,9 @@ export const SkyAITab = () => {
   };
 
   const current = MODES.find(m => m.key === mode)!;
-  const chatLike = mode === 'chat' || mode === 'code';
+  /* «Код» входит в Prime (сервер отвечает 402 без подписки). Пока состояние не пришло, экран не закрываем. */
+  const codeLocked = mode === 'code' && !!state && !state.prime;
+  const chatLike = mode === 'chat' || (mode === 'code' && !codeLocked);
   const usage = state?.usage?.[chatLike ? 'chat' : mode as 'summary'];
 
   const accept = mode === 'image'
@@ -366,7 +369,8 @@ export const SkyAITab = () => {
         </AnimatePresence>
 
         {/* Содержимое */}
-        <div ref={listRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ scrollbarWidth: 'none' }}>
+        {codeLocked && <div className="flex-1 overflow-y-auto"><PrimeGate service="code"/></div>}
+        <div ref={listRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ scrollbarWidth: 'none', display: codeLocked ? 'none' : undefined }}>
           {state?.configured === false && (
             <div className="rounded-2xl px-4 py-3 flex items-start gap-2"
               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>

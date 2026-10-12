@@ -16,6 +16,8 @@
    и титрами: на телевизоре человек сидит далеко, и мелкий текст там
    не читается.
 =========================================================== */
+import { useAuthStore } from '@/core/auth/store';
+import { Crown } from 'lucide-react';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Mic, Headphones, Play, Pause, Loader2, FileText, Video } from 'lucide-react';
 import { TVFocusable } from './TVFocusable';
@@ -106,7 +108,23 @@ const VideoStage = ({ onClose }: { onClose: () => void }) => {
 
 /* ─── Экран ────────────────────────────────────────────────────────── */
 
+/* Подкасты входят в Sky Prime (сервер отвечает 403 без подписки). Оформить её пультом/в машине неудобно — подсказываем где. */
 export const TVPodcasts = () => {
+  const { accounts, currentUserId } = useAuthStore();
+  const me = accounts.find((a) => a.id === currentUserId);
+  if (!(me?.isPrime ?? false) && !(me?.isAdmin ?? false)) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-10 text-center">
+        <Crown size={56} style={{ color: '#fbbf24' }} />
+        <p className="text-3xl font-black text-white">Подкасты — только для Prime</p>
+        <p className="text-xl" style={{ color: 'var(--t2)' }}>Оформите Sky Prime на телефоне или на сайте — здесь всё заработает само.</p>
+      </div>
+    );
+  }
+  return <TVPodcastsContent />;
+};
+
+const TVPodcastsContent = () => {
   const { lastFocusedId } = useTVRestoreState();
   const [shows, setShows] = useState<Podcast[] | null>(null);
   const [selected, setSelected] = useState<Podcast | null>(null);

@@ -714,3 +714,14 @@ Sky Video). Раньше при включённом режиме им отве�
 - Поле «Уведомить» на странице скачивания пока не подключено к почте — сайт честно так и говорит.
 - nginx: `^~ /api/site/` в лендинг-vhost и `^~ /api/admin/site/downloads/` в основном (после обновления шаблонов nginx пересоздать).
 - Тесты: `scripts/audit/site-test.mjs`, `site-ui-test.mjs`, `site-admin-ui-test.mjs`.
+
+## Подкасты, книги и режим «Код» — только с Prime
+
+Sky Podcasts, Sky Books и режим «Код» в Sky AI входят в Sky Prime, как Sky Music и Sky Film. Один общий экран подписки — `src/prime/PrimeGate.tsx`
+(`<PrimeGate service="music|film|podcasts|books|code"/>`, тот же вид, что был в Sky Music; новый платный раздел — добавить запись в `SERVICES` + перевод в `en.json`).
+- Сервер: `routes/podcasts.mjs` и `routes/books.mjs` отвечают 403 `prime_required` на весь `/api/podcasts*` и `/api/books*` (включая пропуск и файлы) без Prime;
+  проходит тот, у кого право `content` (модерация), остальным администраторам бесплатный Prime не полагается. `POST /api/ai/send` с `mode:'code'` без Prime — 402.
+  Обычный чат Sky AI по-прежнему бесплатный.
+- Клиент: `SkyPodcasts`/`SkyBooks` — обёртки с проверкой `isPrime` над `…Content`; раньше они молча вызывали `purchasePrime('standard', 730)` на каждом открытии — убрано.
+  В ТВ и Car (`TVPodcasts`, `CarPodcasts`) вместо покупки пультом — подсказка оформить Prime на телефоне. «Код» в `SkyAITab` помечен короной, без Prime — `PrimeGate`.
+- Тест: `scripts/audit/prime-gates-test.mjs` (12).

@@ -14,6 +14,8 @@
  * он не весит как медиа, и тащить его через отдельный файловый путь
  * было бы лишней сущностью.
  */
+import { hasPrime } from './../skyid.mjs';
+import { can } from './../admin.mjs';
 import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
@@ -201,6 +203,12 @@ export const bookRoutes = async (req, res, url) => {
     const session = await requireProfile(req, res);
     if (!session) return true;
     me = session.profileId;
+  }
+
+  /* Раздел входит в подписку Sky Prime. Проверка здесь, а не на экране: клиент можно переписать.
+     Без подписки проходит тот, кто отвечает за содержимое (право `content`) — иначе некому разбирать заявки. */
+  if (!(await hasPrime(me)) && !(await can(me, 'content'))) {
+    return json(res, 403, { error: 'prime_required' });
   }
 
   if (req.method === 'POST' && path === '/api/books/ticket') {

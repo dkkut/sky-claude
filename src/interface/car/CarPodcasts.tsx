@@ -5,6 +5,8 @@
    был пустым, а плеер открывался за оболочкой Car и не был виден.
    Играет выпуск — управление в нижней полосе и на весь экран (CarNow).
 =========================================================== */
+import { useAuthStore } from '@/core/auth/store';
+import { Crown } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Podcast as PodcastIcon, ChevronLeft, RefreshCw } from 'lucide-react';
 import { usePlayer } from '@/podcasts/playerStore';
@@ -34,7 +36,23 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
   </section>
 );
 
+/* Подкасты входят в Sky Prime (сервер отвечает 403 без подписки). Оформить её пультом/в машине неудобно — подсказываем где. */
 export const CarPodcasts = () => {
+  const { accounts, currentUserId } = useAuthStore();
+  const me = accounts.find((a) => a.id === currentUserId);
+  if (!(me?.isPrime ?? false) && !(me?.isAdmin ?? false)) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-10 text-center">
+        <Crown size={56} style={{ color: '#fbbf24' }} />
+        <p className="text-3xl font-black text-white">Подкасты — только для Prime</p>
+        <p className="text-xl" style={{ color: 'var(--t2)' }}>Оформите Sky Prime на телефоне или на сайте — здесь всё заработает само.</p>
+      </div>
+    );
+  }
+  return <CarPodcastsContent />;
+};
+
+const CarPodcastsContent = () => {
   const episode = usePlayer((s) => s.episode);
   const error = usePlayer((s) => s.error);
   const play = usePlayer((s) => s.play);

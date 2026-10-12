@@ -22,6 +22,7 @@ import {
   Trash2, Clock, Sparkles, PenLine, Users,
 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
+import { PrimeGate } from '@/prime/PrimeGate';
 import { usePlayer, prefersReducedMotion } from './playerStore';
 import { parseSubtitles } from './subtitles';
 import {
@@ -658,14 +659,15 @@ const Studio = () => {
 
 type Tab = 'home' | 'subs' | 'favorites' | 'studio';
 
+/* Раздел входит в Sky Prime. Экран — вежливость: файлы и каталог закрывает сервер (`prime_required`). */
 export const SkyPodcasts = () => {
-  const { accounts, currentUserId, purchasePrime } = useAuthStore();
+  const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find((a) => a.id === currentUserId);
-  const isPrime = me?.isPrime ?? false;
+  if (!(me?.isPrime ?? false) && !(me?.isAdmin ?? false)) return <div className="flex h-full flex-col overflow-hidden"><PrimeGate service="podcasts"/></div>;
+  return <SkyPodcastsContent />;
+};
 
-  useEffect(() => {
-    if (!isPrime) purchasePrime('standard', 730);
-  }, [isPrime, purchasePrime]);
+const SkyPodcastsContent = () => {
 
   const [tab, setTab] = useState<Tab>('home');
   const [openShow, setOpenShow] = useState<string | null>(null);
