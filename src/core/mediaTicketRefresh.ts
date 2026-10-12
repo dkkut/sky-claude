@@ -66,3 +66,12 @@ export const describeMediaFailure = async (el: HTMLMediaElement | null, url: str
   } catch { http = 'сервер недоступен'; }
   return `Код ${code}${MEDIA_ERR[code] ? `: ${MEDIA_ERR[code]}` : ''}; ${http}`;
 };
+
+/** HTTP-статус файла (0 — сервер не ответил). Нужен, чтобы отличить «сломан этот файл» от «отказ на всё». */
+export const mediaStatus = async (url: string): Promise<number> => {
+  try {
+    const r = await fetch(url, { headers: { Range: 'bytes=0-1' }, credentials: 'include' });
+    void r.body?.cancel();
+    return r.status;
+  } catch { return 0; }
+};

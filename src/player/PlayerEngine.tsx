@@ -4,7 +4,7 @@ import { useAuthStore } from '@/core/auth/store';
 import { useMediaPresence } from '@/profile/viewer/mediaPresence';
 import { apiMediaTicket as apiMusicTicket } from '@/music/musicApi';
 import { apiMediaTicket as apiPodcastTicket } from '@/podcasts/podcastApi';
-import { reloadWithFreshTicket, describeMediaFailure } from '@/core/mediaTicketRefresh';
+import { reloadWithFreshTicket, describeMediaFailure, mediaStatus } from '@/core/mediaTicketRefresh';
 import { flash } from '@/shared/flash';
 import { getDownloadUrl } from '@/offline/offlineDB';
 import { saveResume, loadResume, clearResume } from './resume';
@@ -274,6 +274,7 @@ export const PlayerEngine = () => {
             // загрузкой), а трек выбрали, чтобы слушать, — запускаем заново.
             if (ok) { setPlaying(true); a.play().catch(onPlayRejected); return; }
             failsRef.current = 0; setPlaying(false);
+            void describeMediaFailure(a, srcUrl).then((why) => flash(`Не удалось воспроизвести трек. ${why}`));
           });
           return;
         }
@@ -293,12 +294,21 @@ export const PlayerEngine = () => {
         // «играет», а звука нет и дальше очередь не идёт. Переходим к
         // следующему — но не по кругу: если не заиграл ни один трек
         // очереди, останавливаемся.
+        // Перескакиваем дальше только если сломан именно этот файл (его нет,
+        // он не декодируется). Если сервер отвечает отказом на ЛЮБОЙ трек
+        // (нет доступа, пропуск не принят, лимит, сервер лёг), перебор очереди
+        // ничего не даст — раньше плеер молча пролистывал все треки по два
+        // раза и не давал запустить. Теперь останавливаемся и пишем причину.
         const len = usePlayerStore.getState().item?.queue?.length ?? 0;
         failsRef.current += 1;
-        if (len > 1 && failsRef.current < len && advanceOrStop()) return;
-        failsRef.current = 0;
-        setPlaying(false);
-        void describeMediaFailure(a, srcUrl).then((why) => flash(`Не удалось воспроизвести трек. ${why}`));
+        void mediaStatus(srcUrl).then((status) => {
+          if (usePlayerStore.getState().item?.srcUrl !== srcUrl) return; // человек уже выбрал другой трек
+          const systemic = status === 0 || status === 401 || status === 403 || status === 429 || status >= 500;
+          if (!systemic && len > 1 && failsRef.current < len && advanceOrStop()) return;
+          failsRef.current = 0;
+          setPlaying(false);
+          void describeMediaFailure(a, srcUrl).then((why) => flash(`Не удалось воспроизвести трек. ${why}`));
+        });
       }}
       onEnded={() => {
         if (item) clearResume(item.id);
