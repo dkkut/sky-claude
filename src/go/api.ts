@@ -55,6 +55,17 @@ const ERR: Record<string, string> = {
   too_many_photos: 'Не больше 8 фотографий.', too_many_listings: 'Слишком много объявлений.', title_required: 'Укажите название.', address_required: 'Укажите адрес.',
   bad_price: 'Цена — от 100 ₽.', bad_room: 'Проверьте данные номера.', bad_departure: 'Проверьте даты и места отправлений.',
   car_required: 'Укажите марку и модель.', parcel_required: 'Опишите, что везём (от 2 символов).',
+  org_suspended: 'Организация приостановлена администрацией Sky — действия недоступны.', executor_offline: 'Исполнитель не на линии.',
+  executor_not_member: 'Этот человек не в вашей команде.', executor_not_approved: 'У исполнителя нет одобренной регистрации курьера.',
+  courier_busy: 'У исполнителя уже максимум активных заказов.', incompatible_order: 'Такие заказы нельзя совмещать в одном рейсе.',
+  executor_not_truck: 'Для грузового заказа нужен исполнитель с грузовым транспортом.', assignment_not_accepted: 'Сначала примите назначение.',
+  confirm_required: 'Подтвердите действие.', already_member: 'Этот человек уже в команде или приглашён.', profile_not_found: 'Профиль с таким ником не найден.',
+  self_invite: 'Нельзя пригласить самого себя.', role_not_allowed: 'Эту роль вы назначить не можете.', owner_immutable: 'Владельца организации менять нельзя.',
+  self_change: 'Свою роль и доступ менять нельзя.', executor_in_delivery: 'У сотрудника доставка в пути — сначала доведите её до конца.',
+  payment_in_progress: 'По заказу уже идёт оплата — исполнителя менять нельзя.', bad_kind: 'Выберите вид проблемы.', note_required: 'Опишите подробнее (от 3 символов).',
+  too_many_problems: 'По заказу уже есть открытые проблемы.', bad_point: 'Неверные координаты.', offline: 'Выйдите на линию.',
+  point_not_found: 'Точка не найдена.', too_many_points: 'Слишком много точек.', phone_invalid: 'Неверный телефон.',
+  bad_mode: 'Неизвестный режим назначения.', name_required: 'Укажите название (от 2 символов).', too_many_members: 'Слишком много сотрудников.',
   bad_iata: 'Выберите город из подсказок.', same_city: 'Города совпадают.', bad_offer: 'Предложение недействительно — повторите поиск.',
 };
 export const goError = (r: { error?: string; reason?: string; status?: number }) =>
@@ -96,7 +107,7 @@ export interface GoOrder {
   data: Record<string, any>;
   customer?: { id: string; username: string; name?: string };
   executor?: { id: string; username: string; name?: string; car?: Record<string, any> } | null;
-  pay?: { state: string; amountRub: number; details?: Record<string, any> };
+  pay?: { state: string; amountRub: number; payeeId?: string; payerId?: string; details?: Record<string, any> };
   codes?: { pickup?: { code: string }; handover?: { code: string } };
   events?: { from: string; to: string; note: string; at: string; byYou: boolean }[];
 }

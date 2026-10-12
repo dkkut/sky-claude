@@ -18,18 +18,19 @@ const get = <T,>(p: string) => apiCall<T>(`${A}${p}`);
 const send = <T,>(m: string, p: string, b: unknown) => apiCall<T>(`${A}${p}`, { method: m, body: JSON.stringify(b) });
 const bad = (r: { error?: string; reason?: string }) => flash(({ not_allowed: 'Недостаточно прав.', note_required: 'Укажите причину.', bad_transition: 'Переход невозможен.', bad_price: 'Неверная цена.' } as Record<string, string>)[r.error ?? ''] ?? goError(r));
 
-type Sub = 'apps' | 'orders' | 'stay' | 'subs' | 'tariffs' | 'integrations';
+type Sub = 'apps' | 'orders' | 'orgs' | 'stay' | 'subs' | 'tariffs' | 'integrations';
 
 export const GoAdminTab = () => {
   const [sub, setSub] = useState<Sub>('apps');
   const [ov, setOv] = useState<any>(null);
   useEffect(() => { void get<any>('/overview').then((r) => r.ok && setOv(r.data)); }, [sub]);
-  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['orders', 'Заказы и споры'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
+  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {ov && <div style={{ ...box, fontSize: 13, color: C.t2 }}>Активных подписок: <b style={{ color: C.t1 }}>{ov.activeSubscriptions}</b> · На проверке: <b style={{ color: C.t1 }}>{(ov.executors.submitted ?? 0) + (ov.executors.in_review ?? 0)}</b> · Заказов за 30 дней: <b style={{ color: C.t1 }}>{ov.orders30d.reduce((s: number, r: any) => s + r.n, 0)}</b></div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{TABS.map(([k, t]) => <button key={k} onClick={() => setSub(k)} style={btn(sub === k ? C.acc : C.l2, sub === k ? '#fff' : C.t1)}>{t}</button>)}</div>
-      {sub === 'apps' && <Apps />}{sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
+      {sub === 'apps' && <Apps />}{sub === 'orgs' && <OrgsPanel />}
+        {sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
     </div>
   );
 };
@@ -276,6 +277,33 @@ const Integrations = () => {
       {row('Авиабилеты (FLIGHTS_PROVIDER, TRAVELPAYOUTS_*)', Boolean(d.flights?.configured), d.flights?.note ?? 'бронирование внутри Sky не поддерживается — переход на сайт партнёра')}
       {row('Заправки (FUEL_PROVIDER, OVERPASS_URL)', Boolean(d.fuel?.configured), d.fuel?.note ?? 'цены топлива поставщик не отдаёт')}
       <div style={{ fontSize: 12, color: C.t3 }}>Ключи задаются на сервере (.env), в интерфейсе не хранятся.</div>
+    </div>
+  );
+};
+
+
+/* Организации (бизнес) и проблемы доставки: просмотр, приостановка с причиной, решение проблем. */
+const OrgsPanel = () => {
+  const [o, setO] = useState<{ orgs: { id: string; name: string; owner: string; suspended: boolean; members: number; orders: number }[] } | null>(null);
+  const [p, setP] = useState<{ problems: { id: string; orderId: string; label: string; note: string; orgId: string | null; status: string; at: string }[] } | null>(null);
+  const [why, setWhy] = useState<Record<string, string>>({});
+  const load = useCallback(() => { void get<any>('/orgs').then((r) => r.ok && setO(r.data)); void get<any>('/problems').then((r) => r.ok && setP(r.data)); }, []);
+  useEffect(load, [load]);
+  const suspend = async (id: string, on: boolean) => { const r = await send('POST', `/orgs/${id}/suspend`, { suspended: on, reason: why[id] ?? '' }); if (!r.ok) return bad(r); flash(on ? 'Организация приостановлена' : 'Организация возобновлена'); load(); };
+  const resolve = async (id: string, action: string) => { const r = await send('POST', `/problems/${id}/resolve`, { action, note: why[id] ?? '' }); if (!r.ok) return bad(r); flash('Проблема закрыта'); load(); };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontWeight: 800, color: C.t1 }}>Организации Sky GO</div>
+      {!o ? <div style={{ color: C.t3 }}>Загрузка…</div> : o.orgs.length === 0 ? <div style={{ color: C.t3 }}>Организаций пока нет.</div> : o.orgs.map((g) => (
+        <div key={g.id} style={box}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><b style={{ color: C.t1 }} translate="no">{g.name}</b><span style={{ color: g.suspended ? C.red : C.t3, fontSize: 12.5 }}>{g.suspended ? 'приостановлена' : 'работает'}</span></div>
+          <div style={{ fontSize: 12.5, color: C.t2 }}>Владелец @{g.owner} · сотрудников {g.members} · заказов {g.orders}</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}><input style={{ ...inp, flex: 1 }} placeholder="Причина (обязательно)" value={why[g.id] ?? ''} onChange={(e) => setWhy({ ...why, [g.id]: e.target.value })} />
+            <button style={btn(g.suspended ? C.acc : C.red)} onClick={() => suspend(g.id, !g.suspended)}>{g.suspended ? 'Возобновить' : 'Приостановить'}</button></div></div>))}
+      <div style={{ fontWeight: 800, color: C.t1, marginTop: 6 }}>Открытые проблемы доставки</div>
+      {!p ? <div style={{ color: C.t3 }}>Загрузка…</div> : p.problems.length === 0 ? <div style={{ color: C.t3 }}>Открытых проблем нет.</div> : p.problems.map((x) => (
+        <div key={x.id} style={box}><b style={{ color: C.t1 }}>{x.label}</b> <span style={{ color: C.t3, fontSize: 12 }}>заказ …{x.orderId.slice(-8)} · {x.status}</span>{x.note && <div translate="no" style={{ fontSize: 13, color: C.t2 }}>{x.note}</div>}
+          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}><input style={{ ...inp, flex: 1, minWidth: 140 }} placeholder="Решение (обязательно)" value={why[x.id] ?? ''} onChange={(e) => setWhy({ ...why, [x.id]: e.target.value })} />
+            <button style={btn()} onClick={() => resolve(x.id, 'resume')}>Продолжить</button><button style={btn(C.l2, C.t1)} onClick={() => resolve(x.id, 'reassign')}>Заменить исполнителя</button><button style={btn(C.red)} onClick={() => resolve(x.id, 'cancel')}>Отменить</button></div></div>))}
     </div>
   );
 };

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Package, Car, ClipboardCheck, Building2, Truck, Crosshair, MapPin, Flag } from 'lucide-react';
 import { goApi, goError, type CargoTariff, type Point } from './api';
+import { bizApi, ASSIGN_LABEL, type AssignMode, type Member } from './bizApi';
 import { Back, Btn, Card, Col, Head, Input, Notice, PickRow, Segmented, StickyBar, Tile, fail, fmt, locate, C, GO } from './ui';
 import { flash } from '@/shared/flash';
 
@@ -59,7 +60,11 @@ const AddressRow = ({ label, icon, value, onChange, canLocate }: { label: string
 
 const hasPoint = (p: Point) => Boolean((p.address ?? '').trim().length >= 5 || (p.lat != null && p.lng != null));
 
-export const DeliveryForm = ({ mode, city, cargo, onBack, onCreated }: { mode: DeliveryMode; city: string; cargo?: CargoTariff; onBack: () => void; onCreated: (id: string) => void }) => {
+/** Контекст организации: заказ создаётся в её кабинете (адреса организации, режим назначения, исполнитель из команды). */
+export interface OrgFormCtx { id: string; name: string; assignMode: AssignMode; points: { id: string; title: string; address: string }[]; executors: Member[] }
+
+export const DeliveryForm = ({ mode, city, cargo, onBack, onCreated, org }: { mode: DeliveryMode; city: string; cargo?: CargoTariff; onBack: () => void; onCreated: (id: string) => void; org?: OrgFormCtx }) => {
+  const [pointId, setPointId] = useState(''); const [assignMode, setAssignMode] = useState<AssignMode>(org?.assignMode ?? 'manual'); const [assignTo, setAssignTo] = useState('');
   const isCargo = mode === 'cargo';
   const [from, setFrom] = useState<Point>({}); const [to, setTo] = useState<Point>({});
   const [size, setSize] = useState<'s' | 'm' | 'l'>('s'); const [body, setBody] = useState<'s' | 'm' | 'l'>('s'); const [loaders, setLoaders] = useState(0);
@@ -86,9 +91,16 @@ export const DeliveryForm = ({ mode, city, cargo, onBack, onCreated }: { mode: D
     recipient: { name: rn, phone: rp }, ...(mode === 'pvz' ? {} : { sender: { name: sn, phone: sp } }) });
   const ready = Boolean(quote) && desc.trim().length >= 2 && rn.trim().length >= 2 && rp.length >= 10 && (!needSender || (sn.trim().length >= 2 && sp.length >= 10)) && (mode !== 'pvz' || pvzInfo.trim().length >= 2);
   const order = async () => {
-    setBusy(true); const r = await goApi.deliveryCreate(body0()); setBusy(false);
+    setBusy(true);
+    const r = org
+      ? await bizApi.createOrder(org.id, { ...body0(), scenario: 'company', pointId: pointId || undefined, assignMode, assignTo: assignMode === 'manual' && assignTo ? assignTo : undefined })
+      : await goApi.deliveryCreate(body0());
+    setBusy(false);
     if (!r.ok) return fail(r);
-    flash('Ищем курьера'); onCreated(r.data!.orderId);
+    const ae = (r.data as { assignError?: string } | undefined)?.assignError;
+    if (org && ae) flash(`Заказ создан, но исполнитель не назначен: ${goError({ error: ae })}`);
+    else flash(org ? (assignMode === 'pool' ? 'Заказ открыт для курьеров' : assignTo ? 'Заказ создан и назначен' : 'Заказ создан') : 'Ищем курьера');
+    onCreated(r.data!.orderId);
   };
   const bodies = quote?.bodies ?? cargo?.bodies;
   return (
@@ -131,6 +143,23 @@ export const DeliveryForm = ({ mode, city, cargo, onBack, onCreated }: { mode: D
           {mode === 'pvz' && <Input label="Сведения об отправлении" value={pvzInfo} onChange={setPvzInfo} max={200} placeholder="Номер заказа, на кого оформлено" />}
           {!isCargo && <Input label="Вес, кг (необязательно)" value={weight} onChange={(v) => setWeight(v.replace(/[^\d.]/g, ''))} />}
         </Col></Card>
+
+        {org && (
+          <Card><Col>
+            <div style={{ fontWeight: 800, color: C.t1 }}>Организация «{org.name}»</div>
+            {org.points.length > 0 && (
+              <label style={{ display: 'block' }}><div style={{ fontSize: 12, color: C.t2, margin: '0 0 5px 4px' }}>Точка отправления</div>
+                <select value={pointId} onChange={(e) => { setPointId(e.target.value); const pt = org.points.find((x) => x.id === e.target.value); if (pt) setFrom({ address: pt.address }); }}
+                  style={{ width: '100%', height: 46, borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, padding: '0 10px', fontSize: 15 }}>
+                  <option value="">Другой адрес (ввести выше)</option>{org.points.map((p) => <option key={p.id} value={p.id}>{p.title} — {p.address}</option>)}</select></label>)}
+            <div style={{ fontSize: 12, color: C.t2, margin: '2px 0 -4px 4px' }}>Кто выполнит</div>
+            <Segmented value={assignMode} onChange={setAssignMode} options={[{ v: 'manual', t: 'Назначу' }, { v: 'auto', t: 'Авто' }, { v: 'pool', t: 'Всем' }]} />
+            <div style={{ fontSize: 12.5, color: C.t3 }}>{ASSIGN_LABEL[assignMode]}. {assignMode === 'pool' ? 'Заказ увидят все курьеры Sky GO; платить курьеру нужно напрямую.' : 'Заказ получит сотрудник вашей команды; оплата курьеру не требуется.'}</div>
+            {assignMode === 'manual' && org.executors.length > 0 && (
+              <label style={{ display: 'block' }}><div style={{ fontSize: 12, color: C.t2, margin: '0 0 5px 4px' }}>Назначить сразу (необязательно)</div>
+                <select value={assignTo} onChange={(e) => setAssignTo(e.target.value)} style={{ width: '100%', height: 46, borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, padding: '0 10px', fontSize: 15 }}>
+                  <option value="">Позже, из карточки заказа</option>{org.executors.map((m) => <option key={m.profileId} value={m.profileId}>{m.name} · {m.online ? 'на линии' : 'не на линии'} · заказов {m.activeOrders}</option>)}</select></label>)}
+          </Col></Card>)}
 
         <Card><Col>
           {(needSender || mode === 'errand') && <>

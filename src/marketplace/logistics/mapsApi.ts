@@ -36,7 +36,7 @@ export const apiGeocode = async (address: string): Promise<GeoPoint | null> => {
 /** Вид метки. Цвет ей назначает сервер — здесь только название. */
 export type MapPinKind = 'warehouse' | 'courier' | 'pickup' | 'target' | 'default';
 
-export interface MapPin { lat: number; lng: number; kind?: MapPinKind }
+export interface MapPin { lat: number; lng: number; kind?: MapPinKind; /** Один символ A–Z/0–9 — номер остановки на метке. */ label?: string }
 
 /**
  * Адрес картинки карты.
@@ -48,18 +48,19 @@ export interface MapPin { lat: number; lng: number; kind?: MapPinKind }
  */
 export const mapStillUrl = (
   pins: MapPin[],
-  { center, zoom, width = 640, height = 320 }:
-  { center?: GeoPoint; zoom?: number; width?: number; height?: number } = {},
+  { center, zoom, width = 640, height = 320, path }:
+  { center?: GeoPoint; zoom?: number; width?: number; height?: number; /** Линия маршрута — закодированная ломаная Google. */ path?: string } = {},
 ) => {
   const params = new URLSearchParams();
   const points = pins
     .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
     .slice(0, 40)
-    .map((p) => `${p.lat.toFixed(6)},${p.lng.toFixed(6)},${p.kind ?? 'default'}`)
+    .map((p) => `${p.lat.toFixed(6)},${p.lng.toFixed(6)},${p.kind ?? 'default'}${p.label && /^[A-Z0-9]$/.test(p.label) ? `,${p.label}` : ''}`)
     .join(';');
   if (points) params.set('points', points);
   if (center) params.set('center', `${center.lat.toFixed(6)},${center.lng.toFixed(6)}`);
   if (zoom !== undefined) params.set('zoom', String(Math.round(zoom)));
+  if (path && /^[\x3f-\x7e]{2,3500}$/.test(path)) params.set('path', path);
   params.set('w', String(Math.round(width)));
   params.set('h', String(Math.round(height)));
   /* Тег <img> заголовок авторизации не отправляет — в родном приложении

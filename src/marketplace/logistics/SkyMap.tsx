@@ -35,6 +35,8 @@ export interface MapPoint {
   online?: boolean;
   highlight?: boolean;
   kind?: MapPinKind;
+  /** Номер остановки на метке (один символ). */
+  mark?: string;
 }
 
 /* ─── Проекция ─────────────────────────────────────────────────────── */
@@ -88,10 +90,12 @@ const middle = (points: GeoPoint[]): GeoPoint => {
 /* ─── Карта ────────────────────────────────────────────────────────── */
 
 export const SkyMap = ({
-  points, height = 220, onPick,
+  points, height = 220, onPick, path,
 }: {
   points: MapPoint[];
   height?: number;
+  /** Линия маршрута (закодированная ломаная Google). */
+  path?: string;
   /** Выбор точки щелчком — для формы, где задают место склада. */
   onPick?: (p: GeoPoint) => void;
 }) => {
@@ -131,7 +135,7 @@ export const SkyMap = ({
   useEffect(() => { setBroken(false); }, [frame?.center.lat, frame?.center.lng, frame?.zoom]);
 
   const pins: Pin[] = real.map((p) => ({
-    lat: p.pos.lat, lng: p.pos.lng, kind: p.kind ?? (p.highlight ? 'target' : 'default'),
+    lat: p.pos.lat, lng: p.pos.lng, kind: p.kind ?? (p.highlight ? 'target' : 'default'), label: p.mark,
   }));
 
   const note = (text: string, Icon: IconComponent = MapPinOff) => (
@@ -155,7 +159,7 @@ export const SkyMap = ({
   if (broken) return note('Карта не пришла. Попробуйте ещё раз чуть позже.');
 
   const src = mapStillUrl(pins, {
-    center: frame.center, zoom: frame.zoom, width, height,
+    center: frame.center, zoom: frame.zoom, width, height, path,
   });
 
   /* Подписи кладутся поверх картинки: метки рисует Google, имена — мы. */

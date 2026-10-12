@@ -2,6 +2,7 @@
 // Запуск: API на :8080 с картами (fake-google), ADMIN_GATE=off:
 //   (. env.sh; node scripts/audit/go-biz-test.mjs <каталог с api.log>)
 import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { call, mkuser } from './lib.mjs';
 const S = process.argv[2];
 const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
@@ -32,7 +33,7 @@ const approve = (id) => call(`/api/admin/go/applications/${id}/decide`, J({ acti
 const reg = async (u, role, legalForm, extra, fields) => {
   const r = await G('/executors', J({ role, legalForm, city: CITY, fields, extra }), u.tok);
   if (r.status !== 200) return { err: r };
-  if (role === 'courier') await call(`/api/go/executors/${r.data.id}/docs?kind=id_doc`, { method: 'POST', body: PNG, headers: { 'content-type': 'application/octet-stream' } }, u.tok);
+  for (const kind of role === 'courier' ? ['id_doc'] : role === 'taxi_driver' ? ['driver_license', 'vehicle_registration'] : []) await call(`/api/go/executors/${r.data.id}/docs?kind=${kind}`, { method: 'POST', body: PNG, headers: { 'content-type': 'application/octet-stream' } }, u.tok);
   const sub = await G(`/executors/${r.data.id}/submit`, J({}), u.tok);
   if (sub.status !== 200) return { err: sub };
   await approve(r.data.id); return { id: r.data.id };
@@ -419,6 +420,67 @@ r = await G(`/org/${ORG}/settings`, PATCH({ phone: '12' }), AD.tok);
 t('неверный телефон отклонён', r.status === 400 && r.data.error === 'phone_invalid');
 r = await G(`/org/${ORG}/leave`, J({}), O.tok);
 t('владелец покинуть организацию не может', r.status === 403 && r.data.error === 'owner_immutable');
+
+
+/* ═══ Гонки: одновременные назначения ═══ */
+await online(K2);
+const rids = []; for (const d of ['R1', 'R2', 'R3', 'R4', 'R5']) rids.push((await order({ parcel: parcel(d), to: { address: `Москва, гонка ${d}` } })).data.orderId);
+const par = await Promise.all(rids.map((id) => G(`/org/${ORG}/orders/${id}/assign`, J({ executorId: K2.pid }), O.tok)));
+const okc = par.filter((x) => x.status === 200).length;
+t('пять одновременных назначений одному исполнителю: всего активных ровно три, остальные — courier_busy', okc >= 2 && Number(q(`select count(*) from go_orders where executor_id='${K2.pid}' and status in ('assigned','heading_pickup','at_pickup','picked_up','delivering','at_recipient')`)) === 3 && par.filter((x) => x.status !== 200).every((x) => x.data.error === 'courier_busy'), par.map((x) => x.status + (x.data.error ?? '')).join());
+const rid0 = rids[par.findIndex((x) => x.status === 200)];
+const two = await Promise.all([G(`/org/${ORG}/orders/${rid0}/assign`, J({ executorId: K2.pid }), O.tok), G(`/org/${ORG}/orders/${rid0}/assign`, J({ executorId: K2.pid }), M.tok)]);
+t('двойное назначение того же заказа тому же исполнителю — без ошибок и дублей', two.every((x) => x.status === 200) && Number(q(`select count(*) from go_order_events where order_id='${rid0}' and to_status='assigned'`)) <= 2);
+const acc2 = await Promise.all([1, 2, 3].map(() => G(`/delivery/orders/${rid0}/act`, J({ action: 'accept_assignment' }), K2.tok)));
+t('три одновременных «принять назначение»: ровно одно настоящее, остальные — повтор', acc2.every((x) => x.status === 200) && acc2.filter((x) => !x.data.duplicate).length === 1, acc2.map((x) => x.status + String(x.data.duplicate)).join());
+for (const id of rids) await G(`/org/${ORG}/orders/${id}/cancel`, J({ reason: 'Гонки проверены' }), O.tok);
+
+/* ═══ Водитель такси в том же рабочем пространстве ═══ */
+const TD = await mk('bzTaxi'); dob(TD);
+const carExtra = { carMake: 'Kia', carModel: 'Rio', carColor: 'белый', plate: 'А123ВС77', licenseNumber: '7700123456', carYear: 2019, carClass: 'economy' };
+const rtd = await reg(TD, 'taxi_driver', 'npd', carExtra, npd());
+t('водитель такси зарегистрирован', Boolean(rtd.id), JSON.stringify(rtd.err?.data));
+fund(TD, 300); await G('/subscription/taxi_driver/buy', J({}), TD.tok); await card(TD);
+r = await G('/work/state?role=taxi_driver', {}, TD.tok);
+t('состояние водителя: допуск есть, не на линии, заказов нет', r.status === 200 && r.data.access.pool === true && r.data.presence.online === false && r.data.orders.length === 0, JSON.stringify(r.data).slice(0, 200));
+await G('/presence', J({ role: 'taxi_driver', online: true, lat: 55.75, lng: 37.62 }), TD.tok);
+r = await G('/taxi/orders', J({ city: CITY, from: pickup, to: drop, tariff: Object.keys((await G('/config', {}, C.tok)).data.taxiTariffs)[0] }), C.tok);
+const TX = r.data.orderId;
+r = await G('/work/state?role=taxi_driver', {}, TD.tok);
+t('предложение такси видно на линии', r.data.offers.some((x) => x.id === TX), JSON.stringify(r.data.offers).slice(0, 120));
+r = await G(`/taxi/orders/${TX}/accept`, J({}), TD.tok);
+t('водитель принял заказ такси', r.status === 200);
+r = await G('/work/route?role=taxi_driver', {}, TD.tok);
+t('маршрут такси: сначала пассажир, потом назначение', r.status === 200 && r.data.stops.length === 2 && r.data.stops[0].type === 'pickup' && r.data.stops[1].type === 'dropoff', JSON.stringify(r.data).slice(0, 150));
+r = await G('/work/state?role=taxi_driver', {}, TD.tok);
+t('заказ такси в рабочем состоянии, контакты пассажира как положено', r.data.orders[0]?.id === TX && r.data.orders[0].status === 'assigned', JSON.stringify(r.data.orders[0]).slice(0, 100));
+for (const a of ['en_route', 'arrived', 'start', 'complete']) await G(`/taxi/orders/${TX}/act`, J({ action: a }), TD.tok);
+t('такси: жизненный цикл до оплаты пройден', q(`select status from go_orders where id='${TX}'`) === 'awaiting_payment');
+r = await G('/work/history?role=taxi_driver', {}, TD.tok);
+t('история водителя: выполнено 1', r.status === 200 && r.data.stats.done === 1, JSON.stringify(r.data.stats));
+r = await G('/work/state?role=nonsense', {}, TD.tok);
+t('неизвестная роль рабочего пространства отклонена', r.status === 400 && r.data.error === 'bad_role');
+
+/* ═══ Синхронизация: событие go:order по сокету ═══ */
+const require = createRequire(new URL('../../server/', import.meta.url));
+const WebSocket = require('ws');
+const wsOpen = (tok) => new Promise((res, rej) => {
+  const ws = new WebSocket('ws://127.0.0.1:8081', { headers: { origin: process.env.WS_ORIGIN || 'http://localhost:4173' } });
+  ws.events = []; ws.on('message', (d) => { try { ws.events.push(JSON.parse(d)); } catch { /* ok */ } });
+  ws.on('open', () => ws.send(JSON.stringify({ type: 'auth', payload: { token: tok } })));
+  const tm = setInterval(() => { if (ws.events.some((e) => e.type === 'snapshot-done')) { clearInterval(tm); res(ws); } }, 100);
+  setTimeout(() => rej(new Error('ws auth timeout')), 8000);
+});
+const wm = await wsOpen(M.tok); const wx = await wsOpen(X.tok);
+const live1 = await order({ parcel: parcel('Живое обновление') });
+await sleep(800);
+t('менеджеру организации пришло событие go:order о новом заказе', wm.events.some((e) => e.type === 'go:order' && e.payload?.orderId === live1.data.orderId), JSON.stringify(wm.events.filter((e) => e.type === 'go:order')).slice(0, 150));
+t('постороннему событие не приходит', !wx.events.some((e) => e.type === 'go:order'));
+wm.events.length = 0;
+await G(`/org/${ORG}/orders/${live1.data.orderId}/cancel`, J({ reason: 'Проверка событий' }), O.tok);
+await sleep(800);
+t('и об изменении статуса (отмена)', wm.events.some((e) => e.type === 'go:order' && e.payload?.status === 'cancelled'));
+wm.close(); wx.close();
 
 console.log(`\nИТОГО: ${ok} ok, ${bad} fail`);
 process.exit(bad ? 1 : 0);

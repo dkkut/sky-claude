@@ -10,6 +10,7 @@
  * о сокете ничего не знает (отправку получает через wire.ts), а
  * UI-компоненты как звали broadcast.*, так и зовут.
  */
+import { emitGoOrder } from '@/go/live';
 import { useMessengerStore } from './store';
 import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
 import { NATIVE_APP, API_ORIGIN } from '@/core/nativeApp';
@@ -444,6 +445,11 @@ const handle = (data: any) => {
       break;
     case 'mm:error':
       useGamingStore.getState().applyMmError();
+      break;
+
+    /* ── Sky GO: заказ изменился — открытые экраны перечитают его ── */
+    case 'go:order':
+      emitGoOrder(payload?.orderId, payload?.status);
       break;
 
     /* ── Игровые серверы: сообщения каналов и перемены на сервере ── */

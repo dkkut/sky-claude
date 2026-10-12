@@ -72,9 +72,9 @@ export const mapsRoutes = async (req, res, url) => {
        здесь, и в запрос к Google уходят только числа. */
     const points = [];
     for (const piece of String(params.get('points') ?? '').split(';').slice(0, 40)) {
-      const [lat, lng, kind] = piece.split(',');
+      const [lat, lng, kind, label] = piece.split(',');
       if (lat === undefined || lng === undefined) continue;
-      points.push({ lat, lng, kind });
+      points.push({ lat, lng, kind, label });
     }
     /* Середина — когда карту двигают кнопками. Разбирается так же:
        числами и ничем больше. */
@@ -85,6 +85,7 @@ export const mapsRoutes = async (req, res, url) => {
       width: params.get('w'),
       height: params.get('h'),
       zoom: params.get('zoom') ?? undefined,
+      pathEnc: params.get('path') ?? undefined,
     });
     if (!picture) return json(res, 404, { error: 'map_unavailable' });
 
