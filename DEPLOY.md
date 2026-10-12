@@ -643,3 +643,17 @@ BETA_KEYS=Ab3xY...:мой,Qw9zT...:команда
   перевод и обмен идут в транзакции с блокировкой строки, отрицательный
   баланс запрещён на уровне схемы. Владельца операции сервер берёт из
   токена — списать с чужого счёта нельзя даже подделав запрос.
+
+## Лендинг на корневом домене (skymessenger.online)
+
+Приложение Sky остаётся на `DOMAIN` (`web.skymessenger.online`); на корневом домене отдаётся статика из `site/` (файл `site/index.html` и всё, что рядом: картинки, css).
+Это отдельный вхост в том же nginx (как сайт партнёра): `nginx/site-template/site.conf.template`, `docker-entrypoint.d/06-site-nginx.sh`.
+
+1. DNS: A/AAAA-запись `skymessenger.online` на тот же сервер, что и `web.skymessenger.online`.
+2. В `.env`: `SITE_DOMAIN=skymessenger.online`.
+3. Заменить `site/index.html` своим файлом (картинки и стили класть в `site/`, ссылки на них — относительные).
+4. `bash scripts/deploy-local.sh` (пересоберёт образ и поднимет вхост; до сертификата сайт отвечает с самоподписанной заглушкой).
+5. Один раз: `bash scripts/add-site-cert.sh` — выпустит настоящий сертификат Let's Encrypt и перезапустит `web`; продление автоматическое (тот же certbot).
+
+Проверка: `curl -I https://skymessenger.online/healthz`. CSP лендинга (`nginx/snippets/security-headers-site.conf`) разрешает свои inline-стили и скрипты и шрифты Google Fonts; другим
+внешним ресурсам (аналитика, виджеты) нужно добавить домен в этот файл.

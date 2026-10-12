@@ -34,6 +34,8 @@ COPY nginx/templates/   /etc/nginx/templates/
 # за подробностями, почему у него отдельная обработка): сюда, а не в
 # /etc/nginx/templates.
 COPY nginx/market-template/ /etc/nginx/market-template/
+# Лендинг на корневом домене (SITE_DOMAIN) — то же самое, см. docker-entrypoint.d/06-site-nginx.sh.
+COPY nginx/site-template/ /etc/nginx/site-template/
 # Скрипты отсюда entrypoint образа выполняет перед стартом nginx.
 COPY nginx/docker-entrypoint.d/ /docker-entrypoint.d/
 RUN chmod +x /docker-entrypoint.d/*.sh
@@ -46,6 +48,9 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # KutRent Market — обычная статика (без сборки: чистые HTML/CSS/JS),
 # отдаётся market.conf.template отдельным вхостом, см. Root=выше.
 COPY market-site/ /usr/share/nginx/html-market
+
+# Лендинг (корневой домен, например skymessenger.online) — обычная статика из site/, без сборки.
+COPY site/ /usr/share/nginx/html-site
 
 # Каталог для ACME-челленджей Let's Encrypt.
 RUN mkdir -p /var/www/certbot

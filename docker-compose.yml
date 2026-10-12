@@ -33,6 +33,9 @@ services:
       # заведомо недостижимый домен-заглушка: сайт партнёра просто никогда
       # никому не отвечает, остальной Sky это не затрагивает никак.
       MARKET_DOMAIN: ${MARKET_DOMAIN:-market.invalid.local}
+      # Третий вхост — лендинг на корневом домене (skymessenger.online), см. nginx/site-template/site.conf.template.
+      # Не задан — заглушка-домен, лендинг никому не отвечает, остальной Sky не затрагивается.
+      SITE_DOMAIN: ${SITE_DOMAIN:-site.invalid.local}
     volumes:
       - certbot-certs:/etc/letsencrypt:ro
       - certbot-webroot:/var/www/certbot:ro

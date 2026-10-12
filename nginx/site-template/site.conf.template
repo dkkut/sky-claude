@@ -1,0 +1,64 @@
+# ============================================================
+#  Лендинг — корневой домен (${SITE_DOMAIN}, например skymessenger.online). Только статика из site/.
+#  Приложение Sky и API живут на другом домене (DOMAIN, web.…) и сюда не проксируются.
+#  Разворачивает файл docker-entrypoint.d/06-site-nginx.sh (так же, как market.conf.template).
+# ============================================================
+
+server {
+    listen      80;
+    listen [::]:80;
+    server_name ${SITE_DOMAIN};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+    }
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 'ok';
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen      443 ssl;
+    listen [::]:443 ssl;
+    http2       on;
+    server_name ${SITE_DOMAIN};
+
+    ssl_certificate     ${SITE_CERT_DIR}/fullchain.pem;
+    ssl_certificate_key ${SITE_CERT_DIR}/privkey.pem;
+
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_ciphers               ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_timeout       1d;
+    ssl_session_tickets       off;
+
+    include /etc/nginx/snippets/security-headers-site.conf;
+
+    limit_conn conn_per_ip 100;
+
+    root  /usr/share/nginx/html-site;
+    index index.html;
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 'ok';
+    }
+
+    location / {
+        # Свой add_header отменяет унаследованные — сниппет нужен повторно. Файлы без хеша в имени: без ревалидации
+        # после выкладки браузер мог бы отдать старую страницу вместе с новыми картинками.
+        include /etc/nginx/snippets/security-headers-site.conf;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri $uri/ /index.html;
+    }
+}
