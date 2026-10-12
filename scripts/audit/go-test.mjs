@@ -75,7 +75,18 @@ for (const k of ['driver_license', 'vehicle_registration']) await call(`/api/go/
 q(`update profiles set date_of_birth=null where id='${D.pid}'`);
 r = await G(`/executors/${rg.id}/submit`, J({}), D.tok);
 t('без даты рождения отправка закрыта', r.status === 400 && r.data.error === 'dob_required', JSON.stringify(r.data));
+r = await G(`/executors/${rg.id}/submit`, J({ dateOfBirth: '2999-01-01' }), D.tok);
+t('дата рождения в будущем отклонена', r.status === 400 && r.data.error === 'invalid_dob', JSON.stringify(r.data));
+r = await G(`/executors/${rg.id}/submit`, J({ dateOfBirth: '2015-05-05' }), D.tok);
+t('дата рождения прямо в заявке: несовершеннолетний отклонён', r.status === 400 && r.data.error === 'too_young', JSON.stringify(r.data));
+q(`update profiles set date_of_birth=null where id='${D.pid}'`);
+r = await G(`/executors/${rg.id}/submit`, J({ dateOfBirth: '1990-05-05' }), D.tok);
+t('дата рождения прямо в заявке: сохраняется в профиль и заявка уходит', r.status === 200 && q(`select date_of_birth from profiles where id='${D.pid}'`) === '1990-05-05', JSON.stringify(r.data));
+q(`update go_executors set status='draft' where id='${rg.id}'`);
 dob(D);
+r = await G(`/executors/${rg.id}/submit`, J({ dateOfBirth: '2000-01-01' }), D.tok);
+t('уже заданная дата рождения не перезаписывается', r.status === 200 && q(`select date_of_birth from profiles where id='${D.pid}'`) === '1990-05-05');
+q(`update go_executors set status='draft' where id='${rg.id}'`);
 r = await G(`/executors/${rg.id}/submit`, J({}), D.tok);
 t('отправка с документами и датой рождения', r.status === 200 && r.data.status === 'submitted', JSON.stringify(r.data));
 r = await G(`/executors/${rg.id}/submit`, J({}), D.tok);

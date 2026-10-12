@@ -37,7 +37,7 @@ const ERR: Record<string, string> = {
   too_far: 'Слишком далеко для этого сервиса.', route_failed: 'Не удалось построить маршрут. Попробуйте позже.',
   bad_city: 'Город пока не подключён.', bad_code: 'Неверный код.', code_locked: 'Код заблокирован после неверных попыток. Обратитесь в поддержку.',
   code_used: 'Код уже использован.', code_expired: 'Срок кода вышел.', rate_limited: 'Слишком часто. Подождите минуту.',
-  docs_missing: 'Не хватает обязательных документов.', dob_required: 'Укажите дату рождения в профиле.', too_young: 'Исполнителем может быть только совершеннолетний.',
+  docs_missing: 'Не хватает обязательных документов.', dob_required: 'Укажите дату рождения в анкете.', invalid_dob: 'Неверная дата рождения.', too_young: 'Исполнителем может быть только совершеннолетний.',
   invalid_fields: 'Проверьте поля анкеты.', bad_card: 'Неверный номер карты.', bank_required: 'Укажите банк.', holder_required: 'Укажите владельца.',
   file_too_large: 'Файл слишком большой (до 8 МБ).', unsupported_type: 'Нужно изображение (JPG, PNG, WebP) или PDF.',
   provider_not_configured: 'Сервис пока не подключён администрацией.', provider_unreachable: 'Поставщик данных недоступен. Попробуйте позже.',
@@ -107,7 +107,7 @@ export const goApi = {
   config: () => get<GoConfig>('/api/go/config'),
   executors: () => get<{ executors: ExecutorRow[] }>('/api/go/executors'),
   saveExecutor: (b: unknown) => post<{ id: string }>('/api/go/executors', b),
-  submitExecutor: (id: string) => post<{ status: string }>(`/api/go/executors/${id}/submit`),
+  submitExecutor: (id: string, dateOfBirth?: string) => post<{ status: string }>(`/api/go/executors/${id}/submit`, { dateOfBirth }),
   uploadDoc: (id: string, kind: string, file: File) =>
     apiCall<{ id: string }>(`/api/go/executors/${id}/docs?kind=${encodeURIComponent(kind)}`,
       { method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' } }),

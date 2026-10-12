@@ -10,7 +10,7 @@
 import { query } from './db.mjs';
 import { can } from './admin.mjs';
 import { cleanForm, validPhone } from './sellerrules.mjs';
-import { sniffDoc, MAX_DOC_BYTES, profileAge } from './courierverify.mjs';
+import { sniffDoc, MAX_DOC_BYTES, profileAge, ageFromDob } from './courierverify.mjs';
 import { encryptBytes, decryptBytes } from './crypto.mjs';
 import { newId, ROLES, LEGAL_FORMS, clean, cityOk, sealJson, openJson, goLog, notifyGo, inTx } from './gocore.mjs';
 
@@ -143,7 +143,7 @@ export const removeDoc = async (profileId, executorId, docId) => {
 };
 
 /** Отправка: строгая проверка всех полей, документов, возраста. */
-export const submit = async (profileId, executorId) => {
+export const submit = async (profileId, executorId, input = {}) => {
   return inTx(async (c) => {
     const ex = await ownRow(profileId, executorId, c);
     if (!ex) return { error: 'not_found' };
@@ -157,7 +157,15 @@ export const submit = async (profileId, executorId) => {
     if (all.length) return { error: 'invalid_fields', problems: all };
 
     if (ex.role === 'taxi_driver' || ex.role === 'courier') {
-      const age = await profileAge(profileId);
+      let age = await profileAge(profileId);
+      // Даты рождения в профиле нет — принимаем её прямо в заявке (один раз; уже заданную не перезаписываем).
+      if (age === null && input?.dateOfBirth) {
+        const d = String(input.dateOfBirth);
+        const a = /^\d{4}-\d{2}-\d{2}$/.test(d) ? ageFromDob(d) : null;
+        if (a === null || a < 0 || a > 120) return { error: 'invalid_dob' };
+        await c.query('UPDATE profiles SET date_of_birth = $2 WHERE id = $1 AND date_of_birth IS NULL', [profileId, d]);
+        age = a;
+      }
       if (age === null) return { error: 'dob_required' };
       if (age < MIN_AGE) return { error: 'too_young', minAge: MIN_AGE };
     }

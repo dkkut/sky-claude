@@ -1,7 +1,7 @@
 /** Sky GO: регистрация исполнителя (НПД / ИП / ООО). Проверка — вручную администрацией; реестры ФНС не подключены, и интерфейс об этом не умалчивает. */
 import { useRef, useState } from 'react';
 import { FileUp, Trash2, Check } from 'lucide-react';
-import { goApi, DOC_LABEL, LEGAL_LABEL, ROLE_LABEL, type ExecutorRow, type GoRole, type LegalForm } from './api';
+import { goApi, goError, DOC_LABEL, LEGAL_LABEL, ROLE_LABEL, type ExecutorRow, type GoRole, type LegalForm } from './api';
 import { Back, Btn, Card, Chip, Col, Input, Notice, fail, C } from './ui';
 import { flash } from '@/shared/flash';
 
@@ -32,6 +32,8 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
   const [id, setId] = useState(existing?.id ?? '');
   const [docs, setDocs] = useState(existing?.docs ?? []);
   const [busy, setBusy] = useState(false); const [problems, setProblems] = useState<string[]>([]);
+  const [dob, setDob] = useState(''); const [submitErr, setSubmitErr] = useState('');
+  const needsAge = role === 'taxi_driver' || role === 'courier';
   const file = useRef<HTMLInputElement>(null); const kindRef = useRef('');
 
   const required = (() => {
@@ -57,10 +59,13 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
   const submit = async () => {
     setBusy(true); const eid = await save();
     if (!eid) return setBusy(false);
-    const r = await goApi.submitExecutor(eid); setBusy(false);
+    setSubmitErr('');
+    const r = await goApi.submitExecutor(eid, dob || undefined); setBusy(false);
     if (!r.ok) {
-      if (r.error === 'docs_missing') flash(`Не хватает: ${((r.data as any)?.missing ?? []).map((k: string) => DOC_LABEL[k] ?? k).join(', ')}`);
-      else fail(r);
+      // Причина остаётся на экране (а не только всплывает): человек должен видеть, что поправить.
+      const text = r.error === 'docs_missing' ? `Не хватает документов: ${((r.data as any)?.missing ?? []).map((k: string) => DOC_LABEL[k] ?? k).join(', ')}`
+        : r.error === 'invalid_fields' ? ((r.data as any)?.problems ?? []).map((p2: any) => p2.message).join(' ') || goError(r) : goError(r);
+      setSubmitErr(text); fail(r);
       return;
     }
     flash('Заявка отправлена на проверку'); onDone();
@@ -105,6 +110,12 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
             })}
             <input ref={file} type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) void upload(fl); }} />
           </Col></Card>)}
+        {needsAge && <Card><Col>
+          <div style={{ fontWeight: 800, color: C.t1 }}>Возраст</div>
+          <Input label="Дата рождения (исполнителем может быть только совершеннолетний)" type="date" value={dob} onChange={setDob} />
+          <div style={{ fontSize: 12, color: C.t3 }}>Если дата уже указана в профиле, поле можно не заполнять.</div>
+        </Col></Card>}
+        {submitErr && <Notice tone="warn">{submitErr}</Notice>}
         {problems.length > 0 && <Notice tone="warn">{problems.map((p, i) => <div key={i}>{p}</div>)}</Notice>}
         <Notice>Заявку проверяют сотрудники Sky вручную. Автоматической сверки с реестрами ФНС (ЕГРИП/ЕГРЮЛ, статус НПД) нет, поэтому одобрение — решение человека, а не гарантия достоверности.</Notice>
         <Btn busy={busy} onClick={submit}>Отправить на проверку</Btn>

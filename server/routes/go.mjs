@@ -63,7 +63,7 @@ export const goRoutes = async (req, res, url) => {
     return reply(res, await reg.attachDoc(me, m[1], u.searchParams.get('kind'), bytes));
   }
   if ((m = path.match(/^\/api\/go\/executors\/([\w-]+)\/docs\/([\w-]+)$/)) && method === 'DELETE') return reply(res, await reg.removeDoc(me, m[1], m[2]));
-  if ((m = path.match(/^\/api\/go\/executors\/([\w-]+)\/submit$/)) && method === 'POST') return reply(res, await reg.submit(me, m[1]));
+  if ((m = path.match(/^\/api\/go\/executors\/([\w-]+)\/submit$/)) && method === 'POST') return reply(res, await reg.submit(me, m[1], (await parseBody(req)) ?? {}));
   if (path === '/api/go/pay-details') {
     if (method === 'GET') return json(res, 200, { details: await reg.myPayDetails(me) });
     if (method === 'PUT') return reply(res, await reg.setPayDetails(me, await parseBody(req)));
