@@ -67,6 +67,11 @@ import { readAccessToken } from './http.mjs';
 import { sweepAdminGate } from './admingate.mjs';
 import { sweepSshGate } from './sshgate.mjs';
 import { deviceLinkRoutes } from './routes/devicelink.mjs';
+import * as musicTicket from './musicticket.mjs';
+import * as filmTicket from './filmticket.mjs';
+import * as podcastTicket from './podcastticket.mjs';
+import * as bookTicket from './bookticket.mjs';
+import * as videoTicket from './skyvideoticket.mjs';
 import { accountFreezeRoutes } from './routes/accountfreeze.mjs';
 import { sweepFreezeLog } from './accountfreeze.mjs';
 import { sweepDeviceLinks } from './devicelink.mjs';
@@ -146,6 +151,20 @@ import { confirmSshLogin } from './breach.mjs';
 process.on('unhandledRejection', (reason) => {
   console.error('[process] необработанный rejection:', reason instanceof Error ? (reason.stack ?? reason.message) : reason);
 });
+
+/**
+ * Кто просит файл тегом <audio>/<video>/<img>. Браузер не шлёт Authorization, а у такого запроса есть только
+ * подписанный пропуск (кука или ?t=). Без этого в режимах «Технические/Аварийные работы» владелец и
+ * администратор получали 503 на всю музыку и кино, хотя остальной интерфейс при них работал.
+ */
+const mediaProfile = (req) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return null;
+  const t = new URL(req.url, 'http://x').searchParams.get('t');
+  for (const m of [musicTicket, filmTicket, podcastTicket, bookTicket, videoTicket]) {
+    try { const p = m.ticketFromCookies(req.headers.cookie) ?? (t ? m.readTicket(t) : null); if (p) return p; } catch { /* чужой пропуск */ }
+  }
+  return null;
+};
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
@@ -335,13 +354,15 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
       const shutdown = await shutdownState();
       if (shutdown.active) {
         const session = await readSession(req);
-        const owner = session?.profileId ? await isOwnerRaw(session.profileId) : false;
+        const who = session?.profileId ?? mediaProfile(req);
+        const owner = who ? await isOwnerRaw(who) : false;
         if (!owner) return json(res, 503, { error: 'platform_shutdown', reason: shutdown.reason });
       } else {
         const maintenance = await maintenanceState();
         if (maintenance.active) {
           const session = await readSession(req);
-          const admin = session?.profileId ? await isAdmin(session.profileId) : false;
+          const who = session?.profileId ?? mediaProfile(req);
+          const admin = who ? await isAdmin(who) : false;
           if (!admin) return json(res, 503, { error: 'platform_maintenance', reason: maintenance.reason });
         }
       }
