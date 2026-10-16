@@ -99,6 +99,8 @@ export const fileRoutes = async (req, res, url) => {
     if (result.error === 'file_too_large') return json(res, 413, { error: result.error, maxBytes: MAX_FILE_BYTES });
     if (result.error === 'quota_exceeded') return json(res, 507, { error: result.error });
     if (result.error === 'rate_limited')   return json(res, 429, { error: result.error });
+    if (['storage_unavailable', 'storage_maintenance'].includes(result.error)) return json(res, 503, { error: result.error });
+    if (['storage_full', 'storage_nearly_full', 'quota_files'].includes(result.error)) return json(res, 507, { error: result.error });
     if (result.error)                      return json(res, 400, { error: result.error });
 
     return json(res, 201, { file: result });

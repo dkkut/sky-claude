@@ -17,6 +17,7 @@
  * должна протухать сама.
  */
 import crypto from 'node:crypto';
+import { ticketAcceptable } from './skystoragestate.mjs';
 import { config } from './config.mjs';
 
 const CONTEXT = 'sky:tv-resource:v1';
@@ -64,6 +65,8 @@ export const readResource = (token, channelId) => {
     const data = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
     if (!data?.u || typeof data.e !== 'number') return null;
     if (data.e < Math.floor(Date.now() / 1000)) return null;
+    // Sky Storage: пропуска, выданные до отметки «не раньше», и слишком старые в режиме строгой авторизации — недействительны.
+    if (!ticketAcceptable(data.e, TTL_SEC)) return null;
     // Метка выдана для этого канала и ни для какого другого.
     if (String(data.c) !== String(channelId)) return null;
     return { url: String(data.u), kind: data.k === 'm' ? 'manifest' : 'segment' };

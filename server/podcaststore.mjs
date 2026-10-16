@@ -72,7 +72,8 @@ export const saveStream = async (id, source, limitBytes) => {
   let result;
   try {
     result = await encryptStreamToFile(source, pathFor(safe), limitBytes);
-  } catch {
+  } catch (storageErr) {
+    if (storageErr?.name === 'StorageBlocked') return { error: storageErr.code };
     await remove(safe).catch(() => {});
     return { error: 'upload_interrupted' };
   }

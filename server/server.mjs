@@ -71,6 +71,10 @@ import { registrationRoutes } from './routes/registration.mjs';
 import { modClosureRoutes } from './routes/modclosure.mjs';
 import { ownerNotifyRoutes } from './routes/ownernotify.mjs';
 import { skyKassaRoutes } from './routes/skykassa.mjs';
+import { storageRoutes } from './routes/skystorage.mjs';
+import { StorageBlocked, startStateWatcher, effective as storageEffective, counters as storageCounters } from './skystoragestate.mjs';
+import { loadQuotas } from './skystoragelimits.mjs';
+import { startStorageJobs, sweepStorage } from './skystoragejobs.mjs';
 import { sweepSkykassa } from './skykassa.mjs';
 import { sweepPartners } from './skykassapartners.mjs';
 import { siteRoutes, siteAdminRoutes } from './routes/site.mjs';
@@ -174,6 +178,11 @@ const mediaProfile = (req) => {
   return null;
 };
 
+/** Разделы, куда загружаются файлы (для проверки состояния хранилища до маршрута). */
+const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video|tv|files|stories|bloom|market|ads|campaigns|gifts|customization|logistics|pets)\b/;
+
+const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
+
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
@@ -181,7 +190,7 @@ const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, authRoutes, p
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, skyKassaRoutes];
+                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, skyKassaRoutes, storageRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -241,7 +250,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // PIN при смене IP (ippin.mjs): у тех, кто его включил, сессия с нового адреса закрыта до ввода PIN.
     // Выход, обновление токена, вход, ввод самого PIN и ссылки шлюзов остаются открытыми.
     if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && !url.startsWith('/api/skyid/pin') && !url.startsWith('/api/platform/status')
-        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/')) {
+        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify')) {
       const tok = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tok?.typ === 'access' && tok.sky && tok.sid) {
         const stored = await sessionStore.get(tok.sid);
@@ -358,7 +367,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
      * не смог бы ни войти и выключить режим, ни браузер — понять,
      * почему сайт не отвечает, и показать нужный экран.
      */
-    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/site/')) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify')) {
       const shutdown = await shutdownState();
       if (shutdown.active) {
         const session = await readSession(req);
@@ -374,6 +383,23 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
           if (!admin) return json(res, 503, { error: 'platform_maintenance', reason: maintenance.reason });
         }
       }
+    }
+
+    /* Sky Storage: на обслуживании/при аварийном отключении загрузки файлов отклоняются ДО любого действия
+       маршрута (иначе он успел бы завести запись в базе). Загрузкой считаем не-JSON тело запроса записи
+       в разделах с файлами; остальные запросы (лайки, списки) этим не затрагиваются. */
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && STORAGE_UPLOAD_PREFIX.test(url)
+        && !String(req.headers['content-type'] ?? '').startsWith('application/json') && !storageEffective().write) {
+      storageCounters.writesBlocked += 1;
+      return json(res, 503, { error: 'storage_maintenance' });
+    }
+
+    /* То же для чтения файлов: при аварийной остановке выдача байт закрывается ДО маршрута, пока не отправлены заголовки.
+       (Второй рубеж — сами ворота в слое шифрования медиа и во вложениях.) */
+    if ((req.method === 'GET' || req.method === 'HEAD') && !storageEffective().read
+        && (/^\/api\/files\//.test(url) || (STORAGE_UPLOAD_PREFIX.test(url) && STORAGE_SERVE_TAIL.test(url)))) {
+      storageCounters.readsBlocked += 1;
+      return json(res, 503, { error: 'storage_unavailable' });
     }
 
     for (const route of ROUTES) {
@@ -392,6 +418,8 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // Регистрация новых аккаунтов ограничена (registration.mjs): решение администрации, не сбой.
     if (error?.status === 403 && String(error.code ?? '').startsWith('registration_')) return json(res, 403, { error: error.code, message: error.message === error.code ? '' : error.message });
     if (error?.status === 423) return json(res, 423, { error: 'account_frozen', until: error.until });
+    // Sky Storage: хранилище недоступно/на обслуживании/заполнено — решение системы, не сбой.
+    if (error?.name === 'StorageBlocked') return json(res, error.status ?? 503, { error: error.code, message: error.userMessage || undefined });
     console.error('[api]', error);
     const message = config.nodeEnv === 'production' ? 'internal_error' : error.message;
     return json(res, 500, { error: message });
@@ -425,6 +453,9 @@ const start = async () => {
 
   await waitForDb();
   await migrate();
+  startStateWatcher();
+  await loadQuotas().catch((e) => console.error('[storage] квоты:', e.message));
+  startStorageJobs();
   await encryptExistingContent();
   // Файлы, загруженные до шифрования, читаются и так; дошифровываем их в
   // фоне, не задерживая запуск API.
@@ -614,6 +645,7 @@ const start = async () => {
       await sweepDeviceLinks();
       await sweepFreezeLog();
       await sweepSite().catch((e) => console.error('[site] уборка:', e.message));
+      await sweepStorage().catch((e) => console.error('[storage] уборка:', e.message));
       await sweepPartners().catch((e) => console.error('[skykassa] партнёры:', e.message));
       await sweepSkykassa().catch((e) => console.error('[skykassa] уборка:', e.message));
       await sweepIpPin();

@@ -20,7 +20,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -53,6 +53,18 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   modules: 'Закрытие модулей',
   skykassa: 'SkyKassa: проверка платежей',
   skykassa_settings: 'SkyKassa: способы, реквизиты, партнёры',
+  storage_view: 'Sky Storage: состояние и статистика',
+  storage_audit: 'Sky Storage: журнал безопасности',
+  storage_backup: 'Sky Storage: резервные копии',
+  storage_schedule: 'Sky Storage: расписание копирования',
+  storage_restore: 'Sky Storage: восстановление (критично)',
+  storage_quota: 'Sky Storage: квоты и политики',
+  storage_access: 'Sky Storage: подтверждение подключений',
+  storage_emergency: 'Sky Storage: аварийное отключение (критично)',
+  storage_enable: 'Sky Storage: включение (критично)',
+  storage_unlock: 'Sky Storage: снятие ограничений (критично)',
+  storage_keys: 'Sky Storage: ключи (критично)',
+  storage_maintenance: 'Sky Storage: технические работы',
 };
 
 export const ROLE_LABEL: Record<string, string> = {
@@ -78,6 +90,9 @@ export const ROLE_LABEL: Record<string, string> = {
   modules_admin: 'Закрытие модулей',
   skykassa_staff: 'SkyKassa: проверка платежей',
   skykassa_admin: 'SkyKassa: платежи и настройки',
+  storage_viewer: 'Sky Storage: просмотр',
+  storage_operator: 'Sky Storage: оператор (копии, квоты)',
+  storage_security: 'Sky Storage: безопасность и доступ',
   garant_admin: 'Sky Garant',
   notifications_admin: 'Рассылки',
   kutrent_market_admin: 'KutRent Market',

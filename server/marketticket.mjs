@@ -23,6 +23,7 @@
  * пометка назначения, и подделать одну из другой нельзя.
  */
 import crypto from 'node:crypto';
+import { ticketAcceptable } from './skystoragestate.mjs';
 import { config } from './config.mjs';
 
 const COOKIE = 'sky_market';
@@ -65,6 +66,8 @@ export const readTicket = (raw) => {
     const data = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
     if (!data?.p || typeof data.e !== 'number') return null;
     if (data.e < Math.floor(Date.now() / 1000)) return null;
+    // Sky Storage: пропуска, выданные до отметки «не раньше», и слишком старые в режиме строгой авторизации — недействительны.
+    if (!ticketAcceptable(data.e, TTL_SEC)) return null;
     return String(data.p);
   } catch {
     return null;

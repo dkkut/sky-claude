@@ -17,7 +17,7 @@ import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { config } from './config.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
-import { PERMISSIONS, ROLES } from './roles.mjs';
+import { PERMISSIONS, ROLES, DEFAULT_ADMIN_PERMISSIONS } from './roles.mjs';
 import { currentSession } from './reqctx.mjs';
 import { sessionStore } from './sessions.mjs';
 
@@ -226,7 +226,7 @@ export const rightsOf = async (actorId) => {
     /* Прежний администратор без роли. Полные права — ровно те, что у
        него были вчера. */
     return { ...base, owner: false, role: 'super_admin',
-      permissions: overdue ? [] : [...PERMISSIONS], legacy: true };
+      permissions: overdue ? [] : [...DEFAULT_ADMIN_PERMISSIONS], legacy: true };
   }
   const list = ROLES[role];
   if (!list) {

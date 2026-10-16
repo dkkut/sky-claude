@@ -27,7 +27,8 @@
  * далее подряд чанки: ciphertext(<=chunkSize) + tag(16).
  */
 import { createReadStream, createWriteStream } from 'node:fs';
-import { open as fsOpen, rm } from 'node:fs/promises';
+import { open as fsOpen, rm, stat as fsStat } from 'node:fs/promises';
+import { beginWrite, beginRead } from './skystoragelimits.mjs';
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -97,7 +98,7 @@ const nonceFor = (salt, index) => {
  * заменить его вызов было механической правкой, а не переписыванием
  * вызывающего кода.
  */
-export const encryptStreamToFile = async (source, destPath, limitBytes, { chunkSize = DEFAULT_CHUNK } = {}) => {
+const encryptStreamToFileRaw = async (source, destPath, limitBytes, { chunkSize = DEFAULT_CHUNK } = {}) => {
   const dek = crypto.randomBytes(DEK_LEN);
   const salt = crypto.randomBytes(8);
 
@@ -183,6 +184,22 @@ export const encryptStreamToFile = async (source, destPath, limitBytes, { chunkS
   return { bytes: plaintextSize };
 };
 
+/**
+ * Запись под воротами Sky Storage (server/skystoragelimits.mjs): состояние хранилища, пороги заполнения,
+ * квоты категории и параллелизм проверяются ДО начала записи, место резервируется и освобождается всегда.
+ * При блокировке бросает StorageBlocked — хранилища сервисов превращают его в {error: код}.
+ */
+export const encryptStreamToFile = async (source, destPath, limitBytes, opts) => {
+  const slot = await beginWrite(destPath, limitBytes);
+  try {
+    const r = await encryptStreamToFileRaw(source, destPath, slot.limit, opts);
+    if (r.error) { slot.abort(); return r; }
+    const size = await fsStat(destPath).then((x) => x.size).catch(() => 0);
+    slot.done(size);
+    return r;
+  } catch (e) { slot.abort(); throw e; }
+};
+
 /** Записать уже прочитанные в память байты (обложки и т.п.). */
 export const encryptBytesToFile = (buf, destPath, opts) =>
   encryptStreamToFile(Readable.from([buf]), destPath, buf.length + 1, opts);
@@ -261,6 +278,7 @@ export const plaintextSizeOf = async (path) => {
  * запрошенный диапазон — перемотка в большом файле не тянет его целиком.
  */
 export const openDecryptedRangeStream = (path, range) => {
+  const releaseRead = beginRead(path);   // ворота Sky Storage: состояние, параллелизм (бросает StorageBlocked)
   // Генератор, а не push в цикле: Readable.from тянет следующий чанк
   // только когда потребитель освободил буфер, а destroy() прерывает
   // цикл и закрывает файл. Иначе запрос «bytes=0-» на большом фильме
@@ -307,7 +325,9 @@ export const openDecryptedRangeStream = (path, range) => {
     }
   }
 
-  return Readable.from(generate(), { objectMode: false });
+  const out = Readable.from(generate(), { objectMode: false });
+  out.once('close', releaseRead);
+  return out;
 };
 
 /**

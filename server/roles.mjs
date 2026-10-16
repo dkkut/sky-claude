@@ -44,6 +44,18 @@ export const PERMISSIONS = [
   'modules',         // закрытие модулей: баннер «Сервис временно недоступен» вместо раздела или сервиса
   'skykassa',        // SkyKassa: проверка заявок на пополнение (зачисляет только владелец)
   'skykassa_settings', // SkyKassa: способы оплаты, реквизиты, партнёры, параметры
+  'storage_view',    // Sky Storage: состояние, статистика
+  'storage_audit',   // Sky Storage: журнал безопасности и подключений
+  'storage_backup',  // Sky Storage: запуск и просмотр резервных копий
+  'storage_schedule',// Sky Storage: расписание копирования
+  'storage_restore', // Sky Storage: восстановление данных (критично)
+  'storage_quota',   // Sky Storage: квоты, пороги и политики
+  'storage_access',  // Sky Storage: подтверждение подключений
+  'storage_emergency', // Sky Storage: аварийное отключение и ограничения (критично)
+  'storage_enable',  // Sky Storage: включение хранилища после отключения (критично)
+  'storage_unlock',  // Sky Storage: снятие ограничений безопасности (критично)
+  'storage_keys',    // Sky Storage: ключи и безопасная конфигурация (критично)
+  'storage_maintenance', // Sky Storage: режим технических работ
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -54,8 +66,16 @@ export const PERMISSIONS = [
  * из ника в окружении и имеет всё. Роль, которую можно выдать, не должна
  * быть способна дорасти до владельца.
  */
+/**
+ * Критические права Sky Storage не входят в «полные права» роли и в права прежнего администратора без роли:
+ * они у владельца и выдаются отдельными ролями осознанно. Сверх того каждое такое действие требует подтверждения
+ * личности (одноразовый код), а часть — только владельца.
+ */
+export const STORAGE_CRITICAL = ['storage_restore', 'storage_emergency', 'storage_enable', 'storage_unlock', 'storage_keys'];
+export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p));
+
 export const ROLES = {
-  super_admin:     PERMISSIONS,
+  super_admin:     DEFAULT_ADMIN_PERMISSIONS,
   security_admin:  ['security', 'moderation', 'support', 'registration'],
   moderation_admin:['moderation', 'support'],
   support_admin:   ['support'],
@@ -80,6 +100,9 @@ export const ROLES = {
   campaigns_admin: ['campaigns', 'support'],
   gifts_admin:     ['gifts'],
   site_admin:      ['site'],
+  storage_viewer:  ['storage_view', 'storage_audit'],
+  storage_operator:['storage_view', 'storage_audit', 'storage_backup', 'storage_schedule', 'storage_quota', 'storage_maintenance'],
+  storage_security:['storage_view', 'storage_audit', 'storage_access', 'storage_emergency', 'storage_enable'],
   skykassa_staff:  ['skykassa', 'support'],
   skykassa_admin:  ['skykassa', 'skykassa_settings', 'support'],
   modules_admin:   ['modules'],
@@ -100,6 +123,9 @@ export const ROLE_LABEL = {
   super_admin: 'Полные права',
   modules_admin: 'Закрытие модулей',
   site_admin: 'Сайт',
+  storage_viewer: 'Sky Storage: просмотр',
+  storage_operator: 'Sky Storage: оператор (копии, квоты)',
+  storage_security: 'Sky Storage: безопасность и доступ',
   skykassa_staff: 'SkyKassa: проверка платежей',
   skykassa_admin: 'SkyKassa: платежи и настройки',
   security_admin: 'Безопасность',

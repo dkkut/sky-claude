@@ -50,7 +50,8 @@ export const saveStream = async (id, source, limitBytes) => {
   let result;
   try {
     result = await encryptStreamToFile(source, pathFor(safe), limitBytes);
-  } catch {
+  } catch (storageErr) {
+    if (storageErr?.name === 'StorageBlocked') return { error: storageErr.code };
     // Связь оборвалась на середине загрузки: исключение раньше уходило
     // наверх, запись о треке с зарезервированным местом оставалась
     // в базе (и съедала квоту), а в хранилище — неполный файл.
