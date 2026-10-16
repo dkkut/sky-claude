@@ -59,7 +59,7 @@ const staff2 = await mkuser(S, 'kkstaff2'); q(`update profiles set is_admin=true
 const cfg = await mkuser(S, 'kkcfg'); q(`update profiles set is_admin=true, admin_role='skykassa_admin' where id='${cfg.pid}'`);
 const u1 = await mkuser(S, 'kku1'); const u2 = await mkuser(S, 'kku2');
 q(`delete from skykassa_settings`); q(`delete from skykassa_webhooks`); q(`delete from skykassa_payments where kind='partner'`); q(`delete from skykassa_partners`); q(`delete from skykassa_requisites`); q(`delete from skykassa_methods where id not in ('skm-account','skm-transfer')`);
-q(`update skykassa_methods set enabled=false`);
+q(`update skykassa_methods set enabled=false, sender_fields='[]'::jsonb, min_amount=100, max_amount=100000`);
 const bal = async (u) => (await call('/api/wallet', {}, u.tok)).data.balance ?? (await call('/api/wallet', {}, u.tok)).data.account?.balance;
 const A = '/api/admin/skykassa';
 

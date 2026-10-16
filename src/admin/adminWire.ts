@@ -51,6 +51,8 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   registration: 'Регистрация аккаунтов',
   site: 'Сайт (скачивание, статус, апелляции)',
   modules: 'Закрытие модулей',
+  skykassa: 'SkyKassa: проверка платежей',
+  skykassa_settings: 'SkyKassa: способы, реквизиты, партнёры',
 };
 
 export const ROLE_LABEL: Record<string, string> = {

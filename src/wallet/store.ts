@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import {
   CreditCard, Crown, ShoppingBag, Music2, Home, RotateCcw,
   ArrowDownLeft, ArrowUpRight, Star, Gift, Landmark, Truck,
-  Megaphone, ShieldCheck, Gem, Radio, Wallet, Ticket, Gamepad2,
+  Megaphone, ShieldCheck, Gem, Radio, Wallet, Ticket, Gamepad2, Sparkles,
 } from 'lucide-react';
 import type { IconComponent } from '@/shared/icon';
 
@@ -63,6 +63,8 @@ export type TxType =
   | 'skin_purchase_refund'  // возврат за скин питомца
   | 'stream_donation'       // донат на трансляции
   | 'code_topup'            // пополнение по коду Sky Codes
+  | 'skykassa_topup'        // пополнение через SkyKassa
+  | 'skykassa_refund'       // возврат пополнения SkyKassa
   | 'code_points'           // баллы по коду Sky Codes
   | 'blox_purchase'         // покупка в игре Sky Blox
   | 'blox_refund'          // возврат за покупку в Sky Blox
@@ -102,6 +104,8 @@ export const TX_LABEL: Record<TxType, string> = {
   skin_purchase_refund: 'Возврат за скин питомца',
   stream_donation:      'Донат на трансляции',
   code_topup:           'Пополнение по коду',
+  skykassa_topup:       'Пополнение SkyKassa',
+  skykassa_refund:      'Возврат SkyKassa',
   code_points:          'Баллы по коду',
   blox_purchase:        'Покупка в Sky Blox',
   blox_refund:          'Возврат за покупку в Sky Blox',
@@ -155,6 +159,8 @@ export const TX_ICON: Record<TxType, IconComponent> = {
   skin_purchase_refund: RotateCcw,
   stream_donation:      Radio,
   code_topup:           Ticket,
+  skykassa_topup:       Sparkles,
+  skykassa_refund:      RotateCcw,
   code_points:          Ticket,
   blox_purchase:        Gamepad2,
   blox_refund:          RotateCcw,

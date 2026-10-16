@@ -140,6 +140,7 @@ services:
       VAPID_PUBLIC_KEY:            ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY:           ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT:               ${VAPID_SUBJECT:-mailto:admin@localhost}
+      SKYKASSA_PARTNERS_JSON:      ${SKYKASSA_PARTNERS_JSON:-}
       FCM_SERVICE_ACCOUNT_JSON:    ${FCM_SERVICE_ACCOUNT_JSON:-}
       YANDEX_GEOCODER_KEY:         ${YANDEX_GEOCODER_KEY:-}
       CDEK_API_BASE:               ${CDEK_API_BASE:-}

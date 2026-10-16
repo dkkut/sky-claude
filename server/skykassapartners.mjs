@@ -38,8 +38,13 @@ const SKEW_SEC = 300;
 const ID_RE = /^[a-z][a-z0-9_-]{1,30}$/;
 
 export const envKey = (id, suffix) => `SKYKASSA_PARTNER_${String(id).toUpperCase().replace(/[^A-Z0-9]/g, '_')}_${suffix}`;
-const secretOf = (id) => process.env[envKey(id, 'SECRET')] ?? '';
-const merchantOf = (id) => process.env[envKey(id, 'MERCHANT')] ?? '';
+/* Секреты партнёров: отдельные переменные SKYKASSA_PARTNER_<ID>_SECRET/_MERCHANT или один JSON
+   в SKYKASSA_PARTNERS_JSON ({"id":{"secret":"…","merchant":"…"}}) — его проще передать в контейнер. */
+const fromJson = (id, k) => {
+  try { return String(JSON.parse(process.env.SKYKASSA_PARTNERS_JSON || '{}')?.[id]?.[k] ?? ''); } catch { return ''; }
+};
+const secretOf = (id) => process.env[envKey(id, 'SECRET')] || fromJson(id, 'secret');
+const merchantOf = (id) => process.env[envKey(id, 'MERCHANT')] || fromJson(id, 'merchant');
 
 /** Подключён ли партнёр по-настоящему: есть адрес и секреты на сервере. */
 export const partnerConfigured = (p) => Boolean(p.base_url && secretOf(p.id).length >= 16 && merchantOf(p.id));
