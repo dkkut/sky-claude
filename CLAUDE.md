@@ -887,4 +887,5 @@ Sky Podcasts, Sky Books и режим «Код» в Sky AI входят в Sky P
 Пороги/сроки хранения копий (`PUT /settings`), квоты (`PUT /quotas`) и расписания копий (создание, включение, удаление) требуют код подтверждения личности (`stepUpCode`, назначение `storage_critical`) вместе с правом —
 раньше хватало права. Они решают, что будет заблокировано и какие копии удалит очистка. DELETE теперь тоже читает тело запроса. На клиенте — `useCodeGate()` в `StorageTab.tsx` (форма кода рядом с кнопкой).
 Остальное (выключение, включение, ограничения, восстановление, ссылки, карантин, ключи) уже требовало владельца/права + `confirm` + код. Тест: `skystorage-test.mjs` (153).
+- Страница `/ssh-confirm` (`SshLegacyConfirmPage` в `AdminGate.tsx`, `/api/ssh-gate/legacy*`) — прежнее письмо хука `ssh-login-hook.sh`; две кнопки «Это я» / «Это не я». Входит в nginx-блок страниц писем, `VERIFY_PATHS` и `src/verify.tsx`. Тест — в `sshgate2-test.mjs` (API с `SSH_CONFIRM_TOKEN_PATH`, `SSH_CONFIRM_DONE_PATH`, `SHUTDOWN_SIGNAL_PATH`, `CTL_DIR`).
 

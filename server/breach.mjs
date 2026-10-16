@@ -62,9 +62,9 @@ const REASON_LABEL = {
   totp: 'перебор кода из приложения-аутентификатора',
 };
 
-const triggerEmergencyShutdown = async (skyId, reason, count) => {
+const triggerEmergencyShutdown = async (skyId, reason, count, custom = null) => {
   const when = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  const why = `${count} провалов входа администратора подряд ` +
+  const why = custom?.why ?? `${count} провалов входа администратора подряд ` +
     `(${REASON_LABEL[reason] ?? reason}) — sky-${skyId}`;
 
   // Аварийный режим — немедленно: это обычный запрос к базе, срабатывает
@@ -73,8 +73,8 @@ const triggerEmergencyShutdown = async (skyId, reason, count) => {
   await setLockdownSystem(why);
 
   const owners = await adminEmails();
-  const text = `Похоже, кто-то подбирает вход в администраторский аккаунт: ` +
-    `${count} провалов подряд, причина — ${REASON_LABEL[reason] ?? reason}, ${when} UTC.\n\n` +
+  const text = (custom?.intro ?? `Похоже, кто-то подбирает вход в администраторский аккаунт: ` +
+    `${count} провалов подряд, причина — ${REASON_LABEL[reason] ?? reason}, ${when} UTC.`) + '\n\n' +
     'Аварийный режим панели включён автоматически прямо сейчас. Сервер ' +
     'будет выключен целиком — так настроено по вашему собственному решению: ' +
     'недоступность сайта для всех сейчас важнее, чем риск, что атакующий ' +
@@ -155,4 +155,34 @@ export const confirmSshLogin = async (token) => {
   await fs.rm(CONFIRM_TOKEN_PATH, { force: true });
   await fs.writeFile(CONFIRM_DONE_PATH, `confirmed ${new Date().toISOString()}\n`);
   return true;
+};
+
+/** Сверка токена прежнего письма «подтвердите вход по SSH» без погашения: для страницы с двумя кнопками. */
+const readConfirmToken = async (token) => {
+  const given = String(token ?? '');
+  if (!given) return null;
+  try {
+    const stored = (await fs.readFile(CONFIRM_TOKEN_PATH, 'utf8')).trim();
+    const stat = await fs.stat(CONFIRM_TOKEN_PATH);
+    const left = CONFIRM_WINDOW_MS - (Date.now() - stat.mtimeMs);
+    const a = Buffer.from(given); const b = Buffer.from(stored);
+    if (left <= 0 || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    return { secondsLeft: Math.floor(left / 1000) };
+  } catch { return null; }
+};
+
+export const inspectSshConfirm = async (token) => {
+  const r = await readConfirmToken(token);
+  return r ? { ok: true, ...r } : { error: 'invalid_link' };
+};
+
+/** «Это не я»: вход по SSH не подтверждён — не ждём 10 минут, а включаем аварийный режим и сигнал на выключение сразу. */
+export const denySshConfirm = async (token) => {
+  if (!(await readConfirmToken(token))) return { error: 'invalid_link' };
+  await fs.rm(CONFIRM_TOKEN_PATH, { force: true });
+  await triggerEmergencyShutdown('ssh', 'ssh_denied', 1, {
+    why: 'владелец сообщил, что вход по SSH — не его (письмо «подтвердите вход»)',
+    intro: `Владелец ответил «Это не я» на письмо о входе по SSH, ${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC.`,
+  });
+  return { ok: true };
 };

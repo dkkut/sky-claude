@@ -7,7 +7,7 @@ import ReactDOM from 'react-dom/client';
 import './styles.css';
 import { initI18n } from './i18n';
 import { useSettings } from './settings/store';
-import { AdminVerifyPage } from './admin/AdminGate';
+import { AdminVerifyPage, SshLegacyConfirmPage } from './admin/AdminGate';
 import { UnfreezeLinkPage } from './auth/AccountFreeze';
 import { StorageVerifyPage } from './admin/StorageVerify';
 
@@ -15,6 +15,7 @@ void useSettings.getState(); // создание стора применяет �
 
 const Page = () => {
   const p = location.pathname;
+  if (p === '/ssh-confirm') return <SshLegacyConfirmPage />;
   if (p === '/ssh-verify') return <AdminVerifyPage kind="ssh" />;
   if (p === '/storage-verify') return <StorageVerifyPage />;
   if (p === '/unfreeze') return <UnfreezeLinkPage />;

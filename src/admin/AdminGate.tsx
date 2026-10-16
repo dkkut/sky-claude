@@ -171,3 +171,52 @@ export const AdminVerifyPage = ({ kind = 'admin' }: { kind?: 'admin' | 'ssh' }) 
     </div>
   );
 };
+
+/**
+ * Страница ссылки из прежнего письма «Зафиксирован успешный вход по SSH — подтвердите за 10 минут» (/ssh-confirm?token=…,
+ * хук ssh-login-hook.sh). Две кнопки: «Это я» и «Это не я» (сразу аварийный режим и сигнал на выключение сервера).
+ * Сервер: server/breach.mjs, /api/ssh-gate/legacy*.
+ */
+export const SshLegacyConfirmPage = () => {
+  const tokenRef = useRef(new URLSearchParams(location.search).get('token') ?? '');
+  const token = tokenRef.current;
+  useEffect(() => { try { history.replaceState(null, '', location.pathname); } catch { /* не критично */ } }, []);
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'invalid' | 'ok' | 'denied'>('loading');
+  const [left, setLeft] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    void apiCall<{ secondsLeft: number }>(`/api/ssh-gate/legacy?token=${encodeURIComponent(token)}`).then((r) => {
+      if (r.ok && r.data) { setLeft(r.data.secondsLeft); setPhase('ready'); } else setPhase('invalid');
+    });
+  }, [token]);
+  const act = async (what: 'confirm' | 'deny') => {
+    if (what === 'deny' && !window.confirm('Это не вы? Будет включён аварийный режим, сессии администраторов завершатся, сервер выключится.')) return;
+    setBusy(true); setErr('');
+    const r = await apiCall(`/api/ssh-gate/legacy/${what}`, { method: 'POST', body: JSON.stringify({ token }) });
+    setBusy(false);
+    if (r.ok) { setPhase(what === 'confirm' ? 'ok' : 'denied'); return; }
+    if (r.error === 'invalid_link') { setPhase('invalid'); return; }
+    setErr('Не удалось выполнить действие. Попробуйте ещё раз.');
+  };
+  const btn = 'flex w-full items-center justify-center gap-2 rounded-full py-3 text-[14px] font-bold disabled:opacity-50';
+  return (
+    <div className="grid min-h-[100dvh] place-items-center px-4 py-10" style={{ background: 'var(--bg)' }}>
+      <div className="mx-auto w-full max-w-[420px] rounded-[28px] p-6" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)', color: 'var(--t1)' }}>
+        <div className="mb-4 flex items-center gap-2"><Shield size={20} style={{ color: 'var(--accent)' }} /><p className="text-[16px] font-bold">Вход на сервер по SSH</p></div>
+        {phase === 'loading' && <Loader2 size={18} className="animate-spin" />}
+        {phase === 'invalid' && <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Ссылка недействительна: она уже использована или прошло больше 10 минут. Если вход был не вашим, сервер выключится автоматически по истечении этого времени.</p>}
+        {phase === 'ready' && (
+          <div className="space-y-2">
+            <p className="mb-3 text-[12.5px]" style={{ color: 'var(--t2)' }}>{`Зафиксирован вход по SSH. Подтвердите, что это вы, — осталось примерно ${Math.max(1, Math.ceil(left / 60))} мин. Без подтверждения сервер будет выключен.`}</p>
+            <button type="button" disabled={busy} onClick={() => void act('confirm')} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}><ShieldCheck size={16} /> Это я, подтвердить</button>
+            <button type="button" disabled={busy} onClick={() => void act('deny')} className={btn} style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}><Siren size={16} /> Это не я, включить систему безопасности</button>
+            {err && <p className="mt-2 text-[12.5px]" style={{ color: 'var(--red)' }}>{err}</p>}
+          </div>
+        )}
+        {phase === 'ok' && <p className="text-[13.5px]">Подтверждено: вход по SSH — это были вы. Автоматическое выключение сервера отменено.</p>}
+        {phase === 'denied' && <p className="text-[13.5px]">Принято: вход отмечен как чужой. Аварийный режим включён, сервер будет выключен, владелец уведомлён.</p>}
+      </div>
+    </div>
+  );
+};

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
 /** Страницы для ссылок из писем — отдельный HTML (verify.html), а не приложение (см. комментарий в verify.html). */
-const VERIFY_PATHS = new Set(['/admin-verify', '/ssh-verify', '/unfreeze', '/storage-verify']);
+const VERIFY_PATHS = new Set(['/admin-verify', '/ssh-verify', '/ssh-confirm', '/unfreeze', '/storage-verify']);
 
 export default defineConfig({
   plugins: [

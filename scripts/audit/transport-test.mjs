@@ -17,7 +17,7 @@ t('nginx: версия сервера не раскрывается', /server_to
 t('nginx: заголовки против встраивания и подмены типа', /X-Frame-Options/.test(sec) && /X-Content-Type-Options\s+"nosniff"/.test(sec) && /frame-ancestors/.test(sec));
 t('nginx: CSP не разрешает http:-источники', !/http:\/\//.test(sec.match(/Content-Security-Policy[^\n]*/)?.[0] ?? ''));
 t('журнал nginx не пишет строку запроса и реферер с параметрами (в них одноразовые токены)', /map \$request_uri \$log_uri/.test(main) && /map \$http_referer \$log_referer/.test(main) && !/"\$request"/.test(main.match(/log_format main[\s\S]*?;/)[0]) && !/\$http_referer"/.test(main.match(/log_format main[\s\S]*?;/)[0]));
-t('страницы ссылок из писем отдаются отдельным verify.html', /\^\/\(admin-verify\|ssh-verify\|unfreeze\|storage-verify\)\$/.test(tpl));
+t('страницы ссылок из писем отдаются отдельным verify.html', /\^\/\(admin-verify\|ssh-verify\|ssh-confirm\|unfreeze\|storage-verify\)\$/.test(tpl));
 t('verify.html не отправляет Referer', /name="referrer" content="no-referrer"/.test(readFileSync('verify.html', 'utf8')));
 
 const mk = (proto, url = '/api/x', env = 'production') => insecureApiRequest({ headers: proto === undefined ? {} : { 'x-forwarded-proto': proto } }, url, env);

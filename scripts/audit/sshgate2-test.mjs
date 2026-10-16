@@ -1,7 +1,7 @@
 // Рубильник и журнал входа по SSH (server/routes/sshadmin.mjs). API: SSH_GATE_SECRET, OWNER_USERNAME=sshowner, DOMAIN (см. sshgate-test.mjs).
 //   (. env.sh; SSH_GATE_SECRET=... node scripts/audit/sshgate2-test.mjs <каталог с api.log>)
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { call, mkuser } from './lib.mjs';
 const S = process.argv[2]; const KEY = process.env.SSH_GATE_SECRET;
 const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
@@ -64,4 +64,29 @@ r = await post('/api/ssh-gate/request', signed());
 t('после снятия паузы запросы принимаются (с подтверждением)', r.status === 200 && r.data.ok, JSON.stringify(r.data));
 r = await post('/api/admin/ssh/resume', { stepUpCode: code2 }, own);
 t('код подтверждения одноразовый', r.status === 401, r.status);
+// ── прежнее письмо «подтвердите вход» (ssh-login-hook.sh): страница /ssh-confirm с двумя кнопками ──
+//   API нужен с SSH_CONFIRM_TOKEN_PATH=<dir>/ssh-confirm-token SSH_CONFIRM_DONE_PATH=<dir>/done SHUTDOWN_SIGNAL_PATH=<dir>/shutdown
+{
+  const dir = process.env.CTL_DIR;
+  const tok = 'a'.repeat(64);
+  const get = (p) => call(p);
+  r = await get('/api/ssh-gate/legacy?token=' + tok);
+  t('старая ссылка: без токена от хука — недействительна', r.status === 404);
+  writeFileSync(`${dir}/ssh-confirm-token`, tok + '\n');
+  r = await get('/api/ssh-gate/legacy?token=' + tok);
+  t('старая ссылка: страница видит действующий токен и срок', r.status === 200 && r.data.secondsLeft > 500, JSON.stringify(r.data));
+  r = await get('/api/ssh-gate/legacy?token=' + 'b'.repeat(64));
+  t('старая ссылка: чужой токен не принимается', r.status === 404);
+  r = await post('/api/ssh-gate/legacy/confirm', { token: tok });
+  t('кнопка «Это я»: подтверждает', r.status === 200 && existsSync(`${dir}/done`) && !existsSync(`${dir}/ssh-confirm-token`), JSON.stringify(r.data));
+  r = await post('/api/ssh-gate/legacy/confirm', { token: tok });
+  t('повторное подтверждение невозможно', r.status === 404);
+  rmSync(`${dir}/done`, { force: true });
+  writeFileSync(`${dir}/ssh-confirm-token`, tok + '\n');
+  r = await post('/api/ssh-gate/legacy/deny', { token: 'c'.repeat(64) });
+  t('«Это не я» с чужим токеном ничего не делает', r.status === 404 && !existsSync(`${dir}/shutdown`));
+  r = await post('/api/ssh-gate/legacy/deny', { token: tok });
+  t('кнопка «Это не я»: сигнал на выключение и аварийный режим', r.status === 200 && existsSync(`${dir}/shutdown`) && q(`select active from admin_lockdown where id`) === 't', JSON.stringify(r.data));
+  q(`update admin_lockdown set active=false where id`); rmSync(`${dir}/shutdown`, { force: true });
+}
 console.log(`\n${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

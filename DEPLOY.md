@@ -727,4 +727,5 @@ git pull && sudo bash scripts/ssh-gate.sh --install            # переста�
 sudo install -o root -g root -m 755 scripts/ssh-login-hook.sh /opt/sky/ssh-login-hook.sh
 ```
 Старая ссылка `/ssh-confirm` остаётся рабочей для входов без шлюза (например, если он выключен аварийным файлом).
+Ссылка `/ssh-confirm?token=…` из прежнего письма теперь тоже открывает страницу `verify.html` (не приложение и не лендинг) с двумя кнопками: «Это я, подтвердить» и «Это не я, включить систему безопасности» (сразу аварийный режим и сигнал на выключение сервера, `server/breach.mjs::denySshConfirm`). После обновления шаблонов nginx пересоздайте (в блок страниц писем добавлен `ssh-confirm`).
 

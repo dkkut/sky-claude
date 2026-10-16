@@ -1,5 +1,6 @@
 import { json, parseBody, clientIp } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
+import { inspectSshConfirm, confirmSshLogin, denySshConfirm } from './../breach.mjs';
 import { requestSsh, pollSsh, inspectSshLink, confirmSshLink, panicSshLink } from './../sshgate.mjs';
 
 /**
@@ -33,6 +34,19 @@ export const sshGateRoutes = async (req, res, url) => {
     const body = await parseBody(req);
     const r = await panicSshLink(body?.t, body?.action, { ip });
     return json(res, r.error ? (r.error === 'invalid_link' ? 404 : r.error === 'owner_only' ? 403 : 400) : 200, r);
+  }
+  // Прежний хук ssh-login-hook.sh: письмо «подтвердите вход за 10 минут» ведёт сюда (страница /ssh-confirm с двумя кнопками).
+  if (req.method === 'GET' && u.pathname === '/api/ssh-gate/legacy') {
+    const r = await inspectSshConfirm(u.searchParams.get('token'));
+    return json(res, r.error ? 404 : 200, r);
+  }
+  if (req.method === 'POST' && u.pathname === '/api/ssh-gate/legacy/confirm') {
+    const ok = await confirmSshLogin((await parseBody(req))?.token);
+    return json(res, ok ? 200 : 404, ok ? { ok: true } : { error: 'invalid_link' });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/ssh-gate/legacy/deny') {
+    const r = await denySshConfirm((await parseBody(req))?.token);
+    return json(res, r.error ? 404 : 200, r);
   }
   return json(res, 404, { error: 'not_found' });
 };
