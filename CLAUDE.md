@@ -874,3 +874,11 @@ Sky Podcasts, Sky Books и режим «Код» в Sky AI входят в Sky P
 - `scripts/harden-ssh.sh` — отчёт / `--apply` / `--rollback`: только ключи, `MaxAuthTries 3`, `ClientAlive*`; без `authorized_keys` отказывается. Файрвол не трогает.
 - Тесты: `sshgate-test.mjs` (40), `sshgate2-test.mjs` (17).
 
+## SSH: экран ожидания, рубильник, усиление sshd (модуль 13)
+
+- `scripts/ssh-gate.sh` (на сервере, PAM-крючок sshd) пока ждёт владельца, пишет на терминал человека (PAM_TTY → `/dev/pts/N`): «Ожидание подтверждения владельца…», обратный отсчёт, затем «Подтверждено» — и только после этого sshd открывает оболочку. У scp/sftp терминала нет — ждут молча.
+  На настоящем sshd не проверялось: вывод проверен тестом на файл (`SKY_GATE_TTY`); поведение pty проверять при установке, с открытым вторым терминалом.
+- Рубильник: `setSshPaused` в `server/sshgate.mjs`, `server/routes/sshadmin.mjs` (`/api/admin/ssh*`), миграция `131_ssh_gate_controls.sql`, вкладка «Доступ по SSH» (`src/admin/SshTab.tsx`, право `security`). Закрывает НОВЫЕ входы (423 `paused`) и отклоняет ожидающие, открытые сессии не рвёт. Включает только владелец, со step-up `ssh_gate`. Неверная подпись, заблокированная попытка и исчерпанные попытки пишутся в журнал администрации.
+- `scripts/harden-ssh.sh` — отчёт / `--apply` / `--rollback`: только ключи, `MaxAuthTries 3`, `ClientAlive*`; без `authorized_keys` отказывается. Файрвол не трогает.
+- Тесты: `sshgate-test.mjs` (40), `sshgate2-test.mjs` (17).
+
