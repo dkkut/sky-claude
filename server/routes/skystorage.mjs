@@ -28,7 +28,9 @@ const CODE = {
 };
 const reply = (res, r) => json(res, r?.error ? (CODE[r.error] ?? 400) : 200, r);
 
-const MAX_BODY_ACTIONS = new Set();
+/** Для тестов лимиты запросов можно умножить: STORAGE_RATE_MULT (по умолчанию 1). */
+const MULT = Math.max(Number(process.env.STORAGE_RATE_MULT) || 1, 1);
+const rl = (key, n) => rateLimit(key, n * MULT);
 const hashIp = (ip) => crypto.createHash('sha256').update(`storage-ip:${ip}`).digest('hex').slice(0, 24);
 
 export const storageRoutes = async (req, res, url) => {
@@ -40,7 +42,7 @@ export const storageRoutes = async (req, res, url) => {
   /* ─── Публично: страница подтверждения по ссылке из письма ─── */
   if (path === '/api/storage/verify/lookup' || path === '/api/storage/verify/decide') {
     if (req.method !== 'POST') return json(res, 405, { error: 'method' });
-    if (!rateLimit(`storage:verify:${ip}`, 12)) return json(res, 429, { error: 'too_many_attempts' });
+    if (!rl(`storage:verify:${ip}`, 12)) return json(res, 429, { error: 'too_many_attempts' });
     const body = (await parseBody(req)) ?? {};
     const meta = requestMeta(req);
     res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store');
@@ -53,7 +55,7 @@ export const storageRoutes = async (req, res, url) => {
   let m = /^\/api\/storage\/download\/([A-Za-z0-9_-]{30,80})$/.exec(path);
   if (m) {
     if (req.method !== 'GET') return json(res, 405, { error: 'method' });
-    if (!rateLimit(`storage:dl:${ip}`, 10)) return json(res, 429, { error: 'too_many_attempts' });
+    if (!rl(`storage:dl:${ip}`, 10)) return json(res, 429, { error: 'too_many_attempts' });
     if (!effective(snapshot()).read) return json(res, 503, { error: 'storage_unavailable' });
     let d;
     try { d = await B.openDownload(m[1], hashIp(ip)); } catch (e) { console.error('[storage] скачивание:', e.message); return json(res, 502, { error: 'download_failed' }); }
@@ -72,7 +74,7 @@ export const storageRoutes = async (req, res, url) => {
   const me = session.profileId;
   const meta = requestMeta(req);
   const rest = path.slice('/api/admin/storage'.length) || '/';
-  if (!rateLimit(`storage:admin:${me}`, 240)) return json(res, 429, { error: 'too_many_attempts' });
+  if (!rl(`storage:admin:${me}`, 240)) return json(res, 429, { error: 'too_many_attempts' });
   const isWrite = req.method !== 'GET';
   const body = isWrite && req.method !== 'DELETE' ? ((await parseBody(req)) ?? {}) : {};
 
@@ -86,7 +88,7 @@ export const storageRoutes = async (req, res, url) => {
   if (!conn.allowed) return json(res, 403, { error: 'connection_pending', status: conn.status, pending: conn.pending ?? null });
 
   const critical = ['/emergency-off', '/enable', '/sky-auth', '/unlock', '/restrict', '/compromise', '/recover', '/restore/apply'];
-  if (isWrite && critical.includes(rest) && !rateLimit(`storage:crit:${me}`, 10)) return json(res, 429, { error: 'too_many_attempts' });
+  if (isWrite && critical.includes(rest) && !rl(`storage:crit:${me}`, 10)) return json(res, 429, { error: 'too_many_attempts' });
 
   // Чтение
   if (req.method === 'GET') {
@@ -118,7 +120,7 @@ export const storageRoutes = async (req, res, url) => {
   }
 
   // Запись
-  if (rest === '/step-up') { if (!rateLimit(`storage:stepup:${me}`, 6)) return json(res, 429, { error: 'too_many_attempts' }); return reply(res, await A.beginCritical(me, meta)); }
+  if (rest === '/step-up') { if (!rl(`storage:stepup:${me}`, 6)) return json(res, 429, { error: 'too_many_attempts' }); return reply(res, await A.beginCritical(me, meta)); }
   if (rest === '/emergency-off') return reply(res, await A.emergencyOff(me, body, meta));
   if (rest === '/sky-auth') return reply(res, await A.requireSkyAuth(me, body, meta));
   if (rest === '/enable') return reply(res, await A.enable(me, body, meta));
@@ -139,7 +141,7 @@ export const storageRoutes = async (req, res, url) => {
 
   if (rest === '/backups' && req.method === 'POST') {
     const deny = await needPerm(P.backup); if (deny) return deny;
-    if (!rateLimit(`storage:bk:${me}`, 4)) return json(res, 429, { error: 'too_many_attempts' });
+    if (!rl(`storage:bk:${me}`, 4)) return json(res, 429, { error: 'too_many_attempts' });
     const r = await B.startBackup({ kind: body.kind, scope: body.scope ?? {}, trigger: 'manual', actorId: me, verify: body.verify === 'sample' ? 'sample' : 'full', incremental: body.incremental !== false });
     if (!r.error) await logAdmin({ actorId: me, targetType: 'storage', type: 'storage_backup_run', detail: `${body.kind}: ${r.id}`, meta });
     return reply(res, r);
@@ -207,7 +209,7 @@ export const storageRoutes = async (req, res, url) => {
   }
   if (rest === '/objects/scan') {
     const deny = await needPerm(P.backup); if (deny) return deny;
-    if (!rateLimit(`storage:scan:${me}`, 2)) return json(res, 429, { error: 'too_many_attempts' });
+    if (!rl(`storage:scan:${me}`, 2)) return json(res, 429, { error: 'too_many_attempts' });
     return json(res, 200, { ok: true, ...(await I.scanAll()) });
   }
   if (rest === '/quarantine' && req.method === 'POST') {

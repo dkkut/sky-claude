@@ -61,13 +61,16 @@ const makeLocal = () => {
     },
     async health() {
       const t0 = Date.now();
-      try {
+      const work = (async () => {
         await mkdir(dir, { recursive: true, mode: 0o700 });
         const probe = join(dir, `.probe-${process.pid}`);
         const fh = await fsOpen(probe, 'w'); await fh.write('ok'); await fh.close(); await rm(probe);
         const s = await statfs(dir);
         return { ok: true, ms: Date.now() - t0, free: Number(s.bavail) * Number(s.bsize), total: Number(s.blocks) * Number(s.bsize) };
-      } catch (e) { return { ok: false, ms: Date.now() - t0, code: e.code ?? 'error' }; }
+      })();
+      // Зависшая точка монтирования (сетевой диск) не должна подвешивать задачи: ограничиваем проверку по времени.
+      const limit = new Promise((resolve) => { const t = setTimeout(() => resolve({ ok: false, ms: Date.now() - t0, code: 'timeout' }), 8000); t.unref?.(); });
+      try { return await Promise.race([work, limit]); } catch (e) { return { ok: false, ms: Date.now() - t0, code: e.code ?? 'error' }; }
     },
     async abortIncomplete() {
       let n = 0;

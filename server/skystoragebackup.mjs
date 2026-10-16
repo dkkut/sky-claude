@@ -138,7 +138,7 @@ export const startBackup = async ({ kind = 'full', scope = {}, trigger = 'manual
     // база цепочки
     let base = null;
     if (incremental && ['full', 'media', 'service', 'category'].includes(kind)) {
-      const { rows } = await query(`SELECT id, files FROM storage_backups WHERE status = 'verified' AND kind = $1 AND scope = $2::jsonb ORDER BY started_at DESC LIMIT 1`, [kind, JSON.stringify(scope)]);
+      const { rows } = await query(`SELECT id, files FROM storage_backups WHERE status = 'verified' AND kind = $1 AND scope = $2::jsonb AND target = $3 ORDER BY started_at DESC LIMIT 1`, [kind, JSON.stringify(scope), target.kind]);
       if (rows[0]) {
         let depth = 1; let cur = rows[0].id;
         for (;;) { const { rows: p } = await query('SELECT base_id FROM storage_backups WHERE id = $1', [cur]); if (!p[0]?.base_id) break; depth += 1; cur = p[0].base_id; }
@@ -163,7 +163,9 @@ const runBackup = async ({ id, kind, scope, base, target, kid, verify, actorId }
     // Объекты базовой копии (для ссылок)
     const baseMap = new Map();
     if (base) {
+      // База должна читаться на ЭТОЙ площадке (другой бакет/каталог — не цепочка): иначе копия станет полной.
       const bm = await readManifest(target, base).catch(() => null);
+      if (!bm) { manifest.base = null; await query('UPDATE storage_backups SET base_id = NULL WHERE id = $1', [id]); }
       for (const o of bm?.objects ?? []) baseMap.set(`${o.service}/${o.id}`, o);
     }
     const total = objects.length + tables.length + 1;
