@@ -11,8 +11,15 @@
 #  и секрет с номером магазина (здесь). Применить: bash scripts/deploy-local.sh.
 # ============================================================
 set -euo pipefail
-cd "$(dirname "$0")/.."
-[ -f .env ] || { echo "Здесь нет .env — запускайте из каталога приложения (где docker-compose.yml)."; exit 1; }
+# Где лежит .env: APP_DIR, текущий каталог, каталог скрипта, затем /opt/sky (рабочий каталог приложения;
+# /opt/sky-src — только исходники и .env там нет). Дальше работаем именно там: рядом с .env лежит docker-compose.yml.
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+for d in "${APP_DIR:-}" "$PWD" "$HERE" /opt/sky; do
+  [ -n "$d" ] && [ -f "$d/.env" ] && { cd "$d"; break; }
+done
+[ -f .env ] || { echo "Нет .env ни в текущем каталоге, ни в $HERE, ни в /opt/sky — задайте APP_DIR=/путь/к/каталогу/приложения."; exit 1; }
+# Скрипт проверки подключения лежит в исходниках, а образ api уже содержит каталог scripts/ из последней сборки.
+SRC_DIR="$HERE"
 command -v python3 >/dev/null || { echo "Нужен python3."; exit 1; }
 
 case "${1:-}" in

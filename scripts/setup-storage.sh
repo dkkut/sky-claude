@@ -2,7 +2,7 @@
 # ============================================================
 #  Sky Storage: подключение площадки резервных копий и ключа шифрования копий.
 #
-#      cd /opt/sky-src && bash scripts/setup-storage.sh            # настроить S3 и ключ (идемпотентно)
+#      bash /opt/sky-src/scripts/setup-storage.sh            # настроить S3 (сам найдёт .env в /opt/sky) и ключ (идемпотентно)
 #      bash scripts/setup-storage.sh --check                       # что настроено (без значений секретов)
 #      bash scripts/setup-storage.sh --rotate                      # выпустить НОВЫЙ ключ шифрования копий (старый остаётся для чтения)
 #      bash scripts/setup-storage.sh --export-kek /путь/файл       # записать ключи копий в файл (права 600) — хранить ОТДЕЛЬНО от сервера
@@ -17,8 +17,15 @@
 #  ВАЖНО: ключ шифрования копий сохраните отдельно (менеджер паролей/офлайн): потеряли — копии не открыть.
 # ============================================================
 set -euo pipefail
-cd "$(dirname "$0")/.."
-[ -f .env ] || { echo "Здесь нет .env — запускайте из каталога приложения (где docker-compose.yml)."; exit 1; }
+# Где лежит .env: APP_DIR, текущий каталог, каталог скрипта, затем /opt/sky (рабочий каталог приложения;
+# /opt/sky-src — только исходники и .env там нет). Дальше работаем именно там: рядом с .env лежит docker-compose.yml.
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+for d in "${APP_DIR:-}" "$PWD" "$HERE" /opt/sky; do
+  [ -n "$d" ] && [ -f "$d/.env" ] && { cd "$d"; break; }
+done
+[ -f .env ] || { echo "Нет .env ни в текущем каталоге, ни в $HERE, ни в /opt/sky — задайте APP_DIR=/путь/к/каталогу/приложения."; exit 1; }
+# Скрипт проверки подключения лежит в исходниках, а образ api уже содержит каталог scripts/ из последней сборки.
+SRC_DIR="$HERE"
 
 get_env() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | sed -e "s/^['\"]//" -e "s/['\"]$//" || true; }
 set_env() {
@@ -47,7 +54,8 @@ status() {
   true
 }
 
-probe() { docker compose run --rm --no-deps -T api node scripts/storage-probe.mjs "${1:-}" 2>&1; }
+# Образ api мог быть собран до появления проверки: подаём скрипт и модуль S3 из исходников через том-на-лету.
+probe() { docker compose run --rm --no-deps -T -v "$SRC_DIR/scripts/storage-probe.mjs:/app/scripts/storage-probe.mjs:ro" -v "$SRC_DIR/server/skystorages3.mjs:/app/server/skystorages3.mjs:ro" api node scripts/storage-probe.mjs "${1:-}" 2>&1; }
 
 case "${1:-}" in
   --check) status; exit 0 ;;
