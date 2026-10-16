@@ -989,3 +989,10 @@ Sky Podcasts, Sky Books и режим «Код» в Sky AI входят в Sky P
 `AI_API_STYLE` (и `TRAVELPAYOUTS_TOKEN`, `STORAGE_QUARANTINE_AUTOPURGE`) не были перечислены в `docker-compose.yml` — значение из `.env` в контейнер не попадало, и Sky AI всегда ходил в `/v1/responses` (у OpenAI-совместимых поставщиков и у Anthropic этого пути нет → «Модель не ответила»).
 Теперь они в compose. Новая переменная окружения сервера = строка в `docker-compose.yml` (проверка: `grep -rhoE "process\.env\.[A-Z0-9_]+" server | sort -u` против compose). Проверка лимита расхода AI в `askModel` больше не может отключить Sky AI при сбое: ошибка проверки → пропускаем.
 Диагностика на сервере: `docker compose logs api | grep "\[ai\]"` (код отказа поставщика), админка → «AI — ресурсы и токены» (провайдер, ошибки).
+
+## Отдельное хранилище резервных копий (`STORAGE_BACKUP_S3_*`)
+
+Копии могут лежать в СВОЁМ бакете/у другого хостера: `STORAGE_BACKUP_S3_ENDPOINT|REGION|BUCKET|ACCESS_KEY|SECRET_KEY|PREFIX|PATH_STYLE` (в compose). Если задан бакет или адрес копий — `skystoragetarget.mjs` берёт `backupS3Config()` (`s3Config('STORAGE_BACKUP_S3_')`), иначе по-прежнему общий `STORAGE_S3_*`.
+Независимой площадка считается, только если это другой бакет/адрес, чем у основного хранения (`dedicated && !sameAsMain`). Подключение: `bash scripts/setup-storage.sh --backup-bucket` (проверка живым запросом, `STORAGE_PROBE_PREFIX`), затем `deploy-local.sh`.
+В админке — отдельная вкладка Sky Storage → «Хранилище копий» (`BackupStore` в `StorageTab.tsx`, данные `backupStore` из `overview`): площадка, доступность, независимость, число и объём копий, последняя и проверенная копия. Тест: `scripts/audit/backup-bucket-test.mjs` (5).
+Ключ шифрования копий (KEK) по-прежнему один на копии и хранится отдельно от S3-ключей.

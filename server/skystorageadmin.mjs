@@ -330,7 +330,18 @@ export const overview = async () => {
   ]);
   const target = describeTarget();
   const health = target.configured ? await getTarget().health().catch((e) => ({ ok: false, code: e.code })) : null;
+  // Хранилище резервных копий — отдельный блок панели: площадка, доступность, объём копий, независимость от основного хранения
+  const { rows: bs } = await query(
+    `SELECT count(*) FILTER (WHERE status IN ('ok','verified'))::int AS good, count(*) FILTER (WHERE status IN ('failed','corrupt'))::int AS bad,
+            coalesce(sum(bytes) FILTER (WHERE status IN ('ok','verified')),0)::bigint AS bytes, coalesce(sum(files) FILTER (WHERE status IN ('ok','verified')),0)::bigint AS files,
+            max(finished_at) FILTER (WHERE status IN ('ok','verified')) AS last_good, max(verified_at) AS last_verified FROM storage_backups WHERE status <> 'deleted'`);
+  const backupStore = {
+    configured: target.configured, kind: target.kind, label: target.label ?? null, prefix: target.prefix ?? null,
+    dedicated: Boolean(target.dedicated), independent: Boolean(target.independent), missing: target.missing ?? [], health,
+    copies: bs[0].good, failed: bs[0].bad, bytes: Number(bs[0].bytes), files: Number(bs[0].files), lastGoodAt: bs[0].last_good, lastVerifiedAt: bs[0].last_verified,
+  };
   return {
+    backupStore,
     state, stats: st, backups, quotas: quotas.rows, target: { ...target, health }, primary: primary.status(),
     activity: activity(), counters, job: jobRunning(),
     connections: Object.fromEntries(conns.rows.map((r) => [r.status, r.n])), lastProblems: events.rows,

@@ -6,6 +6,7 @@
 #      bash scripts/setup-storage.sh --check                       # что настроено (без значений секретов)
 #      bash scripts/setup-storage.sh --rotate                      # выпустить НОВЫЙ ключ шифрования копий (старый остаётся для чтения)
 #      bash scripts/setup-storage.sh --export-kek /путь/файл       # записать ключи копий в файл (права 600) — хранить ОТДЕЛЬНО от сервера
+#      bash scripts/setup-storage.sh --backup-bucket                # подключить ОТДЕЛЬНЫЙ бакет/хостер для резервных копий (STORAGE_BACKUP_S3_*)
 #      bash scripts/setup-storage.sh --primary on [дней_кэша]      # хранить МЕДИА (музыка, кино, подкасты, книги…) в S3; на диске — кэш (по умолчанию 7 дней)
 #      bash scripts/setup-storage.sh --primary off                 # вернуть хранение на диск сервера (файлы из S3 при этом НЕ удаляются)
 #
@@ -71,6 +72,40 @@ probe() {
 case "${1:-}" in
   --check) status; exit 0 ;;
   -h|--help) sed -n 2,21p "$0"; exit 0 ;;
+  --backup-bucket)
+    echo "== Sky Storage: ОТДЕЛЬНОЕ хранилище резервных копий (S3-совместимое) =="
+    echo "Создайте бакет у другого хостера или хотя бы отдельный бакет с отдельным ключом доступа — не тот, где лежат медиа."
+    bep="$(get_env STORAGE_BACKUP_S3_ENDPOINT)"; breg="$(get_env STORAGE_BACKUP_S3_REGION)"; bbk="$(get_env STORAGE_BACKUP_S3_BUCKET)"; bak="$(get_env STORAGE_BACKUP_S3_ACCESS_KEY)"
+    read -r -p "Адрес S3 [${bep:-https://s3.example.com}]: " v; bep="${v:-$bep}"
+    read -r -p "Регион [${breg:-us-east-1}]: " v; breg="${v:-${breg:-us-east-1}}"
+    read -r -p "Бакет для копий [${bbk}]: " v; bbk="${v:-$bbk}"
+    read -r -p "Ключ доступа (Access Key ID) [${bak}]: " v; bak="${v:-$bak}"
+    [[ "$bep" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$ ]] || { echo "Адрес должен быть вида https://хост (только https)."; exit 1; }
+    [ -n "$bbk" ] && [ -n "$bak" ] || { echo "Бакет и ключ доступа обязательны."; exit 1; }
+    if [ "${bep%/}" = "$(get_env STORAGE_S3_ENDPOINT)" ] && [ "$bbk" = "$(get_env STORAGE_S3_BUCKET)" ]; then echo "Это тот же бакет, что и основное хранение — копии в нём не будут независимыми. Укажите другой."; exit 1; fi
+    bsk="$(get_env STORAGE_BACKUP_S3_SECRET_KEY)"
+    if [ -n "$bsk" ]; then read -r -s -p "Секретный ключ (Enter — оставить прежний): " v; echo; bsk="${v:-$bsk}"
+    else read -r -s -p "Секретный ключ (скрыто): " bsk; echo; fi
+    [ "${#bsk}" -ge 8 ] || { echo "Секретный ключ не введён."; exit 1; }
+    set_env STORAGE_BACKUP_TARGET s3
+    set_env STORAGE_BACKUP_S3_ENDPOINT "${bep%/}"; set_env STORAGE_BACKUP_S3_REGION "$breg"; set_env STORAGE_BACKUP_S3_BUCKET "$bbk"
+    set_env STORAGE_BACKUP_S3_ACCESS_KEY "$bak"; set_env STORAGE_BACKUP_S3_SECRET_KEY "$bsk"
+    [ -n "$(get_env STORAGE_BACKUP_S3_PREFIX)" ] || set_env STORAGE_BACKUP_S3_PREFIX "sky-backups/"
+    if [ -z "$(get_env STORAGE_KEK_ACTIVE)" ] || [ -z "$(get_env "STORAGE_KEK_$(get_env STORAGE_KEK_ACTIVE)")" ]; then
+      set_env STORAGE_KEK_K1 "$(newkey)"; set_env STORAGE_KEK_ACTIVE K1
+      echo "Выпущен ключ шифрования копий (K1). СОХРАНИТЕ ЕГО ОТДЕЛЬНО ОТ СЕРВЕРА: bash scripts/setup-storage.sh --export-kek /путь/файл"
+    fi
+    echo; echo "== Проверка подключения =="
+    if command -v docker >/dev/null 2>&1; then
+      envargs=(-e STORAGE_PROBE_PREFIX=STORAGE_BACKUP_S3_); for k in ENDPOINT REGION BUCKET ACCESS_KEY SECRET_KEY PREFIX PATH_STYLE; do envargs+=(-e "STORAGE_BACKUP_S3_$k=$(get_env "STORAGE_BACKUP_S3_$k")"); done
+      out="$(docker compose run --rm --no-deps -T "${envargs[@]}" -v "$SRC_DIR/scripts/storage-probe.mjs:/app/scripts/storage-probe.mjs:ro" -v "$SRC_DIR/server/skystorages3.mjs:/app/server/skystorages3.mjs:ro" api node scripts/storage-probe.mjs 2>&1)" || true; echo "$out"
+      style="$(echo "$out" | sed -n 's/^STYLE=//p' | tail -n1)"
+      if [ -n "$style" ]; then
+        [ "$style" = path ] && set_env STORAGE_BACKUP_S3_PATH_STYLE 1 || set_env STORAGE_BACKUP_S3_PATH_STYLE 0
+        echo; echo "✔ Хранилище копий работает (стиль адреса: $style). Применить: bash scripts/deploy-local.sh — потом в админке Sky Storage → «Хранилище копий»."
+      else echo; echo "✖ Подключение не прошло — значения сохранены, исправьте их и запустите снова."; exit 1; fi
+    else echo "docker не найден — значения сохранены, проверку выполните позже."; fi
+    exit 0 ;;
   --primary)
     mode="${2:-}"
     case "$mode" in

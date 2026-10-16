@@ -14,7 +14,7 @@ import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, rename, rm, stat, readdir, statfs, open as fsOpen } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { createS3, s3Config, S3Error } from './skystorages3.mjs';
+import { createS3, s3Config, backupS3Config, backupBucketDedicated, S3Error } from './skystorages3.mjs';
 import { enabled as primaryEnabled } from './skystorageprimary.mjs';
 
 export class TargetError extends Error { constructor(code, detail = '') { super(code); this.code = code; this.detail = detail; } }
@@ -82,11 +82,16 @@ const makeLocal = () => {
 };
 
 const makeS3 = () => {
-  const cfg = s3Config();
+  const cfg = backupS3Config();
   if (!cfg.ok) throw new TargetError('target_not_configured', cfg.missing.join(','));
   const s3 = createS3(cfg);
+  // Независимая площадка: отдельный бакет (или хостер), отличный от основного хранения медиа. Общий бакет — не независим.
+  const main = s3Config();
+  const sameAsMain = main.ok && main.endpoint === cfg.endpoint && main.bucket === cfg.bucket;
+  const independent = backupBucketDedicated() ? !sameAsMain : !primaryEnabled();
   return {
-    kind: 's3', independent: !primaryEnabled(),   // та же корзина, что и основное хранение, — не независимая площадка label: `${new URL(cfg.endpoint).host}/${cfg.bucket}`,
+    kind: 's3', independent, dedicated: backupBucketDedicated(), prefix: cfg.prefix,
+    label: `${new URL(cfg.endpoint).host}/${cfg.bucket}`,
     put: (k, src) => s3.put(checkKey(k), src),
     get: (k, range) => s3.get(checkKey(k), range ? { start: range.start, end: range.end } : {}),
     head: (k) => s3.head(checkKey(k)),
@@ -114,7 +119,7 @@ export const describeTarget = () => {
   const k = targetKind();
   try {
     const t = getTarget();
-    return { configured: true, kind: t.kind, independent: t.independent, label: t.label };
+    return { configured: true, kind: t.kind, independent: t.independent, dedicated: Boolean(t.dedicated), label: t.label, prefix: t.prefix ?? null };
   } catch (e) {
     return { configured: false, kind: k || null, independent: false, missing: e.detail ? String(e.detail).split(',') : [], reason: e.code };
   }

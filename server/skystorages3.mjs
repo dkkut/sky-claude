@@ -49,25 +49,37 @@ export const signV4 = ({ method, host, path, query = '', headers = {}, payloadHa
 export const canonQuery = (q) => (q ? q.split('&').filter(Boolean).map((p) => { const i = p.indexOf('='); return i < 0 ? [p, ''] : [p.slice(0, i), p.slice(i + 1)]; })
   .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : 1)).map(([k, v]) => `${k}=${v}`).join('&') : '');
 
-export const s3Config = () => {
+/**
+ * Настройки S3 из окружения. `pre` — префикс имён переменных: `STORAGE_S3_` (основное хранение медиа)
+ * или `STORAGE_BACKUP_S3_` (отдельное хранилище резервных копий).
+ */
+export const s3Config = (pre = 'STORAGE_S3_') => {
   const e = process.env;
-  const endpoint = (e.STORAGE_S3_ENDPOINT ?? '').trim().replace(/\/+$/, '');
+  const v = (k) => e[`${pre}${k}`];
+  const endpoint = (v('ENDPOINT') ?? '').trim().replace(/\/+$/, '');
   const missing = [];
-  if (!endpoint) missing.push('STORAGE_S3_ENDPOINT');
-  if (!e.STORAGE_S3_BUCKET) missing.push('STORAGE_S3_BUCKET');
-  if (!e.STORAGE_S3_ACCESS_KEY) missing.push('STORAGE_S3_ACCESS_KEY');
-  if (!e.STORAGE_S3_SECRET_KEY) missing.push('STORAGE_S3_SECRET_KEY');
+  if (!endpoint) missing.push(`${pre}ENDPOINT`);
+  if (!v('BUCKET')) missing.push(`${pre}BUCKET`);
+  if (!v('ACCESS_KEY')) missing.push(`${pre}ACCESS_KEY`);
+  if (!v('SECRET_KEY')) missing.push(`${pre}SECRET_KEY`);
   // Секретные ключи и данные уходят в запросах к S3: только защищённый канал. Исключение — явный флаг для тестов с поддельным S3.
-  if (endpoint && !/^https:\/\//i.test(endpoint) && e.STORAGE_S3_ALLOW_INSECURE !== '1') missing.push('STORAGE_S3_ENDPOINT (нужен https://)');
+  if (endpoint && !/^https:\/\//i.test(endpoint) && e.STORAGE_S3_ALLOW_INSECURE !== '1') missing.push(`${pre}ENDPOINT (нужен https://)`);
   return {
-    ok: missing.length === 0, missing, endpoint, bucket: e.STORAGE_S3_BUCKET ?? '', region: e.STORAGE_S3_REGION || 'us-east-1',
-    accessKey: e.STORAGE_S3_ACCESS_KEY ?? '', secretKey: e.STORAGE_S3_SECRET_KEY ?? '',
-    prefix: (e.STORAGE_S3_PREFIX ?? 'sky-backups/').replace(/^\/+/, ''),
-    pathStyle: e.STORAGE_S3_PATH_STYLE !== '0',
-    partBytes: Math.max(5, Number(e.STORAGE_S3_PART_MB) || 8) * 1024 * 1024,
-    timeoutMs: Math.max(1000, Number(e.STORAGE_S3_TIMEOUT_MS) || 30000),
+    ok: missing.length === 0, missing, endpoint, bucket: v('BUCKET') ?? '', region: v('REGION') || 'us-east-1',
+    accessKey: v('ACCESS_KEY') ?? '', secretKey: v('SECRET_KEY') ?? '',
+    prefix: (v('PREFIX') ?? 'sky-backups/').replace(/^\/+/, ''),
+    pathStyle: v('PATH_STYLE') !== '0',
+    partBytes: Math.max(5, Number(v('PART_MB') || e.STORAGE_S3_PART_MB) || 8) * 1024 * 1024,
+    timeoutMs: Math.max(1000, Number(v('TIMEOUT_MS') || e.STORAGE_S3_TIMEOUT_MS) || 30000),
+    pre,
   };
 };
+
+/** Отдельный бакет для копий задан? Тогда копии идут ТУДА и не зависят от основного хранилища. */
+export const backupBucketDedicated = () => Boolean((process.env.STORAGE_BACKUP_S3_BUCKET ?? '').trim() || (process.env.STORAGE_BACKUP_S3_ENDPOINT ?? '').trim());
+
+/** Настройки хранилища копий: отдельный бакет (STORAGE_BACKUP_S3_*), иначе прежнее поведение — общий (STORAGE_S3_*). */
+export const backupS3Config = () => (backupBucketDedicated() ? s3Config('STORAGE_BACKUP_S3_') : s3Config());
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

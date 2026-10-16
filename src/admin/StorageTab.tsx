@@ -406,6 +406,42 @@ const Events = () => {
   );
 };
 
+/* ═══════════ Хранилище резервных копий (отдельно от основного хранения) ═══════════ */
+const BackupStore = () => {
+  const [d, setD] = useState<Data | null>(null); const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => { setBusy(true); const r = await call('GET', '/overview'); setBusy(false); if (r.ok) setD(r.data.backupStore); else flash(errText(r.error)); }, []);
+  useEffect(() => { void load(); }, [load]);
+  if (!d) return <Wait />;
+  const h = d.health;
+  return (
+    <div className="space-y-3" data-backup-store>
+      <Card title="Хранилище резервных копий" tone={d.configured && h?.ok && d.independent ? C.green : d.configured ? C.amber : C.red}>
+        <p className="text-[12px]" style={{ color: C.t2 }}>Отдельная площадка для копий. Не связана с хранилищем медиа (музыка, кино, подкасты…): если одно потеряно, другое остаётся.</p>
+        {!d.configured ? (
+          <div className="space-y-1">
+            <p className="text-[12px]" style={{ color: C.red }}>Не подключено{d.missing?.length ? `. Не заданы: ${d.missing.join(', ')}` : ''}.</p>
+            <p className="text-[11px]" style={{ color: C.t3 }}>Подключение на сервере: <span translate="no">bash /opt/sky-src/scripts/setup-storage.sh --backup-bucket</span>, затем <span translate="no">bash /opt/sky-src/scripts/deploy-local.sh</span>.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-xl p-2" style={{ background: C.l2 }}><p className="text-[10.5px]" style={{ color: C.t3 }}>Площадка</p><p className="text-[12px] font-bold" translate="no" style={{ color: C.t1 }}>{d.kind === 's3' ? 'S3' : 'каталог'} · {d.label}</p></div>
+            <div className="rounded-xl p-2" style={{ background: C.l2 }}><p className="text-[10.5px]" style={{ color: C.t3 }}>Доступность</p><p className="text-[13px] font-black" style={{ color: h?.ok ? C.green : C.red }}>{h?.ok ? `доступна, ${h.ms} мс` : `недоступна ${h?.code ?? ''}`}</p></div>
+            <div className="rounded-xl p-2" style={{ background: C.l2 }}><p className="text-[10.5px]" style={{ color: C.t3 }}>Независимость</p><p className="text-[13px] font-black" style={{ color: d.independent ? C.green : C.amber }}>{d.independent ? 'независимая площадка' : 'не независимая'}</p></div>
+            <div className="rounded-xl p-2" style={{ background: C.l2 }}><p className="text-[10.5px]" style={{ color: C.t3 }}>Режим</p><p className="text-[13px] font-black" style={{ color: C.t1 }}>{d.dedicated ? 'отдельный бакет' : 'общий с основным'}</p></div>
+            <div className="rounded-xl p-2" style={{ background: C.l2 }}><p className="text-[10.5px]" style={{ color: C.t3 }}>Копий</p><p className="text-[15px] font-black" style={{ color: C.t1 }}>{d.copies}{d.failed ? ` (сбойных ${d.failed})` : ''}</p></div>
+            <div className="rounded-xl p-2" style={{ background: C.l2 }}><p className="text-[10.5px]" style={{ color: C.t3 }}>Объём копий</p><p className="text-[15px] font-black" style={{ color: C.t1 }}>{gb(d.bytes)} · {d.files} файлов</p></div>
+            <div className="rounded-xl p-2" style={{ background: C.l2 }}><p className="text-[10.5px]" style={{ color: C.t3 }}>Последняя копия</p><p className="text-[13px] font-black" style={{ color: C.t1 }}>{dt(d.lastGoodAt)}</p></div>
+            <div className="rounded-xl p-2" style={{ background: C.l2 }}><p className="text-[10.5px]" style={{ color: C.t3 }}>Проверена</p><p className="text-[13px] font-black" style={{ color: C.t1 }}>{dt(d.lastVerifiedAt)}</p></div>
+          </div>
+        )}
+        {d.configured && !d.independent && <p className="text-[11px]" style={{ color: C.amber }}>Копии лежат там же, где и основное хранение. Для настоящей защиты подключите отдельный бакет: <span translate="no">setup-storage.sh --backup-bucket</span>.</p>}
+        <Btn tone="plain" onClick={() => void load()}>{busy ? 'Проверяю…' : 'Проверить подключение'}</Btn>
+        <p className="text-[11px]" style={{ color: C.t3 }}>Копии шифруются отдельным ключом (не ключом доступа к хранилищу). Запуск копий, проверка и восстановление — во вкладке «Резервные копии».</p>
+      </Card>
+    </div>
+  );
+};
+
 /* ═══════════ Вкладка ═══════════ */
 export const StorageTab = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
   const [gate, setGate] = useState<Data | null>(null); const [tab, setTab] = useState('state');
@@ -418,13 +454,14 @@ export const StorageTab = ({ perms, owner }: { perms: string[]; owner: boolean }
       <p className="text-[12px]" style={{ color: C.t3 }}>Статус: {gate.status}{gate.pending?.expiresAt ? ` · действует до ${dt(gate.pending.expiresAt)}` : ''}</p>
     </Card>
   );
-  const tabs = [{ k: 'state', l: 'Состояние и безопасность' }, { k: 'backups', l: 'Резервные копии' }, { k: 'conn', l: 'Подключения', hide: !perms.includes('storage_access') && !owner }, { k: 'quota', l: 'Квоты и пороги' }, { k: 'log', l: 'Журнал', hide: !perms.includes('storage_audit') }].filter((t) => !t.hide);
+  const tabs = [{ k: 'state', l: 'Состояние и безопасность' }, { k: 'backups', l: 'Резервные копии' }, { k: 'backupstore', l: 'Хранилище копий' }, { k: 'conn', l: 'Подключения', hide: !perms.includes('storage_access') && !owner }, { k: 'quota', l: 'Квоты и пороги' }, { k: 'log', l: 'Журнал', hide: !perms.includes('storage_audit') }].filter((t) => !t.hide);
   return (
     <div className="space-y-3" data-storage-admin>
       <ScrollTabs>{tabs.map((t) => (
         <button key={t.k} type="button" onClick={() => setTab(t.k)} className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold" style={tab === t.k ? { background: C.acc, color: '#fff' } : { background: C.l2, color: C.t2, border: `1px solid ${C.brd}` }}>{t.l}</button>))}</ScrollTabs>
       {tab === 'state' && <Overview perms={perms} owner={owner} />}
       {tab === 'backups' && <Backups perms={perms} owner={owner} />}
+      {tab === 'backupstore' && <BackupStore />}
       {tab === 'conn' && <Connections owner={owner} />}
       {tab === 'quota' && <Quotas perms={perms} />}
       {tab === 'log' && <Events />}

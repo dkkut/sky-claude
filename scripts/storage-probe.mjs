@@ -7,7 +7,7 @@ import { Readable } from 'node:stream';
 import { createS3, s3Config, S3Error } from '../server/skystorages3.mjs';
 
 const style = process.argv[2];
-const base = s3Config();
+const base = s3Config(process.env.STORAGE_PROBE_PREFIX || 'STORAGE_S3_');
 if (!base.ok) { console.error(`Не заданы: ${base.missing.join(', ')}`); process.exit(2); }
 
 const tryStyle = async (pathStyle) => {
