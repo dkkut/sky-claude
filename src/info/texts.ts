@@ -16,9 +16,11 @@ import prices     from '../../docs/УСЛУГИ_И_СТОИМОСТЬ.md?raw';
 import consent    from '../../docs/СОГЛАСИЕ_НА_ОБРАБОТКУ_ПД.md?raw';
 import privacy    from '../../docs/ПОЛИТИКА_КОНФИДЕНЦИАЛЬНОСТИ.md?raw';
 import contacts   from '../../docs/КОНТАКТЫ.md?raw';
+import protection from '../../docs/ПРАВИЛА_ЗАЩИТЫ_ЭКОСИСТЕМЫ.md?raw';
+import media      from '../../docs/ПОЛОЖЕНИЕ_О_МЕДИАКОНТЕНТЕ.md?raw';
 
 export const DOC_TEXTS = {
-  rules, sellers, offer, prices, consent, privacy, contacts,
+  rules, protection, media, sellers, offer, prices, consent, privacy, contacts,
 } as const;
 
 export type DocKey = keyof typeof DOC_TEXTS;
