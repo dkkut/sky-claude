@@ -91,6 +91,8 @@ import * as videoTicket from './skyvideoticket.mjs';
 import { accountFreezeRoutes } from './routes/accountfreeze.mjs';
 import { accountRecoveryRoutes } from './routes/accountrecovery.mjs';
 import { primeRewardsRoutes } from './routes/primerewards.mjs';
+import { aiUsageRoutes } from './routes/aiusage.mjs';
+import { sweepAiEvents } from './aiusage.mjs';
 import { releaseDueCashback } from './primecashback.mjs';
 import { sweepFreezeLog } from './accountfreeze.mjs';
 import { sweepDeviceLinks } from './devicelink.mjs';
@@ -194,7 +196,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, accountRecoveryRoutes, primeRewardsRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -665,6 +667,7 @@ const start = async () => {
       await sweepOidc().catch((e) => console.error('[oidc] уборка:', e.message));
       await sweepPartners().catch((e) => console.error('[skykassa] партнёры:', e.message));
       await sweepSkykassa().catch((e) => console.error('[skykassa] уборка:', e.message));
+      await sweepAiEvents().catch(() => {});
       await releaseDueCashback().catch((e) => console.error('[prime] кэшбэк:', e.message));
       await sweepIpPin();
       await sweepGameSessions();

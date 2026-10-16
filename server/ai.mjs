@@ -28,6 +28,7 @@
  */
 import { aiLangNote } from './lang.mjs';
 import { config } from './config.mjs';
+import { checkBudget, recordCall } from './aiusage.mjs';
 
 /** Минута: дольше ждать нечего, человек уже ушёл с экрана. */
 const TIMEOUT_MS = 60_000;
@@ -148,6 +149,8 @@ const extractResponseText = (data) => {
 export const askModel = async ({ system, user, messages, maxTokens = 2000, long = false }) => {
   if (!aiConfigured()) return { error: 'ai_not_configured' };
   if (inflight >= MAX_INFLIGHT) return { error: 'ai_busy' };
+  const budget = await checkBudget();                  // лимит расхода, заданный администрацией (если включена блокировка)
+  if (budget.error) return { error: 'ai_budget' };
 
   const turns = Array.isArray(messages) && messages.length
     ? messages
@@ -156,6 +159,10 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
   const control = new AbortController();
   const timer = setTimeout(() => control.abort(), long ? LONG_TIMEOUT_MS : TIMEOUT_MS);
   inflight += 1;
+  // Длина того, что уходит поставщику, — для ОЦЕНКИ расхода, если он не пришлёт usage (картинки и PDF в оценку не входят)
+  const textLen = (c) => (typeof c === 'string' ? c.length : Array.isArray(c) ? c.reduce((a, b) => a + (typeof b === 'string' ? b.length : b?.type === 'text' ? String(b.text ?? '').length : 0), 0) : 0);
+  const inChars = String(system ?? '').length + turns.reduce((a, t) => a + textLen(t.content), 0);
+  const note = (ok, code, usage = null, outChars = 0) => recordCall({ kind: 'chat', ok, code, usage, chars: { input: inChars, output: outChars } });
   try {
     const chatStyle = config.aiApiStyle === 'chat';
     const limit = Math.max(256, Math.min(8000, Number(maxTokens) || 2000));
@@ -185,24 +192,32 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
       // Тело ответа не разбираем и не показываем: в нём бывает эхо
       // запроса вместе с заголовками.
       console.warn('[ai] отказ поставщика', res.status);
-      if (res.status === 429) return { error: 'ai_busy' };
+      if (res.status === 429) { await note(false, 'ai_busy'); return { error: 'ai_busy' }; }
       // 413 и 400 на большом вложении — это «файл не по зубам», а не
       // поломка сервера, и человеку надо сказать именно это.
-      if (res.status === 413) return { error: 'ai_input_too_large' };
+      if (res.status === 413) { await note(false, 'ai_input_too_large'); return { error: 'ai_input_too_large' }; }
+      await note(false, `provider_${res.status}`);
       return { error: 'ai_failed' };
     }
 
     const raw = await readCapped(res);
-    if (raw === null) return { error: 'ai_failed' };
+    if (raw === null) { await note(false, 'ai_failed'); return { error: 'ai_failed' }; }
     let data;
-    try { data = JSON.parse(raw); } catch { return { error: 'ai_failed' }; }
+    try { data = JSON.parse(raw); } catch { await note(false, 'ai_failed'); return { error: 'ai_failed' }; }
 
     const text = config.aiApiStyle === 'chat' ? extractChatText(data) : extractResponseText(data);
-    if (!text.trim()) return { error: 'ai_failed' };
+    if (!text.trim()) { await note(false, 'ai_failed'); return { error: 'ai_failed' }; }
+    const u = data?.usage ?? {};
+    const usage = config.aiApiStyle === 'chat'
+      ? { input: Number(u.prompt_tokens) || 0, output: Number(u.completion_tokens) || 0 }
+      : { input: Number(u.input_tokens) || 0, output: Number(u.output_tokens) || 0 };
+    await note(true, '', usage, text.length);
     return { text, stopReason: data?.status ?? null };
   } catch (err) {
     console.warn('[ai] запрос не удался:', err?.name === 'AbortError' ? 'превышено время' : 'ошибка связи');
-    return { error: err?.name === 'AbortError' ? 'ai_timeout' : 'ai_failed' };
+    const code = err?.name === 'AbortError' ? 'ai_timeout' : 'ai_failed';
+    await note(false, code);
+    return { error: code };
   } finally {
     clearTimeout(timer);
     inflight -= 1;
@@ -306,6 +321,7 @@ export const transcribeAudio = async ({ audio, mime, name = 'audio', language = 
 
     if (!res.ok) {
       console.warn('[stt] отказ поставщика', res.status);
+      await recordCall({ kind: 'stt', ok: false, code: res.status === 429 ? 'ai_busy' : `provider_${res.status}` });
       if (res.status === 429) return { error: 'ai_busy' };
       if (res.status === 413) return { error: 'ai_input_too_large' };
       return { error: 'stt_failed' };
@@ -332,9 +348,11 @@ export const transcribeAudio = async ({ audio, mime, name = 'audio', language = 
         .slice(0, 5000)
       : [];
 
+    await recordCall({ kind: 'stt', ok: true });
     return { text, cues, language: String(data?.language ?? '') };
   } catch (err) {
     console.warn('[stt] запрос не удался:', err?.name === 'AbortError' ? 'превышено время' : 'ошибка связи');
+    await recordCall({ kind: 'stt', ok: false, code: err?.name === 'AbortError' ? 'ai_timeout' : 'stt_failed' });
     return { error: err?.name === 'AbortError' ? 'ai_timeout' : 'stt_failed' };
   } finally {
     clearTimeout(timer);
