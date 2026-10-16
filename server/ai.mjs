@@ -149,7 +149,8 @@ const extractResponseText = (data) => {
 export const askModel = async ({ system, user, messages, maxTokens = 2000, long = false }) => {
   if (!aiConfigured()) return { error: 'ai_not_configured' };
   if (inflight >= MAX_INFLIGHT) return { error: 'ai_busy' };
-  const budget = await checkBudget();                  // лимит расхода, заданный администрацией (если включена блокировка)
+  // Лимит расхода, заданный администрацией (если включена блокировка). Сбой самой проверки не должен отключать Sky AI.
+  const budget = await checkBudget().catch((e) => { console.error('[ai] проверка лимита:', e.message); return { ok: true }; });
   if (budget.error) return { error: 'ai_budget' };
 
   const turns = Array.isArray(messages) && messages.length

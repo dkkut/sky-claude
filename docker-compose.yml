@@ -184,10 +184,16 @@ services:
       AI_API_KEY:            ${AI_API_KEY:-}
       AI_MODEL:              ${AI_MODEL:-claude-sonnet-4-5-20250929}
       AI_BASE_URL:           ${AI_BASE_URL:-https://api.anthropic.com}
+      # Формат запросов к поставщику: chat — /v1/chat/completions (OpenAI-совместимые), иначе /v1/responses.
+      # Раньше эта переменная в контейнер не попадала, и Sky AI всегда ходил в /v1/responses.
+      AI_API_STYLE:          ${AI_API_STYLE:-}
       # Потолок на новые пересказы за час — на весь сервер, а не на
       # человека: платит за них владелец.
       AI_SUMMARIES_PER_HOUR: ${AI_SUMMARIES_PER_HOUR:-200}
       TV_ALLOWED_HOSTS:      ${TV_ALLOWED_HOSTS:-}
+      # Авиабилеты Sky GO (Travelpayouts) и хранилище: до этого эти переменные из .env в контейнер не попадали.
+      TRAVELPAYOUTS_TOKEN:   ${TRAVELPAYOUTS_TOKEN:-}
+      STORAGE_QUARANTINE_AUTOPURGE: ${STORAGE_QUARANTINE_AUTOPURGE:-}
       # Доставка кодов. 'log' пишет код в журнал и никуда не шлёт —
       # в бою нужен настоящий провайдер, иначе войти никто не сможет.
       SMS_MODE:              ${SMS_MODE:-log}
