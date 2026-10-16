@@ -225,7 +225,7 @@ export const decideCourierApplication = async (adminId, courierId, approve, reas
   if (!COURIER_ID_RE.test(String(courierId ?? ''))) return { error: 'not_found' };
 
   const { rows: cur } = await query(
-    `SELECT * FROM logi_couriers WHERE id = $1 AND status = 'pending'`, [courierId]);
+    `SELECT * FROM logi_couriers WHERE id = $1 AND status IN ('pending', 'rejected')`, [courierId]);
   const row = cur[0];
   if (!row) return { error: 'not_found' };
 
@@ -240,7 +240,7 @@ export const decideCourierApplication = async (adminId, courierId, approve, reas
 
   const { rows: upd } = await query(
     `UPDATE logi_couriers SET status = $2, status_reason = $3, status_by = $4, status_at = now(), updated_at = now()
-      WHERE id = $1 AND status = 'pending' RETURNING *`,
+      WHERE id = $1 AND status IN ('pending', 'rejected') RETURNING *`,
     [courierId, status, statusReason, adminId]);
   if (!upd[0]) return { error: 'not_found' };
 

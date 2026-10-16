@@ -26,10 +26,10 @@ export const FamilyGoals = ({ onBack }: { onBack: () => void }) => {
     setCreating(false); setTitle(''); setTarget(''); setDeadline('');
   };
 
-  const submitContribute = () => {
-    const n = Number(amount);
+  const submitContribute = async () => {
+    const n = Math.floor(Number(amount));
     if (!n || !contribGoal) return;
-    const ok = contributeToGoal(contribGoal, n);
+    const ok = await contributeToGoal(contribGoal, n);
     setToast(ok ? `Внесено ${n.toLocaleString('ru')} ₽` : 'Недостаточно средств на семейном счёте');
     setContribGoal(null); setAmount('');
     setTimeout(() => setToast(null), 2200);

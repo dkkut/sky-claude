@@ -142,3 +142,11 @@ export const apiAdminFamilyDetail = (familyId: string) =>
 
 export const apiAdminSetFamilyStatus = (familyId: string, status: 'active' | 'suspended') =>
   post<{ family: ServerFamily }>(`/api/family/admin/${enc(familyId)}/status`, { status });
+
+export interface FamilyWalletData {
+  balance: number; turnover: number;
+  transactions: Array<{ id: string; memberId: string | null; memberName: string; kind: 'topup' | 'withdraw' | 'goal_contribute' | 'spend'; amount: number; desc: string; createdAt: string }>;
+}
+export const apiFamilyWallet = (familyId: string) => apiCall<FamilyWalletData>(`/api/family/${enc(familyId)}/wallet`);
+export const apiFamilyWalletOp = (familyId: string, op: 'topup' | 'withdraw' | 'contribute', body: { amount: number; desc?: string; toProfileId?: string; idemKey?: string }) =>
+  post<FamilyWalletData>(`/api/family/${enc(familyId)}/wallet-${op}`, { ...body, idemKey: body.idemKey ?? crypto.randomUUID() });

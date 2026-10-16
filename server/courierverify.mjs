@@ -253,6 +253,13 @@ export const decideVerification = async (verificationId, adminId, approve, reaso
     [id, status, adminId, rejectReason]);
   if (!upd[0]) return { error: 'not_found' };
 
+  // Паспорт подтверждён, а заявка курьера когда-то была отклонена: возвращаем её на рассмотрение,
+  // иначе человек так и видит старое отклонение, а администратору нечего одобрять.
+  if (approve) {
+    await query(
+      `UPDATE logi_couriers SET status = 'pending', status_reason = NULL, status_at = now(), updated_at = now()
+        WHERE profile_id = $1 AND status = 'rejected'`, [upd[0].profile_id]);
+  }
   await logLogi(adminId, approve ? 'courier_verification_approved' : 'courier_verification_rejected', id);
   return { verification: toVerification(upd[0]) };
 };

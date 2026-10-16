@@ -14,6 +14,7 @@ import {
   purchaseFamilyPrime, listNotifications, readNotification,
   adminListFamilies, adminFamilyDetail, adminSetFamilyStatus,
 } from './../family.mjs';
+import * as famWallet from './../familywallet.mjs';
 
 const READ_PER_MIN = 60;
 const WRITE_PER_MIN = 20;
@@ -40,6 +41,10 @@ const CODES = {
   owner_must_transfer_or_close: 409,
   cannot_remove_owner: 409,
   nothing_to_update: 400,
+  invalid_amount: 400,
+  insufficient_funds: 409,
+  insufficient_family_funds: 409,
+  family_inactive: 409,
 };
 
 const fail = (res, result) => json(res, CODES[result.error] ?? 400, { error: result.error });
@@ -103,6 +108,21 @@ export const familyRoutes = async (req, res, url) => {
     if (req.method === 'DELETE' && tail === '') {
       if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
       const done = await closeFamily(me, familyId);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+
+    if (tail === '/wallet' && req.method === 'GET') {
+      if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+      const done = await famWallet.getWallet(me, familyId);
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+    if (req.method === 'POST' && ['/wallet-topup', '/wallet-withdraw', '/wallet-contribute'].includes(tail)) {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      const b = await body();
+      const amount = Number(b.amount);
+      const done = tail === '/wallet-topup' ? await famWallet.topUp(me, familyId, amount, b.idemKey)
+        : tail === '/wallet-withdraw' ? await famWallet.withdraw(me, familyId, amount, b.desc, b.idemKey, b.toProfileId)
+          : await famWallet.contribute(me, familyId, amount, b.desc, b.idemKey);
       return done.error ? fail(res, done) : json(res, 200, done);
     }
 

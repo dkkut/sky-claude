@@ -29,7 +29,7 @@ import {
   apiMyFamily, apiCreateFamily, apiCloseFamily, apiMyInvitations,
   apiInviteMember, apiCancelInvitation, apiAcceptInvitation, apiRejectInvitation,
   apiAddPlaceholderMember, apiRemoveMember, apiUpdateMember, apiLeaveFamily, apiTransferOwnership,
-  apiPurchaseFamilyPrime,
+  apiPurchaseFamilyPrime, apiFamilyWallet, apiFamilyWalletOp,
   type ServerFamily, type ServerFamilyMember, type FamilyInvitation, type ServerFamilyStatus,
 } from './familyApi';
 
@@ -176,13 +176,15 @@ interface FamilyState {
   updateMemberLimits: (memberId: string, patch: Partial<Pick<FamilyMember,'dailyLimit'|'weeklyLimit'|'monthlyLimit'|'maxTransfer'|'canWithdraw'|'canDepositOnly'|'requireApprovalOver'>>) => void;
 
   // счёт (локально — вне текущего ТЗ)
-  topUp: (amount: number) => boolean;
-  withdraw: (amount: number, reason: string) => boolean;
+  /** Общий счёт живёт на сервере: пополнение/вывод — запросы, ответ сервера — истина. */
+  topUp: (amount: number) => Promise<{ ok: boolean; error?: string }>;
+  withdraw: (amount: number, reason: string) => Promise<{ ok: boolean; error?: string; needsApproval?: boolean }>;
+  loadWallet: () => Promise<void>;
   setAutoTopup: (cfg: Family['autoTopup']) => void;
 
   // цели (локально)
   createGoal: (title: string, kind: string, targetAmount: number, deadline?: string) => void;
-  contributeToGoal: (goalId: string, amount: number) => boolean;
+  contributeToGoal: (goalId: string, amount: number) => Promise<boolean>;
   deleteGoal: (goalId: string) => void;
 
   // баллы / достижения (локально)
@@ -225,7 +227,7 @@ interface FamilyState {
   setAllowance: (memberId: string, amount: number, freq: AllowanceFreq) => void;
   cancelAllowance: (memberId: string) => void;
   checkDuePayouts: () => void;
-  payoutNow: (memberId: string) => boolean;
+  payoutNow: (memberId: string) => Promise<boolean>;
 
   // семейный сейф (локально)
   addSafeItem: (kind: SafeItem['kind'], title: string, content: string, visibility: SafeItem['visibility']) => void;
@@ -289,6 +291,16 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
         loaded: true,
       });
       persist(hydrated);
+      void get().loadWallet();
+    },
+
+    loadWallet: async () => {
+      const f = get().family;
+      if (!f) return;
+      const r = await apiFamilyWallet(f.id);
+      if (!r.ok || !r.data) return;
+      const w = r.data;
+      mut(fm => ({ ...fm, balance: w.balance, totalTurnover: w.turnover, transactions: w.transactions.map(t => ({ id: t.id, memberId: t.memberId ?? '', memberName: t.memberName, kind: t.kind, amount: t.amount, desc: t.desc, createdAt: t.createdAt })) }));
     },
 
     cashbackPct: () => {
@@ -411,38 +423,37 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       mut(f => ({ ...f, members: f.members.map(m => m.id === memberId ? { ...m, ...patch } : m) }));
     },
 
-    topUp: (amount) => {
+    topUp: async (amount) => {
       const f = get().family;
-      if (!f || amount <= 0) return false;
+      if (!f || amount <= 0) return { ok: false, error: 'invalid_amount' };
       const uid = me();
-      const ok = useMoney.getState().spend(uid, amount, 'family', 'Пополнение семейного счёта Sky Family');
-      if (!ok) return false;
-      const tx: FamilyTx = { id: crypto.randomUUID(), memberId: uid, memberName: myName(), kind: 'topup', amount, desc: 'Пополнение из личного кошелька', createdAt: nowISO() };
-      mut(fm => ({ ...fm, balance: fm.balance + amount, totalTurnover: fm.totalTurnover + amount, transactions: [tx, ...fm.transactions] }));
+      const r = await apiFamilyWalletOp(f.id, 'topup', { amount });
+      if (!r.ok) return { ok: false, error: r.error };
+      await Promise.all([get().loadWallet(), useMoney.getState().refresh()]);
       get()._log(`пополнил(а) семейный счёт на ${amount.toLocaleString('ru')} ₽`, 'topup');
       get().addPoints(uid, Math.round(amount/100), 'Пополнение семейного счёта');
       get()._checkAchievements();
-      return true;
+      return { ok: true };
     },
 
-    withdraw: (amount, reason) => {
+    withdraw: async (amount, reason) => {
       const f = get().family;
       const uid = me();
       const member = f?.members.find(m => m.accountId === uid);
-      if (!f || !member || amount <= 0 || amount > f.balance) return false;
-      if (member.canDepositOnly || !member.canWithdraw) return false;
-      if (member.maxTransfer && amount > member.maxTransfer) return false;
+      if (!f || !member || amount <= 0) return { ok: false, error: 'invalid_amount' };
+      if (amount > f.balance) return { ok: false, error: 'insufficient_family_funds' };
+      if (member.canDepositOnly || !member.canWithdraw) return { ok: false, error: 'not_allowed' };
+      if (member.maxTransfer && amount > member.maxTransfer) return { ok: false, error: 'limit' };
 
       if (member.requireApprovalOver && amount > member.requireApprovalOver && member.role !== 'owner' && member.role !== 'adult') {
         get().requestApproval('withdraw', reason || 'Вывод средств с семейного счёта', amount, reason);
-        return false;
+        return { ok: false, needsApproval: true };
       }
-
-      useMoney.getState().refund(uid, amount, 'Перевод из семейного счёта Sky Family');
-      const tx: FamilyTx = { id: crypto.randomUUID(), memberId: uid, memberName: myName(), kind: 'withdraw', amount, desc: reason || 'Вывод на личный счёт', createdAt: nowISO() };
-      mut(fm => ({ ...fm, balance: fm.balance - amount, transactions: [tx, ...fm.transactions] }));
+      const r = await apiFamilyWalletOp(f.id, 'withdraw', { amount, desc: reason || 'Вывод на личный счёт' });
+      if (!r.ok) return { ok: false, error: r.error };
+      await Promise.all([get().loadWallet(), useMoney.getState().refresh()]);
       get()._log(`перевёл(а) ${amount.toLocaleString('ru')} ₽ на личный счёт`, 'transfer');
-      return true;
+      return { ok: true };
     },
 
     setAutoTopup: (cfg) => mut(f => ({ ...f, autoTopup: cfg })),
@@ -455,22 +466,24 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       get()._checkAchievements();
     },
 
-    contributeToGoal: (goalId, amount) => {
+    contributeToGoal: async (goalId, amount) => {
       const f = get().family;
       if (!f || amount <= 0 || amount > f.balance) return false;
       const uid = me();
+      const g0 = f.goals.find(g => g.id === goalId);
+      const r = await apiFamilyWalletOp(f.id, 'contribute', { amount, desc: `Взнос в цель${g0 ? ` «${g0.title}»` : ''}` });
+      if (!r.ok) return false;
       let achievedNow = false;
       mut(fm => ({
         ...fm,
-        balance: fm.balance - amount,
         goals: fm.goals.map(g => {
           if (g.id !== goalId) return g;
           const saved = Math.min(g.targetAmount, g.savedAmount + amount);
           if (saved >= g.targetAmount && !g.achieved) achievedNow = true;
           return { ...g, savedAmount: saved, achieved: saved >= g.targetAmount, contributors: g.contributors.includes(uid) ? g.contributors : [...g.contributors, uid] };
         }),
-        transactions: [{ id: crypto.randomUUID(), memberId: uid, memberName: myName(), kind: 'goal_contribute', amount, desc: `Взнос в цель`, createdAt: nowISO() }, ...fm.transactions],
       }));
+      await get().loadWallet();
       get()._log(`внёс(ла) ${amount.toLocaleString('ru')} ₽ в семейную цель`, 'goalAdd');
       if (achievedNow) { get()._log('Семья достигла цели!', 'done'); }
       get()._checkAchievements();
@@ -503,11 +516,8 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
       if (req && approve && req.kind === 'withdraw' && f) {
         const member = f.members.find(m => m.accountId === req.memberId);
         if (member && req.amount <= f.balance) {
-          useMoney.getState().refund(req.memberId, req.amount, 'Перевод из семейного счёта Sky Family (одобрено)');
-          mut(fm => ({
-            ...fm, balance: fm.balance - req.amount,
-            transactions: [{ id: crypto.randomUUID(), memberId: req.memberId, memberName: req.memberName, kind:'withdraw', amount: req.amount, desc: `${req.itemTitle} (одобрено)`, createdAt: nowISO() }, ...fm.transactions],
-          }));
+          void apiFamilyWalletOp(f.id, 'withdraw', { amount: req.amount, desc: `${req.itemTitle} (одобрено)`, toProfileId: req.memberId, idemKey: `approval:${req.id}` })
+            .then(() => get().loadWallet());
         }
       }
       get()._log(approve ? `одобрил(а) запрос «${req?.itemTitle}»` : `отклонил(а) запрос «${req?.itemTitle}»`, approve ? 'approve' : 'reject');
@@ -614,18 +624,19 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
     },
     cancelAllowance: (memberId) => mut(f => ({ ...f, allowances: f.allowances.map(a => a.memberId === memberId ? { ...a, active: false } : a) })),
 
-    payoutNow: (memberId) => {
+    payoutNow: async (memberId) => {
       const f = get().family;
       const a = f?.allowances.find(x => x.memberId === memberId);
       const member = f?.members.find(m => m.id === memberId);
-      if (!f || !a || !member || f.balance < a.amount) return false;
-      if (member.accountId) useMoney.getState().refund(member.accountId, a.amount, 'Карманные деньги Sky Family');
+      if (!f || !a || !member || f.balance < a.amount || !member.accountId) return false;
+      const r = await apiFamilyWalletOp(f.id, 'withdraw', { amount: a.amount, desc: 'Карманные деньги', toProfileId: member.accountId, idemKey: `allowance:${memberId}:${a.nextPayoutAt}` });
+      if (!r.ok) return false;
       const days = a.freq === 'weekly' ? 7 : 30;
       mut(fm => ({
-        ...fm, balance: fm.balance - a.amount,
+        ...fm,
         allowances: fm.allowances.map(x => x.memberId === memberId ? { ...x, nextPayoutAt: new Date(Date.now()+days*86400000).toISOString() } : x),
-        transactions: [{ id: crypto.randomUUID(), memberId, memberName: member.name, kind: 'withdraw', amount: a.amount, desc: 'Карманные деньги', createdAt: nowISO() }, ...fm.transactions],
       }));
+      await Promise.all([get().loadWallet(), useMoney.getState().refresh()]);
       get()._log(`получил(а) карманные деньги: ${a.amount.toLocaleString('ru')} ₽`, 'money');
       get().addPoints(memberId, Math.round(a.amount/50), 'Карманные деньги');
       return true;
@@ -633,7 +644,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => {
     checkDuePayouts: () => {
       const f = get().family;
       if (!f) return;
-      f.allowances.filter(a => a.active && new Date(a.nextPayoutAt).getTime() <= Date.now()).forEach(a => get().payoutNow(a.memberId));
+      f.allowances.filter(a => a.active && new Date(a.nextPayoutAt).getTime() <= Date.now()).forEach(a => { void get().payoutNow(a.memberId); });
     },
 
     addSafeItem: (kind, title, content, visibility) => {

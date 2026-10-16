@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowDownToLine, ArrowUpFromLine, Repeat, X, Lock } from 'lucide-react';
 import { FamilyIcon } from '../familyIcons';
@@ -26,21 +26,35 @@ export const FamilyWallet = ({ onBack }: { onBack: () => void }) => {
   const personalBalance = getBalance(currentUserId ?? '');
   const canWithdraw = me && !me.canDepositOnly && me.canWithdraw;
 
-  const doTopUp = () => {
-    const n = Number(amount);
-    if (!n || n <= 0) return;
-    const ok = topUp(n);
-    setToast(ok ? `Счёт пополнен на ${n.toLocaleString('ru')} ₽` : 'Недостаточно средств на личном балансе');
+  const [busy, setBusy] = useState(false);
+  // Общий счёт на сервере: подтягиваем свежий баланс, чтобы все участники видели одно и то же.
+  const loadWallet = useFamilyStore((s) => s.loadWallet);
+  useEffect(() => {
+    void loadWallet();
+    const t = window.setInterval(() => { if (!document.hidden) void loadWallet(); }, 10_000);
+    return () => window.clearInterval(t);
+  }, [loadWallet]);
+
+  const doTopUp = async () => {
+    const n = Math.floor(Number(amount));
+    if (!n || n <= 0 || busy) return;
+    setBusy(true);
+    const r = await topUp(n);
+    setBusy(false);
+    setToast(r.ok ? `Счёт пополнен на ${n.toLocaleString('ru')} ₽` : r.error === 'insufficient_funds' ? 'Недостаточно средств на личном балансе' : 'Не удалось пополнить счёт');
     setSheet(null); setAmount('');
     setTimeout(() => setToast(null), 2200);
   };
 
-  const doWithdraw = () => {
-    const n = Number(amount);
-    if (!n || n <= 0) return;
-    const ok = withdraw(n, 'Личный перевод');
-    if (ok) setToast(`${n.toLocaleString('ru')} ₽ переведено на личный счёт`);
-    else if (me?.requireApprovalOver && n > me.requireApprovalOver) setToast('Запрос отправлен взрослым на подтверждение');
+  const doWithdraw = async () => {
+    const n = Math.floor(Number(amount));
+    if (!n || n <= 0 || busy) return;
+    setBusy(true);
+    const r = await withdraw(n, 'Личный перевод');
+    setBusy(false);
+    if (r.ok) setToast(`${n.toLocaleString('ru')} ₽ переведено на личный счёт`);
+    else if (r.needsApproval) setToast('Запрос отправлен взрослым на подтверждение');
+    else if (r.error === 'insufficient_family_funds') setToast('На общем счёте недостаточно средств');
     else setToast('Операция недоступна: проверьте лимиты');
     setSheet(null); setAmount('');
     setTimeout(() => setToast(null), 2600);

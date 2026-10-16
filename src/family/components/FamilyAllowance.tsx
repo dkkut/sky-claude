@@ -21,8 +21,8 @@ export const FamilyAllowance = ({ onBack }: { onBack: () => void }) => {
     setEditing(null);
   };
 
-  const doPayout = (memberId: string) => {
-    const ok = payoutNow(memberId);
+  const doPayout = async (memberId: string) => {
+    const ok = await payoutNow(memberId);
     setToast(ok ? 'Выплата произведена' : 'Недостаточно средств на семейном счёте');
     setTimeout(() => setToast(null), 2200);
   };
