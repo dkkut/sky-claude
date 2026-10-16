@@ -57,6 +57,8 @@ export const s3Config = () => {
   if (!e.STORAGE_S3_BUCKET) missing.push('STORAGE_S3_BUCKET');
   if (!e.STORAGE_S3_ACCESS_KEY) missing.push('STORAGE_S3_ACCESS_KEY');
   if (!e.STORAGE_S3_SECRET_KEY) missing.push('STORAGE_S3_SECRET_KEY');
+  // Секретные ключи и данные уходят в запросах к S3: только защищённый канал. Исключение — явный флаг для тестов с поддельным S3.
+  if (endpoint && !/^https:\/\//i.test(endpoint) && e.STORAGE_S3_ALLOW_INSECURE !== '1') missing.push('STORAGE_S3_ENDPOINT (нужен https://)');
   return {
     ok: missing.length === 0, missing, endpoint, bucket: e.STORAGE_S3_BUCKET ?? '', region: e.STORAGE_S3_REGION || 'us-east-1',
     accessKey: e.STORAGE_S3_ACCESS_KEY ?? '', secretKey: e.STORAGE_S3_SECRET_KEY ?? '',

@@ -84,7 +84,10 @@ const CONFIRM_ERR: Record<string, string> = {
 export const AdminVerifyPage = ({ kind = 'admin' }: { kind?: 'admin' | 'ssh' }) => {
   const base = kind === 'ssh' ? '/api/ssh-gate' : '/api/admin/gate';
   const ssh = kind === 'ssh';
-  const token = new URLSearchParams(location.search).get('t') ?? '';
+  // Токен берём из адреса один раз и убираем из строки браузера: он не должен остаться в истории и уйти в Referer
+  const tokenRef = useRef(new URLSearchParams(location.search).get('t') ?? '');
+  const token = tokenRef.current;
+  useEffect(() => { try { history.replaceState(null, '', location.pathname); } catch { /* не критично */ } }, []);
   const [phase, setPhase] = useState<Phase>('loading');
   const [info, setInfo] = useState<LinkInfo | null>(null);
   const [code, setCode] = useState('');

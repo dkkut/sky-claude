@@ -1,7 +1,7 @@
 /* Защита аккаунта: завершить недавние сессии и/или временно заморозить новые входы.
    Баннер «Разморозка аккаунта» появляется только после перехода по ссылке из письма.
    Серверная часть — server/accountfreeze.mjs. */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useModuleStore } from '@/data/state/modules';
 import { ShieldAlert, Snowflake, Mail } from 'lucide-react';
 import {
@@ -188,7 +188,9 @@ export const useOpenDevicesIfAsked = () => {
 
 /** Страница по ссылке из письма (/unfreeze?t=…). Сама ничего не размораживает — только подтверждает ссылку. */
 export const UnfreezeLinkPage = () => {
-  const t = new URLSearchParams(location.search).get('t') ?? '';
+  const tRef = useRef(new URLSearchParams(location.search).get('t') ?? '');
+  const t = tRef.current;
+  useEffect(() => { try { history.replaceState(null, '', location.pathname); } catch { /* не критично */ } }, []);
   const [state, setState] = useState<'ask' | 'busy' | 'ok' | 'bad'>('ask');
   const [minutes, setMinutes] = useState(30);
   const go = async () => {

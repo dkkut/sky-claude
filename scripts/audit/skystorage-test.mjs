@@ -106,7 +106,7 @@ const fakeSrv = http.createServer((req, res) => {
   });
 });
 await new Promise((r) => fakeSrv.listen(9955, '127.0.0.1', r));
-const s3env = (over = {}) => ({ STORAGE_S3_ENDPOINT: 'http://127.0.0.1:9955', STORAGE_S3_BUCKET: 'skybk', STORAGE_S3_ACCESS_KEY: 'AKFAKE', STORAGE_S3_SECRET_KEY: SECRET, STORAGE_S3_PREFIX: 'sky-backups/', STORAGE_S3_PART_MB: '5', STORAGE_S3_TIMEOUT_MS: '1500', ...over });
+const s3env = (over = {}) => ({ STORAGE_S3_ENDPOINT: 'http://127.0.0.1:9955', STORAGE_S3_ALLOW_INSECURE: '1', STORAGE_S3_BUCKET: 'skybk', STORAGE_S3_ACCESS_KEY: 'AKFAKE', STORAGE_S3_SECRET_KEY: SECRET, STORAGE_S3_PREFIX: 'sky-backups/', STORAGE_S3_PART_MB: '5', STORAGE_S3_TIMEOUT_MS: '1500', ...over });
 const withEnv = async (vars, fn) => { const old = {}; for (const k of Object.keys(vars)) { old[k] = process.env[k]; process.env[k] = vars[k]; } try { return await fn(); } finally { for (const k of Object.keys(vars)) { if (old[k] === undefined) delete process.env[k]; else process.env[k] = old[k]; } } };
 await withEnv(s3env(), async () => {
   const c = S3.createS3();
@@ -130,7 +130,8 @@ await withEnv(s3env(), async () => {
   t('S3: тайм-аут при недоступности и ограниченное число повторов', eh !== null && Date.now() - t0 < 12000, `${eh} ${Date.now() - t0} мс`);
   const hh = await withEnv({ STORAGE_S3_SECRET_KEY: 'wrong-secret-zzzzzzzzzz' }, async () => { const b = fake.badSig; const e = await rejects(() => S3.createS3().put('x', Readable.from([Buffer.from('1')]))); return { e, n: fake.badSig - b }; });
   t('S3: неверные учётные данные → отказ без повторов, без раскрытия секрета', hh.e === 's3_access_denied' && hh.n === 1);
-  t('S3: без настройки — понятная ошибка', (await withEnv({ STORAGE_S3_ENDPOINT: '' }, async () => rejects(async () => S3.createS3()))) === 's3_not_configured');
+  t('S3: адрес без https отклоняется (секреты не уходят по открытому каналу)', (await withEnv({ STORAGE_S3_ALLOW_INSECURE: '0' }, async () => rejects(async () => S3.createS3()))) === 's3_not_configured');
+t('S3: без настройки — понятная ошибка', (await withEnv({ STORAGE_S3_ENDPOINT: '' }, async () => rejects(async () => S3.createS3()))) === 's3_not_configured');
 });
 
 /* ═══════════ 3. Состояние, файлы, копии (в процессе) ═══════════ */

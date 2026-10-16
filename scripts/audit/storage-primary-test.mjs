@@ -14,7 +14,7 @@ const dir = mkdtempSync(join(tmpdir(), 'primary-'));
 process.env.MUSIC_DIR = join(dir, 'music');
 process.env.STORAGE_PRIMARY = 's3';
 process.env.STORAGE_PRIMARY_CACHE_DAYS = '1';
-Object.assign(process.env, { STORAGE_S3_ENDPOINT: 'http://127.0.0.1:9956', STORAGE_S3_BUCKET: 'skymedia', STORAGE_S3_ACCESS_KEY: 'AKFAKE', STORAGE_S3_SECRET_KEY: 'fake-secret-0123456789', STORAGE_S3_PREFIX: 'sky/', STORAGE_S3_TIMEOUT_MS: '1500' });
+Object.assign(process.env, { STORAGE_S3_ENDPOINT: 'http://127.0.0.1:9956', STORAGE_S3_ALLOW_INSECURE: '1', STORAGE_S3_BUCKET: 'skymedia', STORAGE_S3_ACCESS_KEY: 'AKFAKE', STORAGE_S3_SECRET_KEY: 'fake-secret-0123456789', STORAGE_S3_PREFIX: 'sky/', STORAGE_S3_TIMEOUT_MS: '1500' });
 
 const fake = { objs: new Map(), down: false, ranges: [], bytesServed: 0, gets: 0 };
 const srv = http.createServer((req, res) => {

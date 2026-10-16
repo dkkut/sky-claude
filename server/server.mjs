@@ -10,6 +10,7 @@ import { config } from './config.mjs';
 import { rateLimit } from './security.mjs';
 import { json, originAllowed, readSession, clientIp } from './http.mjs';
 import { passesPlatformMode } from './platformaccess.mjs';
+import { insecureApiRequest } from './transport.mjs';
 import { shutdownState, maintenanceState } from './platform.mjs';
 import { waitForDb, migrate, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
@@ -246,6 +247,10 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
 
     // Строку запроса отбрасываем: маршруты сравниваются по пути.
     const url = (req.url || '').split('?')[0];
+
+    // Защита от ошибки настройки: за nginx запрос по открытому http до API не доходит (там редирект на https), но если дошёл
+    // (кто-то прокинул порт или сменил конфиг) — токены и пароли по нему не принимаем.
+    if (insecureApiRequest(req, url)) return json(res, 426, { error: 'https_required' });
 
     // PIN при смене IP (ippin.mjs): у тех, кто его включил, сессия с нового адреса закрыта до ввода PIN.
     // Выход, обновление токена, вход, ввод самого PIN и ссылки шлюзов остаются открытыми.
