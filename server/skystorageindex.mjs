@@ -214,6 +214,8 @@ export const restoreFromQuarantine = async (actorId, quarId) => {
 
 /** Окончательное удаление: только после срока и только если ссылок всё ещё нет. */
 export const purgeQuarantine = async () => {
+  // Файлы сами не стираются: окончательная очистка карантина — только по явному включению.
+  if (process.env.STORAGE_QUARANTINE_AUTOPURGE !== '1') return 0;
   const { rows } = await query(`SELECT * FROM storage_quarantine WHERE state = 'held' AND purge_after < now() LIMIT 100`);
   let purged = 0;
   for (const q of rows) {

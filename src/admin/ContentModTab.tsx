@@ -5,13 +5,15 @@
  * попадает в журнал администрации. Сервер — server/contentmod.mjs.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Check, X, Trash2, Search, Loader2, Music2, Film, BookOpen } from 'lucide-react';
+import { Check, X, Trash2, Search, Loader2, Music2, Film, BookOpen, Undo2 } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
 import { licenseOf } from '@/music/licenses';
 
 type Kind = 'music' | 'movie' | 'book';
 interface Item { kind: Kind; id: string; title: string; status: string; ownerId: string | null; ownerName: string | null; license?: string; views: number; createdAt: string | null }
+
+interface TrashItem { trashId: number; kind: Kind; id: string; title: string; reason: string; ownerName: string | null; byName: string | null; deletedAt: string; purgeAt: string }
 
 const KIND_LABEL: Record<Kind, string> = { music: 'Музыка', movie: 'Кино', book: 'Книги' };
 const KIND_ICON = { music: Music2, movie: Film, book: BookOpen };
@@ -22,13 +24,14 @@ const field = { background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 };
 
 const ERR: Record<string, string> = {
   reason_required: 'Укажите причину (не короче 3 символов).', not_allowed: 'Недостаточно прав.', not_found: 'Материал уже удалён.',
-  not_pending: 'Заявка уже рассмотрена.', too_many_requests: 'Слишком часто. Подождите минуту.',
+  already_trashed: 'Материал уже в корзине.', not_pending: 'Заявка уже рассмотрена.', too_many_requests: 'Слишком часто. Подождите минуту.',
 };
 
 export const ContentModTab = () => {
   const [kind, setKind] = useState<'all' | Kind>('all');
   const [q, setQ] = useState('');
-  const [status, setStatus] = useState<'' | 'published' | 'private' | 'rejected' | 'pending'>('');
+  const [status, setStatus] = useState<'' | 'published' | 'private' | 'rejected' | 'pending'>('published');
+  const [trash, setTrash] = useState<TrashItem[] | null>(null);
   const [queue, setQueue] = useState<Item[] | null>(null);
   const [found, setFound] = useState<Item[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -47,6 +50,19 @@ export const ContentModTab = () => {
     if (!r.ok) flash(ERR[r.error ?? ''] ?? 'Не удалось выполнить поиск');
   }, [kind, q, status]);
 
+  const loadTrash = useCallback(async () => {
+    const r = await apiCall<{ items: TrashItem[] }>('/api/admin/content/trash');
+    setTrash(r.ok ? (r.data?.items ?? []) : []);
+  }, []);
+  useEffect(() => { void loadTrash(); }, [loadTrash]);
+  const restore = async (t: TrashItem) => {
+    setBusy(String(t.trashId));
+    const r = await apiCall(`/api/admin/content/trash/${t.trashId}/restore`, { method: 'POST', body: '{}' });
+    setBusy(null);
+    if (!r.ok) { flash(ERR[r.error ?? ''] ?? 'Не удалось вернуть'); return; }
+    flash('Материал возвращён.');
+    void loadTrash(); void loadQueue(); void search();
+  };
   useEffect(() => { void loadQueue(); }, [loadQueue]);
   useEffect(() => { const t = setTimeout(() => void search(), 250); return () => clearTimeout(t); }, [search]);
 
@@ -64,14 +80,14 @@ export const ContentModTab = () => {
   };
 
   const takedown = async (it: Item) => {
-    const reason = (window.prompt(`Удалить «${it.title}» навсегда? Укажите причину (её увидит автор):`) ?? '').trim();
+    const reason = (window.prompt(`Снять «${it.title}» с платформы? Он 7 дней полежит в корзине, потом будет стёрт. Укажите причину (её увидит автор):`) ?? '').trim();
     if (reason.length < 3) { if (reason) flash(ERR.reason_required); return; }
     setBusy(it.id);
     const r = await apiCall(`/api/admin/content/${it.kind}/${encodeURIComponent(it.id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
     setBusy(null);
     if (!r.ok) { flash(ERR[r.error ?? ''] ?? 'Не удалось удалить'); return; }
-    flash('Материал удалён, автору отправлено уведомление.');
-    void loadQueue(); void search();
+    flash('Материал снят и лежит в корзине 7 дней, автору отправлено уведомление.');
+    void loadQueue(); void search(); void loadTrash();
   };
 
   const Row = ({ it, inQueue }: { it: Item; inQueue?: boolean }) => {
@@ -127,9 +143,27 @@ export const ContentModTab = () => {
         {found?.length === 0 && <p className="text-[12px]" style={{ color: C.t3 }}>Ничего не найдено.</p>}
         {found?.map((it) => <Row key={`${it.kind}-${it.id}`} it={it} />)}
         <p className="text-[10.5px] leading-snug" style={{ color: C.t3 }}>
-          Удаление необратимо: запись и файлы стираются, автор получает уведомление с причиной, действие записывается в журнал.
+          Снятый материал сразу пропадает из каталога, но 7 дней лежит в корзине — его можно вернуть; потом запись и файлы стираются. Автор получает уведомление с причиной, действие записывается в журнал. Сами по себе файлы не удаляются.
           Обращения правообладателей приходят в «Тех. поддержку».
         </p>
+      </section>
+
+      <section className="space-y-2">
+        <p className="text-[11px] font-bold" style={{ color: C.t3 }}>КОРЗИНА · РЕЗЕРВ 7 ДНЕЙ{trash ? ` · ${trash.length}` : ''}</p>
+        {trash?.length === 0 && <p className="text-[12px]" style={{ color: C.t3 }}>Корзина пуста.</p>}
+        {trash?.map((t) => (
+          <div key={t.trashId} className="flex items-center gap-2 rounded-2xl p-2.5" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[12.5px] font-semibold" style={{ color: C.t1 }} translate="no">{t.title}</p>
+              <p className="truncate text-[10.5px]" style={{ color: C.t3 }}>
+                {KIND_LABEL[t.kind]} · <span translate="no">{t.ownerName ? `@${t.ownerName}` : 'без владельца'}</span> · будет стёрт {new Date(t.purgeAt).toLocaleDateString()} · <span translate="no">{t.reason}</span>
+              </p>
+            </div>
+            {busy === String(t.trashId) ? <Loader2 size={16} className="animate-spin" style={{ color: C.t3 }} /> : (
+              <button type="button" aria-label="Вернуть" onClick={() => void restore(t)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full" style={{ background: 'rgba(34,197,94,0.15)', color: C.green }}><Undo2 size={15} /></button>
+            )}
+          </div>
+        ))}
       </section>
     </div>
   );

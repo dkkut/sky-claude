@@ -92,6 +92,7 @@ import { accountFreezeRoutes } from './routes/accountfreeze.mjs';
 import { accountRecoveryRoutes } from './routes/accountrecovery.mjs';
 import { primeRewardsRoutes } from './routes/primerewards.mjs';
 import { aiUsageRoutes } from './routes/aiusage.mjs';
+import { partnersRoutes } from './routes/partners.mjs';
 import { sweepAiEvents } from './aiusage.mjs';
 import { releaseDueCashback } from './primecashback.mjs';
 import { sweepFreezeLog } from './accountfreeze.mjs';
@@ -146,6 +147,7 @@ import { expireOrganizers, closePastEvents, sweepOrphanTicketImages } from './ti
 import { sweepAiUsage } from './aichat.mjs';
 import { sweepTogether } from './together.mjs';
 import { sweepUnusedPersonalFiles } from './storagequota.mjs';
+import { purgeTrashedContent } from './contentmod.mjs';
 import { sweepSellerSubscriptions, liveFileIds } from './market.mjs';
 import { sweepOrphans as sweepMarketFiles } from './marketstore.mjs';
 import { sweepOrphans as sweepVideoFiles } from './videostore.mjs';
@@ -196,7 +198,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -688,6 +690,8 @@ const start = async () => {
       // Личное кино и музыка, которые владелец сам не открывал 20 дней
       // и не защитил от уборки — см. storagequota.mjs: активная комната
       // «Вместе» спасает файл от удаления даже тогда.
+      const trashed = await purgeTrashedContent();
+      if (trashed) console.log(`[content] стёрто после резерва 7 дней: ${trashed}`);
       const personal = await sweepUnusedPersonalFiles();
       if (personal.films || personal.tracks) {
         console.log(`[storage] убрано неиспользуемого личного: кино ${personal.films}, музыка ${personal.tracks}`);

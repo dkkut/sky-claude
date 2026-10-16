@@ -1,7 +1,7 @@
 import { json, requireProfile, parseBody } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { requestMeta } from './../adminsec.mjs';
-import { contentQueue, contentSearch, contentDecide, contentTakedown } from './../contentmod.mjs';
+import { contentQueue, contentSearch, contentDecide, contentTakedown, contentTrashList, contentRestore } from './../contentmod.mjs';
 
 /** Админка: очередь модерации, поиск и снятие материалов (музыка, кино, книги). */
 export const contentModRoutes = async (req, res, url) => {
@@ -24,6 +24,17 @@ export const contentModRoutes = async (req, res, url) => {
       status: u.searchParams.get('status'), limit: u.searchParams.get('limit'),
     });
     return r ? json(res, 200, r) : json(res, 403, { error: 'not_allowed' });
+  }
+
+  if (req.method === 'GET' && u.pathname === '/api/admin/content/trash') {
+    const r = await contentTrashList(me);
+    return r ? json(res, 200, r) : json(res, 403, { error: 'not_allowed' });
+  }
+  const rs = /^\/api\/admin\/content\/trash\/(\d{1,12})\/restore$/.exec(u.pathname);
+  if (rs && req.method === 'POST') {
+    if (!rateLimit(`adm:content:w:${me}`, 40)) return json(res, 429, { error: 'too_many_requests' });
+    const r = await contentRestore(me, rs[1], requestMeta(req));
+    return r.error ? json(res, code(r.error), r) : json(res, 200, r);
   }
 
   const m = /^\/api\/admin\/content\/(music|movie|book)\/([A-Za-z0-9_-]{1,80})(\/decide)?$/.exec(u.pathname);

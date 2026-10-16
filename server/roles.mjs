@@ -57,6 +57,8 @@ export const PERMISSIONS = [
   'storage_keys',    // Sky Storage: ключи и безопасная конфигурация (критично)
   'storage_maintenance', // Sky Storage: режим технических работ
   'oidc',            // Sky ID для сторонних сервисов: клиенты, адреса возврата, ключи подписи (создание/смена секретов — с подтверждением личности)
+  'partners',        // Партнёры: черновики, редактирование, отправка на проверку (внутренние контакты видны)
+  'partners_approve',// Партнёры: подтверждение, приостановка, архив — отдельное право, в «полные права» не входит
   'prime',           // Sky Prime: правила кэшбэка, каталог наград, очередь выдачи наград (изменения — с подтверждением личности)
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
@@ -74,7 +76,8 @@ export const PERMISSIONS = [
  * личности (одноразовый код), а часть — только владельца.
  */
 export const STORAGE_CRITICAL = ['storage_restore', 'storage_emergency', 'storage_enable', 'storage_unlock', 'storage_keys'];
-export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p));
+/** Подтверждение партнёров — тоже отдельное право: добавлять может менеджер, публиковать — только уполномоченный (или владелец). */
+export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve');
 
 export const ROLES = {
   super_admin:     DEFAULT_ADMIN_PERMISSIONS,
@@ -104,6 +107,8 @@ export const ROLES = {
   site_admin:      ['site'],
   oidc_admin:      ['oidc'],
   prime_admin:     ['prime'],
+  partners_manager:['partners'],
+  partners_approver:['partners', 'partners_approve'],
   storage_viewer:  ['storage_view', 'storage_audit'],
   storage_operator:['storage_view', 'storage_audit', 'storage_backup', 'storage_schedule', 'storage_quota', 'storage_maintenance'],
   storage_security:['storage_view', 'storage_audit', 'storage_access', 'storage_emergency', 'storage_enable'],
@@ -129,6 +134,8 @@ export const ROLE_LABEL = {
   site_admin: 'Сайт',
   oidc_admin: 'Sky ID для сервисов',
   prime_admin: 'Sky Prime: кэшбэк и награды',
+  partners_manager: 'Партнёры: добавление и правка',
+  partners_approver: 'Партнёры: подтверждение и публикация',
   storage_viewer: 'Sky Storage: просмотр',
   storage_operator: 'Sky Storage: оператор (копии, квоты)',
   storage_security: 'Sky Storage: безопасность и доступ',

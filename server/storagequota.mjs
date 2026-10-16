@@ -37,8 +37,8 @@ export const QUOTA_PRIME_BYTES = 10 * 1024 * 1024 * 1024;
  * PERSONAL_RETENTION_DAYS. Уборка стирает файл безвозвратно, поэтому
  * человек обязан видеть срок и иметь кнопку «хранить всегда» (retentionOf).
  */
-const rawDays = Number(process.env.PERSONAL_RETENTION_DAYS ?? 20);
-export const RETENTION_DAYS = Number.isFinite(rawDays) && rawDays >= 0 ? Math.floor(rawDays) : 20;
+const rawDays = Number(process.env.PERSONAL_RETENTION_DAYS ?? 0);
+export const RETENTION_DAYS = Number.isFinite(rawDays) && rawDays >= 0 ? Math.floor(rawDays) : 0;
 
 /** Что показать владельцу о судьбе личного файла: защита и дата уборки. */
 export const retentionOf = (row) => {
