@@ -23,8 +23,7 @@
 import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf, decryptToBuffer,
-} from './mediacrypto.mjs';
+  encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf, decryptToBuffer, removeMedia } from './mediacrypto.mjs';
 
 const ROOT = process.env.AI_FILES_DIR || '/data/aifiles';
 
@@ -101,7 +100,7 @@ export const readWhole = async (id, maxBytes) => {
 export const openStream = (id) => openDecryptedRangeStream(pathFor(checkId(id)), null);
 
 export const remove = async (id) => {
-  try { await rm(pathFor(checkId(id)), { force: true }); } catch { /* уже нет */ }
+  try { await removeMedia(pathFor(checkId(id))); } catch { /* уже нет */ }
 };
 
 /** Что лежит на диске — для уборки осиротевшего. */

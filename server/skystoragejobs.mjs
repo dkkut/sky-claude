@@ -12,6 +12,8 @@ import { runSchedules, sweepBackups, applyRetention, retentionPlan } from './sky
 import { sweepConnections } from './skystorageaccess.mjs';
 import { scanAll, hashPending, purgeQuarantine, refreshUsage } from './skystorageindex.mjs';
 import { getTarget, describeTarget } from './skystoragetarget.mjs';
+import * as primary from './skystorageprimary.mjs';
+import { serviceRoots } from './skystoragelimits.mjs';
 
 const timers = [];
 let lastTargetOk = null;
@@ -30,6 +32,15 @@ export const startStorageJobs = () => {
     lastTargetOk = h.ok;
   }));
   every(5 * 60_000, guard('целостность', async () => { if (effective(snapshot()).read) await hashPending(10); }));
+  let syncing = false;
+  every(10 * 60_000, guard('синхронизация S3', async () => {
+    if (syncing || !primary.enabled()) return;
+    syncing = true;
+    try {
+      const r = await primary.syncAndEvict(serviceRoots().map((x) => x.root), { maxFiles: 200 });
+      if (r.uploaded || r.evicted || r.failed) await logEvent('primary_sync', r.failed ? 'warn' : 'info', r);
+    } finally { syncing = false; }
+  }));
   every(30 * 60_000, guard('реестр', async () => { await refreshUsage(); }));
   setTimeout(guard('первый проход', async () => { await refreshUsage(); await loadState(true); if (effective(snapshot()).read) await scanAll(); }), 45_000).unref?.();
 };

@@ -18,12 +18,14 @@ import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { serviceRoots, setUsage, CATEGORIES, usage, capacity, loadQuotas, locateFile } from './skystoragelimits.mjs';
 import { logEvent, snapshot, levelFor } from './skystoragestate.mjs';
+import * as primary from './skystorageprimary.mjs';
 
 export const quarantineRoot = () => process.env.STORAGE_QUARANTINE_DIR || '/data/storage-quarantine';
 const GRACE_MS = 24 * 3600_000;
 
 /** Перенос файла: rename, а между разными дисками — копия с проверкой размера и только потом удаление исходника. */
 const moveFile = async (from, to) => {
+  await primary.ensureLocal(from);   // файл мог остаться только в S3 — сначала вернуть на диск
   try { await rename(from, to); } catch (e) {
     if (e.code !== 'EXDEV') throw e;
     await pipeline(createReadStream(from), createWriteStream(to, { mode: 0o600 }));
@@ -34,7 +36,7 @@ const moveFile = async (from, to) => {
 
 const sha256File = async (path) => {
   const h = crypto.createHash('sha256');
-  for await (const c of createReadStream(path)) h.update(c);
+  for await (const c of await primary.openRaw(path)) h.update(c);
   return h.digest('hex');
 };
 
@@ -79,9 +81,20 @@ export const scanAll = async ({ onProgress } = {}) => {
   const found = { files: 0, bytes: 0, orphans: 0, missing: 0, byService: {} };
   for (const { service, category, root } of serviceRoots()) {
     let n = 0;
-    for await (const path of walk(root)) {
-      const st = await stat(path).catch(() => null);
-      if (!st) continue;
+    const seen = new Set();
+    const entries = (async function* () {
+      for await (const path of walk(root)) { const st = await stat(path).catch(() => null); if (st) { seen.add(path); yield { path, st }; } }
+      // Файлы, которых нет на диске, но есть в S3 (основное хранение в S3)
+      let remote = []; try { remote = await primary.listRemote(root); } catch (e) { await logEvent('scan_remote_failed', 'warn', { code: e.code ?? e.message }); }
+      for (const r of remote) {
+        const name = basename(r.path);
+        if (seen.has(r.path) || name.startsWith('.') || name.endsWith('.part')) continue;
+        const { rows } = await query('SELECT uploaded_at FROM storage_objects WHERE service = $1 AND id = $2', [service, name]);
+        const at = rows[0]?.uploaded_at ? new Date(rows[0].uploaded_at) : new Date();
+        yield { path: r.path, st: { size: r.size, mtime: at, mtimeMs: at.getTime() } };
+      }
+    })();
+    for await (const { path, st } of entries) {
       const id = basename(path);
       const info = await refInfo(service, id);
       const old = Date.now() - st.mtimeMs > GRACE_MS;
@@ -173,6 +186,7 @@ export const quarantineOrphans = async (actorId, { dryRun = true, limit = 200 } 
     const to = join(quarantineRoot(), r.service, r.id);
     await mkdir(join(quarantineRoot(), r.service), { recursive: true, mode: 0o700 });
     await moveFile(from, to);
+    await primary.removeRemote(from).catch(() => {});   // в S3 копию не оставляем: возврат из карантина загрузит её заново
     await query(`UPDATE storage_objects SET status = 'quarantine' WHERE service = $1 AND id = $2`, [r.service, r.id]);
     await query(
       `INSERT INTO storage_quarantine (service, object_id, orig_path, quar_path, size, reason, purge_after) VALUES ($1,$2,$3,$4,$5,'нет ссылок в таблицах сервиса', now() + ($6 || ' days')::interval)`,
@@ -191,6 +205,7 @@ export const restoreFromQuarantine = async (actorId, quarId) => {
   const to = join(root, q.orig_path);
   await mkdir(join(to, '..'), { recursive: true });
   await moveFile(q.quar_path, to);
+  await primary.afterWrite(to);
   await query(`UPDATE storage_quarantine SET state = 'restored' WHERE id = $1`, [quarId]);
   await query(`UPDATE storage_objects SET status = 'ok', seen_at = now() WHERE service = $1 AND id = $2`, [q.service, q.object_id]);
   await logEvent('quarantine_restore', 'info', { service: q.service, id: q.object_id }, actorId);

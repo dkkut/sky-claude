@@ -15,8 +15,7 @@
 import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  encryptStreamToFile, encryptBytesToFile, openDecryptedRangeStream, plaintextSizeOf,
-} from './mediacrypto.mjs';
+  encryptStreamToFile, encryptBytesToFile, openDecryptedRangeStream, plaintextSizeOf, removeMedia } from './mediacrypto.mjs';
 
 const ROOT = process.env.BOOKS_DIR || '/data/books';
 
@@ -80,7 +79,7 @@ export const openStream = (id, range) => {
 };
 
 export const remove = async (id) => {
-  await rm(pathFor(checkId(id)), { force: true });
+  await removeMedia(pathFor(checkId(id)));
 };
 
 export const removeChapterAudio = async (chapterId) => {

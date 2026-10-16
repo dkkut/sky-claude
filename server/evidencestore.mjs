@@ -14,7 +14,7 @@
  */
 import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf } from './mediacrypto.mjs';
+import { encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf, removeMedia } from './mediacrypto.mjs';
 
 const ROOT = process.env.EVIDENCE_DIR || '/data/evidence';
 
@@ -39,11 +39,11 @@ export const saveStream = async (id, source, limitBytes) => {
   try {
     result = await encryptStreamToFile(source, pathFor(safe), limitBytes);
   } catch (err) {
-    await rm(pathFor(safe), { force: true });
+    await removeMedia(pathFor(safe));
     return { error: 'write_failed', detail: err.message };
   }
   if (result.error) {
-    await rm(pathFor(safe), { force: true });
+    await removeMedia(pathFor(safe));
     return { error: 'too_large' };
   }
   return result;
@@ -58,7 +58,7 @@ export const openStream = (id, range) => {
 };
 
 export const remove = async (id) => {
-  await rm(pathFor(checkId(id)), { force: true });
+  await removeMedia(pathFor(checkId(id)));
 };
 
 /** Что лежит на диске — для уборки осиротевшего. */

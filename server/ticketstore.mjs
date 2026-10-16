@@ -14,7 +14,7 @@
  */
 import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf } from './mediacrypto.mjs';
+import { encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf, removeMedia } from './mediacrypto.mjs';
 
 const ROOT = process.env.TICKETS_DIR || '/data/tickets';
 
@@ -87,7 +87,7 @@ export const sizeOf = async (id) => plaintextSizeOf(pathFor(checkId(id)));
 export const openStream = (id) => openDecryptedRangeStream(pathFor(checkId(id)), null);
 
 export const remove = async (id) => {
-  try { await rm(pathFor(checkId(id)), { force: true }); } catch { /* уже нет */ }
+  try { await removeMedia(pathFor(checkId(id))); } catch { /* уже нет */ }
 };
 
 /** Все картинки мероприятия — при его удалении. */

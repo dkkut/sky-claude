@@ -26,8 +26,7 @@
 import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  encryptStreamToFile, encryptBytesToFile, openDecryptedRangeStream, plaintextSizeOf,
-} from './mediacrypto.mjs';
+  encryptStreamToFile, encryptBytesToFile, openDecryptedRangeStream, plaintextSizeOf, removeMedia } from './mediacrypto.mjs';
 
 /** Куда складывать. В контейнере это отдельный том, а не образ. */
 const ROOT = process.env.FILM_DIR || '/data/film';
@@ -104,7 +103,7 @@ export const openStream = (id, range) => {
 };
 
 export const remove = async (id) => {
-  await rm(pathFor(checkId(id)), { force: true });
+  await removeMedia(pathFor(checkId(id)));
 };
 
 /** Фильм и его постер убираются вместе: постер без фильма никому не нужен. */

@@ -7,7 +7,7 @@
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import crypto from 'node:crypto';
-import { encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf } from './mediacrypto.mjs';
+import { encryptStreamToFile, openDecryptedRangeStream, plaintextSizeOf, removeMedia } from './mediacrypto.mjs';
 
 const ROOT = process.env.STORY_DIR || '/data/stories';
 
@@ -60,7 +60,7 @@ export const openStream = (id, range) => {
 };
 
 export const remove = async (id) => {
-  try { await rm(pathFor(checkId(id)), { force: true }); } catch { /* уже нет */ }
+  try { await removeMedia(pathFor(checkId(id))); } catch { /* уже нет */ }
 };
 
 /** Все id, реально лежащие на диске — для сверки с базой (сирота-медиа). */

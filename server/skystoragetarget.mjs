@@ -15,6 +15,7 @@ import { mkdir, rename, rm, stat, readdir, statfs, open as fsOpen } from 'node:f
 import { join, dirname } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { createS3, s3Config, S3Error } from './skystorages3.mjs';
+import { enabled as primaryEnabled } from './skystorageprimary.mjs';
 
 export class TargetError extends Error { constructor(code, detail = '') { super(code); this.code = code; this.detail = detail; } }
 
@@ -85,7 +86,7 @@ const makeS3 = () => {
   if (!cfg.ok) throw new TargetError('target_not_configured', cfg.missing.join(','));
   const s3 = createS3(cfg);
   return {
-    kind: 's3', independent: true, label: `${new URL(cfg.endpoint).host}/${cfg.bucket}`,
+    kind: 's3', independent: !primaryEnabled(),   // та же корзина, что и основное хранение, — не независимая площадка label: `${new URL(cfg.endpoint).host}/${cfg.bucket}`,
     put: (k, src) => s3.put(checkKey(k), src),
     get: (k, range) => s3.get(checkKey(k), range ? { start: range.start, end: range.end } : {}),
     head: (k) => s3.head(checkKey(k)),

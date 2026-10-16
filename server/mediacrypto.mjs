@@ -29,6 +29,7 @@
 import { createReadStream, createWriteStream } from 'node:fs';
 import { open as fsOpen, rm, stat as fsStat } from 'node:fs/promises';
 import { beginWrite, beginRead } from './skystoragelimits.mjs';
+import * as primary from './skystorageprimary.mjs';
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -194,6 +195,8 @@ export const encryptStreamToFile = async (source, destPath, limitBytes, opts) =>
   try {
     const r = await encryptStreamToFileRaw(source, destPath, slot.limit, opts);
     if (r.error) { slot.abort(); return r; }
+    // Режим «основное хранение в S3»: запись подтверждается только после загрузки и сверки размера в S3
+    await primary.afterWrite(destPath);
     const size = await fsStat(destPath).then((x) => x.size).catch(() => 0);
     slot.done(size);
     return r;
@@ -211,7 +214,7 @@ export const encryptBytesToFile = (buf, destPath, opts) =>
  * есть, пока mediabackfill.mjs не зашифрует его на месте.
  */
 const readHeader = async (path) => {
-  const fh = await fsOpen(path, 'r');
+  const fh = await primary.openRead(path);
   try {
     const buf = Buffer.alloc(HEADER_LEN);
     const { bytesRead } = await fh.read(buf, 0, HEADER_LEN, 0);
@@ -250,6 +253,7 @@ export const isLegacyMedia = async (path) => (await readHeader(path)).legacy ===
  * не трогаются: шифруются они ключом файла, а не мастер-ключом.
  */
 export const rewrapMediaKey = async (path) => {
+  await primary.ensureLocal(path);
   const h = await readHeader(path);
   if (h.legacy || h.keyIndex === 0) return false;
   const iv = crypto.randomBytes(12);
@@ -262,6 +266,7 @@ export const rewrapMediaKey = async (path) => {
   } finally {
     await fh.close();
   }
+  await primary.upload(path).catch(() => {});   // заголовок изменился — обновить объект в S3 (не вышло — догрузит фоновая синхронизация)
   return true;
 };
 
@@ -286,6 +291,7 @@ export const openDecryptedRangeStream = (path, range) => {
   async function* generate() {
     const header = await readHeader(path);
     if (header.legacy) {
+      await primary.ensureLocal(path);
       const rs = createReadStream(path, range ? { start: range.start, end: range.end } : {});
       try { for await (const chunk of rs) yield chunk; } finally { rs.destroy(); }
       return;
@@ -299,7 +305,7 @@ export const openDecryptedRangeStream = (path, range) => {
     const lastChunk = Math.floor(end / chunkSize);
     const totalChunks = Math.ceil(plaintextSize / chunkSize) || 1;
 
-    const fh = await fsOpen(path, 'r');
+    const fh = await primary.openRead(path);
     try {
       for (let i = firstChunk; i <= lastChunk; i += 1) {
         const diskOffset = HEADER_LEN + i * onDiskChunkLen;
@@ -339,6 +345,9 @@ export const openDecryptedRangeStream = (path, range) => {
  */
 export const encryptExistingFile = async (srcPath, destPath, maxBytes) =>
   encryptStreamToFile(createReadStream(srcPath), destPath, maxBytes);
+
+/** Удалить медиафайл: на диске и (в режиме основного хранения в S3) в S3. */
+export const removeMedia = (path) => primary.removeMedia(path);
 
 /** Для миграции: скопировать расшифрованный файл во временный путь
  *  и дать вызывающему сверить его с оригиналом побайтово. */

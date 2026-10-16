@@ -16,6 +16,7 @@ import {
   loadState, mutateState, effective, Conflict, logEvent, notifyOwners, newId, snapshot, DEFAULT_SETTINGS, counters, levelFor,
 } from './skystoragestate.mjs';
 import { describeTarget, getTarget } from './skystoragetarget.mjs';
+import * as primary from './skystorageprimary.mjs';
 import { keyStatus, activeKid } from './skystoragecrypto.mjs';
 import { stats as indexStats } from './skystorageindex.mjs';
 import { loadQuotas, activity, CATEGORIES } from './skystoragelimits.mjs';
@@ -330,7 +331,7 @@ export const overview = async () => {
   const target = describeTarget();
   const health = target.configured ? await getTarget().health().catch((e) => ({ ok: false, code: e.code })) : null;
   return {
-    state, stats: st, backups, quotas: quotas.rows, target: { ...target, health },
+    state, stats: st, backups, quotas: quotas.rows, target: { ...target, health }, primary: primary.status(),
     activity: activity(), counters, job: jobRunning(),
     connections: Object.fromEntries(conns.rows.map((r) => [r.status, r.n])), lastProblems: events.rows,
     keys: keyStatus(), defaults: DEFAULT_SETTINGS, level: st.capacity.level, categories: CATEGORIES,

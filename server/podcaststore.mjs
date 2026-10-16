@@ -21,8 +21,7 @@
 import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  encryptStreamToFile, encryptBytesToFile, openDecryptedRangeStream, plaintextSizeOf,
-} from './mediacrypto.mjs';
+  encryptStreamToFile, encryptBytesToFile, openDecryptedRangeStream, plaintextSizeOf, removeMedia } from './mediacrypto.mjs';
 
 const ROOT = process.env.PODCAST_DIR || '/data/podcasts';
 
@@ -104,7 +103,7 @@ export const openStream = (id, range) => {
 };
 
 export const remove = async (id) => {
-  await rm(pathFor(checkId(id)), { force: true });
+  await removeMedia(pathFor(checkId(id)));
 };
 
 /** Все файлы выпуска убираются вместе: порознь они никому не нужны. */

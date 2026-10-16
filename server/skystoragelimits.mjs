@@ -11,6 +11,7 @@
  * загрузок, 100% — запрет новых записей. Все настраиваются в состоянии хранилища. Данные
  * пользователей при нехватке места НЕ удаляются, чтение и скачивание остаются.
  */
+import * as primary from './skystorageprimary.mjs';
 import { basename, join } from 'node:path';
 import { stat as fsStat, readdir } from 'node:fs/promises';
 import { query } from './db.mjs';
@@ -207,5 +208,9 @@ export const locateFile = async (service, id) => {
     for (const e of es) { const p = join(d, e.name); if (e.isDirectory()) { const r = await walk(p); if (r) return r; } else if (e.name === id) return p; }
     return null;
   };
-  return walk(root);
+  const found = await walk(root);
+  if (found) return found;
+  // Основное хранение в S3: на диске файла может не быть (убран из кэша) — тогда виртуальный путь, по которому его найдёт слой S3
+  if (sub && primary.enabled()) { const p = join(root, sub, id); if (await primary.exists(p)) return p; }
+  return null;
 };

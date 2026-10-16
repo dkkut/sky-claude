@@ -21,8 +21,7 @@
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  encryptStreamToFile, encryptBytesToFile, openDecryptedRangeStream, plaintextSizeOf,
-} from './mediacrypto.mjs';
+  encryptStreamToFile, encryptBytesToFile, openDecryptedRangeStream, plaintextSizeOf, removeMedia } from './mediacrypto.mjs';
 
 /** Куда складывать. В контейнере это отдельный том, а не образ. */
 const ROOT = process.env.MUSIC_DIR || '/data/music';
@@ -84,7 +83,7 @@ export const openStream = (id, range) => {
 };
 
 export const remove = async (id) => {
-  await rm(pathFor(checkId(id)), { force: true });
+  await removeMedia(pathFor(checkId(id)));
 };
 
 /** Разбор заголовка Range. Возвращает null, если он неверен или его нет. */

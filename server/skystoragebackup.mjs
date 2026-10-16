@@ -15,6 +15,7 @@
  */
 import crypto from 'node:crypto';
 import { createReadStream } from 'node:fs';
+import * as primary from './skystorageprimary.mjs';
 import { stat, mkdir, rename, rm, readdir } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { Readable, Transform } from 'node:stream';
@@ -180,7 +181,7 @@ const runBackup = async ({ id, kind, scope, base, target, kid, verify, actorId }
       } else {
         const hs = hashing();
         const k = objKey(id, o.service, o.id);
-        const src = createReadStream(path).pipe(hs.t);
+        const src = (await primary.openRaw(path)).pipe(hs.t);
         const put = await target.put(k, encryptStream(src, { id: `${o.service}/${o.id}`, kid }));
         manifest.objects.push({ service: o.service, id: o.id, category: o.category, size: hs.size(), sha256: hs.digest(), key: k, stored: put.size });
         uploaded += 1; bytes += put.size ?? 0;
@@ -452,8 +453,8 @@ export const restorePlan = async (backupId, scope = {}, actorId = null) => {
   for (const o of items) {
     const p = await findPath(o.service, o.id);
     if (!p) { out.missing.push({ service: o.service, id: o.id, size: o.size }); continue; }
-    const s = await stat(p);
-    if (s.size === o.size) { const hs = countingHash(); for await (const c of createReadStream(p)) hs.feed(c); if (hs.digest() === o.sha256) { out.same += 1; continue; } }
+    const s = await primary.statAny(p);
+    if (s.size === o.size) { const hs = countingHash(); for await (const c of await primary.openRaw(p)) hs.feed(c); if (hs.digest() === o.sha256) { out.same += 1; continue; } }
     out.conflict.push({ service: o.service, id: o.id });
   }
   const tables = (manifest.tables ?? []).filter((t) => !scope?.tables || scope.tables.includes(t.name)).filter(() => !scope?.ids?.length);
@@ -489,8 +490,8 @@ export const restoreApply = async (actorId, planId, { overwrite = false } = {}) 
       try {
         const existing = await findPath(o.service, o.id);
         if (existing) {
-          const s = await stat(existing); let same = false;
-          if (s.size === o.size) { const hs = countingHash(); for await (const c of createReadStream(existing)) hs.feed(c); same = hs.digest() === o.sha256; }
+          const s = await primary.statAny(existing); let same = false;
+          if (s.size === o.size) { const hs = countingHash(); for await (const c of await primary.openRaw(existing)) hs.feed(c); same = hs.digest() === o.sha256; }
           if (same) { res.skippedSame += 1; continue; }
           if (!overwrite) { res.conflicts += 1; continue; }
         }
@@ -504,8 +505,9 @@ export const restoreApply = async (actorId, planId, { overwrite = false } = {}) 
         // Путь на место: каталог по правилу сервиса (как у musicstore/filmstore: подпапка из id) — берём прежний, если файл был.
         const dest = existing ?? join(root, o.service === 'skyvideo' ? o.id.slice(5, 7) : o.id.slice(4, 6), o.id);
         await mkdir(dirname(dest), { recursive: true });
-        if (existing) { const bak = join(quarantineRoot(), 'restore-replaced', `${o.service}-${o.id}-${Date.now()}`); await mkdir(dirname(bak), { recursive: true, mode: 0o700 }); await rename(existing, bak).catch(async () => { /* разные диски */ }); res.overwritten += 1; }
+        if (existing) { await primary.ensureLocal(existing); const bak = join(quarantineRoot(), 'restore-replaced', `${o.service}-${o.id}-${Date.now()}`); await mkdir(dirname(bak), { recursive: true, mode: 0o700 }); await rename(existing, bak).catch(async () => { /* разные диски */ }); res.overwritten += 1; }
         await rename(tmp, dest).catch(async (e) => { if (e.code !== 'EXDEV') throw e; const { copyFile } = await import('node:fs/promises'); await copyFile(tmp, dest); await rm(tmp); });
+        await primary.afterWrite(dest);   // основное хранение в S3: восстановленный файл должен лежать и там
         res.restored += 1;
         await query(`INSERT INTO storage_objects (service, id, category, size, status, sha256) VALUES ($1,$2,$3,$4,'ok',NULL) ON CONFLICT (service, id) DO UPDATE SET status = 'ok', sha256 = NULL, seen_at = now()`, [o.service, o.id, o.category ?? 'media', (await stat(dest)).size]);
       } catch (e) { res.failed.push(`${o.service}/${o.id}: ${e.code ?? e.message}`); }
