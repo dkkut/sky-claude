@@ -1,5 +1,5 @@
 // Sky ID для сервисов в браузере (Playwright): страница подтверждения входа со свайпом, отказ, ошибки без перенаправления, вкладка админки.
-//   Нужны API (DOMAIN=sky.test OIDC_RATE_MULT=1000 ADMIN_GATE=off) и сайт на :4173 (front.mjs). (. env.sh; node scripts/audit/oidc-ui-test.mjs <каталог с api.log>)
+//   Нужны API (DOMAIN=sky.test EXTRA_ORIGINS=http://localhost:4173 OIDC_RATE_MULT=1000 ADMIN_GATE=off) и сайт на :4173 (front.mjs). (. env.sh; node scripts/audit/oidc-ui-test.mjs <каталог с api.log>)
 import { chromium } from 'playwright-core';
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
