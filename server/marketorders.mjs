@@ -30,6 +30,7 @@
  *   5. Заказ читается FOR UPDATE внутри транзакции — две одновременные
  *      кнопки выстраиваются в очередь, а не выполняются обе.
  */
+import { scheduleCashbackIn } from './primecashback.mjs';
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { can } from './admin.mjs';
@@ -457,6 +458,9 @@ export const applyTransition = async (client, order, {
 
   const { rows } = await client.query(
     `UPDATE market_orders SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, args);
+
+  // Завершённая сделка — основание для кэшбэка Prime Points (primecashback.mjs): запись в той же транзакции, баллы зачислятся после холда
+  if (to === 'completed' && rows[0]) await scheduleCashbackIn(client, rows[0]);
 
   await client.query(
     `INSERT INTO market_order_events (order_id, actor_id, actor_role, from_status, to_status, detail)

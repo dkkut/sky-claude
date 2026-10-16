@@ -66,6 +66,9 @@ export type TxType =
   | 'skykassa_topup'        // пополнение через SkyKassa
   | 'skykassa_refund'       // возврат пополнения SkyKassa
   | 'code_points'           // баллы по коду Sky Codes
+  | 'cashback'              // кэшбэк Prime Points за заказ Sky Market
+  | 'prime_reward'          // обмен баллов на награду Prime
+  | 'prime_reward_refund'   // возврат баллов за отклонённую награду
   | 'blox_purchase'         // покупка в игре Sky Blox
   | 'blox_refund'          // возврат за покупку в Sky Blox
   | 'blox_payout'          // выплата вознаграждения разработчику Sky Blox
