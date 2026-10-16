@@ -379,13 +379,13 @@ t('завершение техработ НЕ снимает аварийную 
 // Кнопка 2 при выключенном хранилище
 code = await step(own);
 r = await post('/sky-auth', { confirm: true, stepUpCode: code, reason: 'ограничение доступа' }, own);
-t('кнопка 2: авторизация Sky включена и не включает выключенное хранилище', r.status === 200 && r.data.state.skyAuth.active && r.data.state.emergency.active);
+t('кнопка 2: авторизация Sky включена и не включает выключенное хранилище', r.status === 200 && r.data.state?.skyAuth?.active && r.data.state?.emergency?.active, JSON.stringify(r.data).slice(0, 250));
 // Кнопка 3 при активной компрометации — не включает
 code = await step(own);
 await post('/compromise', { confirm: true, stepUpCode: code, reason: 'подозрение на утечку ключа' }, own);
 code = await step(own);
 r = await post('/enable', { confirm: true, stepUpCode: code }, own);
-t('кнопка 3: при отметке компрометации включение отклоняется с понятной причиной', r.data.error === 'checks_failed' && r.data.checks.find((c) => c.id === 'compromise')?.ok === false);
+t('кнопка 3: при отметке компрометации включение отклоняется с понятной причиной', r.data.error === 'checks_failed' && r.data.checks?.find((c) => c.id === 'compromise')?.ok === false, JSON.stringify(r.data).slice(0, 250));
 t('кнопка 3: проверки показываются до подтверждения (предпросмотр)', (await post('/enable', { preview: true }, own)).data.checks.length >= 5);
 // Кнопка 4 не снимает компрометацию
 const rst = await get('/restrictions', own);
