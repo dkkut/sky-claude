@@ -1093,7 +1093,7 @@ const StepUp = ({ purpose, onCode, onCancel }: {
       )}
 
       <button type="button" onClick={onCancel}
-        className="mt-2 text-[11px]" style={{ color: C.t3 }}>Отмена</button>
+        className="mt-2 min-h-[36px] rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2, border: `1px solid ${C.brd}` }}>Отмена</button>
     </div>
   );
 };
@@ -1246,7 +1246,8 @@ const UserMoneyOps = ({ onSent }: { onSent: () => void }) => {
     onSent();
   };
 
-  const start = (o: MoneyOp) => { setFailed(''); setSent(''); setReason(''); setOp(o); };
+  const opRef = useRef<HTMLDivElement>(null);
+  const start = (o: MoneyOp) => { setFailed(''); setSent(''); setReason(''); setOp(o); setTimeout(() => opRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); };
   const rub = (n: number) => `${n.toLocaleString('ru-RU')} ₽`;
   const reasonOk = reason.trim().length >= 5;
 
@@ -1360,14 +1361,14 @@ const UserMoneyOps = ({ onSent }: { onSent: () => void }) => {
       )}
 
       {op && (
-        <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.acc}` }}>
+        <div ref={opRef} className="space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.acc}` }}>
           <p className="text-[12px] font-bold" style={{ color: C.t1 }}>{op.label}</p>
           <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Основание (от 5 знаков) — его увидит владелец и пользователь в истории"
             className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
           {reasonOk ? (
             <StepUp purpose={OP_PURPOSE[op.op]} onCode={(c) => void send(c)} onCancel={() => setOp(null)} />
           ) : (
-            <button type="button" onClick={() => setOp(null)} className="text-[11px]" style={{ color: C.t3 }}>Отмена</button>
+            <button type="button" onClick={() => setOp(null)} className="min-h-[36px] rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l1, color: C.t2, border: `1px solid ${C.brd}` }}>Отмена</button>
           )}
         </div>
       )}

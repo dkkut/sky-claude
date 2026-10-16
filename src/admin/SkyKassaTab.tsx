@@ -67,7 +67,7 @@ const StepUp = ({ path, onCode, onCancel }: { path: string; onCode: (c: string) 
           className="flex-1 rounded-lg px-3 py-2 text-sm tracking-widest outline-none" style={field} />
         <Btn disabled={code.length < 6} onClick={() => onCode(code)}>Подтвердить</Btn>
       </div>
-      <button type="button" onClick={onCancel} className="text-[11px]" style={{ color: C.t3 }}>Отмена</button>
+      <button type="button" onClick={onCancel} className="min-h-[36px] rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l1, color: C.t2, border: `1px solid ${C.brd}` }}>Отмена</button>
     </div>
   );
 };

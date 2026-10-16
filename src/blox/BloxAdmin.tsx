@@ -47,7 +47,7 @@ const StepUp = ({ onCode, onCancel, begin = A.apiAdminStepUp }: { onCode: (c: st
         <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="000000" className="flex-1 rounded-lg px-3 py-2 text-[13px] tracking-widest" style={inputStyle} />
         <button type="button" disabled={code.length < 6} onClick={() => onCode(code)} className="rounded-lg px-4 py-2 text-[12px] font-bold text-white disabled:opacity-40" style={{ background: C.acc }}>Подтвердить</button>
       </div>
-      <button type="button" onClick={onCancel} className="text-[11px]" style={{ color: C.t3 }}>Отмена</button>
+      <button type="button" onClick={onCancel} className="min-h-[36px] rounded-xl px-4 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t2 }}>Отмена</button>
     </div>
   );
 };
