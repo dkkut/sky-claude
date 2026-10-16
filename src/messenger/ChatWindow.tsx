@@ -45,6 +45,7 @@ import { openProfile } from '@/profile/viewer/store';
 import { ListSheet, entriesFromIds } from '@/profile/viewer/ListSheet';
 import { activeFrame } from '@/profile/viewer/cosmetics';
 import { activeBanner } from '@/customization/selectors';
+import { usePeerCosmetics } from '@/customization/store';
 import { MOTIFS, type MotifName } from '@/customization/Decorative';
 
 const BannerMotif = ({ motif, accent, opacity }: { motif: MotifName; accent: string; opacity?: number }) => {
@@ -1074,6 +1075,8 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const replyMsg = replyToId ? msgMap[replyToId] : null;
   const editMsg  = editingId ? msgMap[editingId] : null;
   const myId     = currentUserId ?? '';
+  // Надетое у собеседника (баннер, рамка) лежит на сервере: подтягиваем и перерисовываемся, когда придёт.
+  usePeerCosmetics([chat?.type === 'direct' ? (chat.participants?.find(p => p !== myId) ?? null) : null]);
   // Дописанная сверху страница смещает ленту: запоминаем высоту до
   // вставки, чтобы вернуть взгляд на то же сообщение.
   const keepScroll = useRef<{ before: number; top: number } | null>(null);

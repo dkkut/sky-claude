@@ -12,10 +12,11 @@
    закладка на витрине, ей незачем на сервер.
 =============================================================== */
 import { create } from 'zustand';
+import { useEffect } from 'react';
 import type { ItemCategory, UnlockCondition } from './types';
 import { meetsStaticUnlock } from './types';
 import type { Account } from '@/core/auth/store';
-import { apiMyCustomization, apiEquipCustomization, apiBuyCustomization, apiCustomizationCatalog, type CatalogPrice } from './customizationApi';
+import { apiMyCustomization, apiEquipCustomization, apiBuyCustomization, apiCustomizationCatalog, apiPeersCustomization, type CatalogPrice } from './customizationApi';
 
 const W = typeof window !== 'undefined';
 const FAVORITES_KEY = 'sky:customization:favorites:v1';
@@ -48,6 +49,8 @@ interface CustomizationState {
    *  повторно — например при входе в маркет, если main.tsx почему-то
    *  ещё не успел. */
   loadFromServer: (accountId: string) => Promise<void>;
+  /** Подтянуть надетое у других людей (чат, профиль, список чатов). Не чаще раза в минуту на человека. */
+  loadPeers: (ids: Array<string | undefined | null>) => Promise<void>;
 
   getEquipped: (accountId: string, category: ItemCategory) => string | undefined;
   /** Надеть предмет. Показывает сразу (оптимистично), истина — ответ
@@ -72,6 +75,16 @@ interface CustomizationState {
   ) => boolean;
 }
 
+const peerFetchedAt = new Map<string, number>();
+
+/** Хук: подтянуть надетое у людей и перерисовать экран, когда оно придёт. Возвращает счётчик для зависимостей useMemo. */
+export const usePeerCosmetics = (ids: Array<string | undefined | null>): unknown => {
+  const equipped = useCustomization((s) => s.equipped);
+  const key = ids.filter(Boolean).join(',');
+  useEffect(() => { void useCustomization.getState().loadPeers(key ? key.split(',') : []); }, [key]);
+  return equipped;
+};
+
 export const useCustomization = create<CustomizationState>((set, get) => ({
   owned:    {},
   equipped: {},
@@ -92,6 +105,27 @@ export const useCustomization = create<CustomizationState>((set, get) => ({
       catalog,
       synced: { ...get().synced, [accountId]: true },
     });
+  },
+
+  loadPeers: async (rawIds) => {
+    const now = Date.now();
+    const ids = [...new Set(rawIds.filter((x): x is string => !!x))].filter((id) => now - (peerFetchedAt.get(id) ?? 0) > 60_000);
+    if (!ids.length) return;
+    for (const id of ids) peerFetchedAt.set(id, now);
+    for (let i = 0; i < ids.length; i += 50) {
+      const chunk = ids.slice(i, i + 50);
+      const eq = await apiPeersCustomization(chunk);
+      if (!eq) { for (const id of chunk) peerFetchedAt.delete(id); continue; }
+      const equipped = { ...get().equipped };
+      const owned = { ...get().owned };
+      for (const id of chunk) {
+        if (get().synced[id]) continue;                 // свой инвентарь не трогаем: он точнее
+        equipped[id] = eq[id] ?? {};
+        // Сервер разрешил надеть только то, чем человек владеет (платное) — для показа считаем это его имуществом.
+        owned[id] = Object.values(eq[id] ?? {});
+      }
+      set({ equipped, owned });
+    }
   },
 
   getEquipped: (accountId, category) => get().equipped[accountId]?.[category],

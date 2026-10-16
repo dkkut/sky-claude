@@ -53,6 +53,17 @@ export const myEquipped = async (profileId) => {
   return Object.fromEntries(rows.map((r) => [r.category, r.item_id]));
 };
 
+/** Что надето у нескольких профилей — витринные данные, их видят все (рамка, баннер, тема). */
+export const equippedOf = async (profileIds) => {
+  const ids = [...new Set(profileIds)].slice(0, 60);
+  if (!ids.length) return {};
+  const { rows } = await query(
+    'SELECT profile_id, category, item_id FROM customization_equipped WHERE profile_id = ANY($1::text[])', [ids]);
+  const out = {};
+  for (const r of rows) (out[r.profile_id] ??= {})[r.category] = r.item_id;
+  return out;
+};
+
 const ownsItem = async (profileId, itemId) => {
   const { rowCount } = await query(
     'SELECT 1 FROM customization_inventory WHERE profile_id = $1 AND item_id = $2', [profileId, itemId],

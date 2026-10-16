@@ -22,6 +22,7 @@ import type { GameActivity } from '@/gaming/accounts';
 import { useSocialGraph, type FriendStatus } from './social';
 import { useProgression } from './progression';
 import { activeFrame, type FrameDef } from './cosmetics';
+import { usePeerCosmetics } from '@/customization/store';
 import { useMediaPresence, type MusicPresence, type WatchPresence } from './mediaPresence';
 
 /* -- Последняя история пользователя: читаем тот же localStorage,
@@ -126,6 +127,7 @@ export interface ProfileData {
 }
 
 export function useProfileData(userId: string | null): ProfileData | null {
+  const cosmeticsVersion = usePeerCosmetics([userId]);
   const viewerId  = useAuthStore(s => s.currentUserId) ?? '';
   const accounts  = useAuthStore(s => s.accounts);
 
@@ -319,6 +321,6 @@ export function useProfileData(userId: string | null): ProfileData | null {
     };
   }, [
     userId, viewerId, account, loading, myChats, myMessages, blockedList, authorPosts, hiddenIds, sent,
-    gamingActivity, followEntry, targetFriends, myFriends, viewCount, progression, musicPresenceMap, watchPresenceMap, serverGifts,
+    gamingActivity, followEntry, targetFriends, myFriends, viewCount, progression, musicPresenceMap, watchPresenceMap, serverGifts, cosmeticsVersion,
   ]);
 }

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Crown, Shield, Briefcase, Check, Copy, Globe, Clock, CalendarDays, Link2, Eye } from 'lucide-react';
 import type { ProfileData } from '../useProfileData';
+import { activeBanner } from '@/customization/selectors';
+import { MOTIFS } from '@/customization/Decorative';
 
 const PLATFORM_LABEL: Record<string, string> = { desktop: 'Компьютер', mobile: 'Телефон' };
 
@@ -19,16 +21,21 @@ export const ProfileHero = ({ data, onEdit }: { data: ProfileData; onEdit?: () =
   };
 
   const frameGlow = data.frame.glow;
+  // Баннер из маркета кастомизации: надет — показываем его, иначе загруженная картинка, иначе стандартный.
+  const equippedBanner = activeBanner(acc);
+  const showEquipped = equippedBanner.id !== 'banner-default' && (data.isOwn || (acc.privacy?.showBanner ?? true));
 
   return (
     <div className="sky-card overflow-hidden" style={{ background: 'var(--profile-card-bg, var(--bg-l1))', border: '1px solid var(--profile-card-border, transparent)' }}>
       {/* -- Обложка -- */}
       <div className="h-24 sm:h-44 relative"
         style={{
-          background: (acc.banner && (data.isOwn || (acc.privacy?.showBanner ?? true)))
-            ? `url(${acc.banner}) center/cover`
-            : 'linear-gradient(135deg,#2a3350,#1a2038)',
+          background: showEquipped ? equippedBanner.background
+            : (acc.banner && (data.isOwn || (acc.privacy?.showBanner ?? true)))
+              ? `url(${acc.banner}) center/cover`
+              : 'linear-gradient(135deg,#2a3350,#1a2038)',
         }}>
+        {showEquipped && (() => { const Motif = MOTIFS[equippedBanner.motif]; return <div className="absolute inset-0 pointer-events-none"><Motif accent={equippedBanner.accent2 ?? equippedBanner.accent} opacity={equippedBanner.motifOpacity} /></div>; })()}
         <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg,rgba(0,0,0,0)0%,rgba(0,0,0,.35)100%)' }} />
       </div>
 

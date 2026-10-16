@@ -12,6 +12,7 @@ import { useModerationStore } from '@/shared/moderationStore';
 import { openProfile } from '@/profile/viewer/store';
 import { activeFrame } from '@/profile/viewer/cosmetics';
 import { activeChatListStyle } from '@/customization/selectors';
+import { usePeerCosmetics } from '@/customization/store';
 import { useGamingAccounts } from '@/gaming/accounts';
 import { usePeopleSearch } from './usePeopleSearch';
 import { useAdminStore } from './adminStore';
@@ -553,6 +554,8 @@ export const ChatList = () => {
 
   const totalUnread = Object.values(unreadMap).reduce((s, n) => s + n, 0);
 
+  // Рамки и стиль строки у собеседников: данные на сервере, подтягиваем для всех личных чатов.
+  usePeerCosmetics(chats.filter(c => c.type === 'direct').slice(0, 120).map(c => c.participants?.find(p => p !== currentUserId)));
   const visible = useMemo(() => {
     const q = search.toLowerCase().trim();
     return [...chats]

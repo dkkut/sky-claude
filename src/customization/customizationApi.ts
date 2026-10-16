@@ -31,6 +31,12 @@ export const apiMyCustomization = async (): Promise<{ inventory: InventoryRow[];
   return r.ok && r.data ? r.data : null;
 };
 
+/** Что надето у других людей (рамка, баннер, тема) — витринные данные, видны всем. */
+export const apiPeersCustomization = async (ids: string[]): Promise<Record<string, EquippedMap> | null> => {
+  const r = await apiCall<{ equipped: Record<string, EquippedMap> }>(`/api/customization/of?ids=${ids.map(encodeURIComponent).join(',')}`);
+  return r.ok && r.data ? r.data.equipped : null;
+};
+
 export const apiEquipCustomization = async (category: ItemCategory, itemId: string | null) => {
   const r = await apiCall<{ ok: true }>('/api/customization/equip',
     { method: 'POST', body: JSON.stringify({ category, itemId }) });

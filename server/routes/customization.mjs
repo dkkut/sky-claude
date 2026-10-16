@@ -7,7 +7,7 @@
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import {
-  listCatalog, myInventory, myEquipped, equipItem, purchaseItem, CATEGORIES,
+  listCatalog, myInventory, myEquipped, equipItem, equippedOf, purchaseItem, CATEGORIES,
   adminListCatalog, adminSetPrice, adminSetActive, adminGrantItem,
 } from './../customization.mjs';
 
@@ -39,6 +39,13 @@ export const customizationRoutes = async (req, res, url) => {
     if (!rateLimit(`cust:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     const [inventory, equipped] = await Promise.all([myInventory(me), myEquipped(me)]);
     return json(res, 200, { inventory, equipped });
+  }
+
+  if (req.method === 'GET' && url.startsWith('/api/customization/of')) {
+    if (!rateLimit(`cust:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const ids = String(new URL(req.url, 'http://x').searchParams.get('ids') ?? '').split(',')
+      .map((x) => x.trim()).filter((x) => /^[A-Za-z0-9_-]{3,80}$/.test(x));
+    return json(res, 200, { equipped: await equippedOf(ids) });
   }
 
   if (req.method === 'POST' && url === '/api/customization/equip') {
