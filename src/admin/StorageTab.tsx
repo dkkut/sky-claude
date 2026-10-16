@@ -136,10 +136,11 @@ const Overview = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
 
       <Card title="Объём и площадка">
         <div className="h-2 overflow-hidden rounded-full" style={{ background: C.l2 }}><div className="h-full" style={{ width: `${Math.min(100, pct)}%`, background: lvl === 'ok' ? C.green : lvl === 'warn' ? C.amber : C.red }} /></div>
-        <p className="text-[12px]" style={{ color: C.t2 }}>Занято {gb(d.stats.capacity.used)} из {gb(d.stats.capacity.total)} ({pct}%, уровень «{lvl}») · файлов {d.stats.capacity.files} · свободно на диске {gb(d.stats.capacity.diskFree)}</p>
+        <p className="text-[12px]" style={{ color: C.t2 }}>Занято {gb(d.stats.capacity.used)} из {gb(d.stats.capacity.total)} ({pct}%, уровень «{lvl}») · файлов {d.stats.capacity.files} · {d.stats.capacity.s3 ? `свободно на диске сервера (кэш): ${gb(d.stats.capacity.diskFree)}` : `свободно на диске ${gb(d.stats.capacity.diskFree)}`}
+          {d.stats.capacity.source === 'disk-fallback' && <span style={{ color: C.amber }}> · Объём хранилища не задан: показан размер диска сервера. Укажите общий объём (например 1 ТБ) во вкладке «Квоты и пороги».</span>}</p>
         <div className="grid grid-cols-2 gap-1 text-[11px] sm:grid-cols-4" style={{ color: C.t3 }}>{d.stats.categories.filter((c: Data) => c.bytes || c.files).map((c: Data) => <span key={c.category}>{c.category}: {gb(c.bytes)} · {c.files}</span>)}</div>
         <p className="text-[12px]" style={{ color: C.t2 }}>
-          Площадка копий: {d.target.configured ? <><b>{d.target.kind}</b> <span translate="no">{d.target.label}</span> {d.target.health?.ok ? <Badge ok>доступна, {d.target.health.ms} мс</Badge> : <Badge ok={false}>недоступна {d.target.health?.code ?? ''}</Badge>} {!d.target.independent && <Badge ok={false}>не независимая площадка</Badge>}</> : <Badge ok={false}>не настроена{d.target.missing?.length ? `: ${d.target.missing.join(', ')}` : ''}</Badge>}
+          Площадка копий: {d.target.configured ? <><b>{d.target.kind}</b> <span translate="no">{d.target.label}</span> {d.target.health?.ok ? <Badge ok>доступна, {d.target.health.ms} мс</Badge> : <Badge ok={false}>недоступна {d.target.health?.code ?? ''}</Badge>} {!d.target.independent && <><Badge ok={false}>не независимая площадка</Badge> <span className="text-[11px]" style={{ color: C.t3 }}>копии лежат там же, где и сами файлы (тот же бакет или сервер): если он пропадёт, пропадут и копии. Для защиты нужна копия в другом хранилище.</span></>}</> : <Badge ok={false}>не настроена{d.target.missing?.length ? `: ${d.target.missing.join(', ')}` : ''}</Badge>}
         </p>
         <p className="text-[12px]" style={{ color: C.t2 }}>Основное хранение медиа: {d.primary?.enabled ? <Badge ok>S3 (кэш на диске {d.primary.cacheDays ? `${d.primary.cacheDays} дн.` : 'без очистки'})</Badge> : <Badge ok={false}>диск сервера, S3 не включён</Badge>}</p>
         <p className="text-[12px]" style={{ color: C.t2 }}>Ключ шифрования копий: {d.keys.configured ? <Badge ok>активный {d.keys.active}</Badge> : <Badge ok={false}>не задан</Badge>} · последняя проверенная копия: {d.backups.lastVerified ? dt(d.backups.lastVerified.verified_at) : 'нет'} · загрузок идёт {d.activity.uploads}, чтений {d.activity.io}</p>
@@ -347,11 +348,11 @@ const Quotas = ({ perms }: { perms: string[] }) => {
   const [d, setD] = useState<Data | null>(null); const [s, setS] = useState<Data | null>(null);
   const load = useCallback(async () => { const r = await call('GET', '/overview'); if (r.ok) { setD(r.data); setS(r.data.state.settings); } }, []);
   useEffect(() => { void load(); }, [load]);
+  const gate = useCodeGate();
   if (!d || !s) return <Wait />;
   const can = perms.includes('storage_quota');
   const n = (k: string, v: string) => setS({ ...s, [k]: v === '' ? null : Number(v) });
   const th = (k: string, v: string) => setS({ ...s, thresholds: { ...s.thresholds, [k]: Number(v) } });
-  const gate = useCodeGate();
   const saveSettings = () => gate.ask(async (code) => { const r = await call('PUT', '/settings', { settings: s, expectedVersion: undefined, stepUpCode: code }); flash(r.ok ? 'Сохранено' : errText(r.error)); void load(); });
   return (
     <div className="space-y-3">

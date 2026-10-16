@@ -75,8 +75,12 @@ const uploadWindow = [];            // отметки времени начал�
 export const capacity = async () => {
   const st = snapshot();
   const disk = await diskInfo();
-  const total = st?.settings.totalBytes ? Math.min(st.settings.totalBytes, disk.total || st.settings.totalBytes) : disk.total;
-  return { total, diskTotal: disk.total, diskFree: disk.free };
+  // Файлы лежат в S3 — размер диска сервера к ним не относится: ёмкость — заданный предел (напр. 1 ТБ тарифа).
+  const s3 = (process.env.STORAGE_PRIMARY ?? '').toLowerCase() === 's3';
+  const limit = st?.settings.totalBytes || 0;
+  const total = s3 && limit ? limit : limit ? Math.min(limit, disk.total || limit) : disk.total;
+  const source = s3 && limit ? 'limit' : s3 ? 'disk-fallback' : 'disk';
+  return { total, diskTotal: disk.total, diskFree: disk.free, source, s3 };
 };
 
 let capCache = { at: 0, k: null, v: { total: 0, diskTotal: 0, diskFree: Infinity } };

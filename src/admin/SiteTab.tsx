@@ -103,8 +103,10 @@ const DownloadCard = ({ d, onChanged }: { d: Dl; onChanged: () => void }) => {
 
 const DownloadsPane = () => {
   const [items, setItems] = useState<Dl[] | null>(null);
-  const load = useCallback(async () => { const r = await apiCall<{ items: Dl[] }>('/api/admin/site/downloads'); if (r.ok && r.data) setItems(r.data.items); else flash(msg(r)); }, []);
+  const [failed, setFailed] = useState<string | null>(null);
+  const load = useCallback(async () => { const r = await apiCall<{ items: Dl[] }>('/api/admin/site/downloads'); if (r.ok && r.data) { setItems(r.data.items); setFailed(null); } else { setFailed(`${msg(r)} (код ${r.status})`); flash(msg(r)); } }, []);
   useEffect(() => { void load(); }, [load]);
+  if (failed) return <div className="space-y-2 text-[12px]" style={{ color: C.t2 }}><p>Не удалось загрузить список: {failed}. Если ошибка повторяется — на сервере старая версия: обновите её (deploy).</p><button type="button" className="rounded-xl px-3 py-1.5 text-[12px] font-semibold" style={{ background: C.l2 }} onClick={() => { setFailed(null); void load(); }}>Повторить</button></div>;
   if (!items) return <Wait />;
   return (
     <div className="space-y-3">

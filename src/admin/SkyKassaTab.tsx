@@ -21,7 +21,7 @@ const ERR: Record<string, string> = {
   no_second_factor: 'Нужна подтверждённая почта или аутентификатор.', bad_state: 'Действие недоступно в текущем статусе заявки.',
   reason_required: 'Укажите причину (от 5 знаков).', not_found: 'Не найдено.', processing_error: 'Ошибка при зачислении. Заявка помечена «Ошибка обработки».',
   refund_insufficient_funds: 'У человека на балансе уже нет этих денег — возврат невозможен.', bad_field: 'Проверьте заполнение поля.',
-  bad_card: 'Номер карты неверный.', bad_phone: 'Номер телефона неверный.', bad_account: 'Номер счёта неверный (20 цифр или IBAN).',
+  bad_card: 'Номер карты неверный.', bad_phone: 'Номер телефона неверный.', bad_account: 'Номер счёта неверный (20 цифр или IBAN). Если это телефон или карта — выберите тип «Телефон (СБП)» или «Банковская карта».',
   bad_url: 'Адрес партнёра не подходит.', exists: 'Такой идентификатор уже есть.', code_already_used: 'Код пополнения уже активирован.',
   bad_amount: 'Неверная сумма.', refund_open: 'Возврат по платежу уже запрошен.', too_many_attempts: 'Слишком часто, подождите минуту.',
 };
@@ -253,15 +253,30 @@ const MethodForm = ({ m, onDone }: { m: Data | null; onDone: () => void }) => {
   );
 };
 
+const ID_KIND_RU: Record<string, string> = { account: 'Расчётный счёт', card: 'Банковская карта', phone: 'Телефон (СБП)', other: 'Другое' };
+const ID_LABEL: Record<string, string> = { account: 'Расчётный счёт (20 цифр)', card: 'Номер карты (16–19 цифр)', phone: 'Номер телефона (+7 900 000-00-00)', other: 'Идентификатор (например, никнейм кошелька)' };
+const BANK_LINES: Array<[string, string]> = [['bik', 'БИК'], ['corr', 'Корр. счёт'], ['inn', 'ИНН']];
+/** БИК, корр. счёт и ИНН хранятся строками в «Пояснении», которое видит человек. */
+const splitInstruction = (text: string) => {
+  const out: Data = { bik: '', corr: '', inn: '', note: [] as string[] };
+  for (const line of String(text ?? '').split('\n')) {
+    const m = /^(БИК|Корр\. счёт|ИНН):\s*(.*)$/.exec(line.trim());
+    if (m) out[m[1] === 'БИК' ? 'bik' : m[1] === 'ИНН' ? 'inn' : 'corr'] = m[2]; else if (line.trim()) out.note.push(line.trim());
+  }
+  return { bik: out.bik as string, corr: out.corr as string, inn: out.inn as string, note: (out.note as string[]).join('\n') };
+};
+
 const RequisiteForm = ({ r, methodId, onDone }: { r: Data | null; methodId: string; onDone: () => void }) => {
   const [f, setF] = useState<Data>(() => ({
     methodId, label: r?.label ?? '', recipient: r?.recipient ?? '', bank: r?.bank ?? '', idKind: r?.idKind ?? 'account', identifier: r?.identifier ?? '',
-    purpose: r?.purpose ?? 'Пополнение Sky, заявка {number}', instruction: r?.instruction ?? '', priority: r?.priority ?? 100, primary: r?.primary ?? false, enabled: r?.enabled ?? true,
+    purpose: r?.purpose ?? 'Пополнение Sky, заявка {number}', ...(() => { const x = splitInstruction(r?.instruction ?? ''); return { instruction: x.note, bik: x.bik, corr: x.corr, inn: x.inn }; })(), priority: r?.priority ?? 100, primary: r?.primary ?? false, enabled: r?.enabled ?? true,
     destinations: r?.destinations ?? null,
   }));
   const [step, setStep] = useState(false);
   const save = async (code: string) => {
-    const body = { ...f, priority: Number(f.priority), stepUpCode: code };
+    const bank = f.idKind === 'account' ? BANK_LINES.filter(([k]) => String(f[k] ?? '').trim()).map(([k, l]) => `${l}: ${String(f[k]).trim()}`) : [];
+    const instruction = [...bank, String(f.instruction ?? '').trim()].filter(Boolean).join('\n').slice(0, 600);
+    const body = { ...f, instruction, priority: Number(f.priority), stepUpCode: code };
     const res = r ? await call('PUT', `/requisites/${r.id}`, body) : await call('POST', '/requisites', body);
     if (!res.ok) { flash(errText(res.error, res.data)); if (!String(res.error).startsWith('step_up')) setStep(false); return; }
     flash('Сохранено'); setStep(false); onDone();
@@ -273,9 +288,16 @@ const RequisiteForm = ({ r, methodId, onDone }: { r: Data | null; methodId: stri
       <div className="grid grid-cols-2 gap-2">
         <label className="block text-[11px]" style={{ color: C.t3 }}>Тип
           <select value={f.idKind} onChange={(e) => setF({ ...f, idKind: e.target.value })} className="mt-0.5 w-full rounded-lg px-2 py-1.5 text-sm" style={field}>
-            {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select></label>
-        <Input label="Номер карты / телефон / счёт" value={f.identifier} onChange={(v) => setF({ ...f, identifier: v })} max={64} />
+            {KINDS.map((k) => <option key={k} value={k}>{ID_KIND_RU[k] ?? k}</option>)}</select></label>
+        <Input label={ID_LABEL[f.idKind] ?? 'Номер'} value={f.identifier} onChange={(v) => setF({ ...f, identifier: v })} max={64} />
       </div>
+      {f.idKind === 'account' && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Input label="БИК банка (9 цифр)" value={f.bik} onChange={(v) => setF({ ...f, bik: v })} max={9} />
+          <Input label="Корр. счёт (20 цифр)" value={f.corr} onChange={(v) => setF({ ...f, corr: v })} max={20} />
+          <Input label="ИНН получателя" value={f.inn} onChange={(v) => setF({ ...f, inn: v })} max={12} />
+        </div>
+      )}
       <Input label="Назначение платежа ({number} — номер заявки)" value={f.purpose} onChange={(v) => setF({ ...f, purpose: v })} max={200} />
       <Input label="Пояснение для человека" value={f.instruction} onChange={(v) => setF({ ...f, instruction: v })} max={600} />
       <Input label="Приоритет (меньше — раньше)" type="number" value={f.priority} onChange={(v) => setF({ ...f, priority: v })} />
