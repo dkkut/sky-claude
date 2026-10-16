@@ -19,7 +19,7 @@ import { decryptSecret } from './crypto.mjs';
 import { verifyTotp } from './totp.mjs';
 import { sendEmail } from './notify.mjs';
 import { sessionStore } from './sessions.mjs';
-import { forgetGate } from './admin.mjs';
+import { forgetGate, forgetLockdown } from './admin.mjs';
 import { logAdmin, logSecurityEvent } from './adminsec.mjs';
 import { rateLimitPerHour } from './security.mjs';
 import { L } from './lang.mjs';
@@ -173,6 +173,7 @@ export const enactPanic = async (who, action, { ip, source } = {}) => {
     `Enabled via “It’s not me” link (@${who.username}${source ? `, ${source}` : ''})`).slice(0, 280);
   if (action === 'shutdown') {
     await query('UPDATE platform_shutdown SET active = TRUE, reason = $1, set_by = $2, set_at = now() WHERE id', [reason, who.id]);
+  forgetLockdown();
   }
   // Панель закрывается в обоих случаях: выключенный сервер без закрытой панели смысла не имеет.
   await query('UPDATE admin_lockdown SET active = TRUE, reason = $1, set_by = $2, set_at = now() WHERE id', [reason, who.id]);

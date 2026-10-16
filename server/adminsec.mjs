@@ -39,7 +39,7 @@ import { pool, query } from './db.mjs';
 import { config } from './config.mjs';
 import { clientIp } from './http.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
-import { isAdmin, isOwner, setAdminLogSink, rightsOf, can } from './admin.mjs';
+import { isAdmin, isOwner, setAdminLogSink, rightsOf, can, forgetLockdown } from './admin.mjs';
 import { ROLE_NAMES, ROLE_LABEL } from './roles.mjs';
 import { decryptSecret } from './crypto.mjs';
 import { verifyTotp } from './totp.mjs';
@@ -300,7 +300,7 @@ const codeHash = (actorId, purpose, code) => crypto
  * способ значило бы позволить ему выбрать самый слабый.
  */
 export const beginStepUp = async (actorId, purpose, { meta = {} } = {}) => {
-  if (!(await isAdmin(actorId))) return { error: 'not_allowed' };
+  { const r = await rightsOf(actorId); if (!r.admin || r.lockdown) return { error: 'not_allowed' }; }   // панель закрыта — подтверждений не выдаём
   const clean = String(purpose ?? '').slice(0, 60);
   if (!clean) return { error: 'bad_purpose' };
 
@@ -475,6 +475,7 @@ export const setLockdown = async (actorId, on, reason = '', { meta = {} } = {}) 
   await query(
     `UPDATE admin_lockdown SET active = $1, reason = $2, set_by = $3, set_at = now()
       WHERE id`, [Boolean(on), String(reason ?? '').slice(0, 300), actorId]);
+  forgetLockdown();
 
   let revoked = 0;
   if (on) revoked = await revokeOtherAdminSessions(actorId);
@@ -516,6 +517,7 @@ export const setLockdownSystem = async (reason) => {
   await query(
     `UPDATE admin_lockdown SET active = TRUE, reason = $1, set_by = NULL, set_at = now()
       WHERE id`, [String(reason ?? '').slice(0, 300)]);
+  forgetLockdown();
   const revoked = await revokeAllAdminSessions();
   await logAdmin({ actorId: null, type: 'auto_lockdown', targetType: 'system',
     detail: `${String(reason ?? '').slice(0, 250)} · сессий закрыто: ${revoked}` });
@@ -962,7 +964,7 @@ const SELECT_PENDING = `
  * выдачу прав это сведения о том, кто кого собирается назначить.
  */
 export const listPendingActions = async (actorId, { status, limit } = {}) => {
-  if (!(await isAdmin(actorId))) return null;
+  { const r = await rightsOf(actorId); if (!r.admin || r.lockdown) return null; }
   const owner = await isOwner(actorId);
   const n = Math.min(200, Math.max(1, Number(limit) || 50));
 

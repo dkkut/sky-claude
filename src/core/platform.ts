@@ -19,6 +19,8 @@ export interface PlatformStatus {
   /** Можно ли сейчас завести новый аккаунт (server/registration.mjs). Вход существующих это не затрагивает. */
   /** Закрытые из админки модули: ключ → причина (только если разрешено показывать). */
   closedModules?: Record<string, { reason?: string }>;
+  /** Этого посетителя режим не касается (владелец/администратор) — заглушку ему показывать нельзя. */
+  bypass?: boolean;
   registration?: { open: boolean; message: string; reason: 'closed' | 'daily_limit' | null };
 }
 

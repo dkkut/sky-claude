@@ -170,6 +170,21 @@ export const gateLocked = async (userId) => {
   return true;
 };
 
+/* Аварийный режим панели (admin_lockdown, adminsec.mjs). Проверка стоит ЗДЕСЬ, в единственном месте, откуда все модули и
+   маршруты узнают права, — а не точечно в отдельных обработчиках: иначе любой маршрут, где её забыли, продолжал работать
+   после закрытия панели. Владельца режим не касается (он и должен суметь его выключить). Короткая память, чтобы не ходить
+   в базу на каждое право; включение/выключение режима сбрасывает её (forgetLockdown). */
+let lockdownMemo = { at: 0, active: false };
+export const forgetLockdown = () => { lockdownMemo = { at: 0, active: false }; };
+const lockdownOn = async () => {
+  if (Date.now() - lockdownMemo.at < 1000) return lockdownMemo.active;
+  try {
+    const { rows } = await query('SELECT active FROM admin_lockdown WHERE id');
+    lockdownMemo = { at: Date.now(), active: Boolean(rows[0]?.active) };
+  } catch { /* таблицы нет (старая схема) — режим не действует */ lockdownMemo = { at: Date.now(), active: false }; }
+  return lockdownMemo.active;
+};
+
 export const rightsOf = async (actorId) => {
   if (!actorId) return { ...NOBODY };
 
@@ -214,6 +229,11 @@ export const rightsOf = async (actorId) => {
   if (await gateLocked(actorId)) {
     return { ...base, owner: Boolean(row.owner), role: row.owner ? 'owner' : (row.admin_role ?? 'super_admin'),
       permissions: [], gateRequired: true };
+  }
+
+  /* Панель закрыта: у не-владельца прав нет ни в панели, ни в любом модуле. Признак admin остаётся — чтобы интерфейс объяснил причину. */
+  if (!row.owner && await lockdownOn()) {
+    return { ...base, owner: false, role: row.admin_role ?? 'super_admin', permissions: [], lockdown: true };
   }
 
   if (row.owner) {

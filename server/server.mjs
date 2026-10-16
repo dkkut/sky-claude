@@ -9,7 +9,7 @@ import http from 'node:http';
 import { config } from './config.mjs';
 import { rateLimit } from './security.mjs';
 import { json, originAllowed, readSession, clientIp } from './http.mjs';
-import { isOwnerRaw, isAdmin } from './admin.mjs';
+import { passesPlatformMode } from './platformaccess.mjs';
 import { shutdownState, maintenanceState } from './platform.mjs';
 import { waitForDb, migrate, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
@@ -371,16 +371,12 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
       const shutdown = await shutdownState();
       if (shutdown.active) {
         const session = await readSession(req);
-        const who = session?.profileId ?? mediaProfile(req);
-        const owner = who ? await isOwnerRaw(who) : false;
-        if (!owner) return json(res, 503, { error: 'platform_shutdown', reason: shutdown.reason });
+        if (!(await passesPlatformMode({ session, mediaWho: mediaProfile(req), url, kind: 'shutdown' }))) return json(res, 503, { error: 'platform_shutdown', reason: shutdown.reason });
       } else {
         const maintenance = await maintenanceState();
         if (maintenance.active) {
           const session = await readSession(req);
-          const who = session?.profileId ?? mediaProfile(req);
-          const admin = who ? await isAdmin(who) : false;
-          if (!admin) return json(res, 503, { error: 'platform_maintenance', reason: maintenance.reason });
+          if (!(await passesPlatformMode({ session, mediaWho: mediaProfile(req), url, kind: 'maintenance' }))) return json(res, 503, { error: 'platform_maintenance', reason: maintenance.reason });
         }
       }
     }

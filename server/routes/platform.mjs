@@ -3,7 +3,8 @@
  * Сам гейт (кто вообще проходит дальше) стоит в server.mjs, до
  * диспетчеризации по маршрутам — см. комментарий там же.
  */
-import { json, parseBody, requireProfile } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession } from './../http.mjs';
+import { viewerBypasses } from './../platformaccess.mjs';
 import { publicStatus as registrationStatus } from './../registration.mjs';
 import { closedPublic } from './../modclosure.mjs';
 import { shutdownState, maintenanceState, setShutdown, setMaintenance } from './../platform.mjs';
@@ -15,7 +16,10 @@ export const platformRoutes = async (req, res, url) => {
      браузер без сессии понимает, какой экран показать. */
   if (req.method === 'GET' && url === '/api/platform/status') {
     const [shutdown, maintenance, registration, closedModules] = await Promise.all([shutdownState(), maintenanceState(), registrationStatus(), closedPublic()]);
-    return json(res, 200, { shutdown, maintenance, registration, closedModules });
+    // bypass: этого посетителя режим не касается (владелец/администратор) — клиент не должен показывать ему заглушку
+    const kind = shutdown.active ? 'shutdown' : maintenance.active ? 'maintenance' : null;
+    const bypass = kind ? await viewerBypasses(await readSession(req).catch(() => null), kind) : false;
+    return json(res, 200, { shutdown, maintenance, registration, closedModules, bypass });
   }
 
   const session = await requireProfile(req, res);

@@ -370,16 +370,23 @@ const Root = () => {
   // долетает только теми, кого режим действительно касается.
   const [platformBlock, setPlatformBlock] = useState<PlatformBlock>(null);
   useEffect(() => {
-    setPlatformBlockedHandler(setPlatformBlock);
+    // 503 от сервера — повод перепроверить статус: если посетителя режим не касается (владелец/админ), заглушку не показываем
+    setPlatformBlockedHandler((b) => {
+      if (!b) { setPlatformBlock(null); return; }
+      void apiPlatformStatus().then((s) => setPlatformBlock(s?.bypass ? null : b));
+    });
     return () => setPlatformBlockedHandler(null);
   }, []);
   const checkPlatformStatus = async () => {
     const s = await apiPlatformStatus();
     if (!s) return;
+    if (s.bypass) { setPlatformBlock(null); return; }   // владелец/администратор: сервер пропускает его мимо режима
     if (s.shutdown.active) setPlatformBlock({ kind: 'shutdown', reason: s.shutdown.reason });
     else if (s.maintenance.active) setPlatformBlock({ kind: 'maintenance', reason: s.maintenance.reason });
     else setPlatformBlock(null);
   };
+  // После входа (и смены профиля) перепроверяем режим работ: заглушка, оставшаяся от запроса до входа, не должна висеть у владельца
+  useEffect(() => { if (isAuthenticated) void checkPlatformStatus(); }, [isAuthenticated, currentUserId]);
 
   useEffect(() => {
     let cancelled = false;
