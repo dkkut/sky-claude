@@ -290,56 +290,62 @@ const sendGiftLocked = async (senderId, { recipientId, target, giftCatalogId, me
     if (existing[0].status !== 'awaiting_payment') return { error: existing[0].status };
   }
 
-  const paid = await wallet.spendPoints(senderId, item.pricePoints, `Подарок «${item.name}»`, realOrderId);
-  if (paid.error) {
-    await query(`UPDATE gift_orders SET status = 'failed' WHERE id = $1 AND status = 'awaiting_payment'`, [realOrderId]);
-    return paid;
-  }
+  /*
+   * Оплата, статус заказа и выдача экземпляра — ОДНА транзакция под блокировкой строки заказа: либо баллы списаны, заказ оплачен и
+   * подарок выдан, либо ничего этого нет. Раньше «списали → пометили оплаченным → выдали → при сбое вернули отдельным вызовом»:
+   * обрыв между шагами оставлял человека без баллов и без подарка. Сообщение в чат отправляется уже после фиксации; если оно не ушло,
+   * подарок отменяется, баллы возвращаются (видимая компенсация, а не тихая потеря).
+   */
+  const instanceId = `gi-${generateId()}`;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: ord } = await client.query('SELECT status FROM gift_orders WHERE id = $1 FOR UPDATE', [realOrderId]);
+    if (ord[0]?.status === 'paid') {
+      await client.query('ROLLBACK');
+      const { rows: existingInstance } = await query('SELECT id FROM gift_instances WHERE order_id = $1', [realOrderId]);
+      return { ok: true, orderId: realOrderId, instanceId: existingInstance[0]?.id, replay: true };
+    }
+    if (ord[0]?.status !== 'awaiting_payment') { await client.query('ROLLBACK'); return { error: ord[0]?.status ?? 'conflict' }; }
 
-  const { rowCount } = await query(
-    `UPDATE gift_orders SET status = 'paid', paid_at = now() WHERE id = $1 AND status = 'awaiting_payment'`,
-    [realOrderId],
-  );
-  if (rowCount === 0) {
-    // Кто-то другой уже провёл выдачу этого заказа (параллельный повтор
-    // того же ключа) — деньги вернуть, вторую выдачу не делать.
-    await wallet.refund(senderId, item.pricePoints, 'Возврат — заказ уже выдан', realOrderId);
-    const { rows: existingInstance } = await query('SELECT id FROM gift_instances WHERE order_id = $1', [realOrderId]);
-    return { ok: true, orderId: realOrderId, instanceId: existingInstance[0]?.id, replay: true };
+    const paid = await wallet.spendPointsIn(client, senderId, item.pricePoints, 'points_spend', `Подарок «${item.name}»`, realOrderId);
+    if (paid.error) {
+      await client.query('ROLLBACK');
+      await query(`UPDATE gift_orders SET status = 'failed' WHERE id = $1 AND status = 'awaiting_payment'`, [realOrderId]);
+      return paid;
+    }
+    await client.query(`UPDATE gift_orders SET status = 'paid', paid_at = now() WHERE id = $1`, [realOrderId]);
+    await client.query(
+      `INSERT INTO gift_instances (id, order_id, gift_catalog_id, media_id, thumb_media_id, sender_id, recipient_id, chat_id, message_id, caption, saved_to_profile)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,$9,$10)`,
+      // Полученный подарок сразу виден в профиле получателя (его приватность
+      // `showGifts` проверяется при показе); спрятать его можно переключателем.
+      [instanceId, realOrderId, giftCatalogId, item.mediaId, item.thumbMediaId, senderId, recipientId, chatId, message, true],
+    );
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
 
   try {
-    const instanceId = `gi-${generateId()}`;
-    let messageId = null;
-    let savedMessage = null;
     if (target === 'chat') {
       const msgId = generateId();
-      savedMessage = await saveMessage(chatId, senderId, {
+      const savedMessage = await saveMessage(chatId, senderId, {
         id: msgId, kind: 'gift', text: `🎁 ${item.name}`, giftInstanceId: instanceId,
       });
       if (!savedMessage || savedMessage.error) throw new Error(savedMessage?.error ?? 'send_failed');
-      messageId = savedMessage.id;
-    }
-
-    await query(
-      `INSERT INTO gift_instances (id, order_id, gift_catalog_id, media_id, thumb_media_id, sender_id, recipient_id, chat_id, message_id, caption, saved_to_profile)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      // Полученный подарок сразу виден в профиле получателя (его приватность
-      // `showGifts` проверяется при показе); спрятать его можно переключателем.
-      [instanceId, realOrderId, giftCatalogId, item.mediaId, item.thumbMediaId, senderId, recipientId, chatId, messageId, message, true],
-    );
-
-    if (target === 'chat') {
+      await query('UPDATE gift_instances SET message_id = $2 WHERE id = $1', [instanceId, savedMessage.id]);
       pushNewMessage(await memberIds(chatId), chatId, savedMessage);
     } else {
       await notifyGift(recipientId, 'gift', '🎁 Вам подарок!', `Вам подарили «${item.name}»`, instanceId);
     }
-
     return { ok: true, orderId: realOrderId, instanceId };
   } catch (err) {
-    // Возврат баллами, а не деньгами: списание было в баллах
-    // (wallet.spendPoints выше), значит и возврат должен идти туда же —
-    // wallet.refund трогает только денежный баланс.
+    // Доставка в чат не удалась: подарок отменяется, баллы возвращаются (списание было в баллах — и возврат туда же).
+    await query(`UPDATE gift_instances SET status = 'cancelled', cancelled_at = now() WHERE id = $1 AND status = 'delivered'`, [instanceId]).catch(() => {});
     await wallet.earnPoints(senderId, item.pricePoints, 'Возврат — не удалось доставить подарок');
     await query(`UPDATE gift_orders SET status = 'refunded' WHERE id = $1`, [realOrderId]);
     throw err;

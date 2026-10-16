@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { C, fmt } from '@/marketplace/SkyMarket';
 import { useAuthStore } from '@/core/auth/store';
-import { useNftGiftsStore } from './nftStore';
+import { useNftGiftsStore, MINT_ID } from './nftStore';
 import { GiftBackground } from './backgrounds';
 import { GiftModel } from './models';
 import { GlassCard, GiftSlide, Pill, InteractiveLineChart, ScoreRing } from './shared';
@@ -117,12 +117,21 @@ export const GiftDetail = ({ giftId, onClose, onTrade, onOpenProfile }: {
               <p className="text-[10px] flex items-center gap-1" style={{ color: C.t3 }}><User size={10}/> Автор</p>
               <p className="text-xs font-semibold mt-0.5 truncate" style={{ color: C.t1 }}>{gift.authorName}</p>
             </GlassCard>
-            <button type="button" onClick={() => onOpenProfile(gift.ownerId)} className="text-left">
-              <GlassCard className="p-3">
-                <p className="text-[10px] flex items-center gap-1" style={{ color: C.t3 }}><Crown size={10}/> Владелец</p>
-                <p className="text-xs font-semibold mt-0.5 truncate" style={{ color: C.acc }}>{gift.ownerName}</p>
-              </GlassCard>
-            </button>
+            {gift.ownerId === MINT_ID ? (
+              <div className="text-left">
+                <GlassCard className="p-3">
+                  <p className="text-[10px] flex items-center gap-1" style={{ color: C.t3 }}><Crown size={10}/> Продаёт</p>
+                  <p className="text-xs font-semibold mt-0.5 truncate" style={{ color: C.t1 }}>Sky Mint · платформа</p>
+                </GlassCard>
+              </div>
+            ) : (
+              <button type="button" onClick={() => onOpenProfile(gift.ownerId)} className="text-left">
+                <GlassCard className="p-3">
+                  <p className="text-[10px] flex items-center gap-1" style={{ color: C.t3 }}><Crown size={10}/> Владелец</p>
+                  <p className="text-xs font-semibold mt-0.5 truncate" style={{ color: C.acc }} translate="no">{gift.ownerName}</p>
+                </GlassCard>
+              </button>
+            )}
           </div>
 
           <GlassCard className="p-4 mt-3">
@@ -150,7 +159,7 @@ export const GiftDetail = ({ giftId, onClose, onTrade, onOpenProfile }: {
                 <button type="button" onClick={() => setConfirmDelete(true)} className="flex items-center justify-center gap-1.5 rounded-xl py-3 text-xs font-bold" style={{ background: 'rgba(244,63,94,0.12)', color: '#f43f5e' }}><Trash2 size={14}/> Удалить</button>
               )
             ) : (
-              <button type="button" disabled={!listing && gift.ownerId !== 'sky-mint'} onClick={() => onTrade('buy', gift.id)} className="flex items-center justify-center gap-1.5 rounded-xl py-3 text-xs font-bold disabled:opacity-40" style={{ background: C.l2, color: C.t1 }}><ShoppingBag size={14}/> {listing ? 'Купить' : 'Не продаётся'}</button>
+              <button type="button" disabled={!listing && gift.ownerId !== MINT_ID} onClick={() => onTrade('buy', gift.id)} className="flex items-center justify-center gap-1.5 rounded-xl py-3 text-xs font-bold disabled:opacity-40" style={{ background: C.l2, color: C.t1 }}><ShoppingBag size={14}/> {listing || gift.ownerId === MINT_ID ? 'Купить' : 'Не продаётся'}</button>
             )}
           </div>
           {isOwner && !canSellFor(gift.id) && (

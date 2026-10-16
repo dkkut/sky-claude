@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react';
 import { Users, Layers, TrendingUp, Sparkles } from 'lucide-react';
 import { C, fmt } from '@/marketplace/SkyMarket';
-import { useNftGiftsStore } from './nftStore';
+import { useNftGiftsStore, MINT_ID } from './nftStore';
 import { GiftBackground } from './backgrounds';
 import { GiftCard } from './GiftCard';
 import { GiftSlide, GlassCard, EmptyState, Segmented, Pill } from './shared';
@@ -16,7 +16,7 @@ export const CollectionScreen = ({ collectionId, onClose, onOpenGift }: { collec
   const [sort, setSort] = useState<'rarity'|'price'|'edition'>('rarity');
 
   const items = giftsInCollection(collectionId);
-  const owners = new Set(items.map(g=>g.ownerId)).size;
+  const owners = new Set(items.filter(g=>g.ownerId!==MINT_ID).map(g=>g.ownerId)).size;   // Sky Mint — платформа, не владелец-человек
   const minPrice = items.length ? Math.min(...items.map(g=>g.price)) : 0;
   const volume = listings.filter(l=>l.status==='sold' && items.some(g=>g.id===l.giftId)).reduce((a,l)=>a+(l.soldPrice??0),0);
   const change = items.length ? Math.round(items.reduce((a,g) => a + (g.priceHistory.length>1 ? (g.price-g.priceHistory[0].price)/Math.max(1,g.priceHistory[0].price) : 0), 0)/items.length*100) : 0;

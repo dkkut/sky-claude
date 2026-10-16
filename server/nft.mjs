@@ -130,7 +130,12 @@ export const provenanceOf = async (nftId) => {
  * не может дать двух победителей — либо `not_owner`, либо успех, и
  * только у одного из двух запросов.
  */
-export const transferNft = async (senderId, nftId, recipientId, source = 'gift', opts = {}) => {
+/**
+ * Сама передача — внутри ЧУЖОЙ открытой транзакции (client уже в BEGIN). Берёт блокировку подарка, проверяет владельца,
+ * меняет владельца и пишет историю. Возвращает {ok, …, notify} либо {error} — при ошибке вызывающий обязан откатить транзакцию.
+ * Уведомление НЕ отправляется здесь: его шлют после COMMIT (`notify`), иначе откат оставил бы «ложное» уведомление.
+ */
+export const transferNftIn = async (client, senderId, nftId, recipientId, source = 'gift', opts = {}) => {
   if (!isKnownNftId(nftId)) return { error: 'not_found' };
   const to = String(recipientId ?? '');
   if (!to) return { error: 'invalid_recipient' };
@@ -138,34 +143,53 @@ export const transferNft = async (senderId, nftId, recipientId, source = 'gift',
   const price = Number.isFinite(opts.price) ? Math.round(opts.price) : null;
   const provType = opts.type === 'sale' ? 'sale' : 'transfer';
 
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`nft:${nftId}`]);
+
+  const { rows: rp } = await client.query('SELECT id, name FROM profiles WHERE id = $1', [to]);
+  if (!rp[0]) return { error: 'recipient_not_found' };
+
+  const current = await materializeGenesis(client, nftId);
+  if (!current) return { error: 'not_found' };
+  if (current.owner_id !== senderId) return { error: 'not_owner' };
+
+  await client.query(
+    `UPDATE nft_ownership SET owner_id = $2, owner_name = $3, updated_at = now() WHERE nft_id = $1`,
+    [nftId, to, rp[0].name],
+  );
+  const opId = opts.operationId ?? `${provType}-${generateId()}`;
+  await client.query(
+    `INSERT INTO nft_provenance (id, nft_id, type, from_id, from_name, to_id, to_name, operation_id, source, price)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [`nprov-${generateId()}`, nftId, provType, senderId, current.owner_name, to, rp[0].name, opId, String(source).slice(0, 32), price],
+  );
+  const note = provType === 'sale'
+    ? { title: '🛍️ NFT продан', body: `«${nftId}» куплен за ${price ?? 0} ₽` }
+    : { title: '🖼️ Вам подарили NFT', body: `Вам передали коллекционный подарок «${nftId}»` };
+  return {
+    ok: true, nftId, ownerId: to, ownerName: rp[0].name, operationId: opId,
+    notify: () => notifyGift(to, provType === 'sale' ? 'nft_purchase' : 'nft_transfer', note.title, note.body, nftId),
+  };
+};
+
+/**
+ * Передача подарка от текущего владельца к другому реальному профилю.
+ *
+ * Блокировка по nftId сериализует все одновременные попытки передать
+ * ОДИН И ТОТ ЖЕ подарок: вторая заявка дожидается первой и видит уже
+ * нового владельца, поэтому «два одновременных перевода одного NFT»
+ * не может дать двух победителей — либо `not_owner`, либо успех, и
+ * только у одного из двух запросов.
+ */
+export const transferNft = async (senderId, nftId, recipientId, source = 'gift', opts = {}) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`nft:${nftId}`]);
-
-    const { rows: rp } = await client.query('SELECT id, name FROM profiles WHERE id = $1', [to]);
-    if (!rp[0]) { await client.query('ROLLBACK'); return { error: 'recipient_not_found' }; }
-
-    const current = await materializeGenesis(client, nftId);
-    if (!current) { await client.query('ROLLBACK'); return { error: 'not_found' }; }
-    if (current.owner_id !== senderId) { await client.query('ROLLBACK'); return { error: 'not_owner' }; }
-
-    await client.query(
-      `UPDATE nft_ownership SET owner_id = $2, owner_name = $3, updated_at = now() WHERE nft_id = $1`,
-      [nftId, to, rp[0].name],
-    );
-    const opId = `${provType}-${generateId()}`;
-    await client.query(
-      `INSERT INTO nft_provenance (id, nft_id, type, from_id, from_name, to_id, to_name, operation_id, source, price)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [`nprov-${generateId()}`, nftId, provType, senderId, current.owner_name, to, rp[0].name, opId, String(source).slice(0, 32), price],
-    );
+    const r = await transferNftIn(client, senderId, nftId, recipientId, source, opts);
+    if (!r.ok) { await client.query('ROLLBACK'); return r; }
     await client.query('COMMIT');
-    const note = provType === 'sale'
-      ? { title: '🛍️ NFT продан', body: `«${nftId}» куплен за ${price ?? 0} ₽` }
-      : { title: '🖼️ Вам подарили NFT', body: `Вам передали коллекционный подарок «${nftId}»` };
-    await notifyGift(to, provType === 'sale' ? 'nft_purchase' : 'nft_transfer', note.title, note.body, nftId);
-    return { ok: true, nftId, ownerId: to, ownerName: rp[0].name, operationId: opId };
+    await r.notify().catch(() => {});
+    const { notify, ...out } = r; void notify;
+    return out;
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -177,23 +201,35 @@ export const transferNft = async (senderId, nftId, recipientId, source = 'gift',
 /**
  * Покупка у платформы: подарок, которого ещё никто не купил, принадлежит
  * Sky Mint и стоит ровно столько, сколько насчитал каталог (mintPrice,
- * цену клиент не присылает). Порядок тот же, что в nftmarket.mjs::buyListing:
- * списали деньги → передали → если передать не вышло (кто-то купил
- * раньше), вернули деньги.
+ * цену клиент не присылает).
+ *
+ * Списание денег и передача подарка — ОДНА транзакция под блокировкой подарка: либо нет ни того ни другого, либо есть и то и другое.
+ * Раньше «списали → передали → при отказе вернули отдельным вызовом», и любая ошибка между шагами (сбой базы, обрыв)
+ * оставляла человека без денег и без подарка. Повторное нажатие и гонка за один подарок: второй запрос видит нового владельца
+ * и получает `unavailable` до какого-либо списания.
  */
 export const buyFromMint = async (buyerId, nftId) => {
   if (!isKnownNftId(nftId)) return { error: 'not_found' };
-  const owner = await currentOwner(nftId);
-  if (!owner || owner.id !== MINT_ID) return { error: 'unavailable' };
   const price = mintPrice(nftId);
   if (!Number.isInteger(price) || price < 1) return { error: 'unavailable' };
   const ref = `mint:${nftId}:${buyerId}`;
-  const paid = await wallet.spend(buyerId, price, 'nft_purchase', `Покупка NFT «${nftId}» у Sky Mint`, ref);
-  if (paid.error) return { error: paid.error };
-  const t = await transferNft(MINT_ID, nftId, buyerId, 'mint', { price, type: 'sale' });
-  if (!t.ok) {
-    await wallet.refund(buyerId, price, 'Возврат — подарок уже куплен', ref);
-    return { error: t.error === 'not_owner' ? 'unavailable' : (t.error ?? 'unavailable') };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`nft:${nftId}`]);
+    const cur = await materializeGenesis(client, nftId);
+    if (!cur || cur.owner_id !== MINT_ID) { await client.query('ROLLBACK'); return { error: 'unavailable' }; }
+    const paid = await wallet.spendIn(client, buyerId, price, 'nft_purchase', `Покупка NFT «${nftId}» у Sky Mint`, ref);
+    if (paid.error) { await client.query('ROLLBACK'); return { error: paid.error }; }
+    const t = await transferNftIn(client, MINT_ID, nftId, buyerId, 'mint', { price, type: 'sale' });
+    if (!t.ok) { await client.query('ROLLBACK'); return { error: t.error === 'not_owner' ? 'unavailable' : (t.error ?? 'unavailable') }; }
+    await client.query('COMMIT');
+    await t.notify().catch(() => {});
+    return { ok: true, nftId, price, ownerId: t.ownerId, ownerName: t.ownerName };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
-  return { ok: true, nftId, price, ownerId: t.ownerId, ownerName: t.ownerName };
 };

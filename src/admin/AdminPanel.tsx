@@ -371,12 +371,58 @@ const PrimeCardMediaPanel = () => {
   );
 };
 
+/** Реальное состояние владения NFT-подарками и покупок (server/giftshealth.mjs). Только чтение. */
+const GiftsHealthPanel = () => {
+  const [d, setD] = useState<any>(null);
+  const [err, setErr] = useState('');
+  const load = useCallback(async () => {
+    setErr('');
+    const { apiCall } = await import('@/core/auth/api');
+    const r = await apiCall<any>('/api/gifts/admin/health');
+    if (r.ok && r.data) setD(r.data); else setErr('Не удалось загрузить диагностику');
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  if (err) return <p className="text-xs" style={{ color: C.red }}>{err}</p>;
+  if (!d) return <p className="text-xs" style={{ color: C.t3 }}>Загрузка…</p>;
+  const row = (label: string, value: React.ReactNode, bad = false) => (
+    <div className="flex justify-between gap-2 text-xs"><span style={{ color: C.t2 }}>{label}</span><b style={{ color: bad ? C.red : C.t1 }}>{value}</b></div>
+  );
+  const list = (title: string, items: any[], fmt: (x: any) => string) => items.length > 0 && (
+    <details className="text-[11px]" style={{ color: C.t2 }}><summary style={{ color: C.red }}>{title}: {items.length}</summary>
+      {items.map((x, i) => <p key={i} translate="no">{fmt(x)}</p>)}</details>
+  );
+  return (
+    <div className="space-y-3 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <p className="text-sm font-bold" style={{ color: C.t1 }}>Владение и покупки подарков</p>
+      <div className="space-y-1">
+        {row('Подарков NFT в каталоге, у которых уже есть запись владельца', d.nft.materialized)}
+        {row('Принадлежат Sky Mint (платформе, продаются по цене каталога)', d.nft.mint)}
+        {row('Принадлежат настоящим профилям', d.nft.realOwners)}
+        {row('Покупок за 7 дней', `${d.nft.purchases7d.count} · ${d.nft.purchases7d.rub.toLocaleString('ru-RU')} ₽`)}
+        {row('Остатки прежних демонстрационных владельцев', d.nft.demoOwners.length, d.nft.demoOwners.length > 0)}
+        {row('Владельцы, которых нет среди профилей', d.nft.unknownOwners.length, d.nft.unknownOwners.length > 0)}
+        {row('Лоты, у которых продавец уже не владелец', d.nft.staleListings.length, d.nft.staleListings.length > 0)}
+        {row('Списано за NFT, но подарок не выдан', d.nft.paidNotDelivered.length, d.nft.paidNotDelivered.length > 0)}
+        {row('Обычные подарки: заказы по статусам', Object.entries(d.orders.byStatus).map(([k, v]) => `${k}: ${v}`).join(' · ') || 'нет')}
+        {row('Заказы, застрявшие без оплаты более 10 минут', d.orders.stuck.length, d.orders.stuck.length > 0)}
+        {row('Каталог обычных подарков: активных / всего', `${d.catalog.active ?? '—'} / ${d.catalog.total ?? '—'}`)}
+      </div>
+      {list('Демонстрационные владельцы', d.nft.demoOwners, (x) => `${x.nftId} → ${x.ownerName} (${x.ownerId})`)}
+      {list('Неизвестные владельцы', d.nft.unknownOwners, (x) => `${x.nftId} → ${x.ownerName} (${x.ownerId})`)}
+      {list('Протухшие лоты', d.nft.staleListings, (x) => `${x.id} · ${x.nftId} · продавец ${x.sellerId}`)}
+      {list('Оплачено, не выдано (возврат — через «Начисления → Баланс и операции человека»)', d.nft.paidNotDelivered, (x) => `${x.txId} · ${x.userId} · ${x.amount} ₽ · ${x.at}`)}
+      {list('Застрявшие заказы', d.orders.stuck, (x) => `${x.id} · ${x.buyerId} · ${x.price} · ${x.at}`)}
+      <p className="text-[10px]" style={{ color: C.t3 }}>Раздел только показывает данные. Владельцев и историю он не меняет и не удаляет.</p>
+    </div>
+  );
+};
+
 const GiftsAdminSection = () => {
-  const [sub, setSub] = useState<'catalog' | 'prime-card'>('catalog');
+  const [sub, setSub] = useState<'catalog' | 'prime-card' | 'health'>('catalog');
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
-        {([['catalog', 'Каталог подарков'], ['prime-card', 'Карточка Prime']] as const).map(([key, label]) => (
+        {([['catalog', 'Каталог подарков'], ['prime-card', 'Карточка Prime'], ['health', 'Диагностика']] as const).map(([key, label]) => (
           <button key={key} type="button" onClick={() => setSub(key)}
             className="flex-1 rounded-xl py-2 text-xs font-bold"
             style={{ background: sub === key ? C.acc : C.l2, color: sub === key ? '#fff' : C.t3 }}>
@@ -384,7 +430,7 @@ const GiftsAdminSection = () => {
           </button>
         ))}
       </div>
-      {sub === 'catalog' ? <GiftsCatalogList /> : <PrimeCardMediaPanel />}
+      {sub === 'catalog' ? <GiftsCatalogList /> : sub === 'prime-card' ? <PrimeCardMediaPanel /> : <GiftsHealthPanel />}
     </div>
   );
 };

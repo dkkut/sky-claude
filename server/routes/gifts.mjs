@@ -10,6 +10,7 @@ import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { can } from './../admin.mjs';
+import { giftsHealth } from './../giftshealth.mjs';
 import {
   GIFT_ID_RE, MEDIA_ID_RE, INSTANCE_ID_RE,
   listCatalog, adminListCatalog, getCatalogItem, createGift, updateGift, setGiftActive,
@@ -397,6 +398,10 @@ export const giftRoutes = async (req, res, url) => {
   if (path.startsWith('/api/gifts/admin')) {
     if (!(await can(me, 'gifts'))) return json(res, 403, { error: 'not_allowed' });
 
+    if (req.method === 'GET' && path === '/api/gifts/admin/health') {
+      if (!rateLimit(`gift:ah:${me}`, 30)) return json(res, 429, { error: 'too_many_requests' });
+      return json(res, 200, await giftsHealth());
+    }
     if (req.method === 'GET' && path === '/api/gifts/admin/catalog') {
       if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
       return json(res, 200, { items: await adminListCatalog() });

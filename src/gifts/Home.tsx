@@ -5,7 +5,7 @@ import { memo, useMemo } from 'react';
 import { Bell, ArrowUpRight, Search as SearchIcon } from 'lucide-react';
 import { C, fmt } from '@/marketplace/SkyMarket';
 import { useAuthStore } from '@/core/auth/store';
-import { useNftGiftsStore } from './nftStore';
+import { useNftGiftsStore, MINT_ID } from './nftStore';
 import { GlassCard, HRow } from './shared';
 import { GiftBackground } from './backgrounds';
 import { GiftCard } from './GiftCard';
@@ -17,7 +17,9 @@ const CollectionCard = memo(({ col, onOpen }: { col: GiftCollection; onOpen: () 
   const listings = useNftGiftsStore(s => s.listings);
   const items = giftsInCollection(col.id);
   const minPrice = items.length ? Math.min(...items.map(g=>g.price)) : 0;
-  const owners = new Set(items.map(g=>g.ownerId)).size;
+  // «Владельцы» — настоящие люди. Sky Mint — платформа: у неё лежат ещё не купленные подарки, это «в наличии», а не владелец.
+  const owners = new Set(items.filter(g=>g.ownerId!==MINT_ID).map(g=>g.ownerId)).size;
+  const inStock = items.filter(g=>g.ownerId===MINT_ID).length;
   const volume = listings.filter(l=>l.status==='sold' && items.some(g=>g.id===l.giftId)).reduce((a,l)=>a+(l.soldPrice??0),0);
 
   return (
@@ -27,7 +29,7 @@ const CollectionCard = memo(({ col, onOpen }: { col: GiftCollection; onOpen: () 
       <div className="absolute bottom-2.5 left-3 right-3">
         <p className="text-xs font-bold truncate" style={{ color:'#fff' }}>{col.name}</p>
         <div className="flex items-center justify-between mt-1">
-          <span className="text-[9px]" style={{ color:'rgba(255,255,255,0.7)' }}>{items.length} предметов · {owners} владельцев</span>
+          <span className="text-[9px]" style={{ color:'rgba(255,255,255,0.7)' }}>{`${items.length} предметов · ${inStock} в наличии · ${owners} владельцев`}</span>
         </div>
         <div className="flex items-center justify-between mt-0.5">
           <span className="text-[10px] font-bold" style={{ color:'#fff' }}>от {fmt(minPrice)}</span>

@@ -19,7 +19,7 @@ import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { wallet } from './wallet.mjs';
 import { isKnownNftId } from './nftgenesis.mjs';
-import { currentOwner, transferNft } from './nft.mjs';
+import { currentOwner, transferNftIn } from './nft.mjs';
 import { notifyGift } from './giftnotify.mjs';
 
 const TYPES = new Set(['fixed', 'auction', 'instant', 'reserve']);
@@ -100,54 +100,49 @@ export const cancelListing = async (sellerId, listingId) => {
  * ошибкой, а не спишет деньги дважды.
  */
 export const buyListing = async (buyerId, listingId) => {
+  // Одна транзакция под блокировкой лота И подарка: лот помечается проданным, деньги списываются, владелец меняется — вместе.
+  // Любой сбой между шагами откатывает всё (раньше «списали → передали → вернули отдельным запросом» мог оставить человека без денег и подарка).
   const client = await pool.connect();
-  let reserved;
+  let done;
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`nft-listing:${listingId}`]);
     const { rows } = await client.query('SELECT * FROM nft_listings WHERE id = $1', [listingId]);
     const listing = rows[0];
-    if (!listing || listing.status !== 'active') { await client.query('ROLLBACK'); client.release(); return { error: 'unavailable' }; }
-    if (listing.seller_id === buyerId) { await client.query('ROLLBACK'); client.release(); return { error: 'self_transfer' }; }
+    if (!listing || listing.status !== 'active') { await client.query('ROLLBACK'); return { error: 'unavailable' }; }
+    if (listing.seller_id === buyerId) { await client.query('ROLLBACK'); return { error: 'self_transfer' }; }
 
-    const owner = await currentOwner(listing.nft_id);
-    if (!owner || owner.id !== listing.seller_id) {
+    // Владельца читаем под блокировкой подарка (та же, что у передачи) — иначе прямой подарок мог бы проскочить между проверкой и покупкой.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`nft:${listing.nft_id}`]);
+    const { rows: own } = await client.query('SELECT owner_id FROM nft_ownership WHERE nft_id = $1', [listing.nft_id]);
+    const ownerId = own[0]?.owner_id ?? (await currentOwner(listing.nft_id))?.id;
+    if (ownerId !== listing.seller_id) {
       // Подарок ушёл с рук продавца в обход маркета (прямой подарок другу) — лот протух.
       await client.query(`UPDATE nft_listings SET status = 'cancelled' WHERE id = $1`, [listingId]);
-      await client.query('COMMIT'); client.release();
+      await client.query('COMMIT');
       return { error: 'unavailable' };
     }
 
     const finalPrice = listing.type === 'auction' ? Number(listing.current_bid ?? listing.price) : Number(listing.price);
-    await client.query(
-      `UPDATE nft_listings SET status = 'sold', sold_at = now(), sold_price = $2 WHERE id = $1`,
-      [listingId, finalPrice],
-    );
+    const paid = await wallet.spendIn(client, buyerId, finalPrice, 'nft_purchase', `Покупка NFT «${listing.nft_id}»`, listingId);
+    if (paid.error) { await client.query('ROLLBACK'); return { error: paid.error }; }
+    const t = await transferNftIn(client, listing.seller_id, listing.nft_id, buyerId, 'market', { price: finalPrice, type: 'sale' });
+    if (!t.ok) { await client.query('ROLLBACK'); return { error: t.error ?? 'unavailable' }; }
+    await client.query(`UPDATE nft_listings SET status = 'sold', sold_at = now(), sold_price = $2 WHERE id = $1`, [listingId, finalPrice]);
     await client.query('COMMIT');
-    reserved = { nftId: listing.nft_id, sellerId: listing.seller_id, finalPrice };
+    done = { nftId: listing.nft_id, sellerId: listing.seller_id, finalPrice, t };
   } catch (err) {
-    await client.query('ROLLBACK');
-    client.release();
+    await client.query('ROLLBACK').catch(() => {});
     throw err;
-  }
-  client.release();
-
-  const revert = () => query(`UPDATE nft_listings SET status = 'active', sold_at = NULL, sold_price = NULL WHERE id = $1`, [listingId]);
-
-  const paid = await wallet.spend(buyerId, reserved.finalPrice, 'nft_purchase', `Покупка NFT «${reserved.nftId}»`, listingId);
-  if (paid.error) { await revert(); return { error: paid.error }; }
-
-  const transfer = await transferNft(reserved.sellerId, reserved.nftId, buyerId, 'market', { price: reserved.finalPrice, type: 'sale' });
-  if (!transfer.ok) {
-    await wallet.refund(buyerId, reserved.finalPrice, 'Возврат — не удалось передать NFT после покупки', listingId);
-    await revert();
-    return { error: transfer.error ?? 'unavailable' };
+  } finally {
+    client.release();
   }
 
-  await notifyGift(reserved.sellerId, 'nft_sale', '🛍️ Подарок продан',
-    `«${reserved.nftId}» продан за ${reserved.finalPrice.toLocaleString('ru')} ₽`, reserved.nftId);
+  await done.t.notify().catch(() => {});
+  await notifyGift(done.sellerId, 'nft_sale', '🛍️ Подарок продан',
+    `«${done.nftId}» продан за ${done.finalPrice.toLocaleString('ru')} ₽`, done.nftId).catch(() => {});
 
-  return { ok: true, nftId: reserved.nftId, price: reserved.finalPrice, ownerId: transfer.ownerId, ownerName: transfer.ownerName };
+  return { ok: true, nftId: done.nftId, price: done.finalPrice, ownerId: done.t.ownerId, ownerName: done.t.ownerName };
 };
 
 export const COMMISSION_PCT_VALUE = COMMISSION_PCT;
