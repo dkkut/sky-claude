@@ -66,6 +66,14 @@ const StepUp = ({ onCode, onCancel }: { onCode: (c: string) => void; onCancel: (
   );
 };
 
+/** Действие, которое выполняется только с кодом подтверждения личности: `ask(fn)` показывает форму кода, `node` — её место на экране. */
+const useCodeGate = () => {
+  const [pending, setPending] = useState<null | ((code: string) => Promise<void>)>(null);
+  const ask = (fn: (code: string) => Promise<void>) => setPending(() => fn);
+  const node = pending ? <StepUp onCode={(c) => { const f = pending; setPending(null); void f(c); }} onCancel={() => setPending(null)} /> : null;
+  return { ask, node };
+};
+
 /** Критическое действие: описание последствий → причина → явное подтверждение → код → запрос → фактическое состояние. */
 const Critical = ({ title, consequences, path, extra, needReason = true, preview, confirmLabel, onDone, onCancel }: {
   title: string; consequences: string[]; path: string; extra?: () => Data; needReason?: boolean; preview?: ReactNode; confirmLabel: string;
@@ -206,6 +214,7 @@ const Backups = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
   const [restoreFor, setRestoreFor] = useState<string | null>(null); const [restoreScope, setRestoreScope] = useState(''); const [overwrite, setOverwrite] = useState(false);
   const [step, setStep] = useState<null | { kind: 'apply' | 'download'; id: string }>(null); const [link, setLink] = useState('');
   const [sf, setSf] = useState({ frequency: 'daily', times: '03:00', weekday: '1', kind: 'full' });
+  const gate = useCodeGate();
   const has = (p: string) => perms.includes(p);
   const load = useCallback(async () => { const [a, b] = await Promise.all([call('GET', '/backups'), call('GET', '/schedules')]); if (a.ok) setD(a.data); if (b.ok) setSch(b.data.items); }, []);
   useEffect(() => { void load(); const t = window.setInterval(() => { if (!document.hidden) void load(); }, 5000); return () => window.clearInterval(t); }, [load]);
@@ -284,19 +293,20 @@ const Backups = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
       )}
       {has('storage_schedule') && (
         <Card title="Расписание (работает на сервере, без браузера)">
+          {gate.node}
           {sch.map((x) => (
             <div key={x.id} className="flex flex-wrap items-center gap-2 text-[12px]" style={{ color: C.t2 }}>
               <span translate="no">{x.frequency}{x.frequency === 'weekly' ? ` (день ${x.weekday})` : ''} · {(x.times ?? []).join(', ')} · {x.kind}</span><Badge ok={x.enabled}>{x.enabled ? 'включено' : 'выключено'}</Badge>
               <span style={{ color: C.t3 }}>последний запуск {dt(x.last_run_at)}</span>
-              <Btn tone="plain" onClick={async () => { await call('PUT', `/schedules/${x.id}`, { enabled: !x.enabled }); void load(); }}>{x.enabled ? 'Выключить' : 'Включить'}</Btn>
-              <Btn tone="plain" onClick={async () => { await call('DELETE', `/schedules/${x.id}`); void load(); }}>Удалить</Btn>
+              <Btn tone="plain" onClick={() => gate.ask(async (code) => { const r = await call('PUT', `/schedules/${x.id}`, { enabled: !x.enabled, stepUpCode: code }); if (!r.ok) flash(errText(r.error)); void load(); })}>{x.enabled ? 'Выключить' : 'Включить'}</Btn>
+              <Btn tone="plain" onClick={() => gate.ask(async (code) => { const r = await call('DELETE', `/schedules/${x.id}`, { stepUpCode: code }); if (!r.ok) flash(errText(r.error)); void load(); })}>Удалить</Btn>
             </div>))}
           <div className="flex flex-wrap items-end gap-2">
             <select value={sf.frequency} onChange={(e) => setSf({ ...sf, frequency: e.target.value })} aria-label="Частота" className="rounded-lg px-2 py-1.5 text-sm" style={field}><option value="daily">Ежедневно</option><option value="multi">Несколько раз в день</option><option value="weekly">Еженедельно</option></select>
             <input value={sf.times} onChange={(e) => setSf({ ...sf, times: e.target.value })} aria-label="Время" placeholder="03:00, 15:00" className="w-32 rounded-lg px-2 py-1.5 text-sm outline-none" style={field} />
             {sf.frequency === 'weekly' && <select value={sf.weekday} onChange={(e) => setSf({ ...sf, weekday: e.target.value })} aria-label="День недели" className="rounded-lg px-2 py-1.5 text-sm" style={field}>{['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'].map((n, i) => <option key={n} value={i}>{n}</option>)}</select>}
             <select value={sf.kind} onChange={(e) => setSf({ ...sf, kind: e.target.value })} aria-label="Что копировать" className="rounded-lg px-2 py-1.5 text-sm" style={field}><option value="full">Полная</option><option value="media">Медиа</option><option value="messenger">Мессенджер</option><option value="metadata">Метаданные</option><option value="config">Конфигурация</option></select>
-            <Btn onClick={async () => { const r = await call('POST', '/schedules', { frequency: sf.frequency, times: sf.times.split(',').map((x) => x.trim()), weekday: Number(sf.weekday), kind: sf.kind }); flash(r.ok ? 'Расписание добавлено' : errText(r.error)); void load(); }}>Добавить</Btn>
+            <Btn onClick={() => gate.ask(async (code) => { const r = await call('POST', '/schedules', { frequency: sf.frequency, times: sf.times.split(',').map((x) => x.trim()), weekday: Number(sf.weekday), kind: sf.kind, stepUpCode: code }); flash(r.ok ? 'Расписание добавлено' : errText(r.error)); void load(); })}>Добавить</Btn>
           </div>
         </Card>
       )}
@@ -341,10 +351,12 @@ const Quotas = ({ perms }: { perms: string[] }) => {
   const can = perms.includes('storage_quota');
   const n = (k: string, v: string) => setS({ ...s, [k]: v === '' ? null : Number(v) });
   const th = (k: string, v: string) => setS({ ...s, thresholds: { ...s.thresholds, [k]: Number(v) } });
-  const saveSettings = async () => { const r = await call('PUT', '/settings', { settings: s, expectedVersion: undefined }); flash(r.ok ? 'Сохранено' : errText(r.error)); void load(); };
+  const gate = useCodeGate();
+  const saveSettings = () => gate.ask(async (code) => { const r = await call('PUT', '/settings', { settings: s, expectedVersion: undefined, stepUpCode: code }); flash(r.ok ? 'Сохранено' : errText(r.error)); void load(); });
   return (
     <div className="space-y-3">
       <Card title="Пороги и лимиты">
+        {gate.node}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {(['warn', 'critical', 'block', 'full'] as const).map((k) => <label key={k} className="text-[11px]" style={{ color: C.t3 }}>{{ warn: 'Предупреждение, %', critical: 'Критично, %', block: 'Блок необязательных, %', full: 'Запрет записи, %' }[k]}<input type="number" disabled={!can} value={s.thresholds[k]} onChange={(e) => th(k, e.target.value)} className="mt-0.5 w-full rounded-lg px-2 py-1.5 text-sm" style={field} /></label>)}
           {([['totalBytes', 'Общий объём, байт'], ['reserveFreeBytes', 'Резерв свободного места, байт'], ['maxFileBytes', 'Макс. размер файла, байт'], ['maxFiles', 'Макс. файлов'], ['maxConcurrentUploads', 'Одновременных загрузок'], ['maxConcurrentIO', 'Одновременных чтений'], ['uploadsPerMinute', 'Загрузок в минуту'], ['approvalTimeoutMin', 'Таймаут подтверждения, мин'], ['skyAuthMaxTicketMin', 'Срок пропуска при авторизации Sky, мин'], ['quarantineDays', 'Карантин, дней'], ['downloadLinkMinutes', 'Срок ссылки скачивания, мин']] as const).map(([k, l]) =>
@@ -363,13 +375,15 @@ const Quotas = ({ perms }: { perms: string[] }) => {
   );
 };
 const QuotaRow = ({ cat, row, used, can, onSaved }: { cat: string; row?: Data; used?: Data; can: boolean; onSaved: () => void }) => {
+  const { ask, node } = useCodeGate();
   const [f, setF] = useState({ hardBytes: row?.hard_bytes ?? '', maxFileBytes: row?.max_file_bytes ?? '', maxFiles: row?.max_files ?? '', maxConcurrent: row?.max_concurrent ?? '' });
   const set = (k: string, v: string) => setF({ ...f, [k]: v });
   return (
     <div className="flex flex-wrap items-end gap-2 text-[11px]" style={{ color: C.t3 }} data-quota={cat}>
+      {node}
       <span className="w-32 text-[12px] font-bold" style={{ color: C.t1 }}>{cat}<br /><span className="font-normal" style={{ color: C.t3 }}>{used ? `${gb(used.bytes)} · ${used.files}` : '—'}</span></span>
       {([['hardBytes', 'Объём, байт'], ['maxFileBytes', 'Файл, байт'], ['maxFiles', 'Файлов'], ['maxConcurrent', 'Параллельно']] as const).map(([k, l]) => <label key={k}>{l}<input type="number" disabled={!can} value={f[k]} onChange={(e) => set(k, e.target.value)} className="mt-0.5 block w-28 rounded-lg px-2 py-1 text-sm" style={field} /></label>)}
-      {can && <Btn tone="plain" onClick={async () => { const r = await call('PUT', '/quotas', { category: cat, hardBytes: f.hardBytes, maxFileBytes: f.maxFileBytes, maxFiles: f.maxFiles, maxConcurrent: f.maxConcurrent }); flash(r.ok ? 'Сохранено' : errText(r.error)); onSaved(); }}>Сохранить</Btn>}
+      {can && <Btn tone="plain" onClick={() => ask(async (code) => { const r = await call('PUT', '/quotas', { category: cat, hardBytes: f.hardBytes, maxFileBytes: f.maxFileBytes, maxFiles: f.maxFiles, maxConcurrent: f.maxConcurrent, stepUpCode: code }); flash(r.ok ? 'Сохранено' : errText(r.error)); onSaved(); })}>Сохранить</Btn>}
     </div>
   );
 };

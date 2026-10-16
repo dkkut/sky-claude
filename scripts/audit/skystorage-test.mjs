@@ -440,11 +440,15 @@ t('аварийная остановка техработ требует под�
 await post('/maintenance', { on: false, confirm: true }, oper);
 
 // Настройки и квоты
-r = await put('/settings', { settings: { thresholds: { warn: 80, critical: 70, block: 95, full: 100 } } }, oper);
+r = await put('/settings', { settings: { thresholds: { warn: 60, critical: 80, block: 90, full: 100 } } }, oper);
+t('настройки без подтверждения личности не сохраняются', r.status === 401 || r.status === 403, JSON.stringify(r.data));
+t('квота без подтверждения личности не сохраняется', (await put('/quotas', { category: 'music', hardBytes: 1 }, oper)).status !== 200);
+t('расписание без подтверждения личности не создаётся', (await post('/schedules', { frequency: 'daily', times: ['02:30'], kind: 'metadata' }, oper)).status !== 200);
+r = await put('/settings', { settings: { thresholds: { warn: 80, critical: 70, block: 95, full: 100 } }, stepUpCode: await step(oper) }, oper);
 t('пороги: нарушенный порядок отклоняется', r.data.error === 'bad_field');
-r = await put('/settings', { settings: { thresholds: { warn: 60, critical: 80, block: 90, full: 100 }, approvalTimeoutMin: 12 } }, oper);
+r = await put('/settings', { settings: { thresholds: { warn: 60, critical: 80, block: 90, full: 100 }, approvalTimeoutMin: 12 }, stepUpCode: await step(oper) }, oper);
 t('пороги и таймаут подтверждения настраиваются', r.status === 200 && r.data.state.settings.thresholds.warn === 60 && r.data.state.settings.approvalTimeoutMin === 12);
-t('квота категории сохраняется и применяется', (await put('/quotas', { category: 'music', hardBytes: 5000000000 }, oper)).status === 200 && Number(q(`select hard_bytes from storage_quotas where category='music'`)) === 5000000000);
+t('квота категории сохраняется и применяется', (await put('/quotas', { category: 'music', hardBytes: 5000000000, stepUpCode: await step(oper) }, oper)).status === 200 && Number(q(`select hard_bytes from storage_quotas where category='music'`)) === 5000000000);
 q(`delete from storage_quotas`);
 // Копии через API
 r = await post('/backups', { kind: 'metadata' }, oper);
@@ -452,7 +456,7 @@ t('ручной запуск копии через API (оператор)', r.st
 const bid = r.data.id; const bs = await waitBackup(bid, 120000);
 t('копия через API создана и проверена', bs === 'verified', bs);
 t('просмотр копий и плана очистки без удаления', (await get('/backups', viewer)).data.items.length >= 1 && (await get('/retention/plan', oper)).status === 200);
-t('расписание создаётся и валидируется на сервере', (await post('/schedules', { frequency: 'daily', times: ['25:99'], kind: 'full' }, oper)).status === 400 && (await post('/schedules', { frequency: 'daily', times: ['02:30'], kind: 'metadata' }, oper)).status === 200);
+t('расписание создаётся и валидируется на сервере', (await post('/schedules', { frequency: 'daily', times: ['25:99'], kind: 'full', stepUpCode: await step(oper) }, oper)).status === 400 && (await post('/schedules', { frequency: 'daily', times: ['02:30'], kind: 'metadata', stepUpCode: await step(oper) }, oper)).status === 200);
 q(`delete from storage_schedules`);
 // Ссылка скачивания через API
 code = await step(own);

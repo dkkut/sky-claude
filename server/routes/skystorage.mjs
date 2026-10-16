@@ -77,7 +77,7 @@ export const storageRoutes = async (req, res, url) => {
   const rest = path.slice('/api/admin/storage'.length) || '/';
   if (!rl(`storage:admin:${me}`, 240)) return json(res, 429, { error: 'too_many_attempts' });
   const isWrite = req.method !== 'GET';
-  const body = isWrite && req.method !== 'DELETE' ? ((await parseBody(req)) ?? {}) : {};
+  const body = isWrite ? ((await parseBody(req)) ?? {}) : {};
 
   const needPerm = async (perm) => (await can(me, perm)) ? null : json(res, 403, { error: 'not_allowed' });
   const anyStorage = async () => { for (const p of Object.values(P)) if (await can(me, p)) return true; return false; };
@@ -130,8 +130,14 @@ export const storageRoutes = async (req, res, url) => {
   if (rest === '/compromise') return reply(res, await A.flagCompromise(me, body, meta));
   if (rest === '/recover') return reply(res, await A.recoverFromCompromise(me, body, meta));
   if (rest === '/maintenance') return reply(res, await A.setMaintenance(me, body, meta));
-  if (rest === '/settings' && req.method === 'PUT') return reply(res, await A.updateSettings(me, body, meta));
-  if (rest === '/quotas' && req.method === 'PUT') return reply(res, await A.setQuota(me, body, meta));
+  /* Пороги, сроки хранения копий и квоты решают, что будет заблокировано и что удалится, — только с подтверждением личности. */
+  const withCode = async (perm, fn) => {
+    const deny = await needPerm(perm); if (deny) return deny;
+    const step = await consumeStepUp(me, A.CRITICAL_PURPOSE, body.stepUpCode, { meta }); if (step.error) return reply(res, step);
+    return fn();
+  };
+  if (rest === '/settings' && req.method === 'PUT') return withCode(P.quota, async () => reply(res, await A.updateSettings(me, body, meta)));
+  if (rest === '/quotas' && req.method === 'PUT') return withCode(P.quota, async () => reply(res, await A.setQuota(me, body, meta)));
 
   if (rest === '/target/check') {
     const deny = await needPerm(P.view); if (deny) return deny;
@@ -183,6 +189,7 @@ export const storageRoutes = async (req, res, url) => {
   }
   if (rest === '/schedules' && req.method === 'POST') {
     const deny = await needPerm(P.schedule); if (deny) return deny;
+    { const step = await consumeStepUp(me, A.CRITICAL_PURPOSE, body.stepUpCode, { meta }); if (step.error) return reply(res, step); }
     const kind = String(body.kind ?? 'full');
     if (!['full', 'media', 'messenger', 'service', 'category', 'metadata', 'config'].includes(kind)) return json(res, 400, { error: 'bad_kind' });
     const frequency = ['daily', 'multi', 'weekly'].includes(body.frequency) ? body.frequency : null;
@@ -198,6 +205,7 @@ export const storageRoutes = async (req, res, url) => {
   m = /^\/schedules\/(sch-[0-9a-f]{12})$/.exec(rest);
   if (m) {
     const deny = await needPerm(P.schedule); if (deny) return deny;
+    { const step = await consumeStepUp(me, A.CRITICAL_PURPOSE, body.stepUpCode, { meta }); if (step.error) return reply(res, step); }
     if (req.method === 'PUT') { await query('UPDATE storage_schedules SET enabled = $2 WHERE id = $1', [m[1], body.enabled === true]); await logAdmin({ actorId: me, targetType: 'storage', type: 'storage_schedule', detail: `${m[1]} ${body.enabled ? 'включено' : 'выключено'}`, meta }); return json(res, 200, { ok: true }); }
     if (req.method === 'DELETE') { await query('DELETE FROM storage_schedules WHERE id = $1', [m[1]]); await logAdmin({ actorId: me, targetType: 'storage', type: 'storage_schedule', detail: `${m[1]} удалено`, meta }); return json(res, 200, { ok: true }); }
   }
