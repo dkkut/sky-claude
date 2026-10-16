@@ -6,6 +6,7 @@
  * пока играет медиа; по нажатию раскрывается вниз компактной панелью.
  * Все данные — из реальных источников (islandStore, mediaAdapter, aiSession).
  */
+import { SwipeConfirm } from './SwipeConfirm';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
@@ -183,6 +184,7 @@ const EventPanel = ({ e, onClose }: { e: IslandEvent; onClose: () => void }) => 
       </div>
       <IconBtn label="Закрыть" onClick={onClose} size={30}><X size={15} /></IconBtn>
     </div>
+    {e.swipe && <div className="mt-3"><SwipeConfirm label={e.swipe.label} onConfirm={e.swipe.onConfirm} /></div>}
     <div className="mt-3 flex gap-2">
       {e.actions?.map((a) => (
         <button key={a.label} type="button" onClick={(ev) => { ev.stopPropagation(); a.run(); }}

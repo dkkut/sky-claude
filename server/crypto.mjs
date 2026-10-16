@@ -83,6 +83,9 @@ export const openSecret = (stored) => {
 /** Зашифрована ли уже запись (для миграции). */
 export const isSealed = (stored) => typeof stored === 'string' && stored.startsWith('v1.') && stored.split('.').length === 4;
 
+/** HMAC произвольного значения под своей меткой — для хранения проверяемых секретов (секреты OIDC-клиентов, попарные идентификаторы). */
+export const macOf = (label, value) => crypto.createHmac('sha256', macKey()).update(`${label}\u0000${value}`).digest('hex');
+
 /* ─── Одноразовые коды ─────────────────────────────────────────────────── */
 
 /**

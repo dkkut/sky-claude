@@ -36,6 +36,8 @@ export interface IslandEvent {
   count?: number;
   onOpen?: () => void;
   actions?: IslandAction[];
+  /** Подтверждение жестом (вход через Sky ID): жест лишь вызывает onConfirm, решение принимает сервер. */
+  swipe?: { label: string; onConfirm: () => void };
   at: number;
 }
 

@@ -11,6 +11,8 @@ import { rateLimit } from './security.mjs';
 import { json, originAllowed, readSession, clientIp } from './http.mjs';
 import { passesPlatformMode } from './platformaccess.mjs';
 import { insecureApiRequest } from './transport.mjs';
+import { oidcRoutes } from './routes/oidc.mjs';
+import { sweepOidc } from './oidc.mjs';
 import { shutdownState, maintenanceState } from './platform.mjs';
 import { waitForDb, migrate, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
@@ -180,6 +182,9 @@ const mediaProfile = (req) => {
 };
 
 /** Разделы, куда загружаются файлы (для проверки состояния хранилища до маршрута). */
+/** Публичные эндпоинты OpenID Connect: не требуют ключа беты и входа (вызываются серверами сторонних сервисов). */
+const PUBLIC_OIDC = /^\/api\/oidc\/(\.well-known\/openid-configuration|jwks|token|userinfo|revoke)$/;
+
 const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video|tv|files|stories|bloom|market|ads|campaigns|gifts|customization|logistics|pets)\b/;
 
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
@@ -191,7 +196,7 @@ const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, authRoutes, p
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, skyKassaRoutes];
+                violationsRoutes, storageRoutes, oidcRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, skyKassaRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -270,6 +275,12 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     if (/%00|\u0000/i.test(req.url || '')) return json(res, 400, { error: 'bad_request' });
 
     applyCors(req, res);
+    // Публичные эндпоинты OpenID Connect (открытые данные и вызовы серверов/браузеров сервисов без cookie): CORS «*» без учётных данных.
+    // Это безопасно: без cookie запрос полезен только с кодом+PKCE или токеном доступа.
+    if (PUBLIC_OIDC.test(url)) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization'); res.setHeader('Access-Control-Max-Age', '600'); }
+    }
     if (req.method === 'OPTIONS' && url.startsWith('/api/')) {
       res.writeHead(204);
       return res.end();
@@ -358,7 +369,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
     /* Игровые серверы Sky Blox — программы, а не люди: у них подпись запроса вместо ключа беты. */
     const isBloxServer = url.startsWith('/api/blox/server/') || url.startsWith('/api/skykassa/webhook/');
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !betaAllowed(req)) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -647,6 +658,7 @@ const start = async () => {
       await sweepFreezeLog();
       await sweepSite().catch((e) => console.error('[site] уборка:', e.message));
       await sweepStorage().catch((e) => console.error('[storage] уборка:', e.message));
+      await sweepOidc().catch((e) => console.error('[oidc] уборка:', e.message));
       await sweepPartners().catch((e) => console.error('[skykassa] партнёры:', e.message));
       await sweepSkykassa().catch((e) => console.error('[skykassa] уборка:', e.message));
       await sweepIpPin();

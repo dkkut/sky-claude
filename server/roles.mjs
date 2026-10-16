@@ -56,6 +56,7 @@ export const PERMISSIONS = [
   'storage_unlock',  // Sky Storage: снятие ограничений безопасности (критично)
   'storage_keys',    // Sky Storage: ключи и безопасная конфигурация (критично)
   'storage_maintenance', // Sky Storage: режим технических работ
+  'oidc',            // Sky ID для сторонних сервисов: клиенты, адреса возврата, ключи подписи (создание/смена секретов — с подтверждением личности)
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -100,6 +101,7 @@ export const ROLES = {
   campaigns_admin: ['campaigns', 'support'],
   gifts_admin:     ['gifts'],
   site_admin:      ['site'],
+  oidc_admin:      ['oidc'],
   storage_viewer:  ['storage_view', 'storage_audit'],
   storage_operator:['storage_view', 'storage_audit', 'storage_backup', 'storage_schedule', 'storage_quota', 'storage_maintenance'],
   storage_security:['storage_view', 'storage_audit', 'storage_access', 'storage_emergency', 'storage_enable'],
@@ -123,6 +125,7 @@ export const ROLE_LABEL = {
   super_admin: 'Полные права',
   modules_admin: 'Закрытие модулей',
   site_admin: 'Сайт',
+  oidc_admin: 'Sky ID для сервисов',
   storage_viewer: 'Sky Storage: просмотр',
   storage_operator: 'Sky Storage: оператор (копии, квоты)',
   storage_security: 'Sky Storage: безопасность и доступ',

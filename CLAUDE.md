@@ -854,3 +854,13 @@ Sky Podcasts, Sky Books и режим «Код» в Sky AI входят в Sky P
 - `server/transport.mjs::insecureApiRequest`: в production API-запрос с `X-Forwarded-Proto: http` получает 426 `https_required`. S3: адрес только `https://` (`STORAGE_S3_ALLOW_INSECURE=1` — лишь для тестов с поддельным S3).
 - Страницы ссылок из писем (`/admin-verify`, `/ssh-verify`, `/unfreeze`, `/storage-verify`) убирают токен из адресной строки сразу после чтения (`history.replaceState`) и не шлют Referer.
 - Тест: `scripts/audit/transport-test.mjs` (20 статических и юнит-проверок). Сам nginx в этой среде не запускался (нет nginx/docker) — конфиг проверяется при деплое (`nginx -t` в entrypoint).
+
+## Sky ID для сторонних сервисов — OpenID Connect (модуль 12)
+
+`server/oidc.mjs` (ядро), `server/routes/oidc.mjs` (`/api/oidc/*` публично: `.well-known/openid-configuration`, `jwks`, `token`, `userinfo`, `revoke`; для человека: `authorize/init|decide`, `consents`; `/api/admin/oidc/*` — право `oidc`),
+миграция `130_oidc.sql`; клиент — `src/oidc/Authorize.tsx` (страница `/oauth/authorize`, подтверждение жестом `src/island/SwipeConfirm.tsx`, тот же запрос на Sky Island), `src/oidc/ConnectedServices.tsx`
+(Профиль → Sky ID), вкладка «Sky ID для сервисов» (`src/admin/OidcTab.tsx`).
+- Только code + PKCE S256; адреса возврата сверяются ТОЧНО; код одноразовый, 60 с, повторное предъявление отзывает выданные токены; ID-токен ES256 (ключ в БД зашифрован, ротация сохраняет старые в JWKS);
+  токены доступа непрозрачные, в БД хеши; секреты клиентов — HMAC, показываются один раз. Решение принимает сервер по сессии, свайп лишь отправляет его.
+- По умолчанию сервис получает только попарный `sub` (`sky_…`, свой у каждого клиента, хранится в `oidc_consents`); имя/почта/телефон — отдельными scope по согласию человека. Sky как провайдер видит, куда входит человек (журнал без персональных данных).
+- Нужен `DOMAIN` (issuer = `https://DOMAIN/api/oidc`). Публичные эндпоинты исключены из ключа беты и открыты по CORS `*` без cookie. Тесты: `scripts/audit/oidc-test.mjs` (65, API с `DOMAIN=sky.test OIDC_RATE_MULT=1000`), `oidc-ui-test.mjs` (Playwright; полный прогон ещё не завершён).

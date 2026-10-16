@@ -6,6 +6,7 @@ import { AuthScreen }    from './auth/AuthScreen';
 import { DeviceLinkDeepLink } from './auth/DeviceLinkPhone';
 import { UnfreezeLinkPage, useOpenDevicesIfAsked } from './auth/AccountFreeze';
 import { StorageVerifyPage } from './admin/StorageVerify';
+import { OidcAuthorizeGate } from './oidc/Authorize';
 import { TVAuthScreen }  from './interface/tv/auth/TVAuthScreen';
 import { useDeviceMode } from './interface/tv/useDeviceMode';
 import { useConsoleMode } from './interface/console/consoleMode';
@@ -587,7 +588,7 @@ void initI18n().finally(() => ReactDOM.createRoot(document.getElementById('root'
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : <><Root /><IpPinOverlay /><LinkDeepLinkGate /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : <><Root /><IpPinOverlay /><LinkDeepLinkGate /><OidcAuthorizeGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));
