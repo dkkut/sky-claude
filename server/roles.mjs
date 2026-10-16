@@ -42,6 +42,8 @@ export const PERMISSIONS = [
   'go_finance',      // Sky GO: тарифы активации и параметры стоимости
   'registration',    // ограничение регистрации новых аккаунтов: вкл/выкл, пределы, сообщение
   'modules',         // закрытие модулей: баннер «Сервис временно недоступен» вместо раздела или сервиса
+  'skykassa',        // SkyKassa: проверка заявок на пополнение (зачисляет только владелец)
+  'skykassa_settings', // SkyKassa: способы оплаты, реквизиты, партнёры, параметры
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -78,6 +80,8 @@ export const ROLES = {
   campaigns_admin: ['campaigns', 'support'],
   gifts_admin:     ['gifts'],
   site_admin:      ['site'],
+  skykassa_staff:  ['skykassa', 'support'],
+  skykassa_admin:  ['skykassa', 'skykassa_settings', 'support'],
   modules_admin:   ['modules'],
   garant_admin:    ['garant', 'support'],
   notifications_admin: ['notifications'],
@@ -96,6 +100,8 @@ export const ROLE_LABEL = {
   super_admin: 'Полные права',
   modules_admin: 'Закрытие модулей',
   site_admin: 'Сайт',
+  skykassa_staff: 'SkyKassa: проверка платежей',
+  skykassa_admin: 'SkyKassa: платежи и настройки',
   security_admin: 'Безопасность',
   moderation_admin: 'Модерация',
   support_admin: 'Поддержка',

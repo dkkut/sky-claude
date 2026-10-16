@@ -70,6 +70,9 @@ import { deviceLinkRoutes } from './routes/devicelink.mjs';
 import { registrationRoutes } from './routes/registration.mjs';
 import { modClosureRoutes } from './routes/modclosure.mjs';
 import { ownerNotifyRoutes } from './routes/ownernotify.mjs';
+import { skyKassaRoutes } from './routes/skykassa.mjs';
+import { sweepSkykassa } from './skykassa.mjs';
+import { sweepPartners } from './skykassapartners.mjs';
 import { siteRoutes, siteAdminRoutes } from './routes/site.mjs';
 import { sweepSite } from './sitecms.mjs';
 import * as musicTicket from './musicticket.mjs';
@@ -178,7 +181,7 @@ const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, authRoutes, p
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes];
+                violationsRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, skyKassaRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -340,7 +343,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     const isCampaignClick = /^\/api\/campaigns\/r\//.test(url);
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
     /* Игровые серверы Sky Blox — программы, а не люди: у них подпись запроса вместо ключа беты. */
-    const isBloxServer = url.startsWith('/api/blox/server/');
+    const isBloxServer = url.startsWith('/api/blox/server/') || url.startsWith('/api/skykassa/webhook/');
     if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
@@ -611,6 +614,8 @@ const start = async () => {
       await sweepDeviceLinks();
       await sweepFreezeLog();
       await sweepSite().catch((e) => console.error('[site] уборка:', e.message));
+      await sweepPartners().catch((e) => console.error('[skykassa] партнёры:', e.message));
+      await sweepSkykassa().catch((e) => console.error('[skykassa] уборка:', e.message));
       await sweepIpPin();
       await sweepGameSessions();
       await goSweepExpired().catch(() => {});

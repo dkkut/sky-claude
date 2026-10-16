@@ -74,7 +74,7 @@ const hmacKey = () => `${config.encryptionKey || config.jwtSecret}:sky-codes:v1`
 export const codeHash = (canonical) =>
   crypto.createHmac('sha256', hmacKey()).update(canonical).digest('hex');
 
-const generateCanonical = () => {
+export const generateCanonical = () => {
   let out = PREFIX;
   for (let i = 0; i < GENERATED_LEN; i += 1) out += ALPHABET[crypto.randomInt(ALPHABET.length)];
   return out;
