@@ -150,13 +150,25 @@ export interface SendResult {
   code?: string;
 }
 
+/** Ожидание ответа не бесконечно: через 90 с запрос прерывается, а человеку предлагается повторить. */
+export const AI_REQUEST_TIMEOUT_MS = 90_000;
+
 export const apiAiSend = async (
   text: string, chatId?: string,
-  opts: { mode?: 'chat' | 'code'; voice?: boolean; assist?: boolean } = {},
+  opts: { mode?: 'chat' | 'code'; voice?: boolean; assist?: boolean; signal?: AbortSignal } = {},
 ): Promise<SendResult> => {
-  const r = await apiCall<SendResult>('/api/ai/send', {
-    method: 'POST', body: JSON.stringify({ text, chatId, ...opts }),
-  });
+  const { signal: outer, ...body } = opts;
+  const ctl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, AI_REQUEST_TIMEOUT_MS);
+  const onAbort = () => ctl.abort();
+  if (outer) { if (outer.aborted) ctl.abort(); else outer.addEventListener('abort', onAbort, { once: true }); }
+  let r;
+  try {
+    r = await apiCall<SendResult>('/api/ai/send', { method: 'POST', body: JSON.stringify({ text, chatId, ...body }), signal: ctl.signal });
+  } finally { clearTimeout(timer); outer?.removeEventListener('abort', onAbort); }
+  if (!r.ok && outer?.aborted) return { ok: false, reason: '', code: 'aborted' };
+  if (!r.ok && timedOut) return { ok: false, reason: 'Ответ слишком долго не приходит. Повторите запрос.', code: 'timeout' };
   if (!r.ok) return { ok: false, reason: aiReason(r.error, r.reason), code: r.error };
   /* ok ставим после разворота: в теле ответа его нет, но если однажды
      появится — поле должно остаться нашим. */
@@ -169,7 +181,8 @@ export const apiAiSend = async (
    недосмотр: закрывать подпиской «переведи это сообщение» значило бы
    закрывать подпиской обычный разговор. */
 
-export type AskTask = 'translate' | 'fix' | 'friendly' | 'formal' | 'shorten' | 'replies' | 'gist' | 'advise';
+export type AskTask = 'translate' | 'fix' | 'friendly' | 'formal' | 'shorten' | 'replies' | 'gist' | 'advise'
+  | 'simplify' | 'rewrite' | 'continue' | 'plan' | 'todo' | 'analyze' | 'shortreply' | 'explaincode' | 'findbug';
 
 export const apiAiAsk = async (task: AskTask, text: string, arg = '') => {
   const r = await apiCall<{ text: string }>('/api/ai/ask', {

@@ -346,3 +346,11 @@ html.kb-open .kb-hide { display: none !important; }
 .app-root-h { height: calc(100dvh - var(--island-pad, 0px)); height: calc(var(--app-h, 100dvh) - var(--island-pad, 0px)); margin-top: var(--island-pad, 0px); position: relative; top: var(--vv-top, 0px); transition: height .2s ease, margin-top .2s ease; }
 /* Отступ под Sky Island (SkyIsland.tsx): корень оболочки сдвигается вниз, пока капсула видна. */
 .island-pad-shell { margin-top: var(--island-pad, 0px); height: calc(100dvh - var(--island-pad, 0px)) !important; transition: height .2s ease, margin-top .2s ease; }
+
+/* Индикатор «Думаю •••» Sky AI: плавное «дыхание» точек; без анимации при reduced-motion */
+.sky-think-dots { display: inline-flex; gap: 4px; align-items: center; }
+.sky-think-dots i { width: 5px; height: 5px; border-radius: 9999px; background: #a855f7; opacity: .35; animation: sky-think 1.2s ease-in-out infinite; }
+.sky-think-dots i:nth-child(2) { animation-delay: .18s; }
+.sky-think-dots i:nth-child(3) { animation-delay: .36s; }
+@keyframes sky-think { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .sky-think-dots i { animation: none; opacity: .8; } }

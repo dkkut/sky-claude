@@ -27,6 +27,8 @@ import { useAiState, refreshAiState } from './aiState';
 import { VoiceMode } from './VoiceMode';
 import { PrimeGate } from '@/prime/PrimeGate';
 import { browserVoiceAvailable } from './speech';
+import { ThinkingIndicator } from './ThinkingIndicator';
+import { QuickActions } from './QuickActions';
 
 const C = {
   accent: '#a855f7',
@@ -104,22 +106,6 @@ const Bubble = ({ m }: { m: AiMessage }) => (
   </div>
 );
 
-const Thinking = () => (
-  <div className="flex items-end gap-2">
-    <div className="grid h-7 w-7 place-items-center rounded-xl shrink-0"
-      style={{ background: 'linear-gradient(135deg,#a855f7,#6366f1)' }}>
-      <Sparkles size={12} className="text-white"/>
-    </div>
-    <div className="rounded-2xl px-4 py-3 flex gap-1 items-center"
-      style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-      {[0, 1, 2].map(i => (
-        <div key={i} className="h-1.5 w-1.5 rounded-full animate-bounce"
-          style={{ background: C.accent, animationDelay: `${i * 0.15}s` }}/>
-      ))}
-    </div>
-  </div>
-);
-
 /** Предложение подписки — на месте инструмента, но не на месте чата. */
 const PrimeOffer = ({ what }: { what: string }) => (
   <div className="rounded-2xl px-4 py-4 text-center"
@@ -147,6 +133,8 @@ export const SkyAITab = () => {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [retryText, setRetryText] = useState('');       // последний запрос, не получивший ответа: его можно повторить
+  const abortRef = useRef<AbortController | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
 
   /* Инструменты */
@@ -191,22 +179,29 @@ export const SkyAITab = () => {
   };
 
   /* ── Обычный чат: без единой проверки Prime ── */
-  const send = async () => {
-    const text = input.trim();
+  const send = async (again?: string) => {
+    const text = (again ?? input).trim();
     if (!text || busy) return;
-    setInput('');
-    setErr('');
+    if (again === undefined) setInput('');
+    setErr(''); setRetryText('');
     setBusy(true);
 
-    const mine: AiMessage = {
-      id: `local-${Date.now()}`, role: 'user', text, tool: 'chat', createdAt: new Date().toISOString(),
-    };
-    setMessages(h => [...h, mine]);
+    if (again === undefined) {
+      const mine: AiMessage = {
+        id: `local-${Date.now()}`, role: 'user', text, tool: 'chat', createdAt: new Date().toISOString(),
+      };
+      setMessages(h => [...h, mine]);
+    }
 
-    const r = await apiAiSend(text, chatId ?? undefined, mode === 'code' ? { mode: 'code' } : {});
+    // «Думаю •••» живёт, пока запрос идёт; отмена, ошибка и сетевой сбой его гасят (см. ThinkingIndicator)
+    const ctl = new AbortController(); abortRef.current = ctl;
+    const r = await apiAiSend(text, chatId ?? undefined, { ...(mode === 'code' ? { mode: 'code' as const } : {}), signal: ctl.signal });
+    abortRef.current = null;
     setBusy(false);
+    if (r.code === 'aborted') { setRetryText(text); return; }           // отменено человеком: без текста ошибки
     if (!r.ok || !r.answer) {
       setErr(r.reason ?? 'Не получилось');
+      setRetryText(text);
       return;
     }
     if (!chatId && r.chatId) setChatId(r.chatId);
@@ -399,7 +394,13 @@ export const SkyAITab = () => {
                 </div>
               )}
               {messages.map(m => <Bubble key={m.id} m={m}/>)}
-              {busy && <Thinking/>}
+              {busy && <ThinkingIndicator onCancel={() => abortRef.current?.abort()} />}
+              {!busy && retryText && (
+                <button type="button" onClick={() => void send(retryText)} className="mx-auto block rounded-full px-4 py-1.5 text-xs font-bold"
+                  style={{ background: 'rgba(168,85,247,0.12)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)', cursor: 'pointer' }}>
+                  Повторить запрос
+                </button>
+              )}
             </>
           )}
 
@@ -455,7 +456,7 @@ export const SkyAITab = () => {
                 </>
               )}
 
-              {busy && <Thinking/>}
+              {busy && <ThinkingIndicator />}
 
               {toolResult && (
                 <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
@@ -484,6 +485,14 @@ export const SkyAITab = () => {
           )}
         </div>
       </div>
+
+      {/* Быстрые действия: работают с выделенным текстом, полем ввода или последним сообщением этого диалога */}
+      {chatLike && (
+        <div className="px-5 pt-2 shrink-0" style={{ background: 'var(--bg-l1)' }}>
+          <QuickActions input={input} lastMessage={messages.length ? messages[messages.length - 1].text : ''} mode={mode === 'code' ? 'code' : 'chat'}
+            onInsert={(t) => setInput(t)} disabled={busy} />
+        </div>
+      )}
 
       {/* Ввод. В режиме чата активен всегда — подписка на это не влияет. */}
       {(chatLike || (mode === 'summary' && prime)) && (
