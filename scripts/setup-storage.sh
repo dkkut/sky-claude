@@ -6,6 +6,8 @@
 #      bash scripts/setup-storage.sh --check                       # что настроено (без значений секретов)
 #      bash scripts/setup-storage.sh --rotate                      # выпустить НОВЫЙ ключ шифрования копий (старый остаётся для чтения)
 #      bash scripts/setup-storage.sh --export-kek /путь/файл       # записать ключи копий в файл (права 600) — хранить ОТДЕЛЬНО от сервера
+#      bash scripts/setup-storage.sh --primary on [дней_кэша]      # хранить МЕДИА (музыка, кино, подкасты, книги…) в S3; на диске — кэш (по умолчанию 7 дней)
+#      bash scripts/setup-storage.sh --primary off                 # вернуть хранение на диск сервера (файлы из S3 при этом НЕ удаляются)
 #
 #  Что делает:
 #   1. Спрашивает адрес S3, регион, бакет, ключ доступа и секретный ключ (секрет — скрыто, на экран не печатается).
@@ -49,6 +51,7 @@ status() {
   show "STORAGE_S3_REGION" "$(get_env STORAGE_S3_REGION)"
   show "STORAGE_S3_ACCESS_KEY" "$(get_env STORAGE_S3_ACCESS_KEY)"
   show "STORAGE_S3_SECRET_KEY" "$(get_env STORAGE_S3_SECRET_KEY)"
+  show "STORAGE_PRIMARY (медиа в S3)" "$(get_env STORAGE_PRIMARY)" "bash scripts/setup-storage.sh --primary on"
   show "STORAGE_KEK_ACTIVE (активный ключ шифрования копий)" "$(get_env STORAGE_KEK_ACTIVE)"
   for k in K1 K2 K3 K4; do [ -n "$(get_env STORAGE_KEK_$k)" ] && echo "  ✔ STORAGE_KEK_$k: есть"; done
   true
@@ -67,7 +70,30 @@ probe() {
 }
 case "${1:-}" in
   --check) status; exit 0 ;;
-  -h|--help) sed -n 2,19p "$0"; exit 0 ;;
+  -h|--help) sed -n 2,21p "$0"; exit 0 ;;
+  --primary)
+    mode="${2:-}"
+    case "$mode" in
+      on)
+        [ -n "$(get_env STORAGE_S3_ENDPOINT)" ] && [ -n "$(get_env STORAGE_S3_SECRET_KEY)" ] || { echo "Сначала настройте S3: bash scripts/setup-storage.sh"; exit 1; }
+        days="${3:-7}"; [[ "$days" =~ ^[0-9]+$ ]] || { echo "Дни кэша — число (0 — не убирать файлы с диска)."; exit 1; }
+        set_env STORAGE_PRIMARY s3; set_env STORAGE_PRIMARY_CACHE_DAYS "$days"
+        echo "Основное хранение медиа в S3 включено (кэш на диске: $days дн.). Применить: bash scripts/deploy-local.sh"
+        echo "Важно: файлы шифруются ключом ENCRYPTION_KEY из .env — без него файлы в S3 не открыть. Сохраните его отдельно от сервера."
+        echo "Файлы, уже лежащие на диске, сервер сам догрузит в S3 фоном (порциями, раз в 10 минут), после чего старые уберёт из кэша."
+        echo "Резервные копии в ТОМ ЖЕ бакете — не независимая площадка: панель так и пометит. Для настоящей защиты нужен другой бакет/хостер."
+        exit 0 ;;
+      off)
+        if command -v docker >/dev/null 2>&1 && [ "$(get_env STORAGE_PRIMARY)" = s3 ]; then
+          echo "Сначала возвращаю на диск файлы, которые лежат только в S3…"
+          envargs=(); for k in STORAGE_S3_ENDPOINT STORAGE_S3_REGION STORAGE_S3_BUCKET STORAGE_S3_ACCESS_KEY STORAGE_S3_SECRET_KEY STORAGE_S3_PREFIX STORAGE_S3_PATH_STYLE; do envargs+=(-e "$k=$(get_env "$k")"); done
+          docker compose run --rm --no-deps -T "${envargs[@]}" -e STORAGE_PRIMARY=s3 \
+            -v "$SRC_DIR/scripts/storage-pull.mjs:/app/scripts/storage-pull.mjs:ro" -v "$SRC_DIR/server:/app/server:ro" \
+            api node scripts/storage-pull.mjs || { echo "✖ Не все файлы скачаны — режим НЕ отключён, чтобы ничего не потерять."; exit 1; }
+        fi
+        set_env STORAGE_PRIMARY ""; echo "Хранение медиа возвращено на диск сервера (файлы в S3 не удалены). Применить: bash scripts/deploy-local.sh"; exit 0 ;;
+      *) echo "Использование: --primary on [дней_кэша] | --primary off"; exit 1 ;;
+    esac ;;
   --export-kek)
     out="${2:-}"; [ -n "$out" ] || { echo "Укажите файл: --export-kek /путь/sky-kek.txt"; exit 1; }
     [ ! -e "$out" ] || { echo "Файл уже есть: $out — выберите другой путь."; exit 1; }
@@ -98,7 +124,7 @@ else read -r -s -p "Секретный ключ (скрыто): " sk; echo; fi
 set_env STORAGE_BACKUP_TARGET s3
 set_env STORAGE_S3_ENDPOINT "${ep%/}"; set_env STORAGE_S3_REGION "$reg"; set_env STORAGE_S3_BUCKET "$bk"
 set_env STORAGE_S3_ACCESS_KEY "$ak"; set_env STORAGE_S3_SECRET_KEY "$sk"
-[ -n "$(get_env STORAGE_S3_PREFIX)" ] || set_env STORAGE_S3_PREFIX "sky-backups/"
+[ -n "$(get_env STORAGE_S3_PREFIX)" ] || set_env STORAGE_S3_PREFIX "sky/"
 
 if [ -z "$(get_env STORAGE_KEK_ACTIVE)" ] || [ -z "$(get_env "STORAGE_KEK_$(get_env STORAGE_KEK_ACTIVE)")" ]; then
   set_env STORAGE_KEK_K1 "$(newkey)"; set_env STORAGE_KEK_ACTIVE K1

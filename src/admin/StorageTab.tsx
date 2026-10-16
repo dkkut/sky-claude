@@ -133,6 +133,7 @@ const Overview = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
         <p className="text-[12px]" style={{ color: C.t2 }}>
           Площадка копий: {d.target.configured ? <><b>{d.target.kind}</b> <span translate="no">{d.target.label}</span> {d.target.health?.ok ? <Badge ok>доступна, {d.target.health.ms} мс</Badge> : <Badge ok={false}>недоступна {d.target.health?.code ?? ''}</Badge>} {!d.target.independent && <Badge ok={false}>не независимая площадка</Badge>}</> : <Badge ok={false}>не настроена{d.target.missing?.length ? `: ${d.target.missing.join(', ')}` : ''}</Badge>}
         </p>
+        <p className="text-[12px]" style={{ color: C.t2 }}>Основное хранение медиа: {d.primary?.enabled ? <Badge ok>S3 (кэш на диске {d.primary.cacheDays ? `${d.primary.cacheDays} дн.` : 'без очистки'})</Badge> : <Badge ok={false}>диск сервера, S3 не включён</Badge>}</p>
         <p className="text-[12px]" style={{ color: C.t2 }}>Ключ шифрования копий: {d.keys.configured ? <Badge ok>активный {d.keys.active}</Badge> : <Badge ok={false}>не задан</Badge>} · последняя проверенная копия: {d.backups.lastVerified ? dt(d.backups.lastVerified.verified_at) : 'нет'} · загрузок идёт {d.activity.uploads}, чтений {d.activity.io}</p>
         {d.lastProblems.length > 0 && <details className="text-[11px]" style={{ color: C.t3 }}><summary>Последние предупреждения и ошибки</summary>{d.lastProblems.map((p: Data) => <p key={p.id} translate="no">{dt(p.at)} · {p.level} · {p.kind}</p>)}</details>}
       </Card>

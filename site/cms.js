@@ -12,7 +12,7 @@
 
   /* Ссылка из письма (вход в панель, вход по SSH, разморозка) — это страница ПРИЛОЖЕНИЯ. Если она открылась на лендинге,
      уходим на «Веб-версию» (адрес берётся из админки). Запасной путь к редиректу nginx. */
-  if (/^\/(admin-verify|ssh-verify|unfreeze)$/.test(location.pathname)) {
+  if (/^\/(admin-verify|ssh-verify|unfreeze|storage-verify)$/.test(location.pathname)) {
     document.documentElement.style.visibility = 'hidden';
     fetch(API + '/public', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
       var web = d && d.links && d.links.web;

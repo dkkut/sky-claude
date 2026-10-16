@@ -49,7 +49,7 @@ export const storageRoutes = async (req, res, url) => {
     res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store');
     if (path.endsWith('lookup')) return json(res, 200, await X.lookupForPage(body.token, meta));
     const r = await X.decideByToken(body.token, body.approve === true, body.code, meta);
-    return json(res, r.error ? (r.error === 'step_up_invalid' ? 401 : 400) : 200, r);
+    return json(res, r.error ? 400 : 200, r);   // не 401: клиент принял бы его за истёкшую сессию
   }
 
   /* ─── Публично: скачивание копии по одноразовой ссылке ─── */

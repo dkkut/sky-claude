@@ -118,6 +118,8 @@ const g = newId();
 await MS.saveStream(g, Readable.from([Buffer.alloc(100, 5)]), 1e8);
 await P.syncAndEvict([MS.musicRoot()]);
 t('кэш: свежие файлы остаются на диске', existsSync(pathOf(g)));
+// Возврат на диск (перед отключением режима)
+t('возврат на диск: файл из S3 скачивается и читается локально', (await P.ensureLocal(pathOf(f))) === true && existsSync(pathOf(f)) && (await readAll(MS.openStream(f, null))).equals(Buffer.alloc(4000, 9)));
 // Список в S3
 const rem = await P.listRemote(MS.musicRoot());
 t('реестр видит файлы, которых нет на диске', rem.some((x) => x.path === pathOf(f)));

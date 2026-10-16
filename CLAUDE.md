@@ -799,3 +799,28 @@ Sky Podcasts, Sky Books и режим «Код» в Sky AI входят в Sky P
 - Тесты: `scripts/audit/skykassa-test.mjs` (сервер, поддельный партнёр на :9944; запускать API с `SKYKASSA_PARTNER_FAKE_SECRET=0123456789abcdef0123 SKYKASSA_PARTNER_FAKE_MERCHANT=m-1 SKYKASSA_RATE_MULT=1000 BLOX_ALLOW_PRIVATE=1`) и `skykassa-ui-test.mjs` (Playwright: ПК, телефон, админка).
 - Скрипт секретов партнёра: `scripts/set-skykassa-partner.sh <id>`. Нужен деплой (миграция 128) и пересборка `.apk`/`.exe`.
 
+
+## Sky Storage (хранилище медиа в S3, резервные копии, управление доступом)
+
+Сервер — `server/skystorage*.mjs`, миграция `129_sky_storage.sql`, маршруты `server/routes/skystorage.mjs`
+(`/api/admin/storage/*`, публичные `/api/storage/verify/*` и `/api/storage/download/:token`); клиент — `src/admin/StorageTab.tsx` (вкладка «Sky Storage», право
+`storage_view`) и страница `/storage-verify` (`src/admin/StorageVerify.tsx`, отдельный `verify.html`, как `/admin-verify`). Настройка — `scripts/setup-storage.sh`.
+
+- **Где лежат медиа.** Файлы сервисов по-прежнему шифруются слоем `mediacrypto.mjs` (SKE1, ключ из `ENCRYPTION_KEY`). При `STORAGE_PRIMARY=s3`
+  (`skystorageprimary.mjs`) тот же шифротекст кладётся в S3 (`media/<путь от /data>` под `STORAGE_S3_PREFIX`): запись подтверждается только после загрузки и сверки размера
+  (не загрузилось — файл с диска убирается, человек получает `storage_provider_unavailable`); чтение — с диска-кэша, а если файла там нет — диапазонными запросами из S3
+  (перемотка не качает файл целиком); удаление — `removeMedia()` (сначала S3, при его недоступности локальный файл остаётся). Все хранилища сервисов удаляют ТОЛЬКО через `removeMedia`,
+  новые — так же. Фоновая синхронизация (раз в 10 мин, порциями) догружает в S3 старые файлы и убирает с диска копии старше `STORAGE_PRIMARY_CACHE_DAYS` (7; 0 — не убирать),
+  только после подтверждения размера в S3. Без `ENCRYPTION_KEY` файлы в S3 не открыть — ключ хранить отдельно. Вернуть всё на диск: `setup-storage.sh --primary off` (сначала `scripts/storage-pull.mjs`).
+- **Резервные копии** — отдельный слой (цель `STORAGE_BACKUP_TARGET=s3|local`, шифрование SBK1 ключом KEK из `STORAGE_KEK_<ID>`, не из ключа доступа к S3). Копия в ТОМ ЖЕ бакете, что и основное хранение,
+  в панели помечается «не независимая площадка» — для настоящей защиты нужен другой бакет/хостер (отдельной настройки второго бакета пока нет).
+- **Состояния** (`storage_state`, одна строка, `version`): аварийное отключение, технические работы (safe/emergency), обязательная авторизация Sky, список ограничений — независимы, меняются через
+  `mutateState` с `expectedVersion` (конфликт → 409). Четыре кнопки админки — `skystorageadmin.mjs`: критические права (`storage_restore/emergency/enable/unlock/keys`) НЕ входят в `super_admin`.
+  Ворота — `assertRead/assertWrite` (`mediacrypto`, вложения) и предворота в `server.mjs`; пропуска медиа проверяют эпоху `ticketAcceptable()` (все `*ticket.mjs`).
+- **Подключения**: новое устройство владельца/администратора → запись в `storage_connections` → письмо владельцу через треть таймаута → страница `/storage-verify` (GET ничего не решает, решение — код
+  подтверждения личности владельца). Молчание = отказ, сессия попытки отзывается. Маршруты `/api/storage/*` у `storageshare.mjs` — другие; `storageRoutes` стоит РАНЬШЕ и берёт только `verify/` и `download/`.
+- Тесты: `scripts/audit/skystorage-test.mjs` (149, API запускать с `STORAGE_RATE_MULT=1000`, `OWNER_USERNAME=ownertest`), `storage-primary-test.mjs` (25, поддельный S3), `skystorage-ui-test.mjs` (Playwright, 22).
+  В тестах коды из `api.log` брать регулярным выражением ПО ОДНОЙ СТРОКЕ (`[^\d\n]*`), иначе письма без цифр «съедают» следующий код.
+- Не сделано: дедупликация, миниатюры/кэш превью, нагрузочные тесты на тысячи файлов, сопоставление осиротевших файлов для подкастов/книг/Sky Video с таблицами (реестр их показывает, но не карантинит),
+  вложения мессенджера лежат в БД (в S3 не переехали), перешифровка заголовков копий при смене KEK в админке (ключ меняется скриптом `--rotate`; старые ключи остаются для чтения),
+  переводы серверных русских текстов писем владельцу. Реальный S3 (bucket.ru) в этой среде не проверялся — только поддельный по SigV4; проверка боевого — `setup-storage.sh`.
