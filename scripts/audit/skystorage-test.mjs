@@ -219,8 +219,8 @@ await withEnv({ STORAGE_BACKUP_TARGET: 'local', STORAGE_BACKUP_DIR: bkDir }, asy
   t('резервная копия: параллельный запуск блокируется (одна тяжёлая задача)', r1.ok && r2.error === 'busy');
   const s1 = await waitBackup(r1.id);
   t('копия создана и ПРОВЕРЕНА (манифест, объекты, таблицы, контрольные суммы)', s1 === 'verified', s1);
-  const row = q(`select files||'|'||(bytes>0)::text||'|'||coalesce(manifest_sha,'')<>''||'|'||key_id from storage_backups where id='${r1.id}'`);
-  t('копия: манифест, число файлов и ключ записаны', /^\d+\|true\|true\|K1$/.test(row.replace(/t$/, 'true')) || row.length > 5, row);
+  const row = q(`select files>0 and bytes>0 and length(manifest_sha)=64 and key_id='K1' from storage_backups where id='${r1.id}'`);
+  t('копия: манифест, число файлов, размер и ключ записаны', row === 't', row);
   const tgt = T.getTarget();
   t('копия: в цели нет открытых данных (объекты зашифрованы SBK1)', (await tgt.list(`backups/${r1.id}/f/`)).length > 0 && (await readAll(await tgt.get((await tgt.list(`backups/${r1.id}/f/`))[0].key))).subarray(0, 4).toString() === 'SBK1');
   t('копия: маркер завершённости DONE записан последним', (await tgt.head(`backups/${r1.id}/DONE`)) !== null);
@@ -287,6 +287,7 @@ await withEnv({ STORAGE_BACKUP_TARGET: 'local', STORAGE_BACKUP_DIR: bkDir }, asy
   t('расписание: несколько раз в день и еженедельно', BK.dueSlots({ ...sch, frequency: 'multi', times: ['01:00', '03:00', '15:00'] }, now).length === 2 && BK.dueSlots({ ...sch, frequency: 'weekly', weekday: now.getDay() }, now).length === 1 && BK.dueSlots({ ...sch, frequency: 'weekly', weekday: (now.getDay() + 1) % 7 }, now).length === 0);
   q(`delete from storage_schedules`);
   q(`insert into storage_schedules (id, frequency, times, kind, scope) values ('sch-aaaaaaaaaaaa','daily','["${String(now.getHours()).padStart(2, '0')}:00"]','metadata','{}')`);
+  for (let i = 0; i < 100 && BK.jobRunning(); i++) await sleep(300);
   const started = await BK.runSchedules(new Date(new Date().setMinutes(5)));
   t('расписание: сервер сам запускает копию без браузера', started === 1 || Number(q(`select count(*) from storage_backups where trigger='schedule'`)) >= 1);
   await sleep(500); for (let i = 0; i < 100 && BK.jobRunning(); i++) await sleep(300);

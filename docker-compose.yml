@@ -141,6 +141,26 @@ services:
       VAPID_PRIVATE_KEY:           ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT:               ${VAPID_SUBJECT:-mailto:admin@localhost}
       SKYKASSA_PARTNERS_JSON:      ${SKYKASSA_PARTNERS_JSON:-}
+      # Sky Storage (server/skystorage*.mjs): ключи шифрования копий (отдельно от ENCRYPTION_KEY и JWT_SECRET) и площадка копий.
+      # Вносятся скриптом scripts/setup-storage.sh; без них резервное копирование выключено, всё остальное работает.
+      STORAGE_KEK_ACTIVE:          ${STORAGE_KEK_ACTIVE:-}
+      STORAGE_KEK_K1:              ${STORAGE_KEK_K1:-}
+      STORAGE_KEK_K2:              ${STORAGE_KEK_K2:-}
+      STORAGE_KEK_K3:              ${STORAGE_KEK_K3:-}
+      STORAGE_KEK_K4:              ${STORAGE_KEK_K4:-}
+      STORAGE_BACKUP_TARGET:       ${STORAGE_BACKUP_TARGET:-}
+      STORAGE_BACKUP_DIR:          ${STORAGE_BACKUP_DIR:-}
+      STORAGE_BACKUP_INDEPENDENT:  ${STORAGE_BACKUP_INDEPENDENT:-}
+      STORAGE_S3_ENDPOINT:         ${STORAGE_S3_ENDPOINT:-}
+      STORAGE_S3_REGION:           ${STORAGE_S3_REGION:-}
+      STORAGE_S3_BUCKET:           ${STORAGE_S3_BUCKET:-}
+      STORAGE_S3_ACCESS_KEY:       ${STORAGE_S3_ACCESS_KEY:-}
+      STORAGE_S3_SECRET_KEY:       ${STORAGE_S3_SECRET_KEY:-}
+      STORAGE_S3_PREFIX:           ${STORAGE_S3_PREFIX:-}
+      STORAGE_S3_PATH_STYLE:       ${STORAGE_S3_PATH_STYLE:-}
+      STORAGE_S3_PART_MB:          ${STORAGE_S3_PART_MB:-}
+      STORAGE_QUARANTINE_DIR:      /data/storage-quarantine
+      STORAGE_STAGING_DIR:         /data/storage-staging
       FCM_SERVICE_ACCOUNT_JSON:    ${FCM_SERVICE_ACCOUNT_JSON:-}
       YANDEX_GEOCODER_KEY:         ${YANDEX_GEOCODER_KEY:-}
       CDEK_API_BASE:               ${CDEK_API_BASE:-}
@@ -245,6 +265,9 @@ services:
       - campaigns-data:/data/campaigns
       - skins-data:/data/skins
       - evidence-data:/data/evidence
+      # Sky Storage: карантин осиротевших файлов и промежуточная область восстановления (не должны пропадать при пересборке).
+      - storage-quarantine-data:/data/storage-quarantine
+      - storage-staging-data:/data/storage-staging
       # Единственный том-бинд в этом файле, не именованный том: сигнал
       # «выключить сервер при вероятном взломе администратора»
       # (server/breach.mjs) должен дойти до сторожа на самом хосте, вне
@@ -384,5 +407,7 @@ volumes:
   campaigns-data:
   skins-data:
   evidence-data:
+  storage-quarantine-data:
+  storage-staging-data:
   certbot-certs:
   certbot-webroot:

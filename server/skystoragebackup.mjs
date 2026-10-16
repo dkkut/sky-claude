@@ -476,9 +476,9 @@ export const restoreApply = async (actorId, planId, { overwrite = false } = {}) 
   const st = snapshot(); if (st?.emergency?.active) return { error: 'storage_unavailable' };
   if (!(await acquire())) return { error: 'busy' };
   const rid = newId('rs');
-  await query(`INSERT INTO storage_restores (id, backup_id, scope, mode, status, result, created_by) VALUES ($1,$2,$3::jsonb,'apply','running',$4::jsonb,$5)`, [rid, p.backup_id, JSON.stringify(p.scope), JSON.stringify({ planId }), actorId]);
   const res = { planId, restored: 0, skippedSame: 0, conflicts: 0, overwritten: 0, failed: [], rows: {} };
   try {
+    await query(`INSERT INTO storage_restores (id, backup_id, scope, mode, status, result, created_by) VALUES ($1,$2,$3::jsonb,'apply','running',$4::jsonb,$5)`, [rid, p.backup_id, JSON.stringify(p.scope), JSON.stringify({ planId }), actorId]);
     const target = getTarget();
     const manifest = await readManifest(target, p.backup_id);
     const staging = join(stagingRoot(), rid);
@@ -512,12 +512,14 @@ export const restoreApply = async (actorId, planId, { overwrite = false } = {}) 
       let ins = 0; let skip = 0;
       const client = await pool.connect();
       try {
+        await client.query('BEGIN');
         const hs = countingHash();
         let buf = '';
         for await (const c of decryptStream(await target.get(t.key), { id: `${p.backup_id}/t/${t.name}` })) { hs.feed(c); buf += c.toString('utf8'); const parts = buf.split('\n'); buf = parts.pop(); for (const line of parts) { if (!line) continue; const r = await insertRow(client, t.name, line); if (r) ins += 1; else skip += 1; } }
         if (buf) { const r = await insertRow(client, t.name, buf); if (r) ins += 1; else skip += 1; }
-        if (hs.digest() !== t.sha256) res.failed.push(`таблица ${t.name}: не совпала контрольная сумма`);
-      } catch (e) { res.failed.push(`таблица ${t.name}: ${e.code ?? e.message}`); } finally { client.release(); }
+        if (hs.digest() !== t.sha256) { await client.query('ROLLBACK'); res.failed.push(`таблица ${t.name}: не совпала контрольная сумма (строки не добавлены)`); ins = 0; skip = 0; }
+        else await client.query('COMMIT');
+      } catch (e) { await client.query('ROLLBACK').catch(() => {}); res.failed.push(`таблица ${t.name}: ${e.code ?? e.message}`); } finally { client.release(); }
       res.rows[t.name] = { inserted: ins, skipped: skip };
     }
     await rm(staging, { recursive: true, force: true });
