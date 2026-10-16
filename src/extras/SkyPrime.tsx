@@ -1,11 +1,12 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PrimeCouponNote } from '@/codes/PrimeCouponNote';
 import { Crown, Check, Star, Zap, Shield, Music2, Film, Radio, Sparkles, Gift, TrendingUp, X, CreditCard } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMoney, fmt as fmtMoney, reloadWalletForUser } from '@/wallet/store';
 import { usePlatformStore } from '@/platform/store';
-import { REWARDS, TIER_LIST, tierFor, lifetimePointsOf, progressToNextTier, earnPrimePoints, redeemPrimeReward } from '@/prime/pointsStore';
+import { TIER_LIST, tierFor, lifetimePointsOf, progressToNextTier } from '@/prime/pointsStore';
+import { apiPrimeRewards, apiPrimeCashback, apiPrimeRedeem, newIdemKey, REDEEM_ERR, type Reward, type Redemption, type CashbackInfo } from '@/prime/primeApi';
 import { useRegionStore } from '@/region/store';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 
@@ -39,10 +40,29 @@ const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
   const curTier = tierFor(lifetime);
   const { next, pct, remaining } = progressToNextTier(lifetime);
 
-  const handleRedeem = async (id: string, title: string) => {
-    const ok = await redeemPrimeReward(id);
-    setToast(ok ? `Обменяно: ${title}` : useMoney.getState().lastError ?? 'Недостаточно баллов');
-    setTimeout(() => setToast(null), 2200);
+  // Каталог и обмен — на сервере: награды заводит администрация, обмен списывает баллы и выдаёт награду одной операцией
+  const [rewards, setRewards] = useState<Reward[] | null>(null);
+  const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+  const [cashback, setCashback] = useState<CashbackInfo | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const loadRewards = async () => {
+    const r = await apiPrimeRewards();
+    if (r.ok && r.data) { setRewards(r.data.rewards); setRedemptions(r.data.redemptions); } else setRewards([]);
+  };
+  useEffect(() => { void apiPrimeCashback().then(r => { if (r.ok && r.data) setCashback(r.data); }); }, []);
+  useEffect(() => { if (showRewards) void loadRewards(); }, [showRewards]);
+
+  const handleRedeem = async (r: Reward) => {
+    if (busyId) return;
+    setBusyId(r.id);
+    const res = await apiPrimeRedeem(r.id, newIdemKey());
+    setBusyId(null);
+    if (res.ok) {
+      await reloadWalletForUser(uid);
+      setToast(res.data?.redemption?.status === 'pending_manual' ? `Оформлено: ${r.title}. Выдаст сотрудник — напишем в уведомлениях` : `Получено: ${r.title}`);
+      void loadRewards();
+    } else setToast(REDEEM_ERR[res.error ?? ''] ?? 'Не получилось. Попробуйте ещё раз');
+    setTimeout(() => setToast(null), 3200);
   };
 
   return (
@@ -87,17 +107,14 @@ const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
           style={{ background: 'var(--accent)' }}>
           <Gift size={13}/>Каталог наград
         </button>
-        <button type="button" onClick={() => earnPrimePoints(isPrime ? 200 : 100, 'Демо-начисление')}
-          className={isMobile ? 'flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[11.5px] font-bold' : 'flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[12.5px] font-bold'}
-          style={{ background: 'var(--bg-l2, rgba(255,255,255,0.06))', color: 'var(--t2)' }}>
-          <TrendingUp size={13}/>+баллы
-        </button>
       </div>
 
       {!isMobile && (
         <p className="mt-3 text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
-          Баллы начисляются за покупки в Sky Market и активность на платформе
-          {isPrime ? ' — с двойным множителем для Prime-подписчиков.' : '. Оформи Prime, чтобы получать баллы x2.'}
+          {cashback?.rules.enabled
+            ? `Кэшбэк баллами за завершённые заказы в Sky Market: ${isPrime ? cashback.rules.primePercent : cashback.rules.basePercent}% (не больше ${cashback.rules.maxPointsPerOrder} баллов с заказа). Баллы приходят через ${cashback.rules.holdDays} дн. после завершения заказа.${!isPrime && cashback.rules.primePercent > cashback.rules.basePercent ? ` С Prime — ${cashback.rules.primePercent}%.` : ''}`
+            : 'Баллы приходят по кодам, выплатам и акциям. Кэшбэк за заказы сейчас выключен.'}
+          {cashback && cashback.pendingPoints > 0 ? ` Ожидает зачисления: ${cashback.pendingPoints} баллов.` : ''}
         </p>
       )}
 
@@ -123,23 +140,39 @@ const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
                 <button type="button" onClick={() => setShowRewards(false)}><X size={16} style={{ color: 'var(--t3)' }}/></button>
               </div>
               <div className={isMobile ? 'space-y-2' : 'space-y-2.5'}>
-                {REWARDS.map(r => (
-                  <div key={r.id} className={isMobile ? 'flex items-center gap-2.5 rounded-xl p-2.5' : 'flex items-center gap-3 rounded-2xl p-3'} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                    <div className={isMobile ? 'grid h-9 w-9 shrink-0 place-items-center rounded-lg' : 'grid h-11 w-11 shrink-0 place-items-center rounded-xl'} style={{ background: 'rgba(255,255,255,0.05)' }}>
-                      <r.Icon size={isMobile ? 17 : 20} style={{ color: 'var(--amber)' }}/>
+                {rewards === null && <p className="py-6 text-center text-[12px]" style={{ color: 'var(--t3)' }}>Загружаем…</p>}
+                {rewards?.length === 0 && <p className="py-6 text-center text-[12px]" style={{ color: 'var(--t3)' }}>Наград пока нет — администрация ещё не добавила их в каталог.</p>}
+                {rewards?.map(r => {
+                  const locked = r.tierLocked || r.soldOut || (r.perUserLimit != null && (r.taken ?? 0) >= r.perUserLimit);
+                  return (
+                    <div key={r.id} className={isMobile ? 'flex items-center gap-2.5 rounded-xl p-2.5' : 'flex items-center gap-3 rounded-2xl p-3'} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <div className={isMobile ? 'grid h-9 w-9 shrink-0 place-items-center rounded-lg' : 'grid h-11 w-11 shrink-0 place-items-center rounded-xl'} style={{ background: 'rgba(255,255,255,0.05)' }}>
+                        <Gift size={isMobile ? 17 : 20} style={{ color: 'var(--amber)' }}/>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p translate="no" className="text-[13px] font-bold text-white">{r.title}</p>
+                        <p translate="no" className="truncate text-[11px]" style={{ color: 'var(--t3)' }}>{r.description}</p>
+                        <p className="text-[10.5px]" style={{ color: 'var(--t3)' }}>{r.soldOut ? 'Закончилась' : r.tierLocked ? `Доступна с уровня ${r.minTier}` : r.stock != null ? `Осталось: ${r.stock}` : ''}</p>
+                      </div>
+                      <button type="button" onClick={() => void handleRedeem(r)}
+                        disabled={points < r.cost || locked || busyId !== null}
+                        className="shrink-0 rounded-xl px-3 py-2 text-[11.5px] font-bold disabled:opacity-35"
+                        style={{ background: 'var(--accent)', color: '#fff' }}>
+                        {r.cost} б.
+                      </button>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-bold text-white">{r.title}</p>
-                      <p className="truncate text-[11px]" style={{ color: 'var(--t3)' }}>{r.desc}</p>
-                    </div>
-                    <button type="button" onClick={() => handleRedeem(r.id, r.title)}
-                      disabled={points < r.cost}
-                      className="shrink-0 rounded-xl px-3 py-2 text-[11.5px] font-bold disabled:opacity-35"
-                      style={{ background: 'var(--accent)', color: '#fff' }}>
-                      {r.cost} б.
-                    </button>
+                  );
+                })}
+                {redemptions.length > 0 && (
+                  <div className="pt-2">
+                    <p className="mb-1 text-[11px] font-bold" style={{ color: 'var(--t3)' }}>Мои обмены</p>
+                    {redemptions.slice(0, 5).map(d => (
+                      <p key={d.id} className="text-[11.5px]" style={{ color: 'var(--t2)' }}>
+                        <span translate="no">{d.title}</span>{` — ${d.status === 'done' ? 'получено' : d.status === 'pending_manual' ? 'ждёт выдачи' : 'отклонено, баллы возвращены'}`}
+                      </p>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             </motion.div>
           </motion.div>
