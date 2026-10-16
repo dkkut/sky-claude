@@ -125,6 +125,9 @@ const ERRORS: Record<string, string> = {
   profile_limit_reached: 'На один Sky ID можно завести не больше двух профилей',
   profile_code_required: 'Профиль защищён — введите код из приложения',
   two_factor_required:   'Введите код из приложения',
+  current_email_code_required: 'Введите код, отправленный на вашу текущую почту',
+  cannot_prove_ownership: 'Нечем подтвердить, что аккаунт ваш: включите аутентификатор или обратитесь в поддержку',
+  admin_manual:          'Для аккаунтов администраторов это выполняет владелец на сервере',
   challenge_expired:     'Время вышло — начните вход заново',
   not_found:             'Не найдено',
   registration_closed:   'Регистрация новых аккаунтов временно закрыта. Войти могут только уже зарегистрированные',
@@ -631,16 +634,21 @@ export const apiSkyTwoFactorDisable = (code: string) =>
 export const apiPhoneLinkStart = (phone: string) =>
   post<{ ok: true; retryAfter: number }>('/api/skyid/phone/start', { phone });
 
-export const apiPhoneLinkVerify = (phone: string, code: string) =>
-  post<{ skyId: SkyIdInfo }>('/api/skyid/phone/verify', { phone, code });
+/** `guard` — подтверждение замены УЖЕ подтверждённого контакта: код аутентификатора или код с текущей почты (сервер: accountrecovery.mjs). */
+export interface ContactGuard { twoFactorCode?: string; currentEmailCode?: string }
+export const apiPhoneLinkVerify = (phone: string, code: string, guard?: ContactGuard) =>
+  post<{ skyId: SkyIdInfo }>('/api/skyid/phone/verify', { phone, code, ...guard });
+
+export const apiContactGuardCode = () =>
+  post<{ ok: true; email: string; retryAfter?: number }>('/api/skyid/contact/guard-code', {});
 
 /* ═══ Почта ══════════════════════════════════════════════════ */
 
 export const apiEmailStart = (email: string) =>
   post<{ ok: true; retryAfter: number; expiresIn: number }>('/api/skyid/email/start', { email });
 
-export const apiEmailVerify = (email: string, code: string) =>
-  post<{ skyId: SkyIdInfo }>('/api/skyid/email/verify', { email, code });
+export const apiEmailVerify = (email: string, code: string, guard?: ContactGuard) =>
+  post<{ skyId: SkyIdInfo }>('/api/skyid/email/verify', { email, code, ...guard });
 
 /* ═══ Prime ══════════════════════════════════════════════════ */
 

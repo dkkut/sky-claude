@@ -889,3 +889,17 @@ Sky Podcasts, Sky Books и режим «Код» в Sky AI входят в Sky P
 Остальное (выключение, включение, ограничения, восстановление, ссылки, карантин, ключи) уже требовало владельца/права + `confirm` + код. Тест: `skystorage-test.mjs` (153).
 - Страница `/ssh-confirm` (`SshLegacyConfirmPage` в `AdminGate.tsx`, `/api/ssh-gate/legacy*`) — прежнее письмо хука `ssh-login-hook.sh`; две кнопки «Это я» / «Это не я». Входит в nginx-блок страниц писем, `VERIFY_PATHS` и `src/verify.tsx`. Тест — в `sshgate2-test.mjs` (API с `SSH_CONFIRM_TOKEN_PATH`, `SSH_CONFIRM_DONE_PATH`, `SHUTDOWN_SIGNAL_PATH`, `CTL_DIR`).
 
+## Сброс второго фактора, резервные коды, защита смены почты и номера (модули 15–16)
+
+`server/accountrecovery.mjs`, маршруты `server/routes/accountrecovery.mjs` (`/api/auth/two-factor/reset/{start,finish,cancel,info}`, `/api/skyid/two-factor/backup-codes`, `/api/skyid/contact/guard-code`),
+миграция `132_account_recovery.sql` (`sky_backup_codes`, `two_factor_resets`, `contact_change_log`); клиент — экран кода при входе (`SkyTwoFactorStep` в `AuthScreen.tsx`: резервный код, «Потерял доступ к приложению»),
+страница `/2fa-reset` (`TwoFactorResetLinkPage`, отдельный `verify.html`: в nginx-блоке страниц писем, `VERIFY_PATHS`, `verify.tsx`), блоки «Резервные коды» и защита замены контакта в `SkyIDTab.tsx`.
+
+- **Резервные коды**: 10 одноразовых `XXXXX-XXXXX`, только HMAC-хеши; выдаются один раз, новый набор отменяет прежний; подходят вместо кода приложения (`verifySkyTwoFactor`), использование — письмо. Создаются только с действующим кодом приложения.
+- **Сброс аутентификатора** (нет ни приложения, ни кодов): запрос после первого фактора (challenge) → письмо со ссылками «отменить» и «завершить» → ожидание (`RECOVERY_WAIT_HOURS`, 48 ч; `RECOVERY_WAIT_SEC` — для тестов) → завершить можно только со ссылкой И новым первым фактором.
+  Любой вход с настоящим кодом или резервным кодом отменяет висящий запрос. Нужна подтверждённая почта. Администраторы и владелец сами не сбрасывают (`admin_manual`): `docker compose exec api node scripts/reset-2fa.mjs <@username> --yes`.
+  После сброса второй фактор и коды сняты, все сессии завершены, письмо отправлено.
+- **Смена почты/номера**: замена УЖЕ подтверждённого контакта требует код приложения (`twoFactorCode`) либо, без аутентификатора, код с ТЕКУЩЕЙ почты (`currentEmailCode`, `/contact/guard-code`); нечем доказать владение — `cannot_prove_ownership` (поддержка).
+  Первая привязка не затронута. После замены — запись в журнал (маски) и письмо на прежнюю почту. Почта или SIM по отдельности не снимают второй фактор и не перепривязывают контакт.
+- Тест: `scripts/audit/recovery-test.mjs` (43; API с `RECOVERY_WAIT_SEC=4`). Нужны деплой (миграция 132) и пересборка `.apk`/`.exe`; nginx пересоздать (добавлен `/2fa-reset`).
+

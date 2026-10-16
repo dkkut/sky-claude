@@ -3,7 +3,8 @@
    Серверная часть — server/accountfreeze.mjs. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useModuleStore } from '@/data/state/modules';
-import { ShieldAlert, Snowflake, Mail } from 'lucide-react';
+import { ShieldAlert, Snowflake, Mail, Loader2 } from 'lucide-react';
+import { apiCall } from '@/core/auth/api';
 import {
   apiFreezeState, apiProtectAccount, apiFreezeResend, apiUnfreeze, apiFreezeLink,
   type FreezeState, type ProtectRequest,
@@ -219,6 +220,55 @@ export const UnfreezeLinkPage = () => {
             <button type="button" disabled={state === 'busy'} onClick={() => void go()} className="w-full rounded-2xl py-3 font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>Подтвердить ссылку</button>
           </>
         )}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Страница ссылок из писем о сбросе второго фактора (/2fa-reset): `?c=` — «это не я, отменить запрос»,
+ * `?f=` — «завершить сброс»: токен остаётся в этом браузере и подставляется на экране кода при входе (сервер: accountrecovery.mjs).
+ */
+export const TwoFactorResetLinkPage = () => {
+  const q = new URLSearchParams(location.search);
+  const cancelTok = q.get('c') ?? ''; const finishTok = q.get('f') ?? '';
+  useEffect(() => { try { history.replaceState(null, '', location.pathname); } catch { /* не критично */ } }, []);
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'invalid' | 'cancelled' | 'saved'>('loading');
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const kind = cancelTok ? 'cancel' : 'finish';
+    void apiCall<{ ready?: boolean }>(`/api/auth/two-factor/reset/info?kind=${kind}&token=${encodeURIComponent(cancelTok || finishTok)}`).then((r) => {
+      if (r.ok) { setReady(Boolean(r.data?.ready)); setPhase('ready'); } else setPhase('invalid');
+    });
+  }, [cancelTok, finishTok]);
+  const cancel = async () => {
+    setBusy(true);
+    const r = await apiCall('/api/auth/two-factor/reset/cancel', { method: 'POST', body: JSON.stringify({ token: cancelTok }) });
+    setBusy(false); setPhase(r.ok ? 'cancelled' : 'invalid');
+  };
+  const keep = () => { try { sessionStorage.setItem('sky:reset-finish', finishTok); } catch { /* без хранилища продолжить нельзя */ } setPhase('saved'); setTimeout(() => { location.href = '/'; }, 1500); };
+  const btn = 'flex w-full items-center justify-center gap-2 rounded-full py-3 text-[14px] font-bold disabled:opacity-50';
+  return (
+    <div className="grid min-h-[100dvh] place-items-center px-4 py-10" style={{ background: 'var(--bg)' }}>
+      <div className="mx-auto w-full max-w-[420px] rounded-[28px] p-6" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)', color: 'var(--t1)' }}>
+        <p className="mb-3 text-[16px] font-bold">Сброс второго фактора Sky ID</p>
+        {phase === 'loading' && <Loader2 size={18} className="animate-spin" />}
+        {phase === 'invalid' && <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Ссылка недействительна: запрос уже отменён, завершён или устарел.</p>}
+        {phase === 'ready' && cancelTok && (
+          <div className="space-y-3">
+            <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Кто-то запросил сброс приложения-аутентификатора для вашего Sky ID. Если это не вы — отмените запрос и смените пароль.</p>
+            <button type="button" disabled={busy} onClick={() => void cancel()} className={btn} style={{ background: 'var(--red)', color: '#fff' }}>Это не я, отменить запрос</button>
+          </div>
+        )}
+        {phase === 'ready' && finishTok && (
+          <div className="space-y-3">
+            <p className="text-[13px]" style={{ color: 'var(--t2)' }}>{ready ? 'Время ожидания прошло. Чтобы завершить сброс, войдите как обычно — на экране кода появится кнопка «Завершить сброс».' : 'Время ожидания ещё не прошло. Откройте эту ссылку позже.'}</p>
+            {ready && <button type="button" onClick={keep} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}>Перейти ко входу</button>}
+          </div>
+        )}
+        {phase === 'cancelled' && <p className="text-[13.5px]">Запрос отменён. Рекомендуем сменить пароль и проверить список устройств в Профиле.</p>}
+        {phase === 'saved' && <p className="text-[13.5px]">Открываем вход…</p>}
       </div>
     </div>
   );

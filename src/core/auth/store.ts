@@ -169,9 +169,9 @@ interface AuthState {
 
   /* ── почта и телефон в настройках ── */
   startEmailLink:(email:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
-  confirmEmailLink:(email:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
+  confirmEmailLink:(email:string,code:string,guard?:ContactGuard)=>Promise<{ok:boolean;reason?:string}>;
   startPhoneLink:(phone:string)=>Promise<{ok:boolean;reason?:string;retryAfter?:number}>;
-  confirmPhoneLink:(phone:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
+  confirmPhoneLink:(phone:string,code:string,guard?:ContactGuard)=>Promise<{ok:boolean;reason?:string}>;
 
   /* ── Prime активного профиля ── */
   purchasePrime:(plan:string,days:number)=>Promise<{ok:boolean;reason?:string}>;
@@ -205,7 +205,7 @@ interface AuthState {
 import {
   apiRequestEmailCode, apiVerifyEmailCode,
   apiRequestPhoneCode, apiVerifyPhoneCode, apiVerifySkyTwoFactor,
-  apiPhoneLinkStart, apiPhoneLinkVerify,
+  apiPhoneLinkStart, apiPhoneLinkVerify, type ContactGuard,
   apiRefreshSession, apiSession, apiLogout,
   apiListProfiles, apiCreateProfile, apiSelectProfile,
   apiProfileTwoFactorBegin, apiProfileTwoFactorConfirm, apiProfileTwoFactorDisable,
@@ -594,8 +594,8 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     const res=await apiEmailStart(email.trim().toLowerCase());
     return res.ok?{ok:true,retryAfter:res.data?.retryAfter}:{ok:false,reason:res.reason};
   },
-  confirmEmailLink:async(email,code)=>{
-    const res=await apiEmailVerify(email.trim().toLowerCase(),code.trim());
+  confirmEmailLink:async(email,code,guard)=>{
+    const res=await apiEmailVerify(email.trim().toLowerCase(),code.trim(),guard);
     if(!res.ok)return{ok:false,reason:res.reason};
     set({sky:res.data?.skyId??get().sky});
     return{ok:true};
@@ -623,8 +623,8 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     return res.ok?{ok:true,retryAfter:res.data?.retryAfter}
                  :{ok:false,reason:res.reason,retryAfter:(res.data as any)?.retryAfter};
   },
-  confirmPhoneLink:async(phone,code)=>{
-    const res=await apiPhoneLinkVerify(nm(phone),code.trim());
+  confirmPhoneLink:async(phone,code,guard)=>{
+    const res=await apiPhoneLinkVerify(nm(phone),code.trim(),guard);
     if(!res.ok)return{ok:false,reason:res.reason};
     set({sky:res.data?.skyId ?? get().sky});
     return{ok:true};

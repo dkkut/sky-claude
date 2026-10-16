@@ -18,6 +18,7 @@ import {
 import { useAuthStore } from '@/core/auth/store';
 import { useModuleStore } from '@/data/state/modules';
 import { ConfirmExit } from '@/auth/AuthScreen';
+import { apiCall, apiContactGuardCode, type ContactGuard } from '@/core/auth/api';
 import { apiListDevices, apiRevokeDevice, apiTrustedDevices, apiRevokeTrusted, apiSetSkipCode, type ServerDevice, type TrustedDevice } from '@/core/auth/api';
 import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
 
@@ -197,6 +198,36 @@ const SkyIdSection = () => {
   );
 };
 
+
+/* ── Подтверждение замены уже подтверждённого контакта ──────── */
+// Украденная сессия не должна перепривязать почту или номер: нужен код аутентификатора, а без него — код с ТЕКУЩЕЙ почты.
+const useContactGuard = (replacing: boolean) => {
+  const { sky } = useAuthStore();
+  const [value, setValue] = useState('');
+  const [sent, setSent] = useState(false);
+  const [note, setNote] = useState<string>();
+  const app = Boolean(sky?.twoFactorEnabled);
+  const canProve = app || Boolean(sky?.emailVerified);
+  const guard: ContactGuard | undefined = !replacing ? undefined : app ? { twoFactorCode: value.trim() } : { currentEmailCode: value.trim() };
+  const ready = !replacing || value.trim().length >= 6;
+  const sendCode = async () => {
+    const r = await apiGuardSend();
+    setNote(r ? 'Код отправлен на вашу текущую почту' : 'Не удалось отправить код'); setSent(r);
+  };
+  const node = !replacing ? null : !canProve ? (
+    <p className="text-[11px]" style={{ color: 'var(--red)' }}>Нечем подтвердить, что аккаунт ваш: включите аутентификатор в разделе «Защита» или обратитесь в поддержку.</p>
+  ) : (
+    <div className="space-y-1.5">
+      <p className="text-[11px]" style={{ color: 'var(--t3)' }}>{app ? 'Чтобы заменить, введите код из приложения-аутентификатора (или резервный код).' : 'Чтобы заменить, введите код, отправленный на вашу текущую почту.'}</p>
+      {!app && !sent && <button type="button" onClick={() => void sendCode()} className="text-[12px] font-semibold" style={{ color: 'var(--accent)' }}>Отправить код на текущую почту</button>}
+      {(app || sent) && <Field inputMode="text" placeholder={app ? 'Код подтверждения' : 'Код с почты'} value={value} onChange={e => setValue(e.target.value.slice(0, 12))} />}
+      {note && <p className="text-[11px]" style={{ color: 'var(--t3)' }}>{note}</p>}
+    </div>
+  );
+  return { guard, ready, node, canProve };
+};
+const apiGuardSend = async () => { const r = await apiContactGuardCode(); return r.ok; };
+
 /* ── Телефон: второй канал проверки ──────────────────────────── */
 const PhoneSection = () => {
   const { sky, startPhoneLink, confirmPhoneLink } = useAuthStore();
@@ -205,6 +236,7 @@ const PhoneSection = () => {
   const [stage, setStage] = useState<'idle' | 'code'>('idle');
   const [msg, setMsg]     = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy]   = useState(false);
+  const cg = useContactGuard(Boolean(sky?.phoneVerified));
 
   const send = async () => {
     setBusy(true); setMsg(null);
@@ -217,7 +249,7 @@ const PhoneSection = () => {
 
   const confirm = async () => {
     setBusy(true); setMsg(null);
-    const r = await confirmPhoneLink(phone, code);
+    const r = await confirmPhoneLink(phone, code, cg.guard);
     setBusy(false);
     if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Неверный код' }); return; }
     setStage('idle'); setCode(''); setPhone('');
@@ -247,8 +279,9 @@ const PhoneSection = () => {
           <Field inputMode="tel" autoComplete="tel"
             placeholder={sky?.phone ? 'Новый номер' : '+7 900 000-00-00'}
             value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d+\s()-]/g, ''))} />
+          {cg.node}
           <button type="button" onClick={send}
-            disabled={busy || phone.replace(/\D/g, '').length < 10}
+            disabled={busy || phone.replace(/\D/g, '').length < 10 || !cg.ready}
             className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
             style={{ background: 'var(--accent)', color: '#fff' }}>
             {busy ? 'Отправляем…' : sky?.phone ? 'Привязать другой' : 'Привязать телефон'}
@@ -283,6 +316,7 @@ const EmailSection = () => {
   const [stage, setStage] = useState<'idle' | 'code'>('idle');
   const [msg, setMsg]     = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy]   = useState(false);
+  const cg = useContactGuard(Boolean(sky?.emailVerified));
 
   const send = async () => {
     setBusy(true); setMsg(null);
@@ -295,7 +329,7 @@ const EmailSection = () => {
 
   const confirm = async () => {
     setBusy(true); setMsg(null);
-    const r = await confirmEmailLink(email, code);
+    const r = await confirmEmailLink(email, code, cg.guard);
     setBusy(false);
     if (!r.ok) { setMsg({ ok: false, text: r.reason ?? 'Неверный код' }); return; }
     setStage('idle'); setCode(''); setEmail('');
@@ -327,7 +361,8 @@ const EmailSection = () => {
           <Field type="email" inputMode="email" autoComplete="email"
             placeholder={sky?.email ? 'Новый адрес' : 'you@example.com'}
             value={email} onChange={e => setEmail(e.target.value)} />
-          <button type="button" onClick={send} disabled={busy || !email.includes('@')}
+          {cg.node}
+          <button type="button" onClick={send} disabled={busy || !email.includes('@') || !cg.ready}
             className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40"
             style={{ background: 'var(--accent)', color: '#fff' }}>
             {busy ? 'Отправляем…' : sky?.email ? 'Привязать другую' : 'Привязать почту'}
@@ -878,6 +913,50 @@ const PasswordSection = () => {
   );
 };
 
+
+/* ── Резервные коды второго фактора ──────────────────────────── */
+// Десять одноразовых кодов на случай потери приложения. Показываются один раз; новый набор отменяет прежний (сервер: accountrecovery.mjs).
+const BackupCodesBlock = () => {
+  const [left, setLeft] = useState<number | null>(null);
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [code, setCode] = useState('');
+  const [msg, setMsg] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void apiCall<{ left: number }>('/api/skyid/two-factor/backup-codes').then(r => { if (r.ok) setLeft(r.data?.left ?? 0); }); }, []);
+  const make = async () => {
+    setBusy(true); setMsg(undefined);
+    const r = await apiCall<{ codes: string[] }>('/api/skyid/two-factor/backup-codes', { method: 'POST', body: JSON.stringify({ code: code.trim() }) });
+    setBusy(false);
+    if (!r.ok) { setMsg(r.error === 'invalid_code' ? 'Код не подошёл' : r.error === 'too_many_attempts' ? 'Слишком много попыток, подождите' : 'Не получилось'); return; }
+    setCodes(r.data?.codes ?? null); setLeft(r.data?.codes.length ?? 0); setAsking(false); setCode('');
+  };
+  return (
+    <div className="rounded-2xl p-4 space-y-2" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
+      <p className="text-xs font-bold" style={{ color: 'var(--t2)' }}>Резервные коды</p>
+      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+        Если потеряете телефон с приложением, один такой код заменит код из приложения при входе. Каждый работает один раз. Храните их отдельно от телефона.
+        {left != null ? ` Неиспользованных кодов: ${left}.` : ''}
+      </p>
+      {codes && (
+        <div className="rounded-xl p-3" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+          <p className="mb-1 text-[11px] font-semibold" style={{ color: 'var(--red)' }}>Сохраните сейчас — больше эти коды не покажут.</p>
+          <p translate="no" className="grid grid-cols-2 gap-1 font-mono text-[13px]" style={{ color: 'var(--t1)' }}>{codes.map(c => <span key={c}>{c}</span>)}</p>
+        </div>
+      )}
+      {asking ? (
+        <div className="space-y-2">
+          <Field inputMode="numeric" maxLength={6} placeholder="Код из приложения" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} />
+          <button type="button" onClick={() => void make()} disabled={busy || code.length < 6} className="w-full rounded-xl py-2.5 text-sm font-semibold disabled:opacity-40" style={{ background: 'var(--accent)', color: '#fff' }}>Создать новый набор (прежние перестанут работать)</button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => { setAsking(true); setMsg(undefined); }} className="text-[12px] font-semibold" style={{ color: 'var(--accent)' }}>{left ? 'Создать новый набор' : 'Создать резервные коды'}</button>
+      )}
+      {msg && <p className="text-[11px]" style={{ color: 'var(--red)' }}>{msg}</p>}
+    </div>
+  );
+};
+
 const SecuritySection = () => {
   const {
     sky, profiles, activeProfileId,
@@ -917,6 +996,8 @@ const SecuritySection = () => {
         disable={disableSkyTwoFactor}
         resend={sendSkyTwoFactorCode}
       />
+
+      {sky?.twoFactorEnabled && sky.twoFactorMethod === 'app' && <BackupCodesBlock />}
 
       {active && (
         <TwoFactorBlock

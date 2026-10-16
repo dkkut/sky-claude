@@ -13,6 +13,8 @@ import { signToken, sanitizeInput } from './../security.mjs';
 import { sessionStore } from './../sessions.mjs';
 import { json, parseBody, requireSkyId, requireProfile } from './../http.mjs';
 import { issueCode, verifyCode } from './../verification.mjs';
+import { guardContactChange, noteContactChanged } from './../accountrecovery.mjs';
+import { clientIp } from './../http.mjs';
 import { wallet } from './../wallet.mjs';
 import { recordAcceptance, LEGAL_REVISION } from './../legal.mjs';
 
@@ -354,11 +356,19 @@ export const skyIdRoutes = async (req, res, url) => {
     const email = String(body.email ?? '').trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return json(res, 400, { error: 'invalid_email' });
 
+    // Замена УЖЕ подтверждённой почты — только при втором факторе (или коде на текущую почту): украденная сессия контакт не перепривяжет
+    const before = await findSkyIdById(s.skyId);
+    if (!before?.email_verified || String(before.email).toLowerCase() !== email) {
+      const guard = await guardContactChange(s.skyId, 'email', body, verifySkyTwoFactor);
+      if (guard) return json(res, guard.error === 'too_many_attempts' ? 429 : guard.error === 'cannot_prove_ownership' ? 409 : 401, guard);
+    }
+
     const check = await verifyCode('email', email, `link:${s.skyId}`, body.code);
     if (check.error) return json(res, 401, { error: check.error, attemptsLeft: check.attemptsLeft });
 
     const result = await setEmailVerified(s.skyId, email);
     if (result.error) return json(res, 409, { error: result.error });
+    if (before?.email_verified) await noteContactChanged(s.skyId, 'email', before.email, email, clientIp(req)).catch((e) => console.error('[skyid] уведомление о смене почты:', e.message));
     return json(res, 200, { ok: true, skyId: publicSkyId(result.skyId) });
   }
 
@@ -387,11 +397,18 @@ export const skyIdRoutes = async (req, res, url) => {
     const phone = normalizePhone(body.phone);
     if (!phone) return json(res, 400, { error: 'invalid_phone' });
 
+    const before = await findSkyIdById(s.skyId);
+    if (!before?.phone_verified || before.phone !== phone) {
+      const guard = await guardContactChange(s.skyId, 'phone', body, verifySkyTwoFactor);
+      if (guard) return json(res, guard.error === 'too_many_attempts' ? 429 : guard.error === 'cannot_prove_ownership' ? 409 : 401, guard);
+    }
+
     const check = await verifyCode('phone', phone, `link:${s.skyId}`, body.code);
     if (check.error) return json(res, 401, { error: check.error, attemptsLeft: check.attemptsLeft });
 
     const result = await setPhoneVerified(s.skyId, phone);
     if (result.error) return json(res, 409, { error: result.error });
+    if (before?.phone_verified) await noteContactChanged(s.skyId, 'phone', before.phone, phone, clientIp(req)).catch((e) => console.error('[skyid] уведомление о смене номера:', e.message));
     return json(res, 200, { ok: true, skyId: publicSkyId(result.skyId) });
   }
 

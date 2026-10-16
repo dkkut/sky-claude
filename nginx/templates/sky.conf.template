@@ -364,7 +364,7 @@ server {
     # -- Ссылки из писем: отдельная страница, не приложение ----
     #  Вход в панель администратора, вход по SSH, разморозка аккаунта. verify.html не грузит приложение Sky,
     #  поэтому ссылка открывает именно подтверждение, а не главную сайта (заставка, бета, техработы, старый кэш).
-    location ~ ^/(admin-verify|ssh-verify|ssh-confirm|unfreeze|storage-verify)$ {
+    location ~ ^/(admin-verify|ssh-verify|ssh-confirm|2fa-reset|unfreeze|storage-verify)$ {
         limit_req zone=req_general burst=30 nodelay;
         include /etc/nginx/snippets/security-headers.conf;
         add_header Cache-Control "no-store" always;

@@ -21,6 +21,7 @@ import { isOwnerUsername } from './admin.mjs';
 import { registerLimited } from './registration.mjs';
 import { getPrivacy, isContact } from './privacy.mjs';
 import { isValidRegion } from './regions.mjs';
+import { looksLikeBackupCode, consumeBackupCode } from './accountrecovery.mjs';
 
 /** Максимум профилей в одном Sky ID. Дублируется триггером в БД. */
 export const MAX_PROFILES = 2;
@@ -385,12 +386,18 @@ export const verifySkyTwoFactor = async (skyId, code) => {
   );
   if (!rows[0]?.two_factor_enabled) return { ok: true, skipped: true };
 
-  if (rows[0].two_factor_method !== 'app') return checkTwoFactorCode(skyId, null, code, 'use');
+  // Резервный код (XXXXX-XXXXX) подходит вместо кода из приложения; погашается один раз (accountrecovery.mjs)
+  if (looksLikeBackupCode(code) && !/^\d{6}$/.test(String(code ?? '').trim())) return consumeBackupCode(skyId, code);
 
-  if (!totpAttemptOk(skyId)) return { error: 'too_many_attempts' };
-  const secret = decryptSecret(rows[0].two_factor_secret);
-  if (!secret) return { error: 'not_configured' };
-  return verifyTotp(secret, code) ? { ok: true } : { error: 'invalid_code' };
+  const ok = rows[0].two_factor_method !== 'app' ? await checkTwoFactorCode(skyId, null, code, 'use') : await (async () => {
+    if (!totpAttemptOk(skyId)) return { error: 'too_many_attempts' };
+    const secret = decryptSecret(rows[0].two_factor_secret);
+    if (!secret) return { error: 'not_configured' };
+    return verifyTotp(secret, code) ? { ok: true } : { error: 'invalid_code' };
+  })();
+  // Настоящий вход с кодом отменяет висящий запрос на сброс аутентификатора: владелец, очевидно, не потерял доступ
+  if (ok?.ok) await query(`UPDATE two_factor_resets SET status = 'cancelled', decided_at = now() WHERE sky_id = $1 AND status = 'pending'`, [skyId]).catch(() => {});
+  return ok;
 };
 
 export const disableSkyTwoFactor = async (skyId) => {

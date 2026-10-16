@@ -24,6 +24,7 @@ import { useConsoleMode } from '@/interface/console/consoleMode';
 import { useCarMode } from '@/interface/car/useCarMode';
 import { LegalCheckbox } from '@/info/LegalNotice';
 import type { ServerProfile } from '@/core/auth/api';
+import { apiCall } from '@/core/auth/api';
 
 /* ── мелочи оформления ─────────────────────────────────────────── */
 
@@ -532,6 +533,30 @@ const SkyTwoFactorStep = () => {
     if (!res.ok) setErr(res.reason);
   };
 
+  // Резервный код (XXXXX-XXXXX) вместо кода из приложения; «потерял приложение» — запрос сброса с ожиданием (сервер: accountrecovery.mjs)
+  const [mode, setMode] = useState<'code' | 'backup' | 'lost'>('code');
+  const [backup, setBackup] = useState('');
+  const [note, setNote] = useState<string>();
+  const finishToken = (() => { try { return sessionStorage.getItem('sky:reset-finish') ?? ''; } catch { return ''; } })();
+  const RESET_ERR: Record<string, string> = {
+    admin_manual: 'Для аккаунтов администраторов сброс выполняет владелец на сервере.', email_required: 'У аккаунта нет подтверждённой почты — сброс невозможен, обратитесь в поддержку.',
+    too_many_requests: 'Слишком часто. Попробуйте позже.', challenge_expired: 'Время вышло — начните вход заново.', too_early: 'Время ожидания ещё не прошло.', invalid_link: 'Ссылка недействительна или устарела.', not_configured: 'Двухэтапная защита не включена.',
+  };
+  const resetCall = async (what: 'start' | 'finish') => {
+    const challenge = useAuthStore.getState().challenge;
+    setErr(undefined); setNote(undefined); setBusy(true);
+    const r = await apiCall<{ readyAt?: string }>(`/api/auth/two-factor/reset/${what}`, { method: 'POST', body: JSON.stringify({ challenge, token: finishToken }) });
+    setBusy(false);
+    if (!r.ok) { setErr(RESET_ERR[r.error ?? ''] ?? 'Не удалось выполнить. Попробуйте ещё раз.'); return; }
+    if (what === 'start') {
+      const when = r.data?.readyAt ? new Date(r.data.readyAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+      setNote(`Запрос отправлен. Мы написали на вашу почту. Сброс возможен не раньше ${when} — это защита от чужого доступа. Если запрос не ваш, отмените его по ссылке из письма.`);
+    } else {
+      try { sessionStorage.removeItem('sky:reset-finish'); } catch { /* не критично */ }
+      setNote('Второй фактор сброшен. Войдите заново и включите защиту снова в Профиль → Sky ID.'); setTimeout(() => void logout(), 2500);
+    }
+  };
+
   return (
     <Shell
       title="Подтверждение входа"
@@ -542,14 +567,33 @@ const SkyTwoFactorStep = () => {
       onBack={logout}
     >
       <div className="space-y-4">
-        <CodeInput value={code} onChange={setCode} onComplete={submit} disabled={busy} />
+        {mode === 'code' && <CodeInput value={code} onChange={setCode} onComplete={submit} disabled={busy} />}
+        {mode === 'backup' && (
+          <input value={backup} onChange={(e) => setBackup(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 11))} placeholder="XXXXX-XXXXX" aria-label="Резервный код" translate="no"
+            className="w-full rounded-full px-5 py-3 text-center text-[18px] font-bold tracking-[0.2em] outline-none" style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }} />
+        )}
+        {mode === 'lost' && (
+          <div className="space-y-2 text-[13px]" style={{ color: 'var(--t2)' }}>
+            <p>Если нет ни приложения, ни резервных кодов, можно сбросить защиту. Мы отправим письмо и подождём (по умолчанию 48 часов) — это защищает вас, если запрос чужой. Пока идёт ожидание, вход по-прежнему требует код.</p>
+            {finishToken && <button type="button" disabled={busy} onClick={() => void resetCall('finish')} className="sky-btn-primary w-full" style={{ height: 46 }}>Завершить сброс (ссылка из письма открыта)</button>}
+            <button type="button" disabled={busy} onClick={() => void resetCall('start')} className="w-full rounded-full py-3 text-[14px] font-bold" style={{ background: 'var(--bg-l2)', color: 'var(--t1)' }}>Запросить сброс</button>
+          </div>
+        )}
         <ErrorLine text={err} />
-        <button
-          className="sky-btn-primary w-full" style={{ height: 46 }}
-          onClick={() => submit()} disabled={busy || code.length < 6}
-        >
-          {busy ? 'Проверяем…' : 'Подтвердить'}
-        </button>
+        {note && <p className="text-[13px]" style={{ color: 'var(--t1)' }}>{note}</p>}
+        {mode !== 'lost' && (
+          <button
+            className="sky-btn-primary w-full" style={{ height: 46 }}
+            onClick={() => (mode === 'backup' ? void submit(backup) : submit())} disabled={busy || (mode === 'backup' ? backup.replace('-', '').length < 10 : code.length < 6)}
+          >
+            {busy ? 'Проверяем…' : 'Подтвердить'}
+          </button>
+        )}
+        <div className="flex flex-col items-center gap-1 text-[12.5px]" style={{ color: 'var(--accent)' }}>
+          {mode !== 'backup' && <button type="button" onClick={() => { setMode('backup'); setErr(undefined); }}>Ввести резервный код</button>}
+          {mode !== 'code' && <button type="button" onClick={() => { setMode('code'); setErr(undefined); }}>Ввести код из приложения</button>}
+          {mode !== 'lost' && <button type="button" onClick={() => { setMode('lost'); setErr(undefined); }}>Потерял доступ к приложению</button>}
+        </div>
         {sentToSomewhere && (
           <button
             type="button" onClick={resend} disabled={left > 0}
