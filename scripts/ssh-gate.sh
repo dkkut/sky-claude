@@ -66,14 +66,28 @@ if [ -z "$ID" ] || [ -z "$POLL" ]; then
   exit 1
 fi
 
-END=$(( $(date +%s) + SKY_TIMEOUT ))
+# Терминал человека: пока ждём, на нём виден экран «Ожидание подтверждения владельца», и только потом — командная строка.
+# sshd кладёт имя терминала в PAM_TTY (/dev/pts/N или pts/N); у scp/sftp терминала нет — тогда молча ждём.
+TTYDEV="${SKY_GATE_TTY:-}"
+if [ -z "$TTYDEV" ]; then
+  case "${PAM_TTY:-}" in
+    /dev/*) TTYDEV="$PAM_TTY" ;;
+    pts/*|tty*) TTYDEV="/dev/$PAM_TTY" ;;
+  esac
+fi
+say() { [ -n "$TTYDEV" ] && { [ -c "$TTYDEV" ] || [ -n "${SKY_GATE_TTY:-}" ]; } && printf '%b' "$1" >> "$TTYDEV" 2>/dev/null; return 0; }
+say "\r\n  Sky · защищённый вход\r\n  ────────────────────────────────────\r\n  Ожидание подтверждения владельца…\r\n  Владельцу отправлено письмо со ссылкой; сервер откроется после подтверждения.\r\n\r\n"
+
+START=$(date +%s); END=$(( START + SKY_TIMEOUT )); N=0
 while [ "$(date +%s)" -lt "$END" ]; do
   ST="$(field "$(api /api/ssh-gate/poll "{\"id\":\"$ID\",\"poll\":\"$POLL\"}")" status)"
   case "$ST" in
-    approved) logger -t sky-ssh-gate "вход $U@$R подтверждён владельцем"; exit 0 ;;
-    denied|expired|unknown) logger -t sky-ssh-gate "вход $U@$R отклонён ($ST)"; exit 1 ;;
+    approved) logger -t sky-ssh-gate "вход $U@$R подтверждён владельцем"; say "\r\033[K  ✔ Подтверждено владельцем. Добро пожаловать.\r\n\r\n"; exit 0 ;;
+    denied|expired|unknown) logger -t sky-ssh-gate "вход $U@$R отклонён ($ST)"; say "\r\033[K  ✖ Вход не подтверждён (отклонён или истёк срок).\r\n"; exit 1 ;;
   esac
+  N=$((N + 1)); say "\r\033[K  ⏳ Ждём… осталось $(( END - $(date +%s) )) с"
   sleep 2
 done
 logger -t sky-ssh-gate "вход $U@$R: подтверждения не дождались"
+say "\r\033[K  ✖ Владелец не подтвердил вход вовремя.\r\n"
 exit 1

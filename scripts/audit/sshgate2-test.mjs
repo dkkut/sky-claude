@@ -6,7 +6,7 @@ import { call, mkuser } from './lib.mjs';
 const S = process.argv[2]; const KEY = process.env.SSH_GATE_SECRET;
 const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
 const { signSshRequest } = await import('../../server/sshgate.mjs');
-const { generateSecret } = await import('../../server/totp.mjs');
+const { generateSecret, currentTotp } = await import('../../server/totp.mjs');
 const { encryptSecret } = await import('../../server/crypto.mjs');
 let ok = 0, bad = 0;
 const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
@@ -14,14 +14,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const codeOf = (email) => [...readFileSync(S + '/api.log', 'utf8').matchAll(new RegExp(email.replace('.', '\\.') + ' \\| [^|]*\\| [^\\d\\n]*(\\d{6})', 'g'))].pop()?.[1];
 const post = (p, b, u) => call(p, { method: 'POST', body: JSON.stringify(b ?? {}) }, u?.tok);
 const signed = (over = {}, key = KEY) => { const f = { ts: String(Math.floor(Date.now() / 1000)), user: 'root', host: 'sky-test', rhost: '203.0.113.8', tty: 'ssh', ...over }; return { ...f, sig: signSshRequest(key, f) }; };
-const step = async (u) => { const r = await post('/api/admin/ssh/step-up', {}, u); await sleep(1200); return r.status === 200 ? codeOf(u.email) : null; };
+const step = async (u) => { const r = await post('/api/admin/ssh/step-up', {}, u); return r.status === 200 ? currentTotp(SECRET) : null; };
 
 q(`update profiles set username='old'||substr(id,1,8) where lower(username)='sshowner'`);
 const own = await mkuser(S, 'sshOwn2'); const usr = await mkuser(S, 'sshUsr2');
 q(`update profiles set username='sshowner' where id='${own.pid}'`);
 q(`update sky_ids set email_verified = true where email in ('${own.email}','${usr.email}')`);
 
-q(`update sky_ids set two_factor_enabled=true, two_factor_secret='${encryptSecret(generateSecret())}' where id=(select sky_id from profiles where id='${own.pid}')`);
+const SECRET = generateSecret();
+q(`update sky_ids set two_factor_enabled=true, two_factor_secret='${encryptSecret(SECRET)}' where id=(select sky_id from profiles where id='${own.pid}')`);
+
 
 let r = await call('/api/admin/ssh', {}, usr.tok);
 t('обычный человек журнал не видит', r.status === 403, r.status);

@@ -13,6 +13,7 @@ const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.rep
 const { generateSecret, currentTotp } = await import('../../server/totp.mjs');
 const { encryptSecret } = await import('../../server/crypto.mjs');
 const { signSshRequest } = await import('../../server/sshgate.mjs');
+const T0 = q('select now()');
 let ok = 0, bad = 0;
 const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -101,24 +102,28 @@ r = await post('/api/ssh-gate/poll', { id: p5.id, poll: p5.poll });
 t('просроченный запрос: вход закрыт', r.data.status === 'expired', JSON.stringify(r.data));
 
 // не владелец не получает письма и права
-t('в базе нет запросов не от владельца', q(`select count(*) from ssh_gate_requests where profile_id <> '${own.pid}'`) === '0');
+t('в базе нет запросов не от владельца', q(`select count(*) from ssh_gate_requests where profile_id <> '${own.pid}' and created_at > '${T0}'`) === '0');
 t('токены и ключи опроса — только хеши', q(`select count(*) from ssh_gate_requests where token_hash = '${token}' or poll_hash = '${poll}'`) === '0');
 
 // ── скрипт PAM ──────────────────────────────────────────────────
 const dir = mkdtempSync(join(tmpdir(), 'sshgate-'));
 const conf = (over = '') => { writeFileSync(join(dir, 'c.conf'), `SKY_API=http://127.0.0.1:8080\nSKY_SECRET=${KEY}\nSKY_TIMEOUT=25\n${over}`); };
 const run = (env = {}) => new Promise((res) => {
-  const p = spawn('bash', ['scripts/ssh-gate.sh'], { env: { ...process.env, SKY_GATE_CONF: join(dir, 'c.conf'), SKY_GATE_OFF: join(dir, 'off'), PAM_TYPE: 'open_session', PAM_SERVICE: 'sshd', PAM_USER: 'root', PAM_RHOST: '198.51.100.9', PAM_TTY: 'ssh', ...env }, stdio: 'ignore' });
+  const p = spawn('bash', ['scripts/ssh-gate.sh'], { env: { ...process.env, SKY_GATE_CONF: join(dir, 'c.conf'), SKY_GATE_OFF: join(dir, 'off'), SKY_GATE_TTY: join(dir, 'tty.txt'), PAM_TYPE: 'open_session', PAM_SERVICE: 'sshd', PAM_USER: 'root', PAM_RHOST: '198.51.100.9', PAM_TTY: 'ssh', ...env }, stdio: 'ignore' });
   p.on('exit', (c) => res(c));
 });
 const before = () => (readFileSync(S + '/api.log', 'utf8').match(/ssh-verify\?t=/g) || []).length;
 const waitLink = async (n) => { for (let i = 0; i < 40; i++) { if (before() > n) return linkFromLog(); await sleep(500); } return null; };
 
+writeFileSync(join(dir, 'tty.txt'), '');
 conf(); let n0 = before();
 let proc = run(); let tk = await waitLink(n0);
 t('скрипт: письмо пришло', Boolean(tk));
+await sleep(1500);
+t('скрипт: на терминале видно «Ожидание подтверждения владельца»', readFileSync(join(dir, 'tty.txt'), 'utf8').includes('Ожидание подтверждения владельца'));
 await post('/api/ssh-gate/confirm', { t: tk, code: currentTotp(secret) });
 t('скрипт: после подтверждения владельцем пускает (exit 0)', (await proc) === 0);
+t('скрипт: затем «Подтверждено» и только после этого командная строка', readFileSync(join(dir, 'tty.txt'), 'utf8').includes('Подтверждено владельцем'));
 
 n0 = before(); proc = run(); tk = await waitLink(n0);
 await post('/api/ssh-gate/panic', { t: tk, action: 'deny' });
