@@ -55,7 +55,7 @@
 # ============================================================
 [ "${PAM_TYPE:-}" = "open_session" ] || exit 0
 
-APP_DIR=/opt/sky
+APP_DIR="${SKY_APP_DIR:-/opt/sky}"
 CONTROL_DIR="$APP_DIR/control"
 TOKEN_FILE="$CONTROL_DIR/ssh-confirm-token"
 DONE_FILE="$CONTROL_DIR/ssh-login-confirmed"
@@ -65,9 +65,24 @@ LOCK_DIR="$CONTROL_DIR/.ssh-hook-lock"
 DOMAIN="$(sed -n 's/^DOMAIN=//p' "$APP_DIR/.env" 2>/dev/null | tail -1)"
 OWNER_EMAIL="deniskut43332@gmail.com"
 CONFIRM_WINDOW_SEC=600
-LOG=/var/log/sky-ssh-hook.log
+LOG="${SKY_HOOK_LOG:-/var/log/sky-ssh-hook.log}"
 
 mkdir -p "$CONTROL_DIR"
+
+# Правка (версия 2026-10-16): если включён шлюз ssh-gate.sh, этот вход УЖЕ подтверждён владельцем ДО открытия сессии
+# (ссылка /ssh-verify + код аутентификатора). Второе письмо и 10-минутный таймер выключения тогда не нужны: ссылка из них
+# (/ssh-confirm) — прежний способ «подтвердить после входа». Шлюз пишет отметку ssh-gate-approved; пропускаем только свежую
+# (≤ 3 мин) и только для того же пользователя и адреса. Нет отметки (шлюз не стоит или отметки нет) — всё работает как раньше.
+GATE_MARK="${SKY_GATE_MARK:-$CONTROL_DIR/ssh-gate-approved}"
+if [ -r "$GATE_MARK" ]; then
+  read -r G_TS G_USER G_RHOST < "$GATE_MARK" 2>/dev/null
+  NOW_TS="$(date +%s)"
+  if [ -n "${G_TS:-}" ] && [ "$G_TS" -le "$NOW_TS" ] 2>/dev/null && [ $((NOW_TS - G_TS)) -le 180 ] \
+     && [ "$G_USER" = "${PAM_USER:-}" ] && [ "$G_RHOST" = "${PAM_RHOST:-}" ]; then
+    echo "$(date -u +%FT%TZ) вход ${PAM_USER:-?}@${PAM_RHOST:-?} подтверждён шлюзом ssh-gate до открытия сессии — повторное подтверждение не нужно" >> "$LOG" 2>/dev/null
+    exit 0
+  fi
+fi
 
 # Мьютекс на решающую секцию ниже: mkdir — атомарная операция в POSIX,
 # два одновременных процесса не могут оба её выполнить успешно. Лок

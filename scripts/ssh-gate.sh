@@ -27,14 +27,19 @@ SELF="$(readlink -f "$0")"
 if [ "${1:-}" = "--install" ] || [ "${1:-}" = "--uninstall" ]; then
   [ "$(id -u)" = 0 ] || { echo "Нужен root" >&2; exit 1; }
   PAM=/etc/pam.d/sshd
-  LINE="session required pam_exec.so quiet $SELF"
+  LINE="session requisite pam_exec.so quiet $SELF"
   if [ "$1" = "--uninstall" ]; then
     sed -i "\#$SELF#d" "$PAM"; echo "Шлюз SSH отключён (строка убрана из $PAM)."; exit 0
   fi
   [ -f "$CONF" ] || { echo "Нет $CONF — создайте его (см. шапку скрипта) и запустите ещё раз." >&2; exit 1; }
   chmod 600 "$CONF"
   grep -qs "UsePAM yes" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/* 2>/dev/null || echo "ВНИМАНИЕ: в sshd_config должно быть «UsePAM yes»." >&2
-  grep -qF "$SELF" "$PAM" || echo "$LINE" >> "$PAM"
+  # Шлюз ставим ПЕРВЫМ среди session-строк и как requisite: отказ шлюза сразу обрывает вход, и ssh-login-hook.sh
+  # (письмо «подтвердите после входа») для отказанного входа не запускается. Прежняя строка required (если была) заменяется.
+  sed -i "\#$SELF#d" "$PAM"
+  if grep -n '^session' "$PAM" >/dev/null 2>&1; then
+    FIRST="$(grep -n '^session' "$PAM" | head -1 | cut -d: -f1)"; sed -i "${FIRST}i $LINE" "$PAM"
+  else echo "$LINE" >> "$PAM"; fi
   echo "Готово. Откройте ВТОРОЙ терминал и проверьте вход ДО закрытия текущей сессии."
   echo "Если что-то не так: sudo touch $OFF (или с консоли хостера: bash $SELF --uninstall)."
   exit 0
@@ -82,7 +87,11 @@ START=$(date +%s); END=$(( START + SKY_TIMEOUT )); N=0
 while [ "$(date +%s)" -lt "$END" ]; do
   ST="$(field "$(api /api/ssh-gate/poll "{\"id\":\"$ID\",\"poll\":\"$POLL\"}")" status)"
   case "$ST" in
-    approved) logger -t sky-ssh-gate "вход $U@$R подтверждён владельцем"; say "\r\033[K  ✔ Подтверждено владельцем. Добро пожаловать.\r\n\r\n"; exit 0 ;;
+    approved) logger -t sky-ssh-gate "вход $U@$R подтверждён владельцем"
+      # Отметка для ssh-login-hook.sh: этот вход уже подтверждён до сессии, второе письмо («подтвердите за 10 минут») не нужно.
+      MARK="${SKY_GATE_MARK:-/opt/sky/control/ssh-gate-approved}"
+      { mkdir -p "$(dirname "$MARK")" && printf '%s %s %s\n' "$(date +%s)" "${PAM_USER:-}" "${PAM_RHOST:-}" > "$MARK" && chmod 600 "$MARK"; } 2>/dev/null
+      say "\r\033[K  ✔ Подтверждено владельцем. Добро пожаловать.\r\n\r\n"; exit 0 ;;
     denied|expired|unknown) logger -t sky-ssh-gate "вход $U@$R отклонён ($ST)"; say "\r\033[K  ✖ Вход не подтверждён (отклонён или истёк срок).\r\n"; exit 1 ;;
   esac
   N=$((N + 1)); say "\r\033[K  ⏳ Ждём… осталось $(( END - $(date +%s) )) с"

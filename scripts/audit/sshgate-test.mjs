@@ -3,7 +3,7 @@
 //   bash restart.sh SSH_GATE_SECRET=sshgate-secret-0123456789abcdef OWNER_USERNAME=sshowner DOMAIN=localhost:4173
 //   (. env.sh; SSH_GATE_SECRET=sshgate-secret-0123456789abcdef node scripts/audit/sshgate-test.mjs <каталог с api.log>)
 import { execSync, spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { call, mkuser } from './lib.mjs';
@@ -109,7 +109,7 @@ t('токены и ключи опроса — только хеши', q(`select
 const dir = mkdtempSync(join(tmpdir(), 'sshgate-'));
 const conf = (over = '') => { writeFileSync(join(dir, 'c.conf'), `SKY_API=http://127.0.0.1:8080\nSKY_SECRET=${KEY}\nSKY_TIMEOUT=25\n${over}`); };
 const run = (env = {}) => new Promise((res) => {
-  const p = spawn('bash', ['scripts/ssh-gate.sh'], { env: { ...process.env, SKY_GATE_CONF: join(dir, 'c.conf'), SKY_GATE_OFF: join(dir, 'off'), SKY_GATE_TTY: join(dir, 'tty.txt'), PAM_TYPE: 'open_session', PAM_SERVICE: 'sshd', PAM_USER: 'root', PAM_RHOST: '198.51.100.9', PAM_TTY: 'ssh', ...env }, stdio: 'ignore' });
+  const p = spawn('bash', ['scripts/ssh-gate.sh'], { env: { ...process.env, SKY_GATE_CONF: join(dir, 'c.conf'), SKY_GATE_OFF: join(dir, 'off'), SKY_GATE_TTY: join(dir, 'tty.txt'), SKY_GATE_MARK: join(dir, 'mark'), PAM_TYPE: 'open_session', PAM_SERVICE: 'sshd', PAM_USER: 'root', PAM_RHOST: '198.51.100.9', PAM_TTY: 'ssh', ...env }, stdio: 'ignore' });
   p.on('exit', (c) => res(c));
 });
 const before = () => (readFileSync(S + '/api.log', 'utf8').match(/ssh-verify\?t=/g) || []).length;
@@ -124,6 +124,12 @@ t('скрипт: на терминале видно «Ожидание подт�
 await post('/api/ssh-gate/confirm', { t: tk, code: currentTotp(secret) });
 t('скрипт: после подтверждения владельцем пускает (exit 0)', (await proc) === 0);
 t('скрипт: затем «Подтверждено» и только после этого командная строка', readFileSync(join(dir, 'tty.txt'), 'utf8').includes('Подтверждено владельцем'));
+{
+  const mark = readFileSync(join(dir, 'mark'), 'utf8').trim().split(' ');
+  t('скрипт: после подтверждения оставляет отметку для ssh-login-hook (пользователь и адрес)', mark.length === 3 && mark[1] === 'root' && mark[2] === '198.51.100.9' && Math.abs(Date.now() / 1000 - Number(mark[0])) < 60, mark.join(' '));
+  const hookRun = (env = {}) => new Promise((res) => { const p = spawn('bash', ['scripts/ssh-login-hook.sh'], { env: { ...process.env, SKY_APP_DIR: join(dir, 'app'), SKY_HOOK_LOG: join(dir, 'hook.log'), SKY_GATE_MARK: join(dir, 'mark'), PAM_TYPE: 'open_session', PAM_USER: 'root', PAM_RHOST: '198.51.100.9', ...env }, stdio: 'ignore' }); p.on('exit', (c) => res(c)); });
+  t('ssh-login-hook: вход, уже подтверждённый шлюзом, второго письма и таймера не заводит', (await hookRun()) === 0 && readFileSync(join(dir, 'hook.log'), 'utf8').includes('подтверждён шлюзом') && !existsSync(join(dir, 'app', 'control', 'ssh-confirm-token')));
+}
 
 n0 = before(); proc = run(); tk = await waitLink(n0);
 await post('/api/ssh-gate/panic', { t: tk, action: 'deny' });
