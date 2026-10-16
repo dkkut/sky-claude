@@ -69,6 +69,20 @@ export const decryptSecret = (blob) => {
   }
 };
 
+/**
+ * Прочитать секрет, который мог быть записан ДО перехода на шифрование (открытым текстом) или уже зашифрован (v1.…).
+ * Открытые значения у нас — base64url без точки, поэтому «v1.<…>.<…>.<…>» однозначно отличает зашифрованное.
+ * Возвращает null для повреждённого зашифрованного значения. Нужен для безопасной поэтапной миграции (scripts/seal-secrets.mjs).
+ */
+export const openSecret = (stored) => {
+  if (stored == null) return null;
+  const s = String(stored);
+  return s.startsWith('v1.') && s.split('.').length === 4 ? decryptSecret(s) : s;
+};
+
+/** Зашифрована ли уже запись (для миграции). */
+export const isSealed = (stored) => typeof stored === 'string' && stored.startsWith('v1.') && stored.split('.').length === 4;
+
 /* ─── Одноразовые коды ─────────────────────────────────────────────────── */
 
 /**

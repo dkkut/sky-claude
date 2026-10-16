@@ -21,6 +21,9 @@ import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
+
+/** Отпечаток отсканированного кода для разбора спорных случаев: по нему можно сверить код, но нельзя его использовать. */
+const scanFingerprint = (raw) => `sha256:${crypto.createHash('sha256').update(String(raw ?? '')).digest('hex').slice(0, 16)} len=${String(raw ?? '').length}`;
 import { hashCode, codesEqual } from './crypto.mjs';
 import { marketText as text, marketInt as int, ORDER_ID_RE, logMarket } from './market.mjs';
 import { applyTransition } from './marketorders.mjs';
@@ -303,7 +306,7 @@ export const scanShipmentOrder = async (pvzId, actorId, shipmentId, qrPayload) =
       await client.query(
         `INSERT INTO market_pvz_unmatched_scans (pvz_id, shipment_id, order_id, raw_token, reason, actor_id)
          VALUES ($1,$2,$3,$4,$5,$6)`,
-        [pvzId, shipmentId, orderId ?? null, text(qrPayload, 200), reason, actorId]);
+        [pvzId, shipmentId, orderId ?? null, scanFingerprint(qrPayload), reason, actorId]);   // сырой токен не храним: он мог быть настоящим
       await logPvz(null, pvzId, actorId, 'unmatched_scan', { type: 'shipment', id: shipmentId }, { reason, orderId }, true);
     };
 

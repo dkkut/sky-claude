@@ -27,6 +27,7 @@
  * price и total не читаются вовсе: таких полей здесь нет.
  */
 import crypto from 'node:crypto';
+import { encryptSecret, openSecret } from './crypto.mjs';
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { config } from './config.mjs';
@@ -357,7 +358,7 @@ const issueTickets = async (orderId) => {
                (id, order_id, event_id, ticket_type_id, user_id, code, qr_secret, seat_no)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
             [`tkt-${generateId()}`, orderId, o.event_id, o.ticket_type_id, o.user_id,
-             newCode(), crypto.randomBytes(32).toString('base64url'), seat],
+             newCode(), encryptSecret(crypto.randomBytes(32).toString('base64url')), seat],
           );
           placed = true;
         } catch (err) {
@@ -451,7 +452,7 @@ const ticketView = (row, { withSecret = false } = {}) => ({
   createdAt: row.created_at.toISOString(),
   /* Ключ для QR отдаётся только владельцу билета и только в его же
      списке: по нему проходят на контроле. */
-  ...(withSecret ? { qr: `${row.id}.${row.qr_secret}` } : {}),
+  ...(withSecret ? { qr: `${row.id}.${openSecret(row.qr_secret)}` } : {}),
 });
 
 const TICKET_JOIN = `
@@ -513,7 +514,7 @@ const findTicket = async (client, { qr, code }) => {
     if (!rows[0]) return null;
     /* Сравнение постоянного времени: по скорости обычного сравнения
        ключ подбирается побайтно. */
-    const a = Buffer.from(String(rows[0].secret));
+    const a = Buffer.from(String(openSecret(rows[0].secret) ?? ''));
     const b = Buffer.from(String(secret));
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
     return rows[0];

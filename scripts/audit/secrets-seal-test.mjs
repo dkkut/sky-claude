@@ -1,0 +1,32 @@
+// Шифрование секретов в базе: openSecret понимает открытые и зашифрованные значения; миграция безопасна, идемпотентна и проверяема.
+import { execSync } from 'node:child_process';
+import { encryptSecret, decryptSecret, openSecret, isSealed } from '../../server/crypto.mjs';
+import { sealColumn } from '../../server/sealsecrets.mjs';
+import { pool, query } from '../../server/db.mjs';
+const psql = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/["$]/g, '\\$&')}"`).toString().trim();
+let ok = 0, bad = 0;
+const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
+const plain = 'abcDEF_123-xyz';
+const sealed = encryptSecret(plain);
+t('открытое значение читается как есть (совместимость со старыми записями)', openSecret(plain) === plain);
+t('зашифрованное значение читается', openSecret(sealed) === plain && isSealed(sealed) && !isSealed(plain));
+t('зашифрованное значение не содержит открытого текста', !sealed.includes(plain));
+t('подмена шифротекста даёт null, а не мусор', openSecret(sealed.slice(0, -2) + 'AA') === null);
+t('пустое значение — null', openSecret(null) === null);
+psql('drop table if exists tmp_seal_test; create table tmp_seal_test (id text primary key, s text)');
+await query(`insert into tmp_seal_test values ('a','secret-one'),('b',$1),('c',null),('d','')`, [encryptSecret('already')]);
+const spec = { table: 'tmp_seal_test', id: 'id', col: 's' };
+let r = await sealColumn(spec, { apply: false });
+t('пробный проход считает и ничего не меняет', r.plain === 1 && r.sealed === 1 && r.updated === 0 && psql(`select s from tmp_seal_test where id='a'`) === 'secret-one', JSON.stringify(r));
+r = await sealColumn(spec, { apply: true });
+t('миграция шифрует открытые значения', r.updated === 1 && r.failed === 0 && isSealed(psql(`select s from tmp_seal_test where id='a'`)), JSON.stringify(r));
+t('после миграции значение читается и совпадает', openSecret(psql(`select s from tmp_seal_test where id='a'`)) === 'secret-one');
+t('уже зашифрованное и пустое не тронуто', openSecret(psql(`select s from tmp_seal_test where id='b'`)) === 'already' && psql(`select s is null from tmp_seal_test where id='c'`) === 't');
+r = await sealColumn(spec, { apply: true });
+t('повторный запуск идемпотентен', r.updated === 0 && r.plain === 0);
+let bad2 = false; try { await sealColumn({ table: 'x; drop table y', id: 'id', col: 's' }); } catch { bad2 = true; }
+t('имена таблиц и колонок проверяются (нет SQL-инъекции)', bad2);
+psql('drop table tmp_seal_test');
+await pool.end();
+console.log(`\nИтого: ${ok} ok, ${bad} fail`);
+process.exit(bad ? 1 : 0);

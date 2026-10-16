@@ -29,6 +29,7 @@
  * перехваченный токен протухнет сам, а секрет — нет.
  */
 import crypto from 'node:crypto';
+import { encryptSecret, openSecret } from './crypto.mjs';
 import { query } from './db.mjs';
 import { config } from './config.mjs';
 import { generateId, signToken, verifyToken, hashPassword, verifyPassword } from './security.mjs';
@@ -359,7 +360,7 @@ export const setDelivery = async (botId, ownerId, mode, webhookUrl) => {
   const secret = crypto.randomBytes(32).toString('base64url');
   await query(
     "UPDATE bot_runtimes SET delivery = 'webhook', webhook_url = $2, webhook_secret = $3 WHERE id = $1",
-    [rows[0].id, checked.url, secret],
+    [rows[0].id, checked.url, encryptSecret(secret)],   // в базе — только зашифрованным; владельцу показывается один раз
   );
   /* Адрес в журнал пишем без строки запроса: в ней бывает ключ. */
   await logBot(botId, 'info', 'delivery.webhook', `вебхук на ${new URL(checked.url).origin}`);
@@ -375,5 +376,5 @@ export const webhookTarget = async (botId) => {
         AND webhook_url IS NOT NULL`,
     [botId],
   );
-  return rows[0] ? { runtimeId: rows[0].id, url: rows[0].webhook_url, secret: rows[0].webhook_secret } : null;
+  return rows[0] ? { runtimeId: rows[0].id, url: rows[0].webhook_url, secret: openSecret(rows[0].webhook_secret) } : null;
 };
