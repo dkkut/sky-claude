@@ -14,7 +14,7 @@ export const sshGateRoutes = async (req, res, url) => {
 
   if (req.method === 'POST' && u.pathname === '/api/ssh-gate/request') {
     const r = await requestSsh(await parseBody(req), { ip });
-    return json(res, r.error ? (r.error === 'bad_signature' ? 403 : r.error === 'too_many_requests' ? 429 : r.error === 'disabled' ? 404 : 400) : 200, r);
+    return json(res, r.error ? (r.error === 'bad_signature' ? 403 : r.error === 'too_many_requests' ? 429 : r.error === 'disabled' ? 404 : r.error === 'paused' ? 423 : 400) : 200, r);
   }
   if (req.method === 'POST' && u.pathname === '/api/ssh-gate/poll') {
     const body = await parseBody(req);

@@ -26,6 +26,7 @@ import { logAdmin, logSecurityEvent } from './adminsec.mjs';
 import { rateLimitPerHour } from './security.mjs';
 import { L } from './lang.mjs';
 import { adminNow, enactPanic } from './admingate.mjs';
+import { rateLimit } from './security.mjs';
 
 const LINK_TTL_MIN = 5;
 const CODE_ATTEMPTS = 3;
@@ -35,6 +36,34 @@ const clip = (v, n) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').tr
 const secret = () => String(process.env.SSH_GATE_SECRET ?? '');
 
 export const sshGateEnabled = () => secret().length >= 24;
+
+/** Рубильник новых входов (ssh_gate_state). Открытые SSH-сессии он не трогает. */
+export const sshState = async () => {
+  const { rows } = await query('SELECT paused, reason, set_by, set_at FROM ssh_gate_state WHERE id');
+  const r = rows[0];
+  return { paused: Boolean(r?.paused), reason: r?.reason ?? '', setBy: r?.set_by ?? null, setAt: r?.set_at?.toISOString() ?? null };
+};
+
+export const setSshPaused = async (actorId, paused, reason) => {
+  const why = clip(reason, 200);
+  if (paused && why.length < 5) return { error: 'reason_required' };
+  await query('UPDATE ssh_gate_state SET paused = $1, reason = $2, set_by = $3, set_at = now() WHERE id', [Boolean(paused), paused ? why : '', actorId]);
+  let denied = 0;
+  if (paused) denied = (await query(`UPDATE ssh_gate_requests SET status = 'denied', decided_at = now(), outcome = 'revoked' WHERE status = 'pending'`)).rowCount;
+  await logAdmin({ actorId, type: paused ? 'ssh_gate_pause' : 'ssh_gate_resume', targetType: 'system', detail: clip(paused ? `новые входы по SSH закрыты: ${why}; ожидавших отклонено: ${denied}` : 'новые входы по SSH снова разрешены (с подтверждением)', 200) });
+  return { ok: true, ...(await sshState()), denied };
+};
+
+/** Журнал запросов: кто, откуда, чем кончилось (успехи и неудачи). Без токенов и ключей. */
+export const listSshRequests = async (limit = 100) => {
+  const { rows } = await query(
+    `SELECT id, ssh_user, ssh_host, ip, device, status, outcome, attempts, created_at, decided_at, consumed_at FROM ssh_gate_requests ORDER BY created_at DESC LIMIT $1`,
+    [Math.min(Math.max(Number(limit) || 100, 1), 300)]);
+  return rows.map((r) => ({
+    id: r.id, user: r.ssh_user, host: r.ssh_host, ip: r.ip, device: r.device, status: r.status, outcome: r.outcome, attempts: r.attempts,
+    createdAt: r.created_at.toISOString(), decidedAt: r.decided_at?.toISOString() ?? null, consumedAt: r.consumed_at?.toISOString() ?? null,
+  }));
+};
 
 /** Подпись запроса от скрипта: HMAC-SHA256 общим секретом по полям запроса. */
 export const signSshRequest = (key, { ts, user, host, rhost, tty }) =>
@@ -58,7 +87,15 @@ export const requestSsh = async ({ ts, user, host, rhost, tty, sig }, { ip }) =>
   const t = Number(ts);
   if (!Number.isFinite(t) || Math.abs(Date.now() / 1000 - t) > SIG_WINDOW_SEC) return { error: 'bad_signature' };
   const fields = { ts: String(ts), user: clip(user, 40), host: clip(host, 80), rhost: clip(rhost, 60), tty: clip(tty, 40) };
-  if (!sameHex(signSshRequest(secret(), fields), String(sig ?? ''))) return { error: 'bad_signature' };
+  if (!sameHex(signSshRequest(secret(), fields), String(sig ?? ''))) {
+    // Запрос с чужой подписью — попытка обойти шлюз или подбор: пишем в журнал (не чаще 5 раз в минуту с адреса)
+    if (rateLimit(`sshgate:badsig:${ip}`, 5)) await logAdmin({ actorId: null, type: 'ssh_gate_bad_signature', targetType: 'system', result: 'denied', detail: clip(`адрес ${ip}`, 100) }).catch(() => {});
+    return { error: 'bad_signature' };
+  }
+  if ((await sshState()).paused) {
+    await logAdmin({ actorId: null, type: 'ssh_gate_blocked', targetType: 'system', result: 'denied', detail: clip(`вход приостановлен владельцем: ${fields.user}@${fields.rhost}`, 120) }).catch(() => {});
+    return { error: 'paused' };
+  }
 
   const who = await ownerNow();
   if (!who) return { error: 'owner_missing' };
@@ -104,7 +141,8 @@ export const pollSsh = async (id, poll) => {
   }
   if (r.status !== 'pending') return { status: 'denied' };
   if (r.expires_at < new Date()) {
-    await query("UPDATE ssh_gate_requests SET status = 'denied', decided_at = now(), outcome = 'expired' WHERE id = $1 AND status = 'pending'", [r.id]);
+    const u = await query("UPDATE ssh_gate_requests SET status = 'denied', decided_at = now(), outcome = 'expired' WHERE id = $1 AND status = 'pending'", [r.id]);
+    if (u.rowCount) await logAdmin({ actorId: r.profile_id, type: 'ssh_gate_expired', targetType: 'system', result: 'denied', detail: clip(`${r.device} · ${r.ip}: владелец не подтвердил`, 120) }).catch(() => {});
     return { status: 'expired' };
   }
   return { status: 'pending' };
@@ -145,6 +183,7 @@ export const confirmSshLink = async (token, code) => {
     await logSecurityEvent(r.profile_id, 'ssh_gate_bad_code', '', {});
     if ((rows[0]?.attempts ?? 0) >= CODE_ATTEMPTS) {
       await query("UPDATE ssh_gate_requests SET status = 'denied', decided_at = now(), outcome = 'exhausted' WHERE id = $1", [r.id]);
+      await logAdmin({ actorId: r.profile_id, type: 'ssh_gate_exhausted', targetType: 'system', result: 'denied', detail: clip(`${r.device} · ${r.ip}: три неверных кода`, 120) }).catch(() => {});
       return { error: 'code_exhausted' };
     }
     return { error: 'bad_code', left: CODE_ATTEMPTS - (rows[0]?.attempts ?? 0) };
@@ -179,6 +218,7 @@ export const panicSshLink = async (token, action, { ip } = {}) => {
 
 /** Уборка. */
 export const sweepSshGate = async () => {
-  await query("UPDATE ssh_gate_requests SET status = 'denied', decided_at = now(), outcome = 'expired' WHERE status = 'pending' AND expires_at < now()");
+  const { rows } = await query("UPDATE ssh_gate_requests SET status = 'denied', decided_at = now(), outcome = 'expired' WHERE status = 'pending' AND expires_at < now() RETURNING profile_id, device, ip");
+  for (const r of rows.slice(0, 20)) await logAdmin({ actorId: r.profile_id, type: 'ssh_gate_expired', targetType: 'system', result: 'denied', detail: clip(`${r.device} · ${r.ip}: владелец не подтвердил`, 120) }).catch(() => {});
   await query("DELETE FROM ssh_gate_requests WHERE created_at < now() - interval '30 days'");
 };

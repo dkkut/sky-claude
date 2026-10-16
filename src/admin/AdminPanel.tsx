@@ -47,6 +47,7 @@ import { ModulesTab } from './ModulesTab';
 import { SkyKassaTab } from './SkyKassaTab';
 import { StorageTab } from './StorageTab';
 import { OidcTab } from './OidcTab';
+import { SshTab } from './SshTab';
 import { GoAdminTab } from './GoAdmin';
 import { AdminGateScreen } from './AdminGate';
 const C = {
@@ -5501,7 +5502,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5682,6 +5683,7 @@ export const AdminPanel = () => {
     { key: 'modules', label: 'Модули', show: has('modules') },
     { key: 'storage', label: 'Sky Storage', show: has('storage_view') },
     { key: 'oidc', label: 'Sky ID для сервисов', show: has('oidc') },
+    { key: 'ssh', label: 'Доступ по SSH', show: has('security') },
     { key: 'skykassa', label: 'SkyKassa', show: has('skykassa') || has('skykassa_settings') },
     { key: 'pets', label: 'Pets и Skin Market', show: has('content') },
     { key: 'customization', label: 'Кастомизация', show: has('content') },
@@ -5901,6 +5903,7 @@ export const AdminPanel = () => {
       {tab === 'site' && <SiteTab />}
       {tab === 'modules' && <ModulesTab />}
       {tab === 'oidc' && <OidcTab />}
+      {tab === 'ssh' && <SshTab />}
       {tab === 'storage' && <StorageTab perms={rights?.permissions ?? []} owner={Boolean(rights?.owner)} />}
       {tab === 'skykassa' && <SkyKassaTab owner={Boolean(rights?.owner)} canReview={has('skykassa')} canSettings={has('skykassa_settings')} />}
       {tab === 'go' && <GoAdminTab />}

@@ -12,6 +12,7 @@ import { json, originAllowed, readSession, clientIp } from './http.mjs';
 import { passesPlatformMode } from './platformaccess.mjs';
 import { insecureApiRequest } from './transport.mjs';
 import { oidcRoutes } from './routes/oidc.mjs';
+import { sshAdminRoutes } from './routes/sshadmin.mjs';
 import { sweepOidc } from './oidc.mjs';
 import { shutdownState, maintenanceState } from './platform.mjs';
 import { waitForDb, migrate, closeDb, query } from './db.mjs';
@@ -196,7 +197,7 @@ const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, authRoutes, p
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageRoutes, oidcRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, skyKassaRoutes];
+                violationsRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, skyKassaRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
