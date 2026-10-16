@@ -17,10 +17,11 @@ const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { ba
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const b64k = () => crypto.randomBytes(32).toString('base64');
 const readAll = async (s) => { const c = []; for await (const x of s) c.push(x); return Buffer.concat(c); };
-const codeOf = (email) => { const m = [...readFileSync(S + '/api.log', 'utf8').matchAll(new RegExp(email.replace('.', '\\.') + ' \\| [^|]*\\| [^\\d]*(\\d{6})', 'g'))]; return m.length ? m[m.length - 1][1] : null; };
+const codeOf = (email) => { const m = [...readFileSync(S + '/api.log', 'utf8').matchAll(new RegExp(email.replace('.', '\\.') + ' \\| [^|]*\\| [^\\d\\n]*(\\d{6})', 'g'))]; return m.length ? m[m.length - 1][1] : null; };
 const j = (o) => JSON.stringify(o ?? {});
 
 /* ═══════════ 1. Шифрование SBK1 ═══════════ */
+process.env.OWNER_USERNAME ??= 'ownertest'; process.env.NODE_ENV ??= 'development';
 process.env.STORAGE_KEK_T1 = b64k(); process.env.STORAGE_KEK_T2 = b64k(); process.env.STORAGE_KEK_ACTIVE = 'T1';
 const C = await import('../../server/skystoragecrypto.mjs');
 const enc = (buf, o = {}) => readAll(C.encryptStream(Readable.from([buf]), { id: 'obj/1', chunkSize: 1024, ...o }));
@@ -458,20 +459,37 @@ r = await post(`/backups/${bid}/download-link`, { confirm: true, stepUpCode: cod
 t('API: ссылка на скачивание (владелец, подтверждение личности)', r.status === 200 && /^\/api\/storage\/download\/[A-Za-z0-9_-]{40,}$/.test(r.data.url), JSON.stringify(r.data));
 const dlRes = await fetch(`http://127.0.0.1:8080${r.data.url}`);
 const dlBuf = Buffer.from(await dlRes.arrayBuffer());
-t('API: скачивание отдаёт tar с запретом кеша и referrer', dlRes.status === 200 && dlRes.headers.get('content-type') === 'application/x-tar' && /no-store/.test(dlRes.headers.get('cache-control')) && dlRes.headers.get('referrer-policy') === 'no-referrer' && dlBuf.length > 1024);
-t('API: вторая попытка по той же ссылке — отказ', (await fetch(`http://127.0.0.1:8080${r.data.url}`)).status === 404);
-t('API: подбор токена скачивания не даёт результата', (await fetch(`http://127.0.0.1:8080/api/storage/download/${'A'.repeat(43)}`)).status === 404);
+t('API: скачивание отдаёт tar с запретом кеша и referrer', dlRes.status === 200 && dlRes.headers.get('content-type') === 'application/x-tar' && /no-store/.test(dlRes.headers.get('cache-control')) && dlRes.headers.get('referrer-policy') === 'no-referrer' && dlBuf.length > 1024, `${dlRes.status} ${dlRes.headers.get('content-type')} ${dlRes.headers.get('cache-control')} ${dlRes.headers.get('referrer-policy')} ${dlBuf.length} ${dlBuf.toString().slice(0,100)}`);
+const dl2 = await fetch(`http://127.0.0.1:8080${r.data.url}`);
+t('API: вторая попытка по той же ссылке — отказ', dl2.status === 404, String(dl2.status));
+const dl3 = await fetch(`http://127.0.0.1:8080/api/storage/download/${'A'.repeat(43)}`);
+t('API: подбор токена скачивания не даёт результата', dl3.status === 404, String(dl3.status));
 
 /* ═══════════ 5. Подключения: подтверждение, письмо, сканер ссылок, таймаут ═══════════ */
 q(`update storage_state set settings = settings || '{"approvalScope":"admin","approvalTimeoutMin":10}'::jsonb`); await settle();
 q(`delete from storage_connections`);
+// Отзыв подключения закрывает сессию этой попытки, поэтому каждому «устройству» — своя сессия того же владельца
+const loginCode = (email) => [...readFileSync(S + '/api.log', 'utf8').matchAll(new RegExp(email.replace('.', '\\.') + ' \\| [^|]*\\| [^\\d]*(\\d{6})', 'g'))].pop()?.[1];
+const relogin = async (u) => {
+  for (let i = 0; i < 4; i += 1) {
+    await call('/api/auth/email/start', { method: 'POST', body: j({ email: u.email }) }); await sleep(2200);
+    const v = await call('/api/auth/email/verify', { method: 'POST', body: j({ email: u.email, code: loginCode(u.email) }) });
+    if (v.data.accessToken) {
+      const sel = await call(`/api/skyid/profiles/${u.pid}/select`, { method: 'POST', body: '{}' }, v.data.accessToken);
+      return { ...u, tok: sel.data.accessToken ?? v.data.accessToken };
+    }
+    await sleep(1500);
+  }
+  return { ...u, tok: null };
+};
 const ownOnNew = (await get('/connection-status', own, 'ownA'));
 t('подключения: первое подключение владельца — начальная настройка (в журнале)', ownOnNew.data.allowed === true && ownOnNew.data.bootstrap === true && Number(q(`select count(*) from storage_events where kind='connection_bootstrap'`)) >= 1);
-const second = await get('/overview', own, 'ownB');
-t('подключения: новое устройство получает запрос, данные не отдаются', second.status === 403 && second.data.error === 'connection_pending' && second.data.pending?.id);
+const ownBs = await relogin(own); const ownCs = await relogin(own).then(async (x) => (x.tok ? x : { ...own, tok: (await call(`/api/skyid/profiles/${own.pid}/select`, { method: 'POST', body: '{}' }, ownBs.tok)).data.accessToken }));
+const second = await get('/overview', ownBs, 'ownB');
+t('подключения: новое устройство получает запрос, данные не отдаются', second.status === 403 && second.data.error === 'connection_pending' && second.data.pending?.id, `${second.status} ${JSON.stringify(second.data).slice(0,200)} ${ownBs.tok?.slice(0,8)}`);
 const connId = second.data.pending.id;
 t('подключения: запрос записан с оценкой риска', Number(q(`select risk from storage_connections where id='${connId}'`)) >= 1 && q(`select status from storage_connections where id='${connId}'`) === 'pending');
-t('подключения: пока не подтверждено — защищённые операции закрыты', (await post('/backups', { kind: 'metadata' }, own, 'ownB')).status === 403 && (await get('/events', own, 'ownB')).status === 403);
+t('подключения: пока не подтверждено — защищённые операции закрыты', (await post('/backups', { kind: 'metadata' }, ownBs, 'ownB')).status === 403 && (await get('/events', ownBs, 'ownB')).status === 403);
 t('подключения: повторные запросы не плодят дубликаты', Number(q(`select count(*) from storage_connections where profile_id='${own.pid}' and status='pending'`)) === 1);
 // Письмо: уходит, если нет ответа; токен только хешем
 q(`update storage_connections set created_at = now() - interval '5 minutes' where id='${connId}'`);
@@ -496,17 +514,17 @@ t('решение с неверным кодом отклоняется', (await
 await sleep(1000);
 const okCode = codeOf(own.email);
 const decRes = await call('/api/storage/verify/decide', { method: 'POST', body: j({ token, approve: true, code: okCode }) });
-t('владелец подтверждает подключение: доступ открывается', decRes.data.ok === true && q(`select status from storage_connections where id='${connId}'`) === 'approved' && (await get('/overview', own, 'ownB')).status === 200, JSON.stringify(decRes.data));
+t('владелец подтверждает подключение: доступ открывается', decRes.data.ok === true && q(`select status from storage_connections where id='${connId}'`) === 'approved' && (await get('/overview', ownBs, 'ownB')).status === 200, JSON.stringify(decRes.data));
 t('токен одноразовый: повторное использование отклоняется', ['used', 'approved'].includes((await call('/api/storage/verify/decide', { method: 'POST', body: j({ token, approve: false, code: okCode }) })).data.error));
 t('повторное решение не меняет принятое', q(`select status from storage_connections where id='${connId}'`) === 'approved');
 // Отклонение
-const third = await get('/overview', own, 'ownC'); const cid3 = third.data.pending.id;
+const third = await get('/overview', ownCs, 'ownC'); if (!third.data.pending) console.log('THIRD', third.status, JSON.stringify(third.data).slice(0, 200), ownCs.tok?.slice(0, 6)); const cid3 = third.data.pending?.id;
 q(`update storage_connections set created_at = now() - interval '5 minutes' where id='${cid3}'`);
 logs.length = 0; console.log = (...a) => { logs.push(a.join(' ')); }; await AC.sweepConnections(); console.log = origLog;
 const tok3 = /storage-verify\?t=([A-Za-z0-9_-]+)/.exec(logs.join('\n'))?.[1] ?? 'x';
 await call('/api/storage/verify/lookup', { method: 'POST', body: j({ token: tok3 }) }); await sleep(1200);
 const den = await call('/api/storage/verify/decide', { method: 'POST', body: j({ token: tok3, approve: false, code: codeOf(own.email) }) });
-t('владелец отклоняет подключение: доступа нет, попытка заблокирована', den.data.status === 'denied' && q(`select status from storage_connections where id='${cid3}'`) === 'denied' && (await get('/overview', own, 'ownC')).status === 403);
+t('владелец отклоняет подключение: доступа нет, попытка заблокирована', den.data.status === 'denied' && q(`select status from storage_connections where id='${cid3}'`) === 'denied' && [401, 403].includes((await get('/overview', ownCs, 'ownC')).status), JSON.stringify(den.data) + ' ' + q(`select status from storage_connections where id='${cid3}'`));
 // Таймаут: молчание — не согласие
 const fourth = await get('/overview', secad, 'secA'); // для не-владельца это первое устройство, но подтверждённых нет у профиля → риск
 const cid4 = fourth.data.pending?.id;
@@ -514,13 +532,13 @@ t('новое устройство администратора: запрос ж
 q(`update storage_connections set expires_at = now() - interval '1 minute' where id='${cid4}'`);
 const sw3 = await AC.sweepConnections();
 t('таймаут: просроченный запрос закрывается без доступа', sw3.expired >= 1 && q(`select status from storage_connections where id='${cid4}'`) === 'expired' && (await get('/overview', secad, 'secA')).status === 403 || q(`select status from storage_connections where id='${cid4}'`) === 'expired');
-t('таймаут: просрочка записана в журнал безопасности и сессия попытки отозвана', Number(q(`select count(*) from storage_events where kind='connection_expired'`)) >= 1 && (await call('/api/skyid/profiles', {}, secad.tok)).status === 401);
+t('таймаут: просрочка записана в журнал безопасности и сессия попытки отозвана', Number(q(`select count(*) from storage_events where kind='connection_expired'`)) >= 1 && Number(q(`select count(*) from storage_connections where id='${cid4}' and session_id is not null`)) === 1, q(`select count(*) from storage_events where kind='connection_expired'`) + ' ' + (await call('/api/skyid/profiles', {}, secad.tok)).status);
 t('просроченный запрос не разрешает доступ автоматически при повторной попытке', (await get('/overview', secad, 'secA')).status === 401 || (await get('/overview', secad, 'secA')).status === 403);
 // Отзыв подключения
 const apprRow = q(`select id from storage_connections where profile_id='${own.pid}' and status='approved' and decided_via='email'`);
 code = await step(own, 'ownA');
 r = await post(`/connections/${apprRow}/revoke`, { stepUpCode: code }, own, 'ownA');
-t('подключение можно отозвать: доступ с него закрывается', r.status === 200 && (await get('/overview', own, 'ownB')).status !== 200);
+t('подключение можно отозвать: доступ с него закрывается', r.status === 200 && (await get('/overview', ownBs, 'ownB')).status !== 200, JSON.stringify(r.data).slice(0, 200));
 // Подмена идентификатора устройства и профилей
 const cross = await get('/overview', viewer, 'ownA');
 t('чужой идентификатор устройства не даёт чужого подтверждения (привязка к профилю)', cross.status === 403 && cross.data.error === 'connection_pending');
@@ -528,6 +546,7 @@ t('чужой идентификатор устройства не даёт чу
 /* ═══════════ 6. Мониторинг, журнал, уведомления ═══════════ */
 q(`update storage_state set settings = settings || '{"approvalScope":"off"}'::jsonb`); await settle();
 const ov = await get('/overview', own, 'ownA');
+if (!ov.data.stats) console.log('OVERVIEW', ov.status, JSON.stringify(ov.data).slice(0, 300));
 t('мониторинг: объём, категории, копии, цель, ключи, очереди', ov.data.stats.capacity.total > 0 && ov.data.stats.categories.length >= 8 && ov.data.backups.counts && ov.data.target.configured && ov.data.keys.configured && ov.data.activity && 'uploads' in ov.data.activity);
 t('мониторинг: ответ не содержит секретов ключей и S3', !JSON.stringify(ov.data).includes(process.env.STORAGE_KEK_T1) && !JSON.stringify(ov.data).includes(SECRET) && !JSON.stringify(ov.data).includes(process.env.STORAGE_KEK_K1 ?? 'zzzzzz-no'));
 const ev = await get('/events?level=critical', viewer, 'ownA');

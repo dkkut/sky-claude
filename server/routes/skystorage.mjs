@@ -34,7 +34,8 @@ const rl = (key, n) => rateLimit(key, n * MULT);
 const hashIp = (ip) => crypto.createHash('sha256').update(`storage-ip:${ip}`).digest('hex').slice(0, 24);
 
 export const storageRoutes = async (req, res, url) => {
-  if (!url.startsWith('/api/admin/storage') && !url.startsWith('/api/storage/')) return false;
+  // /api/storage/* принадлежит ещё и общему доступу к файлам (storageshare.mjs): берём только свои адреса
+  if (!url.startsWith('/api/admin/storage') && !url.startsWith('/api/storage/verify/') && !url.startsWith('/api/storage/download/')) return false;
   const path = new URL(req.url, 'http://x').pathname;
   const params = new URL(req.url, 'http://x').searchParams;
   const ip = clientIp(req);
