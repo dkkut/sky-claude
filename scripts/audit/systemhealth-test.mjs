@@ -1,0 +1,22 @@
+// Состояние систем: единый раздел админки (HTTP, API на :8080). Запуск: node scripts/audit/systemhealth-test.mjs <каталог с api.log>
+import { execSync } from 'node:child_process';
+import { call, mkuser } from './lib.mjs';
+const S = process.argv[2];
+const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
+let ok = 0, bad = 0;
+const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
+const adm = await mkuser(S, 'shAdm'); const usr = await mkuser(S, 'shUser');
+q(`update profiles set is_admin=true, admin_role='super_admin' where id='${adm.pid}'`);
+let r = await call('/api/admin/analytics/systems', {}, usr.tok);
+t('обычному человеку — отказ', r.status === 403);
+r = await call('/api/admin/analytics/systems', {}, adm.tok);
+const d = r.data;
+t('администратор получает сводку', r.status === 200 && d?.security && d.ai && d.prime && d.gifts && d.partners, JSON.stringify(d).slice(0, 200));
+for (const k of ['security', 'ai', 'prime', 'gifts', 'partners']) t(`блок «${k}» без ошибки`, !d?.[k]?.error, JSON.stringify(d?.[k]).slice(0, 200));
+t('число аккаунтов совпадает с базой', d.security.accounts.total === Number(q('select count(*) from sky_ids')));
+t('партнёры совпадают с базой', d.partners.active === Number(q(`select count(*) from partners where status='active'`)));
+t('участники Prime совпадают с базой', d.prime.members === Number(q(`select count(distinct profile_id) from prime_subscriptions where status='active' and (expires_at is null or expires_at > now())`)));
+const text = JSON.stringify(d);
+t('в ответе нет секретов и почт', !/two_factor_secret|password|@[a-z0-9-]+\.[a-z]{2,}|api[_-]?key"\s*:\s*"[A-Za-z0-9]{12,}/i.test(text));
+console.log(`\n${bad ? 'ПРОВАЛЕНО' : 'Все проверки пройдены'}: ok=${ok} fail=${bad}`);
+process.exit(bad ? 1 : 0);

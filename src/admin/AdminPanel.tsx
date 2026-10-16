@@ -42,6 +42,7 @@ import { MonitoringTab } from './MonitoringTab';
 import { ContentModTab } from './ContentModTab';
 import { ScrollTabs } from './ScrollTabs';
 import { RegistrationTab } from './RegistrationTab';
+import { SystemsTab } from './SystemsTab';
 import { SiteTab } from './SiteTab';
 import { ModulesTab } from './ModulesTab';
 import { SkyKassaTab } from './SkyKassaTab';
@@ -5506,7 +5507,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'systems';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5666,6 +5667,7 @@ export const AdminPanel = () => {
 
   const TABS: { key: Tab; label: string; show: boolean }[] = [
     { key: 'monitor', label: 'Мониторинг', show: has('analytics') },
+    { key: 'systems', label: 'Состояние систем', show: has('analytics') },
     { key: 'overview', label: 'Обзор', show: true },
     { key: 'people', label: 'Люди', show: has('moderation') },
     { key: 'pending', label: 'Заявки', show: true },
@@ -5907,6 +5909,7 @@ export const AdminPanel = () => {
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
       {tab === 'content' && <ContentModTab />}
       {tab === 'registration' && <RegistrationTab />}
+      {tab === 'systems' && <SystemsTab />}
       {tab === 'site' && <SiteTab />}
       {tab === 'modules' && <ModulesTab />}
       {tab === 'oidc' && <OidcTab />}
