@@ -54,9 +54,17 @@ status() {
   true
 }
 
-# Образ api мог быть собран до появления проверки: подаём скрипт и модуль S3 из исходников через том-на-лету.
-probe() { docker compose run --rm --no-deps -T -v "$SRC_DIR/scripts/storage-probe.mjs:/app/scripts/storage-probe.mjs:ro" -v "$SRC_DIR/server/skystorages3.mjs:/app/server/skystorages3.mjs:ro" api node scripts/storage-probe.mjs "${1:-}" 2>&1; }
-
+# Проверка идёт в контейнере api, но переменные подаём напрямую из .env: docker-compose.yml в рабочем каталоге мог
+# ещё не обновиться (его обновляет deploy-local.sh). Скрипт и модуль S3 берём из исходников — образ мог быть собран раньше.
+probe() {
+  local envargs=() k
+  for k in STORAGE_S3_ENDPOINT STORAGE_S3_REGION STORAGE_S3_BUCKET STORAGE_S3_ACCESS_KEY STORAGE_S3_SECRET_KEY STORAGE_S3_PREFIX STORAGE_S3_PATH_STYLE; do
+    envargs+=(-e "$k=$(get_env "$k")")
+  done
+  docker compose run --rm --no-deps -T "${envargs[@]}" \
+    -v "$SRC_DIR/scripts/storage-probe.mjs:/app/scripts/storage-probe.mjs:ro" -v "$SRC_DIR/server/skystorages3.mjs:/app/server/skystorages3.mjs:ro" \
+    api node scripts/storage-probe.mjs "${1:-}" 2>&1
+}
 case "${1:-}" in
   --check) status; exit 0 ;;
   -h|--help) sed -n 2,19p "$0"; exit 0 ;;
@@ -100,7 +108,7 @@ fi
 
 echo; echo "== Проверка подключения =="
 if command -v docker >/dev/null 2>&1; then
-  out="$(probe)"; echo "$out"
+  out="$(probe)" || true; echo "$out"
   style="$(echo "$out" | sed -n 's/^STYLE=//p' | tail -n1)"
   if [ -n "$style" ]; then
     [ "$style" = path ] && set_env STORAGE_S3_PATH_STYLE 1 || set_env STORAGE_S3_PATH_STYLE 0
