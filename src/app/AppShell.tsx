@@ -44,7 +44,8 @@ import { apiCall }                from '@/core/auth/api';
 
 // First-launch welcome notification
 const useFirstLaunch = () => {
-  const { currentUserId, accounts } = useAuthStore();
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const accounts = useAuthStore((s) => s.accounts);
   const [shown, setShown] = useState(false);
   useEffect(() => {
     if (!currentUserId) return;
@@ -59,7 +60,8 @@ const useFirstLaunch = () => {
 
 /* - Pet Cursor (Prime users) ---------------------------------------- */
 const PetCursor = () => {
-  const { accounts, currentUserId } = useAuthStore();
+  const accounts = useAuthStore((s) => s.accounts);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
   const me       = accounts.find(a => a.id === currentUserId);
   const isPrime  = me?.isPrime ?? false;
   const isMobile = useIsMobile();

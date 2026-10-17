@@ -36,7 +36,8 @@ const avatarGrad = (name: string) => {
 };
 
 export const Sidebar = () => {
-  const { activeModule, setActiveModule } = useModuleStore();
+  const activeModule = useModuleStore((s) => s.activeModule);
+  const setActiveModule = useModuleStore((s) => s.setActiveModule);
   const islandMode    = useSettings(s => s.settings.islandMode);
   const accounts      = useAuthStore(s => s.accounts);
   const currentUserId = useAuthStore(s => s.currentUserId);

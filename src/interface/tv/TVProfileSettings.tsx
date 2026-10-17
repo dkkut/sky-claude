@@ -18,7 +18,9 @@ const OPTIONS: { key: TVModeSetting; label: string }[] = [
 ];
 
 export const TVProfileSettings = () => {
-  const { accounts, currentUserId, logout } = useAuthStore();
+  const accounts = useAuthStore((s) => s.accounts);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
+  const logout = useAuthStore((s) => s.logout);
   const me = accounts.find(a => a.id === currentUserId);
 
   useEffect(() => { tvFocusManager.focusDefault('tv-switch'); }, []);

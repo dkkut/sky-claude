@@ -110,7 +110,8 @@ const VideoStage = ({ onClose }: { onClose: () => void }) => {
 
 /* Подкасты входят в Sky Prime (сервер отвечает 403 без подписки). Оформить её пультом/в машине неудобно — подсказываем где. */
 export const TVPodcasts = () => {
-  const { accounts, currentUserId } = useAuthStore();
+  const accounts = useAuthStore((s) => s.accounts);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
   const me = accounts.find((a) => a.id === currentUserId);
   if (!(me?.isPrime ?? false) && !(me?.isAdmin ?? false)) {
     return (

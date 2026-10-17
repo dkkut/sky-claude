@@ -38,17 +38,20 @@ const KindIcon = ({ kind, color }: { kind: NotifKind; color: string }) => {
 export const Header = ({ moduleLabel, searchValue, onSearchChange, searchPlaceholder = 'Поиск...' }: HeaderProps) => {
   const [showNotifs, setShowNotifs] = useState(false);
   const [showRegion, setShowRegion] = useState(false);
-  const { code } = useRegionStore();
+  const code = useRegionStore((s) => s.code);
   const [showAI,     setShowAI]     = useState(false);
   const [aiQuery,    setAiQuery]    = useState('');
   const [aiAnswer,   setAiAnswer]   = useState('');
   const [aiLoading,  setAiLoading]  = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const aiRef    = useRef<HTMLDivElement>(null);
-  const { setActiveModule } = useModuleStore();
+  const setActiveModule = useModuleStore((s) => s.setActiveModule);
 
   // -- Real notification store --------------------------------------
-  const { notifs, markRead, markAllRead, dismiss } = useNotifStore();
+  const notifs = useNotifStore((s) => s.notifs);
+  const markRead = useNotifStore((s) => s.markRead);
+  const markAllRead = useNotifStore((s) => s.markAllRead);
+  const dismiss = useNotifStore((s) => s.dismiss);
   const unread = notifs.filter(n => !n.read).length;
 
   useEffect(() => {

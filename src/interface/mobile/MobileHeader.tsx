@@ -14,10 +14,10 @@ const TITLES: Record<string, string> = {
 };
 
 export const MobileHeader = () => {
-  const { activeModule, setActiveModule } = useModuleStore();
-  const { code } = useRegionStore();
-  const { notifs } = useNotifStore();
-  const unread = notifs.filter(n => !n.read).length;
+  const activeModule = useModuleStore((s) => s.activeModule);
+  const setActiveModule = useModuleStore((s) => s.setActiveModule);
+  const code = useRegionStore((s) => s.code);
+  const unread = useNotifStore((s) => s.notifs.filter(n => !n.read).length);
   const [showRegion, setShowRegion] = useState(false);
 
   return (
