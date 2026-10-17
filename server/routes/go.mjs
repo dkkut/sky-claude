@@ -10,6 +10,7 @@ import * as reg from './../goreg.mjs';
 import * as subs from './../gosubs.mjs';
 import * as pay from './../gopay.mjs';
 import * as taxi from './../gotaxi.mjs';
+import * as dispatch from './../godispatch.mjs';
 import * as delivery from './../godelivery.mjs';
 import { cargoTariff } from './../godelivery.mjs';
 import * as food from './../gofood.mjs';
@@ -22,6 +23,7 @@ import { pushOrderChanged } from './../gocore.mjs';
 import { can } from './../admin.mjs';
 import { query } from './../db.mjs';
 
+const RATE_MULT = Math.max(1, Number(process.env.GO_RATE_MULT) || 1);   // только для тестов
 const MAX_DOC = 8 * 1024 * 1024;
 const readBytes = (req, limit) => new Promise((resolve) => {
   const chunks = []; let size = 0; let dead = false;
@@ -32,7 +34,7 @@ const readBytes = (req, limit) => new Promise((resolve) => {
 
 const STATUS_OF = {
   dates_taken: 409, has_bookings: 409, not_found: 404, not_allowed: 403, rate_limited: 429, too_many_requests: 429,
-  already_taken: 409, bad_state: 409, active_order_exists: 409, driver_busy: 409, courier_busy: 409, not_editable: 409,
+  already_taken: 409, price_changed: 409, quote_expired: 409, quote_mismatch: 409, quote_used: 409, quote_not_found: 404, not_offered: 409, offer_expired: 409, no_offer: 404, bad_state: 409, active_order_exists: 409, driver_busy: 409, courier_busy: 409, not_editable: 409,
   incompatible_order: 409, executor_offline: 409, executor_in_delivery: 409, payment_in_progress: 409, already_member: 409, confirm_required: 409, assignment_not_accepted: 409,
   org_suspended: 403, owner_immutable: 403, self_change: 403, role_not_allowed: 403, executor_not_member: 409, executor_not_approved: 409,
   subscription_required: 402, insufficient_funds: 402, not_approved: 403, not_registered: 403,
@@ -53,7 +55,7 @@ export const goRoutes = async (req, res, url) => {
   const path = u.pathname;
   const method = req.method;
   const write = method !== 'GET' && method !== 'HEAD';
-  if (!rateLimit(write ? `go:w:${me}` : `go:r:${me}`, write ? 90 : 300)) return json(res, 429, { error: 'rate_limited' });
+  if (!rateLimit(write ? `go:w:${me}` : `go:r:${me}`, (write ? 90 : 300) * RATE_MULT)) return json(res, 429, { error: 'rate_limited' });
   let m;
 
   if (method === 'GET' && path === '/api/go/config') {
@@ -92,9 +94,10 @@ export const goRoutes = async (req, res, url) => {
   if ((m = path.match(/^\/api\/go\/presence\/(taxi_driver|courier)$/)) && method === 'GET') return json(res, 200, await subs.presenceOf(me, m[1]));
 
   /* ── Такси ────────────────────────────────────────────────────── */
-  if (path === '/api/go/taxi/quote' && method === 'POST') { if (!rateLimit(`go:q:${me}`, 30)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await taxi.quote(await parseBody(req))); }
+  if (path === '/api/go/taxi/quote' && method === 'POST') { if (!rateLimit(`go:q:${me}`, 30)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await taxi.quote(await parseBody(req), me)); }
   if (path === '/api/go/taxi/orders' && method === 'POST') return reply(res, await taxi.create(me, await parseBody(req)), 201);
   if (path === '/api/go/taxi/available' && method === 'GET') return reply(res, await taxi.availableFor(me));
+  if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/decline$/)) && method === 'POST') return reply(res, await touch(m[1], await dispatch.declineOffer(me, m[1])));
   if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/accept$/)) && method === 'POST') return reply(res, await touch(m[1], await taxi.accept(me, m[1])));
   if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/act$/)) && method === 'POST') return reply(res, await touch(m[1], await taxi.driverAct(me, m[1], String((await parseBody(req))?.action ?? ''))));
   if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/cancel$/)) && method === 'POST') return reply(res, await touch(m[1], await taxi.customerCancel(me, m[1], (await parseBody(req))?.reason)));

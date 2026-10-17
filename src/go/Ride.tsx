@@ -48,8 +48,17 @@ export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: 
   }, [from, to, quote]);
 
   const order = async () => {
-    setBusy(true); const r = await goApi.taxiCreate({ city, from, to, tariff: pick, comment }); setBusy(false);
-    if (!r.ok) return fail(r);
+    setBusy(true); const r = await goApi.taxiCreate({ city, from, to, tariff: pick, comment, quoteId: quote?.quoteId }); setBusy(false);
+    if (!r.ok) {
+      // Цена изменилась или расчёт устарел: заказ НЕ создан, показываем новую цену — человек подтверждает заново.
+      const fresh = r.data?.quote;
+      if (fresh && (r.error === 'price_changed' || r.error === 'quote_expired' || r.error === 'quote_mismatch')) {
+        fresh.offers.sort((a, b) => a.priceRub - b.priceRub); setQuote(fresh); setPick((cur) => (fresh.offers.some((o) => o.code === cur) ? cur : fresh.offers[0]?.code ?? ''));
+        setQerr(goError(r)); return;
+      }
+      return fail(r);
+    }
+    setQerr('');
     flash('Ищем водителя'); onCreated(r.data!.orderId);
   };
   const offer = quote?.offers.find((o) => o.code === pick);
@@ -90,6 +99,8 @@ export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: 
                 <Car size={26} color={GO} /><span style={{ flex: 1, textAlign: 'left' }}>{o.title}</span><span>{fmt(o.priceRub)}</span>
               </button>))}
             <Input label="Комментарий водителю" value={comment} onChange={setComment} max={200} />
+            {offer?.breakdown && <div style={{ fontSize: 12.5, color: C.t3 }}>{`Из чего цена: подача ${fmt(offer.breakdown.baseRub)} · путь ${fmt(offer.breakdown.distanceRub)} · время ${fmt(offer.breakdown.timeRub)}${offer.breakdown.minimumApplied ? ` · минимальная стоимость ${fmt(offer.breakdown.minimumRub)}` : ''}`}</div>}
+            {quote.expiresAt && <div style={{ fontSize: 12.5, color: C.t3 }}>{`Цена зафиксирована до ${new Date(quote.expiresAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}. Если тариф изменится раньше, мы покажем новую цену до заказа.`}</div>}
             <Notice>Оплата — водителю напрямую по реквизитам после поездки. Sky деньги за поездку не принимает.</Notice>
           </Col></Card>)}
       </Col>

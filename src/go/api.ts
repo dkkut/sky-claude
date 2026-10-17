@@ -35,6 +35,9 @@ const ERR: Record<string, string> = {
   bad_state: 'Это действие сейчас недоступно — обновите экран.', not_found: 'Не найдено.',
   address_not_found: 'Адрес не найден. Уточните город, улицу и дом.', same_point: 'Точки отправления и назначения совпадают.',
   too_far: 'Слишком далеко для этого сервиса.', route_failed: 'Не удалось построить маршрут. Попробуйте позже.',
+  price_changed: 'Стоимость изменилась — проверьте новую цену и подтвердите заказ ещё раз.', quote_expired: 'Расчёт устарел — мы пересчитали стоимость, подтвердите заказ ещё раз.',
+  quote_mismatch: 'Условия поездки изменились — стоимость пересчитана.', quote_used: 'Этот расчёт уже использован.', quote_not_found: 'Расчёт не найден — повторите запрос.',
+  not_offered: 'Этот заказ предложен другому водителю.', offer_expired: 'Время на ответ вышло.', no_offer: 'Предложение уже недействительно.',
   bad_city: 'Город пока не подключён.', bad_code: 'Неверный код.', code_locked: 'Код заблокирован после неверных попыток. Обратитесь в поддержку.',
   code_used: 'Код уже использован.', code_expired: 'Срок кода вышел.', rate_limited: 'Слишком часто. Подождите минуту.',
   docs_missing: 'Не хватает обязательных документов.', dob_required: 'Укажите дату рождения в анкете.', invalid_dob: 'Неверная дата рождения.', too_young: 'Исполнителем может быть только совершеннолетний.',
@@ -81,6 +84,12 @@ const qs = (o: Record<string, string | undefined>) => {
   const s = Object.entries(o).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v!)}`).join('&');
   return s ? `?${s}` : '';
 };
+
+export interface TaxiQuote {
+  from?: { lat: number; lng: number; address?: string }; to?: { lat: number; lng: number; address?: string };
+  km: number; minutes: number; estimated: boolean; quoteId?: string; expiresAt?: string; tariffVersion?: string;
+  offers: { code: string; title: string; priceRub: number; breakdown?: { baseRub: number; distanceRub: number; timeRub: number; minimumRub: number; minimumApplied: boolean; totalRub: number } }[];
+}
 
 export interface Tariff { code: string; title: string; priceRub: number; periodDays: number }
 export interface GoConfig {
@@ -136,10 +145,11 @@ export const goApi = {
   presenceOf: (role: GoRole) => get<{ online: boolean }>(`/api/go/presence/${role}`),
   stats: (role: GoRole) => get<{ done: number; earnedRub: number }>(`/api/go/stats/${role}`),
 
-  taxiQuote: (b: unknown) => post<{ from?: { lat: number; lng: number; address?: string }; to?: { lat: number; lng: number; address?: string }; km: number; minutes: number; estimated: boolean; offers: { code: string; title: string; priceRub: number }[] }>('/api/go/taxi/quote', b),
-  taxiCreate: (b: unknown) => post<{ orderId: string; priceRub: number }>('/api/go/taxi/orders', { ...(b as object), idemKey: crypto.randomUUID() }),
+  taxiQuote: (b: unknown) => post<TaxiQuote>('/api/go/taxi/quote', b),
+  taxiCreate: (b: unknown) => post<{ orderId: string; priceRub: number; quote?: TaxiQuote }>('/api/go/taxi/orders', { ...(b as object), idemKey: crypto.randomUUID() }),
   taxiAvailable: () => get<{ orders: any[] }>('/api/go/taxi/available'),
   taxiAccept: (id: string) => post(`/api/go/taxi/orders/${id}/accept`),
+  taxiDecline: (id: string) => post(`/api/go/taxi/orders/${id}/decline`),
   taxiAct: (id: string, action: string) => post(`/api/go/taxi/orders/${id}/act`, { action }),
   taxiCancel: (id: string, reason?: string) => post(`/api/go/taxi/orders/${id}/cancel`, { reason }),
 

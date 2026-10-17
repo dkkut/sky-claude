@@ -18,18 +18,18 @@ const get = <T,>(p: string) => apiCall<T>(`${A}${p}`);
 const send = <T,>(m: string, p: string, b: unknown) => apiCall<T>(`${A}${p}`, { method: m, body: JSON.stringify(b) });
 const bad = (r: { error?: string; reason?: string }) => flash(({ not_allowed: 'Недостаточно прав.', note_required: 'Укажите причину.', bad_transition: 'Переход невозможен.', bad_price: 'Неверная цена.' } as Record<string, string>)[r.error ?? ''] ?? goError(r));
 
-type Sub = 'apps' | 'orders' | 'orgs' | 'stay' | 'subs' | 'tariffs' | 'integrations';
+type Sub = 'apps' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'tariffs' | 'integrations';
 
 export const GoAdminTab = () => {
   const [sub, setSub] = useState<Sub>('apps');
   const [ov, setOv] = useState<any>(null);
   useEffect(() => { void get<any>('/overview').then((r) => r.ok && setOv(r.data)); }, [sub]);
-  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
+  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {ov && <div style={{ ...box, fontSize: 13, color: C.t2 }}>Активных подписок: <b style={{ color: C.t1 }}>{ov.activeSubscriptions}</b> · На проверке: <b style={{ color: C.t1 }}>{(ov.executors.submitted ?? 0) + (ov.executors.in_review ?? 0)}</b> · Заказов за 30 дней: <b style={{ color: C.t1 }}>{ov.orders30d.reduce((s: number, r: any) => s + r.n, 0)}</b></div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{TABS.map(([k, t]) => <button key={k} onClick={() => setSub(k)} style={btn(sub === k ? C.acc : C.l2, sub === k ? '#fff' : C.t1)}>{t}</button>)}</div>
-      {sub === 'apps' && <Apps />}{sub === 'orgs' && <OrgsPanel />}
+      {sub === 'apps' && <Apps />}{sub === 'dispatch' && <Dispatch />}{sub === 'orgs' && <OrgsPanel />}
         {sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
     </div>
   );
@@ -213,6 +213,100 @@ const PersonalTariffs = () => {
   );
 };
 
+const FLAG_LABEL: Record<string, string> = { long_search: 'Долго ищем', in_pool: 'В общем пуле', stalled: 'Нет движения', long_ride: 'Долгая поездка', dispute: 'Спор' };
+
+/** Диспетчерский экран: активные заказы такси, у кого, что не так; ручное назначение; метрики распределения. Только реальные данные. */
+const Dispatch = () => {
+  const [b, setB] = useState<any>(null); const [m, setM] = useState<any>(null);
+  const [sel, setSel] = useState<string | null>(null); const [log, setLog] = useState<any>(null);
+  const [driver, setDriver] = useState(''); const [note, setNote] = useState('');
+  const load = useCallback(async () => {
+    const r = await get<any>('/dispatch/board'); if (r.ok) setB(r.data); else bad(r);
+    const mm = await get<any>('/dispatch/metrics?hours=24'); if (mm.ok) setM(mm.data);
+  }, []);
+  useEffect(() => { void load(); const t = setInterval(() => void load(), 10000); return () => clearInterval(t); }, [load]);
+  const open = async (id: string) => { setSel(id); setLog(null); const r = await get<any>(`/dispatch/orders/${id}/log`); if (r.ok) setLog(r.data); };
+  const assign = async () => {
+    if (!sel) return;
+    const r = await send('POST', `/dispatch/orders/${sel}/assign`, { driverId: driver.trim(), note }); if (!r.ok) return bad(r);
+    flash('Водитель назначен'); setDriver(''); setNote(''); void load(); void open(sel);
+  };
+  if (!b) return <div style={{ color: C.t3 }}>Загрузка…</div>;
+  const o = sel ? b.orders.find((x: any) => x.id === sel) : null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ ...box, fontSize: 13, color: C.t2 }}>
+        {`Режим: ${b.mode === 'offers' ? 'предложения по очереди' : 'общий пул'} · активных заказов: ${b.orders.length} · проблемных: ${b.problems}`}
+        {` · водителей на линии: ${Object.entries(b.onlineDrivers).map(([c, n]) => `${c} — ${n}`).join(', ') || 'нет'}`}
+        <div style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>Режим и сроки меняются на вкладке «Тарифы и настройки» (право go_finance). В «общем пуле» заказ видят все подходящие водители города.</div>
+      </div>
+      {m && <div style={{ ...box, fontSize: 13, color: C.t2 }}>
+        {`За ${m.hours} ч: предложений ${m.offers.total} (приняты ${m.offers.accepted ?? 0}, отказ ${m.offers.declined ?? 0}, без ответа ${m.offers.expired ?? 0}) · доля принятых: ${m.offers.acceptRate ?? '—'}${m.offers.acceptRate != null ? ' %' : ''}`}
+        {` · заказов ${m.orders.created}, без водителя ${m.orders.noDrivers}, ушло в пул ${m.orders.pooled} · до назначения в среднем: ${m.orders.avgSecondsToAssign != null ? `${m.orders.avgSecondsToAssign} с` : '—'}`}
+      </div>}
+      {!b.orders.length && <div style={{ ...box, color: C.t3 }}>Активных заказов такси нет.</div>}
+      {b.orders.map((x: any) => (
+        <button key={x.id} onClick={() => void open(x.id)} style={{ ...box, textAlign: 'left', cursor: 'pointer', borderColor: x.flags.length ? C.red : C.brd, color: C.t1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><b>{STATUS_LABEL[x.status] ?? x.status}</b><span translate="no" style={{ color: C.t2, fontSize: 12 }}>{x.city} · {x.priceRub} ₽ · {x.ageMin} мин</span></div>
+          <div translate="no" style={{ fontSize: 12.5, color: C.t2 }}>{x.from} → {x.to}</div>
+          <div style={{ fontSize: 12, color: C.t3 }}>{x.executorName ? `Водитель: ${x.executorName}` : x.offeredTo ? 'Предложено водителю, ждём ответ' : 'Водитель не назначен'}{x.offers ? ` · предложений: ${x.offers}` : ''}</div>
+          {x.flags.length > 0 && <div style={{ fontSize: 12, color: C.red }}>{x.flags.map((f: string) => FLAG_LABEL[f] ?? f).join(' · ')}</div>}
+        </button>))}
+      {o && (
+        <div style={box}>
+          <b style={{ color: C.t1 }}>Заказ</b> <span translate="no" style={{ fontSize: 12, color: C.t3 }}>{o.id}</span>
+          {o.status === 'searching' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: C.t3 }}>Назначить вручную: укажите id профиля водителя (на линии, с активным кабинетом). Причина обязательна и попадает в журнал.</div>
+              <input translate="no" style={inp} placeholder="id профиля водителя (acc-…)" value={driver} onChange={(e) => setDriver(e.target.value)} />
+              <input style={inp} placeholder="Причина (например, клиент позвонил)" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
+              <button style={btn()} disabled={driver.trim().length < 3 || note.trim().length < 3} onClick={() => void assign()}>Назначить</button>
+            </div>)}
+          {log && (
+            <div style={{ marginTop: 10, fontSize: 12.5, color: C.t2 }}>
+              <b style={{ color: C.t1 }}>Предложения</b>
+              {!log.offers.length && <div style={{ color: C.t3 }}>Предложений не было.</div>}
+              {log.offers.map((f: any, i: number) => <div key={i} translate="no">{`${f.rank}. ${f.driverId} — ${f.status}, ${f.reasons?.km ?? '?'} км, балл ${f.score}`}</div>)}
+              <b style={{ color: C.t1, display: 'block', marginTop: 6 }}>Журнал решений</b>
+              {log.log.map((l: any, i: number) => <div key={i} translate="no">{`${new Date(l.at).toLocaleTimeString('ru-RU')} · ${l.event}`}</div>)}
+            </div>)}
+        </div>)}
+    </div>
+  );
+};
+
+/** Распределение заказов такси и срок действия расчёта (право go_finance). Значения по умолчанию — в server/godispatch.mjs. */
+const DispatchSettings = ({ d, save }: { d: any; save: (key: string, value: unknown) => Promise<void> }) => {
+  const s = d.settings ?? {};
+  const field = (key: string, label: string, def: number, hint: string) => (
+    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, color: C.t2 }}>
+      <span style={{ width: 230 }}>{label}</span>
+      <input defaultValue={s[key] ?? def} style={{ ...inp, width: 80 }} inputMode="numeric" onBlur={(e) => { const n = Number(e.target.value); if (Number.isFinite(n) && n !== (s[key] ?? def)) void save(key, n); }} />
+      <span style={{ fontSize: 12, color: C.t3 }}>{hint}</span>
+    </label>);
+  return (
+    <div style={box}>
+      <b style={{ color: C.t1 }}>Распределение заказов такси и расчёт цены</b> <span style={{ fontSize: 12, color: C.t3 }}>(право go_finance)</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, color: C.t2 }}>
+          <span style={{ width: 230 }}>Режим</span>
+          <select style={inp} value={s.dispatch_mode ?? 'pool'} onChange={(e) => void save('dispatch_mode', e.target.value)}>
+            <option value="pool">Общий пул (заказ видят все водители города)</option>
+            <option value="offers">Предложения по очереди (ближайшему, затем следующему)</option>
+          </select>
+        </label>
+        {field('dispatch_offer_sec', 'Время на ответ водителя, с', 25, '10–120')}
+        {field('dispatch_max_offers', 'Сколько водителей попробовать', 5, '1–20; потом заказ уходит в общий пул')}
+        {field('dispatch_radius_km', 'Радиус поиска от точки подачи, км', 15, '1–200')}
+        {field('dispatch_presence_fresh_sec', 'Связь считается потерянной через, с', 300, '30–3600 без обновления положения')}
+        {field('dispatch_search_timeout_min', 'Отменять поиск через, мин', 20, '0 — не отменять; 1–240')}
+        {field('quote_ttl_sec', 'Срок действия расчёта цены, с', 600, '60–3600')}
+        <div style={{ fontSize: 12, color: C.t3 }}>Алгоритм: расстояние до подачи, поправка за недавние отказы и пропуски и небольшая поправка за простой. Класс автомобиля и зоны внутри города пока не учитываются — в данных исполнителей их нет.</div>
+      </div>
+    </div>
+  );
+};
+
 const Tariffs = () => {
   const [d, setD] = useState<any>(null);
   const load = useCallback(async () => { const r = await get<any>('/settings'); if (r.ok) setD(r.data); else bad(r); }, []);
@@ -228,6 +322,7 @@ const Tariffs = () => {
   const setRole = async (role: string, code: string) => { const r = await send('PUT', '/role-tariff', { role, code }); if (!r.ok) return bad(r); flash('Сохранено'); void load(); };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <DispatchSettings d={d} save={saveSetting} />
       <div style={box}>
         <b style={{ color: C.t1 }}>Тарифы подписки</b> <span style={{ fontSize: 12, color: C.t3 }}>(право go_finance; без автосписаний)</span>
         {d.tariffs.map((t: any) => (

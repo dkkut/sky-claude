@@ -3,6 +3,8 @@ import { rateLimit } from './../security.mjs';
 import * as reg from './../goreg.mjs';
 import * as adm from './../goadmin.mjs';
 import * as org from './../goorg.mjs';
+import * as dispatch from './../godispatch.mjs';
+import { describe as describeMachine } from './../gostate.mjs';
 import * as work from './../gowork.mjs';
 import { can } from './../admin.mjs';
 
@@ -15,7 +17,7 @@ export const goAdminRoutes = async (req, res, url) => {
   const u = new URL(req.url, 'http://x');
   const path = u.pathname;
   if (!rateLimit(`go:adm:${me}`, 200)) return json(res, 429, { error: 'rate_limited' });
-  const code = (r) => (r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : r.error === 'bad_transition' || r.error === 'bad_state' ? 409 : 400);
+  const code = (r) => (r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : ['bad_transition', 'bad_state', 'driver_busy'].includes(r.error) ? 409 : 400);
   const reply = (r) => (r.error ? json(res, code(r), r) : json(res, 200, r));
   let m;
 
@@ -64,6 +66,11 @@ export const goAdminRoutes = async (req, res, url) => {
     const text = String(b.note ?? '').trim().slice(0, 300); if (text.length < 3) return json(res, 400, { error: 'note_required' });
     return reply(await org.resolveProblemCore({ problemId: m[1], orderId: rows[0].order_id, actorId: me, action: b.action, text }));
   }
+  if (req.method === 'GET' && path === '/api/admin/go/dispatch/board') return reply(await dispatch.board(me));
+  if (req.method === 'GET' && path === '/api/admin/go/dispatch/metrics') return reply(await dispatch.metrics(me, u.searchParams.get('hours')));
+  if ((m = path.match(/^\/api\/admin\/go\/dispatch\/orders\/([\w-]+)\/log$/)) && req.method === 'GET') return reply(await dispatch.orderDispatchLog(me, m[1]));
+  if ((m = path.match(/^\/api\/admin\/go\/dispatch\/orders\/([\w-]+)\/assign$/)) && req.method === 'POST') { const b = (await parseBody(req)) ?? {}; return reply(await dispatch.manualAssign(me, m[1], String(b.driverId ?? ''), b.note)); }
+  if (req.method === 'GET' && path === '/api/admin/go/state-machine') return (await can(me, 'go')) ? json(res, 200, { taxi: describeMachine('taxi'), delivery: describeMachine('delivery') }) : json(res, 403, { error: 'not_allowed' });
   if (req.method === 'GET' && path === '/api/admin/go/integrations') return reply(await adm.integrations(me));
   return json(res, 404, { error: 'not_found' });
 };

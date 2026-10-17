@@ -72,6 +72,8 @@ import { goRoutes } from './routes/go.mjs';
 import { goAdminRoutes } from './routes/goadmin.mjs';
 import { sweepExpired as goSweepExpired } from './gosubs.mjs';
 import { sweepOrgs } from './goorg.mjs';
+import { sweepDispatch } from './godispatch.mjs';
+import { sweepQuotes } from './gopricing.mjs';
 import { sweepFuel as goSweepFuel } from './gofuel.mjs';
 import { sweepStay as goSweepStay } from './gostay.mjs';
 import { runWithSession } from './reqctx.mjs';
@@ -466,6 +468,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
 let signalHub = null;
 let houseKeeping = null;
 let bloxSchedule;
+let goDispatchSchedule;
 let analyticsSchedule;
 let botRetry = null;
 let notifyDispatch = null;
@@ -568,6 +571,14 @@ const start = async () => {
     } catch (err) { console.error('[blox] фон', err.message); }
   }, 60 * 1000);
   bloxSchedule.unref();
+  // Предложения водителям живут секунды, поэтому распределение проверяется часто (а не раз в час, как остальная уборка).
+  let dispatchBusy = false;
+  goDispatchSchedule = setInterval(async () => {
+    if (dispatchBusy) return;
+    dispatchBusy = true;
+    try { await sweepDispatch(); } catch (e) { console.error('[go] распределение:', e.message); } finally { dispatchBusy = false; }
+  }, 10 * 1000);
+  goDispatchSchedule.unref();
 
   // Мониторинг: раз в минуту замер «сколько онлайн» и сохранение активных за день.
   analyticsSchedule = setInterval(() => { sampleOnce().catch((err) => console.error('[analytics] замер', err.message)); }, 60 * 1000);
@@ -689,6 +700,7 @@ const start = async () => {
       await sweepGameSessions();
       await goSweepExpired().catch(() => {});
       await sweepOrgs().catch(() => {});
+      await sweepQuotes();
       await goSweepFuel().catch(() => {});
       await goSweepStay().catch(() => {});
       const staleRequests = await sweepPendingActions();

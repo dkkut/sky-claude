@@ -13,6 +13,7 @@ import { clean, getSetting, setSetting, goLog, ROLES } from './gocore.mjs';
 import { orderView, resolveDispute } from './gopay.mjs';
 import * as stay from './gostay.mjs';
 import { cargoTariff } from './godelivery.mjs';
+import { tariffVersion } from './gopricing.mjs';
 
 const KEYS = {
   cities: (v) => Array.isArray(v) && v.length >= 1 && v.length <= 200 && v.every((x) => typeof x === 'string' && x.trim().length >= 2 && x.length <= 60) ? v.map((x) => x.trim()) : null,
@@ -44,6 +45,13 @@ const KEYS = {
     }
     return { base: n(v.base), perKm: n(v.perKm), minRub: n(v.minRub), loaderRub: n(v.loaderRub), bodies };
   },
+  dispatch_mode: (v) => (v === 'offers' || v === 'pool' ? v : null),
+  dispatch_offer_sec: (v) => (Number.isFinite(Number(v)) && Number(v) >= 10 && Number(v) <= 120 ? Math.round(Number(v)) : null),
+  dispatch_max_offers: (v) => (Number.isFinite(Number(v)) && Number(v) >= 1 && Number(v) <= 20 ? Math.round(Number(v)) : null),
+  dispatch_search_timeout_min: (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 240 ? Math.round(Number(v)) : null),
+  dispatch_presence_fresh_sec: (v) => (Number.isFinite(Number(v)) && Number(v) >= 30 && Number(v) <= 3600 ? Math.round(Number(v)) : null),
+  dispatch_radius_km: (v) => (Number.isFinite(Number(v)) && Number(v) >= 1 && Number(v) <= 200 ? Number(v) : null),
+  quote_ttl_sec: (v) => (Number.isFinite(Number(v)) && Number(v) >= 60 && Number(v) <= 3600 ? Math.round(Number(v)) : null),
   payment_terms: (v) => {
     const ok = (x) => ['before', 'after', 'on_accept', 'after_ride', 'after_delivery'].includes(x);
     if (!v || !ok(v.taxi) || !ok(v.food) || !ok(v.delivery)) return null;
@@ -66,8 +74,10 @@ export const putSetting = async (adminId, key, value) => {
   if (!KEYS[key]) return { error: 'bad_key' };
   const v = KEYS[key](value);
   if (v === null) return { error: 'invalid_value' };
+  const was = key === 'taxi_tariffs' ? tariffVersion(await getSetting(key, {})) : null;
   await setSetting(key, v, adminId);
-  await logAdmin({ actorId: adminId, type: 'go_setting', targetType: 'system', targetId: key, detail: JSON.stringify(v).slice(0, 180) });
+  const ver = key === 'taxi_tariffs' ? ` · версия тарифа ${was} → ${tariffVersion(v)}` : '';
+  await logAdmin({ actorId: adminId, type: 'go_setting', targetType: 'system', targetId: key, detail: (JSON.stringify(v).slice(0, 140) + ver).slice(0, 220) });
   await goLog(adminId, 'setting', key, {});
   return { ok: true };
 };

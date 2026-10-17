@@ -451,6 +451,9 @@ const handle = (data: any) => {
     case 'go:order':
       emitGoOrder(payload?.orderId, payload?.status);
       break;
+    case 'go:offer':   // водителю предложили заказ — список заказов перечитывается сразу
+      emitGoOrder(payload?.orderId, 'offer');
+      break;
 
     /* ── Игровые серверы: сообщения каналов и перемены на сервере ── */
     case 'gs:message':

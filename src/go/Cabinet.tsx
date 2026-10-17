@@ -1,5 +1,6 @@
 /** Sky GO: кабинеты исполнителей. Подписка и реквизиты — общие блоки; заказы и меню — по роли. */
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useGoLive } from './live';
 import { goApi, ROLE_LABEL, type GoRole } from './api';
 import { Btn, Card, Chip, Col, Empty, Input, Notice, fail, fmt, locate, useLoad, C } from './ui';
 import { OrderRow } from './Orders';
@@ -55,9 +56,22 @@ export const PayDetailsCard = () => {
   );
 };
 
+/** Обратный отсчёт предложения. Время ответа решает сервер; здесь только показ — по окончании список перечитывается. */
+const OfferTimer = ({ secondsLeft, onEnd }: { secondsLeft: number; onEnd: () => void }) => {
+  const [left, setLeft] = useState(secondsLeft);
+  useEffect(() => { setLeft(secondsLeft); }, [secondsLeft]);
+  useEffect(() => {
+    if (left <= 0) { onEnd(); return undefined; }
+    const t = setTimeout(() => setLeft((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [left, onEnd]);
+  return <Chip color={left <= 5 ? '#ef4444' : '#8b5cf6'}>{`Предложено вам · осталось ${Math.max(0, left)} с`}</Chip>;
+};
+
 const AvailableList = ({ role, onOpen }: { role: 'taxi_driver' | 'courier'; onOpen: (id: string) => void }) => {
-  const [res, reload] = useLoad(() => (role === 'taxi_driver' ? goApi.taxiAvailable() : goApi.deliveryAvailable()), [role], 7000);
+  const [res, reload] = useLoad(() => (role === 'taxi_driver' ? goApi.taxiAvailable() : goApi.deliveryAvailable()), [role], role === 'taxi_driver' ? 4000 : 7000);
   const [busy, setBusy] = useState('');
+  useGoLive(useCallback(() => reload(), [reload]));   // «go:offer» / «go:order» — перечитать сразу, не ждать опроса
   if (!res) return <Empty text="Загрузка…" />;
   if (!res.ok) return <Notice tone="warn">{res.error === 'offline' ? 'Выйдите на линию, чтобы видеть заказы.' : res.error === 'subscription_required' ? 'Подписка не активна — новые заказы закрыты.' : res.reason ?? 'Не удалось загрузить заказы.'}</Notice>;
   const list = res.data!.orders;
@@ -71,7 +85,11 @@ const AvailableList = ({ role, onOpen }: { role: 'taxi_driver' | 'courier'; onOp
       {o.cargo && <Chip color="#f59e0b">Грузовой: кузов {String(o.cargo.body).toUpperCase()}, грузчиков {o.cargo.loaders}</Chip>}
       {o.parcel && <div translate="no" style={{ fontSize: 13, color: C.t2 }}>{o.parcel.description} · {o.parcel.size?.toUpperCase()} · {o.parcel.weightKg} кг</div>}
       {o.distanceToPickupKm != null && <div style={{ fontSize: 12.5, color: C.t3 }}>До места забора {o.distanceToPickupKm} км</div>}
-      <Btn busy={busy === o.id} onClick={() => accept(o.id)}>Принять заказ</Btn>
+      {o.offer && <OfferTimer secondsLeft={o.offer.secondsLeft} onEnd={reload} />}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Btn busy={busy === o.id} onClick={() => accept(o.id)} style={{ flex: 1 }}>Принять заказ</Btn>
+        {o.offer && role === 'taxi_driver' && <Btn kind="soft" onClick={async () => { setBusy(o.id); const r = await goApi.taxiDecline(o.id); setBusy(''); if (!r.ok) fail(r); reload(); }} style={{ flex: 1 }}>Отказаться</Btn>}
+      </div>
     </Col></Card>))}</>;
 };
 

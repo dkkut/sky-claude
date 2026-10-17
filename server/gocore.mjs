@@ -11,6 +11,7 @@ import { notifyGift } from './giftnotify.mjs';
 import { pushToOffline } from './webpush.mjs';
 import { pushGoEvent } from './signal.mjs';
 import { computeRoute, isRealPoint, geocode } from './maps.mjs';
+import { transitionAllowed } from './gostate.mjs';
 
 export const newId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
 
@@ -138,6 +139,8 @@ export const lockOrder = async (client, id) => {
 
 /** Смена статуса: запись в истории и обновление строки — вместе. extra — дополнительные колонки. */
 export const setStatus = async (client, order, to, actorId, note = '', extra = {}) => {
+  // Единая таблица переходов (gostate.mjs): недопустимый переход — ошибка программы, откат транзакции, а не тихая запись.
+  if (!transitionAllowed(order.kind, order.status, to)) throw Object.assign(new Error(`bad_transition ${order.kind}: ${order.status} → ${to}`), { goError: 'bad_transition' });
   const sets = ['status = $2', 'updated_at = now()'];
   const args = [order.id, to];
   for (const [col, val] of Object.entries(extra)) {
