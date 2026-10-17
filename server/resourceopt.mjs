@@ -288,6 +288,7 @@ export const overview = async () => {
     process: { rssMb: Math.round(process.memoryUsage().rss / 1048576), heapMb: Math.round(process.memoryUsage().heapUsed / 1048576), uptimeSec: Math.round(process.uptime()), cores: os.cpus().length, machineMemMb: Math.round(os.totalmem() / 1048576), cgroup: cgroupMem() },
     database: { queriesTotal: dq, queriesPerMin: +(dq / upMin).toFixed(1), avgMs: dq ? +(dbStats.totalMs / dq).toFixed(1) : 0, errors: dbStats.errors, pool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount, max: pool.options?.max ?? null }, slowThresholdMs: dbStats.slowMs },
     slowQueries: [...dbStats.slow].reverse().slice(0, 20),
+    topQueries: [...dbStats.top].sort((a, b) => b[1].n - a[1].n).slice(0, 15).map(([sql, v]) => ({ sql: sql.replace(/'(?:[^']|'')*'/g, "'?'"), count: v.n, avgMs: +(v.ms / v.n).toFixed(2), totalMs: Math.round(v.ms) })),
     requests: m?.requests ?? null, warnings: m ? warningsFor(m) : [], causes: causes(sm, st), events: await recentEvents(50),
     containers: 'Показан только процесс API: из него видны его собственные cgroup-пределы. Остальные контейнеры — `docker stats` на сервере.',
   };

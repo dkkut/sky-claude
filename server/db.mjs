@@ -28,7 +28,7 @@ pool.on('error', (err) => {
 
 /* Лёгкий учёт запросов для Sky Resource Optimizer: счётчик, суммарное время и кольцо медленных запросов.
    В журнал идёт только форма запроса (литералы и числа заменены на «?»), параметры и данные не сохраняются. */
-export const dbStats = { total: 0, totalMs: 0, errors: 0, slow: [], since: Date.now(), slowMs: Number(process.env.DB_SLOW_MS) || 300 };
+export const dbStats = { total: 0, totalMs: 0, errors: 0, slow: [], top: new Map(), since: Date.now(), slowMs: Number(process.env.DB_SLOW_MS) || 300 };
 const shape = (t) => String(t).replace(/'(?:[^']|'')*'/g, "'?'").replace(/\b\d+(?:\.\d+)?\b/g, '?').replace(/\s+/g, ' ').trim().slice(0, 220);
 export const query = async (text, params) => {
   const t0 = Date.now();
@@ -39,6 +39,9 @@ export const query = async (text, params) => {
   } finally {
     const ms = Date.now() - t0;
     dbStats.total += 1; dbStats.totalMs += ms;
+    // Самые частые формы запросов (ключ — начало текста без пробелов; не больше 400 разных, остальные не учитываются).
+    { const k = (typeof text === 'string' ? text : text?.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 110);
+      const e = dbStats.top.get(k); if (e) { e.n += 1; e.ms += ms; } else if (dbStats.top.size < 400) dbStats.top.set(k, { n: 1, ms }); }
     if (ms >= dbStats.slowMs) {
       dbStats.slow.push({ at: new Date().toISOString(), ms, sql: shape(typeof text === 'string' ? text : text?.text ?? '') });
       if (dbStats.slow.length > 50) dbStats.slow.shift();

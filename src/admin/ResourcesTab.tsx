@@ -121,6 +121,13 @@ export const ResourcesTab = () => {
           (d.slowQueries as D[]).map((q, i) => <p key={i} className="break-all text-[11px]" style={{ color: C.t2 }}><b>{q.ms} мс</b> · {dt(q.at)} · <span translate="no">{q.sql}</span></p>)}
       </Card>
 
+      <Card title="Самые частые запросы к базе (с запуска)">
+        {(d.topQueries as D[] | undefined)?.length ? (d.topQueries as D[]).map((q, i) => (
+          <p key={i} className="break-all text-[11px]" style={{ color: C.t2 }}><b>{q.count}×</b> · {q.avgMs} мс · <span translate="no">{q.sql}</span></p>
+        )) : <p className="text-xs" style={{ color: C.t3 }}>Данных пока нет.</p>}
+        <p className="text-[11px]" style={{ color: C.t3 }}>Помогает найти повторяющиеся запросы и кандидатов на кэш. Показывается только форма запроса, без значений.</p>
+      </Card>
+
       <Card title="Место по категориям">
         <button type="button" disabled={scanning} onClick={() => void scan()} className="rounded-xl px-3 py-1.5 text-xs font-bold disabled:opacity-40" style={{ background: C.l2, color: C.t1, border: `1px solid ${C.brd}` }}>
           {scanning ? 'Считаю…' : 'Посчитать'}
