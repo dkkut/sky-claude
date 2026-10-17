@@ -1,0 +1,41 @@
+// Состояние автомобиля Sky Car: «едет / стоит / неизвестно» (src/interface/car/driveLogic.ts, без браузера).
+import { initialDrive, onFix, onTick, mayShowVideo, DRIVING_MPS, STILL_HOLD_MS, SIGNAL_LOST_MS, FIX_MAX_AGE_MS } from '../../src/interface/car/driveLogic.ts';
+let ok = 0, bad = 0;
+const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
+let m = initialDrive();
+t('начальное состояние — неизвестно, видео закрыто', m.state === 'unknown' && !mayShowVideo(m.state));
+m = onFix(m, 0, 0);
+t('первый замер «стоит» ещё не «стоит» (нужна выдержка)', m.state === 'unknown' && !mayShowVideo(m.state));
+m = onFix(m, 0.1, STILL_HOLD_MS - 1);
+t('почти выдержка — всё ещё закрыто', !mayShowVideo(m.state));
+m = onFix(m, 0.1, STILL_HOLD_MS);
+t('выдержка набрана — «стоит», видео доступно', m.state === 'parked' && mayShowVideo(m.state));
+m = onFix(m, DRIVING_MPS, STILL_HOLD_MS + 1000);
+t('скорость ≥ 2 м/с — сразу «едет», видео закрыто', m.state === 'driving' && !mayShowVideo(m.state));
+m = onFix(m, 0.2, STILL_HOLD_MS + 2000);
+t('после движения одной остановки мало — выдержка заново', m.state === 'driving' && !mayShowVideo(m.state));
+m = onFix(m, 0.2, STILL_HOLD_MS * 2 + 2000);
+t('снова выдержка — «стоит»', m.state === 'parked');
+m = onFix(m, 1.2, STILL_HOLD_MS * 2 + 3000);
+t('ползёт 1,2 м/с после стоянки — остаёмся «стоит» (парковка), но выдержка сброшена', m.state === 'parked' && m.stillSince === null);
+m = onFix(m, DRIVING_MPS + 3, STILL_HOLD_MS * 2 + 4000);
+t('разгон — «едет»', m.state === 'driving');
+// сигнал
+let p = initialDrive(); p = onFix(p, 0, 0); p = onFix(p, 0, STILL_HOLD_MS); 
+t('стоит', p.state === 'parked');
+let q = onTick(p, STILL_HOLD_MS + FIX_MAX_AGE_MS + 1);
+t('замеры устарели (>15 с) — «неизвестно», видео закрыто', q.state === 'unknown' && !mayShowVideo(q.state));
+q = onTick(p, STILL_HOLD_MS + 1000);
+t('свежие замеры — остаёмся «стоит»', q.state === 'parked');
+let d = initialDrive(); d = onFix(d, DRIVING_MPS, 0);
+d = onTick(d, SIGNAL_LOST_MS + 1);
+t('едет, потом пропал сигнал — «неизвестно» (не «стоит»)', d.state === 'unknown');
+t('устройство не отдаёт скорость (null) — «неизвестно»', onFix(initialDrive(), null, 0).state === 'unknown');
+t('мусорная скорость (NaN, отрицательная) — «неизвестно»', onFix(initialDrive(), NaN, 0).state === 'unknown' && onFix(initialDrive(), -3, 0).state === 'unknown');
+// безопасность: из «неизвестно» нельзя попасть в «стоит» без выдержки
+let u = initialDrive();
+u = onFix(u, null, 0); u = onFix(u, 0, 1000);
+t('после «неизвестно» одиночный нулевой замер не открывает видео', !mayShowVideo(u.state));
+t('видео доступно ТОЛЬКО в состоянии parked', mayShowVideo('parked') && !mayShowVideo('driving') && !mayShowVideo('unknown'));
+console.log(`\n${bad ? 'ПРОВАЛЕНО' : 'Все проверки пройдены'}: ok=${ok} fail=${bad}`);
+process.exit(bad ? 1 : 0);

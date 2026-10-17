@@ -4,17 +4,19 @@
    касания, читаемость, минимум отвлечения), но со своим стилем Sky.
    НЕ Apple CarPlay и не Android Auto — интеграции с ними нет.
    Слева — панель разделов, справа — содержимое; управление музыкой
-   всегда под рукой. Видео и свободный набор текста за рулём
-   намеренно отсутствуют.
+   всегда под рукой. Видео и чтение открыты, только когда автомобиль
+   стоит (driveLogic.ts); свободного набора текста за рулём нет.
 =========================================================== */
 import { useEffect, useState } from 'react';
-import { Home, Music2, Mic2, MessageCircle, Sparkles, Users, LogOut } from 'lucide-react';
+import { Home, Music2, Mic2, MessageCircle, Sparkles, Users, LogOut, Clapperboard, BookOpen } from 'lucide-react';
 import { setCarMode } from './useCarMode';
 import { CarHome } from './CarHome';
 import { CarMusic } from './CarMusic';
 import { CarPodcasts } from './CarPodcasts';
 import { CarMessenger } from './CarMessenger';
 import { CarAI } from './CarAI';
+import { CarCinema } from './CarCinema';
+import { CarBooks } from './CarBooks';
 import { CarNowBar, CarFullPlayer, useCarNow } from './CarNow';
 import { CAR_ACCENT, CAR_BG, CAR_BLUR, CAR_GLASS, CAR_GLASS_BORDER } from './carTheme';
 import { NetBanner } from '@/shared/NetBanner';
@@ -29,12 +31,14 @@ import { usePlayer as usePodcastPlayer } from '@/podcasts/playerStore';
 
 export { CAR_BG, CAR_GLASS, CAR_GLASS_BORDER, CAR_BLUR } from './carTheme';
 
-export type CarScreen = 'home' | 'music' | 'podcasts' | 'messenger' | 'ai';
+export type CarScreen = 'home' | 'music' | 'podcasts' | 'cinema' | 'books' | 'messenger' | 'ai';
 
 const DOCK: { key: CarScreen; label: string; icon: typeof Home }[] = [
   { key: 'home', label: 'Главная', icon: Home },
   { key: 'music', label: 'Музыка', icon: Music2 },
   { key: 'podcasts', label: 'Подкасты', icon: Mic2 },
+  { key: 'cinema', label: 'Кино', icon: Clapperboard },
+  { key: 'books', label: 'Книги', icon: BookOpen },
   { key: 'messenger', label: 'Сообщения', icon: MessageCircle },
   { key: 'ai', label: 'Sky AI', icon: Sparkles },
 ];
@@ -93,6 +97,8 @@ export const CarShell = () => {
           {screen === 'home' && <CarHome now={now} onOpen={setScreen} />}
           {screen === 'music' && <CarMusic />}
           {screen === 'podcasts' && <div className="h-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}><CarPodcasts /></div>}
+          {screen === 'cinema' && <CarCinema />}
+          {screen === 'books' && <CarBooks />}
           {screen === 'messenger' && <CarMessenger />}
           {screen === 'ai' && <CarAI />}
         </div>
