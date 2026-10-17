@@ -1,4 +1,5 @@
 /** Sky GO: оболочка раздела. Нижняя навигация: Главная / Заказы / Работа / Профиль. */
+import { NotifyPrefs, MySupport, SupportForm } from './Support';
 import { useRef, useState } from 'react';
 import { Car, UtensilsCrossed, Package, Plane, Fuel, Home, ClipboardList, Briefcase, User, LifeBuoy, BedDouble, Map as MapIcon, Hotel } from 'lucide-react';
 import { goApi, ROLE_LABEL, STAY_LABEL, type GoRole, type StayKind } from './api';
@@ -205,6 +206,9 @@ const ProfileTab = ({ executors }: { executors: any[] }) => {
       {executors.length > 0 && <Card><div style={{ fontWeight: 800, color: C.t1, marginBottom: 6 }}>Мои роли</div>
         {executors.map((e) => <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', color: C.t1, fontSize: 14 }}>{ROLE_LABEL[e.role as GoRole]}<StatusChip s={e.status} /></div>)}</Card>}
       <PayDetailsCard />
+      <NotifyPrefs />
+      <MySupport />
+      <SupportForm />
       <Card><div style={{ display: 'flex', gap: 10, alignItems: 'center', color: C.t1 }}><LifeBuoy size={20} color={GO} />
         <div style={{ fontSize: 14 }}>Проблема с заказом? Откройте заказ → «Проблема с заказом». По остальным вопросам — Профиль → Техническая поддержка.</div></div></Card>
     </Col>

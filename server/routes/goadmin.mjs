@@ -4,6 +4,7 @@ import * as reg from './../goreg.mjs';
 import * as adm from './../goadmin.mjs';
 import * as org from './../goorg.mjs';
 import { reconcile } from './../goreconcile.mjs';
+import * as gosupport from './../gosupport.mjs';
 import * as dispatch from './../godispatch.mjs';
 import { describe as describeMachine } from './../gostate.mjs';
 import * as work from './../gowork.mjs';
@@ -67,6 +68,7 @@ export const goAdminRoutes = async (req, res, url) => {
     const text = String(b.note ?? '').trim().slice(0, 300); if (text.length < 3) return json(res, 400, { error: 'note_required' });
     return reply(await org.resolveProblemCore({ problemId: m[1], orderId: rows[0].order_id, actorId: me, action: b.action, text }));
   }
+  if (req.method === 'GET' && path === '/api/admin/go/support') return reply(await gosupport.adminList(me, { category: u.searchParams.get('category'), status: u.searchParams.get('status') }));
   if (req.method === 'GET' && path === '/api/admin/go/reconcile') return reply(await reconcile(me));
   if (req.method === 'GET' && path === '/api/admin/go/dispatch/board') return reply(await dispatch.board(me));
   if (req.method === 'GET' && path === '/api/admin/go/dispatch/metrics') return reply(await dispatch.metrics(me, u.searchParams.get('hours')));

@@ -85,7 +85,10 @@ export const notifyGo = async (userId, kind, title, body, refId = null, dedupe =
     if (!rowCount) return;
   }
   try { await notifyGift(userId, `go_${kind}`, clean(title, 120), clean(body, 300), refId); } catch { /* уведомление — не повод откатывать действие */ }
-  try { await pushToOffline([userId], { title, body, url: '/?go=1', tag: `go:${refId ?? kind}` }); } catch { /* пуши не настроены */ }
+  try {
+    const { pushAllowed } = await import('./gosupport.mjs');
+    if (await pushAllowed(userId, kind, dedupe)) await pushToOffline([userId], { title, body, url: '/?go=1', tag: `go:${refId ?? kind}` });
+  } catch { /* пуши не настроены */ }
 };
 
 /** Сообщить открытым экранам, что заказ изменился: они перечитают его с сервера (сокет — ускорение, опрос остаётся запасом). */

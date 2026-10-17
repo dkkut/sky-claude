@@ -4,6 +4,7 @@ import { Car, UtensilsCrossed, Package, Copy, BedDouble } from 'lucide-react';
 import { goApi, STATUS_LABEL, type GoOrder } from './api';
 import { Back, Btn, Card, Chip, Col, Empty, Input, Notice, fail, fmt, useLoad, C, GO } from './ui';
 import { flash } from '@/shared/flash';
+import { SupportForm } from './Support';
 
 const KIND = { taxi: { Icon: Car, label: 'Такси' }, food: { Icon: UtensilsCrossed, label: 'Еда' }, delivery: { Icon: Package, label: 'Доставка' }, stay: { Icon: BedDouble, label: 'Жильё и отдых' } };
 const label = (s: string, kind?: string) => (s === 'searching' && kind && kind !== 'taxi' ? 'Ищем курьера' : s === 'assigned' && kind && kind !== 'taxi' ? 'Курьер назначен' : STATUS_LABEL[s] ?? s);
@@ -71,7 +72,7 @@ export const OrdersTab = ({ onOpen }: { onOpen: (id: string) => void }) => {
 export const OrderScreen = ({ id, onBack }: { id: string; onBack: () => void }) => {
   const [res, reload] = useLoad(() => goApi.order(id), [id], 5000);
   const [busy, setBusy] = useState(false);
-  const [dispute, setDispute] = useState('');
+  const [dispute, setDispute] = useState(''); const [showSupport, setShowSupport] = useState(false);
   const [showDispute, setShowDispute] = useState(false);
   const [code, setCode] = useState('');
   const [codeFor, setCodeFor] = useState<string | null>(null);
@@ -200,6 +201,7 @@ export const OrderScreen = ({ id, onBack }: { id: string; onBack: () => void }) 
             </Card>
           ) : <Btn kind="soft" onClick={() => setShowDispute(true)}>Проблема с заказом</Btn>
         )}
+        {(o.role === 'customer' || o.role === 'executor') && (showSupport ? <SupportForm orderId={o.id} onDone={() => setShowSupport(false)} /> : <Btn kind="soft" onClick={() => setShowSupport(true)}>Написать в поддержку</Btn>)}
         {o.status === 'dispute' && <Notice tone="warn">Открыт спор. Решение примет администрация Sky; вы получите уведомление.</Notice>}
       </Col>
     </>

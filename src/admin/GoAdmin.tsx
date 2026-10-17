@@ -18,18 +18,18 @@ const get = <T,>(p: string) => apiCall<T>(`${A}${p}`);
 const send = <T,>(m: string, p: string, b: unknown) => apiCall<T>(`${A}${p}`, { method: m, body: JSON.stringify(b) });
 const bad = (r: { error?: string; reason?: string }) => flash(({ not_allowed: 'Недостаточно прав.', note_required: 'Укажите причину.', bad_transition: 'Переход невозможен.', bad_price: 'Неверная цена.' } as Record<string, string>)[r.error ?? ''] ?? goError(r));
 
-type Sub = 'apps' | 'recon' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'tariffs' | 'integrations';
+type Sub = 'apps' | 'support' | 'recon' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'tariffs' | 'integrations';
 
 export const GoAdminTab = () => {
   const [sub, setSub] = useState<Sub>('apps');
   const [ov, setOv] = useState<any>(null);
   useEffect(() => { void get<any>('/overview').then((r) => r.ok && setOv(r.data)); }, [sub]);
-  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['recon', 'Сверка'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
+  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['support', 'Обращения'], ['recon', 'Сверка'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {ov && <div style={{ ...box, fontSize: 13, color: C.t2 }}>Активных подписок: <b style={{ color: C.t1 }}>{ov.activeSubscriptions}</b> · На проверке: <b style={{ color: C.t1 }}>{(ov.executors.submitted ?? 0) + (ov.executors.in_review ?? 0)}</b> · Заказов за 30 дней: <b style={{ color: C.t1 }}>{ov.orders30d.reduce((s: number, r: any) => s + r.n, 0)}</b></div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{TABS.map(([k, t]) => <button key={k} onClick={() => setSub(k)} style={btn(sub === k ? C.acc : C.l2, sub === k ? '#fff' : C.t1)}>{t}</button>)}</div>
-      {sub === 'apps' && <Apps />}{sub === 'dispatch' && <Dispatch />}{sub === 'recon' && <Reconcile />}{sub === 'orgs' && <OrgsPanel />}
+      {sub === 'apps' && <Apps />}{sub === 'dispatch' && <Dispatch />}{sub === 'recon' && <Reconcile />}{sub === 'support' && <SupportList />}{sub === 'orgs' && <OrgsPanel />}
         {sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
     </div>
   );
@@ -209,6 +209,26 @@ const PersonalTariffs = () => {
           <span translate="no">@{t.username} · {ROLE_LABEL[t.role as GoRole]} · {t.priceRub} ₽ / {t.periodDays} дн.{t.note ? ` · ${t.note}` : ''}</span>
           <button onClick={() => save(true, { username: t.username, role: t.role })} style={btn(C.l2, C.t1)}>Сбросить</button>
         </div>))}
+    </div>
+  );
+};
+
+/** Обращения по заказам Sky GO: контекст заказа; сам диалог — в общей очереди «Поддержка». Безопасность — первой. */
+const SupportList = () => {
+  const [d, setD] = useState<any>(null); const [cat, setCat] = useState('');
+  useEffect(() => { void get<any>(`/support${cat ? `?category=${cat}` : ''}`).then((r) => (r.ok ? setD(r.data) : bad(r))); }, [cat]);
+  const CATS: [string, string][] = [['', 'Все'], ['safety', 'Безопасность'], ['ride', 'Поездки'], ['delivery', 'Доставки'], ['payment', 'Оплата'], ['cancel', 'Отмены'], ['executor', 'Исполнитель'], ['customer', 'Заказчик'], ['tech', 'Тех. ошибки'], ['other', 'Другое']];
+  if (!d) return <div style={{ color: C.t3 }}>Загрузка…</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{CATS.map(([k, t]) => <button key={k} onClick={() => setCat(k)} style={btn(cat === k ? C.acc : C.l2, cat === k ? '#fff' : C.t1)}>{t}</button>)}</div>
+      {!d.tickets.length && <div style={{ ...box, color: C.t3 }}>Обращений нет.</div>}
+      {d.tickets.map((t: any) => (
+        <div key={t.ticketId} style={{ ...box, borderColor: t.category === 'safety' && t.status !== 'closed' ? C.red : C.brd }}>
+          <div style={{ color: C.t1, fontSize: 13.5 }}><b>{t.label}</b> · {t.status}</div>
+          <div translate="no" style={{ fontSize: 12, color: C.t3 }}>{t.ticketId}{t.orderId ? ` · заказ ${t.orderId} (${t.orderKind}, ${t.orderStatus})` : ''}</div>
+        </div>))}
+      <div style={{ fontSize: 12, color: C.t3 }}>Переписка и ответы — в общей очереди «Поддержка» (по номеру обращения).</div>
     </div>
   );
 };
