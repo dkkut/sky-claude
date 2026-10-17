@@ -8,6 +8,7 @@ import { query } from './db.mjs';
 import { config } from './config.mjs';
 import { generateId, rateLimit } from './security.mjs';
 import { pushGiftNotification } from './signal.mjs';
+import { rightsOf } from './admin.mjs';
 
 export const MODES = ['requests', 'all'];
 const DEFAULTS = { mode: 'requests', inApp: true, push: true, includeOwn: false, mutedAdmins: [] };
@@ -60,6 +61,26 @@ export const notifyOwnerRequest = async (actorId, title, refId) => {
 export const listAdminsForNotify = async () => {
   const { rows } = await query(`SELECT id, username FROM profiles WHERE is_admin = true ORDER BY username LIMIT 200`);
   return rows.map((r) => ({ id: r.id, username: r.username }));
+};
+
+/**
+ * Квитанция самому администратору: каждое его действие в панели приходит ему же в «Уведомления» (и push, если приложение закрыто) —
+ * в том числе когда он делает его сам. Это журнал для самого человека: чужая сессия под его именем не останется незамеченной.
+ * Не дублируется, если владелец уже получает свои действия по настройке «Мои действия». Предел 40/мин на человека (журнал при этом полный).
+ */
+export const notifyActorSelf = async ({ actorId, type, result, detail, id }) => {
+  try {
+    if (!actorId) return;
+    const t = String(type);
+    if (/^(admin_gate|step_up)/.test(t)) return;
+    if (!(await rightsOf(actorId)).admin) return;
+    const owners = await ownerIds();
+    if (owners.includes(actorId)) { const p = await getPrefs(actorId); if (p.mode === 'all' && p.includeOwn) return; }
+    if (!rateLimit(`selfnote:${actorId}`, 40)) return;
+    const prefs = await getPrefs(actorId);
+    const body = `${t.replace(/_/g, ' ')}${detail ? ` — ${String(detail).slice(0, 120)}` : ''}${result && result !== 'ok' ? ` (${result})` : ''}`;
+    await deliver(actorId, { ...prefs, inApp: true }, 'admin_self', 'Ваше действие в админке', body, id ?? null);
+  } catch { /* уведомление не должно мешать действию */ }
 };
 
 export const notifyOwnerAction = async ({ actorId, type, result, detail, id }) => {

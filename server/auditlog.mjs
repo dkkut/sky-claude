@@ -7,6 +7,10 @@
  */
 import { logEvent } from './skylog.mjs';
 import { clientIp } from './http.mjs';
+import { notifyOwnerAction, notifyActorSelf } from './ownernotify.mjs';
+
+/* Служебные административные запросы, которые действием не считаются (запрос кода, шлюз входа). */
+const NOT_AN_ACTION = /\/(step-up|gate)(\/|$)/;
 
 const SKIP = /^\/api\/(telemetry|platform\/status|auth\/refresh|admin\/logs)|\/(pulse|heartbeat|position|presence|typing|progress|ping|seen|read)(\/|$)/;
 const ID = /^(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,})*|[a-z]{1,6}-[0-9a-z-]{8,}|\d{3,}|[0-9A-Za-z_-]{22,})$/i;
@@ -23,6 +27,12 @@ export const auditRequest = (req, status, ms, ctx) => {
     const parts = route.split('/');
     const service = (isAdmin ? parts[3] : parts[2]) || 'api';
     const result = status >= 500 ? 'error' : status >= 400 ? 'denied' : 'ok';
+    // Страховка для административных запросов, которые не пишут запись через logAdmin: действующий администратор всё равно получает квитанцию
+    // (и владелец — по своим настройкам). Запросы, уже записанные через logAdmin в этом же запросе, повторно не уведомляют.
+    if (isAdmin && ctx?.actor && !ctx.adminLogged && status < 400 && !NOT_AN_ACTION.test(route)) {
+      const a = { actorId: ctx.actor, type: `${req.method.toLowerCase()}_${service}`, result: 'ok', detail: route };
+      void notifyOwnerAction(a); void notifyActorSelf(a);
+    }
     logEvent({
       category: isAdmin ? 'admin' : 'user', type: isAdmin ? 'http.admin' : 'http.action', service: String(service).slice(0, 40), actorId: ctx?.actor ?? null,
       targetId: `${req.method} ${route}`, result, level: status >= 500 ? 'ERROR' : 'INFO', reason: status >= 400 ? `HTTP ${status}` : '',
