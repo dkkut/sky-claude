@@ -32,6 +32,7 @@ import {
   listSaved, setSaved, countView, rateMovie,
   setProgress, listProgress, listContinue, posterIdFor,
 } from './../film.mjs';
+import { assignEpisode } from './../filmseries.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, parseRange } from './../filmstore.mjs';
 import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../filmticket.mjs';
 import { hasPrime } from './../skyid.mjs';
@@ -332,6 +333,18 @@ export const filmRoutes = async (req, res, url) => {
     const created = await createMovie(me, { ...meta, mime });
     if (created.error) {
       return rejectBody(req, res, created.error === 'too_many' ? 409 : 400, created);
+    }
+
+    // Загрузка серии: сезон, номер и заставка приходят в адресе; чужой сезон или занятый номер — отказ до записи файла.
+    if (params.get('seasonId')) {
+      const asg = await assignEpisode(created.id, me, {
+        seasonId: params.get('seasonId'), epNo: params.get('epNo'),
+        introStart: params.get('introStart'), introEnd: params.get('introEnd'),
+      });
+      if (asg.error) {
+        await deleteMovie(created.id, me);
+        return rejectBody(req, res, asg.error === 'not_allowed' ? 403 : asg.error === 'not_found' ? 404 : 409, asg);
+      }
     }
 
     // Квота личного хранилища — кино и музыка вместе, см. storagequota.mjs.

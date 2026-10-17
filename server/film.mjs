@@ -124,6 +124,11 @@ export const toMovie = (row) => ({
   rejectReason: row.own === true && row.reject_reason
     ? (decryptContent(row.reject_reason) ?? undefined) : undefined,
   position: row.position_sec == null ? undefined : Number(row.position_sec),
+  seriesId: row.series_id ?? undefined,
+  seasonId: row.season_id ?? undefined,
+  epNo: row.ep_no ?? undefined,
+  introStart: row.intro_start_sec ?? undefined,
+  introEnd: row.intro_end_sec ?? undefined,
 });
 
 /**
@@ -209,7 +214,7 @@ export const readMovie = async (movieId, viewerId) => {
  * оно здесь: в каталог попадает только опубликованное. Своего закрытого
  * человек тут не увидит тоже — для него есть личная коллекция.
  */
-const PUBLIC_ONLY = "m.status = 'published'";
+const PUBLIC_ONLY = "m.status = 'published' AND m.series_id IS NULL";
 
 /**
  * Поиск по каталогу. Строка запроса уходит параметром, а не склейкой,
@@ -274,7 +279,7 @@ export const listShorts = async (viewerId, { limit, before } = {}) => {
   }
   const { rows } = await query(
     `${SELECT_MOVIE}
-      WHERE m.is_short AND m.status = 'published'${cut}
+      WHERE m.is_short AND m.status = 'published' AND m.series_id IS NULL${cut}
       ORDER BY m.created_at DESC
       LIMIT $2`,
     args);
@@ -285,7 +290,7 @@ export const listShorts = async (viewerId, { limit, before } = {}) => {
 export const listCategories = async () => {
   const { rows } = await query(
     `SELECT category, count(*)::int AS n FROM film_movies
-      WHERE status = 'published' GROUP BY category ORDER BY n DESC, category ASC LIMIT 60`);
+      WHERE status = 'published' AND series_id IS NULL GROUP BY category ORDER BY n DESC, category ASC LIMIT 60`);
   return rows.map((r) => ({ name: r.category, count: r.n }));
 };
 
@@ -303,7 +308,7 @@ export const listMine = async (ownerId, { q, limit, offset } = {}) => {
   const lim = num(limit, 1, 200) ?? 100;
   const off = num(offset, 0, 100000) ?? 0;
   const args = [ownerId, lim, off];
-  const where = ['m.owner_id = $1'];
+  const where = ['m.owner_id = $1', 'm.series_id IS NULL'];
   const s = searchClause(q, args);
   if (s) where.push(s);
   const { rows } = await query(
