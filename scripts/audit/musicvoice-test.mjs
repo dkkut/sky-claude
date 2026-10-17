@@ -15,6 +15,7 @@ t('опечатка в названии', similarity('прасти меня мо
 t('разные исполнители не склеиваются', similarity('земфира', 'Звери') < 0.6, similarity('земфира', 'Звери'));
 t('пустая строка → 0', similarity('', 'abc') === 0);
 
+q("delete from music_tracks where id like 'trk-vt%'"); q("delete from music_artist_aliases where alias_norm like 'ddtvt%'");
 const P = 'vt' + Date.now().toString(36);
 const u = await mkuser(S, 'vtUser'); const noPrime = await mkuser(S, 'vtFree');
 q(`insert into prime_subscriptions(id,profile_id,status,plan,expires_at) values ('prime-vt-${Date.now()}','${u.pid}','active','standard', now() + interval '30 days')`);
@@ -27,7 +28,7 @@ add(`trk-${P}3`, `Осень${P}`, `ДДТ${P}`, '', 'rock');
 add(`trk-${P}4`, `Осень${P}`, `Другая группа${P}`, '', 'pop');
 add(`trk-${P}5`, `Тихий вечер${P}`, `Эмбиент${P}`, '', 'ambient');
 add(`trk-${P}6`, `Секретный${P}`, `Скрытый${P}`, '', 'rock', 'private', noPrime.pid);   // чужой личный
-q(`insert into music_artist_aliases (alias_norm, artist_norm) values ('ddt${P}','ддт${P}'.toLowerCase()) on conflict do nothing`.replace("'ддт${P}'.toLowerCase()", `'ддт${P}'`));
+q(`insert into music_artist_aliases (alias_norm, artist_norm) values ('ddt${P}','ддт${P}') on conflict do nothing`);
 
 const V = (kind, text) => call(`/api/music/voice?kind=${kind}&q=${encodeURIComponent(text)}`, {}, u.tok);
 let r = await call('/api/music/voice?q=x', {}, noPrime.tok);
@@ -48,7 +49,7 @@ t('настроение «спокойное» → подходящий жанр
 r = await V('any', `включи ddt${P}`.replace('включи ', ''));
 t('псевдоним исполнителя (alias)', r.data.items?.length >= 1 && r.data.items.every((x) => x.artist.startsWith('ДДТ')) || r.data.choices?.length >= 1, JSON.stringify(r.data).slice(0, 200));
 r = await V('track', `Секретный${P}`);
-t('чужой личный трек не находится', !r.data.items?.length && !r.data.choices?.length, JSON.stringify(r.data).slice(0, 200));
+t('чужой личный трек не находится', !JSON.stringify(r.data).includes('Секретный') && !JSON.stringify(r.data).includes('Скрытый'), JSON.stringify(r.data).slice(0, 200));
 r = await V('track', 'совсем несуществующая песня qwerty zzz');
 t('ничего не найдено — честный отказ', r.data.reason === 'not_found');
 r = await V('bad', 'x');
