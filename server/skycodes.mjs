@@ -36,6 +36,7 @@ import { logAdmin, consumeStepUp, lockdownState } from './adminsec.mjs';
 import { wallet } from './wallet.mjs';
 import { grantPrimeIn } from './skyid.mjs';
 import { decryptContent } from './crypto.mjs';
+import { campaignGate, CampaignError } from './skycampaigns.mjs';
 
 /* ─── Пределы ──────────────────────────────────────────────────────── */
 
@@ -236,7 +237,8 @@ export const redeemCode = async (profileId, rawCode, { ipHash = null } = {}) => 
       const { rows } = await c.query(
         `SELECT c.id AS code_id, c.status, c.uses, c.hint,
                 b.id AS batch_id, b.title, b.reward_type, b.reward_amount, b.reward_days,
-                b.reward_item, b.reward_percent, b.max_uses, b.expires_at, b.bound_profile_id
+                b.reward_item, b.reward_percent, b.max_uses, b.expires_at, b.bound_profile_id,
+                b.campaign_id, b.starts_at
            FROM sky_codes c JOIN sky_code_batches b ON b.id = c.batch_id
           WHERE c.code_hash = $1
           FOR UPDATE OF c`,
@@ -252,20 +254,23 @@ export const redeemCode = async (profileId, rawCode, { ipHash = null } = {}) => 
         'SELECT 1 FROM sky_code_redemptions WHERE code_id = $1 AND profile_id = $2', [row.code_id, profileId]);
       if (done[0]) throw new CodeError('already_redeemed');
       if (row.uses >= row.max_uses) throw new CodeError('code_exhausted');
+      // Кампания: старт, пауза, окно, лимит на человека, бюджет — под замком кампании, в этой же транзакции.
+      await campaignGate(c, profileId, row);
 
       const redemptionId = `scr-${generateId()}`;
       await c.query(
         `INSERT INTO sky_code_redemptions
-           (id, code_id, batch_id, profile_id, reward_type, reward_amount, reward_days, reward_item, reward_percent)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+           (id, code_id, batch_id, profile_id, reward_type, reward_amount, reward_days, reward_item, reward_percent, campaign_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [redemptionId, row.code_id, row.batch_id, profileId, row.reward_type,
-          row.reward_amount, row.reward_days, row.reward_item, row.reward_percent]);
+          row.reward_amount, row.reward_days, row.reward_item, row.reward_percent, row.campaign_id ?? null]);
 
       const extra = await applyReward(c, profileId, row, redemptionId);
       await c.query('UPDATE sky_codes SET uses = uses + 1 WHERE id = $1', [row.code_id]);
       return { redemptionId, row, extra };
     });
   } catch (err) {
+    if (err instanceof CampaignError) return { error: err.skyCode };
     if (err instanceof CodeError) {
       if (err.extra?.fail) await recordFailure(profileId, ipHash);
       return { error: err.skyCode };
@@ -379,7 +384,7 @@ const batchView = (r) => ({
     type: r.reward_type, amount: Number(r.reward_amount), days: Number(r.reward_days),
     item: r.reward_item ?? null, percent: Number(r.reward_percent),
   },
-  maxUses: r.max_uses, expiresAt: iso(r.expires_at), count: r.code_count,
+  maxUses: r.max_uses, expiresAt: iso(r.expires_at), startsAt: iso(r.starts_at), campaignId: r.campaign_id ?? null, count: r.code_count,
   boundProfileId: r.bound_profile_id ?? null,
   boundUsername: r.bound_username ?? null,
   createdBy: r.created_by ?? null, createdByName: r.creator_name ?? null,
@@ -455,7 +460,22 @@ const validateBatchInput = async (input) => {
     if (!/^[A-Z0-9]{6,32}$/.test(custom)) return { error: 'bad_custom_code' };
   }
 
-  return { title, note, type, reward, count, maxUses, expiresAt, bound, custom };
+  let startsAt = null;
+  if (input.startsAt) {
+    const d = new Date(input.startsAt);
+    if (Number.isNaN(d.getTime()) || typeof input.startsAt === 'object') return { error: 'bad_start' };
+    if (expiresAt && d.getTime() >= expiresAt.getTime()) return { error: 'bad_start' };
+    startsAt = d;
+  }
+  let campaignId = null;
+  if (input.campaignId) {
+    const { rows } = await query("SELECT id, status FROM sky_code_campaigns WHERE id = $1", [String(input.campaignId)]);
+    if (!rows[0]) return { error: 'campaign_not_found' };
+    if (rows[0].status === 'ended') return { error: 'campaign_ended' };
+    campaignId = rows[0].id;
+  }
+
+  return { title, note, type, reward, count, maxUses, expiresAt, bound, custom, startsAt, campaignId };
 };
 
 /**
@@ -483,10 +503,10 @@ export const createBatch = async (actorId, input, { meta = {} } = {}) => {
       await c.query(
         `INSERT INTO sky_code_batches
            (id, title, note, reward_type, reward_amount, reward_days, reward_item, reward_percent,
-            max_uses, expires_at, bound_profile_id, code_count, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            max_uses, expires_at, bound_profile_id, code_count, created_by, campaign_id, starts_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [batchId, v.title, v.note, v.type, v.reward.amount, v.reward.days, v.reward.item,
-          v.reward.percent, v.maxUses, v.expiresAt, v.bound?.id ?? null, v.count, actorId]);
+          v.reward.percent, v.maxUses, v.expiresAt, v.bound?.id ?? null, v.count, actorId, v.campaignId, v.startsAt]);
 
       let made = 0;
       let guard = 0;
@@ -565,10 +585,14 @@ export const listCodes = async (actorId, batchId, { status, limit, offset } = {}
   };
 };
 
-export const listRedemptions = async (actorId, { batchId, q, limit } = {}) => {
+export const listRedemptions = async (actorId, { batchId, campaignId, q, limit } = {}) => {
   if (!(await mayView(actorId))) return null;
   const args = [];
   const where = [];
+  if (campaignId) {
+    if (!/^scm-[0-9a-f-]{36}$/.test(String(campaignId))) return { error: 'not_found' };
+    args.push(campaignId); where.push(`r.campaign_id = $${args.length}`);
+  }
   if (batchId) {
     if (!BATCH_ID_RE.test(String(batchId))) return { error: 'not_found' };
     args.push(batchId); where.push(`r.batch_id = $${args.length}`);

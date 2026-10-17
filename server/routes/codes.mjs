@@ -26,6 +26,7 @@ import {
   listRedemptions, revokeCode, revokeBatchUnused, exportBatchCsv, codesLog, listItemChoices,
   mayCreate, STEP_UP_PURPOSE, renameCode, revokeSelected,
 } from './../skycodes.mjs';
+import { listCampaigns, createCampaign, updateCampaign, campaignSummary } from './../skycampaigns.mjs';
 
 const STATUS = {
   invalid_code: 400, bad_input: 400, bad_title: 400, bad_reward: 400, bad_count: 400,
@@ -38,8 +39,12 @@ const STATUS = {
   code_expired: 410, code_revoked: 410, code_exhausted: 409, already_redeemed: 409,
   item_already_owned: 409, too_many_attempts: 429, reward_failed: 500, reward_unavailable: 409,
   activation_failed: 500, create_failed: 500, generation_failed: 500,
+  code_not_started: 425, campaign_paused: 423, campaign_ended: 410, campaign_user_limit: 409, campaign_budget_exhausted: 409,
+  bad_start: 400, bad_limit: 400, bad_window: 400, bad_budget: 400, bad_status: 400, campaign_not_found: 404, nothing_to_change: 400,
 };
 
+/** Только для тестов: умножает пределы запросов (по образцу SKYKASSA_RATE_MULT). */
+const MULT = Math.max(1, Number(process.env.CODES_RATE_MULT) || 1);
 const fail = (res, r) => json(res, STATUS[r.error] ?? 400, r);
 
 export const codesRoutes = async (req, res, url) => {
@@ -81,13 +86,13 @@ export const codesRoutes = async (req, res, url) => {
 
   if (req.method === 'POST' && path === '/api/admin/codes/step-up') {
     if (!(await mayCreate(me))) return json(res, 403, { error: 'not_allowed' });
-    if (!rateLimit(`codes:stepup:${me}`, 5)) return json(res, 429, { error: 'too_many_attempts' });
+    if (!rateLimit(`codes:stepup:${me}`, 5 * MULT)) return json(res, 429, { error: 'too_many_attempts' });
     const r = await beginStepUp(me, STEP_UP_PURPOSE, { meta });
     return r.error ? fail(res, r) : json(res, 200, r);
   }
 
   if (req.method === 'POST' && path === '/api/admin/codes/batches') {
-    if (!rateLimit(`codes:create:${me}`, 6)) return json(res, 429, { error: 'too_many_attempts' });
+    if (!rateLimit(`codes:create:${me}`, 6 * MULT)) return json(res, 429, { error: 'too_many_attempts' });
     const body = await parseBody(req);
     const r = await createBatch(me, body ?? {}, { meta });
     return r.error ? fail(res, r) : json(res, 201, r);
@@ -151,10 +156,21 @@ export const codesRoutes = async (req, res, url) => {
   if (req.method === 'GET' && path === '/api/admin/codes/redemptions') {
     const params = new URL(req.url, 'http://x').searchParams;
     const r = await listRedemptions(me, {
-      batchId: params.get('batchId'), q: params.get('q'), limit: params.get('limit'),
+      batchId: params.get('batchId'), campaignId: params.get('campaignId'), q: params.get('q'), limit: params.get('limit'),
     });
     if (r === null) return json(res, 403, { error: 'not_allowed' });
     return r.error ? fail(res, r) : json(res, 200, r);
+  }
+
+  /* ── Кампании ── */
+  if (path === '/api/admin/codes/campaigns') {
+    if (req.method === 'GET') { const items = await listCampaigns(me); return items === null ? json(res, 403, { error: 'not_allowed' }) : json(res, 200, { items }); }
+    if (req.method === 'POST') { const r = await createCampaign(me, (await parseBody(req)) ?? {}, { meta }); return r.error ? fail(res, r) : json(res, 201, r); }
+  }
+  const cm = path.match(/^\/api\/admin\/codes\/campaigns\/([^/]+)$/);
+  if (cm) {
+    if (req.method === 'GET') { const r = await campaignSummary(me, cm[1]); return r === null ? json(res, 403, { error: 'not_allowed' }) : r.error ? fail(res, r) : json(res, 200, r); }
+    if (req.method === 'PATCH' || req.method === 'PUT') { const r = await updateCampaign(me, cm[1], (await parseBody(req)) ?? {}, { meta }); return r.error ? fail(res, r) : json(res, 200, r); }
   }
 
   if (req.method === 'GET' && path === '/api/admin/codes/log') {

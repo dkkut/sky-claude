@@ -109,6 +109,8 @@ export interface CreateBatchInput {
   count: number;
   maxUses: number;
   expiresAt?: string;
+  startsAt?: string;
+  campaignId?: string;
   boundTo?: string;
   customCode?: string;
   stepUpCode: string;
@@ -120,6 +122,17 @@ export const apiCodesStepUp = () =>
 export const apiCreateBatch = (b: CreateBatchInput) =>
   req<{ ok: true; batch: { id: string; title: string; count: number; maxUses: number }; codes: string[] }>(
     '/api/admin/codes/batches', { method: 'POST', body: JSON.stringify(b) });
+
+export interface Campaign {
+  id: string; title: string; note: string; status: 'active' | 'paused' | 'ended'; startsAt: string | null; endsAt: string | null; perUserLimit: number;
+  budgetBalance: number | null; budgetPoints: number | null; spentBalance: number; spentPoints: number; live: boolean;
+  batches?: number; redemptions?: number; people?: number;
+}
+export interface CampaignSummary { campaign: Campaign; batches: { id: string; title: string; rewardType: RewardType; codes: number; maxUses: number; redeemed: number }[]; topUsers: { username: string; count: number }[] }
+export const apiCampaigns = () => req<{ items: Campaign[] }>('/api/admin/codes/campaigns');
+export const apiCreateCampaign = (b: Record<string, unknown>) => req<{ ok: true; id: string }>('/api/admin/codes/campaigns', { method: 'POST', body: JSON.stringify(b) });
+export const apiPatchCampaign = (id: string, b: Record<string, unknown>) => req<{ ok: true }>(`/api/admin/codes/campaigns/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(b) });
+export const apiCampaignSummary = (id: string) => req<CampaignSummary>(`/api/admin/codes/campaigns/${encodeURIComponent(id)}`);
 
 export const apiBatches = () => req<{ items: Batch[] }>('/api/admin/codes/batches');
 

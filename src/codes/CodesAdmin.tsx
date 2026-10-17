@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Copy, Download, KeyRound, Loader2, Plus, Ticket, Ban } from 'lucide-react';
 import {
   apiBatchCodes, apiBatches, apiCodeItems, apiCodeLog, apiCodeRedemptions, apiCodesStepUp,
+  apiCampaigns, apiCreateCampaign, apiPatchCampaign, apiCampaignSummary, type Campaign, type CampaignSummary,
   apiCreateBatch, apiExportBatch, apiRevokeBatch, apiRevokeCode, apiRenameCode, apiRevokeSelected, downloadText, rewardText,
   type AdminRedemption, type Batch, type CodeLogRow, type CodeRow, type RewardType,
 } from './codesApi';
@@ -38,6 +39,9 @@ const ERR: Record<string, string> = {
   not_found: 'Такой код не найден.',
   too_many_attempts: 'Слишком часто. Подождите минуту.',
   network: 'Нет связи с сервером.',
+  bad_start: 'Старт должен быть раньше окончания.', bad_limit: 'Лимит на человека — от 1 до 1000.', bad_window: 'Окно кампании указано неверно (конец позже старта и в будущем).',
+  bad_budget: 'Бюджет — целое неотрицательное число или пусто.', bad_status: 'Неизвестный статус.', campaign_not_found: 'Кампания не найдена.', campaign_ended: 'Кампания завершена.',
+  nothing_to_change: 'Нечего менять.',
 };
 const errText = (e: unknown) => ERR[String(e)] ?? 'Не удалось выполнить действие.';
 
@@ -69,8 +73,9 @@ const Field = ({ label, children }: { label: string; children: React.ReactNode }
 const CreateForm = ({ onDone }: { onDone: () => void }) => {
   const [f, setF] = useState({
     title: '', note: '', rewardType: 'balance' as RewardType, amount: '', days: '', item: '', percent: '',
-    count: '1', maxUses: '1', expiresAt: '', boundTo: '', customCode: '',
+    count: '1', maxUses: '1', expiresAt: '', startsAt: '', campaignId: '', boundTo: '', customCode: '',
   });
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [items, setItems] = useState<{ id: string; category: string }[]>([]);
   const [step, setStep] = useState<null | 'asking' | 'code'>(null);
   const [method, setMethod] = useState<string | null>(null);
@@ -81,7 +86,7 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
   const [saved, setSaved] = useState(false);
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
 
-  useEffect(() => { void apiCodeItems().then((r) => r.ok && setItems(r.data.items)); }, []);
+  useEffect(() => { void apiCodeItems().then((r) => r.ok && setItems(r.data.items)); void apiCampaigns().then((r) => r.ok && setCampaigns(r.data.items.filter((c) => c.status !== 'ended'))); }, []);
 
   const ask = async () => {
     setError('');
@@ -100,6 +105,7 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
       amount: num(f.amount), days: num(f.days), item: f.item || undefined, percent: num(f.percent),
       count: Number(f.count) || 0, maxUses: Number(f.maxUses) || 0,
       expiresAt: f.expiresAt ? new Date(f.expiresAt).toISOString() : undefined,
+      startsAt: f.startsAt ? new Date(f.startsAt).toISOString() : undefined, campaignId: f.campaignId || undefined,
       boundTo: f.boundTo.trim() || undefined, customCode: f.customCode.trim() || undefined,
       stepUpCode: code,
     });
@@ -191,6 +197,15 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
         </Field>
         <Field label="Действует до (пусто — без срока)">
           <input type="datetime-local" className={cls} style={input} value={f.expiresAt} onChange={(e) => set('expiresAt', e.target.value)} />
+        </Field>
+        <Field label="Начало действия (необязательно)">
+          <input type="datetime-local" className={cls} style={input} value={f.startsAt} onChange={(e) => set('startsAt', e.target.value)} />
+        </Field>
+        <Field label="Кампания (общий лимит на человека, бюджет и окно)">
+          <select className={cls} style={input} value={f.campaignId} onChange={(e) => set('campaignId', e.target.value)}>
+            <option value="">Без кампании</option>
+            {campaigns.map((c) => <option key={c.id} value={c.id}>{c.title}{c.status === 'paused' ? ' (пауза)' : ''}</option>)}
+          </select>
         </Field>
         <Field label="Привязать к пользователю (@ник, только 1 код)">
           <input className={cls} style={input} value={f.boundTo} onChange={(e) => set('boundTo', e.target.value)} placeholder="@username" />
@@ -368,7 +383,7 @@ const BatchCard = ({ b, onChanged }: { b: Batch; onChanged: () => void }) => {
 
 /* ─── Вкладка ──────────────────────────────────────────────────────── */
 
-type Sub = 'batches' | 'uses' | 'log';
+type Sub = 'batches' | 'campaigns' | 'uses' | 'log';
 
 const RevokeByCode = ({ onDone }: { onDone: () => void }) => {
   const [code, setCode] = useState('');
@@ -400,6 +415,63 @@ const RevokeByCode = ({ onDone }: { onDone: () => void }) => {
   );
 };
 
+const CampaignsPanel = () => {
+  const [items, setItems] = useState<Campaign[] | null>(null);
+  const [sum, setSum] = useState<CampaignSummary | null>(null);
+  const [err, setErr] = useState('');
+  const [f, setF] = useState({ title: '', perUserLimit: '1', startsAt: '', endsAt: '', budgetBalance: '', budgetPoints: '' });
+  const load = useCallback(async () => { const r = await apiCampaigns(); if (r.ok) setItems(r.data.items); else { setItems([]); setErr(errText(r.error)); } }, []);
+  useEffect(() => { void load(); }, [load]);
+  const n = (v: string) => (v.trim() === '' ? null : Number(v));
+  const create = async () => {
+    setErr('');
+    const r = await apiCreateCampaign({
+      title: f.title.trim(), perUserLimit: Number(f.perUserLimit) || 1,
+      startsAt: f.startsAt ? new Date(f.startsAt).toISOString() : null, endsAt: f.endsAt ? new Date(f.endsAt).toISOString() : null,
+      budgetBalance: n(f.budgetBalance), budgetPoints: n(f.budgetPoints),
+    });
+    if (!r.ok) { setErr(errText(r.error)); return; }
+    setF({ title: '', perUserLimit: '1', startsAt: '', endsAt: '', budgetBalance: '', budgetPoints: '' }); void load();
+  };
+  const patch = async (id: string, body: Record<string, unknown>) => { const r = await apiPatchCampaign(id, body); if (!r.ok) setErr(errText(r.error)); else { setErr(''); void load(); } };
+  return (
+    <div className="space-y-3">
+      <div className="space-y-3 rounded-2xl p-4" style={card}>
+        <p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>Новая кампания</p>
+        <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Кампания объединяет серии кодов: общее окно действия, лимит активаций на человека и бюджет (₽ и баллы). Серии к ней привязываются при создании.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Название"><input className={cls} style={input} value={f.title} maxLength={80} onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
+          <Field label="Активаций на человека"><input className={cls} style={input} inputMode="numeric" value={f.perUserLimit} onChange={(e) => setF({ ...f, perUserLimit: e.target.value.replace(/\D/g, '') })} /></Field>
+          <Field label="Старт"><input type="datetime-local" className={cls} style={input} value={f.startsAt} onChange={(e) => setF({ ...f, startsAt: e.target.value })} /></Field>
+          <Field label="Окончание"><input type="datetime-local" className={cls} style={input} value={f.endsAt} onChange={(e) => setF({ ...f, endsAt: e.target.value })} /></Field>
+          <Field label="Бюджет, ₽ (пусто — без предела)"><input className={cls} style={input} inputMode="numeric" value={f.budgetBalance} onChange={(e) => setF({ ...f, budgetBalance: e.target.value.replace(/\D/g, '') })} /></Field>
+          <Field label="Бюджет, баллы (пусто — без предела)"><input className={cls} style={input} inputMode="numeric" value={f.budgetPoints} onChange={(e) => setF({ ...f, budgetPoints: e.target.value.replace(/\D/g, '') })} /></Field>
+        </div>
+        <button type="button" disabled={f.title.trim().length < 2} onClick={() => void create()} className="rounded-xl px-4 py-2 text-xs font-bold text-white disabled:opacity-40" style={{ background: 'var(--accent)' }}>Создать кампанию</button>
+      </div>
+      {err && <p role="alert" className="text-xs" style={{ color: 'var(--red)' }}>{err}</p>}
+      {items === null && <Loader2 size={16} className="animate-spin" style={{ color: 'var(--t3)' }} />}
+      {items?.map((c) => (
+        <div key={c.id} className="space-y-1.5 rounded-xl p-3" style={card}>
+          <p className="text-[13px] font-bold" style={{ color: 'var(--t1)' }} translate="no">{c.title} <span className="text-[10px] font-semibold" style={{ color: c.live ? 'var(--green)' : 'var(--t3)' }}>{c.live ? 'идёт' : c.status === 'paused' ? 'пауза' : c.status === 'ended' ? 'завершена' : 'вне окна'}</span></p>
+          <p className="text-[11px]" style={{ color: 'var(--t3)' }}>{`Серий: ${c.batches ?? 0} · активаций: ${c.redemptions ?? 0} · людей: ${c.people ?? 0} · на человека: ${c.perUserLimit}`}{c.startsAt ? ` · с ${fmt(c.startsAt)}` : ''}{c.endsAt ? ` · до ${fmt(c.endsAt)}` : ''}</p>
+          <p className="text-[11px]" style={{ color: 'var(--t3)' }}>{`Потрачено: ${c.spentBalance} ₽${c.budgetBalance !== null ? ` из ${c.budgetBalance}` : ''} · ${c.spentPoints} баллов${c.budgetPoints !== null ? ` из ${c.budgetPoints}` : ''}`}</p>
+          <div className="flex flex-wrap gap-2">
+            {c.status === 'active' && <button type="button" onClick={() => void patch(c.id, { status: 'paused' })} className="rounded-lg px-3 py-1 text-[11px] font-bold" style={{ background: 'var(--bg-l1)', color: 'var(--t1)' }}>Приостановить</button>}
+            {c.status === 'paused' && <button type="button" onClick={() => void patch(c.id, { status: 'active' })} className="rounded-lg px-3 py-1 text-[11px] font-bold" style={{ background: 'var(--bg-l1)', color: 'var(--t1)' }}>Возобновить</button>}
+            {c.status !== 'ended' && <button type="button" onClick={() => { if (window.confirm('Завершить кампанию? Возобновить её будет нельзя.')) void patch(c.id, { status: 'ended' }); }} className="rounded-lg px-3 py-1 text-[11px] font-bold" style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--red)' }}>Завершить</button>}
+            <button type="button" onClick={async () => { const r = await apiCampaignSummary(c.id); if (r.ok) setSum(r.data); }} className="rounded-lg px-3 py-1 text-[11px] font-bold" style={{ background: 'var(--bg-l1)', color: 'var(--t1)' }}>Сводка</button>
+          </div>
+          {sum?.campaign.id === c.id && (
+            <div className="space-y-1 rounded-lg p-2 text-[11px]" style={{ background: 'var(--bg-l1)', color: 'var(--t2)' }}>
+              {sum.batches.map((b) => <p key={b.id} translate="no">{`${b.title} · ${TYPE_LABEL[b.rewardType]} · кодов ${b.codes} · активаций ${b.redeemed}`}</p>)}
+              {sum.topUsers.length > 0 && <p>{`Чаще всех: ${sum.topUsers.map((u) => `${u.username} ×${u.count}`).join(', ')}`}</p>}
+            </div>)}
+        </div>))}
+    </div>
+  );
+};
+
 export const CodesAdminSection = ({ owner }: { owner: boolean }) => {
   const [sub, setSub] = useState<Sub>('batches');
   const [batches, setBatches] = useState<Batch[] | null>(null);
@@ -422,7 +494,7 @@ export const CodesAdminSection = ({ owner }: { owner: boolean }) => {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        {([['batches', 'Серии'], ['uses', 'Активации'], ['log', 'Журнал']] as [Sub, string][]).map(([k, l]) => (
+        {([['batches', 'Серии'], ['campaigns', 'Кампании'], ['uses', 'Активации'], ['log', 'Журнал']] as [Sub, string][]).map(([k, l]) => (
           <button key={k} type="button" onClick={() => setSub(k)} className="rounded-xl px-3 py-1.5 text-[11px] font-semibold"
             style={{ background: sub === k ? 'var(--accent)' : 'var(--bg-l2)', color: sub === k ? '#fff' : 'var(--t3)' }}>{l}</button>
         ))}
@@ -446,6 +518,8 @@ export const CodesAdminSection = ({ owner }: { owner: boolean }) => {
           {batches?.map((b) => <BatchCard key={b.id} b={b} onChanged={() => void loadBatches()} />)}
         </>
       )}
+
+      {sub === 'campaigns' && <CampaignsPanel />}
 
       {sub === 'uses' && (uses === null ? <Loader2 size={16} className="animate-spin" style={{ color: 'var(--t3)' }} /> : (
         <div className="space-y-1.5">
