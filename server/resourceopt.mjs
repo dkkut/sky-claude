@@ -286,7 +286,7 @@ export const overview = async () => {
     bools: Object.fromEntries(Object.entries(BOOL).map(([k, [def, label]]) => [k, { def, label }])),
     now: sm, series: samples.slice(-60).map((x) => ({ t: x.t, load: x.loadPct, mem: x.memPct, lag: x.lagP99, dbq: x.dbQ })),
     process: { rssMb: Math.round(process.memoryUsage().rss / 1048576), heapMb: Math.round(process.memoryUsage().heapUsed / 1048576), uptimeSec: Math.round(process.uptime()), cores: os.cpus().length, machineMemMb: Math.round(os.totalmem() / 1048576), cgroup: cgroupMem() },
-    database: { queriesPerMin: +(dq / upMin).toFixed(1), avgMs: dq ? +(dbStats.totalMs / dq).toFixed(1) : 0, errors: dbStats.errors, pool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount, max: pool.options?.max ?? null }, slowThresholdMs: dbStats.slowMs },
+    database: { queriesTotal: dq, queriesPerMin: +(dq / upMin).toFixed(1), avgMs: dq ? +(dbStats.totalMs / dq).toFixed(1) : 0, errors: dbStats.errors, pool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount, max: pool.options?.max ?? null }, slowThresholdMs: dbStats.slowMs },
     slowQueries: [...dbStats.slow].reverse().slice(0, 20),
     requests: m?.requests ?? null, warnings: m ? warningsFor(m) : [], causes: causes(sm, st), events: await recentEvents(50),
     containers: 'Показан только процесс API: из него видны его собственные cgroup-пределы. Остальные контейнеры — `docker stats` на сервере.',

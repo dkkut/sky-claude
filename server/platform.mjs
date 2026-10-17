@@ -21,15 +21,27 @@ import { logAdmin, consumeStepUp } from './adminsec.mjs';
 
 const MAX_REASON = 300;
 
-export const shutdownState = async () => {
-  const { rows } = await query('SELECT active, reason, set_at FROM platform_shutdown WHERE id');
-  return rows[0] ?? { active: false, reason: '', set_at: null };
+/* Эти два вопроса задаются на КАЖДЫЙ запрос к API (шлюз в server.mjs). Ответ держим недолго (PLATFORM_STATE_CACHE_MS, по умолчанию 1 с;
+   0 — без кэша) и сбрасываем сразу при любом переключении из кода (setShutdown/setMaintenance/аварийная кнопка). Запросы к базе идут
+   с общим «в полёте»: параллельные запросы делят один вопрос. Включение режима другим процессом/скриптом дойдёт не позже чем через секунду. */
+const TTL = () => Math.max(0, Number(process.env.PLATFORM_STATE_CACHE_MS ?? 1000));
+const memo = (sql) => {
+  let at = 0, val = null, inflight = null;
+  const get = async () => {
+    const ttl = TTL();
+    if (ttl && val && Date.now() - at < ttl) return val;
+    if (inflight) return inflight;
+    inflight = query(sql).then(({ rows }) => { val = rows[0] ?? { active: false, reason: '', set_at: null }; at = Date.now(); return val; }).finally(() => { inflight = null; });
+    return inflight;
+  };
+  get.reset = () => { at = 0; val = null; };
+  return get;
 };
-
-export const maintenanceState = async () => {
-  const { rows } = await query('SELECT active, reason, set_at FROM platform_maintenance WHERE id');
-  return rows[0] ?? { active: false, reason: '', set_at: null };
-};
+const readShutdown = memo('SELECT active, reason, set_at FROM platform_shutdown WHERE id');
+const readMaintenance = memo('SELECT active, reason, set_at FROM platform_maintenance WHERE id');
+export const forgetPlatformState = () => { readShutdown.reset(); readMaintenance.reset(); };
+export const shutdownState = () => readShutdown();
+export const maintenanceState = () => readMaintenance();
 
 /**
  * Повторное подтверждение личности нужно обоим переключателям — хоть
@@ -48,6 +60,7 @@ export const setShutdown = async (actorId, on, reason = '', stepUpCode = '') => 
   await query(
     `UPDATE platform_shutdown SET active = $1, reason = $2, set_by = $3, set_at = now() WHERE id`,
     [Boolean(on), cleanReason, actorId]);
+  forgetPlatformState();
   await logAdmin({ actorId, type: on ? 'platform_shutdown_on' : 'platform_shutdown_off',
     targetType: 'system', detail: cleanReason });
   return { ...(await shutdownState()) };
@@ -65,6 +78,7 @@ export const setMaintenance = async (actorId, on, reason = '', stepUpCode = '') 
   await query(
     `UPDATE platform_maintenance SET active = $1, reason = $2, set_by = $3, set_at = now() WHERE id`,
     [Boolean(on), cleanReason, actorId]);
+  forgetPlatformState();
   await logAdmin({ actorId, type: on ? 'platform_maintenance_on' : 'platform_maintenance_off',
     targetType: 'system', detail: cleanReason });
   return { ...(await maintenanceState()) };

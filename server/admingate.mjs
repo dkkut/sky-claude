@@ -12,6 +12,7 @@
  * Токен хранится только хешем. На код — три попытки, потом ссылка гаснет.
  * Само закрытие панели без открытого шлюза — в admin.mjs (rightsOf/isOwner).
  */
+import { forgetPlatformState } from './platform.mjs';
 import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { config } from './config.mjs';
@@ -173,6 +174,7 @@ export const enactPanic = async (who, action, { ip, source } = {}) => {
     `Enabled via “It’s not me” link (@${who.username}${source ? `, ${source}` : ''})`).slice(0, 280);
   if (action === 'shutdown') {
     await query('UPDATE platform_shutdown SET active = TRUE, reason = $1, set_by = $2, set_at = now() WHERE id', [reason, who.id]);
+    forgetPlatformState();
   forgetLockdown();
   }
   // Панель закрывается в обоих случаях: выключенный сервер без закрытой панели смысла не имеет.

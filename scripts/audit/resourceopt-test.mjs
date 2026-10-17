@@ -55,6 +55,9 @@ if (PHASE === 'normal') {
   t('подсчёт места по категориям', r.status === 200 && Array.isArray(r.data.categories) && r.data.categories.some((c) => c.label === 'База данных'), JSON.stringify(r.data).slice(0, 200));
   r = await call('/api/admin/resources', {}, OWN.tok);
   t('медленные запросы — только форма, без значений', r.data.slowQueries.every((x) => !/@|password|token/i.test(x.sql)));
+  { const tot = async () => (await call('/api/admin/resources', {}, OWN.tok)).data.database.queriesTotal;
+    await call('/api/skyid/profiles', {}, USR.tok); const a = await tot(); for (let i = 0; i < 50; i++) await call('/api/skyid/profiles', {}, USR.tok); const b = await tot();
+    t('кэш состояния платформы: ≤ 1,5 запроса к БД на обычный запрос (было ~3)', (b - a - 1) / 50 <= 1.5, String((b - a - 1) / 50)); }
   t('обычная загрузка при нормальной нагрузке не блокируется шлюзом', (await post('/api/film/upload', {}, OWN)).data?.error !== 'busy_heavy');
 } else {
   const OWN = await mkuser(S, 'resown2');
