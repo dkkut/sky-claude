@@ -1,3 +1,4 @@
+import { VerifiedBadge } from '@/verification/marks';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -373,7 +374,7 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
         <div className="flex items-center gap-3 px-4 py-3">
           <TgAvatar chat={chat} size={46} />
           <div className="min-w-0 flex-1">
-            <p translate="no" className="truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}>{chat.name}</p>
+            <p translate="no" className="truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}>{chat.name}{chat.type !== 'direct' && <VerifiedBadge type={chat.type === 'channel' ? 'chat_channel' : 'chat_group'} id={chat.id} size={13} />}</p>
             <p className="truncate text-xs" style={{ color: 'var(--t3)' }}>
               {isDirect ? (chat.username ? `@${chat.username}` : 'Личная переписка')
                         : `${chat.members ?? chat.participants?.length ?? 0} участников`}

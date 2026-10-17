@@ -20,7 +20,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance' | 'oidc' | 'prime' | 'partners' | 'partners_approve' | 'upload_limits';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance' | 'oidc' | 'prime' | 'partners' | 'partners_approve' | 'upload_limits' | 'verification';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -58,6 +58,7 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   partners: 'Партнёры (добавление и правка)',
   partners_approve: 'Партнёры (подтверждение и публикация)',
   upload_limits: 'Лимиты загрузки (личные и публичные)',
+  verification: 'Верификация (заявки, отметки, критерии)',
   storage_view: 'Sky Storage: состояние и статистика',
   storage_audit: 'Sky Storage: журнал безопасности',
   storage_backup: 'Sky Storage: резервные копии',
@@ -93,6 +94,7 @@ export const ROLE_LABEL: Record<string, string> = {
   gifts_admin: 'Подарки',
   site_admin: 'Сайт',
   upload_limits_admin: 'Лимиты загрузки',
+  verification_admin: 'Верификация',
   modules_admin: 'Закрытие модулей',
   skykassa_staff: 'SkyKassa: проверка платежей',
   skykassa_admin: 'SkyKassa: платежи и настройки',

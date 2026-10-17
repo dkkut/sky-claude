@@ -1,3 +1,4 @@
+import { VerifiedBadge } from '@/verification/marks';
 import { useState } from 'react';
 import { Crown, Shield, Briefcase, Check, Copy, Globe, Clock, CalendarDays, Link2, Eye } from 'lucide-react';
 import type { ProfileData } from '../useProfileData';
@@ -74,6 +75,7 @@ export const ProfileHero = ({ data, onEdit }: { data: ProfileData; onEdit?: () =
             style={{ color: (data.isOwn || (acc.privacy?.showNameCustomization ?? true)) ? (acc.nameColor || 'var(--t1)') : 'var(--t1)' }}>
             {acc.name}
           </h2>
+          <VerifiedBadge type="user" id={acc.id} size={18} />
           {acc.nameSticker && (data.isOwn || (acc.privacy?.showNameCustomization ?? true)) && (
             <span className="text-base sm:text-lg leading-none">{acc.nameSticker}</span>
           )}

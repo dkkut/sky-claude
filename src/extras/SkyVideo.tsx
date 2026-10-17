@@ -2,6 +2,7 @@
    SKY VIDEO  -  видеохостинг и Shorts на сервере
    Dark Sky aesthetic, Nunito/system font, accent #4f6ef7
 =============================================================== */
+import { VerifiedBadge } from '@/verification/marks';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
@@ -147,7 +148,7 @@ const VideoCard = ({ video, onClick, onOpenChannel }: { video: ServerVideo; onCl
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold leading-snug line-clamp-2" style={{ color: V.t1 }}>{video.title}</p>
           <p className="text-xs mt-1 cursor-pointer" style={{ color: V.t2 }}
-            onClick={e => { e.stopPropagation(); if (video.authorId) (onOpenChannel ?? openProfile)(video.authorId); }}>{video.authorName}</p>
+            onClick={e => { e.stopPropagation(); if (video.authorId) (onOpenChannel ?? openProfile)(video.authorId); }}>{video.authorName}<VerifiedBadge type="video_channel" id={video.authorId} size={12} /></p>
           <p className="text-xs" style={{ color: V.t3 }}>
             {fmtViews(video.views)} просм. · {fmtAgo(video.publishedAt ?? video.createdAt)}
           </p>
@@ -1001,7 +1002,7 @@ const ChannelPage = ({ authorId, onBack, onOpenVideo, initialAnalytics }: {
           <div className="flex items-center gap-4">
             <Avatar name={channel.authorName} avatar={channel.avatar} size={76} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[22px] font-extrabold" style={{ color: V.t1 }} translate="no">{channel.authorName}</p>
+              <p className="truncate text-[22px] font-extrabold" style={{ color: V.t1 }} translate="no">{channel.authorName}<VerifiedBadge type="video_channel" id={channel.authorId} size={18} /></p>
               <p className="text-xs" style={{ color: V.t3 }} translate="no">@{channel.authorUsername}</p>
               <p className="mt-1 text-xs" style={{ color: V.t2 }}>
                 {`${fmtViews(channel.subscribers ?? 0)} подписчиков · ${channel.videoCount} видео · ${fmtViews(channel.totalViews)} просмотров`}

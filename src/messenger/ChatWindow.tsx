@@ -1,3 +1,4 @@
+import { VerifiedBadge } from '@/verification/marks';
 import {
   FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState, useLayoutEffect,
 } from 'react';
@@ -1514,7 +1515,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-[14px] sm:text-[16px] font-bold truncate leading-tight" style={{ color: '#fff' }} translate="no">{chat.name}</p>
+                <p className="text-[14px] sm:text-[16px] font-bold truncate leading-tight" style={{ color: '#fff' }} translate="no">{chat.name}<VerifiedBadge type={chat.type === 'direct' ? 'user' : chat.type === 'channel' ? 'chat_channel' : 'chat_group'} id={chat.type === 'direct' ? peerId : chat.id} /></p>
                 {typing.length > 0 ? (
                   <p className="text-xs truncate" style={{ color: theme.accent }}>
                     {typing.join(', ')} печатает...
