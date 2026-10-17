@@ -26,6 +26,8 @@ const STATUS = {
  *  • /api/admin/recovery/*      — сотрудникам: отзыв токена администратора (право `security`).
  * Тела ответов публичных ручек одинаковы для существующего и несуществующего аккаунта.
  */
+const MULT = Math.max(1, Number(process.env.RECOVERY_RATE_MULT) || 1);   // только для тестов
+
 export const recoveryRoutes = async (req, res, url) => {
   const path = new URL(req.url, 'http://x').pathname;
   const pub = path.startsWith('/api/recovery/');
@@ -34,7 +36,7 @@ export const recoveryRoutes = async (req, res, url) => {
   if (!pub && !mine && !adm) return false;
   const ip = clientIp(req);
   const reply = (r, ok = 200) => json(res, r?.error ? STATUS[r.error] ?? 400 : ok, r);
-  if (!rateLimit(`rcv:${ip}`, 90)) return json(res, 429, { error: 'too_many_requests' });
+  if (!rateLimit(`rcv:${ip}`, 90 * MULT)) return json(res, 429, { error: 'too_many_requests' });
   const b = req.method === 'GET' ? {} : ((await parseBody(req)) ?? {});
 
   /* ── Публичные ── */
