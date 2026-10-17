@@ -26,6 +26,7 @@ import {
   grantPrime, revokePrime, MAX_PROFILES, sendTwoFactorCode, setPhoneVerified, PRIME_PRICES,
 } from './../skyid.mjs';
 import { rateLimit } from './../security.mjs';
+import { purchaseAllowedOn } from './../entitlements.mjs';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -419,6 +420,8 @@ export const skyIdRoutes = async (req, res, url) => {
 
   if (req.method === 'POST' && url === '/api/skyid/prime/grant') {
     const s = await requireProfile(req, res); if (!s) return true;
+    // ТВ, консоль и машина подписку не оформляют: «Откройте приложение Sky на телефоне» (entitlements.mjs).
+    if (!purchaseAllowedOn(req)) return json(res, 403, { error: 'purchase_not_on_device' });
     const body = await parseBody(req);
 
     // Срок и цена — из таблицы сервера. Если бы цену присылал браузер,
@@ -464,6 +467,7 @@ export const skyIdRoutes = async (req, res, url) => {
 
   if (req.method === 'POST' && url === '/api/skyid/prime/revoke') {
     const s = await requireProfile(req, res); if (!s) return true;
+    if (!purchaseAllowedOn(req)) return json(res, 403, { error: 'purchase_not_on_device' });
     const body = await parseBody(req);
     const target = body.profileId ? String(body.profileId) : s.profileId;
     const result = await revokePrime(s.skyId, target);

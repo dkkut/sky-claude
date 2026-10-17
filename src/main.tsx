@@ -5,6 +5,7 @@ import { AppShell }      from './app/AppShell';
 import { AuthScreen }    from './auth/AuthScreen';
 import { DeviceLinkDeepLink } from './auth/DeviceLinkPhone';
 import { UnfreezeLinkPage, useOpenDevicesIfAsked } from './auth/AccountFreeze';
+import { useEntitlementSync, useOpenPrimeIfAsked } from './prime/entitlementSync';
 import { StorageVerifyPage } from './admin/StorageVerify';
 import { OidcAuthorizeGate } from './oidc/Authorize';
 import { TVAuthScreen }  from './interface/tv/auth/TVAuthScreen';
@@ -555,7 +556,7 @@ const ConsoleAuth = ({ children }: { children: React.ReactNode }) => {
 
 /* Язык и словарь — до первого кадра: английский не должен мелькать русским. */
 /** Показывается только вошедшему: неавторизованный сначала видит обычный вход. */
-const OpenDevices = () => { useOpenDevicesIfAsked(); return null; };
+const OpenDevices = () => { useOpenDevicesIfAsked(); useOpenPrimeIfAsked(); useEntitlementSync(); return null; };
 const LinkDeepLinkGate = () => {
   const ok = useAuthStore((s) => s.isAuthenticated);
   return ok ? <><DeviceLinkDeepLink /><OpenDevices /></> : null;

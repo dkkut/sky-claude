@@ -2,11 +2,15 @@
  * Экран «только для Prime» — один на все платные разделы (Sky Music, Sky Film, подкасты, книги, режим «Код» в Sky AI).
  * Экран — вежливость: доступ закрывает сервер (`prime_required`), цены здесь только для показа.
  */
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Crown, Music2, Film, Mic, BookOpen, Code2 } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { useMoney } from '@/wallet/store';
+import { qrSvg } from '@/shared/qr';
+import { NATIVE_APP } from '@/core/nativeApp';
+import { API_ORIGIN } from '@/core/nativeApp';
+import { isLimitedSurface, primeLinkUrl, useEntitlements } from '@/prime/entitlements';
 
 export type PrimeService = 'music' | 'film' | 'podcasts' | 'books' | 'code';
 
@@ -18,7 +22,47 @@ const SERVICES: Record<PrimeService, { Icon: typeof Music2; label: string; text:
   code:     { Icon: Code2,    label: 'Sky AI · Код', text: 'Помощник по коду — написать, объяснить и исправить — входит в подписку Sky Prime. Обычный чат работает без неё.' },
 };
 
+/** ТВ, консоль и машина: подписка оформляется только с телефона. Экран ждёт и сам открывается, когда сервер подтвердит Prime. */
+export const PhoneOnly = ({ service }: { service?: PrimeService }) => {
+  const { Icon, label, text } = service ? SERVICES[service] : { Icon: Crown, label: 'Sky Prime', text: 'Подписка открывает Sky Music, Sky Film, подкасты, книги и режим «Код» в Sky AI на всех ваших устройствах.' };
+  const reloadSession = useAuthStore((st) => st.reloadSession);
+  const refresh = useEntitlements((st) => st.refresh);
+  const url = primeLinkUrl(NATIVE_APP ? API_ORIGIN : window.location.origin);
+  const svg = useMemo(() => qrSvg(url, { size: 200, quietZone: 2 }), [url]);
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      const e = await refresh();
+      if (alive && e?.prime.active) await reloadSession();   // профиль узнает о Prime, экран раздела откроется сам
+    };
+    const id = window.setInterval(() => { void tick(); }, 5000);
+    const onVis = () => { if (!document.hidden) void tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { alive = false; clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+  }, [refresh, reloadSession]);
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-5 px-6 text-center" data-prime-phone-only>
+      <div className="relative">
+        <div className="grid h-20 w-20 place-items-center rounded-3xl" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <Icon size={36} style={{ color: 'var(--t2)' }} />
+        </div>
+        <div className="absolute -right-2 -top-2 grid h-8 w-8 place-items-center rounded-full" style={{ background: 'linear-gradient(135deg,#f59e0b,#fbbf24)' }}><Crown size={14} className="text-white" /></div>
+      </div>
+      <p className="text-xl font-black text-white">{service ? `${label} — только для Prime` : label}</p>
+      <p className="max-w-md text-sm leading-relaxed" style={{ color: 'var(--t2)' }}>{text}</p>
+      <p className="max-w-md text-base font-bold" style={{ color: 'var(--t1)' }}>Для оформления или управления подпиской откройте приложение Sky на телефоне.</p>
+      <div className="rounded-2xl bg-white p-3" role="img" aria-label="QR-код: открыть Sky Prime на телефоне" dangerouslySetInnerHTML={{ __html: svg }} />
+      <p className="max-w-sm text-xs" style={{ color: 'var(--t3)' }}>Наведите камеру телефона на QR-код. В коде только адрес Sky — ни входа, ни платёжных данных в нём нет. Когда подписка будет оформлена, этот экран откроется сам.</p>
+    </div>
+  );
+};
+
 export const PrimeGate = ({ service }: { service: PrimeService }) => {
+  if (isLimitedSurface()) return <PhoneOnly service={service} />;
+  return <PurchaseGate service={service} />;
+};
+
+const PurchaseGate = ({ service }: { service: PrimeService }) => {
   const PLANS = [
     { days:30,  label:'1 месяц', price:'399 ₽' },
     { days:365, label:'1 год',   price:'3 790 ₽', popular:true },

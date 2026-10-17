@@ -1552,6 +1552,9 @@ export const SkyFilm = () => {
   const [seriesList, setSeriesList] = useState<ServerSeries[]>([]);
 
   useEffect(() => { void load(); }, [load]);
+  /* Подписку оформили на другом устройстве (или экран был на ТВ) — каталог открывается сам. */
+  const isPrimeNow = me?.isPrime ?? false;
+  useEffect(() => { if (isPrimeNow && needsPrime) void load({ force: true }); }, [isPrimeNow, needsPrime, load]);
   useEffect(() => { void apiSeriesCatalog().then(r => { if (r) setSeriesList(r); }); }, []);
 
   /* Дипссылка из Библиотеки: «открой и играй именно вот этот фильм».

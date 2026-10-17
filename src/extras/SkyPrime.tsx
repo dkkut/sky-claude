@@ -1,4 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import { PhoneOnly } from '@/prime/PrimeGate';
+import { isLimitedSurface } from '@/prime/entitlements';
 import { useEffect, useState } from 'react';
 import { PrimeCouponNote } from '@/codes/PrimeCouponNote';
 import { Crown, Check, Star, Zap, Shield, Music2, Film, Radio, Sparkles, Gift, TrendingUp, X, CreditCard } from 'lucide-react';
@@ -183,6 +185,12 @@ const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
 };
 
 export const SkyPrime = () => {
+  // ТВ, консоль и машина: оформлять и отменять подписку нельзя — только с телефона (сервер отказывает в любом случае).
+  if (isLimitedSurface()) return <PhoneOnly />;
+  return <SkyPrimeFull />;
+};
+
+const SkyPrimeFull = () => {
   const { accounts, currentUserId, purchasePrime, cancelPrime } = useAuthStore();
   const { grantPrime: grantPlatformPrime, revokePrime } = usePlatformStore();
   const [buyError, setBuyError] = useState<string | null>(null);
