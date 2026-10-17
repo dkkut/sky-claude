@@ -15,6 +15,8 @@ export default defineConfig({
         server.middlewares.use((req, _res, next) => {
           const p = (req.url ?? '').split('?')[0];
           if (VERIFY_PATHS.has(p)) req.url = '/verify.html' + (req.url ?? '').slice(p.length);
+          // Для проверки сайта восстановления без отдельного домена: /recovery-site/… отдаёт recovery.html (на боевом сервере его отдаёт nginx домена recovery.*).
+          else if (p === '/recovery-site' || p.startsWith('/recovery-site/')) req.url = '/recovery.html';
           next();
         });
       },
@@ -22,6 +24,8 @@ export default defineConfig({
         server.middlewares.use((req, _res, next) => {
           const p = (req.url ?? '').split('?')[0];
           if (VERIFY_PATHS.has(p)) req.url = '/verify.html' + (req.url ?? '').slice(p.length);
+          // Для проверки сайта восстановления без отдельного домена: /recovery-site/… отдаёт recovery.html (на боевом сервере его отдаёт nginx домена recovery.*).
+          else if (p === '/recovery-site' || p.startsWith('/recovery-site/')) req.url = '/recovery.html';
           next();
         });
       },
@@ -37,6 +41,7 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, 'index.html'),
         verify: path.resolve(__dirname, 'verify.html'),
+        recovery: path.resolve(__dirname, 'recovery.html'),
       },
     },
   },

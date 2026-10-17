@@ -935,10 +935,14 @@ export const AuthScreen = () => {
     <SkyIsland />
     <LanguagePill />
     <ThemePill />
-    {step === 'login' && (
-      <button type="button" onClick={() => setRestore(true)} className="fixed bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-xl px-4 py-2 text-xs font-semibold"
-        style={{ background: 'var(--bg-l3)', color: 'var(--t2)', border: '1px solid var(--border)' }}>Восстановить удалённый аккаунт</button>
-    )}
+    <div className="fixed bottom-4 left-1/2 z-10 flex w-[calc(100%-32px)] max-w-md -translate-x-1/2 flex-wrap items-center justify-center gap-2">
+      <a href="https://recovery.skymessenger.online" target="_blank" rel="noopener noreferrer" className="rounded-xl px-4 py-2.5 text-xs font-bold"
+        style={{ background: 'var(--accent, #4f8cff)', color: '#fff' }}>Восстановление доступа</a>
+      {step === 'login' && (
+        <button type="button" onClick={() => setRestore(true)} className="rounded-xl px-4 py-2.5 text-xs font-semibold"
+          style={{ background: 'var(--bg-l3)', color: 'var(--t2)', border: '1px solid var(--border)' }}>Восстановить удалённый аккаунт</button>
+      )}
+    </div>
     {restore && <RestoreAccount onClose={() => setRestore(false)} />}
     {linkKind && byMail && step === 'login' && (
       <button type="button" onClick={() => setByMail(false)}

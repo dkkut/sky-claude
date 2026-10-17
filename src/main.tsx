@@ -41,6 +41,7 @@ import { reloadWalletForUser }    from './wallet/store';
 import { reloadCustomizationForUser } from './customization/store';
 import { syncRegionForProfile, watchRegionChanges } from './region/sync';
 import { initI18n } from './i18n';
+import { consumeRecoveryHandoff, useOpenRecoveryIfAsked } from './auth/recoveryHandoff';
 import './styles.css';
 
 const SHIMMER_CSS = `
@@ -564,7 +565,7 @@ const ConsoleAuth = ({ children }: { children: React.ReactNode }) => {
 
 /* Язык и словарь — до первого кадра: английский не должен мелькать русским. */
 /** Показывается только вошедшему: неавторизованный сначала видит обычный вход. */
-const OpenDevices = () => { useOpenDevicesIfAsked(); useOpenPrimeIfAsked(); useEntitlementSync(); return null; };
+const OpenDevices = () => { useOpenRecoveryIfAsked(); useOpenDevicesIfAsked(); useOpenPrimeIfAsked(); useEntitlementSync(); return null; };
 const LinkDeepLinkGate = () => {
   const ok = useAuthStore((s) => s.isAuthenticated);
   return ok ? <><DeviceLinkDeepLink /><OpenDevices /></> : null;
@@ -572,7 +573,7 @@ const LinkDeepLinkGate = () => {
 
 installTelemetry();
 
-void initI18n().finally(() => ReactDOM.createRoot(document.getElementById('root')!).render(
+void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).finally(() => ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary fallback={
       <div style={{

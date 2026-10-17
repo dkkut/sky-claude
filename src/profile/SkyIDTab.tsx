@@ -8,6 +8,7 @@
  * браузере, нельзя.
  */
 import { DeviceAccounts } from '@/auth/DeviceAccounts';
+import { RecoverySection } from '@/recovery/RecoverySection';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -92,12 +93,13 @@ const Field = (p: React.InputHTMLAttributes<HTMLInputElement>) => (
 );
 
 /* ── sub-sections ────────────────────────────────────────────── */
-type SubTab = 'skyid' | 'profiles' | 'security' | 'devices' | 'log';
+type SubTab = 'skyid' | 'profiles' | 'security' | 'recovery' | 'devices' | 'log';
 
 const SUB_TABS: { key: SubTab; label: string }[] = [
   { key: 'skyid',    label: 'Sky ID'    },
   { key: 'profiles', label: 'Профили'   },
   { key: 'security', label: 'Защита'    },
+  { key: 'recovery', label: 'Восстановление' },
   { key: 'devices',  label: 'Устройства'},
   { key: 'log',      label: 'История'   },
 ];
@@ -110,7 +112,7 @@ export const SkyIDTab = () => {
     // Ссылка из письма о разморозке открывает сразу «Устройства», где ждёт баннер «Разморозка аккаунта».
     const want = useModuleStore.getState().pendingSkyIdSub;
     if (want) useModuleStore.getState().setPendingSkyIdSub(null);
-    return (want === 'devices' || want === 'security' || want === 'profiles' || want === 'log') ? want : 'skyid';
+    return (want === 'devices' || want === 'security' || want === 'recovery' || want === 'profiles' || want === 'log') ? want : 'skyid';
   });
 
   // Состояние Sky ID могло измениться в другой вкладке — перечитываем.
@@ -144,6 +146,7 @@ export const SkyIDTab = () => {
             {sub === 'skyid'    && <SkyIdSection />}
             {sub === 'profiles' && <ProfilesSection />}
             {sub === 'security' && <SecuritySection />}
+            {sub === 'recovery' && <RecoverySection />}
             {sub === 'devices'  && (
               <DevicesSection onLogoutAll={() => logoutAll()} />
             )}

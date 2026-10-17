@@ -238,7 +238,7 @@ export const staffDetail = async (staffId, id) => {
   const { rows: ev } = await query('SELECT actor_id, event, detail, created_at FROM recovery_case_log WHERE case_id = $1 ORDER BY id', [c.id]);
   const hist = c.sky_id ? (await query('SELECT kind, event, factor, result, created_at FROM recovery_history WHERE sky_id = $1 ORDER BY id DESC LIMIT 40', [c.sky_id])).rows : [];
   let form = {}; try { form = JSON.parse(decryptContent(c.form_enc) ?? '{}'); } catch { /* повреждённый бланк показываем пустым */ }
-  return { id: c.id, number: c.number, skyId: c.sky_id, accountKind: c.account_kind, status: c.status, statusLabel: STATUSES[c.status], assigneeId: c.assignee_id, contactEmail: maskEmail(c.contact_email), contactConfirmed: c.contact_ok,
+  return { id: c.id, number: c.number, skyId: c.sky_id, accountKind: c.account_kind, reasonLabel: REASONS[c.reason], status: c.status, statusLabel: STATUSES[c.status], assigneeId: c.assignee_id, contactEmail: maskEmail(c.contact_email), contactConfirmed: c.contact_ok,
     createdAt: c.created_at.toISOString(), form, messages: await messagesOf(c),
     events: ev.map((e) => ({ actorId: e.actor_id, event: e.event, detail: e.detail, at: e.created_at.toISOString() })),
     securityHistory: hist.map((h) => ({ kind: h.kind, event: h.event, factor: h.factor || undefined, result: h.result, at: h.created_at.toISOString() })),

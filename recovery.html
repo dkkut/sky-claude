@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru" style="height:100%;margin:0;padding:0;">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#070816" />
+    <title>Sky — восстановление доступа</title>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body, #root { min-height: 100%; margin: 0; padding: 0; }
+      body { background: #070816; }
+    </style>
+  </head>
+  <body>
+    <!--
+      Сайт восстановления доступа (recovery.skymessenger.online). Отдельный вход Vite: приложение Sky, плееры и сокет здесь не загружаются,
+      поэтому страница открывается, даже когда обычный вход недоступен. Секреты (токены ссылок, ключи) передаются во фрагменте адреса (#…),
+      который не уходит на сервер и в журналы, и сразу убираются из адресной строки.
+    -->
+    <div id="root"></div>
+    <script type="module" src="/src/recovery.tsx"></script>
+  </body>
+</html>
