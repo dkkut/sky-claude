@@ -1,4 +1,6 @@
 import { Handshake, Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, HardDrive, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
+import { visitKeyOf, apiCashbackVisit } from '@/prime/primeApi';
+import { flash } from '@/shared/flash';
 import { ModuleGate } from '@/core/moduleClosures';
 import { useSettings } from '@/settings/store';
 import { lazyChunk } from '@/app/lazyChunk';
@@ -1173,6 +1175,13 @@ export const ExtrasModule = () => {
   const { pendingExtrasTab, setPendingExtrasTab } = useModuleStore();
   const [tab, setTab] = useState<Tab>((pendingExtrasTab as Tab) || 'home');
   useEffect(() => { if (pendingExtrasTab) setPendingExtrasTab(null); }, []);
+  // Баллы за пользование вкладкой (если администрация задала такое правило): засчитывается после 8 с на вкладке, раз в сутки — решает сервер.
+  useEffect(() => {
+    const key = visitKeyOf(tab);
+    if (!key) return undefined;
+    const t = setTimeout(() => { void apiCashbackVisit(key).then((r) => { const g = r.ok ? r.data?.granted?.[0] : null; if (g) flash(`+${g.points} баллов: ${g.title}`); }); }, 8000);
+    return () => clearTimeout(t);
+  }, [tab]);
   const { reports } = useMessengerStore();
   const pendingCount = reports.filter(r=>(r.status??'pending')==='pending').length;
 

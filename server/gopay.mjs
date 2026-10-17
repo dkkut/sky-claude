@@ -8,6 +8,7 @@
 import { query } from './db.mjs';
 import { can } from './admin.mjs';
 import { payDetailsRaw } from './goreg.mjs';
+import { awardIn, notifyGranted } from './cashbackrules.mjs';
 import { profileCards, openJson, sealJson, addEvent, lockOrder, setStatus, notifyGo, goLog, inTx, showCode } from './gocore.mjs';
 
 /** Открыть оплату по заказу (идемпотентно): снимок реквизитов получателя на сейчас. */
@@ -57,9 +58,17 @@ export const confirmPaid = async (payeeId, orderId) => inTx(async (c) => {
   } else {
     await addEvent(c, orderId, payeeId, o.status, o.status, 'Получение оплаты подтверждено');
   }
-  return { ok: true, customerId: pay.payer_id, status: o.status === 'payment_reported' ? 'paid' : o.status };
+  // Кэшбэк по правилам администрации — за подтверждённую оплату (заказы своих сотрудников организации не считаются).
+  let cashback = [];
+  if (!o.data?.internal && ['taxi', 'delivery', 'food', 'stay'].includes(o.kind)) {
+    cashback = (await awardIn(c, { trigger: `go_${o.kind}`, profileId: pay.payer_id, counterpartyId: payeeId, amountRub: Number(pay.amount_rub ?? o.price_rub) || 0, ref: `go:${orderId}` })).granted;
+  }
+  return { ok: true, customerId: pay.payer_id, status: o.status === 'payment_reported' ? 'paid' : o.status, cashback };
 }).then(async (r) => {
-  if (r.ok) await notifyGo(r.customerId, 'payment', 'Оплата подтверждена', 'Исполнитель подтвердил получение денег.', orderId);
+  if (r.ok) {
+    await notifyGo(r.customerId, 'payment', 'Оплата подтверждена', 'Исполнитель подтвердил получение денег.', orderId);
+    await notifyGranted(r.customerId, r.cashback, `go:${orderId}`);
+  }
   return r;
 });
 

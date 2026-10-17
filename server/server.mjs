@@ -110,6 +110,7 @@ import { aiUsageRoutes } from './routes/aiusage.mjs';
 import { partnersRoutes } from './routes/partners.mjs';
 import { sweepAiEvents } from './aiusage.mjs';
 import { releaseDueCashback } from './primecashback.mjs';
+import { releaseDue as releaseDueRules } from './cashbackrules.mjs';
 import { sweepFreezeLog } from './accountfreeze.mjs';
 import { sweepDeviceLinks } from './devicelink.mjs';
 import { sweepGameSessions } from './gameactivity.mjs';
@@ -698,6 +699,7 @@ const start = async () => {
       await sweepSkykassa().catch((e) => console.error('[skykassa] уборка:', e.message));
       await sweepAiEvents().catch(() => {});
       await releaseDueCashback().catch((e) => console.error('[prime] кэшбэк:', e.message));
+      await releaseDueRules().catch((e) => console.error('[prime] правила кэшбэка:', e.message));
       await sweepIpPin();
       await sweepGameSessions();
       await goSweepExpired().catch(() => {});

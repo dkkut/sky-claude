@@ -14,7 +14,7 @@ type Data = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 
 const ERR: Record<string, string> = {
   not_allowed: 'Недостаточно прав.', step_up_required: 'Нужно подтверждение личности.', step_up_invalid: 'Код не подошёл.', step_up_exhausted: 'Слишком много неверных кодов — запросите новый.',
-  bad_field: 'Проверьте значение поля.', not_found: 'Не найдено.', not_pending: 'Уже обработано.', reason_required: 'Укажите причину (от 3 знаков).', too_many_requests: 'Слишком часто, подождите минуту.',
+  bad_field: 'Проверьте значение поля.', rule_ended: 'Завершённое правило не возобновить.', not_found: 'Не найдено.', not_pending: 'Уже обработано.', reason_required: 'Укажите причину (от 3 знаков).', too_many_requests: 'Слишком часто, подождите минуту.',
 };
 const errText = (e?: string, f?: string) => ((e && ERR[e]) || `Не получилось${e ? ` (${e})` : ''}`) + (f ? ` Поле: ${f}.` : '');
 const dt = (s?: string | null) => (s ? new Date(s).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
@@ -30,6 +30,88 @@ const Num = ({ label, value, onChange, w = 'w-28' }: { label: string; value: unk
     <input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} inputMode="decimal" className={`mt-0.5 block ${w} rounded-lg px-2 py-1.5 text-sm`} style={field} />
   </label>
 );
+
+const blankRule: Data = { title: '', trigger: 'go_taxi', tab: 'music', kind: 'percent', percent: '3', fixedPoints: '10', minAmountRub: '0', maxPointsEvent: '500', perUserDayEvents: '0', perUserMonthPoints: '5000', primeOnly: false, holdDays: '3', startsAt: '', endsAt: '', budgetPoints: '', status: 'paused' };
+const STATUS_RU: Record<string, string> = { active: 'действует', paused: 'на паузе', ended: 'завершено' };
+const localDt = (s?: string | null) => (s ? new Date(new Date(s).getTime() - new Date(s).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '');
+
+/** Правила «за что и сколько»: заказ такси, вкладка, процент с покупки Prime… Каждое изменение — с кодом подтверждения личности. */
+const RulesCard = ({ guarded, write }: { guarded: (fn: (c: string) => Promise<void>) => Promise<void>; write: (m: string, path: string, body: Data, ok: string, c: string) => Promise<boolean> }) => {
+  const [d, setD] = useState<Data | null>(null);
+  const [edit, setEdit] = useState<Data | null>(null);
+  const load = useCallback(async () => { const r = await apiCall<Data>(`${A}/cashback/rules`); if (r.ok) setD(r.data ?? {}); }, []);
+  useEffect(() => { void load(); }, [load]);
+  if (!d) return <Loader2 size={16} className="animate-spin" style={{ color: C.t3 }} />;
+  const meta = d.meta as Data;
+  const rules = d.rules as Data[];
+  const isTab = edit?.trigger === 'tab_visit';
+  const save = (b: Data, method: string, path: string, ok: string) => guarded(async (c) => { if (await write(method, path, b, ok, c)) { setEdit(null); await load(); } });
+  const sum = (r: Data) => `${r.kind === 'percent' ? `${r.percent}% от суммы` : `${r.fixedPoints} б. за раз`}${r.minAmountRub ? ` · от ${r.minAmountRub} ₽` : ''} · до ${r.maxPointsEvent} б. за раз${r.perUserDayEvents ? ` · ${r.perUserDayEvents}/сутки` : ''} · до ${r.perUserMonthPoints} б. в месяц на человека${r.primeOnly ? ' · только Prime' : ''}${r.holdDays ? ` · холд ${r.holdDays} дн.` : ''}${r.budgetPoints != null ? ` · бюджет ${r.spentPoints}/${r.budgetPoints} б.` : ''}${r.endsAt ? ` · до ${dt(r.endsAt)}` : ''}`;
+  return (
+    <Card title="За что начисляется кэшбэк">
+      <p className="text-[11px] leading-relaxed" style={{ color: C.t3 }}>
+        Правило = повод + сколько баллов. Повод: заказ такси, доставки, еды или жилья в Sky GO (по подтверждённой исполнителем оплате), покупка Prime, пополнение кошелька, заказ в Market, пользование вкладкой (раз в сутки).
+        Если подходят несколько действующих правил, баллы начисляются по каждому. Новое правило создаётся на паузе. Начисляются только Prime Points; один повод — одно начисление по правилу.
+      </p>
+      {rules.length === 0 && <p className="text-xs" style={{ color: C.t3 }}>Правил пока нет — людям ничего не начисляется по этому разделу.</p>}
+      {rules.map((r) => (
+        <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: C.l2, color: C.t2 }}>
+          <span translate="no" className="font-bold" style={{ color: C.t1 }}>{r.title}</span>
+          <span>{`${r.triggerLabel}${r.tabLabel ? ` · ${r.tabLabel}` : ''}`}</span>
+          <span>{sum(r)}</span>
+          <span style={{ color: r.status === 'active' ? C.green : C.t3 }}>{STATUS_RU[r.status]}</span>
+          <span style={{ color: C.t3 }}>{`выдано ${(r.grants?.paid?.points ?? 0)} б.${r.grants?.pending ? ` · ждёт ${r.grants.pending.points} б.` : ''}`}</span>
+          <span className="ml-auto flex gap-1.5">
+            {r.status !== 'ended' && <Btn tone="plain" onClick={() => void save({ status: r.status === 'active' ? 'paused' : 'active' }, 'POST', `/cashback/rules/${r.id}/status`, r.status === 'active' ? 'Правило на паузе' : 'Правило включено')}>{r.status === 'active' ? 'Пауза' : 'Включить'}</Btn>}
+            {r.status !== 'ended' && <Btn tone="red" onClick={() => void save({ status: 'ended' }, 'POST', `/cashback/rules/${r.id}/status`, 'Правило завершено')}>Завершить</Btn>}
+            <Btn tone="plain" onClick={() => setEdit({ ...r, startsAt: localDt(r.startsAt), endsAt: localDt(r.endsAt), budgetPoints: r.budgetPoints ?? '' })}>Изменить</Btn>
+          </span>
+        </div>
+      ))}
+      {!edit && <Btn tone="plain" onClick={() => setEdit({ ...blankRule })}>Добавить правило</Btn>}
+      {edit && (
+        <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.brd}` }}>
+          <input value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="Название правила (видят люди)" aria-label="Название правила" className="w-full rounded-lg px-3 py-2 text-sm" style={field} />
+          <div className="flex flex-wrap gap-2">
+            <label className="text-[11px]" style={{ color: C.t3 }}>За что
+              <select value={edit.trigger} onChange={(e) => setEdit({ ...edit, trigger: e.target.value, ...(e.target.value === 'tab_visit' ? { kind: 'fixed', perUserDayEvents: '1', holdDays: '0' } : {}) })} className="mt-0.5 block rounded-lg px-2 py-1.5 text-sm" style={field}>
+                {(meta.triggers as Data[]).map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+            </label>
+            {isTab && (
+              <label className="text-[11px]" style={{ color: C.t3 }}>Вкладка
+                <select value={edit.tab ?? 'music'} onChange={(e) => setEdit({ ...edit, tab: e.target.value })} className="mt-0.5 block rounded-lg px-2 py-1.5 text-sm" style={field}>
+                  {(meta.tabs as Data[]).map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
+              </label>
+            )}
+            {!isTab && (
+              <label className="text-[11px]" style={{ color: C.t3 }}>Сколько
+                <select value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })} className="mt-0.5 block rounded-lg px-2 py-1.5 text-sm" style={field}>
+                  <option value="percent">Процент от суммы</option><option value="fixed">Фиксированно баллов</option>
+                </select>
+              </label>
+            )}
+            {edit.kind === 'percent' && !isTab ? <Num label="Процент, %" value={edit.percent} onChange={(v) => setEdit({ ...edit, percent: v })} /> : <Num label="Баллов за раз" value={edit.fixedPoints} onChange={(v) => setEdit({ ...edit, fixedPoints: v })} />}
+            {!isTab && <Num label="Мин. сумма, ₽" value={edit.minAmountRub} onChange={(v) => setEdit({ ...edit, minAmountRub: v })} />}
+            <Num label="Макс. баллов за раз" value={edit.maxPointsEvent} onChange={(v) => setEdit({ ...edit, maxPointsEvent: v })} />
+            {!isTab && <Num label="Раз в сутки (0 — без предела)" value={edit.perUserDayEvents} onChange={(v) => setEdit({ ...edit, perUserDayEvents: v })} w="w-40" />}
+            <Num label="Макс. в месяц на человека" value={edit.perUserMonthPoints} onChange={(v) => setEdit({ ...edit, perUserMonthPoints: v })} />
+            {!isTab && <Num label="Холд, дней" value={edit.holdDays} onChange={(v) => setEdit({ ...edit, holdDays: v })} />}
+            <Num label="Бюджет, баллов (пусто — без предела)" value={edit.budgetPoints} onChange={(v) => setEdit({ ...edit, budgetPoints: v })} w="w-44" />
+            <label className="text-[11px]" style={{ color: C.t3 }}>Начало<input type="datetime-local" value={edit.startsAt ?? ''} onChange={(e) => setEdit({ ...edit, startsAt: e.target.value })} className="mt-0.5 block rounded-lg px-2 py-1.5 text-sm" style={field} /></label>
+            <label className="text-[11px]" style={{ color: C.t3 }}>Конец<input type="datetime-local" value={edit.endsAt ?? ''} onChange={(e) => setEdit({ ...edit, endsAt: e.target.value })} className="mt-0.5 block rounded-lg px-2 py-1.5 text-sm" style={field} /></label>
+          </div>
+          <label className="flex items-center gap-2 text-xs" style={{ color: C.t2 }}><input type="checkbox" checked={Boolean(edit.primeOnly)} onChange={(e) => setEdit({ ...edit, primeOnly: e.target.checked })} />Только для владельцев Prime</label>
+          <div className="flex gap-2">
+            <Btn onClick={() => void save({ ...edit, startsAt: edit.startsAt ? new Date(edit.startsAt).toISOString() : '', endsAt: edit.endsAt ? new Date(edit.endsAt).toISOString() : '' }, edit.id ? 'PUT' : 'POST', edit.id ? `/cashback/rules/${edit.id}` : '/cashback/rules', 'Правило сохранено')}>Сохранить</Btn>
+            <Btn tone="plain" onClick={() => setEdit(null)}>Отмена</Btn>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+};
 
 export const PrimeTab = () => {
   const [d, setD] = useState<Data | null>(null);
@@ -77,6 +159,8 @@ export const PrimeTab = () => {
           <button type="button" onClick={() => setAsk(null)} className="text-[11px]" style={{ color: C.t3 }}>Отмена</button>
         </div>
       )}
+
+      <RulesCard guarded={guarded} write={write} />
 
       <Card title="Правила кэшбэка Prime Points">
         <p className="text-[11px] leading-relaxed" style={{ color: C.t3 }}>

@@ -6,6 +6,7 @@
  * подтверждения личности (step-up). Зачисление — одна транзакция под
  * блокировкой платежа; уникальный ключ skykassa_credits не даёт зачислить дважды.
  */
+import { awardIn } from './cashbackrules.mjs';
 import { query } from './db.mjs';
 import { can, isOwner } from './admin.mjs';
 import { logAdmin, beginStepUp, consumeStepUp } from './adminsec.mjs';
@@ -49,6 +50,7 @@ export const confirmAndCredit = async (c, pay, { actorId = null, actorKind = 'sy
     const r = await wallet.creditIn(c, pay.user_id, amount, 'skykassa_topup', `Пополнение из SkyKassa ${pay.number}`, ref);
     if (r.error) throw new KErr(r.error);
     set.balance_after = r.balance;
+    await awardIn(c, { trigger: 'wallet_topup', profileId: pay.user_id, amountRub: amount, ref: `skykassa:${pay.id}` });
     await c.query('UPDATE skykassa_credits SET balance_after = $2 WHERE payment_id = $1', [pay.id, r.balance]);
   } else {
     const s = await getSettings(c);

@@ -120,6 +120,17 @@ const PointsCard = ({ isPrime }: { isPrime: boolean }) => {
         </p>
       )}
 
+      {cashback?.adminRules && cashback.adminRules.length > 0 && (
+        <div className="mt-3 space-y-1">
+          <p className="text-[12px] font-bold" style={{ color: 'var(--t1)' }}>За что начисляются баллы</p>
+          {cashback.adminRules.map((r) => (
+            <p key={r.id} className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>
+              {`${r.title}: ${r.triggerLabel}${r.tabLabel ? ` — ${r.tabLabel}` : ''} — ${r.kind === 'percent' ? `${r.percent}% (не больше ${r.maxPointsEvent} баллов)` : `${r.fixedPoints} баллов`}${r.perUserDayEvents ? `, не чаще ${r.perUserDayEvents} раз в сутки` : ''}${r.primeOnly ? ', только с Prime' : ''}${r.holdDays ? `, баллы приходят через ${r.holdDays} дн.` : ''}`}
+            </p>
+          ))}
+        </div>
+      )}
+
       <AnimatePresence>
         {toast && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}

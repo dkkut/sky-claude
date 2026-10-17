@@ -8,6 +8,7 @@
  * Статусы: requested → accepted | rejected; accepted/upheld → returned → refunded (подтвердил заказчик);
  * rejected | returned → escalated (заказчик) → upheld | denied (администрация); requested | rejected → withdrawn (заказчик).
  */
+import { cancelByRef } from './cashbackrules.mjs';
 import { query } from './db.mjs';
 import { can } from './admin.mjs';
 import { logAdmin } from './adminsec.mjs';
@@ -110,6 +111,7 @@ export const act = async (actorId, orderId, action, input = {}) => {
     await evt(c, orderId, actorId, `Возврат: ${tr.status}`);
     return { ok: true, id: r.id, status: tr.status, other: isExec ? r.customer_id : r.executor_id, amountRub: r.amount_rub };
   });
+  if (out.ok && out.status === 'refunded') await cancelByRef(`go:${orderId}`, 'Возврат по заказу').catch(() => {});
   if (out.ok) {
     const T = { accepted: 'Исполнитель согласился вернуть деньги. Он переведёт их сам и сообщит.', rejected: 'Исполнитель отказал в возврате. Можно обратиться к администрации.', returned: 'Исполнитель сообщил, что вернул деньги. Проверьте и подтвердите получение.',
       refunded: 'Заказчик подтвердил получение возврата.', escalated: 'Заказчик обратился к администрации по возврату.', withdrawn: 'Заказчик отозвал запрос на возврат.' };
