@@ -19,7 +19,7 @@ export interface Business {
 }
 export interface Subscription { status: 'inactive' | 'active' | 'expiring' | 'suspended' | 'expired'; active: boolean; startedAt?: string | null; expiresAt?: string | null; priceRub: number; periodDays: number }
 export interface Requisites { holder: string; method: 'phone' | 'account' | 'card' | 'other'; value: string; bank?: string; purpose?: string; instruction?: string; extra?: string; updatedAt?: string }
-export interface Me { business: Business | null; subscription: Subscription; requisites?: Requisites | null; payOrigin?: string }
+export interface Me { business: Business | null; subscription: Subscription; requisites?: Requisites | null; payOrigin?: string; role?: 'owner' | StaffRole | null; roleLabel?: string; invites?: { id: string; role: string; roleLabel: string; business: string }[] }
 export interface Qr {
   id: string; publicId: string; kind: 'pay' | 'permanent' | 'tip' | 'order' | 'invoice'; title: string; description: string; amountRub: number | null; currency: string; orderNo: string;
   instruction: string; expiresAt: string | null; status: 'active' | 'disabled' | 'archived'; createdAt: string; url: string; opens: number; requests: number; confirmed: number;
@@ -61,7 +61,7 @@ export interface PublicPage {
   amountRub?: number | null; currency?: string; orderNo?: string; instruction?: string; note?: string; minAmountRub?: number; maxAmountRub?: number;
   requisites?: { holder: string; method: string; value: string; bank?: string; purpose?: string; extra?: string };
   tip?: { recipient: string; message?: string; amounts: number[]; allowCustom: boolean; photoUrl: string | null };
-  lines?: { title: string; variant?: string; qty: number; priceRub: number; discountRub?: number }[]; number?: number;
+  lines?: { title: string; variant?: string; qty: number; priceRub: number; discountRub?: number }[]; number?: number; discountRub?: number;
 }
 export const pubPage = async (pid: string): Promise<{ ok: true; data: PublicPage } | { ok: false; error: string }> => {
   try {
@@ -91,7 +91,7 @@ export interface Item { id: string; title: string; description: string; priceRub
 export interface OrderLine { itemId: string; title: string; variant: string; qty: number; priceRub: number }
 export interface Order {
   id: string; number: number; lines: OrderLine[]; totalRub: number; contact: { name?: string; phone?: string; email?: string; address?: string }; note: string; status: string; statusLabel: string;
-  ownerComment: string; createdAt: string; payUrl: string | null; payExpired: boolean; paymentStatus: string | null;
+  ownerComment: string; promoCode?: string; discountRub?: number; subtotalRub?: number; createdAt: string; payUrl: string | null; payExpired: boolean; paymentStatus: string | null;
 }
 export interface Shop { slug: string | null; enabled: boolean; origins: string[]; notice: string; url: string | null; apiBase: string }
 export interface Tip { id: string; publicId: string; title: string; status: string; recipient: string; message?: string; amounts: number[]; allowCustom: boolean; min: number; max: number; url: string; opens: number; requests: number; confirmed: number; confirmedSumRub: number }
@@ -119,3 +119,30 @@ export const kbInvoices = () => req<{ invoices: Invoice[] }>('/api/kbiz/invoices
 export const kbInvoiceSave = (id: string | null, b: unknown) => (id ? send<unknown>('PUT', `/api/kbiz/invoices/${id}`, b) : send<{ id: string; number: number }>('POST', '/api/kbiz/invoices', b));
 export const kbInvoiceSend = (id: string) => send<{ url: string }>('POST', `/api/kbiz/invoices/${id}/send`);
 export const kbInvoiceCancel = (id: string) => send<unknown>('POST', `/api/kbiz/invoices/${id}/cancel`);
+
+/* ── Этап 3: сотрудники, касса, промокоды, отзывы, аналитика ── */
+export type StaffRole = 'admin' | 'manager' | 'cashier';
+export interface StaffMember { id: string; name: string; username: string; role: StaffRole; roleLabel: string; status: 'invited' | 'active'; createdAt: string }
+export interface Invite { id: string; role: StaffRole; roleLabel: string; business: string }
+export interface Promo { id: string; code: string; kind: 'percent' | 'fixed'; value: number; minOrderRub: number; maxUses: number | null; used: number; startsAt: string | null; expiresAt: string | null; status: 'active' | 'paused'; createdAt: string }
+export interface Review { id: string; rating: number; text: string; author: string; reply: string; status: 'published' | 'hidden'; createdAt: string; orderNo: number }
+export interface CashItem { id: string; publicId: string; amountRub: number; status: string; createdAt: string; url: string }
+export interface Analytics {
+  days: number; requests: number; confirmed: number; claimedSumRub: number; confirmedSumRub: number; averageRub: number; notFound: number; refunded: number; opens: number; conversionPercent: number | null;
+  byDay: { day: string; requests: number; confirmedSumRub: number }[]; byKind: { kind: string; requests: number; confirmed: number; confirmedSumRub: number }[];
+  topItems: { title: string; qty: number; sumRub: number }[]; orders: { total: number; done: number; lost: number; discountsRub: number }; reviews: { count: number; average: number };
+}
+export const kbStaff = () => req<{ staff: StaffMember[] }>('/api/kbiz/staff');
+export const kbStaffInvite = (username: string, role: StaffRole) => send<{ id: string }>('POST', '/api/kbiz/staff', { username, role });
+export const kbStaffRole = (id: string, role: StaffRole) => send<unknown>('POST', `/api/kbiz/staff/${id}/role`, { role });
+export const kbStaffRemove = (id: string) => req<unknown>(`/api/kbiz/staff/${id}`, { method: 'DELETE' });
+export const kbInviteAnswer = (id: string, accept: boolean) => send<unknown>('POST', `/api/kbiz/staff/${id}/${accept ? 'accept' : 'decline'}`);
+export const kbCashCreate = (amountRub: number, note?: string) => send<{ id: string; publicId: string; url: string; amountRub: number; expiresInSec: number }>('POST', '/api/kbiz/cash', { amountRub, note });
+export const kbCashStatus = (id: string) => req<{ status: string; amountRub: number | null }>(`/api/kbiz/cash/${id}`);
+export const kbCashRecent = () => req<{ items: CashItem[] }>('/api/kbiz/cash');
+export const kbPromos = () => req<{ promos: Promo[] }>('/api/kbiz/promos');
+export const kbPromoCreate = (b: unknown) => send<{ id: string }>('POST', '/api/kbiz/promos', b);
+export const kbPromoStatus = (id: string, status: string) => send<unknown>('POST', `/api/kbiz/promos/${id}/status`, { status });
+export const kbReviews = () => req<{ reviews: Review[] }>('/api/kbiz/reviews');
+export const kbReviewAct = (id: string, b: { status?: string; reply?: string }) => send<unknown>('POST', `/api/kbiz/reviews/${id}`, b);
+export const kbAnalytics = (days: number) => req<{ analytics: Analytics | null }>(`/api/kbiz/analytics?days=${days}`);

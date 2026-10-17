@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { notifyGift } from './giftnotify.mjs';
 import { newId, inTx, sealJson, openJson, clean } from './gocore.mjs';
+import { promoCheck, publicReviews } from './kbextra.mjs';
 import { err, publicId, ipHash, keyHash, audit, subState, payUrl, payOrigin, imageFromDataUrl, MAX_AMOUNT } from './kbiz.mjs';
 
 const RESERVED = new Set(['admin', 'api', 'www', 'shop', 'static', 'assets', 'p', 's', 'sky', 'skykassa', 'pay', 'login', 'null', 'undefined']);
@@ -156,7 +157,8 @@ export const shopPublic = async (slug, origin) => {
   if (b.status !== 'active' || !sub.active || !rq[0]) return { ...base, state: 'unavailable', items: [] };
   const { rows } = await query(`SELECT * FROM kb_items WHERE business_id = $1 AND status = 'active' AND available ORDER BY sort, created_at DESC LIMIT 500`, [b.id]);
   const items = rows.map((r) => { const x = shapeItem(r); delete x.status; delete x.sort; delete x.available; return x; });
-  return { ...base, state: 'open', items, categories: [...new Set(items.map((i) => i.category).filter(Boolean))] };
+  const reviews = await publicReviews(b.id);
+  return { ...base, state: 'open', reviews, items, categories: [...new Set(items.map((i) => i.category).filter(Boolean))] };
 };
 
 const parseContact = (c) => {
@@ -164,6 +166,25 @@ const parseContact = (c) => {
   const phone = clean(c?.phone, 30); if (!/^[0-9+() -]{5,30}$/.test(phone)) return err('bad_field', { field: 'phone' });
   const email = clean(c?.email, 120); if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return err('bad_field', { field: 'email' });
   return { v: { name, phone, email, address: clean(c?.address, 200) } };
+};
+
+/** Предпросмотр скидки по промокоду для корзины (то же вычисление, что и при заказе; расход не списывается). */
+export const promoPreview = async (slug, body, origin) => {
+  const b = await shopBiz(slug);
+  if (!b || !b.shop_enabled) return err('not_found');
+  if (!originOk(b, origin)) return err('origin_not_allowed');
+  const raw = Array.isArray(body?.items) ? body.items.slice(0, 30) : [];
+  const ids = [...new Set(raw.map((x) => String(x?.id ?? '')))];
+  const { rows: items } = await query(`SELECT * FROM kb_items WHERE business_id = $1 AND id = ANY($2) AND status = 'active' AND available`, [b.id, ids]);
+  const byId = new Map(items.map((r) => [r.id, r])); let subtotal = 0;
+  for (const x of raw) {
+    const it = byId.get(String(x?.id ?? '')); const qty = int(x?.qty, 1, 99); if (!it || qty == null) return err('item_unavailable');
+    let price = it.price_rub; if (x?.variant) { const v = (it.variants ?? []).find((y) => y.name === String(x.variant)); if (v?.priceRub) price = v.priceRub; }
+    subtotal += qty * price;
+  }
+  const pc = await promoCheck(b.id, body?.promo, subtotal); if (pc.error) return pc;
+  if (pc.none) return err('promo_invalid');
+  return { ok: true, code: pc.code, subtotalRub: subtotal, discountRub: pc.discount, totalRub: subtotal - pc.discount };
 };
 
 /** Заказ покупателя. Цены и сумму считает сервер по каталогу; создаётся платёжная страница на 48 часов. */
@@ -190,38 +211,46 @@ export const createOrder = async (slug, body, ip, origin) => {
     lines.push({ itemId: it.id, title: it.title, variant, qty, priceRub: price }); total += qty * price;
   }
   if (total < 1 || total > MAX_AMOUNT) return err('bad_amount');
+  const subtotal = total;
+  const pc = await promoCheck(b.id, body?.promo, subtotal); if (pc.error) return pc;
+  const discount = pc.none ? 0 : pc.discount; total = subtotal - discount;
   const h = ipHash(ip);
   const { rows: lim } = await query(`SELECT count(*) FILTER (WHERE ip_hash = $1 AND created_at > now() - interval '1 hour')::int AS ip_n, count(*) FILTER (WHERE created_at > now() - interval '1 day')::int AS day_n FROM kb_orders WHERE business_id = $2`, [h, b.id]);
   if (lim[0].ip_n >= 5 || lim[0].day_n >= 300) return err('too_many_requests');
   const id = newId('kbo'); const key = crypto.randomBytes(18).toString('base64url');
-  const res = await inTx(async (cl) => {
+  let res;
+  try { res = await inTx(async (cl) => {
     await cl.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`kbord:${b.id}`]);
+    if (!pc.none) {   // расход промокода списывается атомарно: последний экземпляр достаётся одному заказу
+      const { rowCount } = await cl.query(`UPDATE kb_promos SET used = used + 1 WHERE id = $1 AND status = 'active' AND (max_uses IS NULL OR used < max_uses)`, [pc.promo.id]);
+      if (!rowCount) throw Object.assign(new Error('promo_exhausted'), { kbErr: 'promo_exhausted' });
+    }
     const { rows: n } = await cl.query('SELECT COALESCE(max(number), 0) + 1 AS n FROM kb_orders WHERE business_id = $1', [b.id]);
     const number = n[0].n;
     const qid = newId('kbq'); const pid = publicId();
     await cl.query(`INSERT INTO kb_qr (id, public_id, business_id, kind, title, description, amount_rub, order_no, expires_at, config) VALUES ($1,$2,$3,'order',$4,'',$5,$6, now() + interval '48 hours', $7::jsonb)`,
-      [qid, pid, b.id, `Заказ № ${number}`, total, String(number), JSON.stringify({ orderId: id, number, lines })]);
-    await cl.query(`INSERT INTO kb_orders (id, business_id, number, lines, total_rub, contact_enc, note, qr_id, buyer_key_hash, ip_hash, origin) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11)`,
-      [id, b.id, number, JSON.stringify(lines), total, sealJson(c.v), clean(body?.note, 300), qid, keyHash(key), h, String(origin ?? '').slice(0, 200)]);
+      [qid, pid, b.id, `Заказ № ${number}`, total, String(number), JSON.stringify({ orderId: id, number, lines, discountRub: discount })]);
+    await cl.query(`INSERT INTO kb_orders (id, business_id, number, lines, total_rub, contact_enc, note, qr_id, buyer_key_hash, ip_hash, origin, promo_code, discount_rub, subtotal_rub) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [id, b.id, number, JSON.stringify(lines), total, sealJson(c.v), clean(body?.note, 300), qid, keyHash(key), h, String(origin ?? '').slice(0, 200), pc.none ? '' : pc.code, discount, subtotal]);
     return { number, pid };
-  });
+  }); } catch (e) { if (e.kbErr) return err(e.kbErr); throw e; }
   await notifyGift(b.owner_id, 'kassa_biz', 'Новый заказ', `Заказ № ${res.number} на ${total} ₽. Подтвердите его в SkyKassa Business.`, `kbo:${id}`).catch(() => {});
-  return { ok: true, id, number: res.number, key, totalRub: total, payUrl: payUrl(res.pid), payPublicId: res.pid };
+  return { ok: true, id, number: res.number, key, totalRub: total, subtotalRub: subtotal, discountRub: discount, payUrl: payUrl(res.pid), payPublicId: res.pid };
 };
 
 export const buyerOrder = async (id, key) => {
   const { rows } = await query(
-    `SELECT o.number, o.status, o.total_rub, b.name, (SELECT p.status FROM kb_payments p WHERE p.qr_id = o.qr_id ORDER BY p.created_at DESC LIMIT 1) AS pay_status, q.public_id
+    `SELECT o.number, o.status, o.total_rub, b.name, (SELECT 1 FROM kb_reviews r WHERE r.order_id = o.id) AS reviewed, (SELECT p.status FROM kb_payments p WHERE p.qr_id = o.qr_id ORDER BY p.created_at DESC LIMIT 1) AS pay_status, q.public_id
        FROM kb_orders o JOIN kb_businesses b ON b.id = o.business_id LEFT JOIN kb_qr q ON q.id = o.qr_id WHERE o.id = $1 AND o.buyer_key_hash = $2`, [String(id ?? ''), keyHash(key)]);
   if (!rows[0]) return err('not_found');
   return { number: rows[0].number, status: rows[0].status, statusLabel: ORDER_LABEL[rows[0].status], totalRub: rows[0].total_rub, business: rows[0].name,
-    payment: rows[0].pay_status ?? null, payUrl: rows[0].public_id ? payUrl(rows[0].public_id) : null };
+    reviewed: Boolean(rows[0].reviewed), payment: rows[0].pay_status ?? null, payUrl: rows[0].public_id ? payUrl(rows[0].public_id) : null };
 };
 
 /* ─── Заказы (владелец) ─── */
 
 const shapeOrder = (r) => ({ id: r.id, number: r.number, lines: r.lines, totalRub: r.total_rub, contact: openJson(r.contact_enc), note: r.note, status: r.status, statusLabel: ORDER_LABEL[r.status],
-  ownerComment: r.owner_comment, createdAt: r.created_at.toISOString(), payUrl: r.public_id ? payUrl(r.public_id) : null, payExpired: Boolean(r.qr_expires && r.qr_expires <= new Date()),
+  ownerComment: r.owner_comment, promoCode: r.promo_code || undefined, discountRub: r.discount_rub || 0, subtotalRub: r.subtotal_rub ?? r.total_rub, createdAt: r.created_at.toISOString(), payUrl: r.public_id ? payUrl(r.public_id) : null, payExpired: Boolean(r.qr_expires && r.qr_expires <= new Date()),
   paymentStatus: r.pay_status ?? null });
 
 export const listOrders = async (profileId, { status } = {}) => {

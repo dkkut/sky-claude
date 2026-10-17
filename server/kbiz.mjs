@@ -246,7 +246,7 @@ const QSEL = `SELECT q.*, (SELECT count(*)::int FROM kb_qr_opens o WHERE o.qr_id
 export const listQr = async (profileId) => {
   const { rows: b } = await query('SELECT id FROM kb_businesses WHERE owner_id = $1', [profileId]);
   if (!b[0]) return { qr: [] };
-  const { rows } = await query(`${QSEL} WHERE q.business_id = $1 AND q.kind IN ('pay','permanent') ORDER BY q.created_at DESC LIMIT 200`, [b[0].id]);
+  const { rows } = await query(`${QSEL} WHERE q.business_id = $1 AND q.kind IN ('pay','permanent') AND COALESCE(q.config->>'cash', '') <> 'true' ORDER BY q.created_at DESC LIMIT 200`, [b[0].id]);
   return { qr: rows.map(shapeQr) };
 };
 
@@ -270,7 +270,7 @@ export const createQr = async (profileId, body, { permanent = false } = {}) => {
   if (!sub.active) return err('subscription_required', { expired: sub.status === 'expired' });
   const p = parseQr(permanent ? { title: body?.title || 'Оплата', instruction: body?.instruction } : body, permanent);
   if (p.error) return p;
-  const { rows: cnt } = await query(`SELECT count(*)::int AS n FROM kb_qr WHERE business_id = $1 AND status <> 'archived' AND kind IN ('pay','permanent','tip')`, [b[0].id]);
+  const { rows: cnt } = await query(`SELECT count(*)::int AS n FROM kb_qr WHERE business_id = $1 AND status <> 'archived' AND kind IN ('pay','permanent','tip') AND COALESCE(config->>'cash', '') <> 'true'`, [b[0].id]);
   if (cnt[0].n >= 500) return err('too_many_qr');
   const id = newId('kbq');
   try {
@@ -330,7 +330,7 @@ export const publicPage = async (pid, ip) => {
   const lines = (q.kind === 'invoice' || q.kind === 'order') && Array.isArray(cfg.lines) ? cfg.lines : undefined;
   return { ...base, amountRub: q.amount_rub, currency: q.currency, orderNo: q.order_no || undefined, instruction: q.instruction || r.instruction || undefined,
     requisites: { holder: r.holder, method: r.method, value: r.value, bank: r.bank || undefined, purpose: r.purpose || undefined, extra: r.extra || undefined },
-    tip, lines, number: cfg.number,
+    tip, lines, number: cfg.number, discountRub: cfg.discountRub || undefined,
     minAmountRub: q.kind === 'tip' ? (cfg.min ?? 1) : 1, maxAmountRub: q.kind === 'tip' ? (cfg.max ?? MAX_AMOUNT) : MAX_AMOUNT, note: 'Это прямой перевод владельцу бизнеса. Sky не принимает деньги и не проверяет перевод: владелец сам подтверждает получение.' };
 };
 
@@ -398,7 +398,7 @@ export const paymentLog = async (profileId, id) => {
 };
 
 /** Смена статуса заявки владельцем. Допустимые переходы — по таблице; повтор того же действия — без второй записи. */
-export const actOnPayment = async (profileId, id, action, comment) => {
+export const actOnPayment = async (profileId, id, action, comment, actor = profileId) => {
   const t = TRANSITIONS[action];
   if (!t) return err('bad_action');
   return inTx(async (c) => {
@@ -409,16 +409,19 @@ export const actOnPayment = async (profileId, id, action, comment) => {
     const note = clean(comment, 300);
     if ((action === 'not_found' || action === 'cancel' || action === 'refund') && note.length < 3) return err('comment_required');
     await c.query(`UPDATE kb_payments SET status = $2, owner_comment = CASE WHEN $3 = '' THEN owner_comment ELSE $3 END, updated_at = now(),
-        confirmed_by = CASE WHEN $2 = 'confirmed' THEN $4 ELSE confirmed_by END, confirmed_at = CASE WHEN $2 = 'confirmed' THEN now() ELSE confirmed_at END WHERE id = $1`, [rows[0].id, t.to, note, profileId]);
-    await c.query('INSERT INTO kb_payment_log (payment_id, actor, from_status, to_status, note) VALUES ($1,$2,$3,$4,$5)', [rows[0].id, profileId, rows[0].status, t.to, note]);
-    await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [rows[0].business_id, profileId, `payment_${action}`, `${rows[0].id}: ${rows[0].amount_rub} ₽`]);
+        confirmed_by = CASE WHEN $2 = 'confirmed' THEN $4 ELSE confirmed_by END, confirmed_at = CASE WHEN $2 = 'confirmed' THEN now() ELSE confirmed_at END WHERE id = $1`, [rows[0].id, t.to, note, actor]);
+    await c.query('INSERT INTO kb_payment_log (payment_id, actor, from_status, to_status, note) VALUES ($1,$2,$3,$4,$5)', [rows[0].id, actor, rows[0].status, t.to, note]);
+    await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [rows[0].business_id, actor, `payment_${action}`, `${rows[0].id}: ${rows[0].amount_rub} ₽`]);
     return { ok: true, status: t.to, statusLabel: STATUS_LABEL[t.to] };
   });
 };
 
 export const auditList = async (profileId, limit = 100) => {
   const { rows } = await query('SELECT a.actor, a.action, a.detail, a.at FROM kb_audit a JOIN kb_businesses b ON b.id = a.business_id WHERE b.owner_id = $1 ORDER BY a.id DESC LIMIT $2', [profileId, Math.min(300, Math.max(1, Number(limit) || 100))]);
-  return { audit: rows.map((r) => ({ actor: r.actor === profileId ? 'owner' : 'other', action: r.action, detail: r.detail, at: r.at.toISOString() })) };
+  const others = [...new Set(rows.map((r) => r.actor).filter((a) => a !== profileId && /^[\w-]{6,}$/.test(a)))];
+  const { rows: pr } = others.length ? await query('SELECT id, username FROM profiles WHERE id = ANY($1::text[])', [others]) : { rows: [] };
+  const names = new Map(pr.map((x) => [x.id, x.username]));
+  return { audit: rows.map((r) => ({ actor: r.actor === profileId ? 'owner' : 'other', actorName: r.actor === profileId ? undefined : names.get(r.actor), action: r.action, detail: r.detail, at: r.at.toISOString() })) };
 };
 
 const csvCell = (v) => { const s = String(v ?? ''); return /^[=+\-@\t\r]/.test(s) ? `'${s}`.replace(/"/g, '""') : s.replace(/"/g, '""'); };

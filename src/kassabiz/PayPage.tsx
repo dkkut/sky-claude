@@ -128,6 +128,7 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
         {page.lines && page.lines.length > 0 && (
           <ul className="mt-3 text-xs" style={{ color: 'var(--t2)' }}>
             {page.lines.map((l, i) => <li key={i} translate="no" className="flex justify-between gap-2 py-0.5"><span>{l.title}{l.variant ? ` (${l.variant})` : ''} × {l.qty}</span><span>{l.qty * l.priceRub - (l.discountRub ?? 0)} ₽</span></li>)}
+            {page.discountRub ? <li className="flex justify-between gap-2 py-0.5 font-semibold" style={{ color: 'var(--green)' }}><span>Скидка по промокоду</span><span>−{page.discountRub} ₽</span></li> : null}
           </ul>
         )}
       </div>

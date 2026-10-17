@@ -1,7 +1,7 @@
 /* SkyKassa Business — кабинет бизнеса (Профиль → Sky для бизнеса). Этап 1: бизнес и режим, реквизиты, подписка, QR-коды, заявки на оплату, журнал.
    Sky деньги покупателей не принимает: прямой перевод идёт владельцу по его реквизитам, а «оплачено» ставит только владелец. */
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Store, QrCode, Wallet, ListChecks, ShieldCheck, Landmark, History, LayoutDashboard, Copy, Download, Printer, Power, Archive, Plus, Building2, MapPin, Layers, Package, ShoppingBag, Globe, HeartHandshake, FileText } from 'lucide-react';
+import { Loader2, Store, QrCode, Wallet, ListChecks, ShieldCheck, Landmark, History, LayoutDashboard, Copy, Download, Printer, Power, Archive, Plus, Building2, MapPin, Layers, Package, ShoppingBag, Globe, HeartHandshake, FileText, Calculator, Users, TicketPercent, MessageSquareText, BarChart3 } from 'lucide-react';
 import { useMoney } from '@/wallet/store';
 import { useAuthStore } from '@/core/auth/store';
 import { flash } from '@/shared/flash';
@@ -9,6 +9,7 @@ import * as K from './api';
 import { qrSvg, downloadPng, downloadSvg, printQr } from './qr';
 
 import { Items, ShopSettings, Orders, Tips, Invoices } from './Catalog';
+import { Cash, Team, Promos, Reviews, AnalyticsView, Invites } from './Team';
 import { card, field, why, dt, Btn, In, Stat, REASON } from './ui';
 const MODE: Record<K.Mode, { title: string; hint: string; icon: typeof Store }> = {
   online: { title: 'Онлайн-платформа', hint: 'Платёжные ссылки и страницы оплаты, заказы и счета для клиентов в интернете.', icon: Layers },
@@ -326,12 +327,16 @@ const Audit = () => {
   return <div className="rounded-2xl p-4" style={card}>{!a ? <Loader2 className="animate-spin" size={16} /> : !a.length ? <p className="text-sm" style={{ color: 'var(--t3)' }}>Записей пока нет.</p> : a.map((x, i) => <p key={i} className="text-xs py-1.5" style={{ color: 'var(--t2)', borderBottom: '1px solid var(--border)' }}>{dt(x.at)} · <b>{AUDIT[x.action] ?? x.action}</b>{x.detail ? ` — ${x.detail}` : ''}</p>)}</div>;
 };
 
-type Sec = 'overview' | 'pay' | 'qr' | 'items' | 'orders' | 'shop' | 'tips' | 'inv' | 'req' | 'biz' | 'sub' | 'audit';
-const NAV: { key: Sec; label: string; icon: typeof Store }[] = [
-  { key: 'overview', label: 'Обзор', icon: LayoutDashboard }, { key: 'pay', label: 'Приём оплаты', icon: ListChecks }, { key: 'qr', label: 'QR-коды', icon: QrCode },
-  { key: 'items', label: 'Каталог', icon: Package }, { key: 'orders', label: 'Заказы', icon: ShoppingBag }, { key: 'shop', label: 'Витрина', icon: Globe },
-  { key: 'tips', label: 'Чаевые', icon: HeartHandshake }, { key: 'inv', label: 'Счета', icon: FileText },
-  { key: 'req', label: 'Реквизиты', icon: Landmark }, { key: 'biz', label: 'Бизнес', icon: Store }, { key: 'sub', label: 'Подписка', icon: Wallet }, { key: 'audit', label: 'Журнал', icon: History },
+type Sec = 'overview' | 'pay' | 'cash' | 'qr' | 'team' | 'promo' | 'reviews' | 'stats' | 'items' | 'orders' | 'shop' | 'tips' | 'inv' | 'req' | 'biz' | 'sub' | 'audit';
+type Role = 'owner' | 'admin' | 'manager' | 'cashier';
+const ALL: Role[] = ['owner', 'admin', 'manager', 'cashier']; const MGR: Role[] = ['owner', 'admin', 'manager']; const OWN: Role[] = ['owner']; const ADM: Role[] = ['owner', 'admin'];
+const NAV: { key: Sec; label: string; icon: typeof Store; roles: Role[] }[] = [
+  { key: 'overview', label: 'Обзор', icon: LayoutDashboard, roles: ALL }, { key: 'cash', label: 'Касса', icon: Calculator, roles: ALL }, { key: 'pay', label: 'Приём оплаты', icon: ListChecks, roles: ALL },
+  { key: 'qr', label: 'QR-коды', icon: QrCode, roles: ALL }, { key: 'items', label: 'Каталог', icon: Package, roles: MGR }, { key: 'orders', label: 'Заказы', icon: ShoppingBag, roles: MGR },
+  { key: 'shop', label: 'Витрина', icon: Globe, roles: ADM }, { key: 'tips', label: 'Чаевые', icon: HeartHandshake, roles: MGR }, { key: 'inv', label: 'Счета', icon: FileText, roles: MGR },
+  { key: 'promo', label: 'Промокоды', icon: TicketPercent, roles: MGR }, { key: 'reviews', label: 'Отзывы', icon: MessageSquareText, roles: MGR }, { key: 'stats', label: 'Аналитика', icon: BarChart3, roles: MGR },
+  { key: 'team', label: 'Команда', icon: Users, roles: OWN }, { key: 'req', label: 'Реквизиты', icon: Landmark, roles: OWN }, { key: 'biz', label: 'Бизнес', icon: Store, roles: OWN },
+  { key: 'sub', label: 'Подписка', icon: Wallet, roles: OWN }, { key: 'audit', label: 'Журнал', icon: History, roles: ADM },
 ];
 
 export const KassaBusiness = () => {
@@ -341,23 +346,25 @@ export const KassaBusiness = () => {
   useEffect(() => { if (userId) void load(); }, [userId, load]);
   if (err) return <div className="p-4 text-sm" style={{ color: 'var(--red)' }}>Не удалось загрузить. <button type="button" className="underline" onClick={() => void load()}>Повторить</button></div>;
   if (!me) return <div className="grid place-items-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--t3)' }} /></div>;
-  if (!me.business) return <div className="h-full overflow-y-auto"><Setup onDone={() => void load()} /></div>;
-  const b = me.business; const M = MODE[b.mode];
+  if (!me.business) return <div className="h-full overflow-y-auto"><Invites invites={me.invites ?? []} onDone={() => void load()} /><Setup onDone={() => void load()} /></div>;
+  const b = me.business; const M = MODE[b.mode]; const role = (me.role ?? 'owner') as Role; const nav = NAV.filter((n) => n.roles.includes(role));
+  const canConfirm = role !== 'cashier';
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-4 pb-2">
         <div className="flex items-center gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-xl" style={{ background: 'var(--bg-l2)' }}><M.icon size={20} style={{ color: 'var(--accent)' }} /></div>
           <div className="min-w-0"><p translate="no" className="text-base font-black truncate" style={{ color: 'var(--t1)' }}>{b.name}</p>
-            <p className="text-[11px]" style={{ color: 'var(--t3)' }}>{M.title} · {b.status === 'active' ? 'опубликован' : b.status === 'suspended' ? 'приостановлен' : 'скрыт'} · подписка: {SUB[me.subscription.status]}</p></div>
+            <p className="text-[11px]" style={{ color: 'var(--t3)' }}>{role !== 'owner' && me.roleLabel ? `${me.roleLabel} · ` : ''}{M.title} · {b.status === 'active' ? 'опубликован' : b.status === 'suspended' ? 'приостановлен' : 'скрыт'} · подписка: {SUB[me.subscription.status]}</p></div>
         </div>
         {b.status === 'suspended' && <p role="alert" className="mt-2 rounded-xl p-3 text-xs" style={{ ...card, color: 'var(--red)' }}><ShieldCheck size={13} className="inline" /> Бизнес приостановлен администрацией Sky{b.suspendedReason ? `: ${b.suspendedReason}` : ''}. История сохранена.</p>}
         <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-          {NAV.map((n) => <button key={n.key} type="button" aria-current={sec === n.key} onClick={() => setSec(n.key)} className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold" style={{ ...field, ...(sec === n.key ? { border: '1px solid var(--accent)', background: 'color-mix(in srgb, var(--accent) 14%, var(--bg-l2))' } : {}) }}><n.icon size={13} />{n.label}</button>)}
+          {nav.map((n) => <button key={n.key} type="button" aria-current={sec === n.key} onClick={() => setSec(n.key)} className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold" style={{ ...field, ...(sec === n.key ? { border: '1px solid var(--accent)', background: 'color-mix(in srgb, var(--accent) 14%, var(--bg-l2))' } : {}) }}><n.icon size={13} />{n.label}</button>)}
         </div>
       </div>
       <div className="p-4 pt-2 pb-24">
-        {sec === 'overview' && <Overview me={me} go={setSec} />}
+        {sec === 'overview' && <><Invites invites={me.invites ?? []} onDone={() => void load()} /><Overview me={me} go={setSec} /></>}
+        {sec === 'cash' && <Cash canConfirm={canConfirm} />}
         {sec === 'pay' && <Payments />}
         {sec === 'qr' && <Qrs me={me} />}
         {sec === 'items' && <Items />}
@@ -365,6 +372,10 @@ export const KassaBusiness = () => {
         {sec === 'shop' && <ShopSettings />}
         {sec === 'tips' && <Tips bizName={b.name} />}
         {sec === 'inv' && <Invoices bizName={b.name} />}
+        {sec === 'promo' && <Promos />}
+        {sec === 'reviews' && <Reviews />}
+        {sec === 'stats' && <AnalyticsView />}
+        {sec === 'team' && <Team />}
         {sec === 'req' && <Reqs me={me} reload={() => void load()} />}
         {sec === 'biz' && <Profile me={me} reload={() => void load()} />}
         {sec === 'sub' && <Subscription me={me} reload={() => void load()} />}

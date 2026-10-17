@@ -35,7 +35,7 @@ t('фото: не картинка отклоняется', (await put(A, `/api/
 r = await put(A, `/api/kbiz/items/${cap}/photo`, { dataUrl: png });
 t('фото загружено', r.status === 200 && /media\/kbm-/.test(r.data.photoUrl), JSON.stringify(r.data));
 const photo = r.data.photoUrl;
-t('чужой не меняет позицию', (await put(X, `/api/kbiz/items/${cap}`, { title: 'Взлом', priceRub: 1 })).status === 400 || (await put(X, `/api/kbiz/items/${cap}`, { title: 'Взлом', priceRub: 1 })).status === 404);
+t('чужой не меняет позицию', [400, 403, 404].includes((await put(X, `/api/kbiz/items/${cap}`, { title: 'Взлом', priceRub: 1 })).status));
 t('название не изменилось', q(`select title from kb_items where id='${cap}'`) === 'Капучино');
 
 // витрина

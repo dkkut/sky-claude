@@ -5,12 +5,12 @@
   var API = (C.api || '').replace(/\/+$/, '');
   var slug = C.slug || (location.pathname.match(/^\/s\/([a-z0-9-]+)/) || [])[1] || '';
   var app = document.getElementById('app');
-  var cart = {}; var data = null; var cat = '';
+  var cart = {}; var data = null; var cat = ''; var promo = null;
   var KEY = 'skyshop:' + slug;
   try { cart = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { cart = {}; }
   var ERR = { not_found: 'Витрина не найдена.', origin_not_allowed: 'Этот сайт не указан в настройках витрины.', shop_unavailable: 'Приём заказов временно недоступен.',
     empty_cart: 'Корзина пуста.', item_unavailable: 'Одной из позиций больше нет в наличии.', too_many_requests: 'Слишком много попыток. Попробуйте позже.',
-    bad_field: 'Проверьте заполнение полей.', variant_required: 'Выберите вариант товара.', bad_amount: 'Сумма заказа вне допустимых пределов.' };
+    bad_field: 'Проверьте заполнение полей.', variant_required: 'Выберите вариант товара.', bad_amount: 'Сумма заказа вне допустимых пределов.', promo_invalid: 'Промокод не найден или выключен.', promo_expired: 'Срок промокода истёк.', promo_exhausted: 'Промокод уже использован.', promo_min_order: 'Заказ меньше минимальной суммы для этого промокода.', order_not_done: 'Отзыв можно оставить после выполнения заказа.', already_reviewed: 'Отзыв уже оставлен.' };
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function rub(n) { return n.toLocaleString('ru-RU') + ' ₽'; }
@@ -57,6 +57,14 @@
         (vs.length ? '<select data-v="' + esc(i.id) + '">' + vs.map(function (v) { return '<option>' + esc(v.name) + '</option>'; }).join('') + '</select>' : '') +
         '<button class="primary" data-add="' + esc(i.id) + '">В корзину</button></div></div>';
     }).join('') + '</div>';
+    var rv = data.reviews;
+    if (rv && rv.count) {
+      h += '<h2>Отзывы · ' + rv.average.toFixed(1) + ' ★ (' + rv.count + ')</h2>' + rv.items.map(function (r) {
+        return '<div class="row" style="display:block"><b>' + '★'.repeat(r.rating) + '</b> ' + esc(r.author) + '<div>' + esc(r.text) + '</div>' + (r.reply ? '<div class="muted">Ответ продавца: ' + esc(r.reply) + '</div>' : '') + '</div>';
+      }).join('');
+    }
+    var last = null; try { last = JSON.parse(localStorage.getItem(KEY + ':last') || 'null'); } catch (e) {}
+    if (last && last.id) h += '<p><button id="myorder">Мой заказ № ' + esc(last.number) + '</button></p>';
     var n = count();
     if (n) h += '<div class="bar"><div><div><b>' + rub(total()) + '</b> <span class="muted">· ' + n + ' шт.</span></div><button class="primary" id="tocart">Оформить</button></div></div>';
     app.innerHTML = h;
@@ -68,6 +76,7 @@
       };
     });
     var tc = document.getElementById('tocart'); if (tc) tc.onclick = viewCart;
+    var mo = document.getElementById('myorder'); if (mo) mo.onclick = viewOrder;
   }
 
   function viewCart() {
@@ -78,7 +87,9 @@
       return '<div class="row"><div>' + esc(l.it.title) + (l.variant ? ' <span class="muted">(' + esc(l.variant) + ')</span>' : '') + '<div class="muted">' + rub(l.price) + '</div></div>' +
         '<div class="qty"><button data-m="' + esc(k) + '">−</button><b>' + l.qty + '</b><button data-p="' + esc(k) + '">+</button></div></div>';
     }).join('') +
-      '<div class="row"><b>Итого</b><b>' + rub(total()) + '</b></div>' +
+      '<div class="row"><span>Промокод</span><span><input id="pc" maxlength="24" placeholder="Код" style="width:140px;display:inline-block" value="' + esc(promo ? promo.code : '') + '"> <button type="button" id="pa">Применить</button></span></div>' +
+      (promo ? '<div class="row"><span>Скидка</span><b>−' + rub(promo.discountRub) + '</b></div>' : '') +
+      '<div class="row"><b>Итого</b><b>' + rub(promo ? promo.totalRub : total()) + '</b></div>' +
       '<h2>Ваши данные</h2><form id="f"><label>Имя</label><input name="name" required maxlength="80" autocomplete="name">' +
       '<label>Телефон</label><input name="phone" required maxlength="30" inputmode="tel" autocomplete="tel">' +
       '<label>Почта (необязательно)</label><input name="email" type="email" maxlength="120" autocomplete="email">' +
@@ -90,14 +101,22 @@
     Array.prototype.forEach.call(app.querySelectorAll('[data-m]'), function (b) { b.onclick = function () { var k = b.getAttribute('data-m'); cart[k] = (cart[k] || 0) - 1; if (cart[k] < 1) delete cart[k]; save(); viewCart(); }; });
     Array.prototype.forEach.call(app.querySelectorAll('[data-p]'), function (b) { b.onclick = function () { var k = b.getAttribute('data-p'); cart[k] = Math.min(99, (cart[k] || 0) + 1); save(); viewCart(); }; });
     document.getElementById('back').onclick = viewCatalog;
+    document.getElementById('pa').onclick = function () {
+      var code = document.getElementById('pc').value.trim(); var e = document.getElementById('e'); e.textContent = '';
+      if (!code) { promo = null; viewCart(); return; }
+      api('/api/kbiz/public/shop/' + encodeURIComponent(slug) + '/promo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ promo: code, items: lines().map(function (l) { return { id: l.it.id, qty: l.qty, variant: l.variant || undefined }; }) }) }).then(function (r) {
+        if (!r.ok) { promo = null; viewCart(); document.getElementById('e').textContent = ERR[r.error] || 'Не удалось применить промокод.'; return; }
+        promo = { code: r.code, discountRub: r.discountRub, totalRub: r.totalRub }; viewCart();
+      });
+    };
     document.getElementById('f').onsubmit = function (ev) {
       ev.preventDefault();
       var f = ev.target; var btn = document.getElementById('go'); var e = document.getElementById('e'); e.textContent = ''; btn.disabled = true;
-      var body = { website: f.website.value, items: lines().map(function (l) { return { id: l.it.id, qty: l.qty, variant: l.variant || undefined }; }),
+      var body = { website: f.website.value, promo: promo ? promo.code : undefined, items: lines().map(function (l) { return { id: l.it.id, qty: l.qty, variant: l.variant || undefined }; }),
         contact: { name: f.name.value, phone: f.phone.value, email: f.email.value, address: f.address.value } };
       api('/api/kbiz/public/shop/' + encodeURIComponent(slug) + '/order', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) {
         if (!r.ok) { btn.disabled = false; e.textContent = ERR[r.error] || 'Не удалось оформить заказ.'; return; }
-        cart = {}; save();
+        cart = {}; promo = null; save();
         try { localStorage.setItem(KEY + ':last', JSON.stringify({ id: r.id, key: r.key, number: r.number })); } catch (x) {}
         viewDone(r);
       }).catch(function () { btn.disabled = false; e.textContent = 'Нет связи. Попробуйте ещё раз.'; });
@@ -106,14 +125,42 @@
 
   function viewDone(r) {
     var payHref = r.payUrl;                       // страница оплаты всегда на Sky: реквизиты и статусы — там
-    app.innerHTML = head() + '<h2>Заказ № ' + esc(r.number) + ' оформлен</h2><p>Сумма: <b>' + rub(r.totalRub) + '</b>. Теперь переведите её продавцу по реквизитам и сообщите об оплате на странице Sky.</p>' +
+    app.innerHTML = head() + '<h2>Заказ № ' + esc(r.number) + ' оформлен</h2><p>Сумма: <b>' + rub(r.totalRub) + '</b>' + (r.discountRub ? ' (скидка ' + rub(r.discountRub) + ')' : '') + '. Теперь переведите её продавцу по реквизитам и сообщите об оплате на странице Sky.</p>' +
       '<p><a class="btn primary" style="display:inline-block;text-decoration:none;line-height:24px" href="' + esc(payHref) + '" rel="noopener">Перейти к оплате</a></p>' +
       '<p class="muted" style="font-size:14px">Сохраните страницу: статус заказа можно посмотреть позже.</p><p><button id="again">В каталог</button></p>';
     document.getElementById('again').onclick = viewCatalog;
   }
 
-  api('/api/kbiz/public/shop/' + encodeURIComponent(slug)).then(function (r) {
-    if (r.error) { app.innerHTML = '<div class="notice">' + esc(ERR[r.error] || 'Витрина недоступна.') + '</div>'; return; }
-    data = r; viewCatalog();
-  }).catch(function () { app.innerHTML = '<div class="notice">Нет связи с сервером.</div>'; });
+  function viewOrder() {
+    var last = null; try { last = JSON.parse(localStorage.getItem(KEY + ':last') || 'null'); } catch (e) {}
+    if (!last) { viewCatalog(); return; }
+    api('/api/kbiz/public/shop-order/' + encodeURIComponent(last.id) + '?k=' + encodeURIComponent(last.key)).then(function (r) {
+      var h = head() + '<h2>Заказ № ' + esc(r.number || last.number) + '</h2>';
+      if (r.error) h += '<p class="muted">Не удалось получить статус заказа.</p>';
+      else {
+        h += '<p>Статус: <b>' + esc(r.statusLabel) + '</b> · ' + rub(r.totalRub) + '</p>';
+        if (r.payUrl && r.status !== 'done' && r.status !== 'rejected' && r.status !== 'cancelled') h += '<p><a class="btn" style="display:inline-block;text-decoration:none;line-height:24px" href="' + esc(r.payUrl) + '" rel="noopener">Страница оплаты</a></p>';
+        if (r.status === 'done' && !r.reviewed) h += '<h2>Оставить отзыв</h2><form id="rf"><label>Оценка</label><select name="rating"><option value="5">5 — отлично</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1 — плохо</option></select><label>Комментарий (необязательно)</label><textarea name="text" rows="3" maxlength="600"></textarea><p class="err" id="re"></p><button class="primary" id="rs">Отправить отзыв</button></form>';
+        if (r.reviewed) h += '<p class="muted">Спасибо, ваш отзыв сохранён.</p>';
+      }
+      h += '<p><button id="again">В каталог</button></p>'; app.innerHTML = h;
+      document.getElementById('again').onclick = reload;
+      var rf = document.getElementById('rf');
+      if (rf) rf.onsubmit = function (ev) {
+        ev.preventDefault(); document.getElementById('rs').disabled = true;
+        api('/api/kbiz/public/shop-order/' + encodeURIComponent(last.id) + '/review?k=' + encodeURIComponent(last.key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating: Number(rf.rating.value), text: rf.text.value }) }).then(function (x) {
+          if (!x.ok) { document.getElementById('rs').disabled = false; document.getElementById('re').textContent = ERR[x.error] || 'Не удалось отправить отзыв.'; return; }
+          viewOrder();
+        });
+      };
+    });
+  }
+
+  function reload() {
+    api('/api/kbiz/public/shop/' + encodeURIComponent(slug)).then(function (r) {
+      if (r.error) { app.innerHTML = '<div class="notice">' + esc(ERR[r.error] || 'Витрина недоступна.') + '</div>'; return; }
+      data = r; viewCatalog();
+    }).catch(function () { app.innerHTML = '<div class="notice">Нет связи с сервером.</div>'; });
+  }
+  reload();
 })();
