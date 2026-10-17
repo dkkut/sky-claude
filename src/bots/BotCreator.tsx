@@ -16,6 +16,7 @@
  * не выполнение) и скопировать к себе. Вместо «Тест» появилась
  * «Подключить сервер».
  */
+import { visibleTick } from '@/shared/visibleTick';
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -521,7 +522,7 @@ export const BotCreatorPanel = () => {
      перезагрузки страницы. Реже раза в 15 секунд «Онлайн» уже врёт. */
   useEffect(() => {
     if (view !== 'list') return;
-    const t = setInterval(() => { void load(); }, 15_000);
+    const t = setInterval(visibleTick(() => load()), 15_000);
     return () => clearInterval(t);
   }, [view, load]);
 

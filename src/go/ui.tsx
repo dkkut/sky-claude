@@ -1,4 +1,5 @@
 /** Sky GO: общие части интерфейса (светлая премиальная палитра поверх токенов приложения). */
+import { visibleTick } from '@/shared/visibleTick';
 import { useEffect, useId, useState, type CSSProperties, type ReactNode } from 'react';
 import { Loader2, ChevronLeft } from 'lucide-react';
 import { C, fmt } from '@/marketplace/ui';
@@ -91,7 +92,7 @@ export const useLoad = <T,>(fn: () => Promise<T>, deps: unknown[] = [], everyMs 
   useEffect(() => {
     let alive = true;
     void fn().then((v) => { if (alive) setData(v); });
-    const t = everyMs ? setInterval(() => void fn().then((v) => { if (alive) setData(v); }), everyMs) : null;
+    const t = everyMs ? setInterval(visibleTick(() => fn().then((v) => { if (alive) setData(v); })), everyMs) : null;
     return () => { alive = false; if (t) clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);

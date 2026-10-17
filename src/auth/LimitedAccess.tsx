@@ -6,6 +6,7 @@
  *  - LimitedLock: заглушка вместо чатов на ограниченной сессии.
  * Решения принимает сервер по сессии; жест лишь отправляет запрос.
  */
+import { visibleTick } from '@/shared/visibleTick';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { Loader2, Lock, ShieldAlert, ShieldCheck, X } from 'lucide-react';
@@ -117,7 +118,7 @@ const ApprovalWatcher = () => {
   }, []);
   useEffect(() => {
     void load();
-    const t = window.setInterval(() => { void load(); }, 15000);
+    const t = window.setInterval(visibleTick(() => load()), 15000);
     const h = () => { void load(); };
     const vis = () => { if (document.visibilityState === 'visible') void load(); };
     window.addEventListener(LIMITED_PENDING_EVENT, h);

@@ -127,8 +127,9 @@ export const PlayerEngine = () => {
       if (a && it && (it.kind === 'music' || it.kind === 'podcast') && a.currentTime > 0) saveResume(it.id, a.currentTime, a.duration || 0);
     };
     window.addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
-    return () => window.removeEventListener('pagehide', flush);
+    const onVis = () => { if (document.visibilityState === 'hidden') flush(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { window.removeEventListener('pagehide', flush); document.removeEventListener('visibilitychange', onVis); };
   }, []);
   const failsRef = useRef(0);
   const retryRef = useRef(0);

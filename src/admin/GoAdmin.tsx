@@ -3,6 +3,7 @@
  * Сервер — server/goadmin.mjs, server/goreg.mjs. Право `go`; цены, порядок оплаты — `go_finance`.
  * Реестры ФНС не подключены: одобрение — решение сотрудника по документам.
  */
+import { visibleTick } from '@/shared/visibleTick';
 import { useCallback, useEffect, useState } from 'react';
 import { apiBlob, apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
@@ -311,7 +312,7 @@ const Dispatch = () => {
     const r = await get<any>('/dispatch/board'); if (r.ok) setB(r.data); else bad(r);
     const mm = await get<any>('/dispatch/metrics?hours=24'); if (mm.ok) setM(mm.data);
   }, []);
-  useEffect(() => { void load(); const t = setInterval(() => void load(), 10000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { void load(); const t = setInterval(visibleTick(() => load()), 10000); return () => clearInterval(t); }, [load]);
   const open = async (id: string) => { setSel(id); setLog(null); const r = await get<any>(`/dispatch/orders/${id}/log`); if (r.ok) setLog(r.data); };
   const assign = async () => {
     if (!sel) return;

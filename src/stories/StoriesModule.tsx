@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { visibleTick } from '@/shared/visibleTick';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, X, Heart, Eye, Radio,
@@ -709,7 +710,7 @@ export const StoriesModule = () => {
   useEffect(()=>{
     void refresh();
     void (async () => setArchivedStories(await apiStoriesArchive()))();
-    const id = window.setInterval(refresh, FEED_POLL_MS);
+    const id = window.setInterval(visibleTick(refresh), FEED_POLL_MS);
     return () => clearInterval(id);
   },[refresh]);
 
@@ -717,7 +718,7 @@ export const StoriesModule = () => {
   // устройства и от любого человека, не только соседняя вкладка.
   useEffect(()=>{
     void loadStreamsList();
-    const id = window.setInterval(loadStreamsList, FEED_POLL_MS);
+    const id = window.setInterval(visibleTick(loadStreamsList), FEED_POLL_MS);
     return () => clearInterval(id);
   },[loadStreamsList]);
 

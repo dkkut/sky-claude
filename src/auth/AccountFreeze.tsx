@@ -1,6 +1,7 @@
 /* Защита аккаунта: завершить недавние сессии и/или временно заморозить новые входы.
    Баннер «Разморозка аккаунта» появляется только после перехода по ссылке из письма.
    Серверная часть — server/accountfreeze.mjs. */
+import { visibleTick } from '@/shared/visibleTick';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useModuleStore } from '@/data/state/modules';
 import { ShieldAlert, Snowflake, Mail, Loader2 } from 'lucide-react';
@@ -79,7 +80,7 @@ export const AccountProtection = ({ onChanged }: { onChanged: () => void }) => {
   // Пока заморозка действует, раз в 20 с проверяем, не открыли ли ссылку из письма (баннер появляется сам).
   useEffect(() => {
     if (!st?.frozen) return undefined;
-    const t = setInterval(() => void load(), 20000);
+    const t = setInterval(visibleTick(() => load()), 20000);
     return () => clearInterval(t);
   }, [st?.frozen, load]);
 

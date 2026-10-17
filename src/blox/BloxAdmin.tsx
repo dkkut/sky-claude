@@ -5,6 +5,7 @@
  *   blox_moderation — очередь проверки, жалобы, апелляции;
  *   blox_finance    — покупки и возвраты, начисления, выплаты (с подтверждением личности).
  */
+import { visibleTick } from '@/shared/visibleTick';
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { C, Alert, StatusBadge, errText, fmtDt, fmtN, inputStyle } from './ui';
@@ -364,7 +365,7 @@ const mb = (n: number) => `${Math.round(n / 1024 / 1024)} МБ`;
 const MonitorTab = () => {
   const [d, setD] = useState<Awaited<ReturnType<typeof A.apiAdminMetrics>> | null>(null);
   const load = useCallback(async () => setD(await A.apiAdminMetrics()), []);
-  useEffect(() => { void load(); const t = setInterval(() => void load(), 10000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { void load(); const t = setInterval(visibleTick(() => load()), 10000); return () => clearInterval(t); }, [load]);
   if (!d) return <Wait />;
   if (!d.ok) return <Alert text={errText(d)} />;
   const m = d.data.metrics;

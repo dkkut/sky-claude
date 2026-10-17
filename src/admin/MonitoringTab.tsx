@@ -4,6 +4,7 @@
  * регистрации, сделки, покупки, состояние машины. Где данных ещё нет —
  * так и написано, а не нарисовано.
  */
+import { visibleTick } from '@/shared/visibleTick';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, Cpu, Database, Users, Handshake, ShoppingBag, Loader2 } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
@@ -109,8 +110,8 @@ export const MonitoringTab = () => {
     if (r.ok && r.data) { setOv(r.data); setErr(''); } else setErr(r.error === 'not_allowed' ? 'Недостаточно прав.' : 'Не удалось загрузить сводку.');
   }, [days]);
   const loadLive = useCallback(async () => { const r = await apiCall<Live>('/api/admin/analytics/live'); if (alive.current && r.ok && r.data) setLive(r.data); }, []);
-  useEffect(() => { void loadOv(); const t = setInterval(() => void loadOv(), 60_000); return () => clearInterval(t); }, [loadOv]);
-  useEffect(() => { void loadLive(); const t = setInterval(() => void loadLive(), 10_000); return () => clearInterval(t); }, [loadLive]);
+  useEffect(() => { void loadOv(); const t = setInterval(visibleTick(() => loadOv()), 60_000); return () => clearInterval(t); }, [loadOv]);
+  useEffect(() => { void loadLive(); const t = setInterval(visibleTick(() => loadLive()), 10_000); return () => clearInterval(t); }, [loadLive]);
 
   if (err && !ov) return <p className="p-4 text-[12px]" style={{ color: 'var(--red)' }}>{err}</p>;
   if (!ov) return <div className="p-4"><Loader2 size={16} className="animate-spin" style={{ color: 'var(--t3)' }} /></div>;

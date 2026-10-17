@@ -3,6 +3,7 @@
  * Настройки меняет только владелец, с подтверждением личности; каждое изменение пишется в журнал администрации.
  * Показываются только настоящие измерения: чего измерить нельзя — того нет (контейнеры других сервисов видны только на сервере через docker stats).
  */
+import { visibleTick } from '@/shared/visibleTick';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Loader2, Gauge } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
@@ -50,7 +51,7 @@ export const ResourcesTab = () => {
     const r = await apiCall<D>(A);
     if (r.ok) { setD(r.data ?? {}); setF((cur) => cur ?? { ...(r.data?.settings ?? {}) }); setFailed(''); } else setFailed(errText(r.error));
   }, []);
-  useEffect(() => { void load(); const t = window.setInterval(() => { void load(); }, 15000); return () => window.clearInterval(t); }, [load]);
+  useEffect(() => { void load(); const t = window.setInterval(visibleTick(() => load()), 15000); return () => window.clearInterval(t); }, [load]);
 
   const begin = async () => {
     const r = await apiCall<D>(`${A}/step-up`, { method: 'POST', body: '{}' });
