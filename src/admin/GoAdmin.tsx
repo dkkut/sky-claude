@@ -324,19 +324,19 @@ const Dispatch = () => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ ...box, fontSize: 13, color: C.t2 }}>
         {`Режим: ${b.mode === 'offers' ? 'предложения по очереди' : 'общий пул'} · активных заказов: ${b.orders.length} · проблемных: ${b.problems}`}
-        {` · водителей на линии: ${Object.entries(b.onlineDrivers).map(([c, n]) => `${c} — ${n}`).join(', ') || 'нет'}`}
+        {` · водителей на линии: ${Object.entries(b.onlineDrivers).map(([c, n]) => `${c} — ${n}`).join(', ') || 'нет'}`}{` · курьеров на линии: ${Object.entries(b.onlineCouriers ?? {}).map(([c, n]) => `${c} — ${n}`).join(', ') || 'нет'}`}
         <div style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>Режим и сроки меняются на вкладке «Тарифы и настройки» (право go_finance). В «общем пуле» заказ видят все подходящие водители города.</div>
       </div>
       {m && <div style={{ ...box, fontSize: 13, color: C.t2 }}>
         {`За ${m.hours} ч: предложений ${m.offers.total} (приняты ${m.offers.accepted ?? 0}, отказ ${m.offers.declined ?? 0}, без ответа ${m.offers.expired ?? 0}) · доля принятых: ${m.offers.acceptRate ?? '—'}${m.offers.acceptRate != null ? ' %' : ''}`}
         {` · заказов ${m.orders.created}, без водителя ${m.orders.noDrivers}, ушло в пул ${m.orders.pooled} · до назначения в среднем: ${m.orders.avgSecondsToAssign != null ? `${m.orders.avgSecondsToAssign} с` : '—'}`}
       </div>}
-      {!b.orders.length && <div style={{ ...box, color: C.t3 }}>Активных заказов такси нет.</div>}
+      {!b.orders.length && <div style={{ ...box, color: C.t3 }}>Активных заказов нет.</div>}
       {b.orders.map((x: any) => (
         <button key={x.id} onClick={() => void open(x.id)} style={{ ...box, textAlign: 'left', cursor: 'pointer', borderColor: x.flags.length ? C.red : C.brd, color: C.t1 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><b>{STATUS_LABEL[x.status] ?? x.status}</b><span translate="no" style={{ color: C.t2, fontSize: 12 }}>{x.city} · {x.priceRub} ₽ · {x.ageMin} мин</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><b>{x.kind === 'delivery' ? 'Доставка · ' : 'Такси · '}{STATUS_LABEL[x.status] ?? x.status}</b><span translate="no" style={{ color: C.t2, fontSize: 12 }}>{x.city} · {x.priceRub} ₽ · {x.ageMin} мин</span></div>
           <div translate="no" style={{ fontSize: 12.5, color: C.t2 }}>{x.from} → {x.to}</div>
-          <div style={{ fontSize: 12, color: C.t3 }}>{x.executorName ? `Водитель: ${x.executorName}` : x.offeredTo ? 'Предложено водителю, ждём ответ' : 'Водитель не назначен'}{x.offers ? ` · предложений: ${x.offers}` : ''}</div>
+          <div style={{ fontSize: 12, color: C.t3 }}>{x.executorName ? `${x.kind === 'delivery' ? 'Курьер' : 'Водитель'}: ${x.executorName}` : x.offeredTo ? `Предложено ${x.kind === 'delivery' ? 'курьеру' : 'водителю'}, ждём ответ` : `${x.kind === 'delivery' ? 'Курьер' : 'Водитель'} не назначен`}{x.offers ? ` · предложений: ${x.offers}` : ''}</div>
           {x.flags.length > 0 && <div style={{ fontSize: 12, color: C.red }}>{x.flags.map((f: string) => FLAG_LABEL[f] ?? f).join(' · ')}</div>}
         </button>))}
       {o && (
@@ -345,7 +345,7 @@ const Dispatch = () => {
           {o.status === 'searching' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
               <div style={{ fontSize: 12, color: C.t3 }}>Назначить вручную: укажите id профиля водителя (на линии, с активным кабинетом). Причина обязательна и попадает в журнал.</div>
-              <input translate="no" style={inp} placeholder="id профиля водителя (acc-…)" value={driver} onChange={(e) => setDriver(e.target.value)} />
+              <input translate="no" style={inp} placeholder="id профиля водителя или курьера (acc-…)" value={driver} onChange={(e) => setDriver(e.target.value)} />
               <input style={inp} placeholder="Причина (например, клиент позвонил)" value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
               <button style={btn()} disabled={driver.trim().length < 3 || note.trim().length < 3} onClick={() => void assign()}>Назначить</button>
             </div>)}

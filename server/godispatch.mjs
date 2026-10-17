@@ -198,19 +198,20 @@ export const sweepDispatch = async () => {
   }
   if (cfg.searchTimeoutMin > 0) {
     const { rows } = await query(
-      `SELECT id FROM go_orders WHERE kind = 'taxi' AND status = 'searching' AND executor_id IS NULL AND org_id IS NULL
+      `SELECT id, kind FROM go_orders WHERE kind IN ('taxi','delivery') AND status = 'searching' AND executor_id IS NULL AND org_id IS NULL AND parent_id IS NULL
           AND coalesce(search_started_at, created_at) < now() - ($1 || ' minutes')::interval LIMIT 200`, [String(cfg.searchTimeoutMin)]);
     for (const r of rows) {
       const res = await inTx(async (c) => {
         const o = await lockOrder(c, r.id);
         if (!o || o.status !== 'searching' || o.executor_id) return { skipped: true };
         await cancelOffers(c, o.id);
-        await setStatus(c, o, 'cancelled', null, 'Водитель не найден за отведённое время', { cancel_reason: 'no_drivers' });
+        await setStatus(c, o, 'cancelled', null, r.kind === 'taxi' ? 'Водитель не найден за отведённое время' : 'Курьер не найден за отведённое время', { cancel_reason: r.kind === 'taxi' ? 'no_drivers' : 'no_couriers' });
         await dlog(c, o.id, 'search_timeout', null, { minutes: cfg.searchTimeoutMin });
         return { ok: true, customerId: o.customer_id };
       }).catch(() => ({ skipped: true }));
       if (res.ok) {
-        await notifyGo(res.customerId, 'taxi', 'Водитель не найден', 'Свободных водителей не нашлось. Попробуйте заказать ещё раз.', r.id, `${r.id}:no_drivers`);
+        if (r.kind === 'taxi') await notifyGo(res.customerId, 'taxi', 'Водитель не найден', 'Свободных водителей не нашлось. Попробуйте заказать ещё раз.', r.id, `${r.id}:no_drivers`);
+        else await notifyGo(res.customerId, 'delivery', 'Курьер не найден', 'Свободных курьеров не нашлось. Попробуйте оформить доставку ещё раз.', r.id, `${r.id}:no_couriers`);
         await pushOrderChanged(r.id);
       }
     }
@@ -224,6 +225,24 @@ export const manualAssign = async (adminId, orderId, driverId, note) => {
   if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
   const why = clean(note, 200);
   if (why.length < 3) return { error: 'note_required' };
+  // Доставка: назначение идёт тем же путём, что и обычное принятие курьером (подписка, линия, занятость, грузовой рейс, оплата «до»),
+  // предложения гасятся заранее, чтобы заказ не держался за другого курьера.
+  const { rows: kindRow } = await query('SELECT kind FROM go_orders WHERE id = $1', [orderId]);
+  if (kindRow[0]?.kind === 'delivery') {
+    await inTx(async (c) => {
+      const o = await lockOrder(c, orderId);
+      if (o?.status === 'searching' && !o.executor_id) { await cancelOffers(c, orderId); await c.query(`UPDATE go_orders SET dispatch_state = 'pool' WHERE id = $1`, [orderId]); }
+    });
+    const dl = await import('./godelivery.mjs');
+    const res = await dl.accept(String(driverId ?? ''), orderId);
+    if (res.error) return { error: ['not_found', 'already_taken'].includes(res.error) ? res.error : `driver_${res.error}` };
+    await query(`INSERT INTO go_dispatch_log (order_id, event, actor_id, detail) VALUES ($1,'manual_assign',$2,$3::jsonb)`, [orderId, adminId, JSON.stringify({ courierId: driverId, note: why })]).catch(() => {});
+    await logAdmin({ actorId: adminId, type: 'go_dispatch_assign', targetType: 'system', targetId: orderId, detail: `курьер ${driverId}: ${why}`.slice(0, 180) });
+    await goLog(adminId, 'dispatch_assign', orderId, { courierId: driverId });
+    await notifyGo(driverId, 'delivery', 'Вам назначен заказ', 'Диспетчер назначил вам доставку.', orderId, `${orderId}:manual:${driverId}`);
+    await pushOrderChanged(orderId);
+    return { ok: true };
+  }
   const { canAccept } = await import('./gosubs.mjs');
   const { executorStatus } = await import('./goreg.mjs');
   const ok = await canAccept(String(driverId ?? ''), 'taxi_driver');
@@ -260,13 +279,13 @@ export const board = async (adminId) => {
   if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
   const cfg = await dispatchSettings();
   const { rows } = await query(
-    `SELECT o.id, o.status, o.city, o.price_rub, o.executor_id, o.dispatch_state, o.dispatch_attempts, o.created_at, o.updated_at,
+    `SELECT o.id, o.kind, o.status, o.city, o.price_rub, o.executor_id, o.dispatch_state, o.dispatch_attempts, o.created_at, o.updated_at,
             o.data->'from'->>'address' AS from_addr, o.data->'to'->>'address' AS to_addr,
             (SELECT count(*)::int FROM go_order_offers f WHERE f.order_id = o.id) AS offers,
             (SELECT f.driver_id FROM go_order_offers f WHERE f.order_id = o.id AND f.status = 'offered' AND f.expires_at > now() LIMIT 1) AS offered_to,
             p.name AS executor_name
        FROM go_orders o LEFT JOIN profiles p ON p.id = o.executor_id
-      WHERE o.kind = 'taxi' AND o.status IN ('scheduled','searching','assigned','en_route','arrived','in_ride','dispute')
+      WHERE o.kind IN ('taxi','delivery') AND o.parent_id IS NULL AND (o.org_id IS NULL OR o.data->>'poolOpen' = 'true') AND o.status IN ('scheduled','searching','assigned','en_route','heading_pickup','at_pickup','arrived','in_ride','picked_up','delivering','at_recipient','dispute')
       ORDER BY o.created_at LIMIT 200`);
   const now = Date.now();
   const orders = rows.map((r) => {
@@ -275,14 +294,15 @@ export const board = async (adminId) => {
     const flags = [];
     if (r.status === 'searching' && ageMin >= 5) flags.push('long_search');
     if (r.status === 'searching' && r.dispatch_state === 'pool') flags.push('in_pool');
-    if (['assigned', 'en_route'].includes(r.status) && idleMin >= 15) flags.push('stalled');
-    if (r.status === 'in_ride' && idleMin >= 120) flags.push('long_ride');
+    if (['assigned', 'en_route', 'heading_pickup'].includes(r.status) && idleMin >= 15) flags.push('stalled');
+    if (['in_ride', 'delivering'].includes(r.status) && idleMin >= 120) flags.push('long_ride');
     if (r.status === 'dispute') flags.push('dispute');
-    return { id: r.id, status: r.status, city: r.city, priceRub: r.price_rub, from: r.from_addr, to: r.to_addr, executorId: r.executor_id, executorName: r.executor_name,
+    return { id: r.id, kind: r.kind, status: r.status, city: r.city, priceRub: r.price_rub, from: r.from_addr, to: r.to_addr, executorId: r.executor_id, executorName: r.executor_name,
       dispatchState: r.dispatch_state, attempts: r.dispatch_attempts, offers: r.offers, offeredTo: r.offered_to, ageMin, idleMin, flags, createdAt: r.created_at.toISOString() };
   });
-  const { rows: on } = await query(`SELECT city, count(*)::int AS n FROM go_presence WHERE role = 'taxi_driver' AND online AND updated_at > now() - ($1 || ' seconds')::interval GROUP BY city`, [String(cfg.freshSec)]);
-  return { mode: cfg.mode, settings: cfg, orders, problems: orders.filter((o) => o.flags.length).length, onlineDrivers: Object.fromEntries(on.map((r) => [r.city, r.n])) };
+  const { rows: on } = await query(`SELECT role, city, count(*)::int AS n FROM go_presence WHERE role IN ('taxi_driver','courier') AND online AND updated_at > now() - ($1 || ' seconds')::interval GROUP BY role, city`, [String(cfg.freshSec)]);
+  return { mode: cfg.mode, settings: cfg, orders, problems: orders.filter((o) => o.flags.length).length,
+    onlineDrivers: Object.fromEntries(on.filter((r) => r.role === 'taxi_driver').map((r) => [r.city, r.n])), onlineCouriers: Object.fromEntries(on.filter((r) => r.role === 'courier').map((r) => [r.city, r.n])) };
 };
 
 export const orderDispatchLog = async (adminId, orderId) => {
