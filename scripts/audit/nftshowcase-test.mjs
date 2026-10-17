@@ -1,0 +1,34 @@
+// Витрина коллекционера: настройки на сервере, закрепить можно только своё, приватность (server/nftshowcase.mjs).
+// (. env.sh; node scripts/audit/nftshowcase-test.mjs <каталог с api.log>)
+import { execSync } from 'node:child_process';
+import { call, mkuser } from './lib.mjs';
+const S = process.argv[2];
+const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
+let ok = 0, bad = 0;
+const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
+const put = (p, b, u) => call(p, { method: 'PUT', body: JSON.stringify(b) }, u.tok);
+const get = (p, u) => call(p, {}, u.tok);
+const A = await mkuser(S, 'shwA'); const B = await mkuser(S, 'shwB');
+const nfts = q(`select nft_id from nft_ownership limit 3`).split('\n').filter(Boolean);
+const mine = 'sky-test-' + Date.now().toString(36);
+q(`delete from nft_ownership where nft_id like 'zz-shw-%'`);
+q(`insert into nft_ownership (nft_id, owner_id, owner_name, updated_at) values ('zz-shw-1','${A.pid}','a', now()), ('zz-shw-2','${A.pid}','a', now()) on conflict (nft_id) do update set owner_id='${A.pid}'`);
+let r = await get('/api/gifts/nft/showcase', A);
+t('пустая витрина читается', r.status === 200 && r.data.config.background === 'galaxy' && r.data.items.length >= 2, JSON.stringify(r.data));
+r = await put('/api/gifts/nft/showcase', { background: 'gold', layout: 'spotlight', description: '  Моя   коллекция  ', pinned: ['zz-shw-1', 'zz-shw-2', 'чужой', 'zz-shw-1'] }, A);
+t('сохранение', r.status === 200);
+r = await get(`/api/gifts/nft/showcase/${A.pid}`, B);
+t('чужой видит оформление', r.status === 200 && r.data.config.background === 'gold' && r.data.config.layout === 'spotlight' && r.data.config.description === 'Моя коллекция', JSON.stringify(r.data.config));
+t('закреплено только своё и без повторов', JSON.stringify(r.data.config.pinned) === JSON.stringify(['zz-shw-1', 'zz-shw-2']), JSON.stringify(r.data.config.pinned));
+r = await put('/api/gifts/nft/showcase', { background: 'нет такого', layout: 'x', pinned: 'abc' }, A);
+r = await get('/api/gifts/nft/showcase', A);
+t('мусор в полях не портит витрину', r.data.config.background === 'gold' && r.data.config.layout === 'spotlight');
+r = await put('/api/gifts/nft/showcase', { pinned: ['zz-shw-1'] }, B);
+r = await get(`/api/gifts/nft/showcase/${B.pid}`, A);
+t('чужой подарок закрепить нельзя', r.data.config.pinned.length === 0);
+q(`update nft_ownership set owner_id='${B.pid}' where nft_id='zz-shw-1'`);
+r = await get(`/api/gifts/nft/showcase/${A.pid}`, B);
+t('проданное с витрины пропадает само', JSON.stringify(r.data.config.pinned) === JSON.stringify(['zz-shw-2']), JSON.stringify(r.data.config.pinned));
+t('чужая PUT-ручка по id недоступна', (await call(`/api/gifts/nft/showcase/${A.pid}`, { method: 'PUT', body: '{}' }, B.tok)).status === 404);
+q(`delete from nft_ownership where nft_id like 'zz-shw-%'`);
+console.log(`\nИТОГО: ${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

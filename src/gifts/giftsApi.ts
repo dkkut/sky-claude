@@ -292,6 +292,15 @@ export const apiNftProfile = async (userId: string): Promise<{ hidden: boolean; 
   return r.ok ? (r.data ?? { hidden: false, items: [] }) : { hidden: false, items: [] };
 };
 
+export interface ShowcaseRemote { background: string; layout: 'grid' | 'carousel' | 'spotlight'; description: string; pinned: string[] }
+/** Витрина коллекционера человека: оформление + что у него лежит (с учётом приватности). */
+export const apiNftShowcase = async (userId?: string): Promise<{ hidden: boolean; items: { nftId: string; since: string }[]; config: ShowcaseRemote } | null> => {
+  const r = await apiCall<{ hidden: boolean; items: { nftId: string; since: string }[]; config: ShowcaseRemote }>(`/api/gifts/nft/showcase${userId ? `/${encodeURIComponent(userId)}` : ''}`);
+  return r.ok && r.data ? r.data : null;
+};
+export const apiNftSaveShowcase = (patch: Partial<ShowcaseRemote>) =>
+  apiCall<{ ok: true }>('/api/gifts/nft/showcase', { method: 'PUT', body: JSON.stringify(patch) });
+
 /** Покупка у платформы (Sky Mint): цену определяет сервер. */
 export const apiNftBuyMint = async (nftId: string) => {
   const r = await apiCall<{ nftId: string; price: number; ownerId: string; ownerName: string }>(

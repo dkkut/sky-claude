@@ -28,7 +28,7 @@ const FILTERS: { id: GiftFilter; label: string }[] = [
 const GiftModal = ({ gift, onClose }: { gift: SentGift; onClose: () => void }) => {
   const rc = GIFT_RARITY_COLOR[gift.giftRarity];
   return createPortal(
-    <motion.div className="fixed inset-0 z-[600] flex items-center justify-center px-5"
+    <motion.div className="fixed inset-0 z-[10040] flex items-center justify-center px-5"
       style={{ background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(6px)' }}
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
       <motion.div initial={{ scale: 0.8, y: 30, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }}

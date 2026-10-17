@@ -25,6 +25,7 @@ import {
   cancelPrimeGiftInstance, archivePrimeGiftInstance, archivedSentPrimeGifts, archivedReceivedPrimeGifts,
   errCode as primeErrCode,
 } from './../primegifts.mjs';
+import { getShowcase, saveShowcase } from './../nftshowcase.mjs';
 import {
   currentOwner, ownersOf, provenanceOf, transferNft, ownedByProfile, publicOwnedBy, buyFromMint,
 } from './../nft.mjs';
@@ -313,6 +314,18 @@ export const giftRoutes = async (req, res, url) => {
   if (req.method === 'GET' && path === '/api/gifts/nft/listings') {
     if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
     return json(res, 200, { listings: await activeListings() });
+  }
+  const showcaseMatch = /^\/api\/gifts\/nft\/showcase(?:\/([A-Za-z0-9_-]{1,64}))?$/.exec(path);
+  if (showcaseMatch) {
+    if (req.method === 'GET') {
+      if (!rateLimit(`gift:r:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'too_many_requests' });
+      return json(res, 200, await getShowcase(me, showcaseMatch[1] ?? me));
+    }
+    if (req.method === 'PUT' && !showcaseMatch[1]) {
+      if (!rateLimit(`gift:showcase:${me}`, 30)) return json(res, 429, { error: 'too_many_requests' });
+      return json(res, 200, await saveShowcase(me, (await parseBody(req)) ?? {}));
+    }
+    return json(res, 404, { error: 'not_found' });
   }
   const nftProfileMatch = /^\/api\/gifts\/nft\/profile\/([A-Za-z0-9_-]{1,64})$/.exec(path);
   if (req.method === 'GET' && nftProfileMatch) {
