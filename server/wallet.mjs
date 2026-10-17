@@ -29,10 +29,11 @@ const ensureAccount = async (client, userId) => {
   );
 };
 
-const addTx = (client, userId, type, amount, descr, ref = null) =>
+/** currency: 'rub' — запись меняет balance, 'pts' — points (нужно для сверки с журналом). */
+const addTx = (client, userId, type, amount, descr, ref = null, currency = 'rub') =>
   client.query(
-    'INSERT INTO wallet_transactions (id, user_id, type, amount, descr, ref) VALUES ($1,$2,$3,$4,$5,$6)',
-    [`tx-${generateId()}`, userId, type, amount, descr, ref],
+    'INSERT INTO wallet_transactions (id, user_id, type, amount, descr, ref, currency) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+    [`tx-${generateId()}`, userId, type, amount, descr, ref, currency],
   );
 
 /** Выполняет fn в транзакции, откатывая изменения при любой ошибке. */
@@ -67,7 +68,7 @@ const creditPointsTx = async (c, userId, amount, type, descr, ref) => {
     'UPDATE wallet_accounts SET points = points + $2, updated_at = now() WHERE user_id = $1 RETURNING points',
     [userId, amount],
   );
-  await addTx(c, userId, type, amount, descr, ref ?? null);
+  await addTx(c, userId, type, amount, descr, ref ?? null, 'pts');
   return { points: Number(rows[0].points) };
 };
 
@@ -159,7 +160,7 @@ export const wallet = {
           WHERE user_id = $1 RETURNING balance, points`,
         [userId, amount],
       );
-      await addTx(c, userId, points ? 'admin_points' : 'admin_grant', amount, descr, ref ?? null);
+      await addTx(c, userId, points ? 'admin_points' : 'admin_grant', amount, descr, ref ?? null, points ? 'pts' : 'rub');
       return { balance: Number(rows[0].balance), points: Number(rows[0].points) };
     });
   },
@@ -222,7 +223,7 @@ export const wallet = {
         'UPDATE wallet_accounts SET points = points + $2, updated_at = now() WHERE user_id = $1 RETURNING points',
         [userId, amount],
       );
-      await addTx(c, userId, 'points_earn', amount, descr);
+      await addTx(c, userId, 'points_earn', amount, descr, null, 'pts');
       return { points: Number(rows[0].points) };
     });
   },
@@ -285,8 +286,10 @@ export const wallet = {
           WHERE user_id = $1 RETURNING balance, points`,
         [userId, rubles, points],
       );
-      await addTx(c, userId, 'points_earn', points,
-        `Обмен ${rubles.toLocaleString('ru')} ₽ → ${points.toLocaleString('ru')} баллов`);
+      // Две записи: рубли ушли (−), баллы пришли (+). Раньше была только вторая — журнал не сходился с балансом.
+      const what = `Обмен ${rubles.toLocaleString('ru')} ₽ → ${points.toLocaleString('ru')} баллов`;
+      await addTx(c, userId, 'exchange_out', -rubles, what, null, 'rub');
+      await addTx(c, userId, 'points_earn', points, what, null, 'pts');
       return { balance: Number(upd.rows[0].balance), points: Number(upd.rows[0].points) };
     });
   },
@@ -315,7 +318,7 @@ export const wallet = {
     if (Number(rows[0].points) < amount) return { error: 'insufficient_points', points: Number(rows[0].points) };
     const upd = await client.query(
       'UPDATE wallet_accounts SET points = points - $2, updated_at = now() WHERE user_id = $1 RETURNING points', [userId, amount]);
-    await addTx(client, userId, type, -amount, descr, ref ?? null);
+    await addTx(client, userId, type, -amount, descr, ref ?? null, 'pts');
     return { points: Number(upd.rows[0].points) };
   },
 
@@ -331,8 +334,50 @@ export const wallet = {
         'UPDATE wallet_accounts SET points = points - $2, updated_at = now() WHERE user_id = $1 RETURNING points',
         [userId, amount],
       );
-      await addTx(c, userId, 'points_spend', -amount, descr, ref);
+      await addTx(c, userId, 'points_spend', -amount, descr, ref, 'pts');
       return { points: Number(upd.rows[0].points) };
     });
   },
 };
+
+/**
+ * Сверка баланса с журналом (только чтение, ничего не исправляет).
+ * Рубли: balance = сумма записей 'rub'; баллы: points = сумма записей 'pts'. Записи без валюты
+ * (admin_*, stream_donation старше миграции 162) в сверку не входят — по таким счетам расхождение
+ * «не проверено», а не «найдено». Старый обмен рублей на баллы не имел записи списания рублей —
+ * она выводится из строки «Обмен … ₽ →» (баллы / курс).
+ */
+let reconCache = { at: 0, value: null };
+export const reconcileLedger = async ({ maxAgeMs = 0, sample = 20 } = {}) => {
+  if (maxAgeMs && reconCache.value && Date.now() - reconCache.at < maxAgeMs) return reconCache.value;
+  const { rows } = await query(
+    `WITH l AS (
+       SELECT t.user_id,
+              COALESCE(SUM(t.amount) FILTER (WHERE t.currency = 'rub'), 0) AS led_rub,
+              COALESCE(SUM(t.amount) FILTER (WHERE t.currency = 'pts'), 0) AS led_pts,
+              COUNT(*) FILTER (WHERE t.currency IS NULL) AS unclassified,
+              COALESCE(SUM(t.amount / $1) FILTER (
+                WHERE t.type = 'points_earn' AND t.descr LIKE 'Обмен % ₽ →%'
+                  AND NOT EXISTS (SELECT 1 FROM wallet_transactions x
+                                   WHERE x.user_id = t.user_id AND x.type = 'exchange_out'
+                                     AND x.descr = t.descr AND x.created_at = t.created_at)), 0) AS legacy_exchange
+         FROM wallet_transactions t GROUP BY t.user_id)
+     SELECT a.user_id, a.balance, a.points, l.led_rub, l.led_pts, l.unclassified, l.legacy_exchange
+       FROM wallet_accounts a LEFT JOIN l ON l.user_id = a.user_id`,
+    [POINTS_PER_RUBLE],
+  );
+  const out = { accounts: rows.length, checked: 0, unchecked: 0, driftRub: [], driftPts: [], at: new Date().toISOString() };
+  for (const r of rows) {
+    if (Number(r.unclassified ?? 0) > 0) { out.unchecked++; continue; }
+    out.checked++;
+    const dRub = Number(r.balance) - (Number(r.led_rub ?? 0) - Number(r.legacy_exchange ?? 0));
+    const dPts = Number(r.points) - Number(r.led_pts ?? 0);
+    if (dRub !== 0) out.driftRub.push({ userId: r.user_id, drift: dRub });
+    if (dPts !== 0) out.driftPts.push({ userId: r.user_id, drift: dPts });
+  }
+  out.driftRubCount = out.driftRub.length; out.driftPtsCount = out.driftPts.length;
+  out.driftRub = out.driftRub.slice(0, sample); out.driftPts = out.driftPts.slice(0, sample);
+  reconCache = { at: Date.now(), value: out };
+  return out;
+};
+

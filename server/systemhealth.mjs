@@ -13,6 +13,7 @@ import { giftsHealth } from './giftshealth.mjs';
 import { stats as storageStats } from './skystorageindex.mjs';
 import { snapshot as storageState } from './skystoragestate.mjs';
 import { status as primaryStatus } from './skystorageprimary.mjs';
+import { reconcileLedger } from './wallet.mjs';
 
 const safe = async (fn) => { try { return await fn(); } catch (e) { return { error: String(e?.message ?? e).slice(0, 120) }; } };
 const n = (v) => Number(v ?? 0);
@@ -125,8 +126,13 @@ const partners = async () => {
     expiringPartners14d: expiring.n, expiringOffers14d: offers.n };
 };
 
+const walletLedger = async () => {
+  const r = await reconcileLedger({ maxAgeMs: 10 * 60_000 });
+  return { accounts: r.accounts, checked: r.checked, unchecked: r.unchecked, driftRub: r.driftRubCount, driftPts: r.driftPtsCount, at: r.at };
+};
+
 export const systemHealth = async (adminId) => {
   if (!(await can(adminId, 'analytics'))) return null;
-  const [sec, a, p, g, pt] = await Promise.all([safe(security), safe(ai), safe(prime), safe(gifts), safe(partners)]);
-  return { at: new Date().toISOString(), security: sec, ai: a, prime: p, gifts: g, partners: pt };
+  const [sec, a, p, g, pt, wl] = await Promise.all([safe(security), safe(ai), safe(prime), safe(gifts), safe(partners), safe(walletLedger)]);
+  return { at: new Date().toISOString(), security: sec, ai: a, prime: p, gifts: g, partners: pt, walletLedger: wl };
 };

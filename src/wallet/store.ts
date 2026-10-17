@@ -58,6 +58,7 @@ export type TxType =
   | 'pvz_subscription'      // активация точки Sky ПВЗ
   | 'nft_purchase'          // покупка NFT
   | 'points_refund'         // возврат баллов
+  | 'exchange_out'          // списание рублей при обмене на баллы
   | 'prime_gift'            // подарок Prime
   | 'skin_purchase'         // покупка скина питомца
   | 'skin_purchase_refund'  // возврат за скин питомца
@@ -85,6 +86,7 @@ export const TX_LABEL: Record<TxType, string> = {
   transfer_in:  'Получен перевод',
   transfer_out:  'Перевод',
   points_earn:   'Начислены баллы',
+  exchange_out:  'Обмен на баллы',
   points_spend:  'Потрачены баллы',
   admin_grant:          'Начисление администрации',
   admin_adjust:         'Корректировка администрацией',
@@ -143,6 +145,7 @@ export const TX_ICON: Record<TxType, IconComponent> = {
   transfer_in:  ArrowDownLeft,
   transfer_out: ArrowUpRight,
   points_earn:  Star,
+  exchange_out: ArrowUpRight,
   points_spend: Gift,
   admin_grant:          Landmark,
   admin_adjust:         Landmark,

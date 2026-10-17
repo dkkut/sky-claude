@@ -4,7 +4,7 @@
  * сообщений здесь нет. Если блок не посчитался — показывается ошибка блока, а не выдуманные числа.
  */
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { RefreshCw, Loader2, ShieldCheck, Sparkles, Crown, Gift, Handshake, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Loader2, ShieldCheck, Sparkles, Crown, Gift, Handshake, AlertTriangle, Wallet } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 
 type D = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -121,6 +121,16 @@ export const SystemsTab = () => {
           <Stat label="Проблемы владения" value={fmt(g.problems.demoOwners + g.problems.unknownOwners + g.problems.staleListings)} tone={bad(g.problems.demoOwners + g.problems.unknownOwners + g.problems.staleListings)} />
         </Grid>
         <p className="text-[11px]" style={{ color: C.t3 }}>Заказы по статусам: {Object.entries(g.ordersByStatus).map(([k, v]) => `${k}: ${v}`).join(', ') || 'нет'}. Подробности и история — вкладка «Подарки» → «Диагностика».</p>
+      </>)}</Block>
+
+      <Block icon={<Wallet size={15} />} title="Кошелёк: сверка с журналом" data={d?.walletLedger}>{(w) => (<>
+        <Grid>
+          <Stat label="Счетов" value={fmt(w.accounts)} />
+          <Stat label="Сверено" value={fmt(w.checked)} />
+          <Stat label="Расхождения (₽)" value={fmt(w.driftRub)} tone={w.driftRub ? 'bad' : 'good'} />
+          <Stat label="Расхождения (баллы)" value={fmt(w.driftPts)} tone={w.driftPts ? 'bad' : 'good'} />
+        </Grid>
+        <p className="text-[11px]" style={{ color: C.t3 }}>Не сверено (есть записи без валюты, до миграции 162): {fmt(w.unchecked)}. Сверка только читает: баланс она не исправляет. Список счетов с расхождением — <span translate="no">node scripts/wallet-reconcile.mjs</span> на сервере. Обновляется раз в 10 минут.</p>
       </>)}</Block>
 
       <Block icon={<Handshake size={15} />} title="Партнёры" data={d?.partners}>{(p) => (
