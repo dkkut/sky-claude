@@ -12,7 +12,7 @@ import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 import { CAR_GLASS, CAR_GLASS_BORDER, CAR_BLUR, CAR_ACCENT, fmtTime } from './carTheme';
 import { useDriveWatch } from './driveState';
 import { mayShowVideo } from './driveLogic';
-import { CarWarningGate, DriveBadge, LockedNote } from './CarWarning';
+import { CarWarningGate, DriveBadge, LockedNote, UnknownBanner } from './CarWarning';
 
 const BookRow = ({ b, onOpen }: { b: Book; onOpen: () => void }) => (
   <button type="button" onClick={onOpen} aria-label={b.title} className="flex w-full items-center gap-5 rounded-3xl px-4 text-left outline-none transition active:scale-[0.985] focus-visible:ring-4 focus-visible:ring-violet-300" style={{ minHeight: 104 }}>
@@ -117,6 +117,7 @@ const Inner = () => {
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex items-center justify-between"><p className="text-[32px] font-extrabold text-white">Книги</p><DriveBadge state={drive.state} /></div>
+      {drive.state === 'unknown' && <UnknownBanner />}
       {!isPrime ? <p className="text-[24px] text-white/70">Книги входят в Sky Prime. Оформите подписку с телефона.</p> : (
         <div className="min-h-0 flex-1 overflow-y-auto rounded-3xl p-2" style={{ background: CAR_GLASS, border: CAR_GLASS_BORDER, backdropFilter: CAR_BLUR, scrollbarWidth: 'none' }}>
           {books === null && <p className="p-4 text-[20px] text-white/55">Загрузка…</p>}

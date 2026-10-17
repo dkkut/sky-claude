@@ -27,6 +27,14 @@ export const DriveBadge = ({ state }: { state: 'driving' | 'parked' | 'unknown' 
   </span>
 );
 
+/** Состояние неизвестно: раздел открыт, но человека честно предупреждаем. */
+export const UnknownBanner = () => (
+  <div className="flex items-center gap-4 rounded-3xl px-6 py-4" style={{ background: 'rgba(251,191,36,0.14)', border: CAR_GLASS_BORDER }} data-car-unknown-banner role="status">
+    <AlertTriangle size={32} color="#fbbf24" />
+    <p className="text-[20px] text-white/80">Sky не определяет, стоит ли автомобиль (нужна геолокация). Смотрите и читайте только на стоянке — следите за дорогой.</p>
+  </div>
+);
+
 export const LockedNote = ({ state, what }: { state: 'driving' | 'unknown'; what: string }) => (
   <div className="flex flex-col items-center gap-4 rounded-[36px] px-10 py-12 text-center" style={{ background: CAR_GLASS, border: CAR_GLASS_BORDER }} data-car-locked>
     <AlertTriangle size={56} color="#fbbf24" />

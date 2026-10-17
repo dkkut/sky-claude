@@ -15,7 +15,7 @@ import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 import { CAR_GLASS, CAR_GLASS_BORDER, CAR_BLUR, CAR_ACCENT, fmtTime } from './carTheme';
 import { useDriveWatch } from './driveState';
 import { mayShowVideo } from './driveLogic';
-import { CarWarningGate, DriveBadge, LockedNote } from './CarWarning';
+import { CarWarningGate, DriveBadge, LockedNote, UnknownBanner } from './CarWarning';
 
 type Playing = { kind: 'movie' | 'video'; id: string; title: string; start: number };
 
@@ -34,7 +34,7 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
 );
 
 /** Плеер: большие кнопки; при движении автомобиля — только звук. */
-export const CarVideoPlayer = ({ p, parked, onClose }: { p: Playing; parked: boolean; onClose: () => void }) => {
+export const CarVideoPlayer = ({ p, parked, unknown = false, onClose }: { p: Playing; parked: boolean; unknown?: boolean; onClose: () => void }) => {
   const v = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
@@ -61,6 +61,7 @@ export const CarVideoPlayer = ({ p, parked, onClose }: { p: Playing; parked: boo
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col bg-black" data-car-video data-picture={showPicture ? 'on' : 'off'}>
+      {unknown && <div className="absolute inset-x-0 top-0 z-30 p-3"><UnknownBanner /></div>}
       <div className="relative min-h-0 flex-1">
         <video ref={v} src={src} playsInline preload="metadata" className="h-full w-full object-contain" style={{ visibility: showPicture ? 'visible' : 'hidden' }}
           onLoadedMetadata={() => { const el = v.current; if (el) { setDur(el.duration || 0); if (p.start > 30 && p.start < (el.duration || 1e9) - 60) el.currentTime = p.start; } }}
@@ -76,7 +77,7 @@ export const CarVideoPlayer = ({ p, parked, onClose }: { p: Playing; parked: boo
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-10 text-center" style={{ background: 'rgba(7,7,15,0.97)' }} data-car-video-locked>
             <p className="text-[30px] font-extrabold text-white" translate="no">{p.title}</p>
             {!parked && !audioOnly ? (<>
-              <p className="max-w-[760px] text-[26px] font-bold text-amber-300">Видео остановлено: автомобиль в движении или его состояние неизвестно.</p>
+              <p className="max-w-[760px] text-[26px] font-bold text-amber-300">Видео остановлено: автомобиль в движении.</p>
               <button type="button" onClick={() => { setAudioOnly(true); const el = v.current; if (el) void el.play().catch(() => setPlaying(false)); }} className="flex items-center gap-3 rounded-3xl px-10 text-[26px] font-bold text-white" style={{ minHeight: 88, background: CAR_ACCENT }}><Headphones size={32} /> Слушать только звук</button>
             </>) : <p className="text-[24px] text-white/70">Идёт только звук. Картинка вернётся, когда автомобиль остановится.</p>}
           </div>)}
@@ -124,10 +125,11 @@ const Inner = () => {
   const playMovie = useCallback((m: ServerMovie) => setNow({ kind: 'movie', id: m.id, title: m.title, start: m.position ?? 0 }), []);
   const resume = async (m: ServerMovie) => playMovie((await apiMovie(m.id)) ?? m);
 
-  if (now) return <CarVideoPlayer p={now} parked={parked} onClose={() => setNow(null)} />;
+  if (now) return <CarVideoPlayer p={now} parked={parked} unknown={drive.state === 'unknown'} onClose={() => setNow(null)} />;
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex items-center justify-between"><p className="text-[32px] font-extrabold text-white">Кино и видео</p><DriveBadge state={drive.state} /></div>
+      {drive.state === 'unknown' && <UnknownBanner />}
       {needsPrime ? <p className="text-[24px] text-white/70">Кино входит в Sky Prime. Оформите подписку с телефона.</p> : !parked ? <LockedNote state={drive.state === 'driving' ? 'driving' : 'unknown'} what="Кино и видео" /> : openSeries ? (
         <SeriesList s={openSeries} onPlay={playMovie} onBack={() => setOpenSeries(null)} />
       ) : (

@@ -61,9 +61,10 @@ await p.click('button[aria-label="Кино"]');
 await p.waitForSelector('[data-car-warning]', { timeout: 5000 });
 ok((await txt()).includes('Не отвлекайтесь от дороги'), 'предупреждение показано перед кино');
 await p.click('text=Понятно');
-await p.waitForSelector('[data-car-locked]', { timeout: 5000 });
-ok((await txt()).includes('не удаётся определить'), 'сигнала нет — состояние неизвестно, кино закрыто');
-ok(!(await txt()).includes('Фильм для машины'), 'названия фильмов скрыты, пока состояние неизвестно');
+await p.waitForSelector('[data-car-unknown-banner]', { timeout: 5000 });
+ok((await p.locator('[data-car-locked]').count()) === 0, 'сигнала нет — раздел НЕ закрыт, только баннер «состояние неизвестно»');
+await sleep(1500);
+ok((await txt()).includes(`Фильм для машины ${stamp}`), 'при неизвестном состоянии каталог виден');
 await p.evaluate(() => window.__fix(13)); await sleep(500);
 ok((await p.locator('[data-drive-state="driving"]').count()) === 1 && (await txt()).includes('в движении'), 'скорость 13 м/с — «автомобиль в движении», закрыто');
 ok(!(await txt()).includes('Фильм для машины'), 'в движении каталог закрыт');
@@ -91,11 +92,12 @@ await p.click('button[aria-label="Закрыть"]'); await sleep(500);
 
 // сигнал пропал
 await sleep(21000);
-ok((await p.locator('[data-drive-state="unknown"]').count()) === 1 && (await p.locator('[data-car-locked]').count()) === 1, 'сигнала нет 20+ с — снова «неизвестно», кино закрыто');
+ok((await p.locator('[data-drive-state="unknown"]').count()) === 1 && (await p.locator('[data-car-locked]').count()) === 0 && (await p.locator('[data-car-unknown-banner]').count()) === 1, 'сигнала нет 20+ с — «неизвестно»: кино открыто, показан баннер');
 await p.evaluate(() => window.__fix(0)); await sleep(500); await p.evaluate(() => window.__fix(0));
 
 // книги
 await p.click('button[aria-label="Книги"]'); await sleep(1500);
+await p.evaluate(() => window.__fix(9)); await sleep(500);
 ok((await txt()).includes(`Книга в дорогу ${stamp}`), 'книги: список виден (аудио/чтение — внутри книги)');
 await p.click(`button[aria-label="Книга в дорогу ${stamp}"]`); await sleep(1500);
 ok((await txt()).includes('Читать (когда стоите)'), 'книги: «Читать» помечено — нужно стоять');
