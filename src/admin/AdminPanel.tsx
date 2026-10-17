@@ -42,6 +42,7 @@ import { MonitoringTab } from './MonitoringTab';
 import { ContentModTab } from './ContentModTab';
 import { ScrollTabs } from './ScrollTabs';
 import { RegistrationTab } from './RegistrationTab';
+import { UploadLimitsTab } from './UploadLimitsTab';
 import { SystemsTab } from './SystemsTab';
 import { SiteTab } from './SiteTab';
 import { ModulesTab } from './ModulesTab';
@@ -5507,7 +5508,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'systems';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'systems' | 'uploadlimits';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5685,6 +5686,7 @@ export const AdminPanel = () => {
     { key: 'content', label: 'Контент', show: has('content') },
     { key: 'go', label: 'Sky GO', show: has('go') },
     { key: 'registration', label: 'Регистрация', show: has('registration') },
+    { key: 'uploadlimits', label: 'Лимиты загрузки', show: has('upload_limits') },
     { key: 'site', label: 'Сайт', show: has('site') },
     { key: 'modules', label: 'Модули', show: has('modules') },
     { key: 'storage', label: 'Sky Storage', show: has('storage_view') },
@@ -5909,6 +5911,7 @@ export const AdminPanel = () => {
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
       {tab === 'content' && <ContentModTab />}
       {tab === 'registration' && <RegistrationTab />}
+      {tab === 'uploadlimits' && <UploadLimitsTab />}
       {tab === 'systems' && <SystemsTab />}
       {tab === 'site' && <SiteTab />}
       {tab === 'modules' && <ModulesTab />}

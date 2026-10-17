@@ -33,6 +33,7 @@ import {
   setProgress, listProgress, listContinue, posterIdFor,
 } from './../film.mjs';
 import { assignEpisode } from './../filmseries.mjs';
+import { beginPersonalUpload, maxFileBytesFor, throttled } from './../uploadlimits.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, parseRange } from './../filmstore.mjs';
 import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../filmticket.mjs';
 import { hasPrime } from './../skyid.mjs';
@@ -306,6 +307,7 @@ export const filmRoutes = async (req, res, url) => {
     const declared = Number(req.headers['content-length'] ?? 0);
     if (declared > MAX_VIDEO_BYTES) return rejectBody(req, res, 413, { error: 'file_too_large' });
 
+
     // Метаданные приходят строкой запроса: тело занято самим фильмом.
     const meta = {
       title: params.get('title'),
@@ -330,6 +332,16 @@ export const filmRoutes = async (req, res, url) => {
     const mime = sniff(head, VIDEO_SIGNATURES);
     if (!mime) return rejectBody(req, res, 400, { error: 'unsupported_type' });
 
+    // Лимиты личной загрузки (Sky Admin → Лимиты загрузки): формат, размер, длительность, число файлов,
+    // одновременные загрузки. Скорость и размер по факту — ниже, при записи.
+    const gate = await beginPersonalUpload(me, 'film', { declaredBytes: declared, mime, duration: Number(meta.duration) || 0 });
+    if (gate.error) {
+      const code = gate.error === 'file_too_large' ? 413 : gate.error === 'too_many_uploads' ? 429 : gate.error === 'too_many_files' ? 409 : 400;
+      return rejectBody(req, res, code, gate);
+    }
+    res.once('close', gate.release);
+    const fileLimit = await maxFileBytesFor('personal', 'film');
+
     const created = await createMovie(me, { ...meta, mime });
     if (created.error) {
       return rejectBody(req, res, created.error === 'too_many' ? 409 : 400, created);
@@ -352,7 +364,7 @@ export const filmRoutes = async (req, res, url) => {
     // предельным для одного файла): так второй одновременный аплоуд той
     // же квоты увидит резерв этого в сумме, а не старое значение. Файл
     // ещё не записан ни байтом — отказ здесь ничего не оставляет на диске.
-    const reserve = declared > 0 ? declared : MAX_VIDEO_BYTES;
+    const reserve = declared > 0 ? declared : Math.min(MAX_VIDEO_BYTES, fileLimit);
     const quota = await checkQuota(me, reserve);
     if (!quota.ok) {
       await deleteMovie(created.id, me);
@@ -366,7 +378,7 @@ export const filmRoutes = async (req, res, url) => {
     // без единого слушателя, и всё, что успело прийти, утекло бы в
     // никуда — файл сохранился бы обрезанным. Чтение продолжит сам
     // асинхронный обход внутри withHead.
-    const saved = await saveStream(created.id, withHead(head, req), MAX_VIDEO_BYTES);
+    const saved = await saveStream(created.id, throttled(withHead(head, req), gate.limits.speedKbps), Math.min(MAX_VIDEO_BYTES, fileLimit));
     if (saved.error) {
       // Записи без файла быть не должно: она показалась бы в коллекции
       // как фильм, который не открывается.
@@ -419,7 +431,7 @@ export const filmRoutes = async (req, res, url) => {
         ageRestricted18: body?.ageRestricted18 === true,
       });
       if (r.error) {
-        const code = r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : 409;
+        const code = r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : /public/.test(r.error) ? 422 : 409;
         return json(res, code, r);
       }
       return json(res, 200, { movie: await readMovie(id, me) });

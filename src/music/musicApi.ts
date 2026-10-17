@@ -7,6 +7,8 @@
 import { withTicketRefresh } from '@/core/mediaTicketRefresh';
 import { apiCall, uploadUrl } from '@/core/auth/api';
 import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
+import { LIMIT_REASONS } from '@/shared/uploadReasons';
+import { flash } from '@/shared/flash';
 import type { Track, TrackStatus } from '@/platform/store';
 
 /** Трек в том виде, в каком его отдаёт сервер. */
@@ -224,6 +226,8 @@ export const apiArtistFeed = async () => {
 export const apiSubmitTrack = async (id: string) => {
   const r = await apiCall<{ track: ServerTrack }>(
     `/api/music/track/${encodeURIComponent(id)}/submit`, { method: 'POST', body: '{}' });
+  // Отказ лимитов публикации объясняем сразу — иначе кнопка «ничего не делает».
+  if (!r.ok && LIMIT_REASONS[r.error ?? '']) flash(LIMIT_REASONS[r.error ?? '']);
   return r.ok ? (r.data?.track ?? null) : null;
 };
 
@@ -288,6 +292,7 @@ export const apiUploadTrack = async (
 };
 
 const UPLOAD_REASONS: Record<string, string> = {
+  ...LIMIT_REASONS,
   unsupported_type: 'Такой файл не подходит: нужен MP3, OGG, FLAC, WAV или M4A',
   file_too_large: 'Файл слишком большой — до 30 МБ',
   invalid_meta: 'Заполните название и исполнителя',

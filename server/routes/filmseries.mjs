@@ -20,7 +20,7 @@ const MOVIE_ID = /^mov-[0-9a-f-]{36}$/;
 const SEASON_ID = /^sea-[0-9a-f-]{36}$/;
 
 const CODES = { not_found: 404, not_allowed: 403, too_many: 409, season_exists: 409, episode_exists: 409, already_pending: 409, already_published: 409, not_pending: 409, file_too_large: 413 };
-const fail = (res, r) => json(res, CODES[r.error] ?? 400, r);
+const fail = (res, r) => json(res, CODES[r.error] ?? (/public/.test(r.error ?? '') ? 422 : 400), r);
 
 export const filmSeriesRoutes = async (req, res, url) => {
   if (!url.startsWith('/api/film/')) return false;

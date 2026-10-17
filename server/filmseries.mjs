@@ -324,8 +324,10 @@ export const submitSeries = async (id, owner, opts = {}) => {
   const toSend = eps.filter((e) => e.status === 'private' || e.status === 'rejected');
   if (!eps.length) return { error: 'no_episodes' };
   if (!toSend.length && o.row.status === 'published') return { error: 'already_published' };
-  let sent = 0;
-  for (const e of toSend) { const r = await submitMovie(e.id, owner, opts); if (r.ok) sent++; }
+  let sent = 0; let limit = null;
+  for (const e of toSend) { const r = await submitMovie(e.id, owner, opts); if (r.ok) sent++; else if (/public/.test(r.error ?? '')) limit = limit ?? r; }
+  // Серия не прошла лимиты публикации (размер, формат, длительность, число/объём) — человеку нужна причина, а не «нет серий».
+  if (!sent && limit) return limit;
   if (!sent && o.row.status !== 'published') return { error: 'no_episodes' };
   await query(`UPDATE film_series SET status = CASE WHEN status='published' THEN status ELSE 'pending' END,
                  submitted_at=now(), reject_reason=NULL, updated_at=now() WHERE id=$1`, [id]);

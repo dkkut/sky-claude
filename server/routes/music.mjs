@@ -35,6 +35,7 @@ import {
   readArtist, readArtistByName, saveArtist, followArtist,
   listFollowing, listArtists, newFromFollowed,
 } from './../musicartists.mjs';
+import { beginPersonalUpload, maxFileBytesFor, throttled } from './../uploadlimits.mjs';
 import { checkQuota, touchOwnerUsage, setRetentionKeep } from './../storagequota.mjs';
 
 /** Потолок на трек. Больше — это уже не песня, а фильм. */
@@ -302,7 +303,7 @@ export const musicRoutes = async (req, res, url) => {
       if (!rateLimit(`music:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
       const r = await submitTrack(id, me);
       if (r.error) {
-        const code = r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : 409;
+        const code = r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : /public/.test(r.error) ? 422 : 409;
         return json(res, code, r);
       }
       return json(res, 200, { track: await readTrack(id, me) });
@@ -436,6 +437,15 @@ export const musicRoutes = async (req, res, url) => {
       return json(res, 400, { error: 'unsupported_type' });
     }
 
+    // Лимиты личной загрузки (Sky Admin → Лимиты загрузки): формат, размер, длительность, число файлов, параллельность.
+    const gate = await beginPersonalUpload(me, 'music', { declaredBytes: declared, mime, duration: Number(meta.duration) || 0 });
+    if (gate.error) {
+      req.destroy();
+      return json(res, gate.error === 'file_too_large' ? 413 : gate.error === 'too_many_uploads' ? 429 : gate.error === 'too_many_files' ? 409 : 400, gate);
+    }
+    res.once('close', gate.release);
+    const fileLimit = Math.min(MAX_AUDIO_BYTES, await maxFileBytesFor('personal', 'music'));
+
     const created = await createTrack(me, { ...meta, mime });
     if (created.error) { req.destroy(); return json(res, 400, created); }
 
@@ -443,7 +453,7 @@ export const musicRoutes = async (req, res, url) => {
     // storagequota.mjs: сумма bytes private-кино и private-музыки
     // вместе. Резерв до записи на диск — тем же способом, что и у
     // фильма: второй параллельный аплоуд увидит эту резервацию.
-    const reserve = declared > 0 ? declared : MAX_AUDIO_BYTES;
+    const reserve = declared > 0 ? declared : fileLimit;
     const quota = await checkQuota(me, reserve);
     if (!quota.ok) {
       await deleteTrack(created.id, me);
@@ -456,7 +466,7 @@ export const musicRoutes = async (req, res, url) => {
     // без единого слушателя, и всё, что успело прийти, утекло бы в
     // никуда — файл сохранился бы обрезанным. Чтение продолжит сам
     // асинхронный обход внутри withHead.
-    const saved = await saveStream(created.id, withHead(head, req), MAX_AUDIO_BYTES);
+    const saved = await saveStream(created.id, throttled(withHead(head, req), gate.limits.speedKbps), fileLimit);
     if (saved.error) {
       await deleteTrack(created.id, me);
       return json(res, saved.error === 'file_too_large' ? 413 : 400, saved);

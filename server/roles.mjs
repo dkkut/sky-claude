@@ -60,6 +60,7 @@ export const PERMISSIONS = [
   'partners',        // Партнёры: черновики, редактирование, отправка на проверку (внутренние контакты видны)
   'partners_approve',// Партнёры: подтверждение, приостановка, архив — отдельное право, в «полные права» не входит
   'prime',           // Sky Prime: правила кэшбэка, каталог наград, очередь выдачи наград (изменения — с подтверждением личности)
+  'upload_limits',   // лимиты загрузки: личная коллекция и публикация (размер, число, объём, форматы, длительность, скорость)
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -105,6 +106,7 @@ export const ROLES = {
   campaigns_admin: ['campaigns', 'support'],
   gifts_admin:     ['gifts'],
   site_admin:      ['site'],
+  upload_limits_admin: ['upload_limits'],
   oidc_admin:      ['oidc'],
   prime_admin:     ['prime'],
   partners_manager:['partners'],
@@ -132,6 +134,7 @@ export const ROLE_LABEL = {
   super_admin: 'Полные права',
   modules_admin: 'Закрытие модулей',
   site_admin: 'Сайт',
+  upload_limits_admin: 'Лимиты загрузки',
   oidc_admin: 'Sky ID для сервисов',
   prime_admin: 'Sky Prime: кэшбэк и награды',
   partners_manager: 'Партнёры: добавление и правка',

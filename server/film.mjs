@@ -33,6 +33,7 @@ import { retentionOf } from './storagequota.mjs';
 import { query } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can } from './admin.mjs';
+import { checkPublish } from './uploadlimits.mjs';
 import { sharedInSession } from './watchgrant.mjs';
 import { sharedDirectly } from './storageshare.mjs';
 import { removeMovieFiles, listStoredIds, posterIdFor } from './filmstore.mjs';
@@ -483,13 +484,16 @@ export const deleteMovie = async (movieId, actorId) => {
  * общего каталога, а не для личной полки.
  */
 export const submitMovie = async (movieId, ownerId, { license, explicit, ageRestricted18 } = {}) => {
-  const { rows } = await query('SELECT owner_id, status, bytes FROM film_movies WHERE id = $1',
+  const { rows } = await query('SELECT id, owner_id, status, bytes, mime, duration_sec FROM film_movies WHERE id = $1',
     [String(movieId ?? '')]);
   const row = rows[0];
   if (!row) return { error: 'not_found' };
   if (row.owner_id !== ownerId) return { error: 'not_allowed' };
   if (row.status === 'pending') return { error: 'already_pending' };
   if (row.status === 'published') return { error: 'already_published' };
+  // Лимиты публикации (отдельно от лимитов личной загрузки): размер, формат, длительность, число и объём опубликованного.
+  const lim = await checkPublish('film', row);
+  if (lim.error) return lim;
   // Фильма без файла в каталоге быть не должно: там его открыли бы и
   // увидели пустоту.
   if (Number(row.bytes ?? 0) <= 0) return { error: 'no_file' };

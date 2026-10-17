@@ -16,6 +16,7 @@ import { retentionOf } from './storagequota.mjs';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can } from './admin.mjs';
+import { checkPublish } from './uploadlimits.mjs';
 import { sharedTrackInSession } from './watchgrant.mjs';
 import { sharedDirectly } from './storageshare.mjs';
 
@@ -223,12 +224,14 @@ const MAX_REASON = 500;
  */
 export const submitTrack = async (trackId, ownerId) => {
   const { rows } = await query(
-    'SELECT owner_id, status FROM music_tracks WHERE id = $1', [String(trackId ?? '')]);
+    'SELECT id, owner_id, status, bytes, mime, duration_sec FROM music_tracks WHERE id = $1', [String(trackId ?? '')]);
   const row = rows[0];
   if (!row) return { error: 'not_found' };
   if (row.owner_id !== ownerId) return { error: 'not_allowed' };
   if (row.status === 'pending') return { error: 'already_pending' };
   if (row.status === 'published') return { error: 'already_published' };
+  const lim = await checkPublish('music', row);
+  if (lim.error) return lim;
 
   await query(
     `UPDATE music_tracks

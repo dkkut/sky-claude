@@ -34,6 +34,7 @@ import { fileRoutes } from './routes/files.mjs';
 import { musicRoutes } from './routes/music.mjs';
 import { filmRoutes } from './routes/film.mjs';
 import { filmSeriesRoutes } from './routes/filmseries.mjs';
+import { uploadLimitsRoutes } from './routes/uploadlimits.mjs';
 import { skyVideoRoutes } from './routes/skyvideo.mjs';
 import { primePulseRoutes } from './routes/primepulse.mjs';
 import { tvRoutes } from './routes/tv.mjs';
@@ -203,7 +204,7 @@ const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|m
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
+                supportRoutes, uploadLimitsRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,

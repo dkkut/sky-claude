@@ -14,6 +14,7 @@
 import { withTicketRefresh } from '@/core/mediaTicketRefresh';
 import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
 import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
+import { LIMIT_REASONS } from '@/shared/uploadReasons';
 
 /** Состояния фильма. Всё, кроме 'published', видит только владелец. */
 export type FilmStatus = 'private' | 'pending' | 'published' | 'rejected';
@@ -263,6 +264,7 @@ export const apiSubmitMovie = async (id: string, p: {
 };
 
 const SUBMIT_REASONS: Record<string, string> = {
+  ...LIMIT_REASONS,
   already_pending: 'Этот фильм уже ждёт проверки',
   already_published: 'Этот фильм уже в общем каталоге',
   no_file: 'У фильма нет файла — загрузите видео заново',
@@ -305,6 +307,7 @@ export interface UploadMeta {
 }
 
 const UPLOAD_REASONS: Record<string, string> = {
+  ...LIMIT_REASONS,
   episode_exists: 'Серия с таким номером уже есть в этом сезоне',
   bad_season: 'Сезон не найден',
   unsupported_type: 'Такой файл не подходит: нужен MP4, MOV, MKV, WebM или AVI',

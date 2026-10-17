@@ -25,6 +25,7 @@ import { query } from './db.mjs';
 import { hasPrime } from './skyid.mjs';
 import { removeMovieFiles } from './filmstore.mjs';
 import { remove as removeTrackFile } from './musicstore.mjs';
+import { personalQuotaFor } from './uploadlimits.mjs';
 
 export const QUOTA_FREE_BYTES  = 5  * 1024 * 1024 * 1024;
 export const QUOTA_PRIME_BYTES = 10 * 1024 * 1024 * 1024;
@@ -48,9 +49,8 @@ export const retentionOf = (row) => {
   return { retentionKeep: false, expiresAt: new Date(last + RETENTION_DAYS * 86_400_000).toISOString() };
 };
 
-export const quotaBytesFor = async (userId) => (
-  (await hasPrime(userId)) ? QUOTA_PRIME_BYTES : QUOTA_FREE_BYTES
-);
+/** Общий объём личного хранилища: значение админки (Sky Admin → Лимиты загрузки) или 5/10 ГБ по умолчанию. */
+export const quotaBytesFor = async (userId) => personalQuotaFor(userId);
 
 /** Сколько уже занято личной коллекцией — кино и музыка, только private. */
 export const usedBytesFor = async (userId) => {
