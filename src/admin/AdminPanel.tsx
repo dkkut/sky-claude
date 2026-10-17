@@ -42,6 +42,7 @@ import { MonitoringTab } from './MonitoringTab';
 
 import { ContentModTab } from './ContentModTab';
 import { ScrollTabs } from './ScrollTabs';
+import { ResourcesTab } from './ResourcesTab';
 import { RegistrationTab } from './RegistrationTab';
 import { UploadLimitsTab } from './UploadLimitsTab';
 import { VerificationTab } from './VerificationTab';
@@ -5513,7 +5514,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5704,6 +5705,7 @@ export const AdminPanel = () => {
     { key: 'prime', label: 'Sky Prime', show: has('prime') },
     { key: 'partners', label: 'Партнёры', show: has('partners') },
     { key: 'aiusage', label: 'AI — ресурсы и токены', show: has('analytics') },
+    { key: 'resources', label: 'Оптимизация ресурсов', show: has('analytics') },
     { key: 'skykassa', label: 'SkyKassa', show: has('skykassa') || has('skykassa_settings') },
     { key: 'pets', label: 'Pets и Skin Market', show: has('content') },
     { key: 'customization', label: 'Кастомизация', show: has('content') },
@@ -5934,6 +5936,7 @@ export const AdminPanel = () => {
       {tab === 'prime' && <PrimeTab />}
       {tab === 'partners' && <PartnersTab />}
       {tab === 'aiusage' && <AiUsageTab />}
+      {tab === 'resources' && <ResourcesTab />}
       {tab === 'storage' && <StorageTab perms={rights?.permissions ?? []} owner={Boolean(rights?.owner)} />}
       {tab === 'skykassa' && <SkyKassaTab owner={Boolean(rights?.owner)} canReview={has('skykassa')} canSettings={has('skykassa_settings')} />}
       {tab === 'go' && <GoAdminTab />}

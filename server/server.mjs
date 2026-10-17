@@ -108,6 +108,8 @@ import { sweepLogs, flushNow as flushLogs } from './skylog.mjs';
 import { accountRecoveryRoutes } from './routes/accountrecovery.mjs';
 import { recoveryRoutes } from './routes/recovery.mjs';
 import { limitedAccessRoutes } from './routes/limitedaccess.mjs';
+import { resourceRoutes } from './routes/resources.mjs';
+import { startResourceOptimizer, heavyAllowed, shouldDeferHousekeeping } from './resourceopt.mjs';
 import { limitedBlocks, sweepLimited } from './limitedaccess.mjs';
 import { primeRewardsRoutes } from './routes/primerewards.mjs';
 import { aiUsageRoutes } from './routes/aiusage.mjs';
@@ -219,7 +221,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, recoveryRoutes, limitedAccessRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [betaRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, artistCardsRoutes, skyLogsRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -438,6 +440,14 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
       }
     }
 
+    /* Sky Resource Optimizer: при КРИТИЧЕСКОЙ нагрузке новые тяжёлые загрузки отклоняются понятной ошибкой (503 busy_heavy, Retry-After);
+       чтение, сообщения, платежи и вход режимом не затрагиваются. */
+    if (['POST', 'PUT'].includes(req.method) && STORAGE_UPLOAD_PREFIX.test(url) && !String(req.headers['content-type'] ?? '').startsWith('application/json')
+        && !heavyAllowed()) {
+      res.setHeader('Retry-After', '60');
+      return json(res, 503, { error: 'busy_heavy', message: 'Сервер сейчас сильно загружен — загрузка файлов временно приостановлена. Повторите через минуту.' });
+    }
+
     /* Sky Storage: на обслуживании/при аварийном отключении загрузки файлов отклоняются ДО любого действия
        маршрута (иначе он успел бы завести запись в базе). Загрузкой считаем не-JSON тело запроса записи
        в разделах с файлами; остальные запросы (лайки, списки) этим не затрагиваются. */
@@ -533,6 +543,7 @@ const start = async () => {
   }
 
   signalHub = startSignalHub();
+  startResourceOptimizer();
 
   /*
    * Досылка вебхуков ботов.
@@ -605,6 +616,8 @@ const start = async () => {
 
   // Раз в час убираем отработавшие коды и гасим истёкшие подписки Prime.
   houseKeeping = setInterval(async () => {
+    // При критической нагрузке плановая уборка переносится на следующий час (не больше 3 раз подряд).
+    if (shouldDeferHousekeeping()) return;
     const hkStart = Date.now();
     try {
       await purgeExpiredCodes();

@@ -1196,3 +1196,19 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
   Запрос живёт 24 часа (`device_approvals.expires_at`, `sweepLimited`). Всё пишется в журнал (`limited_*`, категория `security`) и историю восстановления.
 - Не проверено: настоящие push (FCM/Web Push) и почта; Android/Windows-сборки (сборка `vite build --mode native` проходит); на ТВ/консоли/в машине острова нет — работает запасная карточка.
 - Тесты: `scripts/audit/limitedaccess-test.mjs` (48; API с `OWNER_USERNAME=ownertest ADMIN_GATE=off RECOVERY_RATE_MULT=20 DOMAIN=sky.test`, для сокета `WS_ORIGIN=https://sky.test`), `limitedaccess-ui-test.mjs` (Playwright, 11; сайт на :4173 и API с `EXTRA_ORIGINS=http://localhost:4173`). Нужен деплой (миграция 160) и пересборка `.apk`/`.exe`.
+
+## Sky Resource Optimizer (оптимизация ресурсов)
+
+`server/resourceopt.mjs`, `server/routes/resources.mjs` (`/api/admin/resources*`, просмотр — право `analytics`, настройки — только владелец + step-up `resource_settings`), миграция `161_resource_optimizer.sql` (`resource_settings`, `resource_events`),
+учёт запросов БД в `server/db.mjs` (`dbStats`: счётчик, время, кольцо медленных запросов — только форма SQL без значений, порог `DB_SLOW_MS`=300); клиент — `src/admin/ResourcesTab.tsx` (вкладка «Оптимизация ресурсов»).
+Это надстройка над уже существовавшим `bloxlimits.mjs` (замер цикла событий, `loadLevel`, `optionalAllowed`): оптимизатор поднимает его уровень через `setLevelFloor`, а не заводит вторую систему.
+
+- Замеры раз в 15 с (≈0,4 мс на замер): CPU на ядро, память (cgroup контейнера или машины), задержка цикла событий, свободное место (`statfs`), очередь к БД. Режимы `normal → economy → high → critical` с гистерезисом
+  (`nextLevel`: вверх после 2 замеров подряд, вниз на ступень после 8 спокойных). Пороги — в настройках (по умолчанию CPU 85/150 %, память 85/93 %, диск 10/3 % свободно). `RESOURCE_FORCE_LEVEL` — только для тестов, в production игнорируется.
+- Что делают режимы: `optionalAllowed()` (high и выше) откладывает необязательные фоновые работы (проверки игр Blox и т. п. — они уже спрашивали `bloxlimits.optionalAllowed`); при `critical` новые НЕ-JSON загрузки в разделах с файлами получают 503 `busy_heavy` с `Retry-After: 60`,
+  а часовая уборка переносится (не больше 3 раз подряд, `shouldDeferHousekeeping`). Вход, авторизация, платежи, сообщения, чтение, защита от атак режимами НЕ отключаются. «Автоматическая оптимизация» выключена → режим всегда normal (замеры и журнал остаются).
+- Журнал `resource_events` (смены режима, настройки, отложенные уборки, подозрение на утечку памяти: +150 МБ и +30 % RSS за 15 минут без снижений) + `skylog` (`resource_mode`, `resource_memory_growth`); каждая смена настроек — в журнал администрации (`resource_settings`).
+- Место по категориям — только по кнопке («Посчитать», кэш 10 минут, до 200 000 файлов на папку), без постоянного обхода диска. Остальные контейнеры из API не видны (`docker stats` на сервере).
+- Не сделано (честно): единый общий кэш (его нет, локальные кэши есть в отдельных модулях), клиентский аудит рендеров/опросов, генерация миниатюр в очереди, перекодирование видео, авто-очистка логов сверх ротации Docker (`json-file`, 10 МБ × 5 уже настроена), уведомления владельца о смене режима
+  (пока только журнал и вкладка), пересмотр лимитов контейнеров (стоят: nginx 256M, api 1G, db 2G, redis 768M — менять только после измерений на боевом сервере).
+- Тест: `scripts/audit/resourceopt-test.mjs` (22 в обычной фазе; фаза `critical` — 6, API с `RESOURCE_FORCE_LEVEL=3`). Нужен деплой (миграция 161).

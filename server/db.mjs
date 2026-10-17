@@ -26,7 +26,25 @@ pool.on('error', (err) => {
   console.error('[db] ошибка простаивающего соединения:', err.message);
 });
 
-export const query = (text, params) => pool.query(text, params);
+/* Лёгкий учёт запросов для Sky Resource Optimizer: счётчик, суммарное время и кольцо медленных запросов.
+   В журнал идёт только форма запроса (литералы и числа заменены на «?»), параметры и данные не сохраняются. */
+export const dbStats = { total: 0, totalMs: 0, errors: 0, slow: [], since: Date.now(), slowMs: Number(process.env.DB_SLOW_MS) || 300 };
+const shape = (t) => String(t).replace(/'(?:[^']|'')*'/g, "'?'").replace(/\b\d+(?:\.\d+)?\b/g, '?').replace(/\s+/g, ' ').trim().slice(0, 220);
+export const query = async (text, params) => {
+  const t0 = Date.now();
+  try {
+    return await pool.query(text, params);
+  } catch (e) {
+    dbStats.errors += 1; throw e;
+  } finally {
+    const ms = Date.now() - t0;
+    dbStats.total += 1; dbStats.totalMs += ms;
+    if (ms >= dbStats.slowMs) {
+      dbStats.slow.push({ at: new Date().toISOString(), ms, sql: shape(typeof text === 'string' ? text : text?.text ?? '') });
+      if (dbStats.slow.length > 50) dbStats.slow.shift();
+    }
+  }
+};
 
 /** Ждём, пока БД начнёт отвечать: контейнер может стартовать дольше API. */
 export const waitForDb = async ({ attempts = 30, delayMs = 1000 } = {}) => {

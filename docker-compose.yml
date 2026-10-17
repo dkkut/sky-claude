@@ -85,6 +85,9 @@ services:
       # снять их не может никто. Пусто — владельца нет, и назначать
       # администраторов некому.
       OWNER_USERNAME:        ${OWNER_USERNAME:-}
+      # Sky Resource Optimizer: порог «медленного запроса» к БД, мс, и каталог, по которому меряется свободное место (по умолчанию корень контейнера).
+      DB_SLOW_MS:            ${DB_SLOW_MS:-300}
+      DISK_PROBE_DIR:        ${DISK_PROBE_DIR:-/}
       # Sky Recovery: адрес сайта восстановления (в письмах и переходах), сроки ожидания, задержка новой резервной почты.
       RECOVERY_ORIGIN:             ${RECOVERY_ORIGIN:-}
       RECOVERY_WAIT_HOURS:         ${RECOVERY_WAIT_HOURS:-}
