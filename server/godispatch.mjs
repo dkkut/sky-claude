@@ -32,6 +32,14 @@ export const dispatchSettings = async () => ({
   radiusKm: num(await getSetting('dispatch_radius_km', 15), 15, 1, 200),
 });
 
+/** Виды заказов, которые распределяются предложениями: роль исполнителя, активные статусы, сколько заказов можно вести сразу. */
+const KINDS = {
+  taxi: { role: 'taxi_driver', active: ['assigned', 'en_route', 'arrived', 'in_ride'], maxActive: 1, title: 'Новый заказ такси' },
+  delivery: { role: 'courier', active: ['assigned', 'heading_pickup', 'at_pickup', 'picked_up', 'delivering', 'at_recipient'], maxActive: 3, title: 'Новая доставка' },
+};
+/** Заказ организации идёт через диспетчера организации (goorg); в общее распределение попадает, только когда организация открыла его курьерам. */
+export const dispatchable = (o) => Boolean(KINDS[o.kind]) && (!o.org_id || o.data?.poolOpen === true || o.data?.poolOpen === 'true');
+
 const dlog = (client, orderId, event, actorId, detail = {}) =>
   client.query('INSERT INTO go_dispatch_log (order_id, event, actor_id, detail) VALUES ($1,$2,$3,$4::jsonb)', [orderId, event, actorId ?? null, JSON.stringify(detail)]);
 
@@ -39,29 +47,37 @@ export const scoreOf = ({ km, misses, idleMin }) => Math.round((km + 0.7 * misse
 
 /** Допустимые кандидаты, отсортированные по баллу (меньше — лучше). Читает базу, ничего не меняет. */
 export const rankCandidates = async (client, order, cfg) => {
+  const k = KINDS[order.kind];
+  const cargo = order.kind === 'delivery' && order.data?.scenario === 'cargo';
   const { rows } = await client.query(
-    `SELECT p.profile_id, p.lat, p.lng, p.updated_at,
-            (SELECT max(completed_at) FROM go_orders x WHERE x.executor_id = p.profile_id AND x.kind = 'taxi') AS last_done,
-            (SELECT count(*)::int FROM go_order_offers f WHERE f.driver_id = p.profile_id AND f.status IN ('declined','expired') AND f.offered_at > now() - interval '1 hour') AS misses
+    `SELECT p.profile_id, p.lat, p.lng, e.data_enc,
+            (SELECT max(completed_at) FROM go_orders x WHERE x.executor_id = p.profile_id AND x.kind = $5) AS last_done,
+            (SELECT count(*)::int FROM go_order_offers f JOIN go_orders fo ON fo.id = f.order_id WHERE f.driver_id = p.profile_id AND fo.kind = $5 AND f.status IN ('declined','expired') AND f.offered_at > now() - interval '1 hour') AS misses,
+            (SELECT count(*)::int FROM go_orders b WHERE b.kind = $5 AND b.executor_id = p.profile_id AND b.status = ANY($6::text[])) AS active_n,
+            (SELECT count(*)::int FROM go_orders b WHERE b.kind = $5 AND b.executor_id = p.profile_id AND b.status = ANY($6::text[]) AND b.data->>'scenario' = 'cargo') AS cargo_n
        FROM go_presence p
-       JOIN go_executors e ON e.profile_id = p.profile_id AND e.role = 'taxi_driver' AND e.status = 'approved' AND e.city = $2
-      WHERE p.role = 'taxi_driver' AND p.online AND p.lat IS NOT NULL AND p.lng IS NOT NULL
+       JOIN go_executors e ON e.profile_id = p.profile_id AND e.role = $7 AND e.status = 'approved' AND e.city = $2
+      WHERE p.role = $7 AND p.online AND p.lat IS NOT NULL AND p.lng IS NOT NULL
         AND p.updated_at > now() - ($3 || ' seconds')::interval
-        AND EXISTS (SELECT 1 FROM go_subscriptions s WHERE s.profile_id = p.profile_id AND s.role = 'taxi_driver' AND s.expires_at > now())
+        AND EXISTS (SELECT 1 FROM go_subscriptions s WHERE s.profile_id = p.profile_id AND s.role = $7 AND s.expires_at > now())
         AND EXISTS (SELECT 1 FROM go_pay_details d WHERE d.profile_id = p.profile_id)
-        AND NOT EXISTS (SELECT 1 FROM go_orders b WHERE b.kind = 'taxi' AND b.executor_id = p.profile_id AND b.status IN ('assigned','en_route','arrived','in_ride'))
         AND NOT EXISTS (SELECT 1 FROM go_order_offers o WHERE o.driver_id = p.profile_id AND o.status = 'offered' AND o.expires_at > now())
         AND NOT EXISTS (SELECT 1 FROM go_order_offers t WHERE t.driver_id = p.profile_id AND t.order_id = $1)
         AND p.profile_id <> $4`,
-    [order.id, order.city, String(cfg.freshSec), order.customer_id]);
+    [order.id, order.city, String(cfg.freshSec), order.customer_id, order.kind, k.active, k.role]);
   const from = order.data?.from;
+  const { openJson } = await import('./gocore.mjs');
   const out = [];
   for (const r of rows) {
+    if (r.active_n >= k.maxActive) continue;
+    // Грузовой заказ едет отдельным рейсом и только на грузовом транспорте; и наоборот — с грузовым рейсом ничего не совмещается.
+    if (cargo && (r.active_n > 0 || openJson(r.data_enc).extra?.transport !== 'truck')) continue;
+    if (r.cargo_n > 0) continue;
     const km = haversineKm({ lat: r.lat, lng: r.lng }, from);
     if (km > cfg.radiusKm) continue;
     const idleMin = r.last_done ? (Date.now() - new Date(r.last_done).getTime()) / 60000 : 30;
-    const reasons = { km: Math.round(km * 10) / 10, etaMin: Math.max(1, Math.round((km * 1.35 / 28) * 60)), misses: r.misses, idleMin: Math.round(idleMin) };
-    out.push({ driverId: r.profile_id, score: scoreOf({ km, misses: r.misses, idleMin }), reasons });
+    const reasons = { km: Math.round(km * 10) / 10, etaMin: Math.max(1, Math.round((km * 1.35 / 28) * 60)), misses: r.misses, idleMin: Math.round(idleMin), active: r.active_n };
+    out.push({ driverId: r.profile_id, score: scoreOf({ km, misses: r.misses, idleMin }) + 0.5 * r.active_n, reasons });
   }
   return out.sort((a, b) => a.score - b.score || a.driverId.localeCompare(b.driverId));
 };
@@ -75,7 +91,7 @@ export const offerNext = async (orderId) => {
   if (cfg.mode !== 'offers') return { skipped: 'pool_mode' };
   const r = await inTx(async (c) => {
     const o = await lockOrder(c, orderId);
-    if (!o || o.kind !== 'taxi' || o.status !== 'searching' || o.executor_id) return { skipped: 'not_searching' };
+    if (!o || !dispatchable(o) || o.status !== 'searching' || o.executor_id) return { skipped: 'not_searching' };
     if (o.dispatch_state === 'pool') return { skipped: 'pool' };
     const { rows: exp } = await c.query(`UPDATE go_order_offers SET status = 'expired', answered_at = now() WHERE order_id = $1 AND status = 'offered' AND expires_at <= now() RETURNING driver_id`, [orderId]);
     for (const e of exp) await dlog(c, orderId, 'offer_expired', null, { driverId: e.driver_id });
@@ -98,10 +114,10 @@ export const offerNext = async (orderId) => {
       [orderId, best.driverId, rank, best.score, JSON.stringify(best.reasons), String(cfg.offerSec)]);
     await c.query(`UPDATE go_orders SET dispatch_state = 'offering', dispatch_attempts = $2, updated_at = now() WHERE id = $1`, [orderId, rank]);
     await dlog(c, orderId, 'offer', null, { driverId: best.driverId, rank, score: best.score, reasons: best.reasons, top: cands.slice(0, 3).map((x) => ({ driverId: x.driverId, score: x.score })) });
-    return { offered: best.driverId, rank, expiresInSec: cfg.offerSec, city: o.city };
+    return { offered: best.driverId, rank, expiresInSec: cfg.offerSec, city: o.city, kind: o.kind };
   });
   if (r.offered) {
-    await notifyGo(r.offered, 'taxi', 'Новый заказ такси', `Предложение действует ${r.expiresInSec} с.`, orderId, `${orderId}:offer:${r.rank}`);
+    await notifyGo(r.offered, r.kind, KINDS[r.kind].title, `Предложение действует ${r.expiresInSec} с.`, orderId, `${orderId}:offer:${r.rank}`);
     pushGoEvent([r.offered], { type: 'go:offer', payload: { orderId, expiresInSec: r.expiresInSec } });
   }
   return r;
@@ -147,7 +163,7 @@ export const sweepDispatch = async () => {
   if (cfg.mode === 'offers') {
     const { rows } = await query(
       `SELECT DISTINCT o.id FROM go_orders o
-        WHERE o.kind = 'taxi' AND o.status = 'searching' AND o.executor_id IS NULL AND o.dispatch_state = 'offering'
+        WHERE o.kind IN ('taxi','delivery') AND o.status = 'searching' AND o.executor_id IS NULL AND o.dispatch_state = 'offering'
           AND NOT EXISTS (SELECT 1 FROM go_order_offers f WHERE f.order_id = o.id AND f.status = 'offered' AND f.expires_at > now())
         LIMIT 200`);
     for (const r of rows) await offerNext(r.id).catch((e) => console.error('[go] распределение', e.message));

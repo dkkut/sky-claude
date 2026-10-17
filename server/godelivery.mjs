@@ -6,6 +6,8 @@
 import { query } from './db.mjs';
 import { canAccept } from './gosubs.mjs';
 import { openPayment } from './gopay.mjs';
+import { offerNext, claimOffer, openOffersFor, cancelOffers } from './godispatch.mjs';
+import { tariffVersion, fingerprint, issueQuote, redeemQuote, markQuoteUsed, snapshot } from './gopricing.mjs';
 import { executorStatus } from './goreg.mjs';
 import { openJson, getSetting, cityOk, newId, inTx, lockOrder, setStatus, addEvent, resolvePoint, routeBetween, issueCode, checkCode, notifyGo, clean, haversineKm, cleanPoint, pushOrderChanged } from './gocore.mjs';
 
@@ -43,7 +45,7 @@ export const payTerm = async (kind) => {
   return v === 'before' || v === 'on_accept' ? 'before' : 'after';
 };
 
-export const quote = async (input) => {
+const calcQuote = async (input) => {
   const city = clean(input?.city, 60);
   if (!(await cityOk(city))) return { error: 'bad_city' };
   const a = await resolvePoint(input?.from); if (a.error) return { error: `from_${a.error}` };
@@ -65,6 +67,21 @@ export const quote = async (input) => {
   return { ...base, priceRub: prices[size], prices };
 };
 
+/**
+ * Предварительный расчёт доставки. С profileId — ещё и котировка (quoteId, срок, версия тарифа): цена, которую человек увидел,
+ * фиксируется; заказ по ней при смене тарифа/условий не создаётся без повторного согласия (см. gopricing.mjs).
+ */
+export const quote = async (input, profileId = null) => {
+  const q = await calcQuote(input);
+  if (q.error || !profileId) return q;
+  const cargo = input?.scenario === 'cargo';
+  const tariffs = cargo ? await cargoTariff() : ((await getSetting('delivery_tariff', {})) ?? {});
+  const version = tariffVersion(tariffs);
+  const fp = fingerprint('delivery', clean(input?.city, 60), q.from, q.to, { scenario: String(input?.scenario ?? ''), loaders: q.loaders ?? 0 });
+  const offers = Object.fromEntries(Object.entries(q.prices).map(([k, v]) => [k, { priceRub: v }]));
+  return { ...q, ...(await issueQuote(profileId, 'delivery', fp, version, offers, { km: q.km, minutes: q.minutes })), tariffVersion: version, currency: 'RUB' };
+};
+
 /** Заказ доставки. company — только для одобренной компании. food создаётся Sky Едой (createFoodDelivery), а не человеком. */
 export const create = async (customerId, input, ctx = {}) => {
   const scenario = String(input?.scenario ?? '');
@@ -75,8 +92,9 @@ export const create = async (customerId, input, ctx = {}) => {
     const ok = await canAccept(customerId, 'company').then((r) => (r.error === 'pay_details_required' ? { ok: true } : r));   // компании реквизиты для приёма денег не нужны
     if (ok.error) return ok;
   }
-  const q = await quote(input);
+  const q = await calcQuote(input);
   if (q.error) return q;
+  const quoteId = input?.quoteId && !ctx.orgId ? String(input.quoteId) : null;
   const rec = contact(input?.recipient, 'recipient'); if (rec.error) return rec;
   let sender = null;
   // Поручение («забрать заказ или что-то купить»): отправитель — место/магазин, его контакт необязателен.
@@ -90,7 +108,8 @@ export const create = async (customerId, input, ctx = {}) => {
   const idem = clean(input?.idemKey, 64) || null;
   const term = await payTerm('delivery');
 
-  return inTx(async (c) => {
+  const cargoMode = scenario === 'cargo';
+  const out = await inTx(async (c) => {
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`go:cust:${customerId}`]);
     if (idem) {
       const { rows } = await c.query('SELECT id FROM go_orders WHERE customer_id = $1 AND idem_key = $2', [customerId, idem]);
@@ -98,6 +117,14 @@ export const create = async (customerId, input, ctx = {}) => {
     }
     const { rows: act } = await c.query(`SELECT count(*)::int AS n FROM go_orders WHERE customer_id = $1 AND kind = 'delivery' AND status = ANY($2::text[])`, [customerId, ACTIVE]);
     if (act[0].n >= (ctx.orgId ? 200 : 10)) return { error: 'too_many_active' };
+    const version = tariffVersion(cargoMode ? await cargoTariff() : ((await getSetting('delivery_tariff', {})) ?? {}));
+    let snap = snapshot({ version, breakdown: null, priceRub: q.priceRub, estimated: q.estimated });
+    if (quoteId) {
+      const fp = fingerprint('delivery', clean(input.city, 60), q.from, q.to, { scenario, loaders: q.loaders ?? 0 });
+      const red = await redeemQuote(c, customerId, quoteId, 'delivery', fp, version, cargoMode ? q.body : q.size, q.priceRub);
+      if (red.error) return red;
+      snap = snapshot({ version: red.tariffVersion, breakdown: null, priceRub: red.priceRub, quoteId, quotedAt: red.quotedAt, expiresAt: red.expiresAt, estimated: q.estimated });
+    }
     const id = newId('go');
     const data = { scenario, from: q.from, to: q.to, km: q.km, minutes: q.minutes, estimated: q.estimated, parcel, pvzInfo, sender, recipient: rec.value,
       cargo: scenario === 'cargo' ? { body: q.body, loaders: q.loaders } : undefined,
@@ -105,12 +132,16 @@ export const create = async (customerId, input, ctx = {}) => {
       company: scenario === 'company' ? clean(input?.company, 120) : undefined,
       // Заказ организации: в общий поток курьеров попадает, только если организация так решила (poolOpen).
       ...(ctx.orgId ? { org: { id: ctx.orgId, name: ctx.orgName }, poolOpen: Boolean(ctx.poolOpen) } : {}) };
-    await c.query(`INSERT INTO go_orders (id, kind, customer_id, status, price_rub, city, data, idem_key, org_id, created_by) VALUES ($1,'delivery',$2,'searching',$3,$4,$5::jsonb,$6,$7,$8)`,
-      [id, customerId, q.priceRub, clean(input.city, 60), JSON.stringify(data), idem, ctx.orgId ?? null, ctx.createdBy ?? null]);
+    await c.query(`INSERT INTO go_orders (id, kind, customer_id, status, price_rub, city, data, idem_key, org_id, created_by, pricing) VALUES ($1,'delivery',$2,'searching',$3,$4,$5::jsonb,$6,$7,$8,$9::jsonb)`,
+      [id, customerId, snap.priceRub, clean(input.city, 60), JSON.stringify(data), idem, ctx.orgId ?? null, ctx.createdBy ?? null, JSON.stringify(snap)]);
+    if (quoteId) await markQuoteUsed(c, quoteId, id);
     await addEvent(c, id, ctx.createdBy ?? customerId, null, 'searching', ctx.orgId ? 'Заказ создан в кабинете организации' : 'Заказ создан');
     await issueCode(c, id, 'pickup'); await issueCode(c, id, 'handover');
-    return { ok: true, orderId: id, priceRub: q.priceRub };
+    return { ok: true, orderId: id, priceRub: snap.priceRub };
   });
+  if (out.error === 'price_changed' || out.error === 'quote_expired') return { ...out, quote: await quote(input, customerId) };
+  if (out.ok && !out.duplicate && !ctx.orgId) await offerNext(out.orderId).catch((e) => console.error('[go] распределение', e.message));
+  return out;
 };
 
 /** Доставка еды: создаёт Sky Еда, когда заведение отметило «готово». Платит заказчик курьеру напрямую. */
@@ -141,14 +172,17 @@ export const availableFor = async (courierId) => {
   const { rows: pres } = await query(`SELECT online, lat, lng FROM go_presence WHERE profile_id = $1 AND role = 'courier'`, [courierId]);
   if (!pres[0]?.online) return { error: 'offline' };
   const cargoOk = canCargo(ex);
-  const { rows: all } = await query(`SELECT * FROM go_orders WHERE kind = 'delivery' AND status = 'searching' AND executor_id IS NULL AND city = $1 AND (org_id IS NULL OR data->>'poolOpen' = 'true') ORDER BY created_at LIMIT 60`, [ex.city]);
+  const { rows: all } = await query(`SELECT * FROM go_orders WHERE kind = 'delivery' AND status = 'searching' AND executor_id IS NULL AND city = $1 AND (org_id IS NULL OR data->>'poolOpen' = 'true')
+        AND (dispatch_state <> 'offering' OR EXISTS (SELECT 1 FROM go_order_offers f WHERE f.order_id = go_orders.id AND f.driver_id = $2 AND f.status = 'offered' AND f.expires_at > now())) ORDER BY created_at LIMIT 60`, [ex.city, courierId]);
+  const offers = await openOffersFor(courierId);
   const rows = all.filter((r) => r.data.scenario !== 'cargo' || cargoOk).slice(0, 40);
   const here = pres[0].lat != null ? { lat: pres[0].lat, lng: pres[0].lng } : null;
   return { orders: rows.map((r) => ({
     id: r.id, scenario: r.data.scenario, cargo: r.data.cargo, priceRub: r.price_rub, createdAt: r.created_at.toISOString(),
     from: { address: r.data.from.address }, to: { address: r.data.to.address }, km: r.data.km, minutes: r.data.minutes,
     parcel: { description: r.data.parcel?.description, size: r.data.parcel?.size, weightKg: r.data.parcel?.weightKg }, comment: r.data.comment || undefined,
-    distanceToPickupKm: here ? Math.round(haversineKm(here, r.data.from) * 10) / 10 : null })) };
+    distanceToPickupKm: here ? Math.round(haversineKm(here, r.data.from) * 10) / 10 : null, offer: offers.get(r.id) ?? null }))
+    .sort((a, b) => (a.offer ? 0 : 1) - (b.offer ? 0 : 1)) };
 };
 
 export const accept = async (courierId, orderId) => {
@@ -165,12 +199,17 @@ export const accept = async (courierId, orderId) => {
     const { rows: mine } = await c.query(`SELECT data->>'scenario' AS sc FROM go_orders WHERE kind = 'delivery' AND executor_id = $1 AND status IN ('assigned','heading_pickup','at_pickup','picked_up','delivering','at_recipient')`, [courierId]);
     // Грузовой заказ едет отдельным рейсом: совмещать его с другими нельзя ни в ту, ни в другую сторону.
     if ((cand[0]?.sc === 'cargo' && mine.length > 0) || mine.some((m) => m.sc === 'cargo')) return { error: 'incompatible_order' };
+    // Заказ предложен конкретному курьеру — принять его может только он и только пока предложение действует.
+    const { rows: cur } = await c.query(`SELECT dispatch_state FROM go_orders WHERE id = $1 FOR UPDATE`, [orderId]);
+    let claimed = false;
+    if (cur[0]?.dispatch_state === 'offering') { const cl = await claimOffer(c, orderId, courierId); if (cl.error) return cl; claimed = true; }
     const { rows } = await c.query(
       `UPDATE go_orders SET status = 'assigned', executor_id = $2, updated_at = now()
         WHERE id = $1 AND kind = 'delivery' AND status = 'searching' AND executor_id IS NULL AND city = $3
           AND (org_id IS NULL OR data->>'poolOpen' = 'true')
           AND (data->>'scenario' <> 'cargo' OR $4::boolean) RETURNING *`, [orderId, courierId, ex.city, canCargo(ex)]);
-    if (!rows[0]) return { error: 'already_taken' };
+    if (!rows[0]) { if (claimed) throw Object.assign(new Error('already_taken'), { goError: 'already_taken' }); return { error: 'already_taken' }; }
+    await cancelOffers(c, orderId);
     await addEvent(c, orderId, courierId, 'searching', 'assigned', 'Курьер назначен');
     if (rows[0].data.payTerm === 'before' && rows[0].data.scenario !== 'food') {
       const opened = await openPayment(c, rows[0], rows[0].customer_id, courierId, rows[0].price_rub);
@@ -226,7 +265,7 @@ export const courierAct = async (courierId, orderId, action, code, reason) => in
       await c.query(`UPDATE go_orders SET status = 'searching', executor_id = NULL, updated_at = now(),
         data = (data - 'dispatch') || jsonb_build_object('internal', false, 'declinedBy', coalesce(data->'declinedBy', '[]'::jsonb) || to_jsonb($2::text)) WHERE id = $1`, [o.id, courierId]);
     } else {
-      await c.query(`UPDATE go_orders SET status = 'searching', executor_id = NULL, data = data - 'dispatch', updated_at = now() WHERE id = $1`, [o.id]);
+      await c.query(`UPDATE go_orders SET status = 'searching', executor_id = NULL, dispatch_state = 'none', data = data - 'dispatch', updated_at = now() WHERE id = $1`, [o.id]);
     }
     await c.query(`DELETE FROM go_order_pay WHERE order_id = $1 AND state = 'awaiting'`, [o.id]);
     await addEvent(c, o.id, courierId, o.status, 'searching', why ? `Исполнитель отказался: ${why}` : 'Курьер отказался — поиск продолжается');
@@ -285,6 +324,7 @@ export const courierAct = async (courierId, orderId, action, code, reason) => in
   if (r.orgId && r.orgNotify) await org.notifyStaff(r.orgId, r.orgNotify[0], r.orgNotify[1], orderId, `${orderId}:${action}`);
   else if (r.notify) await notifyGo(r.notify[0], 'delivery', r.notify[1], r.notify[2], orderId, `${orderId}:${action}`);
   if (r.released && r.orgId) await org.afterRelease(orderId).catch(() => {});
+  if (r.released && !r.orgId) await offerNext(orderId).catch(() => {});
   await pushOrderChanged(orderId);
   return r;
 });
@@ -294,6 +334,7 @@ export const customerCancel = async (customerId, orderId, reason) => inTx(async 
   if (!o || o.kind !== 'delivery' || o.customer_id !== customerId) return { error: 'not_found' };
   if (o.parent_id) return { error: 'cancel_via_food_order' };
   if (!['searching', 'assigned', 'heading_pickup', 'at_pickup'].includes(o.status)) return { error: 'bad_state', status: o.status };
+  await cancelOffers(c, o.id);
   await setStatus(c, o, 'cancelled', customerId, clean(reason, 200) || 'Отменён заказчиком', { cancelled_by: customerId, cancel_reason: clean(reason, 200) });
   return { ok: true, courierId: o.executor_id, orgId: o.org_id };
 }).then(async (r) => {

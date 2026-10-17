@@ -94,9 +94,15 @@ export const DeliveryForm = ({ mode, city, cargo, onBack, onCreated, org }: { mo
     setBusy(true);
     const r = org
       ? await bizApi.createOrder(org.id, { ...body0(), scenario: 'company', pointId: pointId || undefined, assignMode, assignTo: assignMode === 'manual' && assignTo ? assignTo : undefined })
-      : await goApi.deliveryCreate(body0());
+      : await goApi.deliveryCreate({ ...body0(), quoteId: quote?.quoteId });
     setBusy(false);
-    if (!r.ok) return fail(r);
+    if (!r.ok) {
+      // Тариф изменился или расчёт устарел: заказ НЕ создан — показываем новую цену, человек подтверждает заново.
+      const fresh = (r.data as { quote?: NonNullable<typeof quote> } | undefined)?.quote;
+      if (!org && fresh && (r.error === 'price_changed' || r.error === 'quote_expired' || r.error === 'quote_mismatch')) { setQuote(fresh); setQerr(goError(r)); return; }
+      return fail(r);
+    }
+    setQerr('');
     const ae = (r.data as { assignError?: string } | undefined)?.assignError;
     if (org && ae) flash(`Заказ создан, но исполнитель не назначен: ${goError({ error: ae })}`);
     else flash(org ? (assignMode === 'pool' ? 'Заказ открыт для курьеров' : assignTo ? 'Заказ создан и назначен' : 'Заказ создан') : 'Ищем курьера');
@@ -110,6 +116,7 @@ export const DeliveryForm = ({ mode, city, cargo, onBack, onCreated, org }: { mo
         <Card style={{ padding: '4px 14px' }}>
           <AddressRow label={mode === 'errand' ? 'Где забрать или купить' : mode === 'pvz' ? 'Адрес пункта выдачи' : 'Откуда'} icon={<MapPin size={18} />} value={from} onChange={setFrom} canLocate />
           <AddressRow label={mode === 'errand' ? 'Куда привезти' : 'Куда'} icon={<Flag size={18} />} value={to} onChange={setTo} />
+          {quote?.expiresAt && !org && <div style={{ fontSize: 12.5, color: C.t3, paddingTop: 8 }}>{`Цена зафиксирована до ${new Date(quote.expiresAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}.`}</div>}
           {quote && <div style={{ fontSize: 12.5, color: C.t2, padding: '8px 0' }}>≈ {quote.km} км, ~{quote.minutes} мин{quote.estimated ? ' · по прямой, карты не подключены' : ''}</div>}
           {qerr && <div style={{ padding: '8px 0' }}><Notice tone="warn">{qerr}</Notice></div>}
         </Card>

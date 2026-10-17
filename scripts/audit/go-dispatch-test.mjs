@@ -216,6 +216,61 @@ await sleep(13000);
 t('поиск дольше срока → заказ отменён «нет водителей»', q(`select status||'|'||cancel_reason from go_orders where id='${oC}'`) === 'cancelled|no_drivers', q(`select status||'|'||cancel_reason from go_orders where id='${oC}'`));
 t('в истории заказа запись о причине', Number(q(`select count(*) from go_order_events where order_id='${oC}' and to_status='cancelled'`)) === 1);
 
+/* ═══ Курьеры: котировка доставки и предложения ═══ */
+const K1 = await mk('gdK1'); const K2 = await mk('gdK2'); const CD = await mk('gdCustD'); const CD2 = await mk('gdCustD2');
+for (const u of [K1, K2]) q(`update profiles set date_of_birth='1990-05-05' where id='${u.pid}'`);
+const courierSetup = async (u, lat, lng, transport = 'bike') => {
+  const inn = gen(12, (s) => validInn(s, { length: 12 }));
+  let r = await G('/executors', J({ role: 'courier', legalForm: 'npd', city: CITY, fields: { fullName: 'Иванов Иван Иванович', inn, phone: '+79991234567' }, extra: { transport } }), u.tok);
+  const id = r.data.id;
+  await call(`/api/go/executors/${id}/docs?kind=id_doc`, { method: 'POST', body: PNG, headers: { 'content-type': 'application/octet-stream' } }, u.tok);
+  await G(`/executors/${id}/submit`, J({}), u.tok);
+  await call(`/api/admin/go/applications/${id}/decide`, J({ action: 'approve', note: '' }), A.tok);
+  q(`insert into wallet_accounts(user_id,balance) values ('${u.pid}',300) on conflict (user_id) do update set balance = wallet_accounts.balance + 300`);
+  await G('/subscription/courier/buy', J({}), u.tok);
+  await G('/pay-details', { method: 'PUT', body: JSON.stringify({ method: 'card', number: '4111111111111111', holder: 'ТЕСТ ТЕСТОВ', bank: 'Тест-банк' }) }, u.tok);
+  r = await G('/presence', J({ role: 'courier', online: true, lat, lng }), u.tok);
+  return r.status === 200;
+};
+t('курьеры допущены и на линии', (await Promise.all([courierSetup(K1, 55.7605, 37.6205), courierSetup(K2, 55.79, 37.65)])).every(Boolean));
+q(`update go_presence set online = false where role = 'courier' and profile_id not in ('${K1.pid}','${K2.pid}')`);
+const dBody = (extra = {}) => ({ scenario: 'p2p', city: CITY, from: FROM, to: TO, size: 's', parcel: { description: 'Документы', weightKg: 1, size: 's' },
+  sender: { name: 'Отправитель', phone: '+79990000001' }, recipient: { name: 'Получатель', phone: '+79990000002' }, ...extra });
+r = await G('/delivery/quote', J(dBody()), CD.tok);
+const dq = r.data;
+t('котировка доставки: id, срок, версия, цены по размерам', r.status === 200 && /^gq-/.test(dq.quoteId) && dq.expiresAt && dq.tariffVersion?.length === 12 && dq.prices.s > 0 && dq.prices.m >= dq.prices.s, JSON.stringify(r.data).slice(0, 200));
+r = await G('/delivery/orders', J(dBody({ quoteId: dq.quoteId })), CD.tok);
+const dOrd = r.data.orderId;
+t('заказ доставки по котировке создан по той же цене, снимок сохранён', r.status === 201 && r.data.priceRub === dq.prices.s && JSON.parse(q(`select pricing::text from go_orders where id='${dOrd}'`)).quoteId === dq.quoteId, JSON.stringify(r.data));
+await sleep(500);
+const dOffers = q(`select driver_id||':'||status from go_order_offers where order_id='${dOrd}' order by id`).split('\n');
+t('доставка предложена ближайшему курьеру (K1)', dOffers.length === 1 && dOffers[0] === `${K1.pid}:offered`, dOffers.join(','));
+r = await G('/delivery/available', {}, K2.tok); t('K2 заказ не видит', !r.data.orders.some((o) => o.id === dOrd));
+r = await G('/delivery/available', {}, K1.tok); t('K1 видит заказ с отсчётом', r.data.orders.some((o) => o.id === dOrd && o.offer?.secondsLeft > 0));
+r = await G(`/delivery/orders/${dOrd}/accept`, J({}), K2.tok); t('K2 принять чужое предложение не может', r.status === 409 && r.data.error === 'not_offered', JSON.stringify(r.data));
+r = await G(`/delivery/orders/${dOrd}/accept`, J({}), K1.tok); t('K1 принял предложение', r.status === 200, JSON.stringify(r.data));
+t('заказ доставки назначен K1', q(`select status||'|'||executor_id from go_orders where id='${dOrd}'`) === `assigned|${K1.pid}`);
+r = await G('/delivery/orders/' + dOrd + '/cancel', J({}), CD.tok); t('заказчик отменил', r.status === 200);
+r = await G('/delivery/quote', J(dBody()), CD2.tok); const dq2 = r.data.quoteId;
+const dt = (await G('/config', {}, CD2.tok)).data;
+r = await ADM('/settings/delivery_tariff', PUT({ ...((await ADM('/settings', {}, A.tok)).data.settings.delivery_tariff), base: ((await ADM('/settings', {}, A.tok)).data.settings.delivery_tariff.base ?? 0) + 30 }), A.tok);
+t('тариф доставки изменён', r.status === 200, JSON.stringify(r.data));
+await sleep(16000);
+r = await G('/delivery/orders', J(dBody({ quoteId: dq2 })), CD2.tok);
+t('тариф доставки изменился после расчёта — price_changed и свежая котировка', r.status === 409 && r.data.error === 'price_changed' && r.data.quote?.quoteId && r.data.quote.tariffVersion !== dq.tariffVersion, JSON.stringify(r.data).slice(0, 200));
+t('заказ при этом не создан', Number(q(`select count(*) from go_orders where customer_id='${CD2.pid}'`)) === 0);
+r = await G('/delivery/orders', J(dBody({ quoteId: r.data.quote?.quoteId })), CD2.tok);
+t('с новой котировкой доставка создаётся', r.status === 201, JSON.stringify(r.data));
+const dOrd2 = r.data.orderId; await sleep(500);
+r = await G(`/delivery/orders/${dOrd2}/cancel`, J({}), CD2.tok);
+t('отмена доставки гасит предложения', r.status === 200 && q(`select count(*) from go_order_offers where order_id='${dOrd2}' and status='offered'`) === '0');
+// грузовой заказ: курьеру на велосипеде не предлагается
+r = await G('/delivery/quote', J(dBody({ scenario: 'cargo', body: 's', loaders: 0 })), CD2.tok);
+r = await G('/delivery/orders', J(dBody({ scenario: 'cargo', body: 's', loaders: 0, quoteId: r.data.quoteId })), CD2.tok);
+const cOrd = r.data.orderId; await sleep(500);
+t('грузовой заказ не предложен курьерам без грузового транспорта (уходит в пул)', q(`select count(*) from go_order_offers where order_id='${cOrd}'`) === '0' && q(`select dispatch_state from go_orders where id='${cOrd}'`) === 'pool', q(`select dispatch_state from go_orders where id='${cOrd}'`));
+await G(`/delivery/orders/${cOrd}/cancel`, J({}), CD2.tok);
+
 /* возвращаем настройки */
 for (const [k, v] of [['dispatch_mode', 'pool'], ['dispatch_offer_sec', 25], ['dispatch_max_offers', 5]]) await ADM(`/settings/${k}`, PUT(v), A.tok);
 await G(`/taxi/orders/${oB}/cancel`, J({}), C2.tok);

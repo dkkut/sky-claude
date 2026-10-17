@@ -19,6 +19,7 @@
  * не ходят: заказ своего сотрудника закрывается вручением (data.internal), заказ внешнего курьера из общего потока
  * идёт прежним путём — прямая оплата.
  */
+import { offerNext } from './godispatch.mjs';
 import { query } from './db.mjs';
 import { executorStatus } from './goreg.mjs';
 import { canWork } from './gosubs.mjs';
@@ -448,6 +449,7 @@ export const openToPool = async (actorId, orgId, orderId) => {
   if (!rowCount) return { error: 'bad_state' };
   await audit(orgId, actorId, 'order_open_pool', orderId);
   await pushOrderChanged(orderId);
+  await offerNext(orderId).catch(() => {});   // открыт курьерам — дальше обычное распределение (если включено)
   return { ok: true };
 };
 

@@ -103,7 +103,7 @@ export const goRoutes = async (req, res, url) => {
   if ((m = path.match(/^\/api\/go\/taxi\/orders\/([\w-]+)\/cancel$/)) && method === 'POST') return reply(res, await touch(m[1], await taxi.customerCancel(me, m[1], (await parseBody(req))?.reason)));
 
   /* ── Доставка ─────────────────────────────────────────────────── */
-  if (path === '/api/go/delivery/quote' && method === 'POST') { if (!rateLimit(`go:q:${me}`, 30)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await delivery.quote(await parseBody(req))); }
+  if (path === '/api/go/delivery/quote' && method === 'POST') { if (!rateLimit(`go:q:${me}`, 30)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await delivery.quote(await parseBody(req), me)); }
   if (path === '/api/go/delivery/orders' && method === 'POST') return reply(res, await delivery.create(me, await parseBody(req)), 201);
   if (path === '/api/go/delivery/available' && method === 'GET') return reply(res, await delivery.availableFor(me));
   if ((m = path.match(/^\/api\/go\/delivery\/orders\/([\w-]+)\/accept$/)) && method === 'POST') return reply(res, await delivery.accept(me, m[1]));

@@ -153,8 +153,8 @@ export const goApi = {
   taxiAct: (id: string, action: string) => post(`/api/go/taxi/orders/${id}/act`, { action }),
   taxiCancel: (id: string, reason?: string) => post(`/api/go/taxi/orders/${id}/cancel`, { reason }),
 
-  deliveryQuote: (b: unknown) => post<{ from?: { lat: number; lng: number }; to?: { lat: number; lng: number }; km: number; minutes: number; priceRub: number; prices: Record<'s' | 'm' | 'l', number>; estimated: boolean; body?: string; loaders?: number; loaderRub?: number; bodies?: CargoTariff['bodies'] }>('/api/go/delivery/quote', b),
-  deliveryCreate: (b: unknown) => post<{ orderId: string; priceRub: number }>('/api/go/delivery/orders', { ...(b as object), idemKey: crypto.randomUUID() }),
+  deliveryQuote: (b: unknown) => post<{ from?: { lat: number; lng: number }; to?: { lat: number; lng: number }; km: number; minutes: number; priceRub: number; prices: Record<'s' | 'm' | 'l', number>; estimated: boolean; body?: string; loaders?: number; loaderRub?: number; bodies?: CargoTariff['bodies']; quoteId?: string; expiresAt?: string; tariffVersion?: string }>('/api/go/delivery/quote', b),
+  deliveryCreate: (b: unknown) => post<{ orderId: string; priceRub: number; quote?: any }>('/api/go/delivery/orders', { ...(b as object), idemKey: crypto.randomUUID() }),
   deliveryAvailable: () => get<{ orders: any[] }>('/api/go/delivery/available'),
   deliveryAccept: (id: string) => post(`/api/go/delivery/orders/${id}/accept`),
   deliveryAct: (id: string, action: string, code?: string) => post<{ left?: number }>(`/api/go/delivery/orders/${id}/act`, { action, code }),
