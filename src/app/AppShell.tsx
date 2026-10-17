@@ -29,6 +29,8 @@ import { ProfileViewerLayer }     from '@/profile/viewer/ProfileViewerLayer';
 import { BreakReminderModal }     from '@/settings/BreakReminderModal';
 import { useDeviceMode } from '@/interface/tv/useDeviceMode';
 import { TVShell } from '@/interface/tv/TVShell';
+import { useSpeakerMode } from '@/interface/speaker/useSpeakerMode';
+import { SpeakerShell } from '@/interface/speaker/SpeakerShell';
 import { useCarMode } from '@/interface/car/useCarMode';
 import { useConsoleMode } from '@/interface/console/consoleMode';
 import { ConsoleShell } from '@/interface/console/ConsoleShell';
@@ -116,6 +118,7 @@ export const AppShell = () => {
   const isMobile = useIsMobile();
   const deviceMode = useDeviceMode();
   const carMode = useCarMode();
+  const speakerMode = useSpeakerMode();
   const consoleMode = useConsoleMode();
   // Пуш состояния плеера в overlay Quick Actions (см. playerBridge.ts) —
   // сам по себе ничего не делает вне Electron-основного окна.
@@ -177,6 +180,10 @@ export const AppShell = () => {
 
   if (carMode) {
     return <ErrorBoundary><CarShell /></ErrorBoundary>;
+  }
+
+  if (speakerMode) {
+    return <ErrorBoundary><SpeakerShell /></ErrorBoundary>;
   }
 
   if (isMobile) {

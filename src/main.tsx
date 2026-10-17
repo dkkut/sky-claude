@@ -15,6 +15,7 @@ import { TVAuthScreen }  from './interface/tv/auth/TVAuthScreen';
 import { useDeviceMode } from './interface/tv/useDeviceMode';
 import { useConsoleMode } from './interface/console/consoleMode';
 import { useCarMode } from './interface/car/useCarMode';
+import { useSpeakerMode } from './interface/speaker/useSpeakerMode';
 import { useConsoleStore } from './interface/console/consoleStore';
 import { ConsoleRoot } from './interface/console/ConsoleRoot';
 import { ConsoleIntro } from './interface/console/ConsoleIntro';
@@ -326,7 +327,7 @@ const Root = () => {
   // настоящем ТВ это означало, что войти вообще нельзя было.
   const deviceMode = useDeviceMode();
   const consoleMode = useConsoleMode();
-  const carMode = useCarMode();
+  const carMode = useCarMode() || useSpeakerMode();
   const introDone = useConsoleStore((st) => st.introDone);
   const picked = useConsoleStore((st) => st.picked);
   const authStep = useAuthStore((st) => st.step);

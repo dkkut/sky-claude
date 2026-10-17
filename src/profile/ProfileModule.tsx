@@ -31,6 +31,7 @@ import { useSettings, ACCENT_COLORS, THEME_MODES, FONT_SIZES, type AccentColor, 
 import { useBreakReminderStore, INTERVAL_OPTIONS, SNOOZE_OPTIONS } from '@/settings/breakReminderStore';
 import { getTVModeSetting, setTVModeSetting, type TVModeSetting } from '@/interface/tv/useDeviceMode';
 import { useCarMode, setCarMode } from '@/interface/car/useCarMode';
+import { useSpeakerMode, setSpeakerMode } from '@/interface/speaker/useSpeakerMode';
 import { useConsoleModeSetting, setConsoleModeSetting } from '@/interface/console/consoleMode';
 import { useCallStore } from '@/calls/store';
 import { SkyMoneyWallet } from '@/wallet/SkyMoneyWallet';
@@ -488,6 +489,19 @@ const CarModeSection = () => {
   );
 };
 
+const SpeakerModeSection = () => {
+  const on = useSpeakerMode();
+  return (
+    <SectionBlock title="Sky Speaker">
+      <SettingsRow icon={MicIcon} label="Режим умной колонки" sub={on ? 'Включён' : 'Выключен'}
+        right={<Toggle on={on} onToggle={() => setSpeakerMode(!on)} />} />
+      <p className="px-4 pb-3 pt-1 text-[11px]" style={{ color: 'var(--t3)' }}>
+        Превращает устройство с подключённой колонкой в умную: часы Sky, голос Sky AI и музыка. Настройки колонки — внутри режима.
+      </p>
+    </SectionBlock>
+  );
+};
+
 /* -- Quick Menu (набор разделов в PC Quick Actions) ------------------ */
 const QuickMenuSection = () => {
   const [items, setItems] = useState<QuickMenuItem[] | null>(null);
@@ -753,6 +767,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
 
       {/* -- CAR MODE ----------------------------- */}
       <CarModeSection/>
+      <SpeakerModeSection/>
 
       {/* -- QUICK MENU --------------------------- */}
       <QuickMenuSection/>
