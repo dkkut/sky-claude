@@ -1,24 +1,15 @@
 /* SkyKassa Business — кабинет бизнеса (Профиль → Sky для бизнеса). Этап 1: бизнес и режим, реквизиты, подписка, QR-коды, заявки на оплату, журнал.
    Sky деньги покупателей не принимает: прямой перевод идёт владельцу по его реквизитам, а «оплачено» ставит только владелец. */
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Store, QrCode, Wallet, ListChecks, ShieldCheck, Landmark, History, LayoutDashboard, Copy, Download, Printer, Power, Archive, Plus, Building2, MapPin, Layers } from 'lucide-react';
+import { Loader2, Store, QrCode, Wallet, ListChecks, ShieldCheck, Landmark, History, LayoutDashboard, Copy, Download, Printer, Power, Archive, Plus, Building2, MapPin, Layers, Package, ShoppingBag, Globe, HeartHandshake, FileText } from 'lucide-react';
 import { useMoney } from '@/wallet/store';
 import { useAuthStore } from '@/core/auth/store';
 import { flash } from '@/shared/flash';
 import * as K from './api';
 import { qrSvg, downloadPng, downloadSvg, printQr } from './qr';
 
-const card = { background: 'var(--bg-l1)', border: '1px solid var(--border)' } as const;
-const field = { background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' } as const;
-const REASON: Record<string, string> = {
-  no_business: 'Сначала подключите бизнес.', already_exists: 'Уже создано.', bad_field: 'Проверьте заполнение полей.', suspended: 'Бизнес приостановлен администрацией Sky.',
-  subscription_required: 'Нужна действующая подписка SkyKassa Business.', insufficient_funds: 'Не хватает денег на кошельке SkyMoney.', requisites_required: 'Сначала укажите реквизиты.',
-  secret_words: 'В тексте есть слова вроде PIN/CVV/пароль — такие данные здесь не нужны. Уберите их.', two_factor_required: 'Введите действующий код аутентификатора.',
-  too_many_requests: 'Слишком часто. Подождите немного.', too_many_qr: 'Слишком много QR-кодов — заархивируйте ненужные.', bad_state: 'Это действие сейчас недоступно для заявки.',
-  comment_required: 'Напишите короткий комментарий.', bad_logo: 'Логотип — PNG, JPEG или WebP.', logo_too_large: 'Логотип не больше 300 КБ.', archived: 'QR-код в архиве.',
-};
-const why = (r: { error?: string; field?: string }) => REASON[r.error ?? ''] ?? `Не получилось${r.field ? ` (поле: ${r.field})` : ''}. Повторите позже.`;
-const dt = (iso?: string | null) => (iso ? new Date(iso).toLocaleString([], { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
+import { Items, ShopSettings, Orders, Tips, Invoices } from './Catalog';
+import { card, field, why, dt, Btn, In, Stat, REASON } from './ui';
 const MODE: Record<K.Mode, { title: string; hint: string; icon: typeof Store }> = {
   online: { title: 'Онлайн-платформа', hint: 'Платёжные ссылки и страницы оплаты, заказы и счета для клиентов в интернете.', icon: Layers },
   point: { title: 'Реальная точка', hint: 'QR на стойке или столе, чаевые, кассовый режим — для магазинов, мастерских, кафе и курьеров.', icon: MapPin },
@@ -32,22 +23,6 @@ const AUDIT: Record<string, string> = {
   qr_disabled: 'QR-код отключён', qr_archived: 'QR-код в архиве', subscription_paid: 'Подписка оплачена', payment_take: 'Заявка взята на проверку', payment_confirm: 'Оплата подтверждена владельцем',
   payment_not_found: 'Оплата не обнаружена', payment_cancel: 'Заявка отменена', payment_refund: 'Возврат выполнен владельцем',
 };
-
-const Btn = ({ children, onClick, tone = 'ghost', disabled, small }: { children: React.ReactNode; onClick: () => void; tone?: 'ghost' | 'accent' | 'danger'; disabled?: boolean; small?: boolean }) => (
-  <button type="button" onClick={onClick} disabled={disabled}
-    className={`rounded-xl font-semibold disabled:opacity-50 ${small ? 'px-2.5 py-1.5 text-xs' : 'px-4 py-2.5 text-sm'}`}
-    style={tone === 'accent' ? { background: 'var(--accent)', color: '#fff' } : tone === 'danger' ? { background: 'color-mix(in srgb, var(--red) 14%, transparent)', color: 'var(--red)', border: '1px solid color-mix(in srgb, var(--red) 40%, transparent)' } : { ...field }}>
-    {children}
-  </button>
-);
-const In = ({ label, value, onChange, ph, type = 'text', max = 120 }: { label: string; value: string; onChange: (v: string) => void; ph?: string; type?: string; max?: number }) => (
-  <label className="block text-[11px]" style={{ color: 'var(--t3)' }}>{label}
-    <input type={type} value={value} maxLength={max} placeholder={ph} onChange={(e) => onChange(e.target.value)} className="mt-0.5 block w-full rounded-lg px-3 py-2 text-sm outline-none" style={field} />
-  </label>
-);
-const Stat = ({ k, v, sub }: { k: string; v: string | number; sub?: string }) => (
-  <div className="rounded-2xl p-3" style={card}><p className="text-[11px]" style={{ color: 'var(--t3)' }}>{k}</p><p className="text-xl font-black" style={{ color: 'var(--t1)' }}>{v}</p>{sub && <p className="text-[10px]" style={{ color: 'var(--t3)' }}>{sub}</p>}</div>
-);
 
 /* ── Мастер подключения ── */
 const Setup = ({ onDone }: { onDone: () => void }) => {
@@ -351,9 +326,11 @@ const Audit = () => {
   return <div className="rounded-2xl p-4" style={card}>{!a ? <Loader2 className="animate-spin" size={16} /> : !a.length ? <p className="text-sm" style={{ color: 'var(--t3)' }}>Записей пока нет.</p> : a.map((x, i) => <p key={i} className="text-xs py-1.5" style={{ color: 'var(--t2)', borderBottom: '1px solid var(--border)' }}>{dt(x.at)} · <b>{AUDIT[x.action] ?? x.action}</b>{x.detail ? ` — ${x.detail}` : ''}</p>)}</div>;
 };
 
-type Sec = 'overview' | 'pay' | 'qr' | 'req' | 'biz' | 'sub' | 'audit';
+type Sec = 'overview' | 'pay' | 'qr' | 'items' | 'orders' | 'shop' | 'tips' | 'inv' | 'req' | 'biz' | 'sub' | 'audit';
 const NAV: { key: Sec; label: string; icon: typeof Store }[] = [
   { key: 'overview', label: 'Обзор', icon: LayoutDashboard }, { key: 'pay', label: 'Приём оплаты', icon: ListChecks }, { key: 'qr', label: 'QR-коды', icon: QrCode },
+  { key: 'items', label: 'Каталог', icon: Package }, { key: 'orders', label: 'Заказы', icon: ShoppingBag }, { key: 'shop', label: 'Витрина', icon: Globe },
+  { key: 'tips', label: 'Чаевые', icon: HeartHandshake }, { key: 'inv', label: 'Счета', icon: FileText },
   { key: 'req', label: 'Реквизиты', icon: Landmark }, { key: 'biz', label: 'Бизнес', icon: Store }, { key: 'sub', label: 'Подписка', icon: Wallet }, { key: 'audit', label: 'Журнал', icon: History },
 ];
 
@@ -383,6 +360,11 @@ export const KassaBusiness = () => {
         {sec === 'overview' && <Overview me={me} go={setSec} />}
         {sec === 'pay' && <Payments />}
         {sec === 'qr' && <Qrs me={me} />}
+        {sec === 'items' && <Items />}
+        {sec === 'orders' && <Orders />}
+        {sec === 'shop' && <ShopSettings />}
+        {sec === 'tips' && <Tips bizName={b.name} />}
+        {sec === 'inv' && <Invoices bizName={b.name} />}
         {sec === 'req' && <Reqs me={me} reload={() => void load()} />}
         {sec === 'biz' && <Profile me={me} reload={() => void load()} />}
         {sec === 'sub' && <Subscription me={me} reload={() => void load()} />}

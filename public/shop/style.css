@@ -1,0 +1,21 @@
+:root{--bg:#fff;--fg:#14161a;--mu:#6b7280;--ln:#e5e7eb;--ac:#3b6cff;--card:#f6f7f9}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1115;--fg:#eceef2;--mu:#9aa1ad;--ln:#272b33;--card:#181b21}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+#app{max-width:980px;margin:0 auto;padding:16px 16px 96px}
+h1{font-size:22px;margin:0}h2{font-size:18px;margin:20px 0 8px}.muted{color:var(--mu)}
+header{display:flex;gap:12px;align-items:center;margin-bottom:12px}header img{width:48px;height:48px;border-radius:12px;object-fit:cover}
+.notice{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:10px 12px;margin:10px 0}
+.cats{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px}.cats button{white-space:nowrap}
+button,.btn{border:1px solid var(--ln);background:var(--card);color:var(--fg);border-radius:999px;padding:10px 16px;font:inherit;cursor:pointer;min-height:44px}
+button.on,.primary{background:var(--ac);border-color:var(--ac);color:#fff}button:disabled{opacity:.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.item{background:var(--card);border:1px solid var(--ln);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.item .ph{aspect-ratio:4/3;background:var(--ln);display:block;width:100%;object-fit:cover}
+.item .b{padding:10px 12px;display:flex;flex-direction:column;gap:6px;flex:1}.price{font-weight:700}
+select,input,textarea{width:100%;border:1px solid var(--ln);background:var(--bg);color:var(--fg);border-radius:12px;padding:10px 12px;font:inherit;min-height:44px}
+label{display:block;margin:10px 0 4px;font-size:14px;color:var(--mu)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--ln);padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;justify-content:center}
+.bar>div{max-width:980px;width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.row{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--ln)}
+.err{color:#d33}.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+.qty{display:flex;gap:8px;align-items:center}.qty button{padding:6px 12px;min-height:36px}

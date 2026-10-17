@@ -3,6 +3,7 @@
    статус «оплачено» ставит только владелец бизнеса. */
 import { useCallback, useEffect, useState } from 'react';
 import { Copy, Check, Loader2, ShieldCheck, AlertTriangle, Store } from 'lucide-react';
+import { uploadUrl } from '@/core/auth/api';
 import { pubPage, pubReport, pubStatus, type PublicPage } from './api';
 
 const METHOD: Record<string, string> = { phone: 'Номер телефона (СБП)', account: 'Номер счёта', card: 'Номер карты', other: 'Реквизиты' };
@@ -83,7 +84,7 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
   const { business: b } = page;
   const head = (
     <div className="flex items-center gap-3 mb-4">
-      {b.logoUrl ? <img src={b.logoUrl} alt="" className="h-12 w-12 rounded-xl object-cover" /> : <div className="grid h-12 w-12 place-items-center rounded-xl" style={{ background: 'var(--bg-l2)' }}><Store size={20} style={{ color: 'var(--t3)' }} /></div>}
+      {b.logoUrl ? <img src={uploadUrl(b.logoUrl)} alt="" className="h-12 w-12 rounded-xl object-cover" /> : <div className="grid h-12 w-12 place-items-center rounded-xl" style={{ background: 'var(--bg-l2)' }}><Store size={20} style={{ color: 'var(--t3)' }} /></div>}
       <div className="min-w-0">
         <p translate="no" className="text-base font-black truncate" style={{ color: 'var(--t1)' }}>{b.name}</p>
         {b.description && <p translate="no" className="text-xs line-clamp-2" style={{ color: 'var(--t3)' }}>{b.description}</p>}
@@ -100,12 +101,20 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
     <>
       {head}
       <div className="rounded-2xl p-4 mb-3" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
-        <p translate="no" className="text-sm font-bold" style={{ color: 'var(--t1)' }}>{page.title}</p>
+        {page.tip?.photoUrl && <img src={uploadUrl(page.tip.photoUrl)} alt="" className="mb-3 h-20 w-20 rounded-full object-cover" />}
+        <p translate="no" className="text-sm font-bold" style={{ color: 'var(--t1)' }}>{page.tip ? `Чаевые: ${page.tip.recipient}` : page.title}</p>
+        {page.tip?.message && <p translate="no" className="text-xs mt-0.5" style={{ color: 'var(--t2)' }}>{page.tip.message}</p>}
+        {page.tip && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {page.tip.amounts.map((a) => <button key={a} type="button" onClick={() => setAmount(String(a))} aria-pressed={amount === String(a)} className="rounded-full px-3 py-2 text-sm font-semibold"
+              style={{ background: amount === String(a) ? 'var(--accent)' : 'var(--bg-l2)', color: amount === String(a) ? '#fff' : 'var(--t1)', border: '1px solid var(--border)' }}>{a} ₽</button>)}
+          </div>
+        )}
         {page.description && <p translate="no" className="text-xs mt-0.5" style={{ color: 'var(--t3)' }}>{page.description}</p>}
         <div className="mt-3 flex items-end justify-between gap-3">
           <div>
             <p className="text-[11px]" style={{ color: 'var(--t3)' }}>К оплате</p>
-            {fixed ? <p className="text-3xl font-black" translate="no" style={{ color: 'var(--t1)' }}>{page.amountRub} ₽</p> : (
+            {fixed ? <p className="text-3xl font-black" translate="no" style={{ color: 'var(--t1)' }}>{page.amountRub} ₽</p> : page.tip && !page.tip.allowCustom ? <p className="text-3xl font-black" translate="no" style={{ color: 'var(--t1)' }}>{amount ? `${amount} ₽` : 'Выберите сумму'}</p> : (
               <label className="flex items-baseline gap-1">
                 <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, '').slice(0, 7))} placeholder="Сумма" aria-label="Сумма, рублей"
                   className="w-32 rounded-lg px-2 py-1.5 text-2xl font-black outline-none" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }} />
@@ -115,7 +124,12 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
           </div>
           {(fixed || amount) && <CopyBtn text={String(fixed ? page.amountRub : amount)} label="Скопировать сумму" />}
         </div>
-        {page.orderNo && <p className="mt-2 text-xs" style={{ color: 'var(--t3)' }}>Заказ № <span translate="no">{page.orderNo}</span></p>}
+        {page.orderNo && <p className="mt-2 text-xs" style={{ color: 'var(--t3)' }}>{page.kind === 'invoice' ? 'Счёт' : 'Заказ'} № <span translate="no">{page.orderNo}</span></p>}
+        {page.lines && page.lines.length > 0 && (
+          <ul className="mt-3 text-xs" style={{ color: 'var(--t2)' }}>
+            {page.lines.map((l, i) => <li key={i} translate="no" className="flex justify-between gap-2 py-0.5"><span>{l.title}{l.variant ? ` (${l.variant})` : ''} × {l.qty}</span><span>{l.qty * l.priceRub - (l.discountRub ?? 0)} ₽</span></li>)}
+          </ul>
+        )}
       </div>
 
       <div className="rounded-2xl p-4 mb-3" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>

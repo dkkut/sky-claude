@@ -1,5 +1,5 @@
 /* SkyKassa Business — клиент API. Ничего не решается на клиенте: сумму фиксированного QR, статусы и права определяет сервер. */
-import { apiCall, apiText } from '@/core/auth/api';
+import { apiCall, apiText, apiBlob, uploadUrl } from '@/core/auth/api';
 
 export type Res<T> = { ok: true; data: T } | { ok: false; error?: string; field?: string; status?: number; data?: unknown };
 
@@ -21,7 +21,7 @@ export interface Subscription { status: 'inactive' | 'active' | 'expiring' | 'su
 export interface Requisites { holder: string; method: 'phone' | 'account' | 'card' | 'other'; value: string; bank?: string; purpose?: string; instruction?: string; extra?: string; updatedAt?: string }
 export interface Me { business: Business | null; subscription: Subscription; requisites?: Requisites | null; payOrigin?: string }
 export interface Qr {
-  id: string; publicId: string; kind: 'pay' | 'permanent'; title: string; description: string; amountRub: number | null; currency: string; orderNo: string;
+  id: string; publicId: string; kind: 'pay' | 'permanent' | 'tip' | 'order' | 'invoice'; title: string; description: string; amountRub: number | null; currency: string; orderNo: string;
   instruction: string; expiresAt: string | null; status: 'active' | 'disabled' | 'archived'; createdAt: string; url: string; opens: number; requests: number; confirmed: number;
 }
 export interface Payment {
@@ -60,25 +60,62 @@ export interface PublicPage {
   title: string; description: string; state: 'open' | 'expired' | 'disabled' | 'unavailable' | 'suspended'; kind: string;
   amountRub?: number | null; currency?: string; orderNo?: string; instruction?: string; note?: string; minAmountRub?: number; maxAmountRub?: number;
   requisites?: { holder: string; method: string; value: string; bank?: string; purpose?: string; extra?: string };
+  tip?: { recipient: string; message?: string; amounts: number[]; allowCustom: boolean; photoUrl: string | null };
+  lines?: { title: string; variant?: string; qty: number; priceRub: number; discountRub?: number }[]; number?: number;
 }
 export const pubPage = async (pid: string): Promise<{ ok: true; data: PublicPage } | { ok: false; error: string }> => {
   try {
-    const r = await fetch(`/api/kbiz/public/p/${encodeURIComponent(pid)}`);
+    const r = await fetch(uploadUrl(`/api/kbiz/public/p/${encodeURIComponent(pid)}`));
     const d = await r.json().catch(() => ({}));
     return r.ok ? { ok: true, data: d } : { ok: false, error: d.error ?? 'error' };
   } catch { return { ok: false, error: 'network' }; }
 };
 export const pubReport = async (pid: string, b: { amountRub?: number; note?: string; website?: string }) => {
   try {
-    const r = await fetch(`/api/kbiz/public/p/${encodeURIComponent(pid)}/report`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    const r = await fetch(uploadUrl(`/api/kbiz/public/p/${encodeURIComponent(pid)}/report`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
     const d = await r.json().catch(() => ({}));
     return r.ok ? { ok: true as const, data: d as { id: string; statusKey: string; statusLabel: string } } : { ok: false as const, error: String(d.error ?? 'error') };
   } catch { return { ok: false as const, error: 'network' }; }
 };
 export const pubStatus = async (id: string, key: string) => {
   try {
-    const r = await fetch(`/api/kbiz/public/status/${encodeURIComponent(id)}?k=${encodeURIComponent(key)}`);
+    const r = await fetch(uploadUrl(`/api/kbiz/public/status/${encodeURIComponent(id)}?k=${encodeURIComponent(key)}`));
     const d = await r.json().catch(() => ({}));
     return r.ok ? { ok: true as const, data: d as { status: string; statusLabel: string; note: string } } : { ok: false as const, error: String(d.error ?? 'error') };
   } catch { return { ok: false as const, error: 'network' }; }
 };
+
+/* ── Этап 2: каталог, витрина, заказы, чаевые, счета ── */
+export interface Variant { name: string; priceRub?: number }
+export interface Item { id: string; title: string; description: string; priceRub: number; category: string; sku: string; variants: Variant[]; leadTime: string; available: boolean; photoUrl: string | null }
+export interface OrderLine { itemId: string; title: string; variant: string; qty: number; priceRub: number }
+export interface Order {
+  id: string; number: number; lines: OrderLine[]; totalRub: number; contact: { name?: string; phone?: string; email?: string; address?: string }; note: string; status: string; statusLabel: string;
+  ownerComment: string; createdAt: string; payUrl: string | null; payExpired: boolean; paymentStatus: string | null;
+}
+export interface Shop { slug: string | null; enabled: boolean; origins: string[]; notice: string; url: string | null; apiBase: string }
+export interface Tip { id: string; publicId: string; title: string; status: string; recipient: string; message?: string; amounts: number[]; allowCustom: boolean; min: number; max: number; url: string; opens: number; requests: number; confirmed: number; confirmedSumRub: number }
+export interface TipStats { requests: number; confirmed: number; confirmedSumRub: number; averageRub: number; byDay: { day: string; requests: number; confirmedSumRub: number }[] }
+export interface InvLine { title: string; qty: number; priceRub: number; discountRub?: number }
+export interface Invoice { id: string; number: number; lines: InvLine[]; subtotalRub: number; discountRub: number; totalRub: number; dueAt: string | null; orderNo: string; comment: string; status: string; statusLabel: string; url: string | null; createdAt: string }
+
+export const kbItems = () => req<{ items: Item[] }>('/api/kbiz/items');
+export const kbItemSave = (id: string | null, b: unknown) => (id ? send<{ id: string }>('PUT', `/api/kbiz/items/${id}`, b) : send<{ id: string }>('POST', '/api/kbiz/items', b));
+export const kbItemDelete = (id: string) => req<unknown>(`/api/kbiz/items/${id}`, { method: 'DELETE' });
+export const kbItemPhoto = (id: string, dataUrl: string) => send<{ photoUrl: string }>('PUT', `/api/kbiz/items/${id}/photo`, { dataUrl });
+export const kbShop = () => req<{ shop: Shop | null }>('/api/kbiz/shop');
+export const kbShopSave = (b: unknown) => send<unknown>('PUT', '/api/kbiz/shop', b);
+export const kbShopPackage = async (api?: string): Promise<Blob | null> => {
+  const r = await apiBlob(`/api/kbiz/shop/package.tar.gz${api ? `?api=${encodeURIComponent(api)}` : ''}`);
+  return r.ok ? r.blob : null;
+};
+export const kbOrders = (status?: string) => req<{ orders: Order[] }>(`/api/kbiz/orders${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+export const kbOrderAct = (id: string, action: string, comment?: string) => send<{ status: string }>('POST', `/api/kbiz/orders/${id}/${action}`, { comment });
+export const kbOrderRenewPay = (id: string) => send<{ payUrl: string }>('POST', `/api/kbiz/orders/${id}/renew-pay`);
+export const kbOrderInvoice = (id: string) => send<{ id: string; number: number }>('POST', `/api/kbiz/orders/${id}/invoice`);
+export const kbTips = () => req<{ tips: Tip[]; stats: TipStats | null }>('/api/kbiz/tips');
+export const kbTipCreate = (b: unknown) => send<{ id: string }>('POST', '/api/kbiz/tips', b);
+export const kbInvoices = () => req<{ invoices: Invoice[] }>('/api/kbiz/invoices');
+export const kbInvoiceSave = (id: string | null, b: unknown) => (id ? send<unknown>('PUT', `/api/kbiz/invoices/${id}`, b) : send<{ id: string; number: number }>('POST', '/api/kbiz/invoices', b));
+export const kbInvoiceSend = (id: string) => send<{ url: string }>('POST', `/api/kbiz/invoices/${id}/send`);
+export const kbInvoiceCancel = (id: string) => send<unknown>('POST', `/api/kbiz/invoices/${id}/cancel`);

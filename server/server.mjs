@@ -326,6 +326,11 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
       res.setHeader('Access-Control-Allow-Origin', '*');
       if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization'); res.setHeader('Access-Control-Max-Age', '600'); }
     }
+    // Витрина SkyKassa Business на сайте бизнеса (свой VPS): публичные данные без cookie. Разрешённые сайты сверяет сам обработчик по Origin.
+    if (url.startsWith('/api/kbiz/public/shop/') || url.startsWith('/api/kbiz/public/media/')) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type'); res.setHeader('Access-Control-Max-Age', '600'); }
+    }
     if (req.method === 'OPTIONS' && url.startsWith('/api/')) {
       res.writeHead(204);
       return res.end();

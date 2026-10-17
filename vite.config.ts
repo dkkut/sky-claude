@@ -18,6 +18,8 @@ export default defineConfig({
           // Для проверки сайта восстановления без отдельного домена: /recovery-site/… отдаёт recovery.html (на боевом сервере его отдаёт nginx домена recovery.*).
           else if (p === '/recovery-site' || p.startsWith('/recovery-site/')) req.url = '/recovery.html';
           else if (/^\/p\/[a-z0-9]{12,24}\/?$/.test(p)) req.url = '/pay.html';   // страница оплаты SkyKassa Business — как nginx на боевом сайте
+          else if (/^\/s\/[a-z0-9-]+\/?$/.test(p)) req.url = '/shop/index.html';     // витрина SkyKassa Business
+          else if (/^\/s\/[a-z0-9-]+\/(app\.js|style\.css|config\.js)$/.test(p)) req.url = '/shop/' + p.split('/').pop();
           next();
         });
       },
@@ -28,6 +30,8 @@ export default defineConfig({
           // Для проверки сайта восстановления без отдельного домена: /recovery-site/… отдаёт recovery.html (на боевом сервере его отдаёт nginx домена recovery.*).
           else if (p === '/recovery-site' || p.startsWith('/recovery-site/')) req.url = '/recovery.html';
           else if (/^\/p\/[a-z0-9]{12,24}\/?$/.test(p)) req.url = '/pay.html';   // страница оплаты SkyKassa Business — как nginx на боевом сайте
+          else if (/^\/s\/[a-z0-9-]+\/?$/.test(p)) req.url = '/shop/index.html';     // витрина SkyKassa Business
+          else if (/^\/s\/[a-z0-9-]+\/(app\.js|style\.css|config\.js)$/.test(p)) req.url = '/shop/' + p.split('/').pop();
           next();
         });
       },

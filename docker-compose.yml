@@ -79,6 +79,7 @@ services:
       STAFF_NOTIFY_PER_MIN: ${STAFF_NOTIFY_PER_MIN:-}
       KBIZ_SUB_PRICE_RUB: ${KBIZ_SUB_PRICE_RUB:-89}
       KBIZ_PUBLIC_ORIGIN: ${KBIZ_PUBLIC_ORIGIN:-}
+      KBIZ_RATE_MULT: ${KBIZ_RATE_MULT:-1}
       # APP_DATABASE_URL — роль sky_app без прав суперпользователя (scripts/db-harden.sh). Не задана — как раньше, владелец БД.
       DATABASE_URL:          ${APP_DATABASE_URL:-postgres://sky:${POSTGRES_PASSWORD:?нужно задать POSTGRES_PASSWORD в .env}@postgres:5432/sky}
       SKIP_MIGRATE_ON_START: ${SKIP_MIGRATE_ON_START:-0}

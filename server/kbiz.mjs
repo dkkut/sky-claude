@@ -24,7 +24,7 @@ const EXPIRING_DAYS = 3;
 const MODES = ['online', 'point', 'both'];
 const LEGAL = ['person', 'selfemployed', 'ip', 'company', 'other'];
 const METHODS = ['phone', 'account', 'card', 'other'];
-const MAX_AMOUNT = 1_000_000;
+export const MAX_AMOUNT = 1_000_000;
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 
 export const STATUS_LABEL = {
@@ -39,17 +39,17 @@ const TRANSITIONS = {
   refund:    { from: ['confirmed'], to: 'refunded' },
 };
 
-const err = (error, extra = {}) => ({ error, ...extra });
-const publicId = () => { const b = crypto.randomBytes(12); let s = ''; for (const x of b) s += ALPHABET[x % ALPHABET.length]; return s; };
-const ipHash = (ip) => (ip ? crypto.createHmac('sha256', `${config.jwtSecret}:kbiz-ip:v1`).update(String(ip)).digest('hex') : null);
-const keyHash = (k) => crypto.createHash('sha256').update(String(k)).digest('hex');
+export const err = (error, extra = {}) => ({ error, ...extra });
+export const publicId = () => { const b = crypto.randomBytes(12); let s = ''; for (const x of b) s += ALPHABET[x % ALPHABET.length]; return s; };
+export const ipHash = (ip) => (ip ? crypto.createHmac('sha256', `${config.jwtSecret}:kbiz-ip:v1`).update(String(ip)).digest('hex') : null);
+export const keyHash = (k) => crypto.createHash('sha256').update(String(k)).digest('hex');
 export const payOrigin = () => (process.env.KBIZ_PUBLIC_ORIGIN || config.publicOrigin || '').replace(/\/+$/, '');
 export const payUrl = (pid) => `${payOrigin()}/p/${pid}`;
 
 /** Слова, которых в реквизитах и инструкциях быть не должно: Sky не собирает секреты банковских операций. */
 const SECRET_WORDS = /(cvv|cvc|\bpin\b|пин[- ]?код|\bпин\b|парол[ьяю]|одноразов\w* код|код (из )?(sms|смс)|секретн\w* (код|слово))/i;
 
-const audit = async (businessId, actor, action, detail = '') =>
+export const audit = async (businessId, actor, action, detail = '') =>
   query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [businessId, String(actor), action, String(detail).slice(0, 300)]).catch(() => {});
 
 /* ─── Подписка ─── */
@@ -153,6 +153,16 @@ export const updateBusiness = async (profileId, body) => {
   return { ok: true };
 };
 
+/** data:image/(png|jpeg|webp);base64 → { buf, mime } с проверкой сигнатуры и размера (300 КБ) или { error }. */
+export const imageFromDataUrl = (dataUrl) => {
+  const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ''));
+  if (!m) return err('bad_logo');
+  const buf = Buffer.from(m[2], 'base64');
+  if (buf.length > 300 * 1024) return err('logo_too_large');
+  const sig = LOGO_TYPES[m[1]];
+  if (sig ? !sig.every((x, i) => buf[i] === x) : !(buf.subarray(0, 4).toString() === 'RIFF' && buf.subarray(8, 12).toString() === 'WEBP')) return err('bad_logo');
+  return { buf, mime: m[1] };
+};
 const LOGO_TYPES = { 'image/png': [0x89, 0x50, 0x4e, 0x47], 'image/jpeg': [0xff, 0xd8, 0xff], 'image/webp': null };
 export const setLogo = async (profileId, dataUrl) => {
   const { rows } = await query('SELECT id FROM kb_businesses WHERE owner_id = $1', [profileId]);
@@ -236,7 +246,7 @@ const QSEL = `SELECT q.*, (SELECT count(*)::int FROM kb_qr_opens o WHERE o.qr_id
 export const listQr = async (profileId) => {
   const { rows: b } = await query('SELECT id FROM kb_businesses WHERE owner_id = $1', [profileId]);
   if (!b[0]) return { qr: [] };
-  const { rows } = await query(`${QSEL} WHERE q.business_id = $1 ORDER BY q.created_at DESC LIMIT 200`, [b[0].id]);
+  const { rows } = await query(`${QSEL} WHERE q.business_id = $1 AND q.kind IN ('pay','permanent') ORDER BY q.created_at DESC LIMIT 200`, [b[0].id]);
   return { qr: rows.map(shapeQr) };
 };
 
@@ -260,7 +270,7 @@ export const createQr = async (profileId, body, { permanent = false } = {}) => {
   if (!sub.active) return err('subscription_required', { expired: sub.status === 'expired' });
   const p = parseQr(permanent ? { title: body?.title || 'Оплата', instruction: body?.instruction } : body, permanent);
   if (p.error) return p;
-  const { rows: cnt } = await query(`SELECT count(*)::int AS n FROM kb_qr WHERE business_id = $1 AND status <> 'archived'`, [b[0].id]);
+  const { rows: cnt } = await query(`SELECT count(*)::int AS n FROM kb_qr WHERE business_id = $1 AND status <> 'archived' AND kind IN ('pay','permanent','tip')`, [b[0].id]);
   if (cnt[0].n >= 500) return err('too_many_qr');
   const id = newId('kbq');
   try {
@@ -315,9 +325,13 @@ export const publicPage = async (pid, ip) => {
   const { rows: rq } = await query('SELECT data_enc FROM kb_requisites WHERE business_id = $1', [q.biz_id]);
   const r = rq[0] ? openJson(rq[0].data_enc) : null;
   if (!r) return { ...base, state: 'unavailable' };
+  const cfg = q.config ?? {};
+  const tip = q.kind === 'tip' ? { recipient: cfg.recipient, message: cfg.message, amounts: cfg.amounts, allowCustom: cfg.allowCustom !== false, photoUrl: cfg.mediaId ? `/api/kbiz/public/media/${cfg.mediaId}` : null } : undefined;
+  const lines = (q.kind === 'invoice' || q.kind === 'order') && Array.isArray(cfg.lines) ? cfg.lines : undefined;
   return { ...base, amountRub: q.amount_rub, currency: q.currency, orderNo: q.order_no || undefined, instruction: q.instruction || r.instruction || undefined,
     requisites: { holder: r.holder, method: r.method, value: r.value, bank: r.bank || undefined, purpose: r.purpose || undefined, extra: r.extra || undefined },
-    minAmountRub: 1, maxAmountRub: MAX_AMOUNT, note: 'Это прямой перевод владельцу бизнеса. Sky не принимает деньги и не проверяет перевод: владелец сам подтверждает получение.' };
+    tip, lines, number: cfg.number,
+    minAmountRub: q.kind === 'tip' ? (cfg.min ?? 1) : 1, maxAmountRub: q.kind === 'tip' ? (cfg.max ?? MAX_AMOUNT) : MAX_AMOUNT, note: 'Это прямой перевод владельцу бизнеса. Sky не принимает деньги и не проверяет перевод: владелец сам подтверждает получение.' };
 };
 
 /** «Я перевёл деньги»: создаёт заявку со статусом «Покупатель сообщил об оплате». Это заявление покупателя, а не подтверждение поступления. */
@@ -329,7 +343,8 @@ export const reportPayment = async (pid, body, ip) => {
   let amount = q.amount_rub;                       // у фиксированного QR сумма — только с сервера
   if (amount == null) {
     amount = Number(body?.amountRub);
-    if (!Number.isInteger(amount) || amount < 1 || amount > MAX_AMOUNT) return err('bad_amount');
+    const lo = q.kind === 'tip' ? Number(q.config?.min) || 1 : 1; const hi = q.kind === 'tip' ? Number(q.config?.max) || MAX_AMOUNT : MAX_AMOUNT;
+    if (!Number.isInteger(amount) || amount < lo || amount > hi) return err('bad_amount');
   }
   const h = ipHash(ip);
   // Массовые фиктивные заявки: пределы на адрес, на QR и на бизнес в сутки.

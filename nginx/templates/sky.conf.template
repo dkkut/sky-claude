@@ -387,6 +387,20 @@ server {
         try_files /pay.html =404;
     }
 
+    # -- Витрина SkyKassa Business: /s/<адрес> (тот же сайт каталога, что ставится на VPS бизнеса; файлы лежат в /shop/) --
+    location ~ ^/s/[a-z0-9-]+$ { return 301 $uri/; }
+    location ~ ^/s/[a-z0-9-]+/$ {
+        limit_req zone=req_general burst=30 nodelay;
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-store" always;
+        try_files /shop/index.html =404;
+    }
+    location ~ ^/s/[a-z0-9-]+/(app\.js|style\.css|config\.js)$ {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+        try_files /shop/$1 =404;
+    }
+
     # -- SPA: всё остальное отдаём index.html ------------------
     location / {
         limit_req zone=req_general burst=60 nodelay;
