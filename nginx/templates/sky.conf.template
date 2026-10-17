@@ -295,6 +295,14 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # Sky Market «На месте»: фото объявлений (до 4 МБ).
+    location ^~ /api/onsite/my/ {
+        limit_req zone=req_general burst=30 nodelay;
+        client_max_body_size 6m;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_pass http://sky_api;
+    }
+
     # Sky GO: фото к проблеме доставки (до 3 МБ). Общий потолок 1m обрывал бы загрузку.
     location ^~ /api/go/work/problems/ {
         limit_req zone=req_general burst=30 nodelay;

@@ -12,6 +12,7 @@
  * Единственная плата — подписка продавца за место на витрине, и она
  * живёт в кабинете.
  */
+import { OnsiteTab } from './onsite/Onsite';
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -533,7 +534,7 @@ const Notifications = ({ onOpenOrder }: { onOpenOrder: (id: string) => void }) =
 
 /* ── Корень ───────────────────────────────────────────────────────── */
 
-type Tab = 'catalog' | 'gaming' | 'services' | 'orders' | 'fav' | 'seller' | 'carrier' | 'pvz' | 'bell';
+type Tab = 'catalog' | 'onsite' | 'gaming' | 'services' | 'orders' | 'fav' | 'seller' | 'carrier' | 'pvz' | 'bell';
 
 export const SkyMarket = () => {
   const { currentUserId } = useAuthStore();
@@ -586,6 +587,7 @@ export const SkyMarket = () => {
         <div className="flex overflow-x-auto" style={{ scrollbarWidth: 'none', borderTop: `1px solid ${C.brd}` }}>
           {([
             { key: 'catalog',  label: 'Каталог' },
+            { key: 'onsite',   label: 'На месте' },
             { key: 'gaming',   label: 'Игры' },
             { key: 'services', label: 'Сервисы' },
             { key: 'orders',   label: 'Заказы' },
@@ -620,6 +622,7 @@ export const SkyMarket = () => {
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               transition={{ duration: 0.1 }}>
               {tab === 'catalog' && <Catalog marketType="standard" onOpen={setProduct} />}
+              {tab === 'onsite' && <OnsiteTab />}
               {tab === 'gaming' && <GamingMarket onOpen={setProduct} />}
               {tab === 'services' && <ServicesMarket onOrdered={openOrder} />}
               {tab === 'orders' && <MyOrders meId={meId} />}

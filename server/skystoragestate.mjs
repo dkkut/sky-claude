@@ -35,7 +35,8 @@ export const DEFAULT_SETTINGS = {
   maxBackgroundJobs: 1,
   uploadsPerMinute: 240,
   approvalTimeoutMin: 10,
-  approvalScope: 'admin',           // admin — подключения к управлению хранилищем; off — не требовать
+  approvalScope: 'every_login',     // every_login — каждый вход в управление подтверждает владелец (как SSH); admin — только новое устройство; off — не требовать
+  approvalValidMin: 480,            // сколько минут действует подтверждённый вход (every_login)
   approvalRiskThreshold: 1,
   skyAuthMaxTicketMin: 120,         // в режиме строгой авторизации пропуск старше этого срока недействителен
   backupRequiredForEnable: false,

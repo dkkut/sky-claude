@@ -36,6 +36,7 @@ import { evidenceFileUrl } from '@/marketplace/violationsApi';
 
 import { CodesAdminSection } from '@/codes/CodesAdmin';
 import { MarketVerifyAdmin } from '@/marketplace/MarketVerifyAdmin';
+import { OnsiteAdmin } from './OnsiteAdmin';
 import { BloxAdminSection } from '@/blox/BloxAdmin';
 import { MonitoringTab } from './MonitoringTab';
 
@@ -5511,7 +5512,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5708,6 +5709,7 @@ export const AdminPanel = () => {
     { key: 'ads', label: 'Реклама', show: has('content') },
     { key: 'codes', label: 'Sky Codes', show: has('codes') },
     { key: 'blox', label: 'Sky Blox', show: has('blox') || has('blox_moderation') || has('blox_finance') || rights.owner },
+    { key: 'onsite', label: 'Market: на месте', show: has('market_moderation') },
     { key: 'sellers', label: 'Продавцы Market', show: has('seller_docs') || has('market_moderation') || has('pvz_manage') || has('market') },
     { key: 'notify', label: 'Рассылки', show: has('notifications') },
     { key: 'admins', label: 'Администраторы', show: has('security') },
@@ -5948,6 +5950,7 @@ export const AdminPanel = () => {
       {tab === 'codes' && <CodesAdminSection owner={rights.owner} />}
       {tab === 'monitor' && <MonitoringTab />}
       {tab === 'blox' && <BloxAdminSection can={(p) => has(p as AdminPermission)} owner={rights.owner} />}
+      {tab === 'onsite' && <OnsiteAdmin />}
       {tab === 'sellers' && <MarketVerifyAdmin can={(p) => has(p as AdminPermission)} />}
       {tab === 'notify' && <NotifyAdminSection />}
 

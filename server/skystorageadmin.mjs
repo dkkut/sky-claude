@@ -289,13 +289,13 @@ export const updateSettings = async (actorId, body, meta) => {
   const bad = (f) => err('bad_field', { field: f });
   for (const k of ['warn', 'critical', 'block', 'full']) if (patch.thresholds?.[k] !== undefined) { const n = num(patch.thresholds[k], 1, 100); if (Number.isNaN(n) || n === null) return bad(`thresholds.${k}`); next.thresholds[k] = n; }
   const t = next.thresholds; if (!(t.warn < t.critical && t.critical < t.block && t.block <= t.full)) return bad('thresholds');
-  const nums = { totalBytes: [1, 1e15, true], reserveFreeBytes: [0, 1e13], maxFileBytes: [1, 1e13], maxFiles: [1, 1e12, true], maxConcurrentUploads: [1, 1000], maxConcurrentIO: [1, 10000], maxBackgroundJobs: [1, 4], uploadsPerMinute: [1, 100000], approvalTimeoutMin: [1, 1440], approvalRiskThreshold: [0, 10], skyAuthMaxTicketMin: [5, 1440], quarantineDays: [1, 365], downloadLinkMinutes: [1, 120] };
+  const nums = { totalBytes: [1, 1e15, true], reserveFreeBytes: [0, 1e13], maxFileBytes: [1, 1e13], maxFiles: [1, 1e12, true], maxConcurrentUploads: [1, 1000], maxConcurrentIO: [1, 10000], maxBackgroundJobs: [1, 4], uploadsPerMinute: [1, 100000], approvalTimeoutMin: [1, 1440], approvalValidMin: [5, 1440], approvalRiskThreshold: [0, 10], skyAuthMaxTicketMin: [5, 1440], quarantineDays: [1, 365], downloadLinkMinutes: [1, 120] };
   for (const [k, [lo, hi, nullable]] of Object.entries(nums)) if (patch[k] !== undefined) { const n = num(patch[k], lo, hi); if (Number.isNaN(n) || (n === null && !nullable)) return bad(k); next[k] = n; }
-  if (patch.approvalScope !== undefined) { if (!['admin', 'off'].includes(patch.approvalScope)) return bad('approvalScope'); next.approvalScope = patch.approvalScope; }
+  if (patch.approvalScope !== undefined) { if (!['every_login', 'admin', 'off'].includes(patch.approvalScope)) return bad('approvalScope'); next.approvalScope = patch.approvalScope; }
   for (const k of ['backupRequiredForEnable', 'notifyEmail']) if (patch[k] !== undefined) next[k] = patch[k] === true;
   if (patch.retention) for (const [k, lo, hi, nullable] of [['days', 1, 3650], ['maxBytes', 1, 1e15, true], ['minKeep', 1, 100]]) if (patch.retention[k] !== undefined) { const n = num(patch.retention[k], lo, hi); if (Number.isNaN(n) || (n === null && !nullable)) return bad(`retention.${k}`); next.retention[k] = n; }
   // Ослабление защит (таймаут подтверждения больше суток, отключение политики) — критично: требует подтверждения личности
-  const weakens = next.approvalScope === 'off' && cur.approvalScope !== 'off';
+  const weakens = (next.approvalScope === 'off' && cur.approvalScope !== 'off') || (cur.approvalScope === 'every_login' && next.approvalScope !== 'every_login') || (next.approvalValidMin ?? 480) > (cur.approvalValidMin ?? 480);
   if (weakens) { const g = await gateCritical(actorId, PERMS.quota, body, meta, { ownerOnly: true, type: 'storage_settings' }); if (g) return g; }
   try {
     const { before } = await mutateState(actorId, body?.expectedVersion, () => ({ settings: next }));

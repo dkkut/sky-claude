@@ -69,6 +69,8 @@ import { ipPinRoutes } from './routes/ippin.mjs';
 import { pinRequired, sweepIpPin } from './ippin.mjs';
 import { sessionStore } from './sessions.mjs';
 import { goRoutes } from './routes/go.mjs';
+import { onsiteRoutes } from './routes/onsite.mjs';
+import { sweepOnsite } from './onsite.mjs';
 import { goAdminRoutes } from './routes/goadmin.mjs';
 import { sweepExpired as goSweepExpired } from './gosubs.mjs';
 import { sweepOrgs } from './goorg.mjs';
@@ -218,7 +220,7 @@ const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeleti
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, skyKassaRoutes];
+                violationsRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, onsiteRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, skyKassaRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -703,6 +705,7 @@ const start = async () => {
       await sweepQuotes();
       await goSweepFuel().catch(() => {});
       await goSweepStay().catch(() => {});
+      await sweepOnsite().catch((e) => console.error('[onsite] уборка:', e.message));
       const staleRequests = await sweepPendingActions();
       if (staleRequests) console.log(`[админ] просрочено заявок: ${staleRequests}`);
       // Запуск рассылки, зависший в processing дольше окна (сервер упал

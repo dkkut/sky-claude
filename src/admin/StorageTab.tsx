@@ -360,12 +360,16 @@ const Quotas = ({ perms }: { perms: string[] }) => {
         {gate.node}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {(['warn', 'critical', 'block', 'full'] as const).map((k) => <label key={k} className="text-[11px]" style={{ color: C.t3 }}>{{ warn: 'Предупреждение, %', critical: 'Критично, %', block: 'Блок необязательных, %', full: 'Запрет записи, %' }[k]}<input type="number" disabled={!can} value={s.thresholds[k]} onChange={(e) => th(k, e.target.value)} className="mt-0.5 w-full rounded-lg px-2 py-1.5 text-sm" style={field} /></label>)}
-          {([['totalBytes', 'Общий объём, байт'], ['reserveFreeBytes', 'Резерв свободного места, байт'], ['maxFileBytes', 'Макс. размер файла, байт'], ['maxFiles', 'Макс. файлов'], ['maxConcurrentUploads', 'Одновременных загрузок'], ['maxConcurrentIO', 'Одновременных чтений'], ['uploadsPerMinute', 'Загрузок в минуту'], ['approvalTimeoutMin', 'Таймаут подтверждения, мин'], ['skyAuthMaxTicketMin', 'Срок пропуска при авторизации Sky, мин'], ['quarantineDays', 'Карантин, дней'], ['downloadLinkMinutes', 'Срок ссылки скачивания, мин']] as const).map(([k, l]) =>
+          {([['totalBytes', 'Общий объём, байт'], ['reserveFreeBytes', 'Резерв свободного места, байт'], ['maxFileBytes', 'Макс. размер файла, байт'], ['maxFiles', 'Макс. файлов'], ['maxConcurrentUploads', 'Одновременных загрузок'], ['maxConcurrentIO', 'Одновременных чтений'], ['uploadsPerMinute', 'Загрузок в минуту'], ['approvalTimeoutMin', 'Таймаут подтверждения, мин'], ['approvalValidMin', 'Срок действия подтверждённого входа, мин'], ['skyAuthMaxTicketMin', 'Срок пропуска при авторизации Sky, мин'], ['quarantineDays', 'Карантин, дней'], ['downloadLinkMinutes', 'Срок ссылки скачивания, мин']] as const).map(([k, l]) =>
             <label key={k} className="text-[11px]" style={{ color: C.t3 }}>{l}<input type="number" disabled={!can} value={s[k] ?? ''} onChange={(e) => n(k, e.target.value)} className="mt-0.5 w-full rounded-lg px-2 py-1.5 text-sm" style={field} /></label>)}
           <label className="text-[11px]" style={{ color: C.t3 }}>Хранить копии, дней<input type="number" disabled={!can} value={s.retention.days} onChange={(e) => setS({ ...s, retention: { ...s.retention, days: Number(e.target.value) } })} className="mt-0.5 w-full rounded-lg px-2 py-1.5 text-sm" style={field} /></label>
           <label className="text-[11px]" style={{ color: C.t3 }}>Мин. проверенных копий<input type="number" disabled={!can} value={s.retention.minKeep} onChange={(e) => setS({ ...s, retention: { ...s.retention, minKeep: Number(e.target.value) } })} className="mt-0.5 w-full rounded-lg px-2 py-1.5 text-sm" style={field} /></label>
           <label className="text-[11px]" style={{ color: C.t3 }}>Лимит объёма копий, байт<input type="number" disabled={!can} value={s.retention.maxBytes ?? ''} onChange={(e) => setS({ ...s, retention: { ...s.retention, maxBytes: e.target.value === '' ? null : Number(e.target.value) } })} className="mt-0.5 w-full rounded-lg px-2 py-1.5 text-sm" style={field} /></label>
         </div>
+        <label className="block text-[11px]" style={{ color: C.t3 }}>Подтверждение владельца
+          <select disabled={!can} value={s.approvalScope ?? 'every_login'} onChange={(e) => setS({ ...s, approvalScope: e.target.value })} className="mt-0.5 w-full rounded-lg px-2 py-1.5 text-sm" style={field}>
+            <option value="every_login">Каждый вход в управление (как вход по SSH)</option><option value="admin">Только новое устройство</option><option value="off">Не требовать (небезопасно)</option></select>
+          <span className="mt-1 block">Действия самого сервера (чтение и запись медиа, резервные копии, фоновые задачи) этого подтверждения не требуют. Ослабить правило можно только владельцу, с кодом.</span></label>
         <label className="flex items-center gap-2 text-xs" style={{ color: C.t2 }}><input type="checkbox" disabled={!can} checked={s.backupRequiredForEnable} onChange={(e) => setS({ ...s, backupRequiredForEnable: e.target.checked })} />Включение хранилища требует свежей проверенной копии</label>
         {can && <Btn onClick={() => void saveSettings()}>Сохранить пороги и лимиты</Btn>}
       </Card>
@@ -450,7 +454,7 @@ export const StorageTab = ({ perms, owner }: { perms: string[]; owner: boolean }
   if (!gate) return <Wait />;
   if (!gate.allowed) return (
     <Card title="Подключение ждёт подтверждения" tone={C.amber}>
-      <p className="flex items-center gap-2 text-[13px]" style={{ color: C.t2 }}><Lock size={14} />Это новое устройство для управления Sky Storage. Владелец получил запрос (и письмо, если не ответил). Пока он не подтвердит, доступа к данным нет; без ответа запрос закроется сам.</p>
+      <p className="flex items-center gap-2 text-[13px]" style={{ color: C.t2 }}><Lock size={14} />Каждый вход в управление Sky Storage подтверждает владелец (как вход по SSH). Владелец получил запрос (и письмо, если не ответил). Пока он не подтвердит, доступа к данным нет; без ответа запрос закроется сам.</p>
       <p className="text-[12px]" style={{ color: C.t3 }}>Статус: {gate.status}{gate.pending?.expiresAt ? ` · действует до ${dt(gate.pending.expiresAt)}` : ''}</p>
     </Card>
   );
