@@ -1,0 +1,34 @@
+// Журнал действий: изменяющие запросы людей и администрации пишутся без содержимого; разделы журнала.
+// (. env.sh; node scripts/audit/httplog-test.mjs <каталог>) — API с ADMIN_GATE=off OWNER_USERNAME=ownertest
+import { execSync } from 'node:child_process';
+import { call, mkuser } from './lib.mjs';
+const S = process.argv[2];
+const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/["$]/g, '\\$&')}"`).toString().trim();
+let ok = 0, bad = 0; const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const U = await mkuser(S, 'hlU'); const A = await mkuser(S, 'hlA');
+q(`update profiles set is_admin=true, admin_role='super_admin' where id='${A.pid}'`);
+const secret = 'SuperSecretText' + Date.now();
+await call('/api/ai/send', { method: 'POST', body: JSON.stringify({ text: secret, mode: 'chat' }) }, U.tok);
+await call('/api/wallet/earn-points', { method: 'POST', body: JSON.stringify({ amount: 5, token: secret }) }, U.tok);
+await call('/api/admin/modules/music', { method: 'PUT', body: JSON.stringify({ closed: false }) }, A.tok);
+await call('/api/skyid/prime/grant', { method: 'GET' }, U.tok);
+await sleep(2500);
+const n = (w) => Number(q(`select count(*) from sky_events where ${w}`));
+t('действие человека записано', n(`category='user' and type='http.action' and actor_id='${U.pid}'`) >= 1);
+t('действие администратора записано в admin', n(`category='admin' and type='http.admin' and actor_id='${A.pid}'`) >= 1);
+t('чтение (GET) не пишется', n(`target_id like 'GET %' and at > now() - interval '1 minute'`) === 0);
+t('текст запроса в журнал не попал', n(`detail::text like '%${secret}%' or target_id like '%${secret}%' or reason like '%${secret}%'`) === 0);
+t('идентификаторы в пути заменены', n(`type like 'http.%' and target_id ~ '[0-9a-f]{8}-[0-9a-f]{4}'`) === 0);
+t('отказы пишутся как denied/error', n(`type='http.action' and result in ('denied','error') and actor_id='${U.pid}'`) >= 1);
+let r = await call('/api/admin/logs?section=users&limit=50', {}, A.tok);
+t('раздел «пользователи»: только user/client', r.status === 200 && r.data.items.length > 0 && r.data.items.every((e) => ['user', 'client'].includes(e.category)), r.status);
+r = await call('/api/admin/logs?section=admin&limit=50', {}, A.tok);
+t('раздел «администрация»: admin/security', r.status === 200 && r.data.items.length > 0 && r.data.items.every((e) => ['admin', 'security'].includes(e.category)));
+r = await call('/api/admin/logs?section=server&limit=50', {}, A.tok);
+t('раздел «сервер»: события сервера есть (запуск)', r.status === 200 && r.data.items.every((e) => e.category === 'server') && r.data.items.some((e) => e.type === 'start' || e.type === 'http_error' || e.service));
+t('запуск сервера записан', n(`category='server' and service='process' and type='start'`) >= 1);
+r = await call('/api/admin/logs?section=storage&limit=50', {}, A.tok);
+t('раздел «хранилище» отвечает', r.status === 200);
+t('обычному человеку журнал недоступен', (await call('/api/admin/logs?section=users', {}, U.tok)).status === 403);
+console.log(`\nИтого: ${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

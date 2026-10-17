@@ -73,6 +73,16 @@ const loadSettings = async () => {
   return settings;
 };
 
+/** Postgres хранит jsonb с ключами «по длине, затем по байтам»; хеш при записи считаем по тому же порядку, иначе проверка по прочитанной из базы записи не сойдётся. */
+const jsonbOrder = (v) => {
+  if (Array.isArray(v)) return v.map(jsonbOrder);
+  if (v && typeof v === 'object') {
+    const keys = Object.keys(v).sort((a, b) => Buffer.byteLength(a) - Buffer.byteLength(b) || Buffer.compare(Buffer.from(a), Buffer.from(b)));
+    return Object.fromEntries(keys.map((k) => [k, jsonbOrder(v[k])]));
+  }
+  return v;
+};
+
 const chainHash = (prev, e) => crypto.createHash('sha256')
   .update(`${prev}|${e.event_id}|${e.at.toISOString()}|${e.category}|${e.type}|${e.actor_id ?? ''}|${e.target_id ?? ''}|${e.result}|${e.reason}|${JSON.stringify(e.detail)}`).digest('hex');
 
@@ -90,7 +100,7 @@ const flush = async () => {
     let seq = Number(last[0]?.chain_seq ?? 0); let prev = last[0]?.hash ?? 'genesis';
     for (const e of batch) {
       let cs = null, ph = null, h = null;
-      if (AUDIT.has(e.category)) { seq += 1; cs = seq; ph = prev; h = chainHash(prev, e); prev = h; }
+      if (AUDIT.has(e.category)) { seq += 1; cs = seq; ph = prev; h = chainHash(prev, { ...e, detail: jsonbOrder(e.detail) }); prev = h; }
       await c.query(
         `INSERT INTO sky_events (event_id, at, category, level, type, service, actor_id, target_id, result, reason, device, ip_hash, request_id, detail, chain_seq, prev_hash, hash)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT (event_id) DO NOTHING`,
@@ -188,6 +198,10 @@ const toRow = (r) => ({
 const where = (f, args) => {
   const w = [];
   if (f.category && CATEGORIES.includes(f.category)) { args.push(f.category); w.push(`category = $${args.length}`); }
+  // Разделы журнала: люди / администрация / сервер и хранилище
+  const SECTIONS = { users: ['user', 'client'], admin: ['admin', 'security'], server: ['server'] };
+  if (f.section === 'storage') { w.push(`(service = 'storage' OR service LIKE 'storage%' OR type LIKE 'storage%')`); }
+  else if (SECTIONS[f.section]) { args.push(SECTIONS[f.section]); w.push(`category = ANY($${args.length})`); }
   if (f.level && LEVELS.includes(f.level)) { args.push(f.level); w.push(`level = $${args.length}`); }
   if (f.minLevel && LEVELS.includes(f.minLevel)) { args.push(LEVELS.filter((l) => LEVEL_RANK[l] >= LEVEL_RANK[f.minLevel])); w.push(`level = ANY($${args.length})`); }
   if (f.result && ['ok', 'denied', 'error'].includes(f.result)) { args.push(f.result); w.push(`result = $${args.length}`); }

@@ -78,7 +78,8 @@ import { sweepDispatch } from './godispatch.mjs';
 import { sweepQuotes } from './gopricing.mjs';
 import { sweepFuel as goSweepFuel } from './gofuel.mjs';
 import { sweepStay as goSweepStay } from './gostay.mjs';
-import { runWithSession } from './reqctx.mjs';
+import { runWithSession, currentSession } from './reqctx.mjs';
+import { auditRequest } from './auditlog.mjs';
 import { readAccessToken } from './http.mjs';
 import { sweepAdminGate } from './admingate.mjs';
 import { sweepSshGate } from './sshgate.mjs';
@@ -264,7 +265,8 @@ const applyCors = (req, res) => {
 
 const server = http.createServer((req, res) => runWithLang(req, () => runWithSession(verifyToken(readAccessToken(req), config.jwtSecret)?.sid ?? null, async () => {
   const t0 = Date.now();
-  res.on('finish', () => recordRequest(res.statusCode, Date.now() - t0));
+  const rctx = currentSession();
+  res.on('finish', () => { recordRequest(res.statusCode, Date.now() - t0); auditRequest(req, res.statusCode, Date.now() - t0, rctx); });
   try {
     const ip = clientIp(req);
     // Картинки, обложки и куски аудио/видео: страница с лентой тянет их
@@ -589,6 +591,7 @@ const start = async () => {
 
   // Раз в час убираем отработавшие коды и гасим истёкшие подписки Prime.
   houseKeeping = setInterval(async () => {
+    const hkStart = Date.now();
     try {
       await purgeExpiredCodes();
       await sweepOrphans();
@@ -730,8 +733,10 @@ const start = async () => {
       if (personal.films || personal.tracks) {
         console.log(`[storage] убрано неиспользуемого личного: кино ${personal.films}, музыка ${personal.tracks}`);
       }
+      skyLogEvent({ category: 'server', service: 'housekeeping', type: 'sweep_done', detail: { ms: Date.now() - hkStart, deletedAccounts: purged || 0, trashedContent: trashed || 0, personalFilms: personal.films || 0, personalTracks: personal.tracks || 0, orphanAdMedia: adMedia.removed || 0 } });
     } catch (err) {
       console.error('[housekeeping]', err.message);
+      skyLogEvent({ category: 'server', service: 'housekeeping', type: 'sweep_failed', level: 'ERROR', result: 'error', reason: String(err.message).slice(0, 200), detail: { ms: Date.now() - hkStart } });
     }
   }, 60 * 60 * 1000);
   houseKeeping.unref();
@@ -758,6 +763,7 @@ const start = async () => {
 
   server.listen(config.apiPort, () => {
     console.log(`[api] listening on :${config.apiPort}`);
+    skyLogEvent({ category: 'server', service: 'process', type: 'start', detail: { port: config.apiPort, node: process.version, pid: process.pid } });
   });
 };
 
@@ -768,6 +774,7 @@ start().catch((err) => {
 
 const shutdown = async (signal) => {
   console.log(`[api] ${signal} received, shutting down`);
+  skyLogEvent({ category: 'server', service: 'process', type: 'stop', level: 'WARN', reason: signal });
   const force = setTimeout(() => process.exit(1), 8000);
   force.unref();
   try {

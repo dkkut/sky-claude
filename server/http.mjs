@@ -4,6 +4,7 @@
  * Вынесено отдельно, чтобы модули маршрутов не тянули друг друга ради
  * пары функций и чтобы заголовки безопасности задавались в одном месте.
  */
+import { setRequestActor } from './reqctx.mjs';
 import net from 'node:net';
 import { config } from './config.mjs';
 import { verifyToken, rateLimit } from './security.mjs';
@@ -183,6 +184,7 @@ export const readSession = async (req) => {
   // Токен от другой учётной записи с тем же номером сессии не подойдёт.
   if (stored.userId !== payload.sky) return null;
 
+  setRequestActor(stored.profileId ?? payload.sky);
   return { skyId: payload.sky, profileId: stored.profileId ?? null, sessionId: payload.sid };
 };
 

@@ -15,3 +15,6 @@ export const runWithSession = (sid, fn, slot = 1) => als.run({ sid: sid ? String
 /** Корреляционный идентификатор запроса — попадает в журналы, чтобы связать события одного запроса. */
 export const getRequestContext = () => ({ requestId: als.getStore()?.requestId ?? '' });
 export const currentSession = () => als.getStore() ?? null;
+
+/** Кто делает запрос (профиль, а до выбора профиля — Sky ID): ставит readSession, читает журнал запросов в конце. */
+export const setRequestActor = (id) => { const st = als.getStore(); if (st && id && !st.actor) st.actor = String(id); };

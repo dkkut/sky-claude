@@ -1,0 +1,38 @@
+// Уведомления владельца, часть 2: свои действия по галочке, отключение отдельных администраторов.
+// (. env.sh; node scripts/audit/ownernotify2-test.mjs <каталог>) — API с ADMIN_GATE=off OWNER_USERNAME=ownertest
+import { execSync } from 'node:child_process';
+import { call, mkuser } from './lib.mjs';
+const S = process.argv[2];
+const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/["$]/g, '\\$&')}"`).toString().trim();
+let ok = 0, bad = 0; const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+q(`update profiles set username='old'||substr(md5(random()::text),1,6) where lower(username)='ownertest'`);
+const own = await mkuser(S, 'on2own'); q(`update profiles set username='ownertest' where id='${own.pid}'`);
+const a1 = await mkuser(S, 'on2a1'); const a2 = await mkuser(S, 'on2a2');
+for (const a of [a1, a2]) q(`update profiles set is_admin=true, admin_role='super_admin' where id='${a.pid}'`);
+q(`update profiles set is_admin=true, admin_role='super_admin' where id='${own.pid}'`);
+q(`delete from gift_notifications where user_id='${own.pid}'`);
+const put = (b) => call('/api/owner/notify-prefs', { method: 'PUT', body: JSON.stringify(b) }, own.tok);
+const act = (u, closed = false) => call('/api/admin/modules/music', { method: 'PUT', body: JSON.stringify({ closed }) }, u.tok);
+const bodies = () => q(`select body from gift_notifications where user_id='${own.pid}' and kind='admin_action'`);
+let r = await call('/api/owner/notify-prefs', {}, own.tok);
+t('в настройках есть список администраторов', Array.isArray(r.data.admins) && r.data.admins.length > 0 && r.data.includeOwn === false && r.data.mutedAdmins.length === 0, JSON.stringify(r.data).slice(0, 200));
+await put({ mode: 'all', inApp: true, push: false });
+await act(a1); await act(a2); await sleep(600);
+t('действия обоих администраторов приходят', bodies().includes(a1.email ? '' : '') || (bodies().split('\n').length >= 2));
+const n0 = bodies().split('\n').filter(Boolean).length;
+await put({ mode: 'all', inApp: true, push: false, mutedAdmins: [a2.pid] });
+await act(a2); await sleep(500);
+t('отключённый администратор больше не присылает', bodies().split('\n').filter(Boolean).length === n0);
+await act(a1); await sleep(500);
+t('остальные продолжают присылать', bodies().split('\n').filter(Boolean).length === n0 + 1);
+const n1 = bodies().split('\n').filter(Boolean).length;
+await act(own); await sleep(500);
+t('свои действия владельца по умолчанию не приходят', bodies().split('\n').filter(Boolean).length === n1);
+await put({ mode: 'all', inApp: true, push: false, includeOwn: true, mutedAdmins: [a2.pid] });
+await act(own); await sleep(500);
+t('с галочкой «Мои действия» приходят и они', bodies().split('\n').filter(Boolean).length === n1 + 1);
+r = await call('/api/owner/notify-prefs', {}, own.tok);
+t('настройки сохраняются', r.data.includeOwn === true && r.data.mutedAdmins.length === 1 && r.data.mutedAdmins[0] === a2.pid);
+await put({ mode: 'requests', inApp: true, push: true });
+console.log(`\nИтого: ${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

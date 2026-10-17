@@ -4,7 +4,7 @@ import { can } from './../admin.mjs';
 import { requestMeta, logAdmin } from './../adminsec.mjs';
 import { searchEvents, exportEvents, summary, saveSettings, getSettings, verifyChain, telemetryEnabled, logEvent, CATEGORIES, LEVELS } from './../skylog.mjs';
 
-const FILTERS = ['category', 'level', 'minLevel', 'result', 'type', 'service', 'actor', 'requestId', 'q', 'from', 'to', 'before'];
+const FILTERS = ['section', 'category', 'level', 'minLevel', 'result', 'type', 'service', 'actor', 'requestId', 'q', 'from', 'to', 'before'];
 const pick = (params) => Object.fromEntries(FILTERS.map((k) => [k, params.get(k) ?? undefined]).filter(([, v]) => v));
 
 /** Ячейка CSV: кавычки удваиваются; значения, похожие на формулу, не исполняются в Excel. */

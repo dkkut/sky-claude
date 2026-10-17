@@ -23,7 +23,7 @@ export const LogsTab = () => {
   const [next, setNext] = useState<number | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const [err, setErr] = useState<string>();
-  const [f, setF] = useState({ category: '', level: '', result: '', type: '', actor: '', q: '', from: '', to: '' });
+  const [f, setF] = useState({ section: '', category: '', level: '', result: '', type: '', actor: '', q: '', from: '', to: '' });
   const [chain, setChain] = useState<{ ok: boolean; checked: number; why?: string; brokenAt?: number } | null>(null);
   const [ret, setRet] = useState<Record<string, string>>({});
 
@@ -43,6 +43,7 @@ export const LogsTab = () => {
     if (r.ok && r.data) { setSum(r.data); setRet(Object.fromEntries(Object.entries(r.data.settings.retentionDays).map(([k, v]) => [k, String(v)]))); }
   }, []);
   useEffect(() => { void load(); void loadSummary(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [f.section]);
 
   const more = async () => {
     if (next === null) return;
@@ -78,6 +79,17 @@ export const LogsTab = () => {
       </div>
       {sum.writer.dropped > 0 && <p className="text-[12px]" style={{ color: C.red }}>{`Потеряно записей из-за перегрузки: ${sum.writer.dropped}`}</p>}
       {sum.last24h.topProblems.length > 0 && <p className="text-[12px]" style={{ color: C.t2 }}>Чаще всего за сутки (предупреждения и ошибки): {sum.last24h.topProblems.map((p) => `${p.type} ×${p.n}`).join(', ')}</p>}
+
+      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Раздел журнала">
+        {[['', 'Все события'], ['users', 'Действия пользователей'], ['admin', 'Действия администрации'], ['server', 'Сервер'], ['storage', 'Хранилище']].map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={f.section === k} onClick={() => setF({ ...f, section: k, category: '' })}
+            className="rounded-full px-3 py-1.5 text-xs font-bold" style={{ background: f.section === k ? C.acc : C.l2, color: f.section === k ? '#fff' : C.t2 }}>{label}</button>
+        ))}
+      </div>
+      <p className="text-[11.5px]" style={{ color: C.t3 }}>{f.section === 'users' ? 'Каждое изменяющее действие людей в экосистеме: кто, куда обратился, чем кончилось. Содержимого (текстов, файлов, платёжных данных) в журнале нет.'
+        : f.section === 'admin' ? 'Все действия администрации и владельца: решения, настройки, деньги, права. Записи защищены цепочкой хешей.'
+          : f.section === 'server' ? 'События сервера: запуск и остановка, уборка, сбои, ошибки обработки запросов.'
+            : f.section === 'storage' ? 'События хранилища: доступ, копии, ограничения, ключи, сбои.' : 'Выберите раздел или смотрите всё вместе.'}</p>
 
       <section className="space-y-2 rounded-2xl p-4" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
         <div className="grid gap-2 sm:grid-cols-4">

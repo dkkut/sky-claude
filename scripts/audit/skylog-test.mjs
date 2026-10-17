@@ -37,6 +37,7 @@ r = await get('/api/admin/logs?type=login_code_failed&limit=20', A);
 t('неверный код входа — security / denied', r.data.items.some((e) => e.category === 'security' && e.result === 'denied'), JSON.stringify(r.data.items?.slice(0, 1)));
 t('в записи входа нет сырого кода и адреса', !JSON.stringify(r.data.items).includes('000000') && !JSON.stringify(r.data.items).includes(`nobody${P}`));
 // действие администрации
+q(`update profiles set username='old'||substr(md5(random()::text),1,6) where lower(username)='slowner'`);
 const OW = await mkuser(S, 'slOwn'); q(`update profiles set username='slowner' where id='${OW.pid}'`);
 r = await call('/api/admin/upload-limits', { method: 'PUT', body: JSON.stringify({ scope: 'personal', kind: 'film', maxConcurrent: 3 }) }, OW.tok);
 await sleep(1500);
@@ -110,9 +111,9 @@ await sleep(31000); // кэш настроек 30 с
 const removed = await sweepLogs();
 t('уборка по срокам: старое клиентское удалено, серверное (60 дн.) осталось', Number(q(`select count(*) from sky_events where event_id='ev-old-${P}'`)) === 0 && Number(q(`select count(*) from sky_events where event_id='ev-old-s-${P}'`)) === 1 && removed >= 1, removed);
 await call('/api/admin/logs/settings', { method: 'PUT', body: JSON.stringify({ retentionDays: { client: 30 } }) }, A.tok);
-r = await call('/api/admin/logs/settings', { method: 'PUT', body: JSON.stringify({ telemetry: false }) }, A.tok);
+r = await call('/api/admin/logs/settings', { method: 'PUT', body: JSON.stringify({ telemetry: false }) }, A.tok); if (r.status !== 200) console.log('PUT telemetry', r.status, JSON.stringify(r.data));
 r = await tel([{ type: 'off' }], U);
-t('телеметрию можно выключить', r.status === 204 || r.status === 202 && false || r.status === 204);
+t('телеметрию можно выключить', r.status === 204, r.status);
 await call('/api/admin/logs/settings', { method: 'PUT', body: JSON.stringify({ telemetry: true }) }, A.tok);
 
 // --- устойчивость: запись не бросает и не ждёт
