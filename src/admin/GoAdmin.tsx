@@ -18,18 +18,18 @@ const get = <T,>(p: string) => apiCall<T>(`${A}${p}`);
 const send = <T,>(m: string, p: string, b: unknown) => apiCall<T>(`${A}${p}`, { method: m, body: JSON.stringify(b) });
 const bad = (r: { error?: string; reason?: string }) => flash(({ not_allowed: 'Недостаточно прав.', note_required: 'Укажите причину.', bad_transition: 'Переход невозможен.', bad_price: 'Неверная цена.' } as Record<string, string>)[r.error ?? ''] ?? goError(r));
 
-type Sub = 'apps' | 'support' | 'recon' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'tariffs' | 'integrations';
+type Sub = 'apps' | 'stats' | 'support' | 'recon' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'tariffs' | 'integrations';
 
 export const GoAdminTab = () => {
   const [sub, setSub] = useState<Sub>('apps');
   const [ov, setOv] = useState<any>(null);
   useEffect(() => { void get<any>('/overview').then((r) => r.ok && setOv(r.data)); }, [sub]);
-  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['support', 'Обращения'], ['recon', 'Сверка'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
+  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['stats', 'Аналитика'], ['support', 'Обращения'], ['recon', 'Сверка'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {ov && <div style={{ ...box, fontSize: 13, color: C.t2 }}>Активных подписок: <b style={{ color: C.t1 }}>{ov.activeSubscriptions}</b> · На проверке: <b style={{ color: C.t1 }}>{(ov.executors.submitted ?? 0) + (ov.executors.in_review ?? 0)}</b> · Заказов за 30 дней: <b style={{ color: C.t1 }}>{ov.orders30d.reduce((s: number, r: any) => s + r.n, 0)}</b></div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{TABS.map(([k, t]) => <button key={k} onClick={() => setSub(k)} style={btn(sub === k ? C.acc : C.l2, sub === k ? '#fff' : C.t1)}>{t}</button>)}</div>
-      {sub === 'apps' && <Apps />}{sub === 'dispatch' && <Dispatch />}{sub === 'recon' && <Reconcile />}{sub === 'support' && <SupportList />}{sub === 'orgs' && <OrgsPanel />}
+      {sub === 'apps' && <Apps />}{sub === 'dispatch' && <Dispatch />}{sub === 'recon' && <Reconcile />}{sub === 'support' && <SupportList />}{sub === 'stats' && <GoStats />}{sub === 'orgs' && <OrgsPanel />}
         {sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
     </div>
   );
@@ -209,6 +209,54 @@ const PersonalTariffs = () => {
           <span translate="no">@{t.username} · {ROLE_LABEL[t.role as GoRole]} · {t.priceRub} ₽ / {t.periodDays} дн.{t.note ? ` · ${t.note}` : ''}</span>
           <button onClick={() => save(true, { username: t.username, role: t.role })} style={btn(C.l2, C.t1)}>Сбросить</button>
         </div>))}
+    </div>
+  );
+};
+
+const fmtSec = (n: number | null | undefined) => (n == null ? '—' : n >= 3600 ? `${Math.round(n / 360) / 10} ч` : n >= 60 ? `${Math.round(n / 60)} мин` : `${n} с`);
+/** Сводная аналитика Sky GO: настоящие агрегаты за период. Выручка — стоимость заказов с подтверждённой прямой оплатой, это не доход Sky. */
+const GoStats = () => {
+  const [days, setDays] = useState(14); const [d, setD] = useState<any>(null);
+  useEffect(() => { setD(null); void get<any>(`/analytics?days=${days}`).then((r) => (r.ok ? setD(r.data) : bad(r))); }, [days]);
+  if (!d) return <div style={{ color: C.t3 }}>Загрузка…</div>;
+  const KIND: Record<string, string> = { taxi: 'Такси', delivery: 'Доставка' };
+  const dayList: string[] = [...new Set<string>(d.byDay.map((x: any) => x.day))];
+  const max = Math.max(1, ...d.byDay.map((x: any) => x.created));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 6 }}>{[7, 14, 30, 90].map((n) => <button key={n} onClick={() => setDays(n)} style={btn(days === n ? C.acc : C.l2, days === n ? '#fff' : C.t1)}>{`${n} дн.`}</button>)}</div>
+      {Object.entries(d.kinds).map(([k, v]: [string, any]) => (
+        <div key={k} style={box}>
+          <b style={{ color: C.t1 }}>{KIND[k] ?? k}</b>
+          <div style={{ fontSize: 13, color: C.t2, marginTop: 4 }}>{`Создано ${v.created} · оплачено ${v.paid} · отменено ${v.cancelled}${v.cancelRate != null ? ` (${v.cancelRate} %)` : ''} · споров ${v.disputes}`}</div>
+          <div style={{ fontSize: 13, color: C.t2 }}>{`До назначения в среднем: ${fmtSec(v.avgSecondsToAssign)} · от назначения до завершения: ${fmtSec(v.avgSecondsToComplete)} · стоимость оплаченных: ${v.paidRub} ₽`}</div>
+        </div>))}
+      {!Object.keys(d.kinds).length && <div style={{ ...box, color: C.t3 }}>За период заказов нет.</div>}
+      <div style={box}>
+        <b style={{ color: C.t1 }}>Заказы по дням</b>
+        {dayList.map((day) => {
+          const rows = d.byDay.filter((x: any) => x.day === day);
+          return (
+            <div key={day} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 12.5, color: C.t2 }}>
+              <span translate="no" style={{ width: 82 }}>{day.slice(5)}</span>
+              <div style={{ flex: 1, display: 'flex', height: 10, borderRadius: 6, overflow: 'hidden', background: C.l2 }}>
+                {rows.map((x: any) => <div key={x.kind} title={`${KIND[x.kind] ?? x.kind}: ${x.created}`} style={{ width: `${(x.created / max) * 100}%`, background: x.kind === 'taxi' ? C.acc : C.green }} />)}
+              </div>
+              <span style={{ width: 40, textAlign: 'right' }}>{rows.reduce((a: number, x: any) => a + x.created, 0)}</span>
+            </div>);
+        })}
+        <div style={{ fontSize: 11.5, color: C.t3, marginTop: 6 }}>Синий — такси, зелёный — доставка.</div>
+      </div>
+      <div style={box}>
+        <b style={{ color: C.t1 }}>Города</b>
+        {d.cities.map((c: any) => <div key={c.city} translate="no" style={{ fontSize: 13, color: C.t2 }}>{`${c.city}: ${c.created} (оплачено ${c.paid})`}</div>)}
+      </div>
+      <div style={{ ...box, fontSize: 13, color: C.t2 }}>
+        {`На линии сейчас: ${Object.entries(d.onlineNow).map(([r, n]) => `${ROLE_LABEL[r as GoRole] ?? r} — ${n}`).join(', ') || 'никого'}`}<br />
+        {`Активных подписок: ${Object.entries(d.activeSubscriptions).map(([r, n]) => `${ROLE_LABEL[r as GoRole] ?? r} — ${n}`).join(', ') || 'нет'}`}<br />
+        {`Подписки за период: ${d.subscriptionIncome.count} шт. на ${d.subscriptionIncome.rub} ₽ (доход Sky)`}
+      </div>
+      <div style={{ fontSize: 12, color: C.t3 }}>{d.note}</div>
     </div>
   );
 };
