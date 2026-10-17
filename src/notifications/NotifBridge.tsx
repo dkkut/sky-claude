@@ -146,9 +146,12 @@ export const NotifBridge = () => {
       const note = (e as CustomEvent).detail ?? {};
       if (!note.title) return;
       if (settings.desktopNotifs) sendWebPush({ title: note.title, body: note.body ?? '', senderName: note.title, senderLetter: 'S' });
+      // Таблица gift_notifications общая для всех серверных уведомлений: «Подарок» — только по-настоящему подарочные виды,
+      // остальное (защита аккаунта, заявки администрации, кэшбэк…) — «Система».
+      const isGift = /^(gift|prime_gift|nft)/.test(String(note.kind ?? ''));
       push({
-        kind: 'gift', title: note.title, body: note.body ?? '',
-        avatarLetter: String(note.kind ?? '').startsWith('admin_') ? 'S' : '🎁', color: 'var(--accent)',
+        kind: isGift ? 'gift' : 'system', title: note.title, body: note.body ?? '',
+        avatarLetter: isGift ? '🎁' : 'S', color: 'var(--accent)',
       });
     };
     window.addEventListener('sky:gift-notification', onGift);

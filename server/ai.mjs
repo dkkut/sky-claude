@@ -105,6 +105,31 @@ const toChatTurn = ({ role, content }) => {
     : { role, content: parts };
 };
 
+/** Ход диалога → ход в родном формате Claude (/v1/messages). */
+const toAnthropicTurn = ({ role, content }) => {
+  const blocks = Array.isArray(content) ? content : [content];
+  const parts = blocks.map((b) => {
+    if (typeof b === 'string') return { type: 'text', text: b };
+    if (b?.type === 'text') return { type: 'text', text: String(b.text ?? '') };
+    if (b?.type === 'image' || b?.type === 'document') return { type: b.type, source: b.source };
+    return { type: 'text', text: '' };
+  }).filter((p) => p.type !== 'text' || p.text);
+  return { role: role === 'assistant' ? 'assistant' : 'user', content: parts.length ? parts : [{ type: 'text', text: '.' }] };
+};
+
+/** Текст ответа из тела /v1/messages. */
+const extractAnthropicText = (data) => (Array.isArray(data?.content) ? data.content.map((p) => (p?.type === 'text' ? String(p.text ?? '') : '')).join('') : '');
+
+/** Короткая причина отказа поставщика для журнала сервера: только поле error.message, без ключей и эха запроса. */
+const providerReason = async (res) => {
+  try {
+    const t = (await res.text()).slice(0, 2000);
+    let msg = '';
+    try { const j = JSON.parse(t); msg = String(j?.error?.message ?? j?.message ?? j?.error ?? ''); } catch { /* не JSON */ }
+    return msg.replace(/(sk-|key[-_ ]?)[A-Za-z0-9_-]{8,}/gi, '$1***').replace(/\s+/g, ' ').slice(0, 200);
+  } catch { return ''; }
+};
+
 /** Текст ответа из тела /v1/chat/completions. */
 const extractChatText = (data) => {
   const c = data?.choices?.[0]?.message?.content;
@@ -165,34 +190,28 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
   const inChars = String(system ?? '').length + turns.reduce((a, t) => a + textLen(t.content), 0);
   const note = (ok, code, usage = null, outChars = 0) => recordCall({ kind: 'chat', ok, code, usage, chars: { input: inChars, output: outChars } });
   try {
-    const chatStyle = config.aiApiStyle === 'chat';
+    const style = config.aiApiStyle;
     const limit = Math.max(256, Math.min(8000, Number(maxTokens) || 2000));
-    const res = await fetch(`${config.aiBaseUrl}${chatStyle ? '/v1/chat/completions' : '/v1/responses'}`, {
-      method: 'POST',
-      signal: control.signal,
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${config.aiApiKey}`,
-      },
-      body: JSON.stringify(chatStyle
-        ? {
-          model: config.aiModel,
-          max_tokens: limit,
-          messages: [{ role: 'system', content: `${system}${aiLangNote()}` }, ...turns.map(toChatTurn)],
-        }
-        : {
-          model: config.aiModel,
-          max_output_tokens: limit,
-          temperature: 0,
-          instructions: `${system}${aiLangNote()}`,
-          input: turns.map(toResponsesTurn),
-        }),
-    });
+    const sys = `${system}${aiLangNote()}`;
+    // Поставщики расходятся в мелочах (temperature у новых моделей, max_tokens / max_completion_tokens): при 400 пробуем один раз без спорных полей.
+    const build = (strict) => {
+      if (style === 'anthropic') return { url: '/v1/messages', headers: { 'x-api-key': config.aiApiKey, 'anthropic-version': '2023-06-01' }, body: { model: config.aiModel, max_tokens: limit, system: sys, messages: turns.map(toAnthropicTurn) } };
+      if (style === 'chat') return { url: '/v1/chat/completions', headers: { authorization: `Bearer ${config.aiApiKey}` }, body: { model: config.aiModel, ...(strict ? { max_tokens: limit } : { max_completion_tokens: limit }), messages: [{ role: 'system', content: sys }, ...turns.map(toChatTurn)] } };
+      return { url: '/v1/responses', headers: { authorization: `Bearer ${config.aiApiKey}` }, body: { model: config.aiModel, max_output_tokens: limit, ...(strict ? { temperature: 0 } : {}), instructions: sys, input: turns.map(toResponsesTurn) } };
+    };
+    const send = async (strict) => {
+      const r = build(strict);
+      return fetch(`${config.aiBaseUrl}${r.url}`, { method: 'POST', signal: control.signal, headers: { 'content-type': 'application/json', ...r.headers }, body: JSON.stringify(r.body) });
+    };
+    let res = await send(true);
+    if (res.status === 400) {
+      const why = await providerReason(res);
+      console.warn('[ai] 400 от поставщика, повтор без спорных полей:', why);
+      res = await send(false);
+    }
 
     if (!res.ok) {
-      // Тело ответа не разбираем и не показываем: в нём бывает эхо
-      // запроса вместе с заголовками.
-      console.warn('[ai] отказ поставщика', res.status);
+      console.warn('[ai] отказ поставщика', res.status, await providerReason(res));
       if (res.status === 429) { await note(false, 'ai_busy'); return { error: 'ai_busy' }; }
       // 413 и 400 на большом вложении — это «файл не по зубам», а не
       // поломка сервера, и человеку надо сказать именно это.
@@ -206,10 +225,10 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
     let data;
     try { data = JSON.parse(raw); } catch { await note(false, 'ai_failed'); return { error: 'ai_failed' }; }
 
-    const text = config.aiApiStyle === 'chat' ? extractChatText(data) : extractResponseText(data);
+    const text = style === 'chat' ? extractChatText(data) : style === 'anthropic' ? extractAnthropicText(data) : extractResponseText(data);
     if (!text.trim()) { await note(false, 'ai_failed'); return { error: 'ai_failed' }; }
     const u = data?.usage ?? {};
-    const usage = config.aiApiStyle === 'chat'
+    const usage = style === 'chat'
       ? { input: Number(u.prompt_tokens) || 0, output: Number(u.completion_tokens) || 0 }
       : { input: Number(u.input_tokens) || 0, output: Number(u.output_tokens) || 0 };
     await note(true, '', usage, text.length);

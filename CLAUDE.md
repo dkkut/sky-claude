@@ -1274,3 +1274,12 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
   Новая очередь = добавить категорию (с правом из `roles.mjs`), вызов `notifyStaff` и русские строки в `en.json`. Не подключено: награды кампаний Sky Codes, заявки на выдачу выплат Blox (старый поток закрыт), жалобы на пользователей в чатах.
 - `adminsWith` отдаёт не больше 200 сотрудников. Push доходит только при настроенных ключах (`scripts/setup-push.sh`); без них остаётся запись в «Уведомления».
 - Тест: `scripts/audit/staffnotify-test.mjs` (21; API с `STAFF_NOTIFY_PER_MIN=5`, сам тест — с `OWNER_USERNAME=ownertest STAFF_NOTIFY_PER_MIN=5`; сбрасывает признак администратора у остальных профилей тестовой базы). Нужен деплой (миграция 163) и пересборка `.apk`/`.exe`.
+
+## Sky AI: «Модель не ответила» и подарок у всех серверных уведомлений
+
+- **Формат обращения к модели** (`server/ai.mjs`, `config.aiApiStyle`): `anthropic` (родной `/v1/messages`, заголовки `x-api-key` и `anthropic-version`), `responses`, `chat`. Если `AI_API_STYLE` пуст, а `AI_BASE_URL` — `api.anthropic.com`
+  (так по умолчанию в `docker-compose.yml`), берётся `anthropic`: раньше уходил `/v1/responses`, у Anthropic такого пути нет — отсюда «Модель не ответила». При 400 запрос один раз повторяется без спорных полей (`temperature`,
+  `max_tokens` → `max_completion_tokens`). В журнале сервера теперь причина отказа поставщика (`error.message`, ключи вырезаются): `docker compose logs api | grep "\[ai\]"`.
+- **«Подарок» на каждом уведомлении**: таблица `gift_notifications` общая для всех серверных уведомлений, а клиент (`NotifBridge`) ставил всем вид `gift`. Теперь «Подарок» — только виды `gift*`, `prime_gift*`, `nft*`; остальное
+  (защита аккаунта, заявки администрации, кэшбэк…) — «Система».
+- Тест: `scripts/audit/ai-style-test.mjs` (8; поднимает поддельного поставщика на :9966). Нужен деплой (перезапуск api) и пересборка `.apk`/`.exe`.

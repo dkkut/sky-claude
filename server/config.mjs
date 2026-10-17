@@ -151,7 +151,12 @@ export const config = {
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? '',
   vapidSubject: process.env.VAPID_SUBJECT ?? 'mailto:admin@localhost',
   fcmServiceAccount: process.env.FCM_SERVICE_ACCOUNT_JSON ?? '',
-  aiApiStyle: process.env.AI_API_STYLE === 'chat' ? 'chat' : 'responses',
+  // Пусто: api.anthropic.com → родной формат Claude (/v1/messages), иначе /v1/responses. Явно: responses | chat | anthropic.
+  aiApiStyle: (() => {
+    const v = String(process.env.AI_API_STYLE ?? '').trim().toLowerCase();
+    if (v === 'chat' || v === 'anthropic' || v === 'responses') return v;
+    return /(^|\.)anthropic\.com(\/|$)/i.test(String(process.env.AI_BASE_URL ?? '').replace(/^https?:\/\//i, '')) ? 'anthropic' : 'responses';
+  })(),
 
   // Расшифровка речи — отдельная работа и отдельный поставщик:
   // языковая модель этого не умеет. Ожидается обычная ручка
