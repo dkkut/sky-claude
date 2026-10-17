@@ -2,6 +2,7 @@ import { Handshake, Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calenda
 import { visitKeyOf, apiCashbackVisit } from '@/prime/primeApi';
 import { flash } from '@/shared/flash';
 import { ModuleGate } from '@/core/moduleClosures';
+import { apiCall } from '@/core/auth/api';
 import { useSettings } from '@/settings/store';
 import { lazyChunk } from '@/app/lazyChunk';
 import { BotsBrowser } from '@/bots/SkyBots';
@@ -417,6 +418,30 @@ const AdminPanel = () => {
     void apiSupportStatus().then(r => { if (alive) { setStaff(r.staff); setLogistics(r.logistics); } });
     return () => { alive = false; };
   }, []);
+
+  /* Пока вход в панель не подтверждён (ссылка с почты + код аутентификатора, server/admingate.mjs),
+     верхняя лента разделов не показывается: виден только экран подтверждения. Статус перечитывается,
+     пока вход не подтверждён; при выключенном шлюзе (enabled: false) лента показывается сразу. */
+  const [gateOpen, setGateOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true; let timer = 0;
+    const load = async () => {
+      const r = await apiCall<{ enabled?: boolean; open?: boolean }>('/api/admin/gate');
+      if (!alive) return;
+      const open = r.ok ? (r.data?.enabled === false || r.data?.open === true) : false;
+      setGateOpen(open);
+      if (!open) timer = window.setTimeout(() => { void load(); }, 3000);
+    };
+    void load();
+    return () => { alive = false; window.clearTimeout(timer); };
+  }, []);
+  if (gateOpen !== true) {
+    return (
+      <div className="h-full overflow-y-auto" style={{scrollbarWidth:'none'}}>
+        {gateOpen === null ? <TabFallback/> : <RbacAdminPanel/>}
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
