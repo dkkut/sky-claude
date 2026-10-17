@@ -444,7 +444,7 @@ fund(TD, 300); await G('/subscription/taxi_driver/buy', J({}), TD.tok); await ca
 r = await G('/work/state?role=taxi_driver', {}, TD.tok);
 t('состояние водителя: допуск есть, не на линии, заказов нет', r.status === 200 && r.data.access.pool === true && r.data.presence.online === false && r.data.orders.length === 0, JSON.stringify(r.data).slice(0, 200));
 await G('/presence', J({ role: 'taxi_driver', online: true, lat: 55.75, lng: 37.62 }), TD.tok);
-r = await G('/taxi/orders', J({ city: CITY, from: pickup, to: drop, tariff: Object.keys((await G('/config', {}, C.tok)).data.taxiTariffs)[0] }), C.tok);
+r = await G('/taxi/orders', J({ city: CITY, from: pickup, to: drop, tariff: 'economy' }), C.tok);
 const TX = r.data.orderId;
 r = await G('/work/state?role=taxi_driver', {}, TD.tok);
 t('предложение такси видно на линии', r.data.offers.some((x) => x.id === TX), JSON.stringify(r.data.offers).slice(0, 120));

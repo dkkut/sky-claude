@@ -8,6 +8,7 @@ import { canAccept } from './gosubs.mjs';
 import { openPayment, orderView } from './gopay.mjs';
 import { executorStatus } from './goreg.mjs';
 import { tariffVersion, fingerprint, taxiBreakdown, issueQuote, redeemQuote, markQuoteUsed, snapshot } from './gopricing.mjs';
+import { driverClass, classMode, classCheck } from './goclass.mjs';
 import { offerNext, claimOffer, openOffersFor, cancelOffers } from './godispatch.mjs';
 import { openJson, getSetting, cityOk, newId, inTx, lockOrder, setStatus, addEvent, resolvePoint, routeBetween, notifyGo, clean, haversineKm, goLog } from './gocore.mjs';
 
@@ -114,6 +115,7 @@ export const accept = async (driverId, orderId) => {
     const { rows: busy } = await c.query(`SELECT 1 FROM go_orders WHERE kind = 'taxi' AND executor_id = $1 AND status = ANY($2::text[]) LIMIT 1`, [driverId, ['assigned', 'en_route', 'arrived', 'in_ride']]);
     if (busy[0]) return { error: 'driver_busy' };
     const ex = await executorStatus(driverId, 'taxi_driver');
+    if (!classCheck(driverClass(ex), (await c.query('SELECT data->>\'tariff\' AS t FROM go_orders WHERE id = $1', [orderId])).rows[0]?.t, await classMode()).ok) return { error: 'class_mismatch' };
     // Заказ предложен конкретному водителю — принять его может только он и только пока предложение действует.
     const { rows: cur } = await c.query(`SELECT dispatch_state FROM go_orders WHERE id = $1 FOR UPDATE`, [orderId]);
     let claimed = false;

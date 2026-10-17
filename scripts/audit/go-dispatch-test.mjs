@@ -45,15 +45,15 @@ let cfg = await G('/config', {}, C.tok);
 if (!cfg.data.cities?.includes(CITY)) await ADM('/settings/cities', PUT([CITY]), A.tok);
 if (!Object.keys(cfg.data.taxiTariffs ?? {}).length) await ADM('/settings/taxi_tariffs', PUT({ economy: { title: 'Эконом', base: 80, perKm: 14, perMin: 4, min: 150 } }), A.tok);
 cfg = await G('/config', {}, C.tok);
-const TARIFF = Object.keys(cfg.data.taxiTariffs)[0];
+const TARIFF = 'economy';   // у водителей теста класс «эконом»; классы проверяются отдельным разделом ниже
 
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 1)]);
 const gen = (len, fn) => { for (let i = 0; i < 100000; i += 1) { const s = String(Math.floor(Math.random() * 10 ** len)).padStart(len, '0'); if (fn(s)) return s; } throw new Error('gen'); };
 const { validInn } = await import('../../server/sellerrules.mjs');
-const driverSetup = async (u, plate, lat, lng) => {
+const driverSetup = async (u, plate, lat, lng, carClass = 'economy') => {
   const inn = gen(12, (s) => validInn(s, { length: 12 }));
   let r = await G('/executors', J({ role: 'taxi_driver', legalForm: 'npd', city: CITY, fields: { fullName: 'Иванов Иван Иванович', inn, phone: '+79991234567' },
-    extra: { carMake: 'Kia', carModel: 'Rio', carColor: 'белый', plate, licenseNumber: '7700123456', carYear: 2019, carClass: 'economy' } }), u.tok);
+    extra: { carMake: 'Kia', carModel: 'Rio', carColor: 'белый', plate, licenseNumber: '7700123456', carYear: 2019, carClass } }), u.tok);
   const id = r.data.id;
   for (const kind of ['driver_license', 'vehicle_registration']) await call(`/api/go/executors/${id}/docs?kind=${kind}`, { method: 'POST', body: PNG, headers: { 'content-type': 'application/octet-stream' } }, u.tok);
   await G(`/executors/${id}/submit`, J({}), u.tok);
@@ -215,6 +215,39 @@ q(`update go_orders set created_at = now() - interval '30 minutes' where id='${o
 await sleep(13000);
 t('поиск дольше срока → заказ отменён «нет водителей»', q(`select status||'|'||cancel_reason from go_orders where id='${oC}'`) === 'cancelled|no_drivers', q(`select status||'|'||cancel_reason from go_orders where id='${oC}'`));
 t('в истории заказа запись о причине', Number(q(`select count(*) from go_order_events where order_id='${oC}' and to_status='cancelled'`)) === 1);
+
+/* ═══ Классы автомобилей ═══ */
+const D5 = await mk('gdD5'); const D6 = await mk('gdD6'); const CC1 = await mk('gdCC1'); const CC2 = await mk('gdCC2'); const CC3 = await mk('gdCC3'); const CC4 = await mk('gdCC4');
+for (const u of [D5, D6]) q(`update profiles set date_of_birth='1990-05-05' where id='${u.pid}'`);
+t('водители комфорт и бизнес допущены', (await Promise.all([driverSetup(D5, 'К555КК77', 55.7612, 37.6212, 'comfort'), driverSetup(D6, 'К666КК77', 55.786, 37.64, 'business')])).every(Boolean));
+q(`update go_presence set online = false where role = 'taxi_driver' and profile_id not in ('${D1.pid}','${D2.pid}','${D3.pid}','${D5.pid}','${D6.pid}')`);
+const offered = (oid) => q(`select string_agg(driver_id||':'||status, ',' order by id) from go_order_offers where order_id='${oid}'`);
+r = await G('/taxi/orders', J(body({ tariff: 'comfort' })), CC1.tok); const oK = r.data.orderId; await sleep(500);
+t('заказ «комфорт» предложен водителю комфорта (D5), хотя эконом-водители ближе', offered(oK) === `${D5.pid}:offered`, offered(oK));
+r = await G('/taxi/available', {}, D1.tok); t('эконом-водитель заказ «комфорт» не видит', !r.data.orders.some((o) => o.id === oK));
+r = await G(`/taxi/orders/${oK}/accept`, J({}), D1.tok); t('и принять не может', r.status === 409 && ['class_mismatch', 'not_offered'].includes(r.data.error), JSON.stringify(r.data));
+await G(`/taxi/orders/${oK}/decline`, J({}), D5.tok); await sleep(500);
+t('после отказа D5 — водителю бизнес-класса (D6) как «повышение», эконом-водителям нет', offered(oK) === `${D5.pid}:declined,${D6.pid}:offered`, offered(oK));
+t('в журнале решения отмечено повышение класса', q(`select reasons->>'upgrade' from go_order_offers where order_id='${oK}' and driver_id='${D6.pid}'`) === 'true' && q(`select reasons->>'carClass' from go_order_offers where order_id='${oK}' and driver_id='${D6.pid}'`) === 'business');
+r = await G(`/taxi/orders/${oK}/accept`, J({}), D6.tok); t('D6 принял заказ комфорта', r.status === 200, JSON.stringify(r.data));
+await G(`/taxi/orders/${oK}/cancel`, J({}), CC1.tok);
+// заказ «эконом»: сперва тот же класс, водители выше — с надбавкой
+r = await G('/taxi/orders', J(body({ tariff: 'economy' })), CC2.tok); const oE = r.data.orderId; await sleep(500);
+t('заказ «эконом» сперва предлагается водителю эконом-класса, а не более близкому комфорту', offered(oE) === `${D1.pid}:offered`, offered(oE));
+await G(`/taxi/orders/${oE}/cancel`, J({}), CC2.tok);
+// строгий режим
+r = await ADM('/settings/dispatch_class_mode', PUT('strict'), AF.tok); t('режим классов меняет только go_finance', r.status === 403);
+r = await ADM('/settings/dispatch_class_mode', PUT('strict'), A.tok); t('строгий режим включён', r.status === 200); await sleep(16000);
+q(`update go_presence set online = false where profile_id = '${D5.pid}'`);
+r = await G('/taxi/orders', J(body({ tariff: 'comfort' })), CC3.tok); const oS = r.data.orderId; await sleep(500);
+t('строгий режим: водителя комфорта нет, бизнес-водитель не получает → заказ в общий пул', q(`select count(*) from go_order_offers where order_id='${oS}'`) === '0' && q(`select dispatch_state from go_orders where id='${oS}'`) === 'pool', q(`select dispatch_state from go_orders where id='${oS}'`));
+r = await G(`/taxi/orders/${oS}/accept`, J({}), D6.tok); t('строгий режим: из пула водитель бизнес-класса «комфорт» тоже не берёт', r.status === 409 && r.data.error === 'class_mismatch', JSON.stringify(r.data));
+await G(`/taxi/orders/${oS}/cancel`, J({}), CC3.tok);
+await ADM('/settings/dispatch_class_mode', PUT('upgrade'), A.tok); await sleep(16000);
+r = await G('/taxi/orders', J(body({ tariff: 'business' })), CC4.tok); const oB2 = r.data.orderId; await sleep(500);
+t('заказ «бизнес»: эконом- и комфорт-водители не кандидаты — предложен D6', offered(oB2) === `${D6.pid}:offered`, offered(oB2));
+await G(`/taxi/orders/${oB2}/cancel`, J({}), CC4.tok);
+q(`update go_presence set online = true where profile_id = '${D5.pid}'`);
 
 /* ═══ Курьеры: котировка доставки и предложения ═══ */
 const K1 = await mk('gdK1'); const K2 = await mk('gdK2'); const CD = await mk('gdCustD'); const CD2 = await mk('gdCustD2');

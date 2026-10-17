@@ -13,7 +13,8 @@
  * свежее (`dispatch_presence_fresh_sec`, иначе считаем, что связь потеряна) и не дальше `dispatch_radius_km`. Балл (меньше — лучше):
  *   расстояние до подачи, км  +  0,7 × (отказы и пропуски за час)  −  0,03 × min(простой в минутах, 30).
  * Простой даёт небольшую поправку в пользу давно не получавших заказ — это и есть «справедливость»; расстояние остаётся главным.
- * Не учитывается: класс автомобиля и зоны внутри города — в данных исполнителей этого нет (см. docs/GO-AUDIT-2026-11.md).
+ * Класс автомобиля: водитель класса ниже заказанного тарифа не кандидат; класс выше — кандидат с надбавкой 1,5 км (режим 'strict' — нет), см. goclass.mjs.
+ * Не учитывается: зоны внутри города — в данных исполнителей их нет (см. docs/GO-AUDIT-2026-11.md).
  * Каждое решение пишется в go_dispatch_log (кого и почему выбрали, три лучших балла).
  */
 import { query } from './db.mjs';
@@ -21,6 +22,7 @@ import { can } from './admin.mjs';
 import { logAdmin } from './adminsec.mjs';
 import { getSetting, inTx, lockOrder, setStatus, addEvent, notifyGo, haversineKm, goLog, clean, pushOrderChanged } from './gocore.mjs';
 import { pushGoEvent } from './signal.mjs';
+import { driverClass, classMode, classCheck, UPGRADE_PENALTY_KM } from './goclass.mjs';
 
 const num = (v, d, lo, hi) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
 export const dispatchSettings = async () => ({
@@ -67,17 +69,20 @@ export const rankCandidates = async (client, order, cfg) => {
     [order.id, order.city, String(cfg.freshSec), order.customer_id, order.kind, k.active, k.role]);
   const from = order.data?.from;
   const { openJson } = await import('./gocore.mjs');
+  const cMode = order.kind === 'taxi' ? await classMode() : 'upgrade';
   const out = [];
   for (const r of rows) {
     if (r.active_n >= k.maxActive) continue;
     // Грузовой заказ едет отдельным рейсом и только на грузовом транспорте; и наоборот — с грузовым рейсом ничего не совмещается.
     if (cargo && (r.active_n > 0 || openJson(r.data_enc).extra?.transport !== 'truck')) continue;
     if (r.cargo_n > 0) continue;
+    const cls = order.kind === 'taxi' ? classCheck(driverClass(r), order.data?.tariff, cMode) : { ok: true };
+    if (!cls.ok) continue;
     const km = haversineKm({ lat: r.lat, lng: r.lng }, from);
     if (km > cfg.radiusKm) continue;
     const idleMin = r.last_done ? (Date.now() - new Date(r.last_done).getTime()) / 60000 : 30;
-    const reasons = { km: Math.round(km * 10) / 10, etaMin: Math.max(1, Math.round((km * 1.35 / 28) * 60)), misses: r.misses, idleMin: Math.round(idleMin), active: r.active_n };
-    out.push({ driverId: r.profile_id, score: scoreOf({ km, misses: r.misses, idleMin }) + 0.5 * r.active_n, reasons });
+    const reasons = { km: Math.round(km * 10) / 10, etaMin: Math.max(1, Math.round((km * 1.35 / 28) * 60)), misses: r.misses, idleMin: Math.round(idleMin), active: r.active_n, ...(order.kind === 'taxi' ? { carClass: driverClass(r), upgrade: Boolean(cls.upgrade) } : {}) };
+    out.push({ driverId: r.profile_id, score: scoreOf({ km, misses: r.misses, idleMin }) + 0.5 * r.active_n + (cls.upgrade ? UPGRADE_PENALTY_KM : 0), reasons });
   }
   return out.sort((a, b) => a.score - b.score || a.driverId.localeCompare(b.driverId));
 };

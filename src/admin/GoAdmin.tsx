@@ -334,6 +334,13 @@ const DispatchSettings = ({ d, save }: { d: any; save: (key: string, value: unkn
             <option value="offers">Предложения по очереди (ближайшему, затем следующему)</option>
           </select>
         </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, color: C.t2 }}>
+          <span style={{ width: 230 }}>Классы автомобилей</span>
+          <select style={inp} value={s.dispatch_class_mode ?? 'upgrade'} onChange={(e) => void save('dispatch_class_mode', e.target.value)}>
+            <option value="upgrade">Класс выше заказанного может взять заказ (после своего класса)</option>
+            <option value="strict">Только тот же класс</option>
+          </select>
+        </label>
         {field('dispatch_offer_sec', 'Время на ответ водителя, с', 25, '10–120')}
         {field('dispatch_max_offers', 'Сколько водителей попробовать', 5, '1–20; потом заказ уходит в общий пул')}
         {field('dispatch_radius_km', 'Радиус поиска от точки подачи, км', 15, '1–200')}
@@ -341,7 +348,7 @@ const DispatchSettings = ({ d, save }: { d: any; save: (key: string, value: unkn
         {field('dispatch_search_timeout_min', 'Отменять поиск через, мин', 20, '0 — не отменять; 1–240')}
         {field('maps_route_daily_limit', 'Предел запросов маршрутов в сутки', 0, '0 — без предела; при исчерпании расстояние считается по прямой')}
         {field('quote_ttl_sec', 'Срок действия расчёта цены, с', 600, '60–3600')}
-        <div style={{ fontSize: 12, color: C.t3 }}>Алгоритм: расстояние до подачи, поправка за недавние отказы и пропуски и небольшая поправка за простой. Класс автомобиля и зоны внутри города пока не учитываются — в данных исполнителей их нет.</div>
+        <div style={{ fontSize: 12, color: C.t3 }}>{`Алгоритм: расстояние до подачи, поправка за недавние отказы и пропуски и небольшая поправка за простой. Класс автомобиля учитывается (эконом < комфорт < бизнес): водитель класса ниже заказанного заказ не получает. Зоны внутри города пока не учитываются — в данных исполнителей их нет.`}</div>
       </div>
     </div>
   );

@@ -46,6 +46,7 @@ const KEYS = {
     return { base: n(v.base), perKm: n(v.perKm), minRub: n(v.minRub), loaderRub: n(v.loaderRub), bodies };
   },
   dispatch_mode: (v) => (v === 'offers' || v === 'pool' ? v : null),
+  dispatch_class_mode: (v) => (v === 'strict' || v === 'upgrade' ? v : null),
   dispatch_offer_sec: (v) => (Number.isFinite(Number(v)) && Number(v) >= 10 && Number(v) <= 120 ? Math.round(Number(v)) : null),
   dispatch_max_offers: (v) => (Number.isFinite(Number(v)) && Number(v) >= 1 && Number(v) <= 20 ? Math.round(Number(v)) : null),
   dispatch_search_timeout_min: (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 240 ? Math.round(Number(v)) : null),
