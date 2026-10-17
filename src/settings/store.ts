@@ -65,6 +65,8 @@ export interface AppSettings {
   /* Sky AI на острове. */
   aiManualCall:    boolean;
   aiWake:          boolean;
+  /** «Умная колонка»: телефон/ПК с Bluetooth-колонкой слушает фразу и отвечает голосом. */
+  aiSpeaker:       boolean;
   aiVoiceAnswers:  boolean;
   aiContinue:      boolean;
   aiIdleEnd:       boolean;
@@ -114,6 +116,7 @@ const defaults: AppSettings = {
   islandAnim:       'full',
   aiManualCall:     true,
   aiWake:           false,
+  aiSpeaker:        false,
   aiVoiceAnswers:   true,
   aiContinue:       true,
   aiIdleEnd:        true,

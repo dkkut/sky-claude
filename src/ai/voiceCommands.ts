@@ -16,12 +16,14 @@
 import { useModuleStore, type ModuleKey } from '@/data/state/modules';
 import { apiQuickMenuSetItem } from '@/quickmenu/quickMenuApi';
 import { pickNowPlaying } from '@/island/mediaAdapter';
+import { matchMusicCommand } from '@/ai/musicVoice';
 
 export interface VoiceCommand {
   label: string;
   /** Нужно подтверждение перед выполнением (деструктивное действие). */
   confirm?: string;
-  run: () => void | Promise<void>;
+  /** Строка в ответе — Sky её озвучит (уточнение, «что играет»); вопрос в конце включает микрофон. */
+  run: () => void | string | Promise<void | string>;
 }
 
 const openModule = (m: ModuleKey) => () => useModuleStore.getState().setActiveModule(m);
@@ -121,6 +123,8 @@ const matchMediaCommand = (clean: string): VoiceCommand | null => {
 /** Пусто — фраза не команда, значит это обычный вопрос к Sky AI. */
 export const matchVoiceCommand = (text: string): VoiceCommand | null => {
   const clean = text.trim().replace(/[.!?…,]+$/g, '');
+  const music = matchMusicCommand(clean);
+  if (music) return music;
   const media = matchMediaCommand(clean);
   if (media) return media;
   // Команда — короткая фраза-инструкция («открой…», «покажи…», «включи…»,

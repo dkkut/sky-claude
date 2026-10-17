@@ -274,6 +274,21 @@ const IslandSection = () => {
     return () => { off = true; };
   }, []);
 
+  const [outputs, setOutputs] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!s.aiSpeaker || !navigator.mediaDevices?.enumerateDevices) return;
+    let off = false;
+    const read = () => navigator.mediaDevices.enumerateDevices()
+      .then(d => { if (!off) setOutputs(d.filter(x => x.kind === 'audiooutput' && x.label).map(x => x.label)); }).catch(() => {});
+    void read();
+    navigator.mediaDevices.addEventListener?.('devicechange', read);
+    return () => { off = true; navigator.mediaDevices.removeEventListener?.('devicechange', read); };
+  }, [s.aiSpeaker, mic]);
+  const toggleSpeaker = async () => {
+    if (s.aiSpeaker) { set({ aiSpeaker: false }); return; }
+    if (!(await askMic())) return;
+    set({ aiSpeaker: true, aiWake: true, aiVoiceAnswers: true, aiContinue: true });
+  };
   const askMic = async () => {
     const ok = await requestMicForWake();
     setMic(ok ? 'granted' : 'denied');
@@ -319,6 +334,10 @@ const IslandSection = () => {
         right={<Toggle on={s.aiManualCall} onToggle={() => set({ aiManualCall: !s.aiManualCall })}/>}/>
       <SettingsRow icon={MicIcon} label="Фраза «Привет, Скай»" sub={wakeSub}
         right={<Toggle on={s.aiWake} disabled={!canListen} onToggle={() => { void toggleWake(); }}/>}/>
+      <SettingsRow icon={MicIcon} label="Умная колонка"
+        sub={!s.aiSpeaker ? 'Подключите Bluetooth-колонку к телефону или ПК и говорите «Привет, Скай, включи …»'
+          : `Включено: слушает фразу, отвечает голосом, музыка играет через устройство вывода звука${outputs?.length ? ` (${outputs.join(', ')})` : ''}. Работает, пока приложение открыто; индикатор микрофона виден на острове`}
+        right={<Toggle on={s.aiSpeaker} disabled={!canListen} onToggle={() => { void toggleSpeaker(); }}/>}/>
       <SettingsRow icon={MicIcon} label="Микрофон"
         sub={mic === 'granted' ? 'Разрешён. Используется только во время разговора с Sky AI и пока включена фраза' : mic === 'denied' ? 'Запрещён — разрешите в настройках браузера' : 'Разрешение запросим, когда понадобится'}
         right={mic !== 'granted' ? <button type="button" onClick={() => { void askMic(); }} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style={{ background:'var(--accent)' }}>Разрешить</button> : undefined}/>

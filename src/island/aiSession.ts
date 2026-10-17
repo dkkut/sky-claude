@@ -144,9 +144,11 @@ export const useAiSession = create<AiSessionState>((set, get) => {
   const runCommand = async (id: number, cmd: VoiceCommand) => {
     set({ phase: 'processing' });
     try {
-      await cmd.run();
+      const said = await cmd.run();
       if (!mine(id)) return;
-      set({ phase: 'speaking', answer: cmd.label, error: '' });
+      const text = typeof said === 'string' && said ? said : cmd.label;
+      set({ phase: 'speaking', answer: text, error: '' });
+      if (typeof said === 'string' && said) { await afterAnswer(id, text); return; }
       finishSoon(id, 1600);
     } catch (e) {
       fail(id, e instanceof Error && e.message ? e.message : 'Не получилось выполнить команду');
