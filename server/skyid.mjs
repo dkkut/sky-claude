@@ -58,6 +58,8 @@ const toSkyId = (row) => row && ({
  */
 const toProfile = (row) => row && ({
   id:       row.id,
+  // Профиль ожидает удаления (30 дней): выбрать его нельзя, восстановить — из «Удаление аккаунта».
+  deletionPurgeAt: row.deletion_purge_at?.toISOString?.() ?? undefined,
   skyId:    row.sky_id,
   name:     row.name,
   username: row.username,
@@ -412,7 +414,7 @@ export const disableSkyTwoFactor = async (skyId) => {
 /* ─── Профили ──────────────────────────────────────────────────────────── */
 
 export const listProfiles = async (skyId) => {
-  const { rows } = await query(`${PROFILE_SELECT} WHERE p.sky_id = $1 ORDER BY p.created_at`, [skyId]);
+  const { rows } = await query(`${PROFILE_SELECT} WHERE p.sky_id = $1 AND p.deleted_at IS NULL ORDER BY p.created_at`, [skyId]);
   return rows.map(toProfile);
 };
 
@@ -422,7 +424,7 @@ export const listProfiles = async (skyId) => {
  */
 export const getProfileOfSkyId = async (skyId, profileId) => {
   const { rows } = await query(
-    `${PROFILE_SELECT} WHERE p.id = $2 AND p.sky_id = $1`, [skyId, profileId],
+    `${PROFILE_SELECT} WHERE p.id = $2 AND p.sky_id = $1 AND p.deleted_at IS NULL AND p.deletion_purge_at IS NULL`, [skyId, profileId],
   );
   return toProfile(rows[0]);
 };

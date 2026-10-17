@@ -7,8 +7,11 @@
  * проверка в admin.mjs закрывает панель везде сразу, а не там, где о ней вспомнили.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import crypto from 'node:crypto';
 
 const als = new AsyncLocalStorage();
 
-export const runWithSession = (sid, fn) => als.run({ sid: sid ? String(sid) : null, profile: undefined }, fn);
+export const runWithSession = (sid, fn) => als.run({ sid: sid ? String(sid) : null, profile: undefined, requestId: crypto.randomBytes(6).toString('hex') }, fn);
+/** Корреляционный идентификатор запроса — попадает в журналы, чтобы связать события одного запроса. */
+export const getRequestContext = () => ({ requestId: als.getStore()?.requestId ?? '' });
 export const currentSession = () => als.getStore() ?? null;

@@ -29,6 +29,7 @@ import {
 import { saveStream, saveBytes, sizeOf, openStream, remove, parseRange } from './../musicstore.mjs';
 import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../musicticket.mjs';
 import { hasPrime } from './../skyid.mjs';
+import { resolveVoice, resolveChoice } from './../musicvoice.mjs';
 import { can } from './../admin.mjs';
 import {
   readArtist, readArtistByName, saveArtist, followArtist,
@@ -182,6 +183,20 @@ export const musicRoutes = async (req, res, url) => {
         mine: params.get('mine') === '1',
       }),
     });
+  }
+
+  /* ── Голосовой поиск (Sky Smart Speaker, команды Sky AI) ───── */
+
+  if (req.method === 'GET' && path === '/api/music/voice') {
+    if (!rateLimit(`music:voice:${me}`, 30)) return json(res, 429, { error: 'rate_limited' });
+    const kind = String(params.get('kind') ?? 'any');
+    if (!['any', 'track', 'artist', 'album', 'playlist', 'mood', 'any_music', 'favorites'].includes(kind)) return json(res, 400, { error: 'bad_kind' });
+    return json(res, 200, await resolveVoice(me, { q: params.get('q') ?? '', kind }));
+  }
+  if (req.method === 'POST' && path === '/api/music/voice/choose') {
+    if (!rateLimit(`music:voice:${me}`, 30)) return json(res, 429, { error: 'rate_limited' });
+    const b = await parseBody(req);
+    return json(res, 200, await resolveChoice(me, { type: String(b?.type ?? ''), id: String(b?.id ?? '').slice(0, 200) }));
   }
 
   /* ── Артисты и подписки ────────────────────────────────────── */

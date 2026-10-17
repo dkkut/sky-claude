@@ -27,6 +27,7 @@ import { IpPinSettings } from '@/auth/IpPin';
 import { ConnectedServices } from '@/oidc/ConnectedServices';
 import { DeviceLinkButton } from '@/auth/DeviceLinkPhone';
 import { AccountProtection } from '@/auth/AccountFreeze';
+import { AccountDeletion } from '@/auth/AccountDeletion';
 const fmtDt = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
 
@@ -1054,6 +1055,7 @@ const DevicesSection = ({ onLogoutAll }: { onLogoutAll: () => void }) => {
     <div className="space-y-3">
       <DeviceLinkButton />
       <AccountProtection onChanged={() => void load()} />
+      <AccountDeletion />
       <div className="flex items-center justify-between">
         <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>
           Активные сессии · {devs.length}

@@ -10,6 +10,7 @@
  * подправить их в браузере бессмысленно.
  */
 import { LanguagePill, ThemePill } from '@/i18n/LanguageSwitch';
+import { RestoreAccount } from './AccountDeletion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -915,6 +916,7 @@ export const AuthScreen = () => {
   const carMode = useCarMode();
   const linkKind = consoleMode ? 'console' : carMode ? 'car' : null;
   const [byMail, setByMail] = useState(false);
+  const [restore, setRestore] = useState(false);
 
   if (linkKind && !byMail && step === 'login') return (
     <>
@@ -929,6 +931,11 @@ export const AuthScreen = () => {
     <SkyIsland />
     <LanguagePill />
     <ThemePill />
+    {step === 'login' && (
+      <button type="button" onClick={() => setRestore(true)} className="fixed bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-xl px-4 py-2 text-xs font-semibold"
+        style={{ background: 'var(--bg-l3)', color: 'var(--t2)', border: '1px solid var(--border)' }}>Восстановить удалённый аккаунт</button>
+    )}
+    {restore && <RestoreAccount onClose={() => setRestore(false)} />}
     {linkKind && byMail && step === 'login' && (
       <button type="button" onClick={() => setByMail(false)}
         className="fixed left-4 top-4 z-10 rounded-2xl px-4 py-2 text-sm font-semibold"

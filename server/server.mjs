@@ -89,6 +89,9 @@ import * as podcastTicket from './podcastticket.mjs';
 import * as bookTicket from './bookticket.mjs';
 import * as videoTicket from './skyvideoticket.mjs';
 import { accountFreezeRoutes } from './routes/accountfreeze.mjs';
+import { accountDeletionRoutes } from './routes/accountdeletion.mjs';
+import { purgeDue as purgeDeletions } from './accountdeletion.mjs';
+import { sweepLogs, flushNow as flushLogs } from './skylog.mjs';
 import { accountRecoveryRoutes } from './routes/accountrecovery.mjs';
 import { primeRewardsRoutes } from './routes/primerewards.mjs';
 import { aiUsageRoutes } from './routes/aiusage.mjs';
@@ -198,7 +201,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, musicRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -437,6 +440,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // Вход в замороженный аккаунт (accountfreeze.mjs): не сбой, а решение владельца.
     // Регистрация новых аккаунтов ограничена (registration.mjs): решение администрации, не сбой.
     if (error?.status === 403 && String(error.code ?? '').startsWith('registration_')) return json(res, 403, { error: error.code, message: error.message === error.code ? '' : error.message });
+    if (error?.status === 423 && error.message === 'account_deletion_pending') return json(res, 423, { error: 'account_deletion_pending', purgeAt: error.purgeAt });
     if (error?.status === 423) return json(res, 423, { error: 'account_frozen', until: error.until });
     // Sky Storage: хранилище недоступно/на обслуживании/заполнено — решение системы, не сбой.
     if (error?.name === 'StorageBlocked') return json(res, error.status ?? 503, { error: error.code, message: error.userMessage || undefined });
@@ -690,6 +694,9 @@ const start = async () => {
       // Личное кино и музыка, которые владелец сам не открывал 20 дней
       // и не защитил от уборки — см. storagequota.mjs: активная комната
       // «Вместе» спасает файл от удаления даже тогда.
+      const purged = await purgeDeletions();
+      if (purged) console.log(`[deletion] окончательно удалено аккаунтов/профилей: ${purged}`);
+      await sweepLogs().catch((e) => console.error('[skylog] уборка:', e.message));
       const trashed = await purgeTrashedContent();
       if (trashed) console.log(`[content] стёрто после резерва 7 дней: ${trashed}`);
       const personal = await sweepUnusedPersonalFiles();
