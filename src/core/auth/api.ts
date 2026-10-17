@@ -187,6 +187,11 @@ const ERRORS: Record<string, string> = {
   bad_codes:             'Коды не подошли — проверьте код с почты и код из аутентификатора',
   no_request:            'Сначала запросите код на почту (он живёт 15 минут)',
   authenticator_required:'Для PIN нужен включённый аутентификатор (Профиль → Sky ID → Защита)',
+  limited_session:       'Вход с этого устройства не подтверждён — доступен только просмотр',
+  backup_email_required: 'Сначала добавьте и подтвердите резервную почту',
+  no_backup_email:       'У этого Sky ID нет подтверждённой резервной почты',
+  not_limited:           'Эта сессия не ограничена',
+  already_decided:       'Этот запрос уже обработан',
   session_ended:         'Слишком много неверных попыток — сессия завершена. Войдите заново',
 };
 
@@ -348,6 +353,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
   if (!res.ok) {
     if (res.status === 403 && data?.error === 'beta_required') onBetaRequired?.();
     if (res.status === 403 && data?.error === 'pin_required') onPinRequired?.();
+    if (res.status === 403 && data?.error === 'limited_session') { try { window.dispatchEvent(new CustomEvent('sky:limited')); } catch { /* ok */ } }
     if (res.status === 503 && data?.error === 'platform_shutdown') onPlatformBlocked?.({ kind: 'shutdown', reason: String(data?.reason ?? '') });
     if (res.status === 503 && data?.error === 'platform_maintenance') onPlatformBlocked?.({ kind: 'maintenance', reason: String(data?.reason ?? '') });
     return { ok: false, error: data?.error, reason: (data?.message && String(data?.error).startsWith('registration_')) ? String(data.message) : explain(data?.error, res.status), status: res.status, data };

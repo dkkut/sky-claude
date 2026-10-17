@@ -107,6 +107,8 @@ import { purgeDue as purgeDeletions } from './accountdeletion.mjs';
 import { sweepLogs, flushNow as flushLogs } from './skylog.mjs';
 import { accountRecoveryRoutes } from './routes/accountrecovery.mjs';
 import { recoveryRoutes } from './routes/recovery.mjs';
+import { limitedAccessRoutes } from './routes/limitedaccess.mjs';
+import { limitedBlocks, sweepLimited } from './limitedaccess.mjs';
 import { primeRewardsRoutes } from './routes/primerewards.mjs';
 import { aiUsageRoutes } from './routes/aiusage.mjs';
 import { partnersRoutes } from './routes/partners.mjs';
@@ -217,7 +219,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, recoveryRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [betaRoutes, recoveryRoutes, limitedAccessRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, artistCardsRoutes, skyLogsRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -284,6 +286,17 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // Защита от ошибки настройки: за nginx запрос по открытому http до API не доходит (там редирект на https), но если дошёл
     // (кто-то прокинул порт или сменил конфиг) — токены и пароли по нему не принимаем.
     if (insecureApiRequest(req, url)) return json(res, 426, { error: 'https_required' });
+
+    // Ограниченная сессия (устройство не подтверждено, limitedaccess.mjs): чтение без чатов и файлов, изменения закрыты.
+    // Проверяется и для /api/auth/* (смена пароля, удаление и т. п. недоступны) — разрешены только выход, обновление токена и сессия.
+    if (url.startsWith('/api/') && limitedBlocks(req.method, url) && !url.startsWith('/api/platform/status') && !url.startsWith('/api/ssh-gate')
+        && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/recovery/')) {
+      const tk = verifyToken(readAccessToken(req), config.jwtSecret);
+      if (tk?.typ === 'access' && tk.sky && tk.sid) {
+        const st = await sessionStore.get(tk.sid);
+        if (st && st.userId === tk.sky && st.limited) return json(res, 403, { error: 'limited_session' });
+      }
+    }
 
     // PIN при смене IP (ippin.mjs): у тех, кто его включил, сессия с нового адреса закрыта до ввода PIN.
     // Выход, обновление токена, вход, ввод самого PIN и ссылки шлюзов остаются открытыми.
@@ -729,6 +742,7 @@ const start = async () => {
       if (purged) console.log(`[deletion] окончательно удалено аккаунтов/профилей: ${purged}`);
       await import('./recoverycases.mjs').then((m) => m.sweepCases()).catch((e) => console.error('[recovery] заявки:', e.message));
       await import('./recoverycore.mjs').then((m) => m.sweepAttempts()).catch(() => {});
+      await sweepLimited().catch(() => {});
       await sweepLogs().catch((e) => console.error('[skylog] уборка:', e.message));
       const trashed = await purgeTrashedContent();
       if (trashed) console.log(`[content] стёрто после резерва 7 дней: ${trashed}`);

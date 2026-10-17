@@ -1,5 +1,6 @@
 import { Sparkles } from 'lucide-react';
 import { ModuleGate } from '@/core/moduleClosures';
+import { LimitedLock } from '@/auth/LimitedAccess';
 import { useCursorPet } from '@/shared/cursorPet';
 import React, { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -97,10 +98,12 @@ const PetCursor = () => {
 
 /* - Messenger layout ------------------------------------------------ */
 const MessengerScreen = () => (
-  <div className="relative flex h-full min-h-0 overflow-hidden">
-    <ChatList />
-    <ChatWindow />
-  </div>
+  <LimitedLock>
+    <div className="relative flex h-full min-h-0 overflow-hidden">
+      <ChatList />
+      <ChatWindow />
+    </div>
+  </LimitedLock>
 );
 
 /* - Main AppShell --------------------------------------------------- */

@@ -21,6 +21,7 @@ import { ConsoleIntro } from './interface/console/ConsoleIntro';
 import { ConsoleProfilePicker } from './interface/console/ConsoleProfilePicker';
 import { BetaGate }      from './auth/BetaGate';
 import { IpPinOverlay } from './auth/IpPin';
+import { LimitedAccessGate } from './auth/LimitedAccess';
 import { setBetaRequiredHandler, setPlatformBlockedHandler, initNativeAuth, type PlatformBlock } from './core/auth/api';
 import { apiPlatformStatus } from './core/platform';
 import { PlatformBlockScreen } from './core/PlatformBlockScreen';
@@ -600,7 +601,7 @@ void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).fina
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : <><Root /><IpPinOverlay /><LinkDeepLinkGate /><OidcAuthorizeGate /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : <><Root /><IpPinOverlay /><LimitedAccessGate /><LinkDeepLinkGate /><OidcAuthorizeGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));

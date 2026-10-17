@@ -1180,3 +1180,18 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - Секреты в ссылках — во фрагменте `#t=` (на сервер и в Referer не попадают). Письмо заявки — только уведомление, текста ответа не содержит; переписка идёт в чате поддержки Sky.
 - Тесты: `scripts/audit/skyrecovery-test.mjs` (59), `recoverycases-test.mjs` (46); env: `RECOVERY_EMAIL_WAIT_SEC=3 RECOVERY_OWNER_WAIT_SEC=3 DOMAIN=sky.test RECOVERY_RATE_MULT=20 OWNER_USERNAME=ownertest`.
 - Не проверялось: реальная отправка писем, DNS/SPF/DKIM/DMARC, настоящий nginx (в среде его нет), Android-сборка; браузерный UI сайта восстановления Playwright-ом не прогонялся. Нужен деплой (миграция 159), nginx пересоздать, пересборка `.apk`/`.exe`.
+
+## Ограниченный доступ на неподтверждённом устройстве (настройка Sky ID)
+
+`server/limitedaccess.mjs`, `server/routes/limitedaccess.mjs` (`/api/skyid/limited*`), миграция `160_limited_access.sql` (`sky_ids.limit_untrusted`, `device_approvals`); клиент — `src/auth/LimitedAccess.tsx`
+(`LimitedAccessGate` в `main.tsx`, `LimitedAccessSettings` в Профиль → Sky ID → Защита, `LimitedLock` вместо чатов в `AppShell`/`MobileShell`).
+
+- Включить можно только с годной резервной почтой (подтверждена и прошла сутки, `usableBackupEmail`) и только полной сессией; текущее устройство при включении становится доверенным.
+- Пока настройка включена, вход на устройстве, которого нет в `sky_trusted_devices` (заголовок `X-Sky-Device`), даёт ОГРАНИЧЕННУЮ сессию (`stored.limited` в Redis, `limited: true` в ответе входа) и вход по коду устройство доверенным НЕ делает.
+  Ограниченная сессия: чтение без `/api/files|voiceparty|calls|chats|messages|attachments`, все изменения закрыты (403 `limited_session`, в том числе `/api/auth/*` кроме logout/refresh/session); сокет получает `limited` и ни снимка чатов, ни событий (отвечает только на `ping`).
+  Шлюз — `limitedBlocks` в `server.mjs` до PIN-проверки. Сама ограниченная сессия не может ни включить/выключить настройку, ни подтвердить себя.
+- Подтверждение: (1) полная сессия того же Sky ID → `POST /decide` (на Sky Island карточка с ползунком `SwipeConfirm` и «Это не я»; нет острова — карточка сверху), запрос приходит событием `limited:pending`, push и записью «Уведомления» (`notifyAccount`, письмо на основную почту),
+  опрос раз в 15 с как запас; отказ завершает чужую сессию; (2) «Доступ утерян» → код на резервную почту (`issueCode`, 3 запроса/час на сессию, 6 попыток ввода), без годной резервной почты недоступно. Решение сервера: устройство становится доверенным, ограниченная сессия — полной (клиент опрашивает `/status` раз в 4 с и перезагружается).
+  Запрос живёт 24 часа (`device_approvals.expires_at`, `sweepLimited`). Всё пишется в журнал (`limited_*`, категория `security`) и историю восстановления.
+- Не проверено: настоящие push (FCM/Web Push) и почта; Android/Windows-сборки (сборка `vite build --mode native` проходит); на ТВ/консоли/в машине острова нет — работает запасная карточка.
+- Тесты: `scripts/audit/limitedaccess-test.mjs` (48; API с `OWNER_USERNAME=ownertest ADMIN_GATE=off RECOVERY_RATE_MULT=20 DOMAIN=sky.test`, для сокета `WS_ORIGIN=https://sky.test`), `limitedaccess-ui-test.mjs` (Playwright, 11; сайт на :4173 и API с `EXTRA_ORIGINS=http://localhost:4173`). Нужен деплой (миграция 160) и пересборка `.apk`/`.exe`.

@@ -26,6 +26,7 @@ import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
 
 /* ── helpers ─────────────────────────────────────────────────── */
 import { IpPinSettings } from '@/auth/IpPin';
+import { LimitedAccessSettings } from '@/auth/LimitedAccess';
 import { ConnectedServices } from '@/oidc/ConnectedServices';
 import { DeviceLinkButton } from '@/auth/DeviceLinkPhone';
 import { AccountProtection } from '@/auth/AccountFreeze';
@@ -1023,6 +1024,7 @@ const SecuritySection = () => {
       {active && active.twoFactorEnabled && <TrustedDevicesBlock profile={active} />}
 
       <IpPinSettings />
+      <LimitedAccessSettings />
       <ConnectedServices />
 
       <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>

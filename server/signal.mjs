@@ -281,7 +281,7 @@ const identify = async (token, ip) => {
   // PIN при смене IP (ippin.mjs): сессия с адреса, где PIN ещё не вводили, не получает сокет.
   if (await pinRequired(payload.sky, payload.sid, stored, ip)) return null;
 
-  return { userId: stored.profileId, sessionId: payload.sid };
+  return { userId: stored.profileId, sessionId: payload.sid, limited: Boolean(stored.limited) };
 };
 
 /**
@@ -1929,6 +1929,13 @@ export const startSignalHub = () => {
           ws.close(4401, 'unauthorized');
           return;
         }
+        // Ограниченная сессия (устройство не подтверждено): сокет не открывается — ни чатов, ни событий, только ответ на ping.
+        if (who.limited) {
+          session.limitedWs = true;
+          clearTimeout(authTimer);
+          send(ws, { type: 'limited' });
+          return;
+        }
         const { userId } = who;
 
         // Забаненный не подключается вовсе. Проверяем у базы, а не по
@@ -1971,6 +1978,8 @@ export const startSignalHub = () => {
         console.log(`[ws] +${userId} (${clients.size} online)`);
         return;
       }
+
+      if (session.limitedWs) { if (msg.type === 'ping') send(ws, { type: 'pong' }); return; }
 
       // Всё остальное — только после авторизации.
       if (!session.userId) return;

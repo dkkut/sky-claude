@@ -313,6 +313,15 @@ const handle = (data: any) => {
       break;
     }
 
+    /* Ограниченный доступ (устройство не подтверждено): сокет не открыт для чатов; запрос входа с нового устройства */
+    case 'limited':
+      authorized = false; wantOpen = false;
+      window.dispatchEvent(new CustomEvent('sky:limited'));
+      break;
+    case 'limited:pending':
+      window.dispatchEvent(new CustomEvent('sky:limited-pending'));
+      break;
+
     case 'pong':
       if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
       break;

@@ -93,6 +93,17 @@ export const sessionStore = {
   },
 
   /**
+   * Дописывает поля в существующую сессию (срок жизни сохраняем). Нужен для пометки «ограниченная сессия» (limitedaccess.mjs).
+   */
+  async patch(id, fields) {
+    const session = await this.get(id);
+    if (!session) return false;
+    const ttl = await client.ttl(KEY_SESSION(id));
+    await client.setEx(KEY_SESSION(id), ttl > 0 ? ttl : 60, JSON.stringify({ ...session, ...fields }));
+    return true;
+  },
+
+  /**
    * Меняет активный профиль в существующей сессии. Срок жизни сохраняем:
    * переключение профиля не должно ни продлевать, ни укорачивать вход.
    */

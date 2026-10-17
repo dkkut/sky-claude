@@ -1,5 +1,6 @@
 import { useState, Suspense } from 'react';
 import { ModuleGate } from '@/core/moduleClosures';
+import { LimitedLock } from '@/auth/LimitedAccess';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useModuleStore } from '@/data/state/modules';
 import { PlayerEngine } from '@/player/PlayerEngine';
@@ -59,7 +60,7 @@ export const MobileShell = () => {
               <Suspense fallback={<ModuleFallback />}>
                 <ModuleGate id={activeModule}>
                 {activeModule === 'stories'       && <StoriesModule />}
-                {activeModule === 'messages'      && <MobileMessenger />}
+                {activeModule === 'messages'      && <LimitedLock><MobileMessenger /></LimitedLock>}
                 {activeModule === 'notifications' && <NotificationsScreen />}
                 {activeModule === 'gaming'        && <GamingModule />}
                 {activeModule === 'bloom'         && <BloomModule />}

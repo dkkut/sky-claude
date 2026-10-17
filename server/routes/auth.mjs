@@ -13,6 +13,7 @@
  */
 import { logEvent as skyLog } from './../skylog.mjs';
 import { trustDevice } from './../trusteddevices.mjs';
+import { onLogin as limitedOnLogin } from './../limitedaccess.mjs';
 import { assertLoginAllowed } from './../accountfreeze.mjs';
 import { assertNotPendingDeletion } from './../accountdeletion.mjs';
 import { publicStatus as registrationStatus } from './../registration.mjs';
@@ -185,15 +186,18 @@ export const startSession = async (skyIdRow, req, { viaCode = false, via = null 
   }
 
   // Вход по коду делает устройство доверенным (см. trusteddevices.mjs).
-  if (viaCode) await trustDevice(skyIdRow.id, req).catch((err) => console.error('[auth] доверенное устройство:', err.message));
+  // Ограниченный доступ на неподтверждённом устройстве (limitedaccess.mjs): такая сессия устройство доверенным НЕ делает.
+  const limited = await limitedOnLogin(skyIdRow.id, sessionId, req, meta).catch((err) => { console.error('[auth] ограниченный доступ:', err.message); return false; });
+  if (viaCode && !limited) await trustDevice(skyIdRow.id, req).catch((err) => console.error('[auth] доверенное устройство:', err.message));
 
-  skyLog({ category: 'user', service: 'auth', type: 'login', actorId: auto?.id ?? null, targetId: skyIdRow.id, ip: meta.ip, ua: meta.ua, detail: { via: via?.kind ?? (viaCode ? 'code' : 'other'), newDevice: isNewDevice } });
+  skyLog({ category: 'user', service: 'auth', type: 'login', actorId: auto?.id ?? null, targetId: skyIdRow.id, ip: meta.ip, ua: meta.ua, detail: { via: via?.kind ?? (viaCode ? 'code' : 'other'), newDevice: isNewDevice, limited } });
   const tokens = issueTokens(skyIdRow.id, sessionId, auto?.id ?? null);
   return {
     body: {
       skyId: publicSkyId(skyIdRow),
       profiles,
       activeProfileId: auto?.id ?? null,
+      limited,
       maxProfiles: 2,
       ...tokens.body,
     },
