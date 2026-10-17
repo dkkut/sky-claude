@@ -15,6 +15,7 @@
  *     таблиц включает профиль, и он берётся из сессии, а не из запроса.
  */
 import crypto from 'node:crypto';
+import { notifyStaff } from './staffnotify.mjs';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can } from './admin.mjs';
@@ -555,6 +556,7 @@ export const submitPodcast = async (podcastId, ownerId) => {
   // Условие стоит в самом UPDATE: из нескольких одновременных нажатий
   // срабатывает ровно одно.
   if (rowCount === 0) return { error: 'already_pending' };
+  void notifyStaff('content', { title: 'Новый подкаст на проверке', body: 'Передача ждёт решения в разделе «Контент».', dedupe: `podcast:${podcastId}` });
   return { ok: true };
 };
 

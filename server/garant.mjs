@@ -22,6 +22,7 @@
  *   · не двигает деньги мимо wallet.mjs.
  */
 import { pool, query } from './db.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 import { generateId } from './security.mjs';
 import { can } from './admin.mjs';
 import { wallet } from './wallet.mjs';
@@ -406,6 +407,7 @@ export const openDispute = async (actorId, dealId, reason) => {
   await logGarant(dealId, actorId, 'dispute_opened', { reason: clean });
   const other = actorId === deal.seller_id ? deal.buyer_id : deal.seller_id;
   await notifyGarant(other, dealId, 'disputed', `По сделке «${deal.title}» открыт спор`);
+  void notifyStaff('garant', { title: 'Спор по сделке Гаранта', body: 'Открыт спор — нужен арбитр.', dedupe: `${dealId}:dispute`, except: actorId });
   return { deal: toDeal(await dealRow(dealId)) };
 };
 

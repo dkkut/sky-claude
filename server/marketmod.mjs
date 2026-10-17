@@ -24,6 +24,7 @@ import {
   evaluateListing, loadRules, loadSettings, effectiveCategoryRule, KINDS, DOC_TYPES,
   CATEGORY_DEFAULTS, DEFAULT_SETTINGS,
 } from './sellerrules.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 
 export const REPORT_ID_RE = /^mrp-[0-9a-f-]{36}$/;
 export const APPEAL_ID_RE = /^map-[0-9a-f-]{36}$/;
@@ -125,6 +126,7 @@ export const submitProduct = async (productId, sellerId) => {
   } finally {
     client.release();
   }
+  if (to === 'pending') void notifyStaff('product_mod', { title: 'Карточка товара на проверке', body: 'Новая карточка ждёт модерации.', dedupe: `${productId}:${Date.now()}`, except: sellerId });
   return { product: await readProduct(productId, sellerId), check: ev.verdict };
 };
 
@@ -386,6 +388,7 @@ export const createReport = async (reporterId, input = {}) => {
     throw err;
   }
   await query('INSERT INTO market_report_events (report_id, actor_id, action) VALUES ($1,$2,$3)', [id, reporterId, 'created']);
+  void notifyStaff('market_report', { title: 'Новая жалоба на Market', body: `Причина: ${String(reason).slice(0, 80)}`, dedupe: id, except: reporterId });
   return { ok: true, id };
 };
 
@@ -488,6 +491,7 @@ export const createAppeal = async (sellerId, input = {}) => {
     if (err?.code === '23505') return { error: 'already_appealed' };
     throw err;
   }
+  void notifyStaff('market_report', { title: 'Новая апелляция продавца', body: 'Продавец оспаривает решение по Market.', dedupe: id, except: sellerId });
   return { ok: true, id };
 };
 

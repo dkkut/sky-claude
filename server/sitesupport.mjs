@@ -11,6 +11,7 @@ import { query } from './db.mjs';
 import { config } from './config.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { sendEmail } from './notify.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 
 const clean = (v, n) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
 const cleanMulti = (v, n) => String(v ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim().slice(0, n);
@@ -68,6 +69,7 @@ export const submitSiteTicket = async (b, { ip }) => {
     [newId('sm'), id, encryptContent(lines.join('\n'))]);
   await query(`INSERT INTO support_events (id, ticket_id, actor_id, type, detail) VALUES ($1,$2,NULL,'created',$3)`,
     [newId('se'), id, encryptContent('Обращение создано на сайте')]);
+  void notifyStaff('support', { title: 'Новое обращение с сайта', body: String(subject).slice(0, 80), dedupe: id });
   await sendEmail(email,
     lang === 'en' ? `Sky support request received: ${code}` : `Обращение в поддержку Sky принято: ${code}`,
     lang === 'en'
@@ -107,6 +109,7 @@ export const replySiteTicket = async (code, email, body) => {
   if ((recent[0]?.n ?? 0) >= 20) return { error: 'too_many' };
   await query(`INSERT INTO support_messages (id, ticket_id, author_id, from_staff, body) VALUES ($1,$2,NULL,FALSE,$3)`, [newId('sm'), t.id, encryptContent(text)]);
   await query(`UPDATE support_tickets SET status = CASE WHEN status = 'waiting' THEN 'open' ELSE status END, updated_at = now() WHERE id = $1`, [t.id]);
+  void notifyStaff('support', { title: 'Новый ответ в обращении с сайта', body: 'Человек ответил на сайте.', dedupe: `${t.id}:reply:${Date.now()}` });
   return { ok: true };
 };
 

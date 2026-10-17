@@ -7,7 +7,7 @@
  * ровно в том виде, в каком показаны человеку.
  */
 import { query } from './db.mjs';
-import { adminsWith } from './admin.mjs';
+import { notifyStaff as notifyStaffQueue } from './staffnotify.mjs';
 import { createTicket } from './support.mjs';
 import { partnerOptions, partnerCreate, partnerRefresh } from './skykassapartners.mjs';
 import {
@@ -402,10 +402,8 @@ export const report = async (userId, id, body) => {
     if (dup === 'expired') return { error: 'expired' };
     if (notifyStaff) {
       await notifyOnce(userId, `${notifyStaff.id}:awaiting_review`, 'SkyKassa', 'Заявка на пополнение отправлена на проверку. Мы сообщим о результате.');
-      const staff = await adminsWith('skykassa');
-      for (const a of staff) {
-        await notifyOnce(a.id, `${notifyStaff.id}:staff_new`, 'SkyKassa: новая заявка', `Заявка ${notifyStaff.number} на ${rub(notifyStaff.amount)} ждёт проверки.`, { push: true });
-      }
+      // Сотрудникам с правом skykassa и владельцу (по их настройкам; владельца раньше этот путь не охватывал).
+      void notifyStaffQueue('topup', { title: 'Новая заявка на пополнение', body: `Заявка ${notifyStaff.number} на ${rub(notifyStaff.amount)} ждёт проверки.`, dedupe: `${notifyStaff.id}:new`, except: userId });
     }
     const v = await viewOwn(userId, id);
     return dup ? { ...v, duplicate: true } : v;

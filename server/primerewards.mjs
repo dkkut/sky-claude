@@ -8,6 +8,7 @@
  *  • отказ по ручной награде возвращает баллы (creditPointsIn) в той же транзакции, что и смена статуса.
  */
 import crypto from 'node:crypto';
+import { notifyStaff } from './staffnotify.mjs';
 import { query, pool } from './db.mjs';
 import { wallet } from './wallet.mjs';
 import { grantPrimeIn } from './skyid.mjs';
@@ -77,6 +78,7 @@ export const redeem = async (profileId, rewardId, idemKey) => {
     if (e.code === '23505') return { ok: true, duplicate: true };        // параллельный повтор того же ключа
     throw e;
   } finally { c.release(); }
+  if (done.status === 'pending_manual') void notifyStaff('prime_reward', { title: 'Награда Prime ждёт выдачи', body: `${done.title}: нужна ручная выдача.`, dedupe: done.id });
   await notifyGift(profileId, 'prime_reward', done.status === 'done' ? 'Награда получена' : 'Награда оформлена', done.status === 'done' ? `${done.title}: ${done.note}` : `${done.title} — ждёт выдачи сотрудником`, done.id).catch(() => {});
   return { ok: true, redemption: done };
 };

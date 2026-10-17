@@ -19,6 +19,7 @@ import { sendEmail } from './notify.mjs';
 import { L } from './lang.mjs';
 import { findSkyIdByEmail, findSkyIdById, findSkyIdByPhone } from './skyid.mjs';
 import { newId, randomSecret, hashSecret, safeEqual, attempt, ipHash, record, recoveryOrigin, EMAIL_RE, normEmail, maskEmail } from './recoverycore.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 
 const err = (error, extra = {}) => ({ error, ...extra });
 const clean = (v, n) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -132,6 +133,7 @@ export const createCase = async (b, { ip, session }) => {
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,1, now())`,
     [id, number, row?.id ?? null, profileId, accountType, reason, encryptContent(JSON.stringify(form)), contact, contactOk, confirm ? hashSecret('casecontact', confirm) : null, tid, hashAccess(secret), idem || null, h]);
   await log(id, profileId, 'created', `${accountType}/${reason}`);
+  void notifyStaff('recovery', { title: 'Новая заявка на восстановление доступа', body: `Заявка ${number}`, dedupe: id, except: profileId });
   await record({ skyId: row?.id ?? null, kind: accountType, event: 'case_created', ip, detail: number });
   const c = (await query('SELECT * FROM recovery_cases WHERE id = $1', [id])).rows[0];
   if (contactOk) await enqueueMail(c, 'created', '1');

@@ -23,6 +23,7 @@ import { can } from './admin.mjs';
 import { logAdmin } from './adminsec.mjs';
 import { sendEmail } from './notify.mjs';
 import { generateId } from './security.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 
 const ROOT = process.env.SITE_DIR || '/data/site';
 const MB = 1024 * 1024;
@@ -155,6 +156,7 @@ export const submitAppeal = async (b, { ip }) => {
     b?.lang === 'en'
       ? `We received your appeal. Number: ${code}\nStatus can be checked on the site. Review takes up to 7 business days.`
       : `Мы получили вашу апелляцию. Номер: ${code}\nСтатус можно проверить на сайте. Рассмотрение — до 7 рабочих дней.`).catch(() => {});
+  void notifyStaff('site', { title: 'Новая апелляция с сайта', body: `Номер ${code}`, dedupe: id });
   return { ok: true, code, token, id };
 };
 
@@ -174,6 +176,7 @@ export const submitRelease = async (b, { ip }) => {
   await sendEmail(email,
     b?.lang === 'en' ? `Sky release request received: ${code}` : `Заявка на релиз в Sky принята: ${code}`,
     b?.lang === 'en' ? `We received your release request “${title}”. Number: ${code}.` : `Мы получили заявку на релиз «${title}». Номер: ${code}.`).catch(() => {});
+  void notifyStaff('site', { title: 'Новая заявка на релиз с сайта', body: `Номер ${code}`, dedupe: id });
   return { ok: true, code, token, id };
 };
 

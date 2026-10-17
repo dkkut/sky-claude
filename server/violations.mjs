@@ -20,6 +20,7 @@
  * (violation_audit_log, тот же приём, что admin_log и market_pvz_audit).
  */
 import { pool, query } from './db.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 import { generateId } from './security.mjs';
 import { can, isOwner } from './admin.mjs';
 import { pushViolation } from './signal.mjs';
@@ -602,6 +603,7 @@ export const submitAppeal = async (actorId, violationId, reason, comment) => {
   }
   await query(`UPDATE violations SET status = 'APPEALED', updated_at = now() WHERE id = $1`, [violation.id]);
   await logViolation(actorId, 'appeal', id, 'appeal_submit', { violationId: violation.id }, violation.id);
+  void notifyStaff('violations', { title: 'Апелляция на нарушение', body: 'Новая апелляция ждёт рассмотрения.', dedupe: id, except: actorId });
   return { appeal: toAppeal(appealRow) };
 };
 

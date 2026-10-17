@@ -12,6 +12,7 @@
  *   • избранное, история и позиция прослушивания — строго свои.
  */
 import crypto from 'node:crypto';
+import { notifyStaff } from './staffnotify.mjs';
 import { retentionOf } from './storagequota.mjs';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
@@ -250,6 +251,7 @@ export const submitTrack = async (trackId, ownerId) => {
   );
   // Карточка исполнителя: находим по имени или заводим (сбой публикацию не ломает).
   await ensureCardForTrack(trackId);
+  void notifyStaff('content', { title: 'Новый трек на проверке', body: 'Трек ждёт решения в разделе «Контент».', dedupe: `track:${trackId}` });
   return { ok: true };
 };
 

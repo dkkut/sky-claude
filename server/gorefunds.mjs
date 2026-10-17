@@ -9,6 +9,7 @@
  * rejected | returned → escalated (заказчик) → upheld | denied (администрация); requested | rejected → withdrawn (заказчик).
  */
 import { cancelByRef } from './cashbackrules.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 import { query } from './db.mjs';
 import { can } from './admin.mjs';
 import { logAdmin } from './adminsec.mjs';
@@ -115,6 +116,7 @@ export const act = async (actorId, orderId, action, input = {}) => {
   if (out.ok) {
     const T = { accepted: 'Исполнитель согласился вернуть деньги. Он переведёт их сам и сообщит.', rejected: 'Исполнитель отказал в возврате. Можно обратиться к администрации.', returned: 'Исполнитель сообщил, что вернул деньги. Проверьте и подтвердите получение.',
       refunded: 'Заказчик подтвердил получение возврата.', escalated: 'Заказчик обратился к администрации по возврату.', withdrawn: 'Заказчик отозвал запрос на возврат.' };
+    if (out.status === 'escalated') void notifyStaff('go_dispute', { title: 'Возврат Sky GO: обращение', body: 'Заказчик обратился к администрации по возврату.', dedupe: `${out.id}:escalated`, except: [actorId] });
     await notifyGo(out.other, 'payment', 'Возврат по заказу', T[out.status] ?? 'Статус возврата изменился.', orderId, `${out.id}:${out.status}`);
   }
   return out;

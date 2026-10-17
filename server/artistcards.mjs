@@ -10,6 +10,7 @@
  * становится псевдонимом для голосового поиска).
  */
 import crypto from 'node:crypto';
+import { notifyStaff } from './staffnotify.mjs';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can } from './admin.mjs';
@@ -155,6 +156,7 @@ export const claim = async (profileId, cardId, { note, links } = {}) => {
   try { await query(`INSERT INTO music_artist_claims (id, card_id, claimant_id, note, links, status) VALUES ($1,$2,$3,$4,$5,'pending')`, [id, c.id, profileId, encryptContent(text), encryptContent(JSON.stringify(urls))]); }
   catch (e) { if (e.code === '23505') return { error: 'already_pending' }; throw e; }
   await log(c.id, 'claim_requested', profileId);
+  void notifyStaff('artist_claim', { title: 'Заявка на карточку музыканта', body: 'Подтверждение владения ждёт решения.', dedupe: id, except: profileId });
   return { ok: true, id };
 };
 

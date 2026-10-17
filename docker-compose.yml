@@ -76,6 +76,7 @@ services:
       AUTH_START_RATE_MULT:  ${AUTH_START_RATE_MULT:-1}
       REFRESH_ROTATION:      ${REFRESH_ROTATION:-on}
       REFRESH_REUSE_GRACE_SEC: ${REFRESH_REUSE_GRACE_SEC:-600}
+      STAFF_NOTIFY_PER_MIN: ${STAFF_NOTIFY_PER_MIN:-}
       # APP_DATABASE_URL — роль sky_app без прав суперпользователя (scripts/db-harden.sh). Не задана — как раньше, владелец БД.
       DATABASE_URL:          ${APP_DATABASE_URL:-postgres://sky:${POSTGRES_PASSWORD:?нужно задать POSTGRES_PASSWORD в .env}@postgres:5432/sky}
       SKIP_MIGRATE_ON_START: ${SKIP_MIGRATE_ON_START:-0}

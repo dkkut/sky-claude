@@ -17,6 +17,7 @@ import { query } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can, adminsWith, writeAdminLog } from './admin.mjs';
 import { emailGuestReply } from './sitesupport.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 
 const KINDS = new Set(['question', 'bug', 'idea', 'report', 'appeal']);
 const STATUSES = new Set(['open', 'in_progress', 'waiting', 'closed']);
@@ -95,6 +96,7 @@ export const createTicket = async (authorId, { subject, body, kind } = {}) => {
     [newId('sm'), id, authorId, encryptContent(text)],
   );
   await writeEvent(id, authorId, 'created', 'Обращение создано');
+  void notifyStaff('support', { title: 'Новое обращение в поддержку', body: theme.slice(0, 80), dedupe: id, except: authorId });
   return { ticket: await readTicket(id, authorId) };
 };
 
@@ -194,6 +196,7 @@ export const replyToTicket = async (ticketId, authorId, body) => {
     [ticket.id, nextStatus],
   );
   if (staff) void emailGuestReply(ticket, text);
+  else void notifyStaff(ticket.source === 'recovery' ? 'recovery' : 'support', { title: 'Новый ответ в обращении', body: 'Человек ответил в обращении — ждёт ответа.', dedupe: `${ticket.id}:reply:${Date.now()}`, except: authorId });
   if (ticket.source === 'recovery') void import('./recoverycases.mjs').then((m) => m.onTicketReply(ticket.id, staff, Date.now())).catch(() => {});
   return { ticket: await readTicket(ticket.id, authorId) };
 };

@@ -26,6 +26,7 @@ import {
   KINDS, KIND_LABEL, ACTIVITIES, ACTIVITY_LABEL, DOC_TYPES, FORMS, PVZ_KINDS,
   activityAllowed, cleanForm, requiredApplicationDocs, sellerCapabilities, validCountry,
 } from './sellerrules.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 
 export const APP_ID_RE = /^sap-[0-9a-f-]{36}$/;
 export const DOC_ID_RE = /^mdc-[0-9a-f-]{36}$/;
@@ -266,6 +267,7 @@ export const submitApplication = async (profileId) => {
     }
     await note(client, { profileId, appId: row.id, action: 'submitted', from: row.status, to: 'submitted' });
     await client.query('COMMIT');
+    void notifyStaff('seller_app', { title: row.request_type === 'initial' ? 'Новая заявка продавца' : 'Повторная проверка продавца', body: 'Заявка ждёт проверки документов.', dedupe: `${row.id}:r${upd[0].revision}`, except: profileId });
     return { application: await appView(upd[0]) };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -682,6 +684,7 @@ export const submitPvzApplication = async (profileId) => {
       WHERE id=$1 AND status = ANY($2) RETURNING *`, [row.id, EDITABLE]);
   if (!upd[0]) return { error: 'already_submitted' };
   await query(`INSERT INTO market_pvz_app_events (app_id, actor_id, action, from_status, to_status) VALUES ($1,$2,'submitted',$3,'submitted')`, [row.id, profileId, row.status]);
+  void notifyStaff('pvz_app', { title: 'Новая заявка на пункт выдачи', body: `${row.city}, ${row.title}`.slice(0, 120), dedupe: `${row.id}:${Date.now()}`, except: profileId });
   return { application: await pvzView(upd[0]) };
 };
 

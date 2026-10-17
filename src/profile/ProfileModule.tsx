@@ -1,6 +1,7 @@
 import { APP_VERSION_LABEL } from '../core/version';
 import { fitImageToDataUrl } from '../shared/imageFit';
 import { OwnerNotifySettings } from './OwnerNotifySettings';
+import { StaffNotifySettings } from './StaffNotifySettings';
 import { enablePush, disablePush, PUSH_TEXT } from '@/notifications/pushClient';
 import { useCursorPet, CURSOR_ANIMALS } from '@/shared/cursorPet';
 import { flash } from '../shared/flash';
@@ -811,6 +812,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
       </SectionBlock>
 
       <OwnerNotifySettings/>
+      <StaffNotifySettings/>
 
       {/* -- КАРТЫ ------------------ */}
       <SectionBlock title="Карты">

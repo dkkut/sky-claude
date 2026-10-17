@@ -12,6 +12,7 @@
  * без решения модератора, а сам разработчик свою игру не одобряет.
  */
 import crypto from 'node:crypto';
+import { notifyStaff } from './staffnotify.mjs';
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { can } from './admin.mjs';
@@ -531,6 +532,7 @@ export const submit = async (profileId, type, id) => {
     await modEvent(c, type, id, profileId, 'developer', 'submitted', row.moderation_status, 'pending');
     await c.query('COMMIT');
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
+  void notifyStaff('blox', { title: isGame ? 'Игра Sky Blox на проверке' : 'Плейс Sky Blox на проверке', body: 'Материал ждёт решения модератора.', dedupe: `${type}:${id}:${Date.now()}`, except: profileId });
   return { ok: true, status: 'pending', autoFindings: findings };
 };
 
@@ -846,6 +848,7 @@ export const createReport = async (reporterId, input = {}) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [id, reporterId, targetType, targetId, gameId, developerId, reason, details, priority]);
   } catch (err) { if (err?.code === '23505') return { error: 'already_reported' }; throw err; }
   await query('INSERT INTO blox_report_events (report_id, actor_id, action) VALUES ($1,$2,$3)', [id, reporterId, 'created']);
+  void notifyStaff('blox', { title: 'Жалоба на Sky Blox', body: 'Новая жалоба ждёт рассмотрения.', dedupe: id, except: reporterId });
   return { ok: true, id, priority };
 };
 
@@ -915,6 +918,7 @@ export const createAppeal = async (authorId, input = {}) => {
   const id = `bpa-${generateId()}`;
   try { await query(`INSERT INTO blox_appeals (id, author_id, subject_type, subject_id, text, original_decider) VALUES ($1,$2,$3,$4,$5,$6)`, [id, authorId, subjectType, subjectId, body, decider]); }
   catch (err) { if (err?.code === '23505') return { error: 'already_appealed' }; throw err; }
+  void notifyStaff('blox', { title: 'Апелляция Sky Blox', body: 'Разработчик подал апелляцию.', dedupe: id, except: authorId });
   return { ok: true, id };
 };
 

@@ -9,6 +9,7 @@
  * Проверка документов вручную: интеграций с реестрами нет, и интерфейс так и говорит.
  */
 import crypto from 'node:crypto';
+import { notifyStaff } from './staffnotify.mjs';
 import { query } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can, isOwner } from './admin.mjs';
@@ -109,6 +110,7 @@ export const requestVerification = async (profileId, { type, subjectId, note, li
       [vid, type, id, profileId, encryptContent(text), encryptContent(JSON.stringify(urls))]);
   } catch (e) { if (e.code === '23505') return { error: 'already_pending' }; throw e; }
   await history(null, vid, 'requested', profileId, null);
+  void notifyStaff('verification', { title: 'Заявка на верификацию', body: 'Новая заявка на отметку ждёт решения.', dedupe: vid, except: profileId });
   return { ok: true, id: vid };
 };
 

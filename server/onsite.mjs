@@ -13,6 +13,7 @@
  *    жалобы разбирает сотрудник с правом market_moderation.
  */
 import crypto from 'node:crypto';
+import { notifyStaff } from './staffnotify.mjs';
 import { query } from './db.mjs';
 import { can } from './admin.mjs';
 import { logAdmin } from './adminsec.mjs';
@@ -391,6 +392,7 @@ export const report = async (me, listingId, input) => {
   if (today[0].n >= 20) return { error: 'rate_limited' };
   const { rowCount } = await query(`INSERT INTO onsite_reports (id, listing_id, deal_id, reporter_id, reason, text) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
     [newId('osr'), listingId, input?.dealId ? String(input.dealId).slice(0, 60) : null, me, reason, clean(input?.text, 500)]);
+  if (rowCount) void notifyStaff('market_report', { title: 'Жалоба на объявление «На месте»', body: 'Новая жалоба ждёт модерации.', dedupe: `osr:${listingId}:${me}`, except: me });
   return rowCount ? { ok: true } : { error: 'already_reported' };
 };
 

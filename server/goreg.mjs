@@ -13,6 +13,7 @@ import { cleanForm, validPhone } from './sellerrules.mjs';
 import { sniffDoc, MAX_DOC_BYTES, profileAge, ageFromDob } from './courierverify.mjs';
 import { encryptBytes, decryptBytes } from './crypto.mjs';
 import { newId, ROLES, LEGAL_FORMS, clean, cityOk, sealJson, openJson, goLog, notifyGo, inTx } from './gocore.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 
 const FORM_KIND = { npd: 'npd', ip: 'ip', ooo: 'legal' };
 const MAX_DOCS = 8;
@@ -144,6 +145,11 @@ export const removeDoc = async (profileId, executorId, docId) => {
 
 /** Отправка: строгая проверка всех полей, документов, возраста. */
 export const submit = async (profileId, executorId, input = {}) => {
+  const r = await submitTx(profileId, executorId, input);
+  if (r?.ok) void notifyStaff('go_reg', { title: 'Новая заявка исполнителя Sky GO', body: 'Заявка ждёт проверки.', dedupe: `${executorId}:${Date.now()}`, except: profileId });
+  return r;
+};
+const submitTx = async (profileId, executorId, input = {}) => {
   return inTx(async (c) => {
     const ex = await ownRow(profileId, executorId, c);
     if (!ex) return { error: 'not_found' };

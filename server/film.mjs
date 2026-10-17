@@ -37,6 +37,7 @@ import { checkPublish } from './uploadlimits.mjs';
 import { sharedInSession } from './watchgrant.mjs';
 import { sharedDirectly } from './storageshare.mjs';
 import { removeMovieFiles, listStoredIds, posterIdFor } from './filmstore.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 
 const newId = () => `mov-${crypto.randomUUID()}`;
 
@@ -514,6 +515,7 @@ export const submitMovie = async (movieId, ownerId, { license, explicit, ageRest
       WHERE id = $1 AND status IN ('private','rejected')`,
     [movieId, lic, explicit === true, lic === 'open' && ageRestricted18 === true]);
   if (rowCount === 0) return { error: 'already_pending' };
+  void notifyStaff('content', { title: 'Новое кино на проверке', body: 'Материал ждёт решения в разделе «Контент».', dedupe: `film:${movieId}` });
   return { ok: true };
 };
 

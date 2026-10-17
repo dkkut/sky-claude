@@ -18,6 +18,7 @@
  * «читать» / «слушать» остаётся на той же главе книги.
  */
 import crypto from 'node:crypto';
+import { notifyStaff } from './staffnotify.mjs';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can } from './admin.mjs';
@@ -416,6 +417,7 @@ export const submitBook = async (bookId, authorId) => {
   await query(
     `UPDATE books SET status = 'pending', submitted_at = now(), reject_reason = NULL, updated_at = now()
      WHERE id = $1`, [bookId]);
+  void notifyStaff('content', { title: 'Новая книга на проверке', body: 'Книга ждёт решения в разделе «Контент».', dedupe: `book:${bookId}` });
   return { ok: true };
 };
 

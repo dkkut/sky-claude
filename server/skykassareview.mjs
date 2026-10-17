@@ -11,6 +11,7 @@ import { query } from './db.mjs';
 import { can, isOwner } from './admin.mjs';
 import { logAdmin, beginStepUp, consumeStepUp } from './adminsec.mjs';
 import { notifyOwnerRequest } from './ownernotify.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 import { wallet } from './wallet.mjs';
 import { codeHash, generateCanonical, prettyCode } from './skycodes.mjs';
 import { paymentView, senderPublic } from './skykassa.mjs';
@@ -324,6 +325,7 @@ export const requestRefund = async ({ actorId, asStaff }, id, body, meta) => {
   }
   if (asStaff) await audit(actorId, out, 'skykassa_refund_request', `${rub(out._amount)}: ${reason}`, meta);
   await notifyOwnerRequest(actorId, `SkyKassa: запрошен возврат по заявке ${out.number} на ${rub(out._amount)}`, out.id);
+  if (!asStaff) void notifyStaff('topup', { title: 'Запрос на возврат пополнения', body: `Заявка ${out.number}, ${rub(out._amount)}.`, dedupe: `${out.id}:refund:${out._rid}`, except: actorId, skipOwner: true });
   await notifyOnce(out.user_id, `${out.id}:refund_requested:${out._rid}`, 'SkyKassa', `Возврат по заявке ${out.number} запрошен.`, { push: false });
   return { ok: true, refundId: out._rid };
 };

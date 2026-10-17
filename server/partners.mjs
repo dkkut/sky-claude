@@ -10,6 +10,7 @@
  *  • Реферальных вознаграждений здесь нет: если появятся — отдельным модулем с прозрачным учётом и защитой от накрутки.
  */
 import crypto from 'node:crypto';
+import { notifyStaff } from './staffnotify.mjs';
 import { query } from './db.mjs';
 import { encryptSecret, openSecret } from './crypto.mjs';
 import { logAdmin } from './adminsec.mjs';
@@ -132,6 +133,7 @@ export const save = async (actorId, body, id = null) => {
             status=$12, updated_by=$13, updated_at=now(), approved_by = CASE WHEN $12 = 'review' THEN NULL ELSE approved_by END WHERE id=$1`,
     [id, v.name, v.description, v.category, v.website, v.contact ? encryptSecret(v.contact) : '', v.startsAt, v.endsAt, JSON.stringify(v.offers), v.conditions, v.sort, status, actorId]);
   await log(id, actorId, 'update', { fields: changed, sentBackToReview: status !== cur.status });
+  if (status === 'review' && cur.status !== 'review') void notifyStaff('partners', { title: 'Партнёр на проверке', body: `${v.name}: правка вернула карточку на подтверждение.`, dedupe: `${id}:${Date.now()}`, except: [actorId] });
   await logAdmin({ actorId, targetType: 'partner', targetId: id, type: 'partner_update', detail: `${v.name}: ${changed.join(', ')}` });
   return { ok: true, id, status, changed };
 };
@@ -193,6 +195,7 @@ export const transition = async (actorId, id, action, { reason = '', canApprove 
             approved_by = CASE WHEN $2 = 'active' AND $3 = 'approve' THEN $4 ELSE approved_by END,
             approved_at = CASE WHEN $2 = 'active' AND $3 = 'approve' THEN now() ELSE approved_at END WHERE id=$1`, [id, to, action, actorId]);
   await log(id, actorId, action, { from: p.status, to, reason: why });
+  if (to === 'review') void notifyStaff('partners', { title: 'Партнёр на проверке', body: `${p.name} ждёт подтверждения.`, dedupe: `${id}:${Date.now()}`, except: [actorId] });
   await logAdmin({ actorId, targetType: 'partner', targetId: id, type: `partner_${action}`, detail: `${p.name}: ${p.status} → ${to}${why ? ` (${why})` : ''}` });
   return { ok: true, status: to };
 };

@@ -25,6 +25,7 @@ import { generateId } from './security.mjs';
 import { encryptContent, decryptContent, encryptBytes, decryptBytes } from './crypto.mjs';
 import { can } from './admin.mjs';
 import { marketText as text } from './market.mjs';
+import { notifyStaff } from './staffnotify.mjs';
 
 const MIN_COURIER_AGE = 16;
 const MAX_NAME = 120;
@@ -143,6 +144,7 @@ export const submitVerification = async (profileId, { fullName } = {}) => {
     throw err;
   }
   await logLogi(profileId, 'courier_verification_submitted', id);
+  void notifyStaff('courier_app', { title: 'Новая заявка курьера', body: 'Проверка паспорта и документов.', dedupe: id, except: profileId });
   return { verification: await myVerification(profileId) };
 };
 
