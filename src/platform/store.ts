@@ -17,6 +17,8 @@ export interface Track {
   year?: number;
   license?: string;
   licenseSource?: string;
+  explicit?: boolean;
+  legacy?: boolean;
   lyrics?: string;
   coverUrl?: string;
   duration: string;

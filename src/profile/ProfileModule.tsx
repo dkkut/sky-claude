@@ -334,6 +334,8 @@ const IslandSection = () => {
         right={<Toggle on={s.aiManualCall} onToggle={() => set({ aiManualCall: !s.aiManualCall })}/>}/>
       <SettingsRow icon={MicIcon} label="Фраза «Привет, Скай»" sub={wakeSub}
         right={<Toggle on={s.aiWake} disabled={!canListen} onToggle={() => { void toggleWake(); }}/>}/>
+      <SettingsRow icon={Sparkles} label="Скрывать Explicit (E)" sub={s.hideExplicit ? 'Материалы с меткой «E» не показываются в каталогах музыки, кино и книг' : 'Показывать всё; метка «E» стоит рядом с названием'}
+        right={<Toggle on={s.hideExplicit} onToggle={() => set({ hideExplicit: !s.hideExplicit })}/>}/>
       <SettingsRow icon={MicIcon} label="Умная колонка"
         sub={!s.aiSpeaker ? 'Подключите Bluetooth-колонку к телефону или ПК и говорите «Привет, Скай, включи …»'
           : `Включено: слушает фразу, отвечает голосом, музыка играет через устройство вывода звука${outputs?.length ? ` (${outputs.join(', ')})` : ''}. Работает, пока приложение открыто; индикатор микрофона виден на острове`}

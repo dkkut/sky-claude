@@ -60,6 +60,9 @@ export const toTrack = (row) => ({
   genre: row.genre || undefined,
   license: row.license || 'own',
   licenseSource: row.license_source || undefined,
+  /** Итог: решение модератора, иначе отметка автора. «Старая версия» — только по решению модератора. */
+  explicit: (row.mod_explicit ?? row.explicit) === true || undefined,
+  legacy: row.legacy_label === true || undefined,
   year: row.year ?? undefined,
   duration: row.duration_sec ?? 0,
   hasCover: Boolean(row.has_cover),
@@ -113,12 +116,14 @@ export const visibleTrack = async (trackId, viewerId) => {
  * Каталог: опубликованное плюс своё. Поиск идёт параметром, а не
  * склейкой строки, поэтому кавычка в запросе — это просто кавычка.
  */
-export const listTracks = async (viewerId, { q, limit, offset, mine } = {}) => {
+export const listTracks = async (viewerId, { q, limit, offset, mine, hideExplicit } = {}) => {
   const lim = Math.min(100, Math.max(1, Number(limit) || 50));
   const off = Math.max(0, Number(offset) || 0);
   const args = [viewerId, lim, off];
   const where = [mine ? 'owner_id = $1' : "(status = 'published' OR owner_id = $1)"];
 
+  // «Скрывать Explicit» — настройка человека; своё в «Моей музыке» не прячем, это его собственная коллекция.
+  if (hideExplicit && !mine) where.push('(owner_id = $1 OR NOT coalesce(mod_explicit, explicit))');
   const needle = text(q, 100).toLowerCase();
   if (needle) {
     // ESCAPE обязателен: без него _ и % из запроса стали бы шаблоном
@@ -158,13 +163,13 @@ export const createTrack = async (ownerId, meta) => {
   const id = newId('trk');
   await query(
     `INSERT INTO music_tracks
-       (id, owner_id, title, artist, album, genre, year, duration_sec, mime, bytes, status, license, license_source)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'private',$11,$12)`,
+       (id, owner_id, title, artist, album, genre, year, duration_sec, mime, bytes, status, license, license_source, explicit)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'private',$11,$12,$13)`,
     [id, ownerId, title, artist, text(meta.album, MAX_TITLE), text(meta.genre, 60),
       Number.isFinite(Number(meta.year)) ? Number(meta.year) : null,
       Math.max(0, Math.min(86400, Number(meta.duration) || 0)),
       String(meta.mime ?? 'audio/mpeg'), Math.max(0, Number(meta.bytes) || 0),
-      cleanLicense(meta.license), cleanSource(meta.licenseSource)],
+      cleanLicense(meta.license), cleanSource(meta.licenseSource), meta.explicit === true || meta.explicit === 'true' || meta.explicit === '1'],
   );
   return { id };
 };
@@ -191,6 +196,7 @@ export const updateTrack = async (trackId, ownerId, patch) => {
   if (patch.artist !== undefined) put('artist', text(patch.artist, MAX_ARTIST));
   if (patch.album !== undefined) put('album', text(patch.album, MAX_TITLE));
   if (patch.genre !== undefined) put('genre', text(patch.genre, 60));
+  if (patch.explicit !== undefined) put('explicit', patch.explicit === true);
   if (patch.license !== undefined) put('license', cleanLicense(patch.license));
   if (patch.licenseSource !== undefined) put('license_source', cleanSource(patch.licenseSource));
   if (patch.lyrics !== undefined) {

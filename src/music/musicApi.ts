@@ -8,6 +8,7 @@ import { withTicketRefresh } from '@/core/mediaTicketRefresh';
 import { apiCall, uploadUrl } from '@/core/auth/api';
 import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 import { LIMIT_REASONS } from '@/shared/uploadReasons';
+import { hideExplicitOn } from '@/labels/hideExplicit';
 import { flash } from '@/shared/flash';
 import type { Track, TrackStatus } from '@/platform/store';
 
@@ -20,6 +21,9 @@ export interface ServerTrack {
   genre?: string;
   license?: string;
   licenseSource?: string;
+  /** Итог меток: Explicit (решение модератора или отметка автора) и «Старая версия» (только по решению модератора). */
+  explicit?: boolean;
+  legacy?: boolean;
   year?: number;
   /** Длительность в секундах. */
   duration: number;
@@ -90,6 +94,8 @@ export const toClientTrack = (t: ServerTrack): Track => ({
   genre: t.genre || 'Другое',
   license: t.license ?? 'own',
   licenseSource: t.licenseSource,
+  explicit: t.explicit,
+  legacy: t.legacy,
   album: t.album,
   year: t.year,
   coverUrl: t.hasCover ? coverUrl(t.id) : undefined,
@@ -125,6 +131,7 @@ export const apiTracks = async (opts: { q?: string; mine?: boolean; limit?: numb
   if (opts.q) p.set('q', opts.q);
   if (opts.mine) p.set('mine', '1');
   if (opts.limit) p.set('limit', String(opts.limit));
+  if (hideExplicitOn() && !opts.mine) p.set('hideExplicit', '1');
   const qs = p.toString();
   const r = await apiCall<{ tracks: ServerTrack[] }>(`/api/music/tracks${qs ? `?${qs}` : ''}`);
   return r.ok ? (r.data?.tracks ?? []) : null;

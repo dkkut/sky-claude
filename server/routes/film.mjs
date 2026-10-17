@@ -214,6 +214,7 @@ export const filmRoutes = async (req, res, url) => {
         limit: params.get('limit'),
         offset: params.get('offset'),
         sort: params.get('sort') ?? undefined,
+        hideExplicit: params.get('hideExplicit') === '1',
       }),
     });
   }

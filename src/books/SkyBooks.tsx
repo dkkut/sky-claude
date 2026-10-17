@@ -1,6 +1,7 @@
 /* ===============================================================
    SKY BOOKS  -  Площадка книг и аудиокниг
 =============================================================== */
+import { ExplicitBadge, LegacyChip, LabelsButton } from '@/labels/Labels';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -69,7 +70,7 @@ const BookCard = ({ book, onOpen }: { book: Book; onOpen: () => void }) => {
         </div>
       </div>
       <div className="pt-2 px-0.5">
-        <p className="text-xs font-bold text-white leading-tight line-clamp-2">{book.title}</p>
+        <p className="text-xs font-bold text-white leading-tight line-clamp-2">{book.title}<ExplicitBadge show={book.explicit} size={12} /></p>
         <p className="text-[10px] mt-0.5 truncate" style={{ color: B.t3 }}>{book.authorName ?? 'Sky'}</p>
         <p className="text-[10px] mt-1" style={{ color: B.t3 }}>
           {book.hasAudio ? fmtAudioDuration(book.audioSeconds) : fmtWords(book.words)}
@@ -125,7 +126,8 @@ const BookDetail = ({ book, onBack, onShelfChanged }: {
           </div>
         </div>
         <div className="text-center px-6 pb-2">
-          <h1 className="text-xl font-black text-white leading-snug">{book.title}</h1>
+          <h1 className="text-xl font-black text-white leading-snug">{book.title}<ExplicitBadge show={book.explicit} size={18} /><span className="ml-2 align-middle"><LabelsButton kind="book" id={book.id} /></span></h1>
+          {book.legacy && <div className="mt-1"><LegacyChip show /></div>}
           <p className="text-sm mt-1" style={{ color: B.t2 }}>{book.authorName ?? 'Sky'}</p>
         </div>
       </div>

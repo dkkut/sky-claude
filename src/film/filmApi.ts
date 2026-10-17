@@ -15,6 +15,7 @@ import { withTicketRefresh } from '@/core/mediaTicketRefresh';
 import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
 import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 import { LIMIT_REASONS } from '@/shared/uploadReasons';
+import { hideExplicitOn } from '@/labels/hideExplicit';
 
 /** Состояния фильма. Всё, кроме 'published', видит только владелец. */
 export type FilmStatus = 'private' | 'pending' | 'published' | 'rejected';
@@ -42,6 +43,7 @@ export interface ServerMovie {
   private: boolean;
   license?: 'open' | 'personal';
   explicit?: boolean;
+  legacy?: boolean;
   ageRestricted18?: boolean;
   isShort?: boolean;
   /** Размер кадра. Нужен, чтобы отличить вертикальное видео от обычного. */
@@ -136,6 +138,7 @@ export const apiCatalog = async (opts: CatalogOpts = {}) => {
   if (opts.sort) p.set('sort', opts.sort);
   if (opts.limit) p.set('limit', String(opts.limit));
   if (opts.offset) p.set('offset', String(opts.offset));
+  if (hideExplicitOn()) p.set('hideExplicit', '1');
   const qs = p.toString();
   const r = await apiCall<{ movies: ServerMovie[] }>(`/api/film/catalog${qs ? `?${qs}` : ''}`);
   return r.ok ? (r.data?.movies ?? []) : null;

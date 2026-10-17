@@ -4,6 +4,7 @@
  * Только вызовы. Кому что можно, решает сервер — этот файл живёт в
  * браузере и ни одна проверка отсюда его решение не заменяет.
  */
+import { hideExplicitOn } from '@/labels/hideExplicit';
 import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/auth/api';
 import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 
@@ -19,6 +20,7 @@ export interface Book {
   status: 'private' | 'pending' | 'published' | 'rejected';
   private: boolean;
   explicit?: boolean;
+  legacy?: boolean;
   chapters: number;
   words: number;
   audioSeconds: number;
@@ -99,6 +101,7 @@ export const apiCatalog = async (opts: {
   if (opts.limit) p.set('limit', String(opts.limit));
   if (opts.offset) p.set('offset', String(opts.offset));
   if (opts.sort) p.set('sort', opts.sort);
+  if (hideExplicitOn()) p.set('hideExplicit', '1');
   const qs = p.toString();
   const r = await apiCall<{ books: Book[] }>(`/api/books/catalog${qs ? `?${qs}` : ''}`);
   return r.ok ? (r.data?.books ?? []) : null;

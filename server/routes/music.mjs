@@ -182,6 +182,7 @@ export const musicRoutes = async (req, res, url) => {
         limit: params.get('limit'),
         offset: params.get('offset'),
         mine: params.get('mine') === '1',
+        hideExplicit: params.get('hideExplicit') === '1',
       }),
     });
   }
@@ -428,6 +429,7 @@ export const musicRoutes = async (req, res, url) => {
       licenseSource: params.get('source'),
       year: params.get('year'),
       duration: params.get('duration'),
+      explicit: params.get('explicit'),
     };
 
     const head = await peek(req, 32);

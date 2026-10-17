@@ -67,6 +67,8 @@ export interface AppSettings {
   aiWake:          boolean;
   /** «Умная колонка»: телефон/ПК с Bluetooth-колонкой слушает фразу и отвечает голосом. */
   aiSpeaker:       boolean;
+  /** Скрывать в каталогах музыки, кино и книг материалы с меткой «E» (Explicit). */
+  hideExplicit:    boolean;
   aiVoiceAnswers:  boolean;
   aiContinue:      boolean;
   aiIdleEnd:       boolean;
@@ -117,6 +119,7 @@ const defaults: AppSettings = {
   aiManualCall:     true,
   aiWake:           false,
   aiSpeaker:        false,
+  hideExplicit:     false,
   aiVoiceAnswers:   true,
   aiContinue:       true,
   aiIdleEnd:        true,

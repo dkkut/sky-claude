@@ -108,7 +108,8 @@ export const toMovie = (row) => ({
   /** Закрытый фильм — тот, что лежит в личной коллекции. */
   private: row.status !== 'published',
   license: row.license ?? undefined,
-  explicit: row.explicit === true || undefined,
+  explicit: (row.mod_explicit ?? row.explicit) === true || undefined,
+  legacy: row.legacy_label === true || undefined,
   ageRestricted18: row.age_restricted18 === true || undefined,
   isShort: row.is_short === true || undefined,
   width: Number(row.width ?? 0) || undefined,
@@ -232,11 +233,12 @@ const searchClause = (q, args) => {
         OR lower(m.genre) LIKE $${n} ESCAPE '\\')`;
 };
 
-export const listCatalog = async (viewerId, { q, category, limit, offset, sort } = {}) => {
+export const listCatalog = async (viewerId, { q, category, limit, offset, sort, hideExplicit } = {}) => {
   const lim = num(limit, 1, 100) ?? 50;
   const off = num(offset, 0, 100000) ?? 0;
   const args = [viewerId ?? '', lim, off];
   const where = [PUBLIC_ONLY];
+  if (hideExplicit) where.push('NOT coalesce(m.mod_explicit, m.explicit)');
 
   const cat = text(category, MAX_SHORT);
   if (cat && cat !== 'Все') { args.push(cat.toLowerCase()); where.push(`lower(m.category) = $${args.length}`); }

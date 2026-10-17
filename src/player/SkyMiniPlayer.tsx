@@ -1,3 +1,4 @@
+import { ExplicitBadge } from '@/labels/Labels';
 import React, {
   useCallback, useEffect, useRef, useState,
 } from 'react';
@@ -369,7 +370,7 @@ export const SkyMiniPlayer = () => {
                       {item.kind === 'music' ? 'Музыка' : item.kind === 'podcast' ? 'Подкаст' : item.kind === 'tv' ? 'ТВ' : item.kind === 'video' ? 'Видео' : 'Голосовое'}
                     </p>
                   </div>
-                  <p className="text-[13px] font-bold text-white truncate leading-tight">{item.title}</p>
+                  <p className="text-[13px] font-bold text-white truncate leading-tight">{item.title}<ExplicitBadge show={item.explicit} size={13} /></p>
                   <p className="text-[10px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{item.author}</p>
                 </div>
 

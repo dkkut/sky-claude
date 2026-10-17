@@ -76,7 +76,8 @@ export const toBook = (row) => ({
   hasCover: Boolean(row.has_cover),
   status: row.status,
   private: row.status !== 'published',
-  explicit: row.explicit === true || undefined,
+  explicit: (row.mod_explicit ?? row.explicit) === true || undefined,
+  legacy: row.legacy_label === true || undefined,
   chapters: Number(row.chapters_count ?? 0),
   words: Number(row.words_count ?? 0),
   audioSeconds: Number(row.audio_seconds ?? 0),
@@ -142,11 +143,12 @@ const searchClause = (q, args, columns) => {
   return `(${columns.map((c) => `lower(${c}) LIKE $${n} ESCAPE '\\'`).join(' OR ')})`;
 };
 
-export const listBooks = async (viewerId, { q, category, limit, offset, sort } = {}) => {
+export const listBooks = async (viewerId, { q, category, limit, offset, sort, hideExplicit } = {}) => {
   const lim = num(limit, 1, 100) ?? 40;
   const off = num(offset, 0, 100000) ?? 0;
   const args = [viewerId ?? '', lim, off];
   const where = [PUBLIC_ONLY];
+  if (hideExplicit) where.push('NOT coalesce(b.mod_explicit, b.explicit)');
 
   const cat = text(category, MAX_SHORT);
   if (cat && cat !== 'Все') { args.push(cat); where.push(`b.category = $${args.length}`); }

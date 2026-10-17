@@ -1,3 +1,4 @@
+import { ExplicitBadge, LabelsButton, LegacyChip } from '@/labels/Labels';
 import { RetentionNote } from '@/shared/RetentionNote';
 import React from 'react';
 /* ===========================================================
@@ -214,7 +215,7 @@ const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNu
       </div>
     )}
     <div className="flex-1 min-w-0">
-      <p className={isMobile ? 'text-[13px] font-medium truncate' : 'text-sm font-medium truncate'} style={{ color: active ? YM.accent : YM.text }}>{track.title}</p>
+      <p className={isMobile ? 'text-[13px] font-medium truncate' : 'text-sm font-medium truncate'} style={{ color: active ? YM.accent : YM.text }}>{track.title}<ExplicitBadge show={track.explicit} /></p>
       {onArtist ? (
         <button type="button" onClick={e => { e.stopPropagation(); onArtist(track.artist); }}
           className={isMobile ? 'block max-w-full truncate text-left text-[11px]' : 'block max-w-full truncate text-left text-xs'}
@@ -222,7 +223,7 @@ const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNu
           {track.artist}
         </button>
       ) : (
-        <p className={isMobile ? 'text-[11px] truncate' : 'text-xs truncate'} style={{ color: YM.sub }}>{track.artist}</p>
+        <p className={isMobile ? 'text-[11px] truncate' : 'text-xs truncate'} style={{ color: YM.sub }}>{track.artist}{track.legacy && <span className="ml-2"><LegacyChip show /></span>}</p>
       )}
     </div>
     <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -236,6 +237,7 @@ const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNu
         style={{ color: YM.sub }}>
         <Plus size={15} />
       </button>
+      {!track.isLocal && <LabelsButton kind="track" id={track.id} size={15} />}
       {/* Download for offline */}
       {(
       <button type="button" onClick={handleDownload}
@@ -2534,11 +2536,11 @@ export const SkyMusic = () => {
     // строки только ради заполненного экрана — нечестно.
     const lyrics = t.syncedLyrics && t.syncedLyrics.length > 0 ? t.syncedLyrics : [];
     pushToPlayer({
-      id: t.id, kind: 'music', title: t.title, author: t.artist ?? '',
+      id: t.id, kind: 'music', title: t.title, author: t.artist ?? '', explicit: t.explicit, legacy: t.legacy,
       coverUrl: t.coverUrl, hue: parseInt(t.id, 36) % 360,
       srcUrl: t.sourceUrl, duration: 0, lyrics,
       queue: pool.map(p => ({
-        id: p.id, kind: 'music' as const, title: p.title, author: p.artist ?? '',
+        id: p.id, kind: 'music' as const, title: p.title, author: p.artist ?? '', explicit: p.explicit, legacy: p.legacy,
         coverUrl: p.coverUrl, hue: parseInt(p.id, 36) % 360, srcUrl: p.sourceUrl,
       })),
       qIdx: i,

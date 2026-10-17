@@ -53,6 +53,7 @@ import { useModuleStore } from '@/data/state/modules';
 import { SkyShorts } from './SkyShorts';
 import { ACCEPT_VIDEO, ACCEPT_IMAGE } from '@/shared/fileAccept';
 import { SeriesRow, SeriesPage, MySeriesBar } from '@/film/Series';
+import { ExplicitBadge, LegacyChip, LabelsButton } from '@/labels/Labels';
 import { apiSeriesCatalog, apiNextEpisode, apiSubtitles, apiSubtitleBlobUrl, type ServerSeries, type SubtitleTrack } from '@/film/seriesApi';
 
 /* -- токены ----------------------------------------------- */
@@ -502,7 +503,7 @@ export const Player = ({ movie, onClose, together = null, onNextEpisode }: {
                 <ChevronLeft size={20} className="text-white" />
               </button>
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-white truncate">{movie.title}</p>
+                <p className="font-bold text-white truncate">{movie.title}<ExplicitBadge show={movie.explicit} /></p>
                 {movie.year && <p className="text-xs" style={{ color: K.sub }}>{movie.year} · {movie.genre}</p>}
               </div>
               {/* «Только я» — про личную полку, поэтому подпись видит
@@ -756,7 +757,8 @@ const Detail = ({ movie, onPlay, onClose, saved, onSave }: {
             <X size={16} className="text-white" />
           </button>
           <div className="absolute bottom-4 left-4 right-12">
-            <h2 className="text-xl font-black text-white leading-snug">{movie.title}</h2>
+            <h2 className="text-xl font-black text-white leading-snug">{movie.title}<ExplicitBadge show={movie.explicit} size={18} /><span className="ml-2 align-middle"><LabelsButton kind="movie" id={movie.id} /></span></h2>
+            {movie.legacy && <div className="mt-1"><LegacyChip show /></div>}
             <div className="flex items-center flex-wrap gap-2 mt-1">
               {movie.year && <span className="text-sm" style={{ color: K.sub }}>{movie.year}</span>}
               {movie.genre && <span className="text-sm" style={{ color: K.sub }}>· {movie.genre}</span>}
@@ -908,7 +910,7 @@ const Hero = ({ movie, onPlay, onInfo }: { movie: ServerMovie; onPlay: () => voi
             {movie.category}
           </span>
         )}
-        <h2 className="text-[22px] font-black text-white leading-tight mb-1.5">{movie.title}</h2>
+        <h2 className="text-[22px] font-black text-white leading-tight mb-1.5">{movie.title}<ExplicitBadge show={movie.explicit} size={18} /></h2>
         <div className="flex items-center flex-wrap gap-2.5 mb-4">
           <Stars r={movie.rating} />
           {movie.year && <span className="text-xs" style={{ color: K.sub }}>{movie.year}</span>}

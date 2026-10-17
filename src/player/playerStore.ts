@@ -12,6 +12,9 @@ export interface PlayerItem {
   author:    string;
   coverUrl?: string;
   hue?:      number;       // gradient accent colour (0-360)
+  /** Метки материала (сервер): Explicit «E» и «Старая версия». */
+  explicit?: boolean;
+  legacy?:   boolean;
   color?:    string;
   // queue
   queue?:    PlayerItem[];
