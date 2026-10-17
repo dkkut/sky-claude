@@ -16,7 +16,7 @@ import { oidcRoutes } from './routes/oidc.mjs';
 import { sshAdminRoutes } from './routes/sshadmin.mjs';
 import { sweepOidc } from './oidc.mjs';
 import { shutdownState, maintenanceState } from './platform.mjs';
-import { waitForDb, migrate, closeDb, query } from './db.mjs';
+import { waitForDb, migrate, pendingMigrations, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
 import { encryptLegacyMedia } from './mediabackfill.mjs';
 import { connectRedis, closeRedis, redisAlive } from './sessions.mjs';
@@ -518,7 +518,17 @@ const start = async () => {
   }
 
   await waitForDb();
-  await migrate();
+  if (process.env.SKIP_MIGRATE_ON_START === '1') {
+    // Роль БД приложения без прав на изменение схемы (scripts/db-harden.sh): миграции накатывает
+    // отдельный запуск под владельцем (scripts/migrate.mjs), а здесь только проверяем, что схема актуальна.
+    const pending = await pendingMigrations();
+    if (pending.length) {
+      console.error(`[db] не применены миграции (${pending.length}): ${pending.slice(0, 3).join(', ')}… Запустите scripts/migrate.mjs под владельцем БД (deploy-local.sh делает это сам).`);
+      process.exit(1);
+    }
+  } else {
+    await migrate();
+  }
   startStateWatcher();
   await loadQuotas().catch((e) => console.error('[storage] квоты:', e.message));
   startStorageJobs();

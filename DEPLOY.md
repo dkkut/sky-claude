@@ -742,3 +742,12 @@ sudo install -o root -g root -m 755 scripts/ssh-login-hook.sh /opt/sky/ssh-login
 5. **Проверка**: `curl -I https://recovery.skymessenger.online/healthz`, открыть сайт, запросить код на свою почту; `curl https://recovery.skymessenger.online/api/platform/status` должен давать 404 (через этот домен доступен только `/api/recovery/`).
 6. **Если основной сайт недоступен**: recovery-сайт и его API живут в тех же контейнерах `web`/`api`. Когда не работает и он — консоль сервера: `docker compose exec api node scripts/reset-2fa.mjs <@username> --yes` (второй фактор человека) и `docker compose exec api node scripts/recover-owner.mjs SR-12345 --yes` (одобрение заявки владельца: только консоль).
 7. **Откат**: убрать `RECOVERY_DOMAIN` из `.env` и пересоздать `web` — вхост превращается в заглушку; ссылки на сайт в приложении вести станут в никуда.
+
+## Роль БД без прав суперпользователя и шифрованные копии (аудит 2026-11)
+
+Включается по желанию, откат без потери данных.
+1. **Копия**: `bash scripts/backup.sh` (лучше сразу зашифрованная: `age-keygen -o backup.key` на ДРУГОЙ машине, публичный ключ — в `BACKUP_AGE_RECIPIENT=age1…`; секретный ключ на сервер не кладите).
+2. **Проверка копии**: скопируйте файл на другую машину с PostgreSQL → `bash scripts/backup-verify.sh db-….sql.gz[.age] [backup.key]` (временная база, рабочую не трогает).
+3. **Роль приложения**: `bash scripts/db-harden.sh` → `bash scripts/deploy-local.sh` (миграции применит владелец отдельным запуском, api стартует под `sky_app`) → `bash scripts/db-harden.sh --check`. Держите вторую консоль открытой.
+4. **Откат**: `bash scripts/db-harden.sh --rollback && bash scripts/deploy-local.sh`.
+5. Сверка баланса с журналом: `docker compose exec api node scripts/wallet-reconcile.mjs`.

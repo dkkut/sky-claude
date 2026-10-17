@@ -64,6 +64,15 @@ set_env WEB_IMAGE "sky-web:$SHA"
 set_env API_IMAGE "sky-api:$SHA"
 
 cd "$APP_DIR"
+# Если включена роль БД приложения без прав на схему (scripts/db-harden.sh), миграции выполняет отдельный
+# одноразовый запуск под владельцем: пароль владельца в окружение работающего api не попадает.
+if grep -q '^SKIP_MIGRATE_ON_START=1' .env 2>/dev/null; then
+  echo "==> Миграции под владельцем БД (роль приложения схему менять не может)"
+  docker compose up -d postgres
+  PGPASS="$(grep -E '^POSTGRES_PASSWORD=' .env | tail -n1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')"
+  docker compose run --rm --no-deps -e SKIP_MIGRATE_ON_START=0 \
+    -e "DATABASE_URL=postgres://sky:${PGPASS}@postgres:5432/sky" api node scripts/migrate.mjs
+fi
 echo "==> Перезапускаю"
 docker compose up -d --remove-orphans
 

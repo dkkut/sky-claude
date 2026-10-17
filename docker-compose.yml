@@ -76,7 +76,9 @@ services:
       AUTH_START_RATE_MULT:  ${AUTH_START_RATE_MULT:-1}
       REFRESH_ROTATION:      ${REFRESH_ROTATION:-on}
       REFRESH_REUSE_GRACE_SEC: ${REFRESH_REUSE_GRACE_SEC:-600}
-      DATABASE_URL:          postgres://sky:${POSTGRES_PASSWORD:?нужно задать POSTGRES_PASSWORD в .env}@postgres:5432/sky
+      # APP_DATABASE_URL — роль sky_app без прав суперпользователя (scripts/db-harden.sh). Не задана — как раньше, владелец БД.
+      DATABASE_URL:          ${APP_DATABASE_URL:-postgres://sky:${POSTGRES_PASSWORD:?нужно задать POSTGRES_PASSWORD в .env}@postgres:5432/sky}
+      SKIP_MIGRATE_ON_START: ${SKIP_MIGRATE_ON_START:-0}
       # Демо-аккаунты заводятся только на пустой базе и только если пароль задан.
       # В продакшне переменную оставляют пустой — тогда их не будет вовсе.
       # 'demo' открывает пополнение кошелька без реального платежа.

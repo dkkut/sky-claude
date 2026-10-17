@@ -67,6 +67,17 @@ export const waitForDb = async ({ attempts = 30, delayMs = 1000 } = {}) => {
  * Каждый файл идёт в своей транзакции: упавшая миграция не оставит
  * схему наполовину применённой.
  */
+/** Файлы миграций, которых ещё нет в schema_migrations (пусто — схема актуальна). Только читает. */
+export const pendingMigrations = async () => {
+  const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql')).sort();
+  let applied = new Set();
+  try {
+    const { rows } = await pool.query('SELECT name FROM schema_migrations');
+    applied = new Set(rows.map((r) => r.name));
+  } catch { /* таблицы ещё нет — значит, не применено ничего */ }
+  return files.filter((f) => !applied.has(f));
+};
+
 export const migrate = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
