@@ -12,6 +12,7 @@
  * profile_id в запрос недостаточно — строка просто не найдётся.
  */
 import { query, pool } from './db.mjs';
+import { wallet } from './wallet.mjs';
 import { generateId, sanitizeInput, rateLimit, rateLimitPerHour } from './security.mjs';
 import { encryptSecret, decryptSecret } from './crypto.mjs';
 import { generateSecret, verifyTotp, otpauthUri } from './totp.mjs';
@@ -790,6 +791,32 @@ export const grantPrime = async (skyId, profileId, plan, days, opts = {}) => {
     client.release();
   }
   return { profile: await getProfileOfSkyId(skyId, profileId) };
+};
+
+/**
+ * Покупка Prime с кошелька: списание и выдача подписки — ОДНА транзакция.
+ * Раньше «списали → выдали → при сбое вернули отдельным вызовом»: сбой между шагами
+ * (или в самом возврате) оставлял человека без денег и без Prime. Теперь либо всё, либо ничего.
+ * Бессрочный Prime дни добавить не может — тогда деньги не списываются (`already_lifetime`).
+ */
+export const purchasePrime = async (skyId, profileId, days, charge) => {
+  const owned = await getProfileOfSkyId(skyId, profileId);
+  if (!owned) return { error: 'not_found' };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const paid = await wallet.spendIn(client, profileId, charge, 'prime', `Sky Prime · ${days} дн.`, null);
+    if (paid.error) { await client.query('ROLLBACK'); return paid; }
+    const g = await grantPrimeIn(client, profileId, 'standard', days, { additive: true });
+    if (g.skipped) { await client.query('ROLLBACK'); return { error: 'already_lifetime' }; }
+    await client.query('COMMIT');
+    return { balance: paid.balance, profile: await getProfileOfSkyId(skyId, profileId) };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 export const revokePrime = async (skyId, profileId) => {

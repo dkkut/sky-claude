@@ -25,7 +25,7 @@ import {
   findSkyIdById, publicSkyId, setEmailVerified, publicProfile,
   beginSkyTwoFactor, confirmSkyTwoFactor, disableSkyTwoFactor, verifySkyTwoFactor,
   beginProfileTwoFactor, confirmProfileTwoFactor, verifyProfileTwoFactor, disableProfileTwoFactor,
-  grantPrime, revokePrime, MAX_PROFILES, sendTwoFactorCode, setPhoneVerified, PRIME_PRICES,
+  grantPrime, purchasePrime, revokePrime, MAX_PROFILES, sendTwoFactorCode, setPhoneVerified, PRIME_PRICES,
 } from './../skyid.mjs';
 import { rateLimit } from './../security.mjs';
 import { purchaseAllowedOn } from './../entitlements.mjs';
@@ -447,20 +447,20 @@ export const skyIdRoutes = async (req, res, url) => {
     const coupon = await claimPrimeCoupon(target, `prime:${days}`);
     const charge = coupon ? discountedPrice(price, coupon.percent) : price;
 
-    const paid = await wallet.spend(target, charge, 'prime', `Sky Prime · ${days} дн.`);
-    if (paid.error) {
-      if (coupon) await releaseCoupon(coupon.id);
-      return json(res, 400, paid);
-    }
-
-    const result = await grantPrime(s.skyId, target, sanitizeInput(body.plan ?? 'standard'), days, { additive: true });
-    if (result.error) {
-      // Списали, но не выдали — возвращаем деньги, иначе они пропадут.
-      await wallet.refund(target, charge, 'Возврат за Sky Prime');
+    let bought;
+    try {
+      bought = await purchasePrime(s.skyId, target, days, charge);
+    } catch {
       if (coupon) await releaseCoupon(coupon.id);
       skyLog({ category: 'user', service: 'prime', type: 'prime_purchase_failed', level: 'ERROR', actorId: target, result: 'error', reason: 'grant_failed' });
       return json(res, 500, { error: 'grant_failed' });
     }
+    if (bought.error) {
+      if (coupon) await releaseCoupon(coupon.id);
+      return json(res, bought.error === 'already_lifetime' ? 409 : 400, bought);
+    }
+    const paid = { balance: bought.balance };
+    const result = { profile: bought.profile };
     awardCashback({ trigger: 'prime_purchase', profileId: target, amountRub: charge, ref: `prime:${target}:${Date.now()}:${days}` }).catch(() => {});
     skyLog({ category: 'user', service: 'prime', type: 'prime_purchase', actorId: target, detail: { days, price: charge, coupon: Boolean(coupon) } });
     return json(res, 200, {

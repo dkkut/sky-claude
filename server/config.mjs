@@ -224,6 +224,13 @@ export const config = {
  * ронять работающий сервис, только предупреждение в журнал.
  */
 if (config.nodeEnv === 'production') {
+  // Демо-платежи рисуют деньги одним запросом (пополнение, возврат, баллы). В бою их быть не может,
+  // даже если PAYMENTS_MODE=demo попал в окружение по ошибке: молча закрываем и говорим об этом.
+  if (config.paymentsMode === 'demo') {
+    console.error('[config] PAYMENTS_MODE=demo в production игнорируется: демо-платежи создают деньги из ничего. '
+      + 'Подключите настоящий приём платежей (SkyKassa) или оставьте disabled.');
+    config.paymentsMode = 'disabled';
+  }
   const placeholders = new Set(['change_me', 'change_me_too', 'changeme', 'secret', 'password', '']);
   if (placeholders.has(config.jwtSecret) || placeholders.has(config.refreshSecret)) {
     console.error('[config] JWT_SECRET / REFRESH_TOKEN_SECRET не заданы (или остались заглушкой). '
