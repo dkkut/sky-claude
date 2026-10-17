@@ -21,6 +21,7 @@ import { useMusicStore } from '@/music/serverStore';
 import { TVHome } from './TVHome';
 import { TVMovieDetail } from './TVMovieDetail';
 import { TVPlayer } from './TVPlayer';
+import { TVSeriesHub, TVSeriesDetail } from './TVSeries';
 import { TVFullPlayer } from './TVFullPlayer';
 import { TVSearch } from './TVSearch';
 import { TVMusic } from './TVMusic';
@@ -107,9 +108,12 @@ export const TVShell = () => {
         <div ref={contentRef} className="relative h-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden" style={{ scrollbarWidth: 'none' }}>
           {screen.kind === 'home' && <TVHome onOpenMovie={goDetail} onPlayMovie={goPlayMovie}/>}
 
-          {(screen.kind === 'movies' || screen.kind === 'series') && (
+          {screen.kind === 'movies' && (
             <TVCatalogGrid items={allMovies} onOpen={goDetail} emptyTitle="Каталог пока пуст"/>
           )}
+
+          {screen.kind === 'series' && <TVSeriesHub onOpen={id => { snapshot(); push({ kind: 'seriesDetail', seriesId: id }); }}/>}
+          {screen.kind === 'seriesDetail' && <TVSeriesDetail seriesId={screen.seriesId} onPlay={goPlayMovie}/>}
 
           {(screen.kind === 'collection' || screen.kind === 'favorites') && <TVCollection onOpenMovie={goDetail} onPlayMovie={goPlayMovie}/>}
 
@@ -130,7 +134,8 @@ export const TVShell = () => {
           <TVPlayer
             source={movies.some(m => m.id === screen.movieId) || useFilmStore.getState().mine.some(m => m.id === screen.movieId) || useFilmStore.getState().saved.some(m => m.id === screen.movieId)
               ? { kind: 'movie', id: screen.movieId } : { kind: 'video', id: screen.movieId }}
-            onBack={handleBack}/>
+            onBack={handleBack}
+            onPlayEpisode={id => { back(); push({ kind: 'player', movieId: id }); }}/>
         )}
         <TVFullPlayer />
         <TVActionSheetHost />

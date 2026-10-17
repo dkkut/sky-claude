@@ -15,9 +15,12 @@ import { useFilmStore } from '@/film/serverStore';
 import { videoUrl, apiFilmTicket } from '@/film/filmApi';
 import { useTVKeyBindings } from './useTVKeyBindings';
 import { useRegisterWatchActivity } from '@/settings/breakReminderStore';
+import { apiMovie, type ServerMovie } from '@/film/filmApi';
+import { useEpisodeExtras } from '@/film/useEpisodeExtras';
+import { SkipForward } from 'lucide-react';
 
 export type TVPlayerSource = { kind: 'movie'; id: string } | { kind: 'video'; id: string };
-interface TVPlayerProps { source: TVPlayerSource; onBack: () => void; }
+interface TVPlayerProps { source: TVPlayerSource; onBack: () => void; /** Запустить другую серию (заменяет текущий экран плеера). */ onPlayEpisode?: (id: string) => void; }
 
 const fmt = (s: number) => {
   if (!isFinite(s) || s < 0) s = 0;
@@ -25,10 +28,20 @@ const fmt = (s: number) => {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
 };
 
-export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
-  const movie = useFilmStore(s => (source.kind === 'movie'
+export const TVPlayer = ({ source, onBack, onPlayEpisode }: TVPlayerProps) => {
+  const storeMovie = useFilmStore(s => (source.kind === 'movie'
     ? s.catalog.find(m => m.id === source.id) ?? s.mine.find(m => m.id === source.id) ?? s.saved.find(m => m.id === source.id) ?? s.continueWatching.find(m => m.id === source.id)
     : undefined));
+  /* Серии нет в списках стора, если открыта по ссылке из сериала — берём её у сервера. */
+  const [fetched, setFetched] = useState<ServerMovie | null>(null);
+  useEffect(() => {
+    setFetched(null);
+    if (source.kind !== 'movie' || storeMovie) return;
+    let alive = true;
+    void apiMovie(source.id).then(m => { if (alive) setFetched(m); });
+    return () => { alive = false; };
+  }, [source.kind, source.id, storeMovie]);
+  const movie = storeMovie ?? fetched ?? undefined;
   const video = useSkyVideoStore(s => source.kind === 'video' ? s.feed.find(v => v.id === source.id) : undefined);
   const noteSkyVideoView = useSkyVideoStore(s => s.noteView);
   const loadSkyVideo = useSkyVideoStore(s => s.load);
@@ -43,6 +56,8 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
   // просмотра, поэтому длинное кино начинается сразу и перематывается.
   const sourceUrl = movie ? videoUrl(movie.id) : (video ? skyVideoUrl(video.id) : undefined);
   const contentId = source.id;
+  const [sourceMissingYet, setMissingYet] = useState(true);
+  useEffect(() => { const t = window.setTimeout(() => setMissingYet(false), 4000); return () => clearTimeout(t); }, [source.id]);
 
   const vRef = useRef<HTMLVideoElement>(null);
   const hideTimer = useRef<number | null>(null);
@@ -119,14 +134,24 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
     v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + delta));
   }, []);
 
+  const ex = useEpisodeExtras(movie, vRef, cur);
+  const goNext = useCallback(() => { if (ex.nextEp && onPlayEpisode) onPlayEpisode(ex.nextEp.id); }, [ex.nextEp, onPlayEpisode]);
+  const primary = useCallback(() => { if (ex.inIntro) ex.skipIntro(); else goNext(); }, [ex, goNext]);
+
   useTVKeyBindings({
     mode: 'player',
+    onPrimaryAction: primary,
+    onSubtitles: ex.cycleSubtitles,
+    onNext: goNext,
     onBack,
     onPlayPause: togglePlay,
     onSeek: seek,
     onShowControls: showControls,
   });
 
+  if (!movie && !video && source.kind === 'movie' && !fetched && !storeMovie && sourceMissingYet) {
+    return <div className="fixed inset-0 z-[200] bg-black" />;
+  }
   if (!movie && !video) {
     return (
       <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center gap-3" style={{ background: '#000' }}>
@@ -173,11 +198,20 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
             }
             void describeMediaFailure(v, sourceUrl).then(setFailedText);
           }}
-          onEnded={onBack}/>
+          onEnded={() => { if (ex.nextEp && onPlayEpisode) goNext(); else onBack(); }}>
+          {ex.tracks.map(t => <track key={t.lang} kind="subtitles" srcLang={t.lang} label={t.label} src={t.url} />)}
+        </video>
       ) : (
         <div className="h-full w-full flex flex-col items-center justify-center gap-3">
           <Play size={64} color="rgba(255,255,255,0.15)"/>
           <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Видеофайл ещё не загружен</p>
+        </div>
+      )}
+
+      {(ex.inIntro || (ex.nextEp && dur > 0 && cur > dur - 45)) && (
+        <div className="absolute bottom-40 right-10 z-10 flex items-center gap-3 rounded-2xl px-6 py-4 text-[22px] font-bold text-white" style={{ background: 'rgba(0,0,0,0.7)', border: '2px solid var(--accent)' }} role="status">
+          <SkipForward size={26}/>
+          <span translate="no">{ex.inIntro ? '↑ Пропустить заставку' : `↑ Следующая серия: ${ex.nextEp?.epNo ?? ''}. ${ex.nextEp?.title ?? ''}`}</span>
         </div>
       )}
 
@@ -211,7 +245,7 @@ export const TVPlayer = ({ source, onBack }: TVPlayerProps) => {
                 </button>
                 <div className="flex-1"/>
                 <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                  <Subtitles size={17}/> Субтитры выкл.
+                  <Subtitles size={17}/> {ex.tracks.length ? (ex.subLabel ? `Субтитры: ${ex.subLabel}` : 'Субтитры выкл. (↓ — включить)') : 'Субтитров нет'}
                 </div>
                 <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>
                   <Settings2 size={17}/> Авто

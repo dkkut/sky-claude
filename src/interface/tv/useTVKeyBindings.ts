@@ -14,6 +14,10 @@ export interface TVKeyHandlers {
   onPlayPause?: () => void;
   onSeek?: (deltaSeconds: number) => void;
   onShowControls?: () => void;
+  /** Вверх / вниз / «следующая» в плеере: главное действие (пропуск заставки, следующая серия) и субтитры. */
+  onPrimaryAction?: () => void;
+  onSubtitles?: () => void;
+  onNext?: () => void;
 }
 
 /** Настоящий текстовый ввод в фокусе (TVSearch — единственное место в
@@ -36,12 +40,12 @@ export const useTVKeyBindings = (handlers: TVKeyHandlers) => {
       switch (e.key) {
         case 'ArrowUp':
           e.preventDefault();
-          if (player) handlers.onShowControls?.();
+          if (player) { handlers.onShowControls?.(); handlers.onPrimaryAction?.(); }
           else { (document.activeElement as HTMLElement | null)?.blur(); tvFocusManager.move('up'); }
           break;
         case 'ArrowDown':
           e.preventDefault();
-          if (player) handlers.onShowControls?.();
+          if (player) { handlers.onShowControls?.(); handlers.onSubtitles?.(); }
           else { (document.activeElement as HTMLElement | null)?.blur(); tvFocusManager.move('down'); }
           break;
         case 'ArrowLeft':
@@ -71,6 +75,13 @@ export const useTVKeyBindings = (handlers: TVKeyHandlers) => {
           break;
         case 'MediaPlayPause':
           e.preventDefault(); handlers.onPlayPause?.();
+          break;
+        case 'MediaTrackNext':
+          e.preventDefault(); handlers.onNext?.();
+          break;
+        case 'ClosedCaption':
+        case 'ColorF1':
+          e.preventDefault(); handlers.onSubtitles?.();
           break;
         default: break;
       }

@@ -4,18 +4,19 @@
    подписями, когда на неё переходит фокус пульта.
 =========================================================== */
 import { AnimatePresence, motion } from 'framer-motion';
-import { Search, Home, Film, Music2, Play, Tv2, Mic2, Bookmark, Library, User, type LucideIcon } from 'lucide-react';
+import { Search, Home, Film, Clapperboard, Music2, Play, Tv2, Mic2, Bookmark, Library, User, type LucideIcon } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { TVFocusable } from './TVFocusable';
 import { useTVFocusedId } from './focusManager';
 import type { TVScreen } from './tvNavStore';
 
-export type NavKind = 'search' | 'home' | 'movies' | 'music' | 'video' | 'channels' | 'podcasts' | 'collection' | 'library' | 'profile';
+export type NavKind = 'search' | 'home' | 'movies' | 'series' | 'music' | 'video' | 'channels' | 'podcasts' | 'collection' | 'library' | 'profile';
 
 const ITEMS: { key: NavKind; label: string; icon: LucideIcon }[] = [
   { key: 'search', label: 'Поиск', icon: Search },
   { key: 'home', label: 'Главная', icon: Home },
   { key: 'movies', label: 'Фильмы', icon: Film },
+  { key: 'series', label: 'Сериалы', icon: Clapperboard },
   { key: 'music', label: 'Sky Music', icon: Music2 },
   { key: 'video', label: 'SkyVideo', icon: Play },
   { key: 'channels', label: 'Телеканалы', icon: Tv2 },
@@ -29,7 +30,8 @@ const OPEN_W = 360;
 
 /** Какой пункт панели подсвечен для открытого экрана. */
 export const navKindFor = (k: TVScreen['kind']): NavKind => {
-  if (k === 'movieDetail' || k === 'player' || k === 'series' || k === 'favorites') return k === 'favorites' ? 'collection' : 'movies';
+  if (k === 'seriesDetail') return 'series';
+  if (k === 'movieDetail' || k === 'player' || k === 'favorites') return k === 'favorites' ? 'collection' : 'movies';
   if (k === 'settings') return 'profile';
   return k as NavKind;
 };

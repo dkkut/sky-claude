@@ -20,6 +20,7 @@ export type TVScreen =
   | { kind: 'search' }
   | { kind: 'profile' }
   | { kind: 'settings' }
+  | { kind: 'seriesDetail'; seriesId: string }
   | { kind: 'movieDetail'; movieId: string }
   | { kind: 'player'; movieId: string };
 
