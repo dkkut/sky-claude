@@ -7,6 +7,7 @@
  * его ответ. Включить себе Prime или снять защиту, поправив что-то в
  * браузере, нельзя.
  */
+import { DeviceAccounts } from '@/auth/DeviceAccounts';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -194,6 +195,7 @@ const SkyIdSection = () => {
         </motion.button>
       </div>
 
+      <DeviceAccounts />
       <EmailSection />
       <PhoneSection />
     </div>

@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
 
 const als = new AsyncLocalStorage();
 
-export const runWithSession = (sid, fn) => als.run({ sid: sid ? String(sid) : null, profile: undefined, requestId: crypto.randomBytes(6).toString('hex') }, fn);
+export const runWithSession = (sid, fn, slot = 1) => als.run({ sid: sid ? String(sid) : null, slot: slot === 2 || slot === 3 ? slot : 1, profile: undefined, requestId: crypto.randomBytes(6).toString('hex') }, fn);
 /** Корреляционный идентификатор запроса — попадает в журналы, чтобы связать события одного запроса. */
 export const getRequestContext = () => ({ requestId: als.getStore()?.requestId ?? '' });
 export const currentSession = () => als.getStore() ?? null;

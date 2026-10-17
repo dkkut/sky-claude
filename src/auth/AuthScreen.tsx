@@ -9,6 +9,7 @@
  * сервер. Даже список профилей и признак Prime приходят оттуда, поэтому
  * подправить их в браузере бессмысленно.
  */
+import { CancelAddAccount } from './DeviceAccounts';
 import { LanguagePill, ThemePill } from '@/i18n/LanguageSwitch';
 import { RestoreAccount } from './AccountDeletion';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -912,6 +913,7 @@ const LinkStep = ({ kind, onMail }: { kind: 'console' | 'car'; onMail: () => voi
 
 export const AuthScreen = () => {
   const step = useAuthStore(s => s.step);
+  const adding = <CancelAddAccount />;
   const consoleMode = useConsoleMode();
   const carMode = useCarMode();
   const linkKind = consoleMode ? 'console' : carMode ? 'car' : null;
@@ -920,6 +922,7 @@ export const AuthScreen = () => {
 
   if (linkKind && !byMail && step === 'login') return (
     <>
+      {adding}
       <LanguagePill />
       <ThemePill />
       <LinkStep kind={linkKind} onMail={() => setByMail(true)} />
@@ -928,6 +931,7 @@ export const AuthScreen = () => {
 
   return (
     <>
+    {adding}
     <SkyIsland />
     <LanguagePill />
     <ThemePill />

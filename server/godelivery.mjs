@@ -190,9 +190,9 @@ export const availableFor = async (courierId) => {
   const here = pres[0].lat != null ? { lat: pres[0].lat, lng: pres[0].lng } : null;
   return { orders: rows.map((r) => ({
     id: r.id, scenario: r.data.scenario, cargo: r.data.cargo, priceRub: r.price_rub, createdAt: r.created_at.toISOString(),
-    from: { address: r.data.from.address }, to: { address: r.data.to.address }, km: r.data.km, minutes: r.data.minutes,
+    from: { address: r.data.from?.address ?? '' }, to: { address: r.data.to?.address ?? '' }, km: r.data.km, minutes: r.data.minutes,
     parcel: { description: r.data.parcel?.description, size: r.data.parcel?.size, weightKg: r.data.parcel?.weightKg }, comment: r.data.comment || undefined,
-    distanceToPickupKm: here ? Math.round(haversineKm(here, r.data.from) * 10) / 10 : null, offer: offers.get(r.id) ?? null }))
+    distanceToPickupKm: here && r.data.from ? Math.round(haversineKm(here, r.data.from) * 10) / 10 : null, offer: offers.get(r.id) ?? null }))
     .sort((a, b) => (a.offer ? 0 : 1) - (b.offer ? 0 : 1)) };
 };
 

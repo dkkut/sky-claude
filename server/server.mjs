@@ -22,7 +22,7 @@ import { encryptLegacyMedia } from './mediabackfill.mjs';
 import { connectRedis, closeRedis, redisAlive } from './sessions.mjs';
 import { startSignalHub, isOnline } from './signal.mjs';
 import { verifyToken } from './security.mjs';
-import { BETA_COOKIE, parseCookies } from './cookies.mjs';
+import { BETA_COOKIE, parseCookies, slotOf } from './cookies.mjs';
 import { betaEnabled, syncBetaKeys, betaHashLive } from './beta.mjs';
 import { betaRoutes } from './routes/beta.mjs';
 import { authRoutes } from './routes/auth.mjs';
@@ -458,11 +458,11 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // Sky Storage: хранилище недоступно/на обслуживании/заполнено — решение системы, не сбой.
     if (error?.name === 'StorageBlocked') return json(res, error.status ?? 503, { error: error.code, message: error.userMessage || undefined });
     console.error('[api]', error);
-    skyLogEvent({ category: 'server', service: 'api', type: 'http_error', level: 'ERROR', result: 'error', reason: String(error?.message ?? error).slice(0, 200), ip: clientIp(req), ua: req.headers['user-agent'], detail: { method: req.method, route: String(url).split('?')[0].replace(/[0-9a-f-]{20,}/gi, ':id').slice(0, 120) } });
+    skyLogEvent({ category: 'server', service: 'api', type: 'http_error', level: 'ERROR', result: 'error', reason: String(error?.message ?? error).slice(0, 200), ip: clientIp(req), ua: req.headers['user-agent'], detail: { method: req.method, route: String(req.url ?? '').split('?')[0].replace(/[0-9a-f-]{20,}/gi, ':id').slice(0, 120) } });
     const message = config.nodeEnv === 'production' ? 'internal_error' : error.message;
     return json(res, 500, { error: message });
   }
-})));
+}, slotOf(req.headers['x-sky-slot']))));
 
 /* ─── Запуск ─────────────────────────────────────────────────────────────
    БД и Redis должны быть готовы до приёма запросов, иначе первые из них

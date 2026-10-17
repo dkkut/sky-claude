@@ -1,3 +1,4 @@
+import { getActiveSlot, setActiveSlot, upsertSlot, removeSlot, listSlots, stopAdding } from './slots';
 import { create } from 'zustand';
 import { flash } from '../../shared/flash';
 
@@ -313,6 +314,11 @@ const applySession=(
     if(i>=0)updated[i]=withDev; else updated.push(withDev);
   }
   wA(updated);
+  {
+    const act=session.profiles.find(p=>p.id===session.activeProfileId)??session.profiles[0];
+    upsertSlot({slot:getActiveSlot(),skyId:session.skyId.id,label:session.skyId.email??session.skyId.phone??'',name:act?.name??'',avatar:act?.avatar??undefined});
+    stopAdding();
+  }
   set({
     accounts:updated,
     sky:session.skyId,
@@ -646,6 +652,10 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     const{currentUserId,accounts}=get();
     const updated=accounts.map(a=>a.id===currentUserId?{...a,devices:(a.devices??[]).map(d=>({...d,isCurrent:false}))}:a);
     wA(updated);
+    // Вышли из одного Sky ID — остальные на этом устройстве остаются: переключаемся на первый из них.
+    const gone=getActiveSlot();removeSlot(gone);
+    const next=listSlots().find(x=>x.slot!==gone);
+    if(next&&typeof location!=='undefined'){setActiveSlot(next.slot);stopAdding();setTimeout(()=>location.reload(),150);}
     set({...emptyAuth,accounts:updated});
   },
 

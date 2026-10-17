@@ -15,6 +15,7 @@
    Этот файл только спрашивает и показывает ответ.
 =============================================================== */
 import { isEnglish } from '@/i18n/lang';
+import { getActiveSlot, refreshKeyFor } from './slots';
 import { NATIVE_APP, IOS_WEB, API_ORIGIN, nativeStore, REFRESH_TOKEN_KEY, BETA_TOKEN_KEY } from '../nativeApp';
 
 /** Способ второго фактора: код из приложения или письмо на почту. */
@@ -224,6 +225,7 @@ const raw = (path: string, init: RequestInit = {}) =>
       // токены в теле не получает.
       ...(isEnglish() ? { 'X-Sky-Lang': 'en' } : {}),
       ...(deviceId() ? { 'X-Sky-Device': deviceId() } : {}),
+      'X-Sky-Slot': String(getActiveSlot()),
       ...(skyMode() ? { 'X-Sky-Mode': skyMode() } : {}),
       ...(NATIVE_APP ? { 'X-Sky-Client': 'app' } : {}),
       // iPhone в браузере: пропуск медиа нужен и в теле ответа — см. mediaBody в server/http.mjs.
@@ -258,13 +260,13 @@ let refreshing: Promise<boolean> | null = null;
 
 const refreshOnce = (): Promise<boolean> => {
   refreshing ??= (async () => {
-    const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(REFRESH_TOKEN_KEY)) ?? '' } : {};
+    const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(refreshKeyFor(REFRESH_TOKEN_KEY))) ?? '' } : {};
     const res  = await raw('/api/auth/refresh', { method: 'POST', body: JSON.stringify(body) });
     const data = await readJson(res);
     if (!res.ok) { setAccessToken(null); return false; }
     setAccessToken(data.accessToken ?? null);
     if (NATIVE_APP && typeof data.refreshToken === 'string') {
-      await nativeStore.set(REFRESH_TOKEN_KEY, data.refreshToken);
+      await nativeStore.set(refreshKeyFor(REFRESH_TOKEN_KEY), data.refreshToken);
     }
     return true;
   })().finally(() => { refreshing = null; });
@@ -358,7 +360,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
   // X-Sky-Client: app (см. appBody в server/http.mjs), так что обычный
   // браузер сюда никогда не попадает.
   if (NATIVE_APP) {
-    if (typeof data?.refreshToken === 'string') void nativeStore.set(REFRESH_TOKEN_KEY, data.refreshToken);
+    if (typeof data?.refreshToken === 'string') void nativeStore.set(refreshKeyFor(REFRESH_TOKEN_KEY), data.refreshToken);
     if (typeof data?.betaToken === 'string') {
       nativeBetaToken = data.betaToken;
       void nativeStore.set(BETA_TOKEN_KEY, data.betaToken);
@@ -471,7 +473,7 @@ export const apiResendLoginTwoFactor = (challenge: string) =>
  * перехватом в call()).
  */
 export const apiRefreshSession = async (): Promise<Reply<SkySession & { accessToken: string }>> => {
-  const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(REFRESH_TOKEN_KEY)) ?? '' } : {};
+  const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(refreshKeyFor(REFRESH_TOKEN_KEY))) ?? '' } : {};
   const res = await post<SkySession & { accessToken: string }>('/api/auth/refresh', body);
   if (res.ok && res.data) setAccessToken(res.data.accessToken ?? null);
   else setAccessToken(null);
@@ -485,11 +487,11 @@ export const apiLogout = async (): Promise<void> => {
   try {
     // Кука несёт refresh-токен у браузера сама; у родного приложения
     // куки нет, и сервер не найдёт сессию для отзыва без явного токена.
-    const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(REFRESH_TOKEN_KEY)) ?? '' } : {};
+    const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(refreshKeyFor(REFRESH_TOKEN_KEY))) ?? '' } : {};
     await post('/api/auth/logout', body);
   } finally {
     setAccessToken(null);
-    if (NATIVE_APP) await nativeStore.remove(REFRESH_TOKEN_KEY);
+    if (NATIVE_APP) await nativeStore.remove(refreshKeyFor(REFRESH_TOKEN_KEY));
   }
 };
 

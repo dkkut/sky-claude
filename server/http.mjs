@@ -7,7 +7,7 @@
 import net from 'node:net';
 import { config } from './config.mjs';
 import { verifyToken, rateLimit } from './security.mjs';
-import { REFRESH_COOKIE, parseCookies } from './cookies.mjs';
+import { refreshCookieName, slotOf, parseCookies } from './cookies.mjs';
 import { sessionStore } from './sessions.mjs';
 import { query } from './db.mjs';
 
@@ -97,7 +97,7 @@ export const readAccessToken = (req) => {
 };
 
 export const readRefreshToken = (req, body) => {
-  const fromCookie = parseCookies(req.headers.cookie)[REFRESH_COOKIE];
+  const fromCookie = parseCookies(req.headers.cookie)[refreshCookieName(slotOf(req.headers['x-sky-slot']))];
   if (fromCookie) return fromCookie;
   return typeof body?.refreshToken === 'string' ? body.refreshToken : '';
 };

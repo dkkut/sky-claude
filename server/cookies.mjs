@@ -7,7 +7,16 @@
  * вкладки — он короткоживущий и в хранилище не попадает.
  */
 
+import { currentSession } from './reqctx.mjs';
+
 export const REFRESH_COOKIE = 'sky_rt';
+
+/**
+ * До трёх Sky ID на одном устройстве: у каждого свой «слот» и своя HttpOnly-кука (sky_rt, sky_rt2, sky_rt3).
+ * Слот выбирает клиент заголовком X-Sky-Slot; любое другое значение приводится к первому, поэтому больше трёх кук не бывает.
+ */
+export const slotOf = (v) => (Number(v) === 2 ? 2 : Number(v) === 3 ? 3 : 1);
+export const refreshCookieName = (slot = currentSession()?.slot ?? 1) => (slot === 2 || slot === 3 ? `${REFRESH_COOKIE}${slot}` : REFRESH_COOKIE);
 
 /** Пропуск в закрытую бету. В отличие от refresh уходит на весь сайт. */
 export const BETA_COOKIE = 'sky_beta';
@@ -33,7 +42,7 @@ export const parseCookies = (header) => {
 };
 
 export const buildRefreshCookie = (token, maxAgeSec) => [
-  `${REFRESH_COOKIE}=${encodeURIComponent(token)}`,
+  `${refreshCookieName()}=${encodeURIComponent(token)}`,
   `Path=${COOKIE_PATH}`,
   `Max-Age=${maxAgeSec}`,
   'HttpOnly',
@@ -46,7 +55,7 @@ export const buildRefreshCookie = (token, maxAgeSec) => [
 ].join('; ');
 
 export const clearRefreshCookie = () => [
-  `${REFRESH_COOKIE}=`,
+  `${refreshCookieName()}=`,
   `Path=${COOKIE_PATH}`,
   'Max-Age=0',
   'HttpOnly',
