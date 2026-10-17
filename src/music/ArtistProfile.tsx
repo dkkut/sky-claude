@@ -1,4 +1,5 @@
 /* -- Профиль артиста --------------------------------------- */
+import { ArtistCardBlock } from '@/artists/ArtistCard';
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Play, Pause, Music2, Mic2, UserPlus, UserMinus } from 'lucide-react';
@@ -118,6 +119,7 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
         {profile?.bio && (
           <p className="mt-3 text-[12.5px] leading-relaxed" style={{ color: 'var(--t2)' }}>{profile.bio}</p>
         )}
+        <div className="-mx-5 mt-3"><ArtistCardBlock name={artist} /></div>
 
 
         {/* Статистика */}

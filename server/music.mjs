@@ -17,6 +17,7 @@ import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { can } from './admin.mjs';
 import { checkPublish } from './uploadlimits.mjs';
+import { ensureCardForTrack } from './artistcards.mjs';
 import { sharedTrackInSession } from './watchgrant.mjs';
 import { sharedDirectly } from './storageshare.mjs';
 
@@ -247,6 +248,8 @@ export const submitTrack = async (trackId, ownerId) => {
       WHERE id = $1`,
     [trackId],
   );
+  // Карточка исполнителя: находим по имени или заводим (сбой публикацию не ломает).
+  await ensureCardForTrack(trackId);
   return { ok: true };
 };
 

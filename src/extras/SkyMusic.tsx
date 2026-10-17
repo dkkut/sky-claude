@@ -1,4 +1,5 @@
 import { ExplicitBadge, LabelsButton, LegacyChip } from '@/labels/Labels';
+import { ArtistSuggest } from '@/artists/ArtistCard';
 import { RetentionNote } from '@/shared/RetentionNote';
 import React from 'react';
 /* ===========================================================
@@ -1018,6 +1019,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                 inputMode={label === 'Год' ? 'numeric' : undefined}
                 className="w-full rounded-xl px-4 py-2.5 text-sm outline-none"
                 style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: YM.text }} />
+              {label === 'Исполнитель' && <ArtistSuggest name={String(val)} />}
             </div>
           ))}
 
