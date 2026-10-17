@@ -12,6 +12,7 @@ import { pushToOffline } from './webpush.mjs';
 import { pushGoEvent } from './signal.mjs';
 import { computeRoute, isRealPoint, geocode } from './maps.mjs';
 import { transitionAllowed } from './gostate.mjs';
+import { makeRouteService } from './gomaps.mjs';
 
 export const newId = (prefix) => `${prefix}-${crypto.randomUUID()}`;
 
@@ -120,12 +121,9 @@ export const pointOk = (p) => isRealPoint(p?.lat, p?.lng);
  * Расстояние и время между двумя точками. Если подключены карты — настоящий маршрут; иначе оценка по прямой
  * (×1.35 и 28 км/ч) с пометкой estimated: цена всё равно считается сервером, но человек видит, что это оценка.
  */
-export const routeBetween = async (a, b) => {
-  const r = await computeRoute({ origin: a, stops: [{ id: 'b', lat: b.lat, lng: b.lng }] }).catch(() => ({ error: 'route_failed' }));
-  if (r?.ok && r.distanceM > 0) return { km: r.distanceM / 1000, min: Math.max(1, Math.round(r.durationS / 60)), estimated: false };
-  const km = haversineKm(a, b) * 1.35;
-  return { km, min: Math.max(1, Math.round((km / 28) * 60)), estimated: true };
-};
+const routes = makeRouteService({ compute: computeRoute, haversineKm, limitPerDay: async () => Number(await getSetting('maps_route_daily_limit', 0)) || 0 });
+export const routeBetween = async (a, b) => { const r = await routes.route(a, b); return { km: r.km, min: r.min, estimated: r.estimated }; };
+export const routeStats = () => routes.stats();
 
 /* ─── Заказ: общие операции ────────────────────────────────────────── */
 export const addEvent = (client, orderId, actorId, from, to, note = '') =>

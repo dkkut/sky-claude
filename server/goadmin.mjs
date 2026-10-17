@@ -9,7 +9,7 @@ import { logAdmin } from './adminsec.mjs';
 import { mapsSettings } from './maps.mjs';
 import { flightsStatus } from './goflights.mjs';
 import { fuelStatus } from './gofuel.mjs';
-import { clean, getSetting, setSetting, goLog, ROLES } from './gocore.mjs';
+import { clean, getSetting, setSetting, goLog, ROLES, routeStats } from './gocore.mjs';
 import { orderView, resolveDispute } from './gopay.mjs';
 import * as stay from './gostay.mjs';
 import { cargoTariff } from './godelivery.mjs';
@@ -52,6 +52,7 @@ const KEYS = {
   dispatch_presence_fresh_sec: (v) => (Number.isFinite(Number(v)) && Number(v) >= 30 && Number(v) <= 3600 ? Math.round(Number(v)) : null),
   dispatch_radius_km: (v) => (Number.isFinite(Number(v)) && Number(v) >= 1 && Number(v) <= 200 ? Number(v) : null),
   quote_ttl_sec: (v) => (Number.isFinite(Number(v)) && Number(v) >= 60 && Number(v) <= 3600 ? Math.round(Number(v)) : null),
+  maps_route_daily_limit: (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 1_000_000 ? Math.round(Number(v)) : null),
   payment_terms: (v) => {
     const ok = (x) => ['before', 'after', 'on_accept', 'after_ride', 'after_delivery'].includes(x);
     if (!v || !ok(v.taxi) || !ok(v.food) || !ok(v.delivery)) return null;
@@ -143,7 +144,7 @@ export const adminResolve = resolveDispute;
 
 export const integrations = async (adminId) => {
   if (!(await can(adminId, 'go'))) return { error: 'not_allowed' };
-  return { maps: { ...mapsSettings(), note: 'Карты и адреса: GOOGLE_MAPS_KEY и/или YANDEX_MAPS_KEY (серверные ключи); маршруты — только Google.' },
+  return { maps: { ...mapsSettings(), routes: routeStats(), note: 'Карты и адреса: GOOGLE_MAPS_KEY и/или YANDEX_MAPS_KEY (серверные ключи); маршруты — только Google.' },
     flights: flightsStatus(), fuel: fuelStatus(),
     push: { note: 'Пуши: VAPID_* / FCM — см. раздел уведомлений.' } };
 };

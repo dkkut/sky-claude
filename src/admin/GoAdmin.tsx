@@ -319,6 +319,7 @@ const DispatchSettings = ({ d, save }: { d: any; save: (key: string, value: unkn
         {field('dispatch_radius_km', 'Радиус поиска от точки подачи, км', 15, '1–200')}
         {field('dispatch_presence_fresh_sec', 'Связь считается потерянной через, с', 300, '30–3600 без обновления положения')}
         {field('dispatch_search_timeout_min', 'Отменять поиск через, мин', 20, '0 — не отменять; 1–240')}
+        {field('maps_route_daily_limit', 'Предел запросов маршрутов в сутки', 0, '0 — без предела; при исчерпании расстояние считается по прямой')}
         {field('quote_ttl_sec', 'Срок действия расчёта цены, с', 600, '60–3600')}
         <div style={{ fontSize: 12, color: C.t3 }}>Алгоритм: расстояние до подачи, поправка за недавние отказы и пропуски и небольшая поправка за простой. Класс автомобиля и зоны внутри города пока не учитываются — в данных исполнителей их нет.</div>
       </div>
@@ -390,6 +391,7 @@ const Integrations = () => {
       {row('Карты и маршруты (GOOGLE_MAPS_KEY)', Boolean(d.maps?.enabled ?? d.maps?.configured), 'без них расстояния считаются по прямой и помечаются как оценка')}
       {row('Авиабилеты (FLIGHTS_PROVIDER, TRAVELPAYOUTS_*)', Boolean(d.flights?.configured), d.flights?.note ?? 'бронирование внутри Sky не поддерживается — переход на сайт партнёра')}
       {row('Заправки (FUEL_PROVIDER, OVERPASS_URL)', Boolean(d.fuel?.configured), d.fuel?.note ?? 'цены топлива поставщик не отдаёт')}
+      {d.maps?.routes && <div style={{ ...box, fontSize: 12.5, color: C.t2 }}>{`Маршруты с запуска сервера: запросов к поставщику ${d.maps.routes.calls}, из кэша ${d.maps.routes.cacheHits}, сбоев поставщика ${d.maps.routes.providerFailures}, оценок по прямой ${d.maps.routes.estimated}, отказов по суточному пределу ${d.maps.routes.limited}. Сегодня запросов: ${d.maps.routes.usedToday}.`}</div>}
       <div style={{ fontSize: 12, color: C.t3 }}>Ключи задаются на сервере (.env), в интерфейсе не хранятся.</div>
     </div>
   );
