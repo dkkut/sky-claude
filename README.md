@@ -1,4 +1,4 @@
-# Sky Ecosystem PC v4.6
+# Sky Ecosystem — Sky V5.0.0 beta
 
 ## Запуск на Windows
 

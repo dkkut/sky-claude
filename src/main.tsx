@@ -1,3 +1,5 @@
+import { APP_VERSION_LABEL } from './core/version';
+import { KutLandMark } from './shared/KutLandMark';
 import React, { useEffect, useState } from 'react';
 import { useSettings, setForceDark } from './settings/store';
 import ReactDOM from 'react-dom/client';
@@ -290,11 +292,16 @@ const Splash = ({ offline, minimal, onSkip }: { offline: boolean; minimal?: bool
         transition:'opacity 0.6s ease 0.3s',
         fontSize:11, letterSpacing:'0.12em', fontWeight:500,
         color: light ? '#6b6e80' : '#8a8a96', textTransform:'uppercase',
-        zIndex:1, position:'relative' }}>Sky v4.6</div>
+        zIndex:1, position:'relative' }}>{APP_VERSION_LABEL}</div>
 
       {/* Offline */}
       <div style={{ marginTop:12, height:22, overflow:'hidden', zIndex:1, position:'relative' }}>
         {showOffline && <span style={offlineTextStyle}>Ожидание сети...</span>}
+      </div>
+
+      {/* Компания: небольшая подпись внизу */}
+      <div style={{ position:'absolute', bottom:14, left:0, right:0, zIndex:1, opacity: textVisible ? 1 : 0, transition:'opacity 0.8s ease 0.8s' }}>
+        <KutLandMark light={light}/>
       </div>
 
       {/* Bottom stripe */}

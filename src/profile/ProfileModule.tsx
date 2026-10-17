@@ -1,3 +1,4 @@
+import { APP_VERSION_LABEL } from '../core/version';
 import { fitImageToDataUrl } from '../shared/imageFit';
 import { OwnerNotifySettings } from './OwnerNotifySettings';
 import { enablePush, disablePush, PUSH_TEXT } from '@/notifications/pushClient';
@@ -903,7 +904,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
 
       {/* -- О ПРИЛОЖЕНИИ ------------------------ */}
       <SectionBlock title="О приложении">
-        <SettingsRow icon={Info} iconColor="var(--t3)" label="Sky v4.6" sub="Текущая версия"/>
+        <SettingsRow icon={Info} iconColor="var(--t3)" label={APP_VERSION_LABEL} sub="Текущая версия"/>
         <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
         <SettingsRow icon={ExternalLink} iconColor="var(--t3)" label="Сайт Sky" sub="skymessenger.online"
           onClick={() => window.open('https://skymessenger.online', '_blank')}

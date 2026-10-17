@@ -8,7 +8,7 @@ import { usePlayer as usePodcastPlayer } from '@/podcasts/playerStore';
 import { useConsoleStore } from './consoleStore';
 import { setConsoleModeSetting } from './consoleMode';
 import { consoleNav } from './input/nav';
-import pkg from '../../../package.json';
+import { APP_VERSION_LABEL } from '../../core/version';
 
 /** Всё, что звучит или играет от имени прошлого профиля, останавливаем до смены. */
 const dropPlayback = () => {
@@ -58,7 +58,7 @@ export const ConsoleSettings = () => {
         <Row icon={Sparkles} title="Заставка при запуске" sub="Полная анимация при холодном запуске" onClick={() => setPrefs({ intro: !prefs.intro })} right={<Pill on={prefs.intro} />} />
         <Row icon={Zap} title="Эффекты оформления" sub={prefs.fx === 'full' ? 'Полные: частицы и свечение' : 'Облегчённые — для слабых устройств'} onClick={() => setPrefs({ fx: prefs.fx === 'full' ? 'light' : 'full' })} right={<Pill on={prefs.fx === 'full'} />} />
         <Row icon={Undo2} title="Вернуться в обычную Sky" sub="Выключить режим консоли на этом устройстве" onClick={() => { setConsoleModeSetting('off'); }} />
-        <Row icon={Info} title="Версия приложения" sub={`Sky ${pkg.version}`} />
+        <Row icon={Info} title="Версия приложения" sub={APP_VERSION_LABEL} />
         <button type="button" data-console-back onClick={() => setOpen(false)} aria-label="Закрыть" className="mt-2 self-end rounded-full px-10 py-3 text-[22px] font-semibold outline-none" style={{ background: 'rgba(255,255,255,0.14)' }}>Закрыть</button>
       </motion.div>
     </div>

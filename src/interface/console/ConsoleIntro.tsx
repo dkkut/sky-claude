@@ -5,6 +5,7 @@
    загрузку: пока играет, сессия проверяется параллельно, а в конце
    заставка ждёт её только если сервер ещё не ответил.
 =========================================================== */
+import { KutLandMark } from '../../shared/KutLandMark';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useConsoleStore } from './consoleStore';
@@ -92,6 +93,7 @@ export const ConsoleIntro = ({ sessionReady, onDone }: { sessionReady: boolean; 
           initial={{ opacity: 0, y: 10, letterSpacing: '0.7em' }} animate={{ opacity: 1, y: 0, letterSpacing: '0.42em' }} transition={{ delay: T(3900), duration: T(1100), ease: 'easeOut' }}>
           Твоя экосистема
         </motion.p>
+        <motion.div className="absolute bottom-6 left-0 right-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: T(4600), duration: T(900) }}><KutLandMark /></motion.div>
         {!sessionReady && (elapsed || skip) && (
           <div className="mt-10 h-1 w-40 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }} aria-label="Загрузка">
             <motion.div className="h-full w-1/3 rounded-full" style={{ background: '#8b7cff' }} animate={{ x: ['-100%', '300%'] }} transition={{ repeat: Infinity, duration: 1.2, ease: 'easeInOut' }} />
