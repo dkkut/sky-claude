@@ -19,6 +19,7 @@ import { query, pool, dbStats } from './db.mjs';
 import { setLevelFloor, collectMetrics, warningsFor } from './bloxlimits.mjs';
 import { logAdmin } from './adminsec.mjs';
 import { logEvent } from './skylog.mjs';
+import { notifyGift } from './giftnotify.mjs';
 
 export const MODES = ['normal', 'economy', 'high', 'critical'];
 export const MODE_LABEL = { normal: 'Обычный', economy: 'Экономичный', high: 'Высокая нагрузка', critical: 'Критическая нагрузка' };
@@ -184,10 +185,23 @@ const tick = async () => {
   else { state.up = n.up; state.down = n.down; if (why.length) state.why = why; }
   await detectProblems(sm).catch(() => {});
 };
+/** Владельцу — при подъёме до высокой/критической нагрузки, не чаще раза в 30 минут на режим (письма и push через общий канал безопасности). */
+const notifiedAt = {};
+const notifyOwners = async (title, text) => {
+  if (Date.now() - (notifiedAt[title] ?? 0) < 30 * 60_000) return;
+  notifiedAt[title] = Date.now();
+  try {
+    const name = String(process.env.OWNER_USERNAME ?? '').trim().toLowerCase().replace(/^@/, '');
+    if (!name) return;
+    const { rows } = await query(`SELECT p.id FROM profiles p WHERE lower(p.username) = $1 AND p.deleted_at IS NULL LIMIT 1`, [name]);
+    if (rows[0]) await notifyGift(rows[0].id, 'security', title, text.slice(0, 200), null);
+  } catch (e) { console.error('[resources] уведомление владельцу', e.message); }
+};
 const switchTo = async (lvl, why) => {
   const from = modeOf();
   state = { ...state, level: lvl, since: Date.now(), up: 0, down: 0, why };
   await note('mode', modeOf(), `${MODE_LABEL[from]} → ${MODE_LABEL[modeOf()]}: ${why.join(', ')}`);
+  if (lvl >= 2 && lvl > ['normal', 'economy', 'high', 'critical'].indexOf(from)) notifyOwners(`Sky: ${MODE_LABEL[modeOf()]}`, `Режим нагрузки сервера: ${MODE_LABEL[from]} → ${MODE_LABEL[modeOf()]}. Причины: ${why.join(', ')}. Подробности — Sky Admin → Оптимизация ресурсов. Вход и платежи работают как обычно; необязательные фоновые работы отложены.`);
   logEvent({ category: 'server', type: 'resource_mode', level: lvl >= 3 ? 'ERROR' : lvl === 2 ? 'WARN' : 'INFO', detail: { from, to: modeOf(), why: why.join(', ').slice(0, 200) } });
 };
 

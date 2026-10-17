@@ -65,6 +65,7 @@ if (PHASE === 'normal') {
   const d = await up.json().catch(() => ({}));
   t('при critical большая загрузка отклонена: 503 busy_heavy + Retry-After', up.status === 503 && d.error === 'busy_heavy' && up.headers.get('retry-after') === '60', `${up.status} ${JSON.stringify(d)}`);
   t('сообщение понятное человеку', /загрузк/i.test(d.message ?? ''));
+  t('владельцу ушло уведомление о критической нагрузке', Number(q(`select count(*) from gift_notifications where kind='security' and title like 'Sky: Критическая%' and created_at > now() - interval '3 minutes'`)) >= 1 || !q(`select 1 from profiles where lower(username)='ownertest' limit 1`));
   const chat = await call('/api/skyid/profiles', {}, OWN.tok);
   t('обычные запросы (чтение, вход) при critical работают', chat.status === 200, chat.status);
   const login = await call('/api/platform/status');

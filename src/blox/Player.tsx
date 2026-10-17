@@ -75,7 +75,7 @@ export const PlayerScreen = ({ place, game, onClose }: { place: Place; game: Gam
   }, [game.id]);
   useEffect(() => {
     void poll();
-    const t = setInterval(() => void poll(), 3000);
+    const t = setInterval(() => { if (!document.hidden) void poll(); }, 3000);
     const h = () => void poll();
     window.addEventListener('blox:purchase-created', h);
     return () => { clearInterval(t); window.removeEventListener('blox:purchase-created', h); };

@@ -35,7 +35,7 @@ export const PhoneOnly = ({ service }: { service?: PrimeService }) => {
       const e = await refresh();
       if (alive && e?.prime.active) await reloadSession();   // профиль узнает о Prime, экран раздела откроется сам
     };
-    const id = window.setInterval(() => { void tick(); }, 5000);
+    const id = window.setInterval(() => { if (!document.hidden) void tick(); }, 5000);
     const onVis = () => { if (!document.hidden) void tick(); };
     document.addEventListener('visibilitychange', onVis);
     return () => { alive = false; clearInterval(id); document.removeEventListener('visibilitychange', onVis); };

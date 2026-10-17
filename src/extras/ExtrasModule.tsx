@@ -430,7 +430,7 @@ const AdminPanel = () => {
       if (!alive) return;
       const open = r.ok ? (r.data?.enabled === false || r.data?.open === true) : false;
       setGateOpen(open);
-      if (!open) timer = window.setTimeout(() => { void load(); }, 3000);
+      if (!open) timer = window.setTimeout(() => { void load(); }, document.hidden ? 15000 : 3000);
     };
     void load();
     return () => { alive = false; window.clearTimeout(timer); };

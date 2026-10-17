@@ -315,7 +315,7 @@ export const BotChatOverlay = ({ bot, onClose }: { bot: Bot; onClose: () => void
    * две секунды. Закрыли окно — опрос прекращается.
    */
   useEffect(() => {
-    const t = setInterval(() => { void refresh(); }, 2000);
+    const t = setInterval(() => { if (!document.hidden) void refresh(); }, 2000);
     return () => clearInterval(t);
   }, [refresh]);
 

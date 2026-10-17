@@ -29,7 +29,7 @@ export const AdminGateScreen = ({ onOpened }: { onOpened: () => void }) => {
     const r = await apiCall<Status>('/api/admin/gate');
     if (r.ok && r.data) { setSt(r.data); if (r.data.open) onOpened(); }
   }, [onOpened]);
-  useEffect(() => { void load(); const t = setInterval(() => void load(), 3000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { void load(); const t = setInterval(() => { if (!document.hidden) void load(); }, 3000); return () => clearInterval(t); }, [load]);
 
   const send = useCallback(async () => {
     setBusy(true); setMsg('');

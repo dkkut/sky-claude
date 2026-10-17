@@ -89,7 +89,7 @@ const LimitedBar = () => {
       if (r.ok && r.data && r.data.limited === false) window.location.reload();
       if (r.status === 401 || (r.ok && r.data?.status === 'denied')) window.location.reload();
     };
-    const t = window.setInterval(() => { void tick(); }, 4000);
+    const t = window.setInterval(() => { if (!document.hidden) void tick(); }, 4000);
     return () => window.clearInterval(t);
   }, []);
   return (
