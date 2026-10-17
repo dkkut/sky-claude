@@ -9,12 +9,14 @@ import * as radmin from './../recoveryadmin.mjs';
 import { generateBackupCodes } from './../accountrecovery.mjs';
 import { verifySkyTwoFactor } from './../skyid.mjs';
 import { historyFor } from './../recoverycore.mjs';
+import * as cases from './../recoverycases.mjs';
+import { readSession } from './../http.mjs';
 
 const STATUS = {
   too_many_requests: 429, invalid_request: 404, invalid_link: 404, verification_failed: 401, not_enough_factors: 409, limited_only: 409,
   wrong_account_type: 409, not_ready: 409, bad_password: 400, invalid_email: 400, same_as_primary: 409, same_as_current: 409, email_unavailable: 409,
   cannot_prove_ownership: 409, two_factor_required: 400, guard_code_required: 400, invalid_code: 401, too_many_attempts: 429, owner_only: 403,
-  weak_secret: 400, reason_required: 400, not_found: 404, nothing_to_show: 404, step_up_required: 401, step_up_invalid: 401, step_up_exhausted: 429, not_allowed: 403,
+  weak_secret: 400, bad_field: 400, empty: 400, closed: 409, not_closed: 409, too_old: 409, bad_status: 400, console_only: 409, account_not_linked: 409, reason_required: 400, not_found: 404, nothing_to_show: 404, step_up_required: 401, step_up_invalid: 401, step_up_exhausted: 429, not_allowed: 403,
 };
 
 /**
@@ -38,7 +40,7 @@ export const recoveryRoutes = async (req, res, url) => {
   /* ── Публичные ── */
   if (pub) {
     if (req.method === 'GET' && path === '/api/recovery/info') return json(res, 200, { ok: true });
-    if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
+    if (req.method !== 'POST' && path !== '/api/recovery/case/view') return json(res, 405, { error: 'method_not_allowed' });
     if (path === '/api/recovery/start') return reply(await flow.start({ identifier: b.identifier, kind: b.kind, ip, ua: req.headers['user-agent'] }));
     if (path === '/api/recovery/email/send') return reply(await flow.sendEmailCode({ requestId: b.requestId, secret: b.secret, ip }));
     if (path === '/api/recovery/verify') return reply(await flow.verifyFactor({ requestId: b.requestId, secret: b.secret, factor: b.factor, value: b.value, ip }));
@@ -48,8 +50,23 @@ export const recoveryRoutes = async (req, res, url) => {
     if (path === '/api/recovery/cancel') return reply(await flow.cancelByLink(b.token, ip));
     if (path === '/api/recovery/finish/info') return reply(await flow.finishInfo(b.token));
     if (path === '/api/recovery/finish/send-code') return reply(await flow.finishSendCode({ token: b.token, ip }));
-    if (path === '/api/recovery/finish') return reply(await flow.finish({ token: b.token, code: b.code, ownerSecret: b.ownerSecret, newPassword: b.newPassword, ip }));
+    if (path === '/api/recovery/finish') return reply(await flow.finish({ token: b.token, code: b.code, ownerSecret: b.ownerSecret, caseKey: b.caseKey, newPassword: b.newPassword, ip }));
     if (path === '/api/recovery/confirm-email') { if (!rateLimitPerHour(`rcv:conf:${ip}`, 30)) return json(res, 429, { error: 'too_many_requests' }); return reply(await mail.confirmLink(b.token, ip)); }
+    if (path === '/api/recovery/case/create') {
+      const sess = await readSession(req).catch(() => null);
+      const r = await cases.createCase(b, { ip, session: sess });
+      return reply(r, r.duplicate ? 200 : 201);
+    }
+    if (path === '/api/recovery/case/confirm-contact') return reply(await cases.confirmContact(b.token));
+    if (path === '/api/recovery/case/resend-access') return reply(await cases.resendAccess({ number: b.number, email: b.email, ip }));
+    if (path.startsWith('/api/recovery/case/')) {
+      const c = await cases.byKey(req.headers['x-recovery-case']);
+      if (!c) { await new Promise((x) => setTimeout(x, 200)); return json(res, 404, { error: 'not_found' }); }
+      if (path === '/api/recovery/case/view') return json(res, 200, await cases.viewForUser(c));
+      if (path === '/api/recovery/case/message') return reply(await cases.userMessage(c, b.text, ip));
+      if (path === '/api/recovery/case/reopen') return reply(await cases.reopen(c));
+      return json(res, 404, { error: 'not_found' });
+    }
     if (path === '/api/recovery/handoff') {
       const r = await flow.exchangeHandoff({ code: b.code, req, ip, deps: { startSession } });
       if (r.error) return reply(r);
@@ -113,8 +130,24 @@ export const recoveryRoutes = async (req, res, url) => {
 
   /* ── Сотрудники ── */
   const s = await requireProfile(req, res); if (!s) return true;
-  if (!(await can(s.profileId, 'security'))) return json(res, 403, { error: 'not_allowed' });
   const meta = requestMeta(req);
+  if (!path.startsWith('/api/admin/recovery/cases') && !(await can(s.profileId, 'security'))) return json(res, 403, { error: 'not_allowed' });
+  if (path.startsWith('/api/admin/recovery/cases')) {
+    const u = new URL(req.url, 'http://x');
+    let m;
+    if (req.method === 'GET' && path === '/api/admin/recovery/cases') return reply(await cases.staffList(s.profileId, Object.fromEntries(u.searchParams)));
+    if (req.method === 'GET' && (m = /^\/api\/admin\/recovery\/cases\/(rcs-[0-9a-f]{24})$/.exec(path))) return reply(await cases.staffDetail(s.profileId, m[1]));
+    if (req.method === 'POST' && (m = /^\/api\/admin\/recovery\/cases\/(rcs-[0-9a-f]{24})\/reply$/.exec(path))) { if (!rateLimit(`rcvstaff:${s.profileId}`, 60)) return json(res, 429, { error: 'too_many_requests' }); return reply(await cases.staffReply(s.profileId, m[1], b.text)); }
+    if (req.method === 'POST' && (m = /^\/api\/admin\/recovery\/cases\/(rcs-[0-9a-f]{24})\/status$/.exec(path))) {
+      if (b.status === 'allowed' && (await cases.caseKind(m[1])) === 'owner') return json(res, 409, { error: 'console_only' });
+      if (b.status === 'allowed' || b.status === 'rejected') {
+        const step = await consumeStepUp(s.profileId, 'recovery_staff', b.stepUpCode, { meta });
+        if (step.error) return json(res, step.error === 'step_up_exhausted' ? 429 : 401, step);
+      }
+      return reply(await cases.staffSetStatus(s.profileId, m[1], b.status, b.note));
+    }
+    return json(res, 404, { error: 'not_found' });
+  }
   if (req.method === 'GET' && path === '/api/admin/recovery/history') {
     const sky = new URL(req.url, 'http://x').searchParams.get('skyId') ?? '';
     return json(res, 200, { items: sky ? await historyFor(sky, 100) : [] });

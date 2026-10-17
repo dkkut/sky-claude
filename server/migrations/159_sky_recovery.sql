@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS recovery_cases (
   contact_hash  TEXT,                         -- ссылка подтверждения контактной почты
   ticket_id     TEXT,
   access_hash   TEXT NOT NULL,                -- секрет доступа к чату заявки (ограниченная сессия)
+  idem_key      TEXT UNIQUE,                  -- защита от двойной отправки формы
   status        TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','review','waiting_user','security_check','allowed','resolved','rejected','closed')),
   assignee_id   TEXT,
   unread_user   INT NOT NULL DEFAULT 0,

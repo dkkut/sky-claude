@@ -259,7 +259,7 @@ const applyCors = (req, res) => {
   res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sky-Client, X-Sky-Beta, X-Sky-Lang, X-Sky-Media-Url, X-Sky-Device, X-Sky-Mode');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sky-Client, X-Sky-Beta, X-Sky-Lang, X-Sky-Media-Url, X-Sky-Device, X-Sky-Mode, X-Recovery-Case');
     res.setHeader('Access-Control-Max-Age', '600');
   }
 };
@@ -727,6 +727,8 @@ const start = async () => {
       // «Вместе» спасает файл от удаления даже тогда.
       const purged = await purgeDeletions();
       if (purged) console.log(`[deletion] окончательно удалено аккаунтов/профилей: ${purged}`);
+      await import('./recoverycases.mjs').then((m) => m.sweepCases()).catch((e) => console.error('[recovery] заявки:', e.message));
+      await import('./recoverycore.mjs').then((m) => m.sweepAttempts()).catch(() => {});
       await sweepLogs().catch((e) => console.error('[skylog] уборка:', e.message));
       const trashed = await purgeTrashedContent();
       if (trashed) console.log(`[content] стёрто после резерва 7 дней: ${trashed}`);

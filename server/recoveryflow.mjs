@@ -22,6 +22,7 @@ import { isOwnerRaw } from './admin.mjs';
 import { L } from './lang.mjs';
 import { newId, randomSecret, hashSecret, safeEqual, attempt, record, notifyAccount, recoveryOrigin, appOrigin, maskEmail, stamp, ipHash } from './recoverycore.mjs';
 import { usableBackupEmail } from './recoverymail.mjs';
+import { verifyCaseFactor } from './recoverycases.mjs';
 import { verifyAdminToken, verifyOwnerSecret, afterAdminRecovery, ownerSecretState } from './recoveryadmin.mjs';
 
 const REQ_TTL_MS = 60 * 60_000;                   // запрос живёт час; ожидание — отдельный срок
@@ -31,9 +32,9 @@ const ownerWaitMs = () => (process.env.RECOVERY_OWNER_WAIT_SEC !== undefined ? N
 const err = (error, extra = {}) => ({ error, ...extra });
 const NEUTRAL = { message: 'Если аккаунт существует и данные указаны верно, мы предложим доступные способы восстановления.' };
 const METHODS = {
-  user: ['email', 'totp', 'backup_code'],
-  admin: ['admin_token', 'email', 'totp', 'backup_code'],
-  owner: ['owner_secret', 'email', 'totp', 'backup_code'],
+  user: ['email', 'totp', 'backup_code', 'support_case'],
+  admin: ['admin_token', 'email', 'totp', 'backup_code', 'support_case'],
+  owner: ['owner_secret', 'email', 'totp', 'backup_code', 'support_case'],
 };
 
 /** Найти аккаунт по тому, что человек помнит: почта, телефон, @ник или идентификатор Sky ID. */
@@ -135,6 +136,8 @@ export const verifyFactor = async ({ requestId, secret, factor, value, ip }) => 
     ok = r.kind === 'admin' && await verifyAdminToken(r.sky_id, v);
   } else if (factor === 'owner_secret') {
     ok = r.kind === 'owner' && await verifyOwnerSecret(r.sky_id, v);
+  } else if (factor === 'support_case') {
+    ok = await verifyCaseFactor(r.sky_id, v, r.kind);
   }
   if (!ok) return fail(r, factor, ip);
   await addFactor(r, factor);
@@ -148,6 +151,12 @@ export const verifyFactor = async ({ requestId, secret, factor, value, ip }) => 
 export const evaluate = (kind, has2fa, factors) => {
   const f = new Set(factors);
   const strong = f.has('totp') || f.has('backup_code');
+  // Решение поддержки (заявка «Восстановление разрешено») — это не доступ, а ещё один способ начать процедуру: всегда с ожиданием и уведомлениями.
+  if (f.has('support_case')) {
+    if (kind === 'user') return { path: 'wait', waitMs: emailWaitMs(), resetTwoFactor: has2fa && !strong };
+    if (kind === 'admin' && (f.has('email') || strong)) return { path: 'wait', waitMs: ownerWaitMs(), resetTwoFactor: has2fa && !strong };
+    if (kind === 'owner') return { path: 'wait', waitMs: ownerWaitMs() * 2, resetTwoFactor: has2fa && !strong };
+  }
   if (kind === 'user') {
     if (f.has('email') && strong) return { path: 'now' };
     if (f.has('email')) return { path: 'wait', waitMs: emailWaitMs(), resetTwoFactor: has2fa };
@@ -284,13 +293,17 @@ export const finishSendCode = async ({ token, ip }) => {
   return { ok: true };
 };
 
-export const finish = async ({ token, code, ownerSecret, newPassword, ip }) => {
+export const finish = async ({ token, code, ownerSecret, caseKey, newPassword, ip }) => {
   const r = await byFinish(token); if (!r || r.status !== 'waiting') return err('invalid_link');
   if (r.ready_at > new Date()) return err('not_ready', { readyAt: r.ready_at });
   if (!(await attempt(`finish:${r.id}`, 8, 3600))) return err('too_many_requests');
-  const to = await usableBackupEmail(r.sky_id);
-  if (!to || (await verifyCode('email', to, `recovery-finish:${r.id}`, String(code ?? ''))).error) return fail(r, 'email', ip);
-  if (r.kind === 'owner' && !(await verifyOwnerSecret(r.sky_id, String(ownerSecret ?? '')))) return fail(r, 'owner_secret', ip);
+  const viaCase = r.factors.includes('support_case');
+  if (viaCase) { if (!(await verifyCaseFactor(r.sky_id, String(caseKey ?? ''), r.kind))) return fail(r, 'support_case', ip); }   // почты может не быть — подтверждает ключ разрешённой заявки
+  else {
+    const to = await usableBackupEmail(r.sky_id);
+    if (!to || (await verifyCode('email', to, `recovery-finish:${r.id}`, String(code ?? ''))).error) return fail(r, 'email', ip);
+  }
+  if (r.kind === 'owner' && r.factors.includes('owner_secret') && !(await verifyOwnerSecret(r.sky_id, String(ownerSecret ?? '')))) return fail(r, 'owner_secret', ip);
   const row = await findSkyIdById(r.sky_id); if (!row) return err('invalid_link');
   if (newPassword != null && (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 200)) return err('bad_password');
   const closed = await query(`UPDATE recovery_requests SET status = 'done', finished_at = now() WHERE id = $1 AND status = 'waiting' RETURNING id`, [r.id]);

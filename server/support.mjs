@@ -194,6 +194,7 @@ export const replyToTicket = async (ticketId, authorId, body) => {
     [ticket.id, nextStatus],
   );
   if (staff) void emailGuestReply(ticket, text);
+  if (ticket.source === 'recovery') void import('./recoverycases.mjs').then((m) => m.onTicketReply(ticket.id, staff, Date.now())).catch(() => {});
   return { ticket: await readTicket(ticket.id, authorId) };
 };
 
