@@ -1153,6 +1153,8 @@ const executePending = async (row, payload, ownerId) => {
                 admin_role_set_at = now(), admin_role_set_by = $3
           WHERE id = $1`, [target, role, ownerId]);
       if (!rowCount) return { error: 'not_found' };
+      // Sky Recovery: отдельный токен восстановления администратора (в базе только хеш; показывается самому администратору один раз).
+      try { const { issueAdminToken, adminTokenState } = await import('./recoveryadmin.mjs'); if (!(await adminTokenState(target)).exists) await issueAdminToken(target, ownerId, 'issued'); } catch (e) { console.error('[recovery] токен администратора:', e.message); }
       return { outcome: `Права выданы, роль: ${ROLE_LABEL[role] ?? role}` };
     }
 

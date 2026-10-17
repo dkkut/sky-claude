@@ -106,6 +106,7 @@ import { accountDeletionRoutes } from './routes/accountdeletion.mjs';
 import { purgeDue as purgeDeletions } from './accountdeletion.mjs';
 import { sweepLogs, flushNow as flushLogs } from './skylog.mjs';
 import { accountRecoveryRoutes } from './routes/accountrecovery.mjs';
+import { recoveryRoutes } from './routes/recovery.mjs';
 import { primeRewardsRoutes } from './routes/primerewards.mjs';
 import { aiUsageRoutes } from './routes/aiusage.mjs';
 import { partnersRoutes } from './routes/partners.mjs';
@@ -216,7 +217,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [betaRoutes, recoveryRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, artistCardsRoutes, skyLogsRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -287,7 +288,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // PIN при смене IP (ippin.mjs): у тех, кто его включил, сессия с нового адреса закрыта до ввода PIN.
     // Выход, обновление токена, вход, ввод самого PIN и ссылки шлюзов остаются открытыми.
     if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && !url.startsWith('/api/skyid/pin') && !url.startsWith('/api/platform/status')
-        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify')) {
+        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/recovery/')) {
       const tok = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tok?.typ === 'access' && tok.sky && tok.sid) {
         const stored = await sessionStore.get(tok.sid);
@@ -396,7 +397,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
     /* Игровые серверы Sky Blox — программы, а не люди: у них подпись запроса вместо ключа беты. */
     const isBloxServer = url.startsWith('/api/blox/server/') || url.startsWith('/api/skykassa/webhook/');
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -410,7 +411,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
      * не смог бы ни войти и выключить режим, ни браузер — понять,
      * почему сайт не отвечает, и показать нужный экран.
      */
-    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify')) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/recovery/')) {
       const shutdown = await shutdownState();
       if (shutdown.active) {
         const session = await readSession(req);
