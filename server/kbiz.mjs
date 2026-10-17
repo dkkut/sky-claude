@@ -295,7 +295,7 @@ export const setQrStatus = async (profileId, qrId, status) => {
 
 /* ─── Публичная страница ─── */
 
-const loadPublic = async (pid) => {
+export const loadPublic = async (pid) => {
   const { rows } = await query(
     `SELECT q.*, b.name AS biz_name, b.description AS biz_desc, b.status AS biz_status, b.id AS biz_id, b.website, b.contacts, (b.logo IS NOT NULL) AS has_logo
        FROM kb_qr q JOIN kb_businesses b ON b.id = q.business_id WHERE q.public_id = $1`, [String(pid ?? '')]);
@@ -303,7 +303,7 @@ const loadPublic = async (pid) => {
 };
 
 /** Доступна ли страница покупателям: бизнес опубликован, не приостановлен, подписка действует, QR включён и не просрочен. */
-const pageState = async (q) => {
+export const pageState = async (q) => {
   if (q.biz_status !== 'active') return q.biz_status === 'suspended' ? 'suspended' : 'unavailable';
   if (q.status !== 'active') return q.status === 'archived' ? 'unavailable' : 'disabled';
   if (q.expires_at && q.expires_at <= new Date()) return 'expired';
@@ -312,6 +312,7 @@ const pageState = async (q) => {
   return 'open';
 };
 
+const providerOn = async (id) => Boolean((await query('SELECT 1 FROM kb_providers WHERE business_id = $1 AND enabled', [id])).rows[0]);
 export const publicPage = async (pid, ip) => {
   const q = await loadPublic(pid);
   if (!q) return err('not_found');
@@ -330,6 +331,7 @@ export const publicPage = async (pid, ip) => {
   const lines = (q.kind === 'invoice' || q.kind === 'order') && Array.isArray(cfg.lines) ? cfg.lines : undefined;
   return { ...base, amountRub: q.amount_rub, currency: q.currency, orderNo: q.order_no || undefined, instruction: q.instruction || r.instruction || undefined,
     requisites: { holder: r.holder, method: r.method, value: r.value, bank: r.bank || undefined, purpose: r.purpose || undefined, extra: r.extra || undefined },
+    provider: await providerOn(q.biz_id) || undefined,
     tip, lines, number: cfg.number, discountRub: cfg.discountRub || undefined,
     minAmountRub: q.kind === 'tip' ? (cfg.min ?? 1) : 1, maxAmountRub: q.kind === 'tip' ? (cfg.max ?? MAX_AMOUNT) : MAX_AMOUNT, note: 'Это прямой перевод владельцу бизнеса. Sky не принимает деньги и не проверяет перевод: владелец сам подтверждает получение.' };
 };
@@ -368,16 +370,18 @@ export const reportPayment = async (pid, body, ip) => {
 };
 
 export const buyerStatus = async (id, key) => {
-  const { rows } = await query('SELECT p.status, p.amount_rub, b.name FROM kb_payments p JOIN kb_businesses b ON b.id = p.business_id WHERE p.id = $1 AND p.buyer_key_hash = $2', [String(id ?? ''), keyHash(key)]);
+  const { rows: own } = await query(`SELECT 1 FROM kb_payments WHERE id = $1 AND buyer_key_hash = $2 AND source = 'provider' AND status IN ('created','reported')`, [String(id ?? ''), keyHash(key)]);
+  if (own[0]) { const { refreshProviderPayment } = await import('./kbprovider.mjs'); await refreshProviderPayment(String(id)).catch(() => {}); }   // перепроверка у провайдера только по ключу покупателя
+  const { rows } = await query('SELECT p.status, p.source, p.amount_rub, b.name FROM kb_payments p JOIN kb_businesses b ON b.id = p.business_id WHERE p.id = $1 AND p.buyer_key_hash = $2', [String(id ?? ''), keyHash(key)]);
   if (!rows[0]) return err('not_found');
   return { status: rows[0].status, statusLabel: STATUS_LABEL[rows[0].status], amountRub: rows[0].amount_rub, business: rows[0].name,
-    note: rows[0].status === 'confirmed' ? 'Владелец подтвердил получение перевода.' : 'Статус ставит владелец бизнеса после проверки поступления.' };
+    note: rows[0].status === 'confirmed' ? (rows[0].source === 'provider' ? 'Оплату подтвердил платёжный партнёр.' : 'Владелец подтвердил получение перевода.') : 'Статус ставит владелец бизнеса после проверки поступления.' };
 };
 
 /* ─── Заявки (владелец) ─── */
 
-const shapePayment = (r) => ({ id: r.id, qrId: r.qr_id, qrTitle: r.qr_title ?? undefined, amountRub: r.amount_rub, currency: r.currency, orderNo: r.order_no, status: r.status, statusLabel: STATUS_LABEL[r.status],
-  source: r.source, buyerNote: r.buyer_note, ownerComment: r.owner_comment, confirmedBy: r.confirmed_by ? 'owner' : undefined,
+const shapePayment = (r) => ({ id: r.id, qrId: r.qr_id, qrTitle: r.qr_title ?? undefined, amountRub: r.amount_rub, currency: r.currency, orderNo: r.order_no, status: r.status, statusLabel: r.source === 'provider' && r.status === 'confirmed' ? 'Оплата подтверждена платёжным партнёром' : r.source === 'provider' && r.status === 'created' ? 'Ожидает оплаты у партнёра' : STATUS_LABEL[r.status],
+  source: r.source, buyerNote: r.buyer_note, ownerComment: r.owner_comment, confirmedBy: r.confirmed_by ? (r.source === 'provider' ? 'integration' : 'owner') : undefined,
   reportedAt: r.reported_at?.toISOString?.() ?? null, confirmedAt: r.confirmed_at?.toISOString?.() ?? null, createdAt: r.created_at.toISOString() });
 
 export const listPayments = async (profileId, { status, qrId, limit = 100 } = {}) => {
@@ -442,11 +446,12 @@ export const overview = async (profileId) => {
             count(*) FILTER (WHERE status IN ('reported','pending_check'))::int AS awaiting,
             count(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
             COALESCE(SUM(amount_rub) FILTER (WHERE status IN ('reported','pending_check','confirmed','not_found','refunded')), 0)::bigint AS claimed_sum,
-            COALESCE(SUM(amount_rub) FILTER (WHERE status = 'confirmed'), 0)::bigint AS confirmed_sum
+            COALESCE(SUM(amount_rub) FILTER (WHERE status = 'confirmed' AND source <> 'provider'), 0)::bigint AS confirmed_sum,
+            COALESCE(SUM(amount_rub) FILTER (WHERE status = 'confirmed' AND source = 'provider'), 0)::bigint AS confirmed_int_sum
        FROM kb_payments WHERE business_id = $1`, [b[0].id]);
   const { rows: q } = await query(`SELECT count(*)::int AS n, (SELECT count(*)::int FROM kb_qr_opens o JOIN kb_qr x ON x.id = o.qr_id WHERE x.business_id = $1) AS opens FROM kb_qr WHERE business_id = $1 AND status <> 'archived'`, [b[0].id]);
   return { stats: { qr: q[0].n, opens: q[0].opens, requests: rows[0].requests, awaiting: rows[0].awaiting, confirmed: rows[0].confirmed,
-    claimedSumRub: Number(rows[0].claimed_sum), confirmedByOwnerSumRub: Number(rows[0].confirmed_sum), confirmedByIntegrationSumRub: 0 } };
+    claimedSumRub: Number(rows[0].claimed_sum), confirmedByOwnerSumRub: Number(rows[0].confirmed_sum), confirmedByIntegrationSumRub: Number(rows[0].confirmed_int_sum) } };
 };
 
 /* ─── Сканер QR в SkyMoney ─── */

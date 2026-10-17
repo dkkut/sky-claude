@@ -58,6 +58,7 @@ export const PERMISSIONS = [
   'storage_maintenance', // Sky Storage: режим технических работ
   'oidc',            // Sky ID для сторонних сервисов: клиенты, адреса возврата, ключи подписи (создание/смена секретов — с подтверждением личности)
   'partners',        // Партнёры: черновики, редактирование, отправка на проверку (внутренние контакты видны)
+  'kassa_biz',       // SkyKassa Business: список бизнесов, приостановка и возобновление
   'partners_approve',// Партнёры: подтверждение, приостановка, архив — отдельное право, в «полные права» не входит
   'prime',           // Sky Prime: правила кэшбэка, каталог наград, очередь выдачи наград (изменения — с подтверждением личности)
   'logs',            // единые журналы Sky: поиск, фильтры, выгрузка, сроки хранения, DEBUG, проверка целостности (без секретов и содержимого сообщений)
@@ -112,6 +113,7 @@ export const ROLES = {
   verification_admin: ['verification'],
   oidc_admin:      ['oidc'],
   prime_admin:     ['prime'],
+  kassa_biz_admin: ['kassa_biz', 'support'],
   partners_manager:['partners'],
   partners_approver:['partners', 'partners_approve'],
   storage_viewer:  ['storage_view', 'storage_audit'],
@@ -141,6 +143,7 @@ export const ROLE_LABEL = {
   verification_admin: 'Верификация',
   oidc_admin: 'Sky ID для сервисов',
   prime_admin: 'Sky Prime: кэшбэк и награды',
+  kassa_biz_admin: 'SkyKassa Business: бизнесы',
   partners_manager: 'Партнёры: добавление и правка',
   partners_approver: 'Партнёры: подтверждение и публикация',
   storage_viewer: 'Sky Storage: просмотр',

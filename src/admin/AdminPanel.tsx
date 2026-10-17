@@ -59,6 +59,7 @@ import { SshTab } from './SshTab';
 import { PrimeTab } from './PrimeTab';
 import { AiUsageTab } from './AiUsageTab';
 import { PartnersTab } from './PartnersTab';
+import { KbizAdminTab } from './KbizAdminTab';
 import { GoAdminTab } from './GoAdmin';
 import { AdminGateScreen } from './AdminGate';
 const C = {
@@ -5514,7 +5515,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5704,6 +5705,7 @@ export const AdminPanel = () => {
     { key: 'ssh', label: 'Доступ по SSH', show: has('security') },
     { key: 'prime', label: 'Sky Prime', show: has('prime') },
     { key: 'partners', label: 'Партнёры', show: has('partners') },
+    { key: 'kbiz', label: 'SkyKassa Business', show: has('kassa_biz') },
     { key: 'aiusage', label: 'AI — ресурсы и токены', show: has('analytics') },
     { key: 'resources', label: 'Оптимизация ресурсов', show: has('analytics') },
     { key: 'skykassa', label: 'SkyKassa', show: has('skykassa') || has('skykassa_settings') },
@@ -5935,6 +5937,7 @@ export const AdminPanel = () => {
       {tab === 'ssh' && <SshTab />}
       {tab === 'prime' && <PrimeTab />}
       {tab === 'partners' && <PartnersTab />}
+      {tab === 'kbiz' && <KbizAdminTab />}
       {tab === 'aiusage' && <AiUsageTab />}
       {tab === 'resources' && <ResourcesTab />}
       {tab === 'storage' && <StorageTab perms={rights?.permissions ?? []} owner={Boolean(rights?.owner)} />}

@@ -60,6 +60,7 @@ export interface PublicPage {
   title: string; description: string; state: 'open' | 'expired' | 'disabled' | 'unavailable' | 'suspended'; kind: string;
   amountRub?: number | null; currency?: string; orderNo?: string; instruction?: string; note?: string; minAmountRub?: number; maxAmountRub?: number;
   requisites?: { holder: string; method: string; value: string; bank?: string; purpose?: string; extra?: string };
+  provider?: boolean;
   tip?: { recipient: string; message?: string; amounts: number[]; allowCustom: boolean; photoUrl: string | null };
   lines?: { title: string; variant?: string; qty: number; priceRub: number; discountRub?: number }[]; number?: number; discountRub?: number;
 }
@@ -146,3 +147,26 @@ export const kbPromoStatus = (id: string, status: string) => send<unknown>('POST
 export const kbReviews = () => req<{ reviews: Review[] }>('/api/kbiz/reviews');
 export const kbReviewAct = (id: string, b: { status?: string; reply?: string }) => send<unknown>('POST', `/api/kbiz/reviews/${id}`, b);
 export const kbAnalytics = (days: number) => req<{ analytics: Analytics | null }>(`/api/kbiz/analytics?days=${days}`);
+
+export interface Provider { kind: string; title: string; host: string; merchant: string; enabled: boolean; hasSecret: boolean; lastOkAt: string | null; lastError: string | null; updatedAt: string; webhookPath: string }
+export const kbProvider = () => req<{ provider: Provider | null }>('/api/kbiz/provider');
+export const kbProviderSave = (b: unknown) => send<unknown>('PUT', '/api/kbiz/provider', b);
+export const kbProviderPing = () => send<unknown>('POST', '/api/kbiz/provider/ping');
+export const kbProviderRemove = (twoFactorCode?: string) => req<unknown>('/api/kbiz/provider', { method: 'DELETE', body: JSON.stringify({ twoFactorCode }) });
+export const pubProviderPay = async (pid: string, b: { amountRub?: number; note?: string; website?: string }) => {
+  try {
+    const r = await fetch(uploadUrl(`/api/kbiz/public/p/${encodeURIComponent(pid)}/provider`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    const d = await r.json().catch(() => ({}));
+    return r.ok && d.url ? { ok: true as const, data: d as { id: string; statusKey: string; url: string } } : { ok: false as const, error: String(d.error ?? 'error') };
+  } catch { return { ok: false as const, error: 'network' }; }
+};
+/* Администрация Sky */
+export interface AdminBiz { id: string; name: string; owner: string; status: string; mode: string; legalType: string; createdAt: string; subUntil: string | null; requests: number; confirmedSumRub: number; staff: number; hasProvider: boolean; suspendedReason?: string }
+export interface AdminCard {
+  business: AdminBiz & { category: string; country: string; description: string; shopSlug?: string; shopEnabled: boolean; suspendedAt: string | null };
+  subscription: Subscription; provider: { host: string; enabled: boolean; lastOkAt: string | null; lastError: string | null } | null; payments: { by_provider: number; by_owner: number; not_found: number };
+  audit: { actor: string; action: string; detail: string; at: string }[];
+}
+export const kbAdminList = (q: string, status: string) => req<{ businesses: AdminBiz[] }>(`/api/admin/kbiz?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}`);
+export const kbAdminCard = (id: string) => req<AdminCard>(`/api/admin/kbiz/${id}`);
+export const kbAdminAct = (id: string, action: 'suspend' | 'resume', reason: string) => send<unknown>('POST', `/api/admin/kbiz/${id}/${action}`, { reason });

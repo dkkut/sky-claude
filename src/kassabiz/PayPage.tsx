@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Copy, Check, Loader2, ShieldCheck, AlertTriangle, Store } from 'lucide-react';
 import { uploadUrl } from '@/core/auth/api';
-import { pubPage, pubReport, pubStatus, type PublicPage } from './api';
+import { pubPage, pubReport, pubProviderPay, pubStatus, type PublicPage } from './api';
 
 const METHOD: Record<string, string> = { phone: 'Номер телефона (СБП)', account: 'Номер счёта', card: 'Номер карты', other: 'Реквизиты' };
 const STATE_TEXT: Record<string, string> = {
@@ -15,7 +15,7 @@ const STATE_TEXT: Record<string, string> = {
 };
 const ERR: Record<string, string> = {
   bad_amount: 'Укажите сумму — целое число рублей от 1 до 1 000 000.', too_many_requests: 'Слишком много заявок. Попробуйте позже.',
-  page_unavailable: 'Страница оплаты больше не принимает заявки.', network: 'Нет связи. Проверьте интернет и повторите.', not_found: 'Страница не найдена.',
+  page_unavailable: 'Страница оплаты больше не принимает заявки.', provider_unreachable: 'Платёжный партнёр сейчас недоступен. Оплатите переводом по реквизитам.', provider_error: 'Платёжный партнёр сейчас недоступен. Оплатите переводом по реквизитам.', provider_bad_answer: 'Платёжный партнёр ответил некорректно. Оплатите переводом по реквизитам.', provider_not_set: 'Оплата у партнёра недоступна.', network: 'Нет связи. Проверьте интернет и повторите.', not_found: 'Страница не найдена.',
 };
 const saved = (pid: string): { id: string; key: string } | null => { try { return JSON.parse(localStorage.getItem(`kbiz:pay:${pid}`) ?? 'null'); } catch { return null; } };
 
@@ -72,6 +72,15 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
     setReq({ id: r.data.id, key: r.data.statusKey, label: r.data.statusLabel });
   };
 
+  const payAtPartner = async () => {
+    if (!page) return;
+    setBusy(true); setErr('');
+    const r = await pubProviderPay(pid, { ...(page.amountRub == null ? { amountRub: Number(amount) } : {}), note, website: trap });
+    setBusy(false);
+    if (!r.ok) { setErr(ERR[r.error] ?? 'Не удалось перейти к оплате у партнёра.'); return; }
+    try { localStorage.setItem(`kbiz:pay:${pid}`, JSON.stringify({ id: r.data.id, key: r.data.statusKey })); } catch { /* ok */ }
+    if (/^https?:\/\//i.test(r.data.url)) window.location.assign(r.data.url);
+  };
   const wrap = (children: React.ReactNode) => (
     <div className={embedded ? 'h-full overflow-y-auto' : 'min-h-screen'} style={{ background: 'var(--bg)', color: 'var(--t1)' }}>
       <div className="mx-auto w-full max-w-md px-4 py-6" style={{ paddingLeft: 'max(16px, env(safe-area-inset-left))', paddingRight: 'max(16px, env(safe-area-inset-right))' }}>{children}</div>
@@ -157,6 +166,11 @@ export const PayPage = ({ pid, embedded = false }: { pid: string; embedded?: boo
             className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-none" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }} />
           <input value={trap} onChange={(e) => setTrap(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 opacity-0" />
           {err && <p role="alert" className="mt-2 text-xs" style={{ color: 'var(--red)' }}>{err}</p>}
+          {page.provider && (
+            <button type="button" disabled={busy || (!fixed && !amount)} onClick={() => void payAtPartner()} className="mt-3 w-full rounded-xl py-3 text-sm font-black disabled:opacity-50" style={{ background: 'var(--bg-l2)', border: '1px solid var(--accent)', color: 'var(--t1)' }}>
+              Оплатить у платёжного партнёра бизнеса
+            </button>
+          )}
           <button type="button" disabled={busy || (!fixed && !amount)} onClick={() => void report()}
             className="mt-3 w-full rounded-xl py-3 text-sm font-black disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
             {busy ? 'Отправляю…' : 'Я перевёл деньги'}

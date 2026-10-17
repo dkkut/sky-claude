@@ -9,7 +9,7 @@ import * as K from './api';
 import { qrSvg, downloadPng, downloadSvg, printQr } from './qr';
 
 import { Items, ShopSettings, Orders, Tips, Invoices } from './Catalog';
-import { Cash, Team, Promos, Reviews, AnalyticsView, Invites } from './Team';
+import { Cash, Team, Promos, Reviews, AnalyticsView, Invites, ProviderBlock } from './Team';
 import { card, field, why, dt, Btn, In, Stat, REASON } from './ui';
 const MODE: Record<K.Mode, { title: string; hint: string; icon: typeof Store }> = {
   online: { title: 'Онлайн-платформа', hint: 'Платёжные ссылки и страницы оплаты, заказы и счета для клиентов в интернете.', icon: Layers },
@@ -251,6 +251,7 @@ const Reqs = ({ me, reload }: { me: K.Me; reload: () => void }) => {
         <In label="Код аутентификатора (если он включён в Sky ID)" value={f.twoFactorCode} onChange={(v) => setF({ ...f, twoFactorCode: v })} max={16} />
         <Btn tone="accent" onClick={() => void save()} disabled={busy || !f.holder || !f.value}>{busy ? 'Сохраняю…' : 'Сохранить реквизиты'}</Btn>
       </div>
+      <ProviderBlock />
       <div className="rounded-2xl p-4" style={card}>
         <p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>Публикация</p>
         <p className="text-xs mb-2" style={{ color: 'var(--t3)' }}>{me.business?.status === 'active' ? 'Бизнес опубликован: страницы оплаты открываются у покупателей (при действующей подписке).' : 'Пока бизнес скрыт: страницы оплаты не открываются.'}</p>

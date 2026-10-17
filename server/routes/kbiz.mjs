@@ -7,17 +7,27 @@ import * as cat from './../kbcatalog.mjs';
 import { shopPackage } from './../kbpackage.mjs';
 import * as ex from './../kbextra.mjs';
 import * as st from './../kbstaff.mjs';
+import * as pv from './../kbprovider.mjs';
+import * as ad from './../kbadmin.mjs';
 
 const MULT = Math.max(1, Number(process.env.KBIZ_RATE_MULT) || 1);        // для тестов
 const STATUS = { not_found: 404, no_business: 404, already_exists: 409, bad_state: 409, suspended: 403, subscription_required: 402, insufficient_funds: 402, bad_field: 400, bad_action: 400,
   bad_status: 400, bad_logo: 400, logo_too_large: 413, secret_words: 400, requisites_required: 409, too_many_qr: 429, too_many_requests: 429, comment_required: 400, bad_amount: 400,
-  page_unavailable: 410, origin_not_allowed: 403, shop_not_configured: 409, package_unavailable: 503, shop_unavailable: 410, empty_cart: 400, item_unavailable: 409, variant_required: 400, too_many_items: 429, too_many_media: 429, slug_taken: 409, forbidden: 403, user_not_found: 404, already_in_business: 409, too_many_staff: 429, too_many_promos: 429, code_taken: 409, promo_invalid: 400, promo_expired: 410, promo_exhausted: 409, promo_min_order: 400, order_not_done: 409, already_reviewed: 409, not_published: 409, not_skykassa_qr: 400, two_factor_required: 403, invalid_code: 403, archived: 409 };
+  page_unavailable: 410, origin_not_allowed: 403, shop_not_configured: 409, package_unavailable: 503, shop_unavailable: 410, empty_cart: 400, item_unavailable: 409, variant_required: 400, too_many_items: 429, too_many_media: 429, slug_taken: 409, provider_not_set: 409, provider_bad_url: 400, provider_unreachable: 502, provider_error: 502, provider_bad_answer: 502, forbidden: 403, user_not_found: 404, already_in_business: 409, too_many_staff: 429, too_many_promos: 429, code_taken: 409, promo_invalid: 400, promo_expired: 410, promo_exhausted: 409, promo_min_order: 400, order_not_done: 409, already_reviewed: 409, not_published: 409, not_skykassa_qr: 400, two_factor_required: 403, invalid_code: 403, archived: 409 };
 
 /** SkyKassa Business: /api/kbiz/* — кабинет владельца (вход обязателен), /api/kbiz/public/* — страница оплаты для покупателя (без входа). */
 export const kbizRoutes = async (req, res) => {
   const u = new URL(req.url, 'http://x');
   const path = u.pathname;
   if (!path.startsWith('/api/kbiz/')) return false;
+  if (/^\/api\/kbiz\/webhook\/kbz-[0-9a-f-]{36}$/.test(path)) {            // вебхук провайдера бизнеса: без входа, с подписью
+    if (req.method !== 'POST') return json(res, 405, { error: 'method' });
+    if (!rateLimit(`kbhook:${clientIp(req)}`, 120 * MULT)) return json(res, 429, { error: 'too_many_requests' });
+    const raw = await new Promise((resolve, reject) => { const ch = []; let n = 0; req.on('data', (c) => { n += c.length; if (n > 64 * 1024) { reject(new Error('too_big')); req.destroy(); } else ch.push(c); }); req.on('end', () => resolve(Buffer.concat(ch).toString('utf8'))); req.on('error', reject); }).catch(() => null);
+    if (raw == null) return json(res, 413, { error: 'too_big' });
+    const r = await pv.handleWebhook(path.split('/').pop(), raw, req.headers);
+    return json(res, r.code, r.body);
+  }
   const reply = (r) => json(res, r.error ? STATUS[r.error] ?? 400 : 200, r);
   const ip = clientIp(req);
 
@@ -26,6 +36,13 @@ export const kbizRoutes = async (req, res) => {
     if (!rateLimit(`kbpub:${ip}`, 90 * MULT)) return json(res, 429, { error: 'too_many_requests' });
     let m = /^\/api\/kbiz\/public\/p\/([a-z0-9]{12,24})$/.exec(path);
     if (m && req.method === 'GET') return reply(await publicPage(m[1], ip));
+    m = /^\/api\/kbiz\/public\/p\/([a-z0-9]{12,24})\/provider$/.exec(path);
+    if (m && req.method === 'POST') {
+      if (!rateLimit(`kbprv:${ip}`, 8 * MULT)) return json(res, 429, { error: 'too_many_requests' });
+      const body = await parseBody(req);
+      if (body?.website) return json(res, 200, { ok: true });
+      return reply(await pv.providerPay(m[1], body ?? {}, ip));
+    }
     m = /^\/api\/kbiz\/public\/p\/([a-z0-9]{12,24})\/report$/.exec(path);
     if (m && req.method === 'POST') {
       if (!rateLimit(`kbrep:${ip}`, 8 * MULT)) return json(res, 429, { error: 'too_many_requests' });
@@ -130,6 +147,15 @@ export const kbizRoutes = async (req, res) => {
   if (m && m[2] === 'role' && req.method === 'POST') { if (!(await need('owner'))) return forbid(); return reply(await st.setRole(me, m[1], body.role)); }
   if (m && !m[2] && req.method === 'DELETE') return reply(await st.removeStaff(actor, acc?.ownerId ?? '', m[1]));    // владелец убирает, сотрудник выходит сам
   if (m && (m[2] === 'accept' || m[2] === 'decline') && req.method === 'POST') return reply(await st.answerInvite(actor, m[1], m[2] === 'accept'));
+
+  /* Платёжный партнёр (только владелец) */
+  if (path === '/api/kbiz/provider') {
+    if (!(await need('owner'))) return forbid();
+    if (req.method === 'GET') return json(res, 200, await pv.getProvider(me));
+    if (req.method === 'PUT') { if (!rateLimit(`kbprov:${me}`, 10)) return json(res, 429, { error: 'too_many_requests' }); return reply(await pv.setProvider(me, s.skyId, body)); }
+    if (req.method === 'DELETE') return reply(await pv.removeProvider(me, s.skyId, body.twoFactorCode));
+  }
+  if (req.method === 'POST' && path === '/api/kbiz/provider/ping') { if (!(await need('owner'))) return forbid(); if (!rateLimit(`kbprp:${me}`, 10)) return json(res, 429, { error: 'too_many_requests' }); return reply(await pv.pingProvider(me)); }
 
   /* QR и заявки на оплату */
   if (req.method === 'GET' && path === '/api/kbiz/qr') { if (!(await need('view'))) return forbid(); return json(res, 200, await listQr(me)); }

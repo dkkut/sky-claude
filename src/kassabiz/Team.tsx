@@ -232,3 +232,37 @@ export const AnalyticsView = () => {
     </div>
   );
 };
+
+/* ── Платёжный партнёр (сторонняя касса бизнеса) ── */
+const PROV_ERR: Record<string, string> = { baseUrl: 'Адрес: только https://… (без логина и параметров), и не адрес внутренней сети.', merchant: 'Укажите идентификатор мерчанта.', secret: 'Секрет подписи — не короче 16 знаков.' };
+export const ProviderBlock = () => {
+  const [p, setP] = useState<K.Provider | null | undefined>(undefined);
+  const [f, setF] = useState({ title: '', baseUrl: '', merchant: '', secret: '', twoFactorCode: '', enabled: true }); const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => { const r = await K.kbProvider(); if (r.ok) { setP(r.data.provider); if (r.data.provider) setF((x) => ({ ...x, title: r.data.provider!.title, merchant: r.data.provider!.merchant, enabled: r.data.provider!.enabled })); } }, []);
+  useEffect(() => { void load(); }, [load]);
+  const save = async () => {
+    setBusy(true); const r = await K.kbProviderSave({ ...f, baseUrl: f.baseUrl || (p ? `https://${p.host}` : '') }); setBusy(false);
+    if (!r.ok) { flash(PROV_ERR[r.field ?? ''] ?? why(r)); return; }
+    flash('Партнёр сохранён'); setF({ ...f, secret: '', twoFactorCode: '' }); void load();
+  };
+  if (p === undefined) return <Wait />;
+  return (
+    <div className="rounded-2xl p-4 space-y-2" style={card}>
+      <p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>Платёжный партнёр (сторонняя касса)</p>
+      <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Необязательно. Если у вас есть договор с платёжным провайдером, подключите его по протоколу hmac-v1 (подпись HMAC-SHA256): на странице оплаты появится кнопка «Оплатить у партнёра». Sky деньги не принимает. «Подтверждено партнёром» ставится только после прямой подписанной проверки у провайдера и совпадения суммы; вебхук сам по себе ничего не подтверждает. Готовых провайдеров (ЮKassa и т. п.) в Sky нет — нужен провайдер, поддерживающий этот протокол, или отдельный адаптер.</p>
+      {p && <p className="text-xs" style={{ color: 'var(--t2)' }}>Подключён: <span translate="no">{p.host}</span> · мерчант <span translate="no">{p.merchant}</span> · {p.enabled ? 'включён' : 'выключен'}{p.lastOkAt ? ` · связь проверена ${dt(p.lastOkAt)}` : ''}{p.lastError ? ` · последняя ошибка: ${p.lastError}` : ''}</p>}
+      {p && <p className="text-[11px] break-all" style={{ color: 'var(--t3)' }}>Адрес вебхука для провайдера: <span translate="no">{p.webhookPath}</span> (на домене Sky). Секрет не показывается.</p>}
+      <In label="Название (для себя)" value={f.title} onChange={(v) => setF({ ...f, title: v })} max={60} />
+      <In label={p ? 'Адрес API (оставьте пустым, чтобы не менять)' : 'Адрес API провайдера'} value={f.baseUrl} onChange={(v) => setF({ ...f, baseUrl: v })} ph="https://api.provider.example/v1" max={300} />
+      <In label="Идентификатор мерчанта" value={f.merchant} onChange={(v) => setF({ ...f, merchant: v })} max={120} />
+      <In label={p ? 'Новый секрет подписи (пусто — не менять)' : 'Секрет подписи (от 16 знаков)'} type="password" value={f.secret} onChange={(v) => setF({ ...f, secret: v })} max={200} />
+      <In label="Код аутентификатора (если он включён в Sky ID)" value={f.twoFactorCode} onChange={(v) => setF({ ...f, twoFactorCode: v })} max={16} />
+      <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--t2)' }}><input type="checkbox" checked={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} /> Предлагать покупателям оплату у партнёра</label>
+      <div className="flex flex-wrap gap-2">
+        <Btn tone="accent" disabled={busy || !f.merchant || (!p && (!f.baseUrl || f.secret.length < 16))} onClick={() => void save()}>{busy ? 'Сохраняю…' : 'Сохранить'}</Btn>
+        {p && <Btn onClick={async () => { const r = await K.kbProviderPing(); flash(r.ok ? 'Связь есть' : 'Провайдер недоступен или подпись не принята'); void load(); }}>Проверить связь</Btn>}
+        {p && <Btn tone="danger" onClick={async () => { if (!window.confirm('Отключить платёжного партнёра? Уже созданные платежи у партнёра останутся в списке.')) return; const r = await K.kbProviderRemove(f.twoFactorCode || undefined); if (!r.ok) flash(why(r)); setP(undefined); void load(); }}>Отключить</Btn>}
+      </div>
+    </div>
+  );
+};
