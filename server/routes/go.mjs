@@ -19,6 +19,7 @@ import * as fuel from './../gofuel.mjs';
 import * as stay from './../gostay.mjs';
 import * as org from './../goorg.mjs';
 import * as work from './../gowork.mjs';
+import * as bizrep from './../gobizreports.mjs';
 import { pushOrderChanged } from './../gocore.mjs';
 import { can } from './../admin.mjs';
 import { query } from './../db.mjs';
@@ -158,6 +159,17 @@ export const goRoutes = async (req, res, url) => {
     if ((k = sub.match(/^\/members\/([\w-]+)$/)) && method === 'PATCH') return reply(res, await org.changeMember(me, id, k[1], (await parseBody(req)) ?? {}));
     if (sub === '/leave' && method === 'POST') return reply(res, await org.leave(me, id));
     if (sub === '/audit' && method === 'GET') return reply(res, await org.auditLog(me, id, { limit: u.searchParams.get('limit') }));
+    if (sub === '/orders/export' && method === 'GET') {
+      if (!rateLimit(`go:exp:${me}`, 6)) return json(res, 429, { error: 'rate_limited' });
+      const r = await bizrep.exportOrdersCsv(me, id, { from: u.searchParams.get('from'), to: u.searchParams.get('to') });
+      if (r.error) return reply(res, r);
+      res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="sky-go-orders.csv"', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Rows': String(r.rows), 'X-Truncated': r.truncated ? '1' : '0' });
+      res.end(r.csv);
+      return true;
+    }
+    if (sub === '/finance' && method === 'GET') return reply(res, await bizrep.financeReport(me, id, { days: u.searchParams.get('days') }));
+    if (sub === '/orders/batch' && method === 'POST') { if (!rateLimit(`go:batch:${me}`, 6)) return json(res, 429, { error: 'rate_limited' }); return reply(res, await bizrep.createBatch(me, id, (await parseBody(req)) ?? {}), 201); }
+    if ((k = sub.match(/^\/orders\/([\w-]+)\/repeat$/)) && method === 'POST') return reply(res, await touch(null, await bizrep.repeatOrder(me, id, k[1])), 201);
     if (sub === '/orders' && method === 'GET') return reply(res, await org.listOrders(me, id, Object.fromEntries(['group', 'q', 'sort', 'executor', 'limit', 'offset'].map((x) => [x, u.searchParams.get(x)]))));
     if (sub === '/orders' && method === 'POST') return reply(res, await org.createOrder(me, id, (await parseBody(req)) ?? {}), 201);
     if ((k = sub.match(/^\/orders\/([\w-]+)$/)) && method === 'GET') return reply(res, await org.getOrder(me, id, k[1]));

@@ -29,14 +29,14 @@ import { newId, inTx, lockOrder, addEvent, notifyGo, goLog, clean, openJson, pro
 
 export const ORG_ROLES = ['owner', 'admin', 'manager', 'driver', 'courier'];
 export const ROLE_LABEL = { owner: 'Владелец', admin: 'Администратор', manager: 'Менеджер', driver: 'Водитель', courier: 'Курьер' };
-const STAFF = ['owner', 'admin', 'manager'];
+export const STAFF = ['owner', 'admin', 'manager'];
 const GRANT = { owner: ['admin', 'manager', 'driver', 'courier'], admin: ['manager', 'driver', 'courier'] };
 const ACTIVE_ST = ['assigned', 'heading_pickup', 'at_pickup', 'picked_up', 'delivering', 'at_recipient'];
 const OPEN_ST = ['searching', ...ACTIVE_ST, 'awaiting_payment', 'payment_reported', 'dispute'];
 const MAX_ACTIVE = 3;
 const STALE_SEARCH_MIN = 15;
 
-const audit = (orgId, actorId, action, subject, detail = {}) =>
+export const audit = (orgId, actorId, action, subject, detail = {}) =>
   query('INSERT INTO go_org_audit (org_id, actor_id, action, subject, detail) VALUES ($1,$2,$3,$4,$5::jsonb)', [orgId, actorId ?? null, action, subject ?? null, JSON.stringify(detail)]).catch(() => {});
 
 /* ─── Организация и членство ───────────────────────────────────────── */
@@ -64,7 +64,7 @@ const membership = async (profileId, orgId) =>
   (await query(`SELECT * FROM go_org_members WHERE org_id = $1 AND profile_id = $2`, [String(orgId ?? ''), profileId])).rows[0] ?? null;
 
 /** Нужна роль из списка: не участник организации не узнаёт о её существовании (not_found), участник без права получает not_allowed. */
-const need = async (profileId, orgId, roles) => {
+export const need = async (profileId, orgId, roles) => {
   const org = await getOrg(orgId);
   const m = org ? await membership(profileId, orgId) : null;
   if (!org || !m || m.status === 'removed' || m.status === 'declined' || m.status === 'invited') return { error: 'not_found' };

@@ -91,6 +91,8 @@ export const bizApi = {
   orders: (org: string, f: { group?: string; q?: string; sort?: string; executor?: string; offset?: number }) => get<{ orders: OrgOrderCard[]; total: number }>(`/api/go/org/${org}/orders${qs({ ...f, limit: 30 })}`),
   order: (org: string, id: string) => get<OrgOrderDetail>(`/api/go/org/${org}/orders/${id}`),
   createOrder: (org: string, b: unknown) => post<{ orderId: string; priceRub: number; assignError?: string }>(`/api/go/org/${org}/orders`, { ...(b as object), idemKey: crypto.randomUUID() }),
+  repeat: (org: string, id: string) => post<{ orderId: string; priceRub: number }>(`/api/go/org/${org}/orders/${id}/repeat`),
+  finance: (org: string, days = 30) => get<{ days: number; currency: string; paid: { orders: number; internalOrders: number; rub: number }; awaiting: { orders: number; rub: number }; cancelled: number; disputes: number; byDay: { day: string; orders: number; rub: number }[]; note: string }>(`/api/go/org/${org}/finance?days=${days}`),
   assign: (org: string, id: string, executorId: string) => post(`/api/go/org/${org}/orders/${id}/assign`, { executorId }),
   unassign: (org: string, id: string, reason: string) => post(`/api/go/org/${org}/orders/${id}/unassign`, { reason }),
   openPool: (org: string, id: string) => post(`/api/go/org/${org}/orders/${id}/open-pool`),

@@ -61,6 +61,28 @@ const OrderCard = ({ o, onOpen }: { o: OrgOrderCard; onOpen: () => void }) => (
 );
 
 /* ───────────── Панель ───────────── */
+/** Финансовый отчёт — только владельцу и администратору (остальным сервер отвечает отказом, и карточка не показывается). */
+const FinanceCard = ({ org }: { org: string }) => {
+  const [days, setDays] = useState(30);
+  const [res] = useLoad(() => bizApi.finance(org, days), [org, days]);
+  if (!res?.ok) return null;
+  const f = res.data!;
+  return (
+    <Card><Col gap={6}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <b style={{ color: C.t1 }}>Финансы</b>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Период" style={{ height: 32, borderRadius: 10, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, padding: '0 8px' }}>
+          <option value={7}>7 дней</option><option value={30}>30 дней</option><option value={90}>90 дней</option>
+        </select>
+      </div>
+      <div style={{ fontSize: 14, color: C.t1 }}>{`Оплачено: ${f.paid.orders - f.paid.internalOrders} зак. на ${fmt(f.paid.rub)}`}</div>
+      <div style={{ fontSize: 14, color: C.t1 }}>{`Ждёт оплаты: ${f.awaiting.orders} зак. на ${fmt(f.awaiting.rub)}`}</div>
+      <div style={{ fontSize: 13, color: C.t2 }}>{`Заказов своих сотрудников: ${f.paid.internalOrders} · отменено: ${f.cancelled} · споров: ${f.disputes}`}</div>
+      <div style={{ fontSize: 12, color: C.t3 }}>{f.note}</div>
+    </Col></Card>
+  );
+};
+
 const DashboardTab = ({ org, onGo, onOpen, onNew }: { org: string; onGo: (t: Tab) => void; onOpen: (id: string) => void; onNew: () => void }) => {
   const [res, reload] = useLoad(() => bizApi.dashboard(org), [org], 10000);
   useGoLive(reload);
@@ -74,6 +96,7 @@ const DashboardTab = ({ org, onGo, onOpen, onNew }: { org: string; onGo: (t: Tab
   const points = x.map.map((m, i) => ({ id: m.orderId, pos: { lat: m.lat, lng: m.lng }, label: m.executor || 'Исполнитель', kind: 'courier' as const, mark: String.fromCharCode(65 + (i % 26)) }));
   return (
     <Col>
+      <FinanceCard org={org} />
       {cached && <Notice tone="warn">Нет связи с сервером. Показаны данные на {when(new Date(cached.at).toISOString())} — они могли устареть.</Notice>}
       {x.org.suspended && <Notice tone="warn">Организация приостановлена администрацией Sky: новые заказы и назначения недоступны.</Notice>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -116,6 +139,12 @@ const OrdersTab = ({ org, onOpen, onNew }: { org: string; onOpen: (id: string) =
   const [res, reload] = useLoad(() => bizApi.orders(org, { group, q: qd, sort }), [org, group, qd, sort], 10000);
   useGoLive(reload);
   const list = res?.ok ? res.data!.orders : [];
+  const exportCsv = async () => {
+    const r = await apiBlob(`/api/go/org/${org}/orders/export`);
+    if (!r.ok || !r.blob) return flash('Не удалось выгрузить заказы');
+    const url = URL.createObjectURL(r.blob); const a = document.createElement('a');
+    a.href = url; a.download = 'sky-go-orders.csv'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
   return (
     <Col>
       <div style={{ display: 'flex', gap: 8 }}>
@@ -129,6 +158,7 @@ const OrdersTab = ({ org, onOpen, onNew }: { org: string; onOpen: (id: string) =
       <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none' }}>
         {GROUPS.map(([k, t]) => <button key={k} onClick={() => setGroup(k)} style={{ flexShrink: 0, padding: '7px 12px', borderRadius: 12, border: 'none', fontSize: 12.5, fontWeight: 700, background: group === k ? 'rgba(14,165,164,.16)' : C.l2, color: group === k ? GO : C.t2 }}>{t}</button>)}
       </div>
+      <div><Btn kind="soft" onClick={exportCsv} style={{ height: 34, fontSize: 12.5 }}>Выгрузить заказы в CSV</Btn></div>
       <label style={{ fontSize: 12.5, color: C.t2 }}>Сортировка{' '}
         <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ marginLeft: 6, height: 34, borderRadius: 10, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, padding: '0 8px' }}>
           <option value="">Сначала новые</option><option value="old">Сначала старые</option><option value="upd">По последнему изменению</option><option value="price">По стоимости</option></select></label>
@@ -201,6 +231,7 @@ export const OrgOrderScreen = ({ org, id, onBack, canAdmin }: { org: string; id:
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {o.executor && ['assigned', 'heading_pickup', 'at_pickup'].includes(o.status) && <Btn kind="soft" onClick={() => setAsk('unassign')}>Снять исполнителя</Btn>}
           {can.openPool && canAdmin && <Btn kind="soft" busy={busy === 'pool'} onClick={() => run('pool', () => bizApi.openPool(org, id), 'Заказ открыт для курьеров')}>Открыть всем курьерам</Btn>}
+          <Btn kind="soft" busy={busy === 'rep'} onClick={() => run('rep', () => bizApi.repeat(org, id), 'Создан новый заказ с теми же данными')}>Повторить заказ</Btn>
           {can.cancel && <Btn kind="danger" onClick={() => setAsk('cancel')}>Отменить заказ</Btn>}
         </div>
         {ask === 'unassign' && <Ask label="Причина снятия исполнителя" ok="Снять" onCancel={() => setAsk('')} onSubmit={(v) => run('un', () => bizApi.unassign(org, id, v), 'Исполнитель снят')} />}
