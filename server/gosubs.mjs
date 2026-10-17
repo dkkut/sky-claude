@@ -77,6 +77,23 @@ export const buy = async (profileId, role, idemKey) => {
 };
 
 /**
+ * Единая серверная проверка допуска со ВСЕМИ причинами сразу (а не первой найденной): экран показывает человеку, что именно закрывает доступ.
+ * Решает сервер по данным базы; клиент ничего не присылает. Для роли без регистрации — одна причина not_registered.
+ */
+export const accessState = async (profileId, role) => {
+  if (!ROLES.includes(role)) return { error: 'bad_role' };
+  const reasons = [];
+  const { rows } = await query('SELECT status, review_note FROM go_executors WHERE profile_id = $1 AND role = $2', [profileId, role]);
+  const sub = await subscriptionState(profileId, role);
+  if (!rows[0]) reasons.push({ code: 'not_registered' });
+  else if (rows[0].status !== 'approved') reasons.push({ code: 'not_approved', status: rows[0].status, note: ['rejected', 'needs_info', 'suspended', 'blocked'].includes(rows[0].status) ? rows[0].review_note || undefined : undefined });
+  if (!sub.active) reasons.push({ code: 'subscription_required', expired: sub.expired, expiresAt: sub.expiresAt });
+  const { rows: pay } = await query('SELECT 1 FROM go_pay_details WHERE profile_id = $1', [profileId]);
+  if (!pay[0] && role !== 'company') reasons.push({ code: 'pay_details_required' });
+  return { role, allowed: reasons.length === 0, reasons, subscription: { active: sub.active, expiresAt: sub.expiresAt, tariff: sub.tariff } };
+};
+
+/**
  * Может ли исполнитель принимать НОВЫЕ заказы: одобрен + подписка действует + (для водителя и курьера) заданы реквизиты.
  * Возвращает { ok } или { error } — клиент объясняет причину человеку.
  */

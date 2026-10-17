@@ -1,7 +1,7 @@
 /** Sky GO: кабинеты исполнителей. Подписка и реквизиты — общие блоки; заказы и меню — по роли. */
 import { useCallback, useEffect, useState } from 'react';
 import { useGoLive } from './live';
-import { goApi, ROLE_LABEL, type GoRole } from './api';
+import { goApi, goError, ROLE_LABEL, type GoRole } from './api';
 import { Btn, Card, Chip, Col, Empty, Input, Notice, fail, fmt, locate, useLoad, C } from './ui';
 import { OrderRow } from './Orders';
 import { flash } from '@/shared/flash';
@@ -96,6 +96,7 @@ const AvailableList = ({ role, onOpen }: { role: 'taxi_driver' | 'courier'; onOp
 export const DriverCabinet = ({ role, onOpen }: { role: 'taxi_driver' | 'courier'; onOpen: (id: string) => void }) => {
   const [pres, reloadP] = useLoad(() => goApi.presenceOf(role), [role]);
   const [stats] = useLoad(() => goApi.stats(role), [role]);
+  const [acc, reloadAcc] = useLoad(() => goApi.access(role), [role], 30000);
   const [mine, reloadM] = useLoad(() => goApi.orders({ side: 'executor', status: 'active' }), [role], 8000);
   const [busy, setBusy] = useState(false);
   const online = pres?.ok && pres.data!.online;
@@ -109,7 +110,12 @@ export const DriverCabinet = ({ role, onOpen }: { role: 'taxi_driver' | 'courier
   const my = mine?.ok ? mine.data!.orders.filter((o) => (role === 'taxi_driver' ? o.kind === 'taxi' : o.kind === 'delivery')) : [];
   return (
     <Col>
-      <SubscriptionCard role={role} onChange={() => { reloadP(); reloadM(); }} />
+      {acc?.ok && !acc.data!.allowed && (
+        <Notice tone="warn">
+          <b>Приём заказов закрыт:</b>
+          {acc.data!.reasons.map((x) => <div key={x.code} style={{ marginTop: 4 }}>{`• ${goError({ error: x.code })}${x.note ? ` Комментарий: ${x.note}` : ''}`}</div>)}
+        </Notice>)}
+      <SubscriptionCard role={role} onChange={() => { reloadP(); reloadM(); reloadAcc(); }} />
       <PayDetailsCard />
       <Card><Col gap={8}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><b style={{ color: C.t1 }}>{online ? 'Вы на линии' : 'Вы не на линии'}</b>

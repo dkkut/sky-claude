@@ -18,18 +18,18 @@ const get = <T,>(p: string) => apiCall<T>(`${A}${p}`);
 const send = <T,>(m: string, p: string, b: unknown) => apiCall<T>(`${A}${p}`, { method: m, body: JSON.stringify(b) });
 const bad = (r: { error?: string; reason?: string }) => flash(({ not_allowed: 'Недостаточно прав.', note_required: 'Укажите причину.', bad_transition: 'Переход невозможен.', bad_price: 'Неверная цена.' } as Record<string, string>)[r.error ?? ''] ?? goError(r));
 
-type Sub = 'apps' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'tariffs' | 'integrations';
+type Sub = 'apps' | 'recon' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'tariffs' | 'integrations';
 
 export const GoAdminTab = () => {
   const [sub, setSub] = useState<Sub>('apps');
   const [ov, setOv] = useState<any>(null);
   useEffect(() => { void get<any>('/overview').then((r) => r.ok && setOv(r.data)); }, [sub]);
-  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
+  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['recon', 'Сверка'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {ov && <div style={{ ...box, fontSize: 13, color: C.t2 }}>Активных подписок: <b style={{ color: C.t1 }}>{ov.activeSubscriptions}</b> · На проверке: <b style={{ color: C.t1 }}>{(ov.executors.submitted ?? 0) + (ov.executors.in_review ?? 0)}</b> · Заказов за 30 дней: <b style={{ color: C.t1 }}>{ov.orders30d.reduce((s: number, r: any) => s + r.n, 0)}</b></div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{TABS.map(([k, t]) => <button key={k} onClick={() => setSub(k)} style={btn(sub === k ? C.acc : C.l2, sub === k ? '#fff' : C.t1)}>{t}</button>)}</div>
-      {sub === 'apps' && <Apps />}{sub === 'dispatch' && <Dispatch />}{sub === 'orgs' && <OrgsPanel />}
+      {sub === 'apps' && <Apps />}{sub === 'dispatch' && <Dispatch />}{sub === 'recon' && <Reconcile />}{sub === 'orgs' && <OrgsPanel />}
         {sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
     </div>
   );
@@ -209,6 +209,25 @@ const PersonalTariffs = () => {
           <span translate="no">@{t.username} · {ROLE_LABEL[t.role as GoRole]} · {t.priceRub} ₽ / {t.periodDays} дн.{t.note ? ` · ${t.note}` : ''}</span>
           <button onClick={() => save(true, { username: t.username, role: t.role })} style={btn(C.l2, C.t1)}>Сбросить</button>
         </div>))}
+    </div>
+  );
+};
+
+/** Сверка финансовых статусов (только чтение): расхождения между заказом, записью оплаты и кошельком. */
+const Reconcile = () => {
+  const [d, setD] = useState<any>(null);
+  const load = useCallback(async () => { setD(null); const r = await get<any>('/reconcile'); if (r.ok) setD(r.data); else bad(r); }, []);
+  useEffect(() => { void load(); }, [load]);
+  if (!d) return <div style={{ color: C.t3 }}>Загрузка…</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ ...box, fontSize: 13, color: d.ok ? C.green : C.red }}>{d.ok ? 'Расхождений не найдено.' : 'Есть расхождения — разберите вручную.'} <button style={{ ...btn(C.l2, C.t1), marginLeft: 8 }} onClick={() => void load()}>Обновить</button></div>
+      {d.checks.map((c: any) => (
+        <div key={c.code} style={{ ...box, borderColor: c.ok ? C.brd : C.red }}>
+          <div style={{ color: C.t1, fontSize: 13.5 }}><b>{c.title}</b> — {c.error ? 'проверка не выполнена' : c.count}</div>
+          {c.sample?.length > 0 && <div translate="no" style={{ fontSize: 12, color: C.t3, wordBreak: 'break-all' }}>{c.sample.join(', ')}</div>}
+        </div>))}
+      <div style={{ fontSize: 12, color: C.t3 }}>{d.note}</div>
     </div>
   );
 };

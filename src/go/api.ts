@@ -142,6 +142,7 @@ export const goApi = {
   subscription: (role: GoRole) => get<{ subscription: SubState; history: { startedAt: string; priceRub: number; expiresAt: string }[] }>(`/api/go/subscription/${role}`),
   buy: (role: GoRole) => post<{ expiresAt: string }>(`/api/go/subscription/${role}/buy`, { idemKey: crypto.randomUUID() }),
   presence: (role: GoRole, online: boolean, pos?: { lat: number; lng: number }) => post<{ online: boolean }>('/api/go/presence', { role, online, ...pos }),
+  access: (role: GoRole) => get<{ allowed: boolean; reasons: { code: string; status?: string; note?: string; expired?: boolean }[] }>(`/api/go/access/${role}`),
   presenceOf: (role: GoRole) => get<{ online: boolean }>(`/api/go/presence/${role}`),
   stats: (role: GoRole) => get<{ done: number; earnedRub: number }>(`/api/go/stats/${role}`),
 

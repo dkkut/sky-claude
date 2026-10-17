@@ -88,6 +88,7 @@ export const goRoutes = async (req, res, url) => {
     const body = await parseBody(req);
     return reply(res, await subs.buy(me, m[1], body?.idemKey));
   }
+  if ((m = path.match(/^\/api\/go\/access\/(taxi_driver|courier|food_seller|company|host|tour_operator|hotel)$/)) && method === 'GET') return reply(res, await subs.accessState(me, m[1]));
   if (path === '/api/go/presence' && method === 'POST') {
     const b = await parseBody(req);
     return reply(res, await subs.setPresence(me, String(b?.role ?? ''), b?.online === true, b));
