@@ -86,9 +86,9 @@ export const guessCategory = (entry) => {
   if (/дет|kids|мульт|карусель/.test(s)) return 'Детские';
   if (/музык|music|муз-тв|шансон/.test(s)) return 'Музыка';
   if (/кино|film|movie|синема/.test(s)) return 'Кино';
-  if (/культур|наук|истор|познават|discovery|док/.test(s)) return 'Познавательные';
+  if (/культур|наук|истор|познават|discovery|док|documentar|science|education|culture|history|nature/.test(s)) return 'Познавательные';
   if (/регион|обл|край|гтрк/.test(s)) return 'Региональные';
-  if (/развлек|entertain/.test(s)) return 'Развлекательные';
+  if (/развлек|entertain|comedy|series|lifestyle/.test(s)) return 'Развлекательные';
   return 'Разное';
 };
 
