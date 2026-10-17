@@ -14,6 +14,10 @@ export const modClosureRoutes = async (req, res, url) => {
     const list = await mc.adminList(me);
     return list ? json(res, 200, { modules: list }) : json(res, 403, { error: 'not_allowed' });
   }
+  if (req.method === 'PUT' && path === '/api/admin/modules') {
+    const r = await mc.adminSetAll(me, (await parseBody(req)) ?? {}, requestMeta(req));
+    return json(res, r.error ? (ERR[r.error] ?? 400) : 200, r);
+  }
   const m = /^\/api\/admin\/modules\/([a-z0-9_-]+)$/.exec(path);
   if (req.method === 'PUT' && m) {
     const r = await mc.adminSet(me, m[1], (await parseBody(req)) ?? {}, requestMeta(req));

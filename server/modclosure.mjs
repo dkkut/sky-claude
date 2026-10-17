@@ -82,3 +82,23 @@ export const adminSet = async (me, key, b, meta) => {
   }
   return { ok: true };
 };
+
+/**
+ * «Закрыть/открыть все модули» одним действием. Закрываются все ключи списка (включая «Профиль»: у людей закрытый профиль
+ * показывает только «Выйти из Sky ID»). Причина обязательна и общая; уже закрытые со своей причиной сохраняют её.
+ */
+export const adminSetAll = async (me, b, meta) => {
+  if (!(await allowed(me))) return { error: 'not_allowed' };
+  if (b?.closed === true) {
+    const reason = String(b.reason ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (reason.length < 3) return { error: 'reason_required' };
+    for (const m of MODULES) {
+      await query(`INSERT INTO closed_modules (module, reason, show_reason, closed_by) VALUES ($1,$2,$3,$4) ON CONFLICT (module) DO NOTHING`, [m.key, reason, b.showReason === true, me]);
+    }
+    await log(me, 'modules_closed_all', reason, meta);
+  } else {
+    await query('DELETE FROM closed_modules');
+    await log(me, 'modules_opened_all', 'все модули', meta);
+  }
+  return { ok: true };
+};

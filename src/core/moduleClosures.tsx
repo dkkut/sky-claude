@@ -46,11 +46,27 @@ export const ModuleClosedBanner = ({ reason }: { reason?: string }) => (
 );
 
 /** Обёртка модуля: `id` — ключ из server/modclosure.mjs; неизвестный ключ — модуль не закрывается. */
+/** Закрытый «Профиль» у людей: только выход из Sky ID (остальное в профиле недоступно). */
+const ProfileLogoutOnly = ({ reason }: { reason?: string }) => {
+  const logout = useAuthStore((s) => s.logout);
+  return (
+    <div className="grid h-full w-full place-items-center px-6" style={{ background: 'var(--bg)' }}>
+      <div className="w-full max-w-sm text-center">
+        <p className="text-lg font-black" style={{ color: 'var(--t1)' }}>Сервис временно недоступен</p>
+        <p className="mt-2 text-sm" style={{ color: 'var(--t2)' }}>Мы уже работаем над восстановлением доступа. Сейчас в профиле доступен только выход из Sky ID.</p>
+        {reason && <p className="mt-3 rounded-2xl px-4 py-2.5 text-xs" style={{ background: 'var(--bg-l2)', color: 'var(--t2)' }}>{reason}</p>}
+        <button type="button" onClick={() => { void logout(); }} className="mt-5 w-full rounded-full py-3 text-sm font-bold" style={{ background: 'rgba(239,68,68,.14)', color: 'var(--red, #ef4444)', border: '1px solid rgba(239,68,68,.35)' }}>Выйти из Sky ID</button>
+      </div>
+    </div>
+  );
+};
+
 export const ModuleGate = ({ id, children }: { id: string; children: ReactNode }) => {
   const closure = useModuleClosures((s) => s.closed[id]);
   const isAdmin = useAuthStore((s) => s.accounts.find((a) => a.id === s.currentUserId)?.isAdmin ?? false);
   useEffect(start, []);
   if (!closure) return <>{children}</>;
+  if (!isAdmin && id === 'profile') return <ProfileLogoutOnly reason={closure.reason} />;
   if (!isAdmin) return <ModuleClosedBanner reason={closure.reason} />;
   return (
     <>

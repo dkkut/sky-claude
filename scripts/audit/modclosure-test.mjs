@@ -26,4 +26,12 @@ t('причина показывается, если разрешено', st.go?
 t('закрытие попало в журнал', Number(q(`select count(*) from admin_log where type='module_closed'`)) >= 2);
 await put('music', { closed: false }, own); await put('go', { closed: false }, own);
 t('после открытия список пуст', Object.keys(await status()).length === 0);
+const putAll = (b, u) => call('/api/admin/modules', { method: 'PUT', body: JSON.stringify(b) }, u.tok);
+t('человек не может закрыть все модули', (await putAll({ closed: true, reason: 'тест' }, usr)).status === 403);
+t('закрыть все без причины нельзя', (await putAll({ closed: true }, own)).data.error === 'reason_required');
+t('закрыть все модули', (await putAll({ closed: true, reason: 'Технический этап' }, own)).status === 200);
+st = await status();
+const total = (await call('/api/admin/modules', {}, own.tok)).data.modules.length;
+t('закрыты все модули, включая профиль', Object.keys(st).length === total && 'profile' in st && 'messages' in st, `${Object.keys(st).length}/${total}`);
+t('открыть все модули', (await putAll({ closed: false }, own)).status === 200 && Object.keys(await status()).length === 0);
 console.log(`\nИтого: ${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);
