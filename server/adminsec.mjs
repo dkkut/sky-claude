@@ -34,6 +34,7 @@
  * действии. Ни роль, ни право, ни признак владельца не читаются из
  * запроса никогда — их присылает тот, чьи права мы и проверяем.
  */
+import { logEvent as skyLog } from './skylog.mjs';
 import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { config } from './config.mjs';
@@ -151,6 +152,8 @@ export const logAdmin = async (entry) => {
         last[0]?.hash ?? null, hash, at]);
     await client.query('COMMIT');
     void notifyOwnerAction({ actorId, type, result, detail: shortDetail, id });
+    // Копия действия администрации в единый журнал (категория admin, цепочка хешей).
+    skyLog({ category: 'admin', service: 'admin', type: String(type).slice(0, 80), actorId, targetId, result: result === 'ok' ? 'ok' : result === 'denied' ? 'denied' : 'error', reason: shortDetail.slice(0, 200), ip: meta.ip, ua: meta.ua, requestId: requestId ?? undefined, detail: { targetType } });
     return { id, hash };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

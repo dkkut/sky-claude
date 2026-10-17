@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { isChunkError } from './lazyChunk';
+import { reportClient } from '@/core/telemetry';
 
 interface EBState { hasError: boolean; error: Error | null; }
 
@@ -12,6 +13,11 @@ export class ErrorBoundary extends React.Component<
 
   static getDerivedStateFromError(error: Error): EBState {
     return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error) {
+    // Сбой отрисовки уходит в единый журнал (без содержимого экрана): тип, короткое сообщение, адрес без идентификаторов.
+    reportClient(isChunkError(error) ? 'stale_chunk' : 'render_error', error, isChunkError(error) ? 'WARN' : 'ERROR');
   }
 
   render() {

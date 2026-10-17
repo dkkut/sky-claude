@@ -15,6 +15,7 @@
  *    только вход: кто спрашивает, не слишком ли часто и корректен ли
  *    идентификатор.
  */
+import { logEvent as skyLog } from './../skylog.mjs';
 import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
@@ -442,6 +443,7 @@ export const musicRoutes = async (req, res, url) => {
     // Лимиты личной загрузки (Sky Admin → Лимиты загрузки): формат, размер, длительность, число файлов, параллельность.
     const gate = await beginPersonalUpload(me, 'music', { declaredBytes: declared, mime, duration: Number(meta.duration) || 0 });
     if (gate.error) {
+      skyLog({ category: 'user', service: 'music', type: 'upload_denied', actorId: me, result: 'denied', reason: gate.error });
       req.destroy();
       return json(res, gate.error === 'file_too_large' ? 413 : gate.error === 'too_many_uploads' ? 429 : gate.error === 'too_many_files' ? 409 : 400, gate);
     }
@@ -474,6 +476,7 @@ export const musicRoutes = async (req, res, url) => {
       return json(res, saved.error === 'file_too_large' ? 413 : 400, saved);
     }
     await finishTrack(created.id, me, { bytes: saved.bytes, mime });
+    skyLog({ category: 'user', service: 'music', type: 'upload', actorId: me, targetId: created.id, detail: { bytes: saved.bytes, mime } });
     return json(res, 201, { track: await readTrack(created.id, me) });
   }
 

@@ -6,6 +6,7 @@ import { AuthScreen }    from './auth/AuthScreen';
 import { DeviceLinkDeepLink } from './auth/DeviceLinkPhone';
 import { UnfreezeLinkPage, useOpenDevicesIfAsked } from './auth/AccountFreeze';
 import { useEntitlementSync, useOpenPrimeIfAsked } from './prime/entitlementSync';
+import { installTelemetry } from './core/telemetry';
 import { StorageVerifyPage } from './admin/StorageVerify';
 import { OidcAuthorizeGate } from './oidc/Authorize';
 import { TVAuthScreen }  from './interface/tv/auth/TVAuthScreen';
@@ -561,6 +562,8 @@ const LinkDeepLinkGate = () => {
   const ok = useAuthStore((s) => s.isAuthenticated);
   return ok ? <><DeviceLinkDeepLink /><OpenDevices /></> : null;
 };
+
+installTelemetry();
 
 void initI18n().finally(() => ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

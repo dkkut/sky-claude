@@ -5,6 +5,7 @@
  * маршрутов и запуск. Логика входа лежит в routes/auth.mjs, управление
  * аккаунтом — в routes/skyid.mjs, кошелёк — в routes/wallet.mjs.
  */
+import { logEvent as skyLogEvent } from './skylog.mjs';
 import http from 'node:http';
 import { config } from './config.mjs';
 import { rateLimit } from './security.mjs';
@@ -39,6 +40,7 @@ import { entitlementsRoutes } from './routes/entitlements.mjs';
 import { verificationRoutes } from './routes/skymarks.mjs';
 import { contentLabelsRoutes } from './routes/contentlabels.mjs';
 import { artistCardsRoutes } from './routes/artistcards.mjs';
+import { skyLogsRoutes } from './routes/skylogs.mjs';
 import { skyVideoRoutes } from './routes/skyvideo.mjs';
 import { primePulseRoutes } from './routes/primepulse.mjs';
 import { tvRoutes } from './routes/tv.mjs';
@@ -181,6 +183,7 @@ import { confirmSshLogin } from './breach.mjs';
  * состоянием) по-прежнему завершает процесс — его лечит перезапуск.
  */
 process.on('unhandledRejection', (reason) => {
+  skyLogEvent({ category: 'server', service: 'process', type: 'unhandled_rejection', level: 'ERROR', result: 'error', reason: String(reason instanceof Error ? reason.message : reason).slice(0, 200) });
   console.error('[process] необработанный rejection:', reason instanceof Error ? (reason.stack ?? reason.message) : reason);
 });
 
@@ -208,7 +211,7 @@ const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|m
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, artistCardsRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
+                supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, artistCardsRoutes, skyLogsRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
@@ -451,6 +454,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // Sky Storage: хранилище недоступно/на обслуживании/заполнено — решение системы, не сбой.
     if (error?.name === 'StorageBlocked') return json(res, error.status ?? 503, { error: error.code, message: error.userMessage || undefined });
     console.error('[api]', error);
+    skyLogEvent({ category: 'server', service: 'api', type: 'http_error', level: 'ERROR', result: 'error', reason: String(error?.message ?? error).slice(0, 200), ip: clientIp(req), ua: req.headers['user-agent'], detail: { method: req.method, route: String(url).split('?')[0].replace(/[0-9a-f-]{20,}/gi, ':id').slice(0, 120) } });
     const message = config.nodeEnv === 'production' ? 'internal_error' : error.message;
     return json(res, 500, { error: message });
   }
@@ -757,6 +761,7 @@ const shutdown = async (signal) => {
     await new Promise((resolve) => server.close(resolve));
     if (signalHub) await signalHub.close();
     closeMailer();
+    await flushLogs().catch(() => {});   // журнал событий: дописать буфер до закрытия базы
     await closeRedis();
     await closeDb();
   } catch (err) {

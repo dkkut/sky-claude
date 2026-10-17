@@ -27,6 +27,7 @@
  *   · Создаёт серии только владелец и только после подтверждения
  *     личности (step-up): код — это деньги.
  */
+import { logEvent as skyLog } from './skylog.mjs';
 import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { config } from './config.mjs';
@@ -270,7 +271,7 @@ export const redeemCode = async (profileId, rawCode, { ipHash = null } = {}) => 
       return { redemptionId, row, extra };
     });
   } catch (err) {
-    if (err instanceof CampaignError) return { error: err.skyCode };
+    if (err instanceof CampaignError) { skyLog({ category: 'user', service: 'codes', type: 'code_redeem_denied', actorId: profileId, result: 'denied', reason: err.skyCode }); return { error: err.skyCode }; }
     if (err instanceof CodeError) {
       if (err.extra?.fail) await recordFailure(profileId, ipHash);
       return { error: err.skyCode };
@@ -283,6 +284,7 @@ export const redeemCode = async (profileId, rawCode, { ipHash = null } = {}) => 
   }
 
   const { row, extra, redemptionId } = outcome;
+  skyLog({ category: 'user', service: 'codes', type: 'code_redeem', actorId: profileId, targetId: row.batch_id, detail: { reward: row.reward_type, campaign: row.campaign_id ?? undefined } });
   await logAdmin({
     actorId: profileId, targetId: row.code_id, targetType: 'sky_code', type: 'code_redeem',
     detail: `«…${row.hint}» · ${row.title} · ${row.reward_type}`,

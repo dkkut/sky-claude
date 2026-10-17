@@ -22,8 +22,9 @@
  *    идентификатор. Ни одна ручка не решает сама, можно ли этому
  *    человеку этот фильм.
  */
+import { logEvent as skyLog } from './../skylog.mjs';
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
+import { json, parseBody, requireProfile, readSession, mediaBody, clientIp } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import {
   listCatalog, listCategories, listShorts, listMine, readMovie, visibleMovie,
@@ -337,6 +338,7 @@ export const filmRoutes = async (req, res, url) => {
     // одновременные загрузки. Скорость и размер по факту — ниже, при записи.
     const gate = await beginPersonalUpload(me, 'film', { declaredBytes: declared, mime, duration: Number(meta.duration) || 0 });
     if (gate.error) {
+      skyLog({ category: 'user', service: 'film', type: 'upload_denied', actorId: me, result: 'denied', reason: gate.error, ip: clientIp(req) });
       const code = gate.error === 'file_too_large' ? 413 : gate.error === 'too_many_uploads' ? 429 : gate.error === 'too_many_files' ? 409 : 400;
       return rejectBody(req, res, code, gate);
     }
@@ -389,6 +391,7 @@ export const filmRoutes = async (req, res, url) => {
     // Резерв уточняется реальным размером — обычно меньше него: выше
     // предел одного файла всё равно не даёт уйти saveStream.
     await finishMovie(created.id, me, { bytes: saved.bytes, mime });
+    skyLog({ category: 'user', service: 'film', type: 'upload', actorId: me, targetId: created.id, ip: clientIp(req), detail: { bytes: saved.bytes, mime, episode: Boolean(params.get('seasonId')) } });
     return json(res, 201, { movie: await readMovie(created.id, me) });
   }
 

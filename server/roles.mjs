@@ -60,6 +60,7 @@ export const PERMISSIONS = [
   'partners',        // Партнёры: черновики, редактирование, отправка на проверку (внутренние контакты видны)
   'partners_approve',// Партнёры: подтверждение, приостановка, архив — отдельное право, в «полные права» не входит
   'prime',           // Sky Prime: правила кэшбэка, каталог наград, очередь выдачи наград (изменения — с подтверждением личности)
+  'logs',            // единые журналы Sky: поиск, фильтры, выгрузка, сроки хранения, DEBUG, проверка целостности (без секретов и содержимого сообщений)
   'verification',    // верификация: очередь заявок, решения, снятие отметок, критерии (отметка «Официальный» — только владелец)
   'upload_limits',   // лимиты загрузки: личная коллекция и публикация (размер, число, объём, форматы, длительность, скорость)
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
@@ -83,7 +84,7 @@ export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRIT
 
 export const ROLES = {
   super_admin:     DEFAULT_ADMIN_PERMISSIONS,
-  security_admin:  ['security', 'moderation', 'support', 'registration'],
+  security_admin:  ['security', 'moderation', 'support', 'registration', 'logs'],
   moderation_admin:['moderation', 'support'],
   support_admin:   ['support'],
   content_admin:   ['content'],

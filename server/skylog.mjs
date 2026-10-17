@@ -175,3 +175,85 @@ export const sweepLogs = async () => {
 export const getSettings = async () => { settingsAt = 0; const s = await loadSettings(); return { retentionDays: s.retention_days, debugUntil: s.debug_until ?? null, telemetry: s.telemetry !== false }; };
 export const telemetryEnabled = async () => (await loadSettings()).telemetry !== false;
 export const levelAtLeast = (a, b) => LEVEL_RANK[a] >= LEVEL_RANK[b];
+
+/* ─── Чтение для админки (право `logs`) ───────────────────────────── */
+
+const toRow = (r) => ({
+  id: Number(r.id), eventId: r.event_id, at: r.at.toISOString(), category: r.category, level: r.level, type: r.type, service: r.service || undefined,
+  actorId: r.actor_id ?? undefined, targetId: r.target_id ?? undefined, result: r.result, reason: r.reason || undefined, device: r.device || undefined,
+  requestId: r.request_id || undefined, detail: r.detail, audit: r.chain_seq !== null,
+});
+
+/** Условие поиска по журналу. Все значения — параметрами. */
+const where = (f, args) => {
+  const w = [];
+  if (f.category && CATEGORIES.includes(f.category)) { args.push(f.category); w.push(`category = $${args.length}`); }
+  if (f.level && LEVELS.includes(f.level)) { args.push(f.level); w.push(`level = $${args.length}`); }
+  if (f.minLevel && LEVELS.includes(f.minLevel)) { args.push(LEVELS.filter((l) => LEVEL_RANK[l] >= LEVEL_RANK[f.minLevel])); w.push(`level = ANY($${args.length})`); }
+  if (f.result && ['ok', 'denied', 'error'].includes(f.result)) { args.push(f.result); w.push(`result = $${args.length}`); }
+  if (f.type) { args.push(`${String(f.type).replace(/([\\%_])/g, '\\$1').slice(0, 80)}%`); w.push(`type LIKE $${args.length} ESCAPE '\\'`); }
+  if (f.service) { args.push(String(f.service).slice(0, 40)); w.push(`service = $${args.length}`); }
+  if (f.actor) { args.push(String(f.actor).slice(0, 80)); w.push(`(actor_id = $${args.length} OR target_id = $${args.length})`); }
+  if (f.requestId) { args.push(String(f.requestId).slice(0, 60)); w.push(`request_id = $${args.length}`); }
+  if (f.q) { args.push(`%${String(f.q).toLowerCase().replace(/([\\%_])/g, '\\$1').slice(0, 100)}%`); w.push(`(lower(type) LIKE $${args.length} ESCAPE '\\' OR lower(reason) LIKE $${args.length} ESCAPE '\\' OR lower(detail::text) LIKE $${args.length} ESCAPE '\\')`); }
+  const d = (v) => { const t = new Date(v); return Number.isNaN(t.getTime()) ? null : t; };
+  if (f.from && d(f.from)) { args.push(d(f.from)); w.push(`at >= $${args.length}`); }
+  if (f.to && d(f.to)) { args.push(d(f.to)); w.push(`at <= $${args.length}`); }
+  if (f.before && /^\d+$/.test(String(f.before))) { args.push(Number(f.before)); w.push(`id < $${args.length}`); }
+  return w.length ? `WHERE ${w.join(' AND ')}` : '';
+};
+
+/** Страница журнала: новые сверху, курсор — `before` (id последней записи прошлой страницы). */
+export const searchEvents = async (filters = {}, limit = 100) => {
+  await flushNow().catch(() => {});
+  const lim = Math.min(500, Math.max(1, Number(limit) || 100));
+  const args = [];
+  const w = where(filters, args);
+  args.push(lim + 1);
+  const { rows } = await query(`SELECT * FROM sky_events ${w} ORDER BY id DESC LIMIT $${args.length}`, args);
+  const items = rows.slice(0, lim).map(toRow);
+  return { items, next: rows.length > lim ? items[items.length - 1].id : null };
+};
+
+export const exportEvents = async (filters = {}, max = 20000) => {
+  await flushNow().catch(() => {});
+  const args = [];
+  const w = where({ ...filters, before: undefined }, args);
+  args.push(Math.min(50000, Math.max(1, Number(max) || 20000)));
+  const { rows } = await query(`SELECT * FROM sky_events ${w} ORDER BY id DESC LIMIT $${args.length}`, args);
+  return rows.map(toRow);
+};
+
+export const summary = async () => {
+  await flushNow().catch(() => {});
+  const byCat = (await query(`SELECT category, count(*)::int AS n, count(*) FILTER (WHERE level IN ('ERROR','CRITICAL'))::int AS errors FROM sky_events WHERE at > now() - interval '24 hours' GROUP BY category`)).rows;
+  const byLevel = (await query(`SELECT level, count(*)::int AS n FROM sky_events WHERE at > now() - interval '24 hours' GROUP BY level`)).rows;
+  const top = (await query(`SELECT type, count(*)::int AS n FROM sky_events WHERE at > now() - interval '24 hours' AND level IN ('WARN','ERROR','CRITICAL') GROUP BY type ORDER BY n DESC LIMIT 8`)).rows;
+  const total = Number((await query('SELECT count(*) AS n FROM sky_events')).rows[0].n);
+  return { last24h: { byCategory: Object.fromEntries(byCat.map((r) => [r.category, { count: r.n, errors: r.errors }])), byLevel: Object.fromEntries(byLevel.map((r) => [r.level, r.n])), topProblems: top }, total, writer: { written: stats.written, dropped: stats.dropped, failedFlushes: stats.failedFlushes, buffered: stats.buffered() } };
+};
+
+/** Изменение настроек: сроки хранения (аудит — не меньше 90 дней), временный DEBUG (до 24 ч), приём клиентской телеметрии. */
+export const saveSettings = async (actorId, body = {}) => {
+  const cur = await loadSettings();
+  const retention = { ...cur.retention_days };
+  if (body.retentionDays && typeof body.retentionDays === 'object') {
+    for (const cat of CATEGORIES) {
+      if (body.retentionDays[cat] === undefined) continue;
+      const n = Math.trunc(Number(body.retentionDays[cat]));
+      const min = AUDIT.has(cat) ? 90 : 1;
+      if (!Number.isFinite(n) || n < min || n > 3650) return { error: AUDIT.has(cat) ? 'audit_retention_min_90' : 'bad_retention' };
+      retention[cat] = n;
+    }
+  }
+  let debugUntilNew = cur.debug_until;
+  if (body.debugMinutes !== undefined) {
+    const m = Math.trunc(Number(body.debugMinutes));
+    if (!Number.isFinite(m) || m < 0 || m > 24 * 60) return { error: 'bad_debug' };
+    debugUntilNew = m === 0 ? null : new Date(Date.now() + m * 60_000);
+  }
+  const telemetry = typeof body.telemetry === 'boolean' ? body.telemetry : cur.telemetry !== false;
+  await query('UPDATE sky_log_settings SET retention_days=$1, debug_until=$2, telemetry=$3, updated_by=$4, updated_at=now() WHERE id', [JSON.stringify(retention), debugUntilNew, telemetry, actorId]);
+  settingsAt = 0; await loadSettings();
+  return { ok: true, settings: await getSettings() };
+};

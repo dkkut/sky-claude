@@ -45,6 +45,7 @@ import { RegistrationTab } from './RegistrationTab';
 import { UploadLimitsTab } from './UploadLimitsTab';
 import { VerificationTab } from './VerificationTab';
 import { ArtistCardsTab } from './ArtistCardsTab';
+import { LogsTab } from './LogsTab';
 import { SystemsTab } from './SystemsTab';
 import { SiteTab } from './SiteTab';
 import { ModulesTab } from './ModulesTab';
@@ -5510,7 +5511,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'systems' | 'uploadlimits' | 'verification' | 'artists';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5691,6 +5692,7 @@ export const AdminPanel = () => {
     { key: 'uploadlimits', label: 'Лимиты загрузки', show: has('upload_limits') },
     { key: 'verification', label: 'Верификация', show: has('verification') },
     { key: 'artists', label: 'Музыканты', show: has('content') },
+    { key: 'logs', label: 'Журналы', show: has('logs') },
     { key: 'site', label: 'Сайт', show: has('site') },
     { key: 'modules', label: 'Модули', show: has('modules') },
     { key: 'storage', label: 'Sky Storage', show: has('storage_view') },
@@ -5918,6 +5920,7 @@ export const AdminPanel = () => {
       {tab === 'uploadlimits' && <UploadLimitsTab />}
       {tab === 'verification' && <VerificationTab />}
       {tab === 'artists' && <ArtistCardsTab />}
+      {tab === 'logs' && <LogsTab />}
       {tab === 'systems' && <SystemsTab />}
       {tab === 'site' && <SiteTab />}
       {tab === 'modules' && <ModulesTab />}

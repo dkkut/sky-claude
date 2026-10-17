@@ -11,6 +11,7 @@
  * Про перебор номеров: ответ на запрос кода одинаков и для существующего
  * номера, и для нового. Узнать по нему, заведён ли аккаунт, нельзя.
  */
+import { logEvent as skyLog } from './../skylog.mjs';
 import { trustDevice } from './../trusteddevices.mjs';
 import { assertLoginAllowed } from './../accountfreeze.mjs';
 import { assertNotPendingDeletion } from './../accountdeletion.mjs';
@@ -186,6 +187,7 @@ export const startSession = async (skyIdRow, req, { viaCode = false, via = null 
   // Вход по коду делает устройство доверенным (см. trusteddevices.mjs).
   if (viaCode) await trustDevice(skyIdRow.id, req).catch((err) => console.error('[auth] доверенное устройство:', err.message));
 
+  skyLog({ category: 'user', service: 'auth', type: 'login', actorId: auto?.id ?? null, targetId: skyIdRow.id, ip: meta.ip, ua: meta.ua, detail: { via: via?.kind ?? (viaCode ? 'code' : 'other'), newDevice: isNewDevice } });
   const tokens = issueTokens(skyIdRow.id, sessionId, auto?.id ?? null);
   return {
     body: {
@@ -257,6 +259,7 @@ export const authRoutes = async (req, res, url) => {
 
     const check = await verifyCode('email', email, 'login', body.code);
     if (check.error) {
+      skyLog({ category: 'security', service: 'auth', type: 'login_code_failed', result: 'denied', reason: check.error, ip: clientIp(req), ua: req.headers['user-agent'], detail: { method: 'email' } });
       return json(res, 401, { error: check.error, attemptsLeft: check.attemptsLeft });
     }
 
@@ -308,6 +311,7 @@ export const authRoutes = async (req, res, url) => {
 
     const check = await verifyCode('phone', phone, 'login', body.code);
     if (check.error) {
+      skyLog({ category: 'security', service: 'auth', type: 'login_code_failed', result: 'denied', reason: check.error, ip: clientIp(req), ua: req.headers['user-agent'], detail: { method: 'phone' } });
       return json(res, 401, { error: check.error, attemptsLeft: check.attemptsLeft });
     }
 
@@ -357,6 +361,7 @@ export const authRoutes = async (req, res, url) => {
 
     const check = await verifySkyTwoFactor(payload.sub, body.code);
     if (check.error) {
+      skyLog({ category: 'security', service: 'auth', type: 'login_2fa_failed', level: check.error === 'too_many_attempts' ? 'WARN' : 'INFO', result: 'denied', reason: check.error, targetId: payload.sub, ip: clientIp(req), ua: req.headers['user-agent'] });
       if (check.error === 'too_many_attempts') {
         noteAdminBreachSignal(payload.sub, 'totp')
           .catch((err) => console.error('[auth] сигнал о взломе администратора:', err.message));
@@ -457,6 +462,7 @@ export const authRoutes = async (req, res, url) => {
     // Гасим серверную сессию: одного удаления куки мало, иначе украденный
     // токен продолжал бы работать.
     if (payload?.sid) await sessionStore.revoke(payload.sid);
+    skyLog({ category: 'user', service: 'auth', type: 'logout', targetId: payload?.sub, ip: clientIp(req), ua: req.headers['user-agent'] });
     return json(res, 200, { ok: true }, { 'Set-Cookie': clearRefreshCookie() });
   }
 

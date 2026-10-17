@@ -18,6 +18,7 @@ import { statfs } from 'node:fs/promises';
 import { query, pool } from './db.mjs';
 import { config } from './config.mjs';
 import { sendEmail } from './notify.mjs';
+import { logEvent as skyLog } from './skylog.mjs';
 
 export class StorageBlocked extends Error {
   constructor(code, message = '') { super(code); this.name = 'StorageBlocked'; this.code = code; this.userMessage = message; this.status = 503; }
@@ -144,6 +145,8 @@ export const assertWrite = () => {
 
 export const logEvent = async (kind, level = 'info', detail = {}, actorId = null) => {
   const safe = JSON.stringify(detail, (k, v) => (/secret|token|password|key$/i.test(k) ? '[скрыто]' : v));
+  // Копия в единый журнал событий (Sky Admin → Журналы): уровень берётся из уровня события хранилища.
+  skyLog({ category: level === 'critical' || /(access|unlock|denied|key|emergency)/.test(kind) ? 'security' : 'server', service: 'storage', type: `storage_${kind}`.slice(0, 80), level: level === 'critical' ? 'CRITICAL' : level === 'error' ? 'ERROR' : level === 'warn' || level === 'warning' ? 'WARN' : 'INFO', actorId, result: level === 'critical' || level === 'error' ? 'error' : 'ok', detail });
   await query('INSERT INTO storage_events (kind, level, detail, actor_id) VALUES ($1,$2,$3::jsonb,$4)', [kind, level, safe, actorId]).catch((e) => console.error('[storage] журнал:', e.message));
 };
 

@@ -6,6 +6,7 @@
  * getProfileOfSkyId, который ищет строку с условием принадлежности.
  * Поэтому подстановка чужого id даёт «не найдено», а не чужой профиль.
  */
+import { logEvent as skyLog } from './../skylog.mjs';
 import { mayOpenWithoutCode, listTrusted, revokeTrusted, setSkipFlag } from './../trusteddevices.mjs';
 import { claimPrimeCoupon, releaseCoupon, discountedPrice } from './../skycodes.mjs';
 import { config } from './../config.mjs';
@@ -456,8 +457,10 @@ export const skyIdRoutes = async (req, res, url) => {
       // Списали, но не выдали — возвращаем деньги, иначе они пропадут.
       await wallet.refund(target, charge, 'Возврат за Sky Prime');
       if (coupon) await releaseCoupon(coupon.id);
+      skyLog({ category: 'user', service: 'prime', type: 'prime_purchase_failed', level: 'ERROR', actorId: target, result: 'error', reason: 'grant_failed' });
       return json(res, 500, { error: 'grant_failed' });
     }
+    skyLog({ category: 'user', service: 'prime', type: 'prime_purchase', actorId: target, detail: { days, price: charge, coupon: Boolean(coupon) } });
     return json(res, 200, {
       profile: result.profile, profiles: await listProfiles(s.skyId),
       balance: paid.balance, price: charge,
