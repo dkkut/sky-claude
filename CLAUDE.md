@@ -1014,3 +1014,14 @@ iptv-org — список общедоступных ссылок, НЕ лице
 - **Журнал** — `server/skylog.mjs`, миграция `140_sky_events.sql`: буфер записей, `scrub()` вырезает секреты и содержимое сообщений, цепочка хешей для `admin`/`security`, хранение по категориям, DEBUG временный. Интерфейса админки пока нет.
 - **Голосовой поиск музыки** — `server/musicvoice.mjs`, `GET /api/music/voice`, `POST /api/music/voice/choose`, миграция `138_music_aliases.sql`; тест `scripts/audit/musicvoice-test.mjs` ещё не запускался, клиентских команд нет.
 - Нужен деплой (миграции 138–140) и пересборка `.apk`/`.exe`.
+
+## Сериалы Sky Film (модуль 3, ноябрь-2026)
+
+`server/filmseries.mjs`, `server/routes/filmseries.mjs` (стоит ПЕРЕД `filmRoutes`), миграция `141_film_series.sql` (`film_series`, `film_seasons`, `film_subtitles`, у `film_movies` — `series_id/season_id/ep_no/intro_*`);
+клиент — `src/film/Series.tsx` (`SeriesRow`, `SeriesPage`, `MySeriesBar`), `seriesApi.ts`, плеер в `SkyFilm.tsx` (`Player`: `onNextEpisode`).
+- Серия — обычный `film_movies`: тот же файл, плеер, прогресс (`film_progress` → продолжение на другом устройстве), оценки, модерация. В общий каталог фильмов, ленту коротких, «Мои фильмы» и категории серии НЕ попадают (`series_id IS NULL`).
+- Загрузка серии — обычный `POST /api/film/upload` с `seasonId` (+`epNo`, `introStart/introEnd`); чужой сезон/занятый номер → отказ до записи файла.
+- «Продолжить»: последняя начатая серия; досмотрена (≥92 % или ≤20 с до конца) → следующая (через сезоны). Автопереход — 8-секундный отсчёт в плеере (настройка `sky:film:autonext` в localStorage), «Пропустить заставку» по `introStart/introEnd` (задаёт владелец).
+- Субтитры: WebVTT/SRT до 300 КБ, ≤10 дорожек на серию, хранятся в БД; клиент берёт их обычным запросом с токеном и подаёт в `<track>` blob-ссылкой (работает и в приложениях без CORS-кук). Нескольких ЗВУКОВЫХ дорожек нет — в обычном браузерном `<video>` их не переключить (нужна перекодировка в HLS); интерфейс этого не обещает.
+- Публикация: `submitSeries` отправляет все закрытые серии на проверку, `moderateSeries` (право `content`) решает за сериал целиком; серию можно решать и по одной (`moderateMovie`). Отдельного постера сериала нет — постер первой серии с картинкой.
+- Тест: `scripts/audit/filmseries-test.mjs` (45). Нужен деплой (миграция 141) и пересборка `.apk`/`.exe`.

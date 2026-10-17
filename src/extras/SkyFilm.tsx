@@ -27,7 +27,7 @@ import {
   SkipForward, Bookmark, BookmarkCheck, Info,
   Tv, TrendingUp, Award, Layers, Download, CheckCircle, Upload, Image as ImageIcon,
   Plus, Crown, ShieldAlert, ShieldCheck, Cloud, Zap, AlertTriangle, Lock, History, Music2, Users,
-  Share2,
+  Share2, Captions, FastForward,
 } from 'lucide-react';
 import { PrimeGate } from '@/prime/PrimeGate';
 import { useAuthStore } from '@/core/auth/store';
@@ -52,6 +52,8 @@ import { reloadWithFreshTicket, describeMediaFailure } from '@/core/mediaTicketR
 import { useModuleStore } from '@/data/state/modules';
 import { SkyShorts } from './SkyShorts';
 import { ACCEPT_VIDEO, ACCEPT_IMAGE } from '@/shared/fileAccept';
+import { SeriesRow, SeriesPage, MySeriesBar } from '@/film/Series';
+import { apiSeriesCatalog, apiNextEpisode, apiSubtitles, apiSubtitleBlobUrl, type ServerSeries, type SubtitleTrack } from '@/film/seriesApi';
 
 /* -- токены ----------------------------------------------- */
 const K = {
@@ -205,10 +207,15 @@ const openFilmPlayer = () => {
   useModuleStore.getState().setPendingExtrasTab('movies');
 };
 
-export const Player = ({ movie, onClose, together = null }: {
+const AUTONEXT_KEY = 'sky:film:autonext';
+const readAutoNext = () => { try { return localStorage.getItem(AUTONEXT_KEY) !== '0'; } catch { return true; } };
+
+export const Player = ({ movie, onClose, together = null, onNextEpisode }: {
   movie: ServerMovie;
   onClose: () => void;
   together?: WatchTogether | null;
+  /** Серия сериала: открыть следующую серию (автопереход и кнопка «Следующая серия»). */
+  onNextEpisode?: (m: ServerMovie) => void;
 }) => {
   const vRef  = useRef<HTMLVideoElement>(null);
   const passTried = useRef(false);
@@ -235,6 +242,47 @@ export const Player = ({ movie, onClose, together = null }: {
   const last = useRef({ pos: 0, dur: 0 });
   const counted = useRef(false);
   const restored = useRef(false);
+
+  /* Сериал: следующая серия, заставка, субтитры. Для обычного фильма ничего из этого не запрашивается. */
+  const [nextEp, setNextEp] = useState<ServerMovie | null>(null);
+  const [autoNext, setAutoNext] = useState(readAutoNext);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [tracks, setTracks] = useState<(SubtitleTrack & { url: string })[]>([]);
+  const [subLang, setSubLang] = useState<string | null>(null);
+  const [subMenu, setSubMenu] = useState(false);
+  useEffect(() => {
+    if (!movie.seriesId || together) return;
+    let alive = true;
+    void apiNextEpisode(movie.id).then(n => { if (alive) setNextEp(n); });
+    return () => { alive = false; };
+  }, [movie.id, movie.seriesId, together]);
+  useEffect(() => {
+    let alive = true; const urls: string[] = [];
+    setTracks([]); setSubLang(null);
+    if (movie.bytes > 0 && ((movie.subtitles ?? 0) > 0 || movie.seriesId)) {
+      void apiSubtitles(movie.id).then(async list => {
+        const out: (SubtitleTrack & { url: string })[] = [];
+        for (const t of list) { const u = await apiSubtitleBlobUrl(movie.id, t.lang); if (u) { urls.push(u); out.push({ ...t, url: u }); } }
+        if (alive) setTracks(out);
+      });
+    }
+    return () => { alive = false; urls.forEach(u => URL.revokeObjectURL(u)); };
+  }, [movie.id, movie.bytes, movie.subtitles, movie.seriesId]);
+  /* Включённая дорожка — через textTracks: так её меняет и пульт, и системное меню. */
+  useEffect(() => {
+    const v = vRef.current; if (!v) return;
+    const apply = () => { for (const tt of Array.from(v.textTracks)) tt.mode = tt.language === subLang ? 'showing' : 'disabled'; };
+    apply();
+    const t = window.setTimeout(apply, 300);
+    return () => clearTimeout(t);
+  }, [subLang, tracks]);
+  const inIntro = movie.introEnd != null && movie.introStart != null && cur >= movie.introStart && cur < movie.introEnd - 1;
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) { setCountdown(null); if (nextEp) onNextEpisode?.(nextEp); return; }
+    const t = window.setTimeout(() => setCountdown(c => (c === null ? null : c - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [countdown, nextEp, onNextEpisode]);
 
   /* Продолжаем с того места, где остановились в прошлый раз — хоть на
      этом устройстве, хоть на другом: позицию помнит сервер. */
@@ -397,8 +445,11 @@ export const Player = ({ movie, onClose, together = null }: {
                иначе десять человек прислали бы десять одинаковых
                сообщений об одном и том же конце. */
             if (together?.canControl) sendTogether(together.sessionId, 'ended');
+            if (!together && nextEp && onNextEpisode && autoNext) setCountdown(8);
           }}
-          onClick={() => { if (!watching) toggle(); }} />
+          onClick={() => { if (!watching) toggle(); }}>
+          {tracks.map(t => <track key={t.lang} kind="subtitles" srcLang={t.lang} label={t.label} src={t.url} />)}
+        </video>
       ) : (
         <div className="h-full w-full flex flex-col items-center justify-center gap-4"
           style={{ background: `linear-gradient(160deg,${c1},${c2})` }}>
@@ -527,6 +578,24 @@ export const Player = ({ movie, onClose, together = null }: {
               </motion.button>
             </div>
             )}
+            {/* сериал: пропуск заставки и переход к следующей серии */}
+            {!watching && (inIntro || countdown !== null) && (
+              <div className="flex justify-end px-5 pointer-events-auto">
+                {countdown !== null && nextEp ? (
+                  <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-[12px]" style={{ background: 'rgba(0,0,0,0.75)', color: '#fff' }} data-next-episode>
+                    <span translate="no">{`Следующая серия: ${nextEp.epNo ?? ''}. ${nextEp.title}`}</span>
+                    <span>{`через ${countdown}`}</span>
+                    <button type="button" onClick={() => setCountdown(0)} className="rounded-lg px-2.5 py-1 font-bold" style={{ background: K.orange }}>Смотреть</button>
+                    <button type="button" onClick={() => setCountdown(null)} className="rounded-lg px-2.5 py-1" style={{ background: 'rgba(255,255,255,0.15)' }}>Отмена</button>
+                  </div>
+                ) : (
+                  <button type="button" data-skip-intro onClick={() => seek(movie.introEnd ?? cur)}
+                    className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-bold" style={{ background: 'rgba(0,0,0,0.75)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)' }}>
+                    <FastForward size={14} />Пропустить заставку
+                  </button>
+                )}
+              </div>
+            )}
             {/* низ */}
             <div className="px-5 pb-5 space-y-3 pointer-events-auto"
               style={{ background: 'linear-gradient(transparent,rgba(0,0,0,0.88))' }}>
@@ -547,6 +616,32 @@ export const Player = ({ movie, onClose, together = null }: {
                 <span className="text-xs font-mono w-10" style={{ color: K.sub }}>{fmtT(dur)}</span>
               </div>
               <div className="flex items-center justify-end gap-3">
+                {movie.seriesId && nextEp && onNextEpisode && !watching && (
+                  <>
+                    <button type="button" onClick={() => onNextEpisode(nextEp)} data-next-btn
+                      className="flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold" style={{ background: 'rgba(255,255,255,0.12)', color: K.text }}>
+                      <SkipForward size={13} />Следующая серия
+                    </button>
+                    <button type="button" aria-pressed={autoNext}
+                      onClick={() => { const v = !autoNext; setAutoNext(v); try { localStorage.setItem(AUTONEXT_KEY, v ? '1' : '0'); } catch { /* память недоступна */ } }}
+                      className="rounded-full px-3 py-1 text-[11px] font-semibold" style={{ background: autoNext ? K.orange : 'rgba(255,255,255,0.12)', color: autoNext ? '#fff' : K.sub }}>
+                      Автопереход
+                    </button>
+                  </>
+                )}
+                {tracks.length > 0 && (
+                  <div className="relative">
+                    <button type="button" aria-label="Субтитры" onClick={() => setSubMenu(m => !m)} style={{ color: subLang ? K.orange : K.sub }}><Captions size={18} /></button>
+                    {subMenu && (
+                      <div className="absolute bottom-8 right-0 min-w-[140px] rounded-xl p-1.5" style={{ background: 'rgba(20,20,20,0.95)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                        {[{ lang: null as string | null, label: 'Выключены' }, ...tracks].map(t => (
+                          <button key={t.lang ?? 'off'} type="button" onClick={() => { setSubLang(t.lang); setSubMenu(false); }}
+                            className="block w-full rounded-lg px-3 py-1.5 text-left text-[12px]" style={{ color: subLang === t.lang ? K.orange : '#fff' }}>{t.label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <button type="button" onClick={() => setMut(m => !m)} style={{ color: K.sub }}>
                   {mut ? <VolumeX size={16} /> : <Volume2 size={16} />}
                 </button>
@@ -1452,8 +1547,12 @@ export const SkyFilm = () => {
   const [showSrch, setShowSrch] = useState(false);
   const [found,    setFound]    = useState<ServerMovie[]>([]);
   const [shortsStartId, setShortsStartId] = useState<string | null>(null);
+  const [seriesOpen, setSeriesOpen] = useState<string | null>(null);
+  const [seriesBump, setSeriesBump] = useState(0);
+  const [seriesList, setSeriesList] = useState<ServerSeries[]>([]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void apiSeriesCatalog().then(r => { if (r) setSeriesList(r); }); }, []);
 
   /* Дипссылка из Библиотеки: «открой и играй именно вот этот фильм».
      Тот же приём, что pendingExtrasTab, только несёт id элемента —
@@ -1618,7 +1717,8 @@ export const SkyFilm = () => {
                 </button>
               )}
               <Row title="Продолжить просмотр" Icon={History} movies={continueWatching}
-                onSelect={setDetail} progress={progress} />
+                onSelect={m => { if (m.seriesId) setPlaying(m); else setDetail(m); }} progress={progress} />
+              <SeriesRow series={seriesList} onOpen={setSeriesOpen} />
               <Row title="Топ по рейтингу" Icon={Award}      movies={topRated} onSelect={setDetail} />
               <Row title="Популярное"       Icon={TrendingUp} movies={popular}  onSelect={setDetail} />
               <Row title="Новинки"          Icon={Film}       movies={fresh}    onSelect={setDetail} />
@@ -1660,8 +1760,9 @@ export const SkyFilm = () => {
             </div>
 
           ) : tab === 'mine' ? (
-            <div className="flex-1 overflow-hidden">
-              <MineTab onOpen={setDetail} />
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+              <MySeriesBar onOpen={setSeriesOpen} />
+              <div className="flex-1 min-h-0 overflow-hidden"><MineTab onOpen={setDetail} /></div>
             </div>
 
           ) : tab === 'publish' ? (
@@ -1712,9 +1813,18 @@ export const SkyFilm = () => {
         )}
       </AnimatePresence>
 
+      {/* Сериал */}
+      {seriesOpen && (
+        <SeriesPage key={`${seriesOpen}:${seriesBump}`} id={seriesOpen} onClose={() => setSeriesOpen(null)} onPlay={m => setPlaying(m)} />
+      )}
+
       {/* Проигрыватель */}
       <AnimatePresence>
-        {playing && <Player movie={playing} onClose={() => setPlaying(null)} />}
+        {playing && (
+          <Player key={playing.id} movie={playing}
+            onClose={() => { setPlaying(null); setSeriesBump(b => b + 1); }}
+            onNextEpisode={playing.seriesId ? (m => setPlaying(m)) : undefined} />
+        )}
       </AnimatePresence>
 
       {/* Короткое кино */}

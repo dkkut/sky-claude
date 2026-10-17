@@ -62,6 +62,15 @@ export interface ServerMovie {
   position?: number;
   /** В очереди проверки — чей это фильм. */
   ownerName?: string;
+  /** Серия сериала: к какому сериалу и сезону относится, номер, секунды заставки. */
+  seriesId?: string;
+  seasonId?: string;
+  epNo?: number;
+  introStart?: number;
+  introEnd?: number;
+  subtitles?: number;
+  watchedAt?: string;
+  progressDuration?: number;
 }
 
 export interface MovieProgress { movieId: string; position: number; duration: number }
@@ -288,9 +297,16 @@ export interface UploadMeta {
   width?: number;
   height?: number;
   isShort?: boolean;
+  /** Загрузка серии: сезон, номер (по умолчанию следующий) и заставка в секундах. */
+  seasonId?: string;
+  epNo?: number;
+  introStart?: number;
+  introEnd?: number;
 }
 
 const UPLOAD_REASONS: Record<string, string> = {
+  episode_exists: 'Серия с таким номером уже есть в этом сезоне',
+  bad_season: 'Сезон не найден',
   unsupported_type: 'Такой файл не подходит: нужен MP4, MOV, MKV, WebM или AVI',
   file_too_large: 'Фильм слишком большой',
   invalid_meta: 'Заполните название',
@@ -331,6 +347,9 @@ export const apiUploadMovie = (
   if (meta.width) p.set('width', String(Math.round(meta.width)));
   if (meta.height) p.set('height', String(Math.round(meta.height)));
   if (meta.isShort) p.set('isShort', 'true');
+  if (meta.seasonId) p.set('seasonId', meta.seasonId);
+  if (meta.epNo) p.set('epNo', String(meta.epNo));
+  if (meta.introEnd && meta.introEnd > (meta.introStart ?? 0)) { p.set('introStart', String(meta.introStart ?? 0)); p.set('introEnd', String(meta.introEnd)); }
 
   const xhr = new XMLHttpRequest();
   const promise = new Promise<{ ok: boolean; movie?: ServerMovie; reason?: string }>((resolve) => {
