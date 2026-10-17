@@ -5,6 +5,11 @@ export const config = {
   refreshSecret: process.env.REFRESH_TOKEN_SECRET || 'change_me_too',
   rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE || 120),
   accessTtlSec: Number(process.env.ACCESS_TTL_SEC || 900),
+  // Одноразовый refresh (ротация): каждое обновление выдаёт новый токен, старый ещё `refreshReuseGraceSec`
+  // принимается (параллельные вкладки, потерянный ответ), после — это повторное предъявление: сессия гасится.
+  // REFRESH_ROTATION=off возвращает прежнее поведение (аварийный рубильник).
+  refreshRotation: process.env.REFRESH_ROTATION !== 'off',
+  refreshReuseGraceSec: Number(process.env.REFRESH_REUSE_GRACE_SEC || 600),
   refreshTtlSec: Number(process.env.REFRESH_TTL_SEC || 60 * 60 * 24 * 30),
   // 'demo' разрешает пополнение кошелька без настоящего платежа.
   // Любое другое значение (в том числе отсутствие) закрывает эту ручку:

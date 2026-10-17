@@ -73,6 +73,9 @@ services:
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
       ACCESS_TTL_SEC:        ${ACCESS_TTL_SEC:-900}
       REFRESH_TTL_SEC:       ${REFRESH_TTL_SEC:-2592000}
+      AUTH_START_RATE_MULT:  ${AUTH_START_RATE_MULT:-1}
+      REFRESH_ROTATION:      ${REFRESH_ROTATION:-on}
+      REFRESH_REUSE_GRACE_SEC: ${REFRESH_REUSE_GRACE_SEC:-600}
       DATABASE_URL:          postgres://sky:${POSTGRES_PASSWORD:?нужно задать POSTGRES_PASSWORD в .env}@postgres:5432/sky
       # Демо-аккаунты заводятся только на пустой базе и только если пароль задан.
       # В продакшне переменную оставляют пустой — тогда их не будет вовсе.

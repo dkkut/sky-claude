@@ -85,14 +85,14 @@ const normalizePhone = (raw) => {
  * короткий доступ, sid внутри. Держать вторую копию этой сборки было бы
  * поводом однажды забыть обновить одну из двух одинаково.
  */
-export const issueTokens = (skyId, sessionId, profileId) => {
+export const issueTokens = (skyId, sessionId, profileId, rv = 0) => {
   // Сырой refresh-токен выносим в переменную: он же уходит в куку для
   // браузера, он же — в тело ответа для родного приложения (см. appBody
   // в http.mjs). Кука привязана к пути /api/auth и HttpOnly, поэтому
   // возврат того же значения в теле ничего не открывает обычной вкладке —
   // JS там его и так не увидит.
   const refreshToken = signToken(
-    { sub: skyId, sid: sessionId, typ: 'refresh' }, config.refreshSecret, config.refreshTtlSec,
+    { sub: skyId, sid: sessionId, typ: 'refresh', rv }, config.refreshSecret, config.refreshTtlSec,
   );
   return {
     body: {
@@ -206,12 +206,26 @@ export const startSession = async (skyIdRow, req, { viaCode = false, via = null 
   };
 };
 
+/**
+ * Предел на ОТПРАВКУ кода с одного адреса. Без него один адрес мог просить коды для любого числа
+ * чужих почт и номеров: почтовый «бомбинг» и счёт за СМС. Пределы по получателю (кулдаун, N в час) остаются.
+ * AUTH_START_RATE_MULT — только для тестов (много входов подряд с 127.0.0.1).
+ */
+const START_MULT = Math.max(1, Number(process.env.AUTH_START_RATE_MULT) || 1);
+const startAllowed = (req, channel) => {
+  const ip = clientIp(req);
+  const perMin = (channel === 'phone' ? 10 : 20) * START_MULT;
+  const perHour = (channel === 'phone' ? 60 : 200) * START_MULT;
+  return rateLimit(`authstart:${channel}:${ip}`, perMin) && rateLimitPerHour(`authstart:${channel}:${ip}`, perHour);
+};
+
 export const authRoutes = async (req, res, url) => {
   /* ── Шаг 1: запрос кода на телефон ──────────────────────────────── */
   if (req.method === 'POST' && url === '/api/auth/phone/start') {
     const body = await parseBody(req);
     const phone = normalizePhone(body.phone);
     if (!phone) return json(res, 400, { error: 'invalid_phone' });
+    if (!startAllowed(req, 'phone')) return json(res, 429, { error: 'too_many_requests' });
 
     // Регистрация закрыта кнопкой в админке: незнакомому номеру говорим сразу, не отправляя код (registration.mjs).
     if (!(await newcomerAllowed(req, res, () => findSkyIdByPhone(phone)))) return true;
@@ -238,6 +252,7 @@ export const authRoutes = async (req, res, url) => {
     const body = await parseBody(req);
     const email = normalizeEmail(body.email);
     if (!email) return json(res, 400, { error: 'invalid_email' });
+    if (!startAllowed(req, 'email')) return json(res, 429, { error: 'too_many_requests' });
 
     // Регистрация закрыта кнопкой в админке: незнакомой почте говорим сразу, не отправляя код (registration.mjs).
     if (!(await newcomerAllowed(req, res, () => findSkyIdByEmail(email)))) return true;
@@ -423,6 +438,26 @@ export const authRoutes = async (req, res, url) => {
       return json(res, 401, { error: 'stale_session' }, { 'Set-Cookie': clearRefreshCookie() });
     }
 
+    // Ротация: токен одноразовый. Предъявлен текущий — выдаём следующий; предыдущий принимаем недолго
+    // (параллельные вкладки, потерянный ответ); более старый — кража или повтор: сессия гасится.
+    let outRv = Number(stored.rv ?? 0);
+    if (config.refreshRotation) {
+      const rv = Number(payload.rv ?? 0);
+      const cur = Number(stored.rv ?? 0);
+      if (rv === cur) {
+        outRv = cur + 1;
+        await sessionStore.patch(payload.sid, { rv: outRv, prevRv: cur, rvAt: Date.now() });
+      } else if (stored.prevRv != null && rv === Number(stored.prevRv)
+                 && Date.now() - Number(stored.rvAt ?? 0) < config.refreshReuseGraceSec * 1000) {
+        outRv = cur;
+      } else {
+        await sessionStore.revoke(payload.sid);
+        skyLog({ category: 'security', service: 'auth', type: 'refresh_reuse', level: 'WARN', targetId: stored.userId,
+          result: 'blocked', ip: clientIp(req), ua: req.headers['user-agent'], detail: { sid: String(payload.sid).slice(0, 8) } });
+        return json(res, 401, { error: 'stale_session' }, { 'Set-Cookie': clearRefreshCookie() });
+      }
+    }
+
     // Активный профиль перечитываем из БД: за время сессии его могли
     // удалить, и держаться за исчезнувший id нельзя.
     const active = stored.profileId
@@ -433,7 +468,7 @@ export const authRoutes = async (req, res, url) => {
     // место отметить «видели только что» для экрана «Устройства».
     await sessionStore.touch(payload.sid);
 
-    const tokens = issueTokens(skyId.id, payload.sid, active?.id ?? null);
+    const tokens = issueTokens(skyId.id, payload.sid, active?.id ?? null, outRv);
     return json(res, 200, appBody(req, {
       skyId: publicSkyId(skyId),
       profiles: await listProfiles(skyId.id),

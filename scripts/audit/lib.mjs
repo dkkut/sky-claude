@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-export const B = 'http://127.0.0.1:8080';
+export const B = process.env.API_BASE ?? 'http://127.0.0.1:8080';
 export const call = async (path, o = {}, tok, extra = {}) => {
   const r = await fetch(B + path, { ...o, headers: { 'content-type': 'application/json', ...(tok ? { authorization: `Bearer ${tok}` } : {}), ...extra, ...(o.headers || {}) } });
   const t = await r.text(); let d; try { d = JSON.parse(t); } catch { d = t; }

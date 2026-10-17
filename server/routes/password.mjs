@@ -27,6 +27,7 @@ import { issueCode, verifyCode, cooldownLeft, VERIFICATION_LIMITS } from './../v
 import { findSkyIdById, findSkyIdByEmail, sendTwoFactorCode } from './../skyid.mjs';
 import { sendEmail } from './../notify.mjs';
 import { noteAdminBreachSignal } from './../breach.mjs';
+import { clientIp } from './../http.mjs';
 import { maskEmail, normalizeEmail, startSession, issueTokens } from './auth.mjs';
 
 /** Пароль: не короче, чтобы не подбирался за секунды, не длиннее
@@ -220,6 +221,11 @@ export const passwordRoutes = async (req, res, url) => {
     // Предел по адресу, а не только по IP: подбор пароля к одному
     // аккаунту с разных адресов IP-предел не остановит.
     if (!rateLimit(`pwlogin:${email}`, 10) || !rateLimitPerHour(`pwlogin:${email}`, 30)) {
+      return json(res, 429, { error: 'too_many_requests' });
+    }
+    // И по адресу клиента: перебор «много почт × один пароль» (credential stuffing) предел по почте не ловит.
+    const ipMult = Math.max(1, Number(process.env.AUTH_START_RATE_MULT) || 1);
+    if (!rateLimit(`pwloginip:${clientIp(req)}`, 20 * ipMult) || !rateLimitPerHour(`pwloginip:${clientIp(req)}`, 300 * ipMult)) {
       return json(res, 429, { error: 'too_many_requests' });
     }
 
