@@ -1,0 +1,88 @@
+# ============================================================
+#  Sky Recovery — сайт восстановления доступа (${RECOVERY_DOMAIN}, например recovery.skymessenger.online).
+#  Отдаёт recovery.html (отдельный вход Vite: приложение Sky не грузится) и проксирует /api/recovery/ на тот же api.
+#  Разворачивает docker-entrypoint.d/07-recovery-nginx.sh (так же, как site.conf.template).
+#  Сайт живёт на своём домене: если основной сайт недоступен, восстановление работает отдельно от него.
+# ============================================================
+
+server {
+    listen      80;
+    listen [::]:80;
+    server_name ${RECOVERY_DOMAIN};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type "text/plain";
+    }
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 'ok';
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen      443 ssl;
+    listen [::]:443 ssl;
+    http2       on;
+    server_name ${RECOVERY_DOMAIN};
+
+    ssl_certificate     ${RECOVERY_CERT_DIR}/fullchain.pem;
+    ssl_certificate_key ${RECOVERY_CERT_DIR}/privkey.pem;
+
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_ciphers               ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_timeout       1d;
+    ssl_session_tickets       off;
+
+    limit_conn conn_per_ip 50;
+
+    # Секреты (ссылки из писем) лежат во фрагменте адреса и на сервер не попадают; Referrer не отправляем вообще.
+    include /etc/nginx/snippets/security-headers-recovery.conf;
+
+    root  /usr/share/nginx/html;
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 'ok';
+    }
+
+    # Только API восстановления. Остальное API через этот домен недоступно.
+    location ^~ /api/recovery/ {
+        limit_req zone=req_general burst=20 nodelay;
+        client_max_body_size 64k;
+        include /etc/nginx/snippets/proxy-common.conf;
+        add_header Cache-Control "no-store" always;
+        include /etc/nginx/snippets/security-headers-recovery.conf;
+        proxy_pass http://sky_api;
+    }
+    location ^~ /api/ { return 404; }
+
+    # Сборка сайта (js/css/шрифты) — файлы с хешем в имени.
+    location ^~ /assets/ {
+        include /etc/nginx/snippets/security-headers-recovery.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+    location ~ ^/(logo\.png|favicon\.[a-z]+|fonts/.+)$ {
+        include /etc/nginx/snippets/security-headers-recovery.conf;
+        add_header Cache-Control "public, max-age=86400" always;
+        try_files $uri =404;
+    }
+
+    # Любой другой путь — страница восстановления (маршруты клиентские).
+    location / {
+        limit_req zone=req_general burst=30 nodelay;
+        include /etc/nginx/snippets/security-headers-recovery.conf;
+        add_header Cache-Control "no-store" always;
+        try_files /recovery.html =404;
+    }
+}

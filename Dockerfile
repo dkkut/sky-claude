@@ -36,6 +36,8 @@ COPY nginx/templates/   /etc/nginx/templates/
 COPY nginx/market-template/ /etc/nginx/market-template/
 # Лендинг на корневом домене (SITE_DOMAIN) — то же самое, см. docker-entrypoint.d/06-site-nginx.sh.
 COPY nginx/site-template/ /etc/nginx/site-template/
+# Сайт восстановления доступа (RECOVERY_DOMAIN) — см. docker-entrypoint.d/07-recovery-nginx.sh.
+COPY nginx/recovery-template/ /etc/nginx/recovery-template/
 # Скрипты отсюда entrypoint образа выполняет перед стартом nginx.
 COPY nginx/docker-entrypoint.d/ /docker-entrypoint.d/
 RUN chmod +x /docker-entrypoint.d/*.sh

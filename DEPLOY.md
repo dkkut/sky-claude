@@ -729,3 +729,15 @@ sudo install -o root -g root -m 755 scripts/ssh-login-hook.sh /opt/sky/ssh-login
 Старая ссылка `/ssh-confirm` остаётся рабочей для входов без шлюза (например, если он выключен аварийным файлом).
 Ссылка `/ssh-confirm?token=…` из прежнего письма теперь тоже открывает страницу `verify.html` (не приложение и не лендинг) с двумя кнопками: «Это я, подтвердить» и «Это не я, включить систему безопасности» (сразу аварийный режим и сигнал на выключение сервера, `server/breach.mjs::denySshConfirm`). После обновления шаблонов nginx пересоздайте (в блок страниц писем добавлен `ssh-confirm`).
 
+
+## Sky Recovery (сайт восстановления доступа)
+
+Отдельный сайт `recovery.skymessenger.online` (`RECOVERY_DOMAIN`): отдаёт `recovery.html` и проксирует только `/api/recovery/` на тот же api. Он не зависит от основного сайта и приложения.
+
+1. **DNS**: A/AAAA-запись `recovery` на сервер. Письма идут с домена почты Sky: у него должны быть SPF, DKIM и DMARC (`v=DMARC1; p=quarantine; rua=mailto:…`), иначе письма восстановления попадут в спам. Проверка: любой сервис-проверяльщик заголовков письма (в этой среде почта и DNS не проверялись).
+2. **Резервная копия перед миграцией 159**: `bash scripts/backup.sh`. Миграция только добавляет таблицы (`recovery_*`), откат — восстановить копию.
+3. **.env**: `RECOVERY_DOMAIN=recovery.skymessenger.online`; необязательно `RECOVERY_ORIGIN` (по умолчанию `https://recovery.skymessenger.online`), `RECOVERY_WAIT_HOURS` (ожидание сброса без резервной почты, 48), `RECOVERY_BACKUP_HOLD_HOURS` (задержка новой резервной почты, 24). Нужны `DOMAIN` (адрес приложения) и настроенная почта (`scripts/set-email.sh`).
+4. **Деплой**: `bash scripts/deploy-local.sh` (nginx пересоздаётся — новый шаблон и скрипт `07-recovery-nginx.sh`), затем сертификат: `bash scripts/add-recovery-cert.sh` (webroot, Sky не останавливается).
+5. **Проверка**: `curl -I https://recovery.skymessenger.online/healthz`, открыть сайт, запросить код на свою почту; `curl https://recovery.skymessenger.online/api/platform/status` должен давать 404 (через этот домен доступен только `/api/recovery/`).
+6. **Если основной сайт недоступен**: recovery-сайт и его API живут в тех же контейнерах `web`/`api`. Когда не работает и он — консоль сервера: `docker compose exec api node scripts/reset-2fa.mjs <@username> --yes` (второй фактор человека) и `docker compose exec api node scripts/recover-owner.mjs SR-12345 --yes` (одобрение заявки владельца: только консоль).
+7. **Откат**: убрать `RECOVERY_DOMAIN` из `.env` и пересоздать `web` — вхост превращается в заглушку; ссылки на сайт в приложении вести станут в никуда.

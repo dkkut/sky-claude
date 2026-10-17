@@ -36,6 +36,8 @@ services:
       # Третий вхост — лендинг на корневом домене (skymessenger.online), см. nginx/site-template/site.conf.template.
       # Не задан — заглушка-домен, лендинг никому не отвечает, остальной Sky не затрагивается.
       SITE_DOMAIN: ${SITE_DOMAIN:-site.invalid.local}
+      # Четвёртый вхост — сайт восстановления доступа (recovery.skymessenger.online), см. nginx/recovery-template.
+      RECOVERY_DOMAIN: ${RECOVERY_DOMAIN:-recovery.invalid.local}
     volumes:
       - certbot-certs:/etc/letsencrypt:ro
       - certbot-webroot:/var/www/certbot:ro
@@ -83,6 +85,10 @@ services:
       # снять их не может никто. Пусто — владельца нет, и назначать
       # администраторов некому.
       OWNER_USERNAME:        ${OWNER_USERNAME:-}
+      # Sky Recovery: адрес сайта восстановления (в письмах и переходах), сроки ожидания, задержка новой резервной почты.
+      RECOVERY_ORIGIN:             ${RECOVERY_ORIGIN:-}
+      RECOVERY_WAIT_HOURS:         ${RECOVERY_WAIT_HOURS:-}
+      RECOVERY_BACKUP_HOLD_HOURS:  ${RECOVERY_BACKUP_HOLD_HOURS:-}
       # Подтверждение входа по SSH владельцем (scripts/ssh-gate.sh). Пусто — выключено.
       SSH_GATE_SECRET:       ${SSH_GATE_SECRET:-}
       # Где лежат загруженные треки и обложки. Отдельный том, а не образ
