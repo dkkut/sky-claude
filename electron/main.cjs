@@ -114,6 +114,74 @@ ipcMain.handle('secure-storage:remove', (_event, key) => {
   writeStore(store);
 });
 
+/* ── Прокси приложения (Профиль → Подключение) ──────────────────────────────────────────────
+   Настоящий механизм: session.setProxy направляет через прокси весь сетевой стек окна, включая
+   WebSocket и медиа. Конфиг (и пароль) лежат в том же зашифрованном хранилище, что и токен, и
+   применяются при каждом запуске — до загрузки страницы. HTTP-прокси с паролем отвечает на
+   событие `login`; SOCKS с паролем Chromium не умеет, такой ввод отклоняется. */
+const proxycfg = require('./proxycfg.cjs');
+const PROXY_KEY = 'proxy-config';
+let proxyAuth = { username: '', password: '' };
+
+const loadProxyConfig = () => {
+  if (!safeStorage.isEncryptionAvailable()) return null;
+  const enc = readStore()[PROXY_KEY];
+  if (!enc) return null;
+  try { return JSON.parse(safeStorage.decryptString(Buffer.from(enc, 'base64'))); } catch { return null; }
+};
+const saveProxyConfig = (cfg) => {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  const store = readStore();
+  store[PROXY_KEY] = safeStorage.encryptString(JSON.stringify(cfg)).toString('base64');
+  writeStore(store);
+  return true;
+};
+const applyProxy = async (cfg) => {
+  if (!cfg || !cfg.enabled) {
+    proxyAuth = { username: '', password: '' };
+    await session.defaultSession.setProxy({ mode: 'system' });
+    return { active: false };
+  }
+  proxyAuth = { username: cfg.username || '', password: cfg.password || '' };
+  await session.defaultSession.setProxy({ mode: 'fixed_servers', proxyRules: proxycfg.normalize(cfg).rules });
+  await session.defaultSession.closeAllConnections();
+  return { active: true };
+};
+app.on('login', (event, _wc, _req, authInfo, callback) => {
+  if (!authInfo.isProxy || !proxyAuth.username) return; // чужие запросы авторизации не трогаем
+  event.preventDefault();
+  callback(proxyAuth.username, proxyAuth.password);
+});
+const publicProxyView = (cfg) => cfg
+  ? { enabled: Boolean(cfg.enabled), type: cfg.type, host: cfg.host, port: cfg.port, username: cfg.username || '', hasPassword: Boolean(cfg.password) }
+  : { enabled: false, type: 'http', host: '', port: 8080, username: '', hasPassword: false };
+
+ipcMain.handle('proxy:get', () => ({ ok: true, cfg: publicProxyView(loadProxyConfig()), encrypted: safeStorage.isEncryptionAvailable() }));
+ipcMain.handle('proxy:apply', async (_event, raw) => {
+  const prev = loadProxyConfig();
+  // Пустой пароль в форме = «оставить прежний» (пароль в страницу не возвращается).
+  const merged = { ...raw, password: raw?.password ? raw.password : (prev && prev.host === raw?.host ? prev.password : '') };
+  const n = proxycfg.normalize(merged);
+  if (!n.ok) return { ok: false, error: n.error };
+  if (!safeStorage.isEncryptionAvailable()) return { ok: false, error: 'no_secure_storage' };
+  try {
+    await applyProxy(n.cfg);
+    saveProxyConfig(n.cfg);
+    return { ok: true, cfg: publicProxyView(n.cfg) };
+  } catch (err) { return { ok: false, error: 'apply_failed', message: String(err?.message ?? err).slice(0, 160) }; }
+});
+/** Доступен ли порт прокси (TCP). Сам тест «через прокси» страница делает обычным запросом к Sky. */
+ipcMain.handle('proxy:reach', (_event, raw) => new Promise((resolve) => {
+  const n = proxycfg.normalize({ ...raw, enabled: true });
+  if (!n.ok) return resolve({ ok: false, error: n.error });
+  const net = require('node:net');
+  const t0 = Date.now();
+  const sock = net.connect({ host: n.cfg.host, port: n.cfg.port, timeout: 6000 });
+  sock.once('connect', () => { sock.destroy(); resolve({ ok: true, ms: Date.now() - t0 }); });
+  sock.once('timeout', () => { sock.destroy(); resolve({ ok: false, error: 'timeout' }); });
+  sock.once('error', (e) => resolve({ ok: false, error: String(e.code || 'error') }));
+}));
+
 // Один запущенный экземпляр — второй запуск просто поднимает первое окно.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -398,6 +466,8 @@ if (!gotLock) {
     });
 
     buildMenu();
+    // Прокси из прошлого запуска — до загрузки страницы.
+    { const saved = loadProxyConfig(); if (saved?.enabled && proxycfg.normalize(saved).ok) applyProxy(saved).catch((e) => console.error('[proxy]', e.message)); }
     createWindow();
     createTray();
 

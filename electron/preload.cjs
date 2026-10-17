@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld('sky', {
     set:    (key, value) => ipcRenderer.invoke('secure-storage:set', key, value),
     remove: (key) => ipcRenderer.invoke('secure-storage:remove', key),
   },
+  proxy: {
+    get:   () => ipcRenderer.invoke('proxy:get'),
+    apply: (cfg) => ipcRenderer.invoke('proxy:apply', cfg),
+    reach: (cfg) => ipcRenderer.invoke('proxy:reach', cfg),
+  },
   gameDetect: {
     set: (on) => ipcRenderer.send('sky:game-detect', Boolean(on)),
     onDetected: (fn) => {

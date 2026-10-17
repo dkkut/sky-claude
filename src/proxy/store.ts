@@ -186,24 +186,15 @@ export const useProxyStore = create<ProxyState>((set, get) => ({
       const t0 = Date.now();
       const ws = new WebSocket(url);
 
-      /* VLESS/Trojan handshake is handled at protocol level.
-         For browser, we send the auth header as first binary frame.
-         Real traffic is relayed through the server. */
+      /* Браузер не умеет туннель VLESS/Trojan: здесь только проверка, что WebSocket-вход сервера отвечает.
+         Логин/UUID на сервер не отправляются. */
       ws.binaryType = 'arraybuffer';
 
       ws.onopen = () => {
         const latencyMs = Date.now() - t0;
         set({ status:'connected', latencyMs, ws });
 
-        // Send VLESS/Trojan auth frame
-        if (cfg.protocol === 'vless' && cfg.uuid) {
-          const uuidBytes = uuidToBytes(cfg.uuid);
-          const frame = buildVlessAuthFrame(uuidBytes);
-          ws.send(frame);
-        } else if (cfg.protocol === 'trojan' && cfg.password) {
-          const frame = buildTrojanAuthFrame(cfg.password);
-          ws.send(frame);
-        }
+        // Ничего не отправляем: это проверка доступности сервера, а не туннель.
       };
 
       ws.onmessage = (ev) => {
@@ -232,16 +223,11 @@ export const useProxyStore = create<ProxyState>((set, get) => ({
   },
 
   ping: async () => {
-    const { status, ws } = get();
-    if (status !== 'connected' || !ws) return null;
-    const t0 = Date.now();
-    // Send a ping frame
-    try {
-      ws.send(new Uint8Array(1));
-      const latencyMs = Date.now() - t0;
-      set({ latencyMs });
-      return latencyMs;
-    } catch { return null; }
+    // Повторная проверка: переподключаемся и берём новое время ответа.
+    const { activeId, status } = get();
+    if (!activeId || status !== 'connected') return null;
+    await get().connect(activeId);
+    return get().latencyMs;
   },
 
   exportUri: (id) => {
@@ -250,41 +236,11 @@ export const useProxyStore = create<ProxyState>((set, get) => ({
   },
 }));
 
-/* -- Protocol helpers --------------------------------------- */
-function uuidToBytes(uuid: string): Uint8Array {
-  const hex = uuid.replace(/-/g, '');
-  const b   = new Uint8Array(16);
-  for (let i = 0; i < 16; i++) b[i] = parseInt(hex.slice(i*2,i*2+2), 16);
-  return b;
-}
-
-function buildVlessAuthFrame(uuid: Uint8Array): Uint8Array {
-  // VLESS v0 request: version(1) + uuid(16) + addons_len(1) + cmd(1) + port(2) + addr_type(1) + ...
-  const buf = new Uint8Array(1 + 16 + 1 + 1 + 2 + 1 + 1);
-  buf[0] = 0;          // version 0
-  buf.set(uuid, 1);    // uuid
-  buf[17] = 0;         // addons length
-  buf[18] = 1;         // TCP command
-  buf[19] = 0;         // port hi
-  buf[20] = 80;        // port lo  (HTTP target)
-  buf[21] = 1;         // addr type IPv4
-  buf[22] = 1;         // 1.1.1.1 [0]
-  return buf;
-}
-
-function buildTrojanAuthFrame(password: string): Uint8Array {
-  // Trojan: SHA224(password) hex + CRLF + SOCKS5 cmd
-  const enc = new TextEncoder();
-  // Simple: send password hash as first line
-  const header = `${password}\r\n\x01\x00\x01\x01\x01\x01\x01\x00P`;
-  return enc.encode(header);
-}
-
 /* -- Status helpers ---------------------------------------- */
 export const STATUS_LABEL: Record<ProxyStatus, string> = {
-  idle:       'Не подключено',
-  connecting: 'Подключение...',
-  connected:  'Подключено',
+  idle:       'Не проверено',
+  connecting: 'Проверяем...',
+  connected:  'Сервер отвечает',
   error:      'Ошибка',
 };
 export const STATUS_COLOR: Record<ProxyStatus, string> = {

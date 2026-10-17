@@ -109,6 +109,14 @@ const VlessTab = () => {
 
   return (
     <div className="flex flex-col gap-4 overflow-y-auto pb-6" style={{scrollbarWidth:'none'}}>
+      <div className="rounded-xl px-4 py-3" style={{background:C.l1, border:`1px solid ${C.brd}`}}>
+        <p className="text-xs" style={{color:C.t3}}>
+          Sky не пропускает трафик через VLESS и Trojan: браузер и Chromium такие протоколы не поддерживают. Здесь можно хранить ссылки,
+          делиться ими и проверять, что сервер отвечает. Для самого трафика используйте внешний клиент (например v2rayN или Hiddify)
+          или HTTP/SOCKS-прокси в приложении для Windows.
+        </p>
+      </div>
+
       {/* Status bar */}
       <div className="flex items-center justify-between rounded-2xl px-4 py-3"
         style={{background:C.l1, border:`1px solid ${statusColor}30`}}>
@@ -274,9 +282,6 @@ const VlessTab = () => {
    Хранит конфиг, патчит глобальный fetch приложения
 ================================================================ */
 
-// Глобальный патч fetch — реальный механизм
-const _origFetch = window.fetch.bind(window);
-
 interface ProxyHttpCfg {
   enabled:  boolean;
   type:     'http'|'socks5'|'socks4';
@@ -286,138 +291,154 @@ interface ProxyHttpCfg {
   password: string;
 }
 
-const applyHttpProxy = (cfg: ProxyHttpCfg) => {
-  if (!cfg.enabled || !cfg.host || !cfg.port) {
-    // Restore original
-    (window as any).fetch = _origFetch;
-    return;
-  }
-  // Route all app fetches through our backend proxy endpoint
-  // Backend at /api/proxy?url=... forwards request through configured proxy
-  const proxyBase = `/api/proxy?_host=${encodeURIComponent(cfg.host)}&_port=${cfg.port}&_type=${cfg.type}&_url=`;
-  (window as any).fetch = (input: RequestInfo|URL, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : (input as Request).url ?? String(input);
-    // Only proxy external requests; keep internal /api calls direct
-    if (url.startsWith('/') || url.includes(window.location.host)) {
-      return _origFetch(input, init);
-    }
-    return _origFetch(proxyBase + encodeURIComponent(url), init);
-  };
+/* Прокси приложения. Настоящая маршрутизация есть только в Windows-приложении: там её выполняет
+   session.setProxy главного процесса (электрон), конфиг и пароль хранятся в зашифрованном хранилище ОС.
+   Браузер страницы направить трафик через прокси не может, а Android-сборка такого моста пока не имеет —
+   поэтому там вкладка честно это пишет и ничего «включённым» не показывает. Раньше здесь подменялся
+   window.fetch на несуществующий /api/proxy: при включении ломались все внешние запросы. */
+const ERR_TEXT: Record<string,string> = {
+  bad_type:'Неверный тип прокси', bad_host:'Неверный адрес прокси', bad_port:'Порт — число от 1 до 65535',
+  bad_credentials:'Недопустимые символы в логине или пароле', socks_auth_unsupported:'SOCKS с логином и паролем не поддерживается — используйте HTTP-прокси',
+  no_secure_storage:'В системе недоступно защищённое хранилище — пароль сохранить нельзя', apply_failed:'Не удалось применить прокси',
+  timeout:'Нет ответа за 6 секунд', ECONNREFUSED:'Соединение отклонено', ENOTFOUND:'Адрес не найден', EHOSTUNREACH:'Хост недоступен',
 };
-
-const PROXY_HTTP_KEY = 'sky:proxy:http:v1';
-// В localStorage может лежать пустой объект или конфиг от старой версии,
-// поэтому результат частичный — недостающие поля добирают дефолты на месте вызова.
-const loadHttpProxy = (): Partial<ProxyHttpCfg> => {
-  try { return JSON.parse(localStorage.getItem(PROXY_HTTP_KEY)||'{}'); } catch { return {}; }
-};
-const saveHttpProxy = (c: ProxyHttpCfg) => {
-  try { localStorage.setItem(PROXY_HTTP_KEY, JSON.stringify(c)); } catch {}
-};
+const errText = (e?: string) => ERR_TEXT[e ?? ''] ?? `Ошибка: ${e ?? 'неизвестно'}`;
 
 const ProxyHttpTab = () => {
-  const [cfg, setCfg] = useState<ProxyHttpCfg>(() => ({
-    enabled:false, type:'http', host:'', port:'8080', username:'', password:'',
-    ...loadHttpProxy(),
-  }));
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<string|null>(null);
+  const native = typeof window !== 'undefined' ? window.sky?.proxy : undefined;
+  const [cfg, setCfg] = useState<ProxyHttpCfg>({ enabled:false, type:'http', host:'', port:'8080', username:'', password:'' });
+  const [hasPassword, setHasPassword] = useState(false);
+  /* Что реально применено в приложении (шапка), в отличие от черновика в форме. */
+  const [applied, setApplied] = useState<{ enabled: boolean; type: string; host: string; port: string }>({ enabled:false, type:'http', host:'', port:'' });
+  const [loaded, setLoaded] = useState(!native);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const upd = (patch: Partial<ProxyHttpCfg>) => {
-    const next = { ...cfg, ...patch };
-    setCfg(next);
-    saveHttpProxy(next);
-    applyHttpProxy(next);
+  // Прежняя версия хранила здесь адрес и ПАРОЛЬ прокси открытым текстом в localStorage — удаляем.
+  useEffect(() => { try { localStorage.removeItem('sky:proxy:http:v1'); } catch { /* приватный режим */ } }, []);
+
+  useEffect(() => {
+    if (!native) return;
+    let live = true;
+    void native.get().then((r) => {
+      if (!live || !r?.ok) return;
+      setCfg({ enabled: r.cfg.enabled, type: r.cfg.type, host: r.cfg.host, port: String(r.cfg.port), username: r.cfg.username, password: '' });
+      setHasPassword(r.cfg.hasPassword);
+      setApplied({ enabled: r.cfg.enabled, type: r.cfg.type, host: r.cfg.host, port: String(r.cfg.port) });
+      setLoaded(true);
+    }).catch(() => setLoaded(true));
+    return () => { live = false; };
+  }, [native]);
+
+  const upd = (patch: Partial<ProxyHttpCfg>) => { setCfg((c) => ({ ...c, ...patch })); setMsg(null); };
+
+  if (!native) {
+    return (
+      <div className="space-y-3 pb-6">
+        <div className="rounded-2xl p-4 space-y-2" style={{background:C.l1, border:`1px solid ${C.brd}`}}>
+          <p className="text-sm font-bold" style={{color:C.t1}}>Прокси доступен в приложении Sky для Windows</p>
+          <p className="text-xs" style={{color:C.t3}}>
+            Страница в браузере не может направить трафик через прокси-сервер, а в приложении для Android такой возможности пока нет.
+            В Windows-приложении HTTP-, SOCKS4- и SOCKS5-прокси применяется ко всему трафику окна, включая звонки и музыку.
+          </p>
+          <p className="text-xs" style={{color:C.t3}}>
+            В браузере прокси настраивается в самом браузере или в системе; для всего устройства подойдёт VPN.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const send = async (enabled: boolean) => {
+    setBusy(true); setMsg(null);
+    const r = await native.apply({ ...cfg, enabled, port: cfg.port }).catch(() => ({ ok:false, error:'apply_failed' as string }));
+    setBusy(false);
+    if (!r.ok) { setMsg({ ok:false, text: errText(r.error) }); return; }
+    setCfg((c) => ({ ...c, enabled, password: '' }));
+    setApplied({ enabled, type: cfg.type, host: cfg.host, port: cfg.port });
+    setHasPassword(Boolean(cfg.password) || hasPassword);
+    setMsg({ ok:true, text: enabled ? 'Прокси применён. Проверьте соединение.' : 'Прокси выключен, приложение использует системные настройки.' });
   };
 
-  // Apply on mount
-  useEffect(()=>{ applyHttpProxy(cfg); }, []);
-
-  const test = async () => {
-    if (!cfg.host || !cfg.port) { setTestResult('Введите адрес и порт'); return; }
-    setTesting(true); setTestResult(null);
+  /* Проверка: 1) порт прокси отвечает; 2) реальный запрос к Sky проходит уже через применённый прокси. */
+  const check = async () => {
+    setBusy(true); setMsg(null);
+    const reach: { ok: boolean; ms?: number; error?: string } = await native.reach({ type: cfg.type, host: cfg.host, port: cfg.port }).catch(() => ({ ok:false, error:'error' }));
+    if (!reach.ok) { setBusy(false); setMsg({ ok:false, text:`Прокси не отвечает: ${errText(reach.error)}` }); return; }
+    if (!applied.enabled) { setBusy(false); setMsg({ ok:true, text:`Порт прокси отвечает · ${reach.ms} мс. Нажмите «Включить», чтобы применить.` }); return; }
+    const t0 = Date.now();
     try {
-      const t0 = Date.now();
-      // Test connectivity to the proxy host
-      const r = await _origFetch(`/api/proxy-test?host=${encodeURIComponent(cfg.host)}&port=${cfg.port}&type=${cfg.type}`, {
-        method:'GET', signal: AbortSignal.timeout(8000),
-      });
-      const data = await r.json().catch(()=>({ok:false}));
-      const ms = Date.now()-t0;
-      setTestResult(data.ok ? `Прокси доступен · ${ms} мс` : `Не отвечает: ${data.error||'нет ответа'}`);
-    } catch (e: any) {
-      setTestResult(`Не отвечает: ${e.message||'таймаут'}`);
-    }
-    setTesting(false);
+      const r = await fetch('/api/platform/status', { cache:'no-store', signal: AbortSignal.timeout(10000) });
+      setMsg(r.ok ? { ok:true, text:`Через прокси Sky отвечает · ${Date.now()-t0} мс` } : { ok:false, text:`Прокси отвечает, но Sky вернул ${r.status}` });
+    } catch { setMsg({ ok:false, text:'Порт прокси открыт, но через него Sky недоступен — проверьте тип, логин и пароль' }); }
+    setBusy(false);
   };
 
   const fields: [string, keyof ProxyHttpCfg, string, string][] = [
-    ['Адрес прокси', 'host',     'text',   '127.0.0.1 или proxy.example.com'],
-    ['Порт',         'port',     'number', '8080'],
-    ['Логин',        'username', 'text',   '(необязательно)'],
-    ['Пароль',       'password', 'password','(необязательно)'],
+    ['Адрес прокси', 'host', 'text', '127.0.0.1 или proxy.example.com'],
+    ['Порт', 'port', 'number', '8080'],
+    ['Логин', 'username', 'text', '(необязательно, только HTTP)'],
+    ['Пароль', 'password', 'password', hasPassword ? '•••••• (сохранён, оставьте пустым)' : '(необязательно, только HTTP)'],
   ];
+  const socks = cfg.type !== 'http';
 
   return (
     <div className="space-y-4 overflow-y-auto pb-6" style={{scrollbarWidth:'none'}}>
-      {/* Enable toggle */}
       <div className="flex items-center justify-between rounded-2xl px-4 py-3.5"
-        style={{background:C.l1, border:`1px solid ${cfg.enabled ? C.acc+'44' : C.brd}`}}>
+        style={{background:C.l1, border:`1px solid ${applied.enabled ? C.acc+'44' : C.brd}`}}>
         <div className="flex items-center gap-3">
-          <Dot color={cfg.enabled ? C.green : C.t3}/>
+          <Dot color={applied.enabled ? C.green : C.t3}/>
           <div>
-            <p className="text-sm font-bold" style={{color:C.t1}}>
-              {cfg.enabled ? `${cfg.type.toUpperCase()} прокси включён` : 'Прокси отключён'}
-            </p>
-            {cfg.enabled && cfg.host && (
-              <p className="text-xs mt-0.5" style={{color:C.t3}}>{cfg.host}:{cfg.port}</p>
-            )}
+            <p className="text-sm font-bold" style={{color:C.t1}}>{applied.enabled ? `${applied.type.toUpperCase()}-прокси включён` : 'Прокси выключен'}</p>
+            {applied.enabled && applied.host && <p className="text-xs mt-0.5" style={{color:C.t3}} translate="no">{applied.host}:{applied.port}</p>}
           </div>
         </div>
-        <Toggle on={cfg.enabled} onToggle={()=>upd({enabled:!cfg.enabled})}/>
+        <button type="button" disabled={busy || !loaded || (!applied.enabled && !cfg.host)} onClick={() => void send(!applied.enabled)}
+          className="rounded-xl px-4 py-2 text-xs font-bold disabled:opacity-40"
+          style={{background: applied.enabled ? C.l2 : C.acc, color: applied.enabled ? C.t2 : '#fff'}}>
+          {applied.enabled ? 'Выключить' : 'Включить'}
+        </button>
       </div>
 
-      {/* Type */}
       <div className="rounded-2xl p-4 space-y-3" style={{background:C.l1, border:`1px solid ${C.brd}`}}>
         <p className="text-xs font-bold uppercase tracking-wider" style={{color:C.t3}}>Тип прокси</p>
         <div className="flex gap-2">
           {(['http','socks5','socks4'] as const).map(t=>(
-            <button key={t} type="button" onClick={()=>upd({type:t})}
+            <button key={t} type="button" onClick={()=>upd(t === 'http' ? {type:t} : {type:t, username:'', password:''})}
               className="flex-1 rounded-xl py-2 text-xs font-bold uppercase"
               style={{background:cfg.type===t?C.acc:C.l2, color:cfg.type===t?'#fff':C.t3}}>
               {t}
             </button>
           ))}
         </div>
-
-        {fields.map(([label, key, type, ph]) => (
+        {fields.filter(([, key]) => !(socks && (key === 'username' || key === 'password'))).map(([label, key, type, ph]) => (
           <div key={key}>
             <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{color:C.t3}}>{label}</p>
-            <input type={type} value={cfg[key] as string}
-              onChange={e=>upd({[key]:e.target.value} as any)}
-              placeholder={ph}
+            <input type={type} value={cfg[key] as string} autoComplete="off" translate="no"
+              onChange={e=>upd({[key]:e.target.value} as Partial<ProxyHttpCfg>)} placeholder={ph}
               className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
               style={{background:C.l2, border:`1px solid ${C.brd}`, color:C.t1}}/>
           </div>
         ))}
-
-        <button type="button" onClick={test}
-          className="w-full rounded-xl py-2.5 text-sm font-bold"
-          style={{background:C.l2, color:testing?C.t3:C.t2, border:`1px solid ${C.brd}`}}>
-          {testing ? 'Проверяем...' : 'Проверить соединение'}
-        </button>
-        {testResult && (
-          <p className="text-xs font-semibold text-center"
-            style={{color: testResult.startsWith('Прокси доступен') ? C.green : C.red}}>
-            {testResult}
-          </p>
-        )}
+        {socks && <p className="text-[11px]" style={{color:C.t3}}>SOCKS-прокси с логином и паролем Chromium не поддерживает — для авторизации используйте HTTP-прокси.</p>}
+        <div className="flex gap-2">
+          <button type="button" disabled={busy || !cfg.host} onClick={() => void send(true)}
+            className="flex-1 rounded-xl py-2.5 text-sm font-bold disabled:opacity-40" style={{background:C.acc, color:'#fff'}}>
+            Применить
+          </button>
+          <button type="button" disabled={busy || !cfg.host} onClick={() => void check()}
+            className="flex-1 rounded-xl py-2.5 text-sm font-bold disabled:opacity-40"
+            style={{background:C.l2, color:C.t2, border:`1px solid ${C.brd}`}}>
+            {busy ? 'Проверяем...' : 'Проверить'}
+          </button>
+        </div>
+        {msg && <p className="text-xs font-semibold text-center" style={{color: msg.ok ? C.green : C.red}}>{msg.text}</p>}
       </div>
 
       <div className="rounded-xl px-4 py-3" style={{background:C.l1, border:`1px solid ${C.brd}`}}>
         <p className="text-xs" style={{color:C.t3}}>
-          Все внешние запросы приложения будут направлены через прокси-сервер.
-          Внутренние запросы к Sky API проксироваться не будут.
+          Весь трафик окна приложения, включая Sky API, звонки и медиа, идёт через указанный прокси. Пароль хранится в зашифрованном хранилище Windows и на сервер Sky не отправляется.
+          Прокси видит адреса, к которым вы обращаетесь; содержимое защищено TLS.
         </p>
       </div>
     </div>

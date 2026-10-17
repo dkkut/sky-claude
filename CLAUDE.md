@@ -1241,3 +1241,13 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - **Покупка Prime** (`skyid.purchasePrime`): списание кошелька и выдача подписки — одна транзакция; бессрочный Prime → 409 `already_lifetime` без списания; `plan` из запроса не используется (всегда `standard`).
 - **`PAYMENTS_MODE=demo` в production игнорируется** (`config.mjs`): демо-пополнение/возврат/баллы создают деньги из ничего.
 - Тесты: `prime-purchase-atomic-test.mjs` (21), `wallet-ledger-test.mjs` (15), `admin-authz-sweep-test.mjs` (94 админских адреса от пользователя и анонима; 1 допустимое исключение — статус `/api/admin/gate`). Нужен деплой (миграция 162) и пересборка `.apk`/`.exe`.
+
+## Профиль → «Подключение» (прокси) — что настоящее, а что нет
+
+`src/proxy/ConnectionPanel.tsx` (вкладки VLESS / HTTP·SOCKS / Спутник / SkyLink / Сеть), `src/proxy/store.ts` (конфиги VLESS/Trojan), `electron/proxycfg.cjs` (проверка ввода), `electron/main.cjs` (`proxy:get|apply|reach`), `electron/preload.cjs` (`window.sky.proxy`).
+- **HTTP/SOCKS-прокси работает только в Windows-приложении**: `session.defaultSession.setProxy` направляет через прокси весь сетевой стек окна (Sky API, WebSocket, звонки, медиа). Конфиг и пароль — в `safeStorage` главного процесса (`secure-store.json`), применяются при каждом запуске до загрузки страницы; в страницу пароль не возвращается (`hasPassword`).
+  HTTP-прокси с паролем — через событие `login`; SOCKS с логином Chromium не умеет — такой ввод отклоняется (`socks_auth_unsupported`). Проверка = TCP-доступность порта (`proxy:reach`) + реальный запрос к Sky уже через применённый прокси.
+- **В браузере и в Android-сборке** вкладка честно пишет «доступно в приложении для Windows»: страница не может направить трафик через прокси, а нативного моста для Android нет (WebView `ProxyController` — возможное будущее решение, не сделано).
+- Раньше вкладка подменяла `window.fetch` на несуществующий `/api/proxy` (при включении ломались все внешние запросы) и хранила пароль прокси в localStorage — убрано. **`/api/proxy` на сервере НЕ создавать:** это был бы открытый прокси/SSRF.
+- **VLESS/Trojan**: Chromium и браузер их не поддерживают. Вкладка хранит ссылки (импорт/экспорт) и проверяет, что WebSocket-вход сервера отвечает («Сервер отвечает», а не «Подключено»); UUID/пароль на сервер не отправляются. Для трафика — внешний клиент.
+- Тесты: `scripts/audit/proxycfg-test.mjs` (29, чистые функции проверки ввода). Интерфейс проверялся Playwright-ом с подставным `window.sky.proxy`; **настоящий Electron в этой среде не запускался** (бинарника нет) — `setProxy` и событие `login` проверить на Windows при сборке. Нужна пересборка `.exe` (и `.apk` — изменился общий клиент).

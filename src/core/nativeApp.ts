@@ -53,6 +53,12 @@ declare global {
         set: (key: string, value: string) => Promise<void>;
         remove: (key: string) => Promise<void>;
       };
+      /** Прокси приложения (Windows): настоящая маршрутизация через session.setProxy. */
+      proxy?: {
+        get: () => Promise<{ ok: boolean; encrypted: boolean; cfg: { enabled: boolean; type: 'http' | 'socks5' | 'socks4'; host: string; port: number; username: string; hasPassword: boolean } }>;
+        apply: (cfg: { enabled: boolean; type: string; host: string; port: number | string; username?: string; password?: string }) => Promise<{ ok: boolean; error?: string; message?: string }>;
+        reach: (cfg: { type: string; host: string; port: number | string }) => Promise<{ ok: boolean; ms?: number; error?: string }>;
+      };
       /** Определение запущенных игр (Windows-приложение, только по настройке gameDetect). */
       gameDetect?: {
         set: (on: boolean) => void;
