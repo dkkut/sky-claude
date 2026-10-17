@@ -3,7 +3,7 @@ import { NotifyPrefs, MySupport, SupportForm } from './Support';
 import { useRef, useState } from 'react';
 import { Car, UtensilsCrossed, Package, Plane, Fuel, Home, ClipboardList, Briefcase, User, LifeBuoy, BedDouble, Map as MapIcon, Hotel } from 'lucide-react';
 import { goApi, ROLE_LABEL, STAY_LABEL, type GoRole, type StayKind } from './api';
-import { Back, Btn, Card, Chip, Col, CitySelect, Empty, Notice, fail, useCity, useLoad, C, GO, fmt } from './ui';
+import { Back, Btn, Card, Chip, Col, CitySelect, Empty, ErrorState, Notice, fail, useCity, useLoad, C, GO, fmt } from './ui';
 import { flash } from '@/shared/flash';
 import { OrdersTab, OrderScreen } from './Orders';
 import { TaxiScreen } from './Ride';
@@ -34,7 +34,7 @@ const SERVICES = [
 export const SkyGo = () => {
   const [tab, setTab] = useState<Tab>('home');
   const [screen, setScreen] = useState<Screen>(null);
-  const [cfg] = useLoad(() => goApi.config(), []);
+  const [cfg, reloadCfg] = useLoad(() => goApi.config(), []);
   const [exec, reloadExec] = useLoad(() => goApi.executors(), []);
   const config = cfg?.ok ? cfg.data! : null;
   const [city, setCity] = useCity(config?.cities);
@@ -67,7 +67,7 @@ export const SkyGo = () => {
   };
 
   const body = () => {
-    if (!config) return <Empty text={cfg && !cfg.ok ? 'Sky GO сейчас недоступен.' : 'Загрузка…'} />;
+    if (!config) return cfg && !cfg.ok ? <ErrorState text="Sky GO сейчас недоступен. Проверьте соединение и попробуйте снова." onRetry={reloadCfg} /> : <Empty text="Загрузка…" />;
     if (screen && typeof screen === 'object' && 'work' in screen) return <ExecutorWorkspace roles={workRoles} initial={screen.work} onClose={() => setScreen(null)} />;
     if (screen && typeof screen === 'object' && 'bizNew' in screen) {
       const c = screen.bizNew;
@@ -114,10 +114,10 @@ export const SkyGo = () => {
           <div><div style={{ fontSize: 24, fontWeight: 900, color: C.t1 }}>Sky GO</div><div style={{ fontSize: 13, color: C.t2 }}>Всё для города в одном месте</div></div>
           <CitySelect cities={config.cities} city={city} onChange={setCity} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+        <div className="go-services">
           {SERVICES.map(({ key, title, hint, Icon }, i) => (
-            <Card key={key} onClick={() => setScreen(key)} style={{ gridColumn: i === 0 ? 'span 2' : undefined, padding: 16 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(14,165,164,.14)', color: GO, display: 'grid', placeItems: 'center', marginBottom: 10 }}><Icon size={22} /></div>
+            <Card key={key} onClick={() => setScreen(key)} style={{ gridColumn: i === 0 ? '1 / -1' : undefined, padding: 16 }}>
+              <div aria-hidden style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(14,165,164,.14)', color: GO, display: 'grid', placeItems: 'center', marginBottom: 10 }}><Icon size={22} /></div>
               <div style={{ fontWeight: 800, fontSize: 16, color: C.t1 }}>{title}</div>
               <div style={{ fontSize: 12.5, color: C.t2 }}>{hint}</div>
             </Card>))}
@@ -127,7 +127,7 @@ export const SkyGo = () => {
           <div style={{ fontSize: 12, color: C.t2, marginBottom: 10 }}>Бронь напрямую у владельцев</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
             {([['home', BedDouble], ['tour', MapIcon], ['hotel', Hotel]] as const).map(([k, Icon]) => (
-              <button key={k} onClick={() => setScreen({ travel: k === 'hotel' ? 'hotel' : k })} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px 4px', borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, fontSize: 12, fontWeight: 700, lineHeight: 1.2, textAlign: 'center' }}>
+              <button key={k} type="button" onClick={() => setScreen({ travel: k === 'hotel' ? 'hotel' : k })} style={{ minHeight: 64, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px 4px', borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l2, color: C.t1, fontSize: 12, fontWeight: 700, lineHeight: 1.2, textAlign: 'center' }}>
                 <Icon size={20} color={GO} />{STAY_LABEL[k]}</button>))}
           </div>
         </Card>
@@ -138,12 +138,12 @@ export const SkyGo = () => {
 
   const TABS: [Tab, string, typeof Home][] = [['home', 'Главная', Home], ['orders', 'Заказы', ClipboardList], ['work', 'Работа', Briefcase], ['profile', 'Профиль', User]];
   return (
-    <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', background: C.bg }}>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 24px', maxWidth: 680, width: '100%', margin: '0 auto' }}>{body()}</div>
-      <nav style={{ display: 'flex', borderTop: `1px solid ${C.brd}`, background: C.l1, }}>
+    <div className="go-root" style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', background: C.bg }}>
+      <main className="go-main" style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 24px', width: '100%', margin: '0 auto' }}>{body()}</main>
+      <nav aria-label="Разделы Sky GO" className="go-nav" style={{ display: 'flex', borderTop: `1px solid ${C.brd}`, background: C.l1, paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         {TABS.map(([k, t, Icon]) => (
-          <button key={k} onClick={() => goTab(k)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '9px 0', border: 'none', background: 'none', color: tab === k && !screen ? GO : C.t3, fontSize: 11.5, fontWeight: 700 }}>
-            <Icon size={21} />{t}
+          <button key={k} type="button" aria-current={tab === k && !screen ? 'page' : undefined} onClick={() => goTab(k)} style={{ flex: 1, minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, padding: '8px 0', border: 'none', background: 'none', color: tab === k && !screen ? GO : C.t3, fontSize: 11.5, fontWeight: 700 }}>
+            <Icon size={21} aria-hidden />{t}
           </button>))}
       </nav>
     </div>
