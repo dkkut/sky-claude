@@ -8,7 +8,7 @@ import {
   Wallet, Plus, ArrowUpRight, ArrowDownLeft, RotateCcw,
   Crown, ShoppingBag, Music2, ChevronRight, X, Check,
   CreditCard, Smartphone, Building2, Users, Star, ArrowLeftRight,
-  Globe, Zap, Landmark, Lock, Gift, Ticket,
+  Globe, Zap, Landmark, Lock, Gift, Ticket, ScanLine,
 } from 'lucide-react';
 import {
   useMoney, TX_ICON, TX_LABEL, TX_ICON_FALLBACK, TX_LABEL_FALLBACK,
@@ -18,6 +18,7 @@ import { useAuthStore } from '@/core/auth/store';
 import { MyGifts } from '@/gifts/SkyGifts';
 import { SkyPayCheckout, PayHistory } from '@/payment/SkyPay';
 import { SkyKassa } from '@/skykassa/SkyKassa';
+import { ScanQr } from '@/kassabiz/ScanQr';
 
 const C = {
   bg:     'var(--bg)',
@@ -40,7 +41,7 @@ const C = {
 /* QUICK_AMOUNTS moved to TopUpSheet */
 
 /* -- Toplevel section type --------------------------------------- */
-type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes';
+type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan';
 
 /* -- Balance Card ----------------------------------------------- */
 const BalanceCard = ({ balance, points, userId, onExchange }: {
@@ -98,14 +99,15 @@ const BalanceCard = ({ balance, points, userId, onExchange }: {
 );
 
 /* -- Quick Actions ----------------------------------------------- */
-const QuickActions = ({ onTopUp, onHistory, onCodes }: {
-  onTopUp: () => void; onHistory: () => void; onCodes: () => void;
+const QuickActions = ({ onTopUp, onHistory, onCodes, onScan }: {
+  onTopUp: () => void; onHistory: () => void; onCodes: () => void; onScan: () => void;
 }) => (
-  <div className="grid grid-cols-3 gap-3">
+  <div className="grid grid-cols-4 gap-2">
     {[
       { icon:Plus,           label:'Пополнить', onClick:onTopUp,    color:C.accent },
       { icon:RotateCcw,      label:'История',   onClick:onHistory,  color:C.amber  },
       { icon:Ticket,         label:'Sky Codes', onClick:onCodes,    color:'var(--purple)' },
+      { icon:ScanLine,       label:'Сканер QR', onClick:onScan,     color:'var(--green)' },
     ].map(({ icon:Icon, label, onClick, color }) => (
       <motion.button key={label} type="button" onClick={onClick} whileTap={{ scale:0.94 }}
         className="flex flex-col items-center gap-2 rounded-2xl py-4 transition-colors"
@@ -354,6 +356,10 @@ export const SkyMoneyWallet = () => {
     </div>
   );
 
+  if (view === 'scan') return (
+    <div className="flex flex-col h-full overflow-hidden"><ScanQr onClose={() => setView('main')} /></div>
+  );
+
   if (view === 'codes') return (
     <SkyCodes onClose={() => setView('main')} onRedeemed={() => void useMoney.getState().refresh()} />
   );
@@ -420,6 +426,7 @@ export const SkyMoneyWallet = () => {
           onTopUp={() => setView('topup')}
           onHistory={() => setView('history')}
           onCodes={() => setView('codes')}
+          onScan={() => setView('scan')}
         />
       </div>
 

@@ -51,12 +51,13 @@ import { useMoney, fmt } from '@/wallet/store';
 import { SupportScreen } from '@/support/SupportScreen';
 import { LegalDocs }     from '@/info/LegalDocs';
 import { SkyIDTab }    from './SkyIDTab';
+import { KassaBusiness } from '@/kassabiz/KassaBusiness';
 
 const fmtDur = (s: number) => s < 60 ? `${s}с` : `${Math.floor(s/60)}м ${s%60}с`;
 const fmtDate = (iso: string) => { try { return new Date(iso).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}); } catch { return iso; } };
 
 type PrivacyVal = 'all'|'contacts'|'nobody';
-type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'customization'|'support'|'info';
+type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'business'|'customization'|'support'|'info';
 
 // --- Toggle row --------------------------------------------------------------
 const PrivRow = ({ label, sub, value, onChange }: { label:string; sub?:string; value:PrivacyVal; onChange:(v:PrivacyVal)=>void }) => {
@@ -1084,6 +1085,7 @@ export const ProfileModule = () => {
     {key:'proxy',         label:'Подключение',        icon:Shield},
     {key:'referral',      label:'Приглашения',          icon:Users},
     {key:'skyid',         label:'Sky ID',               icon:Fingerprint},
+    {key:'business',      label:'Sky для бизнеса',      icon:Briefcase},
     {key:'support',       label:'Тех. поддержка',       icon:LifeBuoy},
     {key:'info',          label:'Информация',           icon:ScrollText},
   ] as const;
@@ -1520,6 +1522,12 @@ export const ProfileModule = () => {
         {section === 'gaming_acc' && (
           <div className="flex flex-col h-full overflow-y-auto px-4 py-4" style={{ scrollbarWidth:'none' }}>
             <GamingAccountsPanel userId={currentUserId ?? ''}/>
+          </div>
+        )}
+
+        {section === 'business' && (
+          <div className="flex flex-col h-full overflow-hidden">
+            <KassaBusiness />
           </div>
         )}
 

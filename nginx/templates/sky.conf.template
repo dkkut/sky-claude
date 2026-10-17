@@ -379,6 +379,14 @@ server {
         try_files /verify.html =404;
     }
 
+    # -- Страница оплаты SkyKassa Business (/p/<id>): открывается без входа в Sky, приложение не грузится ----
+    location ~ ^/p/[a-z0-9]{12,24}/?$ {
+        limit_req zone=req_general burst=30 nodelay;
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-store" always;
+        try_files /pay.html =404;
+    }
+
     # -- SPA: всё остальное отдаём index.html ------------------
     location / {
         limit_req zone=req_general burst=60 nodelay;

@@ -19,7 +19,7 @@ import { logAdmin } from './adminsec.mjs';
 
 export const TRIGGERS = {
   go_taxi: 'Заказ такси (Sky GO)', go_delivery: 'Доставка (Sky GO)', go_food: 'Еда (Sky GO)', go_stay: 'Бронь жилья (Sky GO)',
-  prime_purchase: 'Покупка подписки Prime', wallet_topup: 'Пополнение кошелька (SkyKassa)', market_order: 'Заказ в Sky Market', tab_visit: 'Использование вкладки',
+  prime_purchase: 'Покупка подписки Prime', wallet_topup: 'Пополнение кошелька (SkyKassa)', market_order: 'Заказ в Sky Market', tab_visit: 'Использование вкладки', kassa_scan: 'Сканирование QR SkyKassa (только Prime)',
 };
 /** Вкладки, за которые можно начислять (закрытый список: клиент присылает только ключ, сервер сверяет). */
 export const TABS = {
@@ -169,12 +169,12 @@ const parse = (b) => {
   let tab = null;
   if (trigger === 'tab_visit') { tab = String(b?.tab ?? ''); if (!Object.hasOwn(TABS, tab)) return { error: 'bad_field', field: 'tab' }; }
   const kind = b?.kind === 'fixed' ? 'fixed' : b?.kind === 'percent' ? 'percent' : null; if (!kind) return { error: 'bad_field', field: 'kind' };
-  if (trigger === 'tab_visit' && kind !== 'fixed') return { error: 'bad_field', field: 'kind' };   // у вкладки нет суммы
+  if ((trigger === 'tab_visit' || trigger === 'kassa_scan') && kind !== 'fixed') return { error: 'bad_field', field: 'kind' };   // у вкладки нет суммы
   const percent = kind === 'percent' ? num(b?.percent, 0.01, 100) : 0; if (Number.isNaN(percent) || (kind === 'percent' && !percent)) return { error: 'bad_field', field: 'percent' };
   const fixed = kind === 'fixed' ? num(b?.fixedPoints, 1, 100000) : 0; if (Number.isNaN(fixed) || (kind === 'fixed' && !fixed)) return { error: 'bad_field', field: 'fixedPoints' };
   const minAmount = num(b?.minAmountRub, 0, 10_000_000, 0); const maxEvent = num(b?.maxPointsEvent, 1, 1_000_000, 500);
-  const dayEvents = num(b?.perUserDayEvents, 0, 1000, trigger === 'tab_visit' ? 1 : 0); const monthPts = num(b?.perUserMonthPoints, 1, 10_000_000, 5000);
-  const hold = num(b?.holdDays, 0, 60, trigger === 'tab_visit' ? 0 : 3); const budget = num(b?.budgetPoints, 1, 1_000_000_000, null);
+  const dayEvents = num(b?.perUserDayEvents, 0, 1000, trigger === 'tab_visit' ? 1 : trigger === 'kassa_scan' ? 3 : 0); const monthPts = num(b?.perUserMonthPoints, 1, 10_000_000, 5000);
+  const hold = num(b?.holdDays, 0, 60, trigger === 'tab_visit' || trigger === 'kassa_scan' ? 0 : 3); const budget = num(b?.budgetPoints, 1, 1_000_000_000, null);
   for (const [f, v] of [['minAmountRub', minAmount], ['maxPointsEvent', maxEvent], ['perUserDayEvents', dayEvents], ['perUserMonthPoints', monthPts], ['holdDays', hold], ['budgetPoints', budget]]) if (Number.isNaN(v)) return { error: 'bad_field', field: f };
   if (trigger === 'tab_visit' && dayEvents !== 1) return { error: 'bad_field', field: 'perUserDayEvents' };   // вкладка — не чаще раза в сутки
   const date = (v) => { if (!v) return null; const d = new Date(v); return Number.isNaN(d.getTime()) ? NaN : d; };

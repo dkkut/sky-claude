@@ -28,7 +28,7 @@ const Row = ({ k, v }: { k: string; v: string }) => v ? (
   </div>
 ) : null;
 
-const Scanner = ({ onCode }: { onCode: (text: string) => void }) => {
+export const Scanner = ({ onCode }: { onCode: (text: string) => void }) => {
   const video = useRef<HTMLVideoElement>(null);
   const [err, setErr] = useState<string>();
   useEffect(() => {

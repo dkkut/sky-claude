@@ -45,6 +45,7 @@ const RulesCard = ({ guarded, write }: { guarded: (fn: (c: string) => Promise<vo
   const meta = d.meta as Data;
   const rules = d.rules as Data[];
   const isTab = edit?.trigger === 'tab_visit';
+  const fixedOnly = isTab || edit?.trigger === 'kassa_scan';   // у вкладки и у сканирования QR нет суммы — только фиксированные баллы
   const save = (b: Data, method: string, path: string, ok: string) => guarded(async (c) => { if (await write(method, path, b, ok, c)) { setEdit(null); await load(); } });
   const sum = (r: Data) => `${r.kind === 'percent' ? `${r.percent}% от суммы` : `${r.fixedPoints} б. за раз`}${r.minAmountRub ? ` · от ${r.minAmountRub} ₽` : ''} · до ${r.maxPointsEvent} б. за раз${r.perUserDayEvents ? ` · ${r.perUserDayEvents}/сутки` : ''} · до ${r.perUserMonthPoints} б. в месяц на человека${r.primeOnly ? ' · только Prime' : ''}${r.holdDays ? ` · холд ${r.holdDays} дн.` : ''}${r.budgetPoints != null ? ` · бюджет ${r.spentPoints}/${r.budgetPoints} б.` : ''}${r.endsAt ? ` · до ${dt(r.endsAt)}` : ''}`;
   return (
@@ -74,7 +75,7 @@ const RulesCard = ({ guarded, write }: { guarded: (fn: (c: string) => Promise<vo
           <input value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} placeholder="Название правила (видят люди)" aria-label="Название правила" className="w-full rounded-lg px-3 py-2 text-sm" style={field} />
           <div className="flex flex-wrap gap-2">
             <label className="text-[11px]" style={{ color: C.t3 }}>За что
-              <select value={edit.trigger} onChange={(e) => setEdit({ ...edit, trigger: e.target.value, ...(e.target.value === 'tab_visit' ? { kind: 'fixed', perUserDayEvents: '1', holdDays: '0' } : {}) })} className="mt-0.5 block rounded-lg px-2 py-1.5 text-sm" style={field}>
+              <select value={edit.trigger} onChange={(e) => setEdit({ ...edit, trigger: e.target.value, ...(e.target.value === 'tab_visit' ? { kind: 'fixed', perUserDayEvents: '1', holdDays: '0' } : e.target.value === 'kassa_scan' ? { kind: 'fixed', perUserDayEvents: '3', holdDays: '0', primeOnly: true } : {}) })} className="mt-0.5 block rounded-lg px-2 py-1.5 text-sm" style={field}>
                 {(meta.triggers as Data[]).map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             </label>
@@ -85,19 +86,19 @@ const RulesCard = ({ guarded, write }: { guarded: (fn: (c: string) => Promise<vo
                 </select>
               </label>
             )}
-            {!isTab && (
+            {!fixedOnly && (
               <label className="text-[11px]" style={{ color: C.t3 }}>Сколько
                 <select value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })} className="mt-0.5 block rounded-lg px-2 py-1.5 text-sm" style={field}>
                   <option value="percent">Процент от суммы</option><option value="fixed">Фиксированно баллов</option>
                 </select>
               </label>
             )}
-            {edit.kind === 'percent' && !isTab ? <Num label="Процент, %" value={edit.percent} onChange={(v) => setEdit({ ...edit, percent: v })} /> : <Num label="Баллов за раз" value={edit.fixedPoints} onChange={(v) => setEdit({ ...edit, fixedPoints: v })} />}
-            {!isTab && <Num label="Мин. сумма, ₽" value={edit.minAmountRub} onChange={(v) => setEdit({ ...edit, minAmountRub: v })} />}
+            {edit.kind === 'percent' && !fixedOnly ? <Num label="Процент, %" value={edit.percent} onChange={(v) => setEdit({ ...edit, percent: v })} /> : <Num label="Баллов за раз" value={edit.fixedPoints} onChange={(v) => setEdit({ ...edit, fixedPoints: v })} />}
+            {!fixedOnly && <Num label="Мин. сумма, ₽" value={edit.minAmountRub} onChange={(v) => setEdit({ ...edit, minAmountRub: v })} />}
             <Num label="Макс. баллов за раз" value={edit.maxPointsEvent} onChange={(v) => setEdit({ ...edit, maxPointsEvent: v })} />
             {!isTab && <Num label="Раз в сутки (0 — без предела)" value={edit.perUserDayEvents} onChange={(v) => setEdit({ ...edit, perUserDayEvents: v })} w="w-40" />}
             <Num label="Макс. в месяц на человека" value={edit.perUserMonthPoints} onChange={(v) => setEdit({ ...edit, perUserMonthPoints: v })} />
-            {!isTab && <Num label="Холд, дней" value={edit.holdDays} onChange={(v) => setEdit({ ...edit, holdDays: v })} />}
+            {!fixedOnly && <Num label="Холд, дней" value={edit.holdDays} onChange={(v) => setEdit({ ...edit, holdDays: v })} />}
             <Num label="Бюджет, баллов (пусто — без предела)" value={edit.budgetPoints} onChange={(v) => setEdit({ ...edit, budgetPoints: v })} w="w-44" />
             <label className="text-[11px]" style={{ color: C.t3 }}>Начало<input type="datetime-local" value={edit.startsAt ?? ''} onChange={(e) => setEdit({ ...edit, startsAt: e.target.value })} className="mt-0.5 block rounded-lg px-2 py-1.5 text-sm" style={field} /></label>
             <label className="text-[11px]" style={{ color: C.t3 }}>Конец<input type="datetime-local" value={edit.endsAt ?? ''} onChange={(e) => setEdit({ ...edit, endsAt: e.target.value })} className="mt-0.5 block rounded-lg px-2 py-1.5 text-sm" style={field} /></label>

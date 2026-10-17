@@ -17,6 +17,7 @@ export default defineConfig({
           if (VERIFY_PATHS.has(p)) req.url = '/verify.html' + (req.url ?? '').slice(p.length);
           // Для проверки сайта восстановления без отдельного домена: /recovery-site/… отдаёт recovery.html (на боевом сервере его отдаёт nginx домена recovery.*).
           else if (p === '/recovery-site' || p.startsWith('/recovery-site/')) req.url = '/recovery.html';
+          else if (/^\/p\/[a-z0-9]{12,24}\/?$/.test(p)) req.url = '/pay.html';   // страница оплаты SkyKassa Business — как nginx на боевом сайте
           next();
         });
       },
@@ -26,6 +27,7 @@ export default defineConfig({
           if (VERIFY_PATHS.has(p)) req.url = '/verify.html' + (req.url ?? '').slice(p.length);
           // Для проверки сайта восстановления без отдельного домена: /recovery-site/… отдаёт recovery.html (на боевом сервере его отдаёт nginx домена recovery.*).
           else if (p === '/recovery-site' || p.startsWith('/recovery-site/')) req.url = '/recovery.html';
+          else if (/^\/p\/[a-z0-9]{12,24}\/?$/.test(p)) req.url = '/pay.html';   // страница оплаты SkyKassa Business — как nginx на боевом сайте
           next();
         });
       },
@@ -42,6 +44,7 @@ export default defineConfig({
         main: path.resolve(__dirname, 'index.html'),
         verify: path.resolve(__dirname, 'verify.html'),
         recovery: path.resolve(__dirname, 'recovery.html'),
+        pay: path.resolve(__dirname, 'pay.html'),
       },
     },
   },
