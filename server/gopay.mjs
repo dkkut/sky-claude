@@ -82,7 +82,7 @@ export const orderView = async (row, viewerId, { events = false, staff = false }
   const cards = await profileCards([row.customer_id, row.executor_id]);
   const out = {
     id: row.id, kind: row.kind, parentId: row.parent_id ?? null, status: row.status, priceRub: row.price_rub, city: row.city,
-    createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(), completedAt: row.completed_at?.toISOString?.() ?? null,
+    createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(), completedAt: row.completed_at?.toISOString?.() ?? null, scheduledAt: row.scheduled_at?.toISOString?.() ?? null,
     cancelReason: row.cancel_reason || undefined,
     role: isCustomer ? 'customer' : isExecutor ? 'executor' : staff ? 'staff' : 'viewer',
     data: safe,

@@ -123,7 +123,7 @@ const Orders = () => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <select value={kind} onChange={(e) => setKind(e.target.value)} style={inp}><option value="">Все виды</option><option value="taxi">Такси</option><option value="food">Еда</option><option value="delivery">Доставка</option><option value="stay">Жильё и отдых</option></select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} style={inp}><option value="">Все статусы</option><option value="dispute">Споры</option><option value="searching">Поиск</option><option value="awaiting_payment">Ожидают оплаты</option><option value="paid">Оплачены</option><option value="cancelled">Отменены</option></select>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} style={inp}><option value="">Все статусы</option><option value="dispute">Споры</option><option value="scheduled">Запланированы</option><option value="searching">Поиск</option><option value="awaiting_payment">Ожидают оплаты</option><option value="paid">Оплачены</option><option value="cancelled">Отменены</option></select>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="id или @логин заказчика" style={{ ...inp, flex: 1, minWidth: 140 }} />
       </div>
       {!items ? <div style={{ color: C.t3 }}>Загрузка…</div> : items.length === 0 ? <div style={{ color: C.t3 }}>Заказов нет.</div> : items.map((o) => (

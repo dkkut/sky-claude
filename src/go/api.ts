@@ -17,7 +17,7 @@ export const DOC_LABEL: Record<string, string> = {
   id_doc: 'Документ, удостоверяющий личность', authority_doc: 'Документ о полномочиях представителя',
 };
 export const STATUS_LABEL: Record<string, string> = {
-  searching: 'Ищем водителя', assigned: 'Водитель назначен', en_route: 'Водитель едет к вам', arrived: 'Водитель на месте',
+  scheduled: 'Запланирован',   searching: 'Ищем водителя', assigned: 'Водитель назначен', en_route: 'Водитель едет к вам', arrived: 'Водитель на месте',
   in_ride: 'В пути', awaiting_payment: 'Ожидает оплаты', payment_reported: 'Оплата ожидает подтверждения', paid: 'Оплачено',
   cancelled: 'Отменён', dispute: 'Спор', pending: 'Ждёт ответа заведения', accepted: 'Принят заведением', cooking: 'Готовится',
   ready: 'Готов, ищем курьера', handed_to_courier: 'Передан курьеру', delivering: 'Курьер в пути', delivered: 'Доставлен',
@@ -35,6 +35,8 @@ const ERR: Record<string, string> = {
   bad_state: 'Это действие сейчас недоступно — обновите экран.', not_found: 'Не найдено.',
   address_not_found: 'Адрес не найден. Уточните город, улицу и дом.', same_point: 'Точки отправления и назначения совпадают.',
   too_far: 'Слишком далеко для этого сервиса.', route_failed: 'Не удалось построить маршрут. Попробуйте позже.',
+  bad_schedule: 'Укажите дату и время поездки.', schedule_too_soon: 'Слишком скоро — выберите время позже или закажите такси сейчас.', schedule_too_far: 'Слишком далеко — выберите ближайшую дату.',
+  too_many_scheduled: 'Слишком много запланированных поездок — отмените одну из них.', schedule_conflict: 'На это время уже есть запланированная поездка.',
   price_changed: 'Стоимость изменилась — проверьте новую цену и подтвердите заказ ещё раз.', quote_expired: 'Расчёт устарел — мы пересчитали стоимость, подтвердите заказ ещё раз.',
   quote_mismatch: 'Условия поездки изменились — стоимость пересчитана.', quote_used: 'Этот расчёт уже использован.', quote_not_found: 'Расчёт не найден — повторите запрос.',
   bad_category: 'Выберите тему обращения.', text_required: 'Опишите ситуацию (от 5 знаков).', too_many: 'Сегодня уже слишком много обращений — дождитесь ответа поддержки.',
@@ -118,7 +120,7 @@ export interface SubState {
 }
 export interface GoOrder {
   id: string; kind: 'taxi' | 'food' | 'delivery' | 'stay'; parentId: string | null; status: string; priceRub: number; city: string;
-  createdAt: string; cancelReason?: string; role: 'customer' | 'executor' | 'staff' | 'viewer';
+  createdAt: string; scheduledAt?: string | null; cancelReason?: string; role: 'customer' | 'executor' | 'staff' | 'viewer';
   data: Record<string, any>;
   customer?: { id: string; username: string; name?: string };
   executor?: { id: string; username: string; name?: string; car?: Record<string, any> } | null;

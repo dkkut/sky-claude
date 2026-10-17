@@ -52,6 +52,11 @@ const KEYS = {
   dispatch_search_timeout_min: (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 240 ? Math.round(Number(v)) : null),
   dispatch_presence_fresh_sec: (v) => (Number.isFinite(Number(v)) && Number(v) >= 30 && Number(v) <= 3600 ? Math.round(Number(v)) : null),
   dispatch_radius_km: (v) => (Number.isFinite(Number(v)) && Number(v) >= 1 && Number(v) <= 200 ? Number(v) : null),
+  schedule: (v) => {
+    const n = (k, lo, hi) => (Number.isFinite(Number(v?.[k])) && Number(v[k]) >= lo && Number(v[k]) <= hi ? Math.round(Number(v[k])) : null);
+    const o = { minMin: n('minMin', 10, 720), maxDays: n('maxDays', 1, 30), leadMin: n('leadMin', 5, 120), maxOrders: n('maxOrders', 1, 20) };
+    return Object.values(o).every((x) => x !== null) && o.leadMin < o.minMin ? o : null;
+  },
   quote_ttl_sec: (v) => (Number.isFinite(Number(v)) && Number(v) >= 60 && Number(v) <= 3600 ? Math.round(Number(v)) : null),
   maps_route_daily_limit: (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 1_000_000 ? Math.round(Number(v)) : null),
   payment_terms: (v) => {

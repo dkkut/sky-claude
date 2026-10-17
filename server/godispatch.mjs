@@ -162,9 +162,31 @@ export const openOffersFor = async (driverId) => {
 export const cancelOffers = (client, orderId) =>
   client.query(`UPDATE go_order_offers SET status = 'cancelled', answered_at = now() WHERE order_id = $1 AND status = 'offered'`, [orderId]);
 
+/** Заказы «на потом»: за leadMin минут до времени начинается обычный поиск (searching + распределение). Повтор безопасен: под блокировкой заказа, статус проверяется. */
+export const startScheduled = async () => {
+  const { scheduleSettings } = await import('./gotaxi.mjs');
+  const sc = await scheduleSettings();
+  const { rows } = await query(`SELECT id FROM go_orders WHERE kind = 'taxi' AND status = 'scheduled' AND scheduled_at <= now() + ($1 || ' minutes')::interval ORDER BY scheduled_at LIMIT 100`, [String(sc.leadMin)]);
+  for (const r of rows) {
+    const res = await inTx(async (c) => {
+      const o = await lockOrder(c, r.id);
+      if (!o || o.status !== 'scheduled') return { skipped: true };
+      await setStatus(c, o, 'searching', null, 'Подошло время: начинаем поиск водителя', { search_started_at: new Date() });
+      await dlog(c, o.id, 'scheduled_start', null, { scheduledAt: o.scheduled_at?.toISOString() });
+      return { ok: true, customerId: o.customer_id };
+    }).catch(() => ({ skipped: true }));
+    if (res.ok) {
+      await notifyGo(res.customerId, 'taxi', 'Ищем водителя', 'Подошло время вашей поездки — ищем водителя.', r.id, `${r.id}:sched-start`);
+      await offerNext(r.id).catch(() => {});
+      await pushOrderChanged(r.id);
+    }
+  }
+};
+
 /** Фоновая уборка: просроченные предложения → следующий кандидат; заказ без водителя слишком долго → отмена «нет водителей». */
 export const sweepDispatch = async () => {
   const cfg = await dispatchSettings();
+  await startScheduled();
   if (cfg.mode === 'offers') {
     const { rows } = await query(
       `SELECT DISTINCT o.id FROM go_orders o
@@ -176,7 +198,7 @@ export const sweepDispatch = async () => {
   if (cfg.searchTimeoutMin > 0) {
     const { rows } = await query(
       `SELECT id FROM go_orders WHERE kind = 'taxi' AND status = 'searching' AND executor_id IS NULL AND org_id IS NULL
-          AND created_at < now() - ($1 || ' minutes')::interval LIMIT 200`, [String(cfg.searchTimeoutMin)]);
+          AND coalesce(search_started_at, created_at) < now() - ($1 || ' minutes')::interval LIMIT 200`, [String(cfg.searchTimeoutMin)]);
     for (const r of rows) {
       const res = await inTx(async (c) => {
         const o = await lockOrder(c, r.id);
@@ -243,7 +265,7 @@ export const board = async (adminId) => {
             (SELECT f.driver_id FROM go_order_offers f WHERE f.order_id = o.id AND f.status = 'offered' AND f.expires_at > now() LIMIT 1) AS offered_to,
             p.name AS executor_name
        FROM go_orders o LEFT JOIN profiles p ON p.id = o.executor_id
-      WHERE o.kind = 'taxi' AND o.status IN ('searching','assigned','en_route','arrived','in_ride','dispute')
+      WHERE o.kind = 'taxi' AND o.status IN ('scheduled','searching','assigned','en_route','arrived','in_ride','dispute')
       ORDER BY o.created_at LIMIT 200`);
   const now = Date.now();
   const orders = rows.map((r) => {

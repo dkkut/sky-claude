@@ -12,6 +12,9 @@ import { driverClass, classMode, classCheck } from './goclass.mjs';
 import { offerNext, claimOffer, openOffersFor, cancelOffers } from './godispatch.mjs';
 import { openJson, getSetting, cityOk, newId, inTx, lockOrder, setStatus, addEvent, resolvePoint, routeBetween, notifyGo, clean, haversineKm, goLog } from './gocore.mjs';
 
+export const SCHEDULE_DEFAULTS = { minMin: 30, maxDays: 7, leadMin: 20, maxOrders: 5 };
+export const scheduleSettings = async () => ({ ...SCHEDULE_DEFAULTS, ...(((await getSetting('schedule', null)) ?? {})) });
+
 const ACTIVE = ['searching', 'assigned', 'en_route', 'arrived', 'in_ride', 'awaiting_payment', 'payment_reported'];
 
 export const taxiTariffs = async () => (await getSetting('taxi_tariffs', {})) ?? {};
@@ -55,14 +58,32 @@ export const create = async (customerId, input) => {
   const idem = clean(input?.idemKey, 64) || null;
   const comment = clean(input?.comment, 200);
   const quoteId = input?.quoteId ? String(input.quoteId) : null;
+  // «На потом»: время проверяет сервер (не раньше чем через minMin минут, не дальше maxDays суток); заказ ждёт и сам начинает поиск за leadMin минут.
+  let scheduledAt = null;
+  if (input?.scheduledAt) {
+    const sc = await scheduleSettings();
+    const when = new Date(String(input.scheduledAt));
+    if (Number.isNaN(when.getTime())) return { error: 'bad_schedule' };
+    const ahead = (when.getTime() - Date.now()) / 60000;
+    if (ahead < sc.minMin) return { error: 'schedule_too_soon', minMin: sc.minMin };
+    if (ahead > sc.maxDays * 1440) return { error: 'schedule_too_far', maxDays: sc.maxDays };
+    scheduledAt = when;
+  }
   const out = await inTx(async (c) => {
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`go:cust:${customerId}`]);
     if (idem) {
       const { rows } = await c.query('SELECT * FROM go_orders WHERE customer_id = $1 AND idem_key = $2', [customerId, idem]);
       if (rows[0]) return { ok: true, orderId: rows[0].id, duplicate: true };
     }
-    const { rows: act } = await c.query(`SELECT 1 FROM go_orders WHERE customer_id = $1 AND kind = 'taxi' AND status = ANY($2::text[]) LIMIT 1`, [customerId, ACTIVE]);
-    if (act[0]) return { error: 'active_order_exists' };
+    if (scheduledAt) {
+      const sc = await scheduleSettings();
+      const { rows: mine } = await c.query(`SELECT scheduled_at FROM go_orders WHERE customer_id = $1 AND kind = 'taxi' AND status = 'scheduled'`, [customerId]);
+      if (mine.length >= sc.maxOrders) return { error: 'too_many_scheduled', max: sc.maxOrders };
+      if (mine.some((m) => Math.abs(m.scheduled_at.getTime() - scheduledAt.getTime()) < 30 * 60000)) return { error: 'schedule_conflict' };
+    } else {
+      const { rows: act } = await c.query(`SELECT 1 FROM go_orders WHERE customer_id = $1 AND kind = 'taxi' AND status = ANY($2::text[]) LIMIT 1`, [customerId, ACTIVE]);
+      if (act[0]) return { error: 'active_order_exists' };
+    }
     let snap = snapshot({ version: q.version, breakdown: offer.breakdown, priceRub: offer.priceRub, estimated: q.estimated });
     if (quoteId) {
       const red = await redeemQuote(c, customerId, quoteId, 'taxi', q.fp, q.version, tariff, offer.priceRub);
@@ -72,11 +93,11 @@ export const create = async (customerId, input) => {
     const id = newId('go');
     const data = { from: q.from, to: q.to, tariff, tariffTitle: offer.title, km: q.km, minutes: q.minutes, estimated: q.estimated, comment };
     await c.query(
-      `INSERT INTO go_orders (id, kind, customer_id, status, price_rub, city, data, idem_key, pricing) VALUES ($1,'taxi',$2,'searching',$3,$4,$5::jsonb,$6,$7::jsonb)`,
-      [id, customerId, snap.priceRub, q.city, JSON.stringify(data), idem, JSON.stringify(snap)]);
+      `INSERT INTO go_orders (id, kind, customer_id, status, price_rub, city, data, idem_key, pricing, scheduled_at) VALUES ($1,'taxi',$2,$7,$3,$4,$5::jsonb,$6,$8::jsonb,$9)`,
+      [id, customerId, snap.priceRub, q.city, JSON.stringify(data), idem, scheduledAt ? 'scheduled' : 'searching', JSON.stringify(snap), scheduledAt]);
     if (quoteId) await markQuoteUsed(c, quoteId, id);
-    await addEvent(c, id, customerId, null, 'searching', 'Заказ создан');
-    return { ok: true, orderId: id, priceRub: snap.priceRub, fresh: true };
+    await addEvent(c, id, customerId, null, scheduledAt ? 'scheduled' : 'searching', scheduledAt ? `Заказ создан на ${scheduledAt.toISOString()}` : 'Заказ создан');
+    return { ok: true, orderId: id, priceRub: snap.priceRub, fresh: !scheduledAt, scheduledAt: scheduledAt?.toISOString() ?? null };
   });
   if (out.error === 'price_changed' || out.error === 'quote_expired') return { ...out, quote: await quote(input, customerId) };   // свежая котировка — человек подтверждает заново
   if (out.fresh) { delete out.fresh; await offerNext(out.orderId).catch((e) => console.error('[go] распределение', e.message)); }
@@ -171,7 +192,7 @@ export const driverAct = async (driverId, orderId, action) => inTx(async (c) => 
 export const customerCancel = async (customerId, orderId, reason) => inTx(async (c) => {
   const o = await lockOrder(c, orderId);
   if (!o || o.kind !== 'taxi' || o.customer_id !== customerId) return { error: 'not_found' };
-  if (!['searching', 'assigned', 'en_route', 'arrived'].includes(o.status)) return { error: 'bad_state', status: o.status };
+  if (!['scheduled', 'searching', 'assigned', 'en_route', 'arrived'].includes(o.status)) return { error: 'bad_state', status: o.status };
   await cancelOffers(c, o.id);
   await setStatus(c, o, 'cancelled', customerId, clean(reason, 200) || 'Отменён заказчиком', { cancelled_by: customerId, cancel_reason: clean(reason, 200) });
   return { ok: true, driverId: o.executor_id };

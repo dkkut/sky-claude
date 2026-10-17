@@ -8,12 +8,13 @@
  *
  * Соответствие терминам ТЗ: searching = searching_driver/searching_courier, assigned = driver_assigned/courier_assigned,
  * en_route = driver_arriving, arrived = driver_arrived, in_ride = trip_started, awaiting_payment/paid = trip_completed
- * (поездка завершена → оплата напрямую водителю), cancelled = cancelled, dispute = спор у администрации.
+ * (поездка завершена → оплата напрямую водителю), cancelled = cancelled, dispute = спор у администрации, scheduled = заказ «на потом» (ждёт времени).
  * Состояний draft/estimating/awaiting_confirmation в базе нет: это котировка (go_quotes), а не заказ.
  */
 const T = (to, actors, needs = '', effects = '') => ({ to, actors, needs, effects });
 
 const TAXI = {
+  scheduled: [T('searching', ['system'], 'наступило время начала поиска (за lead минут до поездки)', 'поиск водителя, уведомление'), T('cancelled', ['customer', 'system', 'admin'], 'до начала поиска и после — по обычным правилам отмены')],
   searching: [T('assigned', ['executor', 'admin', 'system'], 'исполнитель одобрен, подписка, на линии, не занят, предложение действует', 'уведомление пассажиру'),
     T('cancelled', ['customer', 'system', 'admin'], '', 'предложения отзываются')],
   assigned: [T('en_route', ['executor'], 'назначенный исполнитель'), T('cancelled', ['customer', 'admin']), T('searching', ['executor', 'system'], 'отказ до начала поездки', 'поиск заново, водитель исключается')],

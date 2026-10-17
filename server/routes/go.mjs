@@ -37,7 +37,7 @@ const readBytes = (req, limit) => new Promise((resolve) => {
 
 const STATUS_OF = {
   dates_taken: 409, has_bookings: 409, not_found: 404, not_allowed: 403, rate_limited: 429, too_many_requests: 429,
-  already_taken: 409, class_mismatch: 409, price_changed: 409, quote_expired: 409, quote_mismatch: 409, quote_used: 409, quote_not_found: 404, not_offered: 409, offer_expired: 409, no_offer: 404, bad_state: 409, active_order_exists: 409, driver_busy: 409, courier_busy: 409, not_editable: 409,
+  already_taken: 409, schedule_conflict: 409, too_many_scheduled: 409, class_mismatch: 409, price_changed: 409, quote_expired: 409, quote_mismatch: 409, quote_used: 409, quote_not_found: 404, not_offered: 409, offer_expired: 409, no_offer: 404, bad_state: 409, active_order_exists: 409, driver_busy: 409, courier_busy: 409, not_editable: 409,
   incompatible_order: 409, executor_offline: 409, executor_in_delivery: 409, payment_in_progress: 409, already_member: 409, confirm_required: 409, assignment_not_accepted: 409,
   org_suspended: 403, owner_immutable: 403, self_change: 403, role_not_allowed: 403, executor_not_member: 409, executor_not_approved: 409,
   subscription_required: 402, insufficient_funds: 402, not_approved: 403, not_registered: 403,

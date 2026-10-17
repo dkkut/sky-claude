@@ -89,7 +89,7 @@ export const OrderScreen = ({ id, onBack }: { id: string; onBack: () => void }) 
   const mine = o.role === 'executor';
   const acts = mine ? executorActions(o) : [];
   const payer = o.role === 'customer';
-  const cancelable = payer && (o.kind === 'stay' ? ['requested', 'awaiting_payment'] : o.kind === 'taxi' ? ['searching', 'assigned', 'en_route', 'arrived'] : o.kind === 'delivery' ? ['searching', 'assigned', 'heading_pickup', 'at_pickup'] : ['pending', 'accepted']).includes(o.status);
+  const cancelable = payer && (o.kind === 'stay' ? ['requested', 'awaiting_payment'] : o.kind === 'taxi' ? ['scheduled', 'searching', 'assigned', 'en_route', 'arrived'] : o.kind === 'delivery' ? ['searching', 'assigned', 'heading_pickup', 'at_pickup'] : ['pending', 'accepted']).includes(o.status);
 
   const doAct = (a: ReturnType<typeof executorActions>[number], withCode?: string) => {
     if (a.kind === 'stay') return run(() => goApi.stayAct(o.id, a.action, a.action === 'decline' ? reason : undefined));
@@ -114,6 +114,7 @@ export const OrderScreen = ({ id, onBack }: { id: string; onBack: () => void }) 
               {o.data.listingKind === 'tour' ? <div>Отправление: {o.data.date} · человек: {o.data.people}</div> : <div>Даты: {o.data.checkIn} — {o.data.checkOut} ({o.data.nights} н.) · гостей: {o.data.guests}{o.data.roomName ? ` · ${o.data.roomName}` : ''}</div>}
               {o.data.address && (o.role === 'executor' || o.status === 'awaiting_payment' || o.status === 'payment_reported' || o.status === 'paid') && <div>Адрес: {o.data.address}</div>}
               {o.role === 'executor' && o.data.contact && <div>Гость: {o.data.contact.name}, <a href={`tel:${o.data.contact.phone}`}>{o.data.contact.phone}</a></div>}
+              {o.scheduledAt && o.status === 'scheduled' && <div>{`Поездка запланирована на ${new Date(o.scheduledAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}. Водителя начнём искать ближе ко времени.`}</div>}
               {o.data.holdUntil && o.status === 'awaiting_payment' && <div>Оплатить до: {new Date(o.data.holdUntil).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>}
             </>}
             {o.data.comment && <div>Комментарий: {o.data.comment}</div>}

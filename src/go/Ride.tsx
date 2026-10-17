@@ -3,13 +3,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Car, Flag, MapPin, Clock, Home, Briefcase, Star, X } from 'lucide-react';
 import { SkyMap } from '@/marketplace/logistics/SkyMap';
 import { goApi, goError, type Point } from './api';
-import { Back, Btn, Card, Col, Head, Input, Notice, StickyBar, fail, fmt, locate, useLoad, C, GO } from './ui';
+import { Back, Btn, Card, Col, Head, Input, Notice, Segmented, StickyBar, fail, fmt, locate, useLoad, C, GO } from './ui';
 import { flash } from '@/shared/flash';
 
 export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: () => void; onCreated: (id: string) => void }) => {
   const [from, setFrom] = useState<Point>({}); const [to, setTo] = useState<Point>({});
   const [editFrom, setEditFrom] = useState(false); const [comment, setComment] = useState('');
   const [quote, setQuote] = useState<Awaited<ReturnType<typeof goApi.taxiQuote>>['data'] | null>(null);
+  const [later, setLater] = useState(false); const [when, setWhen] = useState('');
   const [qerr, setQerr] = useState(''); const [pick, setPick] = useState(''); const [busy, setBusy] = useState(false); const seq = useRef(0);
   const [hist] = useLoad(() => goApi.orders({ status: 'history' }), []);
   const [savedRes, reloadSaved] = useLoad(() => goApi.savedPlaces(), []);
@@ -50,7 +51,7 @@ export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: 
   }, [from, to, quote]);
 
   const order = async () => {
-    setBusy(true); const r = await goApi.taxiCreate({ city, from, to, tariff: pick, comment, quoteId: quote?.quoteId }); setBusy(false);
+    setBusy(true); const r = await goApi.taxiCreate({ city, from, to, tariff: pick, comment, quoteId: quote?.quoteId, scheduledAt: later && when ? new Date(when).toISOString() : undefined }); setBusy(false);
     if (!r.ok) {
       // Цена изменилась или расчёт устарел: заказ НЕ создан, показываем новую цену — человек подтверждает заново.
       const fresh = r.data?.quote;
@@ -61,7 +62,7 @@ export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: 
       return fail(r);
     }
     setQerr('');
-    flash('Ищем водителя'); onCreated(r.data!.orderId);
+    flash(later ? 'Поездка запланирована' : 'Ищем водителя'); onCreated(r.data!.orderId);
   };
   const offer = quote?.offers.find((o) => o.code === pick);
   const savePlace = async (kind: 'home' | 'work' | 'other') => {
@@ -123,12 +124,18 @@ export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: 
             <Input label="Комментарий водителю" value={comment} onChange={setComment} max={200} />
             {offer?.breakdown && <div style={{ fontSize: 12.5, color: C.t3 }}>{`Из чего цена: подача ${fmt(offer.breakdown.baseRub)} · путь ${fmt(offer.breakdown.distanceRub)} · время ${fmt(offer.breakdown.timeRub)}${offer.breakdown.minimumApplied ? ` · минимальная стоимость ${fmt(offer.breakdown.minimumRub)}` : ''}`}</div>}
             {quote.expiresAt && <div style={{ fontSize: 12.5, color: C.t3 }}>{`Цена зафиксирована до ${new Date(quote.expiresAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}. Если тариф изменится раньше, мы покажем новую цену до заказа.`}</div>}
+            <Segmented value={later ? 'later' : 'now'} onChange={(v: string) => setLater(v === 'later')} options={[{ v: 'now', t: 'Сейчас' }, { v: 'later', t: 'На потом' }]} />
+            {later && (<div>
+              <input type="datetime-local" value={when} min={new Date(Date.now() + 31 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} onChange={(e) => setWhen(e.target.value)}
+                aria-label="Дата и время поездки" style={{ width: '100%', height: 46, borderRadius: 14, border: `1px solid ${C.l2}`, background: C.l1, color: C.t1, padding: '0 12px', fontSize: 15 }} />
+              <div style={{ fontSize: 12.5, color: C.t3, marginTop: 6 }}>Цена зафиксирована сейчас. Водитель назначается ближе ко времени поездки — за 20 минут мы начнём поиск и пришлём уведомление. Отменить можно до начала поиска и после — по обычным правилам.</div>
+            </div>)}
             <Notice>Оплата — водителю напрямую по реквизитам после поездки. Sky деньги за поездку не принимает.</Notice>
           </Col></Card>)}
       </Col>
       {quote && (
         <StickyBar left={<div><div style={{ fontSize: 12, color: C.t3 }}>{offer?.title ?? 'Стоимость'}</div><div style={{ fontSize: 22, fontWeight: 900, color: C.t1 }}>{offer ? fmt(offer.priceRub) : '—'}</div></div>}>
-          <Btn busy={busy} disabled={!pick} onClick={order} style={{ width: '100%', height: 52, borderRadius: 18 }}>Заказать</Btn>
+          <Btn busy={busy} disabled={!pick || (later && !when)} onClick={order} style={{ width: '100%', height: 52, borderRadius: 18 }}>{later ? 'Запланировать' : 'Заказать'}</Btn>
         </StickyBar>)}
     </>
   );
