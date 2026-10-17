@@ -6,6 +6,8 @@
 import { query } from './db.mjs';
 import { canAccept } from './gosubs.mjs';
 import { openPayment } from './gopay.mjs';
+import { zoneEffect } from './gozones.mjs';
+import { parseSchedule, checkScheduleSlot } from './goschedule.mjs';
 import { offerNext, claimOffer, openOffersFor, cancelOffers } from './godispatch.mjs';
 import { tariffVersion, fingerprint, issueQuote, redeemQuote, markQuoteUsed, snapshot } from './gopricing.mjs';
 import { executorStatus } from './goreg.mjs';
@@ -54,16 +56,19 @@ const calcQuote = async (input) => {
   const size = SIZES.includes(rawSize) ? rawSize : 's';
   const r = await routeBetween(a.point, b.point);
   if (r.km > 300) return { error: 'too_far' };
-  const base = { ok: true, from: a.point, to: b.point, km: Math.round(r.km * 10) / 10, minutes: r.min, estimated: r.estimated, size };
+  const zones = await zoneEffect(clean(input?.city, 60), 'delivery', a.point, b.point);
+  if (zones.closed) return { error: 'zone_closed', zone: zones.closed.name };
+  const zs = zones.totalRub;
+  const base = { ok: true, from: a.point, to: b.point, km: Math.round(r.km * 10) / 10, minutes: r.min, estimated: r.estimated, size, zoneRub: zs, zones: zones.surcharges.map((z) => ({ name: z.name, rub: z.rub, where: z.where })), zoneSig: zones.hit };
   if (input?.scenario === 'cargo') {
     const t = await cargoTariff();
     const body = SIZES.includes(input?.body) ? input.body : 's';
     const loaders = Math.min(2, Math.max(0, Math.floor(Number(input?.loaders) || 0)));
-    return { ...base, body, loaders, priceRub: cargoPrice(t, r.km, body, loaders),
-      prices: Object.fromEntries(SIZES.map((k) => [k, cargoPrice(t, r.km, k, loaders)])), loaderRub: t.loaderRub, bodies: t.bodies };
+    return { ...base, body, loaders, priceRub: cargoPrice(t, r.km, body, loaders) + zs,
+      prices: Object.fromEntries(SIZES.map((k) => [k, cargoPrice(t, r.km, k, loaders) + zs])), loaderRub: t.loaderRub, bodies: t.bodies };
   }
   // Цена каждого размера — чтобы человек видел её на карточках, а выбор не менял сумму неожиданно.
-  const prices = Object.fromEntries(await Promise.all(SIZES.map(async (k) => [k, await deliveryPrice(r.km, k, false)])));
+  const prices = Object.fromEntries(await Promise.all(SIZES.map(async (k) => [k, (await deliveryPrice(r.km, k, false)) + zs])));
   return { ...base, priceRub: prices[size], prices };
 };
 
@@ -76,7 +81,7 @@ export const quote = async (input, profileId = null) => {
   if (q.error || !profileId) return q;
   const cargo = input?.scenario === 'cargo';
   const tariffs = cargo ? await cargoTariff() : ((await getSetting('delivery_tariff', {})) ?? {});
-  const version = tariffVersion(tariffs);
+  const version = tariffVersion(q.zoneSig?.length ? { t: tariffs, z: q.zoneSig } : tariffs);
   const fp = fingerprint('delivery', clean(input?.city, 60), q.from, q.to, { scenario: String(input?.scenario ?? ''), loaders: q.loaders ?? 0 });
   const offers = Object.fromEntries(Object.entries(q.prices).map(([k, v]) => [k, { priceRub: v }]));
   return { ...q, ...(await issueQuote(profileId, 'delivery', fp, version, offers, { km: q.km, minutes: q.minutes })), tariffVersion: version, currency: 'RUB' };
@@ -107,6 +112,10 @@ export const create = async (customerId, input, ctx = {}) => {
   if (scenario === 'pvz' && pvzInfo.length < 2) return { error: 'pvz_info_required' };
   const idem = clean(input?.idemKey, 64) || null;
   const term = await payTerm('delivery');
+  // «На потом» — только личные заказы; организации распределяют заказы сами.
+  if (input?.scheduledAt && ctx.orgId) return { error: 'schedule_not_for_org' };
+  const sch = await parseSchedule(input?.scheduledAt); if (sch.error) return sch;
+  const scheduledAt = sch.at;
 
   const cargoMode = scenario === 'cargo';
   const out = await inTx(async (c) => {
@@ -115,9 +124,11 @@ export const create = async (customerId, input, ctx = {}) => {
       const { rows } = await c.query('SELECT id FROM go_orders WHERE customer_id = $1 AND idem_key = $2', [customerId, idem]);
       if (rows[0]) return { ok: true, orderId: rows[0].id, duplicate: true };
     }
+    if (scheduledAt) { const bad = await checkScheduleSlot(c, customerId, 'delivery', scheduledAt); if (bad) return bad; }
     const { rows: act } = await c.query(`SELECT count(*)::int AS n FROM go_orders WHERE customer_id = $1 AND kind = 'delivery' AND status = ANY($2::text[])`, [customerId, ACTIVE]);
     if (act[0].n >= (ctx.orgId ? 200 : 10)) return { error: 'too_many_active' };
-    const version = tariffVersion(cargoMode ? await cargoTariff() : ((await getSetting('delivery_tariff', {})) ?? {}));
+    const baseTariffs = cargoMode ? await cargoTariff() : ((await getSetting('delivery_tariff', {})) ?? {});
+    const version = tariffVersion(q.zoneSig?.length ? { t: baseTariffs, z: q.zoneSig } : baseTariffs);
     let snap = snapshot({ version, breakdown: null, priceRub: q.priceRub, estimated: q.estimated });
     if (quoteId) {
       const fp = fingerprint('delivery', clean(input.city, 60), q.from, q.to, { scenario, loaders: q.loaders ?? 0 });
@@ -132,15 +143,15 @@ export const create = async (customerId, input, ctx = {}) => {
       company: scenario === 'company' ? clean(input?.company, 120) : undefined,
       // Заказ организации: в общий поток курьеров попадает, только если организация так решила (poolOpen).
       ...(ctx.orgId ? { org: { id: ctx.orgId, name: ctx.orgName }, poolOpen: Boolean(ctx.poolOpen) } : {}) };
-    await c.query(`INSERT INTO go_orders (id, kind, customer_id, status, price_rub, city, data, idem_key, org_id, created_by, pricing) VALUES ($1,'delivery',$2,'searching',$3,$4,$5::jsonb,$6,$7,$8,$9::jsonb)`,
-      [id, customerId, snap.priceRub, clean(input.city, 60), JSON.stringify(data), idem, ctx.orgId ?? null, ctx.createdBy ?? null, JSON.stringify(snap)]);
+    await c.query(`INSERT INTO go_orders (id, kind, customer_id, status, price_rub, city, data, idem_key, org_id, created_by, pricing, scheduled_at) VALUES ($1,'delivery',$2,$10,$3,$4,$5::jsonb,$6,$7,$8,$9::jsonb,$11)`,
+      [id, customerId, snap.priceRub, clean(input.city, 60), JSON.stringify(data), idem, ctx.orgId ?? null, ctx.createdBy ?? null, JSON.stringify(snap), scheduledAt ? 'scheduled' : 'searching', scheduledAt]);
     if (quoteId) await markQuoteUsed(c, quoteId, id);
-    await addEvent(c, id, ctx.createdBy ?? customerId, null, 'searching', ctx.orgId ? 'Заказ создан в кабинете организации' : 'Заказ создан');
+    await addEvent(c, id, ctx.createdBy ?? customerId, null, scheduledAt ? 'scheduled' : 'searching', ctx.orgId ? 'Заказ создан в кабинете организации' : scheduledAt ? `Заказ создан на ${scheduledAt.toISOString()}` : 'Заказ создан');
     await issueCode(c, id, 'pickup'); await issueCode(c, id, 'handover');
-    return { ok: true, orderId: id, priceRub: snap.priceRub };
+    return { ok: true, orderId: id, priceRub: snap.priceRub, scheduledAt: scheduledAt?.toISOString() ?? null };
   });
   if (out.error === 'price_changed' || out.error === 'quote_expired') return { ...out, quote: await quote(input, customerId) };
-  if (out.ok && !out.duplicate && !ctx.orgId) await offerNext(out.orderId).catch((e) => console.error('[go] распределение', e.message));
+  if (out.ok && !out.duplicate && !ctx.orgId && !scheduledAt) await offerNext(out.orderId).catch((e) => console.error('[go] распределение', e.message));
   return out;
 };
 
@@ -333,7 +344,7 @@ export const customerCancel = async (customerId, orderId, reason) => inTx(async 
   const o = await lockOrder(c, orderId);
   if (!o || o.kind !== 'delivery' || o.customer_id !== customerId) return { error: 'not_found' };
   if (o.parent_id) return { error: 'cancel_via_food_order' };
-  if (!['searching', 'assigned', 'heading_pickup', 'at_pickup'].includes(o.status)) return { error: 'bad_state', status: o.status };
+  if (!['scheduled', 'searching', 'assigned', 'heading_pickup', 'at_pickup'].includes(o.status)) return { error: 'bad_state', status: o.status };
   await cancelOffers(c, o.id);
   await setStatus(c, o, 'cancelled', customerId, clean(reason, 200) || 'Отменён заказчиком', { cancelled_by: customerId, cancel_reason: clean(reason, 200) });
   return { ok: true, courierId: o.executor_id, orgId: o.org_id };

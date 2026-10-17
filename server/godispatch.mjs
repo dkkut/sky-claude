@@ -164,19 +164,20 @@ export const cancelOffers = (client, orderId) =>
 
 /** Заказы «на потом»: за leadMin минут до времени начинается обычный поиск (searching + распределение). Повтор безопасен: под блокировкой заказа, статус проверяется. */
 export const startScheduled = async () => {
-  const { scheduleSettings } = await import('./gotaxi.mjs');
+  const { scheduleSettings } = await import('./goschedule.mjs');
   const sc = await scheduleSettings();
-  const { rows } = await query(`SELECT id FROM go_orders WHERE kind = 'taxi' AND status = 'scheduled' AND scheduled_at <= now() + ($1 || ' minutes')::interval ORDER BY scheduled_at LIMIT 100`, [String(sc.leadMin)]);
+  const { rows } = await query(`SELECT id, kind FROM go_orders WHERE kind IN ('taxi','delivery') AND status = 'scheduled' AND scheduled_at <= now() + ($1 || ' minutes')::interval ORDER BY scheduled_at LIMIT 100`, [String(sc.leadMin)]);
   for (const r of rows) {
+    const taxi = r.kind === 'taxi';
     const res = await inTx(async (c) => {
       const o = await lockOrder(c, r.id);
       if (!o || o.status !== 'scheduled') return { skipped: true };
-      await setStatus(c, o, 'searching', null, 'Подошло время: начинаем поиск водителя', { search_started_at: new Date() });
+      await setStatus(c, o, 'searching', null, taxi ? 'Подошло время: начинаем поиск водителя' : 'Подошло время: начинаем поиск курьера', { search_started_at: new Date() });
       await dlog(c, o.id, 'scheduled_start', null, { scheduledAt: o.scheduled_at?.toISOString() });
       return { ok: true, customerId: o.customer_id };
     }).catch(() => ({ skipped: true }));
     if (res.ok) {
-      await notifyGo(res.customerId, 'taxi', 'Ищем водителя', 'Подошло время вашей поездки — ищем водителя.', r.id, `${r.id}:sched-start`);
+      await notifyGo(res.customerId, r.kind, taxi ? 'Ищем водителя' : 'Ищем курьера', taxi ? 'Подошло время вашей поездки — ищем водителя.' : 'Подошло время вашей доставки — ищем курьера.', r.id, `${r.id}:sched-start`);
       await offerNext(r.id).catch(() => {});
       await pushOrderChanged(r.id);
     }

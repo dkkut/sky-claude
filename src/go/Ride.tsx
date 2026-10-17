@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Car, Flag, MapPin, Clock, Home, Briefcase, Star, X } from 'lucide-react';
 import { SkyMap } from '@/marketplace/logistics/SkyMap';
 import { goApi, goError, type Point } from './api';
-import { Back, Btn, Card, Col, Head, Input, Notice, Segmented, StickyBar, fail, fmt, locate, useLoad, C, GO } from './ui';
+import { Back, Btn, Card, Col, Head, Input, Notice, ScheduleField, StickyBar, fail, fmt, locate, useLoad, C, GO } from './ui';
 import { flash } from '@/shared/flash';
 
 export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: () => void; onCreated: (id: string) => void }) => {
@@ -122,14 +122,9 @@ export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: 
                 {([['home', 'Дом'], ['work', 'Работа'], ['other', 'Место']] as const).map(([k, t]) => <button key={k} onClick={() => void savePlace(k)} style={{ border: 'none', borderRadius: 10, background: C.l2, color: C.t1, padding: '5px 10px', fontWeight: 700, fontSize: 12.5 }}>{t}</button>)}
               </div>)}
             <Input label="Комментарий водителю" value={comment} onChange={setComment} max={200} />
-            {offer?.breakdown && <div style={{ fontSize: 12.5, color: C.t3 }}>{`Из чего цена: подача ${fmt(offer.breakdown.baseRub)} · путь ${fmt(offer.breakdown.distanceRub)} · время ${fmt(offer.breakdown.timeRub)}${offer.breakdown.minimumApplied ? ` · минимальная стоимость ${fmt(offer.breakdown.minimumRub)}` : ''}`}</div>}
+            {offer?.breakdown && <div style={{ fontSize: 12.5, color: C.t3 }}>{`Из чего цена: подача ${fmt(offer.breakdown.baseRub)} · путь ${fmt(offer.breakdown.distanceRub)} · время ${fmt(offer.breakdown.timeRub)}${offer.breakdown.minimumApplied ? ` · минимальная стоимость ${fmt(offer.breakdown.minimumRub)}` : ''}${offer.breakdown.zoneRub ? ` · зона ${offer.breakdown.zones?.map((z) => z.name).join(', ')} +${fmt(offer.breakdown.zoneRub)}` : ''}`}</div>}
             {quote.expiresAt && <div style={{ fontSize: 12.5, color: C.t3 }}>{`Цена зафиксирована до ${new Date(quote.expiresAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}. Если тариф изменится раньше, мы покажем новую цену до заказа.`}</div>}
-            <Segmented value={later ? 'later' : 'now'} onChange={(v: string) => setLater(v === 'later')} options={[{ v: 'now', t: 'Сейчас' }, { v: 'later', t: 'На потом' }]} />
-            {later && (<div>
-              <input type="datetime-local" value={when} min={new Date(Date.now() + 31 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} onChange={(e) => setWhen(e.target.value)}
-                aria-label="Дата и время поездки" style={{ width: '100%', height: 46, borderRadius: 14, border: `1px solid ${C.l2}`, background: C.l1, color: C.t1, padding: '0 12px', fontSize: 15 }} />
-              <div style={{ fontSize: 12.5, color: C.t3, marginTop: 6 }}>Цена зафиксирована сейчас. Водитель назначается ближе ко времени поездки — за 20 минут мы начнём поиск и пришлём уведомление. Отменить можно до начала поиска и после — по обычным правилам.</div>
-            </div>)}
+            <ScheduleField later={later} when={when} onLater={setLater} onWhen={setWhen} what="ride" />
             <Notice>Оплата — водителю напрямую по реквизитам после поездки. Sky деньги за поездку не принимает.</Notice>
           </Col></Card>)}
       </Col>

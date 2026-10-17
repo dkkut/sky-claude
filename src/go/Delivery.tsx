@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Package, Car, ClipboardCheck, Building2, Truck, Crosshair, MapPin, Flag } from 'lucide-react';
 import { goApi, goError, type CargoTariff, type Point } from './api';
 import { bizApi, ASSIGN_LABEL, type AssignMode, type Member } from './bizApi';
-import { Back, Btn, Card, Col, Head, Input, Notice, PickRow, Segmented, StickyBar, Tile, fail, fmt, locate, C, GO } from './ui';
+import { Back, Btn, Card, Col, Head, Input, Notice, PickRow, ScheduleField, Segmented, StickyBar, Tile, fail, fmt, locate, C, GO } from './ui';
 import { flash } from '@/shared/flash';
 
 export type DeliveryMode = 'p2p' | 'errand' | 'pvz' | 'company' | 'cargo';
@@ -86,6 +86,7 @@ export const DeliveryForm = ({ mode, city, cargo, onBack, onCreated, org }: { mo
     return () => clearTimeout(h);
   }, [from, to, size, body, loaders, mode, city]);
 
+  const [later, setLater] = useState(false); const [when, setWhen] = useState('');
   const needSender = mode !== 'pvz' && mode !== 'errand';
   const body0 = () => ({ scenario: mode, city, from, to, size, body, loaders, pvzInfo, parcel: { description: desc, weightKg: Number(weight) || 0, size },
     recipient: { name: rn, phone: rp }, ...(mode === 'pvz' ? {} : { sender: { name: sn, phone: sp } }) });
@@ -94,7 +95,7 @@ export const DeliveryForm = ({ mode, city, cargo, onBack, onCreated, org }: { mo
     setBusy(true);
     const r = org
       ? await bizApi.createOrder(org.id, { ...body0(), scenario: 'company', pointId: pointId || undefined, assignMode, assignTo: assignMode === 'manual' && assignTo ? assignTo : undefined })
-      : await goApi.deliveryCreate({ ...body0(), quoteId: quote?.quoteId });
+      : await goApi.deliveryCreate({ ...body0(), quoteId: quote?.quoteId, scheduledAt: later && when ? new Date(when).toISOString() : undefined });
     setBusy(false);
     if (!r.ok) {
       // Тариф изменился или расчёт устарел: заказ НЕ создан — показываем новую цену, человек подтверждает заново.
@@ -105,7 +106,7 @@ export const DeliveryForm = ({ mode, city, cargo, onBack, onCreated, org }: { mo
     setQerr('');
     const ae = (r.data as { assignError?: string } | undefined)?.assignError;
     if (org && ae) flash(`Заказ создан, но исполнитель не назначен: ${goError({ error: ae })}`);
-    else flash(org ? (assignMode === 'pool' ? 'Заказ открыт для курьеров' : assignTo ? 'Заказ создан и назначен' : 'Заказ создан') : 'Ищем курьера');
+    else flash(org ? (assignMode === 'pool' ? 'Заказ открыт для курьеров' : assignTo ? 'Заказ создан и назначен' : 'Заказ создан') : later ? 'Доставка запланирована' : 'Ищем курьера');
     onCreated(r.data!.orderId);
   };
   const bodies = quote?.bodies ?? cargo?.bodies;
@@ -175,10 +176,12 @@ export const DeliveryForm = ({ mode, city, cargo, onBack, onCreated, org }: { mo
           <div style={{ fontWeight: 800, color: C.t1 }}>Получатель</div>
           <Input label="Имя" value={rn} onChange={setRn} max={80} /><Input label="Телефон" type="tel" value={rp} onChange={setRp} placeholder="+7…" />
         </Col></Card>
+        {quote?.zones?.length ? <Notice>{`В цену включена доплата за зону: ${quote.zones.map((z) => `${z.name} +${fmt(z.rub)}`).join(', ')}.`}</Notice> : null}
+        {!org && <Card><ScheduleField later={later} when={when} onLater={setLater} onWhen={setWhen} what="delivery" /></Card>}
         <Notice>Курьеру платите напрямую после вручения. Два одноразовых кода (передача и вручение) появятся в заказе. Итоговую цену подтверждает сервер.</Notice>
       </Col>
       <StickyBar left={<div><div style={{ fontSize: 12, color: C.t3 }}>Стоимость</div><div style={{ fontSize: 22, fontWeight: 900, color: C.t1 }}>{quote ? fmt(quote.priceRub) : '—'}</div></div>}>
-        <Btn busy={busy} disabled={!ready} onClick={order} style={{ width: '100%', height: 52, borderRadius: 18 }}>Заказать</Btn>
+        <Btn busy={busy} disabled={!ready || (later && !when)} onClick={order} style={{ width: '100%', height: 52, borderRadius: 18 }}>{later ? 'Запланировать' : 'Заказать'}</Btn>
       </StickyBar>
     </>
   );

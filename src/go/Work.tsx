@@ -13,6 +13,7 @@ import { SubscriptionCard, PayDetailsCard } from './Cabinet';
 import { StatusChip } from './Register';
 import { useGoLive, cacheGet, cacheSet } from './live';
 import { flash } from '@/shared/flash';
+import { EarningsCard } from './Refunds';
 
 type WRole = 'courier' | 'taxi_driver';
 type WTab = 'map' | 'orders' | 'history' | 'profile';
@@ -246,6 +247,7 @@ const ProfileTab = ({ st, onChange }: { st: WorkState; onChange: () => void }) =
     </Col></Card>
     <SubscriptionCard role={st.role as GoRole} onChange={onChange} />
     <PayDetailsCard />
+    <EarningsCard />
     <Card><Col gap={4}>
       <b style={{ color: C.t1 }}>Геолокация и помощь</b>
       <div style={{ fontSize: 13, color: C.t2 }}>Положение отправляется, только пока вы на линии и экран открыт; история перемещений не хранится, после ухода с линии положение стирается. Его видят только сотрудники организации по заказу, который вы везёте.</div>

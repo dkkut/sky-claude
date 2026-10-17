@@ -169,3 +169,18 @@ export const StickyBar = ({ left, children }: { left?: ReactNode; children: Reac
     <div style={{ flex: 1, display: 'flex' }}>{children}</div>
   </div>
 );
+
+
+/** «Сейчас / На потом» с выбором даты и времени. value — локальное значение datetime-local или '' (сейчас). */
+export const ScheduleField = ({ later, when, onLater, onWhen, what }: { later: boolean; when: string; onLater: (v: boolean) => void; onWhen: (v: string) => void; what: 'ride' | 'delivery' }) => (
+  <div>
+    <Segmented value={later ? 'later' : 'now'} onChange={(v: string) => onLater(v === 'later')} options={[{ v: 'now', t: 'Сейчас' }, { v: 'later', t: 'На потом' }]} />
+    {later && (<div style={{ marginTop: 10 }}>
+      <input type="datetime-local" value={when} min={new Date(Date.now() + 31 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} onChange={(e) => onWhen(e.target.value)}
+        aria-label="Дата и время" style={{ width: '100%', height: 46, borderRadius: 14, border: `1px solid ${C.brd}`, background: C.l1, color: C.t1, padding: '0 12px', fontSize: 15 }} />
+      <div style={{ fontSize: 12.5, color: C.t3, marginTop: 6 }}>{what === 'ride'
+        ? 'Цена зафиксирована сейчас. Водитель назначается ближе ко времени поездки — за 20 минут мы начнём поиск и пришлём уведомление. Отменить можно до начала поиска и после — по обычным правилам.'
+        : 'Цена зафиксирована сейчас. Курьер назначается ближе ко времени — за 20 минут мы начнём поиск и пришлём уведомление. Отменить можно до начала поиска и после — по обычным правилам.'}</div>
+    </div>)}
+  </div>
+);

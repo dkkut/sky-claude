@@ -35,6 +35,8 @@ const ERR: Record<string, string> = {
   bad_state: 'Это действие сейчас недоступно — обновите экран.', not_found: 'Не найдено.',
   address_not_found: 'Адрес не найден. Уточните город, улицу и дом.', same_point: 'Точки отправления и назначения совпадают.',
   too_far: 'Слишком далеко для этого сервиса.', route_failed: 'Не удалось построить маршрут. Попробуйте позже.',
+  bad_amount: 'Сумма возврата — от 1 ₽ до оплаченной.', refund_exists: 'Запрос на возврат по этому заказу уже есть.', refund_window_closed: 'Срок для запроса возврата по этому заказу прошёл.', not_paid: 'Возврат возможен только по оплаченному заказу.', no_payment: 'По этому заказу не было оплаты через Sky GO.',
+  zone_closed: 'В этой зоне сервис сейчас недоступен. Выберите другую точку.',
   bad_schedule: 'Укажите дату и время поездки.', schedule_too_soon: 'Слишком скоро — выберите время позже или закажите такси сейчас.', schedule_too_far: 'Слишком далеко — выберите ближайшую дату.',
   too_many_scheduled: 'Слишком много запланированных поездок — отмените одну из них.', schedule_conflict: 'На это время уже есть запланированная поездка.',
   price_changed: 'Стоимость изменилась — проверьте новую цену и подтвердите заказ ещё раз.', quote_expired: 'Расчёт устарел — мы пересчитали стоимость, подтвердите заказ ещё раз.',
@@ -93,8 +95,13 @@ const qs = (o: Record<string, string | undefined>) => {
 export interface TaxiQuote {
   from?: { lat: number; lng: number; address?: string }; to?: { lat: number; lng: number; address?: string };
   km: number; minutes: number; estimated: boolean; quoteId?: string; expiresAt?: string; tariffVersion?: string;
-  offers: { code: string; title: string; priceRub: number; breakdown?: { baseRub: number; distanceRub: number; timeRub: number; minimumRub: number; minimumApplied: boolean; totalRub: number } }[];
+  offers: { code: string; title: string; priceRub: number; breakdown?: { baseRub: number; distanceRub: number; timeRub: number; minimumRub: number; minimumApplied: boolean; totalRub: number; zoneRub?: number; zones?: { name: string; rub: number }[] } }[];
+  zones?: { name: string; rub: number; where: string }[];
 }
+
+export interface Refund { id: string; orderId: string; amountRub: number; reason: string; status: string; executorNote: string; adminNote: string; role: 'customer' | 'executor' | 'staff'; createdAt: string; updatedAt: string; closedAt: string | null; history: { at: string; who: string; what: string; note: string }[] }
+export interface Earnings { days: number; orders: number; grossRub: number; refundedRub: number; netRub: number; pendingRefundsRub: number; byDay: { date: string; orders: number; grossRub: number; refundedRub: number }[]; byKind: { kind: string; orders: number; grossRub: number }[]; note: string }
+export const REFUND_LABEL: Record<string, string> = { requested: 'Запрос отправлен', accepted: 'Исполнитель согласен вернуть', rejected: 'Исполнитель отказал', returned: 'Деньги возвращены — ждём подтверждения', escalated: 'У администрации', upheld: 'Решено в пользу заказчика', denied: 'Администрация отказала', refunded: 'Возврат подтверждён', withdrawn: 'Запрос отозван' };
 
 export interface SavedPlace { id: string; kind: 'home' | 'work' | 'other'; label: string; address: string; lat: number; lng: number }
 
@@ -160,6 +167,10 @@ export const goApi = {
   presenceOf: (role: GoRole) => get<{ online: boolean }>(`/api/go/presence/${role}`),
   stats: (role: GoRole) => get<{ done: number; earnedRub: number }>(`/api/go/stats/${role}`),
 
+  refund: (orderId: string) => get<{ refund: Refund | null; eligible?: boolean; windowDays: number }>(`/api/go/orders/${orderId}/refund`),
+  refundRequest: (orderId: string, reason: string, amountRub?: number) => post(`/api/go/orders/${orderId}/refund`, { reason, amountRub }),
+  refundAct: (orderId: string, action: 'accept' | 'reject' | 'returned' | 'withdraw' | 'escalate' | 'confirm', note?: string) => post(`/api/go/orders/${orderId}/refund/${action}`, { note }),
+  earnings: (days: number) => get<Earnings>(`/api/go/earnings?days=${days}`),
   taxiQuote: (b: unknown) => post<TaxiQuote>('/api/go/taxi/quote', b),
   taxiCreate: (b: unknown) => post<{ orderId: string; priceRub: number; quote?: TaxiQuote }>('/api/go/taxi/orders', { ...(b as object), idemKey: crypto.randomUUID() }),
   taxiAvailable: () => get<{ orders: any[] }>('/api/go/taxi/available'),
@@ -168,7 +179,7 @@ export const goApi = {
   taxiAct: (id: string, action: string) => post(`/api/go/taxi/orders/${id}/act`, { action }),
   taxiCancel: (id: string, reason?: string) => post(`/api/go/taxi/orders/${id}/cancel`, { reason }),
 
-  deliveryQuote: (b: unknown) => post<{ from?: { lat: number; lng: number }; to?: { lat: number; lng: number }; km: number; minutes: number; priceRub: number; prices: Record<'s' | 'm' | 'l', number>; estimated: boolean; body?: string; loaders?: number; loaderRub?: number; bodies?: CargoTariff['bodies']; quoteId?: string; expiresAt?: string; tariffVersion?: string }>('/api/go/delivery/quote', b),
+  deliveryQuote: (b: unknown) => post<{ from?: { lat: number; lng: number }; to?: { lat: number; lng: number }; km: number; minutes: number; priceRub: number; prices: Record<'s' | 'm' | 'l', number>; estimated: boolean; body?: string; loaders?: number; loaderRub?: number; bodies?: CargoTariff['bodies']; quoteId?: string; expiresAt?: string; tariffVersion?: string; zones?: { name: string; rub: number }[] }>('/api/go/delivery/quote', b),
   deliveryCreate: (b: unknown) => post<{ orderId: string; priceRub: number; quote?: any }>('/api/go/delivery/orders', { ...(b as object), idemKey: crypto.randomUUID() }),
   deliveryAvailable: () => get<{ orders: any[] }>('/api/go/delivery/available'),
   deliveryAccept: (id: string) => post(`/api/go/delivery/orders/${id}/accept`),

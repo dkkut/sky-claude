@@ -6,6 +6,8 @@ import * as org from './../goorg.mjs';
 import { analytics } from './../goanalytics.mjs';
 import { reconcile } from './../goreconcile.mjs';
 import * as gosupport from './../gosupport.mjs';
+import * as refunds from './../gorefunds.mjs';
+import * as zones from './../gozones.mjs';
 import * as dispatch from './../godispatch.mjs';
 import { describe as describeMachine } from './../gostate.mjs';
 import * as work from './../gowork.mjs';
@@ -71,6 +73,15 @@ export const goAdminRoutes = async (req, res, url) => {
   }
   if (req.method === 'GET' && path === '/api/admin/go/support') return reply(await gosupport.adminList(me, { category: u.searchParams.get('category'), status: u.searchParams.get('status') }));
   if (req.method === 'GET' && path === '/api/admin/go/analytics') return reply(await analytics(me, { days: u.searchParams.get('days') }));
+  if (req.method === 'GET' && path === '/api/admin/go/refunds') return reply(await refunds.adminList(me, u.searchParams.get('status')));
+  if ((m = path.match(/^\/api\/admin\/go\/refunds\/([\w-]+)\/decide$/)) && req.method === 'POST') { const b = (await parseBody(req)) ?? {}; return reply(await refunds.adminDecide(me, m[1], String(b.outcome ?? ''), b.note)); }
+  if (req.method === 'GET' && path === '/api/admin/go/zones') return reply(await zones.listZones(me));
+  if (req.method === 'POST' && path === '/api/admin/go/zones') return reply(await zones.saveZone(me, null, await parseBody(req)));
+  if ((m = path.match(/^\/api\/admin\/go\/zones\/([\w-]+)$/))) {
+    if (req.method === 'PUT') return reply(await zones.saveZone(me, m[1], await parseBody(req)));
+    if (req.method === 'DELETE') return reply(await zones.deleteZone(me, m[1]));
+  }
+  if ((m = path.match(/^\/api\/admin\/go\/zones\/([\w-]+)\/active$/)) && req.method === 'POST') return reply(await zones.setZoneActive(me, m[1], Boolean((await parseBody(req))?.active)));
   if (req.method === 'GET' && path === '/api/admin/go/reconcile') return reply(await reconcile(me));
   if (req.method === 'GET' && path === '/api/admin/go/dispatch/board') return reply(await dispatch.board(me));
   if (req.method === 'GET' && path === '/api/admin/go/dispatch/metrics') return reply(await dispatch.metrics(me, u.searchParams.get('hours')));

@@ -57,6 +57,7 @@ const KEYS = {
     const o = { minMin: n('minMin', 10, 720), maxDays: n('maxDays', 1, 30), leadMin: n('leadMin', 5, 120), maxOrders: n('maxOrders', 1, 20) };
     return Object.values(o).every((x) => x !== null) && o.leadMin < o.minMin ? o : null;
   },
+  refund_window_days: (v) => (Number.isFinite(Number(v)) && Number(v) >= 1 && Number(v) <= 90 ? Math.round(Number(v)) : null),
   quote_ttl_sec: (v) => (Number.isFinite(Number(v)) && Number(v) >= 60 && Number(v) <= 3600 ? Math.round(Number(v)) : null),
   maps_route_daily_limit: (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 1_000_000 ? Math.round(Number(v)) : null),
   payment_terms: (v) => {

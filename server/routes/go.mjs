@@ -6,6 +6,7 @@ import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { ROLES, cities, getSetting } from './../gocore.mjs';
 import { mapsSettings } from './../maps.mjs';
+import * as refunds from './../gorefunds.mjs';
 import * as reg from './../goreg.mjs';
 import * as subs from './../gosubs.mjs';
 import * as pay from './../gopay.mjs';
@@ -37,7 +38,7 @@ const readBytes = (req, limit) => new Promise((resolve) => {
 
 const STATUS_OF = {
   dates_taken: 409, has_bookings: 409, not_found: 404, not_allowed: 403, rate_limited: 429, too_many_requests: 429,
-  already_taken: 409, schedule_conflict: 409, too_many_scheduled: 409, class_mismatch: 409, price_changed: 409, quote_expired: 409, quote_mismatch: 409, quote_used: 409, quote_not_found: 404, not_offered: 409, offer_expired: 409, no_offer: 404, bad_state: 409, active_order_exists: 409, driver_busy: 409, courier_busy: 409, not_editable: 409,
+  already_taken: 409, schedule_conflict: 409, too_many_scheduled: 409, refund_exists: 409, no_payment: 409, refund_window_closed: 409, not_paid: 409, class_mismatch: 409, price_changed: 409, quote_expired: 409, quote_mismatch: 409, quote_used: 409, quote_not_found: 404, not_offered: 409, offer_expired: 409, no_offer: 404, bad_state: 409, active_order_exists: 409, driver_busy: 409, courier_busy: 409, not_editable: 409,
   incompatible_order: 409, executor_offline: 409, executor_in_delivery: 409, payment_in_progress: 409, already_member: 409, confirm_required: 409, assignment_not_accepted: 409,
   org_suspended: 403, owner_immutable: 403, self_change: 403, role_not_allowed: 403, executor_not_member: 409, executor_not_approved: 409,
   subscription_required: 402, insufficient_funds: 402, not_approved: 403, not_registered: 403,
@@ -154,6 +155,20 @@ export const goRoutes = async (req, res, url) => {
   if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)\/confirm-paid$/)) && method === 'POST') return reply(res, await touch(m[1], await pay.confirmPaid(me, m[1])));
   if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)\/dispute$/)) && method === 'POST') return reply(res, await touch(m[1], await pay.openDispute(await org.effectiveCustomer(me, m[1]), m[1], (await parseBody(req))?.reason)));
 
+
+  if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)\/refund$/))) {
+    if (method === 'GET') return reply(res, await refunds.forOrder(me, m[1]));
+    if (method === 'POST') return reply(res, await touch(m[1], await refunds.request(await org.effectiveCustomer(me, m[1]), m[1], await parseBody(req))), 201);
+  }
+  if ((m = path.match(/^\/api\/go\/orders\/([\w-]+)\/refund\/(accept|reject|returned|withdraw|escalate|confirm)$/)) && method === 'POST') {
+    const b = await parseBody(req);
+    const actor = ['withdraw', 'escalate', 'confirm'].includes(m[2]) ? await org.effectiveCustomer(me, m[1]) : me;
+    return reply(res, await touch(m[1], await refunds.act(actor, m[1], m[2], b)));
+  }
+  if (path === '/api/go/earnings' && method === 'GET') {
+    if (u.searchParams.get('format') === 'csv') { const csv = await refunds.earningsCsv(me, u.searchParams.get('days')); res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="sky-go-earnings.csv"' }); return res.end(csv); }
+    return json(res, 200, await refunds.earnings(me, u.searchParams.get('days')));
+  }
 
   /* ── Рабочие пространства и организация (бизнес) ──────────────── */
   if (path === '/api/go/workspaces' && method === 'GET') return json(res, 200, await org.workspaces(me));

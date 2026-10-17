@@ -28,6 +28,7 @@ const TAXI = {
 };
 
 const DELIVERY = {
+  scheduled: [T('searching', ['system'], 'наступило время начала поиска', 'поиск курьера, уведомление'), T('cancelled', ['customer', 'system', 'admin'])],
   searching: [T('assigned', ['executor', 'admin', 'system']), T('cancelled', ['customer', 'system', 'admin'])],
   assigned: [T('heading_pickup', ['executor'], 'назначение принято (для заказов организации)'), T('cancelled', ['customer', 'admin']), T('searching', ['executor', 'admin'])],
   heading_pickup: [T('at_pickup', ['executor']), T('cancelled', ['customer', 'admin']), T('searching', ['executor', 'admin'])],

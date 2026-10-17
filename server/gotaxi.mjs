@@ -8,12 +8,13 @@ import { canAccept } from './gosubs.mjs';
 import { openPayment, orderView } from './gopay.mjs';
 import { executorStatus } from './goreg.mjs';
 import { tariffVersion, fingerprint, taxiBreakdown, issueQuote, redeemQuote, markQuoteUsed, snapshot } from './gopricing.mjs';
+import { zoneEffect } from './gozones.mjs';
+import { parseSchedule, checkScheduleSlot } from './goschedule.mjs';
 import { driverClass, classMode, classCheck } from './goclass.mjs';
 import { offerNext, claimOffer, openOffersFor, cancelOffers } from './godispatch.mjs';
 import { openJson, getSetting, cityOk, newId, inTx, lockOrder, setStatus, addEvent, resolvePoint, routeBetween, notifyGo, clean, haversineKm, goLog } from './gocore.mjs';
 
-export const SCHEDULE_DEFAULTS = { minMin: 30, maxDays: 7, leadMin: 20, maxOrders: 5 };
-export const scheduleSettings = async () => ({ ...SCHEDULE_DEFAULTS, ...(((await getSetting('schedule', null)) ?? {})) });
+export { scheduleSettings } from './goschedule.mjs';
 
 const ACTIVE = ['searching', 'assigned', 'en_route', 'arrived', 'in_ride', 'awaiting_payment', 'payment_reported'];
 
@@ -31,9 +32,16 @@ const calc = async (input) => {
   if (r.km > 200) return { error: 'too_far' };
   if (r.km < 0.1) return { error: 'same_point' };
   const tariffs = await taxiTariffs();
-  const offers = Object.entries(tariffs).map(([code, t]) => ({ code, title: t.title, priceRub: priceOf(t, r.km, r.min), breakdown: taxiBreakdown(t, r.km, r.min) }));
-  return { ok: true, city, from: a.point, to: b.point, km: Math.round(r.km * 10) / 10, minutes: r.min, estimated: r.estimated, offers,
-    version: tariffVersion(tariffs), fp: fingerprint('taxi', city, a.point, b.point) };
+  // Зоны: закрытая зона — заказ невозможен; доплата входит в цену и показана в её составе.
+  const zones = await zoneEffect(city, 'taxi', a.point, b.point);
+  if (zones.closed) return { error: 'zone_closed', zone: zones.closed.name };
+  const offers = Object.entries(tariffs).map(([code, t]) => {
+    const bd = taxiBreakdown(t, r.km, r.min);
+    const breakdown = zones.totalRub ? { ...bd, zoneRub: zones.totalRub, zones: zones.surcharges.map((z) => ({ name: z.name, rub: z.rub, where: z.where })), totalRub: bd.totalRub + zones.totalRub } : bd;
+    return { code, title: t.title, priceRub: priceOf(t, r.km, r.min) + zones.totalRub, breakdown };
+  });
+  return { ok: true, city, from: a.point, to: b.point, km: Math.round(r.km * 10) / 10, minutes: r.min, estimated: r.estimated, offers, zones: zones.surcharges.map((z) => ({ name: z.name, rub: z.rub, where: z.where })),
+    version: tariffVersion(zones.hit.length ? { t: tariffs, z: zones.hit } : tariffs), fp: fingerprint('taxi', city, a.point, b.point) };
 };
 
 /**
@@ -44,7 +52,7 @@ export const quote = async (input, profileId = null) => {
   const q = await calc(input);
   if (q.error) return q;
   const out = { ok: true, from: q.from, to: q.to, km: q.km, minutes: q.minutes, estimated: q.estimated,
-    offers: q.offers.map((o) => ({ code: o.code, title: o.title, priceRub: o.priceRub, breakdown: o.breakdown })), tariffVersion: q.version, currency: 'RUB' };
+    offers: q.offers.map((o) => ({ code: o.code, title: o.title, priceRub: o.priceRub, breakdown: o.breakdown })), zones: q.zones, tariffVersion: q.version, currency: 'RUB' };
   if (profileId) Object.assign(out, await issueQuote(profileId, 'taxi', q.fp, q.version, Object.fromEntries(q.offers.map((o) => [o.code, { priceRub: o.priceRub, breakdown: o.breakdown }])), { km: q.km, minutes: q.minutes, estimated: q.estimated }));
   return out;
 };
@@ -59,16 +67,8 @@ export const create = async (customerId, input) => {
   const comment = clean(input?.comment, 200);
   const quoteId = input?.quoteId ? String(input.quoteId) : null;
   // «На потом»: время проверяет сервер (не раньше чем через minMin минут, не дальше maxDays суток); заказ ждёт и сам начинает поиск за leadMin минут.
-  let scheduledAt = null;
-  if (input?.scheduledAt) {
-    const sc = await scheduleSettings();
-    const when = new Date(String(input.scheduledAt));
-    if (Number.isNaN(when.getTime())) return { error: 'bad_schedule' };
-    const ahead = (when.getTime() - Date.now()) / 60000;
-    if (ahead < sc.minMin) return { error: 'schedule_too_soon', minMin: sc.minMin };
-    if (ahead > sc.maxDays * 1440) return { error: 'schedule_too_far', maxDays: sc.maxDays };
-    scheduledAt = when;
-  }
+  const sch = await parseSchedule(input?.scheduledAt); if (sch.error) return sch;
+  const scheduledAt = sch.at;
   const out = await inTx(async (c) => {
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`go:cust:${customerId}`]);
     if (idem) {
@@ -76,10 +76,7 @@ export const create = async (customerId, input) => {
       if (rows[0]) return { ok: true, orderId: rows[0].id, duplicate: true };
     }
     if (scheduledAt) {
-      const sc = await scheduleSettings();
-      const { rows: mine } = await c.query(`SELECT scheduled_at FROM go_orders WHERE customer_id = $1 AND kind = 'taxi' AND status = 'scheduled'`, [customerId]);
-      if (mine.length >= sc.maxOrders) return { error: 'too_many_scheduled', max: sc.maxOrders };
-      if (mine.some((m) => Math.abs(m.scheduled_at.getTime() - scheduledAt.getTime()) < 30 * 60000)) return { error: 'schedule_conflict' };
+      const bad = await checkScheduleSlot(c, customerId, 'taxi', scheduledAt); if (bad) return bad;
     } else {
       const { rows: act } = await c.query(`SELECT 1 FROM go_orders WHERE customer_id = $1 AND kind = 'taxi' AND status = ANY($2::text[]) LIMIT 1`, [customerId, ACTIVE]);
       if (act[0]) return { error: 'active_order_exists' };

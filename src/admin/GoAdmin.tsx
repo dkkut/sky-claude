@@ -18,19 +18,19 @@ const get = <T,>(p: string) => apiCall<T>(`${A}${p}`);
 const send = <T,>(m: string, p: string, b: unknown) => apiCall<T>(`${A}${p}`, { method: m, body: JSON.stringify(b) });
 const bad = (r: { error?: string; reason?: string }) => flash(({ not_allowed: 'Недостаточно прав.', note_required: 'Укажите причину.', bad_transition: 'Переход невозможен.', bad_price: 'Неверная цена.' } as Record<string, string>)[r.error ?? ''] ?? goError(r));
 
-type Sub = 'apps' | 'stats' | 'support' | 'recon' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'tariffs' | 'integrations';
+type Sub = 'apps' | 'stats' | 'support' | 'recon' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'refunds' | 'zones' | 'tariffs' | 'integrations';
 
 export const GoAdminTab = () => {
   const [sub, setSub] = useState<Sub>('apps');
   const [ov, setOv] = useState<any>(null);
   useEffect(() => { void get<any>('/overview').then((r) => r.ok && setOv(r.data)); }, [sub]);
-  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['stats', 'Аналитика'], ['support', 'Обращения'], ['recon', 'Сверка'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
+  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['stats', 'Аналитика'], ['support', 'Обращения'], ['recon', 'Сверка'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['refunds', 'Возвраты'], ['zones', 'Зоны'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {ov && <div style={{ ...box, fontSize: 13, color: C.t2 }}>Активных подписок: <b style={{ color: C.t1 }}>{ov.activeSubscriptions}</b> · На проверке: <b style={{ color: C.t1 }}>{(ov.executors.submitted ?? 0) + (ov.executors.in_review ?? 0)}</b> · Заказов за 30 дней: <b style={{ color: C.t1 }}>{ov.orders30d.reduce((s: number, r: any) => s + r.n, 0)}</b></div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{TABS.map(([k, t]) => <button key={k} onClick={() => setSub(k)} style={btn(sub === k ? C.acc : C.l2, sub === k ? '#fff' : C.t1)}>{t}</button>)}</div>
       {sub === 'apps' && <Apps />}{sub === 'dispatch' && <Dispatch />}{sub === 'recon' && <Reconcile />}{sub === 'support' && <SupportList />}{sub === 'stats' && <GoStats />}{sub === 'orgs' && <OrgsPanel />}
-        {sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
+        {sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'refunds' && <Refunds />}{sub === 'zones' && <Zones />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
     </div>
   );
 };
@@ -495,6 +495,83 @@ const OrgsPanel = () => {
         <div key={x.id} style={box}><b style={{ color: C.t1 }}>{x.label}</b> <span style={{ color: C.t3, fontSize: 12 }}>заказ …{x.orderId.slice(-8)} · {x.status}</span>{x.note && <div translate="no" style={{ fontSize: 13, color: C.t2 }}>{x.note}</div>}
           <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}><input style={{ ...inp, flex: 1, minWidth: 140 }} placeholder="Решение (обязательно)" value={why[x.id] ?? ''} onChange={(e) => setWhy({ ...why, [x.id]: e.target.value })} />
             <button style={btn()} onClick={() => resolve(x.id, 'resume')}>Продолжить</button><button style={btn(C.l2, C.t1)} onClick={() => resolve(x.id, 'reassign')}>Заменить исполнителя</button><button style={btn(C.red)} onClick={() => resolve(x.id, 'cancel')}>Отменить</button></div></div>))}
+    </div>
+  );
+};
+
+
+/** Зоны внутри города: круг (центр + радиус). Доплата к цене или закрытая зона. Зона не следит за людьми — это только правило цены/допуска заказа. */
+const Zones = () => {
+  const [list, setList] = useState<any[] | null>(null);
+  const [f, setF] = useState({ id: '', city: '', name: '', kind: 'surcharge', lat: '', lng: '', radiusKm: '2', surchargeRub: '100', taxi: true, delivery: true, note: '' });
+  const load = useCallback(async () => { const r = await get<{ zones: any[] }>('/zones'); if (r.ok) setList(r.data!.zones); else { setList([]); bad(r); } }, []);
+  useEffect(() => { void load(); }, [load]);
+  const set = (k: string, v: unknown) => setF((x) => ({ ...x, [k]: v }));
+  const save = async () => {
+    const body = { city: f.city, name: f.name, kind: f.kind, lat: Number(f.lat), lng: Number(f.lng), radiusKm: Number(f.radiusKm), surchargeRub: Number(f.surchargeRub), note: f.note, services: [f.taxi && 'taxi', f.delivery && 'delivery'].filter(Boolean) };
+    const r = f.id ? await send('PUT', `/zones/${f.id}`, body) : await send('POST', '/zones', body);
+    if (!r.ok) return bad(r);
+    flash('Зона сохранена'); setF({ ...f, id: '', name: '', note: '' }); void load();
+  };
+  const toggle = async (z: any) => { const r = await send('POST', `/zones/${z.id}/active`, { active: !z.active }); if (!r.ok) return bad(r); void load(); };
+  const del = async (z: any) => { if (!window.confirm(`Удалить зону «${z.name}»?`)) return; const r = await send('DELETE', `/zones/${z.id}`, {}); if (!r.ok) return bad(r); void load(); };
+  const edit = (z: any) => setF({ id: z.id, city: z.city, name: z.name, kind: z.kind, lat: String(z.lat), lng: String(z.lng), radiusKm: String(z.radiusKm), surchargeRub: String(z.surchargeRub || 100), taxi: z.services.includes('taxi'), delivery: z.services.includes('delivery'), note: z.note });
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ ...box, fontSize: 13, color: C.t2 }}>Зона — круг: центр и радиус. «Доплата» прибавляется к цене такси/доставки, если точка подачи или назначения попала в зону (одна доплата за зону). «Закрытая» — заказ с такой точкой не создаётся. Зона не отслеживает людей и исполнителей. Менять зоны может только сотрудник с правом «Sky GO — финансы».</div>
+      <div style={{ ...box, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8 }}>
+        <input style={inp} placeholder="Город (как в списке городов)" value={f.city} onChange={(e) => set('city', e.target.value)} />
+        <input style={inp} placeholder="Название зоны" value={f.name} onChange={(e) => set('name', e.target.value)} />
+        <select style={inp} value={f.kind} onChange={(e) => set('kind', e.target.value)}><option value="surcharge">Доплата</option><option value="closed">Закрытая зона</option></select>
+        <input style={inp} placeholder="Широта центра" value={f.lat} onChange={(e) => set('lat', e.target.value)} />
+        <input style={inp} placeholder="Долгота центра" value={f.lng} onChange={(e) => set('lng', e.target.value)} />
+        <input style={inp} placeholder="Радиус, км" value={f.radiusKm} onChange={(e) => set('radiusKm', e.target.value)} />
+        {f.kind === 'surcharge' && <input style={inp} placeholder="Доплата, ₽" value={f.surchargeRub} onChange={(e) => set('surchargeRub', e.target.value)} />}
+        <label style={{ fontSize: 13, color: C.t1 }}><input type="checkbox" checked={f.taxi} onChange={(e) => set('taxi', e.target.checked)} /> Такси</label>
+        <label style={{ fontSize: 13, color: C.t1 }}><input type="checkbox" checked={f.delivery} onChange={(e) => set('delivery', e.target.checked)} /> Доставка</label>
+        <input style={{ ...inp, gridColumn: '1 / -1' }} placeholder="Пояснение (необязательно)" value={f.note} onChange={(e) => set('note', e.target.value)} />
+        <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}><button style={btn()} onClick={save}>{f.id ? 'Сохранить зону' : 'Добавить зону'}</button>{f.id && <button style={btn(C.l2, C.t1)} onClick={() => setF({ ...f, id: '', name: '', note: '' })}>Отмена</button>}</div>
+      </div>
+      {list === null ? <div style={{ color: C.t3 }}>Загрузка…</div> : list.length === 0 ? <div style={{ color: C.t3 }}>Зон пока нет.</div> : list.map((z) => (
+        <div key={z.id} style={{ ...box, display: 'flex', gap: 10, alignItems: 'center', opacity: z.active ? 1 : 0.55 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: C.t1 }}>{z.name} · {z.city}</div>
+            <div style={{ fontSize: 12.5, color: C.t2 }}>{z.kind === 'closed' ? 'Закрытая зона' : `Доплата ${z.surchargeRub} ₽`} · радиус {z.radiusKm} км · {z.services.map((x: string) => (x === 'taxi' ? 'такси' : 'доставка')).join(', ')}{z.active ? '' : ' · выключена'}</div>
+          </div>
+          <button style={btn(C.l2, C.t1)} onClick={() => edit(z)}>Изменить</button>
+          <button style={btn(C.l2, C.t1)} onClick={() => toggle(z)}>{z.active ? 'Выключить' : 'Включить'}</button>
+          <button style={btn('rgba(239,68,68,.15)', C.red)} onClick={() => del(z)}>Удалить</button>
+        </div>))}
+    </div>
+  );
+};
+
+
+const R_LABEL: Record<string, string> = { requested: 'Запрос', accepted: 'Согласен вернуть', rejected: 'Исполнитель отказал', returned: 'Деньги возвращены', escalated: 'Ждёт решения', upheld: 'В пользу заказчика', denied: 'Отказано', refunded: 'Подтверждён', withdrawn: 'Отозван' };
+
+/** Возвраты: Sky деньги не принимает и не возвращает; администрация решает только спор «вернуть/не вернуть» между людьми. */
+const Refunds = () => {
+  const [status, setStatus] = useState('escalated');
+  const [list, setList] = useState<any[] | null>(null);
+  const [sel, setSel] = useState<string | null>(null); const [note, setNote] = useState('');
+  const load = useCallback(async () => { const r = await get<{ refunds: any[] }>(`/refunds?status=${status}`); if (r.ok) setList(r.data!.refunds); else { setList([]); bad(r); } }, [status]);
+  useEffect(() => { void load(); }, [load]);
+  const decide = async (id: string, outcome: 'upheld' | 'denied') => { const r = await send('POST', `/refunds/${id}/decide`, { outcome, note }); if (!r.ok) return bad(r); flash('Решение принято'); setSel(null); setNote(''); void load(); };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ ...box, fontSize: 13, color: C.t2 }}>Деньги за заказы идут напрямую между людьми, поэтому администрация ничего не переводит: решение «в пользу заказчика» обязывает исполнителя вернуть деньги, дальше он отмечает возврат, а заказчик подтверждает получение.</div>
+      <select style={inp} value={status} onChange={(e) => setStatus(e.target.value)}><option value="escalated">Ждут решения</option><option value="">Все</option>{Object.keys(R_LABEL).filter((k) => k !== 'escalated').map((k) => <option key={k} value={k}>{R_LABEL[k]}</option>)}</select>
+      {list === null ? <div style={{ color: C.t3 }}>Загрузка…</div> : list.length === 0 ? <div style={{ color: C.t3 }}>Возвратов нет.</div> : list.map((x) => (
+        <div key={x.id} style={box}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}><b style={{ color: C.t1 }}>{x.amountRub} ₽ из {x.orderPriceRub} ₽ · {x.kind}</b><span style={{ fontSize: 12.5, color: C.t2 }}>{R_LABEL[x.status] ?? x.status}</span></div>
+          <div translate="no" style={{ fontSize: 13, color: C.t2, margin: '4px 0' }}>Причина: {x.reason}{x.executorNote ? ` · ответ исполнителя: ${x.executorNote}` : ''}</div>
+          {x.history.map((h: any, i: number) => <div key={i} translate="no" style={{ fontSize: 12, color: C.t3 }}>{new Date(h.at).toLocaleString('ru-RU')} — {h.who}: {h.what}{h.note ? ` · ${h.note}` : ''}</div>)}
+          {x.status === 'escalated' && (sel === x.id ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+              <textarea style={inp} rows={2} placeholder="Обоснование решения (от 5 знаков)" value={note} onChange={(e) => setNote(e.target.value)} />
+              <div style={{ display: 'flex', gap: 8 }}><button style={btn(C.green)} onClick={() => decide(x.id, 'upheld')}>В пользу заказчика</button><button style={btn('rgba(239,68,68,.15)', C.red)} onClick={() => decide(x.id, 'denied')}>Отказать</button><button style={btn(C.l2, C.t1)} onClick={() => setSel(null)}>Отмена</button></div>
+            </div>) : <button style={{ ...btn(), marginTop: 8 }} onClick={() => { setSel(x.id); setNote(''); }}>Решить</button>)}
+        </div>))}
     </div>
   );
 };

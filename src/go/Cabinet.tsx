@@ -5,6 +5,7 @@ import { goApi, goError, ROLE_LABEL, type GoRole } from './api';
 import { Btn, Card, Chip, Col, Empty, Input, Notice, fail, fmt, locate, useLoad, C } from './ui';
 import { OrderRow } from './Orders';
 import { flash } from '@/shared/flash';
+import { EarningsCard } from './Refunds';
 
 export const SubscriptionCard = ({ role, onChange }: { role: GoRole; onChange: () => void }) => {
   const [s, reload] = useLoad(() => goApi.subscription(role), [role]);
@@ -117,6 +118,7 @@ export const DriverCabinet = ({ role, onOpen }: { role: 'taxi_driver' | 'courier
         </Notice>)}
       <SubscriptionCard role={role} onChange={() => { reloadP(); reloadM(); reloadAcc(); }} />
       <PayDetailsCard />
+      <EarningsCard />
       <Card><Col gap={8}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><b style={{ color: C.t1 }}>{online ? 'Вы на линии' : 'Вы не на линии'}</b>
           {stats?.ok && <span style={{ fontSize: 13, color: C.t2 }}>Выполнено: {stats.data!.done} · {fmt(stats.data!.earnedRub)}</span>}</div>
