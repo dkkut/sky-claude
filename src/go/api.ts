@@ -39,6 +39,7 @@ const ERR: Record<string, string> = {
   quote_mismatch: 'Условия поездки изменились — стоимость пересчитана.', quote_used: 'Этот расчёт уже использован.', quote_not_found: 'Расчёт не найден — повторите запрос.',
   bad_category: 'Выберите тему обращения.', text_required: 'Опишите ситуацию (от 5 знаков).', too_many: 'Сегодня уже слишком много обращений — дождитесь ответа поддержки.',
   class_mismatch: 'Этот заказ для другого класса автомобиля.',
+  too_many_places: 'Можно сохранить не больше 20 мест.',
   not_offered: 'Этот заказ предложен другому водителю.', offer_expired: 'Время на ответ вышло.', no_offer: 'Предложение уже недействительно.',
   bad_city: 'Город пока не подключён.', bad_code: 'Неверный код.', code_locked: 'Код заблокирован после неверных попыток. Обратитесь в поддержку.',
   code_used: 'Код уже использован.', code_expired: 'Срок кода вышел.', rate_limited: 'Слишком часто. Подождите минуту.',
@@ -92,6 +93,8 @@ export interface TaxiQuote {
   km: number; minutes: number; estimated: boolean; quoteId?: string; expiresAt?: string; tariffVersion?: string;
   offers: { code: string; title: string; priceRub: number; breakdown?: { baseRub: number; distanceRub: number; timeRub: number; minimumRub: number; minimumApplied: boolean; totalRub: number } }[];
 }
+
+export interface SavedPlace { id: string; kind: 'home' | 'work' | 'other'; label: string; address: string; lat: number; lng: number }
 
 export interface Tariff { code: string; title: string; priceRub: number; periodDays: number }
 export interface GoConfig {
@@ -148,6 +151,9 @@ export const goApi = {
   supportSend: (b: { category: string; orderId?: string; text: string }) => post<{ ticketId: string }>('/api/go/support', b),
   notifyPrefs: () => get<{ groups: Record<string, string>; push: Record<string, boolean>; note: string }>('/api/go/notify-prefs'),
   setNotifyPrefs: (push: Record<string, boolean>) => put<{ groups: Record<string, string>; push: Record<string, boolean>; note: string }>('/api/go/notify-prefs', { push }),
+  savedPlaces: () => get<{ places: SavedPlace[]; max: number }>('/api/go/saved-places'),
+  saveSavedPlace: (b: { kind: 'home' | 'work' | 'other'; label?: string; address: string; lat?: number; lng?: number }) => post<{ place: SavedPlace }>('/api/go/saved-places', b),
+  deleteSavedPlace: (id: string) => del(`/api/go/saved-places/${id}`),
   access: (role: GoRole) => get<{ allowed: boolean; reasons: { code: string; status?: string; note?: string; expired?: boolean }[] }>(`/api/go/access/${role}`),
   presenceOf: (role: GoRole) => get<{ online: boolean }>(`/api/go/presence/${role}`),
   stats: (role: GoRole) => get<{ done: number; earnedRub: number }>(`/api/go/stats/${role}`),

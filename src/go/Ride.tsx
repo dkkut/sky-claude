@@ -1,6 +1,6 @@
 /** Sky GO: такси — карта с точкой подачи, «Куда едем?», недавние адреса, расчёт тарифов. Цену и маршрут считает сервер. */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Car, Flag, MapPin, Clock } from 'lucide-react';
+import { Car, Flag, MapPin, Clock, Home, Briefcase, Star, X } from 'lucide-react';
 import { SkyMap } from '@/marketplace/logistics/SkyMap';
 import { goApi, goError, type Point } from './api';
 import { Back, Btn, Card, Col, Head, Input, Notice, StickyBar, fail, fmt, locate, useLoad, C, GO } from './ui';
@@ -12,6 +12,8 @@ export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: 
   const [quote, setQuote] = useState<Awaited<ReturnType<typeof goApi.taxiQuote>>['data'] | null>(null);
   const [qerr, setQerr] = useState(''); const [pick, setPick] = useState(''); const [busy, setBusy] = useState(false); const seq = useRef(0);
   const [hist] = useLoad(() => goApi.orders({ status: 'history' }), []);
+  const [savedRes, reloadSaved] = useLoad(() => goApi.savedPlaces(), []);
+  const saved = savedRes?.ok ? savedRes.data!.places : [];
 
   // Точка подачи — где человек находится (если разрешил); иначе вводит адрес сам.
   useEffect(() => { void locate().then((p) => { if (p) setFrom((f) => (f.address || f.lat != null ? f : { address: 'Моё местоположение', ...p })); else setEditFrom(true); }); }, []);
@@ -62,6 +64,11 @@ export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: 
     flash('Ищем водителя'); onCreated(r.data!.orderId);
   };
   const offer = quote?.offers.find((o) => o.code === pick);
+  const savePlace = async (kind: 'home' | 'work' | 'other') => {
+    const t = quote?.to ?? to; if (t.lat == null || t.lng == null) return;
+    const r = await goApi.saveSavedPlace({ kind, label: kind === 'other' ? (t.address ?? '').slice(0, 40) : undefined, address: t.address ?? '', lat: t.lat, lng: t.lng });
+    if (!r.ok) return fail(r); flash('Место сохранено'); reloadSaved();
+  };
   return (
     <>
       <Back onClick={onBack} title="Такси" />
@@ -82,6 +89,16 @@ export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: 
             <input translate="no" value={to.address ?? ''} onChange={(e) => setTo({ address: e.target.value })} placeholder="Куда едем?" maxLength={240}
               style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', color: C.t1, fontSize: 18, fontWeight: 800, outline: 'none' }} />
           </div>
+          {!known(to) && saved.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '4px 0 8px' }}>
+              {saved.map((p) => (
+                <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 14, background: C.l2, color: C.t1, fontSize: 13.5, fontWeight: 700 }}>
+                  <button onClick={() => setTo({ address: p.address, lat: p.lat, lng: p.lng })} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', background: 'none', color: 'inherit', padding: '7px 8px 7px 12px', fontWeight: 'inherit', fontSize: 'inherit' }}>
+                    {p.kind === 'home' ? <Home size={14} color={GO} /> : p.kind === 'work' ? <Briefcase size={14} color={GO} /> : <Star size={14} color={GO} />}<span translate="no">{p.label}</span>
+                  </button>
+                  <button aria-label="Убрать из сохранённых" onClick={async () => { const r = await goApi.deleteSavedPlace(p.id); if (!r.ok) return fail(r); reloadSaved(); }} style={{ border: 'none', background: 'none', color: C.t3, padding: '7px 10px 7px 2px' }}><X size={13} /></button>
+                </span>))}
+            </div>)}
           {!known(to) && recents.map((a) => (
             <button key={a} onClick={() => setTo({ address: a })} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: '9px 0', color: C.t1 }}>
               <div style={{ width: 36, height: 36, borderRadius: 12, background: C.l2, display: 'grid', placeItems: 'center', color: C.t3 }}><Clock size={16} /></div>
@@ -98,6 +115,11 @@ export const TaxiScreen = ({ city, onBack, onCreated }: { city: string; onBack: 
                 border: `2px solid ${pick === o.code ? GO : 'transparent'}`, background: C.l2, color: C.t1 }}>
                 <Car size={26} color={GO} /><span style={{ flex: 1, textAlign: 'left' }}>{o.title}</span><span>{fmt(o.priceRub)}</span>
               </button>))}
+            {(quote.to?.lat != null) && !saved.some((p) => p.lat === quote.to?.lat && p.lng === quote.to?.lng) && (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 12.5, color: C.t3 }}>
+                <span>Сохранить назначение:</span>
+                {([['home', 'Дом'], ['work', 'Работа'], ['other', 'Место']] as const).map(([k, t]) => <button key={k} onClick={() => void savePlace(k)} style={{ border: 'none', borderRadius: 10, background: C.l2, color: C.t1, padding: '5px 10px', fontWeight: 700, fontSize: 12.5 }}>{t}</button>)}
+              </div>)}
             <Input label="Комментарий водителю" value={comment} onChange={setComment} max={200} />
             {offer?.breakdown && <div style={{ fontSize: 12.5, color: C.t3 }}>{`Из чего цена: подача ${fmt(offer.breakdown.baseRub)} · путь ${fmt(offer.breakdown.distanceRub)} · время ${fmt(offer.breakdown.timeRub)}${offer.breakdown.minimumApplied ? ` · минимальная стоимость ${fmt(offer.breakdown.minimumRub)}` : ''}`}</div>}
             {quote.expiresAt && <div style={{ fontSize: 12.5, color: C.t3 }}>{`Цена зафиксирована до ${new Date(quote.expiresAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}. Если тариф изменится раньше, мы покажем новую цену до заказа.`}</div>}

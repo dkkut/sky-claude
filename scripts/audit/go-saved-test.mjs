@@ -1,0 +1,28 @@
+// Sky GO: сохранённые места пассажира. API с ADMIN_GATE=off GO_RATE_MULT=20 RATE_LIMIT_PER_MINUTE=5000.
+import { execSync } from 'node:child_process';
+import { call, mkuser } from './lib.mjs';
+const S = process.argv[2];
+const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
+let ok = 0, bad = 0;
+const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, typeof x === 'string' ? x.slice(0, 200) : JSON.stringify(x).slice(0, 200)); } };
+const G = (path, o, tok) => call('/api/go' + path, o, tok);
+const J = (b) => ({ method: 'POST', body: JSON.stringify(b) });
+const U = await mkuser(S, 'svU'); const V = await mkuser(S, 'svV');
+let r = await G('/saved-places', {}, U.tok); t('сначала пусто', r.status === 200 && r.data.places.length === 0);
+r = await G('/saved-places', J({ kind: 'home', address: 'Тверская 1', lat: 55.76, lng: 37.62 }), U.tok); const home = r.data.place;
+t('«Дом» сохранён с названием по умолчанию и координатами', r.status === 201 && home.label === 'Дом' && home.lat === 55.76, JSON.stringify(r.data));
+r = await G('/saved-places', J({ kind: 'home', label: 'Новый дом', address: 'Арбат 10', lat: 55.75, lng: 37.59 }), U.tok);
+t('повторный «Дом» заменяет прежний (а не добавляется)', r.status === 201 && r.data.place.label === 'Новый дом' && q(`select count(*) from go_saved_places where profile_id='${U.pid}' and kind='home'`) === '1');
+r = await G('/saved-places', J({ kind: 'work', address: 'Ленинский 1', lat: 55.7, lng: 37.58 }), U.tok); t('«Работа» сохранена', r.status === 201);
+r = await G('/saved-places', J({ kind: 'other', label: 'Дача', address: 'Дача', lat: 56.0, lng: 37.0 }), U.tok); const dacha = r.data.place.id; t('прочее место', r.status === 201);
+r = await G('/saved-places', J({ kind: 'bad', address: 'x', lat: 1, lng: 1 }), U.tok); t('неверный вид отклонён', r.status === 400 && r.data.error === 'bad_kind');
+r = await G('/saved-places', J({ kind: 'other', label: 'Без адреса' }), U.tok); t('без адреса и координат отклонено', r.status === 400, JSON.stringify(r.data));
+r = await G('/saved-places', J({ kind: 'other', label: 'Нигде', address: 'Несуществующая улица 999' }), U.tok); t('адрес без координат и без геокодера — ошибка, координаты не выдумываются', r.status === 400 && /address_not_found|address_required/.test(r.data.error), JSON.stringify(r.data));
+r = await G('/saved-places', {}, U.tok); t('список: дом, работа, прочее — в этом порядке', r.data.places.map((p) => p.kind).join() === 'home,work,other');
+r = await G('/saved-places', {}, V.tok); t('чужие места не видны', r.data.places.length === 0);
+r = await call('/api/go/saved-places/' + dacha, { method: 'DELETE' }, V.tok); t('чужое место удалить нельзя', r.status === 404);
+r = await call('/api/go/saved-places/' + dacha, { method: 'DELETE' }, U.tok); t('своё удаляется', r.status === 200);
+for (let i = 0; i < 19; i += 1) await G('/saved-places', J({ kind: 'other', label: 'Т' + i, address: 'a' + i, lat: 55 + i / 100, lng: 37 }), U.tok);
+r = await G('/saved-places', J({ kind: 'other', label: 'Лишнее', address: 'z', lat: 55.5, lng: 37 }), U.tok); t('больше 20 мест нельзя', r.status === 400 && r.data.error === 'too_many_places', JSON.stringify(r.data));
+console.log(bad ? `\nПРОВАЛЕНО: ok=${ok} fail=${bad}` : `\nВсе проверки пройдены: ok=${ok} fail=0`);
+process.exit(bad ? 1 : 0);

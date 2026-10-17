@@ -20,6 +20,7 @@ import * as stay from './../gostay.mjs';
 import * as org from './../goorg.mjs';
 import * as work from './../gowork.mjs';
 import * as gosupport from './../gosupport.mjs';
+import * as saved from './../gosaved.mjs';
 import * as bizrep from './../gobizreports.mjs';
 import { pushOrderChanged } from './../gocore.mjs';
 import { can } from './../admin.mjs';
@@ -96,6 +97,9 @@ export const goRoutes = async (req, res, url) => {
   if ((m = path.match(/^\/api\/go\/support\/([\w-]+)$/)) && method === 'GET') return reply(res, await gosupport.ticket(me, m[1]));
   if (path === '/api/go/notify-prefs' && method === 'GET') return json(res, 200, await gosupport.getPrefs(me));
   if (path === '/api/go/notify-prefs' && method === 'PUT') return json(res, 200, await gosupport.setPrefs(me, await parseBody(req)));
+  if (path === '/api/go/saved-places' && method === 'GET') return json(res, 200, await saved.list(me));
+  if (path === '/api/go/saved-places' && method === 'POST') return reply(res, await saved.save(me, await parseBody(req)), 201);
+  if ((m = path.match(/^\/api\/go\/saved-places\/([\w-]+)$/)) && method === 'DELETE') return reply(res, await saved.remove(me, m[1]));
   if (path === '/api/go/presence' && method === 'POST') {
     const b = await parseBody(req);
     return reply(res, await subs.setPresence(me, String(b?.role ?? ''), b?.online === true, b));
