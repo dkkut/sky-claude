@@ -13,6 +13,7 @@
  * прочитала камера телефона. Декоративный «сканер», рисующий
  * прогресс-бар без реального разбора кадра, был бы обманом интерфейса.
  */
+import { TransferPanel } from './Transfers';
 import { ReviewVideo } from './logistics/ReviewVideo';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -689,6 +690,8 @@ const SettingsTab = ({ pvz, myRole, onChanged }: { pvz: PvzOverview; myRole: Pvz
           </button>
         </div>
       )}
+
+      {isOwner && <TransferPanel kind="pvz" subjectId={pvz.id} title={pvz.title} />}
 
       {isOwner ? (
         <div className="space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>

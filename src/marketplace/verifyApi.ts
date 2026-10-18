@@ -233,3 +233,16 @@ export const apiAdminPvzApp = (id: string) =>
   req<{ application: PvzApplicationView; applicantKind: TaxKind | null; applicantVerification: string | null; history: MyPvzApplication['history'] }>(`/api/market/pvz-applications/${enc(id)}`);
 export const apiAdminPvzAction = (id: string, action: string, b: { comment?: string; missing?: string[] }) =>
   req<{ ok: true; status: string }>(`/api/market/pvz-applications/${enc(id)}/${action}`, json('POST', b));
+
+/* — Передача магазина / ПВЗ другому аккаунту — */
+export interface TransferRow {
+  id: string; kind: 'shop' | 'pvz'; subjectId: string; title: string; status: string; message: string;
+  from: { id: string; name: string | null; username: string | null }; to: { id: string; name: string | null; username: string | null };
+  adminComment: string; createdAt: string; expiresAt: string; acceptedAt: string | null; decidedAt: string | null; mine: 'from' | 'to' | null;
+}
+export const apiMyTransfers = () => req<{ items: TransferRow[] }>('/api/market/transfers');
+export const apiStartTransfer = (b: { kind: 'shop' | 'pvz'; subjectId?: string; toUsername: string; message?: string; twoFactorCode?: string }) =>
+  req<{ ok: true; id: string }>('/api/market/transfers', json('POST', b));
+export const apiTransferAct = (id: string, action: 'accept' | 'decline' | 'cancel' | 'approve' | 'reject', comment?: string) =>
+  req<{ ok: true; status: string }>(`/api/market/transfers/${enc(id)}/${action}`, json('POST', { comment }));
+export const apiAdminTransfers = (status = 'accepted') => req<{ items: TransferRow[] }>(`/api/market/transfers/admin${qs({ status })}`);

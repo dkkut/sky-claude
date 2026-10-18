@@ -21,6 +21,7 @@ import {
   type AdminAppeal, type RulesOverview, type PvzAppRow, type DocView, type VerifyConfig,
 } from './verifyApi';
 import { MOD_LABEL, MOD_TINT } from './ProductCompliance';
+import { TransfersAdmin } from './Transfers';
 
 const ERR: Record<string, string> = {
   not_allowed: 'Недостаточно прав.', own_application: 'Нельзя решать собственную заявку.',
@@ -680,7 +681,7 @@ const PvzRegistry = () => {
 
 /* ── Корень ───────────────────────────────────────────────────────── */
 
-type Sub = 'apps' | 'products' | 'reports' | 'rules' | 'pvz' | 'shops' | 'points';
+type Sub = 'apps' | 'products' | 'reports' | 'rules' | 'pvz' | 'shops' | 'points' | 'transfers';
 
 export const MarketVerifyAdmin = ({ can }: { can: (perm: string) => boolean }) => {
   const market = can('market');
@@ -691,6 +692,7 @@ export const MarketVerifyAdmin = ({ can }: { can: (perm: string) => boolean }) =
     { key: 'pvz', label: 'Заявки ПВЗ', show: can('pvz_manage') || market },
     { key: 'shops', label: 'Магазины (ID)', show: market },
     { key: 'points', label: 'Пункты ПВЗ (ID)', show: can('pvz_manage') || market },
+    { key: 'transfers', label: 'Передачи', show: can('pvz_manage') || market },
     { key: 'rules', label: 'Правила допуска', show: market },
   ];
   const visible = tabs.filter((t) => t.show);
@@ -707,6 +709,7 @@ export const MarketVerifyAdmin = ({ can }: { can: (perm: string) => boolean }) =
       {sub === 'pvz' && <PvzAppsTab />}
       {sub === 'shops' && <SellersRegistry />}
       {sub === 'points' && <PvzRegistry />}
+      {sub === 'transfers' && <TransfersAdmin />}
       {sub === 'rules' && <RulesTab />}
     </div>
   );

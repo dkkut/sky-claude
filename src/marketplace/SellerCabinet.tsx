@@ -56,6 +56,7 @@ import { ShipmentHub } from './logistics/ShipmentHub';
 import { PassHub } from './logistics/PassHub';
 import { SellerPvzShipments } from './SellerPvzShipments';
 import { VerificationPanel } from './SellerVerification';
+import { TransferPanel } from './Transfers';
 import {
   OriginSection, ListingPanel, ModerationBadge, originFromProduct, originToInput, type OriginState,
 } from './ProductCompliance';
@@ -945,6 +946,8 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
         style={{ background: C.acc, color: '#fff' }}>
         {busy ? 'Сохраняем…' : 'Сохранить'}
       </button>
+
+      <TransferPanel kind="shop" title={seller.shopName} />
     </div>
   );
 };

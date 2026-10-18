@@ -21,6 +21,7 @@ import {
   myPvzApplication, savePvzApplication, submitPvzApplication,
   listPvzApplications, readPvzApplicationAdmin, decidePvzApplication,
 } from './../sellerapps.mjs';
+import { createTransfer, myTransfers, respondTransfer, listTransfersAdmin, decideTransfer } from './../markettransfer.mjs';
 import {
   listingCheck, submitProduct, productHistory, moderationQueue, moderationDetail, moderateProduct,
   createReport, listReports, resolveReport, reportsAboutMe,
@@ -43,6 +44,8 @@ const STATUS = {
   seller_pending: 403, seller_suspended: 403, seller_not_verified: 403, reverification_required: 403,
   subscription_required: 402, payment_details_required: 409,
   pvz_needs_ip_or_legal: 403,
+  bad_kind: 400, username_required: 400, target_not_found: 404, self_transfer: 409, transfer_open: 409, subject_blocked: 409,
+  has_active_orders: 409, has_open_appeals: 409, target_has_shop: 409, target_not_pvz_eligible: 409, two_factor_required: 403, transfer_failed: 500,
 };
 
 /** Значение из запроса — только слово из строчных букв: всё прочее заменяется умолчанием. */
@@ -87,7 +90,7 @@ export const marketVerifyRoutes = async (req, res, url) => {
     || path.startsWith('/api/market/reports') || path.startsWith('/api/market/appeals')
     || path.startsWith('/api/market/moderation') || path.startsWith('/api/market/verify')
     || path.startsWith('/api/market/rules') || path.startsWith('/api/market/pvz-applications')
-    || path.startsWith('/api/pvz/application')
+    || path.startsWith('/api/pvz/application') || path.startsWith('/api/market/transfers')
     || /^\/api\/market\/products\/mp-[0-9a-f-]{36}\/(check|submit|history)$/.test(path);
   if (!mine) return false;
 
@@ -270,6 +273,30 @@ export const marketVerifyRoutes = async (req, res, url) => {
     const r = await reviewDoc(me, docReview[1], b.accept === true, b.comment, { meta });
     return r.error ? fail(res, r) : json(res, 200, r);
   }
+  /* — Передача магазина / ПВЗ другому аккаунту — */
+  if (req.method === 'GET' && path === '/api/market/transfers') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' }), true;
+    return json(res, 200, await myTransfers(me)), true;
+  }
+  if (req.method === 'POST' && path === '/api/market/transfers') {
+    if (!rateLimitPerHour(`mv:tr:${me}`, 10)) return json(res, 429, { error: 'too_many_requests' }), true;
+    const r = await createTransfer(me, session.skyId, await body());
+    return r.error ? fail(res, r) : json(res, 200, r), true;
+  }
+  if (req.method === 'GET' && path === '/api/market/transfers/admin') {
+    const r = await listTransfersAdmin(me, { status: word(params.get('status'), 'accepted') });
+    return r.error ? fail(res, r) : json(res, 200, r), true;
+  }
+  const trAct = path.match(/^\/api\/market\/transfers\/(mtr-[0-9a-f-]{36})\/(accept|decline|cancel|approve|reject)$/);
+  if (req.method === 'POST' && trAct) {
+    if (!writeOk()) return json(res, 429, { error: 'too_many_requests' }), true;
+    const b = await body();
+    const r = ['approve', 'reject'].includes(trAct[2])
+      ? await decideTransfer(me, trAct[1], trAct[2], b.comment, { meta })
+      : await respondTransfer(me, trAct[1], trAct[2]);
+    return r.error ? fail(res, r) : json(res, 200, r), true;
+  }
+
   if (req.method === 'GET' && path === '/api/market/verify/sellers') {
     const r = await listSellersAdmin(me, { q: params.get('q') ?? '', status: word(params.get('status'), 'all') });
     return r.error ? fail(res, r) : json(res, 200, r);
