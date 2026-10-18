@@ -32,7 +32,7 @@ import type { RepeatMode }   from '@/music/types';
 import { toDurStr, getG } from '@/music/utils';
 import { AddToPlaylistModal } from '@/music/AddToPlaylistModal';
 import { MusicImport } from '@/music/MusicImport';
-import { parseBlob } from 'music-metadata-browser';
+import { parseBlob } from 'music-metadata';
 import { ArtistProfile }      from '@/music/ArtistProfile';
 import { MusicianProfileTab } from '@/music/MusicianProfile';
 import { SkyMusicHome } from './SkyMusicHome';

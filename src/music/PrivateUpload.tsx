@@ -8,7 +8,7 @@
  */
 import { useRef, useState } from 'react';
 import { Upload, Loader, Check, X, ImagePlus } from 'lucide-react';
-import { parseBlob } from 'music-metadata-browser';
+import { parseBlob } from 'music-metadata';
 import { useMusicStore } from './serverStore';
 import { shrinkCover } from './TrackEditor';
 import { LicensePicker } from './licenses';
