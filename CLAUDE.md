@@ -1462,3 +1462,12 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 `scripts/backup.sh` без публичного ключа age больше НЕ делает копию (раньше писал открытый дамп). Ключ берётся из окружения или из `BACKUP_AGE_RECIPIENT=age1…` в `$APP_DIR/.env` (работает и из cron);
 открытая копия — только осознанно, `BACKUP_ALLOW_PLAIN=1`. Секретный ключ (`backup.key`) хранится ВНЕ сервера; расшифровка — `age -d -i backup.key файл.age`. Проверка восстановления — `scripts/backup-verify.sh`.
 Остальные шаги плана — `docs/ENCRYPTION-PLAN-2026-11.md`.
+
+## Секреты из файлов, проверки `.env` и инфраструктуры (ноябрь-2026)
+
+- `server/envfile.mjs` (первая строка `server.mjs` и `config.mjs`): для переменной `X` без значения, но с `X_FILE=/путь` значение читается из файла (убирается один перевод строки; пустой/нечитаемый файл — остановка).
+  `docker-compose.secrets.yml` — необязательная надстройка: JWT_SECRET, REFRESH_TOKEN_SECRET, ENCRYPTION_KEY, AI_API_KEY, S3-ключи берутся из `secrets/*` (`/run/secrets/…`), а не из окружения контейнера.
+  Запуск: `docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d`. Новая секретная переменная — добавить пару `X_FILE` и запись в `secrets:`. Тест: `scripts/audit/envfile-test.mjs` (7).
+- `scripts/env-check.sh` — проверка `.env` без печати значений (права, заглушки, длина ≥32, разные ключи подписи и шифрования, пароли служб, `ADMIN_GATE=off`, ключ копий). Код выхода 1 — критично, 2 — предупреждения.
+- `scripts/check-infra.sh` — только чтение: порты Postgres/Redis/API наружу, `ports:` у redis/postgres в compose, пароль Redis, ufw, LUKS, права `.env`/`secrets`/каталога копий, открытые копии `.gz`, `backup.key` на сервере.
+- Не сделано: версии ключей и `scripts/rekey.mjs` (ключ выводится HKDF в `crypto.mjs`, `mediacrypto.mjs`, `skystoragecrypto.mjs` — смена затрагивает много таблиц и файлов, делать только отдельным шагом с пробным проходом), HMAC-отпечатки вместо полных IP и почта апелляций сайта (шаг 6 плана).

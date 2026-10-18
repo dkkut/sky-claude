@@ -5,6 +5,7 @@
  * маршрутов и запуск. Логика входа лежит в routes/auth.mjs, управление
  * аккаунтом — в routes/skyid.mjs, кошелёк — в routes/wallet.mjs.
  */
+import './envfile.mjs';
 import { logEvent as skyLogEvent } from './skylog.mjs';
 import http from 'node:http';
 import { config } from './config.mjs';
