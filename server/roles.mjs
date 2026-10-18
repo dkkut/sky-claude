@@ -34,6 +34,8 @@ export const PERMISSIONS = [
   'seller_docs',     // заявки продавцов: проверка документов, запрос исправлений
   'market_moderation', // карточки товаров и жалобы Market
   'pvz_manage',      // заявки на открытие ПВЗ
+  'parking',         // Sky Parking: организации, приостановка, обзор
+  'parking_moderation', // Sky Parking: проверка карточек парковок
   'blox',            // Sky Blox: игры, серверы, разработчики, ограничения, мониторинг
   'blox_moderation', // Sky Blox: очередь проверки, жалобы, апелляции
   'blox_finance',    // Sky Blox: вознаграждения, возвраты, заявки на выплату
@@ -96,6 +98,8 @@ export const ROLES = {
   docs_reviewer:   ['seller_docs'],
   market_moderator:['market_moderation'],
   pvz_manager:     ['pvz_manage'],
+  parking_admin:   ['parking', 'parking_moderation'],
+  parking_moderator:['parking_moderation'],
   blox_admin:      ['blox', 'blox_moderation'],
   blox_moderator:  ['blox_moderation'],
   blox_finance_staff: ['blox_finance'],
@@ -159,6 +163,8 @@ export const ROLE_LABEL = {
   docs_reviewer: 'Проверка документов продавцов',
   market_moderator: 'Модерация Market',
   pvz_manager: 'Управление ПВЗ',
+  parking_admin: 'Sky Parking: администратор',
+  parking_moderator: 'Sky Parking: модератор',
   blox_admin: 'Sky Blox: администратор',
   blox_moderator: 'Sky Blox: модератор',
   blox_finance_staff: 'Sky Blox: финансы',

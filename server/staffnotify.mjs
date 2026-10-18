@@ -22,6 +22,7 @@ import { pushToOffline } from './webpush.mjs';
 export const CATEGORIES = {
   topup:          { label: 'Заявки на пополнение (SkyKassa)', rights: ['skykassa'] },
   seller_app:     { label: 'Заявки продавцов', rights: ['seller_docs', 'market'] },
+  parking_lot:    { label: 'Парковки на проверке', rights: ['parking_moderation', 'parking'] },
   pvz_app:        { label: 'Заявки на ПВЗ', rights: ['pvz_manage', 'market'] },
   product_mod:    { label: 'Карточки товаров на проверке', rights: ['market_moderation'] },
   market_report:  { label: 'Жалобы и апелляции Market', rights: ['market_moderation', 'market'] },
