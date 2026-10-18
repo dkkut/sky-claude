@@ -59,7 +59,10 @@ t('цены тарифов: общая 139, такси 69, курьер 49, 7 д
 t('привязка кабинет→тариф', r.data.tariffs.roleTariff.taxi_driver === 'taxi' && r.data.tariffs.roleTariff.courier === 'courier' && r.data.tariffs.roleTariff.food_seller === 'general');
 
 r = await G('/executors', J({ role: 'taxi_driver', legalForm: 'npd', city: CITY, fields: { fullName: 'Иванов Иван', inn: '123456789012', phone: '+79991234567' } }), D.tok);
-t('НПД: неверная контрольная сумма ИНН отклонена', r.status === 400 && r.data.error === 'invalid_fields', JSON.stringify(r.data));
+t('НПД: черновик с неверным ИНН сохраняется (документы можно грузить)', r.status === 200 && !!r.data.id, JSON.stringify(r.data));
+const badId = r.data.id;
+r = await G(`/executors/${badId}/submit`, J({}), D.tok);
+t('НПД: неверная контрольная сумма ИНН отклонена при отправке', r.status === 400 && r.data.error === 'invalid_fields', JSON.stringify(r.data));
 r = await G('/executors', J({ role: 'nobody', legalForm: 'npd' }), D.tok);
 t('неизвестная роль отклонена', r.status === 400);
 r = await G('/executors', J({ role: 'taxi_driver', legalForm: 'npd', city: 'Нигдеград', fields: form.npd() }), D.tok);

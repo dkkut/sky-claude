@@ -217,7 +217,7 @@ const typeError = {
  * Привести присланные поля анкеты к чистому виду и проверить формат.
  * `strict: false` — для черновика: пустое допустимо, мусор нет.
  */
-export const cleanForm = (kind, input, { strict }) => {
+export const cleanForm = (kind, input, { strict, lenient = false }) => {
   const out = {};
   const problems = [];
   for (const f of FORMS[kind] ?? []) {
@@ -231,13 +231,15 @@ export const cleanForm = (kind, input, { strict }) => {
       continue;
     }
     let ok = true;
+    // Черновик (lenient): формат и контрольные суммы не проверяем — иначе опечатка блокирует загрузку документов; строго проверяется при отправке.
+    if (lenient) { out[f.key] = v; continue; }
     if (f.type === 'phone') ok = validPhone(v);
     else if (f.type === 'email') ok = validEmail(v);
     else if (f.type === 'inn12') ok = validInn(v, { length: 12 });
     else if (f.type === 'inn10') ok = validInn(v, { length: 10 });
     else if (f.type === 'ogrn') ok = validOgrn(v);
     else if (f.type === 'ogrnip') ok = validOgrnip(v);
-    if (!ok) problems.push({ field: f.key, message: typeError[f.type] ?? `Проверьте поле «${f.label}».` });
+    if (!ok) problems.push({ field: f.key, message: `${f.label}: ${typeError[f.type] ?? 'проверьте значение.'}` });
     out[f.key] = v;
   }
   return { fields: out, problems };

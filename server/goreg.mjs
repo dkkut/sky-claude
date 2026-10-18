@@ -94,7 +94,7 @@ export const saveDraft = async (profileId, input) => {
   const city = clean(input?.city, 60);
   if (city && !(await cityOk(city))) return { error: 'bad_city' };
 
-  const { fields, problems } = cleanForm(FORM_KIND[legalForm], input?.fields, { strict: false });
+  const { fields, problems } = cleanForm(FORM_KIND[legalForm], input?.fields, { strict: false, lenient: true });
   const ex = cleanExtra(role, input?.extra, { strict: false });
   if (problems.length) return { error: 'invalid_fields', problems };
 
