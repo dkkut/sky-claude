@@ -5,6 +5,7 @@
 #      bash /opt/sky-src/scripts/setup-storage.sh            # настроить S3 (сам найдёт .env в /opt/sky) и ключ (идемпотентно)
 #      bash scripts/setup-storage.sh --check                       # что настроено (без значений секретов)
 #      bash scripts/setup-storage.sh --rotate                      # выпустить НОВЫЙ ключ шифрования копий (старый остаётся для чтения)
+#      bash scripts/setup-storage.sh --rotate-keys                 # заменить ключи доступа к S3 на новые (с проверкой и откатом при неудаче)
 #      bash scripts/setup-storage.sh --export-kek /путь/файл       # записать ключи копий в файл (права 600) — хранить ОТДЕЛЬНО от сервера
 #      bash scripts/setup-storage.sh --backup-bucket                # подключить ОТДЕЛЬНЫЙ бакет/хостер для резервных копий (STORAGE_BACKUP_S3_*)
 #      bash scripts/setup-storage.sh --primary on [дней_кэша]      # хранить МЕДИА (музыка, кино, подкасты, книги…) в S3; на диске — кэш (по умолчанию 7 дней)
@@ -129,6 +130,34 @@ case "${1:-}" in
         set_env STORAGE_PRIMARY ""; echo "Хранение медиа возвращено на диск сервера (файлы в S3 не удалены). Применить: bash scripts/deploy-local.sh"; exit 0 ;;
       *) echo "Использование: --primary on [дней_кэша] | --primary off"; exit 1 ;;
     esac ;;
+  --rotate-keys)
+    # Замена ключей доступа к S3 на НОВЫЕ (после того как вы выпустили их у хостера). Адрес, бакет и регион не меняются.
+    # Старые значения возвращаются, если проверка с новыми ключами не прошла: сервер не останется без хранилища.
+    command -v docker >/dev/null 2>&1 || { echo "Нужен docker (проверка живым запросом)."; exit 1; }
+    oak="$(get_env STORAGE_S3_ACCESS_KEY)"; osk="$(get_env STORAGE_S3_SECRET_KEY)"
+    [ -n "$(get_env STORAGE_S3_ENDPOINT)" ] && [ -n "$(get_env STORAGE_S3_BUCKET)" ] || { echo "S3 ещё не настроен — сначала bash scripts/setup-storage.sh."; exit 1; }
+    echo "== Замена ключей доступа к S3 =="
+    echo "Сначала выпустите НОВУЮ пару ключей у хостера (старую пока не удаляйте). Ввод секрета скрыт."
+    read -r -p "Новый ключ доступа (Access Key ID): " nak
+    read -r -s -p "Новый секретный ключ: " nsk; echo
+    [ -n "$nak" ] && [ "${#nsk}" -ge 8 ] || { echo "Ключи не введены."; exit 1; }
+    [ "$nak" != "$oak" ] && [ "$nsk" != "$osk" ] || { echo "Это прежние ключи — введите новые."; exit 1; }
+    set_env STORAGE_S3_ACCESS_KEY "$nak"; set_env STORAGE_S3_SECRET_KEY "$nsk"
+    echo "== Проверка новых ключей =="
+    out="$(probe)" || true; echo "$out" | sed -E 's/(KEY|SECRET)[=:][^ ]*/\1=…/Ig'
+    if [ -n "$(echo "$out" | sed -n 's/^STYLE=//p' | tail -n1)" ]; then
+      echo; echo "✔ Новые ключи работают и записаны в .env."
+      echo "Дальше по порядку:"
+      echo "  1) bash scripts/deploy-local.sh   (сервер начнёт использовать новые ключи)"
+      echo "  2) убедитесь в админке Sky Storage, что хранилище доступно и медиа открываются"
+      echo "  3) у хостера УДАЛИТЕ старую пару ключей (Access Key ID начинался на ${oak:0:4}…) — иначе она остаётся рабочим обходом подтверждения"
+      echo "  4) сохраните новые ключи в копию секретов: bash scripts/secrets-export.sh"
+    else
+      set_env STORAGE_S3_ACCESS_KEY "$oak"; set_env STORAGE_S3_SECRET_KEY "$osk"
+      echo; echo "✖ Новые ключи не прошли проверку — в .env возвращены прежние, сервер работает как раньше."
+      echo "Проверьте, что у новой пары есть права на этот бакет, и повторите."; exit 1
+    fi
+    exit 0 ;;
   --export-kek)
     out="${2:-}"; [ -n "$out" ] || { echo "Укажите файл: --export-kek /путь/sky-kek.txt"; exit 1; }
     [ ! -e "$out" ] || { echo "Файл уже есть: $out — выберите другой путь."; exit 1; }

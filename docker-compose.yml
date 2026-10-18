@@ -68,8 +68,8 @@ services:
       NODE_ENV:              production
       API_PORT:              "8080"
       SIGNAL_PORT:           "8081"
-      JWT_SECRET:            ${JWT_SECRET:?нужно задать JWT_SECRET в .env}
-      REFRESH_TOKEN_SECRET:  ${REFRESH_TOKEN_SECRET:?нужно задать REFRESH_TOKEN_SECRET в .env}
+      JWT_SECRET:            ${JWT_SECRET:-}
+      REFRESH_TOKEN_SECRET:  ${REFRESH_TOKEN_SECRET:-}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
       ACCESS_TTL_SEC:        ${ACCESS_TTL_SEC:-900}
       REFRESH_TTL_SEC:       ${REFRESH_TTL_SEC:-2592000}
