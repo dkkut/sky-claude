@@ -267,7 +267,7 @@ services:
       # Дневные пределы Sky AI. Бесплатный чат ограничен числом
       # сообщений, а не подпиской.
       AI_CHAT_PER_DAY:       ${AI_CHAT_PER_DAY:-60}
-      AI_CHAT_PER_DAY_PRIME: ${AI_CHAT_PER_DAY_PRIME:-400}
+      AI_CHAT_PER_DAY_PRIME: ${AI_CHAT_PER_DAY_PRIME:-50}
       AI_VOICE_PER_DAY:      ${AI_VOICE_PER_DAY:-200}
 
       # Сколько человек пускать в одну сессию «Вместе». Предел живёт
