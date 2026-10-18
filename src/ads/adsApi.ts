@@ -31,14 +31,24 @@ export const adMediaUrl = (mediaId: string) => {
   return `${url}?t=${encodeURIComponent(mediaTicket)}`;
 };
 
-export interface UploadedAdMedia { mediaId: string; mime: string; kind: 'image' | 'video'; bytes: number }
+export interface UploadedAdMedia { mediaId: string; mime: string; kind: 'image' | 'video'; bytes: number; durationSec?: number | null; maxVideoSec?: number }
 
-export const apiUploadAdMedia = async (file: File): Promise<UploadedAdMedia | null> => {
-  const r = await apiCall<UploadedAdMedia>('/api/ads/media', {
+const MEDIA_ERR: Record<string, string> = {
+  unsupported_media: 'Такой файл не подходит: нужно изображение (JPEG, PNG, WebP) или видео (MP4, WebM).',
+  bad_video: 'Не удалось прочитать видео. Загрузите обычный MP4.',
+  rate_limited: 'Слишком много загрузок — попробуйте позже.',
+};
+/** Загрузка рекламного файла. Причина отказа возвращается, а не теряется: рекламодатель должен видеть, что не так. */
+export const apiUploadAdMediaEx = async (file: File): Promise<{ media?: UploadedAdMedia; error?: string }> => {
+  const r = await apiCall<UploadedAdMedia & { maxSec?: number }>('/api/ads/media', {
     method: 'POST', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' },
   });
-  return r.ok ? r.data ?? null : null;
+  if (r.ok && r.data) return { media: r.data };
+  if (r.status === 413) return { error: 'Файл слишком большой: изображение — до 8 МБ, видео — до 64 МБ.' };
+  if (r.error === 'video_too_long') return { error: `Видео длиннее допустимого — не больше ${(r.data as { maxSec?: number } | undefined)?.maxSec ?? 60} секунд.` };
+  return { error: MEDIA_ERR[r.error ?? ''] ?? 'Не удалось загрузить файл.' };
 };
+export const apiUploadAdMedia = async (file: File): Promise<UploadedAdMedia | null> => (await apiUploadAdMediaEx(file)).media ?? null;
 
 /* ═══ Рекламодатель ═════════════════════════════════════════ */
 
@@ -108,6 +118,8 @@ export interface ServedAd {
   mediaUrl?: string;
   format: AdFormat;
   linkUrl?: string;
+  /** Длительность видеорекламы, если известна (MP4). */
+  durationSec?: number;
 }
 
 export const apiServeAd = async (placement: AdPlacement): Promise<ServedAd | null> => {
@@ -164,4 +176,9 @@ export const apiAdminAction = async (id: string, action: AdminAction, reason?: s
     method: 'POST', body: JSON.stringify(reason ? { reason } : {}),
   });
   return r.ok;
+};
+
+/** Сообщить серверу, сколько секунд рекламы реально шло. Сервер сверяет число со временем и длительностью ролика. */
+export const apiRecordView = async (impressionId: string, watchedSec: number): Promise<void> => {
+  await apiCall('/api/ads/view', { method: 'POST', body: JSON.stringify({ impressionId, watchedSec: Math.round(watchedSec * 100) / 100 }) });
 };

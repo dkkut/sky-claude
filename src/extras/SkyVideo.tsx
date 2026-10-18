@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { AiVideoSummarize, AiVideoQA } from '@/ai/SkyAI';
 import { AdBanner } from '@/feedback/Feedback';
+import { PrerollAd } from '@/ads/AdBlocks';
 import { useSkyVideoStore, resetSkyVideoForUser } from '@/video/serverStore';
 import { ChannelAnalyticsView } from '@/video/ChannelAnalytics';
 import { useRegisterMedia } from '@/island/mediaRegistry';
@@ -170,6 +171,7 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
   const [duration, setDuration] = useState(0);
   const [showCtrl, setShowCtrl] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [adDone, setAdDone] = useState(false);          // реклама перед роликом: показывает сервер (не Prime, не чаще паузы), ролик ждёт
   const passTried = useRef(false);
   const hideTimer = useRef<number>(0);
   const noteView = useSkyVideoStore(s => s.noteView);
@@ -179,6 +181,7 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
     noteView(video.id);
     return () => { vidRef.current?.pause(); };
   }, [video.id]);
+  useEffect(() => { setAdDone(false); }, [video.id]);     // следующий ролик — снова решение сервера, показывать ли рекламу
 
   const resetHide = () => {
     setShowCtrl(true);
@@ -198,8 +201,9 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
   return (
     <div className="relative w-full overflow-hidden rounded-2xl select-none"
       style={{ background: '#000', aspectRatio: isShort ? '9/16' : '16/9', maxHeight: isShort ? 420 : undefined }}
-      onMouseMove={resetHide} onClick={toggle}>
-      <video ref={vidRef} src={videoUrl(video.id)} className="w-full h-full object-contain"
+      onMouseMove={resetHide} onClick={adDone ? toggle : undefined}>
+      {!adDone && <PrerollAd key={video.id} onSkip={() => setAdDone(true)} />}
+      <video ref={vidRef} src={adDone ? videoUrl(video.id) : undefined} className="w-full h-full object-contain"
         onTimeUpdate={e => setProgress((e.currentTarget.currentTime / e.currentTarget.duration) || 0)}
         onLoadedMetadata={e => setDuration(e.currentTarget.duration)}
         onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} playsInline

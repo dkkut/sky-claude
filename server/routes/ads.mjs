@@ -10,6 +10,7 @@
  * маршрутизация, лимиты запросов и запись в уже существующий admin_log.
  */
 import { Readable } from 'node:stream';
+import { query } from './../db.mjs';
 import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
@@ -17,8 +18,10 @@ import {
   pauseCampaign, resumeCampaign, cancelCampaign, reportCampaign,
   resolveAdForPlacement, recordImpression, recordClick, recentAdEvents,
   adminListCampaigns, adminApprove, adminReject, adminPause, adminResume, adminComplete, adminCancel,
+  recordView,
 } from './../ads.mjs';
-import { saveStream, openStream, sizeOf, newMediaId } from './../adstore.mjs';
+import { saveStream, openStream, sizeOf, newMediaId, remove as removeAdFile } from './../adstore.mjs';
+import { mp4DurationSec, AD_VIDEO_MAX_SEC } from './../admedia.mjs';
 import { parseRange } from './../skyvideostore.mjs';
 import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../adticket.mjs';
 import { logAdmin } from './../adminsec.mjs';
@@ -173,7 +176,16 @@ export const adsRoutes = async (req, res, url) => {
     const mediaId = newMediaId();
     const saved = await saveStream(mediaId, withHead(head, req), limit);
     if (saved.error) return json(res, saved.error === 'too_large' ? 413 : 400, saved);
-    return json(res, 200, { mediaId, mime: sniffed.mime, kind: sniffed.kind, bytes: saved.bytes });
+    // Обработка видео без ffmpeg: длительность из заголовка MP4. Слишком длинное или не разобравшееся — отклоняем и стираем файл.
+    let durationSec = null;
+    if (sniffed.kind === 'video' && sniffed.mime === 'video/mp4') {
+      durationSec = await mp4DurationSec(openStream, mediaId, saved.bytes).catch(() => null);
+      if (durationSec === null) { await removeAdFile(mediaId); return json(res, 400, { error: 'bad_video' }); }
+      if (durationSec > AD_VIDEO_MAX_SEC) { await removeAdFile(mediaId); return json(res, 400, { error: 'video_too_long', maxSec: AD_VIDEO_MAX_SEC }); }
+      if (durationSec < 1) { await removeAdFile(mediaId); return json(res, 400, { error: 'bad_video' }); }
+    }
+    await query('INSERT INTO ad_media_meta (media_id, owner_id, kind, mime, bytes, duration_sec) VALUES ($1,$2,$3,$4,$5,$6)', [mediaId, me, sniffed.kind, sniffed.mime, saved.bytes, durationSec]);
+    return json(res, 200, { mediaId, mime: sniffed.mime, kind: sniffed.kind, bytes: saved.bytes, durationSec, maxVideoSec: AD_VIDEO_MAX_SEC });
   }
 
   /* ── Реклама для показа (пункт 7) ─────────────────────────────── */
@@ -190,6 +202,14 @@ export const adsRoutes = async (req, res, url) => {
     if (!rateLimit(`ads:track:${me}`, TRACK_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     const body = await parseBody(req);
     const r = await recordImpression(me, String(body?.campaignId ?? ''), String(body?.placement ?? ''));
+    if (r.error) return json(res, r.error === 'not_found' ? 404 : 409, r);
+    return json(res, 200, r);
+  }
+
+  if (req.method === 'POST' && path === '/api/ads/view') {
+    if (!rateLimit(`ads:track:${me}`, TRACK_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const body = await parseBody(req);
+    const r = await recordView(me, String(body?.impressionId ?? ''), Number(body?.watchedSec));
     if (r.error) return json(res, r.error === 'not_found' ? 404 : 409, r);
     return json(res, 200, r);
   }

@@ -50,6 +50,8 @@ const FREQ_CAP = {
   maxImpressionsPerUserPerCampaignPerDay: 5,
   /** Не считать бесконечные обновления страницы честными показами. */
   minSecondsBetweenSamePlacementImpression: 20,
+  /** Видеореклама перед роликом: не чаще раза в N секунд на человека (независимо от кампании), чтобы не превращать просмотр в рекламную ленту. */
+  videoCooldownSec: Math.max(0, Number(process.env.AD_VIDEO_COOLDOWN_SEC ?? 240)),
 };
 
 const MAX_TITLE = 100;
@@ -127,6 +129,7 @@ const toCampaign = (r, extra = {}) => ({
   targetRegions: r.target_regions ?? [],
   impressions: Number(extra.impressions ?? 0),
   clicks: Number(extra.clicks ?? 0),
+  completedViews: Number(extra.completed ?? 0),
   ctr: Number(extra.impressions ?? 0) > 0
     ? Math.round((Number(extra.clicks ?? 0) / Number(extra.impressions)) * 1000) / 10
     : 0,
@@ -147,11 +150,12 @@ const impressionsAndClicks = async (campaignIds) => {
   const { rows } = await query(
     `SELECT c.id AS campaign_id,
             (SELECT count(*)::int FROM ad_impressions i WHERE i.campaign_id = c.id) AS impressions,
-            (SELECT count(*)::int FROM ad_clicks k WHERE k.campaign_id = c.id) AS clicks
+            (SELECT count(*)::int FROM ad_clicks k WHERE k.campaign_id = c.id) AS clicks,
+            (SELECT count(*)::int FROM ad_impressions i WHERE i.campaign_id = c.id AND i.completed) AS completed
        FROM ad_campaigns c WHERE c.id = ANY($1::text[])`,
     [campaignIds],
   );
-  return new Map(rows.map((r) => [r.campaign_id, { impressions: r.impressions, clicks: r.clicks }]));
+  return new Map(rows.map((r) => [r.campaign_id, { impressions: r.impressions, clicks: r.clicks, completed: r.completed }]));
 };
 
 /* ─── Создание кампании ───────────────────────────────────────────── */
@@ -173,6 +177,13 @@ export const createCampaign = async (actorId, body) => {
     return { error: 'media_required' };
   }
   if (mediaId && !/^adm-[0-9a-f-]{36}$/.test(mediaId)) return { error: 'bad_media' };
+  if (mediaId) {
+    // Медиа должен быть загружен ЭТИМ рекламодателем и подходить формату: чужие файлы подставить нельзя.
+    const meta = (await query('SELECT owner_id, kind FROM ad_media_meta WHERE media_id = $1', [mediaId])).rows[0];
+    if (!meta || meta.owner_id !== actorId) return { error: 'bad_media' };
+    if (format === 'video' && meta.kind !== 'video') return { error: 'bad_media' };
+    if ((format === 'image' || format === 'text_image') && meta.kind !== 'image') return { error: 'bad_media' };
+  }
 
   const linkUrl = cleanLink(body?.linkUrl);
   if (body?.linkUrl && !linkUrl) return { error: 'bad_link' };
@@ -382,6 +393,12 @@ export const reportCampaign = async (actorId, id, reason) => {
 export const resolveAdForPlacement = async (viewerId, placement) => {
   if (!PLACEMENTS[placement]) return null;
   if (await hasPrime(viewerId)) return null; // Prime — без рекламы, решает только сервер
+  if (placement === 'video_preroll' && FREQ_CAP.videoCooldownSec > 0) {
+    const { rows: recent } = await query(
+      "SELECT 1 FROM ad_impressions WHERE user_id = $1 AND placement = 'video_preroll' AND created_at > now() - ($2 || ' seconds')::interval LIMIT 1",
+      [viewerId, String(FREQ_CAP.videoCooldownSec)]);
+    if (recent.length) return null;
+  }
 
   const region = await regionOf(viewerId);
 
@@ -419,6 +436,7 @@ export const resolveAdForPlacement = async (viewerId, placement) => {
     const last = mine[0].last_same_placement;
     if (last && (Date.now() - new Date(last).getTime()) / 1000 < FREQ_CAP.minSecondsBetweenSamePlacementImpression) continue;
 
+    const dur = row.media_id ? (await query('SELECT duration_sec FROM ad_media_meta WHERE media_id = $1', [row.media_id])).rows[0]?.duration_sec : null;
     return {
       campaignId: row.id,
       title: row.title,
@@ -426,6 +444,7 @@ export const resolveAdForPlacement = async (viewerId, placement) => {
       mediaUrl: row.media_id ? `/api/ads/media/${row.media_id}` : undefined,
       format: row.format,
       linkUrl: row.link_url ?? undefined,
+      durationSec: dur != null ? Number(dur) : undefined,
     };
   }
   return null;
@@ -451,6 +470,25 @@ export const recordImpression = async (viewerId, campaignId, placement) => {
     [id, campaignId, rows[0].advertiser_id, viewerId, placement, region],
   );
   return { impressionId: id };
+};
+
+/** Подтверждение просмотра: клиент сообщает, сколько секунд рекламы реально шло. Сервер не верит числу без проверки по времени:
+ * нельзя «досмотреть» 30 секунд за 3, нельзя больше длительности ролика, нельзя уменьшить уже записанное. */
+export const recordView = async (viewerId, impressionId, watchedSecRaw) => {
+  const w = Number(watchedSecRaw);
+  if (!Number.isFinite(w) || w < 0 || w > 600) return { error: 'bad_value' };
+  const imp = (await query(
+    `SELECT i.id, i.user_id, i.created_at, i.watched_sec, m.duration_sec
+       FROM ad_impressions i JOIN ad_campaigns c ON c.id = i.campaign_id LEFT JOIN ad_media_meta m ON m.media_id = c.media_id
+      WHERE i.id = $1`, [String(impressionId ?? '')])).rows[0];
+  if (!imp || imp.user_id !== viewerId) return { error: 'not_found' };
+  const elapsed = (Date.now() - new Date(imp.created_at).getTime()) / 1000;
+  let watched = Math.min(w, elapsed + 1.5);                         // нельзя «посмотреть» дольше, чем прошло с показа
+  if (imp.duration_sec != null) watched = Math.min(watched, Number(imp.duration_sec) + 0.5);
+  watched = Math.max(Number(imp.watched_sec), Math.round(watched * 100) / 100);
+  const completed = imp.duration_sec != null && watched >= Number(imp.duration_sec) - 1;
+  await query('UPDATE ad_impressions SET watched_sec = $2, completed = completed OR $3 WHERE id = $1', [imp.id, watched, completed]);
+  return { ok: true, watchedSec: watched, completed };
 };
 
 /** Клик — только на собственный, реально записанный показ этого же
@@ -636,7 +674,10 @@ export const sweepOrphanAdMedia = async () => {
   if (!stored.length) return { removed: 0 };
   const { rows } = await query('SELECT media_id FROM ad_campaigns WHERE media_id = ANY($1::text[])', [stored]);
   const used = new Set(rows.map((r) => r.media_id));
-  const orphans = stored.filter((id) => !used.has(id));
+  const { rows: fresh } = await query("SELECT media_id FROM ad_media_meta WHERE media_id = ANY($1::text[]) AND created_at > now() - interval '2 hours'", [stored]);
+  const young = new Set(fresh.map((r) => r.media_id));            // только что загруженное ещё ждёт создания кампании
+  const orphans = stored.filter((id) => !used.has(id) && !young.has(id));
   for (const id of orphans) await remove(id);
+  if (orphans.length) await query('DELETE FROM ad_media_meta WHERE media_id = ANY($1::text[])', [orphans]).catch(() => {});
   return { removed: orphans.length };
 };

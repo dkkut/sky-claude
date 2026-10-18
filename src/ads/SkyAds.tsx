@@ -12,7 +12,7 @@ import {
   useAdsStore, AD_PLACEMENTS, AD_FORMAT_LABEL, AD_STATUS_LABEL, AD_STATUS_COLOR,
   fmtBudget, campaignMediaUrl, type AdCampaign, type AdPlacement, type AdFormat,
 } from './store';
-import { apiUploadAdMedia } from './adsApi';
+import { apiUploadAdMediaEx } from './adsApi';
 import { useMoney } from '@/wallet/store';
 import { useAuthStore } from '@/core/auth/store';
 
@@ -177,9 +177,9 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
     setBusy(true);
     let mediaId: string | undefined;
     if (imageFile) {
-      const uploaded = await apiUploadAdMedia(imageFile);
-      if (!uploaded) { setBusy(false); setErr('Не удалось загрузить изображение'); return; }
-      mediaId = uploaded.mediaId;
+      const up = await apiUploadAdMediaEx(imageFile);
+      if (!up.media) { setBusy(false); setErr(up.error ?? 'Не удалось загрузить файл'); return; }
+      mediaId = up.media.mediaId;
     }
 
     const r = await create({
@@ -333,6 +333,24 @@ const CreateCampaign = ({ onDone }: { onDone: () => void }) => {
                 className="w-full rounded-2xl px-4 py-3 text-sm outline-none resize-none"
                 style={{ background:C.l2, border:`1px solid ${C.border}`, color:C.t1 }}/>
             </div>
+            {format==='video' && (
+              <div>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color:C.t3 }}>Видео</label>
+                <input ref={imgRef} type="file" accept="video/mp4,video/webm" className="hidden"
+                  onChange={e=>{
+                    const f=e.target.files?.[0]; if(!f) return;
+                    if (f.size > 64*1024*1024) { setErr('Видео слишком большое — до 64 МБ'); return; }
+                    setErr(''); setImageFile(f); setImage('');
+                  }}/>
+                <div className="rounded-2xl cursor-pointer flex flex-col items-center justify-center gap-2 py-6 transition-colors"
+                  style={{ border:`2px dashed ${imageFile?C.accent:C.border}`, background:imageFile?`${C.accent}06`:'transparent' }}
+                  onClick={()=>imgRef.current?.click()}>
+                  <Upload size={22} style={{ color:C.t3 }}/>
+                  <span className="text-xs text-center px-4" style={{ color:C.t3 }}>{imageFile ? imageFile.name : 'Загрузить видео'}</span>
+                </div>
+                <p className="mt-1.5 text-[11.5px]" style={{ color:C.t3 }}>MP4 или WebM, до 64 МБ. Для MP4 длительность берётся из файла, не больше 60 секунд. Перекодирования Sky не делает — загружайте готовый файл. Перед показом объявление проверяет модератор.</p>
+              </div>
+            )}
             {(format==='image'||format==='text_image') && (
               <div>
                 <label className="text-xs font-semibold block mb-1.5" style={{ color:C.t3 }}>Изображение</label>

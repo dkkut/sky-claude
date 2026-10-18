@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, ExternalLink, Megaphone, Pin } from 'lucide-react';
 import type { AdPlacement } from './store';
-import { apiServeAd, apiRecordImpression, apiRecordClick, type ServedAd } from './adsApi';
+import { apiServeAd, apiRecordImpression, apiRecordClick, apiRecordView, type ServedAd } from './adsApi';
 
 /** Общий хук: получает рекламу под площадку, один раз пишет показ,
  * отдаёт функцию клика, которая сама пишет клик и переходит по ссылке.
@@ -41,7 +41,8 @@ export const useServedAd = (placement: AdPlacement) => {
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  return { ad, ready, click };
+  const view = (watchedSec: number) => { if (impressionId.current) void apiRecordView(impressionId.current, watchedSec); };
+  return { ad, ready, click, view };
 };
 
 /* -- Banner Ad (лента, шапки) ------------------------------- */
@@ -143,20 +144,39 @@ export const FeedAd = () => {
 
 /* -- Preroll Ad (перед видео) ------------------------------- */
 export const PrerollAd = ({ onSkip }: { onSkip: () => void }) => {
-  const { ad, ready, click } = useServedAd('video_preroll');
-  const [secondsLeft, setSecondsLeft] = useState(5);
+  const { ad, ready, click, view } = useServedAd('video_preroll');
   const [canSkip, setCanSkip] = useState(false);
+  const [left, setLeft] = useState(5);
+  const vidRef = useRef<HTMLVideoElement>(null);
+  const startedAt = useRef(0);
+  const done = useRef(false);
+  const isVideo = ad?.format === 'video' && !!ad.mediaUrl;
+  // Пропуск открывается через 5 с (или через длительность, если ролик короче). Считаем реально прошедшее время показа.
+  const skipAfter = Math.max(1, Math.min(5, ad?.durationSec ?? 5));
+
+  const finish = () => {
+    if (done.current) return;
+    done.current = true;
+    const played = isVideo ? (vidRef.current?.currentTime ?? 0) : (Date.now() - startedAt.current) / 1000;
+    view(played);
+    onSkip();
+  };
 
   useEffect(() => {
     if (!ready) return;
     if (!ad) { onSkip(); return; }
+    startedAt.current = Date.now();
+    setLeft(skipAfter);
     const t = setInterval(() => {
-      setSecondsLeft(s => {
-        if (s <= 1) { clearInterval(t); setCanSkip(true); return 0; }
-        return s - 1;
-      });
+      const el = Math.floor((Date.now() - startedAt.current) / 1000);
+      setLeft(Math.max(0, skipAfter - el));
+      if (el >= skipAfter) setCanSkip(true);
+      // раз в 5 секунд отправляем, сколько уже идёт видео: если вкладку закроют, часть просмотра не потеряется
+      if (isVideo && el > 0 && el % 5 === 0) view(vidRef.current?.currentTime ?? 0);
     }, 1000);
-    return () => clearInterval(t);
+    // для картинки/текста реклама сама заканчивается через 8 секунд
+    const auto = !isVideo ? setTimeout(finish, 8000) : undefined;
+    return () => { clearInterval(t); if (auto) clearTimeout(auto); if (!done.current && isVideo) view(vidRef.current?.currentTime ?? 0); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, ad?.campaignId]);
 
@@ -164,12 +184,11 @@ export const PrerollAd = ({ onSkip }: { onSkip: () => void }) => {
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col" style={{ background:'#000' }}>
-      {/* Ad content */}
       <div className="flex-1 relative cursor-pointer flex items-center justify-center" onClick={click}
         style={{ background: ad.mediaUrl ? 'transparent' : 'linear-gradient(135deg,#0f172a,#1e3a5f)' }}>
         {ad.mediaUrl
           ? (ad.format === 'video'
-              ? <video src={ad.mediaUrl} autoPlay muted playsInline className="w-full h-full object-cover"/>
+              ? <video ref={vidRef} src={ad.mediaUrl} autoPlay muted playsInline className="w-full h-full object-contain" onEnded={finish} onError={finish}/>
               : <img src={ad.mediaUrl} alt="" className="w-full h-full object-cover"/>)
           : <div className="text-center px-8">
               <Megaphone size={46} className="mx-auto mb-4 text-white/80"/>
@@ -177,25 +196,22 @@ export const PrerollAd = ({ onSkip }: { onSkip: () => void }) => {
               {ad.description && <p className="text-sm mt-2" style={{ color:'rgba(255,255,255,0.6)' }}>{ad.description}</p>}
             </div>
         }
-        {/* Ad label */}
         <div className="absolute top-3 left-3 text-[10px] font-bold px-2 py-0.5 rounded"
           style={{ background:'rgba(0,0,0,0.6)', color:'rgba(255,255,255,0.7)' }}>
-          Реклама
+          Реклама{ad.durationSec ? ` · ${Math.round(ad.durationSec)} с` : ''}
         </div>
       </div>
-      {/* Skip button */}
       <div className="absolute bottom-4 right-4">
         {canSkip ? (
-          <motion.button whileTap={{ scale:.9 }} type="button" onClick={onSkip}
+          <motion.button whileTap={{ scale:.9 }} type="button" onClick={finish}
             initial={{ opacity:0, scale:.8 }} animate={{ opacity:1, scale:1 }}
-            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold"
-            style={{ background:'rgba(255,255,255,0.15)', color:'#fff', backdropFilter:'blur(8px)' }}>
+            className="flex items-center gap-2 rounded-xl px-4 text-sm font-bold" style={{ minHeight: 44, background:'rgba(255,255,255,0.15)', color:'#fff', backdropFilter:'blur(8px)' }}>
             Пропустить →
           </motion.button>
         ) : (
           <div className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm"
             style={{ background:'rgba(0,0,0,0.6)', color:'rgba(255,255,255,0.6)' }}>
-            Пропустить через {secondsLeft}
+            Пропустить через {left}
           </div>
         )}
       </div>
