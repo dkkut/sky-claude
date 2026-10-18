@@ -780,3 +780,73 @@ export const approvedPvzApplicationFor = async (profileId, applicationId) => {
   const el = await pvzEligibility(profileId);
   return el.ok ? rows[0] : null;
 };
+
+/* ─── Реестры для админки: магазины и ПВЗ с идентификаторами, блокировка ─── */
+
+const likeOf = (q) => `%${String(q ?? '').trim().slice(0, 60).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+/** Все магазины (id = id профиля владельца) с поиском и фильтром статуса. Только чтение. */
+export const listSellersAdmin = async (actorId, { q = '', status = 'all', limit = 100 } = {}) => {
+  if (!(await mayDecide(actorId))) return { error: 'not_allowed' };
+  const args = [];
+  const where = [];
+  const s = String(q ?? '').trim();
+  if (s) { args.push(likeOf(s)); where.push(`(s.profile_id ILIKE $${args.length} OR s.shop_name ILIKE $${args.length} OR p.username ILIKE $${args.length} OR p.name ILIKE $${args.length})`); }
+  if (status === 'suspended') where.push(`(s.status = 'suspended' OR s.verification_status = 'suspended')`);
+  else if (status === 'active') where.push(`(s.status <> 'suspended' AND s.verification_status <> 'suspended')`);
+  args.push(Math.min(Math.max(Number(limit) || 100, 1), 200));
+  const { rows } = await query(
+    `SELECT s.profile_id, s.shop_name, s.status, s.verification_status, s.tax_kind, s.suspend_reason, s.suspended_at,
+            p.name, p.username, (SELECT count(*)::int FROM market_products m WHERE m.seller_id = s.profile_id) AS products
+       FROM market_sellers s JOIN profiles p ON p.id = s.profile_id
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY s.created_at DESC LIMIT $${args.length}`, args);
+  return { items: rows.map((r) => ({
+    id: r.profile_id, shopName: r.shop_name, status: r.status, verification: r.verification_status, taxKind: r.tax_kind,
+    suspended: r.status === 'suspended' || r.verification_status === 'suspended', suspendReason: r.suspend_reason || '',
+    suspendedAt: iso(r.suspended_at), owner: r.name, username: r.username, products: r.products,
+  })) };
+};
+
+/** Все пункты выдачи (id точки) с владельцем и признаками закрытия/блокировки. */
+export const listPvzPointsAdmin = async (actorId, { q = '', status = 'all', limit = 100 } = {}) => {
+  if (!(await mayManagePvz(actorId))) return { error: 'not_allowed' };
+  const args = [];
+  const where = [];
+  const s = String(q ?? '').trim();
+  if (s) { args.push(likeOf(s)); where.push(`(k.id ILIKE $${args.length} OR k.title ILIKE $${args.length} OR k.city ILIKE $${args.length} OR k.address ILIKE $${args.length} OR p.username ILIKE $${args.length})`); }
+  if (status === 'blocked') where.push('k.admin_blocked');
+  else if (status === 'active') where.push('NOT k.admin_blocked');
+  args.push(Math.min(Math.max(Number(limit) || 100, 1), 200));
+  const { rows } = await query(
+    `SELECT k.id, k.title, k.city, k.address, k.active, k.staff_closed, k.admin_blocked, k.admin_block_reason, k.admin_blocked_at,
+            k.owner_id, k.owner_status, p.name, p.username
+       FROM market_pickup_points k LEFT JOIN profiles p ON p.id = k.owner_id
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY k.created_at DESC LIMIT $${args.length}`, args);
+  return { items: rows.map((r) => ({
+    id: r.id, title: r.title, city: r.city, address: r.address, active: r.active, staffClosed: r.staff_closed,
+    blocked: r.admin_blocked, blockReason: r.admin_block_reason || '', blockedAt: iso(r.admin_blocked_at),
+    ownerId: r.owner_id, ownerStatus: r.owner_status, owner: r.name ?? null, username: r.username ?? null,
+  })) };
+};
+
+/** Заблокировать / разблокировать ПВЗ (нужна причина). Заказы и история остаются; точка пропадает из выбора доставки. */
+export const pvzPointAdminAction = async (actorId, pointId, action, reason, { meta = {} } = {}) => {
+  if (!(await mayManagePvz(actorId))) return { error: 'not_allowed' };
+  if (!/^[A-Za-z0-9_-]{3,80}$/.test(String(pointId ?? ''))) return { error: 'not_found' };
+  const why = text(reason, 500);
+  if (why.length < 3) return { error: 'reason_required' };
+  const { rows } = await query('SELECT id, owner_id, admin_blocked FROM market_pickup_points WHERE id = $1', [pointId]);
+  if (!rows[0]) return { error: 'not_found' };
+  if (rows[0].owner_id && rows[0].owner_id === actorId) return { error: 'own_target' };
+  if (action === 'block') {
+    if (rows[0].admin_blocked) return { error: 'wrong_state' };
+    await query(`UPDATE market_pickup_points SET admin_blocked = TRUE, admin_block_reason = $2, admin_blocked_by = $3, admin_blocked_at = now() WHERE id = $1`, [pointId, why, actorId]);
+  } else if (action === 'unblock') {
+    if (!rows[0].admin_blocked) return { error: 'wrong_state' };
+    await query(`UPDATE market_pickup_points SET admin_blocked = FALSE, admin_block_reason = '' WHERE id = $1`, [pointId]);
+  } else return { error: 'bad_action' };
+  await logAdmin({ actorId, targetId: pointId, targetType: 'market_pvz', type: `market_pvz_${action}`, detail: why, meta });
+  return { ok: true };
+};

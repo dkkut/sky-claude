@@ -66,7 +66,7 @@ export const createShipment = async (sellerId, { pvzId, method, carrierTitle, tr
   if (!PVZ_ID_RE.test(String(pvzId ?? ''))) return { error: 'bad_pvz' };
   const m = ['seller_self', 'carrier', 'other'].includes(String(method)) ? String(method) : 'seller_self';
   const { rows: pvzRows } = await query(
-    `SELECT id FROM market_pickup_points WHERE id = $1 AND active AND NOT staff_closed`, [pvzId]);
+    `SELECT id FROM market_pickup_points WHERE id = $1 AND active AND NOT staff_closed AND NOT admin_blocked`, [pvzId]);
   if (!pvzRows[0]) return { error: 'bad_pvz' };
 
   const id = `mps-${generateId()}`;

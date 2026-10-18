@@ -852,7 +852,7 @@ export const pvzOverview = async (pvzId, actorId) => {
   if (!role && !(await can(actorId, 'market'))) return null;
   const { rows } = await query(
     `SELECT id, title, city, address, phone, work_from, work_to, hold_days,
-            active, staff_closed, staff_closed_reason, owner_id, owner_status,
+            active, staff_closed, staff_closed_reason, admin_blocked, admin_block_reason, owner_id, owner_status,
             has_owner_payment_details, owner_payment_details_enc
        FROM market_pickup_points WHERE id = $1`, [pvzId]);
   const p = rows[0];
@@ -866,6 +866,7 @@ export const pvzOverview = async (pvzId, actorId) => {
     id: p.id, title: p.title, city: p.city, address: p.address, phone: p.phone,
     workFrom: p.work_from, workTo: p.work_to, holdDays: p.hold_days,
     active: p.active, staffClosed: p.staff_closed, staffClosedReason: p.staff_closed_reason,
+    adminBlocked: p.admin_blocked, adminBlockReason: p.admin_block_reason,
     hasOwner: Boolean(p.owner_id), ownerStatus: p.owner_status, myRole: role,
     cellCount: pending[0]?.n ?? 0,
     hasOwnerPaymentDetails: Boolean(p.has_owner_payment_details),

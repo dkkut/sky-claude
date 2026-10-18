@@ -338,7 +338,7 @@ export const createOrder = async (buyerId, input = {}) => {
 
     if (pickupPointId) {
       const { rows: pp } = await client.query(
-        'SELECT id FROM market_pickup_points WHERE id = $1 AND active', [pickupPointId]);
+        'SELECT id FROM market_pickup_points WHERE id = $1 AND active AND NOT admin_blocked', [pickupPointId]);
       if (!pp[0]) { await client.query('ROLLBACK'); return { error: 'bad_pickup_point' }; }
     }
 

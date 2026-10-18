@@ -16,6 +16,7 @@ import {
   apiModerationQueue, apiModerationDetail, apiModerate, apiAdminReports, apiResolveReport,
   apiAdminAppeals, apiDecideAppeal, apiRules, apiSetCategoryRule, apiSetSetting,
   apiAdminPvzApps, apiAdminPvzApp, apiAdminPvzAction, openDoc, apiVerifyConfig,
+  apiAdminSellers, apiAdminPvzPoints, apiAdminPvzPointAction, type SellerAdminRow, type PvzPointAdminRow,
   REPORT_REASONS, type AdminAppRow, type AdminAppDetail, type ModRow, type ModDetail, type ReportRow,
   type AdminAppeal, type RulesOverview, type PvzAppRow, type DocView, type VerifyConfig,
 } from './verifyApi';
@@ -26,7 +27,7 @@ const ERR: Record<string, string> = {
   own_product: 'Нельзя решать вопросы по собственному товару.', docs_not_accepted: 'Сначала примите все обязательные документы.',
   reason_required: 'Укажите причину.', wrong_state: 'Состояние уже изменилось — обновите список.',
   listing_blocked: 'Карточка не проходит правила — её должен исправить продавец.',
-  pvz_needs_ip_or_legal: 'Статус заявителя больше не подходит для ПВЗ.', already_closed: 'Уже закрыто.',
+  pvz_needs_ip_or_legal: 'Статус заявителя больше не подходит для ПВЗ.', already_closed: 'Уже закрыто.', own_target: 'Нельзя блокировать собственный объект.', bad_action: 'Неизвестное действие.',
   too_many_requests: 'Слишком часто. Подождите минуту.',
 };
 const errOf = (r: { error?: string; reason?: string }) => ERR[r.error ?? ''] ?? r.reason ?? 'Не получилось.';
@@ -585,9 +586,101 @@ const PvzAppsTab = () => {
   );
 };
 
+/* ── Реестр магазинов и ПВЗ: идентификаторы и блокировка ───────────── */
+
+const copyId = (id: string) => { try { void navigator.clipboard?.writeText(id); } catch { /* буфер недоступен */ } };
+
+const IdTag = ({ id }: { id: string }) => (
+  <button type="button" title="Скопировать ID" onClick={() => copyId(id)} translate="no"
+    className="rounded-md px-1.5 py-0.5 font-mono text-[10px]" style={{ background: C.l2, color: C.t2 }}>{id}</button>
+);
+
+const RegistryFilters = ({ q, setQ, status, setStatus, options }: { q: string; setQ: (v: string) => void; status: string; setStatus: (v: string) => void; options: [string, string][] }) => (
+  <div className="space-y-2">
+    <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск: ID, название, @ник, город" className={inp} style={inputStyle} translate="no" />
+    <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      {options.map(([k, l]) => <Chip key={k} on={status === k} onClick={() => setStatus(k)}>{l}</Chip>)}
+    </div>
+  </div>
+);
+
+const SellersRegistry = () => {
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('all');
+  const [items, setItems] = useState<SellerAdminRow[] | null>(null);
+  const [err, setErr] = useState('');
+  const load = useCallback(async () => {
+    const r = await apiAdminSellers(q, status);
+    if (r.ok) { setItems(r.data.items); setErr(''); } else { setItems([]); setErr(errOf(r)); }
+  }, [q, status]);
+  useEffect(() => { const t = setTimeout(() => void load(), 250); return () => clearTimeout(t); }, [load]);
+  const act = async (s: SellerAdminRow, action: 'suspend' | 'reinstate') => {
+    const reason = window.prompt(action === 'suspend' ? 'Причина блокировки магазина (увидит продавец)' : 'Комментарий к разблокировке') ?? '';
+    if (reason.trim().length < 3) return;
+    const r = await apiAdminSellerAction(s.id, action, reason.trim());
+    if (!r.ok) { setErr(errOf(r)); return; }
+    void load();
+  };
+  return (
+    <div className="space-y-2">
+      <RegistryFilters q={q} setQ={setQ} status={status} setStatus={setStatus} options={[['all', 'Все'], ['active', 'Работают'], ['suspended', 'Заблокированы']]} />
+      {err && <p role="alert" className="text-[11px]" style={{ color: C.red }}>{err}</p>}
+      {!items ? <Loader2 className="animate-spin" size={16} /> : items.length === 0 ? <p className="text-[12px]" style={{ color: C.t3 }}>Магазинов не найдено.</p> : items.map((s) => (
+        <div key={s.id} className="space-y-1.5 rounded-2xl p-3" style={card}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="min-w-0 truncate text-[13px] font-bold" style={{ color: C.t1 }} translate="no">{s.shopName}</p>
+            <span className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: s.suspended ? 'rgba(239,68,68,0.12)' : C.l2, color: s.suspended ? C.red : C.t2 }}>{s.suspended ? 'Заблокирован' : s.verification}</span>
+          </div>
+          <p className="text-[11px]" style={{ color: C.t3 }} translate="no">ID магазина: <IdTag id={s.id} /> · {s.owner} @{s.username} · товаров: {s.products}</p>
+          {s.suspended && s.suspendReason && <p className="text-[11px]" style={{ color: C.red }}>Причина: <span translate="no">{s.suspendReason}</span></p>}
+          <button type="button" onClick={() => void act(s, s.suspended ? 'reinstate' : 'suspend')} className="rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+            style={{ background: s.suspended ? C.l2 : 'rgba(239,68,68,0.12)', color: s.suspended ? C.t1 : C.red }}>{s.suspended ? 'Разблокировать' : 'Заблокировать'}</button>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const PvzRegistry = () => {
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('all');
+  const [items, setItems] = useState<PvzPointAdminRow[] | null>(null);
+  const [err, setErr] = useState('');
+  const load = useCallback(async () => {
+    const r = await apiAdminPvzPoints(q, status);
+    if (r.ok) { setItems(r.data.items); setErr(''); } else { setItems([]); setErr(errOf(r)); }
+  }, [q, status]);
+  useEffect(() => { const t = setTimeout(() => void load(), 250); return () => clearTimeout(t); }, [load]);
+  const act = async (p: PvzPointAdminRow, action: 'block' | 'unblock') => {
+    const reason = window.prompt(action === 'block' ? 'Причина блокировки ПВЗ (увидит владелец)' : 'Комментарий к разблокировке') ?? '';
+    if (reason.trim().length < 3) return;
+    const r = await apiAdminPvzPointAction(p.id, action, reason.trim());
+    if (!r.ok) { setErr(errOf(r)); return; }
+    void load();
+  };
+  return (
+    <div className="space-y-2">
+      <RegistryFilters q={q} setQ={setQ} status={status} setStatus={setStatus} options={[['all', 'Все'], ['active', 'Работают'], ['blocked', 'Заблокированы']]} />
+      {err && <p role="alert" className="text-[11px]" style={{ color: C.red }}>{err}</p>}
+      {!items ? <Loader2 className="animate-spin" size={16} /> : items.length === 0 ? <p className="text-[12px]" style={{ color: C.t3 }}>Пунктов не найдено.</p> : items.map((p) => (
+        <div key={p.id} className="space-y-1.5 rounded-2xl p-3" style={card}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="min-w-0 truncate text-[13px] font-bold" style={{ color: C.t1 }} translate="no">{p.title}</p>
+            <span className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: p.blocked ? 'rgba(239,68,68,0.12)' : C.l2, color: p.blocked ? C.red : C.t2 }}>{p.blocked ? 'Заблокирован' : p.staffClosed ? 'Закрыт владельцем' : p.active ? 'Работает' : 'Не активирован'}</span>
+          </div>
+          <p className="text-[11px]" style={{ color: C.t3 }} translate="no">ID ПВЗ: <IdTag id={p.id} /> · {p.city}, {p.address}{p.username ? ` · @${p.username}` : ''}</p>
+          {p.blocked && p.blockReason && <p className="text-[11px]" style={{ color: C.red }}>Причина: <span translate="no">{p.blockReason}</span></p>}
+          <button type="button" onClick={() => void act(p, p.blocked ? 'unblock' : 'block')} className="rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+            style={{ background: p.blocked ? C.l2 : 'rgba(239,68,68,0.12)', color: p.blocked ? C.t1 : C.red }}>{p.blocked ? 'Разблокировать' : 'Заблокировать'}</button>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 /* ── Корень ───────────────────────────────────────────────────────── */
 
-type Sub = 'apps' | 'products' | 'reports' | 'rules' | 'pvz';
+type Sub = 'apps' | 'products' | 'reports' | 'rules' | 'pvz' | 'shops' | 'points';
 
 export const MarketVerifyAdmin = ({ can }: { can: (perm: string) => boolean }) => {
   const market = can('market');
@@ -596,6 +689,8 @@ export const MarketVerifyAdmin = ({ can }: { can: (perm: string) => boolean }) =
     { key: 'products', label: 'Модерация товаров', show: can('market_moderation') || market },
     { key: 'reports', label: 'Жалобы и апелляции', show: can('market_moderation') || market },
     { key: 'pvz', label: 'Заявки ПВЗ', show: can('pvz_manage') || market },
+    { key: 'shops', label: 'Магазины (ID)', show: market },
+    { key: 'points', label: 'Пункты ПВЗ (ID)', show: can('pvz_manage') || market },
     { key: 'rules', label: 'Правила допуска', show: market },
   ];
   const visible = tabs.filter((t) => t.show);
@@ -610,6 +705,8 @@ export const MarketVerifyAdmin = ({ can }: { can: (perm: string) => boolean }) =
       {sub === 'products' && <ProductsTab />}
       {sub === 'reports' && <ReportsTab />}
       {sub === 'pvz' && <PvzAppsTab />}
+      {sub === 'shops' && <SellersRegistry />}
+      {sub === 'points' && <PvzRegistry />}
       {sub === 'rules' && <RulesTab />}
     </div>
   );

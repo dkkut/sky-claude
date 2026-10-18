@@ -1372,3 +1372,13 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - Переключатель «E» перенесён в редактор трека (`TrackEditor`, поле `explicit` в `editTrack`; сервер уже принимал). Нужна пересборка `.apk`/`.exe`.
 
 - **Sky GO, анкета исполнителя:** черновик (`goreg.saveDraft`, `cleanForm(..., {lenient:true})`) больше НЕ проверяет формат и контрольные суммы ИНН/ОГРН/телефона — иначе опечатка блокировала загрузку документов («неверно введено значение»). Строгая проверка — при отправке (`submit`); сообщения теперь начинаются с названия поля. Нужен деплой сервера.
+
+## Админка Market: реестр магазинов и ПВЗ с ID, блокировка (ноябрь-2026)
+
+`server/sellerapps.mjs` (`listSellersAdmin`, `listPvzPointsAdmin`, `pvzPointAdminAction`), маршруты в `routes/marketverify.mjs`
+(`GET /api/market/verify/sellers|pvz-points?q=&status=`, `POST /api/market/verify/pvz-points/:id/block|unblock`; магазины блокируются прежним `POST …/sellers/:id/suspend|reinstate`),
+миграция `168_market_admin_block.sql` (`market_pickup_points.admin_blocked/admin_block_reason/…`); клиент — вкладки «Магазины (ID)» и «Пункты ПВЗ (ID)» в `MarketVerifyAdmin.tsx`.
+- ID магазина = id профиля владельца (`acc-…`), ID ПВЗ = `market_pickup_points.id`; по клику копируется. Поиск — по ID, названию, @нику, городу (ПВЗ — и по адресу). Магазины видит право `market`, ПВЗ — `pvz_manage` или `market`.
+- Блокировка — только с причиной (≥3 знака), в журнал администрации (`market_seller_*`, `market_pvz_block|unblock`); нельзя блокировать собственный объект. Заблокированный ПВЗ не выбирается при оформлении заказа и отправлении (`admin_blocked` проверяется там же, где `active/staff_closed`),
+  владелец видит причину в кабинете (`PvzCabinet`); существующие заказы и история не стираются. Блокировка отдельна от `active` (оплата активации её не снимает) и от `staff_closed` (временное закрытие самой точкой).
+- Проверено API-прогоном (список, блокировка, повтор, права обычного пользователя); браузерный UI Playwright-ом не прогонялся. Нужен деплой (миграция 168) и пересборка `.apk`/`.exe`.

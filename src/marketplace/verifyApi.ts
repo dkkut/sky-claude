@@ -172,6 +172,19 @@ export const apiAdminReviewDoc = (id: string, accept: boolean, comment?: string)
 export const apiAdminSellerAction = (profileId: string, action: 'suspend' | 'reinstate' | 'reverify', reason: string) =>
   req<{ ok: true }>(`/api/market/verify/sellers/${enc(profileId)}/${action}`, json('POST', { reason }));
 
+export interface SellerAdminRow {
+  id: string; shopName: string; status: string; verification: string; taxKind: string | null; suspended: boolean;
+  suspendReason: string; suspendedAt: string | null; owner: string; username: string; products: number;
+}
+export interface PvzPointAdminRow {
+  id: string; title: string; city: string; address: string; active: boolean; staffClosed: boolean; blocked: boolean;
+  blockReason: string; blockedAt: string | null; ownerId: string | null; ownerStatus: string | null; owner: string | null; username: string | null;
+}
+export const apiAdminSellers = (q = '', status = 'all') => req<{ items: SellerAdminRow[] }>(`/api/market/verify/sellers${qs({ q, status })}`);
+export const apiAdminPvzPoints = (q = '', status = 'all') => req<{ items: PvzPointAdminRow[] }>(`/api/market/verify/pvz-points${qs({ q, status })}`);
+export const apiAdminPvzPointAction = (id: string, action: 'block' | 'unblock', reason: string) =>
+  req<{ ok: true }>(`/api/market/verify/pvz-points/${enc(id)}/${action}`, json('POST', { reason }));
+
 export interface ModRow {
   id: string; title: string; sellerId: string; shopName: string; status: ModerationStatus; category: string;
   marketType: string; originCountry: string | null; shipFromCountry: string | null; foreign: boolean; submittedAt: string | null;

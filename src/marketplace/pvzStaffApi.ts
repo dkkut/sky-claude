@@ -38,6 +38,8 @@ export interface PvzOverview {
   active: boolean;
   staffClosed: boolean;
   staffClosedReason: string;
+  adminBlocked?: boolean;
+  adminBlockReason?: string;
   hasOwner: boolean;
   ownerStatus: PvzOwnerStatus;
   myRole: PvzRole;

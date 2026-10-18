@@ -17,6 +17,7 @@ import {
   verificationConfig, myVerification, saveApplication, startChangeRequest, submitApplication,
   reserveDoc, finishDoc, listMyDocs, dropDoc, removeMyDoc, docForReading, reviewDoc,
   listApplications, readApplicationAdmin, decideApplication, sellerAdminAction,
+  listSellersAdmin, listPvzPointsAdmin, pvzPointAdminAction,
   myPvzApplication, savePvzApplication, submitPvzApplication,
   listPvzApplications, readPvzApplicationAdmin, decidePvzApplication,
 } from './../sellerapps.mjs';
@@ -267,6 +268,20 @@ export const marketVerifyRoutes = async (req, res, url) => {
   if (req.method === 'POST' && docReview) {
     const b = await body();
     const r = await reviewDoc(me, docReview[1], b.accept === true, b.comment, { meta });
+    return r.error ? fail(res, r) : json(res, 200, r);
+  }
+  if (req.method === 'GET' && path === '/api/market/verify/sellers') {
+    const r = await listSellersAdmin(me, { q: params.get('q') ?? '', status: word(params.get('status'), 'all') });
+    return r.error ? fail(res, r) : json(res, 200, r);
+  }
+  if (req.method === 'GET' && path === '/api/market/verify/pvz-points') {
+    const r = await listPvzPointsAdmin(me, { q: params.get('q') ?? '', status: word(params.get('status'), 'all') });
+    return r.error ? fail(res, r) : json(res, 200, r);
+  }
+  const pvzPointAct = path.match(/^\/api\/market\/verify\/pvz-points\/([A-Za-z0-9_-]{3,80})\/(block|unblock)$/);
+  if (req.method === 'POST' && pvzPointAct) {
+    const b = await body();
+    const r = await pvzPointAdminAction(me, pvzPointAct[1], pvzPointAct[2], b.reason, { meta });
     return r.error ? fail(res, r) : json(res, 200, r);
   }
   const sellerAct = path.match(/^\/api\/market\/verify\/sellers\/(acc-[0-9a-f-]{36})\/(suspend|reinstate|reverify)$/);

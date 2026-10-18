@@ -81,7 +81,7 @@ export const listPickupPoints = async ({ city, limit } = {}) => {
   /* staff_closed — временное решение самой точки (переучёт, авария),
      отдельное от active (039, решает Sky-администрация): пункт
      остаётся в системе, но заказ туда сейчас не повезёшь. */
-  let where = 'active AND NOT staff_closed';
+  let where = 'active AND NOT staff_closed AND NOT admin_blocked';
   if (city) { args.unshift(text(city, 80)); where += ' AND city = $1'; }
   const { rows } = await query(
     `SELECT id, title, city, address, phone, work_from, work_to, hold_days
@@ -227,7 +227,7 @@ export const shipOrder = async (orderId, sellerId, input = {}) => {
     let point = null;
     if (destination === 'pickup_point') {
       const { rows: p } = await client.query(
-        'SELECT * FROM market_pickup_points WHERE id = $1 AND active AND NOT staff_closed', [pointId]);
+        'SELECT * FROM market_pickup_points WHERE id = $1 AND active AND NOT staff_closed AND NOT admin_blocked', [pointId]);
       point = p[0];
       if (!point) { await client.query('ROLLBACK'); return { error: 'bad_pickup_point' }; }
     }

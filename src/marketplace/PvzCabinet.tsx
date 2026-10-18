@@ -80,6 +80,7 @@ const OverviewTab = ({ pvz, onChanged }: { pvz: PvzOverview; onChanged: () => vo
         </div>
       )}
 
+      {pvz.adminBlocked && <Alert kind="error" text={`Точка заблокирована администрацией Sky: ${pvz.adminBlockReason || 'причина не указана'}. Заказы в неё не принимаются.`} />}
       {pvz.staffClosed && <Alert kind="info" text={`Точка временно закрыта сотрудниками. ${pvz.staffClosedReason || ''}`} />}
 
       <div className="grid grid-cols-2 gap-2">
