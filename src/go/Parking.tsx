@@ -6,7 +6,7 @@ import { flash } from '@/shared/flash';
 import { pk, newIdem, KIND_LABEL, LOT_STATUS, tariffText, type PkLot, type PkOrg, type PkSession, type PkTariff } from './parkingApi';
 import { Back, Btn, Card, Chip, Col, Empty, ErrorState, Input, Notice, Segmented, fail, useLoad, C, GO, fmt } from './ui';
 
-type Tab = 'find' | 'sessions' | 'cars' | 'org';
+type Tab = 'find' | 'sessions' | 'cars';
 const dur = (s: number) => { const m = Math.max(0, Math.floor(s / 60)); return m >= 60 ? `${Math.floor(m / 60)} ч ${m % 60} мин` : `${m} мин`; };
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
@@ -18,11 +18,10 @@ export const ParkingScreen = ({ city, onBack }: { city: string; onBack: () => vo
     <>
       <Back onClick={onBack} title="Парковки" />
       <Col gap={12}>
-        <Segmented<Tab> value={tab} onChange={setTab} options={[{ v: 'find', t: 'Найти' }, { v: 'sessions', t: 'Мои' }, { v: 'cars', t: 'Авто' }, { v: 'org', t: 'Для бизнеса' }]} />
+        <Segmented<Tab> value={tab} onChange={setTab} options={[{ v: 'find', t: 'Найти' }, { v: 'sessions', t: 'Мои' }, { v: 'cars', t: 'Авто' }]} />
         {tab === 'find' && <Find city={city} onOpen={setLot} />}
         {tab === 'sessions' && <Sessions />}
         {tab === 'cars' && <Cars />}
-        {tab === 'org' && <OrgCabinet />}
       </Col>
     </>
   );
@@ -362,5 +361,13 @@ const OrgStaff = ({ org }: { org: PkOrg }) => {
     </Col>
   );
 };
+
+/** Кабинет владельца парковки — открывается из «Работа» в Sky GO. */
+export const ParkingOwnerScreen = ({ onBack }: { onBack: () => void }) => (
+  <>
+    <Back onClick={onBack} title="Владелец парковки" />
+    <OrgCabinet />
+  </>
+);
 
 export const ParkingTileIcon = ParkingCircle;

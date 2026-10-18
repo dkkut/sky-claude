@@ -14,7 +14,7 @@ import { AutoScreen, FuelScreen, type AutoKind } from './Fuel';
 import { RegisterScreen, StatusChip } from './Register';
 import { TravelScreen, type TravelTab } from './Travel';
 import { StayCabinet } from './StayCabinet';
-import { ParkingScreen } from './Parking';
+import { ParkingScreen, ParkingOwnerScreen } from './Parking';
 import { DriverCabinet, SellerCabinet, CompanyCabinet, PayDetailsCard } from './Cabinet';
 import { bizApi, type OrgRole, type Member, type AssignMode, type Workspaces } from './bizApi';
 import { BusinessWorkspace } from './Business';
@@ -22,7 +22,7 @@ import { ExecutorWorkspace } from './Work';
 import { DeliveryForm as OrgDeliveryForm, type OrgFormCtx } from './Delivery';
 
 type Tab = 'home' | 'orders' | 'work' | 'profile';
-type Screen = null | { biz: string; name: string; role: OrgRole; order?: string } | { bizNew: OrgFormCtx & { role: OrgRole } } | { work: 'courier' | 'taxi_driver' } | 'taxi' | 'food' | 'delivery' | { delivery: DeliveryMode } | { auto: AutoKind | null } | 'flights' | 'fuel' | 'parking' | { order: string } | { travel: TravelTab } | { role: GoRole; mode: 'register' | 'cabinet' };
+type Screen = null | { biz: string; name: string; role: OrgRole; order?: string } | { bizNew: OrgFormCtx & { role: OrgRole } } | { work: 'courier' | 'taxi_driver' } | 'taxi' | 'food' | 'delivery' | { delivery: DeliveryMode } | { auto: AutoKind | null } | 'flights' | 'fuel' | 'parking' | 'parkingOwner' | { order: string } | { travel: TravelTab } | { role: GoRole; mode: 'register' | 'cabinet' };
 
 const SERVICES = [
   { key: 'taxi', title: 'Такси', hint: 'Поездка по городу', Icon: Car },
@@ -88,6 +88,7 @@ export const SkyGo = () => {
     if (screen === 'delivery') return <DeliveryHub hasCompany={executors.some((e) => e.role === 'company' && e.status === 'approved')} onBack={() => setScreen(null)} onPick={(m) => (m === 'company' ? void openCompanyOrder() : setScreen({ delivery: m }))} />;
     if (screen && typeof screen === 'object' && 'delivery' in screen) return <DeliveryForm mode={screen.delivery} city={city} cargo={config.cargo} onBack={() => setScreen('delivery')} onCreated={open} />;
     if (screen === 'flights') return <TravelScreen initial="flights" cities={config.cities} city={city} onCity={setCity} onBack={() => setScreen(null)} onBooked={open} onOrders={() => goTab('orders')} />;
+    if (screen === 'parkingOwner') return <ParkingOwnerScreen onBack={() => setScreen(null)} />;
     if (screen === 'parking') return <ParkingScreen city={city} onBack={() => setScreen(null)} />;
     if (screen === 'fuel') return <AutoScreen city={city} onBack={() => setScreen(null)} onOpen={(k) => setScreen({ auto: k })} />;
     if (screen && typeof screen === 'object' && 'auto' in screen && screen.auto) return <FuelScreen city={city} kind={screen.auto} onBack={() => setScreen('fuel')} />;
@@ -109,7 +110,7 @@ export const SkyGo = () => {
       );
     }
     if (tab === 'orders') return <OrdersTab onOpen={open} />;
-    if (tab === 'work') return <WorkTab executors={executors} tariffs={config.tariffs} workspaces={workspaces} onPick={(role, mode) => setScreen({ role, mode })} onBiz={openBiz} onWork={openWork} onInvite={async (orgId, accept) => { const r = await bizApi.respondInvite(orgId, accept); if (!r.ok) return fail(r); flash(accept ? 'Вы в команде' : 'Приглашение отклонено'); reloadWs(); }} />;
+    if (tab === 'work') return <WorkTab executors={executors} tariffs={config.tariffs} workspaces={workspaces} onPick={(role, mode) => setScreen({ role, mode })} onBiz={openBiz} onWork={openWork} onParking={() => setScreen('parkingOwner')} onInvite={async (orgId, accept) => { const r = await bizApi.respondInvite(orgId, accept); if (!r.ok) return fail(r); flash(accept ? 'Вы в команде' : 'Приглашение отклонено'); reloadWs(); }} />;
     if (tab === 'profile') return <ProfileTab executors={executors} />;
     return (
       <Col gap={14}>
@@ -153,7 +154,7 @@ export const SkyGo = () => {
   );
 };
 
-const WorkTab = ({ executors, tariffs, workspaces, onPick, onBiz, onWork, onInvite }: { executors: any[]; tariffs: { tariffs: { code: string; priceRub: number; periodDays: number }[]; roleTariff: Record<GoRole, string> }; workspaces: Workspaces | null; onPick: (r: GoRole, m: 'register' | 'cabinet') => void; onBiz: (o: { id: string; name: string; role: OrgRole }) => void; onWork: (r: 'courier' | 'taxi_driver') => void; onInvite: (orgId: string, accept: boolean) => void }) => {
+const WorkTab = ({ executors, tariffs, workspaces, onPick, onBiz, onWork, onParking, onInvite }: { executors: any[]; tariffs: { tariffs: { code: string; priceRub: number; periodDays: number }[]; roleTariff: Record<GoRole, string> }; workspaces: Workspaces | null; onPick: (r: GoRole, m: 'register' | 'cabinet') => void; onBiz: (o: { id: string; name: string; role: OrgRole }) => void; onWork: (r: 'courier' | 'taxi_driver') => void; onParking: () => void; onInvite: (orgId: string, accept: boolean) => void }) => {
   const price = (r: GoRole) => { const t = tariffs.tariffs.find((x) => x.code === tariffs.roleTariff[r]); return t ? `${fmt(t.priceRub)} / ${t.periodDays} дн.` : ''; };
   const ROLES: { role: GoRole; group: string; text: string }[] = [
     { role: 'taxi_driver', group: 'Водитель', text: 'Возите пассажиров на своём автомобиле' },
@@ -184,6 +185,11 @@ const WorkTab = ({ executors, tariffs, workspaces, onPick, onBiz, onWork, onInvi
       {spaces.map((sp) => <Card key={sp.key} onClick={sp.go}><div style={{ fontWeight: 800, color: C.t1 }}>{sp.title}</div><div style={{ fontSize: 13, color: C.t2 }}>{sp.hint}</div><div style={{ fontSize: 12.5, color: GO, marginTop: 4 }}>Открыть →</div></Card>)}
       <div style={{ fontWeight: 800, color: C.t1, marginTop: 6 }}>Регистрация и кабинеты</div>
       <Notice>Работать можно как самозанятый (НПД), ИП или ООО. Заявку проверяют сотрудники Sky вручную. Подписка — на 7 дней, без автосписаний.</Notice>
+      <Card onClick={onParking}>
+        <div style={{ fontWeight: 800, color: C.t1 }}>Владелец парковки</div>
+        <div style={{ fontSize: 13, color: C.t2, margin: '4px 0' }}>Свои парковки, тарифы, сессии и возвраты. Карточки проверяет администрация Sky.</div>
+        <div style={{ fontSize: 12.5, color: GO }}>Открыть кабинет →</div>
+      </Card>
       {ROLES.map(({ role, group, text }) => {
         const ex = executors.find((e) => e.role === role);
         const approved = ex?.status === 'approved';
