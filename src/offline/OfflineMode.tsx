@@ -17,8 +17,8 @@ export const OfflineMode = ({ onRetryOnline }: Props) => {
   return (
     <div className="flex flex-col h-full w-full" style={{ background: 'var(--bg)' }}>
       {/* Offline header */}
-      <div className="shrink-0 px-4 pt-4 pb-3"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="shrink-0 px-4 pb-3"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="grid h-8 w-8 place-items-center rounded-full"

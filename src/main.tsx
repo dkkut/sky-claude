@@ -303,7 +303,7 @@ const Splash = ({ offline, minimal, onSkip }: { offline: boolean; minimal?: bool
       </div>
 
       {/* Компания: небольшая подпись внизу */}
-      <div style={{ position:'absolute', bottom:14, left:0, right:0, zIndex:1, opacity: textVisible ? 1 : 0, transition:'opacity 0.8s ease 0.8s' }}>
+      <div style={{ position:'absolute', bottom:'calc(env(safe-area-inset-bottom, 0px) + 48px)', left:0, right:0, zIndex:1, opacity: textVisible ? 1 : 0, transition:'opacity 0.8s ease 0.8s' }}>
         <KutLandMark light={light}/>
       </div>
 

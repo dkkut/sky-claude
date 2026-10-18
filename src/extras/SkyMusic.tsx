@@ -2633,12 +2633,14 @@ export const SkyMusic = () => {
         <h1 className={isMobile ? 'text-[15px] font-bold' : 'text-lg font-bold'} style={{ color: YM.text }}>
           {tab === 'home' ? 'Sky Music' : tab === 'collection' ? 'Коллекция' : tab === 'charts' ? 'Чарты' : tab === 'upload' ? 'Загрузить' : tab === 'import' ? 'Перенос музыки' : tab === 'musician' ? 'Профиль артиста' : 'История'}
         </h1>
+        {tab !== 'home' && (
         <button type="button"
           onClick={() => setShowSrch(true)}
           className={isMobile ? 'ml-2 grid h-7 w-7 place-items-center rounded-full transition-colors hover:bg-white/10 shrink-0' : 'ml-2 grid h-9 w-9 place-items-center rounded-full transition-colors hover:bg-white/10 shrink-0'}
           style={{ color: YM.sub }}>
           <Search size={isMobile ? 15 : 18} />
         </button>
+        )}
       </header>
 
       {showSrch && (
@@ -2655,7 +2657,7 @@ export const SkyMusic = () => {
           <>
             {tab === 'home'       && <SkyMusicHome tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom}
               loading={musicLoading} error={musicError}
-              onRetry={() => void loadMusic({ force: true })} onUpload={() => setTab('upload')}/>}
+              onRetry={() => void loadMusic({ force: true })} onUpload={() => setTab('upload')} onSearch={() => setShowSrch(true)}/>}
             {tab === 'collection' && <SkyMusicLibrary tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} onLike={onLike}
               onArtist={setArtist} onOpenUpload={() => setTab('upload')} onOpenImport={() => setTab('import')}/>}
             {tab === 'charts'     && <ChartsTab     {...tabProps} />}

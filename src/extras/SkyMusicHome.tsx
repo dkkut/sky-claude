@@ -149,12 +149,12 @@ const Section = ({ title, icon: Icon, index, children, empty }: {
 );
 
 export const SkyMusicHome = ({
-  tracks, favorites, playing, activeId, onPlay, loading, error, onRetry, onUpload,
+  tracks, favorites, playing, activeId, onPlay, loading, error, onRetry, onUpload, onSearch,
 }: {
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
   onPlay: (t: Track, pool: Track[]) => void;
   loading?: boolean; error?: string | null;
-  onRetry?: () => void; onUpload?: () => void;
+  onRetry?: () => void; onUpload?: () => void; onSearch?: () => void;
 }) => {
   const pub = useMemo(() => tracks.filter(t => t.status === 'published'), [tracks]);
   const fresh = useMemo(() => [...pub].sort((a,b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 10), [pub]);
@@ -277,9 +277,9 @@ export const SkyMusicHome = ({
           className="text-[24px] font-extrabold" style={{ color: '#fafafb', letterSpacing: '-0.03em' }}>
           {greeting()}
         </motion.p>
-        <div className="grid h-9 w-9 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <button type="button" onClick={onSearch} aria-label="Поиск" className="grid h-11 w-11 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
           <Search size={16} style={{ color: '#c7ccd6' }}/>
-        </div>
+        </button>
       </div>
 
       {/* «Мой поток» — сфера вместо плоской карточки.

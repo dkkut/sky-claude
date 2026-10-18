@@ -54,6 +54,6 @@ export const CancelAddAccount = () => {
   const prev = addingFrom();
   if (!prev) return null;
   return (
-    <button type="button" onClick={() => go(prev)} className="fixed left-3 top-3 z-50 rounded-xl px-3 py-2 text-xs font-bold" style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }}>← Отмена, остаться в прежнем Sky ID</button>
+    <button type="button" onClick={() => go(prev)} className="fixed left-3 z-50 rounded-xl px-3 py-2 text-xs font-bold" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)', background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }}>← Отмена, остаться в прежнем Sky ID</button>
   );
 };

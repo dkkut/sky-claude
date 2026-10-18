@@ -244,7 +244,17 @@ interface NftGiftsState {
   log:           (action: string, description: string) => void;
 }
 
-const stored = load();
+/** Выдуманные владельцы прежних версий. В старом сохранённом состоянии браузера они остались и показывались как настоящие люди. */
+const DEMO_OWNER_IDS = new Set(OWNER_POOL.map((o) => o.id));
+const cleanStored = (d: any) => {
+  if (!d || !Array.isArray(d.gifts)) return d;
+  return {
+    ...d,
+    gifts: d.gifts.map((g: Gift) => (DEMO_OWNER_IDS.has(g.ownerId) ? { ...g, ownerId: MINT_OWNER.id, ownerName: MINT_OWNER.name } : g)),
+    provenance: Array.isArray(d.provenance) ? d.provenance.filter((p: ProvenanceEntry) => !DEMO_OWNER_IDS.has(p.fromId ?? '') && !DEMO_OWNER_IDS.has(p.toId ?? '')) : d.provenance,
+  };
+};
+const stored = cleanStored(load());
 const seedCollections = stored?.collections ?? buildCollections();
 const seedGiftsData = stored ? { gifts: stored.gifts, provenance: stored.provenance } : buildGifts(seedCollections);
 
