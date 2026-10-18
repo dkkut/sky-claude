@@ -13,6 +13,11 @@ set -euo pipefail
 cd "${APP_DIR:-/opt/sky}"
 command -v gpg >/dev/null 2>&1 || { echo "Нужен gpg: apt-get install -y gnupg"; exit 1; }
 ENVF="${ENV_FILE:-.env}"
+# Пароль спрашиваем сами и отдаём gpg через дескриптор (--pinentry-mode loopback): иначе в SSH без tty (телефон, Termius)
+# gpg падает с «Inappropriate ioctl for device». Пароль не попадает ни в аргументы, ни в историю, ни в файлы.
+export GPG_TTY="$(tty 2>/dev/null || true)"
+ask() { local p; if [ -r /dev/tty ] && { : </dev/tty; } 2>/dev/null; then read -rsp "$1" p </dev/tty; else read -rsp "$1" p; fi; echo >&2; printf '%s' "$p"; }
+G=(gpg --batch --yes --pinentry-mode loopback --quiet)
 PATTERN='^(ENCRYPTION_KEY|JWT_SECRET|REFRESH_TOKEN_SECRET|STORAGE_KEK_[A-Za-z0-9_]+|STORAGE_KEK_ACTIVE)='
 pick() { grep -E "$PATTERN" "$ENVF" || true; }
 names() { sed -E 's/=.*//' | sort; }
@@ -25,16 +30,22 @@ case "${1:-}" in
     [ -n "$payload" ] || { echo "Нет ни одного ключа для копирования."; exit 1; }
     out="sky-keys-$(date +%Y%m%d-%H%M%S).gpg"
     umask 077
-    printf '%s\n' "$payload" | gpg --batch=false --yes --symmetric --cipher-algo AES256 --s2k-mode 3 --s2k-count 65011712 --s2k-digest-algo SHA512 -o "$out"
-    # проверка: расшифровывается и совпадает (пароль вводится ещё раз)
-    if ! gpg --quiet --decrypt "$out" 2>/dev/null | cmp -s - <(printf '%s\n' "$payload"); then rm -f "$out"; echo "✖ Проверка не прошла (пароль при повторном вводе не совпал?). Файл удалён."; exit 1; fi
+    pw1="$(ask 'Придумайте пароль для файла: ')"; pw2="$(ask 'Повторите пароль: ')"
+    [ -n "$pw1" ] && [ "${#pw1}" -ge 12 ] || { echo "Пароль слишком короткий — нужно от 12 знаков."; exit 1; }
+    [ "$pw1" = "$pw2" ] || { echo "Пароли не совпали. Ничего не создано."; exit 1; }
+    "${G[@]}" --symmetric --cipher-algo AES256 --s2k-mode 3 --s2k-count 65011712 --s2k-digest-algo SHA512 --passphrase-fd 3 -o "$out" 3<<<"$pw1" <<<"$payload"
+    # проверка: файл расшифровывается введённым паролем и совпадает
+    if ! "${G[@]}" --decrypt --passphrase-fd 3 "$out" 3<<<"$pw1" 2>/dev/null | cmp -s - <(printf '%s\n' "$payload"); then rm -f "$out"; echo "✖ Проверка не прошла. Файл удалён."; exit 1; fi
+    unset pw1 pw2
     chmod 600 "$out"
     echo "✔ Создан $PWD/$out. Внутри ключи: $(printf '%s\n' "$payload" | names | tr '\n' ' ')"
     echo "  Дальше: скачайте файл с сервера, сохраните ВНЕ сервера, затем удалите его здесь: shred -u $out"
     ;;
   verify|compare)
     f="${2:-}"; [ -f "$f" ] || { echo "Укажите файл: $0 $1 sky-keys-….gpg"; exit 1; }
-    dec="$(gpg --quiet --decrypt "$f")" || { echo "✖ Файл не открылся (неверный пароль или повреждён)."; exit 1; }
+    pw="$(ask 'Пароль от файла: ')"
+    dec="$("${G[@]}" --decrypt --passphrase-fd 3 "$f" 3<<<"$pw" 2>/dev/null)" || { echo "✖ Файл не открылся (неверный пароль или повреждён)."; exit 1; }
+    unset pw
     echo "✔ Файл открывается. Ключи внутри: $(printf '%s\n' "$dec" | names | tr '\n' ' ')"
     printf '%s\n' "$dec" | grep -q '^ENCRYPTION_KEY=.\{16,\}' || echo "⚠ ENCRYPTION_KEY в файле отсутствует или слишком короткий."
     if [ "$1" = compare ]; then

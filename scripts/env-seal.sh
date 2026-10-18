@@ -14,6 +14,7 @@
 # Ограничение, о котором надо знать: пока контейнеры работают, секреты есть в их окружении (docker inspect, root на хосте их увидит) —
 # шифрование .env защищает файл на диске и его копии, а не работающий процесс.
 set -euo pipefail
+export GPG_TTY="$(tty 2>/dev/null || true)"   # без этого в SSH с телефона gpg пишет «Inappropriate ioctl for device»
 cd "${APP_DIR:-/opt/sky}"
 command -v gpg >/dev/null 2>&1 || { echo "Нужен gpg: apt-get install -y gnupg"; exit 1; }
 ENC=".env.gpg"
