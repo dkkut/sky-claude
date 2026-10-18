@@ -285,3 +285,49 @@ export const unmerge = async (adminId, cardId, reason) => {
   await logAdmin({ actorId: adminId, targetType: 'content', type: 'artist_unmerge', detail: `${cardId} — ${why}` });
   return { ok: true };
 };
+
+/* ─── Админка: реестр карточек и передача владельца (модуль 9) ─────────── */
+
+export const adminList = async (adminId, { q, owner, limit, offset } = {}) => {
+  if (!(await can(adminId, 'content'))) return { error: 'not_allowed' };
+  const lim = Math.min(100, Math.max(1, Number(limit) || 50)); const off = Math.max(0, Number(offset) || 0);
+  const args = []; let where = 'c.merged_into IS NULL AND NOT c.hidden';
+  const needle = norm(q); const raw = String(q ?? '').trim();
+  if (raw) {
+    args.push(raw); const idPos = args.length;
+    args.push(`%${needle.replace(/([\\%_])/g, '\\$1')}%`);
+    where += ` AND (c.id = $${idPos} OR c.owner_id = $${idPos} OR c.name_norm LIKE $${args.length} ESCAPE '\\')`;
+  }
+  if (owner === 'none') where += ' AND c.owner_id IS NULL'; else if (owner === 'has') where += ' AND c.owner_id IS NOT NULL';
+  args.push(lim, off);
+  const { rows } = await query(`SELECT c.*, p.username AS owner_username, ${COUNT} FROM music_artist_cards c LEFT JOIN profiles p ON p.id = c.owner_id WHERE ${where} ORDER BY c.name LIMIT $${args.length - 1} OFFSET $${args.length}`, args);
+  return { cards: rows.map((r) => ({ id: r.id, name: r.name, ownerId: r.owner_id ?? null, ownerUsername: r.owner_username ?? null, tracks: Number(r.tracks), autoCreated: r.auto_created === true, updatedAt: r.updated_at })), limit: lim, offset: off };
+};
+
+/** Передача владельца карточки другому аккаунту: решает сотрудник, причина обязательна, всё в одной транзакции. Треки, релизы и id не меняются. */
+export const transferOwner = async (adminId, cardId, toUsername, reason) => {
+  if (!(await can(adminId, 'content'))) return { error: 'not_allowed' };
+  const why = clean(reason, MAX_REASON); if (why.length < 5) return { error: 'reason_required' };
+  const uname = clean(toUsername, 40).replace(/^@/, '').toLowerCase();
+  const to = (await query('SELECT id, username FROM profiles WHERE lower(username) = $1', [uname])).rows[0];
+  if (!to) return { error: 'user_not_found' };
+  const client = await pool.connect();
+  let from;
+  try {
+    await client.query('BEGIN');
+    const c = (await client.query('SELECT * FROM music_artist_cards WHERE id=$1 AND merged_into IS NULL AND NOT hidden FOR UPDATE', [String(cardId ?? '')])).rows[0];
+    if (!c) { await client.query('ROLLBACK'); return { error: 'not_found' }; }
+    from = c.owner_id;
+    if (from === to.id) { await client.query('ROLLBACK'); return { error: 'already_owner' }; }
+    if (to.id === adminId || from === adminId) { await client.query('ROLLBACK'); return { error: 'self_review' }; }    // сотрудник не передаёт карточку себе и от себя
+    await client.query('UPDATE music_artist_claims SET status=\'revoked\', decided_by=$2, decided_at=now(), reason=$3 WHERE card_id=$1 AND status IN (\'approved\',\'pending\')', [c.id, adminId, encryptContent(`Передача владельца: ${why}`)]);
+    await client.query('UPDATE music_artist_cards SET owner_id=$2, updated_at=now() WHERE id=$1', [c.id, to.id]);
+    await client.query(`INSERT INTO music_artist_claims (id, card_id, claimant_id, status, decided_by, decided_at, reason) VALUES ($1,$2,$3,'approved',$4,now(),$5)`, [newId('clm'), c.id, to.id, adminId, encryptContent(`Передача владельца: ${why}`)]);
+    await client.query('COMMIT');
+  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+  await log(cardId, 'owner_transferred', adminId, { from: from ?? null, to: to.id, reason: why });
+  await logAdmin({ actorId: adminId, targetId: to.id, type: 'artist_owner_transfer', detail: `${cardId}: ${from ?? '—'} → ${to.id} — ${why}` });
+  if (from) await notifyGift(from, 'artist_card', 'Карточка музыканта передана', 'Администрация передала карточку другому аккаунту.', cardId).catch(() => {});
+  await notifyGift(to.id, 'artist_card', 'Вам передана карточка музыканта', 'Теперь вы владелец карточки. Треки и релизы сохранены.', cardId).catch(() => {});
+  return { ok: true };
+};

@@ -365,7 +365,7 @@ export const musicRoutes = async (req, res, url) => {
 
       const cover = tail === '/cover';
       if (cover && !row.has_cover) return json(res, 404, { error: 'not_found' });
-      const fileId = cover ? `cov-${id.slice(4)}` : id;
+      const fileId = cover ? `cov-${id.slice(4)}` : (row.audio_file || id);
       const size = await sizeOf(fileId);
       if (size === null) return json(res, 404, { error: 'not_found' });
 

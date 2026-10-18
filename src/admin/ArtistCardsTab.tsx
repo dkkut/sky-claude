@@ -68,6 +68,9 @@ export const ArtistCardsTab = () => {
         {!pairs.length && <p className="text-[12.5px]" style={{ color: C.t3 }}>Похожих карточек не найдено</p>}
       </section>
 
+      <Registry reason={reason} onDone={() => { setReason(''); }} />
+      <Royalty />
+
       <section className="space-y-2 rounded-xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
         <p className="text-[13px] font-bold" style={{ color: C.t1 }}>Отменить объединение</p>
         <div className="flex gap-2">
@@ -78,3 +81,68 @@ export const ArtistCardsTab = () => {
     </div>
   );
 };
+
+/* ─── Реестр карточек и передача владельца ─── */
+interface Row { id: string; name: string; ownerId: string | null; ownerUsername: string | null; tracks: number }
+const Registry = ({ reason }: { reason: string; onDone: () => void }) => {
+  const [q, setQ] = useState(''); const [own, setOwn] = useState(''); const [rows, setRows] = useState<Row[] | null>(null);
+  const [to, setTo] = useState<Record<string, string>>({});
+  const load = useCallback(async () => {
+    const r = await apiCall<{ cards: Row[] }>(`/api/admin/artist-cards?q=${encodeURIComponent(q)}&owner=${own}&limit=50`);
+    setRows(r.ok ? r.data!.cards : []);
+  }, [q, own]);
+  useEffect(() => { const t = setTimeout(() => void load(), 250); return () => clearTimeout(t); }, [load]);
+  const transfer = async (id: string) => {
+    const u = (to[id] ?? '').trim(); if (!u) return flash('Укажите @ник получателя.');
+    if (!window.confirm(`Передать карточку ${u.startsWith('@') ? u : '@' + u}? Треки и релизы сохранятся, прежний владелец потеряет доступ.`)) return;
+    const r = await apiCall(`/api/admin/artist-cards/${id}/transfer`, { method: 'POST', body: JSON.stringify({ username: u, reason }) });
+    flash(r.ok ? 'Карточка передана' : (ERR[r.error ?? ''] ?? (r.error === 'user_not_found' ? 'Человек с таким ником не найден.' : r.error === 'already_owner' ? 'Он уже владелец.' : 'Не получилось')));
+    if (r.ok) { setTo({ ...to, [id]: '' }); void load(); }
+  };
+  return (
+    <section className="space-y-2">
+      <p className="text-[13px] font-bold" style={{ color: C.t1 }}>Все карточки и передача владельца</p>
+      <div className="flex gap-2">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Название, id карточки или id владельца" className="min-w-0 flex-1 rounded-xl px-3 py-2 text-xs" style={field} />
+        <select value={own} onChange={(e) => setOwn(e.target.value)} className="rounded-xl px-2 text-xs" style={field}><option value="">Все</option><option value="has">С владельцем</option><option value="none">Без владельца</option></select>
+      </div>
+      {!rows ? <p className="text-[12px]" style={{ color: C.t3 }}>Загрузка…</p> : rows.length === 0 ? <p className="text-[12.5px]" style={{ color: C.t3 }}>Ничего не найдено</p> : rows.map((c) => (
+        <div key={c.id} className="space-y-1.5 rounded-xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+          <p className="text-[13px] font-semibold" style={{ color: C.t1 }} translate="no">{c.name} <span className="font-normal" style={{ color: C.t3 }}>· треков: {c.tracks}</span></p>
+          <p className="text-[11.5px]" style={{ color: C.t3 }} translate="no">{c.id} · владелец: {c.ownerUsername ? `@${c.ownerUsername}` : c.ownerId ?? 'нет'}</p>
+          <div className="flex gap-2">
+            <input value={to[c.id] ?? ''} onChange={(e) => setTo({ ...to, [c.id]: e.target.value })} placeholder="@ник нового владельца" className="min-w-0 flex-1 rounded-xl px-3 py-1.5 text-xs" style={field} />
+            <button type="button" onClick={() => void transfer(c.id)} className="rounded-xl px-3 py-1.5 text-xs font-bold text-white" style={{ background: C.acc }}>Передать</button>
+          </div>
+        </div>))}
+      <p className="text-[11.5px]" style={{ color: C.t3 }}>Причина берётся из поля выше (не короче 5 знаков). Новый владелец правит только треки, загруженные им самим; id карточки и все треки остаются на месте.</p>
+    </section>
+  );
+};
+
+/* ─── Роялти экосистемы (только владелец сервиса) ─── */
+const Royalty = () => {
+  const [d, setD] = useState<{ mode: string; artistsOn: number; artistsWithOwner: number; note: string; log: { id: number; scope: string; card_id: string | null; old_value: string; new_value: string; reason: string; at: string }[] } | null>(null);
+  const [no, setNo] = useState(false); const [why, setWhy] = useState('');
+  const load = useCallback(async () => { const r = await apiCall<NonNullable<typeof d>>('/api/admin/music/royalty'); if (r.ok) setD(r.data!); else setNo(true); }, []);
+  useEffect(() => { void load(); }, [load]);
+  if (no) return null;
+  if (!d) return null;
+  const set = async (mode: string) => {
+    if (!window.confirm('Изменить режим роялти для всей экосистемы?')) return;
+    const r = await apiCall('/api/admin/music/royalty', { method: 'PUT', body: JSON.stringify({ mode, reason: why }) });
+    flash(r.ok ? 'Сохранено' : (r.error === 'reason_required' ? 'Укажите причину (не короче 5 знаков).' : 'Не получилось')); if (r.ok) { setWhy(''); void load(); }
+  };
+  const LBL: Record<string, string> = { per_artist: 'По настройке артиста', all_on: 'Включено у всех', all_off: 'Выключено у всех' };
+  return (
+    <section className="space-y-2 rounded-xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <p className="text-[13px] font-bold" style={{ color: C.t1 }}>Роялти экосистемы</p>
+      <p className="text-[12px]" style={{ color: C.t2 }}>Режим: <b>{LBL[d.mode]}</b> · включили сами артисты: {d.artistsOn} из {d.artistsWithOwner}. Глобальный режим сильнее настройки артиста.</p>
+      <input value={why} onChange={(e) => setWhy(e.target.value)} placeholder="Причина изменения (обязательна)" className="w-full rounded-xl px-3 py-2 text-xs" style={field} />
+      <div className="flex flex-wrap gap-2">{Object.entries(LBL).map(([m, t]) => <button key={m} type="button" onClick={() => void set(m)} disabled={d.mode === m} className="rounded-xl px-3 py-1.5 text-xs font-bold disabled:opacity-50" style={{ background: d.mode === m ? C.acc : C.l2, color: d.mode === m ? '#fff' : C.t1 }}>{t}</button>)}</div>
+      <p className="text-[11.5px]" style={{ color: C.t3 }}>{d.note}</p>
+      {d.log.slice(0, 15).map((l) => <p key={l.id} className="text-[11px]" style={{ color: C.t3 }} translate="no">{new Date(l.at).toLocaleString('ru-RU')} · {l.scope === 'global' ? 'глобально' : l.card_id}: {l.old_value} → {l.new_value}{l.reason ? ` — ${l.reason}` : ''}</p>)}
+    </section>
+  );
+};
+

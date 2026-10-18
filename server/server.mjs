@@ -33,6 +33,7 @@ import { supportRoutes } from './routes/support.mjs';
 import { directoryRoutes } from './routes/directory.mjs';
 import { fileRoutes } from './routes/files.mjs';
 import { musicRoutes } from './routes/music.mjs';
+import { musicStudioRoutes } from './routes/musicstudio.mjs';
 import { filmRoutes } from './routes/film.mjs';
 import { filmSeriesRoutes } from './routes/filmseries.mjs';
 import { uploadLimitsRoutes } from './routes/uploadlimits.mjs';
@@ -77,6 +78,7 @@ import { sweepExpired as goSweepExpired } from './gosubs.mjs';
 import { sweepOrgs } from './goorg.mjs';
 import { sweepDispatch } from './godispatch.mjs';
 import { sweepParking } from './parkingpay.mjs';
+import { sweepVersionFiles } from './musicstudio.mjs';
 import { sweepQuotes } from './gopricing.mjs';
 import { sweepFuel as goSweepFuel } from './gofuel.mjs';
 import { sweepStay as goSweepStay } from './gostay.mjs';
@@ -228,7 +230,7 @@ const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|m
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, artistCardsRoutes, skyLogsRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
+                supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, artistCardsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
@@ -761,6 +763,7 @@ const start = async () => {
       await goSweepFuel().catch(() => {});
       await goSweepStay().catch(() => {});
       await sweepOnsite().catch((e) => console.error('[onsite] уборка:', e.message));
+      await sweepVersionFiles().catch((e) => console.error('[studio] уборка версий:', e.message));
       const staleRequests = await sweepPendingActions();
       if (staleRequests) console.log(`[админ] просрочено заявок: ${staleRequests}`);
       // Запуск рассылки, зависший в processing дольше окна (сервер упал
