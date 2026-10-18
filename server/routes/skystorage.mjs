@@ -10,6 +10,7 @@ import { json, requireProfile, parseBody, clientIp } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { can, isOwner } from './../admin.mjs';
 import { requestMeta, consumeStepUp, logAdmin } from './../adminsec.mjs';
+import * as DX from './../storagedirect.mjs';
 import { query } from './../db.mjs';
 import * as A from './../skystorageadmin.mjs';
 import * as B from './../skystoragebackup.mjs';
@@ -47,8 +48,9 @@ export const storageRoutes = async (req, res, url) => {
     const body = (await parseBody(req)) ?? {};
     const meta = requestMeta(req);
     res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store');
-    if (path.endsWith('lookup')) return json(res, 200, await X.lookupForPage(body.token, meta));
-    const r = await X.decideByToken(body.token, body.approve === true, body.code, meta);
+    const direct = DX.isDirectToken(body.token);
+    if (path.endsWith('lookup')) return json(res, 200, direct ? await DX.lookupForPage(body.token, meta) : await X.lookupForPage(body.token, meta));
+    const r = direct ? await DX.decideByToken(body.token, body.approve === true, body.code, meta) : await X.decideByToken(body.token, body.approve === true, body.code, meta);
     return json(res, r.error ? 400 : 200, r);   // не 401: клиент принял бы его за истёкшую сессию
   }
 

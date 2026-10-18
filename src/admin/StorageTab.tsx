@@ -446,6 +446,60 @@ const BackupStore = () => {
   );
 };
 
+/* ═══════════ Прямой доступ к хранилищу (S3-шлюз Sky, после подтверждения владельцем) ═══════════ */
+const Direct = () => {
+  const [d, setD] = useState<Data | null>(null);
+  const [scope, setScope] = useState('read'); const [minutes, setMinutes] = useState('15'); const [note, setNote] = useState('');
+  const [keys, setKeys] = useState<Data | null>(null); const [logOf, setLogOf] = useState<{ id: string; items: Data[] } | null>(null);
+  const load = useCallback(async () => { const r = await call('GET', '/direct'); if (r.ok) setD(r.data); else flash(errText(r.error)); }, []);
+  useEffect(() => { void load(); const t = window.setInterval(() => { if (!document.hidden) void load(); }, 6000); return () => window.clearInterval(t); }, [load]);
+  const ask = async () => { const r = await call('POST', '/direct/request', { scope, minutes: Number(minutes), note }); if (!r.ok) return flash(({ request_open: 'Уже есть открытый запрос.', reason_required: 'Опишите цель (от 5 знаков).', bad_minutes: 'Срок — от 5 до 60 минут.' } as Record<string, string>)[r.error ?? ''] ?? errText(r.error)); setNote(''); flash('Запрос отправлен — владелец получит письмо со ссылкой'); void load(); };
+  const claim = async (id: string) => { const r = await call('POST', `/direct/${id}/claim`); if (!r.ok) return flash(errText(r.error)); if (r.data.error === 'already_shown') return flash('Ключи уже были показаны один раз.'); if (r.data.accessKeyId) { setKeys(r.data); void load(); } else flash('Пока не подтверждено владельцем.'); };
+  const revoke = async (id: string) => { if (!window.confirm('Отозвать доступ сейчас?')) return; const r = await call('POST', `/direct/${id}/revoke`); flash(r.ok ? 'Доступ отозван' : errText(r.error)); void load(); };
+  const showLog = async (id: string) => { const r = await call('GET', `/direct/${id}/log`); if (r.ok) setLogOf({ id, items: r.data.items }); else flash(errText(r.error)); };
+  if (!d) return <Wait />;
+  const ST: Record<string, string> = { pending: 'ждёт владельца', approved: 'подтверждён', denied: 'отклонён', expired: 'истёк', revoked: 'отозван' };
+  return (
+    <div className="space-y-3">
+      <Card title="Прямой доступ к хранилищу">
+        <p className="text-[12px]" style={{ color: C.t2 }}>Настоящие ключи хостера знает только сервер Sky. Для входа консолью или клиентом S3 (aws cli, Cyberduck) запросите временные ключи: владелец получит письмо, подтвердит ссылкой и кодом — как при SSH. Ключи покажутся один раз и действуют выбранные минуты.</p>
+        <div className="flex flex-wrap gap-2">
+          <select value={scope} onChange={(e) => setScope(e.target.value)} className="rounded-xl px-2 py-1.5 text-xs" style={field}><option value="read">Только чтение</option><option value="readwrite">Чтение и запись</option></select>
+          <input value={minutes} onChange={(e) => setMinutes(e.target.value.replace(/\D/g, ''))} inputMode="numeric" aria-label="Минут" className="w-20 rounded-xl px-2 py-1.5 text-xs" style={field} />
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Зачем нужен доступ" className="min-w-0 flex-1 rounded-xl px-3 py-1.5 text-xs" style={field} />
+          <Btn onClick={() => void ask()} disabled={note.trim().length < 5}>Запросить</Btn>
+        </div>
+      </Card>
+      {keys && (
+        <Card title="Ваши временные ключи — показаны один раз" tone={C.amber}>
+          <p className="text-[12px]" style={{ color: C.t2 }}>Адрес (endpoint): <b translate="no">{keys.endpoint}</b> · бакет: <b translate="no">{keys.bucket}</b> · путь в адресе (path-style) · регион любой, например us-east-1 · действует до {dt(keys.expiresAt)} · {keys.scope === 'read' ? 'только чтение' : 'чтение и запись'}</p>
+          <p className="break-all text-[12px]" style={{ color: C.t1 }} translate="no">Access Key: {keys.accessKeyId}</p>
+          <p className="break-all text-[12px]" style={{ color: C.t1 }} translate="no">Secret: {keys.secretAccessKey}</p>
+          <p className="text-[11px]" style={{ color: C.t3 }}>Не сохраняйте в чатах и файлах. Загрузка — обычным PUT до 64 МБ (отключите потоковую подпись и многокомпонентную загрузку в клиенте). Файлы медиа лежат зашифрованными — через шлюз видно шифротекст.</p>
+          <Btn tone="plain" onClick={() => setKeys(null)}>Я сохранил, скрыть</Btn>
+        </Card>)}
+      <Card title="Запросы">
+        {d.items.length === 0 && <p className="text-[12px]" style={{ color: C.t3 }}>Запросов нет</p>}
+        {d.items.map((r: Data) => (
+          <div key={r.id} className="space-y-1 rounded-lg p-2" style={{ background: C.l2 }}>
+            <p className="text-[12.5px]" style={{ color: C.t1 }}>{r.scope === 'read' ? 'Чтение' : 'Чтение и запись'} · {r.minutes} мин · <b>{ST[r.status] ?? r.status}</b>{r.requester ? ` · @${r.requester}` : ''}</p>
+            <p className="text-[11px]" style={{ color: C.t3 }}>{dt(r.createdAt)}{r.status === 'approved' ? ` · до ${dt(r.accessUntil)}` : ''} — {r.note}</p>
+            <div className="flex flex-wrap gap-2">
+              {r.status === 'approved' && !r.secretShown && <Btn onClick={() => void claim(r.id)}>Получить ключи</Btn>}
+              {(r.status === 'approved' || r.status === 'pending') && <Btn tone="red" onClick={() => void revoke(r.id)}>Отозвать</Btn>}
+              <Btn tone="plain" onClick={() => void showLog(r.id)}>Журнал операций</Btn>
+            </div>
+          </div>))}
+      </Card>
+      {logOf && (
+        <Card title="Журнал операций">
+          {logOf.items.length === 0 ? <p className="text-[12px]" style={{ color: C.t3 }}>Операций не было</p> : logOf.items.map((x, i) => <p key={i} className="break-all text-[11px]" style={{ color: C.t2 }} translate="no">{dt(x.at)} · {x.op} · {x.key || '—'} · {x.status} · {x.net}</p>)}
+          <Btn tone="plain" onClick={() => setLogOf(null)}>Закрыть</Btn>
+        </Card>)}
+    </div>
+  );
+};
+
 /* ═══════════ Вкладка ═══════════ */
 export const StorageTab = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
   const [gate, setGate] = useState<Data | null>(null); const [tab, setTab] = useState('state');
@@ -458,7 +512,7 @@ export const StorageTab = ({ perms, owner }: { perms: string[]; owner: boolean }
       <p className="text-[12px]" style={{ color: C.t3 }}>Статус: {gate.status}{gate.pending?.expiresAt ? ` · действует до ${dt(gate.pending.expiresAt)}` : ''}</p>
     </Card>
   );
-  const tabs = [{ k: 'state', l: 'Состояние и безопасность' }, { k: 'backups', l: 'Резервные копии' }, { k: 'backupstore', l: 'Хранилище копий' }, { k: 'conn', l: 'Подключения', hide: !perms.includes('storage_access') && !owner }, { k: 'quota', l: 'Квоты и пороги' }, { k: 'log', l: 'Журнал', hide: !perms.includes('storage_audit') }].filter((t) => !t.hide);
+  const tabs = [{ k: 'state', l: 'Состояние и безопасность' }, { k: 'backups', l: 'Резервные копии' }, { k: 'backupstore', l: 'Хранилище копий' }, { k: 'conn', l: 'Подключения', hide: !perms.includes('storage_access') && !owner }, { k: 'direct', l: 'Прямой доступ', hide: !perms.includes('storage_direct') && !owner }, { k: 'quota', l: 'Квоты и пороги' }, { k: 'log', l: 'Журнал', hide: !perms.includes('storage_audit') }].filter((t) => !t.hide);
   return (
     <div className="space-y-3" data-storage-admin>
       <ScrollTabs>{tabs.map((t) => (
@@ -467,6 +521,7 @@ export const StorageTab = ({ perms, owner }: { perms: string[]; owner: boolean }
       {tab === 'backups' && <Backups perms={perms} owner={owner} />}
       {tab === 'backupstore' && <BackupStore />}
       {tab === 'conn' && <Connections owner={owner} />}
+      {tab === 'direct' && <Direct />}
       {tab === 'quota' && <Quotas perms={perms} />}
       {tab === 'log' && <Events />}
     </div>

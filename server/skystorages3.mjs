@@ -237,7 +237,24 @@ export const createS3 = (cfg = s3Config()) => {
         return { ok: true, ms: Date.now() - t0 };
       } catch (e) { return { ok: false, ms: Date.now() - t0, code: e.code ?? 'error', status: e.status ?? 0 }; }
     },
+    /** Сырой GET по бакету (для listPage). */
+    rawGet: (q) => call('GET', bucketPath(), { query: q }),
     readAll,
     toReadable: (b) => Readable.from(b),
   };
+};
+
+/** Одна страница ListObjectsV2 для шлюза прямого доступа (префикс Sky добавляется и срезается здесь). */
+export const listPage = async (s3, { prefix = '', token = '', max = 1000 } = {}) => {
+  const cfg = s3.cfg;
+  const q = `list-type=2&max-keys=${Math.min(1000, Math.max(1, max))}&prefix=${enc(cfg.prefix + prefix)}${token ? `&continuation-token=${enc(token)}` : ''}`;
+  const r = await s3.rawGet(q);
+  if (r.status >= 300) throw new S3Error('s3_list_failed', r.status);
+  const x = r.buffer.toString();
+  const items = [...x.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)].map((m) => {
+    const k = /<Key>([^<]+)<\/Key>/.exec(m[1])?.[1] ?? '';
+    return { key: k.startsWith(cfg.prefix) ? k.slice(cfg.prefix.length) : k, size: Number(/<Size>(\d+)<\/Size>/.exec(m[1])?.[1] ?? 0), modified: /<LastModified>([^<]+)<\/LastModified>/.exec(m[1])?.[1] ?? '', etag: /<ETag>([^<]+)<\/ETag>/.exec(m[1])?.[1] ?? '' };
+  });
+  const truncated = /<IsTruncated>true<\/IsTruncated>/.test(x);
+  return { items, truncated, next: truncated ? (/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(x)?.[1] ?? '') : '' };
 };

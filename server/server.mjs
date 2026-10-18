@@ -34,6 +34,8 @@ import { directoryRoutes } from './routes/directory.mjs';
 import { fileRoutes } from './routes/files.mjs';
 import { musicRoutes } from './routes/music.mjs';
 import { musicStudioRoutes } from './routes/musicstudio.mjs';
+import { storageDirectRoutes } from './routes/storagedirect.mjs';
+import { sweepDirect } from './storagedirect.mjs';
 import { filmRoutes } from './routes/film.mjs';
 import { filmSeriesRoutes } from './routes/filmseries.mjs';
 import { uploadLimitsRoutes } from './routes/uploadlimits.mjs';
@@ -235,7 +237,7 @@ const ROUTES = [betaRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, onsiteRoutes, parkingRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, staffNotifyRoutes, skyKassaRoutes];
+                violationsRoutes, storageDirectRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, onsiteRoutes, parkingRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, staffNotifyRoutes, skyKassaRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -300,7 +302,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // Ограниченная сессия (устройство не подтверждено, limitedaccess.mjs): чтение без чатов и файлов, изменения закрыты.
     // Проверяется и для /api/auth/* (смена пароля, удаление и т. п. недоступны) — разрешены только выход, обновление токена и сессия.
     if (url.startsWith('/api/') && limitedBlocks(req.method, url) && !url.startsWith('/api/platform/status') && !url.startsWith('/api/ssh-gate')
-        && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/recovery/')) {
+        && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
       const tk = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tk?.typ === 'access' && tk.sky && tk.sid) {
         const st = await sessionStore.get(tk.sid);
@@ -311,7 +313,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // PIN при смене IP (ippin.mjs): у тех, кто его включил, сессия с нового адреса закрыта до ввода PIN.
     // Выход, обновление токена, вход, ввод самого PIN и ссылки шлюзов остаются открытыми.
     if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && !url.startsWith('/api/skyid/pin') && !url.startsWith('/api/platform/status')
-        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/recovery/')) {
+        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
       const tok = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tok?.typ === 'access' && tok.sky && tok.sid) {
         const stored = await sessionStore.get(tok.sid);
@@ -425,7 +427,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
     /* Игровые серверы Sky Blox — программы, а не люди: у них подпись запроса вместо ключа беты. */
     const isBloxServer = url.startsWith('/api/blox/server/') || url.startsWith('/api/skykassa/webhook/') || url.startsWith('/api/kbiz/webhook/');
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/kbiz/public/') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/kbiz/public/') && !url.startsWith('/api/storage/s3') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -439,7 +441,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
      * не смог бы ни войти и выключить режим, ни браузер — понять,
      * почему сайт не отвечает, и показать нужный экран.
      */
-    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/recovery/')) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
       const shutdown = await shutdownState();
       if (shutdown.active) {
         const session = await readSession(req);
@@ -763,6 +765,7 @@ const start = async () => {
       await goSweepFuel().catch(() => {});
       await goSweepStay().catch(() => {});
       await sweepOnsite().catch((e) => console.error('[onsite] уборка:', e.message));
+      await sweepDirect().catch((e) => console.error('[storage] прямой доступ:', e.message));
       await sweepVersionFiles().catch((e) => console.error('[studio] уборка версий:', e.message));
       const staleRequests = await sweepPendingActions();
       if (staleRequests) console.log(`[админ] просрочено заявок: ${staleRequests}`);

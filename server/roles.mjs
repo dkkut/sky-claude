@@ -57,6 +57,7 @@ export const PERMISSIONS = [
   'storage_enable',  // Sky Storage: включение хранилища после отключения (критично)
   'storage_unlock',  // Sky Storage: снятие ограничений безопасности (критично)
   'storage_keys',    // Sky Storage: ключи и безопасная конфигурация (критично)
+  'storage_direct',  // Sky Storage: прямой доступ к хранилищу через S3-шлюз после подтверждения владельцем (критично)
   'storage_maintenance', // Sky Storage: режим технических работ
   'oidc',            // Sky ID для сторонних сервисов: клиенты, адреса возврата, ключи подписи (создание/смена секретов — с подтверждением личности)
   'partners',        // Партнёры: черновики, редактирование, отправка на проверку (внутренние контакты видны)
@@ -81,7 +82,7 @@ export const PERMISSIONS = [
  * они у владельца и выдаются отдельными ролями осознанно. Сверх того каждое такое действие требует подтверждения
  * личности (одноразовый код), а часть — только владельца.
  */
-export const STORAGE_CRITICAL = ['storage_restore', 'storage_emergency', 'storage_enable', 'storage_unlock', 'storage_keys'];
+export const STORAGE_CRITICAL = ['storage_restore', 'storage_emergency', 'storage_enable', 'storage_unlock', 'storage_keys', 'storage_direct'];
 /** Подтверждение партнёров — тоже отдельное право: добавлять может менеджер, публиковать — только уполномоченный (или владелец). */
 export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve');
 
