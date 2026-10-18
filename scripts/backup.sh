@@ -9,7 +9,7 @@
 #  удаляет и не меняет. Удаляются лишь собственные старые копии в DEST
 #  (оставляется последних KEEP штук).
 #
-#  ШИФРОВАНИЕ КОПИЙ (рекомендуется): дамп базы содержит профили, заказы, адреса и
+#  ШИФРОВАНИЕ КОПИЙ (ОБЯЗАТЕЛЬНО, без ключа копия не делается; BACKUP_ALLOW_PLAIN=1 — осознанное исключение): дамп базы содержит профили, заказы, адреса и
 #  другие данные, зашифрованные только частично. Задайте публичный ключ age:
 #
 #      BACKUP_AGE_RECIPIENT=age1… bash scripts/backup.sh
@@ -34,11 +34,20 @@ DEST="${DEST:-/var/backups/sky}"
 KEEP="${KEEP:-7}"
 STAMP="$(date +%Y-%m-%d_%H%M%S)"
 
+# Публичный ключ age можно держать в .env (BACKUP_AGE_RECIPIENT=age1…), чтобы он применялся и при запуске из cron.
+if [ -z "${BACKUP_AGE_RECIPIENT:-}" ] && [ -z "${BACKUP_AGE_RECIPIENTS_FILE:-}" ] && [ -f "$APP_DIR/.env" ]; then
+  BACKUP_AGE_RECIPIENT="$(grep -E '^BACKUP_AGE_RECIPIENT=' "$APP_DIR/.env" | tail -n1 | cut -d= -f2- | tr -d "\"' \r")"
+fi
 # Шифрование: через публичный ключ age (секретного ключа на сервере нет).
 AGE_ARGS=()
 if [ -n "${BACKUP_AGE_RECIPIENT:-}" ]; then AGE_ARGS=(-r "$BACKUP_AGE_RECIPIENT")
 elif [ -n "${BACKUP_AGE_RECIPIENTS_FILE:-}" ]; then AGE_ARGS=(-R "$BACKUP_AGE_RECIPIENTS_FILE"); fi
 EXT=gz
+# Открытая копия — только по явному решению (BACKUP_ALLOW_PLAIN=1): по умолчанию без ключа копия не делается.
+if [ "${#AGE_ARGS[@]}" -eq 0 ] && [ "${BACKUP_ALLOW_PLAIN:-}" != 1 ]; then
+  echo "Не задан публичный ключ age (BACKUP_AGE_RECIPIENT=age1… в $APP_DIR/.env или в окружении). Копия не сделана: открытый дамп не пишем."
+  echo "Если открытая копия нужна осознанно — BACKUP_ALLOW_PLAIN=1."; exit 1
+fi
 if [ "${#AGE_ARGS[@]}" -gt 0 ]; then
   command -v age >/dev/null 2>&1 || { echo "Задан ключ шифрования, но программа age не установлена (apt install age). Копия не сделана."; exit 1; }
   EXT=gz.age

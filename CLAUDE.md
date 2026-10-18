@@ -1456,3 +1456,9 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - Каждая операция — в `storage_direct_log` (операция, ключ объекта, статус, объём, сеть /24). Запрос, подтверждение, отклонение и отзыв — в журнал администрации и журнал хранилища, владелец получает уведомление.
 - ВАЖНО (ручное действие): подтверждение защищает только то, что идёт через Sky. Ключи у хостера нужно ЗАМЕНИТЬ на новые, вписать только в `.env` сервера Sky (`scripts/setup-storage.sh`) и отозвать старые — иначе прямой вход старыми ключами обходит подтверждение.
 - Тест: `scripts/audit/storagedirect-test.mjs` (54; API с S3-подделкой на :9956: `STORAGE_S3_ENDPOINT=http://127.0.0.1:9956 STORAGE_S3_ALLOW_INSECURE=1 STORAGE_S3_BUCKET=skymedia STORAGE_S3_ACCESS_KEY=AKFAKE STORAGE_S3_SECRET_KEY=fake-secret-0123456789 STORAGE_S3_PREFIX=sky/ OWNER_USERNAME=ownertest ADMIN_GATE=off STORAGE_RATE_MULT=1000 DOMAIN=sky.test`). С настоящим S3 хостера и настоящими клиентами (aws cli, Cyberduck) не проверялось. Нужен деплой (миграция 175).
+
+## Резервные копии: шифрование обязательно (ноябрь-2026)
+
+`scripts/backup.sh` без публичного ключа age больше НЕ делает копию (раньше писал открытый дамп). Ключ берётся из окружения или из `BACKUP_AGE_RECIPIENT=age1…` в `$APP_DIR/.env` (работает и из cron);
+открытая копия — только осознанно, `BACKUP_ALLOW_PLAIN=1`. Секретный ключ (`backup.key`) хранится ВНЕ сервера; расшифровка — `age -d -i backup.key файл.age`. Проверка восстановления — `scripts/backup-verify.sh`.
+Остальные шаги плана — `docs/ENCRYPTION-PLAN-2026-11.md`.
