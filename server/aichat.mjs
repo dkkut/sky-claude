@@ -49,7 +49,7 @@ const CONTEXT_CHARS = 40_000;
  * бесплатного чата предел большой и человеку видимый, а не скрытый.
  */
 export const LIMITS = {
-  chat:       { free: Number(process.env.AI_CHAT_PER_DAY) || 60,  prime: Number(process.env.AI_CHAT_PER_DAY_PRIME) || 50 },
+  chat:       { free: Number(process.env.AI_CHAT_PER_DAY) || 20,  prime: Number(process.env.AI_CHAT_PER_DAY_PRIME) || 50 },
   summary:    { free: 0, prime: Number(process.env.AI_SUMMARY_PER_DAY) || 60 },
   file:       { free: 0, prime: Number(process.env.AI_FILE_PER_DAY) || 30 },
   image:      { free: 0, prime: Number(process.env.AI_IMAGE_PER_DAY) || 40 },
