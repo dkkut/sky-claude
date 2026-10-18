@@ -15,7 +15,7 @@ import {
   ChevronLeft, Inbox, Loader2, UserCheck, CheckCircle2, RefreshCw, Clock,
 } from 'lucide-react';
 import {
-  apiSupportQueue, apiReadTicket, apiReplyTicket, apiSupportAdmins,
+  apiSupportQueue, apiReadTicketEx, apiReplyTicket, apiSupportAdmins,
   apiAssignTicket, apiTicketStatus,
   type SupportTicket, type TicketStatus,
 } from '@/moderation/supportApi';
@@ -50,6 +50,7 @@ export const AdminQueue = () => {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
 
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -64,9 +65,14 @@ export const AdminQueue = () => {
   useEffect(() => { void apiSupportAdmins().then(a => setAdmins(a ?? [])); }, []);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth' }); }, [open?.messages?.length]);
 
+  const [loadingId, setLoadingId] = useState<string | null>(null);
   const openTicket = async (id: string) => {
-    const t = await apiReadTicket(id);
-    if (t) { setOpen(t); setError(null); setDraft(''); }
+    if (loadingId) return;
+    setLoadingId(id); setListError(null);
+    const r = await apiReadTicketEx(id);
+    setLoadingId(null);
+    if (r.ticket) { setOpen(r.ticket); setError(null); setDraft(''); return; }
+    setListError(r.error === 'not_found' ? 'Обращение не найдено или недоступно вам.' : r.error === 'rate_limited' ? 'Слишком часто. Подождите немного.' : `Не удалось открыть обращение (${r.error}). Повторите.`);
   };
 
   const reply = async () => {
@@ -251,9 +257,10 @@ export const AdminQueue = () => {
             {filter === 'mine' ? 'На вас ничего не назначено' : 'Обращений нет'}
           </p>
         )}
+        {listError && <p role="alert" className="rounded-xl px-3 py-2 text-xs" style={{ background: 'color-mix(in srgb, var(--red) 12%, transparent)', color: 'var(--red)' }}>{listError}</p>}
         {tickets?.map(t => (
-          <button key={t.id} type="button" onClick={() => void openTicket(t.id)}
-            className="w-full rounded-2xl px-4 py-3 text-left transition-colors hover:bg-white/[0.03]"
+          <button key={t.id} type="button" onClick={() => void openTicket(t.id)} disabled={loadingId === t.id} aria-busy={loadingId === t.id}
+            className="w-full rounded-2xl px-4 py-3 text-left transition-colors hover:bg-white/[0.03] disabled:opacity-60"
             style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
             <div className="flex items-center gap-2">
               <p className="flex-1 truncate text-sm font-semibold" style={{ color: 'var(--t1)' }}>{t.subject}</p>

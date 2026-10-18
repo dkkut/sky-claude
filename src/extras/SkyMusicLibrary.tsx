@@ -1,3 +1,4 @@
+import { ExplicitBadge } from '@/labels/Labels';
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -59,7 +60,7 @@ const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, 
         {t.coverUrl ? <img src={t.coverUrl} alt="" className="h-full w-full rounded-xl object-cover"/> : <Music2 size={18} color="rgba(255,255,255,0.65)"/>}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13.5px] font-medium" style={{ color: active ? '#4fe3d0' : '#f2f5f8' }}>{t.title}</p>
+        <p className="truncate text-[13.5px] font-medium" style={{ color: active ? '#4fe3d0' : '#f2f5f8' }}>{t.title}<ExplicitBadge show={t.explicit} /></p>
         <p className="truncate text-[11.5px]" style={{ color: '#8a8f9a' }}>{t.artist}</p>
       </div>
       {offline && <CheckCircle size={14} className="shrink-0" style={{ color:'#4fe3d0' }} aria-label="Скачано"/>}
@@ -145,11 +146,11 @@ const OfflineBar = ({ cat, list, ids, bytes, bulk, progress, onDownload, onCance
 };
 
 export const SkyMusicLibrary = ({
-  tracks, favorites, playing, activeId, onPlay, onLike, onOpenImport, onOpenUpload,
+  tracks, favorites, playing, activeId, onPlay, onLike, onOpenImport, onOpenUpload, onArtist,
 }: {
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
   onPlay: (t: Track, pool: Track[]) => void; onLike: (id: string) => void;
-  onOpenImport?: () => void; onOpenUpload?: () => void;
+  onOpenImport?: () => void; onOpenUpload?: () => void; onArtist?: (name: string) => void;
 }) => {
   const playlists = useMusicStore(st => st.playlists);
   const createPlaylist = useMusicStore(st => st.createPlaylist);
@@ -390,7 +391,7 @@ export const SkyMusicLibrary = ({
         )}
 
         {cat === 'artists' && artists.map(([artist, ts]) => (
-          <button key={artist} type="button" onClick={() => ts[0] && onPlay(ts[0], ts)}
+          <button key={artist} type="button" onClick={() => (onArtist ? onArtist(artist) : ts[0] && onPlay(ts[0], ts))}
             className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.03]">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full" style={{ background:`linear-gradient(145deg,${getG(artist)[0]},${getG(artist)[1]})` }}>
               <Mic2 size={16} color="rgba(255,255,255,0.5)"/>

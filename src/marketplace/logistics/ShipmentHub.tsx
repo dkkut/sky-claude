@@ -100,6 +100,11 @@ const ShipmentCard = ({ shipment, onOpen }: { shipment: Shipment; onOpen: () => 
 };
 
 /* ── Форма создания / редактирования ──────────────────────────────── */
+/* Поле — снаружи формы: объявленный внутри компонент пересоздаётся при каждом нажатии, и поле теряло фокус после одного символа. */
+const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div><p className="text-[10px] font-bold mb-1" style={{ color: C.t3 }}>{label}</p>{children}</div>
+);
+
 const ShipmentForm = ({ editing, onClose, onDone }: {
   editing?: Shipment; onClose: () => void; onDone: (id: string) => void;
 }) => {
@@ -138,9 +143,6 @@ const ShipmentForm = ({ editing, onClose, onDone }: {
     else { void createShipment(input).then((id) => { if (id) onDone(id); }); }
   };
 
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div><p className="text-[10px] font-bold mb-1" style={{ color: C.t3 }}>{label}</p>{children}</div>
-  );
   const inputCls = "w-full rounded-xl px-3 py-2.5 text-sm outline-none";
   const inputStyle = { background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 };
 

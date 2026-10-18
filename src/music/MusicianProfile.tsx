@@ -1,3 +1,4 @@
+import { ExplicitBadge } from '@/labels/Labels';
 /* ================================================================
    ПРОФИЛЬ АРТИСТА
 
@@ -209,7 +210,7 @@ export const MusicianProfileTab = ({
           <span className="w-4 shrink-0 text-[11px] tabular-nums" style={{ color: YM.t3 }}>{i + 1}</span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13.5px] font-medium"
-              style={{ color: activeId === t.id ? YM.accent : YM.t1 }}>{t.title}</p>
+              style={{ color: activeId === t.id ? YM.accent : YM.t1 }}>{t.title}<ExplicitBadge show={t.explicit} /></p>
             <p className="truncate text-[11px]" style={{ color: YM.t3 }}>
               {fmtPlays(t.plays)} прослушиваний
             </p>

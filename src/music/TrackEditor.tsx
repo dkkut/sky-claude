@@ -39,6 +39,7 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
   const [genre, setGenre] = useState(track.genre === 'Другое' ? '' : track.genre);
   const [license, setLicense] = useState(track.license ?? 'own');
   const [licenseSource, setLicenseSource] = useState(track.licenseSource ?? '');
+  const [explicit, setExplicit] = useState(track.explicit === true);
   const [lyrics, setLyrics] = useState('');
   const [lyricsLoaded, setLyricsLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -64,7 +65,7 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
   const save = async () => {
     if (!title.trim()) { flash('Укажите название'); return; }
     setBusy(true);
-    const patch: Parameters<typeof editTrack>[1] = { title: title.trim(), artist: artist.trim() || 'Неизвестный исполнитель', genre: genre.trim() || 'Другое', license, licenseSource: licenseSource.trim() };
+    const patch: Parameters<typeof editTrack>[1] = { title: title.trim(), artist: artist.trim() || 'Неизвестный исполнитель', genre: genre.trim() || 'Другое', license, licenseSource: licenseSource.trim(), explicit };
     if (lyricsLoaded) patch.lyrics = lyrics;
     const ok = await editTrack(track.id, patch);
     setBusy(false);
@@ -112,6 +113,7 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
         <label className="mb-1 block text-[12px] font-semibold" style={{ opacity: 0.7 }}>Жанр</label>
         <input value={genre} onChange={(e) => setGenre(e.target.value)} maxLength={60} translate="no" placeholder="Другое" className="mb-3 w-full rounded-full px-4 py-2.5 text-[14px] outline-none" style={field} />
         <div className="mb-3"><LicensePicker license={license} source={licenseSource} onChange={(l, src) => { setLicense(l); setLicenseSource(src); }} /></div>
+        <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={explicit} onChange={(e) => setExplicit(e.target.checked)} />Пометка «E»: ненормативная лексика / 18+ (Explicit)</label>
         <label className="mb-1 block text-[12px] font-semibold" style={{ opacity: 0.7 }}>Текст песни</label>
         <textarea value={lyrics} onChange={(e) => setLyrics(e.target.value)} rows={5} translate="no" disabled={!lyricsLoaded} className="mb-4 w-full resize-none rounded-[20px] px-4 py-2.5 text-[14px] outline-none" style={field} />
 

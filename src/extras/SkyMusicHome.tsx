@@ -1,3 +1,4 @@
+import { ExplicitBadge } from '@/labels/Labels';
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Music2, ListMusic, Mic2, Sparkles, Disc3, Play, Search, ChevronRight, X } from 'lucide-react';
@@ -47,7 +48,7 @@ const TrackTile = ({ t, onPlay, active, playing }: { t: Track; onPlay: () => voi
           </div>
         )}
       </div>
-      <p className="mt-2.5 truncate text-[13.5px] font-semibold" style={{ color: active ? '#fff' : '#f0f1f4', letterSpacing: '-0.01em' }}>{t.title}</p>
+      <p className="mt-2.5 truncate text-[13.5px] font-semibold" style={{ color: active ? '#fff' : '#f0f1f4', letterSpacing: '-0.01em' }}>{t.title}<ExplicitBadge show={t.explicit} /></p>
       <p className="truncate text-[12px] mt-0.5" style={{ color: '#7d818c' }}>{t.artist}</p>
     </motion.button>
   );
@@ -117,7 +118,7 @@ const WaveSheet = ({ pool, c1, c2, playing, activeId, onPlay, onClose }: {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13.5px] font-semibold"
-                style={{ color: active ? '#fff' : '#f0f1f4' }}>{t.title}</span>
+                style={{ color: active ? '#fff' : '#f0f1f4' }}>{t.title}<ExplicitBadge show={t.explicit} /></span>
               <span className="block truncate text-[12px]" style={{ color: '#7d818c' }}>{t.artist}</span>
             </span>
             {active && playing && <Sparkles size={14} style={{ color: '#8b7dff' }}/>}

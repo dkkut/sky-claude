@@ -94,6 +94,13 @@ export const apiReadTicket = async (id: string): Promise<SupportTicket | null> =
   return r.ok ? (r.data?.ticket ?? null) : null;
 };
 
+/** То же, но с причиной отказа: очередь поддержки обязана показать, почему обращение не открылось (а не «просто не нажимается»). */
+export const apiReadTicketEx = async (id: string): Promise<{ ticket: SupportTicket | null; error?: string }> => {
+  const r = await apiCall<{ ticket: SupportTicket }>(`/api/support/ticket/${id}`);
+  if (r.ok && r.data?.ticket) return { ticket: r.data.ticket };
+  return { ticket: null, error: r.ok ? 'not_found' : (r.error ?? `http_${r.status ?? 0}`) };
+};
+
 /** Понятные слова вместо кодов отказа. */
 const REASONS: Record<string, string> = {
   empty:    'Напишите, что случилось',

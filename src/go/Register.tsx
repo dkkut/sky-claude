@@ -71,7 +71,7 @@ export const RegisterScreen = ({ role, existing, cities, onBack, onDone }: { rol
     if (!r.ok) {
       const list: string[] = ((r.data as any)?.problems ?? []).map((p: any) => p.message);
       setProblems(list);
-      setSaveWhy(list.length ? '' : (r.status === 0 ? 'Нет связи с сервером. Проверьте интернет и повторите.' : goError(r)));
+      setSaveWhy(list.length ? '' : (r.status === 0 ? 'Нет связи с сервером. Проверьте интернет и повторите.' : r.status === 404 && r.error === 'not_found' ? 'Сервер не знает этого запроса — вероятно, на нём ещё старая версия Sky. Сообщите в поддержку или повторите позже.' : goError(r)));
       fail(r); return null;
     }
     setSaveWhy(''); setProblems([]); setId(r.data!.id); return r.data!.id;

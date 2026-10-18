@@ -1,3 +1,4 @@
+import { ExplicitBadge } from '@/labels/Labels';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useDictation } from '@/messenger/useDictation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -183,7 +184,7 @@ export const SkyMusicSearch = ({
                       className="flex w-full items-center gap-3 py-2 text-left">
                       <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: `linear-gradient(145deg,${c1},${c2})` }}/>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-medium" style={{ color: activeId===t.id ? '#4fe3d0' : '#f2f5f8' }}>{t.title}</p>
+                        <p className="truncate text-[13px] font-medium" style={{ color: activeId===t.id ? '#4fe3d0' : '#f2f5f8' }}>{t.title}<ExplicitBadge show={t.explicit} /></p>
                         <p className="truncate text-[11.5px]" style={{ color: '#8a8f9a' }}>{t.artist}</p>
                       </div>
                     </button>

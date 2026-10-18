@@ -1,3 +1,4 @@
+import { ExplicitBadge } from '@/labels/Labels';
 /* ===========================================================
    SKY CONSOLE — главное меню.
    Верхняя панель, ряд крупных карточек сервисов, описание и
@@ -150,7 +151,7 @@ export const ConsoleHome = () => {
               <button key={t.id} type="button" aria-label={t.title} onClick={() => openService('music')} className="w-[180px] shrink-0 overflow-hidden rounded-3xl text-left outline-none" style={{ background: 'rgba(255,255,255,0.09)' }}>
                 <span className="console-zoom block">
                   <span className="grid h-[124px] w-full place-items-center bg-white/5" style={t.coverUrl ? { background: `center/cover url(${t.coverUrl})` } : undefined}>{!t.coverUrl && <Music2 size={32} />}</span>
-                  <span className="block truncate px-3 pt-2 text-[17px] font-semibold" translate="no">{t.title}</span>
+                  <span className="block truncate px-3 pt-2 text-[17px] font-semibold" translate="no">{t.title}<ExplicitBadge show={t.explicit} /></span>
                   <span className="block truncate px-3 pb-3 text-[14px] text-white/55" translate="no">{t.artist}</span>
                 </span>
               </button>

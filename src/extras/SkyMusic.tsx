@@ -662,7 +662,7 @@ const HomeTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, 
                   </div>
                   {/* Info */}
                   <div className="px-3 py-2.5">
-                    <p className="text-xs font-bold truncate" style={{ color: YM.text }}>{t.title}</p>
+                    <p className="text-xs font-bold truncate" style={{ color: YM.text }}>{t.title}<ExplicitBadge show={t.explicit} /></p>
                     <p className="text-[11px] truncate mt-0.5" style={{ color: YM.sub2 }}>{t.artist}</p>
                     <p className="text-[10px] mt-1 font-semibold flex items-center gap-1" style={{ color: YM.sub2 }}>
                       <Play size={9} fill="currentColor"/> {t.plays.toLocaleString('ru')}
@@ -1684,7 +1684,7 @@ const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLi
 
         {/* Info */}
         <div className="flex-1 min-w-0 cursor-pointer" onClick={onOpen}>
-          <p className="text-[13px] font-bold truncate" style={{ color: YM.text }}>{track.title}</p>
+          <p className="text-[13px] font-bold truncate" style={{ color: YM.text }}>{track.title}<ExplicitBadge show={track.explicit} /></p>
           <p className="text-[11px] truncate" style={{ color: YM.sub }}>{track.artist}</p>
         </div>
 
@@ -2185,7 +2185,7 @@ export const SkyFullPlayer = ({
                               :<Music2 size={18} color="rgba(255,255,255,0.3)"/>}
                           </div>
                           <div style={{flex:1,minWidth:0}}>
-                            <p style={{color:isActive?'white':'rgba(255,255,255,0.72)',fontWeight:isActive?700:500,fontSize:14,margin:0,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{t.title}</p>
+                            <p style={{color:isActive?'white':'rgba(255,255,255,0.72)',fontWeight:isActive?700:500,fontSize:14,margin:0,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{t.title}<ExplicitBadge show={t.explicit} /></p>
                             <p style={{color:isActive?hslAcc(th):'rgba(255,255,255,0.38)',fontSize:12,margin:'3px 0 0'}}>{t.artist}</p>
                           </div>
                           <span style={{fontSize:12,color:'rgba(255,255,255,0.28)',fontVariantNumeric:'tabular-nums',flexShrink:0}}>
@@ -2657,7 +2657,7 @@ export const SkyMusic = () => {
               loading={musicLoading} error={musicError}
               onRetry={() => void loadMusic({ force: true })} onUpload={() => setTab('upload')}/>}
             {tab === 'collection' && <SkyMusicLibrary tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} onLike={onLike}
-              onOpenUpload={() => setTab('upload')} onOpenImport={() => setTab('import')}/>}
+              onArtist={setArtist} onOpenUpload={() => setTab('upload')} onOpenImport={() => setTab('import')}/>}
             {tab === 'charts'     && <ChartsTab     {...tabProps} />}
             {tab === 'upload'     && <UploadTab     playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} />}
             {tab === 'import'     && <MusicImport/>}

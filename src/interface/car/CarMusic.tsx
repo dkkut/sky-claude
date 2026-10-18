@@ -1,3 +1,4 @@
+import { ExplicitBadge } from '@/labels/Labels';
 /* ===========================================================
    SKY CAR — Музыка. Тот же серверный каталог, история, избранное,
    личная коллекция и плейлисты (useMusicStore), что и в Sky Music;
@@ -24,7 +25,7 @@ const Row = ({ t, active, onPlay }: { t: Track; active: boolean; onPlay: () => v
       {!t.coverUrl && <Music2 size={28} color="rgba(255,255,255,0.45)" />}
     </span>
     <span className="min-w-0 flex-1">
-      <span className="block truncate text-[26px] font-bold" style={{ color: active ? '#d5ceff' : '#fff' }} translate="no">{t.title}</span>
+      <span className="block truncate text-[26px] font-bold" style={{ color: active ? '#d5ceff' : '#fff' }} translate="no">{t.title}<ExplicitBadge show={t.explicit} /></span>
       <span className="block truncate text-[19px]" style={{ color: 'rgba(255,255,255,0.55)' }} translate="no">{t.artist}</span>
     </span>
     <span className="shrink-0 text-[18px] tabular-nums text-white/40">{t.duration}</span>

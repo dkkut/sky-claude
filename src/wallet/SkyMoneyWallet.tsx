@@ -19,6 +19,7 @@ import { MyGifts } from '@/gifts/SkyGifts';
 import { SkyPayCheckout, PayHistory } from '@/payment/SkyPay';
 import { SkyKassa } from '@/skykassa/SkyKassa';
 import { ScanQr } from '@/kassabiz/ScanQr';
+import { RefundRequest } from './RefundRequest';
 
 const C = {
   bg:     'var(--bg)',
@@ -41,7 +42,7 @@ const C = {
 /* QUICK_AMOUNTS moved to TopUpSheet */
 
 /* -- Toplevel section type --------------------------------------- */
-type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan';
+type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan' | 'refund';
 
 /* -- Balance Card ----------------------------------------------- */
 const BalanceCard = ({ balance, points, userId, onExchange }: {
@@ -99,15 +100,16 @@ const BalanceCard = ({ balance, points, userId, onExchange }: {
 );
 
 /* -- Quick Actions ----------------------------------------------- */
-const QuickActions = ({ onTopUp, onHistory, onCodes, onScan }: {
-  onTopUp: () => void; onHistory: () => void; onCodes: () => void; onScan: () => void;
+const QuickActions = ({ onTopUp, onHistory, onCodes, onScan, onRefund }: {
+  onTopUp: () => void; onHistory: () => void; onCodes: () => void; onScan: () => void; onRefund: () => void;
 }) => (
-  <div className="grid grid-cols-4 gap-2">
+  <div className="grid grid-cols-5 gap-2">
     {[
       { icon:Plus,           label:'Пополнить', onClick:onTopUp,    color:C.accent },
       { icon:RotateCcw,      label:'История',   onClick:onHistory,  color:C.amber  },
       { icon:Ticket,         label:'Sky Codes', onClick:onCodes,    color:'var(--purple)' },
       { icon:ScanLine,       label:'Сканер QR', onClick:onScan,     color:'var(--green)' },
+      { icon:ArrowDownLeft,  label:'Возврат',   onClick:onRefund,   color:'var(--red, #e5484d)' },
     ].map(({ icon:Icon, label, onClick, color }) => (
       <motion.button key={label} type="button" onClick={onClick} whileTap={{ scale:0.94 }}
         className="flex flex-col items-center gap-2 rounded-2xl py-4 transition-colors"
@@ -413,6 +415,7 @@ export const SkyMoneyWallet = () => {
       </div>
     </div>
   );
+  if (view === 'refund') return <RefundRequest txs={txs} onBack={() => setView('main')}/>;
   if (view === 'history') return <HistoryView txs={txs} onBack={() => setView('main')}/>;
 
   return (
@@ -427,6 +430,7 @@ export const SkyMoneyWallet = () => {
           onHistory={() => setView('history')}
           onCodes={() => setView('codes')}
           onScan={() => setView('scan')}
+          onRefund={() => setView('refund')}
         />
       </div>
 

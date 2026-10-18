@@ -1,3 +1,4 @@
+import { ExplicitBadge } from '@/labels/Labels';
 /* --- Базовые UI-примитивы --------------------------------- */
 import { memo, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
@@ -127,7 +128,7 @@ export const TrackRow = memo(({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate text-sm font-medium" style={{ color: isActive ? '#A855F7' : 'var(--t1)' }}>
-            {track.title}
+            {track.title}<ExplicitBadge show={track.explicit} />
           </p>
           {showStatus && (
             <span className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium shrink-0"

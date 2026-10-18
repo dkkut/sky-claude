@@ -284,7 +284,7 @@ export const OnsiteTab = () => {
     return view === 'catalog' ? <Catalog onOpen={setListing} /> : <Mine onDeal={setDeal} onOpen={setListing} />;
   }, [view, listing, deal]);
   return (
-    <div className="onsite-root" style={{ padding: 16, maxWidth: 760, margin: '0 auto', width: '100%' }}>
+    <div className="onsite-root" style={{ padding: 16, paddingBottom: 120, maxWidth: 760, margin: '0 auto', width: '100%', height: '100%', overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
       {!listing && !deal && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
           <Chip on={view === 'catalog'} onClick={() => setView('catalog')}>Рядом</Chip><Chip on={view === 'mine'} onClick={() => setView('mine')}>Мои</Chip>
