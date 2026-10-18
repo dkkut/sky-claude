@@ -24,6 +24,11 @@ import { logAdmin } from './adminsec.mjs';
 import { sendEmail } from './notify.mjs';
 import { generateId } from './security.mjs';
 import { notifyStaff } from './staffnotify.mjs';
+import { encryptSecret, openSecret, macOf } from './crypto.mjs';
+
+/* Почта заявителя лежит зашифрованной (email_enc) + HMAC для поиска (email_hmac); открытая колонка email — только у записей до миграции 176. */
+const emailMac = (e) => macOf('site-email', String(e).toLowerCase());
+const emailOf = (r) => (r?.email_enc ? openSecret(r.email_enc) : r?.email) || '';
 
 const ROOT = process.env.SITE_DIR || '/data/site';
 const MB = 1024 * 1024;
@@ -149,8 +154,8 @@ export const submitAppeal = async (b, { ip }) => {
   if (body.length < 10) return { error: 'text_too_short' };
   const id = `sap-${generateId()}`; const code = newCode('SKY'); const token = crypto.randomBytes(24).toString('base64url');
   await query(
-    `INSERT INTO site_appeals (id, code, token_hash, kind, username, email, ref, body, lang, ip_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [id, code, hash('token', token), kind, clean(b?.username, 64).replace(/^@/, ''), email, clean(b?.ref, 64), body, b?.lang === 'en' ? 'en' : 'ru', ipHash(ip)]);
+    `INSERT INTO site_appeals (id, code, token_hash, kind, username, email, email_enc, email_hmac, ref, body, lang, ip_hash) VALUES ($1,$2,$3,$4,$5,'',$6,$7,$8,$9,$10,$11)`,
+    [id, code, hash('token', token), kind, clean(b?.username, 64).replace(/^@/, ''), encryptSecret(email), emailMac(email), clean(b?.ref, 64), body, b?.lang === 'en' ? 'en' : 'ru', ipHash(ip)]);
   await sendEmail(email,
     b?.lang === 'en' ? `Sky appeal received: ${code}` : `Апелляция Sky принята: ${code}`,
     b?.lang === 'en'
@@ -171,8 +176,8 @@ export const submitRelease = async (b, { ip }) => {
   for (const [k, v] of Object.entries(b?.fields ?? {}).slice(0, 30)) data[clean(k, 40)] = cleanMulti(v, 4000);
   const id = `srl-${generateId()}`; const code = newCode('REL'); const token = crypto.randomBytes(24).toString('base64url');
   await query(
-    `INSERT INTO site_releases (id, code, token_hash, kind, email, title, data, lang, ip_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-    [id, code, hash('token', token), kind, email, title, JSON.stringify(data), b?.lang === 'en' ? 'en' : 'ru', ipHash(ip)]);
+    `INSERT INTO site_releases (id, code, token_hash, kind, email, email_enc, email_hmac, title, data, lang, ip_hash) VALUES ($1,$2,$3,$4,'',$5,$6,$7,$8,$9,$10)`,
+    [id, code, hash('token', token), kind, encryptSecret(email), emailMac(email), title, JSON.stringify(data), b?.lang === 'en' ? 'en' : 'ru', ipHash(ip)]);
   await sendEmail(email,
     b?.lang === 'en' ? `Sky release request received: ${code}` : `Заявка на релиз в Sky принята: ${code}`,
     b?.lang === 'en' ? `We received your release request “${title}”. Number: ${code}.` : `Мы получили заявку на релиз «${title}». Номер: ${code}.`).catch(() => {});
@@ -205,7 +210,7 @@ export const attach = async ({ owner, code, token, role, name }, req) => {
 export const checkAppeal = async (code, email) => {
   const e = clean(email, 254).toLowerCase();
   for (const [table, kind] of [['site_appeals', 'appeal'], ['site_releases', 'release']]) {
-    const { rows } = await query(`SELECT status, answer, created_at, answered_at FROM ${table} WHERE code = $1 AND lower(email) = $2`, [String(code ?? '').toUpperCase().trim(), e]);
+    const { rows } = await query(`SELECT status, answer, created_at, answered_at FROM ${table} WHERE code = $1 AND (email_hmac = $2 OR (email <> '' AND lower(email) = $3))`, [String(code ?? '').toUpperCase().trim(), emailMac(e), e]);
     if (rows[0]) return { ok: true, kind, status: rows[0].status, answer: rows[0].answer, createdAt: rows[0].created_at.toISOString(), answeredAt: rows[0].answered_at?.toISOString?.() ?? null };
   }
   return { error: 'not_found' };
@@ -351,8 +356,8 @@ const QUEUES = {
   release: { table: 'site_releases', statuses: ['new', 'review', 'approved', 'rejected'], label: (r) => r.title },
 };
 const rowView = (kind, r) => (kind === 'appeal'
-  ? { id: r.id, code: r.code, kind: r.kind, username: r.username, email: r.email, ref: r.ref, body: r.body, status: r.status, answer: r.answer, createdAt: r.created_at.toISOString(), answeredAt: r.answered_at?.toISOString?.() ?? null }
-  : { id: r.id, code: r.code, kind: r.kind, title: r.title, email: r.email, data: r.data, status: r.status, answer: r.answer, createdAt: r.created_at.toISOString(), answeredAt: r.answered_at?.toISOString?.() ?? null });
+  ? { id: r.id, code: r.code, kind: r.kind, username: r.username, email: emailOf(r), ref: r.ref, body: r.body, status: r.status, answer: r.answer, createdAt: r.created_at.toISOString(), answeredAt: r.answered_at?.toISOString?.() ?? null }
+  : { id: r.id, code: r.code, kind: r.kind, title: r.title, email: emailOf(r), data: r.data, status: r.status, answer: r.answer, createdAt: r.created_at.toISOString(), answeredAt: r.answered_at?.toISOString?.() ?? null });
 
 export const adminQueue = async (me, kind, status) => {
   if (!(await allowed(me))) return null;
@@ -387,7 +392,7 @@ export const adminDecide = async (me, kind, id, b, meta) => {
   const en = r.lang === 'en';
   const names = { new: en ? 'received' : 'получена', review: en ? 'under review' : 'на рассмотрении', accepted: en ? 'accepted' : 'удовлетворена', approved: en ? 'approved' : 'одобрена', rejected: en ? 'rejected' : 'отклонена', closed: en ? 'closed' : 'закрыта' };
   if (b?.notify !== false) {
-    await sendEmail(r.email, en ? `Sky ${r.code}: ${names[status]}` : `Sky ${r.code}: ${names[status]}`,
+    await sendEmail(emailOf(r), en ? `Sky ${r.code}: ${names[status]}` : `Sky ${r.code}: ${names[status]}`,
       en ? `Your ${kind === 'appeal' ? 'appeal' : 'release request'} ${r.code} is now: ${names[status]}.\n\n${r.answer || ''}` : `Ваша ${kind === 'appeal' ? 'апелляция' : 'заявка на релиз'} ${r.code}: ${names[status]}.\n\n${r.answer || ''}`).catch(() => {});
   }
   return { ok: true, item: rowView(kind, r) };

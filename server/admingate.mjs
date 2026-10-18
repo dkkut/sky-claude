@@ -24,6 +24,7 @@ import { forgetGate, forgetLockdown } from './admin.mjs';
 import { logAdmin, logSecurityEvent } from './adminsec.mjs';
 import { rateLimitPerHour } from './security.mjs';
 import { L } from './lang.mjs';
+import { ipMask, ipFp } from './ipmask.mjs';
 
 const LINK_TTL_MIN = 15;
 const OPEN_HOURS = 8;
@@ -82,9 +83,9 @@ export const requestGate = async (sid, profileId, { req, device, ip }) => {
   const token = crypto.randomBytes(32).toString('base64url');
   const id = `agr-${crypto.randomUUID()}`;
   await query(
-    `INSERT INTO admin_gate_requests (id, profile_id, sid, token_hash, device, ip, expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6, now() + ($7 || ' minutes')::interval)`,
-    [id, profileId, sid, tokenHash(token), clip(device, 160), clip(ip, 60), String(LINK_TTL_MIN)]);
+    `INSERT INTO admin_gate_requests (id, profile_id, sid, token_hash, device, ip, ip_fp, expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7, now() + ($8 || ' minutes')::interval)`,
+    [id, profileId, sid, tokenHash(token), clip(device, 160), ipMask(ip, 60), ipFp(ip), String(LINK_TTL_MIN)]);
 
   const link = `${origin}/admin-verify?t=${token}`;
   const r = await sendEmail(who.email, L('Вход в панель администратора Sky', 'Sky admin panel sign-in'),

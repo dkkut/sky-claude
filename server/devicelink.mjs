@@ -18,6 +18,7 @@ import { config } from './config.mjs';
 import { decryptSecret } from './crypto.mjs';
 import { verifyTotp } from './totp.mjs';
 import { generateId } from './security.mjs';
+import { ipMask, ipFp } from './ipmask.mjs';
 
 const TTL_MIN = 10;
 const VERIFY_ATTEMPTS = 3;
@@ -92,10 +93,10 @@ export const startLink = async ({ kind, label, lang, app }, { ip, ua }) => {
   const verify = String(crypto.randomInt(0, 100)).padStart(2, '0');
   const k = KINDS.has(kind) ? kind : 'other';
   await query(
-    `INSERT INTO device_links (id, code_hash, poll_hash, verify_hash, kind, label, ua, ip, lang, app, expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now() + ($11 || ' minutes')::interval)`,
+    `INSERT INTO device_links (id, code_hash, poll_hash, verify_hash, kind, label, ua, ip, ip_fp, lang, app, expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now() + ($12 || ' minutes')::interval)`,
     [id, hash('code', code), hash('poll', pollKey), hash('verify', `${id}:${verify}`), k, clip(label, 60),
-      clip(ua, 300), clip(ip, 100), clip(lang, 8), Boolean(app), String(TTL_MIN)],
+      clip(ua, 300), ipMask(ip, 100), ipFp(ip), clip(lang, 8), Boolean(app), String(TTL_MIN)],
   );
   return { id, code: fmtCode(code), codeRaw: code, pollKey, verify, expiresIn: TTL_MIN * 60, kind: k };
 };
@@ -131,8 +132,8 @@ export const decideLink = async (skyId, sid, ip, { id, approve, verify, totp }) 
   const row = rows[0];
   if (!row || row.status !== 'pending' || new Date(row.expires_at) <= new Date()) return { error: 'not_found' };
   if (!approve) {
-    await query(`UPDATE device_links SET status='denied', sky_id=$2, decided_sid=$3, decided_ip=$4, decided_at=now()
-                  WHERE id=$1 AND status='pending'`, [row.id, skyId, sid, clip(ip, 100)]);
+    await query(`UPDATE device_links SET status='denied', sky_id=$2, decided_sid=$3, decided_ip=$4, decided_ip_fp=$5, decided_at=now()
+                  WHERE id=$1 AND status='pending'`, [row.id, skyId, sid, ipMask(ip, 100), ipFp(ip)]);
     return { ok: true, status: 'denied' };
   }
   if (!/^\d{2}$/.test(String(verify ?? ''))) return { error: 'bad_verify' };
@@ -154,8 +155,8 @@ export const decideLink = async (skyId, sid, ip, { id, approve, verify, totp }) 
     return { error: left === 0 ? 'exhausted' : 'wrong_verify', attemptsLeft: left };
   }
   const u = await query(
-    `UPDATE device_links SET status='approved', sky_id=$2, decided_sid=$3, decided_ip=$4, decided_at=now()
-      WHERE id=$1 AND status='pending' AND expires_at > now()`, [row.id, skyId, sid, clip(ip, 100)]);
+    `UPDATE device_links SET status='approved', sky_id=$2, decided_sid=$3, decided_ip=$4, decided_ip_fp=$5, decided_at=now()
+      WHERE id=$1 AND status='pending' AND expires_at > now()`, [row.id, skyId, sid, ipMask(ip, 100), ipFp(ip)]);
   return u.rowCount ? { ok: true, status: 'approved' } : { error: 'not_found' };
 };
 

@@ -18,6 +18,7 @@ import { verifyTotp } from './totp.mjs';
 import { sendEmail } from './notify.mjs';
 import { sessionStore } from './sessions.mjs';
 import { L } from './lang.mjs';
+import { ipMask, ipFp } from './ipmask.mjs';
 
 export const REMOVE_HOURS = [1, 24, 168, 720];
 export const FREEZE_HOURS = [1, 24, 72, 168];
@@ -26,7 +27,7 @@ const LINK_WINDOW_MIN = 30;
 const hash = (t) => crypto.createHash('sha256').update(`${config.jwtSecret}:account-freeze:v1:${t}`).digest('hex');
 const clip = (v, n) => String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n);
 const log = (skyId, kind, ip, ua, detail = {}) =>
-  query('INSERT INTO account_freeze_log (sky_id, kind, ip, ua, detail) VALUES ($1,$2,$3,$4,$5)', [skyId, kind, clip(ip, 100), clip(ua, 300), JSON.stringify(detail)]);
+  query('INSERT INTO account_freeze_log (sky_id, kind, ip, ip_fp, ua, detail) VALUES ($1,$2,$3,$4,$5,$6)', [skyId, kind, ipMask(ip, 100), ipFp(ip), clip(ua, 300), JSON.stringify(detail)]);
 
 const load = async (skyId) => (await query(
   `SELECT id, email, email_verified, two_factor_enabled, two_factor_method, two_factor_secret,

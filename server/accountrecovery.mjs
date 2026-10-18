@@ -18,6 +18,7 @@ import { sessionStore } from './sessions.mjs';
 import { issueCode, verifyCode } from './verification.mjs';
 import { rateLimit, rateLimitPerHour } from './security.mjs';
 import { L } from './lang.mjs';
+import { ipMask, ipFp } from './ipmask.mjs';
 
 const waitSec = () => { const v = Number(process.env.RECOVERY_WAIT_SEC); return Number.isFinite(v) && v >= 0 && process.env.RECOVERY_WAIT_SEC !== undefined ? v : Number(process.env.RECOVERY_WAIT_HOURS ?? 48) * 3600; };
 const expireSec = () => waitSec() + 7 * 86400;      // после готовности ссылка «завершить» живёт ещё неделю
@@ -87,8 +88,8 @@ export const startReset = async (skyId, { ip = '', ua = '' } = {}) => {
   const finish = crypto.randomBytes(32).toString('base64url'); const cancel = crypto.randomBytes(32).toString('base64url');
   const readyAt = new Date(Date.now() + waitSec() * 1000); const expiresAt = new Date(Date.now() + expireSec() * 1000);
   await query(
-    `INSERT INTO two_factor_resets (id, sky_id, finish_hash, cancel_hash, ip, ua, ready_at, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-    [`rst-${crypto.randomUUID()}`, skyId, sha(finish), sha(cancel), String(ip).slice(0, 60), String(ua).slice(0, 200), readyAt, expiresAt]);
+    `INSERT INTO two_factor_resets (id, sky_id, finish_hash, cancel_hash, ip, ip_fp, ua, ready_at, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [`rst-${crypto.randomUUID()}`, skyId, sha(finish), sha(cancel), ipMask(ip, 60), ipFp(ip), String(ua).slice(0, 200), readyAt, expiresAt]);
   const when = readyAt.toISOString().replace('T', ' ').slice(0, 16);
   await mail(row.email, L('Sky ID: запрошен сброс второго фактора', 'Sky ID: second-factor reset requested'),
     L(`Кто-то запросил сброс приложения-аутентификатора для вашего Sky ID (адрес запроса: ${ip || 'неизвестен'}).\n\n` +
@@ -185,8 +186,8 @@ export const sendContactGuardCode = async (skyId) => {
 
 /** После замены: запись в журнал и письмо на прежнюю почту (если была). */
 export const noteContactChanged = async (skyId, kind, before, after, ip = '') => {
-  await query('INSERT INTO contact_change_log (sky_id, kind, old_masked, new_masked, ip) VALUES ($1,$2,$3,$4,$5)',
-    [skyId, kind, kind === 'email' ? mask(before) : maskPhone(before), kind === 'email' ? mask(after) : maskPhone(after), String(ip).slice(0, 60)]);
+  await query('INSERT INTO contact_change_log (sky_id, kind, old_masked, new_masked, ip, ip_fp) VALUES ($1,$2,$3,$4,$5,$6)',
+    [skyId, kind, kind === 'email' ? mask(before) : maskPhone(before), kind === 'email' ? mask(after) : maskPhone(after), ipMask(ip, 60), ipFp(ip)]);
   if (before && String(before).toLowerCase() === String(after).toLowerCase()) return;
   const oldEmail = kind === 'email' ? before : (await sky(skyId))?.email;
   if (!oldEmail) return;

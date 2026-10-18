@@ -18,6 +18,7 @@ import { usableBackupEmail } from './recoverymail.mjs';
 import { attempt, record, notifyAccount, maskEmail } from './recoverycore.mjs';
 import { pushGoEvent } from './signal.mjs';
 import { logEvent as skyLog } from './skylog.mjs';
+import { ipMask, ipFp } from './ipmask.mjs';
 
 const TTL_MS = 24 * 3600_000;
 const ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
@@ -48,8 +49,8 @@ export const onLogin = async (skyId, sid, req, meta) => {
   await sessionStore.patch(sid, { limited: true });
   const id = newId();
   const label = String(meta?.ua ?? '').slice(0, 160);
-  await query(`INSERT INTO device_approvals (id, sky_id, sid, device_hash, label, ip, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [id, skyId, sid, hash, label, String(meta?.ip ?? ''), new Date(Date.now() + TTL_MS)]);
+  await query(`INSERT INTO device_approvals (id, sky_id, sid, device_hash, label, ip, ip_fp, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [id, skyId, sid, hash, label, ipMask(meta?.ip), ipFp(meta?.ip), new Date(Date.now() + TTL_MS)]);
   await record({ skyId, event: 'limited_login', factor: 'device', result: 'pending', ip: meta?.ip }).catch(() => {});
   skyLog({ category: 'security', service: 'limited', type: 'limited_login', targetId: skyId, ip: meta?.ip, detail: { approval: id } });
   // Основная почта + запись в «Уведомлениях» (оттуда уходит push). Ссылок нет: подтверждение — только в приложении, с доверенного устройства.

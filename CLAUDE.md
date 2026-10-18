@@ -1473,3 +1473,10 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - `scripts/env-check.sh` — проверка `.env` без печати значений (права, заглушки, длина ≥32, разные ключи подписи и шифрования, пароли служб, `ADMIN_GATE=off`, ключ копий). Код выхода 1 — критично, 2 — предупреждения.
 - `scripts/check-infra.sh` — только чтение: порты Postgres/Redis/API наружу, `ports:` у redis/postgres в compose, пароль Redis, ufw, LUKS, права `.env`/`secrets`/каталога копий, открытые копии `.gz`, `backup.key` на сервере.
 - Не сделано: версии ключей и `scripts/rekey.mjs` (ключ выводится HKDF в `crypto.mjs`, `mediacrypto.mjs`, `skystoragecrypto.mjs` — смена затрагивает много таблиц и файлов, делать только отдельным шагом с пробным проходом), HMAC-отпечатки вместо полных IP и почта апелляций сайта (шаг 6 плана).
+
+## Почта обращений сайта и адреса в журналах безопасности (ноябрь-2026)
+
+- Миграция `176`: `site_appeals/site_releases` хранят почту как `email_enc` (шифр) + `email_hmac` (поиск); открытая `email` у новых записей пустая. Старые: `node scripts/seal-site-emails.mjs [--apply]` (с проверкой обратной расшифровки). Чтение — `emailOf(row)` в `sitecms.mjs`.
+- Миграция `177`: в 7 таблицах (`admin_gate_requests`, `ssh_gate_requests`, `device_links`, `account_freeze_log`, `two_factor_resets`, `contact_change_log`, `device_approvals`) полный IP не пишется: `ip` = укрупнённый (`a.b.c.0/24`, IPv6 /48), `ip_fp` = HMAC-отпечаток (`server/ipmask.mjs`).
+  Старые записи: `node scripts/seal-ip-logs.mjs [--apply]`. Полный адрес остаётся только в письме владельцу аккаунта. Перед `--apply` — копия базы.
+- `envfile.mjs` читает `X_FILE` только для списка `ALLOWED` (служебные `SSL_CERT_FILE` и т. п. не трогает). Не сделано: `rekey.mjs` (версии ключей). Тесты прошли: site 64, devicelink 37, accountfreeze 45, limitedaccess 48; recovery-test после правки не перепрогонялся (мешал остаток прошлого запуска в тестовой базе).

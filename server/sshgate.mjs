@@ -27,6 +27,7 @@ import { rateLimitPerHour } from './security.mjs';
 import { L } from './lang.mjs';
 import { adminNow, enactPanic } from './admingate.mjs';
 import { rateLimit } from './security.mjs';
+import { ipMask, ipFp } from './ipmask.mjs';
 
 const LINK_TTL_MIN = 5;
 const CODE_ATTEMPTS = 3;
@@ -109,9 +110,9 @@ export const requestSsh = async ({ ts, user, host, rhost, tty, sig }, { ip }) =>
   const id = `ssh-${crypto.randomUUID()}`;
   const device = `${fields.user}@${fields.host}${fields.tty ? ` (${fields.tty})` : ''}`;
   await query(
-    `INSERT INTO ssh_gate_requests (id, profile_id, token_hash, poll_hash, ssh_user, ssh_host, ip, device, expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now() + ($9 || ' minutes')::interval)`,
-    [id, who.id, hash('link', token), hash('poll', poll), fields.user, fields.host, fields.rhost, clip(device, 160), String(LINK_TTL_MIN)]);
+    `INSERT INTO ssh_gate_requests (id, profile_id, token_hash, poll_hash, ssh_user, ssh_host, ip, ip_fp, device, expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now() + ($10 || ' minutes')::interval)`,
+    [id, who.id, hash('link', token), hash('poll', poll), fields.user, fields.host, ipMask(fields.rhost), ipFp(fields.rhost), clip(device, 160), String(LINK_TTL_MIN)]);
 
   const link = `${config.publicOrigin}/ssh-verify?t=${token}`;
   const r = await sendEmail(who.email, L('Вход на сервер Sky по SSH', 'Sky server SSH sign-in'),
