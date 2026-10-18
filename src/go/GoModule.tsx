@@ -1,7 +1,7 @@
 /** Sky GO: оболочка раздела. Нижняя навигация: Главная / Заказы / Работа / Профиль. */
 import { NotifyPrefs, MySupport, SupportForm } from './Support';
 import { useRef, useState } from 'react';
-import { Car, UtensilsCrossed, Package, Plane, Fuel, Home, ClipboardList, Briefcase, User, LifeBuoy, BedDouble, Map as MapIcon, Hotel } from 'lucide-react';
+import { Car, UtensilsCrossed, Package, Plane, Fuel, ParkingCircle, Home, ClipboardList, Briefcase, User, LifeBuoy, BedDouble, Map as MapIcon, Hotel } from 'lucide-react';
 import { goApi, ROLE_LABEL, STAY_LABEL, type GoRole, type StayKind } from './api';
 import { Back, Btn, Card, Chip, Col, CitySelect, Empty, ErrorState, Notice, fail, useCity, useLoad, C, GO, fmt } from './ui';
 import { flash } from '@/shared/flash';
@@ -14,6 +14,7 @@ import { AutoScreen, FuelScreen, type AutoKind } from './Fuel';
 import { RegisterScreen, StatusChip } from './Register';
 import { TravelScreen, type TravelTab } from './Travel';
 import { StayCabinet } from './StayCabinet';
+import { ParkingScreen } from './Parking';
 import { DriverCabinet, SellerCabinet, CompanyCabinet, PayDetailsCard } from './Cabinet';
 import { bizApi, type OrgRole, type Member, type AssignMode, type Workspaces } from './bizApi';
 import { BusinessWorkspace } from './Business';
@@ -21,7 +22,7 @@ import { ExecutorWorkspace } from './Work';
 import { DeliveryForm as OrgDeliveryForm, type OrgFormCtx } from './Delivery';
 
 type Tab = 'home' | 'orders' | 'work' | 'profile';
-type Screen = null | { biz: string; name: string; role: OrgRole; order?: string } | { bizNew: OrgFormCtx & { role: OrgRole } } | { work: 'courier' | 'taxi_driver' } | 'taxi' | 'food' | 'delivery' | { delivery: DeliveryMode } | { auto: AutoKind | null } | 'flights' | 'fuel' | { order: string } | { travel: TravelTab } | { role: GoRole; mode: 'register' | 'cabinet' };
+type Screen = null | { biz: string; name: string; role: OrgRole; order?: string } | { bizNew: OrgFormCtx & { role: OrgRole } } | { work: 'courier' | 'taxi_driver' } | 'taxi' | 'food' | 'delivery' | { delivery: DeliveryMode } | { auto: AutoKind | null } | 'flights' | 'fuel' | 'parking' | { order: string } | { travel: TravelTab } | { role: GoRole; mode: 'register' | 'cabinet' };
 
 const SERVICES = [
   { key: 'taxi', title: 'Такси', hint: 'Поездка по городу', Icon: Car },
@@ -29,6 +30,7 @@ const SERVICES = [
   { key: 'delivery', title: 'Доставка', hint: 'Курьером из точки в точку', Icon: Package },
   { key: 'flights', title: 'Авиабилеты', hint: 'Поиск предложений', Icon: Plane },
   { key: 'fuel', title: 'Моё авто', hint: 'Заправки и мойки рядом', Icon: Fuel },
+  { key: 'parking', title: 'Парковки', hint: 'Оплата с кошелька Sky', Icon: ParkingCircle },
 ] as const;
 
 export const SkyGo = () => {
@@ -86,6 +88,7 @@ export const SkyGo = () => {
     if (screen === 'delivery') return <DeliveryHub hasCompany={executors.some((e) => e.role === 'company' && e.status === 'approved')} onBack={() => setScreen(null)} onPick={(m) => (m === 'company' ? void openCompanyOrder() : setScreen({ delivery: m }))} />;
     if (screen && typeof screen === 'object' && 'delivery' in screen) return <DeliveryForm mode={screen.delivery} city={city} cargo={config.cargo} onBack={() => setScreen('delivery')} onCreated={open} />;
     if (screen === 'flights') return <TravelScreen initial="flights" cities={config.cities} city={city} onCity={setCity} onBack={() => setScreen(null)} onBooked={open} onOrders={() => goTab('orders')} />;
+    if (screen === 'parking') return <ParkingScreen city={city} onBack={() => setScreen(null)} />;
     if (screen === 'fuel') return <AutoScreen city={city} onBack={() => setScreen(null)} onOpen={(k) => setScreen({ auto: k })} />;
     if (screen && typeof screen === 'object' && 'auto' in screen && screen.auto) return <FuelScreen city={city} kind={screen.auto} onBack={() => setScreen('fuel')} />;
     if (screen && typeof screen === 'object' && 'travel' in screen) return <TravelScreen initial={screen.travel} cities={config.cities} city={city} onCity={setCity} onBack={() => setScreen(null)} onBooked={open} onOrders={() => goTab('orders')} />;

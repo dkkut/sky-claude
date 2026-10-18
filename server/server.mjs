@@ -76,6 +76,7 @@ import { goAdminRoutes } from './routes/goadmin.mjs';
 import { sweepExpired as goSweepExpired } from './gosubs.mjs';
 import { sweepOrgs } from './goorg.mjs';
 import { sweepDispatch } from './godispatch.mjs';
+import { sweepParking } from './parkingpay.mjs';
 import { sweepQuotes } from './gopricing.mjs';
 import { sweepFuel as goSweepFuel } from './gofuel.mjs';
 import { sweepStay as goSweepStay } from './gostay.mjs';
@@ -626,7 +627,8 @@ const start = async () => {
   goDispatchSchedule = setInterval(async () => {
     if (dispatchBusy) return;
     dispatchBusy = true;
-    try { await sweepDispatch(); } catch (e) { console.error('[go] распределение:', e.message); } finally { dispatchBusy = false; }
+    try { await sweepDispatch(); } catch (e) { console.error('[go] распределение:', e.message); }
+    try { await sweepParking(); } catch (e) { console.error('[parking] уборка:', e.message); } finally { dispatchBusy = false; }
   }, 10 * 1000);
   goDispatchSchedule.unref();
 

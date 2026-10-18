@@ -19,19 +19,19 @@ const get = <T,>(p: string) => apiCall<T>(`${A}${p}`);
 const send = <T,>(m: string, p: string, b: unknown) => apiCall<T>(`${A}${p}`, { method: m, body: JSON.stringify(b) });
 const bad = (r: { error?: string; reason?: string }) => flash(({ not_allowed: 'Недостаточно прав.', note_required: 'Укажите причину.', bad_transition: 'Переход невозможен.', bad_price: 'Неверная цена.' } as Record<string, string>)[r.error ?? ''] ?? goError(r));
 
-type Sub = 'apps' | 'stats' | 'support' | 'recon' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'refunds' | 'zones' | 'tariffs' | 'integrations';
+type Sub = 'apps' | 'stats' | 'support' | 'recon' | 'dispatch' | 'orders' | 'orgs' | 'stay' | 'subs' | 'refunds' | 'zones' | 'tariffs' | 'integrations' | 'parking';
 
 export const GoAdminTab = () => {
   const [sub, setSub] = useState<Sub>('apps');
   const [ov, setOv] = useState<any>(null);
   useEffect(() => { void get<any>('/overview').then((r) => r.ok && setOv(r.data)); }, [sub]);
-  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['stats', 'Аналитика'], ['support', 'Обращения'], ['recon', 'Сверка'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['refunds', 'Возвраты'], ['zones', 'Зоны'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
+  const TABS: [Sub, string][] = [['apps', 'Заявки'], ['dispatch', 'Диспетчер'], ['stats', 'Аналитика'], ['support', 'Обращения'], ['recon', 'Сверка'], ['orders', 'Заказы и споры'], ['orgs', 'Организации'], ['stay', 'Жильё и отдых'], ['subs', 'Подписки'], ['refunds', 'Возвраты'], ['zones', 'Зоны'], ['parking', 'Парковки'], ['tariffs', 'Тарифы и настройки'], ['integrations', 'Интеграции']];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {ov && <div style={{ ...box, fontSize: 13, color: C.t2 }}>Активных подписок: <b style={{ color: C.t1 }}>{ov.activeSubscriptions}</b> · На проверке: <b style={{ color: C.t1 }}>{(ov.executors.submitted ?? 0) + (ov.executors.in_review ?? 0)}</b> · Заказов за 30 дней: <b style={{ color: C.t1 }}>{ov.orders30d.reduce((s: number, r: any) => s + r.n, 0)}</b></div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{TABS.map(([k, t]) => <button key={k} onClick={() => setSub(k)} style={btn(sub === k ? C.acc : C.l2, sub === k ? '#fff' : C.t1)}>{t}</button>)}</div>
       {sub === 'apps' && <Apps />}{sub === 'dispatch' && <Dispatch />}{sub === 'recon' && <Reconcile />}{sub === 'support' && <SupportList />}{sub === 'stats' && <GoStats />}{sub === 'orgs' && <OrgsPanel />}
-        {sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'refunds' && <Refunds />}{sub === 'zones' && <Zones />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
+        {sub === 'orders' && <Orders />}{sub === 'stay' && <StayListings />}{sub === 'subs' && <Subs />}{sub === 'refunds' && <Refunds />}{sub === 'zones' && <Zones />}{sub === 'parking' && <ParkingAdmin />}{sub === 'tariffs' && <Tariffs />}{sub === 'integrations' && <Integrations />}
     </div>
   );
 };
@@ -573,6 +573,48 @@ const Refunds = () => {
               <div style={{ display: 'flex', gap: 8 }}><button style={btn(C.green)} onClick={() => decide(x.id, 'upheld')}>В пользу заказчика</button><button style={btn('rgba(239,68,68,.15)', C.red)} onClick={() => decide(x.id, 'denied')}>Отказать</button><button style={btn(C.l2, C.t1)} onClick={() => setSel(null)}>Отмена</button></div>
             </div>) : <button style={{ ...btn(), marginTop: 8 }} onClick={() => { setSel(x.id); setNote(''); }}>Решить</button>)}
         </div>))}
+    </div>
+  );
+};
+
+/* ─── Парковки: очередь проверки, жалобы, организации (права parking_moderation / parking) ─── */
+const PK = '/api/admin/parking';
+const pkBad = (r: { error?: string }) => flash(({ not_allowed: 'Недостаточно прав.', self_review: 'Свою парковку проверять нельзя.', reason_required: 'Укажите причину (от 5 знаков).', bad_state: 'Состояние уже изменилось.' } as Record<string, string>)[r.error ?? ''] ?? `Не получилось (${r.error ?? 'ошибка'})`);
+const ParkingAdmin = () => {
+  const [view, setView] = useState<'review' | 'approved' | 'reports' | 'orgs'>('review');
+  const [items, setItems] = useState<any[] | null>(null);
+  const [reason, setReason] = useState('');
+  const [q, setQ] = useState('');
+  const load = useCallback(async () => {
+    setItems(null);
+    const r = view === 'reports' ? await apiCall<{ reports: any[] }>(`${PK}/reports`) : view === 'orgs' ? await apiCall<{ orgs: any[] }>(`${PK}/orgs?q=${encodeURIComponent(q)}`) : await apiCall<{ lots: any[] }>(`${PK}/lots?status=${view}`);
+    if (!r.ok) { pkBad(r); return setItems([]); }
+    const d: any = r.data; setItems(d.reports ?? d.orgs ?? d.lots ?? []);
+  }, [view, q]);
+  useEffect(() => { void load(); }, [load]);
+  const act = async (path: string, body: unknown) => { const r = await apiCall(`${PK}${path}`, { method: 'POST', body: JSON.stringify(body) }); if (!r.ok) return pkBad(r); flash('Готово'); setReason(''); void load(); };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{([['review', 'На проверке'], ['approved', 'Опубликованы'], ['reports', 'Жалобы'], ['orgs', 'Организации']] as const).map(([k, t]) => <button key={k} onClick={() => setView(k)} style={btn(view === k ? C.acc : C.l2, view === k ? '#fff' : C.t1)}>{t}</button>)}</div>
+      {view === 'orgs' && <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск по названию или id" style={inp} />}
+      <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина / комментарий (обязательна при отказе, приостановке)" style={inp} />
+      {!items ? <div style={{ color: C.t3 }}>Загрузка…</div> : items.length === 0 ? <div style={{ color: C.t3 }}>Пусто.</div> : items.map((x) => (
+        <div key={x.id} style={box}>
+          {view === 'reports' ? <>
+            <div><b>{x.lotTitle}</b> · {x.reason}</div><div style={{ fontSize: 12.5, color: C.t2 }}>{x.note}</div>
+            <button style={btn()} onClick={() => act(`/reports/${x.id}/resolve`, { resolution: reason })}>Закрыть жалобу</button></>
+          : view === 'orgs' ? <>
+            <div><b>{x.name}</b> · {x.status === 'suspended' ? 'приостановлена' : 'активна'} · парковок: {x.lots}</div><div style={{ fontSize: 12, color: C.t3 }}>{x.id} · владелец {x.ownerId}</div>
+            {x.status === 'suspended' ? <button style={btn()} onClick={() => act(`/orgs/${x.id}/restore`, {})}>Возобновить</button> : <button style={btn(C.red)} onClick={() => act(`/orgs/${x.id}/suspend`, { reason })}>Приостановить</button>}</>
+          : <>
+            <div><b>{x.title}</b> · {x.orgName}</div><div style={{ fontSize: 12.5, color: C.t2 }}>{x.city}, {x.address} · мест: {x.spacesTotal} · {x.lat != null ? `${x.lat}, ${x.lng}` : 'без точки'}</div>
+            <div style={{ fontSize: 12.5, color: C.t2 }}>Тарифы: {x.tariffs.map((t: any) => `${t.kind} ${t.priceRub} ₽`).join('; ') || '—'}</div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+              {view === 'review' && <><button style={btn()} onClick={() => act(`/lots/${x.id}/approve`, {})}>Одобрить</button><button style={btn(C.red)} onClick={() => act(`/lots/${x.id}/reject`, { reason })}>Отклонить</button></>}
+              {view === 'approved' && <button style={btn(C.red)} onClick={() => act(`/lots/${x.id}/suspend`, { reason })}>Приостановить</button>}
+            </div></>}
+        </div>))}
+      <div style={{ fontSize: 12, color: C.t3 }}>Проверка ручная: реестры организаций и права на площадку Sky не сверяет. Свои парковки проверять нельзя.</div>
     </div>
   );
 };
