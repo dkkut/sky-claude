@@ -69,6 +69,10 @@ const masterKeys = () => {
     console.warn('[mediacrypto] ENCRYPTION_KEY не задан — ключ медиахранилища выводится из '
       + 'JWT_SECRET. Задайте отдельный ключ для продакшена.');
   }
+  // Прежние ключи после ротации (ENCRYPTION_KEY_PREV): файлы под ними читаются, пока mediabackfill не перепакует их под новый.
+  for (const m of String(process.env.ENCRYPTION_KEY_PREV || '').split(',').map((x) => x.trim()).filter(Boolean)) {
+    const k = deriveKey(Buffer.from(m, 'utf8')); if (!keys.some((x) => x.equals(k))) keys.push(k);
+  }
   const fromJwt = deriveKey(Buffer.from(config.jwtSecret, 'utf8'));
   if (!keys.some((k) => k.equals(fromJwt))) keys.push(fromJwt);
   return keys;

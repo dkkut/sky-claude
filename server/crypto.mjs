@@ -33,11 +33,24 @@ const keyMaterial = () => {
 const derive = (info) =>
   Buffer.from(crypto.hkdfSync('sha256', keyMaterial(), Buffer.alloc(0), Buffer.from(info), 32));
 
+/**
+ * Ротация ключа без простоя: новый ключ — в ENCRYPTION_KEY, прежние (через запятую, новейший первым) — в ENCRYPTION_KEY_PREV.
+ * Запись пишется текущим ключом, читается текущим, а при неудаче — прежними. Когда scripts/rekey-all.mjs перенёс всё на новый ключ,
+ * прежний можно убрать из PREV. HMAC (коды, отпечатки почты и IP) и ключ Sky Codes считаются от САМОГО СТАРОГО материала (stableMaterial),
+ * поэтому ротация не обесценивает уже выданные коды и найденные по HMAC записи.
+ */
+const prevMaterials = () => String(process.env.ENCRYPTION_KEY_PREV || '').split(',').map((x) => x.trim()).filter(Boolean);
+export const stableMaterial = () => { const p = prevMaterials(); return p.length ? p[p.length - 1] : (config.encryptionKey || config.jwtSecret); };
+const deriveFrom = (material, info) => Buffer.from(crypto.hkdfSync('sha256', Buffer.from(material, 'utf8'), Buffer.alloc(0), Buffer.from(info), 32));
+const readKeys = (info) => [derive(info), ...prevMaterials().map((m) => deriveFrom(m, info))];
+/** Ключи для чтения (текущий первым). Для scripts/rekey-all.mjs. */
+export const readKeysFor = (kind) => readKeys(kind === 'secret' ? 'sky:secret-encryption:v1' : 'sky:message-content:v1');
+
 let _encKey = null;
 let _macKey = null;
 let _contentKey = null;
 const encKey = () => (_encKey ??= derive('sky:secret-encryption:v1'));
-const macKey = () => (_macKey ??= derive('sky:code-hmac:v1'));
+const macKey = () => (_macKey ??= deriveFrom(stableMaterial(), 'sky:code-hmac:v1'));
 // Отдельный ключ для содержимого переписки: он используется на каждое
 // сообщение, а ключ секретов 2FA — изредка. Разводить их стоит хотя бы
 // потому, что объём данных под одним ключом лучше не смешивать.
@@ -59,14 +72,15 @@ export const decryptSecret = (blob) => {
   if (typeof blob !== 'string') return null;
   const [version, ivB64, tagB64, dataB64] = blob.split('.');
   if (version !== 'v1' || !ivB64 || !tagB64 || !dataB64) return null;
-  try {
-    const decipher = crypto.createDecipheriv('aes-256-gcm', encKey(), Buffer.from(ivB64, 'base64url'));
-    decipher.setAuthTag(Buffer.from(tagB64, 'base64url'));
-    return Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64url')), decipher.final()]).toString('utf8');
-  } catch {
-    // Неверный тег — значение испорчено или подменено.
-    return null;
+  for (const key of readKeys('sky:secret-encryption:v1')) {
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64url'));
+      decipher.setAuthTag(Buffer.from(tagB64, 'base64url'));
+      return Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64url')), decipher.final()]).toString('utf8');
+    } catch { /* другой ключ — пробуем следующий */ }
   }
+  // Ни один ключ не подошёл — значение испорчено, подменено или зашифровано неизвестным ключом.
+  return null;
 };
 
 /**
@@ -153,15 +167,15 @@ export const decryptContent = (blob) => {
   if (!blob.startsWith('v1.')) return blob;
   const [, ivB64, tagB64, dataB64] = blob.split('.');
   if (!ivB64 || !tagB64 || !dataB64) return blob;
-  try {
-    const decipher = crypto.createDecipheriv('aes-256-gcm', contentKey(), Buffer.from(ivB64, 'base64url'));
-    decipher.setAuthTag(Buffer.from(tagB64, 'base64url'));
-    return Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64url')), decipher.final()]).toString('utf8');
-  } catch {
-    // Ключ сменили без перешифровки, или запись повреждена. Отдать
-    // мусор нельзя, «потерять» молча — тоже: возвращаем пометку.
-    return null;
+  for (const key of readKeys('sky:message-content:v1')) {
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64url'));
+      decipher.setAuthTag(Buffer.from(tagB64, 'base64url'));
+      return Buffer.concat([decipher.update(Buffer.from(dataB64, 'base64url')), decipher.final()]).toString('utf8');
+    } catch { /* другой ключ */ }
   }
+  // Ключ сменили без перешифровки, или запись повреждена. Отдать мусор нельзя, «потерять» молча — тоже: возвращаем пометку.
+  return null;
 };
 
 /** Шифрование двоичных данных — для вложений. */
@@ -176,11 +190,12 @@ export const encryptBytes = (buf) => {
 
 export const decryptBytes = (buf) => {
   if (!Buffer.isBuffer(buf) || buf.length < 29 || buf[0] !== 1) return null;
-  try {
-    const decipher = crypto.createDecipheriv('aes-256-gcm', contentKey(), buf.subarray(1, 13));
-    decipher.setAuthTag(buf.subarray(13, 29));
-    return Buffer.concat([decipher.update(buf.subarray(29)), decipher.final()]);
-  } catch {
-    return null;
+  for (const key of readKeys('sky:message-content:v1')) {
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, buf.subarray(1, 13));
+      decipher.setAuthTag(buf.subarray(13, 29));
+      return Buffer.concat([decipher.update(buf.subarray(29)), decipher.final()]);
+    } catch { /* другой ключ */ }
   }
+  return null;
 };

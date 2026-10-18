@@ -1480,3 +1480,10 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - Миграция `177`: в 7 таблицах (`admin_gate_requests`, `ssh_gate_requests`, `device_links`, `account_freeze_log`, `two_factor_resets`, `contact_change_log`, `device_approvals`) полный IP не пишется: `ip` = укрупнённый (`a.b.c.0/24`, IPv6 /48), `ip_fp` = HMAC-отпечаток (`server/ipmask.mjs`).
   Старые записи: `node scripts/seal-ip-logs.mjs [--apply]`. Полный адрес остаётся только в письме владельцу аккаунта. Перед `--apply` — копия базы.
 - `envfile.mjs` читает `X_FILE` только для списка `ALLOWED` (служебные `SSL_CERT_FILE` и т. п. не трогает). Не сделано: `rekey.mjs` (версии ключей). Тесты прошли: site 64, devicelink 37, accountfreeze 45, limitedaccess 48; recovery-test после правки не перепрогонялся (мешал остаток прошлого запуска в тестовой базе).
+
+## Ротация ENCRYPTION_KEY без простоя (шаг 5 плана шифрования)
+
+`crypto.mjs`: запись — текущим `ENCRYPTION_KEY`, чтение — текущим, затем прежними из `ENCRYPTION_KEY_PREV` (через запятую, новейший первым; в compose, в `mediacrypto` тоже). HMAC (`macOf`, коды) и ключ Sky Codes считаются от `stableMaterial()` — самого старого ключа,
+поэтому ротация не ломает выданные коды и поиск по HMAC. Порядок: 1) копия (`backup.sh`) и `secrets-export.sh`; 2) в `.env`: `ENCRYPTION_KEY_PREV=<старый>`, `ENCRYPTION_KEY=<новый, openssl rand -base64 32>`; 3) `deploy-local.sh` (всё читается сразу);
+4) `docker compose exec api node scripts/rekey-all.mjs` (пробный проход) → `… --apply` (обходит все текстовые колонки с шифротекстом `v1.…`, проверка обратной расшифровкой, условный UPDATE); 5) файлы SKE1 перепаковывает `mediabackfill`; 6) когда проход показывает 0 «на прежних» — убрать PREV и сделать новую выгрузку секретов.
+Не охвачено: jsonb с вложенными шифротекстами, шифротексты в других форматах (SBK1 копий — отдельный KEK), токены запуска Blox (`blox.mjs`, короткоживущие). Тест: `scripts/audit/rekey-test.mjs` (8). Прежний `server/rekey.mjs` — только перенос с ключа из JWT_SECRET.

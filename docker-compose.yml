@@ -90,6 +90,7 @@ services:
       PAYMENTS_MODE:         ${PAYMENTS_MODE:-disabled}
       # Отдельный ключ шифрования секретов двухэтапной защиты.
       ENCRYPTION_KEY:        ${ENCRYPTION_KEY:-}
+      ENCRYPTION_KEY_PREV:   ${ENCRYPTION_KEY_PREV:-}
       # Ник владельца сервиса: права администратора у него всегда, и
       # снять их не может никто. Пусто — владельца нет, и назначать
       # администраторов некому.

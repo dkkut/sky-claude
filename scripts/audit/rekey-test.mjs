@@ -1,0 +1,32 @@
+// Ротация ключа: двойное чтение + scripts/rekey-all.mjs. (. env.sh; node scripts/audit/rekey-test.mjs)
+import { execFileSync, execSync } from 'node:child_process';
+let ok = 0, bad = 0; const t = (n, c, x = '') => { c ? (ok++, console.log('ok  ', n)) : (bad++, console.log('FAIL', n, x)); };
+const psql = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s}"`).toString().trim();
+const OLD = 'old-key-old-key-old-key-old-key-0001', NEW = 'new-key-new-key-new-key-new-key-0002';
+const run = (env, code) => execFileSync('node', ['--input-type=module', '-e', code], { env: { ...process.env, ...env }, cwd: process.cwd() }).toString().trim();
+psql('drop table if exists zz_rekey; create table zz_rekey (id text primary key, a text, b text)');
+const w = run({ ENCRYPTION_KEY: OLD, ENCRYPTION_KEY_PREV: '' }, `
+  const c = await import('./server/crypto.mjs'); const { query } = await import('./server/db.mjs');
+  await query('insert into zz_rekey values ($1,$2,$3)', ['r1', c.encryptSecret('секрет-1'), c.encryptContent('сообщение-1')]);
+  console.log(c.macOf('x','y')); process.exit(0)`);
+const macOld = w.split('\n').pop();
+const chk = (env, expect) => run(env, `const c = await import('./server/crypto.mjs'); const { query } = await import('./server/db.mjs');
+  const r = (await query('select a,b from zz_rekey')).rows[0];
+  console.log(JSON.stringify([c.decryptSecret(r.a), c.decryptContent(r.b), c.macOf('x','y')])); process.exit(0)`);
+let r = JSON.parse(chk({ ENCRYPTION_KEY: NEW, ENCRYPTION_KEY_PREV: '' }).split('\n').pop());
+t('новый ключ без PREV: старое не читается (ожидаемо)', r[0] === null && r[1] === null);
+r = JSON.parse(chk({ ENCRYPTION_KEY: NEW, ENCRYPTION_KEY_PREV: OLD }).split('\n').pop());
+t('новый ключ + PREV: читается без простоя', r[0] === 'секрет-1' && r[1] === 'сообщение-1');
+t('HMAC не меняется при ротации (стабильный материал)', r[2] === macOld);
+const dry = run({ ENCRYPTION_KEY: NEW, ENCRYPTION_KEY_PREV: OLD }, `await import('./scripts/rekey-all.mjs')`);
+t('пробный проход видит 2 записи на прежнем ключе и ничего не меняет', /zz_rekey\.a: на текущем ключе 0, на прежних 1/.test(dry) && /zz_rekey\.b: .*на прежних 1/.test(dry));
+const ap = run({ ENCRYPTION_KEY: NEW, ENCRYPTION_KEY_PREV: OLD }, `await import('./scripts/rekey-all.mjs')`.replace("rekey-all.mjs'", "rekey-all.mjs'") );
+t('--apply не менял без флага', !/перенесено/.test(dry));
+const ap2 = execFileSync('node', ['scripts/rekey-all.mjs', '--apply'], { env: { ...process.env, ENCRYPTION_KEY: NEW, ENCRYPTION_KEY_PREV: OLD } }).toString();
+t('--apply перенёс обе записи', /zz_rekey\.a: .*перенесено 1/.test(ap2) && /zz_rekey\.b: .*перенесено 1/.test(ap2), ap2.slice(-300));
+r = JSON.parse(chk({ ENCRYPTION_KEY: NEW, ENCRYPTION_KEY_PREV: '' }).split('\n').pop());
+t('после переноса читается одним новым ключом', r[0] === 'секрет-1' && r[1] === 'сообщение-1');
+const again = execFileSync('node', ['scripts/rekey-all.mjs', '--apply'], { env: { ...process.env, ENCRYPTION_KEY: NEW, ENCRYPTION_KEY_PREV: OLD } }).toString();
+t('повторный запуск ничего не переносит', !/zz_rekey\.[ab]: .*перенесено [1-9]/.test(again));
+psql('drop table zz_rekey');
+console.log(bad ? `FAIL ${bad}` : `OK ${ok}`); process.exit(bad ? 1 : 0);

@@ -31,6 +31,7 @@ import { logEvent as skyLog } from './skylog.mjs';
 import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { config } from './config.mjs';
+import { stableMaterial } from './crypto.mjs';
 import { generateId } from './security.mjs';
 import { rightsOf, can, isOwner } from './admin.mjs';
 import { logAdmin, consumeStepUp, lockdownState } from './adminsec.mjs';
@@ -71,7 +72,7 @@ export const normalizeCode = (raw) => {
   return /^[A-Z0-9]{4,40}$/.test(s) ? s : null;
 };
 
-const hmacKey = () => `${config.encryptionKey || config.jwtSecret}:sky-codes:v1`;
+const hmacKey = () => `${stableMaterial()}:sky-codes:v1`;
 
 export const codeHash = (canonical) =>
   crypto.createHmac('sha256', hmacKey()).update(canonical).digest('hex');
