@@ -10,13 +10,14 @@ import { apiPlatformStatus } from './platform';
 import { useAuthStore } from './auth/store';
 
 interface Closure { reason?: string }
-interface S { closed: Record<string, Closure>; load: () => Promise<void> }
+interface S { closed: Record<string, Closure>; mediaBanner: boolean; load: () => Promise<void> }
 
 export const useModuleClosures = create<S>((set) => ({
   closed: {},
+  mediaBanner: false,
   load: async () => {
     const s = await apiPlatformStatus();
-    if (s) set({ closed: s.closedModules ?? {} });
+    if (s) set({ closed: s.closedModules ?? {}, mediaBanner: s.mediaBanner === true });
   },
 }));
 
@@ -76,5 +77,19 @@ export const ModuleGate = ({ id, children }: { id: string; children: ReactNode }
         Закрыт для людей — виден только администрации
       </div>
     </>
+  );
+};
+
+/** Баннер о перебоях в Sky Media (включается из админки → Модули). Показывается только внутри Sky Media, ничего не блокирует. */
+export const MediaOutageBanner = () => {
+  const on = useModuleClosures((st) => st.mediaBanner);
+  useEffect(start, []);
+  if (!on) return null;
+  return (
+    <div role="status" data-testid="media-outage-banner" className="mx-3 mt-3 flex items-start gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] font-semibold"
+      style={{ background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.35)', color: 'var(--t1)' }}>
+      <Wrench size={15} className="mt-0.5 shrink-0" style={{ color: '#f59e0b' }} />
+      <span>Sky сейчас работает с перебоями, мы работаем над исправлениями</span>
+    </div>
   );
 };

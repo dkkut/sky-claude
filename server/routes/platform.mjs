@@ -6,7 +6,7 @@
 import { json, parseBody, requireProfile, readSession } from './../http.mjs';
 import { viewerBypasses } from './../platformaccess.mjs';
 import { publicStatus as registrationStatus } from './../registration.mjs';
-import { closedPublic } from './../modclosure.mjs';
+import { closedPublic, mediaBannerOn } from './../modclosure.mjs';
 import { shutdownState, maintenanceState, setShutdown, setMaintenance } from './../platform.mjs';
 
 export const platformRoutes = async (req, res, url) => {
@@ -15,11 +15,11 @@ export const platformRoutes = async (req, res, url) => {
   /* Читает кто угодно, даже без сессии — это и есть ручка, по которой
      браузер без сессии понимает, какой экран показать. */
   if (req.method === 'GET' && url === '/api/platform/status') {
-    const [shutdown, maintenance, registration, closedModules] = await Promise.all([shutdownState(), maintenanceState(), registrationStatus(), closedPublic()]);
+    const [shutdown, maintenance, registration, closedModules, mediaBanner] = await Promise.all([shutdownState(), maintenanceState(), registrationStatus(), closedPublic(), mediaBannerOn()]);
     // bypass: этого посетителя режим не касается (владелец/администратор) — клиент не должен показывать ему заглушку
     const kind = shutdown.active ? 'shutdown' : maintenance.active ? 'maintenance' : null;
     const bypass = kind ? await viewerBypasses(await readSession(req).catch(() => null), kind) : false;
-    return json(res, 200, { shutdown, maintenance, registration, closedModules, bypass });
+    return json(res, 200, { shutdown, maintenance, registration, closedModules, mediaBanner, bypass });
   }
 
   const session = await requireProfile(req, res);

@@ -46,10 +46,35 @@ export const MODULES = [
   { key: 'musicians', label: 'Музыканты', group: 'Сервисы Sky' },
   { key: 'cloudgaming', label: 'Sky Gaming Cloud', group: 'Сервисы Sky' },
   { key: 'cloud', label: 'Sky Cloud', group: 'Сервисы Sky' },
+  { key: 'kbiz', label: 'Sky для бизнеса (SkyKassa Business)', group: 'Сервисы Sky' },
 ];
 const KEYS = new Set(MODULES.map((m) => m.key));
 const allowed = (me) => can(me, 'modules');
 const log = (me, type, detail, meta) => logAdmin({ actorId: me, targetType: 'system', type, detail: String(detail).slice(0, 200), meta });
+
+/** Закрыт ли модуль (для серверных проверок). Ответ держится 3 с; сбрасывается при любом изменении. */
+let _cache = { at: 0, set: new Set() };
+const forget = () => { _cache = { at: 0, set: new Set() }; };
+export const isClosed = async (key) => {
+  if (Date.now() - _cache.at > 3000) {
+    try { _cache = { at: Date.now(), set: new Set((await query('SELECT module FROM closed_modules')).rows.map((r) => r.module)) }; }
+    catch { return false; }   // сбой базы не должен закрывать сервис
+  }
+  return _cache.set.has(key);
+};
+
+/** Баннер «Sky работает с перебоями» в Sky Media: состояние в platform_flags, включает/выключает право `modules`. Текст зашит на клиенте. */
+export const mediaBannerOn = async () => {
+  try { return !!(await query(`SELECT on_flag FROM platform_flags WHERE key = 'media_banner'`)).rows[0]?.on_flag; } catch { return false; }
+};
+export const adminSetBanner = async (me, on, meta) => {
+  if (!(await allowed(me))) return { error: 'not_allowed' };
+  if (typeof on !== 'boolean') return { error: 'bad_value' };
+  await query(`INSERT INTO platform_flags (key, on_flag, updated_by) VALUES ('media_banner', $1, $2)
+    ON CONFLICT (key) DO UPDATE SET on_flag = $1, updated_by = $2, updated_at = now()`, [on, me]);
+  await log(me, on ? 'media_banner_on' : 'media_banner_off', 'Sky Media', meta);
+  return { ok: true, on };
+};
 
 /** Публичная часть: {ключ: {reason?}} — причина только если её разрешено показывать. */
 export const closedPublic = async () => {
@@ -75,9 +100,11 @@ export const adminSet = async (me, key, b, meta) => {
     if (reason.length < 3) return { error: 'reason_required' };
     await query(`INSERT INTO closed_modules (module, reason, show_reason, closed_by) VALUES ($1,$2,$3,$4)
       ON CONFLICT (module) DO UPDATE SET reason=$2, show_reason=$3, closed_by=$4, closed_at=now()`, [key, reason, b.showReason === true, me]);
+    forget();
     await log(me, 'module_closed', `${key}: ${reason}`, meta);
   } else {
     await query('DELETE FROM closed_modules WHERE module = $1', [key]);
+    forget();
     await log(me, 'module_opened', key, meta);
   }
   return { ok: true };
@@ -95,9 +122,11 @@ export const adminSetAll = async (me, b, meta) => {
     for (const m of MODULES) {
       await query(`INSERT INTO closed_modules (module, reason, show_reason, closed_by) VALUES ($1,$2,$3,$4) ON CONFLICT (module) DO NOTHING`, [m.key, reason, b.showReason === true, me]);
     }
+    forget();
     await log(me, 'modules_closed_all', reason, meta);
   } else {
     await query('DELETE FROM closed_modules');
+    forget();
     await log(me, 'modules_opened_all', 'все модули', meta);
   }
   return { ok: true };

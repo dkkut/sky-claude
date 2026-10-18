@@ -80,6 +80,49 @@ const AllBar = ({ anyOpen, onChanged }: { anyOpen: boolean; onChanged: () => voi
   );
 };
 
+/** Две кнопки управления: Sky для бизнеса (модуль kbiz из общего механизма) и баннер о перебоях в Sky Media. */
+const Quick = ({ list, onChanged }: { list: Mod[]; onChanged: () => void }) => {
+  const biz = list.find((m) => m.key === 'kbiz');
+  const [banner, setBanner] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { void apiCall<{ on: boolean }>('/api/admin/media-banner').then((r) => { if (r.ok && r.data) setBanner(r.data.on); }); }, []);
+  const toggleBiz = async () => {
+    const close = !biz?.closed;
+    if (!window.confirm(close ? 'Отключить Sky для бизнеса? Новые операции перестанут приниматься, данные и платежи сохранятся.' : 'Включить Sky для бизнеса обратно?')) return;
+    setBusy(true);
+    const r = await apiCall('/api/admin/modules/kbiz', { method: 'PUT', body: JSON.stringify({ closed: close, reason: 'Отключено администрацией', showReason: false }) });
+    setBusy(false);
+    if (!r.ok) { flash(ERR[r.error ?? ''] ?? 'Не получилось'); return; }
+    flash(close ? 'Sky для бизнеса отключён' : 'Sky для бизнеса включён'); onChanged();
+  };
+  const toggleBanner = async () => {
+    const on = !banner;
+    if (!window.confirm(on ? 'Показать в Sky Media сообщение о технических проблемах?' : 'Скрыть сообщение о технических проблемах?')) return;
+    setBusy(true);
+    const r = await apiCall('/api/admin/media-banner', { method: 'PUT', body: JSON.stringify({ on }) });
+    setBusy(false);
+    if (!r.ok) { flash(ERR[r.error ?? ''] ?? 'Не получилось'); return; }
+    setBanner(on); flash(on ? 'Сообщение показано в Sky Media' : 'Сообщение скрыто');
+  };
+  const btn = { background: C.acc, color: '#fff' };
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <div className="rounded-xl p-3" style={{ background: C.l1, border: `1px solid ${biz?.closed ? C.red : C.brd}` }}>
+        <p className="text-sm font-semibold" style={{ color: C.t1 }}>Sky для бизнеса: {biz?.closed ? 'отключён' : 'работает'}</p>
+        <button type="button" disabled={busy || !biz} onClick={() => void toggleBiz()} className="mt-2 w-full rounded-xl py-2 text-sm font-bold disabled:opacity-40" style={biz?.closed ? btn : { background: C.red, color: '#fff' }}>
+          {biz?.closed ? 'Включить Sky для бизнеса' : 'Отключить Sky для бизнеса'}
+        </button>
+      </div>
+      <div className="rounded-xl p-3" style={{ background: C.l1, border: `1px solid ${banner ? '#f59e0b' : C.brd}` }}>
+        <p className="text-sm font-semibold" style={{ color: C.t1 }}>Баннер в Sky Media: {banner ? 'показан' : 'скрыт'}</p>
+        <button type="button" disabled={busy || banner === null} onClick={() => void toggleBanner()} className="mt-2 w-full rounded-xl py-2 text-sm font-bold disabled:opacity-40" style={btn}>
+          {banner ? 'Скрыть сообщение о технических проблемах' : 'Показать сообщение о технических проблемах'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export const ModulesTab = () => {
   const [list, setList] = useState<Mod[] | null>(null);
   const load = useCallback(async () => {
@@ -91,6 +134,7 @@ export const ModulesTab = () => {
   const groups = [...new Set(list.map((m) => m.group))];
   return (
     <div className="space-y-4">
+      <Quick list={list} onChanged={() => void load()} />
       <AllBar anyOpen={list.some((m) => !m.closed)} onChanged={() => void load()} />
       <p className="text-[11px]" style={{ color: C.t3 }}>
         Закрытый модуль у людей заменяется баннером «Сервис временно недоступен, мы уже работаем над восстановлением доступа». Это закрытие интерфейса:

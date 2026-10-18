@@ -1,7 +1,7 @@
 import { Handshake, Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, HardDrive, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
 import { visitKeyOf, apiCashbackVisit } from '@/prime/primeApi';
 import { flash } from '@/shared/flash';
-import { ModuleGate } from '@/core/moduleClosures';
+import { ModuleGate, MediaOutageBanner } from '@/core/moduleClosures';
 import { apiCall } from '@/core/auth/api';
 import { useSettings } from '@/settings/store';
 import { lazyChunk } from '@/app/lazyChunk';
@@ -925,6 +925,7 @@ const MediaHomeTab = ({
   return (
     <div ref={scrollRef} onScroll={onScroll}
       className="flex-1 overflow-y-auto relative" style={{ scrollbarWidth:'none' }}>
+      <div className="relative" style={{ zIndex: 2 }}><MediaOutageBanner /></div>
 
       {/* ── STAR FIELD (canvas, behind all content) ───────────── */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex:0 }}>

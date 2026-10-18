@@ -52,6 +52,7 @@ import { SupportScreen } from '@/support/SupportScreen';
 import { LegalDocs }     from '@/info/LegalDocs';
 import { SkyIDTab }    from './SkyIDTab';
 import { KassaBusiness } from '@/kassabiz/KassaBusiness';
+import { ModuleGate } from '@/core/moduleClosures';
 
 const fmtDur = (s: number) => s < 60 ? `${s}с` : `${Math.floor(s/60)}м ${s%60}с`;
 const fmtDate = (iso: string) => { try { return new Date(iso).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}); } catch { return iso; } };
@@ -1527,7 +1528,7 @@ export const ProfileModule = () => {
 
         {section === 'business' && (
           <div className="flex flex-col h-full overflow-hidden">
-            <KassaBusiness />
+            <ModuleGate id="kbiz"><KassaBusiness /></ModuleGate>
           </div>
         )}
 

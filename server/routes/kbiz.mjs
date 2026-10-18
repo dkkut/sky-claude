@@ -1,5 +1,6 @@
 import { json, parseBody, requireProfile, clientIp } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
+import { isClosed } from './../modclosure.mjs';
 import { audit, myBusiness, createBusiness, updateBusiness, setLogo, logoOf, setRequisites, publish, subState, subHistory, buySub, listQr, createQr, setQrStatus,
   publicPage, reportPayment, buyerStatus, listPayments, paymentLog, actOnPayment, auditList, exportPaymentsCsv, overview, scan, SUB_PRICE_RUB, SUB_PERIOD_DAYS } from './../kbiz.mjs';
 import { query } from './../db.mjs';
@@ -30,6 +31,14 @@ export const kbizRoutes = async (req, res) => {
   }
   const reply = (r) => json(res, r.error ? STATUS[r.error] ?? 400 : 200, r);
   const ip = clientIp(req);
+
+  /* Модуль «Sky для бизнеса» отключён администрацией (modclosure, ключ kbiz): новые операции не принимаем. Данные не трогаем.
+     Остаются: вебхук провайдера (уже начатые платежи доводятся), чтение кабинета владельца (GET), статус заказа/платежа и логотип покупателю. */
+  if (await isClosed('kbiz')) {
+    const readOnlyPublic = req.method === 'GET' && /^\/api\/kbiz\/public\/(status\/|logo\/|shop-order\/|media\/)/.test(path);
+    const ownerRead = req.method === 'GET' && !path.startsWith('/api/kbiz/public/');
+    if (!readOnlyPublic && !ownerRead) return json(res, 503, { error: 'module_closed', message: 'Sky для бизнеса временно недоступен.' });
+  }
 
   /* ── Публичная часть: без регистрации в Sky ── */
   if (path.startsWith('/api/kbiz/public/')) {
