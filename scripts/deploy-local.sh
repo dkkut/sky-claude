@@ -73,6 +73,16 @@ if grep -q '^SKIP_MIGRATE_ON_START=1' .env 2>/dev/null; then
   docker compose run --rm --no-deps -e SKIP_MIGRATE_ON_START=0 \
     -e "DATABASE_URL=postgres://sky:${PGPASS}@postgres:5432/sky" api node scripts/migrate.mjs
 fi
+# Проверка конфигурации nginx нового образа ДО перезапуска: entrypoint соберёт конфиг из шаблонов
+# (те же переменные и тома, что у боевого web), затем nginx -t. Сломанный конфиг не доходит до сервера.
+echo "==> Проверяю конфигурацию nginx (nginx -t)"
+if ! docker compose run --rm --no-deps web nginx -t >/tmp/sky-nginx-test.log 2>&1; then
+  tail -n 15 /tmp/sky-nginx-test.log
+  echo "Конфигурация nginx не проходит проверку — деплой остановлен, работающий сайт не тронут."
+  [ -n "$PREV_WEB" ] && set_env WEB_IMAGE "$PREV_WEB"
+  [ -n "$PREV_API" ] && set_env API_IMAGE "$PREV_API"
+  exit 1
+fi
 echo "==> Перезапускаю"
 docker compose up -d --remove-orphans
 

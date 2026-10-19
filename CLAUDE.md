@@ -1495,3 +1495,8 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - **Баннер в Sky Media** — `platform_flags` (миграция 178), `GET/PUT /api/admin/media-banner` (право `modules`, повторяет проверку на сервере, журнал `media_banner_on|off`), флаг `mediaBanner` в публичном `/api/platform/status`; клиент — `MediaOutageBanner` (`moduleClosures.tsx`) только на главной вкладке Sky Media (`MediaHomeTab`), текст зашит: «Sky сейчас работает с перебоями, мы работаем над исправлениями». Ничего не блокирует.
 - Тест: `scripts/audit/featureflags-test.mjs` (22; API с `OWNER_USERNAME=ownertest ADMIN_GATE=off`).
 - `scripts/build-apps.sh apk|exe|ipa|all` — сборка приложений в `/opt/sky/apps` (`OUT=`): apk нужен JDK и Android SDK, exe на Linux — wine (надёжнее Actions), ipa — только macOS/Xcode; то, что невозможно, пропускается с пояснением. Файлы потом загружаются в админке «Сайт» → «Скачивание».
+
+## Деплой: проверка nginx до перезапуска
+
+`scripts/deploy-local.sh` перед `docker compose up -d` запускает `docker compose run --rm --no-deps web nginx -t` на НОВОМ образе (entrypoint сам соберёт конфиг из шаблонов). Не прошло — деплой останавливается, теги образов в `.env` возвращаются, работающий сайт не тронут.
+Причина появления: regex с `{12,24}` в `location ~` без кавычек (nginx читает `{` как блок) клал `web` в цикл перезапуска. В `location ~` любые регулярки с фигурными скобками — только в двойных кавычках. Если `.env` ещё нет или `web` не может стартовать для проверки, смотреть `/tmp/sky-nginx-test.log`.
