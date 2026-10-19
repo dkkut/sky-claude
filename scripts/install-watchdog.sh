@@ -17,7 +17,7 @@ case "${1:-}" in
     systemctl daemon-reload; echo "Самолечение снято (swap и earlyoom оставлены: удалить — apt remove earlyoom, swapoff /swapfile)."; exit 0;;
 esac
 install -m 755 "$SRC/sky-watchdog.sh" /usr/local/sbin/sky-watchdog
-[ -f /etc/sky-watchdog.env ] || { printf '# APP_DIR=/opt/sky\n# WATCHDOG_TG_TOKEN=\n# WATCHDOG_TG_CHAT=\n' > /etc/sky-watchdog.env; chmod 600 /etc/sky-watchdog.env; }
+[ -f /etc/sky-watchdog.env ] || { printf '# APP_DIR=/opt/sky\n# WATCHDOG_EMAIL_TO=you@example.com\n# WATCHDOG_TG_TOKEN=\n# WATCHDOG_TG_CHAT=\n' > /etc/sky-watchdog.env; chmod 600 /etc/sky-watchdog.env; }
 cat > /etc/systemd/system/sky-watchdog.service <<'U'
 [Unit]
 Description=Sky: самолечение сервера
@@ -54,4 +54,4 @@ if [ -f /etc/default/earlyoom ]; then
 fi
 systemctl daemon-reload; systemctl enable --now sky-watchdog.timer
 /usr/local/sbin/sky-watchdog || true
-echo "Готово. Состояние: bash $0 --status   Журнал: /var/log/sky-watchdog.log   Оповещения в Telegram: /etc/sky-watchdog.env"
+echo "Готово. Состояние: bash $0 --status   Журнал: /var/log/sky-watchdog.log   Оповещения (почта/Telegram): /etc/sky-watchdog.env, проверка: sky-watchdog --test-notify"

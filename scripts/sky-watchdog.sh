@@ -10,7 +10,8 @@
 # обойти подтверждение), не правит конфиги и не откатывает данные, не удаляет тома и базу.
 # Предохранители: не чаще MAX_FIX починок за окно WINDOW_MIN минут, потом пауза и только оповещение.
 # Настройки (необязательно): /etc/sky-watchdog.env — APP_DIR, DISK_WARN, DISK_CRIT, MAX_FIX, WINDOW_MIN,
-# WATCHDOG_TG_TOKEN и WATCHDOG_TG_CHAT (оповещение в Telegram), WATCHDOG_URL (куда слать POST с текстом).
+# WATCHDOG_EMAIL_TO (оповещение письмом тем же отправщиком, что и коды входа), WATCHDOG_TG_TOKEN и WATCHDOG_TG_CHAT
+# (Telegram), WATCHDOG_URL (куда слать POST с текстом). Проверка канала: sky-watchdog --test-notify.
 set -uo pipefail
 [ -f /etc/sky-watchdog.env ] && . /etc/sky-watchdog.env
 APP_DIR="${APP_DIR:-/opt/sky}"; STATE="${STATE:-/var/lib/sky-watchdog}"; LOG="${LOG:-/var/log/sky-watchdog.log}"
@@ -20,6 +21,7 @@ DRY=0; [ "${1:-}" = "--dry" ] && DRY=1
 mkdir -p "$STATE" 2>/dev/null || { STATE=/tmp/sky-watchdog; mkdir -p "$STATE"; }
 touch "$LOG" 2>/dev/null || LOG=/tmp/sky-watchdog.log
 
+if [ "${1:-}" = "--test-notify" ]; then TEST=1; fi
 if [ "${1:-}" = "--status" ]; then cat "$STATE/status" 2>/dev/null; echo "--- последние записи ---"; tail -n 25 "$LOG" 2>/dev/null; exit 0; fi
 exec 9>"$STATE/lock"; flock -n 9 || exit 0   # одна копия за раз
 
@@ -35,6 +37,10 @@ notify() {  # повтор одного и того же текста не ча�
   if [ -n "${WATCHDOG_TG_TOKEN:-}" ] && [ -n "${WATCHDOG_TG_CHAT:-}" ]; then
     curl -fsS -m 10 "https://api.telegram.org/bot${WATCHDOG_TG_TOKEN}/sendMessage" --data-urlencode "chat_id=${WATCHDOG_TG_CHAT}" --data-urlencode "text=${msg}" >/dev/null 2>&1 || true
   fi
+  if [ -n "${WATCHDOG_EMAIL_TO:-}" ] && have docker && [ -f "$APP_DIR/docker-compose.yml" ]; then
+    # Тем же отправщиком, что и коды входа; одноразовый контейнер, поэтому работает и при упавшем api.
+    ( cd "$APP_DIR" && timeout 90 docker compose run --rm --no-deps -T api node scripts/notify-mail.mjs "$WATCHDOG_EMAIL_TO" "Sky: сервер $(hostname)" "$msg" ) >> "$LOG" 2>&1 || log "письмо не отправлено (см. выше)"
+  fi
   [ -n "${WATCHDOG_URL:-}" ] && curl -fsS -m 10 -X POST --data-urlencode "text=${msg}" "$WATCHDOG_URL" >/dev/null 2>&1 || true
 }
 # Лимит починок: журнал меток времени, окно WINDOW_MIN.
@@ -46,6 +52,8 @@ fix_budget() {
 mark_fix() { echo "$now" >> "$STATE/fixes"; }
 fixed() { fixes+=("$1"); log "ЧИНЮ: $1"; }
 bad() { issues+=("$1"); log "ПРОБЛЕМА: $1"; }
+
+if [ "${TEST:-0}" = 1 ]; then rm -f "$STATE"/notified.*; notify "проверка связи: оповещения работают"; echo "Отправлено (смотрите почту/Telegram; ошибки — в $LOG)."; tail -n 5 "$LOG"; exit 0; fi
 
 # 1) Место на диске.
 use=$(df -P / | awk 'NR==2{gsub("%","",$5); print $5}')
