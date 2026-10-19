@@ -52,9 +52,12 @@ fi
 # Аварийный пользователь (scripts/rescue-access.sh): у него нет оболочки, только короткий список команд (ForceCommand).
 # Исключение действует, ТОЛЬКО если sshd для него реально применяет ForceCommand — иначе обычный вход с подтверждением.
 RESCUE_U="$(head -n1 /etc/sky-rescue.user 2>/dev/null)"
-if [ -n "$RESCUE_U" ] && [ "${PAM_USER:-}" = "$RESCUE_U" ] && [ "$(stat -c %U /etc/sky-rescue.user 2>/dev/null)" = root ] \
-   && sshd -T -C "user=$RESCUE_U,host=localhost,addr=127.0.0.1" 2>/dev/null | grep -qi '^forcecommand /usr/local/sbin/sky-rescue-shell$'; then
-  logger -t sky-ssh-gate "аварийный пользователь $RESCUE_U: вход без подтверждения (ForceCommand)"; exit 0
+if [ -n "$RESCUE_U" ] && [ "${PAM_USER:-}" = "$RESCUE_U" ]; then
+  # PATH внутри PAM урезан — ищем sshd по полным путям.
+  SSHD="$(command -v sshd 2>/dev/null || true)"; [ -x "${SSHD:-}" ] || SSHD=/usr/sbin/sshd
+  if [ "$(stat -c %U /etc/sky-rescue.user 2>/dev/null)" != root ]; then logger -t sky-ssh-gate "rescue: файл /etc/sky-rescue.user не принадлежит root — исключение не действует"
+  elif ! "$SSHD" -T -C "user=$RESCUE_U,host=localhost,addr=127.0.0.1" 2>/dev/null | grep -qi '^forcecommand /usr/local/sbin/sky-rescue-shell$'; then logger -t sky-ssh-gate "rescue: ForceCommand для $RESCUE_U не применён — исключение не действует (обычное подтверждение)"
+  else logger -t sky-ssh-gate "аварийный пользователь $RESCUE_U: вход без подтверждения (ForceCommand)"; exit 0; fi
 fi
 [ -r "$CONF" ] || exit 1      # конфига нет — закрыто, а не открыто
 # shellcheck disable=SC1090
