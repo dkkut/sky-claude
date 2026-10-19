@@ -12,6 +12,13 @@ cd "$(dirname "$0")/.."
 OUT="${OUT:-/opt/sky/apps}"; STAMP="$(date +%Y%m%d)"
 VER="$(node -p "require('./package.json').version" 2>/dev/null || echo 0)"
 mkdir -p "$OUT"; chmod 755 "$OUT"
+# Предохранитель: сборка (Gradle, wine, vite) тяжёлая, а сервер боевой. Без запаса места и памяти не начинаем —
+# именно сборка приложений однажды положила сайт. FORCE=1 — начать всё равно. Приоритет сборки понижаем.
+free_gb=$(df -P "$OUT" | awk 'NR==2{print int($4/1048576)}'); mem_mb=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
+if [ "${FORCE:-0}" != 1 ] && { [ "${free_gb:-0}" -lt 8 ] || [ "${mem_mb:-0}" -lt 2500 ]; }; then
+  echo "Сборка отложена: свободно ${free_gb} ГБ диска и ${mem_mb} МБ памяти (нужно ≥8 ГБ и ≥2500 МБ). Соберите через GitHub Actions или повторите с FORCE=1."; exit 1
+fi
+if [ -z "${SKY_BUILD_NICE:-}" ]; then export SKY_BUILD_NICE=1; exec nice -n 19 ionice -c3 bash "$0" "$@" 2>/dev/null || exec nice -n 19 bash "$0" "$@"; fi
 ok=0; skipped=()
 need() { command -v "$1" >/dev/null 2>&1; }
 prep() { [ -d node_modules ] || npm ci --no-audit --no-fund || return 1; }
