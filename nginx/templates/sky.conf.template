@@ -380,7 +380,7 @@ server {
     }
 
     # -- Страница оплаты SkyKassa Business (/p/<id>): открывается без входа в Sky, приложение не грузится ----
-    location ~ ^/p/[a-z0-9]{12,24}/?$ {
+    location ~ "^/p/[a-z0-9]{12,24}/?$" {
         limit_req zone=req_general burst=30 nodelay;
         include /etc/nginx/snippets/security-headers.conf;
         add_header Cache-Control "no-store" always;
