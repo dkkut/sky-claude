@@ -49,6 +49,13 @@ fi
 [ "${PAM_TYPE:-}" = "open_session" ] || exit 0
 [ "${PAM_SERVICE:-}" = "sshd" ] || exit 0
 [ -e "$OFF" ] && exit 0
+# Аварийный пользователь (scripts/rescue-access.sh): у него нет оболочки, только короткий список команд (ForceCommand).
+# Исключение действует, ТОЛЬКО если sshd для него реально применяет ForceCommand — иначе обычный вход с подтверждением.
+RESCUE_U="$(head -n1 /etc/sky-rescue.user 2>/dev/null)"
+if [ -n "$RESCUE_U" ] && [ "${PAM_USER:-}" = "$RESCUE_U" ] && [ "$(stat -c %U /etc/sky-rescue.user 2>/dev/null)" = root ] \
+   && sshd -T -C "user=$RESCUE_U,host=localhost,addr=127.0.0.1" 2>/dev/null | grep -qi '^forcecommand /usr/local/sbin/sky-rescue-shell$'; then
+  logger -t sky-ssh-gate "аварийный пользователь $RESCUE_U: вход без подтверждения (ForceCommand)"; exit 0
+fi
 [ -r "$CONF" ] || exit 1      # конфига нет — закрыто, а не открыто
 # shellcheck disable=SC1090
 . "$CONF"
