@@ -1,0 +1,65 @@
+/* Sky Parking: кабинет владельца в браузере (Playwright): организация → парковка → тариф → отправка на проверку → решение модератора.
+   Нужны API :8080 (ADMIN_GATE=off OWNER_USERNAME=ownertest) и фронт dist на :4173 (front2.mjs). Аргумент — каталог с api.log. */
+import { chromium } from 'playwright-core';
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+const S = process.argv[2], B = 'http://127.0.0.1:8080', F = 'http://localhost:4173';
+const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
+const call = async (path, o = {}, tok) => {
+  const r = await fetch(B + path, { ...o, headers: { 'content-type': 'application/json', ...(tok ? { authorization: `Bearer ${tok}` } : {}), ...(o.headers || {}) } });
+  const t = await r.text(); let d; try { d = JSON.parse(t); } catch { d = t; } return { status: r.status, data: d, headers: r.headers };
+};
+const mk = async (tag, admin) => {
+  const email = `${tag}${Date.now()}@example.com`;
+  await call('/api/auth/email/start', { method: 'POST', body: JSON.stringify({ email }) });
+  await new Promise((r) => setTimeout(r, 1300));
+  const code = [...readFileSync(S + '/api.log', 'utf8').matchAll(new RegExp(email.replace('.', '\\.') + ' \\| [^|]*\\| [^\\d]*(\\d{6})', 'g'))].pop()[1];
+  let r = await call('/api/auth/email/verify', { method: 'POST', body: JSON.stringify({ email, code }) });
+  const cookies = r.headers.getSetCookie().map((c) => { const [nv, ...a] = c.split(';'); const i = nv.indexOf('='); return { name: nv.slice(0, i), value: nv.slice(i + 1), domain: 'localhost', path: (a.find((x) => x.trim().toLowerCase().startsWith('path=')) || 'path=/').split('=')[1].trim() }; });
+  let tok = r.data.accessToken;
+  r = await call('/api/skyid/profiles', { method: 'POST', body: JSON.stringify({ name: tag, username: tag + Date.now().toString(36), acceptLegal: true }) }, tok);
+  const pid = r.data.profile.id;
+  if (admin) q(`update profiles set is_admin=true, admin_role='parking_admin' where id='${pid}'`);
+  r = await call(`/api/skyid/profiles/${pid}/select`, { method: 'POST', body: '{}' }, tok);
+  return { cookies, tok: r.data.accessToken ?? tok, pid };
+};
+let fails = 0; const ok = (c, n) => { console.log(`${c ? 'ok  ' : 'FAIL'} ${n}`); if (!c) fails += 1; };
+const O = await mk('pkuiown'), M = await mk('pkuimod', true);
+const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
+const ctx = await br.newContext({ viewport: { width: 420, height: 900 }, locale: 'ru-RU', geolocation: { latitude: 55.7558, longitude: 37.6176 }, permissions: ['geolocation'] });
+await ctx.addCookies(O.cookies);
+await ctx.addInitScript(() => { try { localStorage.setItem('sky:settings:v1', JSON.stringify({ colorScheme: 'dark', introAnim: false })); } catch {} });
+const p = await ctx.newPage(); const errs = []; const net = [];
+p.on('pageerror', (e) => errs.push(e.message.slice(0, 160)));
+p.on('response', (r) => { if (r.url().includes('/api/parking') && r.request().method() !== 'GET') net.push(`${r.request().method()} ${r.url().split('/api/')[1]} ${r.status()}`); });
+await p.goto(F + '/'); await p.waitForTimeout(3500);
+const tap = async (t, n = 0) => { await p.getByText(t, { exact: true }).nth(n).click({ timeout: 5000 }); await p.waitForTimeout(700); };
+const body = () => p.evaluate(() => document.body.innerText);
+try { await tap('Начать'); } catch {}
+await tap('Sky', 0); await tap('Sky GO', 0); await p.waitForTimeout(1000);
+await p.locator('nav[aria-label] >> text=Работа').first().click().catch(async () => { await p.getByText('Работа', { exact: true }).last().click(); });
+await p.waitForTimeout(1200);
+console.log((await body()).slice(0, 200).replace(/\n/g, ' | '));
+await p.getByText('парков', { exact: false }).first().click().catch(() => {}); await p.waitForTimeout(800); await p.screenshot({ path: S + '/pkui0.png' });
+ok((await body()).includes('Новая организация'), 'открыт кабинет владельца парковки');
+await p.getByLabel('Новая организация').fill('Тест-парковки'); await p.getByRole('button', { name: 'Создать' }).click(); await p.waitForTimeout(1000);
+ok((await body()).includes('Тест-парковки'), 'организация создана и видна в списке');
+await p.getByText('Тест-парковки', { exact: true }).first().click(); await p.waitForTimeout(800);
+await p.getByRole('button', { name: /Добавить парковку/ }).click(); await p.waitForTimeout(500);
+await p.getByLabel('Название').fill('Двор Тверская'); await p.getByLabel('Город').fill('Москва'); await p.getByLabel('Адрес').fill('Тверская 1');
+await p.getByLabel('Широта').fill('55.7600'); await p.getByLabel('Долгота').fill('37.6100'); await p.getByLabel('Число мест').fill('10');
+await p.getByRole('button', { name: 'Сохранить', exact: true }).click(); await p.waitForTimeout(1200);
+ok((await body()).includes('Тарифы'), 'парковка сохранена, блок тарифов появился');
+await p.getByLabel('Цена, ₽').fill('100'); await p.getByRole('button', { name: /Добавить тариф/ }).click(); await p.waitForTimeout(1200);
+ok((await body()).includes('100'), 'тариф добавлен');
+await p.screenshot({ path: S + '/pkui1.png' });
+const sub = p.getByRole('button', { name: 'Отправить на проверку' });
+ok(await sub.count() > 0, 'кнопка «Отправить на проверку» есть');
+await sub.click(); await p.waitForTimeout(1500);
+ok((await body()).includes('Отправлено на проверку') || (await body()).includes('На проверке'), 'интерфейс подтвердил отправку');
+const st = q(`select status from parking_lots where title='Двор Тверская' order by created_at desc limit 1`);
+ok(st === 'review', 'в базе статус review: ' + st);
+const qr = await call('/api/admin/parking/lots?status=review', {}, M.tok);
+ok(qr.status === 200 && qr.data.lots.some((l) => l.title === 'Двор Тверская'), 'очередь модератора содержит парковку');
+console.log(net.join('\n')); console.log('ошибки страницы:', errs.join(' | ') || 'нет');
+await br.close(); console.log(fails ? `\n${fails} FAIL` : '\nвсё ок'); process.exit(fails ? 1 : 0);

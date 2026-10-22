@@ -24,6 +24,7 @@ export const CATEGORIES = {
   gblock_appeal:  { label: 'Апелляции на глобальную блокировку', rights: ['global_block'] },
   seller_app:     { label: 'Заявки продавцов', rights: ['seller_docs', 'market'] },
   parking_lot:    { label: 'Парковки на проверке', rights: ['parking_moderation', 'parking'] },
+  parking_error:  { label: 'Сбои Sky Parking', rights: ['parking'] },
   pvz_app:        { label: 'Заявки на ПВЗ', rights: ['pvz_manage', 'market'] },
   product_mod:    { label: 'Карточки товаров на проверке', rights: ['market_moderation'] },
   market_report:  { label: 'Жалобы и апелляции Market', rights: ['market_moderation', 'market'] },

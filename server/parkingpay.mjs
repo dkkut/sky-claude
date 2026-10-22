@@ -14,7 +14,7 @@ import { logAdmin } from './adminsec.mjs';
 import { wallet } from './wallet.mjs';
 import { newId, inTx, clean, notifyGo, sealJson, openJson } from './gocore.mjs';
 import { notifyStaff } from './staffnotify.mjs';
-import { calcCost, orgRole } from './parking.mjs';
+import { calcCost, orgRole, logParkingError } from './parking.mjs';
 import { subState, payUrl, publicId } from './kbiz.mjs';
 
 const PAY_WINDOW_MIN = 30;
@@ -42,6 +42,22 @@ export const addVehicle = async (me, input) => {
   if (!r.rowCount) return { error: 'vehicle_exists' };
   return { ok: true, id };
 };
+/** Изменить подпись и/или номер. Пока на машине идёт парковка, номер не меняется (иначе сессия разойдётся с фактом). */
+export const updateVehicle = async (me, id, input) => {
+  const cur = (await query('SELECT id FROM parking_vehicles WHERE id=$1 AND profile_id=$2', [id, me])).rows[0];
+  if (!cur) return { error: 'not_found' };
+  const sets = []; const args = [id, me];
+  if (input?.label !== undefined) { args.push(clean(input.label, 40)); sets.push(`label=$${args.length}`); }
+  if (input?.plate !== undefined) {
+    const plate = normPlate(input.plate); if (!PLATE_RE.test(plate)) return { error: 'bad_plate' };
+    if ((await query("SELECT 1 FROM parking_sessions WHERE vehicle_id=$1 AND status IN ('active','awaiting_payment')", [id])).rowCount) return { error: 'vehicle_in_use' };
+    if ((await query('SELECT 1 FROM parking_vehicles WHERE profile_id=$1 AND plate_hash=$2 AND id<>$3', [me, platesHash(me, plate), id])).rowCount) return { error: 'vehicle_exists' };
+    args.push(sealJson({ plate }), platesHash(me, plate)); sets.push(`plate_enc=$${args.length - 1}`, `plate_hash=$${args.length}`);
+  }
+  if (!sets.length) return { ok: true };
+  await query(`UPDATE parking_vehicles SET ${sets.join(', ')} WHERE id=$1 AND profile_id=$2`, args);
+  return { ok: true };
+};
 export const removeVehicle = async (me, id) => {
   const act = await query("SELECT 1 FROM parking_sessions WHERE vehicle_id=$1 AND profile_id=$2 AND status='active' AND ends_at>now()", [id, me]);
   if (act.rowCount) return { error: 'vehicle_in_use' };
@@ -61,13 +77,15 @@ const sessView = (s, withPlate = true) => ({
 });
 const SESS_SQL = `SELECT s.*, l.title AS lot_title, l.address FROM parking_sessions s JOIN parking_lots l ON l.id=s.lot_id`;
 
-export const mySessions = async (me) => {
+export const mySessions = async (me, f = {}) => {
   await expireDue();
   await expireUnpaid();
-  const { rows } = await query(`${SESS_SQL} WHERE s.profile_id=$1 ORDER BY s.created_at DESC LIMIT 60`, [me]);
+  const lim = Math.min(100, Math.max(1, Number(f.limit) || 30)); const off = Math.max(0, Number(f.offset) || 0);
+  const total = Number((await query('SELECT COUNT(*)::int c FROM parking_sessions WHERE profile_id=$1', [me])).rows[0].c);
+  const { rows } = await query(`${SESS_SQL} WHERE s.profile_id=$1 ORDER BY (s.status IN ('active','awaiting_payment')) DESC, s.created_at DESC LIMIT ${lim} OFFSET ${off}`, [me]);
   const ids = rows.map((r) => r.id);
   const pay = ids.length ? (await query('SELECT p.id, p.session_id, p.kind, p.amount_rub, p.status, p.created_at, p.pay_via, q.public_id AS pub, q.expires_at AS pay_by, r.status AS refund_status FROM parking_payments p LEFT JOIN parking_refunds r ON r.payment_id=p.id LEFT JOIN kb_qr q ON q.id=p.kb_qr_id WHERE p.session_id=ANY($1) ORDER BY p.created_at', [ids])).rows : [];
-  return { sessions: rows.map((r) => ({ ...sessView(r), payments: pay.filter((p) => p.session_id === r.id).map((p) => ({ id: p.id, kind: p.kind, amountRub: p.amount_rub, status: p.status, payVia: p.pay_via, refund: p.refund_status ?? null, at: p.created_at, ...(p.status === 'pending' && p.pub ? { payUrl: payUrl(p.pub), payBy: p.pay_by } : {}) })) })) };
+  return { sessions: rows.map((r) => ({ ...sessView(r), payments: pay.filter((p) => p.session_id === r.id).map((p) => ({ id: p.id, kind: p.kind, amountRub: p.amount_rub, status: p.status, payVia: p.pay_via, refund: p.refund_status ?? null, at: p.created_at, ...(p.status === 'pending' && p.pub ? { payUrl: payUrl(p.pub), payBy: p.pay_by } : {}) })) })), total, limit: lim, offset: off, hasMore: off + rows.length < total };
 };
 
 const lockLot = async (c, lotId) => {
@@ -112,6 +130,7 @@ export const startSession = async (me, input) => {
     const dup2 = (await c.query('SELECT * FROM parking_payments WHERE profile_id=$1 AND idem_key=$2', [me, idem])).rows[0];
     if (dup2) return { dup: dup2 };
     if (lot.owner_id === me) return { error: 'own_lot' };
+    if (lot.closed) return { error: 'lot_closed' };
     const t = (await c.query('SELECT * FROM parking_tariffs WHERE id=$1 AND lot_id=$2 AND active', [String(input?.tariffId ?? ''), lot.id])).rows[0];
     if (!t) return { error: 'not_found' };
     const veh = (await c.query('SELECT id, plate_enc FROM parking_vehicles WHERE id=$1 AND profile_id=$2', [String(input?.vehicleId ?? ''), me])).rows[0];
@@ -125,7 +144,7 @@ export const startSession = async (me, input) => {
     let biz = null;
     if (cost.cost > 0) { biz = await kassaReady(c, lot.owner_id); if (!biz) return { error: 'lot_not_accepting_payments' }; }
     const sid = newId('pks'); const pid = newId('pkp');
-    const snap = { kind: t.kind, price_rub: t.price_rub, free_minutes: t.free_minutes, min_minutes: t.min_minutes, max_minutes: t.max_minutes, tariff_id: t.id };
+    const snap = { kind: t.kind, price_rub: t.price_rub, free_minutes: t.free_minutes, min_minutes: t.min_minutes, max_minutes: t.max_minutes, min_cost_rub: t.min_cost_rub ?? 0, tariff_id: t.id };
     const free = cost.cost === 0;
     await c.query(`INSERT INTO parking_sessions (id, lot_id, org_id, profile_id, vehicle_id, plate_enc, tariff_snap, starts_at, ends_at, paid_rub, status, pay_via, pay_deadline, start_minutes)
                    VALUES ($1,$2,$3,$4,$5,$6,$7,now(), now() + ($8 || ' minutes')::interval, 0, $9, $10, $11, $12)`,
@@ -165,7 +184,7 @@ export const extendSession = async (me, sessionId, input) => {
     const diff = Math.max(0, after.cost - (before.cost ?? 0));
     const pid = newId('pkp');
     if (diff === 0) {
-      await c.query("UPDATE parking_sessions SET ends_at = ends_at + ($2 || ' minutes')::interval, soon_notified=false, end_notified=false WHERE id=$1", [s.id, String(extra)]);
+      await c.query("UPDATE parking_sessions SET ends_at = ends_at + ($2 || ' minutes')::interval, soon_notified=false, soon5_notified=false, end_notified=false WHERE id=$1", [s.id, String(extra)]);
       await c.query(`INSERT INTO parking_payments (id, session_id, profile_id, kind, minutes, amount_rub, idem_key, status, pay_via) VALUES ($1,$2,$3,'extend',$4,0,$5,'paid','free')`, [pid, s.id, me, extra, idem]);
       return { ok: true, sessionId: s.id, paymentId: pid, amountRub: 0 };
     }
@@ -192,10 +211,10 @@ export const kassaPaymentConfirmedIn = async (c, kbPaymentId) => {
   try {
     if (pay.kind === 'start') {
       if (['awaiting_payment', 'cancelled'].includes(s.status) && s.pay_via === 'kassa') {
-        await c.query("UPDATE parking_sessions SET status='active', starts_at=now(), ends_at=now() + ($2 || ' minutes')::interval, paid_rub=$3, soon_notified=false, end_notified=false WHERE id=$1", [s.id, String(pay.minutes), pay.amount_rub]);
+        await c.query("UPDATE parking_sessions SET status='active', starts_at=now(), ends_at=now() + ($2 || ' minutes')::interval, paid_rub=$3, soon_notified=false, soon5_notified=false, end_notified=false WHERE id=$1", [s.id, String(pay.minutes), pay.amount_rub]);
       }
     } else if (['active', 'ended'].includes(s.status)) {
-      await c.query("UPDATE parking_sessions SET status='active', ends_at = GREATEST(now(), ends_at) + ($2 || ' minutes')::interval, paid_rub = paid_rub + $3, soon_notified=false, end_notified=false WHERE id=$1", [s.id, String(pay.minutes), pay.amount_rub]);
+      await c.query("UPDATE parking_sessions SET status='active', ends_at = GREATEST(now(), ends_at) + ($2 || ' minutes')::interval, paid_rub = paid_rub + $3, soon_notified=false, soon5_notified=false, end_notified=false WHERE id=$1", [s.id, String(pay.minutes), pay.amount_rub]);
     }
     await c.query('RELEASE SAVEPOINT pk_activate');
   } catch (e) {            // например, на машине уже другая сессия: оплата принята и записана, сессию не включили — человек запросит возврат
@@ -310,11 +329,16 @@ export const decideRefund = async (me, refundId, action, noteRaw) => {
 };
 
 /* ─── Организация: сессии и итоги (оплачено ≠ прибыль, выплат нет) ─── */
-export const orgSessions = async (me, orgId) => {
+export const orgSessions = async (me, orgId, f = {}) => {
   const r = await orgRole(me, orgId);
   if (r.role !== 'owner' && r.role !== 'admin') return { error: r.role ? 'not_allowed' : 'not_found' };
   await expireDue();
-  const { rows } = await query(`${SESS_SQL} WHERE s.org_id=$1 AND (s.status='active' OR s.created_at > now() - interval '3 days') ORDER BY s.created_at DESC LIMIT 200`, [orgId]);
+  const where = ['s.org_id=$1']; const args = [orgId];
+  const st = clean(f.status, 16);
+  if (['active', 'awaiting_payment', 'ended', 'cancelled'].includes(st)) { args.push(st); where.push(`s.status=$${args.length}`); } else where.push("(s.status IN ('active','awaiting_payment') OR s.created_at > now() - interval '3 days')");
+  if (f.lotId) { args.push(String(f.lotId)); where.push(`s.lot_id=$${args.length}`); }
+  const lim = Math.min(200, Math.max(1, Number(f.limit) || 100)); const off = Math.max(0, Number(f.offset) || 0);
+  const { rows } = await query(`${SESS_SQL} WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC LIMIT ${lim} OFFSET ${off}`, args);
   const sum = (await query(`SELECT COALESCE(SUM(CASE WHEN status='paid' THEN amount_rub END),0)::int AS paid, COALESCE(SUM(CASE WHEN status='refunded' THEN amount_rub END),0)::int AS refunded
                               FROM parking_payments WHERE session_id IN (SELECT id FROM parking_sessions WHERE org_id=$1)`, [orgId])).rows[0];
   return { sessions: rows.map((s) => sessView(s, true)), totals: { paidRub: sum.paid, refundedRub: sum.refunded, note: 'Оплаты идут напрямую на ваши реквизиты через SkyKassa Business (подтверждаете вы), старые — через кошелёк Sky. Выплат организациям Sky пока не делает.' } };
@@ -346,10 +370,14 @@ export const adminResolveReport = async (me, id, resolutionRaw) => {
 
 /* ─── Уборка: окончание сессий и напоминания ─── */
 export const sweepParking = async () => {
-  await expireDue();
-  await expireUnpaid();
-  const soon = (await query(`UPDATE parking_sessions s SET soon_notified=true FROM parking_lots l WHERE l.id=s.lot_id AND s.status='active' AND NOT s.soon_notified AND s.ends_at <= now() + interval '10 minutes' AND s.ends_at > now() RETURNING s.id, s.profile_id, s.ends_at, l.title`)).rows;
-  for (const s of soon) void notifyGo(s.profile_id, 'parking', 'Sky Parking', `Парковка «${s.title}» закончится меньше чем через 10 минут. Продлите в Sky GO.`, s.id, `pk:${s.id}:soon:${new Date(s.ends_at).getTime()}`).catch(() => {});
+  try {
+    await expireDue();
+    await expireUnpaid();
+    for (const [flag, mins] of [['soon_notified', 15], ['soon5_notified', 5]]) {
+      const soon = (await query(`UPDATE parking_sessions s SET ${flag}=true FROM parking_lots l WHERE l.id=s.lot_id AND s.status='active' AND NOT s.${flag} AND s.ends_at <= now() + interval '${mins} minutes' AND s.ends_at > now() RETURNING s.id, s.profile_id, s.ends_at, l.title`)).rows;
+      for (const s of soon) void notifyGo(s.profile_id, 'parking', 'Sky Parking', `Парковка «${s.title}» закончится меньше чем через ${mins} минут. Продлите в Sky GO.`, s.id, `pk:${s.id}:soon${mins}:${new Date(s.ends_at).getTime()}`).catch(() => {});
+    }
   const ended = (await query(`UPDATE parking_sessions s SET end_notified=true FROM parking_lots l WHERE l.id=s.lot_id AND s.status='ended' AND NOT s.end_notified RETURNING s.id, s.profile_id, s.ends_at, l.title`)).rows;
   for (const s of ended) void notifyGo(s.profile_id, 'parking', 'Sky Parking', `Время парковки «${s.title}» истекло.`, s.id, `pk:${s.id}:end:${new Date(s.ends_at).getTime()}`).catch(() => {});
+  } catch (e) { await logParkingError('sweep', e.code ?? 'exception', e.message, { critical: true }); }
 };
