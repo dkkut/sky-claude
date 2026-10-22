@@ -56,9 +56,13 @@ set_env() {
 }
 
 # Конфигурацию (compose, скрипты) берём из этой же версии кода.
-cp docker-compose.yml "$APP_DIR/docker-compose.yml"
-mkdir -p "$APP_DIR/scripts"
-cp -r scripts/. "$APP_DIR/scripts/"
+# Репозиторий и рабочий каталог могут совпадать (клон лежит прямо в /opt/sky) — тогда копировать нечего,
+# а cp на тот же файл завершается ошибкой и под set -e обрывал деплой после сборки образов.
+if [ "$(cd "$SRC_DIR" && pwd -P)" != "$(cd "$APP_DIR" && pwd -P)" ]; then
+  cp docker-compose.yml "$APP_DIR/docker-compose.yml"
+  mkdir -p "$APP_DIR/scripts"
+  cp -r scripts/. "$APP_DIR/scripts/"
+fi
 
 set_env WEB_IMAGE "sky-web:$SHA"
 set_env API_IMAGE "sky-api:$SHA"
