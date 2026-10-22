@@ -272,14 +272,27 @@ onSessionRevoked((sessionId) => {
  *
  * Возвращает { userId, sessionId } либо null.
  */
+/* Причина отказа сокета — в журнал (не чаще раза в 10 с на причину): «auth-failed» без причины не отличить
+   от неверного токена, сбоя Redis или PIN при смене адреса. Токены и адреса не пишутся. */
+const authFailAt = new Map();
+const authFail = (why) => {
+  const now = Date.now();
+  if (now - (authFailAt.get(why) ?? 0) < 10_000) return null;
+  authFailAt.set(why, now);
+  console.log(`[ws] auth-failed: ${why}`);
+  return null;
+};
+
 const identify = async (token, ip) => {
   const payload = verifyToken(token, config.jwtSecret);
-  if (!payload || payload.typ !== 'access' || !payload.sky || !payload.sid) return null;
+  if (!payload) return authFail('token_invalid (подпись/срок: JWT_SECRET не тот, что при выдаче, или токен истёк)');
+  if (payload.typ !== 'access' || !payload.sky || !payload.sid) return authFail('token_not_access');
 
   const stored = await sessionStore.get(payload.sid);
-  if (!stored || stored.userId !== payload.sky || !stored.profileId) return null;
+  if (!stored) return authFail('session_missing (сессии нет в Redis)');
+  if (stored.userId !== payload.sky || !stored.profileId) return authFail('session_mismatch_or_no_profile');
   // PIN при смене IP (ippin.mjs): сессия с адреса, где PIN ещё не вводили, не получает сокет.
-  if (await pinRequired(payload.sky, payload.sid, stored, ip)) return null;
+  if (await pinRequired(payload.sky, payload.sid, stored, ip)) return authFail('pin_required (PIN при смене IP)');
 
   return { userId: stored.profileId, sessionId: payload.sid, limited: Boolean(stored.limited) };
 };
