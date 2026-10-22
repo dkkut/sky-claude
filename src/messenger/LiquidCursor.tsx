@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Palette, X, Lightbulb } from 'lucide-react';
+import { WallpaperPanel } from './WallpaperPanel';
 import { useChatTheme, THEMES, type ChatTheme, type ChatThemeId } from './themes';
 
 /* === LIQUID GLASS CURSOR ==================================== */
@@ -112,6 +113,7 @@ interface ThemePickerProps {
 export const ThemePicker = ({ chatId, onClose }: ThemePickerProps) => {
   const { chatThemes, globalTheme, setTheme, getTheme } = useChatTheme();
   const current = getTheme(chatId);
+  const [tab, setTab] = useState<'theme' | 'wall'>('theme');
 
   return (
     <motion.div
@@ -136,7 +138,7 @@ export const ThemePicker = ({ chatId, onClose }: ThemePickerProps) => {
           style={{ borderColor: 'var(--border)' }}>
           <div className="flex items-center gap-2.5">
             <Palette size={18} style={{ color: '#5b9bd1' }}/>
-            <span className="text-base font-bold" style={{ color: '#ffffff' }}>Тема чата</span>
+            <span className="text-base font-bold" style={{ color: '#ffffff' }}>{tab === 'theme' ? 'Тема чата' : 'Обои чата'}</span>
           </div>
           <button type="button" onClick={onClose}
             className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/5">
@@ -144,8 +146,19 @@ export const ThemePicker = ({ chatId, onClose }: ThemePickerProps) => {
           </button>
         </div>
 
+        <div className="grid grid-cols-2 gap-2 px-5 pt-3" role="tablist">
+          {([['theme', 'Тема'], ['wall', 'Обои']] as const).map(([k, label]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+              className="rounded-xl py-2 text-[12px] font-bold"
+              style={{ background: tab === k ? 'var(--accent-bg)' : 'rgba(255,255,255,0.04)', color: tab === k ? 'var(--accent)' : 'var(--t2)' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {tab === 'wall' && <div className="overflow-y-auto" style={{ scrollbarWidth: 'none', maxHeight: '64vh' }}><WallpaperPanel chatId={chatId} /></div>}
+
         {/* Theme grid */}
-        <div className="overflow-y-auto p-5" style={{ scrollbarWidth: 'none' }}>
+        {tab === 'theme' && <div className="overflow-y-auto p-5" style={{ scrollbarWidth: 'none' }}>
           <div className="grid grid-cols-5 gap-3">
             {THEMES.map(theme => {
               const isActive = current.id === theme.id;
@@ -214,7 +227,7 @@ export const ThemePicker = ({ chatId, onClose }: ThemePickerProps) => {
               Кружок внизу  -  цвет эффекта жидкого стекла при наведении.
             </p>
           </div>
-        </div>
+        </div>}
       </motion.div>
     </motion.div>
   );

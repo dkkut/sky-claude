@@ -27,6 +27,7 @@ import { StickerPanel, MascotSticker, stickerById } from './mascotStickers';
 import { PetHouse }          from './PetHouse';
 import { SpoilerText, OnceViewText, SelfDestructTimer, PollBubble, MsgOptionsPanel, CreatePollModal } from './MsgFeatures';
 import { LiquidCursor, ThemePicker } from './LiquidCursor';
+import { ChatWallpaper } from './ChatWallpaper';
 import { useChatTheme, LIGHT_VARS, DARK_VARS } from './themes';
 import { useSettings } from '@/settings/store';
 import { apiSupportStatus } from '@/moderation/supportApi';
@@ -1466,12 +1467,14 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   }
 
   return (
-    <section data-chat-light={theme.light ? '' : undefined} data-keep-dark={theme.light ? undefined : ''} className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+    <section data-chat-light={theme.light ? '' : undefined} data-keep-dark={theme.light ? undefined : ''} className="relative isolate flex h-full min-h-0 flex-1 flex-col overflow-hidden"
       style={{ background: theme.bg, backgroundImage: theme.bgImage !== 'none' ? theme.bgImage : undefined, backgroundSize: theme.bgSize,
         ...(theme.light ? ({ ...LIGHT_VARS, colorScheme: 'light', color: '#15161a' } as import('react').CSSProperties) : ({ ...DARK_VARS, colorScheme: 'dark' } as import('react').CSSProperties)) }}
       onDragOver={e => { e.preventDefault(); setDragging(true); }}
       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
       onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) sendFile(f); }}>
+
+      <ChatWallpaper chatId={activeChatId ?? undefined} light={theme.light} />
 
       {/* Drag overlay */}
       <AnimatePresence>

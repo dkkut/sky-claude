@@ -31,6 +31,7 @@ import { usePrivacyStore } from './privacyStore';
 import { syncBloomAuthor } from '@/bloom/store';
 import { useMessengerStore } from '@/messenger/store';
 import { ConnectionPanel } from '@/proxy/ConnectionPanel';
+import { APP_THEMES, activeAppTheme, appThemePatch } from '@/settings/appThemes';
 import { ReferralPanel } from '@/referral/Referral';
 import { useSettings, ACCENT_COLORS, THEME_MODES, FONT_SIZES, type AccentColor, type ThemeMode, type FontSize, type ColorScheme } from '@/settings/store';
 import { useBreakReminderStore, INTERVAL_OPTIONS, SNOOZE_OPTIONS } from '@/settings/breakReminderStore';
@@ -634,6 +635,23 @@ const SettingsSection = ({ logout, username, onOpen }: {
 
       <SectionBlock title="Тема оформления">
         <div className="px-4 pb-3 pt-1">
+          <p className="mb-1.5 px-1 text-[12px] font-bold" style={{ color: 'var(--t2)' }}>Готовые темы</p>
+          <div className="mb-4 grid grid-cols-4 gap-2" role="radiogroup" aria-label="Готовые темы">
+            {APP_THEMES.map((t) => {
+              const on = activeAppTheme(s) === t.id;
+              return (
+                <button key={t.id} type="button" role="radio" aria-checked={on} onClick={() => set(appThemePatch(t))}
+                  className="flex flex-col items-center gap-1.5">
+                  <span className="relative block w-full overflow-hidden" style={{ aspectRatio: '1/1.1', borderRadius: 14, background: t.swatch[0], border: `2.5px solid ${on ? t.swatch[2] : 'rgba(128,128,128,0.25)'}` }}>
+                    <span className="absolute inset-x-1.5 top-2 h-2.5 rounded-full" style={{ background: t.swatch[1] }} />
+                    <span className="absolute inset-x-1.5 top-6 h-2.5 w-1/2 rounded-full" style={{ background: t.swatch[1] }} />
+                    <span className="absolute bottom-1.5 right-1.5 h-4 w-4 rounded-full" style={{ background: t.swatch[2] }} />
+                  </span>
+                  <span className="text-[10px] font-semibold" style={{ color: on ? t.swatch[2] : 'var(--t2)' }}>{t.name}</span>
+                </button>
+              );
+            })}
+          </div>
           {/* Светлая/тёмная — отдельный переключатель: AMOLED и Dim ниже
               это поднастройки именно тёмной, у светлой темы их нет. */}
           <div className="grid grid-cols-2 gap-2.5 mb-3">
