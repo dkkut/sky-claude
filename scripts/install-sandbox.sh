@@ -16,10 +16,10 @@ APP_DIR="${APP_DIR:-/opt/sky}"
 ENVF=/etc/sky-sandbox.env
 UNIT=/etc/systemd/system/sky-sandbox.service
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-MODE=install; API=""; REPO=""; DEPLOY=0; PROD_SRC=""; WMODE=docker
+MODE=install; API=""; REPO=""; DEPLOY=0; PROD_SRC=""; WMODE=docker; ALLOW_LOCAL=0
 while [ $# -gt 0 ]; do case "$1" in
   --genkey) MODE=genkey;; --install) MODE=install;; --status) MODE=status;; --uninstall) MODE=uninstall;;
-  --api) API="$2"; shift;; --repo) REPO="$2"; shift;; --allow-deploy) DEPLOY=1;; --prod-src) PROD_SRC="$2"; shift;; --mode) WMODE="$2"; shift;;
+  --api) API="$2"; shift;; --repo) REPO="$2"; shift;; --allow-deploy) DEPLOY=1;; --prod-src) PROD_SRC="$2"; shift;; --mode) WMODE="$2"; shift;; --allow-local) ALLOW_LOCAL=1;;
   *) echo "неизвестный параметр: $1"; exit 2;; esac; shift; done
 [ "$(id -u)" = 0 ] || { echo "Нужен root (sudo)."; exit 1; }
 
@@ -35,18 +35,26 @@ install)
   [ -n "$API" ] && [ -n "$REPO" ] || { echo "Нужны --api и --repo"; exit 2; }
   [ "$WMODE" = docker ] || [ "$WMODE" = local ] || { echo "--mode docker|local"; exit 2; }
   command -v node >/dev/null || { echo "Нужен Node.js ≥ 20"; exit 1; }
+  [ "$WMODE" = local ] && [ "$ALLOW_LOCAL" != 1 ] && { echo "Режим local НЕ изолирует проверяемый код: он выполняется на этой машине. Такую проверку нельзя публиковать. Если понимаете — добавьте --allow-local (только на отдельной машине без боевых данных)."; exit 1; }
   [ "$WMODE" = docker ] && { command -v docker >/dev/null || { echo "Режим docker: нужен docker (иначе проверка не будет изолированной)"; exit 1; }; }
   [ -f "$ENVF" ] && grep -q '^SANDBOX_SECRET=' "$ENVF" || { echo "Нет секрета в $ENVF — сначала --genkey или впишите SANDBOX_SECRET."; exit 1; }
   [ "$DEPLOY" = 1 ] && { [ -d "$PROD_SRC/.git" ] || { echo "--allow-deploy требует --prod-src (клон боевого сервера)"; exit 2; }; }
   grep -v -E '^(SANDBOX_API|SANDBOX_REPO|SANDBOX_MODE|SANDBOX_PROD_SRC|SANDBOX_APP_DIR)=' "$ENVF" > "$ENVF.tmp" || true
   { cat "$ENVF.tmp"; echo "SANDBOX_API=$API"; echo "SANDBOX_REPO=$REPO"; echo "SANDBOX_MODE=$WMODE"; echo "SANDBOX_APP_DIR=$APP_DIR"; [ -n "$PROD_SRC" ] && echo "SANDBOX_PROD_SRC=$PROD_SRC"; } > "$ENVF"; rm -f "$ENVF.tmp"; chmod 600 "$ENVF"
   EXTRA=""; [ "$DEPLOY" = 1 ] && EXTRA="--allow-deploy"
+  RUNAS=root
+  if [ "$DEPLOY" != 1 ]; then   # проверяющий раннер — не от root: чужой код не должен получить права хоста
+    id sky-sandbox >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/sky-sandbox --shell /usr/sbin/nologin sky-sandbox
+    [ "$WMODE" = docker ] && usermod -aG docker sky-sandbox
+    chown -R sky-sandbox:sky-sandbox /var/lib/sky-sandbox; chmod 640 "$ENVF"; chgrp sky-sandbox "$ENVF"; RUNAS=sky-sandbox
+  fi
   cat > "$UNIT" <<U
 [Unit]
 Description=Sky Sandbox runner (${WMODE}${EXTRA:+, deploy})
 After=network-online.target docker.service
 [Service]
 EnvironmentFile=$ENVF
+User=$RUNAS
 WorkingDirectory=$SRC
 ExecStart=$(command -v node) $SRC/sandbox/runner.mjs $EXTRA
 Restart=always

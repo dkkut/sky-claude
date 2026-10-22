@@ -206,7 +206,7 @@ export const sweepSandbox = async () => {
   await query(`UPDATE sandbox_builds SET status='error', error='Раннер не прислал результат вовремя', finished_at=now() WHERE status='running' AND claimed_at < now() - interval '45 minutes'`);
   await query(`UPDATE sandbox_builds SET status='cancelled', finished_at=now(), error='Не взято раннером за 6 часов' WHERE status='queued' AND created_at < now() - interval '6 hours'`);
   /* Публикация, зависшая у раннера: помечаем как сбой и честно говорим, что состояние неизвестно. */
-  await query(`UPDATE sandbox_publications SET status='failed', finished_at=now(), outcome_note='Раннер не сообщил результат: состояние боевого сервера неизвестно — проверьте вручную' WHERE status='running' AND started_at < now() - interval '60 minutes'`);
+  await query(`UPDATE sandbox_publications SET status='failed', finished_at=now(), outcome_note='Раннер не сообщил результат: состояние боевого сервера неизвестно — проверьте вручную' WHERE status='running' AND started_at < now() - interval '120 minutes'`);
   await query(`UPDATE sandbox_publications SET status='cancelled', finished_at=now(), outcome_note='Не взята раннером за 2 часа' WHERE status='approved' AND created_at < now() - interval '2 hours'`);
 };
 

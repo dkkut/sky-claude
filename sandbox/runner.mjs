@@ -60,12 +60,19 @@ const run = (argv, { cwd, env, timeout = STEP_TIMEOUT, input } = {}) => new Prom
 });
 const sh = (cmd, opts) => run(['bash', '-lc', cmd], opts);
 
+/** Окружение для ПРОВЕРЯЕМОГО кода: без секретов раннера, строк подключения и токенов (иначе чужой код прочёл бы SANDBOX_SECRET). */
+const candidateEnv = (extra = {}) => {
+  const out = {};
+  for (const [k, v] of Object.entries(E)) if (!/SECRET|TOKEN|PASS|KEY|CREDENTIAL|^SANDBOX_|DATABASE_URL|REDIS_URL|^AWS_|^GH_|^GITHUB_/i.test(k)) out[k] = v;
+  return { ...out, ...extra };
+};
+
 /* ── Среда проверки: docker (изоляция) или local ── */
 class Env {
   constructor(id, dir) { this.id = id; this.dir = dir; this.net = `sbx-net-${id}`; this.c = []; this.pg = null; this.redis = null; this.ports = { api: 18090, sig: 18091 }; }
   /** Команда в проверяемой копии. net: 'open' (только установка зависимостей) | 'inner' (сеть без выхода наружу). */
   exec(cmd, { net = 'inner', env = {}, timeout } = {}) {
-    if (MODE === 'local') return sh(cmd, { cwd: this.dir, env: { ...E, NODE_ENV: 'development', ...env, ...this.localEnv() }, timeout });
+    if (MODE === 'local') return sh(cmd, { cwd: this.dir, env: candidateEnv({ NODE_ENV: 'development', ...env, ...this.localEnv() }), timeout });
     const e = Object.entries({ ...env }).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
     const network = net === 'open' ? 'bridge' : this.net;
     return run(['docker', 'run', '--rm', '--network', network, '--cpus', '2', '--memory', '3g', '--pids-limit', '512', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '-v', `${this.dir}:/work`, '-w', '/work', ...e, NODE_IMAGE, 'bash', '-lc', cmd], { timeout });
@@ -207,6 +214,7 @@ const boot = async (env, sha) => {
 
 const runCheck = async (job) => {
   const { id, sha, profile } = job.build; const t0 = Date.now();
+  if (!/^sbx-[0-9a-f]{16}$/.test(id) || !/^[0-9a-f]{40}$/.test(sha)) return { error: 'задание с неверным идентификатором — отказ' };
   const env = new Env(id.replace(/\W/g, ''), path.join(WORK, 'run', id)); const checks = []; const rep = { sha };
   const push = async (c) => { checks.push(c); log(`${c.status.padEnd(4)} ${c.id} ${c.detail.slice(0, 100)}`); await call('POST', `/api/sandbox/runner/build/${id}/progress`, { checks }).catch(() => {}); return c; };
   let result;
@@ -242,7 +250,8 @@ const runCheck = async (job) => {
 
 /* ── Публикация на боевом хосте ── */
 const runDeploy = async (job) => {
-  const p = job.publication; const SRC = E.SANDBOX_PROD_SRC; const APP = E.SANDBOX_APP_DIR ?? '/opt/sky'; const steps = []; let prevSha = null, backupRef = null;
+  const p = job.publication; const SRC = E.SANDBOX_PROD_SRC;
+  if (!/^pub-[0-9a-f]{16}$/.test(p.id) || !/^[0-9a-f]{40}$/.test(p.sha)) { log('публикация с неверным идентификатором — отказ'); return; } const APP = E.SANDBOX_APP_DIR ?? '/opt/sky'; const steps = []; let prevSha = null, backupRef = null;
   const push = async (id, title, status, detail = '') => { const i = steps.findIndex((s) => s.id === id); const s = { id, title, status, detail }; if (i >= 0) steps[i] = s; else steps.push(s); log(`${status.padEnd(4)} ${id} ${detail.slice(0, 100)}`); await call('POST', `/api/sandbox/runner/pub/${p.id}/progress`, { steps, prevSha, backupRef }).catch(() => {}); };
   const finish = (outcome, note, health = {}) => call('POST', `/api/sandbox/runner/pub/${p.id}/result`, { outcome, note, steps, health, prevSha, backupRef });
   if (!SRC || !fs.existsSync(path.join(SRC, '.git'))) return finish('failed', 'SANDBOX_PROD_SRC не задан или не git-клон — публикация не начата');
