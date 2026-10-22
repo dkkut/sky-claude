@@ -21,6 +21,7 @@ import { pushToOffline } from './webpush.mjs';
 /** key → подпись и права на очередь. `owner: true` — только владелец (шаг его решения). */
 export const CATEGORIES = {
   topup:          { label: 'Заявки на пополнение (SkyKassa)', rights: ['skykassa'] },
+  gblock_appeal:  { label: 'Апелляции на глобальную блокировку', rights: ['global_block'] },
   seller_app:     { label: 'Заявки продавцов', rights: ['seller_docs', 'market'] },
   parking_lot:    { label: 'Парковки на проверке', rights: ['parking_moderation', 'parking'] },
   pvz_app:        { label: 'Заявки на ПВЗ', rights: ['pvz_manage', 'market'] },

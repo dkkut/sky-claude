@@ -15,6 +15,7 @@ import { logEvent as skyLog } from './../skylog.mjs';
 import { trustDevice } from './../trusteddevices.mjs';
 import { onLogin as limitedOnLogin } from './../limitedaccess.mjs';
 import { assertLoginAllowed } from './../accountfreeze.mjs';
+import { assertNotGloballyBlocked } from './../globalblock.mjs';
 import { assertNotPendingDeletion } from './../accountdeletion.mjs';
 import { publicStatus as registrationStatus } from './../registration.mjs';
 import { config } from './../config.mjs';
@@ -156,6 +157,7 @@ const newcomerAllowed = async (req, res, exists) => {
 
 export const startSession = async (skyIdRow, req, { viaCode = false, via = null } = {}) => {
   // Заморозка новых входов: единое место для всех способов входа (код, пароль, QR). Бросает 423 — см. server.mjs.
+  await assertNotGloballyBlocked(skyIdRow, req, deviceMeta(req).ip);   // глобальная блокировка: устройство/адрес/почта/номер/Sky ID
   await assertLoginAllowed(skyIdRow.id, deviceMeta(req));
   // Аккаунт ожидает удаления (30 дней): войти нельзя, вернуть можно только по коду с почты (/api/auth/deletion/restore).
   await assertNotPendingDeletion(skyIdRow.id);

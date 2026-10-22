@@ -61,6 +61,7 @@ export const PERMISSIONS = [
   'storage_maintenance', // Sky Storage: режим технических работ
   'oidc',            // Sky ID для сторонних сервисов: клиенты, адреса возврата, ключи подписи (создание/смена секретов — с подтверждением личности)
   'partners',        // Партнёры: черновики, редактирование, отправка на проверку (внутренние контакты видны)
+  'global_block',    // Глобальная блокировка: по устройству/адресу/почте/номеру и связанным аккаунтам, апелляции (критично, в «полные права» не входит)
   'kassa_biz',       // SkyKassa Business: список бизнесов, приостановка и возобновление
   'partners_approve',// Партнёры: подтверждение, приостановка, архив — отдельное право, в «полные права» не входит
   'prime',           // Sky Prime: правила кэшбэка, каталог наград, очередь выдачи наград (изменения — с подтверждением личности)
@@ -84,7 +85,7 @@ export const PERMISSIONS = [
  */
 export const STORAGE_CRITICAL = ['storage_restore', 'storage_emergency', 'storage_enable', 'storage_unlock', 'storage_keys', 'storage_direct'];
 /** Подтверждение партнёров — тоже отдельное право: добавлять может менеджер, публиковать — только уполномоченный (или владелец). */
-export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve');
+export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve' && p !== 'global_block');
 
 export const ROLES = {
   super_admin:     DEFAULT_ADMIN_PERMISSIONS,
@@ -121,6 +122,7 @@ export const ROLES = {
   kassa_biz_admin: ['kassa_biz', 'support'],
   partners_manager:['partners'],
   partners_approver:['partners', 'partners_approve'],
+  global_block_admin:['global_block'],
   storage_viewer:  ['storage_view', 'storage_audit'],
   storage_operator:['storage_view', 'storage_audit', 'storage_backup', 'storage_schedule', 'storage_quota', 'storage_maintenance'],
   storage_security:['storage_view', 'storage_audit', 'storage_access', 'storage_emergency', 'storage_enable'],
@@ -151,6 +153,7 @@ export const ROLE_LABEL = {
   kassa_biz_admin: 'SkyKassa Business: бизнесы',
   partners_manager: 'Партнёры: добавление и правка',
   partners_approver: 'Партнёры: подтверждение и публикация',
+  global_block_admin: 'Глобальная блокировка',
   storage_viewer: 'Sky Storage: просмотр',
   storage_operator: 'Sky Storage: оператор (копии, квоты)',
   storage_security: 'Sky Storage: безопасность и доступ',

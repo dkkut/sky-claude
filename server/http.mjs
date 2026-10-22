@@ -4,6 +4,7 @@
  * Вынесено отдельно, чтобы модули маршрутов не тянули друг друга ради
  * пары функций и чтобы заголовки безопасности задавались в одном месте.
  */
+import { blockedBody } from './globalblock.mjs';
 import { setRequestActor } from './reqctx.mjs';
 import net from 'node:net';
 import { config } from './config.mjs';
@@ -217,10 +218,10 @@ export const requireSkyId = async (req, res) => {
     }
 
     const { rows } = await query(
-      'SELECT blocked_until FROM sky_ids WHERE id = $1', [session.skyId]);
+      'SELECT blocked_until, blocked_reason FROM sky_ids WHERE id = $1', [session.skyId]);
     const until = rows[0]?.blocked_until;
     if (until && until > new Date()) {
-      json(res, 403, { error: 'account_blocked', until: until.toISOString() });
+      json(res, 403, blockedBody(session.skyId, until, rows[0].blocked_reason));
       return null;
     }
   }
@@ -289,13 +290,13 @@ export const requireProfile = async (req, res) => {
          Спрашиваем оба одним запросом — лишнее обращение к базе на
          каждом изменяющем запросе того не стоит. */
       const { rows } = await query(
-        `SELECT p.banned_until, s.blocked_until
+        `SELECT p.banned_until, s.blocked_until, s.blocked_reason, s.id AS sky_id
            FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
           WHERE p.id = $1`, [session.profileId]);
       const now = new Date();
       const blocked = rows[0]?.blocked_until;
       if (blocked && blocked > now) {
-        json(res, 403, { error: 'account_blocked', until: blocked.toISOString() });
+        json(res, 403, blockedBody(rows[0].sky_id, blocked, rows[0].blocked_reason));
         return null;
       }
       const banned = rows[0]?.banned_until;
