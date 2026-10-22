@@ -11,11 +11,7 @@
  * или дозвониться до незнакомого человека через хаб нельзя.
  */
 import { wireSend } from '@/core/wire';
-
-const ICE: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-];
+import { getIceServers } from '@/shared/rtcConfig';
 
 export type SignalMsg =
   | { type: 'offer';     callId: string; from: string; to: string; sdp: RTCSessionDescriptionInit; mode: string; callerName: string; callerAvatar: string }
@@ -136,7 +132,7 @@ export class SkyPeerConnection {
     this.onConnected = opts.onConnected ?? (() => {});
     this.onFailed    = opts.onFailed    ?? (() => {});
 
-    this.pc = new RTCPeerConnection({ iceServers: ICE });
+    this.pc = new RTCPeerConnection({ iceServers: getIceServers() });
 
     this.pc.onicecandidate = (ev) => {
       if (!ev.candidate) return;

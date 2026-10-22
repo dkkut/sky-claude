@@ -243,6 +243,12 @@ services:
       ALLOW_LOG_CODES:       ${ALLOW_LOG_CODES:-}
       # Ключи закрытой беты. Пустая строка — калитки нет.
       BETA_KEYS:             ${BETA_KEYS:-}
+      TURN_URLS:             ${TURN_URLS:-}
+      TURN_SECRET:           ${TURN_SECRET:-}
+      TURN_USER:             ${TURN_USER:-}
+      TURN_PASS:             ${TURN_PASS:-}
+      RTC_STUN_URLS:         ${RTC_STUN_URLS:-}
+      RTC_TTL_SEC:           ${RTC_TTL_SEC:-}
       # Откуда разрешено открывать WebSocket: рукопожатие сокета не
       # подчиняется правилам обмена между сайтами, и без этой проверки
       # чужая страница открывает соединения из браузера посетителя.

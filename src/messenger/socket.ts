@@ -10,6 +10,7 @@
  * о сокете ничего не знает (отправку получает через wire.ts), а
  * UI-компоненты как звали broadcast.*, так и зовут.
  */
+import { refreshIceServers } from '@/shared/rtcConfig';
 import { emitGoOrder } from '@/go/live';
 import { useMessengerStore } from './store';
 import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
@@ -303,6 +304,7 @@ const handle = (data: any) => {
 
   switch (type) {
     case 'authorized': {
+      void refreshIceServers(true);   // STUN/TURN для звонков и трансляций
       authorized = true;
       attempt = 0;
       refreshed = false;

@@ -11,11 +11,7 @@
    server/signal.mjs, case 'live:offer' и т.п.
 =============================================================== */
 import { wireSend } from '@/core/wire';
-
-const ICE: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-];
+import { getIceServers } from '@/shared/rtcConfig';
 
 type SigMsg =
   | { type:'offer';  streamId:string; from:string; to:string; sdp:RTCSessionDescriptionInit }
@@ -84,7 +80,7 @@ export class StreamBroadcaster {
 
   private async addViewer(viewerId: string) {
     if (this.peers.has(viewerId) || !this.localStream) return;
-    const pc = new RTCPeerConnection({ iceServers: ICE });
+    const pc = new RTCPeerConnection({ iceServers: getIceServers() });
     this.localStream.getTracks().forEach(t => pc.addTrack(t, this.localStream!));
     pc.onicecandidate = (ev) => { if (ev.candidate) sigSend({ type:'ice', streamId:this.streamId, from:this.myId, to:viewerId, candidate: ev.candidate.toJSON() }); };
     pc.onconnectionstatechange = () => {
@@ -125,7 +121,7 @@ export class StreamViewerConn {
 
   constructor(streamId: string, myId: string, broadcasterId: string, onRemoteStream: (s: MediaStream) => void) {
     this.streamId = streamId; this.myId = myId; this.broadcasterId = broadcasterId;
-    this.pc = new RTCPeerConnection({ iceServers: ICE });
+    this.pc = new RTCPeerConnection({ iceServers: getIceServers() });
     this.pc.ontrack = (ev) => { ev.streams[0]?.getTracks().forEach(t => this.remoteStream.addTrack(t)); onRemoteStream(this.remoteStream); };
     this.pc.onicecandidate = (ev) => { if (ev.candidate) sigSend({ type:'ice', streamId, from:myId, to:broadcasterId, candidate: ev.candidate.toJSON() }); };
 
