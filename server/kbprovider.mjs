@@ -139,6 +139,7 @@ const applyRemote = async (payId, remote, source) => {
       if (!['created', 'reported', 'pending_check', 'expired'].includes(p.status)) return 'noop';
       if (Number(remote.amount) !== p.amount_rub || String(remote.currency ?? 'RUB') !== p.currency) { await c.query(`UPDATE kb_payments SET status = 'not_found', owner_comment = 'Сумма у провайдера не совпала с заявкой', updated_at = now() WHERE id = $1`, [p.id]); await log('not_found', 'Несовпадение суммы у провайдера'); note = { owner: p.owner_id, text: `Провайдер сообщил об оплате ${p.id}, но сумма не совпала — проверьте вручную.` }; return 'mismatch'; }
       await c.query(`UPDATE kb_payments SET status = 'confirmed', confirmed_by = 'provider', confirmed_at = now(), updated_at = now() WHERE id = $1`, [p.id]);
+      await (await import('./parkingpay.mjs')).kassaPaymentConfirmedIn(c, p.id);   // Sky Parking: включить оплаченную сессию
       await log('confirmed', `Оплата подтверждена провайдером (${source})`); await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,\'provider\',$2,$3)', [p.business_id, 'payment_provider_confirm', `${p.id}: ${p.amount_rub} ₽`]);
       note = { owner: p.owner_id, text: `Оплата ${p.amount_rub} ₽ подтверждена платёжным партнёром.` }; return 'paid';
     }

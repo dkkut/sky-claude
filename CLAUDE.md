@@ -1595,3 +1595,13 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - Клиент: `src/shared/rtcConfig.ts` (`getIceServers()` — синхронно, то, что известно сейчас; `refreshIceServers()` — при `authorized` и заранее до истечения). Без ответа сервера — прежний STUN.
 - Установка TURN на сервер: `bash scripts/setup-turn.sh [--host turn.домен]` (coturn, конфиг с запретом релея во внутренние сети, ufw, запись `TURN_URLS`/`TURN_SECRET` в `.env`), `--check`, `--uninstall`. У хостера открыть UDP/TCP 3478 и UDP 49160–49200. Скрипт в среде разработки НЕ запускался (нет apt/systemd) — проверен только синтаксис; раздача настроек клиентам проверена на живом API (вход обязателен, логин/пароль/срок верны).
 - Не сделано: TURN по TLS (`turns:` 5349) — нужен сертификат; сетевые метрики соединений (доля релейных). Нужен деплой и пересборка `.apk`/`.exe`.
+
+## Sky Parking: оплата через SkyKassa Business (вместо кошелька)
+
+Миграция `183_parking_kassa.sql`; `server/parkingpay.mjs` (`startSession`/`extendSession`, `kassaPaymentConfirmedIn`, `kassaPaymentChangedIn`, `expireUnpaid`), хуки в `kbiz.actOnPayment` и `kbprovider` (подтверждение партнёром), `parking.acceptingOrgs`; клиент — `src/go/Parking.tsx`.
+Прежнее описание «оплата только с кошелька Sky» (этап B выше) устарело в части оплаты: кошелёк парковки больше не списывает и не зачисляет.
+- Организация принимает оплату, только если у владельца есть опубликованный бизнес SkyKassa Business с реквизитами и действующей подпиской (`acceptsPayment` у парковки); иначе старт — 409 `lot_not_accepting_payments`, в каталоге кнопка заблокирована.
+- Старт создаёт сессию `awaiting_payment` (30 минут, `pay_deadline`) и страницу оплаты `/p/<id>` (`kb_qr`, `config.parking`, фиксированная сумма — считает сервер). Человек переводит деньги на реквизиты организации и жмёт «Я перевёл»; сессия включается (`active`, отсчёт с момента подтверждения) только когда подтвердит организация (`actOnPayment` → `confirmed`) или партнёр-провайдер после перепроверки.
+  Отказ/отмена оплаты отменяет ожидающую сессию; если человек сообщил о переводе, истечение срока сессию не отменяет — решает организация. Бесплатные (0 ₽) сессии активны сразу. Места учитывают и ожидающих оплаты.
+- Продление — отдельный ожидающий платёж; пока он не оплачен, второе продление — `payment_pending`. Возврат — запись согласия организации: `kb_payments` → `refunded`, деньги Sky не двигает.
+- Тест: `scripts/audit/parkingkassa-test.mjs` (41; API с `ADMIN_GATE=off OWNER_USERNAME=ownertest PARKING_RATE_MULT=50 KBIZ_RATE_MULT=50`). Старый `parkingpay-test.mjs` проверяет кошелёчную схему и больше не актуален. Нужен деплой (миграция 183) и пересборка `.apk`/`.exe`.

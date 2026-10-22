@@ -1,4 +1,4 @@
-/** Sky GO → Парковки: поиск на карте, оплата с кошелька Sky, мои сессии и машины; кабинет организации. */
+/** Sky GO → Парковки: поиск на карте, оплата переводом по реквизитам организации (SkyKassa Business), мои сессии и машины; кабинет организации. */
 import { useState } from 'react';
 import { ParkingCircle, MapPin, Clock, Plus, Trash2 } from 'lucide-react';
 import { SkyMap } from '@/marketplace/logistics/SkyMap';
@@ -65,7 +65,9 @@ const LotScreen = ({ lot, onBack, onPaid }: { lot: PkLot; onBack: () => void; on
     const r = await pk.start({ lotId: lot.id, tariffId, minutes, vehicleId: vid, idemKey: idem });
     setBusy(false);
     if (!r.ok) return fail(r);
-    flash(`Оплачено ${fmt(r.data!.amountRub)} ₽ с кошелька`); onPaid();
+    if (r.data!.pending && r.data!.payUrl) { window.open(r.data!.payUrl, '_blank', 'noopener'); flash('Переведите деньги по реквизитам организации — парковка включится после её подтверждения'); }
+    else flash('Парковка включена');
+    onPaid();
   };
   const points = lot.lat != null && lot.lng != null ? [{ id: lot.id, pos: { lat: lot.lat, lng: lot.lng }, label: lot.title }] : [];
   return (
@@ -103,8 +105,9 @@ const LotScreen = ({ lot, onBack, onPaid }: { lot: PkLot; onBack: () => void; on
           <div style={{ fontSize: 30, fontWeight: 900, color: C.t1 }}>{q?.ok ? `${fmt(q.data!.costRub)} ₽` : '—'}</div>
           {q && !q.ok && <div style={{ fontSize: 13, color: C.red }}>{q.error === 'duration_too_long' ? 'Больше максимального срока' : 'Проверьте срок'}</div>}
         </Card>
-        <Btn busy={busy} disabled={!q?.ok || !vid || !tariffId} onClick={pay}>Оплатить с кошелька Sky</Btn>
-        <Notice>Оплата списывается с кошелька Sky. Организации деньги отдельно не выплачиваются через Sky — это учёт оплат. Штрафов и эвакуации Sky не оформляет.</Notice>
+        {lot.acceptsPayment === false && <Notice tone="warn">Организация пока не подключила приём оплаты — начать парковку здесь нельзя.</Notice>}
+        <Btn busy={busy} disabled={!q?.ok || !vid || !tariffId || lot.acceptsPayment === false} onClick={pay}>Оплатить по реквизитам организации</Btn>
+        <Notice>Sky деньги за парковку не принимает: вы переводите их организации по её реквизитам, затем нажимаете «Я перевёл». Парковка включается, когда организация подтвердит поступление. Штрафов и эвакуации Sky не оформляет.</Notice>
         <Btn kind="soft" onClick={() => setRep(!rep)}>Сообщить о проблеме с парковкой</Btn>
         {rep && <ReportForm lotId={lot.id} onDone={() => setRep(false)} />}
       </Col>
@@ -130,16 +133,21 @@ const Sessions = () => {
   if (!r) return <Empty text="Загрузка…" />;
   if (!r.ok) return <ErrorState text="Не удалось загрузить сессии." onRetry={reload} />;
   const list = r.data!.sessions;
-  if (!list.length) return <Empty text="Парковок пока не было" hint="Найдите парковку, выберите тариф и оплатите с кошелька Sky." />;
+  if (!list.length) return <Empty text="Парковок пока не было" hint="Найдите парковку, выберите тариф и оплатите по реквизитам организации." />;
   return (
     <Col gap={10}>{list.map((s) => (
       <Card key={s.id}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
           <div translate="no" style={{ fontWeight: 800, color: C.t1 }}>{s.lotTitle}</div>
-          <Chip color={s.status === 'active' ? GO : C.t3}>{s.status === 'active' ? 'Идёт' : s.status === 'cancelled' ? 'Отменена' : 'Закончилась'}</Chip>
+          <Chip color={s.status === 'active' ? GO : s.status === 'awaiting_payment' ? C.amber : C.t3}>{s.status === 'active' ? 'Идёт' : s.status === 'awaiting_payment' ? 'Ждёт оплаты' : s.status === 'cancelled' ? 'Отменена' : 'Закончилась'}</Chip>
         </div>
         <div translate="no" style={{ fontSize: 13, color: C.t2 }}>{s.plate} · {s.address}</div>
         <div style={{ fontSize: 13, color: C.t2, marginTop: 4 }}>{hhmm(s.startsAt)} — {hhmm(s.endsAt)} · оплачено {fmt(s.paidRub)} ₽{s.status === 'active' ? ` · осталось ${dur(s.secondsLeft)}` : ''}</div>
+        {s.payments?.filter((p) => p.status === 'pending' && p.payUrl).map((p) => (
+          <div key={p.id} style={{ marginTop: 8 }}>
+            <Notice>Переведите {fmt(p.amountRub)} ₽ по реквизитам организации{p.payBy ? ` до ${hhmm(p.payBy)}` : ''}. Парковка включится после подтверждения поступления.</Notice>
+            <div style={{ marginTop: 8 }}><Btn onClick={() => window.open(p.payUrl, '_blank', 'noopener')}>Открыть реквизиты и страницу оплаты</Btn></div>
+          </div>))}
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           {s.status === 'active' && s.tariff.kind !== 'flat' && <Btn kind="soft" onClick={() => setExt(ext === s.id ? null : s.id)}>Продлить</Btn>}
           {s.payments?.filter((p) => p.status === 'paid' && p.amountRub > 0 && !p.refund).slice(0, 1).map((p) => <RefundBtn key={p.id} id={p.id} onDone={reload} />)}
@@ -161,7 +169,7 @@ const Extend = ({ s, onDone }: { s: PkSession; onDone: () => void }) => {
       <div style={{ height: 8 }} />
       <Segmented<number> value={m} onChange={setM} options={[{ v: 30, t: '30 мин' }, { v: 60, t: '1 ч' }, { v: 120, t: '2 ч' }]} />
       <div style={{ fontSize: 14, color: C.t1 }}>Продление: <b>{q?.ok ? `${fmt(q.data!.costRub)} ₽` : '—'}</b>{q && !q.ok ? ` (${q.error === 'duration_too_long' ? 'больше максимума по тарифу' : 'нельзя'})` : ''}</div>
-      <Btn busy={busy} disabled={!q?.ok} onClick={async () => { setBusy(true); const r = await pk.extend(s.id, m, idem); setBusy(false); if (!r.ok) return fail(r); flash('Парковка продлена'); onDone(); }}>Оплатить продление</Btn>
+      <Btn busy={busy} disabled={!q?.ok} onClick={async () => { setBusy(true); const r = await pk.extend(s.id, m, idem); setBusy(false); if (!r.ok) return fail(r); if (r.data?.payUrl) window.open(r.data.payUrl, '_blank', 'noopener'); flash('Переведите деньги по реквизитам — продление включится после подтверждения организации'); onDone(); }}>Оплатить продление</Btn>
     </Col>
   );
 };
@@ -173,7 +181,7 @@ const RefundBtn = ({ id, onDone }: { id: string; onDone: () => void }) => {
     <div style={{ width: '100%' }}><Col>
       <Input label="Причина возврата" value={why} onChange={setWhy} area max={400} />
       <Btn onClick={async () => { const r = await pk.refund(id, why); if (!r.ok) return fail(r); flash('Запрос отправлен организации'); onDone(); }}>Отправить запрос</Btn>
-      <Notice>Решает организация или администрация Sky; деньги вернутся на кошелёк после одобрения.</Notice>
+      <Notice>Решает организация или администрация Sky; возврат — договорённость с организацией: деньги Sky не возвращает, организация переводит сама.</Notice>
     </Col></div>
   );
 };
@@ -314,9 +322,9 @@ const OrgSessions = ({ org }: { org: PkOrg }) => {
   const { sessions, totals } = r.data!;
   return (
     <Col gap={8}>
-      <Card><div style={{ fontSize: 13, color: C.t2 }}>Оплачено через Sky: <b style={{ color: C.t1 }}>{fmt(totals.paidRub)} ₽</b> · возвращено: <b style={{ color: C.t1 }}>{fmt(totals.refundedRub)} ₽</b></div><div style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>{totals.note}</div></Card>
+      <Card><div style={{ fontSize: 13, color: C.t2 }}>Оплачено (по подтверждению организации): <b style={{ color: C.t1 }}>{fmt(totals.paidRub)} ₽</b> · возвращено: <b style={{ color: C.t1 }}>{fmt(totals.refundedRub)} ₽</b></div><div style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>{totals.note}</div></Card>
       {sessions.length === 0 && <Empty text="Сессий нет" />}
-      {sessions.map((s) => <Card key={s.id}><div style={{ display: 'flex', justifyContent: 'space-between' }}><b translate="no" style={{ color: C.t1 }}>{s.plate}</b><Chip color={s.status === 'active' ? GO : C.t3}>{s.status === 'active' ? 'Идёт' : s.status === 'cancelled' ? 'Отменена' : 'Закончилась'}</Chip></div><div translate="no" style={{ fontSize: 13, color: C.t2 }}>{s.lotTitle} · до {hhmm(s.endsAt)} · {fmt(s.paidRub)} ₽</div></Card>)}
+      {sessions.map((s) => <Card key={s.id}><div style={{ display: 'flex', justifyContent: 'space-between' }}><b translate="no" style={{ color: C.t1 }}>{s.plate}</b><Chip color={s.status === 'active' ? GO : s.status === 'awaiting_payment' ? C.amber : C.t3}>{s.status === 'active' ? 'Идёт' : s.status === 'awaiting_payment' ? 'Ждёт оплаты' : s.status === 'cancelled' ? 'Отменена' : 'Закончилась'}</Chip></div><div translate="no" style={{ fontSize: 13, color: C.t2 }}>{s.lotTitle} · до {hhmm(s.endsAt)} · {fmt(s.paidRub)} ₽</div></Card>)}
     </Col>
   );
 };
@@ -335,7 +343,7 @@ const OrgRefunds = ({ org }: { org: PkOrg }) => {
           <div translate="no" style={{ fontSize: 13, color: C.t1, margin: '4px 0' }}>{x.reason}</div>
           {x.own ? <Notice>Свой запрос решить нельзя — его рассмотрит другой сотрудник.</Notice> : (
             <div style={{ display: 'flex', gap: 8 }}>
-              <Btn onClick={async () => { const d = await pk.decideRefund(x.id, 'approve', note); if (!d.ok) return fail(d); flash('Возврат зачислен на кошелёк'); reload(); }}>Вернуть</Btn>
+              <Btn onClick={async () => { const d = await pk.decideRefund(x.id, 'approve', note); if (!d.ok) return fail(d); flash('Возврат согласован — переведите деньги плательщику сами'); reload(); }}>Вернуть</Btn>
               <Btn kind="danger" onClick={async () => { const d = await pk.decideRefund(x.id, 'reject', note); if (!d.ok) return fail(d); reload(); }}>Отказать</Btn>
             </div>)}
         </Card>))}

@@ -8,6 +8,7 @@ import { can, isOwner } from './admin.mjs';
 import { logAdmin } from './adminsec.mjs';
 import { newId, inTx, clean, notifyGo } from './gocore.mjs';
 import { notifyStaff } from './staffnotify.mjs';
+import { subState } from './kbiz.mjs';
 
 export const TARIFF_KINDS = ['hourly', 'daily', 'flat'];
 const MAX_ORGS_PER_OWNER = 3;
@@ -132,6 +133,17 @@ export const removeStaff = async (me, orgId, profileId) => {
   return { ok: true };
 };
 
+/** Какие организации сейчас могут принимать оплату: у владельца SkyKassa Business опубликован, подписка действует, есть реквизиты. */
+export const acceptingOrgs = async (orgIds) => {
+  const ids = [...new Set(orgIds)]; if (!ids.length) return new Set();
+  const { rows } = await query(
+    `SELECT o.id AS org_id, b.id AS biz_id FROM parking_orgs o JOIN kb_businesses b ON b.owner_id = o.owner_id AND b.status = 'active'
+      WHERE o.id = ANY($1) AND EXISTS (SELECT 1 FROM kb_requisites r WHERE r.business_id = b.id)`, [ids]);
+  const ok = new Set();
+  for (const r of rows) if ((await subState(r.biz_id)).active) ok.add(r.org_id);
+  return ok;
+};
+
 /* ─── Парковки ─── */
 const lotRow = (l, tariffs = []) => ({
   id: l.id, orgId: l.org_id, title: l.title, city: l.city, address: l.address, lat: l.lat, lng: l.lng,
@@ -149,7 +161,8 @@ export const orgLots = async (me, orgId) => {
   const g = await needRole(me, orgId, 'moderator'); if (g.error) return g;
   const { rows } = await query('SELECT * FROM parking_lots WHERE org_id=$1 ORDER BY updated_at DESC LIMIT 300', [orgId]);
   const t = await tariffsOf(rows.map((r) => r.id));
-  return { role: g.role, lots: rows.map((r) => lotRow(r, t.get(r.id) ?? [])) };
+  const acc = await acceptingOrgs([orgId]);
+  return { role: g.role, acceptsPayment: acc.has(orgId), lots: rows.map((r) => lotRow(r, t.get(r.id) ?? [])) };
 };
 
 export const createLot = async (me, orgId, input) => {
@@ -262,12 +275,13 @@ export const catalog = async (q = {}) => {
       WHERE l.status='approved' AND o.status='active' AND ($1='' OR lower(l.city)=$1)
       ORDER BY l.published_at DESC NULLS LAST, l.id LIMIT $2 OFFSET $3`, [city, lim, off]);
   const t = await tariffsOf(rows.map((r) => r.id));
-  return { lots: rows.map((r) => { const x = lotRow(r, (t.get(r.id) ?? []).filter((z) => z.active)); delete x.rejectReason; return x; }), limit: lim, offset: off };
+  const acc = await acceptingOrgs(rows.map((r) => r.org_id));
+  return { lots: rows.map((r) => { const x = lotRow(r, (t.get(r.id) ?? []).filter((z) => z.active)); delete x.rejectReason; x.acceptsPayment = acc.has(r.org_id); return x; }), limit: lim, offset: off };
 };
 export const getPublicLot = async (id) => {
   const l = (await query(`SELECT l.* FROM parking_lots l JOIN parking_orgs o ON o.id=l.org_id WHERE l.id=$1 AND l.status='approved' AND o.status='active'`, [id])).rows[0];
   if (!l) return { error: 'not_found' };
-  const t = await tariffsOf([id]); const x = lotRow(l, (t.get(id) ?? []).filter((z) => z.active)); delete x.rejectReason; return { lot: x };
+  const t = await tariffsOf([id]); const x = lotRow(l, (t.get(id) ?? []).filter((z) => z.active)); delete x.rejectReason; x.acceptsPayment = (await acceptingOrgs([l.org_id])).has(l.org_id); return { lot: x };
 };
 export const quote = async (lotId, tariffId, minutes) => {
   const l = await getPublicLot(lotId); if (l.error) return l;

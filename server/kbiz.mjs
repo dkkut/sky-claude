@@ -416,6 +416,11 @@ export const actOnPayment = async (profileId, id, action, comment, actor = profi
         confirmed_by = CASE WHEN $2 = 'confirmed' THEN $4 ELSE confirmed_by END, confirmed_at = CASE WHEN $2 = 'confirmed' THEN now() ELSE confirmed_at END WHERE id = $1`, [rows[0].id, t.to, note, actor]);
     await c.query('INSERT INTO kb_payment_log (payment_id, actor, from_status, to_status, note) VALUES ($1,$2,$3,$4,$5)', [rows[0].id, actor, rows[0].status, t.to, note]);
     await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [rows[0].business_id, actor, `payment_${action}`, `${rows[0].id}: ${rows[0].amount_rub} ₽`]);
+    // Sky Parking: подтверждённая организацией оплата включает сессию парковки в этой же транзакции; отмена/возврат — отменяют/закрывают.
+    if (t.to === 'confirmed' || t.to === 'cancelled' || t.to === 'refunded') {
+      const pk = await import('./parkingpay.mjs');
+      if (t.to === 'confirmed') await pk.kassaPaymentConfirmedIn(c, rows[0].id); else await pk.kassaPaymentChangedIn(c, rows[0].id, t.to);
+    }
     return { ok: true, status: t.to, statusLabel: STATUS_LABEL[t.to] };
   });
 };
