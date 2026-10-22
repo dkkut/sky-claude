@@ -10,6 +10,7 @@ import { useWake, requestMicForWake } from '@/island/wake';
 import { recognitionMode } from '@/ai/speech';
 import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
+import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -591,6 +592,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
 }) => {
   const switchProfile = useAuthStore(s=>s.switchProfile);
   const [confirmExit, setConfirmExit] = useState(false);
+  const [updatesOpen, setUpdatesOpen] = useState(false);
   const { settings, set, reset } = useSettings();
   const cursorPet = useCursorPet();
   const s = settings;
@@ -924,6 +926,11 @@ const SettingsSection = ({ logout, username, onOpen }: {
       {/* -- О ПРИЛОЖЕНИИ ------------------------ */}
       <SectionBlock title="О приложении">
         <SettingsRow icon={Info} iconColor="var(--t3)" label={APP_VERSION_LABEL} sub="Текущая версия"/>
+        <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
+        <SettingsRow icon={Download} iconColor="var(--t3)" label="Обновления" sub="Скачать приложения Sky"
+          onClick={() => setUpdatesOpen(true)}
+          right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
+        {updatesOpen && <UpdatesDialog onClose={() => setUpdatesOpen(false)}/>}
         <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
         <SettingsRow icon={ExternalLink} iconColor="var(--t3)" label="Сайт Sky" sub="skymessenger.online"
           onClick={() => window.open('https://skymessenger.online', '_blank')}

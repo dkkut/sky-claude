@@ -1536,3 +1536,9 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 `server/skykassareview.mjs::grantFirstTopupBonus`, миграция `179_first_topup_bonus.sql` (`skykassa_first_bonus`, PRIMARY KEY `user_id` — один раз на человека). При зачислении пополнения БАЛАНСА (не кода) начисляется `firstTopupBonusPercent` % (по умолчанию 20) от суммы, не больше `firstTopupBonusMaxRub` (по умолчанию 1000 ₽) —
 тип кошелька `skykassa_bonus`, в той же транзакции под `FOR UPDATE` платежа; сбой бонуса откатывается SAVEPOINT-ом и пополнение не ломает. Настройки — `skykassa_settings` (`saveSettings`: `firstTopupBonusPercent` 0–100, `firstTopupBonusMaxRub`; 0 выключает); поля в форме настроек вкладки «SkyKassa» админки НЕ добавлены — меняются через API.
 Человек видит плашку с размером бонуса на экране оплаты (`options.firstBonus`, пока бонус не использован) и строку «Бонус за первое пополнение» в истории. Потолок 1000 ₽ выбран мной — владельцу стоит проверить. Тест не писался; `tsc`/`i18n:check` проходят. Нужен деплой (миграция 179) и пересборка `.apk`/`.exe`.
+
+## «Обновления» под версией приложения (ноябрь-2026)
+
+`src/updates/UpdatesDialog.tsx`; строка «Обновления» в Профиль → Настройки → «О приложении», сразу под версией (`ProfileModule.tsx`, `SettingsSection`). Окно берёт список из публичного `GET /api/site/public` (`downloads`: платформа, название, версия, описание, статус `available|soon`, ссылка или загруженный файл с размером) —
+ТЕ ЖЕ данные, что на сайте: правятся в админке «Сайт» → «Скачивание», отдельного списка нет. Внешняя ссылка или `/api/site/download/<платформа>` (с `API_ORIGIN` в родных приложениях) открывается в новой вкладке. Не `available` — «Скоро». Версию в самом окне показывает `APP_VERSION_LABEL`; «что нового» отдельным полем пока нет.
+Нужна пересборка `.apk`/`.exe`. UI Playwright-ом не прогонялся.
