@@ -95,11 +95,14 @@ const lockLot = async (c, lotId) => {
 };
 /** Страница оплаты организации принимает деньги, только если у владельца подключён SkyKassa Business: бизнес опубликован, подписка действует, есть реквизиты. */
 const kassaReady = async (c, ownerId) => {
-  const b = (await c.query("SELECT id, status FROM kb_businesses WHERE owner_id = $1", [ownerId])).rows[0];
-  if (!b || b.status !== 'active') return null;
-  if (!(await subState(b.id)).active) return null;
-  if (!(await c.query('SELECT 1 FROM kb_requisites WHERE business_id = $1', [b.id])).rowCount) return null;
-  return b;
+  // у владельца может быть несколько организаций: берём первую опубликованную, с действующей подпиской и реквизитами
+  const list = (await c.query("SELECT id, status FROM kb_businesses WHERE owner_id = $1 AND status = 'active' ORDER BY created_at, id", [ownerId])).rows;
+  for (const b of list) {
+    if (!(await subState(b.id)).active) continue;
+    if (!(await c.query('SELECT 1 FROM kb_requisites WHERE business_id = $1', [b.id])).rowCount) continue;
+    return b;
+  }
+  return null;
 };
 export const lotAcceptsPayment = async (ownerId) => Boolean(await kassaReady({ query }, ownerId));
 

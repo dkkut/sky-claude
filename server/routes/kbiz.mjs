@@ -1,7 +1,7 @@
 import { json, parseBody, requireProfile, clientIp } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { isClosed } from './../modclosure.mjs';
-import { audit, myBusiness, createBusiness, updateBusiness, setLogo, logoOf, setRequisites, publish, subState, subHistory, buySub, listQr, createQr, setQrStatus,
+import { listOrgs, switchOrg, audit, myBusiness, createBusiness, updateBusiness, setLogo, logoOf, setRequisites, publish, subState, subHistory, buySub, listQr, createQr, setQrStatus,
   publicPage, reportPayment, buyerStatus, listPayments, paymentLog, actOnPayment, auditList, exportPaymentsCsv, overview, scan, SUB_PRICE_RUB, SUB_PERIOD_DAYS } from './../kbiz.mjs';
 import { query } from './../db.mjs';
 import * as cat from './../kbcatalog.mjs';
@@ -12,7 +12,7 @@ import * as pv from './../kbprovider.mjs';
 import * as ad from './../kbadmin.mjs';
 
 const MULT = Math.max(1, Number(process.env.KBIZ_RATE_MULT) || 1);        // для тестов
-const STATUS = { not_found: 404, no_business: 404, already_exists: 409, bad_state: 409, suspended: 403, subscription_required: 402, insufficient_funds: 402, bad_field: 400, bad_action: 400,
+const STATUS = { not_found: 404, no_business: 404, already_exists: 409, too_many_orgs: 409, bad_state: 409, suspended: 403, subscription_required: 402, insufficient_funds: 402, bad_field: 400, bad_action: 400,
   bad_status: 400, bad_logo: 400, logo_too_large: 413, secret_words: 400, requisites_required: 409, too_many_qr: 429, too_many_requests: 429, comment_required: 400, bad_amount: 400,
   page_unavailable: 410, origin_not_allowed: 403, shop_not_configured: 409, package_unavailable: 503, shop_unavailable: 410, empty_cart: 400, item_unavailable: 409, variant_required: 400, too_many_items: 429, too_many_media: 429, slug_taken: 409, provider_not_set: 409, provider_bad_url: 400, provider_unreachable: 502, provider_error: 502, provider_bad_answer: 502, forbidden: 403, user_not_found: 404, already_in_business: 409, too_many_staff: 429, too_many_promos: 429, code_taken: 409, promo_invalid: 400, promo_expired: 410, promo_exhausted: 409, promo_min_order: 400, order_not_done: 409, already_reviewed: 409, not_published: 409, not_skykassa_qr: 400, two_factor_required: 403, invalid_code: 403, archived: 409 };
 
@@ -109,7 +109,7 @@ export const kbizRoutes = async (req, res) => {
   const s = await requireProfile(req, res); if (!s) return true;
   const actor = s.profileId;
   const acc = await st.accessOf(actor);                    // owner | admin | manager | cashier | null
-  const me = acc ? acc.ownerId : actor;                    // функции бизнеса работают «от имени владельца»; журнал ведёт настоящего автора
+  const me = acc && acc.role !== 'owner' ? `biz:${acc.businessId}` : actor;   // сотрудник — ключ его организации, владелец — своя текущая организация (kb_cur_biz)                    // функции бизнеса работают «от имени владельца»; журнал ведёт настоящего автора
   if (!rateLimit(`kbiz:${actor}`, 240 * MULT)) return json(res, 429, { error: 'too_many_requests' });
   const body = req.method === 'GET' ? {} : ((await parseBody(req)) ?? {});
   const forbid = () => json(res, 403, { error: 'forbidden' });
@@ -122,11 +122,20 @@ export const kbizRoutes = async (req, res) => {
 
   if (req.method === 'GET' && path === '/api/kbiz/me') {
     if (acc && acc.role !== 'owner') {
-      const r = await myBusiness(acc.ownerId);
+      const r = await myBusiness(me);
       return json(res, 200, { business: r.business, subscription: r.subscription, requisites: null, payOrigin: r.payOrigin, role: acc.role, roleLabel: st.ROLES[acc.role] });
     }
     return json(res, 200, { ...(await myBusiness(me)), role: acc ? 'owner' : null, invites: (await st.myInvites(actor)).invites });
   }
+  /* Несколько организаций: список, новая, переключение (только владелец; текущая организация общая для всех его устройств) */
+  if (req.method === 'GET' && path === '/api/kbiz/organizations') return json(res, 200, acc && acc.role === 'owner' ? await listOrgs(actor) : { orgs: [], current: acc?.businessId ?? null, max: 0 });
+  if (req.method === 'POST' && path === '/api/kbiz/organizations') {
+    if (!acc || acc.role !== 'owner') return forbid();
+    if (!rateLimit(`kborg:${actor}`, 10 * MULT)) return json(res, 429, { error: 'too_many_requests' });
+    return reply(await createBusiness(actor, body, true));
+  }
+  { const mo = /^\/api\/kbiz\/organizations\/(kbz-[0-9a-f-]{36})\/switch$/.exec(path);
+    if (mo && req.method === 'POST') { if (!acc || acc.role !== 'owner') return forbid(); return reply(await switchOrg(actor, mo[1])); } }
   if (req.method === 'POST' && path === '/api/kbiz/business') { if (acc) return reply({ error: 'already_exists' }); return reply(await createBusiness(actor, body)); }
   if (req.method === 'PUT' && path === '/api/kbiz/business') { if (!(await need('owner'))) return forbid(); return reply(await updateBusiness(me, body)); }
   if (req.method === 'PUT' && path === '/api/kbiz/business/logo') { if (!(await need('owner'))) return forbid(); return reply(await setLogo(me, body.dataUrl)); }
@@ -139,7 +148,7 @@ export const kbizRoutes = async (req, res) => {
 
   if (req.method === 'GET' && path === '/api/kbiz/subscription') {
     if (!(await need('owner'))) return forbid();
-    const { rows } = await query('SELECT id FROM kb_businesses WHERE owner_id = $1', [me]);
+    const { rows } = await query('SELECT id FROM kb_businesses WHERE id = kb_cur_biz($1)', [me]);
     if (!rows[0]) return json(res, 200, { subscription: { status: 'inactive', active: false, priceRub: SUB_PRICE_RUB, periodDays: SUB_PERIOD_DAYS }, history: [] });
     return json(res, 200, { subscription: await subState(rows[0].id), history: await subHistory(rows[0].id) });
   }
@@ -154,7 +163,7 @@ export const kbizRoutes = async (req, res) => {
   if (req.method === 'GET' && path === '/api/kbiz/staff') { if (!(await need('owner'))) return forbid(); return json(res, 200, await st.listStaff(me)); }
   if (req.method === 'POST' && path === '/api/kbiz/staff') { if (!(await need('owner'))) return forbid(); if (!rateLimit(`kbinv:${me}`, 20)) return json(res, 429, { error: 'too_many_requests' }); return reply(await st.invite(me, body)); }
   if (m && m[2] === 'role' && req.method === 'POST') { if (!(await need('owner'))) return forbid(); return reply(await st.setRole(me, m[1], body.role)); }
-  if (m && !m[2] && req.method === 'DELETE') return reply(await st.removeStaff(actor, acc?.ownerId ?? '', m[1]));    // владелец убирает, сотрудник выходит сам
+  if (m && !m[2] && req.method === 'DELETE') return reply(await st.removeStaff(actor, acc ? me : '', m[1]));    // владелец убирает, сотрудник выходит сам
   if (m && (m[2] === 'accept' || m[2] === 'decline') && req.method === 'POST') return reply(await st.answerInvite(actor, m[1], m[2] === 'accept'));
 
   /* Платёжный партнёр (только владелец) */

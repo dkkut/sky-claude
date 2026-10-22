@@ -55,7 +55,7 @@ const readme = (slug, api) => `Сайт каталога SkyKassa Business — �
 `;
 
 export const shopPackage = async (profileId, apiOverride) => {
-  const { rows } = await query('SELECT shop_slug FROM kb_businesses WHERE owner_id = $1', [profileId]);
+  const { rows } = await query('SELECT shop_slug FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!rows[0]) return err('no_business');
   if (!rows[0].shop_slug) return err('shop_not_configured');
   if (!SRC) return err('package_unavailable');

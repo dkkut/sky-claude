@@ -8,7 +8,7 @@ import { newId, inTx, clean } from './gocore.mjs';
 import { err, publicId, audit, keyHash, subState, payUrl, MAX_AMOUNT } from './kbiz.mjs';
 
 const int = (v, lo, hi) => { const n = Number(v); return Number.isInteger(n) && n >= lo && n <= hi ? n : null; };
-const ownBiz = async (ownerId) => (await query('SELECT id, status, name FROM kb_businesses WHERE owner_id = $1', [ownerId])).rows[0] ?? null;
+const ownBiz = async (ownerId) => (await query('SELECT id, status, name FROM kb_businesses WHERE id = kb_cur_biz($1)', [ownerId])).rows[0] ?? null;
 
 /* ─── Промокоды ─── */
 const CODE_RE = /^[A-Z0-9][A-Z0-9_-]{2,23}$/;

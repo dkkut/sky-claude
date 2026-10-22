@@ -50,7 +50,7 @@ export const payUrl = (pid) => `${payOrigin()}/p/${pid}`;
 const SECRET_WORDS = /(cvv|cvc|\bpin\b|пин[- ]?код|\bпин\b|парол[ьяю]|одноразов\w* код|код (из )?(sms|смс)|секретн\w* (код|слово))/i;
 
 export const audit = async (businessId, actor, action, detail = '') =>
-  query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [businessId, String(actor), action, String(detail).slice(0, 300)]).catch(() => {});
+  query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [businessId, String(actor).startsWith('biz:') ? 'staff' : String(actor), action, String(detail).slice(0, 300)]).catch(() => {});
 
 /* ─── Подписка ─── */
 
@@ -77,7 +77,7 @@ export const subHistory = async (businessId) => {
 export const buySub = async (profileId, idemKey) => {
   const key = clean(idemKey, 64) || newId('idem');
   const res = await inTx(async (c) => {
-    const { rows: b } = await c.query('SELECT id, status FROM kb_businesses WHERE owner_id = $1 FOR UPDATE', [profileId]);
+    const { rows: b } = await c.query('SELECT id, status FROM kb_businesses WHERE id = kb_cur_biz($1) FOR UPDATE', [profileId]);
     if (!b[0]) return err('no_business');
     if (b[0].status === 'suspended') return err('suspended');
     const { rows: dup } = await c.query('SELECT expires_at FROM kb_subscriptions WHERE business_id = $1 AND payment_ref = $2', [b[0].id, key]);
@@ -122,27 +122,34 @@ const parseBusiness = (b, partial = false) => {
 };
 
 export const myBusiness = async (profileId) => {
-  const { rows } = await query(`${BSEL} WHERE owner_id = $1`, [profileId]);
+  const { rows } = await query(`${BSEL} WHERE id = kb_cur_biz($1)`, [profileId]);
   if (!rows[0]) return { business: null, subscription: { status: 'inactive', active: false, priceRub: SUB_PRICE_RUB, periodDays: SUB_PERIOD_DAYS } };
   const sub = await subState(rows[0].id);
   const { rows: rq } = await query('SELECT data_enc, updated_at FROM kb_requisites WHERE business_id = $1', [rows[0].id]);
   return { business: shapeBusiness(rows[0]), subscription: sub, requisites: rq[0] ? { ...openJson(rq[0].data_enc), updatedAt: rq[0].updated_at.toISOString() } : null, payOrigin: payOrigin() };
 };
 
-export const createBusiness = async (profileId, body) => {
+export const MAX_ORGS = 5;
+/** Первая организация (extra=false) или ещё одна (extra=true, не больше MAX_ORGS): новая становится текущей. */
+export const createBusiness = async (profileId, body, extra = false) => {
   const p = parseBusiness(body ?? {});
   if (p.error) return p;
   const id = newId('kbz');
+  const have = Number((await query('SELECT count(*)::int AS n FROM kb_businesses WHERE owner_id = $1', [profileId])).rows[0].n);
+  if (!extra && have > 0) return err('already_exists');
+  if (extra && have === 0) return err('no_business');
+  if (extra && have >= MAX_ORGS) return err('too_many_orgs');
   try {
     await query(`INSERT INTO kb_businesses (id, owner_id, name, description, category, country, mode, legal_type, contacts, website) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [id, profileId, p.v.name, p.v.description ?? '', p.v.category ?? '', p.v.country, p.v.mode, p.v.legal_type, p.v.contacts ?? '', p.v.website ?? '']);
   } catch (e) { if (e.code === '23505') return err('already_exists'); throw e; }
   await audit(id, profileId, 'business_created', `${p.v.name} · ${p.v.mode}`);
+  if (extra) await query('INSERT INTO kb_active_business (profile_id, business_id) VALUES ($1,$2) ON CONFLICT (profile_id) DO UPDATE SET business_id = EXCLUDED.business_id, updated_at = now()', [profileId, id]);
   return { ok: true, id };
 };
 
 export const updateBusiness = async (profileId, body) => {
-  const { rows } = await query('SELECT id, status FROM kb_businesses WHERE owner_id = $1', [profileId]);
+  const { rows } = await query('SELECT id, status FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!rows[0]) return err('no_business');
   const p = parseBusiness(body ?? {}, true);
   if (p.error) return p;
@@ -165,7 +172,7 @@ export const imageFromDataUrl = (dataUrl) => {
 };
 const LOGO_TYPES = { 'image/png': [0x89, 0x50, 0x4e, 0x47], 'image/jpeg': [0xff, 0xd8, 0xff], 'image/webp': null };
 export const setLogo = async (profileId, dataUrl) => {
-  const { rows } = await query('SELECT id FROM kb_businesses WHERE owner_id = $1', [profileId]);
+  const { rows } = await query('SELECT id FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!rows[0]) return err('no_business');
   const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ''));
   if (!m) return err('bad_logo');
@@ -200,7 +207,7 @@ const parseRequisites = (b) => {
 
 /** Смена реквизитов — самое опасное действие бизнеса (деньги покупателей пойдут в другое место): при включённом аутентификаторе нужен его код. */
 export const setRequisites = async (profileId, skyId, body) => {
-  const { rows } = await query('SELECT id, status FROM kb_businesses WHERE owner_id = $1', [profileId]);
+  const { rows } = await query('SELECT id, status FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!rows[0]) return err('no_business');
   if (rows[0].status === 'suspended') return err('suspended');
   const p = parseRequisites(body ?? {});
@@ -220,7 +227,7 @@ export const setRequisites = async (profileId, skyId, body) => {
 
 /** Опубликовать: бизнес виден покупателям, когда заданы реквизиты (и действует подписка — проверяется отдельно при показе). */
 export const publish = async (profileId, on) => {
-  const { rows } = await query('SELECT id, status FROM kb_businesses WHERE owner_id = $1', [profileId]);
+  const { rows } = await query('SELECT id, status FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!rows[0]) return err('no_business');
   if (rows[0].status === 'suspended') return err('suspended');
   if (on) {
@@ -244,7 +251,7 @@ const QSEL = `SELECT q.*, (SELECT count(*)::int FROM kb_qr_opens o WHERE o.qr_id
   (SELECT count(*)::int FROM kb_payments p WHERE p.qr_id = q.id AND p.status = 'confirmed') AS confirmed FROM kb_qr q`;
 
 export const listQr = async (profileId) => {
-  const { rows: b } = await query('SELECT id FROM kb_businesses WHERE owner_id = $1', [profileId]);
+  const { rows: b } = await query('SELECT id FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!b[0]) return { qr: [] };
   const { rows } = await query(`${QSEL} WHERE q.business_id = $1 AND q.kind IN ('pay','permanent') AND COALESCE(q.config->>'cash', '') <> 'true' ORDER BY q.created_at DESC LIMIT 200`, [b[0].id]);
   return { qr: rows.map(shapeQr) };
@@ -263,7 +270,7 @@ const parseQr = (b, permanent) => {
 };
 
 export const createQr = async (profileId, body, { permanent = false } = {}) => {
-  const { rows: b } = await query('SELECT id, status FROM kb_businesses WHERE owner_id = $1', [profileId]);
+  const { rows: b } = await query('SELECT id, status FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!b[0]) return err('no_business');
   if (b[0].status === 'suspended') return err('suspended');
   const sub = await subState(b[0].id);
@@ -284,7 +291,7 @@ export const createQr = async (profileId, body, { permanent = false } = {}) => {
 
 export const setQrStatus = async (profileId, qrId, status) => {
   if (!['active', 'disabled', 'archived'].includes(status)) return err('bad_status');
-  const { rows } = await query('SELECT q.id, q.business_id, q.status, q.title FROM kb_qr q JOIN kb_businesses b ON b.id = q.business_id WHERE q.id = $1 AND b.owner_id = $2', [String(qrId ?? ''), profileId]);
+  const { rows } = await query('SELECT q.id, q.business_id, q.status, q.title FROM kb_qr q JOIN kb_businesses b ON b.id = q.business_id WHERE q.id = $1 AND b.id = kb_cur_biz($2)', [String(qrId ?? ''), profileId]);
   if (!rows[0]) return err('not_found');
   if (rows[0].status === 'archived') return err('archived');
   if (status === 'active') { const sub = await subState(rows[0].business_id); if (!sub.active) return err('subscription_required'); }
@@ -385,7 +392,7 @@ const shapePayment = (r) => ({ id: r.id, qrId: r.qr_id, qrTitle: r.qr_title ?? u
   reportedAt: r.reported_at?.toISOString?.() ?? null, confirmedAt: r.confirmed_at?.toISOString?.() ?? null, createdAt: r.created_at.toISOString() });
 
 export const listPayments = async (profileId, { status, qrId, limit = 100 } = {}) => {
-  const { rows: b } = await query('SELECT id FROM kb_businesses WHERE owner_id = $1', [profileId]);
+  const { rows: b } = await query('SELECT id FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!b[0]) return { payments: [] };
   await query(`UPDATE kb_payments SET status = 'expired', updated_at = now() WHERE business_id = $1 AND status = 'created' AND created_at < now() - interval '48 hours'`, [b[0].id]);
   const vals = [b[0].id]; let w = 'p.business_id = $1';
@@ -397,7 +404,7 @@ export const listPayments = async (profileId, { status, qrId, limit = 100 } = {}
 };
 
 export const paymentLog = async (profileId, id) => {
-  const { rows } = await query('SELECT l.actor, l.from_status, l.to_status, l.note, l.at FROM kb_payment_log l JOIN kb_payments p ON p.id = l.payment_id JOIN kb_businesses b ON b.id = p.business_id WHERE p.id = $1 AND b.owner_id = $2 ORDER BY l.id', [String(id ?? ''), profileId]);
+  const { rows } = await query('SELECT l.actor, l.from_status, l.to_status, l.note, l.at FROM kb_payment_log l JOIN kb_payments p ON p.id = l.payment_id JOIN kb_businesses b ON b.id = p.business_id WHERE p.id = $1 AND b.id = kb_cur_biz($2) ORDER BY l.id', [String(id ?? ''), profileId]);
   return { log: rows.map((r) => ({ actor: r.actor === 'buyer' || r.actor === 'system' ? r.actor : 'owner', from: r.from_status, to: r.to_status, toLabel: STATUS_LABEL[r.to_status], note: r.note, at: r.at.toISOString() })) };
 };
 
@@ -406,7 +413,7 @@ export const actOnPayment = async (profileId, id, action, comment, actor = profi
   const t = TRANSITIONS[action];
   if (!t) return err('bad_action');
   return inTx(async (c) => {
-    const { rows } = await c.query('SELECT p.id, p.status, p.business_id, p.amount_rub FROM kb_payments p JOIN kb_businesses b ON b.id = p.business_id WHERE p.id = $1 AND b.owner_id = $2 FOR UPDATE OF p', [String(id ?? ''), profileId]);
+    const { rows } = await c.query('SELECT p.id, p.status, p.business_id, p.amount_rub FROM kb_payments p JOIN kb_businesses b ON b.id = p.business_id WHERE p.id = $1 AND b.id = kb_cur_biz($2) FOR UPDATE OF p', [String(id ?? ''), profileId]);
     if (!rows[0]) return err('not_found');
     if (rows[0].status === t.to) return { ok: true, duplicate: true, status: t.to };
     if (!t.from.includes(rows[0].status)) return err('bad_state', { status: rows[0].status });
@@ -428,7 +435,7 @@ export const actOnPayment = async (profileId, id, action, comment, actor = profi
 };
 
 export const auditList = async (profileId, limit = 100) => {
-  const { rows } = await query('SELECT a.actor, a.action, a.detail, a.at FROM kb_audit a JOIN kb_businesses b ON b.id = a.business_id WHERE b.owner_id = $1 ORDER BY a.id DESC LIMIT $2', [profileId, Math.min(300, Math.max(1, Number(limit) || 100))]);
+  const { rows } = await query('SELECT a.actor, a.action, a.detail, a.at FROM kb_audit a JOIN kb_businesses b ON b.id = a.business_id WHERE b.id = kb_cur_biz($1) ORDER BY a.id DESC LIMIT $2', [profileId, Math.min(300, Math.max(1, Number(limit) || 100))]);
   const others = [...new Set(rows.map((r) => r.actor).filter((a) => a !== profileId && /^[\w-]{6,}$/.test(a)))];
   const { rows: pr } = others.length ? await query('SELECT id, username FROM profiles WHERE id = ANY($1::text[])', [others]) : { rows: [] };
   const names = new Map(pr.map((x) => [x.id, x.username]));
@@ -446,7 +453,7 @@ export const exportPaymentsCsv = async (profileId) => {
 
 /** Сводка для «Обзора»: заявленное покупателями и подтверждённое владельцем — раздельно (это не банковская выписка). */
 export const overview = async (profileId) => {
-  const { rows: b } = await query('SELECT id FROM kb_businesses WHERE owner_id = $1', [profileId]);
+  const { rows: b } = await query('SELECT id FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!b[0]) return { stats: null };
   const { rows } = await query(
     `SELECT count(*) FILTER (WHERE status <> 'created')::int AS requests,
@@ -497,4 +504,18 @@ export const scan = async (profileId, text) => {
     out.granted = r.granted.map((g) => ({ points: g.points, title: g.title, status: g.status }));
   }
   return out;
+};
+
+/* ─── Несколько организаций у владельца ─── */
+export const listOrgs = async (profileId) => {
+  const cur = (await query('SELECT kb_cur_biz($1) AS id', [profileId])).rows[0]?.id;
+  const { rows } = await query('SELECT id, name, status, mode, (logo IS NOT NULL) AS has_logo FROM kb_businesses WHERE owner_id = $1 ORDER BY created_at, id', [profileId]);
+  return { orgs: rows.map((r) => ({ id: r.id, name: r.name, status: r.status, mode: r.mode, current: r.id === cur })), current: cur ?? null, max: MAX_ORGS };
+};
+export const switchOrg = async (profileId, businessId) => {
+  const { rows } = await query('SELECT id, name FROM kb_businesses WHERE id = $1 AND owner_id = $2', [String(businessId ?? ''), profileId]);
+  if (!rows[0]) return err('not_found');
+  await query('INSERT INTO kb_active_business (profile_id, business_id) VALUES ($1,$2) ON CONFLICT (profile_id) DO UPDATE SET business_id = EXCLUDED.business_id, updated_at = now()', [profileId, rows[0].id]);
+  await audit(rows[0].id, profileId, 'org_switched', rows[0].name);
+  return { ok: true, id: rows[0].id };
 };

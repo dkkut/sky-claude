@@ -19,7 +19,7 @@ const ACTIVE = ['awaiting_payment', 'requested', 'confirmed'];
 const PAY_WINDOW_MIN = 30;
 export const BOOK_LABEL = { awaiting_payment: 'Ждёт задатка', requested: 'Ждёт подтверждения', confirmed: 'Подтверждена', rejected: 'Отклонена', cancelled: 'Отменена', done: 'Состоялась', no_show: 'Клиент не пришёл' };
 const visible = `p.connected AND p.status = 'published' AND b.status = 'active'`;
-const ownBiz = async (profileId) => (await query('SELECT id, name, status, owner_id FROM kb_businesses WHERE owner_id = $1', [profileId])).rows[0] ?? null;
+const ownBiz = async (profileId) => (await query('SELECT id, name, status, owner_id FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId])).rows[0] ?? null;
 const logAdmin = (me, action, detail) => adminLog({ actorId: me, targetType: 'go_place', type: `go_places_${action}`, detail: String(detail ?? '') }).catch(() => {});
 const notify = (to, title, body, ref) => notifyGift(to, 'kassa_biz', title, body, ref).catch(() => {});
 

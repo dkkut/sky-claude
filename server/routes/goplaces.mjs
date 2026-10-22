@@ -56,7 +56,7 @@ export const goPlacesRoutes = async (req, res, url) => {
       // Владелец и сотрудники бизнеса (kbstaff.PERMS): сотрудник работает «от имени владельца», каждое его изменение пишется в журнал бизнеса.
       const acc = await st.accessOf(me);
       if (!acc) return json(res, 404, { error: 'no_business' });
-      const own = acc.ownerId;
+      const own = acc.role === 'owner' ? me : `biz:${acc.businessId}`;
       const group = method === 'GET' ? 'placeview'
         : /\/place\/connect$/.test(path) ? 'owner'
         : /\/place\/(bookings|reviews)\/[^/]+\/(confirm|reject|cancel|done|no-show|reply)$/.test(path) ? 'placeops' : 'placecard';

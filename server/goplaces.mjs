@@ -83,7 +83,7 @@ export const adminDeleteCategory = async (me, id) => {
 const logAdmin = (me, action, detail) => adminLog({ actorId: me, targetType: 'go_place', type: `go_places_${action}`, detail: String(detail ?? '') }).catch(() => {});
 
 /* ─── Владелец (через «Sky для бизнеса») ─── */
-const ownBiz = async (profileId) => (await query('SELECT id, name, status, owner_id FROM kb_businesses WHERE owner_id = $1', [profileId])).rows[0] ?? null;
+const ownBiz = async (profileId) => (await query('SELECT id, name, status, owner_id FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId])).rows[0] ?? null;
 const ensure = async (businessId) => { await query('INSERT INTO gop_places (business_id) VALUES ($1) ON CONFLICT DO NOTHING', [businessId]); return (await query('SELECT * FROM gop_places WHERE business_id = $1', [businessId])).rows[0]; };
 const photoList = async (businessId) => (await query('SELECT media_id FROM gop_photos WHERE business_id = $1 ORDER BY sort, media_id', [businessId])).rows.map((r) => `/api/go/places/media/${r.media_id}`);
 
@@ -190,7 +190,7 @@ export const mediaPublic = async (id) => {
 };
 /** Фото владельцу — и пока карточка не опубликована (предпросмотр). */
 export const mediaOwn = async (profileId, id) => {
-  const { rows } = await query(`SELECT m.data, m.mime FROM kb_media m JOIN gop_photos ph ON ph.media_id = m.id JOIN kb_businesses b ON b.id = ph.business_id WHERE m.id = $1 AND b.owner_id = $2`, [String(id ?? ''), profileId]);
+  const { rows } = await query(`SELECT m.data, m.mime FROM kb_media m JOIN gop_photos ph ON ph.media_id = m.id JOIN kb_businesses b ON b.id = ph.business_id WHERE m.id = $1 AND b.id = kb_cur_biz($2)`, [String(id ?? ''), profileId]);
   return rows[0] ? { data: rows[0].data, type: rows[0].mime } : null;
 };
 

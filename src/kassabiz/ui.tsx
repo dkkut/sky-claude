@@ -3,7 +3,7 @@ export const card = { background: 'var(--bg-l1)', border: '1px solid var(--borde
 export const field = { background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' } as const;
 export const REASON: Record<string, string> = {
   no_business: 'Сначала подключите бизнес.', already_exists: 'Уже создано.', bad_field: 'Проверьте заполнение полей.', suspended: 'Бизнес приостановлен администрацией Sky.',
-  subscription_required: 'Нужна действующая подписка SkyKassa Business.', insufficient_funds: 'Не хватает денег на кошельке SkyMoney.', requisites_required: 'Сначала укажите реквизиты.',
+  too_many_orgs: 'Достигнут предел числа организаций.', subscription_required: 'Нужна действующая подписка SkyKassa Business.', insufficient_funds: 'Не хватает денег на кошельке SkyMoney.', requisites_required: 'Сначала укажите реквизиты.',
   secret_words: 'В тексте есть слова вроде PIN/CVV/пароль — такие данные здесь не нужны. Уберите их.', two_factor_required: 'Введите действующий код аутентификатора.',
   too_many_requests: 'Слишком часто. Подождите немного.', too_many_qr: 'Слишком много QR-кодов — заархивируйте ненужные.', bad_state: 'Это действие сейчас недоступно для заявки.',
   comment_required: 'Напишите короткий комментарий.', bad_logo: 'Логотип — PNG, JPEG или WebP.', logo_too_large: 'Логотип не больше 300 КБ.', archived: 'QR-код в архиве.',

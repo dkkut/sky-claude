@@ -26,7 +26,7 @@ const ORDER_ACT = {
 };
 export const INVOICE_LABEL = { draft: 'Черновик', sent: 'Отправлен', reported: 'Покупатель сообщил об оплате', confirmed: 'Оплата подтверждена владельцем', expired: 'Истёк срок', cancelled: 'Отменён' };
 
-const ownBiz = async (profileId) => (await query('SELECT id, status, name FROM kb_businesses WHERE owner_id = $1', [profileId])).rows[0] ?? null;
+const ownBiz = async (profileId) => (await query('SELECT id, status, name FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId])).rows[0] ?? null;
 const int = (v, lo, hi) => { const n = Number(v); return Number.isInteger(n) && n >= lo && n <= hi ? n : null; };
 
 /* ─── Каталог (владелец) ─── */
@@ -119,7 +119,7 @@ export const mediaOf = async (id) => {
 /* ─── Витрина: настройки владельца ─── */
 
 export const getShop = async (profileId) => {
-  const { rows } = await query('SELECT shop_slug, shop_enabled, shop_origins, shop_notice FROM kb_businesses WHERE owner_id = $1', [profileId]);
+  const { rows } = await query('SELECT shop_slug, shop_enabled, shop_origins, shop_notice FROM kb_businesses WHERE id = kb_cur_biz($1)', [profileId]);
   if (!rows[0]) return { shop: null };
   const r = rows[0];
   return { shop: { slug: r.shop_slug, enabled: r.shop_enabled, origins: r.shop_origins ?? [], notice: r.shop_notice, url: r.shop_slug ? `${payOrigin()}/s/${r.shop_slug}` : null, apiBase: payOrigin() } };
@@ -289,7 +289,7 @@ export const actOnOrder = async (profileId, id, action, comment) => {
   const t = ORDER_ACT[action]; if (!t) return err('bad_action');
   let buyerNote = null;
   const out = await inTx(async (c) => {
-    const { rows } = await c.query('SELECT o.id, o.status, o.business_id, o.number FROM kb_orders o JOIN kb_businesses b ON b.id = o.business_id WHERE o.id = $1 AND b.owner_id = $2 FOR UPDATE OF o', [String(id ?? ''), profileId]);
+    const { rows } = await c.query('SELECT o.id, o.status, o.business_id, o.number FROM kb_orders o JOIN kb_businesses b ON b.id = o.business_id WHERE o.id = $1 AND b.id = kb_cur_biz($2) FOR UPDATE OF o', [String(id ?? ''), profileId]);
     if (!rows[0]) return err('not_found');
     if (rows[0].status === t.to) return { ok: true, duplicate: true, status: t.to };
     if (!t.from.includes(rows[0].status)) return err('bad_state', { status: rows[0].status });
@@ -300,7 +300,7 @@ export const actOnOrder = async (profileId, id, action, comment) => {
     buyerNote = { id: rows[0].id, number: rows[0].number, to: t.to, note };
     // Отклонённый/отменённый заказ закрывает его платёжную страницу: по ней больше нельзя сообщить об оплате.
     if (t.to === 'rejected' || t.to === 'cancelled') await c.query(`UPDATE kb_qr SET status = 'disabled', updated_at = now() WHERE id = (SELECT qr_id FROM kb_orders WHERE id = $1) AND status = 'active'`, [rows[0].id]);
-    await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [rows[0].business_id, profileId, `order_${action}`, `№ ${rows[0].number}`]);
+    await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [rows[0].business_id, (String(profileId).startsWith('biz:') ? 'staff' : profileId), `order_${action}`, `№ ${rows[0].number}`]);
     return { ok: true, status: t.to, statusLabel: ORDER_LABEL[t.to] };
   });
   if (buyerNote && out.ok && !out.duplicate) void notifyBuyerOrder(buyerNote.id, buyerNote.number, buyerNote.to, buyerNote.note);
@@ -443,7 +443,7 @@ export const sendInvoice = async (profileId, id) => {
     await c.query(`INSERT INTO kb_qr (id, public_id, business_id, kind, title, description, amount_rub, order_no, instruction, expires_at, config) VALUES ($1,$2,$3,'invoice',$4,$5,$6,$7,'',COALESCE($8, now() + interval '30 days'),$9::jsonb)`,
       [qid, pid, b.id, `Счёт № ${r.number}`, r.comment, r.total_rub, r.order_no || String(r.number), r.due_at, JSON.stringify({ invoiceId: r.id, number: r.number, lines: r.lines, discountRub: r.discount_rub })]);
     await c.query(`UPDATE kb_invoices SET status = 'sent', qr_id = $2, updated_at = now() WHERE id = $1`, [r.id, qid]);
-    await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [b.id, profileId, 'invoice_sent', `№ ${r.number}: ${r.total_rub} ₽`]);
+    await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [b.id, (String(profileId).startsWith('biz:') ? 'staff' : profileId), 'invoice_sent', `№ ${r.number}: ${r.total_rub} ₽`]);
     return { ok: true, url: payUrl(pid) };
   });
 };
@@ -458,7 +458,7 @@ export const cancelInvoice = async (profileId, id) => {
     if (paid[0]) return err('bad_state', { status: 'confirmed' });          // оплаченный счёт не отменяют: нужен возврат по заявке
     await c.query(`UPDATE kb_invoices SET status = 'cancelled', updated_at = now() WHERE id = $1`, [r.id]);
     if (r.qr_id) await c.query(`UPDATE kb_qr SET status = 'disabled', updated_at = now() WHERE id = $1`, [r.qr_id]);
-    await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [b.id, profileId, 'invoice_cancelled', `№ ${r.number}`]);
+    await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [b.id, (String(profileId).startsWith('biz:') ? 'staff' : profileId), 'invoice_cancelled', `№ ${r.number}`]);
     return { ok: true };
   });
 };

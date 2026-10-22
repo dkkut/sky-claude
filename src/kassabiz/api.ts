@@ -33,6 +33,10 @@ export interface AuditItem { actor: 'owner' | 'other'; action: string; detail: s
 
 export const kbMe = () => req<Me>('/api/kbiz/me');
 export const kbCreateBusiness = (b: unknown) => send<{ id: string }>('POST', '/api/kbiz/business', b);
+export interface Org { id: string; name: string; status: string; mode: string; current: boolean }
+export const kbOrgs = () => req<{ orgs: Org[]; current: string | null; max: number }>('/api/kbiz/organizations');
+export const kbCreateOrg = (b: unknown) => send<{ id: string }>('POST', '/api/kbiz/organizations', b);
+export const kbSwitchOrg = (id: string) => send<{ id: string }>('POST', `/api/kbiz/organizations/${id}/switch`);
 export const kbUpdateBusiness = (b: unknown) => send<unknown>('PUT', '/api/kbiz/business', b);
 export const kbSetLogo = (dataUrl: string) => send<unknown>('PUT', '/api/kbiz/business/logo', { dataUrl });
 export const kbSetRequisites = (b: unknown) => send<{ changed?: string[] }>('PUT', '/api/kbiz/requisites', b);

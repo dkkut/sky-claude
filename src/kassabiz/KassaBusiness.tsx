@@ -27,19 +27,19 @@ const AUDIT: Record<string, string> = {
 };
 
 /* ── Мастер подключения ── */
-const Setup = ({ onDone }: { onDone: () => void }) => {
+const Setup = ({ onDone, extra = false, onCancel }: { onDone: () => void; extra?: boolean; onCancel?: () => void }) => {
   const [f, setF] = useState({ name: '', mode: 'both' as K.Mode, legalType: 'person' as K.LegalType, category: '', country: 'RU', description: '', contacts: '', website: '' });
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f) => (v: string) => setF({ ...f, [k]: v });
   const go = async () => {
-    setBusy(true); const r = await K.kbCreateBusiness(f); setBusy(false);
+    setBusy(true); const r = await (extra ? K.kbCreateOrg(f) : K.kbCreateBusiness(f)); setBusy(false);
     if (!r.ok) { flash(why(r)); return; }
     onDone();
   };
   return (
     <div className="space-y-4 p-4">
       <div>
-        <p className="text-lg font-black" style={{ color: 'var(--t1)' }}>Подключить бизнес</p>
+        <p className="text-lg font-black" style={{ color: 'var(--t1)' }}>{extra ? 'Добавить организацию' : 'Подключить бизнес'}</p>{onCancel && <button type="button" onClick={onCancel} className="mt-1 text-xs underline" style={{ color: 'var(--t3)' }}>Отмена</button>}
         <p className="text-xs" style={{ color: 'var(--t3)' }}>SkyKassa Business — QR-коды и страницы оплаты, чаевые, счета и каталог. Sky не принимает деньги покупателей и не берёт комиссию с продаж: переводы идут вам напрямую по вашим реквизитам. Подписка — 89 ₽ в месяц.</p>
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
@@ -344,10 +344,13 @@ const NAV: { key: Sec; label: string; icon: typeof Store; roles: Role[] }[] = [
 export const KassaBusiness = () => {
   const userId = useAuthStore((s) => s.currentUserId);
   const [me, setMe] = useState<K.Me | null>(null); const [err, setErr] = useState(false); const [sec, setSec] = useState<Sec>('overview');
+  const [orgs, setOrgs] = useState<{ orgs: K.Org[]; max: number } | null>(null); const [adding, setAdding] = useState(false);
+  const loadOrgs = useCallback(async () => { const r = await K.kbOrgs(); if (r.ok) setOrgs(r.data); }, []);
   const load = useCallback(async () => { const r = await K.kbMe(); if (r.ok) { setMe(r.data); setErr(false); } else setErr(true); }, []);
-  useEffect(() => { if (userId) void load(); }, [userId, load]);
+  useEffect(() => { if (userId) { void load(); void loadOrgs(); } }, [userId, load, loadOrgs]);
   if (err) return <div className="p-4 text-sm" style={{ color: 'var(--red)' }}>Не удалось загрузить. <button type="button" className="underline" onClick={() => void load()}>Повторить</button></div>;
   if (!me) return <div className="grid place-items-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--t3)' }} /></div>;
+  if (adding) return <div className="h-full overflow-y-auto"><Setup extra onCancel={() => setAdding(false)} onDone={() => { setAdding(false); setSec('overview'); void load(); void loadOrgs(); }} /></div>;
   if (!me.business) return <div className="h-full overflow-y-auto"><Invites invites={me.invites ?? []} onDone={() => void load()} /><Setup onDone={() => void load()} /></div>;
   const b = me.business; const M = MODE[b.mode]; const role = (me.role ?? 'owner') as Role; const nav = NAV.filter((n) => n.roles.includes(role));
   const canConfirm = role !== 'cashier';
@@ -360,6 +363,15 @@ export const KassaBusiness = () => {
             <p className="text-[11px]" style={{ color: 'var(--t3)' }}>{role !== 'owner' && me.roleLabel ? `${me.roleLabel} · ` : ''}{M.title} · {b.status === 'active' ? 'опубликован' : b.status === 'suspended' ? 'приостановлен' : 'скрыт'} · подписка: {SUB[me.subscription.status]}</p></div>
         </div>
         {b.status === 'suspended' && <p role="alert" className="mt-2 rounded-xl p-3 text-xs" style={{ ...card, color: 'var(--red)' }}><ShieldCheck size={13} className="inline" /> Бизнес приостановлен администрацией Sky{b.suspendedReason ? `: ${b.suspendedReason}` : ''}. История сохранена.</p>}
+        {role === 'owner' && orgs && (
+          <div className="mt-2 flex items-center gap-2">
+            <select aria-label="Организация" value={b.id} onChange={(e) => void K.kbSwitchOrg(e.target.value).then((r) => { if (!r.ok) return flash(why(r)); setSec('overview'); void load(); void loadOrgs(); })}
+              className="min-w-0 flex-1 rounded-lg px-3 py-2 text-sm" style={field}>
+              {orgs.orgs.map((o) => <option key={o.id} value={o.id}>{o.name}{o.status === 'active' ? '' : ' (не опубликована)'}</option>)}
+            </select>
+            {orgs.orgs.length < orgs.max && <Btn small onClick={() => setAdding(true)}><Plus size={12} className="inline" /> Организация</Btn>}
+          </div>
+        )}
         <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
           {nav.map((n) => <button key={n.key} type="button" aria-current={sec === n.key} onClick={() => setSec(n.key)} className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold" style={{ ...field, ...(sec === n.key ? { border: '1px solid var(--accent)', background: 'color-mix(in srgb, var(--accent) 14%, var(--bg-l2))' } : {}) }}><n.icon size={13} />{n.label}</button>)}
         </div>

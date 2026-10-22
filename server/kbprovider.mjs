@@ -58,7 +58,7 @@ const errCode = (e) => err(e?.code && String(e.code).startsWith('provider_') ? e
 
 /* ─── Настройка (владелец) ─── */
 export const getProvider = async (ownerId) => {
-  const { rows } = await query('SELECT b.id, p.* FROM kb_businesses b LEFT JOIN kb_providers p ON p.business_id = b.id WHERE b.owner_id = $1', [ownerId]);
+  const { rows } = await query('SELECT b.id, p.* FROM kb_businesses b LEFT JOIN kb_providers p ON p.business_id = b.id WHERE b.id = kb_cur_biz($1)', [ownerId]);
   if (!rows[0]) return { provider: null };
   const p = rows[0]; if (!p.base_url) return { provider: null };
   let host = ''; try { host = new URL(p.base_url).host; } catch { /* ok */ }
@@ -67,7 +67,7 @@ export const getProvider = async (ownerId) => {
 
 /** Подключение или смена провайдера — только владелец и только с кодом аутентификатора (если он включён): секрет решает, чьи деньги «подтверждены». */
 export const setProvider = async (ownerId, skyId, body) => {
-  const { rows: b } = await query('SELECT id, status FROM kb_businesses WHERE owner_id = $1', [ownerId]); if (!b[0]) return err('no_business');
+  const { rows: b } = await query('SELECT id, status FROM kb_businesses WHERE id = kb_cur_biz($1)', [ownerId]); if (!b[0]) return err('no_business');
   if (b[0].status === 'suspended') return err('suspended');
   const tf = await verifySkyTwoFactor(skyId, body?.twoFactorCode); if (tf?.error) return err(tf.error === 'invalid_code' ? 'two_factor_required' : tf.error);
   let url; try { url = new URL(clean(body?.baseUrl, 300)); } catch { return err('bad_field', { field: 'baseUrl' }); }
@@ -86,13 +86,13 @@ export const setProvider = async (ownerId, skyId, body) => {
   return { ok: true };
 };
 export const removeProvider = async (ownerId, skyId, twoFactorCode) => {
-  const { rows: b } = await query('SELECT id FROM kb_businesses WHERE owner_id = $1', [ownerId]); if (!b[0]) return err('no_business');
+  const { rows: b } = await query('SELECT id FROM kb_businesses WHERE id = kb_cur_biz($1)', [ownerId]); if (!b[0]) return err('no_business');
   const tf = await verifySkyTwoFactor(skyId, twoFactorCode); if (tf?.error) return err(tf.error === 'invalid_code' ? 'two_factor_required' : tf.error);
   await query('DELETE FROM kb_providers WHERE business_id = $1', [b[0].id]); await audit(b[0].id, ownerId, 'provider_removed', '');
   return { ok: true };
 };
 export const pingProvider = async (ownerId) => {
-  const { rows: b } = await query('SELECT id FROM kb_businesses WHERE owner_id = $1', [ownerId]); if (!b[0]) return err('no_business');
+  const { rows: b } = await query('SELECT id FROM kb_businesses WHERE id = kb_cur_biz($1)', [ownerId]); if (!b[0]) return err('no_business');
   const p = await provOf(b[0].id); if (!p) return err('provider_not_set');
   try { await call(p, 'GET', '/ping'); await query('UPDATE kb_providers SET last_ok_at = now(), last_error = \'\' WHERE business_id = $1', [b[0].id]); return { ok: true }; }
   catch (e) { await query('UPDATE kb_providers SET last_error = $2 WHERE business_id = $1', [b[0].id, `${e.code ?? 'error'}${e.detail ? `: ${e.detail}` : ''}`.slice(0, 200)]); return errCode(e); }
