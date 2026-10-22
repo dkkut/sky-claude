@@ -1,3 +1,4 @@
+import { VideoBackdrop } from '@/music/VideoBackdrop';
 import { ExplicitBadge, LabelsButton, LegacyChip } from '@/labels/Labels';
 import { requestDelete } from '@/island/deleteFlow';
 import { ArtistSuggest } from '@/artists/ArtistCard';
@@ -1874,6 +1875,8 @@ export const SkyFullPlayer = ({
         background: `linear-gradient(145deg, ${hslDark(h)} 0%, ${hslDk2(h)} 55%, hsl(${(h+120)%360},30%,6%) 100%)`,
         transition: 'background 1.1s ease',
       }}/>
+      {/* Видеофон трека (если владелец его добавил) — вместо статичного фона, затемнён */}
+      <VideoBackdrop src={track.videoUrl} playing={playing} />
       {/* Glow */}
       <div className="absolute pointer-events-none" style={{
         top:'-10%', left:'15%', width:'70%', height:'55%', zIndex:1,
@@ -2540,11 +2543,11 @@ export const SkyMusic = () => {
     const lyrics = t.syncedLyrics && t.syncedLyrics.length > 0 ? t.syncedLyrics : [];
     pushToPlayer({
       id: t.id, kind: 'music', title: t.title, author: t.artist ?? '', explicit: t.explicit, legacy: t.legacy,
-      coverUrl: t.coverUrl, hue: parseInt(t.id, 36) % 360,
+      coverUrl: t.coverUrl, videoUrl: t.videoUrl, hue: parseInt(t.id, 36) % 360,
       srcUrl: t.sourceUrl, duration: 0, lyrics,
       queue: pool.map(p => ({
         id: p.id, kind: 'music' as const, title: p.title, author: p.artist ?? '', explicit: p.explicit, legacy: p.legacy,
-        coverUrl: p.coverUrl, hue: parseInt(p.id, 36) % 360, srcUrl: p.sourceUrl,
+        coverUrl: p.coverUrl, videoUrl: p.videoUrl, hue: parseInt(p.id, 36) % 360, srcUrl: p.sourceUrl,
       })),
       qIdx: i,
     });

@@ -23,7 +23,7 @@ import { rateLimit } from './../security.mjs';
 import {
   listTracks, readTrack, visibleTrack, createTrack, finishTrack, updateTrack,
   submitTrack, moderationQueue, moderateTrack, toTrack,
-  deleteTrack, setCover, countPlay, readLyrics,
+  deleteTrack, setCover, setVideo, clearVideo, countPlay, readLyrics,
   listPlaylists, createPlaylist, renamePlaylist, setPlaylistPublic, deletePlaylist,
   readPlaylist, addToPlaylist, removeFromPlaylist, reorderPlaylist,
   listFavorites, setFavorite, addHistory, listHistory, setProgress, listProgress,
@@ -44,6 +44,8 @@ import { checkQuota, touchOwnerUsage, setRetentionKeep } from './../storagequota
 const MAX_AUDIO_BYTES = 30 * 1024 * 1024;
 /** Обложка — картинка, ей столько не нужно. */
 const MAX_COVER_BYTES = 3 * 1024 * 1024;
+/** Видеофон — короткий зацикленный клип. */
+const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
 
 /** Сколько запросов в минуту на профиль. Прослушивание идёт кусками, поэтому щедро. */
 const STREAM_PER_MIN = 1200;
@@ -75,6 +77,11 @@ const IMAGE_SIGNATURES = [
       .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
   { mime: 'image/webp', test: (b) => b.subarray(0, 4).toString('latin1') === 'RIFF'
       && b.subarray(8, 12).toString('latin1') === 'WEBP' },
+];
+
+const VIDEO_SIGNATURES = [
+  { mime: 'video/mp4', test: (b) => b.subarray(4, 8).toString('latin1') === 'ftyp' },
+  { mime: 'video/webm', test: (b) => b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3 },
 ];
 
 const sniff = (buf, table) => {
@@ -138,7 +145,7 @@ export const musicRoutes = async (req, res, url) => {
      сам, тегами <audio> и <img>. Заголовок Authorization он туда не
      подставит, поэтому здесь принимается ещё и подписанный пропуск из
      куки. Всё остальное по-прежнему требует обычной сессии. */
-  const isMedia = /^\/api\/music\/track\/[^/]+\/(audio|cover)$/.test(path)
+  const isMedia = /^\/api\/music\/track\/[^/]+\/(audio|cover|video)$/.test(path)
     && (req.method === 'GET' || req.method === 'HEAD');
 
   let me;
@@ -296,6 +303,7 @@ export const musicRoutes = async (req, res, url) => {
       if (r.error) return json(res, r.error === 'not_allowed' ? 403 : 404, r);
       await remove(id).catch(() => {});
       await remove(`cov-${String(id).slice(4)}`).catch(() => {});
+      await remove(`vid-${String(id).slice(4)}`).catch(() => {});
       return json(res, 200, { ok: true });
     }
 
@@ -360,19 +368,47 @@ export const musicRoutes = async (req, res, url) => {
       return json(res, 200, { ok: true });
     }
 
+    /* Видеофон: тело — сам файл (MP4/WebM до 40 МБ), правит только владелец. */
+    if (req.method === 'POST' && tail === '/video') {
+      if (!rateLimit(`music:upload:${me}`, UPLOAD_PER_HOUR)) return json(res, 429, { error: 'rate_limited' });
+      const own = await visibleTrack(id, me);
+      if (!own || own.owner_id !== me) { req.destroy(); return json(res, 403, { error: 'not_allowed' }); }
+      const declaredV = Number(req.headers['content-length'] ?? 0);
+      if (declaredV > MAX_VIDEO_BYTES) { req.destroy(); return json(res, 413, { error: 'file_too_large' }); }
+      const headV = await peek(req, 32);
+      const vmime = sniff(headV, VIDEO_SIGNATURES);
+      if (!vmime) { req.destroy(); return json(res, 400, { error: 'unsupported_type' }); }
+      const saved = await saveStream(`vid-${id.slice(4)}`, withHead(headV, req), MAX_VIDEO_BYTES);
+      if (saved.error) return json(res, saved.error === 'file_too_large' ? 413 : 400, { error: saved.error });
+      if (!(await setVideo(id, me, vmime, saved.bytes ?? declaredV))) {
+        await remove(`vid-${id.slice(4)}`).catch(() => {});
+        return json(res, 403, { error: 'not_allowed' });
+      }
+      return json(res, 200, { ok: true });
+    }
+
+    if (req.method === 'DELETE' && tail === '/video') {
+      if (!rateLimit(`music:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      if (!(await clearVideo(id, me))) return json(res, 404, { error: 'not_found' });
+      await remove(`vid-${id.slice(4)}`).catch(() => {});
+      return json(res, 200, { ok: true });
+    }
+
     /* Обложка и звук — потоком. */
-    if ((req.method === 'GET' || req.method === 'HEAD') && (tail === '/cover' || tail === '/audio')) {
+    if ((req.method === 'GET' || req.method === 'HEAD') && (tail === '/cover' || tail === '/audio' || tail === '/video')) {
       if (!rateLimit(`music:stream:${me}`, STREAM_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
       const row = await visibleTrack(id, me);
       if (!row) return json(res, 404, { error: 'not_found' });
 
       const cover = tail === '/cover';
+      const video = tail === '/video';
       if (cover && !row.has_cover) return json(res, 404, { error: 'not_found' });
-      const fileId = cover ? `cov-${id.slice(4)}` : (row.audio_file || id);
+      if (video && !row.has_video) return json(res, 404, { error: 'not_found' });
+      const fileId = cover ? `cov-${id.slice(4)}` : video ? `vid-${id.slice(4)}` : (row.audio_file || id);
       const size = await sizeOf(fileId);
       if (size === null) return json(res, 404, { error: 'not_found' });
 
-      const type = cover ? (row.cover_mime || 'image/jpeg') : (row.mime || 'audio/mpeg');
+      const type = cover ? (row.cover_mime || 'image/jpeg') : video ? (row.video_mime || 'video/mp4') : (row.mime || 'audio/mpeg');
       const common = {
         'Content-Type': type,
         // Никакого угадывания типа браузером: файл прислал человек.

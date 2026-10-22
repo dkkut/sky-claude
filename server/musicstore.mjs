@@ -27,7 +27,7 @@ import {
 const ROOT = process.env.MUSIC_DIR || '/data/music';
 
 /** Идентификаторы, которые мы сами и выдали. */
-const ID_RE = /^(trk|cov)-[0-9a-f-]{36}$/;
+const ID_RE = /^(trk|cov|vid)-[0-9a-f-]{36}$/;
 
 const dirFor = (id) => join(ROOT, id.slice(4, 6));
 const pathFor = (id) => join(dirFor(id), id);

@@ -11,6 +11,8 @@ export interface PlayerItem {
   title:     string;
   author:    string;
   coverUrl?: string;
+  /** Видеофон полноэкранного плеера (музыка). */
+  videoUrl?: string;
   hue?:      number;       // gradient accent colour (0-360)
   /** Метки материала (сервер): Explicit «E» и «Старая версия». */
   explicit?: boolean;

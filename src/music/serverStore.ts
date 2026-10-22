@@ -15,7 +15,7 @@ import {
   apiTracks, apiFavorites, apiSetFavorite, apiHistory, apiNotePlay,
   apiPlaylists, apiCreatePlaylist, apiRenamePlaylist, apiDeletePlaylist,
   apiAddToPlaylist, apiRemoveFromPlaylist, apiReorderPlaylist,
-  apiProgress, apiSetProgress, apiUploadTrack, apiUploadCover, apiPatchTrack, apiDeleteTrack, apiSubmitTrack, apiTrackKeep, apiTrack,
+  apiProgress, apiSetProgress, apiUploadTrack, apiUploadCover, apiUploadVideo, apiDeleteVideo, apiPatchTrack, apiDeleteTrack, apiSubmitTrack, apiTrackKeep, apiTrack,
   apiMediaTicket, toClientTrack, type ServerPlaylist, type UploadMeta,
 } from './musicApi';
 
@@ -72,6 +72,9 @@ interface MusicState {
   editTrack: (trackId: string, patch: { title?: string; artist?: string; album?: string; genre?: string; lyrics?: string; license?: string; licenseSource?: string; explicit?: boolean }) => Promise<boolean>;
   /** Своя обложка для трека. */
   setCover: (trackId: string, file: Blob) => Promise<boolean>;
+  /** Видеофон для полноэкранного плеера: null — готово, иначе причина отказа. */
+  setVideo: (trackId: string, file: Blob) => Promise<string | null>;
+  removeVideo: (trackId: string) => Promise<boolean>;
   /** «Хранить без срока» для личного трека. */
   setKeep: (trackId: string, keep: boolean) => Promise<boolean>;
 }
@@ -230,6 +233,24 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     const t = await apiPatchTrack(trackId, patch);
     if (!t) return false;
     set((s) => ({ tracks: s.tracks.map((x) => (x.id === trackId ? { ...toClientTrack(t), coverUrl: x.coverUrl ?? toClientTrack(t).coverUrl } : x)) }));
+    return true;
+  },
+
+  setVideo: async (trackId, file) => {
+    const err = await apiUploadVideo(trackId, file);
+    if (err) return err;
+    const t = await apiTrack(trackId);
+    if (t) {
+      const made = toClientTrack(t);
+      const bust = made.videoUrl ? `${made.videoUrl}${made.videoUrl.includes('?') ? '&' : '?'}v=${Date.now()}` : made.videoUrl;
+      set((s) => ({ tracks: s.tracks.map((x) => (x.id === trackId ? { ...made, coverUrl: x.coverUrl ?? made.coverUrl, videoUrl: bust } : x)) }));
+    }
+    return null;
+  },
+
+  removeVideo: async (trackId) => {
+    if (!(await apiDeleteVideo(trackId))) return false;
+    set((s) => ({ tracks: s.tracks.map((x) => (x.id === trackId ? { ...x, videoUrl: undefined } : x)) }));
     return true;
   },
 

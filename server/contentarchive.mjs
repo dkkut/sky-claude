@@ -102,7 +102,7 @@ const hardDelete = async (a) => {
   const owner = a.owner_id;
   if (a.kind === 'track') {
     const r = await deleteTrack(a.item_id, owner);
-    if (r.ok) { await removeAudio(a.item_id).catch(() => {}); await removeAudio(`cov-${String(a.item_id).slice(4)}`).catch(() => {}); }
+    if (r.ok) { await removeAudio(a.item_id).catch(() => {}); await removeAudio(`cov-${String(a.item_id).slice(4)}`).catch(() => {}); await removeAudio(`vid-${String(a.item_id).slice(4)}`).catch(() => {}); }
     return r;
   }
   if (a.kind === 'movie') return deleteMovie(a.item_id, owner);

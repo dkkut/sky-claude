@@ -6,7 +6,7 @@
 import { requestDelete } from '@/island/deleteFlow';
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ImagePlus, Trash2, Loader, Music2 } from 'lucide-react';
+import { X, ImagePlus, Trash2, Loader, Music2, Film } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { useMusicStore } from './serverStore';
 import { apiLyrics } from './musicApi';
@@ -15,6 +15,7 @@ import { LicensePicker } from './licenses';
 import { useEffect } from 'react';
 
 const MAX_COVER = 5 * 1024 * 1024;
+const MAX_VIDEO = 30 * 1024 * 1024;
 const field: React.CSSProperties = { background: 'rgba(128,128,128,0.14)', color: 'var(--t1)', border: '1px solid rgba(128,128,128,0.35)' };
 
 /** Уменьшить картинку до разумного размера: обложке не нужно 4000 пикселей. */
@@ -33,6 +34,8 @@ export const shrinkCover = async (blob: Blob, side = 800): Promise<Blob> => {
 export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => void }) => {
   const editTrack = useMusicStore((s) => s.editTrack);
   const setCover = useMusicStore((s) => s.setCover);
+  const setVideo = useMusicStore((s) => s.setVideo);
+  const removeVideo = useMusicStore((s) => s.removeVideo);
   const removeTrack = useMusicStore((s) => s.removeTrack);
   const live = useMusicStore((s) => s.tracks.find((t) => t.id === track.id)) ?? track;
   const [title, setTitle] = useState(track.title);
@@ -45,7 +48,9 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
   const [lyricsLoaded, setLyricsLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
+  const [videoBusy, setVideoBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -61,6 +66,21 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
     const ok = await setCover(track.id, small);
     setCoverBusy(false);
     if (!ok) flash('Не удалось сохранить обложку. Попробуйте ещё раз.');
+  };
+
+  const pickVideo = async (f: File) => {
+    if (!/^video\/(mp4|webm)$/.test(f.type) && !/\.(mp4|webm)$/i.test(f.name)) { flash('Нужен видеофайл MP4 или WebM'); return; }
+    if (f.size > MAX_VIDEO) { flash('Видео слишком большое — до 30 МБ'); return; }
+    setVideoBusy(true);
+    const err = await setVideo(track.id, f);
+    setVideoBusy(false);
+    flash(err ?? 'Видеофон добавлен');
+  };
+  const dropVideo = async () => {
+    setVideoBusy(true);
+    const ok = await removeVideo(track.id);
+    setVideoBusy(false);
+    flash(ok ? 'Видеофон убран' : 'Не удалось убрать видео. Попробуйте ещё раз.');
   };
 
   const save = async () => {
@@ -102,6 +122,21 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
             </button>
             <p className="mt-1.5 text-[11px]" style={{ opacity: 0.6 }}>JPG, PNG или WebP</p>
           </div>
+        </div>
+
+        <div className="mb-4 rounded-[20px] p-3" style={{ background: 'rgba(128,128,128,0.12)' }}>
+          <input ref={videoRef} type="file" accept="video/mp4,video/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickVideo(f); e.target.value = ''; }} />
+          {live.videoUrl && <video src={live.videoUrl} muted loop autoPlay playsInline className="mb-2 h-28 w-full rounded-2xl object-cover" />}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={videoBusy} onClick={() => videoRef.current?.click()}
+              className="flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold disabled:opacity-50" style={{ background: 'rgba(128,128,128,0.2)' }}>
+              {videoBusy ? <Loader size={14} className="animate-spin" /> : <Film size={14} />}{live.videoUrl ? 'Заменить видео' : 'Добавить видео'}
+            </button>
+            {live.videoUrl && !videoBusy && (
+              <button type="button" onClick={() => void dropVideo()} className="rounded-full px-4 py-2 text-[13px] font-semibold" style={{ background: 'rgba(224,90,90,0.18)', color: '#e05a5a' }}>Убрать видео</button>
+            )}
+          </div>
+          <p className="mt-1.5 text-[11px]" style={{ opacity: 0.6 }}>Видеофон полноэкранного плеера вместо статичного фона. MP4 или WebM до 30 МБ, без звука, затемняется. Лучше короткий зацикленный клип.</p>
         </div>
 
         <label className="mb-1 block text-[12px] font-semibold" style={{ opacity: 0.7 }}>Название</label>

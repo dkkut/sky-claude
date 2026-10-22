@@ -28,6 +28,7 @@ export interface ServerTrack {
   /** Длительность в секундах. */
   duration: number;
   hasCover: boolean;
+  hasVideo?: boolean;
   status: 'published' | 'private' | 'pending' | 'rejected';
   plays: number;
   own?: boolean;
@@ -75,6 +76,7 @@ const withMediaTicket = (path: string) => {
 };
 
 export const audioUrl = (id: string) => withMediaTicket(`/api/music/track/${encodeURIComponent(id)}/audio`);
+export const videoUrl = (id: string) => withMediaTicket(`/api/music/track/${encodeURIComponent(id)}/video`);
 export const coverUrl = (id: string) => withMediaTicket(`/api/music/track/${encodeURIComponent(id)}/cover`);
 
 const mmss = (sec: number) => {
@@ -99,6 +101,7 @@ export const toClientTrack = (t: ServerTrack): Track => ({
   album: t.album,
   year: t.year,
   coverUrl: t.hasCover ? coverUrl(t.id) : undefined,
+  videoUrl: t.hasVideo ? videoUrl(t.id) : undefined,
   duration: mmss(t.duration),
   premium: false,
   sourceUrl: audioUrl(t.id),
@@ -311,6 +314,25 @@ export const apiUploadCover = async (trackId: string, file: Blob) => {
   const r = await apiCall(`/api/music/track/${encodeURIComponent(trackId)}/cover`, {
     method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' },
   });
+  return r.ok;
+};
+
+export const VIDEO_REASONS: Record<string, string> = {
+  unsupported_type: 'Нужен видеофайл MP4 или WebM',
+  file_too_large: 'Видео слишком большое — до 30 МБ',
+  not_allowed: 'Видеофон может добавить только владелец трека',
+  rate_limited: 'Слишком часто. Попробуйте чуть позже',
+};
+/** Загрузка видеофона: вернёт null при успехе, иначе понятную причину. */
+export const apiUploadVideo = async (trackId: string, file: Blob): Promise<string | null> => {
+  const r = await apiCall<{ error?: string }>(`/api/music/track/${encodeURIComponent(trackId)}/video`, {
+    method: 'POST', body: file, headers: { 'Content-Type': 'application/octet-stream' },
+  });
+  if (r.ok) return null;
+  return VIDEO_REASONS[(r.data as { error?: string } | undefined)?.error ?? ''] ?? 'Не удалось загрузить видео. Попробуйте ещё раз.';
+};
+export const apiDeleteVideo = async (trackId: string) => {
+  const r = await apiCall(`/api/music/track/${encodeURIComponent(trackId)}/video`, { method: 'DELETE' });
   return r.ok;
 };
 

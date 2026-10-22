@@ -6,6 +6,7 @@ import {
 import { usePlayerStore } from '@/player/playerStore';
 import { BottomSheet } from './BottomSheet';
 import { haptic } from './haptics';
+import { VideoBackdrop } from '@/music/VideoBackdrop';
 
 const fmtTime = (s: number) => {
   if (!isFinite(s) || s < 0) s = 0;
@@ -67,6 +68,8 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
           initial={{ y: '100%', opacity: 1 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '100%', opacity: 0 }}
           transition={{ type: 'spring', damping: 30, stiffness: 300 }}
           className="fixed inset-0 z-[95] flex flex-col overflow-hidden">
+          {/* Видеофон трека: z=-1 внутри контекста корня — под всем содержимым, над градиентом. */}
+          <VideoBackdrop src={item.videoUrl} playing={isPlaying} z={-1} />
 
           {/* Верхняя панель — с запасом сверху: на телефоне её иначе перекрывает системная строка состояния. */}
           <div className="flex shrink-0 items-center justify-between px-5" style={{ paddingTop: 'calc(var(--safe-top) + 22px)' }}>

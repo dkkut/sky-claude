@@ -54,10 +54,11 @@ async function* walk(root) {
 /** Что знаем о файле из таблиц сервиса (только подтверждённые соответствия). */
 const refInfo = async (service, id) => {
   if (service === 'music') {
-    const track = id.startsWith('cov-') ? `trk-${id.slice(4)}` : id;
-    const { rows } = await query('SELECT owner_id, mime, cover_mime, has_cover FROM music_tracks WHERE id = $1', [track]);
+    const track = id.startsWith('cov-') || id.startsWith('vid-') ? `trk-${id.slice(4)}` : id;
+    const { rows } = await query('SELECT owner_id, mime, cover_mime, has_cover, has_video, video_mime FROM music_tracks WHERE id = $1', [track]);
     if (!rows[0]) return { mapped: true, referenced: false };
     if (id.startsWith('cov-') && !rows[0].has_cover) return { mapped: true, referenced: false };
+    if (id.startsWith('vid-')) return rows[0].has_video ? { mapped: true, referenced: true, owner: rows[0].owner_id, mime: rows[0].video_mime } : { mapped: true, referenced: false };
     return { mapped: true, referenced: true, owner: rows[0].owner_id, mime: id.startsWith('cov-') ? rows[0].cover_mime : rows[0].mime };
   }
   if (service === 'film') {

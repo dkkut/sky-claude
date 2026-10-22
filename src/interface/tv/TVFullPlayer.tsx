@@ -1,4 +1,5 @@
 /* Sky TV — музыка на весь экран: обложка, перемотка, управление пультом, текст песни по меткам времени. */
+import { VideoBackdrop } from '@/music/VideoBackdrop';
 import { useEffect } from 'react';
 import { ChevronDown, Pause, Play, SkipBack, SkipForward, Rewind, FastForward, Music2 } from 'lucide-react';
 import { usePlayerStore } from '@/player/playerStore';
@@ -50,6 +51,7 @@ export const TVFullPlayer = () => {
   return (
     <div className="absolute inset-0 z-[40] flex flex-col px-[90px] py-[50px]" role="dialog" aria-modal="true" aria-label="Плеер"
       style={{ background: 'radial-gradient(110% 90% at 50% 0%, #2c2166 0%, #0d0b20 60%, #05050c 100%)' }}>
+      <VideoBackdrop src={item.videoUrl} playing={playing} z={-1} />
       <div className="flex items-center justify-between">
         <Btn id="full-close" label="Свернуть" size={72} onEnter={hide}>{() => <ChevronDown size={34} color="#fff" />}</Btn>
         <p className="text-[18px] font-bold uppercase tracking-[0.25em]" style={{ color: '#c4baff' }}>{playing ? 'Сейчас играет' : 'На паузе'}</p>

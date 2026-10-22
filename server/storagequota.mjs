@@ -143,6 +143,7 @@ export const sweepUnusedPersonalFiles = async () => {
   for (const r of tracks) {
     await removeTrackFile(r.id).catch(() => {});
     await removeTrackFile(`cov-${r.id.slice(4)}`).catch(() => {});
+    await removeTrackFile(`vid-${r.id.slice(4)}`).catch(() => {});
   }
 
   if (films.length || tracks.length) {

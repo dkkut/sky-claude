@@ -32,11 +32,11 @@ export const useMusicSync = () => {
 };
 
 /** Собрать очередь и запустить трек в ЕДИНОМ плеере; история — на сервер. */
-export const playMusicQueue = (pool: { id: string; title: string; artist?: string; coverUrl?: string; sourceUrl?: string; explicit?: boolean; legacy?: boolean }[], trackId: string) => {
+export const playMusicQueue = (pool: { id: string; title: string; artist?: string; coverUrl?: string; videoUrl?: string; sourceUrl?: string; explicit?: boolean; legacy?: boolean }[], trackId: string) => {
   const i = pool.findIndex((p) => p.id === trackId);
   if (i < 0) return;
   const queue = pool.map((p) => ({
-    id: p.id, kind: 'music' as const, title: p.title, author: p.artist ?? '', coverUrl: p.coverUrl, explicit: p.explicit, legacy: p.legacy,
+    id: p.id, kind: 'music' as const, title: p.title, author: p.artist ?? '', coverUrl: p.coverUrl, videoUrl: p.videoUrl, explicit: p.explicit, legacy: p.legacy,
     hue: parseInt(p.id, 36) % 360, srcUrl: p.sourceUrl,
   }));
   usePlayerStore.getState().push({ ...queue[i], queue, qIdx: i });

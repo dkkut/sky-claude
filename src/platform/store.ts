@@ -21,6 +21,8 @@ export interface Track {
   legacy?: boolean;
   lyrics?: string;
   coverUrl?: string;
+  /** Видеофон для полноэкранного плеера (загружает владелец трека). */
+  videoUrl?: string;
   duration: string;
   premium: boolean;
   sourceUrl?: string;

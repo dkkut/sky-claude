@@ -199,6 +199,7 @@ export const purgeTrashedContent = async () => {
     if (t.kind === 'music') {
       await removeMusicFile(id).catch(() => {});
       await removeMusicFile(`cov-${String(id).slice(4)}`).catch(() => {});
+      await removeMusicFile(`vid-${String(id).slice(4)}`).catch(() => {});
     } else if (t.kind === 'movie') await removeMovieFiles(id).catch(() => {});
     else {
       await removeBookFiles(id).catch(() => {});

@@ -68,6 +68,7 @@ export const toTrack = (row) => ({
   year: row.year ?? undefined,
   duration: row.duration_sec ?? 0,
   hasCover: Boolean(row.has_cover),
+  hasVideo: Boolean(row.has_video),
   status: row.status,
   plays: Number(row.plays ?? 0),
   own: row.own === true || undefined,
@@ -322,6 +323,22 @@ export const setCover = async (trackId, ownerId, mime) => {
   const { rowCount } = await query(
     'UPDATE music_tracks SET has_cover = TRUE, cover_mime = $3, updated_at = now() WHERE id = $1 AND owner_id = $2',
     [trackId, ownerId, String(mime)],
+  );
+  return rowCount > 0;
+};
+
+/** Видеофон полноэкранного плеера: ставит и снимает только владелец трека. */
+export const setVideo = async (trackId, ownerId, mime, bytes) => {
+  const { rowCount } = await query(
+    'UPDATE music_tracks SET has_video = TRUE, video_mime = $3, video_bytes = $4, updated_at = now() WHERE id = $1 AND owner_id = $2',
+    [trackId, ownerId, String(mime), Number(bytes) || 0],
+  );
+  return rowCount > 0;
+};
+export const clearVideo = async (trackId, ownerId) => {
+  const { rowCount } = await query(
+    'UPDATE music_tracks SET has_video = FALSE, video_mime = NULL, video_bytes = 0, updated_at = now() WHERE id = $1 AND owner_id = $2 AND has_video',
+    [trackId, ownerId],
   );
   return rowCount > 0;
 };

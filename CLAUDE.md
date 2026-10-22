@@ -1760,3 +1760,13 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 ## Знакомство рисовалось под приложением (исправление, октябрь-2026)
 
 `.gd-root { position: relative }` в `styles.css` идёт ПОСЛЕ утилит Tailwind и перебивал `fixed` у `GuideOnboarding` — полноэкранное знакомство оказывалось в потоке ПОД приложением, и после регистрации его не было видно (серверная часть и запуск были верны). Теперь `position: 'fixed'` задан у самого элемента и есть правило `.gd-root.fixed`. Общее правило: у класса со своим `position` в `styles.css` Tailwind-овские `fixed/absolute` работают только если правило их не перебивает — проверять в браузере. Нужна пересборка `.apk`/`.exe`.
+
+## Видеофон трека в полноэкранном плеере (октябрь-2026)
+
+Владелец трека в `TrackEditor` («Добавить видео») загружает клип MP4/WebM до 30 МБ (потолок nginx-блока `/api/music/` — 32m); в полноэкранном плеере он заменяет статичный фон.
+Сервер: миграция `193_music_video_bg.sql` (`music_tracks.has_video/video_mime/video_bytes`), файл `vid-<id>` в `musicstore` (шифруется как остальное), в `server/routes/music.mjs`:
+`POST|DELETE /api/music/track/:id/video` (только владелец, тип по сигнатуре `ftyp`/EBML, не по расширению), `GET …/video` — потоком с Range и тем же пропуском, что у аудио и обложки.
+Файл убирается вместе с треком (route DELETE, `contentmod`, `storagequota`, `contentarchive`); реестр Sky Storage знает префикс `vid-`.
+Клиент: `src/music/VideoBackdrop.tsx` (без звука, по кругу, затемнение, играет только пока трек играет; не показывается при «Анимации выкл» и `prefers-reduced-motion`), подключён в `SkyFullPlayer` (ПК/Extras), `MobileFullPlayer` и `TVFullPlayer`;
+`videoUrl` идёт в `Track`/`PlayerItem` (`toClientTrack`, `pushToPlayer`, `playMusicQueue`). В Car-плеере и офлайн-копиях видео нет. Модерации видео автоматикой нет (ручная, право `content`), перекодирования нет.
+Не проверено: сервер не запускался (в этой среде нет Postgres/Redis), интерфейс в браузере и на устройствах. Нужен деплой (миграция 193), nginx не менялся, пересборка `.apk`/`.exe`.
