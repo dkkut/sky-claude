@@ -42,12 +42,12 @@ const MAX_PRICE = 5_000_000;
 const FREE_MONTHLY_LIMIT = 3;
 export const GARANT_PRO_PLAN = { price: 159, days: 30 };
 
-const text = (v, max) => String(v ?? '')
+export const text = (v, max) => String(v ?? '')
   .replace(/[\u0000-\u001f\u007f]/g, '')
   .trim()
   .slice(0, max);
 
-const logGarant = async (dealId, actorId, action, detail = {}) => {
+export const logGarant = async (dealId, actorId, action, detail = {}) => {
   try {
     await query(
       `INSERT INTO garant_audit_log (id, deal_id, actor_id, action, detail)
@@ -56,7 +56,7 @@ const logGarant = async (dealId, actorId, action, detail = {}) => {
   } catch { /* журнал не должен ронять то, что он описывает */ }
 };
 
-const notifyGarant = async (userId, dealId, kind, textLine) => {
+export const notifyGarant = async (userId, dealId, kind, textLine) => {
   if (!userId) return;
   const id = `gnn-${generateId()}`;
   await query(
@@ -80,7 +80,7 @@ const notifyGarant = async (userId, dealId, kind, textLine) => {
  * фиксировался сразу; если дальше что-то падало или два администратора
  * решали спор одновременно, деньги возвращались дважды.
  */
-const refundDeal = (client, deal, descr) => {
+export const refundDeal = (client, deal, descr) => {
   if (deal.pay_type === 'points') {
     return wallet.creditPointsIn(client, deal.buyer_id, deal.price, 'garant_refund', descr, deal.id);
   }
@@ -88,14 +88,14 @@ const refundDeal = (client, deal, descr) => {
 };
 
 /** Строка сделки под блокировкой до конца транзакции: решения по одной сделке идут по очереди. */
-const lockDeal = async (client, dealId) => {
+export const lockDeal = async (client, dealId) => {
   const { rows } = await client.query('SELECT * FROM garant_deals WHERE id = $1 FOR UPDATE', [dealId]);
   return rows[0] ?? null;
 };
 
 /* ─── Выдача наружу ────────────────────────────────────────────────── */
 
-const toDeal = (row) => ({
+export const toDeal = (row) => ({
   id: row.id,
   title: row.title,
   description: row.description,
@@ -110,6 +110,12 @@ const toDeal = (row) => ({
   price: row.price,
   payType: row.pay_type,
   status: row.status,
+  flow: row.flow ?? 'classic',
+  counterItemName: row.counter_item_name ?? '',
+  sellerData: row.seller_data_state ?? 'none',
+  buyerData: row.buyer_data_state ?? 'none',
+  sellerApproved: row.seller_approved ?? false,
+  buyerApproved: row.buyer_approved ?? false,
   sellerDeposited: row.seller_deposited,
   buyerDeposited: row.buyer_deposited,
   sellerConfirmed: row.seller_confirmed,
@@ -127,12 +133,14 @@ const toDeal = (row) => ({
 const DEAL_SELECT = `
   SELECT d.*,
          ps.name AS seller_name, ps.username AS seller_username,
-         pb.name AS buyer_name,  pb.username AS buyer_username
+         pb.name AS buyer_name,  pb.username AS buyer_username,
+         COALESCE((SELECT CASE WHEN x.confirmed_at IS NOT NULL THEN 'confirmed' ELSE 'submitted' END FROM garant_deal_data x WHERE x.deal_id = d.id AND x.side = 'seller'), 'none') AS seller_data_state,
+         COALESCE((SELECT CASE WHEN x.confirmed_at IS NOT NULL THEN 'confirmed' ELSE 'submitted' END FROM garant_deal_data x WHERE x.deal_id = d.id AND x.side = 'buyer'),  'none') AS buyer_data_state
     FROM garant_deals d
     JOIN profiles ps ON ps.id = d.seller_id
     JOIN profiles pb ON pb.id = d.buyer_id`;
 
-const dealRow = async (dealId) => {
+export const dealRow = async (dealId) => {
   const { rows } = await query(`${DEAL_SELECT} WHERE d.id = $1`, [dealId]);
   return rows[0] ?? null;
 };
@@ -145,7 +153,7 @@ export const myDeals = async (profileId) => {
   return rows.map(toDeal);
 };
 
-const monthlyDealCount = async (profileId) => {
+export const monthlyDealCount = async (profileId) => {
   const { rows } = await query(
     `SELECT count(*)::int AS n FROM garant_deals
       WHERE seller_id = $1 AND created_at >= date_trunc('month', now())`, [profileId]);
@@ -157,7 +165,7 @@ const subRow = async (profileId) => {
   return rows[0] ?? null;
 };
 
-const hasProSubscription = async (profileId) => {
+export const hasProSubscription = async (profileId) => {
   const sub = await subRow(profileId);
   return !!sub && sub.status === 'active' && sub.until && new Date(sub.until).getTime() > Date.now();
 };
@@ -284,7 +292,7 @@ export const depositBuyer = async (actorId, dealId) => {
  * администратор решил спор в пользу продавца — everywhere деньги
  * переходят от «удержаны» к «у продавца» ровно один раз.
  */
-const completeDeal = async (client, deal) => {
+export const completeDeal = async (client, deal) => {
   // Зачисление — в той же транзакции, что и перевод сделки в completed:
   // раньше оно фиксировалось отдельно, и сбой между двумя шагами оставлял
   // деньги у продавца при незавершённой сделке (повторное подтверждение
@@ -535,6 +543,8 @@ export const adminResolveDispute = async (adminId, dealId, winner, note) => {
       await client.query('ROLLBACK');
       return { error: 'bad_status' };
     }
+    // Деньги не удержаны (спор в режиме проверки до оплаты / обмен): возвращать и начислять нечего — решает adminResolveVerifyDispute.
+    if (!deal.buyer_deposited) { await client.query('ROLLBACK'); return { error: 'no_funds_held' }; }
     if (winner === 'seller_wins') {
       await completeDeal(client, deal);
       await client.query(
@@ -618,7 +628,7 @@ export const adminForceCancel = async (adminId, dealId) => {
     // Та же очередность, что и при решении спора: возврат и отмена в одной
     // транзакции под блокировкой строки — повторный запрос уже ничего не вернёт.
     deal = await lockDeal(client, dealId);
-    if (!deal || !['pending_seller', 'pending_buyer', 'in_escrow'].includes(deal.status)) {
+    if (!deal || !['pending_seller', 'pending_buyer', 'in_escrow', 'awaiting_data', 'confirming', 'verifying', 'paid'].includes(deal.status)) {
       await client.query('ROLLBACK');
       return { error: 'bad_status' };
     }
