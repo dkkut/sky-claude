@@ -20,7 +20,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'global_block' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance' | 'oidc' | 'prime' | 'partners' | 'partners_approve' | 'kassa_biz' | 'upload_limits' | 'verification' | 'logs' | 'parking' | 'parking_moderation' | 'go_places';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'global_block' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance' | 'oidc' | 'prime' | 'partners' | 'partners_approve' | 'kassa_biz' | 'upload_limits' | 'verification' | 'logs' | 'parking' | 'parking_moderation' | 'go_places' | 'sandbox' | 'sandbox_publish';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -50,6 +50,8 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   go_finance: 'Тарифы Sky GO',
   registration: 'Регистрация аккаунтов',
   global_block: 'Глобальная блокировка',
+  sandbox: 'Sky Sandbox: проверка сборок',
+  sandbox_publish: 'Sky Sandbox: одобрение публикации',
   parking: 'Sky Parking: организации и сбои',
   parking_moderation: 'Sky Parking: проверка заявок',
   go_places: 'Sky GO: организации',

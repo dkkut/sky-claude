@@ -117,7 +117,7 @@ export const rollbackPlan = ({ hasMigrations, destructive }) => destructive
   ? { auto: false, how: 'db_restore', note: 'В сборке были разрушающие миграции: прежний код может не работать с новой схемой. Нужно восстановление базы из резервной копии (решает владелец).' }
   : hasMigrations
     ? { auto: true, how: 'code', note: 'Миграции только добавляли: откатывается код, база остаётся новой (прежний код с ней совместим).' }
-    : { auto: true, how: 'code', note: 'Откатывается код.' };
+    : { auto: true, how: 'code', note: 'Откат возвращает прежний код.' };
 
 /* ── База ── */
 
@@ -293,6 +293,7 @@ export const overview = async () => {
     listBuilds(40), listPublications(20),
     query(`SELECT id, sha, finished_at FROM sandbox_publications WHERE status='deployed' ORDER BY finished_at DESC LIMIT 1`),
   ]);
-  const rn = [...runnersSeen.entries()].map(([runner, v]) => ({ runner, seen: new Date(v.at).toISOString(), caps: v.caps, online: Date.now() - v.at < 60_000 }));
+  for (const [k, v] of runnersSeen) if (Date.now() - v.at > 3600e3) runnersSeen.delete(k);
+  const rn = [...runnersSeen.entries()].sort((a, b) => b[1].at - a[1].at).slice(0, 3).map(([runner, v]) => ({ runner, seen: new Date(v.at).toISOString(), caps: v.caps, online: Date.now() - v.at < 60_000 }));
   return { enabled: sandboxEnabled(), builds, publications: pubs, lastDeployed: last.rows[0] ?? null, runners: rn, requiredChecks: REQUIRED, maxAgeHours: MAX_AGE_H() };
 };
