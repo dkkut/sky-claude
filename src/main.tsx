@@ -23,6 +23,7 @@ import { ConsoleProfilePicker } from './interface/console/ConsoleProfilePicker';
 import { BetaGate }      from './auth/BetaGate';
 import { IpPinOverlay } from './auth/IpPin';
 import { GloballyBlocked } from './auth/GloballyBlocked';
+import { captureInvite } from './invite/capture';
 import { SeasonLayer } from './settings/SeasonLayer';
 import { LimitedAccessGate } from './auth/LimitedAccess';
 import { setBetaRequiredHandler, setPlatformBlockedHandler, initNativeAuth, type PlatformBlock } from './core/auth/api';
@@ -577,6 +578,7 @@ const LinkDeepLinkGate = () => {
 
 installTelemetry();
 
+captureInvite();   // ссылка-приглашение ?inv=КОД
 void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).finally(() => ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary fallback={

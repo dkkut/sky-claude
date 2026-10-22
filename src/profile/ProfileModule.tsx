@@ -11,6 +11,7 @@ import { recognitionMode } from '@/ai/speech';
 import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
+import { InviteDialog } from '../invite/InviteDialog';
 import { SEASONS, SEASON_ORDER, resolveSeason, type Season } from '../settings/seasons';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -594,6 +595,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
   const switchProfile = useAuthStore(s=>s.switchProfile);
   const [confirmExit, setConfirmExit] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const { settings, set, reset } = useSettings();
   const cursorPet = useCursorPet();
   const s = settings;
@@ -945,6 +947,11 @@ const SettingsSection = ({ logout, username, onOpen }: {
       {/* -- О ПРИЛОЖЕНИИ ------------------------ */}
       <SectionBlock title="О приложении">
         <SettingsRow icon={Info} iconColor="var(--t3)" label={APP_VERSION_LABEL} sub="Текущая версия"/>
+        <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
+        <SettingsRow icon={Users} iconColor="var(--t3)" label="Пригласить друзей" sub="Личная ссылка для регистрации"
+          onClick={() => setInviteOpen(true)}
+          right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
+        {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)}/>}
         <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
         <SettingsRow icon={Download} iconColor="var(--t3)" label="Обновления" sub="Скачать приложения Sky"
           onClick={() => setUpdatesOpen(true)}

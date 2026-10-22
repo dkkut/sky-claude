@@ -16,6 +16,7 @@ import { trustDevice } from './../trusteddevices.mjs';
 import { onLogin as limitedOnLogin } from './../limitedaccess.mjs';
 import { assertLoginAllowed } from './../accountfreeze.mjs';
 import { assertNotGloballyBlocked } from './../globalblock.mjs';
+import { recordInvite } from './../invites.mjs';
 import { assertNotPendingDeletion } from './../accountdeletion.mjs';
 import { publicStatus as registrationStatus } from './../registration.mjs';
 import { config } from './../config.mjs';
@@ -308,6 +309,7 @@ export const authRoutes = async (req, res, url) => {
     }
 
     const session = await startSession(skyId, req, { viaCode: true });
+    if (created) void recordInvite(skyId.id, req).catch((e) => console.error('[invite]', e.message));   // «кто пригласил» — один раз на нового человека
     return json(res, created ? 201 : 200,
                 appBody(req, { ...session.body, isNew: created }, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
@@ -367,6 +369,7 @@ export const authRoutes = async (req, res, url) => {
     }
 
     const session = await startSession(skyId, req, { viaCode: true });
+    if (created) void recordInvite(skyId.id, req).catch((e) => console.error('[invite]', e.message));   // «кто пригласил» — один раз на нового человека
     return json(res, created ? 201 : 200,
                 appBody(req, { ...session.body, isNew: created }, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });

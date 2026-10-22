@@ -14,6 +14,7 @@
    завести, есть ли Prime, нужен ли второй фактор — отвечает сервер.
    Этот файл только спрашивает и показывает ответ.
 =============================================================== */
+import { getInvite, clearInvite } from '../../invite/capture';
 import { isEnglish } from '@/i18n/lang';
 import { getActiveSlot, refreshKeyFor } from './slots';
 import { NATIVE_APP, IOS_WEB, API_ORIGIN, nativeStore, REFRESH_TOKEN_KEY, BETA_TOKEN_KEY } from '../nativeApp';
@@ -231,6 +232,7 @@ const raw = (path: string, init: RequestInit = {}) =>
       // токены в теле не получает.
       ...(isEnglish() ? { 'X-Sky-Lang': 'en' } : {}),
       ...(deviceId() ? { 'X-Sky-Device': deviceId() } : {}),
+      ...(path.startsWith('/api/auth/') && getInvite() ? { 'X-Sky-Invite': getInvite() } : {}),
       'X-Sky-Slot': String(getActiveSlot()),
       ...(skyMode() ? { 'X-Sky-Mode': skyMode() } : {}),
       ...(NATIVE_APP ? { 'X-Sky-Client': 'app' } : {}),
@@ -351,6 +353,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
   }
 
   const data = await readJson(res);
+  if (res.ok && data?.accessToken && path.startsWith('/api/auth/')) clearInvite();   // приглашение использовано (или человек уже был в Sky)
   if (!res.ok) {
     if (res.status === 403 && data?.error === 'beta_required') onBetaRequired?.();
     if (res.status === 403 && data?.error === 'pin_required') onPinRequired?.();
