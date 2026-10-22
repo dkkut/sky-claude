@@ -19,6 +19,7 @@ import {
   GARANT_PRO_PRICE, GARANT_PRO_DAYS,
   type GarantDeal, type DealStatus, type ItemType, type PayType,
 } from './garantApi';
+import { VerifyDeal } from './VerifyDeal';
 
 /* === CONSTANTS ============================================== */
 const STATUS_INFO: Record<DealStatus, { label:string; color:string; icon:typeof Package; desc:string }> = {
@@ -27,6 +28,10 @@ const STATUS_INFO: Record<DealStatus, { label:string; color:string; icon:typeof 
   in_escrow:      { label:'У гаранта',     color:'var(--accent)', icon:Lock,        desc:'Оба внесли  -  гарант держит до подтверждений' },
   completed:      { label:'Завершена',     color:'var(--green)', icon:CheckCircle, desc:'Сделка успешно завершена' },
   cancelled:      { label:'Отменена',      color:'var(--t2)', icon:XCircle,     desc:'Сделка была отменена' },
+  awaiting_data:  { label:'Ждём данные',   color:'var(--amber)', icon:Package,     desc:'Стороны передают данные гаранту' },
+  confirming:     { label:'Подтверждение', color:'var(--amber)', icon:Lock,        desc:'Стороны подтверждают, что данные верны' },
+  verifying:      { label:'Проверка',      color:'var(--accent)', icon:Lock,       desc:'Режим проверки данных' },
+  paid:           { label:'Оплачено',      color:'var(--accent)', icon:DollarSign, desc:'Оплата у гаранта, ждём закрытия' },
   disputed:       { label:'Спор',          color:'var(--red)', icon:AlertCircle, desc:'Открыт спор  -  ожидайте решения администратора' },
 };
 
@@ -165,6 +170,7 @@ const DisputeButton = ({ dealId }: { dealId:string }) => {
 
 /* === DEAL DETAIL ============================================ */
 const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBack:()=>void }) => {
+  if (deal.flow === 'sale' || deal.flow === 'exchange') return <VerifyDeal deal={deal} myId={myId} onBack={onBack}/>;
   const { depositSeller, depositBuyer, confirmBuyer, confirmSeller, cancelDeal, busy } = useGarantStore();
   const { getBalance } = useMoney();
   const [actionErr, setActionErr] = useState('');
@@ -432,8 +438,10 @@ const DealDetail = ({ deal, myId, onBack }: { deal:GarantDeal; myId:string; onBa
 /* === CREATE DEAL FORM ======================================= */
 const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
   const { currentUserId } = useAuthStore();
-  const { createDeal, status } = useGarantStore();
+  const { createDeal, createVerified, status } = useGarantStore();
 
+  const [flow,      setFlow]      = useState<'classic'|'sale'|'exchange'>('classic');
+  const [counterItem, setCounterItem] = useState('');
   const [step,      setStep]      = useState<'type'|'details'|'party'|'confirm'>('type');
   const [itemType,  setItemType]  = useState<ItemType>('skin');
   const [itemName,  setItemName]  = useState('');
@@ -475,7 +483,7 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
       <div className="text-center">
         <p className="text-xl font-black text-white">Сделка создана!</p>
         <p className="text-sm mt-1.5" style={{ color:C.t2 }}>
-          Передайте товар гаранту чтобы начать обмен.
+          {flow==='classic' ? 'Передайте товар гаранту чтобы начать обмен.' : 'Теперь передайте данные гаранту — это первый шаг сделки.'}
         </p>
         <p className="text-[11px] mt-1 font-mono" style={{ color:C.t3 }}>ID: #{done.slice(-8)}</p>
       </div>
@@ -488,10 +496,16 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
   const handleCreate = async () => {
     setErr('');
     if (!itemName.trim()) { setErr('Укажите название товара'); return; }
-    if (!price || isNaN(+price) || +price<=0) { setErr('Укажите корректную цену'); return; }
-    if (!buyer) { setErr('Покупатель не найден'); return; }
+    if (flow!=='exchange' && (!price || isNaN(+price) || +price<=0)) { setErr('Укажите корректную цену'); return; }
+    if (flow==='exchange' && !counterItem.trim()) { setErr('Укажите, что получаете взамен'); return; }
+    if (!buyer) { setErr(flow==='exchange'?'Вторая сторона не найдена':'Покупатель не найден'); return; }
     setCreating(true);
-    const r = await createDeal({
+    const r = flow!=='classic' ? await createVerified({
+      flow, counterpartyId: buyer.id,
+      title: `${ITEM_TYPES.find(t=>t.key===itemType)?.label}: ${itemName.trim()}`,
+      description: desc.trim(), itemType, itemName: itemName.trim(),
+      ...(flow==='exchange' ? { counterItemName: counterItem.trim() } : { price: +price, payType }),
+    }) : await createDeal({
       title: `${ITEM_TYPES.find(t=>t.key===itemType)?.label}: ${itemName.trim()}`,
       description: desc.trim(),
       buyerId: buyer.id,
@@ -536,7 +550,19 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
 
         {step==='type'&&(
           <>
-            <p className="text-sm font-bold text-white">Что продаёте?</p>
+            <p className="text-sm font-bold text-white">Вид сделки</p>
+            <div className="grid gap-2" role="radiogroup" aria-label="Вид сделки">
+              {([['classic','Обычная сделка','Товар у гаранта, деньги в эскроу, обе стороны подтверждают'],
+                 ['sale','Сделка с проверкой данных','Продавец передаёт данные гаранту → покупатель проверяет и оплачивает → продавец закрывает'],
+                 ['exchange','Обмен','Обе стороны передают данные гаранту, подтверждают и проверяют друг друга — без денег']] as const).map(([k,t,d])=>(
+                <button key={k} type="button" role="radio" aria-checked={flow===k} onClick={()=>setFlow(k)}
+                  className="rounded-2xl p-3 text-left" style={{ background:flow===k?`${C.accent}15`:C.l2, border:`1.5px solid ${flow===k?C.accent:C.border}` }}>
+                  <p className="text-sm font-bold" style={{ color:flow===k?C.accent:C.t1 }}>{t}</p>
+                  <p className="text-[11px] mt-0.5" style={{ color:C.t3 }}>{d}</p>
+                </button>
+              ))}
+            </div>
+            <p className="text-sm font-bold text-white">{flow==='exchange'?'Что отдаёте?':'Что продаёте?'}</p>
             <div className="grid grid-cols-2 gap-2.5">
               {ITEM_TYPES.map(t=>(
                 <button key={t.key} type="button"
@@ -568,6 +594,11 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
             <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={3}
               placeholder="Описание (необязательно)..."
               className="w-full rounded-xl px-3 py-3 text-sm outline-none resize-none" style={iSty}/>
+            {flow==='exchange' && (
+              <input value={counterItem} onChange={e=>setCounterItem(e.target.value)} placeholder="Что получаете взамен *"
+                className="w-full rounded-xl px-3 py-3 text-sm outline-none" style={iSty}/>
+            )}
+            {flow!=='exchange' && (
             <div>
               <p className="text-xs font-bold mb-2" style={{ color:C.t3 }}>Цена</p>
               <div className="flex gap-2 mb-2">
@@ -585,8 +616,9 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
                 placeholder={payType==='rubles'?'Сумма в рублях':'Количество баллов'}
                 className="w-full rounded-xl px-3 py-3 text-sm outline-none" style={iSty}/>
             </div>
+            )}
             <motion.button whileTap={{ scale:.97 }} type="button"
-              disabled={!itemName.trim()||!price}
+              disabled={!itemName.trim()||(flow==='exchange'?!counterItem.trim():!price)}
               onClick={()=>setStep('party')}
               className="w-full rounded-2xl py-4 text-sm font-bold text-white disabled:opacity-35"
               style={{ background:`linear-gradient(135deg,${C.accent},#818cf8)` }}>
@@ -662,8 +694,10 @@ const CreateDeal = ({ onDone }: { onDone:(id?:string)=>void }) => {
               </div>
               <div className="px-4 pb-4 space-y-2 border-t" style={{ borderColor:C.border }}>
                 {[
-                  { l:'Покупатель', v:buyer?.name??'' },
-                  { l:'Стоимость', v:payType==='rubles'?`${(+price).toLocaleString('ru')} ₽`:`${(+price).toLocaleString('ru')}` },
+                  { l:flow==='exchange'?'Вторая сторона':'Покупатель', v:buyer?.name??'' },
+                  flow==='exchange'
+                    ? { l:'Получаете', v:counterItem }
+                    : { l:'Стоимость', v:payType==='rubles'?`${(+price).toLocaleString('ru')} ₽`:`${(+price).toLocaleString('ru')}` },
                 ].map(({l,v})=>(
                   <div key={l} className="flex justify-between text-sm pt-2">
                     <span style={{ color:C.t3 }}>{l}</span>

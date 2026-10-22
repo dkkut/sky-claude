@@ -11,9 +11,9 @@
 import { create } from 'zustand';
 import { useMoney } from '@/wallet/store';
 import {
-  apiMyGarantStatus, apiMyDeals, apiCreateDeal, apiDepositSeller, apiDepositBuyer,
+  apiMyGarantStatus, apiMyDeals, apiCreateDeal, apiCreateVerifiedDeal, apiDepositSeller, apiDepositBuyer,
   apiConfirmBuyer, apiConfirmSeller, apiCancelDeal, apiOpenDispute, apiSubscribe,
-  type GarantDeal, type GarantStatus, type CreateDealParams,
+  type GarantDeal, type GarantStatus, type CreateDealParams, type CreateVerifiedParams,
 } from './garantApi';
 
 interface GarantState {
@@ -25,6 +25,8 @@ interface GarantState {
 
   load: () => Promise<void>;
   createDeal: (params: CreateDealParams) => Promise<{ ok: boolean; deal?: GarantDeal; error?: string }>;
+  createVerified: (params: CreateVerifiedParams) => Promise<{ ok: boolean; deal?: GarantDeal; error?: string }>;
+  applyDealUpdate: (deal: GarantDeal) => void;
   depositSeller: (dealId: string) => Promise<boolean>;
   depositBuyer: (dealId: string) => Promise<{ ok: boolean; error?: string }>;
   confirmBuyer: (dealId: string) => Promise<boolean>;
@@ -68,6 +70,17 @@ export const useGarantStore = create<GarantState>((set, get) => ({
     void get().load();
     return { ok: true, deal: r.data.deal };
   },
+
+  createVerified: async (params) => {
+    set({ busy: true, lastError: '' });
+    const r = await apiCreateVerifiedDeal(params);
+    set({ busy: false });
+    if (!r.ok || !r.data) { set({ lastError: r.error ?? 'failed' }); return { ok: false, error: r.error }; }
+    set((s) => ({ deals: applyDeal(s.deals, r.data!.deal) }));
+    void get().load();
+    return { ok: true, deal: r.data.deal };
+  },
+  applyDealUpdate: (deal) => set((s) => ({ deals: applyDeal(s.deals, deal) })),
 
   depositSeller: async (dealId) => {
     set({ busy: true, lastError: '' });

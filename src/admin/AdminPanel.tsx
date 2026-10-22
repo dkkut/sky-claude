@@ -3327,6 +3327,7 @@ const FamilyAdminSection = () => {
 const GARANT_STATUS_LABEL: Record<string, string> = {
   pending_seller: 'Ждём товар', pending_buyer: 'Ждём оплату', in_escrow: 'У гаранта',
   completed: 'Завершена', cancelled: 'Отменена', disputed: 'Спор',
+  awaiting_data: 'Ждём данные', confirming: 'Подтверждение данных', verifying: 'Режим проверки', paid: 'Оплачено',
 };
 
 const GarantDealAdminDetail = ({ dealId, onBack, onChanged }: { dealId: string; onBack: () => void; onChanged: () => void }) => {
@@ -3337,6 +3338,8 @@ const GarantDealAdminDetail = ({ dealId, onBack, onChanged }: { dealId: string; 
   const [resolving, setResolving] = useState(false);
   const [winner, setWinner] = useState<'seller_wins' | 'buyer_wins' | 'cancelled'>('seller_wins');
   const [note, setNote] = useState('');
+  const [vData, setVData] = useState<import('@/garant/garantApi').DealData[] | null>(null);
+  const [vOutcome, setVOutcome] = useState<'resume' | 'cancel'>('resume');
 
   const load = useCallback(async () => {
     setFailed('');
@@ -3363,6 +3366,25 @@ const GarantDealAdminDetail = ({ dealId, onBack, onChanged }: { dealId: string; 
     const r = await apiAdminForceCancel(dealId);
     setBusy(false);
     if (!r.ok) { setFailed('Не получилось отменить'); return; }
+    void load(); onChanged();
+  };
+
+  // Сделка с проверкой / обмен: данные сторон открывает сотрудник только в споре, каждый просмотр пишется в журнал.
+  const showData = async () => {
+    const { apiAdminDealData } = await import('@/garant/garantApi');
+    const r = await apiAdminDealData(dealId);
+    if (!r.ok || !r.data) { setFailed('Не удалось открыть данные'); return; }
+    setVData([r.data.seller, r.data.buyer].filter(Boolean) as import('@/garant/garantApi').DealData[]);
+    void load();
+  };
+  const resolveVerify = async () => {
+    if (!note.trim()) { setFailed('Укажите обоснование'); return; }
+    setBusy(true); setFailed('');
+    const { apiAdminResolveVerify } = await import('@/garant/garantApi');
+    const r = await apiAdminResolveVerify(dealId, vOutcome, note.trim());
+    setBusy(false);
+    if (!r.ok) { setFailed('Не получилось вынести решение'); return; }
+    setResolving(false); setNote(''); setVData(null);
     void load(); onChanged();
   };
 
@@ -3428,7 +3450,32 @@ const GarantDealAdminDetail = ({ dealId, onBack, onChanged }: { dealId: string; 
 
         {failed && <p className="mt-2 text-[11px]" style={{ color: C.red }}>{failed}</p>}
 
-        {detail.status === 'disputed' && !detail.disputeResult && (
+        {detail.status === 'disputed' && detail.flow && detail.flow !== 'classic' && !detail.buyerDeposited && (
+          <div className="mt-3 space-y-2">
+            {!vData ? (
+              <button type="button" onClick={() => void showData()} className="w-full rounded-xl py-2.5 text-xs font-bold" style={{ background: C.l2, color: C.acc }}>Открыть данные сторон (запишется в журнал)</button>
+            ) : vData.map((d, i) => (
+              <div key={i} className="rounded-xl p-2.5" style={{ background: C.l2 }}>
+                {d.fields?.map((f, j) => <p key={j} className="text-[11px]" style={{ color: C.t2 }} translate="no"><b>{f.label}:</b> {f.value}</p>)}
+                {d.note && <p className="mt-1 text-[10px]" style={{ color: C.t3 }} translate="no">{d.note}</p>}
+              </div>
+            ))}
+            {resolving ? (
+              <div className="space-y-2">
+                {([['resume', 'Данные в порядке — проверка продолжается'], ['cancel', 'Отменить сделку']] as const).map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => setVOutcome(k)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold"
+                    style={{ background: vOutcome === k ? C.acc : C.l2, color: vOutcome === k ? '#fff' : C.t2 }}>{vOutcome === k && <Check size={12} />}{l}</button>
+                ))}
+                <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Обоснование решения" className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+                <div className="flex gap-2">
+                  <button type="button" disabled={busy} onClick={() => void resolveVerify()} className="flex-1 rounded-xl py-2 text-xs font-bold disabled:opacity-50" style={{ background: C.acc, color: '#fff' }}>Вынести решение</button>
+                  <button type="button" onClick={() => setResolving(false)} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t3 }}>Отмена</button>
+                </div>
+              </div>
+            ) : <button type="button" onClick={() => setResolving(true)} className="w-full rounded-xl py-2.5 text-xs font-bold" style={{ background: 'linear-gradient(135deg,#7c3aed,#4f6ef7)', color: '#fff' }}>Вынести решение по спору</button>}
+          </div>
+        )}
+        {detail.status === 'disputed' && !detail.disputeResult && !(detail.flow && detail.flow !== 'classic' && !detail.buyerDeposited) && (
           resolving ? (
             <div className="mt-3 space-y-2">
               {([
@@ -3458,6 +3505,14 @@ const GarantDealAdminDetail = ({ dealId, onBack, onChanged }: { dealId: string; 
           )
         )}
 
+        {['awaiting_data', 'confirming', 'verifying', 'paid'].includes(detail.status) && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => void forceCancel()}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50" style={{ background: C.l2, color: C.red }}>
+              Принудительно отменить{detail.status === 'paid' ? ' (вернёт оплату покупателю)' : ''}
+            </button>
+          </div>
+        )}
         {detail.status === 'in_escrow' && (
           <div className="mt-3 flex flex-wrap gap-2">
             {!detail.sellerConfirmed && (

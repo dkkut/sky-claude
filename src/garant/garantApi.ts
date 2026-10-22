@@ -8,7 +8,10 @@
 import { apiCall } from '@/core/auth/api';
 
 export type DealStatus =
-  | 'pending_seller' | 'pending_buyer' | 'in_escrow' | 'completed' | 'cancelled' | 'disputed';
+  | 'pending_seller' | 'pending_buyer' | 'in_escrow' | 'completed' | 'cancelled' | 'disputed'
+  | 'awaiting_data' | 'confirming' | 'verifying' | 'paid';
+/** classic — прежняя сделка; sale — сделка с проверкой данных; exchange — обмен (server/garantverify.mjs). */
+export type DealFlow = 'classic' | 'sale' | 'exchange';
 export type ItemType = 'skin' | 'gift' | 'nft' | 'currency' | 'item' | 'other';
 export type PayType = 'rubles' | 'points';
 export type DisputeResult = 'seller_wins' | 'buyer_wins' | 'cancelled';
@@ -28,6 +31,12 @@ export interface GarantDeal {
   price: number;
   payType: PayType;
   status: DealStatus;
+  flow?: DealFlow;
+  counterItemName?: string;
+  sellerData?: 'none' | 'submitted' | 'confirmed';
+  buyerData?: 'none' | 'submitted' | 'confirmed';
+  sellerApproved?: boolean;
+  buyerApproved?: boolean;
   sellerDeposited: boolean;
   buyerDeposited: boolean;
   sellerConfirmed: boolean;
@@ -122,3 +131,21 @@ export const apiAdminForceConfirm = (dealId: string, side: 'buyer' | 'seller') =
 
 export const apiAdminForceCancel = (dealId: string) =>
   post<{ deal: GarantDeal }>(`/api/garant/admin/deals/${enc(dealId)}/force-cancel`);
+
+/* ─── Сделка с проверкой данных и обмен ─────────────────────── */
+export interface DataField { label: string; value: string }
+export interface DealData { fields?: DataField[]; note?: string; submittedAt: string; confirmed: boolean }
+export interface DealDataView { role: 'seller' | 'buyer'; status: DealStatus; mine: DealData | null; theirs: DealData | null; canSeeTheirs: boolean }
+export interface CreateVerifiedParams { flow: 'sale' | 'exchange'; counterpartyId: string; itemType: ItemType; itemName: string; counterItemName?: string; title?: string; description?: string; price?: number; payType?: PayType }
+export const apiCreateVerifiedDeal = (p: CreateVerifiedParams) => post<{ deal: GarantDeal }>('/api/garant/verify', p);
+const dp = (id: string, tail: string) => `/api/garant/deals/${enc(id)}${tail}`;
+export const apiDealData = (id: string) => apiCall<DealDataView>(dp(id, '/data'));
+export const apiSubmitDealData = (id: string, body: { fields: DataField[]; note?: string; confirmed?: boolean }) => post<{ deal: GarantDeal }>(dp(id, '/data'), body);
+export const apiConfirmOwnData = (id: string) => post<{ deal: GarantDeal }>(dp(id, '/confirm-data'));
+export const apiApproveData = (id: string) => post<{ deal: GarantDeal }>(dp(id, '/approve'));
+export const apiPayVerified = (id: string) => post<{ deal: GarantDeal }>(dp(id, '/pay'));
+export const apiCloseVerified = (id: string) => post<{ deal: GarantDeal }>(dp(id, '/close'));
+export const apiCancelVerified = (id: string) => post<{ deal: GarantDeal }>(dp(id, '/v-cancel'));
+export const apiVerifyDispute = (id: string, reason: string) => post<{ deal: GarantDeal }>(dp(id, '/v-dispute'), { reason });
+export const apiAdminDealData = (id: string) => apiCall<{ seller: DealData | null; buyer: DealData | null; views: { actorId: string; at: string | null }[] }>(`/api/garant/admin/deals/${enc(id)}/data`);
+export const apiAdminResolveVerify = (id: string, outcome: 'resume' | 'cancel', note: string) => post<{ deal: GarantDeal }>(`/api/garant/admin/deals/${enc(id)}/resolve-verify`, { outcome, note });
