@@ -24,7 +24,9 @@ for svc in api web postgres redis; do
   [ -n "$id" ] || { echo "• $svc: контейнер не запущен — пропускаю"; continue; }
   found=1
   while IFS= read -r line; do
+    [[ "$line" == *=* ]] || continue
     k="${line%%=*}"; v="${line#*=}"
+    [[ "$k" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
     [[ "$k" =~ $NOISE ]] && continue
     [ -n "${SEEN[$k]:-}" ] && continue
     SEEN[$k]=1
@@ -46,4 +48,5 @@ for k in JWT_SECRET REFRESH_TOKEN_SECRET ENCRYPTION_KEY DATABASE_URL POSTGRES_PA
   if [ -n "${SEEN[$k]:-}" ]; then echo "  ✓ $k"; else echo "  ✗ $k — НЕТ (искать в secrets/, выгрузке секретов, у хостера)"; fi
 done
 echo
+echo "Если есть docker-compose.secrets.local — в .env нужна строка COMPOSE_FILE=docker-compose.yml:docker-compose.secrets.local (проверьте grep COMPOSE_FILE .env.recovered)."
 echo "Дальше:  cp $OUT $APP_DIR/.env && chmod 600 $APP_DIR/.env && bash /opt/sky-src/scripts/env-check.sh"
