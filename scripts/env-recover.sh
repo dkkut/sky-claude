@@ -40,6 +40,11 @@ for svc in api web postgres redis; do
   echo "• $svc: прочитано"
 done
 [ "$found" = 1 ] || { rm -f "$OUT"; echo "Ни один контейнер не запущен — взять значения неоткуда. См. DEPLOY.md / секреты: secrets/, sky-secrets-*.txt.gpg"; exit 1; }
+# Секреты лежат файлами (secrets-to-files.sh): без COMPOSE_FILE overlay не подключится и api не стартует (JWT_SECRET не задан).
+if [ -f "$APP_DIR/docker-compose.secrets.local" ] && [ -z "${SEEN[COMPOSE_FILE]:-}" ]; then
+  echo "COMPOSE_FILE=docker-compose.yml:docker-compose.secrets.local" >> "$OUT"; SEEN[COMPOSE_FILE]=1
+  echo "• COMPOSE_FILE дописан (найден docker-compose.secrets.local)"
+fi
 chmod 600 "$OUT"
 echo
 echo "Записано: $OUT  ($(wc -l < "$OUT") строк, значения не показаны)"
