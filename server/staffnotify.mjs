@@ -37,6 +37,7 @@ export const CATEGORIES = {
   site:           { label: 'Сайт: апелляции и заявки на релиз', rights: ['site'] },
   verification:   { label: 'Заявки на верификацию', rights: ['verification'] },
   partners:       { label: 'Партнёры на проверке', rights: ['partners_approve'] },
+  sandbox:        { label: 'Sky Sandbox: итоги проверок и публикаций', rights: ['sandbox'] },
   content:        { label: 'Контент на проверке (музыка, кино, книги, подкасты)', rights: ['content'] },
   artist_claim:   { label: 'Заявки на владение карточкой музыканта', rights: ['content'] },
   blox:           { label: 'Sky Blox: проверка, жалобы, апелляции', rights: ['blox_moderation', 'blox'] },

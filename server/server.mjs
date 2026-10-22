@@ -27,6 +27,8 @@ import { BETA_COOKIE, parseCookies, slotOf } from './cookies.mjs';
 import { betaEnabled, syncBetaKeys, betaHashLive } from './beta.mjs';
 import { betaRoutes } from './routes/beta.mjs';
 import { defenseRoutes } from './routes/defense.mjs';
+import { sandboxRoutes } from './routes/sandbox.mjs';
+import { sweepSandbox } from './sandbox.mjs';
 import { isIpBlocked, defenseTick } from './selfdefense.mjs';
 import { watchResponse, scanRequest, integrityCheck } from './leakdetect.mjs';
 import { authRoutes } from './routes/auth.mjs';
@@ -249,7 +251,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [defenseRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [defenseRoutes, sandboxRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -305,7 +307,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // Самозащита: заблокированный адрес и предъявленные секреты/приманки отсекаются до всего остального.
     // Исключены ссылка отмены и сторож хоста — владелец должен суметь отменить, а сторож — доложить.
     { const u0 = req.url || '';
-      if (!u0.startsWith('/api/defense/') && !u0.startsWith('/api/guard/') && !u0.startsWith('/defense-undo') && !u0.startsWith('/healthz')) {
+      if (!u0.startsWith('/api/defense/') && !u0.startsWith('/api/guard/') && !u0.startsWith('/api/sandbox/runner/') && !u0.startsWith('/defense-undo') && !u0.startsWith('/healthz')) {
         if (isIpBlocked(ip)) return json(res, 403, { error: 'defense_blocked' });
         if (u0.startsWith('/api/') && await scanRequest(req)) return json(res, 403, { error: 'defense_blocked' });
       }
@@ -327,7 +329,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
 
     // Ограниченная сессия (устройство не подтверждено, limitedaccess.mjs): чтение без чатов и файлов, изменения закрыты.
     // Проверяется и для /api/auth/* (смена пароля, удаление и т. п. недоступны) — разрешены только выход, обновление токена и сессия.
-    if (url.startsWith('/api/') && limitedBlocks(req.method, url) && !url.startsWith('/api/platform/status') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/')
+    if (url.startsWith('/api/') && limitedBlocks(req.method, url) && !url.startsWith('/api/platform/status') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/')
         && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
       const tk = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tk?.typ === 'access' && tk.sky && tk.sid) {
@@ -339,7 +341,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // Замок приложения (applock.mjs): закрытая сессия получает 423 на всё, кроме самих ручек замка, выхода и обновления токена.
     // Решает сервер по записи сессии — стереть флаг в браузере или подменить заголовок это не обходит.
     if (url.startsWith('/api/') && !url.startsWith('/api/skyid/applock') && (!url.startsWith('/api/auth/') || /^\/api\/auth\/(devices|deletion($|\?)|freeze|password\/(change|remove|setup))/.test(url)) && !url.startsWith('/api/platform/status')
-        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/telemetry')) {
+        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/telemetry')) {
       const tka = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tka?.typ === 'access' && tka.sky && tka.sid) {
         const sta = await sessionStore.get(tka.sid);
@@ -350,7 +352,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // PIN при смене IP (ippin.mjs): у тех, кто его включил, сессия с нового адреса закрыта до ввода PIN.
     // Выход, обновление токена, вход, ввод самого PIN и ссылки шлюзов остаются открытыми.
     if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && !url.startsWith('/api/skyid/pin') && !url.startsWith('/api/platform/status')
-        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
+        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
       const tok = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tok?.typ === 'access' && tok.sky && tok.sid) {
         const stored = await sessionStore.get(tok.sid);
@@ -464,7 +466,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
     /* Игровые серверы Sky Blox — программы, а не люди: у них подпись запроса вместо ключа беты. */
     const isBloxServer = url.startsWith('/api/blox/server/') || url.startsWith('/api/skykassa/webhook/') || url.startsWith('/api/kbiz/webhook/');
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !url.startsWith('/api/blocked/') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/kbiz/public/') && !url.startsWith('/api/storage/s3') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !url.startsWith('/api/blocked/') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/kbiz/public/') && !url.startsWith('/api/storage/s3') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -478,7 +480,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
      * не смог бы ни войти и выключить режим, ни браузер — понять,
      * почему сайт не отвечает, и показать нужный экран.
      */
-    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
       const shutdown = await shutdownState();
       if (shutdown.active) {
         const session = await readSession(req);
@@ -831,6 +833,7 @@ const start = async () => {
       await import('./recoverycore.mjs').then((m) => m.sweepAttempts()).catch(() => {});
       await sweepLimited().catch(() => {});
       await sweepTransfers().catch((e) => console.error('[transfer]', e.message));
+      await sweepSandbox().catch((e) => console.error('[sandbox]', e.message));
       await sweepLogs().catch((e) => console.error('[skylog] уборка:', e.message));
       const arch = await sweepArchive().catch((e) => { console.error('[archive]', e.message); return { warned: 0, purged: 0 }; });
       if (arch.purged || arch.warned) console.log(`[archive] напомнено: ${arch.warned}, стёрто: ${arch.purged}`);

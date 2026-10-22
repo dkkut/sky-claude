@@ -69,6 +69,8 @@ export const PERMISSIONS = [
   'logs',            // единые журналы Sky: поиск, фильтры, выгрузка, сроки хранения, DEBUG, проверка целостности (без секретов и содержимого сообщений)
   'verification',    // верификация: очередь заявок, решения, снятие отметок, критерии (отметка «Официальный» — только владелец)
   'upload_limits',   // лимиты загрузки: личная коллекция и публикация (размер, число, объём, форматы, длительность, скорость)
+  'sandbox',         // Sky Sandbox: сборки на проверку, отчёты, повторный запуск (публиковать нельзя)
+  'sandbox_publish', // Sky Sandbox: одобрение публикации проверенной сборки на боевой сервер (критично, в «полные права» не входит)
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -86,7 +88,7 @@ export const PERMISSIONS = [
  */
 export const STORAGE_CRITICAL = ['storage_restore', 'storage_emergency', 'storage_enable', 'storage_unlock', 'storage_keys', 'storage_direct'];
 /** Подтверждение партнёров — тоже отдельное право: добавлять может менеджер, публиковать — только уполномоченный (или владелец). */
-export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve' && p !== 'global_block');
+export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve' && p !== 'global_block' && p !== 'sandbox_publish');
 
 export const ROLES = {
   super_admin:     DEFAULT_ADMIN_PERMISSIONS,
@@ -123,6 +125,8 @@ export const ROLES = {
   kassa_biz_admin: ['kassa_biz', 'support'],
   partners_manager:['partners'],
   partners_approver:['partners', 'partners_approve'],
+  sandbox_admin:   ['sandbox'],
+  sandbox_publisher:['sandbox', 'sandbox_publish'],
   global_block_admin:['global_block'],
   storage_viewer:  ['storage_view', 'storage_audit'],
   storage_operator:['storage_view', 'storage_audit', 'storage_backup', 'storage_schedule', 'storage_quota', 'storage_maintenance'],
@@ -156,6 +160,8 @@ export const ROLE_LABEL = {
   kassa_biz_admin: 'SkyKassa Business: бизнесы',
   partners_manager: 'Партнёры: добавление и правка',
   partners_approver: 'Партнёры: подтверждение и публикация',
+  sandbox_admin: 'Sky Sandbox: проверка сборок',
+  sandbox_publisher: 'Sky Sandbox: проверка и одобрение публикации',
   global_block_admin: 'Глобальная блокировка',
   storage_viewer: 'Sky Storage: просмотр',
   storage_operator: 'Sky Storage: оператор (копии, квоты)',
