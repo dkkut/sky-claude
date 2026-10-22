@@ -35,7 +35,7 @@ export const goPlacesRoutes = async (req, res, url) => {
   const body = async () => (await parseBody(req).catch(() => ({}))) ?? {};
   try {
     if (isAdmin) {
-      if (method === 'GET' && path === '/api/admin/go/place-categories') return reply(res, await gp.categories({ all: true }));
+      if (method === 'GET' && path === '/api/admin/go/place-categories') return reply(res, await gp.adminCategories(me));
       if (method === 'POST' && path === '/api/admin/go/place-categories') return reply(res, await gp.adminSaveCategory(me, null, await body()));
       if ((m = path.match(/^\/api\/admin\/go\/place-categories\/([\w-]+)$/))) {
         if (method === 'PUT') return reply(res, await gp.adminSaveCategory(me, m[1], await body()));

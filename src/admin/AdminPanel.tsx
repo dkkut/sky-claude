@@ -57,6 +57,8 @@ import { SkyKassaTab } from './SkyKassaTab';
 import { StorageTab } from './StorageTab';
 import { OidcTab } from './OidcTab';
 import { SshTab } from './SshTab';
+import { LeakTab } from './LeakTab';
+import { DefenseTab } from './DefenseTab';
 import { PrimeTab } from './PrimeTab';
 import { AiUsageTab } from './AiUsageTab';
 import { PartnersTab } from './PartnersTab';
@@ -5573,7 +5575,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5783,6 +5785,8 @@ export const AdminPanel = () => {
     { key: 'storage', label: 'Sky Storage', show: has('storage_view') },
     { key: 'oidc', label: 'Sky ID для сервисов', show: has('oidc') },
     { key: 'ssh', label: 'Доступ по SSH', show: has('security') },
+    { key: 'leaks', label: 'Утечки', show: has('security') },
+    { key: 'defense', label: 'Самозащита', show: has('security') },
     { key: 'prime', label: 'Sky Prime', show: has('prime') },
     { key: 'partners', label: 'Партнёры', show: has('partners') },
     { key: 'kbiz', label: 'SkyKassa Business', show: has('kassa_biz') },
@@ -6016,6 +6020,8 @@ export const AdminPanel = () => {
       {tab === 'modules' && <ModulesTab />}
       {tab === 'oidc' && <OidcTab />}
       {tab === 'ssh' && <SshTab />}
+      {tab === 'leaks' && <LeakTab />}
+      {tab === 'defense' && <DefenseTab />}
       {tab === 'prime' && <PrimeTab />}
       {tab === 'partners' && <PartnersTab />}
       {tab === 'kbiz' && <KbizAdminTab />}

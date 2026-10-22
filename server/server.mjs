@@ -26,6 +26,9 @@ import { verifyToken } from './security.mjs';
 import { BETA_COOKIE, parseCookies, slotOf } from './cookies.mjs';
 import { betaEnabled, syncBetaKeys, betaHashLive } from './beta.mjs';
 import { betaRoutes } from './routes/beta.mjs';
+import { defenseRoutes } from './routes/defense.mjs';
+import { isIpBlocked, defenseTick } from './selfdefense.mjs';
+import { watchResponse, scanRequest, integrityCheck } from './leakdetect.mjs';
 import { authRoutes } from './routes/auth.mjs';
 import { passwordRoutes } from './routes/password.mjs';
 import { skyIdRoutes } from './routes/skyid.mjs';
@@ -241,7 +244,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [defenseRoutes, betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -294,6 +297,14 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
   res.on('finish', () => { recordRequest(res.statusCode, Date.now() - t0); auditRequest(req, res.statusCode, Date.now() - t0, rctx); });
   try {
     const ip = clientIp(req);
+    // Самозащита: заблокированный адрес и предъявленные секреты/приманки отсекаются до всего остального.
+    // Исключены ссылка отмены и сторож хоста — владелец должен суметь отменить, а сторож — доложить.
+    { const u0 = req.url || '';
+      if (!u0.startsWith('/api/defense/') && !u0.startsWith('/api/guard/') && !u0.startsWith('/defense-undo') && !u0.startsWith('/healthz')) {
+        if (isIpBlocked(ip)) return json(res, 403, { error: 'defense_blocked' });
+        if (u0.startsWith('/api/') && await scanRequest(req)) return json(res, 403, { error: 'defense_blocked' });
+      }
+      if (u0.startsWith('/api/')) watchResponse(req, res, rctx); }
     // Картинки, обложки и куски аудио/видео: страница с лентой тянет их
     // десятками, и общий предел на API она выбирала бы за секунды. У самих
     // потоков есть свой предел на человека (STREAM_PER_MIN в маршрутах).
@@ -311,7 +322,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
 
     // Ограниченная сессия (устройство не подтверждено, limitedaccess.mjs): чтение без чатов и файлов, изменения закрыты.
     // Проверяется и для /api/auth/* (смена пароля, удаление и т. п. недоступны) — разрешены только выход, обновление токена и сессия.
-    if (url.startsWith('/api/') && limitedBlocks(req.method, url) && !url.startsWith('/api/platform/status') && !url.startsWith('/api/ssh-gate')
+    if (url.startsWith('/api/') && limitedBlocks(req.method, url) && !url.startsWith('/api/platform/status') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/')
         && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
       const tk = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tk?.typ === 'access' && tk.sky && tk.sid) {
@@ -323,7 +334,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // PIN при смене IP (ippin.mjs): у тех, кто его включил, сессия с нового адреса закрыта до ввода PIN.
     // Выход, обновление токена, вход, ввод самого PIN и ссылки шлюзов остаются открытыми.
     if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && !url.startsWith('/api/skyid/pin') && !url.startsWith('/api/platform/status')
-        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
+        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
       const tok = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tok?.typ === 'access' && tok.sky && tok.sid) {
         const stored = await sessionStore.get(tok.sid);
@@ -437,7 +448,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
     /* Игровые серверы Sky Blox — программы, а не люди: у них подпись запроса вместо ключа беты. */
     const isBloxServer = url.startsWith('/api/blox/server/') || url.startsWith('/api/skykassa/webhook/') || url.startsWith('/api/kbiz/webhook/');
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !url.startsWith('/api/blocked/') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/kbiz/public/') && !url.startsWith('/api/storage/s3') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !url.startsWith('/api/blocked/') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/kbiz/public/') && !url.startsWith('/api/storage/s3') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -451,7 +462,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
      * не смог бы ни войти и выключить режим, ни браузер — понять,
      * почему сайт не отвечает, и показать нужный экран.
      */
-    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
       const shutdown = await shutdownState();
       if (shutdown.active) {
         const session = await readSession(req);
@@ -646,6 +657,12 @@ const start = async () => {
     try { await sweepParking(); } catch (e) { console.error('[parking] уборка:', e.message); } finally { dispatchBusy = false; }
   }, 10 * 1000);
   goDispatchSchedule.unref();
+
+  // Самозащита: снятие уровня по сроку, чистка блокировок, проверка целостности кода (раз в 5 минут).
+  let defTicks = 0;
+  const defSchedule = setInterval(() => { defTicks += 1; defenseTick().catch((e) => console.error('[defense] тик:', e.message)); if (defTicks % 5 === 0) integrityCheck().catch(() => {}); }, 60 * 1000);
+  defSchedule.unref();
+  setTimeout(() => { integrityCheck().catch(() => {}); }, 20 * 1000).unref();
 
   // Мониторинг: раз в минуту замер «сколько онлайн» и сохранение активных за день.
   analyticsSchedule = setInterval(() => { sampleOnce().catch((err) => console.error('[analytics] замер', err.message)); }, 60 * 1000);

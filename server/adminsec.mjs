@@ -157,6 +157,7 @@ export const logAdmin = async (entry) => {
     { const st = currentSession(); if (st) st.adminLogged = true; }
     // Копия действия администрации в единый журнал (категория admin, цепочка хешей).
     skyLog({ category: 'admin', service: 'admin', type: String(type).slice(0, 80), actorId, targetId, result: result === 'ok' ? 'ok' : result === 'denied' ? 'denied' : 'error', reason: shortDetail.slice(0, 200), ip: meta.ip, ua: meta.ua, requestId: requestId ?? undefined, detail: { targetType } });
+    if (result === 'ok' && actorId) void import('./leakdetect.mjs').then((m) => m.onAdminAction({ actorId, type, ip: meta.ip })).catch(() => {});
     return { id, hash };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

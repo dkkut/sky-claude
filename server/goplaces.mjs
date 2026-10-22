@@ -391,6 +391,11 @@ export const adminDecide = async (me, id, action, reason) => {
   }
   return res;
 };
+export const adminCategories = async (me) => {
+  if (!(await can(me, 'go_places'))) return err('not_allowed');
+  return categories({ all: true });
+};
+
 export const adminErrors = async (me) => {
   if (!(await can(me, 'go_places'))) return err('not_allowed');
   const { rows } = await query('SELECT where_, detail, at FROM gop_errors ORDER BY id DESC LIMIT 100');

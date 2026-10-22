@@ -40,6 +40,8 @@ services:
       RECOVERY_DOMAIN: ${RECOVERY_DOMAIN:-recovery.invalid.local}
       # Резервный адрес API для приложений: тот же вхост, что и DOMAIN, сертификат — SAN основного (scripts/add-reserve-domain.sh).
       RESERVE_DOMAIN: ${RESERVE_DOMAIN:-reserve.invalid.local}
+      GUARD_SECRET: ${GUARD_SECRET:-}
+      BUILD_ID: ${BUILD_ID:-}
     volumes:
       - certbot-certs:/etc/letsencrypt:ro
       - certbot-webroot:/var/www/certbot:ro
