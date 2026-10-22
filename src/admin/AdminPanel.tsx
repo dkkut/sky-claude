@@ -44,6 +44,7 @@ import { ContentModTab } from './ContentModTab';
 import { ScrollTabs } from './ScrollTabs';
 import { ResourcesTab } from './ResourcesTab';
 import { RegistrationTab } from './RegistrationTab';
+import { GlobalBlockTab } from './GlobalBlockTab';
 import { UploadLimitsTab } from './UploadLimitsTab';
 import { VerificationTab } from './VerificationTab';
 import { ArtistCardsTab } from './ArtistCardsTab';
@@ -5515,7 +5516,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5712,6 +5713,7 @@ export const AdminPanel = () => {
     { key: 'content', label: 'Контент', show: has('content') },
     { key: 'go', label: 'Sky GO', show: has('go') },
     { key: 'registration', label: 'Регистрация', show: has('registration') },
+    { key: 'globalblock', label: 'Блокировки', show: has('global_block') },
     { key: 'uploadlimits', label: 'Лимиты загрузки', show: has('upload_limits') },
     { key: 'verification', label: 'Верификация', show: has('verification') },
     { key: 'artists', label: 'Музыканты', show: has('content') },
@@ -5944,6 +5946,7 @@ export const AdminPanel = () => {
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
       {tab === 'content' && <ContentModTab />}
       {tab === 'registration' && <RegistrationTab />}
+      {tab === 'globalblock' && <GlobalBlockTab />}
       {tab === 'uploadlimits' && <UploadLimitsTab />}
       {tab === 'verification' && <VerificationTab />}
       {tab === 'artists' && <ArtistCardsTab />}

@@ -135,6 +135,7 @@ const ERRORS: Record<string, string> = {
   registration_daily_limit: 'Сегодня регистрации новых аккаунтов уже закончились. Попробуйте позже',
   registration_ip_limit: 'С этого адреса уже создано максимум аккаунтов. Попробуйте позже',
   account_frozen:        'Новые входы в этот аккаунт заморожены его владельцем. Разморозить можно на устройстве, где вход уже выполнен: Профиль → Sky ID → Устройства',
+  globally_blocked:      'Вход заблокирован глобальной блокировкой',
   account_deletion_pending: 'Этот аккаунт ожидает удаления. Вернуть его можно кодом с почты — кнопка «Восстановить аккаунт» на экране входа',
   nothing_to_do:         'Выберите, что сделать',
   bad_period:            'Выберите период из списка',
@@ -353,6 +354,10 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
   if (!res.ok) {
     if (res.status === 403 && data?.error === 'beta_required') onBetaRequired?.();
     if (res.status === 403 && data?.error === 'pin_required') onPinRequired?.();
+    // Глобальная блокировка: вход отклонён (423) или открытая сессия закрыта (403) — экран с причиной и обжалованием (GloballyBlocked).
+    if ((res.status === 423 && data?.error === 'globally_blocked') || (res.status === 403 && data?.error === 'account_blocked' && data?.global)) {
+      try { window.dispatchEvent(new CustomEvent('sky:globalblock', { detail: { token: String(data?.appealToken ?? ''), reason: String(data?.reason ?? ''), since: data?.since ?? null, until: data?.until ?? null } })); } catch { /* ok */ }
+    }
     if (res.status === 403 && data?.error === 'limited_session') { try { window.dispatchEvent(new CustomEvent('sky:limited')); } catch { /* ok */ } }
     if (res.status === 503 && data?.error === 'platform_shutdown') onPlatformBlocked?.({ kind: 'shutdown', reason: String(data?.reason ?? '') });
     if (res.status === 503 && data?.error === 'platform_maintenance') onPlatformBlocked?.({ kind: 'maintenance', reason: String(data?.reason ?? '') });
