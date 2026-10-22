@@ -259,6 +259,7 @@ services:
       DOMAIN:                ${DOMAIN:?нужно задать DOMAIN в .env}
       # Ключи доступа (WebAuthn): по умолчанию rpId — хост DOMAIN, origin — https://DOMAIN (server/passkeys.mjs).
       PASSKEY_RP_ID:         ${PASSKEY_RP_ID:-}
+      APPLOCK_GRACE_SEC:     ${APPLOCK_GRACE_SEC:-}
       PASSKEY_ORIGINS:       ${PASSKEY_ORIGINS:-}
       EXTRA_ORIGINS:         ${EXTRA_ORIGINS:-}
       # Единственный адрес, куда разрешён редирект с одноразовым

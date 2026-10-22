@@ -322,6 +322,11 @@ const handle = (data: any) => {
       authorized = false; wantOpen = false;
       window.dispatchEvent(new CustomEvent('sky:limited'));
       break;
+    /* Замок приложения закрыт на сервере: сокет закрыт, экран блокировки; после разблокировки подключаемся заново. */
+    case 'applock':
+      authorized = false; wantOpen = false;
+      window.dispatchEvent(new CustomEvent('sky:applock'));
+      break;
     case 'limited:pending':
       window.dispatchEvent(new CustomEvent('sky:limited-pending'));
       break;
@@ -881,3 +886,8 @@ export const subscribeOnline = (fn: (ids: Set<string>) => void) => {
 export const getOnlineUsers = () => new Set(online);
 
 export { toChatItem, toMessageItem };
+
+/* Приложение разблокировано (AppLock): сокет, закрытый замком, открываем заново. */
+if (typeof window !== 'undefined') {
+  window.addEventListener('sky:applock-unlocked', () => { if (!wantOpen && myId) connectSocket(myId); });
+}

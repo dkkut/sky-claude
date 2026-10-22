@@ -129,6 +129,8 @@ import { sweepLogs, flushNow as flushLogs } from './skylog.mjs';
 import { accountRecoveryRoutes } from './routes/accountrecovery.mjs';
 import { recoveryRoutes } from './routes/recovery.mjs';
 import { limitedAccessRoutes } from './routes/limitedaccess.mjs';
+import { appLockRoutes } from './routes/applock.mjs';
+import { applockBlocked } from './applock.mjs';
 import { resourceRoutes } from './routes/resources.mjs';
 import { startResourceOptimizer, heavyAllowed, shouldDeferHousekeeping } from './resourceopt.mjs';
 import { limitedBlocks, sweepLimited } from './limitedaccess.mjs';
@@ -244,7 +246,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [defenseRoutes, betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [defenseRoutes, appLockRoutes, betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -328,6 +330,17 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
       if (tk?.typ === 'access' && tk.sky && tk.sid) {
         const st = await sessionStore.get(tk.sid);
         if (st && st.userId === tk.sky && st.limited) return json(res, 403, { error: 'limited_session' });
+      }
+    }
+
+    // Замок приложения (applock.mjs): закрытая сессия получает 423 на всё, кроме самих ручек замка, выхода и обновления токена.
+    // Решает сервер по записи сессии — стереть флаг в браузере или подменить заголовок это не обходит.
+    if (url.startsWith('/api/') && !url.startsWith('/api/skyid/applock') && (!url.startsWith('/api/auth/') || /^\/api\/auth\/(devices|deletion($|\?)|freeze|password\/(change|remove|setup))/.test(url)) && !url.startsWith('/api/platform/status')
+        && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/telemetry')) {
+      const tka = verifyToken(readAccessToken(req), config.jwtSecret);
+      if (tka?.typ === 'access' && tka.sky && tka.sid) {
+        const sta = await sessionStore.get(tka.sid);
+        if (sta && sta.userId === tka.sky && await applockBlocked(tka.sid, sta)) return json(res, 423, { error: 'app_locked' });
       }
     }
 

@@ -12,6 +12,7 @@
  *      операции — в слое данных, а не здесь, чтобы нельзя было забыть
  *      проверку в одной из веток.
  */
+import { applockBlocked } from './applock.mjs';
 import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.mjs';
 import { verifyToken, rateLimit, rateLimitPerHour } from './security.mjs';
@@ -173,6 +174,24 @@ setOnlineSource(() => ({ users: clients.size, sessions: [...clients.values()].re
 // sessionId → сокеты этой сессии: нужен, чтобы закрыть их при выходе,
 // не дожидаясь очередной проверки.
 const bySession = new Map();
+// Сессии с замком приложения: их сокеты периодически проверяются, чтобы закрытая сессия не слушала дальше.
+const lockWatch = new Set();
+const closeLockedSockets = (sid) => {
+  for (const ws of bySession.get(sid) ?? []) {
+    try { send(ws, { type: 'applock' }); ws.close(4423, 'app locked'); } catch { /* уже закрыт */ }
+  }
+};
+/** Сразу закрыть сокеты сессии (клиент сам ушёл в замок). */
+export const kickLocked = (sid) => closeLockedSockets(sid);
+setInterval(async () => {
+  for (const sid of [...lockWatch]) {
+    if (!bySession.has(sid)) { lockWatch.delete(sid); continue; }
+    try {
+      const stored = await sessionStore.get(sid);
+      if (stored && await applockBlocked(sid, stored)) closeLockedSockets(sid);
+    } catch { /* следующий проход */ }
+  }
+}, 15_000).unref?.();
 
 let wss = null;
 
@@ -294,7 +313,9 @@ const identify = async (token, ip) => {
   // PIN при смене IP (ippin.mjs): сессия с адреса, где PIN ещё не вводили, не получает сокет.
   if (await pinRequired(payload.sky, payload.sid, stored, ip)) return authFail('pin_required (PIN при смене IP)');
 
-  return { userId: stored.profileId, sessionId: payload.sid, limited: Boolean(stored.limited) };
+  // Замок приложения (applock.mjs): закрытая сессия сокета не получает.
+  const locked = await applockBlocked(payload.sid, stored);
+  return { userId: stored.profileId, sessionId: payload.sid, limited: Boolean(stored.limited), locked, hasAppLock: Boolean(stored.appLock) };
 };
 
 /**
@@ -1943,6 +1964,13 @@ export const startSignalHub = () => {
           return;
         }
         // Ограниченная сессия (устройство не подтверждено): сокет не открывается — ни чатов, ни событий, только ответ на ping.
+        if (who.locked) {
+          session.limitedWs = true;
+          clearTimeout(authTimer);
+          send(ws, { type: 'applock' });
+          return;
+        }
+        if (who.hasAppLock) lockWatch.add(who.sessionId);
         if (who.limited) {
           session.limitedWs = true;
           clearTimeout(authTimer);

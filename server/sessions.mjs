@@ -107,6 +107,18 @@ export const sessionStore = {
    * Меняет активный профиль в существующей сессии. Срок жизни сохраняем:
    * переключение профиля не должно ни продлевать, ни укорачивать вход.
    */
+  /** Состояние замка приложения (applock.mjs): отдельный ключ, чтобы частые пинги не перезаписывали саму сессию. */
+  async getLock(id) {
+    const raw = await client.get(`applock:${id}`);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  },
+  async setLock(id, rec) {
+    const ttl = await client.ttl(KEY_SESSION(id));
+    if (!rec) { await client.del(`applock:${id}`); return; }
+    await client.setEx(`applock:${id}`, ttl > 0 ? ttl : 60, JSON.stringify(rec));
+  },
+
   async setActiveProfile(id, profileId) {
     const session = await this.get(id);
     if (!session) return false;

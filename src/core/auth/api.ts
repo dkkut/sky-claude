@@ -190,6 +190,7 @@ const ERRORS: Record<string, string> = {
   no_request:            'Сначала запросите код на почту (он живёт 15 минут)',
   authenticator_required:'Для PIN нужен включённый аутентификатор (Профиль → Sky ID → Защита)',
   limited_session:       'Вход с этого устройства не подтверждён — доступен только просмотр',
+  app_locked:            'Приложение заблокировано — введите код',
   backup_email_required: 'Сначала добавьте и подтвердите резервную почту',
   no_backup_email:       'У этого Sky ID нет подтверждённой резервной почты',
   not_limited:           'Эта сессия не ограничена',
@@ -378,6 +379,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
     if ((res.status === 423 && data?.error === 'globally_blocked') || (res.status === 403 && data?.error === 'account_blocked' && data?.global)) {
       try { window.dispatchEvent(new CustomEvent('sky:globalblock', { detail: { token: String(data?.appealToken ?? ''), reason: String(data?.reason ?? ''), since: data?.since ?? null, until: data?.until ?? null } })); } catch { /* ok */ }
     }
+    if (res.status === 423 && data?.error === 'app_locked') { try { window.dispatchEvent(new CustomEvent('sky:applock')); } catch { /* ok */ } }
     if (res.status === 403 && data?.error === 'limited_session') { try { window.dispatchEvent(new CustomEvent('sky:limited')); } catch { /* ok */ } }
     if (res.status === 503 && data?.error === 'platform_shutdown') onPlatformBlocked?.({ kind: 'shutdown', reason: String(data?.reason ?? '') });
     if (res.status === 503 && data?.error === 'platform_maintenance') onPlatformBlocked?.({ kind: 'maintenance', reason: String(data?.reason ?? '') });

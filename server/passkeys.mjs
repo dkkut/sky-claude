@@ -16,7 +16,7 @@ import { notifyAccount } from './recoverycore.mjs';
 export const ICONS = ['key', 'phone', 'laptop', 'tablet', 'shield', 'star', 'heart', 'bolt', 'globe', 'home'];
 const MAX_KEYS = 10;
 const TTL_SEC = 300;
-const b64u = (buf) => Buffer.from(buf).toString('base64url');
+export const b64u = (buf) => Buffer.from(buf).toString('base64url');
 
 export const rpId = () => process.env.PASSKEY_RP_ID || (config.publicOrigin ? new URL(config.publicOrigin).hostname : '');
 const origins = () => (process.env.PASSKEY_ORIGINS ? process.env.PASSKEY_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean) : [config.publicOrigin].filter(Boolean));
@@ -39,21 +39,21 @@ export const cborDecode = (buf, pos = 0) => {
   throw new Error('cbor_unsupported');
 };
 
-const coseToJwk = (cose) => {
+export const coseToJwk = (cose) => {
   const kty = cose.get(1); const alg = cose.get(3);
   if (kty === 2 && alg === -7 && cose.get(-1) === 1) return { alg, jwk: { kty: 'EC', crv: 'P-256', x: b64u(cose.get(-2)), y: b64u(cose.get(-3)) } };
   if (kty === 3 && alg === -257) return { alg, jwk: { kty: 'RSA', n: b64u(cose.get(-1)), e: b64u(cose.get(-2)) } };
   throw new Error('bad_algorithm');
 };
 
-const parseClientData = (raw, type, expectChallenge) => {
+export const parseClientData = (raw, type, expectChallenge) => {
   let cd; try { cd = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')); } catch { throw new Error('bad_client_data'); }
   if (cd.type !== type) throw new Error('bad_client_data');
   if (cd.challenge !== expectChallenge) throw new Error('bad_challenge');
   if (!origins().includes(cd.origin) || cd.crossOrigin === true) throw new Error('bad_origin');
   return cd;
 };
-const checkAuthData = (ad) => {
+export const checkAuthData = (ad) => {
   if (ad.length < 37) throw new Error('bad_auth_data');
   if (!ad.subarray(0, 32).equals(crypto.createHash('sha256').update(rpId()).digest())) throw new Error('bad_rp');
   const flags = ad[32];
@@ -63,13 +63,13 @@ const checkAuthData = (ad) => {
 };
 
 /* ── Вызовы (challenge) ────────────────────────────────────────── */
-const newChallenge = async (skyId, purpose) => {
+export const newChallenge = async (skyId, purpose) => {
   await query('DELETE FROM passkey_challenges WHERE expires_at < now()').catch(() => {});
   const id = `pkc-${generateId()}`; const challenge = b64u(crypto.randomBytes(32));
   await query(`INSERT INTO passkey_challenges (id, sky_id, purpose, challenge, expires_at) VALUES ($1,$2,$3,$4, now() + ($5 || ' seconds')::interval)`, [id, skyId, purpose, challenge, String(TTL_SEC)]);
   return { id, challenge };
 };
-const takeChallenge = async (id, purpose, skyId) => {
+export const takeChallenge = async (id, purpose, skyId) => {
   const { rows } = await query(`DELETE FROM passkey_challenges WHERE id = $1 AND purpose = $2 AND expires_at > now() RETURNING sky_id, challenge`, [String(id ?? ''), purpose]);
   const r = rows[0];
   if (!r || (skyId !== undefined && r.sky_id !== skyId)) return null;
