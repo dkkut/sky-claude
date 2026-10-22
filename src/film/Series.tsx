@@ -213,7 +213,7 @@ const EpisodeTools = ({ ep, onChanged }: { ep: ServerMovie; onChanged: () => voi
   );
 };
 
-const UploadEpisode = ({ seriesId, season, onDone }: { seriesId: string; season: { id: string; number: number; episodes: ServerMovie[] }; onDone: () => void }) => {
+export const UploadEpisode = ({ seriesId, season, onDone }: { seriesId: string; season: { id: string; number: number; episodes: ServerMovie[] }; onDone: () => void }) => {
   const [title, setTitle] = useState('');
   const [epNo, setEpNo] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -316,5 +316,54 @@ export const MySeriesBar = ({ onOpen }: { onOpen: (id: string) => void }) => {
       )}
       {err && <p className="mt-1 text-[12px]" style={{ color: '#f87171' }}>{err}</p>}
     </section>
+  );
+};
+
+
+/** Загрузка серии прямо из формы загрузки: выбрать (или создать) сериал и сезон, затем загрузить серию. Серия остаётся закрытой до отправки сериала на проверку. */
+export const SeriesUploadInline = ({ onUploaded }: { onUploaded?: () => void }) => {
+  const [list, setList] = useState<ServerSeries[] | null>(null);
+  const [sid, setSid] = useState('');
+  const [full, setFull] = useState<SeriesFull | null>(null);
+  const [seasonId, setSeasonId] = useState('');
+  const [newTitle, setNewTitle] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const loadList = useCallback(async () => { const l = await apiMySeries(); setList(l); return l; }, []);
+  const loadFull = useCallback(async (id: string) => { const f = await apiSeries(id); setFull(f); setSeasonId((cur) => (f?.seasons.some((x) => x.id === cur) ? cur : (f?.seasons[f.seasons.length - 1]?.id ?? ''))); }, []);
+  useEffect(() => { void loadList().then((l) => { if (l?.length && !sid) setSid(l[0].id); }); }, [loadList]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (sid) void loadFull(sid); else { setFull(null); setSeasonId(''); } }, [sid, loadFull]);
+
+  const create = async () => {
+    if (!newTitle.trim() || busy) return;
+    setBusy(true); setErr('');
+    const r = await apiCreateSeries({ title: newTitle.trim() });
+    if (!r.ok) { setBusy(false); setErr(r.error); return; }
+    await apiAddSeason(r.data.id);
+    setNewTitle(''); await loadList(); setSid(r.data.id); setBusy(false);
+  };
+  const addSeason = async () => { if (!sid || busy) return; setBusy(true); const r = await apiAddSeason(sid); setBusy(false); if (!r.ok) { setErr(r.error); return; } await loadFull(sid); if (r.data?.id) setSeasonId(r.data.id); };
+  const season = full?.seasons.find((x) => x.id === seasonId) ?? null;
+  const input = { background: K.card2, color: K.text, border: `1px solid ${K.border}` };
+  return (
+    <div className="space-y-3 rounded-2xl p-4" style={{ background: K.card, border: `1px solid ${K.border}` }} data-series-upload>
+      <p className="text-sm font-bold" style={{ color: K.text }}>Загрузить серию сериала</p>
+      <p className="text-[11px]" style={{ color: K.dim }}>Сериал собирается по сериям: выберите сериал и сезон, загрузите серию — и так каждую. Серии остаются закрытыми, пока вы не отправите весь сериал на проверку (карточка сериала).</p>
+      {(list?.length ?? 0) > 0 && (
+        <div className="flex gap-2">
+          <select value={sid} onChange={(e) => setSid(e.target.value)} aria-label="Сериал" className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm" style={input}>
+            {(list ?? []).map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}
+          </select>
+          <select value={seasonId} onChange={(e) => setSeasonId(e.target.value)} aria-label="Сезон" className="rounded-xl px-3 py-2.5 text-sm" style={input}>
+            {(full?.seasons ?? []).map((x) => <option key={x.id} value={x.id}>{`Сезон ${x.number}`}</option>)}
+          </select>
+          <button type="button" disabled={busy || !sid} onClick={() => void addSeason()} aria-label="Добавить сезон" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl" style={{ background: K.card2, color: K.orange }}><Plus size={15} /></button>
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Новый сериал — название" className="min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm outline-none" style={input} />
+        <button type="button" disabled={busy || !newTitle.trim()} onClick={() => void create()} className="rounded-xl px-4 py-2 text-xs font-bold text-white disabled:opacity-40" style={{ background: K.orange }}>Создать</button>
+      </div>
+      {err && <p className="text-[12px]" style={{ color: '#f87171' }}>{err}</p>}
+      {season && sid && <UploadEpisode key={season.id} seriesId={sid} season={season} onDone={() => { void loadFull(sid); onUploaded?.(); }} />}
+    </div>
   );
 };

@@ -288,7 +288,8 @@ export const adminUploadFile = async (me, platform, name, req, meta) => {
   const saved = await saveStream(req, filePath(id), DOWNLOAD_MAX);
   if (saved.error) return saved;
   await query('INSERT INTO site_files (id, name, mime, size, sha256, uploaded_by) VALUES ($1,$2,$3,$4,$5,$6)', [id, fname, EXT[ext], saved.size, saved.sha256, me]);
-  await query('UPDATE site_downloads SET file_id = $2, updated_by = $3, updated_at = now() WHERE platform = $1', [platform, id, me]);
+  // Загрузили файл — платформа «Скоро» становится «Доступно» (скрытую и уже доступную не трогаем); иначе люди видели бы файл, но кнопка оставалась «Скоро».
+  await query("UPDATE site_downloads SET file_id = $2, updated_by = $3, updated_at = now(), status = CASE WHEN status = 'soon' THEN 'available' ELSE status END WHERE platform = $1", [platform, id, me]);
   if (cur.file_id) await dropFile(cur.file_id);
   await log(me, 'site_file_upload', `${platform}: ${fname} (${(saved.size / MB).toFixed(1)} МБ)`, meta);
   return { ok: true, id, size: saved.size, sha256: saved.sha256 };

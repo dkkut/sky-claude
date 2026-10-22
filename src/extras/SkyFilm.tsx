@@ -52,7 +52,7 @@ import { reloadWithFreshTicket, describeMediaFailure } from '@/core/mediaTicketR
 import { useModuleStore } from '@/data/state/modules';
 import { SkyShorts } from './SkyShorts';
 import { ACCEPT_VIDEO, ACCEPT_IMAGE } from '@/shared/fileAccept';
-import { SeriesRow, SeriesPage, MySeriesBar } from '@/film/Series';
+import { SeriesRow, SeriesPage, MySeriesBar, SeriesUploadInline } from '@/film/Series';
 import { ExplicitBadge, LegacyChip, LabelsButton } from '@/labels/Labels';
 import { apiSeriesCatalog, apiNextEpisode, apiSubtitles, apiSubtitleBlobUrl, type ServerSeries, type SubtitleTrack } from '@/film/seriesApi';
 
@@ -1059,6 +1059,7 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
   const vRef   = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
+  const [kind, setKind] = useState<'film' | 'episode'>('film');
 
   /* Ссылка на предпросмотр постера — временная, и её надо отпускать:
      иначе каждый выбранный файл остаётся висеть в памяти вкладки. */
@@ -1107,7 +1108,15 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
         </span>
       </div>
 
-      <div className="rounded-2xl p-4 space-y-3" style={{ background: K.card, border: `1px solid ${K.border}` }}>
+      <div className="flex gap-2" role="radiogroup" aria-label="Что загружаете">
+        {([['film', 'Фильм'], ['episode', 'Серия сериала']] as const).map(([k, l]) => (
+          <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => setKind(k)} className="flex-1 rounded-full py-2.5 text-[13px] font-bold"
+            style={{ background: kind === k ? K.orange : K.card2, color: kind === k ? '#fff' : K.sub, minHeight: 44 }}>{l}</button>
+        ))}
+      </div>
+      {kind === 'episode' && <SeriesUploadInline />}
+
+      <div className="rounded-2xl p-4 space-y-3" style={{ background: K.card, border: `1px solid ${K.border}`, display: kind === 'film' ? undefined : 'none' }}>
         <p className="text-sm font-bold" style={{ color: K.text }}>Загрузить фильм</p>
         <div
           className="flex flex-col items-center justify-center gap-2 rounded-2xl py-6 cursor-pointer transition-colors"
