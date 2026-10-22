@@ -1172,6 +1172,12 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
             </div>
           </button>
         )}
+        {vFile && meta && !(meta.duration > 0) && (
+          <p className="rounded-xl p-2.5 text-[11.5px]" style={{ background: 'rgba(255,255,255,0.04)', color: K.sub }}>
+            Браузер не смог определить длительность этого файла, поэтому как короткое кино его отметить нельзя.
+            Загрузите как обычный фильм и при необходимости пересохраните видео в MP4 (H.264).
+          </p>
+        )}
         <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Название *" className={iCls} style={iSty}/>
         <input value={cat} onChange={e=>setCat(e.target.value)} placeholder="Жанр (Фантастика, Комедия...)" className={iCls} style={iSty}/>
         <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Описание (необязательно)" rows={3}
@@ -1237,6 +1243,14 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
                   )}
                 </div>
               </button>
+              {m.status === 'private' && m.duration > 0 && m.duration <= MAX_SHORT_DURATION && (
+                <button type="button" aria-label={m.isShort ? 'Сделать обычным фильмом' : 'Сделать коротким кино'}
+                  title={m.isShort ? 'Сделать обычным фильмом' : 'Сделать коротким кино'}
+                  onClick={() => void useFilmStore.getState().editMovie(m.id, { isShort: !m.isShort })}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-white/5">
+                  <Zap size={14} style={{ color: m.isShort ? K.orange : K.dim }} fill={m.isShort ? K.orange : 'none'}/>
+                </button>
+              )}
               {m.status === 'private' && (
                 <button type="button" onClick={() => setSharingId(m.id)}
                   className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-white/5">
@@ -1712,25 +1726,22 @@ export const SkyFilm = () => {
               {hero && (
                 <Hero movie={hero} onPlay={() => setPlaying(hero)} onInfo={() => setDetail(hero)} />
               )}
-              {shorts.length > 0 && (
-                <button type="button" onClick={() => setShortsStartId(shorts[0].id)}
-                  className="mx-3 mt-3 mb-1 flex items-center gap-3 rounded-2xl px-4 py-3.5 w-[calc(100%-24px)]"
-                  style={{ background: `linear-gradient(135deg,${K.orange}22,${K.card2})`, border: `1px solid ${K.orange}33` }}>
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full" style={{ background: K.orange }}>
-                    <Zap size={18} color="#fff" fill="#fff"/>
-                  </div>
-                  <div className="flex-1 text-left min-w-0">
-                    <p className="text-sm font-bold" style={{ color: K.text }}>Короткое кино</p>
-                    <p className="text-[11px]" style={{ color: K.sub }}>Вертикальные короткометражки · свайп вверх</p>
-                  </div>
-                  {/* Число показываем, только когда лента кончилась и мы
-                      знаем его целиком. Иначе здесь стояла бы длина
-                      первой порции — то есть неправда. */}
-                  <span className="text-[11px] font-bold px-2 py-1 rounded-full" style={{ background: K.orange, color: '#fff' }}>
-                    {shortsDone ? shorts.length : 'Смотреть'}
-                  </span>
-                </button>
-              )}
+              <button type="button" onClick={() => (shorts.length > 0 ? setShortsStartId(shorts[0].id) : setTab('mine'))}
+                className="mx-3 mt-3 mb-1 flex items-center gap-3 rounded-2xl px-4 py-3.5 w-[calc(100%-24px)]"
+                style={{ background: `linear-gradient(135deg,${K.orange}22,${K.card2})`, border: `1px solid ${K.orange}33` }}>
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full" style={{ background: K.orange }}>
+                  <Zap size={18} color="#fff" fill="#fff"/>
+                </div>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="text-sm font-bold" style={{ color: K.text }}>Короткое кино</p>
+                  <p className="text-[11px]" style={{ color: K.sub }}>
+                    {shorts.length > 0 ? 'Вертикальные короткометражки · свайп вверх' : 'Пока пусто — загрузите первое: «Мои» → «Это короткое кино»'}
+                  </p>
+                </div>
+                <span className="text-[11px] font-bold px-2 py-1 rounded-full" style={{ background: K.orange, color: '#fff' }}>
+                  {shorts.length === 0 ? 'Загрузить' : shortsDone ? shorts.length : 'Смотреть'}
+                </span>
+              </button>
               <Row title="Продолжить просмотр" Icon={History} movies={continueWatching}
                 onSelect={m => { if (m.seriesId) setPlaying(m); else setDetail(m); }} progress={progress} />
               <SeriesRow series={seriesList} onOpen={setSeriesOpen} />
