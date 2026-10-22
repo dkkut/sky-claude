@@ -159,7 +159,7 @@ const pickRequisite = async (c, methodId, destination) => {
   return rows.find((r) => r.destinations == null || r.destinations.includes(destination)) ?? null;
 };
 
-export const listOptions = async ({ amount, destination, app }) => {
+export const listOptions = async ({ amount, destination, app, userId = null }) => {
   const s = await getSettings();
   const { rows: methods } = await query(
     'SELECT * FROM skykassa_methods WHERE enabled AND deleted_at IS NULL ORDER BY sort, created_at');
@@ -172,7 +172,12 @@ export const listOptions = async ({ amount, destination, app }) => {
     direct.push({ id: m.id, kind: m.kind, title: m.title, description: m.description, min: Number(m.min_amount), max: Number(m.max_amount) });
   }
   const partners = s.partnersEnabled ? await partnerOptions({ amount, destination, app }) : [];
-  return { direct, partners, settings: { notice: s.notice, minAmount: s.minAmount, maxAmount: s.maxAmount, ttlMinutes: s.ttlMinutes } };
+  let firstBonus = null;
+  if (destination === 'balance' && Number(s.firstTopupBonusPercent) > 0 && Number(s.firstTopupBonusMaxRub) > 0 && userId) {
+    const { rowCount } = await query('SELECT 1 FROM skykassa_first_bonus WHERE user_id = $1', [userId]);
+    if (!rowCount) firstBonus = { percent: Number(s.firstTopupBonusPercent), maxRub: Number(s.firstTopupBonusMaxRub), rub: Math.min(Math.floor(amount * s.firstTopupBonusPercent) / 100, Number(s.firstTopupBonusMaxRub)) };
+  }
+  return { direct, partners, firstBonus, settings: { notice: s.notice, minAmount: s.minAmount, maxAmount: s.maxAmount, ttlMinutes: s.ttlMinutes } };
 };
 
 /* ─── Создание ─────────────────────────────────────────────────────── */

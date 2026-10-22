@@ -41,6 +41,7 @@ export interface HistoryItem {
 export interface Options {
   direct: { id: string; kind: string; title: string; description: string; min: number; max: number }[];
   partners: { id: string; title: string; logo: string; methods: string[]; fee: number; total: number; feePercent: number; feeFixed: number; available: boolean; status: string; note: string }[];
+  firstBonus?: { percent: number; maxRub: number; rub: number } | null;
   settings: { notice: string; minAmount: number; maxAmount: number; ttlMinutes: number };
 }
 export interface Config { paused: boolean; message: string; notice: string; minAmount: number; maxAmount: number; ttlMinutes: number; apps: Record<string, boolean> }

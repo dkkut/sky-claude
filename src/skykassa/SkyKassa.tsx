@@ -461,6 +461,7 @@ export const SkyKassa = ({ onClose, initialPaymentId }: { onClose: () => void; i
                     <Row k="Заявка" v={<span translate="no">{pay.number}</span>} mono />
                   </Glass>
                   {opts?.settings.notice && <Glass className="text-sm">{opts.settings.notice}</Glass>}
+                  {opts?.firstBonus && <Glass className="flex items-start gap-2 text-sm"><Sparkles size={16} className="mt-0.5 shrink-0" style={{ color: V.sky }} /><span>{`Бонус за первое пополнение: +${opts.firstBonus.percent}% (сейчас +${rub(opts.firstBonus.rub)}, не больше ${rub(opts.firstBonus.maxRub)}). Начисляется один раз после подтверждения платежа.`}</span></Glass>}
                   <div>
                     <Label>Прямая оплата с подтверждением</Label>
                     <p className="mb-2 text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Вы переводите деньги по реквизитам, администрация проверяет поступление и зачисляет средства.</p>

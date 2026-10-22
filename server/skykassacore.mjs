@@ -113,6 +113,8 @@ export const DEFAULT_SETTINGS = {
   ttlMinutes: 30,
   codeTtlDays: 30,
   partnersEnabled: true,
+  firstTopupBonusPercent: 20,      // % к ПЕРВОМУ пополнению баланса (0 — выключено)
+  firstTopupBonusMaxRub: 1000,     // потолок бонуса, ₽
 };
 
 export const getSettings = async (c = null) => {
@@ -136,7 +138,7 @@ export const saveSettings = async (actorId, patch) => {
   if ('apps' in patch && patch.apps && typeof patch.apps === 'object') {
     for (const a of APPS) if (a in patch.apps) next.apps[a] = patch.apps[a] === true;
   }
-  for (const [k, lo, hi] of [['minAmount', 1, 10_000_000], ['maxAmount', 1, 10_000_000], ['ttlMinutes', 5, 1440], ['codeTtlDays', 1, 365]]) {
+  for (const [k, lo, hi] of [['minAmount', 1, 10_000_000], ['maxAmount', 1, 10_000_000], ['ttlMinutes', 5, 1440], ['codeTtlDays', 1, 365], ['firstTopupBonusPercent', 0, 100], ['firstTopupBonusMaxRub', 0, 1_000_000]]) {
     if (k in patch) {
       const n = Number(patch[k]);
       if (!isInt(n) || n < lo || n > hi) return bad(k);

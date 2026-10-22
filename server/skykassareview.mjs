@@ -53,6 +53,8 @@ export const confirmAndCredit = async (c, pay, { actorId = null, actorKind = 'sy
     set.balance_after = r.balance;
     await awardIn(c, { trigger: 'wallet_topup', profileId: pay.user_id, amountRub: amount, ref: `skykassa:${pay.id}` });
     await c.query('UPDATE skykassa_credits SET balance_after = $2 WHERE payment_id = $1', [pay.id, r.balance]);
+    const bonus = await grantFirstTopupBonus(c, pay, amount);
+    if (bonus) set.balance_after = bonus.balance;
   } else {
     const s = await getSettings(c);
     const batchId = `scb-${newId('x').slice(2)}`.slice(0, 40);
@@ -80,12 +82,41 @@ export const confirmAndCredit = async (c, pay, { actorId = null, actorKind = 'sy
   return pay;
 };
 
+/**
+ * Бонус за ПЕРВОЕ пополнение баланса: процент от суммы, не больше потолка. Один раз на человека — PRIMARY KEY
+ * skykassa_first_bonus; запись и зачисление в той же транзакции, что и само пополнение (платёж под FOR UPDATE).
+ * Сбой бонуса откатывает только его (SAVEPOINT) и пополнение не ломает.
+ */
+const grantFirstTopupBonus = async (c, pay, amount) => {
+  const s = await getSettings(c);
+  const percent = Number(s.firstTopupBonusPercent) || 0;
+  if (percent <= 0) return null;
+  const bonus = Math.min(Math.floor(amount * percent) / 100, Number(s.firstTopupBonusMaxRub) || 0);
+  if (!(bonus > 0)) return null;
+  await c.query('SAVEPOINT first_bonus');
+  try {
+    const ins = await c.query(
+      `INSERT INTO skykassa_first_bonus (user_id, payment_id, topup_rub, bonus_rub, percent) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (user_id) DO NOTHING`, [pay.user_id, pay.id, amount, bonus, percent]);
+    if (!ins.rowCount) { await c.query('RELEASE SAVEPOINT first_bonus'); return null; }
+    const r = await wallet.creditIn(c, pay.user_id, bonus, 'skykassa_bonus', `Бонус за первое пополнение +${percent}% (${pay.number})`, `skykassa-bonus:${pay.user_id}`);
+    if (r.error) throw new KErr(r.error);
+    await c.query('RELEASE SAVEPOINT first_bonus');
+    return { bonus, balance: r.balance };
+  } catch (e) {
+    await c.query('ROLLBACK TO SAVEPOINT first_bonus');
+    console.error('[skykassa] бонус за первое пополнение не начислен:', e?.message);
+    return null;
+  }
+};
+
 /** Уведомить человека о завершении (без номеров карт и счетов). */
 const notifyDone = async (pay) => {
   if (pay.destination === 'code') {
     await notifyOnce(pay.user_id, `${pay.id}:completed`, 'SkyKassa', `Платёж ${pay.number} подтверждён. Код пополнения на ${rub(pay.amount)} готов — он в карточке платежа.`);
   } else {
-    await notifyOnce(pay.user_id, `${pay.id}:completed`, 'SkyKassa', `Средства зачислены: +${rub(pay.amount)} (заявка ${pay.number}).`);
+    const { rows: [fb] } = await query('SELECT bonus_rub FROM skykassa_first_bonus WHERE payment_id = $1', [pay.id]);
+    await notifyOnce(pay.user_id, `${pay.id}:completed`, 'SkyKassa', `Средства зачислены: +${rub(pay.amount)} (заявка ${pay.number}).${fb ? ` Бонус за первое пополнение: +${rub(fb.bonus_rub)}.` : ''}`);
   }
 };
 export const notifyCompleted = notifyDone;

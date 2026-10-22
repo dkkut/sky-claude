@@ -121,7 +121,7 @@ export const skyKassaRoutes = async (req, res, url) => {
     const s = await getSettings();
     if (!Number.isSafeInteger(amount) || amount < s.minAmount || amount > s.maxAmount) return json(res, 400, { error: 'bad_amount', min: s.minAmount, max: s.maxAmount });
     const dest = params.get('destination') === 'code' ? 'code' : 'balance';
-    return json(res, 200, await U.listOptions({ amount, destination: dest, app: params.get('app') || 'web' }));
+    return json(res, 200, await U.listOptions({ amount, destination: dest, app: params.get('app') || 'web', userId: me }));
   }
   if (req.method === 'GET' && rest === '/payments') return json(res, 200, await U.listOwn(me, { limit: params.get('limit'), offset: params.get('offset') }));
   if (req.method === 'POST' && rest === '/payments') {

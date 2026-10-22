@@ -1530,3 +1530,9 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - Лендинг/админка за Cloudflare: `nginx.conf` берёт настоящий адрес из `CF-Connecting-IP` только от адресов Cloudflare (`set_real_ip_from`); без этого PIN при смене IP, пределы по адресу и журнал безопасности работали на адресах краевых узлов Cloudflare (причина «PIN просит снова и снова» и обрыва WebSocket). Список диапазонов — https://www.cloudflare.com/ips/.
 - Админка: если запрос прав (`whoami`) не получил ответа, панель пишет «Не удалось связаться с сервером» (код, «Повторить»), а не «Панель закрыта». Причина отказа сокета пишется в журнал: `[ws] auth-failed: <причина>`.
 - После потери `.env`: `scripts/env-recover.sh` (берёт значения из работающих контейнеров; дописывает `COMPOSE_FILE` для секретов). Не пересоздавать контейнеры, пока `.env` не восстановлен.
+
+## Бонус за первое пополнение (SkyKassa), ноябрь-2026
+
+`server/skykassareview.mjs::grantFirstTopupBonus`, миграция `179_first_topup_bonus.sql` (`skykassa_first_bonus`, PRIMARY KEY `user_id` — один раз на человека). При зачислении пополнения БАЛАНСА (не кода) начисляется `firstTopupBonusPercent` % (по умолчанию 20) от суммы, не больше `firstTopupBonusMaxRub` (по умолчанию 1000 ₽) —
+тип кошелька `skykassa_bonus`, в той же транзакции под `FOR UPDATE` платежа; сбой бонуса откатывается SAVEPOINT-ом и пополнение не ломает. Настройки — `skykassa_settings` (`saveSettings`: `firstTopupBonusPercent` 0–100, `firstTopupBonusMaxRub`; 0 выключает); поля в форме настроек вкладки «SkyKassa» админки НЕ добавлены — меняются через API.
+Человек видит плашку с размером бонуса на экране оплаты (`options.firstBonus`, пока бонус не использован) и строку «Бонус за первое пополнение» в истории. Потолок 1000 ₽ выбран мной — владельцу стоит проверить. Тест не писался; `tsc`/`i18n:check` проходят. Нужен деплой (миграция 179) и пересборка `.apk`/`.exe`.
