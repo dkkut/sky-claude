@@ -12,6 +12,7 @@ import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { InviteDialog } from '../invite/InviteDialog';
+import { openGuide, goTo as goToGuide } from '../guide/nav';
 import { SEASONS, SEASON_ORDER, resolveSeason, type Season } from '../settings/seasons';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -952,6 +953,14 @@ const SettingsSection = ({ logout, username, onOpen }: {
           onClick={() => setInviteOpen(true)}
           right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
         {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)}/>}
+        <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
+        <SettingsRow icon={Info} iconColor="#8b5cf6" label="Познакомиться с Sky" sub="Короткое знакомство с сервисами"
+          onClick={openGuide}
+          right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
+        <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
+        <SettingsRow icon={ExternalLink} iconColor="#8b5cf6" label="Путеводитель по Sky" sub="Все сервисы экосистемы"
+          onClick={() => goToGuide({ module:'extras', tab:'guide' })}
+          right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
         <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
         <SettingsRow icon={Download} iconColor="var(--t3)" label="Обновления" sub="Скачать приложения Sky"
           onClick={() => setUpdatesOpen(true)}

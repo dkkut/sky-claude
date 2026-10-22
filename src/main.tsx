@@ -25,6 +25,8 @@ import { IpPinOverlay } from './auth/IpPin';
 import { GloballyBlocked } from './auth/GloballyBlocked';
 import { captureInvite } from './invite/capture';
 import { SeasonLayer } from './settings/SeasonLayer';
+const GuideOnboarding = React.lazy(() => import('./guide/GuideOnboarding').then((m) => ({ default: m.GuideOnboarding })));
+const GuidePage = React.lazy(() => import('./guide/GuidePage').then((m) => ({ default: m.GuidePage })));
 import { LimitedAccessGate } from './auth/LimitedAccess';
 import { setBetaRequiredHandler, setPlatformBlockedHandler, initNativeAuth, type PlatformBlock } from './core/auth/api';
 import { apiPlatformStatus } from './core/platform';
@@ -606,7 +608,7 @@ void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).fina
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : <><Root /><SeasonLayer /><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><LinkDeepLinkGate /><OidcAuthorizeGate /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><LinkDeepLinkGate /><OidcAuthorizeGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));

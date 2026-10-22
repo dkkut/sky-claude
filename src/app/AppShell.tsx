@@ -44,22 +44,6 @@ import { useIsMobile }            from '@/interface/mobile/useIsMobile';
 import { MobileShell }            from '@/interface/mobile/MobileShell';
 import { apiCall }                from '@/core/auth/api';
 
-// First-launch welcome notification
-const useFirstLaunch = () => {
-  const currentUserId = useAuthStore((s) => s.currentUserId);
-  const accounts = useAuthStore((s) => s.accounts);
-  const [shown, setShown] = useState(false);
-  useEffect(() => {
-    if (!currentUserId) return;
-    const key = 'sky:welcomed:' + currentUserId;
-    if (!localStorage.getItem(key)) {
-      setTimeout(() => setShown(true), 1200);
-      localStorage.setItem(key, '1');
-    }
-  }, [currentUserId]);
-  return { shown, dismiss: () => setShown(false) };
-};
-
 /* - Pet Cursor (Prime users) ---------------------------------------- */
 const PetCursor = () => {
   const accounts = useAuthStore((s) => s.accounts);
@@ -114,7 +98,6 @@ const MessengerScreen = () => (
 export const AppShell = () => {
   const activeModule = useModuleStore(s => s.activeModule);
   const setActiveModule = useModuleStore(s => s.setActiveModule);
-  const welcome = useFirstLaunch();
   const isMobile = useIsMobile();
   const deviceMode = useDeviceMode();
   const carMode = useCarMode();
@@ -190,28 +173,6 @@ export const AppShell = () => {
     return (
       <>
         <PetCursor />
-        <AnimatePresence>
-          {welcome.shown && (
-            <motion.div
-              initial={{ opacity: 0, y: -60 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -60 }}
-              transition={{ type: 'spring', damping: 24, stiffness: 300 }}
-              style={{
-                position: 'fixed', top: 'calc(var(--safe-top) + 8px)', left: 16, right: 16,
-                zIndex: 99998, background: 'var(--bg-l3)', border: '1px solid var(--border-m)', borderRadius: 16,
-                padding: '12px 16px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                display: 'flex', alignItems: 'center', gap: 12, backdropFilter: 'blur(20px)',
-              }}>
-              <Sparkles size={22} style={{ color: 'var(--accent)', flexShrink: 0 }}/>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--t1)' }}>Добро пожаловать в Sky!</p>
-              </div>
-              <button type="button" onClick={welcome.dismiss}
-                style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600 }}>
-                Начать
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
         <MobileShell />
         <ProfileViewerLayer />
         <ErrorBoundary>
@@ -225,37 +186,6 @@ export const AppShell = () => {
     <>
       <PetCursor />
 
-      {/* First-launch welcome */}
-      <AnimatePresence>
-        {welcome.shown && (
-          <motion.div
-            initial={{ opacity: 0, y: -60 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -60 }}
-            transition={{ type: 'spring', damping: 24, stiffness: 300 }}
-            style={{
-              position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
-              zIndex: 99998, background: 'var(--bg-l3)',
-              border: '1px solid var(--border-m)', borderRadius: 16,
-              padding: '12px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-              display: 'flex', alignItems: 'center', gap: 12, minWidth: 280,
-              backdropFilter: 'blur(20px)',
-            }}>
-            <Sparkles size={24} style={{ color: 'var(--accent)', flexShrink: 0 }}/>
-            <div style={{ flex: 1 }}>
-              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--t1)' }}>Добро пожаловать в Sky!</p>
-              <p style={{ fontSize: 12, color: 'var(--t2)', marginTop: 2 }}>Экосистема готова к использованию</p>
-            </div>
-            <button
-              type="button"
-              onClick={welcome.dismiss}
-              style={{ background: 'var(--accent)', color: '#fff', border: 'none',
-                borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-              Начать
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
       <div className="island-pad-shell flex h-screen overflow-hidden" style={{ background: 'var(--bg)', height: '100dvh' }}>
         <NotifBridge />
         <IslandBridge />
