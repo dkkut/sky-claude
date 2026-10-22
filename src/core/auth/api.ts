@@ -410,6 +410,13 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
  */
 export const apiCall = call;
 
+/** Сырой запрос с той же сессией (токен, устройство, обновление при 401) — для передачи двоичных кусков (Sky Transfer). */
+export const apiRawAuthed = async (path: string, init: RequestInit = {}): Promise<Response> => {
+  let res = await raw(path, init);
+  if (res.status === 401 && await refreshOnce()) res = await raw(path, init);
+  return res;
+};
+
 /** GET двоичного файла (документ, скан): та же сессия, результат — Blob. */
 export const apiBlob = async (path: string): Promise<{ ok: boolean; status: number; blob: Blob | null }> => {
   let res: Response;

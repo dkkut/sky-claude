@@ -130,6 +130,9 @@ import { accountRecoveryRoutes } from './routes/accountrecovery.mjs';
 import { recoveryRoutes } from './routes/recovery.mjs';
 import { limitedAccessRoutes } from './routes/limitedaccess.mjs';
 import { appLockRoutes } from './routes/applock.mjs';
+import { skyQrRoutes } from './routes/skyqr.mjs';
+import { transferRoutes } from './routes/transfer.mjs';
+import { sweepTransfers } from './transfer.mjs';
 import { applockBlocked } from './applock.mjs';
 import { resourceRoutes } from './routes/resources.mjs';
 import { startResourceOptimizer, heavyAllowed, shouldDeferHousekeeping } from './resourceopt.mjs';
@@ -246,7 +249,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [defenseRoutes, appLockRoutes, betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [defenseRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -827,6 +830,7 @@ const start = async () => {
       await import('./recoverycases.mjs').then((m) => m.sweepCases()).catch((e) => console.error('[recovery] заявки:', e.message));
       await import('./recoverycore.mjs').then((m) => m.sweepAttempts()).catch(() => {});
       await sweepLimited().catch(() => {});
+      await sweepTransfers().catch((e) => console.error('[transfer]', e.message));
       await sweepLogs().catch((e) => console.error('[skylog] уборка:', e.message));
       const arch = await sweepArchive().catch((e) => { console.error('[archive]', e.message); return { warned: 0, purged: 0 }; });
       if (arch.purged || arch.warned) console.log(`[archive] напомнено: ${arch.warned}, стёрто: ${arch.purged}`);

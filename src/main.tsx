@@ -28,6 +28,8 @@ import { restoreIcon } from './appicon/appIcon';
 restoreIcon();
 import { GloballyBlocked } from './auth/GloballyBlocked';
 import { captureInvite } from './invite/capture';
+import { captureQr } from './qr/qrApi';
+import { QrIncoming } from './qr/QrIncoming';
 import { SeasonLayer } from './settings/SeasonLayer';
 const GuideOnboarding = React.lazy(() => import('./guide/GuideOnboarding').then((m) => ({ default: m.GuideOnboarding })));
 const GuidePage = React.lazy(() => import('./guide/GuidePage').then((m) => ({ default: m.GuidePage })));
@@ -585,6 +587,7 @@ const LinkDeepLinkGate = () => {
 installTelemetry();
 
 captureInvite();   // ссылка-приглашение ?inv=КОД
+captureQr();   // ссылка из Sky QR ?qr=КОД — запоминается до входа
 void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).finally(() => ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary fallback={
@@ -612,7 +615,7 @@ void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).fina
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><AppLockGate /><LinkDeepLinkGate /><OidcAuthorizeGate /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><AppLockGate /><LinkDeepLinkGate /><QrIncoming /><OidcAuthorizeGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));

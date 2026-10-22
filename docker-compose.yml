@@ -112,6 +112,8 @@ services:
       # и не база: файл весит мегабайты, в Postgres он раздул бы каждую
       # резервную копию, а при выдаче прошёл бы через память целиком.
       MUSIC_DIR:             /data/music
+      TRANSFER_DIR:          /data/transfer
+      TRANSFER_MAX_MB:       ${TRANSFER_MAX_MB:-}
       # Сайт (лендинг): файлы приложений для скачивания и вложения апелляций/заявок — в томе, не в образе.
       SITE_DIR:              /data/site
       # Кино лежит там же по смыслу, но в своём томе: фильм весит
@@ -291,6 +293,8 @@ services:
     volumes:
       # Музыка переживает пересборку образа: файлы лежат в томе.
       - music-data:/data/music
+      # Sky Transfer: временные куски передач между устройствами (удаляются после получения/срока).
+      - transfer-data:/data/transfer
       - film-data:/data/film
       - site-data:/data/site
       - podcast-data:/data/podcasts
@@ -441,6 +445,7 @@ volumes:
   postgres-data:
   redis-data:
   music-data:
+  transfer-data:
   film-data:
   site-data:
   podcast-data:

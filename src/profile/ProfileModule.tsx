@@ -5,13 +5,15 @@ import { StaffNotifySettings } from './StaffNotifySettings';
 import { enablePush, disablePush, PUSH_TEXT } from '@/notifications/pushClient';
 import { useCursorPet, CURSOR_ANIMALS } from '@/shared/cursorPet';
 import { flash } from '../shared/flash';
-import { Mic as MicIcon, PanelTop } from 'lucide-react';
+import { Mic as MicIcon, PanelTop, QrCode, ScanLine } from 'lucide-react';
 import { useWake, requestMicForWake } from '@/island/wake';
 import { recognitionMode } from '@/ai/speech';
 import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { InviteDialog } from '../invite/InviteDialog';
+import { MyQrDialog } from '../qr/MyQrDialog';
+import { ScanContact } from '../qr/ScanContact';
 import { ArchiveDialog } from '../archive/ArchiveDialog';
 import { AppIconSettings } from '../appicon/AppIconSettings';
 import { openGuide, goTo as goToGuide } from '../guide/nav';
@@ -602,6 +604,8 @@ const SettingsSection = ({ logout, username, onOpen }: {
   const [confirmExit, setConfirmExit] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [myQrOpen, setMyQrOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const { settings, set, reset } = useSettings();
   const cursorPet = useCursorPet();
@@ -977,6 +981,16 @@ const SettingsSection = ({ logout, username, onOpen }: {
           onClick={() => setInviteOpen(true)}
           right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
         {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)}/>}
+        <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
+        <SettingsRow icon={QrCode} iconColor="var(--t3)" label="Мой QR-код" sub="Обмен контактами: покажите код — вас добавят"
+          onClick={() => setMyQrOpen(true)}
+          right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
+        <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
+        <SettingsRow icon={ScanLine} iconColor="var(--t3)" label="Сканировать QR" sub="Добавить человека в контакты по его коду"
+          onClick={() => setScanOpen(true)}
+          right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
+        {myQrOpen && <MyQrDialog onClose={() => setMyQrOpen(false)}/>}
+        {scanOpen && <ScanContact onClose={() => setScanOpen(false)}/>}
         <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
         <SettingsRow icon={Info} iconColor="var(--t3)" label="Архив материалов" sub="Удалённое хранится 20 дней — можно вернуть"
           onClick={() => setArchiveOpen(true)}

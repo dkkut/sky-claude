@@ -323,6 +323,12 @@ const handle = (data: any) => {
       window.dispatchEvent(new CustomEvent('sky:limited'));
       break;
     /* Замок приложения закрыт на сервере: сокет закрыт, экран блокировки; после разблокировки подключаемся заново. */
+    /* Sky Transfer: входящая передача, смена статуса, новое устройство — экран перечитывает сервер. */
+    case 'transfer:incoming':
+    case 'transfer:update':
+    case 'transfer:device':
+      window.dispatchEvent(new CustomEvent('sky:transfer', { detail: { type, payload } }));
+      break;
     case 'applock':
       authorized = false; wantOpen = false;
       window.dispatchEvent(new CustomEvent('sky:applock'));

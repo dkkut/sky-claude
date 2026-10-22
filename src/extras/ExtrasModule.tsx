@@ -1,4 +1,4 @@
-import { Compass, Handshake, Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, HardDrive, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
+import { Compass, ArrowLeftRight, Handshake, Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, HardDrive, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
 import { visitKeyOf, apiCashbackVisit } from '@/prime/primeApi';
 import { flash } from '@/shared/flash';
 import { ModuleGate, MediaOutageBanner } from '@/core/moduleClosures';
@@ -38,6 +38,7 @@ const TogetherTab = lazyChunk(() => import('@/together/TogetherTab').then(m => (
 const SkyBlox = lazyChunk(() => import('@/blox/SkyBlox').then(m => ({ default: m.SkyBlox })));
 const CloudGaming = lazyChunk(() => import('@/cloud/CloudGaming').then(m => ({ default: m.CloudGaming })));
 const SkyCloud = lazyChunk(() => import('@/cloud/SkyCloud').then(m => ({ default: m.SkyCloud })));
+const SkyTransfer = lazyChunk(() => import('@/transfer/SkyTransfer').then(m => ({ default: m.SkyTransfer })));
 const GuidePage = lazyChunk(() => import('@/guide/GuidePage').then(m => ({ default: m.GuidePage })));
 const Partners = lazyChunk(() => import('@/partners/Partners').then(m => ({ default: m.Partners })));
 const SkyGo = lazyChunk(() => import('@/go/GoModule').then(m => ({ default: m.SkyGo })));
@@ -95,7 +96,7 @@ import { apiSupportStatus } from '@/moderation/supportApi';
    Оформление и порядок экранов сохранены: список карточками, кнопка
    создания, внутри плеер и колонка участников.                     */
 
-type Tab = 'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'partners'|'guide'|'more';
+type Tab = 'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'partners'|'guide'|'transfer'|'more';
 
 const fmtBytes = (b?: number) => b ? `${(b/1024/1024).toFixed(1)} MB` : '';
 const fmtSec = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -617,6 +618,7 @@ const TABS = [
   {key:'garant', label:'Гарант', icon:Shield},
   {key:'partners', label:'Партнёры', icon:Handshake},
   {key:'guide',    label:'Путеводитель', icon:Compass},
+  {key:'transfer', label:'Sky Transfer', icon:ArrowLeftRight},
   {key:'more',   label:'Прочее', icon:MoreHorizontal},
 ] as const;
 
@@ -899,6 +901,7 @@ const MediaHomeTab = ({
     { key:'blox',    Icon:Gamepad2, label:'Sky Blox', color:'#22c55e', bg:'rgba(34,197,94,.12)'   },
     { key:'partners',Icon:Handshake,label:'Партнёры', color:'#0ea5e9', bg:'rgba(14,165,233,.12)'  },
     { key:'guide',Icon:Compass,label:'Путеводитель', color:'#8b5cf6', bg:'rgba(139,92,246,.12)'  },
+    { key:'transfer',Icon:ArrowLeftRight,label:'Sky Transfer', color:'#38bdf8', bg:'rgba(56,189,248,.12)'  },
   ] as const;
 
   /* Раньше здесь были 5 выдуманных подборок с придуманными названиями и
@@ -1322,6 +1325,7 @@ export const ExtrasModule = () => {
         {tab==='go' && <SkyGo/>}
         {tab==='partners' && <Partners/>}
         {tab==='guide' && <GuidePage/>}
+        {tab==='transfer' && <SkyTransfer/>}
         {tab==='market' && <SkyMarket/>}
         {tab==='blox'   && <SkyBlox/>}
         {tab==='pvz'    && <SkyPVZ/>}

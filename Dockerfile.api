@@ -38,7 +38,7 @@ COPY electron/known-games.json ./electron/known-games.json
 # процесс node не мог.
 RUN mkdir -p /data/music /data/film /data/podcasts /data/skyvideo /data/books \
       /data/bloom /data/stories /data/gifts /data/ads /data/campaigns /data/skins \
-      /data/evidence /data/market /data/video /data/tickets /data/aifiles \
+      /data/evidence /data/market /data/video /data/tickets /data/aifiles /data/transfer \
     && chown -R node:node /data
 
 # Работаем не от root: образ node уже содержит пользователя node.
