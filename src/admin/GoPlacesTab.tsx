@@ -18,12 +18,47 @@ const bad = (r: { error?: string; reason?: string; status?: number }) => flash((
 
 interface Row { id: string; name: string; connected: boolean; status: string; statusLabel: string; bizStatus: string; city: string; address: string; category: string | null; photos: number; submittedAt: string | null; rejectReason: string }
 interface Cat { id: string; name: string; icon: string; sort: number; hidden: boolean; places: number }
-type View = 'queue' | 'cats' | 'errors';
+type View = 'queue' | 'cats' | 'reports' | 'errors';
 
 const AdminPhoto = ({ url }: { url: string }) => {
   const [src, setSrc] = useState('');
   useEffect(() => { let u = ''; let alive = true; void apiBlob(url).then((r) => { if (alive && r.ok && r.blob) { u = URL.createObjectURL(r.blob); setSrc(u); } }); return () => { alive = false; if (u) URL.revokeObjectURL(u); }; }, [url]);
   return <div style={{ width: 96, height: 96, borderRadius: 12, overflow: 'hidden', background: C.l2 }}>{src && <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}</div>;
+};
+
+const Reviews = ({ id }: { id: string }) => {
+  const [rows, setRows] = useState<any[] | null>(null);
+  const load = useCallback(async () => { const r = await apiCall<{ reviews: any[] }>(`${A}/${id}/reviews`); if (r.ok) setRows(r.data!.reviews); }, [id]);
+  useEffect(() => { void load(); }, [load]);
+  const act = async (rid: string, hide: boolean) => {
+    let reason = ''; if (hide) { reason = prompt('Причина скрытия отзыва (от 5 знаков)') ?? ''; if (reason.trim().length < 5) return; }
+    const r = await apiCall(`${A}/reviews/${rid}/${hide ? 'hide' : 'show'}`, { method: 'POST', body: body({ reason }) }); if (!r.ok) return bad(r); void load();
+  };
+  if (!rows?.length) return null;
+  return <details><summary style={{ fontSize: 12, color: C.t2, cursor: 'pointer' }}>Отзывы ({rows.length})</summary>
+    {rows.map((r) => <div key={r.id} style={{ fontSize: 12, color: C.t2, padding: '4px 0', opacity: r.hidden ? 0.6 : 1 }}>{'★'.repeat(r.rating)} <span translate="no">{r.text}</span>{r.hidden ? ` — скрыт: ${r.hiddenReason}` : ''}
+      {' '}<button type="button" onClick={() => void act(r.id, !r.hidden)} style={{ background: 'none', border: 'none', color: C.acc, textDecoration: 'underline' }}>{r.hidden ? 'Показать' : 'Скрыть'}</button></div>)}</details>;
+};
+
+const Reports = () => {
+  const [st, setSt] = useState('open'); const [rows, setRows] = useState<any[] | null>(null);
+  const load = useCallback(async () => { const r = await apiCall<{ reports: any[] }>(`${A}/reports?status=${st}`); if (r.ok) setRows(r.data!.reports); else { setRows([]); bad(r); } }, [st]);
+  useEffect(() => { void load(); }, [load]);
+  const act = async (id: string, a: 'resolve' | 'dismiss') => {
+    const note = prompt(a === 'resolve' ? 'Что сделано по жалобе' : 'Почему жалоба отклонена') ?? ''; if (note.trim().length < 3) return;
+    const r = await apiCall(`${A}/reports/${id}/${a}`, { method: 'POST', body: body({ note }) }); if (!r.ok) return bad(r); flash('Готово'); void load();
+  };
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <select aria-label="Статус" value={st} onChange={(e) => setSt(e.target.value)} style={inp}><option value="open">Открытые</option><option value="resolved">Решённые</option><option value="dismissed">Отклонённые</option></select>
+      {!rows ? <div style={box}>Загрузка…</div> : !rows.length ? <div style={box}>Жалоб нет.</div> : rows.map((r) => (
+        <div key={r.id} style={box}><b translate="no" style={{ color: C.t1 }}>{r.placeName}</b> <span style={{ fontSize: 12, color: C.t3 }}>· {r.reasonLabel} · {when(r.at)}</span>
+          {r.text && <div translate="no" style={{ fontSize: 13, color: C.t2 }}>{r.text}</div>}
+          {r.resolution && <div style={{ fontSize: 12, color: C.t3 }}>Решение: {r.resolution}</div>}
+          {r.status === 'open' && <div style={{ display: 'flex', gap: 8, marginTop: 6 }}><button type="button" style={btn(C.acc)} onClick={() => void act(r.id, 'resolve')}>Решено</button><button type="button" style={btn(C.t3)} onClick={() => void act(r.id, 'dismiss')}>Отклонить</button></div>}
+          <div style={{ fontSize: 11, color: C.t3 }}>{r.placeId}</div></div>))}
+    </div>
+  );
 };
 
 const Detail = ({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) => {
@@ -55,6 +90,7 @@ const Detail = ({ id, onClose, onChanged }: { id: string; onClose: () => void; o
         {([['approve', 'Одобрить', C.acc], ['reject', 'Отклонить', C.red], ['hide', 'Скрыть', C.t3], ['unhide', 'Вернуть в каталог', C.acc], ['block', 'Заблокировать', C.red], ['unblock', 'Разблокировать', C.acc]] as const).filter(([a]) => can(a)).map(([a, n, bg]) =>
           <button key={a} type="button" disabled={busy} onClick={() => void act(a)} style={btn(bg, busy)}>{n}</button>)}
       </div>
+      <Reviews id={id} />
       <details><summary style={{ fontSize: 12, color: C.t2, cursor: 'pointer' }}>История изменений ({d.log.length})</summary>
         {d.log.map((l: any, i: number) => <div key={i} style={{ fontSize: 12, color: C.t2, padding: '2px 0' }}>{when(l.at)} · {ACTION[l.action] ?? l.action}{l.detail ? ` — ${l.detail}` : ''}</div>)}</details>
     </div>
@@ -97,7 +133,7 @@ export const GoPlacesTab = () => {
   }, [status, q]);
   useEffect(() => { if (view === 'queue') void load(); }, [view, load]);
   useEffect(() => { if (view === 'errors') void apiCall<{ errors: any[] }>(`${A}/errors`).then((r) => { if (r.ok) setErrs(r.data!.errors); else bad(r); }); }, [view]);
-  const tabs: [View, string][] = [['queue', 'Карточки'], ['cats', 'Категории'], ['errors', 'Сбои']];
+  const tabs: [View, string][] = [['queue', 'Карточки'], ['reports', 'Жалобы'], ['cats', 'Категории'], ['errors', 'Сбои']];
   return (
     <div style={{ display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', gap: 6 }}>{tabs.map(([k, n]) => <button key={k} type="button" aria-pressed={view === k} onClick={() => setView(k)} style={btn(view === k ? C.acc : C.l2)}><span style={{ color: view === k ? '#fff' : C.t1 }}>{n}</span></button>)}</div>
@@ -115,6 +151,7 @@ export const GoPlacesTab = () => {
           </button>))}
       </>}
       {view === 'cats' && <Cats />}
+      {view === 'reports' && <Reports />}
       {view === 'errors' && (!errs ? <div style={box}>Загрузка…</div> : !errs.length ? <div style={box}>Сбоев не записано.</div> : errs.map((e, i) => <div key={i} style={{ ...box, fontSize: 12, color: C.t2 }}><b style={{ color: C.t1 }}>{e.where}</b> · {when(e.at)}<div>{e.detail}</div></div>))}
     </div>
   );

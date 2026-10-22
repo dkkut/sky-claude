@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Building2, MapPin, Clock, Heart, Share2, Route as RouteIcon, Search, Phone, ShoppingBag, Navigation, Map as MapIcon } from 'lucide-react';
 import { SkyMap } from '@/marketplace/logistics/SkyMap';
 import { flash } from '@/shared/flash';
+import { BookBlock, ReviewsBlock, ReportBlock, MyBookings } from './PlacesExtra';
 import { gp, placeImg, type GpCard, type GpCategory, type GpItem, type GpOrder, type GpPlace, type GpRoute } from './placesApi';
 import { Back, Btn, Card, Chip, Col, Empty, ErrorState, Input, Notice, Segmented, fail, useAction, useLoad, locate, C, GO, fmt } from './ui';
 
@@ -140,6 +141,7 @@ const PlaceScreen = ({ id, pos, onBack }: { id: string; pos: Pos; onBack: () => 
           <div style={{ fontWeight: 800, marginBottom: 6, color: C.t1 }}><Clock size={15} style={{ verticalAlign: -2 }} /> Часы работы</div>
           {Object.keys(p.hours).length ? DAY_NAMES.map(([k, n]) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: C.t2, padding: '2px 0' }}><span>{n}</span><span>{p.hours[k]?.length ? p.hours[k]!.map(([a, b]) => `${a}–${b}`).join(', ') : 'выходной'}</span></div>) : <div style={{ fontSize: 13, color: C.t2 }}>Часы работы не указаны.</div>}
         </Card>
+        <BookBlock placeId={p.id} onBooked={() => undefined} />
         <div style={{ fontWeight: 800, fontSize: 17, color: C.t1 }}>Каталог</div>
         {!p.items.length ? <Empty text="Организация пока не добавила позиции" />
           : !p.canOrder ? <Notice tone="warn">Онлайн-заказ сейчас недоступен — свяжитесь с организацией напрямую.</Notice> : null}
@@ -165,6 +167,8 @@ const PlaceScreen = ({ id, pos, onBack }: { id: string; pos: Pos; onBack: () => 
             </Card>
           );
         })}
+        <ReviewsBlock placeId={p.id} />
+        <ReportBlock placeId={p.id} />
       </Col>
       {lines.length > 0 && (
         <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, padding: '12px 16px calc(12px + env(safe-area-inset-bottom))', background: C.l1, borderTop: `1px solid ${C.brd}`, zIndex: 20 }}>
@@ -244,13 +248,15 @@ const Checkout = ({ place, lines, total, onBack, onDone }: { place: GpPlace; lin
 
 /* ─── Мои заказы ─── */
 const MyOrders = ({ onBack }: { onBack: () => void }) => {
+  const [tab, setTab] = useState<'orders' | 'bookings'>('orders');
   const [res, reload] = useLoad(() => gp.orders(), [], 20000);
   const [busy, run] = useAction();
   const orders: GpOrder[] = res && res.ok ? res.data!.orders : [];
   return (
     <div>
-      <Back onClick={onBack} title="Мои заказы" />
-      {!res ? <Empty text="Загрузка…" /> : !res.ok ? <ErrorState text="Не удалось загрузить заказы." onRetry={reload} /> : !orders.length ? <Empty text="Заказов пока нет" /> : (
+      <Back onClick={onBack} title="Мои заказы и записи" />
+      <div style={{ marginBottom: 10 }}><Segmented value={tab} onChange={setTab} options={[{ v: 'orders', t: 'Заказы' }, { v: 'bookings', t: 'Записи' }]} /></div>
+      {tab === 'bookings' ? <MyBookings /> : !res ? <Empty text="Загрузка…" /> : !res.ok ? <ErrorState text="Не удалось загрузить заказы." onRetry={reload} /> : !orders.length ? <Empty text="Заказов пока нет" /> : (
         <Col>{orders.map((o) => (
           <Card key={o.id}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}><b translate="no" style={{ color: C.t1 }}>{o.placeName} · № {o.number}</b><b style={{ color: C.t1 }}>{fmt(o.totalRub)} ₽</b></div>

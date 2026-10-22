@@ -89,6 +89,9 @@ const ERR: Record<string, string> = {
   variant_required: 'Выберите вариант позиции.', from_not_found: 'Адрес начала маршрута не найден.', not_connected: 'Сначала подключите организацию к Sky GO.',
   already_published: 'Карточка уже опубликована.',
   too_many_requests: 'Слишком много заказов за короткое время. Попробуйте позже.',
+  slot_taken: 'Это время уже занято — выберите другое.', slot_unavailable: 'Это время недоступно для записи.', already_booked: 'Вы уже записаны на это время.',
+  too_many_bookings: 'Слишком много активных записей в этой организации.', booking_disabled: 'Запись в этой организации выключена.', hours_required: 'Сначала задайте часы работы.',
+  review_not_allowed: 'Отзыв можно оставить после выполненного заказа или состоявшейся записи.', already_reviewed: 'Вы уже оставили отзыв.', too_early: 'Запись ещё не началась.',
   bad_iata: 'Выберите город из подсказок.', same_city: 'Города совпадают.', bad_offer: 'Предложение недействительно — повторите поиск.',
 };
 export const goError = (r: { error?: string; reason?: string; status?: number }) =>

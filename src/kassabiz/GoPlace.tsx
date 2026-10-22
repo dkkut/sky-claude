@@ -7,6 +7,7 @@ import { goError } from '@/go/api';
 import { gpOwner, photoId, type GpCategory, type GpHours, type GpOwnerPlace } from '@/go/placesApi';
 import { SkyMap } from '@/marketplace/logistics/SkyMap';
 import { Btn, In, card, field } from './ui';
+import { Bookings, Schedule, OwnerReviews, PlaceStats } from './GoPlaceOps';
 
 const DAYS: [string, string][] = [['mon', 'Пн'], ['tue', 'Вт'], ['wed', 'Ср'], ['thu', 'Чт'], ['fri', 'Пт'], ['sat', 'Сб'], ['sun', 'Вс']];
 const TONE: Record<string, string> = { draft: 'var(--t3)', pending: 'var(--amber, #f59e0b)', published: 'var(--green, #22c55e)', rejected: 'var(--red)', hidden: 'var(--t3)', blocked: 'var(--red)' };
@@ -27,7 +28,7 @@ const OwnerPhoto = ({ url, onDel }: { url: string; onDel: () => void }) => {
   );
 };
 
-export const GoPlace = () => {
+const GoPlaceCard = () => {
   const [p, setP] = useState<GpOwnerPlace | null>(null); const [cats, setCats] = useState<GpCategory[]>([]); const [err, setErr] = useState(false);
   const [f, setF] = useState({ categoryId: '', about: '', city: '', address: '', phone: '', links: '' });
   const [hours, setHours] = useState<GpHours>({}); const [busy, setBusy] = useState(false); const [geoFailed, setGeoFailed] = useState(false);
@@ -119,6 +120,19 @@ export const GoPlace = () => {
           <Btn disabled={busy || !p.canSubmit || p.status === 'pending' || p.status === 'published'} onClick={() => void run(() => gpOwner.submit(), (d) => { fill((d as { place: GpOwnerPlace }).place); flash('Отправлено на проверку'); })}><Send size={13} className="mr-1 inline" />Отправить на проверку</Btn>
         </div>
       </>}
+    </div>
+  );
+};
+
+const TABS = [['card', 'Карточка'], ['book', 'Записи'], ['sched', 'Расписание'], ['rev', 'Отзывы'], ['stat', 'Статистика']] as const;
+export const GoPlace = () => {
+  const [tab, setTab] = useState<(typeof TABS)[number][0]>('card');
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {TABS.map(([k, n]) => <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)} className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold" style={tab === k ? { background: 'var(--accent)', color: '#fff' } : { background: 'var(--bg-l2)', color: 'var(--t2)' }}>{n}</button>)}
+      </div>
+      {tab === 'card' && <GoPlaceCard />}{tab === 'book' && <Bookings />}{tab === 'sched' && <Schedule />}{tab === 'rev' && <OwnerReviews />}{tab === 'stat' && <PlaceStats />}
     </div>
   );
 };

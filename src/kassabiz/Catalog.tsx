@@ -14,12 +14,12 @@ const Wait = () => <div className="grid place-items-center py-10"><Loader2 class
 
 /* ── Товары и услуги ── */
 const ItemForm = ({ item, onDone }: { item: K.Item | null; onDone: () => void }) => {
-  const [f, setF] = useState({ title: item?.title ?? '', description: item?.description ?? '', priceRub: String(item?.priceRub ?? ''), category: item?.category ?? '', leadTime: item?.leadTime ?? '', available: item?.available ?? true, kind: (item?.kind ?? 'product') as 'product' | 'service', stock: item?.stock != null ? String(item.stock) : '' });
+  const [f, setF] = useState({ title: item?.title ?? '', description: item?.description ?? '', priceRub: String(item?.priceRub ?? ''), category: item?.category ?? '', leadTime: item?.leadTime ?? '', available: item?.available ?? true, kind: (item?.kind ?? 'product') as 'product' | 'service', stock: item?.stock != null ? String(item.stock) : '', durationMin: item?.durationMin != null ? String(item.durationMin) : '', capacity: String(item?.capacity ?? 1) });
   const [vars, setVars] = useState<{ name: string; priceRub: string }[]>((item?.variants ?? []).map((v) => ({ name: v.name, priceRub: v.priceRub ? String(v.priceRub) : '' })));
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
-    const r = await K.kbItemSave(item?.id ?? null, { ...f, stock: f.kind === 'service' || f.stock === '' ? null : Number(f.stock), priceRub: Number(f.priceRub), variants: vars.filter((v) => v.name.trim()).map((v) => ({ name: v.name, priceRub: v.priceRub ? Number(v.priceRub) : undefined })) });
+    const r = await K.kbItemSave(item?.id ?? null, { ...f, stock: f.kind === 'service' || f.stock === '' ? null : Number(f.stock), durationMin: f.kind === 'service' && f.durationMin ? Number(f.durationMin) : null, capacity: Number(f.capacity) || 1, priceRub: Number(f.priceRub), variants: vars.filter((v) => v.name.trim()).map((v) => ({ name: v.name, priceRub: v.priceRub ? Number(v.priceRub) : undefined })) });
     setBusy(false);
     if (!r.ok) { flash(why(r)); return; }
     onDone();
@@ -41,6 +41,8 @@ const ItemForm = ({ item, onDone }: { item: K.Item | null; onDone: () => void })
         <label className="block text-[11px]" style={{ color: 'var(--t3)' }}>Тип
           <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as 'product' | 'service' })} className="mt-0.5 block w-full rounded-lg px-3 py-2 text-sm outline-none" style={field}><option value="product">Товар</option><option value="service">Услуга</option></select>
         </label>
+        {f.kind === 'service' && <In label="Длительность, мин (для записи)" value={f.durationMin} onChange={(v) => setF({ ...f, durationMin: v.replace(/\D/g, '').slice(0, 4) })} />}
+        {f.kind === 'service' && <In label="Одновременно клиентов" value={f.capacity} onChange={(v) => setF({ ...f, capacity: v.replace(/\D/g, '').slice(0, 3) })} />}
         {f.kind === 'product' && <In label="Остаток (пусто — без учёта)" value={f.stock} onChange={(v) => setF({ ...f, stock: v.replace(/\D/g, '').slice(0, 7) })} />}
       </div>
       <In label="Срок выполнения / изготовления" value={f.leadTime} onChange={(v) => setF({ ...f, leadTime: v })} max={60} />

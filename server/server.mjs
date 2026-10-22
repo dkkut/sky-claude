@@ -80,6 +80,7 @@ import { goRoutes } from './routes/go.mjs';
 import { onsiteRoutes } from './routes/onsite.mjs';
 import { parkingRoutes } from './routes/parking.mjs';
 import { sweepOnsite } from './onsite.mjs';
+import { sweepBookings as sweepPlaceBookings } from './goplacebook.mjs';
 import { goAdminRoutes } from './routes/goadmin.mjs';
 import { sweepExpired as goSweepExpired } from './gosubs.mjs';
 import { sweepOrgs } from './goorg.mjs';
@@ -775,6 +776,7 @@ const start = async () => {
       await goSweepFuel().catch(() => {});
       await goSweepStay().catch(() => {});
       await sweepOnsite().catch((e) => console.error('[onsite] уборка:', e.message));
+      await sweepPlaceBookings().catch((e) => console.error('[goplaces] брони:', e.message));
       await sweepDirect().catch((e) => console.error('[storage] прямой доступ:', e.message));
       await sweepVersionFiles().catch((e) => console.error('[studio] уборка версий:', e.message));
       const staleRequests = await sweepPendingActions();

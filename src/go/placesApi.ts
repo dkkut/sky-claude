@@ -65,3 +65,33 @@ export const gpOwner = {
   addPhoto: (dataUrl: string) => apiCall<{ photos: string[] }>('/api/kbiz/place/photo', { method: 'POST', body: body({ dataUrl }) }),
   delPhoto: (id: string) => apiCall<{ photos: string[] }>(`/api/kbiz/place/photo/${id}`, { method: 'DELETE' }),
 };
+
+/* ─── Этап 2: запись по расписанию, отзывы, жалобы, статистика ─── */
+export interface GpBookInfo { enabled: boolean; horizonDays?: number; autoConfirm?: boolean; tz?: string; today?: string; services: { id: string; title: string; description: string; priceRub: number; durationMin: number }[] }
+export interface GpBooking { id: string; placeId: string; placeName: string; item: string; priceRub: number; startsAt: string; endsAt: string; tz: string; status: string; statusLabel: string; comment: string; canCancel: boolean; address: string }
+export interface GpReviews { count: number; avg: number | null; canReview: boolean; reviews: { id: string; name: string; rating: number; text: string; reply: string; at: string; mine: boolean }[] }
+export const REPORT_REASONS: Record<string, string> = { wrong_info: 'Неверные данные', fraud: 'Мошенничество', closed: 'Организация не работает', inappropriate: 'Недопустимое содержимое', other: 'Другое' };
+export const gpBook = {
+  info: (id: string) => apiCall<GpBookInfo>(`${P}/${id}/book`),
+  slots: (id: string, itemId: string, date: string) => apiCall<{ slots: { start: string; free: number }[]; dayOff?: boolean }>(`${P}/${id}/slots?itemId=${itemId}&date=${date}`),
+  book: (id: string, b: { itemId: string; start: string; contact: { name: string; phone: string }; note?: string; idemKey: string }) =>
+    apiCall<{ id: string; status: string; statusLabel: string; startsAt: string }>(`${P}/${id}/book`, { method: 'POST', body: body(b) }),
+  mine: () => apiCall<{ bookings: GpBooking[] }>(`${P}/bookings`),
+  cancel: (id: string) => apiCall(`${P}/bookings/${id}/cancel`, { method: 'POST', body: body({}) }),
+  reviews: (id: string) => apiCall<GpReviews>(`${P}/${id}/reviews`),
+  review: (id: string, rating: number, text: string) => apiCall<GpReviews>(`${P}/${id}/reviews`, { method: 'POST', body: body({ rating, text }) }),
+  report: (id: string, reason: string, text: string) => apiCall(`${P}/${id}/report`, { method: 'POST', body: body({ reason, text }) }),
+};
+export interface GpOwnerBooking { id: string; item: string; priceRub: number; startsAt: string; endsAt: string; tz: string; status: string; statusLabel: string; name: string; phone: string; note: string; comment: string }
+export interface GpBookSettings { enabled: boolean; stepMin: number; horizonDays: number; leadMin: number; autoConfirm: boolean }
+export interface GpStats { days: number; orders: { total: number; fromCatalog: number; done: number; lost: number; doneRub: number }; bookings: { total: number; done: number; noShow: number; lost: number }; reviews: { count: number; avg: number | null }; favorites: number; top: { title: string; qty: number }[]; note: string }
+export const gpOwner2 = {
+  booking: () => apiCall<{ settings: GpBookSettings; daysOff: { day: string; reason: string }[]; hoursSet: boolean }>('/api/kbiz/place/booking'),
+  saveBooking: (b: Partial<GpBookSettings>) => apiCall<{ settings: GpBookSettings; daysOff: { day: string; reason: string }[]; hoursSet: boolean }>('/api/kbiz/place/booking', { method: 'PUT', body: body(b) }),
+  dayOff: (day: string, on: boolean, reason = '') => apiCall<{ settings: GpBookSettings; daysOff: { day: string; reason: string }[]; hoursSet: boolean }>('/api/kbiz/place/booking/day-off', { method: 'POST', body: body({ day, on, reason }) }),
+  bookings: (status = '') => apiCall<{ bookings: GpOwnerBooking[] }>(`/api/kbiz/place/bookings${status ? `?status=${status}` : ''}`),
+  act: (id: string, action: 'confirm' | 'reject' | 'cancel' | 'done' | 'no-show', reason = '') => apiCall(`/api/kbiz/place/bookings/${id}/${action}`, { method: 'POST', body: body({ reason }) }),
+  reviews: () => apiCall<{ reviews: { id: string; name: string; rating: number; text: string; reply: string; hidden: boolean; hiddenReason: string; at: string }[] }>('/api/kbiz/place/reviews'),
+  reply: (id: string, text: string) => apiCall(`/api/kbiz/place/reviews/${id}/reply`, { method: 'POST', body: body({ text }) }),
+  stats: (days = 30) => apiCall<GpStats>(`/api/kbiz/place/stats?days=${days}`),
+};

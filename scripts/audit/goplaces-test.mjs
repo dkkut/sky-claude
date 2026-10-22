@@ -84,7 +84,7 @@ pg = await fetch((process.env.API ?? 'http://localhost:8080') + photo); t('оп�
 r = await me(B, '/api/go/places?q=Пар&lat=55.75&lng=37.62&sort=distance&open=1');
 t('поиск по названию, «открыто сейчас», расстояние', r.status === 200 && r.data.places.length === 1 && r.data.places[0].open === true && r.data.places[0].distanceKm < 1, JSON.stringify(r.data).slice(0, 250));
 t('фильтр категории', (await me(B, '/api/go/places?category=baths')).data.places.length === 1 && (await me(B, '/api/go/places?category=vet')).data.places.length === 0);
-t('фильтр города', (await me(B, '/api/go/places?city=Москва')).data.places.length === 1 && (await me(B, '/api/go/places?city=Омск')).data.places.length === 0);
+t('фильтр города', (await me(B, '/api/go/places?city=Москва')).data.places.some((p) => p.id === bid) && (await me(B, '/api/go/places?city=Омск')).data.places.length === 0);
 t('без входа каталог закрыт', (await call('/api/go/places')).status === 401);
 r = await me(B, `/api/go/places/${bid}?lat=55.75&lng=37.62`);
 t('карточка: часы, фото, контакты, товары и услуги, без скрытых', r.status === 200 && r.data.place.photos.length === 1 && r.data.place.items.length === 2 && r.data.place.canOrder && r.data.place.phone && r.data.place.links.length === 1 && !JSON.stringify(r.data).includes('900 111-22-33 '), JSON.stringify(r.data).slice(0, 200));

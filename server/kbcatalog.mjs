@@ -32,7 +32,7 @@ const int = (v, lo, hi) => { const n = Number(v); return Number.isInteger(n) && 
 /* ─── Каталог (владелец) ─── */
 
 const shapeItem = (r) => ({ id: r.id, title: r.title, description: r.description, priceRub: r.price_rub, category: r.category, sku: r.sku, variants: r.variants ?? [], leadTime: r.lead_time,
-  available: r.available, kind: r.kind ?? 'product', stock: r.stock ?? null, status: r.status, sort: r.sort, photoUrl: r.media_id ? `/api/kbiz/public/media/${r.media_id}` : null });
+  available: r.available, kind: r.kind ?? 'product', stock: r.stock ?? null, durationMin: r.duration_min ?? null, capacity: r.capacity ?? 1, status: r.status, sort: r.sort, photoUrl: r.media_id ? `/api/kbiz/public/media/${r.media_id}` : null });
 
 const parseItem = (b) => {
   const title = clean(b?.title, 120); if (title.length < 2) return err('bad_field', { field: 'title' });
@@ -47,8 +47,12 @@ const parseItem = (b) => {
   const noStock = b?.stock === undefined || b?.stock === null || b?.stock === '';
   const stockV = noStock ? null : int(b.stock, 0, 1_000_000);
   if (!noStock && stockV == null) return err('bad_field', { field: 'stock' });
+  if (b?.durationMin != null && b?.durationMin !== '' && int(b.durationMin, 5, 1440) == null) return err('bad_field', { field: 'durationMin' });
+  if (int(b?.capacity ?? 1, 1, 100) == null) return err('bad_field', { field: 'capacity' });
   return { v: { title, description: clean(b?.description, 1000), price, category: clean(b?.category, 60), sku: clean(b?.sku, 40), variants, leadTime: clean(b?.leadTime, 60), available: b?.available !== false, sort: int(b?.sort, 0, 100000) ?? 0,
-    kind: b?.kind === 'service' ? 'service' : 'product', stock: stockV } };
+    kind: b?.kind === 'service' ? 'service' : 'product', stock: stockV,
+    durationMin: b?.durationMin == null || b?.durationMin === '' ? null : int(b.durationMin, 5, 1440), capacity: int(b?.capacity ?? 1, 1, 100) } };
+
 };
 
 export const listItems = async (profileId) => {
@@ -64,8 +68,8 @@ export const saveItem = async (profileId, id, body) => {
   const v = p.v;
   if (v.stock != null && v.kind === 'service') v.stock = null;   // у услуги остатка нет — доступность задаёт расписание
   if (id) {
-    const { rowCount } = await query(`UPDATE kb_items SET title=$3, description=$4, price_rub=$5, category=$6, sku=$7, variants=$8::jsonb, lead_time=$9, available=$10, sort=$11, kind=$12, stock=$13, updated_at=now() WHERE id=$1 AND business_id=$2 AND status='active'`,
-      [String(id), b.id, v.title, v.description, v.price, v.category, v.sku, JSON.stringify(v.variants), v.leadTime, v.available, v.sort, v.kind, v.stock]);
+    const { rowCount } = await query(`UPDATE kb_items SET title=$3, description=$4, price_rub=$5, category=$6, sku=$7, variants=$8::jsonb, lead_time=$9, available=$10, sort=$11, kind=$12, stock=$13, duration_min=$14, capacity=$15, updated_at=now() WHERE id=$1 AND business_id=$2 AND status='active'`,
+      [String(id), b.id, v.title, v.description, v.price, v.category, v.sku, JSON.stringify(v.variants), v.leadTime, v.available, v.sort, v.kind, v.stock, v.kind === 'service' ? v.durationMin : null, v.capacity]);
     if (!rowCount) return err('not_found');
     await audit(b.id, profileId, 'item_updated', v.title);
     return { ok: true, id };
@@ -73,8 +77,8 @@ export const saveItem = async (profileId, id, body) => {
   const { rows: cnt } = await query(`SELECT count(*)::int AS n FROM kb_items WHERE business_id = $1 AND status = 'active'`, [b.id]);
   if (cnt[0].n >= 500) return err('too_many_items');
   const nid = newId('kbi');
-  await query(`INSERT INTO kb_items (id, business_id, title, description, price_rub, category, sku, variants, lead_time, available, sort, kind, stock) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13)`,
-    [nid, b.id, v.title, v.description, v.price, v.category, v.sku, JSON.stringify(v.variants), v.leadTime, v.available, v.sort, v.kind, v.stock]);
+  await query(`INSERT INTO kb_items (id, business_id, title, description, price_rub, category, sku, variants, lead_time, available, sort, kind, stock, duration_min, capacity) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15)`,
+    [nid, b.id, v.title, v.description, v.price, v.category, v.sku, JSON.stringify(v.variants), v.leadTime, v.available, v.sort, v.kind, v.stock, v.kind === 'service' ? v.durationMin : null, v.capacity]);
   await audit(b.id, profileId, 'item_created', v.title);
   return { ok: true, id: nid };
 };
