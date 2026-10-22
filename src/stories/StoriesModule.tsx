@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { StoryImg, StoryVideo } from './StoryMedia';
 import { visibleTick } from '@/shared/visibleTick';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -179,8 +180,8 @@ const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDele
         {/* Контент */}
         <div className="flex-1 relative select-none"
           onPointerDown={()=>setPaused(true)} onPointerUp={()=>setPaused(false)}>
-          {story.kind==='photo'&&story.mediaUrl&&<img src={story.mediaUrl} alt="" className="h-full w-full object-cover"/>}
-          {story.kind==='video'&&story.mediaUrl&&<video ref={videoRef} src={story.mediaUrl} autoPlay loop muted={false} className="h-full w-full object-cover"/>}
+          {story.kind==='photo'&&story.mediaUrl&&<StoryImg src={story.mediaUrl} className="h-full w-full object-cover"/>}
+          {story.kind==='video'&&story.mediaUrl&&<StoryVideo ref={videoRef} src={story.mediaUrl} autoPlay loop muted={false} className="h-full w-full object-cover"/>}
           {(story.kind==='text'||!story.mediaUrl)&&(
             <div className="h-full w-full flex items-center justify-center p-8" style={{background:story.bg}}>
               <p className="text-center text-xl font-bold leading-relaxed text-white"><MentionText text={story.text??''}/></p>
@@ -875,8 +876,8 @@ export const StoriesModule = () => {
                     className="relative cursor-pointer overflow-hidden rounded-2xl"
                     style={{aspectRatio:'9/16',maxHeight:280}}
                     onClick={()=>openStories(s.authorId)}>
-                    {s.kind==='photo'&&s.mediaUrl&&<img src={s.mediaUrl} alt="" className="h-full w-full object-cover"/>}
-                    {s.kind==='video'&&s.mediaUrl&&<video src={s.mediaUrl} muted className="h-full w-full object-cover"/>}
+                    {s.kind==='photo'&&s.mediaUrl&&<StoryImg src={s.mediaUrl} className="h-full w-full object-cover"/>}
+                    {s.kind==='video'&&s.mediaUrl&&<StoryVideo src={s.mediaUrl} muted className="h-full w-full object-cover"/>}
                     {(s.kind==='text'||!s.mediaUrl)&&(
                       <div className="h-full w-full flex items-center justify-center p-3" style={{background:s.bg}}>
                         <p className="text-center text-sm font-medium text-white line-clamp-4">{s.text}</p>
