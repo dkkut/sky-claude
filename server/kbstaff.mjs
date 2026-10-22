@@ -20,6 +20,9 @@ export const PERMS = {
   shop:      ['admin'],                           // настройки витрины и пакет для VPS
   analytics: ['admin', 'manager'],
   audit:     ['admin'],
+  placeview: ['admin', 'manager'],                // Sky GO: записи, отзывы, статистика, карточка (чтение)
+  placeops:  ['admin', 'manager'],                // Sky GO: решения по записям, ответы на отзывы
+  placecard: ['admin'],                           // Sky GO: правка карточки, расписания, фото, отправка на проверку
   owner:     [],                                  // только владелец
 };
 

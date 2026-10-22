@@ -88,7 +88,7 @@ export const pubStatus = async (id: string, key: string) => {
 
 /* ── Этап 2: каталог, витрина, заказы, чаевые, счета ── */
 export interface Variant { name: string; priceRub?: number }
-export interface Item { id: string; title: string; description: string; priceRub: number; category: string; sku: string; variants: Variant[]; leadTime: string; available: boolean; kind?: 'product' | 'service'; stock?: number | null; durationMin?: number | null; capacity?: number; photoUrl: string | null }
+export interface Item { id: string; title: string; description: string; priceRub: number; category: string; sku: string; variants: Variant[]; leadTime: string; available: boolean; kind?: 'product' | 'service'; stock?: number | null; durationMin?: number | null; capacity?: number; depositRub?: number; photoUrl: string | null }
 export interface OrderLine { itemId: string; title: string; variant: string; qty: number; priceRub: number }
 export interface Order {
   id: string; number: number; lines: OrderLine[]; totalRub: number; contact: { name?: string; phone?: string; email?: string; address?: string }; note: string; status: string; statusLabel: string;

@@ -335,7 +335,7 @@ const ALL: Role[] = ['owner', 'admin', 'manager', 'cashier']; const MGR: Role[] 
 const NAV: { key: Sec; label: string; icon: typeof Store; roles: Role[] }[] = [
   { key: 'overview', label: 'Обзор', icon: LayoutDashboard, roles: ALL }, { key: 'cash', label: 'Касса', icon: Calculator, roles: ALL }, { key: 'pay', label: 'Приём оплаты', icon: ListChecks, roles: ALL },
   { key: 'qr', label: 'QR-коды', icon: QrCode, roles: ALL }, { key: 'items', label: 'Каталог', icon: Package, roles: MGR }, { key: 'orders', label: 'Заказы', icon: ShoppingBag, roles: MGR },
-  { key: 'gop', label: 'Sky GO', icon: MapPin, roles: OWN }, { key: 'shop', label: 'Витрина', icon: Globe, roles: ADM }, { key: 'tips', label: 'Чаевые', icon: HeartHandshake, roles: MGR }, { key: 'inv', label: 'Счета', icon: FileText, roles: MGR },
+  { key: 'gop', label: 'Sky GO', icon: MapPin, roles: MGR }, { key: 'shop', label: 'Витрина', icon: Globe, roles: ADM }, { key: 'tips', label: 'Чаевые', icon: HeartHandshake, roles: MGR }, { key: 'inv', label: 'Счета', icon: FileText, roles: MGR },
   { key: 'promo', label: 'Промокоды', icon: TicketPercent, roles: MGR }, { key: 'reviews', label: 'Отзывы', icon: MessageSquareText, roles: MGR }, { key: 'stats', label: 'Аналитика', icon: BarChart3, roles: MGR },
   { key: 'team', label: 'Команда', icon: Users, roles: OWN }, { key: 'req', label: 'Реквизиты', icon: Landmark, roles: OWN }, { key: 'biz', label: 'Бизнес', icon: Store, roles: OWN },
   { key: 'sub', label: 'Подписка', icon: Wallet, roles: OWN }, { key: 'audit', label: 'Журнал', icon: History, roles: ADM },
@@ -371,7 +371,7 @@ export const KassaBusiness = () => {
         {sec === 'qr' && <Qrs me={me} />}
         {sec === 'items' && <Items />}
         {sec === 'orders' && <Orders />}
-        {sec === 'gop' && <GoPlace />}
+        {sec === 'gop' && <GoPlace role={role} />}
         {sec === 'shop' && <ShopSettings />}
         {sec === 'tips' && <Tips bizName={b.name} />}
         {sec === 'inv' && <Invoices bizName={b.name} />}

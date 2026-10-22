@@ -8,14 +8,16 @@
 import { query } from './db.mjs';
 import { notifyGift } from './giftnotify.mjs';
 import { newId, inTx, clean, sealJson, openJson } from './gocore.mjs';
+import { payUrl, publicId } from './kbiz.mjs';
 import { can } from './admin.mjs';
 import { logAdmin as adminLog } from './adminsec.mjs';
 
 const err = (error, extra = {}) => ({ error, ...extra });
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];   // getUTCDay()
 const MIN = 60000;
-const ACTIVE = ['requested', 'confirmed'];
-export const BOOK_LABEL = { requested: 'Ждёт подтверждения', confirmed: 'Подтверждена', rejected: 'Отклонена', cancelled: 'Отменена', done: 'Состоялась', no_show: 'Клиент не пришёл' };
+const ACTIVE = ['awaiting_payment', 'requested', 'confirmed'];
+const PAY_WINDOW_MIN = 30;
+export const BOOK_LABEL = { awaiting_payment: 'Ждёт задатка', requested: 'Ждёт подтверждения', confirmed: 'Подтверждена', rejected: 'Отклонена', cancelled: 'Отменена', done: 'Состоялась', no_show: 'Клиент не пришёл' };
 const visible = `p.connected AND p.status = 'published' AND b.status = 'active'`;
 const ownBiz = async (profileId) => (await query('SELECT id, name, status, owner_id FROM kb_businesses WHERE owner_id = $1', [profileId])).rows[0] ?? null;
 const logAdmin = (me, action, detail) => adminLog({ actorId: me, targetType: 'go_place', type: `go_places_${action}`, detail: String(detail ?? '') }).catch(() => {});
@@ -63,12 +65,13 @@ const serviceOf = async (businessId, itemId) => (await query(`SELECT * FROM kb_i
 export const bookInfo = async (id) => {
   const p = await placeFor(id); if (!p) return err('not_found');
   if (!p.book_enabled) return { ok: true, enabled: false, services: [] };
-  const items = (await query(`SELECT id, title, description, price_rub, duration_min, capacity FROM kb_items WHERE business_id = $1 AND status = 'active' AND available AND kind = 'service' AND duration_min IS NOT NULL ORDER BY sort, created_at LIMIT 100`, [p.business_id])).rows;
+  const items = (await query(`SELECT id, title, description, price_rub, duration_min, capacity, deposit_rub FROM kb_items WHERE business_id = $1 AND status = 'active' AND available AND kind = 'service' AND duration_min IS NOT NULL ORDER BY sort, created_at LIMIT 100`, [p.business_id])).rows;
   return { ok: true, enabled: true, horizonDays: p.book_horizon_days, autoConfirm: p.book_auto_confirm, tz: p.tz, today: todayIn(p.tz),
-    services: items.map((i) => ({ id: i.id, title: i.title, description: i.description, priceRub: i.price_rub, durationMin: i.duration_min })) };
+    services: items.map((i) => ({ id: i.id, title: i.title, description: i.description, priceRub: i.price_rub, durationMin: i.duration_min, depositRub: i.deposit_rub })) };
 };
 
 export const slots = async (id, itemId, day) => {
+  await expireUnpaid().catch(() => {});
   const p = await placeFor(id); if (!p) return err('not_found');
   if (!p.book_enabled) return err('booking_disabled');
   if (!DAY_RE.test(String(day ?? ''))) return err('bad_field', { field: 'date' });
@@ -88,6 +91,7 @@ export const slots = async (id, itemId, day) => {
 };
 
 export const book = async (me, id, body) => {
+  await expireUnpaid().catch(() => {});
   const p = await placeFor(id); if (!p) return err('not_found');
   if (p.owner_id === me) return err('own_place');
   if (!p.book_enabled) return err('booking_disabled');
@@ -106,7 +110,8 @@ export const book = async (me, id, body) => {
   const allow = [...daySlots(p.hours, p.tz, day, it.duration_min, p.book_step_min), ...daySlots(p.hours, p.tz, addDays(day, -1), it.duration_min, p.book_step_min)];
   const slot = allow.find((s) => s.start === startMs);
   if (!slot || slot.start < Date.now() + p.book_lead_min * MIN) return err('slot_unavailable');
-  const status = p.book_auto_confirm ? 'confirmed' : 'requested';
+  const deposit = Math.min(it.deposit_rub ?? 0, it.price_rub);
+  const status = deposit > 0 ? 'awaiting_payment' : p.book_auto_confirm ? 'confirmed' : 'requested';
   const res = await inTx(async (c) => {
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`gopb:${it.id}`]);
     if (idem) { const d = await c.query('SELECT id, status FROM gop_bookings WHERE buyer_id = $1 AND idem_key = $2', [me, idem]); if (d.rows[0]) return { ok: true, duplicate: true, id: d.rows[0].id, status: d.rows[0].status }; }
@@ -116,30 +121,36 @@ export const book = async (me, id, body) => {
     if (same.rows[0]) return err('already_booked');
     const used = await c.query(`SELECT count(*)::int AS n FROM gop_bookings WHERE item_id = $1 AND status = ANY($2) AND starts_at < $3 AND ends_at > $4`, [it.id, ACTIVE, new Date(slot.end), new Date(slot.start)]);
     if (used.rows[0].n >= it.capacity) return err('slot_taken');
-    const bid = newId('gpb');
-    await c.query(`INSERT INTO gop_bookings (id, business_id, item_id, item_title, price_rub, buyer_id, starts_at, ends_at, status, contact_enc, note, idem_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-      [bid, p.business_id, it.id, it.title, it.price_rub, me, new Date(slot.start), new Date(slot.end), status, sealJson({ name, phone }), clean(body?.note, 300), idem]);
-    return { ok: true, id: bid, status };
+    const bid = newId('gpb'); let qid = null; let pid = null;
+    if (deposit > 0) {   // задаток — страница оплаты SkyKassa Business (прямой перевод организации); слот держится PAY_WINDOW_MIN минут
+      qid = newId('kbq'); pid = publicId();
+      await c.query(`INSERT INTO kb_qr (id, public_id, business_id, kind, title, description, amount_rub, order_no, expires_at, config) VALUES ($1,$2,$3,'order',$4,'',$5,'',now() + ($6 || ' minutes')::interval,$7::jsonb)`,
+        [qid, pid, p.business_id, `Задаток за запись: ${it.title}`, deposit, String(PAY_WINDOW_MIN), JSON.stringify({ bookingId: bid, deposit: true })]);
+    }
+    await c.query(`INSERT INTO gop_bookings (id, business_id, item_id, item_title, price_rub, buyer_id, starts_at, ends_at, status, contact_enc, note, idem_key, deposit_rub, qr_id, pay_deadline) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [bid, p.business_id, it.id, it.title, it.price_rub, me, new Date(slot.start), new Date(slot.end), status, sealJson({ name, phone }), clean(body?.note, 300), idem, deposit, qid, deposit > 0 ? new Date(Date.now() + PAY_WINDOW_MIN * MIN) : null]);
+    return { ok: true, id: bid, status, depositRub: deposit, payUrl: pid ? payUrl(pid) : null };
   });
-  if (res.ok && !res.duplicate) {
+  if (res.ok && !res.duplicate && res.status !== 'awaiting_payment') {
     void notify(p.owner_id, 'Новая запись в Sky GO', `${it.title}, ${new Date(slot.start).toLocaleString('ru-RU', { timeZone: p.tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`, `gopb:${res.id}:new`);
   }
   return res.ok ? { ...res, statusLabel: BOOK_LABEL[res.status], startsAt: new Date(slot.start).toISOString() } : res;
 };
 
 const shapeMine = (r) => ({ id: r.id, placeId: r.business_id, placeName: r.name, item: r.item_title, priceRub: r.price_rub, startsAt: r.starts_at.toISOString(), endsAt: r.ends_at.toISOString(), tz: r.tz,
-  status: r.status, statusLabel: BOOK_LABEL[r.status], comment: r.owner_comment, canCancel: ACTIVE.includes(r.status) && r.starts_at.getTime() > Date.now(), address: r.address });
+  status: r.status, statusLabel: BOOK_LABEL[r.status], comment: r.owner_comment, canCancel: ACTIVE.includes(r.status) && r.starts_at.getTime() > Date.now(), address: r.address, depositRub: r.deposit_rub,
+  payUrl: r.status === 'awaiting_payment' && r.public_id ? payUrl(r.public_id) : null, payBy: r.status === 'awaiting_payment' && r.pay_deadline ? r.pay_deadline.toISOString() : null });
 export const myBookings = async (me) => {
-  const { rows } = await query(`SELECT bk.*, b.name, p.tz, p.address FROM gop_bookings bk JOIN kb_businesses b ON b.id = bk.business_id LEFT JOIN gop_places p ON p.business_id = bk.business_id WHERE bk.buyer_id = $1 ORDER BY bk.starts_at DESC LIMIT 100`, [me]);
+  const { rows } = await query(`SELECT bk.*, b.name, p.tz, p.address, q.public_id FROM gop_bookings bk JOIN kb_businesses b ON b.id = bk.business_id LEFT JOIN gop_places p ON p.business_id = bk.business_id LEFT JOIN kb_qr q ON q.id = bk.qr_id WHERE bk.buyer_id = $1 ORDER BY bk.starts_at DESC LIMIT 100`, [me]);
   return { bookings: rows.map(shapeMine) };
 };
 
 /** Единый переход статуса брони под замком строки. actor: 'buyer' | 'owner'. */
 const TRANS = {
-  cancel_buyer: { who: 'buyer', from: ['requested', 'confirmed'], to: 'cancelled', future: true },
+  cancel_buyer: { who: 'buyer', from: ['awaiting_payment', 'requested', 'confirmed'], to: 'cancelled', future: true },
   confirm:      { who: 'owner', from: ['requested'], to: 'confirmed' },
   reject:       { who: 'owner', from: ['requested'], to: 'rejected', reason: true },
-  cancel:       { who: 'owner', from: ['requested', 'confirmed'], to: 'cancelled', reason: true },
+  cancel:       { who: 'owner', from: ['awaiting_payment', 'requested', 'confirmed'], to: 'cancelled', reason: true },
   done:         { who: 'owner', from: ['confirmed'], to: 'done', past: true },
   'no-show':    { who: 'owner', from: ['confirmed'], to: 'no_show', past: true },
 };
@@ -155,6 +166,7 @@ const transit = async (actorId, bookingId, action, reason) => {
     if (!t.from.includes(r.status)) return err('bad_state', { status: r.status });
     if (t.future && r.starts_at.getTime() <= Date.now()) return err('bad_state', { status: r.status });
     if (t.past && r.starts_at.getTime() > Date.now()) return err('too_early');
+    if (['cancelled', 'rejected'].includes(t.to) && r.qr_id) await c.query(`UPDATE kb_qr SET status = 'disabled', updated_at = now() WHERE id = $1 AND status = 'active'`, [r.qr_id]);
     await c.query(`UPDATE gop_bookings SET status = $2, owner_comment = CASE WHEN $3 <> '' THEN $3 ELSE owner_comment END, updated_at = now() WHERE id = $1`, [r.id, t.to, why]);
     return { ok: true, status: t.to, row: r };
   });
@@ -206,7 +218,7 @@ export const ownerBookings = async (me, q = {}) => {
   if (q.status && BOOK_LABEL[q.status]) { vals.push(q.status); w += ` AND bk.status = $${vals.length}`; }
   if (q.from && DAY_RE.test(q.from)) { vals.push(q.from); w += ` AND bk.starts_at >= $${vals.length}::date`; }
   const { rows } = await query(`SELECT bk.*, p.tz FROM gop_bookings bk LEFT JOIN gop_places p ON p.business_id = bk.business_id WHERE ${w} ORDER BY bk.starts_at DESC LIMIT 200`, vals);
-  return { bookings: rows.map((r) => { let c = {}; try { c = openJson(r.contact_enc) ?? {}; } catch { /* нечитаемо */ } return { id: r.id, item: r.item_title, priceRub: r.price_rub, startsAt: r.starts_at.toISOString(), endsAt: r.ends_at.toISOString(), tz: r.tz, status: r.status, statusLabel: BOOK_LABEL[r.status],
+  return { bookings: rows.map((r) => { let c = {}; try { c = openJson(r.contact_enc) ?? {}; } catch { /* нечитаемо */ } return { id: r.id, item: r.item_title, priceRub: r.price_rub, depositRub: r.deposit_rub, startsAt: r.starts_at.toISOString(), endsAt: r.ends_at.toISOString(), tz: r.tz, status: r.status, statusLabel: BOOK_LABEL[r.status],
     name: c.name ?? '', phone: c.phone ?? '', note: r.note, comment: r.owner_comment }; }) };
 };
 
@@ -304,7 +316,37 @@ export const ownerStats = async (me, days) => {
 };
 
 /** Уборка: давно прошедшие неподтверждённые заявки закрываются (слот освобождается). Вызывается из почасовой уборки. */
+/** Платёж по задатку изменил статус (из kbiz.actOnPayment / kbprovider через goplaces.paymentChanged). true — это был платёж за запись. */
+export const depositPaymentChanged = async (paymentId, to) => {
+  const { rows } = await query(`SELECT p.status AS pay, bk.id, bk.status, bk.buyer_id, bk.item_title, bk.starts_at, b.owner_id, pl.book_auto_confirm AS auto
+      FROM kb_payments p JOIN gop_bookings bk ON bk.qr_id = p.qr_id JOIN kb_businesses b ON b.id = bk.business_id LEFT JOIN gop_places pl ON pl.business_id = bk.business_id WHERE p.id = $1`, [paymentId]);
+  const r = rows[0]; if (!r) return false;
+  if (r.pay !== to) return true;
+  if (to === 'confirmed' && r.status === 'awaiting_payment') {
+    const next = r.auto ? 'confirmed' : 'requested';
+    const u = await query(`UPDATE gop_bookings SET status = $2, updated_at = now() WHERE id = $1 AND status = 'awaiting_payment'`, [r.id, next]);
+    if (u.rowCount) {
+      void notify(r.buyer_id, 'Задаток получен', `${r.item_title}. ${next === 'confirmed' ? 'Запись подтверждена.' : 'Ждём подтверждения организации.'}`, `gopb:${r.id}:paid`);
+      void notify(r.owner_id, 'Новая запись в Sky GO', `${r.item_title} (задаток оплачен)`, `gopb:${r.id}:new`);
+    }
+  } else if (['cancelled', 'not_found', 'refunded'].includes(to) && r.status === 'awaiting_payment') {
+    const u = await query(`UPDATE gop_bookings SET status = 'cancelled', owner_comment = 'Задаток не получен', updated_at = now() WHERE id = $1 AND status = 'awaiting_payment'`, [r.id]);
+    if (u.rowCount) void notify(r.buyer_id, 'Запись отменена', 'Задаток не получен — время снова свободно.', `gopb:${r.id}:unpaid`);
+  }
+  return true;
+};
+
+/** Не оплатившие задаток вовремя теряют слот; вызывается лениво при выдаче слотов и записи, и уборкой. */
+export const expireUnpaid = async () => {
+  // не оплатившие задаток вовремя (и не заявившие о переводе) теряют слот
+  const e = await query(`UPDATE gop_bookings bk SET status = 'cancelled', owner_comment = 'Задаток не оплачен вовремя', updated_at = now()
+      WHERE status = 'awaiting_payment' AND pay_deadline < now() AND NOT EXISTS (SELECT 1 FROM kb_payments p WHERE p.qr_id = bk.qr_id AND p.status IN ('reported','confirmed')) RETURNING id, buyer_id, qr_id`);
+  for (const x of e.rows) { void notify(x.buyer_id, 'Запись отменена', 'Задаток не оплачен вовремя — время снова свободно.', `gopb:${x.id}:unpaid`); if (x.qr_id) await query(`UPDATE kb_qr SET status = 'disabled', updated_at = now() WHERE id = $1 AND status = 'active'`, [x.qr_id]).catch(() => {}); }
+  return e.rowCount;
+};
+
 export const sweepBookings = async () => {
+  await expireUnpaid();
   const r = await query(`UPDATE gop_bookings SET status = 'cancelled', owner_comment = 'Организация не ответила вовремя', updated_at = now() WHERE status = 'requested' AND starts_at < now() RETURNING id, buyer_id`);
   for (const x of r.rows) void notify(x.buyer_id, 'Запись отменена', 'Организация не подтвердила запись до её начала.', `gopb:${x.id}:expired`);
   return r.rowCount;

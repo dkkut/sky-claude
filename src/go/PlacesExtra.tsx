@@ -16,7 +16,7 @@ export const BookBlock = ({ placeId, onBooked }: { placeId: string; onBooked: ()
   const [info] = useLoad(() => gpBook.info(placeId), [placeId]);
   const [item, setItem] = useState<string>(''); const [day, setDay] = useState('');
   const [start, setStart] = useState(''); const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [note, setNote] = useState('');
-  const [key, setKey] = useState(newKey); const [done, setDone] = useState<{ label: string; at: string } | null>(null);
+  const [key, setKey] = useState(newKey); const [done, setDone] = useState<{ label: string; at: string; payUrl?: string | null; deposit?: number } | null>(null);
   const [busy, run] = useAction();
   const d = info && info.ok ? info.data! : null;
   const [sl, reloadSl] = useLoad(async () => (item && day ? gpBook.slots(placeId, item, day) : null), [placeId, item, day]);
@@ -27,9 +27,10 @@ export const BookBlock = ({ placeId, onBooked }: { placeId: string; onBooked: ()
   const submit = () => void run(async () => {
     const r = await gpBook.book(placeId, { itemId: item, start, contact: { name, phone }, note, idemKey: key });
     if (!r.ok) { if (r.error === 'slot_taken') { setStart(''); reloadSl(); } setKey(newKey()); return fail(r); }
-    setDone({ label: r.data!.statusLabel, at: r.data!.startsAt }); onBooked();
+    setDone({ label: r.data!.statusLabel, at: r.data!.startsAt, payUrl: r.data!.payUrl, deposit: r.data!.depositRub }); onBooked();
   });
-  if (done) return <Card><b style={{ color: C.t1 }}>Запись создана</b><div style={{ fontSize: 13, color: C.t2, margin: '4px 0' }}>{svc?.title}, {when(done.at, d.tz)}. Статус: {done.label}. Оплата — на месте, по договорённости с организацией.</div><Btn kind="soft" onClick={() => { setDone(null); setStart(''); setKey(newKey()); }}>Готово</Btn></Card>;
+  if (done) return <Card><b style={{ color: C.t1 }}>Запись создана</b><div style={{ fontSize: 13, color: C.t2, margin: '4px 0' }}>{svc?.title}, {when(done.at, d.tz)}. Статус: {done.label}. {done.payUrl ? `Чтобы удержать время, переведите задаток ${fmt(done.deposit ?? 0)} ₽ организации в течение 30 минут — иначе запись отменится.` : 'Оплата — на месте, по договорённости с организацией.'}</div>
+    {done.payUrl && <a href={done.payUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', padding: 12, borderRadius: 14, background: GO, color: '#fff', fontWeight: 800, textDecoration: 'none', marginBottom: 8 }}>Перейти к оплате задатка</a>}<Btn kind="soft" onClick={() => { setDone(null); setStart(''); setKey(newKey()); }}>Готово</Btn></Card>;
   return (
     <Card>
       <div style={{ fontWeight: 800, color: C.t1, marginBottom: 8 }}><CalendarClock size={16} style={{ verticalAlign: -3 }} /> Записаться</div>
@@ -46,7 +47,7 @@ export const BookBlock = ({ placeId, onBooked }: { placeId: string; onBooked: ()
           <Input label="Имя" value={name} onChange={setName} max={80} /><Input label="Телефон" value={phone} onChange={setPhone} type="tel" max={30} placeholder="+7…" />
           <Input label="Пожелания (необязательно)" value={note} onChange={setNote} max={300} />
           <Btn busy={busy} disabled={name.trim().length < 2 || phone.trim().length < 5} onClick={submit}>{d.autoConfirm ? 'Записаться' : 'Отправить заявку на запись'}</Btn>
-          <div style={{ fontSize: 12, color: C.t3 }}>{d.autoConfirm ? 'Запись подтверждается сразу.' : 'Организация подтвердит запись — вы получите уведомление.'} Оплата не требуется: расчёт на месте.</div>
+          <div style={{ fontSize: 12, color: C.t3 }}>{svc && svc.depositRub > 0 ? `Нужен задаток ${fmt(svc.depositRub)} ₽ — переводом организации, Sky деньги не принимает. ` : ''}{d.autoConfirm ? 'Запись подтверждается сразу.' : 'Организация подтвердит запись — вы получите уведомление.'} {svc && svc.depositRub > 0 ? 'Остаток — на месте.' : 'Оплата не требуется: расчёт на месте.'}</div>
         </>}
       </Col>
     </Card>
@@ -102,6 +103,7 @@ export const MyBookings = () => {
         <div translate="no" style={{ fontSize: 13, color: C.t2 }}>{b.item} · {fmt(b.priceRub)} ₽{b.address ? ` · ${b.address}` : ''}</div>
         <div style={{ margin: '6px 0' }}><Chip>{b.statusLabel}</Chip></div>
         {b.comment && <div translate="no" style={{ fontSize: 12, color: C.t2 }}>{b.comment}</div>}
+        {b.payUrl && <a href={b.payUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', padding: 12, borderRadius: 12, background: GO, color: '#fff', fontWeight: 800, textDecoration: 'none', marginBottom: 6 }}>Оплатить задаток {fmt(b.depositRub ?? 0)} ₽</a>}
         {b.canCancel && <Btn kind="danger" busy={busy} onClick={() => void run(async () => { const r = await gpBook.cancel(b.id); if (!r.ok) return fail(r); flash('Запись отменена'); reload(); })}>Отменить запись</Btn>}
       </Card>))}
     </Col>

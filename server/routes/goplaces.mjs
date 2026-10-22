@@ -9,6 +9,8 @@ import { json, parseBody, requireProfile, clientIp } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import * as gp from './../goplaces.mjs';
 import * as bk from './../goplacebook.mjs';
+import * as st from './../kbstaff.mjs';
+import { audit } from './../kbiz.mjs';
 
 const MULT = Math.max(1, Number(process.env.GOPLACES_RATE_MULT) || 1);   // только для тестов
 const CODE = { not_found: 404, not_allowed: 403, no_business: 404, suspended: 423, blocked: 423, bad_state: 409, incomplete: 422, not_connected: 409, already_published: 409, own_place: 403, shop_unavailable: 410,
@@ -51,21 +53,30 @@ export const goPlacesRoutes = async (req, res, url) => {
       return json(res, 404, { error: 'not_found' });
     }
     if (isOwner) {
-      if (method === 'GET' && path === '/api/kbiz/place/booking') return reply(res, await bk.ownerBookGet(me));
-      if (method === 'PUT' && path === '/api/kbiz/place/booking') return reply(res, await bk.ownerBookSave(me, await body()));
-      if (method === 'POST' && path === '/api/kbiz/place/booking/day-off') { const b = await body(); return reply(res, await bk.ownerDayOff(me, b.day, b.reason, b.on !== false)); }
-      if (method === 'GET' && path === '/api/kbiz/place/bookings') return reply(res, await bk.ownerBookings(me, Object.fromEntries(u.searchParams)));
-      if (method === 'POST' && (m = path.match(/^\/api\/kbiz\/place\/bookings\/(gpb-[0-9a-f-]{36})\/(confirm|reject|cancel|done|no-show)$/))) return reply(res, await bk.ownerAct(me, m[1], m[2], (await body()).reason));
-      if (method === 'GET' && path === '/api/kbiz/place/reviews') return reply(res, await bk.ownerReviews(me));
-      if (method === 'POST' && (m = path.match(/^\/api\/kbiz\/place\/reviews\/(gpr-[0-9a-f-]{36})\/reply$/))) return reply(res, await bk.ownerReply(me, m[1], (await body()).text));
-      if (method === 'GET' && path === '/api/kbiz/place/stats') return reply(res, await bk.ownerStats(me, u.searchParams.get('days')));
-      if (method === 'GET' && path === '/api/kbiz/place') return reply(res, await gp.ownerGet(me));
-      if (method === 'PUT' && path === '/api/kbiz/place') return reply(res, await gp.ownerSave(me, await body()));
-      if (method === 'POST' && path === '/api/kbiz/place/connect') return reply(res, await gp.ownerConnect(me, (await body()).on !== false));
-      if (method === 'POST' && path === '/api/kbiz/place/submit') return reply(res, await gp.ownerSubmit(me));
-      if (method === 'POST' && path === '/api/kbiz/place/photo') return reply(res, await gp.ownerAddPhoto(me, (await body()).dataUrl));
-      if (method === 'DELETE' && (m = path.match(/^\/api\/kbiz\/place\/photo\/(kbm-[0-9a-f-]{36})$/))) return reply(res, await gp.ownerRemovePhoto(me, m[1]));
-      if (method === 'GET' && (m = path.match(/^\/api\/kbiz\/place\/media\/(kbm-[0-9a-f-]{36})$/))) return sendImg(res, await gp.mediaOwn(me, m[1]));
+      // Владелец и сотрудники бизнеса (kbstaff.PERMS): сотрудник работает «от имени владельца», каждое его изменение пишется в журнал бизнеса.
+      const acc = await st.accessOf(me);
+      if (!acc) return json(res, 404, { error: 'no_business' });
+      const own = acc.ownerId;
+      const group = method === 'GET' ? 'placeview'
+        : /\/place\/connect$/.test(path) ? 'owner'
+        : /\/place\/(bookings|reviews)\/[^/]+\/(confirm|reject|cancel|done|no-show|reply)$/.test(path) ? 'placeops' : 'placecard';
+      if (!st.can(acc, group)) return json(res, 403, { error: 'forbidden' });
+      if (acc.role !== 'owner' && method !== 'GET') await audit(acc.businessId, me, 'staff_action', `${acc.role}: ${method} ${path.replace(/(kb[a-z0-9]*|gp[a-z])-[0-9a-f-]{36}/g, '$1:id')}`).catch(() => {});
+      if (method === 'GET' && path === '/api/kbiz/place/booking') return reply(res, await bk.ownerBookGet(own));
+      if (method === 'PUT' && path === '/api/kbiz/place/booking') return reply(res, await bk.ownerBookSave(own, await body()));
+      if (method === 'POST' && path === '/api/kbiz/place/booking/day-off') { const b = await body(); return reply(res, await bk.ownerDayOff(own, b.day, b.reason, b.on !== false)); }
+      if (method === 'GET' && path === '/api/kbiz/place/bookings') return reply(res, await bk.ownerBookings(own, Object.fromEntries(u.searchParams)));
+      if (method === 'POST' && (m = path.match(/^\/api\/kbiz\/place\/bookings\/(gpb-[0-9a-f-]{36})\/(confirm|reject|cancel|done|no-show)$/))) return reply(res, await bk.ownerAct(own, m[1], m[2], (await body()).reason));
+      if (method === 'GET' && path === '/api/kbiz/place/reviews') return reply(res, await bk.ownerReviews(own));
+      if (method === 'POST' && (m = path.match(/^\/api\/kbiz\/place\/reviews\/(gpr-[0-9a-f-]{36})\/reply$/))) return reply(res, await bk.ownerReply(own, m[1], (await body()).text));
+      if (method === 'GET' && path === '/api/kbiz/place/stats') return reply(res, await bk.ownerStats(own, u.searchParams.get('days')));
+      if (method === 'GET' && path === '/api/kbiz/place') return reply(res, await gp.ownerGet(own));
+      if (method === 'PUT' && path === '/api/kbiz/place') return reply(res, await gp.ownerSave(own, await body()));
+      if (method === 'POST' && path === '/api/kbiz/place/connect') return reply(res, await gp.ownerConnect(own, (await body()).on !== false));
+      if (method === 'POST' && path === '/api/kbiz/place/submit') return reply(res, await gp.ownerSubmit(own));
+      if (method === 'POST' && path === '/api/kbiz/place/photo') return reply(res, await gp.ownerAddPhoto(own, (await body()).dataUrl));
+      if (method === 'DELETE' && (m = path.match(/^\/api\/kbiz\/place\/photo\/(kbm-[0-9a-f-]{36})$/))) return reply(res, await gp.ownerRemovePhoto(own, m[1]));
+      if (method === 'GET' && (m = path.match(/^\/api\/kbiz\/place\/media\/(kbm-[0-9a-f-]{36})$/))) return sendImg(res, await gp.mediaOwn(own, m[1]));
       return json(res, 404, { error: 'not_found' });
     }
     if (method === 'GET' && path === '/api/go/places/categories') return reply(res, await gp.categories());

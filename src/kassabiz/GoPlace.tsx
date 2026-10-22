@@ -28,7 +28,7 @@ const OwnerPhoto = ({ url, onDel }: { url: string; onDel: () => void }) => {
   );
 };
 
-const GoPlaceCard = () => {
+const GoPlaceCard = ({ canConnect }: { canConnect: boolean }) => {
   const [p, setP] = useState<GpOwnerPlace | null>(null); const [cats, setCats] = useState<GpCategory[]>([]); const [err, setErr] = useState(false);
   const [f, setF] = useState({ categoryId: '', about: '', city: '', address: '', phone: '', links: '' });
   const [hours, setHours] = useState<GpHours>({}); const [busy, setBusy] = useState(false); const [geoFailed, setGeoFailed] = useState(false);
@@ -59,7 +59,7 @@ const GoPlaceCard = () => {
         <div className="flex items-center justify-between gap-3">
           <div><p className="text-sm font-black" style={{ color: 'var(--t1)' }}>Подключить к Sky GO</p>
             <p className="text-xs" style={{ color: 'var(--t3)' }}>Организация появится в каталоге «Организации» в Sky GO после проверки администрацией. Отдельного кабинета нет: заказы и оплата — здесь, в Sky для бизнеса.</p></div>
-          <input type="checkbox" role="switch" aria-label="Подключить к Sky GO" checked={p.connected} disabled={busy || p.status === 'blocked'} onChange={(e) => void run(() => gpOwner.connect(e.target.checked), (d) => fill((d as { place: GpOwnerPlace }).place))} className="h-6 w-11 shrink-0" />
+          <input type="checkbox" role="switch" aria-label="Подключить к Sky GO" checked={p.connected} disabled={busy || p.status === 'blocked' || !canConnect} onChange={(e) => void run(() => gpOwner.connect(e.target.checked), (d) => fill((d as { place: GpOwnerPlace }).place))} className="h-6 w-11 shrink-0" />
         </div>
         <p className="mt-2 text-xs font-semibold" style={{ color: TONE[p.status] }}>Статус: {p.statusLabel}</p>
         {p.rejectReason && <p role="alert" className="mt-1 text-xs" style={{ color: 'var(--red)' }}>Причина: {p.rejectReason}</p>}
@@ -125,14 +125,15 @@ const GoPlaceCard = () => {
 };
 
 const TABS = [['card', 'Карточка'], ['book', 'Записи'], ['sched', 'Расписание'], ['rev', 'Отзывы'], ['stat', 'Статистика']] as const;
-export const GoPlace = () => {
-  const [tab, setTab] = useState<(typeof TABS)[number][0]>('card');
+export const GoPlace = ({ role = 'owner' }: { role?: string }) => {
+  const tabs = TABS.filter(([k]) => role === 'owner' || role === 'admin' || k === 'book' || k === 'rev' || k === 'stat');   // менеджер: записи, отзывы, статистика
+  const [tab, setTab] = useState<(typeof TABS)[number][0]>(tabs[0][0]);
   return (
     <div className="space-y-3">
       <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-        {TABS.map(([k, n]) => <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)} className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold" style={tab === k ? { background: 'var(--accent)', color: '#fff' } : { background: 'var(--bg-l2)', color: 'var(--t2)' }}>{n}</button>)}
+        {tabs.map(([k, n]) => <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)} className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold" style={tab === k ? { background: 'var(--accent)', color: '#fff' } : { background: 'var(--bg-l2)', color: 'var(--t2)' }}>{n}</button>)}
       </div>
-      {tab === 'card' && <GoPlaceCard />}{tab === 'book' && <Bookings />}{tab === 'sched' && <Schedule />}{tab === 'rev' && <OwnerReviews />}{tab === 'stat' && <PlaceStats />}
+      {tab === 'card' && <GoPlaceCard canConnect={role === 'owner'} />}{tab === 'book' && <Bookings />}{tab === 'sched' && <Schedule />}{tab === 'rev' && <OwnerReviews />}{tab === 'stat' && <PlaceStats />}
     </div>
   );
 };

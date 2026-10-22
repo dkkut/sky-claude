@@ -25,12 +25,13 @@ export const Bookings = () => {
         return (
           <div key={b.id} className="rounded-2xl p-3" style={card}>
             <div className="flex justify-between gap-2"><b translate="no" style={{ color: 'var(--t1)' }}>{b.item}</b><span className="text-sm font-bold" style={{ color: 'var(--t1)' }}>{when(b.startsAt, b.tz)}</span></div>
-            <p translate="no" className="text-xs" style={{ color: 'var(--t2)' }}>{b.name}, {b.phone} · {b.priceRub} ₽{b.note ? ` · ${b.note}` : ''}</p>
+            <p translate="no" className="text-xs" style={{ color: 'var(--t2)' }}>{b.name}, {b.phone} · {b.priceRub} ₽{b.depositRub ? ` (задаток ${b.depositRub} ₽)` : ''}{b.note ? ` · ${b.note}` : ''}</p>
             <p className="mt-1 text-xs font-semibold" style={{ color: 'var(--accent)' }}>{b.statusLabel}{b.comment ? ` — ${b.comment}` : ''}</p>
-            {['requested', 'confirmed'].includes(b.status) && <>
+            {['awaiting_payment', 'requested', 'confirmed'].includes(b.status) && <>
               <input aria-label="Причина" placeholder="Причина (для отказа или отмены)" value={why[b.id] ?? ''} onChange={(e) => setWhy({ ...why, [b.id]: e.target.value })} maxLength={300} className="mt-2 w-full rounded-lg px-3 py-2 text-xs" style={field} />
               <div className="mt-2 flex flex-wrap gap-2">
                 {b.status === 'requested' && <><Btn small tone="accent" disabled={busy} onClick={() => void act(b.id, 'confirm')}>Подтвердить</Btn><Btn small tone="danger" disabled={busy} onClick={() => void act(b.id, 'reject')}>Отклонить</Btn></>}
+                {b.status === 'awaiting_payment' && <Btn small tone="danger" disabled={busy} onClick={() => void act(b.id, 'cancel')}>Отменить</Btn>}
                 {b.status === 'confirmed' && <><Btn small tone="danger" disabled={busy} onClick={() => void act(b.id, 'cancel')}>Отменить</Btn>{past && <><Btn small tone="accent" disabled={busy} onClick={() => void act(b.id, 'done')}>Состоялась</Btn><Btn small disabled={busy} onClick={() => void act(b.id, 'no-show')}>Не пришёл</Btn></>}</>}
               </div></>}
           </div>);
