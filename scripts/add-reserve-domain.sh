@@ -24,8 +24,9 @@ setenv() {   # setenv KEY VALUE — идемпотентно, права .env н
   chmod 600 .env
 }
 
-# shellcheck disable=SC1091
-set -a; source .env; set +a
+# .env НЕ source-им: в нём бывают значения со спецсимволами без кавычек (docker compose их читает, bash — нет).
+envget() { grep -m1 "^$1=" .env | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"; }
+DOMAIN="$(envget DOMAIN)"; CERTBOT_EMAIL="$(envget CERTBOT_EMAIL)"; RESERVE_DOMAIN="$(envget RESERVE_DOMAIN)"; CERTBOT_STAGING="$(envget CERTBOT_STAGING)"
 : "${DOMAIN:?в .env не задан DOMAIN}"
 
 if [[ "${1:-}" == "--check" ]]; then
