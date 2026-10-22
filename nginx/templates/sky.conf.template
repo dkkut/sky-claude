@@ -33,7 +33,7 @@ server {
     listen [::]:80 default_server;
     # www.${DOMAIN} указан на случай домена второго уровня; для
     # поддомена такое имя просто никогда не придёт и ни на что не влияет.
-    server_name ${DOMAIN} www.${DOMAIN};
+    server_name ${DOMAIN} www.${DOMAIN} ${RESERVE_DOMAIN};
 
     # Проверка Let's Encrypt должна ходить по HTTP.
     location ^~ /.well-known/acme-challenge/ {
@@ -60,10 +60,13 @@ server {
     http2       on;
     # www.${DOMAIN} указан на случай домена второго уровня; для
     # поддомена такое имя просто никогда не придёт и ни на что не влияет.
-    server_name ${DOMAIN} www.${DOMAIN};
+    server_name ${DOMAIN} www.${DOMAIN} ${RESERVE_DOMAIN};
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+    # ${RESERVE_DOMAIN} — резервный адрес API для приложений (VITE_API_FALLBACKS): тот же вхост и тот же сертификат (SAN),
+    # см. scripts/add-reserve-domain.sh. Не задан — заглушка-домен, ни на что не влияет.
 
     # Только TLS 1.2+; наборы шифров с прямой секретностью.
     ssl_protocols             TLSv1.2 TLSv1.3;

@@ -38,6 +38,8 @@ services:
       SITE_DOMAIN: ${SITE_DOMAIN:-site.invalid.local}
       # Четвёртый вхост — сайт восстановления доступа (recovery.skymessenger.online), см. nginx/recovery-template.
       RECOVERY_DOMAIN: ${RECOVERY_DOMAIN:-recovery.invalid.local}
+      # Резервный адрес API для приложений: тот же вхост, что и DOMAIN, сертификат — SAN основного (scripts/add-reserve-domain.sh).
+      RESERVE_DOMAIN: ${RESERVE_DOMAIN:-reserve.invalid.local}
     volumes:
       - certbot-certs:/etc/letsencrypt:ro
       - certbot-webroot:/var/www/certbot:ro
