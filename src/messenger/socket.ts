@@ -14,7 +14,7 @@ import { refreshIceServers } from '@/shared/rtcConfig';
 import { emitGoOrder } from '@/go/live';
 import { useMessengerStore } from './store';
 import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
-import { NATIVE_APP, API_ORIGIN } from '@/core/nativeApp';
+import { NATIVE_APP, API_ORIGIN, getApiOrigin, failoverApiOrigin } from '@/core/nativeApp';
 import { setWireSink, setVolatileSink, type Outgoing } from '@/core/wire';
 import { bsignal, type SignalMsg } from '@/calls/webrtc';
 import { receiveTogether } from '@/together/togetherState';
@@ -120,7 +120,7 @@ const toMessageItem = (raw: any, myId: string): MessageItem => {
  */
 const WS_URL = () => {
   if (NATIVE_APP && API_ORIGIN) {
-    return `${API_ORIGIN.replace(/^http/, 'ws')}/ws`;
+    return `${getApiOrigin().replace(/^http/, 'ws')}/ws`;
   }
   return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
 };
@@ -213,6 +213,8 @@ const scheduleReconnect = () => {
   // Разброс, чтобы после падения сервера все вкладки не пришли разом.
   const delay = base / 2 + Math.random() * (base / 2);
   attempt += 1;
+  // Основной адрес не отвечает уже несколько попыток — пробуем запасной (родное приложение)
+  if (NATIVE_APP && attempt >= 2) void failoverApiOrigin();
   reconnectTimer = setTimeout(() => { reconnectTimer = null; open(); }, delay);
 };
 

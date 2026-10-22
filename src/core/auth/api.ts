@@ -17,7 +17,7 @@
 import { getInvite, clearInvite } from '../../invite/capture';
 import { isEnglish } from '@/i18n/lang';
 import { getActiveSlot, refreshKeyFor } from './slots';
-import { NATIVE_APP, IOS_WEB, API_ORIGIN, nativeStore, REFRESH_TOKEN_KEY, BETA_TOKEN_KEY } from '../nativeApp';
+import { NATIVE_APP, IOS_WEB, API_ORIGIN, getApiOrigin, failoverApiOrigin, nativeStore, REFRESH_TOKEN_KEY, BETA_TOKEN_KEY } from '../nativeApp';
 
 /** Способ второго фактора: код из приложения или письмо на почту. */
 export type TwoFactorMethod = 'app' | 'email' | 'sms';
@@ -219,8 +219,25 @@ const deviceId = (): string => {
 };
 const skyMode = (): string => (typeof document !== 'undefined' ? document.documentElement.dataset.skyMode ?? '' : '');
 
-const raw = (path: string, init: RequestInit = {}) =>
-  fetch(NATIVE_APP ? API_ORIGIN + path : path, {
+const raw = async (path: string, init: RequestInit = {}): Promise<Response> => {
+  if (!NATIVE_APP) return rawOnce(path, init);
+  const origin = getApiOrigin();
+  const idempotent = !init.method || init.method === 'GET' || init.method === 'HEAD';
+  try {
+    const res = await rawOnce(path, init, origin);
+    if (![502, 503, 504].includes(res.status) || !(await failoverApiOrigin())) return res;
+    // 502–504 пришли от прокси перед основным сервером: на запасной адрес повторяем только чтение
+    return idempotent ? rawOnce(path, init, getApiOrigin()) : res;
+  } catch (e) {
+    // сеть до адреса оборвалась: переключаемся; повторяем только чтение — запись могла дойти до сервера
+    if (!(await failoverApiOrigin())) throw e;
+    if (idempotent) return rawOnce(path, init, getApiOrigin());
+    throw e;
+  }
+};
+
+const rawOnce = (path: string, init: RequestInit = {}, origin = ''): Promise<Response> =>
+  fetch(NATIVE_APP ? (origin || getApiOrigin()) + path : path, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -255,7 +272,7 @@ const raw = (path: string, init: RequestInit = {}) =>
  * приложения (https://localhost у Capacitor, app://sky у Electron), а
  * калитка беты отклоняла бы запрос без X-Sky-Beta.
  */
-export const uploadUrl = (path: string) => (NATIVE_APP ? API_ORIGIN + path : path);
+export const uploadUrl = (path: string) => (NATIVE_APP ? getApiOrigin() + path : path);
 
 export const nativeXhrHeaders = (): Record<string, string> => (
   NATIVE_APP
@@ -748,7 +765,7 @@ export const apiFetchFile = async (path: string): Promise<Blob | null> => {
 /** Доступен ли бэкенд. Нужно, чтобы отличить «нет сети» от «неверный код». */
 export const apiAvailable = async (): Promise<boolean> => {
   try {
-    const res = await fetch(NATIVE_APP ? `${API_ORIGIN}/healthz` : '/healthz',
+    const res = await fetch(NATIVE_APP ? `${getApiOrigin()}/healthz` : '/healthz',
       { cache: 'no-store', signal: AbortSignal.timeout(4000) });
     return res.ok;
   } catch {

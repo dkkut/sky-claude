@@ -26,6 +26,57 @@ export const MEDIA_BY_URL = NATIVE_APP || IOS_WEB;
 /** Абсолютный адрес API. Пусто в веб-сборке — там пути и так относительные. */
 export const API_ORIGIN = NATIVE_APP ? (import.meta.env.VITE_API_ORIGIN ?? '') : '';
 
+/* ─── Резервные адреса API (только родное приложение) ───────────────
+   Основной адрес — API_ORIGIN; запасные — VITE_API_FALLBACKS (через запятую, только https).
+   Когда основной не отвечает (сеть до него оборвалась / 502-504), запросы уходят на следующий
+   живой адрес; раз в минуту основной проверяется /healthz, и как только он снова жив, приложение
+   возвращается на него. В вебе (тот же origin) переключать нечего — там список пуст. */
+const FALLBACKS = NATIVE_APP
+  ? String(import.meta.env.VITE_API_FALLBACKS ?? '').split(',').map((x) => x.trim().replace(/\/+$/, '')).filter((x) => /^https:\/\/[^/\s]+$/.test(x) && x !== API_ORIGIN)
+  : [];
+const ORIGINS = API_ORIGIN ? [API_ORIGIN, ...FALLBACKS] : [];
+let active = 0;
+let lastSwitch = 0;
+const listeners = new Set<(origin: string) => void>();
+
+/** Адрес API, который сейчас считается рабочим. */
+export const getApiOrigin = (): string => (NATIVE_APP ? (ORIGINS[active] ?? API_ORIGIN) : '');
+export const hasApiFallbacks = ORIGINS.length > 1;
+export const onApiOriginChange = (fn: (origin: string) => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
+
+const healthy = async (origin: string) => {
+  try { return (await fetch(`${origin}/healthz`, { cache: 'no-store', signal: AbortSignal.timeout(4000) })).ok; }
+  catch { return false; }
+};
+const setActive = (i: number) => {
+  if (i === active) return;
+  active = i; lastSwitch = Date.now();
+  listeners.forEach((fn) => fn(ORIGINS[i]));
+};
+
+let switching: Promise<boolean> | null = null;
+/** Вызывается при сбое запроса к текущему адресу: ищет следующий живой. true — адрес сменился. */
+export const failoverApiOrigin = (): Promise<boolean> => {
+  if (ORIGINS.length < 2) return Promise.resolve(false);
+  if (switching) return switching;
+  const from = active;
+  switching = (async () => {
+    for (let k = 1; k < ORIGINS.length; k++) {
+      const i = (from + k) % ORIGINS.length;
+      if (await healthy(ORIGINS[i])) { setActive(i); return true; }
+    }
+    return false;
+  })().finally(() => { switching = null; });
+  return switching;
+};
+
+if (ORIGINS.length > 1 && typeof window !== 'undefined') {
+  setInterval(async () => {
+    if (active === 0 || document.hidden || Date.now() - lastSwitch < 60_000) return;
+    if (await healthy(ORIGINS[0])) setActive(0);
+  }, 60_000);
+}
+
 /** Состояние единого плеера, которым основное окно Electron делится с overlay Quick Actions. */
 export interface SkyPlayerState {
   kind: 'music' | 'podcast' | null;
