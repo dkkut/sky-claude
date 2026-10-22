@@ -1,6 +1,6 @@
 /** Sky GO: общие части интерфейса (светлая премиальная палитра поверх токенов приложения). */
 import { visibleTick } from '@/shared/visibleTick';
-import { useEffect, useId, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Loader2, ChevronLeft } from 'lucide-react';
 import { C, fmt } from '@/marketplace/ui';
 import { flash } from '@/shared/flash';
@@ -83,7 +83,19 @@ export const Back = ({ onClick, title }: { onClick: () => void; title: string })
 export const Col = ({ children, gap = 10 }: { children: ReactNode; gap?: number }) => <div style={{ display: 'flex', flexDirection: 'column', gap }}>{children}</div>;
 
 /** Любой отказ сервера — на экран. */
-export const fail = (r: { error?: string; reason?: string; status?: number }) => flash(goError(r));
+export const fail = (r: { error?: string; reason?: string; status?: number; hint?: string }) => flash(r.hint || goError(r));
+
+/** Защита от повторного нажатия: пока действие выполняется, второй запуск игнорируется. */
+export const useAction = () => {
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  const run = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
+    if (lock.current) return undefined;
+    lock.current = true; setBusy(true);
+    try { return await fn(); } finally { lock.current = false; setBusy(false); }
+  };
+  return [busy, run] as const;
+};
 
 /** Загрузка с перечитыванием; повторяет по таймеру, пока экран открыт. */
 export const useLoad = <T,>(fn: () => Promise<T>, deps: unknown[] = [], everyMs = 0) => {

@@ -1,11 +1,17 @@
 /** Sky GO → Парковки: клиент API (/api/parking/*). Деньги и сроки считает сервер; тут только показ. */
 import { apiCall } from '@/core/auth/api';
 
-export interface PkTariff { id: string; kind: 'hourly' | 'daily' | 'flat'; priceRub: number; freeMinutes: number; minMinutes: number; maxMinutes: number; active: boolean }
-export interface PkLot { acceptsPayment?: boolean; id: string; orgId: string; title: string; city: string; address: string; lat: number | null; lng: number | null; spacesTotal: number; description: string; hours: string; status: string; rejectReason?: string; tariffs: PkTariff[] }
+export interface PkTariff { id: string; kind: 'hourly' | 'daily' | 'flat'; priceRub: number; freeMinutes: number; minMinutes: number; maxMinutes: number; minCostRub?: number; active: boolean }
+export interface PkLot { acceptsPayment?: boolean; id: string; orgId: string; title: string; city: string; address: string; lat: number | null; lng: number | null; spacesTotal: number; description: string; hours: string; status: string; rejectReason?: string; closed?: boolean; closedReason?: string; tariffs: PkTariff[] }
 export interface PkVehicle { id: string; plate: string; label: string }
 export interface PkPayment { id: string; kind: 'start' | 'extend'; amountRub: number; status: 'pending' | 'paid' | 'refunded' | 'cancelled'; payVia?: string; payUrl?: string; payBy?: string; refund: string | null; at: string }
+export interface PkSessionPage { sessions: PkSession[]; total: number; hasMore: boolean }
 export interface PkSession { id: string; lotId: string; lotTitle: string; address: string; status: 'awaiting_payment' | 'active' | 'ended' | 'cancelled'; payBy?: string | null; startsAt: string; endsAt: string; paidRub: number; secondsLeft: number; plate: string; tariff: { kind?: string; priceRub?: number; maxMinutes?: number }; payments?: PkPayment[] }
+export interface PkStaff { profileId: string; role: string; username: string; name: string; lotIds: string[] | null; perms: string[] }
+export interface PkMoney { confirmedRub: number; confirmedCount: number; refundedRub: number; pendingRub: number }
+export interface PkDashboard { role: string; lots: { total: number; byStatus: Record<string, number>; open: number; closed: number }; activeSessions: number; users: { total: number; last30: number }; money: { day: PkMoney; week: PkMoney; month: PkMoney }; days: { day: string; sessions: number; rub: number }[]; recent: { id: number; action: string; title: string | null; at: string }[]; errors: { at: string; scope: string; code: string; message: string }[]; pendingRefunds: number; note: string }
+export interface PkPay { id: string; kind: string; amountRub: number; status: 'pending' | 'paid' | 'refunded' | 'cancelled'; payVia: string; at: string; minutes: number; sessionId: string; lotId: string; lotTitle: string; refund: string | null }
+export interface PkAuditEvent { id: number; action: string; detail: Record<string, unknown>; at: string; lotId: string | null; actor: string | null }
 export interface PkOrg { id: string; name: string; status: string; suspendReason: string; role: 'owner' | 'admin' | 'moderator'; lots: number }
 export interface PkRefund { id: string; lotTitle: string; amountRub: number; reason: string; status: string; note: string; at: string; own: boolean }
 
@@ -43,4 +49,20 @@ export const pk = {
   orgSessions: (org: string) => apiCall<{ sessions: PkSession[]; totals: { paidRub: number; refundedRub: number; note: string } }>(`${P}/orgs/${org}/sessions`),
   orgRefunds: (org: string) => apiCall<{ refunds: PkRefund[] }>(`${P}/orgs/${org}/refunds`),
   decideRefund: (id: string, action: 'approve' | 'reject', note: string) => apiCall(`${P}/refunds/${id}/${action}`, { method: 'POST', body: body({ note }) }),
+  updateVehicle: (id: string, b: { plate?: string; label?: string }) => apiCall(`${P}/vehicles/${id}`, { method: 'PUT', body: body(b) }),
+  sessionsPage: (limit: number, offset: number) => apiCall<PkSessionPage>(`${P}/sessions?limit=${limit}&offset=${offset}`),
+  lotsFiltered: (org: string, f: Record<string, string>) => apiCall<{ role: string; acceptsPayment: boolean; total: number; lots: PkLot[] }>(`${P}/orgs/${org}/lots?${new URLSearchParams(f).toString()}`),
+  submitWith: (id: string, fields: unknown) => apiCall<{ ok?: boolean; already?: boolean; missing?: string[]; hint?: string }>(`${P}/my/lots/${id}/submit`, { method: 'POST', body: body({ fields }) }),
+  closeLot: (id: string, reason: string) => apiCall(`${P}/my/lots/${id}/close`, { method: 'POST', body: body({ reason }) }),
+  reopenLot: (id: string) => apiCall(`${P}/my/lots/${id}/reopen`, { method: 'POST', body: '{}' }),
+  updateTariff: (lot: string, id: string, b: unknown) => apiCall(`${P}/my/lots/${lot}/tariffs/${id}`, { method: 'PUT', body: body(b) }),
+  dashboard: (org: string) => apiCall<PkDashboard>(`${P}/orgs/${org}/dashboard`),
+  payments: (org: string, f: Record<string, string>) => apiCall<{ total: number; totals: { confirmedRub: number; refundedRub: number; pendingRub: number }; payments: PkPay[]; note: string }>(`${P}/orgs/${org}/payments?${new URLSearchParams(f).toString()}`),
+  paymentsCsvUrl: (org: string, f: Record<string, string>) => `${P}/orgs/${org}/payments?${new URLSearchParams({ ...f, format: 'csv' }).toString()}`,
+  audit: (org: string, offset = 0) => apiCall<{ events: PkAuditEvent[] }>(`${P}/orgs/${org}/audit?limit=50&offset=${offset}`),
+  staffFull: (org: string) => apiCall<{ staff: PkStaff[] }>(`${P}/orgs/${org}/staff`),
+  addStaffScoped: (org: string, b: { username: string; role: string; lotIds?: string[] | null; perms?: string[] }) => apiCall(`${P}/orgs/${org}/staff`, { method: 'POST', body: body(b) }),
+  updateStaff: (org: string, id: string, b: { lotIds: string[] | null; perms: string[] }) => apiCall(`${P}/orgs/${org}/staff/${id}`, { method: 'PUT', body: body(b) }),
+  orgSessionsFiltered: (org: string, f: Record<string, string>) => apiCall<{ sessions: PkSession[]; totals: { paidRub: number; refundedRub: number; note: string } }>(`${P}/orgs/${org}/sessions?${new URLSearchParams(f).toString()}`),
+  lotEvents: (lot: string) => apiCall<{ events: { id: number; action: string; detail: Record<string, unknown>; at: string }[] }>(`${P}/my/lots/${lot}/events`),
 };

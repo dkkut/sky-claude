@@ -116,8 +116,8 @@ const cleanScope = async (orgId, input) => {
 export const listStaff = async (me, orgId) => {
   const g = await needRole(me, orgId, 'admin'); if (g.error) return g;
   const { rows } = await query(
-    `SELECT s.profile_id, s.role, s.created_at, s.lot_ids, s.perms, p.username, p.display_name FROM parking_staff s JOIN profiles p ON p.id=s.profile_id WHERE s.org_id=$1 ORDER BY s.created_at`, [orgId]);
-  return { staff: rows.map((r) => ({ profileId: r.profile_id, role: r.role, username: r.username, name: r.display_name, at: r.created_at, lotIds: r.lot_ids, perms: r.perms })) };
+    `SELECT s.profile_id, s.role, s.created_at, s.lot_ids, s.perms, p.username, p.name FROM parking_staff s JOIN profiles p ON p.id=s.profile_id WHERE s.org_id=$1 ORDER BY s.created_at`, [orgId]);
+  return { staff: rows.map((r) => ({ profileId: r.profile_id, role: r.role, username: r.username, name: r.name, at: r.created_at, lotIds: r.lot_ids, perms: r.perms })) };
 };
 export const addStaff = async (me, orgId, input) => {
   const g = await needRole(me, orgId, 'admin'); if (g.error) return g;

@@ -14,7 +14,8 @@ import { AutoScreen, FuelScreen, type AutoKind } from './Fuel';
 import { RegisterScreen, StatusChip } from './Register';
 import { TravelScreen, type TravelTab } from './Travel';
 import { StayCabinet } from './StayCabinet';
-import { ParkingScreen, ParkingOwnerScreen } from './Parking';
+import { ParkingScreen } from './Parking';
+import { ParkingOwnerScreen } from './ParkingOwner';
 import { DriverCabinet, SellerCabinet, CompanyCabinet, PayDetailsCard } from './Cabinet';
 import { bizApi, type OrgRole, type Member, type AssignMode, type Workspaces } from './bizApi';
 import { BusinessWorkspace } from './Business';
@@ -30,7 +31,7 @@ const SERVICES = [
   { key: 'delivery', title: 'Доставка', hint: 'Курьером из точки в точку', Icon: Package },
   { key: 'flights', title: 'Авиабилеты', hint: 'Поиск предложений', Icon: Plane },
   { key: 'fuel', title: 'Моё авто', hint: 'Заправки и мойки рядом', Icon: Fuel },
-  { key: 'parking', title: 'Парковки', hint: 'Оплата с кошелька Sky', Icon: ParkingCircle },
+  { key: 'parking', title: 'Парковки', hint: 'Оплата по реквизитам организации', Icon: ParkingCircle },
 ] as const;
 
 export const SkyGo = () => {

@@ -45,19 +45,25 @@ ok((await body()).includes('Новая организация'), 'открыт �
 await p.getByLabel('Новая организация').fill('Тест-парковки'); await p.getByRole('button', { name: 'Создать' }).click(); await p.waitForTimeout(1000);
 ok((await body()).includes('Тест-парковки'), 'организация создана и видна в списке');
 await p.getByText('Тест-парковки', { exact: true }).first().click(); await p.waitForTimeout(800);
+ok((await body()).includes('Оборот') || (await body()).includes('Подтверждено'), 'сводка организации открылась по умолчанию');
+await p.getByRole('tab', { name: 'Парковки' }).click(); await p.waitForTimeout(800);
 await p.getByRole('button', { name: /Добавить парковку/ }).click(); await p.waitForTimeout(500);
 await p.getByLabel('Название').fill('Двор Тверская'); await p.getByLabel('Город').fill('Москва'); await p.getByLabel('Адрес').fill('Тверская 1');
 await p.getByLabel('Широта').fill('55.7600'); await p.getByLabel('Долгота').fill('37.6100'); await p.getByLabel('Число мест').fill('10');
+const sub0 = p.getByRole('button', { name: 'Отправить на проверку' });
+ok(await sub0.isDisabled(), 'без тарифа кнопка отправки заблокирована, чек-лист показан');
 await p.getByRole('button', { name: 'Сохранить', exact: true }).click(); await p.waitForTimeout(1200);
 ok((await body()).includes('Тарифы'), 'парковка сохранена, блок тарифов появился');
-await p.getByLabel('Цена, ₽').fill('100'); await p.getByRole('button', { name: /Добавить тариф/ }).click(); await p.waitForTimeout(1200);
+await p.getByLabel('Цена за час, ₽').fill('100'); await p.getByRole('button', { name: /Добавить тариф/ }).click(); await p.waitForTimeout(1200);
 ok((await body()).includes('100'), 'тариф добавлен');
 await p.screenshot({ path: S + '/pkui1.png' });
+await p.getByLabel('Часы работы').fill('Круглосуточно');   // правка без «Сохранить»
 const sub = p.getByRole('button', { name: 'Отправить на проверку' });
 ok(await sub.count() > 0, 'кнопка «Отправить на проверку» есть');
 await sub.click(); await p.waitForTimeout(1500);
 ok((await body()).includes('Отправлено на проверку') || (await body()).includes('На проверке'), 'интерфейс подтвердил отправку');
 const st = q(`select status from parking_lots where title='Двор Тверская' order by created_at desc limit 1`);
+ok(q(`select hours from parking_lots where title='Двор Тверская' order by created_at desc limit 1`) === 'Круглосуточно', 'несохранённая правка сохранилась вместе с отправкой');
 ok(st === 'review', 'в базе статус review: ' + st);
 const qr = await call('/api/admin/parking/lots?status=review', {}, M.tok);
 ok(qr.status === 200 && qr.data.lots.some((l) => l.title === 'Двор Тверская'), 'очередь модератора содержит парковку');
