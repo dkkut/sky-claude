@@ -60,7 +60,7 @@ export const GuideOnboarding = () => {
   const s = SERVICES[idx]; const I = ICONS[s.key]; const rec = INTERESTS.find((x) => x.key === interest);
   return (
     <div data-keep-dark className="gd-root fixed inset-0 z-[10040] flex flex-col overflow-y-auto" role="dialog" aria-modal="true" aria-label="Знакомство с Sky"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      style={{ position: 'fixed', paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>   {/* .gd-root задаёт position:relative и без этого перебивал бы Tailwind-овский fixed: знакомство рисовалось под приложением */}
       <div className="gd-stars" aria-hidden />
       {(phase === 'steps' || phase === 'interest') && (
         <div className="relative z-10 flex items-center justify-between gap-3 px-4 pt-3">

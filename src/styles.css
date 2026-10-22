@@ -388,6 +388,7 @@ html.kb-open .kb-hide { display: none !important; }
 
 /* ── Путеводитель по Sky: космос и Liquid Glass (всегда тёмный) ── */
 .gd-root { position: relative; color: #eef1ff; background: radial-gradient(1200px 700px at 15% -10%, rgba(99,102,241,.35), transparent 60%), radial-gradient(900px 600px at 95% 10%, rgba(168,85,247,.28), transparent 60%), radial-gradient(900px 700px at 50% 110%, rgba(34,211,238,.16), transparent 60%), #07081a; }
+.gd-root.fixed { position: fixed; }
 .gd-stars { position: absolute; inset: 0; pointer-events: none; opacity: .55; background-image: radial-gradient(1px 1px at 12% 22%, #fff, transparent), radial-gradient(1px 1px at 78% 14%, #cfe0ff, transparent), radial-gradient(1.5px 1.5px at 34% 68%, #fff, transparent), radial-gradient(1px 1px at 88% 72%, #e3d7ff, transparent), radial-gradient(1px 1px at 56% 40%, #fff, transparent), radial-gradient(1.5px 1.5px at 6% 84%, #cfe0ff, transparent); animation: gd-twinkle 7s ease-in-out infinite alternate; }
 @keyframes gd-twinkle { from { opacity: .35 } to { opacity: .7 } }
 .gd-glass { background: linear-gradient(145deg, rgba(255,255,255,.10), rgba(255,255,255,.03)); border: 1px solid rgba(255,255,255,.14); box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 18px 50px -18px rgba(8,10,40,.8); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); border-radius: 26px; }
