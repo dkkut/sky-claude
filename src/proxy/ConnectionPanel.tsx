@@ -1469,7 +1469,7 @@ export const ConnectionPanel = () => {
       <div className="h-px mx-5 shrink-0" style={{background:C.brd}}/>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-hidden px-5 pt-4">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 pt-4 pb-24">
         <AnimatePresence mode="wait">
           <motion.div key={mode} className="h-full"
             initial={{opacity:0,x:8}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-8}}

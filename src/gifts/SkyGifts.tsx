@@ -685,8 +685,8 @@ export const GiftBubble = ({ gift, fromMe, onCancelled }: {
 }) => {
   const rc = GIFT_RARITY_COLOR[gift.giftRarity];
   const rg = GIFT_RARITY_GLOW[gift.giftRarity] ?? 'rgba(79,110,247,0.3)';
-  const grad0 = gift.giftGrad?.[0] ?? 'var(--bg)';
-  const grad1 = gift.giftGrad?.[1] ?? 'var(--bg-l2)';
+  const grad0 = gift.giftGrad?.[0] ?? '#262b3a';
+  const grad1 = gift.giftGrad?.[1] ?? '#141824';
   const isEpic = ['epic','legendary','unique'].includes(gift.giftRarity);
   const [hovered, setHovered] = useState(false);
   const isMobile = useIsMobile();
@@ -723,6 +723,7 @@ export const GiftBubble = ({ gift, fromMe, onCancelled }: {
           }}
           transition={{ type:'spring', stiffness:280, damping:22 }}
           className="relative overflow-hidden text-center"
+          data-keep-dark=""
           style={{
             background:  `linear-gradient(155deg,${grad0},${grad1})`,
             border:      `2px solid ${rc}55`,

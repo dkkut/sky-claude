@@ -5802,7 +5802,7 @@ export const AdminPanel = () => {
   ];
 
   return (
-    <div className="space-y-3 p-4">
+    <div className="space-y-3 p-4 pb-32">
       {!rights.owner && !rights.twoFactor && rights.twoFactorDue && (
         /* Предупреждение, а не отказ: срок ещё не наступил, права
            работают. Молчать до последнего дня значило бы, что человек

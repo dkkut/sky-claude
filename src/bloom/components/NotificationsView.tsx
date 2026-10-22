@@ -42,7 +42,7 @@ export const NotificationsView = ({ onClose, onOpenPost }: { onClose: () => void
       style={{ background: 'var(--bg-l0, var(--bg))' }}>
 
       <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3.5"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-l1)' }}>
+        style={{ borderColor: 'var(--border)', background: 'var(--bg-l1)', paddingTop: 'calc(env(safe-area-inset-top) + 14px)' }}>
         <button type="button" onClick={onClose} className="rounded-full p-1.5" style={{ background: 'rgba(255,255,255,0.06)' }}>
           <ArrowLeft size={16} style={{ color: 'var(--t1)' }}/>
         </button>

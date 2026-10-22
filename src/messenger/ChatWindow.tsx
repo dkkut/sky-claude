@@ -564,6 +564,15 @@ const MsgCtxMenu = ({ msg, myId, onReply, onEdit, onCopy, onForward, onPin, onFa
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [morePicker, setMorePicker] = useState(false);
+  // Меню раскрывается вверх; если сверху нет места (под шапкой чата) — раскрываем вниз.
+  const [below, setBelow] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    const limit = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--island-pad')) || 0) + 72;
+    if (top < limit) setBelow(true);
+  }, []);
   useEffect(() => {
     const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
     document.addEventListener('mousedown', h);
@@ -583,7 +592,7 @@ const MsgCtxMenu = ({ msg, myId, onReply, onEdit, onCopy, onForward, onPin, onFa
   ];
 
   return (
-    <div ref={ref} className="absolute z-50" style={{ [msg.fromMe ? 'right' : 'left']: 0, bottom: '100%', marginBottom: 4 }}>
+    <div ref={ref} className="absolute z-50" style={{ [msg.fromMe ? 'right' : 'left']: 0, ...(below ? { top: '100%', marginTop: 4 } : { bottom: '100%', marginBottom: 4 }) }}>
       <motion.div initial={{ opacity: 0, scale: 0.9, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9 }} transition={{ duration: 0.12 }}
         className="py-1.5 rounded-xl shadow-2xl overflow-hidden"
