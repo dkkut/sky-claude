@@ -2,6 +2,7 @@
    SKY SETTINGS  -  настройки приложения
    Реально работающие настройки с сохранением
 =============================================================== */
+import { resolveSeason, SEASONS, type Season } from './seasons';
 import { startLightNormalizer, stopLightNormalizer } from './lightNormalizer';
 import { create } from 'zustand';
 import { wireSend } from '@/core/wire';
@@ -40,6 +41,10 @@ export interface AppSettings {
   colorScheme:     ColorScheme;
   /** Автопереключение светлой/тёмной темы по времени суток (местное время устройства). */
   autoTheme:       boolean;
+  /** Сезонная тема поверх светлой/тёмной: none — нет, auto — по дате, либо конкретная (seasons.ts). */
+  season:          Season;
+  /** Украшения сезона (снег, листья…); не показываются при «Анимации выкл» и reduced-motion. */
+  seasonDecor:     boolean;
   /** Карты: auto — по месту (РФ и соседи — Яндекс, остальное — Google); выбор работает, если у сервера есть ключ этого поставщика. */
   mapProvider:     'auto' | 'google' | 'yandex';
   /** С какого часа светлая тема (ЧЧ:ММ) и с какого — тёмная. */
@@ -100,6 +105,8 @@ const W  = typeof window !== 'undefined';
 const defaults: AppSettings = {
   colorScheme:      'dark',
   autoTheme:        false,
+  season:           'none',
+  seasonDecor:      true,
   mapProvider:      'auto',
   autoThemeLight:   '07:00',
   autoThemeDark:    '21:00',
@@ -156,6 +163,8 @@ export const applySettings = (input: AppSettings) => {
   if (!W) return;
   const root = document.documentElement;
   const s = root.dataset.forceDark === '1' ? { ...input, colorScheme: 'dark' as const } : input;
+  const seasonId = resolveSeason(s.season);
+  const season = seasonId ? SEASONS[seasonId] : null;
   const accent = ACCENT_COLORS[s.accent];
   const font = FONT_SIZES[s.fontSize];
 
@@ -165,9 +174,11 @@ export const applySettings = (input: AppSettings) => {
      только в тёмном режиме: иначе он перебил бы светлую палитру из CSS
      (инлайновый style всегда сильнее обычного правила). */
   root.dataset.theme = s.colorScheme;
+  root.dataset.season = seasonId ?? '';
   if (s.colorScheme === 'light') startLightNormalizer(); else stopLightNormalizer();
   if (s.colorScheme === 'dark') {
-    const theme = THEME_MODES[s.theme];
+    // Сезонный оттенок заменяет палитру тёмной подтемы; у AMOLED (чёрный фон) оттенок не накладываем.
+    const theme = season && s.theme !== 'amoled' ? season.dark : THEME_MODES[s.theme];
     root.style.setProperty('--bg',    theme.bg);
     root.style.setProperty('--bg-l1', theme.l1);
     root.style.setProperty('--bg-l2', theme.l2);
@@ -178,8 +189,9 @@ export const applySettings = (input: AppSettings) => {
     root.style.removeProperty('--bg-l2');
     root.style.removeProperty('--bg-l3');
   }
-  root.style.setProperty('--accent',  accent.hex);
-  root.style.setProperty('--accent-bg', accent.bg);
+  root.style.setProperty('--accent',  season ? season.accent : accent.hex);
+  root.style.setProperty('--accent-bg', season ? season.accentBg : accent.bg);
+  root.dataset.seasonDecor = season && s.seasonDecor && s.animationsOn && root.dataset.forceDark !== '1' ? '1' : '';
   document.body.style.fontSize = font.size;
 
   // Reduce animations

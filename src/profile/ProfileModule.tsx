@@ -11,6 +11,7 @@ import { recognitionMode } from '@/ai/speech';
 import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
+import { SEASONS, SEASON_ORDER, resolveSeason, type Season } from '../settings/seasons';
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -651,6 +652,24 @@ const SettingsSection = ({ logout, username, onOpen }: {
               );
             })}
           </div>
+          <p className="mb-1.5 mt-3 px-1 text-[12px] font-bold" style={{ color: 'var(--t2)' }}>Сезонная тема</p>
+          <div className="mb-2 flex flex-wrap gap-2 px-1" role="radiogroup" aria-label="Сезонная тема">
+            {([['none', 'Нет', '—'], ['auto', 'Авто', '📅'], ...SEASON_ORDER.map((k) => [k, SEASONS[k].label, SEASONS[k].emoji])] as [Season, string, string][]).map(([k, label, emoji]) => {
+              const on = s.season === k;
+              return (
+                <button key={k} type="button" role="radio" aria-checked={on} onClick={() => set({ season: k })}
+                  className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-bold"
+                  style={{ minHeight: 40, background: on ? `${ACCENT_COLORS[s.accent].hex}22` : 'rgba(255,255,255,0.04)', border: `2px solid ${on ? ACCENT_COLORS[s.accent].hex : 'var(--border)'}`, color: on ? 'var(--t1)' : 'var(--t2)' }}>
+                  <span aria-hidden="true">{emoji}</span>{label}
+                </button>
+              );
+            })}
+          </div>
+          {s.season === 'auto' && <p className="mb-2 px-1 text-[11px]" style={{ color: 'var(--t3)' }}>{`Сейчас по дате: ${SEASONS[resolveSeason('auto')!].label}. Хэллоуин — с 24 октября по 1 ноября.`}</p>}
+          {s.season !== 'none' && (
+            <SettingsRow icon={Palette} label="Украшения" sub="Снежинки, листья, лепестки — лёгкая анимация"
+              right={<Toggle on={s.seasonDecor} onToggle={() => set({ seasonDecor: !s.seasonDecor })}/>}/>
+          )}
           <SettingsRow icon={Moon} label="Автопереключение по времени"
             sub={s.autoTheme ? `Светлая с ${s.autoThemeLight}, тёмная с ${s.autoThemeDark}` : 'Тема меняется сама в выбранные часы'}
             right={<Toggle on={s.autoTheme} onToggle={() => set({ autoTheme: !s.autoTheme })}/>}/>

@@ -87,6 +87,21 @@
   --shadow-lg:  0 8px 24px rgba(15,15,20,0.12), 0 4px 8px rgba(15,15,20,0.08);
   --shadow-xl:  0 16px 48px rgba(15,15,20,0.16), 0 8px 16px rgba(15,15,20,0.10);
 }
+/* ─── Сезонные темы (src/settings/seasons.ts): светлая палитра по сезонам; тёмную и акцент ставит applySettings ─── */
+:root[data-theme='light'][data-season='winter']    { --bg:#eef4fa; --bg-l2:#e2edf7; --bg-l3:#d6e5f2; }
+:root[data-theme='light'][data-season='halloween'] { --bg:#fbf1e8; --bg-l2:#f5e4d3; --bg-l3:#eed6bf; }
+:root[data-theme='light'][data-season='summer']    { --bg:#fff9e6; --bg-l2:#fbf0c9; --bg-l3:#f6e6a9; }
+:root[data-theme='light'][data-season='autumn']    { --bg:#faf1e4; --bg-l2:#f3e4cd; --bg-l3:#ecd7b6; }
+:root[data-theme='light'][data-season='spring']    { --bg:#f2faf3; --bg-l2:#e3f3e6; --bg-l3:#d4ecd9; }
+.sky-season-layer { position: fixed; inset: 0; z-index: 40; pointer-events: none; overflow: hidden; }
+.sky-season-layer .sky-flake {
+  position: absolute; top: -8vh; left: var(--x); font-size: var(--s); opacity: 0; line-height: 1; will-change: transform, opacity;
+  animation: sky-fall var(--d) linear var(--delay) infinite;
+}
+.sky-season-layer[data-rise='1'] .sky-flake { top: auto; bottom: -8vh; animation-name: sky-rise; }
+@keyframes sky-fall { 0% { transform: translate3d(0,-8vh,0) rotate(0deg); opacity: 0; } 8% { opacity: .75; } 50% { transform: translate3d(var(--sway),55vh,0) rotate(160deg); } 92% { opacity: .75; } 100% { transform: translate3d(calc(var(--sway) * -1),112vh,0) rotate(320deg); opacity: 0; } }
+@keyframes sky-rise { 0% { transform: translate3d(0,8vh,0); opacity: 0; } 15% { opacity: .55; } 100% { transform: translate3d(var(--sway),-112vh,0); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .sky-season-layer { display: none; } }
 :root[data-theme='light'] ::-webkit-scrollbar-thumb         { background: rgba(15,15,20,0.14); }
 :root[data-theme='light'] ::-webkit-scrollbar-thumb:hover   { background: rgba(15,15,20,0.22); }
 :root[data-theme='light'] .sky-glass                        { background: rgba(255,255,255,0.82); border-color: rgba(15,15,20,0.08); }
