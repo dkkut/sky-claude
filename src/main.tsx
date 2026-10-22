@@ -2,6 +2,7 @@ import { APP_VERSION_LABEL } from './core/version';
 import { KutLandMark } from './shared/KutLandMark';
 import React, { useEffect, useState } from 'react';
 import { useSettings, setForceDark } from './settings/store';
+import './settings/customThemes';   // применяет выбранную свою тему при запуске
 import ReactDOM from 'react-dom/client';
 import { AppShell }      from './app/AppShell';
 import { AuthScreen }    from './auth/AuthScreen';

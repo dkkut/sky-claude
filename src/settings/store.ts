@@ -159,6 +159,10 @@ export const setForceDark = (on: boolean) => {
   applySettings(useSettings.getState().settings);
 };
 
+/** Подписчики на «настройки применены» — так свои темы (customThemes.ts) возвращают свои переменные поверх, не создавая круговой импорт. */
+const afterApplyHooks: Array<() => void> = [];
+export const onAfterApply = (fn: () => void) => { afterApplyHooks.push(fn); };
+
 export const applySettings = (input: AppSettings) => {
   if (!W) return;
   const root = document.documentElement;
@@ -205,6 +209,7 @@ export const applySettings = (input: AppSettings) => {
   // не делал ничего — теперь ставит признак на корне, а размеры
   // подхватывает разметка.
   root.dataset.compact = s.compactMode ? 'on' : 'off';
+  afterApplyHooks.forEach((fn) => { try { fn(); } catch { /* тема не должна ронять применение настроек */ } });
 };
 
 interface SettingsState {

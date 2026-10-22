@@ -32,6 +32,8 @@ import { syncBloomAuthor } from '@/bloom/store';
 import { useMessengerStore } from '@/messenger/store';
 import { ConnectionPanel } from '@/proxy/ConnectionPanel';
 import { APP_THEMES, activeAppTheme, appThemePatch } from '@/settings/appThemes';
+import { CustomThemeEditor } from '@/settings/CustomThemeEditor';
+import { useCustomThemes } from '@/settings/customThemes';
 import { ReferralPanel } from '@/referral/Referral';
 import { useSettings, ACCENT_COLORS, THEME_MODES, FONT_SIZES, type AccentColor, type ThemeMode, type FontSize, type ColorScheme } from '@/settings/store';
 import { useBreakReminderStore, INTERVAL_OPTIONS, SNOOZE_OPTIONS } from '@/settings/breakReminderStore';
@@ -640,7 +642,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
             {APP_THEMES.map((t) => {
               const on = activeAppTheme(s) === t.id;
               return (
-                <button key={t.id} type="button" role="radio" aria-checked={on} onClick={() => set(appThemePatch(t))}
+                <button key={t.id} type="button" role="radio" aria-checked={on} onClick={() => { useCustomThemes.getState().activate(null); set(appThemePatch(t)); }}
                   className="flex flex-col items-center gap-1.5">
                   <span className="relative block w-full overflow-hidden" style={{ aspectRatio: '1/1.1', borderRadius: 14, background: t.swatch[0], border: `2.5px solid ${on ? t.swatch[2] : 'rgba(128,128,128,0.25)'}` }}>
                     <span className="absolute inset-x-1.5 top-2 h-2.5 rounded-full" style={{ background: t.swatch[1] }} />
@@ -673,12 +675,13 @@ const SettingsSection = ({ logout, username, onOpen }: {
               );
             })}
           </div>
+          <CustomThemeEditor />
           <p className="mb-1.5 mt-3 px-1 text-[12px] font-bold" style={{ color: 'var(--t2)' }}>Сезонная тема</p>
           <div className="mb-2 flex flex-wrap gap-2 px-1" role="radiogroup" aria-label="Сезонная тема">
             {([['none', 'Нет', '—'], ['auto', 'Авто', '📅'], ...SEASON_ORDER.map((k) => [k, SEASONS[k].label, SEASONS[k].emoji])] as [Season, string, string][]).map(([k, label, emoji]) => {
               const on = s.season === k;
               return (
-                <button key={k} type="button" role="radio" aria-checked={on} onClick={() => set({ season: k })}
+                <button key={k} type="button" role="radio" aria-checked={on} onClick={() => { if (k !== 'none') useCustomThemes.getState().activate(null); set({ season: k }); }}
                   className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-bold"
                   style={{ minHeight: 40, background: on ? `${ACCENT_COLORS[s.accent].hex}22` : 'rgba(255,255,255,0.04)', border: `2px solid ${on ? ACCENT_COLORS[s.accent].hex : 'var(--border)'}`, color: on ? 'var(--t1)' : 'var(--t2)' }}>
                   <span aria-hidden="true">{emoji}</span>{label}
