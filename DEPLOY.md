@@ -767,3 +767,5 @@ sudo install -o root -g root -m 755 scripts/ssh-login-hook.sh /opt/sky/ssh-login
 
 `sudo bash scripts/install-control.sh` — ставит сервис `sky-control` (порт 127.0.0.1:8099), показывает токен владельца и секрет аутентификатора ОДИН раз (добавьте секрет в приложение и сохраните токен вне сервера). Удалённо: `ssh -L 8099:127.0.0.1:8099 сервер`, затем http://127.0.0.1:8099; либо `--bind 0.0.0.0 --tls-cert … --tls-key … --allow ВАШ_IP`.
 `--status`, `--uninstall`; новый токен — `sky-control --new-token`, новый секрет аутентификатора — `sky-control --new-totp`. Обновить аварийного пользователя: `bash scripts/rescue-access.sh --install`.
+
+**На домене:** `sudo bash scripts/install-control.sh --domain control.skymessenger.online --allow ВАШ_IP` — проверит DNS (A-запись на сервер, без Cloudflare-прокси), выпустит сертификат через webroot, откроет порт 8443 в ufw только для вашего IP; страница: https://control.skymessenger.online:8443. Продление сертификата подхватывается само (проверка раз в час).
