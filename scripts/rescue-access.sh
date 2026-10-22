@@ -59,7 +59,7 @@ note() {  # письмо владельцу (фоном, не задержива
 }
 logger -t sky-rescue "команда '$V' с адреса $FROM"
 case "$V" in
-  help|"") say "Команды: status ps up restart-web restart-api restart-all logs-web logs-api watchdog disk reboot help"; exit 0;;
+  help|"") say "Команды: status ps up restart-web restart-api restart-all logs-web logs-api watchdog disk reboot help | defense-off defense-on unlock gate-pause gate-resume ssh-start control-token control-restart"; exit 0;;
   status) uptime; df -h / | tail -1; free -m | sed -n 2p; ( cd "$APP" && docker compose ps ); command -v sky-watchdog >/dev/null && sky-watchdog --status;;
   ps) docker ps -a --format 'table {{.Names}}\t{{.Status}}';;
   up) note "Аварийный вход ($FROM): up"; cd "$APP" && docker compose up -d && docker compose ps;;
@@ -70,6 +70,10 @@ case "$V" in
   logs-api) cd "$APP" && docker compose logs --tail 60 api;;
   watchdog) command -v sky-watchdog >/dev/null && { sky-watchdog; sky-watchdog --status; };;
   disk) df -h; docker system df;;
+  # Управление защитой через sky-control (CLI на хосте). Без причины от человека пишется «аварийный вход <адрес>».
+  defense-off|defense-on|unlock|gate-pause|gate-resume|ssh-start) note "Аварийный вход ($FROM): $V"; CTL=/usr/local/sbin/sky-control; [ -x "$CTL" ] || { say "sky-control не установлен (scripts/install-control.sh)"; exit 1; }; "$CTL" --cli "$V" "rescue:$FROM";;
+  control-token) note "Аварийный вход ($FROM): выдача нового токена Sky Control"; CTL=/usr/local/sbin/sky-control; [ -x "$CTL" ] || { say "sky-control не установлен"; exit 1; }; "$CTL" --cli new-token "rescue:$FROM";;
+  control-restart) note "Аварийный вход ($FROM): control-restart"; systemctl restart sky-control && systemctl is-active sky-control;;
   reboot) note "Аварийный вход ($FROM): reboot"; say "Перезагрузка через 3 секунды…"; sleep 3; systemctl reboot;;
   *) say "Неизвестная команда: $V. Список: help"; exit 2;;
 esac
