@@ -76,8 +76,23 @@ docker compose exec -T api tar czf - -C /data . | emit "$DEST/files-$STAMP.tar.$
 verify_file "$DEST/files-$STAMP.tar.$EXT"
 echo "    $(du -h "$DEST/files-$STAMP.tar.$EXT" | cut -f1)  files-$STAMP.tar.$EXT"
 
+# Настройки и секреты (.env, secrets/, docker-compose.secrets.local): без них копия базы и файлов не поднимается
+# (так и вышло при потере .env). Только в ЗАШИФРОВАННОМ виде: открытой копией секреты не пишем.
+echo "==> Настройки и секреты (.env, secrets/)"
+if [ "$EXT" = gz.age ]; then
+  CFG=()
+  for f in .env docker-compose.secrets.local secrets; do [ -e "$APP_DIR/$f" ] && CFG+=("$f"); done
+  if [ "${#CFG[@]}" -gt 0 ]; then
+    tar czf - -C "$APP_DIR" "${CFG[@]}" | emit "$DEST/config-$STAMP.tar.$EXT"
+    verify_file "$DEST/config-$STAMP.tar.$EXT"
+    echo "    $(du -h "$DEST/config-$STAMP.tar.$EXT" | cut -f1)  config-$STAMP.tar.$EXT (зашифровано)"
+  fi
+else
+  echo "    пропущено: без шифрования (age) секреты в копию не кладём"
+fi
+
 echo "==> Старые копии (оставляю последних $KEEP)"
-for kind in db files; do
+for kind in db files config; do
   ls -1t "$DEST"/$kind-*.gz "$DEST"/$kind-*.gz.age 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
     echo "    удаляю $old"; rm -f -- "$old"
   done
@@ -88,6 +103,7 @@ cat <<MSG
 Готово: $DEST
   • Копии лежат на ТОМ ЖЕ сервере. Скопируйте их на другой диск или в
     другое место (rsync/scp) — иначе при потере сервера они пропадут вместе с ним.
+  • config-….tar.gz.age — .env и secrets/: после потери .env распаковать (age -d, tar xzf) в $APP_DIR.
   • Сохраните ENCRYPTION_KEY из $APP_DIR/.env отдельно от копий.
   • Восстановление базы:  gunzip -c db-….sql.gz | docker compose exec -T postgres psql -U sky sky
   • Восстановление файлов: docker compose exec -T api tar xzf - -C /data < files-….tar.gz

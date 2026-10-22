@@ -18,7 +18,16 @@ free_gb=$(df -P "$OUT" | awk 'NR==2{print int($4/1048576)}'); mem_mb=$(awk '/Mem
 if [ "${FORCE:-0}" != 1 ] && { [ "${free_gb:-0}" -lt 8 ] || [ "${mem_mb:-0}" -lt 2500 ]; }; then
   echo "Сборка отложена: свободно ${free_gb} ГБ диска и ${mem_mb} МБ памяти (нужно ≥8 ГБ и ≥2500 МБ). Соберите через GitHub Actions или повторите с FORCE=1."; exit 1
 fi
-if [ -z "${SKY_BUILD_NICE:-}" ]; then export SKY_BUILD_NICE=1; exec nice -n 19 ionice -c3 bash "$0" "$@" 2>/dev/null || exec nice -n 19 bash "$0" "$@"; fi
+# Сборка запускается в собственной группе systemd с потолком памяти и процессора: при нехватке убивается ТОЛЬКО сборка,
+# а не сайт (BUILD_MEM_MAX, по умолчанию 55 % памяти; BUILD_CPU, по умолчанию 150 % = 1,5 ядра). Без systemd-run — прежний nice/ionice.
+if [ -z "${SKY_BUILD_NICE:-}" ]; then
+  export SKY_BUILD_NICE=1 NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1536}"
+  if command -v systemd-run >/dev/null 2>&1 && [ "$(id -u)" = 0 ]; then
+    exec systemd-run --scope --quiet -p "MemoryMax=${BUILD_MEM_MAX:-55%}" -p "CPUQuota=${BUILD_CPU:-150%}" nice -n 19 ionice -c3 bash "$0" "$@"
+  fi
+  if command -v ionice >/dev/null 2>&1; then exec nice -n 19 ionice -c3 bash "$0" "$@"; fi
+  exec nice -n 19 bash "$0" "$@"
+fi
 ok=0; skipped=()
 need() { command -v "$1" >/dev/null 2>&1; }
 sums() { ( cd "$OUT" && sha256sum -- *.apk *.exe *.ipa 2>/dev/null > SHA256SUMS ); }
