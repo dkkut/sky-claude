@@ -3,7 +3,8 @@
  * стор перечитывает его раз в минуту и при возврате на вкладку. Закрытый модуль не монтируется — вместо него баннер.
  * Администраторы заходят в закрытые модули как обычно (им нужно проверять и чинить); им показывается только метка «Закрыт для людей».
  */
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { API_ORIGIN, getApiOrigin, onApiOriginChange } from './nativeApp';
 import { create } from 'zustand';
 import { Wrench } from 'lucide-react';
 import { apiPlatformStatus } from './platform';
@@ -83,8 +84,18 @@ export const ModuleGate = ({ id, children }: { id: string; children: ReactNode }
 /** Баннер о перебоях в Sky Media (включается из админки → Модули). Показывается только внутри Sky Media, ничего не блокирует. */
 export const MediaOutageBanner = () => {
   const on = useModuleClosures((st) => st.mediaBanner);
+  const [fallback, setFallback] = useState(() => getApiOrigin() !== API_ORIGIN);
   useEffect(start, []);
-  if (!on) return null;
+  // Приложение ушло на резервный адрес API (см. nativeApp.ts) — говорим об этом, пока основной не вернётся
+  useEffect(() => onApiOriginChange((o) => setFallback(o !== API_ORIGIN)), []);
+  if (!on && !fallback) return null;
+  if (!on) return (
+    <div role="status" data-testid="media-failover-banner" className="mx-3 mt-3 flex items-start gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] font-semibold"
+      style={{ background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.35)', color: 'var(--t1)' }}>
+      <Wrench size={15} className="mt-0.5 shrink-0" style={{ color: '#f59e0b' }} />
+      <span>В Sky произошел сбой, переключено на резервные пути</span>
+    </div>
+  );
   return (
     <div role="status" data-testid="media-outage-banner" className="mx-3 mt-3 flex items-start gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] font-semibold"
       style={{ background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.35)', color: 'var(--t1)' }}>
