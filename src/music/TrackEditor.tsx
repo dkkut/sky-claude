@@ -3,6 +3,7 @@
  * Доступно владельцу (сервер проверяет это сам). Цвета — от темы, чтобы поля
  * читались и в светлой, и в тёмной.
  */
+import { requestDelete } from '@/island/deleteFlow';
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ImagePlus, Trash2, Loader, Music2 } from 'lucide-react';
@@ -74,11 +75,8 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
   };
 
   const del = async () => {
-    if (!window.confirm('Удалить трек из коллекции? Это нельзя отменить.')) return;
-    setBusy(true);
-    const ok = await removeTrack(track.id);
-    setBusy(false);
-    if (!ok) { flash('Не удалось удалить трек. Попробуйте ещё раз.'); return; }
+    requestDelete({ id: track.id, title: track.title, noun: 'трек', archive: true,
+      run: async () => { if (!(await removeTrack(track.id))) throw new Error('Не удалось удалить трек. Попробуйте ещё раз.'); } });
     onClose();
   };
 

@@ -14,6 +14,7 @@
    притворяется полной — о ней так и написано. Пересказ, которого нет,
    не подменяется выдумкой: сказано, почему его нет.
 =========================================================== */
+import { requestDelete } from '@/island/deleteFlow';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -503,8 +504,8 @@ const ShowStudio = ({ p, onChanged }: { p: Podcast; onChanged: () => void }) => 
               </button>
             )}
             <button onClick={async () => {
-              if (!window.confirm(`Удалить передачу «${p.title}» со всеми выпусками?`)) return;
-              await apiDeletePodcast(p.id); onChanged();
+              requestDelete({ id: p.id, title: p.title, noun: 'передачу со всеми выпусками',
+                run: async () => { await apiDeletePodcast(p.id); }, done: onChanged });
             }}
             className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px]"
             style={{ background: C.l1, color: '#ef4444' }}>

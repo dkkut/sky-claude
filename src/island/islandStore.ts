@@ -37,6 +37,8 @@ export interface IslandEvent {
   onOpen?: () => void;
   actions?: IslandAction[];
   /** Подтверждение жестом (вход через Sky ID): жест лишь вызывает onConfirm, решение принимает сервер. */
+  /** Подтверждение/отсчёт: панель раскрыта, закрыть или свернуть нельзя — только кнопками события. */
+  modal?: boolean;
   swipe?: { label: string; onConfirm: () => void };
   at: number;
 }

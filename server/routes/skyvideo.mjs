@@ -11,6 +11,7 @@
  * площадка для собственного контента, а не Prime-каталог, и подписка
  * здесь ни при чём.
  */
+import { archiveByOwner } from './../contentarchive.mjs';
 import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
@@ -331,6 +332,8 @@ export const skyVideoRoutes = async (req, res, url) => {
     if (req.method === 'DELETE' && tail === '') {
       if (!rateLimit(`svid:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
       const body = await parseBody(req).catch(() => ({}));
+      const ar = await archiveByOwner('video', id, me);
+      if (ar.ok) return json(res, 200, { ok: true, archived: true, purgeAt: ar.purgeAt });
       const r = await deleteVideo(id, me, body?.reason);
       return r.error ? json(res, errCode(r.error), r) : json(res, 200, r);
     }

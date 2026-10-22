@@ -16,6 +16,7 @@
  */
 import { hasPrime } from './../skyid.mjs';
 import { can } from './../admin.mjs';
+import { archiveByOwner } from './../contentarchive.mjs';
 import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
@@ -301,6 +302,8 @@ export const bookRoutes = async (req, res, url) => {
 
     if (req.method === 'DELETE' && tail === '') {
       if (!rateLimit(`bok:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const ar = await archiveByOwner('book', id, me);
+      if (ar.ok) return json(res, 200, { ok: true, archived: true, purgeAt: ar.purgeAt });
       const r = await deleteBook(id, me);
       if (r.error) return json(res, codeFor(r.error), r);
       await removeBookFiles(id);

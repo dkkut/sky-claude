@@ -710,6 +710,7 @@ export const sweepOrphanFilms = async () => {
   const { rows } = await query(
     `DELETE FROM film_movies
       WHERE owner_id IS NULL AND status <> 'published'
+        AND id NOT IN (SELECT item_id FROM content_archive WHERE kind = 'movie' AND state = 'archived')
       RETURNING id`);
   for (const r of rows) await removeMovieFiles(r.id).catch(() => {});
 

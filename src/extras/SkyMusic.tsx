@@ -1,4 +1,5 @@
 import { ExplicitBadge, LabelsButton, LegacyChip } from '@/labels/Labels';
+import { requestDelete } from '@/island/deleteFlow';
 import { ArtistSuggest } from '@/artists/ArtistCard';
 import { RetentionNote } from '@/shared/RetentionNote';
 import React from 'react';
@@ -1359,7 +1360,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
                           <Share2 size={13} />
                         </button>
                       )}
-                      <button type="button" onClick={() => { if (window.confirm('Удалить трек?')) void removeTrack(t.id).then(ok => { if (!ok) flash('Не удалось удалить трек. Попробуйте ещё раз.'); }); }}
+                      <button type="button" onClick={() => requestDelete({ id: t.id, title: t.title, noun: 'трек', archive: true, run: async () => { if (!(await removeTrack(t.id))) throw new Error('Не удалось удалить трек. Попробуйте ещё раз.'); } })}
                         className="grid h-8 w-8 place-items-center rounded-xl"
                         style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)', color: '#ef4444', cursor: 'pointer' }}>
                         <X size={13} />

@@ -182,7 +182,7 @@ const EventPanel = ({ e, onClose }: { e: IslandEvent; onClose: () => void }) => 
         <div className="line-clamp-4 break-words text-[15px] font-semibold text-white" translate={e.userText ? 'no' : undefined}>{e.title}</div>
         {e.body && <div className="mt-0.5 line-clamp-6 break-words text-[13px] text-white/60" translate={e.userText ? 'no' : undefined}>{e.body}</div>}
       </div>
-      <IconBtn label="Закрыть" onClick={onClose} size={30}><X size={15} /></IconBtn>
+      {!e.modal && <IconBtn label="Закрыть" onClick={onClose} size={30}><X size={15} /></IconBtn>}
     </div>
     {e.swipe && <div className="mt-3"><SwipeConfirm label={e.swipe.label} onConfirm={e.swipe.onConfirm} /></div>}
     <div className="mt-3 flex gap-2">
@@ -296,7 +296,7 @@ export const SkyIsland = () => {
         : current ? 'event'
           : np && mediaShown && closedKey !== np.key ? 'media' : 'hidden';
 
-  const open = view === 'media' ? mediaOpen : expanded || view === 'ai';
+  const open = view === 'media' ? mediaOpen : expanded || view === 'ai' || (view === 'event' && !!current?.modal);
 
   /* Пока капсула на экране, оболочки сдвигают содержимое вниз на её высоту (--island-pad), чтобы она не закрывала кнопки. */
   useEffect(() => {
@@ -328,7 +328,7 @@ export const SkyIsland = () => {
 
   /* Нажатие вне капсулы и Esc сворачивают. */
   useEffect(() => {
-    if (!open || view === 'ai' || current?.kind === 'call') return undefined;
+    if (!open || view === 'ai' || current?.kind === 'call' || current?.modal) return undefined;
     const down = (e: PointerEvent) => {
       if (rootRef.current?.contains(e.target as Node)) return;
       if (view === 'media') setMediaOpen(false); else useIslandStore.getState().setExpanded(false);
@@ -336,7 +336,7 @@ export const SkyIsland = () => {
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { if (view === 'media') setMediaOpen(false); else useIslandStore.getState().setExpanded(false); } };
     document.addEventListener('pointerdown', down); document.addEventListener('keydown', key);
     return () => { document.removeEventListener('pointerdown', down); document.removeEventListener('keydown', key); };
-  }, [open, view, current?.kind]);
+  }, [open, view, current?.kind, current?.modal]);
 
   const spring = calm ? { duration: 0.16 } : { type: 'spring' as const, stiffness: 420, damping: 34, mass: 0.9 };
   const closePanel = () => { if (view === 'media') setMediaOpen(false); else useIslandStore.getState().dismiss(current?.id); };

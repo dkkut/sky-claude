@@ -43,6 +43,8 @@ import { uploadLimitsRoutes } from './routes/uploadlimits.mjs';
 import { entitlementsRoutes } from './routes/entitlements.mjs';
 import { verificationRoutes } from './routes/skymarks.mjs';
 import { contentLabelsRoutes } from './routes/contentlabels.mjs';
+import { contentArchiveRoutes } from './routes/contentarchive.mjs';
+import { sweepArchive } from './contentarchive.mjs';
 import { artistCardsRoutes } from './routes/artistcards.mjs';
 import { skyLogsRoutes } from './routes/skylogs.mjs';
 import { skyVideoRoutes } from './routes/skyvideo.mjs';
@@ -237,7 +239,7 @@ const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|m
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
 const ROUTES = [betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
-                supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, artistCardsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
+                supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
@@ -792,6 +794,8 @@ const start = async () => {
       await import('./recoverycore.mjs').then((m) => m.sweepAttempts()).catch(() => {});
       await sweepLimited().catch(() => {});
       await sweepLogs().catch((e) => console.error('[skylog] уборка:', e.message));
+      const arch = await sweepArchive().catch((e) => { console.error('[archive]', e.message); return { warned: 0, purged: 0 }; });
+      if (arch.purged || arch.warned) console.log(`[archive] напомнено: ${arch.warned}, стёрто: ${arch.purged}`);
       const trashed = await purgeTrashedContent();
       if (trashed) console.log(`[content] стёрто после резерва 7 дней: ${trashed}`);
       const personal = await sweepUnusedPersonalFiles();

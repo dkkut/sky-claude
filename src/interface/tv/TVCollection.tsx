@@ -68,7 +68,7 @@ export const TVCollection = ({ onOpenMovie, onPlayMovie }: Props) => {
       { label: 'Смотреть', run: () => onPlayMovie(m.id) },
       { label: 'Подробнее', run: () => onOpenMovie(m.id) },
       ...(own
-        ? [{ label: 'Удалить из моей коллекции', danger: true, keepOpen: true, run: () => { confirmDelete(m.title, () => removeMovie(m.id)); } }]
+        ? [{ label: 'Удалить из моей коллекции', danger: true, keepOpen: true, run: () => { confirmDelete(m.title, async () => { await removeMovie(m.id); }); } }]
         : [{ label: 'Убрать из коллекции', danger: true, run: () => toggleSaved(m.id) }]),
     ],
   });

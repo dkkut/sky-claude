@@ -18,6 +18,7 @@
    чужого: проверка стоит в базе и в запросах сервера, а этот файл
    можно переписать в браузере сколько угодно.
 =========================================================== */
+import { requestDelete } from '@/island/deleteFlow';
 import { RetentionNote } from '@/shared/RetentionNote';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1242,7 +1243,7 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
                   <Share2 size={14} style={{ color: K.dim }}/>
                 </button>
               )}
-              <button type="button" onClick={() => void removeMovie(m.id)}
+              <button type="button" onClick={() => requestDelete({ id: m.id, title: m.title, noun: 'фильм', archive: true, run: async () => { if (!(await removeMovie(m.id))) throw new Error('Не удалось удалить. Попробуйте ещё раз.'); } })}
                 className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-red-500/10">
                 <X size={14} style={{ color:'var(--red)' }}/>
               </button>

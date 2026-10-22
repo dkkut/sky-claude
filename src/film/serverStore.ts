@@ -77,7 +77,7 @@ interface FilmState {
   /** Забрать свой фильм из общего каталога обратно в личную коллекцию. */
   unpublish: (movieId: string) => Promise<void>;
   editMovie: (movieId: string, patch: Parameters<typeof apiPatchMovie>[1]) => Promise<void>;
-  removeMovie: (movieId: string) => Promise<void>;
+  removeMovie: (movieId: string) => Promise<boolean>;
 }
 
 /**
@@ -278,7 +278,7 @@ export const useFilmStore = create<FilmState>((set, get) => ({
   },
 
   removeMovie: async (movieId) => {
-    if (!(await apiDeleteMovie(movieId))) return;
+    if (!(await apiDeleteMovie(movieId))) return false;
     set((s) => ({
       catalog: s.catalog.filter((m) => m.id !== movieId),
       mine: s.mine.filter((m) => m.id !== movieId),
@@ -286,6 +286,7 @@ export const useFilmStore = create<FilmState>((set, get) => ({
       continueWatching: s.continueWatching.filter((m) => m.id !== movieId),
       shorts: s.shorts.filter((m) => m.id !== movieId),
     }));
+    return true;
   },
 }));
 

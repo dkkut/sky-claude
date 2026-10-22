@@ -18,6 +18,7 @@
 import { logEvent as skyLog } from './../skylog.mjs';
 import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession, mediaBody } from './../http.mjs';
+import { archiveByOwner } from './../contentarchive.mjs';
 import { rateLimit } from './../security.mjs';
 import {
   listTracks, readTrack, visibleTrack, createTrack, finishTrack, updateTrack,
@@ -289,6 +290,8 @@ export const musicRoutes = async (req, res, url) => {
 
     if (req.method === 'DELETE' && tail === '') {
       if (!rateLimit(`music:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const ar = await archiveByOwner('track', id, me);
+      if (ar.ok) return json(res, 200, { ok: true, archived: true, purgeAt: ar.purgeAt });
       const r = await deleteTrack(id, me);
       if (r.error) return json(res, r.error === 'not_allowed' ? 403 : 404, r);
       await remove(id).catch(() => {});

@@ -25,6 +25,7 @@
 import { logEvent as skyLog } from './../skylog.mjs';
 import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession, mediaBody, clientIp } from './../http.mjs';
+import { archiveByOwner } from './../contentarchive.mjs';
 import { rateLimit } from './../security.mjs';
 import {
   listCatalog, listCategories, listShorts, listMine, readMovie, visibleMovie,
@@ -421,6 +422,8 @@ export const filmRoutes = async (req, res, url) => {
 
     if (req.method === 'DELETE' && tail === '') {
       if (!rateLimit(`film:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const ar = await archiveByOwner('movie', id, me);
+      if (ar.ok) return json(res, 200, { ok: true, archived: true, purgeAt: ar.purgeAt });
       const r = await deleteMovie(id, me);
       if (r.error) return json(res, r.error === 'not_allowed' ? 403 : 404, r);
       return json(res, 200, { ok: true });

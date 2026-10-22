@@ -12,6 +12,7 @@ import { LanguageButtons } from '@/i18n/LanguageSwitch';
 import { OwnProfileView } from './viewer/FullProfilePage';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { InviteDialog } from '../invite/InviteDialog';
+import { ArchiveDialog } from '../archive/ArchiveDialog';
 import { openGuide, goTo as goToGuide } from '../guide/nav';
 import { SEASONS, SEASON_ORDER, resolveSeason, type Season } from '../settings/seasons';
 import { useState, useRef, useEffect } from 'react';
@@ -600,6 +601,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
   const [confirmExit, setConfirmExit] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const { settings, set, reset } = useSettings();
   const cursorPet = useCursorPet();
   const s = settings;
@@ -974,6 +976,11 @@ const SettingsSection = ({ logout, username, onOpen }: {
           onClick={() => setInviteOpen(true)}
           right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
         {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)}/>}
+        <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
+        <SettingsRow icon={Info} iconColor="var(--t3)" label="Архив материалов" sub="Удалённое хранится 20 дней — можно вернуть"
+          onClick={() => setArchiveOpen(true)}
+          right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
+        {archiveOpen && <ArchiveDialog onClose={() => setArchiveOpen(false)}/>}
         <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
         <SettingsRow icon={Info} iconColor="#8b5cf6" label="Познакомиться с Sky" sub="Короткое знакомство с сервисами"
           onClick={openGuide}
