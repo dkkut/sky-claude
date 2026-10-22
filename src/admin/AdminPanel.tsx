@@ -5519,6 +5519,7 @@ type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
+  const [rightsErr, setRightsErr] = useState('');
   const [tab, setTab] = useState<Tab>('overview');
   const [admins, setAdmins] = useState<AdminRow[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
@@ -5570,6 +5571,10 @@ export const AdminPanel = () => {
 
   const loadRights = useCallback(async () => {
     const r = await adminCall({ action: 'whoami' });
+    /* Ответа нет или пришла ошибка (обрыв связи, таймаут, сбой сервера) — это НЕ «нет прав»: прежде такой случай
+       молча превращался в «Панель закрыта». Показываем причину и даём повторить. */
+    if (r.type !== 'admin-me') { setRightsErr(String(r.payload?.error ?? r.type ?? 'unknown')); return; }
+    setRightsErr('');
     /* Панель рисует то, что ответил сервер, и ничего сверх: поля,
        которых он не прислал, означают «нет», а не «наверное, есть». */
     setRights(r.type === 'admin-me' ? {
@@ -5633,6 +5638,20 @@ export const AdminPanel = () => {
     if (r.type !== 'admin-lockdown') { setFailed(errorText(r.payload?.error)); return; }
     void loadRights();
   };
+
+  if (rightsErr && !rights) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-14 text-center">
+        <Shield size={22} style={{ color: C.t3 }} />
+        <p className="text-sm font-bold" style={{ color: C.t1 }}>Не удалось связаться с сервером</p>
+        <p className="max-w-[280px] text-xs" style={{ color: C.t3 }}>
+          Проверьте соединение. Это не отсутствие прав. Код: {rightsErr}
+        </p>
+        <button type="button" className="mt-1 rounded-full px-4 py-2 text-xs font-bold" style={{ background: C.t1, color: C.bg }}
+          onClick={() => { setRightsErr(''); void loadRights(); }}>Повторить</button>
+      </div>
+    );
+  }
 
   if (!rights) {
     return <div className="grid place-items-center py-12"><Loader2 size={18} className="animate-spin" style={{ color: C.t3 }} /></div>;
