@@ -37,12 +37,15 @@ export default defineConfig({
       },
     },
   ],
+  esbuild: { legalComments: 'none', drop: ['debugger'] },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
   build: {
+    // Карты исходников в боевую сборку не попадают (и в APK/EXE); комментарии лицензий и debugger не оставляем. console.* НЕ убираем: на нём держится диагностика.
+    sourcemap: false,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),

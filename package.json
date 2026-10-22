@@ -74,9 +74,11 @@
   "build": {
     "appId": "online.skymessenger.desktop",
     "productName": "Sky",
+    "asar": true,
     "files": [
       "electron/**/*",
-      "dist/**/*"
+      "dist/**/*",
+      "!**/*.map"
     ],
     "directories": {
       "output": "release"

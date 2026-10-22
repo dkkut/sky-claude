@@ -59,3 +59,14 @@ release/
 /control/
 secrets/
 docker-compose.secrets.local
+
+# Ещё ключи и приватные материалы — никогда не коммитить
+*.pem
+*.p12
+*.pfx
+backup.key
+*.age.key
+id_rsa
+id_ed25519
+service-account*.json
+android/app/google-services.json

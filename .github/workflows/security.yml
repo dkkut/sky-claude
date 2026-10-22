@@ -1,0 +1,24 @@
+name: Проверка безопасности
+# Отдельный лёгкий workflow: не блокирует сборки и деплой, но показывает утечку секрета или известную уязвимость в зависимостях.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  schedule:
+    - cron: '17 4 * * 1'
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Поиск секретов (дерево)
+        run: bash scripts/secret-scan.sh
+      - name: Поиск секретов (история)
+        run: bash scripts/secret-scan.sh --history
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Известные уязвимости зависимостей (рабочие)
+        run: npm audit --omit=dev --audit-level=high
