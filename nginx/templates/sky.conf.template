@@ -166,6 +166,18 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # -- Sky Transfer: куски файла до 4 МБ ------------------------
+    #  Общий потолок тела 1m резал бы куски по 1–4 МБ ещё на nginx.
+    #  Размер куска проверяет приложение (256 КБ – 4 МБ).
+    location ^~ /api/transfer/ {
+        limit_req zone=req_general burst=300 nodelay;
+        client_max_body_size 5m;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_pass http://sky_api;
+    }
+
     # Кино. Отличий от музыки два, и оба из-за размера файла.
     #
     # Тело запроса — до четырёх гигабайт (FILM_MAX_BYTES на стороне
