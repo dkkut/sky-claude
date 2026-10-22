@@ -155,7 +155,7 @@ const compat = async (env, report) => {
   try {
     const compose = fs.readFileSync(path.join(env.dir, 'docker-compose.yml'), 'utf8');
     const oldSrc = await run(['bash', '-lc', `git -C "${cache}" grep -hoE "process\\.env\\.[A-Z0-9_]+" ${base} -- server | sort -u`]);
-    const newSrc = await sh(`grep -rhoE "process\\.env\\.[A-Z0-9_]+" server | sort -u`, { cwd: env.dir });
+    const newSrc = await sh(`grep -rhoE --exclude-dir=node_modules "process\\.env\\.[A-Z0-9_]+" server | sort -u`, { cwd: env.dir });
     const known = new Set(oldSrc.out.split('\n').map((l) => l.replace(/^.*?:/, '').replace('process.env.', '').trim()));
     const fresh = newSrc.out.split('\n').map((l) => l.replace('process.env.', '').trim()).filter((v) => v && !known.has(v) && !new RegExp(`\\b${v}\\b`).test(compose));
     if (fresh.length) { if (status === 'ok') status = 'warn'; notes.push('новые переменные окружения не прописаны в docker-compose.yml: ' + fresh.slice(0, 8).join(', ')); }
@@ -214,14 +214,14 @@ const runCheck = async (job) => {
     await env.up().catch((e) => { throw new Error('среда: ' + e.message); });
     const co = await push(await checkout(env, sha, rep));
     if (co.status !== 'fail') {
-      const inst = await (async () => { const t = Date.now(); const r = await env.exec('npm ci --ignore-scripts --no-audit --no-fund', { net: 'open', timeout: 900_000 }); return step('install', 'Установка зависимостей (без скриптов пакетов)', r.code ? 'fail' : 'ok', r.code ? 'npm ci не прошёл' : 'зависимости установлены', t, r.code ? r.out : ''); })();
+      const inst = await (async () => { const t = Date.now(); const r = await env.exec('npm ci --ignore-scripts --no-audit --no-fund && (cd server && npm ci --ignore-scripts --no-audit --no-fund)', { net: 'open', timeout: 900_000 }); return step('install', 'Установка зависимостей (без скриптов пакетов)', r.code ? 'fail' : 'ok', r.code ? 'npm ci не прошёл' : 'зависимости установлены', t, r.code ? r.out : ''); })();
       await push(inst);
       const quick = profile === 'quick';
       const sc = await (async () => { const t = Date.now(); const r = await env.exec('bash scripts/secret-scan.sh', {}); return step('secrets', 'Поиск секретов в коде', r.code ? 'fail' : 'ok', r.code ? tail(r.out, 400) : 'секретов не найдено', t, r.code ? r.out : ''); })();
       await push(sc);
       await push(await compat(env, rep).catch((e) => step('compat', 'Совместимость', 'fail', String(e.message))));
       if (inst.status === 'ok') {
-        await push(await (async () => { const t = Date.now(); const r = await env.exec('npm audit --omit=dev --json || true', { net: 'open', timeout: 120_000 }); let j; try { j = JSON.parse(r.out.slice(r.out.indexOf('{'))); } catch { return step('audit', 'Уязвимости зависимостей', 'warn', 'реестр недоступен или ответ не разобран — проверка не выполнена', t); } const v = j?.metadata?.vulnerabilities ?? {}; const crit = v.critical ?? 0, high = v.high ?? 0; return step('audit', 'Уязвимости зависимостей', crit ? 'fail' : high ? 'warn' : 'ok', `критических ${crit}, высоких ${high}, средних ${v.moderate ?? 0}`, t); })());
+        await push(await (async () => { const t = Date.now(); const sum = {}; let any = false; for (const dir of ['.', 'server']) { const r = await env.exec(`cd ${dir} && npm audit --omit=dev --json || true`, { net: 'open', timeout: 120_000 }); let j; try { j = JSON.parse(r.out.slice(r.out.indexOf('{'))); } catch { continue; } any = true; for (const [k, n] of Object.entries(j?.metadata?.vulnerabilities ?? {})) sum[k] = (sum[k] ?? 0) + n; } if (!any) return step('audit', 'Уязвимости зависимостей', 'warn', 'реестр недоступен или ответ не разобран — проверка не выполнена', t); const v = sum; const crit = v.critical ?? 0, high = v.high ?? 0; return step('audit', 'Уязвимости зависимостей', crit ? 'fail' : high ? 'warn' : 'ok', `критических ${crit}, высоких ${high}, средних ${v.moderate ?? 0}`, t); })());
         await push(await (async () => { const t = Date.now(); const r = await env.exec('npx tsc --noEmit', {}); return step('types', 'Типы (tsc)', r.code ? 'fail' : 'ok', r.code ? tail(r.out, 300) : 'ошибок нет', t, r.code ? r.out : ''); })());
         await push(await (async () => { const t = Date.now(); const r = await env.exec('npm run i18n:check', {}); return step('i18n', 'Переводы', r.code ? 'fail' : 'ok', r.code ? tail(r.out, 300) : 'все строки переведены', t, r.code ? r.out : ''); })());
         if (!quick) {
