@@ -72,6 +72,7 @@ import { contentModRoutes } from './routes/contentmod.mjs';
 import { adminGateRoutes } from './routes/admingate.mjs';
 import { sshGateRoutes } from './routes/sshgate.mjs';
 import { ipPinRoutes } from './routes/ippin.mjs';
+import { passkeyRoutes } from './routes/passkeys.mjs';
 import { pinRequired, sweepIpPin } from './ippin.mjs';
 import { sessionStore } from './sessions.mjs';
 import { goRoutes } from './routes/go.mjs';
@@ -244,7 +245,7 @@ const ROUTES = [betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, r
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageDirectRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, goAdminRoutes, goRoutes, onsiteRoutes, parkingRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, staffNotifyRoutes, skyKassaRoutes];
+                violationsRoutes, storageDirectRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, passkeyRoutes, goAdminRoutes, goRoutes, onsiteRoutes, parkingRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, staffNotifyRoutes, skyKassaRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.

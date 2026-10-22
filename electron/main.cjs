@@ -189,6 +189,18 @@ if (!gotLock) {
 } else {
   let mainWindow = null;
 
+  // Сменная иконка: окно и трей. Картинку рисует страница (canvas), здесь только проверка и установка.
+  ipcMain.handle('app:set-icon', (_e, dataUrl) => {
+    try {
+      if (typeof dataUrl !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(dataUrl) || dataUrl.length > 600000) return { ok: false };
+      const img = nativeImage.createFromDataURL(dataUrl);
+      if (img.isEmpty()) return { ok: false };
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setIcon(img);
+      if (tray) tray.setImage(img.resize({ width: 16, height: 16 }));
+      return { ok: true };
+    } catch { return { ok: false }; }
+  });
+
   /**
    * Quick Actions — плавающее окно по глобальному хоткею (работает даже
    * когда основное окно свёрнуто или не в фокусе).

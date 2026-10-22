@@ -255,6 +255,9 @@ services:
       # подчиняется правилам обмена между сайтами, и без этой проверки
       # чужая страница открывает соединения из браузера посетителя.
       DOMAIN:                ${DOMAIN:?нужно задать DOMAIN в .env}
+      # Ключи доступа (WebAuthn): по умолчанию rpId — хост DOMAIN, origin — https://DOMAIN (server/passkeys.mjs).
+      PASSKEY_RP_ID:         ${PASSKEY_RP_ID:-}
+      PASSKEY_ORIGINS:       ${PASSKEY_ORIGINS:-}
       EXTRA_ORIGINS:         ${EXTRA_ORIGINS:-}
       # Единственный адрес, куда разрешён редирект с одноразовым
       # токеном входа KutRent Market (server/kutrentmarket.mjs) — тот

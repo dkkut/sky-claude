@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('sky', {
     apply: (cfg) => ipcRenderer.invoke('proxy:apply', cfg),
     reach: (cfg) => ipcRenderer.invoke('proxy:reach', cfg),
   },
+  setAppIcon: (dataUrl) => ipcRenderer.invoke('app:set-icon', dataUrl),
   gameDetect: {
     set: (on) => ipcRenderer.send('sky:game-detect', Boolean(on)),
     onDetected: (fn) => {

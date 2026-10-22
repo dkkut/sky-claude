@@ -9,6 +9,7 @@
  * сервер. Даже список профилей и признак Prime приходят оттуда, поэтому
  * подправить их в браузере бессмысленно.
  */
+import { PasskeyLoginButton } from './Passkeys';
 import { CancelAddAccount } from './DeviceAccounts';
 import { LanguagePill, ThemePill } from '@/i18n/LanguageSwitch';
 import { RestoreAccount } from './AccountDeletion';
@@ -425,6 +426,8 @@ const LoginStep = () => {
         >
           {byEmail ? 'Войти по номеру телефона' : 'Войти по почте'}
         </button>
+
+        <PasskeyLoginButton onError={setErr} />
 
         <button
           type="button"

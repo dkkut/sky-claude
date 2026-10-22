@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_bg_classic">#0e0e11</color>
+    <color name="ic_bg_violet">#5b3df5</color>
+    <color name="ic_bg_ocean">#0a6cff</color>
+    <color name="ic_bg_mint">#0f9d78</color>
+    <color name="ic_bg_sunset">#ff6a3d</color>
+    <color name="ic_bg_rose">#e0407a</color>
+    <color name="ic_bg_gold">#b9831a</color>
+</resources>

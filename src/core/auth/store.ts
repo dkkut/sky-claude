@@ -1,4 +1,5 @@
 import { getActiveSlot, setActiveSlot, upsertSlot, removeSlot, listSlots, stopAdding } from './slots';
+import { signInWithPasskey } from '../../auth/passkeyApi';
 import { create } from 'zustand';
 import { flash } from '../../shared/flash';
 
@@ -137,6 +138,7 @@ interface AuthState {
   loginWithPassword:()=>Promise<{ok:boolean;reason?:string}>;
   /** Вход, подтверждённый с телефона: сервер прислал готовую сессию. */
   loginWithLinkedSession:(session:any)=>void;
+  loginWithPasskey:()=>Promise<{ok:boolean;reason?:string}>;
   /** Задать пароль на своём аккаунте: сперва код на почту. */
   startPasswordSetup:()=>Promise<{ok:boolean;reason?:string;email?:string;retryAfter?:number}>;
   finishPasswordSetup:(password:string,code:string)=>Promise<{ok:boolean;reason?:string}>;
@@ -417,6 +419,21 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     }
     setAccessToken(data.accessToken??null);
     applySession(set,get,data,true);
+    return{ok:true};
+  },
+
+  /* Ключ доступа (Face ID): ключ подтверждён, сессию даст только код аутентификатора. */
+  loginWithPasskey:async()=>{
+    const res=await signInWithPasskey();
+    if(!res.ok)return{ok:false,reason:res.reason};
+    const data=res.data;
+    set({
+      challenge:data.challenge,step:'twofa',
+      twoFactorMethod:data.method ?? 'app',
+      twoFactorEmail:data.email ?? null,
+      twoFactorPhone:data.phone ?? null,
+      codeInfo:data.retryAfter ? {retryAfter:data.retryAfter,expiresIn:300} : null,
+    });
     return{ok:true};
   },
 

@@ -11,6 +11,7 @@
  * Про перебор номеров: ответ на запрос кода одинаков и для существующего
  * номера, и для нового. Узнать по нему, заведён ли аккаунт, нельзя.
  */
+import { beginLogin as beginPasskeyLogin, finishLogin as finishPasskeyLogin } from './../passkeys.mjs';
 import { logEvent as skyLog } from './../skylog.mjs';
 import { trustDevice } from './../trusteddevices.mjs';
 import { onLogin as limitedOnLogin } from './../limitedaccess.mjs';
@@ -402,6 +403,32 @@ export const authRoutes = async (req, res, url) => {
     const session = await startSession(skyId, req, { viaCode: true });
     return json(res, 200, appBody(req, session.body, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
+  }
+
+  /* ── Вход по ключу доступа (Face ID / отпечаток): ключ, затем всегда код аутентификатора ── */
+  if (req.method === 'POST' && url === '/api/auth/passkey/begin') {
+    if (!rateLimit(`pk:begin:${clientIp(req)}`, 30)) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, await beginPasskeyLogin());
+  }
+  if (req.method === 'POST' && url === '/api/auth/passkey/finish') {
+    if (!rateLimit(`pk:finish:${clientIp(req)}`, 20)) return json(res, 429, { error: 'too_many_requests' });
+    const body = await parseBody(req);
+    const r = await finishPasskeyLogin(body ?? {});
+    if (r.error) {
+      skyLog({ category: 'security', service: 'auth', type: 'login_passkey_failed', result: 'denied', reason: r.error, ip: clientIp(req), ua: req.headers['user-agent'] });
+      return json(res, r.error === 'key_frozen' ? 403 : 401, { error: r.error });
+    }
+    const skyId = await findSkyIdById(r.skyId);
+    if (!skyId) return json(res, 401, { error: 'unauthorized' });
+    if (!skyId.two_factor_enabled) return json(res, 403, { error: 'two_factor_required_setup' });
+    const challenge = signToken({ sub: skyId.id, typ: '2fa-challenge' }, config.jwtSecret, CHALLENGE_TTL_SEC);
+    let sent = null;
+    if (skyId.two_factor_method !== 'app' && skyId.two_factor_method !== 'email') {
+      const sr = await sendTwoFactorCode(skyId.id, null, 'use');
+      if (sr.error && sr.error !== 'too_soon') return json(res, 503, { error: sr.error });
+      sent = { phone: maskPhone(sr.phone), retryAfter: sr.retryAfter };
+    }
+    return json(res, 200, { needsTwoFactor: true, method: skyId.two_factor_method ?? 'app', sameChannel: skyId.two_factor_method === 'email', challenge, expiresIn: CHALLENGE_TTL_SEC, ...(sent ?? {}) });
   }
 
   /* ── Повторная отправка кода второго фактора на почту ───────────── */

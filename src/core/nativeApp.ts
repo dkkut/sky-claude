@@ -104,6 +104,8 @@ declare global {
         set: (key: string, value: string) => Promise<void>;
         remove: (key: string) => Promise<void>;
       };
+      /** Сменная иконка окна и трея (Windows): принимает PNG data:URL. */
+      setAppIcon?: (dataUrl: string) => Promise<{ ok: boolean }>;
       /** Прокси приложения (Windows): настоящая маршрутизация через session.setProxy. */
       proxy?: {
         get: () => Promise<{ ok: boolean; encrypted: boolean; cfg: { enabled: boolean; type: 'http' | 'socks5' | 'socks4'; host: string; port: number; username: string; hasPassword: boolean } }>;

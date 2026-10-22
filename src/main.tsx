@@ -23,6 +23,9 @@ import { ConsoleIntro } from './interface/console/ConsoleIntro';
 import { ConsoleProfilePicker } from './interface/console/ConsoleProfilePicker';
 import { BetaGate }      from './auth/BetaGate';
 import { IpPinOverlay } from './auth/IpPin';
+import { AppLockGate } from './auth/AppLock';
+import { restoreIcon } from './appicon/appIcon';
+restoreIcon();
 import { GloballyBlocked } from './auth/GloballyBlocked';
 import { captureInvite } from './invite/capture';
 import { SeasonLayer } from './settings/SeasonLayer';
@@ -609,7 +612,7 @@ void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).fina
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><LinkDeepLinkGate /><OidcAuthorizeGate /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><AppLockGate /><LinkDeepLinkGate /><OidcAuthorizeGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));
