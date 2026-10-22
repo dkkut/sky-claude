@@ -1,5 +1,6 @@
 /* Состояние «сейчас играет» для Sky Car: музыка (usePlayerStore) или подкаст (usePlayer).
    Читает и командует теми же плеерами, что и вся Sky — второго плеера нет. */
+import { VideoBackdrop } from '@/music/VideoBackdrop';
 import { Play, Pause, SkipBack, SkipForward, Music2, RotateCcw, RotateCw, ChevronDown, Repeat, Repeat1, Shuffle } from 'lucide-react';
 import { useEffect } from 'react';
 import { useFullNow } from '@/player/fullNowStore';
@@ -104,6 +105,7 @@ export const CarFullPlayer = ({ now }: { now: CarNowState | null }) => {
   const open = useFullNow((s) => s.open);
   const hide = useFullNow((s) => s.hide);
   const lyrics = usePlayerStore((s) => (s.item?.kind === 'music' ? s.item.lyrics : undefined));
+  const bgVideo = usePlayerStore((s) => (s.item?.kind === 'music' ? s.item.videoUrl : undefined));
   const shuffle = usePlayerStore((s) => s.shuffle);
   const repeat = usePlayerStore((s) => s.repeat);
   useEffect(() => { if (open && !now) hide(); }, [open, now, hide]);
@@ -120,6 +122,8 @@ export const CarFullPlayer = ({ now }: { now: CarNowState | null }) => {
   return (
     <div className="fixed inset-0 z-[650] flex flex-col items-center justify-between px-10 py-6" role="dialog" aria-modal="true" aria-label="Плеер"
       style={{ background: `radial-gradient(110% 90% at 50% 0%, #2c2166 0%, #0d0b20 60%, #07070f 100%)` }}>
+      {/* Видеофон трека: просто красивый фон, без звука и затемнённый — водителя не отвлекает. */}
+      <VideoBackdrop src={bgVideo} playing={now.playing} z={-1} />
       <div className="flex w-full items-center justify-between">
         <button type="button" onClick={hide} aria-label="Свернуть плеер" className="grid h-[72px] w-[72px] place-items-center rounded-full active:scale-90" style={{ background: 'rgba(255,255,255,0.12)' }}><ChevronDown size={36} color="#fff" /></button>
         <p className="text-[18px] font-bold uppercase tracking-[0.2em]" style={{ color: '#c4baff' }}>{now.playing ? 'Сейчас играет' : 'На паузе'}</p>
