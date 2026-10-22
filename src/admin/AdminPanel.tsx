@@ -63,6 +63,7 @@ import { PartnersTab } from './PartnersTab';
 import { KbizAdminTab } from './KbizAdminTab';
 import { GoAdminTab } from './GoAdmin';
 import { ParkingAdminTab } from './ParkingAdminTab';
+import { GoPlacesTab } from './GoPlacesTab';
 import { AdminGateScreen } from './AdminGate';
 const C = {
   bg: 'var(--bg-l1)', l1: 'var(--bg-l1)', l2: 'var(--bg-l2)',
@@ -5572,7 +5573,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5769,6 +5770,7 @@ export const AdminPanel = () => {
     { key: 'content', label: 'Контент', show: has('content') },
     { key: 'go', label: 'Sky GO', show: has('go') },
     { key: 'parking', label: 'Парковки', show: has('parking_moderation') || has('parking') },
+    { key: 'goplaces', label: 'Организации GO', show: has('go_places') },
     { key: 'registration', label: 'Регистрация', show: has('registration') },
     { key: 'globalblock', label: 'Блокировки', show: has('global_block') },
     { key: 'uploadlimits', label: 'Лимиты загрузки', show: has('upload_limits') },
@@ -6022,6 +6024,7 @@ export const AdminPanel = () => {
       {tab === 'storage' && <StorageTab perms={rights?.permissions ?? []} owner={Boolean(rights?.owner)} />}
       {tab === 'skykassa' && <SkyKassaTab owner={Boolean(rights?.owner)} canReview={has('skykassa')} canSettings={has('skykassa_settings')} />}
       {tab === 'go' && <GoAdminTab />}
+      {tab === 'goplaces' && <GoPlacesTab />}
       {tab === 'parking' && <ParkingAdminTab canModerate={has('parking_moderation')} canOrgs={has('parking')} />}
       {tab === 'pulse' && <PrimePulseAdminSection />}
       {tab === 'campaigns' && <CampaignsAdminSection onPendingChanged={() => void loadPending()} />}

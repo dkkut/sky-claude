@@ -14,12 +14,12 @@ const Wait = () => <div className="grid place-items-center py-10"><Loader2 class
 
 /* ── Товары и услуги ── */
 const ItemForm = ({ item, onDone }: { item: K.Item | null; onDone: () => void }) => {
-  const [f, setF] = useState({ title: item?.title ?? '', description: item?.description ?? '', priceRub: String(item?.priceRub ?? ''), category: item?.category ?? '', leadTime: item?.leadTime ?? '', available: item?.available ?? true });
+  const [f, setF] = useState({ title: item?.title ?? '', description: item?.description ?? '', priceRub: String(item?.priceRub ?? ''), category: item?.category ?? '', leadTime: item?.leadTime ?? '', available: item?.available ?? true, kind: (item?.kind ?? 'product') as 'product' | 'service', stock: item?.stock != null ? String(item.stock) : '' });
   const [vars, setVars] = useState<{ name: string; priceRub: string }[]>((item?.variants ?? []).map((v) => ({ name: v.name, priceRub: v.priceRub ? String(v.priceRub) : '' })));
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
-    const r = await K.kbItemSave(item?.id ?? null, { ...f, priceRub: Number(f.priceRub), variants: vars.filter((v) => v.name.trim()).map((v) => ({ name: v.name, priceRub: v.priceRub ? Number(v.priceRub) : undefined })) });
+    const r = await K.kbItemSave(item?.id ?? null, { ...f, stock: f.kind === 'service' || f.stock === '' ? null : Number(f.stock), priceRub: Number(f.priceRub), variants: vars.filter((v) => v.name.trim()).map((v) => ({ name: v.name, priceRub: v.priceRub ? Number(v.priceRub) : undefined })) });
     setBusy(false);
     if (!r.ok) { flash(why(r)); return; }
     onDone();
@@ -36,6 +36,12 @@ const ItemForm = ({ item, onDone }: { item: K.Item | null; onDone: () => void })
       <div className="grid grid-cols-2 gap-2">
         <In label="Цена, ₽" value={f.priceRub} onChange={(v) => setF({ ...f, priceRub: v.replace(/\D/g, '').slice(0, 7) })} />
         <In label="Категория" value={f.category} onChange={(v) => setF({ ...f, category: v })} max={60} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block text-[11px]" style={{ color: 'var(--t3)' }}>Тип
+          <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as 'product' | 'service' })} className="mt-0.5 block w-full rounded-lg px-3 py-2 text-sm outline-none" style={field}><option value="product">Товар</option><option value="service">Услуга</option></select>
+        </label>
+        {f.kind === 'product' && <In label="Остаток (пусто — без учёта)" value={f.stock} onChange={(v) => setF({ ...f, stock: v.replace(/\D/g, '').slice(0, 7) })} />}
       </div>
       <In label="Срок выполнения / изготовления" value={f.leadTime} onChange={(v) => setF({ ...f, leadTime: v })} max={60} />
       <div>

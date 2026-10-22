@@ -42,6 +42,7 @@ export const PERMISSIONS = [
   'analytics',       // мониторинг и аналитика платформы: онлайн, сделки, покупки, здоровье сервера
   'go',              // Sky GO: заявки исполнителей, подписки, заказы, споры, интеграции
   'go_finance',      // Sky GO: тарифы активации и параметры стоимости
+  'go_places',       // Sky GO «Организации»: категории, проверка и публикация карточек, блокировка, журнал
   'registration',    // ограничение регистрации новых аккаунтов: вкл/выкл, пределы, сообщение
   'modules',         // закрытие модулей: баннер «Сервис временно недоступен» вместо раздела или сервиса
   'skykassa',        // SkyKassa: проверка заявок на пополнение (зачисляет только владелец)
@@ -137,6 +138,8 @@ export const ROLES = {
   kutrent_market_admin: ['kutrent_market'],
   go_admin:        ['go', 'support'],
   go_finance_staff:['go_finance'],
+  go_places_admin: ['go_places'],
+  go_places_moderator: ['go_places'],
   read_only_admin: [],
 };
 
@@ -182,5 +185,7 @@ export const ROLE_LABEL = {
   kutrent_market_admin: 'KutRent Market',
   go_admin: 'Sky GO: администратор',
   go_finance_staff: 'Sky GO: тарифы',
+  go_places_admin: 'Sky GO: организации (управление)',
+  go_places_moderator: 'Sky GO: организации (модерация)',
   read_only_admin: 'Только чтение',
 };

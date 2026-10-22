@@ -73,6 +73,7 @@ import { adminGateRoutes } from './routes/admingate.mjs';
 import { sshGateRoutes } from './routes/sshgate.mjs';
 import { ipPinRoutes } from './routes/ippin.mjs';
 import { passkeyRoutes } from './routes/passkeys.mjs';
+import { goPlacesRoutes } from './routes/goplaces.mjs';
 import { pinRequired, sweepIpPin } from './ippin.mjs';
 import { sessionStore } from './sessions.mjs';
 import { goRoutes } from './routes/go.mjs';
@@ -239,7 +240,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [betaRoutes, globalBlockRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,

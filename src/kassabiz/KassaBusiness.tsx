@@ -9,6 +9,7 @@ import * as K from './api';
 import { qrSvg, downloadPng, downloadSvg, printQr } from './qr';
 
 import { Items, ShopSettings, Orders, Tips, Invoices } from './Catalog';
+import { GoPlace } from './GoPlace';
 import { Cash, Team, Promos, Reviews, AnalyticsView, Invites, ProviderBlock } from './Team';
 import { card, field, why, dt, Btn, In, Stat, REASON } from './ui';
 const MODE: Record<K.Mode, { title: string; hint: string; icon: typeof Store }> = {
@@ -328,13 +329,13 @@ const Audit = () => {
   return <div className="rounded-2xl p-4" style={card}>{!a ? <Loader2 className="animate-spin" size={16} /> : !a.length ? <p className="text-sm" style={{ color: 'var(--t3)' }}>Записей пока нет.</p> : a.map((x, i) => <p key={i} className="text-xs py-1.5" style={{ color: 'var(--t2)', borderBottom: '1px solid var(--border)' }}>{dt(x.at)} · <b>{AUDIT[x.action] ?? x.action}</b>{x.detail ? ` — ${x.detail}` : ''}</p>)}</div>;
 };
 
-type Sec = 'overview' | 'pay' | 'cash' | 'qr' | 'team' | 'promo' | 'reviews' | 'stats' | 'items' | 'orders' | 'shop' | 'tips' | 'inv' | 'req' | 'biz' | 'sub' | 'audit';
+type Sec = 'overview' | 'pay' | 'cash' | 'qr' | 'team' | 'promo' | 'reviews' | 'stats' | 'items' | 'orders' | 'gop' | 'shop' | 'tips' | 'inv' | 'req' | 'biz' | 'sub' | 'audit';
 type Role = 'owner' | 'admin' | 'manager' | 'cashier';
 const ALL: Role[] = ['owner', 'admin', 'manager', 'cashier']; const MGR: Role[] = ['owner', 'admin', 'manager']; const OWN: Role[] = ['owner']; const ADM: Role[] = ['owner', 'admin'];
 const NAV: { key: Sec; label: string; icon: typeof Store; roles: Role[] }[] = [
   { key: 'overview', label: 'Обзор', icon: LayoutDashboard, roles: ALL }, { key: 'cash', label: 'Касса', icon: Calculator, roles: ALL }, { key: 'pay', label: 'Приём оплаты', icon: ListChecks, roles: ALL },
   { key: 'qr', label: 'QR-коды', icon: QrCode, roles: ALL }, { key: 'items', label: 'Каталог', icon: Package, roles: MGR }, { key: 'orders', label: 'Заказы', icon: ShoppingBag, roles: MGR },
-  { key: 'shop', label: 'Витрина', icon: Globe, roles: ADM }, { key: 'tips', label: 'Чаевые', icon: HeartHandshake, roles: MGR }, { key: 'inv', label: 'Счета', icon: FileText, roles: MGR },
+  { key: 'gop', label: 'Sky GO', icon: MapPin, roles: OWN }, { key: 'shop', label: 'Витрина', icon: Globe, roles: ADM }, { key: 'tips', label: 'Чаевые', icon: HeartHandshake, roles: MGR }, { key: 'inv', label: 'Счета', icon: FileText, roles: MGR },
   { key: 'promo', label: 'Промокоды', icon: TicketPercent, roles: MGR }, { key: 'reviews', label: 'Отзывы', icon: MessageSquareText, roles: MGR }, { key: 'stats', label: 'Аналитика', icon: BarChart3, roles: MGR },
   { key: 'team', label: 'Команда', icon: Users, roles: OWN }, { key: 'req', label: 'Реквизиты', icon: Landmark, roles: OWN }, { key: 'biz', label: 'Бизнес', icon: Store, roles: OWN },
   { key: 'sub', label: 'Подписка', icon: Wallet, roles: OWN }, { key: 'audit', label: 'Журнал', icon: History, roles: ADM },
@@ -370,6 +371,7 @@ export const KassaBusiness = () => {
         {sec === 'qr' && <Qrs me={me} />}
         {sec === 'items' && <Items />}
         {sec === 'orders' && <Orders />}
+        {sec === 'gop' && <GoPlace />}
         {sec === 'shop' && <ShopSettings />}
         {sec === 'tips' && <Tips bizName={b.name} />}
         {sec === 'inv' && <Invoices bizName={b.name} />}

@@ -421,6 +421,8 @@ export const actOnPayment = async (profileId, id, action, comment, actor = profi
       const pk = await import('./parkingpay.mjs');
       if (t.to === 'confirmed') await pk.kassaPaymentConfirmedIn(c, rows[0].id); else await pk.kassaPaymentChangedIn(c, rows[0].id, t.to);
     }
+    // Sky GO «Организации»: покупателю заказа — одно уведомление о подтверждении/возврате оплаты (после фиксации).
+    if (t.to === 'confirmed' || t.to === 'cancelled' || t.to === 'refunded') import('./goplaces.mjs').then((m) => m.paymentChanged(rows[0].id, t.to)).catch(() => {});
     return { ok: true, status: t.to, statusLabel: STATUS_LABEL[t.to] };
   });
 };

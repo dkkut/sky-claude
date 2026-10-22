@@ -23,6 +23,7 @@ export const CATEGORIES = {
   topup:          { label: 'Заявки на пополнение (SkyKassa)', rights: ['skykassa'] },
   gblock_appeal:  { label: 'Апелляции на глобальную блокировку', rights: ['global_block'] },
   seller_app:     { label: 'Заявки продавцов', rights: ['seller_docs', 'market'] },
+  go_place:       { label: 'Организации Sky GO на проверке', rights: ['go_places'] },
   parking_lot:    { label: 'Парковки на проверке', rights: ['parking_moderation', 'parking'] },
   parking_error:  { label: 'Сбои Sky Parking', rights: ['parking'] },
   pvz_app:        { label: 'Заявки на ПВЗ', rights: ['pvz_manage', 'market'] },

@@ -32,7 +32,7 @@ const int = (v, lo, hi) => { const n = Number(v); return Number.isInteger(n) && 
 /* ─── Каталог (владелец) ─── */
 
 const shapeItem = (r) => ({ id: r.id, title: r.title, description: r.description, priceRub: r.price_rub, category: r.category, sku: r.sku, variants: r.variants ?? [], leadTime: r.lead_time,
-  available: r.available, status: r.status, sort: r.sort, photoUrl: r.media_id ? `/api/kbiz/public/media/${r.media_id}` : null });
+  available: r.available, kind: r.kind ?? 'product', stock: r.stock ?? null, status: r.status, sort: r.sort, photoUrl: r.media_id ? `/api/kbiz/public/media/${r.media_id}` : null });
 
 const parseItem = (b) => {
   const title = clean(b?.title, 120); if (title.length < 2) return err('bad_field', { field: 'title' });
@@ -44,7 +44,11 @@ const parseItem = (b) => {
     if (v?.priceRub !== undefined && v?.priceRub !== null && v?.priceRub !== '' && p == null) return err('bad_field', { field: 'variants' });
     variants.push(p == null ? { name } : { name, priceRub: p });
   }
-  return { v: { title, description: clean(b?.description, 1000), price, category: clean(b?.category, 60), sku: clean(b?.sku, 40), variants, leadTime: clean(b?.leadTime, 60), available: b?.available !== false, sort: int(b?.sort, 0, 100000) ?? 0 } };
+  const noStock = b?.stock === undefined || b?.stock === null || b?.stock === '';
+  const stockV = noStock ? null : int(b.stock, 0, 1_000_000);
+  if (!noStock && stockV == null) return err('bad_field', { field: 'stock' });
+  return { v: { title, description: clean(b?.description, 1000), price, category: clean(b?.category, 60), sku: clean(b?.sku, 40), variants, leadTime: clean(b?.leadTime, 60), available: b?.available !== false, sort: int(b?.sort, 0, 100000) ?? 0,
+    kind: b?.kind === 'service' ? 'service' : 'product', stock: stockV } };
 };
 
 export const listItems = async (profileId) => {
@@ -58,9 +62,10 @@ export const saveItem = async (profileId, id, body) => {
   if (b.status === 'suspended') return err('suspended');
   const p = parseItem(body ?? {}); if (p.error) return p;
   const v = p.v;
+  if (v.stock != null && v.kind === 'service') v.stock = null;   // у услуги остатка нет — доступность задаёт расписание
   if (id) {
-    const { rowCount } = await query(`UPDATE kb_items SET title=$3, description=$4, price_rub=$5, category=$6, sku=$7, variants=$8::jsonb, lead_time=$9, available=$10, sort=$11, updated_at=now() WHERE id=$1 AND business_id=$2 AND status='active'`,
-      [String(id), b.id, v.title, v.description, v.price, v.category, v.sku, JSON.stringify(v.variants), v.leadTime, v.available, v.sort]);
+    const { rowCount } = await query(`UPDATE kb_items SET title=$3, description=$4, price_rub=$5, category=$6, sku=$7, variants=$8::jsonb, lead_time=$9, available=$10, sort=$11, kind=$12, stock=$13, updated_at=now() WHERE id=$1 AND business_id=$2 AND status='active'`,
+      [String(id), b.id, v.title, v.description, v.price, v.category, v.sku, JSON.stringify(v.variants), v.leadTime, v.available, v.sort, v.kind, v.stock]);
     if (!rowCount) return err('not_found');
     await audit(b.id, profileId, 'item_updated', v.title);
     return { ok: true, id };
@@ -68,8 +73,8 @@ export const saveItem = async (profileId, id, body) => {
   const { rows: cnt } = await query(`SELECT count(*)::int AS n FROM kb_items WHERE business_id = $1 AND status = 'active'`, [b.id]);
   if (cnt[0].n >= 500) return err('too_many_items');
   const nid = newId('kbi');
-  await query(`INSERT INTO kb_items (id, business_id, title, description, price_rub, category, sku, variants, lead_time, available, sort) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11)`,
-    [nid, b.id, v.title, v.description, v.price, v.category, v.sku, JSON.stringify(v.variants), v.leadTime, v.available, v.sort]);
+  await query(`INSERT INTO kb_items (id, business_id, title, description, price_rub, category, sku, variants, lead_time, available, sort, kind, stock) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13)`,
+    [nid, b.id, v.title, v.description, v.price, v.category, v.sku, JSON.stringify(v.variants), v.leadTime, v.available, v.sort, v.kind, v.stock]);
   await audit(b.id, profileId, 'item_created', v.title);
   return { ok: true, id: nid };
 };
@@ -192,6 +197,11 @@ export const createOrder = async (slug, body, ip, origin) => {
   const b = await shopBiz(slug);
   if (!b || !b.shop_enabled) return err('not_found');
   if (!originOk(b, origin)) return err('origin_not_allowed');
+  return createOrderCore(b, body, ip, origin, null);
+};
+
+/** Общая часть заказа: витрина (гость) и Sky GO «Организации» (buyerProfileId). Цены, остатки и сумма — только по данным сервера. */
+export const createOrderCore = async (b, body, ip, origin, buyerProfileId) => {
   const sub = await subState(b.id);
   const { rows: rq } = await query('SELECT 1 FROM kb_requisites WHERE business_id = $1', [b.id]);
   if (b.status !== 'active' || !sub.active || !rq[0]) return err('shop_unavailable');
@@ -208,7 +218,8 @@ export const createOrder = async (slug, body, ip, origin) => {
     let price = it.price_rub; let variant = '';
     if (x?.variant) { const v = (it.variants ?? []).find((y) => y.name === String(x.variant)); if (!v) return err('bad_field', { field: 'variant' }); variant = v.name; if (v.priceRub) price = v.priceRub; }
     else if ((it.variants ?? []).length) return err('variant_required', { id: it.id });
-    lines.push({ itemId: it.id, title: it.title, variant, qty, priceRub: price }); total += qty * price;
+    if (it.stock != null && it.stock < qty) return err('out_of_stock', { id: it.id, left: it.stock });
+    lines.push({ itemId: it.id, title: it.title, variant, qty, priceRub: price, kind: it.kind ?? 'product' }); total += qty * price;
   }
   if (total < 1 || total > MAX_AMOUNT) return err('bad_amount');
   const subtotal = total;
@@ -225,13 +236,19 @@ export const createOrder = async (slug, body, ip, origin) => {
       const { rowCount } = await cl.query(`UPDATE kb_promos SET used = used + 1 WHERE id = $1 AND status = 'active' AND (max_uses IS NULL OR used < max_uses)`, [pc.promo.id]);
       if (!rowCount) throw Object.assign(new Error('promo_exhausted'), { kbErr: 'promo_exhausted' });
     }
+    // Остаток списывается атомарно: двое за последний экземпляр не пройдут. Повтор одной позиции в корзине суммируется.
+    const need = new Map(); for (const l of lines) need.set(l.itemId, (need.get(l.itemId) ?? 0) + l.qty);
+    for (const [itemId, q] of need) {
+      const r = await cl.query('UPDATE kb_items SET stock = stock - $2 WHERE id = $1 AND stock IS NOT NULL AND stock >= $2', [itemId, q]);
+      if (!r.rowCount) { const chk = await cl.query('SELECT stock FROM kb_items WHERE id = $1', [itemId]); if (chk.rows[0]?.stock != null) throw Object.assign(new Error('out_of_stock'), { kbErr: 'out_of_stock' }); }
+    }
     const { rows: n } = await cl.query('SELECT COALESCE(max(number), 0) + 1 AS n FROM kb_orders WHERE business_id = $1', [b.id]);
     const number = n[0].n;
     const qid = newId('kbq'); const pid = publicId();
     await cl.query(`INSERT INTO kb_qr (id, public_id, business_id, kind, title, description, amount_rub, order_no, expires_at, config) VALUES ($1,$2,$3,'order',$4,'',$5,$6, now() + interval '48 hours', $7::jsonb)`,
       [qid, pid, b.id, `Заказ № ${number}`, total, String(number), JSON.stringify({ orderId: id, number, lines, discountRub: discount })]);
-    await cl.query(`INSERT INTO kb_orders (id, business_id, number, lines, total_rub, contact_enc, note, qr_id, buyer_key_hash, ip_hash, origin, promo_code, discount_rub, subtotal_rub) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [id, b.id, number, JSON.stringify(lines), total, sealJson(c.v), clean(body?.note, 300), qid, keyHash(key), h, String(origin ?? '').slice(0, 200), pc.none ? '' : pc.code, discount, subtotal]);
+    await cl.query(`INSERT INTO kb_orders (id, business_id, number, lines, total_rub, contact_enc, note, qr_id, buyer_key_hash, ip_hash, origin, promo_code, discount_rub, subtotal_rub, buyer_profile_id, source) VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+      [id, b.id, number, JSON.stringify(lines), total, sealJson(c.v), clean(body?.note, 300), qid, keyHash(key), h, String(origin ?? '').slice(0, 200), pc.none ? '' : pc.code, discount, subtotal, buyerProfileId, buyerProfileId ? 'gonet' : 'shop']);
     return { number, pid };
   }); } catch (e) { if (e.kbErr) return err(e.kbErr); throw e; }
   await notifyGift(b.owner_id, 'kassa_biz', 'Новый заказ', `Заказ № ${res.number} на ${total} ₽. Подтвердите его в SkyKassa Business.`, `kbo:${id}`).catch(() => {});
@@ -265,7 +282,8 @@ export const listOrders = async (profileId, { status } = {}) => {
 
 export const actOnOrder = async (profileId, id, action, comment) => {
   const t = ORDER_ACT[action]; if (!t) return err('bad_action');
-  return inTx(async (c) => {
+  let buyerNote = null;
+  const out = await inTx(async (c) => {
     const { rows } = await c.query('SELECT o.id, o.status, o.business_id, o.number FROM kb_orders o JOIN kb_businesses b ON b.id = o.business_id WHERE o.id = $1 AND b.owner_id = $2 FOR UPDATE OF o', [String(id ?? ''), profileId]);
     if (!rows[0]) return err('not_found');
     if (rows[0].status === t.to) return { ok: true, duplicate: true, status: t.to };
@@ -273,11 +291,15 @@ export const actOnOrder = async (profileId, id, action, comment) => {
     const note = clean(comment, 300);
     if (t.comment && note.length < 3) return err('comment_required');
     await c.query(`UPDATE kb_orders SET status = $2, owner_comment = CASE WHEN $3 = '' THEN owner_comment ELSE $3 END, updated_at = now() WHERE id = $1`, [rows[0].id, t.to, note]);
+    if (t.to === 'rejected' || t.to === 'cancelled') await returnStock(c, rows[0].id);
+    buyerNote = { id: rows[0].id, number: rows[0].number, to: t.to, note };
     // Отклонённый/отменённый заказ закрывает его платёжную страницу: по ней больше нельзя сообщить об оплате.
     if (t.to === 'rejected' || t.to === 'cancelled') await c.query(`UPDATE kb_qr SET status = 'disabled', updated_at = now() WHERE id = (SELECT qr_id FROM kb_orders WHERE id = $1) AND status = 'active'`, [rows[0].id]);
     await c.query('INSERT INTO kb_audit (business_id, actor, action, detail) VALUES ($1,$2,$3,$4)', [rows[0].business_id, profileId, `order_${action}`, `№ ${rows[0].number}`]);
     return { ok: true, status: t.to, statusLabel: ORDER_LABEL[t.to] };
   });
+  if (buyerNote && out.ok && !out.duplicate) void notifyBuyerOrder(buyerNote.id, buyerNote.number, buyerNote.to, buyerNote.note);
+  return out;
 };
 
 /** Новая платёжная ссылка по заказу (прежняя истекла или отключена). Сумма — из заказа, а не из запроса. */
@@ -442,4 +464,26 @@ export const invoiceFromOrder = async (profileId, orderId) => {
   const { rows } = await query('SELECT number, lines FROM kb_orders WHERE id = $1 AND business_id = $2', [String(orderId ?? ''), b.id]);
   if (!rows[0]) return err('not_found');
   return createInvoice(profileId, { orderNo: String(rows[0].number), lines: rows[0].lines.map((l) => ({ title: l.variant ? `${l.title} (${l.variant})` : l.title, qty: l.qty, priceRub: l.priceRub })) });
+};
+
+/* ─── Sky GO: остатки и уведомления покупателю ─── */
+
+/** Вернуть списанный остаток (отказ/отмена заказа). Один раз на заказ (stock_returned). */
+export const returnStock = async (c, orderId) => {
+  const { rows } = await c.query('UPDATE kb_orders SET stock_returned = TRUE WHERE id = $1 AND NOT stock_returned RETURNING lines', [orderId]);
+  if (!rows[0]) return;
+  for (const l of rows[0].lines ?? []) await c.query('UPDATE kb_items SET stock = stock + $2 WHERE id = $1 AND stock IS NOT NULL', [l.itemId, Number(l.qty) || 0]);
+};
+
+const BUYER_TEXT = { confirmed: 'принят', rejected: 'отклонён', in_progress: 'выполняется', ready: 'готов к выдаче', done: 'завершён', cancelled: 'отменён' };
+/** Уведомление покупателю Sky GO о смене статуса; повторная обработка того же статуса не шлёт второго (ref + статус). */
+export const notifyBuyerOrder = async (orderId, number, to, note = '') => {
+  try {
+    const { rows } = await query('SELECT o.buyer_profile_id, b.name FROM kb_orders o JOIN kb_businesses b ON b.id = o.business_id WHERE o.id = $1', [orderId]);
+    const buyer = rows[0]?.buyer_profile_id; if (!buyer) return;
+    const ref = `kbo:${orderId}:${to}`;
+    const dup = await query('SELECT 1 FROM gift_notifications WHERE user_id = $1 AND ref_id = $2 LIMIT 1', [buyer, ref]);
+    if (dup.rows[0]) return;
+    await notifyGift(buyer, 'go_place_order', `Заказ № ${number}: ${BUYER_TEXT[to] ?? to}`, `${rows[0].name}${note ? ` — ${note}` : ''}`, ref);
+  } catch { /* уведомление не должно ломать заказ */ }
 };
