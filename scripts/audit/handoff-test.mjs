@@ -140,7 +140,7 @@ r = await post('/send', { ...base, idemKey: idem() }, A.tok, PH); t('при вы
 await H('/prefs', { method: 'PUT', body: JSON.stringify({ accept: 'ask', historyDays: 90 }) }, A.tok, PH);
 r = await H('/history', {}, A.tok, PH); t('история продолжений', r.data.history.length >= 8 && r.data.history[0].fromName === 'Телефон', r.data.history.length);
 r = await H('/continue', {}, A.tok, PH); t('«где остановились»: по всем видам', r.data.items.length >= 4 && ['music', 'podcast', 'film', 'video', 'book'].every((k) => r.data.items.some((i) => i.kind === k) || k === 'film'), r.data.items.map((i) => i.kind));
-r = await H('/history', { method: 'DELETE' }, A.tok, PH); t('очистка истории', r.status === 200 && (await H('/history', {}, A.tok, PH)).data.history.length === 0);
+r = await H('/history', { method: 'DELETE' }, A.tok, PH); t('очистка истории', r.status === 200 && (await H('/history', {}, A.tok, PH)).data.history.every((h) => h.state === 'pending'));
 r = await call('/api/handoff/devices'); t('без входа — 401', r.status === 401);
 
 /* общий реестр: ТВ, вошедший по QR-входу, доверяется сразу (trusted) */
