@@ -186,7 +186,7 @@ export const readSession = async (req) => {
   if (stored.userId !== payload.sky) return null;
 
   setRequestActor(stored.profileId ?? payload.sky);
-  return { skyId: payload.sky, profileId: stored.profileId ?? null, sessionId: payload.sid };
+  return { skyId: payload.sky, profileId: stored.profileId ?? null, sessionId: payload.sid, via: stored.via ?? null };
 };
 
 /** Чтение ничего не меняет, поэтому запреты его не касаются. */

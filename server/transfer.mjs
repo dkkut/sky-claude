@@ -38,7 +38,7 @@ const newId = (p) => `${p}-${crypto.randomUUID()}`;
 
 const hashOf = (id) => crypto.createHmac('sha256', `${config.jwtSecret}:transfer-device:v1`).update(id).digest('hex');
 export const deviceHash = (req) => { const v = String(req?.headers?.['x-sky-device'] ?? ''); return ID_RE.test(v) ? hashOf(v) : null; };
-const profilesOf = async (skyId) => (await query('SELECT id FROM profiles WHERE sky_id = $1 AND deleted_at IS NULL', [skyId])).rows.map((r) => r.id);
+export const profilesOf = async (skyId) => (await query('SELECT id FROM profiles WHERE sky_id = $1 AND deleted_at IS NULL', [skyId])).rows.map((r) => r.id);
 const tell = async (skyId, msg) => { try { pushGoEvent(await profilesOf(skyId), msg); } catch { /* сокет необязателен */ } };
 const cleanName = (s) => String(s ?? '').replace(/[\u0000-\u001f\u007f<>:"/\\|?*]/g, '_').replace(/^\.+/, '').trim().slice(0, 120);
 
@@ -48,13 +48,13 @@ const devView = (d, meId) => ({
   online: d.status === 'approved' && Date.now() - new Date(d.last_seen).getTime() < LIMITS.onlineSec * 1000, current: d.id === meId,
   createdAt: d.created_at.toISOString(),
 });
-const myDevice = async (skyId, req) => {
+export const myDevice = async (skyId, req) => {
   const h = deviceHash(req); if (!h) return null;
   return (await query('SELECT * FROM transfer_devices WHERE sky_id = $1 AND device_hash = $2', [skyId, h])).rows[0] ?? null;
 };
 
 /** Регистрация / повторный вход устройства. Первое устройство Sky ID подтверждено сразу, остальные — ждут. */
-export const registerDevice = async (skyId, req, { name, kind }) => {
+export const registerDevice = async (skyId, req, { name, kind, trusted = false }) => {
   const h = deviceHash(req); if (!h) return err('no_device');
   const k = KINDS.has(kind) ? kind : 'web';
   const nm = cleanName(name).slice(0, 60) || 'Устройство';
@@ -68,8 +68,8 @@ export const registerDevice = async (skyId, req, { name, kind }) => {
   // Первое устройство (нет ни одного подтверждённого) подтверждается само; проверка и вставка — под замком Sky ID (гонка двух первых).
   const r = await query(`WITH lock AS (SELECT pg_advisory_xact_lock(hashtext($2)))
       INSERT INTO transfer_devices (id, sky_id, device_hash, name, kind, can_receive, status)
-      SELECT $1, $2, $3, $4, $5, $6, CASE WHEN EXISTS (SELECT 1 FROM transfer_devices WHERE sky_id = $2 AND status = 'approved') THEN 'pending' ELSE 'approved' END FROM lock
-      ON CONFLICT (sky_id, device_hash) DO NOTHING RETURNING status`, [id, skyId, h, nm, k, !CANT_RECEIVE.has(k)]).catch(() => ({ rows: [] }));
+      SELECT $1, $2, $3, $4, $5, $6, CASE WHEN $7::boolean THEN 'approved' WHEN EXISTS (SELECT 1 FROM transfer_devices WHERE sky_id = $2 AND status = 'approved') THEN 'pending' ELSE 'approved' END FROM lock
+      ON CONFLICT (sky_id, device_hash) DO NOTHING RETURNING status`, [id, skyId, h, nm, k, !CANT_RECEIVE.has(k), !!trusted]).catch(() => ({ rows: [] }));
   const row = r.rows[0] ?? (await myDevice(skyId, req)) ;
   const status = row?.status ?? 'pending';
   if (status === 'pending') await tell(skyId, { type: 'transfer:device', payload: { id } });
