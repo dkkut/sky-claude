@@ -18,6 +18,7 @@ import { useGamingAccounts } from '@/gaming/accounts';
 import { usePeopleSearch } from './usePeopleSearch';
 import { useAdminStore } from './adminStore';
 import { useTrashStore } from './trashStore';
+import { requestDelete } from '../island/deleteFlow';
 
 const fmtTime = (ts: number) => {
   const d = new Date(ts), now = new Date();
@@ -455,7 +456,7 @@ const ChatCtxMenu = ({ chatId, segment, anchor, onClose, onManage }: {
                 <button type="button" onClick={() => setConfirmTrash(false)}
                   className="flex-1 rounded-xl py-2 text-sm font-semibold"
                   style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>Отмена</button>
-                <button type="button" onClick={() => { deleteChatForAll(chatId); setConfirmTrash(false); onClose(); }}
+                <button type="button" onClick={() => { setConfirmTrash(false); onClose(); requestDelete({ id: `chat:${chatId}`, title: chats.find((c) => c.id === chatId)?.name ?? '', noun: 'чат', confirmed: true, run: async () => { deleteChatForAll(chatId); } }); }}
                   className="flex-1 rounded-xl py-2 text-sm font-semibold text-white"
                   style={{ background: 'var(--red)' }}>Удалить</button>
               </div>

@@ -328,6 +328,9 @@ const IslandSection = () => {
       <SettingsRow icon={PanelTop} label="Где показывать плеер" sub="Остров сверху или боковой плеер"
         right={<Seg label="Где показывать плеер" value={s.islandMode} onChange={v => set({ islandMode: v })}
           options={[{ v: 'both', t: 'Оба' }, { v: 'island', t: 'Остров' }, { v: 'side', t: 'Сбоку' }]}/>}/>
+      <SettingsRow icon={Bell} label="Отсчёт перед удалением" sub="Сколько секунд можно отменить удаление"
+        right={<Seg label="Отсчёт перед удалением" value={String(s.deleteCountdown)} onChange={v => set({ deleteCountdown: Number(v) as 3 | 5 | 10 })}
+          options={[{ v: '3', t: '3 с' }, { v: '5', t: '5 с' }, { v: '10', t: '10 с' }]}/>}/>
       <SettingsRow icon={Bell} label="Уведомления на острове" sub={s.islandNotifs ? 'Сообщения, звонки, события' : 'Обычные всплывающие уведомления'}
         right={<Toggle on={s.islandNotifs} onToggle={() => set({ islandNotifs: !s.islandNotifs })}/>}/>
       <SettingsRow icon={Bell} label="Сообщения мессенджера" sub={s.islandMessages ? 'Показывать' : 'Не показывать на острове'}

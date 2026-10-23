@@ -32,7 +32,8 @@ t('теперь «уже есть»', r.data.exact?.id === C1 && r.data.canCreat
 r = await call(`/api/music/artist-cards/suggest?name=${encodeURIComponent(en)}`, {}, B.tok);
 t('транслит: «Zemfira…» предлагает похожую карточку «Земфира…»', r.data.exact === null && r.data.similar.some((x) => x.id === C1), JSON.stringify(r.data));
 
-// создание не даёт владения
+// Тест проверяет путь «заявка на владение»: для него карточки делаем бесхозными (по умолчанию владелец — создатель, миграция 200).
+q("UPDATE music_artist_cards SET owner_id = NULL");
 r = await call(`/api/music/artist-cards/${C1}`, { method: 'PATCH', body: JSON.stringify({ bio: 'взлом' }) }, A.tok);
 t('создатель без подтверждения карточку не правит', r.status === 403);
 
@@ -77,7 +78,8 @@ t('чужой карточку не правит', r.status === 403);
 r = await call(`/api/music/artist-cards/${C1}/claim`, { method: 'POST', body: JSON.stringify({ note: 'Тоже хочу быть владельцем карточки' }) }, B.tok);
 t('карточка с владельцем: чужая заявка отклоняется', r.status === 403 || r.status === 409, JSON.stringify(r.data));
 
-// дубли и объединение
+// дубли и объединение (владельцы двух карточек должны совпадать — вторая карточка здесь бесхозная)
+q(`UPDATE music_artist_cards SET owner_id = NULL WHERE id = '${card2}'`);
 r = await call('/api/admin/artist-cards/duplicates', {}, M.tok);
 const pair = r.data.pairs?.find((p) => [p.a.id, p.b.id].includes(C1) && [p.a.id, p.b.id].includes(card2));
 t('Земфира/Zemfira найдены как дубли', !!pair && pair.sameAfterTranslit === true, JSON.stringify(r.data.pairs?.slice(0, 2)));

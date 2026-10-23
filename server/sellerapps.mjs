@@ -794,6 +794,8 @@ export const listSellersAdmin = async (actorId, { q = '', status = 'all', limit 
   if (s) { args.push(likeOf(s)); where.push(`(s.profile_id ILIKE $${args.length} OR s.shop_name ILIKE $${args.length} OR p.username ILIKE $${args.length} OR p.name ILIKE $${args.length})`); }
   if (status === 'suspended') where.push(`(s.status = 'suspended' OR s.verification_status = 'suspended')`);
   else if (status === 'active') where.push(`(s.status <> 'suspended' AND s.verification_status <> 'suspended')`);
+  else if (status === 'verified') where.push(`s.verification_status = 'approved'`);
+  else if (status === 'unverified') where.push(`s.verification_status NOT IN ('approved','suspended')`);
   args.push(Math.min(Math.max(Number(limit) || 100, 1), 200));
   const { rows } = await query(
     `SELECT s.profile_id, s.shop_name, s.status, s.verification_status, s.tax_kind, s.suspend_reason, s.suspended_at,

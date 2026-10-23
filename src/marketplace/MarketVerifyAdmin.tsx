@@ -624,7 +624,8 @@ const SellersRegistry = () => {
   };
   return (
     <div className="space-y-2">
-      <RegistryFilters q={q} setQ={setQ} status={status} setStatus={setStatus} options={[['all', 'Все'], ['active', 'Работают'], ['suspended', 'Заблокированы']]} />
+      <RegistryFilters q={q} setQ={setQ} status={status} setStatus={setStatus} options={[['all', 'Все'], ['active', 'Работают'], ['verified', 'Проверены'], ['unverified', 'Не проверены'], ['suspended', 'Заблокированы']]} />
+      {items && <p className="text-[11px]" style={{ color: C.t3 }}>Магазинов: {items.length}</p>}
       {err && <p role="alert" className="text-[11px]" style={{ color: C.red }}>{err}</p>}
       {!items ? <Loader2 className="animate-spin" size={16} /> : items.length === 0 ? <p className="text-[12px]" style={{ color: C.t3 }}>Магазинов не найдено.</p> : items.map((s) => (
         <div key={s.id} className="space-y-1.5 rounded-2xl p-3" style={card}>
@@ -634,8 +635,12 @@ const SellersRegistry = () => {
           </div>
           <p className="text-[11px]" style={{ color: C.t3 }} translate="no">ID магазина: <IdTag id={s.id} /> · {s.owner} @{s.username} · товаров: {s.products}</p>
           {s.suspended && s.suspendReason && <p className="text-[11px]" style={{ color: C.red }}>Причина: <span translate="no">{s.suspendReason}</span></p>}
-          <button type="button" onClick={() => void act(s, s.suspended ? 'reinstate' : 'suspend')} className="rounded-xl px-3 py-1.5 text-[11px] font-semibold"
-            style={{ background: s.suspended ? C.l2 : 'rgba(239,68,68,0.12)', color: s.suspended ? C.t1 : C.red }}>{s.suspended ? 'Разблокировать' : 'Заблокировать'}</button>
+          <div className="flex flex-wrap gap-1.5">
+            <button type="button" onClick={() => copyId(s.id)} className="rounded-xl px-3 py-1.5 text-[11px] font-semibold" style={{ background: C.l2, color: C.t1 }}>Копировать ID</button>
+            <button type="button" onClick={() => copyId(`@${s.username}`)} className="rounded-xl px-3 py-1.5 text-[11px] font-semibold" style={{ background: C.l2, color: C.t1 }} translate="no">@{s.username}</button>
+            <button type="button" onClick={() => void act(s, s.suspended ? 'reinstate' : 'suspend')} className="rounded-xl px-3 py-1.5 text-[11px] font-semibold"
+              style={{ background: s.suspended ? C.l2 : 'rgba(239,68,68,0.12)', color: s.suspended ? C.t1 : C.red }}>{s.suspended ? 'Разблокировать' : 'Заблокировать'}</button>
+          </div>
         </div>
       ))}
     </div>
@@ -686,11 +691,11 @@ type Sub = 'apps' | 'products' | 'reports' | 'rules' | 'pvz' | 'shops' | 'points
 export const MarketVerifyAdmin = ({ can }: { can: (perm: string) => boolean }) => {
   const market = can('market');
   const tabs: { key: Sub; label: string; show: boolean }[] = [
+    { key: 'shops', label: 'Магазины (ID)', show: market },
     { key: 'apps', label: 'Заявки продавцов', show: can('seller_docs') || market },
     { key: 'products', label: 'Модерация товаров', show: can('market_moderation') || market },
     { key: 'reports', label: 'Жалобы и апелляции', show: can('market_moderation') || market },
     { key: 'pvz', label: 'Заявки ПВЗ', show: can('pvz_manage') || market },
-    { key: 'shops', label: 'Магазины (ID)', show: market },
     { key: 'points', label: 'Пункты ПВЗ (ID)', show: can('pvz_manage') || market },
     { key: 'transfers', label: 'Передачи', show: can('pvz_manage') || market },
     { key: 'rules', label: 'Правила допуска', show: market },

@@ -9,6 +9,7 @@ import { useSettings } from '../settings/store';
 import { tr, trf } from '../i18n';
 
 export const DELETE_COUNTDOWN_SEC = 10;
+const countdownSec = () => { const v = Number(useSettings.getState().settings.deleteCountdown); return v === 3 || v === 5 ? v : DELETE_COUNTDOWN_SEC; };
 const KEY = (id: string) => `delete:${id}`;
 
 export interface DeleteRequest {
@@ -24,6 +25,8 @@ export interface DeleteRequest {
   run: () => Promise<unknown>;
   /** После успешного удаления (обновить список). */
   done?: () => void;
+  /** Подтверждение уже получено в самом экране — сразу отсчёт (без второй карточки). */
+  confirmed?: boolean;
 }
 
 const active = new Set<string>();
@@ -53,6 +56,7 @@ export const requestDelete = (req: DeleteRequest): void => {
   };
 
   if (!islandOn || !isl.mounted) {
+    if (req.confirmed) { active.add(req.id); void execute(); return; }
     if (typeof window !== 'undefined' && window.confirm(trf('Удалить «{0}»? {1}', req.title, tail))) { active.add(req.id); void execute(); }
     return;
   }
@@ -64,7 +68,7 @@ export const requestDelete = (req: DeleteRequest): void => {
   };
 
   const countdown = () => {
-    let left = DELETE_COUNTDOWN_SEC;
+    let left = countdownSec();
     let timer: ReturnType<typeof setInterval> | null = null;
     const show = () => useIslandStore.getState().push({
       kind: 'system', title: trf('Удаление через {0} с', left), body: req.title, userText: true, ttl: 0, modal: true,
@@ -83,6 +87,8 @@ export const requestDelete = (req: DeleteRequest): void => {
       show();
     }, 1000);
   };
+
+  if (req.confirmed) { countdown(); return; }
 
   useIslandStore.getState().push({
     kind: 'system', title: trf('Удалить {0}?', tr(req.noun)), body: `${req.title}. ${tail}`, userText: false, ttl: 0, modal: true,

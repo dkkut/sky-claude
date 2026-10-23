@@ -1,4 +1,5 @@
 import { VerifiedBadge } from '@/verification/marks';
+import { requestDelete } from '../island/deleteFlow';
 import {
   FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState, useLayoutEffect,
 } from 'react';
@@ -1912,7 +1913,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                   className="flex-1 py-2 rounded-xl text-sm font-medium"
                   style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--t1)' }}>Отмена</button>
                 <button type="button"
-                  onClick={() => { if (chat.type !== 'direct' && chat.ownerId === myId) deleteChatForAllOnServer(chat.id); else leaveChatOnServer(chat.id); setConfirmLeave(false); }}
+                  onClick={() => { setConfirmLeave(false); requestDelete({ id: `chat:${chat.id}`, title: chat.name || '', noun: 'чат', confirmed: true, run: async () => { if (chat.type !== 'direct' && chat.ownerId === myId) deleteChatForAllOnServer(chat.id); else leaveChatOnServer(chat.id); } }); }}
                   className="flex-1 py-2 rounded-xl text-sm font-semibold text-white"
                   style={{ background: 'var(--red)' }}>
                   {chat.type !== 'direct' && chat.ownerId === myId ? 'Удалить' : 'Убрать'}
@@ -2041,7 +2042,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 myId={myId}
                 onReply={() => { setReplyTo(msg.id); taRef.current?.focus(); }}
                 onEdit={() => { startEdit(msg.id); setDraft(msg.text); draftRef.current = msg.text; taRef.current?.focus(); }}
-                onDelete={() => { deleteMessage(msg.id); broadcast.delete(msg.id); }}
+                onDelete={() => requestDelete({ id: `msg:${msg.id}`, title: '', noun: 'сообщение', confirmed: true, run: async () => { deleteMessage(msg.id); broadcast.delete(msg.id); } })}
                 onPin={() => pinMessage(msg.id)}
                 onFavorite={() => toggleFavoriteMessage(msg.id)}
                 onForward={() => { const m = forward(msg.id); if (m) broadcast.message(m); }}

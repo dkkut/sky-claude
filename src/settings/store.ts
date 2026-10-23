@@ -58,6 +58,8 @@ export interface AppSettings {
   introAnim:       boolean;
   /* Sky Island: где показывать воспроизведение и события. */
   islandMode:      'both' | 'island' | 'side';
+  /** Сколько секунд идёт отсчёт перед удалением (с кнопкой «Отменить»). */
+  deleteCountdown: 3 | 5 | 10;
   islandNotifs:    boolean;
   islandTracks:    boolean;
   islandDownloads: boolean;
@@ -116,6 +118,7 @@ const defaults: AppSettings = {
   animationsOn:     true,
   introAnim:        true,
   islandMode:       'both',
+  deleteCountdown:  10,
   islandNotifs:     true,
   islandTracks:     true,
   islandDownloads:  true,

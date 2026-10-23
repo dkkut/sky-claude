@@ -78,7 +78,7 @@ export const createCard = async (profileId, { name, bio, genres } = {}) => {
   const id = newId('acd');
   const b = clean(bio, MAX_BIO);
   try {
-    await query(`INSERT INTO music_artist_cards (id, name, name_norm, bio, genres, created_by) VALUES ($1,$2,$3,$4,$5,$6)`,
+    await query(`INSERT INTO music_artist_cards (id, name, name_norm, bio, genres, created_by, owner_id) VALUES ($1,$2,$3,$4,$5,$6,$6)`,
       [id, nm, norm(nm), b ? encryptContent(b) : null, (Array.isArray(genres) ? genres : []).map((g) => clean(g, 40)).filter(Boolean).slice(0, 5).join(','), profileId]);
   } catch (e) { if (e.code === '23505') return { error: 'exists' }; throw e; }
   await log(id, 'created', profileId);
@@ -94,7 +94,7 @@ export const ensureCardForTrack = async (trackId) => {
     let card = await findLive(t.artist);
     if (!card) {
       const id = newId('acd');
-      try { await query(`INSERT INTO music_artist_cards (id, name, name_norm, auto_created, created_by) VALUES ($1,$2,$3,TRUE,$4)`, [id, clean(t.artist, MAX_NAME), norm(t.artist), t.owner_id]); await log(id, 'auto_created', t.owner_id); card = { id }; }
+      try { await query(`INSERT INTO music_artist_cards (id, name, name_norm, auto_created, created_by, owner_id) VALUES ($1,$2,$3,TRUE,$4,$4)`, [id, clean(t.artist, MAX_NAME), norm(t.artist), t.owner_id]); await log(id, 'auto_created', t.owner_id); card = { id }; }
       catch (e) { if (e.code === '23505') card = await findLive(t.artist); else throw e; }
     }
     if (card) await query('UPDATE music_tracks SET artist_card_id = $1 WHERE id = $2', [card.id, trackId]);
