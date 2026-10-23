@@ -93,6 +93,8 @@ const bioProof = async () => {
 
 /** Код, введённый без сети: отправим на сервер, как только он снова ответит. */
 let pendingPin: string | null = null;
+/** Холодный запуск страницы: открыть сессию без кода нельзя, даже если сервер ещё не успел её закрыть (до "GRACE" секунд после закрытия вкладки). */
+let coldChecked = false;
 
 /** Экран-замок. Монтируется один раз в main.tsx. */
 export function AppLockGate() {
@@ -115,8 +117,13 @@ export function AppLockGate() {
     write(true);
     setBio(r.data.kind === 'native' ? 'native' : r.data.bio ? 'web' : null);
     if (r.data.blockedFor > 0) setWait(r.data.blockedFor);
-    setLocked(Boolean(r.data.locked));
-    if (!r.data.locked) setCodeMode(false);
+    let isLocked = Boolean(r.data.locked);
+    if (!coldChecked) {
+      coldChecked = true;
+      if (!isLocked && !r.data.fresh) { await POST('/lock'); isLocked = true; }
+    }
+    setLocked(isLocked);
+    if (!isLocked) setCodeMode(false);
   }, []);
   const lockNow = useCallback(() => { setFails(0); setCode(''); setCodeErr(''); setLocked(true); void refresh(); }, [refresh]);
   const onUnlocked = () => { setFails(0); setCode(''); setCodeErr(''); setCodeMode(false); setLocked(false); window.dispatchEvent(new CustomEvent('sky:applock-unlocked')); };
