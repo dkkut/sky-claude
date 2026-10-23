@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Music2 } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
+import { MusicLabelsAdmin } from './MusicLabelsAdmin';
 
 interface Claim { id: string; cardId: string; cardName: string; claimant: string; claimantName: string; status: string; ownTracks: number; note: string; links: string[]; reason?: string; createdAt: string }
 interface Card { id: string; name: string; tracks: number; confirmedOwner: boolean; autoCreated: boolean }
@@ -70,6 +71,7 @@ export const ArtistCardsTab = () => {
 
       <Registry reason={reason} onDone={() => { setReason(''); }} />
       <Royalty />
+      <MusicLabelsAdmin reason={reason} />
 
       <section className="space-y-2 rounded-xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
         <p className="text-[13px] font-bold" style={{ color: C.t1 }}>Отменить объединение</p>

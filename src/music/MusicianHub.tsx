@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { Mic2, Users, Music2, UserPlus, UserMinus } from 'lucide-react';
 import { apiArtists, apiFollowArtist, type ServerArtist } from './musicApi';
 import { MusicStudio } from './Studio';
+import { MusicLabels } from './Labels';
 
 const C = {
   bg: 'var(--bg)', card: 'var(--bg-l2)', border: 'var(--border)',
@@ -25,6 +26,7 @@ export const MusicianHub = () => {
   const [artists, setArtists] = useState<ServerArtist[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [studio, setStudio] = useState(false);
+  const [labels, setLabels] = useState(false);
 
   useEffect(() => { void apiArtists().then(setArtists); }, []);
 
@@ -36,10 +38,12 @@ export const MusicianHub = () => {
   };
 
   if (studio) return <MusicStudio onClose={() => setStudio(false)} />;
+  if (labels) return <MusicLabels onClose={() => setLabels(false)} />;
   return (
     <div className="flex h-full flex-col overflow-hidden" style={{ background: C.bg }}>
       <div className="shrink-0 px-4 pb-3 pt-4">
         <div className="flex items-center justify-between gap-2"><p className="text-lg font-black" style={{ color: C.t1 }}>Музыканты Sky</p>
+          <button type="button" onClick={() => setLabels(true)} className="rounded-xl px-3 text-[13px] font-bold" style={{ minHeight: 44, background: C.card, border: `1px solid ${C.border}`, color: C.t1 }}>Лейблы</button>
           <button type="button" onClick={() => setStudio(true)} className="rounded-xl px-4 text-sm font-bold" style={{ minHeight: 44, background: C.accent, color: '#fff' }}>Студия</button></div>
         <p className="mt-0.5 text-xs" style={{ color: C.t3 }}>
           Те, чьи треки уже в каталоге. Свой профиль — в Sky Music, вкладка «Артист».

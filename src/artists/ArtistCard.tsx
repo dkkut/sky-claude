@@ -4,7 +4,7 @@ import { BadgeCheck, Loader2 } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
 
-interface Card { id: string; name: string; bio?: string; genres: string[]; autoCreated: boolean; confirmedOwner: boolean; isOwner?: boolean; canClaim?: boolean; myClaim?: string; tracks: number }
+interface Card { id: string; name: string; bio?: string; genres: string[]; autoCreated: boolean; confirmedOwner: boolean; rightsVerified?: boolean; isOwner?: boolean; canClaim?: boolean; myClaim?: string; tracks: number }
 const ERR: Record<string, string> = { note_required: 'Опишите, почему карточка ваша (не короче 10 знаков).', no_own_track: 'Заявку подаёт тот, чей трек привязан к карточке.', already_pending: 'Заявка уже на проверке.', already_owned: 'У карточки уже есть владелец.' };
 const field = { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--t1)' };
 
@@ -26,7 +26,7 @@ export const ArtistCardBlock = ({ name }: { name: string }) => {
   return (
     <div className="mx-5 mb-3 space-y-2 rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.05)' }} data-artist-card>
       <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--t2)' }}>
-        {c.confirmedOwner ? <><BadgeCheck size={14} style={{ color: 'var(--accent)' }} />Карточка подтверждена владельцем</> : <>Карточка пока не подтверждена музыкантом{c.autoCreated ? ' (создана автоматически по трекам)' : ''}</>}
+        {c.confirmedOwner ? <><BadgeCheck size={14} style={{ color: 'var(--accent)' }} />{c.rightsVerified ? 'Карточка подтверждена владельцем, права правообладателя подтверждены' : 'Карточка подтверждена владельцем'}</> : <>Карточка пока не подтверждена музыкантом{c.autoCreated ? ' (создана автоматически по трекам)' : ''}</>}
       </div>
       {c.bio && <p className="text-[12.5px] leading-relaxed" style={{ color: 'var(--t1)' }} translate="no">{c.bio}</p>}
       {c.canClaim && !open && <button type="button" onClick={() => setOpen(true)} className="rounded-xl px-3 py-1.5 text-xs font-bold text-white" style={{ background: 'var(--accent)' }}>Это моя карточка</button>}
