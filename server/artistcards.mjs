@@ -110,7 +110,7 @@ export const readCard = async (id, viewerId) => {
     .map((t) => ({ id: t.id, title: t.title, album: t.album || undefined, duration: t.duration_sec, plays: Number(t.plays) }));
   const claim = viewerId ? (await query(`SELECT status FROM music_artist_claims WHERE card_id=$1 AND claimant_id=$2 ORDER BY created_at DESC LIMIT 1`, [c.id, viewerId])).rows[0] : null;
   const mineTracks = viewerId ? Number((await query(`SELECT count(*) AS n FROM music_tracks WHERE artist_card_id=$1 AND owner_id=$2`, [c.id, viewerId])).rows[0].n) : 0;
-  return view(c, { trackList: tracks, isOwner: c.owner_id === viewerId || (viewerId ? await isOwner(viewerId) : false), myClaim: claim?.status, canClaim: !c.owner_id && mineTracks > 0 && claim?.status !== 'pending', redirectedFrom: String(id) !== c.id ? String(id) : undefined });
+  return view(c, { trackList: tracks, isOwner: c.owner_id === viewerId || (viewerId ? await isOwner(viewerId) : false), myClaim: claim?.status, canClaim: !c.owner_id && mineTracks > 0 && claim?.status !== 'pending', ...(await imageFlags(c.id)), redirectedFrom: String(id) !== c.id ? String(id) : undefined });
 };
 
 /** Карточка по имени (для страницы исполнителя, открытой из строки трека). */
@@ -330,4 +330,50 @@ export const transferOwner = async (adminId, cardId, toUsername, reason) => {
   if (from) await notifyGift(from, 'artist_card', 'Карточка музыканта передана', 'Администрация передала карточку другому аккаунту.', cardId).catch(() => {});
   await notifyGift(to.id, 'artist_card', 'Вам передана карточка музыканта', 'Теперь вы владелец карточки. Треки и релизы сохранены.', cardId).catch(() => {});
   return { ok: true };
+};
+
+/* ─── Фото и баннер карточки ───────────────────────────────────────── */
+const IMG_MAX = { photo: 300 * 1024, banner: 600 * 1024 };
+const sigOk = (mime, b) => (mime === 'image/png' && b.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])))
+  || (mime === 'image/jpeg' && b[0] === 0xff && b[1] === 0xd8)
+  || (mime === 'image/webp' && b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP');
+
+/** Менять фото и баннер может владелец карточки и владелец сервиса. */
+export const setCardImage = async (profileId, cardId, kind, dataUrl) => {
+  if (kind !== 'photo' && kind !== 'banner') return { error: 'bad_kind' };
+  const c = await resolve(cardId);
+  if (!c) return { error: 'not_found' };
+  if (c.owner_id !== profileId && !(await isOwner(profileId))) return { error: 'not_allowed' };
+  const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ''));
+  if (!m) return { error: 'bad_image' };
+  const buf = Buffer.from(m[2], 'base64');
+  if (!buf.length) return { error: 'bad_image' };
+  if (buf.length > IMG_MAX[kind]) return { error: 'image_too_large' };
+  if (!sigOk(m[1], buf)) return { error: 'bad_image' };
+  await query(`INSERT INTO music_card_images (card_id, kind, mime, data, updated_by) VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (card_id, kind) DO UPDATE SET mime = EXCLUDED.mime, data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now()`, [c.id, kind, m[1], buf, profileId]);
+  await log(c.id, `image_${kind}`, profileId, { bytes: buf.length });
+  if (c.owner_id !== profileId) await logAdmin({ actorId: profileId, targetId: c.owner_id ?? profileId, type: 'artist_card_image', detail: `${c.id}: ${kind}` });
+  return { ok: true };
+};
+export const clearCardImage = async (profileId, cardId, kind) => {
+  if (kind !== 'photo' && kind !== 'banner') return { error: 'bad_kind' };
+  const c = await resolve(cardId);
+  if (!c) return { error: 'not_found' };
+  if (c.owner_id !== profileId && !(await isOwner(profileId))) return { error: 'not_allowed' };
+  await query('DELETE FROM music_card_images WHERE card_id=$1 AND kind=$2', [c.id, kind]);
+  await log(c.id, `image_${kind}_removed`, profileId);
+  if (c.owner_id !== profileId) await logAdmin({ actorId: profileId, targetId: c.owner_id ?? profileId, type: 'artist_card_image_remove', detail: `${c.id}: ${kind}` });
+  return { ok: true };
+};
+export const cardImage = async (cardId, kind) => {
+  if (kind !== 'photo' && kind !== 'banner') return null;
+  const c = await resolve(cardId);
+  if (!c) return null;
+  const r = (await query('SELECT mime, data FROM music_card_images WHERE card_id=$1 AND kind=$2', [c.id, kind])).rows[0];
+  return r ? { type: r.mime, data: r.data } : null;
+};
+const imageFlags = async (cardId) => {
+  const rows = (await query('SELECT kind FROM music_card_images WHERE card_id=$1', [cardId])).rows;
+  return { hasPhoto: rows.some((r) => r.kind === 'photo'), hasBanner: rows.some((r) => r.kind === 'banner') };
 };

@@ -83,6 +83,29 @@ t('владелец видит все лейблы и альбомы', r.status 
 r = await call('/api/admin/music-labels', {}, B.tok);
 t('обзор закрыт для обычного человека', r.status === 403);
 
+// фото и баннер карточки
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+r = await call(`/api/music/artist-cards/${C1}/image/photo`, { method: 'PUT', body: J({ dataUrl: PNG }) }, A.tok);
+t('владелец карточки грузит фото', r.status === 200, J(r.data));
+r = await call(`/api/music/artist-cards/${C1}/image/banner`, { method: 'PUT', body: J({ dataUrl: PNG }) }, O.tok);
+t('владелец сервиса грузит баннер любой карточки', r.status === 200);
+r = await call(`/api/music/artist-cards/${C1}/image/photo`, { method: 'PUT', body: J({ dataUrl: PNG }) }, B.tok);
+t('посторонний картинку не грузит', r.status === 403);
+r = await call(`/api/music/artist-cards/${C1}/image/photo`, { method: 'PUT', body: J({ dataUrl: 'data:image/png;base64,AAAA' }) }, A.tok);
+t('не картинка (сигнатура) отклоняется', r.status === 400 && r.data.error === 'bad_image');
+r = await call(`/api/music/artist-cards/${C1}/image/photo`, { method: 'PUT', body: J({ dataUrl: 'data:image/svg+xml;base64,PHN2Zz4=' }) }, A.tok);
+t('SVG запрещён', r.status === 400);
+r = await call(`/api/music/artist-cards/${C1}`, {}, B.tok);
+t('в карточке флаги картинок', r.data.card?.hasPhoto === true && r.data.card?.hasBanner === true, J(r.data).slice(0, 200));
+r = await call(`/api/music/artist-cards/${C1}/image/banner`, {}, B.tok);
+t('картинку видят вошедшие', r.status === 200);
+r = await call(`/api/music/artist-cards/${C1}/image/banner`, { method: 'DELETE' }, B.tok);
+t('посторонний не удаляет', r.status === 403);
+r = await call(`/api/music/artist-cards/${C1}/image/banner`, { method: 'DELETE' }, O.tok);
+t('владелец сервиса удаляет баннер', r.status === 200);
+r = await call(`/api/music/artist-cards/${C1}`, {}, A.tok);
+t('флаг баннера снят', r.data.card?.hasBanner === false && r.data.card?.hasPhoto === true);
+
 // публикация владельца без проверки
 q(`update music_tracks set owner_id='${O.pid}' where id='${T2}'`);
 r = await call(`/api/music/track/${T2}/submit`, { method: 'POST', body: '{}' }, O.tok);

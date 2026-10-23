@@ -2,13 +2,31 @@
 import { useEffect, useState } from 'react';
 import { BadgeCheck, Loader2 } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
+import { CardImageEditor, useCardImage } from './CardImages';
 import { flash } from '@/shared/flash';
 
-interface Card { id: string; name: string; bio?: string; genres: string[]; autoCreated: boolean; confirmedOwner: boolean; rightsVerified?: boolean; isOwner?: boolean; canClaim?: boolean; myClaim?: string; tracks: number }
+interface Card { id: string; name: string; bio?: string; genres: string[]; autoCreated: boolean; confirmedOwner: boolean; rightsVerified?: boolean; hasPhoto?: boolean; hasBanner?: boolean; isOwner?: boolean; canClaim?: boolean; myClaim?: string; tracks: number }
 const ERR: Record<string, string> = { note_required: 'Опишите, почему карточка ваша (не короче 10 знаков).', no_own_track: 'Заявку подаёт тот, чей трек привязан к карточке.', already_pending: 'Заявка уже на проверке.', already_owned: 'У карточки уже есть владелец.' };
 const field = { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--t1)' };
 
 /** Блок на странице исполнителя. Ничего не показывает, если карточки ещё нет (её заводят при первой публикации трека). */
+const CardMedia = ({ c, reload }: { c: Card; reload: () => void }) => {
+  const banner = useCardImage(c.id, 'banner', Boolean(c.hasBanner)); const photo = useCardImage(c.id, 'photo', Boolean(c.hasPhoto)); const [edit, setEdit] = useState(false);
+  return (
+    <div className="space-y-2">
+      {(banner || photo) && (
+        <div className="relative overflow-hidden rounded-xl" style={{ height: banner ? 110 : 72, background: 'var(--bg-l3)' }}>
+          {banner && <img src={banner} alt="" className="h-full w-full object-cover" />}
+          {photo && <img src={photo} alt="" className="absolute bottom-2 left-2 h-14 w-14 rounded-xl border-2 object-cover" style={{ borderColor: 'var(--bg)' }} />}
+        </div>)}
+      {c.isOwner && (<>
+        <button type="button" onClick={() => setEdit(!edit)} className="rounded-lg px-3 py-1.5 text-[11px] font-bold" style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>{edit ? 'Скрыть' : 'Изменить фото и баннер'}</button>
+        {edit && <CardImageEditor cardId={c.id} hasPhoto={Boolean(c.hasPhoto)} hasBanner={Boolean(c.hasBanner)} onChanged={reload} />}
+      </>)}
+    </div>
+  );
+};
+
 export const ArtistCardBlock = ({ name }: { name: string }) => {
   const [c, setC] = useState<Card | null | undefined>(undefined);
   const [open, setOpen] = useState(false);
@@ -25,6 +43,7 @@ export const ArtistCardBlock = ({ name }: { name: string }) => {
   };
   return (
     <div className="mx-5 mb-3 space-y-2 rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.05)' }} data-artist-card>
+      <CardMedia c={c} reload={() => void load()} />
       <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--t2)' }}>
         {c.confirmedOwner ? <><BadgeCheck size={14} style={{ color: 'var(--accent)' }} />{c.rightsVerified ? 'Карточка подтверждена владельцем, права правообладателя подтверждены' : 'Карточка подтверждена владельцем'}</> : <>Карточка пока не подтверждена музыкантом{c.autoCreated ? ' (создана автоматически по трекам)' : ''}</>}
       </div>

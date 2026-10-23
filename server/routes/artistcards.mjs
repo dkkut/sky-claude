@@ -2,9 +2,9 @@ import { json, requireProfile, parseBody } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { hasPrime } from './../skyid.mjs';
 import { can } from './../admin.mjs';
-import { suggest, createCard, readCard, readCardByName, listCards, updateCard, claim, withdrawClaim, adminClaims, decideClaim, revokeOwner, duplicates, merge, unmerge, adminList, transferOwner } from './../artistcards.mjs';
+import { suggest, createCard, readCard, readCardByName, listCards, updateCard, claim, withdrawClaim, adminClaims, decideClaim, revokeOwner, duplicates, merge, unmerge, adminList, transferOwner, setCardImage, clearCardImage, cardImage } from './../artistcards.mjs';
 
-const CODE = { user_not_found: 404, not_allowed: 403, no_own_track: 403, self_review: 403, not_found: 404, exists: 409, already_owned: 409, already_owner: 409, already_pending: 409, not_pending: 409, already_merged: 409, name_taken: 409 };
+const CODE = { image_too_large: 413, user_not_found: 404, not_allowed: 403, no_own_track: 403, self_review: 403, not_found: 404, exists: 409, already_owned: 409, already_owner: 409, already_pending: 409, not_pending: 409, already_merged: 409, name_taken: 409 };
 const send = (res, r) => (r.error ? json(res, CODE[r.error] ?? 400, r) : json(res, 200, r));
 
 /** Карточки музыкантов: люди (с Prime, как вся Sky Music) и сотрудники (право `content`). */
@@ -24,6 +24,18 @@ export const artistCardsRoutes = async (req, res, url) => {
     if (req.method === 'GET' && path === '/api/music/artist-cards/by-name') { const c = await readCardByName(params.get('name') ?? '', me); return c ? json(res, 200, { card: c }) : json(res, 404, { error: 'not_found' }); }
     if (req.method === 'GET' && path === '/api/music/artist-cards') return json(res, 200, { cards: await listCards({ q: params.get('q') ?? undefined, limit: params.get('limit') }) });
     if (req.method === 'POST' && path === '/api/music/artist-cards') { if (!rateLimit(`acard:new:${me}`, 10)) return json(res, 429, { error: 'too_many_requests' }); return send(res, await createCard(me, (await parseBody(req)) ?? {})); }
+    const im = path.match(/^\/api\/music\/artist-cards\/(acd-[0-9a-f-]{36})\/image\/(photo|banner)$/);
+    if (im) {
+      if (req.method === 'GET') {
+        const img = await cardImage(im[1], im[2]);
+        if (!img) return json(res, 404, { error: 'not_found' });
+        res.writeHead(200, { 'Content-Type': img.type, 'Content-Length': img.data.length, 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'" });
+        return res.end(img.data);
+      }
+      if (!rateLimit(`acard:img:${me}`, 20)) return json(res, 429, { error: 'too_many_requests' });
+      if (req.method === 'PUT') return send(res, await setCardImage(me, im[1], im[2], (await parseBody(req))?.dataUrl));
+      if (req.method === 'DELETE') return send(res, await clearCardImage(me, im[1], im[2]));
+    }
     const m = path.match(/^\/api\/music\/artist-cards\/(acd-[0-9a-f-]{36})(?:\/(claim))?$/);
     if (m) {
       if (req.method === 'GET' && !m[2]) { const c = await readCard(m[1], me); return c ? json(res, 200, { card: c }) : json(res, 404, { error: 'not_found' }); }
