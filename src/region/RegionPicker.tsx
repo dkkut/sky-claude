@@ -35,7 +35,7 @@ export const RegionPicker = ({ onClose }: { onClose: () => void }) => {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--bg)' }}>
 
-      <div className="shrink-0 px-4 pt-4 pb-2">
+      <div className="shrink-0 px-4 pb-2" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 16px)' }}>
         <div className="flex items-center gap-3">
           <button type="button" onClick={onClose} className="rounded-full p-1.5" style={{ background: 'rgba(255,255,255,0.06)' }}><ArrowLeft size={16} style={{ color: 'var(--t1)' }}/></button>
           <h2 className="text-[15px] font-black" style={{ color: 'var(--t1)' }}>Регион</h2>

@@ -141,9 +141,9 @@ const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDele
         <ChevronRight size={20} className="text-white"/>
       </button>}
 
-      <div className="relative flex h-full max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-xl">
+      <div className="relative flex h-full max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-xl" style={{ marginTop: 'env(safe-area-inset-top)', maxHeight: 'calc(90vh - env(safe-area-inset-top))' }}>
         {/* Прогресс */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex gap-1 p-3">
+        <div className="absolute left-0 right-0 z-20 flex gap-1 px-3 pb-3" style={{ top: 0, paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
           {stories.map((s,i)=>(
             <div key={s.id} className="flex-1 h-0.5 overflow-hidden rounded-full" style={{background:'rgba(255,255,255,0.3)'}}>
               <div className="h-full rounded-full bg-white transition-none"
@@ -153,7 +153,7 @@ const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDele
         </div>
 
         {/* Шапка */}
-        <div className="absolute top-8 left-0 right-0 z-20 flex items-center gap-3 px-4">
+        <div className="absolute left-0 right-0 z-20 flex items-center gap-3 px-4" style={{ top: 'calc(env(safe-area-inset-top) + 32px)' }}>
           <button type="button" onClick={() => openProfile(story.authorId)}
             className="grid h-9 w-9 place-items-center rounded-full text-sm font-bold text-white shrink-0"
             style={{background:'rgba(255,255,255,0.2)'}}>{initial(story.authorName)}</button>
@@ -188,7 +188,7 @@ const StoryViewer = ({ stories, startIdx, onClose, currentUserId, onLike, onDele
             </div>
           )}
           {(story.location||story.musicTrackId)&&(
-            <div className="absolute top-16 left-0 right-0 px-6 flex flex-col items-center gap-1.5">
+            <div className="absolute left-0 right-0 px-6 flex flex-col items-center gap-1.5" style={{ top: 'calc(env(safe-area-inset-top) + 64px)' }}>
               {story.location&&(
                 <div className="flex items-center gap-1.5 rounded-full px-3 py-1" style={{background:'rgba(0,0,0,0.45)',backdropFilter:'blur(6px)'}}>
                   <MapPin size={11} color="#fff"/><span className="text-xs font-medium text-white">{story.location}</span>

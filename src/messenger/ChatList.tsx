@@ -40,7 +40,7 @@ const TgAvatar = ({ chat, size = 50, onClick, frame }: {
 }) => (
   <div className="relative shrink-0" style={{ width: size, height: size }} onClick={onClick}>
     {frame && frame.ring !== 'transparent' && (
-      <div className="absolute rounded-full" style={{ inset: -3, background: frame.ring, boxShadow: frame.glow }} />
+      <div className="absolute" style={{ inset: -3, background: frame.ring, boxShadow: frame.glow, borderRadius: size * 0.3 + 3 }} />
     )}
     <div className="absolute flex items-center justify-center text-white font-bold select-none overflow-hidden"
       style={{ inset: 0, background: avatarColor(chat.name), fontSize: size * 0.4, borderRadius: size * 0.3 }}>
