@@ -4,11 +4,17 @@ import { Trash2 } from 'lucide-react';
 import { apiCall, apiSearchPeople, type DirectoryPerson } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
 
-type Scope = 'write' | 'call' | 'online' | 'gifts' | 'music';
+type Scope = string;
 interface Item { otherId: string; username: string; name: string; scope: Scope; mode: 'allow' | 'deny' }
 const SCOPES: { k: Scope; label: string }[] = [
   { k: 'write', label: 'Писать мне' }, { k: 'call', label: 'Звонить мне' }, { k: 'online', label: 'Видеть, что я в сети' },
   { k: 'gifts', label: 'Видеть мои подарки' }, { k: 'music', label: 'Видеть мою музыку' },
+  { k: 'showPhone', label: 'Видеть мой телефон' }, { k: 'showBirthDate', label: 'Видеть дату рождения' }, { k: 'showBio', label: 'Видеть «О себе»' },
+  { k: 'showBanner', label: 'Видеть баннер' }, { k: 'showLinks', label: 'Видеть ссылки' }, { k: 'showCustomStatus', label: 'Видеть статус' },
+  { k: 'showCountry', label: 'Видеть страну' }, { k: 'showTimezone', label: 'Видеть часовой пояс' }, { k: 'showActivity', label: 'Видеть активность' },
+  { k: 'showGames', label: 'Видеть игры' }, { k: 'showMovies', label: 'Видеть фильмы' }, { k: 'showAchievements', label: 'Видеть достижения' },
+  { k: 'showFollowing', label: 'Видеть мои подписки' }, { k: 'showFriends', label: 'Видеть моих друзей' }, { k: 'showPhotos', label: 'Видеть фотографии' },
+  { k: 'showStories', label: 'Видеть истории' }, { k: 'showPosts', label: 'Видеть публикации' },
 ];
 const ERR: Record<string, string> = { user_not_found: 'Человек не найден.', self: 'Нельзя добавить себя.', too_many: 'Слишком много исключений (до 300).' };
 

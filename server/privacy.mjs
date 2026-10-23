@@ -157,6 +157,19 @@ const allows = async (ownerId, otherId, setting, { keepOngoing }) => {
 
 /** Исключение владельца для человека: 'allow' | 'deny' | null. Решает сервер. */
 export const SCOPES = ['write', 'call', 'online', 'gifts', 'music'];
+/** Допустимая область исключения: основные, либо раздел профиля (showXxx из VISIBILITY_KEYS). */
+export const validScope = (sc) => SCOPES.includes(sc) || VISIBILITY_KEYS.has(sc);
+/** Исключения owner для viewer по разделам профиля: { showPhotos: false, … } (deny → false, allow → true). */
+export const sectionExceptions = async (ownerId, viewerId) => {
+  if (!viewerId || ownerId === viewerId) return {};
+  const { rows } = await query('SELECT scope, mode FROM privacy_exceptions WHERE owner_id=$1 AND other_id=$2', [ownerId, viewerId]);
+  const out = {};
+  for (const r of rows) {
+    const key = r.scope === 'gifts' ? 'showGifts' : r.scope === 'music' ? 'showMusic' : r.scope;
+    if (VISIBILITY_KEYS.has(key)) out[key] = r.mode === 'allow';
+  }
+  return out;
+};
 export const exceptionOf = async (ownerId, otherId, scope) => {
   if (!ownerId || !otherId || ownerId === otherId) return null;
   const { rows } = await query('SELECT mode FROM privacy_exceptions WHERE owner_id=$1 AND other_id=$2 AND scope=$3', [ownerId, otherId, scope]);

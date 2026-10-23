@@ -4,7 +4,7 @@
  * Чужим людям отдаются только опубликованные треки и публичные плейлисты; свои — все, помеченные для профиля.
  */
 import { query } from './db.mjs';
-import { getPrivacy, exceptionOf, SCOPES } from './privacy.mjs';
+import { getPrivacy, exceptionOf, validScope } from './privacy.mjs';
 
 const err = (e) => ({ error: e });
 
@@ -53,7 +53,7 @@ export const listExceptions = async (me) => {
   return { items: rows.map((r) => ({ otherId: r.other_id, username: r.username, name: r.name, scope: r.scope, mode: r.mode })) };
 };
 export const setException = async (me, { otherId, username, scope, mode } = {}) => {
-  if (!SCOPES.includes(scope)) return err('bad_scope');
+  if (!validScope(scope)) return err('bad_scope');
   let id = String(otherId ?? '');
   if (!id && username) id = (await query('SELECT id FROM profiles WHERE lower(username)=$1', [String(username).replace(/^@/, '').toLowerCase()])).rows[0]?.id ?? '';
   if (!id) return err('user_not_found');

@@ -4,7 +4,7 @@
  */
 import { json, requireProfile } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
-import { getPrivacy } from './../privacy.mjs';
+import { getPrivacy, sectionExceptions } from './../privacy.mjs';
 import {
   friendStatus, sendFriendRequest, removeFriend, friendIds, friendCount,
 } from './../friends.mjs';
@@ -32,7 +32,8 @@ export const friendsRoutes = async (req, res, url) => {
 
       const isOwn = targetId === me;
       const privacy = isOwn ? null : await getPrivacy(targetId);
-      const canSee = isOwn || (privacy?.profileVisibility?.showFriends ?? true);
+      const exc = isOwn ? {} : await sectionExceptions(targetId, me);
+    const canSee = isOwn || (exc.showFriends ?? privacy?.profileVisibility?.showFriends ?? true);
 
       const [status, ids, count] = await Promise.all([
         friendStatus(me, targetId),

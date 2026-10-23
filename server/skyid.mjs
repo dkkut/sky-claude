@@ -20,7 +20,7 @@ import { mayClaimUsername } from './admin.mjs';
 import { issueCode, verifyCode } from './verification.mjs';
 import { isOwnerUsername } from './admin.mjs';
 import { registerLimited } from './registration.mjs';
-import { getPrivacy, isContact } from './privacy.mjs';
+import { getPrivacy, isContact, sectionExceptions } from './privacy.mjs';
 import { isValidRegion } from './regions.mjs';
 import { looksLikeBackupCode, consumeBackupCode } from './accountrecovery.mjs';
 
@@ -486,6 +486,7 @@ export const publicProfile = async (viewerId, targetId) => {
       whoCanCall: privacy.whoCanCall,
       whoSeesOnline: privacy.whoSeesOnline,
       ...privacy.profileVisibility,
+      ...(viewerId ? await sectionExceptions(p.id, viewerId) : {}),
     },
   };
 };

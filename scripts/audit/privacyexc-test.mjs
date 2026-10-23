@@ -91,4 +91,14 @@ t('раздел скрыт настройкой', r.data.hidden === true);
 await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: C.pid, scope: 'music', mode: 'allow' }) }, A.tok);
 r = await call(`/api/profile-music/${A.pid}`, {}, C.tok);
 t('исключение открывает C', r.data.hidden === false && r.data.tracks.length === 1);
+// разделы профиля по людям
+await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: B.pid, scope: 'showPhotos', mode: 'deny' }) }, A.tok);
+q(`update profiles set profile_visibility = '{}'::jsonb where id='${A.pid}'`);
+const SK = await import('../../server/skyid.mjs');
+const pp = await SK.publicProfile(B.pid, A.pid); const pc = await SK.publicProfile(C.pid, A.pid);
+t('публичный профиль для B: фотографии скрыты', pp?.privacy?.showPhotos === false && pc?.privacy?.showPhotos !== false, JSON.stringify(pp?.privacy));
+const PI = await import('../../server/privacy.mjs');
+t('исключение по разделу профиля', (await PI.sectionExceptions(A.pid, B.pid)).showPhotos === false && (await PI.sectionExceptions(A.pid, C.pid)).showPhotos === undefined);
+r = await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: B.pid, scope: 'showHack; drop', mode: 'deny' }) }, A.tok);
+t('мусорная область отклоняется', r.status === 400);
 console.log(`\n${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

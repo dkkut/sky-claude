@@ -4,7 +4,7 @@
  */
 import { json, requireProfile } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
-import { getPrivacy } from './../privacy.mjs';
+import { getPrivacy, sectionExceptions } from './../privacy.mjs';
 import {
   toggleFollow, isFollowing, followerIds, followingIds, followerCount, followingCount,
 } from './../follows.mjs';
@@ -30,7 +30,8 @@ export const followsRoutes = async (req, res, url) => {
 
     const isOwn = targetId === me;
     const privacy = isOwn ? null : await getPrivacy(targetId);
-    const canSee = isOwn || (privacy?.profileVisibility?.showFollowing ?? true);
+    const exc = isOwn ? {} : await sectionExceptions(targetId, me);
+    const canSee = isOwn || (exc.showFollowing ?? privacy?.profileVisibility?.showFollowing ?? true);
 
     if (!canSee) {
       return json(res, 200, { following: [], followers: [], followingCount: 0, followerCount: 0, isFollowing: false });
