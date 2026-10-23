@@ -1,281 +1,215 @@
+/* -- Страница исполнителя (карточка музыканта) --------------------------------
+ * Крупное фото сверху, имя, кнопки (подписка · моя волна · слушать), затем: новый релиз, популярные треки,
+ * «Моя волна по артисту», альбомы, «Об исполнителе», похожие исполнители. Управление карточкой (владелец,
+ * заявка на владение, фото и баннер) — прежний блок ArtistCardBlock в самом низу; его логика не менялась.
+ * Только настоящие данные: прослушивания, подписчики и альбомы берутся из каталога и с сервера. */
 import { ExplicitBadge } from '@/labels/Labels';
-/* -- Профиль артиста --------------------------------------- */
-import { ArtistCardBlock } from '@/artists/ArtistCard';
+import { ArtistCardBlock, useArtistCard } from '@/artists/ArtistCard';
+import { useCardImage } from '@/artists/CardImages';
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Play, Pause, Music2, Mic2, UserPlus, UserMinus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Heart, Headphones, Music2, Play, Pause, AudioLines, Sparkles } from 'lucide-react';
 import { apiArtistByName, apiFollowArtist, type ServerArtist } from './musicApi';
 import type { Track } from '@/platform/store';
 import { getG, fmtPlays } from './utils';
-import { Cover, TrackRow, Viz } from './MusicPrimitives';
 
 interface Props {
-  artist:   string;
-  tracks:   Track[];
-  favorites: string[];
-  playing:  boolean;
-  activeId: string | null;
-  onPlay:   (t: Track, pool: Track[]) => void;
-  onLike:   (id: string) => void;
-  onAdd:    (id: string) => void;
-  onClose:  () => void;
+  artist: string; tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
+  onPlay: (t: Track, pool: Track[]) => void; onLike: (id: string) => void; onAdd: (id: string) => void;
+  onArtist?: (name: string) => void; onClose: () => void;
 }
 
-export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, onPlay, onLike, onAdd, onClose }: Props) => {
-  const artTracks  = tracks.filter(t => t.artist === artist && t.status === 'published');
-  const genres     = [...new Set(artTracks.map(t => t.genre))];
+const ACCENT = '#c4b5fd';
+const kind = (n: number) => (n === 1 ? 'трек' : n < 5 ? 'трека' : 'треков');
+
+const Cover = ({ t, size, radius = 10 }: { t?: Track; size: number; radius?: number }) => {
+  const [a, b] = getG(t?.id ?? 'x');
+  return (
+    <span className="grid shrink-0 place-items-center overflow-hidden" style={{ width: size, height: size, borderRadius: radius, background: `linear-gradient(135deg,${a},${b})` }}>
+      {t?.coverUrl ? <img src={t.coverUrl} alt="" className="h-full w-full object-cover" /> : <Music2 size={Math.round(size / 3)} color="rgba(255,255,255,0.45)" />}
+    </span>
+  );
+};
+
+const Title = ({ children, onMore }: { children: string; onMore?: () => void }) => (
+  <h2 className="mb-3 flex items-center gap-1 px-5 text-[22px] font-black tracking-tight" style={{ color: 'var(--t1)' }}>
+    {onMore ? <button type="button" onClick={onMore} className="flex items-center gap-1 font-black">{children}<ChevronRight size={20} /></button> : children}
+  </h2>
+);
+
+export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, onPlay, onLike, onAdd, onArtist, onClose }: Props) => {
+  const artTracks = useMemo(() => tracks.filter((t) => t.artist === artist && t.status === 'published'), [tracks, artist]);
+  const sorted = useMemo(() => [...artTracks].sort((a, b) => b.plays - a.plays), [artTracks]);
   const totalPlays = artTracks.reduce((a, t) => a + t.plays, 0);
-  const sorted     = [...artTracks].sort((a, b) => b.plays - a.plays);
-  const topTrack   = sorted[0] ?? null;
-  const [c1, c2]   = topTrack ? getG(topTrack.id) : ['#0d1b2a', '#1a2a3a'];
+  const genres = useMemo(() => [...new Set(artTracks.map((t) => t.genre).filter(Boolean))], [artTracks]);
+  const newest = useMemo(() => [...artTracks].sort((a, b) => b.addedAt.localeCompare(a.addedAt))[0], [artTracks]);
+  const [showAll, setShowAll] = useState(false);
+  const [more, setMore] = useState(false);
 
-  const byGenre = new Map<string, Track[]>();
-  artTracks.forEach(t => { byGenre.set(t.genre, [...(byGenre.get(t.genre) ?? []), t]); });
+  const card = useArtistCard(artist);
+  const photo = useCardImage(card?.id ?? '', 'photo', Boolean(card?.hasPhoto));
+  const banner = useCardImage(card?.id ?? '', 'banner', Boolean(card?.hasBanner));
+  const heroCover = sorted.find((t) => t.coverUrl)?.coverUrl;
+  const hero = photo ?? banner ?? heroCover ?? null;
+  const [g1, g2] = getG(artist);
 
-  // Профиль артиста и подписка — с сервера. Прежняя кнопка писала
-  // подписку в localStorage этого браузера, и о ней не знал никто.
-  const [profile, setProfile] = useState<ServerArtist | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    setProfile(null);
-    void apiArtistByName(artist).then(a => { if (alive) setProfile(a); });
-    return () => { alive = false; };
-  }, [artist]);
-
-  const toggleFollow = async () => {
-    if (!profile || profile.own) return;
-    setBusy(true);
-    const fresh = await apiFollowArtist(profile.id, !profile.following);
-    setBusy(false);
-    if (fresh) setProfile(fresh);
+  // Подписка — на сервере (кнопка только если у артиста есть профиль).
+  const [profile, setProfile] = useState<ServerArtist | null>(null); const [busy, setBusy] = useState(false);
+  useEffect(() => { let alive = true; setProfile(null); setShowAll(false); setMore(false); void apiArtistByName(artist).then((a) => { if (alive) setProfile(a); }); return () => { alive = false; }; }, [artist]);
+  const follow = async () => {
+    if (!profile || profile.own || busy) return;
+    setBusy(true); const fresh = await apiFollowArtist(profile.id, !profile.following); setBusy(false); if (fresh) setProfile(fresh);
   };
 
-  const similarArtists = useMemo(() => {
-    const others = new Map<string, Track[]>();
-    tracks.filter(t => t.status === 'published' && t.artist !== artist && genres.includes(t.genre))
-      .forEach(t => { others.set(t.artist, [...(others.get(t.artist) ?? []), t]); });
-    return [...others.entries()].sort((a,b) => b[1].length - a[1].length).slice(0, 8);
+  const albums = useMemo(() => {
+    const m = new Map<string, Track[]>();
+    artTracks.forEach((t) => { if (t.album?.trim()) (m.get(t.album.trim()) ?? m.set(t.album.trim(), []).get(t.album.trim())!).push(t); });
+    return [...m.entries()].sort((a, b) => b[1].reduce((s, t) => s + t.plays, 0) - a[1].reduce((s, t) => s + t.plays, 0)).slice(0, 10);
+  }, [artTracks]);
+
+  const similar = useMemo(() => {
+    const m = new Map<string, Track[]>();
+    tracks.filter((t) => t.status === 'published' && t.artist !== artist && genres.includes(t.genre)).forEach((t) => { (m.get(t.artist) ?? m.set(t.artist, []).get(t.artist)!).push(t); });
+    return [...m.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 10);
   }, [tracks, artist, genres]);
 
+  /** «Моя волна по артисту»: песни артиста, затем похожие по жанру. */
+  const waveByArtist = () => {
+    const rest = similar.flatMap(([, ts]) => ts).sort(() => Math.random() - 0.5);
+    const pool = [...sorted, ...rest];
+    if (pool[0]) onPlay(pool[0], pool);
+  };
+
+  const topN = showAll ? sorted : sorted.slice(0, 5);
+  const isCur = (t: Track) => activeId === t.id;
+  const playAll = () => { if (sorted[0]) onPlay(sorted[0], sorted); };
+
   return (
-    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="absolute inset-0 z-50 flex flex-col overflow-hidden"
-      style={{ background: 'var(--bg)' }}>
-
-      {/* Баннер */}
-      <div className="relative shrink-0 overflow-hidden" style={{ height: 180 }}>
-        <motion.div key={artist} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="absolute inset-0"
-          style={{ background: `linear-gradient(160deg,${c1} 0%,${c2} 50%,var(--bg) 100%)` }}/>
-        {[...Array(4)].map((_, i) => (
-          <motion.div key={i}
-            animate={{ scale: [1, 1.2, 1], opacity: [0.06, 0.14, 0.06] }}
-            transition={{ duration: 3 + i * 0.8, repeat: Infinity, delay: i * 0.7 }}
-            className="absolute rounded-full pointer-events-none"
-            style={{ width: 80 + i * 60, height: 80 + i * 60, background: c2,
-              left: `${15 + i * 20}%`, top: `${10 + i * 15}%`, transform: 'translate(-50%,-50%)' }}/>
-        ))}
-        <button type="button" onClick={onClose}
-          className="absolute top-4 left-4 flex items-center gap-1.5 rounded-2xl px-3 py-1.5 text-xs font-medium"
-          style={{ background: 'rgba(0,0,0,0.35)', color: 'rgba(255,255,255,0.7)' }}>
-          <ArrowLeft size={13}/>Назад
-        </button>
-      </div>
-
-      {/* Аватар + имя */}
-      <div className="relative px-5 -mt-10 pb-3 shrink-0">
-        <div className="flex items-end gap-4">
-          <div className="grid h-20 w-20 place-items-center rounded-3xl text-4xl font-black text-white shrink-0"
-            style={{ background: `linear-gradient(135deg,${c1},${c2})`,
-              border: '3px solid var(--bg)', boxShadow: `0 8px 32px ${c1}99` }}>
-            {artist[0]?.toUpperCase()}
-          </div>
-          <div className="pb-1 min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <p className="text-xl font-black text-white truncate">{artist}</p>
+    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      className="absolute inset-0 z-50 overflow-y-auto" style={{ background: 'var(--bg)', scrollbarWidth: 'none' }}>
+      {/* Фото */}
+      <div className="relative" style={{ height: 440, background: `linear-gradient(160deg,${g1},${g2})` }}>
+        {hero && <img src={hero} alt="" className="absolute inset-0 h-full w-full object-cover" style={{ filter: photo ? undefined : 'saturate(.9)' }} />}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.38) 0%, transparent 28%, transparent 48%, rgba(10,8,24,0.78) 100%)' }} />
+        <button type="button" onClick={onClose} aria-label="Назад" className="absolute left-3 grid h-10 w-10 place-items-center rounded-full" style={{ top: 'calc(env(safe-area-inset-top) + 10px)', background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(8px)', color: '#fff' }}><ChevronLeft size={22} /></button>
+        <div className="absolute inset-x-0 bottom-0 px-5 pb-5 text-center">
+          <h1 translate="no" className="break-words text-[40px] font-black leading-[1.05] tracking-tight text-white" style={{ textShadow: '0 2px 18px rgba(0,0,0,0.35)' }}>{artist}</h1>
+          <p className="mt-1.5 flex items-center justify-center gap-1.5 text-[15px] font-semibold text-white/85"><Headphones size={16} />{fmtPlays(totalPlays)} прослушиваний</p>
+          <div className="mt-4 flex items-start justify-center gap-7">
+            {profile && !profile.own && (
+              <div className="flex w-[72px] flex-col items-center gap-1.5">
+                <button type="button" disabled={busy} onClick={() => void follow()} aria-pressed={profile.following} aria-label={profile.following ? 'Отписаться' : 'Подписаться'} className="grid h-[64px] w-[64px] place-items-center rounded-full disabled:opacity-60" style={{ background: 'rgba(255,255,255,0.22)', backdropFilter: 'blur(10px)' }}>
+                  <Heart size={28} color="#fff" fill={profile.following ? '#fff' : 'none'} />
+                </button>
+                <span className="text-[13px] font-semibold text-white/85">{profile.followers}</span>
+              </div>)}
+            <div className="flex w-[72px] flex-col items-center gap-1.5">
+              <button type="button" onClick={waveByArtist} aria-label="Моя волна по артисту" className="grid h-[64px] w-[64px] place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.22)', backdropFilter: 'blur(10px)' }}><AudioLines size={28} color="#fff" /></button>
+              <span className="text-[13px] font-semibold text-white/85">Волна</span>
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              {genres.slice(0, 2).map(g => (
-                <span key={g} className="text-[10px] font-semibold rounded-full px-2 py-0.5"
-                  style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>{g}</span>
-              ))}
+            <div className="flex w-[72px] flex-col items-center gap-1.5">
+              <button type="button" onClick={playAll} aria-label="Слушать" className="grid h-[64px] w-[64px] place-items-center rounded-full" style={{ background: 'linear-gradient(135deg,#fff,#e9d5ff)', boxShadow: '0 8px 26px rgba(167,139,250,0.5)' }}><Play size={26} fill="#111" color="#111" style={{ marginLeft: 3 }} /></button>
+              <span className="text-[13px] font-semibold text-white/85">Слушать</span>
             </div>
           </div>
-          {/* Кнопка появляется, только если у артиста есть профиль на
-              сервере: подписываться иначе не на кого. */}
-          {profile && !profile.own && (
-            <motion.button type="button" whileTap={{ scale: 0.94 }} disabled={busy}
-              onClick={() => void toggleFollow()}
-              className="mb-1 flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-bold disabled:opacity-50"
-              style={{ background: profile.following ? 'rgba(255,255,255,0.08)' : '#A855F7', color: '#fff' }}>
-              {profile.following
-                ? <><UserMinus size={13}/>Вы подписаны</>
-                : <><UserPlus size={13}/>Подписаться</>}
-            </motion.button>
-          )}
-        </div>
-
-        {profile?.bio && (
-          <p className="mt-3 text-[12.5px] leading-relaxed" style={{ color: 'var(--t2)' }}>{profile.bio}</p>
-        )}
-        <div className="-mx-5 mt-3"><ArtistCardBlock name={artist} /></div>
-
-
-        {/* Статистика */}
-        <div className="grid grid-cols-3 gap-2 mt-4">
-          {[
-            { label: 'Треков',      val: String(artTracks.length) },
-            { label: 'Прослушиваний', val: fmtPlays(totalPlays) },
-            { label: 'Подписчиков', val: String(profile?.followers ?? 0) },
-          ].map(({ label, val }) => (
-            <div key={label} className="rounded-2xl py-2.5 text-center"
-              style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-              <p className="text-base font-black text-white">{val}</p>
-              <p className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{label}</p>
-            </div>
-          ))}
         </div>
       </div>
 
-      {/* Контент */}
-      <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-5">
+      <div className="space-y-8 pb-28 pt-7">
+        {artTracks.length === 0 && <p className="px-5 text-[14px]" style={{ color: 'var(--t3)' }}>У этого исполнителя пока нет опубликованных треков.</p>}
 
-        {/* Топ трек */}
-        {topTrack && (
+        {newest && (
           <section>
-            <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--t3)' }}>
-              Главный хит
-            </p>
-            <div className="flex items-center gap-3 rounded-2xl p-3"
-              style={{ background: `${c2}18`, border: `1px solid ${c2}30` }}>
-              <Cover track={topTrack} size={52} playing={playing} active={activeId === topTrack.id}/>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-white truncate">{topTrack.title}</p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--t3)' }}>
-                  {topTrack.genre} · {fmtPlays(topTrack.plays)} прослушиваний
-                </p>
-              </div>
-              <motion.button type="button" whileTap={{ scale: 0.88 }}
-                onClick={() => onPlay(topTrack, artTracks)}
-                className="grid h-11 w-11 place-items-center rounded-full shrink-0"
-                style={{ background: '#A855F7', boxShadow: '0 4px 20px rgba(168,85,247,0.35)' }}>
-                {playing && activeId === topTrack.id
-                  ? <Pause size={18} fill="white" className="text-white"/>
-                  : <Play  size={18} fill="white" className="text-white ml-0.5"/>}
-              </motion.button>
-            </div>
-          </section>
-        )}
+            <Title>Новый релиз</Title>
+            <button type="button" onClick={() => onPlay(newest, [newest])} className="flex w-full items-center gap-4 px-5 text-left">
+              <Cover t={newest} size={84} radius={14} />
+              <span className="min-w-0 flex-1">
+                <span translate="no" className="block truncate text-[18px] font-semibold" style={{ color: 'var(--t1)' }}>{newest.album?.trim() || newest.title}</span>
+                <span className="mt-0.5 block text-[14px]" style={{ color: 'var(--t3)' }}>{new Date(newest.addedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                <span className="block text-[12px] font-bold uppercase tracking-wide" style={{ color: 'var(--t3)' }}>{newest.album && albums.find(([n]) => n === newest.album.trim())?.[1].length! > 1 ? 'альбом' : 'сингл'}</span>
+              </span>
+              <ChevronRight size={20} style={{ color: 'var(--t3)' }} />
+            </button>
+          </section>)}
 
-        {/* Все треки */}
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--t3)' }}>
-              Все треки
-            </p>
-            <motion.button type="button" whileTap={{ scale: 0.95 }}
-              onClick={() => artTracks[0] && onPlay(artTracks[0], artTracks)}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-white"
-              style={{ background: '#A855F7' }}>
-              <Play size={11} fill="white"/>Слушать всё
-            </motion.button>
-          </div>
-          <div className="space-y-0.5">
-            {sorted.map((t, i) => (
-              <TrackRow key={t.id} track={t} index={i} isActive={activeId === t.id}
-                isPlaying={playing && activeId === t.id}
-                onPlay={() => onPlay(t, artTracks)}
-                liked={favorites.includes(t.id)} onLike={() => onLike(t.id)} onAdd={() => onAdd(t.id)}/>
-            ))}
-          </div>
-        </section>
-
-        {/* По жанрам */}
-        {byGenre.size > 1 && (
+        {sorted.length > 0 && (
           <section>
-            <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--t3)' }}>
-              По жанрам
-            </p>
-            {[...byGenre.entries()].map(([genre, ts]) => (
-              <div key={genre} className="mb-4">
-                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--t2)' }}>{genre}</p>
-                <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                  {ts.map(t => {
-                    const [gc1, gc2] = getG(t.id);
-                    return (
-                      <motion.div key={t.id} whileTap={{ scale: 0.96 }}
-                        className="shrink-0 cursor-pointer w-28"
-                        onClick={() => onPlay(t, ts)}>
-                        <div className="relative overflow-hidden rounded-2xl w-28 h-28 mb-2"
-                          style={{ background: `linear-gradient(135deg,${gc1},${gc2})` }}>
-                          {t.coverUrl && <img src={t.coverUrl} alt="" className="w-full h-full object-cover"/>}
-                          {activeId === t.id && (
-                            <div className="absolute inset-0 grid place-items-center" style={{ background: 'rgba(0,0,0,0.4)' }}>
-                              <Viz playing={playing} bars={5}/>
-                            </div>
-                          )}
-                          {!t.coverUrl && activeId !== t.id && (
-                            <div className="absolute inset-0 grid place-items-center">
-                              <Music2 size={28} style={{ color: 'rgba(255,255,255,0.3)' }}/>
-                            </div>
-                          )}
-                        </div>
-                        <p className="text-xs font-semibold text-white truncate">{t.title}<ExplicitBadge show={t.explicit} /></p>
-                        <p className="flex items-center gap-1 text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}><Play size={9} fill="currentColor"/> {fmtPlays(t.plays)}</p>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </section>
-        )}
-
-        {/* Похожие исполнители */}
-        {similarArtists.length > 0 && (
-          <section>
-            <p className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--t3)' }}>
-              Похожие исполнители
-            </p>
-            <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-              {similarArtists.map(([name, ts]) => {
-                const [gc1, gc2] = getG(name);
-                return (
-                  <button key={name} type="button" onClick={() => ts[0] && onPlay(ts[0], ts)}
-                    className="shrink-0 text-center" style={{ width: 84 }}>
-                    <div className="mx-auto mb-1.5 grid h-16 w-16 place-items-center rounded-full"
-                      style={{ background: `linear-gradient(135deg,${gc1},${gc2})` }}>
-                      <Mic2 size={18} color="rgba(255,255,255,0.5)"/>
-                    </div>
-                    <p className="truncate text-[11px] font-semibold text-white">{name}</p>
+            <Title onMore={sorted.length > 5 ? () => setShowAll((v) => !v) : undefined}>Популярные треки</Title>
+            <div>
+              {topN.map((t) => (
+                <div key={t.id} className="flex items-center gap-3 px-5 py-2" style={{ background: isCur(t) ? 'rgba(168,85,247,0.12)' : 'transparent' }}>
+                  <button type="button" onClick={() => onPlay(t, sorted)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                    <span className="relative"><Cover t={t} size={54} />
+                      {isCur(t) && <span className="absolute inset-0 grid place-items-center rounded-[10px]" style={{ background: 'rgba(0,0,0,0.45)' }}>{playing ? <Pause size={18} fill="#fff" color="#fff" /> : <Play size={18} fill="#fff" color="#fff" />}</span>}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span translate="no" className="block truncate text-[16px] font-medium" style={{ color: 'var(--t1)' }}>{t.title}<ExplicitBadge show={t.explicit} /></span>
+                      <span className="flex items-center gap-1 text-[13px]" style={{ color: 'var(--t3)' }}><Play size={9} fill="currentColor" />{fmtPlays(t.plays)}</span>
+                    </span>
                   </button>
-                );
-              })}
+                  <button type="button" onClick={() => onLike(t.id)} aria-label="В избранное" aria-pressed={favorites.includes(t.id)} className="grid h-9 w-9 place-items-center"><Heart size={20} color={favorites.includes(t.id) ? '#ff4d6d' : 'var(--t3)'} fill={favorites.includes(t.id) ? '#ff4d6d' : 'none'} /></button>
+                  <button type="button" onClick={() => onAdd(t.id)} aria-label="Добавить в плейлист" className="grid h-9 w-9 place-items-center text-[20px] font-black" style={{ color: 'var(--t3)' }}>⋯</button>
+                </div>))}
             </div>
-          </section>
-        )}
+            {sorted.length > 5 && <button type="button" onClick={() => setShowAll((v) => !v)} className="mx-5 mt-2 text-[13px] font-bold" style={{ color: ACCENT }}>{showAll ? 'Свернуть' : `Показать все (${sorted.length})`}</button>}
+          </section>)}
 
-        {/* Концерты и клипы — пока нет данных, честная заглушка вместо выдуманных дат/ссылок */}
-        <section className="grid grid-cols-2 gap-2">
-          <div className="rounded-2xl p-3 text-center" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-            <p className="text-[11px] font-semibold" style={{ color: 'var(--t3)' }}>Концерты</p>
-            <p className="mt-1 text-[10.5px]" style={{ color: 'var(--t3)' }}>Пока не запланировано</p>
-          </div>
-          <div className="rounded-2xl p-3 text-center" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
-            <p className="text-[11px] font-semibold" style={{ color: 'var(--t3)' }}>Клипы</p>
-            <p className="mt-1 text-[10.5px]" style={{ color: 'var(--t3)' }}>Скоро появятся</p>
-          </div>
+        {sorted.length > 0 && (
+          <section>
+            <Title>Моя волна по артисту</Title>
+            <button type="button" onClick={waveByArtist} className="mx-5 block w-[calc(100%-40px)] overflow-hidden rounded-[22px] py-4 text-center" style={{ background: 'linear-gradient(120deg,#5b21b6,#c026d3 55%,#3b82f6)', color: '#fff' }}>
+              <span className="block text-[14px] font-semibold opacity-85">Моя волна по артисту</span>
+              <span translate="no" className="mt-0.5 flex items-center justify-center gap-1.5 text-[22px] font-black"><Play size={16} fill="#fff" color="#fff" />{artist}</span>
+            </button>
+            <p className="mx-5 mt-1.5 text-[11.5px]" style={{ color: 'var(--t3)' }}>Песни артиста, затем похожие по жанру.</p>
+          </section>)}
+
+        {albums.length > 0 && (
+          <section>
+            <Title>Популярные альбомы</Title>
+            <div className="flex gap-4 overflow-x-auto px-5 pb-1" style={{ scrollbarWidth: 'none' }}>
+              {albums.map(([name, ts]) => (
+                <button key={name} type="button" onClick={() => ts[0] && onPlay(ts[0], ts)} className="shrink-0 text-left" style={{ width: 168 }}>
+                  <Cover t={ts.find((x) => x.coverUrl) ?? ts[0]} size={168} radius={18} />
+                  <span translate="no" className="mt-2 block truncate text-[16px] font-medium" style={{ color: 'var(--t1)' }}>{name}</span>
+                  <span className="block text-[13px]" style={{ color: 'var(--t3)' }}>{ts.length} {kind(ts.length)}</span>
+                </button>))}
+            </div>
+          </section>)}
+
+        <section>
+          <button type="button" onClick={() => setMore((v) => !v)} className="relative mx-5 block w-[calc(100%-40px)] overflow-hidden rounded-[22px] text-left" style={{ minHeight: 190, background: `linear-gradient(160deg,${g1},${g2})` }}>
+            {(banner ?? photo ?? heroCover) && <img src={(banner ?? photo ?? heroCover)!} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+            <span className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(10,8,24,0.85), rgba(10,8,24,0.15) 70%)' }} />
+            <span className="absolute inset-x-0 bottom-0 p-5 text-white">
+              <span className="block text-[22px] font-black">Об исполнителе</span>
+              <span className="block text-[14px] font-semibold opacity-70">{more ? 'Свернуть' : 'Ещё'}</span>
+            </span>
+          </button>
+          {more && (
+            <div className="mx-5 mt-3 space-y-2 text-[14px] leading-relaxed" style={{ color: 'var(--t2)' }}>
+              {(profile?.bio || card?.bio) ? <p translate="no">{profile?.bio || card?.bio}</p> : <p style={{ color: 'var(--t3)' }}>Исполнитель пока ничего не рассказал о себе.</p>}
+              {genres.length > 0 && <p><b style={{ color: 'var(--t1)' }}>Жанры:</b> <span translate="no">{genres.join(', ')}</span></p>}
+              <p><b style={{ color: 'var(--t1)' }}>В каталоге:</b> {artTracks.length} {kind(artTracks.length)}, {fmtPlays(totalPlays)} прослушиваний</p>
+            </div>)}
         </section>
 
-        {/* Комментариев здесь нет намеренно.
-            Прежний блок складывал написанное в localStorage: человек
-            видел свой «комментарий», а больше его не видел никто и
-            никогда — ни артист, ни другие слушатели. Настоящие
-            комментарии — это общий текст на сервере, а значит жалобы,
-            блокировки и разбор споров; это отдельная работа, и делать
-            вид, что она уже сделана, нельзя. */}
+        {similar.length > 0 && (
+          <section>
+            <Title>Похожие исполнители</Title>
+            <div className="flex gap-4 overflow-x-auto px-5 pb-1" style={{ scrollbarWidth: 'none' }}>
+              {similar.map(([name, ts]) => (
+                <button key={name} type="button" onClick={() => (onArtist ? onArtist(name) : ts[0] && onPlay(ts[0], ts))} className="shrink-0 text-center" style={{ width: 150 }}>
+                  <span className="mx-auto block overflow-hidden rounded-full" style={{ width: 150, height: 150 }}><Cover t={ts.find((x) => x.coverUrl) ?? ts[0]} size={150} radius={75} /></span>
+                  <span translate="no" className="mt-2 block truncate text-[15px] font-medium" style={{ color: 'var(--t1)' }}>{name}</span>
+                </button>))}
+            </div>
+          </section>)}
+
+        <section>
+          <h2 className="mb-2 flex items-center gap-1.5 px-5 text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--t3)' }}><Sparkles size={13} />Карточка музыканта</h2>
+          <ArtistCardBlock name={artist} />
+        </section>
       </div>
     </motion.div>
   );

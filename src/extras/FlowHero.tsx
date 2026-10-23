@@ -210,7 +210,7 @@ export const FlowHero = ({ cur, last, playing, liked, tracks, favorites, onPlayP
 
         {/* Имя исполнителя (или «Мой поток») — крупно и жирно на всю ширину; длинное само листается. */}
         <div className="absolute inset-x-4" style={{ top: 66, zIndex: 2 }}>
-          <MarqueeName text={t ? (t.artist || 'Исполнитель') : 'Мой поток'} size={t ? 68 : 56} />
+          <MarqueeName text={t ? (t.artist || 'Исполнитель') : 'Мой поток'} size={t ? 68 : 48} />
           {!t && <p className="mt-1 text-center text-[13px]" style={{ color: 'rgba(255,255,255,0.8)' }}>Подобрано специально для тебя</p>}
         </div>
 
@@ -222,7 +222,7 @@ export const FlowHero = ({ cur, last, playing, liked, tracks, favorites, onPlayP
 
         {/* Тишина или пауза — жёлтая кнопка пуска по центру. */}
         {!t && (
-          <div className="absolute inset-x-0 flex justify-center" style={{ top: 184, zIndex: 4 }}>
+          <div className="absolute inset-x-0 flex justify-center" style={{ top: 204, zIndex: 4 }}>
             <button type="button" onClick={stop(onStart)} aria-label="Включить поток"
               className="grid h-[84px] w-[84px] place-items-center rounded-full" style={{ background: 'linear-gradient(135deg,#ffffff,#e9d5ff)', boxShadow: '0 10px 34px rgba(167,139,250,0.5)' }}>
               <Play size={30} fill="#111" color="#111" style={{ marginLeft: 4 }} />

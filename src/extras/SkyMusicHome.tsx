@@ -150,11 +150,11 @@ const Section = ({ title, icon: Icon, index, children, empty }: {
 );
 
 export const SkyMusicHome = ({
-  tracks, favorites, playing, activeId, onPlay, loading, error, onRetry, onUpload, onSearch, cur, onTogglePlay, onLike, onOpenPlayer,
+  tracks, favorites, playing, activeId, onPlay, loading, error, onRetry, onUpload, onSearch, cur, onTogglePlay, onLike, onOpenPlayer, onArtist,
 }: {
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
   onPlay: (t: Track, pool: Track[]) => void;
-  cur: Track | null; onTogglePlay: () => void; onLike: (id: string) => void; onOpenPlayer: () => void;
+  cur: Track | null; onTogglePlay: () => void; onLike: (id: string) => void; onOpenPlayer: () => void; onArtist?: (name: string) => void;
   loading?: boolean; error?: string | null;
   onRetry?: () => void; onUpload?: () => void; onSearch?: () => void;
 }) => {
@@ -331,14 +331,14 @@ export const SkyMusicHome = ({
 
       <Section title="Любимые исполнители" icon={Mic2} index={4}>
         {favoriteArtists.map(([artist, ts]) => (
-          <motion.div key={artist} whileTap={{ scale: 0.95 }} className="shrink-0 text-center" style={{ width: 100 }}>
-            <div className="mx-auto mb-2.5 grid h-24 w-24 place-items-center rounded-full"
+          <motion.button type="button" key={artist} whileTap={{ scale: 0.95 }} onClick={() => (onArtist ? onArtist(artist) : ts[0] && onPlay(ts[0], ts))} aria-label={`Открыть карточку: ${artist}`} className="shrink-0 text-center" style={{ width: 100 }}>
+            <div className="mx-auto mb-2.5 grid h-24 w-24 place-items-center overflow-hidden rounded-full"
               style={{ background: `linear-gradient(150deg,${getG(artist)[0]},${getG(artist)[1]})`, boxShadow: '0 6px 20px -6px rgba(0,0,0,0.5)' }}>
-              <Mic2 size={24} color="rgba(255,255,255,0.45)"/>
+              {ts.find((x) => x.coverUrl)?.coverUrl ? <img src={ts.find((x) => x.coverUrl)!.coverUrl} alt="" className="h-full w-full object-cover"/> : <Mic2 size={24} color="rgba(255,255,255,0.45)"/>}
             </div>
             <p className="truncate text-[12.5px] font-semibold" style={{ color: '#f0f1f4' }}>{artist}</p>
             <p className="text-[11px] mt-0.5" style={{ color: '#5c626e' }}>{ts.length} тр.</p>
-          </motion.div>
+          </motion.button>
         ))}
       </Section>
 

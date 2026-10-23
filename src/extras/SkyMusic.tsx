@@ -2828,7 +2828,7 @@ export const SkyMusic = () => {
         {(
           <>
             {tab === 'home'       && <SkyMusicHome tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom}
-              cur={cur} onTogglePlay={() => setPlaying(!playing)} onLike={onLike} onOpenPlayer={() => setShowNP(true)}
+              cur={cur} onTogglePlay={() => setPlaying(!playing)} onLike={onLike} onOpenPlayer={() => setShowNP(true)} onArtist={setArtist}
               loading={musicLoading} error={musicError}
               onRetry={() => void loadMusic({ force: true })} onUpload={() => setTab('upload')} onSearch={() => setShowSrch(true)}/>}
             {tab === 'collection' && <SkyMusicLibrary tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} onLike={onLike}
@@ -2890,7 +2890,7 @@ export const SkyMusic = () => {
           <ArtistProfile artist={artist} tracks={tracks} favorites={favorites}
             playing={playing} activeId={cur?.id ?? null}
             onPlay={playFrom} onLike={onLike} onAdd={id => setAddModal(id)}
-            onClose={() => setArtist(null)} />
+            onArtist={setArtist} onClose={() => setArtist(null)} />
         )}
       
 

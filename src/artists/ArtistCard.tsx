@@ -27,6 +27,17 @@ const CardMedia = ({ c, reload }: { c: Card; reload: () => void }) => {
   );
 };
 
+/** Данные карточки музыканта по имени (для страницы исполнителя): id и признаки картинок. null — карточки нет. */
+export const useArtistCard = (name: string) => {
+  const [c, setC] = useState<Card | null>(null);
+  useEffect(() => {
+    let alive = true; setC(null);
+    void apiCall<{ card: Card }>(`/api/music/artist-cards/by-name?name=${encodeURIComponent(name)}`).then((r) => { if (alive) setC(r.ok && r.data ? r.data.card : null); });
+    return () => { alive = false; };
+  }, [name]);
+  return c;
+};
+
 export const ArtistCardBlock = ({ name }: { name: string }) => {
   const [c, setC] = useState<Card | null | undefined>(undefined);
   const [open, setOpen] = useState(false);
