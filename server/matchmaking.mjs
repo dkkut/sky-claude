@@ -21,6 +21,7 @@
  */
 import crypto from 'node:crypto';
 import { query, pool } from './db.mjs';
+import { kFor, expectedScore, pairKey, ELO_FLOOR, PAIR_LIMIT_24H } from './gameelo.mjs';
 
 const newId = (p) => `${p}-${crypto.randomUUID()}`;
 const MATCH_ACCEPT_TIMEOUT_MS = 20_000;
@@ -238,23 +239,11 @@ export const sweepStaleMatches = async () => {
   return results;
 };
 
-/** Победная сторона по ELO своей команды — обычная формула Эло с
- *  постоянным K, применённая к средним рейтингам двух команд, а не к
+/** ELO: правила (K, лиги, пол, лимит повторов) — server/gameelo.mjs. Здесь — обычная формула Эло по средним рейтингам команд, применённая к средним рейтингам двух команд, а не к
  *  выдуманному числу: пересчитывается из настоящих текущих game_ratings
  *  каждого участника в момент подтверждения, а не из значения на
  *  момент старта матча (матч решается за минуты, разница пренебрежима,
  *  а лишнюю колонку под «замороженный» рейтинг заводить незачем). */
-const K_FACTOR = 32;
-const eloDelta = (teamEloAvg, opponentEloAvg, won) => {
-  const expected = 1 / (1 + 10 ** ((opponentEloAvg - teamEloAvg) / 400));
-  return Math.round(K_FACTOR * ((won ? 1 : 0) - expected));
-};
-
-const avgElo = async (ids, gameId) => {
-  const ratings = await Promise.all(ids.map((id) => getRating(id, gameId)));
-  return Math.round(ratings.reduce((sum, r) => sum + r.elo, 0) / ratings.length);
-};
-
 /**
  * Самоотчёт о результате. Любой участник заявляет, чья команда
  * победила, — это ничего не меняет в рейтингах немедленно, только
@@ -294,30 +283,41 @@ export const confirmResult = async (profileId, matchId) => {
   if (confirmerInA === reporterInA) return { error: 'not_opponent' };
 
   const winnerIsA = row.reported_winner === 'a';
-  const [eloA, eloB] = await Promise.all([avgElo(row.team_a, row.game_id), avgElo(row.team_b, row.game_id)]);
-  const deltaA = eloDelta(eloA, eloB, winnerIsA);
-  const deltaB = -deltaA;
+  // Занимаем матч первым же условным UPDATE: параллельные подтверждения не применят рейтинг дважды.
+  const claim = await query(`UPDATE matches SET status = 'completed', resolved_at = now() WHERE id = $1 AND status = 'reported'`, [matchId]);
+  if (!claim.rowCount) return { error: 'not_found' };
 
-  const applyToTeam = async (ids, delta, won) => {
-    for (const id of ids) {
-      await query(
-        `INSERT INTO game_ratings (profile_id, game_id) VALUES ($1,$2) ON CONFLICT (profile_id, game_id) DO NOTHING`,
-        [id, row.game_id],
-      );
-      await query(
-        `UPDATE game_ratings SET elo = elo + $3, wins = wins + $4, losses = losses + $5, updated_at = now()
-           WHERE profile_id = $1 AND game_id = $2`,
-        [id, row.game_id, delta, won ? 1 : 0, won ? 0 : 1],
-      );
-    }
-  };
-  await applyToTeam(row.team_a, deltaA, winnerIsA);
-  await applyToTeam(row.team_b, deltaB, !winnerIsA);
-  await query(`UPDATE matches SET status = 'completed', resolved_at = now() WHERE id = $1`, [matchId]);
+  // Защита от накрутки: не больше PAIR_LIMIT_24H зачётных матчей против одних и тех же соперников за сутки.
+  const key = pairKey(row.team_a, row.team_b);
+  const prior = Number((await query(
+    `SELECT count(*) AS n FROM matches WHERE game_id = $1 AND pair_key = $2 AND status = 'completed' AND rated
+       AND resolved_at > now() - interval '24 hours' AND id <> $3`, [row.game_id, key, matchId])).rows[0].n);
+  const rated = prior < PAIR_LIMIT_24H;
+  await query(`UPDATE matches SET pair_key = $2, rated = $3 WHERE id = $1`, [matchId, key, rated]);
+
+  const readTeam = async (ids) => Promise.all(ids.map(async (id) => { const r = await getRating(id, row.game_id); return { id, elo: r.elo, games: r.wins + r.losses }; }));
+  const [teamA, teamB] = await Promise.all([readTeam(row.team_a), readTeam(row.team_b)]);
+  const avg = (t) => t.reduce((sum, x) => sum + x.elo, 0) / t.length;
+  const eloA = avg(teamA); const eloB = avg(teamB);
 
   const changes = {};
-  for (const id of row.team_a) changes[id] = { delta: deltaA, won: winnerIsA };
-  for (const id of row.team_b) changes[id] = { delta: deltaB, won: !winnerIsA };
+  const apply = async (team, ownAvg, oppAvg, won) => {
+    for (const m of team) {
+      const k = kFor(m.games, m.elo);
+      const raw = rated ? Math.round(k * ((won ? 1 : 0) - expectedScore(ownAvg, oppAvg))) : 0;
+      const after = Math.max(ELO_FLOOR, m.elo + raw);
+      const delta = after - m.elo;
+      await query(
+        `UPDATE game_ratings SET elo = $3, peak_elo = GREATEST(peak_elo, $3), wins = wins + $4, losses = losses + $5, updated_at = now()
+           WHERE profile_id = $1 AND game_id = $2`, [m.id, row.game_id, after, won ? 1 : 0, won ? 0 : 1]);
+      await query(
+        `INSERT INTO game_rating_history (profile_id, game_id, match_id, elo_before, elo_after, delta, won, k, rated) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [m.id, row.game_id, matchId, m.elo, after, delta, won, k, rated]);
+      changes[m.id] = { delta, won, before: m.elo, after, rated };
+    }
+  };
+  await apply(teamA, eloA, eloB, winnerIsA);
+  await apply(teamB, eloB, eloA, !winnerIsA);
   return { ok: true, matchId, gameId: row.game_id, winnerTeam: row.reported_winner, changes, participants: [...row.team_a, ...row.team_b] };
 };
 

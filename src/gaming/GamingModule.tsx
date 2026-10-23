@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGamingStore, GAMES, type MatchResult } from './store';
 import { useAuthStore } from '@/core/auth/store';
 import { RANK_GLOW } from './components/Primitives';
+import { EloPanel, TierChip } from './Elo';
 import { GamingChannels } from './GamingChannels';
 import { TourneysView } from './components/TourneysView';
 import { VoicePartyModule } from '@/voiceparty/VoicePartyModule';
@@ -465,6 +466,7 @@ const StatsView = () => {
 
   return (
     <div className="h-full overflow-y-auto pb-6 px-4" style={{ scrollbarWidth:'none', background: FC.bg }}>
+      <EloPanel/>
       {stats.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-20">
           <p className="text-sm font-bold" style={{ color: FC.t3 }}>Статистики нет</p>
@@ -488,8 +490,10 @@ const StatsView = () => {
                 <p className="text-sm font-black" style={{ color: FC.t1 }}>{game.title}</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   <EloBadge elo={elo}/>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: rc.bg, color: rc.color }}>{rc.label}</span>
+                  {ratingFor(s.gameId)?.tier
+                    ? <TierChip id={ratingFor(s.gameId)?.tier?.id}/>
+                    : <span className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: rc.bg, color: rc.color }}>{rc.label}</span>}
                 </div>
               </div>
               {s.streak > 1 && (

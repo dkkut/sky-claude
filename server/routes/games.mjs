@@ -6,7 +6,7 @@
  */
 import { json, requireProfile, parseBody } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
-import { getRating } from './../matchmaking.mjs';
+import { ratingView, leaderboard, history } from './../gameelo.mjs';
 import {
   createTournament, listTournaments, getTournament,
   joinTournament, leaveTournament, setTournamentStatus,
@@ -22,11 +22,15 @@ export const gamesRoutes = async (req, res, url) => {
   if (!session) return true;
   const me = session.profileId;
 
-  const ratingMatch = url.match(/^\/api\/games\/([^/]+)\/rating$/);
+  const ratingMatch = url.match(/^\/api\/games\/([^/]+)\/(rating|leaderboard|rating\/history)$/);
   if (req.method === 'GET' && ratingMatch) {
     if (!GAME_ID_RE.test(ratingMatch[1])) return json(res, 404, { error: 'not_found' });
     if (!rateLimit(`games:read:${me}`, 60)) return json(res, 429, { error: 'rate_limited' });
-    return json(res, 200, { rating: await getRating(me, ratingMatch[1]) });
+    const gameId = ratingMatch[1];
+    const q = new URL(req.url, 'http://x').searchParams;
+    if (ratingMatch[2] === 'rating') return json(res, 200, { rating: await ratingView(me, gameId) });
+    if (ratingMatch[2] === 'leaderboard') return json(res, 200, await leaderboard(me, gameId, q.get('limit')));
+    return json(res, 200, await history(me, gameId, q.get('limit')));
   }
 
   if (url === '/api/games/tournaments') {
