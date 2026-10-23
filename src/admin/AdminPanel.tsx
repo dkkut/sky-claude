@@ -51,7 +51,7 @@ import { ArtistCardsTab } from './ArtistCardsTab';
 import { LogsTab } from './LogsTab';
 import { RecoveryTab } from './RecoveryTab';
 import { SystemsTab } from './SystemsTab';
-import { SiteTab } from './SiteTab';
+import { SiteTab, UpdatesAdminTab } from './SiteTab';
 import { ModulesTab } from './ModulesTab';
 import { SkyKassaTab } from './SkyKassaTab';
 import { StorageTab } from './StorageTab';
@@ -5576,7 +5576,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5783,6 +5783,7 @@ export const AdminPanel = () => {
     { key: 'sandbox', label: 'Sky Sandbox', show: has('sandbox') },
     { key: 'recovery', label: 'Восстановление доступа', show: has('support') || has('security') },
     { key: 'site', label: 'Сайт', show: has('site') },
+    { key: 'updates', label: 'Обновления', show: has('site') },
     { key: 'modules', label: 'Модули', show: has('modules') },
     { key: 'storage', label: 'Sky Storage', show: has('storage_view') },
     { key: 'oidc', label: 'Sky ID для сервисов', show: has('oidc') },
@@ -6020,6 +6021,7 @@ export const AdminPanel = () => {
       {tab === 'recovery' && <RecoveryTab canSecurity={has('security')} />}
       {tab === 'systems' && <SystemsTab />}
       {tab === 'site' && <SiteTab />}
+      {tab === 'updates' && <UpdatesAdminTab />}
       {tab === 'modules' && <ModulesTab />}
       {tab === 'oidc' && <OidcTab />}
       {tab === 'ssh' && <SshTab />}

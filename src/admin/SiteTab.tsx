@@ -17,7 +17,7 @@ const inp = 'w-full rounded-xl px-3 py-2 text-sm outline-none';
 const ERR: Record<string, string> = {
   not_allowed: 'Недостаточно прав.', bad_url: 'Адрес должен начинаться с https:// (или mailto:).', bad_key: 'Ключ: латиница, цифры и _, от 2 знаков.', bad_extension: 'Файл не того типа: нужны apk, exe, msi, dmg, deb, ipa, zip или AppImage.',
   file_too_large: 'Файл слишком большой (до 600 МБ).', upload_interrupted: 'Загрузка оборвалась — повторите.', empty_file: 'Файл пустой.', answer_required: 'Напишите ответ человеку (от 3 знаков).',
-  bad_until: 'Не удалось разобрать дату окончания.', until_in_past: 'Время окончания уже прошло.', bad_status: 'Неизвестный статус.', bad_state: 'Неизвестное состояние сервиса.', too_many_requests: 'Слишком часто. Подождите минуту.', name_required: 'У сервиса должно быть название.',
+  bad_until: 'Не удалось разобрать дату окончания.', until_in_past: 'Время окончания уже прошло.', bad_status: 'Неизвестный статус.', bad_state: 'Неизвестное состояние сервиса.', too_many_requests: 'Слишком часто. Подождите минуту.', too_soon: 'Такая рассылка уже уходила меньше 10 минут назад.', version_required: 'Укажите версию.', confirm_required: 'Нужно подтверждение.', name_required: 'У сервиса должно быть название.',
 };
 const msg = (r: { error?: string; reason?: string; status: number }) => (r.status === 413 ? ERR.file_too_large : ERR[r.error ?? ''] ?? r.reason ?? 'Не получилось');
 const fmtSize = (n: number) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(n / 1024))} КБ`);
@@ -101,7 +101,7 @@ const DownloadCard = ({ d, onChanged }: { d: Dl; onChanged: () => void }) => {
   );
 };
 
-const DownloadsPane = () => {
+export const DownloadsPane = () => {
   const [items, setItems] = useState<Dl[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const load = useCallback(async () => { const r = await apiCall<{ items: Dl[] }>('/api/admin/site/downloads'); if (r.ok && r.data) { setItems(r.data.items); setFailed(null); } else { setFailed(`${msg(r)} (код ${r.status})`); flash(msg(r)); } }, []);
@@ -322,6 +322,44 @@ export const SiteTab = () => {
       {sub === 'status' && <StatusPane />}
       {sub === 'appeals' && <QueuePane kind="appeals" />}
       {sub === 'releases' && <QueuePane kind="releases" />}
+    </div>
+  );
+};
+
+/* ── Вкладка «Обновления»: файлы приложений + рассылка об обновлении ─────────── */
+export const UpdatesAdminTab = () => {
+  const [ver, setVer] = useState(''); const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const [ask, setAsk] = useState(false);
+  const [last, setLast] = useState<{ id: string; title: string; status: string; createdAt: string; sentAt: string | null } | null>(null);
+  const loadLast = useCallback(async () => { const r = await apiCall<{ last: typeof last }>('/api/admin/site/updates/last'); if (r.ok && r.data) setLast(r.data.last); }, []);
+  useEffect(() => { void loadLast(); }, [loadLast]);
+  // Версия по умолчанию — та, что указана у первой доступной платформы (её видят и в «Обновлениях» у людей).
+  useEffect(() => { void apiCall<{ items: Dl[] }>('/api/admin/site/downloads').then((r) => { const v = r.data?.items.find((d) => d.status === 'available' && d.version)?.version; if (v) setVer((x) => x || v); }); }, []);
+  const send = async () => {
+    setBusy(true);
+    const r = await apiCall('/api/admin/site/updates/notify', { method: 'POST', body: JSON.stringify({ version: ver, text, confirm: true }) });
+    setBusy(false); setAsk(false);
+    if (r.ok) { flash('Уведомление об обновлении отправляется всем'); setText(''); void loadLast(); } else flash(msg(r));
+  };
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1"><h3 className="text-sm font-bold" style={{ color: C.t1 }}>Файлы приложений</h3>
+        <p className="text-[11px]" style={{ color: C.t3 }}>Загрузите файл для платформы и укажите версию — он сразу появится у людей в Профиль → Настройки → «Обновления» и на сайте.</p></div>
+      <DownloadsPane />
+      <div className="space-y-2 rounded-2xl p-3" style={card}>
+        <h3 className="text-sm font-bold" style={{ color: C.t1 }}>Разослать уведомление об обновлении</h3>
+        <p className="text-[11px]" style={{ color: C.t3 }}>Придёт всем людям: запись в «Уведомления» и push тем, кто не в приложении. Отправляйте после того, как файлы загружены. Повторно — не раньше чем через 10 минут.</p>
+        <input className={inp} style={field} value={ver} maxLength={40} placeholder="Версия, например 5.1.0" onChange={(e) => setVer(e.target.value)} />
+        <textarea className={inp} style={field} rows={3} maxLength={400} value={text} placeholder="Что нового (необязательно). Если пусто — стандартный текст со ссылкой на «Обновления»." onChange={(e) => setText(e.target.value)} />
+        {!ask
+          ? <button type="button" disabled={!ver.trim() || busy} className="w-full rounded-xl py-2.5 text-sm font-bold text-white disabled:opacity-40" style={{ background: C.acc }} onClick={() => setAsk(true)}>Разослать уведомление об обновлении</button>
+          : <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2 }}>
+              <p className="text-[12px]" style={{ color: C.t1 }}>{`Отправить всем людям «Вышло обновление Sky ${ver.trim()}»? Отменить после отправки нельзя.`}</p>
+              <div className="flex gap-2">
+                <button type="button" disabled={busy} className="flex-1 rounded-xl py-2 text-sm font-bold text-white disabled:opacity-40" style={{ background: C.acc }} onClick={() => void send()}>{busy ? 'Отправляем…' : 'Да, разослать'}</button>
+                <button type="button" disabled={busy} className="flex-1 rounded-xl py-2 text-sm font-semibold" style={{ background: C.l3, color: C.t1 }} onClick={() => setAsk(false)}>Отмена</button>
+              </div></div>}
+        {last && <p className="text-[11px]" style={{ color: C.t3 }}>{`Последняя рассылка: ${last.title} · ${fmtDt(last.createdAt)} · ${last.sentAt ? 'отправлена' : 'отправляется'}`}</p>}
+      </div>
     </div>
   );
 };

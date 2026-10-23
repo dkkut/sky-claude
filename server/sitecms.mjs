@@ -24,6 +24,7 @@ import { logAdmin } from './adminsec.mjs';
 import { sendEmail } from './notify.mjs';
 import { generateId } from './security.mjs';
 import { notifyStaff } from './staffnotify.mjs';
+import { createBroadcast } from './notifyBroadcast.mjs';
 import { encryptSecret, openSecret, macOf } from './crypto.mjs';
 
 /* Почта заявителя лежит зашифрованной (email_enc) + HMAC для поиска (email_hmac); открытая колонка email — только у записей до миграции 176. */
@@ -295,6 +296,28 @@ export const adminUploadFile = async (me, platform, name, req, meta) => {
   return { ok: true, id, size: saved.size, sha256: saved.sha256 };
 };
 const dropFile = async (id) => { await query('UPDATE site_downloads SET file_id = NULL WHERE file_id = $1', [id]); await query('DELETE FROM site_files WHERE id = $1', [id]); await rm(filePath(id), { force: true }).catch(() => {}); };
+
+/** Последняя рассылка «Вышло обновление» (для панели «Обновления»). */
+export const adminLastUpdateNotice = async (me) => {
+  if (!(await allowed(me))) return null;
+  const r = (await query("SELECT id, title, status, created_at, last_sent_at FROM notify_broadcasts WHERE reason LIKE 'app_update%' ORDER BY created_at DESC LIMIT 1")).rows[0];
+  return { last: r ? { id: r.id, title: r.title, status: r.status, createdAt: r.created_at.toISOString(), sentAt: r.last_sent_at ? r.last_sent_at.toISOString() : null } : null };
+};
+/** «Разослать уведомление об обновлении»: обычная рассылка всем (тот же механизм, что вкладка «Рассылки»: уведомление в приложении + push тем, кто не в сети). */
+export const adminNotifyUpdate = async (me, b, meta) => {
+  if (!(await allowed(me))) return { error: 'not_allowed' };
+  if (b?.confirm !== true) return { error: 'confirm_required' };
+  const version = clean(b?.version, 40);
+  if (!version) return { error: 'version_required' };
+  const recent = (await query("SELECT 1 FROM notify_broadcasts WHERE reason LIKE 'app_update%' AND created_at > now() - interval '10 minutes' LIMIT 1")).rows[0];
+  if (recent) return { error: 'too_soon' };
+  const title = `Вышло обновление Sky ${version}`;
+  const text = cleanMulti(b?.text, 400) || 'Скачайте новую версию: Профиль → Настройки → «Обновления». Данные аккаунта останутся на месте.';
+  const r = await createBroadcast(me, { title, body: text, audienceType: 'all', sendNow: true, reason: `app_update:${version}` }, { trusted: true });
+  if (r.error) return r;
+  await log(me, 'site_update_notice', `${version}: рассылка всем (${r.broadcast.id})`, meta);
+  return { ok: true, id: r.broadcast.id };
+};
 export const adminDeleteFile = async (me, platform, meta) => {
   if (!(await allowed(me))) return { error: 'not_allowed' };
   const cur = (await query('SELECT file_id FROM site_downloads WHERE platform = $1', [platform])).rows[0];

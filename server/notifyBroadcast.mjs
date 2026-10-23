@@ -70,8 +70,9 @@ const toBroadcast = (r) => ({
 
 /* ─── Создание ─────────────────────────────────────────────────────── */
 
-export const createBroadcast = async (actorId, body) => {
-  if (!(await can(actorId, 'notifications'))) return { error: 'not_allowed' };
+/** `opts.trusted` — вызывающий модуль уже проверил право сам (например, «Обновления» в админке: право `site`). */
+export const createBroadcast = async (actorId, body, opts = {}) => {
+  if (!opts.trusted && !(await can(actorId, 'notifications'))) return { error: 'not_allowed' };
 
   const title = clean(body?.title, MAX_TITLE);
   const text = clean(body?.body, MAX_BODY);

@@ -4,7 +4,7 @@ import { requestMeta } from './../adminsec.mjs';
 import * as site from './../sitecms.mjs';
 import * as supp from './../sitesupport.mjs';
 
-const ERR_STATUS = { too_many: 429, closed: 409, bad_topic: 400, not_allowed: 403, not_found: 404, file_too_large: 413, upload_interrupted: 400, empty_file: 400, unsupported_type: 415, too_many_files: 409, bad_extension: 400 };
+const ERR_STATUS = { too_soon: 429, confirm_required: 400, version_required: 400, too_many: 429, closed: 409, bad_topic: 400, not_allowed: 403, not_found: 404, file_too_large: 413, upload_interrupted: 400, empty_file: 400, unsupported_type: 415, too_many_files: 409, bad_extension: 400 };
 const reply = (res, r) => json(res, r.error ? (ERR_STATUS[r.error] ?? 400) : 200, r);
 
 /** Отдача файла с поддержкой Range (apk/exe — десятки мегабайт, докачка на слабой сети обязательна). */
@@ -104,6 +104,8 @@ export const siteAdminRoutes = async (req, res, url) => {
     if (req.method === 'POST') return reply(res, await site.adminUploadFile(me, m[1], u.searchParams.get('name'), req, meta));
     if (req.method === 'DELETE') return reply(res, await site.adminDeleteFile(me, m[1], meta));
   }
+  if (req.method === 'GET' && path === '/api/admin/site/updates/last') { const r = await site.adminLastUpdateNotice(me); return r ? json(res, 200, r) : deny(); }
+  if (req.method === 'POST' && path === '/api/admin/site/updates/notify') return reply(res, await site.adminNotifyUpdate(me, (await parseBody(req)) ?? {}, meta));
   if (path === '/api/admin/site/maintenance') {
     if (req.method === 'GET') { const r = await site.adminMaintenance(me); return r ? json(res, 200, r) : deny(); }
     if (req.method === 'PUT') return reply(res, await site.adminSaveMaintenance(me, (await parseBody(req)) ?? {}, meta));
