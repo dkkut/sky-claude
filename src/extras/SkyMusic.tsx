@@ -1,4 +1,5 @@
 import { VideoBackdrop } from '@/music/VideoBackdrop';
+import { EqualizerDialog } from '@/music/Equalizer';
 import { MusicContinue } from '@/handoff/Slots';
 import { ExplicitBadge, LabelsButton, LegacyChip } from '@/labels/Labels';
 import { requestDelete } from '@/island/deleteFlow';
@@ -15,7 +16,7 @@ import {
   Search, X, Play, Pause, SkipForward,
   Heart, Plus, MoreHorizontal, ChevronLeft,
   ListMusic, Upload, Loader, History, BarChart3, Music2, Mic2, Download, CheckCircle, Crown, ArrowDownToLine,
-  Sparkles, Flame, Star, Check, Clock, Film, Share2
+  Sparkles, Flame, Star, Check, Clock, Film, Share2, SlidersHorizontal
 } from 'lucide-react';
 import { saveDownload, isDownloaded } from '@/offline/offlineDB';
 import { useOfflineMusic } from '@/offline/musicOffline';
@@ -2755,6 +2756,7 @@ export const SkyMusic = () => {
   const [artist,   setArtist]   = useState<string | null>(null);
   const [addModal, setAddModal] = useState<string | null>(null);
   const [search,   setSearch]   = useState('');
+  const [showEq,   setShowEq]    = useState(false);
   const [showSrch, setShowSrch] = useState(false);
 
   const pub = useMemo(() => tracks.filter(t => t.status === 'published'), [tracks]);
@@ -2794,6 +2796,12 @@ export const SkyMusic = () => {
         <h1 className={isMobile ? 'text-[15px] font-bold' : 'text-lg font-bold'} style={{ color: YM.text }}>
           {tab === 'home' ? 'Sky Music' : tab === 'collection' ? 'Коллекция' : tab === 'charts' ? 'Чарты' : tab === 'upload' ? 'Загрузить' : tab === 'import' ? 'Перенос музыки' : tab === 'musician' ? 'Профиль артиста' : 'История'}
         </h1>
+        <div className="flex items-center">
+        <button type="button" aria-label="Звук и эквалайзер" onClick={() => setShowEq(true)}
+          className={isMobile ? 'grid h-7 w-7 place-items-center rounded-full transition-colors hover:bg-white/10 shrink-0' : 'grid h-9 w-9 place-items-center rounded-full transition-colors hover:bg-white/10 shrink-0'}
+          style={{ color: YM.sub }}>
+          <SlidersHorizontal size={isMobile ? 15 : 18} />
+        </button>
         {tab !== 'home' && (
         <button type="button"
           onClick={() => setShowSrch(true)}
@@ -2802,7 +2810,9 @@ export const SkyMusic = () => {
           <Search size={isMobile ? 15 : 18} />
         </button>
         )}
+        </div>
       </header>
+      {showEq && <EqualizerDialog onClose={() => setShowEq(false)} />}
 
       {showSrch && (
         <SkyMusicSearch tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null}

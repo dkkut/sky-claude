@@ -32,6 +32,7 @@ type State = {
   ctx: AudioContext;
   analyser: AnalyserNode;
   data: Uint8Array;
+  fx: FxNodes;
 } | null;
 
 let state: State = null;
@@ -57,6 +58,39 @@ const AudioCtx: typeof AudioContext | undefined =
  * Подключение к элементу. Возвращает false, если Web Audio недоступен
  * или элемента ещё нет — тогда визуализация работает без звука.
  */
+/* ─── Эквалайзер и профиль звука ──────────────────────────────────── */
+
+import { getFx, subscribeFx, type FxSettings, EQ_FREQS, PROFILES } from './audioFx';
+
+type FxNodes = { pre: GainNode; bands: BiquadFilterNode[]; comp: DynamicsCompressorNode };
+
+/** Приводит узлы графа к настройкам: плоский эквалайзер и «Оригинал» — прозрачный проход без обработки. */
+const applyFx = (nodes: FxNodes, fx: FxSettings, ctx: AudioContext) => {
+  const t = ctx.currentTime;
+  const gains = fx.eqOn ? fx.bands : fx.bands.map(() => 0);
+  gains.forEach((g, i) => nodes.bands[i].gain.setTargetAtTime(g, t, 0.02));
+  // Предусиление: срезаем на величину самого большого подъёма, чтобы эквалайзер не приводил к хрипу от перегруза.
+  const peak = Math.max(0, ...gains);
+  nodes.pre.gain.setTargetAtTime(10 ** (-peak / 20), t, 0.02);
+  const p = PROFILES[fx.profile];
+  const c = nodes.comp;
+  if (!p.comp) {
+    // Почти прозрачное состояние: порог выше любого сигнала.
+    c.threshold.setTargetAtTime(0, t, 0.02); c.ratio.setTargetAtTime(1, t, 0.02);
+    c.knee.setTargetAtTime(0, t, 0.02); c.attack.setTargetAtTime(0.003, t, 0.02); c.release.setTargetAtTime(0.25, t, 0.02);
+  } else {
+    c.threshold.setTargetAtTime(p.comp.threshold, t, 0.02); c.ratio.setTargetAtTime(p.comp.ratio, t, 0.02);
+    c.knee.setTargetAtTime(p.comp.knee, t, 0.02); c.attack.setTargetAtTime(p.comp.attack, t, 0.02); c.release.setTargetAtTime(p.comp.release, t, 0.02);
+  }
+};
+
+/** Обработка звука нужна, только если включено что-то кроме «ничего»: иначе граф не трогаем. */
+export const audioFxSupported = () => !IS_IOS && Boolean(AudioCtx);
+export const audioFxLive = () => Boolean(state);
+
+/** Строит граф по запросу эквалайзера (даже когда визуализации нет). Нужно касание страницы — иначе false. */
+export const ensureAudioGraph = (): boolean => attach();
+
 const attach = (): boolean => {
   if (state) return true;
   if (failed || IS_IOS || !AudioCtx) return false;
@@ -83,11 +117,27 @@ const attach = (): boolean => {
     // Своё сглаживание всё равно есть, но и встроенное лишним не будет.
     analyser.smoothingTimeConstant = 0.75;
 
+    // Цепочка: источник → предусиление → 10 полос → компрессор → анализатор → выход.
     // Обязательно доводим до выхода: без этого звук пропадёт совсем.
-    source.connect(analyser);
+    const pre = ctx.createGain();
+    const bands = EQ_FREQS.map((f, i) => {
+      const b = ctx.createBiquadFilter();
+      b.type = i === 0 ? 'lowshelf' : i === EQ_FREQS.length - 1 ? 'highshelf' : 'peaking';
+      b.frequency.value = f; b.Q.value = 1.1; b.gain.value = 0;
+      return b;
+    });
+    const comp = ctx.createDynamicsCompressor();
+    let node: AudioNode = source;
+    node.connect(pre); node = pre;
+    for (const b of bands) { node.connect(b); node = b; }
+    node.connect(comp);
+    comp.connect(analyser);
     analyser.connect(ctx.destination);
 
-    state = { ctx, analyser, data: new Uint8Array(analyser.frequencyBinCount) };
+    const fx: FxNodes = { pre, bands, comp };
+    state = { ctx, analyser, data: new Uint8Array(analyser.frequencyBinCount), fx };
+    applyFx(fx, getFx(), ctx);
+    subscribeFx((s) => { if (state) applyFx(state.fx, s, state.ctx); });
     return true;
   } catch {
     // Не смогли — звук продолжает играть через обычный путь элемента.

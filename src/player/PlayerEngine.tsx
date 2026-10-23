@@ -23,6 +23,9 @@ const KIND_ALBUM: Record<string, string> = {
   music: 'Sky Music', video: 'Sky Video', tv: 'Sky TV', voice: 'Sky', podcast: 'Sky Podcasts',
 };
 
+import { fxActive, subscribeFx } from '@/music/audioFx';
+import { ensureAudioGraph } from '@/music/audioLevels';
+
 export const PlayerEngine = () => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const {
@@ -50,6 +53,22 @@ export const PlayerEngine = () => {
       .catch(() => { if (alive) setLocal({ id: item.id, url: null }); });
     return () => { alive = false; };
   }, [item?.id, item?.kind]);
+
+  /* Эквалайзер / профиль звука: граф Web Audio строим, как только он нужен. Контекст запускается
+     после касания страницы, поэтому до первого касания просто ждём. */
+  useEffect(() => {
+    const tryAttach = () => { if (fxActive() && ensureAudioGraph()) { off(); } };
+    const off = () => {
+      window.removeEventListener('pointerdown', tryAttach);
+      window.removeEventListener('keydown', tryAttach);
+      unsub();
+    };
+    const unsub = subscribeFx(() => tryAttach());
+    window.addEventListener('pointerdown', tryAttach);
+    window.addEventListener('keydown', tryAttach);
+    tryAttach();
+    return off;
+  }, []);
 
   const waitingLocal = !!item && item.kind === 'music' && local?.id !== item.id;
   const srcUrl = !item || waitingLocal ? undefined : (local?.url ?? item.srcUrl);
