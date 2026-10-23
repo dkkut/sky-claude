@@ -588,11 +588,10 @@ export const ChatList = () => {
   );
 
   const archivedCount = chats.filter(c => c.archived).length;
-  // Вкладка архива показывается, только когда в нём что-то лежит:
-  // пустой сегмент в списке только мешает.
+  // Вкладка «Архив» всегда на виду (с числом чатов): архивные чаты со всей перепиской лежат там.
   const FILTERS: [Filter, string][] = [
     ['all', 'Все'], ['unread', 'Непрочит.'], ['direct', 'Личные'], ['group', 'Группы'],
-    ...(archivedCount > 0 ? [['archived', 'Архив'] as [Filter, string]] : []),
+    ['archived', 'Архив'],
     ['trash', 'Корзина'],
   ];
 
@@ -701,7 +700,7 @@ export const ChatList = () => {
               color: filter === k ? 'var(--accent)' : 'var(--t2)',
               border: `1px solid ${filter === k ? 'rgba(79,110,247,0.35)' : 'var(--border)'}`,
             }}>
-            {l}{k === 'unread' && totalUnread > 0 ? ` · ${totalUnread}` : ''}
+            {l}{k === 'unread' && totalUnread > 0 ? ` · ${totalUnread}` : ''}{k === 'archived' && archivedCount > 0 ? ` · ${archivedCount}` : ''}
           </button>
         ))}
       </div>
@@ -712,7 +711,7 @@ export const ChatList = () => {
         {filter !== 'trash' && visible.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-16">
             <p className="text-sm" style={{ color: 'var(--t2)' }}>
-              {search ? 'Ничего не найдено' : 'Нет чатов'}
+              {search ? 'Ничего не найдено' : filter === 'archived' ? 'В архиве пусто. Чат уходит сюда из меню чата («В архив») вместе со всей перепиской.' : 'Нет чатов'}
             </p>
           </div>
         )}

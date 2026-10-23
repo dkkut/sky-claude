@@ -1625,6 +1625,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 { icon: ShoppingCart, label: 'Магазин подарков', fn: () => { setShowMarket(true); setMenuOpen(false); } },
                 ...(chat.type === 'direct' ? [{ icon: Crown, label: 'Подарить Prime', fn: () => { setShowGiftPrime(true); setMenuOpen(false); }, tone: 'var(--amber)' }] : []),
                 { icon: Palette, label: 'Тема чата', fn: () => { setShowTheme(true); setMenuOpen(false); } },
+                { icon: Archive, label: chat.archived ? 'Вернуть из архива' : 'В архив', fn: () => { useMessengerStore.getState().archiveChat(activeChatId); setMenuOpen(false); } },
                 // Управление лежало только внутри «Информации» — на два
                 // нажатия глубже, чем всё остальное, и никем не находилось.
                 ...(chat.type !== 'direct' ? [{
