@@ -108,6 +108,13 @@ export const effectiveWallpaper = (s: Stored, chatId?: string): { spec: Wallpape
   return { spec: DEFAULT_SPEC, key: 'global' };
 };
 
+/** Есть ли у чата включённые обои (для прозрачности слоёв интерфейса поверх них). */
+export const useHasWallpaper = (chatId?: string): boolean => {
+  const global = useWallpapers((s) => s.global);
+  const chats = useWallpapers((s) => s.chats);
+  return effectiveWallpaper({ global, chats }, chatId).spec.kind !== 'none';
+};
+
 /* ─── картинки: IndexedDB ─── */
 const DB = 'sky:wallpapers'; const STORE = 'img';
 const open = () => new Promise<IDBDatabase>((res, rej) => {

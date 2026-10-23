@@ -84,11 +84,27 @@ chmod 755 "$RUN"; chown root:root "$RUN"
 cat > "$SHELLW" <<'S'
 #!/bin/bash
 # ForceCommand для skyrescue: берём первое слово из SSH_ORIGINAL_COMMAND, лишнее отбрасываем; ничего не интерпретируем.
+# Без команды и с терминалом (Termius и т. п.) — меню: по одному слову из списка за раз, «exit» — выход.
 RUN="${SKY_RESCUE_RUN:-/usr/local/sbin/sky-rescue-run}"; SUDO="${SKY_RESCUE_SUDO:-sudo}"
-cmd="${SSH_ORIGINAL_COMMAND:-help}"; verb="${cmd%% *}"
-case "$verb" in *[!a-z-]*|"") echo "Допустимы только слова из списка (help)."; exit 2;; esac
 from="${SSH_CONNECTION%% *}"
-exec $SUDO "$RUN" "$verb" "${from:-?}"
+one() {  # одно слово: только a-z и дефис, ничего не интерпретируется
+  local verb="${1%% *}"
+  case "$verb" in *[!a-z-]*|"") echo "Допустимы только слова из списка (help)."; return 2;; esac
+  $SUDO "$RUN" "$verb" "${from:-?}"
+}
+if [ -z "${SSH_ORIGINAL_COMMAND:-}" ] && [ -t 0 ]; then
+  echo "Sky rescue. Введите команду из списка (help — список, exit — выход)."
+  one help
+  while printf 'sky-rescue> ' && IFS= read -r line; do
+    w="${line%% *}"
+    case "$w" in exit|quit|q) exit 0;; "") continue;; esac
+    one "$w"
+  done
+  exit 0
+fi
+cmd="${SSH_ORIGINAL_COMMAND:-help}"
+case "${cmd%% *}" in *[!a-z-]*|"") echo "Допустимы только слова из списка (help)."; exit 2;; esac
+exec $SUDO "$RUN" "${cmd%% *}" "${from:-?}"
 S
 chmod 755 "$SHELLW"; chown root:root "$SHELLW"
 
@@ -96,7 +112,7 @@ chmod 755 "$SHELLW"; chown root:root "$SHELLW"
 id "$U" >/dev/null 2>&1 || useradd -m -s /bin/bash -c "Sky rescue (ограниченный)" "$U"
 passwd -l "$U" >/dev/null 2>&1 || true
 install -d -m 700 -o "$U" -g "$U" "/home/$U/.ssh"
-OPTS='restrict,command="'"$SHELLW"'"'; [ -z "$FROM" ] || OPTS="$OPTS"',from="'"$FROM"'"'
+OPTS='restrict,pty,command="'"$SHELLW"'"'; [ -z "$FROM" ] || OPTS="$OPTS"',from="'"$FROM"'"'
 printf '%s %s\n' "$OPTS" "$KEY" > "/home/$U/.ssh/authorized_keys"
 chown "$U:$U" "/home/$U/.ssh/authorized_keys"; chmod 600 "/home/$U/.ssh/authorized_keys"
 printf '%s\n' "$U" > "$MARK"; chown root:root "$MARK"; chmod 644 "$MARK"
@@ -105,7 +121,7 @@ printf '%s\n' "$U" > "$MARK"; chown root:root "$MARK"; chmod 644 "$MARK"
 printf 'Defaults:%s !requiretty\n%s ALL=(root) NOPASSWD: %s *\n' "$U" "$U" "$RUN" > "$SUDOERS"; chmod 440 "$SUDOERS"
 visudo -cf "$SUDOERS" >/dev/null || { rm -f "$SUDOERS"; echo "sudoers не прошёл проверку — отменено." >&2; exit 1; }
 
-# ── sshd: ключ, ForceCommand, без пересылок и терминала ─────────────
+# ── sshd: ключ, ForceCommand, без пересылок (терминал нужен только для меню) ─────────────
 cat > "$DROP" <<D
 # Sky rescue: ограниченный аварийный вход (scripts/rescue-access.sh)
 Match User $U
@@ -116,7 +132,7 @@ Match User $U
     AllowTcpForwarding no
     AllowAgentForwarding no
     X11Forwarding no
-    PermitTTY no
+    PermitTTY yes
     PermitUserRC no
     ForceCommand $SHELLW
 D

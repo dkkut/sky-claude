@@ -28,6 +28,7 @@ import { PetHouse }          from './PetHouse';
 import { SpoilerText, OnceViewText, SelfDestructTimer, PollBubble, MsgOptionsPanel, CreatePollModal } from './MsgFeatures';
 import { LiquidCursor, ThemePicker } from './LiquidCursor';
 import { ChatWallpaper } from './ChatWallpaper';
+import { useHasWallpaper } from './wallpapers';
 import { useChatTheme, LIGHT_VARS, DARK_VARS } from './themes';
 import { useSettings } from '@/settings/store';
 import { apiSupportStatus } from '@/moderation/supportApi';
@@ -968,6 +969,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const { getTheme } = useChatTheme();
   const theme = getTheme(activeChatId ?? undefined);
+  const hasWallpaper = useHasWallpaper(activeChatId ?? undefined);
   const [showAttach, setShowAttach] = useState(false);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [addingQuickReply, setAddingQuickReply] = useState(false);
@@ -1924,7 +1926,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
       {/* -- Messages -------------------------------------------------- */}
       <div
         className="flex-1 relative overflow-y-auto px-4 py-3 scroll-none sky-chat-font"
-        style={{ background: theme.bg }}
+        style={{ background: hasWallpaper ? 'transparent' : theme.bg }}
         ref={(el) => { (listRef as any).current = el; (chatAreaRef as any).current = el; }}
         onScroll={() => {
           const el = listRef.current; if (!el) return;
@@ -2319,7 +2321,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           показывать поле ввода, которое всё равно ответит отказом, —
           только путать. */}
       {!recording && canPost && (
-        <footer className="shrink-0 rounded-t-[28px] px-3 pt-3 border-t sky-chat-font" style={{ borderColor: theme.border, background: theme.panel, paddingBottom: 12, boxShadow: '0 -6px 24px rgba(0,0,0,0.18)' }}>
+        <footer className="shrink-0 rounded-t-[28px] px-3 pt-3 border-t sky-chat-font" style={{ borderColor: theme.border, background: hasWallpaper ? `color-mix(in srgb, ${theme.panel} 55%, transparent)` : theme.panel, backdropFilter: hasWallpaper ? 'blur(14px)' : undefined, paddingBottom: 12, boxShadow: '0 -6px 24px rgba(0,0,0,0.18)' }}>
           {isBlocked && (
             <p className="mb-2 text-center text-xs font-medium" style={{ color: 'var(--red)' }}>
               Пользователь заблокирован
