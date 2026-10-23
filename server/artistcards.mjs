@@ -13,7 +13,7 @@ import crypto from 'node:crypto';
 import { notifyStaff } from './staffnotify.mjs';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
-import { can } from './admin.mjs';
+import { can, isOwner } from './admin.mjs';
 import { logAdmin } from './adminsec.mjs';
 import { notifyGift } from './giftnotify.mjs';
 import { norm, translit, similarity } from './musicvoice.mjs';
@@ -25,7 +25,7 @@ const log = (cardId, event, actor, detail) => query('INSERT INTO music_artist_ca
 
 const view = (c, extra = {}) => ({
   id: c.id, name: c.name, bio: c.bio ? decryptContent(c.bio) ?? undefined : undefined, genres: c.genres ? c.genres.split(',').filter(Boolean) : [],
-  autoCreated: c.auto_created === true, confirmedOwner: Boolean(c.owner_id), ownerId: c.owner_id ?? undefined, tracks: Number(c.tracks ?? 0), ...extra,
+  autoCreated: c.auto_created === true, rightsVerified: Boolean(c.rights_verified_at), rightsHolder: c.rights_holder ?? undefined, confirmedOwner: Boolean(c.owner_id), ownerId: c.owner_id ?? undefined, tracks: Number(c.tracks ?? 0), ...extra,
 });
 
 const COUNT = `(SELECT count(*) FROM music_tracks t WHERE t.artist_card_id = c.id AND t.status = 'published') AS tracks`;
@@ -110,7 +110,7 @@ export const readCard = async (id, viewerId) => {
     .map((t) => ({ id: t.id, title: t.title, album: t.album || undefined, duration: t.duration_sec, plays: Number(t.plays) }));
   const claim = viewerId ? (await query(`SELECT status FROM music_artist_claims WHERE card_id=$1 AND claimant_id=$2 ORDER BY created_at DESC LIMIT 1`, [c.id, viewerId])).rows[0] : null;
   const mineTracks = viewerId ? Number((await query(`SELECT count(*) AS n FROM music_tracks WHERE artist_card_id=$1 AND owner_id=$2`, [c.id, viewerId])).rows[0].n) : 0;
-  return view(c, { trackList: tracks, isOwner: c.owner_id === viewerId, myClaim: claim?.status, canClaim: !c.owner_id && mineTracks > 0 && claim?.status !== 'pending', redirectedFrom: String(id) !== c.id ? String(id) : undefined });
+  return view(c, { trackList: tracks, isOwner: c.owner_id === viewerId || (viewerId ? await isOwner(viewerId) : false), myClaim: claim?.status, canClaim: !c.owner_id && mineTracks > 0 && claim?.status !== 'pending', redirectedFrom: String(id) !== c.id ? String(id) : undefined });
 };
 
 /** Карточка по имени (для страницы исполнителя, открытой из строки трека). */
@@ -131,7 +131,7 @@ export const listCards = async ({ q, limit } = {}) => {
 export const updateCard = async (profileId, id, { bio, genres } = {}) => {
   const c = await resolve(id);
   if (!c) return { error: 'not_found' };
-  if (c.owner_id !== profileId) return { error: 'not_allowed' };
+  if (c.owner_id !== profileId && !(await isOwner(profileId))) return { error: 'not_allowed' };
   const sets = []; const args = [c.id];
   if (bio !== undefined) { const b = clean(bio, MAX_BIO); args.push(b ? encryptContent(b) : null); sets.push(`bio = $${args.length}`); }
   if (genres !== undefined) { args.push((Array.isArray(genres) ? genres : []).map((g) => clean(g, 40)).filter(Boolean).slice(0, 5).join(',')); sets.push(`genres = $${args.length}`); }
