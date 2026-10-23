@@ -1,14 +1,13 @@
 /**
- * «Обновления» — окно со скачиванием приложений. Данные те же, что на сайте: админка «Сайт» → «Скачивание»
- * (версия, описание, статус, внешняя ссылка или загруженный файл), публичный ответ `GET /api/site/public`.
- * Отдельного списка нет: поменяли в админке — поменялось и здесь, и на сайте.
+ * «Обновления» — окно со скачиванием приложений. Данные — своя таблица `app_updates` (админка → вкладка «Обновления»:
+ * версия, что нового, загруженный файл), публичный ответ `GET /api/site/app-updates`. С лендингом («Сайт» → «Скачивание») не связано.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Download, Loader2, X, RefreshCw, Clock } from 'lucide-react';
 import { APP_VERSION_LABEL } from '../core/version';
 import { API_ORIGIN } from '../core/nativeApp';
 
-interface Item { platform: string; title: string; info: string; version: string; button: string; status: string; href: string; file: { name: string; size: number; sha256: string } | null }
+interface Item { platform: string; title: string; notes: string; version: string; href: string; file: { name: string; size: number } | null }
 
 const mb = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(n / 1024))} КБ`);
 const absolute = (href: string) => (href.startsWith('/') ? `${API_ORIGIN || window.location.origin}${href}` : href);
@@ -20,10 +19,10 @@ export function UpdatesDialog({ onClose }: { onClose: () => void }) {
   const load = useCallback(async () => {
     setErr('');
     try {
-      const r = await fetch(`${API_ORIGIN}/api/site/public`, { cache: 'no-store' });
+      const r = await fetch(`${API_ORIGIN}/api/site/app-updates`, { cache: 'no-store' });
       if (!r.ok) throw new Error(String(r.status));
       const d = await r.json();
-      setItems(Array.isArray(d.downloads) ? d.downloads : []);
+      setItems(Array.isArray(d.items) ? d.items : []);
     } catch (e) {
       setItems(null);
       setErr(e instanceof Error && e.message ? e.message : 'network');
@@ -53,12 +52,12 @@ export function UpdatesDialog({ onClose }: { onClose: () => void }) {
           )}
           {items && items.length === 0 && <p className="py-8 text-center text-sm" style={{ color: 'var(--t3)' }}>Пока нет доступных приложений.</p>}
           {items?.map((it) => {
-            const ready = it.status === 'available' && Boolean(it.href);
+            const ready = Boolean(it.href && it.file);
             return (
               <div key={it.platform} className="flex items-center gap-3 rounded-2xl p-3" style={{ background: 'var(--bg-l2, rgba(0,0,0,0.05))' }}>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold" translate="no">{it.title}{it.version ? ` · ${it.version}` : ''}</p>
-                  {it.info && <p className="text-xs" style={{ color: 'var(--t3)' }} translate="no">{it.info}</p>}
+                  {it.notes && <p className="text-xs" style={{ color: 'var(--t3)' }} translate="no">{it.notes}</p>}
                   {it.file && <p className="mt-0.5 text-[11px]" style={{ color: 'var(--t3)' }}><span translate="no">{it.file.name}</span> · {mb(it.file.size)}</p>}
                 </div>
                 {ready ? (

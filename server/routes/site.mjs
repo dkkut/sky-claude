@@ -48,6 +48,14 @@ export const siteRoutes = async (req, res, url) => {
     return sendFile(req, res, { path: f.path, size: Number(f.file.size), mime: f.file.mime, name: f.file.name, cache: 'public, max-age=300' });
   }
 
+  if (req.method === 'GET' && path === '/api/site/app-updates') { res.setHeader('Cache-Control', 'no-store'); return json(res, 200, await site.appUpdatesPublic()); }
+  if ((req.method === 'GET' || req.method === 'HEAD') && (m = path.match(/^\/api\/site\/app-updates\/download\/([a-z0-9_-]{2,20})$/))) {
+    if (!rateLimit(`site:dl:${ip}`, 30)) return json(res, 429, { error: 'too_many_requests' });
+    const f = await site.appUpdateFile(m[1]);
+    if (!f) return json(res, 404, { error: 'not_found' });
+    return sendFile(req, res, { path: f.path, size: f.file.size, mime: f.file.mime, name: f.file.name, cache: 'private, no-store' });
+  }
+
   if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
 
   if (path === '/api/site/upload') {
@@ -103,6 +111,12 @@ export const siteAdminRoutes = async (req, res, url) => {
   if ((m = path.match(/^\/api\/admin\/site\/downloads\/([a-z0-9_-]{2,20})\/file$/))) {
     if (req.method === 'POST') return reply(res, await site.adminUploadFile(me, m[1], u.searchParams.get('name'), req, meta));
     if (req.method === 'DELETE') return reply(res, await site.adminDeleteFile(me, m[1], meta));
+  }
+  if (req.method === 'GET' && path === '/api/admin/site/app-updates') { const r = await site.adminAppUpdates(me); return r ? json(res, 200, r) : deny(); }
+  if ((m = path.match(/^\/api\/admin\/site\/app-updates\/([a-z0-9_-]{2,20})$/)) && req.method === 'PUT') return reply(res, await site.adminSaveAppUpdate(me, m[1], (await parseBody(req)) ?? {}, meta));
+  if ((m = path.match(/^\/api\/admin\/site\/app-updates\/([a-z0-9_-]{2,20})\/file$/))) {
+    if (req.method === 'POST') return reply(res, await site.adminUploadAppUpdate(me, m[1], u.searchParams.get('name'), req, meta));
+    if (req.method === 'DELETE') return reply(res, await site.adminDeleteAppUpdateFile(me, m[1], meta));
   }
   if (req.method === 'GET' && path === '/api/admin/site/updates/last') { const r = await site.adminLastUpdateNotice(me); return r ? json(res, 200, r) : deny(); }
   if (req.method === 'POST' && path === '/api/admin/site/updates/notify') return reply(res, await site.adminNotifyUpdate(me, (await parseBody(req)) ?? {}, meta));

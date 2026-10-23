@@ -326,14 +326,81 @@ export const SiteTab = () => {
   );
 };
 
+/* ── Обновления приложения (окно «Обновления» в настройках): свои файлы, не связаны со скачиванием на лендинге ── */
+interface AppUpd { platform: string; title: string; version: string; notes: string; file: { name: string; size: number; sha256: string; downloads: number; uploadedAt: string | null } | null }
+const AppUpdateCard = ({ d, onChanged }: { d: AppUpd; onChanged: () => void }) => {
+  const [f, setF] = useState(d); const [busy, setBusy] = useState(false); const [pct, setPct] = useState<number | null>(null);
+  const pick = useRef<HTMLInputElement>(null); const xhr = useRef<XMLHttpRequest | null>(null);
+  useEffect(() => setF(d), [d]);
+  const dirty = f.version !== d.version || f.notes !== d.notes;
+  const save = async () => {
+    setBusy(true);
+    const r = await apiCall(`/api/admin/site/app-updates/${d.platform}`, { method: 'PUT', body: JSON.stringify({ version: f.version, notes: f.notes }) });
+    setBusy(false);
+    if (!r.ok) { flash(msg(r)); return; }
+    flash('Сохранено'); onChanged();
+  };
+  const upload = (file: File) => {
+    const x = new XMLHttpRequest(); xhr.current = x; setPct(0);
+    x.open('POST', uploadUrl(`/api/admin/site/app-updates/${d.platform}/file?name=${encodeURIComponent(file.name)}`));
+    x.withCredentials = !NATIVE_APP; x.setRequestHeader('Content-Type', 'application/octet-stream');
+    Object.entries(nativeXhrHeaders()).forEach(([k, v]) => x.setRequestHeader(k, v));
+    const tok = getAccessToken(); if (tok) x.setRequestHeader('Authorization', `Bearer ${tok}`);
+    x.upload.onprogress = (e) => { if (e.lengthComputable) setPct(Math.min(99, Math.round((e.loaded / e.total) * 100))); };
+    x.onload = () => {
+      setPct(null); xhr.current = null;
+      let data: { error?: string } = {}; try { data = JSON.parse(x.responseText); } catch { /* нет тела */ }
+      if (x.status === 200) { flash('Файл загружен'); onChanged(); return; }
+      flash(x.status === 413 ? ERR.file_too_large : ERR[data.error ?? ''] ?? `Не получилось (${x.status})`);
+    };
+    x.onerror = () => { setPct(null); flash('Нет связи с сервером'); };
+    x.onabort = () => { setPct(null); flash('Загрузка отменена'); };
+    x.send(file);
+  };
+  const drop = async () => {
+    if (!window.confirm('Удалить загруженный файл? Платформа пропадёт из окна «Обновления».')) return;
+    const r = await apiCall(`/api/admin/site/app-updates/${d.platform}/file`, { method: 'DELETE' });
+    if (!r.ok) { flash(msg(r)); return; } flash('Файл удалён'); onChanged();
+  };
+  return (
+    <div className="space-y-2 rounded-2xl p-3" style={card}>
+      <p className="text-sm font-bold" style={{ color: C.t1 }}><span translate="no">{d.title}</span></p>
+      <input value={f.version} onChange={(e) => setF({ ...f, version: e.target.value })} placeholder="Версия (например, 5.1.0)" className={inp} style={field} aria-label={`Версия ${d.title}`} maxLength={40} />
+      <textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} rows={2} placeholder="Что нового (видно людям под названием)" className={inp} style={field} aria-label={`Что нового ${d.title}`} maxLength={400} />
+      <div className="rounded-xl p-2.5" style={{ background: C.l2 }}>
+        {d.file ? (
+          <div className="space-y-1 text-xs" style={{ color: C.t2 }}>
+            <p className="flex items-center gap-1.5 font-semibold" style={{ color: C.t1 }}><Paperclip size={12} /> <span translate="no">{d.file.name}</span> · {fmtSize(d.file.size)}</p>
+            {d.file.uploadedAt && <p>{`Загружен ${fmtDt(d.file.uploadedAt)} · скачали ${d.file.downloads}`}</p>}
+            <p className="break-all" translate="no" style={{ color: C.t3 }}>SHA-256: {d.file.sha256}</p>
+          </div>
+        ) : <p className="text-xs" style={{ color: C.t3 }}>Файл не загружен — у людей этой платформы в «Обновлениях» не будет.</p>}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button type="button" disabled={pct !== null} onClick={() => pick.current?.click()} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>
+            {pct !== null ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} {d.file ? 'Заменить файл' : 'Загрузить файл'}
+          </button>
+          {d.file && <button type="button" onClick={() => void drop()} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold" style={{ background: C.l3, color: C.red }}><Trash2 size={12} /> Удалить</button>}
+          {pct !== null && <button type="button" onClick={() => xhr.current?.abort()} className="rounded-lg px-3 py-1.5 text-xs" style={{ background: C.l3, color: C.t2 }}>Отмена</button>}
+        </div>
+        {pct !== null && <div className="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: C.l3 }}><div className="h-full" style={{ width: `${pct}%`, background: C.acc }} /></div>}
+        <input ref={pick} type="file" hidden onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) upload(fl); }} />
+      </div>
+      <button type="button" disabled={!dirty || busy} onClick={() => void save()} className="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-sm font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Сохранить
+      </button>
+    </div>
+  );
+};
+
 /* ── Вкладка «Обновления»: файлы приложений + рассылка об обновлении ─────────── */
 export const UpdatesAdminTab = () => {
   const [ver, setVer] = useState(''); const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const [ask, setAsk] = useState(false);
   const [last, setLast] = useState<{ id: string; title: string; status: string; createdAt: string; sentAt: string | null } | null>(null);
+  const [items, setItems] = useState<AppUpd[] | null>(null);
+  const loadItems = useCallback(async () => { const r = await apiCall<{ items: AppUpd[] }>('/api/admin/site/app-updates'); if (r.ok && r.data) { setItems(r.data.items); setVer((x) => x || r.data!.items.find((d) => d.file && d.version)?.version || ''); } else flash(msg(r)); }, []);
+  useEffect(() => { void loadItems(); }, [loadItems]);
   const loadLast = useCallback(async () => { const r = await apiCall<{ last: typeof last }>('/api/admin/site/updates/last'); if (r.ok && r.data) setLast(r.data.last); }, []);
   useEffect(() => { void loadLast(); }, [loadLast]);
-  // Версия по умолчанию — та, что указана у первой доступной платформы (её видят и в «Обновлениях» у людей).
-  useEffect(() => { void apiCall<{ items: Dl[] }>('/api/admin/site/downloads').then((r) => { const v = r.data?.items.find((d) => d.status === 'available' && d.version)?.version; if (v) setVer((x) => x || v); }); }, []);
   const send = async () => {
     setBusy(true);
     const r = await apiCall('/api/admin/site/updates/notify', { method: 'POST', body: JSON.stringify({ version: ver, text, confirm: true }) });
@@ -343,8 +410,8 @@ export const UpdatesAdminTab = () => {
   return (
     <div className="space-y-4">
       <div className="space-y-1"><h3 className="text-sm font-bold" style={{ color: C.t1 }}>Файлы приложений</h3>
-        <p className="text-[11px]" style={{ color: C.t3 }}>Загрузите файл для платформы и укажите версию — он сразу появится у людей в Профиль → Настройки → «Обновления» и на сайте.</p></div>
-      <DownloadsPane />
+        <p className="text-[11px]" style={{ color: C.t3 }}>Загрузите файл для платформы и укажите версию и «Что нового» — он сразу появится у людей в Профиль → Настройки → «Обновления». Это отдельный список: скачивание на сайте (вкладка «Сайт») не меняется.</p></div>
+      {!items ? <Wait /> : items.map((d) => <AppUpdateCard key={d.platform} d={d} onChanged={() => void loadItems()} />)}
       <div className="space-y-2 rounded-2xl p-3" style={card}>
         <h3 className="text-sm font-bold" style={{ color: C.t1 }}>Разослать уведомление об обновлении</h3>
         <p className="text-[11px]" style={{ color: C.t3 }}>Придёт всем людям: запись в «Уведомления» и push тем, кто не в приложении. Отправляйте после того, как файлы загружены. Повторно — не раньше чем через 10 минут.</p>

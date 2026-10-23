@@ -297,6 +297,68 @@ export const adminUploadFile = async (me, platform, name, req, meta) => {
 };
 const dropFile = async (id) => { await query('UPDATE site_downloads SET file_id = NULL WHERE file_id = $1', [id]); await query('DELETE FROM site_files WHERE id = $1', [id]); await rm(filePath(id), { force: true }).catch(() => {}); };
 
+
+/* ── «Обновления» в настройках приложения: свои файлы, не связанные со скачиванием на лендинге (таблица app_updates) ── */
+export const APP_PLATFORMS = { android: 'Android (.apk)', windows: 'Windows (.exe)', ios: 'iPhone и iPad (.ipa)', macos: 'macOS (.dmg)', linux: 'Linux (.deb / AppImage)' };
+const updPath = (id) => join(ROOT, 'updates', id);
+const updView = (r, admin) => ({ platform: r.platform, title: APP_PLATFORMS[r.platform] ?? r.platform, version: r.version, notes: r.notes,
+  file: r.file_id ? { name: r.file_name, size: Number(r.file_size), ...(admin ? { sha256: r.file_sha256, downloads: Number(r.downloads), uploadedAt: r.file_at?.toISOString?.() ?? null } : {}) } : null });
+/** Публично (окно «Обновления» в приложении): только платформы с загруженным файлом. */
+export const appUpdatesPublic = async () => {
+  const { rows } = await query('SELECT * FROM app_updates WHERE file_id IS NOT NULL ORDER BY platform');
+  return { items: rows.filter((r) => APP_PLATFORMS[r.platform]).map((r) => ({ ...updView(r, false), href: `/api/site/app-updates/download/${r.platform}` })) };
+};
+export const appUpdateFile = async (platform) => {
+  const r = (await query('SELECT * FROM app_updates WHERE platform = $1 AND file_id IS NOT NULL', [String(platform ?? '')])).rows[0];
+  if (!r) return null;
+  try { await stat(updPath(r.file_id)); } catch { return null; }
+  query('UPDATE app_updates SET downloads = downloads + 1 WHERE platform = $1', [r.platform]).catch(() => {});
+  return { file: { name: r.file_name, mime: r.file_mime, size: Number(r.file_size) }, path: updPath(r.file_id) };
+};
+export const adminAppUpdates = async (me) => {
+  if (!(await allowed(me))) return null;
+  const { rows } = await query('SELECT * FROM app_updates ORDER BY platform');
+  return { items: rows.filter((r) => APP_PLATFORMS[r.platform]).map((r) => updView(r, true)) };
+};
+export const adminSaveAppUpdate = async (me, platform, b, meta) => {
+  if (!(await allowed(me))) return { error: 'not_allowed' };
+  if (!APP_PLATFORMS[platform]) return { error: 'not_found' };
+  const cur = (await query('SELECT version, notes FROM app_updates WHERE platform = $1', [platform])).rows[0];
+  if (!cur) return { error: 'not_found' };
+  await query('UPDATE app_updates SET version = $2, notes = $3, updated_by = $4, updated_at = now() WHERE platform = $1',
+    [platform, clean(b?.version ?? cur.version, 40), cleanMulti(b?.notes ?? cur.notes, 400), me]);
+  await log(me, 'app_update_save', `${platform}: ${clean(b?.version ?? cur.version, 40)}`, meta);
+  return { ok: true };
+};
+export const adminUploadAppUpdate = async (me, platform, name, req, meta) => {
+  if (!(await allowed(me))) { req.resume(); return { error: 'not_allowed' }; }
+  if (!APP_PLATFORMS[platform]) { req.resume(); return { error: 'not_found' }; }
+  const cur = (await query('SELECT file_id FROM app_updates WHERE platform = $1', [platform])).rows[0];
+  if (!cur) { req.resume(); return { error: 'not_found' }; }
+  const fname = clean(name, 120).replace(/[\\/]/g, '_');
+  const ext = fname.split('.').pop()?.toLowerCase() ?? '';
+  if (!EXT[ext]) { req.resume(); return { error: 'bad_extension', allowed: Object.keys(EXT) }; }
+  const id = `upd-${generateId()}`;
+  const saved = await saveStream(req, updPath(id), DOWNLOAD_MAX);
+  if (saved.error) return saved;
+  await query('UPDATE app_updates SET file_id=$2, file_name=$3, file_mime=$4, file_size=$5, file_sha256=$6, file_at=now(), downloads=0, updated_by=$7, updated_at=now() WHERE platform=$1',
+    [platform, id, fname, EXT[ext], saved.size, saved.sha256, me]);
+  if (cur.file_id) await rm(updPath(cur.file_id), { force: true }).catch(() => {});
+  await log(me, 'app_update_upload', `${platform}: ${fname} (${(saved.size / MB).toFixed(1)} МБ)`, meta);
+  return { ok: true, id, size: saved.size, sha256: saved.sha256 };
+};
+export const adminDeleteAppUpdateFile = async (me, platform, meta) => {
+  if (!(await allowed(me))) return { error: 'not_allowed' };
+  const cur = (await query('SELECT file_id FROM app_updates WHERE platform = $1', [String(platform)])).rows[0];
+  if (!cur) return { error: 'not_found' };
+  if (cur.file_id) {
+    await query('UPDATE app_updates SET file_id=NULL, file_name=NULL, file_mime=NULL, file_size=NULL, file_sha256=NULL, file_at=NULL, updated_by=$2, updated_at=now() WHERE platform=$1', [platform, me]);
+    await rm(updPath(cur.file_id), { force: true }).catch(() => {});
+  }
+  await log(me, 'app_update_delete', platform, meta);
+  return { ok: true };
+};
+
 /** Последняя рассылка «Вышло обновление» (для панели «Обновления»). */
 export const adminLastUpdateNotice = async (me) => {
   if (!(await allowed(me))) return null;
