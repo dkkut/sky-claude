@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Инструменты для сборки приложений на этом сервере (Debian/Ubuntu, root):
-#   bash scripts/setup-build-tools.sh            # JDK 17 + Android SDK + wine (+32-бит) + xvfb
+#   bash scripts/setup-build-tools.sh            # JDK 21 + Android SDK + wine (+32-бит) + xvfb
 #   bash scripts/setup-build-tools.sh --check    # только показать, чего не хватает
 #   bash scripts/setup-build-tools.sh --android  # только Android;  --wine — только wine
 # После установки build-apps.sh сам найдёт SDK в /opt/android-sdk. Идемпотентно: повторный запуск ничего не ломает.
@@ -25,13 +25,15 @@ export DEBIAN_FRONTEND=noninteractive
 
 install_android() {
   apt-get update -qq
-  apt-get install -y -qq openjdk-17-jdk-headless unzip curl ca-certificates
+  apt-get install -y -qq openjdk-21-jdk-headless unzip curl ca-certificates
   if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
     mkdir -p "$SDK/cmdline-tools"; tmp="$(mktemp -d)"
     curl -fsSL "$CMD_ZIP_URL" -o "$tmp/cmd.zip"
     unzip -q "$tmp/cmd.zip" -d "$tmp"
     rm -rf "$SDK/cmdline-tools/latest"; mv "$tmp/cmdline-tools" "$SDK/cmdline-tools/latest"; rm -rf "$tmp"
   fi
+  J21="$(ls -d /usr/lib/jvm/java-21-openjdk-* 2>/dev/null | head -1)"
+  [ -n "$J21" ] && export JAVA_HOME="$J21" && update-alternatives --set java "$J21/bin/java" >/dev/null 2>&1 || true
   export JAVA_HOME="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")}"
   yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
   "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platform-tools" "platforms;android-34" "build-tools;34.0.0"

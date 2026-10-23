@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Сборка приложений Sky на сервере и складывание в каталог хранилища (по умолчанию /opt/sky/apps).
-#   bash scripts/build-apps.sh apk          # Android (.apk): нужен JDK 17 и Android SDK (ANDROID_HOME)
+#   bash scripts/build-apps.sh apk          # Android (.apk): нужен JDK 21 и Android SDK (ANDROID_HOME)
 #   bash scripts/build-apps.sh exe          # Windows (.exe, NSIS): на Linux нужен wine (apt install wine64); надёжнее — GitHub Actions
 #   bash scripts/build-apps.sh ipa          # iOS (.ipa): ТОЛЬКО на macOS с Xcode и подписью Apple; на Linux-сервере невозможно
 #   bash scripts/build-apps.sh all          # всё, что возможно на этой машине; остальное пропускается с пояснением
@@ -53,7 +53,8 @@ web() { [ "$WEB_DONE" = 1 ] && return 0; echo "==> Веб-часть (vite build
 
 build_apk() {
   local old; if old="$(unchanged apk)"; then echo "==> Android: исходники не менялись — беру готовый $old"; ok=$((ok+1)); return; fi
-  need java || { skipped+=("apk: нет JDK 17 (apt install openjdk-17-jdk)"); return; }
+  J21="$(ls -d /usr/lib/jvm/java-21-openjdk-* 2>/dev/null | head -1)"; [ -n "$J21" ] && export JAVA_HOME="$J21" PATH="$J21/bin:$PATH"   # Capacitor 8 собирается только JDK 21 («invalid source release: 21» на 17)
+  need java || { skipped+=("apk: нет JDK 21 — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
   [ -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ] || { [ -d /opt/android-sdk ] && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk; }
   [ -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ] || { skipped+=("apk: не задан ANDROID_HOME — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
   [ -d android ] || { skipped+=("apk: нет каталога android/"); return; }

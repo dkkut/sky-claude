@@ -1978,7 +1978,7 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - Окно «Продолжить на другом устройстве» (`ContinueButton.tsx`): заголовок был тёмным на тёмном в светлой теме (переменные `--t1…` светлой темы) и сжимался в узкий столбец крестиком на всю ширину — переменные заданы явно, крестик в `shrink-0`.
 - Шапка подборки «Мой поток» (`WaveSheet`) помечена `data-keep-dark` — иначе нормализатор светлой темы красил «Мой поток» в тёмный.
 - Полноэкранный плеер Sky Music на узком экране: кнопки шапки не переносятся и прокручиваются, шрифт текста песни на телефоне меньше (21/16 вместо 28/20).
-- **Сборка приложений на сервере** (`build-apps.sh` падал: «не задан ANDROID_HOME», wine «failed to load syswow64\ntdll.dll»): `scripts/setup-build-tools.sh` ставит JDK 17 + Android SDK (`/opt/android-sdk`, платформа 34) и wine с 32-бит и xvfb (`--check` — только показать, `--android`, `--wine`); `build-apps.sh` сам находит `/opt/android-sdk` и запускает electron-builder под `xvfb-run`. Скрипт установки в этой среде НЕ запускался (нет apt/root на целевой ОС) — проверен только синтаксис.
+- **Сборка приложений на сервере** (`build-apps.sh` падал: «не задан ANDROID_HOME», wine «failed to load syswow64\ntdll.dll»): `scripts/setup-build-tools.sh` ставит JDK 21 (нужен Capacitor 8; на JDK 17 Gradle падает «invalid source release: 21») + Android SDK (`/opt/android-sdk`, платформа 34) и wine с 32-бит и xvfb (`--check` — только показать, `--android`, `--wine`); `build-apps.sh` сам находит `/opt/android-sdk` и запускает electron-builder под `xvfb-run`. Скрипт установки в этой среде НЕ запускался (нет apt/root на целевой ОС) — проверен только синтаксис.
 
 ## Экран PIN при смене IP прятался под замком приложения (исправление, октябрь-2026)
 
