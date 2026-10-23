@@ -1,0 +1,41 @@
+// Проверка шторки вложений и экрана предпросмотра (Playwright на dev-сервере vite, компоненты монтируются напрямую).
+import { chromium } from 'playwright-core';
+const BASE = process.env.BASE || 'http://localhost:5199';
+const ok = (n, c, d = '') => { console.log(`${c ? 'ok  ' : 'FAIL'} ${n}${c ? '' : ' ' + d}`); if (!c) process.exitCode = 1; };
+const browser = await chromium.launch({ executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
+const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
+const errs = []; page.on('pageerror', (e) => errs.push(String(e)));
+await page.goto(BASE + '/guide', { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(1500);
+await page.evaluate(async () => {
+  const rm = await import('/node_modules/.vite/deps/react.js'); const React = rm.createElement ? rm : rm.default;
+  const dm = await import('/node_modules/.vite/deps/react-dom_client.js'); const createRoot = dm.createRoot ?? dm.default.createRoot;
+  const mod = await import('/src/messenger/AttachSheet.tsx');
+  window.__sent = null; window.__log = [];
+  const el = document.createElement('div'); document.body.appendChild(el);
+  const c = document.createElement('canvas'); c.width = 800; c.height = 600; const g = c.getContext('2d'); g.fillStyle = '#4a90d9'; g.fillRect(0, 0, 800, 600);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+  window.__file = new File([blob], 'a.png', { type: 'image/png' });
+  window.__mount = (kind) => {
+    const root = createRoot(el);
+    window.__root = root;
+    if (kind === 'sheet') root.render(React.createElement(mod.AttachSheet, { accent: '#5b9bd1', onClose: () => window.__log.push('close'), a: Object.fromEntries(['onCamera', 'onGallery', 'onGift', 'onFile', 'onLocation', 'onPoll', 'onAudio'].map((k) => [k, () => window.__log.push(k)])) }));
+    else root.render(React.createElement(mod.MediaComposer, { files: [window.__file], accent: '#5b9bd1', onClose: () => window.__log.push('closed'), onAddMore: () => window.__log.push('more'), onSend: (items) => { window.__sent = items.map((i) => ({ n: i.file.name, s: i.file.size, t: i.file.type, c: i.caption })); } }));
+  };
+});
+await page.evaluate(() => window.__mount('sheet'));
+await page.getByText(/Геолокация|Geolocation/).first().click();
+ok('шторка: вкладка «Геолокация» вызывает обработчик и закрывает шторку', (await page.evaluate(() => window.__log)).join() === 'close,onLocation', JSON.stringify(await page.evaluate(() => window.__log)));
+await page.evaluate(() => { window.__root.unmount(); });
+await page.evaluate(() => window.__mount('composer'));
+await page.getByPlaceholder(/Добавить подпись|Add a caption/).fill('Привет');
+await page.getByLabel(/Повернуть|Rotate/).click();
+await page.waitForTimeout(400);
+ok('поворот: файл заменён и остаётся картинкой', (await page.locator('img').count()) >= 1);
+await page.getByRole('button', { name: 'HD' }).or(page.getByRole('button', { name: 'SD' })).click();
+await page.getByRole('button', { name: /Отправить|Send/ }).click();
+await page.waitForFunction(() => window.__sent, null, { timeout: 8000 });
+const sent = await page.evaluate(() => window.__sent);
+ok('отправка: одно фото с подписью', sent.length === 1 && sent[0].c === 'Привет' && sent[0].t.startsWith('image/'), JSON.stringify(sent));
+ok('нет ошибок в консоли страницы', errs.length === 0, errs.join(' | '));
+await browser.close();

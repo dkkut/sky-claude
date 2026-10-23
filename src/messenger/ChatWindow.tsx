@@ -13,6 +13,7 @@ import {
   AlertTriangle, Hand,
 } from 'lucide-react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
+import { AttachSheet, MediaComposer } from './AttachSheet';
 import { useModerationStore } from '@/shared/moderationStore';
 import { ContentWarningGate, BlockedChannelBadge } from '@/shared/ContentWarningGate';
 import { useMessengerStore } from './store';
@@ -440,15 +441,20 @@ const PhotoBubble = ({ msg }: { msg: MessageItem }) => {
   const { url: media, withhold, request } = useAttachment(safeMediaUrl(msg.mediaUrl));
   const [open, setOpen] = useState(false);
   if (withhold) return <TapToLoad onLoad={request} label="Загрузить фото" />;
+  const isVideo = String(msg.mimeType ?? '').startsWith('video/');
+  const caption = msg.text && msg.text !== msg.fileName ? msg.text : '';
   return (
     <>
-      <div className="rounded-xl overflow-hidden cursor-zoom-in" style={{ maxWidth: 280 }}
-        onClick={() => setOpen(true)}>
-        <img src={media} alt="photo"
-          className="block w-full object-cover max-h-72" style={{ maxWidth: 280 }} />
+      <div className="rounded-xl overflow-hidden" style={{ maxWidth: 280 }}>
+        {isVideo
+          ? <video src={media} controls playsInline className="block w-full max-h-72" style={{ maxWidth: 280 }} />
+          : <div className="cursor-zoom-in" onClick={() => setOpen(true)}>
+              <img src={media} alt="photo" className="block w-full object-cover max-h-72" style={{ maxWidth: 280 }} />
+            </div>}
       </div>
+      {caption && <p translate="no" className="mt-1 whitespace-pre-wrap break-words text-sm" style={{ maxWidth: 280 }}>{caption}</p>}
       <AnimatePresence>
-        {open && (
+        {open && !isVideo && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.9)' }} onClick={() => setOpen(false)}>
@@ -972,6 +978,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const theme = getTheme(activeChatId ?? undefined);
   const hasWallpaper = useHasWallpaper(activeChatId ?? undefined);
   const [showAttach, setShowAttach] = useState(false);
+  const [composerFiles, setComposerFiles] = useState<File[] | null>(null);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [addingQuickReply, setAddingQuickReply] = useState(false);
   const [newQuickReply, setNewQuickReply] = useState('');
@@ -986,6 +993,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const listRef   = useRef<HTMLDivElement>(null);
   const msgRefs   = useRef<Record<string, HTMLDivElement | null>>({});
   const fileRef   = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLInputElement>(null);
   const imgRef    = useRef<HTMLInputElement>(null);
   const camRef    = useRef<HTMLInputElement>(null);
   const recRef      = useRef<MediaRecorder | null>(null);
@@ -1340,6 +1348,20 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     if (m) broadcast.message({ ...m, fileId: res.data.file.id } as any);
     setUploadPct(100);
     setTimeout(() => { setUploading(null); setUploadPct(0); }, 400);
+  };
+
+  /** Геопозиция — обычное сообщение со ссылкой на карту; точку берём у устройства, сервер её не хранит. */
+  const sendLocation = async () => {
+    if (!navigator.geolocation) { setRecError('Геолокация недоступна на этом устройстве'); setTimeout(() => setRecError(''), 3500); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude.toFixed(6), lon = pos.coords.longitude.toFixed(6);
+        const m = sendMessage({ text: `📍 https://www.google.com/maps?q=${lat},${lon}` });
+        if (m) broadcast.message(m);
+      },
+      () => { setRecError('Не удалось получить геопозицию — проверьте разрешение'); setTimeout(() => setRecError(''), 3500); },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+    );
   };
 
   const sendFile = async (file: File) => {
@@ -2329,9 +2351,11 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
             </p>
           )}
 
-          <input ref={imgRef} type="file" accept="image/*,video/*" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) sendFile(f); e.target.value = ''; }} />
+          <input ref={imgRef} type="file" accept="image/*,video/*" multiple className="hidden"
+            onChange={e => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) setComposerFiles(p => (p ? [...p, ...fs] : fs)); }} />
           <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={e => { const fs = Array.from(e.target.files ?? []); e.target.value = ''; if (fs.length) setComposerFiles(p => (p ? [...p, ...fs] : fs)); }} />
+          <input ref={audioRef} type="file" accept="audio/*" className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) sendFile(f); e.target.value = ''; }} />
           <input ref={fileRef} type="file" className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) sendFile(f); e.target.value = ''; }} />
@@ -2420,33 +2444,6 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                   <Paperclip size={18} />
                 </motion.div>
               </motion.button>
-              <AnimatePresence>
-                {showAttach && (
-                  <motion.div initial={{ opacity: 0, scale: 0.88, y: 8 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.88, y: 8 }}
-                    className="absolute bottom-full left-0 mb-2 z-[200] rounded-2xl overflow-hidden"
-                    style={{ background: '#1e2c3a', border: '1px solid rgba(255,255,255,0.08)',
-                      boxShadow: '0 16px 48px rgba(0,0,0,0.6)', minWidth: 200 }}>
-                    {[
-                      ...(isMobile ? [{ icon: Camera, label: 'Камера', action: () => { camRef.current?.click(); setShowAttach(false); } }] : []),
-                      { icon: Images,    label: 'Фото / Видео',  action: () => { imgRef.current?.click(); setShowAttach(false); } },
-                      { icon: FileText,  label: 'Файл',          action: () => { fileRef.current?.click(); setShowAttach(false); } },
-                      { icon: BarChart2, label: 'Опрос',         action: () => { setShowPoll(true); setShowAttach(false); } },
-                    ].map(({ icon: Icon, label, action }) => (
-                      <button key={label} type="button" onClick={action}
-                        className="flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-white/[0.06]"
-                        style={{ color: 'var(--t1)' }}>
-                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
-                          style={{ background: 'rgba(91,155,209,0.15)' }}>
-                          <Icon size={17} style={{ color: theme.accent }} />
-                        </div>
-                        {label}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
 
             {/* Text input */}
@@ -2608,6 +2605,28 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
         />
       </AnimatePresence>,
       document.body
+    )}
+
+    {showAttach && (
+      <AttachSheet accent={theme.accent} onClose={() => setShowAttach(false)} a={{
+        onCamera: () => camRef.current?.click(),
+        onGallery: () => imgRef.current?.click(),
+        onGift: () => setShowGifts(true),
+        onFile: () => fileRef.current?.click(),
+        onLocation: () => void sendLocation(),
+        onPoll: () => setShowPoll(true),
+        onAudio: () => audioRef.current?.click(),
+      }} />
+    )}
+    {composerFiles && (
+      <MediaComposer files={composerFiles} accent={theme.accent} onClose={() => setComposerFiles(null)}
+        onAddMore={() => imgRef.current?.click()}
+        onSend={async (items) => {
+          setComposerFiles(null);
+          for (const { file, caption } of items) {
+            await sendAttachment(file, { kind: 'photo', text: caption || file.name, fileName: file.name });
+          }
+        }} />
     )}
 
     {/* Create Poll Modal */}
