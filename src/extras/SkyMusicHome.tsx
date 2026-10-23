@@ -295,7 +295,7 @@ export const SkyMusicHome = ({
       {/* «Мой поток»: спокойная волна, пока тихо; при музыке — движение, лучи, исполнитель и мини-плеер (FlowHero). */}
       <div className="px-5 pt-4 pb-1">
         <FlowHero cur={cur} last={lastUnfinished} playing={playing} liked={Boolean((cur ?? lastUnfinished) && favorites.includes((cur ?? lastUnfinished)!.id))}
-          onStart={startWave} onOpenWave={() => setWaveOpen(true)} onOpenPlayer={onOpenPlayer}
+          tracks={tracks} favorites={favorites} onPlayPool={onPlay} onStart={startWave} onOpenWave={() => setWaveOpen(true)} onOpenPlayer={onOpenPlayer}
           onToggle={() => { if (cur) onTogglePlay(); else if (lastUnfinished) onPlay(lastUnfinished, [lastUnfinished]); }}
           onLike={() => { const x = cur ?? lastUnfinished; if (x) onLike(x.id); }} />
       </div>

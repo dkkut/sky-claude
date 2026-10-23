@@ -61,6 +61,8 @@ interface PlayerStore {
   nextTrack:  () => void;
   prevTrack:  () => void;
   playQueueIndex: (idx: number) => void;
+  /** Новый порядок СЛЕДУЮЩИХ треков очереди (id по порядку). Пройденные и текущий не меняются; плейлисты это не трогает. */
+  reorderUpcoming: (ids: string[]) => void;
 }
 
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
@@ -118,6 +120,16 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const idx = (((item.qIdx ?? 0) - 1) + item.queue.length) % item.queue.length;
     const prev = { ...item.queue[idx], queue: item.queue, qIdx: idx };
     set({ item: prev, currentTime: 0, isPlaying: true });
+  },
+  reorderUpcoming: (ids) => {
+    const { item } = get();
+    if (!item?.queue) return;
+    const cur = item.qIdx ?? 0;
+    const head = item.queue.slice(0, cur + 1); const tail = item.queue.slice(cur + 1);
+    const byId = new Map(tail.map((q) => [q.id, q]));
+    const picked = ids.map((id) => byId.get(id)).filter((q): q is PlayerItem => Boolean(q));
+    const rest = tail.filter((q) => !ids.includes(q.id));
+    set({ item: { ...item, queue: [...head, ...picked, ...rest] } });
   },
   playQueueIndex: (idx) => {
     const { item } = get();

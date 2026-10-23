@@ -14,6 +14,7 @@ import { usePlayerStore } from '@/player/playerStore';
 import { subscribeAudioLevels } from '@/music/audioLevels';
 import { useCardImage } from '@/artists/CardImages';
 import { Music2 } from 'lucide-react';
+import { FlowSheet } from './FlowSheet';
 
 const YELLOW = '#ffe500';
 
@@ -122,11 +123,13 @@ const MarqueeName = ({ text, size }: { text: string; size: number }) => {
   );
 };
 
-export const FlowHero = ({ cur, last, playing, liked, onStart, onToggle, onLike, onOpenPlayer, onOpenWave }: {
+export const FlowHero = ({ cur, last, playing, liked, tracks, favorites, onPlayPool, onStart, onToggle, onLike, onOpenPlayer, onOpenWave }: {
   cur: Track | null;          // трек в плеере (играет или на паузе)
   last: Track | null;         // недослушанный трек прошлого раза, когда плеер пуст
   playing: boolean;
   liked: boolean;
+  tracks: Track[]; favorites: string[];            // каталог и избранное — для окошка «Мои любимые»
+  onPlayPool: (t: Track, pool: Track[]) => void;   // включить трек из подборки
   onStart: () => void;        // запустить поток
   onToggle: () => void;       // пуск/пауза текущего (или запуск недослушанного)
   onLike: () => void;
@@ -141,6 +144,7 @@ export const FlowHero = ({ cur, last, playing, liked, onStart, onToggle, onLike,
   const open = () => (t ? onOpenPlayer() : onOpenWave());
   const stop = (fn: () => void) => (e: React.SyntheticEvent) => { e.stopPropagation(); fn(); };
   const PANEL = 64;
+  const [sheet, setSheet] = useState(false);
 
   return (
     <div className="relative" style={{ height: 340 }}>
@@ -157,9 +161,9 @@ export const FlowHero = ({ cur, last, playing, liked, onStart, onToggle, onLike,
         {/* Шапка: значок · «Мои любимые» (пока играет песня) · «Мой поток». */}
         <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-3.5" style={{ zIndex: 6 }}>
           <Sparkles size={20} color="rgba(255,255,255,0.9)" />
-          <span className="rounded-full px-4 py-1.5 text-[13px] font-extrabold" style={{ background: 'rgba(60,0,30,0.45)', color: YELLOW, backdropFilter: 'blur(10px)' }}>
+          <button type="button" onClick={stop(() => setSheet(true))} aria-haspopup="dialog" className="rounded-full px-4 py-1.5 text-[13px] font-extrabold" style={{ background: 'rgba(60,0,30,0.45)', color: YELLOW, backdropFilter: 'blur(10px)' }}>
             {isPlaying ? 'Мои любимые' : 'Моя волна'}
-          </span>
+          </button>
           {t ? (
             <button type="button" onClick={stop(onOpenWave)} className="rounded-full px-3 py-1 text-[11px] font-bold" style={{ background: 'rgba(255,255,255,0.16)', color: '#fff', backdropFilter: 'blur(10px)' }}>Мой поток</button>
           ) : <span className="w-6" />}
@@ -211,6 +215,7 @@ export const FlowHero = ({ cur, last, playing, liked, onStart, onToggle, onLike,
             </div>
           </>
         )}
+        {sheet && <FlowSheet tracks={tracks} favorites={favorites} onPlay={onPlayPool} onClose={() => setSheet(false)} />}
       </div>
     </div>
   );
