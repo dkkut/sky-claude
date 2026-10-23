@@ -54,7 +54,8 @@ web() { [ "$WEB_DONE" = 1 ] && return 0; echo "==> Веб-часть (vite build
 build_apk() {
   local old; if old="$(unchanged apk)"; then echo "==> Android: исходники не менялись — беру готовый $old"; ok=$((ok+1)); return; fi
   need java || { skipped+=("apk: нет JDK 17 (apt install openjdk-17-jdk)"); return; }
-  [ -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ] || { skipped+=("apk: не задан ANDROID_HOME (Android SDK: platforms;android-34, build-tools)"); return; }
+  [ -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ] || { [ -d /opt/android-sdk ] && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk; }
+  [ -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ] || { skipped+=("apk: не задан ANDROID_HOME — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
   [ -d android ] || { skipped+=("apk: нет каталога android/"); return; }
   echo "==> Android"; web || { skipped+=("apk: сборка веб-части не прошла"); return; }
   npx cap sync android && ( cd android && ./gradlew --no-daemon --build-cache --console=plain -Dorg.gradle.jvmargs=-Xmx1536m -Dorg.gradle.workers.max=2 assembleRelease ) || { skipped+=("apk: сборка не прошла (см. вывод выше)"); return; }
@@ -65,9 +66,9 @@ build_apk() {
 }
 build_exe() {
   local old; if old="$(unchanged exe)"; then echo "==> Windows: исходники не менялись — беру готовый $old"; ok=$((ok+1)); return; fi
-  if [ "$(uname -s)" = Linux ] && ! need wine; then skipped+=("exe: на Linux нужен wine (apt install wine64) — или собирайте через GitHub Actions (build-windows.yml)"); return; fi
+  if [ "$(uname -s)" = Linux ] && ! need wine; then skipped+=("exe: на Linux нужен wine — выполните: sudo bash scripts/setup-build-tools.sh --wine (или GitHub Actions, build-windows.yml)"); return; fi
   echo "==> Windows"; web || { skipped+=("exe: сборка веб-части не прошла"); return; }
-  npx electron-builder --win nsis || { skipped+=("exe: сборка не прошла"); return; }
+  WINEDEBUG=-all ${XVFB:-$(command -v xvfb-run >/dev/null 2>&1 && echo 'xvfb-run -a')} npx electron-builder --win nsis || { skipped+=("exe: сборка не прошла"); return; }
   f="$(ls -t release/*.exe dist-electron/*.exe 2>/dev/null | head -1)"
   [ -n "$f" ] || { skipped+=("exe: установщик не найден (проверьте build.directories.output в package.json)"); return; }
   cp "$f" "$OUT/Sky-$VER-$STAMP.exe" && ok=$((ok+1)) && echo "   ✔ $OUT/Sky-$VER-$STAMP.exe" && stamp exe "$OUT/Sky-$VER-$STAMP.exe" && prune exe

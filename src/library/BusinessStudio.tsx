@@ -6,6 +6,7 @@
    дублировать их здесь незачем — Studio отсюда только заводит контент.
 ================================================================ */
 import { useState, useEffect } from 'react';
+import { BulkUploadPanel } from './BulkUpload';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload, Film, TrendingUp, DollarSign, BarChart3,
@@ -661,6 +662,7 @@ const UPLOAD_KIND_ICON: Record<UploadKind, LucideIcon> = {
 
 const UploadTab = ({ onDone }: { onDone: (kind: UploadKind) => void }) => {
   const [kind, setKind] = useState<UploadKind>('video');
+  const [bulk, setBulk] = useState(false);
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="shrink-0 grid grid-cols-5 gap-1.5 px-4 pt-3 pb-2">
@@ -675,12 +677,20 @@ const UploadTab = ({ onDone }: { onDone: (kind: UploadKind) => void }) => {
           );
         })}
       </div>
+      <div className="shrink-0 flex gap-2 px-4 pb-2" role="radiogroup" aria-label="Способ загрузки">
+        {([[false, 'Один файл'], [true, 'Несколько файлов']] as const).map(([b, l]) => (
+          <button key={l} type="button" role="radio" aria-checked={bulk === b} onClick={() => setBulk(b)}
+            className="flex-1 rounded-full py-2 text-xs font-bold"
+            style={{ background: bulk === b ? V.accent : V.bg2, color: bulk === b ? '#fff' : V.t2, border: `1px solid ${bulk === b ? V.accent : V.border}` }}>{l}</button>
+        ))}
+      </div>
       <div className="flex-1 min-h-0">
-        {kind === 'video' && <VideoUploadForm onDone={()=>onDone('video')}/>}
-        {kind === 'film' && <FilmUploadForm onDone={()=>onDone('film')}/>}
-        {kind === 'music' && <MusicUploadForm onDone={()=>onDone('music')}/>}
-        {kind === 'podcast' && <PodcastUploadForm onDone={()=>onDone('podcast')}/>}
-        {kind === 'book' && <BookUploadForm onDone={()=>onDone('book')}/>}
+        {bulk && <BulkUploadPanel key={kind} kind={kind} V={V} onDone={()=>onDone(kind)}/>}
+        {!bulk && kind === 'video' && <VideoUploadForm onDone={()=>onDone('video')}/>}
+        {!bulk && kind === 'film' && <FilmUploadForm onDone={()=>onDone('film')}/>}
+        {!bulk && kind === 'music' && <MusicUploadForm onDone={()=>onDone('music')}/>}
+        {!bulk && kind === 'podcast' && <PodcastUploadForm onDone={()=>onDone('podcast')}/>}
+        {!bulk && kind === 'book' && <BookUploadForm onDone={()=>onDone('book')}/>}
       </div>
     </div>
   );

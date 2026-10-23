@@ -145,13 +145,13 @@ const Sheet = ({ p, onClose }: { p: ContinueProps; onClose: () => void }) => {
   };
 
   const body = (
-    <div className="flex max-h-[85vh] flex-col gap-3 overflow-y-auto" style={{ color: 'var(--t1, #fff)' }}>
+    <div className="flex max-h-[85vh] flex-col gap-3 overflow-y-auto" style={{ color: '#fff', ['--t1' as string]: '#fff', ['--t2' as string]: 'rgba(255,255,255,.78)', ['--t3' as string]: 'rgba(255,255,255,.58)', ['--bg-l2' as string]: 'rgba(255,255,255,.07)', ['--border' as string]: 'rgba(255,255,255,.12)' }}>
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="font-bold" style={{ fontSize: big ? 30 : 17 }}>Продолжить на другом устройстве</div>
           <div className="truncate" style={{ fontSize: sm, color: 'var(--t3, rgba(255,255,255,.6))' }}><span translate="no">{p.title}</span> · <span>{KIND_LABEL[p.kind]}</span> · <Place kind={p.kind} position={p.read().position} extra={p.read().extra} /></div>
         </div>
-        <Row variant={v} id="ho-close" onEnter={close}>{(f) => <div className="grid place-items-center rounded-full" style={{ width: big ? 64 : 36, height: big ? 64 : 36, background: f ? '#8b7cff' : 'rgba(255,255,255,.1)' }} aria-label="Закрыть"><X size={big ? 30 : 18} /></div>}</Row>
+        <div className="shrink-0"><Row variant={v} id="ho-close" onEnter={close}>{(f) => <div className="grid place-items-center rounded-full" style={{ width: big ? 64 : 36, height: big ? 64 : 36, background: f ? '#8b7cff' : 'rgba(255,255,255,.1)' }} aria-label="Закрыть"><X size={big ? 30 : 18} /></div>}</Row></div>
       </div>
 
       {step.s === 'list' && (<>

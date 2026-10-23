@@ -2038,17 +2038,17 @@ export const SkyFullPlayer = ({
       }}/>
 
       {/* ── Top bar ──────────────────────────────────────────── */}
-      <div className="relative z-10 flex items-center justify-between px-6 pb-3 shrink-0"
+      <div className="relative z-10 flex items-center justify-between gap-2 px-4 pb-3 shrink-0 sm:px-6"
         style={{ paddingTop: 'calc(var(--safe-top) + 14px)' }}>
         <button type="button" onClick={onClose}
-          className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors hover:bg-white/10"
+          className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-bold transition-colors hover:bg-white/10"
           style={{ background:'rgba(255,255,255,0.07)', color:'rgba(255,255,255,0.65)', border:'1px solid rgba(255,255,255,0.1)', cursor:'pointer' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           Назад
         </button>
-        <div className="flex gap-2">
+        <div className="flex min-w-0 gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           <button type="button" onClick={() => setBare(!bare)} aria-pressed={bare}
-            className="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors"
+            className="shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors"
             style={{
               background: bare ? `${hslA(hslAcc(h),'22')}` : 'rgba(255,255,255,0.06)',
               color: bare ? hslAcc(h) : 'rgba(255,255,255,0.5)',
@@ -2058,7 +2058,7 @@ export const SkyFullPlayer = ({
           {!bare && <>
           <button type="button"
             onClick={() => { setShowLyrics(v=>!v); setShowQueue(false); }}
-            className="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors"
+            className="shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors"
             style={{
               background: showLyrics&&!showQueue ? `${hslA(hslAcc(h),'22')}` : 'rgba(255,255,255,0.06)',
               color: showLyrics&&!showQueue ? hslAcc(h) : 'rgba(255,255,255,0.5)',
@@ -2067,7 +2067,7 @@ export const SkyFullPlayer = ({
             }}>Текст</button>
           <button type="button"
             onClick={() => { setShowQueue(v=>!v); setShowLyrics(false); }}
-            className="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors"
+            className="shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors"
             style={{
               background: showQueue ? `${hslA(hslAcc(h),'22')}` : 'rgba(255,255,255,0.06)',
               color: showQueue ? hslAcc(h) : 'rgba(255,255,255,0.5)',
@@ -2447,7 +2447,7 @@ export const SkyFullPlayer = ({
                           onClick={()=>{ if (lyricsTimed) onSeek(line.t); }}
                           style={{padding:isActive?'6px 0':'2px 0',cursor:lyricsTimed?'pointer':'default'}}>
                           <p style={{
-                            fontSize: isActive ? 28 : 20,
+                            fontSize: isMobile ? (isActive ? 21 : 16) : (isActive ? 28 : 20),
                             fontWeight: isActive ? 800 : isPast ? 500 : 400,
                             color: isActive ? 'white' : !lyricsTimed ? 'rgba(255,255,255,0.85)' : isPast ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.5)',
                             lineHeight:1.3, margin:0,

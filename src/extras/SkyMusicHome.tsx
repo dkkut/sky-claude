@@ -69,7 +69,7 @@ const WaveSheet = ({ pool, c1, c2, playing, activeId, onPlay, onClose }: {
 }) => (
   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
     className="absolute inset-0 z-40 flex flex-col" style={{ background: 'var(--bg)' }}>
-    <div className="relative shrink-0 overflow-hidden" style={{ height: 208 }}>
+    <div className="relative shrink-0 overflow-hidden" data-keep-dark="" style={{ height: 208 }}>
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <SkySphere color1={c1} color2={c2} active={playing}/>
       </div>
