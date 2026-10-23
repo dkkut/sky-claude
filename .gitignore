@@ -56,7 +56,9 @@ release/
 
 # Сигнал аварийного выключения (server/breach.mjs) — создаётся на
 # сервере docker-compose-биндом, в репозитории ему делать нечего.
-/control/
+/control/*
+!/control/sky-control.mjs
+!/control/totp.mjs
 secrets/
 docker-compose.secrets.local
 
