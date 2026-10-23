@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Gem, X, Settings, Check } from 'lucide-react';
+import { Gem, X, Settings, Check, Eye, EyeOff } from 'lucide-react';
+import { apiCall } from '@/core/auth/api';
 import { useNftGiftsStore } from '@/gifts/nftStore';
 import { GiftBackground } from '@/gifts/backgrounds';
 import { GiftCard } from '@/gifts/GiftCard';
@@ -15,13 +16,13 @@ const EMPTY: ShowcaseRemote = { background: 'galaxy', layout: 'grid', descriptio
 /** Витрина коллекционера в профиле: красивая карточка с закреплёнными подарками; своя настраивается, чужая видна по правилам приватности. */
 export const ShowcaseSection = ({ data }: { data: ProfileData }) => {
   const allGifts = useNftGiftsStore(s => s.gifts);
-  const [state, setState] = useState<{ hidden: boolean; items: string[]; config: ShowcaseRemote } | null>(null);
+  const [state, setState] = useState<{ hidden: boolean; items: string[]; hiddenIds: string[]; config: ShowcaseRemote } | null>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
 
   const load = useCallback(async () => {
     const r = await apiNftShowcase(data.userId);
-    if (r) setState({ hidden: r.hidden, items: r.items.map(i => i.nftId), config: { ...EMPTY, ...r.config } });
+    if (r) setState({ hidden: r.hidden, items: r.items.map(i => i.nftId), hiddenIds: (r.items as { nftId: string; hiddenInProfile?: boolean }[]).filter(i => i.hiddenInProfile).map(i => i.nftId), config: { ...EMPTY, ...r.config } });
   }, [data.userId]);
   useEffect(() => { void load(); }, [load]);
 
@@ -33,6 +34,12 @@ export const ShowcaseSection = ({ data }: { data: ProfileData }) => {
   const pinned = config.pinned.length ? config.pinned.map(id => byId.get(id)).filter((g): g is Gift => Boolean(g)) : owned.slice(0, 6);
   const top = pinned[0];
 
+  const toggleHidden = async (id: string) => {
+    const was = state.hiddenIds.includes(id);
+    const r = await apiCall(`/api/gifts/nft/${encodeURIComponent(id)}/hidden`, { method: 'PUT', body: JSON.stringify({ hidden: !was }) });
+    if (!r.ok) return flash('Не удалось изменить видимость подарка');
+    setState({ ...state, hiddenIds: was ? state.hiddenIds.filter(x => x !== id) : [...state.hiddenIds, id] });
+  };
   const save = async (patch: Partial<ShowcaseRemote>) => {
     const prev = state;
     setState({ ...state, config: { ...config, ...patch } });
@@ -119,7 +126,14 @@ export const ShowcaseSection = ({ data }: { data: ProfileData }) => {
                   <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 1fr))' }}>
                     {owned.map(g => (
                       <div key={g.id} className="flex flex-col items-center gap-1.5">
-                        <GiftCard gift={g} size="sm" showFavorite={false} />
+                        <div className="relative" style={{ opacity: state.hiddenIds.includes(g.id) ? 0.5 : 1 }}>
+                          <GiftCard gift={g} size="sm" showFavorite={false} />
+                          {data.isOwn && (
+                            <button type="button" onClick={() => void toggleHidden(g.id)} aria-label={state.hiddenIds.includes(g.id) ? 'Показать в профиле' : 'Скрыть в профиле'}
+                              className="absolute right-1 top-1 grid h-7 w-7 place-items-center rounded-full" style={{ background: 'rgba(0,0,0,0.55)' }}>
+                              {state.hiddenIds.includes(g.id) ? <EyeOff size={13} color="#fff" /> : <Eye size={13} color="#86efac" />}
+                            </button>)}
+                        </div>
                         <span className="text-[10px] font-bold" style={{ color: RARITY_CONFIG[g.rarity].color }}>{`№${g.edition} из ${g.totalEdition}`}</span>
                       </div>
                     ))}

@@ -155,14 +155,26 @@ const allows = async (ownerId, otherId, setting, { keepOngoing }) => {
   return isContact(ownerId, otherId);
 };
 
+/** Исключение владельца для человека: 'allow' | 'deny' | null. Решает сервер. */
+export const SCOPES = ['write', 'call', 'online', 'gifts', 'music'];
+export const exceptionOf = async (ownerId, otherId, scope) => {
+  if (!ownerId || !otherId || ownerId === otherId) return null;
+  const { rows } = await query('SELECT mode FROM privacy_exceptions WHERE owner_id=$1 AND other_id=$2 AND scope=$3', [ownerId, otherId, scope]);
+  return rows[0]?.mode ?? null;
+};
+
 /** Может ли writer написать человеку owner в личной переписке. */
 export const mayWriteTo = async (ownerId, writerId) => {
+  const exc = await exceptionOf(ownerId, writerId, 'write');
+  if (exc) return exc === 'allow';
   const { rows } = await query('SELECT who_can_write FROM profiles WHERE id = $1', [ownerId]);
   return allows(ownerId, writerId, rows[0]?.who_can_write ?? 'all', { keepOngoing: true });
 };
 
 /** Может ли caller позвонить человеку owner. */
 export const mayCall = async (ownerId, callerId) => {
+  const exc = await exceptionOf(ownerId, callerId, 'call');
+  if (exc) return exc === 'allow';
   const { rows } = await query('SELECT who_can_call FROM profiles WHERE id = $1', [ownerId]);
   return allows(ownerId, callerId, rows[0]?.who_can_call ?? 'all', { keepOngoing: false });
 };
@@ -173,7 +185,7 @@ export const mayCall = async (ownerId, callerId) => {
  * Один запрос на всех: спрашивать про каждого отдельно означало бы
  * запрос на человека при каждом подключении.
  */
-export const presenceVisibleTo = async (ownerId, candidates) => {
+const presenceVisibleToBase = async (ownerId, candidates) => {
   if (candidates.length === 0) return [];
   const { rows } = await query('SELECT who_sees_online FROM profiles WHERE id = $1', [ownerId]);
   const setting = rows[0]?.who_sees_online ?? 'all';
@@ -196,11 +208,21 @@ export const presenceVisibleTo = async (ownerId, candidates) => {
   return candidates.filter((id) => contacts.has(id));
 };
 
+export const presenceVisibleTo = async (ownerId, candidates) => {
+  const base = await presenceVisibleToBase(ownerId, candidates);
+  if (candidates.length === 0) return base;
+  const { rows } = await query(`SELECT other_id, mode FROM privacy_exceptions WHERE owner_id=$1 AND scope='online' AND other_id = ANY($2::text[])`, [ownerId, candidates]);
+  if (!rows.length) return base;
+  const out = new Set(base);
+  for (const r of rows) { if (r.mode === 'deny') out.delete(r.other_id); else out.add(r.other_id); }
+  return candidates.filter((id) => out.has(id));
+};
+
 /**
  * Кого из перечисленных видит owner как «в сети» — то есть чьи
  * настройки его пропускают. Обратная сторона presenceVisibleTo.
  */
-export const presenceVisibleFrom = async (viewerId, others) => {
+const presenceVisibleFromBase = async (viewerId, others) => {
   if (others.length === 0) return [];
   const { rows } = await query(
     `SELECT id, who_sees_online FROM profiles WHERE id = ANY($1::text[])`,
@@ -228,6 +250,16 @@ export const presenceVisibleFrom = async (viewerId, others) => {
     [needContact, viewerId],
   );
   return [...open, ...ok.map((r) => r.owner)];
+};
+
+export const presenceVisibleFrom = async (viewerId, others) => {
+  const base = await presenceVisibleFromBase(viewerId, others);
+  if (others.length === 0) return base;
+  const { rows } = await query(`SELECT owner_id, mode FROM privacy_exceptions WHERE other_id=$1 AND scope='online' AND owner_id = ANY($2::text[])`, [viewerId, others]);
+  if (!rows.length) return base;
+  const out = new Set(base);
+  for (const r of rows) { if (r.mode === 'deny') out.delete(r.owner_id); else out.add(r.owner_id); }
+  return others.filter((id) => out.has(id));
 };
 
 /**

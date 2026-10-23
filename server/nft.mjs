@@ -14,7 +14,7 @@
  */
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
-import { getPrivacy } from './privacy.mjs';
+import { getPrivacy, exceptionOf } from './privacy.mjs';
 import { isKnownNftId, genesisOwner, MINT_ID, mintPrice } from './nftgenesis.mjs';
 import { wallet } from './wallet.mjs';
 import { notifyGift } from './giftnotify.mjs';
@@ -83,21 +83,30 @@ export const ownersOf = async (nftIds) => {
  * демонстрационный аккаунт, либо ещё никем не заявлен, и в профиль
  * реального человека он не попадёт, пока подарок ему не подарят.
  */
-export const ownedByProfile = async (profileId) => {
+export const ownedByProfile = async (profileId, { forOwner = true } = {}) => {
   const { rows } = await query(
-    `SELECT nft_id, updated_at FROM nft_ownership WHERE owner_id = $1 ORDER BY updated_at DESC`,
+    `SELECT nft_id, updated_at, hidden_in_profile FROM nft_ownership WHERE owner_id = $1 ${forOwner ? '' : 'AND NOT hidden_in_profile'} ORDER BY updated_at DESC`,
     [profileId],
   );
-  return rows.map((r) => ({ nftId: r.nft_id, since: r.updated_at.toISOString() }));
+  return rows.map((r) => ({ nftId: r.nft_id, since: r.updated_at.toISOString(), hiddenInProfile: r.hidden_in_profile === true }));
 };
 
 /** То же самое, но с проверкой видимости (используется для чужого профиля). */
 export const publicOwnedBy = async (viewerId, targetId) => {
   if (viewerId !== targetId) {
+    const exc = await exceptionOf(targetId, viewerId, 'gifts');
+    if (exc === 'deny') return { hidden: true, items: [] };
     const priv = await getPrivacy(targetId);
-    if (priv.profileVisibility?.showGifts === false) return { hidden: true, items: [] };
+    if (exc !== 'allow' && priv.profileVisibility?.showGifts === false) return { hidden: true, items: [] };
+    return { hidden: false, items: await ownedByProfile(targetId, { forOwner: false }) };
   }
   return { hidden: false, items: await ownedByProfile(targetId) };
+};
+
+/** Скрыть/показать отдельный NFT-подарок в профиле (только владелец подарка). */
+export const setNftHidden = async (profileId, nftId, hidden) => {
+  const r = await query('UPDATE nft_ownership SET hidden_in_profile = $3 WHERE nft_id = $1 AND owner_id = $2 RETURNING nft_id', [String(nftId ?? ''), profileId, hidden === true]);
+  return r.rows[0] ? { ok: true } : { error: 'not_found' };
 };
 
 /** Полная неизменяемая история подарка, от рождения до сегодня. */

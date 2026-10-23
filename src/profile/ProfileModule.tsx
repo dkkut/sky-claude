@@ -1,3 +1,4 @@
+import { PrivacyExceptions } from './PrivacyExceptions';
 import { APP_VERSION_LABEL } from '../core/version';
 import { fitImageToDataUrl } from '../shared/imageFit';
 import { OwnerNotifySettings } from './OwnerNotifySettings';
@@ -1518,6 +1519,7 @@ export const ProfileModule = () => {
                 ))}
               </div>
             </div>
+            <PrivacyExceptions />
           </div>
         )}
 

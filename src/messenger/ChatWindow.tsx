@@ -19,7 +19,7 @@ import { ContentWarningGate, BlockedChannelBadge } from '@/shared/ContentWarning
 import { useMessengerStore } from './store';
 import { useCallStore }      from '@/calls/store';
 import { useAuthStore }      from '@/core/auth/store';
-import { MessageItem, MessageKind } from './types';
+import { MessageItem, MessageKind, ChatItem } from './types';
 import { broadcast }         from './socket';
 import { safeMediaUrl }      from './safeUrl';
 import { useAttachment }     from './mediaCache';
@@ -922,6 +922,31 @@ const ReportModal = ({ chatId, onClose }: { chatId: string; onClose: () => void 
 /* ===================================================================
    ChatWindow  -  main component
 =================================================================== */
+const FWD_KEY = 'sky:fwd:hideName';
+/** Куда переслать сообщение и подписывать ли, от кого оно (запоминается на устройстве). */
+const ForwardSheet = ({ chats, onClose, onSend }: { chats: ChatItem[]; onClose: () => void; onSend: (chatId: string, hideName: boolean) => void }) => {
+  const [hide, setHide] = useState(() => { try { return localStorage.getItem(FWD_KEY) === '1'; } catch { return false; } });
+  const [q, setQ] = useState('');
+  const list = chats.filter(c => !c.archived && c.name.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 60);
+  const toggle = (v: boolean) => { setHide(v); try { localStorage.setItem(FWD_KEY, v ? '1' : '0'); } catch { /* без хранилища — выбор только на этот раз */ } };
+  return createPortal(
+    <div className="fixed inset-0 z-[10050] flex items-end justify-center sm:items-center" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={onClose}>
+      <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl p-4 sm:rounded-3xl" style={{ background: 'var(--bg-l1)', paddingBottom: 'calc(var(--safe-bottom, 0px) + 16px)' }} onClick={e => e.stopPropagation()}>
+        <p className="mb-2 text-base font-black" style={{ color: 'var(--t1)' }}>Переслать</p>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск чата" className="mb-2 w-full rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'var(--bg-l3)', color: 'var(--t1)', border: '1px solid var(--border)' }} translate="no" />
+        <label className="mb-2 flex items-center gap-2 text-[13px]" style={{ color: 'var(--t1)' }}>
+          <input type="checkbox" checked={hide} onChange={e => toggle(e.target.checked)} />Скрыть имя автора
+        </label>
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+          {list.map(c => (
+            <button key={c.id} type="button" onClick={() => onSend(c.id, hide)} className="block w-full truncate rounded-xl px-3 py-2.5 text-left text-sm" style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }} translate="no">{c.name}</button>))}
+          {!list.length && <p className="py-4 text-center text-xs" style={{ color: 'var(--t3)' }}>Чатов не найдено</p>}
+        </div>
+        <button type="button" onClick={onClose} className="mt-3 rounded-xl py-2.5 text-sm font-bold" style={{ background: 'var(--bg-l3)', color: 'var(--t2)' }}>Отмена</button>
+      </div>
+    </div>, document.body);
+};
+
 export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const isMobile = useIsMobile();
   const {
@@ -960,6 +985,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const [showInfo,   setShowInfo]   = useState(false);
   const [menuOpen,   setMenuOpen]   = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [fwdMsg, setFwdMsg] = useState<MessageItem | null>(null);
   const [showEmoji,  setShowEmoji]  = useState(false);
   const [showPets,   setShowPets]   = useState(false);
   const [showStickers, setShowStickers] = useState(false);
@@ -2067,7 +2093,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 onDelete={() => requestDelete({ id: `msg:${msg.id}`, title: '', noun: 'сообщение', confirmed: true, run: async () => { deleteMessage(msg.id); broadcast.delete(msg.id); } })}
                 onPin={() => pinMessage(msg.id)}
                 onFavorite={() => toggleFavoriteMessage(msg.id)}
-                onForward={() => { const m = forward(msg.id); if (m) broadcast.message(m); }}
+                onForward={() => setFwdMsg(msg)}
                 onReact={e => { react(msg.id, e); broadcast.react(msg.id, e, myId); }}
                 onReport={() => setShowReport(true)}
                 onPickSuggestion={t => { setDraft(t); draftRef.current=t; taRef.current?.focus(); }}
@@ -2583,6 +2609,14 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
       {/* Modals */}
       <AnimatePresence>
         {showReport && <ReportModal chatId={activeChatId} onClose={() => setShowReport(false)} />}
+        {fwdMsg && (
+          <ForwardSheet chats={chats} onClose={() => setFwdMsg(null)}
+            onSend={(chatId, hideName) => {
+              const authorName = fwdMsg.fromMe ? (accounts.find(a => a.id === currentUserId)?.name ?? '') : nameOf(fwdMsg.authorId);
+              const m = forward(fwdMsg.id, { chatId, hideName, authorName });
+              if (m) broadcast.message(m);
+              setFwdMsg(null);
+            }} />)}
       </AnimatePresence>
     {/* Active msg options badge */}
     {(msgOptions.once||msgOptions.spoiler||msgOptions.silent||msgOptions.selfDestruct>0) && (

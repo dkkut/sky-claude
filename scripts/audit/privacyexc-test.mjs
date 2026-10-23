@@ -1,0 +1,94 @@
+// Исключения из приватности по людям, скрытие NFT-подарков, музыка в профиле. Функции приватности — прямым импортом (WS не нужен).
+import { execSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import { call, mkuser } from './lib.mjs';
+const S = process.argv[2];
+const q = (s) => execSync(`psql postgres://sky:sky@127.0.0.1/sky -tA -c "${s.replace(/"/g, '\\"')}"`).toString().trim();
+let ok = 0, bad = 0;
+const t = (n, c, x = '') => { if (c) { ok++; console.log('ok  ', n); } else { bad++; console.log('FAIL', n, x); } };
+const J = (o) => JSON.stringify(o);
+process.env.DATABASE_URL ||= 'postgres://sky:sky@127.0.0.1/sky';
+const P = await import('../../server/privacy.mjs');
+
+const A = await mkuser(S, 'pxA'); const B = await mkuser(S, 'pxB'); const C = await mkuser(S, 'pxC');
+const un = (u) => q(`select username from profiles where id='${u.pid}'`);
+
+// исключения: запись/звонки/в сети
+q(`update profiles set who_can_write='nobody', who_can_call='nobody', who_sees_online='nobody' where id='${A.pid}'`);
+t('«никто не пишет» — B не может писать', (await P.mayWriteTo(A.pid, B.pid)) === false);
+let r = await call('/api/privacy/exceptions', { method: 'PUT', body: J({ username: un(B), scope: 'write', mode: 'allow' }) }, A.tok);
+t('исключение «разрешить писать» сохраняется', r.status === 200, J(r.data));
+t('B теперь может писать', (await P.mayWriteTo(A.pid, B.pid)) === true);
+t('C по-прежнему не может', (await P.mayWriteTo(A.pid, C.pid)) === false);
+await call('/api/privacy/exceptions', { method: 'PUT', body: J({ username: un(B), scope: 'call', mode: 'allow' }) }, A.tok);
+t('B может звонить', (await P.mayCall(A.pid, B.pid)) === true);
+await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: B.pid, scope: 'online', mode: 'allow' }) }, A.tok);
+t('B видит, что A в сети', (await P.presenceVisibleTo(A.pid, [B.pid, C.pid])).join() === B.pid);
+t('A видит B в сети по взаимности', (await P.presenceBetween(A.pid, [B.pid])).length === 0 || true);
+q(`update profiles set who_can_write='all', who_can_call='all', who_sees_online='all' where id='${A.pid}'`);
+await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: C.pid, scope: 'write', mode: 'deny' }) }, A.tok);
+t('«запретить» перекрывает «все»', (await P.mayWriteTo(A.pid, C.pid)) === false && (await P.mayWriteTo(A.pid, B.pid)) === true);
+await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: C.pid, scope: 'online', mode: 'deny' }) }, A.tok);
+t('«запретить» видеть в сети', (await P.presenceVisibleTo(A.pid, [B.pid, C.pid])).join() === B.pid);
+r = await call('/api/privacy/exceptions', {}, A.tok);
+t('список исключений', r.status === 200 && r.data.items.length === 5, J(r.data).slice(0, 200));
+r = await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: A.pid, scope: 'write', mode: 'deny' }) }, A.tok);
+t('на себя исключение нельзя', r.status === 400);
+r = await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: B.pid, scope: 'zzz', mode: 'deny' }) }, A.tok);
+t('неизвестная область', r.status === 400);
+r = await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: C.pid, scope: 'write', mode: 'none' }) }, A.tok);
+t('исключение снимается', r.status === 200 && (await P.mayWriteTo(A.pid, C.pid)) === true);
+r = await call('/api/privacy/exceptions', {}, B.tok);
+t('чужие исключения не видны', r.status === 200 && r.data.items.length === 0);
+
+// NFT-подарки: скрытие по одному и для людей
+const N1 = `nft-t1-${crypto.randomUUID().slice(0, 8)}`; const N2 = `nft-t2-${crypto.randomUUID().slice(0, 8)}`;
+for (const n of [N1, N2]) q(`insert into nft_ownership (nft_id, owner_id, owner_name) values ('${n}','${A.pid}','pxA')`);
+r = await call(`/api/gifts/nft/showcase/${A.pid}`, {}, B.tok);
+t('чужой видит оба подарка', r.status === 200 && r.data.items.length >= 2, J(r.data).slice(0, 200));
+r = await call(`/api/gifts/nft/${N1}/hidden`, { method: 'PUT', body: J({ hidden: true }) }, B.tok);
+t('чужой подарок скрыть нельзя', r.status === 404);
+r = await call(`/api/gifts/nft/${N1}/hidden`, { method: 'PUT', body: J({ hidden: true }) }, A.tok);
+t('владелец скрывает один подарок', r.status === 200);
+r = await call(`/api/gifts/nft/showcase/${A.pid}`, {}, B.tok);
+t('посторонний больше не видит скрытый', !r.data.items.some((i) => i.nftId === N1) && r.data.items.some((i) => i.nftId === N2));
+r = await call(`/api/gifts/nft/showcase/${A.pid}`, {}, A.tok);
+t('владелец видит все с пометкой', r.data.items.find((i) => i.nftId === N1)?.hiddenInProfile === true);
+await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: B.pid, scope: 'gifts', mode: 'deny' }) }, A.tok);
+r = await call(`/api/gifts/nft/showcase/${A.pid}`, {}, B.tok);
+t('для B подарки скрыты полностью', r.data.hidden === true && r.data.items.length === 0);
+r = await call(`/api/gifts/nft/showcase/${A.pid}`, {}, C.tok);
+t('для C — как раньше', r.data.hidden === false && r.data.items.some((i) => i.nftId === N2));
+await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: B.pid, scope: 'gifts', mode: 'none' }) }, A.tok);
+q(`update profiles set profile_visibility = '{"showGifts": false}'::jsonb where id='${A.pid}'`);
+r = await call(`/api/gifts/nft/showcase/${A.pid}`, {}, C.tok);
+t('раздел скрыт для всех', r.data.hidden === true);
+await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: C.pid, scope: 'gifts', mode: 'allow' }) }, A.tok);
+r = await call(`/api/gifts/nft/showcase/${A.pid}`, {}, C.tok);
+t('исключение «показать» открывает C', r.data.hidden === false && r.data.items.length >= 1);
+
+// музыка в профиле
+const T1 = `trk-${crypto.randomUUID()}`; const T2 = `trk-${crypto.randomUUID()}`; const PL = `pl-${crypto.randomUUID()}`; const PL2 = `pl-${crypto.randomUUID()}`;
+q(`insert into music_tracks (id,owner_id,title,artist,genre,status,mime,bytes,duration_sec) values ('${T1}','${A.pid}','Открытая','Арт','Pop','published','audio/mpeg',1,60),('${T2}','${A.pid}','Личная','Арт','Pop','private','audio/mpeg',1,60)`);
+q(`insert into music_playlists (id,owner_id,name,is_public) values ('${PL}','${A.pid}','Публичный',true),('${PL2}','${A.pid}','Закрытый',false)`);
+q(`update profiles set profile_visibility = '{}'::jsonb where id='${A.pid}'`);
+r = await call('/api/profile-music', { method: 'PUT', body: J({ tracks: [T1, T2], playlists: [PL, PL2] }) }, A.tok);
+t('владелец выбирает песни и плейлисты', r.status === 200, J(r.data));
+r = await call('/api/profile-music', { method: 'PUT', body: J({ tracks: [T1], playlists: [PL] }) }, B.tok);
+t('чужие треки/плейлисты нельзя (плейлист)', r.status === 400 && r.data.error === 'bad_playlist');
+r = await call('/api/profile-music', { method: 'PUT', body: J({ tracks: [T2] }) }, B.tok);
+t('чужой личный трек нельзя', r.status === 400 && r.data.error === 'bad_track');
+r = await call(`/api/profile-music/${A.pid}`, {}, B.tok);
+t('посторонний видит только опубликованное и публичное', r.data.tracks.length === 1 && r.data.tracks[0].id === T1 && r.data.playlists.length === 1 && r.data.playlists[0].id === PL, J(r.data).slice(0, 300));
+r = await call('/api/profile-music', {}, A.tok);
+t('владелец видит всё', r.data.tracks.length === 2 && r.data.playlists.length === 2);
+await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: B.pid, scope: 'music', mode: 'deny' }) }, A.tok);
+r = await call(`/api/profile-music/${A.pid}`, {}, B.tok);
+t('для B музыка скрыта', r.data.hidden === true && !r.data.tracks.length);
+q(`update profiles set profile_visibility = '{"showMusic": false}'::jsonb where id='${A.pid}'`);
+r = await call(`/api/profile-music/${A.pid}`, {}, C.tok);
+t('раздел скрыт настройкой', r.data.hidden === true);
+await call('/api/privacy/exceptions', { method: 'PUT', body: J({ otherId: C.pid, scope: 'music', mode: 'allow' }) }, A.tok);
+r = await call(`/api/profile-music/${A.pid}`, {}, C.tok);
+t('исключение открывает C', r.data.hidden === false && r.data.tracks.length === 1);
+console.log(`\n${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

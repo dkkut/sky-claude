@@ -9,6 +9,7 @@ import { ProfileHero } from './sections/ProfileHero';
 import { QuickActionsBar } from './sections/QuickActionsBar';
 import { ActivitySection } from './sections/ActivitySection';
 import { ShowcaseSection } from './sections/ShowcaseSection';
+import { MusicSection } from './sections/MusicSection';
 import { CollectionsSection } from './sections/CollectionsSection';
 import { SocialSection } from './sections/SocialSection';
 import { StatsSection } from './sections/StatsSection';
@@ -47,6 +48,7 @@ export const ProfileBody = ({ data }: { data: NonNullable<ReturnType<typeof useP
           <QuickActionsBar data={data} onEdit={() => setEditing(true)} />
           <ActivitySection data={data} />
           <ShowcaseSection data={data} />
+          <MusicSection data={data} />
           <CollectionsSection data={data} />
           <SocialSection data={data} />
           <StatsSection data={data} />

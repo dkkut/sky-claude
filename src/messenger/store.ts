@@ -85,7 +85,8 @@ interface S {
   restoreChat:   (chatId:string)=>void;
   addMember:     (chatId:string,userId:string)=>void;
   react:         (msgId:string,emoji:string)=>void;
-  forward:       (id:string)=>MessageItem|null;
+  /** Переслать сообщение в чат (по умолчанию — текущий). hideName — не подписывать, от кого оно. */
+  forward:       (id:string,opts?:{chatId?:string;hideName?:boolean;authorName?:string})=>MessageItem|null;
   markRead:      (chatId:string)=>void;
   /** «Пометить как новое» — решает сервер, чтобы пометка была на всех устройствах. */
   markUnread:    (chatId:string)=>void;
@@ -348,9 +349,16 @@ export const useMessengerStore = create<S>((set,get) => {
       })}));
     },
 
-    forward:id=>{
+    forward:(id,opts={})=>{
       const m=get().messages.find(m=>m.id===id); if(!m) return null;
-      return get().sendMessage({text:`↪ ${m.text}`,kind:m.kind,mediaUrl:m.mediaUrl,fileName:m.fileName});
+      const label=opts.hideName||!opts.authorName?'↪ ':`↪ Переслано от ${opts.authorName}\n`;
+      const prev=get().activeChatId, prevReply=get().replyToId;
+      // Пересылка идёт в выбранный чат, а ответ на другое сообщение к ней не липнет.
+      if(opts.chatId&&opts.chatId!==prev) set({activeChatId:opts.chatId});
+      set({replyToId:null});
+      const sent=get().sendMessage({text:`${label}${m.text}`,kind:m.kind,mediaUrl:m.mediaUrl,fileName:m.fileName});
+      set({activeChatId:prev,replyToId:prevReply});
+      return sent;
     },
 
     markRead:chatId=>{

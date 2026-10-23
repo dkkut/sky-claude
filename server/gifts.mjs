@@ -17,7 +17,7 @@
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { wallet } from './wallet.mjs';
-import { getPrivacy } from './privacy.mjs';
+import { getPrivacy, exceptionOf } from './privacy.mjs';
 import { saveMessage, createChat, directChatId, memberIds } from './chats.mjs';
 import { pushNewMessage } from './signal.mjs';
 import { notifyGift } from './giftnotify.mjs';
@@ -536,8 +536,10 @@ export const archivedSentGifts = async (userId) => {
 /** Публичная витрина подарков профиля — с той же приватностью, что и остальной профиль. */
 export const publicProfileGifts = async (viewerId, targetId) => {
   if (viewerId !== targetId) {
+    const exc = await exceptionOf(targetId, viewerId, 'gifts');
+    if (exc === 'deny') return { hidden: true, items: [] };
     const priv = await getPrivacy(targetId);
-    if (priv.profileVisibility?.showGifts === false) return { hidden: true, items: [] };
+    if (exc !== 'allow' && priv.profileVisibility?.showGifts === false) return { hidden: true, items: [] };
   }
   return { hidden: false, items: await profileGifts(targetId) };
 };
