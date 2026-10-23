@@ -147,7 +147,7 @@ export const apiTrack = async (id: string) => {
 
 export const apiPatchTrack = async (id: string, patch: {
   title?: string; artist?: string; album?: string; genre?: string;
-  lyrics?: string; status?: 'published' | 'private'; license?: string; licenseSource?: string;
+  lyrics?: string; status?: 'published' | 'private'; license?: string; licenseSource?: string; explicit?: boolean;
 }) => {
   const r = await apiCall<{ track: ServerTrack }>(`/api/music/track/${encodeURIComponent(id)}`,
     { method: 'PATCH', body: JSON.stringify(patch) });

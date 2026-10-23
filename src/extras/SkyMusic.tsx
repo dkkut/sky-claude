@@ -744,12 +744,16 @@ const UploadTab = ({ playing, activeId, onPlay }: {
 
   type Step = 'drop' | 'meta' | 'lyrics' | 'done' | 'batch';
   const [step,      setStep]      = useState<Step>('drop');
-  type BItem = { id: number; file: File; title: string; artist: string; dur: number; cover: Blob | null; state: 'wait' | 'up' | 'ok' | 'err'; err?: string };
+  type BItem = { id: number; file: File; title: string; artist: string; album: string; genre: string; year: string; explicit: boolean; lyrics: string; dur: number; cover: Blob | null; state: 'wait' | 'up' | 'ok' | 'err'; err?: string };
   const [batch, setBatch] = useState<BItem[]>([]);
   const [bAlbum, setBAlbum] = useState('');
   const [bArtist, setBArtist] = useState('');
   const [bGenre, setBGenre] = useState('');
   const [bBusy, setBBusy] = useState(false);
+  const [bOpen, setBOpen] = useState<number | null>(null);
+  const [bPublish, setBPublish] = useState(true);
+  const bAudio = useRef<HTMLAudioElement>(null);
+  const [bUrl, setBUrl] = useState<string | null>(null);
   const [dragging,  setDragging]  = useState(false);
   const [pFile,     setPFile]     = useState<File | null>(null);
   const [pUrl,      setPUrl]      = useState<string | null>(null);
@@ -804,23 +808,21 @@ const UploadTab = ({ playing, activeId, onPlay }: {
     if (files.length === 0) return;
     if (files.length === 1) { void processFile(files[0]); return; }
     const items: BItem[] = [];
-    let n = 0, common = '', commonArtist = '';
+    let n = 0;
     for (const f of files) {
       const url = URL.createObjectURL(f);
       const dur = await new Promise<number>(r => { const a = document.createElement('audio'); a.onloadedmetadata = () => r(a.duration); a.onerror = () => r(0); a.src = url; });
       URL.revokeObjectURL(url);
-      let title = '', artist = '', cover: Blob | null = null;
+      let title = '', artist = '', album = '', genre = '', year = '', cover: Blob | null = null;
       try {
         const c = (await parseBlob(f)).common;
-        title = c.title ?? ''; artist = c.artist ?? '';
-        if (!common && c.album) common = c.album;
-        if (!commonArtist && c.artist) commonArtist = c.artist;
+        title = c.title ?? ''; artist = c.artist ?? ''; album = c.album ?? ''; genre = c.genre?.[0] ?? ''; year = c.year ? String(c.year) : '';
         const pic = c.picture?.[0]; if (pic) cover = new Blob([pic.data], { type: pic.format });
       } catch { /* без тегов — берём из имени */ }
       if (!title) { const base = f.name.replace(/\.[^.]+$/, ''); const parts = base.split(/\s+-\s+/); title = parts.length > 1 ? parts.slice(1).join(' - ').trim() : base; if (!artist && parts.length > 1) artist = parts[0].trim(); }
-      items.push({ id: n++, file: f, title, artist, dur: Number.isFinite(dur) ? dur : 0, cover, state: 'wait' });
+      items.push({ id: n++, file: f, title, artist, album, genre, year, explicit: false, lyrics: '', dur: Number.isFinite(dur) ? dur : 0, cover, state: 'wait' });
     }
-    setBatch(items); setBAlbum(common); setBArtist(commonArtist); setBGenre(''); setUploadError(null); setStep('batch');
+    setBatch(items); setBAlbum(''); setBArtist(''); setBGenre(''); setBOpen(null); setUploadError(null); setStep('batch');
   };
   const patchItem = (id: number, patch: Partial<BItem>) => setBatch(b => b.map(x => x.id === id ? { ...x, ...patch } : x));
   const uploadBatch = async () => {
@@ -830,15 +832,35 @@ const UploadTab = ({ playing, activeId, onPlay }: {
       patchItem(it.id, { state: 'up', err: undefined });
       try {
         const res = await uploadTrack(it.file, {
-          title: it.title.trim(), artist: (bArtist.trim() || it.artist.trim() || (me?.name ?? 'Неизвестный')),
-          album: bAlbum.trim() || undefined, genre: bGenre || 'Другое', duration: it.dur,
+          title: it.title.trim(), artist: (it.artist.trim() || bArtist.trim() || (me?.name ?? 'Неизвестный')),
+          album: (it.album.trim() || bAlbum.trim()) || undefined, genre: it.genre || bGenre || 'Другое',
+          year: it.year.trim() || undefined, duration: it.dur,
         });
         if (!res.ok) { patchItem(it.id, { state: 'err', err: res.reason ?? 'Не получилось загрузить' }); continue; }
-        if (res.id && it.cover) await apiUploadCover(res.id, it.cover).catch(() => {});
+        if (res.id) {
+          if (it.cover) await apiUploadCover(res.id, it.cover).catch(() => {});
+          const lyr = it.lyrics.trim();
+          if (lyr || it.explicit) await apiPatchTrack(res.id, { ...(lyr ? { lyrics: lyr } : {}), ...(it.explicit ? { explicit: true } : {}) }).catch(() => {});
+          // Владелец сервиса публикует сразу, остальные уходят на проверку — решает сервер.
+          if (bPublish) await submitForReview(res.id).catch(() => {});
+        }
         patchItem(it.id, { state: 'ok' });
       } catch { patchItem(it.id, { state: 'err', err: 'Не получилось загрузить' }); }
     }
     setBBusy(false);
+  };
+  useEffect(() => {
+    const it = bOpen === null ? null : batch.find(x => x.id === bOpen);
+    if (!it) { setBUrl(null); return; }
+    const u = URL.createObjectURL(it.file); setBUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [bOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  const STAMP = /^\s*\[\d{1,3}:\d{2}(?:[.,]\d{1,3})?\]/;
+  const stampNext = (id: number) => {
+    const it = batch.find(x => x.id === id); const a = bAudio.current; if (!it || !a) return;
+    const lines = it.lyrics.split('\n'); const i = lines.findIndex(l => l.trim() && !STAMP.test(l)); if (i < 0) return;
+    const t = a.currentTime, mm = Math.floor(t / 60), ss = (t % 60).toFixed(2).padStart(5, '0');
+    lines[i] = `[${mm}:${ss}] ${lines[i].trim()}`; patchItem(id, { lyrics: lines.join('\n') });
   };
   const batchDone = batch.length > 0 && batch.every(x => x.state === 'ok');
 
@@ -1047,7 +1069,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
         <div className="mx-3 mt-3 space-y-3">
           <div className="rounded-2xl p-3 space-y-2" style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.18)' }}>
             <p className="text-sm font-black text-white">{`Треков в партии: ${batch.length}`}</p>
-            <p className="text-[11px]" style={{ color: YM.sub2 }}>Общие поля применяются ко всем трекам. Пусто — берётся из тегов файла.</p>
+            <p className="text-[11px]" style={{ color: YM.sub2 }}>Общие поля подставляются там, где у трека своё не задано. У каждого трека есть «Настройки»: данные, текст и метки.</p>
             <input value={bArtist} onChange={e => setBArtist(e.target.value)} placeholder="Исполнитель (для всех)" maxLength={200} disabled={bBusy}
               className="w-full rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'rgba(255,255,255,0.06)', color: YM.text, border: 'none' }}/>
             <input value={bAlbum} onChange={e => setBAlbum(e.target.value)} placeholder="Альбом (для всех)" maxLength={200} disabled={bBusy}
@@ -1058,21 +1080,58 @@ const UploadTab = ({ playing, activeId, onPlay }: {
             </select>
           </div>
           <div className="space-y-1.5">
-            {batch.map((it, i) => (
-              <div key={it.id} className="flex items-center gap-2 rounded-xl p-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
-                <span className="w-5 shrink-0 text-center text-[11px] font-bold" style={{ color: YM.sub2 }}>{i + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <input value={it.title} translate="no" onChange={e => patchItem(it.id, { title: e.target.value })} disabled={bBusy || it.state === 'ok'} maxLength={200} placeholder="Название"
-                    className="w-full bg-transparent text-sm font-semibold outline-none" style={{ color: YM.text }}/>
-                  <p className="truncate text-[10px]" translate="no" style={{ color: it.state === 'err' ? '#ef4444' : YM.sub2 }}>{it.err ?? it.file.name}</p>
+            {batch.map((it, i) => {
+              const open = bOpen === it.id; const inp = 'w-full rounded-lg px-2.5 py-1.5 text-xs outline-none';
+              const st = { background: 'rgba(255,255,255,0.06)', color: YM.text, border: 'none' } as const;
+              return (
+              <div key={it.id} className="rounded-xl p-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <div className="flex items-center gap-2">
+                  <span className="w-5 shrink-0 text-center text-[11px] font-bold" style={{ color: YM.sub2 }}>{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <input value={it.title} translate="no" onChange={e => patchItem(it.id, { title: e.target.value })} disabled={bBusy || it.state === 'ok'} maxLength={200} placeholder="Название"
+                      className="w-full bg-transparent text-sm font-semibold outline-none" style={{ color: YM.text }}/>
+                    <p className="truncate text-[10px]" translate="no" style={{ color: it.state === 'err' ? '#ef4444' : YM.sub2 }}>{it.err ?? it.file.name}</p>
+                  </div>
+                  {it.state !== 'ok' && it.state !== 'up' && (
+                    <button type="button" disabled={bBusy} onClick={() => setBOpen(open ? null : it.id)} className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold"
+                      style={{ background: open ? 'rgba(168,85,247,0.25)' : 'rgba(255,255,255,0.08)', color: YM.text, border: 'none' }}>{open ? 'Свернуть' : 'Настройки'}</button>
+                  )}
+                  <div className="shrink-0 w-6 grid place-items-center">
+                    {it.state === 'up' ? <Loader size={14} className="animate-spin" style={{ color: YM.accent }}/> : it.state === 'ok' ? <Check size={15} style={{ color: '#22c55e' }}/> :
+                      !bBusy ? <button type="button" aria-label="Убрать" onClick={() => { setBatch(b => b.filter(x => x.id !== it.id)); if (open) setBOpen(null); }}><X size={14} style={{ color: YM.sub2 }}/></button> : null}
+                  </div>
                 </div>
-                <div className="shrink-0 w-6 grid place-items-center">
-                  {it.state === 'up' ? <Loader size={14} className="animate-spin" style={{ color: YM.accent }}/> : it.state === 'ok' ? <Check size={15} style={{ color: '#22c55e' }}/> :
-                    !bBusy ? <button type="button" aria-label="Убрать" onClick={() => setBatch(b => b.filter(x => x.id !== it.id))}><X size={14} style={{ color: YM.sub2 }}/></button> : null}
-                </div>
+                {open && it.state !== 'ok' && (
+                  <div className="mt-2 space-y-1.5" translate="no">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input value={it.artist} onChange={e => patchItem(it.id, { artist: e.target.value })} placeholder="Исполнитель" maxLength={200} className={inp} style={st}/>
+                      <input value={it.album} onChange={e => patchItem(it.id, { album: e.target.value })} placeholder="Альбом" maxLength={200} className={inp} style={st}/>
+                      <select value={it.genre} onChange={e => patchItem(it.id, { genre: e.target.value })} className={inp} style={st}>
+                        <option value="">Жанр</option>{GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                      <input value={it.year} onChange={e => patchItem(it.id, { year: e.target.value.replace(/\D/g, '').slice(0, 4) })} placeholder="Год" inputMode="numeric" className={inp} style={st}/>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs" style={{ color: YM.sub }}>
+                      <input type="checkbox" checked={it.explicit} onChange={e => patchItem(it.id, { explicit: e.target.checked })}/>
+                      <span translate="yes">Есть ненормативная лексика (E)</span>
+                    </label>
+                    {bUrl && <audio ref={bAudio} src={bUrl} controls className="w-full h-9"/>}
+                    <textarea value={it.lyrics} onChange={e => patchItem(it.id, { lyrics: e.target.value })} rows={6} maxLength={20000}
+                      placeholder={'Текст песни. Строки с метками: [0:12.50] строка'} className={inp + ' resize-y'} style={{ ...st, lineHeight: 1.5 }}/>
+                    <div className="flex flex-wrap gap-1.5" translate="yes">
+                      <button type="button" onClick={() => stampNext(it.id)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: YM.accent, color: '#fff', border: 'none' }}>Поставить метку на следующую строку</button>
+                      <button type="button" onClick={() => patchItem(it.id, { lyrics: it.lyrics.split('\n').map(l => l.replace(STAMP, '').trimStart()).join('\n') })} className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: 'rgba(255,255,255,0.08)', color: YM.text, border: 'none' }}>Сбросить метки</button>
+                    </div>
+                    <p className="text-[10px]" style={{ color: YM.sub2 }} translate="yes">Включите трек, в нужный момент нажмите «Поставить метку» — она встанет перед первой строкой без метки. Без меток текст показывается целиком.</p>
+                  </div>
+                )}
               </div>
-            ))}
+            );})}
           </div>
+          <label className="flex items-center gap-2 text-xs" style={{ color: YM.sub }}>
+            <input type="checkbox" checked={bPublish} onChange={e => setBPublish(e.target.checked)} disabled={bBusy}/>
+            Сразу отправить в каталог (у владельца Sky публикуется без проверки, у остальных — на проверку)
+          </label>
           {uploadError && <p className="text-xs" style={{ color: '#ef4444' }}>{uploadError}</p>}
           <div className="flex gap-2">
             <button type="button" disabled={bBusy} onClick={() => { setBatch([]); setStep('drop'); }}

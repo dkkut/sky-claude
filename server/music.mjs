@@ -16,7 +16,7 @@ import { notifyStaff } from './staffnotify.mjs';
 import { retentionOf } from './storagequota.mjs';
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
-import { can } from './admin.mjs';
+import { can, isOwner } from './admin.mjs';
 import { checkPublish } from './uploadlimits.mjs';
 import { ensureCardForTrack } from './artistcards.mjs';
 import { sharedTrackInSession } from './watchgrant.mjs';
@@ -212,7 +212,7 @@ export const updateTrack = async (trackId, ownerId, patch) => {
     // проверку, а 'pending' и 'rejected' ставит она же.
     const s = String(patch.status);
     if (s === 'private') { put('status', s); put('submitted_at', null); }
-    else if (s === 'published' && await can(ownerId, 'content')) { put('status', s); }
+    else if (s === 'published' && (await can(ownerId, 'content') || await isOwner(ownerId))) { put('status', s); }
     else if (s === 'published') return { error: 'needs_review' };
     else return { error: 'invalid_status' };
   }
@@ -239,6 +239,16 @@ export const submitTrack = async (trackId, ownerId) => {
   if (row.owner_id !== ownerId) return { error: 'not_allowed' };
   if (row.status === 'pending') return { error: 'already_pending' };
   if (row.status === 'published') return { error: 'already_published' };
+  // Владелец сервиса публикует без проверки: подтверждать некому, кроме него самого.
+  if (await isOwner(ownerId)) {
+    await query(
+      `UPDATE music_tracks
+          SET status = 'published', submitted_at = now(), reject_reason = NULL,
+              moderated_at = now(), moderated_by = $2, updated_at = now()
+        WHERE id = $1`, [trackId, ownerId]);
+    await ensureCardForTrack(trackId);
+    return { ok: true, status: 'published' };
+  }
   const lim = await checkPublish('music', row);
   if (lim.error) return lim;
 
