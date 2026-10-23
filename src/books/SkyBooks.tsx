@@ -1,6 +1,7 @@
 /* ===============================================================
    SKY BOOKS  -  Площадка книг и аудиокниг
 =============================================================== */
+import { takeStart, useHandoffStart } from '@/handoff/openContent';
 import { ExplicitBadge, LegacyChip, LabelsButton } from '@/labels/Labels';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -98,6 +99,12 @@ const BookDetail = ({ book, onBack, onShelfChanged }: {
     setShelf(next);
     onShelfChanged(next);
   };
+
+  /* «Продолжить на другом устройстве»: плеер открывается сам; место сервер уже записал, плеер берёт его при открытии. */
+  const handed = useHandoffStart((s) => s.start);
+  useEffect(() => {
+    if (handed && handed.kind === 'book' && handed.id === book.id && takeStart('book', book.id)) setPlaying(true);
+  }, [handed, book.id]);
 
   return (
     <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }}

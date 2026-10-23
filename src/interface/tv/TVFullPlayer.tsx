@@ -5,6 +5,7 @@ import { ChevronDown, Pause, Play, SkipBack, SkipForward, Rewind, FastForward, M
 import { usePlayerStore } from '@/player/playerStore';
 import { useFullNow } from '@/player/fullNowStore';
 import { TVFocusable } from './TVFocusable';
+import { MusicContinue } from '@/handoff/Slots';
 import { tvFocusManager } from './focusManager';
 
 const SCOPE = 'full-now';
@@ -55,7 +56,7 @@ export const TVFullPlayer = () => {
       <div className="flex items-center justify-between">
         <Btn id="full-close" label="Свернуть" size={72} onEnter={hide}>{() => <ChevronDown size={34} color="#fff" />}</Btn>
         <p className="text-[18px] font-bold uppercase tracking-[0.25em]" style={{ color: '#c4baff' }}>{playing ? 'Сейчас играет' : 'На паузе'}</p>
-        <span className="w-[72px]" />
+        <MusicContinue variant="tv" tvScope={SCOPE} label={false} />
       </div>
       <div className="flex min-h-0 flex-1 items-center gap-[70px]">
         <div className="aspect-square h-[min(52vh,520px)] shrink-0 overflow-hidden rounded-[40px]" style={{ background: item.coverUrl ? `center/cover no-repeat url(${item.coverUrl})` : 'linear-gradient(160deg,#4f2e8a,#101018)', boxShadow: '0 30px 90px rgba(0,0,0,0.65)' }}>

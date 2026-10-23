@@ -5,7 +5,7 @@ import * as H from './../handoff.mjs';
 const MULT = Math.max(1, Number(process.env.HANDOFF_RATE_MULT) || 1);
 const STATUS = {
   not_found: 404, unknown_device: 403, device_not_approved: 403, device_revoked: 403, recipient_not_trusted: 409, same_device: 400, other_profile: 409,
-  device_offline: 409, handoff_disabled: 403, expired: 410, bad_state: 409, bad_kind: 400, bad_item: 400, bad_idem: 400, no_device: 400,
+  device_offline: 409, unsupported_here: 409, handoff_disabled: 403, expired: 410, bad_state: 409, bad_kind: 400, bad_item: 400, bad_idem: 400, no_device: 400,
 };
 
 /**

@@ -329,6 +329,11 @@ const handle = (data: any) => {
     case 'transfer:device':
       window.dispatchEvent(new CustomEvent('sky:transfer', { detail: { type, payload } }));
       break;
+    /* Продолжить на другом устройстве: входящая передача и смена её состояния. */
+    case 'handoff:incoming':
+    case 'handoff:update':
+      window.dispatchEvent(new CustomEvent('sky:handoff', { detail: { type, payload } }));
+      break;
     case 'applock':
       authorized = false; wantOpen = false;
       window.dispatchEvent(new CustomEvent('sky:applock'));

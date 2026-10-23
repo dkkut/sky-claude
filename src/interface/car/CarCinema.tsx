@@ -4,6 +4,8 @@
    тронулся во время просмотра, картинка гаснет и видео ставится на паузу; можно продолжить слушать звук (как подкаст) или закрыть.
    Тот же поток и те же права, что и в остальном Sky Film / Sky Video: ничего не копируется, позиции просмотра идут на сервер.
 =========================================================== */
+import { ContinueOnDevice } from '@/handoff/ContinueButton';
+import { useHandoffStart } from '@/handoff/openContent';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Play, Pause, RotateCcw, RotateCw, Headphones, X, Film as FilmIcon } from 'lucide-react';
 import { useFilmStore } from '@/film/serverStore';
@@ -17,7 +19,7 @@ import { useDriveWatch } from './driveState';
 import { mayShowVideo } from './driveLogic';
 import { CarWarningGate, DriveBadge, LockedNote, UnknownBanner } from './CarWarning';
 
-type Playing = { kind: 'movie' | 'video'; id: string; title: string; start: number };
+type Playing = { kind: 'movie' | 'video'; id: string; title: string; start: number; exact?: boolean };
 
 const Tile = ({ title, sub, poster, onClick }: { title: string; sub?: string; poster?: string; onClick: () => void }) => (
   <button type="button" onClick={onClick} aria-label={title} className="flex w-full items-center gap-5 rounded-3xl px-4 text-left outline-none transition active:scale-[0.985] focus-visible:ring-4 focus-visible:ring-violet-300" style={{ minHeight: 104 }}>
@@ -64,7 +66,7 @@ export const CarVideoPlayer = ({ p, parked, unknown = false, onClose }: { p: Pla
       {unknown && <div className="absolute inset-x-0 top-0 z-30 p-3"><UnknownBanner /></div>}
       <div className="relative min-h-0 flex-1">
         <video ref={v} src={src} playsInline preload="metadata" className="h-full w-full object-contain" style={{ visibility: showPicture ? 'visible' : 'hidden' }}
-          onLoadedMetadata={() => { const el = v.current; if (el) { setDur(el.duration || 0); if (p.start > 30 && p.start < (el.duration || 1e9) - 60) el.currentTime = p.start; } }}
+          onLoadedMetadata={() => { const el = v.current; if (el) { setDur(el.duration || 0); if (p.start > (p.exact ? 3 : 30) && p.start < (el.duration || 1e9) - (p.exact ? 3 : 60)) el.currentTime = p.start; } }}
           onTimeUpdate={() => {
             const el = v.current; if (!el) return;
             setCur(el.currentTime); lastSave.current = el.currentTime;
@@ -87,6 +89,9 @@ export const CarVideoPlayer = ({ p, parked, unknown = false, onClose }: { p: Pla
         <button type="button" onClick={() => skip(-30)} aria-label="Назад на 30 секунд" className="grid h-[84px] w-[84px] place-items-center rounded-3xl" style={{ background: CAR_GLASS }}><RotateCcw size={34} color="#fff" /></button>
         <button type="button" onClick={toggle} aria-label={playing ? 'Пауза' : 'Играть'} disabled={!parked && !audioOnly} className="grid h-[104px] w-[104px] place-items-center rounded-full disabled:opacity-40" style={{ background: CAR_ACCENT }}>{playing ? <Pause size={46} color="#fff" fill="#fff" /> : <Play size={46} color="#fff" fill="#fff" />}</button>
         <button type="button" onClick={() => skip(30)} aria-label="Вперёд на 30 секунд" className="grid h-[84px] w-[84px] place-items-center rounded-3xl" style={{ background: CAR_GLASS }}><RotateCw size={34} color="#fff" /></button>
+        <ContinueOnDevice variant="car" kind={p.kind === 'movie' ? 'film' : 'video'} itemId={p.id} title={p.title} label={false} className="grid h-[84px] w-[84px] place-items-center rounded-3xl text-white" style={{ background: CAR_GLASS, minWidth: 84, minHeight: 84 }}
+          read={() => ({ position: v.current?.currentTime ?? cur, duration: v.current?.duration ?? dur })}
+          pause={() => { v.current?.pause(); setPlaying(false); }} resume={() => { void v.current?.play().then(() => setPlaying(true)).catch(() => setPlaying(false)); }} />
         <span className="ml-auto text-[24px] tabular-nums text-white/80" translate="no">{fmtTime(cur)} / {fmtTime(dur)}</span>
       </div>
     </div>
@@ -121,6 +126,13 @@ const Inner = () => {
   const [openSeries, setOpenSeries] = useState<ServerSeries | null>(null);
   const [now, setNow] = useState<Playing | null>(null);
 
+  /* Передача с другого устройства: открываем с точного места; движение автомобиля по-прежнему закрывает картинку (CarVideoPlayer). */
+  const handed = useHandoffStart((st) => st.carOpen);
+  useEffect(() => {
+    if (!handed || (handed.kind !== 'film' && handed.kind !== 'video') || Date.now() - handed.at > 60_000) return;
+    useHandoffStart.getState().setCar(null);
+    setNow({ kind: handed.kind === 'film' ? 'movie' : 'video', id: handed.id, title: handed.title, start: handed.position, exact: true });
+  }, [handed]);
   useEffect(() => { void loadFilm(); void loadVideo(); void apiSeriesCatalog().then((r) => r && setSeries(r)); }, [loadFilm, loadVideo]);
   const playMovie = useCallback((m: ServerMovie) => setNow({ kind: 'movie', id: m.id, title: m.title, start: m.position ?? 0 }), []);
   const resume = async (m: ServerMovie) => playMovie((await apiMovie(m.id)) ?? m);

@@ -12,6 +12,7 @@
  * главы (0..10000): столбик текста у всех разной ширины и кегля, а
  * доля прокрутки одна и та же что на телефоне, что на мониторе.
  */
+import { ContinueOnDevice, type ReadState } from '@/handoff/ContinueButton';
 import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -286,10 +287,19 @@ export const BookPlayer = ({ book, onClose }: { book: Book; onClose: () => void 
             {currentMeta ? `Глава ${currentMeta.number}${currentMeta.title ? ` · ${currentMeta.title}` : ''}` : '…'}
           </div>
         </div>
-        <button onClick={() => setShowList((v) => !v)} aria-label="Оглавление"
-          className="grid h-9 w-9 place-items-center rounded-full" style={{ background: showList ? C.purpleSoft : C.l1 }}>
-          <List size={17} style={{ color: showList ? C.purple : C.t2 }}/>
-        </button>
+        <div className="flex items-center gap-2">
+          <ContinueOnDevice kind="book" itemId={book.id} title={book.title} label={false} className="grid h-9 w-9 place-items-center rounded-full" style={{ background: C.l1, color: C.t2 }}
+            read={(): ReadState => {
+              if (mode === 'audio') return { position: audioRef.current?.currentTime ?? currentTime, duration: audioRef.current?.duration || 0, extra: { mode: 'audio', audioChapter: chapterNumber } };
+              const f = textRef.current ? scrollFrac(textRef.current) : 0;
+              return { position: f, duration: 10000, extra: { mode: 'text', textChapter: chapterNumber, textOffset: f } };
+            }}
+            pause={() => { audioRef.current?.pause(); setPlaying(false); }} resume={() => { void audioRef.current?.play().catch(() => {}); }} />
+          <button onClick={() => setShowList((v) => !v)} aria-label="Оглавление"
+            className="grid h-9 w-9 place-items-center rounded-full" style={{ background: showList ? C.purpleSoft : C.l1 }}>
+            <List size={17} style={{ color: showList ? C.purple : C.t2 }}/>
+          </button>
+        </div>
       </div>
 
       {/* Переключатель вида */}

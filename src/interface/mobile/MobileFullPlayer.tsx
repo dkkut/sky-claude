@@ -7,6 +7,7 @@ import { usePlayerStore } from '@/player/playerStore';
 import { BottomSheet } from './BottomSheet';
 import { haptic } from './haptics';
 import { VideoBackdrop } from '@/music/VideoBackdrop';
+import { MusicContinue } from '@/handoff/Slots';
 
 const fmtTime = (s: number) => {
   if (!isFinite(s) || s < 0) s = 0;
@@ -77,9 +78,12 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
               <ChevronDown size={18} className="text-white"/>
             </button>
             <p className="text-[11px] font-bold uppercase tracking-wide text-white/60">Сейчас играет</p>
-            <button type="button" onClick={() => setShowQueue(true)} className="grid h-9 w-9 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }}>
-              <ListMusic size={16} className="text-white"/>
-            </button>
+            <div className="flex items-center gap-2">
+              <MusicContinue label={false} className="grid h-9 w-9 place-items-center rounded-full text-white" style={{ background: 'rgba(255,255,255,0.1)' }} />
+              <button type="button" onClick={() => setShowQueue(true)} className="grid h-9 w-9 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                <ListMusic size={16} className="text-white"/>
+              </button>
+            </div>
           </div>
 
           {/* Текст песни — сверху и первым, чтобы помещался целиком, а не обрезался под маленький экран. */}

@@ -18,6 +18,8 @@
    чужого: проверка стоит в базе и в запросах сервера, а этот файл
    можно переписать в браузере сколько угодно.
 =========================================================== */
+import { ContinueOnDevice } from '@/handoff/ContinueButton';
+import { takeStart } from '@/handoff/openContent';
 import { requestDelete } from '@/island/deleteFlow';
 import { RetentionNote } from '@/shared/RetentionNote';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -297,6 +299,9 @@ export const Player = ({ movie, onClose, together = null, onNextEpisode }: {
        место в фильме общее, и его задаёт сессия. Иначе вошедший
        перематывал бы всех к тому, где был сам в прошлый раз. */
     if (together) return;
+    /* Передача с другого устройства («Продолжить на другом устройстве») задаёт место точно и важнее локального кэша. */
+    const handed = takeStart('film', movie.id);
+    if (handed && handed.position > 3 && (!v.duration || handed.position < v.duration - 3)) { v.currentTime = handed.position; setCur(handed.position); return; }
     const from = savedPos ?? movie.position ?? 0;
     // К самому концу не возвращаем: человек его уже видел.
     if (from > 30 && (!v.duration || from < v.duration - 60)) { v.currentTime = from; setCur(from); }
@@ -507,6 +512,11 @@ export const Player = ({ movie, onClose, together = null, onNextEpisode }: {
                 <p className="font-bold text-white truncate">{movie.title}<ExplicitBadge show={movie.explicit} /></p>
                 {movie.year && <p className="text-xs" style={{ color: K.sub }}>{movie.year} · {movie.genre}</p>}
               </div>
+              {!together && (
+                <ContinueOnDevice kind="film" itemId={movie.id} title={movie.title} label={false} className="grid h-10 w-10 place-items-center rounded-full text-white hover:bg-white/15" style={{ background: 'rgba(0,0,0,0.5)' }}
+                  read={() => ({ position: vRef.current?.currentTime ?? 0, duration: vRef.current?.duration ?? movie.duration ?? 0 })}
+                  pause={() => { vRef.current?.pause(); setPl(false); }} resume={() => { vRef.current?.play().then(() => setPl(true)).catch(() => setPl(false)); }} />
+              )}
               {/* «Только я» — про личную полку, поэтому подпись видит
                   её владелец. Тому, кому эту запись показывают в
                   сеансе, она сообщала бы неправду: для него фильм не

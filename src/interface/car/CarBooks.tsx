@@ -4,9 +4,11 @@
    автомобиль стоит (driveLogic.ts); едет или неизвестно — текст закрыт, предлагается слушать, если у главы есть озвучка.
    Тот же каталог, права и прогресс, что в Sky Books (`/api/books/*`, Prime).
 =========================================================== */
+import { ContinueOnDevice } from '@/handoff/ContinueButton';
+import { useHandoffStart } from '@/handoff/openContent';
 import { useEffect, useRef, useState } from 'react';
 import { BookOpen, ChevronLeft, Play, Pause, SkipBack, SkipForward, Headphones } from 'lucide-react';
-import { apiCatalog, apiChapters, apiChapter, apiProgress, apiSetProgress, apiNotePlayed, apiMediaTicket, chapterAudioUrl, bookCoverUrl, type Book, type ChapterMeta, type Chapter } from '@/books/booksApi';
+import { apiBook, apiCatalog, apiChapters, apiChapter, apiProgress, apiSetProgress, apiNotePlayed, apiMediaTicket, chapterAudioUrl, bookCoverUrl, type Book, type ChapterMeta, type Chapter } from '@/books/booksApi';
 import { useAuthStore } from '@/core/auth/store';
 import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 import { CAR_GLASS, CAR_GLASS_BORDER, CAR_BLUR, CAR_ACCENT, fmtTime } from './carTheme';
@@ -50,6 +52,11 @@ const CarAudioBook = ({ book, chapters, startChapter, startPos, onClose }: { boo
         onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
         onEnded={() => { lastSave.current = 0; if (idx < withAudio.length - 1) setIdx(idx + 1); else void apiSetProgress(book.id, { mode: 'audio', completed: true }); }}
         onError={() => { const el = a.current; if (el && !tried.current) { tried.current = true; void reloadWithFreshTicket(el, apiMediaTicket, () => src); } }} />
+      <div className="flex justify-center">
+        <ContinueOnDevice variant="car" kind="book" itemId={book.id} title={book.title} label={false} className="grid h-[84px] w-[84px] place-items-center rounded-3xl text-white" style={{ background: CAR_GLASS, minWidth: 84, minHeight: 84 }}
+          read={() => ({ position: a.current?.currentTime ?? cur, duration: a.current?.duration ?? dur, extra: { mode: 'audio', audioChapter: ch.number } })}
+          pause={() => a.current?.pause()} resume={() => { void a.current?.play().catch(() => {}); }} />
+      </div>
       <div className="flex items-center justify-center gap-6">
         <button type="button" disabled={idx === 0} onClick={() => { lastSave.current = 0; setIdx(idx - 1); }} aria-label="Предыдущая глава" className="grid h-[88px] w-[88px] place-items-center rounded-3xl disabled:opacity-30" style={{ background: CAR_GLASS }}><SkipBack size={36} color="#fff" /></button>
         <button type="button" onClick={() => { const el = a.current; if (!el) return; if (el.paused) void el.play().catch(() => setPlaying(false)); else el.pause(); }} aria-label={playing ? 'Пауза' : 'Играть'} className="grid h-[112px] w-[112px] place-items-center rounded-full" style={{ background: CAR_ACCENT }}>{playing ? <Pause size={50} color="#fff" fill="#fff" /> : <Play size={50} color="#fff" fill="#fff" />}</button>
@@ -93,6 +100,16 @@ const Inner = () => {
   const [books, setBooks] = useState<Book[] | null>(null);
   const [open, setOpen] = useState<{ book: Book; chapters: ChapterMeta[]; mode: 'menu' | 'listen' | 'read'; ch: number; pos: number } | null>(null);
   useEffect(() => { void apiMediaTicket(); void apiCatalog({ limit: 40 }).then(setBooks); }, []);
+  /* Передача с другого устройства: только аудио (в машине не читают) — открываем с главы и места. */
+  const handed = useHandoffStart((st) => st.carOpen);
+  useEffect(() => {
+    if (!handed || handed.kind !== 'book' || Date.now() - handed.at > 60_000) return;
+    useHandoffStart.getState().setCar(null);
+    void (async () => {
+      const [b, chs] = await Promise.all([apiBook(handed.id), apiChapters(handed.id)]);
+      if (b) setOpen({ book: b, chapters: chs ?? [], mode: 'listen', ch: Number(handed.extra.audioChapter ?? handed.extra.chapter ?? 1) || 1, pos: handed.position });
+    })();
+  }, [handed]);
 
   const pick = async (b: Book) => {
     const [chs, pr] = await Promise.all([apiChapters(b.id), apiProgress(b.id)]);

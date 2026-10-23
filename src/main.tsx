@@ -30,6 +30,9 @@ import { GloballyBlocked } from './auth/GloballyBlocked';
 import { captureInvite } from './invite/capture';
 import { captureQr } from './qr/qrApi';
 import { QrIncoming } from './qr/QrIncoming';
+import { HandoffIncoming } from './handoff/HandoffIncoming';
+import { startHandoff } from './handoff/handoffApi';
+import { hookOutput } from './handoff/audioOutput';
 import { SeasonLayer } from './settings/SeasonLayer';
 const GuideOnboarding = React.lazy(() => import('./guide/GuideOnboarding').then((m) => ({ default: m.GuideOnboarding })));
 const GuidePage = React.lazy(() => import('./guide/GuidePage').then((m) => ({ default: m.GuidePage })));
@@ -485,6 +488,13 @@ const Root = () => {
     return startOrdersSync();
   }, [isAuthenticated, currentUserId]);
 
+  // «Продолжить на другом устройстве»: это устройство в общем реестре, держим его «на связи», ловим входящие передачи; звук — на выбранное устройство вывода.
+  useEffect(() => {
+    hookOutput();
+    if (!isAuthenticated || !currentUserId) return undefined;
+    return startHandoff();
+  }, [isAuthenticated, currentUserId]);
+
   // Активность в играх: пульс отмеченной игры, свои итоги, присутствие собеседников, определение игр в Windows-приложении.
   useEffect(() => {
     if (!isAuthenticated || !currentUserId) return undefined;
@@ -615,7 +625,7 @@ void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).fina
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><AppLockGate /><LinkDeepLinkGate /><QrIncoming /><OidcAuthorizeGate /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><AppLockGate /><LinkDeepLinkGate /><QrIncoming /><HandoffIncoming /><OidcAuthorizeGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));

@@ -43,6 +43,16 @@ export const targetProblem = (d, { fromId, profileId, now = Date.now() } = {}) =
   return null;
 };
 
+/**
+ * Что устройство умеет открывать. ТВ книг не читает; в машине читать нельзя — только слушать аудиокнигу (видео в машине защищено отдельно: только на стоянке).
+ * Остальные устройства открывают всё.
+ */
+export const supports = (deviceKind, kind, extra) => {
+  if (deviceKind === 'tv') return kind !== 'book';
+  if (deviceKind === 'car') return kind !== 'book' || extra?.mode === 'audio';
+  return true;
+};
+
 /** Итоговое место: если после снимка кто-то записал позицию на третьем устройстве — берём более свежую. */
 export const resolvePosition = (snap, current, { skewMs = 3000 } = {}) => {
   if (!current || current.updatedAt == null) return { position: snap.position, newerElsewhere: false };
@@ -166,6 +176,7 @@ export const send = async (skyId, profileId, req, b) => {
   const to = (await query('SELECT * FROM transfer_devices WHERE id = $1 AND sky_id = $2', [String(b?.toDevice ?? ''), skyId])).rows[0];
   const problem = targetProblem(to, { fromId: me.id, profileId });
   if (problem) return err(problem, to ? { name: to.name } : {});
+  if (!supports(to.kind, kind, b?.extra)) return err('unsupported_here', { name: to.name });
   if (!(await checkItem(kind, itemId, profileId))) return err('not_found');
   const position = clamp(b?.position); const duration = clamp(b?.duration);
   const extra = b?.extra && typeof b.extra === 'object' ? Object.fromEntries(Object.entries(b.extra).slice(0, 8).map(([k, v]) => [clip(k, 20), typeof v === 'number' ? v : typeof v === 'string' ? clip(v, 40) : null])) : {};

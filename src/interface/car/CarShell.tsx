@@ -7,6 +7,7 @@
    всегда под рукой. Видео и чтение открыты, только когда автомобиль
    стоит (driveLogic.ts); свободного набора текста за рулём нет.
 =========================================================== */
+import { useHandoffStart } from '@/handoff/openContent';
 import { useEffect, useState } from 'react';
 import { Home, Music2, Mic2, MessageCircle, Sparkles, Users, LogOut, Clapperboard, BookOpen } from 'lucide-react';
 import { setCarMode } from './useCarMode';
@@ -56,6 +57,13 @@ export const CarShell = () => {
   const me = useAuthStore((s) => s.accounts.find((a) => a.id === s.currentUserId));
   const loadMusic = useMusicStore((s) => s.load);
   useMusicSync();
+  /* Передача с другого устройства: кино/видео и книги открываются в своих разделах (там и решается, можно ли показывать картинку). */
+  const carOpen = useHandoffStart((st) => st.carOpen);
+  useEffect(() => {
+    if (!carOpen) return;
+    if (carOpen.kind === 'film' || carOpen.kind === 'video') setScreen('cinema');
+    else if (carOpen.kind === 'book') setScreen('books');
+  }, [carOpen]);
   useEffect(() => { void loadMusic(); }, [loadMusic]);
 
   const switchProfile = () => {

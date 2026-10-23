@@ -1,4 +1,5 @@
 import { VideoBackdrop } from '@/music/VideoBackdrop';
+import { MusicContinue } from '@/handoff/Slots';
 import { ExplicitBadge, LabelsButton, LegacyChip } from '@/labels/Labels';
 import { requestDelete } from '@/island/deleteFlow';
 import { ArtistSuggest } from '@/artists/ArtistCard';
@@ -1917,6 +1918,7 @@ export const SkyFullPlayer = ({
               border:`1px solid ${showQueue ? hslA(hslAcc(h),'55') : 'rgba(255,255,255,0.1)'}`,
               cursor:'pointer',
             }}>Очередь</button>
+          <MusicContinue style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '6px 12px' }} className="inline-flex items-center" />
         </div>
         <button type="button" onClick={() => onAdd(track.id)}
           className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10"

@@ -2,6 +2,10 @@
    SKY VIDEO  -  видеохостинг и Shorts на сервере
    Dark Sky aesthetic, Nunito/system font, accent #4f6ef7
 =============================================================== */
+import { ContinueOnDevice } from '@/handoff/ContinueButton';
+import { takeStart } from '@/handoff/openContent';
+import { HO } from '@/handoff/handoffApi';
+import { useHandoffStart } from '@/handoff/openContent';
 import { VerifiedBadge } from '@/verification/marks';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,7 +25,7 @@ import { PrerollAd } from '@/ads/AdBlocks';
 import { useSkyVideoStore, resetSkyVideoForUser } from '@/video/serverStore';
 import { ChannelAnalyticsView } from '@/video/ChannelAnalytics';
 import { useRegisterMedia } from '@/island/mediaRegistry';
-import { videoUrl, thumbnailUrl, fmtDuration, readVideoMeta, apiSkyVideoTicket, type ServerVideo, type VideoComment } from '@/video/skyVideoApi';
+import { videoUrl, thumbnailUrl, fmtDuration, readVideoMeta, apiSkyVideoTicket, apiSkyVideo, type ServerVideo, type VideoComment } from '@/video/skyVideoApi';
 import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
 import {
   apiSkyVideoComments, apiAddSkyVideoComment, apiDeleteSkyVideoComment,
@@ -181,6 +185,28 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
     noteView(video.id);
     return () => { vidRef.current?.pause(); };
   }, [video.id]);
+
+  /* Место просмотра: хранится на сервере (как у кино) — для обычных роликов; Shorts — короткие петли, место им не нужно.
+     Передача с другого устройства задаёт место точно и важнее сохранённого. */
+  const restored = useRef(false);
+  const lastSaved = useRef(0);
+  const lastPos = useRef({ t: 0, d: 0 });
+  const long = !isShortVideo(video);
+  useEffect(() => { restored.current = false; lastSaved.current = 0; }, [video.id]);
+  useEffect(() => () => { if (long && lastPos.current.t > 5) void HO.setVideoProgress(video.id, lastPos.current.t, lastPos.current.d); }, [video.id, long]);
+  const restorePlace = (el: HTMLVideoElement) => {
+    if (restored.current) return; restored.current = true;
+    const handed = takeStart('video', video.id);
+    const seek = (t: number) => { if (t > 3 && (!el.duration || t < el.duration - 3)) el.currentTime = t; };
+    if (handed) { seek(handed.position); return; }
+    if (long) void HO.videoProgress(video.id).then((r) => { const p = r.data?.progress; if (p && p.position > 10 && (!el.duration || p.position < el.duration - 20) && el.currentTime < 3) el.currentTime = p.position; });
+  };
+  const savePlace = (el: HTMLVideoElement) => {
+    if (!long || !Number.isFinite(el.duration)) return;
+    lastPos.current = { t: el.currentTime, d: el.duration };
+    const now = Date.now();
+    if (now - lastSaved.current > 10_000 && el.currentTime > 5) { lastSaved.current = now; void HO.setVideoProgress(video.id, el.currentTime, el.duration); }
+  };
   useEffect(() => { setAdDone(false); }, [video.id]);     // следующий ролик — снова решение сервера, показывать ли рекламу
 
   const resetHide = () => {
@@ -204,8 +230,8 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
       onMouseMove={resetHide} onClick={adDone ? toggle : undefined}>
       {!adDone && <PrerollAd key={video.id} onSkip={() => setAdDone(true)} />}
       <video ref={vidRef} src={adDone ? videoUrl(video.id) : undefined} className="w-full h-full object-contain"
-        onTimeUpdate={e => setProgress((e.currentTarget.currentTime / e.currentTarget.duration) || 0)}
-        onLoadedMetadata={e => setDuration(e.currentTarget.duration)}
+        onTimeUpdate={e => { setProgress((e.currentTarget.currentTime / e.currentTarget.duration) || 0); savePlace(e.currentTarget); }}
+        onLoadedMetadata={e => { setDuration(e.currentTarget.duration); restorePlace(e.currentTarget); }}
         onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} playsInline
         onPlaying={() => { passTried.current = false; setFailed(false); }}
         onError={() => {
@@ -245,7 +271,11 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
             className="absolute inset-0 flex flex-col justify-between"
             style={{ background: 'linear-gradient(transparent 40%,rgba(0,0,0,0.7))' }}
             onClick={e => e.stopPropagation()}>
-            <div />
+            <div className="flex justify-end p-3" onClick={e => e.stopPropagation()}>
+              <ContinueOnDevice kind="video" itemId={video.id} title={video.title} label={false} className="grid h-9 w-9 place-items-center rounded-full text-white" style={{ background: 'rgba(0,0,0,0.55)' }}
+                read={() => ({ position: vidRef.current?.currentTime ?? 0, duration: vidRef.current?.duration ?? 0 })}
+                pause={() => { vidRef.current?.pause(); setPlaying(false); }} resume={() => { vidRef.current?.play().then(() => setPlaying(true)).catch(() => setPlaying(false)); }} />
+            </div>
             <div className="flex items-center justify-center" onClick={toggle}>
               <motion.div key={playing ? 'p' : 'pa'} initial={{ scale: 1.3, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
                 className="grid h-14 w-14 place-items-center rounded-full"
@@ -1082,6 +1112,14 @@ export const SkyVideo = () => {
   const setPendingVideoTab = useModuleStore(s => s.setPendingVideoTab);
   const [tab, setTab] = useState<VTab>((pendingVideoTab as VTab) || 'home');
   const [activeVideo, setActiveVideo] = useState<ServerVideo | null>(null);
+  /* «Продолжить на другом устройстве»: ролик открывается по id, место берёт сам плеер. */
+  const handed = useHandoffStart(s => s.start);
+  useEffect(() => {
+    if (!handed || handed.kind !== 'video' || Date.now() - handed.at > 60_000) return;
+    let alive = true;
+    void apiSkyVideo(handed.id).then(v => { if (alive && v) { setActiveShort(null); setActiveChannelId(null); setActiveVideo(v); } });
+    return () => { alive = false; };
+  }, [handed]);
   const [activeShort, setActiveShort] = useState<number | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [channelAnalytics, setChannelAnalytics] = useState(false);

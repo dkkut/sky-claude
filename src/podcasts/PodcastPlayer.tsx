@@ -11,6 +11,7 @@
  * давать переходить по нажатию. Два источника одного и того же текста
  * рано или поздно разъезжаются, поэтому источник один.
  */
+import { PodcastContinue } from '@/handoff/Slots';
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -618,10 +619,13 @@ export const PodcastFullPlayer = () => {
             <ChevronDown size={18} style={{ color: C.t2 }}/>
           </button>
           <span className="truncate px-3 text-[12px]" style={{ color: C.t3 }}>{episode.podcastTitle}</span>
-          <button onClick={toggleFav} aria-label="В избранное"
-            className="grid h-9 w-9 place-items-center rounded-full" style={{ background: C.l1 }}>
-            <Heart size={16} style={{ color: fav ? '#ef4444' : C.t3 }} fill={fav ? '#ef4444' : 'none'}/>
-          </button>
+          <div className="flex items-center gap-2">
+            <PodcastContinue label={false} className="grid h-9 w-9 place-items-center rounded-full" style={{ background: C.l1, color: C.t2 }} />
+            <button onClick={toggleFav} aria-label="В избранное"
+              className="grid h-9 w-9 place-items-center rounded-full" style={{ background: C.l1 }}>
+              <Heart size={16} style={{ color: fav ? '#ef4444' : C.t3 }} fill={fav ? '#ef4444' : 'none'}/>
+            </button>
+          </div>
         </div>
 
         {/* Картинка или обложка */}

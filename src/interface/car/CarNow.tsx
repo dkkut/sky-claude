@@ -1,6 +1,7 @@
 /* Состояние «сейчас играет» для Sky Car: музыка (usePlayerStore) или подкаст (usePlayer).
    Читает и командует теми же плеерами, что и вся Sky — второго плеера нет. */
 import { VideoBackdrop } from '@/music/VideoBackdrop';
+import { MusicContinue, PodcastContinue } from '@/handoff/Slots';
 import { Play, Pause, SkipBack, SkipForward, Music2, RotateCcw, RotateCw, ChevronDown, Repeat, Repeat1, Shuffle } from 'lucide-react';
 import { useEffect } from 'react';
 import { useFullNow } from '@/player/fullNowStore';
@@ -127,7 +128,8 @@ export const CarFullPlayer = ({ now }: { now: CarNowState | null }) => {
       <div className="flex w-full items-center justify-between">
         <button type="button" onClick={hide} aria-label="Свернуть плеер" className="grid h-[72px] w-[72px] place-items-center rounded-full active:scale-90" style={{ background: 'rgba(255,255,255,0.12)' }}><ChevronDown size={36} color="#fff" /></button>
         <p className="text-[18px] font-bold uppercase tracking-[0.2em]" style={{ color: '#c4baff' }}>{now.playing ? 'Сейчас играет' : 'На паузе'}</p>
-        <span className="w-[72px]" />
+        <MusicContinue variant="car" label={false} className="grid h-[72px] w-[72px] place-items-center rounded-full text-white active:scale-90" style={{ background: 'rgba(255,255,255,0.12)', minWidth: 72, minHeight: 72 }} />
+        <PodcastContinue variant="car" label={false} className="grid h-[72px] w-[72px] place-items-center rounded-full text-white active:scale-90" style={{ background: 'rgba(255,255,255,0.12)', minWidth: 72, minHeight: 72 }} />
       </div>
       <div className="flex min-h-0 w-full flex-1 items-center justify-center gap-12">
         <div className="aspect-square h-[min(46vh,420px)] shrink-0 overflow-hidden rounded-[36px]" style={{ background: now.cover ? `center/cover no-repeat url(${now.cover})` : 'linear-gradient(160deg,#4f2e8a,#1a0e33)', boxShadow: '0 30px 80px rgba(0,0,0,0.6)' }}>

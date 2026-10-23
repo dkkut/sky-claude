@@ -19,6 +19,7 @@ t('цель: сам себе', sb.targetProblem({ id: 'a', status: 'approved', l
 t('цель: не подтверждено', sb.targetProblem({ id: 'b', status: 'pending', last_seen: fresh }, { fromId: 'a', profileId: 'p', now }) === 'recipient_not_trusted');
 t('цель: другой профиль', sb.targetProblem({ id: 'b', status: 'approved', last_profile: 'q', last_seen: fresh }, { fromId: 'a', profileId: 'p', now }) === 'other_profile');
 t('цель: не на связи', sb.targetProblem({ id: 'b', status: 'approved', last_seen: new Date(now - 600_000).toISOString() }, { fromId: 'a', profileId: 'p', now }) === 'device_offline');
+t('поддержка: ТВ не открывает книги, машина — только аудио', !sb.supports('tv', 'book', {}) && sb.supports('tv', 'film', {}) && !sb.supports('car', 'book', { mode: 'text' }) && sb.supports('car', 'book', { mode: 'audio' }) && sb.supports('phone', 'book', {}));
 t('цель: нет такого', sb.targetProblem(undefined, {}) === 'unknown_device');
 const snap = { position: 100, createdAt: new Date(now - 60_000).toISOString() };
 t('место: нет записи — берём снимок', sb.resolvePosition(snap, null).position === 100);
@@ -122,6 +123,11 @@ await post('/device/register', { name: 'Чужой', kind: 'phone' }, X.tok, XD)
 r = await post('/send', { ...base, idemKey: idem() }, X.tok, XD); t('чужой не может отправить на наше устройство', r.data.error === 'unknown_device' || r.status >= 400, r);
 r = await H('/devices', {}, X.tok, XD); t('чужой не видит наши устройства', r.data.devices.every((d) => ![phId, pcId, tvId].includes(d.id)), r.data);
 r = await post('/send', { ...base, idemKey: idem() }, X.tok, XD); t('чужой не открывает наш материал', r.status >= 400);
+
+/* ТВ: книги не открывает */
+r = await post('/send', { toDevice: tvId, kind: 'book', itemId: ids.book, title: 'Книга', position: 1, extra: { mode: 'audio' }, idemKey: idem() }, A.tok, PH); t('ТВ: книга не поддерживается — понятный отказ', r.data.error === 'unsupported_here', r.data);
+await post('/device/heartbeat', {}, A.tok, TV);
+r = await post('/send', { toDevice: tvId, kind: 'film', itemId: ids.film, title: 'Фильм', position: 10, idemKey: idem() }, A.tok, PH); t('ТВ: кино принимает', r.status === 201, r);
 
 /* другой профиль на устройстве-получателе */
 q(`update transfer_devices set last_profile = 'prof-other' where id='${pcId}'`);
