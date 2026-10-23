@@ -69,6 +69,8 @@ export const toTrack = (row) => ({
   duration: row.duration_sec ?? 0,
   hasCover: Boolean(row.has_cover),
   hasVideo: Boolean(row.has_video),
+  /** Карточка исполнителя и её фото на прозрачном фоне (для «Мой поток»). */
+  artistCardId: row.has_cutout ? (row.artist_card_id ?? undefined) : undefined,
   status: row.status,
   plays: Number(row.plays ?? 0),
   own: row.own === true || undefined,
@@ -138,7 +140,9 @@ export const listTracks = async (viewerId, { q, limit, offset, mine, hideExplici
   }
 
   const { rows } = await query(
-    `SELECT *, owner_id = $1 AS own FROM music_tracks
+    `SELECT *, owner_id = $1 AS own,
+            EXISTS (SELECT 1 FROM music_card_images i WHERE i.card_id = music_tracks.artist_card_id AND i.kind = 'cutout') AS has_cutout
+       FROM music_tracks
       WHERE ${where.join(' AND ')}
       ORDER BY created_at DESC
       LIMIT $2 OFFSET $3`,

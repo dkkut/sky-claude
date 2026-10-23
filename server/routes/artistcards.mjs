@@ -4,7 +4,7 @@ import { hasPrime } from './../skyid.mjs';
 import { can } from './../admin.mjs';
 import { suggest, createCard, readCard, readCardByName, listCards, updateCard, claim, withdrawClaim, adminClaims, decideClaim, revokeOwner, duplicates, merge, unmerge, adminList, transferOwner, setCardImage, clearCardImage, cardImage } from './../artistcards.mjs';
 
-const CODE = { image_too_large: 413, user_not_found: 404, not_allowed: 403, no_own_track: 403, self_review: 403, not_found: 404, exists: 409, already_owned: 409, already_owner: 409, already_pending: 409, not_pending: 409, already_merged: 409, name_taken: 409 };
+const CODE = { image_too_large: 413, no_transparency: 422, user_not_found: 404, not_allowed: 403, no_own_track: 403, self_review: 403, not_found: 404, exists: 409, already_owned: 409, already_owner: 409, already_pending: 409, not_pending: 409, already_merged: 409, name_taken: 409 };
 const send = (res, r) => (r.error ? json(res, CODE[r.error] ?? 400, r) : json(res, 200, r));
 
 /** Карточки музыкантов: люди (с Prime, как вся Sky Music) и сотрудники (право `content`). */
@@ -24,7 +24,7 @@ export const artistCardsRoutes = async (req, res, url) => {
     if (req.method === 'GET' && path === '/api/music/artist-cards/by-name') { const c = await readCardByName(params.get('name') ?? '', me); return c ? json(res, 200, { card: c }) : json(res, 404, { error: 'not_found' }); }
     if (req.method === 'GET' && path === '/api/music/artist-cards') return json(res, 200, { cards: await listCards({ q: params.get('q') ?? undefined, limit: params.get('limit') }) });
     if (req.method === 'POST' && path === '/api/music/artist-cards') { if (!rateLimit(`acard:new:${me}`, 10)) return json(res, 429, { error: 'too_many_requests' }); return send(res, await createCard(me, (await parseBody(req)) ?? {})); }
-    const im = path.match(/^\/api\/music\/artist-cards\/(acd-[0-9a-f-]{36})\/image\/(photo|banner)$/);
+    const im = path.match(/^\/api\/music\/artist-cards\/(acd-[0-9a-f-]{36})\/image\/(photo|banner|cutout)$/);
     if (im) {
       if (req.method === 'GET') {
         const img = await cardImage(im[1], im[2]);

@@ -5,7 +5,7 @@ import { apiCall } from '@/core/auth/api';
 import { CardImageEditor, useCardImage } from './CardImages';
 import { flash } from '@/shared/flash';
 
-interface Card { id: string; name: string; bio?: string; genres: string[]; autoCreated: boolean; confirmedOwner: boolean; rightsVerified?: boolean; hasPhoto?: boolean; hasBanner?: boolean; isOwner?: boolean; canClaim?: boolean; myClaim?: string; tracks: number }
+interface Card { id: string; name: string; bio?: string; genres: string[]; autoCreated: boolean; confirmedOwner: boolean; rightsVerified?: boolean; hasPhoto?: boolean; hasBanner?: boolean; hasCutout?: boolean; isOwner?: boolean; canClaim?: boolean; myClaim?: string; tracks: number }
 const ERR: Record<string, string> = { note_required: 'Опишите, почему карточка ваша (не короче 10 знаков).', no_own_track: 'Заявку подаёт тот, чей трек привязан к карточке.', already_pending: 'Заявка уже на проверке.', already_owned: 'У карточки уже есть владелец.' };
 const field = { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--t1)' };
 
@@ -21,7 +21,7 @@ const CardMedia = ({ c, reload }: { c: Card; reload: () => void }) => {
         </div>)}
       {c.isOwner && (<>
         <button type="button" onClick={() => setEdit(!edit)} className="rounded-lg px-3 py-1.5 text-[11px] font-bold" style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>{edit ? 'Скрыть' : 'Изменить фото и баннер'}</button>
-        {edit && <CardImageEditor cardId={c.id} hasPhoto={Boolean(c.hasPhoto)} hasBanner={Boolean(c.hasBanner)} onChanged={reload} />}
+        {edit && <CardImageEditor cardId={c.id} hasPhoto={Boolean(c.hasPhoto)} hasBanner={Boolean(c.hasBanner)} hasCutout={Boolean(c.hasCutout)} onChanged={reload} />}
       </>)}
     </div>
   );

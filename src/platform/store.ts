@@ -23,6 +23,8 @@ export interface Track {
   coverUrl?: string;
   /** Видеофон для полноэкранного плеера (загружает владелец трека). */
   videoUrl?: string;
+  /** Карточка исполнителя, у которой есть фото на прозрачном фоне (карточка «Мой поток»). */
+  cutoutCardId?: string;
   duration: string;
   premium: boolean;
   sourceUrl?: string;

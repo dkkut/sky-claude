@@ -2846,6 +2846,7 @@ export const SkyMusic = () => {
         {(
           <>
             {tab === 'home'       && <SkyMusicHome tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom}
+              cur={cur} onTogglePlay={() => setPlaying(!playing)} onLike={onLike} onOpenPlayer={() => setShowNP(true)}
               loading={musicLoading} error={musicError}
               onRetry={() => void loadMusic({ force: true })} onUpload={() => setTab('upload')} onSearch={() => setShowSrch(true)}/>}
             {tab === 'collection' && <SkyMusicLibrary tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom} onLike={onLike}

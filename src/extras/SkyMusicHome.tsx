@@ -7,6 +7,7 @@ import { getG } from '@/music/utils';
 import { useMusicStore } from '@/music/serverStore';
 import { apiArtistFeed, toClientTrack } from '@/music/musicApi';
 import { SkySphere } from '@/music/SkySphere';
+import { FlowHero } from './FlowHero';
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -149,10 +150,11 @@ const Section = ({ title, icon: Icon, index, children, empty }: {
 );
 
 export const SkyMusicHome = ({
-  tracks, favorites, playing, activeId, onPlay, loading, error, onRetry, onUpload, onSearch,
+  tracks, favorites, playing, activeId, onPlay, loading, error, onRetry, onUpload, onSearch, cur, onTogglePlay, onLike, onOpenPlayer,
 }: {
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
   onPlay: (t: Track, pool: Track[]) => void;
+  cur: Track | null; onTogglePlay: () => void; onLike: (id: string) => void; onOpenPlayer: () => void;
   loading?: boolean; error?: string | null;
   onRetry?: () => void; onUpload?: () => void; onSearch?: () => void;
 }) => {
@@ -167,6 +169,14 @@ export const SkyMusicHome = ({
     () => historyIds.map(id => pub.find(t => t.id === id)).filter(Boolean).slice(0, 10) as Track[],
     [historyIds, pub],
   );
+
+  // Недослушанный трек прошлого раза (плеер пуст): карточка «Мой поток» показывает его с тихой волной.
+  const progressMap = useMusicStore(st => st.progress);
+  const lastUnfinished = useMemo(() => {
+    if (cur) return null;
+    const t = recentlyPlayed[0];
+    return t && (progressMap[t.id] ?? 0) > 5 ? t : null;
+  }, [cur, recentlyPlayed, progressMap]);
 
   const forYou = useMemo(() => {
     // без ИИ — простое ранжирование по любимым жанрам/исполнителям
@@ -282,50 +292,12 @@ export const SkyMusicHome = ({
         </button>
       </div>
 
-      {/* «Мой поток» — сфера вместо плоской карточки.
-          Нажатие открывает подборку, кнопка справа сразу включает поток:
-          так у карточки два разных действия и ни одно не отобрано. */}
+      {/* «Мой поток»: спокойная волна, пока тихо; при музыке — движение, лучи, исполнитель и мини-плеер (FlowHero). */}
       <div className="px-5 pt-4 pb-1">
-        <motion.button type="button" onClick={() => setWaveOpen(true)} whileTap={{ scale: 0.985 }}
-          aria-label="Мой поток — открыть подборку"
-          className="relative w-full overflow-hidden rounded-[28px] text-left"
-          style={{ height: 212, background: '#07070c' }}>
-          {/* Сфера — фон карточки. Ниже текста, выше подложки. */}
-          <div className="absolute inset-0" style={{ zIndex: 0 }}>
-            <SkySphere color1={c1} color2={c2} active={playing}/>
-          </div>
-          {/* Затемнение снизу: по светлой сфере текст не читался бы. */}
-          <div className="absolute inset-0" style={{ zIndex: 1,
-            background: 'linear-gradient(to top, rgba(4,4,8,0.82) 0%, rgba(4,4,8,0.25) 45%, transparent 75%)' }}/>
-
-          <div className="relative h-full flex flex-col justify-between p-5" style={{ zIndex: 2 }}>
-            <div className="flex items-center gap-1.5">
-              <Sparkles size={14} color="rgba(255,255,255,0.85)"/>
-              <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.85)' }}>
-                Моя волна
-              </span>
-            </div>
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[26px] font-extrabold text-white"
-                  style={{ letterSpacing: '-0.03em', textShadow: '0 2px 18px rgba(0,0,0,0.55)' }}>
-                  Мой поток
-                </p>
-                <p className="text-[12.5px] mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.72)' }}>
-                  Подобрано специально для тебя
-                </p>
-              </div>
-              <span role="button" tabIndex={0}
-                aria-label="Включить поток"
-                onClick={e => { e.stopPropagation(); startWave(); }}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); startWave(); } }}
-                className="grid h-12 w-12 shrink-0 cursor-pointer place-items-center rounded-full"
-                style={{ background: 'rgba(255,255,255,0.95)', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
-                <Play size={19} fill="#0a0a0f" color="#0a0a0f" style={{ marginLeft: 2 }}/>
-              </span>
-            </div>
-          </div>
-        </motion.button>
+        <FlowHero cur={cur} last={lastUnfinished} playing={playing} liked={Boolean((cur ?? lastUnfinished) && favorites.includes((cur ?? lastUnfinished)!.id))}
+          c1={c1} c2={c2} onStart={startWave} onOpenWave={() => setWaveOpen(true)} onOpenPlayer={onOpenPlayer}
+          onToggle={() => { if (cur) onTogglePlay(); else if (lastUnfinished) onPlay(lastUnfinished, [lastUnfinished]); }}
+          onLike={() => { const x = cur ?? lastUnfinished; if (x) onLike(x.id); }} />
       </div>
 
 

@@ -15,7 +15,7 @@ interface R { id: string; kind: 'card' | 'label'; subjectId: string; subjectName
 export const MusicLabelsAdmin = ({ reason }: { reason: string }) => {
   const [q, setQ] = useState(''); const [data, setData] = useState<{ labels: L[]; albums: A[] } | null>(null); const [rights, setRights] = useState<R[]>([]);
   const [cardId, setCardId] = useState(''); const [bio, setBio] = useState('');
-  const [card, setCard] = useState<{ id: string; name: string; hasPhoto?: boolean; hasBanner?: boolean } | null>(null);
+  const [card, setCard] = useState<{ id: string; name: string; hasPhoto?: boolean; hasBanner?: boolean; hasCutout?: boolean } | null>(null);
   const openCard = useCallback(async () => { const r = await apiCall<{ card: NonNullable<typeof card> & { bio?: string } }>(`/api/music/artist-cards/${cardId.trim()}`); if (!r.ok) { setCard(null); return flash(ERR[r.error ?? ''] ?? 'Карточка не найдена'); } setCard(r.data!.card); setBio(r.data!.card.bio ?? ''); }, [cardId]);
   const load = useCallback(async () => {
     const [o, r] = await Promise.all([apiCall<{ labels: L[]; albums: A[] }>(`/api/admin/music-labels?q=${encodeURIComponent(q)}`), apiCall<{ items: R[] }>('/api/admin/music-rights?status=pending')]);
@@ -71,7 +71,7 @@ export const MusicLabelsAdmin = ({ reason }: { reason: string }) => {
         <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={3} placeholder="Новое описание" className="w-full rounded-xl px-3 py-2 text-sm outline-none" style={field} />
         <button type="button" disabled={!cardId.trim()} onClick={() => void openCard()} className={btn + ' disabled:opacity-50'} style={{ background: C.l2, color: C.t1 }}>Открыть карточку</button>
         {card && <p className="text-[13px] font-semibold" style={{ color: C.t1 }} translate="no">{card.name}</p>}
-        {card && <CardImageEditor cardId={card.id} hasPhoto={Boolean(card.hasPhoto)} hasBanner={Boolean(card.hasBanner)} onChanged={() => void openCard()} />}
+        {card && <CardImageEditor cardId={card.id} hasPhoto={Boolean(card.hasPhoto)} hasBanner={Boolean(card.hasBanner)} hasCutout={Boolean(card.hasCutout)} onChanged={() => void openCard()} />}
         <div className="flex gap-2"><button type="button" disabled={!cardId.trim()} onClick={() => void saveCard()} className={btn + ' text-white disabled:opacity-50'} style={{ background: C.acc }}>Сохранить</button>
           <button type="button" disabled={!cardId.trim()} onClick={() => void revoke('card', cardId.trim())} className={btn + ' disabled:opacity-50'} style={{ background: C.l2, color: C.t1 }}>Снять подтверждение прав</button></div>
       </div>

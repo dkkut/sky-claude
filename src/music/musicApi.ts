@@ -29,6 +29,8 @@ export interface ServerTrack {
   duration: number;
   hasCover: boolean;
   hasVideo?: boolean;
+  /** Есть, только если у карточки исполнителя загружено фото на прозрачном фоне. */
+  artistCardId?: string;
   status: 'published' | 'private' | 'pending' | 'rejected';
   plays: number;
   own?: boolean;
@@ -102,6 +104,7 @@ export const toClientTrack = (t: ServerTrack): Track => ({
   year: t.year,
   coverUrl: t.hasCover ? coverUrl(t.id) : undefined,
   videoUrl: t.hasVideo ? videoUrl(t.id) : undefined,
+  cutoutCardId: t.artistCardId,
   duration: mmss(t.duration),
   premium: false,
   sourceUrl: audioUrl(t.id),

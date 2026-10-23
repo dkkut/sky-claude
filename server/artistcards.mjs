@@ -333,14 +333,40 @@ export const transferOwner = async (adminId, cardId, toUsername, reason) => {
 };
 
 /* ─── Фото и баннер карточки ───────────────────────────────────────── */
-const IMG_MAX = { photo: 300 * 1024, banner: 600 * 1024 };
+const IMG_MAX = { photo: 300 * 1024, banner: 600 * 1024, cutout: 500 * 1024 };
+const KINDS = ['photo', 'banner', 'cutout'];
 const sigOk = (mime, b) => (mime === 'image/png' && b.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])))
   || (mime === 'image/jpeg' && b[0] === 0xff && b[1] === 0xd8)
   || (mime === 'image/webp' && b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP');
 
+/** Есть ли у картинки настоящий прозрачный канал (нужен для «вырезанного» фото исполнителя). */
+export const hasAlpha = (mime, b) => {
+  if (mime === 'image/png') {
+    if (b.length < 33) return false;
+    const ct = b[25];
+    if (ct === 4 || ct === 6) return true;
+    // Палитра или серый/RGB с прозрачностью через tRNS (до первого IDAT).
+    let o = 8;
+    while (o + 8 <= b.length) {
+      const len = b.readUInt32BE(o); const type = b.subarray(o + 4, o + 8).toString('latin1');
+      if (type === 'tRNS') return true;
+      if (type === 'IDAT') return false;
+      o += 12 + len;
+    }
+    return false;
+  }
+  if (mime === 'image/webp') {
+    const t = b.subarray(12, 16).toString('latin1');
+    if (t === 'VP8X') return (b[20] & 0x10) !== 0;
+    if (t === 'VP8L') return b[20] === 0x2f && (b[24] & 0x10) !== 0;
+    return false;
+  }
+  return false;
+};
+
 /** Менять фото и баннер может владелец карточки и владелец сервиса. */
 export const setCardImage = async (profileId, cardId, kind, dataUrl) => {
-  if (kind !== 'photo' && kind !== 'banner') return { error: 'bad_kind' };
+  if (!KINDS.includes(kind)) return { error: 'bad_kind' };
   const c = await resolve(cardId);
   if (!c) return { error: 'not_found' };
   if (c.owner_id !== profileId && !(await isOwner(profileId))) return { error: 'not_allowed' };
@@ -350,6 +376,7 @@ export const setCardImage = async (profileId, cardId, kind, dataUrl) => {
   if (!buf.length) return { error: 'bad_image' };
   if (buf.length > IMG_MAX[kind]) return { error: 'image_too_large' };
   if (!sigOk(m[1], buf)) return { error: 'bad_image' };
+  if (kind === 'cutout' && !hasAlpha(m[1], buf)) return { error: 'no_transparency' };
   await query(`INSERT INTO music_card_images (card_id, kind, mime, data, updated_by) VALUES ($1,$2,$3,$4,$5)
     ON CONFLICT (card_id, kind) DO UPDATE SET mime = EXCLUDED.mime, data = EXCLUDED.data, updated_by = EXCLUDED.updated_by, updated_at = now()`, [c.id, kind, m[1], buf, profileId]);
   await log(c.id, `image_${kind}`, profileId, { bytes: buf.length });
@@ -357,7 +384,7 @@ export const setCardImage = async (profileId, cardId, kind, dataUrl) => {
   return { ok: true };
 };
 export const clearCardImage = async (profileId, cardId, kind) => {
-  if (kind !== 'photo' && kind !== 'banner') return { error: 'bad_kind' };
+  if (!KINDS.includes(kind)) return { error: 'bad_kind' };
   const c = await resolve(cardId);
   if (!c) return { error: 'not_found' };
   if (c.owner_id !== profileId && !(await isOwner(profileId))) return { error: 'not_allowed' };
@@ -367,7 +394,7 @@ export const clearCardImage = async (profileId, cardId, kind) => {
   return { ok: true };
 };
 export const cardImage = async (cardId, kind) => {
-  if (kind !== 'photo' && kind !== 'banner') return null;
+  if (!KINDS.includes(kind)) return null;
   const c = await resolve(cardId);
   if (!c) return null;
   const r = (await query('SELECT mime, data FROM music_card_images WHERE card_id=$1 AND kind=$2', [c.id, kind])).rows[0];
@@ -375,5 +402,5 @@ export const cardImage = async (cardId, kind) => {
 };
 const imageFlags = async (cardId) => {
   const rows = (await query('SELECT kind FROM music_card_images WHERE card_id=$1', [cardId])).rows;
-  return { hasPhoto: rows.some((r) => r.kind === 'photo'), hasBanner: rows.some((r) => r.kind === 'banner') };
+  return { hasPhoto: rows.some((r) => r.kind === 'photo'), hasBanner: rows.some((r) => r.kind === 'banner'), hasCutout: rows.some((r) => r.kind === 'cutout') };
 };

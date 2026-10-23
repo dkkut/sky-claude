@@ -4,10 +4,10 @@ import { ImagePlus, Trash2 } from 'lucide-react';
 import { apiBlob, apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
 
-type Kind = 'photo' | 'banner';
-const LIMIT: Record<Kind, number> = { photo: 300 * 1024, banner: 600 * 1024 };
-const SIZE: Record<Kind, [number, number]> = { photo: [512, 512], banner: [1400, 460] };
-const ERR: Record<string, string> = { image_too_large: 'Файл слишком большой даже после сжатия.', bad_image: 'Нужна картинка PNG, JPEG или WebP.', not_allowed: 'Нет прав менять эту карточку.', too_many_requests: 'Слишком часто. Подождите.' };
+type Kind = 'photo' | 'banner' | 'cutout';
+const LIMIT: Record<Kind, number> = { photo: 300 * 1024, banner: 600 * 1024, cutout: 500 * 1024 };
+const SIZE: Record<Kind, [number, number]> = { photo: [512, 512], banner: [1400, 460], cutout: [0, 0] };
+const ERR: Record<string, string> = { image_too_large: 'Файл слишком большой даже после сжатия.', bad_image: 'Нужна картинка PNG, JPEG или WebP.', no_transparency: 'У картинки нет прозрачного фона. Нужен PNG или WebP с вырезанным фоном.', not_allowed: 'Нет прав менять эту карточку.', too_many_requests: 'Слишком часто. Подождите.' };
 
 export const useCardImage = (cardId: string, kind: Kind, has: boolean, rev = 0) => {
   const [url, setUrl] = useState<string | null>(null);
@@ -21,7 +21,23 @@ export const useCardImage = (cardId: string, kind: Kind, has: boolean, rev = 0) 
 };
 
 /** Сжать картинку до нужного размера (обрезка по центру) и уложиться в предел: JPEG, качество снижается. */
+/** Фото на прозрачном фоне: фон не заливаем, формат — PNG (или WebP), размер уменьшаем, пока не влезет в предел. */
+const prepareCutout = async (file: File): Promise<string | null> => {
+  const bmp = await createImageBitmap(file).catch(() => null); if (!bmp) return null;
+  for (const maxH of [1000, 800, 640, 500, 400]) {
+    const k = Math.min(1, maxH / bmp.height); const w = Math.max(1, Math.round(bmp.width * k)); const h = Math.max(1, Math.round(bmp.height * k));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'); if (!g) return null; g.clearRect(0, 0, w, h); g.drawImage(bmp, 0, 0, w, h);
+    for (const type of ['image/webp', 'image/png']) {
+      const blob: Blob | null = await new Promise((r) => c.toBlob(r, type, 0.9));
+      if (blob && blob.type === type && blob.size <= LIMIT.cutout) return await new Promise((r) => { const f = new FileReader(); f.onload = () => r(String(f.result)); f.readAsDataURL(blob); });
+    }
+  }
+  return null;
+};
+
 const prepare = async (file: File, kind: Kind): Promise<string | null> => {
+  if (kind === 'cutout') return prepareCutout(file);
   const bmp = await createImageBitmap(file).catch(() => null); if (!bmp) return null;
   const [w, h] = SIZE[kind]; const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d'); if (!g) return null;
@@ -34,10 +50,10 @@ const prepare = async (file: File, kind: Kind): Promise<string | null> => {
   return null;
 };
 
-export const CardImageEditor = ({ cardId, hasPhoto, hasBanner, onChanged }: { cardId: string; hasPhoto: boolean; hasBanner: boolean; onChanged: () => void }) => {
+export const CardImageEditor = ({ cardId, hasPhoto, hasBanner, hasCutout = false, onChanged }: { cardId: string; hasPhoto: boolean; hasBanner: boolean; hasCutout?: boolean; onChanged: () => void }) => {
   const [rev, setRev] = useState(0); const [busy, setBusy] = useState<Kind | null>(null);
-  const fp = useRef<HTMLInputElement>(null); const fb = useRef<HTMLInputElement>(null);
-  const photo = useCardImage(cardId, 'photo', hasPhoto, rev); const banner = useCardImage(cardId, 'banner', hasBanner, rev);
+  const fp = useRef<HTMLInputElement>(null); const fb = useRef<HTMLInputElement>(null); const fc = useRef<HTMLInputElement>(null);
+  const photo = useCardImage(cardId, 'photo', hasPhoto, rev); const banner = useCardImage(cardId, 'banner', hasBanner, rev); const cutout = useCardImage(cardId, 'cutout', hasCutout, rev);
   const upload = useCallback(async (kind: Kind, file: File | undefined) => {
     if (!file) return; setBusy(kind);
     const dataUrl = await prepare(file, kind);
@@ -50,8 +66,8 @@ export const CardImageEditor = ({ cardId, hasPhoto, hasBanner, onChanged }: { ca
   const box = (kind: Kind, url: string | null, has: boolean, ref: React.RefObject<HTMLInputElement>, title: string) => (
     <div className="space-y-1.5">
       <p className="text-[12px] font-semibold" style={{ color: 'var(--t2)' }}>{title}</p>
-      <div className={`grid place-items-center overflow-hidden ${kind === 'photo' ? 'h-24 w-24 rounded-2xl' : 'h-24 w-full rounded-xl'}`} style={{ background: 'var(--bg-l3)', border: '1px solid var(--border)' }}>
-        {url ? <img src={url} alt="" className="h-full w-full object-cover" /> : <ImagePlus size={22} style={{ color: 'var(--t3)' }} />}
+      <div className={`grid place-items-center overflow-hidden ${kind === 'photo' ? 'h-24 w-24 rounded-2xl' : 'h-24 w-full rounded-xl'}`} style={{ background: kind === 'cutout' ? 'repeating-conic-gradient(#8884 0% 25%, #0000 0% 50%) 50% / 14px 14px' : 'var(--bg-l3)', border: '1px solid var(--border)' }}>
+        {url ? <img src={url} alt="" className={`h-full w-full ${kind === 'cutout' ? 'object-contain' : 'object-cover'}`} /> : <ImagePlus size={22} style={{ color: 'var(--t3)' }} />}
       </div>
       <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { void upload(kind, e.target.files?.[0]); e.target.value = ''; }} />
       <div className="flex gap-2">
@@ -60,5 +76,5 @@ export const CardImageEditor = ({ cardId, hasPhoto, hasBanner, onChanged }: { ca
       </div>
     </div>
   );
-  return <div className="space-y-3">{box('banner', banner, hasBanner, fb, 'Баннер')}{box('photo', photo, hasPhoto, fp, 'Фото')}</div>;
+  return <div className="space-y-3">{box('banner', banner, hasBanner, fb, 'Баннер')}{box('photo', photo, hasPhoto, fp, 'Фото')}{box('cutout', cutout, hasCutout, fc, 'Фото на прозрачном фоне (для карточки «Мой поток»)')}</div>;
 };
