@@ -12,7 +12,7 @@ import { buildTaste, recommend, moodOf, MOODS } from '@/music/taste';
 
 type Tab = 'playlists' | 'queue' | 'waves';
 const TABS: { id: Tab; label: string }[] = [{ id: 'playlists', label: 'Плейлисты' }, { id: 'queue', label: 'Очередь' }, { id: 'waves', label: 'Сборки волны' }];
-const YELLOW = '#ffe500';
+const YELLOW = '#e9d5ff';
 
 const Cover = ({ url, size = 40 }: { url?: string; size?: number }) => (
   <span className="grid shrink-0 place-items-center overflow-hidden rounded-[10px]" style={{ width: size, height: size, background: 'rgba(255,255,255,0.1)' }}>
@@ -93,7 +93,7 @@ const Queue = () => {
       <p className="px-1 pb-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.45)' }}>Сейчас</p>
       <Row cover={item.coverUrl} title={item.title} sub={item.author} right={<Sparkles size={15} color={YELLOW} />} />
       <p className="px-1 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.45)' }}>Дальше{upcoming.length ? ` · ${upcoming.length}` : ''}</p>
-      {shuffle && <p className="mb-1 rounded-xl px-3 py-2 text-[11.5px]" style={{ background: 'rgba(255,229,0,0.1)', color: YELLOW }}>Включено перемешивание — следующий трек выбирается случайно, порядок ниже не учитывается.</p>}
+      {shuffle && <p className="mb-1 rounded-xl px-3 py-2 text-[11.5px]" style={{ background: 'rgba(196,181,253,0.14)', color: YELLOW }}>Включено перемешивание — следующий трек выбирается случайно, порядок ниже не учитывается.</p>}
       {upcoming.length === 0 ? <p className="px-1 py-2 text-[12.5px]" style={{ color: 'rgba(255,255,255,0.6)' }}>Дальше ничего нет.</p> : (
         <Reorder.Group axis="y" values={upcoming.map((q) => q.id)} onReorder={reorder} className="m-0 p-0">
           {upcoming.map((q, i) => <QueueRow key={q.id} q={q} onPlay={() => playAt(cur + 1 + i)} />)}
@@ -175,12 +175,12 @@ export const FlowSheet = ({ tracks, favorites, onPlay, onClose }: {
   const [tab, setTab] = useState<Tab>('playlists');
   const play = (t: Track, pool: Track[]) => { onPlay(t, pool); onClose(); };
   return (
-    <div className="absolute inset-0 flex flex-col" style={{ zIndex: 30, background: 'rgba(14,6,22,0.95)', backdropFilter: 'blur(18px)' }} onClick={(e) => e.stopPropagation()}>
+    <div className="absolute inset-0 flex flex-col" style={{ zIndex: 30, background: 'rgba(16,8,38,0.95)', backdropFilter: 'blur(18px)' }} onClick={(e) => e.stopPropagation()}>
       <div className="flex shrink-0 items-center gap-2 px-3 pb-2 pt-3">
         <div role="tablist" className="flex min-w-0 flex-1 gap-1 rounded-full p-1" style={{ background: 'rgba(255,255,255,0.1)' }}>
           {TABS.map((x) => (
             <button key={x.id} type="button" role="tab" aria-selected={tab === x.id} onClick={() => setTab(x.id)}
-              className="min-w-0 flex-1 truncate rounded-full px-2 py-1.5 text-[12px] font-bold" style={{ background: tab === x.id ? YELLOW : 'transparent', color: tab === x.id ? '#111' : 'rgba(255,255,255,0.8)' }}>{x.label}</button>
+              className="min-w-0 flex-1 whitespace-nowrap rounded-full px-1 py-1.5 text-[11.5px] font-bold" style={{ background: tab === x.id ? YELLOW : 'transparent', color: tab === x.id ? '#111' : 'rgba(255,255,255,0.8)' }}>{x.label}</button>
           ))}
         </div>
         <button type="button" onClick={onClose} aria-label="Закрыть" className="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }}><X size={17} color="#fff" /></button>
