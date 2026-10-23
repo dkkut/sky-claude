@@ -345,7 +345,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
 
     // Замок приложения (applock.mjs): закрытая сессия получает 423 на всё, кроме самих ручек замка, выхода и обновления токена.
     // Решает сервер по записи сессии — стереть флаг в браузере или подменить заголовок это не обходит.
-    if (url.startsWith('/api/') && !url.startsWith('/api/skyid/applock') && (!url.startsWith('/api/auth/') || /^\/api\/auth\/(devices|deletion($|\?)|freeze|password\/(change|remove|setup))/.test(url)) && !url.startsWith('/api/platform/status')
+    if (url.startsWith('/api/') && !url.startsWith('/api/skyid/applock') && !url.startsWith('/api/skyid/pin') && (!url.startsWith('/api/auth/') || /^\/api\/auth\/(devices|deletion($|\?)|freeze|password\/(change|remove|setup))/.test(url)) && !url.startsWith('/api/platform/status')
         && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/') && !url.startsWith('/api/admin/gate/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/telemetry')) {
       const tka = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tka?.typ === 'access' && tka.sky && tka.sid) {
