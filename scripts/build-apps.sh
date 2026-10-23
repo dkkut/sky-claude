@@ -6,6 +6,7 @@
 #   bash scripts/build-apps.sh all          # всё, что возможно на этой машине; остальное пропускается с пояснением
 #   OUT=/путь bash scripts/build-apps.sh apk   # другой каталог
 # Результат: $OUT/<имя>-<версия>-<дата>.<ext> + SHA256SUMS. Файлы потом можно загрузить в админке «Сайт» → «Скачивание».
+#   Подпись APK (автоматически, если задан ключ): SKY_KEYSTORE=/путь/sky-release.jks SKY_KEYSTORE_PASS_FILE=/путь/pass (chmod 600) [SKY_KEY_ALIAS=sky]
 # Сборка идёт из исходников этого каталога (vite build --mode native), боевой сервер не затрагивается.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -51,6 +52,29 @@ prep() {
 WEB_DONE=0
 web() { [ "$WEB_DONE" = 1 ] && return 0; echo "==> Веб-часть (vite build --mode native), один раз для всех приложений"; prep && npm run build:native && WEB_DONE=1; }
 
+# Подпись APK: SKY_KEYSTORE=/путь/к.jks, пароль — SKY_KEYSTORE_PASS_FILE (файл, chmod 600) или SKY_KEYSTORE_PASS (в окружении),
+# алиас — SKY_KEY_ALIAS (sky). Пароль не попадает в аргументы команд (не виден в ps и в истории): apksigner читает его из файла/окружения.
+# Без ключа APK остаётся неподписанным — об этом сказано, сборка не падает.
+sign_apk() { # $1 = неподписанный apk, $2 = куда положить результат; 0 — файл положен (подписанный или нет)
+  local src="$1" dst="$2" ks="${SKY_KEYSTORE:-}" al="${SKY_KEY_ALIAS:-sky}" bt aligned
+  [ -n "$ks" ] || { [ -f "$HOME/sky-release.jks" ] && ks="$HOME/sky-release.jks"; }
+  if [ -z "$ks" ] || [ ! -f "$ks" ]; then
+    cp "$src" "$dst"; echo "   ⚠ APK не подписан: задайте SKY_KEYSTORE=/путь/к.jks и SKY_KEYSTORE_PASS_FILE=/путь/к/паролю (или SKY_KEYSTORE_PASS)"; return 0
+  fi
+  local sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+  bt="$(ls -d "$sdk"/build-tools/* 2>/dev/null | sort -V | tail -1)"
+  [ -n "$bt" ] && [ -x "$bt/apksigner" ] && [ -x "$bt/zipalign" ] || { skipped+=("apk: нет apksigner/zipalign в $sdk/build-tools — выполните: sudo bash scripts/setup-build-tools.sh --android"); return 1; }
+  local passarg
+  if [ -n "${SKY_KEYSTORE_PASS_FILE:-}" ] && [ -f "$SKY_KEYSTORE_PASS_FILE" ]; then passarg="file:$SKY_KEYSTORE_PASS_FILE"
+  elif [ -n "${SKY_KEYSTORE_PASS:-}" ]; then passarg="env:SKY_KEYSTORE_PASS"
+  else skipped+=("apk: ключ $ks найден, но нет пароля — задайте SKY_KEYSTORE_PASS_FILE (файл с паролем, chmod 600) или SKY_KEYSTORE_PASS"); return 1; fi
+  aligned="$(mktemp --suffix=.apk)"; rm -f "$aligned"
+  "$bt/zipalign" -f -p 4 "$src" "$aligned" || { skipped+=("apk: zipalign не прошёл"); return 1; }
+  "$bt/apksigner" sign --ks "$ks" --ks-key-alias "$al" --ks-pass "$passarg" --out "$dst" "$aligned" \
+    || { rm -f "$aligned" "$dst"; skipped+=("apk: подпись не прошла (неверный пароль или алиас $al?)"); return 1; }
+  rm -f "$aligned" "$dst.idsig"
+  "$bt/apksigner" verify --print-certs "$dst" | grep -E "SHA-256 digest" | head -1 | sed 's/^/   ✔ подписан, /'
+}
 build_apk() {
   local old; if old="$(unchanged apk)"; then echo "==> Android: исходники не менялись — беру готовый $old"; ok=$((ok+1)); return; fi
   J21="$(ls -d /usr/lib/jvm/java-21-openjdk-* 2>/dev/null | head -1)"; [ -n "$J21" ] && export JAVA_HOME="$J21" PATH="$J21/bin:$PATH"   # Capacitor 8 собирается только JDK 21 («invalid source release: 21» на 17)
@@ -62,8 +86,12 @@ build_apk() {
   npx cap sync android && ( cd android && ./gradlew --no-daemon --build-cache --console=plain -Dorg.gradle.jvmargs=-Xmx1536m -Dorg.gradle.workers.max=2 assembleRelease ) || { skipped+=("apk: сборка не прошла (см. вывод выше)"); return; }
   f="$(ls -t android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -1)"
   [ -n "$f" ] || { skipped+=("apk: файл не найден после сборки"); return; }
-  cp "$f" "$OUT/Sky-$VER-$STAMP.apk" && ok=$((ok+1)) && echo "   ✔ $OUT/Sky-$VER-$STAMP.apk" && stamp apk "$OUT/Sky-$VER-$STAMP.apk" && prune apk
-  case "$f" in *unsigned*) echo "   ⚠ APK не подписан: подпишите (apksigner) своим ключом перед выдачей людям.";; esac
+  local dst="$OUT/Sky-$VER-$STAMP.apk"
+  case "$f" in
+    *unsigned*) sign_apk "$f" "$dst" || return;;
+    *) cp "$f" "$dst";;   # Gradle уже подписал (если в проекте настроен signingConfig)
+  esac
+  ok=$((ok+1)); echo "   ✔ $dst"; stamp apk "$dst"; prune apk
 }
 build_exe() {
   local old; if old="$(unchanged exe)"; then echo "==> Windows: исходники не менялись — беру готовый $old"; ok=$((ok+1)); return; fi
