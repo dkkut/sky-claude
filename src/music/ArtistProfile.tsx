@@ -126,7 +126,7 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
               <span className="min-w-0 flex-1">
                 <span translate="no" className="block truncate text-[18px] font-semibold" style={{ color: 'var(--t1)' }}>{newest.album?.trim() || newest.title}</span>
                 <span className="mt-0.5 block text-[14px]" style={{ color: 'var(--t3)' }}>{new Date(newest.addedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-                <span className="block text-[12px] font-bold uppercase tracking-wide" style={{ color: 'var(--t3)' }}>{newest.album && albums.find(([n]) => n === newest.album.trim())?.[1].length! > 1 ? 'альбом' : 'сингл'}</span>
+                <span className="block text-[12px] font-bold uppercase tracking-wide" style={{ color: 'var(--t3)' }}>{(albums.find(([n]) => n === (newest.album ?? '').trim())?.[1].length ?? 0) > 1 ? 'альбом' : 'сингл'}</span>
               </span>
               <ChevronRight size={20} style={{ color: 'var(--t3)' }} />
             </button>

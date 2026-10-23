@@ -16,6 +16,7 @@
 =============================================================== */
 import { getInvite, clearInvite } from '../../invite/capture';
 import { isEnglish } from '@/i18n/lang';
+import { APP_BUILD } from '../version';
 import { getActiveSlot, refreshKeyFor } from './slots';
 import { NATIVE_APP, IOS_WEB, API_ORIGIN, getApiOrigin, failoverApiOrigin, nativeStore, REFRESH_TOKEN_KEY, BETA_TOKEN_KEY } from '../nativeApp';
 
@@ -253,7 +254,7 @@ const rawOnce = (path: string, init: RequestInit = {}, origin = ''): Promise<Res
       ...(path.startsWith('/api/auth/') && getInvite() ? { 'X-Sky-Invite': getInvite() } : {}),
       'X-Sky-Slot': String(getActiveSlot()),
       ...(skyMode() ? { 'X-Sky-Mode': skyMode() } : {}),
-      ...(NATIVE_APP ? { 'X-Sky-Client': 'app' } : {}),
+      ...(NATIVE_APP ? { 'X-Sky-Client': 'app', 'X-Sky-Build': String(APP_BUILD) } : {}),
       // iPhone в браузере: пропуск медиа нужен и в теле ответа — см. mediaBody в server/http.mjs.
       ...(IOS_WEB ? { 'X-Sky-Media-Url': '1' } : {}),
       ...(NATIVE_APP && nativeBetaToken ? { 'X-Sky-Beta': nativeBetaToken } : {}),
@@ -277,7 +278,7 @@ export const uploadUrl = (path: string) => (NATIVE_APP ? getApiOrigin() + path :
 
 export const nativeXhrHeaders = (): Record<string, string> => (
   NATIVE_APP
-    ? { 'X-Sky-Client': 'app', ...(nativeBetaToken ? { 'X-Sky-Beta': nativeBetaToken } : {}) }
+    ? { 'X-Sky-Client': 'app', 'X-Sky-Build': String(APP_BUILD), ...(nativeBetaToken ? { 'X-Sky-Beta': nativeBetaToken } : {}) }
     : {}
 );
 

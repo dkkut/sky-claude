@@ -17,6 +17,7 @@ import { oidcRoutes } from './routes/oidc.mjs';
 import { sshAdminRoutes } from './routes/sshadmin.mjs';
 import { sweepOidc } from './oidc.mjs';
 import { shutdownState, maintenanceState } from './platform.mjs';
+import { isOutdatedApp, outdatedReason } from './appversion.mjs';
 import { waitForDb, migrate, pendingMigrations, closeDb, query } from './db.mjs';
 import { encryptExistingContent } from './encryptbackfill.mjs';
 import { encryptLegacyMedia } from './mediabackfill.mjs';
@@ -297,7 +298,7 @@ const applyCors = (req, res) => {
   res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sky-Client, X-Sky-Beta, X-Sky-Lang, X-Sky-Media-Url, X-Sky-Device, X-Sky-Mode, X-Sky-Invite, X-Recovery-Case');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sky-Client, X-Sky-Build, X-Sky-Beta, X-Sky-Lang, X-Sky-Media-Url, X-Sky-Device, X-Sky-Mode, X-Sky-Invite, X-Recovery-Case');
     res.setHeader('Access-Control-Max-Age', '600');
   }
 };
@@ -485,6 +486,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
      * почему сайт не отвечает, и показать нужный экран.
      */
     if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && url !== '/api/platform/status' && !url.startsWith('/api/admin/gate') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/') && !url.startsWith('/api/site/') && !url.startsWith('/api/storage/verify') && !url.startsWith('/api/storage/s3') && !url.startsWith('/api/recovery/')) {
+      if (isOutdatedApp(req)) return json(res, 503, { error: 'platform_maintenance', reason: outdatedReason(req) });
       const shutdown = await shutdownState();
       if (shutdown.active) {
         const session = await readSession(req);

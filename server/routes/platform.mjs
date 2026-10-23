@@ -7,6 +7,7 @@ import { json, parseBody, requireProfile, readSession } from './../http.mjs';
 import { viewerBypasses } from './../platformaccess.mjs';
 import { publicStatus as registrationStatus } from './../registration.mjs';
 import { closedPublic, mediaBannerOn } from './../modclosure.mjs';
+import { isOutdatedApp, outdatedReason } from './../appversion.mjs';
 import { shutdownState, maintenanceState, setShutdown, setMaintenance } from './../platform.mjs';
 
 export const platformRoutes = async (req, res, url) => {
@@ -19,6 +20,7 @@ export const platformRoutes = async (req, res, url) => {
     // bypass: этого посетителя режим не касается (владелец/администратор) — клиент не должен показывать ему заглушку
     const kind = shutdown.active ? 'shutdown' : maintenance.active ? 'maintenance' : null;
     const bypass = kind ? await viewerBypasses(await readSession(req).catch(() => null), kind) : false;
+    if (isOutdatedApp(req)) return json(res, 200, { shutdown: { active: false, reason: '' }, maintenance: { active: true, reason: outdatedReason(req) }, registration, closedModules, mediaBanner, bypass: false });
     return json(res, 200, { shutdown, maintenance, registration, closedModules, mediaBanner, bypass });
   }
 

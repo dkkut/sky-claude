@@ -40,6 +40,7 @@ services:
       RECOVERY_DOMAIN: ${RECOVERY_DOMAIN:-recovery.invalid.local}
       # Резервный адрес API для приложений: тот же вхост, что и DOMAIN, сертификат — SAN основного (scripts/add-reserve-domain.sh).
       RESERVE_DOMAIN: ${RESERVE_DOMAIN:-reserve.invalid.local}
+      MIN_APP_BUILD: ${MIN_APP_BUILD:-0}
       GUARD_SECRET: ${GUARD_SECRET:-}
       SANDBOX_SECRET: ${SANDBOX_SECRET:-}
       SANDBOX_MAX_AGE_H: ${SANDBOX_MAX_AGE_H:-24}
