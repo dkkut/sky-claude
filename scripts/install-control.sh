@@ -25,7 +25,7 @@ if [ -n "$DOMAIN_NAME" ]; then
   command -v docker >/dev/null || { echo "Нужен docker (сертификат выпускает контейнер certbot)." >&2; exit 1; }
   [ -f "$APP_DIR/.env" ] || { echo "Нет $APP_DIR/.env" >&2; exit 1; }
   EMAIL="$(grep -E '^CERTBOT_EMAIL=' "$APP_DIR/.env" | tail -1 | cut -d= -f2- | tr -d '"')"; [ -n "$EMAIL" ] || { echo "В $APP_DIR/.env не задан CERTBOT_EMAIL." >&2; exit 1; }
-  MYIP="$(curl -4fsS -m 8 https://ifconfig.me 2>/dev/null || true)"; DNSIP="$(getent ahostsv4 "$DOMAIN_NAME" | awk 'NR==1{print $1}')"
+  MYIP="$(curl -4fsS -m 8 https://ifconfig.me 2>/dev/null || true)"; DNSIP="$(getent ahostsv4 "$DOMAIN_NAME" 2>/dev/null | awk 'NR==1{print $1}' || true)"
   [ -n "$DNSIP" ] || { echo "Домен $DOMAIN_NAME не резолвится: создайте A-запись на IP этого сервера${MYIP:+ ($MYIP)} (без оранжевого облака Cloudflare)." >&2; exit 1; }
   [ -z "$MYIP" ] || [ "$DNSIP" = "$MYIP" ] || { echo "ВНИМАНИЕ: $DOMAIN_NAME указывает на $DNSIP, а этот сервер — $MYIP. Для Cloudflare-прокси выпуск не пройдёт." >&2; [ "$OPEN" = 1 ] || exit 1; }
   echo "==> Выпуск сертификата для $DOMAIN_NAME (webroot, порт 80 остаётся у nginx)"
