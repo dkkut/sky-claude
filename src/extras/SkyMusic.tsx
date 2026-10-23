@@ -1894,7 +1894,16 @@ export const SkyFullPlayer = ({
   onShuffle, onRepeat, onLike, onAdd, onClose,
 }: SkyFullPlayerProps) => {
   const [showQueue,   setShowQueue]   = React.useState(false);
-  const [showLyrics,  setShowLyrics]  = React.useState(true);
+  /* «Скрыть текст»: в полноэкранном плеере остаются только обложка и кнопки управления по центру —
+     ни текста песни, ни очереди, ни названия. Выбор помнится на устройстве. */
+  const [bare, setBareState] = React.useState(() => { try { return localStorage.getItem('sky:fullplayer:bare') === '1'; } catch { return false; } });
+  const [showLyrics,  setShowLyrics]  = React.useState(() => { try { return localStorage.getItem('sky:fullplayer:bare') !== '1'; } catch { return true; } });
+  const setBare = (v: boolean) => {
+    setBareState(v);
+    try { localStorage.setItem('sky:fullplayer:bare', v ? '1' : '0'); } catch { /* не критично */ }
+    setShowQueue(false);
+    setShowLyrics(!v);
+  };
   // Высота колонки с плеером на телефоне: окно текста/очереди кончается над ней, а не лежит под обложкой и кнопками.
   const ctlRef = React.useRef<HTMLDivElement>(null);
   const [ctlH, setCtlH] = React.useState(0);
@@ -2056,6 +2065,15 @@ export const SkyFullPlayer = ({
           Назад
         </button>
         <div className="flex gap-2">
+          <button type="button" onClick={() => setBare(!bare)} aria-pressed={bare}
+            className="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors"
+            style={{
+              background: bare ? `${hslA(hslAcc(h),'22')}` : 'rgba(255,255,255,0.06)',
+              color: bare ? hslAcc(h) : 'rgba(255,255,255,0.5)',
+              border: `1px solid ${bare ? hslA(hslAcc(h),'55') : 'rgba(255,255,255,0.1)'}`,
+              cursor:'pointer',
+            }}>{bare ? 'Показать текст' : 'Скрыть текст'}</button>
+          {!bare && <>
           <button type="button"
             onClick={() => { setShowLyrics(v=>!v); setShowQueue(false); }}
             className="rounded-xl px-3.5 py-1.5 text-xs font-bold transition-colors"
@@ -2075,6 +2093,7 @@ export const SkyFullPlayer = ({
               cursor:'pointer',
             }}>Очередь</button>
           <MusicContinue style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '6px 12px' }} className="inline-flex items-center" />
+          </>}
         </div>
         <button type="button" onClick={() => onAdd(track.id)}
           className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10"
@@ -2111,7 +2130,7 @@ export const SkyFullPlayer = ({
 
           {/* Track info */}
           <AnimatePresence mode="wait">
-            <motion.div key={track.id}
+            {!bare && <motion.div key={track.id}
               initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}}
               transition={{duration:0.3}}
               style={{textAlign:'center', marginBottom: isMobile ? 12 : 18, width:'100%'}}>
@@ -2130,7 +2149,7 @@ export const SkyFullPlayer = ({
                   <RightsholderNotice/>
                 </div>
               )}
-            </motion.div>
+            </motion.div>}
           </AnimatePresence>
 
           {/* Cover with overlaid controls */}

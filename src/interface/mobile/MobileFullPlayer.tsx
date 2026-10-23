@@ -22,6 +22,9 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
   } = usePlayerStore();
 
   const [showQueue, setShowQueue] = useState(false);
+  /* «Скрыть текст»: по центру остаются только обложка и кнопки управления (общий выбор с ПК-плеером). */
+  const [bare, setBareState] = useState(() => { try { return localStorage.getItem('sky:fullplayer:bare') === '1'; } catch { return false; } });
+  const setBare = (v: boolean) => { setBareState(v); try { localStorage.setItem('sky:fullplayer:bare', v ? '1' : '0'); } catch { /* не критично */ } };
   const [scrubbing, setScrubbing] = useState<number | null>(null);
   const dragY = useMotionValue(0);
   const lyricsRef = useRef<HTMLDivElement>(null);
@@ -79,6 +82,10 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
             </button>
             <p className="text-[11px] font-bold uppercase tracking-wide text-white/60">Сейчас играет</p>
             <div className="flex items-center gap-2">
+              <button type="button" onClick={() => { haptic('selection'); setBare(!bare); }} aria-pressed={bare}
+                className="grid h-9 place-items-center rounded-full px-3 text-[11px] font-bold text-white" style={{ background: bare ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.1)' }}>
+                {bare ? 'Показать текст' : 'Скрыть текст'}
+              </button>
               <MusicContinue label={false} className="grid h-9 w-9 place-items-center rounded-full text-white" style={{ background: 'rgba(255,255,255,0.1)' }} />
               <button type="button" onClick={() => setShowQueue(true)} className="grid h-9 w-9 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }}>
                 <ListMusic size={16} className="text-white"/>
@@ -87,7 +94,7 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
           </div>
 
           {/* Текст песни — сверху и первым, чтобы помещался целиком, а не обрезался под маленький экран. */}
-          <div ref={lyricsRef} className="min-h-0 flex-1 overflow-y-auto px-8 py-4 text-center">
+          {bare ? <div className="min-h-0 flex-1" /> : <div ref={lyricsRef} className="min-h-0 flex-1 overflow-y-auto px-8 py-4 text-center">
             {lyrics.length === 0 ? (
               <div className="flex h-full items-center justify-center">
                 <p className="text-[13px] text-white/50">Текст песни недоступен</p>
@@ -99,12 +106,12 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
                 {l.text}
               </p>
             ))}
-          </div>
+          </div>}
 
           {/* Обложка с кнопками управления — под текстом, компактнее, чтобы обоим хватило места. */}
           <div className="shrink-0 flex flex-col items-center px-8 pt-1">
             <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-              className="relative aspect-square w-full max-w-[168px] overflow-hidden rounded-2xl"
+              className={`relative aspect-square w-full ${bare ? 'max-w-[260px]' : 'max-w-[168px]'} overflow-hidden rounded-2xl`}
               style={{ background: item.coverUrl ? `url(${item.coverUrl}) center/cover` : `linear-gradient(135deg, ${g1}, ${g2})`, boxShadow: '0 14px 40px rgba(0,0,0,0.5)' }}>
               {!item.coverUrl && (
                 <div className="grid h-full place-items-center">
@@ -147,11 +154,11 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
             </button>
           </div>
 
-          {/* Название и исполнитель — в самом низу экрана. */}
-          <div className="shrink-0 px-6 pb-2" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
+          {/* Название и исполнитель — в самом низу экрана (в режиме «Скрыть текст» их нет — снизу просто пустое место). */}
+          {bare ? <div className="min-h-0 flex-1" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }} /> : <div className="shrink-0 px-6 pb-2" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
             <p className="truncate text-center text-[17px] font-black text-white">{item.title}</p>
             <p className="truncate text-center text-[13px] text-white/60">{item.author}</p>
-          </div>
+          </div>}
 
           <BottomSheet open={showQueue} onClose={() => setShowQueue(false)} title="Очередь" snapPoints={[0.6]}>
             <div className="space-y-1 px-4 pb-6">
