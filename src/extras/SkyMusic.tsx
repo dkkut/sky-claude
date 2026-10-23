@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, X, Play, Pause, SkipForward,
   Heart, Plus, MoreHorizontal, ChevronLeft,
-  ListMusic, Upload, History, BarChart3, Music2, Mic2, Download, CheckCircle, Crown, ArrowDownToLine,
+  ListMusic, Upload, Loader, History, BarChart3, Music2, Mic2, Download, CheckCircle, Crown, ArrowDownToLine,
   Sparkles, Flame, Star, Check, Clock, Film, Share2
 } from 'lucide-react';
 import { saveDownload, isDownloaded } from '@/offline/offlineDB';
@@ -742,8 +742,14 @@ const UploadTab = ({ playing, activeId, onPlay }: {
   const { accounts, currentUserId } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
 
-  type Step = 'drop' | 'meta' | 'lyrics' | 'done';
+  type Step = 'drop' | 'meta' | 'lyrics' | 'done' | 'batch';
   const [step,      setStep]      = useState<Step>('drop');
+  type BItem = { id: number; file: File; title: string; artist: string; dur: number; cover: Blob | null; state: 'wait' | 'up' | 'ok' | 'err'; err?: string };
+  const [batch, setBatch] = useState<BItem[]>([]);
+  const [bAlbum, setBAlbum] = useState('');
+  const [bArtist, setBArtist] = useState('');
+  const [bGenre, setBGenre] = useState('');
+  const [bBusy, setBBusy] = useState(false);
   const [dragging,  setDragging]  = useState(false);
   const [pFile,     setPFile]     = useState<File | null>(null);
   const [pUrl,      setPUrl]      = useState<string | null>(null);
@@ -789,6 +795,52 @@ const UploadTab = ({ playing, activeId, onPlay }: {
     if (isAudPlaying) { a.pause(); setAudPlaying(false); }
     else { a.play(); setAudPlaying(true); }
   };
+
+  const isAudioFile = (f: File) => f.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|aac|m4a|alac|caf)$/i.test(f.name);
+
+  /** Несколько файлов сразу: одна карточка-партия со списком треков; теги читаются из файлов. */
+  const processFiles = async (list: File[]) => {
+    const files = list.filter(isAudioFile).slice(0, 30);
+    if (files.length === 0) return;
+    if (files.length === 1) { void processFile(files[0]); return; }
+    const items: BItem[] = [];
+    let n = 0, common = '', commonArtist = '';
+    for (const f of files) {
+      const url = URL.createObjectURL(f);
+      const dur = await new Promise<number>(r => { const a = document.createElement('audio'); a.onloadedmetadata = () => r(a.duration); a.onerror = () => r(0); a.src = url; });
+      URL.revokeObjectURL(url);
+      let title = '', artist = '', cover: Blob | null = null;
+      try {
+        const c = (await parseBlob(f)).common;
+        title = c.title ?? ''; artist = c.artist ?? '';
+        if (!common && c.album) common = c.album;
+        if (!commonArtist && c.artist) commonArtist = c.artist;
+        const pic = c.picture?.[0]; if (pic) cover = new Blob([pic.data], { type: pic.format });
+      } catch { /* без тегов — берём из имени */ }
+      if (!title) { const base = f.name.replace(/\.[^.]+$/, ''); const parts = base.split(/\s+-\s+/); title = parts.length > 1 ? parts.slice(1).join(' - ').trim() : base; if (!artist && parts.length > 1) artist = parts[0].trim(); }
+      items.push({ id: n++, file: f, title, artist, dur: Number.isFinite(dur) ? dur : 0, cover, state: 'wait' });
+    }
+    setBatch(items); setBAlbum(common); setBArtist(commonArtist); setBGenre(''); setUploadError(null); setStep('batch');
+  };
+  const patchItem = (id: number, patch: Partial<BItem>) => setBatch(b => b.map(x => x.id === id ? { ...x, ...patch } : x));
+  const uploadBatch = async () => {
+    setBBusy(true); setUploadError(null);
+    for (const it of batch) {
+      if (it.state === 'ok' || !it.title.trim()) continue;
+      patchItem(it.id, { state: 'up', err: undefined });
+      try {
+        const res = await uploadTrack(it.file, {
+          title: it.title.trim(), artist: (bArtist.trim() || it.artist.trim() || (me?.name ?? 'Неизвестный')),
+          album: bAlbum.trim() || undefined, genre: bGenre || 'Другое', duration: it.dur,
+        });
+        if (!res.ok) { patchItem(it.id, { state: 'err', err: res.reason ?? 'Не получилось загрузить' }); continue; }
+        if (res.id && it.cover) await apiUploadCover(res.id, it.cover).catch(() => {});
+        patchItem(it.id, { state: 'ok' });
+      } catch { patchItem(it.id, { state: 'err', err: 'Не получилось загрузить' }); }
+    }
+    setBBusy(false);
+  };
+  const batchDone = batch.length > 0 && batch.every(x => x.state === 'ok');
 
   const processFile = async (f: File) => {
     if (!f.type.startsWith('audio/') && !f.name.match(/\.(mp3|wav|ogg|flac|aac|m4a|alac|caf)$/i)) return;
@@ -971,10 +1023,10 @@ const UploadTab = ({ playing, activeId, onPlay }: {
         <div className="mx-3 mt-3 mb-4 shrink-0"
           onDragOver={e => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
-          onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) processFile(f); }}
+          onDrop={e => { e.preventDefault(); setDragging(false); void processFiles(Array.from(e.dataTransfer.files ?? [])); }}
           onClick={() => fileRef.current?.click()}>
-          <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.ogg,.flac,.aac,.m4a,.alac,.caf" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); }} />
+          <input ref={fileRef} type="file" multiple accept="audio/*,.mp3,.wav,.ogg,.flac,.aac,.m4a,.alac,.caf" className="hidden"
+            onChange={e => { const l = Array.from(e.target.files ?? []); e.target.value = ''; void processFiles(l); }} />
           <div className="flex flex-col items-center justify-center gap-4 rounded-3xl py-12 cursor-pointer transition-all"
             style={{ background: dragging ? 'rgba(168,85,247,0.08)' : 'rgba(255,255,255,0.03)', border: `2px dashed ${dragging ? YM.accent : 'rgba(255,255,255,0.1)'}` }}>
             <div className="grid h-16 w-16 place-items-center rounded-2xl" style={{ background: dragging ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.05)' }}>
@@ -982,10 +1034,54 @@ const UploadTab = ({ playing, activeId, onPlay }: {
             </div>
             <div className="text-center">
               <p className="text-sm font-bold" style={{ color: dragging ? YM.accent : YM.text }}>
-                {dragging ? 'Отпустите файл' : 'Загрузить трек'}
+                {dragging ? 'Отпустите файлы' : 'Загрузить трек или несколько сразу'}
               </p>
               <p className="text-xs mt-1" style={{ color: YM.sub2 }}>MP3 · WAV · FLAC · OGG · M4A</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP: BATCH ────────────────────────────────────────────────── */}
+      {step === 'batch' && (
+        <div className="mx-3 mt-3 space-y-3">
+          <div className="rounded-2xl p-3 space-y-2" style={{ background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.18)' }}>
+            <p className="text-sm font-black text-white">{`Треков в партии: ${batch.length}`}</p>
+            <p className="text-[11px]" style={{ color: YM.sub2 }}>Общие поля применяются ко всем трекам. Пусто — берётся из тегов файла.</p>
+            <input value={bArtist} onChange={e => setBArtist(e.target.value)} placeholder="Исполнитель (для всех)" maxLength={200} disabled={bBusy}
+              className="w-full rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'rgba(255,255,255,0.06)', color: YM.text, border: 'none' }}/>
+            <input value={bAlbum} onChange={e => setBAlbum(e.target.value)} placeholder="Альбом (для всех)" maxLength={200} disabled={bBusy}
+              className="w-full rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'rgba(255,255,255,0.06)', color: YM.text, border: 'none' }}/>
+            <select value={bGenre} onChange={e => setBGenre(e.target.value)} disabled={bBusy}
+              className="w-full rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'rgba(255,255,255,0.06)', color: YM.text, border: 'none' }}>
+              <option value="">Жанр</option>{GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            {batch.map((it, i) => (
+              <div key={it.id} className="flex items-center gap-2 rounded-xl p-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <span className="w-5 shrink-0 text-center text-[11px] font-bold" style={{ color: YM.sub2 }}>{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <input value={it.title} translate="no" onChange={e => patchItem(it.id, { title: e.target.value })} disabled={bBusy || it.state === 'ok'} maxLength={200} placeholder="Название"
+                    className="w-full bg-transparent text-sm font-semibold outline-none" style={{ color: YM.text }}/>
+                  <p className="truncate text-[10px]" translate="no" style={{ color: it.state === 'err' ? '#ef4444' : YM.sub2 }}>{it.err ?? it.file.name}</p>
+                </div>
+                <div className="shrink-0 w-6 grid place-items-center">
+                  {it.state === 'up' ? <Loader size={14} className="animate-spin" style={{ color: YM.accent }}/> : it.state === 'ok' ? <Check size={15} style={{ color: '#22c55e' }}/> :
+                    !bBusy ? <button type="button" aria-label="Убрать" onClick={() => setBatch(b => b.filter(x => x.id !== it.id))}><X size={14} style={{ color: YM.sub2 }}/></button> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+          {uploadError && <p className="text-xs" style={{ color: '#ef4444' }}>{uploadError}</p>}
+          <div className="flex gap-2">
+            <button type="button" disabled={bBusy} onClick={() => { setBatch([]); setStep('drop'); }}
+              className="rounded-2xl px-4 py-3 text-sm font-bold" style={{ background: 'rgba(255,255,255,0.06)', color: YM.text, border: 'none' }}>Отмена</button>
+            {batchDone
+              ? <button type="button" onClick={() => { setBatch([]); setStep('done'); }} className="flex-1 rounded-2xl py-3 text-sm font-bold" style={{ background: YM.accent, color: '#fff', border: 'none' }}>Готово</button>
+              : <button type="button" disabled={bBusy || batch.length === 0} onClick={() => void uploadBatch()} className="flex-1 rounded-2xl py-3 text-sm font-bold disabled:opacity-50" style={{ background: YM.accent, color: '#fff', border: 'none' }}>
+                  {bBusy ? `Загружаем… ${batch.filter(x => x.state === 'ok').length}/${batch.length}` : batch.some(x => x.state === 'err') ? 'Повторить для ошибочных' : `Загрузить все (${batch.length})`}
+                </button>}
           </div>
         </div>
       )}
