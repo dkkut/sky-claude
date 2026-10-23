@@ -62,11 +62,24 @@ fi
 [ -r "$CONF" ] || exit 1      # конфига нет — закрыто, а не открыто
 # shellcheck disable=SC1090
 . "$CONF"
-: "${SKY_TIMEOUT:=300}" "${SKY_FAILOPEN:=0}"
+: "${SKY_TIMEOUT:=300}" "${SKY_FAILOPEN:=0}" "${SKY_REUSE_SEC:=120}"
 [ -n "${SKY_API:-}" ] && [ "${#SKY_SECRET}" -ge 24 ] || exit 1
 
 clean() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._:@/-' | cut -c1-"$2"; }
 U="$(clean "${PAM_USER:-}" 40)"; R="$(clean "${PAM_RHOST:-}" 60)"; T="$(clean "${PAM_TTY:-}" 40)"; H="$(clean "$(hostname)" 80)"
+# Параллельные соединения одного клиента (Termius открывает терминал, SFTP, статистику отдельными подключениями) не должны
+# спрашивать подтверждение заново: пока идёт первое — остальные ждут его, а после одобрения тот же пользователь с того же адреса
+# проходит ещё SKY_REUSE_SEC секунд (0 — выключено, каждое соединение подтверждается отдельно).
+REUSE="${SKY_GATE_REUSE:-/opt/sky/control/ssh-gate-reuse}"; LOCKF="${REUSE}.lock"
+if [ "$SKY_REUSE_SEC" -gt 0 ] 2>/dev/null && command -v flock >/dev/null 2>&1 && mkdir -p "$(dirname "$REUSE")" 2>/dev/null; then
+  exec 9>"$LOCKF" 2>/dev/null && flock -w "$SKY_TIMEOUT" 9 2>/dev/null || true
+  if [ -r "$REUSE" ]; then
+    read -r R_TS R_USER R_RHOST < "$REUSE" 2>/dev/null || true
+    if [ "${R_USER:-}" = "$U" ] && [ "${R_RHOST:-}" = "$R" ] && [ -n "$R" ] && [ "$(( $(date +%s) - ${R_TS:-0} ))" -le "$SKY_REUSE_SEC" ] 2>/dev/null; then
+      logger -t sky-ssh-gate "вход $U@$R: подтверждение уже есть (параллельное соединение, ≤${SKY_REUSE_SEC} с)"; exit 0
+    fi
+  fi
+fi
 TS="$(date +%s)"
 SIG="$(printf '%s\n%s\n%s\n%s\n%s' "$TS" "$U" "$H" "$R" "$T" | openssl dgst -sha256 -hmac "$SKY_SECRET" -hex | awk '{print $NF}')"
 api() { curl -sS -m 10 -H 'Content-Type: application/json' -X POST -d "$2" "${SKY_API%/}$1" 2>/dev/null; }
@@ -101,6 +114,7 @@ while [ "$(date +%s)" -lt "$END" ]; do
       # Отметка для ssh-login-hook.sh: этот вход уже подтверждён до сессии, второе письмо («подтвердите за 10 минут») не нужно.
       MARK="${SKY_GATE_MARK:-/opt/sky/control/ssh-gate-approved}"
       { mkdir -p "$(dirname "$MARK")" && printf '%s %s %s\n' "$(date +%s)" "${PAM_USER:-}" "${PAM_RHOST:-}" > "$MARK" && chmod 600 "$MARK"; } 2>/dev/null
+      [ "$SKY_REUSE_SEC" -gt 0 ] 2>/dev/null && { printf '%s %s %s\n' "$(date +%s)" "$U" "$R" > "$REUSE" && chmod 600 "$REUSE"; } 2>/dev/null
       say "\r\033[K  ✔ Подтверждено владельцем. Добро пожаловать.\r\n\r\n"; exit 0 ;;
     denied|expired|unknown) logger -t sky-ssh-gate "вход $U@$R отклонён ($ST)"; say "\r\033[K  ✖ Вход не подтверждён (отклонён или истёк срок).\r\n"; exit 1 ;;
   esac

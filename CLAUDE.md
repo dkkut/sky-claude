@@ -1833,3 +1833,8 @@ nginx: `nginx/recovery-template/`, `07-recovery-nginx.sh`, `security-headers-rec
 - Car: цели ≥72 px, без ввода; защита «кино только на стоянке» не менялась (принятое кино открывается через `CarCinema` с `exact`).
 - Не проверено: настоящие ТВ/машина/Bluetooth-колонки, Android/Windows-сборки на устройствах (сборки `vite` проходят).
 - Тесты: `scripts/audit/handoff-test.mjs` (76; API с `OWNER_USERNAME=hoowner ADMIN_GATE=off HANDOFF_RATE_MULT=20`), `handoff-ui-test.mjs` (Playwright, 18; два контекста, нужен Prime и фильм из сида, id фильма — `mov-<uuid>`). Нужен деплой (миграция 198) и пересборка `.apk`/`.exe`.
+
+## SSH-шлюз: параллельные соединения и аварийное меню (октябрь-2026)
+
+- `scripts/ssh-gate.sh`: клиенты вроде Termius открывают несколько соединений сразу (терминал, SFTP, статистика), и каждое просило подтверждение заново — «код спрашивает по два раза». Теперь соединения того же пользователя с того же адреса ждут первое (`flock`), а после одобрения проходят ещё `SKY_REUSE_SEC` секунд (120; в `/etc/sky-ssh-gate.conf`, 0 — выключить, каждое соединение подтверждается отдельно). Отметка — `/opt/sky/control/ssh-gate-reuse` (`SKY_GATE_REUSE`). Другой адрес или пользователь — обычное подтверждение. Скрипт на хосте: после `git pull` повторить `sudo bash scripts/ssh-gate.sh --install`.
+- `scripts/rescue-access.sh`: у `skyrescue` включён терминал (`PermitTTY yes`, `restrict,pty`) ради клиентов с оболочкой (Termius): без команды открывается меню `sky-rescue>` — по одному слову из закрытого списка, `exit` выходит; `ssh … <слово>` работает как раньше. Обновить: `sudo bash scripts/rescue-access.sh --install --key "…"`.
