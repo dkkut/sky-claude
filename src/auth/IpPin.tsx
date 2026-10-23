@@ -100,7 +100,7 @@ export const IpPinOverlay = () => {
 
   if (!locked) return null;
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100000] grid place-items-center px-4" style={{ background: 'var(--bg)' }}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100003] grid place-items-center px-4" style={{ background: 'var(--bg)' }}>
       <div className="w-full max-w-[380px] rounded-[28px] p-6 text-center" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)', color: 'var(--t1)' }}>
         <Lock size={26} className="mx-auto" style={{ color: 'var(--accent)' }} />
         <p className="mt-3 text-[16px] font-bold">Подтвердите, что это вы</p>
