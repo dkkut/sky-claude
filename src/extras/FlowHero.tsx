@@ -11,7 +11,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AlignLeft, Heart, Pause, Play, Sparkles } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { usePlayerStore } from '@/player/playerStore';
-import { subscribeAudioLevels } from '@/music/audioLevels';
+import { subscribeAudioLevels, audioLevelsLive } from '@/music/audioLevels';
 import { useCardImage } from '@/artists/CardImages';
 import { Music2 } from 'lucide-react';
 import { apiLyrics } from '@/music/musicApi';
@@ -30,6 +30,24 @@ const BLOBS = [
   { x: 0.76, y: 0.62, s: 0.40, c: '#f0abfc', fx: 0.5, fy: 0.8, ph: 2.4, a: 0.8, hd: 12 },    // светло-розовый
 ];
 
+/** Уровни звука для оформления карточки. Если анализатора нет (iPhone/iPad: Web Audio там не строится, чтобы не усыплять звук),
+ *  оформление «дышит» по собственному плавному ритму — это только украшение, не анализ песни. */
+const subscribeLevelsOrIdle = (fn: (l: { level: number; beat: number }) => void): (() => void) => {
+  const off = subscribeAudioLevels((l) => { if (audioLevelsLive()) fn({ level: l.level, beat: l.beat }); });
+  let raf = 0; let t0 = performance.now();
+  const reduce = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const loop = (now: number) => {
+    raf = requestAnimationFrame(loop);
+    if (audioLevelsLive()) return;
+    const x = (now - t0) / 1000;
+    const level = reduce ? 0.35 : 0.42 + 0.22 * Math.sin(x * 2.1) + 0.1 * Math.sin(x * 5.3);
+    const beat = reduce ? 0 : Math.max(0, Math.sin(x * 4.2)) * 0.5;
+    fn({ level: Math.max(0, level), beat });
+  };
+  raf = requestAnimationFrame(loop);
+  return () => { off(); cancelAnimationFrame(raf); };
+};
+
 /** Волна: спокойная в тишине, живая при музыке. Позиции считаются в кадре анимации и пишутся прямо в стили — без перерисовок React. */
 const Wave = ({ active }: { active: boolean }) => {
   const box = useRef<HTMLDivElement>(null);
@@ -38,7 +56,7 @@ const Wave = ({ active }: { active: boolean }) => {
   target.current.active = active;
   useEffect(() => {
     if (!active) { target.current.level = 0; target.current.beat = 0; return undefined; }
-    return subscribeAudioLevels((l) => { target.current.level = l.level; target.current.beat = l.beat; });
+    return subscribeLevelsOrIdle((l) => { target.current.level = l.level; target.current.beat = l.beat; });
   }, [active]);
   useEffect(() => {
     let raf = 0; let last = performance.now(); let phase = 0; let speed = 0.16; let amp = 0.03; let pulse = 0;
@@ -83,12 +101,21 @@ const Wave = ({ active }: { active: boolean }) => {
   );
 };
 
+/** Волны от панели: кольца расходятся от краёв карточки и гаснут (на телефоне — не дальше отступа до края экрана). */
+const Ripples = ({ on }: { on: boolean }) => (
+  <div aria-hidden className="pointer-events-none absolute inset-0" style={{ zIndex: 0, opacity: on ? 1 : 0, transition: 'opacity .6s ease' }}>
+    {[0, 0.9, 1.8].map((d) => (
+      <span key={d} className="sky-flow-ripple absolute inset-0" style={{ borderRadius: 30, animationDelay: `${d}s` }} />
+    ))}
+  </div>
+);
+
 /** Лучи света вокруг карточки: вращаются и пульсируют в такт музыке (видны за краями карточки). */
 const Rays = ({ on }: { on: boolean }) => {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!on) return undefined;
-    return subscribeAudioLevels((l) => { ref.current?.style.setProperty('--lvl', String(Math.min(1, l.level * 1.6 + l.beat * 0.5))); });
+    return subscribeLevelsOrIdle((l) => { ref.current?.style.setProperty('--lvl', String(Math.min(1, l.level * 1.6 + l.beat * 0.5))); });
   }, [on]);
   return (
     <div ref={ref} aria-hidden className="pointer-events-none absolute" style={{
@@ -189,7 +216,9 @@ export const FlowHero = ({ cur, last, playing, liked, tracks, favorites, onPlayP
     <div className="relative" style={{ height: 340 }}>
       <style>{`@keyframes skyFlowSpin{to{transform:rotate(360deg)}} @keyframes skyFlowHue{from{filter:hue-rotate(-34deg)}to{filter:hue-rotate(34deg)}} .sky-flow-hue{animation:skyFlowHue 14s ease-in-out infinite alternate} .sky-flow-rays{animation:skyFlowSpin 38s linear infinite}
         @keyframes skyFlowMarquee{0%,12%{transform:translateX(0)}88%,100%{transform:translateX(var(--dx))}} .sky-flow-marquee{animation:skyFlowMarquee var(--dur) ease-in-out infinite alternate}
-        @media (prefers-reduced-motion: reduce){.sky-flow-rays,.sky-flow-marquee,.sky-flow-hue{animation:none}}`}</style>
+        @keyframes skyFlowRipple{0%{box-shadow:0 0 0 0 rgba(196,181,253,.55);opacity:1}100%{box-shadow:0 0 0 18px rgba(196,181,253,0);opacity:0}} .sky-flow-ripple{animation:skyFlowRipple 2.7s ease-out infinite}
+        @media (prefers-reduced-motion: reduce){.sky-flow-rays,.sky-flow-marquee,.sky-flow-hue,.sky-flow-ripple{animation:none}}`}</style>
+      <Ripples on={isPlaying} />
       <Rays on={isPlaying} />
       <div role="button" tabIndex={0} onClick={open} aria-label={t ? 'Открыть плеер' : 'Мой поток — открыть подборку'}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
