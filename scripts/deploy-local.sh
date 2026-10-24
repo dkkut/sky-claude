@@ -80,7 +80,7 @@ fi
 # Проверка конфигурации nginx нового образа ДО перезапуска: entrypoint соберёт конфиг из шаблонов
 # (те же переменные и тома, что у боевого web), затем nginx -t. Сломанный конфиг не доходит до сервера.
 echo "==> Проверяю конфигурацию nginx (nginx -t)"
-if ! docker compose run --rm --no-deps web nginx -t >/tmp/sky-nginx-test.log 2>&1; then
+if ! docker compose run --rm --no-deps web sh -c 'getent hosts api >/dev/null || echo "127.0.0.1 api" >> /etc/hosts; nginx -t' >/tmp/sky-nginx-test.log 2>&1; then
   tail -n 15 /tmp/sky-nginx-test.log
   echo "Конфигурация nginx не проходит проверку — деплой остановлен, работающий сайт не тронут."
   [ -n "$PREV_WEB" ] && set_env WEB_IMAGE "$PREV_WEB"
