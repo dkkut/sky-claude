@@ -37,8 +37,16 @@ const Title = ({ children, onMore }: { children: string; onMore?: () => void }) 
   </h2>
 );
 
+/** Имя исполнителя без регистра, лишних пробелов и «ё»; «А, Б», «А feat. Б», «А & Б» — это несколько исполнителей. */
+const normName = (v: string) => v.toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+const nameParts = (v: string) => v.split(/\s*(?:,|&|;|\bfeat\.?|\bft\.?|\bfeaturing\b|\bx\b|×)\s*/i).map(normName).filter(Boolean);
+const hasArtist = (trackArtist: string, artist: string) => {
+  const a = normName(artist);
+  return normName(trackArtist) === a || nameParts(trackArtist).includes(a);
+};
+
 export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, onPlay, onLike, onAdd, onArtist, onClose }: Props) => {
-  const artTracks = useMemo(() => tracks.filter((t) => t.artist === artist && t.status === 'published'), [tracks, artist]);
+  const artTracks = useMemo(() => tracks.filter((t) => hasArtist(t.artist, artist) && t.status === 'published'), [tracks, artist]);
   const sorted = useMemo(() => [...artTracks].sort((a, b) => b.plays - a.plays), [artTracks]);
   const totalPlays = artTracks.reduce((a, t) => a + t.plays, 0);
   const genres = useMemo(() => [...new Set(artTracks.map((t) => t.genre).filter(Boolean))], [artTracks]);
@@ -69,7 +77,7 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
 
   const similar = useMemo(() => {
     const m = new Map<string, Track[]>();
-    tracks.filter((t) => t.status === 'published' && t.artist !== artist && genres.includes(t.genre)).forEach((t) => { (m.get(t.artist) ?? m.set(t.artist, []).get(t.artist)!).push(t); });
+    tracks.filter((t) => t.status === 'published' && !hasArtist(t.artist, artist) && genres.includes(t.genre)).forEach((t) => { (m.get(t.artist) ?? m.set(t.artist, []).get(t.artist)!).push(t); });
     return [...m.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 10);
   }, [tracks, artist, genres]);
 
