@@ -26,11 +26,11 @@ export const MobileHeader = () => {
       <h1 className="text-[20px] font-black tracking-tight" style={{ color: 'var(--t1)' }}>{TITLES[activeModule] ?? 'Sky'}</h1>
       <div className="flex items-center gap-2">
         <button type="button" onClick={() => { haptic('light'); setShowRegion(true); }}
-          className="grid h-9 w-9 place-items-center rounded-full text-base" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
+          className="glass-btn round text-base">
           {findCountry(code).flag}
         </button>
         <button type="button" onClick={() => { haptic('light'); setActiveModule('notifications'); }}
-          className="relative grid h-9 w-9 place-items-center rounded-full" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
+          className="glass-btn round relative">
           <Bell size={16} style={{ color: 'var(--t2)' }}/>
           {unread > 0 && (
             <span className="absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold text-white" style={{ background: 'var(--red)' }}>

@@ -631,20 +631,17 @@ export const ChatList = () => {
             </motion.div>
           )}
         </AnimatePresence>
-        <button type="button"
-          onClick={() => { setShowSearch(s => !s); if (showSearch) { setSearch(''); setPeopleQ(''); } }}
-          className="grid h-9 w-9 place-items-center rounded-full transition-colors hover:bg-white/10 shrink-0"
-          style={{ color: showSearch ? '#5b9bd1' : 'var(--t2)' }}>
-          {showSearch ? <X size={17} /> : <Search size={17} />}
-        </button>
-        <button type="button" onClick={() => setShowFavorites(true)}
-          className="grid h-9 w-9 place-items-center rounded-full transition-colors hover:bg-white/10 shrink-0"
-          style={{ color: 'var(--t2)' }}>
-          <Star size={17} />
-        </button>
-        <button type="button" onClick={() => setShowNew(true)}
-          className="grid h-9 w-9 place-items-center rounded-full transition-colors hover:bg-white/10 shrink-0"
-          style={{ color: 'var(--t2)' }}>
+        <div className="glass-btn-group shrink-0">
+          <button type="button" aria-label="Поиск"
+            onClick={() => { setShowSearch(s => !s); if (showSearch) { setSearch(''); setPeopleQ(''); } }}
+            style={showSearch ? { color: 'var(--accent)' } : undefined}>
+            {showSearch ? <X size={17} /> : <Search size={17} />}
+          </button>
+          <button type="button" aria-label="Избранное" onClick={() => setShowFavorites(true)}>
+            <Star size={17} />
+          </button>
+        </div>
+        <button type="button" aria-label="Новое сообщение" onClick={() => setShowNew(true)} className="glass-btn round accent shrink-0">
           <Edit size={17} />
         </button>
       </div>

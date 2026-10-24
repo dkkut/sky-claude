@@ -58,6 +58,8 @@ export interface AppSettings {
   introAnim:       boolean;
   /* Sky Island: где показывать воспроизведение и события. */
   islandMode:      'both' | 'island' | 'side';
+  /** Вид панелей навигации и кнопок шапки: обычный или Liquid Glass (стекло, линза выбора). */
+  navStyle:        'classic' | 'glass';
   /** Сколько секунд идёт отсчёт перед удалением (с кнопкой «Отменить»). */
   deleteCountdown: 3 | 5 | 10;
   islandNotifs:    boolean;
@@ -118,6 +120,7 @@ const defaults: AppSettings = {
   animationsOn:     true,
   introAnim:        true,
   islandMode:       'both',
+  navStyle:         'glass',
   deleteCountdown:  10,
   islandNotifs:     true,
   islandTracks:     true,
@@ -182,6 +185,7 @@ export const applySettings = (input: AppSettings) => {
      (инлайновый style всегда сильнее обычного правила). */
   root.dataset.theme = s.colorScheme;
   root.dataset.season = seasonId ?? '';
+  root.dataset.navStyle = s.navStyle === 'classic' ? 'classic' : 'glass';
   if (s.colorScheme === 'light') startLightNormalizer(); else stopLightNormalizer();
   if (s.colorScheme === 'dark') {
     // Сезонный оттенок заменяет палитру тёмной подтемы; у AMOLED (чёрный фон) оттенок не накладываем.

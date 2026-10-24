@@ -391,6 +391,35 @@ body {
 :root[data-theme='light'] .glass-lens { box-shadow: inset 0 0 0 1px rgba(30,40,80,0.05), inset 0 1px 1px rgba(255,255,255,0.9), 0 6px 16px rgba(30,40,80,0.16); }
 @media (prefers-reduced-motion: reduce) { .glass-lens { transition: none; } }
 
+/* ── Кнопки шапки в стиле Liquid Glass: капсула, группа значков, акцентный круг ───── */
+.glass-btn {
+  display: inline-grid; place-items: center; min-width: 40px; height: 40px; padding: 0 14px; border-radius: 999px; cursor: pointer;
+  font-weight: 700; font-size: 14px; color: var(--t1); background: var(--glass-bg); border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.18);
+  transition: transform .15s ease, background .2s ease;
+}
+.glass-btn:active { transform: scale(0.94); }
+.glass-btn.round { width: 40px; padding: 0; }
+.glass-btn.accent { background: var(--accent); border-color: rgba(255,255,255,0.35); color: #fff; box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 45%, transparent), inset 0 1px 0 rgba(255,255,255,0.4); }
+.glass-btn-group { display: inline-flex; align-items: center; height: 40px; padding: 0 6px; border-radius: 999px; gap: 2px;
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 8px 22px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.18); }
+.glass-btn-group > button { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 999px; color: var(--t1); background: transparent; border: 0; cursor: pointer; }
+:root[data-theme='light'] .glass-btn, :root[data-theme='light'] .glass-btn-group { box-shadow: 0 8px 22px rgba(30,40,80,0.14), 0 1px 3px rgba(30,40,80,0.08), inset 0 1px 0 #fff; }
+
+/* ── «Обычная» навигация (Настройки → Вид навигации): без стекла, плоские панели ───── */
+:root[data-nav-style='classic'] .glass-pill,
+:root[data-nav-style='classic'] .glass-btn,
+:root[data-nav-style='classic'] .glass-btn-group {
+  background: var(--bg-l1); border: 1px solid var(--border); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: var(--shadow-md, 0 2px 8px rgba(0,0,0,0.18));
+}
+:root[data-nav-style='classic'] .glass-lens {
+  background: var(--accent-bg); border: 1px solid transparent; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none;
+}
+:root[data-nav-style='classic'] .glass-btn.accent { background: var(--accent); border-color: transparent; box-shadow: none; }
+
 .sidebar-nav-btn {
   position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center;
   gap: 3px; width: 100%; padding: 7px 2px; border-radius: 16px;

@@ -647,6 +647,22 @@ const SettingsSection = ({ logout, username, onOpen }: {
       </SectionBlock>
 
       <SectionBlock title="Тема оформления">
+        <div className="px-4 pb-1 pt-1">
+          <p className="mb-1.5 px-1 text-[12px] font-bold" style={{ color: 'var(--t2)' }}>Вид навигации</p>
+          <div className="mb-3 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Вид навигации">
+            {([['classic', 'Обычная', 'Плоские панели'], ['glass', 'Liquid Glass', 'Стекло и линза выбора']] as const).map(([k, label, sub]) => {
+              const on = (s.navStyle ?? 'glass') === k;
+              return (
+                <button key={k} type="button" role="radio" aria-checked={on} onClick={() => set({ navStyle: k })}
+                  className="rounded-2xl px-3 py-2.5 text-left"
+                  style={{ background: on ? 'var(--accent-bg)' : 'var(--bg-l2)', border: `1.5px solid ${on ? 'var(--accent)' : 'var(--border)'}` }}>
+                  <span className="block text-[13px] font-bold" style={{ color: on ? 'var(--accent)' : 'var(--t1)' }}>{label}</span>
+                  <span className="block text-[11px]" style={{ color: 'var(--t3)' }}>{sub}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="px-4 pb-3 pt-1">
           <p className="mb-1.5 px-1 text-[12px] font-bold" style={{ color: 'var(--t2)' }}>Готовые темы</p>
           <div className="mb-4 grid grid-cols-4 gap-2" role="radiogroup" aria-label="Готовые темы">
