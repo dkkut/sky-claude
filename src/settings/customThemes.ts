@@ -31,7 +31,11 @@ export const VAR_KEYS = [
   '--t1', '--t2', '--t3', '--t4',
   '--border', '--border-m', '--border-s',
   '--accent', '--accent-hover', '--accent-active', '--accent-bg', '--accent-bg-m',
+  '--glass-bg', '--glass-border', '--glass-lens', '--glass-lens-border',
 ] as const;
+
+/** Цвета стеклянных панелей (нижняя панель, ленты вкладок): отдельно от остальной палитры. */
+export const GLASS_KEYS = ['--glass-bg', '--glass-border', '--glass-lens', '--glass-lens-border'] as const;
 
 export const BASE_DEFAULTS: Record<'dark' | 'light', ThemeBase> = {
   dark:  { bg: '#0e0e11', panel: '#131316', text: '#ebebed', accent: '#4f6ef7' },
@@ -49,7 +53,7 @@ const COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%deg/]+\))$/i
 const rgb = (h: string): [number, number, number] => { const v = parseInt(h.slice(1), 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255]; };
 const hex = (c: number[]) => `#${c.map((x) => Math.round(Math.max(0, Math.min(255, x))).toString(16).padStart(2, '0')).join('')}`;
 export const mix = (a: string, b: string, t: number) => { const x = rgb(a), y = rgb(b); return hex(x.map((v, i) => v + (y[i] - v) * t)); };
-const rgba = (h: string, a: number) => { const [r, g, b] = rgb(h); return `rgba(${r},${g},${b},${a})`; };
+export const rgba = (h: string, a: number) => { const [r, g, b] = rgb(h); return `rgba(${r},${g},${b},${a})`; };
 
 /** Полная палитра из четырёх цветов. */
 export const deriveVars = (b: ThemeBase): Record<string, string> => ({
@@ -59,6 +63,8 @@ export const deriveVars = (b: ThemeBase): Record<string, string> => ({
   '--border': rgba(b.text, 0.08), '--border-m': rgba(b.text, 0.14), '--border-s': rgba(b.text, 0.22),
   '--accent': b.accent, '--accent-hover': mix(b.accent, '#ffffff', 0.12), '--accent-active': mix(b.accent, '#000000', 0.15),
   '--accent-bg': rgba(b.accent, 0.12), '--accent-bg-m': rgba(b.accent, 0.2),
+  '--glass-bg': rgba(mix(b.panel, b.text, 0.06), 0.8), '--glass-border': rgba(b.text, 0.14),
+  '--glass-lens': rgba(b.accent, 0.24), '--glass-lens-border': rgba(mix(b.accent, '#ffffff', 0.5), 0.7),
 });
 
 export const resolveVars = (t: CustomTheme): Record<string, string> => ({ ...deriveVars(t.base), ...t.vars });

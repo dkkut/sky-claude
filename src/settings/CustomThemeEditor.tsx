@@ -3,10 +3,18 @@ import { useRef, useState } from 'react';
 import { Check, Code2, Copy, Download, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
 import { useSettings } from './store';
 import {
-  BASE_DEFAULTS, parseTheme, previewCustomTheme, resolveVars, restoreCustomTheme, setThemeEditing, themeToJson, useCustomThemes, type CustomTheme, type ThemeBase,
+  BASE_DEFAULTS, GLASS_KEYS, deriveVars, mix, rgba, parseTheme, previewCustomTheme, resolveVars, restoreCustomTheme, setThemeEditing, themeToJson, useCustomThemes, type CustomTheme, type ThemeBase,
 } from './customThemes';
 
 const FIELDS: [keyof ThemeBase, string][] = [['bg', 'Фон'], ['panel', 'Панели'], ['text', 'Текст'], ['accent', 'Акцент']];
+
+/** rgba()/hex → {hex, alpha}: чтобы цветом и прозрачностью панели управлять отдельными элементами. */
+const splitColor = (v: string | undefined, fallback: string): { hex: string; a: number } => {
+  const m = String(v ?? '').match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+))?/i);
+  if (m) return { hex: `#${[m[1], m[2], m[3]].map((x) => Number(x).toString(16).padStart(2, '0')).join('')}`, a: m[4] === undefined ? 1 : Math.min(1, Math.max(0, Number(m[4]))) };
+  if (/^#[0-9a-f]{6}$/i.test(String(v))) return { hex: String(v), a: 1 };
+  return { hex: fallback, a: 1 };
+};
 
 const swatch = (t: CustomTheme) => { const v = resolveVars(t); return [v['--bg'], v['--bg-l2'], v['--accent']]; };
 
@@ -144,13 +152,39 @@ export const CustomThemeEditor = () => {
           <div className="grid grid-cols-2 gap-2">
             {FIELDS.map(([k, label]) => (
               <label key={k} className="flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: 'var(--bg-l2)' }}>
-                <input type="color" value={draft.base[k]} onChange={(e) => change({ ...draft, base: { ...draft.base, [k]: e.target.value }, vars: {} })}
+                <input type="color" value={draft.base[k]} onChange={(e) => change({ ...draft, base: { ...draft.base, [k]: e.target.value }, vars: Object.fromEntries(Object.entries(draft.vars).filter(([key]) => (GLASS_KEYS as readonly string[]).includes(key))) })}
                   style={{ width: 28, height: 28, border: 'none', background: 'none', padding: 0 }} />
                 <span className="text-[12px] font-semibold" style={{ color: 'var(--t2)' }}>{label}</span>
                 <span className="ml-auto font-mono text-[10px]" style={{ color: 'var(--t3)' }}>{draft.base[k]}</span>
               </label>
             ))}
           </div>
+          {(() => {
+            const auto = deriveVars(draft.base);
+            const panel = splitColor(draft.vars['--glass-bg'] ?? auto['--glass-bg'], draft.base.panel);
+            const lens = splitColor(draft.vars['--glass-lens'] ?? auto['--glass-lens'], draft.base.accent);
+            const setPanel = (hex: string, a: number) => change({ ...draft, vars: { ...draft.vars, '--glass-bg': rgba(hex, a), '--glass-border': rgba(mix(hex, draft.base.text, 0.55), 0.45) } });
+            const setLens = (hex: string, a: number) => change({ ...draft, vars: { ...draft.vars, '--glass-lens': rgba(hex, a), '--glass-lens-border': rgba(mix(hex, '#ffffff', 0.55), 0.75) } });
+            const hasGlass = (GLASS_KEYS as readonly string[]).some((k) => draft.vars[k]);
+            return (
+              <div className="space-y-2 rounded-lg p-2" style={{ background: 'var(--bg-l2)' }}>
+                <p className="text-[12px] font-bold" style={{ color: 'var(--t1)' }}>Панели: нижняя панель и ленты вкладок</p>
+                {([['Цвет панели', panel, setPanel, 0.2], ['Цвет выбранного пункта', lens, setLens, 0.05]] as const).map(([label, c, set, min]) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <input type="color" value={c.hex} aria-label={label} onChange={(e) => set(e.target.value, c.a)} style={{ width: 28, height: 28, border: 'none', background: 'none', padding: 0 }} />
+                    <span className="min-w-0 flex-1 text-[12px] font-semibold" style={{ color: 'var(--t2)' }}>{label}</span>
+                    <input type="range" min={min} max={1} step={0.05} value={c.a} aria-label={`${label}: непрозрачность`} onChange={(e) => set(c.hex, Number(e.target.value))} style={{ width: 90 }} />
+                  </div>
+                ))}
+                {hasGlass && (
+                  <button type="button" className={btn} style={ghost}
+                    onClick={() => change({ ...draft, vars: Object.fromEntries(Object.entries(draft.vars).filter(([k]) => !(GLASS_KEYS as readonly string[]).includes(k))) })}>
+                    Вернуть цвета панелей по палитре темы
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Остальные оттенки (границы, второй текст, карточки) считаются сами. Точные значения и свой CSS — в «Коде».</p>
           <button type="button" className={`${btn} flex items-center gap-1`} style={ghost} onClick={() => setShowCode((v) => !v)}><Code2 size={12} /> {showCode ? 'Скрыть код' : 'Код темы'}</button>
           {showCode && (
