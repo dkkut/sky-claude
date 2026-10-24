@@ -119,8 +119,8 @@ const Rays = ({ on }: { on: boolean }) => {
   }, [on]);
   return (
     <div ref={ref} aria-hidden className="pointer-events-none absolute" style={{
-      inset: -40, zIndex: 0, opacity: on ? 1 : 0, transition: 'opacity .8s ease', ['--lvl' as string]: 0.35,
-      WebkitMaskImage: 'radial-gradient(circle, #000 30%, transparent 72%)', maskImage: 'radial-gradient(circle, #000 30%, transparent 72%)',
+      inset: -44, zIndex: 0, opacity: on ? 1 : 0, transition: 'opacity .8s ease', ['--lvl' as string]: 0.35,
+      WebkitMaskImage: 'radial-gradient(ellipse closest-side, #000 80%, transparent 100%)', maskImage: 'radial-gradient(ellipse closest-side, #000 80%, transparent 100%)',
     }}>
       <div className="sky-flow-rays absolute" style={{
         inset: '-30% -10%', borderRadius: '50%', filter: 'blur(5px)',
