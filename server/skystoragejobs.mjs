@@ -14,6 +14,11 @@ import { scanAll, hashPending, purgeQuarantine, refreshUsage } from './skystorag
 import { getTarget, describeTarget } from './skystoragetarget.mjs';
 import * as primary from './skystorageprimary.mjs';
 import { serviceRoots } from './skystoragelimits.mjs';
+import { optionalAllowed } from './resourceopt.mjs';
+
+/** STORAGE_JOBS_MODE=light (по умолчанию) — фон реже и мельче, пока на сервере мало людей; normal — прежние частоты. */
+const LIGHT = (process.env.STORAGE_JOBS_MODE || 'light') !== 'normal';
+const K = LIGHT ? 6 : 1;   // во сколько раз реже тяжёлые проходы
 
 const timers = [];
 let lastTargetOk = null;
@@ -24,25 +29,25 @@ export const startStorageJobs = () => {
   if (timers.length) return;
   every(30_000, guard('расписание', async () => { if (effective(snapshot()).read) await runSchedules(); }));
   every(60_000, guard('подключения', async () => { await sweepConnections(); }));
-  every(5 * 60_000, guard('площадка', async () => {
+  every(5 * K * 60_000 / (LIGHT ? 2 : 1), guard('площадка', async () => {
     const d = describeTarget(); if (!d.configured) return;
     const h = await getTarget().health();
     if (!h.ok && lastTargetOk !== false) { await logEvent('target_down', 'critical', { code: h.code }); await notifyOwners('target_down', 'Площадка резервных копий недоступна', `Код: ${h.code ?? 'ошибка'}. Копии не создаются, пока связь не восстановится.`, { critical: true }); }
     if (h.ok && lastTargetOk === false) await logEvent('target_up', 'info', {});
     lastTargetOk = h.ok;
   }));
-  every(5 * 60_000, guard('целостность', async () => { if (effective(snapshot()).read) await hashPending(10); }));
+  every(5 * K * 60_000, guard('целостность', async () => { if (optionalAllowed() && effective(snapshot()).read) await hashPending(LIGHT ? 2 : 10); }));
   let syncing = false;
-  every(10 * 60_000, guard('синхронизация S3', async () => {
-    if (syncing || !primary.enabled()) return;
+  every(10 * K * 60_000, guard('синхронизация S3', async () => {
+    if (syncing || !primary.enabled() || !optionalAllowed()) return;
     syncing = true;
     try {
-      const r = await primary.syncAndEvict(serviceRoots().map((x) => x.root), { maxFiles: 200 });
+      const r = await primary.syncAndEvict(serviceRoots().map((x) => x.root), { maxFiles: LIGHT ? 20 : 200 });
       if (r.uploaded || r.evicted || r.failed) await logEvent('primary_sync', r.failed ? 'warn' : 'info', r);
     } finally { syncing = false; }
   }));
-  every(30 * 60_000, guard('реестр', async () => { await refreshUsage(); }));
-  setTimeout(guard('первый проход', async () => { await refreshUsage(); await loadState(true); if (effective(snapshot()).read) await scanAll(); }), 45_000).unref?.();
+  every(30 * K * 60_000, guard('реестр', async () => { if (optionalAllowed()) await refreshUsage(); }));
+  setTimeout(guard('первый проход', async () => { await refreshUsage(); await loadState(true); if (optionalAllowed() && effective(snapshot()).read) await scanAll(); }), (LIGHT ? 10 * 60_000 : 45_000)).unref?.();
 };
 
 /** Часовая уборка (вызывается из общей уборки server.mjs). */
