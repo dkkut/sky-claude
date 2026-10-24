@@ -1823,14 +1823,14 @@ export const SkyFilm = () => {
         </div>
 
         {/* -- Нижняя навигация --------------------------------- */}
-        <nav className="shrink-0 flex items-center justify-around border-t py-2"
-          style={{ background: K.card, borderColor: K.border }}>
+        <nav className="glass-pill mx-3 mb-2 mt-1 shrink-0 flex items-center justify-around">
           {/* Пять частей поровну. С прежними отступами по бокам пятая
               вкладка не помещалась на телефоне и уезжала за край. */}
           {NAV.map(({ key, Icon, label }) => (
             <button key={key} type="button" onClick={() => setTab(key)}
-              className="flex flex-1 min-w-0 flex-col items-center gap-0.5 px-1 py-1.5 transition-colors"
+              className="relative isolate flex flex-1 min-w-0 flex-col items-center gap-0.5 rounded-full px-1 py-1.5 transition-colors"
               style={{ color: tab === key ? K.orange : K.dim }}>
+              {tab === key && <motion.span layoutId="film-nav-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
               <Icon size={21} />
               <span className="w-full truncate text-center text-[9px] font-semibold">{label}</span>
             </button>

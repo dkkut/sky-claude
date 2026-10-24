@@ -8,6 +8,7 @@
    стоит (driveLogic.ts); свободного набора текста за рулём нет.
 =========================================================== */
 import { useHandoffStart } from '@/handoff/openContent';
+import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { Home, Music2, Mic2, MessageCircle, Sparkles, Users, LogOut, Clapperboard, BookOpen } from 'lucide-react';
 import { setCarMode } from './useCarMode';
@@ -79,14 +80,15 @@ export const CarShell = () => {
       <NotifBridge />
       <NetBanner />
 
-      <nav aria-label="Разделы" className="flex w-[132px] shrink-0 flex-col items-center gap-3 overflow-y-auto py-5"  style={{ background: 'rgba(8,8,22,0.72)', borderRight: CAR_GLASS_BORDER, backdropFilter: CAR_BLUR }}>
+      <nav aria-label="Разделы" className="glass-pill m-3 flex w-[132px] shrink-0 flex-col items-center gap-2 overflow-y-auto py-4" style={{ borderRadius: 44, background: 'rgba(8,8,22,0.72)' }}>
         <img src="/logo.png" alt="Sky" draggable={false} className="mb-1 h-12 w-12 shrink-0 object-contain [@media(max-height:560px)]:hidden" style={{ filter: 'drop-shadow(0 0 12px rgba(139,124,255,0.5))' }} />
         {DOCK.map((d) => {
           const on = screen === d.key;
           return (
             <button key={d.key} type="button" onClick={() => setScreen(d.key)} aria-label={d.label} aria-current={on ? 'page' : undefined}
-              className="flex w-[108px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-[26px] py-2 outline-none transition active:scale-95 focus-visible:ring-4 focus-visible:ring-violet-300"
-              style={{ minHeight: 'clamp(68px, 12vh, 92px)', background: on ? 'rgba(139,124,255,0.28)' : 'transparent', border: on ? '1px solid rgba(179,167,255,0.5)' : '1px solid transparent' }}>
+              className="relative isolate flex w-[108px] shrink-0 flex-col items-center justify-center gap-1.5 rounded-[32px] py-2 outline-none transition active:scale-95 focus-visible:ring-4 focus-visible:ring-violet-300"
+              style={{ minHeight: 'clamp(68px, 12vh, 92px)' }}>
+              {on && <motion.span layoutId="car-dock-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" style={{ borderRadius: 32 }} />}
               <d.icon size={34} color={on ? '#fff' : 'rgba(255,255,255,0.6)'} strokeWidth={on ? 2.4 : 1.9} />
               <span className="text-[14px] font-semibold" style={{ color: on ? '#fff' : 'rgba(255,255,255,0.6)' }}>{d.label}</span>
             </button>

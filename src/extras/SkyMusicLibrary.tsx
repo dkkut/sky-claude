@@ -278,11 +278,12 @@ export const SkyMusicLibrary = ({
       </div>
 
       {/* Остальные категории */}
-      <div className="flex shrink-0 gap-1.5 overflow-x-auto px-3 pb-2 pt-2" style={{ scrollbarWidth: 'none' }}>
+      <div className="glass-pill mx-3 my-2 flex shrink-0 gap-0.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {CATS.map(c => (
           <button key={c.key} type="button" onClick={() => { setCat(c.key); setSelectMode(false); setSelected(new Set()); }}
-            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-medium"
-            style={{ background: cat===c.key ? '#4fe3d0' : 'rgba(255,255,255,0.05)', color: cat===c.key ? '#0a0a0f' : '#c7ccd6' }}>
+            className="relative isolate flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold"
+            style={{ color: cat===c.key ? '#4fe3d0' : 'var(--t3)' }}>
+            {cat===c.key && <motion.span layoutId="mlib-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
             <c.icon size={13}/>{c.label}
           </button>
         ))}

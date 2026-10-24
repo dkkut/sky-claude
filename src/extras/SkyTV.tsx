@@ -288,16 +288,13 @@ export const SkyTV = () => {
       </header>
 
       {/* Разделы */}
-      <div className="flex shrink-0 gap-1.5 overflow-x-auto px-4 py-2"
-        style={{ borderBottom: `1px solid ${C.border}`, scrollbarWidth: 'none' }}>
+      <div className="glass-pill mx-4 my-2 flex shrink-0 items-center gap-0.5 overflow-x-auto"
+        style={{ scrollbarWidth: 'none' }}>
         {tabs.map((t) => (
           <button key={t} type="button" onClick={() => setCategory(t)}
-            className="shrink-0 rounded-full px-3.5 py-1.5 text-[11.5px] font-semibold"
-            style={{
-              background: category === t ? C.accent : C.l2,
-              color: category === t ? '#fff' : C.t3,
-              border: `1px solid ${category === t ? 'transparent' : C.border}`,
-            }}>
+            className="relative isolate shrink-0 rounded-full px-3.5 py-1.5 text-[11.5px] font-semibold"
+            style={{ color: category === t ? C.accent : C.t3 }}>
+            {category === t && <motion.span layoutId="tv-cat-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
             {t === 'Избранное'
                 ? <span className="inline-flex items-center gap-1"><Star size={11} fill="currentColor"/> Избранное</span>
                 : t}

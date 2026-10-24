@@ -2843,12 +2843,13 @@ export const SkyMusic = () => {
       </div>
 
       {/* -- Bottom nav --------------------------------------- */}
-      <nav ref={navRef} className="shrink-0 flex items-center justify-around border-t"
-        style={{ background: YM.card, borderColor: 'var(--border)', minHeight: isMobile ? 50 : 56 }}>
+      <nav ref={navRef} className="glass-pill mx-3 mb-2 mt-1 shrink-0 flex items-center justify-around"
+        style={{ minHeight: isMobile ? 50 : 56 }}>
         {NAV_TABS.map(({ key, icon: Icon, label }) => (
           <button key={key} type="button" onClick={() => setTab(key)}
-            className={isMobile ? 'flex flex-col items-center gap-0.5 px-2 py-2 transition-colors' : 'flex flex-col items-center gap-0.5 px-3 py-2.5 transition-colors'}
+            className={`relative isolate flex flex-1 flex-col items-center gap-0.5 rounded-full transition-colors ${isMobile ? 'px-2 py-1.5' : 'px-3 py-2'}`}
             style={{ color: tab === key ? YM.accent : YM.sub2 }}>
+            {tab === key && <motion.span layoutId="music-nav-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
             <Icon size={isMobile ? 17 : 20} />
             <span className="text-[8.5px] font-medium">{label}</span>
           </button>
