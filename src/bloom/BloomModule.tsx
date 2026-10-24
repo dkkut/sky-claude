@@ -113,38 +113,34 @@ export const BloomModule = () => {
           </div>
         </div>
 
-        <div className={isMobile ? 'flex items-center gap-1 px-3 pb-2 overflow-x-auto' : 'flex items-center gap-1.5 px-4 pb-3 overflow-x-auto'} style={{scrollbarWidth:'none'}}>
-          {TABS.map(({ key, label, icon: TabIcon }) => {
-            const isActive = tab === key && !tagSearch && !explore;
-            const cnt = key === 'saved' ? (feedCache.saved?.length ?? null)
-              : key === 'mine' ? (feedCache.mine?.length ?? null) : null;
-            return (
-              <button key={key} type="button"
-                onClick={() => { setTab(key); setTagSearch(null); setExplore(false); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium shrink-0 transition-all"
-                style={{
-                  background: isActive ? 'var(--accent-bg)' : 'rgba(255,255,255,0.04)',
-                  color: isActive ? 'var(--accent)' : 'var(--t3)',
-                  border: isActive ? '1px solid rgba(79,110,247,0.25)' : '1px solid transparent',
-                }}>
-                <TabIcon size={12}/>
-                {label}
-                {cnt != null && cnt > 0 && (
-                  <span className="text-[9px] rounded-full px-1.5 font-bold leading-4 ml-0.5"
-                    style={{ background: 'var(--accent)', color: '#fff' }}>{cnt}</span>
-                )}
-              </button>
-            );
-          })}
-          <button type="button" onClick={() => setExplore(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium ml-auto shrink-0 transition-all"
-            style={{
-              background: explore ? 'var(--accent-bg)' : 'rgba(255,255,255,0.04)',
-              color: explore ? 'var(--accent)' : 'var(--t3)',
-              border: explore ? '1px solid rgba(79,110,247,0.25)' : '1px solid transparent',
-            }}>
-            <Search size={12}/>Обзор
-          </button>
+        <div className={isMobile ? 'px-3 pb-2' : 'px-4 pb-3'}>
+          <div className="glass-pill flex min-w-0 items-center gap-0.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+            {TABS.map(({ key, label, icon: TabIcon }) => {
+              const isActive = tab === key && !tagSearch && !explore;
+              const cnt = key === 'saved' ? (feedCache.saved?.length ?? null)
+                : key === 'mine' ? (feedCache.mine?.length ?? null) : null;
+              return (
+                <button key={key} type="button"
+                  onClick={() => { setTab(key); setTagSearch(null); setExplore(false); }}
+                  className="relative isolate flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold"
+                  style={{ color: isActive ? 'var(--t1)' : 'var(--t3)', background: 'transparent', border: 0 }}>
+                  {isActive && <motion.span layoutId="bloom-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
+                  <TabIcon size={12} style={{ color: isActive ? 'var(--accent)' : undefined }}/>
+                  {label}
+                  {cnt != null && cnt > 0 && (
+                    <span className="ml-0.5 rounded-full px-1.5 text-[9px] font-bold leading-4"
+                      style={{ background: 'var(--accent)', color: '#fff' }}>{cnt}</span>
+                  )}
+                </button>
+              );
+            })}
+            <button type="button" onClick={() => setExplore(v => !v)}
+              className="relative isolate flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold"
+              style={{ color: explore ? 'var(--t1)' : 'var(--t3)', background: 'transparent', border: 0 }}>
+              {explore && <motion.span layoutId="bloom-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
+              <Search size={12} style={{ color: explore ? 'var(--accent)' : undefined }}/>Обзор
+            </button>
+          </div>
         </div>
       </div>
 

@@ -40,7 +40,7 @@ import { ConnectionPanel } from '@/proxy/ConnectionPanel';
 import { APP_THEMES, activeAppTheme, appThemePatch } from '@/settings/appThemes';
 import { CustomThemeEditor } from '@/settings/CustomThemeEditor';
 import { useCustomThemes } from '@/settings/customThemes';
-import { ReferralPanel } from '@/referral/Referral';
+import { InvitePanel } from '@/invite/InvitePanel';
 import { useSettings, ACCENT_COLORS, THEME_MODES, FONT_SIZES, type AccentColor, type ThemeMode, type FontSize, type ColorScheme } from '@/settings/store';
 import { useBreakReminderStore, INTERVAL_OPTIONS, SNOOZE_OPTIONS } from '@/settings/breakReminderStore';
 import { getTVModeSetting, setTVModeSetting, type TVModeSetting } from '@/interface/tv/useDeviceMode';
@@ -1234,19 +1234,17 @@ export const ProfileModule = () => {
             className="glass-btn round shrink-0"
             style={{color:'var(--red)'}}><LogOut size={16}/></button>
         </div>
-        <div className="flex gap-1.5 overflow-x-auto px-3 pb-3" style={{ scrollbarWidth: 'none' }}>
-          {[...NAV, ...MODULE_LINKS].map(({key,label,icon:Icon})=>(
-            <button key={key} type="button" onClick={()=>navigate(key)}
-              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] transition-all"
-              style={{
-                background: section===key ? 'var(--accent-bg)' : 'var(--bg-l2)',
-                color: section===key ? 'var(--accent)' : 'var(--t2)',
-                fontWeight: section===key ? 600 : 400,
-                border: section===key ? '1px solid rgba(79,110,247,0.2)' : '1px solid transparent',
-              }}>
-              <Icon size={13} strokeWidth={section===key ? 2.2 : 1.6}/>{label}
-            </button>
-          ))}
+        <div className="px-3 pb-3">
+          <div className="glass-pill flex min-w-0 items-center gap-0.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+            {[...NAV, ...MODULE_LINKS].map(({key,label,icon:Icon})=>(
+              <button key={key} type="button" onClick={()=>navigate(key)}
+                className="relative isolate flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold"
+                style={{ color: section===key ? 'var(--t1)' : 'var(--t3)', background: 'transparent', border: 0 }}>
+                {section===key && <motion.span layoutId="profile-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
+                <Icon size={13} strokeWidth={section===key ? 2.2 : 1.6} style={{ color: section===key ? 'var(--accent)' : undefined }}/>{label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1625,7 +1623,7 @@ export const ProfileModule = () => {
 
         {section === 'referral' && (
           <div className="flex flex-col h-full overflow-hidden">
-            <ReferralPanel/>
+            <InvitePanel/>
           </div>
         )}
 

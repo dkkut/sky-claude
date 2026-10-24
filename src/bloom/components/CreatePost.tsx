@@ -121,7 +121,7 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
           <p className="mx-5 mb-2 text-xs" style={{ color: 'var(--red)' }}>{error}</p>
         )}
 
-        <div className="flex items-center gap-2 border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-2 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
           <button type="button" onClick={() => { fileRef.current?.click(); setPollOn(false); }}
             className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs hover:bg-white/5"
             style={{ color: 'var(--t3)' }}>
@@ -139,12 +139,12 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
             style={{ color: pollOn ? 'var(--accent)' : 'var(--t3)' }}>
             <BarChart2 size={14}/>Опрос
           </button>
-          <span className="ml-auto text-xs" style={{ color: text.length > 280 ? 'var(--red)' : 'var(--t3)' }}>
+          <span className="ml-auto mr-2 shrink-0 text-xs" style={{ color: text.length > 280 ? 'var(--red)' : 'var(--t3)' }}>
             {text.length}/280
           </span>
           <motion.button type="button" whileTap={{ scale: 0.96 }} onClick={publish}
             disabled={(!text.trim() && !mediaUrl && !pollValid) || publishing || text.length > 280}
-            className="rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
+            className="shrink-0 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
             style={{ background: 'var(--accent)' }}>
             {publishing ? 'Публикую...' : 'Опубликовать'}
           </motion.button>
