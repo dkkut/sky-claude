@@ -275,8 +275,13 @@ export const PlayerEngine = () => {
         }
         syncTime(a.currentTime, a.duration || 0);
       }}
-      onPlaying={onPlaying}
+      onLoadStart={() => usePlayerStore.getState().setBuffering(true)}
+      onWaiting={() => usePlayerStore.getState().setBuffering(true)}
+      onStalled={() => usePlayerStore.getState().setBuffering(true)}
+      onCanPlay={() => usePlayerStore.getState().setBuffering(false)}
+      onPlaying={() => { usePlayerStore.getState().setBuffering(false); onPlaying(); }}
       onError={() => {
+        usePlayerStore.getState().setBuffering(false);
         const a = audioRef.current;
         if (!a || !srcUrl) return;
         const code = a.error?.code ?? 0;

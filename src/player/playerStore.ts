@@ -32,6 +32,8 @@ export interface PlayerItem {
 interface PlayerStore {
   item:        PlayerItem | null;
   isPlaying:   boolean;
+  /** Файл песни ещё загружается: звук не пошёл, хотя «играть» нажато. */
+  buffering:   boolean;
   currentTime: number;
   duration:    number;
   volume:      number;
@@ -51,6 +53,7 @@ interface PlayerStore {
   show:       () => void;
   syncTime:   (t: number, dur: number) => void;
   setPlaying: (v: boolean) => void;
+  setBuffering: (v: boolean) => void;
   setVolume:  (v: number) => void;
   setShuffle: (v: boolean) => void;
   setRepeat:  (v: 'off' | 'one' | 'all') => void;
@@ -68,6 +71,7 @@ interface PlayerStore {
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
   item:        null,
   isPlaying:   false,
+  buffering:   false,
   currentTime: 0,
   duration:    0,
   volume:      0.85,
@@ -79,12 +83,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   // Новый трек всегда возвращает виджет — «скрыть» это «не сейчас», а не
   // «больше никогда не показывай, что играет».
-  push:       (item) => set({ item, isPlaying: true, currentTime: 0, hidden: false }),
-  clear:      ()     => set({ item: null, isPlaying: false, currentTime: 0, duration: 0 }),
+  push:       (item) => set({ item, isPlaying: true, buffering: item.kind === 'music' || item.kind === 'podcast', currentTime: 0, hidden: false }),
+  clear:      ()     => set({ item: null, isPlaying: false, buffering: false, currentTime: 0, duration: 0 }),
   hide:       ()     => set({ hidden: true }),
   show:       ()     => set({ hidden: false }),
   syncTime:   (t, dur) => set({ currentTime: t, duration: dur }),
   setPlaying: (v)    => set({ isPlaying: v }),
+  setBuffering: (v)  => set({ buffering: v }),
   setVolume:  (v)    => set({ volume: v }),
   setShuffle: (v)    => set({ shuffle: v }),
   setRepeat:  (v)    => set({ repeat: v }),

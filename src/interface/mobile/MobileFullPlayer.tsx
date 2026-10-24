@@ -1,3 +1,4 @@
+import { BufferingRing, useBuffering } from '@/player/BufferingRing';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useMotionValue } from 'framer-motion';
 import {
@@ -21,6 +22,7 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
     item, isPlaying, currentTime, duration, shuffle, repeat,
     setPlaying, requestSeek, nextTrack, prevTrack, setShuffle, setRepeat, playQueueIndex,
   } = usePlayerStore();
+  const buffering = useBuffering();
 
   const [showQueue, setShowQueue] = useState(false);
   /* «Скрыть текст»: по центру остаются только обложка и кнопки управления (общий выбор с ПК-плеером). */
@@ -145,7 +147,7 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
             </button>
             <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => { haptic('medium'); setPlaying(!isPlaying); }}
               className="grid h-16 w-16 place-items-center rounded-full bg-white">
-              {isPlaying ? <Pause size={26} style={{ color: g2 }}/> : <Play size={26} className="ml-1" style={{ color: g2 }}/>}
+              {buffering ? <BufferingRing size={28} color={g2}/> : isPlaying ? <Pause size={26} style={{ color: g2 }}/> : <Play size={26} className="ml-1" style={{ color: g2 }}/>}
             </motion.button>
             <button type="button" onClick={() => { haptic('light'); nextTrack(); }}>
               <SkipForward size={26} className="text-white" fill="currentColor"/>

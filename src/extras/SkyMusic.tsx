@@ -1,3 +1,4 @@
+import { BufferingRing, useBuffering } from '@/player/BufferingRing';
 import { useSettings } from '@/settings/store';
 import { VideoBackdrop } from '@/music/VideoBackdrop';
 import { EqualizerDialog } from '@/music/Equalizer';
@@ -1791,6 +1792,7 @@ const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLi
   const pct = dur > 0 ? (cur / dur) * 100 : 0;
   const fmtT = (s: number) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
   const [g1, g2] = getG ? getG(track.id) : ['#4f6ef7','#818cf8'];
+  const buffering = useBuffering();
   return (
     <motion.div
       initial={{ y: 80, opacity: 0 }}
@@ -1848,7 +1850,9 @@ const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLi
         <motion.button whileTap={{ scale: 0.88 }} type="button" onClick={onPlay}
           className="grid h-9 w-9 place-items-center rounded-full shrink-0"
           style={{ background: YM.accent, border: 'none', cursor: 'pointer' }}>
-          {playing
+          {buffering
+            ? <BufferingRing size={16}/>
+            : playing
             ? <Pause size={16} fill="white" stroke="white" />
             : <Play  size={16} fill="white" stroke="white" style={{ marginLeft: 1 }} />}
         </motion.button>
@@ -1878,6 +1882,7 @@ export const SkyFullPlayer = ({
   onPlay, onPrev, onNext, onSeek, onVolume,
   onShuffle, onRepeat, onLike, onAdd, onClose, onArtist,
 }: SkyFullPlayerProps) => {
+  const buffering = useBuffering();
   const [showQueue,   setShowQueue]   = React.useState(false);
   /* «Скрыть текст»: в полноэкранном плеере остаются только обложка и кнопки управления по центру —
      ни текста песни, ни очереди, ни названия. Выбор помнится на устройстве. */
@@ -2208,7 +2213,9 @@ export const SkyFullPlayer = ({
                       border:'none',cursor:'pointer',
                       boxShadow:`0 6px 30px ${hslA(hslGlow(h),'80')}`,
                     }}>
-                      {playing
+                      {buffering
+                        ? <BufferingRing size={26}/>
+                        : playing
                         ? <Pause size={24} color="white"/>
                         : <Play  size={24} color="white" style={{marginLeft:2}}/>
                       }

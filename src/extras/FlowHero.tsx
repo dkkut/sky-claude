@@ -1,3 +1,4 @@
+import { BufferingRing, useBuffering } from '@/player/BufferingRing';
 /**
  * Карточка «Мой поток» на главной Sky Music — по образцу экрана «Моя волна».
  *
@@ -201,6 +202,7 @@ export const FlowHero = ({ cur, last, playing, liked, tracks, favorites, onPlayP
 }) => {
   const t = cur ?? last;
   const isPlaying = Boolean(cur) && playing;
+  const buffering = useBuffering() && Boolean(cur);
   const cutout = useCardImage(t?.cutoutCardId ?? '', 'cutout', Boolean(t?.cutoutCardId));
   const time = usePlayerStore((s) => s.currentTime); const dur = usePlayerStore((s) => s.duration);
   const pct = cur && dur > 0 ? Math.max(0, Math.min(100, (time / dur) * 100)) : 0;
@@ -299,7 +301,7 @@ export const FlowHero = ({ cur, last, playing, liked, tracks, favorites, onPlayP
               style={{ height: PANEL, zIndex: 5, borderRadius: '26px 26px 0 0', background: isPlaying ? 'rgba(255,255,255,0.14)' : 'rgba(18,18,22,0.92)', backdropFilter: 'blur(16px)' }}>
               <span className="pointer-events-none absolute inset-y-0 left-0" style={{ width: `${pct}%`, background: 'rgba(255,255,255,0.1)' }} />
               <button type="button" onClick={stop(onToggle)} aria-label={isPlaying ? 'Пауза' : 'Играть'} className="relative grid h-full w-16 shrink-0 place-items-center">
-                {isPlaying ? <Pause size={20} fill="#fff" color="#fff" /> : <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 2 }} />}
+                {buffering ? <BufferingRing size={20}/> : isPlaying ? <Pause size={20} fill="#fff" color="#fff" /> : <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 2 }} />}
               </button>
               <button type="button" onClick={stop(onOpenPlayer)} aria-label="Открыть плеер" className="relative min-w-0 flex-1 truncate text-center text-[14px] font-bold text-white">
                 <span translate="no">{t.title}</span>

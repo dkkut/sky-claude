@@ -1,3 +1,4 @@
+import { BufferingRing, useBuffering } from '@/player/BufferingRing';
 /* Sky TV — музыка на весь экран: обложка, перемотка, управление пультом, текст песни по меткам времени. */
 import { VideoBackdrop } from '@/music/VideoBackdrop';
 import { useEffect } from 'react';
@@ -26,6 +27,7 @@ export const TVFullPlayer = () => {
   const hide = useFullNow((s) => s.hide);
   const item = usePlayerStore((s) => s.item);
   const playing = usePlayerStore((s) => s.isPlaying);
+  const buffering = useBuffering();
   const cur = usePlayerStore((s) => s.currentTime);
   const dur = usePlayerStore((s) => s.duration);
 
@@ -81,7 +83,7 @@ export const TVFullPlayer = () => {
           <Btn id="full-prev" label="Предыдущий" onEnter={() => ps.prevTrack()}>{() => <SkipBack size={34} color="#fff" fill="#fff" />}</Btn>
           <Btn id="full-back10" label="Назад на 10 секунд" onEnter={() => jump(-10)}>{() => <Rewind size={32} color="#fff" />}</Btn>
           <Btn id="full-play" label={playing ? 'Пауза' : 'Играть'} size={112} primary onEnter={() => ps.requestPlay(!usePlayerStore.getState().isPlaying)}>
-            {(f) => playing ? <Pause size={50} color={f ? '#fff' : '#0a0a0e'} fill={f ? '#fff' : '#0a0a0e'} /> : <Play size={50} color={f ? '#fff' : '#0a0a0e'} fill={f ? '#fff' : '#0a0a0e'} />}
+            {(f) => buffering ? <BufferingRing size={50} color={f ? '#fff' : '#0a0a0e'}/> : playing ? <Pause size={50} color={f ? '#fff' : '#0a0a0e'} fill={f ? '#fff' : '#0a0a0e'} /> : <Play size={50} color={f ? '#fff' : '#0a0a0e'} fill={f ? '#fff' : '#0a0a0e'} />}
           </Btn>
           <Btn id="full-fwd10" label="Вперёд на 10 секунд" onEnter={() => jump(10)}>{() => <FastForward size={32} color="#fff" />}</Btn>
           <Btn id="full-next" label="Следующий" onEnter={() => ps.nextTrack()}>{() => <SkipForward size={34} color="#fff" fill="#fff" />}</Btn>
