@@ -99,8 +99,7 @@ export const BloomModule = () => {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setNotifOpen(true)} className="relative rounded-xl p-2"
-              style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <button type="button" aria-label="Уведомления" onClick={() => setNotifOpen(true)} className="glass-btn round relative">
               <Bell size={16} style={{ color: 'var(--t2)' }}/>
               {notifCount > 0 && (
                 <span className="absolute -top-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold text-white"
@@ -108,8 +107,7 @@ export const BloomModule = () => {
               )}
             </button>
             <motion.button type="button" whileTap={{ scale: 0.93 }} onClick={() => setCreateOpen(true)}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-white"
-              style={{ background: 'var(--accent)' }}>
+              className="glass-btn accent gap-1.5 text-xs" style={{ display: 'inline-flex', alignItems: 'center' }}>
               <Plus size={14}/>Пост
             </motion.button>
           </div>

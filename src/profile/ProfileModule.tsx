@@ -1229,9 +1229,9 @@ export const ProfileModule = () => {
             <p className="text-sm font-semibold truncate" style={{color:'var(--t1)'}}>{me.name}</p>
             <p className="text-[11px] truncate" style={{color:'var(--t3)'}}>@{me.username}</p>
           </div>
-          <button type="button" onClick={logout}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-red-500/10"
-            style={{color:'var(--red)'}}><LogOut size={15}/></button>
+          <button type="button" onClick={logout} aria-label="Выйти"
+            className="glass-btn round shrink-0"
+            style={{color:'var(--red)'}}><LogOut size={16}/></button>
         </div>
         <div className="flex gap-1.5 overflow-x-auto px-3 pb-3" style={{ scrollbarWidth: 'none' }}>
           {[...NAV, ...MODULE_LINKS].map(({key,label,icon:Icon})=>(

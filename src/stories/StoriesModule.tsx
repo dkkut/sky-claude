@@ -901,8 +901,8 @@ export const StoriesModule = () => {
           {/* Кнопка создать */}
           <motion.button whileHover={{scale:1.05}} whileTap={{scale:0.95}} type="button"
             onClick={()=>setCreateOpen(true)}
-            className="absolute bottom-6 right-6 grid h-14 w-14 place-items-center rounded-full shadow-xl"
-            style={{background:'var(--accent)',boxShadow:'0 8px 32px var(--accent-bg)'}}>
+            className="glass-btn round accent absolute bottom-6 right-6" aria-label="Создать историю"
+            style={{width:56,height:56}}>
             <Plus size={24} className="text-white"/>
           </motion.button>
         </div>
