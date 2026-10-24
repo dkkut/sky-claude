@@ -110,9 +110,9 @@ export const Sidebar = () => {
                 {isActive && (
                   <motion.span
                     layoutId="nav-pill"
-                    className="absolute top-1/2 w-[3px] -translate-y-1/2 rounded-full"
-                    style={{ left: -6, height: 24, background: 'var(--accent)' }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 36 }} />
+                    className="glass-lens absolute inset-0 -z-10"
+                    style={{ borderRadius: 18 }}
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
                 )}
 
                 <div className="relative shrink-0">

@@ -40,17 +40,17 @@ export const MobileTabBar = ({ onMore }: { onMore: () => void }) => {
             initial={{ x: '110%' }} animate={{ x: 0 }} exit={{ x: '110%' }}
             transition={{ type: 'spring', stiffness: 380, damping: 34 }}
 >
-            <div className="nav-panel flex items-center justify-around px-1.5 py-1" style={{ borderRadius: 30, backdropFilter: 'blur(24px) saturate(180%)' }}>
+            <div className="glass-pill flex items-center justify-around px-1.5 py-1">
               {PRIMARY.map(({ key, label, icon: Icon }) => {
                 const active = activeModule === key;
                 const badge = badges[key] ?? 0;
                 return (
                   <button key={key} type="button"
                     onClick={() => { haptic('selection'); setActiveModule(key); }}
-                    className="relative flex flex-1 flex-col items-center gap-0.5 py-1.5">
+                    className="relative isolate flex flex-1 flex-col items-center gap-0.5 py-1.5">
                     {active && (
-                      <motion.div layoutId="mtab-line" transition={{ type: 'spring', stiffness: 500, damping: 36 }}
-                        className="absolute -top-0.5 h-[3px] w-6 rounded-full" style={{ background: 'var(--accent)' }} />
+                      <motion.div layoutId="mtab-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                        className="glass-lens absolute inset-x-0.5 inset-y-0 -z-10" />
                     )}
                     <motion.div className="relative" animate={{ scale: active ? 1.08 : 1, y: active ? -1 : 0 }} transition={{ type: 'spring', stiffness: 500, damping: 25 }}>
                       <Icon size={22} strokeWidth={active ? 2.4 : 1.8} style={{ color: active ? 'var(--accent)' : 'var(--t3)' }} />

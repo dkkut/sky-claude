@@ -40,7 +40,7 @@ export const OfflineMode = ({ onRetryOnline }: Props) => {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mt-3">
+        <div className="glass-pill mt-3 flex gap-0.5">
           {([
             { key: 'chats', label: 'Чаты', Icon: MessageCircle },
             { key: 'orders', label: 'Заказы', Icon: Package },
@@ -49,19 +49,14 @@ export const OfflineMode = ({ onRetryOnline }: Props) => {
             const active = tab === key;
             return (
               <button key={key} type="button" onClick={() => setTab(key)}
-                className="relative flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
-                style={{
-                  background: active ? 'rgba(79,110,247,0.15)' : 'transparent',
-                  color:      active ? 'var(--accent)' : 'var(--t2)',
-                  border:     `1px solid ${active ? 'rgba(79,110,247,0.3)' : 'transparent'}`,
-                }}>
+                className="relative isolate flex flex-1 items-center justify-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors"
+                style={{ color: active ? 'var(--t1)' : 'var(--t3)', background: 'transparent', border: 0 }}>
                 <Icon size={14} />
                 {label}
                 {active && (
                   <motion.div layoutId="offline-tab-indicator"
-                    className="absolute inset-0 rounded-xl"
-                    style={{ background: 'rgba(79,110,247,0.08)' }}
-                    transition={{ type: 'spring', bounce: 0.2, duration: 0.35 }} />
+                    className="glass-lens absolute inset-0 -z-10"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
                 )}
               </button>
             );

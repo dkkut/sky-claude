@@ -1276,18 +1276,14 @@ export const ExtrasModule = () => {
         )}
 
         {/* Tabs scrollable row */}
-        <div ref={tabsRef} className="flex items-center gap-1 overflow-x-auto flex-1"
+        <div ref={tabsRef} className="glass-pill flex items-center gap-0.5 overflow-x-auto flex-1"
           style={{ scrollbarWidth:'none' }}>
           {visibleTabs.filter(t => t.key !== 'home').map(({key,label,icon:Icon})=>(
             <button key={key} type="button" onClick={()=>setTab(key as Tab)}
-              className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all shrink-0"
-              style={{
-                background: tab===key ? 'var(--accent-bg)' : 'rgba(0,0,0,0)',
-                color:      tab===key ? 'var(--accent)'    : 'var(--t3)',
-                border:     tab===key ? '1px solid rgba(79,110,247,0.25)' : '1px solid transparent',
-                cursor: 'pointer',
-              }}>
-              <Icon size={13}/>{label}
+              className="relative isolate flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors shrink-0"
+              style={{ color: tab===key ? 'var(--t1)' : 'var(--t3)', background: 'transparent', border: 0, cursor: 'pointer' }}>
+              {tab===key && <motion.span layoutId="extras-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
+              <Icon size={13} style={{ color: tab===key ? 'var(--accent)' : undefined }}/>{label}
               {key==='admin'&&pendingCount>0&&(
                 <span className="absolute -top-1 -right-1 grid h-4 w-4 place-items-center rounded-full text-[9px] font-bold text-white"
                   style={{background:'#ef4444', boxShadow:'0 0 0 1.5px var(--bg-l1)'}}>{pendingCount}</span>

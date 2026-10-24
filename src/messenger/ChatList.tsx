@@ -691,15 +691,12 @@ export const ChatList = () => {
       </AnimatePresence>
 
       {/* Filter tabs */}
-      <div className="flex gap-1.5 px-3 pb-2.5 shrink-0 overflow-x-auto scroll-none">
+      <div className="glass-pill mx-3 mb-2.5 flex shrink-0 gap-0.5 overflow-x-auto scroll-none">
         {FILTERS.map(([k, l]) => (
           <button key={k} type="button" onClick={() => { setFilter(k); if (k === 'trash') loadTrash(); }}
-            className="shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-all"
-            style={{
-              background: filter === k ? 'var(--accent-bg)' : 'rgba(255,255,255,0.04)',
-              color: filter === k ? 'var(--accent)' : 'var(--t2)',
-              border: `1px solid ${filter === k ? 'rgba(79,110,247,0.35)' : 'var(--border)'}`,
-            }}>
+            className="relative isolate shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors"
+            style={{ color: filter === k ? 'var(--t1)' : 'var(--t3)' }}>
+            {filter === k && <motion.span layoutId="chat-filter-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
             {l}{k === 'unread' && totalUnread > 0 ? ` · ${totalUnread}` : ''}{k === 'archived' && archivedCount > 0 ? ` · ${archivedCount}` : ''}
           </button>
         ))}

@@ -611,18 +611,18 @@ export const CourierHub = ({ sellerId, orders }: { sellerId: string; orders: any
   return (
     <div className="h-full flex flex-col overflow-hidden relative">
       {/* Tabs */}
-      <div className="flex shrink-0" style={{ background: C.l1, borderBottom: `1px solid ${C.brd}` }}>
+      <div className="glass-pill mx-3 my-2 flex shrink-0">
         {TABS.map(t => {
           const Icon = t.icon;
           return (
             <button key={t.key} type="button" onClick={() => setTab(t.key)}
-              className="relative flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold"
+              className="relative isolate flex-1 flex items-center justify-center gap-1.5 rounded-full py-2 text-xs font-semibold"
               style={{ color: tab===t.key ? C.acc : C.t3 }}>
               <Icon size={13}/> {t.label}
               {!!t.badge && (
                 <span className="grid h-4 min-w-[16px] place-items-center rounded-full text-[8px] font-black text-white px-1" style={{ background: C.red }}>{t.badge}</span>
               )}
-              {tab===t.key && <motion.div layoutId="courier-hub-tab" className="absolute bottom-0 inset-x-3 h-[2px] rounded-full" style={{ background: C.acc }}/>}
+              {tab===t.key && <motion.div layoutId="courier-hub-tab" className="glass-lens absolute inset-0 -z-10" transition={{ type: 'spring', stiffness: 420, damping: 34 }}/>}
             </button>
           );
         })}

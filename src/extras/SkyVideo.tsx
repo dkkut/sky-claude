@@ -1215,7 +1215,7 @@ export const SkyVideo = () => {
           )}
         </AnimatePresence>
 
-        <div className="flex gap-0.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        <div className="glass-pill mx-3 mb-2 flex gap-0.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {([
             { key: 'home', label: 'Главная' },
             { key: 'shorts', label: 'Shorts' },
@@ -1226,12 +1226,12 @@ export const SkyVideo = () => {
             const on = tab === key;
             return (
               <button key={key} type="button" onClick={() => setTab(key)}
-                className="relative shrink-0 px-4 py-2 text-xs font-semibold transition-colors"
+                className="relative isolate shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition-colors"
                 style={{ color: on ? V.t1 : V.t3 }}>
                 {label}
                 {on && (
-                  <motion.div layoutId="video-tab-line" className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full"
-                    style={{ background: V.accent }} transition={{ type: 'spring', stiffness: 500, damping: 40 }} />
+                  <motion.div layoutId="video-tab-line" className="glass-lens absolute inset-0 -z-10"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
                 )}
               </button>
             );

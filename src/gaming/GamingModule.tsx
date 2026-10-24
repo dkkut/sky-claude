@@ -614,10 +614,10 @@ export const GamingModule = () => {
         </div>
 
         {/* Tab bar — FACEIT style underline */}
-        <div className="flex" style={{ borderTop: `1px solid ${FC.border}` }}>
+        <div className="glass-pill mx-3 my-2 flex">
           {TABS.map(t => (
             <button key={t.key} type="button" onClick={() => setTab(t.key)}
-              className="relative flex-1 py-2.5 text-[12px] font-bold transition-colors"
+              className="relative isolate flex-1 rounded-full py-2 text-[12px] font-bold transition-colors"
               style={{ color: tab===t.key ? FC.t1 : FC.t3 }}>
               {t.label}
               {t.key==='play' && pending>0 && (
@@ -626,8 +626,8 @@ export const GamingModule = () => {
               )}
               {tab===t.key && (
                 <motion.div layoutId="faceit-tab"
-                  className="absolute bottom-0 inset-x-0 h-[2px]"
-                  style={{ background: FC.orange }}/>
+                  className="glass-lens absolute inset-0 -z-10"
+                  transition={{ type: 'spring', stiffness: 420, damping: 34 }}/>
               )}
             </button>
           ))}

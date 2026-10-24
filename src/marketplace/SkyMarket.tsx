@@ -584,7 +584,7 @@ export const SkyMarket = () => {
           </button>
         </div>
 
-        <div className="flex overflow-x-auto" style={{ scrollbarWidth: 'none', borderTop: `1px solid ${C.brd}` }}>
+        <div className="glass-pill mx-3 my-2 flex overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {([
             { key: 'catalog',  label: 'Каталог' },
             { key: 'onsite',   label: 'На месте' },
@@ -598,12 +598,12 @@ export const SkyMarket = () => {
           ] as { key: Tab; label: string }[]).map((t) => (
             <button key={t.key} type="button"
               onClick={() => { setProduct(null); setOrder(null); setTab(t.key); }}
-              className="relative shrink-0 px-4 py-2.5 text-[12px] font-semibold transition-colors"
+              className="relative isolate shrink-0 rounded-full px-4 py-2 text-[12px] font-semibold transition-colors"
               style={{ color: tab === t.key ? C.t1 : C.t3 }}>
               {t.label}
               {tab === t.key && (
-                <motion.div layoutId="market-tab" className="absolute inset-x-0 bottom-0 h-[2px]"
-                  style={{ background: C.acc }} />
+                <motion.div layoutId="market-tab" className="glass-lens absolute inset-0 -z-10"
+                  transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
               )}
             </button>
           ))}

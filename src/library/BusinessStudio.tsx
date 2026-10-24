@@ -891,16 +891,15 @@ export const BusinessStudio = () => {
           </div>
         </div>
 
-        <div className="flex overflow-x-auto" style={{ scrollbarWidth:'none' }}>
+        <div className="glass-pill mx-3 mb-2 flex overflow-x-auto" style={{ scrollbarWidth:'none' }}>
           {TABS.map(({key,label,icon:Icon})=>(
             <button key={key} type="button" onClick={()=>setTab(key)}
-              className="relative shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-semibold transition-colors"
+              className="relative isolate shrink-0 flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[11px] font-semibold transition-colors"
               style={{ color:tab===key?V.t1:V.t3 }}>
               <Icon size={11} style={{ color:tab===key?V.accent:V.t3 }}/>
               {label}
               {tab===key&&(
-                <motion.div layoutId="studio-tab" className="absolute bottom-0 left-1.5 right-1.5 h-[2.5px] rounded-full"
-                  style={{ background:V.accent }} transition={{ type:'spring',stiffness:500,damping:40 }}/>
+                <motion.div layoutId="studio-tab" className="glass-lens absolute inset-0 -z-10" transition={{ type:'spring',stiffness:420,damping:34 }}/>
               )}
             </button>
           ))}
