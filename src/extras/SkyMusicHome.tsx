@@ -243,14 +243,14 @@ export const SkyMusicHome = ({
   const favoriteArtists = useMemo(() => {
     const byArtist: Record<string, Track[]> = {};
     pub.forEach(t => { (byArtist[t.artist] ??= []).push(t); });
-    return Object.entries(byArtist).sort((a,b) => b[1].length - a[1].length).slice(0, 8);
+    return Object.entries(byArtist).sort((a,b) => b[1].length - a[1].length);
   }, [pub]);
 
   const albums = useMemo(() => {
     // Явной модели "альбом" пока нет — группируем треки по исполнителю+жанру как псевдо-альбом.
     const map: Record<string, Track[]> = {};
     pub.forEach(t => { (map[`${t.artist} · ${t.genre}`] ??= []).push(t); });
-    return Object.entries(map).filter(([,ts]) => ts.length >= 1).slice(0, 10);
+    return Object.entries(map).filter(([,ts]) => ts.length >= 1);
   }, [pub]);
 
   // Новое у тех, на кого человек подписан. Пусто — раздела нет: пустой
@@ -378,7 +378,7 @@ export const SkyMusicHome = ({
       </Section>
 
       <Section title="Любимые исполнители" icon={Mic2} index={4} onAll={() => setAllOpen({ title: 'Любимые исполнители', tracks: favoriteArtists.flatMap(([, ts]) => ts) })}>
-        {favoriteArtists.map(([artist, ts]) => (
+        {favoriteArtists.slice(0, 12).map(([artist, ts]) => (
           <motion.button type="button" key={artist} whileTap={{ scale: 0.95 }} onClick={() => (onArtist ? onArtist(artist) : ts[0] && onPlay(ts[0], ts))} aria-label={`Открыть карточку: ${artist}`} className="shrink-0 text-center" style={{ width: 100 }}>
             <div className="mx-auto mb-2.5 grid h-24 w-24 place-items-center overflow-hidden rounded-full"
               style={{ background: `linear-gradient(150deg,${getG(artist)[0]},${getG(artist)[1]})`, boxShadow: '0 6px 20px -6px rgba(0,0,0,0.5)' }}>
@@ -391,7 +391,7 @@ export const SkyMusicHome = ({
       </Section>
 
       <Section title="Альбомы" icon={ListMusic} index={5} onAll={() => setAllOpen({ title: 'Альбомы', tracks: albums.flatMap(([, ts]) => ts) })}>
-        {albums.map(([name, ts]) => (
+        {albums.slice(0, 12).map(([name, ts]) => (
           <button key={name} type="button" onClick={() => ts[0] && onPlay(ts[0], ts)} className="shrink-0 text-left" style={{ width: 148 }}>
             <div className="grid h-[148px] w-[148px] place-items-center rounded-2xl" style={{
               background: `linear-gradient(150deg,${getG(name)[0]},${getG(name)[1]})`,
