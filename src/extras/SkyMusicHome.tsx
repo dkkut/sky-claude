@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { ExplicitBadge } from '@/labels/Labels';
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -134,7 +135,7 @@ const AllSheet = ({ title, tracks, activeId, playing, onPlay, onClose }: {
   title: string; tracks: Track[]; activeId: string | null; playing: boolean;
   onPlay: (t: Track, pool: Track[]) => void; onClose: () => void;
 }) => (
-  <motion.div className="fixed inset-0 flex flex-col" data-keep-dark style={{ zIndex: 9000, background: '#0b0b10', paddingTop: 'var(--island-pad, 0px)' }}
+  <motion.div className="fixed inset-0 flex flex-col" data-keep-dark style={{ zIndex: 20000, background: '#0b0b10', paddingTop: 'var(--island-pad, 0px)' }}
     initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', stiffness: 380, damping: 36 }}>
     <div className="flex shrink-0 items-center gap-3 px-4 pb-3" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
       <button type="button" onClick={onClose} aria-label="Закрыть" className="glass-btn round shrink-0" style={{ color: '#fff' }}><X size={18}/></button>
@@ -327,7 +328,7 @@ export const SkyMusicHome = ({
 
   return (
     <div className="sky-music-scope relative h-full" style={{ background: 'var(--bg)' }}>
-      <div className="h-full overflow-y-auto pb-8" style={{ scrollbarWidth: 'none' }}>
+      <div className="h-full overflow-y-auto pb-8" style={{ scrollbarWidth: 'none', overflowX: 'hidden', overscrollBehaviorX: 'none' }}>
       {/* Top bar */}
       <div className="flex items-center justify-between px-5 pt-5 pb-1">
         <motion.p initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
@@ -413,12 +414,13 @@ export const SkyMusicHome = ({
       <style>{`@keyframes skyMusicEq { from { transform: scaleY(0.4); } to { transform: scaleY(1.6); } }`}</style>
       </div>
 
-      <AnimatePresence>
-        {allOpen && (
-          <AllSheet title={allOpen.title} tracks={allOpen.tracks} activeId={activeId} playing={playing}
-            onPlay={(t, pool) => onPlay(t, pool)} onClose={() => setAllOpen(null)}/>
-        )}
-      </AnimatePresence>
+      {createPortal(
+        <AnimatePresence>
+          {allOpen && (
+            <AllSheet title={allOpen.title} tracks={allOpen.tracks} activeId={activeId} playing={playing}
+              onPlay={(t, pool) => onPlay(t, pool)} onClose={() => setAllOpen(null)}/>
+          )}
+        </AnimatePresence>, document.body)}
 
       <AnimatePresence>
         {waveOpen && (
