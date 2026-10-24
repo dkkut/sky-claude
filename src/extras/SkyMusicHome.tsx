@@ -130,8 +130,45 @@ const WaveSheet = ({ pool, c1, c2, playing, activeId, onPlay, onClose }: {
   </motion.div>
 );
 
-const Section = ({ title, icon: Icon, index, children, empty }: {
-  title: string; icon: React.FC<any>; index: number; children?: React.ReactNode; empty?: string;
+const AllSheet = ({ title, tracks, activeId, playing, onPlay, onClose }: {
+  title: string; tracks: Track[]; activeId: string | null; playing: boolean;
+  onPlay: (t: Track, pool: Track[]) => void; onClose: () => void;
+}) => (
+  <motion.div className="fixed inset-0 flex flex-col" data-keep-dark style={{ zIndex: 9000, background: '#0b0b10', paddingTop: 'var(--island-pad, 0px)' }}
+    initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', stiffness: 380, damping: 36 }}>
+    <div className="flex shrink-0 items-center gap-3 px-4 pb-3" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 12px)' }}>
+      <button type="button" onClick={onClose} aria-label="Закрыть" className="glass-btn round shrink-0" style={{ color: '#fff' }}><X size={18}/></button>
+      <p className="min-w-0 flex-1 truncate text-[18px] font-bold" style={{ color: '#fafafb' }}>{title}</p>
+      <span className="shrink-0 text-[12px]" style={{ color: '#8a8f9a' }}>{tracks.length}</span>
+    </div>
+    <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-6" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)' }}>
+      {tracks.length === 0 && <p className="px-2 pt-6 text-[13px]" style={{ color: '#5c626e' }}>Здесь пока пусто</p>}
+      {tracks.map((t, i) => {
+        const [c1, c2] = getG(t.id);
+        const on = activeId === t.id;
+        return (
+          <button key={t.id} type="button" onClick={() => onPlay(t, tracks)}
+            className="flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left active:bg-white/5">
+            <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl"
+              style={{ background: t.coverUrl ? undefined : `linear-gradient(150deg,${c1},${c2})` }}>
+              {t.coverUrl ? <img src={t.coverUrl} alt="" className="h-full w-full object-cover"/> : <Music2 size={18} color="rgba(255,255,255,0.35)"/>}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 truncate text-[14px] font-semibold" style={{ color: on ? '#c4b5fd' : '#f0f1f4' }} translate="no">
+                <span className="truncate">{t.title}</span><ExplicitBadge show={t.explicit}/>
+              </p>
+              <p className="truncate text-[12px]" style={{ color: '#6b7180' }} translate="no">{t.artist}</p>
+            </div>
+            <span className="shrink-0 text-[11px]" style={{ color: '#4a4d55' }}>{on && playing ? '▶' : i + 1}</span>
+          </button>
+        );
+      })}
+    </div>
+  </motion.div>
+);
+
+const Section = ({ title, icon: Icon, index, children, empty, onAll }: {
+  title: string; icon: React.FC<any>; index: number; children?: React.ReactNode; empty?: string; onAll?: () => void;
 }) => (
   <motion.section custom={index} variants={fadeUp} initial="hidden" animate="show" className="mb-8">
     <div className="mb-3.5 flex items-center justify-between px-5">
@@ -139,7 +176,12 @@ const Section = ({ title, icon: Icon, index, children, empty }: {
         <Icon size={14} strokeWidth={2.2} style={{ color: '#8a8f9a' }}/>
         <p className="text-[16px] font-bold" style={{ color: '#fafafb', letterSpacing: '-0.015em' }}>{title}</p>
       </div>
-      {!empty && <ChevronRight size={16} style={{ color: '#4a4d55' }}/>}
+      {!empty && onAll && (
+        <button type="button" onClick={onAll} aria-label={`Показать все: ${title}`}
+          className="grid h-9 w-9 place-items-center rounded-full" style={{ color: '#8a8f9a' }}>
+          <ChevronRight size={18}/>
+        </button>
+      )}
     </div>
     {empty ? (
       <p className="px-5 text-[13px]" style={{ color: '#5c626e' }}>{empty}</p>
@@ -159,16 +201,20 @@ export const SkyMusicHome = ({
   onRetry?: () => void; onUpload?: () => void; onSearch?: () => void;
 }) => {
   const pub = useMemo(() => tracks.filter(t => t.status === 'published'), [tracks]);
-  const fresh = useMemo(() => [...pub].sort((a,b) => b.addedAt.localeCompare(a.addedAt)).slice(0, 10), [pub]);
-  const popularNow = useMemo(() => [...pub].sort((a,b) => b.plays - a.plays).slice(0, 10), [pub]);
+  const freshAll = useMemo(() => [...pub].sort((a,b) => b.addedAt.localeCompare(a.addedAt)), [pub]);
+  const fresh = useMemo(() => freshAll.slice(0, 10), [freshAll]);
+  const popularAll = useMemo(() => [...pub].sort((a,b) => b.plays - a.plays), [pub]);
+  const popularNow = useMemo(() => popularAll.slice(0, 10), [popularAll]);
+  const [allOpen, setAllOpen] = useState<{ title: string; tracks: Track[] } | null>(null);
   const likedTracks = useMemo(() => pub.filter(t => favorites.includes(t.id)), [pub, favorites]);
 
   // Недавнее — с сервера: на другом устройстве список тот же.
   const historyIds = useMusicStore(st => st.history).map(h => h.id);
-  const recentlyPlayed = useMemo(
-    () => historyIds.map(id => pub.find(t => t.id === id)).filter(Boolean).slice(0, 10) as Track[],
+  const recentAll = useMemo(
+    () => historyIds.map(id => pub.find(t => t.id === id)).filter(Boolean) as Track[],
     [historyIds, pub],
   );
+  const recentlyPlayed = useMemo(() => recentAll.slice(0, 10), [recentAll]);
 
   // Недослушанный трек прошлого раза (плеер пуст): карточка «Мой поток» показывает его с тихой волной.
   const progressMap = useMusicStore(st => st.progress);
@@ -189,8 +235,9 @@ export const SkyMusicHome = ({
       const sa = (genreCount[a.genre] ?? 0) * 2 + (artistCount[a.artist] ?? 0) * 3 + Math.log1p(a.plays);
       const sb = (genreCount[b.genre] ?? 0) * 2 + (artistCount[b.artist] ?? 0) * 3 + Math.log1p(b.plays);
       return sb - sa;
-    }).slice(0, 10);
+    });
   }, [pub, favorites]);
+  const forYouTop = useMemo(() => forYou.slice(0, 10), [forYou]);
 
   const favoriteArtists = useMemo(() => {
     const byArtist: Record<string, Track[]> = {};
@@ -304,32 +351,32 @@ export const SkyMusicHome = ({
       <div className="h-2"/>
 
       {feed.length > 0 && (
-        <Section title="Новое у ваших артистов" icon={Sparkles} index={0}>
+        <Section title="Новое у ваших артистов" icon={Sparkles} index={0} onAll={() => setAllOpen({ title: 'Новое у ваших артистов', tracks: feed })}>
           {feed.map(t => (
             <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, feed)}/>
           ))}
         </Section>
       )}
 
-      <Section title="Недавно слушали" icon={Disc3} index={1} empty={recentlyPlayed.length===0 ? 'Пока ничего не прослушано' : undefined}>
+      <Section title="Недавно слушали" icon={Disc3} index={1} empty={recentlyPlayed.length===0 ? 'Пока ничего не прослушано' : undefined} onAll={() => setAllOpen({ title: 'Недавно слушали', tracks: recentAll })}>
         {recentlyPlayed.map(t => (
           <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, recentlyPlayed)}/>
         ))}
       </Section>
 
-      <Section title="Для вас" icon={Sparkles} index={2}>
-        {forYou.map(t => (
-          <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, forYou)}/>
+      <Section title="Для вас" icon={Sparkles} index={2} onAll={() => setAllOpen({ title: 'Для вас', tracks: forYou })}>
+        {forYouTop.map(t => (
+          <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, forYouTop)}/>
         ))}
       </Section>
 
-      <Section title="Новые релизы" icon={Disc3} index={3}>
+      <Section title="Новые релизы" icon={Disc3} index={3} onAll={() => setAllOpen({ title: 'Новые релизы', tracks: freshAll })}>
         {fresh.map(t => (
           <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, fresh)}/>
         ))}
       </Section>
 
-      <Section title="Любимые исполнители" icon={Mic2} index={4}>
+      <Section title="Любимые исполнители" icon={Mic2} index={4} onAll={() => setAllOpen({ title: 'Любимые исполнители', tracks: favoriteArtists.flatMap(([, ts]) => ts) })}>
         {favoriteArtists.map(([artist, ts]) => (
           <motion.button type="button" key={artist} whileTap={{ scale: 0.95 }} onClick={() => (onArtist ? onArtist(artist) : ts[0] && onPlay(ts[0], ts))} aria-label={`Открыть карточку: ${artist}`} className="shrink-0 text-center" style={{ width: 100 }}>
             <div className="mx-auto mb-2.5 grid h-24 w-24 place-items-center overflow-hidden rounded-full"
@@ -342,7 +389,7 @@ export const SkyMusicHome = ({
         ))}
       </Section>
 
-      <Section title="Альбомы" icon={ListMusic} index={5}>
+      <Section title="Альбомы" icon={ListMusic} index={5} onAll={() => setAllOpen({ title: 'Альбомы', tracks: albums.flatMap(([, ts]) => ts) })}>
         {albums.map(([name, ts]) => (
           <button key={name} type="button" onClick={() => ts[0] && onPlay(ts[0], ts)} className="shrink-0 text-left" style={{ width: 148 }}>
             <div className="grid h-[148px] w-[148px] place-items-center rounded-2xl" style={{
@@ -357,7 +404,7 @@ export const SkyMusicHome = ({
         ))}
       </Section>
 
-      <Section title="Популярное сейчас" icon={Heart} index={9}>
+      <Section title="Популярное сейчас" icon={Heart} index={9} onAll={() => setAllOpen({ title: 'Популярное сейчас', tracks: popularAll })}>
         {popularNow.map(t => (
           <TrackTile key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, popularNow)}/>
         ))}
@@ -365,6 +412,13 @@ export const SkyMusicHome = ({
 
       <style>{`@keyframes skyMusicEq { from { transform: scaleY(0.4); } to { transform: scaleY(1.6); } }`}</style>
       </div>
+
+      <AnimatePresence>
+        {allOpen && (
+          <AllSheet title={allOpen.title} tracks={allOpen.tracks} activeId={activeId} playing={playing}
+            onPlay={(t, pool) => onPlay(t, pool)} onClose={() => setAllOpen(null)}/>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {waveOpen && (
