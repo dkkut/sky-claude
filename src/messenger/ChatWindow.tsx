@@ -1547,8 +1547,8 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
         <header className="flex items-center gap-2">
           {isMobile && onBack && (
             <button type="button" onClick={onBack}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full sky-glass transition-colors hover:bg-white/10"
-              style={{ color: 'var(--t1)', background: 'var(--bg-l2)' }}><ChevronLeft size={18} /></button>
+              className="glass-btn round shrink-0"
+              style={{ color: 'var(--t1)' }}><ChevronLeft size={18} /></button>
           )}
 
           <div className="relative flex-1 min-w-0 flex items-center gap-2 sm:gap-3 rounded-full sky-glass overflow-hidden pl-1.5 pr-1.5 py-1.5"

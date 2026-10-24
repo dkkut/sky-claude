@@ -352,7 +352,7 @@ const CollectionTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, o
   if (view === 'liked') return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 px-3 py-3 shrink-0">
-        <button type="button" onClick={() => setView('main')} style={{ color: YM.sub }}><ChevronLeft size={20} /></button>
+        <button type="button" onClick={() => setView('main')} className="glass-btn round" style={{ color: YM.sub }}><ChevronLeft size={20} /></button>
         <h2 className="text-base font-bold" style={{ color: YM.text }}>Мне нравится</h2>
         <span className="text-sm ml-auto" style={{ color: YM.sub }}>{likedTracks.length}</span>
       </div>
@@ -386,7 +386,7 @@ const CollectionTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, o
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-3 px-3 py-3 shrink-0">
-          <button type="button" onClick={() => setView('main')} style={{ color: YM.sub }}><ChevronLeft size={20} /></button>
+          <button type="button" onClick={() => setView('main')} className="glass-btn round" style={{ color: YM.sub }}><ChevronLeft size={20} /></button>
           <h2 className="text-base font-bold truncate flex-1" style={{ color: YM.text }}>{pl.name}</h2>
           <span className="text-sm" style={{ color: YM.sub }}>{pool.length}</span>
         </div>

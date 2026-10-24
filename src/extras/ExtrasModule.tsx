@@ -522,7 +522,7 @@ const MoreTab = () => {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0" style={{borderColor:'var(--border)'}}>
         <button type="button" onClick={()=>setView('hub')} aria-label="Назад"
-          className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/5">
+          className="glass-btn round">
           <ChevronLeft size={16} style={{color:'var(--t2)'}}/>
         </button>
         {view === 'cloud' ? <HardDrive size={22} style={{color:'var(--t1)'}}/> : <Cloud size={22} style={{color:'var(--t1)'}}/>}

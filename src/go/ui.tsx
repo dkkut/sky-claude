@@ -75,7 +75,7 @@ export const Notice = ({ children, tone = 'info' }: { children: ReactNode; tone?
 
 export const Back = ({ onClick, title }: { onClick: () => void; title: string }) => (
   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-    <button type="button" onClick={onClick} aria-label="Назад" style={{ width: 44, height: 44, borderRadius: 12, border: 'none', background: C.l2, color: C.t1, display: 'grid', placeItems: 'center' }}><ChevronLeft size={20} /></button>
+    <button type="button" onClick={onClick} aria-label="Назад" className="glass-btn round" style={{ width: 44, height: 44, color: C.t1 }}><ChevronLeft size={20} /></button>
     <div style={{ fontSize: 19, fontWeight: 800, color: C.t1 }}>{title}</div>
   </div>
 );
