@@ -1,3 +1,4 @@
+import { SkyLoader } from '@/shared/SkyLoader';
 /* ===========================================================
    SKY FILM
 
@@ -1657,8 +1658,7 @@ export const SkyFilm = () => {
 
   if (loading && !loaded) return (
     <div className="flex h-full flex-col items-center justify-center gap-3" style={{ background: K.bg }}>
-      <Film size={38} style={{ color: K.dim }} />
-      <p className="text-sm" style={{ color: K.sub }}>Загружаем кино…</p>
+      <SkyLoader label="Загружаем кино…"/>
     </div>
   );
 

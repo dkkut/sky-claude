@@ -1,3 +1,4 @@
+import { SkyLoader } from '@/shared/SkyLoader';
 /* ===========================================================
    SKY PODCASTS
 
@@ -225,7 +226,7 @@ const ShowPage = ({ id, onBack }: { id: string; onBack: () => void }) => {
   }
 
   if (!show) {
-    return <div className="grid h-full place-items-center"><Loader2 size={22} className="animate-spin" style={{ color: C.t3 }}/></div>;
+    return <div className="grid h-full place-items-center"><SkyLoader label="Загружаем подкасты…"/></div>;
   }
 
   const toggleSub = async () => {
@@ -294,7 +295,7 @@ const ShowPage = ({ id, onBack }: { id: string; onBack: () => void }) => {
       )}
 
       <h3 className="mb-1.5 px-0.5 text-[14px] font-bold" style={{ color: C.t1 }}>Выпуски</h3>
-      {episodes === null && <div className="py-6 text-center"><Loader2 size={18} className="animate-spin inline" style={{ color: C.t3 }}/></div>}
+      {episodes === null && <SkyLoader className="py-6" size="sm"/>}
       {episodes !== null && shown.length === 0 && (
         <p className="py-8 text-center text-sm leading-relaxed" style={{ color: C.t3 }}>
           {q ? 'Ничего не нашлось.' : 'Выпусков пока нет. Как только автор добавит первый, он появится здесь.'}
@@ -645,7 +646,7 @@ const Studio = () => {
         )}
       </div>
 
-      {mine === null && <div className="py-8 text-center"><Loader2 size={20} className="animate-spin inline" style={{ color: C.t3 }}/></div>}
+      {mine === null && <SkyLoader className="py-8"/>}
       {mine?.length === 0 && (
         <p className="py-6 text-center text-sm" style={{ color: C.t3 }}>У вас пока нет своих передач.</p>
       )}
@@ -869,7 +870,7 @@ const SkyPodcastsContent = () => {
             )}
 
             <Rail title={category === 'Все' ? 'Все передачи' : category}>
-              {catalog === null && <div className="py-8 text-center"><Loader2 size={20} className="animate-spin inline" style={{ color: C.t3 }}/></div>}
+              {catalog === null && <SkyLoader className="py-8" label="Загружаем подкасты…"/>}
               {catalog?.length === 0 && (
                 <div className="rounded-2xl px-4 py-8 text-center" style={glass}>
                   <Mic size={26} style={{ color: C.t3, margin: '0 auto 10px' }}/>

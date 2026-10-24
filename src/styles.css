@@ -480,3 +480,8 @@ html.kb-open .kb-hide { display: none !important; }
 .gd-pulse { animation: gd-glow 3.2s ease-in-out infinite; }
 @keyframes gd-glow { 0%,100% { filter: drop-shadow(0 0 10px rgba(110,130,255,.6)) } 50% { filter: drop-shadow(0 0 24px rgba(168,110,255,.9)) } }
 @media (prefers-reduced-motion: reduce) { .gd-stars, .gd-orbit, .gd-pulse, .gd-fade { animation: none !important; } .gd-card, .gd-btn { transition: none !important; } }
+
+/* Единый индикатор загрузки (src/shared/SkyLoader.tsx) */
+.sky-loader-bar { transform-origin: 50% 100%; animation: skyLoaderBar 0.95s ease-in-out infinite; }
+@keyframes skyLoaderBar { 0%, 100% { transform: scaleY(0.25); opacity: .55; } 50% { transform: scaleY(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sky-loader-bar { animation: none; transform: scaleY(0.6); } }

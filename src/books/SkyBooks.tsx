@@ -1,3 +1,4 @@
+import { SkyLoader } from '@/shared/SkyLoader';
 /* ===============================================================
    SKY BOOKS  -  Площадка книг и аудиокниг
 =============================================================== */
@@ -294,7 +295,7 @@ const SkyBooksContent = () => {
 
       <div className="flex-1 overflow-y-auto px-4 pb-4" style={{ scrollbarWidth: 'none' }}>
         {source === null ? (
-          <div className="flex justify-center py-12"><Loader2 size={22} className="animate-spin" style={{ color: B.t3 }}/></div>
+          <SkyLoader className="py-12" label="Загружаем книги…"/>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-12">
             <Library size={36} style={{ color: 'var(--t3)' }}/>

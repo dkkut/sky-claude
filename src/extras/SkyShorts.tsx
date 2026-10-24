@@ -1,3 +1,4 @@
+import { SkyLoader } from '@/shared/SkyLoader';
 /* ===========================================================
    SKY FILM — Shorts
    Вертикальный полноэкранный режим коротких видео (9:16),
@@ -273,9 +274,9 @@ export const SkyShorts = ({ startId, onClose }: SkyShortsProps) => {
 
       {!movie ? (
         <div className="flex flex-col items-center gap-3 px-10 text-center">
-          <p className="text-sm" style={{ color: K.dim }}>
-            {shortsLoading ? 'Загружаем ленту…' : 'Короткого кино пока нет'}
-          </p>
+          {shortsLoading
+            ? <SkyLoader label="Загружаем ленту…"/>
+            : <p className="text-sm" style={{ color: K.dim }}>Короткого кино пока нет</p>}
           {!shortsLoading && (
             <p className="text-xs" style={{ color: K.dim }}>
               Снимите вертикальное видео до пяти минут, загрузите его в «Коллекцию»

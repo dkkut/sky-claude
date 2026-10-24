@@ -1,3 +1,4 @@
+import { SkyLoader } from '@/shared/SkyLoader';
 import { createPortal } from 'react-dom';
 import { ExplicitBadge } from '@/labels/Labels';
 import { useEffect, useMemo, useState } from 'react';
@@ -274,10 +275,7 @@ export const SkyMusicHome = ({
   if (loading && tracks.length === 0) {
     return (
       <div className="sky-music-scope grid h-full place-items-center" style={{ background: 'var(--bg)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 rounded-full border-2 border-white/10 border-t-white/60 sky-spin"/>
-          <p className="text-[13px]" style={{ color: '#7d818c' }}>Загружаем музыку…</p>
-        </div>
+        <SkyLoader label="Загружаем музыку…"/>
       </div>
     );
   }

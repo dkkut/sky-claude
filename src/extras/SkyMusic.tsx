@@ -1,3 +1,4 @@
+import { useSettings } from '@/settings/store';
 import { VideoBackdrop } from '@/music/VideoBackdrop';
 import { EqualizerDialog } from '@/music/Equalizer';
 import { MusicContinue } from '@/handoff/Slots';
@@ -2744,6 +2745,7 @@ export const SkyMusic = () => {
     // Зашли на вкладку, пока трек уже играет, — перематывать нельзя: сохранённая позиция
     // на сервере старее живой, и трек «включался заново». Возвращаемся только на старте.
     if (curTime > 3) return;
+    if (!useSettings.getState().settings.resumePlayback) return;
     const at = progressMap[cur.id] ?? 0;
     // Совсем начало и самый хвост не восстанавливаем: в первом случае
     // возвращать некуда, во втором человек трек уже дослушал.

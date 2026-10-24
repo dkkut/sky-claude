@@ -78,6 +78,8 @@ export interface AppSettings {
   aiSpeaker:       boolean;
   /** Скрывать в каталогах музыки, кино и книг материалы с меткой «E» (Explicit). */
   hideExplicit:    boolean;
+  /** Музыка и подкасты: продолжать с места, где остановились на этом устройстве, или каждый раз сначала. */
+  resumePlayback:  boolean;
   aiVoiceAnswers:  boolean;
   aiContinue:      boolean;
   aiIdleEnd:       boolean;
@@ -133,6 +135,7 @@ const defaults: AppSettings = {
   aiWake:           false,
   aiSpeaker:        false,
   hideExplicit:     false,
+  resumePlayback:   true,
   aiVoiceAnswers:   true,
   aiContinue:       true,
   aiIdleEnd:        true,

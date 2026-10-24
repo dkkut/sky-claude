@@ -3,6 +3,8 @@
  * повторном включении (в том числе после выхода из приложения) воспроизведение
  * продолжается с этого места, а не с нуля. Дослушанное забывается.
  */
+import { useSettings } from '@/settings/store';
+
 const KEY = 'sky:resume:v1';
 const KEEP = 40;
 const MAX_AGE = 30 * 86_400_000;
@@ -29,6 +31,7 @@ export const saveResume = (id: string, position: number, duration: number) => {
 };
 
 export const loadResume = (id: string): number => {
+  if (!useSettings.getState().settings.resumePlayback) return 0;
   const e = read()[id];
   return e && Date.now() - e.at < MAX_AGE ? e.p : 0;
 };

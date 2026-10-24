@@ -8,6 +8,7 @@
 import { useEffect, useRef } from 'react';
 import { usePlayerStore } from '@/player/playerStore';
 import { useMusicStore } from './serverStore';
+import { useSettings } from '@/settings/store';
 
 export const useMusicSync = () => {
   const id = usePlayerStore((s) => (s.item?.kind === 'music' ? s.item.id : null));
@@ -20,6 +21,7 @@ export const useMusicSync = () => {
   useEffect(() => {
     if (!id || dur <= 0 || restored.current === id) return;
     restored.current = id;
+    if (!useSettings.getState().settings.resumePlayback) return; // «Заново» — всегда с начала
     if (usePlayerStore.getState().currentTime > 3) return; // трек уже играет — не перематываем назад
     const at = useMusicStore.getState().progress[id] ?? 0;
     // Самое начало и хвост не восстанавливаем: возвращать некуда / трек уже дослушан.

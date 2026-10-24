@@ -7,7 +7,7 @@ import { StaffNotifySettings } from './StaffNotifySettings';
 import { enablePush, disablePush, PUSH_TEXT } from '@/notifications/pushClient';
 import { useCursorPet, CURSOR_ANIMALS } from '@/shared/cursorPet';
 import { flash } from '../shared/flash';
-import { Mic as MicIcon, PanelTop, QrCode, ScanLine } from 'lucide-react';
+import { Disc3, Mic as MicIcon, PanelTop, QrCode, ScanLine } from 'lucide-react';
 import { useWake, requestMicForWake } from '@/island/wake';
 import { recognitionMode } from '@/ai/speech';
 import { LanguageButtons } from '@/i18n/LanguageSwitch';
@@ -823,6 +823,9 @@ const SettingsSection = ({ logout, username, onOpen }: {
 
       {/* -- ИНТЕРФЕЙС --------------------------- */}
       <SectionBlock title="Интерфейс">
+        <SettingsRow icon={Disc3} label="Повторный запуск песни" sub={s.resumePlayback ? 'Продолжать с места, где остановились на этом устройстве' : 'Каждый раз начинать сначала'}
+          right={<Seg label="Повторный запуск песни" value={s.resumePlayback ? 'resume' : 'restart'} onChange={v => set({ resumePlayback: v === 'resume' })}
+            options={[{ v: 'resume', t: 'С места' }, { v: 'restart', t: 'Заново' }]}/>}/>
         <SettingsRow icon={Palette} label="Анимации" sub={s.animationsOn ? "Включены" : "Выключены"}
           right={<Toggle on={s.animationsOn} onToggle={() => set({ animationsOn: !s.animationsOn })}/>}/>
         <SettingsRow icon={Sparkles} label="Заставка при запуске" sub={s.introAnim ? "Показывать анимацию" : "Сразу открывать приложение"}

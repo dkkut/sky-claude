@@ -1,3 +1,4 @@
+import { SkyLoader } from '@/shared/SkyLoader';
 /* ===========================================================
    SKY TV
 
@@ -140,10 +141,7 @@ const EpgSheet = ({ channel, onClose }: { channel: TvChannel; onClose: () => voi
 
         <div className="flex-1 overflow-y-auto p-2" style={{ scrollbarWidth: 'none' }}>
           {items === null && (
-            <div className="flex items-center justify-center gap-2 py-10">
-              <Loader2 size={16} className="animate-spin" style={{ color: C.t3 }}/>
-              <span className="text-[13px]" style={{ color: C.t3 }}>Загружаем…</span>
-            </div>
+            <SkyLoader className="py-10" label="Загружаем…" size="sm"/>
           )}
           {items !== null && items.length === 0 && (
             <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
@@ -238,8 +236,7 @@ export const SkyTV = () => {
   if (loading && !loaded) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3" style={{ background: C.bg }}>
-        <Tv2 size={34} style={{ color: C.t3 }}/>
-        <p className="text-sm" style={{ color: C.t3 }}>Загружаем каналы…</p>
+        <SkyLoader label="Загружаем каналы…"/>
       </div>
     );
   }

@@ -1,3 +1,4 @@
+import { SkyLoader } from '@/shared/SkyLoader';
 import { ExplicitBadge } from '@/labels/Labels';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useDictation } from '@/messenger/useDictation';
@@ -153,7 +154,7 @@ export const SkyMusicSearch = ({
           <>
             {totalCount === 0 && searching && (
               <div className="py-10 text-center">
-                <p className="text-[13px]" style={{ color: '#5c626e' }}>Ищем…</p>
+                <SkyLoader label="Ищем…" size="sm"/>
               </div>
             )}
             {totalCount === 0 && !searching && searchError && (

@@ -1,3 +1,4 @@
+import { SkyLoader } from '@/shared/SkyLoader';
 /* ===============================================================
    SKY VIDEO  -  видеохостинг и Shorts на сервере
    Dark Sky aesthetic, Nunito/system font, accent #4f6ef7
@@ -1287,8 +1288,7 @@ export const SkyVideo = () => {
 
                   {active && searchLoading ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-3">
-                      <Play size={40} style={{ color: V.t3 }} />
-                      <p className="text-sm font-semibold" style={{ color: V.t2 }}>Ищем…</p>
+                      <SkyLoader label="Ищем…"/>
                     </div>
                   ) : filtered.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-3">
