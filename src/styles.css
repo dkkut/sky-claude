@@ -110,7 +110,8 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #root { height: 100%; }
-html, body { overflow-x: hidden; }
+html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; overscroll-behavior-x: none; }
+#root { overflow-x: clip; max-width: 100vw; }
 html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
 
 /* iOS Safari auto-zooms the viewport on focus for any input/textarea under 16px.

@@ -7,6 +7,7 @@ import { usePlayerStore } from '@/player/playerStore';
 import { BottomSheet } from './BottomSheet';
 import { haptic } from './haptics';
 import { VideoBackdrop } from '@/music/VideoBackdrop';
+import { openArtistCard } from '@/music/artistBridge';
 import { MusicContinue } from '@/handoff/Slots';
 
 const fmtTime = (s: number) => {
@@ -157,7 +158,8 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
           {/* Название и исполнитель — в самом низу экрана (в режиме «Скрыть текст» их нет — снизу просто пустое место). */}
           {bare ? <div className="min-h-0 flex-1" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }} /> : <div className="shrink-0 px-6 pb-2" style={{ paddingBottom: 'calc(var(--safe-bottom) + 16px)' }}>
             <p className="truncate text-center text-[17px] font-black text-white">{item.title}</p>
-            <p className="truncate text-center text-[13px] text-white/60">{item.author}</p>
+            <button type="button" className="mx-auto block max-w-full truncate text-center text-[13px] text-white/60 underline-offset-2 active:underline"
+              onClick={() => { haptic('selection'); onClose(); openArtistCard(item.author); }}>{item.author}</button>
           </div>}
 
           <BottomSheet open={showQueue} onClose={() => setShowQueue(false)} title="Очередь" snapPoints={[0.6]}>

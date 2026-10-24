@@ -1266,8 +1266,8 @@ export const ExtrasModule = () => {
 
         <div className="w-px h-4 shrink-0" style={{ background:'var(--border)' }} />
 
-        {/* Left arrow (desktop only — touch-scroll covers this on mobile) */}
-        {!isMobile && (
+        {/* Стрелки показывают, что вкладок больше, чем влезает, и листают к остальным */}
+        {(
         <button type="button" onClick={()=>scrollTabs('left')}
           className="grid h-6 w-6 shrink-0 place-items-center rounded-lg transition-colors hover:bg-white/8"
           style={{ color:'var(--t3)', background:'transparent', border:'none', cursor:'pointer' }}>
@@ -1276,7 +1276,7 @@ export const ExtrasModule = () => {
         )}
 
         {/* Tabs scrollable row */}
-        <div ref={tabsRef} className="glass-pill flex items-center gap-0.5 overflow-x-auto flex-1"
+        <div ref={tabsRef} className="glass-pill flex items-center gap-0.5 overflow-x-auto flex-1 min-w-0"
           style={{ scrollbarWidth:'none' }}>
           {visibleTabs.filter(t => t.key !== 'home').map(({key,label,icon:Icon})=>(
             <button key={key} type="button" onClick={()=>setTab(key as Tab)}
@@ -1292,8 +1292,8 @@ export const ExtrasModule = () => {
           ))}
         </div>
 
-        {/* Right arrow (desktop only) */}
-        {!isMobile && (
+        {/* Правая стрелка */}
+        {(
         <button type="button" onClick={()=>scrollTabs('right')}
           className="grid h-6 w-6 shrink-0 place-items-center rounded-lg transition-colors hover:bg-white/8"
           style={{ color:'var(--t3)', background:'transparent', border:'none', cursor:'pointer' }}>

@@ -10,6 +10,7 @@ import React from 'react';
    SKY MUSIC  -  Редизайн в стиле Яндекс Музыки
 =========================================================== */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { takePendingArtist } from '@/music/artistBridge';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -1774,6 +1775,7 @@ interface SkyFullPlayerProps {
   onRepeat:    () => void;
   onLike:      (id: string) => void;
   onAdd:       (id: string) => void;
+  onArtist?:   (name: string) => void;
   onClose:     () => void;
 }
 
@@ -1873,7 +1875,7 @@ export const SkyFullPlayer = ({
   track, playing, currentTime, duration, volume,
   shuffle, repeat, favorites, queue, queueIdx,
   onPlay, onPrev, onNext, onSeek, onVolume,
-  onShuffle, onRepeat, onLike, onAdd, onClose,
+  onShuffle, onRepeat, onLike, onAdd, onClose, onArtist,
 }: SkyFullPlayerProps) => {
   const [showQueue,   setShowQueue]   = React.useState(false);
   /* «Скрыть текст»: в полноэкранном плеере остаются только обложка и кнопки управления по центру —
@@ -2122,9 +2124,10 @@ export const SkyFullPlayer = ({
               }}>
                 {track.title}
               </p>
-              <p className="font-semibold" style={{fontSize: isMobile ? 13 : 14, margin:'5px 0 0', color:hslAcc(h), overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+              <button type="button" onClick={() => onArtist?.(track.artist)} className="font-semibold"
+                style={{fontSize: isMobile ? 13 : 14, margin:'5px 0 0', color:hslAcc(h), overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%', background:'none', border:0, padding:0, cursor: onArtist ? 'pointer' : 'default'}}>
                 {track.artist}
-              </p>
+              </button>
               {(track.uploadedBy || track.license) && (
                 <div style={{marginTop:8, display:'flex', flexDirection:'column', alignItems:'center', gap:6, color:'rgba(255,255,255,0.7)'}}>
                   <LicenseBadge license={track.license} source={track.licenseSource}/>
@@ -2754,7 +2757,12 @@ export const SkyMusic = () => {
   /* -- UI ------------------------------------------------- */
   const [tab,      setTab]      = useState<TabKey>('home');
   const [showNP,   setShowNP]   = useState(false);
-  const [artist,   setArtist]   = useState<string | null>(null);
+  const [artist,   setArtist]   = useState<string | null>(() => takePendingArtist());
+  useEffect(() => {
+    const on = (e: Event) => { const n = takePendingArtist() ?? (e as CustomEvent).detail; if (n) { setArtist(String(n)); setShowNP(false); } };
+    window.addEventListener('sky:open-artist', on);
+    return () => window.removeEventListener('sky:open-artist', on);
+  }, []);
   const [addModal, setAddModal] = useState<string | null>(null);
   const [search,   setSearch]   = useState('');
   const [showEq,   setShowEq]    = useState(false);
@@ -2882,7 +2890,7 @@ export const SkyMusic = () => {
             onShuffle={() => setShuffle(!shuffle)}
             onRepeat={() => setRepeat(repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off')}
             onLike={onLike} onAdd={id => setAddModal(id)}
-            onClose={() => setShowNP(false)} />
+            onClose={() => setShowNP(false)} onArtist={a => { setArtist(a); setShowNP(false); }} />
         )}
       </AnimatePresence>
 
