@@ -2647,7 +2647,7 @@ export const SkyMusic = () => {
   const me = accounts.find(a => a.id === currentUserId);
   const isPrime = me?.isPrime ?? false;
   // Высота нижней панели: мини-плеер встаёт над ней.
-  const navRef = React.useRef<HTMLElement>(null);
+  const navRef = React.useRef<HTMLElement | HTMLDivElement>(null);
   const [navH, setNavH] = React.useState(0);
   React.useEffect(() => {
     const el = navRef.current;
@@ -2824,7 +2824,7 @@ export const SkyMusic = () => {
 
       {/* -- Content ------------------------------------------ */}
       <div className="flex-1 flex flex-col overflow-hidden min-h-0"
-        style={{ paddingBottom: cur ? 64 : 0 }}>
+        style={{ paddingBottom: cur && !showNP && !gHidden ? 64 : 0 }}>
         {(
           <>
             {tab === 'home'       && <SkyMusicHome tracks={tracks} favorites={favorites} playing={playing} activeId={cur?.id ?? null} onPlay={playFrom}
@@ -2843,8 +2843,8 @@ export const SkyMusic = () => {
       </div>
 
       {/* -- Bottom nav --------------------------------------- */}
-      <nav ref={navRef} className="glass-pill mx-3 mb-2 mt-1 shrink-0 flex items-center justify-around"
-        style={{ minHeight: isMobile ? 50 : 56 }}>
+      <div ref={navRef as React.RefObject<HTMLDivElement>} className="shrink-0 px-3 pb-2 pt-1" style={{ background: YM.bg, position: 'relative', zIndex: 1 }}>
+      <nav className="glass-pill flex items-center justify-around" style={{ minHeight: isMobile ? 50 : 56 }}>
         {NAV_TABS.map(({ key, icon: Icon, label }) => (
           <button key={key} type="button" onClick={() => setTab(key)}
             className={`relative isolate flex flex-1 flex-col items-center gap-0.5 rounded-full transition-colors ${isMobile ? 'px-2 py-1.5' : 'px-3 py-2'}`}
@@ -2855,6 +2855,7 @@ export const SkyMusic = () => {
           </button>
         ))}
       </nav>
+      </div>
 
       {/* -- Mini player -------------------------------------- */}
       {/* Внутри самой музыки всегда показываем полноценный (тот же, что на десктопе)
