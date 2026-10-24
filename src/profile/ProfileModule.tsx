@@ -1,3 +1,4 @@
+import { tr } from '@/i18n';
 import { PrivacyExceptions } from './PrivacyExceptions';
 import { APP_VERSION_LABEL } from '../core/version';
 import { fitImageToDataUrl } from '../shared/imageFit';
@@ -1037,7 +1038,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
           right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
         <div className="h-px mx-4" style={{ background:'var(--border)' }}/>
         <SettingsRow icon={RotateCcw} iconColor="#f59e0b" label="Сбросить настройки" sub="Вернуть всё к значениям по умолчанию"
-          onClick={reset}
+          onClick={() => { if (window.confirm(tr('Сбросить все настройки к значениям по умолчанию? Тема, язык и остальные параметры вернутся к исходным.'))) reset(); }}
           right={<ChevronRight size={14} style={{ color:'var(--t3)' }}/>}/>
       </SectionBlock>
 
