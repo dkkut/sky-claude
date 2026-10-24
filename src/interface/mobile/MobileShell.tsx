@@ -1,4 +1,4 @@
-import { useState, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { ModuleGate } from '@/core/moduleClosures';
 import { LimitedLock } from '@/auth/LimitedAccess';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -31,11 +31,35 @@ import { MobileFullPlayer } from './MobileFullPlayer';
 // ещё одна общая MobileHeader поверх.
 const SELF_CHROME = new Set(['messages', 'bloom', 'extras', 'profile']);
 
+/** Первый непрозрачный фон у корня экрана: под нижней панелью та же заливка, что у содержимого, без отдельной полосы. */
+const screenBackground = (root: HTMLElement | null): string | null => {
+  let el: Element | null = root?.firstElementChild ?? null;
+  for (let depth = 0; el && depth < 6; depth++) {
+    const bg = getComputedStyle(el).backgroundColor;
+    const m = bg.match(/rgba?\(([^)]+)\)/);
+    if (m) {
+      const [, , , a] = m[1].split(',').map((x) => parseFloat(x));
+      if (a === undefined || Number.isNaN(a) || a > 0.9) return bg;
+    }
+    el = el.firstElementChild;
+  }
+  return null;
+};
+
 export const MobileShell = () => {
   const activeModule = useModuleStore(s => s.activeModule);
   const [moreOpen, setMoreOpen] = useState(false);
   const [playerOpen, setPlayerOpen] = useState(false);
   const islandMode = useSettings(s => s.settings.islandMode);
+  const mainRef = useRef<HTMLElement>(null);
+  const [stripBg, setStripBg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const measure = () => setStripBg(screenBackground(mainRef.current));
+    const t = [60, 400, 1200].map((ms) => window.setTimeout(measure, ms));
+    const iv = window.setInterval(measure, 4000);
+    return () => { t.forEach(clearTimeout); clearInterval(iv); };
+  }, [activeModule]);
 
   return (
     <div className="app-root-h flex h-screen flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
@@ -52,7 +76,7 @@ export const MobileShell = () => {
 
       {!SELF_CHROME.has(activeModule) && <MobileHeader />}
 
-      <main className="relative min-h-0 flex-1 overflow-hidden">
+      <main ref={mainRef} className="relative min-h-0 flex-1 overflow-hidden">
         <AnimatePresence>
           <ErrorBoundary key={activeModule}>
             <motion.div key={activeModule + '_mob'} className="absolute inset-0 h-full w-full"
@@ -85,8 +109,8 @@ export const MobileShell = () => {
       {/* Подкаст продолжает играть при уходе с экрана, поэтому его
           проигрыватель живёт здесь, в оболочке, а не внутри модуля. */}
       <PodcastPlayerHost />
-      {activeModule !== 'extras' && islandMode !== 'island' && <div className="kb-hide"><MobileMiniPlayer onOpen={() => setPlayerOpen(true)} /></div>}
-      <div className="kb-hide"><MobileTabBar onMore={() => setMoreOpen(true)} /></div>
+      {activeModule !== 'extras' && islandMode !== 'island' && <div className="kb-hide" style={{ background: stripBg ?? 'var(--bg)' }}><MobileMiniPlayer onOpen={() => setPlayerOpen(true)} /></div>}
+      <div className="kb-hide" style={{ background: stripBg ?? 'var(--bg)', transition: 'background 0.2s' }}><MobileTabBar onMore={() => setMoreOpen(true)} /></div>
       <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />
       <MobileFullPlayer open={playerOpen} onClose={() => setPlayerOpen(false)} />
 
