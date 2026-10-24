@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import {
   useMoney, TX_ICON, TX_LABEL, TX_ICON_FALLBACK, TX_LABEL_FALLBACK,
-  fmt, fmtSigned, type TxType,
+  fmt, fmtTx, isPoints, type TxType,
 } from './store';
 import { useAuthStore } from '@/core/auth/store';
 import { MyGifts } from '@/gifts/SkyGifts';
@@ -128,12 +128,12 @@ const QuickActions = ({ onTopUp, onHistory, onCodes, onScan, onRefund }: {
 const SpendingStats = ({ txs }: { txs: ReturnType<typeof useMoney.getState>['transactions'] }) => {
   const spent30 = txs.filter(t => {
     const days = (Date.now() - new Date(t.createdAt).getTime()) / 86400000;
-    return t.amount < 0 && days <= 30;
+    return !isPoints(t) && t.amount < 0 && days <= 30;
   }).reduce((a, t) => a + Math.abs(t.amount), 0);
 
   const income30 = txs.filter(t => {
     const days = (Date.now() - new Date(t.createdAt).getTime()) / 86400000;
-    return t.amount > 0 && days <= 30;
+    return !isPoints(t) && t.amount > 0 && days <= 30;
   }).reduce((a, t) => a + t.amount, 0);
 
   return (
@@ -182,7 +182,7 @@ const TxItem = ({ tx }: { tx: ReturnType<typeof useMoney.getState>['transactions
       </div>
       <div className="text-right shrink-0">
         <p className="text-sm font-bold" style={{ color: plus ? C.green : C.t1 }}>
-          {fmtSigned(tx.amount)}
+          {fmtTx(tx)}
         </p>
         <p className="text-[10px]" style={{ color:C.t3 }}>{dateStr}</p>
       </div>

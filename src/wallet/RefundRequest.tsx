@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Check } from 'lucide-react';
 import { apiCreateTicket } from '@/moderation/supportApi';
-import { fmtSigned, type Transaction } from './store';
+import { fmtTx, type Transaction } from './store';
 
 const REASONS = ['Списано по ошибке', 'Услуга не оказана', 'Товар не получен', 'Дублирующее списание', 'Другое'];
 
@@ -28,7 +28,7 @@ export const RefundRequest = ({ txs, onBack }: { txs: Transaction[]; onBack: () 
       'Заявка на возврат (Sky Money)',
       `Операция: ${tx.id}`,
       `Описание: ${tx.desc}`,
-      `Сумма: ${fmtSigned(tx.amount)}`,
+      `Сумма: ${fmtTx(tx)}`,
       `Дата: ${tx.createdAt}`,
       tx.ref ? `Ссылка: ${tx.ref}` : '',
       `Причина: ${reason}`,
@@ -59,7 +59,7 @@ export const RefundRequest = ({ txs, onBack }: { txs: Transaction[]; onBack: () 
           <label className="block text-xs font-semibold">Операция
             <select value={txId} onChange={(e) => setTxId(e.target.value)} className="mt-1 w-full h-11 rounded-xl px-3 text-sm" style={{ background: 'var(--l2, transparent)', border: '1px solid var(--border)', color: 'inherit' }}>
               <option value="">Выберите списание…</option>
-              {spent.map((t) => <option key={t.id} value={t.id}>{`${fmtSigned(t.amount)} · ${t.desc}`.slice(0, 80)}</option>)}
+              {spent.map((t) => <option key={t.id} value={t.id}>{`${fmtTx(t)} · ${t.desc}`.slice(0, 80)}</option>)}
             </select>
           </label>
           <label className="block text-xs font-semibold">Причина

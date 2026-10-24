@@ -195,7 +195,14 @@ export interface Transaction {
   desc:      string;
   createdAt: string;
   ref?:      string;      // ID заказа / подписки / трека
+  /** 'rub' — рубли, 'pts' — Prime Points. Сервер ставит у новых записей; у старых — по виду операции. */
+  currency?: 'rub' | 'pts';
 }
+
+/** Виды операций, которые всегда в баллах (для записей без currency). */
+const POINTS_TYPES = new Set<string>(['points_earn', 'points_spend', 'points_refund', 'admin_points', 'code_points', 'cashback']);
+export const isPoints = (t: { type: string; currency?: string }) =>
+  t.currency ? t.currency === 'pts' : POINTS_TYPES.has(t.type);
 
 interface WalletState {
   /** Чей снимок сейчас загружен. Сервер отдаёт только свои данные. */
@@ -298,3 +305,6 @@ export const fmt = (n: number) =>
   Math.abs(n).toLocaleString('ru', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 });
 
 export const fmtSigned = (n: number) => (n > 0 ? '+' : '') + fmt(n);
+export const fmtPts = (n: number) => `${Math.abs(n).toLocaleString('ru')} баллов`;
+export const fmtTx = (t: { type: string; amount: number; currency?: string }) =>
+  isPoints(t) ? `${t.amount > 0 ? '+' : t.amount < 0 ? '−' : ''}${fmtPts(t.amount)}` : fmtSigned(t.amount);

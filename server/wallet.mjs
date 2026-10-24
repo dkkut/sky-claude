@@ -79,7 +79,7 @@ export const wallet = {
     const [acc, txs] = await Promise.all([
       query('SELECT balance, points FROM wallet_accounts WHERE user_id = $1', [userId]),
       query(
-        `SELECT id, type, amount, descr, ref, created_at
+        `SELECT id, type, amount, descr, ref, currency, created_at
            FROM wallet_transactions WHERE user_id = $1
           ORDER BY created_at DESC LIMIT $2`,
         [userId, txLimit],
@@ -92,7 +92,7 @@ export const wallet = {
       transactions: txs.rows.map((r) => ({
         id: r.id, userId, type: r.type,
         amount: Number(r.amount), desc: r.descr,
-        ref: r.ref ?? undefined, createdAt: r.created_at.toISOString(),
+        ref: r.ref ?? undefined, currency: r.currency ?? undefined, createdAt: r.created_at.toISOString(),
       })),
     };
   },

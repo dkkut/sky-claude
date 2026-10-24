@@ -2065,3 +2065,9 @@ CSS (`src/styles.css`): `.glass-pill`, `.glass-lens`, а также новые `
 
 `playerStore.buffering` (ставит `PlayerEngine`: `loadstart/waiting/stalled` → true, `canplay/playing/error` → false; `push()` для музыки и подкастов сразу ставит true), `src/player/BufferingRing.tsx` (`useBuffering`, `BufferingRing`).
 Пока файл не заиграл, на кнопке пуска вместо «паузы» крутится кольцо: мини-плеер Sky Music, полноэкранный плеер ПК и телефона, «Мой поток», ТВ-плеер. Не охвачены: Car/консольные плееры и подкаст-плеер (там своя кнопка), кино и Sky Video (у них свой `<video>`). В браузере и на устройствах не смотрелось (`tsc`, i18n). Нужна пересборка `.apk`/`.exe`.
+
+## Кошелёк: баллы больше не показываются как рубли (октябрь-2026)
+
+В истории кошелька (`SkyMoneyWallet.tsx` → `TxItem`, «Бланк на возврат» `RefundRequest.tsx`) операции в баллах (кэшбэк, начисление, Sky Codes, администрация, обмен) отображались как «+200 ₽», а «Приход/Расходы за 30 дней» складывали баллы с рублями.
+Теперь `wallet.getState` отдаёт у записи `currency` (`rub`|`pts`), клиент (`store.ts`: `isPoints`, `fmtTx`, `fmtPts`) показывает баллы как «+200 баллов», а у старых записей без `currency` определяет по виду операции (`points_earn|points_spend|points_refund|admin_points|code_points|cashback`); суммы за 30 дней считаются только по рублям.
+Проверено `tsc`, `i18n:check`, `node --check`; на экране не смотрелось. Нужен деплой (сервер отдаёт новое поле) и пересборка `.apk`/`.exe`.
