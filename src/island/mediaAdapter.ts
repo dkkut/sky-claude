@@ -34,6 +34,8 @@ export interface NowPlaying {
   next: () => void;
   seek: (sec: number) => void;
   setRate?: (r: number) => void;
+  /** Полностью завершить воспроизведение (голосовые: крестик на острове). */
+  stop?: () => void;
   open: () => void;
 }
 
@@ -109,6 +111,11 @@ const fromRegistry = (e: ReturnType<typeof useMediaRegistry.getState>['entries']
   next: () => { e.el.currentTime = Math.min(e.el.duration || e.el.currentTime + 10, e.el.currentTime + 10); },
   seek: (t) => { e.el.currentTime = t; },
   open: () => e.open?.(),
+  ...(e.kind === 'voice' ? {
+    rate: e.el.playbackRate || 1,
+    setRate: (r: number) => { e.el.playbackRate = r; },
+    stop: () => { e.el.pause(); try { e.el.currentTime = 0; } catch { /* ещё не загружено */ } },
+  } : {}),
 });
 
 /** Подписка: пересчёт при любом изменении источников. */

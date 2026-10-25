@@ -282,7 +282,11 @@ export const FlowHero = ({ cur, last, playing, liked, tracks, favorites, onPlayP
                 transition: 'left .35s ease, bottom .35s ease, width .35s ease, height .35s ease, border-radius .35s ease',
               }}>
               {t.coverUrl ? <img src={t.coverUrl} alt="" className="h-full w-full object-cover" /> : <Music2 size={showLyr ? 22 : 34} color="rgba(255,255,255,0.4)" />}
-              {!isPlaying && (
+              {buffering ? (
+                <span className="absolute inset-0 grid place-items-center" style={{ background: 'rgba(15,5,45,0.5)' }}>
+                  <BufferingRing size={showLyr ? 20 : 30}/>
+                </span>
+              ) : !isPlaying && (
                 <span className="absolute inset-0 grid place-items-center" style={{ background: 'rgba(15,5,45,0.38)' }}>
                   <Play size={showLyr ? 20 : 32} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />
                 </span>

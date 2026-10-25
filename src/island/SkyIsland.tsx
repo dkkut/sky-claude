@@ -29,6 +29,7 @@ const SURFACE = 'rgba(8,9,16,0.94)';
 const EDGE = 'rgba(160,150,255,0.18)';
 const ACCENT = '#8b7cff';
 const RATES = [0.75, 1, 1.25, 1.5, 2];
+const VOICE_RATES = [1, 1.5, 2, 3];
 
 const Cover = ({ src, letter, size, icon }: { src?: string; letter?: string; size: number; icon?: React.ReactNode }) => {
   const [bad, setBad] = useState(false);
@@ -107,7 +108,7 @@ const MediaPanel = ({ np, onClose }: { np: NowPlaying; onClose: () => void }) =>
           <div className="truncate text-[13px] text-white/55" translate="no">{np.subtitle || sourceLabel(np.kind)}</div>
           <div className="mt-0.5 text-[11px] uppercase tracking-wide" style={{ color: ACCENT }}>{sourceLabel(np.kind)}</div>
         </div>
-        <IconBtn label="Закрыть" onClick={onClose} size={30}><X size={15} /></IconBtn>
+        <IconBtn label={np.stop ? 'Завершить прослушивание' : 'Закрыть'} onClick={() => { np.stop?.(); onClose(); }} size={30}><X size={15} /></IconBtn>
       </div>
 
       {np.error && (
@@ -150,7 +151,7 @@ const MediaPanel = ({ np, onClose }: { np: NowPlaying; onClose: () => void }) =>
         {np.setRate && np.rate !== undefined ? (
           <button type="button" className="rounded-full px-3 py-1 text-[12px] font-semibold text-white/80 outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
             style={{ background: 'rgba(255,255,255,0.1)' }} aria-label="Скорость"
-            onClick={(e) => { e.stopPropagation(); const i = RATES.indexOf(np.rate ?? 1); np.setRate?.(RATES[(i + 1) % RATES.length]); }}>
+            onClick={(e) => { e.stopPropagation(); const L = np.kind === 'voice' ? VOICE_RATES : RATES; const i = L.indexOf(np.rate ?? 1); np.setRate?.(L[(i + 1) % L.length]); }}>
             ×{np.rate}
           </button>
         ) : <span />}
@@ -442,7 +443,7 @@ export const SkyIsland = () => {
                   </button>
                   {current?.kind !== 'call' && (
                     <button type="button" aria-label="Убрать" onClick={() => {
-                      if (view === 'media' && np) { setClosedKey(np.key); setMediaOpen(false); }
+                      if (view === 'media' && np) { np.stop?.(); setClosedKey(np.key); setMediaOpen(false); }
                       else if (view === 'ai') useAiSession.getState().stop();
                       else useIslandStore.getState().dismiss(current?.id);
                     }} className="mr-1.5 grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-violet-300"

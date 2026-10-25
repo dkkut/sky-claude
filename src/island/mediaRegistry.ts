@@ -8,7 +8,7 @@
 import { create } from 'zustand';
 import { useEffect, type RefObject } from 'react';
 
-export type RegKind = 'film' | 'video' | 'book';
+export type RegKind = 'film' | 'video' | 'book' | 'voice';
 
 export interface RegMeta {
   id: string;
@@ -88,7 +88,7 @@ export const useRegisterMedia = (
         ...meta, id: regId, playing: false, current: 0, duration: 0, error: false, el, at: 0,
         ...read(),
       } as RegEntry);
-      for (const ev of ['play', 'pause', 'ended', 'loadedmetadata', 'durationchange', 'seeked', 'playing']) el.addEventListener(ev, onAny);
+      for (const ev of ['play', 'pause', 'ended', 'loadedmetadata', 'durationchange', 'seeked', 'playing', 'ratechange']) el.addEventListener(ev, onAny);
       el.addEventListener('timeupdate', onTime);
       el.addEventListener('error', onError);
     };
@@ -96,7 +96,7 @@ export const useRegisterMedia = (
     return () => {
       cancelAnimationFrame(raf);
       if (el) {
-        for (const ev of ['play', 'pause', 'ended', 'loadedmetadata', 'durationchange', 'seeked', 'playing']) el.removeEventListener(ev, onAny);
+        for (const ev of ['play', 'pause', 'ended', 'loadedmetadata', 'durationchange', 'seeked', 'playing', 'ratechange']) el.removeEventListener(ev, onAny);
         el.removeEventListener('timeupdate', onTime);
         el.removeEventListener('error', onError);
       }

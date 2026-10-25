@@ -198,14 +198,15 @@ export const AppShell = () => {
         <main
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
           style={{ background: 'var(--bg-l1)' }}>
-          <AnimatePresence>
+          {/* Без AnimatePresence: уходящий модуль (музыка, кабинет продавца) мог не завершить exit и не отпустить экран новой вкладке */}
+<>
             <ErrorBoundary key={activeModule}>
               <motion.div
                 key={activeModule + '_m'}
                 className="absolute inset-0 h-full w-full"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                
                 transition={{ duration: 0.1 }}>
                 <React.Suspense fallback={<ModuleFallback />}>
                   <ModuleGate id={activeModule}>
@@ -223,7 +224,7 @@ export const AppShell = () => {
                 </React.Suspense>
               </motion.div>
             </ErrorBoundary>
-          </AnimatePresence>
+          </>
           <IncomingCallOverlay />
           <ActiveCallPanel />
           <MiniCallOverlay />

@@ -274,9 +274,16 @@ export const useMoney = create<WalletState>((set, get) => {
     busy: false,
     lastError: null,
 
+    // Первый запрос после входа нередко уходит раньше, чем готов токен, или теряется в сети —
+    // тогда баланс оставался 0 до перезагрузки. Повторяем с паузами и не бросаем ошибку наружу.
     refresh: async () => {
-      const snap = await fetchWallet();
-      if (snap) apply(snap);
+      for (const wait of [0, 1200, 3000, 6000]) {
+        if (wait) await new Promise((r) => setTimeout(r, wait));
+        try {
+          const snap = await fetchWallet();
+          if (snap) { apply(snap); return; }
+        } catch { /* повторим */ }
+      }
     },
 
     reset: () => set({ userId: null, balance: 0, points: 0, transactions: [], lastError: null }),

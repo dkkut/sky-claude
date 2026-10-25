@@ -1,4 +1,4 @@
-import { BufferingRing, useBuffering } from '@/player/BufferingRing';
+import { BufferingRing, CoverBuffering, useBuffering } from '@/player/BufferingRing';
 import { useSettings } from '@/settings/store';
 import { VideoBackdrop } from '@/music/VideoBackdrop';
 import { EqualizerDialog } from '@/music/Equalizer';
@@ -1818,7 +1818,7 @@ const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLi
 
         {/* Cover — click to open full player */}
         <div
-          className="shrink-0 rounded-xl overflow-hidden cursor-pointer"
+          className="relative shrink-0 rounded-xl overflow-hidden cursor-pointer"
           style={{ width: 42, height: 42, background: `linear-gradient(135deg,${g1},${g2})` }}
           onClick={onOpen}>
           {track.coverUrl
@@ -1826,6 +1826,7 @@ const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLi
             : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
                 <Music2 size={18} color="rgba(255,255,255,0.7)"/>
               </div>}
+          <CoverBuffering size={16}/>
         </div>
 
         {/* Info */}

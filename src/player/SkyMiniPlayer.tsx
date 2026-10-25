@@ -9,6 +9,7 @@ import {
   List, AlignLeft, Bookmark, ListTree} from 'lucide-react';
 import { usePlayerStore, type MediaKind, type LyricLine, type Chapter, type PlayerItem } from './playerStore';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
+import { BufferingRing, CoverBuffering, useBuffering } from './BufferingRing';
 
 /* ── helpers ───────────────────────────────────────────────────────────────── */
 const fmtTime = (s: number) => {
@@ -61,6 +62,7 @@ const CoverArt = ({
           </div>
         )
       }
+      <CoverBuffering size={Math.max(14, Math.round(size * 0.3))}/>
     </div>
   );
 };
@@ -209,6 +211,7 @@ export const SkyMiniPlayer = () => {
     setPlaying, setVolume, requestSeek, nextTrack, prevTrack, clear, requestPlay, hide,
   } = usePlayerStore();
 
+  const buffering = useBuffering();
   const [expanded, setExpanded] = useState(false);
   const [smartTab, setSmartTab] = useState<'context' | 'queue'>('context');
   const [idle,     setIdle]     = useState(false);
@@ -267,6 +270,7 @@ export const SkyMiniPlayer = () => {
                   </div>
                 )
               }
+              <CoverBuffering size={16}/>
               {/* Playing shimmer overlay */}
               {isPlaying && (
                 <div className="absolute inset-0 rounded-[9px]"
@@ -286,7 +290,9 @@ export const SkyMiniPlayer = () => {
             <div
               className="pointer-events-none absolute inset-0 rounded-[12px] grid place-items-center opacity-0 transition-opacity group-hover:opacity-100"
               style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
-              {isPlaying
+              {buffering
+                ? <BufferingRing size={14}/>
+                : isPlaying
                 ? <Pause size={14} className="text-white" />
                 : <Play  size={14} className="text-white" style={{ marginLeft: 1 }} />
               }
@@ -440,7 +446,9 @@ export const SkyMiniPlayer = () => {
                       border: 'none', cursor: 'pointer',
                       boxShadow: `0 4px 20px ${accent}60`,
                     }}>
-                    {isPlaying
+                    {buffering
+                      ? <BufferingRing size={18}/>
+                      : isPlaying
                       ? <Pause size={18} className="text-white" />
                       : <Play  size={18} className="text-white" style={{ marginLeft: 1 }} />
                     }

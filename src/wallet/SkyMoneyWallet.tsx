@@ -1,7 +1,7 @@
 /* ===============================================================
    SKYMONEY  -  UI кошелька
 =============================================================== */
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SkyCodes } from '@/codes/SkyCodes';
 import {
@@ -343,6 +343,18 @@ export const SkyMoneyWallet = () => {
   const kassaParam = (() => { try { return new URLSearchParams(location.search).get('skykassa'); } catch { return null; } })();
   const kassaId = kassaParam && /^[A-Za-z0-9-]{8,80}$/.test(kassaParam) ? kassaParam : null;
   const [view, setView] = useState<WView>(kassaId ? 'topup' : 'main');
+
+  /* Баланс перечитывается при каждом заходе на экран, при возврате на вкладку и при появлении сети. */
+  useEffect(() => {
+    if (!currentUserId) return undefined;
+    if (useMoney.getState().userId !== currentUserId) useMoney.setState({ userId: currentUserId });
+    void useMoney.getState().refresh();
+    const again = () => { if (!document.hidden) void useMoney.getState().refresh(); };
+    document.addEventListener('visibilitychange', again);
+    window.addEventListener('online', again);
+    const t = setInterval(again, 60_000);
+    return () => { document.removeEventListener('visibilitychange', again); window.removeEventListener('online', again); clearInterval(t); };
+  }, [currentUserId]);
 
   if (!currentUserId) return null;
 

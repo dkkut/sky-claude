@@ -77,10 +77,11 @@ export const MobileShell = () => {
       {!SELF_CHROME.has(activeModule) && <MobileHeader />}
 
       <main ref={mainRef} className="relative min-h-0 flex-1 overflow-hidden">
-        <AnimatePresence>
+        {/* Без AnimatePresence: уходящий модуль (музыка, кабинет продавца) мог не завершить exit и не отпустить экран новой вкладке */}
+<>
           <ErrorBoundary key={activeModule}>
             <motion.div key={activeModule + '_mob'} className="absolute inset-0 h-full w-full"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }}>
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}  transition={{ duration: 0.12 }}>
               <Suspense fallback={<ModuleFallback />}>
                 <ModuleGate id={activeModule}>
                 {activeModule === 'stories'       && <StoriesModule />}
@@ -97,7 +98,7 @@ export const MobileShell = () => {
               </Suspense>
             </motion.div>
           </ErrorBoundary>
-        </AnimatePresence>
+        </>
 
         <IncomingCallOverlay />
         <ActiveCallPanel />

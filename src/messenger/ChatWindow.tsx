@@ -1,5 +1,6 @@
 import { VerifiedBadge } from '@/verification/marks';
 import { requestDelete } from '../island/deleteFlow';
+import { useRegisterMedia } from '../island/mediaRegistry';
 import {
   FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState, useLayoutEffect,
 } from 'react';
@@ -153,7 +154,7 @@ const Ticks = ({ s, fromMe }: { s: string; fromMe: boolean }) => {
 };
 
 /* -- Voice bubble ------------------------------------------------- */
-const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => {
+const VoiceBubble = ({ msg, fromMe, from }: { msg: MessageItem; fromMe: boolean; from: string }) => {
   const { url: media, withhold, request } = useAttachment(safeMediaUrl(msg.mediaUrl));
   const [playing, setPlaying] = useState(false);
   const [pct, setPct]         = useState(0);
@@ -164,6 +165,9 @@ const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => 
   const { getTheme } = useChatTheme();
   const _theme = getTheme();
   const accent = fromMe ? '#8ac4f0' : _theme.accent;
+
+  // Остров показывает «Голосовое — от кого» и сам завершает прослушивание по крестику.
+  useRegisterMedia(ref, withhold ? null : { id: msg.id, kind: 'voice', title: fromMe ? 'Ваше голосовое' : 'Голосовое сообщение', subtitle: fromMe ? 'От вас' : from ? `От ${from}` : 'Голосовое', canSeek: true });
 
   if (withhold) return <TapToLoad onLoad={request} label="Загрузить голосовое" size={56} />;
 
@@ -206,7 +210,7 @@ const VoiceBubble = ({ msg, fromMe }: { msg: MessageItem; fromMe: boolean }) => 
             {fmtS(Math.floor(dur > 0 ? pct / 100 * dur : 0))} / {fmtS(Math.floor(dur || parseInt(msg.text || '0')))}
           </p>
           <button type="button" aria-label="Скорость воспроизведения"
-            onClick={() => { const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1; setSpeed(next); if (ref.current) ref.current.playbackRate = next; }}
+            onClick={() => { const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : speed === 2 ? 3 : 1; setSpeed(next); if (ref.current) ref.current.playbackRate = next; }}
             className="rounded-full px-1.5 text-[10px] font-bold" style={{ background: `${accent}22`, color: accent }}>
             {speed}×
           </button>
@@ -640,8 +644,8 @@ const MsgCtxMenu = ({ msg, myId, onReply, onEdit, onCopy, onForward, onPin, onFa
 };
 
 /* -- Message bubble ----------------------------------------------- */
-const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onPin, onFavorite, onForward, onReact, onReport, onPickSuggestion, replyCount, onOpenThread }: {
-  msg: MessageItem; replyTo?: MessageItem; authorName: string; myId: string;
+const Bubble = ({ msg, replyTo, authorName, voiceFrom = '', myId, onReply, onEdit, onDelete, onPin, onFavorite, onForward, onReact, onReport, onPickSuggestion, replyCount, onOpenThread }: {
+  msg: MessageItem; replyTo?: MessageItem; authorName: string; voiceFrom?: string; myId: string;
   onReply: () => void; onEdit: () => void; onDelete: () => void;
   onPin: () => void; onFavorite: () => void; onForward: () => void;
   onReact: (e: string) => void; onReport: () => void;
@@ -779,7 +783,7 @@ const Bubble = ({ msg, replyTo, authorName, myId, onReply, onEdit, onDelete, onP
           {msg.kind === 'voice'      && (
             <div className="min-w-0 max-w-full">
               <div className="flex items-start gap-1">
-                <VoiceBubble msg={msg} fromMe={fromMe}/>
+                <VoiceBubble msg={msg} fromMe={fromMe} from={authorName || voiceFrom}/>
                 <button type="button" aria-label="Действия" onClick={() => setShowCtx(true)}
                   className="grid h-7 w-7 shrink-0 place-items-center rounded-full" style={{ color: 'var(--t2)' }}>
                   <MoreVertical size={15} />
@@ -2088,6 +2092,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
               <Bubble
                 msg={msg} replyTo={replyTo}
                 authorName={isGroup ? author : ''}
+                voiceFrom={nameOf(msg.authorId)}
                 myId={myId}
                 onReply={() => { setReplyTo(msg.id); taRef.current?.focus(); }}
                 onEdit={() => { startEdit(msg.id); setDraft(msg.text); draftRef.current = msg.text; taRef.current?.focus(); }}
