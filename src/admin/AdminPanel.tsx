@@ -5631,7 +5631,12 @@ export const AdminPanel = () => {
   }, [rights]);
 
   const loadRights = useCallback(async () => {
-    const r = await adminCall({ action: 'whoami' });
+    /* Сокет мог ещё не авторизоваться (холодный старт, смена адреса) — первый запрос тогда теряется. Повторяем. */
+    let r = await adminCall({ action: 'whoami' }, 8_000);
+    for (let i = 0; i < 2 && r.type === 'admin-error' && r.payload?.error === 'timeout'; i++) {
+      await new Promise((ok) => setTimeout(ok, 1500));
+      r = await adminCall({ action: 'whoami' }, 8_000);
+    }
     /* Ответа нет или пришла ошибка (обрыв связи, таймаут, сбой сервера) — это НЕ «нет прав»: прежде такой случай
        молча превращался в «Панель закрыта». Показываем причину и даём повторить. */
     if (r.type !== 'admin-me') { setRightsErr(String(r.payload?.error ?? r.type ?? 'unknown')); return; }
