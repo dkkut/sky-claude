@@ -55,7 +55,7 @@ const SEED: SkyNotif[] = [
   { id:'sn2', kind:'call_missed', title:'Пропущенный',body:'Звонок от Neo Driver',             avatarLetter:'N', color:'#f87171',       timestamp:Date.now()-14400000,  read:false },
   { id:'sn3', kind:'like',        title:'Neo Driver', body:'Оценил ваш пост в Bloom',          avatarLetter:'N', color:'#f87171',       timestamp:Date.now()-86400000,  read:true  },
   { id:'sn4', kind:'comment',     title:'Luna Nova',  body:'Прокомментировала: «Го! 🔥»',      avatarLetter:'L', color:'var(--accent)', timestamp:Date.now()-90000000,  read:true  },
-  { id:'sn5', kind:'system',      title:'Sky V5.1.0 beta',     body:'Звонки и чаты работают отлично!',  avatarLetter:'S', color:'#34d399',       timestamp:Date.now()-172800000, read:true  },
+  { id:'sn5', kind:'system',      title:'Sky V5.1.1 beta',     body:'Звонки и чаты работают отлично!',  avatarLetter:'S', color:'#34d399',       timestamp:Date.now()-172800000, read:true  },
 ];
 
 const initUid     = getUid();
