@@ -2,6 +2,7 @@
    SKY SETTINGS  -  настройки приложения
    Реально работающие настройки с сохранением
 =============================================================== */
+import { APP_FONTS } from './fonts';
 import { resolveSeason, SEASONS, type Season } from './seasons';
 import { startLightNormalizer, stopLightNormalizer } from './lightNormalizer';
 import { create } from 'zustand';
@@ -53,6 +54,8 @@ export interface AppSettings {
   theme:           ThemeMode;
   accent:          AccentColor;
   fontSize:        FontSize;
+  /** Шрифт интерфейса (fonts.ts); inter — прежний по умолчанию. */
+  fontFamily:      string;
   animationsOn:    boolean;
   /** Анимация-заставка при запуске приложения. */
   introAnim:       boolean;
@@ -119,6 +122,7 @@ const defaults: AppSettings = {
   theme:            'dark',
   accent:           'blue',
   fontSize:         'normal',
+  fontFamily:       'inter',
   animationsOn:     true,
   introAnim:        true,
   islandMode:       'both',
@@ -207,6 +211,8 @@ export const applySettings = (input: AppSettings) => {
   root.style.setProperty('--accent-bg', season ? season.accentBg : accent.bg);
   root.dataset.seasonDecor = season && s.seasonDecor && s.animationsOn && root.dataset.forceDark !== '1' ? '1' : '';
   document.body.style.fontSize = font.size;
+  const ff = APP_FONTS.find((f) => f.id === s.fontFamily);
+  if (ff && ff.stack) root.style.setProperty('--app-font', ff.stack); else root.style.removeProperty('--app-font');
 
   // Reduce animations
   if (!s.animationsOn) {

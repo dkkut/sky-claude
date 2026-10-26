@@ -1,3 +1,4 @@
+import { APP_FONTS } from '../settings/fonts';
 import { tr } from '@/i18n';
 import { PrivacyExceptions } from './PrivacyExceptions';
 import { APP_VERSION_LABEL } from '../core/version';
@@ -657,6 +658,22 @@ const SettingsSection = ({ logout, username, onOpen }: {
                   style={{ background: on ? 'var(--accent-bg)' : 'var(--bg-l2)', border: `1.5px solid ${on ? 'var(--accent)' : 'var(--border)'}` }}>
                   <span className="block text-[13px] font-bold" style={{ color: on ? 'var(--accent)' : 'var(--t1)' }}>{label}</span>
                   <span className="block text-[11px]" style={{ color: 'var(--t3)' }}>{sub}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="px-4 pb-1 pt-1">
+          <p className="mb-1.5 px-1 text-[12px] font-bold" style={{ color: 'var(--t2)' }}>Шрифт</p>
+          <div className="mb-3 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Шрифт">
+            {APP_FONTS.map((f) => {
+              const on = (s.fontFamily ?? 'inter') === f.id;
+              return (
+                <button key={f.id} type="button" role="radio" aria-checked={on} onClick={() => set({ fontFamily: f.id })}
+                  className="rounded-2xl px-3 py-2.5 text-left"
+                  style={{ background: on ? 'var(--accent-bg)' : 'var(--bg-l2)', border: `1.5px solid ${on ? 'var(--accent)' : 'var(--border)'}` }}>
+                  <span className="block text-[14px] font-bold" translate="no" style={{ color: on ? 'var(--accent)' : 'var(--t1)', fontFamily: f.stack || undefined }}>{f.name}</span>
+                  <span className="block text-[12px]" translate="no" style={{ color: 'var(--t3)', fontFamily: f.stack || undefined }}>Привет, Sky 123</span>
                 </button>
               );
             })}
