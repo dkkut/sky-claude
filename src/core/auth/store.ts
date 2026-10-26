@@ -656,7 +656,13 @@ export const useAuthStore=create<AuthState>((set,get)=>({
   /* ══ Сессия ═══════════════════════════════════════════════ */
 
   restoreSession:async()=>{
-    const res=await apiRefreshSession();
+    let res=await apiRefreshSession();
+    // Обрыв сети, 5xx, перегрузка (429) — это не «сессии нет»: повторяем, а не выкидываем человека на экран входа.
+    for(const wait of [800,2000,5000,10000]){
+      if(res.ok||!(res.status===0||res.status===429||res.status>=500))break;
+      await new Promise(r=>setTimeout(r,wait));
+      res=await apiRefreshSession();
+    }
     if(res.ok&&res.data){applySession(set,get,res.data as any);return;}
     // Куки нет или сессия отозвана — считаем, что вход не выполнен.
     set(emptyAuth);

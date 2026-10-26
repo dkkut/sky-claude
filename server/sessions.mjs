@@ -147,8 +147,15 @@ export const sessionStore = {
   async touch(id) {
     const session = await this.get(id);
     if (!session) return;
-    const ttl = await client.ttl(KEY_SESSION(id));
-    await client.setEx(KEY_SESSION(id), ttl > 0 ? ttl : 60, JSON.stringify({ ...session, lastSeenAt: Date.now() }));
+    // Скользящий срок: пока человек пользуется Sky, сессия живёт (раньше она умирала ровно через 30 дней после входа
+    // независимо от активности — «время от времени кикает с аккаунта»). Токен обновления выдаётся на тот же срок.
+    const ttlSec = Number(process.env.REFRESH_TTL_SEC || 60 * 60 * 24 * 30);
+    await client.setEx(KEY_SESSION(id), ttlSec, JSON.stringify({ ...session, lastSeenAt: Date.now() }));
+    await client.multi()
+      .expire(KEY_USER_SESS(session.userId), ttlSec)
+      .expire(KEY_SESS_IPS(id), ttlSec)
+      .expire(`applock:${id}`, ttlSec)
+      .exec().catch(() => {});
   },
 
   /**

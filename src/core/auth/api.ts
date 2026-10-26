@@ -288,9 +288,12 @@ let refreshing: Promise<boolean> | null = null;
 const refreshOnce = (): Promise<boolean> => {
   refreshing ??= (async () => {
     const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(refreshKeyFor(REFRESH_TOKEN_KEY))) ?? '' } : {};
-    const res  = await raw('/api/auth/refresh', { method: 'POST', body: JSON.stringify(body) });
+    let res: Response;
+    try { res = await raw('/api/auth/refresh', { method: 'POST', body: JSON.stringify(body) }); }
+    catch { return false; }   // нет сети — сессия не потеряна, токен оставляем
     const data = await readJson(res);
-    if (!res.ok) { setAccessToken(null); return false; }
+    // Токен сбрасываем только если сервер ПРЯМО сказал, что сессии нет; сбой сети/сервера (5xx, 429) — не выход.
+    if (!res.ok) { if (res.status === 401 || res.status === 403) setAccessToken(null); return false; }
     setAccessToken(data.accessToken ?? null);
     if (NATIVE_APP && typeof data.refreshToken === 'string') {
       await nativeStore.set(refreshKeyFor(REFRESH_TOKEN_KEY), data.refreshToken);
