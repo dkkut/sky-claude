@@ -6,7 +6,7 @@ export type ServiceKey = 'messenger' | 'bloom' | 'sky' | 'business' | 'games' | 
 
 export interface GuideLink { label: string; go: GoTarget; closedKey?: string }
 export type GoTarget =
-  | { module: 'messages' | 'bloom' | 'gaming' | 'video' | 'studio' }
+  | { module: 'messages' | 'bloom' | 'gaming' | 'video' | 'studio' | 'business' }
   | { module: 'extras'; tab: string }
   | { module: 'profile'; section: string };
 
@@ -56,11 +56,11 @@ export const SERVICES: GuideService[] = [
     features: ['Sky Market — карточки товаров, заказы, чаты с покупателями; продавцы проходят проверку', 'Sky GO — такси, доставка, жильё и парковки; кабинеты водителей и курьеров, организации', 'SkyKassa Business — страницы оплаты с твоими реквизитами, QR-коды, чаевые, счета, витрина', 'Платёжный партнёр подключается самим бизнесом, если у него есть договор'],
     notYet: ['Sky не принимает деньги покупателей: оплата идёт прямым переводом на реквизиты бизнеса, а поступление подтверждает сам бизнес'],
     status: 'available', closedKey: 'extras', accent: '#34d399',
-    cta: { label: 'Перейти к бизнесу', go: { module: 'profile', section: 'business' }, closedKey: 'kbiz' },
+    cta: { label: 'Перейти к бизнесу', go: { module: 'business' }, closedKey: 'business' },
     more: [
       { label: 'Sky Market', go: { module: 'extras', tab: 'market' }, closedKey: 'market' },
       { label: 'Sky GO', go: { module: 'extras', tab: 'go' }, closedKey: 'go' },
-      { label: 'SkyKassa Business', go: { module: 'profile', section: 'business' }, closedKey: 'kbiz' },
+      { label: 'SkyKassa Business', go: { module: 'business' }, closedKey: 'kbiz' },
     ],
   },
   {

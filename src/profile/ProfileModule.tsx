@@ -64,8 +64,6 @@ import { useMoney, fmt } from '@/wallet/store';
 import { SupportScreen } from '@/support/SupportScreen';
 import { LegalDocs }     from '@/info/LegalDocs';
 import { SkyIDTab }    from './SkyIDTab';
-import { KassaBusiness } from '@/kassabiz/KassaBusiness';
-import { ModuleGate } from '@/core/moduleClosures';
 
 const fmtDur = (s: number) => s < 60 ? `${s}с` : `${Math.floor(s/60)}м ${s%60}с`;
 const fmtDate = (iso: string) => { try { return new Date(iso).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}); } catch { return iso; } };
@@ -1638,7 +1636,14 @@ export const ProfileModule = () => {
 
         {section === 'business' && (
           <div className="flex flex-col h-full overflow-hidden">
-            <ModuleGate id="kbiz"><KassaBusiness /></ModuleGate>
+            <div className="p-4">
+              <div className="rounded-2xl p-4" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
+                <p className="text-sm font-black" style={{ color: 'var(--t1)' }}>Sky для бизнеса теперь в отдельной среде «Бизнес»</p>
+                <p className="mt-1 text-xs" style={{ color: 'var(--t3)' }}>Касса, магазин, пункты выдачи, логистика и бизнес Sky GO — на одной боковой панели рядом со «Студией». Все данные и подписки сохранены.</p>
+                <button type="button" onClick={() => { useModuleStore.getState().setPendingBusinessSection('kassa'); useModuleStore.getState().setActiveModule('business'); }}
+                  className="mt-3 rounded-xl px-4 py-2 text-sm font-bold text-white" style={{ background: '#10b981' }}>Открыть «Бизнес»</button>
+              </div>
+            </div>
           </div>
         )}
 

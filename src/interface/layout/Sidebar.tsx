@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen, MessageSquare, Bell, Layers, Swords, Radio, User, PlaySquare,
-  Library, Briefcase, Crown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+  Library, Briefcase, Building2, Crown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 import { useModuleStore }  from '@/data/state/modules';
 import { useAuthStore }    from '@/core/auth/store';
 import { useNavPrefs, useNavBadges, fmtBadge } from './navPrefs';
@@ -14,7 +14,7 @@ import { usePlayerStore } from '@/player/playerStore';
 const DESC: Record<string, string> = {
   stories: 'Короткие истории', messages: 'Переписки и звонки', notifications: 'Что произошло',
   bloom: 'Лента и реклама', gaming: 'Матчи, турниры, каналы', extras: 'Музыка, кино, ТВ',
-  video: 'Ролики и Studio', library: 'Книги и файлы', studio: 'Бизнес-кабинет', profile: 'Аккаунт и настройки',
+  video: 'Ролики и Studio', library: 'Книги и файлы', studio: 'Творческие инструменты', business: 'Магазин, ПВЗ, логистика, касса', profile: 'Аккаунт и настройки',
 };
 
 const NAV: { key: ModuleKey; label: string; Icon: typeof MessageSquare }[] = [
@@ -27,6 +27,7 @@ const NAV: { key: ModuleKey; label: string; Icon: typeof MessageSquare }[] = [
   { key: 'video',         label: 'Видео',       Icon: PlaySquare    },
   { key: 'library',       label: 'Библиотека',  Icon: Library       },
   { key: 'studio',        label: 'Studio',      Icon: Briefcase     },
+  { key: 'business',      label: 'Бизнес',      Icon: Building2     },
   { key: 'profile',       label: 'Профиль',     Icon: User          },
 ];
 

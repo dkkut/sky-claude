@@ -1,5 +1,5 @@
 import { AiCallButton } from '@/island/AiCallButton';
-import { Camera, Gamepad2, Film, Library, Palette, ChevronRight } from 'lucide-react';
+import { Camera, Gamepad2, Film, Library, Palette, Building2, ChevronRight } from 'lucide-react';
 import { BottomSheet } from './BottomSheet';
 import { useModuleStore } from '@/data/state/modules';
 import type { ModuleKey } from '@/data/state/modules';
@@ -11,6 +11,7 @@ const SECONDARY: { key: ModuleKey; label: string; desc: string; icon: any; color
   { key: 'video',   label: 'Видео',    desc: 'Sky Video, трансляции',          icon: Film,     color: '#ef4444' },
   { key: 'library', label: 'Библиотека', desc: 'Книги и подписки',             icon: Library,  color: '#f59e0b' },
   { key: 'studio',  label: 'Студия',   desc: 'Творческие инструменты',         icon: Palette,  color: '#06b6d4' },
+  { key: 'business', label: 'Бизнес',  desc: 'Магазин, ПВЗ, логистика, касса', icon: Building2, color: '#10b981' },
 ];
 
 export const MoreSheet = ({ open, onClose }: { open: boolean; onClose: () => void }) => {

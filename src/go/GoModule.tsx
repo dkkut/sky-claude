@@ -36,8 +36,8 @@ const SERVICES = [
   { key: 'places', title: 'Организации', hint: 'Находите места рядом с собой', Icon: Building2 },
 ] as const;
 
-export const SkyGo = () => {
-  const [tab, setTab] = useState<Tab>('home');
+export const SkyGo = ({ businessMode = false }: { businessMode?: boolean } = {}) => {
+  const [tab, setTab] = useState<Tab>(businessMode ? 'work' : 'home');
   const [screen, setScreen] = useState<Screen>(null);
   const [cfg, reloadCfg] = useLoad(() => goApi.config(), []);
   const [exec, reloadExec] = useLoad(() => goApi.executors(), []);
@@ -144,7 +144,9 @@ export const SkyGo = () => {
     );
   };
 
-  const TABS: [Tab, string, typeof Home][] = [['home', 'Главная', Home], ['orders', 'Заказы', ClipboardList], ['work', 'Работа', Briefcase], ['profile', 'Профиль', User]];
+  const ALL_TABS: [Tab, string, typeof Home][] = [['home', 'Главная', Home], ['orders', 'Заказы', ClipboardList], ['work', 'Работа', Briefcase], ['profile', 'Профиль', User]];
+  /* В среде «Бизнес» Sky GO показывает только рабочую часть: пространства и кабинеты, заказы, профиль исполнителя. */
+  const TABS = businessMode ? ALL_TABS.filter(([k]) => k !== 'home') : ALL_TABS;
   return (
     <div className="go-root" style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', background: C.bg }}>
       <main className="go-main" style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 24px', width: '100%', margin: '0 auto' }}>{body()}</main>

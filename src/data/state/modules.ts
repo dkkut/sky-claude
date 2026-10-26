@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-export type ModuleKey = 'stories'|'messages'|'bloom'|'extras'|'profile'|'notifications'|'gaming'|'video'|'library'|'studio';
+export type ModuleKey = 'stories'|'messages'|'bloom'|'extras'|'profile'|'notifications'|'gaming'|'video'|'library'|'studio'|'business';
 interface S {
   activeModule: ModuleKey; setActiveModule: (m: ModuleKey) => void;
   pendingExtrasTab: string | null; setPendingExtrasTab: (t: string | null) => void;
@@ -19,6 +19,8 @@ interface S {
   pendingProfileSection: string | null; setPendingProfileSection: (s: string | null) => void;
   /** Подраздел внутри «Sky ID» (например, «devices») — открывается ссылкой из письма о разморозке. */
   pendingSkyIdSub: string | null; setPendingSkyIdSub: (s: string | null) => void;
+  /** Раздел среды «Бизнес» (overview|kassa|seller|pvz|logistics|go|analytics|settings), который открыть при входе. */
+  pendingBusinessSection: string | null; setPendingBusinessSection: (s: string | null) => void;
 }
 export const useModuleStore = create<S>(set=>({
   activeModule:'messages', setActiveModule:m=>set({activeModule:m}),
@@ -29,4 +31,5 @@ export const useModuleStore = create<S>(set=>({
   pendingExtrasItemId: null, setPendingExtrasItemId: id=>set({pendingExtrasItemId:id}),
   pendingProfileSection: null, setPendingProfileSection: s=>set({pendingProfileSection:s}),
   pendingSkyIdSub: null, setPendingSkyIdSub: s=>set({pendingSkyIdSub:s}),
+  pendingBusinessSection: null, setPendingBusinessSection: s=>set({pendingBusinessSection:s}),
 }));

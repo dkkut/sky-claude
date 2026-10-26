@@ -485,3 +485,15 @@ html.kb-open .kb-hide { display: none !important; }
 .sky-loader-bar { transform-origin: 50% 100%; animation: skyLoaderBar 0.95s ease-in-out infinite; }
 @keyframes skyLoaderBar { 0%, 100% { transform: scaleY(0.25); opacity: .55; } 50% { transform: scaleY(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .sky-loader-bar { animation: none; transform: scaleY(0.6); } }
+
+/* ── Sky Business: собственная среда экосистемы ── */
+.bz-hero { background: linear-gradient(135deg, #059669 0%, #0891b2 55%, #6366f1 120%); box-shadow: 0 18px 40px -18px rgba(5,150,105,.55); }
+.bz-card { background: var(--bg-l1); border: 1px solid var(--border); transition: transform .15s ease, border-color .15s ease; }
+button.bz-card:hover { border-color: color-mix(in srgb, #10b981 55%, var(--border)); transform: translateY(-1px); }
+button.bz-card:focus-visible, .bz-item:focus-visible { outline: 2px solid #10b981; outline-offset: 2px; }
+.bz-rail { background: var(--bg-l1); border-right: 1px solid var(--border); }
+.bz-item { color: var(--t2); border: 1px solid transparent; }
+.bz-item:hover { background: var(--bg-l2); }
+.bz-item.on { color: var(--t1); background: color-mix(in srgb, #10b981 14%, var(--bg-l2)); border-color: color-mix(in srgb, #10b981 40%, transparent); }
+.bz-item.on svg { color: #10b981; }
+@media (prefers-reduced-motion: reduce) { button.bz-card:hover { transform: none; } }

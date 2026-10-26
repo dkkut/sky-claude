@@ -15,7 +15,7 @@ import { ChatList }               from '@/messenger/ChatList';
 import { ChatWindow }             from '@/messenger/ChatWindow';
 import { NotificationsScreen }    from '@/notifications/NotificationsScreen';
 import {
-  ExtrasModule, LibraryModule, BusinessStudio, BloomModule,
+  ExtrasModule, LibraryModule, BusinessStudio, BusinessModule, BloomModule,
   ProfileModule, StoriesModule, GamingModule, SkyVideo, ModuleFallback,
 } from './lazyModules';
 import { NotifToastLayer }        from '@/notifications/NotifToast';
@@ -109,7 +109,7 @@ export const AppShell = () => {
 
   useEffect(() => {
     const m = new URLSearchParams(window.location.search).get('module');
-    const valid = ['stories','messages','bloom','extras','profile','notifications','gaming','video','library','studio'];
+    const valid = ['stories','messages','bloom','extras','profile','notifications','gaming','video','library','studio','business'];
     if (m && valid.includes(m)) setActiveModule(m as any);
   }, []);
 
@@ -218,6 +218,7 @@ export const AppShell = () => {
                   {activeModule === 'extras'        && <ExtrasModule />}
                   {activeModule === 'library'       && <LibraryModule />}
                   {activeModule === 'studio'        && <BusinessStudio />}
+                  {activeModule === 'business'      && <BusinessModule />}
                   {activeModule === 'profile'       && <ProfileModule />}
                   {activeModule === 'video'         && <SkyVideo />}
                 </ModuleGate>
