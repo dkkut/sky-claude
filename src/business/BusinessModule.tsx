@@ -106,7 +106,7 @@ const Overview = ({ open }: { open: (s: Sec) => void }) => {
   return (
     <div className="mx-auto w-full min-w-0 max-w-5xl space-y-4 overflow-x-hidden p-4">
       <div className="bz-hero rounded-3xl p-5">
-        <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,.7)' }}>Sky Business</p>
+        <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,.7)' }}>Сервисы для бизнеса</p>
         <p className="mt-1 text-2xl font-black text-white">Всё для вашего дела в одном месте</p>
         <p className="mt-1 max-w-xl text-[13px]" style={{ color: 'rgba(255,255,255,.82)' }}>Магазин, оплата, пункты выдачи, логистика и коммерческие направления Sky GO. Каждая система работает со своими данными — здесь они собраны вместе.</p>
       </div>
@@ -194,7 +194,7 @@ const Settings = ({ open }: { open: (s: Sec) => void }) => {
   const toProfile = (sec: string) => { setProfileSection(sec); setModule('profile'); };
   return (
     <div className="mx-auto w-full max-w-2xl space-y-3 p-4">
-      <p className="text-base font-black" style={{ color: 'var(--t1)' }}>Настройки среды «Бизнес»</p>
+      <p className="text-base font-black" style={{ color: 'var(--t1)' }}>Настройки сервисов для бизнеса</p>
       <div className="bz-card rounded-2xl p-4">
         <label className="block text-[12px] font-semibold" style={{ color: 'var(--t2)' }}>Раздел, который открывается первым (на этом устройстве)
           <select value={def} onChange={(e) => pick(e.target.value as Sec)} className="mt-1 block w-full rounded-xl px-3 py-2 text-sm" style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }}>
@@ -270,9 +270,9 @@ export const BusinessModule = () => {
         </div>
       </div>
       {/* ПК: собственная боковая навигация среды */}
-      <nav aria-label="Разделы Sky Business" className="bz-rail hidden w-60 shrink-0 flex-col gap-1 overflow-y-auto p-3 md:flex">
+      <nav aria-label="Разделы сервисов для бизнеса" className="bz-rail hidden w-60 shrink-0 flex-col gap-1 overflow-y-auto p-3 md:flex">
         <div className="mb-2 px-2">
-          <p className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: '#10b981' }}>Sky Business</p>
+          <p className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: '#10b981' }}>Сервисы для бизнеса</p>
           <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Рабочая среда бизнеса</p>
         </div>
         {SECTIONS.map((s) => (

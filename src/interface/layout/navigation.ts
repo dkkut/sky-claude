@@ -10,6 +10,6 @@ export const navigation: NavItem[] = [
   { key:'extras',        label:'Медиа',         icon:Sparkles },
   { key:'library',       label:'Библиотека',    icon:Library },
   { key:'studio',        label:'Studio',        icon:Briefcase },
-  { key:'business',      label:'Бизнес',        icon:Building2 },
+  { key:'business',      label:'Сервисы для бизнеса', icon:Building2 },
   { key:'profile',       label:'Профиль',       icon:UserRound },
 ];
