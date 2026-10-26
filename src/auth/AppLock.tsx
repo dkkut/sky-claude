@@ -21,7 +21,7 @@ import { apiCall } from '@/core/auth/api';
 const KEY = 'sky:applock:v1';
 const CODE_KEY = 'sky:applock:code:v1';
 const GRACE_HIDDEN_SEC = 30;
-const PING_MS = 25_000;
+const PING_MS = 20_000;
 const isMobileApp = () => typeof window !== 'undefined' && Boolean((window as any).Capacitor?.isNativePlatform?.());
 const lockKind = () => (isMobileApp() ? 'native' : (window as any).sky?.secureStorage ? 'desktop' : 'web');
 const read = () => { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } };
@@ -126,11 +126,16 @@ export function AppLockGate() {
     if (!isLocked) setCodeMode(false);
   }, []);
   const lockNow = useCallback(() => { setFails(0); setCode(''); setCodeErr(''); setLocked(true); void refresh(); }, [refresh]);
-  const onUnlocked = () => { setFails(0); setCode(''); setCodeErr(''); setCodeMode(false); setLocked(false); window.dispatchEvent(new CustomEvent('sky:applock-unlocked')); };
+  const unlockedAt = useRef(0);
+  const onUnlocked = () => { unlockedAt.current = Date.now(); setFails(0); setCode(''); setCodeErr(''); setCodeMode(false); setLocked(false); window.dispatchEvent(new CustomEvent('sky:applock-unlocked')); };
 
   useEffect(() => { if (authed) void refresh(); }, [authed, refresh]);
   useEffect(() => {
-    const on = () => { if (read() || authed) lockNow(); };
+    const on = () => {
+      /* Запрос, начатый ДО ввода кода, мог вернуть 423 уже после — это не повод закрывать снова. */
+      if (Date.now() - unlockedAt.current < 4000) return;
+      if (read() || authed) lockNow();
+    };
     window.addEventListener('sky:applock', on);
     return () => window.removeEventListener('sky:applock', on);
   }, [authed, lockNow]);
@@ -151,7 +156,7 @@ export function AppLockGate() {
       if (document.hidden) { hiddenAt.current = Date.now(); return; }
       const away = hiddenAt.current ? Date.now() - hiddenAt.current : 0;
       hiddenAt.current = null;
-      if (read() && away > GRACE_HIDDEN_SEC * 1000) { void POST('/lock'); lockNow(); } else void beat();
+      if (read() && away > GRACE_HIDDEN_SEC * 1000) { void POST('/lock').then(() => lockNow()); } else void beat();
     };
     document.addEventListener('visibilitychange', onVis);
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); };

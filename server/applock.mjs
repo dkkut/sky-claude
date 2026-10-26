@@ -24,7 +24,7 @@ import { logEvent as skyLog } from './skylog.mjs';
 import * as pk from './passkeys.mjs';
 
 const scrypt = promisify(crypto.scrypt);
-export const GRACE_MS = Math.max(20, Number(process.env.APPLOCK_GRACE_SEC) || 90) * 1000;
+export const GRACE_MS = Math.max(20, Number(process.env.APPLOCK_GRACE_SEC) || 150) * 1000;
 const FRESH_MS = 10 * 60_000;
 const ID_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const KINDS = new Set(['web', 'native', 'desktop']);
