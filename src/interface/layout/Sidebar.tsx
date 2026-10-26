@@ -27,7 +27,7 @@ const NAV: { key: ModuleKey; label: string; Icon: typeof MessageSquare }[] = [
   { key: 'video',         label: 'Видео',       Icon: PlaySquare    },
   { key: 'library',       label: 'Библиотека',  Icon: Library       },
   { key: 'studio',        label: 'Studio',      Icon: Briefcase     },
-  { key: 'business',      label: 'Сервисы для бизнеса',      Icon: Building2     },
+  { key: 'business',      label: 'Бизнес',      Icon: Building2     },
   { key: 'profile',       label: 'Профиль',     Icon: User          },
 ];
 
