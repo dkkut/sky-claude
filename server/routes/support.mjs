@@ -76,6 +76,7 @@ export const supportRoutes = async (req, res, url) => {
     const list = await listQueue(me, {
       status: params.get('status') ?? undefined,
       mine: params.get('mine') === '1',
+      kind: params.get('kind') ?? undefined,
     });
     // Не администратору отвечаем тем же, чем и на несуществующий адрес:
     // по разнице ответов не должно быть видно, что очередь существует.

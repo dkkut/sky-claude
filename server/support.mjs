@@ -139,13 +139,14 @@ export const listMyTickets = async (userId) => {
  * Очередь поддержки. Только администраторам: в обращениях чужие
  * жалобы и переписка.
  */
-export const listQueue = async (actorId, { status, mine } = {}) => {
+export const listQueue = async (actorId, { status, mine, kind } = {}) => {
   if (!(await can(actorId, 'support'))) return null;
   const where = ['TRUE'];
   const args = [];
   if (STATUSES.has(status)) { args.push(status); where.push(`status = $${args.length}`); }
   else { where.push("status <> 'closed'"); }
   if (mine) { args.push(actorId); where.push(`assignee_id = $${args.length}`); }
+  if (KINDS.has(kind)) { args.push(kind); where.push(`kind = $${args.length}`); }
 
   const { rows } = await query(
     `SELECT * FROM support_tickets WHERE ${where.join(' AND ')}

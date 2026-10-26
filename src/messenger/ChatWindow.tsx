@@ -63,6 +63,7 @@ const BannerMotif = ({ motif, accent, opacity }: { motif: MotifName; accent: str
   );
 };
 import { HashInlineMenu, BotChatOverlay, BotsBrowser, InlineConfirm } from '@/bots/SkyBots';
+import { apiCreateTicket } from '@/moderation/supportApi';
 
 /* -- constants ---------------------------------------------------- */
 const REACTS  = ['👍','❤️','🔥','😂','😮','😢','👏'];
@@ -914,7 +915,12 @@ const ReportModal = ({ chatId, onClose }: { chatId: string; onClose: () => void 
           <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium"
             style={{ background: 'var(--border)', color: 'var(--t1)' }}>Отмена</button>
           <button type="button" disabled={!reason}
-            onClick={() => { addReport({ chatId, reporterId: currentUserId ?? '', reason, comment: '' }); onClose(); }}
+            onClick={() => {
+              addReport({ chatId, reporterId: currentUserId ?? '', reason, comment: '' });
+              // Раньше жалоба оставалась в браузере и до модерации не доходила — теперь это обычное обращение kind=report.
+              void apiCreateTicket({ subject: 'Жалоба из чата', body: `Причина: ${reason}\nID чата: ${chatId}`, kind: 'report' });
+              onClose();
+            }}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40"
             style={{ background: 'var(--accent)' }}>Отправить</button>
         </div>

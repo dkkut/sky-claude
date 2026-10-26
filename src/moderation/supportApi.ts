@@ -135,11 +135,12 @@ export const apiReplyTicket = async (
 /* ─── Для тех, кто разбирает обращения ─────────────────────────────────── */
 
 export const apiSupportQueue = async (
-  opts: { status?: TicketStatus; mine?: boolean } = {},
+  opts: { status?: TicketStatus; mine?: boolean; kind?: string } = {},
 ): Promise<SupportTicket[] | null> => {
   const params = new URLSearchParams();
   if (opts.status) params.set('status', opts.status);
   if (opts.mine) params.set('mine', '1');
+  if (opts.kind) params.set('kind', opts.kind);
   const q = params.toString();
   const r = await apiCall<{ tickets: SupportTicket[] }>(
     `/api/support/queue${q ? `?${q}` : ''}`);

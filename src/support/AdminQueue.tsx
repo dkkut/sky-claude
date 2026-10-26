@@ -24,10 +24,11 @@ import {
   Composer, MessageBubble, StatusChip, KIND_LABEL, STATUS_LABEL, fmtWhen,
 } from './parts';
 
-type Filter = 'queue' | 'mine' | 'closed';
+type Filter = 'queue' | 'reports' | 'mine' | 'closed';
 
 const FILTERS: [Filter, string][] = [
   ['queue', 'Все открытые'],
+  ['reports', 'Жалобы'],
   ['mine', 'Мои'],
   ['closed', 'Закрытые'],
 ];
@@ -56,7 +57,7 @@ export const AdminQueue = () => {
 
   const load = async (f: Filter = filter) => {
     const list = await apiSupportQueue(
-      f === 'closed' ? { status: 'closed' } : f === 'mine' ? { mine: true } : {},
+      f === 'closed' ? { status: 'closed' } : f === 'mine' ? { mine: true } : f === 'reports' ? { kind: 'report' } : {},
     );
     setTickets(list ?? []);
   };
