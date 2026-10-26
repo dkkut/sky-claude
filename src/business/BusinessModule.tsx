@@ -104,20 +104,20 @@ const Overview = ({ open }: { open: (s: Sec) => void }) => {
       lines: ['Организации и сотрудники, водитель/курьер, парковки, жильё, заведения.'] },
   ];
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4 p-4">
+    <div className="mx-auto w-full min-w-0 max-w-5xl space-y-4 overflow-x-hidden p-4">
       <div className="bz-hero rounded-3xl p-5">
         <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,.7)' }}>Sky Business</p>
         <p className="mt-1 text-2xl font-black text-white">Всё для вашего дела в одном месте</p>
         <p className="mt-1 max-w-xl text-[13px]" style={{ color: 'rgba(255,255,255,.82)' }}>Магазин, оплата, пункты выдачи, логистика и коммерческие направления Sky GO. Каждая система работает со своими данными — здесь они собраны вместе.</p>
       </div>
       {kpis.length > 0 && (
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          {kpis.map(([k, v]) => <div key={k} className="bz-card rounded-2xl p-3"><p className="text-[11px]" style={{ color: 'var(--t3)' }}>{k}</p><p className="text-lg font-black" style={{ color: 'var(--t1)' }}>{v}</p></div>)}
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 md:grid-cols-4">
+          {kpis.map(([k, v]) => <div key={k} className="bz-card min-w-0 break-words rounded-2xl p-3"><p className="text-[11px]" style={{ color: 'var(--t3)' }}>{k}</p><p className="text-lg font-black" style={{ color: 'var(--t1)' }}>{v}</p></div>)}
         </div>
       )}
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
         {cards.map((c) => (
-          <button key={c.id} type="button" onClick={() => open(c.id)} className="bz-card group flex flex-col gap-2 rounded-2xl p-4 text-left">
+          <button key={c.id} type="button" onClick={() => open(c.id)} className="bz-card group flex min-w-0 flex-col gap-2 break-words rounded-2xl p-4 text-left">
             <div className="flex items-center gap-3">
               <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: 'color-mix(in srgb, #10b981 16%, transparent)' }}><c.icon size={19} style={{ color: '#10b981' }} /></div>
               <p className="min-w-0 flex-1 truncate text-[14px] font-bold" style={{ color: 'var(--t1)' }}>{c.title}</p>
@@ -244,21 +244,21 @@ export const BusinessModule = () => {
   const body = useMemo(() => {
     const wrap = (n: ReactNode) => (cur.closedKey ? <ModuleGate id={cur.closedKey}>{n}</ModuleGate> : <>{n}</>);
     switch (sec) {
-      case 'overview':  return <div className="h-full overflow-y-auto"><Overview open={setSec} /></div>;
+      case 'overview':  return <div className="h-full overflow-y-auto overflow-x-hidden"><Overview open={setSec} /></div>;
       case 'kassa':     return wrap(<KassaBusiness />);
       case 'seller':    return wrap(<SellerSection />);
       case 'pvz':       return wrap(<PvzCabinet />);
       case 'logistics': return wrap(<Logistics />);
       case 'go':        return wrap(<SkyGo businessMode />);
       case 'analytics': return wrap(<Analytics />);
-      default:          return <div className="h-full overflow-y-auto"><Settings open={setSec} /></div>;
+      default:          return <div className="h-full overflow-y-auto overflow-x-hidden"><Settings open={setSec} /></div>;
     }
   }, [sec, cur.closedKey, setSec]);
 
   return (
-    <div className="bz-root flex h-full min-h-0 flex-col md:flex-row" style={{ background: 'var(--bg)' }}>
+    <div className="bz-root flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden md:flex-row" style={{ background: 'var(--bg)' }}>
       {/* Телефон: лента разделов сверху */}
-      <div className="shrink-0 md:hidden" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-l1)' }}>
+      <div className="min-w-0 shrink-0 md:hidden" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-l1)' }}>
         <div className="glass-pill mx-3 my-2 flex overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {SECTIONS.map((s) => (
             <button key={s.id} type="button" aria-current={sec === s.id ? 'page' : undefined} onClick={() => setSec(s.id)}
@@ -283,7 +283,7 @@ export const BusinessModule = () => {
           </button>
         ))}
       </nav>
-      <main className="min-h-0 min-w-0 flex-1 overflow-hidden" aria-label={cur.label}>{body}</main>
+      <main className="min-h-0 min-w-0 max-w-full flex-1 overflow-hidden" aria-label={cur.label}>{body}</main>
     </div>
   );
 };
