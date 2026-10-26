@@ -10,32 +10,58 @@ import { motion } from 'framer-motion';
 type Eyes = 'open' | 'happy' | 'closed' | 'heart' | 'star' | 'wide' | 'angry' | 'cry' | 'sleep' | 'cool';
 type Mouth = 'smile' | 'grin' | 'o' | 'flat' | 'frown' | 'kiss';
 
-export interface MascotDef { id: string; label: string; eyes: Eyes; mouth: Mouth; extra?: string; tint: string }
+export interface MascotDef { id: string; label: string; eyes: Eyes; mouth: Mouth; extra?: boolean; tint: string }
 
 export const MASCOT_STICKERS: MascotDef[] = [
-  { id: 'hello',  label: 'Привет!',     eyes: 'happy',  mouth: 'grin',  extra: '👋', tint: '#60a5fa' },
-  { id: 'love',   label: 'Люблю',       eyes: 'heart',  mouth: 'smile', extra: '❤️', tint: '#f472b6' },
-  { id: 'laugh',  label: 'Ха-ха',       eyes: 'happy',  mouth: 'grin',  extra: '💦', tint: '#fbbf24' },
-  { id: 'cool',   label: 'Круто',       eyes: 'cool',   mouth: 'smile', extra: '🔥', tint: '#fb923c' },
-  { id: 'party',  label: 'Ура!',        eyes: 'star',   mouth: 'grin',  extra: '🎉', tint: '#a78bfa' },
-  { id: 'ok',     label: 'Окей',        eyes: 'happy',  mouth: 'smile', extra: '👍', tint: '#34d399' },
-  { id: 'wow',    label: 'Ого!',        eyes: 'wide',   mouth: 'o',     extra: '❗', tint: '#f87171' },
-  { id: 'thanks', label: 'Спасибо',     eyes: 'happy',  mouth: 'smile', extra: '🙏', tint: '#60a5fa' },
-  { id: 'think',  label: 'Думаю…',      eyes: 'open',   mouth: 'flat',  extra: '💭', tint: '#94a3b8' },
-  { id: 'sad',    label: 'Грустно',     eyes: 'open',   mouth: 'frown', extra: '🌧️', tint: '#7dd3fc' },
-  { id: 'cry',    label: 'Плачу',       eyes: 'cry',    mouth: 'frown', extra: '💧', tint: '#38bdf8' },
-  { id: 'angry',  label: 'Злюсь',       eyes: 'angry',  mouth: 'flat',  extra: '💢', tint: '#ef4444' },
-  { id: 'sleep',  label: 'Сплю',        eyes: 'sleep',  mouth: 'o',     extra: '💤', tint: '#818cf8' },
-  { id: 'kiss',   label: 'Чмок',        eyes: 'closed', mouth: 'kiss',  extra: '💋', tint: '#f472b6' },
-  { id: 'coffee', label: 'Кофе?',       eyes: 'open',   mouth: 'smile', extra: '☕', tint: '#d6a15f' },
-  { id: 'gamer',  label: 'Го играть',   eyes: 'cool',   mouth: 'grin',  extra: '🎮', tint: '#22d3ee' },
-  { id: 'music',  label: 'Музыка',      eyes: 'happy',  mouth: 'smile', extra: '🎵', tint: '#c084fc' },
-  { id: 'sorry',  label: 'Прости',      eyes: 'open',   mouth: 'frown', extra: '🙈', tint: '#fbbf24' },
-  { id: 'no',     label: 'Нет',         eyes: 'closed', mouth: 'flat',  extra: '🚫', tint: '#f87171' },
-  { id: 'bye',    label: 'Пока!',       eyes: 'happy',  mouth: 'smile', extra: '🌙', tint: '#6366f1' },
+  { id: 'hello',  label: 'Привет!',     eyes: 'happy',  mouth: 'grin',  extra: true, tint: '#60a5fa' },
+  { id: 'love',   label: 'Люблю',       eyes: 'heart',  mouth: 'smile', extra: true, tint: '#f472b6' },
+  { id: 'laugh',  label: 'Ха-ха',       eyes: 'happy',  mouth: 'grin',  extra: true, tint: '#fbbf24' },
+  { id: 'cool',   label: 'Круто',       eyes: 'cool',   mouth: 'smile', extra: true, tint: '#fb923c' },
+  { id: 'party',  label: 'Ура!',        eyes: 'star',   mouth: 'grin',  extra: true, tint: '#a78bfa' },
+  { id: 'ok',     label: 'Окей',        eyes: 'happy',  mouth: 'smile', extra: true, tint: '#34d399' },
+  { id: 'wow',    label: 'Ого!',        eyes: 'wide',   mouth: 'o',     extra: true, tint: '#f87171' },
+  { id: 'thanks', label: 'Спасибо',     eyes: 'happy',  mouth: 'smile', extra: true, tint: '#60a5fa' },
+  { id: 'think',  label: 'Думаю…',      eyes: 'open',   mouth: 'flat',  extra: true, tint: '#94a3b8' },
+  { id: 'sad',    label: 'Грустно',     eyes: 'open',   mouth: 'frown', extra: true, tint: '#7dd3fc' },
+  { id: 'cry',    label: 'Плачу',       eyes: 'cry',    mouth: 'frown', extra: true, tint: '#38bdf8' },
+  { id: 'angry',  label: 'Злюсь',       eyes: 'angry',  mouth: 'flat',  extra: true, tint: '#ef4444' },
+  { id: 'sleep',  label: 'Сплю',        eyes: 'sleep',  mouth: 'o',     extra: true, tint: '#818cf8' },
+  { id: 'kiss',   label: 'Чмок',        eyes: 'closed', mouth: 'kiss',  extra: true, tint: '#f472b6' },
+  { id: 'coffee', label: 'Кофе?',       eyes: 'open',   mouth: 'smile', extra: true, tint: '#d6a15f' },
+  { id: 'gamer',  label: 'Го играть',   eyes: 'cool',   mouth: 'grin',  extra: true, tint: '#22d3ee' },
+  { id: 'music',  label: 'Музыка',      eyes: 'happy',  mouth: 'smile', extra: true, tint: '#c084fc' },
+  { id: 'sorry',  label: 'Прости',      eyes: 'open',   mouth: 'frown', extra: true, tint: '#fbbf24' },
+  { id: 'no',     label: 'Нет',         eyes: 'closed', mouth: 'flat',  extra: true, tint: '#f87171' },
+  { id: 'bye',    label: 'Пока!',       eyes: 'happy',  mouth: 'smile', extra: true, tint: '#6366f1' },
 ];
 
 export const stickerById = (id: string) => MASCOT_STICKERS.find((s) => s.id === id);
+
+
+/** Значки над облачком — тоже векторные (не системные эмодзи), поэтому выглядят одинаково на iOS, Android, Windows. Поле 0…24. */
+const Y = '#fcd34d', YS = '#d99a06';
+const EXTRA_ICONS: Record<string, JSX.Element> = {
+  hello: <g><rect x="6" y="9" width="12" height="11" rx="5" fill={Y} stroke={YS} strokeWidth="1.2" />{[7, 10.5, 14, 17.5].map((x, i) => <rect key={x} x={x - 1.6} y={3 + (i === 1 || i === 2 ? 0 : 2)} width="3.2" height="9" rx="1.6" fill={Y} stroke={YS} strokeWidth="1.2" />)}<path d="M2 8 q-1 3 0 6 M22 8 q1 3 0 6" stroke={YS} strokeWidth="1.4" fill="none" strokeLinecap="round" /></g>,
+  love: <path d="M12 21 C2 13 5 4 12 9 C19 4 22 13 12 21Z" fill="#ef4444" stroke="#b91c1c" strokeWidth="1.2" strokeLinejoin="round" />,
+  laugh: <g fill="#38bdf8" stroke="#0284c7" strokeWidth="1"><path d="M7 4 q-4 7 0 8 q4 -1 0 -8z" /><path d="M17 10 q-4 7 0 8 q4 -1 0 -8z" /></g>,
+  cool: <path d="M12 2 C14 7 20 9 18 16 C17 21 7 22 6 15 C5 11 9 10 9 6 C11 7 11 4 12 2Z" fill="#fb923c" stroke="#c2410c" strokeWidth="1.2" strokeLinejoin="round" />,
+  party: <g><path d="M3 21 L9 6 L18 15Z" fill="#f59e0b" stroke="#b45309" strokeWidth="1.2" strokeLinejoin="round" /><circle cx="15" cy="5" r="1.8" fill="#ec4899" /><circle cx="20" cy="10" r="1.6" fill="#38bdf8" /><circle cx="12" cy="2.5" r="1.4" fill="#34d399" /><rect x="17" y="3" width="3.4" height="1.8" rx=".9" fill="#a78bfa" transform="rotate(35 18 4)" /></g>,
+  ok: <g fill={Y} stroke={YS} strokeWidth="1.2" strokeLinejoin="round"><rect x="3" y="11" width="5" height="10" rx="1.4" /><path d="M9 12 L13 3 Q16 3 15.5 7 L15 10 H20 Q22 10.5 21.3 13 L20 19 Q19.5 21 17.5 21 H9Z" /></g>,
+  wow: <g fill="#ef4444"><rect x="9.8" y="2" width="4.4" height="12" rx="2.2" /><circle cx="12" cy="19" r="2.6" /></g>,
+  thanks: <g fill={Y} stroke={YS} strokeWidth="1.2" strokeLinejoin="round"><path d="M12 3 L12 11 L5 17 Q9 22 12 21Z" /><path d="M12 3 L12 11 L19 17 Q15 22 12 21Z" /></g>,
+  think: <g fill="#fff" stroke="#94a3b8" strokeWidth="1.3"><ellipse cx="13" cy="9" rx="9" ry="6.5" /><circle cx="5" cy="18" r="2.2" /><circle cx="2.5" cy="22" r="1.2" /></g>,
+  sad: <g><path d="M6 14 a5 5 0 0 1 1-9.6 a6 6 0 0 1 11 2 a4 4 0 0 1 0 7.6Z" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="1.2" strokeLinejoin="round" /><g stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round"><line x1="8" y1="17" x2="7" y2="21" /><line x1="13" y1="17" x2="12" y2="21" /><line x1="18" y1="17" x2="17" y2="21" /></g></g>,
+  cry: <path d="M12 2 C16 9 19 12 19 15.5 a7 7 0 0 1 -14 0 C5 12 8 9 12 2Z" fill="#38bdf8" stroke="#0284c7" strokeWidth="1.2" strokeLinejoin="round" />,
+  angry: <g stroke="#dc2626" strokeWidth="2.6" strokeLinecap="round" fill="none"><path d="M3 9 q5 0 5 -5 M21 9 q-5 0 -5 -5 M3 15 q5 0 5 5 M21 15 q-5 0 -5 5" /></g>,
+  sleep: <g stroke="#6366f1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none"><path d="M3 10 H11 L3 20 H11" /><path d="M14 3 H20 L14 11 H20" strokeWidth="1.8" /></g>,
+  kiss: <path d="M3 12 Q8 5 12 9 Q16 5 21 12 Q16 20 12 19 Q8 20 3 12Z" fill="#ef4444" stroke="#b91c1c" strokeWidth="1.2" strokeLinejoin="round" />,
+  coffee: <g><path d="M4 8 H17 V15 a5 5 0 0 1 -5 5 H9 a5 5 0 0 1 -5 -5Z" fill="#fff" stroke="#92400e" strokeWidth="1.4" strokeLinejoin="round" /><path d="M17 10 h2 a2.5 2.5 0 0 1 0 5 h-2" fill="none" stroke="#92400e" strokeWidth="1.4" /><path d="M8 2 q-2 2 0 4 M12 2 q-2 2 0 4" stroke="#94a3b8" strokeWidth="1.3" fill="none" strokeLinecap="round" /></g>,
+  gamer: <g><rect x="2" y="7" width="20" height="11" rx="5.5" fill="#475569" stroke="#1e293b" strokeWidth="1.2" /><path d="M7 10 v5 M4.5 12.5 h5" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" /><circle cx="16" cy="11.5" r="1.3" fill="#f87171" /><circle cx="19" cy="14" r="1.3" fill="#34d399" /></g>,
+  music: <g fill="#a855f7" stroke="#7e22ce" strokeWidth="1"><ellipse cx="7" cy="19" rx="3.6" ry="2.8" /><ellipse cx="17" cy="16.5" rx="3.6" ry="2.8" /><path d="M10 19 V5 L20 3 V16.5" fill="none" strokeWidth="1.8" /><path d="M10 5 L20 3 V8 L10 10Z" /></g>,
+  sorry: <g fill={Y} stroke={YS} strokeWidth="1.2"><circle cx="7" cy="12" r="5.5" /><circle cx="17" cy="12" r="5.5" /></g>,
+  no: <g><circle cx="12" cy="12" r="9" fill="none" stroke="#ef4444" strokeWidth="2.8" /><line x1="5.6" y1="5.6" x2="18.4" y2="18.4" stroke="#ef4444" strokeWidth="2.8" strokeLinecap="round" /></g>,
+  bye: <path d="M17 3 a9 9 0 1 0 4 14 a7.5 7.5 0 0 1 -4 -14Z" fill="#fde68a" stroke="#d97706" strokeWidth="1.2" strokeLinejoin="round" />,
+};
 
 const INK = '#1e3a5f';
 
@@ -67,7 +93,7 @@ const MouthSvg = ({ kind }: { kind: Mouth }) => {
   }
 };
 
-/** Один стикер: облачко с настроением, мелкий символ над ним и подпись. */
+/** Один стикер: облачко с настроением, векторный значок над ним и подпись. */
 export const MascotSticker = ({ def, size = 120, caption = true, animate = true }: { def: MascotDef; size?: number; caption?: boolean; animate?: boolean }) => {
   const dur = 2.2 + (def.id.length % 5) * 0.3;
   return (
@@ -91,11 +117,13 @@ export const MascotSticker = ({ def, size = 120, caption = true, animate = true 
         <ellipse cx="86" cy="64" rx="6" ry="3.6" fill="#fca5a5" opacity="0.45" />
         <EyesSvg kind={def.eyes} />
         <MouthSvg kind={def.mouth} />
-        {def.extra && (
-          <motion.text x="96" y="26" fontSize="26" textAnchor="middle"
-            animate={animate ? { scale: [1, 1.18, 1], rotate: [0, 8, 0] } : undefined}
+        {def.extra && EXTRA_ICONS[def.id] && (
+          <motion.g
+            animate={animate ? { scale: [1, 1.12, 1], rotate: [0, 6, 0] } : undefined}
             style={{ transformOrigin: '96px 18px', transformBox: 'fill-box' }}
-            transition={animate ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' } : undefined}>{def.extra}</motion.text>
+            transition={animate ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' } : undefined}>
+            <g transform="translate(83 3) scale(1.05)">{EXTRA_ICONS[def.id]}</g>
+          </motion.g>
         )}
       </motion.svg>
       {caption && <span className="mt-0.5 text-[11px] font-bold leading-tight" style={{ color: 'var(--t1)' }}>{def.label}</span>}
