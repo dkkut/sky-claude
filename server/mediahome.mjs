@@ -27,6 +27,8 @@ export const WIDGETS = {
   favorites:    { cat: 'personal', sizes: ['standard', 'wide'],            cfg: {} },
   unread:       { cat: 'social',   sizes: ['compact', 'standard'],         cfg: { showText: 'bool' } },
   activity:     { cat: 'stats',    sizes: ['standard', 'wide'],            cfg: {} },
+  goorders:     { cat: 'go',       sizes: ['standard', 'wide'],            cfg: {} },
+  marketorders: { cat: 'go',       sizes: ['standard', 'wide'],            cfg: {} },
   tasks:        { cat: 'tasks',    sizes: ['standard', 'wide'],            cfg: {} },
   quick:        { cat: 'quick',    sizes: ['compact', 'standard', 'wide'], cfg: { actions: 'actions' } },
   ai:           { cat: 'eco',      sizes: ['standard', 'wide'],            cfg: {} },

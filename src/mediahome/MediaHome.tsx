@@ -91,7 +91,7 @@ export const MediaHome = ({ onNav, onClassic }: { onNav: (t: string) => void; on
   const gridCls = layout.density === 'dense' ? 'gap-2' : layout.density === 'cozy' ? 'gap-5' : 'gap-3';
 
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden px-3 pb-24 pt-3 md:px-6" style={layout.accent ? ({ ['--accent' as string]: layout.accent } as React.CSSProperties) : undefined}>
+    <div data-mediahome className="h-full overflow-y-auto overflow-x-hidden px-3 pb-24 pt-3 md:px-6" style={layout.accent ? ({ ['--accent' as string]: layout.accent } as React.CSSProperties) : undefined}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 flex-1 text-[18px] font-extrabold" style={{ color: 'var(--t1)' }}>Главная Sky Media</h2>
         {!editing && <button type="button" onClick={onClassic} className="rounded-full border px-3 py-1.5 text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--t2)' }}>Классический вид</button>}

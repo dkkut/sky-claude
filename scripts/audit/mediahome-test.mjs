@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 const { cleanLayout, defaultLayout, WIDGETS, MAX_WIDGETS } = await import('../../server/mediahome.mjs');
 let n = 0; const ok = (c, m) => { assert.ok(c, m); n += 1; };
 
-const d = defaultLayout(); ok(d.widgets.length > 0 && d.widgets.every((w) => WIDGETS[w.type]), 'раскладка по умолчанию из реестра');
+const d = defaultLayout(); ok(WIDGETS.goorders && WIDGETS.marketorders, 'заказы в реестре'); ok(d.widgets.length > 0 && d.widgets.every((w) => WIDGETS[w.type]), 'раскладка по умолчанию из реестра');
 const c = cleanLayout({ widgets: [{ type: 'evil' }, { type: 'clock', size: 'giant' }, { type: 'custom', cfg: { url: 'javascript:alert(1)', title: '<script>x</script>' } }, { type: 'custom', cfg: { url: 'https://a.b/c' } }] });
 ok(c.widgets.length === 3, 'неизвестный тип отброшен');
 ok(c.widgets[0].size === 'standard', 'неверный размер заменён');

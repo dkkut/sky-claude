@@ -10,6 +10,8 @@ import { useMoney } from '@/wallet/store';
 import { apiWeather, type WeatherNow } from '@/bloom/weatherApi';
 import { apiMediaActivity, type MediaActivity } from '@/extras/mediaActivityApi';
 import { useModuleStore } from '@/data/state/modules';
+import { goApi, type GoOrder } from '@/go/api';
+import { apiOrders } from '@/marketplace/marketApi';
 
 /** Подписи типов виджетов (категории — для каталога в редакторе). */
 export const WIDGET_META: Record<string, { label: string; cat: string; hint: string }> = {
@@ -25,13 +27,15 @@ export const WIDGET_META: Record<string, { label: string; cat: string; hint: str
   favorites: { label: 'Избранная музыка', cat: 'personal', hint: 'Ваши любимые треки' },
   unread: { label: 'Непрочитанные сообщения', cat: 'social', hint: 'По умолчанию без текста сообщений' },
   activity: { label: 'Моя активность', cat: 'stats', hint: 'Время в музыке, видео, подкастах' },
+  goorders: { label: 'Заказы Sky GO', cat: 'go', hint: 'Активные поездки, доставки, еда' },
+  marketorders: { label: 'Заказы Market', cat: 'go', hint: 'Ваши покупки в пути' },
   tasks: { label: 'Задачи и заметки', cat: 'tasks', hint: 'Хранятся на этом устройстве' },
   quick: { label: 'Быстрые действия', cat: 'quick', hint: 'Переходы в разделы Sky' },
   ai: { label: 'Sky AI', cat: 'eco', hint: 'Открывается по нажатию, запросы сами не отправляются' },
   points: { label: 'Sky Points и баланс', cat: 'eco', hint: 'Из вашего кошелька' },
   custom: { label: 'Свой виджет', cat: 'custom', hint: 'Счётчик, заметка, ссылка или прогресс' },
 };
-export const CATEGORIES: Record<string, string> = { time: 'Время и погода', media: 'Музыка и развлечения', personal: 'Личные данные', social: 'Общение', tasks: 'Задачи и мероприятия', stats: 'Статистика', quick: 'Быстрые действия', eco: 'Сервисы экосистемы', custom: 'Свои виджеты' };
+export const CATEGORIES: Record<string, string> = { time: 'Время и погода', media: 'Музыка и развлечения', personal: 'Личные данные', social: 'Общение', tasks: 'Задачи и мероприятия', stats: 'Статистика', quick: 'Быстрые действия', go: 'Sky GO и заказы', eco: 'Сервисы экосистемы', custom: 'Свои виджеты' };
 
 const ACTIONS: Record<string, { label: string; tab?: string; module?: string }> = {
   music: { label: 'Музыка', tab: 'music' }, film: { label: 'Кино', tab: 'movies' }, video: { label: 'Видео', module: 'video' }, podcasts: { label: 'Подкасты', tab: 'podcasts' },
@@ -183,6 +187,32 @@ const Quick = ({ w, onNav }: { w: WidgetDef; onNav: (t: string) => void }) => {
   );
 };
 
+const GoOrders = ({ onNav }: { onNav: (t: string) => void }) => {
+  const [o, setO] = useState<GoOrder[] | null | undefined>(undefined);
+  useEffect(() => { let on = true; void goApi.orders({ status: 'active' }).then((r) => { if (on) setO(r.ok ? r.data?.orders ?? [] : null); }); return () => { on = false; }; }, []);
+  const KIND: Record<string, string> = { taxi: 'Такси', food: 'Еда', delivery: 'Доставка', stay: 'Жильё' };
+  return (
+    <Box title="Заказы Sky GO">
+      {o === undefined ? <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Загрузка…</p> : o === null ? <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Данные недоступны.</p>
+        : o.length === 0 ? <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Активных заказов нет.</p>
+        : o.slice(0, 4).map((x) => <button key={x.id} type="button" onClick={() => onNav('go')} className="truncate text-left text-[13px]" style={{ color: 'var(--t1)' }}>{KIND[x.kind] ?? x.kind} <span style={{ color: 'var(--t3)' }}>· {x.status}</span></button>)}
+    </Box>
+  );
+};
+
+const MarketOrders = ({ onNav }: { onNav: (t: string) => void }) => {
+  const [o, setO] = useState<{ id: string; title: string; status: string }[] | null | undefined>(undefined);
+  useEffect(() => { let on = true; void apiOrders('buyer').then((r) => { if (on) setO(r.ok ? (r.data?.items ?? []) as { id: string; title: string; status: string }[] : null); }); return () => { on = false; }; }, []);
+  const active = (o ?? []).filter((x) => !['completed', 'cancelled', 'canceled', 'refunded'].includes(x.status));
+  return (
+    <Box title="Заказы Market">
+      {o === undefined ? <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Загрузка…</p> : o === null ? <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Данные недоступны.</p>
+        : active.length === 0 ? <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Активных заказов нет.</p>
+        : active.slice(0, 4).map((x) => <button key={x.id} type="button" onClick={() => onNav('market')} className="truncate text-left text-[13px]" style={{ color: 'var(--t1)' }} translate="no">{x.title}</button>)}
+    </Box>
+  );
+};
+
 const Points = () => {
   const { balance, points, refresh } = useMoney() as unknown as { balance: number; points: number; refresh?: () => Promise<void> | void };
   useEffect(() => { void refresh?.(); }, [refresh]);
@@ -222,6 +252,8 @@ export const WidgetBody = ({ w, onNav }: { w: WidgetDef; onNav: (t: string) => v
     case 'quick': return <Quick w={w} onNav={onNav} />;
     case 'ai': return <Box title="Sky AI"><button type="button" className={cardBtn} style={{ background: 'var(--accent)', color: '#fff' }} onClick={() => onNav('ai')}>Открыть Sky AI</button></Box>;
     case 'points': return <Points />;
+    case 'goorders': return <GoOrders onNav={onNav} />;
+    case 'marketorders': return <MarketOrders onNav={onNav} />;
     case 'custom': return <Custom w={w} />;
     default: return <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Виджет недоступен</p>;
   }
