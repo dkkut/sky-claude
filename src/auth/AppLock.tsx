@@ -19,6 +19,7 @@ import { useAuthStore } from '@/core/auth/store';
 import { apiCall } from '@/core/auth/api';
 
 const KEY = 'sky:applock:v1';
+const BIO_KEY = 'sky:applock:bio:v1';   // запомненный способ (web) — чтобы Face ID запрашивался сразу при запуске, до ответа сервера
 const CODE_KEY = 'sky:applock:code:v1';
 const GRACE_HIDDEN_SEC = 30;
 const PING_MS = 20_000;
@@ -44,7 +45,9 @@ const checkLocalCode = async (code: string) => {
     return (await derive(code, s)) === hash;
   } catch { return false; }
 };
-const clearCode = () => { try { localStorage.removeItem(CODE_KEY); } catch { /* ok */ } };
+const clearCode = () => { try { localStorage.removeItem(CODE_KEY); localStorage.removeItem(BIO_KEY); } catch { /* ok */ } };
+const cachedBio = () => { try { return localStorage.getItem(BIO_KEY) === 'web'; } catch { return false; } };
+const cacheBio = (on: boolean) => { try { if (on) localStorage.setItem(BIO_KEY, 'web'); else localStorage.removeItem(BIO_KEY); } catch { /* ok */ } };
 
 /* ── Сервер ── */
 const GET = () => apiCall<any>('/api/skyid/applock');
@@ -100,7 +103,7 @@ let coldChecked = false;
 export function AppLockGate() {
   const authed = useAuthStore((s) => s.isAuthenticated);
   const [locked, setLocked] = useState(() => read());       // кэш: замок включён — показываем сразу при запуске
-  const [bio, setBio] = useState<'native' | 'web' | null>(isMobileApp() && read() ? 'native' : null);
+  const [bio, setBio] = useState<'native' | 'web' | null>(isMobileApp() && read() ? 'native' : read() && cachedBio() ? 'web' : null);
   const [fails, setFails] = useState(0);
   const [codeMode, setCodeMode] = useState(false);
   const [code, setCode] = useState('');
@@ -117,6 +120,7 @@ export function AppLockGate() {
     if (!r.data.enabled) { write(false); clearCode(); setLocked(false); return; }
     write(true);
     setBio(r.data.kind === 'native' ? 'native' : r.data.bio ? 'web' : null);
+    cacheBio(r.data.kind !== 'native' && Boolean(r.data.bio));
     if (r.data.blockedFor > 0) setWait(r.data.blockedFor);
     let isLocked = Boolean(r.data.locked);
     if (!coldChecked) {
@@ -178,7 +182,7 @@ export function AppLockGate() {
     else { const proof = await bioProof(); if (proof) r = await POST('/unlock', proof); }
     busy.current = false;
     if (r.ok) { onUnlocked(); return; }
-    if (auto && bio === 'web') return;   // браузер мог отклонить запрос без жеста — это не неудача
+    if (auto) { setCodeMode(true); return; }   // сразу при запуске не вышло (отказ, браузер без жеста) — показываем код, Face ID можно повторить кнопкой
     setFails((n) => { const next = n + 1; if (next >= 3) setCodeMode(true); return next; });
   };
   const submitCode = async () => {
@@ -198,7 +202,7 @@ export function AppLockGate() {
     if (retry) setWait(retry);
     setCodeErr(reasonOf(r));
   };
-  useEffect(() => { if (locked && bio) void unlockBio(true); }, [locked, bio]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (locked && bio && authed) void unlockBio(true); }, [locked, bio, authed]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (locked && !bio) setCodeMode(true); }, [locked, bio]);
 
   if (!locked) return null;
