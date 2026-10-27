@@ -114,9 +114,11 @@ export function AppLockGate() {
   const lockedRef = useRef(locked); lockedRef.current = locked;
   const unlockedAt = useRef(0);
 
+  /** Сессии на сервере больше нет (401): замок защищать нечего — показываем обычный вход, а не вечный экран блокировки. */
+  const sessionGone = useCallback(() => { setLocked(false); setCodeMode(false); setCode(''); setCodeErr(''); useAuthStore.getState().logout(); }, []);
   const refresh = useCallback(async () => {
     const r = await GET();
-    if (!r.ok) return;
+    if (!r.ok) { if (r.error === 'unauthorized') sessionGone(); return; }
     if (!r.data.enabled) { write(false); clearCode(); setLocked(false); return; }
     write(true);
     setBio(r.data.kind === 'native' ? 'native' : r.data.bio ? 'web' : null);
@@ -182,6 +184,7 @@ export function AppLockGate() {
     else { const proof = await bioProof(); if (proof) r = await POST('/unlock', proof); }
     busy.current = false;
     if (r.ok) { onUnlocked(); return; }
+    if (r.error === 'unauthorized') { sessionGone(); return; }
     if (auto) { setCodeMode(true); return; }   // сразу при запуске не вышло (отказ, браузер без жеста) — показываем код, Face ID можно повторить кнопкой
     setFails((n) => { const next = n + 1; if (next >= 3) setCodeMode(true); return next; });
   };
@@ -196,6 +199,7 @@ export function AppLockGate() {
     }
     busy.current = false;
     if (r.ok) { onUnlocked(); return; }
+    if (r.error === 'unauthorized') { sessionGone(); return; }
     setCode('');
     if (r.error === 'session_ended') { write(false); clearCode(); useAuthStore.getState().logout(); setLocked(false); return; }
     const retry = Number(r.data?.retryAfter) || 0;
