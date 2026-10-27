@@ -268,10 +268,19 @@ export const verifyBackup = async (id, { mode = 'full', target = null, internal 
     const checkOne = async (rel, k, expect, label) => {
       const head = await tg.head(k);
       if (!head) { report.missing.push(label); return; }
-      const hs = countingHash();
-      try {
-        for await (const c of decryptStream(await tg.get(k), { id: rel })) hs.feed(c);
-      } catch (e) { report.failed.push(`${label}: ${e.code ?? e.message}`); return; }
+      let hs;
+      // Обрыв сети при чтении — не повреждение: до 4 попыток с паузой; ошибки расшифровки не повторяем.
+      for (let attempt = 1; ; attempt += 1) {
+        hs = countingHash();
+        try {
+          for await (const c of decryptStream(await tg.get(k), { id: rel })) hs.feed(c);
+          break;
+        } catch (e) {
+          const net = ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ECONNABORTED', 'EAI_AGAIN'].includes(e.code) || /socket hang up|aborted|timeout/i.test(e.message ?? '');
+          if (net && attempt < 4) { await new Promise((r) => setTimeout(r, 1500 * attempt)); continue; }
+          report.failed.push(`${label}: ${e.code ?? e.message}`); return;
+        }
+      }
       if (hs.digest() !== expect.sha256 || hs.size() !== expect.size) report.failed.push(`${label}: не совпала контрольная сумма`);
       report.checked += 1;
     };
