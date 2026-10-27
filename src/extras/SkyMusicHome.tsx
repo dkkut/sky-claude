@@ -10,6 +10,7 @@ import { useMusicStore } from '@/music/serverStore';
 import { apiArtistFeed, toClientTrack } from '@/music/musicApi';
 import { SkySphere } from '@/music/SkySphere';
 import { FlowHero } from './FlowHero';
+import { DuoCard } from '@/music/Duo';
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -346,6 +347,8 @@ export const SkyMusicHome = ({
           onLike={() => { const x = cur ?? lastUnfinished; if (x) onLike(x.id); }} />
       </div>
 
+
+      <DuoCard onPlay={onPlay} />
 
       <div className="h-2"/>
 
