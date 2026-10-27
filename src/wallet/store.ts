@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import {
   CreditCard, Crown, ShoppingBag, Music2, Home, RotateCcw,
-  Gamepad2, RotateCcw, ArrowDownLeft, ArrowUpRight, Star, Gift, Landmark, Truck,
+  ArrowDownLeft, ArrowUpRight, Star, Gift, Landmark, Truck,
   Megaphone, ShieldCheck, Gem, Radio, Wallet, Ticket, Gamepad2, Sparkles,
 } from 'lucide-react';
 import type { IconComponent } from '@/shared/icon';

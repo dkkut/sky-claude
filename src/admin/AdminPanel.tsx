@@ -42,6 +42,7 @@ import { MonitoringTab } from './MonitoringTab';
 
 import { ContentModTab } from './ContentModTab';
 import { WaveAdmin } from './WaveAdmin';
+import { LauncherAdminTab } from './LauncherAdmin';
 import { ScrollTabs } from './ScrollTabs';
 import { ResourcesTab } from './ResourcesTab';
 import { RegistrationTab } from './RegistrationTab';
@@ -5577,7 +5578,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5779,6 +5780,7 @@ export const AdminPanel = () => {
     { key: 'content', label: 'Контент', show: has('content') },
     { key: 'go', label: 'Sky GO', show: has('go') },
     { key: 'parking', label: 'Парковки', show: has('parking_moderation') || has('parking') },
+    { key: 'launcher', label: 'Лаунчер', show: has('launcher_moderation') || has('launcher') },
     { key: 'goplaces', label: 'Организации GO', show: has('go_places') },
     { key: 'registration', label: 'Регистрация', show: has('registration') },
     { key: 'globalblock', label: 'Блокировки', show: has('global_block') },
@@ -6042,6 +6044,7 @@ export const AdminPanel = () => {
       {tab === 'skykassa' && <SkyKassaTab owner={Boolean(rights?.owner)} canReview={has('skykassa')} canSettings={has('skykassa_settings')} />}
       {tab === 'go' && <GoAdminTab />}
       {tab === 'goplaces' && <GoPlacesTab />}
+      {tab === 'launcher' && <LauncherAdminTab canMod={has('launcher_moderation')} canCfg={has('launcher')} />}
       {tab === 'parking' && <ParkingAdminTab canModerate={has('parking_moderation')} canOrgs={has('parking')} />}
       {tab === 'pulse' && <PrimePulseAdminSection />}
       {tab === 'campaigns' && <CampaignsAdminSection onPendingChanged={() => void loadPending()} />}
