@@ -8,6 +8,7 @@ const { query, pool } = await import('../../server/db.mjs');
 const S = await import('../../server/lservers.mjs');
 let n = 0; const ok = (c, m) => { assert.ok(c, m); n += 1; };
 const sfx = Date.now().toString(36);
+await query('DELETE FROM launcher_servers');   // тестовая база: чистим остатки прошлого прогона
 
 // поддельный Minecraft-сервер
 const varint = (v) => { const b = []; do { let x = v & 0x7f; v >>>= 7; if (v) x |= 0x80; b.push(x); } while (v); return Buffer.from(b); };
