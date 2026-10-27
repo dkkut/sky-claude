@@ -8,8 +8,9 @@
 import { query } from './db.mjs';
 import { entitlementsOf } from './entitlements.mjs';
 import { L } from './lang.mjs';
+import { duoQueue } from './musicduo.mjs';
 
-export const SHELF_IDS = ['for_you', 'continue', 'my_music', 'new', 'trending', 'similar', 'discover', 'evening', 'short', 'collection', 'recent', 'return'];
+export const SHELF_IDS = ['for_you', 'continue', 'my_music', 'new', 'trending', 'similar', 'discover', 'evening', 'short', 'collection', 'recent', 'return', 'together'];
 const PER = 12;
 const KINDS = ['music', 'film', 'video', 'podcast', 'book'];
 const CALM = /ambient|chill|lo-?fi|classical|jazz|acoustic|инструмент|классик|джаз|спокой|эмбиент|релакс/i;
@@ -19,7 +20,7 @@ export const SHELF_TITLES = () => ({
   for_you: title('Для тебя', 'For you'), continue: title('Продолжить', 'Continue'), my_music: title('Твоя музыка', 'Your music'),
   new: title('Новое в Sky', 'New in Sky'), trending: title('В тренде', 'Trending'), similar: title('Похожие на твои любимые', 'Similar to your favorites'),
   discover: title('Открой новое', 'Discover new'), evening: title('На вечер', 'For the evening'), short: title('Короткий перерыв', 'Quick break'),
-  collection: title('Твоя коллекция', 'Your collection'), recent: title('Недавно добавлено', 'Recently added'), return: title('Вернись к этому', 'Come back to this'),
+  collection: title('Твоя коллекция', 'Your collection'), together: title('Вместе интереснее', 'Better together'), recent: title('Недавно добавлено', 'Recently added'), return: title('Вернись к этому', 'Come back to this'),
 });
 
 const adultOf = async (profileId) => {
@@ -202,6 +203,15 @@ const builders = {
     b.rows.forEach((r) => items.push(item('book', r.id, r.title, L('С вашей полки', 'On your shelf'))));
     p.rows.forEach((r) => items.push(item('podcast', r.id, r.title, L('Вы подписаны', 'Subscribed'))));
     return { items, personal: true, reason: L('То, что вы сохранили', 'What you saved') };
+  },
+
+  async together(ctx) {
+    if (!ctx.prime) return { items: [] };
+    const d = (await query(`SELECT id FROM music_duo WHERE (a_id=$1 OR b_id=$1) AND status='active' ORDER BY updated_at DESC LIMIT 1`, [ctx.id])).rows[0];
+    if (!d) return { items: [] };
+    const q = await duoQueue(ctx.id, d.id);
+    if (q.error || !q.tracks?.length) return { items: [] };
+    return { items: q.tracks.map((t) => item('music', t.id, t.title, t.artist, { authorKey: `m:${String(t.artist).toLowerCase()}`, reason: t.reason })), personal: true, reason: L(`Поток на двоих с ${q.partner?.name ?? 'другом'}`, `Duo flow with ${q.partner?.name ?? 'a friend'}`) };
   },
 
   async recent(ctx) {

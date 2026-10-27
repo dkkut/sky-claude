@@ -36,7 +36,7 @@ export const WIDGETS = {
   custom:       { cat: 'custom',    sizes: ['compact', 'standard', 'wide'], cfg: { template: 'template', title: 'text', value: 'text', url: 'link' } },
 };
 
-const SHELVES_ALLOWED = ['for_you', 'continue', 'new', 'trending', 'similar', 'discover', 'evening', 'short', 'collection', 'recent', 'return'];
+const SHELVES_ALLOWED = ['for_you', 'continue', 'new', 'trending', 'similar', 'discover', 'evening', 'short', 'collection', 'recent', 'return', 'together'];
 const ACTIONS_ALLOWED = ['music', 'film', 'video', 'podcasts', 'books', 'messenger', 'wallet', 'go', 'market', 'ai', 'profile', 'storage'];
 const TEMPLATES = ['counter', 'note', 'link', 'progress'];
 const PERIODS = ['day', 'week', 'month'];
