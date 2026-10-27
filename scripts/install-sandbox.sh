@@ -48,6 +48,9 @@ install)
     [ "$WMODE" = docker ] && usermod -aG docker sky-sandbox
     chown -R sky-sandbox:sky-sandbox /var/lib/sky-sandbox; chmod 640 "$ENVF"; chgrp sky-sandbox "$ENVF"; RUNAS=sky-sandbox
   fi
+  # Node из nvm лежит в /root или /home: пользователь sky-sandbox туда не зайдёт (systemd: status=203/EXEC) — берём копию в /usr/local/bin.
+  NODE_BIN="$(command -v node)"
+  case "$NODE_BIN" in /root/*|/home/*) install -m 755 "$NODE_BIN" /usr/local/bin/sky-node; NODE_BIN=/usr/local/bin/sky-node;; esac
   cat > "$UNIT" <<U
 [Unit]
 Description=Sky Sandbox runner (${WMODE}${EXTRA:+, deploy})
@@ -56,7 +59,7 @@ After=network-online.target docker.service
 EnvironmentFile=$ENVF
 User=$RUNAS
 WorkingDirectory=$SRC
-ExecStart=$(command -v node) $SRC/sandbox/runner.mjs $EXTRA
+ExecStart=$NODE_BIN $SRC/sandbox/runner.mjs $EXTRA
 Restart=always
 RestartSec=20
 Nice=10
