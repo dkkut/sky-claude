@@ -100,7 +100,9 @@ import { sweepVersionFiles } from './musicstudio.mjs';
 import { sweepQuotes } from './gopricing.mjs';
 import { sweepFuel as goSweepFuel } from './gofuel.mjs';
 import { sweepStay as goSweepStay } from './gostay.mjs';
-import { runWithSession, currentSession } from './reqctx.mjs';
+import { runWithSession, currentSession, setAdminToken } from './reqctx.mjs';
+import { adminTokenRoutes } from './routes/admintoken.mjs';
+import { settingsOpen, isAdminProfile, sweepAdminToken } from './admintoken.mjs';
 import { auditRequest } from './auditlog.mjs';
 import { readAccessToken } from './http.mjs';
 import { sweepAdminGate } from './admingate.mjs';
@@ -263,7 +265,7 @@ const ROUTES = [profileMusicRoutes, defenseRoutes, sandboxRoutes, handoffRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageDirectRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, sshGateRoutes, ipPinRoutes, passkeyRoutes, goAdminRoutes, goRoutes, onsiteRoutes, parkingRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, staffNotifyRoutes, skyKassaRoutes];
+                violationsRoutes, storageDirectRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, adminTokenRoutes, sshGateRoutes, ipPinRoutes, passkeyRoutes, goAdminRoutes, goRoutes, onsiteRoutes, parkingRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, staffNotifyRoutes, skyKassaRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -299,7 +301,7 @@ const applyCors = (req, res) => {
   res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sky-Client, X-Sky-Build, X-Sky-Beta, X-Sky-Lang, X-Sky-Media-Url, X-Sky-Device, X-Sky-Mode, X-Sky-Invite, X-Recovery-Case');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sky-Client, X-Sky-Build, X-Sky-Beta, X-Sky-Lang, X-Sky-Media-Url, X-Sky-Device, X-Sky-Mode, X-Sky-Invite, X-Recovery-Case, X-Sky-Admin-Token');
     res.setHeader('Access-Control-Max-Age', '600');
   }
 };
@@ -332,6 +334,21 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // Защита от ошибки настройки: за nginx запрос по открытому http до API не доходит (там редирект на https), но если дошёл
     // (кто-то прокинул порт или сменил конфиг) — токены и пароли по нему не принимаем.
     if (insecureApiRequest(req, url)) return json(res, 426, { error: 'https_required' });
+
+    // Токен администратора (admintoken.mjs): уходит только в контекст запроса, читает его подтверждение личности.
+    if (url.startsWith('/api/admin') || url.startsWith('/api/owner/') || url.startsWith('/api/staff/')) setAdminToken(req.headers['x-sky-admin-token']);
+
+    // Настройки администратора: изменения в /api/admin/* и настройки уведомлений админа открываются личным токеном (30 мин на сессию).
+    if ((url.startsWith('/api/admin/') && !url.startsWith('/api/admin/gate') && req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS')
+        || /^\/api\/(owner|staff)\/notify-prefs/.test(url)) {
+      const tk = verifyToken(readAccessToken(req), config.jwtSecret);
+      if (tk?.typ === 'access' && tk.sky && tk.sid) {
+        const st = await sessionStore.get(tk.sid);
+        if (st && st.userId === tk.sky && st.profileId && await isAdminProfile(st.profileId) && !(await settingsOpen(tk.sid, st.profileId))) {
+          return json(res, 403, { error: 'admin_settings_locked' });
+        }
+      }
+    }
 
     // Ограниченная сессия (устройство не подтверждено, limitedaccess.mjs): чтение без чатов и файлов, изменения закрыты.
     // Проверяется и для /api/auth/* (смена пароля, удаление и т. п. недоступны) — разрешены только выход, обновление токена и сессия.
@@ -798,6 +815,7 @@ const start = async () => {
       // подтверждена не глядя.
       await sweepStepUp();
       await sweepAdminGate();
+      await sweepAdminToken();
       await sweepSshGate();
       await sweepDeviceLinks();
       await sweepFreezeLog();

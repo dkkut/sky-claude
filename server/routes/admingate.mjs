@@ -17,7 +17,7 @@ export const adminGateRoutes = async (req, res, url) => {
     }
     if (req.method === 'POST' && u.pathname === '/api/admin/gate/confirm') {
       const body = await parseBody(req);
-      const r = await confirmLink(body?.t, body?.code);
+      const r = await confirmLink(body?.t, body?.code, body?.adminToken);
       return json(res, r.error ? (r.error === 'invalid_link' ? 404 : 400) : 200, r);
     }
     if (req.method === 'POST' && u.pathname === '/api/admin/gate/panic') {

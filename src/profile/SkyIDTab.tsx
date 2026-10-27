@@ -28,6 +28,7 @@ import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
 import { IpPinSettings } from '@/auth/IpPin';
 import { PasskeySettings } from '@/auth/Passkeys';
 import { AppLockSettings } from '@/auth/AppLock';
+import { AdminTokenSettings } from '@/admin/AdminTokenSettings';
 import { LimitedAccessSettings } from '@/auth/LimitedAccess';
 import { ConnectedServices } from '@/oidc/ConnectedServices';
 import { DeviceLinkButton } from '@/auth/DeviceLinkPhone';
@@ -1028,6 +1029,7 @@ const SecuritySection = () => {
       <IpPinSettings />
       <PasskeySettings />
       <AppLockSettings />
+      <AdminTokenSettings />
       <LimitedAccessSettings />
       <ConnectedServices />
 

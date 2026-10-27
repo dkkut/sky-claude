@@ -1,3 +1,4 @@
+import { AdminSettingsLock } from '@/admin/AdminTokenSettings';
 import { APP_FONTS } from '../settings/fonts';
 import { tr } from '@/i18n';
 import { PrivacyExceptions } from './PrivacyExceptions';
@@ -1610,8 +1611,10 @@ export const ProfileModule = () => {
         {section === 'settings' && (
           <div className="flex flex-col min-h-0 h-full overflow-hidden">
             <div className="flex-1 overflow-y-auto" style={{scrollbarWidth:'none'}}>
-              <SettingsSection logout={logout} username={me.username}
-                onOpen={setSection}/>
+              <AdminSettingsLock>
+                <SettingsSection logout={logout} username={me.username}
+                  onOpen={setSection}/>
+              </AdminSettingsLock>
             </div>
           </div>
         )}

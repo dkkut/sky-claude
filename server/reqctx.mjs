@@ -18,3 +18,7 @@ export const currentSession = () => als.getStore() ?? null;
 
 /** Кто делает запрос (профиль, а до выбора профиля — Sky ID): ставит readSession, читает журнал запросов в конце. */
 export const setRequestActor = (id) => { const st = als.getStore(); if (st && id && !st.actor) st.actor = String(id); };
+
+/** Токен администратора, пришедший с этим запросом (заголовок или поле сообщения сокета): читает adminsec.consumeStepUp. Нигде не пишется. */
+export const setAdminToken = (t) => { const st = als.getStore(); if (st) st.adminToken = t ? String(t).slice(0, 80) : ''; };
+export const getAdminToken = () => als.getStore()?.adminToken ?? '';

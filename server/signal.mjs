@@ -16,7 +16,7 @@ import { applockBlocked } from './applock.mjs';
 import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.mjs';
 import { verifyToken, rateLimit, rateLimitPerHour } from './security.mjs';
-import { runWithSession } from './reqctx.mjs';
+import { runWithSession, setAdminToken } from './reqctx.mjs';
 import { sessionStore, onSessionRevoked } from './sessions.mjs';
 import { query } from './db.mjs';
 import { BETA_COOKIE, parseCookies } from './cookies.mjs';
@@ -648,6 +648,7 @@ const handle = async (ws, session, msg) => {
       const meta = ws.adminMeta ?? {};
       const failAdm = (error, extra = {}) =>
         send(ws, { type: 'admin-error', payload: { action, error, ...extra } });
+      setAdminToken(payload?.adminToken);
 
       // Единственный ответ незнающему: «нельзя». По разнице ответов
       // нельзя выяснять, кто есть в базе, а кто нет.

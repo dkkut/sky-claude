@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Shield, Mail, Loader2, ShieldAlert, ShieldCheck, Power, Siren } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 
-interface Status { admin: boolean; enabled?: boolean; canPass?: boolean; open?: boolean; pending?: boolean; missing?: { email: boolean; twoFactor: boolean }; emailHint?: string | null }
+interface Status { admin: boolean; enabled?: boolean; canPass?: boolean; open?: boolean; pending?: boolean; missing?: { email: boolean; twoFactor: boolean; token?: boolean }; emailHint?: string | null }
 
 const REQ_ERR: Record<string, string> = {
   email_required: 'К аккаунту не привязана подтверждённая почта.',
@@ -49,7 +49,7 @@ export const AdminGateScreen = ({ onOpened }: { onOpened: () => void }) => {
       {!st ? <Loader2 size={18} className="animate-spin" style={{ color: 'var(--t3)' }} /> : (
         <>
           <p className="max-w-[320px] text-[12.5px] leading-relaxed" style={{ color: 'var(--t3)' }}>
-            Мы отправили ссылку на почту {st.emailHint ? <b translate="no">{st.emailHint}</b> : 'аккаунта'}. Откройте её, нажмите «Авторизоваться» и введите код из аутентификатора.
+            Мы отправили ссылку на почту {st.emailHint ? <b translate="no">{st.emailHint}</b> : 'аккаунта'}. Откройте её, нажмите «Авторизоваться» и введите код из аутентификатора и личный токен администратора.
             Эта страница откроется сама.
           </p>
           <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--t3)' }}><Loader2 size={13} className="animate-spin" /> Ждём подтверждения…</div>
@@ -58,7 +58,7 @@ export const AdminGateScreen = ({ onOpened }: { onOpened: () => void }) => {
           </button>
           {st.canPass === false && (
             <p className="max-w-[320px] text-[12px]" style={{ color: 'var(--red)' }}>
-              {st.missing?.email ? 'Привяжите и подтвердите почту. ' : ''}{st.missing?.twoFactor ? 'Включите аутентификатор в настройках Sky ID.' : ''}
+              {st.missing?.email ? 'Привяжите и подтвердите почту. ' : ''}{st.missing?.twoFactor ? 'Включите аутентификатор в настройках Sky ID. ' : ''}{st.missing?.token ? 'Создайте личный токен: Профиль → Sky ID → «Токен администратора».' : ''}
             </p>
           )}
         </>
@@ -75,7 +75,7 @@ type Phase = 'loading' | 'invalid' | 'ready' | 'code' | 'done' | 'panic' | 'pani
 
 const fmt = (iso: string) => new Date(iso).toLocaleString();
 const CONFIRM_ERR: Record<string, string> = {
-  bad_code: 'Код не подошёл.', code_exhausted: 'Слишком много попыток — запросите новую ссылку.',
+  bad_code: 'Код не подошёл.', admin_token_required: 'Введите токен администратора.', admin_token_invalid: 'Токен администратора не подошёл.', admin_token_missing: 'Токен ещё не создан: Профиль → Sky ID → «Токен администратора».', admin_token_blocked: 'Слишком много неверных токенов — подождите.', code_exhausted: 'Слишком много попыток — запросите новую ссылку.',
   two_factor_required: 'У аккаунта не включён аутентификатор.', session_gone: 'Сессия, из которой запрошен вход, уже закрыта.',
   too_many_requests: 'Слишком часто. Подождите минуту.',
 };
@@ -91,6 +91,7 @@ export const AdminVerifyPage = ({ kind = 'admin' }: { kind?: 'admin' | 'ssh' }) 
   const [phase, setPhase] = useState<Phase>('loading');
   const [info, setInfo] = useState<LinkInfo | null>(null);
   const [code, setCode] = useState('');
+  const [tok, setTok] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -102,7 +103,7 @@ export const AdminVerifyPage = ({ kind = 'admin' }: { kind?: 'admin' | 'ssh' }) 
 
   const confirm = async () => {
     setBusy(true); setErr('');
-    const r = await apiCall<{ left?: number }>(`${base}/confirm`, { method: 'POST', body: JSON.stringify({ t: token, code: code.trim() }) });
+    const r = await apiCall<{ left?: number }>(`${base}/confirm`, { method: 'POST', body: JSON.stringify({ t: token, code: code.trim(), adminToken: tok.trim() }) });
     setBusy(false);
     if (r.ok) { setPhase('done'); return; }
     if (r.error === 'invalid_link') { setPhase('invalid'); return; }
@@ -144,11 +145,14 @@ export const AdminVerifyPage = ({ kind = 'admin' }: { kind?: 'admin' | 'ssh' }) 
             )}
             {phase === 'code' && (
               <div className="space-y-3">
-                <p className="text-[12.5px]" style={{ color: 'var(--t2)' }}>Введите шестизначный код из приложения-аутентификатора.</p>
+                <p className="text-[12.5px]" style={{ color: 'var(--t2)' }}>{ssh ? 'Введите шестизначный код из приложения-аутентификатора.' : 'Введите шестизначный код из приложения-аутентификатора и личный токен администратора.'}</p>
                 <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoFocus placeholder="000000" aria-label="Код из аутентификатора"
                   className="w-full rounded-full px-5 py-3 text-center text-[20px] font-bold tracking-[0.4em] outline-none" style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6) void confirm(); }} />
-                <button type="button" disabled={busy || code.length !== 6} onClick={() => void confirm()} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}>{busy ? 'Проверяем…' : 'Подтвердить вход'}</button>
+                  onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6 && (ssh || tok.trim())) void confirm(); }} />
+                {!ssh && <input value={tok} onChange={(e) => setTok(e.target.value)} autoComplete="off" spellCheck={false} placeholder="Токен администратора" aria-label="Токен администратора" translate="no"
+                  className="w-full rounded-full px-5 py-3 text-center text-[14px] font-semibold outline-none" style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)', letterSpacing: '.04em' }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6 && tok.trim()) void confirm(); }} />}
+                <button type="button" disabled={busy || code.length !== 6 || (!ssh && !tok.trim())} onClick={() => void confirm()} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}>{busy ? 'Проверяем…' : 'Подтвердить вход'}</button>
                 <button type="button" onClick={() => { setPhase('ready'); setErr(''); }} className="w-full text-[12.5px]" style={{ color: 'var(--t3)' }}>Назад</button>
               </div>
             )}

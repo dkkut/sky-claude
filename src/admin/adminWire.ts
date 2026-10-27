@@ -14,6 +14,7 @@
  * владельца. Их присылал бы тот, чьи права мы и проверяем.
  */
 import { wireSend } from '@/core/wire';
+import { getAdminTokenCached, askAdminToken, isAdminTokenError } from '@/core/auth/adminTokenCache';
 import { onAdminMessage } from '@/messenger/socket';
 
 /** Права по направлениям. Список ведёт сервер — здесь только подписи. */
@@ -295,9 +296,9 @@ export const adminCall = (payload: Record<string, unknown>, ms = 12_000) =>
       if (i >= 0) waiting.splice(i, 1);
       finish({ type: 'admin-error', payload: { error: 'timeout' } });
     }, ms);
-    const wrapped = (a: Answer) => { clearTimeout(timer); finish(a); };
+    const wrapped = (a: Answer) => { clearTimeout(timer); if (a.type === 'admin-error' && isAdminTokenError(String(a.payload?.error ?? ''))) askAdminToken(String(a.payload?.error)); finish(a); };
     waiting[waiting.indexOf(finish)] = wrapped;
-    wireSend({ type: 'admin', payload });
+    wireSend({ type: 'admin', payload: getAdminTokenCached() ? { ...payload, adminToken: getAdminTokenCached() } : payload });
   });
 
 /** Почему сервер отказал — человеческими словами. */
@@ -340,6 +341,10 @@ export const ADMIN_ERROR: Record<string, string> = {
   banned: 'Профиль забанен',
   too_many_requests: 'Слишком часто, подождите',
   timeout: 'Сервер не ответил',
+  admin_token_required: 'Введите токен администратора',
+  admin_token_invalid: 'Токен администратора не подошёл',
+  admin_token_missing: 'Токен администратора ещё не создан: Профиль → Sky ID',
+  admin_token_blocked: 'Слишком много неверных токенов — подождите',
 };
 
 export const errorText = (code?: string) =>

@@ -25,6 +25,7 @@ import { logAdmin, logSecurityEvent } from './adminsec.mjs';
 import { rateLimitPerHour } from './security.mjs';
 import { L } from './lang.mjs';
 import { ipMask, ipFp } from './ipmask.mjs';
+import { verifyToken as verifyAdminToken, tokenRequired, tokenState } from './admintoken.mjs';
 
 const LINK_TTL_MIN = 15;
 const OPEN_HOURS = 8;
@@ -59,12 +60,15 @@ export const gateStatus = async (sid, profileId) => {
   const { rows: pend } = await query(
     `SELECT created_at, expires_at FROM admin_gate_requests
       WHERE sid = $1 AND profile_id = $2 AND used_at IS NULL AND expires_at > now() ORDER BY created_at DESC LIMIT 1`, [sid, profileId]);
-  const canPass = Boolean(who.email && who.twoFactor);
+  const tok = await tokenState(profileId);
+  const needToken = tok.required;
+  const canPass = Boolean(who.email && who.twoFactor && (!needToken || tok.has));
   return {
     admin: true, enabled: process.env.ADMIN_GATE !== 'off', canPass,
     open: Boolean(rows[0]), openUntil: rows[0]?.expires_at.toISOString() ?? null,
     pending: Boolean(pend[0]), pendingSince: pend[0]?.created_at.toISOString() ?? null,
-    missing: { email: !who.email, twoFactor: !who.twoFactor },
+    missing: { email: !who.email, twoFactor: !who.twoFactor, token: needToken && !tok.has },
+    tokenRequired: needToken,
     emailHint: who.email ? who.email.replace(/^(.).*(@.*)$/, '$1•••$2') : null,
   };
 };
@@ -119,7 +123,7 @@ export const inspectLink = async (token) => {
 };
 
 /** «Авторизоваться»: верный код из аутентификатора открывает шлюз для сессии, откуда пришёл запрос. */
-export const confirmLink = async (token, code) => {
+export const confirmLink = async (token, code, adminToken = '') => {
   const r = await liveRequest(token);
   if (!r) return { error: 'invalid_link' };
   const who = await adminNow(r.profile_id);
@@ -139,6 +143,17 @@ export const confirmLink = async (token, code) => {
       return { error: 'code_exhausted' };
     }
     return { error: 'bad_code', left: CODE_ATTEMPTS - (rows[0]?.attempts ?? 0) };
+  }
+  // Личный токен: третий фактор. Неверный считается и как попытка по ссылке.
+  if (tokenRequired()) {
+    const tk = await verifyAdminToken(r.profile_id, adminToken);
+    if (tk.error) {
+      if (tk.error === 'admin_token_invalid') {
+        const { rows } = await query('UPDATE admin_gate_requests SET attempts = attempts + 1 WHERE id = $1 RETURNING attempts', [r.id]);
+        if ((rows[0]?.attempts ?? 0) >= CODE_ATTEMPTS) { await query('UPDATE admin_gate_requests SET used_at = now(), outcome = $2 WHERE id = $1', [r.id, 'exhausted']); return { error: 'code_exhausted' }; }
+      }
+      return tk;
+    }
   }
   // Сессия должна ещё жить: иначе открывать шлюз некому.
   const stored = await sessionStore.get(r.sid);

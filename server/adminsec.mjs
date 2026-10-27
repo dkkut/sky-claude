@@ -34,6 +34,8 @@
  * действии. Ни роль, ни право, ни признак владельца не читаются из
  * запроса никогда — их присылает тот, чьи права мы и проверяем.
  */
+import { getAdminToken } from './reqctx.mjs';
+import { verifyToken as verifyAdminTokenRaw, isAdminProfile, tokenRequired } from './admintoken.mjs';
 import { logEvent as skyLog } from './skylog.mjs';
 import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
@@ -364,12 +366,19 @@ export const beginStepUp = async (actorId, purpose, { meta = {} } = {}) => {
  * Возвращает true ровно один раз: повторить то же подтверждение вторым
  * действием нельзя. Сравнение идёт побайтово постоянным временем.
  */
+const verifyAdminToken = async (actorId, raw) => {
+  if (!tokenRequired() || !(await isAdminProfile(actorId))) return { ok: true };
+  return verifyAdminTokenRaw(actorId, raw);
+};
+
 export const consumeStepUp = async (actorId, purpose, code, { meta = {} } = {}) => {
   const clean = String(purpose ?? '').slice(0, 60);
   /* Кода нет вовсе — это «подтверди личность», а не «код не тот».
      Отвечать «не тот» на пустой код значило бы подсказывать, есть ли
      сейчас живое подтверждение, и попусту тратить попытку. */
   if (!String(code ?? '').trim()) return { error: 'step_up_required' };
+  /* Личный токен администратора (admintoken.mjs) — вместе с кодом, до расходования попытки кода. */
+  { const tk = await verifyAdminToken(actorId, getAdminToken()); if (tk.error) return tk; }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
