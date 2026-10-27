@@ -14,7 +14,7 @@ export const mkuser = async (S, tag, username) => {
   let r = await call('/api/auth/email/verify', { method: 'POST', body: JSON.stringify({ email, code }) });
   let tok = r.data.accessToken;
   r = await call('/api/skyid/profiles', { method: 'POST', body: JSON.stringify({ name: tag, username: username || tag + Date.now().toString(36), acceptLegal: true }) }, tok);
-  const pid = r.data.profile.id;
+  if (!r.data.profile) throw new Error(JSON.stringify(r.data)); const pid = r.data.profile.id;
   r = await call(`/api/skyid/profiles/${pid}/select`, { method: 'POST', body: '{}' }, tok);
   return { tok: r.data.accessToken ?? tok, pid, email };
 };

@@ -169,6 +169,31 @@ server {
     # -- Sky Transfer: куски файла до 4 МБ ------------------------
     #  Общий потолок тела 1m резал бы куски по 1–4 МБ ещё на nginx.
     #  Размер куска проверяет приложение (256 КБ – 4 МБ).
+    # Sky Launcher: загрузка файлов сборок владельцем (до 4 ГБ на файл) и раздача файлов игрокам — потоком, без буферизации.
+    location ^~ /api/launcher/dev/builds/ {
+        limit_req zone=req_general burst=300 nodelay;
+        client_max_body_size 4096m;
+        proxy_request_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 4h;
+        proxy_send_timeout 4h;
+        proxy_pass http://sky_api;
+    }
+    location ^~ /api/launcher/blob/ {
+        limit_req zone=req_general burst=300 nodelay;
+        proxy_buffering off;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 4h;
+        proxy_send_timeout 4h;
+        proxy_pass http://sky_api;
+    }
+    location ^~ /api/launcher/dev/games/ {
+        limit_req zone=req_general burst=100 nodelay;
+        client_max_body_size 2m;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_pass http://sky_api;
+    }
+
     location ^~ /api/transfer/ {
         limit_req zone=req_general burst=300 nodelay;
         client_max_body_size 5m;

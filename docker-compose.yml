@@ -116,6 +116,11 @@ services:
       # резервную копию, а при выдаче прошёл бы через память целиком.
       MUSIC_DIR:             /data/music
       TRANSFER_DIR:          /data/transfer
+      LAUNCHER_DIR:          /data/launcher
+      LAUNCHER_MAX_FILE_BYTES:  ${LAUNCHER_MAX_FILE_BYTES:-}
+      LAUNCHER_MAX_BUILD_BYTES: ${LAUNCHER_MAX_BUILD_BYTES:-}
+      LAUNCHER_AV_CMD:       ${LAUNCHER_AV_CMD:-}
+      LAUNCHER_AV_ARGS:      ${LAUNCHER_AV_ARGS:-}
       TRANSFER_MAX_MB:       ${TRANSFER_MAX_MB:-}
       # Сайт (лендинг): файлы приложений для скачивания и вложения апелляций/заявок — в томе, не в образе.
       SITE_DIR:              /data/site
@@ -301,6 +306,7 @@ services:
       - music-data:/data/music
       # Sky Transfer: временные куски передач между устройствами (удаляются после получения/срока).
       - transfer-data:/data/transfer
+      - launcher-data:/data/launcher
       - film-data:/data/film
       - site-data:/data/site
       - podcast-data:/data/podcasts
@@ -451,6 +457,7 @@ volumes:
   postgres-data:
   redis-data:
   music-data:
+  launcher-data:
   transfer-data:
   film-data:
   site-data:

@@ -10,9 +10,13 @@ const ERR = { not_found: 404, forbidden: 403, invalid: 400, too_many: 429, bad_s
 const code = (r) => ERR[r.error] ?? 400;
 
 const readRaw = (req, limit) => new Promise((resolve, reject) => {
-  const chunks = []; let n = 0;
-  req.on('data', (c) => { n += c.length; if (n > limit) { reject(Object.assign(new Error('too_large'), { code: 'too_large' })); req.destroy(); } else chunks.push(c); });
-  req.on('end', () => resolve(Buffer.concat(chunks))); req.on('error', reject);
+  const chunks = []; let n = 0; let big = false;
+  req.on('data', (c) => {
+    n += c.length;
+    if (n > limit) { big = true; chunks.length = 0; if (n > limit * 6) req.destroy(); return; }   // лишнее вычитываем, чтобы ответить 413, а не оборвать соединение
+    chunks.push(c);
+  });
+  req.on('end', () => (big ? reject(Object.assign(new Error('too_large'), { code: 'too_large' })) : resolve(Buffer.concat(chunks)))); req.on('error', reject);
 });
 
 /** Sky Game Launcher: каталог, библиотека, загрузка файлов (игроки), кабинет владельца (/dev) и модерация (/api/admin/launcher/games). */
