@@ -109,6 +109,7 @@ export function AppLockGate() {
   const busy = useRef(false);
   const hiddenAt = useRef<number | null>(null);
   const lockedRef = useRef(locked); lockedRef.current = locked;
+  const unlockedAt = useRef(0);
 
   const refresh = useCallback(async () => {
     const r = await GET();
@@ -122,11 +123,13 @@ export function AppLockGate() {
       coldChecked = true;
       if (!isLocked && !r.data.fresh) { await POST('/lock'); isLocked = true; }
     }
+    /* Замок уже показан, а сервер отвечает «открыт» (расхождение: 423 на запросе, сигнал сокета, уход в фон): экран мигал и пускал без кода.
+       Закрываем сессию на сервере и держим замок, пока не введён код — снимает его только сам ввод (onUnlocked). */
+    if (lockedRef.current && !isLocked && Date.now() - unlockedAt.current > 4000) { await POST('/lock'); isLocked = true; }
     setLocked(isLocked);
     if (!isLocked) setCodeMode(false);
   }, []);
   const lockNow = useCallback(() => { setFails(0); setCode(''); setCodeErr(''); setLocked(true); void refresh(); }, [refresh]);
-  const unlockedAt = useRef(0);
   const onUnlocked = () => { unlockedAt.current = Date.now(); setFails(0); setCode(''); setCodeErr(''); setCodeMode(false); setLocked(false); window.dispatchEvent(new CustomEvent('sky:applock-unlocked')); };
 
   useEffect(() => { if (authed) void refresh(); }, [authed, refresh]);
