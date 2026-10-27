@@ -18,7 +18,7 @@
  * не зависит от "type": "module" в package.json — только этот файл и
  * preload.cjs остаются CommonJS, весь остальной проект как был ESM.
  */
-const { app, BrowserWindow, shell, Menu, session, protocol, ipcMain, safeStorage, globalShortcut, screen, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, shell, Menu, session, protocol, ipcMain, safeStorage, globalShortcut, screen, Tray, nativeImage, dialog } = require('electron');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -155,6 +155,38 @@ app.on('login', (event, _wc, _req, authInfo, callback) => {
 const publicProxyView = (cfg) => cfg
   ? { enabled: Boolean(cfg.enabled), type: cfg.type, host: cfg.host, port: cfg.port, username: cfg.username || '', hasPassword: Boolean(cfg.password) }
   : { enabled: false, type: 'http', host: '', port: 8080, username: '', hasPassword: false };
+
+
+/* ───── Sky Launcher: установка и запуск игр ─────
+   Менеджер создаётся лениво — только когда человек открыл «Лаунчер» и вызвал init: пока вкладка не использовалась, ни кода, ни таймеров нет.
+   Токен приходит из окна (при каждом обновлении), адрес API — тот же, что у приложения. Допустимые методы — закрытый список. */
+let launcherMgr = null; let launcherToken = '';
+const LAUNCHER_METHODS = new Set(['install', 'update', 'pause', 'resume', 'cancel', 'tasks', 'installed', 'verify', 'uninstall', 'launch', 'running', 'adopt', 'setLimits', 'freeSpace']);
+ipcMain.handle('launcher:init', (_e, o) => {
+  if (!launcherMgr) {
+    const { createManager } = require('./launcher.cjs');
+    const origin = String(o && o.apiOrigin || '');
+    if (!/^https:\/\/[A-Za-z0-9.-]+(:\d+)?$/.test(origin) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return { error: 'bad_origin' };
+    const root = path.join(app.getPath('home'), 'Sky Games');
+    launcherMgr = createManager({
+      apiOrigin: origin, getToken: async () => launcherToken, root, statePath: path.join(app.getPath('userData'), 'launcher-state.json'),
+      onEvent: (ev) => { for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send('launcher:event', ev); } },
+    });
+  }
+  launcherToken = String(o && o.token || launcherToken);
+  return { ok: true, root: launcherMgr.config.root };
+});
+ipcMain.handle('launcher:token', (_e, t) => { launcherToken = String(t || ''); return true; });
+ipcMain.handle('launcher:call', async (_e, method, args) => {
+  if (!launcherMgr) return { error: 'not_initialized' };
+  if (!LAUNCHER_METHODS.has(method)) return { error: 'bad_method' };
+  try { return await launcherMgr[method](...(Array.isArray(args) ? args.slice(0, 3) : [])); } catch (err) { return { error: String(err && err.message || err).slice(0, 80) }; }
+});
+ipcMain.handle('launcher:pick-folder', async () => {
+  const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'], title: 'Папка для установки игры' });
+  return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+});
+ipcMain.handle('launcher:shutdown', () => { if (launcherMgr) launcherMgr.stopAll(); return true; });
 
 ipcMain.handle('proxy:get', () => ({ ok: true, cfg: publicProxyView(loadProxyConfig()), encrypted: safeStorage.isEncryptionAvailable() }));
 ipcMain.handle('proxy:apply', async (_event, raw) => {

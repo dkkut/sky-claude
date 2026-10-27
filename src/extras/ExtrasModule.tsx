@@ -37,6 +37,7 @@ const SkyPrime = lazyChunk(() => import('./SkyPrime').then(m => ({ default: m.Sk
 const TogetherTab = lazyChunk(() => import('@/together/TogetherTab').then(m => ({ default: m.TogetherTab })));
 const SkyBlox = lazyChunk(() => import('@/blox/SkyBlox').then(m => ({ default: m.SkyBlox })));
 const CloudGaming = lazyChunk(() => import('@/cloud/CloudGaming').then(m => ({ default: m.CloudGaming })));
+const Launcher = lazyChunk(() => import('@/launcher/Launcher').then(m => ({ default: m.Launcher })));
 const SkyCloud = lazyChunk(() => import('@/cloud/SkyCloud').then(m => ({ default: m.SkyCloud })));
 const SkyTransfer = lazyChunk(() => import('@/transfer/SkyTransfer').then(m => ({ default: m.SkyTransfer })));
 const GuidePage = lazyChunk(() => import('@/guide/GuidePage').then(m => ({ default: m.GuidePage })));
@@ -514,7 +515,7 @@ const AdminPanel = () => {
 
 
 /* === MORE TAB  -  Прочее ==================================== */
-type MoreView = 'hub' | 'cloudgaming' | 'cloud';
+type MoreView = 'hub' | 'cloudgaming' | 'cloud' | 'launcher';
 
 const MoreTab = () => {
   const [view, setView] = useState<MoreView>('hub');
@@ -526,18 +527,21 @@ const MoreTab = () => {
           className="glass-btn round">
           <ChevronLeft size={16} style={{color:'var(--t2)'}}/>
         </button>
-        {view === 'cloud' ? <HardDrive size={22} style={{color:'var(--t1)'}}/> : <Cloud size={22} style={{color:'var(--t1)'}}/>}
-        <p className="text-sm font-bold" style={{color:'var(--t1)'}}>{view === 'cloud' ? 'Sky Cloud' : 'Sky Gaming Cloud'}</p>
+        {view === 'cloud' ? <HardDrive size={22} style={{color:'var(--t1)'}}/> : view === 'launcher' ? <Gamepad2 size={22} style={{color:'var(--t1)'}}/> : <Cloud size={22} style={{color:'var(--t1)'}}/>}
+        <p className="text-sm font-bold" style={{color:'var(--t1)'}}>{view === 'cloud' ? 'Sky Cloud' : view === 'launcher' ? 'Лаунчер' : 'Sky Gaming Cloud'}</p>
       </div>
       <div className="flex-1 overflow-hidden">
         <ModuleGate id={view}>
-          <React.Suspense fallback={<TabFallback/>}>{view === 'cloud' ? <SkyCloud/> : <CloudGaming/>}</React.Suspense>
+          <React.Suspense fallback={<TabFallback/>}>{view === 'cloud' ? <SkyCloud/> : view === 'launcher' ? <Launcher/> : <CloudGaming/>}</React.Suspense>
         </ModuleGate>
       </div>
     </div>
   );
 
   const MORE_APPS = [
+    { key:'launcher' as MoreView, Icon:Gamepad2, label:'Лаунчер',
+      desc:'GTA V, Minecraft и игры Sky',
+      color:'#6366f1', badge:0 },
     { key:'cloudgaming' as MoreView, Icon:Cloud, label:'Sky Gaming Cloud',
       desc:'Облачный гейминг — скоро',
       color:'#8b5cf6', badge:0 },

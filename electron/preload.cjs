@@ -20,6 +20,14 @@ contextBridge.exposeInMainWorld('sky', {
     reach: (cfg) => ipcRenderer.invoke('proxy:reach', cfg),
   },
   setAppIcon: (dataUrl) => ipcRenderer.invoke('app:set-icon', dataUrl),
+  launcher: {
+    init: (opts) => ipcRenderer.invoke('launcher:init', opts),
+    setToken: (t) => ipcRenderer.invoke('launcher:token', t),
+    call: (method, ...args) => ipcRenderer.invoke('launcher:call', method, args),
+    pickFolder: () => ipcRenderer.invoke('launcher:pick-folder'),
+    pauseAll: () => ipcRenderer.invoke('launcher:shutdown'),
+    onEvent: (fn) => { const l = (_e, ev) => fn(ev); ipcRenderer.on('launcher:event', l); return () => ipcRenderer.removeListener('launcher:event', l); },
+  },
   gameDetect: {
     set: (on) => ipcRenderer.send('sky:game-detect', Boolean(on)),
     onDetected: (fn) => {

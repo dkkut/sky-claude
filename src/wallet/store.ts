@@ -70,6 +70,8 @@ export type TxType =
   | 'kbiz_sub'              // подписка SkyKassa Business
   | 'code_points'           // баллы по коду Sky Codes
   | 'cashback'              // кэшбэк Prime Points за заказ Sky Market
+  | 'launcher_placement'    // размещение игры в Sky Launcher (499 ₽)
+  | 'launcher_refund'       // возврат платы за размещение игры
   | 'prime_reward'          // обмен баллов на награду Prime
   | 'prime_reward_refund'   // возврат баллов за отклонённую награду
   | 'blox_purchase'         // покупка в игре Sky Blox
@@ -98,6 +100,8 @@ export const TX_LABEL: Record<TxType, string> = {
   courier_earning:      'Заработок курьера',
   ads:                  'Реклама',
   family_prime:         'Sky Prime Family',
+  launcher_placement:   'Размещение игры в Sky Launcher',
+  launcher_refund:      'Возврат за размещение игры',
   garant_refund:        'Возврат Sky Garant',
   garant_subscription:  'Sky Garant Pro',
   kutrent_topup:        'Пополнение KutRent Market',

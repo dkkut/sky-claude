@@ -117,6 +117,15 @@ declare global {
         set: (on: boolean) => void;
         onDetected: (fn: (gameId: string | null) => void) => () => void;
       };
+      /** Установка и запуск игр Sky Game Launcher (Windows-приложение). Менеджер в главном процессе создаётся при первом init. */
+      launcher?: {
+        init: (o: { apiOrigin: string; token: string }) => Promise<{ ok?: boolean; root?: string; error?: string }>;
+        setToken: (t: string) => Promise<boolean>;
+        call: (method: string, ...args: unknown[]) => Promise<any>;
+        pickFolder: () => Promise<string | null>;
+        pauseAll: () => Promise<boolean>;
+        onEvent: (fn: (ev: any) => void) => () => void;
+      };
       quickActions: {
         hide: () => void;
         focusMain: () => void;
