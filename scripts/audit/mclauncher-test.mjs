@@ -118,12 +118,12 @@ ok(mc.authStatus().phase === 'done' && mc.account().name === 'Steve', 'вход 
 ok(!JSON.stringify(mc.account()).includes('MCTOKEN') && !JSON.stringify(events).includes('MCTOKEN') && !JSON.stringify(events).includes('RT'), 'токены не попадают в ответ и события');
 ok(JSON.parse(secret).refresh === 'RT', 'в хранилище секретов лежит только refresh-токен');
 
-const L = await mc.launch({ version: '1.20.4', instance: 'Моя сборка', memoryMb: 3000, server: { host: 'play.example.com', port: 25570 } });
+const L = await mc.launch({ version: '1.20.4', instance: 'Моя сборка', memoryMb: 3000 });
 await new Promise((r2) => setTimeout(r2, 500));
 const argv = fs.readFileSync(argsOut, 'utf8').split('\n');
 ok(L.ok && argv[0] === '-Xmx3000M', 'запуск: память задана');
 ok(argv.includes('MCTOKEN') && argv.includes('Steve') && argv.includes('net.minecraft.client.main.Main'), 'запуск: имя, токен игры и главный класс');
-ok(argv.includes('--quickPlayMultiplayer') && argv.includes('play.example.com:25570'), 'запуск: быстрое подключение к серверу');
+ok(!argv.some((x) => /quickPlay|play\.example|--server|--port/.test(x)), 'запуск без подключения к серверу: игра открывается в главное меню');
 ok(!argv.includes('--demo'), 'демо-режим не включается');
 ok(argv.some((x) => x.includes(path.join('libraries', 'a', 'b', '1', 'b-1.jar'))) && !argv.some((x) => x.includes('m/c.jar')), 'classpath из подходящих библиотек');
 ok(fs.existsSync(path.join(R, 'instances')) && fs.readdirSync(path.join(R, 'instances')).length === 1, 'папка профиля создана внутри instances');

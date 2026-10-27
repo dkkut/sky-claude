@@ -1,12 +1,8 @@
 /* Minecraft в Windows-приложении: установка с серверов Mojang, вход Microsoft, запуск. В вебе и на Android — только объяснение. */
 import React, { useCallback, useEffect, useState } from 'react';
 import { Download, Play, LogIn, LogOut, RefreshCw, Trash2 } from 'lucide-react';
-import { create } from 'zustand';
 import { launcherNative } from './native';
 import { Btn, Note, GLASS, inputStyle } from './ui';
-
-/** Куда подключиться при запуске (выбирается в окне подключения сервера каталога). */
-export const useMcTarget = create<{ target: { host: string; port: number; name: string } | null; set: (t: { host: string; port: number; name: string } | null) => void }>((set) => ({ target: null, set: (target) => set({ target }) }));
 
 const CID = (import.meta.env.VITE_MS_CLIENT_ID as string | undefined) ?? '';
 const mc = (method: string, ...a: unknown[]) => launcherNative()?.mc(CID, method, ...a) ?? Promise.resolve({ error: 'not_native' });
@@ -25,7 +21,6 @@ export const MinecraftPanel = () => {
   const [acc, setAcc] = useState<{ name: string } | null>(null); const [auth, setAuth] = useState<any>({ phase: 'idle' });
   const [prog, setProg] = useState<{ stage: string; done: number; total: number } | null>(null); const [err, setErr] = useState(''); const [note, setNote] = useState('');
   const [running, setRunning] = useState<string[]>([]); const [mem, setMem] = useState(2048); const [snap, setSnap] = useState(false);
-  const target = useMcTarget((s) => s.target); const setTarget = useMcTarget((s) => s.set);
 
   const refresh = useCallback(async () => {
     const [i, a, r] = await Promise.all([mc('installed'), mc('account'), mc('running')]);
@@ -50,7 +45,7 @@ export const MinecraftPanel = () => {
   const login = async () => { setErr(''); const r = await mc('authStart'); if (r?.error) { setErr(msg(r.error)); return; } setAuth({ phase: 'waiting', ...r }); const t = window.setInterval(async () => { const s = await mc('authStatus'); setAuth(s); if (s.phase !== 'waiting') { window.clearInterval(t); void refresh(); if (s.phase === 'error') setErr(msg(s.error)); } }, 3000); };
   const play = async (version: string) => {
     setErr(''); setNote('');
-    const r = await mc('launch', { version, instance: 'default', memoryMb: mem, server: target ? { host: target.host, port: target.port } : undefined });
+    const r = await mc('launch', { version, instance: 'default', memoryMb: mem });
     if (r?.error) setErr(r.error === 'java_missing' ? `Нужна Java ${r.need}${r.have ? ` (найдена ${r.have})` : ''}. Установите её с adoptium.net и повторите.` : msg(r.error)); else { setNote('Игра запускается…'); void refresh(); }
   };
   const label = { manifest: 'Манифест', client: 'Клиент', libraries: 'Библиотеки', assets: 'Ресурсы', done: 'Готово' } as Record<string, string>;
@@ -71,7 +66,6 @@ export const MinecraftPanel = () => {
       </div>
       {prog && <div role="status" aria-live="polite" className="text-[12px]" style={{ color: 'var(--t2)' }}>{label[prog.stage] ?? prog.stage}: {prog.done}/{prog.total}</div>}
       <label className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--t2)' }}>Память: <b>{mem} МБ</b><input type="range" min={1024} max={16384} step={512} value={mem} onChange={(e) => setMem(Number(e.target.value))} aria-label="Память игры" /></label>
-      {target && <p className="text-[12px]" style={{ color: 'var(--t2)' }}>После запуска подключимся к <b translate="no">{target.name}</b> ({target.host}:{target.port}). <button type="button" className="underline" onClick={() => setTarget(null)}>Не подключаться</button></p>}
       {inst.length === 0 ? <Note>Установленных версий нет.</Note> : <ul className="flex flex-col gap-2">{inst.map((v) => (
         <li key={v.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl p-2" style={{ background: 'rgba(255,255,255,.04)' }}>
           <span className="text-[13px]" style={{ color: 'var(--t1)' }} translate="no">{v.id}</span>

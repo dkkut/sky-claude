@@ -23,7 +23,6 @@ const HOSTS = new Set(['piston-meta.mojang.com', 'piston-data.mojang.com', 'laun
 const MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
 const MS = { device: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode', token: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token', xbl: 'https://user.auth.xboxlive.com/user/authenticate', xsts: 'https://xsts.auth.xboxlive.com/xsts/authorize', mc: 'https://api.minecraftservices.com/authentication/login_with_xbox', profile: 'https://api.minecraftservices.com/minecraft/profile' };
 const SAFE_VERSION = /^[A-Za-z0-9._-]{1,40}$/;
-const SAFE_HOST = /^[A-Za-z0-9.-]{1,120}$/;
 const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
 const safeRel = (p) => {
   p = String(p ?? '');
@@ -277,7 +276,7 @@ function createMc(opts) {
     return out;
   };
 
-  /** o: { version, instance (имя папки профиля), memoryMb, server?: {host, port} } */
+  /** o: { version, instance (имя папки профиля), memoryMb } */
   async function launch(o) {
     const id = String(o && o.version || ''); if (!SAFE_VERSION.test(id)) throw err('bad_version');
     const inst = String(o.instance || 'default').replace(/[^A-Za-z0-9._ -]/g, '').slice(0, 40).trim() || 'default';
@@ -292,19 +291,17 @@ function createMc(opts) {
     const cp = [];
     for (const l of vj.libraries || []) { if (!allowed(l.rules)) continue; const a = l.downloads && l.downloads.artifact; if (!a) continue; const rel = safeRel(a.path); if (rel) cp.push(path.join(root, 'libraries', rel)); }
     cp.push(path.join(vdir(id), id + '.jar'));
-    const srv = o.server && SAFE_HOST.test(String(o.server.host || '')) ? { host: String(o.server.host), port: Math.min(65535, Math.max(1, Number(o.server.port) || 25565)) } : null;
-    const features = srv ? { has_quick_plays_support: true, is_quick_play_multiplayer: true } : {};
+    const features = {};   // никаких быстрых подключений: игра запускается в главное меню
     const natives = path.join(vdir(id), 'natives'); await fsp.mkdir(natives, { recursive: true });
     const vars = {
       auth_player_name: sess.name, auth_uuid: sess.uuid, auth_access_token: sess.token, auth_xuid: '0', clientid: '', user_type: 'msa', user_properties: '{}',
       version_name: id, version_type: vj.type || 'release', game_directory: gameDir, assets_root: path.join(root, 'assets'), assets_index_name: vj.assetIndex.id, game_assets: path.join(root, 'assets'),
       classpath: cp.join(path.delimiter), natives_directory: natives, launcher_name: 'SkyLauncher', launcher_version: '1',
-      quickPlayMultiplayer: srv ? `${srv.host}:${srv.port}` : '', quickPlayPath: '', quickPlaySingleplayer: '', quickPlayRealms: '',
+      quickPlayMultiplayer: '', quickPlayPath: '', quickPlaySingleplayer: '', quickPlayRealms: '',
     };
     let jvm; let game;
     if (vj.arguments) { jvm = flat(vj.arguments.jvm, features, vars); game = flat(vj.arguments.game, features, vars); }
     else { jvm = ['-Djava.library.path=' + natives, '-cp', vars.classpath]; game = String(vj.minecraftArguments || '').split(' ').filter(Boolean).map((s) => fill(s, vars)); }
-    if (srv && !(vj.arguments && JSON.stringify(vj.arguments.game || []).includes('quickPlayMultiplayer'))) game.push('--server', srv.host, '--port', String(srv.port));
     const args = [`-Xmx${mem}M`, ...jvm, vj.mainClass, ...game];
     const child = spawn(java.bin, args, { cwd: gameDir, stdio: 'ignore', detached: false, windowsHide: false });
     const key = `${id}:${inst}`;

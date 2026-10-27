@@ -3,8 +3,7 @@ import { Star, Search, Wifi, WifiOff, Users, Copy, ExternalLink, History, Plus, 
 import { lApi, type ServerKind, type LServer, type ConnectInfo, type LProfile } from './api';
 import { Pill, Btn, Note, Spinner, ErrorBox, GLASS, input, inputStyle } from './ui';
 import { visibleTick } from '@/shared/visibleTick';
-import { MinecraftPanel, useMcTarget } from './Minecraft';
-import { launcherNative } from './native';
+import { MinecraftPanel } from './Minecraft';
 
 const PLATFORM: Record<string, string> = { fivem: 'FiveM', ragemp: 'RAGE MP', vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric', forge: 'Forge' };
 const ago = (iso: string | null) => { if (!iso) return ''; const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000); return s < 90 ? 'только что' : s < 3600 ? `${Math.round(s / 60)} мин назад` : `${Math.round(s / 3600)} ч назад`; };
@@ -26,7 +25,6 @@ const ConnectDialog = ({ s, info, onClose }: { s: LServer; info: ConnectInfo | {
       <p className="text-[12px]" style={{ color: 'var(--t2)' }}>{info.instructions}</p>
       <div className="flex flex-wrap gap-2">
         <Btn kind="ghost" onClick={() => void copy()}><Copy size={13} className="mr-1 inline" />{copied ? 'Скопировано' : 'Скопировать адрес'}</Btn>
-        {s.kind === 'minecraft' && launcherNative() && <Btn onClick={() => { useMcTarget.getState().set({ host: info.host, port: info.port, name: s.name }); onClose(); }}>Играть отсюда в Sky</Btn>}
         {info.launchSupported && info.uri && <Btn onClick={() => { window.location.href = info.uri!; }}><ExternalLink size={13} className="mr-1 inline" />Открыть клиент</Btn>}
         <Btn kind="ghost" onClick={onClose}>Закрыть</Btn>
       </div>
