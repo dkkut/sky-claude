@@ -117,6 +117,8 @@ import { onboardingRoutes } from './routes/onboarding.mjs';
 import { mediaHomeRoutes } from './routes/mediahome.mjs';
 import { musicDuoRoutes } from './routes/musicduo.mjs';
 import { lserversRoutes } from './routes/lservers.mjs';
+import { lgamesRoutes } from './routes/lgames.mjs';
+import { sweepLauncher } from './lgames.mjs';
 import { sweepServers } from './lservers.mjs';
 import { rtcRoutes } from './routes/rtc.mjs';
 import { modClosureRoutes } from './routes/modclosure.mjs';
@@ -264,7 +266,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [lserversRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -761,6 +763,7 @@ const start = async () => {
       // билеты — просроченными: иначе «действителен» висел бы годами.
       const past = await closePastEvents();
       if (past) console.log(`[tickets] завершено прошедших мероприятий: ${past}`);
+      const lgone = await sweepLauncher(); if (lgone) console.log(`[launcher] убрано брошенных сборок: ${lgone}`);
       const posters = await sweepOrphanTicketImages();
       if (posters) console.log(`[tickets] убрано осиротевших афиш: ${posters}`);
       const campaignCovers = await sweepOrphanCampaignCovers();

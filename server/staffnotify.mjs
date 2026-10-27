@@ -41,6 +41,7 @@ export const CATEGORIES = {
   content:        { label: 'Контент на проверке (музыка, кино, книги, подкасты)', rights: ['content'] },
   artist_claim:   { label: 'Заявки на владение карточкой музыканта', rights: ['content'] },
   blox:           { label: 'Sky Blox: проверка, жалобы, апелляции', rights: ['blox_moderation', 'blox'] },
+  launcher:       { label: 'Sky Launcher: заявки на размещение игр', rights: ['launcher_moderation', 'launcher'] },
   prime_reward:   { label: 'Награды Prime: заявки на выдачу', rights: ['prime'] },
   garant:         { label: 'Споры Sky Garant', rights: ['garant'] },
   violations:     { label: 'Апелляции на нарушения', rights: ['violations'] },
