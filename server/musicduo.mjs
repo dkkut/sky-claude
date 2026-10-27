@@ -93,7 +93,7 @@ export const duoQueue = async (me, id, { hideExplicit = false } = {}) => {
     `SELECT *, owner_id = $1 AS own, FALSE AS has_cutout FROM music_tracks
       WHERE status='published' AND (id = ANY($2) OR lower(genre) = ANY($3))
         ${hideExplicit ? 'AND NOT coalesce(mod_explicit, explicit)' : ''}
-      ORDER BY plays DESC LIMIT 400`, [me, ids, sharedG.length ? sharedG : ['\u0000']]);
+      ORDER BY plays DESC LIMIT 400`, [me, ids, sharedG]);
   const scored = rows.map((r) => {
     const fa = ta.favs.has(r.id); const fb = tb.favs.has(r.id); const art = String(r.artist).toLowerCase(); const g = String(r.genre ?? '').toLowerCase();
     let s = 0; let reason = '';

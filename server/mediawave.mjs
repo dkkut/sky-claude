@@ -158,8 +158,8 @@ const builders = {
     if (!genres.length) return { items: [] };
     const { rows } = await query(
       `SELECT t.id, t.title, t.artist, t.owner_id FROM music_tracks t
-        WHERE t.status='published' AND lower(t.genre) = ANY($2) AND lower(t.artist) <> ALL($3)
-        ORDER BY t.plays DESC LIMIT 30`, [ctx.id, genres, top]);
+        WHERE t.status='published' AND lower(t.genre) = ANY($1) AND lower(t.artist) <> ALL($2)
+        ORDER BY t.plays DESC LIMIT 30`, [genres, top]);
     return { items: rows.map((r) => item('music', r.id, r.title, r.artist, { authorKey: authorKeyOf('music', r) })), personal: true, reason: L('Тот же жанр, другие исполнители', 'Same genre, other artists') };
   },
 
@@ -170,7 +170,7 @@ const builders = {
       `SELECT t.id, t.title, t.artist, t.owner_id, t.genre FROM music_tracks t
         WHERE t.status='published' AND t.genre<>'' AND lower(t.genre) <> ALL($1)
           AND NOT EXISTS (SELECT 1 FROM music_history h WHERE h.user_id=$2 AND h.track_id=t.id)
-        ORDER BY t.plays DESC LIMIT 30`, [known.length ? known : ['\u0000'], ctx.id]);
+        ORDER BY t.plays DESC LIMIT 30`, [known, ctx.id]);
     return { items: rows.map((r) => item('music', r.id, r.title, r.artist, { authorKey: authorKeyOf('music', r), reason: L(`Новый для вас жанр: ${r.genre}`, `New to you: ${r.genre}`) })), personal: known.length > 0, reason: known.length ? undefined : L('Популярное — вкус ещё не определён', 'Popular — your taste is not known yet') };
   },
 
