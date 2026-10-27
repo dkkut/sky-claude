@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import {
   CreditCard, Crown, ShoppingBag, Music2, Home, RotateCcw,
-  ArrowDownLeft, ArrowUpRight, Star, Gift, Landmark, Truck,
+  Gamepad2, RotateCcw, ArrowDownLeft, ArrowUpRight, Star, Gift, Landmark, Truck,
   Megaphone, ShieldCheck, Gem, Radio, Wallet, Ticket, Gamepad2, Sparkles,
 } from 'lucide-react';
 import type { IconComponent } from '@/shared/icon';
@@ -182,6 +182,8 @@ export const TX_ICON: Record<TxType, IconComponent> = {
   kbiz_sub:             Sparkles,
   code_points:          Ticket,
   cashback:             Gift,
+  launcher_placement:   Gamepad2,
+  launcher_refund:      RotateCcw,
   prime_reward:         Gift,
   prime_reward_refund:  Gift,
   blox_purchase:        Gamepad2,
