@@ -3,6 +3,8 @@ import { Star, Search, Wifi, WifiOff, Users, Copy, ExternalLink, History, Plus, 
 import { lApi, type ServerKind, type LServer, type ConnectInfo, type LProfile } from './api';
 import { Pill, Btn, Note, Spinner, ErrorBox, GLASS, input, inputStyle } from './ui';
 import { visibleTick } from '@/shared/visibleTick';
+import { MinecraftPanel, useMcTarget } from './Minecraft';
+import { launcherNative } from './native';
 
 const PLATFORM: Record<string, string> = { fivem: 'FiveM', ragemp: 'RAGE MP', vanilla: 'Vanilla', paper: 'Paper', fabric: 'Fabric', forge: 'Forge' };
 const ago = (iso: string | null) => { if (!iso) return ''; const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000); return s < 90 ? 'только что' : s < 3600 ? `${Math.round(s / 60)} мин назад` : `${Math.round(s / 3600)} ч назад`; };
@@ -24,6 +26,7 @@ const ConnectDialog = ({ s, info, onClose }: { s: LServer; info: ConnectInfo | {
       <p className="text-[12px]" style={{ color: 'var(--t2)' }}>{info.instructions}</p>
       <div className="flex flex-wrap gap-2">
         <Btn kind="ghost" onClick={() => void copy()}><Copy size={13} className="mr-1 inline" />{copied ? 'Скопировано' : 'Скопировать адрес'}</Btn>
+        {s.kind === 'minecraft' && launcherNative() && <Btn onClick={() => { useMcTarget.getState().set({ host: info.host, port: info.port, name: s.name }); onClose(); }}>Играть отсюда в Sky</Btn>}
         {info.launchSupported && info.uri && <Btn onClick={() => { window.location.href = info.uri!; }}><ExternalLink size={13} className="mr-1 inline" />Открыть клиент</Btn>}
         <Btn kind="ghost" onClick={onClose}>Закрыть</Btn>
       </div>
@@ -128,8 +131,9 @@ export const ServersSection = ({ kind }: { kind: ServerKind }) => {
       {rows === null && !err ? <Spinner /> : rows && rows.length === 0 ? <Note>{tab === 'history' ? 'Вы ещё не подключались к серверам.' : 'Серверов не найдено. Каталог пополняет администрация Sky; показаны только реально проверенные данные.'}</Note>
         : <ul className="flex flex-col gap-3">{(rows ?? []).map((s) => <Row key={s.id} s={s} onFav={() => void fav(s)} onConnect={() => void connect(s)} open={conn?.id === s.id ? <ConnectDialog s={s} info={conn.info} onClose={() => setConn(null)} /> : null} />)}</ul>}
       {tab === 'history' && hist.length > 0 && <div className="mt-3"><Btn kind="ghost" onClick={async () => { await lApi.clearHistory(); setHist([]); }}>Очистить историю</Btn></div>}
+      {kind === 'minecraft' && <div className="mt-4"><MinecraftPanel /></div>}
       <div className="mt-4"><ProfilesPanel kind={kind} /></div>
-      <div className="mt-3"><Note>{kind === 'gta' ? 'Sky не скачивает GTA V и клиенты FiveM/RAGE MP и не обходит их лицензирование: для подключения нужны установленная лицензионная игра и клиент.' : 'Sky не распространяет Minecraft и не хранит пароли: вход выполняется через официальный лаунчер Mojang/Microsoft. Число игроков берётся из прямой проверки сервера.'}</Note></div>
+      <div className="mt-3"><Note>{kind === 'gta' ? 'Sky не скачивает GTA V и клиенты FiveM/RAGE MP и не обходит их лицензирование: для подключения нужны установленная лицензионная игра и клиент.' : 'Sky не распространяет Minecraft и не хранит пароли: вход выполняется через официальный аккаунт Microsoft (в приложении Sky для Windows можно установить и запустить игру, в остальных случаях — через официальный лаунчер Mojang). Число игроков берётся из прямой проверки сервера.'}</Note></div>
     </div>
   );
 };

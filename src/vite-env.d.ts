@@ -9,4 +9,5 @@ interface ImportMetaEnv {
   readonly VITE_NATIVE_APP?: string;
   readonly VITE_API_ORIGIN?: string;
   readonly VITE_API_FALLBACKS?: string;
+  readonly VITE_MS_CLIENT_ID?: string;
 }
