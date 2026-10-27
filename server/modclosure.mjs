@@ -45,6 +45,7 @@ export const MODULES = [
   { key: 'ads', label: 'Реклама', group: 'Сервисы Sky' },
   { key: 'campaigns', label: 'Мероприятия', group: 'Сервисы Sky' },
   { key: 'musicians', label: 'Музыканты', group: 'Сервисы Sky' },
+  { key: 'launcher', label: 'Лаунчер (GTA V, Minecraft, игры)', group: 'Сервисы Sky' },
   { key: 'cloudgaming', label: 'Sky Gaming Cloud', group: 'Сервисы Sky' },
   { key: 'cloud', label: 'Sky Cloud', group: 'Сервисы Sky' },
   { key: 'kbiz', label: 'Sky для бизнеса (SkyKassa Business)', group: 'Сервисы Sky' },

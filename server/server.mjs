@@ -116,6 +116,8 @@ import { inviteRoutes } from './routes/invites.mjs';
 import { onboardingRoutes } from './routes/onboarding.mjs';
 import { mediaHomeRoutes } from './routes/mediahome.mjs';
 import { musicDuoRoutes } from './routes/musicduo.mjs';
+import { lserversRoutes } from './routes/lservers.mjs';
+import { sweepServers } from './lservers.mjs';
 import { rtcRoutes } from './routes/rtc.mjs';
 import { modClosureRoutes } from './routes/modclosure.mjs';
 import { ownerNotifyRoutes } from './routes/ownernotify.mjs';
@@ -262,7 +264,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [lserversRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -699,7 +701,13 @@ const start = async () => {
     if (dispatchBusy) return;
     dispatchBusy = true;
     try { await sweepDispatch(); } catch (e) { console.error('[go] распределение:', e.message); }
-    try { await sweepParking(); } catch (e) { console.error('[parking] уборка:', e.message); } finally { dispatchBusy = false; }
+    try { await sweepParking(); } catch (e) { console.error('[parking] уборка:', e.message); }
+    try {   // проверка доступности серверов лаунчера: порциями, не чаще заданного интервала, и не при высокой нагрузке
+      if (optionalAllowed()) {
+        const st = (await query(`SELECT value FROM launcher_settings WHERE key='probe'`)).rows[0]?.value ?? {};
+        if (st.enabled !== false) await sweepServers({ intervalMin: st.intervalMin ?? 5 });
+      }
+    } catch (e) { console.error('[launcher] проверка серверов:', e.message); } finally { dispatchBusy = false; }
   }, 10 * 1000);
   goDispatchSchedule.unref();
 

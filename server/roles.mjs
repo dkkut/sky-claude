@@ -38,6 +38,8 @@ export const PERMISSIONS = [
   'parking_moderation', // Sky Parking: проверка карточек парковок
   'blox',            // Sky Blox: игры, серверы, разработчики, ограничения, мониторинг
   'blox_moderation', // Sky Blox: очередь проверки, жалобы, апелляции
+  'launcher',        // Sky Launcher: серверы GTA V/Minecraft, каталог игр, сборки, настройки
+  'launcher_moderation', // Sky Launcher: заявки на размещение игр, возвраты, блокировка сборок
   'blox_finance',    // Sky Blox: вознаграждения, возвраты, заявки на выплату
   'analytics',       // мониторинг и аналитика платформы: онлайн, сделки, покупки, здоровье сервера
   'go',              // Sky GO: заявки исполнителей, подписки, заказы, споры, интеграции
@@ -106,6 +108,7 @@ export const ROLES = {
   parking_admin:   ['parking', 'parking_moderation'],
   parking_moderator:['parking_moderation'],
   blox_admin:      ['blox', 'blox_moderation'],
+  launcher_admin:  ['launcher', 'launcher_moderation'],
   blox_moderator:  ['blox_moderation'],
   blox_finance_staff: ['blox_finance'],
   tickets_admin:   ['tickets'],
@@ -179,6 +182,7 @@ export const ROLE_LABEL = {
   parking_admin: 'Sky Parking: администратор',
   parking_moderator: 'Sky Parking: модератор',
   blox_admin: 'Sky Blox: администратор',
+  launcher_admin: 'Sky Launcher: администратор',
   blox_moderator: 'Sky Blox: модератор',
   blox_finance_staff: 'Sky Blox: финансы',
   tickets_admin: 'Билеты',
