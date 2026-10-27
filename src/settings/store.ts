@@ -215,6 +215,7 @@ export const applySettings = (input: AppSettings) => {
   if (ff && ff.stack) root.style.setProperty('--app-font', ff.stack); else root.style.removeProperty('--app-font');
 
   // Reduce animations
+  root.dataset.animations = s.animationsOn ? 'on' : 'off';
   if (!s.animationsOn) {
     root.style.setProperty('--motion-duration', '0ms');
   } else {

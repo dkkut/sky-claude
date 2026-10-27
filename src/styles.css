@@ -500,3 +500,16 @@ button.bz-card:focus-visible, .bz-item:focus-visible { outline: 2px solid #10b98
 
 /* SkyMedia Home: видимый фокус для пульта ТВ/геймпада и клавиатуры */
 .mh-focus :focus-visible, [data-mediahome] :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+
+/* Фон SkyWave: дышащая фиолетовая волна */
+.sky-wavebg { background: radial-gradient(120% 90% at 50% 0%, rgba(124,58,237,.18), rgba(15,10,30,0) 70%), linear-gradient(180deg, rgba(30,16,64,.55), rgba(10,8,24,.2)); }
+.sky-wavebg-glow { position: absolute; left: 50%; top: 40%; width: 70%; height: 60%; transform: translate(-50%,-50%); background: radial-gradient(closest-side, rgba(168,85,247,.35), transparent); filter: blur(30px); animation: sky-wave-breathe 7s ease-in-out infinite; }
+.sky-wavebg-layer { position: absolute; left: -10%; bottom: 0; width: 120%; height: 70%; transform-origin: 50% 100%; }
+.sky-wavebg-layer.l1 { animation: sky-wave-drift 14s ease-in-out infinite alternate, sky-wave-breathe-y 8s ease-in-out infinite; }
+.sky-wavebg-layer.l2 { animation: sky-wave-drift 10s ease-in-out infinite alternate-reverse, sky-wave-breathe-y 6.5s ease-in-out -2s infinite; }
+.sky-wavebg-layer.l3 { animation: sky-wave-drift 12s ease-in-out infinite alternate, sky-wave-breathe-y 7.5s ease-in-out -4s infinite; }
+@keyframes sky-wave-drift { from { translate: -4% 0; } to { translate: 4% 0; } }
+@keyframes sky-wave-breathe-y { 0%,100% { transform: scaleY(.9); } 50% { transform: scaleY(1.12); } }
+@keyframes sky-wave-breathe { 0%,100% { opacity: .55; transform: translate(-50%,-50%) scale(.92); } 50% { opacity: 1; transform: translate(-50%,-50%) scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { .sky-wavebg-glow, .sky-wavebg-layer { animation: none !important; } }
+:root[data-animations='off'] .sky-wavebg-glow, :root[data-animations='off'] .sky-wavebg-layer { animation: none !important; }

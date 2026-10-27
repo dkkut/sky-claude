@@ -4,6 +4,7 @@ import { Settings2, X, GripVertical, Undo2, RotateCcw } from 'lucide-react';
 import { apiHome, apiLayoutActivate, apiLayoutCreate, apiLayoutDelete, apiLayoutSave, type HomeLayout, type HomeState, type LayoutRow, type WidgetDef, type WidgetSize } from './api';
 import { ALL_ACTIONS, CATEGORIES, WIDGET_META, WidgetBody, WidgetBoundary } from './widgets';
 import { WaveShelves } from './WaveShelves';
+import { WaveBackdrop } from './WaveBackdrop';
 import { visibleTick } from '@/shared/visibleTick';
 
 const LOCAL_KEY = 'sky:mediahome:local:v1';
@@ -165,7 +166,8 @@ export const MediaHome = ({ onNav, onClassic }: { onNav: (t: string) => void; on
       {!editing && layout.widgets.length === 0 && <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Экран пуст. Нажмите «Настроить экран» и добавьте виджеты.</p>}
 
       {!editing && (
-        <div className="mt-6"><h2 className="mb-3 text-[16px] font-extrabold" style={{ color: 'var(--t1)' }}>SkyWave</h2><WaveShelves onNav={onNav} manage /></div>)}
+        <div data-keep-dark className="relative isolate mt-6 rounded-3xl p-4" style={{ ['--t1' as string]: '#f5f3ff', ['--t2' as string]: '#d8d0f0', ['--t3' as string]: '#a99fcf', ['--border' as string]: 'rgba(196,181,253,.22)' } as React.CSSProperties}>
+          <WaveBackdrop /><h2 className="mb-3 text-[18px] font-extrabold" style={{ color: 'var(--t1)' }}>SkyWave</h2><WaveShelves onNav={onNav} manage /></div>)}
     </div>
   );
 };
