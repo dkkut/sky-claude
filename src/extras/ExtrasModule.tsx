@@ -80,6 +80,7 @@ import { apiSkyVideoChannels, type ChannelListEntry } from '@/video/skyVideoApi'
 import { apiSupportStatus } from '@/moderation/supportApi';
 
 
+import { MediaHome } from '@/mediahome/MediaHome';
 /* --- «Вместе» -----------------------------------------------------------
    Экран переехал в src/together. Здесь его больше нет по двум причинам.
 
@@ -846,6 +847,13 @@ const StarCanvas = ({ scrollY = 0, light = false }: { scrollY?: number; light?: 
   );
 };
 
+const HomeSwitch = ({ onNav }: { onNav: (tab: string) => void }) => {
+  const [classic, setClassic] = React.useState(() => { try { return localStorage.getItem('sky:mediahome:classic') === '1'; } catch { return false; } });
+  const set = (v: boolean) => { setClassic(v); try { localStorage.setItem('sky:mediahome:classic', v ? '1' : '0'); } catch { /* память недоступна */ } };
+  if (classic) return (<div className="flex h-full flex-col"><div className="px-3 pt-2"><button type="button" onClick={() => set(false)} className="rounded-full border px-3 py-1.5 text-[12px]" style={{ borderColor:'var(--border)', color:'var(--t2)' }}>Мой экран</button></div><div className="min-h-0 flex-1"><MediaHomeTab onNav={onNav}/></div></div>);
+  return <MediaHome onNav={onNav} onClassic={() => set(true)}/>;
+};
+
 const MediaHomeTab = ({
   onNav,
 }: {
@@ -1313,7 +1321,7 @@ export const ExtrasModule = () => {
           >
         <ModuleGate id={tab}>
         <React.Suspense fallback={<TabFallback/>}>
-        {tab==='home' && <MediaHomeTab onNav={handleNav}/>}
+        {tab==='home' && <HomeSwitch onNav={handleNav}/>}
         {tab==='music'  && <SkyMusic/>}
         {tab==='movies' && <SkyFilm/>}
         {tab==='prime'  && <SkyPrime/>}

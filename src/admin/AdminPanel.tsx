@@ -41,6 +41,7 @@ import { BloxAdminSection } from '@/blox/BloxAdmin';
 import { MonitoringTab } from './MonitoringTab';
 
 import { ContentModTab } from './ContentModTab';
+import { WaveAdmin } from './WaveAdmin';
 import { ScrollTabs } from './ScrollTabs';
 import { ResourcesTab } from './ResourcesTab';
 import { RegistrationTab } from './RegistrationTab';
@@ -6015,7 +6016,7 @@ export const AdminPanel = () => {
         </div>
       )}
       {tab === 'video' && <SkyVideoAdminSection rights={rights} onPendingChanged={() => void loadPending()} />}
-      {tab === 'content' && <ContentModTab />}
+      {tab === 'content' && <><ContentModTab /><WaveAdmin /></>}
       {tab === 'registration' && <RegistrationTab />}
       {tab === 'globalblock' && <GlobalBlockTab />}
       {tab === 'uploadlimits' && <UploadLimitsTab />}
