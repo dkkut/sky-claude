@@ -13,7 +13,7 @@ export interface HDevice { id: string; name: string; kind: string; current: bool
 export interface Handoff {
   id: string; kind: HKind; itemId: string; title: string; position: number; duration: number; extra: Record<string, number | string | null>;
   state: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled' | 'superseded' | 'failed'; reason: string | null;
-  fromDevice: string; toDevice: string; fromName: string; toName: string; keepPlaying: boolean; createdAt: string; expiresAt: string;
+  fromDevice: string; toDevice: string; fromName: string; toName: string; keepPlaying: boolean; live?: boolean; groupId?: string | null; createdAt: string; expiresAt: string;
 }
 export interface ContinueItem { kind: HKind; itemId: string; title: string; subtitle: string; position: number; duration: number; at: string }
 
@@ -22,7 +22,7 @@ export const HO = {
   register: () => apiCall<{ id: string; status: string }>(`${A}/device/register`, { method: 'POST', body: JSON.stringify({ name: defaultName(), kind: detectKind() }) }),
   heartbeat: () => apiCall(`${A}/device/heartbeat`, { method: 'POST', body: '{}' }),
   devices: () => apiCall<{ me: { id: string; status: string; name: string; kind: string }; devices: HDevice[]; pendingApproval: number; prefs: { accept: 'ask' | 'off'; historyDays: number } }>(`${A}/devices`),
-  send: (b: { toDevice: string; kind: HKind; itemId: string; title: string; position: number; duration: number; extra?: Record<string, number | string>; keepPlaying?: boolean; idemKey: string }) =>
+  send: (b: { toDevice: string; kind: HKind; itemId: string; title: string; position: number; duration: number; extra?: Record<string, number | string>; keepPlaying?: boolean; live?: boolean; groupId?: string; idemKey: string }) =>
     apiCall<{ handoff: Handoff; duplicate?: boolean; name?: string }>(`${A}/send`, { method: 'POST', body: JSON.stringify(b) }),
   pending: () => apiCall<{ handoffs: Handoff[] }>(`${A}/pending`),
   status: (id: string) => apiCall<{ handoff: Handoff }>(`${A}/${id}`),

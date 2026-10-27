@@ -60,6 +60,18 @@ export const resolvePosition = (snap, current, { skewMs = 3000 } = {}) => {
   return newer ? { position: current.position, newerElsewhere: true } : { position: snap.position, newerElsewhere: false };
 };
 
+/**
+ * Передача «вживую» (играть на нескольких устройствах сразу): отправитель продолжает играть, поэтому получатель встаёт на место отправителя
+ * В МОМЕНТ ПРИНЯТИЯ — снимок плюс время, прошедшее с отправки (скорость 1×). Так несколько устройств совпадают, даже если ответили в разное время.
+ * Точность — доли секунды сети и запуска плеера, не покадровая; у устройства с Bluetooth добавляется его собственная задержка звука.
+ */
+export const liveSeek = (snapPos, duration, createdAt, now = Date.now()) => {
+  const elapsed = Math.max(0, (now - new Date(createdAt).getTime()) / 1000);
+  const raw = Number(snapPos) + elapsed;
+  const dur = Number(duration);
+  return clamp(dur > 0 ? Math.min(raw, Math.max(0, dur - 1)) : raw);
+};
+
 /* ── Контент: доступ и запись места ── */
 const checkItem = async (kind, itemId, profileId) => {
   if (kind === 'music') return !!(await visibleTrack(itemId, profileId));
@@ -156,7 +168,7 @@ export const devices = async (skyId, profileId, req) => {
 const view = (h, devNames = {}) => ({
   id: h.id, kind: h.kind, itemId: h.item_id, title: h.title, position: Number(h.position_sec), duration: Number(h.duration_sec), extra: h.extra ?? {},
   state: h.state, reason: h.reason ?? null, fromDevice: h.from_device, toDevice: h.to_device, fromName: devNames[h.from_device] ?? '', toName: devNames[h.to_device] ?? '',
-  keepPlaying: h.keep_playing, createdAt: h.created_at, expiresAt: h.expires_at,
+  keepPlaying: h.keep_playing, live: h.live === true, groupId: h.group_id ?? null, createdAt: h.created_at, expiresAt: h.expires_at,
 });
 const names = async (skyId) => Object.fromEntries((await query('SELECT id, name FROM transfer_devices WHERE sky_id = $1', [skyId])).rows.map((r) => [r.id, r.name]));
 
@@ -179,15 +191,18 @@ export const send = async (skyId, profileId, req, b) => {
   if (!supports(to.kind, kind, b?.extra)) return err('unsupported_here', { name: to.name });
   if (!(await checkItem(kind, itemId, profileId))) return err('not_found');
   const position = clamp(b?.position); const duration = clamp(b?.duration);
+  /* «Вживую» — только для того, что идёт по времени: книга в режиме чтения места по времени не имеет. */
+  const live = b?.live === true && !(kind === 'book' && b?.extra?.mode !== 'audio');
+  const groupId = live && /^[\w-]{8,64}$/.test(String(b?.groupId ?? '')) ? String(b.groupId) : null;
   const extra = b?.extra && typeof b.extra === 'object' ? Object.fromEntries(Object.entries(b.extra).slice(0, 8).map(([k, v]) => [clip(k, 20), typeof v === 'number' ? v : typeof v === 'string' ? clip(v, 40) : null])) : {};
   /* Место фиксируем в настоящем прогрессе: так оно же пригодится любому устройству, даже если карточку не нажмут. */
   await saveSnapshot(kind, profileId, itemId, position, duration, extra);
   const id = newId();
   const ins = await query(`WITH lock AS (SELECT pg_advisory_xact_lock(hashtext($1)))
     , old AS (UPDATE handoffs SET state = 'superseded', resolved_at = now() WHERE to_device = $5 AND state = 'pending' RETURNING id)
-    INSERT INTO handoffs (id, sky_id, profile_id, from_device, to_device, kind, item_id, title, position_sec, duration_sec, extra, keep_playing, idem_key, expires_at)
-    SELECT $2, $1, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, now() + ($14 || ' seconds')::interval FROM lock RETURNING *`,
-    [skyId, id, profileId, me.id, to.id, kind, itemId, clip(b?.title, 120), position, duration, JSON.stringify(extra), b?.keepPlaying === true, idem, String(TTL_SEC)]);
+    INSERT INTO handoffs (id, sky_id, profile_id, from_device, to_device, kind, item_id, title, position_sec, duration_sec, extra, keep_playing, idem_key, expires_at, live, group_id)
+    SELECT $2, $1, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, now() + ($14 || ' seconds')::interval, $15, $16 FROM lock RETURNING *`,
+    [skyId, id, profileId, me.id, to.id, kind, itemId, clip(b?.title, 120), position, duration, JSON.stringify(extra), live || b?.keepPlaying === true, idem, String(TTL_SEC), live, groupId]);
   const h = ins.rows[0];
   const nm = await names(skyId);
   skyLog({ category: 'user', service: 'handoff', type: 'handoff_sent', actorId: profileId, detail: { kind } });
@@ -247,7 +262,9 @@ export const accept = async (skyId, profileId, req, id) => {
     return err('not_found');
   }
   const cur = await readCurrent(up.kind, profileId, up.item_id, up.extra);
-  const pos = resolvePosition({ position: Number(up.position_sec), createdAt: up.created_at }, cur);
+  const pos = up.live
+    ? { position: liveSeek(up.position_sec, up.duration_sec, up.created_at), newerElsewhere: false }
+    : resolvePosition({ position: Number(up.position_sec), createdAt: up.created_at }, cur);
   const nm = await names(skyId);
   skyLog({ category: 'user', service: 'handoff', type: 'handoff_accepted', actorId: profileId, detail: { kind: up.kind } });
   await tell(skyId, { type: 'handoff:update', payload: view(up, nm) });

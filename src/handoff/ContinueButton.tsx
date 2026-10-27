@@ -30,7 +30,7 @@ const uuid = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? cr
 const AUDIO: HKind[] = ['music', 'podcast', 'book'];
 const SCOPE = 'handoff-sheet';
 
-type Step = { s: 'list' } | { s: 'wait'; h: Handoff; to: HDevice } | { s: 'done'; h: Handoff } | { s: 'fail'; text: string; to?: HDevice };
+type Step = { s: 'list' } | { s: 'group'; ids: string[]; devs: HDevice[]; failed: Record<string, string> } | { s: 'wait'; h: Handoff; to: HDevice } | { s: 'done'; h: Handoff } | { s: 'fail'; text: string; to?: HDevice };
 
 const Row = ({ variant, id, onEnter, disabled, children }: { variant: Variant; id: string; onEnter: () => void; disabled?: boolean; children: (focused: boolean) => ReactNode }) => {
   if (variant === 'tv') return <TVFocusable id={id} scope={SCOPE} disabled={disabled} onEnter={onEnter}>{({ focused }) => <div style={{ opacity: disabled ? 0.45 : 1 }}>{children(focused)}</div>}</TVFocusable>;
@@ -50,6 +50,8 @@ const Sheet = ({ p, onClose }: { p: ContinueProps; onClose: () => void }) => {
   const [now, setNow] = useState(Date.now());
   const [sink, setSink] = useState(currentSink());
   const [btNote, setBtNote] = useState('');
+  const [multi, setMulti] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
   const paused = useRef(false);
   const waitId = useRef<string | null>(null);
   const sent = useHandoff((s) => s.sent);
@@ -111,6 +113,26 @@ const Sheet = ({ p, onClose }: { p: ContinueProps; onClose: () => void }) => {
     waitId.current = r.data.handoff.id;
     setStep({ s: 'wait', h: r.data.handoff, to: d });
   };
+  /* Играть на нескольких устройствах сразу: отправитель не останавливается, каждое устройство встаёт на место, где отправитель сейчас. */
+  const sendGroup = async () => {
+    const devs = (list ?? []).filter((d) => picked.includes(d.id));
+    if (devs.length === 0) return;
+    const st = p.read();
+    const groupId = uuid();
+    const failed: Record<string, string> = {};
+    const ids: string[] = [];
+    await Promise.all(devs.map(async (d) => {
+      const r = await HO.send({ toDevice: d.id, kind: p.kind, itemId: p.itemId, title: p.title, position: st.position, duration: st.duration, extra: st.extra, keepPlaying: true, live: true, groupId, idemKey: uuid() });
+      if (r.ok && r.data) { useHandoff.getState().upsert(r.data.handoff); ids.push(r.data.handoff.id); } else failed[d.id] = hReason(r.error);
+    }));
+    setStep({ s: 'group', ids, devs, failed });
+  };
+  const toggle = (id: string) => setPicked((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
+  useEffect(() => {
+    if (step.s !== 'group') return undefined;
+    const t = window.setInterval(async () => { for (const id of step.ids) { const r = await HO.status(id); if (r.ok && r.data) useHandoff.getState().upsert(r.data.handoff); } }, 2500);
+    return () => window.clearInterval(t);
+  }, [step]);
   const cancel = async () => { if (step.s === 'wait') await HO.cancel(step.h.id); resumeHere(); setStep({ s: 'list' }); };
   const close = () => { if (step.s === 'wait') void HO.cancel(step.h.id).then(resumeHere); onClose(); };
   const pickBt = async () => {
@@ -130,9 +152,10 @@ const Sheet = ({ p, onClose }: { p: ContinueProps; onClose: () => void }) => {
     const why = !d.online ? 'не на связи' : !d.sameProfile ? 'другой профиль' : d.problem === 'recipient_not_trusted' ? 'не подтверждено' : (d.kind === 'tv' && p.kind === 'book') ? 'не открывает книги' : (d.kind === 'car' && p.kind === 'book' && p.read().extra?.mode !== 'audio') ? 'в машине — только аудио' : '';
     const can = d.canReceive && !why;
     return (
-      <Row key={d.id} variant={v} id={`ho-${d.id}`} onEnter={() => (can ? void send(d) : setStep({ s: 'fail', text: why === 'не на связи' ? hReason('device_offline') : why === 'другой профиль' ? hReason('other_profile') : why === 'не подтверждено' ? hReason('recipient_not_trusted') : hReason('unsupported_here'), to: d }))}>
+      <Row key={d.id} variant={v} id={`ho-${d.id}`} onEnter={() => (multi && can ? toggle(d.id) : can ? void send(d) : setStep({ s: 'fail', text: why === 'не на связи' ? hReason('device_offline') : why === 'другой профиль' ? hReason('other_profile') : why === 'не подтверждено' ? hReason('recipient_not_trusted') : hReason('unsupported_here'), to: d }))}>
         {(f) => (
           <div className="flex items-center gap-3" style={card(f)}>
+            {multi && <span className="grid shrink-0 place-items-center rounded-md" style={{ width: big ? 34 : 20, height: big ? 34 : 20, border: '2px solid #b3a7ff', background: picked.includes(d.id) ? '#8b7cff' : 'transparent', opacity: can ? 1 : 0.4 }} aria-hidden>{picked.includes(d.id) && <Check size={big ? 24 : 14} />}</span>}
             <Icon size={big ? 40 : 22} style={{ color: can ? '#b3a7ff' : 'var(--t3)' }} />
             <div className="min-w-0 flex-1">
               <div className="truncate font-bold" style={{ fontSize: fs, color: 'var(--t1, #fff)' }} translate="no">{d.name}{lastTarget.current === d.id ? ' ★' : ''}</div>
@@ -167,13 +190,24 @@ const Sheet = ({ p, onClose }: { p: ContinueProps; onClose: () => void }) => {
             <p>Других устройств пока нет.</p>
             {hint('Войдите в Sky под этим Sky ID на телефоне, компьютере, ТВ или в машине (на ТВ и в машине — по QR) и откройте Sky: устройство появится здесь.')}
           </div>)}
+          {list && list.length > 1 && (
+            <Row variant={v} id="ho-multi" onEnter={() => { setMulti((m) => !m); setPicked([]); }}>
+              {(f) => <div className="flex items-center justify-between rounded-2xl px-4 py-2 font-bold" style={{ ...card(f), fontSize: sm }}><span>{multi ? 'Выбрать одно устройство' : 'Играть на нескольких устройствах сразу'}</span><ArrowRightLeft size={big ? 26 : 16} /></div>}
+            </Row>
+          )}
+          {multi && hint(p.kind === 'book' && p.read().extra?.mode !== 'audio' ? 'Чтение книги на нескольких устройствах сразу не синхронизируется — выберите одно устройство или переключитесь на аудио.' : 'Отметьте устройства: на каждом после нажатия «Продолжить» Sky откроет то же и встанет на место, где вы сейчас. Здесь воспроизведение не останавливается. Синхронность — до долей секунды сети, не покадровая.')}
           {list?.map(devRow)}
+          {multi && (
+            <Row variant={v} id="ho-group-go" disabled={picked.length === 0 || (p.kind === 'book' && p.read().extra?.mode !== 'audio')} onEnter={() => void sendGroup()}>
+              {(f) => <div className="rounded-2xl px-4 py-3 text-center font-bold" style={{ ...card(f), fontSize: fs, background: f ? '#8b7cff' : 'rgba(139,124,255,.5)' }}>{`Играть на выбранных (${picked.length})`}</div>}
+            </Row>
+          )}
           {pendingApproval > 0 && (
             <Row variant={v} id="ho-approve" onEnter={() => { useModuleStore.getState().setActiveModule('extras'); useModuleStore.getState().setPendingExtrasTab('transfer'); onClose(); }}>
               {(f) => <div style={{ ...card(f), fontSize: sm }}>{`Ждут подтверждения устройств: ${pendingApproval}. Подтвердите их в «Передаче файлов» — тогда они появятся здесь.`}</div>}
             </Row>
           )}
-          {v !== 'tv' && p.pause && (
+          {!multi && v !== 'tv' && p.pause && (
             <label className="flex items-center gap-2" style={{ fontSize: sm }}><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />Не останавливать здесь, пока другое устройство не откроет</label>
           )}
           <div className="rounded-2xl p-3" style={{ background: 'rgba(255,255,255,.05)', fontSize: sm }}>
@@ -202,6 +236,18 @@ const Sheet = ({ p, onClose }: { p: ContinueProps; onClose: () => void }) => {
         </>)}
       </>)}
 
+      {step.s === 'group' && (
+        <div className="space-y-2">
+          {hint('Здесь музыка/видео продолжает играть. Устройство начнёт, когда на нём нажмут «Продолжить».')}
+          {step.devs.map((d) => {
+            const hid = step.ids.map((id) => sent[id]).find((h) => h && h.toDevice === d.id);
+            const text = step.failed[d.id] ?? (!hid ? '…' : hid.state === 'accepted' ? 'играет' : hid.state === 'pending' ? 'ждёт ответа' : hid.state === 'declined' ? 'отклонило' : hid.state === 'expired' ? 'не ответило' : 'не вышло');
+            const okc = hid?.state === 'accepted';
+            return <div key={d.id} className="flex items-center gap-3" style={card(false)}><span className="min-w-0 flex-1 truncate font-bold" style={{ fontSize: fs }} translate="no">{d.name}</span><span style={{ fontSize: sm, color: okc ? '#6ee7b7' : step.failed[d.id] ? '#fca5a5' : 'var(--t3, rgba(255,255,255,.6))' }}>{text}</span></div>;
+          })}
+          <Row variant={v} id="ho-group-ok" onEnter={onClose}>{(f) => <div className="rounded-2xl px-4 py-3 text-center font-bold" style={{ ...card(f), fontSize: fs }}>Готово</div>}</Row>
+        </div>
+      )}
       {step.s === 'wait' && (
         <div className="space-y-3 text-center">
           <Loader2 className="mx-auto animate-spin" size={big ? 56 : 32} style={{ color: '#b3a7ff' }} />
