@@ -13,7 +13,7 @@
 import { refreshIceServers } from '@/shared/rtcConfig';
 import { emitGoOrder } from '@/go/live';
 import { useMessengerStore } from './store';
-import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
+import { getAccessToken, apiRefreshSession, notifyPinRequired } from '@/core/auth/api';
 import { NATIVE_APP, API_ORIGIN, getApiOrigin, failoverApiOrigin } from '@/core/nativeApp';
 import { setWireSink, setVolatileSink, type Outgoing } from '@/core/wire';
 import { bsignal, type SignalMsg } from '@/calls/webrtc';
@@ -344,6 +344,11 @@ const handle = (data: any) => {
 
     case 'pong':
       if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
+      break;
+
+    case 'pin-required':
+      authorized = false; wantOpen = false;
+      notifyPinRequired();
       break;
 
     case 'auth-failed':

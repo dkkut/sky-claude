@@ -320,6 +320,8 @@ export interface Reply<T> { ok: boolean; data?: T; error?: string; reason?: stri
 /** PIN при смене IP (server/ippin.mjs): сервер закрыл сессию, пока не введён PIN. */
 let onPinRequired: (() => void) | null = null;
 export const setPinRequiredHandler = (fn: (() => void) | null) => { onPinRequired = fn; };
+/** Сокет отклонён из-за PIN при смене IP — показать тот же экран, что и при 403 pin_required. */
+export const notifyPinRequired = () => { onPinRequired?.(); };
 
 let onBetaRequired: (() => void) | null = null;
 export const setBetaRequiredHandler = (fn: (() => void) | null) => { onBetaRequired = fn; };
