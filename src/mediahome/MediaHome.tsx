@@ -177,6 +177,8 @@ const WidgetConfig = ({ w, onChange }: { w: WidgetDef; onChange: (cfg: Record<st
   if (w.type === 'clock') return <div className="mb-2 flex gap-4 text-[12px]" style={{ color: 'var(--t2)' }}>
     <label><input type="checkbox" checked={w.cfg.format24 !== false} onChange={(e) => onChange({ format24: e.target.checked })} /> 24 часа</label>
     <label><input type="checkbox" checked={w.cfg.seconds === true} onChange={(e) => onChange({ seconds: e.target.checked })} /> Секунды</label></div>;
+  if (w.type === 'analytics') return <label className="mb-2 block text-[12px]" style={{ color: 'var(--t2)' }}>Период{' '}
+    <select value={String(w.cfg.period ?? 'month')} onChange={(e) => onChange({ period: e.target.value })} className={inp} style={st}><option value="day">День</option><option value="week">Неделя</option><option value="month">Месяц</option></select></label>;
   if (w.type === 'unread') return <label className="mb-2 block text-[12px]" style={{ color: 'var(--t2)' }}><input type="checkbox" checked={w.cfg.showText === true} onChange={(e) => onChange({ showText: e.target.checked })} /> Показывать названия чатов</label>;
   if (w.type === 'wave') return <label className="mb-2 block text-[12px]" style={{ color: 'var(--t2)' }}>Подборка{' '}
     <select value={String(w.cfg.shelf ?? 'for_you')} onChange={(e) => onChange({ shelf: e.target.value })} className={inp} style={st}>

@@ -12,6 +12,9 @@ import { apiMediaActivity, type MediaActivity } from '@/extras/mediaActivityApi'
 import { useModuleStore } from '@/data/state/modules';
 import { goApi, type GoOrder } from '@/go/api';
 import { apiOrders } from '@/marketplace/marketApi';
+import { apiCall } from '@/core/auth/api';
+import { kbMe, kbAnalytics, type Analytics } from '@/kassabiz/api';
+import { Eye, EyeOff } from 'lucide-react';
 
 /** Подписи типов виджетов (категории — для каталога в редакторе). */
 export const WIDGET_META: Record<string, { label: string; cat: string; hint: string }> = {
@@ -29,6 +32,11 @@ export const WIDGET_META: Record<string, { label: string; cat: string; hint: str
   activity: { label: 'Моя активность', cat: 'stats', hint: 'Время в музыке, видео, подкастах' },
   goorders: { label: 'Заказы Sky GO', cat: 'go', hint: 'Активные поездки, доставки, еда' },
   marketorders: { label: 'Заказы Market', cat: 'go', hint: 'Ваши покупки в пути' },
+  events: { label: 'Популярные события', cat: 'time', hint: 'Билеты, которые покупают чаще всего' },
+  bookings: { label: 'Мои бронирования', cat: 'go', hint: 'Записи в организациях, жильё, туры, отели' },
+  analytics: { label: 'Аналитика бизнеса', cat: 'stats', hint: 'Sky для бизнеса: день, неделя, месяц' },
+  storage: { label: 'Личное хранилище', cat: 'eco', hint: 'Сколько места занято' },
+  security: { label: 'Защита аккаунта', cat: 'eco', hint: 'Уровень защиты, данные можно скрыть' },
   tasks: { label: 'Задачи и заметки', cat: 'tasks', hint: 'Хранятся на этом устройстве' },
   quick: { label: 'Быстрые действия', cat: 'quick', hint: 'Переходы в разделы Sky' },
   ai: { label: 'Sky AI', cat: 'eco', hint: 'Открывается по нажатию, запросы сами не отправляются' },
@@ -213,6 +221,86 @@ const MarketOrders = ({ onNav }: { onNav: (t: string) => void }) => {
   );
 };
 
+const useData = <T,>(path: string) => {
+  const [d, setD] = useState<T | null | undefined>(undefined);
+  useEffect(() => { let on = true; void apiCall<T>(`/api/media/home/data/${path}`).then((r) => { if (on) setD(r.ok ? r.data ?? null : null); }); return () => { on = false; }; }, [path]);
+  return d;
+};
+const Wait = ({ d, children }: { d: unknown; children: React.ReactNode }) => d === undefined ? <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Загрузка…</p> : d === null ? <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Данные недоступны.</p> : <>{children}</>;
+const when = (iso: string) => { try { return new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
+
+const Events = ({ onNav }: { onNav: (t: string) => void }) => {
+  const d = useData<{ events: { id: string; title: string; city: string; startsAt: string }[] }>('events');
+  return (
+    <Box title="Популярные события">
+      <Wait d={d}>{d && (d.events.length === 0 ? <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Пока нет событий с проданными билетами.</p>
+        : d.events.slice(0, 4).map((e) => <button key={e.id} type="button" onClick={() => onNav('tickets')} className="truncate text-left text-[13px]" style={{ color: 'var(--t1)' }}><span translate="no">{e.title}</span> <span style={{ color: 'var(--t3)' }} translate="no">· {e.city} · {when(e.startsAt)}</span></button>))}</Wait>
+    </Box>
+  );
+};
+
+const Bookings = ({ onNav }: { onNav: (t: string) => void }) => {
+  const d = useData<{ bookings: { kind: string; id: string; title: string; sub: string; at: string }[] }>('bookings');
+  return (
+    <Box title="Мои бронирования">
+      <Wait d={d}>{d && (d.bookings.length === 0 ? <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Активных бронирований нет.</p>
+        : d.bookings.slice(0, 4).map((b) => <button key={`${b.kind}${b.id}`} type="button" onClick={() => onNav('go')} className="truncate text-left text-[13px]" style={{ color: 'var(--t1)' }}><span translate="no">{b.title}</span> <span style={{ color: 'var(--t3)' }} translate="no">· {b.kind === 'place' ? when(b.at) : b.sub}</span></button>))}</Wait>
+    </Box>
+  );
+};
+
+const Storage = () => {
+  const d = useData<{ usedBytes: number; quotaBytes: number }>('storage');
+  const gb = (b: number) => (b / 1073741824).toFixed(b < 1073741824 ? 2 : 1);
+  return (
+    <Box title="Личное хранилище">
+      <Wait d={d}>{d && <><div className="text-[18px] font-bold" style={{ color: 'var(--t1)' }}>{gb(d.usedBytes)} ГБ <span className="text-[12px] font-normal" style={{ color: 'var(--t3)' }}>из {gb(d.quotaBytes)} ГБ</span></div>
+        <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full" style={{ width: `${Math.min(100, d.quotaBytes ? (d.usedBytes / d.quotaBytes) * 100 : 0)}%`, background: d.usedBytes / (d.quotaBytes || 1) > 0.9 ? '#f87171' : 'var(--accent)' }} /></div></>}</Wait>
+    </Box>
+  );
+};
+
+const LEVEL: Record<string, { label: string; color: string }> = { low: { label: 'Слабая защита', color: '#f87171' }, medium: { label: 'Средняя защита', color: '#fbbf24' }, high: { label: 'Высокая защита', color: '#34d399' } };
+const Security = () => {
+  const d = useData<{ score: number; level: string; factors: { key: string; label: string; weight: number; on: boolean }[] }>('security');
+  const KEY = 'sky:home:security:hidden';
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } });
+  const toggle = () => { const v = !hidden; setHidden(v); try { localStorage.setItem(KEY, v ? '1' : '0'); } catch { /* память недоступна */ } };
+  const lv = LEVEL[d?.level ?? 'low'];
+  return (
+    <Box title="Защита аккаунта">
+      <Wait d={d}>{d && <>
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1" style={hidden ? { filter: 'blur(8px)', userSelect: 'none' } : undefined} aria-hidden={hidden}>
+            <div className="text-[22px] font-bold" style={{ color: lv.color }}>{d.score}/100</div>
+            <div className="text-[12px]" style={{ color: 'var(--t2)' }}>{lv.label}</div>
+          </div>
+          <button type="button" onClick={toggle} aria-pressed={hidden} aria-label={hidden ? 'Показать данные' : 'Скрыть данные'} className="grid h-8 w-8 place-items-center rounded-full border" style={{ borderColor: 'var(--border)', color: 'var(--t1)' }}>{hidden ? <Eye size={14} /> : <EyeOff size={14} />}</button>
+        </div>
+        <div style={hidden ? { filter: 'blur(6px)', userSelect: 'none' } : undefined} aria-hidden={hidden}>
+          {d.factors.filter((f) => !f.on).slice(0, 3).map((f) => <div key={f.key} className="text-[12px]" style={{ color: 'var(--t2)' }}>Не включено: {f.label}</div>)}
+          {d.factors.every((f) => f.on) && <div className="text-[12px]" style={{ color: 'var(--t2)' }}>Все защитные меры включены.</div>}
+        </div></>}</Wait>
+    </Box>
+  );
+};
+
+const BizAnalytics = ({ w }: { w: WidgetDef }) => {
+  const [a, setA] = useState<Analytics | null | undefined>(undefined);
+  const days = w.cfg.period === 'day' ? 1 : w.cfg.period === 'week' ? 7 : 30;
+  useEffect(() => { let on = true; void (async () => { const me = await kbMe(); if (!on) return; if (!me.ok || !me.data?.business) { setA(null); return; } const r = await kbAnalytics(days); if (on) setA(r.ok ? r.data?.analytics ?? null : null); })(); return () => { on = false; }; }, [days]);
+  return (
+    <Box title={days === 1 ? 'Бизнес: сегодня' : days === 7 ? 'Бизнес: неделя' : 'Бизнес: месяц'}>
+      {a === undefined ? <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Загрузка…</p> : a === null ? <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Нет подключённого бизнеса или данные недоступны.</p>
+        : <div className="grid grid-cols-3 gap-2 text-[12px]" style={{ color: 'var(--t2)' }}>
+            <div><div className="text-[17px] font-bold" style={{ color: 'var(--t1)' }}>{Math.round(a.confirmedSumRub)} ₽</div>подтверждено</div>
+            <div><div className="text-[17px] font-bold" style={{ color: 'var(--t1)' }}>{a.requests}</div>заявок</div>
+            <div><div className="text-[17px] font-bold" style={{ color: 'var(--t1)' }}>{Math.round(a.averageRub)} ₽</div>средний чек</div>
+          </div>}
+    </Box>
+  );
+};
+
 const Points = () => {
   const { balance, points, refresh } = useMoney() as unknown as { balance: number; points: number; refresh?: () => Promise<void> | void };
   useEffect(() => { void refresh?.(); }, [refresh]);
@@ -252,6 +340,11 @@ export const WidgetBody = ({ w, onNav }: { w: WidgetDef; onNav: (t: string) => v
     case 'quick': return <Quick w={w} onNav={onNav} />;
     case 'ai': return <Box title="Sky AI"><button type="button" className={cardBtn} style={{ background: 'var(--accent)', color: '#fff' }} onClick={() => onNav('ai')}>Открыть Sky AI</button></Box>;
     case 'points': return <Points />;
+    case 'events': return <Events onNav={onNav} />;
+    case 'bookings': return <Bookings onNav={onNav} />;
+    case 'analytics': return <BizAnalytics w={w} />;
+    case 'storage': return <Storage />;
+    case 'security': return <Security />;
     case 'goorders': return <GoOrders onNav={onNav} />;
     case 'marketorders': return <MarketOrders onNav={onNav} />;
     case 'custom': return <Custom w={w} />;
