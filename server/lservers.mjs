@@ -187,8 +187,8 @@ export const connectInfo = async (me, id) => {
   await query(`INSERT INTO launcher_server_history (profile_id, server_id) VALUES ($1,$2) ON CONFLICT (profile_id, server_id) DO UPDATE SET last_at=now(), count=launcher_server_history.count+1`, [me, id]);
   const addr = `${r.host}:${r.port}`;
   const base = { address: addr, host: r.host, port: r.port, passwordRequired: r.params?.passwordRequired === true };
-  if (r.platform === 'fivem') return { ...base, launchSupported: true, uri: `fivem://connect/${addr}`, instructions: 'Нужен установленный клиент FiveM: ссылка откроет его и подключит к серверу. Sky не скачивает GTA V и FiveM.' };
-  if (r.platform === 'ragemp') return { ...base, launchSupported: false, uri: null, instructions: 'Автоматический запуск RAGE MP не поддерживается: откройте клиент RAGE MP и введите адрес сервера вручную.' };
+  if (r.platform === 'fivem') return { ...base, launchSupported: false, uri: null, instructions: 'Откройте клиент FiveM, нажмите F8 и введите connect с адресом сервера (или добавьте его в избранное). Sky не скачивает и не запускает GTA V и FiveM.' };
+  if (r.platform === 'ragemp') return { ...base, launchSupported: false, uri: null, instructions: 'Sky не запускает RAGE MP: откройте клиент RAGE MP и введите адрес сервера вручную.' };
   return { ...base, launchSupported: false, uri: null, instructions: `Откройте Minecraft (версия ${r.version || 'указана на странице сервера'}), «Сетевая игра» → «Добавить сервер» и вставьте адрес. Sky не запускает и не авторизует Minecraft: вход через официальный лаунчер Mojang/Microsoft.` };
 };
 

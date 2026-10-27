@@ -57,7 +57,7 @@ ok((await S.listServers(B, { q: '%' })).servers.length === 0, 'символ % н
 // избранное, история, подключение
 ok((await S.toggleFavorite(B, s1.id, true)).ok, 'в избранное'); ok((await S.listServers(B, { kind: 'minecraft', favoritesOnly: '1' })).servers.length === 1, 'фильтр избранного');
 ok((await S.toggleFavorite(B, s4.id, true)).error === 'not_found', 'нельзя избрать неопубликованный');
-const c1 = await S.connectInfo(B, s2.id); ok(c1.uri === `fivem://connect/127.0.0.1:${fvPort}` && c1.launchSupported, 'FiveM: ссылка подключения');
+const c1 = await S.connectInfo(B, s2.id); ok(c1.uri === null && !c1.launchSupported && c1.address === `127.0.0.1:${fvPort}`, 'FiveM: только данные подключения');
 const c2 = await S.connectInfo(B, s3.id); ok(c2.uri === null && !c2.launchSupported, 'RAGE MP: автозапуск не обещаем');
 const c3 = await S.connectInfo(B, s1.id); ok(!c3.launchSupported && /официальный/.test(c3.instructions), 'Minecraft: через официальный лаунчер');
 ok((await S.connectInfo(B, s4.id)).error === 'not_found', 'подключиться к черновику нельзя');

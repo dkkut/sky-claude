@@ -188,26 +188,6 @@ ipcMain.handle('launcher:pick-folder', async () => {
 });
 ipcMain.handle('launcher:shutdown', () => { if (launcherMgr) launcherMgr.stopAll(); return true; });
 
-/* Minecraft (electron/mclauncher.cjs): установка с серверов Mojang, вход Microsoft, запуск. Менеджер создаётся при первом обращении.
-   Refresh-токен хранится зашифрованным (safeStorage) в userData/mc-auth.bin; в страницу он не отдаётся. Допустимые методы — закрытый список. */
-let mcMgr = null;
-const MC_METHODS = new Set(['versions', 'install', 'cancelInstall', 'installing', 'installed', 'verify', 'uninstall', 'launch', 'running', 'java', 'authStart', 'authStatus', 'authCancel', 'account', 'logout', 'hasClientId']);
-const mcAuthFile = () => path.join(app.getPath('userData'), 'mc-auth.bin');
-const mcSecrets = {
-  get: () => { try { if (!safeStorage.isEncryptionAvailable()) return ''; return safeStorage.decryptString(fs.readFileSync(mcAuthFile())); } catch { return ''; } },
-  set: (v) => { try { if (!v) { fs.rmSync(mcAuthFile(), { force: true }); return; } if (safeStorage.isEncryptionAvailable()) fs.writeFileSync(mcAuthFile(), safeStorage.encryptString(String(v)), { mode: 0o600 }); } catch { /* ignore */ } },
-};
-ipcMain.handle('mc:call', async (_e, o, method, args) => {
-  if (!MC_METHODS.has(method)) return { error: 'bad_method' };
-  if (!mcMgr) {
-    const cid = String(o && o.clientId || '');
-    if (cid && !/^[0-9a-fA-F-]{36}$/.test(cid)) return { error: 'bad_client_id' };
-    const { createMc } = require('./mclauncher.cjs');
-    mcMgr = createMc({ root: path.join(app.getPath('home'), 'Sky Games', 'Minecraft'), clientId: cid, secretStore: mcSecrets, onEvent: (ev) => { for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send('mc:event', ev); } } });
-  }
-  try { return await mcMgr[method](...(Array.isArray(args) ? args.slice(0, 2) : [])); } catch (e) { return { error: String(e && e.code || e && e.message || e).slice(0, 60), need: e && e.need, have: e && e.have }; }
-});
-
 ipcMain.handle('proxy:get', () => ({ ok: true, cfg: publicProxyView(loadProxyConfig()), encrypted: safeStorage.isEncryptionAvailable() }));
 ipcMain.handle('proxy:apply', async (_event, raw) => {
   const prev = loadProxyConfig();

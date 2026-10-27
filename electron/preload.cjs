@@ -27,8 +27,6 @@ contextBridge.exposeInMainWorld('sky', {
     pickFolder: () => ipcRenderer.invoke('launcher:pick-folder'),
     pauseAll: () => ipcRenderer.invoke('launcher:shutdown'),
     onEvent: (fn) => { const l = (_e, ev) => fn(ev); ipcRenderer.on('launcher:event', l); return () => ipcRenderer.removeListener('launcher:event', l); },
-    mc: (clientId, method, ...args) => ipcRenderer.invoke('mc:call', { clientId }, method, args),
-    onMcEvent: (fn) => { const l = (_e, ev) => fn(ev); ipcRenderer.on('mc:event', l); return () => ipcRenderer.removeListener('mc:event', l); },
   },
   gameDetect: {
     set: (on) => ipcRenderer.send('sky:game-detect', Boolean(on)),

@@ -125,9 +125,6 @@ declare global {
         pickFolder: () => Promise<string | null>;
         pauseAll: () => Promise<boolean>;
         onEvent: (fn: (ev: any) => void) => () => void;
-        /** Minecraft: установка с серверов Mojang, вход Microsoft, запуск (electron/mclauncher.cjs). */
-        mc: (clientId: string, method: string, ...args: unknown[]) => Promise<any>;
-        onMcEvent: (fn: (ev: any) => void) => () => void;
       };
       quickActions: {
         hide: () => void;
