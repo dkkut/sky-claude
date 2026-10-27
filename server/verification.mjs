@@ -17,6 +17,7 @@ import { query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { generateNumericCode, hashCode, codesEqual } from './crypto.mjs';
 import { sendSms, sendEmail } from './notify.mjs';
+import { deliverLoginCode, purgeLoginCodeNotes } from './logincodes.mjs';
 
 /** Сколько живёт код. */
 const TTL_SEC = 5 * 60;
@@ -42,7 +43,7 @@ const MAX_ATTEMPTS = 5;
  * Возвращает { ok, retryAfter, expiresIn } либо { error }. Наружу
  * никогда не отдаёт сам код: в режиме отладки он уходит в лог сервера.
  */
-export const issueCode = async (channel, destination, purpose) => {
+export const issueCode = async (channel, destination, purpose, { devices = false } = {}) => {
   // Сколько секунд назад отправляли последний код.
   const { rows: recent } = await query(
     `SELECT created_at FROM verification_codes
@@ -76,7 +77,9 @@ export const issueCode = async (channel, destination, purpose) => {
     [codeId, channel, destination, hashCode(code, destination), purpose, expiresAt],
   );
 
-  const delivery = channel === 'phone'
+  // Вход: если у человека есть вошедшие устройства, код показываем на них вместо письма/SMS (logincodes.mjs).
+  const onDevices = devices && purpose === 'login' && await deliverLoginCode(channel, destination, code);
+  const delivery = onDevices ? { ok: true } : channel === 'phone'
     ? await sendSms(destination, L(`Код Sky ID: ${code}. Никому его не сообщайте.`, `Sky ID code: ${code}. Do not share it with anyone.`))
     : await sendEmail(destination, L('Код Sky ID', 'Sky ID code'),
         L(
@@ -162,6 +165,7 @@ export const purgeExpiredCodes = async () => {
     `DELETE FROM verification_codes
       WHERE expires_at < now() - interval '1 day'`,
   );
+  await purgeLoginCodeNotes().catch(() => {});
   return rowCount;
 };
 

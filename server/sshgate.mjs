@@ -28,6 +28,11 @@ import { L } from './lang.mjs';
 import { adminNow, enactPanic } from './admingate.mjs';
 import { rateLimit } from './security.mjs';
 import { ipMask, ipFp } from './ipmask.mjs';
+import { verifyToken as verifyAdminToken } from './admintoken.mjs';
+import { isOwnerRaw } from './admin.mjs';
+import { notifyGift } from './giftnotify.mjs';
+import { pushToOffline } from './webpush.mjs';
+import { pushGoEvent } from './signal.mjs';
 
 const LINK_TTL_MIN = 5;
 const CODE_ATTEMPTS = 3;
@@ -222,4 +227,153 @@ export const sweepSshGate = async () => {
   const { rows } = await query("UPDATE ssh_gate_requests SET status = 'denied', decided_at = now(), outcome = 'expired' WHERE status = 'pending' AND expires_at < now() RETURNING profile_id, device, ip");
   for (const r of rows.slice(0, 20)) await logAdmin({ actorId: r.profile_id, type: 'ssh_gate_expired', targetType: 'system', result: 'denied', detail: clip(`${r.device} · ${r.ip}: владелец не подтвердил`, 120) }).catch(() => {});
   await query("DELETE FROM ssh_gate_requests WHERE created_at < now() - interval '30 days'");
+};
+
+
+/* ═══ Вход по токену администратора (режим token) ═══════════════════════════════════════════════════════════════════
+ * Человек на сервере вводит @ник и личный токен администратора (SKA-…). Пускает только владельца и тех, кому владелец выдал доступ
+ * к SSH (ssh_access). Вход происходит сразу, но владелец тут же получает сообщение от Sky и 25 минут может отменить вход
+ * («Это не я» — сессия на сервере обрывается) или подтвердить («Это я»).
+ */
+export const NOTICE_MIN = 25;
+const NOTICE_MS = NOTICE_MIN * 60_000;
+
+const nickOf = (v) => String(v ?? '').trim().replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_.-]/g, '').slice(0, 40);
+const ownerProfile = async () => {
+  const name = String(config.ownerUsername ?? '').trim().toLowerCase();
+  if (!name) return null;
+  const { rows } = await query('SELECT id, name, username FROM profiles WHERE lower(username) = $1', [name]);
+  return rows[0] ?? null;
+};
+
+/** Есть ли у человека право входить по SSH: владелец — всегда, остальные — только по выданному доступу (и только пока он администратор). */
+export const hasSshAccess = async (profileId) => {
+  if (await isOwnerRaw(profileId)) return true;
+  const { rows } = await query('SELECT 1 FROM ssh_access a JOIN profiles p ON p.id = a.profile_id WHERE a.profile_id = $1 AND a.revoked_at IS NULL AND p.is_admin', [profileId]);
+  return rows.length > 0;
+};
+
+/** Запрос от скрипта: @ник + токен. Любой отказ одинаков для подбора («denied»), причины — только в журнале. */
+export const loginSsh = async ({ ts, user, host, rhost, tty, nick, token, sig }, { ip }) => {
+  if (!sshGateEnabled()) return { error: 'disabled' };
+  const t = Number(ts);
+  if (!Number.isFinite(t) || Math.abs(Date.now() / 1000 - t) > SIG_WINDOW_SEC) return { error: 'bad_signature' };
+  const fields = { ts: String(ts), user: clip(user, 40), host: clip(host, 80), rhost: clip(rhost, 60), tty: clip(tty, 40) };
+  if (!sameHex(signSshRequest(secret(), fields), String(sig ?? ''))) {
+    if (rateLimit(`sshgate:badsig:${ip}`, 5)) await logAdmin({ actorId: null, type: 'ssh_gate_bad_signature', targetType: 'system', result: 'denied', detail: clip(`адрес ${ip}`, 100) }).catch(() => {});
+    return { error: 'bad_signature' };
+  }
+  if ((await sshState()).paused) {
+    await logAdmin({ actorId: null, type: 'ssh_gate_blocked', targetType: 'system', result: 'denied', detail: clip(`вход приостановлен владельцем: ${fields.user}@${fields.rhost}`, 120) }).catch(() => {});
+    return { error: 'paused' };
+  }
+  // Подбор: по адресу, откуда идёт вход, и общий потолок (скрипт приходит с самого сервера, поэтому адрес берём из подписанного поля).
+  if (!rateLimit(`sshgate:login:${fields.rhost || ip}`, 6) || !rateLimitPerHour('sshgate:login', 60)) return { error: 'too_many_requests' };
+
+  const owner = await ownerProfile();
+  if (!owner) return { error: 'owner_missing' };
+  const who = nickOf(nick);
+  const denied = async (why, actorId = null) => {
+    await logAdmin({ actorId, type: 'ssh_token_denied', targetType: 'system', result: 'denied', detail: clip(`${fields.user}@${fields.rhost}: ${why}`, 140) }).catch(() => {});
+    return { error: 'denied' };
+  };
+  const { rows } = who ? await query('SELECT id, username FROM profiles WHERE lower(username) = $1', [who]) : { rows: [] };
+  const prof = rows[0];
+  if (!prof) return denied('нет такого ника');
+  if (!(await hasSshAccess(prof.id))) return denied(`нет доступа к SSH (@${prof.username})`, prof.id);
+  const v = await verifyAdminToken(prof.id, token, { force: true });
+  if (!v.ok) return denied(`токен: ${v.error}`, prof.id);
+
+  const id = `ssh-${crypto.randomUUID()}`;
+  const poll = crypto.randomBytes(24).toString('base64url');
+  const device = `${fields.user}@${fields.host}${fields.tty ? ` (${fields.tty})` : ''}`;
+  await query(
+    `INSERT INTO ssh_gate_requests (id, profile_id, token_hash, poll_hash, ssh_user, ssh_host, ip, ip_fp, device, expires_at, status, decided_at, consumed_at, outcome, mode, actor_id, notice_until)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now() + interval '25 minutes', 'approved', now(), now(), 'token', 'token', $10, now() + ($11 || ' minutes')::interval)`,
+    [id, owner.id, hash('link', crypto.randomBytes(24).toString('base64url')), hash('poll', poll), fields.user, fields.host, ipMask(fields.rhost), ipFp(fields.rhost), clip(device, 160), prof.id, String(NOTICE_MIN)]);
+  await logAdmin({ actorId: prof.id, type: 'ssh_login_token', targetType: 'system', detail: clip(`${device} · ${ipMask(fields.rhost)}: вход по токену @${prof.username}`, 140) });
+  await logSecurityEvent(owner.id, 'ssh_login_token', clip(device, 100), { ip: clip(ip, 60) });
+  void tellOwnerAboutLogin(owner, { id, device, rhost: fields.rhost, actor: prof.username, self: prof.id === owner.id }).catch((e) => console.error('[ssh] уведомление владельца:', e.message));
+  return { ok: true, id, poll, noticeMin: NOTICE_MIN };
+};
+
+const tellOwnerAboutLogin = async (owner, { id, device, rhost, actor, self }) => {
+  const title = L('Выполнен вход по SSH', 'SSH sign-in completed');
+  const text = L(`${device}${rhost ? ` · адрес ${ipMask(rhost)}` : ''} · по токену @${actor}${self ? ' (ваш)' : ''}. Если это не вы — в течение ${NOTICE_MIN} минут откройте Sky и проведите «Это не я»: сессия на сервере будет оборвана.`,
+    `${device}${rhost ? ` · address ${ipMask(rhost)}` : ''} · by @${actor}'s token${self ? ' (yours)' : ''}. If it was not you, open Sky within ${NOTICE_MIN} minutes and swipe “It's not me”: the server session will be terminated.`);
+  await notifyGift(owner.id, 'ssh_login', title, text, id);
+  try { pushGoEvent([owner.id], { type: 'ssh:login', payload: { id } }); } catch { /* сокет необязателен */ }
+  void pushToOffline([owner.id], { title, body: L('Откройте Sky: можно отменить вход (Это не я)', 'Open Sky: you can cancel the sign-in (It is not me)'), tag: `ssh-${id}`, urgent: true }).catch(() => {});
+  const { rows } = await query('SELECT s.email, s.email_verified FROM profiles p JOIN sky_ids s ON s.id = p.sky_id WHERE p.id = $1', [owner.id]);
+  if (rows[0]?.email_verified && rows[0].email) await sendEmail(rows[0].email, title, text).catch(() => {});
+};
+
+/** Опрос сессионного сторожа на сервере: обрывать ли вход. status: ok | revoked | ended (окно отмены закончилось) | unknown. */
+export const watchSsh = async (id, poll) => {
+  const { rows } = await query('SELECT * FROM ssh_gate_requests WHERE id = $1 AND mode = \'token\'', [String(id ?? '')]);
+  const r = rows[0];
+  if (!r || !sameHex(hash('poll', String(poll ?? '')), r.poll_hash)) return { status: 'unknown' };
+  if (r.status === 'revoked') return { status: 'revoked' };
+  if (!r.notice_until || r.notice_until < new Date()) return { status: 'ended' };
+  if (r.owner_ack === 'me') return { status: 'ended' };
+  return { status: 'ok', left: Math.max(0, Math.ceil((r.notice_until - Date.now()) / 1000)) };
+};
+
+/** Входы по токену, которые владелец ещё может отменить (окно открыто, ответа не было). */
+export const pendingSshLogins = async () => {
+  const { rows } = await query(
+    `SELECT r.id, r.device, r.ip, r.created_at, r.notice_until, p.username AS actor FROM ssh_gate_requests r LEFT JOIN profiles p ON p.id = r.actor_id
+      WHERE r.mode = 'token' AND r.status = 'approved' AND r.owner_ack IS NULL AND r.notice_until > now() ORDER BY r.created_at DESC LIMIT 10`);
+  return rows.map((r) => ({ id: r.id, device: r.device, ip: r.ip, actor: r.actor, createdAt: r.created_at.toISOString(), until: r.notice_until.toISOString() }));
+};
+
+/** «Это я» / «Это не я». Не я: сессия обрывается (сторож на сервере увидит revoked), доступ человека приостанавливается; для входа самого владельца — ещё и новые входы закрываются. */
+export const answerSshLogin = async (ownerId, id, notMe) => {
+  const { rows } = await query(`SELECT * FROM ssh_gate_requests WHERE id = $1 AND mode = 'token'`, [String(id ?? '')]);
+  const r = rows[0];
+  if (!r || r.profile_id !== ownerId) return { error: 'not_found' };
+  if (r.owner_ack) return { ok: true, duplicate: true, answer: r.owner_ack };
+  if (!notMe) {
+    await query(`UPDATE ssh_gate_requests SET owner_ack = 'me', owner_ack_at = now() WHERE id = $1 AND owner_ack IS NULL`, [r.id]);
+    await logAdmin({ actorId: ownerId, type: 'ssh_login_confirmed', targetType: 'system', detail: clip(`${r.device}: владелец подтвердил «Это я»`, 120) });
+    return { ok: true, answer: 'me' };
+  }
+  if (!r.notice_until || r.notice_until < new Date()) return { error: 'window_closed' };
+  const u = await query(`UPDATE ssh_gate_requests SET owner_ack = 'not_me', owner_ack_at = now(), status = 'revoked', outcome = 'revoked' WHERE id = $1 AND owner_ack IS NULL`, [r.id]);
+  if (!u.rowCount) return { ok: true, duplicate: true };
+  const self = r.actor_id === ownerId;
+  if (r.actor_id && !self) await query(`UPDATE ssh_access SET revoked_at = now(), revoked_reason = 'владелец нажал «Это не я»' WHERE profile_id = $1 AND revoked_at IS NULL`, [r.actor_id]);
+  if (self) await setSshPaused(ownerId, true, 'Это не я: вход по токену владельца отменён'); else await logAdmin({ actorId: ownerId, type: 'ssh_login_revoked', targetType: 'system', detail: clip(`${r.device}: вход отменён, доступ человека отозван`, 120) });
+  await logSecurityEvent(ownerId, 'ssh_login_revoked', clip(r.device, 100), {});
+  return { ok: true, answer: 'not_me', pausedGate: self };
+};
+
+/* ── Выдача доступа к SSH (только владелец) ── */
+export const listSshAccess = async () => {
+  const { rows } = await query(
+    `SELECT a.profile_id, p.username, p.name, p.is_admin, a.granted_at, a.note, a.revoked_at, a.revoked_reason, (t.profile_id IS NOT NULL) AS has_token
+       FROM ssh_access a JOIN profiles p ON p.id = a.profile_id LEFT JOIN admin_tokens t ON t.profile_id = a.profile_id ORDER BY a.granted_at DESC LIMIT 100`);
+  return rows.map((r) => ({ profileId: r.profile_id, username: r.username, name: r.name, isAdmin: r.is_admin, grantedAt: r.granted_at.toISOString(), note: r.note,
+    revokedAt: r.revoked_at?.toISOString() ?? null, revokedReason: r.revoked_reason, hasToken: Boolean(r.has_token) }));
+};
+
+export const grantSshAccess = async (ownerId, username, note) => {
+  const nick = nickOf(username);
+  const { rows } = nick ? await query('SELECT id, username, is_admin FROM profiles WHERE lower(username) = $1', [nick]) : { rows: [] };
+  const p = rows[0];
+  if (!p) return { error: 'not_found' };
+  if (p.id === ownerId) return { error: 'owner_has_access' };
+  if (!p.is_admin) return { error: 'target_not_admin' };
+  await query(`INSERT INTO ssh_access (profile_id, granted_by, note) VALUES ($1,$2,$3)
+    ON CONFLICT (profile_id) DO UPDATE SET granted_by = $2, granted_at = now(), note = $3, revoked_at = NULL, revoked_reason = ''`, [p.id, ownerId, clip(note, 120)]);
+  await logAdmin({ actorId: ownerId, type: 'ssh_access_grant', targetType: 'user', targetId: p.id, detail: clip(`доступ к SSH выдан @${p.username}`, 120) });
+  return { ok: true, profileId: p.id };
+};
+
+export const revokeSshAccess = async (ownerId, profileId, reason) => {
+  const why = clip(reason, 120) || 'отозван владельцем';
+  const { rowCount } = await query('UPDATE ssh_access SET revoked_at = now(), revoked_reason = $2 WHERE profile_id = $1 AND revoked_at IS NULL', [String(profileId ?? ''), why]);
+  if (!rowCount) return { error: 'not_found' };
+  await logAdmin({ actorId: ownerId, type: 'ssh_access_revoke', targetType: 'user', targetId: String(profileId), detail: clip(why, 120) });
+  return { ok: true };
 };

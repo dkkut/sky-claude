@@ -128,7 +128,8 @@ interface AuthState {
   setLoginChannel:(c:LoginChannel)=>void;
 
   /** Шаг 1: просим код — на почту или на телефон, смотря чем входим. */
-  requestCode:(value?:string)=>Promise<{ok:boolean;reason?:string;error?:string;retryAfter?:number}>;
+  /** viaMail: код только письмом/SMS, а не сообщением на вошедшие устройства (кнопка «Отправить на почту» через 60 с). */
+  requestCode:(value?:string,viaMail?:boolean)=>Promise<{ok:boolean;reason?:string;error?:string;retryAfter?:number}>;
   /** Шаг 2: проверяем пришедший код. */
   verifyCode:(code:string)=>Promise<{ok:boolean;reason?:string}>;
 
@@ -359,12 +360,12 @@ export const useAuthStore=create<AuthState>((set,get)=>({
 
   /* ══ Вход ═════════════════════════════════════════════════ */
 
-  requestCode:async(value)=>{
+  requestCode:async(value,viaMail)=>{
     const{loginChannel,emailInput,phoneInput}=get();
 
     if(loginChannel==='email'){
       const email=(value??emailInput).trim().toLowerCase();
-      const res=await apiRequestEmailCode(email);
+      const res=await apiRequestEmailCode(email,Boolean(viaMail));
       if(!res.ok){
         const retryAfter=(res.data as any)?.retryAfter;
         // Пауза между письмами — не ошибка ввода: код уже отправлен.
@@ -382,7 +383,7 @@ export const useAuthStore=create<AuthState>((set,get)=>({
     }
 
     const phone=nm(value??phoneInput);
-    const res=await apiRequestPhoneCode(phone);
+    const res=await apiRequestPhoneCode(phone,Boolean(viaMail));
     if(!res.ok){
       const retryAfter=(res.data as any)?.retryAfter;
       if(res.error==='too_soon'){

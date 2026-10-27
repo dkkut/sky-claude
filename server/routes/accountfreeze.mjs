@@ -1,3 +1,4 @@
+import { needDeviceCode } from './../devicecode.mjs';
 import { json, parseBody, readSession, clientIp } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { freezeState, protectAccount, confirmFreezeLink, resendFreezeLink, unfreeze } from './../accountfreeze.mjs';
@@ -26,6 +27,10 @@ export const accountFreezeRoutes = async (req, res, url) => {
   const b = (await parseBody(req)) ?? {};
   if (url === '/api/auth/devices/protect') {
     if (!rateLimitPerHour(`freeze:protect:${s.skyId}`, 40)) return json(res, 429, { error: 'too_many_requests' });
+    if (['last', 'period'].includes(b.remove)) {   // завершение чужих входов — с кодом аутентификатора (заморозка новых входов никого не выбивает)
+      const need = await needDeviceCode(s.skyId, b.twoFactorCode);
+      if (need) return json(res, need.status, need.body);
+    }
     return reply(await protectAccount(s.skyId, s.sessionId, { ip, ua }, b));
   }
   if (url === '/api/auth/freeze/resend') {

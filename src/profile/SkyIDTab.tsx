@@ -21,6 +21,7 @@ import { useAuthStore } from '@/core/auth/store';
 import { useModuleStore } from '@/data/state/modules';
 import { ConfirmExit } from '@/auth/AuthScreen';
 import { apiCall, apiContactGuardCode, type ContactGuard } from '@/core/auth/api';
+import { withAuthCode } from '@/auth/AuthCodeAsk';
 import { apiListDevices, apiRevokeDevice, apiTrustedDevices, apiRevokeTrusted, apiSetSkipCode, type ServerDevice, type TrustedDevice } from '@/core/auth/api';
 import type { ServerProfile, TwoFactorMethod } from '@/core/auth/api';
 
@@ -530,7 +531,7 @@ const TrustedDevicesBlock = ({ profile }: { profile: ServerProfile }) => {
                 <DevIcon os={u.os} />
                 <span className="min-w-0 flex-1 truncate" translate="no">{u.browser} · {u.os}{d.current ? ' (это устройство)' : ''}</span>
                 <span style={{ color: 'var(--t3)' }}>{fmtDt(d.lastSeen)}</span>
-                <button type="button" aria-label="Убрать устройство" onClick={() => void apiRevokeTrusted(d.id).then(load)} className="rounded-full p-1" style={{ color: 'var(--red)' }}><XCircle size={14} /></button>
+                <button type="button" aria-label="Убрать устройство" onClick={() => void withAuthCode((code) => apiRevokeTrusted(d.id, code), 'Убрать доверенное устройство').then(load)} className="rounded-full p-1" style={{ color: 'var(--red)' }}><XCircle size={14} /></button>
               </li>
             );
           })}
@@ -1061,8 +1062,8 @@ const DevicesSection = ({ onLogoutAll }: { onLogoutAll: () => void }) => {
   useEffect(() => { void load(); }, []);
 
   const onTerminate = async (id: string) => {
-    setDevs(prev => prev.filter(d => d.id !== id));
-    await apiRevokeDevice(id);
+    const r = await withAuthCode((code) => apiRevokeDevice(id, code), 'Завершить сессию');
+    if (r.ok) setDevs(prev => prev.filter(d => d.id !== id)); else if (r.error !== 'two_factor_required' && r.error !== 'invalid_code') void load();
   };
 
   return (

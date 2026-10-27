@@ -6,6 +6,7 @@
  * getProfileOfSkyId, который ищет строку с условием принадлежности.
  * Поэтому подстановка чужого id даёт «не найдено», а не чужой профиль.
  */
+import { needDeviceCode } from './../devicecode.mjs';
 import { award as awardCashback } from './../cashbackrules.mjs';
 import { logEvent as skyLog } from './../skylog.mjs';
 import { mayOpenWithoutCode, listTrusted, revokeTrusted, setSkipFlag } from './../trusteddevices.mjs';
@@ -206,6 +207,9 @@ export const skyIdRoutes = async (req, res, url) => {
   const trustedDel = url.match(/^\/api\/skyid\/trusted-devices\/([a-f0-9]{16})$/);
   if (req.method === 'DELETE' && trustedDel) {
     const s = await requireSkyId(req, res); if (!s) return true;
+    const tb = (await parseBody(req).catch(() => ({}))) ?? {};
+    const need = await needDeviceCode(s.skyId, tb.twoFactorCode);
+    if (need) return json(res, need.status, need.body);
     return (await revokeTrusted(s.skyId, trustedDel[1])) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'not_found' });
   }
   const skipMatch = url.match(/^\/api\/skyid\/profiles\/([\w.-]+)\/skip-code$/);

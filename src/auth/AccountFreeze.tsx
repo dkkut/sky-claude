@@ -1,6 +1,7 @@
 /* Защита аккаунта: завершить недавние сессии и/или временно заморозить новые входы.
    Баннер «Разморозка аккаунта» появляется только после перехода по ссылке из письма.
    Серверная часть — server/accountfreeze.mjs. */
+import { withAuthCode } from './AuthCodeAsk';
 import { visibleTick } from '@/shared/visibleTick';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useModuleStore } from '@/data/state/modules';
@@ -87,7 +88,7 @@ export const AccountProtection = ({ onChanged }: { onChanged: () => void }) => {
   const apply = async () => {
     const base = REMOVE.find((x) => x.key === rem)!.req;
     setBusy(true); setErr(undefined); setMsg(undefined);
-    const r = await apiProtectAccount({ ...base, freezeHours: fz || undefined });
+    const r = await withAuthCode((code) => apiProtectAccount({ ...base, freezeHours: fz || undefined, ...(code ? { twoFactorCode: code } : {}) }), 'Завершить входы');
     setBusy(false); setConfirm(false);
     if (!r.ok || !r.data) { setErr(r.reason ?? 'Не получилось'); return; }
     const parts: string[] = [];

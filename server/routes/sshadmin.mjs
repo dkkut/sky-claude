@@ -6,7 +6,7 @@ import { json, requireProfile, parseBody } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { can, isOwner } from './../admin.mjs';
 import { beginStepUp, consumeStepUp, requestMeta } from './../adminsec.mjs';
-import { sshState, setSshPaused, listSshRequests, sshGateEnabled } from './../sshgate.mjs';
+import { sshState, setSshPaused, listSshRequests, sshGateEnabled, listSshAccess, grantSshAccess, revokeSshAccess } from './../sshgate.mjs';
 
 export const sshAdminRoutes = async (req, res, url) => {
   if (!url.startsWith('/api/admin/ssh')) return false;
@@ -19,7 +19,7 @@ export const sshAdminRoutes = async (req, res, url) => {
   const meta = requestMeta(req);
 
   if (req.method === 'GET' && path === '/api/admin/ssh') {
-    return json(res, 200, { enabled: sshGateEnabled(), state: await sshState(), requests: await listSshRequests(100) });
+    return json(res, 200, { enabled: sshGateEnabled(), mode: process.env.SSH_GATE_MODE === 'owner' ? 'owner' : 'token', state: await sshState(), requests: await listSshRequests(100), access: await listSshAccess() });
   }
   const owner = await isOwner(me);
   if (req.method === 'POST' && path === '/api/admin/ssh/step-up') {
@@ -34,6 +34,15 @@ export const sshAdminRoutes = async (req, res, url) => {
     if (s.error) return json(res, s.error === 'step_up_exhausted' ? 429 : 401, s);
     const r = await setSshPaused(me, path.endsWith('/pause'), b.reason);
     return json(res, r.error ? 400 : 200, r);
+  }
+  // Выдача и отзыв доступа к SSH — только владелец, с подтверждением личности (тот же код, что у рубильника).
+  if (req.method === 'POST' && (path === '/api/admin/ssh/access/grant' || path === '/api/admin/ssh/access/revoke')) {
+    if (!owner) return json(res, 403, { error: 'owner_only' });
+    const b = (await parseBody(req)) ?? {};
+    const s = await consumeStepUp(me, 'ssh_gate', b.stepUpCode, { meta });
+    if (s.error) return json(res, s.error === 'step_up_exhausted' ? 429 : 401, s);
+    const r = path.endsWith('/grant') ? await grantSshAccess(me, b.username, b.note) : await revokeSshAccess(me, b.profileId, b.reason);
+    return json(res, r.error ? 400 : 200, { ...r, access: await listSshAccess() });
   }
   return json(res, 404, { error: 'not_found' });
 };

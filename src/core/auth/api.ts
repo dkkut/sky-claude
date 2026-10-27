@@ -462,8 +462,8 @@ const get = <T>(path: string) => call<T>(path);
 export interface CodeRequested { ok: true; retryAfter: number; expiresIn: number; codeLength: number }
 
 /** Шаг 1 основного пути: просим код на почту. */
-export const apiRequestEmailCode = (email: string) =>
-  post<CodeRequested>('/api/auth/email/start', { email });
+export const apiRequestEmailCode = (email: string, viaMail = false) =>
+  post<CodeRequested>('/api/auth/email/start', viaMail ? { email, viaMail: true } : { email });
 
 /** Шаг 2 основного пути: проверяем код из письма. */
 export const apiVerifyEmailCode = (email: string, code: string) =>
@@ -492,8 +492,8 @@ export const apiResetPassword = (email: string, code: string, password: string) 
   post<{ ok: true }>('/api/auth/password/reset', { email, code, password });
 
 /** Шаг 1 запасного пути: просим код на телефон. */
-export const apiRequestPhoneCode = (phone: string) =>
-  post<CodeRequested>('/api/auth/phone/start', { phone });
+export const apiRequestPhoneCode = (phone: string, viaMail = false) =>
+  post<CodeRequested>('/api/auth/phone/start', viaMail ? { phone, viaMail: true } : { phone });
 
 /** Сколько секунд осталось до повторной отправки. */
 export const apiPhoneCooldown = (phone: string) =>
@@ -562,18 +562,18 @@ export interface ServerDevice {
 export const apiListDevices = () =>
   get<{ devices: ServerDevice[] }>('/api/auth/devices');
 
-export const apiRevokeDevice = (id: string) =>
-  post<{ ok: true; isCurrent: boolean }>(`/api/auth/devices/${encodeURIComponent(id)}/revoke`);
+export const apiRevokeDevice = (id: string, twoFactorCode?: string) =>
+  post<{ ok: true; isCurrent: boolean }>(`/api/auth/devices/${encodeURIComponent(id)}/revoke`, twoFactorCode ? { twoFactorCode } : {});
 
 /* ─── Доверенные устройства ─── */
 export interface TrustedDevice { id: string; label: string; firstSeen: string; lastSeen: string; current: boolean }
 export const apiTrustedDevices = () => get<{ devices: TrustedDevice[] }>('/api/skyid/trusted-devices');
-export const apiRevokeTrusted = (id: string) => call<{ ok: true }>(`/api/skyid/trusted-devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const apiRevokeTrusted = (id: string, twoFactorCode?: string) => call<{ ok: true }>(`/api/skyid/trusted-devices/${encodeURIComponent(id)}`, { method: 'DELETE', ...(twoFactorCode ? { body: JSON.stringify({ twoFactorCode }) } : {}) });
 export const apiSetSkipCode = (profileId: string, on: boolean, code?: string) =>
   post<{ ok: true; skipCodeTrusted: boolean }>(`/api/skyid/profiles/${encodeURIComponent(profileId)}/skip-code`, { on, ...(code ? { code } : {}) });
 
-export const apiRevokeAllDevices = () =>
-  post<{ ok: true }>('/api/auth/devices/revoke-all');
+export const apiRevokeAllDevices = (twoFactorCode?: string) =>
+  post<{ ok: true }>('/api/auth/devices/revoke-all', twoFactorCode ? { twoFactorCode } : {});
 
 /* ═══ Профили ════════════════════════════════════════════════ */
 
@@ -835,7 +835,7 @@ export interface FreezeState {
   frozen: boolean; until: string | null; linkConfirmed: boolean; linkUntil: string | null;
   hasEmail: boolean; needsTotp: boolean; events: FreezeEvent[];
 }
-export interface ProtectRequest { remove: 'none' | 'last' | 'period'; hours?: number; freezeHours?: number }
+export interface ProtectRequest { remove: 'none' | 'last' | 'period'; hours?: number; freezeHours?: number; twoFactorCode?: string }
 
 export const apiFreezeState = () => get<FreezeState>('/api/auth/freeze');
 export const apiProtectAccount = (b: ProtectRequest) =>

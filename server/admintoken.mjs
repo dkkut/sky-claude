@@ -73,8 +73,8 @@ export const revokeToken = async (profileId, code) => {
 };
 
 /** Проверить токен. `ok:true` либо {error}; неверные считаются, перебор блокируется. */
-export const verifyToken = async (profileId, raw) => {
-  if (!tokenRequired()) return { ok: true, skipped: true };
+export const verifyToken = async (profileId, raw, { force = false } = {}) => {
+  if (!force && !tokenRequired()) return { ok: true, skipped: true };   // force: SSH требует токен всегда, даже при ADMIN_TOKEN=off
   const c = canon(raw);
   if (!c) return err('admin_token_required');
   const { rows } = await query('SELECT token_hash, fails, blocked_until FROM admin_tokens WHERE profile_id = $1', [profileId]);

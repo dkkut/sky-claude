@@ -338,6 +338,9 @@ const handle = (data: any) => {
       authorized = false; wantOpen = false;
       window.dispatchEvent(new CustomEvent('sky:applock'));
       break;
+    case 'ssh:login':
+      window.dispatchEvent(new CustomEvent('sky:ssh-login'));
+      break;
     case 'limited:pending':
       window.dispatchEvent(new CustomEvent('sky:limited-pending'));
       break;

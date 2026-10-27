@@ -465,17 +465,19 @@ const CodeStep = () => {
     setBusy(false);
   };
 
+  const [mailed, setMailed] = useState(false);   // код уже отправлен письмом/SMS (а не сообщением на устройства)
   const resend = async () => {
     setErr(undefined);
-    const res = await requestCode();
+    // Повторная отправка — всегда на почту/SMS: первый код мог уйти сообщением на другое устройство, до которого нет доступа.
+    const res = await requestCode(undefined, true);
     setLeft(res.retryAfter ?? 60);
-    if (!res.ok) setErr(res.reason);
+    if (res.ok) setMailed(true); else setErr(res.reason);
   };
 
   return (
     <Shell
-      title={byEmail ? 'Код из письма' : 'Код из SMS'}
-      subtitle={`Отправили на ${target}`}
+      title="Код для входа"
+      subtitle={mailed ? `Отправили на ${target}` : `Код придёт сообщением в Sky на ваше вошедшее устройство или, если его нет, на ${target}`}
       onBack={() => useAuthStore.setState({ step: 'login' })}
     >
       <div className="space-y-4">
@@ -496,7 +498,7 @@ const CodeStep = () => {
           className="w-full text-center text-sm"
           style={{ color: left > 0 ? 'var(--t3)' : 'var(--accent)' }}
         >
-          {left > 0 ? `Отправить ещё раз через ${left} с` : 'Отправить код ещё раз'}
+          {left > 0 ? (byEmail ? `Отправить на почту через ${left} с` : `Отправить по SMS через ${left} с`) : (byEmail ? 'Отправить код на почту' : 'Отправить код по SMS')}
         </button>
         {byEmail && (
           <p className="text-center text-[11px] leading-relaxed" style={{ color: 'var(--t3)' }}>

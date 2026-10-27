@@ -17,6 +17,7 @@ import { trustDevice } from './../trusteddevices.mjs';
 import { onLogin as limitedOnLogin } from './../limitedaccess.mjs';
 import { onLogin as appLockOnLogin } from './../applock.mjs';
 import { assertLoginAllowed } from './../accountfreeze.mjs';
+import { needDeviceCode } from './../devicecode.mjs';
 import { assertNotGloballyBlocked } from './../globalblock.mjs';
 import { recordInvite } from './../invites.mjs';
 import { startOnboarding } from './../onboarding.mjs';
@@ -237,7 +238,7 @@ export const authRoutes = async (req, res, url) => {
     // Регистрация закрыта кнопкой в админке: незнакомому номеру говорим сразу, не отправляя код (registration.mjs).
     if (!(await newcomerAllowed(req, res, () => findSkyIdByPhone(phone)))) return true;
 
-    const result = await issueCode('phone', phone, 'login');
+    const result = await issueCode('phone', phone, 'login', { devices: !body.viaMail });
     if (result.error === 'too_soon') {
       return json(res, 429, { error: 'too_soon', retryAfter: result.retryAfter });
     }
@@ -264,7 +265,7 @@ export const authRoutes = async (req, res, url) => {
     // Регистрация закрыта кнопкой в админке: незнакомой почте говорим сразу, не отправляя код (registration.mjs).
     if (!(await newcomerAllowed(req, res, () => findSkyIdByEmail(email)))) return true;
 
-    const result = await issueCode('email', email, 'login');
+    const result = await issueCode('email', email, 'login', { devices: !body.viaMail });
     if (result.error === 'too_soon') {
       return json(res, 429, { error: 'too_soon', retryAfter: result.retryAfter });
     }
@@ -572,6 +573,12 @@ export const authRoutes = async (req, res, url) => {
     // Чужая сессия и несуществующий id отвечают одинаково: подтверждать
     // угаданный чужой идентификатор незачем.
     if (!target || target.userId !== session.skyId) return json(res, 404, { error: 'not_found' });
+    // Выйти со своего же устройства — обычный выход; выбить ДРУГОЕ устройство — только с кодом аутентификатора.
+    if (deviceMatch[1] !== session.sessionId) {
+      const b = (await parseBody(req).catch(() => ({}))) ?? {};
+      const need = await needDeviceCode(session.skyId, b.twoFactorCode);
+      if (need) return json(res, need.status, need.body);
+    }
     await sessionStore.revoke(deviceMatch[1]);
     return json(res, 200, { ok: true, isCurrent: deviceMatch[1] === session.sessionId });
   }
@@ -580,6 +587,9 @@ export const authRoutes = async (req, res, url) => {
   if (req.method === 'POST' && url === '/api/auth/devices/revoke-all') {
     const session = await readSession(req);
     if (!session) return json(res, 401, { error: 'unauthorized' });
+    const b = (await parseBody(req).catch(() => ({}))) ?? {};
+    const need = await needDeviceCode(session.skyId, b.twoFactorCode);
+    if (need) return json(res, need.status, need.body);
     await sessionStore.revokeAllForUser(session.skyId);
     return json(res, 200, { ok: true }, { 'Set-Cookie': clearRefreshCookie() });
   }
