@@ -43,7 +43,7 @@ const ItemMenu = ({ shelf, it, onDone, onNav }: { shelf: string; it: WaveItem; o
 const Card = ({ shelf, it, open, reload }: { shelf: string; it: WaveItem; open: (i: WaveItem) => void; reload: () => void }) => {
   const [menu, setMenu] = useState(false);
   return (
-    <div className="relative w-40 shrink-0 rounded-2xl border p-3" style={{ borderColor: 'var(--border)', background: 'var(--glass-bg, rgba(255,255,255,.04))' }}>
+    <div className="relative w-40 shrink-0 rounded-[20px] border-[0.5px] p-3.5" style={{ borderColor: 'var(--border)', background: 'var(--glass-bg, rgba(255,255,255,.04))' }}>
       <button type="button" onClick={() => open(it)} className="block w-full text-left">
         <div className="mb-2 grid h-20 place-items-center rounded-xl" style={{ background: 'var(--accent-bg, rgba(99,102,241,.15))' }}>
           <Play size={20} style={{ color: 'var(--accent)' }} />
@@ -81,7 +81,7 @@ export const WaveShelves = ({ onNav, only, manage }: { onNav: (tab: string) => v
       {[...w.editorial, ...shown].map((s: Shelf) => (
         <section key={s.id} aria-label={s.title}>
           <div className="mb-2 flex items-center gap-2">
-            <h3 className="min-w-0 flex-1 truncate text-[15px] font-bold" style={{ color: 'var(--t1)' }}>{s.title}</h3>
+            <h3 className="min-w-0 flex-1 truncate text-[17px] font-semibold" style={{ color: 'var(--t1)', letterSpacing: '-0.02em' }}>{s.title}</h3>
             <span className="rounded-full px-2 py-0.5 text-[10px]" style={{ background: 'var(--accent-bg, rgba(99,102,241,.15))', color: 'var(--t2)' }}>
               {s.editorial ? 'Редакция Sky' : s.personal ? 'Персонально' : s.fallback ? 'Популярное' : 'Общая подборка'}
             </span>

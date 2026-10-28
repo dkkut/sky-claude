@@ -53,7 +53,7 @@ const ACTIONS: Record<string, { label: string; tab?: string; module?: string }> 
 export const ALL_ACTIONS = Object.keys(ACTIONS);
 
 const Box = ({ children, title }: { children: React.ReactNode; title?: string }) => (
-  <div className="flex h-full min-w-0 flex-col gap-2">{title && <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--t3)' }}>{title}</div>}{children}</div>
+  <div className="flex h-full min-w-0 flex-col gap-2">{title && <div className="text-[13px] font-semibold" style={{ color: 'var(--t3)', letterSpacing: '-0.01em' }}>{title}</div>}{children}</div>
 );
 const cardBtn = 'rounded-full px-3 py-1.5 text-[12px] font-semibold';
 
@@ -64,8 +64,8 @@ const Clock = ({ w }: { w: WidgetDef }) => {
   const h12 = w.cfg.format24 === false;
   return (
     <Box>
-      <div className="text-[40px] font-extrabold leading-none tabular-nums" style={{ color: 'var(--t1)' }}>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', ...(sec ? { second: '2-digit' } : {}), hour12: h12 })}</div>
-      <div className="text-[13px]" style={{ color: 'var(--t2)' }}>{now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+      <div className="text-[48px] font-semibold leading-none tabular-nums" style={{ color: 'var(--t1)', letterSpacing: '-0.04em' }}>{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', ...(sec ? { second: '2-digit' } : {}), hour12: h12 })}</div>
+      <div className="text-[14px] font-medium capitalize" style={{ color: 'var(--t2)' }}>{now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</div>
     </Box>
   );
 };
@@ -79,7 +79,7 @@ const Weather = () => {
   };
   return (
     <Box title="Погода">
-      {wx ? <><div className="text-[32px] font-bold" style={{ color: 'var(--t1)' }}>{Math.round(wx.tempC)}°</div><div className="text-[12px]" style={{ color: 'var(--t2)' }} translate="no">{wx.city ?? ''}</div></>
+      {wx ? <><div className="text-[44px] font-light leading-none" style={{ color: 'var(--t1)', letterSpacing: '-0.04em' }}>{Math.round(wx.tempC)}°</div><div className="text-[12px]" style={{ color: 'var(--t2)' }} translate="no">{wx.city ?? ''}</div></>
         : <><button type="button" onClick={ask} className={cardBtn} style={{ background: 'var(--accent)', color: '#fff' }}>{state === 'loading' ? 'Определяем…' : 'Показать погоду'}</button>
             {state === 'denied' && <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Нет доступа к геопозиции — разрешите её в настройках браузера.</p>}
             {state === 'error' && <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Погода сейчас недоступна.</p>}</>}

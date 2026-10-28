@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Reorder } from 'framer-motion';
+import { Reorder, motion } from 'framer-motion';
 import { Settings2, X, GripVertical, Undo2, RotateCcw } from 'lucide-react';
 import { apiHome, apiLayoutActivate, apiLayoutCreate, apiLayoutDelete, apiLayoutSave, type HomeLayout, type HomeState, type LayoutRow, type WidgetDef, type WidgetSize } from './api';
 import { ALL_ACTIONS, CATEGORIES, WIDGET_META, WidgetBody, WidgetBoundary } from './widgets';
@@ -13,10 +13,11 @@ const mk = (type: string, size: WidgetSize = 'standard'): WidgetDef => ({ id: ui
 const defaultLayout = (): HomeLayout => ({ v: 1, density: 'normal', surface: 'glass', accent: null, widgets: [mk('clock'), mk('weather', 'compact'), mk('nowplaying'), mk('wave', 'wide'), mk('continue', 'wide'), mk('unread', 'compact'), mk('points', 'compact'), mk('quick', 'wide')] });
 const SIZE_LABEL: Record<WidgetSize, string> = { compact: 'Компактный', standard: 'Стандартный', wide: 'Расширенный' };
 const SPAN: Record<WidgetSize, string> = { compact: 'col-span-1', standard: 'col-span-1 sm:col-span-2', wide: 'col-span-1 sm:col-span-2 lg:col-span-4' };
-const PAD = { cozy: 'p-5', normal: 'p-4', dense: 'p-3' } as const;
+const PAD = { cozy: 'p-6', normal: 'p-5', dense: 'p-4' } as const;
+const SOFT = '0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.28)';
 const SURF = {
-  glass: { background: 'var(--glass-bg, rgba(255,255,255,.05))', backdropFilter: 'blur(14px)', border: '1px solid var(--border)' },
-  solid: { background: 'var(--bg-l2, #14141c)', border: '1px solid var(--border)' },
+  glass: { background: 'var(--glass-bg, rgba(255,255,255,.06))', backdropFilter: 'blur(24px) saturate(1.5)', WebkitBackdropFilter: 'blur(24px) saturate(1.5)', border: '0.5px solid var(--border)', boxShadow: SOFT },
+  solid: { background: 'var(--bg-l2, #14141c)', border: '0.5px solid var(--border)', boxShadow: SOFT },
   clear: { background: 'transparent', border: '1px dashed var(--border)' },
 } as const;
 
@@ -93,8 +94,11 @@ export const MediaHome = ({ onNav }: { onNav: (t: string) => void; onClassic?: (
 
   return (
     <div data-mediahome className="h-full overflow-y-auto overflow-x-hidden px-3 pb-24 pt-3 md:px-6" style={layout.accent ? ({ ['--accent' as string]: layout.accent } as React.CSSProperties) : undefined}>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h2 className="min-w-0 flex-1 text-[18px] font-extrabold" style={{ color: 'var(--t1)' }}>Главная Sky Media</h2>
+      <div className="mb-4 flex flex-wrap items-end gap-2 pt-1">
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] font-semibold capitalize" style={{ color: 'var(--t3)' }}>{new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <h2 className="text-[30px] font-bold leading-tight" style={{ color: 'var(--t1)', letterSpacing: '-0.03em' }}>Мои виджеты</h2>
+        </div>
         {!editing ? <button type="button" onClick={() => setEditing(true)} className="glass-btn flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold" style={{ color: 'var(--t1)' }}><Settings2 size={14} /> Настроить экран</button>
           : <><button type="button" onClick={undo} disabled={!history.length} aria-label="Отменить последнее" className="grid h-8 w-8 place-items-center rounded-full border disabled:opacity-40" style={{ borderColor: 'var(--border)', color: 'var(--t1)' }}><Undo2 size={14} /></button>
               <button type="button" onClick={() => { if (window.confirm('Вернуть экран по умолчанию?')) change(() => defaultLayout()); }} className="flex items-center gap-1 rounded-full border px-3 py-1.5 text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--t2)' }}><RotateCcw size={12} /> Сбросить</button>
@@ -105,7 +109,7 @@ export const MediaHome = ({ onNav }: { onNav: (t: string) => void; onClassic?: (
       {msg && <p role="status" className="mb-2 text-[12px]" style={{ color: 'var(--t2)' }}>{msg}</p>}
 
       {editing && (
-        <div className="mb-4 flex flex-col gap-3 rounded-2xl border p-3" style={{ borderColor: 'var(--border)' }}>
+        <div className="mb-4 flex flex-col gap-3 rounded-[22px] border p-4" style={{ borderColor: 'var(--border)' }}>
           <div className="flex flex-wrap items-center gap-2 text-[12px]" style={{ color: 'var(--t2)' }}>
             <span>Варианты экрана:</span>
             {(state?.layouts ?? []).map((l: LayoutRow) => (
@@ -144,7 +148,7 @@ export const MediaHome = ({ onNav }: { onNav: (t: string) => void; onClassic?: (
           {layout.widgets.map((w) => {
             const sizes = registry.find((r) => r.type === w.type)?.sizes ?? ['standard'];
             return (
-              <Reorder.Item key={w.id} value={w} className={`rounded-2xl ${PAD[layout.density]}`} style={SURF[layout.surface]}>
+              <Reorder.Item key={w.id} value={w} className={`rounded-[26px] ${PAD[layout.density]}`} style={SURF[layout.surface]}>
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px]" style={{ color: 'var(--t2)' }}>
                   <GripVertical size={16} aria-label="Перетащить" style={{ cursor: 'grab' }} />
                   <b className="flex-1" style={{ color: 'var(--t1)' }}>{WIDGET_META[w.type]?.label ?? w.type}</b>
@@ -159,14 +163,15 @@ export const MediaHome = ({ onNav }: { onNav: (t: string) => void; onClassic?: (
         </Reorder.Group>
       ) : (
         <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 ${gridCls}`}>
-          {layout.widgets.map((w) => (
-            <div key={w.id} className={`min-w-0 rounded-2xl ${PAD[layout.density]} ${SPAN[w.size]}`} style={SURF[layout.surface]}><WidgetBoundary><WidgetBody w={w} onNav={onNav} /></WidgetBoundary></div>))}
+          {layout.widgets.map((w, i) => (
+            <motion.div key={w.id} initial={{ opacity: 0, y: 14, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.45, delay: Math.min(i, 8) * 0.05, ease: [0.22, 1, 0.36, 1] }}
+              className={`min-w-0 rounded-[26px] ${PAD[layout.density]} ${SPAN[w.size]}`} style={SURF[layout.surface]}><WidgetBoundary><WidgetBody w={w} onNav={onNav} /></WidgetBoundary></motion.div>))}
         </div>)}
       {!editing && layout.widgets.length === 0 && <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Экран пуст. Нажмите «Настроить экран» и добавьте виджеты.</p>}
 
       {!editing && (
-        <div data-keep-dark className="relative isolate mt-6 rounded-3xl p-4" style={{ ['--t1' as string]: '#f5f3ff', ['--t2' as string]: '#d8d0f0', ['--t3' as string]: '#a99fcf', ['--border' as string]: 'rgba(196,181,253,.22)' } as React.CSSProperties}>
-          <WaveBackdrop /><h2 className="mb-3 text-[18px] font-extrabold" style={{ color: 'var(--t1)' }}>SkyWave</h2><WaveShelves onNav={onNav} manage /></div>)}
+        <div data-keep-dark className="relative isolate mt-8 overflow-hidden rounded-[30px] p-5" style={{ ['--t1' as string]: '#f5f3ff', ['--t2' as string]: '#d8d0f0', ['--t3' as string]: '#a99fcf', ['--border' as string]: 'rgba(196,181,253,.22)' } as React.CSSProperties}>
+          <WaveBackdrop /><h2 className="mb-3 text-[24px] font-bold" style={{ color: 'var(--t1)', letterSpacing: '-0.02em' }}>SkyWave</h2><WaveShelves onNav={onNav} manage /></div>)}
     </div>
   );
 };
