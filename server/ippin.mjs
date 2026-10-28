@@ -46,7 +46,7 @@ export const validPin = (pin) => /^\d{4}$/.test(String(pin ?? ''));
 /** Адрес для сравнения: IPv4 как есть, IPv6 — по первым 64 битам (домашняя сеть, а не устройство). */
 export const ipKey = (ip) => {
   const v = String(ip ?? '').trim().toLowerCase().replace(/^::ffff:/, '');
-  if (!v.includes(':')) return v;
+  if (!v.includes(':')) return v.replace(/^(\d+\.\d+\.\d+)\.\d+$/, '$1.0');   // IPv4 — по сети /24: у мобильных операторов адрес меняется на соседний, и PIN спрашивали бы заново
   const [head, tail] = v.split('::');
   const h = head ? head.split(':') : [];
   const t = tail ? tail.split(':') : [];

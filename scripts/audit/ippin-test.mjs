@@ -17,7 +17,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const from = (ip) => ({ headers: { 'x-real-ip': ip } });
 const post = (p, b, tok, ip = '127.0.0.1') => call(p, { method: 'POST', body: JSON.stringify(b ?? {}), ...from(ip) }, tok);
 const get = (p, tok, ip = '127.0.0.1') => call(p, { ...from(ip) }, tok);
-const NEW1 = '198.51.100.10', NEW2 = '198.51.100.20';
+const NEW1 = '198.51.100.10', NEW2 = '198.51.101.20';
 const skyOf = (u) => q(`select sky_id from profiles where id='${u.pid}'`);
 const mailCode = (email) => { const m = [...readFileSync(S + '/api.log', 'utf8').matchAll(new RegExp(email.replace('.', '\\.') + ' \\| Сброс PIN-кода Sky ID \\| Код для сброса PIN-кода: (\\d{6})', 'g'))]; return m.length ? m[m.length - 1][1] : null; };
 
@@ -93,7 +93,7 @@ t('новый подходит', r.status === 200);
 
 // сброс: код на почту + код аутентификатора
 q(`update sky_ids set ip_pin_fails = 0, ip_pin_locked_until = null where id='${skyOf(u)}'`);
-const NEW3 = '198.51.100.30';
+const NEW3 = '198.51.102.30';
 r = await post('/api/skyid/pin/reset/finish', { emailCode: '123456', totp: currentTotp(secret), newPin: '1111' }, u.tok, NEW3);
 t('сброс без запроса кода на почту невозможен', r.data.error === 'no_request', JSON.stringify(r.data));
 r = await post('/api/skyid/pin/reset/start', {}, u.tok, NEW3);

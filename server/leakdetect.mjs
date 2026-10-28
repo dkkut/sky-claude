@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { query } from './db.mjs';
 import { config } from './config.mjs';
-import { clientIp } from './http.mjs';
+import { clientIp, readAccessToken } from './http.mjs';
 import { ipFp, ipMask } from './ipmask.mjs';
 import { normalizeRoute } from './auditlog.mjs';
 import { getSettings } from './defensecfg.mjs';
@@ -48,7 +48,8 @@ export const onResponse = async (req, res, rctx, bytes) => {
 
     // сканирование: много 4xx с одного адреса (404/401/403/400 — подбор путей и ключей)
     // считаем только запросы БЕЗ вошедшего человека: у вошедших 4xx — обычная жизнь (протухший токен, нет прав), на общем адресе они дали бы ложную блокировку всем
-    if (!actor && res.statusCode >= 400 && res.statusCode < 500 && res.statusCode !== 429) {
+    // запросы с токеном доступа (даже протухшим или закрытым PIN/замком: 403 pin_required, 423 app_locked, limited_session) — не подбор путей
+    if (!actor && res.statusCode >= 400 && res.statusCode < 500 && res.statusCode !== 429 && res.statusCode !== 423 && !readAccessToken(req)) {
       if (bump(`p4:${ip}`, 1, 60_000) >= T.probing4xxPerMin) { win.delete(`p4:${ip}`); await handleSignal({ kind: 'probing', severity: 'medium', ip, subject: `ip:${ipFp(ip)}`, detail: { perMin: T.probing4xxPerMin }, summary: 'Поток отказов 4xx с одного адреса' }); }
     }
     if (res.statusCode >= 400) return;
