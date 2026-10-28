@@ -30,6 +30,14 @@ BRANCH="${BRANCH:-claude/project-server-setup-opwwui}"
 cd "$SRC_DIR"
 if [ "${SKIP_PULL:-0}" != "1" ]; then
   echo "==> Обновляю код ($BRANCH)"
+  # Сохранённые логин и пароль (scripts/set-deploy-credentials.sh): через GIT_ASKPASS, в адрес и в аргументы не попадают.
+  CRED="${DEPLOY_CRED:-/etc/sky-deploy.cred}"
+  if [ -r "$CRED" ]; then
+    GIT_USER="$(grep '^GIT_USER=' "$CRED" | cut -d= -f2-)"; GIT_TOKEN="$(grep '^GIT_TOKEN=' "$CRED" | cut -d= -f2-)"
+    ASK="$(mktemp)"; trap 'rm -f "$ASK"' EXIT
+    printf '#!/bin/sh\ncase "$1" in *sername*) printf %%s "$SKY_GIT_USER";; *) printf %%s "$SKY_GIT_TOKEN";; esac\n' > "$ASK"; chmod 700 "$ASK"
+    export GIT_ASKPASS="$ASK" GIT_TERMINAL_PROMPT=0 SKY_GIT_USER="$GIT_USER" SKY_GIT_TOKEN="$GIT_TOKEN"
+  fi
   git fetch origin "$BRANCH"
   git checkout "$BRANCH"
   git merge --ff-only "origin/$BRANCH"

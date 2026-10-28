@@ -769,3 +769,13 @@ sudo install -o root -g root -m 755 scripts/ssh-login-hook.sh /opt/sky/ssh-login
 `--status`, `--uninstall`; новый токен — `sky-control --new-token`, новый секрет аутентификатора — `sky-control --new-totp`. Обновить аварийного пользователя: `bash scripts/rescue-access.sh --install`.
 
 **На домене:** `sudo bash scripts/install-control.sh --domain control.skymessenger.online --allow ВАШ_IP` — проверит DNS (A-запись на сервер, без Cloudflare-прокси), выпустит сертификат через webroot, откроет порт 8443 в ufw только для вашего IP; страница: https://control.skymessenger.online:8443. Продление сертификата подхватывается само (проверка раз в час).
+
+### Сохранить логин и пароль для деплоя
+
+```bash
+sudo bash scripts/set-deploy-credentials.sh        # логин GitHub + токен, ввод скрыт
+sudo bash scripts/set-deploy-credentials.sh --check
+sudo bash scripts/set-deploy-credentials.sh --remove
+```
+
+Дальше `bash scripts/deploy-local.sh` не спрашивает пароль при обновлении кода. Файл `/etc/sky-deploy.cred` (права 600) хранить только на сервере.
