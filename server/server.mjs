@@ -322,7 +322,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     // Самозащита: заблокированный адрес и предъявленные секреты/приманки отсекаются до всего остального.
     // Исключены ссылка отмены и сторож хоста — владелец должен суметь отменить, а сторож — доложить.
     { const u0 = req.url || '';
-      if (!u0.startsWith('/api/defense/') && !u0.startsWith('/api/guard/') && !u0.startsWith('/api/sandbox/runner/') && !u0.startsWith('/defense-undo') && !u0.startsWith('/healthz')) {
+      if (!u0.startsWith('/api/defense/') && !u0.startsWith('/api/guard/') && !u0.startsWith('/api/sandbox/runner/') && !u0.startsWith('/api/ssh-gate/') && !u0.startsWith('/defense-undo') && !u0.startsWith('/healthz')) {
         if (isIpBlocked(ip)) return json(res, 403, { error: 'defense_blocked' });
         if (u0.startsWith('/api/') && await scanRequest(req)) return json(res, 403, { error: 'defense_blocked' });
       }
