@@ -132,6 +132,18 @@ export const protectAccount = async (skyId, sid, { ip, ua }, { remove, hours, fr
   return { ok: true, removed, frozenUntil: frozenUntil ? frozenUntil.toISOString() : null };
 };
 
+/** Заморозка новых входов из-за переданного в чате кода (без запроса человека). Не короче уже действующей. Возвращает время окончания. */
+export const freezeForCodeLeak = async (skyId, hours, detail = {}) => {
+  const u = await query(
+    `UPDATE sky_ids SET login_frozen_until = GREATEST(COALESCE(login_frozen_until, now()), now() + ($2 || ' hours')::interval)
+      WHERE id = $1 RETURNING login_frozen_until`, [skyId, String(hours)]);
+  const until = u.rows[0]?.login_frozen_until; if (!until) return null;
+  await log(skyId, 'freeze', null, '', { hours, until: until.toISOString(), reason: 'code_shared', ...detail });
+  const r = await load(skyId);
+  if (hasEmail(r)) { const token = await issueLink(skyId); await sendFreezeEmail(r, token, until).catch((e) => console.error('[freeze] письмо:', e.message)); }
+  return until.toISOString();
+};
+
 /** Ссылка из письма открыта и подтверждена на странице. Одноразовая; сама ничего не размораживает. */
 export const confirmFreezeLink = async (token, { ip, ua }) => {
   const t = String(token ?? '');

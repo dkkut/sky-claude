@@ -40,6 +40,7 @@ import { grantForProposal } from './campaigns.mjs';
 import { userMoneySummary } from './adminmoney.mjs';
 import { pushToOffline, setOnlineProbe } from './webpush.mjs';
 import { decryptContent } from './crypto.mjs';
+import { guardOutgoingText } from './codeleak.mjs';
 import { adminGetOrder } from './kutrentmarket.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
 import { markActive, setOnlineSource } from './analytics.mjs';
@@ -442,6 +443,13 @@ const handle = async (ws, session, msg) => {
         return;
       }
 
+      // Код подтверждения в сообщении: не доставляем, гасим код, замораживаем новые входы (codeleak.mjs).
+      const leak = await guardOutgoingText(me, `${message?.text ?? ''} ${message?.caption ?? ''}`);
+      if (leak) {
+        send(ws, { type: 'message-rejected', payload: { chatId, messageId: message?.id, reason: 'login_code_shared', hours: leak.hours } });
+        return;
+      }
+
       const saved = await saveMessage(chatId, me, message);
       // null значит «не участник» — молча игнорируем, чтобы по ответу
       // нельзя было выяснять, какие чаты существуют.
@@ -462,6 +470,7 @@ const handle = async (ws, session, msg) => {
     case 'edit-message': {
       if (!rateLimit(`msg:edit:${me}`, 60)) return;
       const { messageId, text } = payload ?? {};
+      if (await guardOutgoingText(me, text)) { send(ws, { type: 'message-rejected', payload: { chatId: null, messageId, reason: 'login_code_shared' } }); return; }
       const edited = await editMessage(messageId, me, text);
       if (!edited) return;
       fanout(await memberIds(edited.chatId), {
