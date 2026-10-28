@@ -37,7 +37,13 @@ export function SkyTransfer() {
   const load = useCallback(async () => {
     const r = await T.overview();
     if (!r.ok || !r.data) { setErr(tReason(r)); return; }
-    setErr(''); setOv(r.data);
+    // Ответ старого сервера может быть неполным — достраиваем, чтобы экран не падал в пустоту.
+    const d = r.data;
+    setErr(''); setOv({
+      ...d, devices: d.devices ?? [], active: d.active ?? [], history: d.history ?? [],
+      prefs: { accept: 'own', confirm: false, keepHours: 24, historyDays: 30, ...(d.prefs ?? {}) },
+      limits: { maxFileBytes: 100 * 1048576, minChunk: 262144, maxChunk: 4194304, blockedExt: [], ...(d.limits ?? {}) },
+    } as TOverview);
   }, []);
   // Регистрируем это устройство (первое — подтверждено сразу, остальные ждут) и держим «онлайн».
   useEffect(() => {
@@ -106,6 +112,7 @@ export function SkyTransfer() {
     );
   };
 
+  if (!ov && err) return <div role="alert" className="grid h-full place-items-center p-6 text-center"><div className="space-y-3"><p className="text-sm" style={{ color: 'var(--t2)' }}>{err}</p><button type="button" onClick={() => void load()} className="rounded-full px-4 py-2 text-sm font-bold" style={{ background: 'var(--accent)', color: '#fff' }}>Повторить</button></div></div>;
   if (!ov && !err) return <div role="status" className="grid h-full place-items-center"><Loader2 className="animate-spin" size={22} style={{ color: 'var(--t3)' }} /></div>;
   return (
     <div className="mx-auto h-full w-full max-w-3xl space-y-4 overflow-y-auto p-4" onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
