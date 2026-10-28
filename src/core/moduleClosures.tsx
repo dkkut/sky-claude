@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import { Wrench } from 'lucide-react';
 import { apiPlatformStatus } from './platform';
 import { useAuthStore } from './auth/store';
+import { useMyBlocks, startMyBlocks, BlockedScreen } from './myBlocks';
 
 interface Closure { reason?: string }
 interface S { closed: Record<string, Closure>; mediaBanner: boolean; load: () => Promise<void> }
@@ -66,7 +67,11 @@ const ProfileLogoutOnly = ({ reason }: { reason?: string }) => {
 export const ModuleGate = ({ id, children }: { id: string; children: ReactNode }) => {
   const closure = useModuleClosures((s) => s.closed[id]);
   const isAdmin = useAuthStore((s) => s.accounts.find((a) => a.id === s.currentUserId)?.isAdmin ?? false);
+  const mine = useMyBlocks((s) => s.blocks[id]);
   useEffect(start, []);
+  useEffect(startMyBlocks, []);
+  /* Личная блокировка этой вкладки: администраторам её не показываем (им нужно работать), остальным — экран с причиной и заявкой на вывод остатка. */
+  if (mine && !isAdmin) return <BlockedScreen reason={mine.reason} />;
   if (!closure) return <>{children}</>;
   if (!isAdmin && id === 'profile') return <ProfileLogoutOnly reason={closure.reason} />;
   if (!isAdmin) return <ModuleClosedBanner reason={closure.reason} />;

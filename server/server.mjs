@@ -124,6 +124,8 @@ import { sweepLauncher } from './lgames.mjs';
 import { sweepServers } from './lservers.mjs';
 import { rtcRoutes } from './routes/rtc.mjs';
 import { modClosureRoutes } from './routes/modclosure.mjs';
+import { modBlockRoutes } from './routes/modblocks.mjs';
+import { moduleBlockedFor } from './modblocks.mjs';
 import { ownerNotifyRoutes } from './routes/ownernotify.mjs';
 import { staffNotifyRoutes } from './routes/staffnotify.mjs';
 import { skyKassaRoutes } from './routes/skykassa.mjs';
@@ -274,7 +276,7 @@ const ROUTES = [lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, p
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageDirectRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, sshOwnerRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, adminTokenRoutes, sshGateRoutes, ipPinRoutes, passkeyRoutes, goAdminRoutes, goRoutes, onsiteRoutes, parkingRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, ownerNotifyRoutes, staffNotifyRoutes, skyKassaRoutes];
+                violationsRoutes, storageDirectRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, sshOwnerRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, adminTokenRoutes, sshGateRoutes, ipPinRoutes, passkeyRoutes, goAdminRoutes, goRoutes, onsiteRoutes, parkingRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, modBlockRoutes, ownerNotifyRoutes, staffNotifyRoutes, skyKassaRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -378,6 +380,19 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
       if (tka?.typ === 'access' && tka.sky && tka.sid) {
         const sta = await sessionStore.get(tka.sid);
         if (sta && sta.userId === tka.sky && await applockBlocked(tka.sid, sta)) return json(res, 423, { error: 'app_locked' });
+      }
+    }
+
+    // Блокировка вкладок отдельным людям (modblocks.mjs): запросы к API заблокированного модуля получают 403.
+    // Решает сервер по профилю из сессии; служебные пути блокировок и вывода остатка не закрываются.
+    if (url.startsWith('/api/') && !url.startsWith('/api/auth/') && !url.startsWith('/api/platform/status') && !url.startsWith('/api/admin/') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/ops/agent/') && !url.startsWith('/api/sandbox/runner/')) {
+      const tkb = verifyToken(readAccessToken(req), config.jwtSecret);
+      if (tkb?.typ === 'access' && tkb.sky && tkb.sid) {
+        const stb = await sessionStore.get(tkb.sid);
+        if (stb && stb.userId === tkb.sky && stb.profileId) {
+          const hit = await moduleBlockedFor(stb.profileId, new URL(req.url, 'http://x').pathname);
+          if (hit) return json(res, 403, { error: 'module_blocked', module: hit });
+        }
       }
     }
 

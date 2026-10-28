@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Lock, Unlock } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
+import { UserBlocksPanel } from './UserBlocksPanel';
 
 const C = { l1: 'var(--bg-l1)', l2: 'var(--bg-l2)', brd: 'var(--border)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)', acc: 'var(--accent)', red: 'var(--red)' };
 const field = { background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 };
@@ -135,6 +136,7 @@ export const ModulesTab = () => {
   return (
     <div className="space-y-4">
       <Quick list={list} onChanged={() => void load()} />
+      <UserBlocksPanel modules={list} />
       <AllBar anyOpen={list.some((m) => !m.closed)} onChanged={() => void load()} />
       <p className="text-[11px]" style={{ color: C.t3 }}>
         Закрытый модуль у людей заменяется баннером «Сервис временно недоступен, мы уже работаем над восстановлением доступа». Это закрытие интерфейса:

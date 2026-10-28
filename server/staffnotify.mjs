@@ -44,6 +44,7 @@ export const CATEGORIES = {
   launcher:       { label: 'Sky Launcher: заявки на размещение игр', rights: ['launcher_moderation', 'launcher'] },
   prime_reward:   { label: 'Награды Prime: заявки на выдачу', rights: ['prime'] },
   garant:         { label: 'Споры Sky Garant', rights: ['garant'] },
+  withdraw:       { label: 'Заявки на вывод остатка баланса', rights: ['finance'] },
   violations:     { label: 'Апелляции на нарушения', rights: ['violations'] },
 };
 
