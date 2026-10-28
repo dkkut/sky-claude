@@ -4,7 +4,7 @@ import * as T from './../transfer.mjs';
 
 const STATUS = {
   not_found: 404, unknown_device: 403, device_not_approved: 403, device_revoked: 403, recipient_not_trusted: 409, same_device: 400, recipient_cannot_receive: 409,
-  transfers_disabled: 403, type_not_allowed: 415, file_too_large: 413, too_many_active: 429, hash_mismatch: 422, bad_chunk_size: 400, not_uploading: 409, bad_state: 409,
+  transfers_disabled: 403, type_not_allowed: 415, malware_detected: 422, file_type_blocked: 422, scan_unavailable: 503, file_too_large: 413, too_many_active: 429, hash_mismatch: 422, bad_chunk_size: 400, not_uploading: 409, bad_state: 409,
   awaiting_accept: 409, not_ready: 409, integrity_failed: 422, storage_unavailable: 503, still_active: 409,
 };
 

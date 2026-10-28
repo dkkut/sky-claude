@@ -2270,3 +2270,10 @@ SSH-шлюз и самозащита (октябрь-2026): хук `ssh-gate.sh`
 ## Билеты и организация (в работе, октябрь-2026)
 
 Сделана только серверная основа (миграция `217_tickets_business.sql`: `ticket_events.business_id`, поля оплаты у `ticket_orders`; роль «контролёр» и группы `door`/`tickets` в `kbstaff.mjs`; `mayDoor`, `doorEvents`, `ownBusinesses`, `businessId` в `updateEvent` в `tickets.mjs`). НЕ подключено: проверка на входе всё ещё идёт через `ownsEvent` (`ticketorders.mjs`), оплата билетов через страницу оплаты организации и интерфейс — следующий шаг.
+
+## Защита от вредоносных файлов (октябрь-2026)
+
+`server/malware.mjs` (`inspect`, `scanBytes`, `scanWithClam`), подключено в `attachments.storeAttachment` (вложения чатов) и `transfer.putChunk` (Sky Transfer, каждый кусок: сигнатуры, первый — ещё и тип/имя). Тест: `scripts/audit/malware-test.mjs` (24, без БД).
+- Свой разбор: EICAR, исполняемые форматы по первым байтам (PE/ELF/Mach-O/Java/ярлык/`#!`), исполняемые и «двойные» расширения, RTL-имена, ZIP (исполняемое внутри, `..`, зашифрованный, бомба по заявленным размерам/числу записей), макросы Office, PDF с JS/Launch, скрипт в «картинке», активная разметка в SVG/HTML. Это ТИПЫ и явные признаки, неизвестный вирус внутри «чистого» формата так не поймать.
+- Антивирус ClamAV — по желанию: `CLAMAV_HOST`[+`CLAMAV_PORT`] или `CLAMAV_SOCKET` (clamd, INSTREAM; в compose проброшены). Демон недоступен → файл отклоняется (`scan_unavailable`, 503); `MALWARE_FAIL_OPEN=1` пропускает с пометкой. Без настроенного ClamAV работает только свой разбор. Сам clamd в compose НЕ добавлен — ставится отдельно.
+- Ответы: 422 `malware_detected` / `file_type_blocked`; в Transfer передача помечается отклонённой. В журнал (`security`, `malware_blocked`) — только вердикт, причины, размер и 12 знаков SHA-256. Не охвачены загрузки кино/музыки/книг/подкастов/Sky Video, фото Market, лаунчер (у него `LAUNCHER_AV_CMD`). Нужен деплой и пересборка `.apk`/`.exe`.

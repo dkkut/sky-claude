@@ -237,6 +237,10 @@ services:
       # Авиабилеты Sky GO (Travelpayouts) и хранилище: до этого эти переменные из .env в контейнер не попадали.
       TRAVELPAYOUTS_TOKEN:   ${TRAVELPAYOUTS_TOKEN:-}
       STORAGE_QUARANTINE_AUTOPURGE: ${STORAGE_QUARANTINE_AUTOPURGE:-}
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+      CLAMAV_PORT: ${CLAMAV_PORT:-}
+      CLAMAV_SOCKET: ${CLAMAV_SOCKET:-}
+      MALWARE_FAIL_OPEN: ${MALWARE_FAIL_OPEN:-}
       # Доставка кодов. 'log' пишет код в журнал и никуда не шлёт —
       # в бою нужен настоящий провайдер, иначе войти никто не сможет.
       SMS_MODE:              ${SMS_MODE:-log}

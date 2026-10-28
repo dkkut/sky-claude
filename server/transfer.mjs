@@ -16,6 +16,7 @@ import { query } from './db.mjs';
 import { config } from './config.mjs';
 import { logEvent as skyLog } from './skylog.mjs';
 import { pushGoEvent } from './signal.mjs';
+import { scanBytes } from './malware.mjs';
 import { saveChunk, openChunk, chunkSize, removeChunk } from './transferstore.mjs';
 
 const env = (k, d) => { const n = Number(process.env[k]); return Number.isFinite(n) && n > 0 ? n : d; };
@@ -232,6 +233,13 @@ export const putChunk = async (skyId, req, id, idx, buf) => {
   const expectLen = n === t.chunks - 1 ? Number(t.size) - t.chunk_size * (t.chunks - 1) : t.chunk_size;
   if (buf.length !== expectLen) return err('bad_chunk_size', { expected: expectLen });
   if (crypto.createHash('sha256').update(buf).digest('hex') !== t.hashes[n]) return err('hash_mismatch');
+  {
+    const scan = await scanBytes(buf, { name: n === 0 ? t.name : '', partial: true, first: n === 0, service: 'transfer' });
+    if (scan.verdict !== 'clean') {
+      await finish(t.id, 'rejected', 'malware').catch(() => {});
+      return err(scan.unavailable ? 'scan_unavailable' : scan.verdict === 'malicious' ? 'malware_detected' : 'file_type_blocked', { reasons: scan.reasons.slice(0, 3) });
+    }
+  }
   const had = (await query('SELECT 1 FROM transfer_chunks WHERE transfer_id = $1 AND idx = $2', [t.id, n])).rowCount > 0;
   if (!had) {
     const sv = await saveChunk(t.id, n, buf).catch((e) => ({ error: e?.code || 'storage_failed' }));

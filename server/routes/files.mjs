@@ -97,6 +97,8 @@ export const fileRoutes = async (req, res, url) => {
     // нельзя выяснять, какие чаты есть на сервере.
     if (result.error === 'not_found')      return json(res, 404, { error: 'not_found' });
     if (result.error === 'file_too_large') return json(res, 413, { error: result.error, maxBytes: MAX_FILE_BYTES });
+    if (result.error === 'malware_detected' || result.error === 'file_type_blocked') return json(res, 422, { error: result.error });
+    if (result.error === 'scan_unavailable') return json(res, 503, { error: result.error });
     if (result.error === 'quota_exceeded') return json(res, 507, { error: result.error });
     if (result.error === 'rate_limited')   return json(res, 429, { error: result.error });
     if (['storage_unavailable', 'storage_maintenance'].includes(result.error)) return json(res, 503, { error: result.error });
