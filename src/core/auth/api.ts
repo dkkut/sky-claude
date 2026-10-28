@@ -225,6 +225,7 @@ const deviceId = (): string => {
     return id;
   } catch { return ''; }
 };
+export const getDeviceId = deviceId;
 const skyMode = (): string => (typeof document !== 'undefined' ? document.documentElement.dataset.skyMode ?? '' : '');
 
 const raw = async (path: string, init: RequestInit = {}): Promise<Response> => {

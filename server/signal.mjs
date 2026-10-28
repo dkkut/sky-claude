@@ -1958,7 +1958,7 @@ export const startSignalHub = () => {
       /* ── Авторизация ── */
       if (msg.type === 'auth') {
         if (session.userId) return;
-        const who = await identify(msg.payload?.token, ip, deviceHash(req));
+        const who = await identify(msg.payload?.token, ip, deviceHash({ headers: { 'x-sky-device': msg.payload?.device ?? req.headers['x-sky-device'] } }));
         if (who?.pinRequired) { send(ws, { type: 'pin-required' }); ws.close(4401, 'pin_required'); return; }   // клиент покажет экран PIN
         if (!who) {
           send(ws, { type: 'auth-failed' });

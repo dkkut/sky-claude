@@ -13,7 +13,7 @@
 import { refreshIceServers } from '@/shared/rtcConfig';
 import { emitGoOrder } from '@/go/live';
 import { useMessengerStore } from './store';
-import { getAccessToken, apiRefreshSession, notifyPinRequired } from '@/core/auth/api';
+import { getAccessToken, apiRefreshSession, notifyPinRequired, getDeviceId } from '@/core/auth/api';
 import { NATIVE_APP, API_ORIGIN, getApiOrigin, failoverApiOrigin } from '@/core/nativeApp';
 import { setWireSink, setVolatileSink, type Outgoing } from '@/core/wire';
 import { bsignal, type SignalMsg } from '@/calls/webrtc';
@@ -790,7 +790,7 @@ const open = () => {
     }
     if (socket.readyState !== WebSocket.OPEN) return;
     if (!token) { socket.close(4401, 'no token'); return; }
-    socket.send(JSON.stringify({ type: 'auth', payload: { token } }));
+    socket.send(JSON.stringify({ type: 'auth', payload: { token, device: getDeviceId() || undefined } }));
     startPing();
   };
 

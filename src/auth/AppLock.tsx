@@ -98,6 +98,8 @@ const bioProof = async () => {
 let pendingPin: string | null = null;
 /** Холодный запуск страницы: открыть сессию без кода нельзя, даже если сервер ещё не успел её закрыть (до "GRACE" секунд после закрытия вкладки). */
 let coldChecked = false;
+/** Страница перезагружена сразу после ввода PIN при смене IP: человек только что подтвердил себя — второй замок поверх не нужен (иначе круг «PIN → замок → PIN»). */
+const afterPin = (() => { try { const v = sessionStorage.getItem('sky:pin-reload') === '1'; sessionStorage.removeItem('sky:pin-reload'); return v; } catch { return false; } })();
 
 /** Экран-замок. Монтируется один раз в main.tsx. */
 export function AppLockGate() {
@@ -112,7 +114,7 @@ export function AppLockGate() {
   const busy = useRef(false);
   const hiddenAt = useRef<number | null>(null);
   const lockedRef = useRef(locked); lockedRef.current = locked;
-  const unlockedAt = useRef(0);
+  const unlockedAt = useRef(afterPin ? Date.now() : 0);
 
   /** Сессии на сервере больше нет (401): замок защищать нечего — показываем обычный вход, а не вечный экран блокировки. */
   const sessionGone = useCallback(() => { setLocked(false); setCodeMode(false); setCode(''); setCodeErr(''); useAuthStore.getState().logout(); }, []);
@@ -127,7 +129,7 @@ export function AppLockGate() {
     let isLocked = Boolean(r.data.locked);
     if (!coldChecked) {
       coldChecked = true;
-      if (!isLocked && !r.data.fresh) { await POST('/lock'); isLocked = true; }
+      if (!isLocked && !r.data.fresh && !afterPin) { await POST('/lock'); isLocked = true; }
     }
     /* Замок уже показан, а сервер отвечает «открыт» (расхождение: 423 на запросе, сигнал сокета, уход в фон): экран мигал и пускал без кода.
        Закрываем сессию на сервере и держим замок, пока не введён код — снимает его только сам ввод (onUnlocked). */

@@ -93,7 +93,7 @@ export const IpPinOverlay = () => {
     setBusy(true); setErr('');
     const r = await apiCall('/api/skyid/pin/verify', { method: 'POST', body: JSON.stringify({ pin: value }) });
     setBusy(false);
-    if (r.ok) { set(false); location.reload(); return; }
+    if (r.ok) { try { sessionStorage.setItem('sky:pin-reload', '1'); } catch { /* память недоступна */ } set(false); location.reload(); return; }
     if (r.error === 'session_ended') { set(false); logout(); return; }
     setPin(''); setErr(why(r));
   }, [set, logout]);
