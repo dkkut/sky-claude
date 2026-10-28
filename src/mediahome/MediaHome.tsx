@@ -23,7 +23,7 @@ const SURF = {
 const readLocal = (): HomeLayout | null => { try { const v = JSON.parse(localStorage.getItem(LOCAL_KEY) || 'null'); return v?.widgets ? v : null; } catch { return null; } };
 const writeLocal = (l: HomeLayout) => { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(l)); } catch { /* память недоступна */ } };
 
-export const MediaHome = ({ onNav, onClassic }: { onNav: (t: string) => void; onClassic: () => void }) => {
+export const MediaHome = ({ onNav }: { onNav: (t: string) => void; onClassic?: () => void }) => {
   const [state, setState] = useState<HomeState | null>(null);
   const [offline, setOffline] = useState(false);
   const [layout, setLayout] = useState<HomeLayout>(() => readLocal() ?? defaultLayout());
@@ -95,7 +95,6 @@ export const MediaHome = ({ onNav, onClassic }: { onNav: (t: string) => void; on
     <div data-mediahome className="h-full overflow-y-auto overflow-x-hidden px-3 pb-24 pt-3 md:px-6" style={layout.accent ? ({ ['--accent' as string]: layout.accent } as React.CSSProperties) : undefined}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 flex-1 text-[18px] font-extrabold" style={{ color: 'var(--t1)' }}>Главная Sky Media</h2>
-        {!editing && <button type="button" onClick={onClassic} className="rounded-full border px-3 py-1.5 text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--t2)' }}>Классический вид</button>}
         {!editing ? <button type="button" onClick={() => setEditing(true)} className="glass-btn flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold" style={{ color: 'var(--t1)' }}><Settings2 size={14} /> Настроить экран</button>
           : <><button type="button" onClick={undo} disabled={!history.length} aria-label="Отменить последнее" className="grid h-8 w-8 place-items-center rounded-full border disabled:opacity-40" style={{ borderColor: 'var(--border)', color: 'var(--t1)' }}><Undo2 size={14} /></button>
               <button type="button" onClick={() => { if (window.confirm('Вернуть экран по умолчанию?')) change(() => defaultLayout()); }} className="flex items-center gap-1 rounded-full border px-3 py-1.5 text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--t2)' }}><RotateCcw size={12} /> Сбросить</button>

@@ -851,11 +851,31 @@ const StarCanvas = ({ scrollY = 0, light = false }: { scrollY?: number; light?: 
   );
 };
 
+/* Главная Sky Media: прежний вид (подборки, разделы, активность) — по умолчанию.
+   «Мои виджеты» — настраиваемый экран рядом, а не вместо него. Выбор помнит устройство. */
 const HomeSwitch = ({ onNav }: { onNav: (tab: string) => void }) => {
-  const [classic, setClassic] = React.useState(() => { try { return localStorage.getItem('sky:mediahome:classic') === '1'; } catch { return false; } });
-  const set = (v: boolean) => { setClassic(v); try { localStorage.setItem('sky:mediahome:classic', v ? '1' : '0'); } catch { /* память недоступна */ } };
-  if (classic) return (<div className="flex h-full flex-col"><div className="px-3 pt-2"><button type="button" onClick={() => set(false)} className="rounded-full border px-3 py-1.5 text-[12px]" style={{ borderColor:'var(--border)', color:'var(--t2)' }}>Мой экран</button></div><div className="min-h-0 flex-1"><MediaHomeTab onNav={onNav}/></div></div>);
-  return <MediaHome onNav={onNav} onClassic={() => set(true)}/>;
+  const [mode, setMode] = React.useState<'home' | 'widgets'>(() => { try { return localStorage.getItem('sky:mediahome:mode') === 'widgets' ? 'widgets' : 'home'; } catch { return 'home'; } });
+  const pick = (v: 'home' | 'widgets') => { setMode(v); try { localStorage.setItem('sky:mediahome:mode', v); } catch { /* память недоступна */ } };
+  const OPTS = [{ id: 'home' as const, label: 'Главная' }, { id: 'widgets' as const, label: 'Мои виджеты' }];
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="relative z-[3] flex justify-center px-3 pt-2">
+        <div role="tablist" aria-label="Вид главной" className="glass-pill relative inline-flex gap-0.5 p-1">
+          {OPTS.map(o => (
+            <button key={o.id} type="button" role="tab" aria-selected={mode === o.id} onClick={() => pick(o.id)}
+              className="relative isolate rounded-full px-4 py-1.5 text-[12.5px] font-semibold transition-colors"
+              style={{ color: mode === o.id ? 'var(--t1)' : 'var(--t3)' }}>
+              {mode === o.id && <motion.span layoutId="mediahome-lens" className="glass-lens absolute inset-0 -z-10 rounded-full" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="relative min-h-0 flex-1">
+        {mode === 'widgets' ? <MediaHome onNav={onNav} onClassic={() => pick('home')} /> : <MediaHomeTab onNav={onNav} />}
+      </div>
+    </div>
+  );
 };
 
 const MediaHomeTab = ({

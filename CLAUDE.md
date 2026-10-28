@@ -2207,3 +2207,9 @@ Electron — `electron/launcher.cjs` (менеджер загрузок/уста
 `scripts/set-deploy-credentials.sh` (спрашивает скрыто, пишет `/etc/sky-deploy.cred` с правами 600; `--check`, `--remove`; путь можно сменить `DEPLOY_CRED`). `scripts/deploy-local.sh` читает файл и подаёт логин/пароль в `git fetch` через временный `GIT_ASKPASS` (в адрес remote и в аргументы они не попадают, временный файл удаляется при выходе). Пароль — токен GitHub с правом чтения репозитория, не пароль аккаунта. Файла нет — деплой работает как раньше. Проверен синтаксис и сам askpass-помощник; настоящий `git fetch` с закрытым репозиторием в среде не запускался.
 
 Заметка: `snippets/proxy-common.conf` уже содержит `proxy_buffering off` — в `location` с этим include директиву НЕ повторять (nginx: «directive is duplicate», деплой останавливается на `nginx -t`; так было с `/api/launcher/blob/`). Проверка перед пушем: `grep -n proxy_buffering nginx/templates/sky.conf.template` должен быть пуст.
+
+## Главная Sky Media: прежний вид по умолчанию, виджеты — рядом (октябрь-2026)
+
+`HomeSwitch` (`ExtrasModule.tsx`) показывает вкладку `home` двумя видами за стеклянным переключателем «Главная · Мои виджеты» (`glass-pill` + `glass-lens`, выбор — `localStorage sky:mediahome:mode`, по умолчанию «Главная»).
+«Главная» — прежний экран (`MediaHomeTab`: приветствие, разделы, подборки, активность); «Мои виджеты» — настраиваемая раскладка из `src/mediahome/` (сервер и редактор не менялись). Раньше виджеты ЗАМЕНЯЛИ главную; ключ `sky:mediahome:classic` больше не читается.
+Проверено `tsc` и `i18n:check`; в браузере переключатель не смотрелся. Нужна пересборка `.apk`/`.exe`.
