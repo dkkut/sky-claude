@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, Wallet, Store, PackageCheck, Truck, Car, BarChart3, Settings2, ChevronRight, Loader2,
-  CheckCircle2, Clock3, CircleDashed, LifeBuoy, UserCog,
+  CheckCircle2, Clock3, CircleDashed, LifeBuoy, UserCog, Ticket,
 } from 'lucide-react';
 import { ModuleGate } from '@/core/moduleClosures';
 import { useAuthStore } from '@/core/auth/store';
@@ -27,8 +27,10 @@ import * as K from '@/kassabiz/api';
 import { bizApi } from '@/go/bizApi';
 import { goApi } from '@/go/api';
 import { SkyGo } from '@/go/GoModule';
+import { OrganizerCabinet } from '@/tickets/OrganizerCabinet';
+import { apiOrganizer, type OrganizerState } from '@/tickets/ticketsApi';
 
-type Sec = 'overview' | 'kassa' | 'seller' | 'pvz' | 'logistics' | 'go' | 'analytics' | 'settings';
+type Sec = 'overview' | 'kassa' | 'seller' | 'pvz' | 'logistics' | 'go' | 'tickets' | 'analytics' | 'settings';
 const SECTIONS: { id: Sec; label: string; hint: string; icon: typeof Wallet; closedKey?: string }[] = [
   { id: 'overview',  label: 'Обзор',      hint: 'Все ваши бизнес-системы',            icon: LayoutDashboard },
   { id: 'kassa',     label: 'Касса',      hint: 'Sky для бизнеса: оплата, QR, витрина', icon: Wallet, closedKey: 'kbiz' },
@@ -36,6 +38,7 @@ const SECTIONS: { id: Sec; label: string; hint: string; icon: typeof Wallet; clo
   { id: 'pvz',       label: 'Пункты выдачи', hint: 'Sky ПВЗ',                          icon: PackageCheck, closedKey: 'pvz' },
   { id: 'logistics', label: 'Логистика',  hint: 'Доставка, склады, отправления',        icon: Truck, closedKey: 'market' },
   { id: 'go',        label: 'Sky GO',     hint: 'Организации, водители, парковки',      icon: Car, closedKey: 'go' },
+  { id: 'tickets',   label: 'Билеты',     hint: 'Мероприятия, продажа, контроль входа', icon: Ticket, closedKey: 'tickets' },
   { id: 'analytics', label: 'Аналитика',  hint: 'Показатели SkyKassa Business',         icon: BarChart3, closedKey: 'kbiz' },
   { id: 'settings',  label: 'Настройки',  hint: 'Раздел по умолчанию, поддержка',       icon: Settings2 },
 ];
@@ -60,12 +63,15 @@ interface Facts {
   pvz: number | undefined; carriers: number | undefined;
   go: { orgs: number; roles: number } | undefined;
 }
+type TicketsFact = OrganizerState | null | undefined;
 const SUB: Record<string, string> = { inactive: 'подписка не активна', active: 'подписка активна', expiring: 'подписка скоро истекает', suspended: 'приостановлена', expired: 'подписка истекла' };
 
 const Overview = ({ open }: { open: (s: Sec) => void }) => {
   const { seller, sellerLoaded, myPvz, myCarriers } = useMarketStore();
   const [kb, setKb] = useState<Facts['kbiz']>(undefined);
   const [go, setGo] = useState<Facts['go']>(undefined);
+  const [tk, setTk] = useState<TicketsFact>(undefined);
+  useEffect(() => { void apiOrganizer().then(setTk); }, []);
   useEffect(() => {
     void (async () => {
       const me = await K.kbMe();
@@ -102,6 +108,12 @@ const Overview = ({ open }: { open: (s: Sec) => void }) => {
     { id: 'go', title: 'Sky GO для бизнеса', icon: Car,
       tone: go && (go.orgs || go.roles) ? 'on' : 'off', badge: go === undefined ? '…' : go.orgs || go.roles ? `пространств: ${go.orgs + go.roles}` : 'не подключено',
       lines: ['Организации и сотрудники, водитель/курьер, парковки, жильё, заведения.'] },
+    { id: 'tickets', title: 'Билеты', icon: Ticket,
+      tone: tk === undefined ? 'off' : tk?.subscription.active ? 'on' : 'off',
+      badge: tk === undefined ? '…' : tk?.subscription.active ? 'кабинет открыт' : 'не подключено',
+      lines: tk?.subscription.active && tk.summary
+        ? [`Мероприятий: ${tk.summary.total}, опубликовано ${tk.summary.published}`, `Продано билетов: ${tk.summary.sold}`]
+        : ['Афиша, типы билетов, продажа и проверка QR на входе. Подписка организатора.'] },
   ];
   return (
     <div className="mx-auto w-full min-w-0 max-w-5xl space-y-4 overflow-x-hidden p-4">
@@ -250,6 +262,7 @@ export const BusinessModule = () => {
       case 'pvz':       return wrap(<PvzCabinet />);
       case 'logistics': return wrap(<Logistics />);
       case 'go':        return wrap(<SkyGo businessMode />);
+      case 'tickets':   return wrap(<OrganizerCabinet onBack={() => setSec('overview')} />);
       case 'analytics': return wrap(<Analytics />);
       default:          return <div className="h-full overflow-y-auto overflow-x-hidden"><Settings open={setSec} /></div>;
     }
