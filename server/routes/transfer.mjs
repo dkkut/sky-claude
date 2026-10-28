@@ -29,7 +29,7 @@ export const transferRoutes = async (req, res, url) => {
   const { skyId } = s;
   const reply = (r) => json(res, r.error ? (STATUS[r.error] ?? 400) : 200, r);
   const m = req.method;
-  const rest = path.slice('/api/transfer'.length);
+  const rest = path.slice('/api/transfer'.length) === '/' ? '' : path.slice('/api/transfer'.length);   // nginx приводит /api/transfer к /api/transfer/
 
   // Кусок — тяжёлые запросы: свой, щедрый предел (по Sky ID).
   const chunk = /^\/t\/(xfr-[0-9a-f-]{36})\/chunk\/(\d{1,6})$/.exec(rest);
