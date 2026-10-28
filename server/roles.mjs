@@ -73,6 +73,7 @@ export const PERMISSIONS = [
   'upload_limits',   // лимиты загрузки: личная коллекция и публикация (размер, число, объём, форматы, длительность, скорость)
   'sandbox',         // Sky Sandbox: сборки на проверку, отчёты, повторный запуск (публиковать нельзя)
   'sandbox_publish', // Sky Sandbox: одобрение публикации проверенной сборки на боевой сервер (критично, в «полные права» не входит)
+  'server_ops',      // Sky Ops: диагностика сервера, «починить всё», деплой, сборка приложений из админки (критично, в «полные права» не входит)
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -90,7 +91,7 @@ export const PERMISSIONS = [
  */
 export const STORAGE_CRITICAL = ['storage_restore', 'storage_emergency', 'storage_enable', 'storage_unlock', 'storage_keys', 'storage_direct'];
 /** Подтверждение партнёров — тоже отдельное право: добавлять может менеджер, публиковать — только уполномоченный (или владелец). */
-export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve' && p !== 'global_block' && p !== 'sandbox_publish');
+export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve' && p !== 'global_block' && p !== 'sandbox_publish' && p !== 'server_ops');
 
 export const ROLES = {
   super_admin:     DEFAULT_ADMIN_PERMISSIONS,
@@ -128,6 +129,7 @@ export const ROLES = {
   kassa_biz_admin: ['kassa_biz', 'support'],
   partners_manager:['partners'],
   partners_approver:['partners', 'partners_approve'],
+  ops_admin:       ['server_ops'],
   sandbox_admin:   ['sandbox'],
   sandbox_publisher:['sandbox', 'sandbox_publish'],
   global_block_admin:['global_block'],
@@ -165,6 +167,7 @@ export const ROLE_LABEL = {
   partners_approver: 'Партнёры: подтверждение и публикация',
   sandbox_admin: 'Sky Sandbox: проверка сборок',
   sandbox_publisher: 'Sky Sandbox: проверка и одобрение публикации',
+  ops_admin: 'Sky Ops: сервер, деплой и сборка приложений',
   global_block_admin: 'Глобальная блокировка',
   storage_viewer: 'Sky Storage: просмотр',
   storage_operator: 'Sky Storage: оператор (копии, квоты)',

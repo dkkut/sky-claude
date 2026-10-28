@@ -43,6 +43,7 @@ services:
       MIN_APP_BUILD: ${MIN_APP_BUILD:-0}
       GUARD_SECRET: ${GUARD_SECRET:-}
       SANDBOX_SECRET: ${SANDBOX_SECRET:-}
+      OPS_SECRET: ${OPS_SECRET:-}
       SANDBOX_MAX_AGE_H: ${SANDBOX_MAX_AGE_H:-24}
       BUILD_ID: ${BUILD_ID:-}
     volumes:

@@ -60,6 +60,7 @@ import { StorageTab } from './StorageTab';
 import { OidcTab } from './OidcTab';
 import { SshTab } from './SshTab';
 import { SandboxTab } from './SandboxTab';
+import { OpsTab } from './OpsTab';
 import { LeakTab } from './LeakTab';
 import { DefenseTab } from './DefenseTab';
 import { PrimeTab } from './PrimeTab';
@@ -5578,7 +5579,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5789,6 +5790,7 @@ export const AdminPanel = () => {
     { key: 'artists', label: 'Музыканты', show: has('content') },
     { key: 'logs', label: 'Журналы', show: has('logs') },
     { key: 'sandbox', label: 'Sky Sandbox', show: has('sandbox') },
+    { key: 'ops', label: 'Сервер', show: has('server_ops') },
     { key: 'recovery', label: 'Восстановление доступа', show: has('support') || has('security') },
     { key: 'site', label: 'Сайт', show: has('site') },
     { key: 'updates', label: 'Обновления', show: has('site') },
@@ -6026,6 +6028,7 @@ export const AdminPanel = () => {
       {tab === 'artists' && <ArtistCardsTab />}
       {tab === 'logs' && <LogsTab />}
       {tab === 'sandbox' && <SandboxTab />}
+      {tab === 'ops' && <OpsTab />}
       {tab === 'recovery' && <RecoveryTab canSecurity={has('security')} />}
       {tab === 'systems' && <SystemsTab />}
       {tab === 'site' && <SiteTab />}
