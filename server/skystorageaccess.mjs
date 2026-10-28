@@ -23,6 +23,7 @@
  * неподтверждённого входа в хранилище не выбрасывает из всего приложения (ему просто закрыто хранилище).
  */
 import crypto from 'node:crypto';
+import { clientIp } from './http.mjs';
 import { query } from './db.mjs';
 import { config } from './config.mjs';
 import { sessionStore } from './sessions.mjs';
@@ -83,14 +84,14 @@ export const evaluateConnection = async (profileId, req, sessionId) => {
   if (!strict && !any.length && (await isOwner(profileId))) {
     await query(`INSERT INTO storage_connections (id, profile_id, device_hash, session_id, status, risk, risk_reasons, info, expires_at, decided_at, decided_by, decided_via)
       VALUES ($1,$2,$3,$4,'approved',0,'["первое подключение владельца"]'::jsonb,$5::jsonb, now(), now(), $2, 'bootstrap')`,
-      [newId('cn'), profileId, dev, sessionId ?? null, JSON.stringify({ ua: shortUa(req.headers['user-agent']), net: ipClass(req.socket?.remoteAddress) })]);
+      [newId('cn'), profileId, dev, sessionId ?? null, JSON.stringify({ ua: shortUa(req.headers['user-agent']), net: ipClass(clientIp(req)) })]);
     await logEvent('connection_bootstrap', 'warn', { profileId }, profileId);
     return { allowed: true, bootstrap: true };
   }
   const { rows: known } = await query(`SELECT 1 FROM storage_connections WHERE profile_id = $1 AND device_hash = $2 AND (status = 'approved' OR (status = 'expired' AND decided_via = 'superseded')) LIMIT 1`, [profileId, dev]);
   const reasons = strict ? [known.length ? 'вход в управление (каждый вход подтверждается)' : 'новое устройство; каждый вход подтверждается'] : ['новое устройство'];
   const { rows: prev } = await query(`SELECT info FROM storage_connections WHERE profile_id = $1 AND status = 'approved' ORDER BY decided_at DESC LIMIT 1`, [profileId]);
-  const net = ipClass(req.headers['x-real-ip'] ?? req.socket?.remoteAddress);
+  const net = ipClass(clientIp(req));
   if (prev[0]?.info?.net && prev[0].info.net !== net) reasons.push('другая сеть');
   if (!prev.length) reasons.push('нет ранее подтверждённых устройств');
   const risk = reasons.length;
