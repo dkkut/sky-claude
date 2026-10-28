@@ -277,6 +277,44 @@ export const mayManage = async (eventId, profileId) => {
   return { ok: true };
 };
 
+/**
+ * Право проверять билеты на входе: организатор мероприятия ИЛИ сотрудник (контролёр, кассир, менеджер,
+ * администратор) либо владелец организации SkyKassa Business, к которой мероприятие привязано.
+ * Подписка организатора для работы на входе не нужна: входит и тот, у кого кабинета организатора нет.
+ */
+export const mayDoor = async (eventId, profileId) => {
+  if (!EVENT_ID_RE.test(String(eventId ?? '')) || !profileId) return false;
+  const { rowCount } = await query(
+    `SELECT 1 FROM ticket_events e
+      WHERE e.id = $1 AND (e.organizer_id = $2 OR (e.business_id IS NOT NULL AND (
+            EXISTS (SELECT 1 FROM kb_businesses b WHERE b.id = e.business_id AND b.owner_id = $2)
+         OR EXISTS (SELECT 1 FROM kb_staff s WHERE s.business_id = e.business_id AND s.profile_id = $2 AND s.status = 'active'
+                      AND s.role IN ('admin','manager','cashier','controller')))))`,
+    [eventId, profileId],
+  );
+  return rowCount > 0;
+};
+
+/** Организации, которыми человек владеет: к ним можно привязать своё мероприятие. */
+export const ownBusinesses = async (profileId) => {
+  const { rows } = await query(
+    "SELECT id, name FROM kb_businesses WHERE owner_id = $1 AND status = 'active' ORDER BY created_at, id", [profileId]);
+  return rows.map((r) => ({ id: r.id, name: r.name }));
+};
+
+/** Мероприятия, на входе которых человек вправе работать (свои и организаций, где он сотрудник/владелец): ближайшие и идущие. */
+export const doorEvents = async (profileId) => {
+  const { rows } = await query(
+    `SELECT e.id, e.title, e.starts_at, e.venue, e.city, e.status, b.name AS business
+       FROM ticket_events e LEFT JOIN kb_businesses b ON b.id = e.business_id
+      WHERE e.status IN ('published','paused') AND COALESCE(e.ends_at, e.starts_at + interval '12 hours') > now() - interval '12 hours'
+        AND (e.organizer_id = $1 OR (e.business_id IS NOT NULL AND (
+              b.owner_id = $1 OR EXISTS (SELECT 1 FROM kb_staff s WHERE s.business_id = e.business_id AND s.profile_id = $1 AND s.status = 'active'
+                                           AND s.role IN ('admin','manager','cashier','controller')))))
+      ORDER BY e.starts_at LIMIT 50`, [profileId]);
+  return rows.map((r) => ({ id: r.id, title: r.title, startsAt: r.starts_at.toISOString(), venue: r.venue, city: r.city, status: r.status, business: r.business ?? null }));
+};
+
 /* ══════════════════════════════════════════════════════════════════════
    Вид мероприятия наружу
    ══════════════════════════════════════════════════════════════════════ */
@@ -608,6 +646,15 @@ export const updateEvent = async (eventId, organizerId, patch = {}) => {
   if (patch.venueNote !== undefined) put('venue_note', text(patch.venueNote, MAX_PLACE));
   if (patch.timezone !== undefined)  put('timezone', text(patch.timezone, 64) || 'Europe/Moscow');
   if (patch.accent !== undefined)    put('accent', accent(patch.accent));
+  if (patch.businessId !== undefined) {
+    /* Привязать можно только свою действующую организацию; пустое значение — отвязать. Менять после продаж нельзя: оплаты уже идут на её реквизиты. */
+    const bid = patch.businessId ? String(patch.businessId) : null;
+    if (bid && !(await ownBusinesses(organizerId)).some((b) => b.id === bid)) return { error: 'business_not_found' };
+    const { rows: sold } = await query('SELECT 1 FROM ticket_orders WHERE event_id = $1 AND status IN (\'paid\',\'awaiting_payment\') LIMIT 1', [eventId]);
+    const { rows: curB } = await query('SELECT business_id FROM ticket_events WHERE id = $1', [eventId]);
+    if (sold[0] && (curB[0]?.business_id ?? null) !== bid) return { error: 'business_locked' };
+    put('business_id', bid);
+  }
 
   if (patch.startsAt !== undefined) {
     const d = when(patch.startsAt);

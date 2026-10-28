@@ -9,7 +9,7 @@ import { newId, clean, profileCards } from './gocore.mjs';
 import { notifyGift } from './giftnotify.mjs';
 import { err, audit } from './kbiz.mjs';
 
-export const ROLES = { admin: 'Администратор', manager: 'Менеджер', cashier: 'Кассир' };
+export const ROLES = { admin: 'Администратор', manager: 'Менеджер', cashier: 'Кассир', controller: 'Контролёр' };
 /** group → роли, которым разрешено (владелец может всё). */
 export const PERMS = {
   view:      ['admin', 'manager', 'cashier'],     // обзор, список заявок, список QR
@@ -23,6 +23,8 @@ export const PERMS = {
   placeview: ['admin', 'manager'],                // Sky GO: записи, отзывы, статистика, карточка (чтение)
   placeops:  ['admin', 'manager'],                // Sky GO: решения по записям, ответы на отзывы
   placecard: ['admin'],                           // Sky GO: правка карточки, расписания, фото, отправка на проверку
+  door:      ['admin', 'manager', 'cashier', 'controller'],   // билеты: проверка и отметка на входе
+  tickets:   ['admin', 'manager'],                // билеты: заказы и список билетов мероприятий организации
   owner:     [],                                  // только владелец
 };
 
