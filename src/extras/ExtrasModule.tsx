@@ -863,7 +863,7 @@ const HomeSwitch = ({ onNav }: { onNav: (tab: string) => void }) => {
         <div role="tablist" aria-label="Вид главной" className="glass-pill relative inline-flex gap-0.5 p-1">
           {OPTS.map(o => (
             <button key={o.id} type="button" role="tab" aria-selected={mode === o.id} onClick={() => pick(o.id)}
-              className="relative isolate rounded-full px-4 py-1.5 text-[12.5px] font-semibold transition-colors"
+              className="relative isolate rounded-full px-5 py-2 text-[13px] font-semibold transition-colors active:scale-95"
               style={{ color: mode === o.id ? 'var(--t1)' : 'var(--t3)' }}>
               {mode === o.id && <motion.span layoutId="mediahome-lens" className="glass-lens absolute inset-0 -z-10 rounded-full" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
               {o.label}

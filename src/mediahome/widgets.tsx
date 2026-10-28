@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pause, Play, Plus, X } from 'lucide-react';
+import { Pause, Play, Plus, X, ChevronRight, type LucideIcon, Music2, Film, Clapperboard, Mic2, BookOpen, MessageCircle, Wallet, Car, ShoppingBag, Sparkles, User, HardDrive } from 'lucide-react';
 import type { WidgetDef } from './api';
 import { WaveShelves } from './WaveShelves';
 import { usePlayerStore } from '@/player/playerStore';
@@ -55,7 +55,12 @@ export const ALL_ACTIONS = Object.keys(ACTIONS);
 const Box = ({ children, title }: { children: React.ReactNode; title?: string }) => (
   <div className="flex h-full min-w-0 flex-col gap-2">{title && <div className="text-[13px] font-semibold" style={{ color: 'var(--t3)', letterSpacing: '-0.01em' }}>{title}</div>}{children}</div>
 );
-const cardBtn = 'rounded-full px-3 py-1.5 text-[12px] font-semibold';
+const cardBtn = 'rounded-full px-4 py-2 text-[13px] font-semibold transition active:scale-95 active:opacity-80 hover:brightness-110';
+const QICON: Record<string, { Icon: LucideIcon; from: string; to: string }> = {
+  music: { Icon: Music2, from: '#fb5c74', to: '#f43f5e' }, film: { Icon: Film, from: '#a78bfa', to: '#7c3aed' }, video: { Icon: Clapperboard, from: '#fb923c', to: '#ef4444' }, podcasts: { Icon: Mic2, from: '#34d399', to: '#059669' },
+  books: { Icon: BookOpen, from: '#fbbf24', to: '#d97706' }, messenger: { Icon: MessageCircle, from: '#4ade80', to: '#16a34a' }, wallet: { Icon: Wallet, from: '#38bdf8', to: '#0284c7' }, go: { Icon: Car, from: '#2dd4bf', to: '#0d9488' },
+  market: { Icon: ShoppingBag, from: '#f472b6', to: '#db2777' }, ai: { Icon: Sparkles, from: '#818cf8', to: '#4f46e5' }, profile: { Icon: User, from: '#94a3b8', to: '#475569' }, storage: { Icon: HardDrive, from: '#60a5fa', to: '#2563eb' },
+};
 
 const Clock = ({ w }: { w: WidgetDef }) => {
   const [now, setNow] = useState(() => new Date());
@@ -189,8 +194,16 @@ const Quick = ({ w, onNav }: { w: WidgetDef; onNav: (t: string) => void }) => {
   const acts = (Array.isArray(w.cfg.actions) && w.cfg.actions.length ? (w.cfg.actions as string[]) : ['music', 'film', 'video', 'messenger', 'go', 'ai']).filter((a) => ACTIONS[a]);
   return (
     <Box title="Быстрые действия">
-      <div className="flex flex-wrap gap-2">{acts.map((a) => <button key={a} type="button" className={cardBtn} style={{ background: 'var(--accent-bg, rgba(99,102,241,.15))', color: 'var(--t1)' }}
-        onClick={() => { const x = ACTIONS[a]; if (x.tab) onNav(x.tab); else if (x.module) setActiveModule(x.module as Parameters<typeof setActiveModule>[0]); }}>{ACTIONS[a].label}</button>)}</div>
+      <div className="grid grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-4 lg:grid-cols-6">{acts.map((a) => { const q = QICON[a]; const Ic = q?.Icon;
+        return (
+          <button key={a} type="button" className="group flex min-w-0 flex-col items-center gap-1.5 rounded-2xl py-1 transition active:scale-95"
+            onClick={() => { const x = ACTIONS[a]; if (x.tab) onNav(x.tab); else if (x.module) setActiveModule(x.module as Parameters<typeof setActiveModule>[0]); }}>
+            <span className="grid h-[54px] w-[54px] place-items-center rounded-[16px] transition group-hover:-translate-y-0.5 group-hover:brightness-110"
+              style={{ background: `linear-gradient(160deg, ${q?.from ?? '#818cf8'}, ${q?.to ?? '#4f46e5'})`, boxShadow: `0 6px 14px -6px ${q?.to ?? '#4f46e5'}, inset 0 1px 0 rgba(255,255,255,.35)` }}>
+              {Ic && <Ic size={26} strokeWidth={2} color="#fff" />}
+            </span>
+            <span className="max-w-full truncate text-[11.5px] font-medium" style={{ color: 'var(--t1)' }}>{ACTIONS[a].label}</span>
+          </button>); })}</div>
     </Box>
   );
 };
@@ -203,7 +216,7 @@ const GoOrders = ({ onNav }: { onNav: (t: string) => void }) => {
     <Box title="Заказы Sky GO">
       {o === undefined ? <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Загрузка…</p> : o === null ? <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Данные недоступны.</p>
         : o.length === 0 ? <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Активных заказов нет.</p>
-        : o.slice(0, 4).map((x) => <button key={x.id} type="button" onClick={() => onNav('go')} className="truncate text-left text-[13px]" style={{ color: 'var(--t1)' }}>{KIND[x.kind] ?? x.kind} <span style={{ color: 'var(--t3)' }}>· {x.status}</span></button>)}
+        : o.slice(0, 4).map((x) => <button key={x.id} type="button" onClick={() => onNav('go')} className="flex w-full items-center gap-1 rounded-xl py-1.5 text-left text-[14px] transition active:opacity-60" style={{ color: 'var(--t1)' }}><span className="min-w-0 flex-1 truncate">{KIND[x.kind] ?? x.kind} <span style={{ color: 'var(--t3)' }}>· {x.status}</span></span><ChevronRight size={16} style={{ color: 'var(--t3)' }} /></button>)}
     </Box>
   );
 };
