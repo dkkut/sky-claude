@@ -1,5 +1,6 @@
 import { json, requireSkyId, parseBody, clientIp } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
+import { deviceHash } from './../applock.mjs';
 import { pinState, enablePin, verifyPin, changePin, disablePin, startReset, finishReset } from './../ippin.mjs';
 
 const STATUS = { not_found: 404, not_enabled: 409, already_enabled: 409, too_many_requests: 429, locked: 429, session_ended: 401 };
@@ -19,7 +20,7 @@ export const ipPinRoutes = async (req, res, url) => {
   const b = (await parseBody(req)) ?? {};
   switch (url) {
     case '/api/skyid/pin/enable':       return reply(await enablePin(skyId, sessionId, ip, { pin: b.pin, totp: b.totp }));
-    case '/api/skyid/pin/verify':       return reply(await verifyPin(skyId, sessionId, ip, b.pin));
+    case '/api/skyid/pin/verify':       return reply(await verifyPin(skyId, sessionId, ip, b.pin, deviceHash(req)));
     case '/api/skyid/pin/change':       return reply(await changePin(skyId, sessionId, { pin: b.pin, newPin: b.newPin }));
     case '/api/skyid/pin/disable':      return reply(await disablePin(skyId, sessionId, { pin: b.pin }));
     case '/api/skyid/pin/reset/start':  return reply(await startReset(skyId));

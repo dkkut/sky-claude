@@ -71,11 +71,15 @@ const enabledFor = async (skyId) => {
  * Закрыта ли эта сессия для этого адреса. Вызывается на каждом запросе (server.mjs) и при
  * подключении сокета (signal.mjs).
  */
-export const pinRequired = async (skyId, sid, stored, ip) => {
+export const pinRequired = async (skyId, sid, stored, ip, dev = null) => {
   if (!(await enabledFor(skyId))) return false;
   const key = ipKey(ip);
   if (!key || key === ipKey(stored?.ip)) return false;
-  return !(await sessionStore.ipKnown(sid, key));
+  if (await sessionStore.ipKnown(sid, key)) return false;
+  // На iPhone по Wi-Fi запросы чередуются между IPv4 и IPv6 (и сетями), и каждый «новый» адрес снова просил PIN.
+  // Устройство (случайный id из localStorage), на котором PIN уже введён в ЭТОЙ сессии, считается подтверждённым.
+  if (dev && await sessionStore.ipKnown(sid, `dev:${dev}`)) return false;
+  return true;
 };
 
 const load = async (skyId) => {
@@ -156,10 +160,11 @@ const guard = async (skyId, sid, pin) => {
 };
 
 /** Ввод PIN с нового адреса: адрес запоминается для этой сессии. */
-export const verifyPin = async (skyId, sid, ip, pin) => {
+export const verifyPin = async (skyId, sid, ip, pin, dev = null) => {
   const g = await guard(skyId, sid, pin);
   if (!g.ok) return g;
   await sessionStore.ipAllow(sid, ipKey(ip));
+  if (dev) await sessionStore.ipAllow(sid, `dev:${dev}`);
   return { ok: true };
 };
 

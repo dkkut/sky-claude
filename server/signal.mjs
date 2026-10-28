@@ -12,7 +12,7 @@
  *      операции — в слое данных, а не здесь, чтобы нельзя было забыть
  *      проверку в одной из веток.
  */
-import { applockBlocked } from './applock.mjs';
+import { applockBlocked, deviceHash } from './applock.mjs';
 import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.mjs';
 import { verifyToken, rateLimit, rateLimitPerHour } from './security.mjs';
@@ -302,7 +302,7 @@ const authFail = (why) => {
   return null;
 };
 
-const identify = async (token, ip) => {
+const identify = async (token, ip, dev = null) => {
   const payload = verifyToken(token, config.jwtSecret);
   if (!payload) return authFail('token_invalid (подпись/срок: JWT_SECRET не тот, что при выдаче, или токен истёк)');
   if (payload.typ !== 'access' || !payload.sky || !payload.sid) return authFail('token_not_access');
@@ -311,7 +311,7 @@ const identify = async (token, ip) => {
   if (!stored) return authFail('session_missing (сессии нет в Redis)');
   if (stored.userId !== payload.sky || !stored.profileId) return authFail('session_mismatch_or_no_profile');
   // PIN при смене IP (ippin.mjs): сессия с адреса, где PIN ещё не вводили, не получает сокет.
-  if (await pinRequired(payload.sky, payload.sid, stored, ip)) { authFail('pin_required (PIN при смене IP)'); return { pinRequired: true }; }
+  if (await pinRequired(payload.sky, payload.sid, stored, ip, dev)) { authFail('pin_required (PIN при смене IP)'); return { pinRequired: true }; }
 
   // Замок приложения (applock.mjs): закрытая сессия сокета не получает.
   const locked = await applockBlocked(payload.sid, stored);
@@ -1958,7 +1958,7 @@ export const startSignalHub = () => {
       /* ── Авторизация ── */
       if (msg.type === 'auth') {
         if (session.userId) return;
-        const who = await identify(msg.payload?.token, ip);
+        const who = await identify(msg.payload?.token, ip, deviceHash(req));
         if (who?.pinRequired) { send(ws, { type: 'pin-required' }); ws.close(4401, 'pin_required'); return; }   // клиент покажет экран PIN
         if (!who) {
           send(ws, { type: 'auth-failed' });

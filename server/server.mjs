@@ -150,7 +150,7 @@ import { appLockRoutes } from './routes/applock.mjs';
 import { skyQrRoutes } from './routes/skyqr.mjs';
 import { transferRoutes } from './routes/transfer.mjs';
 import { sweepTransfers } from './transfer.mjs';
-import { applockBlocked } from './applock.mjs';
+import { applockBlocked, deviceHash } from './applock.mjs';
 import { resourceRoutes } from './routes/resources.mjs';
 import { startResourceOptimizer, heavyAllowed, shouldDeferHousekeeping } from './resourceopt.mjs';
 import { limitedBlocks, sweepLimited } from './limitedaccess.mjs';
@@ -386,7 +386,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
       const tok = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tok?.typ === 'access' && tok.sky && tok.sid) {
         const stored = await sessionStore.get(tok.sid);
-        if (stored && stored.userId === tok.sky && await pinRequired(tok.sky, tok.sid, stored, ip)) {
+        if (stored && stored.userId === tok.sky && await pinRequired(tok.sky, tok.sid, stored, ip, deviceHash(req))) {
           return json(res, 403, { error: 'pin_required' });
         }
       }
