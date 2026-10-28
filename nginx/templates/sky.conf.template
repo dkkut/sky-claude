@@ -181,8 +181,7 @@ server {
     }
     location ^~ /api/launcher/blob/ {
         limit_req zone=req_general burst=300 nodelay;
-        proxy_buffering off;
-        include /etc/nginx/snippets/proxy-common.conf;
+        include /etc/nginx/snippets/proxy-common.conf;   # внутри уже proxy_buffering off — повтор nginx считает ошибкой
         proxy_read_timeout 4h;
         proxy_send_timeout 4h;
         proxy_pass http://sky_api;

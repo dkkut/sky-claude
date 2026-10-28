@@ -2205,3 +2205,5 @@ Electron — `electron/launcher.cjs` (менеджер загрузок/уста
 ## Сохранённые логин и пароль для деплоя
 
 `scripts/set-deploy-credentials.sh` (спрашивает скрыто, пишет `/etc/sky-deploy.cred` с правами 600; `--check`, `--remove`; путь можно сменить `DEPLOY_CRED`). `scripts/deploy-local.sh` читает файл и подаёт логин/пароль в `git fetch` через временный `GIT_ASKPASS` (в адрес remote и в аргументы они не попадают, временный файл удаляется при выходе). Пароль — токен GitHub с правом чтения репозитория, не пароль аккаунта. Файла нет — деплой работает как раньше. Проверен синтаксис и сам askpass-помощник; настоящий `git fetch` с закрытым репозиторием в среде не запускался.
+
+Заметка: `snippets/proxy-common.conf` уже содержит `proxy_buffering off` — в `location` с этим include директиву НЕ повторять (nginx: «directive is duplicate», деплой останавливается на `nginx -t`; так было с `/api/launcher/blob/`). Проверка перед пушем: `grep -n proxy_buffering nginx/templates/sky.conf.template` должен быть пуст.
