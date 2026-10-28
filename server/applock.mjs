@@ -42,7 +42,15 @@ export const isClosed = (rec, now = Date.now()) => Boolean(rec) && (rec.locked =
 /** Для server.mjs / signal.mjs: сессия помечена замком и сейчас закрыта? */
 export const applockBlocked = async (sid, stored) => {
   if (!stored?.appLock) return false;
-  return isClosed(await sessionStore.getLock(sid));
+  const rec = await sessionStore.getLock(sid);
+  if (!isClosed(rec)) return false;
+  // Замок на этом устройстве выключили (в другой сессии или с другого экрана): запись удалена, а флаг сессии остался — снимаем, а не закрываем навсегда.
+  if (rec?.dev && stored.userId && !(await row(stored.userId, rec.dev))) {
+    await sessionStore.setLock(sid, null).catch(() => {});
+    await sessionStore.patch(sid, { appLock: false }).catch(() => {});
+    return false;
+  }
+  return true;
 };
 
 const open = (sid, dev, extra = {}) => sessionStore.setLock(sid, { dev, locked: false, seen: Date.now(), ...extra });
@@ -59,7 +67,11 @@ export const onLogin = async (skyId, sid, req) => {
 export const status = async (skyId, sid, req) => {
   const dev = deviceHash(req);
   const r = await row(skyId, dev);
-  if (!r) return { enabled: false, canEnable: Boolean(dev) };
+  if (!r) {
+    const stored0 = await sessionStore.get(sid);
+    if (stored0?.appLock) { await sessionStore.setLock(sid, null); await sessionStore.patch(sid, { appLock: false }); }
+    return { enabled: false, canEnable: Boolean(dev) };
+  }
   let rec = await sessionStore.getLock(sid);
   if (!rec) {   // сессия на устройстве с замком, но без записи (например, начата до включения): закрываем, пока не откроют
     rec = { dev, locked: true, seen: 0 };
