@@ -160,7 +160,7 @@ export const lostFinish = async (skyId, sid, code, ip) => {
 
 /** Что ограниченной сессии можно: чтение без чатов/файлов/комнат + вход, выход, этот модуль и выбор профиля. */
 const BLOCKED_READ = /^\/api\/(files|voiceparty|calls?|chats?|messages?|attachments?)(\/|$)/;
-const ALLOWED_WRITE = /^\/api\/(auth\/(logout|refresh|session)$|skyid\/limited(\/|$)|skyid\/pin(\/|$|\?)|skyid\/profiles\/[\w.-]+\/select$)/;
+const ALLOWED_WRITE = /^\/api\/(auth\/(logout|refresh|session)$|skyid\/limited(\/|$)|skyid\/pin(\/|$|\?)|skyid\/applock(\/|$|\?)|skyid\/profiles\/[\w.-]+\/select$)/;
 export const limitedBlocks = (method, url) => {
   const read = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
   if (ALLOWED_WRITE.test(url)) return false;
