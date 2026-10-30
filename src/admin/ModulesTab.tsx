@@ -137,7 +137,7 @@ export const ModulesTab = () => {
     <div className="space-y-4">
       <Quick list={list} onChanged={() => void load()} />
       <UserBlocksPanel modules={list} />
-      <div className="rounded-2xl p-3" style={{ background: C.l2, border: `1px solid ${C.border}` }}>
+      <div className="rounded-2xl p-3" style={{ background: C.l2, border: `1px solid ${C.brd}` }}>
         <p className="mb-2 text-xs font-bold" style={{ color: C.t1 }}>Заглушки SkyMoney (только статус)</p>
         {['SkyCards', 'SkyCrypto'].map((n) => (
           <div key={n} className="flex items-center justify-between py-1 text-xs" style={{ color: C.t2 }}>
