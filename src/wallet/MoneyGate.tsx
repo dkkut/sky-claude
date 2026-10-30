@@ -32,12 +32,27 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
   const [sent, setSent] = useState(false);
   const alive = useRef(true);
 
-  const load = useCallback(async () => {
-    const r = await apiCall<MoneyStatus>('/api/skyid/money/status');
-    if (!alive.current) return;
-    if (!r.ok || !r.data) { setErr(TEXT[r.error ?? ''] ?? 'Не удалось проверить доступ. Повторите.'); setSt((p) => p ?? { unlocked: false, needPassword: true, needDevice: false }); return; }
-    if (!r.data.unlocked) wipeFinancialMemory();
-    setErr(''); setSt(r.data);
+  // Запросы статуса не плодим: каждый финансовый запрос с money_locked присылает событие, и их приходит десяток разом —
+  // раньше каждое запускало свой запрос статуса, упираясь в предел и показывая «Не удалось проверить доступ».
+  const inflight = useRef<Promise<void> | null>(null);
+  const again = useRef(false);
+  const load = useCallback((): Promise<void> => {
+    if (inflight.current) { again.current = true; return inflight.current; }
+    const run = async () => {
+      let r = await apiCall<MoneyStatus>('/api/skyid/money/status');
+      // сеть моргнула, сервер перезапускается или предел — повторяем с паузами, а не сразу показываем ошибку
+      for (const wait of [800, 2000, 5000]) {
+        if (!alive.current || (r.ok && r.data) || r.error === 'unauthorized') break;
+        await new Promise((res) => setTimeout(res, wait));
+        r = await apiCall<MoneyStatus>('/api/skyid/money/status');
+      }
+      if (!alive.current) return;
+      if (!r.ok || !r.data) { setErr(TEXT[r.error ?? ''] ?? 'Не удалось проверить доступ. Повторите.'); setSt((p) => p ?? { unlocked: false, needPassword: true, needDevice: false }); return; }
+      if (!r.data.unlocked) wipeFinancialMemory();
+      setErr(''); setSt(r.data);
+    };
+    inflight.current = run().finally(() => { inflight.current = null; if (again.current) { again.current = false; void load(); } });
+    return inflight.current;
   }, []);
 
   useEffect(() => {
@@ -100,6 +115,7 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
         )}
 
         {err && <p role="alert" className="rounded-xl p-3 text-sm" style={{ background: 'rgba(224,90,90,.12)', color: '#e05a5a' }}>{err}</p>}
+        {err.startsWith('Не удалось проверить') && <button type="button" onClick={() => { setErr(''); void load(); }} className="w-full rounded-2xl py-2.5 text-sm font-bold" style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>Повторить проверку</button>}
         <button type="submit" disabled={busy || (st.needPassword && !pwd) || (st.needDevice && !code)}
           className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-extrabold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
           {busy ? <Loader2 size={16} className="animate-spin" /> : null}Открыть SkyMoney

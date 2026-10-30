@@ -10,7 +10,8 @@ export const moneyGuardRoutes = async (req, res, url) => {
   if (!path.startsWith('/api/skyid/money/')) return false;
   const s = await readSession(req);
   if (!s) return json(res, 401, { error: 'unauthorized' });
-  if (!rateLimit(`moneyguard:${s.skyId}`, 60)) return json(res, 429, { error: 'rate_limited' });
+  // Статус — дешёвое чтение, его дёргают экраны кошелька пачками; ввод пароля и кодов ограничен строже.
+  if (!rateLimit(`moneyguard:${s.skyId}`, req.method === 'GET' ? 300 : 60)) return json(res, 429, { error: 'rate_limited' });
   if (req.method === 'GET' && path === '/api/skyid/money/status') return json(res, 200, await moneyState(s.skyId, s.sessionId, req));
   if (req.method === 'POST' && path === '/api/skyid/money/code') { const r = await sendDeviceCode(s.skyId); return json(res, r.ok ? 200 : (CODES[r.error] ?? 400), r); }
   if (req.method === 'POST' && path === '/api/skyid/money/unlock') {
