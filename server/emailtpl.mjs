@@ -48,7 +48,7 @@ const logo = (light = false) => `<table role="presentation" cellpadding="0" cell
 <td style="padding-left:10px;font:800 21px/34px ${FONT};letter-spacing:-0.3px;color:${light ? '#ffffff' : BRAND.ink};">Sky</td></tr></table>`;
 
 /** Кнопка, которая остаётся кнопкой и без картинок и в Outlook (цвет задан и на ячейке, и на ссылке). */
-const button = (label, url, { kind = 'primary', full = false } = {}) => {
+export const button = (label, url, { kind = 'primary', full = false } = {}) => {
   const href = safeUrl(url); if (!href) return '';
   const bg = kind === 'primary' ? BRAND.indigo : kind === 'light' ? '#ffffff' : '#eef0fd';
   const fg = kind === 'primary' ? '#ffffff' : kind === 'light' ? BRAND.indigo : BRAND.indigo;
@@ -56,7 +56,7 @@ const button = (label, url, { kind = 'primary', full = false } = {}) => {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"${full ? ' width="100%"' : ''}><tr><td align="center" bgcolor="${bg}" style="border-radius:14px;${style}"><a href="${esc(href)}" target="_blank" style="display:block;padding:14px 26px;font:700 15px/20px ${FONT};color:${fg};text-decoration:none;border-radius:14px;">${esc(label)}</a></td></tr></table>`;
 };
 
-const paragraphs = (text, vars, kind) => String(text ?? '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).map((p) => {
+export const paragraphs = (text, vars, kind) => String(text ?? '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).map((p) => {
   const lines = p.split('\n').map((l) => l.trim()).filter(Boolean);
   if (lines.every((l) => /^[•\-–]\s+/.test(l))) {
     return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px;">${lines.map((l) => `<tr><td width="22" valign="top" style="font:700 15px/24px ${FONT};color:${BRAND.indigo};">•</td><td style="font:400 15px/24px ${FONT};color:${BRAND.ink};padding-bottom:4px;">${subst(l.replace(/^[•\-–]\s+/, ''), vars, kind, 'html')}</td></tr>`).join('')}</table>`;
@@ -75,7 +75,7 @@ const cardsBlock = (cards, vars, kind) => {
 };
 
 /** Единый футер: слоган, три кнопки, пояснение, почему пришло письмо, и (только у рекламных) отписка. */
-const footer = ({ links, marketing, unsubUrl, messageId }) => {
+export const footer = ({ links, marketing, unsubUrl, messageId }) => {
   const a = (label, url) => { const h = safeUrl(url); return h ? `<a href="${esc(h)}" target="_blank" style="color:${BRAND.indigo};text-decoration:none;font:600 13px/20px ${FONT};padding:0 10px;">${esc(label)}</a>` : ''; };
   const why = marketing
     ? `Вы получили это письмо, потому что подписаны на новости Sky. ${unsubUrl ? `<a href="${esc(safeUrl(unsubUrl))}" target="_blank" style="color:${BRAND.muted};text-decoration:underline;">Отписаться от рекламных рассылок</a>.` : ''}`
@@ -89,7 +89,7 @@ const footer = ({ links, marketing, unsubUrl, messageId }) => {
 };
 
 /** Общая рамка письма. */
-const shell = ({ title, preheader, hero, body, footerHtml }) => `<!doctype html>
+export const shell = ({ title, preheader, hero, body, footerHtml }) => `<!doctype html>
 <html lang="ru" xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="x-apple-disable-message-reformatting"><title>${esc(title)}</title>
 <style>@media only screen and (max-width:620px){.wrap{width:100%!important}.pad{padding-left:20px!important;padding-right:20px!important}.stack{display:block!important;width:100%!important}.big{font-size:38px!important;line-height:44px!important}.h1{font-size:26px!important;line-height:32px!important}}</style></head>
 <body style="margin:0;padding:0;background:${BRAND.page};-webkit-text-size-adjust:100%;">${preheaderBlock(preheader)}
@@ -102,7 +102,7 @@ ${hero}${body}
 ${footerHtml}
 </table></td></tr></table></body></html>`;
 
-const heroBlock = ({ title, subtitle, accent, vars, kind, imageUrl }) => {
+export const heroBlock = ({ title, subtitle, accent, vars, kind, imageUrl }) => {
   const img = safeUrl(imageUrl);
   return `<tr><td class="pad" bgcolor="${BRAND.indigo}" style="${GRAD}padding:34px 36px 32px;">
 <div style="font:600 12px/16px ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:rgba(255,255,255,0.78);padding-bottom:12px;">${esc(accent)}</div>
@@ -111,10 +111,10 @@ ${subtitle ? `<div style="padding-top:10px;font:400 16px/24px ${FONT};color:rgba
 </td></tr>${img ? `<tr><td style="padding:0;line-height:0;"><img src="${esc(img)}" width="600" alt="" style="display:block;width:100%;max-width:600px;height:auto;border:0;"></td></tr>` : ''}`;
 };
 
-const bodyWrap = (inner) => `<tr><td class="pad" style="padding:30px 36px 34px;">${inner}</td></tr>`;
+export const bodyWrap = (inner) => `<tr><td class="pad" style="padding:30px 36px 34px;">${inner}</td></tr>`;
 
 /* ─── ссылки футера ─── */
-const linksOf = (ctx) => ({ app: ctx.appUrl, support: ctx.supportUrl || ctx.appUrl, privacy: ctx.privacyUrl || ctx.appUrl });
+export const linksOf = (ctx) => ({ app: ctx.appUrl, support: ctx.supportUrl || ctx.appUrl, privacy: ctx.privacyUrl || ctx.appUrl });
 
 /* ─── 1. Информационная рассылка ─── */
 export const renderNewsletter = (content = {}, ctx = {}) => {
@@ -257,3 +257,41 @@ export const DEFAULT_TEMPLATES = [
   { key: 'money_topup', kind: 'money', name: 'SkyMoney: пополнение', subject: 'Баланс пополнен на {amount} {currency}', preheader: 'Зачислено {amount} {currency}',
     content: { title: 'Баланс пополнен', body: 'Средства зачислены на ваш баланс SkyMoney. Подробности операции — ниже.' }, auto: true },
 ];
+
+/* ─── Налоговые документы (Sky Tax): письмо покупателю и печатная страница ─── */
+const DOC_TITLE = { fiscal_receipt: 'Кассовый чек', npd_receipt: 'Чек самозанятого', confirmation: 'Подтверждение операции', internal_receipt: 'Квитанция Sky' };
+const PROV_NOTE = { provider: 'Документ сформирован через подключённую продавцом интеграцию и подтверждён ею.', manual: 'Номер документа внёс продавец вручную; Sky его не проверял.', internal: 'Внутренний документ Sky; фискальным чеком не является.' };
+const money = (n) => `${Number(n).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽`;
+export const taxDocTitle = (kind, op) => `${op === 'refund' ? 'Чек возврата' : DOC_TITLE[kind] ?? 'Документ'}`;
+
+/** d: { kind, opKind, number, issuedAt, sellerName, sellerInn, amount, items:[{name,qty,price,amount}], provenance, url, fiscalSign, kindLabel } */
+export const renderTaxDocMail = (d, ctx = {}) => {
+  const title = `${taxDocTitle(d.kind, d.opKind)} № ${d.number}`;
+  const rows = (d.items ?? []).map((i) => `<tr><td style="padding:9px 0;border-top:1px solid ${BRAND.line};font:400 14px/20px ${FONT};color:${BRAND.ink};">${esc(i.name)}${Number(i.qty) !== 1 ? ` × ${esc(i.qty)}` : ''}</td><td align="right" style="padding:9px 0;border-top:1px solid ${BRAND.line};font:600 14px/20px ${FONT};color:${BRAND.ink};">${esc(money(i.amount))}</td></tr>`).join('');
+  const link = safeUrl(ctx.pageUrl) ? button('Открыть документ', ctx.pageUrl, { kind: 'primary', full: true }) : '';
+  const official = safeUrl(d.url) ? `<p style="margin:12px 0 0;font:400 13px/19px ${FONT};color:${BRAND.muted};">Документ в системе оператора: <a href="${esc(safeUrl(d.url))}" style="color:${BRAND.indigo};">${esc(safeUrl(d.url))}</a></p>` : '';
+  const html = shell({
+    title, preheader: `${money(d.amount)} · ${d.sellerName}`,
+    hero: heroBlock({ title, subtitle: d.sellerName, accent: d.kindLabel ?? 'Чек', vars: {}, kind: 'money' }),
+    body: bodyWrap(`<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 14px;"><tr><td style="font:400 14px/20px ${FONT};color:${BRAND.muted};">Дата</td><td align="right" style="font:600 14px/20px ${FONT};color:${BRAND.ink};">${esc(d.issuedAt)}</td></tr>
+<tr><td style="padding-top:6px;font:400 14px/20px ${FONT};color:${BRAND.muted};">Продавец</td><td align="right" style="padding-top:6px;font:600 14px/20px ${FONT};color:${BRAND.ink};">${esc(d.sellerName)}${d.sellerInn ? `<br><span style="font-weight:400;color:${BRAND.muted};">ИНН ${esc(d.sellerInn)}</span>` : ''}</td></tr></table>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">${rows}<tr><td style="padding:12px 0 4px;border-top:2px solid ${BRAND.ink};font:800 16px/22px ${FONT};color:${BRAND.ink};">${d.opKind === 'refund' ? 'Возвращено' : 'Итого'}</td><td align="right" style="padding:12px 0 4px;border-top:2px solid ${BRAND.ink};font:800 16px/22px ${FONT};color:${BRAND.ink};">${esc(money(d.amount))}</td></tr></table>
+<p style="margin:14px 0 14px;font:400 12px/18px ${FONT};color:${BRAND.muted};">${esc(PROV_NOTE[d.provenance] ?? '')}${d.fiscalSign ? ` Фискальный признак: ${esc(d.fiscalSign)}.` : ''}</p>${link}${official}`),
+    footerHtml: footer({ links: linksOf(ctx), marketing: false, messageId: ctx.messageId || '—' }),
+  });
+  const text = [title, d.sellerName + (d.sellerInn ? `, ИНН ${d.sellerInn}` : ''), `Дата: ${d.issuedAt}`, '', ...(d.items ?? []).map((i) => `${i.name}${Number(i.qty) !== 1 ? ` × ${i.qty}` : ''}: ${money(i.amount)}`), `${d.opKind === 'refund' ? 'Возвращено' : 'Итого'}: ${money(d.amount)}`, '', PROV_NOTE[d.provenance] ?? '', safeUrl(ctx.pageUrl) ? `Документ: ${ctx.pageUrl}` : '', safeUrl(d.url) ? `У оператора: ${d.url}` : '', '', '—', 'Sky — твоя экосистема.'].filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n');
+  return { html, text, subject: title };
+};
+
+export const renderTaxDocPage = (d) => {
+  const row = (k, v) => `<tr><td style="padding:9px 0;border-bottom:1px solid ${BRAND.line};color:${BRAND.muted};">${esc(k)}</td><td style="padding:9px 0;border-bottom:1px solid ${BRAND.line};text-align:right;font-weight:600;">${v}</td></tr>`;
+  const items = (d.items ?? []).map((i) => row(`${i.name}${Number(i.qty) !== 1 ? ` × ${i.qty}` : ''}`, esc(money(i.amount)))).join('');
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(taxDocTitle(d.kind, d.opKind))} ${esc(d.number)}</title>
+<style>body{margin:0;background:${BRAND.page};font-family:${FONT};color:${BRAND.ink}}.card{max-width:560px;margin:28px auto;background:#fff;border-radius:24px;padding:30px;box-shadow:0 6px 28px rgba(60,60,140,.10)}table{width:100%;border-collapse:collapse;font-size:14px}.btn{display:inline-block;margin-top:18px;padding:12px 22px;border-radius:14px;background:${BRAND.indigo};color:#fff;font-weight:700;border:0;font-size:15px;cursor:pointer}.note{margin-top:16px;font-size:12px;line-height:18px;color:${BRAND.muted}}@media print{body{background:#fff}.card{box-shadow:none;margin:0}.btn{display:none}}</style></head>
+<body><div class="card"><div style="font-weight:800;font-size:20px">Sky <span style="color:${BRAND.muted};font-weight:600;font-size:14px">· Sky Tax</span></div>
+<h1 style="font-size:22px;margin:16px 0 2px">${esc(taxDocTitle(d.kind, d.opKind))}</h1><div style="color:${BRAND.muted};font-size:13px;margin-bottom:12px">№ ${esc(d.number)} · ${esc(d.kindLabel ?? '')}</div>
+<table>${row('Дата', esc(d.issuedAt))}${row('Продавец', esc(d.sellerName) + (d.sellerInn ? `<br><span style="font-weight:400;color:${BRAND.muted}">ИНН ${esc(d.sellerInn)}</span>` : ''))}${items}${row(d.opKind === 'refund' ? 'Возвращено' : 'Итого', `<b style="font-size:17px">${esc(money(d.amount))}</b>`)}${d.fiscalSign ? row('Фискальный признак', esc(d.fiscalSign)) : ''}</table>
+${safeUrl(d.url) ? `<p class="note">Документ в системе оператора: <a href="${esc(safeUrl(d.url))}" rel="noopener noreferrer">${esc(safeUrl(d.url))}</a></p>` : ''}
+<button class="btn" onclick="window.print()">Сохранить в PDF / Печать</button>
+<div class="note">${esc(PROV_NOTE[d.provenance] ?? '')} Ссылка защищена и открывает только этот документ.</div></div></body></html>`;
+};

@@ -20,6 +20,7 @@ import { pushToOffline } from './webpush.mjs';
 
 /** key → подпись и права на очередь. `owner: true` — только владелец (шаг его решения). */
 export const CATEGORIES = {
+  tax_error:      { label: 'Ошибки и ожидания Sky Tax', rights: ['tax'] },
   topup:          { label: 'Заявки на пополнение (SkyKassa)', rights: ['skykassa'] },
   gblock_appeal:  { label: 'Апелляции на глобальную блокировку', rights: ['global_block'] },
   seller_app:     { label: 'Заявки продавцов', rights: ['seller_docs', 'market'] },

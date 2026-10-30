@@ -45,6 +45,8 @@ import { skyIdRoutes } from './routes/skyid.mjs';
 import { walletRoutes } from './routes/wallet.mjs';
 import { walletFxRoutes } from './routes/walletfx.mjs';
 import { emailCommsRoutes, ofdRoutes } from './routes/emailcomms.mjs';
+import { taxRoutes } from './routes/tax.mjs';
+import { processQueue as taxQueue, sweepTax } from './taxcore.mjs';
 import { processOutbox, sweepPrime, sweepMoney, tickCampaigns } from './emailcomms.mjs';
 import { startFxRefresh } from './walletfx.mjs';
 import { supportRoutes } from './routes/support.mjs';
@@ -279,7 +281,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -540,7 +542,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
     /* Игровые серверы Sky Blox — программы, а не люди: у них подпись запроса вместо ключа беты. */
     const isBloxServer = url.startsWith('/api/blox/server/') || url.startsWith('/api/skykassa/webhook/') || url.startsWith('/api/kbiz/webhook/');
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !url.startsWith('/api/blocked/') && !url.startsWith('/api/email/') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/') && !url.startsWith('/api/ops/agent/') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/kbiz/public/') && !url.startsWith('/api/storage/s3') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !url.startsWith('/api/blocked/') && !url.startsWith('/api/email/') && !url.startsWith('/api/tax/doc/') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/') && !url.startsWith('/api/ops/agent/') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/kbiz/public/') && !url.startsWith('/api/storage/s3') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -763,6 +765,10 @@ const start = async () => {
   let mailTicks = 0;
   const mailSchedule = setInterval(() => { mailTicks += 1; (async () => { await processOutbox(); await tickCampaigns(); if (mailTicks % 5 === 1) { await sweepPrime(); await sweepMoney(); } })().catch((e) => console.error('[email] тик:', e.message)); }, 20 * 1000);
   mailSchedule.unref();
+  // Sky Tax: подбор операций из уже совершённых платежей (раз в минуту) и очередь отправки (раз в 20 с). Сбой не влияет на платежи.
+  let taxTicks = 0;
+  const taxSchedule = setInterval(() => { taxTicks += 1; (async () => { if (taxTicks % 3 === 1) await sweepTax(); await taxQueue(); })().catch((e) => console.error('[tax] тик:', e.message)); }, 20 * 1000);
+  taxSchedule.unref();
   setFirewallFloor(firewallFloor);
   const defSchedule = setInterval(() => { defTicks += 1; defenseTick().catch((e) => console.error('[defense] тик:', e.message)); if (defTicks % 5 === 0) integrityCheck().catch(() => {}); }, 60 * 1000);
   defSchedule.unref();

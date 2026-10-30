@@ -21,7 +21,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'global_block' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance' | 'oidc' | 'prime' | 'partners' | 'partners_approve' | 'kassa_biz' | 'upload_limits' | 'verification' | 'logs' | 'parking' | 'parking_moderation' | 'go_places' | 'sandbox' | 'sandbox_publish' | 'server_ops' | 'launcher' | 'launcher_moderation' | 'email_comms';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'global_block' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance' | 'oidc' | 'prime' | 'partners' | 'partners_approve' | 'kassa_biz' | 'upload_limits' | 'verification' | 'logs' | 'parking' | 'parking_moderation' | 'go_places' | 'sandbox' | 'sandbox_publish' | 'server_ops' | 'launcher' | 'launcher_moderation' | 'email_comms' | 'tax';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -55,6 +55,7 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   sandbox_publish: 'Sky Sandbox: одобрение публикации',
   server_ops: 'Sky Ops: сервер, деплой, сборка приложений',
   email_comms: 'Email-коммуникации: рассылки, шаблоны, адресная отправка',
+  tax: 'Sky Tax: налоговые операции, документы, журнал',
   launcher: 'Sky Launcher: серверы, каталог, настройки',
   launcher_moderation: 'Sky Launcher: заявки и модерация игр',
   parking: 'Sky Parking: организации и сбои',
@@ -89,6 +90,7 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
 export const ROLE_LABEL: Record<string, string> = {
   owner: 'Владелец',
   email_admin: 'Email-коммуникации',
+  tax_admin: 'Sky Tax',
   super_admin: 'Полные права',
   security_admin: 'Безопасность',
   parking_admin: 'Sky Parking: администратор',

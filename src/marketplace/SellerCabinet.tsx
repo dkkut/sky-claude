@@ -15,9 +15,10 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useWarehouseStore } from './logistics/warehouseStore';
+import { MyTax } from '@/tax/TaxPanel';
 import type { LucideIcon } from 'lucide-react';
 import {
-  Store, Package, ShoppingBag, BarChart3, Settings, Plus, Trash2,
+  Store, Receipt, Package, ShoppingBag, BarChart3, Settings, Plus, Trash2,
   Edit3, CheckCircle2, AlertCircle, Star, ImagePlus, CreditCard,
   Truck, Route, Warehouse as WarehouseIcon, PackageSearch, KeyRound, Zap,
   Lock as LockIcon, Check, ScrollText, QrCode, ShieldAlert, ShieldCheck,
@@ -956,7 +957,7 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
 
 type CabTab = 'verify' | 'orders' | 'products' | 'stats'
   | 'couriers' | 'transport' | 'warehouses' | 'cells' | 'shipments' | 'pvzship' | 'passes'
-  | 'ads' | 'violations' | 'settings';
+  | 'ads' | 'violations' | 'tax' | 'settings';
 
 /* Логистика — часть кабинета продавца, как и была: курьеры, своя
    транспортная компания, склады, поставки и пропуска. Теперь всё это
@@ -975,6 +976,7 @@ const TABS: { key: CabTab; label: string; Icon: LucideIcon }[] = [
   { key: 'passes',     label: 'Пропуска и доступы', Icon: KeyRound },
   { key: 'ads',        label: 'Реклама',  Icon: Zap },
   { key: 'violations', label: 'Нарушения и штрафы', Icon: ShieldAlert },
+  { key: 'tax',        label: 'Налоги',   Icon: Receipt },
   { key: 'settings',   label: 'Магазин',  Icon: Settings },
 ];
 
@@ -1043,6 +1045,7 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
         {tab === 'passes' && <PassHub />}
         {tab === 'ads' && <SellerPromotions />}
         {tab === 'violations' && <SellerViolations />}
+        {tab === 'tax' && <MyTax />}
         {tab === 'settings' && <SellerSettings seller={seller} />}
       </div>
     </div>
