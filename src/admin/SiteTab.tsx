@@ -365,7 +365,7 @@ const AppUpdateCard = ({ d, onChanged }: { d: AppUpd; onChanged: () => void }) =
   return (
     <div className="space-y-2 rounded-2xl p-3" style={card}>
       <p className="text-sm font-bold" style={{ color: C.t1 }}><span translate="no">{d.title}</span></p>
-      <input value={f.version} onChange={(e) => setF({ ...f, version: e.target.value })} placeholder="Версия (например, 5.1.1)" className={inp} style={field} aria-label={`Версия ${d.title}`} maxLength={40} />
+      <input value={f.version} onChange={(e) => setF({ ...f, version: e.target.value })} placeholder="Версия (например, 5.1.2)" className={inp} style={field} aria-label={`Версия ${d.title}`} maxLength={40} />
       <textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} rows={2} placeholder="Что нового (видно людям под названием)" className={inp} style={field} aria-label={`Что нового ${d.title}`} maxLength={400} />
       <div className="rounded-xl p-2.5" style={{ background: C.l2 }}>
         {d.file ? (
@@ -415,7 +415,7 @@ export const UpdatesAdminTab = () => {
       <div className="space-y-2 rounded-2xl p-3" style={card}>
         <h3 className="text-sm font-bold" style={{ color: C.t1 }}>Разослать уведомление об обновлении</h3>
         <p className="text-[11px]" style={{ color: C.t3 }}>Придёт всем людям: запись в «Уведомления» и push тем, кто не в приложении. Отправляйте после того, как файлы загружены. Повторно — не раньше чем через 10 минут.</p>
-        <input className={inp} style={field} value={ver} maxLength={40} placeholder="Версия, например 5.1.1" onChange={(e) => setVer(e.target.value)} />
+        <input className={inp} style={field} value={ver} maxLength={40} placeholder="Версия, например 5.1.2" onChange={(e) => setVer(e.target.value)} />
         <textarea className={inp} style={field} rows={3} maxLength={400} value={text} placeholder="Что нового (необязательно). Если пусто — стандартный текст со ссылкой на «Обновления»." onChange={(e) => setText(e.target.value)} />
         {!ask
           ? <button type="button" disabled={!ver.trim() || busy} className="w-full rounded-xl py-2.5 text-sm font-bold text-white disabled:opacity-40" style={{ background: C.acc }} onClick={() => setAsk(true)}>Разослать уведомление об обновлении</button>
