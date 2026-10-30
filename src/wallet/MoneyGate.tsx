@@ -65,7 +65,9 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
     void load();
     const t = setInterval(visibleTick(() => void load()), 30_000);
     // Любой финансовый запрос, получивший money_locked, сразу возвращает экран блокировки.
-    const onLocked = () => { wipeFinancialMemory(); setSt((p) => (p ? { ...p, unlocked: false } : p)); void load(); };
+    // Замок сам не включаем: решает сервер. Сначала спрашиваем статус — если он «открыто», экран не трогаем (иначе мигание).
+    let last = 0;
+    const onLocked = () => { const n = Date.now(); if (n - last < 1500) return; last = n; void load(); };
     window.addEventListener('sky:money-locked', onLocked);
     return () => { alive.current = false; clearInterval(t); window.removeEventListener('sky:money-locked', onLocked); };
   }, [load]);

@@ -45,7 +45,11 @@ const call = async (path: string, init: RequestInit = {}): Promise<Response> => 
   });
 
   const res = await send();
-  if (res.status === 403) { try { window.dispatchEvent(new CustomEvent('sky:money-locked')); } catch { /* ok */ } }
+  // Экран замка возвращает ТОЛЬКО настоящий money_locked: любой другой 403 (PIN, ограниченная сессия, чужие права) раньше
+  // сбрасывал экран на замок, статус снова был «открыто» — и SkyMoney бесконечно моргал.
+  if (res.status === 403) {
+    try { const d = await res.clone().json(); if (d?.error === 'money_locked') window.dispatchEvent(new CustomEvent('sky:money-locked')); } catch { /* ok */ }
+  }
   if (res.status !== 401) return res;
 
   // Access-токен живёт 15 минут; обновляемся один раз и повторяем.
