@@ -44,6 +44,8 @@ import { passwordRoutes } from './routes/password.mjs';
 import { skyIdRoutes } from './routes/skyid.mjs';
 import { walletRoutes } from './routes/wallet.mjs';
 import { walletFxRoutes } from './routes/walletfx.mjs';
+import { emailCommsRoutes, ofdRoutes } from './routes/emailcomms.mjs';
+import { processOutbox, sweepPrime, sweepMoney, tickCampaigns } from './emailcomms.mjs';
 import { startFxRefresh } from './walletfx.mjs';
 import { supportRoutes } from './routes/support.mjs';
 import { directoryRoutes } from './routes/directory.mjs';
@@ -277,7 +279,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [walletFxRoutes, firewallRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -538,7 +540,7 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     const isKutrentMarket = url.startsWith('/api/kutrent-market/');
     /* Игровые серверы Sky Blox — программы, а не люди: у них подпись запроса вместо ключа беты. */
     const isBloxServer = url.startsWith('/api/blox/server/') || url.startsWith('/api/skykassa/webhook/') || url.startsWith('/api/kbiz/webhook/');
-    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !url.startsWith('/api/blocked/') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/') && !url.startsWith('/api/ops/agent/') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/kbiz/public/') && !url.startsWith('/api/storage/s3') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
+    if (url.startsWith('/api/') && !url.startsWith('/api/beta') && !url.startsWith('/api/blocked/') && !url.startsWith('/api/email/') && !url.startsWith('/api/defense/') && !url.startsWith('/api/guard/') && !url.startsWith('/api/sandbox/runner/') && !url.startsWith('/api/ops/agent/') && !isBotApi && !isCampaignClick && !isKutrentMarket && !isBloxServer && !url.startsWith('/api/site/') && !url.startsWith('/api/recovery/') && !url.startsWith('/api/kbiz/public/') && !url.startsWith('/api/storage/s3') && !PUBLIC_OIDC.test(url) && !betaAllowed(req)) {
       return json(res, 403, { error: 'beta_required' });
     }
 
@@ -758,6 +760,9 @@ const start = async () => {
   // Самозащита: снятие уровня по сроку, чистка блокировок, проверка целостности кода (раз в 5 минут).
   let defTicks = 0;
   startFirewall(); startFxRefresh();
+  let mailTicks = 0;
+  const mailSchedule = setInterval(() => { mailTicks += 1; (async () => { await processOutbox(); await tickCampaigns(); if (mailTicks % 5 === 1) { await sweepPrime(); await sweepMoney(); } })().catch((e) => console.error('[email] тик:', e.message)); }, 20 * 1000);
+  mailSchedule.unref();
   setFirewallFloor(firewallFloor);
   const defSchedule = setInterval(() => { defTicks += 1; defenseTick().catch((e) => console.error('[defense] тик:', e.message)); if (defTicks % 5 === 0) integrityCheck().catch(() => {}); }, 60 * 1000);
   defSchedule.unref();

@@ -211,22 +211,22 @@ const getMailer = async () => {
 };
 
 const emailProviders = {
-  async log(to, subject, text) {
+  async log(to, subject, text, extra) {
     if (!logAllowed()) {
       console.error('[email] EMAIL_MODE=log в бою запрещён: задайте провайдера ' +
                     'или ALLOW_LOG_CODES=1, если понимаете последствия.');
       return { ok: false, error: 'email_not_configured' };
     }
-    console.log(`[email:log] ${to} | ${subject} | ${text}`);
+    console.log(`[email:log] ${to} | ${subject} | ${text}${extra?.html ? ' | +html' : ''}`);
     return { ok: true };
   },
 
   /** Обычный почтовый ящик хостинга. */
-  async smtp(to, subject, text) {
+  async smtp(to, subject, text, extra) {
     if (!config.smtpHost || !config.emailFrom) return { ok: false, error: 'email_not_configured' };
     try {
       const transport = await getMailer();
-      await transport.sendMail({ from: config.emailFrom, to, subject, text });
+      await transport.sendMail({ from: config.emailFrom, to, subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) });
       return { ok: true };
     } catch (err) {
       console.error('[email:smtp]', err.message);
@@ -235,7 +235,7 @@ const emailProviders = {
   },
 
   /** Resend — почтовый сервис с обычным HTTP-интерфейсом. */
-  async resend(to, subject, text) {
+  async resend(to, subject, text, extra) {
     if (!config.resendApiKey || !config.emailFrom) return { ok: false, error: 'email_not_configured' };
     try {
       const res = await fetch('https://api.resend.com/emails', {
@@ -244,7 +244,7 @@ const emailProviders = {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${config.resendApiKey}`,
         },
-        body: JSON.stringify({ from: config.emailFrom, to: [to], subject, text }),
+        body: JSON.stringify({ from: config.emailFrom, to: [to], subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!res.ok) {
@@ -261,7 +261,7 @@ const emailProviders = {
   },
 
   /** Любой другой сервис через свой обработчик: POST { to, subject, text }. */
-  async webhook(to, subject, text) {
+  async webhook(to, subject, text, extra) {
     if (!config.emailWebhookUrl) return { ok: false, error: 'email_not_configured' };
     try {
       const res = await fetch(config.emailWebhookUrl, {
@@ -270,7 +270,7 @@ const emailProviders = {
           'Content-Type': 'application/json',
           ...authHeader(config.emailWebhookToken, 'email:webhook'),
         },
-        body: JSON.stringify({ to, subject, text }),
+        body: JSON.stringify({ to, subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!res.ok) {
@@ -285,13 +285,14 @@ const emailProviders = {
   },
 };
 
-export const sendEmail = async (to, subject, text) => {
+/** extra — необязательно: { html, headers }. Без него поведение прежнее (только текст). */
+export const sendEmail = async (to, subject, text, extra) => {
   const provider = emailProviders[config.emailMode];
   if (!provider) {
     console.error(`[email] EMAIL_MODE=${config.emailMode} — такого провайдера нет, письмо не отправлено.`);
     return { ok: false, error: 'email_not_configured' };
   }
-  return withDeadline(provider(to, subject, text), 'email');
+  return withDeadline(provider(to, subject, text, extra), 'email');
 };
 
 /* ─── Проверка настроек при запуске ────────────────────────────────────── */

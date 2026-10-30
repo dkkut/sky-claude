@@ -73,6 +73,7 @@ export const PERMISSIONS = [
   'upload_limits',   // лимиты загрузки: личная коллекция и публикация (размер, число, объём, форматы, длительность, скорость)
   'sandbox',         // Sky Sandbox: сборки на проверку, отчёты, повторный запуск (публиковать нельзя)
   'sandbox_publish', // Sky Sandbox: одобрение публикации проверенной сборки на боевой сервер (критично, в «полные права» не входит)
+  'email_comms',     // Email-коммуникации: рассылки, шаблоны писем, адресная отправка, журнал отправок
   'server_ops',      // Sky Ops: диагностика сервера, «починить всё», деплой, сборка приложений из админки (критично, в «полные права» не входит)
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
@@ -130,6 +131,7 @@ export const ROLES = {
   partners_manager:['partners'],
   partners_approver:['partners', 'partners_approve'],
   ops_admin:       ['server_ops'],
+  email_admin:     ['email_comms'],
   sandbox_admin:   ['sandbox'],
   sandbox_publisher:['sandbox', 'sandbox_publish'],
   global_block_admin:['global_block'],
@@ -168,6 +170,7 @@ export const ROLE_LABEL = {
   sandbox_admin: 'Sky Sandbox: проверка сборок',
   sandbox_publisher: 'Sky Sandbox: проверка и одобрение публикации',
   ops_admin: 'Sky Ops: сервер, деплой и сборка приложений',
+  email_admin: 'Email-коммуникации',
   global_block_admin: 'Глобальная блокировка',
   storage_viewer: 'Sky Storage: просмотр',
   storage_operator: 'Sky Storage: оператор (копии, квоты)',

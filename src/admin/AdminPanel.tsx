@@ -65,6 +65,8 @@ import { LeakTab } from './LeakTab';
 import { DefenseTab } from './DefenseTab';
 import { FirewallTab } from './FirewallTab';
 import { FxRatesTab } from './FxRatesTab';
+import { EmailTab } from './EmailTab';
+import { OfdTab } from './OfdTab';
 import { PrimeTab } from './PrimeTab';
 import { AiUsageTab } from './AiUsageTab';
 import { PartnersTab } from './PartnersTab';
@@ -5581,7 +5583,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'firewall' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops' | 'fxrates';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'firewall' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops' | 'fxrates' | 'email' | 'ofd';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5803,6 +5805,8 @@ export const AdminPanel = () => {
     { key: 'leaks', label: 'Утечки', show: has('security') },
     { key: 'firewall', label: 'Файрвол', show: has('security') },
     { key: 'fxrates', label: 'Валютные курсы', show: has('finance') },
+    { key: 'email', label: 'Email-коммуникации', show: has('email_comms') },
+    { key: 'ofd', label: 'ОФД', show: has('finance') },
     { key: 'defense', label: 'Самозащита', show: has('security') },
     { key: 'prime', label: 'Sky Prime', show: has('prime') },
     { key: 'partners', label: 'Партнёры', show: has('partners') },
@@ -6043,6 +6047,8 @@ export const AdminPanel = () => {
       {tab === 'leaks' && <LeakTab />}
       {tab === 'firewall' && <FirewallTab />}
       {tab === 'fxrates' && <FxRatesTab />}
+      {tab === 'email' && <EmailTab />}
+      {tab === 'ofd' && <OfdTab />}
       {tab === 'defense' && <DefenseTab />}
       {tab === 'prime' && <PrimeTab />}
       {tab === 'partners' && <PartnersTab />}
