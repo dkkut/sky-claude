@@ -268,7 +268,9 @@ export const passwordRoutes = async (req, res, url) => {
       });
     }
 
-    const session = await startSession(skyId, req);
+    /* Вход по паролю тоже делает устройство доверенным для SkyMoney: пароль кошелёк всё равно спросит отдельно, а без этого
+       при неработающей почте человек вообще не мог открыть кошелёк и историю. */
+    const session = await startSession(skyId, req, { trust: true });
     return json(res, 200, appBody(req, session.body, { refreshToken: session.refreshToken }),
                 { 'Set-Cookie': session.cookie });
   }

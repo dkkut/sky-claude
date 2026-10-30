@@ -17,7 +17,7 @@ type Data = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 const ERR: Record<string, string> = {
   not_allowed: 'Недостаточно прав.', owner_only: 'Это действие доступно только владельцу.', confirm_required: 'Нужно явное подтверждение.',
   step_up_required: 'Нужно подтверждение личности.', step_up_invalid: 'Код не подошёл.', step_up_exhausted: 'Слишком много неверных кодов — запросите новый.',
-  no_second_factor: 'Нужна подтверждённая почта или аутентификатор.', conflict: 'Состояние уже изменил другой администратор — данные обновлены, повторите.',
+  no_second_factor: 'Нужен аутентификатор: включите его в Профиль → Sky ID.', conflict: 'Состояние уже изменил другой администратор — данные обновлены, повторите.',
   checks_failed: 'Проверки не пройдены — включать нельзя.', busy: 'Уже выполняется другая тяжёлая задача.', reason_required: 'Укажите причину (от 5 знаков).',
   storage_unavailable: 'Хранилище недоступно.', target_not_configured: 'Площадка копий не настроена (scripts/setup-storage.sh).', target_unavailable: 'Площадка копий недоступна.',
   kek_not_configured: 'Не задан ключ шифрования копий (scripts/setup-storage.sh).', kek_missing: 'Нет ключа, которым зашифрована копия.', bad_state: 'Недоступно в текущем состоянии.',

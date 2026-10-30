@@ -15,7 +15,7 @@ type Data = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 
 const ERR: Record<string, string> = {
   not_allowed: 'Недостаточно прав.', not_found: 'Человек с таким @ником не найден.', target_not_admin: 'Доступ можно выдать только администратору.', owner_has_access: 'У владельца доступ есть всегда.', owner_only: 'Рубильник доступен только владельцу.', step_up_required: 'Нужно подтверждение личности.', step_up_invalid: 'Код не подошёл.',
-  step_up_exhausted: 'Слишком много неверных кодов — запросите новый.', no_second_factor: 'Нужна подтверждённая почта или аутентификатор.', lockdown: 'Панель закрыта.', too_many_requests: 'Слишком часто, подождите минуту.',
+  step_up_exhausted: 'Слишком много неверных кодов — запросите новый.', no_second_factor: 'Нужен аутентификатор: включите его в Профиль → Sky ID.', lockdown: 'Панель закрыта.', too_many_requests: 'Слишком часто, подождите минуту.',
 };
 const errText = (e?: string) => (e && ERR[e]) || `Не получилось${e ? ` (${e})` : ''}`;
 const STATUS: Record<string, string> = { revoked: 'отменён владельцем («Это не я»)', pending: 'ждёт подтверждения', approved: 'подтверждён', denied: 'отклонён', expired: 'истёк', consumed: 'вход выполнен' };

@@ -76,6 +76,12 @@ interface CustomizationState {
 }
 
 const peerFetchedAt = new Map<string, number>();
+/** Люди, чьё надетое пришло с сервера (не наше). Их оформление показываем как есть: условия вроде «достижение» или «стаж» по их неполным данным не проверить. */
+const peerLoaded = new Set<string>();
+/** Аккаунт другого человека для косметики: `accounts` в auth-сторе — только профили СВОЕГО Sky ID, чужого там нет. Заглушка несёт лишь id; оформление берётся из надетого (usePeerCosmetics). */
+export const peerAccount = (id: string, known?: Account): Account =>
+  known ?? ({ id, name: '', username: '', phone: '', createdAt: new Date(0).toISOString(), __peer: true } as Account);
+export const isPeerCosmetics = (accountId: string): boolean => peerLoaded.has(accountId) && !useCustomization.getState().synced[accountId];
 
 /** Хук: подтянуть надетое у людей и перерисовать экран, когда оно придёт. Возвращает счётчик для зависимостей useMemo. */
 export const usePeerCosmetics = (ids: Array<string | undefined | null>): unknown => {
@@ -121,6 +127,7 @@ export const useCustomization = create<CustomizationState>((set, get) => ({
       for (const id of chunk) {
         if (get().synced[id]) continue;                 // свой инвентарь не трогаем: он точнее
         equipped[id] = eq[id] ?? {};
+        peerLoaded.add(id);
         // Сервер разрешил надеть только то, чем человек владеет (платное) — для показа считаем это его имуществом.
         owned[id] = Object.values(eq[id] ?? {});
       }

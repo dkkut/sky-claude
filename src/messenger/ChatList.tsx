@@ -13,7 +13,7 @@ import { useModerationStore } from '@/shared/moderationStore';
 import { openProfile } from '@/profile/viewer/store';
 import { activeFrame } from '@/profile/viewer/cosmetics';
 import { activeChatListStyle } from '@/customization/selectors';
-import { usePeerCosmetics } from '@/customization/store';
+import { usePeerCosmetics, peerAccount } from '@/customization/store';
 import { useGamingAccounts } from '@/gaming/accounts';
 import { usePeopleSearch } from './usePeopleSearch';
 import { useAdminStore } from './adminStore';
@@ -715,7 +715,7 @@ export const ChatList = () => {
           const unread = unreadMap[chat.id] ?? 0;
           const active = activeChatId === chat.id;
           const peerId  = chat.type === 'direct' ? chat.participants?.find(p => p !== currentUserId) : undefined;
-          const peerAcc = peerId ? accounts.find(a => a.id === peerId) : undefined;
+          const peerAcc = peerId ? peerAccount(peerId, accounts.find(a => a.id === peerId)) : undefined;
           const peerFrame = peerAcc ? activeFrame(peerAcc) : undefined;
           const peerStyle = peerAcc ? activeChatListStyle(peerAcc) : undefined;
 

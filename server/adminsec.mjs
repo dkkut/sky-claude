@@ -302,11 +302,11 @@ const codeHash = (actorId, purpose, code) => crypto
   .digest('hex');
 
 /**
- * Начать подтверждение: выдать код.
+ * Начать подтверждение.
  *
- * Способ выбирает не запрос, а состояние аккаунта: есть двухэтапная
- * защита — код из приложения, нет — письмо. Позволить клиенту выбирать
- * способ значило бы позволить ему выбрать самый слабый.
+ * В боевом режиме — ТОЛЬКО код из приложения-аутентификатора (письмо как способ подтверждения убрано: оно слабее и
+ * не работает при сбое почты). Письмо осталось лишь при ADMIN_GATE=off — режим тестов, где у учётных записей нет аутентификатора.
+ * Способ выбирает не запрос, а состояние аккаунта: позволить клиенту выбирать значило бы позволить ему выбрать самый слабый.
  */
 export const beginStepUp = async (actorId, purpose, { meta = {} } = {}) => {
   { const r = await rightsOf(actorId); if (!r.admin || r.lockdown) return { error: 'not_allowed' }; }   // панель закрыта — подтверждений не выдаём
@@ -314,50 +314,44 @@ export const beginStepUp = async (actorId, purpose, { meta = {} } = {}) => {
   if (!clean) return { error: 'bad_purpose' };
 
   const { rows } = await query(
-    `SELECT s.id AS sky_id, s.two_factor_enabled, s.email, s.email_verified
+    `SELECT s.id AS sky_id, s.two_factor_enabled, s.two_factor_method, s.two_factor_secret
        FROM profiles p JOIN sky_ids s ON s.id = p.sky_id
       WHERE p.id = $1`, [actorId]);
   const acc = rows[0];
   if (!acc) return { error: 'not_allowed' };
 
-  /* Незавершённые подтверждения под то же действие гасим: два живых
-     кода на одно действие — это две возможности угадать. */
+  /* Подтверждения в админке — ТОЛЬКО кодом из приложения-аутентификатора. Раньше без него выдавался код на почту, но почта —
+     слабее и может не работать (тогда панель вообще не подтверждала действия). Нет аутентификатора — сначала включить его
+     (Профиль → Sky ID), действие без него не подтверждается. */
+  if (!acc.two_factor_enabled || (acc.two_factor_method ?? 'app') !== 'app' || !acc.two_factor_secret) {
+    if (process.env.ADMIN_GATE !== 'off') return { error: 'no_second_factor' };
+    /* Только тесты (ADMIN_GATE=off): прежний путь — шестизначный код на подтверждённую почту. */
+    const { rows: em } = await query(`SELECT s.email, s.email_verified FROM profiles p JOIN sky_ids s ON s.id = p.sky_id WHERE p.id = $1`, [actorId]);
+    const email = em[0]?.email_verified ? String(em[0].email ?? '') : '';
+    if (!email) return { error: 'no_second_factor' };
+    await query(`UPDATE admin_step_up SET used_at = now() WHERE actor_id = $1 AND purpose = $2 AND used_at IS NULL`, [actorId, clean]);
+    const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+    const eid = `asu-${crypto.randomUUID()}`;
+    await query(`INSERT INTO admin_step_up (id, actor_id, purpose, code_hash, method, expires_at) VALUES ($1,$2,$3,$4,'email', now() + ($5 || ' seconds')::interval)`,
+      [eid, actorId, clean, codeHash(actorId, clean, code), String(STEP_UP_TTL_SEC)]);
+    await sendEmail(email, 'Подтверждение действия в панели Sky', `Код подтверждения: ${code}\n\nДействие «${clean}», действует пять минут.`).catch((err) => console.error('[админ] письмо подтверждения', err.message));
+    await logSecurityEvent(actorId, 'step_up_begin', `email: ${clean}`, meta);
+    return { id: eid, method: 'email', expiresIn: STEP_UP_TTL_SEC };
+  }
+
+  /* Незавершённые подтверждения под то же действие гасим: два живых кода на одно действие — это две возможности угадать. */
   await query(
     `UPDATE admin_step_up SET used_at = now()
       WHERE actor_id = $1 AND purpose = $2 AND used_at IS NULL`, [actorId, clean]);
 
-  if (acc.two_factor_enabled) {
-    /* Код из приложения сервер не выдаёт — он уже у человека. Заводим
-       только запись о том, что подтверждение началось. */
-    const id = `asu-${crypto.randomUUID()}`;
-    await query(
-      `INSERT INTO admin_step_up (id, actor_id, purpose, code_hash, method, expires_at)
-       VALUES ($1,$2,$3,$4,'app', now() + ($5 || ' seconds')::interval)`,
-      [id, actorId, clean, '', String(STEP_UP_TTL_SEC)]);
-    await logSecurityEvent(actorId, 'step_up_begin', `app: ${clean}`, meta);
-    return { id, method: 'app', expiresIn: STEP_UP_TTL_SEC };
-  }
-
-  /* Второй способ — письмо, и только на подтверждённый адрес:
-     неподтверждённый это не «его почта», а «то, что он вписал». */
-  const email = acc.email_verified ? String(acc.email ?? '') : '';
-  if (!email) return { error: 'no_second_factor' };
-
-  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+  /* Код из приложения сервер не выдаёт — он уже у человека. Заводим только запись о том, что подтверждение началось. */
   const id = `asu-${crypto.randomUUID()}`;
   await query(
     `INSERT INTO admin_step_up (id, actor_id, purpose, code_hash, method, expires_at)
-     VALUES ($1,$2,$3,$4,'email', now() + ($5 || ' seconds')::interval)`,
-    [id, actorId, clean, codeHash(actorId, clean, code), String(STEP_UP_TTL_SEC)]);
-
-  await sendEmail(email, 'Подтверждение действия в панели Sky',
-    `Код подтверждения: ${code}\n\nОн нужен для действия «${clean}» в панели администратора `
-    + 'и действует пять минут. Если вы ничего не делали — кто-то вошёл в вашу '
-    + 'учётную запись: смените способ входа и сообщите владельцу сервиса.')
-    .catch((err) => console.error('[админ] письмо подтверждения', err.message));
-
-  await logSecurityEvent(actorId, 'step_up_begin', `email: ${clean}`, meta);
-  return { id, method: 'email', expiresIn: STEP_UP_TTL_SEC };
+     VALUES ($1,$2,$3,$4,'app', now() + ($5 || ' seconds')::interval)`,
+    [id, actorId, clean, '', String(STEP_UP_TTL_SEC)]);
+  await logSecurityEvent(actorId, 'step_up_begin', `app: ${clean}`, meta);
+  return { id, method: 'app', expiresIn: STEP_UP_TTL_SEC };
 };
 
 /**

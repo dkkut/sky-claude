@@ -15,7 +15,7 @@ type Data = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 
 const ERR: Record<string, string> = {
   not_allowed: 'Недостаточно прав.', step_up_required: 'Нужно подтверждение личности.', step_up_invalid: 'Код не подошёл.', step_up_exhausted: 'Слишком много неверных кодов — запросите новый.',
-  no_second_factor: 'Нужна подтверждённая почта или аутентификатор.', bad_name: 'Название — от 2 знаков.', bad_kind: 'Выберите тип клиента.', bad_redirect_uris: 'Адреса возврата: https, либо http://127.0.0.1…, для приложений — своя схема. Без пробелов и #.',
+  no_second_factor: 'Нужен аутентификатор: включите его в Профиль → Sky ID.', bad_name: 'Название — от 2 знаков.', bad_kind: 'Выберите тип клиента.', bad_redirect_uris: 'Адреса возврата: https, либо http://127.0.0.1…, для приложений — своя схема. Без пробелов и #.',
   bad_scopes: 'Разрешения заданы неверно.', bad_homepage: 'Сайт — адрес https://…', not_found: 'Не найдено.', public_client_has_no_secret: 'У публичного клиента нет секрета.', lockdown: 'Панель закрыта.',
 };
 const errText = (e?: string) => (e && ERR[e]) || `Не получилось${e ? ` (${e})` : ''}`;

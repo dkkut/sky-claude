@@ -113,6 +113,21 @@ let isOnlineProbe = () => false;
 export const setOnlineProbe = (fn) => { isOnlineProbe = fn; };
 
 /**
+ * Кому из людей сообщение дойдёт ПРЯМО СЕЙЧАС: у них открыт Sky (живое соединение) либо есть подписка на пуши
+ * при настроенных ключах. Для кода входа: показывать его «на устройствах» имеет смысл только им.
+ */
+export const reachableNow = async (userIds) => {
+  const ids = [...new Set((userIds ?? []).filter(Boolean))];
+  const live = ids.filter((id) => isOnlineProbe(id));
+  const rest = ids.filter((id) => !isOnlineProbe(id));
+  if (!rest.length || (!vapidReady && !fcm)) return live;
+  try {
+    const { rows } = await query('SELECT DISTINCT profile_id FROM push_subscriptions WHERE profile_id = ANY($1::text[])', [rest]);
+    return [...live, ...rows.map((r) => r.profile_id)];
+  } catch { return live; }
+};
+
+/**
  * Отправить пуш людям, которых нет в сети. payload: { title, body, url, tag, urgent }.
  * Возвращает число доставленных; ошибки не бросает.
  */

@@ -7,12 +7,16 @@
 =============================================================== */
 import type { Account } from '@/core/auth/store';
 import { meetsStaticUnlock } from './types';
-import { useCustomization } from './store';
+import { useCustomization, isPeerCosmetics } from './store';
 import { BANNER_CATALOG, BANNER_MAP, type BannerItem } from './catalog/banners';
 import { PROFILE_THEME_CATALOG, PROFILE_THEME_MAP, type ProfileThemeItem } from './catalog/profileThemes';
 import { CHAT_LIST_STYLE_CATALOG, CHAT_LIST_STYLE_MAP, type ChatListStyleItem } from './catalog/chatListStyles';
 
 function isUnlockedFor(acc: Account, itemId: string, unlock: Parameters<typeof meetsStaticUnlock>[0]): boolean {
+  // Заглушка чужого аккаунта (см. peerAccount): условий разблокировки по ней не проверить — доверяем надетому.
+  if ((acc as { __peer?: boolean }).__peer && isPeerCosmetics(acc.id)) return true;
+  // Чужое надетое: «достижение» по неполным данным человека не проверить — доверяем тому, что он надел (платное сервер уже проверил).
+  if (unlock.type === 'achievement' && isPeerCosmetics(acc.id)) return true;
   if (unlock.type === 'owned') return useCustomization.getState().ownsItem(acc.id, itemId);
   return meetsStaticUnlock(unlock, acc);
 }

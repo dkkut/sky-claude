@@ -9,7 +9,7 @@ import { query } from './db.mjs';
 import { sessionStore } from './sessions.mjs';
 import { findSkyIdByEmail, findSkyIdByPhone } from './skyid.mjs';
 import { notifyGift } from './giftnotify.mjs';
-import { pushToOffline } from './webpush.mjs';
+import { pushToOffline, reachableNow } from './webpush.mjs';
 import { L } from './lang.mjs';
 
 /** Профили, чьи вошедшие устройства получат код. Пусто — доставить некуда. */
@@ -29,6 +29,9 @@ export const deliverLoginCode = async (channel, destination, code) => {
     if (!sky) return false;
     const pids = await liveProfiles(sky.id);
     if (!pids.length) return false;
+    /* Сессия может быть «живой» в Redis, а приложение закрыто и пуши не настроены — тогда код никто не увидит.
+       На устройства — только тем, до кого дойдёт сейчас; иначе письмо/SMS сразу. */
+    if (!(await reachableNow(pids)).length) return false;
     const title = L('Код для входа в Sky', 'Sky sign-in code');
     const body = L(`Код: ${code}. Никому его не сообщайте — сотрудники Sky его не спрашивают. Если вы не входите в Sky, не вводите код.`,
       `Code: ${code}. Do not share it with anyone — Sky staff never ask for it. If you are not signing in, do not enter it.`);

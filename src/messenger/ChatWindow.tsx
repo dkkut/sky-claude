@@ -51,7 +51,7 @@ import { openProfile } from '@/profile/viewer/store';
 import { ListSheet, entriesFromIds } from '@/profile/viewer/ListSheet';
 import { activeFrame } from '@/profile/viewer/cosmetics';
 import { activeBanner } from '@/customization/selectors';
-import { usePeerCosmetics } from '@/customization/store';
+import { usePeerCosmetics, peerAccount } from '@/customization/store';
 import { MOTIFS, type MotifName } from '@/customization/Decorative';
 
 const BannerMotif = ({ motif, accent, opacity }: { motif: MotifName; accent: string; opacity?: number }) => {
@@ -1495,9 +1495,9 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
 
   /* peer id for calls */
   const peerId   = chat.type === 'direct' ? (chat.participants?.find(p => p !== myId) ?? chat.id) : chat.id;
-  const peerAcc  = accounts.find(a => a.id === peerId);
-  const peerName = peerAcc?.name ?? chat.name;
-  const peerAv   = (peerAcc?.name?.[0] ?? chat.avatar?.[0] ?? '?').toUpperCase();
+  const peerAcc  = chat.type === 'direct' ? peerAccount(peerId, accounts.find(a => a.id === peerId)) : accounts.find(a => a.id === peerId);
+  const peerName = peerAcc?.name || chat.name;
+  const peerAv   = (peerAcc?.name?.[0] || chat.avatar?.[0] || '?').toUpperCase();
   const peerFrame = activeFrame(peerAcc);
   const peerBanner = activeBanner(peerAcc);
 

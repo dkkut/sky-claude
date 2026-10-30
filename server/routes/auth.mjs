@@ -160,7 +160,7 @@ const newcomerAllowed = async (req, res, exists) => {
   return false;
 };
 
-export const startSession = async (skyIdRow, req, { viaCode = false, via = null } = {}) => {
+export const startSession = async (skyIdRow, req, { viaCode = false, via = null, trust = false } = {}) => {
   // Заморозка новых входов: единое место для всех способов входа (код, пароль, QR). Бросает 423 — см. server.mjs.
   await assertNotGloballyBlocked(skyIdRow, req, deviceMeta(req).ip);   // глобальная блокировка: устройство/адрес/почта/номер/Sky ID
   await assertLoginAllowed(skyIdRow.id, deviceMeta(req));
@@ -196,7 +196,7 @@ export const startSession = async (skyIdRow, req, { viaCode = false, via = null 
   // Ограниченный доступ на неподтверждённом устройстве (limitedaccess.mjs): такая сессия устройство доверенным НЕ делает.
   const limited = await limitedOnLogin(skyIdRow.id, sessionId, req, meta).catch((err) => { console.error('[auth] ограниченный доступ:', err.message); return false; });
   await appLockOnLogin(skyIdRow.id, sessionId, req).catch((err) => console.error('[auth] замок приложения:', err.message));
-  if (viaCode && !limited) await trustDevice(skyIdRow.id, req).catch((err) => console.error('[auth] доверенное устройство:', err.message));
+  if ((viaCode || trust) && !limited) await trustDevice(skyIdRow.id, req).catch((err) => console.error('[auth] доверенное устройство:', err.message));
 
   skyLog({ category: 'user', service: 'auth', type: 'login', actorId: auto?.id ?? null, targetId: skyIdRow.id, ip: meta.ip, ua: meta.ua, detail: { via: via?.kind ?? (viaCode ? 'code' : 'other'), newDevice: isNewDevice, limited } });
   const tokens = issueTokens(skyIdRow.id, sessionId, auto?.id ?? null);
