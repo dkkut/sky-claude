@@ -339,7 +339,25 @@ const ExchangeView = ({ onDone, userId }: { onDone: () => void; userId: string }
 };
 
 /* === MAIN COMPONENT ============================================ */
-const SkyMoneyWalletInner = () => {
+type Section = 'wallet' | 'cards' | 'crypto';
+const SECTIONS: { id: Section; label: string }[] = [{ id: 'wallet', label: 'Кошелёк' }, { id: 'cards', label: 'SkyCards' }, { id: 'crypto', label: 'SkyCrypto' }];
+
+/** Переключатель разделов SkyMoney вверху: кошелёк и две заглушки будущих сервисов (бета). */
+const MoneySwitch = ({ value, onChange }: { value: Section; onChange: (s: Section) => void }) => (
+  <div className="flex justify-center px-4 pt-3 pb-1">
+    <div role="tablist" aria-label="Разделы SkyMoney" className="glass-pill relative inline-flex max-w-full gap-0.5 p-1">
+      {SECTIONS.map((o) => (
+        <button key={o.id} type="button" role="tab" aria-selected={value === o.id} onClick={() => onChange(o.id)}
+          className="relative isolate whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold transition-colors active:scale-95"
+          style={{ color: value === o.id ? 'var(--t1)' : 'var(--t3)' }}>
+          {value === o.id && <motion.span layoutId="money-switch-lens" className="glass-lens absolute inset-0 -z-10 rounded-full" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
+          {o.label}{o.id !== 'wallet' && <span className="ml-1 text-[9px] font-bold uppercase opacity-60">бета</span>}
+        </button>))}
+    </div>
+  </div>
+);
+
+const SkyMoneyWalletInner = ({ onSection }: { onSection: (s: Section) => void }) => {
   const { currentUserId } = useAuthStore();
   const { getBalance, getPoints, getTxs } = useMoney();
   /* Возврат со страницы партнёра: ?skykassa=<платёж> открывает карточку платежа. */
@@ -430,13 +448,12 @@ const SkyMoneyWalletInner = () => {
       </div>
     </div>
   );
-  if (view === 'cards') return <SkyCards onBack={() => setView('main')}/>;
-  if (view === 'crypto') return <SkyCrypto onBack={() => setView('main')}/>;
   if (view === 'refund') return <RefundRequest txs={txs} onBack={() => setView('main')}/>;
   if (view === 'history') return <HistoryView txs={txs} onBack={() => setView('main')}/>;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      <MoneySwitch value="wallet" onChange={(x) => { if (x !== 'wallet') onSection(x); }} />
 
       {/* Fixed top: Balance + Actions */}
       <div className="shrink-0 px-4 pt-4 pb-3 space-y-3"
@@ -505,7 +522,7 @@ const SkyMoneyWalletInner = () => {
       {/* Будущие сервисы: заглушки в бета-разработке (внутри замка SkyMoney) */}
       <div className="grid grid-cols-2 gap-2">
         {([['cards', 'SkyCards', 'Виртуальные карты', 'linear-gradient(135deg,#3b4bd8,#8b5cf6)'], ['crypto', 'SkyCrypto', 'Цифровые активы', 'linear-gradient(135deg,#0ea5c6,#7c3aed)']] as const).map(([k, name, sub, bg]) => (
-          <button key={k} type="button" onClick={() => setView(k)}
+          <button key={k} type="button" onClick={() => onSection(k)}
             className="flex flex-col items-start gap-2 rounded-2xl p-3 text-left transition-colors hover:bg-white/[0.03]"
             style={{ background:C.l2, border:`1px solid ${C.border}` }}>
             <span className="grid h-9 w-9 place-items-center rounded-xl" style={{ background:bg }}><CreditCard size={16} color="#fff"/></span>
@@ -552,6 +569,19 @@ const SkyMoneyWalletInner = () => {
 };
 
 /** Весь SkyMoney — за замком: ни один экран кошелька (и заглушки SkyCards/SkyCrypto) не монтируется, пока сервер не подтвердил доступ. */
+const SkyMoneyShell = () => {
+  const [section, setSection] = useState<Section>('wallet');
+  if (section === 'wallet') return <SkyMoneyWalletInner onSection={setSection} />;
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <MoneySwitch value={section} onChange={setSection} />
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {section === 'cards' ? <SkyCards onBack={() => setSection('wallet')} /> : <SkyCrypto onBack={() => setSection('wallet')} />}
+      </div>
+    </div>
+  );
+};
+
 export const SkyMoneyWallet = () => (
-  <MoneyGate><SkyMoneyWalletInner /></MoneyGate>
+  <MoneyGate><SkyMoneyShell /></MoneyGate>
 );
