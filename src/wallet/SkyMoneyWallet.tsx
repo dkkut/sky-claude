@@ -22,6 +22,7 @@ import { kkList, type HistoryItem } from '@/skykassa/api';
 import { ScanQr } from '@/kassabiz/ScanQr';
 import { RefundRequest } from './RefundRequest';
 import { MoneyGate } from './MoneyGate';
+import { FxAccounts } from './FxAccounts';
 import { Settings as SettingsIcon, Sparkles } from 'lucide-react';
 import { MoneySettings, readHideBalance } from './MoneySettings';
 import { apiCall } from '@/core/auth/api';
@@ -49,7 +50,7 @@ const C = {
 /* QUICK_AMOUNTS moved to TopUpSheet */
 
 /* -- Toplevel section type --------------------------------------- */
-type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan' | 'refund' | 'cards' | 'crypto';
+type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan' | 'refund' | 'cards' | 'crypto' | 'fx';
 
 /* -- Balance Card ----------------------------------------------- */
 const useHideBalance = () => {
@@ -484,6 +485,7 @@ const SkyMoneyWalletInner = ({ onSection, onSettings }: { onSection: (s: Section
       </div>
     </div>
   );
+  if (view === 'fx') return <FxAccounts onBack={() => setView('main')} rubBalance={getBalance(currentUserId ?? '')} />;
   if (view === 'refund') return <RefundRequest txs={txs} onBack={() => setView('main')}/>;
   if (view === 'history') return <HistoryView txs={txs} onBack={() => setView('main')}/>;
 
@@ -576,6 +578,17 @@ const SkyMoneyWalletInner = ({ onSection, onSettings }: { onSection: (s: Section
           <Gift size={15} style={{ color:'var(--t2)' }}/>
         </div>
         <span className="text-sm font-medium flex-1 text-left" style={{ color:C.t1 }}>Мои подарки</span>
+        <ChevronRight size={14} style={{ color:C.t3 }}/>
+      </button>
+
+      {/* Валютные счета */}
+      <button type="button" onClick={() => setView('fx')}
+        className="flex items-center gap-2 w-full rounded-2xl px-4 py-3 transition-colors hover:bg-white/[0.03]"
+        style={{ background:C.l2, border:`1px solid ${C.border}` }}>
+        <div className="grid h-8 w-8 place-items-center rounded-xl" style={{ background:`${C.accent}15` }}>
+          <Sparkles size={14} style={{ color:C.accent }}/>
+        </div>
+        <span className="text-sm font-medium flex-1 text-left" style={{ color:C.t1 }}>Валютные счета</span>
         <ChevronRight size={14} style={{ color:C.t3 }}/>
       </button>
 

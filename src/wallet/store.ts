@@ -67,6 +67,8 @@ export type TxType =
   | 'skykassa_topup'        // пополнение через SkyKassa
   | 'skykassa_refund'       // возврат пополнения SkyKassa
   | 'skykassa_bonus'        // бонус за первое пополнение
+  | 'fx_out'                // обмен рублей на валюту (валютный счёт)
+  | 'fx_in'                 // обмен валюты на рубли
   | 'kbiz_sub'              // подписка SkyKassa Business
   | 'code_points'           // баллы по коду Sky Codes
   | 'cashback'              // кэшбэк Prime Points за заказ Sky Market
@@ -118,6 +120,8 @@ export const TX_LABEL: Record<TxType, string> = {
   skykassa_topup:       'Пополнение SkyKassa',
   skykassa_refund:      'Возврат SkyKassa',
   skykassa_bonus:       'Бонус за первое пополнение',
+  fx_out:               'Обмен на валюту',
+  fx_in:                'Обмен валюты на рубли',
   kbiz_sub:             'SkyKassa Business',
   code_points:          'Баллы по коду',
   cashback:             'Кэшбэк Prime',
@@ -179,6 +183,8 @@ export const TX_ICON: Record<TxType, IconComponent> = {
   skykassa_topup:       Sparkles,
   skykassa_refund:      RotateCcw,
   skykassa_bonus:       Sparkles,
+  fx_out:               Sparkles,
+  fx_in:                Sparkles,
   kbiz_sub:             Sparkles,
   code_points:          Ticket,
   cashback:             Gift,
