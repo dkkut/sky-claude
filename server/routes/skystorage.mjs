@@ -6,6 +6,7 @@
  * Все проверки — на сервере; ответы мутаций содержат фактическое состояние из базы.
  */
 import crypto from 'node:crypto';
+import { setAdminToken } from './../reqctx.mjs';
 import { json, requireProfile, parseBody, clientIp } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { can, isOwner } from './../admin.mjs';
@@ -46,6 +47,7 @@ export const storageRoutes = async (req, res, url) => {
     if (req.method !== 'POST') return json(res, 405, { error: 'method' });
     if (!rl(`storage:verify:${ip}`, 12)) return json(res, 429, { error: 'too_many_attempts' });
     const body = (await parseBody(req)) ?? {};
+    setAdminToken(body.adminToken);   // личный токен владельца вместе с кодом (admintoken.mjs)
     const meta = requestMeta(req);
     res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('Cache-Control', 'no-store');
     const direct = DX.isDirectToken(body.token);

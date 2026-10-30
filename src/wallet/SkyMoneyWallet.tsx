@@ -18,10 +18,11 @@ import { useAuthStore } from '@/core/auth/store';
 import { MyGifts } from '@/gifts/SkyGifts';
 import { SkyPayCheckout, PayHistory } from '@/payment/SkyPay';
 import { SkyKassa } from '@/skykassa/SkyKassa';
+import { kkList, type HistoryItem } from '@/skykassa/api';
 import { ScanQr } from '@/kassabiz/ScanQr';
 import { RefundRequest } from './RefundRequest';
 import { MoneyGate } from './MoneyGate';
-import { Settings as SettingsIcon } from 'lucide-react';
+import { Settings as SettingsIcon, Sparkles } from 'lucide-react';
 import { MoneySettings, readHideBalance } from './MoneySettings';
 import { apiCall } from '@/core/auth/api';
 import { SkyCards } from './stubs/SkyCards';
@@ -198,6 +199,30 @@ const TxItem = ({ tx }: { tx: ReturnType<typeof useMoney.getState>['transactions
         </p>
         <p className="text-[10px]" style={{ color:C.t3 }}>{dateStr}</p>
       </div>
+    </div>
+  );
+};
+
+
+/* Подтверждённые пополнения SkyKassa — в истории платежей (подтверждение сделано сотрудником/партнёром, зачисление прошло). */
+const CONFIRMED = new Set(['confirmed', 'crediting', 'completed', 'refund_requested', 'refund_processing', 'refunded_partial', 'refunded_full']);
+const ConfirmedKassa = () => {
+  const [items, setItems] = useState<HistoryItem[] | null>(null);
+  useEffect(() => { let on = true; void kkList().then((r) => { if (on) setItems(r.ok && r.data ? r.data.items.filter((i) => CONFIRMED.has(i.status)) : []); }); return () => { on = false; }; }, []);
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="space-y-2 py-2">
+      <p className="px-1 pt-2 text-[11px] font-bold uppercase tracking-wider" style={{ color: C.t3 }}>Подтверждённые пополнения</p>
+      {items.map((i) => (
+        <div key={i.id} className="flex items-center gap-3 rounded-2xl px-4 py-3" style={{ background: C.l1, border: `1px solid ${C.border}` }}>
+          <div className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-xl" style={{ background: C.l2 }}><Sparkles size={17} style={{ color: C.green }} /></div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold" style={{ color: C.t1 }}>Пополнение SkyKassa{i.methodTitle ? ` · ${i.methodTitle}` : ''}</p>
+            <p className="text-[10px]" style={{ color: C.t3 }}>{new Date(i.createdAt).toLocaleDateString('ru', { day: 'numeric', month: 'short', year: 'numeric' })} · {i.statusLabel}</p>
+          </div>
+          <p className="text-sm font-bold" style={{ color: C.green }}>+{fmt(i.amount)}</p>
+        </div>
+      ))}
     </div>
   );
 };
@@ -454,6 +479,7 @@ const SkyMoneyWalletInner = ({ onSection, onSettings }: { onSection: (s: Section
         <span className="text-sm font-semibold" style={{ color:C.t1 }}>История платежей</span>
       </div>
       <div className="flex-1 overflow-y-auto px-4" style={{ scrollbarWidth:'none' }}>
+        <ConfirmedKassa/>
         <PayHistory userId={currentUserId}/>
       </div>
     </div>

@@ -10,7 +10,7 @@ import { flash } from '@/shared/flash';
 interface Limit {
   scope: 'personal' | 'public'; kind: 'film' | 'music' | 'all';
   maxFileBytes: number; maxFiles: number; totalBytes: number; totalBytesPrime: number; formats: string[] | null;
-  maxDurationSec: number; maxConcurrent: number; speedKbps: number; custom: boolean;
+  maxDurationSec: number; maxConcurrent: number; speedKbps: number; maxBatch: number; custom: boolean;
   defaults: { maxFileBytes: number; maxFiles: number; totalBytes: number; totalBytesPrime: number; maxDurationSec: number; maxConcurrent: number; speedKbps: number };
 }
 interface Overview { limits: Limit[]; formats: { film: string[]; music: string[] } }
@@ -35,7 +35,7 @@ const LimitCard = ({ l, allFormats, onSaved }: { l: Limit; allFormats: string[];
   const isAll = l.kind === 'all';
   const [f, setF] = useState(() => ({
     maxFileMb: String(Math.round(l.maxFileBytes / MB)), maxFiles: String(l.maxFiles), maxDur: String(Math.round(l.maxDurationSec / 60)),
-    conc: String(l.maxConcurrent), speed: String(l.speedKbps), totalGb: String(+(l.totalBytes / GB).toFixed(2)), totalPrimeGb: String(+(l.totalBytesPrime / GB).toFixed(2)),
+    conc: String(l.maxConcurrent), batch: String(l.maxBatch ?? 0), speed: String(l.speedKbps), totalGb: String(+(l.totalBytes / GB).toFixed(2)), totalPrimeGb: String(+(l.totalBytesPrime / GB).toFixed(2)),
     formats: l.formats ?? allFormats,
   }));
   const [busy, setBusy] = useState(false);
@@ -48,6 +48,7 @@ const LimitCard = ({ l, allFormats, onSaved }: { l: Limit; allFormats: string[];
     else {
       body.maxFileBytes = Math.max(1, Math.round(Number(f.maxFileMb) * MB)); body.maxFiles = Math.round(Number(f.maxFiles) || 0);
       body.maxDurationSec = Math.round((Number(f.maxDur) || 0) * 60); body.speedKbps = Math.round(Number(f.speed) || 0);
+      if (l.scope === 'personal') body.maxBatch = Math.max(0, Math.round(Number(f.batch) || 0));
       if (l.scope === 'personal') body.maxConcurrent = Math.max(1, Math.round(Number(f.conc) || 1));
       body.formats = f.formats;
       if (l.scope === 'public') { body.totalBytes = Math.round(Number(f.totalGb) * GB); body.totalBytesPrime = Math.round(Number(f.totalPrimeGb) * GB); }
@@ -59,7 +60,7 @@ const LimitCard = ({ l, allFormats, onSaved }: { l: Limit; allFormats: string[];
   };
   const reset = async () => {
     setBusy(true);
-    const body: Record<string, unknown> = { scope: l.scope, kind: l.kind, maxFileBytes: null, maxFiles: null, totalBytes: null, totalBytesPrime: null, maxDurationSec: null, maxConcurrent: null, speedKbps: null, formats: null };
+    const body: Record<string, unknown> = { scope: l.scope, kind: l.kind, maxFileBytes: null, maxFiles: null, totalBytes: null, totalBytesPrime: null, maxDurationSec: null, maxConcurrent: null, speedKbps: null, maxBatch: null, formats: null };
     await apiCall('/api/admin/upload-limits', { method: 'PUT', body: JSON.stringify(body) });
     setBusy(false); flash('Возвращены значения по умолчанию'); onSaved();
   };
@@ -76,6 +77,7 @@ const LimitCard = ({ l, allFormats, onSaved }: { l: Limit; allFormats: string[];
           <Num label={l.scope === 'personal' ? 'Файлов в личной коллекции (0 — без ограничения)' : 'Опубликованных файлов у человека (0 — без ограничения)'} value={f.maxFiles} onChange={(v) => setF({ ...f, maxFiles: v })} unit="шт." />
           <Num label="Максимальная длительность (0 — без ограничения)" value={f.maxDur} onChange={(v) => setF({ ...f, maxDur: v })} unit="мин" />
           <Num label="Скорость загрузки (0 — без ограничения)" value={f.speed} onChange={(v) => setF({ ...f, speed: v })} unit="кбит/с" />
+          {l.scope === 'personal' && <Num label="Файлов за один раз при массовой загрузке (0 — без ограничения)" value={f.batch} onChange={(v) => setF({ ...f, batch: v })} unit="шт." hint="Сколько файлов можно выбрать или перетащить разом" />}
           {l.scope === 'personal' && <Num label="Одновременных загрузок" value={f.conc} onChange={(v) => setF({ ...f, conc: v })} unit="шт." />}
           {l.scope === 'public' && (<>
             <Num label="Общий объём опубликованного, обычный (0 — без ограничения)" value={f.totalGb} onChange={(v) => setF({ ...f, totalGb: v })} unit="ГБ" />

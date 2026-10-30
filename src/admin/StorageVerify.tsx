@@ -17,6 +17,7 @@ const GONE: Record<string, string> = {
   no_owner: 'Владелец не найден — подтвердить нельзя.',
 };
 const DECIDE_ERR: Record<string, string> = {
+  admin_token_required: 'Введите токен администратора.', admin_token_invalid: 'Токен администратора не подошёл.', admin_token_missing: 'Токен ещё не создан: Профиль → Sky ID → «Токен администратора».', admin_token_blocked: 'Слишком много неверных токенов — подождите.',
   step_up_required: 'Введите код подтверждения.', step_up_invalid: 'Код не подошёл.', too_many_attempts: 'Слишком много попыток. Подождите минуту.',
 };
 
@@ -30,6 +31,7 @@ export const StorageVerifyPage = () => {
   const [info, setInfo] = useState<ReqInfo | null>(null);
   const [method, setMethod] = useState<'app' | 'email'>('email');
   const [code, setCode] = useState('');
+  const [tok, setTok] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<'approved' | 'denied' | ''>('');
@@ -47,9 +49,10 @@ export const StorageVerifyPage = () => {
 
   const decide = async (approve: boolean) => {
     if (approve && code.length !== 6) { setErr('Введите шестизначный код.'); return; }
+    if (approve && !tok.trim()) { setErr('Введите токен администратора.'); return; }
     if (!approve && !window.confirm('Отклонить подключение? Сессия этой попытки будет закрыта.')) return;
     setBusy(true); setErr('');
-    const r = await apiCall<{ status?: string }>('/api/storage/verify/decide', { method: 'POST', body: JSON.stringify({ token: token.current, approve, code: code.trim() }) });
+    const r = await apiCall<{ status?: string }>('/api/storage/verify/decide', { method: 'POST', body: JSON.stringify({ token: token.current, approve, code: code.trim(), adminToken: tok.trim() }) });
     setBusy(false);
     if (r.ok) { setResult(approve ? 'approved' : 'denied'); setPhase('done'); return; }
     const e = r.error ?? '';
@@ -79,7 +82,10 @@ export const StorageVerifyPage = () => {
             <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoFocus placeholder="000000" aria-label="Код подтверждения"
               className="w-full rounded-full px-5 py-3 text-center text-[20px] font-bold tracking-[0.4em] outline-none" style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }}
               onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6) void decide(true); }} />
-            <button type="button" disabled={busy || code.length !== 6} onClick={() => void decide(true)} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}><ShieldCheck size={16} /> {busy ? 'Проверяем…' : 'Это я, подтвердить'}</button>
+            <input value={tok} onChange={(e) => setTok(e.target.value)} autoComplete="off" spellCheck={false} placeholder="Токен администратора" aria-label="Токен администратора" translate="no"
+              className="w-full rounded-full px-4 py-3 text-center text-[15px] outline-none" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6 && tok.trim()) void decide(true); }} />
+            <button type="button" disabled={busy || code.length !== 6 || !tok.trim()} onClick={() => void decide(true)} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}><ShieldCheck size={16} /> {busy ? 'Проверяем…' : 'Это я, подтвердить'}</button>
             <button type="button" disabled={busy} onClick={() => void decide(false)} className={btn} style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}><ShieldAlert size={16} /> Это не я, отклонить</button>
             {err && <p className="text-[12.5px]" style={{ color: 'var(--red)' }}>{err}</p>}
           </div>

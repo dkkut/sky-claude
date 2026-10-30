@@ -26,7 +26,7 @@ export const knownFormats = (kind) => Object.values(FORMATS[kind] ?? {});
 /** Значения, действующие, пока администрация ничего не задала. */
 const defaults = (scope, kind) => {
   const filmMax = Math.max(1024 * 1024, Number(process.env.FILM_MAX_BYTES) || 4 * GB);
-  const base = { maxFileBytes: kind === 'film' ? filmMax : 30 * 1024 * 1024, maxFiles: 0, totalBytes: 0, totalBytesPrime: 0, formats: null, maxDurationSec: 0, maxConcurrent: 3, speedKbps: 0 };
+  const base = { maxFileBytes: kind === 'film' ? filmMax : 30 * 1024 * 1024, maxFiles: 0, totalBytes: 0, totalBytesPrime: 0, formats: null, maxDurationSec: 0, maxConcurrent: 3, speedKbps: 0, maxBatch: 0 };
   if (kind === 'all') return { ...base, maxFileBytes: 0, totalBytes: QUOTA_FREE_DEFAULT, totalBytesPrime: QUOTA_PRIME_DEFAULT };
   if (scope === 'public') return { ...base, maxConcurrent: 0 };
   return base;
@@ -55,6 +55,7 @@ const merge = (scope, kind, r) => {
     maxDurationSec: pick(r?.max_duration_sec, d.maxDurationSec),
     maxConcurrent: pick(r?.max_concurrent, d.maxConcurrent),
     speedKbps: pick(r?.speed_kbps, d.speedKbps),
+    maxBatch: pick(r?.max_batch, d.maxBatch),
     custom: Boolean(r),
   };
 };
@@ -143,7 +144,7 @@ export const effectiveFor = async (profileId) => {
   const out = { personal: {}, public: {} };
   for (const scope of ['personal', 'public']) for (const kind of KINDS) {
     const l = await getLimits(scope, kind);
-    out[scope][kind] = { maxFileBytes: l.maxFileBytes, maxFiles: l.maxFiles, formats: l.formats, maxDurationSec: l.maxDurationSec, maxConcurrent: l.maxConcurrent, speedKbps: l.speedKbps,
+    out[scope][kind] = { maxFileBytes: l.maxFileBytes, maxFiles: l.maxFiles, formats: l.formats, maxDurationSec: l.maxDurationSec, maxConcurrent: l.maxConcurrent, speedKbps: l.speedKbps, maxBatch: l.maxBatch,
       totalBytes: l.totalBytes, totalBytesPrime: l.totalBytesPrime };
   }
   out.personalQuotaBytes = await personalQuotaFor(profileId);
@@ -175,7 +176,7 @@ export const adminSave = async (actorId, body, meta) => {
   try {
     const TB = 1024 ** 4;
     const spec = { maxFileBytes: ['max_file_bytes', 1, 64 * GB], maxFiles: ['max_files', 0, 1_000_000], totalBytes: ['total_bytes', 0, 100 * TB], totalBytesPrime: ['total_bytes_prime', 0, 100 * TB],
-      maxDurationSec: ['max_duration_sec', 0, 86400 * 7], maxConcurrent: ['max_concurrent', 1, 100], speedKbps: ['speed_kbps', 0, 10_000_000] };
+      maxDurationSec: ['max_duration_sec', 0, 86400 * 7], maxConcurrent: ['max_concurrent', 1, 100], speedKbps: ['speed_kbps', 0, 10_000_000], maxBatch: ['max_batch', 0, 10_000] };
     for (const [k, [col, min, max]] of Object.entries(spec)) {
       if (!(k in (body ?? {}))) continue;
       if (body[k] === null) { fields[col] = null; continue; }

@@ -49,6 +49,7 @@ import { SkyMusicSearch } from './SkyMusicSearch';
 import { usePlayerStore } from '@/player/playerStore';
 import type { IconComponent } from '@/shared/icon';
 import { ShareDialog } from '@/storage/ShareDialog';
+import { batchLimit } from '@/shared/uploadLimits';
 import { StorageQuotaBar } from '@/storage/StorageQuotaBar';
 
 /* ── Tab types & nav config ─────────────────────────────────── */
@@ -809,7 +810,10 @@ const UploadTab = ({ playing, activeId, onPlay }: {
 
   /** Несколько файлов сразу: одна карточка-партия со списком треков; теги читаются из файлов. */
   const processFiles = async (list: File[]) => {
-    const files = list.filter(isAudioFile).slice(0, 30);
+    const cap = await batchLimit('music');   // 0 — без ограничения (настройка в админке «Лимиты загрузки»)
+    const picked = list.filter(isAudioFile);
+    const files = cap > 0 ? picked.slice(0, cap) : picked;
+    if (cap > 0 && picked.length > cap) flash(`Выбрано ${picked.length}, загружу первые ${cap} — таков предел за один раз`);
     if (files.length === 0) return;
     if (files.length === 1) { void processFile(files[0]); return; }
     const items: BItem[] = [];

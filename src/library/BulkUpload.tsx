@@ -5,6 +5,7 @@
  * те же ручки и те же проверки (лимиты, тип по содержимому, модерация), что и одиночная загрузка.
  */
 import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { batchLimit } from '@/shared/uploadLimits';
 import { Upload, X, Check, RotateCcw, Loader2, FileAudio, FileVideo, FileText } from 'lucide-react';
 import { useSkyVideoStore } from '@/video/serverStore';
 import { readVideoMeta as readVideoMetaSv } from '@/video/skyVideoApi';
@@ -19,7 +20,7 @@ type Palette = Record<'bg' | 'bg1' | 'bg2' | 'bg3' | 'border' | 'bm' | 'accent' 
 type Status = 'wait' | 'run' | 'ok' | 'err';
 type Item = { id: number; file: File; title: string; status: Status; pct: number; reason?: string };
 
-const MAX_FILES = 50;
+const DEFAULT_MAX_FILES = 50;   // для музыки и кино вместо него действует настройка администрации (0 — без ограничения)
 const PARALLEL = 2;
 
 const ACCEPT: Record<BulkKind, string> = {
@@ -48,6 +49,10 @@ const iconOf = (f: File) => (f.type.startsWith('video/') ? FileVideo : f.type.st
 
 export const BulkUploadPanel = ({ kind, V, onDone }: { kind: BulkKind; V: Palette; onDone: () => void }) => {
   const [items, setItems] = useState<Item[]>([]);
+  // Музыка и кино: предел задаёт администрация (0 — без ограничения), по умолчанию его нет. Остальные виды — прежние 50.
+  const limited = kind === 'music' || kind === 'film';
+  const [maxFiles, setMaxFiles] = useState<number>(limited ? Infinity : DEFAULT_MAX_FILES);
+  useEffect(() => { if (limited) void batchLimit(kind as 'music' | 'film').then((n) => setMaxFiles(n > 0 ? n : Infinity)); }, [kind, limited]);
   const [running, setRunning] = useState(false);
   const [drag, setDrag] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -95,10 +100,10 @@ export const BulkUploadPanel = ({ kind, V, onDone }: { kind: BulkKind; V: Palett
     });
     const skipped = list.length - okType.length;
     setItems((a) => {
-      const room = Math.max(0, MAX_FILES - a.length);
+      const room = Math.max(0, maxFiles - a.length);
       const take = okType.slice(0, room);
       const over = okType.length - take.length;
-      setMsg(skipped || over ? `${skipped ? `Не подходят по типу: ${skipped}. ` : ''}${over ? `Сверх предела в ${MAX_FILES} файлов: ${over}.` : ''}` : null);
+      setMsg(skipped || over ? `${skipped ? `Не подходят по типу: ${skipped}. ` : ''}${over ? `Сверх предела в ${maxFiles} файлов: ${over}.` : ''}` : null);
       return [...a, ...take.map((file) => ({ id: ++seq.current, file, title: titleFromName(file.name), status: 'wait' as Status, pct: 0 }))];
     });
   };
@@ -185,7 +190,7 @@ export const BulkUploadPanel = ({ kind, V, onDone }: { kind: BulkKind; V: Palett
 
   return (
     <div className="space-y-3 px-4 py-4 overflow-y-auto h-full" style={{ scrollbarWidth: 'none' }}>
-      <p className="text-xs" style={{ color: V.t3 }}>{HINT[kind]} До {MAX_FILES} файлов за раз, по два одновременно.</p>
+      <p className="text-xs" style={{ color: V.t3 }}>{HINT[kind]} {Number.isFinite(maxFiles) ? `До ${maxFiles} файлов за раз` : 'Без ограничения по числу файлов'}, по два одновременно.</p>
 
       {/* Общие поля */}
       <div className="grid gap-2 sm:grid-cols-2">
