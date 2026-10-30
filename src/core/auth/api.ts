@@ -265,7 +265,7 @@ const rawOnce = (path: string, init: RequestInit = {}, origin = ''): Promise<Res
       // токены в теле не получает.
       ...(isEnglish() ? { 'X-Sky-Lang': 'en' } : {}),
       ...(deviceId() ? { 'X-Sky-Device': deviceId() } : {}),
-      ...(getAdminTokenCached() && /^\/api\/(admin|owner|staff)\//.test(path) ? { 'X-Sky-Admin-Token': getAdminTokenCached() } : {}),
+      ...(getAdminTokenCached() && /^\/api\/(admin|owner|staff|platform\/(shutdown|maintenance))(\/|$)/.test(path) ? { 'X-Sky-Admin-Token': getAdminTokenCached() } : {}),
       ...(path.startsWith('/api/auth/') && getInvite() ? { 'X-Sky-Invite': getInvite() } : {}),
       'X-Sky-Slot': String(getActiveSlot()),
       ...(skyMode() ? { 'X-Sky-Mode': skyMode() } : {}),
@@ -400,7 +400,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
     if ((res.status === 423 && data?.error === 'globally_blocked') || (res.status === 403 && data?.error === 'account_blocked' && data?.global)) {
       try { window.dispatchEvent(new CustomEvent('sky:globalblock', { detail: { token: String(data?.appealToken ?? ''), reason: String(data?.reason ?? ''), since: data?.since ?? null, until: data?.until ?? null } })); } catch { /* ok */ }
     }
-    if (isAdminTokenError(data?.error) && /^\/api\/(admin|owner|staff)\//.test(path) && !path.startsWith('/api/admin/gate')) askAdminToken(String(data?.error));
+    if (isAdminTokenError(data?.error) && /^\/api\/(admin|owner|staff|platform\/(shutdown|maintenance))(\/|$)/.test(path) && !path.startsWith('/api/admin/gate')) askAdminToken(String(data?.error));
     if (res.status === 423 && data?.error === 'app_locked') { try { window.dispatchEvent(new CustomEvent('sky:applock')); } catch { /* ok */ } }
     if (res.status === 403 && data?.error === 'limited_session') { try { window.dispatchEvent(new CustomEvent('sky:limited')); } catch { /* ok */ } }
     if (res.status === 403 && data?.error === 'money_locked') { try { window.dispatchEvent(new CustomEvent('sky:money-locked')); } catch { /* ok */ } }

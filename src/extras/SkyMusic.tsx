@@ -840,11 +840,21 @@ const UploadTab = ({ playing, activeId, onPlay }: {
       if (it.state === 'ok' || !it.title.trim()) continue;
       patchItem(it.id, { state: 'up', err: undefined });
       try {
-        const res = await uploadTrack(it.file, {
+        // Предел сервера — запросов в минуту с одного адреса (на трек уходит несколько запросов): при отказе ждём и пробуем снова, а не бросаем трек.
+        let res = await uploadTrack(it.file, {
           title: it.title.trim(), artist: (it.artist.trim() || bArtist.trim() || (me?.name ?? 'Неизвестный')),
           album: (it.album.trim() || bAlbum.trim()) || undefined, genre: it.genre || bGenre || 'Другое',
           year: it.year.trim() || undefined, duration: it.dur,
         });
+        for (let k = 0; k < 5 && !res.ok && /Слишком много|rate_limited/i.test(res.reason ?? ''); k++) {
+          patchItem(it.id, { state: 'up', err: 'Ждём лимит запросов…' });
+          await new Promise(r => setTimeout(r, 15000));
+          res = await uploadTrack(it.file, {
+            title: it.title.trim(), artist: (it.artist.trim() || bArtist.trim() || (me?.name ?? 'Неизвестный')),
+            album: (it.album.trim() || bAlbum.trim()) || undefined, genre: it.genre || bGenre || 'Другое',
+            year: it.year.trim() || undefined, duration: it.dur,
+          });
+        }
         if (!res.ok) { patchItem(it.id, { state: 'err', err: res.reason ?? 'Не получилось загрузить' }); continue; }
         if (res.id) {
           if (it.cover) await apiUploadCover(res.id, it.cover).catch(() => {});
@@ -854,6 +864,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
           if (bPublish) await submitForReview(res.id).catch(() => {});
         }
         patchItem(it.id, { state: 'ok' });
+        await new Promise(r => setTimeout(r, 400));
       } catch { patchItem(it.id, { state: 'err', err: 'Не получилось загрузить' }); }
     }
     setBBusy(false);
