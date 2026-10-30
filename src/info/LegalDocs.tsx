@@ -29,6 +29,7 @@ const DOCS: Doc[] = [
   { key: 'rules',    title: 'Правила Sky Ecosystem',        sub: 'Что можно и чего нельзя',        icon: ScrollText },
   { key: 'protection', title: 'Правила защиты экосистемы',   sub: 'Код, данные, безопасность, конкуренция', icon: ShieldCheck },
   { key: 'media',    title: 'Положение о медиаконтенте',    sub: 'Музыка, кино, ТВ, книги, жалобы правообладателей', icon: FileText },
+  { key: 'thirdparty', title: 'Сторонние сервисы и лицензии', sub: 'Шрифты, библиотеки, внешние сервисы, авторство', icon: FileText },
   { key: 'sellers',  title: 'Правила продавцов',            sub: 'Для продавцов и контент-мейкеров', icon: Tag },
   { key: 'offer',    title: 'Публичная оферта',             sub: 'Договор об оказании услуг',      icon: Receipt },
   { key: 'prices',   title: 'Услуги и стоимость',           sub: 'Что платное и сколько стоит',    icon: FileText },

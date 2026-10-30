@@ -55,5 +55,33 @@ t('сверка журнала: баланс = сумма рублёвых за�
 for (const c of ['EUR', 'GBP', 'CNY', 'KZT', 'TRY']) await fx.saveRates('a', [{ currency: c, rateRub: 50, spreadPct: 1 }]);
 const opened = []; for (const c of ['USD', 'EUR', 'GBP', 'CNY', 'KZT', 'TRY']) opened.push((await fx.openAccount(uid, c)).error ?? 'ok');
 t('не больше 5 счетов', opened.filter((x) => x === 'ok').length === 5 && opened.includes('too_many_accounts'), opened.join());
-await query(`DELETE FROM wallet_fx_rates`); await query(`DELETE FROM wallet_fx_accounts WHERE user_id=$1`, [uid]);
+
+// ── Автоисточник (ЦБ РФ) и аналитика ──
+const { parseCbr } = await import('../../server/fxsource.mjs');
+const sample = { Valute: { USD: { Nominal: 1, Value: 92.5, Previous: 92 }, KZT: { Nominal: 100, Value: 19.2, Previous: 19 }, TRY: { Nominal: 10, Value: 27, Previous: 26.5 }, EUR: { Nominal: 1, Value: 0, Previous: 0 } } };
+const parsed = parseCbr(sample);
+t('разбор ЦБ: номинал учтён (KZT за 100)', Math.abs(parsed.KZT.rate - 0.192) < 1e-9 && Math.abs(parsed.TRY.rate - 2.7) < 1e-9);
+t('разбор ЦБ: нулевой курс отброшен', !('EUR' in parsed));
+await query(`DELETE FROM wallet_fx_rates`); await query(`DELETE FROM wallet_fx_rate_history`);
+const fakeOk = async () => ({ USD: { rate: 92.5, prev: 92 }, KZT: { rate: 0.192, prev: 0.19 } });
+const fakeDown = async () => { throw new Error('down'); };
+t('сохранение с источником ЦБ берёт курс из источника', (await fx.saveRates('a', [{ currency: 'USD', source: 'cbr', spreadPct: 1 }], { fetcher: fakeOk })).ok === true
+  && Number((await query(`SELECT rate_rub FROM wallet_fx_rates WHERE currency='USD'`)).rows[0].rate_rub) === 92.5);
+t('источник недоступен — курс не сохраняется', (await fx.saveRates('a', [{ currency: 'KZT', source: 'cbr' }], { fetcher: fakeDown })).error === 'source_unavailable'
+  && (await query(`SELECT 1 FROM wallet_fx_rates WHERE currency='KZT'`)).rowCount === 0);
+t('нет данных по валюте у источника', (await fx.saveRates('a', [{ currency: 'GBP', source: 'cbr' }], { fetcher: fakeOk })).error === 'source_no_data');
+t('ручной курс не трогается автообновлением', (await fx.saveRates('a', [{ currency: 'EUR', rateRub: 100, spreadPct: 1 }])).ok === true
+  && (await fx.refreshFromCbr(async () => ({ EUR: { rate: 5 }, USD: { rate: 93 } }))).updated.join() === 'USD');
+t('автообновление изменило USD', Number((await query(`SELECT rate_rub FROM wallet_fx_rates WHERE currency='USD'`)).rows[0].rate_rub) === 93);
+t('автообновление: скачок >30% пропущен', (await fx.refreshFromCbr(async () => ({ USD: { rate: 500 } }))).skipped[0]?.why === 'big_change'
+  && Number((await query(`SELECT rate_rub FROM wallet_fx_rates WHERE currency='USD'`)).rows[0].rate_rub) === 93);
+t('автообновление при сбое источника не меняет курс', (await fx.refreshFromCbr(fakeDown)).error === 'source_unavailable');
+const an = (await fx.analytics()).USD;
+t('аналитика: есть история и границы', an && an.points.length >= 2 && an.min === 92.5 && an.max === 93, JSON.stringify(an));
+t('аналитика: суточное изменение — null, пока истории за сутки нет', an.change1d === null);
+await query(`UPDATE wallet_fx_rate_history SET at = at - interval '2 days' WHERE currency='USD' AND rate_rub = 92.5`);
+const an2 = (await fx.analytics()).USD;
+t('аналитика: изменение за сутки по настоящей истории', Math.abs(an2.change1d - (((93 - 92.5) / 92.5) * 100)) < 0.01, JSON.stringify(an2));
+t('аналитика: повтор того же курса историю не раздувает', (await fx.refreshFromCbr(async () => ({ USD: { rate: 93 } }))).ok && (await query(`SELECT count(*)::int n FROM wallet_fx_rate_history WHERE currency='USD'`)).rows[0].n === 2);
+await query(`DELETE FROM wallet_fx_rates`); await query(`DELETE FROM wallet_fx_rate_history`); await query(`DELETE FROM wallet_fx_accounts WHERE user_id=$1`, [uid]);
 console.log(`\n${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

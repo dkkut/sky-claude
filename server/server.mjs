@@ -44,6 +44,7 @@ import { passwordRoutes } from './routes/password.mjs';
 import { skyIdRoutes } from './routes/skyid.mjs';
 import { walletRoutes } from './routes/wallet.mjs';
 import { walletFxRoutes } from './routes/walletfx.mjs';
+import { startFxRefresh } from './walletfx.mjs';
 import { supportRoutes } from './routes/support.mjs';
 import { directoryRoutes } from './routes/directory.mjs';
 import { fileRoutes } from './routes/files.mjs';
@@ -756,7 +757,7 @@ const start = async () => {
 
   // Самозащита: снятие уровня по сроку, чистка блокировок, проверка целостности кода (раз в 5 минут).
   let defTicks = 0;
-  startFirewall();
+  startFirewall(); startFxRefresh();
   setFirewallFloor(firewallFloor);
   const defSchedule = setInterval(() => { defTicks += 1; defenseTick().catch((e) => console.error('[defense] тик:', e.message)); if (defTicks % 5 === 0) integrityCheck().catch(() => {}); }, 60 * 1000);
   defSchedule.unref();

@@ -95,6 +95,6 @@ export const decoyReply = (method, pathname) => {
   if (method === 'GET' && (pathname === '/api/wallet' || pathname === '/api/wallet/balance')) {
     return { status: 200, body: pathname === '/api/wallet' ? { balance: 0, points: 0, transactions: [] } : { balance: 0, points: 0 } };
   }
-  if (method === 'GET' && pathname === '/api/wallet/fx') return { status: 200, body: { max: 5, minRub: 10, maxRub: 1000000, currencies: [], accounts: [], history: [] } };
+  if (method === 'GET' && pathname === '/api/wallet/fx') return { status: 200, body: { max: 5, minRub: 10, maxRub: 1000000, currencies: [], accounts: [], history: [], analytics: {} } };
   return { status: 503, body: { error: 'service_unavailable' } };
 };

@@ -80,6 +80,7 @@ export const FeedWidgets = () => {
               {(() => { const Icon = WEATHER_ICON[weather.kind]; return <Icon size={16} style={{ color: 'var(--t2)' }}/>; })()}
               <p className="mt-1 text-sm font-extrabold" style={{ color: 'var(--t1)' }}>{weather.tempC >= 0 ? '+' : ''}{Math.round(weather.tempC)}°</p>
               <p className="truncate text-[9px]" style={{ color: 'var(--t3)' }}>{weather.city ?? '—'}</p>
+              <p className="truncate text-[8px]" style={{ color: 'var(--t3)' }} translate="no">Open-Meteo.com</p>
             </>
           ) : denied ? (
             <>

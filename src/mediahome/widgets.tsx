@@ -88,6 +88,7 @@ const Weather = () => {
         : <><button type="button" onClick={ask} className={cardBtn} style={{ background: 'var(--accent)', color: '#fff' }}>{state === 'loading' ? 'Определяем…' : 'Показать погоду'}</button>
             {state === 'denied' && <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Нет доступа к геопозиции — разрешите её в настройках браузера.</p>}
             {state === 'error' && <p className="text-[11px]" style={{ color: 'var(--t3)' }}>Погода сейчас недоступна.</p>}</>}
+      <p className="text-[9px]" style={{ color: 'var(--t3)' }} translate="no">Weather data by Open-Meteo.com</p>
     </Box>
   );
 };

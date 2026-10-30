@@ -159,7 +159,7 @@ const StationScreen = ({ st, kind, here, onBack, onReported }: { st: any; kind: 
         {more && <Card style={{ borderRadius: 22 }}><Col gap={6}>
           <div style={{ fontSize: 14, color: C.t1 }}>Часы работы: {st.always ? 'круглосуточно' : st.hours || 'не указаны'}</div>
           {st.services.length > 0 && <div style={{ fontSize: 14, color: C.t1 }}>Услуги: {st.services.join(', ')}</div>}
-          <div style={{ fontSize: 12.5, color: C.t3 }}>Источник данных: {st.source === 'osm' ? 'OpenStreetMap' : st.source}. Обновлено {new Date(st.providerUpdatedAt).toLocaleDateString('ru-RU')}.</div>
+          <div style={{ fontSize: 12.5, color: C.t3 }}>Источник данных: {st.source === 'osm' ? '© участники OpenStreetMap (лицензия ODbL)' : st.source}. Обновлено {new Date(st.providerUpdatedAt).toLocaleDateString('ru-RU')}.</div>
         </Col></Card>}
       </Col>
     </>

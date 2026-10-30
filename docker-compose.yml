@@ -278,6 +278,7 @@ services:
       ADMIN_TOKEN:           ${ADMIN_TOKEN:-}
       CF_API_TOKEN:          ${CF_API_TOKEN:-}
       CF_ZONE_ID:            ${CF_ZONE_ID:-}
+      FX_CBR_URL:            ${FX_CBR_URL:-}
       ADMIN_TOKEN_UNLOCK_MIN: ${ADMIN_TOKEN_UNLOCK_MIN:-}
       APPLOCK_GRACE_SEC:     ${APPLOCK_GRACE_SEC:-}
       PASSKEY_ORIGINS:       ${PASSKEY_ORIGINS:-}

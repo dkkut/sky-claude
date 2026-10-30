@@ -18,9 +18,10 @@ import privacy    from '../../docs/ПОЛИТИКА_КОНФИДЕНЦИАЛЬН
 import contacts   from '../../docs/КОНТАКТЫ.md?raw';
 import protection from '../../docs/ПРАВИЛА_ЗАЩИТЫ_ЭКОСИСТЕМЫ.md?raw';
 import media      from '../../docs/ПОЛОЖЕНИЕ_О_МЕДИАКОНТЕНТЕ.md?raw';
+import thirdparty from '../../docs/СТОРОННИЕ_СЕРВИСЫ_И_ЛИЦЕНЗИИ.md?raw';
 
 export const DOC_TEXTS = {
-  rules, protection, media, sellers, offer, prices, consent, privacy, contacts,
+  rules, protection, media, thirdparty, sellers, offer, prices, consent, privacy, contacts,
 } as const;
 
 export type DocKey = keyof typeof DOC_TEXTS;

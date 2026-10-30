@@ -9,6 +9,7 @@
 import { pool, query } from './db.mjs';
 import { wallet } from './wallet.mjs';
 import { generateId } from './security.mjs';
+import { fetchCbrRates } from './fxsource.mjs';
 
 export const MAX_ACCOUNTS = 5;
 export const CURRENCIES = {
@@ -34,6 +35,7 @@ export const overview = async (userId) => {
       return { code, ...c, available: Boolean(r?.enabled), ...(r ? priceOf(r) : {}) };
     }),
     accounts: acc.rows.map((a) => ({ currency: a.currency, balance: Number(a.balance), openedAt: a.created_at })),
+    analytics: await analytics(),
   };
 };
 
@@ -115,33 +117,100 @@ export const history = async (userId, limit = 50) =>
   (await query(`SELECT id, currency, direction, rub, amount, rate, created_at FROM wallet_fx_transfers WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`, [userId, Math.min(200, Math.max(1, limit))]))
     .rows.map((r) => ({ id: r.id, currency: r.currency, direction: r.direction, rub: Number(r.rub), amount: Number(r.amount), rate: Number(r.rate), createdAt: r.created_at }));
 
+
+/* ─── История курсов и аналитика ─── */
+const record = async (currency, rate, source) => {
+  const last = (await query(`SELECT rate_rub, at FROM wallet_fx_rate_history WHERE currency = $1 ORDER BY at DESC LIMIT 1`, [currency])).rows[0];
+  const same = last && Math.abs(Number(last.rate_rub) - rate) < 1e-9;
+  if (same && Date.now() - new Date(last.at).getTime() < 20 * 3600 * 1000) return;
+  await query(`INSERT INTO wallet_fx_rate_history (currency, rate_rub, source) VALUES ($1,$2,$3)`, [currency, rate, source]);
+};
+
+/** Динамика середины курса за 30 дней по настоящей истории изменений (выдуманных точек нет; мало данных — null). */
+export const analytics = async () => {
+  const { rows } = await query(`SELECT currency, rate_rub, at FROM wallet_fx_rate_history WHERE at > now() - interval '30 days' ORDER BY currency, at`);
+  const out = {};
+  for (const r of rows) (out[r.currency] ??= []).push({ t: new Date(r.at).getTime(), rate: Number(r.rate_rub) });
+  const now = Date.now();
+  const res = {};
+  for (const [cur, pts] of Object.entries(out)) {
+    const last = pts[pts.length - 1];
+    const dayAgo = [...pts].reverse().find((p) => p.t <= now - 20 * 3600 * 1000);
+    const first = pts[0];
+    const vals = pts.map((p) => p.rate);
+    res[cur] = {
+      points: pts.slice(-40),
+      change1d: dayAgo && dayAgo.rate > 0 ? +(((last.rate - dayAgo.rate) / dayAgo.rate) * 100).toFixed(2) : null,
+      change30d: pts.length > 1 && first.rate > 0 ? +(((last.rate - first.rate) / first.rate) * 100).toFixed(2) : null,
+      min: Math.min(...vals), max: Math.max(...vals),
+    };
+  }
+  return res;
+};
+
+/** Автообновление курсов у валют с источником «ЦБ РФ». Скачок больше 30 % к текущему не применяется (сбой источника), остальное — да. */
+export const refreshFromCbr = async (fetcher = fetchCbrRates) => {
+  const mine = (await query(`SELECT currency, rate_rub FROM wallet_fx_rates WHERE source = 'cbr'`)).rows;
+  if (!mine.length) return { ok: true, updated: [], skipped: [] };
+  let src;
+  try { src = await fetcher(); } catch (e) { return { error: 'source_unavailable', detail: String(e.message ?? e).slice(0, 80) }; }
+  const updated = []; const skipped = [];
+  for (const m of mine) {
+    const n = src[m.currency]?.rate;
+    if (!n) { skipped.push({ currency: m.currency, why: 'no_data' }); continue; }
+    const cur = Number(m.rate_rub);
+    if (cur > 0 && (n / cur > 1.3 || n / cur < 0.7)) { skipped.push({ currency: m.currency, why: 'big_change' }); continue; }
+    await query(`UPDATE wallet_fx_rates SET rate_rub = $2, updated_by = 'cbr-auto', updated_at = now() WHERE currency = $1 AND source = 'cbr'`, [m.currency, n]);
+    await record(m.currency, n, 'cbr');
+    updated.push(m.currency);
+  }
+  return { ok: true, updated, skipped };
+};
+
+/** Фоновое обновление: раз в 3 часа (ЦБ публикует курс раз в рабочий день). Сбой источника курсы не трогает. */
+export const startFxRefresh = () => {
+  const tick = () => { refreshFromCbr().catch(() => {}); };
+  setTimeout(tick, 60_000).unref?.();
+  setInterval(tick, 3 * 3600 * 1000).unref?.();
+};
+
 /* ─── Администрация: курсы ─── */
 export const adminRates = async () => {
   const rs = await rates();
   const by = new Map(rs.map((r) => [r.currency, r]));
   return Object.entries(CURRENCIES).map(([code, c]) => {
     const r = by.get(code);
-    return { code, ...c, rateRub: r ? Number(r.rate_rub) : null, spreadPct: r ? Number(r.spread_pct) : 1.5, enabled: Boolean(r?.enabled), updatedAt: r?.updated_at ?? null };
+    return { code, ...c, rateRub: r ? Number(r.rate_rub) : null, spreadPct: r ? Number(r.spread_pct) : 1.5, enabled: Boolean(r?.enabled), source: r?.source ?? 'manual', updatedAt: r?.updated_at ?? null };
   });
 };
 
-export const saveRates = async (actorId, list, { confirmBig = false } = {}) => {
+export const saveRates = async (actorId, list, { confirmBig = false, fetcher = fetchCbrRates } = {}) => {
   if (!Array.isArray(list) || !list.length) return { error: 'nothing_to_change' };
   const prev = new Map((await rates()).map((r) => [r.currency, Number(r.rate_rub)]));
+  let cbr = null;
   const rows = [];
   for (const it of list) {
     const code = String(it?.currency ?? '');
     if (!CURRENCIES[code]) return { error: 'bad_currency', currency: code };
-    const rate = Number(it.rateRub); const spread = Number(it.spreadPct ?? 1.5);
-    if (!(rate > 0) || rate > 1_000_000 || !Number.isFinite(rate)) return { error: 'bad_rate', currency: code };
+    const source = it.source === 'cbr' ? 'cbr' : 'manual';
+    const spread = Number(it.spreadPct ?? 1.5);
     if (!(spread >= 0 && spread <= 20)) return { error: 'bad_spread', currency: code };
+    let rate = Number(it.rateRub);
+    if (source === 'cbr') {
+      // Автоисточник: первое значение берём сразу, чтобы курс не остался пустым; нет ответа — не сохраняем.
+      try { cbr ??= await fetcher(); } catch { return { error: 'source_unavailable', currency: code }; }
+      if (!cbr[code]) return { error: 'source_no_data', currency: code };
+      rate = cbr[code].rate;
+    }
+    if (!(rate > 0) || rate > 1_000_000 || !Number.isFinite(rate)) return { error: 'bad_rate', currency: code };
     const p = prev.get(code);
     if (p && !confirmBig && (rate / p > 1.3 || rate / p < 0.7)) return { error: 'big_change', currency: code, previous: p };
-    rows.push([code, rate, spread, it.enabled !== false]);
+    rows.push([code, rate, spread, it.enabled !== false, source]);
   }
-  for (const [code, rate, spread, enabled] of rows) {
-    await query(`INSERT INTO wallet_fx_rates (currency, rate_rub, spread_pct, enabled, updated_by) VALUES ($1,$2,$3,$4,$5)
-      ON CONFLICT (currency) DO UPDATE SET rate_rub = $2, spread_pct = $3, enabled = $4, updated_by = $5, updated_at = now()`, [code, rate, spread, enabled, actorId]);
+  for (const [code, rate, spread, enabled, source] of rows) {
+    await query(`INSERT INTO wallet_fx_rates (currency, rate_rub, spread_pct, enabled, updated_by, source) VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT (currency) DO UPDATE SET rate_rub = $2, spread_pct = $3, enabled = $4, updated_by = $5, source = $6, updated_at = now()`, [code, rate, spread, enabled, actorId, source]);
+    await record(code, rate, source);
   }
   return { ok: true, changed: rows.map((r) => r[0]) };
 };

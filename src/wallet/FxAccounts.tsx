@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Plus, Loader2, ArrowRightLeft, Lock, Trash2 } from 'lucide-react';
 import { useMoney } from './store';
-import { fxOverview, fxOpen, fxClose, fxConvert, quoteFx, fmtCur, type FxOverview, type FxCurrency } from './fxApi';
+import { fxOverview, fxOpen, fxClose, fxConvert, quoteFx, fmtCur, sparkPoints, pct, type FxOverview, type FxCurrency } from './fxApi';
 
 const ERR: Record<string, string> = {
   insufficient_funds: 'Недостаточно средств', amount_out_of_range: 'Сумма вне допустимых пределов', amount_too_small: 'Сумма слишком мала для обмена', invalid_amount: 'Введите целую сумму',
@@ -86,6 +86,15 @@ export const FxAccounts = ({ onBack, rubBalance }: { onBack: () => void; rubBala
               {c?.available ? (
                 <>
                   <p className="text-xs" style={{ color: 'var(--t3)' }}>Купить: {c.buy?.toLocaleString('ru', { maximumFractionDigits: 4 })} ₽ · Продать: {c.sell?.toLocaleString('ru', { maximumFractionDigits: 4 })} ₽ за 1 {c.symbol}</p>
+                  {(() => {
+                    const an = data.analytics?.[a.currency]; const line = an ? sparkPoints(an.points, 120, 28) : null;
+                    return an ? (
+                      <div className="flex items-center gap-3">
+                        {line && <svg viewBox="0 0 120 28" className="h-7 w-28 shrink-0" aria-hidden="true"><polyline points={line} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                        <p className="text-[11px] leading-snug" style={{ color: 'var(--t3)' }}>За сутки {pct(an.change1d)} · за 30 дней {pct(an.change30d)}<br />Диапазон {an.min.toLocaleString('ru', { maximumFractionDigits: 4 })}–{an.max.toLocaleString('ru', { maximumFractionDigits: 4 })} ₽</p>
+                      </div>
+                    ) : <p className="text-[11px]" style={{ color: 'var(--t3)' }}>История курса пока короткая — динамика появится по мере обновлений.</p>;
+                  })()}
                   <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => { setConv({ c, dir: 'buy' }); setAmount(''); setMsg(''); }} className="flex items-center justify-center gap-2 rounded-2xl py-2.5 text-sm font-extrabold" style={{ background: 'var(--accent)', color: '#fff' }}><ArrowRightLeft size={15} />Из рублей</button>
                     <button type="button" disabled={a.balance === 0} onClick={() => { setConv({ c, dir: 'sell' }); setAmount(''); setMsg(''); }} className="flex items-center justify-center gap-2 rounded-2xl py-2.5 text-sm font-bold disabled:opacity-40" style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>В рубли</button>
