@@ -191,7 +191,6 @@ const TxItem = ({ tx }: { tx: ReturnType<typeof useMoney.getState>['transactions
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold truncate" style={{ color:C.t1 }}>{label}</p>
-        {tx.type === 'skykassa_topup' && <p className="text-xs truncate" style={{ color:C.green }}>переведено с вашего банковского счета</p>}
         <p className="text-xs truncate" style={{ color:C.t3 }}>{tx.desc}</p>
       </div>
       <div className="text-right shrink-0">
@@ -219,7 +218,6 @@ const ConfirmedKassa = () => {
           <div className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-xl" style={{ background: C.l2 }}><Sparkles size={17} style={{ color: C.green }} /></div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-semibold" style={{ color: C.t1 }}>Пополнение SkyKassa{i.methodTitle ? ` · ${i.methodTitle}` : ''}</p>
-            <p className="truncate text-[11px]" style={{ color: C.green }}>переведено с вашего банковского счета</p>
             <p className="text-[10px]" style={{ color: C.t3 }}>{new Date(i.createdAt).toLocaleDateString('ru', { day: 'numeric', month: 'short', year: 'numeric' })} · {i.statusLabel}</p>
           </div>
           <p className="text-sm font-bold" style={{ color: C.green }}>+{fmt(i.amount)}</p>

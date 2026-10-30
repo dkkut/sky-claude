@@ -687,6 +687,7 @@ export const PayHistory = ({ userId }: { userId: string }) => {
             <p className="text-xs font-semibold truncate" style={{ color:P.t1 }}>
               {PURPOSE_LABEL[s.purpose]}
             </p>
+            <p className="text-[11px] truncate" style={{ color:P.green }}>переведено с вашего банковского счета</p>
             <p className="text-[10px] font-mono mt-0.5" style={{ color:P.t3 }}>{s.id}</p>
           </div>
           <div className="text-right flex-shrink-0">
