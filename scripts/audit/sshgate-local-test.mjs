@@ -13,8 +13,8 @@ const dir = mkdtempSync(join(tmpdir(), 'sshgate-local-'));
 const SECRET = generateSecret();
 const key = 'test-secret-0123456789abcdefgh';
 
-let reply = null;
-const srv = http.createServer((req, res) => { req.resume(); req.on('end', () => { const r = reply ?? { status: 404, body: '{}' }; res.writeHead(r.status, { 'content-type': 'application/json' }); res.end(r.body); }); });
+let reply = null; let byPath = null; const seen = [];
+const srv = http.createServer((req, res) => { req.resume(); req.on('end', () => { seen.push(req.url); const r = (byPath && byPath(req.url)) ?? reply ?? { status: 404, body: '{}' }; res.writeHead(r.status, { 'content-type': 'application/json' }); res.end(r.body); }); });
 await new Promise((r) => srv.listen(0, '127.0.0.1', r));
 const port = srv.address().port;
 
@@ -58,6 +58,24 @@ reset(); reply = { status: 403, body: '{"error":"bad_signature"}' };
 t('owner: неверная подпись — запасной код не предлагается', (await run(`${currentTotp(SECRET)}\n`)) === 1 && !tty().includes('Запасной вход'));
 reset(); reply = { status: 502, body: '<html>Bad gateway</html>' };
 t('owner: nginx отдал HTML 502 (API лежит) — запасной код предлагается', (await run(`${currentTotp(SECRET)}\n`)) === 0);
+
+// Режим both: токен принят → ждём подтверждения владельца (poll), иначе вход закрыт.
+conf(`http://127.0.0.1:${port}`, 'SKY_MODE=both\n');
+reset(); seen.length = 0;
+let polls = 0;
+byPath = (u) => u.endsWith('/login') ? { status: 200, body: '{"ok":true,"id":"ssh-1","poll":"p1"}' } : u.endsWith('/poll') ? { status: 200, body: `{"status":"${++polls >= 2 ? 'approved' : 'pending'}"}` } : null;
+t('both: токен принят и владелец подтвердил — пускает', (await run('@n\nSKA-X\n')) === 0, tty());
+t('both: после токена опрошено подтверждение владельца', seen.some((u) => u.endsWith('/poll')));
+t('both: сторож отмены не нужен (запрос watch не шёл)', !seen.some((u) => u.endsWith('/watch')));
+reset(); seen.length = 0;
+byPath = (u) => u.endsWith('/login') ? { status: 200, body: '{"ok":true,"id":"ssh-1","poll":"p1"}' } : u.endsWith('/poll') ? { status: 200, body: '{"status":"denied"}' } : null;
+t('both: владелец отказал — вход закрыт', (await run('@n\nSKA-X\n')) === 1);
+reset(); byPath = (u) => u.endsWith('/login') ? { status: 401, body: '{"error":"denied"}' } : null;
+t('both: токен не принят — закрыто, до владельца не доходит', (await run('@n\nSKA-X\n@n\nSKA-X\n@n\nSKA-X\n')) === 1);
+reset(); byPath = (u) => u.endsWith('/login') ? { status: 503, body: '{"error":"email_failed"}' } : null;
+writeFileSync(join(dir, 'totp'), SECRET + '\n');
+t('both: письмо не ушло + верный запасной код — пускает', (await run(`@n\nSKA-X\n${currentTotp(SECRET)}\n`)) === 0, tty());
+byPath = null;
 
 reset(); conf(DEAD);
 writeFileSync(join(dir, 'off'), '');

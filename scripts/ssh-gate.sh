@@ -24,7 +24,8 @@
 #     SKY_SECRET=...                               # тот же, что SSH_GATE_SECRET в .env сервера (от 24 знаков)
 #     SKY_TIMEOUT=300                              # сколько ждать подтверждения, сек
 #     SKY_MODE=token                               # token (по умолчанию): @ник + личный токен администратора, владелец получает уведомление и 25 минут
-#                                                  #   может отменить вход («Это не я»); owner: владелец подтверждает ссылкой из письма ДО входа
+#                                                  #   может отменить вход («Это не я»); owner: владелец подтверждает ссылкой из письма ДО входа;
+#                                                  #   both: сначала токен администратора, потом ещё и подтверждение владельца (самый строгий)
 #     SKY_FAILOPEN=0                               # 1 — пускать, если API недоступен (небезопасно)
 #
 #  Если API или почта недоступны, а SKY_FAILOPEN=0, вход закрыт, КРОМЕ запасного пути: если настроен /etc/sky-ssh-gate.totp
@@ -260,7 +261,7 @@ local_fallback() {  # причина
 }
 
 # ── режим token: @ник и токен администратора на терминале ──
-if [ "$SKY_MODE" = "token" ]; then
+if [ "$SKY_MODE" = "token" ] || [ "$SKY_MODE" = "both" ]; then
   if [ -z "$TTYDEV" ] || { [ ! -c "$TTYDEV" ] && [ -z "${SKY_GATE_TTY:-}" ]; }; then
     logger -t sky-ssh-gate "вход $U@$R закрыт: нет терминала для токена (scp/sftp/команда без tty проходят только как параллельные к недавнему входу)"
     exit 1
@@ -273,18 +274,20 @@ if [ "$SKY_MODE" = "token" ]; then
     [ "$2" = 1 ] && { stty -F "$TTYDEV" echo 2>/dev/null; say "\r\n"; }
     printf '%s' "$v" | tr -d '\r'
   }
-  say "\r\n  Sky · защищённый вход\r\n  ────────────────────────────────────\r\n  Вход по токену администратора. Владелец получит уведомление.\r\n\r\n"
+  if [ "$SKY_MODE" = "both" ]; then CONFIRM_JSON=',"confirm":true'; HINT="Вход по токену администратора и подтверждению владельца."; else CONFIRM_JSON=""; HINT="Вход по токену администратора. Владелец получит уведомление."; fi
+  say "\r\n  Sky · защищённый вход\r\n  ────────────────────────────────────\r\n  $HINT\r\n\r\n"
   ID=""; POLL=""
   for TRY in 1 2 3; do
     NICK="$(ask "  Ваш @ник в Sky: " 0 | tr -cd 'A-Za-z0-9_@.-' | cut -c1-40)"
     TOK="$(ask "  Токен администратора: " 1 | tr -cd 'A-Za-z0-9-' | cut -c1-40)"
     [ -n "$NICK" ] && [ -n "$TOK" ] || { say "  ✖ Нужны @ник и токен.\r\n"; continue; }
-    RES="$(api /api/ssh-gate/login "{\"ts\":\"$TS\",\"user\":\"$U\",\"host\":\"$H\",\"rhost\":\"$R\",\"tty\":\"$T\",\"sig\":\"$SIG\",\"nick\":\"$NICK\",\"token\":\"$TOK\"}")"
+    RES="$(api /api/ssh-gate/login "{\"ts\":\"$TS\",\"user\":\"$U\",\"host\":\"$H\",\"rhost\":\"$R\",\"tty\":\"$T\",\"sig\":\"$SIG\",\"nick\":\"$NICK\",\"token\":\"$TOK\"$CONFIRM_JSON}")"
     ID="$(field "$RES" id)"; POLL="$(field "$RES" poll)"
     TOK=""
     [ -n "$ID" ] && [ -n "$POLL" ] && break
     case "$RES" in
       *paused*) say "  ✖ Новые входы по SSH закрыты владельцем.\r\n"; logger -t sky-ssh-gate "вход $U@$R закрыт: рубильник"; exit 1 ;;
+      *email_failed*|*email_required*|*two_factor_required*|*public_url_missing*|*owner_missing*) if [ "$SKY_MODE" = "both" ]; then exec 8>&-; local_fallback "Письмо владельцу отправить не удалось" && exit 0; say "  ✖ Письмо владельцу не отправлено. Вход закрыт.\r\n"; logger -t sky-ssh-gate "вход $U@$R закрыт: $RES"; exit 1; fi ;;
       ""|"<"*) if [ "$SKY_FAILOPEN" = "1" ]; then logger -t sky-ssh-gate "API недоступен, SKY_FAILOPEN=1: вход $U пропущен"; exit 0; fi
           exec 8>&-
           local_fallback "Сервер проверки Sky недоступен" && exit 0
@@ -294,6 +297,11 @@ if [ "$SKY_MODE" = "token" ]; then
     TS="$(date +%s)"; SIG="$(printf '%s\n%s\n%s\n%s\n%s' "$TS" "$U" "$H" "$R" "$T" | openssl dgst -sha256 -hmac "$SKY_SECRET" -hex | awk '{print $NF}')"
   done
   if [ -z "$ID" ] || [ -z "$POLL" ]; then logger -t sky-ssh-gate "вход $U@$R закрыт: токен не принят"; say "\r\n  ✖ Вход закрыт.\r\n"; exit 1; fi
+  if [ "$SKY_MODE" = "both" ]; then
+    # Токен принят — дальше ждём подтверждения владельца (общий цикл ниже), как в режиме owner.
+    logger -t sky-ssh-gate "вход $U@$R: токен принят, ждём подтверждения владельца"
+    exec 8>&-
+  else
   logger -t sky-ssh-gate "вход $U@$R по токену принят; владельцу отправлено уведомление (окно отмены 25 минут)"
   MARK="${SKY_GATE_MARK:-/opt/sky/control/ssh-gate-approved}"
   { mkdir -p "$(dirname "$MARK")" && printf '%s %s %s\n' "$(date +%s)" "${PAM_USER:-}" "${PAM_RHOST:-}" > "$MARK" && chmod 600 "$MARK"; } 2>/dev/null
@@ -303,8 +311,10 @@ if [ "$SKY_MODE" = "token" ]; then
   say "\r\n  ✔ Вход принят. Владельцу отправлено уведомление — 25 минут он может его отменить.\r\n\r\n"
   exec 8>&-
   exit 0
+  fi
 fi
 
+if [ -z "${ID:-}" ]; then
 RES="$(api /api/ssh-gate/request "{\"ts\":\"$TS\",\"user\":\"$U\",\"host\":\"$H\",\"rhost\":\"$R\",\"tty\":\"$T\",\"sig\":\"$SIG\"}")"
 ID="$(field "$RES" id)"; POLL="$(field "$RES" poll)"
 if [ -z "$ID" ] || [ -z "$POLL" ]; then
@@ -316,6 +326,7 @@ if [ -z "$ID" ] || [ -z "$POLL" ]; then
   else case "$RES" in *email_failed*|*email_required*|*two_factor_required*|*public_url_missing*|*owner_missing*|*disabled*) local_fallback "Письмо владельцу отправить не удалось" && exit 0 ;; esac; fi
   logger -t sky-ssh-gate "вход $U@$R закрыт: ${RES:-API недоступен}"
   exit 1
+fi
 fi
 
 # Терминал человека: пока ждём, на нём виден экран «Ожидание подтверждения владельца», и только потом — командная строка.

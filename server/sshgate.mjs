@@ -88,21 +88,8 @@ const ownerNow = async () => {
 };
 
 /** Запрос от скрипта на сервере. */
-export const requestSsh = async ({ ts, user, host, rhost, tty, sig }, { ip }) => {
-  if (!sshGateEnabled()) return { error: 'disabled' };
-  const t = Number(ts);
-  if (!Number.isFinite(t) || Math.abs(Date.now() / 1000 - t) > SIG_WINDOW_SEC) return { error: 'bad_signature' };
-  const fields = { ts: String(ts), user: clip(user, 40), host: clip(host, 80), rhost: clip(rhost, 60), tty: clip(tty, 40) };
-  if (!sameHex(signSshRequest(secret(), fields), String(sig ?? ''))) {
-    // Запрос с чужой подписью — попытка обойти шлюз или подбор: пишем в журнал (не чаще 5 раз в минуту с адреса)
-    if (rateLimit(`sshgate:badsig:${ip}`, 5)) await logAdmin({ actorId: null, type: 'ssh_gate_bad_signature', targetType: 'system', result: 'denied', detail: clip(`адрес ${ip}`, 100) }).catch(() => {});
-    return { error: 'bad_signature' };
-  }
-  if ((await sshState()).paused) {
-    await logAdmin({ actorId: null, type: 'ssh_gate_blocked', targetType: 'system', result: 'denied', detail: clip(`вход приостановлен владельцем: ${fields.user}@${fields.rhost}`, 120) }).catch(() => {});
-    return { error: 'paused' };
-  }
-
+/** Письмо владельцу со ссылкой и ожидание его подтверждения (режимы owner и both). actor — кто назвался токеном (режим both). */
+const startOwnerConfirm = async (fields, ip, actor) => {
   const who = await ownerNow();
   if (!who) return { error: 'owner_missing' };
   if (!who.email) return { error: 'email_required' };
@@ -113,11 +100,12 @@ export const requestSsh = async ({ ts, user, host, rhost, tty, sig }, { ip }) =>
   const token = crypto.randomBytes(32).toString('base64url');
   const poll = crypto.randomBytes(24).toString('base64url');
   const id = `ssh-${crypto.randomUUID()}`;
-  const device = `${fields.user}@${fields.host}${fields.tty ? ` (${fields.tty})` : ''}`;
+  const device = `${fields.user}@${fields.host}${fields.tty ? ` (${fields.tty})` : ''}${actor ? ` · токен @${actor.username}` : ''}`;
   await query(
     `INSERT INTO ssh_gate_requests (id, profile_id, token_hash, poll_hash, ssh_user, ssh_host, ip, ip_fp, device, expires_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now() + ($10 || ' minutes')::interval)`,
     [id, who.id, hash('link', token), hash('poll', poll), fields.user, fields.host, ipMask(fields.rhost), ipFp(fields.rhost), clip(device, 160), String(LINK_TTL_MIN)]);
+  if (actor) await query('UPDATE ssh_gate_requests SET actor_id = $2 WHERE id = $1', [id, actor.id]);
 
   const link = `${config.publicOrigin}/ssh-verify?t=${token}`;
   const r = await sendEmail(who.email, L('Вход на сервер Sky по SSH', 'Sky server SSH sign-in'),
@@ -135,6 +123,24 @@ export const requestSsh = async ({ ts, user, host, rhost, tty, sig }, { ip }) =>
   await logSecurityEvent(who.id, 'ssh_gate_request', clip(device, 100), { ip: clip(ip, 60) });
   return { ok: true, id, poll, expiresIn: LINK_TTL_MIN * 60 };
 };
+export const requestSsh = async ({ ts, user, host, rhost, tty, sig }, { ip }) => {
+  if (!sshGateEnabled()) return { error: 'disabled' };
+  const t = Number(ts);
+  if (!Number.isFinite(t) || Math.abs(Date.now() / 1000 - t) > SIG_WINDOW_SEC) return { error: 'bad_signature' };
+  const fields = { ts: String(ts), user: clip(user, 40), host: clip(host, 80), rhost: clip(rhost, 60), tty: clip(tty, 40) };
+  if (!sameHex(signSshRequest(secret(), fields), String(sig ?? ''))) {
+    // Запрос с чужой подписью — попытка обойти шлюз или подбор: пишем в журнал (не чаще 5 раз в минуту с адреса)
+    if (rateLimit(`sshgate:badsig:${ip}`, 5)) await logAdmin({ actorId: null, type: 'ssh_gate_bad_signature', targetType: 'system', result: 'denied', detail: clip(`адрес ${ip}`, 100) }).catch(() => {});
+    return { error: 'bad_signature' };
+  }
+  if ((await sshState()).paused) {
+    await logAdmin({ actorId: null, type: 'ssh_gate_blocked', targetType: 'system', result: 'denied', detail: clip(`вход приостановлен владельцем: ${fields.user}@${fields.rhost}`, 120) }).catch(() => {});
+    return { error: 'paused' };
+  }
+
+  return startOwnerConfirm(fields, ip, null);
+};
+
 
 /** Опрос от скрипта: подтверждение выдаётся один раз. */
 export const pollSsh = async (id, poll) => {
@@ -254,7 +260,7 @@ export const hasSshAccess = async (profileId) => {
 };
 
 /** Запрос от скрипта: @ник + токен. Любой отказ одинаков для подбора («denied»), причины — только в журнале. */
-export const loginSsh = async ({ ts, user, host, rhost, tty, nick, token, sig }, { ip }) => {
+export const loginSsh = async ({ ts, user, host, rhost, tty, nick, token, sig, confirm }, { ip }) => {
   if (!sshGateEnabled()) return { error: 'disabled' };
   const t = Number(ts);
   if (!Number.isFinite(t) || Math.abs(Date.now() / 1000 - t) > SIG_WINDOW_SEC) return { error: 'bad_signature' };
@@ -283,6 +289,11 @@ export const loginSsh = async ({ ts, user, host, rhost, tty, nick, token, sig },
   if (!(await hasSshAccess(prof.id))) return denied(`нет доступа к SSH (@${prof.username})`, prof.id);
   const v = await verifyAdminToken(prof.id, token, { force: true });
   if (!v.ok) return denied(`токен: ${v.error}`, prof.id);
+  // Режим both: токен принят — дальше вход ждёт подтверждения владельца (ссылка из письма + код аутентификатора), как в режиме owner.
+  if (confirm === true || confirm === 'true') {
+    await logAdmin({ actorId: prof.id, type: 'ssh_login_token_ok', targetType: 'system', detail: clip(`${fields.user}@${fields.host} · ${ipMask(fields.rhost)}: токен @${prof.username} принят, ждём владельца`, 140) }).catch(() => {});
+    return startOwnerConfirm(fields, ip, prof);
+  }
 
   const id = `ssh-${crypto.randomUUID()}`;
   const poll = crypto.randomBytes(24).toString('base64url');
