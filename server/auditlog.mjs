@@ -12,7 +12,7 @@ import { notifyOwnerAction, notifyActorSelf } from './ownernotify.mjs';
 /* Служебные административные запросы, которые действием не считаются (запрос кода, шлюз входа). */
 const NOT_AN_ACTION = /\/(step-up|gate)(\/|$)/;
 
-const SKIP = /^\/api\/(telemetry|platform\/status|auth\/refresh|admin\/logs)|\/(pulse|heartbeat|position|presence|typing|progress|ping|seen|read)(\/|$)/;
+const SKIP = /^\/api\/(telemetry|platform\/status|auth\/refresh|admin\/logs|ops\/agent|sandbox\/runner|guard|ssh-gate)|\/(pulse|heartbeat|position|presence|typing|progress|ping|seen|read)(\/|$)/;
 const ID = /^(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,})*|[a-z]{1,6}-[0-9a-z-]{8,}|\d{3,}|[0-9A-Za-z_-]{22,})$/i;
 
 export const normalizeRoute = (path) => String(path ?? '').split('?')[0].split('/').map((seg) => (ID.test(seg) ? ':id' : seg)).join('/').slice(0, 120);
