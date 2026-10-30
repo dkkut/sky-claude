@@ -54,7 +54,7 @@ if [ "$cmd" = check ]; then
     need docker; docker compose version >/dev/null 2>&1 && ok "docker compose" || bad "нет docker compose"
     need age "apt install -y age"; need gzip; need tar; need curl
     [ -f "$SRC_DIR/docker-compose.yml" ] && ok "репозиторий: $SRC_DIR" || bad "в $SRC_DIR нет docker-compose.yml"
-    free_gb=$(df -P --output=avail -BG "$(dirname "$APP_DIR")" 2>/dev/null | tail -n1 | tr -dc 0-9); [ "${free_gb:-0}" -ge 20 ] && ok "свободно ${free_gb} ГБ" || warn "свободно ${free_gb:-?} ГБ — на базу, файлы и образы нужно с запасом"
+    free_gb=$(df -P -BG "$(dirname "$APP_DIR")" 2>/dev/null | awk 'NR==2{print $4}' | tr -dc 0-9); [ "${free_gb:-0}" -ge 20 ] && ok "свободно ${free_gb} ГБ" || warn "свободно ${free_gb:-?} ГБ — на базу, файлы и образы нужно с запасом"
     for p in 80 443; do ss -ltn "sport = :$p" 2>/dev/null | grep -q LISTEN && warn "порт $p уже занят" || ok "порт $p свободен"; done
     [ -e "$APP_DIR/.env" ] && warn "в $APP_DIR уже есть .env — при restore он будет сохранён как .env.before-restore" || ok "$APP_DIR/.env нет"
     if [ -n "$KEY" ]; then [ -r "$KEY" ] && grep -q AGE-SECRET-KEY "$KEY" && ok "секретный ключ age читается" || bad "--key: не похоже на секретный ключ age"; else warn "ключ age не указан (--key) — на restore он обязателен"; fi
@@ -65,7 +65,7 @@ if [ "$cmd" = check ]; then
     [ -n "$(get_env BACKUP_AGE_RECIPIENT)" ] && ok "публичный ключ age задан" || bad "нет BACKUP_AGE_RECIPIENT в .env (bash scripts/install-backup.sh --genkey)"
     dc ps --status running --services 2>/dev/null | grep -qx postgres && ok "postgres работает" || bad "postgres не запущен"
     dc ps --status running --services 2>/dev/null | grep -qx api && ok "api работает" || bad "api не запущен"
-    used=$(du -sm /var/lib/docker/volumes 2>/dev/null | cut -f1); free=$(df -P --output=avail -BM "${OUT:-/root}" | tail -n1 | tr -dc 0-9)
+    used=$(du -sm /var/lib/docker/volumes 2>/dev/null | cut -f1); free=$(df -P -BM "${OUT:-/root}" | awk 'NR==2{print $4}' | tr -dc 0-9)
     [ "${free:-0}" -gt "${used:-0}" ] && ok "места на набор хватает (данных ≈ ${used:-?} МБ, свободно ${free} МБ)" || warn "места может не хватить (данных ≈ ${used:-?} МБ, свободно ${free:-?} МБ) — задайте --out на большой диск"
     [ -n "$(get_env STORAGE_BACKUP_S3_BUCKET)" ] && ok "хранилище копий настроено (для --push)" || warn "хранилище копий не настроено — --push недоступен"
   fi

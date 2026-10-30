@@ -132,6 +132,12 @@ if grep -qs 'ssh-gate' /etc/pam.d/sshd 2>/dev/null; then
   [ -r /etc/sky-rescue.user ]   || echo "Совет: не настроен аварийный пользователь SSH — sudo bash $SRC_DIR/scripts/rescue-access.sh --install"
 fi
 
+# Автокопии: заглушка и юниты systemd обновляются вместе с кодом (раньше логика была зашита в установленный файл и не обновлялась годами).
+if [ -f /etc/sky-backup.env ] && [ -f "$SRC_DIR/scripts/install-backup.sh" ]; then
+  echo "==> Обновляю автокопии (заглушка и таймеры)"
+  bash "$SRC_DIR/scripts/install-backup.sh" --sync || echo "ВНИМАНИЕ: автокопии не обновлены. Проверка: bash $SRC_DIR/scripts/install-backup.sh --doctor"
+fi
+
 # Старые локальные образы занимают диск — оставляем три последних.
 docker image ls --format '{{.Repository}}:{{.Tag}} {{.CreatedAt}}' \
   | awk '$1 ~ /^sky-(web|api):/ && $1 !~ /:local$/' | sort -k2 -r \

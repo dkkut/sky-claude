@@ -123,7 +123,16 @@ check_resources() {
   [ "${load:-0}" -gt $(( cores * 3 )) ] 2>/dev/null && warn "высокая нагрузка: load ${load} на ${cores} ядер" || ok "нагрузка: load ${load:-?} / ${cores} ядер"
 }
 
+check_backup() {   # автокопии: свежая удачная копия есть? (состояние пишет scripts/sky-backup-run.sh)
+  local st=/var/lib/sky-backup/status
+  [ -f /etc/sky-backup.env ] || { warn "автокопии не установлены (bash scripts/install-backup.sh --install)"; return 0; }
+  local ok; ok="$(sed -n 's/^last_ok=//p' "$st" 2>/dev/null | tail -n1)"
+  if [ -z "$ok" ]; then warn "автокопии установлены, но удачной копии ещё не было (bash scripts/install-backup.sh --doctor)"
+  elif [ $(( $(date +%s) - ok )) -gt 129600 ]; then warn "последняя удачная копия была $(( ( $(date +%s) - ok ) / 3600 )) ч назад — см. sky-backup --status"
+  else ok "автокопии: последняя удачная $(( ( $(date +%s) - ok ) / 3600 )) ч назад"; fi
+}
 check_misc() {
+  check_backup
   local d; d="$(dom)"
   if [ -n "$d" ] && have openssl; then
     local end days; end="$(echo | timeout 8 openssl s_client -servername "$d" -connect 127.0.0.1:443 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)"
