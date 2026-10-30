@@ -43,6 +43,12 @@ export const mayOpenWithoutCode = async (skyId, profileId, req) => {
   return Boolean(rows[0]);
 };
 
+/** Это устройство уже доверенное для этого Sky ID (вход по коду состоялся раньше)? */
+export const isDeviceTrusted = async (skyId, req) => {
+  const id = rawId(req); if (!id) return false;
+  return (await query('SELECT 1 FROM sky_trusted_devices WHERE sky_id = $1 AND device_hash = $2', [skyId, hashOf(id)])).rowCount > 0;
+};
+
 export const listTrusted = async (skyId, req) => {
   const cur = rawId(req) ? hashOf(rawId(req)) : null;
   const { rows } = await query(

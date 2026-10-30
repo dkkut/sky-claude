@@ -26,6 +26,12 @@ export const walletRoutes = async (req, res, url) => {
     return json(res, 200, await wallet.getState(uid));
   }
 
+  // Только два числа — для экранов покупки в других сервисах, пока SkyMoney закрыт замком (moneyguard.mjs). Истории здесь нет.
+  if (req.method === 'GET' && url === '/api/wallet/balance') {
+    const { balance, points } = await wallet.getState(uid, 0);
+    return json(res, 200, { balance, points });
+  }
+
   // Пополнение создаёт деньги, поэтому в обычном режиме закрыто:
   // включать его можно только вместе с настоящим приёмом платежей.
   if (req.method === 'POST' && url === '/api/wallet/topup') {

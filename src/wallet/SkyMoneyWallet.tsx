@@ -20,6 +20,9 @@ import { SkyPayCheckout, PayHistory } from '@/payment/SkyPay';
 import { SkyKassa } from '@/skykassa/SkyKassa';
 import { ScanQr } from '@/kassabiz/ScanQr';
 import { RefundRequest } from './RefundRequest';
+import { MoneyGate } from './MoneyGate';
+import { SkyCards } from './stubs/SkyCards';
+import { SkyCrypto } from './stubs/SkyCrypto';
 
 const C = {
   bg:     'var(--bg)',
@@ -42,7 +45,7 @@ const C = {
 /* QUICK_AMOUNTS moved to TopUpSheet */
 
 /* -- Toplevel section type --------------------------------------- */
-type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan' | 'refund';
+type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan' | 'refund' | 'cards' | 'crypto';
 
 /* -- Balance Card ----------------------------------------------- */
 const BalanceCard = ({ balance, points, userId, onExchange }: {
@@ -336,7 +339,7 @@ const ExchangeView = ({ onDone, userId }: { onDone: () => void; userId: string }
 };
 
 /* === MAIN COMPONENT ============================================ */
-export const SkyMoneyWallet = () => {
+const SkyMoneyWalletInner = () => {
   const { currentUserId } = useAuthStore();
   const { getBalance, getPoints, getTxs } = useMoney();
   /* Возврат со страницы партнёра: ?skykassa=<платёж> открывает карточку платежа. */
@@ -427,6 +430,8 @@ export const SkyMoneyWallet = () => {
       </div>
     </div>
   );
+  if (view === 'cards') return <SkyCards onBack={() => setView('main')}/>;
+  if (view === 'crypto') return <SkyCrypto onBack={() => setView('main')}/>;
   if (view === 'refund') return <RefundRequest txs={txs} onBack={() => setView('main')}/>;
   if (view === 'history') return <HistoryView txs={txs} onBack={() => setView('main')}/>;
 
@@ -497,6 +502,18 @@ export const SkyMoneyWallet = () => {
         </div>
       )}
 
+      {/* Будущие сервисы: заглушки в бета-разработке (внутри замка SkyMoney) */}
+      <div className="grid grid-cols-2 gap-2">
+        {([['cards', 'SkyCards', 'Виртуальные карты', 'linear-gradient(135deg,#3b4bd8,#8b5cf6)'], ['crypto', 'SkyCrypto', 'Цифровые активы', 'linear-gradient(135deg,#0ea5c6,#7c3aed)']] as const).map(([k, name, sub, bg]) => (
+          <button key={k} type="button" onClick={() => setView(k)}
+            className="flex flex-col items-start gap-2 rounded-2xl p-3 text-left transition-colors hover:bg-white/[0.03]"
+            style={{ background:C.l2, border:`1px solid ${C.border}` }}>
+            <span className="grid h-9 w-9 place-items-center rounded-xl" style={{ background:bg }}><CreditCard size={16} color="#fff"/></span>
+            <span><span className="block text-sm font-bold" style={{ color:C.t1 }}>{name}</span><span className="block text-[11px]" style={{ color:C.t3 }}>{sub} · бета</span></span>
+          </button>
+        ))}
+      </div>
+
       {/* Gifts link */}
       <button type="button" onClick={() => setView('gifts')}
         className="flex items-center gap-2 w-full rounded-2xl px-4 py-3 transition-colors hover:bg-white/[0.03]"
@@ -533,3 +550,8 @@ export const SkyMoneyWallet = () => {
     </div>
   );
 };
+
+/** Весь SkyMoney — за замком: ни один экран кошелька (и заглушки SkyCards/SkyCrypto) не монтируется, пока сервер не подтвердил доступ. */
+export const SkyMoneyWallet = () => (
+  <MoneyGate><SkyMoneyWalletInner /></MoneyGate>
+);

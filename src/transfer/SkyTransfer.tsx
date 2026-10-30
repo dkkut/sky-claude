@@ -41,8 +41,8 @@ export function SkyTransfer() {
     const d = r.data;
     setErr(''); setOv({
       ...d, devices: d.devices ?? [], active: d.active ?? [], history: d.history ?? [],
-      prefs: { accept: 'own', confirm: false, keepHours: 24, historyDays: 30, ...(d.prefs ?? {}) },
-      limits: { maxFileBytes: 100 * 1048576, minChunk: 262144, maxChunk: 4194304, blockedExt: [], ...(d.limits ?? {}) },
+      prefs: { ...{ accept: 'own', confirm: false, keepHours: 24, historyDays: 30 }, ...((d.prefs ?? {}) as Partial<TOverview['prefs']>) } as TOverview['prefs'],
+      limits: { ...{ maxFileBytes: 100 * 1048576, minChunk: 262144, maxChunk: 4194304, blockedExt: [] as string[] }, ...((d.limits ?? {}) as Partial<TOverview['limits']>) },
     } as TOverview);
   }, []);
   // Регистрируем это устройство (первое — подтверждено сразу, остальные ждут) и держим «онлайн».

@@ -59,13 +59,13 @@ sql(`insert into wallet_accounts(user_id,balance) values('${B.pid}',1000) on con
 r = await call('/api/wallet/spend', { method: 'POST', body: JSON.stringify({ amount: 100, type: 'market', userId: A.pid, profileId: A.pid, user_id: A.pid }) }, B.tok);
 const bal = (p) => Number(sql(`select balance from wallet_accounts where user_id='${p}'`));
 check('списание с подменой userId бьёт только по B', bal(A.pid) === 1000 && bal(B.pid) === 900, `A=${bal(A.pid)} B=${bal(B.pid)}`);
-r = await call('/api/wallet', {}, B.tok);
+r = await call('/api/wallet/balance', {}, B.tok);
 check('кошелёк B показывает баланс B', r.data?.balance === 900, JSON.stringify(r.data).slice(0, 80));
-r = await call(`/api/wallet?userId=${A.pid}`, {}, B.tok);
+r = await call(`/api/wallet/balance?userId=${A.pid}`, {}, B.tok);
 check('параметр userId в запросе кошелька игнорируется', r.data?.balance === 900);
 
 /* ── Возможность читать через подмену заголовков профиля ── */
-r = await call('/api/wallet', {}, B.tok, { 'x-profile-id': A.pid, 'x-user-id': A.pid });
+r = await call('/api/wallet/balance', {}, B.tok, { 'x-profile-id': A.pid, 'x-user-id': A.pid });
 check('заголовки подмены профиля игнорируются', r.data?.balance === 900);
 
 console.log(`${ok} ok, ${bad} FAIL`);

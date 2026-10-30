@@ -137,6 +137,14 @@ export const ModulesTab = () => {
     <div className="space-y-4">
       <Quick list={list} onChanged={() => void load()} />
       <UserBlocksPanel modules={list} />
+      <div className="rounded-2xl p-3" style={{ background: C.l2, border: `1px solid ${C.border}` }}>
+        <p className="mb-2 text-xs font-bold" style={{ color: C.t1 }}>Заглушки SkyMoney (только статус)</p>
+        {['SkyCards', 'SkyCrypto'].map((n) => (
+          <div key={n} className="flex items-center justify-between py-1 text-xs" style={{ color: C.t2 }}>
+            <span>{n}</span><span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(139,123,255,.16)', color: '#a99bff' }}>Бета-разработка</span>
+          </div>
+        ))}
+      </div>
       <AllBar anyOpen={list.some((m) => !m.closed)} onChanged={() => void load()} />
       <p className="text-[11px]" style={{ color: C.t3 }}>
         Закрытый модуль у людей заменяется баннером «Сервис временно недоступен, мы уже работаем над восстановлением доступа». Это закрытие интерфейса:

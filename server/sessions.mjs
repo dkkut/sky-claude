@@ -119,6 +119,19 @@ export const sessionStore = {
     await client.setEx(`applock:${id}`, ttl > 0 ? ttl : 60, JSON.stringify(rec));
   },
 
+  /** Допуск к SkyMoney (moneyguard.mjs): отдельный ключ с коротким сроком, живёт не дольше сессии. */
+  async getMoney(id) {
+    const raw = await client.get(`moneyok:${id}`);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  },
+  async setMoney(id, rec, ttlSec) {
+    if (!rec) { await client.del(`moneyok:${id}`); return; }
+    const life = await client.ttl(KEY_SESSION(id));
+    const ttl = Math.min(ttlSec, life > 0 ? life : ttlSec);
+    await client.setEx(`moneyok:${id}`, Math.max(1, ttl), JSON.stringify(rec));
+  },
+
   async setActiveProfile(id, profileId) {
     const session = await this.get(id);
     if (!session) return false;
@@ -172,7 +185,7 @@ export const sessionStore = {
 
   async revoke(id) {
     const session = await this.get(id);
-    const multi = client.multi().del(KEY_SESSION(id)).del(KEY_SESS_IPS(id));
+    const multi = client.multi().del(KEY_SESSION(id)).del(KEY_SESS_IPS(id)).del(`moneyok:${id}`);
     if (session?.userId) multi.sRem(KEY_USER_SESS(session.userId), id);
     await multi.exec();
     announceRevoked([id]);

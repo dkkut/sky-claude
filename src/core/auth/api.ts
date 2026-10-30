@@ -153,6 +153,7 @@ const ERRORS: Record<string, string> = {
   unauthorized:          'Сессия закончилась, войдите заново',
   no_active_profile:     'Сначала выберите профиль',
   sms_not_configured:    'Отправка кодов пока не настроена',
+  money_locked:          'SkyMoney закрыт — подтвердите доступ',
   email_delivery_failed: 'Не удалось отправить письмо с кодом. Попробуйте позже или войдите по паролю',
   sms_delivery_failed:   'Не удалось отправить SMS с кодом. Попробуйте позже или войдите по почте',
   delivery_failed:       'Не удалось отправить код. Попробуйте позже',
@@ -402,6 +403,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
     if (isAdminTokenError(data?.error) && /^\/api\/(admin|owner|staff)\//.test(path) && !path.startsWith('/api/admin/gate')) askAdminToken(String(data?.error));
     if (res.status === 423 && data?.error === 'app_locked') { try { window.dispatchEvent(new CustomEvent('sky:applock')); } catch { /* ok */ } }
     if (res.status === 403 && data?.error === 'limited_session') { try { window.dispatchEvent(new CustomEvent('sky:limited')); } catch { /* ok */ } }
+    if (res.status === 403 && data?.error === 'money_locked') { try { window.dispatchEvent(new CustomEvent('sky:money-locked')); } catch { /* ok */ } }
     if (res.status === 503 && data?.error === 'platform_shutdown') onPlatformBlocked?.({ kind: 'shutdown', reason: String(data?.reason ?? '') });
     if (res.status === 503 && data?.error === 'platform_maintenance') onPlatformBlocked?.({ kind: 'maintenance', reason: String(data?.reason ?? '') });
     return { ok: false, error: data?.error, reason: (data?.message && String(data?.error).startsWith('registration_')) ? String(data.message) : explain(data?.error, res.status), status: res.status, data };

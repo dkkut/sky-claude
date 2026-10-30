@@ -151,6 +151,8 @@ import { accountRecoveryRoutes } from './routes/accountrecovery.mjs';
 import { recoveryRoutes } from './routes/recovery.mjs';
 import { limitedAccessRoutes } from './routes/limitedaccess.mjs';
 import { appLockRoutes } from './routes/applock.mjs';
+import { moneyGuardRoutes } from './routes/moneyguard.mjs';
+import { isMoneyPath, moneyOpen } from './moneyguard.mjs';
 import { skyQrRoutes } from './routes/skyqr.mjs';
 import { transferRoutes } from './routes/transfer.mjs';
 import { sweepTransfers } from './transfer.mjs';
@@ -270,7 +272,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -392,6 +394,18 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
         if (stb && stb.userId === tkb.sky && stb.profileId) {
           const hit = await moduleBlockedFor(stb.profileId, new URL(req.url, 'http://x').pathname);
           if (hit) return json(res, 403, { error: 'module_blocked', module: hit });
+        }
+      }
+    }
+
+    // Замок SkyMoney (moneyguard.mjs): финансовые данные и операции закрыты, пока в этой сессии не подтверждены устройство и пароль.
+    if (url.startsWith('/api/') && isMoneyPath(new URL(req.url, 'http://x').pathname)) {
+      const tkm = verifyToken(readAccessToken(req), config.jwtSecret);
+      if (tkm?.typ === 'access' && tkm.sky && tkm.sid) {
+        const stm = await sessionStore.get(tkm.sid);
+        if (stm && stm.userId === tkm.sky) {
+          const st = await moneyOpen(tkm.sky, tkm.sid, req);
+          if (!st.unlocked) return json(res, 403, { error: 'money_locked', needPassword: st.needPassword, needDevice: st.needDevice });
         }
       }
     }

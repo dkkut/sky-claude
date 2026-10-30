@@ -45,6 +45,7 @@ const call = async (path: string, init: RequestInit = {}): Promise<Response> => 
   });
 
   const res = await send();
+  if (res.status === 403) { try { window.dispatchEvent(new CustomEvent('sky:money-locked')); } catch { /* ok */ } }
   if (res.status !== 401) return res;
 
   // Access-токен живёт 15 минут; обновляемся один раз и повторяем.
@@ -64,7 +65,17 @@ const op = async (path: string, body: unknown): Promise<OpResult> => {
 };
 
 export const fetchWallet = async (): Promise<WalletSnapshot | null> => {
-  const res = await call('');
+  let res = await call('');
+  // SkyMoney закрыт замком (moneyguard.mjs): история и состояние недоступны — берём только два числа для экранов покупки в других сервисах.
+  if (res.status === 403) {
+    const data0 = await readJson(res.clone());
+    if (data0?.error === 'money_locked') {
+      res = await call('/balance');
+      if (!res.ok) return null;
+      const b = await readJson(res);
+      return { balance: b.balance ?? 0, points: b.points ?? 0, transactions: [] };
+    }
+  }
   if (!res.ok) return null;
   const data = await readJson(res);
   return {
