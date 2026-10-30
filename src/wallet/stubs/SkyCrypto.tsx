@@ -2,8 +2,8 @@
  * SkyCrypto — визуальная заглушка будущего раздела цифровых активов. Только оформление: нет кошельков, ключей, бирж, обмена и сделок,
  * нет запросов к серверу. Все названия активов выдуманы, а цифры и график — условные и так подписаны. Элементы неактивны (<Dead>).
  */
-import { Layers, LineChart, ShieldCheck, Hexagon } from 'lucide-react';
-import { BetaBanner, Dead, StubTop } from './Stub';
+import { Layers, LineChart, ShieldCheck, Hexagon, ArrowDownToLine, ArrowUpFromLine, Repeat, Bell, Plus, TrendingUp, TrendingDown } from 'lucide-react';
+import { BetaBanner, Dead, Fake, StubTop } from './Stub';
 
 const TINT = '#22d3ee';
 
@@ -50,6 +50,42 @@ export const SkyCrypto = ({ onBack }: { onBack: () => void }) => (
           <div className="mx-auto max-w-sm"><Hero /></div>
           <h1 className="-mt-2 text-4xl font-black tracking-tight sm:text-5xl" style={{ background: 'linear-gradient(90deg,#67e8f9,#a78bfa)', WebkitBackgroundClip: 'text', color: 'transparent' }}>SkyCrypto</h1>
           <p className="mx-auto mt-2 max-w-md text-sm text-white/60">Цифровые активы в экосистеме Sky. Раздел в разработке.</p>
+        </section>
+
+        <section className="rounded-3xl p-5" style={{ background: 'linear-gradient(150deg, rgba(34,211,238,.12), rgba(139,92,246,.08))', border: '1px solid rgba(255,255,255,.14)', backdropFilter: 'blur(14px)' }}>
+          <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Портфель</p>
+          <p className="mt-1 text-4xl font-black tracking-tight">$ 8 214,30</p>
+          <p className="mt-1 flex items-center gap-1.5 text-xs font-bold" style={{ color: '#4ade80' }}><TrendingUp size={13} />+ 3,2 % за сутки <span className="font-normal text-white/40">· пример</span></p>
+          <div className="mt-4 flex gap-2">{['1Д', '1Н', '1М', '1Г', 'Всё'].map((c, i) => <button key={c} type="button" className="rounded-full px-3 py-1.5 text-xs font-bold" style={{ background: i === 1 ? `${TINT}33` : 'rgba(255,255,255,.06)', border: `1px solid ${i === 1 ? TINT + '88' : 'rgba(255,255,255,.1)'}` }}>{c}</button>)}</div>
+          <div className="mt-4 grid grid-cols-4 gap-2">
+            <Fake icon={<Plus size={17} />} label="Купить" tint={TINT} /><Fake icon={<ArrowUpFromLine size={17} />} label="Продать" tint={TINT} />
+            <Fake icon={<Repeat size={17} />} label="Обмен" tint={TINT} /><Fake icon={<ArrowDownToLine size={17} />} label="Получить" tint={TINT} />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-white/50">Мои активы</h2>
+          <div className="overflow-hidden rounded-2xl" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)' }}>
+            {ASSETS.map((a, i) => (
+              <button key={a.code} type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left" style={{ borderTop: i ? '1px solid rgba(255,255,255,.07)' : 'none' }}>
+                <span className="grid h-9 w-9 place-items-center rounded-full" style={{ background: `${a.hue}26`, border: `1px solid ${a.hue}77` }}><Hexagon size={14} color={a.hue} /></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{a.name}</span><span className="block text-xs text-white/45">{[2.41, 118.6, 0.87][i]} {a.code}</span></span>
+                <svg viewBox="0 0 60 24" className="h-6 w-14" aria-hidden="true"><polyline points={spark(a.pts, 60, 24)} fill="none" stroke={a.hue} strokeWidth="1.8" strokeLinecap="round" /></svg>
+                <span className="w-24 text-right"><span className="block text-sm font-bold">$ {['3 120,00', '2 940,10', '2 154,20'][i]}</span>
+                  <span className="flex items-center justify-end gap-1 text-[11px] font-bold" style={{ color: i === 1 ? '#f87171' : '#4ade80' }}>{i === 1 ? <TrendingDown size={11} /> : <TrendingUp size={11} />}{['+ 4,1', '− 1,8', '+ 2,7'][i]} %</span></span>
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-white/40">Пример оформления — настоящих активов и цен нет.</p>
+        </section>
+
+        <section className="grid grid-cols-2 gap-3">
+          {[[Bell, 'Уведомления о цене', 'Оповещения об изменениях'], [ShieldCheck, 'Защита кошелька', 'Резервная фраза и подтверждения']].map(([Icon, t, d]) => {
+            const I = Icon as typeof Bell; return (
+            <button key={String(t)} type="button" className="rounded-2xl p-4 text-left" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)' }}>
+              <span className="mb-2 grid h-9 w-9 place-items-center rounded-xl" style={{ background: `${TINT}22`, color: TINT }}><I size={16} /></span>
+              <span className="block text-sm font-bold">{String(t)}</span><span className="block text-xs text-white/50">{String(d)}</span>
+            </button>); })}
         </section>
 
         <section>

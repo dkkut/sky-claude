@@ -11,13 +11,14 @@ import { visibleTick } from '@/shared/visibleTick';
 
 interface MoneyStatus {
   unlocked: boolean; needPassword: boolean; needDevice: boolean; passwordSet?: boolean; trustedDevice?: boolean;
-  deviceProof?: 'authenticator' | 'email' | 'phone' | null; destination?: string | null; expiresInSec?: number;
+  deviceProof?: 'authenticator' | 'email' | 'phone' | 'phrase' | null; destination?: string | null; expiresInSec?: number;
 }
 
 const TEXT: Record<string, string> = {
   invalid_credentials: 'Неверный пароль', password_required: 'Введите пароль', device_code_required: 'Введите код',
   invalid_code: 'Неверный код', code_expired: 'Код устарел — запросите новый', too_many_attempts: 'Слишком много попыток — попробуйте позже',
   too_many_requests: 'Слишком много попыток — попробуйте позже', too_soon: 'Код уже отправлен — подождите немного',
+  invalid_phrase: 'Фраза или слово не подошли', phrase_required: 'Введите 12 слов', use_phrase: 'Для этого устройства нужна фраза восстановления',
   no_contact: 'Нет подтверждённой почты или номера для кода', unauthorized: 'Сессия истекла, войдите заново',
 };
 
@@ -30,6 +31,10 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
   const [pwd, setPwd] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
+  const [words, setWords] = useState('');
+  const [extra, setExtra] = useState('');
+  const [showExtra, setShowExtra] = useState(false);
+  const taps = useRef<number[]>([]);
   const alive = useRef(true);
 
   // Запросы статуса не плодим: каждый финансовый запрос с money_locked присылает событие, и их приходит десяток разом —
@@ -76,11 +81,11 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
   };
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
-    const r = await apiCall<MoneyStatus>('/api/skyid/money/unlock', { method: 'POST', body: JSON.stringify({ password: pwd || undefined, code: code || undefined }) });
+    const r = await apiCall<MoneyStatus>('/api/skyid/money/unlock', { method: 'POST', body: JSON.stringify({ password: pwd || undefined, code: code || undefined, words: words || undefined, extra: extra || undefined }) });
     setBusy(false);
-    if (r.ok && r.data?.unlocked) { setPwd(''); setCode(''); setSt(r.data); return; }
+    if (r.ok && r.data?.unlocked) { setPwd(''); setCode(''); setWords(''); setExtra(''); setSt(r.data); return; }
     if (r.ok && r.data) { setSt(r.data); return; }
-    setErr(TEXT[r.error ?? ''] ?? 'Не получилось подтвердить доступ'); setPwd('');
+    setErr(TEXT[r.error ?? ''] ?? 'Не получилось подтвердить доступ'); setPwd(''); setExtra('');
   };
   const inp = 'w-full rounded-2xl px-4 py-3 text-base outline-none';
   const sty = { background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' } as const;
@@ -89,12 +94,23 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
     <div className="grid h-full place-items-center overflow-y-auto p-5" role="region" aria-label="SkyMoney закрыт">
       <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-3xl p-6" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
         <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl" style={{ background: 'rgba(99,102,241,.16)', border: '1px solid rgba(99,102,241,.35)' }}><Lock size={22} style={{ color: 'var(--accent)' }} /></span>
+          <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-2xl" style={{ background: 'rgba(99,102,241,.16)', border: '1px solid rgba(99,102,241,.35)' }}
+            onClick={() => { const n = Date.now(); taps.current = [...taps.current.filter((x) => n - x < 3000), n]; if (taps.current.length >= 5 && st.deviceProof === 'phrase') { taps.current = []; setShowExtra((v) => !v); } }}><Lock size={22} style={{ color: 'var(--accent)' }} /></span>
           <div><h2 className="text-lg font-extrabold" style={{ color: 'var(--t1)' }}>SkyMoney закрыт</h2>
             <p className="text-xs" style={{ color: 'var(--t3)' }}>Подтвердите доступ, чтобы открыть кошелёк</p></div>
         </div>
 
-        {st.needDevice && (
+        {st.needDevice && st.deviceProof === 'phrase' && (
+          <div className="space-y-2">
+            <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--t1)' }}><ShieldCheck size={15} />Это устройство не подтверждено</p>
+            <p className="text-xs" style={{ color: 'var(--t3)' }}>Введите 12 слов фразы восстановления через пробел.</p>
+            <textarea value={words} onChange={(e) => setWords(e.target.value)} rows={3} autoCapitalize="none" autoCorrect="off" spellCheck={false} translate="no"
+              placeholder="слово1 слово2 … слово12" aria-label="Фраза восстановления" className={inp} style={{ ...sty, resize: 'none' }} />
+            {showExtra && <input type="password" value={extra} onChange={(e) => setExtra(e.target.value)} autoComplete="off" translate="no" aria-label="Дополнительное слово" placeholder="Дополнительное слово" className={inp} style={sty} />}
+          </div>
+        )}
+
+        {st.needDevice && st.deviceProof !== 'phrase' && (
           <div className="space-y-2">
             <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--t1)' }}><ShieldCheck size={15} />Это устройство не подтверждено</p>
             {st.deviceProof === 'authenticator'
@@ -116,7 +132,7 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
 
         {err && <p role="alert" className="rounded-xl p-3 text-sm" style={{ background: 'rgba(224,90,90,.12)', color: '#e05a5a' }}>{err}</p>}
         {err.startsWith('Не удалось проверить') && <button type="button" onClick={() => { setErr(''); void load(); }} className="w-full rounded-2xl py-2.5 text-sm font-bold" style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>Повторить проверку</button>}
-        <button type="submit" disabled={busy || (st.needPassword && !pwd) || (st.needDevice && !code)}
+        <button type="submit" disabled={busy || (st.needPassword && !pwd) || (st.needDevice && (st.deviceProof === 'phrase' ? words.trim().split(/\s+/).length < 12 : !code))}
           className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-extrabold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
           {busy ? <Loader2 size={16} className="animate-spin" /> : null}Открыть SkyMoney
         </button>

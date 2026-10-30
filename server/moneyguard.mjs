@@ -18,6 +18,7 @@ import { isDeviceTrusted } from './trusteddevices.mjs';
 import { issueCode, verifyCode } from './verification.mjs';
 import { verifySkyTwoFactor } from './skyid.mjs';
 import { logEvent } from './skylog.mjs';
+import { recoveryInfo, checkPhrase } from './moneyrecovery.mjs';
 
 export const UNLOCK_SEC = Math.max(60, (Number(process.env.MONEY_UNLOCK_MIN) || 15) * 60);
 
@@ -47,10 +48,14 @@ export const moneyState = async (skyId, sid, req) => {
   const channel = row.email_verified && row.email ? 'email' : (row.phone_verified && row.phone ? 'phone' : null);
   const needDevice = !trusted && !rec.dev;
   const needPassword = passwordSet && !rec.pw;
+  // Фраза восстановления задана → на недоверенном устройстве нужна она, а не код (иначе код обходил бы фразу).
+  const phrase = needDevice ? (await recoveryInfo(skyId).catch(() => ({ hasPhrase: false }))).hasPhrase : false;
   return {
     unlocked: !needDevice && !needPassword,
+    // Только для сервера (в ответ клиенту не попадает): недоверенное устройство, открытое фразой без 13-го слова.
+    decoy: !trusted && rec.mode === 'decoy',
     trustedDevice: trusted, passwordSet, needPassword, needDevice,
-    deviceProof: needDevice ? (useApp ? 'authenticator' : channel) : null,
+    deviceProof: needDevice ? (phrase ? 'phrase' : (useApp ? 'authenticator' : channel)) : null,
     destination: needDevice && !useApp && channel ? mask(channel === 'email' ? row.email : row.phone) : null,
     expiresInSec: UNLOCK_SEC,
   };
@@ -70,6 +75,7 @@ const deny = (error, extra = {}) => ({ ok: false, error, ...extra });
 /** Отправить код подтверждения устройства (почта/SMS). Без аутентификатора. */
 export const sendDeviceCode = async (skyId) => {
   const row = await load(skyId); if (!row) return deny('not_found');
+  if ((await recoveryInfo(skyId)).hasPhrase) return deny('use_phrase');
   const useApp = row.two_factor_enabled && (row.two_factor_method ?? 'app') === 'app';
   if (useApp) return deny('use_authenticator');
   const channel = row.email_verified && row.email ? 'email' : (row.phone_verified && row.phone ? 'phone' : null);
@@ -81,7 +87,7 @@ export const sendDeviceCode = async (skyId) => {
 };
 
 /** Подтвердить доступ: можно прислать пароль и/или код устройства; что нужно — решает сервер. */
-export const unlockMoney = async (skyId, sid, req, { password, code } = {}) => {
+export const unlockMoney = async (skyId, sid, req, { password, code, words, extra } = {}) => {
   if (!rateLimit(`moneyunlock:${skyId}`, 8) || !rateLimitPerHour(`moneyunlock:${skyId}`, 40)) return deny('too_many_requests');
   const row = await load(skyId); if (!row) return deny('not_found');
   const st = await moneyState(skyId, sid, req);
@@ -94,8 +100,13 @@ export const unlockMoney = async (skyId, sid, req, { password, code } = {}) => {
     rec.pw = Date.now();
   }
   if (st.needDevice) {
-    if (!code) return deny('device_code_required', { deviceProof: st.deviceProof });
-    if (st.deviceProof === 'authenticator') {
+    if (st.deviceProof === 'phrase') {
+      if (!words) return deny('phrase_required', { deviceProof: 'phrase' });
+      const v = await checkPhrase(skyId, words, extra);
+      if (!v.ok) return deny(v.error, v.retryAfter ? { retryAfter: v.retryAfter } : {});
+      rec.mode = v.mode;
+    } else if (!code) return deny('device_code_required', { deviceProof: st.deviceProof });
+    else if (st.deviceProof === 'authenticator') {
       const v = await verifySkyTwoFactor(skyId, String(code));
       if (!v.ok) return deny(v.error === 'too_many_attempts' ? 'too_many_attempts' : 'invalid_code');
     } else {

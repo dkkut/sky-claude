@@ -1,24 +1,49 @@
 /**
  * Общие части заглушек SkyCards и SkyCrypto (будущие сервисы SkyMoney): баннер недоступности и «мёртвая» зона.
- * Всё внутри <Dead> не принимает ни касаний, ни фокуса, ни клавиатуры (атрибут inert + pointer-events:none), поэтому никакой элемент
- * заглушки не может выполнить действие, открыть окно или отправить запрос. Живыми остаются только кнопка «Назад» и вся навигация Sky вокруг.
+ * Любое нажатие внутри <Dead> показывает «Недоступно, вкладка в разработке»; у элементов нет обработчиков действий,
+ * поэтому никакой из них не может выполнить действие, открыть окно или отправить запрос. Живыми остаются только кнопка «Назад» и вся навигация Sky вокруг.
  * Здесь НЕТ ни запросов к серверу, ни данных: все цифры и карточки — условные, нарисованные кодом.
  */
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, FlaskConical } from 'lucide-react';
 
 export const BETA_TEXT = 'Вкладка недоступна, она в бета разработке';
 
+export const TAP_TEXT = 'Недоступно, вкладка в разработке';
+
+/**
+ * «Мёртвая» зона: любое нажатие внутри гасится и показывает короткую плашку «Недоступно, вкладка в разработке».
+ * Обработчиков действий у внутренних элементов нет вообще, поэтому ни один из них ничего не выполняет и не отправляет.
+ */
 export const Dead = ({ children, className = '', style }: { children: ReactNode; className?: string; style?: React.CSSProperties }) => {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { ref.current?.setAttribute('inert', ''); }, []);
+  const [toast, setToast] = useState(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const tap = (e: React.SyntheticEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    setToast((n) => n + 1);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setToast(0), 1900);
+  };
   return (
-    <div ref={ref} aria-disabled="true" className={className} style={{ pointerEvents: 'none', userSelect: 'none', cursor: 'default', ...style }}
-      onClickCapture={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+    <div aria-disabled="true" className={className} style={{ userSelect: 'none', cursor: 'default', ...style }}
+      onClickCapture={tap} onSubmitCapture={tap}>
       {children}
+      {toast > 0 && (
+        <div role="status" key={toast} className="stub-banner pointer-events-none fixed inset-x-0 bottom-24 z-[60] mx-auto w-fit max-w-[88vw] rounded-full px-5 py-3 text-sm font-bold"
+          style={{ background: 'rgba(20,20,30,.92)', color: '#fff', border: '1px solid rgba(255,255,255,.2)', boxShadow: '0 12px 40px rgba(0,0,0,.5)', backdropFilter: 'blur(14px)' }}>{TAP_TEXT}</div>
+      )}
     </div>
   );
 };
+
+/** Кнопка-«картинка»: выглядит как действие, но обработчика нет — нажатие ловит <Dead> и показывает плашку. */
+export const Fake = ({ icon, label, tint }: { icon: ReactNode; label: string; tint: string }) => (
+  <button type="button" className="flex flex-col items-center gap-1.5 rounded-2xl px-1 py-2.5 text-[11px] font-semibold text-white/85"
+    style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)' }}>
+    <span className="grid h-10 w-10 place-items-center rounded-full" style={{ background: `${tint}26`, border: `1px solid ${tint}55`, color: tint }}>{icon}</span>{label}
+  </button>
+);
 
 /** Баннер: фирменный, с мягкой подсветкой и аккуратным появлением. `tint` — оттенок конкретной заглушки. */
 export const BetaBanner = ({ tint }: { tint: string }) => (

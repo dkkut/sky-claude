@@ -21,6 +21,9 @@ import { SkyKassa } from '@/skykassa/SkyKassa';
 import { ScanQr } from '@/kassabiz/ScanQr';
 import { RefundRequest } from './RefundRequest';
 import { MoneyGate } from './MoneyGate';
+import { Settings as SettingsIcon } from 'lucide-react';
+import { MoneySettings, readHideBalance } from './MoneySettings';
+import { apiCall } from '@/core/auth/api';
 import { SkyCards } from './stubs/SkyCards';
 import { SkyCrypto } from './stubs/SkyCrypto';
 
@@ -48,6 +51,12 @@ const C = {
 type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan' | 'refund' | 'cards' | 'crypto';
 
 /* -- Balance Card ----------------------------------------------- */
+const useHideBalance = () => {
+  const [h, setH] = useState(readHideBalance());
+  useEffect(() => { const f = () => setH(readHideBalance()); window.addEventListener('sky:money-hide', f); return () => window.removeEventListener('sky:money-hide', f); }, []);
+  return h;
+};
+
 const BalanceCard = ({ balance, points, userId, onExchange }: {
   balance: number; points: number; userId: string; onExchange: () => void;
 }) => (
@@ -65,7 +74,7 @@ const BalanceCard = ({ balance, points, userId, onExchange }: {
           </div>
           <span className="text-xs font-semibold tracking-wider uppercase" style={{ color:'rgba(255,255,255,0.4)' }}>SkyMoney</span>
         </div>
-        <div className="text-4xl font-black text-white" style={{ letterSpacing:'-0.02em' }}>{fmt(balance)}</div>
+        <div className="text-4xl font-black text-white" style={{ letterSpacing:'-0.02em' }}>{useHideBalance() ? '••••••' : fmt(balance)}</div>
         <div className="text-xs mt-1" style={{ color:'rgba(255,255,255,0.35)' }}>Доступный баланс</div>
       </div>
     </div>
@@ -343,8 +352,8 @@ type Section = 'wallet' | 'cards' | 'crypto';
 const SECTIONS: { id: Section; label: string }[] = [{ id: 'wallet', label: 'Кошелёк' }, { id: 'cards', label: 'SkyCards' }, { id: 'crypto', label: 'SkyCrypto' }];
 
 /** Переключатель разделов SkyMoney вверху: кошелёк и две заглушки будущих сервисов (бета). */
-const MoneySwitch = ({ value, onChange }: { value: Section; onChange: (s: Section) => void }) => (
-  <div className="flex justify-center px-4 pt-3 pb-1">
+const MoneySwitch = ({ value, onChange, onSettings }: { value: Section; onChange: (s: Section) => void; onSettings?: () => void }) => (
+  <div className="flex items-center justify-center gap-2 px-4 pt-3 pb-1">
     <div role="tablist" aria-label="Разделы SkyMoney" className="glass-pill relative inline-flex max-w-full gap-0.5 p-1">
       {SECTIONS.map((o) => (
         <button key={o.id} type="button" role="tab" aria-selected={value === o.id} onClick={() => onChange(o.id)}
@@ -354,10 +363,11 @@ const MoneySwitch = ({ value, onChange }: { value: Section; onChange: (s: Sectio
           {o.label}{o.id !== 'wallet' && <span className="ml-1 text-[9px] font-bold uppercase opacity-60">бета</span>}
         </button>))}
     </div>
+    {onSettings && <button type="button" onClick={onSettings} aria-label="Настройки SkyMoney" className="glass-btn round grid h-9 w-9 shrink-0 place-items-center"><SettingsIcon size={16} /></button>}
   </div>
 );
 
-const SkyMoneyWalletInner = ({ onSection }: { onSection: (s: Section) => void }) => {
+const SkyMoneyWalletInner = ({ onSection, onSettings }: { onSection: (s: Section) => void; onSettings: () => void }) => {
   const { currentUserId } = useAuthStore();
   const { getBalance, getPoints, getTxs } = useMoney();
   /* Возврат со страницы партнёра: ?skykassa=<платёж> открывает карточку платежа. */
@@ -453,7 +463,7 @@ const SkyMoneyWalletInner = ({ onSection }: { onSection: (s: Section) => void })
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <MoneySwitch value="wallet" onChange={(x) => { if (x !== 'wallet') onSection(x); }} />
+      <MoneySwitch value="wallet" onChange={(x) => { if (x !== 'wallet') onSection(x); }} onSettings={onSettings} />
 
       {/* Fixed top: Balance + Actions */}
       <div className="shrink-0 px-4 pt-4 pb-3 space-y-3"
@@ -571,10 +581,12 @@ const SkyMoneyWalletInner = ({ onSection }: { onSection: (s: Section) => void })
 /** Весь SkyMoney — за замком: ни один экран кошелька (и заглушки SkyCards/SkyCrypto) не монтируется, пока сервер не подтвердил доступ. */
 const SkyMoneyShell = () => {
   const [section, setSection] = useState<Section>('wallet');
-  if (section === 'wallet') return <SkyMoneyWalletInner onSection={setSection} />;
+  const [settings, setSettings] = useState(false);
+  if (settings) return <MoneySettings onBack={() => setSettings(false)} onLock={() => { void apiCall('/api/skyid/money/lock', { method: 'POST', body: '{}' }).then(() => window.dispatchEvent(new Event('sky:money-locked'))); setSettings(false); }} />;
+  if (section === 'wallet') return <SkyMoneyWalletInner onSection={setSection} onSettings={() => setSettings(true)} />;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <MoneySwitch value={section} onChange={setSection} />
+      <MoneySwitch value={section} onChange={setSection} onSettings={() => setSettings(true)} />
       <div className="min-h-0 flex-1 overflow-hidden">
         {section === 'cards' ? <SkyCards onBack={() => setSection('wallet')} /> : <SkyCrypto onBack={() => setSection('wallet')} />}
       </div>

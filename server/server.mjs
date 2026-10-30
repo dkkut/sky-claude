@@ -155,6 +155,7 @@ import { limitedAccessRoutes } from './routes/limitedaccess.mjs';
 import { appLockRoutes } from './routes/applock.mjs';
 import { moneyGuardRoutes } from './routes/moneyguard.mjs';
 import { isMoneyPath, moneyOpen } from './moneyguard.mjs';
+import { decoyReply } from './moneyrecovery.mjs';
 import { skyQrRoutes } from './routes/skyqr.mjs';
 import { transferRoutes } from './routes/transfer.mjs';
 import { sweepTransfers } from './transfer.mjs';
@@ -403,13 +404,17 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
     }
 
     // Замок SkyMoney (moneyguard.mjs): финансовые данные и операции закрыты, пока в этой сессии не подтверждены устройство и пароль.
-    if (url.startsWith('/api/') && isMoneyPath(new URL(req.url, 'http://x').pathname)) {
+    const moneyPath = url.startsWith('/api/') ? new URL(req.url, 'http://x').pathname : '';
+    const moneyBalance = moneyPath === '/api/wallet/balance';
+    if (moneyPath && (isMoneyPath(moneyPath) || moneyBalance)) {
       const tkm = verifyToken(readAccessToken(req), config.jwtSecret);
       if (tkm?.typ === 'access' && tkm.sky && tkm.sid) {
         const stm = await sessionStore.get(tkm.sid);
         if (stm && stm.userId === tkm.sky) {
           const st = await moneyOpen(tkm.sky, tkm.sid, req);
-          if (!st.unlocked) return json(res, 403, { error: 'money_locked', needPassword: st.needPassword, needDevice: st.needDevice });
+          if (!st.unlocked && !moneyBalance) return json(res, 403, { error: 'money_locked', needPassword: st.needPassword, needDevice: st.needDevice });
+          // Недоверенное устройство, открытое фразой без 13-го слова: вместо настоящих данных — пустой кошелёк (moneyrecovery.mjs).
+          if (st.unlocked && st.decoy) { const d = decoyReply(req.method, moneyPath); return json(res, d.status, d.body); }
         }
       }
     }

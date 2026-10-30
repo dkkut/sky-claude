@@ -2,8 +2,8 @@
  * SkyCards — визуальная заглушка будущего сервиса виртуальных карт. Только оформление: карт нет, номеров нет, платежей нет, запросов нет.
  * Все элементы неактивны (<Dead>), живёт лишь «Назад». Цвета и узоры нарисованы кодом.
  */
-import { ShieldCheck, SlidersHorizontal, Zap, Sparkles } from 'lucide-react';
-import { BetaBanner, Dead, StubTop } from './Stub';
+import { ShieldCheck, SlidersHorizontal, Zap, Sparkles, Plus, ArrowUpRight, QrCode, Snowflake, Eye, Gauge, ShoppingBag, Music, Car, Coffee, ChevronRight } from 'lucide-react';
+import { BetaBanner, Dead, Fake, StubTop } from './Stub';
 
 const TINT = '#8b7bff';
 
@@ -56,6 +56,35 @@ export const SkyCards = ({ onBack }: { onBack: () => void }) => (
           <div className="stub-float relative w-full max-w-[420px]" style={{ ['--r' as string]: '-2deg' }}><Card look={LOOKS[0]} big /></div>
           <h1 className="relative mt-7 text-center text-3xl font-black tracking-tight sm:text-4xl">Карты Sky</h1>
           <p className="relative mt-2 max-w-md text-center text-sm text-white/65">Виртуальные карты для вашего кошелька SkyMoney. Скоро.</p>
+        </section>
+
+        <section className="rounded-3xl p-5" style={{ background: 'linear-gradient(150deg, rgba(255,255,255,.10), rgba(255,255,255,.03))', border: '1px solid rgba(255,255,255,.14)', backdropFilter: 'blur(14px)' }}>
+          <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Баланс карты</p>
+          <p className="mt-1 text-4xl font-black tracking-tight">12 480,50 <span className="text-2xl text-white/60">₽</span></p>
+          <p className="mt-1 text-xs text-white/45">Пример · условные цифры</p>
+          <div className="mt-4 flex gap-2">{['₽', '$', '€', '¥'].map((c, i) => <button key={c} type="button" className="rounded-full px-3.5 py-1.5 text-xs font-bold" style={{ background: i ? 'rgba(255,255,255,.07)' : `${TINT}33`, border: `1px solid ${i ? 'rgba(255,255,255,.12)' : TINT + '88'}`, color: '#fff' }}>{c}</button>)}</div>
+          <div className="mt-4 grid grid-cols-4 gap-2">
+            <Fake icon={<Plus size={17} />} label="Пополнить" tint={TINT} /><Fake icon={<ArrowUpRight size={17} />} label="Перевести" tint={TINT} />
+            <Fake icon={<QrCode size={17} />} label="Оплатить" tint={TINT} /><Fake icon={<Eye size={17} />} label="Реквизиты" tint={TINT} />
+          </div>
+          <div className="mt-2 grid grid-cols-4 gap-2">
+            <Fake icon={<Snowflake size={17} />} label="Заморозить" tint="#7dd3fc" /><Fake icon={<Gauge size={17} />} label="Лимиты" tint="#7dd3fc" />
+            <Fake icon={<ShieldCheck size={17} />} label="Защита" tint="#7dd3fc" /><Fake icon={<SlidersHorizontal size={17} />} label="Настройки" tint="#7dd3fc" />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-xs font-bold uppercase tracking-widest text-white/50">Последние платежи</h2>
+          <div className="overflow-hidden rounded-2xl" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)' }}>
+            {[[ShoppingBag, 'Магазин', 'Покупки', '− 1 290 ₽'], [Music, 'Музыка', 'Подписка', '− 299 ₽'], [Car, 'Такси', 'Поездка', '− 540 ₽'], [Coffee, 'Кофейня', 'Напитки', '− 420 ₽']].map(([Icon, n, d, a], i) => {
+              const I = Icon as typeof Zap; return (
+              <button key={String(n)} type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left" style={{ borderTop: i ? '1px solid rgba(255,255,255,.07)' : 'none' }}>
+                <span className="grid h-9 w-9 place-items-center rounded-full" style={{ background: `${TINT}22`, color: TINT }}><I size={16} /></span>
+                <span className="min-w-0 flex-1"><span className="block text-sm font-bold">{String(n)}</span><span className="block text-xs text-white/45">{String(d)}</span></span>
+                <span className="text-sm font-bold">{String(a)}</span><ChevronRight size={14} className="text-white/30" />
+              </button>); })}
+          </div>
+          <p className="mt-2 text-[11px] text-white/40">Пример оформления — настоящих платежей нет.</p>
         </section>
 
         <section>
