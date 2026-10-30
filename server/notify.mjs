@@ -248,7 +248,9 @@ const emailProviders = {
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!res.ok) {
-        console.error('[email:resend] сервис ответил', res.status);
+        // Причина от Resend (неверный ключ, домен/отправитель не подтверждён, лимит тарифа) — в журнал, без ключа и адресов.
+        const why = await res.text().then((t) => { try { const j = JSON.parse(t); return String(j.message || j.name || t); } catch { return t; } }).catch(() => '');
+        console.error('[email:resend] сервис ответил', res.status, why.replace(/re_[A-Za-z0-9_]+/g, '***').replace(/[\w.+-]+@[\w.-]+/g, '<адрес>').slice(0, 200));
         return { ok: false, error: 'email_delivery_failed' };
       }
       return { ok: true };
