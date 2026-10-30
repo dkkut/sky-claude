@@ -7,6 +7,7 @@ import { useMusicStore } from '@/music/serverStore';
 import { playMusicQueue } from '@/music/useMusicSync';
 import { useMessengerStore } from '@/messenger/store';
 import { useMoney } from '@/wallet/store';
+import { Secret } from '@/wallet/Secret';
 import { apiWeather, type WeatherNow } from '@/bloom/weatherApi';
 import { apiMediaActivity, type MediaActivity } from '@/extras/mediaActivityApi';
 import { useModuleStore } from '@/data/state/modules';
@@ -318,7 +319,7 @@ const BizAnalytics = ({ w }: { w: WidgetDef }) => {
 const Points = () => {
   const { balance, points, refresh } = useMoney() as unknown as { balance: number; points: number; refresh?: () => Promise<void> | void };
   useEffect(() => { void refresh?.(); }, [refresh]);
-  return <Box title="Кошелёк"><div className="text-[24px] font-bold" style={{ color: 'var(--t1)' }}>{Math.round(balance)} ₽</div><div className="text-[13px]" style={{ color: 'var(--t2)' }}>{Math.round(points)} баллов Prime</div></Box>;
+  return <Box title="Кошелёк"><div className="text-[24px] font-bold" style={{ color: 'var(--t1)' }}><Secret>{Math.round(balance)} ₽</Secret></div><div className="text-[13px]" style={{ color: 'var(--t2)' }}><Secret>{Math.round(points)} баллов Prime</Secret></div></Box>;
 };
 
 const Custom = ({ w }: { w: WidgetDef }) => {

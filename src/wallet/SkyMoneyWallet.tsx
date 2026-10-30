@@ -22,9 +22,10 @@ import { kkList, type HistoryItem } from '@/skykassa/api';
 import { ScanQr } from '@/kassabiz/ScanQr';
 import { RefundRequest } from './RefundRequest';
 import { MoneyGate } from './MoneyGate';
+import { Secret } from './Secret';
 import { FxAccounts } from './FxAccounts';
 import { Settings as SettingsIcon, Sparkles } from 'lucide-react';
-import { MoneySettings, readHideBalance } from './MoneySettings';
+import { MoneySettings } from './MoneySettings';
 import { apiCall } from '@/core/auth/api';
 import { SkyCards } from './stubs/SkyCards';
 import { SkyCrypto } from './stubs/SkyCrypto';
@@ -53,11 +54,6 @@ const C = {
 type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan' | 'refund' | 'cards' | 'crypto' | 'fx';
 
 /* -- Balance Card ----------------------------------------------- */
-const useHideBalance = () => {
-  const [h, setH] = useState(readHideBalance());
-  useEffect(() => { const f = () => setH(readHideBalance()); window.addEventListener('sky:money-hide', f); return () => window.removeEventListener('sky:money-hide', f); }, []);
-  return h;
-};
 
 const BalanceCard = ({ balance, points, userId, onExchange }: {
   balance: number; points: number; userId: string; onExchange: () => void;
@@ -76,7 +72,7 @@ const BalanceCard = ({ balance, points, userId, onExchange }: {
           </div>
           <span className="text-xs font-semibold tracking-wider uppercase" style={{ color:'rgba(255,255,255,0.4)' }}>SkyMoney</span>
         </div>
-        <div className="text-4xl font-black text-white" style={{ letterSpacing:'-0.02em' }}>{useHideBalance() ? '••••••' : fmt(balance)}</div>
+        <div className="text-4xl font-black text-white" style={{ letterSpacing:'-0.02em' }}><Secret mask="••••••">{fmt(balance)}</Secret></div>
         <div className="text-xs mt-1" style={{ color:'rgba(255,255,255,0.35)' }}>Доступный баланс</div>
       </div>
     </div>
@@ -96,7 +92,7 @@ const BalanceCard = ({ balance, points, userId, onExchange }: {
             <span className="text-xs font-semibold tracking-wider uppercase" style={{ color:'rgba(255,255,255,0.4)' }}>Баллы Прайма</span>
           </div>
           <div className="text-4xl font-black" style={{ color:'var(--amber)', letterSpacing:'-0.02em' }}>
-            {points.toLocaleString('ru')}
+            <Secret mask="••••">{points.toLocaleString('ru')}</Secret>
           </div>
           <div className="text-xs mt-1" style={{ color:'rgba(255,255,255,0.35)' }}>баллов</div>
         </div>
@@ -157,14 +153,14 @@ const SpendingStats = ({ txs }: { txs: ReturnType<typeof useMoney.getState>['tra
           <ArrowDownLeft size={14} style={{ color:C.red }}/>
           <span className="text-xs" style={{ color:C.t3 }}>Расходы (30 дн)</span>
         </div>
-        <div className="text-lg font-bold" style={{ color:C.red }}>−{fmt(spent30)}</div>
+        <div className="text-lg font-bold" style={{ color:C.red }}><Secret>−{fmt(spent30)}</Secret></div>
       </div>
       <div className="rounded-2xl p-4" style={{ background:C.l2, border:`1px solid ${C.border}` }}>
         <div className="flex items-center gap-2 mb-2">
           <ArrowUpRight size={14} style={{ color:C.green }}/>
           <span className="text-xs" style={{ color:C.t3 }}>Приход (30 дн)</span>
         </div>
-        <div className="text-lg font-bold" style={{ color:C.green }}>+{fmt(income30)}</div>
+        <div className="text-lg font-bold" style={{ color:C.green }}><Secret>+{fmt(income30)}</Secret></div>
       </div>
     </div>
   );
@@ -196,7 +192,7 @@ const TxItem = ({ tx }: { tx: ReturnType<typeof useMoney.getState>['transactions
       </div>
       <div className="text-right shrink-0">
         <p className="text-sm font-bold" style={{ color: plus ? C.green : C.t1 }}>
-          {fmtTx(tx)}
+          <Secret>{fmtTx(tx)}</Secret>
         </p>
         <p className="text-[10px]" style={{ color:C.t3 }}>{dateStr}</p>
       </div>
@@ -221,7 +217,7 @@ const ConfirmedKassa = () => {
             <p className="truncate text-xs font-semibold" style={{ color: C.t1 }}>Пополнение SkyKassa{i.methodTitle ? ` · ${i.methodTitle}` : ''}</p>
             <p className="text-[10px]" style={{ color: C.t3 }}>{new Date(i.createdAt).toLocaleDateString('ru', { day: 'numeric', month: 'short', year: 'numeric' })} · {i.statusLabel}</p>
           </div>
-          <p className="text-sm font-bold" style={{ color: C.green }}>+{fmt(i.amount)}</p>
+          <p className="text-sm font-bold" style={{ color: C.green }}><Secret>+{fmt(i.amount)}</Secret></p>
         </div>
       ))}
     </div>
@@ -307,11 +303,11 @@ const ExchangeView = ({ onDone, userId }: { onDone: () => void; userId: string }
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl p-3.5" style={{ background:C.l2, border:`1px solid ${C.border}` }}>
           <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color:C.t3 }}>Баланс ₽</p>
-          <p className="text-lg font-black text-white">{fmt(balance)}</p>
+          <p className="text-lg font-black text-white"><Secret>{fmt(balance)}</Secret></p>
         </div>
         <div className="rounded-2xl p-3.5" style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.2)' }}>
           <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color:'rgba(245,158,11,0.5)' }}>Баллы</p>
-          <p className="text-lg font-black" style={{ color:'var(--amber)' }}>{(points).toLocaleString('ru')}</p>
+          <p className="text-lg font-black" style={{ color:'var(--amber)' }}><Secret>{(points).toLocaleString('ru')}</Secret></p>
         </div>
       </div>
 

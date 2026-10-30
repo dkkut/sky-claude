@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Plus, Loader2, ArrowRightLeft, Lock, Trash2 } from 'lucide-react';
 import { useMoney } from './store';
+import { Secret } from './Secret';
 import { fxOverview, fxOpen, fxClose, fxConvert, quoteFx, fmtCur, sparkPoints, pct, type FxOverview, type FxCurrency } from './fxApi';
 
 const ERR: Record<string, string> = {
@@ -67,7 +68,7 @@ export const FxAccounts = ({ onBack, rubBalance }: { onBack: () => void; rubBala
       <div className="mx-auto w-full max-w-xl flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <section className="rounded-3xl p-5" style={card}>
           <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>Основной счёт</p>
-          <p className="mt-1 text-3xl font-black" style={{ color: 'var(--t1)' }}>{rubBalance.toLocaleString('ru')} ₽</p>
+          <p className="mt-1 text-3xl font-black" style={{ color: 'var(--t1)' }}><Secret>{rubBalance.toLocaleString('ru')} ₽</Secret></p>
           <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--t3)' }}>Рубль остаётся основной валютой. Дополнительные счета открываются по желанию; обмен — только из рублей и обратно в рубли по курсу Sky (со спредом).</p>
         </section>
 
@@ -80,7 +81,7 @@ export const FxAccounts = ({ onBack, rubBalance }: { onBack: () => void; rubBala
             <section key={a.currency} className="space-y-3 rounded-3xl p-5" style={card}>
               <div className="flex items-start justify-between gap-3">
                 <div><p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--t3)' }}>{c?.name ?? a.currency} · {a.currency}</p>
-                  <p className="mt-1 text-3xl font-black" style={{ color: 'var(--t1)' }}>{fmtCur(a.balance, c?.symbol ?? '')}</p></div>
+                  <p className="mt-1 text-3xl font-black" style={{ color: 'var(--t1)' }}><Secret>{fmtCur(a.balance, c?.symbol ?? '')}</Secret></p></div>
                 {a.balance === 0 && <button type="button" onClick={() => void close(a.currency)} aria-label="Закрыть счёт" className="glass-btn round grid h-9 w-9 place-items-center"><Trash2 size={15} /></button>}
               </div>
               {c?.available ? (
