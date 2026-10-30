@@ -12,6 +12,7 @@
  *   • своё сообщение людям вместо стандартного.
  * Всё считается по настоящим строкам `sky_ids`; выдуманных цифр нет.
  */
+import { currentLevel } from './firewall.mjs';
 import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { config } from './config.mjs';
@@ -54,7 +55,7 @@ export const registerLimited = async (ip, insert) => {
       ?? { enabled: true, daily_limit: 0, per_ip_limit: 0, per_ip_hours: 24, message: '' };
     const h = ipHash(ip);
     let deny = null;
-    if (!s.enabled) deny = 'closed';
+    if (!s.enabled || currentLevel() >= 4) deny = 'closed';   // «Атака» файрвола закрывает и новые регистрации
     else if (s.daily_limit > 0 && (await countDay(client)) >= s.daily_limit) deny = 'daily_limit';
     else if (s.per_ip_limit > 0 && h) {
       const n = Number((await client.query(

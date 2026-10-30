@@ -36,6 +36,8 @@ import { handoffRoutes } from './routes/handoff.mjs';
 import { sweepHandoff } from './handoff.mjs';
 import { sweepSandbox } from './sandbox.mjs';
 import { isIpBlocked, defenseTick } from './selfdefense.mjs';
+import { gate as firewallGate, startFirewall, loadFloor as firewallFloor } from './firewall.mjs';
+import { firewallRoutes } from './routes/firewall.mjs';
 import { watchResponse, scanRequest, integrityCheck } from './leakdetect.mjs';
 import { authRoutes } from './routes/auth.mjs';
 import { passwordRoutes } from './routes/password.mjs';
@@ -201,7 +203,7 @@ import { codesRoutes } from './routes/codes.mjs';
 import { bloxRoutes } from './routes/blox.mjs';
 import { analyticsRoutes } from './routes/analytics.mjs';
 import { sampleOnce } from './analytics.mjs';
-import { recordRequest, optionalAllowed, loadLimits } from './bloxlimits.mjs';
+import { recordRequest, optionalAllowed, loadLimits, setFirewallFloor } from './bloxlimits.mjs';
 import { pruneNonces } from './bloxshop.mjs';
 import { probeGame } from './bloxnet.mjs';
 import { trackingRoutes } from './routes/tracking.mjs';
@@ -272,7 +274,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [firewallRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -332,7 +334,9 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
         if (isIpBlocked(ip)) return json(res, 403, { error: 'defense_blocked' });
         if (u0.startsWith('/api/') && await scanRequest(req)) return json(res, 403, { error: 'defense_blocked' });
       }
-      if (u0.startsWith('/api/')) watchResponse(req, res, rctx); }
+      if (u0.startsWith('/api/')) watchResponse(req, res, rctx);
+      // Файрвол: пределы по уровню защиты (0 — ничего не делает); свои адреса и инфраструктурные пути не трогает.
+      { const fw = firewallGate(req, Boolean(rctx?.sid)); if (fw) { if (fw.retryAfter) res.setHeader('Retry-After', String(fw.retryAfter)); return json(res, fw.status, { error: fw.error }); } } }
     // Картинки, обложки и куски аудио/видео: страница с лентой тянет их
     // десятками, и общий предел на API она выбирала бы за секунды. У самих
     // потоков есть свой предел на человека (STREAM_PER_MIN в маршрутах).
@@ -746,6 +750,8 @@ const start = async () => {
 
   // Самозащита: снятие уровня по сроку, чистка блокировок, проверка целостности кода (раз в 5 минут).
   let defTicks = 0;
+  startFirewall();
+  setFirewallFloor(firewallFloor);
   const defSchedule = setInterval(() => { defTicks += 1; defenseTick().catch((e) => console.error('[defense] тик:', e.message)); if (defTicks % 5 === 0) integrityCheck().catch(() => {}); }, 60 * 1000);
   defSchedule.unref();
   setTimeout(() => { integrityCheck().catch(() => {}); }, 20 * 1000).unref();

@@ -175,6 +175,15 @@ const repair = async (params, sink, isCancelled) => {
     }
     good ? ok('API отвечает') : no('API не отвечает после починки — смотрите «Ошибки в журнале API»');
   });
+  // Если API так и не ответил — тяжёлая лестница лечения (scripts/sky-heal.sh: перезапуск стека по порядку db → redis → api → web
+  // с проверкой после каждой ступени). Откат образов она делает ТОЛЬКО по флагу --rollback, которого здесь нет.
+  if (bad.some((b) => /API не отвечает/.test(b)) && !isCancelled() && fs.existsSync(`${SRC}/scripts/sky-heal.sh`)) {
+    await step('Экстренное лечение (sky-heal.sh)', async () => {
+      const r = await runProc(['bash', `${SRC}/scripts/sky-heal.sh`, '--fix', '--yes'], { cwd: APP, isCancelled, stream: true, sink, timeoutSec: 600 });
+      if (r.code === 0) { const i = bad.findIndex((b) => /API не отвечает/.test(b)); if (i >= 0) bad.splice(i, 1); ok('sky-heal.sh вылечил'); }
+      else no(`sky-heal.sh: не вылечил (код ${r.code}) — смотрите вывод выше`);
+    });
+  }
   sink.say(`\n${bad.length ? `Не всё удалось исправить (${bad.length}):\n  ${bad.join('\n  ')}` : 'Готово: проблем не осталось.'}`);
   return bad.length ? 1 : 0;
 };

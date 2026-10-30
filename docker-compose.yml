@@ -276,6 +276,8 @@ services:
       # Ключи доступа (WebAuthn): по умолчанию rpId — хост DOMAIN, origin — https://DOMAIN (server/passkeys.mjs).
       PASSKEY_RP_ID:         ${PASSKEY_RP_ID:-}
       ADMIN_TOKEN:           ${ADMIN_TOKEN:-}
+      CF_API_TOKEN:          ${CF_API_TOKEN:-}
+      CF_ZONE_ID:            ${CF_ZONE_ID:-}
       ADMIN_TOKEN_UNLOCK_MIN: ${ADMIN_TOKEN_UNLOCK_MIN:-}
       APPLOCK_GRACE_SEC:     ${APPLOCK_GRACE_SEC:-}
       PASSKEY_ORIGINS:       ${PASSKEY_ORIGINS:-}

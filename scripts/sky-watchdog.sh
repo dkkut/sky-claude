@@ -4,7 +4,7 @@
 #   sky-watchdog.sh            одна проверка с починкой
 #   sky-watchdog.sh --dry      только показать, что было бы сделано
 #   sky-watchdog.sh --status   последний статус и журнал
-# Что чинит: упавший docker; контейнеры не в строю (compose up -d); сайт не отвечает (перезапуск web/api);
+# Что чинит (при сбое сайта 3 минуты подряд зовёт scripts/sky-heal.sh — лестница с проверкой после каждой ступени): упавший docker; контейнеры не в строю (compose up -d); сайт не отвечает (перезапуск web/api);
 # закончилось место (кэш сборки, старые образы, журналы); не хватает памяти при сборке приложений (гасит сборку);
 # sshd не запущен. Чего НЕ делает: не трогает правила доступа SSH-шлюза (иначе падением API можно было бы обойти
 # подтверждение), не правит конфиги и не откатывает данные, не удаляет тома и базу.
@@ -116,7 +116,9 @@ if have docker && [ -f "$APP_DIR/docker-compose.yml" ]; then
     case "$code" in 000|502|504|521|522) n=$(( $(cat "$cnt" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$cnt"
       bad "сайт не отвечает (код $code, подряд $n)"
       if [ "$n" -ge 3 ]; then
-        if fix_budget; then mark_fix; run "docker compose restart web api"; fixed "перезапущены web и api"; echo 0 > "$cnt"
+        HEAL="${SKY_HEAL:-/opt/sky-src/scripts/sky-heal.sh}"
+        if fix_budget && [ -f "$HEAL" ]; then mark_fix; run "bash $HEAL --fix --yes --quiet"; fixed "запущено экстренное лечение (sky-heal.sh): сайт не отвечал $n мин"; echo 0 > "$cnt"
+        elif fix_budget; then mark_fix; run "docker compose restart web api"; fixed "перезапущены web и api"; echo 0 > "$cnt"
         else notify "сайт не отвечает $n мин подряд, лимит починок исчерпан"; fi
       fi;;
       *) echo 0 > "$cnt";;

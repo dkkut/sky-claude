@@ -111,7 +111,10 @@ const percentile = (arr, p) => {
 let levelFloor = () => 0;
 /** Sky Resource Optimizer поднимает уровень (но не опускает ниже собственных измерений). */
 export const setLevelFloor = (fn) => { levelFloor = typeof fn === 'function' ? fn : () => 0; };
-export const loadLevel = () => Math.max(ownLevel(), levelFloor() | 0);
+let fwFloor = () => 0;
+/** Файрвол (уровни «Тревога»/«Атака») откладывает необязательные работы так же, как высокая нагрузка. */
+export const setFirewallFloor = (fn) => { fwFloor = typeof fn === 'function' ? fn : () => 0; };
+export const loadLevel = () => Math.max(ownLevel(), levelFloor() | 0, fwFloor() | 0);
 const ownLevel = () => {
   const lagMs = lag.mean / 1e6; // нс → мс
   const p99 = lag.percentile(99) / 1e6;
