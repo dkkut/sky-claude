@@ -83,7 +83,7 @@ if [ "$cmd" = pack ]; then
   echo "==> База, файлы, .env и secrets/ (scripts/backup.sh)"
   APP_DIR="$APP_DIR" DEST="$OUT" KEEP=1 BACKUP_AGE_RECIPIENT="$AGE_PUB" bash "$SRC_DIR/scripts/backup.sh"
   echo "==> Настройки хоста (таймеры, SSH-шлюз, Sky Control…)"
-  HC=(); for f in /etc/sky-backup.env /etc/sky-watchdog.env /etc/sky-ssh-gate.conf /etc/sky-rescue.user /etc/sky-control /etc/sky-guard.env /etc/sky-sandbox.env /etc/sky-ssh-gate.off; do [ -e "$f" ] && HC+=("${f#/}"); done
+  HC=(); for f in /etc/sky-backup.env /etc/sky-watchdog.env /etc/sky-ssh-gate.conf /etc/sky-ssh-gate.totp /etc/sky-rescue.user /etc/sky-control /etc/sky-guard.env /etc/sky-sandbox.env /etc/sky-ssh-gate.off; do [ -e "$f" ] && HC+=("${f#/}"); done
   if [ "${#HC[@]}" -gt 0 ]; then tar czf - -C / "${HC[@]}" 2>/dev/null | age -r "$AGE_PUB" > "$OUT/host-config-$STAMP.tar.gz.age"; ok "host-config-$STAMP.tar.gz.age (${#HC[@]} путей)"; else warn "настроек хоста не найдено"; fi
   if [ "$WITH_CERTS" = 1 ]; then
     echo "==> Сертификаты (закрытые ключи! только в зашифрованном виде)"

@@ -6,8 +6,12 @@
 #   sky-watchdog.sh --status   последний статус и журнал
 # Что чинит: упавший docker; контейнеры не в строю (compose up -d); сайт не отвечает (перезапуск web/api);
 # закончилось место (кэш сборки, старые образы, журналы); не хватает памяти при сборке приложений (гасит сборку);
-# sshd не запущен. Чего НЕ делает: не трогает SSH-шлюз владельца и правила доступа (иначе падением API можно было бы
-# обойти подтверждение), не правит конфиги и не откатывает данные, не удаляет тома и базу.
+# sshd не запущен. Чего НЕ делает: не трогает правила доступа SSH-шлюза (иначе падением API можно было бы обойти
+# подтверждение), не правит конфиги и не откатывает данные, не удаляет тома и базу.
+# Единственное исключение, ВЫКЛЮЧЕНО по умолчанию: WATCHDOG_SSH_OPEN_MIN=N (минут, 0 — выкл.) — если API не отвечает
+# WATCHDOG_API_DOWN_MIN (10) минут подряд, шлюз SSH временно открывается на N минут (файл /etc/sky-ssh-gate.off с числом-сроком,
+# шлюз включается сам по истечении) и приходит оповещение; один раз за сбой, закрывается раньше, как только API ожил.
+# Это сознательное ослабление защиты на время аварии: включайте, только если без него вы рискуете остаться без входа.
 # Предохранители: не чаще MAX_FIX починок за окно WINDOW_MIN минут, потом пауза и только оповещение.
 # Настройки (необязательно): /etc/sky-watchdog.env — APP_DIR, DISK_WARN, DISK_CRIT, MAX_FIX, WINDOW_MIN,
 # WATCHDOG_EMAIL_TO (оповещение письмом тем же отправщиком, что и коды входа), WATCHDOG_TG_TOKEN и WATCHDOG_TG_CHAT
@@ -93,6 +97,22 @@ if have docker && [ -f "$APP_DIR/docker-compose.yml" ]; then
   if [ -n "$dom" ]; then
     code=$(curl -sk -m 8 -o /dev/null -w '%{http_code}' --resolve "$dom:443:127.0.0.1" "https://$dom/api/platform/status" 2>/dev/null || echo 000)
     cnt="$STATE/site_fail"
+    # Аварийное временное открытие SSH-шлюза (по умолчанию выключено, см. шапку).
+    ssh_off=/etc/sky-ssh-gate.off; ssh_mark="$STATE/ssh_open_by_watchdog"; down_f="$STATE/api_down_min"
+    case "$code" in 000|502|504|521|522) dn=$(( $(cat "$down_f" 2>/dev/null || echo 0) + 1 )); echo "$dn" > "$down_f"
+      if [ "${WATCHDOG_SSH_OPEN_MIN:-0}" -gt 0 ] 2>/dev/null && [ "$dn" -ge "${WATCHDOG_API_DOWN_MIN:-10}" ] && [ ! -e "$ssh_off" ] && [ ! -e "$STATE/ssh_open_done" ]; then
+        if [ "$DRY" = 1 ]; then log "[dry] открыл бы SSH-шлюз на ${WATCHDOG_SSH_OPEN_MIN} мин"; else
+          echo $(( now + WATCHDOG_SSH_OPEN_MIN * 60 )) > "$ssh_off" && chmod 600 "$ssh_off"; : > "$ssh_mark"; : > "$STATE/ssh_open_done"
+          fixed "SSH-шлюз временно открыт на ${WATCHDOG_SSH_OPEN_MIN} мин (API не отвечает $dn мин)"
+          notify "API не отвечает $dn мин: SSH-шлюз временно открыт на ${WATCHDOG_SSH_OPEN_MIN} мин (файл $ssh_off), войдите и чините; шлюз включится сам"
+        fi
+      fi;;
+      *) echo 0 > "$down_f"; rm -f "$STATE/ssh_open_done"
+         if [ -e "$ssh_mark" ]; then
+           v="$(head -c 20 "$ssh_off" 2>/dev/null | tr -d '[:space:]')"; case "$v" in ''|*[!0-9]*) ;; *) [ "$DRY" = 1 ] || rm -f "$ssh_off"; log "API снова отвечает: SSH-шлюз включён";; esac
+           [ "$DRY" = 1 ] || rm -f "$ssh_mark"
+         fi;;
+    esac
     case "$code" in 000|502|504|521|522) n=$(( $(cat "$cnt" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$cnt"
       bad "сайт не отвечает (код $code, подряд $n)"
       if [ "$n" -ge 3 ]; then

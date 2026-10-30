@@ -34,7 +34,7 @@ report() {
   local n=0; for h in /root /home/*; do [ -s "$h/.ssh/authorized_keys" ] && { echo "  ✔ $h/.ssh/authorized_keys: $(grep -cv '^\s*\(#\|$\)' "$h/.ssh/authorized_keys") ключ(а)"; n=$((n+1)); }; done
   [ "$n" -gt 0 ] || echo "  ✖ нигде нет authorized_keys — отключать пароли НЕЛЬЗЯ"
   echo "== Подтверждение владельцем (ssh-gate) =="
-  grep -qs "ssh-gate.sh" /etc/pam.d/sshd && echo "  ✔ подключено в /etc/pam.d/sshd" || echo "  ! не подключено: sudo bash scripts/ssh-gate.sh --install"
+  grep -qs "ssh-gate" /etc/pam.d/sshd && echo "  ✔ подключено в /etc/pam.d/sshd" || echo "  ! не подключено: sudo bash scripts/ssh-gate.sh --install"
   [ -e /etc/sky-ssh-gate.off ] && echo "  ! ВНИМАНИЕ: существует /etc/sky-ssh-gate.off — шлюз выключен аварийным файлом"
   echo "== Сеть (подсказка, скрипт её не меняет) =="
   if command -v ufw >/dev/null 2>&1; then echo "  ufw: $(ufw status | head -1)"; fi

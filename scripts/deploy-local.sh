@@ -120,6 +120,18 @@ if [ -n "$unhealthy" ]; then
   exit 1
 fi
 
+# Рабочая копия хука SSH-шлюза (PAM запускает её, а не файл из репозитория): обновляем только после проверки; провал не роняет деплой.
+if grep -qs '/usr/local/sbin/sky-ssh-gate' /etc/pam.d/sshd 2>/dev/null && [ -f "$SRC_DIR/scripts/ssh-gate.sh" ]; then
+  echo "==> Обновляю рабочую копию хука SSH (после проверки)"
+  bash "$SRC_DIR/scripts/ssh-gate.sh" --sync || echo "ВНИМАНИЕ: копия хука SSH НЕ обновлена (оставлена прежняя, рабочая). Разберитесь: bash $SRC_DIR/scripts/ssh-gate.sh --selftest"
+elif grep -qs 'ssh-gate' /etc/pam.d/sshd 2>/dev/null; then
+  echo "ВНИМАНИЕ: PAM запускает хук SSH прямо из репозитория — «git pull» меняет его без проверки. Перейдите на копию: bash $SRC_DIR/scripts/ssh-gate.sh --install (второй терминал открыт!)"
+fi
+if grep -qs 'ssh-gate' /etc/pam.d/sshd 2>/dev/null; then
+  [ -r /etc/sky-ssh-gate.totp ] || echo "Совет: нет запасного входа SSH без API и почты — sudo bash $SRC_DIR/scripts/ssh-gate.sh --totp-setup"
+  [ -r /etc/sky-rescue.user ]   || echo "Совет: не настроен аварийный пользователь SSH — sudo bash $SRC_DIR/scripts/rescue-access.sh --install"
+fi
+
 # Старые локальные образы занимают диск — оставляем три последних.
 docker image ls --format '{{.Repository}}:{{.Tag}} {{.CreatedAt}}' \
   | awk '$1 ~ /^sky-(web|api):/ && $1 !~ /:local$/' | sort -k2 -r \

@@ -26,7 +26,7 @@ if [ "$ACTION" = "--status" ]; then
   [ -f "$DROP" ] && echo "sshd: настройка есть" || echo "sshd: настройки нет"
   sshd -T -C "user=$U,host=localhost,addr=127.0.0.1" 2>/dev/null | grep -iE '^(forcecommand|passwordauthentication|authenticationmethods|permittty)' || true
   [ -f "/home/$U/.ssh/authorized_keys" ] && { echo "ключи:"; ssh-keygen -lf "/home/$U/.ssh/authorized_keys" 2>/dev/null; } || echo "ключей нет"
-  PAMF="$(grep -h 'ssh-gate.sh' /etc/pam.d/sshd 2>/dev/null | awk '{print $NF}' | head -1)"
+  PAMF="$(grep -h 'ssh-gate' /etc/pam.d/sshd 2>/dev/null | awk '{print $NF}' | head -1)"
   [ -n "$PAMF" ] && { grep -q 'sky-rescue.user' "$PAMF" && echo "шлюз ($PAMF): исключение для $U есть" || echo "шлюз ($PAMF): НЕТ исключения — обновите ssh-gate.sh (git pull)"; } || echo "шлюз SSH в PAM не подключён"
   exit 0
 fi
