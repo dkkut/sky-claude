@@ -4,8 +4,9 @@
  * Виджет в Bloom раньше показывал одну и ту же выдуманную строку
  * («+18°, Sky City») всем и всегда. Теперь координаты приходят от
  * браузера пользователя (Geolocation API — он же настоящая точка, а не
- * выдуманный город), а сервер спрашивает у Open-Meteo (бесплатно, без
- * ключа) и кэширует ответ в БД: один и тот же квадрат карты не должен
+ * выдуманный город), а сервер спрашивает у MET Norway (api.met.no: бесплатный
+ * сервис, допускает коммерческое использование при указании источника и
+ * User-Agent с контактом) и кэширует ответ в БД: один и тот же квадрат карты не должен
  * спрашиваться у стороннего сервиса при каждом открытии виджета каждым
  * человеком поблизости.
  *
@@ -16,6 +17,19 @@
 import { query } from './db.mjs';
 
 const CACHE_MIN = 30;
+const UA = `SkyEcosystem/5.1 (+https://${process.env.DOMAIN || 'skymessenger.online'})`;
+
+/** Символ MET Norway («partlycloudy_day», «lightrainandthunder»…) → код вида WMO, под который написан kindOf. */
+export const codeOfSymbol = (sym) => {
+  const v = String(sym ?? '').toLowerCase();
+  if (!v) return null;
+  if (v.includes('thunder')) return 95;
+  if (v.includes('snow') || v.includes('sleet')) return 71;
+  if (v.includes('rain') || v.includes('shower')) return 61;
+  if (v.includes('fog')) return 45;
+  if (v.startsWith('clearsky') || v.startsWith('fair')) return 0;
+  return 3;
+};
 
 const round1 = (n) => Math.round(Number(n) * 10) / 10;
 
@@ -25,7 +39,7 @@ export const isRealPoint = (lat, lon) => {
   return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180;
 };
 
-/* Коды погоды Open-Meteo (WMO) — сводим к укрупнённому виду для иконки
+/* Коды погоды (WMO) — сводим к укрупнённому виду для иконки
  * на клиенте, а не тащим всю таблицу WMO на фронт. */
 const kindOf = (code) => {
   const c = Number(code);
@@ -38,17 +52,16 @@ const kindOf = (code) => {
   return 'cloudy';
 };
 
+/** Название места — OpenStreetMap Nominatim (политика: не чаще 1 запроса в секунду, свой User-Agent; у нас кэш на 0,1° и 30 минут). Данные © участники OpenStreetMap, ODbL. */
 const fetchCity = async (lat, lon) => {
   try {
-    const params = new URLSearchParams({
-      latitude: String(lat), longitude: String(lon), localityLanguage: 'ru',
-    });
-    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?${params}`, {
-      signal: AbortSignal.timeout(6000),
+    const params = new URLSearchParams({ format: 'jsonv2', lat: String(lat), lon: String(lon), zoom: '10', 'accept-language': 'ru' });
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, {
+      signal: AbortSignal.timeout(6000), headers: { 'User-Agent': UA, accept: 'application/json' },
     });
     if (!res.ok) return null;
-    const data = await res.json();
-    return data?.city || data?.locality || data?.principalSubdivision || null;
+    const a = (await res.json())?.address ?? {};
+    return a.city || a.town || a.village || a.municipality || a.county || a.state || null;
   } catch {
     return null;
   }
@@ -76,17 +89,18 @@ export const getWeather = async (lat, lon) => {
   let tempC;
   let code;
   try {
-    const params = new URLSearchParams({
-      latitude: String(latR), longitude: String(lonR), current_weather: 'true',
-    });
-    const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, {
+    // MET Norway требует: координаты не точнее 4 знаков, User-Agent с названием приложения и контактом, уважать кэш.
+    const params = new URLSearchParams({ lat: latR.toFixed(1), lon: lonR.toFixed(1) });
+    const res = await fetch(`https://api.met.no/weatherapis/locationforecast/2.0/compact?${params}`, {
       signal: AbortSignal.timeout(8000),
+      headers: { 'User-Agent': UA, accept: 'application/json' },
     });
     if (!res.ok) return null;
     const data = await res.json();
-    tempC = Number(data?.current_weather?.temperature);
-    code = Number(data?.current_weather?.weathercode);
-    if (!Number.isFinite(tempC) || !Number.isFinite(code)) return null;
+    const first = data?.properties?.timeseries?.[0]?.data;
+    tempC = Number(first?.instant?.details?.air_temperature);
+    code = codeOfSymbol(first?.next_1_hours?.summary?.symbol_code ?? first?.next_6_hours?.summary?.symbol_code);
+    if (!Number.isFinite(tempC) || code == null) return null;
   } catch {
     /* Сеть подвела — не запоминаем: через минуту ответ может быть. */
     return null;

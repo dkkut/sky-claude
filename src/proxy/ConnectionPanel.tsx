@@ -5,6 +5,7 @@
 ================================================================ */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { apiWeather } from '@/bloom/weatherApi';
 import {
   Globe, Satellite, Network,
   Signal, RefreshCw, Copy, Check, Plus, Trash2, AlertCircle,
@@ -1283,9 +1284,9 @@ const SatelliteTabPC = () => {
     if(!gpsPos){setGE('Сначала получите GPS');return;}
     setWxL(true);
     try{
-      const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${gpsPos.lat}&longitude=${gpsPos.lon}&current=temperature_2m,wind_speed_10m,weather_code,cloud_cover,precipitation&wind_speed_unit=ms&timezone=auto`,{cache:'no-store'});
-      const d=await r.json();const c=d.current;
-      setWx({temp:c.temperature_2m,wind:c.wind_speed_10m,cloud:c.cloud_cover,code:c.weather_code,precip:c.precipitation});
+      const r=await apiWeather(Number(gpsPos.lat),Number(gpsPos.lon));
+      if(!r) throw new Error('Погода сейчас недоступна');
+      setWx({temp:Math.round(r.tempC),label:({clear:'Ясно',cloudy:'Облачно',fog:'Туман',rain:'Дождь',snow:'Снег',storm:'Гроза'} as Record<string,string>)[r.kind]??'—'});
     }catch(e:any){setWx({error:e.message});}
     setWxL(false);
   };
@@ -1309,7 +1310,6 @@ const SatelliteTabPC = () => {
     setRttB(false);
   };
 
-  const WX_CODES:Record<number,string>={0:'Ясно',1:'Ясно',2:'Переменная облачность',3:'Пасмурно',45:'Туман',51:'Морось',61:'Дождь',71:'Снег',80:'Ливень',95:'Гроза'};
   const sl = satStatus();
 
   return (
@@ -1359,7 +1359,7 @@ const SatelliteTabPC = () => {
       {/* GPS + Weather */}
       <div className="rounded-2xl p-4" style={{background:'var(--bg-l2)',border:'1px solid var(--border)'}}>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-bold" style={{color:'var(--t1)'}}>GPS + Погода (Open-Meteo)</p>
+          <p className="text-sm font-bold" style={{color:'var(--t1)'}}>GPS + Погода (MET Norway)</p>
           <div className="flex gap-2">
             {!gpsPos&&<button type="button" onClick={getGPS} className="rounded-xl px-3 py-1.5 text-xs font-semibold" style={{background:'rgba(0,220,90,0.1)',color:'var(--green)',border:'1px solid rgba(0,220,90,0.2)'}}>GPS</button>}
             {gpsPos&&<button type="button" onClick={fetchWX} className="rounded-xl px-3 py-1.5 text-xs font-semibold" style={{background:'var(--accent-bg)',color:'var(--accent)',border:'1px solid rgba(79,110,247,0.2)'}}>{wxLoad?'Загрузка...':'Погода'}</button>}
@@ -1375,7 +1375,7 @@ const SatelliteTabPC = () => {
           ))}
         </div>}
         {wx&&!wx.error&&<div className="grid grid-cols-2 gap-2">
-          {[['Погода',WX_CODES[wx.code]||'—'],['Температура',wx.temp+'°C'],['Ветер',wx.wind+' м/с'],['Облачность',wx.cloud+'%']].map(([k,v])=>(
+          {[['Погода',wx.label||'—'],['Температура',wx.temp+'°C']].map(([k,v])=>(
             <div key={k as string} className="rounded-xl px-3 py-2" style={{background:'var(--bg-l3)'}}>
               <p className="text-[9px] uppercase tracking-wider mb-1" style={{color:'var(--t3)'}}>{k as string}</p>
               <p className="text-sm font-semibold" style={{color:'var(--t1)'}}>{v as string}</p>

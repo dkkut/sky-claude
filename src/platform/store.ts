@@ -121,12 +121,12 @@ if (W) {
 }
 
 const SEED_TRACKS: Track[] = [
-  { id:'trk-1', title:'Neon Run',    artist:'Skyline',    genre:'Synthwave',  duration:'03:24', premium:false, status:'published', plays:1240, likes:[], addedAt:new Date(Date.now()-86400000*3).toISOString(), sourceUrl:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', copyrightType:'license' },
-  { id:'trk-2', title:'Raid Pulse',  artist:'Core Audio', genre:'Electronic', duration:'04:10', premium:true,  status:'published', plays:892,  likes:[], addedAt:new Date(Date.now()-86400000*5).toISOString(), sourceUrl:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3', copyrightType:'license' },
-  { id:'trk-3', title:'Bloom Drift', artist:'Luna',       genre:'Ambient',    duration:'05:01', premium:false, status:'published', plays:673,  likes:[], addedAt:new Date(Date.now()-86400000*7).toISOString(), sourceUrl:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3', copyrightType:'license' },
-  { id:'trk-4', title:'Sky High',    artist:'Neo Driver', genre:'Electronic', duration:'03:45', premium:false, status:'published', plays:2100, likes:[], addedAt:new Date(Date.now()-86400000*2).toISOString(), sourceUrl:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3', copyrightType:'license' },
-  { id:'trk-5', title:'Dark Matter', artist:'Skyline',    genre:'Synthwave',  duration:'04:22', premium:false, status:'published', plays:1580, likes:[], addedAt:new Date(Date.now()-86400000*1).toISOString(), sourceUrl:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3', copyrightType:'license' },
-  { id:'trk-6', title:'Overdrive',   artist:'Core Audio', genre:'Rock',       duration:'03:12', premium:false, status:'published', plays:445,  likes:[], addedAt:new Date(Date.now()-86400000*4).toISOString(), sourceUrl:'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3', copyrightType:'license' },
+  { id:'trk-1', title:'Neon Run',    artist:'Skyline',    genre:'Synthwave',  duration:'00:10', premium:false, status:'published', plays:1240, likes:[], addedAt:new Date(Date.now()-86400000*3).toISOString(), sourceUrl:'/demo/sky-demo-1.wav', copyrightType:'author' },
+  { id:'trk-2', title:'Raid Pulse',  artist:'Core Audio', genre:'Electronic', duration:'00:10', premium:true,  status:'published', plays:892,  likes:[], addedAt:new Date(Date.now()-86400000*5).toISOString(), sourceUrl:'/demo/sky-demo-2.wav', copyrightType:'author' },
+  { id:'trk-3', title:'Bloom Drift', artist:'Luna',       genre:'Ambient',    duration:'00:10', premium:false, status:'published', plays:673,  likes:[], addedAt:new Date(Date.now()-86400000*7).toISOString(), sourceUrl:'/demo/sky-demo-3.wav', copyrightType:'author' },
+  { id:'trk-4', title:'Sky High',    artist:'Neo Driver', genre:'Electronic', duration:'00:10', premium:false, status:'published', plays:2100, likes:[], addedAt:new Date(Date.now()-86400000*2).toISOString(), sourceUrl:'/demo/sky-demo-4.wav', copyrightType:'author' },
+  { id:'trk-5', title:'Dark Matter', artist:'Skyline',    genre:'Synthwave',  duration:'00:10', premium:false, status:'published', plays:1580, likes:[], addedAt:new Date(Date.now()-86400000*1).toISOString(), sourceUrl:'/demo/sky-demo-5.wav', copyrightType:'author' },
+  { id:'trk-6', title:'Overdrive',   artist:'Core Audio', genre:'Rock',       duration:'00:10', premium:false, status:'published', plays:445,  likes:[], addedAt:new Date(Date.now()-86400000*4).toISOString(), sourceUrl:'/demo/sky-demo-6.wav', copyrightType:'author' },
 ];
 const SEED_PLAYLISTS: Playlist[] = [
   { id:'pl-fav', name:'Избранное ❤️', trackIds:[], createdAt:new Date().toISOString() },
