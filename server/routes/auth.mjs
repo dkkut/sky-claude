@@ -242,7 +242,7 @@ export const authRoutes = async (req, res, url) => {
     if (result.error === 'too_soon') {
       return json(res, 429, { error: 'too_soon', retryAfter: result.retryAfter });
     }
-    if (result.error) return json(res, 429, { error: result.error });
+    if (result.error) return json(res, /_(failed|not_configured)$/.test(result.error) ? 503 : 429, { error: result.error });
 
     // Ответ одинаков независимо от того, есть ли такой номер в системе.
     return json(res, 200, {
@@ -269,7 +269,7 @@ export const authRoutes = async (req, res, url) => {
     if (result.error === 'too_soon') {
       return json(res, 429, { error: 'too_soon', retryAfter: result.retryAfter });
     }
-    if (result.error) return json(res, 429, { error: result.error });
+    if (result.error) return json(res, /_(failed|not_configured)$/.test(result.error) ? 503 : 429, { error: result.error });
 
     // Ответ одинаков и для нового адреса, и для существующего: по нему
     // нельзя перебором собрать список тех, у кого есть аккаунт.

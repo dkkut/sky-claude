@@ -116,7 +116,7 @@ export const passwordRoutes = async (req, res, url) => {
     }
     const result = await issueCode('email', skyId.email, 'password_set');
     if (result.error === 'too_soon') return json(res, 429, { error: 'too_soon', retryAfter: result.retryAfter });
-    if (result.error) return json(res, 429, { error: result.error });
+    if (result.error) return json(res, /_(failed|not_configured)$/.test(result.error) ? 503 : 429, { error: result.error });
     return json(res, 200, {
       ok: true, email: maskEmail(skyId.email),
       retryAfter: result.retryAfter, expiresIn: result.expiresIn, codeLength: 6,
@@ -284,7 +284,7 @@ export const passwordRoutes = async (req, res, url) => {
 
     const result = await issueCode('email', email, 'password_reset');
     if (result.error === 'too_soon') return json(res, 429, { error: 'too_soon', retryAfter: result.retryAfter });
-    if (result.error) return json(res, 429, { error: result.error });
+    if (result.error) return json(res, /_(failed|not_configured)$/.test(result.error) ? 503 : 429, { error: result.error });
     return json(res, 200, {
       ok: true, retryAfter: result.retryAfter, expiresIn: result.expiresIn, codeLength: 6,
     });

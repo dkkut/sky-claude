@@ -157,13 +157,25 @@ const smsProviders = {
   },
 };
 
+/**
+ * Жёсткий потолок на отправку: зависший почтовый или SMS-сервер не должен держать ответ входа
+ * дольше 15 секунд — человек получает понятную ошибку доставки, а не «тишину».
+ */
+const withDeadline = (p, kind) => Promise.race([
+  p,
+  new Promise((resolve) => setTimeout(() => {
+    console.error(`[${kind}] отправка не уложилась в 15 с — отвечаем ошибкой доставки`);
+    resolve({ ok: false, error: `${kind}_delivery_failed` });
+  }, 15_000).unref?.()),
+]);
+
 export const sendSms = async (phone, text) => {
   const provider = smsProviders[config.smsMode];
   if (!provider) {
     console.error(`[sms] SMS_MODE=${config.smsMode} — такого провайдера нет, код не отправлен.`);
     return { ok: false, error: 'sms_not_configured' };
   }
-  return provider(phone, text);
+  return withDeadline(provider(phone, text), 'sms');
 };
 
 /* ─── Почта ────────────────────────────────────────────────────────────── */
@@ -277,7 +289,7 @@ export const sendEmail = async (to, subject, text) => {
     console.error(`[email] EMAIL_MODE=${config.emailMode} — такого провайдера нет, письмо не отправлено.`);
     return { ok: false, error: 'email_not_configured' };
   }
-  return provider(to, subject, text);
+  return withDeadline(provider(to, subject, text), 'email');
 };
 
 /* ─── Проверка настроек при запуске ────────────────────────────────────── */

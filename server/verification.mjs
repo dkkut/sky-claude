@@ -98,7 +98,9 @@ export const issueCode = async (channel, destination, purpose, { devices = false
     // Запись удаляем, иначе он ещё и в паузу упрётся из-за кода, который
     // никуда не ушёл. Настоящий сбой доставки запись оставляет: иначе
     // сломанный провайдер превращается в бесплатный усилитель рассылки.
-    if (String(delivery.error ?? '').endsWith('_not_configured')) {
+    // Недоставленный код удаляем и при сбое провайдера: иначе человек упирается в паузу и часовой лимит из-за письма, которого не было.
+    // От рассылки по-прежнему защищают пределы по адресу клиента на самих маршрутах.
+    if (/_(not_configured|delivery_failed)$/.test(String(delivery.error ?? ''))) {
       await query('DELETE FROM verification_codes WHERE id = $1', [codeId]);
     }
     return { error: delivery.error ?? 'delivery_failed' };
