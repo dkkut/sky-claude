@@ -7,6 +7,7 @@ import { fitImageToDataUrl } from '../shared/imageFit';
 import { OwnerNotifySettings } from './OwnerNotifySettings';
 import { StaffNotifySettings } from './StaffNotifySettings';
 import { enablePush, disablePush, PUSH_TEXT } from '@/notifications/pushClient';
+import ShortcutsSettings from '@/shortcuts/ShortcutsSettings';
 import { useCursorPet, CURSOR_ANIMALS } from '@/shared/cursorPet';
 import { flash } from '../shared/flash';
 import { Disc3, Mic as MicIcon, PanelTop, QrCode, ScanLine } from 'lucide-react';
@@ -606,6 +607,7 @@ const SettingsSection = ({ logout, username, onOpen }: {
   onOpen:(section:Section)=>void;
 }) => {
   const switchProfile = useAuthStore(s=>s.switchProfile);
+  const isMobileSettings = useIsMobile();
   const [confirmExit, setConfirmExit] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -922,6 +924,11 @@ const SettingsSection = ({ logout, username, onOpen }: {
           </div>
         </div>
       </SectionBlock>
+
+      {/* -- ГОРЯЧИЕ КЛАВИШИ (ПК) ------------------ */}
+      {!isMobileSettings && (
+        <SectionBlock title="Горячие клавиши"><ShortcutsSettings/></SectionBlock>
+      )}
 
       {/* -- КУРСОР-ПИТОМЕЦ ------------------ */}
       <SectionBlock title="Курсор-питомец">

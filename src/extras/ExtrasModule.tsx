@@ -1238,7 +1238,8 @@ export const ExtrasModule = () => {
   const isMobile = useIsMobile();
   const { pendingExtrasTab, setPendingExtrasTab } = useModuleStore();
   const [tab, setTab] = useState<Tab>((pendingExtrasTab as Tab) || 'home');
-  useEffect(() => { if (pendingExtrasTab) setPendingExtrasTab(null); }, []);
+  // Вкладку можно запросить и пока раздел уже открыт (горячие клавиши): подхватываем и сбрасываем.
+  useEffect(() => { if (pendingExtrasTab) { setTab(pendingExtrasTab as Tab); setPendingExtrasTab(null); } }, [pendingExtrasTab]);
   // Баллы за пользование вкладкой (если администрация задала такое правило): засчитывается после 8 с на вкладке, раз в сутки — решает сервер.
   useEffect(() => {
     const key = visitKeyOf(tab);

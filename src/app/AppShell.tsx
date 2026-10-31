@@ -28,6 +28,7 @@ import { SkyIsland }              from '@/island/SkyIsland';
 import { ProfileViewerLayer }     from '@/profile/viewer/ProfileViewerLayer';
 import { BreakReminderModal }     from '@/settings/BreakReminderModal';
 import { useDeviceMode } from '@/interface/tv/useDeviceMode';
+import { useShortcutListener } from '@/shortcuts/shortcuts';
 import { TVShell } from '@/interface/tv/TVShell';
 import { useSpeakerMode } from '@/interface/speaker/useSpeakerMode';
 import { SpeakerShell } from '@/interface/speaker/SpeakerShell';
@@ -106,6 +107,8 @@ export const AppShell = () => {
   // Пуш состояния плеера в overlay Quick Actions (см. playerBridge.ts) —
   // сам по себе ничего не делает вне Electron-основного окна.
   useMainWindowPlayerBridge();
+  // Горячие клавиши, которые человек назначил сам (Профиль → Настройки → «Горячие клавиши»); только компьютер.
+  useShortcutListener(!isMobile && deviceMode !== 'tv' && !carMode && !speakerMode && !consoleMode);
 
   useEffect(() => {
     const m = new URLSearchParams(window.location.search).get('module');
