@@ -1,0 +1,43 @@
+name: SMS-вход (otpmock)
+# Ручной запуск: сквозной тест входа по SMS через тестовый ящик otpmock.com.
+# Нужен секрет репозитория OTPMOCK_API_KEY (ключ из https://otpmock.com/app). В бою не используется.
+on:
+  workflow_dispatch:
+jobs:
+  sms:
+    runs-on: ubuntu-latest
+    env:
+      OTPMOCK_URL: https://api.otpmock.com
+      OTPMOCK_API_KEY: ${{ secrets.OTPMOCK_API_KEY }}
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: sky, POSTGRES_PASSWORD: sky, POSTGRES_DB: skytest }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sky" --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Проверка ключа
+        run: test -n "$OTPMOCK_API_KEY" || { echo "::error::нет секрета OTPMOCK_API_KEY"; exit 1; }
+      - run: npm ci --prefix server
+      - name: Запуск API (тестовое окружение)
+        env:
+          NODE_ENV: development
+          DATABASE_URL: postgres://sky:sky@127.0.0.1:5432/skytest
+          REDIS_URL: redis://127.0.0.1:6379
+          JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789
+          REFRESH_TOKEN_SECRET: ci-refresh-secret-0123456789abcdef0123
+          ENCRYPTION_KEY: ci-encryption-key-0123456789abcdef0123
+          ADMIN_GATE: 'off'
+        run: |
+          node server/server.mjs > api.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:8080/healthz && break; sleep 1; done
+      - run: node scripts/audit/otpmock-sms-test.mjs
+      - if: failure()
+        run: tail -n 80 api.log

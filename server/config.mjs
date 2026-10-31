@@ -52,6 +52,10 @@ export const config = {
   // на связь последним.
   smsDeviceId: process.env.SMS_DEVICE_ID || '',
 
+  // otpmock — тестовый ящик SMS (https://otpmock.com). Работает ТОЛЬКО если задан OTPMOCK_URL;
+  // задавать его можно лишь в тестовом/CI/staging-окружении. В боевом он пуст, SMS идут настоящим провайдером.
+  otpmockUrl:         (process.env.OTPMOCK_URL || '').replace(/\/+$/, ''),
+  otpmockApiKey:      process.env.OTPMOCK_API_KEY || '',
   smsWebhookUrl:      process.env.SMS_WEBHOOK_URL      || '',
   smsWebhookToken:    process.env.SMS_WEBHOOK_TOKEN    || '',
 

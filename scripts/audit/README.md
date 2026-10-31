@@ -36,3 +36,10 @@
 
 `media-integrity` (отчёт «записи без файлов») лежит в `scripts/media-integrity.mjs`
 и читает боевую базу только на чтение.
+
+## otpmock: коды SMS в сквозных тестах
+
+`otpmock.mjs` — клиент тестового ящика (https://otpmock.com), `otpmock-sms-test.mjs` — вход по SMS через него.
+API запускается с `OTPMOCK_URL=https://api.otpmock.com` и `OTPMOCK_API_KEY` (из окружения), тест — с теми же переменными.
+Без них тест пропускается. Только тест/CI/staging: `docker-compose.otpmock.yml` (`-f docker-compose.yml -f docker-compose.otpmock.yml`), ручной workflow `otpmock-sms.yml`. Боевой compose не менялся.
+

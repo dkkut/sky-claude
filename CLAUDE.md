@@ -2491,3 +2491,10 @@ SSH-шлюз и самозащита (октябрь-2026): хук `ssh-gate.sh`
 
 Статический проход: `npm audit` (боевые зависимости чистые; `nodemailer` обновлён до 10.3.1; в dev-зависимостях остаются 22 средние — `vite`, `launch-editor`, `glob`, закрываются только `--force`), поиск секретов (чисто), SQL с подстановками (везде фиксированные списки), `innerHTML` (экранируется), все файлы `routes/` на проверку входа (все закрыты, открытые — сознательно). Найдено и исправлено: `/api/beta/unlock` не ограничивал подбор ключа беты — теперь 10/мин и 60/час с адреса (`clientIp`).
 Тесты с базой не запускались (нет Postgres/Redis). Нужен деплой api.
+
+## otpmock — тестовый ящик SMS для сквозных тестов (ноябрь-2026)
+
+`server/notify.mjs` (`smsProviders.otpmock`), `server/config.mjs` (`otpmockUrl`, `otpmockApiKey`). Включается ТОЛЬКО если задан `OTPMOCK_URL` (иначе `SMS_MODE` и настоящий провайдер, как раньше); ключ — только из `OTPMOCK_API_KEY`, нигде не хранится. `checkDeliverySetup` предупреждает, если mock включён при `NODE_ENV=production` или нет ключа.
+Тест/CI: `scripts/audit/otpmock.mjs` (клиент: `waitForCode` с `since`, `randomPhone`, `clear`), `otpmock-sms-test.mjs` (пропускается без переменных), `docker-compose.otpmock.yml` (дополнение для staging, не для боя), ручной `.github/workflows/otpmock-sms.yml` (секрет репозитория `OTPMOCK_API_KEY`).
+Не проверено вживую: ключа в среде разработки нет — сервер-провайдер проверен на локальной подделке otpmock, сквозной тест и workflow не запускались. Нужен деплой api только на staging.
+

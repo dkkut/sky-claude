@@ -44,6 +44,34 @@ const logAllowed = () => config.nodeEnv !== 'production' || config.allowLogCodes
 /* ─── SMS ──────────────────────────────────────────────────────────────── */
 
 const smsProviders = {
+  /**
+   * otpmock — тестовый ящик SMS для сквозных тестов (https://otpmock.com).
+   * Включается ТОЛЬКО переменной OTPMOCK_URL (в тестовом/CI/staging-окружении); SMS_MODE при этом
+   * не используется, настоящее SMS не уходит никому. Ключ — из OTPMOCK_API_KEY, в коде его нет.
+   */
+  async otpmock(phone, text) {
+    if (!config.otpmockApiKey) {
+      console.error('[sms:otpmock] OTPMOCK_API_KEY пуст — код не отправлен.');
+      return { ok: false, error: 'sms_not_configured' };
+    }
+    try {
+      const res = await fetch(`${config.otpmockUrl}/v1/messages/send`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${config.otpmockApiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ to: phone, body: text }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        console.error(`[sms:otpmock] ответил ${res.status}`);
+        return { ok: false, error: 'sms_delivery_failed' };
+      }
+      return { ok: true };
+    } catch (err) {
+      console.error('[sms:otpmock] сеть:', err.message);
+      return { ok: false, error: 'sms_delivery_failed' };
+    }
+  },
+
   /** Отладочный режим: код виден в журнале сервера. */
   async log(phone, text) {
     if (!logAllowed()) {
@@ -170,7 +198,8 @@ const withDeadline = (p, kind) => Promise.race([
 ]);
 
 export const sendSms = async (phone, text) => {
-  const provider = smsProviders[config.smsMode];
+  // Тестовый ящик: только когда явно задан OTPMOCK_URL. В боевом окружении переменной нет.
+  const provider = config.otpmockUrl ? smsProviders.otpmock : smsProviders[config.smsMode];
   if (!provider) {
     console.error(`[sms] SMS_MODE=${config.smsMode} — такого провайдера нет, код не отправлен.`);
     return { ok: false, error: 'sms_not_configured' };
@@ -305,7 +334,14 @@ export const sendEmail = async (to, subject, text, extra) => {
 export const checkDeliverySetup = () => {
   const problems = [];
 
-  if (!smsProviders[config.smsMode]) {
+  if (config.otpmockUrl) {
+    // Не ошибка, а громкое предупреждение: если это боевой сервер, люди не получат SMS.
+    problems.push(`OTPMOCK_URL задан — SMS идут в тестовый ящик otpmock, а не людям${config.nodeEnv === 'production' ? ' (NODE_ENV=production: убедитесь, что это staging, а не бой!)' : ''}.`);
+    if (!config.otpmockApiKey) problems.push('OTPMOCK_URL задан, но OTPMOCK_API_KEY пуст — SMS отправлять некуда.');
+    if (!/^https:\/\//.test(config.otpmockUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(config.otpmockUrl)) {
+      problems.push('OTPMOCK_URL должен начинаться с https://.');
+    }
+  } else if (!smsProviders[config.smsMode]) {
     problems.push(`SMS_MODE=${config.smsMode} — такого провайдера нет.`);
   } else if (config.smsMode === 'log') {
     problems.push(logAllowed()

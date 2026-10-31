@@ -1,0 +1,9 @@
+# Только для тестового / staging-окружения. НЕ подключать на боевом сервере.
+# Направляет SMS-коды входа в тестовый ящик otpmock (https://otpmock.com) вместо настоящего SMS-провайдера.
+# Запуск:  OTPMOCK_API_KEY=… docker compose -f docker-compose.yml -f docker-compose.otpmock.yml up -d
+# (или COMPOSE_FILE=docker-compose.yml:docker-compose.otpmock.yml). Ключ берётся из окружения, в файле его нет.
+services:
+  api:
+    environment:
+      OTPMOCK_URL: ${OTPMOCK_URL:-https://api.otpmock.com}
+      OTPMOCK_API_KEY: ${OTPMOCK_API_KEY:?задайте OTPMOCK_API_KEY в окружении}
