@@ -1,7 +1,7 @@
 // Запасной вход шлюза SSH без API и почты (scripts/ssh-gate.sh: local_fallback), файл отключения со сроком, самопроверка.
 // Без БД и API: недоступный API = закрытый порт, «ответы Sky» — крошечный http-сервер. Запуск: node scripts/audit/sshgate-local-test.mjs
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import http from 'node:http';
@@ -64,18 +64,33 @@ conf(`http://127.0.0.1:${port}`, 'SKY_MODE=both\n');
 reset(); seen.length = 0;
 let polls = 0;
 byPath = (u) => u.endsWith('/login') ? { status: 200, body: '{"ok":true,"id":"ssh-1","poll":"p1"}' } : u.endsWith('/poll') ? { status: 200, body: `{"status":"${++polls >= 2 ? 'approved' : 'pending'}"}` } : null;
-t('both: токен принят и владелец подтвердил — пускает', (await run('@n\nSKA-X\n')) === 0, tty());
-t('both: после токена опрошено подтверждение владельца', seen.some((u) => u.endsWith('/poll')));
+t('both: владелец подтвердил — пускает', (await run('')) === 0, tty());
+t('both: в терминале НЕ спрашивают ник и токен (одна страница)', !/ник|Токен администратора/i.test(tty().replace(/Токен администратора и кодом/g, '')) && tty().includes('Ничего вводить здесь не нужно'), tty());
+t('both: без терминала вовсе (scp/sftp) — тоже работает', (await run('', { SKY_GATE_TTY: '' })) === 0);
+t('both: опрошено подтверждение владельца', seen.some((u) => u.endsWith('/poll')));
 t('both: сторож отмены не нужен (запрос watch не шёл)', !seen.some((u) => u.endsWith('/watch')));
 reset(); seen.length = 0;
 byPath = (u) => u.endsWith('/login') ? { status: 200, body: '{"ok":true,"id":"ssh-1","poll":"p1"}' } : u.endsWith('/poll') ? { status: 200, body: '{"status":"denied"}' } : null;
-t('both: владелец отказал — вход закрыт', (await run('@n\nSKA-X\n')) === 1);
+t('both: владелец отказал — вход закрыт', (await run('')) === 1);
 reset(); byPath = (u) => u.endsWith('/login') ? { status: 401, body: '{"error":"denied"}' } : null;
-t('both: токен не принят — закрыто, до владельца не доходит', (await run('@n\nSKA-X\n@n\nSKA-X\n@n\nSKA-X\n')) === 1);
+t('both: отказ сервера — закрыто, до владельца не доходит', (await run('')) === 1);
 reset(); byPath = (u) => u.endsWith('/login') ? { status: 503, body: '{"error":"email_failed"}' } : null;
 writeFileSync(join(dir, 'totp'), SECRET + '\n');
-t('both: письмо не ушло + верный запасной код — пускает', (await run(`@n\nSKA-X\n${currentTotp(SECRET)}\n`)) === 0, tty());
+t('both: письмо не ушло + верный запасной код — пускает', (await run(`${currentTotp(SECRET)}\n`)) === 0, tty());
 byPath = null;
+
+// PAM_TTY=ssh (как отдаёт настоящий sshd): терминал ищется по процессу «sshd: USER@pts/N» этого соединения.
+const py = spawn('python3', ['-c', 'import pty,os,time; m,s=pty.openpty(); print(os.ttyname(s),flush=True); time.sleep(40)'], { stdio: ['ignore', 'pipe', 'ignore'] });
+const pts = (await new Promise((r) => py.stdout.once('data', (d) => r(String(d).trim())))); 
+const bindir = join(dir, 'bin'); mkdirSync(bindir, { recursive: true });
+const PSLOG = join(dir, 'log.txt');
+writeFileSync(join(bindir, 'ps'), `#!/bin/bash\nfor a in "$@"; do [ "$a" = "-p" ] && { echo 1; exit 0; }; done\necho "9999 ${process.pid} sshd: root@${pts.replace('/dev/', '')}"\n`, { mode: 0o755 });
+writeFileSync(join(bindir, 'logger'), `#!/bin/bash\necho "$*" >> "${PSLOG}"\n`, { mode: 0o755 });
+conf(`http://127.0.0.1:${port}`, 'SKY_MODE=both\n'); reset(); rmSync(PSLOG, { force: true });
+byPath = (u) => u.endsWith('/login') ? { status: 200, body: '{"ok":true,"id":"ssh-1","poll":"p1"}' } : u.endsWith('/poll') ? { status: 200, body: '{"status":"approved"}' } : null;
+t('PAM_TTY=ssh: терминал найден по процессу sshd, вход проходит', (await run('', { SKY_GATE_TTY: '', PATH: `${bindir}:${process.env.PATH}`, PAM_TTY: 'ssh' })) === 0);
+t('в журнале сказано, какой терминал найден', existsSync(PSLOG) && readFileSync(PSLOG, 'utf8').includes(`терминал найден по процессу sshd: ${pts}`), existsSync(PSLOG) ? readFileSync(PSLOG, 'utf8') : 'нет журнала');
+py.kill();
 
 reset(); conf(DEAD);
 writeFileSync(join(dir, 'off'), '');

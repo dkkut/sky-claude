@@ -89,7 +89,7 @@ const ownerNow = async () => {
 
 /** Запрос от скрипта на сервере. */
 /** Письмо владельцу со ссылкой и ожидание его подтверждения (режимы owner и both). actor — кто назвался токеном (режим both). */
-const startOwnerConfirm = async (fields, ip, actor) => {
+const startOwnerConfirm = async (fields, ip, actor, { needToken = false } = {}) => {
   const who = await ownerNow();
   if (!who) return { error: 'owner_missing' };
   if (!who.email) return { error: 'email_required' };
@@ -106,14 +106,16 @@ const startOwnerConfirm = async (fields, ip, actor) => {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now() + ($10 || ' minutes')::interval)`,
     [id, who.id, hash('link', token), hash('poll', poll), fields.user, fields.host, ipMask(fields.rhost), ipFp(fields.rhost), clip(device, 160), String(LINK_TTL_MIN)]);
   if (actor) await query('UPDATE ssh_gate_requests SET actor_id = $2 WHERE id = $1', [id, actor.id]);
+  // Режим «одна страница»: токен администратора и код аутентификатора владельца вводятся на странице ссылки, а не в терминале.
+  if (needToken) await query("UPDATE ssh_gate_requests SET mode = 'page' WHERE id = $1", [id]);
 
   const link = `${config.publicOrigin}/ssh-verify?t=${token}`;
   const r = await sendEmail(who.email, L('Вход на сервер Sky по SSH', 'Sky server SSH sign-in'),
     L(`Кто-то входит на сервер по SSH.\n\nПользователь: ${fields.user}@${fields.host}\nАдрес: ${fields.rhost || 'неизвестен'}\n\n`
-      + `Если это вы — откройте ссылку и подтвердите вход кодом из аутентификатора:\n${link}\n\n`
+      + `Если это вы — откройте ссылку и подтвердите вход кодом из аутентификатора${needToken ? ' и личным токеном администратора' : ''}:\n${link}\n\n`
       + `Если это не вы — откройте ссылку и нажмите «Это не я, включить систему безопасности».\nСсылка действует ${LINK_TTL_MIN} минут и работает один раз. Пока вход не подтверждён, SSH-сессия не откроется.`,
     `Someone is signing in to the server over SSH.\n\nUser: ${fields.user}@${fields.host}\nAddress: ${fields.rhost || 'unknown'}\n\n`
-      + `If it was you, open the link and confirm with the code from your authenticator:\n${link}\n\n`
+      + `If it was you, open the link and confirm with the code from your authenticator${needToken ? ' and your admin token' : ''}:\n${link}\n\n`
       + `If it was not you, open the link and press “It’s not me, enable security mode”.\nThe link is valid for ${LINK_TTL_MIN} minutes and works once. Until you confirm, the SSH session will not open.`))
     .catch((e) => ({ ok: false, error: e.message }));
   if (r && r.ok === false) {
@@ -174,16 +176,24 @@ export const inspectSshLink = async (token) => {
   if (!r) return { error: 'invalid_link' };
   const who = await adminNow(r.profile_id);
   if (!who) return { error: 'invalid_link' };
-  return { ok: true, requestedAt: r.created_at.toISOString(), device: r.device, ip: r.ip, owner: who.owner, expiresAt: r.expires_at.toISOString() };
+  return { ok: true, requestedAt: r.created_at.toISOString(), device: r.device, ip: r.ip, owner: who.owner, expiresAt: r.expires_at.toISOString(), needToken: r.mode === 'page' };
 };
 
 /** «Авторизоваться»: верный код аутентификатора пускает SSH-сессию. */
-export const confirmSshLink = async (token, code) => {
+export const confirmSshLink = async (token, code, adminToken) => {
   const r = await liveRequest(token);
   if (!r) return { error: 'invalid_link' };
   const who = await adminNow(r.profile_id);
   if (!who) return { error: 'invalid_link' };
   if (!who.twoFactor) return { error: 'two_factor_required' };
+  // Режим «одна страница»: сначала токен администратора (до расхода попытки кода), требуется всегда.
+  if (r.mode === 'page') {
+    const v = await verifyAdminToken(r.profile_id, adminToken, { force: true });
+    if (!v.ok) {
+      await logAdmin({ actorId: r.profile_id, type: 'ssh_token_denied', targetType: 'system', result: 'denied', detail: clip(`${r.device}: страница, токен: ${v.error}`, 140) }).catch(() => {});
+      return { error: v.error || 'admin_token_invalid' };
+    }
+  }
   if (r.attempts >= CODE_ATTEMPTS) {
     await query("UPDATE ssh_gate_requests SET status = 'denied', decided_at = now(), outcome = 'exhausted' WHERE id = $1", [r.id]);
     return { error: 'invalid_link' };
@@ -260,7 +270,7 @@ export const hasSshAccess = async (profileId) => {
 };
 
 /** Запрос от скрипта: @ник + токен. Любой отказ одинаков для подбора («denied»), причины — только в журнале. */
-export const loginSsh = async ({ ts, user, host, rhost, tty, nick, token, sig, confirm }, { ip }) => {
+export const loginSsh = async ({ ts, user, host, rhost, tty, nick, token, sig, confirm, page }, { ip }) => {
   if (!sshGateEnabled()) return { error: 'disabled' };
   const t = Number(ts);
   if (!Number.isFinite(t) || Math.abs(Date.now() / 1000 - t) > SIG_WINDOW_SEC) return { error: 'bad_signature' };
@@ -275,6 +285,9 @@ export const loginSsh = async ({ ts, user, host, rhost, tty, nick, token, sig, c
   }
   // Подбор: по адресу, откуда идёт вход, и общий потолок (скрипт приходит с самого сервера, поэтому адрес берём из подписанного поля).
   if (!rateLimit(`sshgate:login:${fields.rhost || ip}`, 6) || !rateLimitPerHour('sshgate:login', 60)) return { error: 'too_many_requests' };
+
+  // Режим both, «одна страница»: терминал ничего не спрашивает — ссылка из письма владельцу, там токен и код (терминал не нужен).
+  if (page === true || page === 'true') return startOwnerConfirm(fields, ip, null, { needToken: true });
 
   const owner = await ownerProfile();
   if (!owner) return { error: 'owner_missing' };

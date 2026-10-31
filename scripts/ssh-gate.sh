@@ -217,6 +217,26 @@ if [ -z "$TTYDEV" ]; then
     pts/*|tty*) TTYDEV="/dev/$PAM_TTY" ;;
   esac
 fi
+# sshd кладёт в PAM_TTY не устройство, а слово «ssh», пока сессия открывается (так и было: хук считал, что терминала нет, и не спрашивал ничего).
+# Тогда ищем терминал по заголовку процесса sshd этого соединения: «sshd: USER@pts/N» (у OpenSSH 9.8+ — «sshd-session: …»), он дочерний к нашему родителю.
+find_tty() {
+  [ -n "${PPID:-}" ] || return 1
+  local pp up line pid ppid args pts best=""
+  pp="$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')"
+  while read -r pid ppid args; do
+    case "$args" in "sshd: "*"@pts/"*|"sshd-session: "*"@pts/"*) ;; *) continue ;; esac
+    case "$args" in *"$U@"*|*"${PAM_USER:-$U}@"*) ;; *) continue ;; esac
+    [ "$ppid" = "$PPID" ] || [ "$pid" = "$PPID" ] || { [ -n "$pp" ] && { [ "$ppid" = "$pp" ] || [ "$pid" = "$pp" ]; }; } || continue
+    pts="$(printf '%s' "$args" | sed -n 's/.*@\(pts\/[0-9][0-9]*\).*/\1/p')"
+    [ -c "/dev/$pts" ] && best="/dev/$pts"
+  done < <(ps -eo pid=,ppid=,args= 2>/dev/null | sort -n)
+  [ -n "$best" ] && { printf '%s' "$best"; return 0; }
+  return 1
+}
+if [ -z "$TTYDEV" ] && [ -z "${SKY_GATE_TTY:-}" ]; then
+  TTYDEV="$(find_tty 2>/dev/null || true)"
+  [ -n "$TTYDEV" ] && logger -t sky-ssh-gate "терминал найден по процессу sshd: $TTYDEV (PAM_TTY=${PAM_TTY:-пусто})"
+fi
 say() { [ -n "$TTYDEV" ] && { [ -c "$TTYDEV" ] || [ -n "${SKY_GATE_TTY:-}" ]; } && printf '%b' "$1" >> "$TTYDEV" 2>/dev/null; return 0; }
 
 # ── запасной вход: код приложения-аутентификатора, проверяется на самом сервере (без API и почты) ──
@@ -260,10 +280,29 @@ local_fallback() {  # причина
   exec 7>&-; logger -t sky-ssh-gate "запасной код: вход $U@$R не подошёл"; return 1
 }
 
+# ── режим both: ОДНА страница. Терминал ничего не спрашивает (и не нужен): владельцу уходит письмо со ссылкой, на странице он вводит
+#    личный токен администратора и код аутентификатора. Работает и для scp/sftp/команд без терминала. ──
+if [ "$SKY_MODE" = "both" ]; then
+  RES="$(api /api/ssh-gate/login "{\"ts\":\"$TS\",\"user\":\"$U\",\"host\":\"$H\",\"rhost\":\"$R\",\"tty\":\"$T\",\"sig\":\"$SIG\",\"page\":true}")"
+  ID="$(field "$RES" id)"; POLL="$(field "$RES" poll)"
+  if [ -z "$ID" ] || [ -z "$POLL" ]; then
+    case "$RES" in
+      *paused*) say "  ✖ Новые входы по SSH закрыты владельцем.\r\n"; logger -t sky-ssh-gate "вход $U@$R закрыт: рубильник"; exit 1 ;;
+      ""|"<"*) if [ "$SKY_FAILOPEN" = "1" ]; then logger -t sky-ssh-gate "API недоступен, SKY_FAILOPEN=1: вход $U пропущен"; exit 0; fi
+          local_fallback "Сервер проверки Sky недоступен" && exit 0
+          say "  ✖ Сервер проверки недоступен. Вход закрыт.\r\n"; logger -t sky-ssh-gate "вход $U@$R закрыт: API недоступен"; exit 1 ;;
+      *email_failed*|*email_required*|*two_factor_required*|*public_url_missing*|*owner_missing*) local_fallback "Письмо владельцу отправить не удалось" && exit 0 ;;
+    esac
+    say "  ✖ Вход закрыт.\r\n"; logger -t sky-ssh-gate "вход $U@$R закрыт: ${RES:-пустой ответ}"; exit 1
+  fi
+  logger -t sky-ssh-gate "вход $U@$R: ждём подтверждения владельца на странице (токен + код)"
+  say "\r\n  Sky · защищённый вход\r\n  ────────────────────────────────────\r\n  Ничего вводить здесь не нужно. Владелец открывает ссылку из письма\r\n  и подтверждает вход токеном администратора и кодом аутентификатора.\r\n\r\n"
+fi
+
 # ── режим token: @ник и токен администратора на терминале ──
-if [ "$SKY_MODE" = "token" ] || [ "$SKY_MODE" = "both" ]; then
+if [ "$SKY_MODE" = "token" ]; then
   if [ -z "$TTYDEV" ] || { [ ! -c "$TTYDEV" ] && [ -z "${SKY_GATE_TTY:-}" ]; }; then
-    logger -t sky-ssh-gate "вход $U@$R закрыт: нет терминала для токена (scp/sftp/команда без tty проходят только как параллельные к недавнему входу)"
+    logger -t sky-ssh-gate "вход $U@$R закрыт: нет терминала для токена (PAM_TTY=${PAM_TTY:-пусто}; scp/sftp/команда без tty проходят только как параллельные к недавнему входу)"
     exit 1
   fi
   exec 8<>"$TTYDEV" || { logger -t sky-ssh-gate "вход $U@$R закрыт: терминал недоступен"; exit 1; }

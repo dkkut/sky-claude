@@ -70,7 +70,7 @@ export const AdminGateScreen = ({ onOpened }: { onOpened: () => void }) => {
 
 /* ───────── Страница ссылки: /admin-verify?t=… (без входа в аккаунт) ───────── */
 
-interface LinkInfo { requestedAt: string; device: string; ip: string; owner: boolean }
+interface LinkInfo { requestedAt: string; device: string; ip: string; owner: boolean; needToken?: boolean }
 type Phase = 'loading' | 'invalid' | 'ready' | 'code' | 'done' | 'panic' | 'panicDone';
 
 const fmt = (iso: string) => new Date(iso).toLocaleString();
@@ -119,6 +119,7 @@ export const AdminVerifyPage = ({ kind = 'admin' }: { kind?: 'admin' | 'ssh' }) 
     setErr(r.error === 'owner_only' ? 'Выключить сервер может только владелец.' : 'Не удалось включить режим. Попробуйте ещё раз.');
   };
 
+  const needTok = !ssh || Boolean(info?.needToken);
   const card = (children: React.ReactNode) => (
     <div className="mx-auto w-full max-w-[420px] rounded-[28px] p-6" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)', color: 'var(--t1)' }}>{children}</div>
   );
@@ -145,14 +146,14 @@ export const AdminVerifyPage = ({ kind = 'admin' }: { kind?: 'admin' | 'ssh' }) 
             )}
             {phase === 'code' && (
               <div className="space-y-3">
-                <p className="text-[12.5px]" style={{ color: 'var(--t2)' }}>{ssh ? 'Введите шестизначный код из приложения-аутентификатора.' : 'Введите шестизначный код из приложения-аутентификатора и личный токен администратора.'}</p>
+                <p className="text-[12.5px]" style={{ color: 'var(--t2)' }}>{!ssh ? 'Введите шестизначный код из приложения-аутентификатора и личный токен администратора.' : info.needToken ? 'Введите шестизначный код из приложения-аутентификатора и личный токен администратора. Это вся проверка: в терминале ничего вводить не нужно.' : 'Введите шестизначный код из приложения-аутентификатора.'}</p>
                 <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoFocus placeholder="000000" aria-label="Код из аутентификатора"
                   className="w-full rounded-full px-5 py-3 text-center text-[20px] font-bold tracking-[0.4em] outline-none" style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6 && (ssh || tok.trim())) void confirm(); }} />
-                {!ssh && <input value={tok} onChange={(e) => setTok(e.target.value)} autoComplete="off" spellCheck={false} placeholder="Токен администратора" aria-label="Токен администратора" translate="no"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6 && (!needTok || tok.trim())) void confirm(); }} />
+                {needTok && <input value={tok} onChange={(e) => setTok(e.target.value)} autoComplete="off" spellCheck={false} placeholder="Токен администратора" aria-label="Токен администратора" translate="no"
                   className="w-full rounded-full px-5 py-3 text-center text-[14px] font-semibold outline-none" style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)', letterSpacing: '.04em' }}
                   onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6 && tok.trim()) void confirm(); }} />}
-                <button type="button" disabled={busy || code.length !== 6 || (!ssh && !tok.trim())} onClick={() => void confirm()} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}>{busy ? 'Проверяем…' : 'Подтвердить вход'}</button>
+                <button type="button" disabled={busy || code.length !== 6 || (needTok && !tok.trim())} onClick={() => void confirm()} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}>{busy ? 'Проверяем…' : 'Подтвердить вход'}</button>
                 <button type="button" onClick={() => { setPhase('ready'); setErr(''); }} className="w-full text-[12.5px]" style={{ color: 'var(--t3)' }}>Назад</button>
               </div>
             )}
