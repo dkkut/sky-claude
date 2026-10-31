@@ -17,9 +17,9 @@ export const getProfileMusic = async (viewerId, targetId) => {
     if (exc !== 'allow' && priv.profileVisibility?.showMusic === false) return { hidden: true, tracks: [], playlists: [] };
   }
   const tracks = (await query(
-    `SELECT t.id, t.title, t.artist, t.duration_sec, t.status FROM profile_music m JOIN music_tracks t ON t.id = m.item_id
+    `SELECT t.id, t.title, t.artist, t.duration_sec, t.status, m.note FROM profile_music m JOIN music_tracks t ON t.id = m.item_id
       WHERE m.owner_id=$1 AND m.kind='track' ${own ? '' : "AND t.status='published'"} ORDER BY m.position, m.added_at LIMIT 50`, [targetId])).rows
-    .map((t) => ({ id: t.id, title: t.title, artist: t.artist, duration: t.duration_sec, status: t.status }));
+    .map((t) => ({ id: t.id, title: t.title, artist: t.artist, duration: t.duration_sec, status: t.status, note: t.note || '' }));
   const playlists = (await query(
     `SELECT p.id, p.name, p.is_public, (SELECT count(*) FROM music_playlist_items i WHERE i.playlist_id=p.id)::int AS count
        FROM profile_music m JOIN music_playlists p ON p.id = m.item_id
@@ -40,10 +40,22 @@ export const setProfileMusic = async (me, { tracks, playlists } = {}) => {
     const ok = (await query(`SELECT id FROM music_playlists WHERE id = ANY($1::text[]) AND owner_id=$2`, [pl, me])).rows;
     if (ok.length !== pl.length) return err('bad_playlist');
   }
+  // Тексты под оставшимися песнями сохраняются.
+  const notes = new Map((await query(`SELECT item_id, note FROM profile_music WHERE owner_id=$1 AND kind='track' AND note IS NOT NULL`, [me])).rows.map((r) => [r.item_id, r.note]));
   await query(`DELETE FROM profile_music WHERE owner_id=$1`, [me]);
-  for (const [i, id] of tr.entries()) await query(`INSERT INTO profile_music (owner_id, kind, item_id, position) VALUES ($1,'track',$2,$3)`, [me, id, i]);
+  for (const [i, id] of tr.entries()) await query(`INSERT INTO profile_music (owner_id, kind, item_id, position, note) VALUES ($1,'track',$2,$3,$4)`, [me, id, i, notes.get(id) ?? null]);
   for (const [i, id] of pl.entries()) await query(`INSERT INTO profile_music (owner_id, kind, item_id, position) VALUES ($1,'playlist',$2,$3)`, [me, id, i]);
   return { ok: true };
+};
+
+/** Текст под песней в своём профиле. Длина практически не ограничена (до 20 000 знаков, чтобы не хранить мегабайты); пустой текст убирает заметку. */
+export const NOTE_MAX = 20000;
+export const setTrackNote = async (me, trackId, text) => {
+  const t = String(text ?? '').replace(/\r\n/g, '\n').replace(/\u0000/g, '').trim();
+  if (t.length > NOTE_MAX) return err('note_too_long');
+  const r = await query(`UPDATE profile_music SET note=$3 WHERE owner_id=$1 AND kind='track' AND item_id=$2`, [me, String(trackId), t || null]);
+  if (!r.rowCount) return err('not_found');
+  return { ok: true, note: t };
 };
 
 /* ── Исключения ── */

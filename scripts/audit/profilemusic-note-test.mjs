@@ -1,0 +1,18 @@
+process.chdir('/home/user/sky-claude/server');
+const m = await import('../../server/profilemusic.mjs');
+const { query } = await import('../../server/db.mjs');
+const me='pmn-'+Date.now(); const tid='trk-'+me;
+await query(`INSERT INTO profiles (id, username, name) VALUES ($1,$1,'t') ON CONFLICT DO NOTHING`,[me]).catch(e=>console.log('profile',e.message));
+await query(`INSERT INTO music_tracks (id,title,artist,status,owner_id,mime,bytes) VALUES ($1,'T','A','published',$2,'audio/mpeg',1)`,[tid,me]).catch(e=>console.log('track',e.message));
+let ok=0,bad=0; const t=(n,c)=>{c?ok++:bad++;console.log(c?'ok  ':'FAIL',n)};
+t('save list',(await m.setProfileMusic(me,{tracks:[tid],playlists:[]})).ok===true);
+t('note on missing track -> not_found',(await m.setTrackNote(me,'nope','x')).error==='not_found');
+const long='строка\n'.repeat(500);
+t('note saved',(await m.setTrackNote(me,tid,long)).ok===true);
+t('read back note',(await m.getProfileMusic(me,me)).tracks[0].note.startsWith('строка'));
+t('note survives re-save of list',(await m.setProfileMusic(me,{tracks:[tid],playlists:[]})).ok&&(await m.getProfileMusic(me,me)).tracks[0].note.length>100);
+t('too long rejected',(await m.setTrackNote(me,tid,'x'.repeat(20001))).error==='note_too_long');
+t("other user can't set note",(await m.setTrackNote('someone-else',tid,'hack')).error==='not_found');
+t('empty clears',(await m.setTrackNote(me,tid,'  ')).ok&&(await m.getProfileMusic(me,me)).tracks[0].note==='');
+await query('DELETE FROM profile_music WHERE owner_id=$1',[me]); await query('DELETE FROM music_tracks WHERE id=$1',[tid]); await query('DELETE FROM profiles WHERE id=$1',[me]).catch(()=>{});
+console.log(ok,'ok',bad,'fail'); process.exit(bad?1:0);
