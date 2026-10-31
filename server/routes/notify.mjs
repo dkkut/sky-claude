@@ -14,7 +14,7 @@
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import {
-  createBroadcast, listBroadcasts, getBroadcast, cancelBroadcast, recentDeliveries,
+  createBroadcast, searchRecipients, listBroadcasts, getBroadcast, cancelBroadcast, recentDeliveries,
 } from './../notifyBroadcast.mjs';
 import { logAdmin } from './../adminsec.mjs';
 
@@ -42,6 +42,12 @@ export const notifyRoutes = async (req, res, url) => {
     const sinceMs = Math.max(Date.now() - 24 * 3_600_000, Number(params.get('since')) || 0);
     const events = await recentDeliveries(me, new Date(sinceMs).toISOString());
     return json(res, 200, { events, now: Date.now() });
+  }
+
+  if (req.method === 'GET' && path === '/api/notify/admin/users') {
+    if (!rateLimit(`notify:admin:${me}`, ADMIN_PER_MIN * 4)) return json(res, 429, { error: 'rate_limited' });
+    const r = await searchRecipients(me, params.get('q'));
+    return json(res, r.error ? errCode(r.error) : 200, r);
   }
 
   if (req.method === 'GET' && path === '/api/notify/admin/broadcasts') {

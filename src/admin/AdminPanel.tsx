@@ -5264,7 +5264,9 @@ const NotifyComposeForm = ({ onSent }: { onSent: () => void }) => {
   const [body, setBody] = useState('');
   const [link, setLink] = useState('');
   const [audienceType, setAudienceType] = useState<import('@/notifications/broadcastApi').AudienceType>('all');
-  const [usernames, setUsernames] = useState('');
+  const [picked, setPicked] = useState<import('@/notifications/broadcastApi').RecipientHit[]>([]);
+  const [pickQ, setPickQ] = useState('');
+  const [hits, setHits] = useState<import('@/notifications/broadcastApi').RecipientHit[]>([]);
   const [region, setRegion] = useState('RU');
   const [scheduleKind, setScheduleKind] = useState<import('@/notifications/broadcastApi').ScheduleKind>('once');
   const [when, setWhen] = useState<'now' | 'later'>('now');
@@ -5276,8 +5278,18 @@ const NotifyComposeForm = ({ onSent }: { onSent: () => void }) => {
   const [sent, setSent] = useState('');
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    if (audienceType !== 'users' || pickQ.trim().length < 2) { setHits([]); return undefined; }
+    const t = setTimeout(async () => {
+      const { apiAdminSearchRecipients } = await import('@/notifications/broadcastApi');
+      const r = await apiAdminSearchRecipients(pickQ.trim());
+      setHits(r.ok && r.data ? r.data.items : []);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [pickQ, audienceType]);
+
   const valid = title.trim() && body.trim()
-    && (audienceType !== 'users' || usernames.trim())
+    && (audienceType !== 'users' || picked.length > 0)
     && (when !== 'later' || (date && time));
 
   const send = async () => {
@@ -5294,8 +5306,7 @@ const NotifyComposeForm = ({ onSent }: { onSent: () => void }) => {
     const r = await apiAdminCreateBroadcast({
       title: title.trim(), body: body.trim(), link: link.trim() || undefined,
       audienceType,
-      usernames: audienceType === 'users'
-        ? usernames.split(/[\n,]/).map((s) => s.trim().replace(/^@/, '')).filter(Boolean) : undefined,
+      usernames: audienceType === 'users' ? picked.map((p) => p.username) : undefined,
       region: audienceType === 'region' ? region : undefined,
       scheduleKind, sendNow: when === 'now', scheduledAt,
       timezoneLabel: when === 'later' ? Intl.DateTimeFormat().resolvedOptions().timeZone : undefined,
@@ -5304,7 +5315,7 @@ const NotifyComposeForm = ({ onSent }: { onSent: () => void }) => {
     setBusy(false); setConfirming(false);
     if (!r.ok || !r.data) { setFailed(errBroadcast(r.error, (r as { unknown?: string[] }).unknown)); return; }
     setSent(when === 'now' ? 'Рассылка отправляется.' : 'Рассылка запланирована.');
-    setTitle(''); setBody(''); setLink(''); setUsernames(''); setReason(''); setDate(''); setTime('');
+    setTitle(''); setBody(''); setLink(''); setPicked([]); setPickQ(''); setReason(''); setDate(''); setTime('');
     onSent();
   };
 
@@ -5330,10 +5341,32 @@ const NotifyComposeForm = ({ onSent }: { onSent: () => void }) => {
         ))}
       </div>
       {audienceType === 'users' && (
-        <textarea value={usernames} onChange={(e) => setUsernames(e.target.value)} rows={2}
-          placeholder="Ники через запятую или с новой строки: username1, username2"
-          className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <div className="space-y-1.5">
+          {picked.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {picked.map((p) => (
+                <button key={p.id} type="button" onClick={() => setPicked((l) => l.filter((x) => x.id !== p.id))}
+                  className="rounded-full px-2 py-1 text-[11px] font-semibold" style={{ background: C.l2, color: C.t1 }} translate="no">
+                  @{p.username} ✕
+                </button>
+              ))}
+            </div>
+          )}
+          <input value={pickQ} onChange={(e) => setPickQ(e.target.value)} placeholder="Найти человека по нику или имени"
+            className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+          {hits.filter((h) => !picked.some((p) => p.id === h.id)).map((h) => (
+            <button key={h.id} type="button" onClick={() => { setPicked((l) => [...l, h]); setPickQ(''); }}
+              className="flex w-full items-center justify-between rounded-xl px-3 py-1.5 text-left text-[11px]" style={{ background: C.l2, color: C.t1 }}>
+              <span translate="no">{h.name} · @{h.username}</span>
+              <span style={{ color: h.push ? C.green : C.t3 }}>{h.push ? 'push включён' : 'без push'}</span>
+            </button>
+          ))}
+          <p className="text-[10px]" style={{ color: C.t3 }}>
+            Push придёт тем, у кого есть подписка и приложение закрыто; остальные увидят уведомление внутри Sky.
+          </p>
+        </div>
       )}
+
       {audienceType === 'region' && (
         <select value={region} onChange={(e) => setRegion(e.target.value)}
           className="w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle}>
@@ -5499,6 +5532,7 @@ const NotifyBroadcastDetail = ({ id, onBack, onChanged }: { id: string; onBack: 
           <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>
             Получателей: {run.recipientsTotal} · доставлено: {run.recipientsSent}
             {run.recipientsFailed > 0 ? ` · ошибок: ${run.recipientsFailed}` : ''}
+            {run.pushTargets !== undefined ? ` · push: у ${run.pushTargets} есть подписка, отправлено ${run.pushSent ?? 0}` : ''}
           </p>
           {run.error && <p className="mt-0.5 text-[10px]" style={{ color: C.red }}>{run.error}</p>}
         </div>

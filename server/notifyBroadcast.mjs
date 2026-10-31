@@ -174,7 +174,7 @@ export const getBroadcast = async (actorId, id) => {
   );
   if (!rows[0]) return { error: 'not_found' };
   const { rows: runs } = await query(
-    `SELECT id, scheduled_for, status, recipients_total, recipients_sent, recipients_failed,
+    `SELECT id, scheduled_for, status, recipients_total, recipients_sent, recipients_failed, push_targets, push_sent,
             error, started_at, finished_at
        FROM notify_broadcast_runs WHERE broadcast_id = $1 ORDER BY started_at DESC LIMIT 100`,
     [id],
@@ -188,6 +188,8 @@ export const getBroadcast = async (actorId, id) => {
       recipientsTotal: r.recipients_total,
       recipientsSent: r.recipients_sent,
       recipientsFailed: r.recipients_failed,
+      pushTargets: r.push_targets ?? 0,
+      pushSent: r.push_sent ?? 0,
       error: r.error ?? undefined,
       startedAt: r.started_at.toISOString(),
       finishedAt: r.finished_at ? r.finished_at.toISOString() : undefined,
@@ -304,10 +306,18 @@ const dispatchOne = async (b) => {
         WHERE id = $1`,
       [runId, recipients.length],
     );
-    /* Пуш тем, у кого приложение закрыто (остальные получат опросом). */
-    for (let i = 0; i < recipients.length; i += 500) {
-      void pushToOffline(recipients.slice(i, i + 500), { title: b.title, body: b.body, url: b.link ?? '/', tag: `nb:${b.id}` });
-    }
+    /* Пуш тем, у кого приложение закрыто (остальные получат опросом).
+       Охват считаем честно: сколько людей имеют подписку и сколько пушей ушло. */
+    let pushTargets = 0; let pushSent = 0;
+    try {
+      const { rows: subs } = await query(
+        'SELECT count(DISTINCT profile_id)::int AS n FROM push_subscriptions WHERE profile_id = ANY($1::text[])', [recipients]);
+      pushTargets = subs[0]?.n ?? 0;
+      for (let i = 0; i < recipients.length; i += 500) {
+        pushSent += await pushToOffline(recipients.slice(i, i + 500), { title: b.title, body: b.body, url: b.link ?? '/', tag: `nb:${b.id}` });
+      }
+      await query('UPDATE notify_broadcast_runs SET push_targets = $2, push_sent = $3 WHERE id = $1', [runId, pushTargets, pushSent]);
+    } catch (e) { console.error('[notify] охват пуша:', e.message); }
 
     if (b.schedule_kind === 'once') {
       await query(
@@ -368,4 +378,18 @@ export const recentDeliveries = async (profileId, sinceIso) => {
     id: String(r.delivery_id), title: r.title, body: r.body, link: r.link ?? undefined,
     createdAt: r.created_at.toISOString(),
   }));
+};
+
+/** Поиск людей для выбора получателей (право notifications). Возвращает
+ * только публичное: имя, ник и есть ли у человека подписка на пуши. */
+export const searchRecipients = async (actorId, q) => {
+  if (!(await can(actorId, 'notifications'))) return { error: 'not_allowed' };
+  const s = clean(q, 60);
+  if (s.length < 2) return { items: [] };
+  const like = `%${s.replace(/^@/, '').replace(/[%_\\]/g, '\\$&')}%`;
+  const { rows } = await query(
+    `SELECT p.id, p.name, p.username,
+            EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.profile_id = p.id) AS push
+       FROM profiles p WHERE p.username ILIKE $1 OR p.name ILIKE $1 ORDER BY p.username LIMIT 15`, [like]);
+  return { items: rows.map((r) => ({ id: r.id, name: r.name, username: r.username, push: r.push })) };
 };

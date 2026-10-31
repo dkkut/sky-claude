@@ -58,6 +58,8 @@ export interface BroadcastRun {
   recipientsTotal: number;
   recipientsSent: number;
   recipientsFailed: number;
+  pushTargets?: number;
+  pushSent?: number;
   error?: string;
   startedAt: string;
   finishedAt?: string;
@@ -94,3 +96,7 @@ export const apiAdminCancelBroadcast = (id: string, reason?: string) =>
   apiCall<{ ok: boolean }>(`/api/notify/admin/broadcasts/${encodeURIComponent(id)}/cancel`, {
     method: 'POST', body: JSON.stringify({ reason }),
   });
+
+export interface RecipientHit { id: string; name: string; username: string; push: boolean }
+export const apiAdminSearchRecipients = (q: string) =>
+  apiCall<{ items: RecipientHit[] }>(`/api/notify/admin/users?q=${encodeURIComponent(q)}`);
