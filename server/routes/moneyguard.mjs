@@ -1,11 +1,12 @@
 /** Ручки замка SkyMoney: /api/skyid/money/{status,code,unlock,lock}. Логика — moneyguard.mjs. */
 import { json, parseBody, readSession } from './../http.mjs';
-import { moneyState, unlockMoney, lockMoney, sendDeviceCode } from './../moneyguard.mjs';
+import { moneyState, unlockMoney, lockMoney, sendDeviceCode, proveIdentity } from './../moneyguard.mjs';
+import { hasWalletPassword, setWalletPassword, removeWalletPassword, resetWalletPassword } from './../moneypass.mjs';
 import { recoveryInfo, createPhrase, setExtra } from './../moneyrecovery.mjs';
 import { isDeviceTrusted } from './../trusteddevices.mjs';
 import { rateLimit } from './../security.mjs';
 
-const CODES = { invalid_phrase: 401, phrase_required: 400, use_phrase: 400, no_phrase: 400, bad_extra: 400, forbidden: 403,  invalid_credentials: 401, password_required: 400, device_code_required: 400, invalid_code: 400, code_expired: 400, too_many_attempts: 429, too_many_requests: 429, too_soon: 429, use_authenticator: 400, no_contact: 400, not_found: 404 };
+const CODES = { weak_wallet_password: 400, wallet_password_required: 400, invalid_wallet_password: 401, invalid_phrase: 401, phrase_required: 400, use_phrase: 400, no_phrase: 400, bad_extra: 400, forbidden: 403,  invalid_credentials: 401, password_required: 400, device_code_required: 400, invalid_code: 400, code_expired: 400, too_many_attempts: 429, too_many_requests: 429, too_soon: 429, use_authenticator: 400, no_contact: 400, not_found: 404 };
 
 export const moneyGuardRoutes = async (req, res, url) => {
   const path = url.split('?')[0];
@@ -32,10 +33,29 @@ export const moneyGuardRoutes = async (req, res, url) => {
     }
     return json(res, 404, { error: 'not_found' });
   }
+  if (path.startsWith('/api/skyid/money/password')) {
+    const st = await moneyState(s.skyId, s.sessionId, req);
+    // Сброс забытого пароля доступен и при закрытом кошельке (но только на доверенном устройстве и с кодом личности).
+    const isReset = path === '/api/skyid/money/password/reset' || path === '/api/skyid/money/password/reset-code';
+    if (!st.unlocked && !isReset) return json(res, 403, { error: 'money_locked' });
+    if (req.method === 'GET' && path === '/api/skyid/money/password') return json(res, 200, { hasPassword: st.decoy ? true : await hasWalletPassword(s.skyId) });
+    // Менять можно только на доверенном устройстве и не в режиме «пустой кошелёк».
+    const real = !st.decoy && await isDeviceTrusted(s.skyId, req).catch(() => false);
+    if (!real) return json(res, 403, { error: 'forbidden' });
+    const b = (await parseBody(req).catch(() => ({}))) ?? {};
+    let r;
+    if (req.method === 'POST' && path === '/api/skyid/money/password') r = await setWalletPassword(s.skyId, { current: b.current, next: b.password });
+    else if (req.method === 'POST' && path === '/api/skyid/money/password/remove') r = await removeWalletPassword(s.skyId, { current: b.current });
+    else if (req.method === 'POST' && path === '/api/skyid/money/password/reset-code') r = await sendDeviceCode(s.skyId, { purpose: 'money_pass_reset' });
+    else if (req.method === 'POST' && path === '/api/skyid/money/password/reset') {
+      const p = await proveIdentity(s.skyId, b.code); r = p.ok ? await resetWalletPassword(s.skyId, b.password ?? null) : p;
+    } else return json(res, 404, { error: 'not_found' });
+    return json(res, r.ok ? 200 : (CODES[r.error] ?? 400), r.ok ? { ok: true, hasPassword: await hasWalletPassword(s.skyId) } : r);
+  }
   if (req.method === 'POST' && path === '/api/skyid/money/code') { const r = await sendDeviceCode(s.skyId); return json(res, r.ok ? 200 : (CODES[r.error] ?? 400), r); }
   if (req.method === 'POST' && path === '/api/skyid/money/unlock') {
     const b = (await parseBody(req).catch(() => ({}))) ?? {};
-    const r = await unlockMoney(s.skyId, s.sessionId, req, { password: b.password, code: b.code, words: b.words, extra: b.extra });
+    const r = await unlockMoney(s.skyId, s.sessionId, req, { password: b.password, code: b.code, words: b.words, extra: b.extra, walletPassword: b.walletPassword });
     return json(res, r.ok ? 200 : (CODES[r.error] ?? 400), r.ok ? pub(r) : r);
   }
   if (req.method === 'POST' && path === '/api/skyid/money/lock') return json(res, 200, await lockMoney(s.sessionId));

@@ -15,6 +15,55 @@ const sty = { background: 'var(--bg-l2)', border: '1px solid var(--border)', col
 const card = { background: 'var(--bg-l1)', border: '1px solid var(--border)' } as const;
 const ERR: Record<string, string> = { forbidden: 'Это можно делать только на подтверждённом устройстве', bad_extra: 'Слово должно быть от 6 до 64 знаков', money_locked: 'SkyMoney закрыт' };
 
+const PASS_ERR: Record<string, string> = { weak_wallet_password: 'Пароль должен быть от 6 до 64 знаков', invalid_wallet_password: 'Неверный текущий пароль', wallet_password_required: 'Введите текущий пароль', too_many_attempts: 'Слишком много попыток — попробуйте позже', invalid_code: 'Неверный код', device_code_required: 'Введите код', no_contact: 'Нет подтверждённой почты или номера для кода' };
+
+/** Отдельный пароль кошелька: задать, сменить, убрать. Сервер хранит только хеш; пароль нужен в каждой сессии SkyMoney. */
+const WalletPassword = () => {
+  const [has, setHas] = useState<boolean | null>(null);
+  const [open, setOpen] = useState(false);
+  const [cur, setCur] = useState(''); const [p1, setP1] = useState(''); const [p2, setP2] = useState('');
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState('');
+  const load = useCallback(async () => { const r = await apiCall<{ hasPassword: boolean }>('/api/skyid/money/password'); if (r.ok && r.data) setHas(r.data.hasPassword); }, []);
+  useEffect(() => { void load(); }, [load]);
+  const done = (text: string) => { setCur(''); setP1(''); setP2(''); setOpen(false); setMsg(text); void load(); };
+  const save = async () => {
+    if (p1 !== p2) { setMsg('Пароли не совпадают'); return; }
+    setBusy(true); setMsg('');
+    const r = await apiCall('/api/skyid/money/password', { method: 'POST', body: JSON.stringify({ password: p1, current: cur || undefined }) });
+    setBusy(false);
+    if (r.ok) done(has ? 'Пароль кошелька изменён' : 'Пароль кошелька задан'); else setMsg(PASS_ERR[r.error ?? ''] ?? ERR[r.error ?? ''] ?? 'Не получилось сохранить');
+  };
+  const remove = async () => {
+    if (!window.confirm('Убрать пароль кошелька? Вход в SkyMoney останется под обычной защитой.')) return;
+    setBusy(true); setMsg('');
+    const r = await apiCall('/api/skyid/money/password/remove', { method: 'POST', body: JSON.stringify({ current: cur }) });
+    setBusy(false);
+    if (r.ok) done('Пароль кошелька убран'); else setMsg(PASS_ERR[r.error ?? ''] ?? ERR[r.error ?? ''] ?? 'Не получилось убрать');
+  };
+  const inp = 'w-full rounded-2xl px-4 py-3 text-base outline-none';
+  return (
+    <section className="space-y-3 rounded-3xl p-5" style={card}>
+      <p className="flex items-center gap-2 text-sm font-extrabold" style={{ color: 'var(--t1)' }}><Lock size={16} />Пароль кошелька</p>
+      <p className="text-xs leading-relaxed" style={{ color: 'var(--t3)' }}>Отдельный пароль только для SkyMoney, не такой, как у Sky ID. Если он задан, его спрашивают при каждом входе в кошелёк, даже на вашем устройстве. Хранится на сервере в виде хеша. Забыли пароль — его можно сбросить на подтверждённом устройстве по коду из аутентификатора или с почты.</p>
+      {has != null && <p className="text-xs font-semibold" style={{ color: has ? '#34c759' : 'var(--t3)' }}>{has ? 'Пароль задан' : 'Пароль не задан'}</p>}
+      {!open && <button type="button" disabled={has == null} onClick={() => { setOpen(true); setMsg(''); }} className="w-full rounded-2xl py-3 text-sm font-extrabold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>{has ? 'Сменить или убрать пароль' : 'Задать пароль кошелька'}</button>}
+      {open && (
+        <div className="space-y-2">
+          {has && <input type="password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" placeholder="Текущий пароль" aria-label="Текущий пароль кошелька" className={inp} style={sty} />}
+          <input type="password" value={p1} onChange={(e) => setP1(e.target.value)} autoComplete="new-password" placeholder="Новый пароль (от 6 знаков)" aria-label="Новый пароль кошелька" className={inp} style={sty} />
+          <input type="password" value={p2} onChange={(e) => setP2(e.target.value)} autoComplete="new-password" placeholder="Повторите пароль" aria-label="Повтор пароля кошелька" className={inp} style={sty} />
+          <div className="flex gap-2">
+            <button type="button" disabled={busy || !p1 || (has === true && !cur)} onClick={() => void save()} className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-2.5 text-sm font-extrabold disabled:opacity-40" style={{ background: 'var(--accent)', color: '#fff' }}>{busy && <Loader2 size={14} className="animate-spin" />}Сохранить</button>
+            {has && <button type="button" disabled={busy || !cur} onClick={() => void remove()} className="rounded-2xl px-4 py-2.5 text-sm font-bold disabled:opacity-40" style={{ background: 'var(--bg-l3)', color: '#e05a5a' }}>Убрать</button>}
+            <button type="button" onClick={() => { setOpen(false); setCur(''); setP1(''); setP2(''); }} className="rounded-2xl px-4 py-2.5 text-sm font-bold" style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>Отмена</button>
+          </div>
+        </div>
+      )}
+      {msg && <p role="status" className="text-xs" style={{ color: 'var(--t2)' }}>{msg}</p>}
+    </section>
+  );
+};
+
 export const MoneySettings = ({ onBack, onLock }: { onBack: () => void; onLock: () => void }) => {
   const [info, setInfo] = useState<Info | null>(null);
   const [words, setWords] = useState<string[] | null>(null);
@@ -54,6 +103,7 @@ export const MoneySettings = ({ onBack, onLock }: { onBack: () => void; onLock: 
         <h2 className="text-base font-extrabold" style={{ color: 'var(--t1)' }}>Настройки SkyMoney</h2>
       </div>
       <div className="mx-auto w-full max-w-xl flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        <WalletPassword />
         <section className="space-y-3 rounded-3xl p-5" style={card}>
           <p className="flex items-center gap-2 text-sm font-extrabold" style={{ color: 'var(--t1)' }}><KeyRound size={16} />Фраза восстановления</p>
           <p className="text-xs leading-relaxed" style={{ color: 'var(--t3)' }}>12 слов. Если фраза задана, на неподтверждённом устройстве SkyMoney открывается только по ней. Фраза хранится на сервере в виде хеша: показать её повторно нельзя — запишите и храните отдельно от телефона.</p>

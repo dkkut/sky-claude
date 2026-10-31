@@ -1334,13 +1334,12 @@ export const ExtrasModule = () => {
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <AnimatePresence mode="wait">
+        {/* Без AnimatePresence: зависшая анимация выхода (layoutId в «Главной») оставляла следующую вкладку чёрной */}
           <motion.div
             key={tab}
             className="h-full flex flex-col overflow-hidden"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           >
         <ModuleGate id={tab}>
@@ -1382,7 +1381,6 @@ export const ExtrasModule = () => {
         </React.Suspense>
         </ModuleGate>
           </motion.div>
-        </AnimatePresence>
       </div>
     </div>
   );

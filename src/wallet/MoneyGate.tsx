@@ -10,7 +10,7 @@ import { useMoney } from './store';
 import { visibleTick } from '@/shared/visibleTick';
 
 interface MoneyStatus {
-  unlocked: boolean; needPassword: boolean; needDevice: boolean; passwordSet?: boolean; trustedDevice?: boolean;
+  unlocked: boolean; needPassword: boolean; needWalletPassword?: boolean; needDevice: boolean; passwordSet?: boolean; trustedDevice?: boolean;
   deviceProof?: 'authenticator' | 'email' | 'phone' | 'phrase' | null; destination?: string | null; expiresInSec?: number;
 }
 
@@ -19,6 +19,7 @@ const TEXT: Record<string, string> = {
   invalid_code: 'Неверный код', code_expired: 'Код устарел — запросите новый', too_many_attempts: 'Слишком много попыток — попробуйте позже',
   too_many_requests: 'Слишком много попыток — попробуйте позже', too_soon: 'Код уже отправлен — подождите немного',
   invalid_phrase: 'Фраза или слово не подошли', phrase_required: 'Введите 12 слов', use_phrase: 'Для этого устройства нужна фраза восстановления',
+  invalid_wallet_password: 'Неверный пароль кошелька', wallet_password_required: 'Введите пароль кошелька', weak_wallet_password: 'Пароль должен быть от 6 до 64 знаков', forbidden: 'Сбросить пароль можно только на подтверждённом устройстве',
   no_contact: 'Нет подтверждённой почты или номера для кода', unauthorized: 'Сессия истекла, войдите заново',
 };
 
@@ -29,6 +30,8 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [pwd, setPwd] = useState('');
+  const [wpwd, setWpwd] = useState('');
+  const [reset, setReset] = useState<null | { sent: boolean; code: string; next: string }>(null);
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
   const [words, setWords] = useState('');
@@ -83,11 +86,23 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
   };
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
-    const r = await apiCall<MoneyStatus>('/api/skyid/money/unlock', { method: 'POST', body: JSON.stringify({ password: pwd || undefined, code: code || undefined, words: words || undefined, extra: extra || undefined }) });
+    const r = await apiCall<MoneyStatus>('/api/skyid/money/unlock', { method: 'POST', body: JSON.stringify({ password: pwd || undefined, walletPassword: wpwd || undefined, code: code || undefined, words: words || undefined, extra: extra || undefined }) });
     setBusy(false);
-    if (r.ok && r.data?.unlocked) { setPwd(''); setCode(''); setWords(''); setExtra(''); setSt(r.data); return; }
+    if (r.ok && r.data?.unlocked) { setPwd(''); setWpwd(''); setCode(''); setWords(''); setExtra(''); setSt(r.data); return; }
     if (r.ok && r.data) { setSt(r.data); return; }
-    setErr(TEXT[r.error ?? ''] ?? 'Не получилось подтвердить доступ'); setPwd(''); setExtra('');
+    setErr(TEXT[r.error ?? ''] ?? 'Не получилось подтвердить доступ'); setPwd(''); setWpwd(''); setExtra('');
+  };
+  const sendReset = async () => {
+    setBusy(true); setErr('');
+    const r = await apiCall('/api/skyid/money/password/reset-code', { method: 'POST', body: '{}' });
+    setBusy(false);
+    if (r.ok || r.error === 'use_authenticator') setReset((x) => x && { ...x, sent: true }); else setErr(TEXT[r.error ?? ''] ?? 'Не удалось отправить код');
+  };
+  const doReset = async () => {
+    if (!reset) return; setBusy(true); setErr('');
+    const r = await apiCall('/api/skyid/money/password/reset', { method: 'POST', body: JSON.stringify({ code: reset.code, password: reset.next || null }) });
+    setBusy(false);
+    if (r.ok) { setReset(null); setWpwd(''); void load(); setErr(''); } else setErr(TEXT[r.error ?? ''] ?? 'Не получилось сбросить пароль');
   };
   const inp = 'w-full rounded-2xl px-4 py-3 text-base outline-none';
   const sty = { background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' } as const;
@@ -132,9 +147,30 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
           </div>
         )}
 
+        {st.needWalletPassword && !reset && (
+          <div className="space-y-2">
+            <p className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--t1)' }}><KeyRound size={15} />Пароль кошелька</p>
+            <input type="password" value={wpwd} onChange={(e) => setWpwd(e.target.value)} autoComplete="off" placeholder="Пароль кошелька" aria-label="Пароль кошелька" className={inp} style={sty} />
+            <button type="button" onClick={() => { setReset({ sent: false, code: '', next: '' }); setErr(''); }} className="text-xs underline" style={{ color: 'var(--t3)' }}>Забыли пароль кошелька?</button>
+          </div>
+        )}
+        {reset && (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>Сброс пароля кошелька</p>
+            <p className="text-xs" style={{ color: 'var(--t3)' }}>{st.deviceProof === 'authenticator' ? 'Работает только на подтверждённом устройстве. Подтвердите личность кодом из аутентификатора и задайте новый пароль (или оставьте поле пустым, чтобы убрать пароль).' : 'Работает только на подтверждённом устройстве. Подтвердите личность кодом из письма или SMS и задайте новый пароль (или оставьте поле пустым, чтобы убрать пароль).'}</p>
+            {st.deviceProof !== 'authenticator' && <button type="button" disabled={busy} onClick={() => void sendReset()} className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold" style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}><Mail size={13} />{reset.sent ? 'Отправить ещё раз' : 'Отправить код'}</button>}
+            <input value={reset.code} onChange={(e) => setReset({ ...reset, code: e.target.value.replace(/\s/g, '') })} inputMode="numeric" autoComplete="one-time-code" maxLength={12} placeholder="Код" aria-label="Код подтверждения" className={inp} style={sty} />
+            <input type="password" value={reset.next} onChange={(e) => setReset({ ...reset, next: e.target.value })} autoComplete="new-password" placeholder="Новый пароль кошелька (от 6 знаков)" aria-label="Новый пароль кошелька" className={inp} style={sty} />
+            <div className="flex gap-2">
+              <button type="button" disabled={busy || !reset.code} onClick={() => void doReset()} className="flex-1 rounded-2xl py-2.5 text-sm font-extrabold disabled:opacity-40" style={{ background: 'var(--accent)', color: '#fff' }}>Сбросить</button>
+              <button type="button" onClick={() => { setReset(null); setErr(''); }} className="rounded-2xl px-4 py-2.5 text-sm font-bold" style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>Назад</button>
+            </div>
+          </div>
+        )}
+
         {err && <p role="alert" className="rounded-xl p-3 text-sm" style={{ background: 'rgba(224,90,90,.12)', color: '#e05a5a' }}>{err}</p>}
         {err.startsWith('Не удалось проверить') && <button type="button" onClick={() => { setErr(''); void load(); }} className="w-full rounded-2xl py-2.5 text-sm font-bold" style={{ background: 'var(--bg-l3)', color: 'var(--t1)' }}>Повторить проверку</button>}
-        <button type="submit" disabled={busy || (st.needPassword && !pwd) || (st.needDevice && (st.deviceProof === 'phrase' ? words.trim().split(/\s+/).length < 12 : !code))}
+        <button type="submit" disabled={busy || !!reset || (st.needPassword && !pwd) || (st.needWalletPassword && !wpwd) || (st.needDevice && (st.deviceProof === 'phrase' ? words.trim().split(/\s+/).length < 12 : !code))}
           className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-extrabold disabled:opacity-50" style={{ background: 'var(--accent)', color: '#fff' }}>
           {busy ? <Loader2 size={16} className="animate-spin" /> : null}Открыть SkyMoney
         </button>
