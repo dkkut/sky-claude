@@ -6,8 +6,8 @@
  * сервером и без его подписи ничего не значит.
  */
 import { config } from './../config.mjs';
-import { signToken } from './../security.mjs';
-import { json, parseBody, appBody } from './../http.mjs';
+import { signToken, rateLimit, rateLimitPerHour } from './../security.mjs';
+import { json, parseBody, appBody, clientIp } from './../http.mjs';
 import { buildBetaCookie } from './../cookies.mjs';
 import { betaEnabled, checkBetaKey } from './../beta.mjs';
 
@@ -21,6 +21,11 @@ export const betaRoutes = async (req, res, url) => {
   if (req.method === 'POST' && url === '/api/beta/unlock') {
     if (!betaEnabled()) return json(res, 200, { ok: true, required: false });
 
+    // Подбор ключа: не больше 10 попыток в минуту и 60 в час с адреса.
+    const ip = clientIp(req);
+    if (!rateLimit(`beta:${ip}`, 10) || !rateLimitPerHour(`beta:${ip}`, 60)) {
+      return json(res, 429, { error: 'rate_limited' });
+    }
     const body = await parseBody(req);
     const found = await checkBetaKey(body.key);
     // Ответ одинаков для любого неверного ключа: по тексту ошибки
