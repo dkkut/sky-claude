@@ -425,9 +425,13 @@ const Root = () => {
     // из защищённого хранилища в память (raw() кладёт его в заголовок
     // синхронно) — иначе самый первый запрос (restoreSession) ушёл бы
     // без него и упёрся в калитку. В веб-сборке initNativeAuth — no-op.
+    // Заставка не должна висеть вечно, если сервер не отвечает (перезапуск, обрыв): через 12 с показываем экран входа,
+    // а проверка сессии продолжается в фоне и сама войдёт, как только сервер ответит.
+    const giveUp = setTimeout(() => { if (!cancelled) setSessionChecked(true); }, 12000);
     initNativeAuth()
       .then(() => useAuthStore.getState().restoreSession())
       .finally(() => {
+        clearTimeout(giveUp);
         if (cancelled) return;
         setSessionChecked(true);
         // До входа собственные гейтованные запросы не идут, поэтому
@@ -438,7 +442,7 @@ const Root = () => {
         // этим экраном по ошибке, пока их же запросы проходят мимо гейта).
         if (!useAuthStore.getState().isAuthenticated) void checkPlatformStatus();
       });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(giveUp); };
   }, []);
 
   const introAnim = useSettings((st) => st.settings.introAnim);
