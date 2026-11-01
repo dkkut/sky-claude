@@ -22,6 +22,9 @@ export const childAccountRoutes = async (req, res, url) => {
   if (req.method === 'GET' && path === '/api/skyid/child') return json(res, 200, await ch.listChildren(s.skyId)), true;
   if (req.method === 'POST' && path === '/api/skyid/child') return out(await ch.createChild(s.skyId, s.profileId, (await parseBody(req)) ?? {}), 201), true;
   const m = /^\/api\/skyid\/child\/([\w.-]+)$/.exec(path);
+  const bm = /^\/api\/skyid\/child\/([\w.-]+)\/blocked(?:\/([\w.-]+))?$/.exec(path);
+  if (bm && req.method === 'GET' && !bm[2]) return out(await ch.blockedPeers(s.skyId, bm[1])), true;
+  if (bm && req.method === 'DELETE' && bm[2]) return out(await ch.unblockPeer(s.skyId, bm[1], bm[2])), true;
   if (m && req.method === 'PUT') return out(await ch.updateChild(s.skyId, m[1], (await parseBody(req)) ?? {})), true;
   if (m && req.method === 'DELETE') return out(await ch.removeChild(s.skyId, m[1])), true;
   return json(res, 404, { error: 'not_found' }), true;

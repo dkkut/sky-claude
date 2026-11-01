@@ -9,6 +9,7 @@
 import { query } from './db.mjs';
 import { hashPassword, verifyPassword } from './security.mjs';
 import { createProfile, getProfileOfSkyId } from './skyid.mjs';
+import { forgetChildCfg, withinSchedule, normWord } from './childguard.mjs';
 
 /** Ключи модулей, которые опекун может закрыть ребёнку (совпадают с modclosure.MODULES). */
 export const CHILD_MODULES = ['market', 'pvz', 'garant', 'go', 'kbiz', 'tickets', 'blox', 'ads', 'nftgifts', 'bots', 'partners',
@@ -27,7 +28,7 @@ const SKYID_OPEN = [/^\/api\/skyid\/profiles\/[\w.-]+\/select$/, /^\/api\/skyid\
 const AUTH_LOCKED = /^\/api\/auth\/(devices|deletion|password|freeze|two-factor|link)/;
 
 let cache = new Map();
-const forget = (id) => { if (id) cache.delete(id); else cache = new Map(); };
+const forget = (id) => { forgetChildCfg(id); if (id) cache.delete(id); else cache = new Map(); };
 export const childOf = async (profileId) => {
   if (!profileId) return null;
   const hit = cache.get(profileId);
@@ -45,6 +46,8 @@ export const childBlockedFor = async (profileId, path, method = 'GET') => {
   const row = await childOf(profileId);
   if (!row) return null;
   const closed = closedOf(row);
+  // Расписание: вне разрешённых часов закрыто всё, кроме входа/выхода, смены профиля и своих настроек.
+  if (!withinSchedule(row.settings) && !/^\/api\/(skyid|auth|me|withdraw|platform)\b/.test(path)) return 'time';
   for (const [key, list] of Object.entries(PATHS)) {
     if (closed.has(key) && list.some((p) => path === p || path.startsWith(`${p}/`))) return key;
   }
@@ -56,11 +59,29 @@ export const childBlockedFor = async (profileId, path, method = 'GET') => {
   return null;
 };
 
+/** 18+: сервер сам добавляет hideExplicit к каталогам детского профиля (клиент этого не решает). */
+export const childHidesAdult = async (profileId) => { const r = await childOf(profileId); return !!r && r.settings?.hideAdult !== false; };
+
 const cleanPin = (v) => String(v ?? '').replace(/\D/g, '');
+const cleanSchedule = (v, prev) => {
+  if (v === null) return null;
+  if (v === undefined) return prev ?? null;
+  const ok = (t) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(t));
+  if (!ok(v.from) || !ok(v.to) || v.from === v.to) return prev ?? null;
+  return { from: String(v.from), to: String(v.to), tz: Math.max(-840, Math.min(840, Math.round(Number(v.tz) || 0))) };
+};
+const cleanWords = (v, prev) => {
+  if (!Array.isArray(v)) return prev ?? [];
+  return [...new Set(v.map((w) => normWord(w)).filter((w) => w.length >= 2))].slice(0, 100);
+};
 const cleanSettings = (b, prev = {}) => ({
   modules: Array.isArray(b?.modules) ? [...new Set(b.modules.map(String))].filter((k) => CHILD_MODULES.includes(k)) : (prev.modules ?? CHILD_DEFAULT_CLOSED),
   money: typeof b?.money === 'boolean' ? b.money : !!prev.money,
   hideAdult: typeof b?.hideAdult === 'boolean' ? b.hideAdult : prev.hideAdult !== false,
+  friendsOnly: typeof b?.friendsOnly === 'boolean' ? b.friendsOnly : prev.friendsOnly !== false,
+  dailySpend: b?.dailySpend != null ? Math.max(0, Math.min(1_000_000, Math.round(Number(b.dailySpend) || 0))) : (prev.dailySpend ?? 0),
+  schedule: cleanSchedule(b?.schedule, prev.schedule),
+  words: cleanWords(b?.words, prev.words),
 });
 
 /** Профиль сессии не детский — только такой управляет детскими. */
@@ -139,9 +160,21 @@ export const checkGuardianPin = async (skyId, childId, pin) => {
   return { error: lock ? 'pin_locked' : 'bad_pin_code', retryAfter: lock ? Math.ceil((lock - Date.now()) / 1000) : undefined };
 };
 
+export const blockedPeers = async (skyId, childId) => {
+  if (!(await owns(skyId, childId))) return { error: 'not_found' };
+  const { rows } = await query(`SELECT b.peer_id, b.word, b.created_at, p.name, p.username FROM child_blocked_peers b JOIN profiles p ON p.id = b.peer_id
+                                 WHERE b.child_id = $1 ORDER BY b.created_at DESC LIMIT 100`, [childId]);
+  return { peers: rows.map((r) => ({ peerId: r.peer_id, name: r.name, username: r.username, word: r.word, at: r.created_at.toISOString() })) };
+};
+export const unblockPeer = async (skyId, childId, peerId) => {
+  if (!(await owns(skyId, childId))) return { error: 'not_found' };
+  await query('DELETE FROM child_blocked_peers WHERE child_id = $1 AND peer_id = $2', [childId, peerId]);
+  return { ok: true };
+};
+
 export const myChildState = async (profileId) => {
   const row = await childOf(profileId);
   if (!row) return { child: false };
   const closed = [...closedOf(row)];
-  return { child: true, closedModules: closed, money: !!row.settings?.money, hideAdult: row.settings?.hideAdult !== false };
+  return { child: true, allowedNow: withinSchedule(row.settings), schedule: row.settings?.schedule ?? null, closedModules: closed, money: !!row.settings?.money, hideAdult: row.settings?.hideAdult !== false };
 };

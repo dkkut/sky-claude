@@ -16,6 +16,7 @@
  * человек, выбрав «никто», запер бы сам себя и перестал получать ответы
  * на собственные сообщения.
  */
+import { childWriteDenied } from './childguard.mjs';
 import { query } from './db.mjs';
 
 export const PRIVACY_VALUES = ['all', 'contacts', 'nobody'];
@@ -178,6 +179,7 @@ export const exceptionOf = async (ownerId, otherId, scope) => {
 
 /** Может ли writer написать человеку owner в личной переписке. */
 export const mayWriteTo = async (ownerId, writerId) => {
+  if (await childWriteDenied(ownerId, writerId)) return false;   // детский режим: только друзья, закрытые чаты
   const exc = await exceptionOf(ownerId, writerId, 'write');
   if (exc) return exc === 'allow';
   const { rows } = await query('SELECT who_can_write FROM profiles WHERE id = $1', [ownerId]);

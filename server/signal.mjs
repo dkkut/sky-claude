@@ -41,6 +41,7 @@ import { userMoneySummary } from './adminmoney.mjs';
 import { pushToOffline, setOnlineProbe } from './webpush.mjs';
 import { decryptContent } from './crypto.mjs';
 import { guardOutgoingText } from './codeleak.mjs';
+import { guardChildMessage } from './childguard.mjs';
 import { adminGetOrder } from './kutrentmarket.mjs';
 import { betaEnabled, betaHashLive } from './beta.mjs';
 import { markActive, setOnlineSource } from './analytics.mjs';
@@ -447,6 +448,13 @@ const handle = async (ws, session, msg) => {
       const leak = await guardOutgoingText(me, `${message?.text ?? ''} ${message?.caption ?? ''}`);
       if (leak) {
         send(ws, { type: 'message-rejected', payload: { chatId, messageId: message?.id, reason: 'login_code_shared', hours: leak.hours } });
+        return;
+      }
+
+      // Детский режим: расписание и запрещённые слова опекуна (childguard.mjs); сообщение не доставляется.
+      const childBlock = await guardChildMessage(me, chatId, `${message?.text ?? ''} ${message?.caption ?? ''}`).catch(() => null);
+      if (childBlock) {
+        send(ws, { type: 'message-rejected', payload: { chatId, messageId: message?.id, reason: childBlock } });
         return;
       }
 

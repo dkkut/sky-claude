@@ -138,7 +138,7 @@ import { rtcRoutes } from './routes/rtc.mjs';
 import { modClosureRoutes } from './routes/modclosure.mjs';
 import { modBlockRoutes } from './routes/modblocks.mjs';
 import { moduleBlockedFor } from './modblocks.mjs';
-import { childBlockedFor } from './childaccount.mjs';
+import { childBlockedFor, childHidesAdult } from './childaccount.mjs';
 import { childAccountRoutes } from './routes/childaccount.mjs';
 import { ownerNotifyRoutes } from './routes/ownernotify.mjs';
 import { staffNotifyRoutes } from './routes/staffnotify.mjs';
@@ -428,6 +428,9 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
         if (stc && stc.userId === tkc.sky && stc.profileId) {
           const hit = await childBlockedFor(stc.profileId, new URL(req.url, 'http://x').pathname, req.method);
           if (hit) return json(res, 403, { error: 'child_restricted', module: hit });
+          if (req.method === 'GET' && /^\/api\/(film|music|books|skyvideo)\b/.test(new URL(req.url, 'http://x').pathname) && await childHidesAdult(stc.profileId)) {
+            const u2 = new URL(req.url, 'http://x'); u2.searchParams.set('hideExplicit', '1'); req.url = u2.pathname + u2.search;
+          }
         }
       }
     }

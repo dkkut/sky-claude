@@ -240,6 +240,7 @@ export const listCatalog = async (viewerId, { q, category, limit, offset, sort, 
   const args = [viewerId ?? '', lim, off];
   const where = [PUBLIC_ONLY];
   if (hideExplicit) where.push('NOT coalesce(m.mod_explicit, m.explicit)');
+  if (hideExplicit) where.push(`coalesce(m.age_rating, '') !~ '^(18|21)'`);
 
   const cat = text(category, MAX_SHORT);
   if (cat && cat !== 'Все') { args.push(cat.toLowerCase()); where.push(`lower(m.category) = $${args.length}`); }

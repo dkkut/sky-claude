@@ -11,6 +11,9 @@
  */
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
+import { childSpendDenied } from './childguard.mjs';
+/** Детский профиль: списания по его собственным решениям проверяются; служебные операции администрации — нет. */
+const CHILD_EXEMPT = /^(admin_|withdrawal|skykassa_refund)/;
 
 /** Курс обмена рублей в баллы. Раньше жил в двух местах и расходился. */
 export const POINTS_PER_RUBLE = 10;
@@ -240,6 +243,7 @@ export const wallet = {
         'SELECT balance FROM wallet_accounts WHERE user_id = $1 FOR UPDATE',
         [userId],
       );
+      if (!CHILD_EXEMPT.test(String(type))) { const d = await childSpendDenied((t, v) => c.query(t, v), userId, amount); if (d) return { error: d }; }
       const balance = Number(rows[0].balance);
       if (balance < amount) return { error: 'insufficient_funds', balance };
 
@@ -262,6 +266,7 @@ export const wallet = {
     if (!validAmount(amount)) return { error: 'invalid_amount' };
     await ensureAccount(client, userId);
     const { rows } = await client.query('SELECT balance FROM wallet_accounts WHERE user_id = $1 FOR UPDATE', [userId]);
+    if (!CHILD_EXEMPT.test(String(type))) { const d = await childSpendDenied((t, v) => client.query(t, v), userId, amount); if (d) return { error: d }; }
     const balance = Number(rows[0].balance);
     if (balance < amount) return { error: 'insufficient_funds', balance };
     const upd = await client.query(

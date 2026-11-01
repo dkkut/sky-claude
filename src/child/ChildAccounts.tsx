@@ -1,7 +1,7 @@
 /** Детские профили внутри Sky ID: создание, что закрыто, PIN опекуна. Ограничения проверяет сервер (server/childaccount.mjs). */
 import { useCallback, useEffect, useState } from 'react';
 import { Baby, Plus, Trash2 } from 'lucide-react';
-import { apiChildList, apiChildCreate, apiChildUpdate, apiChildRemove, apiChildMe, type ChildView } from '@/core/auth/api';
+import { apiChildBlocked, apiChildUnblock, apiChildList, apiChildCreate, apiChildUpdate, apiChildRemove, apiChildMe, type ChildView } from '@/core/auth/api';
 import { useAuthStore } from '@/core/auth/store';
 
 const LABELS: Record<string, string> = {
@@ -12,6 +12,25 @@ const LABELS: Record<string, string> = {
 const card = { background: 'var(--bg-l1)', border: '1px solid var(--border)' } as const;
 const inp = 'w-full rounded-xl px-3 py-2 text-sm outline-none';
 const inpStyle = { background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' } as const;
+
+const BlockedChats = ({ child }: { child: ChildView }) => {
+  const [peers, setPeers] = useState<{ peerId: string; name: string; username: string; word: string }[]>([]);
+  const load = useCallback(async () => { const r = await apiChildBlocked(child.profileId); if (r.ok && r.data) setPeers(r.data.peers); }, [child.profileId]);
+  useEffect(() => { void load(); }, [load]);
+  if (!peers.length) return null;
+  return (
+    <div className="mt-2">
+      <p className="mb-1 text-xs font-semibold" style={{ color: 'var(--t2)' }}>Закрытые чаты</p>
+      {peers.map((p) => (
+        <div key={p.peerId} className="flex items-center justify-between gap-2 text-xs" style={{ color: 'var(--t1)' }}>
+          <span className="min-w-0 truncate" translate="no">{p.name} · @{p.username} · «{p.word}»</span>
+          <button type="button" className="shrink-0 font-semibold" style={{ color: 'var(--accent)' }}
+            onClick={async () => { await apiChildUnblock(child.profileId, p.peerId); void load(); }}>Открыть</button>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 export const ChildAccounts = () => {
   const currentUserId = useAuthStore((s) => s.currentUserId);
@@ -84,6 +103,33 @@ export const ChildAccounts = () => {
               </label>
             ))}
           </div>
+          <label className="mt-2 flex items-center gap-2 text-xs" style={{ color: 'var(--t1)' }}>
+            <input type="checkbox" checked={c.settings.friendsOnly} onChange={(e) => void save(c, { friendsOnly: e.target.checked })} />Переписка только с друзьями
+          </label>
+          <label className="mt-1 flex items-center gap-2 text-xs" style={{ color: 'var(--t1)' }}>
+            <input type="checkbox" checked={c.settings.hideAdult} onChange={(e) => void save(c, { hideAdult: e.target.checked })} />Скрывать 18+ в музыке, кино и книгах
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" style={{ color: 'var(--t1)' }}>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={!!c.settings.schedule}
+              onChange={(e) => void save(c, { schedule: e.target.checked ? { from: '08:00', to: '21:00', tz: new Date().getTimezoneOffset() } : null })} />Доступ по времени</label>
+            {c.settings.schedule && (<>
+              <input type="time" value={c.settings.schedule.from} className="rounded-lg px-2 py-1" style={inpStyle}
+                onChange={(e) => e.target.value && void save(c, { schedule: { ...c.settings.schedule!, from: e.target.value, tz: new Date().getTimezoneOffset() } })} />
+              <span>—</span>
+              <input type="time" value={c.settings.schedule.to} className="rounded-lg px-2 py-1" style={inpStyle}
+                onChange={(e) => e.target.value && void save(c, { schedule: { ...c.settings.schedule!, to: e.target.value, tz: new Date().getTimezoneOffset() } })} />
+            </>)}
+          </div>
+          {c.settings.money && (
+            <label className="mt-2 flex items-center gap-2 text-xs" style={{ color: 'var(--t1)' }}>Лимит трат в сутки, ₽ (0 — без лимита)
+              <input type="number" min={0} className="w-24 rounded-lg px-2 py-1" style={inpStyle} defaultValue={c.settings.dailySpend}
+                onBlur={(e) => void save(c, { dailySpend: Number(e.target.value) || 0 })} />
+            </label>
+          )}
+          <p className="mb-1 mt-3 text-xs font-semibold" style={{ color: 'var(--t2)' }}>Запрещённые слова: если слово встретится в личной переписке, чат с этим человеком закроется</p>
+          <textarea className={inp} style={inpStyle} rows={2} translate="no" placeholder="слова через запятую" defaultValue={c.settings.words.join(', ')}
+            onBlur={(e) => void save(c, { words: e.target.value.split(/[,\n]/).map((w) => w.trim()).filter(Boolean) })} />
+          <BlockedChats child={c} />
           <button type="button" onClick={() => void changePin(c)} className="mt-3 rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}>Сменить PIN опекуна</button>
         </div>
       ))}

@@ -131,7 +131,9 @@ const ERRORS: Record<string, string> = {
   guardian_pin_required: 'Нужен PIN опекуна, чтобы выйти из детского профиля',
   bad_pin_code: 'Неверный PIN опекуна',
   pin_locked: 'Слишком много попыток. Попробуйте позже',
-  child_restricted: 'Этот раздел закрыт в детском профиле',
+  child_restricted: 'Этот раздел закрыт в детском профиле или сейчас вне разрешённого времени',
+  child_spend_blocked: 'В детском профиле траты запрещены',
+  child_spend_limit: 'Превышен суточный лимит трат детского профиля',
   child_session: 'Настройки детского профиля доступны только из взрослого профиля',
   two_factor_required:   'Введите код из приложения',
   current_email_code_required: 'Введите код, отправленный на вашу текущую почту',
@@ -870,9 +872,11 @@ export const apiUnfreeze = (totp?: string) => post<{ ok: true }>('/api/auth/free
 export const apiFreezeLink = (t: string) => post<{ ok: true; minutes: number }>('/api/auth/freeze/link', { t });
 
 /* ═══ Детский аккаунт ═══ */
-export interface ChildView { profileId: string; name: string; username: string; birthYear: number | null; settings: { modules: string[]; money: boolean; hideAdult: boolean }; createdAt: string }
+export interface ChildView { profileId: string; name: string; username: string; birthYear: number | null; settings: { modules: string[]; money: boolean; hideAdult: boolean; friendsOnly: boolean; dailySpend: number; schedule: { from: string; to: string; tz: number } | null; words: string[] }; createdAt: string }
 export const apiChildList = () => get<{ modules: string[]; defaults: string[]; children: ChildView[] }>('/api/skyid/child');
-export const apiChildMe = () => get<{ child: boolean; closedModules?: string[]; money?: boolean; hideAdult?: boolean }>('/api/skyid/child/me');
+export const apiChildMe = () => get<{ child: boolean; allowedNow?: boolean; schedule?: { from: string; to: string } | null; closedModules?: string[]; money?: boolean; hideAdult?: boolean }>('/api/skyid/child/me');
 export const apiChildCreate = (b: Json) => post<{ ok: true; profileId: string }>('/api/skyid/child', b);
 export const apiChildUpdate = (id: string, b: Json) => call<{ ok: true }>(`/api/skyid/child/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(b) });
 export const apiChildRemove = (id: string) => call<{ ok: true }>(`/api/skyid/child/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const apiChildBlocked = (id: string) => get<{ peers: { peerId: string; name: string; username: string; word: string; at: string }[] }>(`/api/skyid/child/${encodeURIComponent(id)}/blocked`);
+export const apiChildUnblock = (id: string, peer: string) => call<{ ok: true }>(`/api/skyid/child/${encodeURIComponent(id)}/blocked/${encodeURIComponent(peer)}`, { method: 'DELETE' });
