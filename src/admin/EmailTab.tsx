@@ -339,8 +339,14 @@ const SettingsView = ({ ov, reload }: { ov: Overview; reload: () => void }) => {
   useEffect(() => setS(ov.settings), [ov.settings]);
   const save = async (patch: Partial<Settings>) => { setBusy(true); const r = await apiCall(`${A}/settings`, { method: 'PUT', body: JSON.stringify(patch) }); setBusy(false); if (r.ok) { flash('Сохранено'); reload(); } else flash(errText(r.error)); };
   const own = ov.isOwner;
+  const [diag, setDiag] = useState<{ level: string; id: string; text: string }[] | null>(null); const [dbusy, setDbusy] = useState(false);
+  const runDiag = async () => { setDbusy(true); const r = await apiCall<{ checks: { level: string; id: string; text: string }[] }>(`${A}/diagnose`); setDbusy(false); if (r.ok && r.data) setDiag(r.data.checks); else flash(errText(r.error)); };
   return (
     <div className="space-y-3">
+      <div className="rounded-2xl p-3 space-y-2" style={card}>
+        <div className="flex flex-wrap items-center gap-2"><div className="text-sm font-semibold" style={{ color: C.t1 }}>Почему не уходят автоматические письма?</div><Btn onClick={runDiag} disabled={dbusy}>{dbusy ? <Loader2 size={13} className="animate-spin" /> : null} Проверить</Btn></div>
+        {diag && <ul className="space-y-1 text-xs">{diag.map((d, i) => <li key={`${d.id}-${i}`} style={{ color: d.level === 'bad' ? '#ef4444' : d.level === 'warn' ? '#f59e0b' : C.t2 }}>{d.level === 'bad' ? '✕ ' : d.level === 'warn' ? '⚠ ' : '✓ '}{d.text}</li>)}</ul>}
+      </div>
       <div className="rounded-2xl p-3 text-xs leading-relaxed" style={card}>
         <div className="mb-1 text-sm font-semibold" style={{ color: C.t1 }}>Отправитель</div>
         <div style={{ color: C.t2 }}>Режим: <b>{ov.sender.mode}</b> · Адрес «От»: <b>{ov.sender.from || 'не задан'}</b> · {ov.sender.configured ? 'почта настроена' : 'почта НЕ настроена — письма не уходят (проверьте scripts/set-email.sh)'}</div>

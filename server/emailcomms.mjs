@@ -517,3 +517,43 @@ export const ofdSummary = async ({ from, to } = {}) => {
   ].sort((a, b) => +new Date(b.at) - +new Date(a.at));
   return { from: f, to: t, today, tz, receiptsSent: receipts, orders: { ...orders, total: orders.market + orders.business + orders.go }, topupSum, feeSum, primeSum, revenue, taxBase: base, taxRatePct: Number(s.ofdTaxRatePct), includeTopups: s.ofdIncludeTopups, tax, entries };
 };
+
+/* ─── диагностика: почему автоматические письма не уходят ─── */
+export const diagnose = async () => {
+  const out = []; const add = (level, id, text) => out.push({ level, id, text });
+  const s = await getSettings(); const sender = senderInfo();
+  if (config.emailMode === 'log') add('bad', 'mode_log', 'Почта в режиме «log»: письма только печатаются в журнал сервера и никому не уходят. Настройте отправку: scripts/set-email.sh (SMTP или Resend), затем docker compose up -d api.');
+  else if (!sender.configured) add('bad', 'not_configured', `Почта не настроена (режим ${config.emailMode}, адрес «От» ${sender.from || 'не задан'}). Проверьте scripts/set-email.sh.`);
+  else add('ok', 'mail', `Почта настроена: режим ${config.emailMode}, «От» ${sender.from}.`);
+  if (!config.publicOrigin) add('warn', 'origin', 'DOMAIN не задан: ссылки и логотип в письмах будут пустыми.');
+
+  if (!s.primeAuto) add('bad', 'prime_off', 'Автоматические напоминания о Sky Prime ВЫКЛЮЧЕНЫ. Включите галочку в «Настройки отправителя» (только владелец).');
+  if (!s.moneyAuto) add('bad', 'money_off', 'Автоуведомления о пополнении SkyMoney ВЫКЛЮЧЕНЫ. Включите галочку в «Настройки отправителя» (только владелец): письма уйдут только за пополнения ПОСЛЕ включения.');
+  else if (!s.autoSince) add('bad', 'money_since', 'Автоуведомления SkyMoney включены, но нет отметки времени включения. Выключите и включите галочку заново.');
+
+  const tpls = await listTemplates();
+  const off = tpls.filter((t) => t.kind !== 'newsletter' && (!t.enabled || !t.auto)).map((t) => `${t.name} (${!t.enabled ? 'выключено' : 'не автоматическое'})`);
+  if (off.length) add('warn', 'templates', `Шаблоны, которые не отправляются автоматически: ${off.join(', ')}. Это вкладки «Sky Prime» и «SkyMoney» → переключатели шаблонов.`);
+
+  const q = await query(`SELECT status, count(*)::int AS n FROM email_outbox WHERE created_at > now() - interval '7 days' GROUP BY status`);
+  const by = Object.fromEntries(q.rows.map((r) => [r.status, r.n]));
+  const total = Object.values(by).reduce((a, b) => a + b, 0);
+  add(total ? 'ok' : 'warn', 'outbox', total ? `За 7 дней в очереди: отправлено ${by.sent ?? 0}, ждут ${by.pending ?? 0}, ошибок ${by.failed ?? 0}, пропущено ${by.skipped ?? 0}.` : 'За 7 дней в очередь не попало ни одного письма: автоматика ничего не ставила (см. причины выше и кандидатов ниже).');
+  const stuck = (await query(`SELECT count(*)::int AS n FROM email_outbox WHERE status='pending' AND created_at < now() - interval '15 minutes'`)).rows[0].n;
+  if (stuck) add('bad', 'stuck', `В очереди застряло ${stuck} писем старше 15 минут: воркер не отправляет. Смотрите ошибки ниже и docker compose logs api | grep "\\[email".`);
+  const errs = await query(`SELECT last_error, count(*)::int AS n FROM email_outbox WHERE status IN ('failed','pending') AND last_error <> '' AND created_at > now() - interval '7 days' GROUP BY last_error ORDER BY n DESC LIMIT 5`);
+  for (const e of errs.rows) add('bad', 'error', `Ошибка отправки «${e.last_error}»: ${e.n} шт.${e.last_error === 'email_not_configured' ? ' Почта не настроена.' : e.last_error === 'email_delivery_failed' ? ' Почтовый сервер отказал: смотрите журнал api, строки [email:…].' : ''}`);
+  const skipped = await query(`SELECT last_error, count(*)::int AS n FROM email_outbox WHERE status='skipped' AND created_at > now() - interval '7 days' GROUP BY last_error ORDER BY n DESC LIMIT 5`);
+  const WHY = { no_verified_email: 'у человека нет подтверждённой почты', unsubscribed: 'отписался от рассылок', stale: 'письмо устарело к моменту отправки', subscription_changed: 'подписку продлили', expired: 'подписка уже закончилась', lifetime: 'бессрочный Prime', no_active_subscription: 'нет активной подписки', payment_not_credited: 'платёж не зачислен', template_disabled: 'шаблон выключен' };
+  for (const e of skipped.rows) add('warn', 'skipped', `Пропущено ${e.n}: ${WHY[e.last_error] ?? e.last_error}.`);
+
+  const prime = (await query(`SELECT count(*)::int AS n FROM (SELECT profile_id FROM prime_subscriptions WHERE status='active' GROUP BY profile_id HAVING bool_and(expires_at IS NOT NULL) AND max(expires_at) BETWEEN now() AND now() + interval '9 days') x`)).rows[0].n;
+  add(prime ? 'ok' : 'warn', 'prime_cand', prime ? `Подписок Prime, которые заканчиваются в ближайшие 9 дней: ${prime} (напоминания идут при 7, 3, 1 и 0 днях).` : 'Нет подписок Prime, заканчивающихся в ближайшие 9 дней: напоминать пока некому.');
+  if (s.autoSince) {
+    const m = (await query(`SELECT count(*)::int AS n FROM skykassa_payments p JOIN skykassa_credits c ON c.payment_id = p.id WHERE p.destination='balance' AND c.created_at > $1 AND c.created_at > now() - interval '2 days'`, [s.autoSince])).rows[0].n;
+    add('ok', 'money_cand', `Зачисленных пополнений после включения за последние 2 дня: ${m}.`);
+  }
+  const last = (await query(`SELECT max(sent_at) AS t FROM email_outbox WHERE status='sent'`)).rows[0].t;
+  add(last ? 'ok' : 'warn', 'last_sent', last ? `Последнее отправленное письмо: ${new Date(last).toLocaleString('ru-RU', { timeZone: s.timezone })}.` : 'Ни одно письмо через очередь ещё не отправлено.');
+  return { checks: out, bad: out.filter((x) => x.level === 'bad').length };
+};

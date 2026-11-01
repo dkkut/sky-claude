@@ -56,6 +56,7 @@ export const emailCommsRoutes = async (req, res) => {
     const [settings, templates, stats] = await Promise.all([ec.getSettings(), ec.listTemplates(), ec.stats()]);
     return json(res, 200, { settings, sender: ec.senderInfo(), templates, stats, canFinance: owner || await can(me, 'finance'), isOwner: owner });
   }
+  if (m === 'GET' && sub === 'diagnose') return json(res, 200, await ec.diagnose());
   if (m === 'PUT' && sub === 'settings') {
     // автоотправка по деньгам и подпискам и параметры налога — только владелец
     const sensitive = ['primeAuto', 'moneyAuto', 'ofdTaxRatePct', 'ofdIncludeTopups'].some((k) => k in body);
