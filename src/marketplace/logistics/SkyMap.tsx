@@ -26,6 +26,7 @@ import type { IconComponent } from '@/shared/icon';
 import { C } from '@/marketplace/SkyMarket';
 import type { GeoPoint } from './types';
 import { useSettings } from '@/settings/store';
+import { apiMarketTicket, getMarketMediaTicket } from '@/marketplace/marketApi';
 import { apiMapsSettings, mapStillUrl, isRealPoint, pickMapProvider, type MapPin as Pin, type MapPinKind, type MapProvider } from './mapsApi';
 
 export interface MapPoint {
@@ -106,6 +107,16 @@ const middle = (points: GeoPoint[], prov: MapProvider = 'google'): GeoPoint => {
 
 /* ─── Карта ────────────────────────────────────────────────────────── */
 
+/* Картинку карты браузер тянет тегом <img> — он не шлёт заголовок входа, у сервера для него только пропуск (кука или ?t=).
+   Раньше пропуск выдавался лишь при входе в Market, поэтому в Sky GO, «Карте друзей», парковках карта не приходила (401).
+   Теперь карта сама берёт пропуск до первого запроса картинки и обновляет его при отказе. */
+let ticketJob: Promise<boolean> | null = null;
+const ensureMapTicket = (force = false): Promise<boolean> => {
+  if (!force && getMarketMediaTicket()) return Promise.resolve(true);
+  ticketJob ??= apiMarketTicket().catch(() => false).finally(() => { setTimeout(() => { ticketJob = null; }, 2000); });
+  return ticketJob;
+};
+
 export const SkyMap = ({
   points, height = 220, onPick, path,
 }: {
@@ -122,6 +133,10 @@ export const SkyMap = ({
   const [have, setHave] = useState<MapProvider[]>(['google']);
   const pref = useSettings((st) => st.settings.mapProvider);
   const [broken, setBroken] = useState(false);
+  const [ticketOk, setTicketOk] = useState(() => !!getMarketMediaTicket());
+  const [retried, setRetried] = useState(false);
+  const [nonce, setNonce] = useState(0);
+  useEffect(() => { let alive = true; void ensureMapTicket().then(() => { if (alive) setTicketOk(true); }); return () => { alive = false; }; }, []);
 
   /* Настоящие точки — те, у которых есть координаты. Остальные на карту
      не попадают, и об этом сказано под ней. */
@@ -169,7 +184,7 @@ export const SkyMap = ({
     </div>
   );
 
-  if (enabled === null) return note('Карта загружается…', MapPin);
+  if (enabled === null || !ticketOk) return note('Карта загружается…', MapPin);
   if (!enabled) {
     return note('Карта не настроена: у сервера нет ключа Google или Яндекс Карт. '
       + 'Показывать вместо неё выдуманные точки нельзя — по ним поедут.');
@@ -213,8 +228,12 @@ export const SkyMap = ({
       <div ref={box} className="relative overflow-hidden rounded-2xl"
         style={{ height, border: `1px solid ${C.brd}`, background: C.l2 }}>
         <div className="absolute" style={{ left: (width - mw) / 2, top: (height - mh) / 2, width: mw, height: mh }}>
-        <img src={src} alt="Карта" width={mw} height={mh}
-          onError={() => setBroken(true)}
+        <img key={nonce} src={src} alt="Карта" width={mw} height={mh}
+          onError={() => {
+            // Пропуск мог истечь: один раз обновляем его и пробуем снова, и только потом считаем карту недоступной.
+            if (!retried) { setRetried(true); setTicketOk(false); void ensureMapTicket(true).then(() => { setTicketOk(true); setNonce((n) => n + 1); }); return; }
+            setBroken(true);
+          }}
           onClick={onPick ? (e) => {
             /* Щелчок в точку: обратный ход той же проекции. */
             const r = (e.target as HTMLImageElement).getBoundingClientRect();
