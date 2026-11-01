@@ -43,17 +43,18 @@ export function AdminTokenPrompt() {
     return () => window.removeEventListener('sky:admin-token', on);
   }, []);
   const close = useCallback(() => setOpen(false), []);
+  const cancel = useCallback(() => { setOpen(false); window.dispatchEvent(new CustomEvent('sky:admin-token-cancel')); }, []);
   if (!open) return null;
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label="Токен администратора" className="fixed inset-0 z-[10070] flex items-center justify-center p-4" style={{ background: 'rgba(5,5,14,.7)' }} onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div role="dialog" aria-modal="true" aria-label="Токен администратора" className="fixed inset-0 z-[10070] flex items-center justify-center p-4" style={{ background: 'rgba(5,5,14,.7)' }} onClick={(e) => { if (e.target === e.currentTarget) cancel(); }}>
       <div className="w-full max-w-[380px] rounded-3xl p-5" style={{ background: 'var(--bg-l1, #14142a)', border: '1px solid var(--border)', color: 'var(--t1)' }}>
         <div className="mb-2 flex items-center gap-2">
           <KeyRound size={18} style={{ color: 'var(--accent)' }} />
           <p className="flex-1 text-[15px] font-bold">Токен администратора</p>
-          <button type="button" onClick={close} aria-label="Закрыть" className="grid h-8 w-8 place-items-center rounded-full" style={{ background: 'var(--bg-l2)' }}><X size={16} /></button>
+          <button type="button" onClick={cancel} aria-label="Закрыть" className="grid h-8 w-8 place-items-center rounded-full" style={{ background: 'var(--bg-l2)' }}><X size={16} /></button>
         </div>
         <p className="mb-3 text-[12.5px] leading-relaxed" style={{ color: 'var(--t3)' }}>
-          {reason === 'admin_settings_locked' ? 'Настройки администратора закрыты. Введите личный токен, чтобы открыть их на время сеанса.' : 'Для этого действия нужен личный токен администратора. После ввода повторите действие.'}
+          {reason === 'admin_settings_locked' ? 'Настройки администратора закрыты. Введите личный токен, чтобы открыть их на время сеанса.' : 'Для этого действия нужен личный токен администратора. Введите его, и действие выполнится само.'}
         </p>
         <AdminTokenForm onDone={close} />
       </div>

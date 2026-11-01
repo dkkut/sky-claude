@@ -14,7 +14,7 @@
    завести, есть ли Prime, нужен ли второй фактор — отвечает сервер.
    Этот файл только спрашивает и показывает ответ.
 =============================================================== */
-import { getAdminTokenCached, askAdminToken, isAdminTokenError } from './adminTokenCache';
+import { getAdminTokenCached, askAdminToken, askAdminTokenAndWait, isAdminTokenError } from './adminTokenCache';
 import { getInvite, clearInvite } from '../../invite/capture';
 import { isEnglish } from '@/i18n/lang';
 import { APP_BUILD } from '../version';
@@ -352,7 +352,7 @@ const TRANSIENT_RETRY_MS = [400, 1200];
 const isRead = (init: RequestInit) => !init.method || init.method.toUpperCase() === 'GET';
 const sleepMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-const call = async <T>(path: string, init: RequestInit = {}, retry = true, transient = 0): Promise<Reply<T>> => {
+const call = async <T>(path: string, init: RequestInit = {}, retry = true, transient = 0, tokenTried = false): Promise<Reply<T>> => {
   let res: Response;
   try {
     res = await raw(path, init);
@@ -400,7 +400,13 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
     if ((res.status === 423 && data?.error === 'globally_blocked') || (res.status === 403 && data?.error === 'account_blocked' && data?.global)) {
       try { window.dispatchEvent(new CustomEvent('sky:globalblock', { detail: { token: String(data?.appealToken ?? ''), reason: String(data?.reason ?? ''), since: data?.since ?? null, until: data?.until ?? null } })); } catch { /* ok */ }
     }
-    if (isAdminTokenError(data?.error) && /^\/api\/(admin|owner|staff|platform\/(shutdown|maintenance))(\/|$)/.test(path) && !path.startsWith('/api/admin/gate')) askAdminToken(String(data?.error));
+    if (isAdminTokenError(data?.error) && /^\/api\/(admin|owner|staff|platform\/(shutdown|maintenance))(\/|$)/.test(path) && !path.startsWith('/api/admin/gate')) {
+      // Токен спрашивается ПОСЛЕ кода аутентификатора: сервер проверяет токен до расхода кода, поэтому код остаётся действующим,
+      // и после ввода токена тот же запрос уходит сам (одна попытка), без повторного подтверждения личности.
+      if (!tokenTried && data?.error !== 'admin_token_missing' && data?.error !== 'admin_token_blocked') {
+        if (await askAdminTokenAndWait(String(data?.error))) return call<T>(path, init, retry, transient, true);
+      } else askAdminToken(String(data?.error));
+    }
     if (res.status === 423 && data?.error === 'app_locked') { try { window.dispatchEvent(new CustomEvent('sky:applock')); } catch { /* ok */ } }
     if (res.status === 403 && data?.error === 'limited_session') { try { window.dispatchEvent(new CustomEvent('sky:limited')); } catch { /* ok */ } }
     if (res.status === 403 && data?.error === 'money_locked') { try { window.dispatchEvent(new CustomEvent('sky:money-locked')); } catch { /* ok */ } }
