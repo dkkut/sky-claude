@@ -544,6 +544,106 @@ export const restoreApply = async (actorId, planId, { overwrite = false } = {}) 
   return { id: rid, status, ...res };
 };
 
+/* ─── Музыка: диагностика и восстановление нечитаемых файлов ───────── */
+
+const MUSIC_MAGIC = Buffer.from('SKE1');
+
+/** Какие файлы ждёт каталог музыки (трек, обложка, видеофон). */
+const expectedMusicFiles = async () => {
+  const { rows } = await query(`SELECT id, audio_file, has_cover, has_video FROM music_tracks ORDER BY id LIMIT 200000`);
+  const out = [];
+  for (const r of rows) {
+    out.push({ track: r.id, id: r.audio_file || r.id });
+    if (r.has_cover) out.push({ track: r.id, id: `cov-${String(r.id).slice(4)}` });
+    if (r.has_video) out.push({ track: r.id, id: `vid-${String(r.id).slice(4)}` });
+  }
+  return out;
+};
+
+const readableState = async (path) => {
+  try {
+    const st = await primary.statAny(path);
+    if (!st || st.size < 16) return 'empty';
+    const rs = await primary.openRaw(path);
+    let head = Buffer.alloc(0);
+    for await (const c of rs) { head = Buffer.concat([head, c]); if (head.length >= 4) { rs.destroy?.(); break; } }
+    return head.subarray(0, 4).equals(MUSIC_MAGIC) ? 'ok' : 'bad_header';
+  } catch { return 'unreadable'; }
+};
+
+/** Что с файлами музыки: сколько читается, сколько нет (только чтение). */
+export const musicHealth = async () => {
+  const list = await expectedMusicFiles();
+  const res = { tracks: new Set(list.map((x) => x.track)).size, files: list.length, ok: 0, missing: [], broken: [] };
+  for (const f of list) {
+    const p = await locateFile('music', f.id);
+    if (!p) { res.missing.push(f.id); continue; }
+    const st = await readableState(p);
+    if (st === 'ok') res.ok += 1; else res.broken.push({ id: f.id, state: st });
+  }
+  return { ...res, missing: res.missing.slice(0, 200), missingCount: res.missing.length, broken: res.broken.slice(0, 200), brokenCount: res.broken.length, s3: primary.enabled() };
+};
+
+/**
+ * Восстановить нечитаемую музыку: (1) файл есть в S3, но не на диске — вернуть на диск; (2) нет нигде или повреждён —
+ * достать из самых свежих проверенных копий (по SHA-256) и положить на место (повреждённый уходит в карантин, не удаляется).
+ * Строки каталога не трогаются. Возвращает, что исправлено и что нет (нет ни в S3, ни в копиях).
+ */
+export const restoreMusic = async (actorId) => {
+  if (!(await acquire())) return { error: 'busy' };
+  const out = { checked: 0, pulled: 0, restored: 0, alreadyOk: 0, notFound: [], failed: [] };
+  const rid = newId('rs');
+  try {
+    const list = await expectedMusicFiles();
+    const bad = [];
+    for (const f of list) {
+      out.checked += 1;
+      const p = await locateFile('music', f.id);
+      if (p) {
+        let st = await readableState(p);
+        if (st !== 'ok' && primary.enabled()) { try { await primary.ensureLocal(p); st = await readableState(p); if (st === 'ok') { out.pulled += 1; continue; } } catch { /* ищем в копиях */ } }
+        if (st === 'ok') { out.alreadyOk += 1; continue; }
+      }
+      bad.push({ ...f, path: p });
+    }
+    if (bad.length) {
+      const target = getTarget();
+      const { rows: bks } = await query(`SELECT id, key_id FROM storage_backups WHERE status IN ('verified','ok') ORDER BY started_at DESC LIMIT 15`);
+      const ks = keyStatus();
+      const want = new Map(bad.map((b) => [b.id, b]));
+      const staging = join(stagingRoot(), rid);
+      await mkdir(staging, { recursive: true, mode: 0o700 });
+      const { createWriteStream } = await import('node:fs');
+      const root = serviceRoots().find((x) => x.service === 'music')?.root;
+      for (const b of bks) {
+        if (!want.size) break;
+        if (!ks.usable.includes(b.key_id)) continue;
+        let manifest; try { manifest = await readManifest(target, b.id); } catch { continue; }
+        for (const o of manifest.objects.filter((x) => x.service === 'music' && want.has(x.id))) {
+          const w = want.get(o.id);
+          try {
+            const tmp = join(staging, o.id); const hs = countingHash();
+            await pipeline(decryptStream(await target.get(o.key), { id: `music/${o.id}` }), new Transform({ transform(c, _e, cb) { hs.feed(c); cb(null, c); } }), createWriteStream(tmp, { mode: 0o600 }));
+            if (hs.digest() !== o.sha256) throw new BackupError('sha_mismatch', o.id);
+            const dest = w.path ?? join(root, o.id.slice(4, 6), o.id);
+            await mkdir(dirname(dest), { recursive: true });
+            if (w.path) { const bak = join(quarantineRoot(), 'restore-replaced', `music-${o.id}-${Date.now()}`); await mkdir(dirname(bak), { recursive: true, mode: 0o700 }); await primary.ensureLocal(w.path).catch(() => {}); await rename(w.path, bak).catch(() => {}); }
+            await rename(tmp, dest).catch(async (e) => { if (e.code !== 'EXDEV') throw e; const { copyFile } = await import('node:fs/promises'); await copyFile(tmp, dest); await rm(tmp); });
+            await primary.afterWrite(dest);
+            await query(`INSERT INTO storage_objects (service, id, category, size, status, sha256) VALUES ('music',$1,'music',$2,'ok',NULL) ON CONFLICT (service, id) DO UPDATE SET status = 'ok', sha256 = NULL, seen_at = now()`, [o.id, (await stat(dest)).size]).catch(() => {});
+            out.restored += 1; want.delete(o.id);
+          } catch (e) { out.failed.push(`${o.id}: ${e.code ?? e.message}`); }
+        }
+      }
+      await rm(staging, { recursive: true, force: true });
+      out.notFound = [...want.keys()].slice(0, 200); out.notFoundCount = want.size;
+    }
+  } catch (e) { out.failed.push(e.code ?? e.message); }
+  await logEvent('restore', out.failed.length || out.notFound.length ? 'critical' : 'warn', { id: rid, music: true, pulled: out.pulled, restored: out.restored, notFound: out.notFound.length, failed: out.failed.length }, actorId);
+  await release();
+  return { ok: true, ...out };
+};
+
 /** Вставка строки: только если её нет; ошибки связей (FK) одной строки не прерывают остальные (SAVEPOINT). */
 const insertRow = async (client, table, line) => {
   if (!ALL_TABLES.has(table)) throw new BackupError('bad_table', table);

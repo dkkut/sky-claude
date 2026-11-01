@@ -92,11 +92,12 @@ export const storageRoutes = async (req, res, url) => {
   if (rest === '/connection-status' && req.method === 'GET') return json(res, 200, { allowed: conn.allowed, status: conn.status ?? 'approved', pending: conn.pending ?? null, bootstrap: conn.bootstrap === true });
   if (!conn.allowed) return json(res, 403, { error: 'connection_pending', status: conn.status, pending: conn.pending ?? null });
 
-  const critical = ['/emergency-off', '/enable', '/sky-auth', '/unlock', '/restrict', '/compromise', '/recover', '/restore/apply'];
+  const critical = ['/emergency-off', '/enable', '/sky-auth', '/unlock', '/restrict', '/compromise', '/recover', '/restore/apply', '/music/restore'];
   if (isWrite && critical.includes(rest) && !rl(`storage:crit:${me}`, 10)) return json(res, 429, { error: 'too_many_attempts' });
 
   // Чтение
   if (req.method === 'GET') {
+    if (rest === '/music/health') { const deny = await needPerm(P.view); if (deny) return deny; return json(res, 200, await B.musicHealth()); }
     if (rest === '/overview') return (await needPerm(P.view)) ?? json(res, 200, await A.overview());
     if (rest === '/events') {
       const deny = await needPerm(P.audit); if (deny) return deny;
@@ -174,6 +175,15 @@ export const storageRoutes = async (req, res, url) => {
       await logAdmin({ actorId: me, targetType: 'storage', type: 'storage_download', detail: `Ссылка на копию ${id}, ${mins} мин.`, meta });
       return json(res, 200, { ok: true, url: `/api/storage/download/${r.token}`, expiresInMin: r.expiresInMin, note: 'Ссылка одноразовая. Ключи в архив не входят.' });
     }
+  }
+  if (rest === '/music/restore') {
+    if (!(await isOwner(me))) { await logAdmin({ actorId: me, targetType: 'storage', type: 'storage_restore', detail: 'музыка: не владелец', result: 'denied', meta }); return json(res, 403, { error: 'owner_only' }); }
+    const deny = await needPerm(P.restore); if (deny) return deny;
+    if (body.confirm !== true) return json(res, 400, { error: 'confirm_required' });
+    const step = await consumeStepUp(me, A.CRITICAL_PURPOSE, body.stepUpCode, { meta }); if (step.error) return reply(res, step);
+    const r = await B.restoreMusic(me);
+    if (!r.error) await logAdmin({ actorId: me, targetType: 'storage', type: 'storage_restore', detail: `музыка: возвращено ${r.pulled}, из копий ${r.restored}, не найдено ${r.notFoundCount ?? 0}`, result: r.failed.length ? 'partial' : 'ok', meta });
+    return reply(res, r);
   }
   if (rest === '/restore/apply') {
     if (!(await isOwner(me))) { await logAdmin({ actorId: me, targetType: 'storage', type: 'storage_restore', detail: 'не владелец', result: 'denied', meta }); return json(res, 403, { error: 'owner_only' }); }
