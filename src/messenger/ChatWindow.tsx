@@ -1599,7 +1599,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                     <GameActivityBadge userId={peerId}/>
                     {!useGamingAccounts.getState().isPlaying(peerId) && (
                       <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                        {chat.online ? 'в сети' : 'был(а) недавно'}
+                        {isSkyBotChat ? 'официальный бот' : chat.online ? 'в сети' : 'был(а) недавно'}
                       </p>
                     )}
                   </div>
@@ -2009,7 +2009,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           color={theme.liquidColor}
         />
         {/* Safety warning for unknown users */}
-        {chat?.type === 'direct' && !isBlocked && (() => {
+        {chat?.type === 'direct' && !isBlocked && !isSkyBotChat && (() => {
           const peerMsgs = messages.filter(m => m.chatId === activeChatId && !m.fromMe && !m.deleted);
           const myMsgs   = messages.filter(m => m.chatId === activeChatId && m.fromMe);
           const isNew    = peerMsgs.length <= 3 && myMsgs.length === 0;

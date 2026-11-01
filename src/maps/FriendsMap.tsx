@@ -115,7 +115,7 @@ export const FriendsMap = () => {
   const card = { background: 'var(--bg-l1)', border: '1px solid var(--border)' };
 
   return (
-    <div className="min-w-0 space-y-3 p-3">
+    <div className="h-full min-w-0 space-y-3 overflow-y-auto p-3 pb-28">
       {!consent && <GeoConsentCard purpose="Карта друзей показывает вас на карте тем друзьям, которых вы выберете, и строит маршрут до них." />}
       <SkyMap points={points} height={280} path={route?.polyline} />
       {consent && <button type="button" className="text-xs underline" style={{ color: 'var(--t3)' }} onClick={() => { setGeoConsent(false); void apiCall('/api/maps/friends/position', { method: 'DELETE' }).then(() => load()); }}>Отозвать согласие на геолокацию</button>}

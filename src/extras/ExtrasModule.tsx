@@ -873,7 +873,7 @@ const HomeSwitch = ({ onNav }: { onNav: (tab: string) => void }) => {
           ))}
         </div>
       </div>
-      <div className="relative min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         {mode === 'widgets' ? <MediaHome onNav={onNav} onClassic={() => pick('home')} /> : <MediaHomeTab onNav={onNav} />}
       </div>
     </div>
