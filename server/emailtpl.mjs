@@ -125,6 +125,8 @@ export const HERO_STYLES = {
 };
 /** Название сервиса в логотипе письма и в имени отправителя: по теме письма. */
 export const brandOf = (c = {}) => clean(c.brand, 24).trim() || 'Sky';
+/** Имя отправителя по назначению письма (то, что видно в списке почты). */
+export const senderNameOf = (kind, brand = 'Sky') => kind === 'prime' ? 'Sky Prime: подписка и продление' : kind === 'money' ? 'SkyMoney: платежи и пополнения' : kind === 'tax' ? 'Sky Tax: чеки и документы' : `${brand}: новости и обновления`;
 export const heroStyleIds = Object.keys(HERO_STYLES);
 
 export const heroBlock = ({ title, subtitle, accent, vars, kind, imageUrl, style = 'gradient', emoji = '', align = 'left' }) => {

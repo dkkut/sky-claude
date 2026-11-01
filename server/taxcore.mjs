@@ -459,7 +459,7 @@ const deliverEmail = async (d) => {
   const data = await docData(d.id); const origin = (config.publicOrigin || '').replace(/\/$/, '');
   const ctx = { appUrl: origin ? `${origin}/` : '', supportUrl: origin ? `${origin}/?open=support` : '', privacyUrl: origin ? `${origin}/?open=privacy` : '', messageId: `taxdoc-${d.id}`, pageUrl: origin ? `${origin}/api/tax/doc/${encodeURIComponent(docToken(d.id))}` : '' };
   const mail = renderTaxDocMail(data, ctx);
-  const r = await sendEmail(addr, mail.subject, mail.text, { html: mail.html, headers: { 'X-Sky-Message-ID': ctx.messageId } });
+  const r = await sendEmail(addr, mail.subject, mail.text, { html: mail.html, fromName: 'Sky Tax: чеки и документы', headers: { 'X-Sky-Message-ID': ctx.messageId } });
   if (r.ok) { await query(`UPDATE tax_docs SET email_status = 'sent', emailed_at = now() WHERE id = $1`, [d.id]); return; }
   const n = d.email_attempts + 1;
   if (r.error === 'email_not_configured' || n >= 6) await query(`UPDATE tax_docs SET email_status = 'failed', email_attempts = $2 WHERE id = $1`, [d.id, n]);

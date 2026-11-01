@@ -11,7 +11,7 @@ import { config } from './config.mjs';
 import { macOf } from './crypto.mjs';
 import { sendEmail } from './notify.mjs';
 import { PRIME_PRICES } from './skyid.mjs';
-import { DEFAULT_TEMPLATES, renderNewsletter, renderPrime, renderMoney, VARIABLES, clean, safeUrl, heroStyleIds } from './emailtpl.mjs';
+import { DEFAULT_TEMPLATES, renderNewsletter, renderPrime, renderMoney, VARIABLES, clean, safeUrl, heroStyleIds, senderNameOf } from './emailtpl.mjs';
 
 const nid = (p) => `${p}-${crypto.randomBytes(10).toString('hex')}`;
 const KINDS = ['newsletter', 'prime', 'money'];
@@ -240,7 +240,7 @@ const deliver = async (row) => {
     headers['List-Unsubscribe'] = `<${u}>`; headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
   } else delete headers.Precedence;
   const subject = `${row.is_test ? '[Тест] ' : ''}${out.subject}`;
-  const r = await sendEmail(per.email, subject, out.text, { html: out.html, headers, fromName: out.brand });
+  const r = await sendEmail(per.email, subject, out.text, { html: out.html, headers, fromName: senderNameOf(row.kind, out.brand) });
   if (r.ok) { await query(`UPDATE email_outbox SET subject=$2 WHERE id=$1`, [row.id, subject.slice(0, 200)]); return finish(row.id, 'sent'); }
   const attempts = row.attempts + 1;
   if (r.error === 'email_not_configured' || attempts >= MAX_ATTEMPTS) return query(`UPDATE email_outbox SET status='failed', attempts=$2, last_error=$3 WHERE id=$1`, [row.id, attempts, r.error || 'send_failed']);
@@ -394,7 +394,7 @@ export const sendTest = async (by, { templateKey, content, subject, preheader })
   const t = await getTemplate(templateKey); if (!t) return { error: 'not_found' };
   const me = await person(by); if (!me?.email || !me.email_verified) return { error: 'no_verified_email' };
   const p = await preview({ templateKey, content, subject, preheader }); if (p.error) return p;
-  const r = await sendEmail(me.email, `[Тест] ${p.subject}`, p.text, { html: p.html, fromName: p.brand, headers: { 'X-Sky-Message-ID': `sky-test-${crypto.randomBytes(6).toString('hex')}` } });
+  const r = await sendEmail(me.email, `[Тест] ${p.subject}`, p.text, { html: p.html, fromName: senderNameOf(t.kind, p.brand), headers: { 'X-Sky-Message-ID': `sky-test-${crypto.randomBytes(6).toString('hex')}` } });
   await query(`INSERT INTO email_outbox (id, message_id, kind, template_key, profile_id, sky_id, email_mask, subject, status, manual, is_test, created_by, sent_at, last_error)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,TRUE,$5,CASE WHEN $9='sent' THEN now() END,$10)`,
     [nid('eo'), `sky-${crypto.randomBytes(9).toString('hex')}`, t.kind, templateKey, by, me.sky_id, maskEmail(me.email), `[Тест] ${p.subject}`.slice(0, 200), r.ok ? 'sent' : 'failed', r.ok ? '' : (r.error || 'send_failed')]);

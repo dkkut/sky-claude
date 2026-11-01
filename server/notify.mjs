@@ -43,11 +43,25 @@ const logAllowed = () => config.nodeEnv !== 'production' || config.allowLogCodes
 
 /* ─── SMS ──────────────────────────────────────────────────────────────── */
 
+/**
+ * Имя отправителя по НАЗНАЧЕНИЮ письма, а не просто «Sky»: в списке почты сразу видно, о чём оно — «Sky ID: письма об аккаунте», «Sky Prime: подписка и продление».
+ * Явное имя (extra.fromName) важнее; иначе назначение определяется по теме письма. Неопознанное — письмо об аккаунте.
+ */
+export const purposeFor = (subject = '') => {
+  const t = String(subject);
+  if (/админ|admin|панел|panel|ssh|storage|самозащит|self-defense|аварийн|emergency|СРОЧНО|остановк|прямого доступа|хранилищ/i.test(t)) return 'Sky: безопасность сервера';
+  if (/поддержк|support|обращени|апелляц|appeal|SKY-[A-Z0-9]|REL-[A-Z0-9]|SUP-/i.test(t)) return 'Sky Поддержка: ответы и обращения';
+  if (/чек|квитанц|receipt|налог|tax/i.test(t)) return 'Sky Tax: чеки и документы';
+  if (/prime|подписк/i.test(t)) return 'Sky Prime: подписка и продление';
+  if (/платёж|платеж|пополнен|payment|top-?up|кошел/i.test(t)) return 'SkyMoney: платежи и пополнения';
+  return 'Sky ID: письма об аккаунте';
+};
+
 /** Адрес отправителя с именем «по теме письма»: Sky Prime <no-reply@…>. Имя чистится, адрес берётся из EMAIL_FROM. */
 export const fromWithName = (name) => {
   const raw = String(config.emailFrom || '');
   const addr = (raw.match(/<([^>]+)>/)?.[1] ?? raw).trim();
-  const n = String(name ?? '').replace(/[\u0000-\u001f\u007f"<>\\@]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  const n = String(name ?? '').replace(/[\u0000-\u001f\u007f"<>\\@]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
   return n && addr ? `"${n}" <${addr}>` : raw;
 };
 
@@ -263,7 +277,7 @@ const emailProviders = {
     if (!config.smtpHost || !config.emailFrom) return { ok: false, error: 'email_not_configured' };
     try {
       const transport = await getMailer();
-      await transport.sendMail({ from: fromWithName(extra?.fromName), to, subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) });
+      await transport.sendMail({ from: fromWithName(extra?.fromName || purposeFor(subject)), to, subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) });
       return { ok: true };
     } catch (err) {
       console.error('[email:smtp]', err.message);
@@ -281,7 +295,7 @@ const emailProviders = {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${config.resendApiKey}`,
         },
-        body: JSON.stringify({ from: fromWithName(extra?.fromName), to: [to], subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) }),
+        body: JSON.stringify({ from: fromWithName(extra?.fromName || purposeFor(subject)), to: [to], subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!res.ok) {
