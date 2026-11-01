@@ -207,11 +207,15 @@ const registerFail = (ip) => {
   globalFails = globalFails.filter((t) => now() - t < 3600_000); globalFails.push(now()); if (globalFails.length >= 30) { globalLockUntil = now() + 15 * 60_000; globalFails = []; }
 };
 const codeFresh = (code) => { const k = String(code).replace(/\D/g, ''); for (const [c, t] of usedCodes) if (now() - t > 120_000) usedCodes.delete(c); return !usedCodes.has(k); };
-const checkCode = (code) => {
+/** Проверка кода БЕЗ «сжигания»: код тратится только когда принят весь вход целиком (иначе опечатка в токене сжигала верный код, и повтор с исправленным токеном отклонялся как «уже использован»). */
+const peekCode = (code) => {
   const secret = readText(TOTP_FILE); if (!secret) return false; if (!codeFresh(code)) return false;
-  if (!verifyTotp(secret, code)) return false; usedCodes.set(String(code).replace(/\D/g, ''), now()); return true;
+  return verifyTotp(secret, code);
 };
-const checkToken = (token) => {
+const burnCode = (code) => { usedCodes.set(String(code).replace(/\D/g, ''), now()); };
+const checkCode = (code) => { if (!peekCode(code)) return false; burnCode(code); return true; };
+const checkToken = (rawToken) => {
+  const token = String(rawToken || '').replace(/\s+/g, '');   // телефон мог добавить пробел/перенос
   const want = readText(TOKEN_FILE); if (!want || !/^[0-9a-f]{64}$/.test(want)) return false;
   const a = Buffer.from(sha(token)); const b = Buffer.from(want); return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
@@ -246,7 +250,7 @@ button{background:var(--a);color:#fff;border:0;border-radius:10px;padding:8px 13
 pre{background:#07080d;border:1px solid var(--b);border-radius:10px;padding:10px;overflow:auto;max-height:420px;font-size:12px;white-space:pre-wrap;word-break:break-all}.muted{color:var(--t2);font-size:12px}
 </style></head><body>
 <h1>Sky Control</h1><div class="muted">Восстановление экосистемы · работает на сервере вне Docker</div>
-<div id="login" class="card"><h2>Вход</h2><input id="tok" type="password" autocomplete="off" placeholder="Токен владельца"><div style="height:8px"></div><input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="Код из аутентификатора"><div style="height:8px"></div><button id="go">Войти</button><div id="mstep" hidden><div class="muted" id="mhint"></div><input id="mc" inputmode="numeric" autocomplete="one-time-code" placeholder="Код из письма"><button id="go2">Подтвердить</button></div><div id="lerr" class="bad"></div></div>
+<div id="login" class="card"><h2>Вход</h2><input id="tok" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Токен владельца"><div style="height:8px"></div><input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="Код из аутентификатора"><div style="height:8px"></div><button id="go">Войти</button><div id="mstep" hidden><div class="muted" id="mhint"></div><input id="mc" inputmode="numeric" autocomplete="one-time-code" placeholder="Код из письма"><button id="go2">Подтвердить</button></div><div id="lerr" class="bad"></div></div>
 <div id="app" hidden>
 <div class="card"><div class="row"><h2 style="margin:0">Состояние</h2><button class="s" id="ref">Обновить</button><button class="s" id="out">Выйти</button></div><div id="st" class="muted">…</div></div>
 <div class="card"><h2>Аварийные срабатывания</h2><div class="muted">Снимает «Аварийные» и «Технические работы», закрытую панель, уровень самозащиты и блокировки адресов, выключает автоматику самозащиты. Журналы не удаляются.</div>
@@ -316,7 +320,8 @@ export const handler = async (req, res) => {
       if (until) return send(res, 429, { error: 'locked', retryInSec: Math.ceil((until - now()) / 1000) });
       const b = await readBody(req);
       // оба фактора проверяются всегда, ответ не говорит, какой неверен
-      const okT = checkToken(String(b.token || '')); const okC = checkCode(String(b.code || ''));
+      const okT = checkToken(String(b.token || '')); const okC = peekCode(String(b.code || ''));
+      if (okT && okC) burnCode(String(b.code || ''));
       if (!(okT && okC)) { registerFail(ip); audit({ ev: 'login_fail', ip }); await new Promise((r) => setTimeout(r, 600)); return send(res, 401, { error: 'bad_credentials' }); }
       if (emailFactorOn()) {
         // третий фактор: код на почту владельца; без работающей почты вход закрыт (выключатель — файл email-factor.off на сервере)
