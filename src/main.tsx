@@ -34,6 +34,7 @@ import { captureInvite } from './invite/capture';
 import { captureQr } from './qr/qrApi';
 import { QrIncoming } from './qr/QrIncoming';
 import { HandoffIncoming } from './handoff/HandoffIncoming';
+import { SafetyWatcher } from './safety/SafetyWatcher';
 import { startHandoff } from './handoff/handoffApi';
 import { hookOutput } from './handoff/audioOutput';
 import { SeasonLayer } from './settings/SeasonLayer';
@@ -628,7 +629,7 @@ void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).fina
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><AppLockGate /><AdminTokenPrompt /><AuthCodeAsk /><SshLoginNotice /><LinkDeepLinkGate /><QrIncoming /><HandoffIncoming /><OidcAuthorizeGate /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><AppLockGate /><AdminTokenPrompt /><AuthCodeAsk /><SshLoginNotice /><LinkDeepLinkGate /><QrIncoming /><HandoffIncoming /><SafetyWatcher /><OidcAuthorizeGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));

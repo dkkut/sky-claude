@@ -12,6 +12,7 @@ import { MapPin, Navigation, Users, Loader2, ShieldCheck, Footprints, Bike, Car 
 import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
 import { visibleTick } from '@/shared/visibleTick';
+import { SafetyCard } from '@/safety/SafetyCard';
 import { SkyMap, type MapPoint } from '@/marketplace/logistics/SkyMap';
 import type { GeoPoint } from '@/marketplace/logistics/types';
 
@@ -153,6 +154,7 @@ export const FriendsMap = () => {
         </div>
         {sharing && <p className="flex items-center gap-1 text-xs" style={{ color: 'var(--green)' }}><MapPin size={12} />Вы показываетесь: {d.sharingWith.length}</p>}
       </section>
+      <SafetyCard />
     </div>
   );
 };

@@ -23,7 +23,7 @@ const PATHS = {
   market: ['/api/market', '/api/onsite'], pvz: ['/api/market/pvz'], garant: ['/api/garant'], go: ['/api/go', '/api/parking'],
   kbiz: ['/api/kbiz'], tickets: ['/api/tickets'], blox: ['/api/blox'], ads: ['/api/ads'], family: ['/api/family'],
   nftgifts: ['/api/gifts'], music: ['/api/music'], movies: ['/api/film'], podcasts: ['/api/podcasts'], books: ['/api/books'],
-  ai: ['/api/ai'], bots: ['/api/bots'], partners: ['/api/partners'], friendsmap: ['/api/maps/friends'], launcher: ['/api/launcher'], campaigns: ['/api/campaigns'],
+  ai: ['/api/ai'], bots: ['/api/bots'], partners: ['/api/partners'], friendsmap: ['/api/maps/friends', '/api/safety'], launcher: ['/api/launcher'], campaigns: ['/api/campaigns'],
   prime: ['/api/prime'], video: ['/api/skyvideo'], gaming: ['/api/games', '/api/gaming'], bloom: ['/api/bloom'],
 };
 const MATCHERS = Object.entries(PATHS).map(([k, list]) => [k, list]);
