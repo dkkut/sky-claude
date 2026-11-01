@@ -90,6 +90,7 @@ const cleanContent = (c = {}) => {
     imageUrl: c.imageUrl ? safeUrl(c.imageUrl) : '',
     cards: (Array.isArray(c.cards) ? c.cards : []).slice(0, 4).map((x) => ({ title: clean(x?.title, 80), text: clean(x?.text, 240) })).filter((x) => x.title || x.text),
     cta: { label: clean(c.cta?.label, 60), url: c.cta?.url ? safeUrl(c.cta.url) : '' },
+    brand: clean(c.brand, 24).trim(),
     hero: heroStyleIds.includes(c.hero) ? c.hero : 'gradient', emoji: clean(c.emoji, 8).trim(), align: c.align === 'center' ? 'center' : 'left',
     // Своё оформление: HTML-файл администратора. Хранится как загружен (до 200 КБ), а чистится при КАЖДОЙ отрисовке — см. sanitizeEmailHtml.
     customHtml: typeof c.customHtml === 'string' ? clean(c.customHtml, 200_000) : '',
@@ -239,7 +240,7 @@ const deliver = async (row) => {
     headers['List-Unsubscribe'] = `<${u}>`; headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
   } else delete headers.Precedence;
   const subject = `${row.is_test ? '[Тест] ' : ''}${out.subject}`;
-  const r = await sendEmail(per.email, subject, out.text, { html: out.html, headers });
+  const r = await sendEmail(per.email, subject, out.text, { html: out.html, headers, fromName: out.brand });
   if (r.ok) { await query(`UPDATE email_outbox SET subject=$2 WHERE id=$1`, [row.id, subject.slice(0, 200)]); return finish(row.id, 'sent'); }
   const attempts = row.attempts + 1;
   if (r.error === 'email_not_configured' || attempts >= MAX_ATTEMPTS) return query(`UPDATE email_outbox SET status='failed', attempts=$2, last_error=$3 WHERE id=$1`, [row.id, attempts, r.error || 'send_failed']);
@@ -393,7 +394,7 @@ export const sendTest = async (by, { templateKey, content, subject, preheader })
   const t = await getTemplate(templateKey); if (!t) return { error: 'not_found' };
   const me = await person(by); if (!me?.email || !me.email_verified) return { error: 'no_verified_email' };
   const p = await preview({ templateKey, content, subject, preheader }); if (p.error) return p;
-  const r = await sendEmail(me.email, `[Тест] ${p.subject}`, p.text, { html: p.html, headers: { 'X-Sky-Message-ID': `sky-test-${crypto.randomBytes(6).toString('hex')}` } });
+  const r = await sendEmail(me.email, `[Тест] ${p.subject}`, p.text, { html: p.html, fromName: p.brand, headers: { 'X-Sky-Message-ID': `sky-test-${crypto.randomBytes(6).toString('hex')}` } });
   await query(`INSERT INTO email_outbox (id, message_id, kind, template_key, profile_id, sky_id, email_mask, subject, status, manual, is_test, created_by, sent_at, last_error)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,TRUE,$5,CASE WHEN $9='sent' THEN now() END,$10)`,
     [nid('eo'), `sky-${crypto.randomBytes(9).toString('hex')}`, t.kind, templateKey, by, me.sky_id, maskEmail(me.email), `[Тест] ${p.subject}`.slice(0, 200), r.ok ? 'sent' : 'failed', r.ok ? '' : (r.error || 'send_failed')]);

@@ -35,4 +35,12 @@ ok(r.html.includes('href="https://sky.test/x"'), 'кнопка вставлен�
 ok(!/\{\{/.test(r.html), 'все плейсхолдеры заменены');
 const r2 = renderNewsletter({ title: 'T', customHtml: '<div>{{footer}}</div>' }, { unsubUrl: 'https://sky.test/u' });
 ok((r2.html.match(/Отписаться/g) || []).length === 1, 'с {{footer}} отписка стоит ровно один раз');
+// названия по теме
+import { renderPrime, renderMoney } from '../../server/emailtpl.mjs';
+const nl = renderNewsletter({ title: 'T', brand: 'Sky Music' }, {});
+ok(nl.brand === 'Sky Music' && nl.html.includes('>Sky Music</td>') && nl.html.includes('>S</td>'), 'логотип рассылки по теме');
+ok(renderNewsletter({ title: 'T' }, {}).brand === 'Sky', 'по умолчанию Sky');
+ok(renderPrime({ title: 'P', body: 'x' }, { username: 'a' }, {}).brand === 'Sky Prime' && renderPrime({ title: 'P' }, {}, {}).html.includes('>Sky Prime</td>'), 'Prime');
+ok(renderMoney({ title: 'M', body: 'x' }, {}, {}).html.includes('>SkyMoney</td>'), 'SkyMoney');
+ok(renderNewsletter({ title: 'T', brand: '<b>x</b>' }, {}).html.includes('&lt;b&gt;'), 'название экранируется');
 console.log(`Оформления писем: ${n} проверок пройдено`);

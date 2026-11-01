@@ -21,7 +21,7 @@ const ERR: Record<string, string> = {
 };
 const errText = (e?: string) => ERR[e ?? ''] ?? `Не получилось${e ? ` (${e})` : ''}`;
 
-interface Content { label?: string; title?: string; subtitle?: string; body?: string; imageUrl?: string; cards?: { title: string; text: string }[]; cta?: { label: string; url: string }; hero?: string; emoji?: string; align?: 'left' | 'center'; customHtml?: string }
+interface Content { label?: string; brand?: string; title?: string; subtitle?: string; body?: string; imageUrl?: string; cards?: { title: string; text: string }[]; cta?: { label: string; url: string }; hero?: string; emoji?: string; align?: 'left' | 'center'; customHtml?: string }
 interface Tpl { key: string; kind: 'newsletter' | 'prime' | 'money'; name: string; subject: string; preheader: string; content: Content; enabled: boolean; auto: boolean }
 interface Settings { timezone: string; primeAuto: boolean; moneyAuto: boolean; perMinute: number; supportUrl: string; privacyUrl: string; ofdTaxRatePct: number; ofdIncludeTopups: boolean }
 interface Overview { settings: Settings; sender: { mode: string; from: string; configured: boolean }; templates: Tpl[]; stats: Stats; canFinance: boolean; isOwner: boolean }
@@ -101,6 +101,10 @@ const DesignEditor = ({ c, set }: { c: Content; set: (c: Content) => void }) => 
   const download = () => { const u = URL.createObjectURL(new Blob([SAMPLE_DESIGN], { type: 'text/html' })); const a = document.createElement('a'); a.href = u; a.download = 'sky-email-design.html'; a.click(); setTimeout(() => URL.revokeObjectURL(u), 2000); };
   return (
     <div className="space-y-3 rounded-2xl p-3" style={card}>
+      <Field label="Название сервиса в логотипе и в имени отправителя (по теме письма)">
+        <input className={inp} style={fld} list="email-brands" maxLength={24} value={c.brand ?? ''} onChange={(e) => set({ ...c, brand: e.target.value })} placeholder="Sky" />
+        <datalist id="email-brands">{['Sky', 'Sky Prime', 'SkyMoney', 'Sky Music', 'Sky Film', 'Sky Video', 'Sky Market', 'Sky GO', 'Sky Games', 'Sky Business', 'Sky AI', 'Sky Gifts'].map((b) => <option key={b} value={b} />)}</datalist>
+      </Field>
       <div>
         <span className="mb-1.5 block text-xs font-semibold" style={{ color: C.t2 }}>Оформление шапки</span>
         <div className="flex flex-wrap gap-2">

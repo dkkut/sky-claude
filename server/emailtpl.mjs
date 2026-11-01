@@ -43,9 +43,9 @@ const subst = (tpl, vars, kind, mode) => (mode === 'html' ? esc(tpl) : clean(tpl
 /* ─── блоки ─── */
 const preheaderBlock = (t) => `<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">${esc(t)}${'&nbsp;&zwnj;'.repeat(40)}</div>`;
 
-const logo = (light = false) => `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-<td width="34" height="34" align="center" valign="middle" bgcolor="${light ? '#ffffff' : BRAND.indigo}" style="width:34px;height:34px;border-radius:11px;${light ? '' : GRAD}font:800 18px/34px ${FONT};color:${light ? BRAND.indigo : '#ffffff'};">S</td>
-<td style="padding-left:10px;font:800 21px/34px ${FONT};letter-spacing:-0.3px;color:${light ? '#ffffff' : BRAND.ink};">Sky</td></tr></table>`;
+const logo = (light = false, brand = 'Sky') => `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td width="34" height="34" align="center" valign="middle" bgcolor="${light ? '#ffffff' : BRAND.indigo}" style="width:34px;height:34px;border-radius:11px;${light ? '' : GRAD}font:800 18px/34px ${FONT};color:${light ? BRAND.indigo : '#ffffff'};">${esc(Array.from(brand)[0] || 'S')}</td>
+<td style="padding-left:10px;font:800 21px/34px ${FONT};letter-spacing:-0.3px;color:${light ? '#ffffff' : BRAND.ink};">${esc(brand)}</td></tr></table>`;
 
 /** Кнопка, которая остаётся кнопкой и без картинок и в Outlook (цвет задан и на ячейке, и на ссылке). */
 export const button = (label, url, { kind = 'primary', full = false } = {}) => {
@@ -89,13 +89,13 @@ export const footer = ({ links, marketing, unsubUrl, messageId }) => {
 };
 
 /** Общая рамка письма. */
-export const shell = ({ title, preheader, hero, body, footerHtml }) => `<!doctype html>
+export const shell = ({ title, preheader, hero, body, footerHtml, brand = 'Sky' }) => `<!doctype html>
 <html lang="ru" xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="x-apple-disable-message-reformatting"><title>${esc(title)}</title>
 <style>@media only screen and (max-width:620px){.wrap{width:100%!important}.pad{padding-left:20px!important;padding-right:20px!important}.stack{display:block!important;width:100%!important}.big{font-size:38px!important;line-height:44px!important}.h1{font-size:26px!important;line-height:32px!important}}</style></head>
 <body style="margin:0;padding:0;background:${BRAND.page};-webkit-text-size-adjust:100%;">${preheaderBlock(preheader)}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="${BRAND.page}" style="background:${BRAND.page};"><tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" class="wrap" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;">
-<tr><td style="padding:0 8px 16px;">${logo()}</td></tr>
+<tr><td style="padding:0 8px 16px;">${logo(false, brand)}</td></tr>
 <tr><td><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="${BRAND.card}" style="background:${BRAND.card};border-radius:26px;box-shadow:0 6px 28px rgba(60,60,140,0.10);overflow:hidden;">
 ${hero}${body}
 </table></td></tr>
@@ -114,6 +114,8 @@ export const HERO_STYLES = {
   light: { name: 'Светлая', bg: '#eef0ff', grad: '', fg: '#14142b', sub: '#6b6f8a', acc: '#4f46e5', bar: '#4f46e5' },
   ink: { name: 'Графит', bg: '#14142b', grad: '', fg: '#ffffff', sub: 'rgba(255,255,255,0.78)', acc: '#a5b4fc' },
 };
+/** Название сервиса в логотипе письма и в имени отправителя: по теме письма. */
+export const brandOf = (c = {}) => clean(c.brand, 24).trim() || 'Sky';
 export const heroStyleIds = Object.keys(HERO_STYLES);
 
 export const heroBlock = ({ title, subtitle, accent, vars, kind, imageUrl, style = 'gradient', emoji = '', align = 'left' }) => {
@@ -190,7 +192,7 @@ export const renderNewsletter = (content = {}, ctx = {}) => {
   const preheader = clean(ctx.preheader || c.subtitle || '', 200);
   const cta = c.cta?.label && safeUrl(c.cta.url) ? button(clean(c.cta.label, 60), c.cta.url, { kind: 'primary' }) : '';
   const hello = vars.username ? `<p style="margin:0 0 16px;font:600 15px/24px ${FONT};color:${BRAND.ink};">Здравствуйте, ${esc(vars.username)}!</p>` : '';
-  const accent = clean(c.label, 40) || 'Новости Sky';
+  const accent = clean(c.label, 40) || (brandOf(c) === 'Sky' ? 'Новости Sky' : brandOf(c));
   const bodyHtml = `${paragraphs(c.body, vars, 'newsletter')}`;
   const cardsHtml = cardsBlock(c.cards, vars, 'newsletter');
   const html = c.customHtml
@@ -203,7 +205,7 @@ export const renderNewsletter = (content = {}, ctx = {}) => {
       footerInner: `<div style="font:400 12px/18px ${FONT};color:${BRAND.muted};">Вы получили это письмо, потому что подписаны на новости Sky. ${ctx.unsubUrl ? `<a href="${esc(safeUrl(ctx.unsubUrl))}" target="_blank" style="color:${BRAND.muted};text-decoration:underline;">Отписаться от рекламных рассылок</a>.` : ''}<br>№ ${esc(ctx.messageId || '—')}</div>`,
     })
     : shell({
-      title, preheader,
+      title, preheader, brand: brandOf(c),
       hero: heroBlock({ title, subtitle: c.subtitle, accent, vars, kind: 'newsletter', imageUrl: c.imageUrl, style: c.hero, emoji: c.emoji, align: c.align }),
       body: bodyWrap(`${hello}${bodyHtml}${cardsHtml}${cta ? `<div style="padding-top:6px;">${cta}</div>` : ''}`),
       footerHtml: footer({ links: linksOf(ctx), marketing: true, unsubUrl: ctx.unsubUrl, messageId: ctx.messageId || '—' }),
@@ -217,7 +219,7 @@ export const renderNewsletter = (content = {}, ctx = {}) => {
     '\n—\nSky — твоя экосистема.', `Открыть Sky: ${ctx.appUrl || ''}`,
     ctx.unsubUrl ? `Отписаться от рекламных рассылок: ${ctx.unsubUrl}` : '',
   ].filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n');
-  return { html, text, subject: subst(ctx.subject || c.title || 'Новости Sky', vars, 'newsletter', 'text') };
+  return { html, text, brand: brandOf(c), subject: subst(ctx.subject || c.title || 'Новости Sky', vars, 'newsletter', 'text') };
 };
 
 /* ─── 2. Sky Prime ─── */
@@ -240,7 +242,7 @@ ${content.subtitle ? `<div style="padding-top:8px;font:400 15px/22px ${FONT};col
   const price = !renewed && v.renewal_amount ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#f6f7fe" style="margin:0 0 20px;background:#f6f7fe;border:1px solid ${BRAND.line};border-radius:16px;"><tr><td style="padding:14px 18px;font:400 14px/20px ${FONT};color:${BRAND.muted};">Стоимость продления</td><td align="right" style="padding:14px 18px;font:800 16px/20px ${FONT};color:${BRAND.ink};">${esc(v.renewal_amount)}</td></tr></table>` : '';
   const cta = !renewed && content.cta?.label && safeUrl(v.renewal_link) ? button(clean(content.cta.label, 60), v.renewal_link, { kind: 'primary', full: true }) : '';
   const html = shell({
-    title, preheader, hero,
+    brand: 'Sky Prime', title, preheader, hero,
     body: bodyWrap(`${hello}${paragraphs(content.body, v, 'prime')}${price}${cta}`),
     footerHtml: footer({ links: linksOf(ctx), marketing: false, messageId: ctx.messageId || '—' }),
   });
@@ -253,7 +255,7 @@ ${content.subtitle ? `<div style="padding-top:8px;font:400 15px/22px ${FONT};col
     !renewed && safeUrl(v.renewal_link) ? `Продлить: ${safeUrl(v.renewal_link)}` : '',
     '\n—\nSky — твоя экосистема.', `Открыть Sky: ${ctx.appUrl || ''}`, 'Это служебное уведомление о вашей подписке.',
   ].filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n');
-  return { html, text, subject: subst(ctx.subject || title, v, 'prime', 'text') };
+  return { html, text, brand: 'Sky Prime', subject: subst(ctx.subject || title, v, 'prime', 'text') };
 };
 
 /* ─── 3. SkyMoney: пополнение ─── */
@@ -277,7 +279,7 @@ ${row('Дата и время', v.transaction_date)}${row('Номер опера
   const receipt = safeUrl(ctx.receiptUrl) ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:12px;"><tr><td class="stack" width="50%" style="padding:0 6px 8px 0;">${button('Открыть квитанцию', ctx.receiptUrl, { kind: 'soft', full: true })}</td><td class="stack" width="50%" style="padding:0 0 8px 6px;">${button('Сохранить в PDF', `${safeUrl(ctx.receiptUrl)}${safeUrl(ctx.receiptUrl).includes('?') ? '&' : '?'}print=1`, { kind: 'soft', full: true })}</td></tr></table>
 <p style="margin:6px 0 0;font:400 12px/18px ${FONT};color:${BRAND.muted};">Это подтверждение операции (квитанция Sky), а не кассовый чек: фискальный документ не формируется. Данные взяты из платёжной системы Sky на момент зачисления.</p>` : '';
   const html = shell({
-    title, preheader, hero,
+    brand: 'SkyMoney', title, preheader, hero,
     body: bodyWrap(`${hello}${paragraphs(content.body, v, 'money')}${details}${op}${receipt}`),
     footerHtml: footer({ links: linksOf(ctx), marketing: false, messageId: ctx.messageId || '—' }),
   });
@@ -291,7 +293,7 @@ ${row('Дата и время', v.transaction_date)}${row('Номер опера
     safeUrl(ctx.receiptUrl) ? `Квитанция: ${safeUrl(ctx.receiptUrl)}\n(Это подтверждение операции Sky, а не кассовый чек.)` : '',
     '\n—\nSky — твоя экосистема.', 'Это служебное финансовое уведомление.',
   ].filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n');
-  return { html, text, subject: subst(ctx.subject || title, v, 'money', 'text') };
+  return { html, text, brand: 'SkyMoney', subject: subst(ctx.subject || title, v, 'money', 'text') };
 };
 
 /** Печатная квитанция (страница по защищённой ссылке; «Сохранить в PDF» — печать браузера). Только данные платёжной системы, без выдумок. */
@@ -349,7 +351,7 @@ export const renderTaxDocMail = (d, ctx = {}) => {
   const link = safeUrl(ctx.pageUrl) ? button('Открыть документ', ctx.pageUrl, { kind: 'primary', full: true }) : '';
   const official = safeUrl(d.url) ? `<p style="margin:12px 0 0;font:400 13px/19px ${FONT};color:${BRAND.muted};">Документ в системе оператора: <a href="${esc(safeUrl(d.url))}" style="color:${BRAND.indigo};">${esc(safeUrl(d.url))}</a></p>` : '';
   const html = shell({
-    title, preheader: `${money(d.amount)} · ${d.sellerName}`,
+    brand: 'Sky Tax', title, preheader: `${money(d.amount)} · ${d.sellerName}`,
     hero: heroBlock({ title, subtitle: d.sellerName, accent: d.kindLabel ?? 'Чек', vars: {}, kind: 'money' }),
     body: bodyWrap(`<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 14px;"><tr><td style="font:400 14px/20px ${FONT};color:${BRAND.muted};">Дата</td><td align="right" style="font:600 14px/20px ${FONT};color:${BRAND.ink};">${esc(d.issuedAt)}</td></tr>
 <tr><td style="padding-top:6px;font:400 14px/20px ${FONT};color:${BRAND.muted};">Продавец</td><td align="right" style="padding-top:6px;font:600 14px/20px ${FONT};color:${BRAND.ink};">${esc(d.sellerName)}${d.sellerInn ? `<br><span style="font-weight:400;color:${BRAND.muted};">ИНН ${esc(d.sellerInn)}</span>` : ''}</td></tr></table>
@@ -358,7 +360,7 @@ export const renderTaxDocMail = (d, ctx = {}) => {
     footerHtml: footer({ links: linksOf(ctx), marketing: false, messageId: ctx.messageId || '—' }),
   });
   const text = [title, d.sellerName + (d.sellerInn ? `, ИНН ${d.sellerInn}` : ''), `Дата: ${d.issuedAt}`, '', ...(d.items ?? []).map((i) => `${i.name}${Number(i.qty) !== 1 ? ` × ${i.qty}` : ''}: ${money(i.amount)}`), `${d.opKind === 'refund' ? 'Возвращено' : 'Итого'}: ${money(d.amount)}`, '', PROV_NOTE[d.provenance] ?? '', safeUrl(ctx.pageUrl) ? `Документ: ${ctx.pageUrl}` : '', safeUrl(d.url) ? `У оператора: ${d.url}` : '', '', '—', 'Sky — твоя экосистема.'].filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n');
-  return { html, text, subject: title };
+  return { html, text, brand: 'Sky Tax', subject: title };
 };
 
 export const renderTaxDocPage = (d) => {

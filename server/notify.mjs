@@ -43,6 +43,14 @@ const logAllowed = () => config.nodeEnv !== 'production' || config.allowLogCodes
 
 /* ─── SMS ──────────────────────────────────────────────────────────────── */
 
+/** Адрес отправителя с именем «по теме письма»: Sky Prime <no-reply@…>. Имя чистится, адрес берётся из EMAIL_FROM. */
+export const fromWithName = (name) => {
+  const raw = String(config.emailFrom || '');
+  const addr = (raw.match(/<([^>]+)>/)?.[1] ?? raw).trim();
+  const n = String(name ?? '').replace(/[\u0000-\u001f\u007f"<>\\@]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  return n && addr ? `"${n}" <${addr}>` : raw;
+};
+
 const smsProviders = {
   /**
    * otpmock — тестовый ящик SMS для сквозных тестов (https://otpmock.com).
@@ -255,7 +263,7 @@ const emailProviders = {
     if (!config.smtpHost || !config.emailFrom) return { ok: false, error: 'email_not_configured' };
     try {
       const transport = await getMailer();
-      await transport.sendMail({ from: config.emailFrom, to, subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) });
+      await transport.sendMail({ from: fromWithName(extra?.fromName), to, subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) });
       return { ok: true };
     } catch (err) {
       console.error('[email:smtp]', err.message);
@@ -273,7 +281,7 @@ const emailProviders = {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${config.resendApiKey}`,
         },
-        body: JSON.stringify({ from: config.emailFrom, to: [to], subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) }),
+        body: JSON.stringify({ from: fromWithName(extra?.fromName), to: [to], subject, text, ...(extra?.html ? { html: extra.html } : {}), ...(extra?.headers ? { headers: extra.headers } : {}) }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!res.ok) {
