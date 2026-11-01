@@ -73,6 +73,7 @@ const SAMPLE_DESIGN = `<!doctype html>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:18px;overflow:hidden;">
 <tr><td align="center" bgcolor="#4f46e5" style="background:#4f46e5;padding:32px 24px;color:#ffffff;">
+{{logo}}
 <div style="font-size:42px;">{{emoji}}</div>
 <div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;">{{label}}</div>
 <h1 style="margin:8px 0 0;font-size:28px;">{{title}}</h1>
@@ -126,7 +127,7 @@ const DesignEditor = ({ c, set }: { c: Content; set: (c: Content) => void }) => 
       </div>
       <div className="space-y-1.5 border-t pt-3" style={{ borderColor: C.brd }}>
         <span className="block text-xs font-semibold" style={{ color: C.t2 }}>Своё оформление письма (HTML-файл)</span>
-        <p className="text-xs" style={{ color: C.t3 }}>{`Загрузите готовую вёрстку письма. Подставляются места: {{title}} {{subtitle}} {{label}} {{emoji}} {{username}} {{body}} {{cards}} {{cta}} {{cta_url}} {{cta_label}} {{image_url}} {{app_url}} {{unsubscribe_url}} {{footer}}. Скрипты, формы, фреймы, обработчики событий, http-ссылки и внешние стили удаляются автоматически. Если в файле нет {{footer}}, ссылка «Отписаться» добавится внизу сама: в рекламном письме она обязательна. Размер до 200 КБ; письмо должно быть сверстано таблицами и со стилями внутри тегов — так оно одинаково выглядит в почтовых клиентах.`}</p>
+        <p className="text-xs" style={{ color: C.t3 }}>{`Загрузите готовую вёрстку письма. Подставляются места: {{title}} {{subtitle}} {{label}} {{emoji}} {{logo}} {{username}} {{body}} {{cards}} {{cta}} {{cta_url}} {{cta_label}} {{image_url}} {{app_url}} {{unsubscribe_url}} {{footer}}. Скрипты, формы, фреймы, обработчики событий, http-ссылки и внешние стили удаляются автоматически. Если в файле нет {{footer}}, ссылка «Отписаться» добавится внизу сама: в рекламном письме она обязательна. Размер до 200 КБ; письмо должно быть сверстано таблицами и со стилями внутри тегов — так оно одинаково выглядит в почтовых клиентах.`}</p>
         <div className="flex flex-wrap items-center gap-2">
           <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold" style={{ background: C.acc, color: '#fff' }}>
             <input type="file" accept=".html,.htm,text/html" className="hidden" onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} />Загрузить HTML

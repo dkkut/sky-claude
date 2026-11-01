@@ -43,9 +43,18 @@ const subst = (tpl, vars, kind, mode) => (mode === 'html' ? esc(tpl) : clean(tpl
 /* ─── блоки ─── */
 const preheaderBlock = (t) => `<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">${esc(t)}${'&nbsp;&zwnj;'.repeat(40)}</div>`;
 
-const logo = (light = false, brand = 'Sky') => `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-<td width="34" height="34" align="center" valign="middle" bgcolor="${light ? '#ffffff' : BRAND.indigo}" style="width:34px;height:34px;border-radius:11px;${light ? '' : GRAD}font:800 18px/34px ${FONT};color:${light ? BRAND.indigo : '#ffffff'};">${esc(Array.from(brand)[0] || 'S')}</td>
-<td style="padding-left:10px;font:800 21px/34px ${FONT};letter-spacing:-0.3px;color:${light ? '#ffffff' : BRAND.ink};">${esc(brand)}</td></tr></table>`;
+/** Адрес маленького логотипа Sky (public/email-logo.png, 160×160, ~28 КБ). Нужен абсолютный https-адрес приложения. */
+export const logoOf = (ctx = {}) => { const a = safeUrl(ctx.appUrl); return a ? `${a.replace(/\/$/, '')}/email-logo.png` : ''; };
+
+/** Логотип: настоящий значок Sky + название. Если картинки отключены — читается название; нет адреса приложения — запасной квадрат с буквой. */
+const logo = (light = false, brand = 'Sky', logoUrl = '') => {
+  const initial = esc(Array.from(brand)[0] || 'S');
+  const mark = logoUrl
+    ? `<td width="40" height="40" valign="middle" style="width:40px;height:40px;"><img src="${esc(logoUrl)}" width="40" height="40" alt="${initial}" style="display:block;width:40px;height:40px;border:0;outline:none;font:800 18px/40px ${FONT};color:${BRAND.indigo};text-align:center;"></td>`
+    : `<td width="34" height="34" align="center" valign="middle" bgcolor="${light ? '#ffffff' : BRAND.indigo}" style="width:34px;height:34px;border-radius:11px;${light ? '' : GRAD}font:800 18px/34px ${FONT};color:${light ? BRAND.indigo : '#ffffff'};">${initial}</td>`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>${mark}
+<td style="padding-left:10px;font:800 21px/40px ${FONT};letter-spacing:-0.3px;color:${light ? '#ffffff' : BRAND.ink};">${esc(brand)}</td></tr></table>`;
+};
 
 /** Кнопка, которая остаётся кнопкой и без картинок и в Outlook (цвет задан и на ячейке, и на ссылке). */
 export const button = (label, url, { kind = 'primary', full = false } = {}) => {
@@ -89,13 +98,13 @@ export const footer = ({ links, marketing, unsubUrl, messageId }) => {
 };
 
 /** Общая рамка письма. */
-export const shell = ({ title, preheader, hero, body, footerHtml, brand = 'Sky' }) => `<!doctype html>
+export const shell = ({ title, preheader, hero, body, footerHtml, brand = 'Sky', logoUrl = '' }) => `<!doctype html>
 <html lang="ru" xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="x-apple-disable-message-reformatting"><title>${esc(title)}</title>
 <style>@media only screen and (max-width:620px){.wrap{width:100%!important}.pad{padding-left:20px!important;padding-right:20px!important}.stack{display:block!important;width:100%!important}.big{font-size:38px!important;line-height:44px!important}.h1{font-size:26px!important;line-height:32px!important}}</style></head>
 <body style="margin:0;padding:0;background:${BRAND.page};-webkit-text-size-adjust:100%;">${preheaderBlock(preheader)}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="${BRAND.page}" style="background:${BRAND.page};"><tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" class="wrap" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;">
-<tr><td style="padding:0 8px 16px;">${logo(false, brand)}</td></tr>
+<tr><td style="padding:0 8px 16px;">${logo(false, brand, logoUrl)}</td></tr>
 <tr><td><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="${BRAND.card}" style="background:${BRAND.card};border-radius:26px;box-shadow:0 6px 28px rgba(60,60,140,0.10);overflow:hidden;">
 ${hero}${body}
 </table></td></tr>
@@ -199,13 +208,14 @@ export const renderNewsletter = (content = {}, ctx = {}) => {
     ? renderCustomHtml(c.customHtml, {
       html: {
         title: subst(title, vars, 'newsletter', 'html'), subtitle: subst(c.subtitle ?? '', vars, 'newsletter', 'html'), label: esc(accent), emoji: esc(clean(c.emoji, 8)),
+        logo: logoOf(ctx) ? `<img src="${esc(logoOf(ctx))}" width="40" height="40" alt="Sky" style="display:block;border:0;">` : '', logo_url: esc(logoOf(ctx)),
         username: esc(vars.username), body: bodyHtml, cards: cardsHtml, cta, cta_url: esc(safeUrl(c.cta?.url) || '#'), cta_label: esc(clean(c.cta?.label, 60)),
         image_url: esc(safeUrl(c.imageUrl) || ''), app_url: esc(safeUrl(ctx.appUrl) || '#'), unsubscribe_url: esc(safeUrl(ctx.unsubUrl) || '#'), footer: '',
       },
       footerInner: `<div style="font:400 12px/18px ${FONT};color:${BRAND.muted};">Вы получили это письмо, потому что подписаны на новости Sky. ${ctx.unsubUrl ? `<a href="${esc(safeUrl(ctx.unsubUrl))}" target="_blank" style="color:${BRAND.muted};text-decoration:underline;">Отписаться от рекламных рассылок</a>.` : ''}<br>№ ${esc(ctx.messageId || '—')}</div>`,
     })
     : shell({
-      title, preheader, brand: brandOf(c),
+      title, preheader, brand: brandOf(c), logoUrl: logoOf(ctx),
       hero: heroBlock({ title, subtitle: c.subtitle, accent, vars, kind: 'newsletter', imageUrl: c.imageUrl, style: c.hero, emoji: c.emoji, align: c.align }),
       body: bodyWrap(`${hello}${bodyHtml}${cardsHtml}${cta ? `<div style="padding-top:6px;">${cta}</div>` : ''}`),
       footerHtml: footer({ links: linksOf(ctx), marketing: true, unsubUrl: ctx.unsubUrl, messageId: ctx.messageId || '—' }),
@@ -242,7 +252,7 @@ ${content.subtitle ? `<div style="padding-top:8px;font:400 15px/22px ${FONT};col
   const price = !renewed && v.renewal_amount ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#f6f7fe" style="margin:0 0 20px;background:#f6f7fe;border:1px solid ${BRAND.line};border-radius:16px;"><tr><td style="padding:14px 18px;font:400 14px/20px ${FONT};color:${BRAND.muted};">Стоимость продления</td><td align="right" style="padding:14px 18px;font:800 16px/20px ${FONT};color:${BRAND.ink};">${esc(v.renewal_amount)}</td></tr></table>` : '';
   const cta = !renewed && content.cta?.label && safeUrl(v.renewal_link) ? button(clean(content.cta.label, 60), v.renewal_link, { kind: 'primary', full: true }) : '';
   const html = shell({
-    brand: 'Sky Prime', title, preheader, hero,
+    brand: 'Sky Prime', logoUrl: logoOf(ctx), title, preheader, hero,
     body: bodyWrap(`${hello}${paragraphs(content.body, v, 'prime')}${price}${cta}`),
     footerHtml: footer({ links: linksOf(ctx), marketing: false, messageId: ctx.messageId || '—' }),
   });
@@ -279,7 +289,7 @@ ${row('Дата и время', v.transaction_date)}${row('Номер опера
   const receipt = safeUrl(ctx.receiptUrl) ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:12px;"><tr><td class="stack" width="50%" style="padding:0 6px 8px 0;">${button('Открыть квитанцию', ctx.receiptUrl, { kind: 'soft', full: true })}</td><td class="stack" width="50%" style="padding:0 0 8px 6px;">${button('Сохранить в PDF', `${safeUrl(ctx.receiptUrl)}${safeUrl(ctx.receiptUrl).includes('?') ? '&' : '?'}print=1`, { kind: 'soft', full: true })}</td></tr></table>
 <p style="margin:6px 0 0;font:400 12px/18px ${FONT};color:${BRAND.muted};">Это подтверждение операции (квитанция Sky), а не кассовый чек: фискальный документ не формируется. Данные взяты из платёжной системы Sky на момент зачисления.</p>` : '';
   const html = shell({
-    brand: 'SkyMoney', title, preheader, hero,
+    brand: 'SkyMoney', logoUrl: logoOf(ctx), title, preheader, hero,
     body: bodyWrap(`${hello}${paragraphs(content.body, v, 'money')}${details}${op}${receipt}`),
     footerHtml: footer({ links: linksOf(ctx), marketing: false, messageId: ctx.messageId || '—' }),
   });
@@ -351,7 +361,7 @@ export const renderTaxDocMail = (d, ctx = {}) => {
   const link = safeUrl(ctx.pageUrl) ? button('Открыть документ', ctx.pageUrl, { kind: 'primary', full: true }) : '';
   const official = safeUrl(d.url) ? `<p style="margin:12px 0 0;font:400 13px/19px ${FONT};color:${BRAND.muted};">Документ в системе оператора: <a href="${esc(safeUrl(d.url))}" style="color:${BRAND.indigo};">${esc(safeUrl(d.url))}</a></p>` : '';
   const html = shell({
-    brand: 'Sky Tax', title, preheader: `${money(d.amount)} · ${d.sellerName}`,
+    brand: 'Sky Tax', logoUrl: logoOf(ctx), title, preheader: `${money(d.amount)} · ${d.sellerName}`,
     hero: heroBlock({ title, subtitle: d.sellerName, accent: d.kindLabel ?? 'Чек', vars: {}, kind: 'money' }),
     body: bodyWrap(`<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 14px;"><tr><td style="font:400 14px/20px ${FONT};color:${BRAND.muted};">Дата</td><td align="right" style="font:600 14px/20px ${FONT};color:${BRAND.ink};">${esc(d.issuedAt)}</td></tr>
 <tr><td style="padding-top:6px;font:400 14px/20px ${FONT};color:${BRAND.muted};">Продавец</td><td align="right" style="padding-top:6px;font:600 14px/20px ${FONT};color:${BRAND.ink};">${esc(d.sellerName)}${d.sellerInn ? `<br><span style="font-weight:400;color:${BRAND.muted};">ИНН ${esc(d.sellerInn)}</span>` : ''}</td></tr></table>

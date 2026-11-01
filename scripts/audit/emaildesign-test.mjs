@@ -44,3 +44,10 @@ ok(renderPrime({ title: 'P', body: 'x' }, { username: 'a' }, {}).brand === 'Sky 
 ok(renderMoney({ title: 'M', body: 'x' }, {}, {}).html.includes('>SkyMoney</td>'), 'SkyMoney');
 ok(renderNewsletter({ title: 'T', brand: '<b>x</b>' }, {}).html.includes('&lt;b&gt;'), 'название экранируется');
 console.log(`Оформления писем: ${n} проверок пройдено`);
+// логотип
+const withLogo = renderNewsletter({ title: 'T' }, { appUrl: 'https://web.sky.test/' });
+ok(withLogo.html.includes('src="https://web.sky.test/email-logo.png"'), 'логотип Sky — картинка по адресу приложения');
+ok(!renderNewsletter({ title: 'T' }, {}).html.includes('email-logo.png'), 'без адреса приложения — запасной квадрат с буквой');
+ok(renderPrime({ title: 'P' }, {}, { appUrl: 'https://web.sky.test/' }).html.includes('email-logo.png') && renderMoney({ title: 'M' }, {}, { appUrl: 'https://web.sky.test/' }).html.includes('email-logo.png'), 'логотип в Prime и SkyMoney');
+ok(renderNewsletter({ title: 'T', customHtml: '<div>{{logo}}</div>' }, { appUrl: 'https://web.sky.test/' }).html.includes('email-logo.png'), '{{logo}} в своём оформлении');
+console.log('Логотип: проверки пройдены');
