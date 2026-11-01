@@ -56,9 +56,9 @@ const BuildUploader = ({ gameId, onDone }: { gameId: string; onDone: () => void 
 const Editor = ({ id, onBack }: { id: string; onBack: () => void }) => {
   const [d, setD] = useState<MyGame | null>(null); const [err, setErr] = useState(false); const [tab, setTab] = useState<'card' | 'media' | 'builds' | 'order' | 'news' | 'team' | 'stats'>('card');
   const [f, setF] = useState<any>(null); const [note, setNote] = useState(''); const [pl, setPl] = useState<any>(null); const [stats, setStats] = useState<any>(null);
-  const load = useCallback(async () => { const r = await lApi.myGame(id); setErr(!r.ok); if (r.ok && r.data) { setD(r.data); setF((cur: any) => cur ?? { title: r.data!.game.title, shortDescr: r.data!.game.shortDescr, descr: r.data!.game.descr, genres: r.data!.game.genres, developer: r.data!.game.developer, publisher: r.data!.game.publisher, os: r.data!.game.os, requirements: r.data!.game.requirements, links: r.data!.game.links }); } }, [id]);
+  const load = useCallback(async () => { if (!id) { setErr(true); return; } const r = await lApi.myGame(id); setErr(!r.ok); if (r.ok && r.data) { setD(r.data); setF((cur: any) => cur ?? { title: r.data!.game.title, shortDescr: r.data!.game.shortDescr, descr: r.data!.game.descr, genres: r.data!.game.genres, developer: r.data!.game.developer, publisher: r.data!.game.publisher, os: r.data!.game.os, requirements: r.data!.game.requirements, links: r.data!.game.links }); } }, [id]);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (tab === 'order') void lApi.placement(id).then((r) => r.ok && setPl(r.data)); if (tab === 'stats') void lApi.stats(id).then((r) => r.ok && setStats(r.data)); }, [tab, id]);
+  useEffect(() => { if (!id) return; if (tab === 'order') void lApi.placement(id).then((r) => r.ok && setPl(r.data)); if (tab === 'stats') void lApi.stats(id).then((r) => r.ok && setStats(r.data)); }, [tab, id]);
   if (err) return <><Back onClick={onBack} title="Игра" /><ErrorBox text="Не удалось открыть игру." onRetry={() => void load()} /></>;
   if (!d || !f) return <><Back onClick={onBack} title="Игра" /><Spinner /></>;
   const can = (p: string) => d.can.includes(p); const g = d.game;

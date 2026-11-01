@@ -338,6 +338,10 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
   const rctx = currentSession();
   res.on('finish', () => { recordRequest(res.statusCode, Date.now() - t0); auditRequest(req, res.statusCode, Date.now() - t0, rctx); });
   try {
+    // nginx для блоков `location ^~ /api/x/` отвечает на адрес без слэша редиректом на `/api/x/`, а маршруты ждут путь без слэша на конце
+    // (так «Обновления» и «Скачивание» в админке получали 404). Отрезаем лишний слэш до всей остальной обработки.
+    { const raw = req.url || ''; const qi = raw.indexOf('?'); const pth = qi < 0 ? raw : raw.slice(0, qi);
+      if (pth.startsWith('/api/') && pth.length > 5 && pth.endsWith('/')) req.url = pth.replace(/\/+$/, '') + (qi < 0 ? '' : raw.slice(qi)); }
     const ip = clientIp(req);
     // Самозащита: заблокированный адрес и предъявленные секреты/приманки отсекаются до всего остального.
     // Исключены ссылка отмены и сторож хоста — владелец должен суметь отменить, а сторож — доложить.
