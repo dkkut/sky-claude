@@ -195,7 +195,7 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
     const sys = `${system}${aiLangNote()}`;
     // Поставщики расходятся в мелочах (temperature у новых моделей, max_tokens / max_completion_tokens): при 400 пробуем один раз без спорных полей.
     const build = (strict) => {
-      if (style === 'anthropic') return { url: '/v1/messages', headers: { 'x-api-key': config.aiApiKey, 'anthropic-version': '2023-06-01' }, body: { model: config.aiModel, max_tokens: limit, system: sys, messages: turns.map(toAnthropicTurn) } };
+      if (style === 'anthropic') return { url: '/v1/messages', headers: { 'x-api-key': config.aiApiKey, 'anthropic-version': '2023-06-01', ...(/(^|\.)anthropic\.com(\/|$)/i.test(config.aiBaseUrl.replace(/^https?:\/\//i, '')) ? {} : { authorization: `Bearer ${config.aiApiKey}` }) }, body: { model: config.aiModel, max_tokens: limit, system: sys, messages: turns.map(toAnthropicTurn) } };
       if (style === 'chat') return { url: '/v1/chat/completions', headers: { authorization: `Bearer ${config.aiApiKey}` }, body: { model: config.aiModel, ...(strict ? { max_tokens: limit } : { max_completion_tokens: limit }), messages: [{ role: 'system', content: sys }, ...turns.map(toChatTurn)] } };
       return { url: '/v1/responses', headers: { authorization: `Bearer ${config.aiApiKey}` }, body: { model: config.aiModel, max_output_tokens: limit, ...(strict ? { temperature: 0 } : {}), instructions: sys, input: turns.map(toResponsesTurn) } };
     };
