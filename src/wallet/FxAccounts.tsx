@@ -112,7 +112,7 @@ export const FxAccounts = ({ onBack, rubBalance }: { onBack: () => void; rubBala
           adding ? (
             <section className="space-y-2 rounded-3xl p-5" style={card}>
               <p className="text-sm font-extrabold" style={{ color: 'var(--t1)' }}>Открыть счёт</p>
-              {free.length === 0 ? <p className="text-xs" style={{ color: 'var(--t3)' }}>Доступных валют нет: администрация ещё не задала курсы.</p>
+              {free.length === 0 ? <p className="text-xs" style={{ color: 'var(--t3)' }}>Доступных валют нет: администрация ещё не включила валютные счета.</p>
                 : <div className="grid grid-cols-2 gap-2">{free.map((c) => <button key={c.code} type="button" disabled={busy} onClick={() => void open(c.code)} className="rounded-2xl px-3 py-3 text-left" style={sty}><span className="block text-sm font-extrabold">{c.symbol} {c.code}</span><span className="block text-[11px]" style={{ color: 'var(--t3)' }}>{c.name}</span></button>)}</div>}
               <button type="button" onClick={() => setAdding(false)} className="text-xs font-bold" style={{ color: 'var(--t3)' }}>Отмена</button>
             </section>

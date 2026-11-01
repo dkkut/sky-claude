@@ -28,7 +28,7 @@ export const FxRatesTab = () => {
     const r = await apiCall<{ rates: Row[]; canEdit: boolean; analytics: Record<string, An> }>(A);
     if (!r.ok || !r.data) { setErr('Не удалось загрузить курсы'); return; }
     setRows(r.data.rates); setCanEdit(r.data.canEdit); setAn(r.data.analytics ?? {}); setErr('');
-    setEdit(Object.fromEntries(r.data.rates.map((x) => [x.code, { rate: x.rateRub == null ? '' : String(x.rateRub), spread: String(x.spreadPct), enabled: x.enabled, source: x.source }])));
+    setEdit(Object.fromEntries(r.data.rates.map((x) => [x.code, { rate: x.rateRub == null ? '' : String(x.rateRub), spread: String(x.spreadPct), enabled: x.rateRub == null ? true : x.enabled, source: x.source }])));
   }, []);
   useEffect(() => { void load(); }, [load]);
 
@@ -65,6 +65,7 @@ export const FxRatesTab = () => {
             <input value={edit[x.code]?.spread ?? ''} disabled={!canEdit} onChange={(e) => setEdit({ ...edit, [x.code]: { ...edit[x.code], spread: e.target.value.replace(/[^\d.,]/g, '') } })} inputMode="decimal" placeholder="Спред, %" aria-label={`Спред ${x.code}`} className={inp} style={fld} />
             {an[x.code] && <p className="col-span-2 text-[11px] sm:col-span-5" style={{ color: C.t3 }}>За сутки {an[x.code].change1d == null ? '—' : `${an[x.code].change1d} %`} · за 30 дней {an[x.code].change30d == null ? '—' : `${an[x.code].change30d} %`} · диапазон {an[x.code].min}–{an[x.code].max} ₽ · точек: {an[x.code].points.length}</p>}
             <label className="col-span-2 flex items-center gap-2 text-xs" style={{ color: C.t1 }}><input type="checkbox" disabled={!canEdit} checked={edit[x.code]?.enabled ?? false} onChange={(e) => setEdit({ ...edit, [x.code]: { ...edit[x.code], enabled: e.target.checked } })} />Доступна пользователям</label>
+            {x.rateRub != null && !x.enabled && !(edit[x.code]?.enabled) && <p className="col-span-2 text-[11px] font-semibold sm:col-span-5" style={{ color: '#f59e0b' }}>Курс задан, но валюта выключена: люди её не увидят. Поставьте «Доступна пользователям» и сохраните.</p>}
           </section>
         ))}
       </div>
