@@ -525,3 +525,33 @@ button.bz-card:focus-visible, .bz-item:focus-visible { outline: 2px solid #10b98
 .stub-pulse { animation: stub-pulse 3.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .stub-banner, .stub-float, .stub-sheen::after, .stub-pulse { animation: none !important; } }
 :root[data-animations='off'] .stub-banner, :root[data-animations='off'] .stub-float, :root[data-animations='off'] .stub-sheen::after, :root[data-animations='off'] .stub-pulse { animation: none !important; }
+
+/* ── Облачко Sky AI (CloudBuddy): машет, программирует ─────────── */
+.cb-root { position: relative; display: inline-block; }
+.cb-root svg { filter: drop-shadow(0 8px 20px rgba(139,92,246,.28)); }
+.cb-body { transform-box: fill-box; transform-origin: 50% 100%; animation: cb-float 3.2s ease-in-out infinite; }
+.cb-code .cb-body { animation: cb-bob .5s ease-in-out infinite; }
+.cb-shadow { transform-box: fill-box; transform-origin: center; animation: cb-shadow 3.2s ease-in-out infinite; }
+.cb-arm { transform-box: fill-box; transform-origin: 10% 90%; animation: cb-wave .6s ease-in-out infinite; }
+.cb-lines line { stroke-dasharray: 24; animation: cb-type 1.8s ease-in-out infinite; }
+.cb-lines line:nth-child(2) { animation-delay: .3s; } .cb-lines line:nth-child(3) { animation-delay: .6s; } .cb-lines line:nth-child(4) { animation-delay: .9s; }
+.cb-caret { animation: cb-blink .9s steps(2) infinite; }
+.cb-paw { animation: cb-tap .36s ease-in-out infinite; } .cb-paw2 { animation-delay: .18s; }
+.cb-sym { opacity: 0; animation: cb-rise 2.4s ease-out infinite; }
+.cb-s2 { animation-delay: .8s; } .cb-s3 { animation-delay: 1.6s; }
+@keyframes cb-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes cb-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+@keyframes cb-shadow { 0%,100% { transform: scaleX(1); opacity: .8; } 50% { transform: scaleX(.88); opacity: .55; } }
+@keyframes cb-wave { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(22deg); } }
+@keyframes cb-type { 0% { stroke-dashoffset: 24; opacity: .3; } 40%,80% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: -24; opacity: .3; } }
+@keyframes cb-blink { 50% { opacity: 0; } }
+@keyframes cb-tap { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+@keyframes cb-rise { 0% { opacity: 0; transform: translateY(6px); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-16px); } }
+@keyframes cb-pop { 0% { opacity: 0; transform: translateY(14px) scale(.7); } 60% { opacity: 1; transform: translateY(-3px) scale(1.06); } 100% { transform: translateY(0) scale(1); } }
+.cb-pop { animation: cb-pop .7s cubic-bezier(.2,.9,.3,1.2) both; }
+.cb-greet { animation: cb-fade .6s ease-out .25s both; }
+@keyframes cb-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.cb-newchat { animation: cb-newchat .45s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes cb-newchat { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .cb-root *, .cb-pop, .cb-greet, .cb-newchat { animation: none !important; } .cb-sym { opacity: 1; } }
+html[data-animations='off'] .cb-root *, html[data-animations='off'] .cb-pop, html[data-animations='off'] .cb-greet, html[data-animations='off'] .cb-newchat { animation: none !important; }

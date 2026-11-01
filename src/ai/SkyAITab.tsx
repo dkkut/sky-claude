@@ -25,6 +25,7 @@ import {
 } from './aiApi';
 import { useAiState, refreshAiState } from './aiState';
 import { VoiceMode } from './VoiceMode';
+import { CloudBuddy } from './CloudBuddy';
 import { PrimeGate } from '@/prime/PrimeGate';
 import { browserVoiceAvailable } from './speech';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -33,8 +34,8 @@ import { CodeWorkspace } from './CodeWorkspace';
 import { readTextFiles, filesPrompt, type CtxFile } from './attachFiles';
 
 const C = {
-  accent: '#d97757',
-  border: 'rgba(217,119,87,0.35)',
+  accent: '#a855f7',
+  border: 'rgba(168,85,247,0.35)',
 };
 
 type Mode = 'chat' | 'code' | 'summary' | 'file' | 'image' | 'transcribe';
@@ -97,7 +98,7 @@ const Mark = ({ size = 18 }: { size?: number }) => (
 );
 
 const Bubble = ({ m }: { m: AiMessage }) => (
-  <div className={`mx-auto flex w-full max-w-[760px] ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+  <div className={`cb-newchat mx-auto flex w-full max-w-[760px] ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
     {m.role === 'assistant' && <div className="mr-3 mt-1 shrink-0"><Mark size={20}/></div>}
     <div className={m.role === 'user' ? 'max-w-[82%] rounded-[20px] px-4 py-2.5' : 'min-w-0 flex-1 py-0.5'}
       style={m.role === 'user' ? { background: 'var(--bg-l2)', border: '1px solid var(--border)' } : undefined}>
@@ -139,6 +140,7 @@ export const SkyAITab = () => {
 
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [newNonce, setNewNonce] = useState(0);
   const [err, setErr] = useState('');
   const [retryText, setRetryText] = useState('');       // последний запрос, не получивший ответа: его можно повторить
   const abortRef = useRef<AbortController | null>(null);
@@ -172,7 +174,7 @@ export const SkyAITab = () => {
     setErr('');
   };
 
-  const newChat = () => { setChatId(null); setMessages([]); setErr(''); setDrawer(false); };
+  const newChat = () => { setNewNonce(n => n + 1); setChatId(null); setMessages([]); setErr(''); setDrawer(false); };
 
   const removeChat = async (id: string) => {
     if (!(await apiAiDeleteChat(id))) return;
@@ -318,7 +320,7 @@ export const SkyAITab = () => {
             data-ai-mode={m.key}
             className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold"
             style={{
-              background: mode === m.key ? 'rgba(217,119,87,0.14)' : 'transparent',
+              background: mode === m.key ? 'rgba(168,85,247,0.15)' : 'transparent',
               color: mode === m.key ? C.accent : 'var(--t3)',
               border: `1px solid ${mode === m.key ? C.border : 'transparent'}`,
               cursor: 'pointer',
@@ -398,10 +400,10 @@ export const SkyAITab = () => {
           {chatLike && (
             <>
               {messages.length === 0 && (
-                <div className="mx-auto grid h-full w-full max-w-[640px] place-items-center py-10 text-center">
+                <div key={`new-${newNonce}`} className="cb-newchat mx-auto grid h-full w-full max-w-[640px] place-items-center py-10 text-center">
                   <div className="w-full">
-                    <div className="mx-auto mb-5 w-fit"><Mark size={44}/></div>
-                    <h3 className="mb-2 text-[28px] leading-tight" style={{ color: 'var(--t1)', fontFamily: SERIF, fontWeight: 500 }}>
+                    <div className="cb-pop mx-auto mb-4 w-fit"><CloudBuddy mood="wave" size={112}/></div>
+                    <h3 className="cb-greet mb-2 text-[28px] leading-tight" style={{ color: 'var(--t1)', fontFamily: SERIF, fontWeight: 500 }}>
                       Чем помочь сегодня?
                     </h3>
                     <p className="text-sm" style={{ color: 'var(--t3)' }}>{current.desc}</p>
@@ -584,7 +586,7 @@ export const SkyAITab = () => {
                 aria-label="Отправить"
                 data-ai-send
                 className="grid h-9 w-9 place-items-center rounded-full shrink-0 disabled:opacity-40"
-                style={{ background: input.trim() ? C.accent : 'var(--bg-l3, var(--border))', border: 'none', cursor: 'pointer' }}>
+                style={{ background: input.trim() ? 'linear-gradient(135deg,#a855f7,#6366f1)' : 'var(--bg-l3, var(--border))', border: 'none', cursor: 'pointer' }}>
                 {busy ? <Loader2 size={16} className="animate-spin" color="#fff"/> : <ArrowUp size={17} color="#fff"/>}
               </motion.button>
             </div>

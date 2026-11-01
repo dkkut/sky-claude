@@ -8,6 +8,7 @@
  *
  * Честно: код здесь НЕ запускается — ни на сервере Sky, ни в браузере. Помощник пишет и разбирает код, но не утверждает, что он проверен выполнением.
  */
+import { CloudBuddy } from './CloudBuddy';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Terminal, Paperclip, X, Copy, Check, Download, FileCode2, Send, Square, ChevronDown, ChevronUp, RotateCcw, FileDown, Plus } from 'lucide-react';
 import { apiAiSend, type AiMessage } from './aiApi';
@@ -281,8 +282,9 @@ export const CodeWorkspace = ({ chatId, setChatId, messages, setMessages, maxCha
 
         {busy && (
           <div className="flex items-center gap-2 text-[12px]" style={{ color: '#9aa4b2', ...mono }} role="status">
+            <CloudBuddy mood="code" size={56} />
             <span className="sky-think-dots" aria-hidden="true"><i /><i /><i /></span>
-            <span>Думаю… {secs} с</span>
+            <span>Пишу код… {secs} с</span>
             <button type="button" onClick={() => abort.current?.abort()} className="ml-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-white/10"><Square size={10} />Esc</button>
           </div>)}
         {!busy && retry && <button type="button" onClick={() => void run(retry, retry)} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold" style={{ background: 'rgba(168,85,247,.14)', color: '#d8b4fe' }}><RotateCcw size={12} />Повторить запрос</button>}
