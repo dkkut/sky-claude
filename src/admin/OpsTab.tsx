@@ -68,6 +68,7 @@ export const OpsTab = () => {
   const [cmdId, setCmdId] = useState('status'); const [cmdParams, setCmdParams] = useState<Data>({});
   const [fix, setFix] = useState<Data>({ clearBlocks: true }); const [dep, setDep] = useState<Data>({ skipPull: false }); const [app, setApp] = useState<Data>({ target: 'all', force: false });
   const [restart, setRestart] = useState('api');
+  const [sshMin, setSshMin] = useState(30); const [ctl, setCtl] = useState<Data>({ mode: 'on', from: '09:00', to: '18:00' });
   const outRef = useRef<HTMLPreElement | null>(null); const stick = useRef(true);
   const watching = useRef('');
 
@@ -173,6 +174,15 @@ export const OpsTab = () => {
         <Action lock={lock} icon={<Package size={16} style={{ color: C.acc }} />} title="Пересобрать приложения" run="Собрать" onRun={() => void ask('build_apps', app, 'Сборка приложений')}
           hint="Собирает .apk и/или .exe в /opt/sky/apps (потом их загружают в «Сайт» → «Скачивание» и «Обновления»). Тяжёлая операция: она сама откажется, если не хватает места или памяти; для iOS нужен Mac.">
           <Params specs={[{ name: 'target', label: 'Что собрать', type: 'select', options: ['apk', 'exe', 'all'], def: 'all' }, { name: 'force', label: 'Собрать заново, даже если ничего не менялось', type: 'bool', def: false }]} value={app} onChange={setApp} />
+        </Action>
+        <Action lock={lock} icon={<Wrench size={16} style={{ color: C.acc }} />} title="Калитка SSH" run="Снять" tone="plain" onRun={() => void ask('ssh_gate_open', { minutes: sshMin }, `Снять калитку SSH на ${sshMin} мин`)}
+          hint="Временно разрешает вход по SSH без подтверждений (файл /etc/sky-ssh-gate.off со сроком) — на случай, когда подтверждение недоступно. Вернётся сама по истечении срока; раньше — кнопкой ниже. Нужны код подтверждения и токен администратора.">
+          <Params specs={[{ name: 'minutes', label: 'На сколько минут', type: 'number', min: 5, max: 120, def: 30 }]} value={{ minutes: sshMin }} onChange={(v) => setSshMin(Number(v.minutes) || 30)} />
+          <div className="mt-2"><Btn tone="plain" disabled={lock} onClick={() => void ask('ssh_gate_close', {}, 'Вернуть калитку SSH')}>Вернуть калитку сейчас</Btn></div>
+        </Action>
+        <Action lock={lock} icon={<Terminal size={16} style={{ color: C.acc }} />} title="Sky Control (страница восстановления)" run="Применить" tone="plain" onRun={() => void ask('control_access', ctl, 'Sky Control: доступ')}
+          hint="Выключить страницу совсем или открывать только в заданные часы (по времени сервера). Вход в неё всегда требует токен, код аутентификатора и код с почты. Включить обратно можно здесь же или на сервере: sky-control --access on.">
+          <Params specs={[{ name: 'mode', label: 'Режим', type: 'select', options: ['on', 'off', 'schedule'], def: 'on' }, { name: 'from', label: 'С (чч:мм)', type: 'text', max: 5, def: '09:00' }, { name: 'to', label: 'До (чч:мм)', type: 'text', max: 5, def: '18:00' }]} value={ctl} onChange={setCtl} />
         </Action>
         <Action lock={lock} icon={<RotateCw size={16} style={{ color: C.acc }} />} title="Перезапустить" run="Перезапустить" tone="plain" onRun={() => void ask('restart', { service: restart }, `Перезапуск: ${restart}`)}
           hint="Быстрый перезапуск без пересборки — когда API или nginx «завис».">

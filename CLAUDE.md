@@ -2533,3 +2533,11 @@ SSH-шлюз и самозащита (октябрь-2026): хук `ssh-gate.sh`
 ## compose: секреты хостовых служб стояли у `web`, а не у `api` (исправление, ноябрь-2026)
 
 `MIN_APP_BUILD`, `GUARD_SECRET`, `SANDBOX_SECRET`, `OPS_SECRET`, `SANDBOX_MAX_AGE_H`, `BUILD_ID` были по ошибке в `environment` службы `web` — api их не получал: вкладки «Сервер»/«Sky Sandbox» писали «не настроен», раннер получал 404 `sandbox_disabled`, сторож и `MIN_APP_BUILD` тоже не работали. Теперь у `api`. Новая переменная окружения сервера — проверять, что строка в блоке именно `api` (`docker compose exec api printenv NAME`), а не только что она есть в файле. После деплоя api пересоздаётся сам.
+
+## Sky Control: три фактора и расписание; калитка SSH из Sky Ops (ноябрь-2026)
+
+- **Вход в Sky Control — три фактора** (`control/sky-control.mjs`): токен `skc-…` + код аутентификатора → ЗАТЕМ код из письма владельцу (6 цифр, 10 минут, 3 попытки, привязан к адресу; письмо — тем же способом, что у watchdog, `WATCHDOG_EMAIL_TO`, одноразовый контейнер api). Нет адреса или письмо не ушло — вход закрыт (`email_not_configured` / `mail_failed`).
+  Аварийный выход из этого с консоли хостера: `touch /etc/sky-control/email-factor.off` (или `CONTROL_EMAIL=off`). Письмо уходит через docker compose, поэтому нужны docker и образ api.
+- **Доступ по времени**: файл `/etc/sky-control/access.json` (`{mode:'on'|'off'}` или `{mode:'schedule',from,to}`, время сервера, окно через полночь допустимо; битый файл = закрыто). Закрытая страница отвечает 503, сессии и ожидающие коды сбрасываются, `/healthz` жив. С консоли: `sky-control --access on|off|ЧЧ:ММ-ЧЧ:ММ`.
+- **Sky Ops (админка → «Сервер»)** — три новые изменяющие команды (код подтверждения + токен администратора, как у остальных): `control_access` (карточка «Sky Control»: режим и часы), `ssh_gate_open` (пишет срок в `/etc/sky-ssh-gate.off`, 5–120 мин, возвращается сама), `ssh_gate_close` (удаляет файл). Агент должен быть обновлён на хосте? Нет — команды собираются на стороне API из общего `opscmds.mjs`, но агент читает его с хоста: после `git pull` перезапустить `sky-ops` (`systemctl restart sky-ops`).
+- Тест: `scripts/audit/control-test.mjs` (50, подставные docker/systemctl). Страница Sky Control на хосте обновляется перезапуском службы (`systemctl restart sky-control` после `git pull`). Реальное письмо и настоящий systemd не проверялись.

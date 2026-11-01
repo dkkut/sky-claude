@@ -10,12 +10,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const D = mkdtempSync(join(tmpdir(), 'ctl-')); const bin = join(D, 'bin'); mkdirSync(bin);
 const calls = join(D, 'calls.log');
 const fake = (name, body) => { writeFileSync(join(bin, name), `#!/bin/bash\n${body}\n`); chmodSync(join(bin, name), 0o755); };
-fake('docker', `echo "DOCKER $*" >> ${calls}; IN=""; case "$*" in *"-f -"*) IN=$(cat);; esac; echo "STDIN: $IN" >> ${calls}
+fake('docker', `echo "DOCKER $*" >> ${calls}; case "$*" in *notify-mail*) echo "$*" >> ${D}/mail.log; exit 0;; esac; IN=""; case "$*" in *"-f -"*) IN=$(cat);; esac; echo "STDIN: $IN" >> ${calls}
 case "$*" in *"ps -a"*) printf 'api\\trunning\\tUp 2 hours\\nweb\\trunning\\tUp 2 hours\\n';; *"json_build_object"*|*"-f -"*) case "$IN" in *json_build_object*) echo '{"shutdown":false,"maintenance":true,"lockdown":true,"defenseLevel":2,"defenseEnabled":true,"sshGatePaused":false,"ipBlocks":3,"heldAccounts":1}';; *) echo ok;; esac;; *logs*) echo "line1 password=supersecretvalue token=abcdef123456 ok";; esac`);
+fake('docker2', '');
 fake('systemctl', `echo "SYSTEMCTL $*" >> ${calls}; case "$1" in is-active) echo active;; esac`);
 fake('journalctl', 'echo journal-line');
 const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, CONTROL_ETC_DIR: join(D, 'etc'), CONTROL_STATE_DIR: join(D, 'state'), CONTROL_LOG: join(D, 'ctl.log'), CONTROL_SSH_OFF_FILE: join(D, 'ssh-gate.off'),
-  CONTROL_PORT: '18099', CONTROL_NO_MAIL: '1', CONTROL_CMD_DOCKER: join(bin, 'docker'), CONTROL_CMD_SYSTEMCTL: join(bin, 'systemctl'), CONTROL_CMD_JOURNALCTL: join(bin, 'journalctl'), APP_DIR: D };
+  CONTROL_PORT: '18099', CONTROL_NO_MAIL: '1', CONTROL_EMAIL: 'off', CONTROL_CMD_DOCKER: join(bin, 'docker'), CONTROL_CMD_SYSTEMCTL: join(bin, 'systemctl'), CONTROL_CMD_JOURNALCTL: join(bin, 'journalctl'), APP_DIR: D };
 const ctl = (...a) => spawnSync('node', ['control/sky-control.mjs', ...a], { env, encoding: 'utf8' });
 
 let r = ctl('--setup'); const token = (r.stdout.match(/skc-[A-Za-z0-9_-]{40,}/) || [])[0]; const secret = (r.stdout.match(/Секрет аутентификатора[^\n]*\n\s+([A-Z2-7]{16,})/) || [])[1];
@@ -88,4 +89,37 @@ r = ctl('--cli', 'ssh-bypass', 'x'); t('CLI: ssh-bypass недоступен (т
 r = ctl('--cli', 'new-token', 'rescue:203.0.113.5'); t('CLI new-token выдаёт новый токен', r.status === 0 && /skc-/.test(r.stdout));
 // rescue-access.sh содержит новые команды
 const ra = readFileSync('scripts/rescue-access.sh', 'utf8'); t('skyrescue: новые команды в списке', /defense-off\|defense-on\|unlock\|gate-pause\|gate-resume\|ssh-start\)/.test(ra) && /control-token\)/.test(ra));
+
+// ── третий фактор (почта) и расписание ──
+{
+  const env2 = { ...env, CONTROL_PORT: '18098', CONTROL_EMAIL: 'on', WATCHDOG_EMAIL_TO: 'owner@sky.test', CONTROL_NO_MAIL: '0' };
+  const srv2 = spawn('node', ['control/sky-control.mjs', '--serve'], { env: env2, stdio: 'ignore' });
+  for (let i = 0; i < 30; i++) { try { if ((await fetch('http://127.0.0.1:18098/healthz')).ok) break; } catch { await sleep(200); } }
+  const B2 = 'http://127.0.0.1:18098';
+  const c2 = async (p, body) => { const res = await fetch(B2 + p, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json', 'x-ctl': '1' }, body: body ? JSON.stringify(body) : undefined }); let j = {}; try { j = await res.json(); } catch { /* html */ } return { s: res.status, j, h: res.headers }; };
+  const tok0 = (ctl('--new-token').stdout.match(/skc-[A-Za-z0-9_-]{40,}/) || [])[0];
+  let q = await c2('/api/login', { token: tok0, code: code() });
+  t('почта: после токена и кода сессии нет, нужен код из письма', q.s === 200 && q.j.step === 'email' && q.j.pending && !q.h.get('set-cookie') && /o\*\*\*@sky\.test/.test(q.j.to), JSON.stringify(q.j));
+  const mailed = (readFileSync(join(D, 'mail.log'), 'utf8').match(/Код входа в Sky Control: (\d{6})/) || [])[1];
+  t('письмо с шестизначным кодом отправлено владельцу', Boolean(mailed));
+  const pend = q.j.pending;
+  q = await c2('/api/login-email', { pending: pend, mailCode: '000000' }); t('неверный код из письма — отказ без сессии', q.s === 401 && !q.h.get('set-cookie'));
+  q = await c2('/api/login-email', { pending: pend, mailCode: mailed }); t('верный код из письма — сессия выдана', q.s === 200 && Boolean(q.h.get('set-cookie')), JSON.stringify(q.j));
+  q = await c2('/api/login-email', { pending: pend, mailCode: mailed }); t('код одноразовый', q.s === 401);
+  // расписание/выключение
+  ctl('--access', 'off'); await sleep(3300);
+  q = await c2('/api/login', { token: tok0, code: code(1) }); t('выключено: вход закрыт (503)', q.s === 503 && q.j.error === 'control_closed');
+  t('выключено: страница пишет об этом', (await fetch(B2 + '/')).status === 503);
+  t('выключено: healthz жив', (await fetch(B2 + '/healthz')).ok);
+  const nowD = new Date(); const hm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const plus = (m) => new Date(nowD.getTime() + m * 60000);
+  ctl('--access', `${hm(plus(60))}-${hm(plus(120))}`); await sleep(3300);
+  t('расписание: вне окна закрыто', (await fetch(B2 + '/')).status === 503);
+  ctl('--access', `${hm(plus(-60))}-${hm(plus(60))}`); await sleep(3300);
+  t('расписание: в окне открыто', (await fetch(B2 + '/')).status === 200);
+  t('CLI отвергает мусор', ctl('--access', '25:00-26:00').status === 2 && ctl('--access', '10:00-10:00').status === 2);
+  ctl('--access', 'on'); await sleep(3300);
+  t('включено: открыто', (await fetch(B2 + '/')).status === 200);
+  srv2.kill();
+}
 console.log(`\nИтого: ${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

@@ -81,6 +81,29 @@ export const COMMANDS = {
     params: [{ name: 'clearBlocks', label: 'Снять блокировки адресов самозащитой', type: 'bool', def: true }],
     steps: () => [{ type: 'repair' }],
   },
+  ssh_gate_open: {
+    label: 'Снять калитку SSH на время (вход без подтверждений)', group: 'fix', mutating: true, timeoutSec: 60,
+    params: [{ name: 'minutes', label: 'На сколько минут', type: 'number', min: 5, max: 120, def: 30 }],
+    steps: (c, p) => [{ type: 'run', timeout: 30, argv: ['bash', '-c', 'echo $(( $(date +%s) + $1 * 60 )) > /etc/sky-ssh-gate.off && chmod 644 /etc/sky-ssh-gate.off && echo "Калитка SSH снята до: $(date -d @$(cat /etc/sky-ssh-gate.off))"; echo "Вернётся сама. Раньше — команда «Вернуть калитку SSH»."', '_', String(p.minutes)] }],
+  },
+  ssh_gate_close: {
+    label: 'Вернуть калитку SSH (снова требовать подтверждения)', group: 'fix', mutating: true, timeoutSec: 60, params: [],
+    steps: () => [{ type: 'run', timeout: 30, argv: ['bash', '-c', 'rm -f /etc/sky-ssh-gate.off && echo "Калитка SSH включена: входы снова проходят подтверждение."'] }],
+  },
+  control_access: {
+    label: 'Sky Control: включить, выключить или открывать по расписанию', group: 'fix', mutating: true, timeoutSec: 60,
+    params: [
+      { name: 'mode', label: 'Режим', type: 'select', options: ['on', 'off', 'schedule'], def: 'on' },
+      { name: 'from', label: 'С (чч:мм, по времени сервера)', type: 'text', max: 5, def: '09:00' },
+      { name: 'to', label: 'До (чч:мм)', type: 'text', max: 5, def: '18:00' },
+    ],
+    steps: (c, p) => [{ type: 'run', timeout: 30, argv: ['node', '-e',
+      "const fs=require('fs');const [m,f,t]=process.argv.slice(1);const ok=(x)=>/^([01]\\d|2[0-3]):[0-5]\\d$/.test(x);" +
+      "if(!['on','off','schedule'].includes(m)||(m==='schedule'&&!(ok(f)&&ok(t)&&f!==t))){console.error('Неверные параметры: время чч:мм, «с» и «до» должны различаться');process.exit(1)}" +
+      "fs.mkdirSync('/etc/sky-control',{recursive:true,mode:0o700});fs.writeFileSync('/etc/sky-control/access.json',JSON.stringify(m==='schedule'?{mode:m,from:f,to:t}:{mode:m}),{mode:0o600});" +
+      "console.log(m==='on'?'Sky Control включён всегда.':m==='off'?'Sky Control выключен (страница не открывается).':'Sky Control открыт с '+f+' до '+t+' по времени сервера.')",
+      p.mode, p.from || '09:00', p.to || '18:00'] }],
+  },
   deploy: {
     label: 'Деплой (забрать из репозитория, собрать, перезапустить)', group: 'deploy', mutating: true, timeoutSec: 3600,
     params: [{ name: 'skipPull', label: 'Не делать git pull (собрать то, что уже лежит)', type: 'bool', def: false }],

@@ -163,6 +163,43 @@ const DANGEROUS = new Set(['ssh-stop', 'ssh-bypass', 'new-token']);
 /* ─── вход ─── */
 const fails = new Map(); let globalFails = []; let globalLockUntil = 0; const usedCodes = new Map();
 const SESSION_MS = 20 * 60_000;
+
+/* ─── доступ: включено / выключено / по расписанию (задаётся из админки через Sky Ops или `sky-control --access`) ─── */
+const ACCESS_FILE = path.join(ETC, 'access.json');
+const hhmm = (x) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(x));
+const minutesOf = (x) => Number(x.slice(0, 2)) * 60 + Number(x.slice(3));
+/** Чистая функция: открыта ли страница сейчас. Окно может переходить через полночь. Битый файл = закрыто (безопаснее). */
+export const accessOpen = (cfg, date = new Date()) => {
+  if (!cfg) return { open: true };
+  if (cfg.mode === 'on') return { open: true };
+  if (cfg.mode === 'off') return { open: false, why: 'off' };
+  if (cfg.mode === 'schedule' && hhmm(cfg.from) && hhmm(cfg.to) && cfg.from !== cfg.to) {
+    const n = date.getHours() * 60 + date.getMinutes(); const a = minutesOf(cfg.from); const b = minutesOf(cfg.to);
+    const inside = a < b ? (n >= a && n < b) : (n >= a || n < b);
+    return inside ? { open: true } : { open: false, why: 'schedule', from: cfg.from, to: cfg.to };
+  }
+  return { open: false, why: 'bad_config' };
+};
+let accessCache = { at: 0, cfg: null };
+const accessNow = () => {
+  if (now() - accessCache.at > 3000) {
+    let cfg = null; const raw = readText(ACCESS_FILE);
+    if (raw) { try { cfg = JSON.parse(raw); } catch { cfg = { mode: 'bad' }; } }
+    accessCache = { at: now(), cfg };
+  }
+  return accessOpen(accessCache.cfg);
+};
+const writeAccess = (cfg) => { writeSecret(ACCESS_FILE, JSON.stringify(cfg)); accessCache.at = 0; };
+
+/* ─── третий фактор: код с почты владельца (ссылка на файл-выключатель — для консоли хостера) ─── */
+const EMAIL_OFF_FILE = path.join(ETC, 'email-factor.off');
+const emailFactorOn = () => E.CONTROL_EMAIL !== 'off' && !fs.existsSync(EMAIL_OFF_FILE);
+const pendingMail = new Map();
+const maskMail = (m) => String(m).replace(/^(.).*(@.*)$/, '$1***$2');
+const sendMailCode = async (to, code) => {
+  const r = await compose(['run', '--rm', '--no-deps', '-T', 'api', 'node', 'scripts/notify-mail.mjs', to, 'Sky Control: код входа', `Код входа в Sky Control: ${code}\nДействует 10 минут. Если это были не вы — никому его не называйте и смените токен: sky-control --new-token.`], { timeout: 90_000 });
+  return r.ok;
+};
 const ipOk = (ip) => !ALLOW.length || ALLOW.includes(ip);
 const lockedFor = (ip) => { const f = fails.get(ip); return f && f.until > now() ? f.until : 0; };
 const registerFail = (ip) => {
@@ -209,7 +246,7 @@ button{background:var(--a);color:#fff;border:0;border-radius:10px;padding:8px 13
 pre{background:#07080d;border:1px solid var(--b);border-radius:10px;padding:10px;overflow:auto;max-height:420px;font-size:12px;white-space:pre-wrap;word-break:break-all}.muted{color:var(--t2);font-size:12px}
 </style></head><body>
 <h1>Sky Control</h1><div class="muted">Восстановление экосистемы · работает на сервере вне Docker</div>
-<div id="login" class="card"><h2>Вход</h2><input id="tok" type="password" autocomplete="off" placeholder="Токен владельца"><div style="height:8px"></div><input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="Код из аутентификатора"><div style="height:8px"></div><button id="go">Войти</button><div id="lerr" class="bad"></div></div>
+<div id="login" class="card"><h2>Вход</h2><input id="tok" type="password" autocomplete="off" placeholder="Токен владельца"><div style="height:8px"></div><input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="Код из аутентификатора"><div style="height:8px"></div><button id="go">Войти</button><div id="mstep" hidden><div class="muted" id="mhint"></div><input id="mc" inputmode="numeric" autocomplete="one-time-code" placeholder="Код из письма"><button id="go2">Подтвердить</button></div><div id="lerr" class="bad"></div></div>
 <div id="app" hidden>
 <div class="card"><div class="row"><h2 style="margin:0">Состояние</h2><button class="s" id="ref">Обновить</button><button class="s" id="out">Выйти</button></div><div id="st" class="muted">…</div></div>
 <div class="card"><h2>Аварийные срабатывания</h2><div class="muted">Снимает «Аварийные» и «Технические работы», закрытую панель, уровень самозащиты и блокировки адресов, выключает автоматику самозащиты. Журналы не удаляются.</div>
@@ -225,7 +262,7 @@ pre{background:#07080d;border:1px solid var(--b);border-radius:10px;padding:10px
 <script>
 const $=(i)=>document.getElementById(i);const H={'Content-Type':'application/json','X-Ctl':'1'};
 const api=async(p,b)=>{const r=await fetch(p,b?{method:'POST',headers:H,body:JSON.stringify(b)}:{});let j={};try{j=await r.json()}catch(e){}return{ok:r.ok,s:r.status,j}};
-const ERR={bad_credentials:'Неверный токен или код.',locked:'Слишком много попыток — подождите.',reason_required:'Нужна причина (от 5 знаков).',fresh_code_required:'Нужен свежий код (дождитесь следующего).',db_unavailable:'База недоступна — действие не выполнено.',systemctl_failed:'systemctl не сработал.',compose_failed:'docker compose не сработал.',unauthorized:'Сессия истекла — войдите снова.'};
+const ERR={email_not_configured:'Не задана почта владельца (WATCHDOG_EMAIL_TO) — вход закрыт.',mail_failed:'Не удалось отправить письмо с кодом. Вход закрыт.',control_closed:'Sky Control сейчас закрыт.',bad_credentials:'Неверные данные или код.',locked:'Слишком много попыток — подождите.',reason_required:'Нужна причина (от 5 знаков).',fresh_code_required:'Нужен свежий код (дождитесь следующего).',db_unavailable:'База недоступна — действие не выполнено.',systemctl_failed:'systemctl не сработал.',compose_failed:'docker compose не сработал.',unauthorized:'Сессия истекла — войдите снова.'};
 const say=(t,bad)=>{$('msg').textContent=t;$('msg').className=bad?'bad':'ok'};const E=(r)=>ERR[r.j.error]||('Ошибка: '+(r.j.error||r.s));
 const pill=(t,c)=>{const s=document.createElement('span');s.className='pill '+(c||'');s.textContent=t;return s};
 async function status(){const r=await api('/api/status');if(!r.ok){if(r.s===401){$('app').hidden=true;$('login').hidden=false}return}
@@ -235,7 +272,9 @@ add('SSH: '+(j.ssh.active?'работает':'остановлен'),j.ssh.activ
 if(j.db){add('самозащита: '+(j.db.defenseEnabled?'включена':'выключена'),j.db.defenseEnabled?'ok':'warn');add('уровень: '+j.db.defenseLevel,j.db.defenseLevel?'bad':'ok');if(j.db.shutdown)add('СЕРВЕР ВЫКЛЮЧЕН','bad');if(j.db.maintenance)add('технические работы','warn');if(j.db.lockdown)add('панель закрыта','warn');add('блокировок адресов: '+j.db.ipBlocks);add('замороженных аккаунтов: '+j.db.heldAccounts)}else add('база недоступна','bad')}
 let pend=null;const ask=(title,desc,fn,reason)=>{pend=fn;$('dt').textContent=title;$('dd').textContent=desc;$('dc').value='';$('dr').hidden=!reason;$('dr').value='';$('dlg').hidden=false;$('dc').focus()};
 async function act(body,okMsg){const r=await api('/api/act',body);say(r.ok?okMsg:E(r),!r.ok);status();return r}
-$('go').onclick=async()=>{const r=await api('/api/login',{token:$('tok').value,code:$('code').value});$('tok').value='';$('code').value='';if(r.ok){$('login').hidden=true;$('app').hidden=false;$('lerr').textContent='';status()}else $('lerr').textContent=E(r)};
+let PEND='';const enter=()=>{$('login').hidden=true;$('app').hidden=false;$('lerr').textContent='';status()};
+$('go').onclick=async()=>{$('lerr').textContent='';const r=await api('/api/login',{token:$('tok').value,code:$('code').value});$('tok').value='';$('code').value='';if(r.ok&&r.j.step==='email'){PEND=r.j.pending;$('mstep').hidden=false;$('go').hidden=true;$('mhint').textContent='Код отправлен на '+r.j.to+' (действует 10 минут).';$('mc').focus()}else if(r.ok)enter();else $('lerr').textContent=E(r)};
+$('go2').onclick=async()=>{const r=await api('/api/login-email',{pending:PEND,mailCode:$('mc').value});$('mc').value='';if(r.ok)enter();else{$('lerr').textContent=E(r);if(r.s===401){$('mstep').hidden=true;$('go').hidden=false}}};
 $('ref').onclick=status;$('out').onclick=async()=>{await api('/api/logout',{});location.reload()};
 $('eoff').onclick=()=>act({action:'emergencies-off',reason:$('r1').value},'Аварийные срабатывания отключены (действует в течение ~10 с).');
 $('unlock').onclick=()=>act({action:'unlock',reason:$('r1').value},'Блокировки сняты.');$('don').onclick=()=>act({action:'defense-on'},'Самозащита включена.');
@@ -250,11 +289,26 @@ $('dok').onclick=async()=>{const f=pend;const c=$('dc').value,r=$('dr').value;$(
 setInterval(()=>{if(!document.hidden&&!$('app').hidden)status()},20000);
 </script></body></html>`;
 
+const finishLogin = (req, res, ip) => {
+  fails.delete(ip); const id = crypto.randomBytes(32).toString('base64url'); sessions.set(id, { exp: now() + SESSION_MS, ip });
+  audit({ ev: 'login_ok', ip }); note(`Вход в Sky Control с адреса ${ip}.`);
+  return send(res, 200, { ok: true }, 'application/json', { 'Set-Cookie': `sky_ctl=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}${req.socket.encrypted ? '; Secure' : ''}` });
+};
+
 export const handler = async (req, res) => {
   const ip = peer(req); const url = new URL(req.url || '/', 'http://x'); const p = url.pathname;
   if (!ipOk(ip)) { audit({ ev: 'ip_denied', ip }); return send(res, 403, { error: 'forbidden' }); }
-  if (req.method === 'GET' && (p === '/' || p === '/index.html')) return send(res, 200, PAGE, 'text/html');
   if (req.method === 'GET' && p === '/healthz') return send(res, 200, 'ok', 'text/plain');
+  const acc = accessNow();
+  if (!acc.open) {
+    if (!sessions.size || acc.why !== 'schedule') { /* сессии при закрытии не живут */ }
+    sessions.clear(); pendingMail.clear();
+    const text = acc.why === 'schedule' ? `Sky Control открыт только с ${acc.from} до ${acc.to} (время сервера).` : acc.why === 'off' ? 'Sky Control выключен администратором.' : 'Sky Control закрыт (настройка доступа повреждена).';
+    return req.method === 'GET' && (p === '/' || p === '/index.html')
+      ? send(res, 503, `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><body style="background:#0a0b12;color:#eceef7;font:16px system-ui;padding:32px"><h2>Sky Control</h2><p>${text}</p>`, 'text/html')
+      : send(res, 503, { error: 'control_closed', message: text });
+  }
+  if (req.method === 'GET' && (p === '/' || p === '/index.html')) return send(res, 200, PAGE, 'text/html');
   try {
     if (req.method === 'POST' && p === '/api/login') {
       if (req.headers['x-ctl'] !== '1') return send(res, 400, { error: 'bad_request' });
@@ -264,9 +318,31 @@ export const handler = async (req, res) => {
       // оба фактора проверяются всегда, ответ не говорит, какой неверен
       const okT = checkToken(String(b.token || '')); const okC = checkCode(String(b.code || ''));
       if (!(okT && okC)) { registerFail(ip); audit({ ev: 'login_fail', ip }); await new Promise((r) => setTimeout(r, 600)); return send(res, 401, { error: 'bad_credentials' }); }
-      fails.delete(ip); const id = crypto.randomBytes(32).toString('base64url'); sessions.set(id, { exp: now() + SESSION_MS, ip });
-      audit({ ev: 'login_ok', ip }); note(`Вход в Sky Control с адреса ${ip}.`);
-      return send(res, 200, { ok: true }, 'application/json', { 'Set-Cookie': `sky_ctl=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}${req.socket.encrypted ? '; Secure' : ''}` });
+      if (emailFactorOn()) {
+        // третий фактор: код на почту владельца; без работающей почты вход закрыт (выключатель — файл email-factor.off на сервере)
+        const to = notifyTo(); if (!to) { audit({ ev: 'email_not_configured', ip }); return send(res, 503, { error: 'email_not_configured' }); }
+        const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0'); const pid = crypto.randomBytes(24).toString('base64url');
+        if (!(await sendMailCode(to, code))) { audit({ ev: 'mail_failed', ip }); return send(res, 503, { error: 'mail_failed' }); }
+        pendingMail.set(pid, { h: sha(code), exp: now() + 10 * 60_000, ip, tries: 0 });
+        audit({ ev: 'login_step2_sent', ip });
+        return send(res, 200, { ok: true, step: 'email', pending: pid, to: maskMail(to) });
+      }
+      return finishLogin(req, res, ip);
+    }
+    if (req.method === 'POST' && p === '/api/login-email') {
+      if (req.headers['x-ctl'] !== '1') return send(res, 400, { error: 'bad_request' });
+      const until = Math.max(lockedFor(ip), globalLockUntil > now() ? globalLockUntil : 0);
+      if (until) return send(res, 429, { error: 'locked', retryInSec: Math.ceil((until - now()) / 1000) });
+      const b = await readBody(req); const pend = pendingMail.get(String(b.pending || ''));
+      if (!pend || pend.exp < now() || pend.ip !== ip) { pendingMail.delete(String(b.pending || '')); return send(res, 401, { error: 'bad_credentials' }); }
+      pend.tries += 1;
+      const a = Buffer.from(sha(String(b.mailCode || '').replace(/\D/g, ''))); const w = Buffer.from(pend.h);
+      if (!(a.length === w.length && crypto.timingSafeEqual(a, w))) {
+        if (pend.tries >= 3) pendingMail.delete(String(b.pending));
+        registerFail(ip); audit({ ev: 'login_mail_fail', ip }); await new Promise((r) => setTimeout(r, 600)); return send(res, 401, { error: 'bad_credentials' });
+      }
+      pendingMail.delete(String(b.pending));
+      return finishLogin(req, res, ip);
     }
     const s = sessionOf(req);
     if (!s) return send(res, 401, { error: 'unauthorized' });
@@ -306,6 +382,12 @@ const main = async () => {
   const [a, b, c] = process.argv.slice(2);
   if (a === '--setup') return setup();
   if (a === '--new-token') { const t = `skc-${crypto.randomBytes(32).toString('base64url')}`; writeSecret(TOKEN_FILE, sha(t)); console.log(`Новый токен (один раз):\n  ${t}`); return undefined; }
+  if (a === '--access') {
+    const v = String(b || '');
+    if (v === 'on' || v === 'off') writeAccess({ mode: v });
+    else { const m = v.match(/^(\d\d:\d\d)-(\d\d:\d\d)$/); if (!m || !hhmm(m[1]) || !hhmm(m[2]) || m[1] === m[2]) { console.error('sky-control --access on | off | ЧЧ:ММ-ЧЧ:ММ'); process.exit(2); } writeAccess({ mode: 'schedule', from: m[1], to: m[2] }); }
+    audit({ ev: 'cli_access', value: v }); console.log(`Доступ к Sky Control: ${v}`); return undefined;
+  }
   if (a === '--new-totp') { const s = generateSecret(); writeSecret(TOTP_FILE, s); console.log(`Новый секрет аутентификатора:\n  ${s}\n  ${otpauthUri(s, 'sky-control', 'Sky Control')}`); return undefined; }
   if (a === '--cli') {
     const name = String(b || ''); const who = `cli:${clip(c || 'local', 60)}`; const reason = c && String(c).length >= 5 ? String(c) : `аварийный вход ${clip(c, 60)}`;
@@ -314,7 +396,7 @@ const main = async () => {
     try { const r = await ACTIONS[name]({ reason, who }); audit({ ev: 'cli', action: name, who, ok: true }); console.log(JSON.stringify(r, null, 2)); } catch (e) { audit({ ev: 'cli', action: name, who, ok: false, err: e.code }); console.error(`Не вышло: ${e.code || e.message}`); process.exit(1); }
     return undefined;
   }
-  if (a !== '--serve') { console.error('sky-control --serve | --setup | --new-token | --new-totp | --cli <команда> [причина]'); process.exit(2); }
+  if (a !== '--serve') { console.error('sky-control --serve | --setup | --new-token | --new-totp | --access on|off|ЧЧ:ММ-ЧЧ:ММ | --cli <команда> [причина]'); process.exit(2); }
   if (!readText(TOKEN_FILE) || !readText(TOTP_FILE)) { console.error('Не настроено: sky-control --setup'); process.exit(1); }
   const cert = E.CONTROL_TLS_CERT; const key = E.CONTROL_TLS_KEY;
   const srv = cert && key ? https.createServer({ cert: fs.readFileSync(cert), key: fs.readFileSync(key), minVersion: 'TLSv1.2' }, handler) : http.createServer(handler);
