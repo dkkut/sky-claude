@@ -10,7 +10,19 @@ WATCH=(docker-compose.yml nginx scripts)   # относительно APP_DIR
 log(){ echo "$(date -u +%FT%TZ) $*" >>"$LOG" 2>/dev/null || true; }
 envval(){ grep -E "^$1=" "$APP_DIR/.env" 2>/dev/null | tail -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'; }
 SECRET="${GUARD_SECRET:-$(envval GUARD_SECRET)}"
-API="${GUARD_API:-http://127.0.0.1:8080}"
+# Адрес API. Порт 8080 контейнера api на хост НЕ проброшен, поэтому 127.0.0.1:8080 обычно не отвечает: пробуем по порядку
+# заданный GUARD_API → localhost → внутренний адрес контейнера api → публичный https://$DOMAIN (nginx проксирует /api/guard/).
+resolve_api(){
+  local c ip d
+  for c in "${GUARD_API:-}" "http://127.0.0.1:8080"; do
+    [ -n "$c" ] && curl -fsS -m 4 -o /dev/null "$c/healthz" 2>/dev/null && { echo "$c"; return; }
+  done
+  ip=$( cd "$APP_DIR" 2>/dev/null && docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$(docker compose ps -q api 2>/dev/null | head -1)" 2>/dev/null | awk '{print $1}')
+  [ -n "$ip" ] && curl -fsS -m 4 -o /dev/null "http://$ip:8080/healthz" 2>/dev/null && { echo "http://$ip:8080"; return; }
+  d=$(envval DOMAIN); [ -n "$d" ] && { echo "https://$d"; return; }
+  echo "http://127.0.0.1:8080"
+}
+API="$(resolve_api)"
 need(){ [ ${#SECRET} -ge 24 ] || { echo "GUARD_SECRET (>=24 знаков) не задан в $APP_DIR/.env" >&2; exit 2; }; }
 sign_curl(){ # метод путь [тело]
   local m="$1" p="$2" b="${3:-}" ts; ts=$(date +%s)
