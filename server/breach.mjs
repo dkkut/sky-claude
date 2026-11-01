@@ -27,6 +27,19 @@ import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { sendEmail } from './notify.mjs';
 import { setLockdownSystem } from './adminsec.mjs';
+import { logEvent } from './skylog.mjs';
+
+/** Оповещение в приложении (раздел «Уведомления» и push): владельцу и всем администраторам. Сбой оповещения защиту не роняет. */
+const alertInApp = async (title, body) => {
+  try {
+    const { notifyGift } = await import('./giftnotify.mjs');
+    const { rows } = await query(`SELECT id FROM profiles WHERE is_admin LIMIT 200`);
+    const { ownerInfo } = await import('./selfdefense.mjs');
+    const o = await ownerInfo().catch(() => null);
+    const ids = new Set(rows.map((r) => r.id)); if (o?.id) ids.add(o.id);
+    await Promise.allSettled([...ids].map((id) => notifyGift(id, 'breach', title, String(body).slice(0, 300))));
+  } catch (err) { console.error('[breach] оповещение в приложении:', err.message); }
+};
 
 /** Подряд, в пределах получаса — одного провала недостаточно (обычная
     опечатка в пароле), двух подряд в этом окне обычному человеку уже
@@ -72,6 +85,10 @@ const triggerEmergencyShutdown = async (skyId, reason, count, custom = null) => 
   // машину.
   await setLockdownSystem(why);
 
+  // Оповещения: журнал безопасности и «Уведомления» — ДО выключения (после него сервер уже не ответит).
+  logEvent({ category: 'security', type: 'breach_shutdown', level: 'CRITICAL', result: 'ok', reason: String(why).slice(0, 200), detail: { reason, count } });
+  await alertInApp('СРОЧНО: сервер выключается', `${why}. Аварийный режим панели включён, сервер будет выключен. Включить его можно только в панели хостера.`);
+
   const owners = await adminEmails();
   const text = (custom?.intro ?? `Похоже, кто-то подбирает вход в администраторский аккаунт: ` +
     `${count} провалов подряд, причина — ${REASON_LABEL[reason] ?? reason}, ${when} UTC.`) + '\n\n' +
@@ -111,6 +128,9 @@ export const noteAdminBreachSignal = async (skyId, reason) => {
 
   if (list.length < THRESHOLD) {
     events.set(skyId, list);
+    logEvent({ category: 'security', type: 'breach_warning', level: 'WARN', result: 'denied', reason: REASON_LABEL[reason] ?? reason, detail: { attempt: list.length, of: THRESHOLD } });
+    await alertInApp('Неудачный вход в администраторский аккаунт',
+      `${REASON_LABEL[reason] ?? reason}: попытка ${list.length} из ${THRESHOLD}. Ещё одна ошибка за 30 минут — и сервер будет аварийно выключен.`);
     return;
   }
   events.delete(skyId);
