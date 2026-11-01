@@ -15,6 +15,7 @@ import * as DX from './../storagedirect.mjs';
 import { query } from './../db.mjs';
 import * as A from './../skystorageadmin.mjs';
 import * as B from './../skystoragebackup.mjs';
+import * as MR from './../musicrebuild.mjs';
 import * as X from './../skystorageaccess.mjs';
 import * as I from './../skystorageindex.mjs';
 import { effective, snapshot, loadState, logEvent, counters } from './../skystoragestate.mjs';
@@ -92,13 +93,14 @@ export const storageRoutes = async (req, res, url) => {
   if (rest === '/connection-status' && req.method === 'GET') return json(res, 200, { allowed: conn.allowed, status: conn.status ?? 'approved', pending: conn.pending ?? null, bootstrap: conn.bootstrap === true });
   if (!conn.allowed) return json(res, 403, { error: 'connection_pending', status: conn.status, pending: conn.pending ?? null });
 
-  const critical = ['/emergency-off', '/enable', '/sky-auth', '/unlock', '/restrict', '/compromise', '/recover', '/restore/apply', '/music/restore', '/group/restore'];
+  const critical = ['/emergency-off', '/enable', '/sky-auth', '/unlock', '/restrict', '/compromise', '/recover', '/restore/apply', '/music/restore', '/group/restore', '/music/rebuild'];
   if (isWrite && critical.includes(rest) && !rl(`storage:crit:${me}`, 10)) return json(res, 429, { error: 'too_many_attempts' });
 
   // Чтение
   if (req.method === 'GET') {
     if (rest === '/groups') { const deny = await needPerm(P.view); if (deny) return deny; return json(res, 200, { items: Object.entries(B.GROUPS).map(([id, g]) => ({ id, title: g.title, files: !!g.catalog })) }); }
     if (rest === '/group/health') { const deny = await needPerm(P.view); if (deny) return deny; return reply(res, await B.groupHealth(String(params.get('group') ?? ''))); }
+    if (rest === '/music/orphans') { const deny = await needPerm(P.view); if (deny) return deny; return json(res, 200, await MR.orphanReport({ rescan: params.get('rescan') === '1' })); }
     if (rest === '/music/health') { const deny = await needPerm(P.view); if (deny) return deny; return json(res, 200, await B.musicHealth()); }
     if (rest === '/overview') return (await needPerm(P.view)) ?? json(res, 200, await A.overview());
     if (rest === '/events') {
@@ -185,6 +187,15 @@ export const storageRoutes = async (req, res, url) => {
     const step = await consumeStepUp(me, A.CRITICAL_PURPOSE, body.stepUpCode, { meta }); if (step.error) return reply(res, step);
     const r = await B.restoreGroup(me, String(body.group ?? ''));
     if (!r.error) await logAdmin({ actorId: me, targetType: 'storage', type: 'storage_restore', detail: `раздел ${r.group}: строк ${r.rowsInserted}, файлов из S3 ${r.pulled}, из копий ${r.restored}, не найдено ${r.notFoundCount}`, result: r.failed.length ? 'partial' : 'ok', meta });
+    return reply(res, r);
+  }
+  if (rest === '/music/rebuild') {
+    if (!(await isOwner(me))) { await logAdmin({ actorId: me, targetType: 'storage', type: 'storage_restore', detail: 'музыка (каталог): не владелец', result: 'denied', meta }); return json(res, 403, { error: 'owner_only' }); }
+    const deny = await needPerm(P.restore); if (deny) return deny;
+    if (body.confirm !== true) return json(res, 400, { error: 'confirm_required' });
+    const step = await consumeStepUp(me, A.CRITICAL_PURPOSE, body.stepUpCode, { meta }); if (step.error) return reply(res, step);
+    const r = await MR.rebuildCatalog(me, { status: String(body.status ?? 'published') });
+    if (!r.error) await logAdmin({ actorId: me, targetType: 'storage', type: 'storage_restore', detail: `музыка: каталог собран по файлам, найдено ${r.found}, создано ${r.created}, ошибок ${r.failed.length}`, result: r.failed.length ? 'partial' : 'ok', meta });
     return reply(res, r);
   }
   if (rest === '/music/restore') {

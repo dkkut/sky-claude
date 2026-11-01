@@ -215,7 +215,7 @@ const Backups = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
   const [kind, setKind] = useState('full'); const [scope, setScope] = useState('');
   const [plan, setPlan] = useState<Data | null>(null); const [ret, setRet] = useState<Data | null>(null); const [sch, setSch] = useState<Data[]>([]);
   const [restoreFor, setRestoreFor] = useState<string | null>(null); const [restoreScope, setRestoreScope] = useState(''); const [overwrite, setOverwrite] = useState(false);
-  const [step, setStep] = useState<null | { kind: 'apply' | 'download' | 'music'; id: string }>(null); const [grp, setGrp] = useState('users'); const [mh, setMh] = useState<Data | null>(null); const [mres, setMres] = useState<Data | null>(null); const [link, setLink] = useState('');
+  const [step, setStep] = useState<null | { kind: 'apply' | 'download' | 'music' | 'rebuild'; id: string }>(null); const [orph, setOrph] = useState<Data | null>(null); const [rbRes, setRbRes] = useState<Data | null>(null); const [rbStatus, setRbStatus] = useState('published'); const [grp, setGrp] = useState('users'); const [mh, setMh] = useState<Data | null>(null); const [mres, setMres] = useState<Data | null>(null); const [link, setLink] = useState('');
   const [sf, setSf] = useState({ frequency: 'daily', times: '03:00', weekday: '1', kind: 'full' });
   const gate = useCodeGate();
   const has = (p: string) => perms.includes(p);
@@ -224,10 +224,12 @@ const Backups = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
   const scopeObj = () => (kind === 'service' ? { services: scope.split(',').map((x) => x.trim()).filter(Boolean) } : kind === 'category' ? { categories: scope.split(',').map((x) => x.trim()).filter(Boolean) } : {});
   const run = async () => { const r = await call('POST', '/backups', { kind, scope: scopeObj() }); flash(r.ok ? 'Копирование запущено' : errText(r.error)); void load(); };
   const act = async (id: string, a: string, body: Data = {}) => { const r = await call('POST', `/backups/${id}/${a}`, body); if (!r.ok) flash(errText(r.error)); else flash(a === 'verify' ? (r.data.ok ? 'Целостность подтверждена' : 'Копия НЕ прошла проверку') : 'Готово'); void load(); return r; };
+  const findOrph = async (rescan: boolean) => { const r = await call('GET', `/music/orphans${rescan ? '?rescan=1' : ''}`); if (r.ok) setOrph(r.data); else flash(errText(r.error)); };
   const checkGroup = async () => { const r = await call('GET', `/group/health?group=${grp}`); if (r.ok) setMh(r.data); else flash(errText(r.error)); };
   const stepDone = async (code: string) => {
     if (!step) return;
     if (step.kind === 'download') { const r = await call('POST', `/backups/${step.id}/download-link`, { confirm: true, stepUpCode: code }); if (r.ok) { setLink(r.data.url); setStep(null); } else flash(errText(r.error)); return; }
+    if (step.kind === 'rebuild') { const r = await call('POST', '/music/rebuild', { status: rbStatus, confirm: true, stepUpCode: code }); if (r.ok) { setRbRes(r.data); setStep(null); flash('Каталог музыки собран'); void findOrph(false); } else { flash(errText(r.error)); if (!String(r.error).startsWith('step_up')) setStep(null); } return; }
     if (step.kind === 'music') { const r = await call('POST', '/group/restore', { group: step.id, confirm: true, stepUpCode: code }); if (r.ok) { setMres(r.data); setStep(null); flash('Восстановление раздела завершено'); void checkGroup(); } else { flash(errText(r.error)); if (!String(r.error).startsWith('step_up')) setStep(null); } return; }
     const r = await call('POST', '/restore/apply', { planId: plan?.planId, overwrite, confirm: true, stepUpCode: code });
     if (r.ok) { flash(`Восстановление: ${r.data.status}`); setPlan({ ...plan, result: r.data }); setStep(null); } else { flash(errText(r.error)); if (!String(r.error).startsWith('step_up')) setStep(null); }
@@ -265,6 +267,24 @@ const Backups = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
           {mh && !mh.backups && <p className="text-[12px]" style={{ color: C.amber }}>Проверенных копий нет — восстанавливать не из чего.</p>}
           {mres && <p className="text-[12px]" style={{ color: mres.failed.length || mres.notFoundCount ? C.amber : C.green }}>{`Результат: добавлено строк ${mres.rowsInserted}, файлов в порядке ${mres.alreadyOk}, возвращено из S3 ${mres.pulled}, из копий ${mres.restored}, не найдено нигде ${mres.notFoundCount ?? 0}, ошибок ${mres.failed.length}`}</p>}
           {mres?.failed?.slice(0, 5).map((f: string) => <p key={f} className="text-[11px]" style={{ color: C.red }} translate="no">{f}</p>)}
+        </Card>
+      )}
+      {(has('storage_view') || has('storage_restore')) && (
+        <Card title="Музыка: файлы есть, а в Sky Music не видны">
+          <p className="text-[12px]" style={{ color: C.t3 }}>Если после восстановления базы треки лежат в хранилище, но каталог их не показывает, здесь можно найти такие файлы и создать для них записи. Название, исполнитель, альбом, жанр и год берутся из тегов внутри файла, длительность оценивается по заголовку MP3, обложка подключается, если лежит рядом. Существующие записи не меняются, ничего не удаляется. Владелец возвращается, только если он сохранился в реестре Sky Storage; иначе трек будет без владельца.</p>
+          <div className="flex flex-wrap gap-2">
+            <Btn tone="plain" onClick={() => void findOrph(true)}>Найти файлы без записи</Btn>
+            {owner && has('storage_restore') && !!orph?.count && <>
+              <select value={rbStatus} onChange={(e) => setRbStatus(e.target.value)} aria-label="Статус" className="rounded-lg px-2 py-1.5 text-sm" style={field}>
+                <option value="published">Сразу в каталог</option><option value="pending">На проверку</option><option value="private">Скрытые (личные)</option>
+              </select>
+              <Btn onClick={() => setStep({ kind: 'rebuild', id: 'music' })}>Создать записи</Btn>
+            </>}
+          </div>
+          {orph && <p className="text-[12px]" style={{ color: orph.count ? C.amber : C.green }}>{orph.count ? `Файлов без записи: ${orph.count} (${Math.round(orph.bytes / 1048576)} МБ)` : 'Все файлы музыки в реестре имеют записи в каталоге.'}</p>}
+          {orph?.count > 0 && <p className="text-[11px]" style={{ color: C.t3 }}>Реестр обновляется сканированием; если файлов не нашлось, а они должны быть, проверьте раздел «Файлы» (нужен свежий проход) и основное хранение S3.</p>}
+          {rbRes && <p className="text-[12px]" style={{ color: rbRes.failed?.length ? C.amber : C.green }}>{`Найдено ${rbRes.found}, создано ${rbRes.created} (с тегами ${rbRes.withTags}, без тегов ${rbRes.noTags}), обложек ${rbRes.covers}, ошибок ${rbRes.failed?.length ?? 0}`}</p>}
+          {rbRes?.failed?.slice(0, 5).map((f: string) => <p key={f} className="text-[11px]" style={{ color: C.red }} translate="no">{f}</p>)}
         </Card>
       )}
       <Card title="Копии">
