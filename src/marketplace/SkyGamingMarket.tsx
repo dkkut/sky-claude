@@ -22,6 +22,7 @@ import { Search, X, Gamepad2, ArrowLeft, Tag } from 'lucide-react';
 import { C, Empty, Alert, ProductCard } from './ui';
 import { useMarketStore } from './store';
 import { gameCoverUrl } from './marketApi';
+import { useMarketImage } from './marketMedia';
 import type { Game, GameCategoryKey } from './types';
 import { GAME_CATEGORY_LABEL } from './types';
 
@@ -29,7 +30,8 @@ import { GAME_CATEGORY_LABEL } from './types';
 
 const GameCover = ({ game, className }: { game: Game; className?: string }) => {
   const [broken, setBroken] = useState(false);
-  if (!game.hasCover || broken) {
+  const mi = useMarketImage();
+  if (!game.hasCover || broken || !mi.ready) {
     return (
       <div className={className} style={{ background: C.l3, display: 'grid', placeItems: 'center' }}>
         <Gamepad2 size={18} style={{ color: C.t3 }} />
@@ -37,8 +39,8 @@ const GameCover = ({ game, className }: { game: Game; className?: string }) => {
     );
   }
   return (
-    <img src={gameCoverUrl(game.id)} alt={game.title} className={className}
-      loading="lazy" onError={() => setBroken(true)} />
+    <img key={mi.nonce} src={gameCoverUrl(game.id)} alt={game.title} className={className}
+      loading="lazy" onError={() => mi.fail(() => setBroken(true))} />
   );
 };
 

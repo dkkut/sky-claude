@@ -12,6 +12,7 @@ import {
   BookOpen, Gamepad2, Apple, ImageOff,
 } from 'lucide-react';
 import type { Product, ProductCategory } from './types';
+import { useMarketImage } from './marketMedia';
 import { marketImageUrl, productLogoUrl, gameCoverUrl, sellerAvatarUrl } from './marketApi';
 
 /* ── Токены ───────────────────────────────────────────────────────── */
@@ -151,16 +152,17 @@ export const Alert = ({ text, kind = 'error' }: { text: string; kind?: 'error' |
 export const ProductImage = ({ imageId, alt, className, style }:
 { imageId?: string; alt: string; className?: string; style?: React.CSSProperties }) => {
   const [broken, setBroken] = useState(false);
-  if (!imageId || broken) {
+  const mi = useMarketImage();
+  if (!imageId || broken || !mi.ready) {
     return (
       <div className={className} style={{ ...style, background: C.l3, display: 'grid', placeItems: 'center' }}>
-        <ImageOff size={20} style={{ color: C.t3 }} />
+        {!imageId || broken ? <ImageOff size={20} style={{ color: C.t3 }} /> : null}
       </div>
     );
   }
   return (
-    <img src={marketImageUrl(imageId)} alt={alt} className={className} style={style}
-      loading="lazy" onError={() => setBroken(true)} />
+    <img key={mi.nonce} src={marketImageUrl(imageId)} alt={alt} className={className} style={style}
+      loading="lazy" onError={() => mi.fail(() => setBroken(true))} />
   );
 };
 
@@ -188,7 +190,9 @@ export const ProductLogo = ({ product, size = 28 }: { product: Product; size?: n
   ].filter(Boolean) as string[];
 
   const [step, setStep] = useState(0);
-  const src = chain[step];
+  const mi = useMarketImage();
+  const src = mi.ready ? chain[step] : undefined;
+  if (!mi.ready && chain.length) return <div style={{ width: size, height: size, borderRadius: size / 4, background: C.l3, flexShrink: 0 }} />;
 
   /* Буква названия на цвете, выведенном из идентификатора: один и тот
      же товар всегда одного цвета. */
@@ -208,7 +212,7 @@ export const ProductLogo = ({ product, size = 28 }: { product: Product; size?: n
   }
 
   return (
-    <img src={src} alt="" onError={() => setStep((n) => n + 1)}
+    <img key={`${step}-${mi.nonce}`} src={src} alt="" onError={() => mi.fail(() => setStep((n) => n + 1))}
       style={{
         width: size, height: size, borderRadius: size / 4,
         objectFit: 'cover', flexShrink: 0, background: C.l3,
