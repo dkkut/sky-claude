@@ -79,6 +79,8 @@ build_apk() {
   local old; if old="$(unchanged apk)"; then echo "==> Android: исходники не менялись — беру готовый $old"; ok=$((ok+1)); return; fi
   J21="$(ls -d /usr/lib/jvm/java-21-openjdk-* 2>/dev/null | head -1)"; [ -n "$J21" ] && export JAVA_HOME="$J21" PATH="$J21/bin:$PATH"   # Capacitor 8 собирается только JDK 21 («invalid source release: 21» на 17)
   need java || { skipped+=("apk: нет JDK 21 — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
+  local jv; jv="$(java -version 2>&1 | sed -n '1s/.*"\([0-9]*\)[."].*/\1/p')"
+  [ "${jv:-0}" -ge 21 ] 2>/dev/null || { skipped+=("apk: найден JDK ${jv:-?}, нужен 21+ (Capacitor 8: «invalid source release: 21») — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
   [ -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ] || { [ -d /opt/android-sdk ] && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk; }
   [ -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ] || { skipped+=("apk: не задан ANDROID_HOME — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
   [ -d android ] || { skipped+=("apk: нет каталога android/"); return; }
