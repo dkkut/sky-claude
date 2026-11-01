@@ -29,6 +29,7 @@ import { PrimeGate } from '@/prime/PrimeGate';
 import { browserVoiceAvailable } from './speech';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { QuickActions } from './QuickActions';
+import { CodeWorkspace } from './CodeWorkspace';
 
 const C = {
   accent: '#a855f7',
@@ -258,7 +259,8 @@ export const SkyAITab = () => {
   const current = MODES.find(m => m.key === mode)!;
   /* «Код» входит в Prime (сервер отвечает 402 без подписки). Пока состояние не пришло, экран не закрываем. */
   const codeLocked = mode === 'code' && !!state && !state.prime;
-  const chatLike = mode === 'chat' || (mode === 'code' && !codeLocked);
+  const codeMode = mode === 'code' && !codeLocked;
+  const chatLike = mode === 'chat' || codeMode;
   const usage = state?.usage?.[chatLike ? 'chat' : mode as 'summary'];
 
   const accept = mode === 'image'
@@ -365,7 +367,12 @@ export const SkyAITab = () => {
 
         {/* Содержимое */}
         {codeLocked && <div className="flex-1 overflow-y-auto"><PrimeGate service="code"/></div>}
-        <div ref={listRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ scrollbarWidth: 'none', display: codeLocked ? 'none' : undefined }}>
+        {codeMode && (
+          <CodeWorkspace chatId={chatId} setChatId={setChatId} messages={messages} setMessages={setMessages}
+            maxChars={state?.maxMessageChars ?? 16000} usage={usage} configured={state?.configured !== false}
+            onSent={() => void loadChats()} onNew={newChat} />
+        )}
+        <div ref={listRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ scrollbarWidth: 'none', display: codeLocked || codeMode ? 'none' : undefined }}>
           {state?.configured === false && (
             <div className="rounded-2xl px-4 py-3 flex items-start gap-2"
               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
@@ -487,7 +494,7 @@ export const SkyAITab = () => {
       </div>
 
       {/* Быстрые действия: работают с выделенным текстом, полем ввода или последним сообщением этого диалога */}
-      {chatLike && (
+      {chatLike && !codeMode && (
         <div className="px-5 pt-2 shrink-0" style={{ background: 'var(--bg-l1)' }}>
           <QuickActions input={input} lastMessage={messages.length ? messages[messages.length - 1].text : ''} mode={mode === 'code' ? 'code' : 'chat'}
             onInsert={(t) => setInput(t)} disabled={busy} />
@@ -495,7 +502,7 @@ export const SkyAITab = () => {
       )}
 
       {/* Ввод. В режиме чата активен всегда — подписка на это не влияет. */}
-      {(chatLike || (mode === 'summary' && prime)) && (
+      {((chatLike && !codeMode) || (mode === 'summary' && prime)) && (
         <div className="flex gap-2 items-end px-5 py-3 shrink-0 rounded-t-[28px]" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-l1)' }}>
           <textarea
             value={input}
