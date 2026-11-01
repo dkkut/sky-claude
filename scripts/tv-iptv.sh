@@ -5,6 +5,7 @@
 #   cd /opt/sky && bash /opt/sky-src/scripts/tv-iptv.sh --country ru
 #   bash scripts/tv-iptv.sh --category news
 #   bash scripts/tv-iptv.sh --language rus
+#   bash scripts/tv-iptv.sh --freetv russia     (список Free-TV/IPTV: https://github.com/Free-TV/IPTV/blob/master/lists/russia.md)
 #   bash scripts/tv-iptv.sh --url https://iptv-org.github.io/iptv/countries/kz.m3u
 #
 # Что делает:
@@ -26,18 +27,25 @@ for d in "${APP_DIR:-}" "$PWD" /opt/sky; do [ -n "$d" ] && [ -f "$d/.env" ] && {
 IMPORT="$HERE/scripts/tv-import.sh"; [ -f "$IMPORT" ] || IMPORT="scripts/tv-import.sh"
 
 BASE="https://iptv-org.github.io/iptv"
-URL=""
+URL=""; FREETV=""
 case "${1:-}" in
   --country)  [[ "${2:-}" =~ ^[a-z]{2}$ ]] || { echo "Код страны из двух латинских букв, например ru."; exit 1; }; URL="$BASE/countries/$2.m3u" ;;
   --category) [[ "${2:-}" =~ ^[a-z]{3,20}$ ]] || { echo "Категория: news, sports, kids, music, movies…"; exit 1; }; URL="$BASE/categories/$2.m3u" ;;
   --language) [[ "${2:-}" =~ ^[a-z]{3}$ ]] || { echo "Код языка из трёх букв, например rus."; exit 1; }; URL="$BASE/languages/$2.m3u" ;;
+  --freetv)   [[ "${2:-}" =~ ^[a-z_]{3,30}$ ]] || { echo "Название списка Free-TV, например russia."; exit 1; }; FREETV="$2"; URL="https://raw.githubusercontent.com/Free-TV/IPTV/master/lists/$2.md" ;;
   --url)      URL="${2:-}"; [[ "$URL" =~ ^https://iptv-org\.github\.io/iptv/[a-z/_-]+\.m3u8?$ ]] || { echo "Допустимы только плейлисты https://iptv-org.github.io/iptv/…"; exit 1; } ;;
   *) sed -n 2,12p "$0"; exit 1 ;;
 esac
 
-TMP="$(mktemp /tmp/iptv-XXXXXX.m3u)"; trap 'rm -f "$TMP"' EXIT
+TMP="$(mktemp /tmp/iptv-XXXXXX.m3u)"; trap 'rm -f "$TMP" "$TMP.md"' EXIT
 echo "Скачиваю $URL …"
-curl -fsSL --max-filesize 2097152 --max-time 60 "$URL" -o "$TMP" || { echo "Не удалось скачать (проверьте адрес и размер: до 2 МБ)."; exit 1; }
+if [ -n "$FREETV" ]; then
+  curl -fsSL --max-filesize 2097152 --max-time 60 "$URL" -o "$TMP.md" || { echo "Не удалось скачать список Free-TV."; exit 1; }
+  command -v node >/dev/null || { echo "Нужен Node.js на хосте для разбора списка Free-TV."; exit 1; }
+  node "$HERE/scripts/freetv-to-m3u.mjs" "$TMP.md" > "$TMP"
+else
+  curl -fsSL --max-filesize 2097152 --max-time 60 "$URL" -o "$TMP" || { echo "Не удалось скачать (проверьте адрес и размер: до 2 МБ)."; exit 1; }
+fi
 head -c 7 "$TMP" | grep -q '^#EXTM3U' || { echo "Это не плейлист M3U."; exit 1; }
 TOTAL=$(grep -c '^#EXTINF' "$TMP" || true)
 echo "Каналов в плейлисте: $TOTAL"
@@ -74,6 +82,6 @@ if [ -n "$NEW" ]; then
   sleep 5
 fi
 
-LICENCE="Публичный поток из каталога iptv-org; право вещателя на ретрансляцию не подтверждено, канал отключается по обращению правообладателя"
+LICENCE="Публичный поток из каталога ${FREETV:+Free-TV/IPTV}${FREETV:-iptv-org}; право вещателя на ретрансляцию не подтверждено, канал отключается по обращению правообладателя"
 echo; echo "Дальше — план импорта (ничего не записывается без вашего «да»)."
 bash "$IMPORT" "$TMP" "$LICENCE"
