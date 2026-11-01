@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
+import { geoConsent, setGeoConsent } from '@/maps/geoConsent';
 import { askMotionPermission, safetyDeviceOn, setSafetyDevice } from './SafetyWatcher';
 
 interface P { id: string; name: string; username?: string }
@@ -62,6 +63,10 @@ export const SafetyCard = () => {
           {[30, 60, 90, 120, 180].map((n) => <option key={n} value={n}>{n} с</option>)}</select></label>
       <label className="flex items-start gap-2 text-sm" style={{ color: 'var(--t1)' }}>
         <input type="checkbox" className="mt-1" checked={dev} onChange={async (e) => {
+          if (e.target.checked && !geoConsent()) {
+            if (!window.confirm('Sky Safety будет определять ваше положение, пока приложение открыто: при резкой остановке после быстрой езды оно отправит последнюю точку доверенным контактам, если вы не ответите. Положение хранится зашифрованным. Разрешить?')) return;
+            setGeoConsent(true);
+          }
           if (e.target.checked && !(await askMotionPermission())) { flash('Датчики движения недоступны или не разрешены — слежение не сработает.'); return; }
           setSafetyDevice(e.target.checked); setDev(e.target.checked);
         }} />

@@ -44,7 +44,7 @@ const tr2 = await s.trigger(A, { speedBeforeKmh: 70, lat: 55.7, lng: 37.5 });
 await query(`UPDATE safety_events SET deadline_at = now() - interval '1 second' WHERE id = $1`, [tr2.id]);
 t('без ответа — предупреждение ровно один раз', (await s.sweepSafety()) === 1 && (await s.sweepSafety()) === 0);
 const got = await texts(B);
-t('контакту пришло с ссылкой на карту', got.some((x) => x.includes('не ответил') && x.includes('yandex.ru/maps') && x.includes('37.500000,55.700000')));
+t('контакту пришло с ссылкой на карту', got.some((x) => x.includes('не ответил') && !x.includes('yandex') && x.includes('openstreetmap.org') && x.includes('mlat=55.70000')));
 t('есть оговорка «не доказательство»', got.some((x) => x.includes('не доказательство')));
 t('человеку сообщили об отправке', (await texts(A)).some((x) => x.includes('отправлено предупреждение')));
 

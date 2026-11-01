@@ -13,6 +13,7 @@ import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
 import { visibleTick } from '@/shared/visibleTick';
 import { SafetyCard } from '@/safety/SafetyCard';
+import { GeoConsentCard, blurPoint, setGeoConsent, useGeoConsent } from './geoConsent';
 import { SkyMap, type MapPoint } from '@/marketplace/logistics/SkyMap';
 import type { GeoPoint } from '@/marketplace/logistics/types';
 
@@ -47,6 +48,7 @@ export const FriendsMap = () => {
   const [route, setRoute] = useState<Route | null>(null);
   const [busy, setBusy] = useState(false);
   const lastSent = useRef(0);
+  const consent = useGeoConsent();
 
   const load = useCallback(async () => {
     const r = await apiCall<Data>('/api/maps/friends');
@@ -60,6 +62,7 @@ export const FriendsMap = () => {
 
   /* Геолокация — только пока экран открыт и видим. Свою точку показываем на карте всегда (локально), на сервер шлём, лишь если делимся и не чаще раза в 15 с. */
   useEffect(() => {
+    if (!consent) { setMe(null); return; }
     if (!('geolocation' in navigator)) { setGeoErr('Этот браузер не умеет определять положение.'); return; }
     let watch: number | null = null;
     const start = () => {
@@ -82,7 +85,7 @@ export const FriendsMap = () => {
     const vis = () => (document.hidden ? stop() : start());
     start(); document.addEventListener('visibilitychange', vis);
     return () => { stop(); document.removeEventListener('visibilitychange', vis); };
-  }, [sharing]);
+  }, [sharing, consent]);
 
   const saveShare = async () => {
     setBusy(true);
@@ -94,7 +97,7 @@ export const FriendsMap = () => {
   const stopAll = async () => { setBusy(true); await apiCall('/api/maps/friends/position', { method: 'DELETE' }); setBusy(false); setPick(new Set()); setDirty(false); flash('Показ остановлен, точка стёрта'); await load(); };
 
   const buildRoute = async (friendId: string, m = mode) => {
-    if (!me) { flash(ERR.no_origin); return; }
+    if (!me) { flash(consent ? ERR.no_origin : 'Сначала разрешите определение положения.'); return; }
     setTarget(friendId); setRoute(null);
     const r = await apiCall<Route>('/api/maps/friends/route', { method: 'POST', body: JSON.stringify({ friendId, origin: me, mode: m }) });
     if (r.ok && r.data) setRoute(r.data); else flash(ERR[r.error ?? ''] ?? 'Маршрут недоступен');
@@ -106,14 +109,16 @@ export const FriendsMap = () => {
 
   const seen = d.friends.filter((f) => f.point);
   const points: MapPoint[] = [
-    ...(me ? [{ id: 'me', pos: me, label: 'Вы', kind: 'target' as const }] : []),
-    ...seen.map((f) => ({ id: f.id, pos: f.point as GeoPoint, label: `${f.name}${f.speedKmh != null ? ` · ${f.speedKmh} км/ч` : ''}`, kind: 'courier' as const, highlight: f.id === target })),
+    ...(me ? [{ id: 'me', pos: blurPoint(me), label: 'Вы', kind: 'target' as const }] : []),
+    ...seen.map((f) => ({ id: f.id, pos: blurPoint(f.point as GeoPoint), label: `${f.name}${f.speedKmh != null ? ` · ${f.speedKmh} км/ч` : ''}`, kind: 'courier' as const, highlight: f.id === target })),
   ];
   const card = { background: 'var(--bg-l1)', border: '1px solid var(--border)' };
 
   return (
     <div className="min-w-0 space-y-3 p-3">
+      {!consent && <GeoConsentCard purpose="Карта друзей показывает вас на карте тем друзьям, которых вы выберете, и строит маршрут до них." />}
       <SkyMap points={points} height={280} path={route?.polyline} />
+      {consent && <button type="button" className="text-xs underline" style={{ color: 'var(--t3)' }} onClick={() => { setGeoConsent(false); void apiCall('/api/maps/friends/position', { method: 'DELETE' }).then(() => load()); }}>Отозвать согласие на геолокацию</button>}
       {geoErr && <p className="text-xs" style={{ color: 'var(--amber)' }}>{geoErr}</p>}
       {route && <p className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>До друга: {km(route.distanceM)}, примерно {mins(route.durationS)}{route.friendStale ? ' · его положение устарело' : ''}</p>}
 

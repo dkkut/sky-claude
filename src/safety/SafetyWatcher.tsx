@@ -9,6 +9,7 @@ import { ShieldAlert } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 import { useAuthStore } from '@/core/auth/store';
 import { CrashDetector } from './detector';
+import { useGeoConsent } from '@/maps/geoConsent';
 
 const KEY = 'sky:safety:device';
 export const safetyDeviceOn = () => { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } };
@@ -26,6 +27,7 @@ export const askMotionPermission = async (): Promise<boolean> => {
 
 export const SafetyWatcher = () => {
   const uid = useAuthStore((s) => s.currentUserId);
+  const consent = useGeoConsent();
   const [on, setOn] = useState(safetyDeviceOn());
   const [prompt, setPrompt] = useState<{ id: string; deadline: number } | null>(null);
   const [left, setLeft] = useState(0);
@@ -51,7 +53,7 @@ export const SafetyWatcher = () => {
   }, [on, uid]);
 
   useEffect(() => {
-    if (!on || !uid || !('geolocation' in navigator)) return;
+    if (!on || !uid || !consent || !('geolocation' in navigator)) return;
     let watch: number | null = null; let last: GeolocationCoordinates | null = null;
     const onMotion = (e: DeviceMotionEvent) => {
       const a = e.accelerationIncludingGravity; if (!a) return;
@@ -71,7 +73,7 @@ export const SafetyWatcher = () => {
     const vis = () => (document.hidden ? stop() : start());
     start(); document.addEventListener('visibilitychange', vis);
     return () => { stop(); document.removeEventListener('visibilitychange', vis); };
-  }, [on, uid, fire]);
+  }, [on, uid, fire, consent]);
 
   useEffect(() => {
     if (!prompt) return;

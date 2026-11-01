@@ -12,6 +12,13 @@ import { query } from './db.mjs';
 import { isRealPoint, computeOrdered } from './maps.mjs';
 import { featureOn } from './mapsusage.mjs';
 import { friendIds } from './friends.mjs';
+import { encryptSecret, decryptSecret } from './crypto.mjs';
+
+const sealPos = (lat, lng) => encryptSecret(JSON.stringify({ lat, lng }));
+const openPos = (r) => {
+  if (r.pos_enc) { try { const p = JSON.parse(decryptSecret(r.pos_enc)); return isRealPoint(p.lat, p.lng) ? p : null; } catch { return null; } }
+  return r.lat != null ? { lat: r.lat, lng: r.lng } : null;
+};
 
 const MAX_VIEWERS = 50;
 const FRESH_MS = 10 * 60_000;
@@ -44,9 +51,9 @@ export const putPosition = async (me, input = {}) => {
   const { rowCount } = await query('SELECT 1 FROM loc_share WHERE owner_id = $1 LIMIT 1', [me]);
   if (!rowCount) return { error: 'not_sharing' };
   await query(
-    `INSERT INTO loc_last (profile_id, lat, lng, speed_ms, accuracy_m, updated_at) VALUES ($1,$2,$3,$4,$5, now())
-     ON CONFLICT (profile_id) DO UPDATE SET lat = $2, lng = $3, speed_ms = $4, accuracy_m = $5, updated_at = now()`,
-    [me, lat, lng, num(input.speed, 100), num(input.accuracy, 100000)]);
+    `INSERT INTO loc_last (profile_id, lat, lng, pos_enc, speed_ms, accuracy_m, updated_at) VALUES ($1,NULL,NULL,$2,$3,$4, now())
+     ON CONFLICT (profile_id) DO UPDATE SET lat = NULL, lng = NULL, pos_enc = $2, speed_ms = $3, accuracy_m = $4, updated_at = now()`,
+    [me, sealPos(lat, lng), num(input.speed, 100), num(input.accuracy, 100000)]);
   return { ok: true };
 };
 
@@ -60,7 +67,7 @@ export const stopSharing = async (me) => {
 export const visibleFriends = async (me) => {
   if (!(await featureOn('friends'))) return { enabled: false, friends: [] };
   const { rows } = await query(
-    `SELECT p.id, p.name, p.username, p.avatar, l.lat, l.lng, l.speed_ms, l.accuracy_m, l.updated_at
+    `SELECT p.id, p.name, p.username, p.avatar, l.lat, l.lng, l.pos_enc, l.speed_ms, l.accuracy_m, l.updated_at
        FROM loc_share s
        JOIN profiles p ON p.id = s.owner_id
        JOIN friendships f ON f.status = 'accepted' AND f.a_id = LEAST(s.owner_id, s.viewer_id) AND f.b_id = GREATEST(s.owner_id, s.viewer_id)
@@ -71,10 +78,11 @@ export const visibleFriends = async (me) => {
     enabled: true,
     friends: rows.map((r) => {
       const t = r.updated_at ? new Date(r.updated_at).getTime() : 0;
-      const has = r.lat != null && now - t < DROP_MS;
+      const pos = openPos(r);
+      const has = pos != null && now - t < DROP_MS;
       return {
         id: r.id, name: r.name, username: r.username, avatar: r.avatar ?? null,
-        point: has ? { lat: r.lat, lng: r.lng } : null,
+        point: has ? pos : null,
         speedKmh: has && r.speed_ms != null ? Math.round(r.speed_ms * 3.6) : null,
         accuracyM: has && r.accuracy_m != null ? Math.round(r.accuracy_m) : null,
         updatedAt: has ? new Date(t).toISOString() : null,

@@ -23,6 +23,7 @@ t('друг видит точку и скорость 36 км/ч', v.friends.len
 t('посторонний не видит', (await f.visibleFriends(C)).friends.length === 0);
 t('сам себя в списке не видит', (await f.visibleFriends(A)).friends.length === 0);
 
+{ const { rows } = await query('SELECT lat, lng, pos_enc FROM loc_last WHERE profile_id = $1', [A]); t('координаты в базе зашифрованы (открытых lat/lng нет)', rows[0].lat === null && rows[0].lng === null && !!rows[0].pos_enc && !rows[0].pos_enc.includes('55.')); }
 await query(`UPDATE loc_last SET updated_at = now() - interval '30 minutes' WHERE profile_id = $1`, [A]);
 v = await f.visibleFriends(B); t('старше 10 минут — stale', v.friends[0].stale === true);
 await query(`UPDATE loc_last SET updated_at = now() - interval '2 days' WHERE profile_id = $1`, [A]);

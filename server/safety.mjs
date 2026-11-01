@@ -19,11 +19,17 @@ import { sendFromBot } from './skybot.mjs';
 import { notifyGift } from './giftnotify.mjs';
 import { pushToOffline } from './webpush.mjs';
 import { L } from './lang.mjs';
+import { encryptSecret, decryptSecret } from './crypto.mjs';
 
 const MAX_CONTACTS = 5;
 const COOLDOWN_MIN = 10;
 const id = () => `sfe-${crypto.randomBytes(8).toString('hex')}`;
-const mapLink = (lat, lng) => `https://yandex.ru/maps/?pt=${Number(lng).toFixed(6)},${Number(lat).toFixed(6)}&z=16&l=map`;
+/* Ссылка на карту без Яндекса: точку человека не отдаём поставщику карт ссылкой с точными координатами. */
+const mapLink = (lat, lng) => `https://www.openstreetmap.org/?mlat=${Number(lat).toFixed(5)}&mlon=${Number(lng).toFixed(5)}#map=17/${Number(lat).toFixed(5)}/${Number(lng).toFixed(5)}`;
+const openEventPos = (r) => {
+  if (r.pos_enc) { try { const p = JSON.parse(decryptSecret(r.pos_enc)); return isRealPoint(p.lat, p.lng) ? p : null; } catch { return null; } }
+  return r.lat != null ? { lat: r.lat, lng: r.lng } : null;
+};
 
 export const getState = async (me) => {
   const { rows: s } = await query('SELECT enabled, timeout_sec FROM safety_settings WHERE profile_id = $1', [me]);
@@ -101,9 +107,9 @@ export const trigger = async (me, input = {}) => {
   if (recent.length) return { error: 'cooldown' };
   const hasPoint = isRealPoint(Number(input.lat), Number(input.lng));
   const eid = id();
-  await query(`INSERT INTO safety_events (id, profile_id, lat, lng, speed_before_kmh, drop_kmh, signals, deadline_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7, now() + ($8 || ' seconds')::interval)`,
-    [eid, me, hasPoint ? Number(input.lat) : null, hasPoint ? Number(input.lng) : null, speed, Number.isFinite(Number(input.dropKmh)) ? Number(input.dropKmh) : null,
+  await query(`INSERT INTO safety_events (id, profile_id, lat, lng, pos_enc, speed_before_kmh, drop_kmh, signals, deadline_at)
+               VALUES ($1,$2,NULL,NULL,$3,$4,$5,$6, now() + ($7 || ' seconds')::interval)`,
+    [eid, me, hasPoint ? encryptSecret(JSON.stringify({ lat: Number(input.lat), lng: Number(input.lng) })) : null, speed, Number.isFinite(Number(input.dropKmh)) ? Number(input.dropKmh) : null,
       String(input.signals ?? '').replace(/[^a-z,_]/g, '').slice(0, 60), String(s[0].timeout_sec)]);
   void sendFromBot(me, L('⚠️ Мы заметили резкую остановку. Откройте Sky и нажмите «Я в порядке» — иначе доверенные контакты получат предупреждение.', '⚠️ We noticed a sudden stop. Open Sky and tap “I’m OK” — otherwise your trusted contacts will be notified.'),
     { kind: 'security', pushBody: L('Вы в порядке? Подтвердите безопасность в Sky', 'Are you OK? Confirm you are safe in Sky') });
@@ -117,7 +123,7 @@ export const confirmSafe = async (me, eventId) => {
 
 /** Уборка (раз в 10 с): события без ответа за срок → предупреждение доверенным контактам. Один раз на событие (условный UPDATE). */
 export const sweepSafety = async () => {
-  const { rows } = await query(`UPDATE safety_events SET state = 'alerted', resolved_at = now() WHERE state = 'pending' AND deadline_at <= now() RETURNING id, profile_id, lat, lng, speed_before_kmh, created_at`);
+  const { rows } = await query(`UPDATE safety_events SET state = 'alerted', resolved_at = now() WHERE state = 'pending' AND deadline_at <= now() RETURNING id, profile_id, lat, lng, pos_enc, speed_before_kmh, created_at`);
   for (const e of rows) {
     try {
       const { rows: who } = await query('SELECT name FROM profiles WHERE id = $1', [e.profile_id]);
@@ -125,13 +131,15 @@ export const sweepSafety = async () => {
       if (!cs.length) { await query(`UPDATE safety_events SET state = 'no_contacts' WHERE id = $1`, [e.id]); continue; }
       const name = who[0]?.name ?? '—';
       const at = new Date(e.created_at).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-      const place = e.lat != null ? `${L('Последнее известное положение', 'Last known location')}: ${mapLink(e.lat, e.lng)}` : L('Положение определить не удалось.', 'Location could not be determined.');
+      const pos = openEventPos(e);
+      const place = pos ? `${L('Последнее известное положение', 'Last known location')}: ${mapLink(pos.lat, pos.lng)}` : L('Положение определить не удалось.', 'Location could not be determined.');
       const text = L(`🚨 ${name} не ответил(а) на проверку безопасности после резкой остановки (${at}). Скорость перед остановкой — около ${Math.round(e.speed_before_kmh)} км/ч.\n\n${place}\n\nЭто не доказательство происшествия — возможно, человек просто не видел уведомление. Свяжитесь с ним; при тревоге звоните в экстренные службы.`,
         `🚨 ${name} did not answer the safety check after a sudden stop (${at}). Speed before stopping — about ${Math.round(e.speed_before_kmh)} km/h.\n\n${place}\n\nThis is not proof of an incident — the person may simply not have seen the notice. Try to reach them; if worried, call emergency services.`);
       for (const c of cs) {
         await sendFromBot(c.contact_id, text, { kind: 'security', pushBody: L(`${name} не ответил(а) на проверку безопасности`, `${name} did not answer a safety check`) });
         await notifyGift(c.contact_id, 'account_security', L('Проверка безопасности без ответа', 'Safety check unanswered'), text).catch(() => {});
       }
+      await query(`UPDATE safety_events SET lat = NULL, lng = NULL, pos_enc = NULL WHERE id = $1`, [e.id]);
       void sendFromBot(e.profile_id, L('Срок подтверждения истёк — доверенным контактам отправлено предупреждение.', 'The time to confirm has passed — your trusted contacts were notified.'), { kind: 'security' });
     } catch (err) { console.error('[safety] предупреждение:', err.message); }
   }
