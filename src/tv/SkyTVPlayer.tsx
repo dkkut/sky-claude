@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import Hls from 'hls.js';
 import { manifestUrl, type TvChannel } from './tvApi';
+import { getAccessToken } from '@/core/auth/api';
 
 const K = {
   text: '#FFFFFF',
@@ -136,9 +137,14 @@ export const SkyTVPlayer = ({ channel, onClose, onPrev, onNext, tvMode }: TVPlay
       maxBufferLength: 20,
       backBufferLength: 30,
       lowLatencyMode: true,
-      // Запросы идут к нашему же серверу, и он уже знает, кто
-      // спрашивает. Пропуск здесь не нужен.
-      xhrSetup: (xhr) => { xhr.withCredentials = true; },
+      // Манифест и куски идут к нашему серверу, а он принимает только заголовок Authorization (куки у /api/tv нет):
+      // без него каждый запрос получал 401, hls.js повторял их бесконечно, и экран вечно «Подключаемся к эфиру».
+      // Заголовок кладём только на наши адреса: чужим узлам он не нужен и сломал бы CORS.
+      xhrSetup: (xhr, url) => {
+        xhr.withCredentials = true;
+        const t = getAccessToken();
+        if (t && String(url).includes('/api/tv/')) xhr.setRequestHeader('Authorization', `Bearer ${t}`);
+      },
     });
     hlsRef.current = hls;
 
@@ -164,6 +170,7 @@ export const SkyTVPlayer = ({ channel, onClose, onPrev, onNext, tvMode }: TVPlay
       // Не всякая ошибка смертельна: сеть и разбор чинятся на месте,
       // и обрывать просмотр из-за одного не пришедшего куска нельзя.
       if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        if (data.response?.code === 401 || data.response?.code === 403) { setLoading(false); setError('unavailable'); hls.destroy(); return; }
         if (data.response?.code === 503) { setLoading(false); setError('unavailable'); hls.destroy(); return; }
         if (data.response?.code === 451) { setLoading(false); setError('geo'); hls.destroy(); return; }
         setBuffering(true);

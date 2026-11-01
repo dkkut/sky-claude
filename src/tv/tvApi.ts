@@ -10,6 +10,7 @@
  * Адрес манифеста, который здесь собирается, ведёт к нам же — сервер
  * сходит к источнику сам и отдаст только содержимое.
  */
+import { getApiOrigin } from '@/core/nativeApp';
 import { apiCall } from '@/core/auth/api';
 
 /** Почему канал не показывается. Обе причины — про нас, а не про источник. */
@@ -52,7 +53,7 @@ export interface TvChannel {
  * источника здесь нет и быть не может.
  */
 export const manifestUrl = (channelId: string) =>
-  `/api/tv/channel/${encodeURIComponent(channelId)}/manifest`;
+  `${getApiOrigin()}/api/tv/channel/${encodeURIComponent(channelId)}/manifest`;
 
 export const logoUrl = (channelId: string) =>
   `/api/tv/channel/${encodeURIComponent(channelId)}/logo`;
