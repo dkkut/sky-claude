@@ -1,6 +1,6 @@
 /** Файлы как контекст запроса к Sky AI (чат и «Код»): читаются на устройстве, уходят в запрос текстом. Бинарные файлы отклоняются — для документов и картинок есть вкладки «Документ» и «Изображение». */
 export interface CtxFile { name: string; text: string }
-export const MAX_FILES = 6;
+export const MAX_FILES = 12;
 export const MAX_FILE = 200_000;
 const looksText = (s: string) => !s.slice(0, 4000).includes('\u0000');
 const fmt = (n: number) => (n < 1024 ? `${n} Б` : `${(n / 1024).toFixed(1)} КБ`);

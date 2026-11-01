@@ -10,8 +10,10 @@
  */
 import { CloudBuddy } from './CloudBuddy';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Terminal, Paperclip, X, Copy, Check, Download, FileCode2, Send, Square, ChevronDown, ChevronUp, RotateCcw, FileDown, Plus } from 'lucide-react';
+import { GitBranch, Search, Archive, Terminal, Paperclip, X, Copy, Check, Download, FileCode2, Send, Square, ChevronDown, ChevronUp, RotateCcw, FileDown, Plus } from 'lucide-react';
 import { apiAiSend, type AiMessage } from './aiApi';
+import { apiRepoTree, apiRepoFiles, REPO_ERR, type RepoTree } from './repoApi';
+import { buildZip, downloadBlob, safeEntryName } from './zip';
 import { refreshAiState } from './aiState';
 
 /* ── Команды ─────────────────────────────────────────────────── */
@@ -53,7 +55,7 @@ const Highlight = ({ line }: { line: string }) => {
 
 const EXT: Record<string, string> = { javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts', tsx: 'tsx', jsx: 'jsx', python: 'py', py: 'py', rust: 'rs', go: 'go', java: 'java', kotlin: 'kt', swift: 'swift', c: 'c', cpp: 'cpp', csharp: 'cs', cs: 'cs', php: 'php', ruby: 'rb', bash: 'sh', sh: 'sh', shell: 'sh', sql: 'sql', html: 'html', css: 'css', json: 'json', yaml: 'yml', yml: 'yml', md: 'md', markdown: 'md' };
 
-const CodeBlock = ({ lang, code }: { lang: string; code: string }) => {
+const CodeBlock = ({ lang, code, path }: { lang: string; code: string; path?: string }) => {
   const [done, setDone] = useState(false);
   const lines = code.split('\n');
   const long = lines.length > 28;
@@ -62,15 +64,13 @@ const CodeBlock = ({ lang, code }: { lang: string; code: string }) => {
   const copy = () => { void navigator.clipboard?.writeText(code).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); }).catch(() => { /* буфер недоступен */ }); };
   const save = () => {
     const ext = EXT[lang.toLowerCase()] ?? 'txt';
-    const url = URL.createObjectURL(new Blob([code], { type: 'text/plain;charset=utf-8' }));
-    const a = document.createElement('a'); a.href = url; a.download = `sky-code.${ext}`; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    downloadBlob(code, path ? (safeEntryName(path).split('/').pop() || `sky-code.${ext}`) : `sky-code.${ext}`, 'text/plain;charset=utf-8');
   };
   const btn = 'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] hover:bg-white/10';
   return (
     <div className="my-2 overflow-hidden rounded-xl" data-keep-dark translate="no" style={{ background: '#0b0f14', border: '1px solid rgba(255,255,255,0.09)' }}>
       <div className="flex items-center justify-between px-3 py-1.5" style={{ background: 'rgba(255,255,255,0.05)', color: '#9aa4b2' }}>
-        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"><FileCode2 size={11} />{lang || 'code'}<span style={{ opacity: .6 }}>· {lines.length} стр.</span></span>
+        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"><FileCode2 size={11} />{path ? <span className="normal-case tracking-normal" style={{ color: '#d8b4fe' }}>{path}</span> : (lang || 'code')}<span style={{ opacity: .6 }}>· {lines.length} стр.</span></span>
         <span className="flex items-center gap-1">
           <button type="button" onClick={save} className={btn} aria-label="Скачать как файл"><Download size={11} />Файл</button>
           <button type="button" onClick={copy} className={btn} aria-label="Копировать">{done ? <Check size={11} /> : <Copy size={11} />}{done ? 'Скопировано' : 'Копировать'}</button>
@@ -110,13 +110,45 @@ const Prose = ({ text }: { text: string }) => (
     })}
   </div>
 );
+/** Строка после ``` : «язык путь/к/файлу.ext» или просто путь. Путь распознаётся только если похож на путь к файлу. */
+const parseInfo = (info: string): { lang: string; path?: string } => {
+  const t = info.trim().split(/\s+/).filter(Boolean);
+  const isPath = (x: string) => /^[\w.@()+\-/]{1,200}$/.test(x) && /\.[A-Za-z0-9]{1,8}$/.test(x) && !x.includes('..');
+  const path = t.find(isPath);
+  const lang = t.find((x) => x !== path)?.replace(/^\{|\}$/g, '') ?? (path ? (path.split('.').pop() ?? '') : '');
+  return { lang, ...(path ? { path: path.replace(/^\.?\//, '') } : {}) };
+};
+
+const UpdatedFiles = ({ files }: { files: { path: string; code: string }[] }) => {
+  if (!files.length) return null;
+  const zip = () => downloadBlob(buildZip(files.map((f) => ({ path: f.path, text: f.code }))), 'sky-code-files.zip', 'application/zip');
+  return (
+    <div className="my-2 rounded-xl p-3" data-keep-dark translate="no" style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)' }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex items-center gap-1.5 text-[11px] font-bold" style={{ color: '#d8b4fe' }}><Archive size={12} />{`Обновлённые файлы: ${files.length}`}</span>
+        <button type="button" onClick={zip} className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold" style={{ background: '#a855f7', color: '#fff' }}><Download size={11} />Скачать всё (.zip)</button>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {files.map((f) => (
+          <button key={f.path} type="button" onClick={() => downloadBlob(f.code, safeEntryName(f.path).split('/').pop() || 'file.txt', 'text/plain;charset=utf-8')}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px]" style={{ background: 'rgba(255,255,255,0.06)', color: '#e6edf3', ...mono }} title="Скачать файл"><FileCode2 size={11} />{f.path}</button>))}
+      </div>
+    </div>
+  );
+};
+
 const Answer = ({ text }: { text: string }) => {
   const parts = text.split(/```([^\n`]*)\n?([\s\S]*?)```/g);
-  const out: React.ReactNode[] = [];
+  const out: React.ReactNode[] = []; const updated: { path: string; code: string }[] = [];
   for (let i = 0; i < parts.length; i += 3) {
     if (parts[i]?.trim()) out.push(<Prose key={i} text={parts[i].trim()} />);
-    if (i + 2 < parts.length) out.push(<CodeBlock key={`c${i}`} lang={parts[i + 1].trim()} code={parts[i + 2].replace(/\n$/, '')} />);
+    if (i + 2 < parts.length) {
+      const info = parseInfo(parts[i + 1]); const code = parts[i + 2].replace(/\n$/, '');
+      if (info.path) { const k = updated.findIndex((u) => u.path === info.path); if (k >= 0) updated[k] = { path: info.path, code }; else updated.push({ path: info.path, code }); }
+      out.push(<CodeBlock key={`c${i}`} lang={info.lang} code={code} path={info.path} />);
+    }
   }
+  out.push(<UpdatedFiles key="upd" files={updated} />);
   return <>{out}</>;
 };
 
@@ -145,11 +177,46 @@ export const CodeWorkspace = ({ chatId, setChatId, messages, setMessages, maxCha
   const [help, setHelp] = useState(false);
   const [drag, setDrag] = useState(false);
   const [sel, setSel] = useState(0);
+  const [phase, setPhase] = useState<'code' | 'wave'>('code');
+  const [repoOpen, setRepoOpen] = useState(false);
+  const [repoIn, setRepoIn] = useState({ repo: '', ref: '', token: '' });
+  const [tree, setTree] = useState<RepoTree | null>(null);
+  const [pick, setPick] = useState<Set<string>>(new Set());
+  const [q, setQ] = useState('');
+  const [rbusy, setRbusy] = useState(false);
+  const [rerr, setRerr] = useState('');
   const abort = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const history = useRef<string[]>([]);
   const histPos = useRef(-1);
+
+  // Облачко на пустом экране: «пишет код» секунду, потом машет, и так по кругу.
+  useEffect(() => {
+    const t = window.setTimeout(() => setPhase((p) => (p === 'code' ? 'wave' : 'code')), phase === 'code' ? 1000 : 2200);
+    return () => window.clearTimeout(t);
+  }, [phase]);
+
+  const openRepo = async () => {
+    setRbusy(true); setRerr('');
+    const r = await apiRepoTree({ repo: repoIn.repo.trim(), ref: repoIn.ref.trim() || undefined, token: repoIn.token.trim() || undefined });
+    setRbusy(false);
+    if (!r.ok || !r.data) { setRerr(REPO_ERR[r.error ?? ''] ?? 'Не удалось открыть репозиторий'); return; }
+    setTree(r.data); setPick(new Set()); setQ('');
+  };
+  const togglePick = (path: string) => setPick((cur) => { const n = new Set(cur); if (n.has(path)) n.delete(path); else if (n.size < 12) n.add(path); return n; });
+  const addPicked = async () => {
+    if (!tree || !pick.size) return;
+    setRbusy(true); setRerr('');
+    const r = await apiRepoFiles({ repo: tree.repo, ref: tree.ref, paths: [...pick], token: repoIn.token.trim() || undefined });
+    setRbusy(false);
+    if (!r.ok || !r.data) { setRerr(REPO_ERR[r.error ?? ''] ?? 'Не удалось получить файлы'); return; }
+    const add = r.data.files.map((f) => ({ name: f.path, text: f.text }));
+    setFiles((cur) => { const m = new Map(cur.map((f) => [f.name, f])); add.forEach((f) => m.set(f.name, f)); return [...m.values()].slice(0, 12); });
+    const skipped = r.data.skipped.length ? `Пропущено: ${r.data.skipped.map((x) => x.path).join(', ')}` : '';
+    setErr(skipped); setRepoOpen(false); setPick(new Set());
+  };
+  const shown = useMemo(() => (tree ? tree.files.filter((f) => !q || f.path.toLowerCase().includes(q.toLowerCase())).slice(0, 200) : []), [tree, q]);
 
   useEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, busy, help]);
   useEffect(() => {
@@ -241,14 +308,41 @@ export const CodeWorkspace = ({ chatId, setChatId, messages, setMessages, maxCha
         <span className="flex items-center gap-2"><Terminal size={13} style={{ color: '#a855f7' }} /><span style={{ color: '#e6edf3' }}>sky-code</span><span style={{ opacity: .6 }}>{chatId ? `· диалог ${chatId.slice(0, 6)}` : '· новый диалог'}</span></span>
         <span className="flex items-center gap-1">
           {messages.length > 0 && <button type="button" onClick={exportMd} aria-label="Скачать диалог" className="grid h-6 w-6 place-items-center rounded-md hover:bg-white/10"><FileDown size={13} /></button>}
+          <button type="button" onClick={() => setRepoOpen((o) => !o)} aria-label="Репозиторий GitHub" title="Репозиторий GitHub" className="grid h-6 w-6 place-items-center rounded-md hover:bg-white/10" style={{ color: repoOpen ? '#d8b4fe' : undefined }}><GitBranch size={14} /></button>
           <button type="button" onClick={() => { onNew(); setFiles([]); }} aria-label="Новый диалог" className="grid h-6 w-6 place-items-center rounded-md hover:bg-white/10"><Plus size={14} /></button>
         </span>
       </div>
+
+      {repoOpen && (
+        <div className="shrink-0 space-y-2 px-4 py-3" style={{ background: '#0f141a', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <p className="text-[11px] leading-relaxed" style={{ color: '#8b97a6' }}>Репозиторий GitHub, только чтение. Выберите файлы (до 12) — они попадут в запрос. Изменённые файлы помощник отдаёт целиком, их можно скачать и закоммитить самим: в репозиторий Sky ничего не записывает. Токен нужен только для закрытых репозиториев, он уходит в GitHub и нигде не сохраняется.</p>
+          <div className="grid gap-2 sm:grid-cols-[1fr_140px_1fr_auto]">
+            <input value={repoIn.repo} onChange={(e) => setRepoIn({ ...repoIn, repo: e.target.value })} placeholder="владелец/репозиторий или ссылка" aria-label="Репозиторий" className="rounded-lg px-2.5 py-1.5 text-[12px] outline-none" style={{ background: '#10151c', border: '1px solid rgba(255,255,255,0.1)', color: '#e6edf3', ...mono }} />
+            <input value={repoIn.ref} onChange={(e) => setRepoIn({ ...repoIn, ref: e.target.value })} placeholder="ветка (по умолчанию)" aria-label="Ветка" className="rounded-lg px-2.5 py-1.5 text-[12px] outline-none" style={{ background: '#10151c', border: '1px solid rgba(255,255,255,0.1)', color: '#e6edf3', ...mono }} />
+            <input value={repoIn.token} onChange={(e) => setRepoIn({ ...repoIn, token: e.target.value })} type="password" autoComplete="off" placeholder="токен GitHub (для закрытых)" aria-label="Токен GitHub" className="rounded-lg px-2.5 py-1.5 text-[12px] outline-none" style={{ background: '#10151c', border: '1px solid rgba(255,255,255,0.1)', color: '#e6edf3', ...mono }} />
+            <button type="button" disabled={rbusy || !repoIn.repo.trim()} onClick={() => void openRepo()} className="rounded-lg px-3 py-1.5 text-[12px] font-bold disabled:opacity-50" style={{ background: '#a855f7', color: '#fff' }}>{rbusy && !tree ? 'Открываю…' : 'Открыть'}</button>
+          </div>
+          {rerr && <p className="text-[11px]" style={{ color: '#fb7185' }}>{rerr}</p>}
+          {tree && (
+            <div className="space-y-1.5">
+              <p className="text-[11px]" style={{ color: '#9aa4b2', ...mono }} translate="no">{`${tree.repo} @ ${tree.ref}${tree.private ? ' · закрытый' : ''}${tree.truncated ? ' · список обрезан' : ''} · файлов: ${tree.files.length}`}</p>
+              <div className="flex items-center gap-2"><Search size={12} style={{ color: '#8b97a6' }} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по пути" aria-label="Поиск файла" className="flex-1 rounded-lg px-2.5 py-1 text-[12px] outline-none" style={{ background: '#10151c', border: '1px solid rgba(255,255,255,0.1)', color: '#e6edf3', ...mono }} />
+                <button type="button" disabled={!pick.size || rbusy} onClick={() => void addPicked()} className="rounded-lg px-3 py-1 text-[12px] font-bold disabled:opacity-50" style={{ background: '#a855f7', color: '#fff' }}>{rbusy ? 'Загружаю…' : `Добавить (${pick.size})`}</button></div>
+              <div className="max-h-44 overflow-y-auto rounded-lg" style={{ background: '#0b0f14', border: '1px solid rgba(255,255,255,0.07)' }}>
+                {shown.map((f) => (
+                  <label key={f.path} className="flex cursor-pointer items-center gap-2 px-2.5 py-1 text-[12px] hover:bg-white/5" style={{ color: '#e6edf3', ...mono }} translate="no">
+                    <input type="checkbox" checked={pick.has(f.path)} onChange={() => togglePick(f.path)} /><span className="min-w-0 flex-1 truncate">{f.path}</span><span style={{ color: '#6b7684' }}>{fmtSize(f.size)}</span>
+                  </label>))}
+                {!shown.length && <p className="px-3 py-3 text-[11px]" style={{ color: '#8b97a6' }}>Ничего не найдено</p>}
+              </div>
+            </div>)}
+        </div>)}
 
       <div ref={listRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4" style={{ scrollbarWidth: 'none' }}>
         {!configured && <p className="rounded-xl px-3 py-2 text-xs" style={{ background: 'rgba(245,158,11,.1)', color: '#f5b84b' }}>Модель не подключена на этом сервере.</p>}
         {empty && !help && (
           <div className="mx-auto max-w-xl pt-4">
+            <div className="mb-2"><CloudBuddy mood={phase} size={104} /></div>
             <pre className="text-[11px] leading-tight" style={{ color: '#a855f7', ...mono }}>{`  ┌─┐┬┌─┬ ┬  ┌─┐┌─┐┌┬┐┌─┐\n  └─┐├┴┐└┬┘  │  │ │ ││├┤ \n  └─┘┴ ┴ ┴   └─┘└─┘─┴┘└─┘`}</pre>
             <p className="mt-3 text-sm font-semibold" style={{ color: '#e6edf3' }}>Что будем делать с кодом?</p>
             <p className="mt-1 text-xs leading-relaxed" style={{ color: '#8b97a6' }}>Прикрепите файлы (кнопка со скрепкой или перетащите сюда) и напишите задачу, либо начните с «/». Код здесь не запускается — помощник пишет и разбирает его, но не проверяет выполнением.</p>

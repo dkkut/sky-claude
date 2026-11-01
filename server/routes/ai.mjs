@@ -21,6 +21,7 @@
  *   · модель, адрес поставщика и системную часть запроса — их задаёт
  *     владелец сервера, не клиент.
  */
+import { repoTree, repoFiles } from './../airepo.mjs';
 import { json, parseBody, requireProfile } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import { hasPrime } from './../skyid.mjs';
@@ -231,6 +232,15 @@ export const aiRoutes = async (req, res, url) => {
   /* Мелкие помощники в переписке: перевод, правка, варианты ответа.
      Один ход без истории — то же, что человек набрал бы в чате сам,
      поэтому и бесплатно. Prime здесь не спрашивается. */
+  /* Чтение репозиториев GitHub для режима «Код» (только чтение; токен человека не хранится). Режим «Код» — Prime. */
+  if (req.method === 'POST' && (path === '/api/ai/repo/tree' || path === '/api/ai/repo/files')) {
+    if (!rateLimit(`ai:repo:${me}`, 20)) return json(res, 429, { error: 'rate_limited' });
+    if (!(await hasPrime(me))) return json(res, 402, { error: 'prime_required' });
+    const body = await parseBody(req);
+    const r = path.endsWith('/tree') ? await repoTree(body ?? {}) : await repoFiles(body ?? {});
+    return json(res, r.error ? (r.error === 'repo_not_found' || r.error === 'repo_not_found_or_private' || r.error === 'ref_not_found' ? 404 : r.error === 'bad_token' ? 401 : r.error === 'github_rate_limited' ? 429 : r.error === 'github_unreachable' || r.error === 'github_error' ? 502 : 400) : 200, r);
+  }
+
   if (req.method === 'POST' && path === '/api/ai/ask') {
     if (!rateLimit(`ai:chat:${me}`, CHAT_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     const body = await parseBody(req);
