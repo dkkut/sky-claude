@@ -40,12 +40,6 @@ services:
       RECOVERY_DOMAIN: ${RECOVERY_DOMAIN:-recovery.invalid.local}
       # Резервный адрес API для приложений: тот же вхост, что и DOMAIN, сертификат — SAN основного (scripts/add-reserve-domain.sh).
       RESERVE_DOMAIN: ${RESERVE_DOMAIN:-reserve.invalid.local}
-      MIN_APP_BUILD: ${MIN_APP_BUILD:-0}
-      GUARD_SECRET: ${GUARD_SECRET:-}
-      SANDBOX_SECRET: ${SANDBOX_SECRET:-}
-      OPS_SECRET: ${OPS_SECRET:-}
-      SANDBOX_MAX_AGE_H: ${SANDBOX_MAX_AGE_H:-24}
-      BUILD_ID: ${BUILD_ID:-}
     volumes:
       - certbot-certs:/etc/letsencrypt:ro
       - certbot-webroot:/var/www/certbot:ro
@@ -75,6 +69,13 @@ services:
     environment:
       NODE_ENV:              production
       API_PORT:              "8080"
+      # Секреты хостовых служб и версия сборки — ТОЛЬКО у api (раньше по ошибке стояли у web, и api их не видел).
+      MIN_APP_BUILD:         ${MIN_APP_BUILD:-0}
+      GUARD_SECRET:          ${GUARD_SECRET:-}
+      SANDBOX_SECRET:        ${SANDBOX_SECRET:-}
+      OPS_SECRET:            ${OPS_SECRET:-}
+      SANDBOX_MAX_AGE_H:     ${SANDBOX_MAX_AGE_H:-24}
+      BUILD_ID:              ${BUILD_ID:-}
       SIGNAL_PORT:           "8081"
       JWT_SECRET:            ${JWT_SECRET:-}
       REFRESH_TOKEN_SECRET:  ${REFRESH_TOKEN_SECRET:-}
