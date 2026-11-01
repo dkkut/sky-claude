@@ -28,6 +28,7 @@
  */
 import { query } from './db.mjs';
 import { config } from './config.mjs';
+import { track } from './mapsusage.mjs';
 
 const MAX_ADDRESS = 300;
 /** Сколько держать разобранный адрес. Дома не переезжают. */
@@ -128,7 +129,11 @@ export const geocode = async (rawAddress, requested) => {
      заказу. */
   let net = false;
   for (const who of order) {
-    const r = who === 'yandex' ? await geocodeYandex(address) : await geocodeGoogle(address);
+    const t = await track(who, 'geocode', async () => {
+      const v = who === 'yandex' ? await geocodeYandex(address) : await geocodeGoogle(address);
+      return { ok: v !== 'net', code: v === 'net' ? 'net' : undefined, value: v };
+    });
+    const r = t.ok ? t.value : 'net';
     if (r === 'net') { net = true; continue; }
     if (r) { await remember(address, r.lat, r.lng, true); return { ...r, cached: false }; }
   }
@@ -160,6 +165,17 @@ const geocodeYandex = async (address) => {
     const [lng, lat] = String(pos ?? '').split(' ').map(Number);
     return Number.isFinite(lat) && Number.isFinite(lng) && isRealPoint(lat, lng) ? { lat, lng } : null;
   } catch { return 'net'; }
+};
+
+/** Проверка ключа живым запросом (без кэша): { ok, code }. Адрес — общеизвестный, данных людей нет. */
+export const probeGeocode = async (provider) => {
+  const addr = 'Москва, Красная площадь';
+  if (provider === 'yandex' ? !config.yandexGeocoderKey : !config.mapsKey) return { ok: false, code: 'no_key' };
+  const t = await track(provider, 'geocode', async () => {
+    const v = provider === 'yandex' ? await geocodeYandex(addr) : await geocodeGoogle(addr);
+    return { ok: v !== 'net' && v !== null, code: v === 'net' ? 'net' : v === null ? 'denied_or_empty' : undefined, value: v };
+  });
+  return { ok: t.ok, code: t.code };
 };
 
 const remember = async (address, lat, lng, found) => {
@@ -322,17 +338,19 @@ export const yandexStaticUrl = ({ points = [], center, width = 640, height = 360
 export const fetchStaticMap = async (opts) => {
   const url = staticMapUrl(opts);
   if (!url) return null;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) return null;
-    const type = res.headers.get('content-type') ?? '';
-    /* Google при отказе отвечает текстом. Отдавать его в браузер как
-       картинку нельзя — и незачем: там будет наша же ошибка. */
-    if (!type.startsWith('image/')) return null;
-    return { mime: type.split(';')[0], body: Buffer.from(await res.arrayBuffer()) };
-  } catch {
-    return null;
-  }
+  const who = /yandex/i.test(new URL(url).hostname) ? 'yandex' : 'google';
+  const t = await track(who, 'static', async () => {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) return { ok: false, code: `http_${res.status}` };
+      const type = res.headers.get('content-type') ?? '';
+      /* Google при отказе отвечает текстом. Отдавать его в браузер как
+         картинку нельзя — и незачем: там будет наша же ошибка. */
+      if (!type.startsWith('image/')) return { ok: false, code: 'not_image' };
+      return { ok: true, value: { mime: type.split(';')[0], body: Buffer.from(await res.arrayBuffer()) } };
+    } catch { return { ok: false, code: 'net' }; }
+  });
+  return t.ok ? t.value : null;
 };
 
 
@@ -378,12 +396,17 @@ export const computeRoute = async ({ origin, stops, vehicle } = {}) => {
   });
   if (mid.length) params.set('waypoints', `optimize:true|${mid.map((p) => `${round(p.lat)},${round(p.lng)}`).join('|')}`);
 
-  let data;
-  try {
-    const res = await fetch(`${config.mapsBaseUrl}/maps/api/directions/json?${params}`, { signal: AbortSignal.timeout(12_000) });
-    if (!res.ok) return { error: 'route_failed' };
-    data = await res.json();
-  } catch { return { error: 'route_failed' }; }
+  const got = await track('google', 'route', async () => {
+    try {
+      const res = await fetch(`${config.mapsBaseUrl}/maps/api/directions/json?${params}`, { signal: AbortSignal.timeout(12_000) });
+      if (!res.ok) return { ok: false, code: `http_${res.status}` };
+      const j = await res.json();
+      return { ok: j?.status === 'OK' || j?.status === 'ZERO_RESULTS', code: j?.status, value: j };
+    } catch { return { ok: false, code: 'net' }; }
+  });
+  if (got.code === 'feature_off' || got.code === 'limit') return { error: 'route_unavailable', reason: got.code };
+  if (!got.value) return { error: 'route_failed' };
+  const data = got.value;
 
   if (data?.status === 'REQUEST_DENIED') return { error: 'route_service_denied' };
   if (data?.status !== 'OK' || !data.routes?.[0]) return { error: data?.status === 'ZERO_RESULTS' ? 'no_route' : 'route_failed' };
@@ -418,12 +441,17 @@ export const computeOrdered = async ({ origin, points, vehicle } = {}) => {
     mode: TRAVEL_MODES[vehicle] ?? 'driving', language: 'ru', units: 'metric', key: config.mapsKey,
   });
   if (mid.length) params.set('waypoints', mid.map((p) => `via:${round(p.lat)},${round(p.lng)}`.replace('via:', '')).join('|'));
-  let data;
-  try {
-    const res = await fetch(`${config.mapsBaseUrl}/maps/api/directions/json?${params}`, { signal: AbortSignal.timeout(12_000) });
-    if (!res.ok) return { error: 'route_failed' };
-    data = await res.json();
-  } catch { return { error: 'route_failed' }; }
+  const got = await track('google', 'route', async () => {
+    try {
+      const res = await fetch(`${config.mapsBaseUrl}/maps/api/directions/json?${params}`, { signal: AbortSignal.timeout(12_000) });
+      if (!res.ok) return { ok: false, code: `http_${res.status}` };
+      const j = await res.json();
+      return { ok: j?.status === 'OK' || j?.status === 'ZERO_RESULTS', code: j?.status, value: j };
+    } catch { return { ok: false, code: 'net' }; }
+  });
+  if (got.code === 'feature_off' || got.code === 'limit') return { error: 'route_unavailable', reason: got.code };
+  if (!got.value) return { error: 'route_failed' };
+  const data = got.value;
   if (data?.status === 'REQUEST_DENIED') return { error: 'route_service_denied' };
   if (data?.status !== 'OK' || !data.routes?.[0]) return { error: data?.status === 'ZERO_RESULTS' ? 'no_route' : 'route_failed' };
   const route = data.routes[0];
