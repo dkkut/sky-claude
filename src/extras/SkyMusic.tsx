@@ -1799,6 +1799,9 @@ interface SkyFullPlayerProps {
 }
 
 /* ── MiniBar — bottom mini player ─────────────────────────── */
+/** Треки, проигранные из поиска и т. п., которых нет в загруженном каталоге (до перезагрузки страницы). */
+const outsideCatalog = new Map<string, Track>();
+
 const MiniBar = ({ track, playing, cur, dur, liked, onPlay, onNext, onOpen, onLike, onHide, bottom = 0 }: {
   /** Отступ снизу: мини-плеер стоит НАД нижней панелью Sky Music, а не перекрывает её. */
   bottom?: number;
@@ -2713,10 +2716,13 @@ export const SkyMusic = () => {
 
   // Восстанавливаем очередь как Track[] из глобального стора —
   // работает даже сразу после возврата на вкладку (стор пережил размонтирование)
+  const [extraVer, setExtraVer] = useState(0);
   const queue: Track[] = useMemo(() => {
     if (gItem?.kind !== 'music' || !gItem.queue) return [];
-    return gItem.queue.map(q => tracks.find(t => t.id === q.id)).filter((t): t is Track => !!t);
-  }, [gItem?.queue, gItem?.kind, tracks]);
+    // Треки из поиска и со страниц исполнителей могут не входить в загруженный каталог — берём их из памяти проигранных.
+    const byId = new Map(tracks.map(t => [t.id, t]));
+    return gItem.queue.map(q => byId.get(q.id) ?? outsideCatalog.get(q.id)).filter((t): t is Track => !!t);
+  }, [gItem?.queue, gItem?.kind, tracks, extraVer]);
   const qIdx = gItem?.kind === 'music' ? (gItem.qIdx ?? 0) : 0;
   const cur = queue[qIdx] ?? null;
 
@@ -2726,6 +2732,11 @@ export const SkyMusic = () => {
 
   const playFrom = useCallback((t: Track, pool: Track[]) => {
     const i = pool.findIndex(x => x.id === t.id); if (i < 0) return;
+    // Результаты поиска приходят с сервера и могут быть за пределами каталога на устройстве: запоминаем их, иначе очередь теряла такие треки и окно плеера не появлялось.
+    const known = new Set(useMusicStore.getState().tracks.map(x => x.id));
+    let added = false;
+    for (const p of pool) if (!known.has(p.id) && !outsideCatalog.has(p.id)) { outsideCatalog.set(p.id, p); added = true; }
+    if (added) setExtraVer(v => v + 1);
     // Текст подтянется отдельно, с сервера: класть в плеер выдуманные
     // строки только ради заполненного экрана — нечестно.
     const lyrics = t.syncedLyrics && t.syncedLyrics.length > 0 ? t.syncedLyrics : [];
