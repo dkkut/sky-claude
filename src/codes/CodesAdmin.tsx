@@ -230,7 +230,7 @@ const CreateForm = ({ onDone }: { onDone: () => void }) => {
       {step === 'code' && (
         <div className="rounded-xl p-3" style={{ background: 'var(--bg-l1)', border: '1px solid var(--accent)' }}>
           <p className="text-[11px]" style={{ color: 'var(--t3)' }}>
-            {method === 'app' ? 'Введите код из приложения двухэтапной защиты.' : 'Код отправлен на вашу почту. Он действует пять минут.'}
+            {'Введите код из приложения-аутентификатора.'}
           </p>
           <div className="mt-2 flex gap-2">
             <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric"

@@ -40,7 +40,7 @@ export const TaxTab = () => {
 
 const OverviewView = ({ ov, reload }: { ov: Overview; reload: () => void }) => {
   const c = ov.counts; const [code, setCode] = useState(''); const [asked, setAsked] = useState(false);
-  const ask = async () => { const r = await apiCall('/api/admin/tax/step-up', { method: 'POST', body: JSON.stringify({ purpose: 'tax_live' }) }); if (r.ok) { setAsked(true); flash('Код отправлен'); } else flash('Не удалось запросить код'); };
+  const ask = async () => { const r = await apiCall('/api/admin/tax/step-up', { method: 'POST', body: JSON.stringify({ purpose: 'tax_live' }) }); if (r.ok) { setAsked(true); flash('Введите код из приложения-аутентификатора'); } else flash('Не удалось запросить код'); };
   const setLive = async (liveEnabled: boolean) => {
     if (liveEnabled && !window.confirm('Включить реальную передачу сведений и формирование чеков для всей экосистемы? Делайте это только после проверки юридической схемы, подключения официальных интеграций и тестирования.')) return;
     const r = await apiCall('/api/admin/tax/global', { method: 'PUT', body: JSON.stringify({ liveEnabled, stepUpCode: code.trim() }) });

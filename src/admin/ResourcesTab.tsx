@@ -56,7 +56,7 @@ export const ResourcesTab = () => {
   const begin = async () => {
     const r = await apiCall<D>(`${A}/step-up`, { method: 'POST', body: '{}' });
     if (!r.ok) { flash(errText(r.error)); return; }
-    setMethod(String(r.data?.method ?? 'email')); setCode(''); setAsk(true);
+    setMethod(String(r.data?.method ?? 'app')); setCode(''); setAsk(true);
   };
   const save = async () => {
     const r = await apiCall<D>(`${A}/settings`, { method: 'PUT', body: JSON.stringify({ settings: f, stepUpCode: code }) });
@@ -156,7 +156,7 @@ export const ResourcesTab = () => {
         {d.canEdit && !ask && <button type="button" onClick={() => void begin()} className="rounded-xl px-3 py-1.5 text-xs font-bold" style={{ background: C.acc, color: '#fff' }}>Сохранить (с подтверждением личности)</button>}
         {ask && (
           <div className="space-y-2">
-            <p className="text-[11px]" style={{ color: C.t3 }}>Введите код подтверждения ({method === 'app' ? 'из аутентификатора' : 'с почты'}).</p>
+            <p className="text-[11px]" style={{ color: C.t3 }}>Введите код подтверждения ({'Введите код из приложения-аутентификатора.'}).</p>
             <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))} inputMode="numeric" aria-label="Код подтверждения" className="w-40 rounded-lg px-2 py-1 text-sm outline-none" style={field} />
             <div className="flex gap-2">
               <button type="button" disabled={code.length < 6} onClick={() => void save()} className="rounded-xl px-3 py-1.5 text-xs font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>Подтвердить</button>

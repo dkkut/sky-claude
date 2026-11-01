@@ -240,7 +240,7 @@ const Settings = ({ scope, info, sky, adminView, reload }: { scope: string; info
     setBusy(true); const r = await apiCall(`/api/tax/${path}`, { method, body: JSON.stringify({ scope, ...body }) }); setBusy(false);
     if (r.ok) { flash(msg); setCode(''); setAsked(false); reload(); return true; } flash(errText(r.error)); return false;
   };
-  const askCode = async (purpose: 'tax_settings' | 'tax_live') => { const r = await apiCall('/api/admin/tax/step-up', { method: 'POST', body: JSON.stringify({ purpose }) }); if (r.ok) { setAsked(true); flash('Код отправлен'); } else flash(errText(r.error)); };
+  const askCode = async (purpose: 'tax_settings' | 'tax_live') => { const r = await apiCall('/api/admin/tax/step-up', { method: 'POST', body: JSON.stringify({ purpose }) }); if (r.ok) { setAsked(true); flash('Введите код из приложения-аутентификатора'); } else flash(errText(r.error)); };
   const needsCode = (purpose: 'tax_settings' | 'tax_live') => (
     <div className="flex flex-wrap items-end gap-2">{sky && <Btn onClick={() => askCode(purpose)}>{asked ? 'Выслать код ещё раз' : 'Запросить код подтверждения'}</Btn>}<Field label={sky ? 'Код подтверждения' : 'Код аутентификатора (если включён)'}><input className={inp} style={fld} value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" /></Field></div>
   );

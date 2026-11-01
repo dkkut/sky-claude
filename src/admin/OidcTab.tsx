@@ -35,11 +35,11 @@ const ALL_SCOPES = [['openid', 'openid (обязательно)'], ['profile', '
 /** Подтверждение личности для опасного действия: запрашивает код, потом выполняет действие с ним. */
 const Guard = ({ title, onRun, onCancel }: { title: string; onRun: (code: string) => Promise<void>; onCancel: () => void }) => {
   const [method, setMethod] = useState<string | null>(null); const [code, setCode] = useState(''); const [busy, setBusy] = useState(false);
-  useEffect(() => { void call('POST', '/step-up', {}).then((r) => { if (r.ok) setMethod(String(r.data.method ?? 'email')); else flash(errText(r.error)); }); }, []);
+  useEffect(() => { void call('POST', '/step-up', {}).then((r) => { if (r.ok) setMethod(String(r.data.method ?? 'app')); else flash(errText(r.error)); }); }, []);
   return (
     <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.acc}` }}>
       <p className="flex items-center gap-1.5 text-xs font-bold" style={{ color: C.t1 }}><KeyRound size={13} style={{ color: C.acc }} />{title}: подтвердите личность</p>
-      {method && <p className="text-[11px]" style={{ color: C.t3 }}>{method === 'app' ? 'Код из приложения двухэтапной защиты.' : 'Код отправлен на почту, действует пять минут.'}</p>}
+      {method && <p className="text-[11px]" style={{ color: C.t3 }}>{'Введите код из приложения-аутентификатора.'}</p>}
       <div className="flex gap-2">
         <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="000000" aria-label="Код подтверждения" className="flex-1 rounded-lg px-3 py-2 text-sm tracking-[0.3em]" style={field} />
         <Btn disabled={code.length < 6 || busy} onClick={() => { setBusy(true); void onRun(code).finally(() => setBusy(false)); }}>Подтвердить</Btn>

@@ -32,7 +32,7 @@ export const FxRatesTab = () => {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  const ask = async () => { const r = await apiCall(`${A}/step-up`, { method: 'POST', body: '{}' }); if (r.ok) { setAsked(true); flash('Код отправлен'); } else flash(ERR[r.error ?? ''] ?? 'Не удалось запросить код'); };
+  const ask = async () => { const r = await apiCall(`${A}/step-up`, { method: 'POST', body: '{}' }); if (r.ok) { setAsked(true); flash('Введите код из приложения-аутентификатора'); } else flash(ERR[r.error ?? ''] ?? 'Не удалось запросить код'); };
   const save = async () => {
     if (!rows) return;
     const list = rows.filter((x) => edit[x.code]?.rate || edit[x.code]?.source === 'cbr').map((x) => ({ currency: x.code, source: edit[x.code].source, rateRub: Number((edit[x.code].rate || '0').replace(',', '.')), spreadPct: Number(edit[x.code].spread.replace(',', '.')), enabled: edit[x.code].enabled }));

@@ -134,7 +134,7 @@ export const PrimeTab = () => {
   const guarded = async (fn: (code: string) => Promise<void>) => {
     const r = await apiCall<Data>(`${A}/step-up`, { method: 'POST', body: '{}' });
     if (!r.ok) { flash(errText(r.error)); return; }
-    setMethod(String(r.data?.method ?? 'email')); setCode(''); setAsk(() => fn);
+    setMethod(String(r.data?.method ?? 'app')); setCode(''); setAsk(() => fn);
   };
   const write = async (method2: string, path: string, body: Data, ok: string, c: string) => {
     const r = await apiCall<Data>(`${A}${path}`, { method: method2, body: JSON.stringify({ ...body, stepUpCode: c }) });
@@ -152,7 +152,7 @@ export const PrimeTab = () => {
       {ask && (
         <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.acc}` }}>
           <p className="flex items-center gap-1.5 text-xs font-bold" style={{ color: C.t1 }}><KeyRound size={13} style={{ color: C.acc }} />Подтвердите личность</p>
-          <p className="text-[11px]" style={{ color: C.t3 }}>{method === 'app' ? 'Код из приложения двухэтапной защиты.' : 'Код отправлен на почту, действует пять минут.'}</p>
+          <p className="text-[11px]" style={{ color: C.t3 }}>{'Введите код из приложения-аутентификатора.'}</p>
           <div className="flex gap-2">
             <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="000000" aria-label="Код подтверждения" className="flex-1 rounded-lg px-3 py-2 text-sm tracking-[0.3em]" style={field} />
             <Btn disabled={code.length < 6} onClick={() => { const f = ask; const c = code; setAsk(null); void f(c); }}>Подтвердить</Btn>

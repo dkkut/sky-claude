@@ -43,7 +43,7 @@ export const SshTab = () => {
   const begin = async (what: 'pause' | 'resume' | 'access/grant' | 'access/revoke') => {
     const r = await apiCall<Data>(`${A}/step-up`, { method: 'POST', body: JSON.stringify({}) });
     if (!r.ok) { flash(errText(r.error)); return; }
-    setMethod(String(r.data?.method ?? 'email')); setCode(''); setAsk(what);
+    setMethod(String(r.data?.method ?? 'app')); setCode(''); setAsk(what);
   };
   const run = async () => {
     if (!ask) return; setBusy(true);
@@ -76,7 +76,7 @@ export const SshTab = () => {
         {ask && !ask.startsWith('access/') && (
           <div className="mt-3 space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.acc}` }}>
             <p className="flex items-center gap-1.5 text-xs font-bold" style={{ color: C.t1 }}><KeyRound size={13} style={{ color: C.acc }} />Подтвердите личность</p>
-            <p className="text-[11px]" style={{ color: C.t3 }}>{method === 'app' ? 'Код из приложения двухэтапной защиты.' : 'Код отправлен на почту, действует пять минут.'}</p>
+            <p className="text-[11px]" style={{ color: C.t3 }}>{'Введите код из приложения-аутентификатора.'}</p>
             {ask === 'pause' && <input value={reason} onChange={(e) => setReason(e.target.value.slice(0, 160))} placeholder="Причина (видна в журнале)" aria-label="Причина" className="w-full rounded-lg px-3 py-2 text-sm" style={field} />}
             <div className="flex gap-2">
               <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="000000" aria-label="Код подтверждения" className="flex-1 rounded-lg px-3 py-2 text-sm tracking-[0.3em]" style={field} />
@@ -111,7 +111,7 @@ export const SshTab = () => {
         {ask?.startsWith('access/') && (
           <div className="mt-3 space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.acc}` }}>
             <p className="flex items-center gap-1.5 text-xs font-bold" style={{ color: C.t1 }}><KeyRound size={13} style={{ color: C.acc }} />Подтвердите личность</p>
-            <p className="text-[11px]" style={{ color: C.t3 }}>{method === 'app' ? 'Код из приложения двухэтапной защиты.' : 'Код отправлен на почту, действует пять минут.'}</p>
+            <p className="text-[11px]" style={{ color: C.t3 }}>{'Введите код из приложения-аутентификатора.'}</p>
             {ask === 'pause' && <input value={reason} onChange={(e) => setReason(e.target.value.slice(0, 160))} placeholder="Причина (видна в журнале)" aria-label="Причина" className="w-full rounded-lg px-3 py-2 text-sm" style={field} />}
             <div className="flex gap-2">
               <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="000000" aria-label="Код подтверждения" className="flex-1 rounded-lg px-3 py-2 text-sm tracking-[0.3em]" style={field} />

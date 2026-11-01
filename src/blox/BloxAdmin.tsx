@@ -43,7 +43,7 @@ const StepUp = ({ onCode, onCancel, begin = A.apiAdminStepUp }: { onCode: (c: st
     <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.acc}` }}>
       <p className="text-[12px] font-bold" style={{ color: C.t1 }}>Подтвердите личность</p>
       {busy && <Wait />}{err && <p className="text-[11px]" style={{ color: C.red }}>{err}</p>}
-      {method && <p className="text-[11px]" style={{ color: C.t3 }}>{method === 'app' ? 'Код из приложения двухэтапной защиты.' : 'Код отправлен на почту, действует пять минут.'}</p>}
+      {method && <p className="text-[11px]" style={{ color: C.t3 }}>{'Введите код из приложения-аутентификатора.'}</p>}
       <div className="flex gap-2">
         <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="000000" className="flex-1 rounded-lg px-3 py-2 text-[13px] tracking-widest" style={inputStyle} />
         <button type="button" disabled={code.length < 6} onClick={() => onCode(code)} className="rounded-lg px-4 py-2 text-[12px] font-bold text-white disabled:opacity-40" style={{ background: C.acc }}>Подтвердить</button>

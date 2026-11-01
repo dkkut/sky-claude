@@ -1099,9 +1099,7 @@ const StepUp = ({ purpose, onCode, onCancel }: {
       {method && (
         <>
           <p className="mt-1 text-[11px]" style={{ color: C.t3 }}>
-            {method === 'app'
-              ? 'Введите код из приложения двухэтапной защиты.'
-              : 'Код отправлен на вашу почту. Он действует пять минут.'}
+            {'Введите код из приложения-аутентификатора.'}
           </p>
           <div className="mt-2 flex gap-2">
             <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}

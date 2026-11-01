@@ -110,7 +110,7 @@ export const SandboxTab = () => {
   const askCode = async () => {
     const r = await apiCall<Data>(`${A}/step-up`, { method: 'POST', body: '{}' });
     if (!r.ok) { flash(errText(r.error)); return false; }
-    setMethod(String(r.data?.method ?? 'email')); setCode(''); return true;
+    setMethod(String(r.data?.method ?? 'app')); setCode(''); return true;
   };
   const openPublish = async (b: Data) => { if (await askCode()) { setPub(b); setAccept(false); setNote(''); } };
   const openRollback = async (p: Data) => { if (await askCode()) { setRb(p); setConfirm(false); } };

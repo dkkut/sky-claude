@@ -161,7 +161,7 @@ export const RecoverySection = () => {
 
       {step && (
         <Box icon={<KeyRound size={16} />} title="Подтвердите личность">
-          <p className="text-xs" style={{ color: 'var(--t2)' }}>{stepMethod === 'app' ? 'Введите код из приложения-аутентификатора.' : 'Код отправлен на почту, действует пять минут.'}</p>
+          <p className="text-xs" style={{ color: 'var(--t2)' }}>{'Введите код из приложения-аутентификатора.'}</p>
           <In inputMode="numeric" placeholder="000000" aria-label="Код подтверждения личности" value={stepCode} onChange={(e) => setStepCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
           <Btn disabled={busy || stepCode.length < 6} onClick={() => void runStep()}>Подтвердить</Btn><Btn tone="plain" onClick={() => setStep(null)}>Отмена</Btn>
         </Box>

@@ -51,12 +51,12 @@ const Badge = ({ ok, children }: { ok: boolean | null; children: ReactNode }) =>
 const StepUp = ({ onCode, onCancel }: { onCode: (c: string) => void; onCancel: () => void }) => {
   const [method, setMethod] = useState<string | null>(null);
   const [code, setCode] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(true);
-  useEffect(() => { let live = true; void call('POST', '/step-up', {}).then((r) => { if (!live) return; setBusy(false); if (r.ok) setMethod(String(r.data.method ?? 'email')); else setErr(errText(r.error)); }); return () => { live = false; }; }, []);
+  useEffect(() => { let live = true; void call('POST', '/step-up', {}).then((r) => { if (!live) return; setBusy(false); if (r.ok) setMethod(String(r.data.method ?? 'app')); else setErr(errText(r.error)); }); return () => { live = false; }; }, []);
   return (
     <div className="space-y-2 rounded-xl p-3" style={{ background: C.l2, border: `1px solid ${C.acc}` }}>
       <p className="flex items-center gap-1.5 text-xs font-bold" style={{ color: C.t1 }}><KeyRound size={13} style={{ color: C.acc }} />Подтвердите личность</p>
       {busy && <Wait />}{err && <p className="text-[11px]" style={{ color: C.red }}>{err}</p>}
-      {method && <p className="text-[11px]" style={{ color: C.t3 }}>{method === 'app' ? 'Код из приложения двухэтапной защиты.' : 'Код отправлен на почту, действует пять минут.'}</p>}
+      {method && <p className="text-[11px]" style={{ color: C.t3 }}>{'Введите код из приложения-аутентификатора.'}</p>}
       <div className="flex gap-2">
         <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="000000" aria-label="Код подтверждения" className="flex-1 rounded-lg px-3 py-2 text-sm tracking-widest outline-none" style={field} />
         <Btn disabled={code.length < 6} onClick={() => onCode(code)}>Подтвердить</Btn>

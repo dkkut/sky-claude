@@ -24,7 +24,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : 'б
 
 const CodeBox = ({ code, setCode }: { code: string; setCode: (v: string) => void }) => {
   const [sent, setSent] = useState(false);
-  const ask = async () => { const r = await apiCall('/api/admin/global-blocks/step-up', { method: 'POST', body: '{}' }); if (!r.ok) { flash(errText(r.error, r.reason)); return; } setSent(true); flash('Код отправлен'); };
+  const ask = async () => { const r = await apiCall('/api/admin/global-blocks/step-up', { method: 'POST', body: '{}' }); if (!r.ok) { flash(errText(r.error, r.reason)); return; } setSent(true); flash('Введите код из приложения-аутентификатора'); };
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button type="button" onClick={() => void ask()} className="rounded-full px-3 py-2 text-xs font-bold" style={{ background: C.l2, color: C.t1 }}>{sent ? 'Запросить код ещё раз' : 'Запросить код'}</button>

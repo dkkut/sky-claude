@@ -118,7 +118,7 @@ export const OpsTab = () => {
   const ask = async (kind: string, params: Data, title: string) => {
     const r = await apiCall<Data>(`${A}/step-up`, { method: 'POST', body: JSON.stringify({}) });
     if (!r.ok) { flash(errText(r.error)); return; }
-    setMethod(String(r.data?.method ?? 'email')); setCode(''); setPending({ kind, params, title });
+    setMethod(String(r.data?.method ?? 'app')); setCode(''); setPending({ kind, params, title });
   };
   const confirm = async () => {
     if (!pending) return; setBusy(true);
@@ -195,7 +195,7 @@ export const OpsTab = () => {
       {pending && (
         <div className="space-y-2 rounded-2xl p-4" style={{ background: C.l1, border: `1px solid ${C.acc}` }}>
           <p className="text-sm font-bold" style={{ color: C.t1 }}>Подтвердите: {pending.title}</p>
-          <p className="text-xs" style={{ color: C.t3 }}>{method === 'totp' ? 'Введите код из приложения-аутентификатора.' : 'Код отправлен на подтверждённую почту.'} Он одноразовый и действует несколько минут.</p>
+          <p className="text-xs" style={{ color: C.t3 }}>{'Введите код из приложения-аутентификатора.'} Он одноразовый и действует несколько минут.</p>
           <div className="flex flex-wrap items-center gap-2">
             <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))} inputMode="numeric" placeholder="Код" className="w-32 rounded-lg px-3 py-2 text-sm outline-none" style={field} />
             <Btn disabled={busy || code.length < 6} onClick={() => void confirm()}>{busy ? <Loader2 size={14} className="animate-spin" /> : null}Подтвердить и запустить</Btn>

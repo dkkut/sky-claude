@@ -77,7 +77,7 @@ export const StorageVerifyPage = () => {
               <p>Запрос закроется сам: <b>{fmt(info.expiresAt)}</b>. Молчание — это отказ.</p>
             </div>
             <p className="text-[12.5px]" style={{ color: 'var(--t2)' }}>
-              {method === 'app' ? 'Введите шестизначный код из приложения-аутентификатора.' : 'Код подтверждения отправлен на почту владельца. Введите его.'} Само открытие этой страницы ничего не подтвердило.
+              {'Введите код из приложения-аутентификатора.'} Само открытие этой страницы ничего не подтвердило.
             </p>
             <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoFocus placeholder="000000" aria-label="Код подтверждения"
               className="w-full rounded-full px-5 py-3 text-center text-[20px] font-bold tracking-[0.4em] outline-none" style={{ background: 'var(--bg-l2)', color: 'var(--t1)', border: '1px solid var(--border)' }}
