@@ -102,13 +102,79 @@ ${hero}${body}
 ${footerHtml}
 </table></td></tr></table></body></html>`;
 
-export const heroBlock = ({ title, subtitle, accent, vars, kind, imageUrl }) => {
+/** Оформления шапки письма. Только цвета и расположение — без картинок, поэтому читаются и при отключённых изображениях. */
+export const HERO_STYLES = {
+  gradient: { name: 'Sky (индиго)', bg: '#4f46e5', grad: 'linear-gradient(135deg,#4f6ef7 0%,#8b5cf6 100%)', fg: '#ffffff', sub: 'rgba(255,255,255,0.88)', acc: 'rgba(255,255,255,0.78)' },
+  aurora: { name: 'Северное сияние', bg: '#0ea5e9', grad: 'linear-gradient(135deg,#06b6d4 0%,#3b82f6 50%,#8b5cf6 100%)', fg: '#ffffff', sub: 'rgba(255,255,255,0.9)', acc: 'rgba(255,255,255,0.8)' },
+  sunset: { name: 'Закат', bg: '#f43f5e', grad: 'linear-gradient(135deg,#f97316 0%,#f43f5e 55%,#d946ef 100%)', fg: '#ffffff', sub: 'rgba(255,255,255,0.92)', acc: 'rgba(255,255,255,0.85)' },
+  night: { name: 'Ночь', bg: '#1d1a4d', grad: 'linear-gradient(135deg,#0f0c29 0%,#302b63 55%,#4a2fa8 100%)', fg: '#ffffff', sub: 'rgba(255,255,255,0.82)', acc: '#c4b5fd' },
+  mint: { name: 'Мята', bg: '#10b981', grad: 'linear-gradient(135deg,#059669 0%,#10b981 55%,#2dd4bf 100%)', fg: '#ffffff', sub: 'rgba(255,255,255,0.92)', acc: 'rgba(255,255,255,0.85)' },
+  rose: { name: 'Розовый', bg: '#ec4899', grad: 'linear-gradient(135deg,#ec4899 0%,#a855f7 100%)', fg: '#ffffff', sub: 'rgba(255,255,255,0.92)', acc: 'rgba(255,255,255,0.85)' },
+  gold: { name: 'Золото', bg: '#f59e0b', grad: 'linear-gradient(135deg,#f59e0b 0%,#fbbf24 60%,#fde68a 100%)', fg: '#3b2a05', sub: 'rgba(59,42,5,0.82)', acc: 'rgba(59,42,5,0.7)' },
+  light: { name: 'Светлая', bg: '#eef0ff', grad: '', fg: '#14142b', sub: '#6b6f8a', acc: '#4f46e5', bar: '#4f46e5' },
+  ink: { name: 'Графит', bg: '#14142b', grad: '', fg: '#ffffff', sub: 'rgba(255,255,255,0.78)', acc: '#a5b4fc' },
+};
+export const heroStyleIds = Object.keys(HERO_STYLES);
+
+export const heroBlock = ({ title, subtitle, accent, vars, kind, imageUrl, style = 'gradient', emoji = '', align = 'left' }) => {
   const img = safeUrl(imageUrl);
-  return `<tr><td class="pad" bgcolor="${BRAND.indigo}" style="${GRAD}padding:34px 36px 32px;">
-<div style="font:600 12px/16px ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:rgba(255,255,255,0.78);padding-bottom:12px;">${esc(accent)}</div>
-<div class="h1" style="font:800 30px/36px ${FONT};letter-spacing:-0.6px;color:#ffffff;">${subst(title, vars, kind, 'html')}</div>
-${subtitle ? `<div style="padding-top:10px;font:400 16px/24px ${FONT};color:rgba(255,255,255,0.88);">${subst(subtitle, vars, kind, 'html')}</div>` : ''}
+  const st = HERO_STYLES[style] ?? HERO_STYLES.gradient;
+  const al = align === 'center' ? 'center' : 'left';
+  const bgCss = `background:${st.bg};${st.grad ? `background-image:${st.grad};` : ''}`;
+  const em = clean(emoji, 8).trim();
+  return `<tr><td class="pad" align="${al}" bgcolor="${st.bg}" style="${bgCss}padding:34px 36px 32px;text-align:${al};${st.bar ? `border-top:4px solid ${st.bar};` : ''}">
+${em ? `<div style="font:400 44px/52px ${FONT};padding-bottom:10px;">${esc(em)}</div>` : ''}<div style="font:600 12px/16px ${FONT};letter-spacing:1.4px;text-transform:uppercase;color:${st.acc};padding-bottom:12px;">${esc(accent)}</div>
+<div class="h1" style="font:800 30px/36px ${FONT};letter-spacing:-0.6px;color:${st.fg};">${subst(title, vars, kind, 'html')}</div>
+${subtitle ? `<div style="padding-top:10px;font:400 16px/24px ${FONT};color:${st.sub};">${subst(subtitle, vars, kind, 'html')}</div>` : ''}
 </td></tr>${img ? `<tr><td style="padding:0;line-height:0;"><img src="${esc(img)}" width="600" alt="" style="display:block;width:100%;max-width:600px;height:auto;border:0;"></td></tr>` : ''}`;
+};
+
+/* ─── своё оформление (HTML-файл администратора) ─── */
+const OK_TAGS = new Set(['html','head','body','meta','title','style','table','thead','tbody','tfoot','tr','td','th','div','span','p','a','img','br','hr','h1','h2','h3','h4','h5','h6','ul','ol','li','strong','b','em','i','u','s','small','center','font','blockquote','sup','sub','colgroup','col']);
+const OK_ATTR = new Set(['style','class','id','width','height','align','valign','bgcolor','color','face','size','border','cellpadding','cellspacing','colspan','rowspan','href','src','alt','title','target','role','lang','dir','name','content','charset','background']);
+const urlOk = (v) => /^\s*(\{\{[a-z_]+\}\}|https:\/\/|mailto:|tel:|#|data:image\/(png|jpe?g|gif|webp);base64,)/i.test(v) && !/[\u0000-\u001f]/.test(v);
+/** Убирает из чужого HTML всё, что выполняет код или тянет внешнее: скрипты, формы, фреймы, обработчики on*, javascript:, @import, не-https ссылки. */
+export const sanitizeEmailHtml = (input) => {
+  let h = clean(input, 300_000);
+  h = h.replace(/<!--[\s\S]*?-->/g, '').replace(/<\s*(script|iframe|object|embed|form|noscript|template|svg|math|link|base)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '').replace(/<\s*(script|iframe|object|embed|form|link|base|input|button|textarea|select)\b[^>]*>/gi, '');
+  h = h.replace(/<\s*style\b([^>]*)>([\s\S]*?)<\s*\/\s*style\s*>/gi, (_m, _a, css) => {
+    const safe = String(css).replace(/@import[^;]*;?/gi, '').replace(/expression\s*\([^)]*\)/gi, '').replace(/behavior\s*:[^;}]*/gi, '').replace(/-moz-binding\s*:[^;}]*/gi, '').replace(/url\(\s*(['"]?)(?!https:|data:image\/)[^)]*\)/gi, 'none').replace(/javascript:/gi, '');
+    return `<style>${safe}</style>`;
+  });
+  return h.replace(/<\s*(\/?)\s*([a-zA-Z][\w:-]*)([^>]*)>/g, (_m, slash, name, rest) => {
+    const tag = name.toLowerCase();
+    if (!OK_TAGS.has(tag)) return '';
+    if (slash) return `</${tag}>`;
+    const attrs = [];
+    for (const m of rest.matchAll(/([\w:-]+)\s*(?:=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g)) {
+      const k = m[1].toLowerCase(); const v = (m[3] ?? m[4] ?? m[5] ?? '').trim();
+      if (k.startsWith('on') || !OK_ATTR.has(k)) continue;
+      if (['href', 'src', 'background'].includes(k) && !urlOk(v)) continue;
+      if (k === 'style') { if (/(expression|javascript:|behavior|binding|@import)/i.test(v) || /url\(\s*['"]?(?!https:|data:image\/)/i.test(v)) continue; }
+      if (tag === 'meta' && k === 'content' && /refresh|url=/i.test(v)) continue;
+      attrs.push(`${k}="${v.replace(/"/g, '&quot;')}"`);
+    }
+    if (tag === 'a') attrs.push('target="_blank"', 'rel="noopener noreferrer"');
+    return `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>`;
+  });
+};
+
+/** Подстановка в своё оформление: {{title}}, {{subtitle}}, {{label}}, {{emoji}}, {{username}}, {{body}}, {{cards}}, {{cta}}, {{cta_url}}, {{cta_label}}, {{image_url}}, {{app_url}}, {{unsubscribe_url}}, {{footer}}. */
+export const renderCustomHtml = (design, parts) => {
+  const clear = sanitizeEmailHtml(design);
+  const footBlock = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"><tr><td align="center" style="padding:18px 12px;">${parts.footerInner}</td></tr></table>`;
+  const map = { ...parts.html, footer: footBlock };
+  let out = clear.replace(/\{\{([a-z_]+)\}\}/g, (m, k) => {
+    if (k in map) return map[k];
+    return '';
+  });
+  const hasFooter = /\{\{footer\}\}/.test(clear);
+  if (!hasFooter) {
+    // Отписка и пояснение «почему вы получили письмо» обязательны для рекламного письма — добавляем их всегда, если дизайн не поставил футер сам.
+    out = /<\/body>/i.test(out) ? out.replace(/<\/body>/i, `${footBlock}</body>`) : `${out}${footBlock}`;
+  }
+  if (!/<html/i.test(out)) out = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${out}</body></html>`;
+  return out;
 };
 
 export const bodyWrap = (inner) => `<tr><td class="pad" style="padding:30px 36px 34px;">${inner}</td></tr>`;
@@ -124,12 +190,24 @@ export const renderNewsletter = (content = {}, ctx = {}) => {
   const preheader = clean(ctx.preheader || c.subtitle || '', 200);
   const cta = c.cta?.label && safeUrl(c.cta.url) ? button(clean(c.cta.label, 60), c.cta.url, { kind: 'primary' }) : '';
   const hello = vars.username ? `<p style="margin:0 0 16px;font:600 15px/24px ${FONT};color:${BRAND.ink};">Здравствуйте, ${esc(vars.username)}!</p>` : '';
-  const html = shell({
-    title, preheader,
-    hero: heroBlock({ title, subtitle: c.subtitle, accent: clean(c.label, 40) || 'Новости Sky', vars, kind: 'newsletter', imageUrl: c.imageUrl }),
-    body: bodyWrap(`${hello}${paragraphs(c.body, vars, 'newsletter')}${cardsBlock(c.cards, vars, 'newsletter')}${cta ? `<div style="padding-top:6px;">${cta}</div>` : ''}`),
-    footerHtml: footer({ links: linksOf(ctx), marketing: true, unsubUrl: ctx.unsubUrl, messageId: ctx.messageId || '—' }),
-  });
+  const accent = clean(c.label, 40) || 'Новости Sky';
+  const bodyHtml = `${paragraphs(c.body, vars, 'newsletter')}`;
+  const cardsHtml = cardsBlock(c.cards, vars, 'newsletter');
+  const html = c.customHtml
+    ? renderCustomHtml(c.customHtml, {
+      html: {
+        title: subst(title, vars, 'newsletter', 'html'), subtitle: subst(c.subtitle ?? '', vars, 'newsletter', 'html'), label: esc(accent), emoji: esc(clean(c.emoji, 8)),
+        username: esc(vars.username), body: bodyHtml, cards: cardsHtml, cta, cta_url: esc(safeUrl(c.cta?.url) || '#'), cta_label: esc(clean(c.cta?.label, 60)),
+        image_url: esc(safeUrl(c.imageUrl) || ''), app_url: esc(safeUrl(ctx.appUrl) || '#'), unsubscribe_url: esc(safeUrl(ctx.unsubUrl) || '#'), footer: '',
+      },
+      footerInner: `<div style="font:400 12px/18px ${FONT};color:${BRAND.muted};">Вы получили это письмо, потому что подписаны на новости Sky. ${ctx.unsubUrl ? `<a href="${esc(safeUrl(ctx.unsubUrl))}" target="_blank" style="color:${BRAND.muted};text-decoration:underline;">Отписаться от рекламных рассылок</a>.` : ''}<br>№ ${esc(ctx.messageId || '—')}</div>`,
+    })
+    : shell({
+      title, preheader,
+      hero: heroBlock({ title, subtitle: c.subtitle, accent, vars, kind: 'newsletter', imageUrl: c.imageUrl, style: c.hero, emoji: c.emoji, align: c.align }),
+      body: bodyWrap(`${hello}${bodyHtml}${cardsHtml}${cta ? `<div style="padding-top:6px;">${cta}</div>` : ''}`),
+      footerHtml: footer({ links: linksOf(ctx), marketing: true, unsubUrl: ctx.unsubUrl, messageId: ctx.messageId || '—' }),
+    });
   const text = [
     title, c.subtitle ? clean(c.subtitle) : '', '',
     vars.username ? `Здравствуйте, ${vars.username}!` : '',

@@ -21,7 +21,7 @@ const ERR: Record<string, string> = {
 };
 const errText = (e?: string) => ERR[e ?? ''] ?? `Не получилось${e ? ` (${e})` : ''}`;
 
-interface Content { label?: string; title?: string; subtitle?: string; body?: string; imageUrl?: string; cards?: { title: string; text: string }[]; cta?: { label: string; url: string } }
+interface Content { label?: string; title?: string; subtitle?: string; body?: string; imageUrl?: string; cards?: { title: string; text: string }[]; cta?: { label: string; url: string }; hero?: string; emoji?: string; align?: 'left' | 'center'; customHtml?: string }
 interface Tpl { key: string; kind: 'newsletter' | 'prime' | 'money'; name: string; subject: string; preheader: string; content: Content; enabled: boolean; auto: boolean }
 interface Settings { timezone: string; primeAuto: boolean; moneyAuto: boolean; perMinute: number; supportUrl: string; privacyUrl: string; ofdTaxRatePct: number; ofdIncludeTopups: boolean }
 interface Overview { settings: Settings; sender: { mode: string; from: string; configured: boolean }; templates: Tpl[]; stats: Stats; canFinance: boolean; isOwner: boolean }
@@ -60,6 +60,83 @@ const Preview = ({ tplKey, content, subject, preheader }: { tplKey: string; cont
   );
 };
 
+/* ─── оформление шапки и своё оформление ─── */
+const HEROES: { id: string; name: string; bg: string }[] = [
+  { id: 'gradient', name: 'Sky', bg: 'linear-gradient(135deg,#4f6ef7,#8b5cf6)' }, { id: 'aurora', name: 'Северное сияние', bg: 'linear-gradient(135deg,#06b6d4,#3b82f6,#8b5cf6)' },
+  { id: 'sunset', name: 'Закат', bg: 'linear-gradient(135deg,#f97316,#f43f5e,#d946ef)' }, { id: 'night', name: 'Ночь', bg: 'linear-gradient(135deg,#0f0c29,#302b63,#4a2fa8)' },
+  { id: 'mint', name: 'Мята', bg: 'linear-gradient(135deg,#059669,#10b981,#2dd4bf)' }, { id: 'rose', name: 'Розовый', bg: 'linear-gradient(135deg,#ec4899,#a855f7)' },
+  { id: 'gold', name: 'Золото', bg: 'linear-gradient(135deg,#f59e0b,#fde68a)' }, { id: 'light', name: 'Светлая', bg: '#eef0ff' }, { id: 'ink', name: 'Графит', bg: '#14142b' },
+];
+const SAMPLE_DESIGN = `<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;background:#f3f5fb;font-family:Arial,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#ffffff;border-radius:18px;overflow:hidden;">
+<tr><td align="center" bgcolor="#4f46e5" style="background:#4f46e5;padding:32px 24px;color:#ffffff;">
+<div style="font-size:42px;">{{emoji}}</div>
+<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;">{{label}}</div>
+<h1 style="margin:8px 0 0;font-size:28px;">{{title}}</h1>
+<p style="margin:8px 0 0;font-size:16px;">{{subtitle}}</p>
+</td></tr>
+<tr><td style="padding:28px 32px;color:#14142b;font-size:15px;line-height:24px;">
+<p>Здравствуйте, {{username}}!</p>
+{{body}}
+{{cards}}
+{{cta}}
+</td></tr>
+</table>
+{{footer}}
+</td></tr></table></body></html>`;
+
+const DesignEditor = ({ c, set }: { c: Content; set: (c: Content) => void }) => {
+  const [err, setErr] = useState('');
+  const upload = async (f: File | undefined) => {
+    setErr('');
+    if (!f) return;
+    if (f.size > 200_000) { setErr('Файл больше 200 КБ'); return; }
+    const t = await f.text();
+    if (!/<[a-z!][\s\S]*>/i.test(t)) { setErr('В файле нет HTML-разметки'); return; }
+    set({ ...c, customHtml: t });
+  };
+  const download = () => { const u = URL.createObjectURL(new Blob([SAMPLE_DESIGN], { type: 'text/html' })); const a = document.createElement('a'); a.href = u; a.download = 'sky-email-design.html'; a.click(); setTimeout(() => URL.revokeObjectURL(u), 2000); };
+  return (
+    <div className="space-y-3 rounded-2xl p-3" style={card}>
+      <div>
+        <span className="mb-1.5 block text-xs font-semibold" style={{ color: C.t2 }}>Оформление шапки</span>
+        <div className="flex flex-wrap gap-2">
+          {HEROES.map((h) => (
+            <button key={h.id} type="button" onClick={() => set({ ...c, hero: h.id })} aria-pressed={(c.hero ?? 'gradient') === h.id} title={h.name}
+              className="rounded-xl px-2 py-1.5 text-[11px] font-semibold"
+              style={{ background: h.bg, color: ['light', 'gold'].includes(h.id) ? '#14142b' : '#fff', border: (c.hero ?? 'gradient') === h.id ? `2px solid ${C.acc}` : `1px solid ${C.brd}`, minWidth: 64 }}>{h.name}</button>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Field label="Эмодзи над заголовком (необязательно)"><input className={inp} style={fld} maxLength={8} value={c.emoji ?? ''} onChange={(e) => set({ ...c, emoji: e.target.value })} placeholder="🎉" /></Field>
+        <Field label="Выравнивание шапки">
+          <div className="flex gap-2">
+            <Btn onClick={() => set({ ...c, align: 'left' })} kind={(c.align ?? 'left') === 'left' ? 'main' : 'ghost'}>Слева</Btn>
+            <Btn onClick={() => set({ ...c, align: 'center' })} kind={c.align === 'center' ? 'main' : 'ghost'}>По центру</Btn>
+          </div>
+        </Field>
+      </div>
+      <div className="space-y-1.5 border-t pt-3" style={{ borderColor: C.brd }}>
+        <span className="block text-xs font-semibold" style={{ color: C.t2 }}>Своё оформление письма (HTML-файл)</span>
+        <p className="text-xs" style={{ color: C.t3 }}>{`Загрузите готовую вёрстку письма. Подставляются места: {{title}} {{subtitle}} {{label}} {{emoji}} {{username}} {{body}} {{cards}} {{cta}} {{cta_url}} {{cta_label}} {{image_url}} {{app_url}} {{unsubscribe_url}} {{footer}}. Скрипты, формы, фреймы, обработчики событий, http-ссылки и внешние стили удаляются автоматически. Если в файле нет {{footer}}, ссылка «Отписаться» добавится внизу сама: в рекламном письме она обязательна. Размер до 200 КБ; письмо должно быть сверстано таблицами и со стилями внутри тегов — так оно одинаково выглядит в почтовых клиентах.`}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold" style={{ background: C.acc, color: '#fff' }}>
+            <input type="file" accept=".html,.htm,text/html" className="hidden" onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ''; }} />Загрузить HTML
+          </label>
+          <Btn onClick={download}>Скачать пример</Btn>
+          {c.customHtml && <Btn onClick={() => set({ ...c, customHtml: '' })}>Вернуть стандартное оформление</Btn>}
+        </div>
+        {c.customHtml && <p className="text-xs" style={{ color: C.t2 }}>{`Загружено своё оформление (${Math.round(c.customHtml.length / 1024)} КБ). Оформление шапки выше в этом случае не используется.`}</p>}
+        {err && <p className="text-xs" style={{ color: '#ef4444' }}>{err}</p>}
+      </div>
+    </div>
+  );
+};
+
 /* ─── редактор содержимого ─── */
 const ContentEditor = ({ c, set, vars }: { c: Content; set: (c: Content) => void; vars?: string[] }) => {
   const cards = [c.cards?.[0] ?? { title: '', text: '' }, c.cards?.[1] ?? { title: '', text: '' }];
@@ -71,6 +148,7 @@ const ContentEditor = ({ c, set, vars }: { c: Content; set: (c: Content) => void
         <Field label="Заголовок"><input className={inp} style={fld} value={c.title ?? ''} onChange={(e) => set({ ...c, title: e.target.value })} /></Field>
       </div>
       <Field label="Подзаголовок"><input className={inp} style={fld} value={c.subtitle ?? ''} onChange={(e) => set({ ...c, subtitle: e.target.value })} /></Field>
+      {!vars && <DesignEditor c={c} set={set} />}
       <Field label="Текст (пустая строка — новый абзац; строки с «•» — список)"><textarea className={inp} style={fld} rows={6} value={c.body ?? ''} onChange={(e) => set({ ...c, body: e.target.value })} /></Field>
       {vars && <p className="text-xs" style={{ color: C.t3 }}>Переменные: {vars.map((v) => `{${v}}`).join(' ')}</p>}
       <Field label="Картинка-баннер (https, необязательно)"><input className={inp} style={fld} value={c.imageUrl ?? ''} onChange={(e) => set({ ...c, imageUrl: e.target.value })} placeholder="https://" /></Field>

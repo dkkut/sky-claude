@@ -11,7 +11,7 @@ import { config } from './config.mjs';
 import { macOf } from './crypto.mjs';
 import { sendEmail } from './notify.mjs';
 import { PRIME_PRICES } from './skyid.mjs';
-import { DEFAULT_TEMPLATES, renderNewsletter, renderPrime, renderMoney, VARIABLES, clean, safeUrl } from './emailtpl.mjs';
+import { DEFAULT_TEMPLATES, renderNewsletter, renderPrime, renderMoney, VARIABLES, clean, safeUrl, heroStyleIds } from './emailtpl.mjs';
 
 const nid = (p) => `${p}-${crypto.randomBytes(10).toString('hex')}`;
 const KINDS = ['newsletter', 'prime', 'money'];
@@ -90,7 +90,11 @@ const cleanContent = (c = {}) => {
     imageUrl: c.imageUrl ? safeUrl(c.imageUrl) : '',
     cards: (Array.isArray(c.cards) ? c.cards : []).slice(0, 4).map((x) => ({ title: clean(x?.title, 80), text: clean(x?.text, 240) })).filter((x) => x.title || x.text),
     cta: { label: clean(c.cta?.label, 60), url: c.cta?.url ? safeUrl(c.cta.url) : '' },
+    hero: heroStyleIds.includes(c.hero) ? c.hero : 'gradient', emoji: clean(c.emoji, 8).trim(), align: c.align === 'center' ? 'center' : 'left',
+    // Своё оформление: HTML-файл администратора. Хранится как загружен (до 200 КБ), а чистится при КАЖДОЙ отрисовке — см. sanitizeEmailHtml.
+    customHtml: typeof c.customHtml === 'string' ? clean(c.customHtml, 200_000) : '',
   };
+  if (c.customHtml && String(c.customHtml).length > 200_000) return { error: 'design_too_big' };
   if (c.imageUrl && !o.imageUrl) return { error: 'bad_url' };
   if (c.cta?.url && !o.cta.url) return { error: 'bad_url' };
   return o;
