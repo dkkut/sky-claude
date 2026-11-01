@@ -308,7 +308,7 @@ const refreshOnce = (): Promise<boolean> => {
     catch { return false; }   // нет сети — сессия не потеряна, токен оставляем
     const data = await readJson(res);
     // Токен сбрасываем только если сервер ПРЯМО сказал, что сессии нет; сбой сети/сервера (5xx, 429) — не выход.
-    if (!res.ok) { if (res.status === 401 || res.status === 403) setAccessToken(null); return false; }
+    if (!res.ok) { if (res.status === 401) setAccessToken(null); return false; }
     setAccessToken(data.accessToken ?? null);
     if (NATIVE_APP && typeof data.refreshToken === 'string') {
       await nativeStore.set(refreshKeyFor(REFRESH_TOKEN_KEY), data.refreshToken);
@@ -539,7 +539,7 @@ export const apiRefreshSession = async (): Promise<Reply<SkySession & { accessTo
   const body = NATIVE_APP ? { refreshToken: (await nativeStore.get(refreshKeyFor(REFRESH_TOKEN_KEY))) ?? '' } : {};
   const res = await post<SkySession & { accessToken: string }>('/api/auth/refresh', body);
   if (res.ok && res.data) setAccessToken(res.data.accessToken ?? null);
-  else setAccessToken(null);
+  else if (res.status === 401) setAccessToken(null);   // 403/423/5xx/сеть — не «сессии нет»
   return res;
 };
 

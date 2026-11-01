@@ -485,8 +485,10 @@ export const authRoutes = async (req, res, url) => {
       if (rv === cur) {
         outRv = cur + 1;
         await sessionStore.patch(payload.sid, { rv: outRv, prevRv: cur, rvAt: Date.now() });
-      } else if (stored.prevRv != null && rv === Number(stored.prevRv)
-                 && Date.now() - Number(stored.rvAt ?? 0) < config.refreshReuseGraceSec * 1000) {
+      } else if (rv > cur
+                 || (rv < cur && rv >= cur - 5 && Date.now() - Number(stored.rvAt ?? 0) < config.refreshReuseGraceSec * 1000)) {
+        // Токен чуть устарел (потерянные ответы, параллельные вкладки, убитое приложение) — сессию не гасим,
+        // выдаём актуальный. Гасится только токен, отставший больше чем на 5 обновлений, или после окна.
         outRv = cur;
       } else {
         await sessionStore.revoke(payload.sid);
