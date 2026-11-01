@@ -24,6 +24,7 @@ export const MODULES = [
   { key: 'music', label: 'Музыка', group: 'Сервисы Sky' },
   { key: 'movies', label: 'Кино', group: 'Сервисы Sky' },
   { key: 'partners', label: 'Партнёры', group: 'Сервисы Sky' },
+  { key: 'friendsmap', label: 'Карта друзей', group: 'Сервисы Sky' },
   { key: 'tv', label: 'ТВ', group: 'Сервисы Sky' },
   { key: 'podcasts', label: 'Подкасты', group: 'Сервисы Sky' },
   { key: 'books', label: 'Книги', group: 'Сервисы Sky' },
