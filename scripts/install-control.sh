@@ -62,6 +62,6 @@ ProtectHome=true
 [Install]
 WantedBy=multi-user.target
 U
-systemctl daemon-reload; systemctl enable --now sky-control; sleep 1; systemctl is-active sky-control
-echo "Страница: ${DOMAIN_NAME:+https://$DOMAIN_NAME:$PORT}${DOMAIN_NAME:-http$([ -n "$CERT" ] && echo s)://$BIND:$PORT}  (удалённо — ssh -L $PORT:127.0.0.1:$PORT <сервер>, если без TLS)"
+systemctl daemon-reload; systemctl enable sky-control; systemctl restart sky-control; sleep 1; systemctl is-active sky-control
+echo "Страница: $([ -n "$DOMAIN_NAME" ] && echo "https://$DOMAIN_NAME:$PORT" || echo "http$([ -n "$CERT" ] && echo s)://$BIND:$PORT")  (удалённо — ssh -L $PORT:127.0.0.1:$PORT <сервер>, если без TLS)"
 echo "Для аварийного пользователя обновите: bash scripts/rescue-access.sh --install (добавит команды defense-off, unlock, gate-pause, ssh-start, control-token…)."
