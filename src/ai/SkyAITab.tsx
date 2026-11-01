@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Loader2, Crown, MessageCircle, FileText, Image as ImageIcon,
   Mic, Plus, Trash2, Pencil, PanelLeft, X, AlertTriangle, Paperclip, Send,
-  Code2, Copy, Check,
+  Code2, Copy, Check, ArrowUp,
 } from 'lucide-react';
 import {
   apiAiChats, apiAiReadChat, apiAiRenameChat, apiAiDeleteChat,
@@ -33,8 +33,8 @@ import { CodeWorkspace } from './CodeWorkspace';
 import { readTextFiles, filesPrompt, type CtxFile } from './attachFiles';
 
 const C = {
-  accent: '#a855f7',
-  border: 'rgba(168,85,247,0.3)',
+  accent: '#d97757',
+  border: 'rgba(217,119,87,0.35)',
 };
 
 type Mode = 'chat' | 'code' | 'summary' | 'file' | 'image' | 'transcribe';
@@ -85,25 +85,30 @@ const RichText = ({ text, user }: { text: string; user: boolean }) => {
   return <>{out}</>;
 };
 
+const SERIF = 'ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif';
+
+/** Знак Sky AI: тёплая «искра», как у Claude, без градиента. */
+const Mark = ({ size = 18 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ color: C.accent }}>
+    <g stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+      <path d="M12 2.5v6M12 15.5v6M2.5 12h6M15.5 12h6M5.3 5.3l4.2 4.2M14.5 14.5l4.2 4.2M18.7 5.3l-4.2 4.2M9.5 14.5l-4.2 4.2"/>
+    </g>
+  </svg>
+);
+
 const Bubble = ({ m }: { m: AiMessage }) => (
-  <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-    {m.role === 'assistant' && (
-      <div className="grid h-7 w-7 place-items-center rounded-xl shrink-0 mr-2 mt-0.5"
-        style={{ background: 'linear-gradient(135deg,#a855f7,#6366f1)' }}>
-        <Sparkles size={12} className="text-white"/>
-      </div>
-    )}
-    <div className="max-w-[78%] rounded-2xl px-4 py-2.5"
-      style={{
-        background: m.role === 'user' ? 'var(--accent)' : 'var(--bg-l2)',
-        border: m.role === 'assistant' ? '1px solid var(--border)' : 'none',
-      }}>
+  <div className={`mx-auto flex w-full max-w-[760px] ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+    {m.role === 'assistant' && <div className="mr-3 mt-1 shrink-0"><Mark size={20}/></div>}
+    <div className={m.role === 'user' ? 'max-w-[82%] rounded-[20px] px-4 py-2.5' : 'min-w-0 flex-1 py-0.5'}
+      style={m.role === 'user' ? { background: 'var(--bg-l2)', border: '1px solid var(--border)' } : undefined}>
       {m.tool !== 'chat' && (
-        <p className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: C.accent }}>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: C.accent }}>
           {m.tool === 'summary' ? 'Пересказ' : m.tool === 'file' ? 'Документ' : m.tool === 'image' ? 'Изображение' : 'Расшифровка'}
         </p>
       )}
-      <RichText text={m.text} user={m.role === 'user'}/>
+      <div style={{ lineHeight: 1.7, fontSize: 15 }}>
+        <RichText text={m.text} user={false}/>
+      </div>
     </div>
   </div>
 );
@@ -286,11 +291,11 @@ export const SkyAITab = () => {
             <PanelLeft size={15}/>
           </button>
           <div className="grid h-8 w-8 place-items-center rounded-xl shrink-0"
-            style={{ background: 'linear-gradient(135deg,#a855f7,#6366f1)' }}>
-            <Sparkles size={16} className="text-white"/>
+            style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
+            <Mark size={17}/>
           </div>
           <div className="min-w-0">
-            <h2 className="text-sm font-black truncate" style={{ color: 'var(--t1)' }}>Sky AI</h2>
+            <h2 className="text-[15px] font-semibold truncate" style={{ color: 'var(--t1)', fontFamily: SERIF }}>Sky AI</h2>
             <p className="text-[10px] truncate" style={{ color: 'var(--t3)' }}>
               {state?.configured === false
                 ? 'не настроен на этом сервере'
@@ -313,9 +318,9 @@ export const SkyAITab = () => {
             data-ai-mode={m.key}
             className="shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold"
             style={{
-              background: mode === m.key ? 'rgba(168,85,247,0.15)' : 'var(--bg-l2)',
+              background: mode === m.key ? 'rgba(217,119,87,0.14)' : 'transparent',
               color: mode === m.key ? C.accent : 'var(--t3)',
-              border: `1px solid ${mode === m.key ? C.border : 'var(--border)'}`,
+              border: `1px solid ${mode === m.key ? C.border : 'transparent'}`,
               cursor: 'pointer',
             }}>
             <span className="inline-flex items-center gap-1.5">
@@ -378,7 +383,7 @@ export const SkyAITab = () => {
             maxChars={state?.maxMessageChars ?? 16000} usage={usage} configured={state?.configured !== false}
             onSent={() => void loadChats()} onNew={newChat} />
         )}
-        <div ref={listRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4" style={{ scrollbarWidth: 'none', display: codeLocked || codeMode ? 'none' : undefined }}>
+        <div ref={listRef} className="flex-1 overflow-y-auto px-5 py-6 space-y-6" style={{ scrollbarWidth: 'none', display: codeLocked || codeMode ? 'none' : undefined }}>
           {state?.configured === false && (
             <div className="rounded-2xl px-4 py-3 flex items-start gap-2"
               style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
@@ -393,13 +398,26 @@ export const SkyAITab = () => {
           {chatLike && (
             <>
               {messages.length === 0 && (
-                <div className="grid place-items-center h-full py-12 text-center">
-                  <div>
-                    <Sparkles size={46} className="mx-auto mb-4" style={{ color: C.accent }}/>
-                    <p className="text-sm font-bold mb-1" style={{ color: 'var(--t1)' }}>{current.label}</p>
-                    <p className="text-xs" style={{ color: 'var(--t3)' }}>{current.desc}</p>
+                <div className="mx-auto grid h-full w-full max-w-[640px] place-items-center py-10 text-center">
+                  <div className="w-full">
+                    <div className="mx-auto mb-5 w-fit"><Mark size={44}/></div>
+                    <h3 className="mb-2 text-[28px] leading-tight" style={{ color: 'var(--t1)', fontFamily: SERIF, fontWeight: 500 }}>
+                      Чем помочь сегодня?
+                    </h3>
+                    <p className="text-sm" style={{ color: 'var(--t3)' }}>{current.desc}</p>
+                    {chatLike && !codeMode && (
+                      <div className="mt-6 flex flex-wrap justify-center gap-2">
+                        {['Объясни простыми словами', 'Помоги написать письмо', 'Придумай идеи', 'Разбери текст'].map(t => (
+                          <button key={t} type="button" onClick={() => { setInput(t + ': '); }}
+                            className="rounded-full px-3.5 py-1.5 text-[13px]"
+                            style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t2)', cursor: 'pointer' }}>
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {usage && usage.limit > 0 && (
-                      <p className="text-[10px] mt-3" style={{ color: 'var(--t3)' }}>
+                      <p className="mt-5 text-[11px]" style={{ color: 'var(--t3)' }}>
                         сегодня {usage.used} из {usage.limit}
                       </p>
                     )}
@@ -517,57 +535,63 @@ export const SkyAITab = () => {
             </span>))}
         </div>)}
       {((chatLike && !codeMode) || (mode === 'summary' && prime)) && (
-        <div className="flex gap-2 items-end px-5 py-3 shrink-0 rounded-t-[28px]" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-l1)' }}>
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                void (chatLike ? send() : runSummary());
-              }
-            }}
-            placeholder={mode === 'summary' ? 'Вставьте текст для пересказа...' : mode === 'code' ? 'Опишите задачу или вставьте код и ошибку...' : 'Спросите что-нибудь...'}
-            aria-label="Сообщение для Sky AI"
-            data-ai-input
-            rows={1}
-            maxLength={mode === 'summary' ? (state?.maxSummaryChars ?? 100000) : (state?.maxMessageChars ?? 16000)}
-            className="flex-1 resize-none rounded-[24px] px-5 py-2.5 text-sm outline-none"
-            style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)', maxHeight: 120 }}
-          />
-          {chatLike && !codeMode && (
-            <>
-              <input ref={chatFileRef} type="file" multiple className="hidden"
-                onChange={async e => { if (e.target.files) { const r = await readTextFiles(e.target.files, ctxFiles); setCtxFiles(r.files); setErr(r.errors.join(' · ')); } e.target.value = ''; }} />
-              <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => chatFileRef.current?.click()} aria-label="Прикрепить файлы" title="Прикрепить текстовые файлы"
-                className="grid h-10 w-10 place-items-center rounded-full shrink-0"
-                style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--t2)' }}>
-                <Paperclip size={15} />
+        <div className="shrink-0 px-4 pb-3 pt-2" style={{ background: 'var(--bg-l1)' }}>
+          <div className="mx-auto w-full max-w-[760px] rounded-[26px] px-3 pb-2 pt-3"
+            style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', boxShadow: '0 2px 14px rgba(0,0,0,.08)' }}>
+            <textarea
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void (chatLike ? send() : runSummary());
+                }
+              }}
+              placeholder={mode === 'summary' ? 'Вставьте текст для пересказа...' : mode === 'code' ? 'Опишите задачу или вставьте код и ошибку...' : 'Напишите Sky AI…'}
+              aria-label="Сообщение для Sky AI"
+              data-ai-input
+              rows={2}
+              maxLength={mode === 'summary' ? (state?.maxSummaryChars ?? 100000) : (state?.maxMessageChars ?? 16000)}
+              className="block w-full resize-none bg-transparent px-2 text-[15px] outline-none"
+              style={{ color: 'var(--t1)', maxHeight: 180, border: 'none' }}
+            />
+            <div className="mt-1 flex items-center gap-1.5">
+              {chatLike && !codeMode && (
+                <>
+                  <input ref={chatFileRef} type="file" multiple className="hidden"
+                    onChange={async e => { if (e.target.files) { const r = await readTextFiles(e.target.files, ctxFiles); setCtxFiles(r.files); setErr(r.errors.join(' · ')); } e.target.value = ''; }} />
+                  <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => chatFileRef.current?.click()} aria-label="Прикрепить файлы" title="Прикрепить текстовые файлы"
+                    className="grid h-9 w-9 place-items-center rounded-full shrink-0"
+                    style={{ background: 'transparent', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--t2)' }}>
+                    <Paperclip size={16} />
+                  </motion.button>
+                </>
+              )}
+              <span className="flex-1" />
+              {chatLike && (state?.transcription || browserVoiceAvailable()) && (
+                <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => setVoiceOpen(true)}
+                  disabled={!prime && !!state?.transcription} title={prime ? 'Голосовой режим' : 'Голосовой режим — в Sky Prime'}
+                  aria-label="Голосовой режим"
+                  data-ai-voice
+                  className="grid h-9 w-9 place-items-center rounded-full shrink-0 disabled:opacity-40"
+                  style={{ background: 'transparent', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--t2)' }}>
+                  <Mic size={16}/>
+                </motion.button>
+              )}
+              <motion.button whileTap={{ scale: 0.9 }} type="button"
+                onClick={() => void (chatLike ? send() : runSummary())}
+                disabled={!input.trim() || busy}
+                aria-label="Отправить"
+                data-ai-send
+                className="grid h-9 w-9 place-items-center rounded-full shrink-0 disabled:opacity-40"
+                style={{ background: input.trim() ? C.accent : 'var(--bg-l3, var(--border))', border: 'none', cursor: 'pointer' }}>
+                {busy ? <Loader2 size={16} className="animate-spin" color="#fff"/> : <ArrowUp size={17} color="#fff"/>}
               </motion.button>
-            </>
-          )}
-          {chatLike && (state?.transcription || browserVoiceAvailable()) && (
-            <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => setVoiceOpen(true)}
-              disabled={!prime && !!state?.transcription} title={prime ? 'Голосовой режим' : 'Голосовой режим — в Sky Prime'}
-              aria-label="Голосовой режим"
-              data-ai-voice
-              className="grid h-10 w-10 place-items-center rounded-full shrink-0 disabled:opacity-40"
-              style={{ background: 'linear-gradient(135deg,#a855f7,#6366f1)', border: '1px solid var(--border)', cursor: 'pointer' }}>
-              <Mic size={15} color="#fff"/>
-            </motion.button>
-          )}
-          <motion.button whileTap={{ scale: 0.9 }} type="button"
-            onClick={() => void (chatLike ? send() : runSummary())}
-            disabled={!input.trim() || busy}
-            aria-label="Отправить"
-            data-ai-send
-            className="grid h-10 w-10 place-items-center rounded-xl shrink-0 disabled:opacity-40"
-            style={{
-              background: input.trim() ? 'linear-gradient(135deg,#a855f7,#6366f1)' : 'var(--bg-l2)',
-              border: '1px solid var(--border)', cursor: 'pointer',
-            }}>
-            {busy ? <Loader2 size={15} className="animate-spin" color="#fff"/> : <Send size={15} color="#fff"/>}
-          </motion.button>
+            </div>
+          </div>
+          <p className="mx-auto mt-1.5 max-w-[760px] text-center text-[11px]" style={{ color: 'var(--t3)' }}>
+            Sky AI может ошибаться. Проверяйте важное.
+          </p>
         </div>
       )}
 
