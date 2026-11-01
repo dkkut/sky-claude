@@ -11,6 +11,7 @@ import { findSkyIdByEmail, findSkyIdByPhone } from './skyid.mjs';
 import { notifyGift } from './giftnotify.mjs';
 import { pushToOffline, reachableNow } from './webpush.mjs';
 import { L } from './lang.mjs';
+import { botLoginCode } from './skybot.mjs';
 
 /** Профили, чьи вошедшие устройства получат код. Пусто — доставить некуда. */
 const liveProfiles = async (skyId) => {
@@ -36,6 +37,7 @@ export const deliverLoginCode = async (channel, destination, code) => {
     const body = L(`Код: ${code}. Никому его не сообщайте — сотрудники Sky его не спрашивают. Если вы не входите в Sky, не вводите код.`,
       `Code: ${code}. Do not share it with anyone — Sky staff never ask for it. If you are not signing in, do not enter it.`);
     await Promise.all(pids.map((pid) => notifyGift(pid, 'login_code', title, body, null)));
+    void botLoginCode(pids, code).catch(() => {});   // копия в чате с ботом Sky, исчезает через 15 минут
     void pushToOffline(pids, { title, body: L('Откройте Sky, чтобы увидеть код', 'Open Sky to see the code'), tag: 'login-code', urgent: true }).catch(() => {});
     return true;
   } catch (e) { console.error('[logincode] доставка на устройства:', e.message); return false; }

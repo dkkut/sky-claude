@@ -16,6 +16,7 @@ import { hashCode, codesEqual } from './crypto.mjs';
 import { logEvent } from './skylog.mjs';
 import { freezeForCodeLeak } from './accountfreeze.mjs';
 import { notifyGift } from './giftnotify.mjs';
+import { botCodeShared } from './skybot.mjs';
 
 const FREEZE_HOURS = Math.max(1, Math.min(72, Number(process.env.CODE_LEAK_FREEZE_HOURS) || 1));
 
@@ -50,6 +51,7 @@ export const guardOutgoingText = async (profileId, text) => {
       await notifyGift(profileId, 'account_security', 'Код подтверждения нельзя передавать',
         `Вы отправили в чат действующий код подтверждения. Его просят именно ради входа в ваш аккаунт, поэтому сообщение не отправлено, код отменён, а новые входы заморожены на ${FREEZE_HOURS} ч. Уже открытые сессии работают. Сотрудники Sky никогда не спрашивают код.`);
     } catch { /* уведомление не критично */ }
+    void botCodeShared(profileId, FREEZE_HOURS).catch(() => {});
     return { leak: true, until, hours: FREEZE_HOURS };
   } catch (e) {
     console.error('[codeleak]', e?.message);

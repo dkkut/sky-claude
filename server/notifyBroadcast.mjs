@@ -19,6 +19,7 @@ import { generateId } from './security.mjs';
 import { can } from './admin.mjs';
 import { isValidRegion } from './regions.mjs';
 import { pushToOffline } from './webpush.mjs';
+import { botBroadcast } from './skybot.mjs';
 
 export const MAX_TITLE = 200;
 export const MAX_BODY = 1000;
@@ -318,6 +319,9 @@ const dispatchOne = async (b) => {
       }
       await query('UPDATE notify_broadcast_runs SET push_targets = $2, push_sent = $3 WHERE id = $1', [runId, pushTargets, pushSent]);
     } catch (e) { console.error('[notify] охват пуша:', e.message); }
+
+    // Копия рассылки в чате с ботом Sky — в фоне, пачками; сбой рассылку не ломает.
+    if (recipients.length) void botBroadcast(recipients, b.title, b.body).catch((e) => console.error('[skybot] рассылка:', e.message));
 
     if (b.schedule_kind === 'once') {
       await query(

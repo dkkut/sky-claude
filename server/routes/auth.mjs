@@ -11,6 +11,7 @@
  * Про перебор номеров: ответ на запрос кода одинаков и для существующего
  * номера, и для нового. Узнать по нему, заведён ли аккаунт, нельзя.
  */
+import { botSignIn } from '../skybot.mjs';
 import { beginLogin as beginPasskeyLogin, finishLogin as finishPasskeyLogin } from './../passkeys.mjs';
 import { logEvent as skyLog } from './../skylog.mjs';
 import { trustDevice } from './../trusteddevices.mjs';
@@ -191,6 +192,9 @@ export const startSession = async (skyIdRow, req, { viaCode = false, via = null,
   if (isNewDevice) {
     notifyNewLogin(skyIdRow, meta).catch((err) => console.error('[auth] письмо о новом входе:', err.message));
   }
+
+  // Сообщение от бота Sky: «вход в Sky ID» (с пометкой, если устройство новое). Не ждём и не падаем.
+  void botSignIn(skyIdRow.id, meta, { newDevice: isNewDevice, via: via?.label ?? null }).catch(() => {});
 
   // Вход по коду делает устройство доверенным (см. trusteddevices.mjs).
   // Ограниченный доступ на неподтверждённом устройстве (limitedaccess.mjs): такая сессия устройство доверенным НЕ делает.

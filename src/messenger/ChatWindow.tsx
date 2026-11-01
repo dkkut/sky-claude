@@ -1505,7 +1505,8 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   // ещё и настройка «пишут только администраторы». Решает всё равно
   // сервер, здесь мы лишь не показываем поле, которое ответит отказом.
   const runsChat = ['owner', 'admin', 'moderator'].includes(chat.myRole ?? 'member');
-  const canPost = chat.type === 'direct' ? true
+  const isSkyBotChat = chat.type === 'direct' && peerId === 'acc-skybot-official';
+  const canPost = chat.type === 'direct' ? !isSkyBotChat
     : chat.type === 'channel' ? runsChat
     : (chatSettings?.whoCanPost === 'admins' ? runsChat : true);
 
@@ -2340,7 +2341,8 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
         <footer className="shrink-0 px-4 py-4 border-t text-center sky-chat-font"
           style={{ borderColor: theme.border, background: theme.panel }}>
           <p className="text-[13px]" style={{ color: 'var(--t2)' }}>
-            {chat.type === 'channel'
+            {isSkyBotChat ? 'Это официальный бот Sky — он присылает коды, оповещения о входах и рассылки. Ответить ему нельзя'
+              : chat.type === 'channel'
               ? 'Это канал — здесь публикуют его администраторы'
               : 'Сейчас в группе пишут только администраторы'}
           </p>

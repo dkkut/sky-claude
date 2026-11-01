@@ -10,6 +10,7 @@
  */
 import { query, pool } from './db.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
+import { SKYBOT_PROFILE } from './skybotid.mjs';
 import { claimAttachment, linkAttachment, dropForMessage } from './attachments.mjs';
 import { postDenial, contextFor } from './chatadmin.mjs';
 import { mayWriteTo } from './privacy.mjs';
@@ -512,6 +513,8 @@ const directWriteDenied = async (chatId, authorId) => {
 
 export const saveMessage = async (chatId, authorId, msg) => {
   if (!(await isMember(chatId, authorId))) return null;
+  // Чат с официальным ботом Sky только для чтения: пишет в него один сервер.
+  if (authorId !== SKYBOT_PROFILE && String(chatId).includes(SKYBOT_PROFILE)) return { error: 'bot_readonly' };
   // Запрет проверяется на сервере: раньше «заблокировать» лишь прятало
   // сообщения в браузере получателя, а доходили они по-прежнему.
   if (await blockedInChat(chatId, authorId)) return null;

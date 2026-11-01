@@ -17,6 +17,8 @@ import { query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { generateNumericCode, hashCode, codesEqual } from './crypto.mjs';
 import { sendSms, sendEmail } from './notify.mjs';
+import { botBadCode } from './skybot.mjs';
+import { findSkyIdByEmail, findSkyIdByPhone } from './skyid.mjs';
 import { deliverLoginCode, purgeLoginCodeNotes } from './logincodes.mjs';
 
 /** Сколько живёт код. */
@@ -116,6 +118,14 @@ export const issueCode = async (channel, destination, purpose, { devices = false
  * разные подсказки, а вот отличать «такого адреса не было» отдельным
  * ответом не стоит, иначе по ответам собирают список номеров.
  */
+/** Владелец аккаунта узнаёт о неверном коде входа сообщением от бота Sky. Не бросает. */
+const alertBadCode = async (channel, destination, opts) => {
+  try {
+    const sky = channel === 'email' ? await findSkyIdByEmail(destination) : await findSkyIdByPhone(destination);
+    if (sky) await botBadCode(sky.id, opts);
+  } catch { /* оповещение не должно мешать проверке */ }
+};
+
 export const verifyCode = async (channel, destination, purpose, code) => {
   const { rows } = await query(
     `SELECT * FROM verification_codes
@@ -129,6 +139,7 @@ export const verifyCode = async (channel, destination, purpose, code) => {
   if (record.expires_at.getTime() < Date.now()) return { error: 'code_expired' };
 
   if (record.attempts >= MAX_ATTEMPTS) {
+    if (purpose === 'login') void alertBadCode(channel, destination, { exhausted: true });
     return { error: 'too_many_attempts' };
   }
 
@@ -139,6 +150,7 @@ export const verifyCode = async (channel, destination, purpose, code) => {
       [record.id],
     );
     const left = Math.max(0, MAX_ATTEMPTS - upd[0].attempts);
+    if (purpose === 'login') void alertBadCode(channel, destination, { left });
     return { error: 'invalid_code', attemptsLeft: left };
   }
 

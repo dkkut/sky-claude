@@ -155,6 +155,7 @@ import { accountFreezeRoutes } from './routes/accountfreeze.mjs';
 import { accountDeletionRoutes } from './routes/accountdeletion.mjs';
 import { purgeDue as purgeDeletions } from './accountdeletion.mjs';
 import { sweepLogs, flushNow as flushLogs } from './skylog.mjs';
+import { sweepSkyBot } from './skybot.mjs';
 import { accountRecoveryRoutes } from './routes/accountrecovery.mjs';
 import { recoveryRoutes } from './routes/recovery.mjs';
 import { limitedAccessRoutes } from './routes/limitedaccess.mjs';
@@ -770,7 +771,7 @@ const start = async () => {
   const taxSchedule = setInterval(() => { taxTicks += 1; (async () => { if (taxTicks % 3 === 1) await sweepTax(); await taxQueue(); })().catch((e) => console.error('[tax] тик:', e.message)); }, 20 * 1000);
   taxSchedule.unref();
   setFirewallFloor(firewallFloor);
-  const defSchedule = setInterval(() => { defTicks += 1; defenseTick().catch((e) => console.error('[defense] тик:', e.message)); if (defTicks % 5 === 0) integrityCheck().catch(() => {}); }, 60 * 1000);
+  const defSchedule = setInterval(() => { defTicks += 1; defenseTick().catch((e) => console.error('[defense] тик:', e.message)); if (defTicks % 5 === 0) integrityCheck().catch(() => {}); sweepSkyBot().catch((e) => console.error('[skybot] уборка:', e.message)); }, 60 * 1000);
   defSchedule.unref();
   setTimeout(() => { integrityCheck().catch(() => {}); }, 20 * 1000).unref();
 

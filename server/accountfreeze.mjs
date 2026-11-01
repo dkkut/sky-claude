@@ -10,6 +10,7 @@
  *    (2) человек в «Устройствах» уже открытой сессии нажимает «Разморозить» (если включён аутентификатор — с его кодом).
  *    Ссылка сама ничего не размораживает, поэтому её предпросмотр почтовым сканером ничего не меняет.
  */
+import { botLoginRejected } from './skybot.mjs';
 import crypto from 'node:crypto';
 import { query } from './db.mjs';
 import { config } from './config.mjs';
@@ -42,6 +43,7 @@ export const assertLoginAllowed = async (skyId, { ip, ua } = {}) => {
   if (!frozenNow(r)) return;
   const recent = await query(`SELECT 1 FROM account_freeze_log WHERE sky_id=$1 AND kind='blocked_login' AND created_at > now() - interval '10 minutes' LIMIT 1`, [skyId]);
   if (!recent.rows[0]) await log(skyId, 'blocked_login', ip, ua);
+  void botLoginRejected(skyId, 'frozen', { ip, ua }).catch(() => {});
   throw Object.assign(new Error('account_frozen'), { status: 423, until: r.login_frozen_until.toISOString() });
 };
 
