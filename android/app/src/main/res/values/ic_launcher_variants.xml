@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_bg_classic">#0e0e11</color>
+    <color name="ic_bg_classic">#000000</color>
     <color name="ic_bg_violet">#5b3df5</color>
     <color name="ic_bg_ocean">#0a6cff</color>
     <color name="ic_bg_mint">#0f9d78</color>
