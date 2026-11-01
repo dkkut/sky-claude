@@ -30,11 +30,7 @@ const CMDS: Cmd[] = [
   { name: 'help', hint: 'Список команд и подсказки', local: 'help' },
 ];
 
-/* ── Файлы-контекст ──────────────────────────────────────────── */
-interface Ctx { name: string; text: string }
-const MAX_FILES = 6;
-const MAX_FILE = 200_000;
-const looksText = (s: string) => !s.slice(0, 4000).includes('\u0000');
+import { readTextFiles, filesPrompt, type CtxFile as Ctx } from './attachFiles';
 
 /* ── Подсветка ───────────────────────────────────────────────── */
 const KW = new Set(('abstract async await break case catch class const continue def default defer do elif else enum except export extends false final finally fn for from func function go if impl import in interface is lambda let loop match mod mut namespace new nil none not null of or package pass private public pub raise return self static struct super switch this throw true try type typeof use var void while with yield and as begin end then local echo fi done select where').split(' '));
@@ -168,23 +164,13 @@ export const CodeWorkspace = ({ chatId, setChatId, messages, setMessages, maxCha
   useEffect(() => { setSel(0); }, [slash]);
 
   const addFiles = async (list: FileList | File[]) => {
-    const next: Ctx[] = [...files]; const bad: string[] = [];
-    for (const f of Array.from(list)) {
-      if (next.length >= MAX_FILES) { bad.push(`${f.name}: не больше ${MAX_FILES} файлов`); continue; }
-      if (f.size > MAX_FILE) { bad.push(`${f.name}: больше ${fmtSize(MAX_FILE)}`); continue; }
-      let text = '';
-      try { text = await f.text(); } catch { bad.push(`${f.name}: не удалось прочитать`); continue; }
-      if (!looksText(text)) { bad.push(`${f.name}: это не текстовый файл`); continue; }
-      if (next.some(x => x.name === f.name)) continue;
-      next.push({ name: f.name, text });
-    }
-    setFiles(next);
-    setErr(bad.join(' · '));
+    const r = await readTextFiles(list, files);
+    setFiles(r.files);
+    setErr(r.errors.join(' · '));
   };
 
   const buildPrompt = (userText: string) => {
-    const blocks = files.map(f => `Файл ${f.name}:\n\`\`\`\n${f.text}\n\`\`\``).join('\n\n');
-    return blocks ? `${userText}\n\n${blocks}` : userText;
+    return filesPrompt(userText, files);
   };
 
   const run = async (userText: string, display: string) => {

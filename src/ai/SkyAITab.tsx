@@ -30,6 +30,7 @@ import { browserVoiceAvailable } from './speech';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { QuickActions } from './QuickActions';
 import { CodeWorkspace } from './CodeWorkspace';
+import { readTextFiles, filesPrompt, type CtxFile } from './attachFiles';
 
 const C = {
   accent: '#a855f7',
@@ -137,6 +138,8 @@ export const SkyAITab = () => {
   const [retryText, setRetryText] = useState('');       // последний запрос, не получивший ответа: его можно повторить
   const abortRef = useRef<AbortController | null>(null);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [ctxFiles, setCtxFiles] = useState<CtxFile[]>([]);
+  const chatFileRef = useRef<HTMLInputElement>(null);
 
   /* Инструменты */
   const [style, setStyle] = useState('short');
@@ -183,20 +186,23 @@ export const SkyAITab = () => {
   const send = async (again?: string) => {
     const text = (again ?? input).trim();
     if (!text || busy) return;
-    if (again === undefined) setInput('');
+    const sendText = filesPrompt(text, again === undefined ? ctxFiles : []);
+    if (sendText.length > (state?.maxMessageChars ?? 16000)) { setErr('Слишком много текста вместе с файлами. Уберите файл или сократите запрос.'); return; }
+    const shown = again === undefined && ctxFiles.length ? `${text}\n\n📎 ${ctxFiles.map(f => f.name).join(', ')}` : text;
+    if (again === undefined) { setInput(''); setCtxFiles([]); }
     setErr(''); setRetryText('');
     setBusy(true);
 
     if (again === undefined) {
       const mine: AiMessage = {
-        id: `local-${Date.now()}`, role: 'user', text, tool: 'chat', createdAt: new Date().toISOString(),
+        id: `local-${Date.now()}`, role: 'user', text: shown, tool: 'chat', createdAt: new Date().toISOString(),
       };
       setMessages(h => [...h, mine]);
     }
 
     // «Думаю •••» живёт, пока запрос идёт; отмена, ошибка и сетевой сбой его гасят (см. ThinkingIndicator)
     const ctl = new AbortController(); abortRef.current = ctl;
-    const r = await apiAiSend(text, chatId ?? undefined, { ...(mode === 'code' ? { mode: 'code' as const } : {}), signal: ctl.signal });
+    const r = await apiAiSend(sendText, chatId ?? undefined, { ...(mode === 'code' ? { mode: 'code' as const } : {}), signal: ctl.signal });
     abortRef.current = null;
     setBusy(false);
     if (r.code === 'aborted') { setRetryText(text); return; }           // отменено человеком: без текста ошибки
@@ -502,6 +508,14 @@ export const SkyAITab = () => {
       )}
 
       {/* Ввод. В режиме чата активен всегда — подписка на это не влияет. */}
+      {chatLike && !codeMode && ctxFiles.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-5 pt-2 shrink-0" style={{ background: 'var(--bg-l1)' }}>
+          {ctxFiles.map(f => (
+            <span key={f.name} translate="no" className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px]" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t2)' }}>
+              <Paperclip size={11} />{f.name}
+              <button type="button" aria-label="Убрать файл" onClick={() => setCtxFiles(fs => fs.filter(x => x.name !== f.name))}><X size={11} /></button>
+            </span>))}
+        </div>)}
       {((chatLike && !codeMode) || (mode === 'summary' && prime)) && (
         <div className="flex gap-2 items-end px-5 py-3 shrink-0 rounded-t-[28px]" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-l1)' }}>
           <textarea
@@ -521,6 +535,17 @@ export const SkyAITab = () => {
             className="flex-1 resize-none rounded-[24px] px-5 py-2.5 text-sm outline-none"
             style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)', maxHeight: 120 }}
           />
+          {chatLike && !codeMode && (
+            <>
+              <input ref={chatFileRef} type="file" multiple className="hidden"
+                onChange={async e => { if (e.target.files) { const r = await readTextFiles(e.target.files, ctxFiles); setCtxFiles(r.files); setErr(r.errors.join(' · ')); } e.target.value = ''; }} />
+              <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => chatFileRef.current?.click()} aria-label="Прикрепить файлы" title="Прикрепить текстовые файлы"
+                className="grid h-10 w-10 place-items-center rounded-full shrink-0"
+                style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--t2)' }}>
+                <Paperclip size={15} />
+              </motion.button>
+            </>
+          )}
           {chatLike && (state?.transcription || browserVoiceAvailable()) && (
             <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => setVoiceOpen(true)}
               disabled={!prime && !!state?.transcription} title={prime ? 'Голосовой режим' : 'Голосовой режим — в Sky Prime'}
