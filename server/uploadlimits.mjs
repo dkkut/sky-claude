@@ -148,6 +148,7 @@ export const effectiveFor = async (profileId) => {
       totalBytes: l.totalBytes, totalBytesPrime: l.totalBytesPrime };
   }
   out.personalQuotaBytes = await personalQuotaFor(profileId);
+  try { const { usedBytesFor } = await import('./storagequota.mjs'); out.personalUsedBytes = await usedBytesFor(profileId); } catch { out.personalUsedBytes = null; }
   return out;
 };
 

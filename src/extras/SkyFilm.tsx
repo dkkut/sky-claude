@@ -1,3 +1,4 @@
+import { UploadLimitsButton } from '@/shared/UploadLimitsDialog';
 import { SkyLoader } from '@/shared/SkyLoader';
 /* ===========================================================
    SKY FILM
@@ -1109,6 +1110,7 @@ const MineTab = ({ onOpen }: { onOpen: (m: ServerMovie) => void }) => {
 
   return (
     <div className="h-full overflow-y-auto px-4 py-4 space-y-4" style={{ scrollbarWidth:'none' }}>
+      <div className="flex justify-end"><UploadLimitsButton kind="film" /></div>
       {/* Что такое эта вкладка — сказано словами, а не подразумевается. */}
       <div className="flex items-start gap-2 rounded-2xl p-3 text-[11.5px]"
         style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${K.border}`, color: K.sub }}>

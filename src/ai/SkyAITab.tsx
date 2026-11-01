@@ -27,6 +27,8 @@ import { useAiState, refreshAiState } from './aiState';
 import { VoiceMode } from './VoiceMode';
 import { CloudBuddy } from './CloudBuddy';
 import { PrimeGate } from '@/prime/PrimeGate';
+import { AiLimitsDialog, LimitNotice } from './limits';
+import { useModuleStore } from '@/data/state/modules';
 import { browserVoiceAvailable } from './speech';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { QuickActions } from './QuickActions';
@@ -141,6 +143,9 @@ export const SkyAITab = () => {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [newNonce, setNewNonce] = useState(0);
+  const [limitInfo, setLimitInfo] = useState<{ resetsAt?: string; limit?: number } | null>(null);
+  const [limitsOpen, setLimitsOpen] = useState(false);
+  const goPrime = () => { setLimitsOpen(false); useModuleStore.getState().setPendingExtrasTab('prime'); useModuleStore.getState().setActiveModule('extras'); };
   const [err, setErr] = useState('');
   const [retryText, setRetryText] = useState('');       // последний запрос, не получивший ответа: его можно повторить
   const abortRef = useRef<AbortController | null>(null);
@@ -213,11 +218,13 @@ export const SkyAITab = () => {
     abortRef.current = null;
     setBusy(false);
     if (r.code === 'aborted') { setRetryText(text); return; }           // отменено человеком: без текста ошибки
+    if (r.code === 'daily_limit') { setLimitInfo({ resetsAt: r.resetsAt, limit: r.limit }); setRetryText(text); void refreshAiState(); return; }
     if (!r.ok || !r.answer) {
       setErr(r.reason ?? 'Не получилось');
       setRetryText(text);
       return;
     }
+    setLimitInfo(null);
     if (!chatId && r.chatId) setChatId(r.chatId);
     setMessages(h => [...h, r.answer as AiMessage]);
     void loadChats();
@@ -305,11 +312,19 @@ export const SkyAITab = () => {
             </p>
           </div>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+        {state?.usage?.chat && state.usage.chat.limit > 0 && (
+          <button type="button" onClick={() => setLimitsOpen(true)} aria-label="Мои лимиты" title="Мои лимиты"
+            className="rounded-xl px-2.5 py-1.5 text-[11px] font-bold"
+            style={{ background: state.usage.chat.used >= state.usage.chat.limit ? 'rgba(239,68,68,0.14)' : 'var(--bg-l2)', color: state.usage.chat.used >= state.usage.chat.limit ? '#ef4444' : 'var(--t2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
+            {`${state.usage.chat.used}/${state.usage.chat.limit}`}
+          </button>)}
         <button type="button" onClick={newChat}
           className="rounded-xl px-3 py-1.5 text-xs font-bold shrink-0"
           style={{ background: 'var(--bg-l2)', color: 'var(--t2)', border: '1px solid var(--border)', cursor: 'pointer' }}>
           <Plus size={12} className="inline mr-1"/>Новый
         </button>
+        </div>
       </div>
 
       {/* Режимы. Инструменты подписаны короной, но вкладка «Чат» — нет. */}
@@ -428,6 +443,7 @@ export const SkyAITab = () => {
               )}
               {messages.map(m => <Bubble key={m.id} m={m}/>)}
               {busy && <ThinkingIndicator onCancel={() => abortRef.current?.abort()} />}
+              {!busy && limitInfo && <LimitNotice resetsAt={limitInfo.resetsAt} limit={limitInfo.limit} prime={prime} onOpen={() => setLimitsOpen(true)} onPrime={goPrime} />}
               {!busy && retryText && (
                 <button type="button" onClick={() => void send(retryText)} className="mx-auto block rounded-full px-4 py-1.5 text-xs font-bold"
                   style={{ background: 'rgba(168,85,247,0.12)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)', cursor: 'pointer' }}>
@@ -597,6 +613,7 @@ export const SkyAITab = () => {
         </div>
       )}
 
+      <AiLimitsDialog open={limitsOpen} onClose={() => setLimitsOpen(false)} onPrime={goPrime} />
       <AnimatePresence>
         {voiceOpen && (
           <VoiceMode chatId={chatId} onClose={() => setVoiceOpen(false)} onTurn={onVoiceTurn} serverStt={!!state?.transcription}/>

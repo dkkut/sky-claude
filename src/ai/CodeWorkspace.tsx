@@ -13,6 +13,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { GitBranch, Search, Archive, Terminal, Paperclip, X, Copy, Check, Download, FileCode2, Send, Square, ChevronDown, ChevronUp, RotateCcw, FileDown, Plus } from 'lucide-react';
 import { apiAiSend, type AiMessage } from './aiApi';
 import { apiRepoTree, apiRepoFiles, REPO_ERR, type RepoTree } from './repoApi';
+import { AiLimitsDialog, LimitNotice } from './limits';
+import { useModuleStore } from '@/data/state/modules';
 import { buildZip, downloadBlob, safeEntryName } from './zip';
 import { refreshAiState } from './aiState';
 
@@ -177,6 +179,8 @@ export const CodeWorkspace = ({ chatId, setChatId, messages, setMessages, maxCha
   const [help, setHelp] = useState(false);
   const [drag, setDrag] = useState(false);
   const [sel, setSel] = useState(0);
+  const [limitInfo, setLimitInfo] = useState<{ resetsAt?: string; limit?: number } | null>(null);
+  const [limitsOpen, setLimitsOpen] = useState(false);
   const [phase, setPhase] = useState<'code' | 'wave'>('code');
   const [repoOpen, setRepoOpen] = useState(false);
   const [repoIn, setRepoIn] = useState({ repo: '', ref: '', token: '' });
@@ -250,7 +254,9 @@ export const CodeWorkspace = ({ chatId, setChatId, messages, setMessages, maxCha
     const r = await apiAiSend(full, chatId ?? undefined, { mode: 'code', signal: ctl.signal });
     abort.current = null; setBusy(false);
     if (r.code === 'aborted') { setRetry(userText); return; }
+    if (r.code === 'daily_limit') { setLimitInfo({ resetsAt: r.resetsAt, limit: r.limit }); setRetry(userText); void refreshAiState(); return; }
     if (!r.ok || !r.answer) { setErr(r.reason ?? 'Не получилось'); setRetry(userText); return; }
+    setLimitInfo(null);
     if (!chatId && r.chatId) setChatId(r.chatId);
     setMessages(h => [...h, r.answer as AiMessage]);
     onSent(); void refreshAiState();
@@ -381,10 +387,12 @@ export const CodeWorkspace = ({ chatId, setChatId, messages, setMessages, maxCha
             <span>Пишу код… {secs} с</span>
             <button type="button" onClick={() => abort.current?.abort()} className="ml-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-white/10"><Square size={10} />Esc</button>
           </div>)}
+        {!busy && limitInfo && <LimitNotice resetsAt={limitInfo.resetsAt} limit={limitInfo.limit} prime onOpen={() => setLimitsOpen(true)} />}
         {!busy && retry && <button type="button" onClick={() => void run(retry, retry)} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold" style={{ background: 'rgba(168,85,247,.14)', color: '#d8b4fe' }}><RotateCcw size={12} />Повторить запрос</button>}
         {err && <p className="rounded-xl px-3 py-2 text-xs font-semibold" style={{ background: 'rgba(244,63,94,.1)', color: '#fb7185' }}>{err}</p>}
       </div>
 
+      <AiLimitsDialog open={limitsOpen} onClose={() => setLimitsOpen(false)} />
       {drag && <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center text-sm font-bold" style={{ background: 'rgba(10,13,18,.85)', border: '2px dashed #a855f7', color: '#d8b4fe' }}>Отпустите, чтобы добавить файлы</div>}
 
       {/* Подсказки команд */}

@@ -1,3 +1,4 @@
+import { UploadLimitsButton } from '@/shared/UploadLimitsDialog';
 import { BufferingRing, CoverBuffering, useBuffering } from '@/player/BufferingRing';
 import { useSettings } from '@/settings/store';
 import { VideoBackdrop } from '@/music/VideoBackdrop';
@@ -1039,6 +1040,7 @@ const UploadTab = ({ playing, activeId, onPlay }: {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto pb-4" style={{ scrollbarWidth: 'none' }}>
+      <div className="flex justify-end px-4 pt-3 shrink-0"><UploadLimitsButton kind="music" /></div>
 
       {/* ── STEP INDICATOR ─────────────────────────────────────────────── */}
       {step !== 'drop' && (

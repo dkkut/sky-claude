@@ -82,6 +82,9 @@ const text = (value, max) => String(value ?? '')
  *
  * Возвращает { ok } либо { error: 'daily_limit', limit, used }.
  */
+/** Когда счётчики Sky AI обнуляются: следующая полночь по UTC (день в таблице ai_usage считается по UTC). */
+export const nextResetAt = (now = new Date()) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).toISOString();
+
 export const takeQuota = async (profileId, kind, prime) => {
   const rule = LIMITS[kind];
   if (!rule) return { error: 'unknown_tool' };
@@ -102,7 +105,7 @@ export const takeQuota = async (profileId, kind, prime) => {
     /* Ноль изменённых строк значит, что условие не прошло: предел
        выбран. Возвращаем, сколько именно, — человеку надо понимать,
        когда можно снова, а не видеть глухое «нельзя». */
-    return { error: 'daily_limit', limit, used: limit };
+    return { error: 'daily_limit', limit, used: limit, kind, resetsAt: nextResetAt() };
   }
   return { ok: true, used: Number(rows[0].used), limit };
 };

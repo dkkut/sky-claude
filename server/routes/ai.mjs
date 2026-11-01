@@ -28,7 +28,7 @@ import { hasPrime } from './../skyid.mjs';
 import { aiConfigured, sttConfigured, ttsConfigured } from './../ai.mjs';
 import {
   listChats, createChat, renameChat, deleteChat, readChat, sendMessage,
-  usageToday, LIMITS, PRIME_TOOLS, MAX_MESSAGE_CHARS, CHAT_ID_RE, ask, ASK_TASKS,
+  usageToday, nextResetAt, LIMITS, PRIME_TOOLS, MAX_MESSAGE_CHARS, CHAT_ID_RE, ask, ASK_TASKS,
 } from './../aichat.mjs';
 import {
   summarize, analyzeFile, analyzeImage, transcribe,
@@ -153,6 +153,9 @@ export const aiRoutes = async (req, res, url) => {
       voiceReply: ttsConfigured(),
       prime,
       usage: await usageToday(me, prime),
+      resetsAt: nextResetAt(),
+      freeLimits: Object.fromEntries(Object.entries(LIMITS).map(([k, v]) => [k, v.free])),
+      primeLimits: Object.fromEntries(Object.entries(LIMITS).map(([k, v]) => [k, v.prime])),
       limits: LIMITS,
       primeTools: PRIME_TOOLS,
       maxMessageChars: MAX_MESSAGE_CHARS,

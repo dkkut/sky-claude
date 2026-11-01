@@ -50,6 +50,10 @@ export interface AiState {
   /** Решение сервера, не браузера. */
   prime: boolean;
   usage: Record<AiTool, AiQuota>;
+  /** Когда обнуляются счётчики (ISO, полночь UTC). */
+  resetsAt?: string;
+  freeLimits?: Record<string, number>;
+  primeLimits?: Record<string, number>;
   primeTools: AiTool[];
   maxMessageChars: number;
   maxSummaryChars: number;
@@ -149,6 +153,9 @@ export interface SendResult {
   usage?: { kind: AiTool; used: number; limit: number };
   reason?: string;
   code?: string;
+  /** При отказе daily_limit: когда счётчик обнулится и какой был предел. */
+  resetsAt?: string;
+  limit?: number;
 }
 
 /** Ожидание ответа не бесконечно: через 90 с запрос прерывается, а человеку предлагается повторить. */
@@ -170,7 +177,7 @@ export const apiAiSend = async (
   } finally { clearTimeout(timer); outer?.removeEventListener('abort', onAbort); }
   if (!r.ok && outer?.aborted) return { ok: false, reason: '', code: 'aborted' };
   if (!r.ok && timedOut) return { ok: false, reason: 'Ответ слишком долго не приходит. Повторите запрос.', code: 'timeout' };
-  if (!r.ok) return { ok: false, reason: aiReason(r.error, r.reason), code: r.error };
+  if (!r.ok) { const d = (r.data ?? {}) as { resetsAt?: string; limit?: number }; return { ok: false, reason: aiReason(r.error, r.reason), code: r.error, resetsAt: d.resetsAt, limit: d.limit }; }
   /* ok ставим после разворота: в теле ответа его нет, но если однажды
      появится — поле должно остаться нашим. */
   return { ...(r.data as SendResult), ok: true };
