@@ -113,7 +113,7 @@ echo
 read -r -p "Подключить эти $READY каналов? Напишите «да»: " ANSWER
 [ "$ANSWER" = "да" ] || { echo "Отменено, ничего не записано."; exit 0; }
 
-docker compose exec -T -e TV_PLAN="$PLAN" -e TV_LICENCE="$LICENCE" -e TV_OWNER="$OWNER" \
+docker compose exec -T -e TV_DELIVERY="${TV_DELIVERY:-proxy}" -e TV_PLAN="$PLAN" -e TV_LICENCE="$LICENCE" -e TV_OWNER="$OWNER" \
   api node -e '
 const run = async () => {
   const { query } = await import("/app/server/db.mjs");
@@ -131,7 +131,7 @@ const run = async () => {
     if (ch.error) { console.error(`  ✗ ${c.name}: ${ch.error}`); failed += 1; continue; }
     const src = await attachSource(owner, {
       slug: c.slug, url: c.url, kind: c.kind,
-      licence: process.env.TV_LICENCE, delivery: "redirect",
+      licence: process.env.TV_LICENCE, delivery: process.env.TV_DELIVERY === "redirect" ? "redirect" : "proxy",
     });
     if (src.error) {
       console.error(`  ✗ ${c.name}: ${src.error} ${src.reason ?? ""} ${src.detail ?? ""}`.trim());
