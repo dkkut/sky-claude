@@ -21,6 +21,13 @@ const TEXT: Record<string, string> = {
   invalid_phrase: 'Фраза или слово не подошли', phrase_required: 'Введите 12 слов', use_phrase: 'Для этого устройства нужна фраза восстановления',
   invalid_wallet_password: 'Неверный пароль кошелька', wallet_password_required: 'Введите пароль кошелька', weak_wallet_password: 'Пароль должен быть от 6 до 64 знаков', forbidden: 'Сбросить пароль можно только на подтверждённом устройстве',
   no_contact: 'Нет подтверждённой почты или номера для кода', unauthorized: 'Сессия истекла, войдите заново',
+  limited_session: 'Это устройство ещё не подтверждено. Подтвердите вход на другом своём устройстве (карточка на Sky Island или в «Уведомлениях») — после этого SkyMoney откроется',
+  pin_required: 'Для этого адреса нужен PIN-код: введите его на экране PIN и откройте SkyMoney снова',
+  app_locked: 'Sky заблокирован кодом приложения — сначала разблокируйте его',
+  module_blocked: 'Доступ к этому разделу закрыт администрацией',
+  rate_limited: 'Слишком много запросов — подождите минуту и повторите',
+  firewall_restricted: 'Сервер сейчас в режиме усиленной защиты — попробуйте позже',
+  account_blocked: 'Аккаунт заблокирован',
 };
 
 const wipeFinancialMemory = () => useMoney.setState({ transactions: [] });
@@ -90,7 +97,7 @@ export const MoneyGate = ({ children }: { children: ReactNode }) => {
     setBusy(false);
     if (r.ok && r.data?.unlocked) { setPwd(''); setWpwd(''); setCode(''); setWords(''); setExtra(''); setSt(r.data); return; }
     if (r.ok && r.data) { setSt(r.data); return; }
-    setErr(TEXT[r.error ?? ''] ?? 'Не получилось подтвердить доступ'); setPwd(''); setWpwd(''); setExtra('');
+    setErr(TEXT[r.error ?? ''] ?? 'Не получилось подтвердить доступ' + (r.error ? ` (${r.error})` : r.status ? ` (${r.status})` : '')); setPwd(''); setWpwd(''); setExtra('');
   };
   const sendReset = async () => {
     setBusy(true); setErr('');

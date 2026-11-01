@@ -77,7 +77,9 @@ const fmt = (iso: string) => new Date(iso).toLocaleString();
 const CONFIRM_ERR: Record<string, string> = {
   bad_code: 'Код не подошёл.', admin_token_required: 'Введите токен администратора.', admin_token_invalid: 'Токен администратора не подошёл.', admin_token_missing: 'Токен ещё не создан: Профиль → Sky ID → «Токен администратора».', admin_token_blocked: 'Слишком много неверных токенов — подождите.', code_exhausted: 'Слишком много попыток — запросите новую ссылку.',
   two_factor_required: 'У аккаунта не включён аутентификатор.', session_gone: 'Сессия, из которой запрошен вход, уже закрыта.',
-  too_many_requests: 'Слишком часто. Подождите минуту.',
+  too_many_requests: 'Слишком часто. Подождите минуту.', rate_limited: 'Слишком много запросов с вашего адреса. Подождите минуту.',
+  firewall_restricted: 'Сервер в режиме усиленной защиты (файлвол): подтверждение временно закрыто. Снимите режим в админке (Файрвол) или на хосте: sky-heal.sh --unlock.',
+  limited_session: 'Эта сессия ограничена: подтвердите устройство на другом вашем устройстве.', module_closed: 'Раздел закрыт администрацией.',
 };
 
 /** Один экран для двух входов: в панель (kind='admin') и по SSH (kind='ssh'). */
@@ -107,7 +109,7 @@ export const AdminVerifyPage = ({ kind = 'admin' }: { kind?: 'admin' | 'ssh' }) 
     setBusy(false);
     if (r.ok) { setPhase('done'); return; }
     if (r.error === 'invalid_link') { setPhase('invalid'); return; }
-    setErr((CONFIRM_ERR[r.error ?? ''] ?? 'Не удалось подтвердить.') + (r.error === 'bad_code' && r.data?.left != null ? ` Осталось попыток: ${r.data.left}.` : ''));
+    setErr((CONFIRM_ERR[r.error ?? ''] ?? 'Не удалось подтвердить' + (r.error ? ` (${r.error})` : r.status ? ` (${r.status})` : '') + '.') + (r.error === 'bad_code' && r.data?.left != null ? ` Осталось попыток: ${r.data.left}.` : ''));
   };
   const panic = async (action: 'lockdown' | 'shutdown' | 'deny') => {
     if (action !== 'deny' && !window.confirm(action === 'shutdown' ? 'Выключить сервер для всех пользователей? Сессии администраторов будут завершены.' : 'Включить аварийные работы? Панель закроется, сессии администраторов будут завершены.')) return;

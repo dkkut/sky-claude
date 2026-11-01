@@ -7,6 +7,7 @@ import { X } from 'lucide-react';
 import { GIFT_RARITY_COLOR, GIFT_RARITY_LABEL, type SentGift } from '@/gifts/store';
 import { GiftBubble } from '@/gifts/SkyGifts';
 import { giftMediaUrl } from '@/gifts/giftsApi';
+import { StoryImg } from '@/stories/StoryMedia';
 import { SectionHead } from './Head';
 import { availableFrames, FRAMES } from '../cosmetics';
 import { RARITY_COLOR, RARITY_LABEL } from '@/customization/types';
@@ -125,7 +126,7 @@ export const CollectionsSection = ({ data }: { data: ProfileData }) => {
                       boxShadow: `0 8px 22px ${rc}33, inset 0 1px 0 rgba(255,255,255,0.18)` }}>
                     <div className="absolute inset-x-0 top-0 h-1/2 pointer-events-none" style={{ background: 'linear-gradient(180deg,rgba(255,255,255,0.14),transparent)' }} />
                     {media && g.mediaKind !== 'video'
-                      ? <img src={media} alt="" className="h-10 w-10 object-contain" />
+                      ? <StoryImg src={media} className="h-10 w-10 object-contain" />
                       : <div className="text-3xl" style={{ filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.4))' }}>{g.giftEmoji}</div>}
                     <div className="text-[10px] font-semibold text-center truncate w-full text-white" translate="no">{g.giftName}</div>
                   </motion.button>

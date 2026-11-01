@@ -12,6 +12,7 @@
  * сообщение с чужим или выдуманным id бессмысленно: карточка не
  * дорисуется, а не покажет фальшивую цену или чужое имя.
  */
+import { StoryImg, StoryVideo } from '@/stories/StoryMedia';
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Crown, Check, Clock, Ban } from 'lucide-react';
@@ -155,8 +156,8 @@ export const PrimeGiftMessageCard = ({ instanceId, fromMe }: { instanceId: strin
   return cardShell(
     <>
       {mediaUrl && (isVideo
-        ? <video src={mediaUrl} autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-cover opacity-75" />
-        : <img src={mediaUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-75" />)}
+        ? <StoryVideo src={mediaUrl} autoPlay loop muted className="absolute inset-0 h-full w-full object-cover opacity-75" />
+        : <StoryImg src={mediaUrl} className="absolute inset-0 h-full w-full object-cover opacity-75" />)}
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.12), rgba(0,0,0,0.55))' }} />
       {isUnavailable && (

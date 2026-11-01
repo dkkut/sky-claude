@@ -2,6 +2,7 @@
    SKY GIFTS UI
    Модальное окно выбора подарка + отображение в чате
 =============================================================== */
+import { StoryVideo } from '@/stories/StoryMedia';
 import { useEffect, useState } from 'react';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { createPortal } from 'react-dom';
@@ -772,7 +773,7 @@ export const GiftBubble = ({ gift, fromMe, onCancelled }: {
             {/* Видео-подарок анимируется само по себе — эмодзи-обёртка ему не нужна */}
             {isVideo ? (
               <div className="mx-auto mb-2 overflow-hidden rounded-2xl" style={{ width: 128, height: 128 }}>
-                <video src={mediaUrl ?? undefined} autoPlay loop muted playsInline
+                <StoryVideo src={mediaUrl ?? undefined} autoPlay loop muted
                   className="h-full w-full object-cover" />
               </div>
             ) : (
