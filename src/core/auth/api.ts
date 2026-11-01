@@ -128,6 +128,11 @@ const ERRORS: Record<string, string> = {
   not_started:           'Настройка не начата — начните заново',
   profile_limit_reached: 'На один Sky ID можно завести не больше двух профилей',
   profile_code_required: 'Профиль защищён — введите код из приложения',
+  guardian_pin_required: 'Нужен PIN опекуна, чтобы выйти из детского профиля',
+  bad_pin_code: 'Неверный PIN опекуна',
+  pin_locked: 'Слишком много попыток. Попробуйте позже',
+  child_restricted: 'Этот раздел закрыт в детском профиле',
+  child_session: 'Настройки детского профиля доступны только из взрослого профиля',
   two_factor_required:   'Введите код из приложения',
   current_email_code_required: 'Введите код, отправленный на вашу текущую почту',
   cannot_prove_ownership: 'Нечем подтвердить, что аккаунт ваш: включите аутентификатор или обратитесь в поддержку',
@@ -609,10 +614,15 @@ export const apiCreateProfile = (
  * только активный профиль в той же сессии. Для защищённого профиля
  * нужен код: без него сервер отвечает profile_code_required.
  */
-export const apiSelectProfile = async (profileId: string, code?: string) => {
+export const apiSelectProfile = async (profileId: string, code?: string, guardianPin?: string): Promise<Reply<{ profile: ServerProfile; activeProfileId: string; accessToken: string }>> => {
   const res = await post<{ profile: ServerProfile; activeProfileId: string; accessToken: string }>(
-    `/api/skyid/profiles/${encodeURIComponent(profileId)}/select`, code ? { code } : {},
+    `/api/skyid/profiles/${encodeURIComponent(profileId)}/select`, { ...(code ? { code } : {}), ...(guardianPin ? { guardianPin } : {}) },
   );
+  // Из детского профиля выйти можно только с PIN опекуна: спрашиваем и повторяем.
+  if (!res.ok && (res.error === 'guardian_pin_required' || res.error === 'bad_pin_code') && typeof window !== 'undefined') {
+    const pin = window.prompt(res.error === 'bad_pin_code' ? 'Неверный PIN. Введите PIN опекуна ещё раз' : 'Введите PIN опекуна, чтобы выйти из детского профиля');
+    if (pin) return apiSelectProfile(profileId, code, pin);
+  }
   if (res.ok && res.data?.accessToken) setAccessToken(res.data.accessToken);
   return res;
 };
@@ -858,3 +868,11 @@ export const apiProtectAccount = (b: ProtectRequest) =>
 export const apiFreezeResend = () => post<{ ok: true }>('/api/auth/freeze/resend');
 export const apiUnfreeze = (totp?: string) => post<{ ok: true }>('/api/auth/freeze/unfreeze', totp ? { totp } : {});
 export const apiFreezeLink = (t: string) => post<{ ok: true; minutes: number }>('/api/auth/freeze/link', { t });
+
+/* ═══ Детский аккаунт ═══ */
+export interface ChildView { profileId: string; name: string; username: string; birthYear: number | null; settings: { modules: string[]; money: boolean; hideAdult: boolean }; createdAt: string }
+export const apiChildList = () => get<{ modules: string[]; defaults: string[]; children: ChildView[] }>('/api/skyid/child');
+export const apiChildMe = () => get<{ child: boolean; closedModules?: string[]; money?: boolean; hideAdult?: boolean }>('/api/skyid/child/me');
+export const apiChildCreate = (b: Json) => post<{ ok: true; profileId: string }>('/api/skyid/child', b);
+export const apiChildUpdate = (id: string, b: Json) => call<{ ok: true }>(`/api/skyid/child/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(b) });
+export const apiChildRemove = (id: string) => call<{ ok: true }>(`/api/skyid/child/${encodeURIComponent(id)}`, { method: 'DELETE' });

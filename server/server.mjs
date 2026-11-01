@@ -138,6 +138,8 @@ import { rtcRoutes } from './routes/rtc.mjs';
 import { modClosureRoutes } from './routes/modclosure.mjs';
 import { modBlockRoutes } from './routes/modblocks.mjs';
 import { moduleBlockedFor } from './modblocks.mjs';
+import { childBlockedFor } from './childaccount.mjs';
+import { childAccountRoutes } from './routes/childaccount.mjs';
 import { ownerNotifyRoutes } from './routes/ownernotify.mjs';
 import { staffNotifyRoutes } from './routes/staffnotify.mjs';
 import { skyKassaRoutes } from './routes/skykassa.mjs';
@@ -292,7 +294,7 @@ const ROUTES = [taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewall
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
                 familyRoutes, garantRoutes, mediaActivityRoutes, followsRoutes, friendsRoutes, contentFlagsRoutes, gamesRoutes, voicePartyRoutes, gameServerRoutes, pushRoutes, bloomRoutes, weatherRoutes, trackingRoutes, codesRoutes,
                 notifyRoutes, adsRoutes, kutrentMarketRoutes, storiesRoutes, quickMenuRoutes, petsRoutes, streamsRoutes,
-                violationsRoutes, storageDirectRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, sshOwnerRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, adminTokenRoutes, sshGateRoutes, ipPinRoutes, passkeyRoutes, goAdminRoutes, goRoutes, onsiteRoutes, parkingRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, modBlockRoutes, ownerNotifyRoutes, staffNotifyRoutes, skyKassaRoutes];
+                violationsRoutes, storageDirectRoutes, storageRoutes, oidcRoutes, sshAdminRoutes, sshOwnerRoutes, storageShareRoutes, platformRoutes, customizationRoutes, adminChannelRoutes, contentModRoutes, adminGateRoutes, adminTokenRoutes, sshGateRoutes, ipPinRoutes, passkeyRoutes, goAdminRoutes, goRoutes, onsiteRoutes, parkingRoutes, registrationRoutes, siteRoutes, siteAdminRoutes, modClosureRoutes, modBlockRoutes, childAccountRoutes, ownerNotifyRoutes, staffNotifyRoutes, skyKassaRoutes];
 
 /**
  * Пропущен ли запрос через калитку беты.
@@ -414,6 +416,18 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
         if (stb && stb.userId === tkb.sky && stb.profileId) {
           const hit = await moduleBlockedFor(stb.profileId, new URL(req.url, 'http://x').pathname);
           if (hit) return json(res, 403, { error: 'module_blocked', module: hit });
+        }
+      }
+    }
+
+    // Детский профиль (childaccount.mjs): закрытые опекуном модули, деньги и безопасность Sky ID получают 403 child_restricted.
+    if (url.startsWith('/api/') && !url.startsWith('/api/platform/status') && !url.startsWith('/api/admin/') && !url.startsWith('/api/ssh-gate') && !url.startsWith('/api/ops/agent/') && !url.startsWith('/api/sandbox/runner/')) {
+      const tkc = verifyToken(readAccessToken(req), config.jwtSecret);
+      if (tkc?.typ === 'access' && tkc.sky && tkc.sid) {
+        const stc = await sessionStore.get(tkc.sid);
+        if (stc && stc.userId === tkc.sky && stc.profileId) {
+          const hit = await childBlockedFor(stc.profileId, new URL(req.url, 'http://x').pathname, req.method);
+          if (hit) return json(res, 403, { error: 'child_restricted', module: hit });
         }
       }
     }

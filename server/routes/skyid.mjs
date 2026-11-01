@@ -20,6 +20,7 @@ import { guardContactChange, noteContactChanged } from './../accountrecovery.mjs
 import { clientIp } from './../http.mjs';
 import { wallet } from './../wallet.mjs';
 import { recordAcceptance, LEGAL_REVISION } from './../legal.mjs';
+import { childOf, checkGuardianPin } from './../childaccount.mjs';
 
 import {
   listProfiles, createProfile, updateProfile, getProfileOfSkyId,
@@ -164,6 +165,14 @@ export const skyIdRoutes = async (req, res, url) => {
 
     const profile = await getProfileOfSkyId(s.skyId, profileId);
     if (!profile) return json(res, 404, { error: 'not_found' });
+
+    // Из детского профиля в другой — только с PIN опекуна (в другой детский профиль переходить можно свободно).
+    if (s.profileId && s.profileId !== profileId && await childOf(s.profileId) && !(await childOf(profileId))) {
+      if (!body.guardianPin) return json(res, 403, { error: 'guardian_pin_required' });
+      if (!rateLimit(`child:pin:${s.skyId}`, 20)) return json(res, 429, { error: 'rate_limited' });
+      const pc = await checkGuardianPin(s.skyId, s.profileId, body.guardianPin);
+      if (pc.error) return json(res, pc.error === 'pin_locked' ? 429 : 403, pc);
+    }
 
     // Car/Console/TV на доверенном устройстве: код профиля не спрашиваем, если владелец это включил.
     const skipCode = profile.twoFactorEnabled && !body.code && await mayOpenWithoutCode(s.skyId, profileId, req);

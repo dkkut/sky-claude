@@ -8,6 +8,7 @@
  * браузере, нельзя.
  */
 import { DeviceAccounts } from '@/auth/DeviceAccounts';
+import { ChildAccounts } from '@/child/ChildAccounts';
 import { RecoverySection } from '@/recovery/RecoverySection';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -204,6 +205,7 @@ const SkyIdSection = () => {
       </div>
 
       <DeviceAccounts />
+      <ChildAccounts />
       <EmailSection />
       <PhoneSection />
     </div>
