@@ -43,8 +43,14 @@ export const startKeyboardInset = (): (() => void) => {
   vv.addEventListener('scroll', schedule);
   document.addEventListener('focusin', schedule);
   document.addEventListener('focusout', () => setTimeout(schedule, 60));
+  // Поворот экрана: сбросить устаревшие сдвиги, иначе верхняя панель оставалась за краем экрана.
+  const onRotate = () => { root.style.removeProperty('--vv-top'); root.style.removeProperty('--app-h'); if (window.scrollY || window.scrollX) window.scrollTo(0, 0); setTimeout(schedule, 120); setTimeout(schedule, 500); };
+  window.addEventListener('orientationchange', onRotate);
+  window.addEventListener('resize', onRotate);
   schedule();
   return () => {
+    window.removeEventListener('orientationchange', onRotate);
+    window.removeEventListener('resize', onRotate);
     vv.removeEventListener('resize', schedule);
     vv.removeEventListener('scroll', schedule);
     document.removeEventListener('focusin', schedule);

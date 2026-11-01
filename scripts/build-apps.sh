@@ -98,6 +98,10 @@ build_apk() {
 build_exe() {
   local old; if old="$(unchanged exe)"; then echo "==> Windows: исходники не менялись — беру готовый $old"; ok=$((ok+1)); return; fi
   if [ "$(uname -s)" = Linux ] && ! need wine; then skipped+=("exe: на Linux нужен wine — выполните: sudo bash scripts/setup-build-tools.sh --wine (или GitHub Actions, build-windows.yml)"); return; fi
+  if [ "$(uname -s)" = Linux ]; then
+    command -v xvfb-run >/dev/null 2>&1 || { skipped+=("exe: нет xvfb-run (wine без экрана: «no driver could be loaded») — выполните: sudo bash scripts/setup-build-tools.sh --wine"); return; }
+    dpkg -l wine32:i386 2>/dev/null | grep -q '^ii' || { skipped+=("exe: нет 32-битного wine («failed to load syswow64\\ntdll.dll») — выполните: sudo bash scripts/setup-build-tools.sh --wine"); return; }
+  fi
   echo "==> Windows"; web || { skipped+=("exe: сборка веб-части не прошла"); return; }
   WINEDEBUG=-all ${XVFB:-$(command -v xvfb-run >/dev/null 2>&1 && echo 'xvfb-run -a')} npx electron-builder --win nsis || { skipped+=("exe: сборка не прошла"); return; }
   f="$(ls -t release/*.exe dist-electron/*.exe 2>/dev/null | head -1)"
