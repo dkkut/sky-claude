@@ -207,13 +207,15 @@ const More = ({ perms, owner, state, onDone }: { perms: string[]; owner: boolean
   );
 };
 
+const GROUP_LIST: [string, string][] = [['users', 'Пользователи'], ['messenger', 'Мессенджер'], ['music', 'Музыка'], ['film', 'Кино и сериалы'], ['podcasts', 'Подкасты'], ['books', 'Книги'], ['skyvideo', 'Sky Video']];
+
 /* ═══════════ Резервные копии ═══════════ */
 const Backups = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
   const [d, setD] = useState<Data | null>(null);
   const [kind, setKind] = useState('full'); const [scope, setScope] = useState('');
   const [plan, setPlan] = useState<Data | null>(null); const [ret, setRet] = useState<Data | null>(null); const [sch, setSch] = useState<Data[]>([]);
   const [restoreFor, setRestoreFor] = useState<string | null>(null); const [restoreScope, setRestoreScope] = useState(''); const [overwrite, setOverwrite] = useState(false);
-  const [step, setStep] = useState<null | { kind: 'apply' | 'download' | 'music'; id: string }>(null); const [mh, setMh] = useState<Data | null>(null); const [mres, setMres] = useState<Data | null>(null); const [link, setLink] = useState('');
+  const [step, setStep] = useState<null | { kind: 'apply' | 'download' | 'music'; id: string }>(null); const [grp, setGrp] = useState('users'); const [mh, setMh] = useState<Data | null>(null); const [mres, setMres] = useState<Data | null>(null); const [link, setLink] = useState('');
   const [sf, setSf] = useState({ frequency: 'daily', times: '03:00', weekday: '1', kind: 'full' });
   const gate = useCodeGate();
   const has = (p: string) => perms.includes(p);
@@ -222,11 +224,11 @@ const Backups = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
   const scopeObj = () => (kind === 'service' ? { services: scope.split(',').map((x) => x.trim()).filter(Boolean) } : kind === 'category' ? { categories: scope.split(',').map((x) => x.trim()).filter(Boolean) } : {});
   const run = async () => { const r = await call('POST', '/backups', { kind, scope: scopeObj() }); flash(r.ok ? 'Копирование запущено' : errText(r.error)); void load(); };
   const act = async (id: string, a: string, body: Data = {}) => { const r = await call('POST', `/backups/${id}/${a}`, body); if (!r.ok) flash(errText(r.error)); else flash(a === 'verify' ? (r.data.ok ? 'Целостность подтверждена' : 'Копия НЕ прошла проверку') : 'Готово'); void load(); return r; };
-  const checkMusic = async () => { const r = await call('GET', '/music/health'); if (r.ok) setMh(r.data); else flash(errText(r.error)); };
+  const checkGroup = async () => { const r = await call('GET', `/group/health?group=${grp}`); if (r.ok) setMh(r.data); else flash(errText(r.error)); };
   const stepDone = async (code: string) => {
     if (!step) return;
     if (step.kind === 'download') { const r = await call('POST', `/backups/${step.id}/download-link`, { confirm: true, stepUpCode: code }); if (r.ok) { setLink(r.data.url); setStep(null); } else flash(errText(r.error)); return; }
-    if (step.kind === 'music') { const r = await call('POST', '/music/restore', { confirm: true, stepUpCode: code }); if (r.ok) { setMres(r.data); setStep(null); flash('Восстановление музыки завершено'); void checkMusic(); } else { flash(errText(r.error)); if (!String(r.error).startsWith('step_up')) setStep(null); } return; }
+    if (step.kind === 'music') { const r = await call('POST', '/group/restore', { group: step.id, confirm: true, stepUpCode: code }); if (r.ok) { setMres(r.data); setStep(null); flash('Восстановление раздела завершено'); void checkGroup(); } else { flash(errText(r.error)); if (!String(r.error).startsWith('step_up')) setStep(null); } return; }
     const r = await call('POST', '/restore/apply', { planId: plan?.planId, overwrite, confirm: true, stepUpCode: code });
     if (r.ok) { flash(`Восстановление: ${r.data.status}`); setPlan({ ...plan, result: r.data }); setStep(null); } else { flash(errText(r.error)); if (!String(r.error).startsWith('step_up')) setStep(null); }
   };
@@ -249,14 +251,20 @@ const Backups = ({ perms, owner }: { perms: string[]; owner: boolean }) => {
         </Card>
       )}
       {(has('storage_view') || has('storage_restore')) && (
-        <Card title="Музыка: проверка и восстановление">
-          <p className="text-[12px]" style={{ color: C.t3 }}>Проверяет, что каждый трек, обложка и видеофон из каталога читаются на сервере. Что лежит только в S3 — возвращает на диск, чего нет или что повреждено — достаёт из свежих проверенных копий (по контрольной сумме). Каталог не меняется.</p>
+        <Card title="Разделы: проверка и восстановление">
+          <p className="text-[12px]" style={{ color: C.t3 }}>Сравнивает базу с самой свежей проверенной копией и проверяет, что файлы каталога читаются. Недостающие строки таблиц добавляются из копии (существующие не меняются); файлы возвращаются из S3 или из копий по контрольной сумме. Удалённое из каталога не воскрешается. Пользователей берёт только из копий, сделанных после этого обновления.</p>
           <div className="flex flex-wrap gap-2">
-            <Btn tone="plain" onClick={() => void checkMusic()}>Проверить музыку</Btn>
-            {owner && has('storage_restore') && <Btn onClick={() => setStep({ kind: 'music', id: 'music' })}>Восстановить музыку</Btn>}
+            <select value={grp} onChange={(e) => { setGrp(e.target.value); setMh(null); setMres(null); }} aria-label="Раздел" className="rounded-lg px-2 py-1.5 text-sm" style={field}>
+              {GROUP_LIST.map(([id, t]) => <option key={id} value={id}>{t}</option>)}
+            </select>
+            <Btn tone="plain" onClick={() => void checkGroup()}>Проверить</Btn>
+            {owner && has('storage_restore') && <Btn onClick={() => setStep({ kind: 'music', id: grp })}>Восстановить</Btn>}
           </div>
-          {mh && <p className="text-[12px]" style={{ color: mh.missingCount || mh.brokenCount ? C.amber : C.green }}>{`Треков ${mh.tracks}, файлов ${mh.files}: читается ${mh.ok}, нет ${mh.missingCount}, повреждено ${mh.brokenCount}${mh.s3 ? ' · основное хранение S3' : ''}`}</p>}
-          {mres && <p className="text-[12px]" style={{ color: mres.failed.length || mres.notFoundCount ? C.amber : C.green }}>{`Результат: уже в порядке ${mres.alreadyOk}, возвращено из S3 ${mres.pulled}, из копий ${mres.restored}, не найдено нигде ${mres.notFoundCount ?? 0}, ошибок ${mres.failed.length}`}</p>}
+          {mh && mh.tables?.map((t: Data) => <p key={t.name} className="text-[12px]" style={{ color: t.inBackup != null && t.inDb != null && t.inBackup > t.inDb ? C.amber : C.t2 }} translate="no">{`${t.name}: в базе ${t.inDb ?? '—'}, в копии ${t.inBackup ?? 'нет'}`}</p>)}
+          {mh?.files && <p className="text-[12px]" style={{ color: mh.files.missingCount || mh.files.brokenCount ? C.amber : C.green }}>{`Файлов ${mh.files.total}: читается ${mh.files.ok}, нет ${mh.files.missingCount}, повреждено ${mh.files.brokenCount}${mh.s3 ? ' · основное хранение S3' : ''}`}</p>}
+          {mh && !mh.backups && <p className="text-[12px]" style={{ color: C.amber }}>Проверенных копий нет — восстанавливать не из чего.</p>}
+          {mres && <p className="text-[12px]" style={{ color: mres.failed.length || mres.notFoundCount ? C.amber : C.green }}>{`Результат: добавлено строк ${mres.rowsInserted}, файлов в порядке ${mres.alreadyOk}, возвращено из S3 ${mres.pulled}, из копий ${mres.restored}, не найдено нигде ${mres.notFoundCount ?? 0}, ошибок ${mres.failed.length}`}</p>}
+          {mres?.failed?.slice(0, 5).map((f: string) => <p key={f} className="text-[11px]" style={{ color: C.red }} translate="no">{f}</p>)}
         </Card>
       )}
       <Card title="Копии">

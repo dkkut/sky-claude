@@ -33,6 +33,7 @@ const MAX_CHAIN = 7;
 
 /** Таблицы, входящие в копии (проверенные имена; порядок — для восстановления по зависимостям). */
 export const TABLES = {
+  users: ['sky_ids', 'profiles', 'wallet_accounts', 'wallet_transactions', 'prime_subscriptions', 'friendships'],
   messenger: ['chats', 'chat_members', 'messages', 'attachments'],
   music: ['music_tracks'], film: ['film_movies'], podcasts: ['podcasts', 'podcast_episodes'], books: ['books'], skyvideo: ['sky_videos'],
   registry: ['storage_objects'],
@@ -100,9 +101,9 @@ const plan = async (kind, scope) => {
     objects = rows;
   }
   let tables = [];
-  if (kind === 'full') tables = [...TABLES.messenger, ...TABLES.music, ...TABLES.film, ...TABLES.podcasts, ...TABLES.books, ...TABLES.skyvideo, ...TABLES.registry];
+  if (kind === 'full') tables = [...TABLES.users, ...TABLES.messenger, ...TABLES.music, ...TABLES.film, ...TABLES.podcasts, ...TABLES.books, ...TABLES.skyvideo, ...TABLES.registry];
   else if (kind === 'messenger') tables = [...TABLES.messenger];
-  else if (kind === 'metadata') tables = [...TABLES.registry, ...TABLES.music, ...TABLES.film, ...TABLES.podcasts, ...TABLES.books, ...TABLES.skyvideo];
+  else if (kind === 'metadata') tables = [...TABLES.users, ...TABLES.registry, ...TABLES.music, ...TABLES.film, ...TABLES.podcasts, ...TABLES.books, ...TABLES.skyvideo];
   else if (kind === 'service' && services) tables = [...new Set(services.map((s) => SERVICE_TABLES[s]).filter(Boolean).flatMap((k) => TABLES[k]))];
   else if (kind === 'media') tables = [...TABLES.registry];
   return { objects, tables };
@@ -544,18 +545,30 @@ export const restoreApply = async (actorId, planId, { overwrite = false } = {}) 
   return { id: rid, status, ...res };
 };
 
-/* ─── Музыка: диагностика и восстановление нечитаемых файлов ───────── */
+/* ─── Разделы: диагностика и восстановление (пользователи, мессенджер, музыка, кино …) ───────── */
 
-const MUSIC_MAGIC = Buffer.from('SKE1');
+const MAGIC = Buffer.from('SKE1');
 
-/** Какие файлы ждёт каталог музыки (трек, обложка, видеофон). */
-const expectedMusicFiles = async () => {
-  const { rows } = await query(`SELECT id, audio_file, has_cover, has_video FROM music_tracks ORDER BY id LIMIT 200000`);
-  const out = [];
+/** Группы данных. tables — таблицы (порядок = порядок восстановления); service+catalog — файлы, на которые ссылается каталог. */
+export const GROUPS = {
+  users: { title: 'Пользователи', tables: TABLES.users },
+  messenger: { title: 'Мессенджер', tables: TABLES.messenger },
+  music: { title: 'Музыка', tables: TABLES.music, service: 'music', catalog: 'SELECT id, audio_file AS file FROM music_tracks', extra: ['cov-', 'vid-'] },
+  film: { title: 'Кино и сериалы', tables: TABLES.film, service: 'film', catalog: 'SELECT id FROM film_movies', extra: ['cov-'] },
+  podcasts: { title: 'Подкасты', tables: TABLES.podcasts, service: 'podcasts', catalog: 'SELECT id FROM podcast_episodes', extra: ['cov-'] },
+  books: { title: 'Книги', tables: TABLES.books, service: 'books', catalog: 'SELECT id FROM books', extra: ['cov-'] },
+  skyvideo: { title: 'Sky Video', tables: TABLES.skyvideo, service: 'skyvideo', catalog: 'SELECT id FROM sky_videos', extra: ['thm-', 'cov-'] },
+};
+const suffixOf = (id) => String(id).split('-').slice(1).join('-');
+
+/** Файлы, которые ждёт каталог: сам файл и (по префиксам) обложки/видеофон с тем же хвостом id. Удалённое из каталога сюда не попадает. */
+const catalogFiles = async (g) => {
+  if (!g.catalog) return [];
+  const { rows } = await query(`${g.catalog} ORDER BY id LIMIT 200000`);
+  const out = []; const seen = new Set();
   for (const r of rows) {
-    out.push({ track: r.id, id: r.audio_file || r.id });
-    if (r.has_cover) out.push({ track: r.id, id: `cov-${String(r.id).slice(4)}` });
-    if (r.has_video) out.push({ track: r.id, id: `vid-${String(r.id).slice(4)}` });
+    const sfx = suffixOf(r.id);
+    for (const id of [r.file || r.id, ...(g.extra ?? []).map((p) => `${p}${sfx}`)]) { if (!seen.has(id)) { seen.add(id); out.push({ id, sfx }); } }
   }
   return out;
 };
@@ -567,82 +580,125 @@ const readableState = async (path) => {
     const rs = await primary.openRaw(path);
     let head = Buffer.alloc(0);
     for await (const c of rs) { head = Buffer.concat([head, c]); if (head.length >= 4) { rs.destroy?.(); break; } }
-    return head.subarray(0, 4).equals(MUSIC_MAGIC) ? 'ok' : 'bad_header';
+    return head.subarray(0, 4).equals(MAGIC) ? 'ok' : 'bad_header';
   } catch { return 'unreadable'; }
 };
 
-/** Что с файлами музыки: сколько читается, сколько нет (только чтение). */
-export const musicHealth = async () => {
-  const list = await expectedMusicFiles();
-  const res = { tracks: new Set(list.map((x) => x.track)).size, files: list.length, ok: 0, missing: [], broken: [] };
-  for (const f of list) {
-    const p = await locateFile('music', f.id);
-    if (!p) { res.missing.push(f.id); continue; }
-    const st = await readableState(p);
-    if (st === 'ok') res.ok += 1; else res.broken.push({ id: f.id, state: st });
+const countTable = async (t) => { try { const { rows } = await query(`SELECT count(*)::bigint AS n FROM ${t}`); return Number(rows[0].n); } catch { return null; } };
+
+const verifiedBackups = async (n = 15) => (await query(`SELECT id, key_id FROM storage_backups WHERE status IN ('verified','ok') ORDER BY started_at DESC LIMIT $1`, [n])).rows;
+
+/** Что с разделом: строки таблиц в базе против свежей копии и читаемость файлов каталога (только чтение). */
+export const groupHealth = async (name) => {
+  const g = GROUPS[name]; if (!g) return { error: 'bad_group' };
+  const out = { group: name, title: g.title, tables: [], files: null, backups: 0, s3: primary.enabled() };
+  const bks = await verifiedBackups(); out.backups = bks.length;
+  let target = null; try { target = getTarget(); } catch { /* цель не настроена */ }
+  const manifests = [];
+  if (target) for (const b of bks.slice(0, 5)) { try { manifests.push({ id: b.id, m: await readManifest(target, b.id) }); } catch { /* копия нечитаема */ } }
+  for (const t of g.tables) {
+    const inDb = await countTable(t);
+    let inBackup = null; let backupId = null;
+    for (const x of manifests) { const e = (x.m.tables ?? []).find((y) => y.name === t); if (e) { inBackup = e.rows; backupId = x.id; break; } }
+    out.tables.push({ name: t, inDb, inBackup, backupId });
   }
-  return { ...res, missing: res.missing.slice(0, 200), missingCount: res.missing.length, broken: res.broken.slice(0, 200), brokenCount: res.broken.length, s3: primary.enabled() };
+  if (g.catalog) {
+    const list = await catalogFiles(g);
+    const f = { total: list.length, ok: 0, missing: [], broken: [] };
+    for (const x of list) {
+      const p = await locateFile(g.service, x.id);
+      if (!p) { f.missing.push(x.id); continue; }
+      const st = await readableState(p);
+      if (st === 'ok') f.ok += 1; else f.broken.push({ id: x.id, state: st });
+    }
+    out.files = { total: f.total, ok: f.ok, missingCount: f.missing.length, brokenCount: f.broken.length, missing: f.missing.slice(0, 100), broken: f.broken.slice(0, 100) };
+  }
+  return out;
 };
 
 /**
- * Восстановить нечитаемую музыку: (1) файл есть в S3, но не на диске — вернуть на диск; (2) нет нигде или повреждён —
- * достать из самых свежих проверенных копий (по SHA-256) и положить на место (повреждённый уходит в карантин, не удаляется).
- * Строки каталога не трогаются. Возвращает, что исправлено и что нет (нет ни в S3, ни в копиях).
+ * Восстановить раздел: (1) таблицы — недостающие строки из самой свежей проверенной копии, где таблица есть (существующие строки не трогаются,
+ * строки с нарушенными связями пропускаются); (2) файлы каталога — вернуть из S3 на диск либо достать из копий (SHA-256), повреждённое уходит в карантин.
+ * Удалённое из каталога не воскрешается: файлы берутся только те, на которые ссылается каталог.
  */
-export const restoreMusic = async (actorId) => {
+export const restoreGroup = async (actorId, name) => {
+  const g = GROUPS[name]; if (!g) return { error: 'bad_group' };
   if (!(await acquire())) return { error: 'busy' };
-  const out = { checked: 0, pulled: 0, restored: 0, alreadyOk: 0, notFound: [], failed: [] };
+  const out = { group: name, tables: {}, checked: 0, pulled: 0, restored: 0, alreadyOk: 0, notFound: [], notFoundCount: 0, failed: [] };
   const rid = newId('rs');
   try {
-    const list = await expectedMusicFiles();
-    const bad = [];
-    for (const f of list) {
-      out.checked += 1;
-      const p = await locateFile('music', f.id);
-      if (p) {
-        let st = await readableState(p);
-        if (st !== 'ok' && primary.enabled()) { try { await primary.ensureLocal(p); st = await readableState(p); if (st === 'ok') { out.pulled += 1; continue; } } catch { /* ищем в копиях */ } }
-        if (st === 'ok') { out.alreadyOk += 1; continue; }
-      }
-      bad.push({ ...f, path: p });
+    const bks = await verifiedBackups();
+    const ks = keyStatus();
+    let target = null; try { target = getTarget(); } catch (e) { out.failed.push(`цель копий: ${e.code ?? e.message}`); }
+    const manifests = [];
+    if (target) for (const b of bks) { if (!ks.usable.includes(b.key_id)) continue; try { manifests.push({ id: b.id, m: await readManifest(target, b.id) }); } catch { /* пропускаем */ } }
+    // таблицы
+    for (const t of g.tables) {
+      const x = manifests.find((y) => (y.m.tables ?? []).some((e) => e.name === t));
+      if (!x) { out.tables[t] = { backup: null, inserted: 0, skipped: 0 }; continue; }
+      const e = x.m.tables.find((y) => y.name === t);
+      let ins = 0; let skip = 0; const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const hs = countingHash(); let buf = '';
+        for await (const c of decryptStream(await target.get(e.key), { id: `${x.id}/t/${t}` })) { hs.feed(c); buf += c.toString('utf8'); const parts = buf.split('\n'); buf = parts.pop(); for (const line of parts) { if (!line) continue; (await insertRow(client, t, line)) ? ins++ : skip++; } }
+        if (buf) { (await insertRow(client, t, buf)) ? ins++ : skip++; }
+        if (hs.digest() !== e.sha256) { await client.query('ROLLBACK'); out.failed.push(`таблица ${t}: не совпала контрольная сумма (строки не добавлены)`); ins = 0; skip = 0; }
+        else await client.query('COMMIT');
+      } catch (er) { await client.query('ROLLBACK').catch(() => {}); out.failed.push(`таблица ${t}: ${er.code ?? er.message}`); } finally { client.release(); }
+      out.tables[t] = { backup: x.id, inserted: ins, skipped: skip };
     }
-    if (bad.length) {
-      const target = getTarget();
-      const { rows: bks } = await query(`SELECT id, key_id FROM storage_backups WHERE status IN ('verified','ok') ORDER BY started_at DESC LIMIT 15`);
-      const ks = keyStatus();
-      const want = new Map(bad.map((b) => [b.id, b]));
-      const staging = join(stagingRoot(), rid);
-      await mkdir(staging, { recursive: true, mode: 0o700 });
-      const { createWriteStream } = await import('node:fs');
-      const root = serviceRoots().find((x) => x.service === 'music')?.root;
-      for (const b of bks) {
-        if (!want.size) break;
-        if (!ks.usable.includes(b.key_id)) continue;
-        let manifest; try { manifest = await readManifest(target, b.id); } catch { continue; }
-        for (const o of manifest.objects.filter((x) => x.service === 'music' && want.has(x.id))) {
-          const w = want.get(o.id);
-          try {
-            const tmp = join(staging, o.id); const hs = countingHash();
-            await pipeline(decryptStream(await target.get(o.key), { id: `music/${o.id}` }), new Transform({ transform(c, _e, cb) { hs.feed(c); cb(null, c); } }), createWriteStream(tmp, { mode: 0o600 }));
-            if (hs.digest() !== o.sha256) throw new BackupError('sha_mismatch', o.id);
-            const dest = w.path ?? join(root, o.id.slice(4, 6), o.id);
-            await mkdir(dirname(dest), { recursive: true });
-            if (w.path) { const bak = join(quarantineRoot(), 'restore-replaced', `music-${o.id}-${Date.now()}`); await mkdir(dirname(bak), { recursive: true, mode: 0o700 }); await primary.ensureLocal(w.path).catch(() => {}); await rename(w.path, bak).catch(() => {}); }
-            await rename(tmp, dest).catch(async (e) => { if (e.code !== 'EXDEV') throw e; const { copyFile } = await import('node:fs/promises'); await copyFile(tmp, dest); await rm(tmp); });
-            await primary.afterWrite(dest);
-            await query(`INSERT INTO storage_objects (service, id, category, size, status, sha256) VALUES ('music',$1,'music',$2,'ok',NULL) ON CONFLICT (service, id) DO UPDATE SET status = 'ok', sha256 = NULL, seen_at = now()`, [o.id, (await stat(dest)).size]).catch(() => {});
-            out.restored += 1; want.delete(o.id);
-          } catch (e) { out.failed.push(`${o.id}: ${e.code ?? e.message}`); }
+    // файлы
+    if (g.catalog) {
+      const list = await catalogFiles(g);
+      const bad = [];
+      for (const f of list) {
+        out.checked += 1;
+        const p = await locateFile(g.service, f.id);
+        if (p) {
+          let st = await readableState(p);
+          if (st !== 'ok' && primary.enabled()) { try { await primary.ensureLocal(p); st = await readableState(p); if (st === 'ok') { out.pulled += 1; continue; } } catch { /* ищем в копиях */ } }
+          if (st === 'ok') { out.alreadyOk += 1; continue; }
         }
+        bad.push({ ...f, path: p });
       }
-      await rm(staging, { recursive: true, force: true });
-      out.notFound = [...want.keys()].slice(0, 200); out.notFoundCount = want.size;
+      if (bad.length && target) {
+        const want = new Map(bad.map((b) => [b.id, b]));
+        const staging = join(stagingRoot(), rid);
+        await mkdir(staging, { recursive: true, mode: 0o700 });
+        const { createWriteStream } = await import('node:fs');
+        const root = serviceRoots().find((x) => x.service === g.service)?.root;
+        for (const x of manifests) {
+          if (!want.size) break;
+          for (const o of (x.m.objects ?? []).filter((y) => y.service === g.service && want.has(y.id))) {
+            const w = want.get(o.id);
+            try {
+              const tmp = join(staging, o.id); const hs = countingHash();
+              await pipeline(decryptStream(await target.get(o.key), { id: `${g.service}/${o.id}` }), new Transform({ transform(c, _e, cb) { hs.feed(c); cb(null, c); } }), createWriteStream(tmp, { mode: 0o600 }));
+              if (hs.digest() !== o.sha256) throw new BackupError('sha_mismatch', o.id);
+              const dest = w.path ?? join(root, g.service === 'skyvideo' ? o.id.slice(5, 7) : o.id.slice(4, 6), o.id);
+              await mkdir(dirname(dest), { recursive: true });
+              if (w.path) { const bak = join(quarantineRoot(), 'restore-replaced', `${g.service}-${o.id}-${Date.now()}`); await mkdir(dirname(bak), { recursive: true, mode: 0o700 }); await primary.ensureLocal(w.path).catch(() => {}); await rename(w.path, bak).catch(() => {}); }
+              await rename(tmp, dest).catch(async (er) => { if (er.code !== 'EXDEV') throw er; const { copyFile } = await import('node:fs/promises'); await copyFile(tmp, dest); await rm(tmp); });
+              await primary.afterWrite(dest);
+              await query(`INSERT INTO storage_objects (service, id, category, size, status, sha256) VALUES ($1,$2,$3,$4,'ok',NULL) ON CONFLICT (service, id) DO UPDATE SET status = 'ok', sha256 = NULL, seen_at = now()`, [g.service, o.id, o.category ?? g.service, (await stat(dest)).size]).catch(() => {});
+              out.restored += 1; want.delete(o.id);
+            } catch (er) { out.failed.push(`${o.id}: ${er.code ?? er.message}`); }
+          }
+        }
+        await rm(staging, { recursive: true, force: true });
+        out.notFound = [...want.keys()].slice(0, 200); out.notFoundCount = want.size;
+      } else if (bad.length) { out.notFound = bad.map((b) => b.id).slice(0, 200); out.notFoundCount = bad.length; }
     }
   } catch (e) { out.failed.push(e.code ?? e.message); }
-  await logEvent('restore', out.failed.length || out.notFound.length ? 'critical' : 'warn', { id: rid, music: true, pulled: out.pulled, restored: out.restored, notFound: out.notFound.length, failed: out.failed.length }, actorId);
+  const rows = Object.values(out.tables).reduce((n, t) => n + t.inserted, 0);
+  await logEvent('restore', out.failed.length || out.notFoundCount ? 'critical' : 'warn', { id: rid, group: name, rows, pulled: out.pulled, restored: out.restored, notFound: out.notFoundCount, failed: out.failed.length }, actorId);
   await release();
-  return { ok: true, ...out };
+  return { ok: true, ...out, rowsInserted: rows };
 };
+
+export const musicHealth = () => groupHealth('music');
+export const restoreMusic = (actorId) => restoreGroup(actorId, 'music');
 
 /** Вставка строки: только если её нет; ошибки связей (FK) одной строки не прерывают остальные (SAVEPOINT). */
 const insertRow = async (client, table, line) => {
