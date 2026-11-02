@@ -355,7 +355,7 @@ export const SkyTVPlayer = ({ channel, onClose, onPrev, onNext, tvMode }: TVPlay
 
             {/* Верх: канал, «в эфире», передача */}
             <div className="flex items-start gap-3 px-4 py-3 sm:px-5 sm:py-4"
-              style={{ background: 'linear-gradient(rgba(0,0,0,0.8),transparent)', pointerEvents: 'auto' }}>
+              style={{ background: 'linear-gradient(rgba(0,0,0,0.8),transparent)', pointerEvents: 'auto', paddingTop: 'calc(env(safe-area-inset-top, 0px) + var(--island-pad, 0px) + 12px)' }}>
               <button type="button" onClick={onClose}
                 className={`${btn} h-10 w-10 shrink-0 hover:bg-white/15`}
                 style={{ background: 'rgba(0,0,0,0.5)' }} aria-label="Назад">
@@ -424,7 +424,7 @@ export const SkyTVPlayer = ({ channel, onClose, onPrev, onNext, tvMode }: TVPlay
             {/* Низ: звук, качество, дорожки, полный экран.
                 Полосы перемотки нет намеренно — у эфира нет начала. */}
             <div className="flex items-center gap-2 px-4 pb-4 sm:px-5 sm:pb-5"
-              style={{ background: 'linear-gradient(transparent,rgba(0,0,0,0.85))', pointerEvents: 'auto' }}>
+              style={{ background: 'linear-gradient(transparent,rgba(0,0,0,0.85))', pointerEvents: 'auto', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
               <button type="button" onClick={() => setMuted((v) => !v)}
                 className={`${btn} h-9 w-9`} style={{ color: K.sub }}
                 aria-label={muted ? 'Включить звук' : 'Выключить звук'}>
