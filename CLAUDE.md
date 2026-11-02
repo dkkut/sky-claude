@@ -2644,3 +2644,8 @@ Capacitor CLI 8 требует Node ≥ 22: `setup-build-tools.sh --android` с�
 Развернуть: деплой api, nginx пересоздать (`deploy-local.sh`), на хосте `sudo install -m 755 scripts/breach-watch.sh /opt/sky/breach-watch.sh && sudo systemctl restart sky-breach-watch`.
 
 Подтверждение отмены (ноябрь-2026): «Не выключать» на `/shutdown-confirm` требует токен администратора (`SKA-…`, `verifyAdminToken` с `force`) И код аутентификатора ВЛАДЕЛЬЦА (`OWNER_USERNAME`), 6 попыток в минуту с адреса; ответы 401 `admin_token_*`/`bad_code`/`two_factor_required`. «Выключить сейчас» подтверждения не требует (безопасное направление). Нет аутентификатора или токена у владельца — отменить нельзя, сервер выключится по таймеру (закрыто, а не открыто); неудачные попытки пишутся в журнал безопасности (`shutdown_cancel_denied`). Серверная часть `decideShutdown` проверена только `node --check` и импортом; с Postgres/API не прогонялась. Нужен деплой api (страница — вместе с фронтом).
+
+## CORS: каждый заголовок, который шлёт клиент, должен быть в `Access-Control-Allow-Headers` (ноябрь-2026)
+
+`server/server.mjs::applyCors` перечисляет разрешённые заголовки. Родное приложение (Android `https://localhost`, Windows `app://sky`) обращается к API кросс-доменно: если клиент шлёт заголовок, которого нет в списке (так было с `X-Sky-Slot`), preflight проходит (204), но браузер НЕ отправляет сам запрос, а приложение пишет «Сервер не отвечает этому приложению». В логах при этом только OPTIONS без POST.
+Новый заголовок в `src/core/auth/api.ts` = строка в `applyCors`. Источники приложений должны быть в `EXTRA_ORIGINS` (`https://localhost` для Android, `app://sky` для Windows, `capacitor://localhost` для iOS) — «любой хост» CORS не пропускает. Нужен деплой api (клиент пересобирать не нужно).
