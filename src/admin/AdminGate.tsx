@@ -227,3 +227,57 @@ export const SshLegacyConfirmPage = () => {
     </div>
   );
 };
+
+/**
+ * Страница ссылки из письма «Сервер выключится через 5 минут» (/shutdown-confirm?token=…, сторож scripts/breach-watch.sh).
+ * «Не выключать» отменяет выключение; «Выключить сейчас» не ждёт; без ответа сервер выключится сам.
+ */
+export const ShutdownConfirmPage = () => {
+  const tokenRef = useRef(new URLSearchParams(location.search).get('token') ?? '');
+  const token = tokenRef.current;
+  useEffect(() => { try { history.replaceState(null, '', location.pathname); } catch { /* не критично */ } }, []);
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'invalid' | 'cancel' | 'now'>('loading');
+  const [left, setLeft] = useState(0);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    void apiCall<{ secondsLeft: number; reason: string }>(`/api/ssh-gate/shutdown?token=${encodeURIComponent(token)}`).then((r) => {
+      if (r.ok && r.data) { setLeft(r.data.secondsLeft); setReason(r.data.reason || ''); setPhase('ready'); } else setPhase('invalid');
+    });
+  }, [token]);
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    const t = setInterval(() => setLeft((v) => Math.max(0, v - 1)), 1000);
+    return () => clearInterval(t);
+  }, [phase]);
+  const act = async (action: 'cancel' | 'now') => {
+    setBusy(true); setErr('');
+    const r = await apiCall('/api/ssh-gate/shutdown/decide', { method: 'POST', body: JSON.stringify({ token, action }) });
+    setBusy(false);
+    if (r.ok) { setPhase(action); return; }
+    if (r.error === 'invalid_link') { setPhase('invalid'); return; }
+    setErr('Не удалось выполнить действие. Попробуйте ещё раз.');
+  };
+  const btn = 'flex w-full items-center justify-center gap-2 rounded-full py-3 text-[14px] font-bold disabled:opacity-50';
+  return (
+    <div className="grid min-h-[100dvh] place-items-center px-4 py-10" style={{ background: 'var(--bg)' }}>
+      <div className="mx-auto w-full max-w-[420px] rounded-[28px] p-6" style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)', color: 'var(--t1)' }}>
+        <div className="mb-4 flex items-center gap-2"><Siren size={20} style={{ color: 'var(--red)' }} /><p className="text-[16px] font-bold">Аварийное выключение сервера</p></div>
+        {phase === 'loading' && <Loader2 size={18} className="animate-spin" />}
+        {phase === 'invalid' && <p className="text-[13px]" style={{ color: 'var(--t2)' }}>Ссылка недействительна: решение уже принято или прошло 5 минут. Если ответа не было, сервер выключается автоматически.</p>}
+        {phase === 'ready' && (
+          <div className="space-y-2">
+            <p className="mb-1 text-[12.5px]" style={{ color: 'var(--t2)' }}>{`Сработала аварийная защита. Без вашего ответа сервер выключится через ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}.`}</p>
+            {reason && <p translate="no" className="mb-3 text-[12px]" style={{ color: 'var(--t3)' }}>{reason}</p>}
+            <button type="button" disabled={busy} onClick={() => void act('cancel')} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}><ShieldCheck size={16} /> Не выключать</button>
+            <button type="button" disabled={busy} onClick={() => void act('now')} className={btn} style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}><Siren size={16} /> Выключить сейчас</button>
+            {err && <p className="mt-2 text-[12.5px]" style={{ color: 'var(--red)' }}>{err}</p>}
+          </div>
+        )}
+        {phase === 'cancel' && <p className="text-[13.5px]">Принято: выключение отменено. Проверьте журнал безопасности и вход по SSH.</p>}
+        {phase === 'now' && <p className="text-[13.5px]">Принято: сервер выключается.</p>}
+      </div>
+    </div>
+  );
+};

@@ -69,6 +69,31 @@ while true; do
       printf '%s\n' "$reason" > "$LAST"
       say "Аварийное выключение по сигналу: $reason"
       mv "$SIGNAL" "$SIGNAL.handled-$(date +%s)"
+      # Окно подтверждения: письмо со ссылкой «Не выключать / Выключить сейчас», ответ — файл shutdown-decision.
+      # Нет ответа за WAIT секунд (по умолчанию 300) — выключаем.
+      WAIT="${SHUTDOWN_CONFIRM_SEC:-300}"
+      TOKFILE="$APP_DIR/control/shutdown-token"
+      DECFILE="$APP_DIR/control/shutdown-decision"
+      rm -f "$DECFILE"
+      tok="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+      dom="$(sed -n 's/^DOMAIN=//p' "$APP_DIR/.env" 2>/dev/null | head -n1 | tr -d '"\r ')"
+      if [ -n "$tok" ] && [ -n "$dom" ]; then
+        printf '%s\n' "$reason" > "$TOKFILE.reason"
+        printf '%s\n' "$tok" > "$TOKFILE"
+        chmod 600 "$TOKFILE" "$TOKFILE.reason"
+        notify "ВНИМАНИЕ: аварийная защита хочет выключить сервер через $((WAIT / 60)) мин. Причина: $reason. Если это ложная тревога — нажмите «Не выключать»: https://$dom/shutdown-confirm?token=$tok . Без ответа сервер выключится сам."
+        waited=0
+        while [ "$waited" -lt "$WAIT" ] && [ ! -f "$DECFILE" ]; do sleep 5; waited=$((waited + 5)); done
+        rm -f "$TOKFILE" "$TOKFILE.reason"
+        if [ -f "$DECFILE" ] && grep -q '^cancel' "$DECFILE"; then
+          rm -f "$LAST" "$DECFILE"
+          notify "выключение отменено владельцем. Проверьте журнал безопасности и вход по SSH."
+          sleep 15
+          continue
+        fi
+      else
+        say "нет DOMAIN в .env или токена — подтверждение невозможно, выключаю без ожидания"
+      fi
       notify "СЕРВЕР ВЫКЛЮЧАЕТСЯ прямо сейчас (аварийное выключение). Причина: $reason. Включить можно только в панели хостера."
       sync
       /sbin/shutdown -h now

@@ -2634,3 +2634,11 @@ SSH-шлюз и самозащита (октябрь-2026): хук `ssh-gate.sh`
 `useIsMobile` теперь true и для сенсорных устройств без мыши (`hover: none` + `pointer: coarse`, ширина ≤ 1400) в любой ориентации: при повороте телефона и на планшетах остаётся мобильная раскладка, а не ПК. `keyboardInset` при повороте сбрасывает `--vv-top/--app-h` (верхняя панель не остаётся за краем). `build-apps.sh exe` на Linux требует `xvfb-run` и 32-бит wine (иначе wine падает «no driver could be loaded»/«syswow64\ntdll.dll») — `sudo bash scripts/setup-build-tools.sh --wine`. Нужна пересборка `.apk`/`.exe`; вручную на устройствах не проверялось.
 
 Capacitor CLI 8 требует Node ≥ 22: `setup-build-tools.sh --android` ставит Node 22 (NodeSource) вместе с JDK 21, а `build-apps.sh apk` проверяет версию Node до сборки. Не проверялось на боевом сервере (нет apt/root на целевой ОС).
+
+## Аварийное выключение: подтверждение владельцем, 5 минут (ноябрь-2026)
+
+`scripts/breach-watch.sh`: получив сигнал `control/shutdown-requested` (и без `control/pause`), сторож больше НЕ выключает сразу. Он кладёт токен в `control/shutdown-token` (+ `.reason`), шлёт владельцу оповещение (письмо/Telegram/URL, как раньше) со ссылкой `https://$DOMAIN/shutdown-confirm?token=…` и ждёт файл `control/shutdown-decision` до `SHUTDOWN_CONFIRM_SEC` (300) секунд.
+«Не выключать» → `cancel`: выключения нет, сигнал остаётся в `.handled-*`, приходит оповещение об отмене. «Выключить сейчас» или тишина 5 минут → выключение. Нет `DOMAIN` в `.env` хоста — подтвердить нечем, выключение без ожидания (в журнале `journalctl -t sky-breach-watch`).
+Сервер: `server/breach.mjs` (`inspectShutdown`, `decideShutdown`: токен одноразовый, сравнение за постоянное время, окно 5 минут), маршруты `GET /api/ssh-gate/shutdown`, `POST /api/ssh-gate/shutdown/decide`; страница `/shutdown-confirm` (`ShutdownConfirmPage`, отдельный `verify.html`: в nginx-блоке страниц писем обоих шаблонов, `VERIFY_PATHS`, `verify.tsx`).
+Ссылка — единственный секрет: кто получил письмо, тот может отменить выключение. Проверено на подставных `shutdown`/`logger` (отмена и тишина); настоящий systemd и доставка писем не проверялись.
+Развернуть: деплой api, nginx пересоздать (`deploy-local.sh`), на хосте `sudo install -m 755 scripts/breach-watch.sh /opt/sky/breach-watch.sh && sudo systemctl restart sky-breach-watch`.

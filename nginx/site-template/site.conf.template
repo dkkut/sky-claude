@@ -68,7 +68,7 @@ server {
 
     # Ссылки из писем (вход в панель, вход по SSH, разморозка) относятся к ПРИЛОЖЕНИЮ, а не к лендингу: если такая ссылка
     # всё же пришла на корневой домен, отправляем на домен приложения (${APP_DOMAIN}), где её открывает verify.html.
-    location ~ ^/(admin-verify|ssh-verify|ssh-confirm|2fa-reset|unfreeze|storage-verify|defense-undo)$ {
+    location ~ ^/(admin-verify|ssh-verify|ssh-confirm|shutdown-confirm|2fa-reset|unfreeze|storage-verify|defense-undo)$ {
         # Домен приложения совпал с лендингом — перенаправлять некуда (иначе был бы бесконечный редирект).
         if ($host = "${APP_DOMAIN}") { return 404; }
         return 302 https://${APP_DOMAIN}$request_uri;

@@ -206,3 +206,43 @@ export const denySshConfirm = async (token) => {
   });
   return { ok: true };
 };
+
+/**
+ * Подтверждение аварийного выключения (сторож на хосте, scripts/breach-watch.sh): перед выключением владельцу
+ * уходит письмо со ссылкой /shutdown-confirm?token=…; сторож кладёт токен в /control/shutdown-token и ждёт решение
+ * в /control/shutdown-decision до 5 минут. «Не выключать» — отмена; «Выключить сейчас» — без ожидания; тишина — выключение.
+ */
+const SHUTDOWN_TOKEN_PATH = process.env.SHUTDOWN_TOKEN_PATH || '/control/shutdown-token';
+const SHUTDOWN_DECISION_PATH = process.env.SHUTDOWN_DECISION_PATH || '/control/shutdown-decision';
+const SHUTDOWN_WINDOW_MS = 5 * 60 * 1000;
+
+const readShutdownToken = async (token) => {
+  const given = String(token ?? '');
+  if (!given) return null;
+  try {
+    const stored = (await fs.readFile(SHUTDOWN_TOKEN_PATH, 'utf8')).trim();
+    const stat = await fs.stat(SHUTDOWN_TOKEN_PATH);
+    const left = SHUTDOWN_WINDOW_MS - (Date.now() - stat.mtimeMs);
+    const a = Buffer.from(given); const b = Buffer.from(stored);
+    if (left <= 0 || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    let reason = '';
+    try { reason = (await fs.readFile(`${SHUTDOWN_TOKEN_PATH}.reason`, 'utf8')).trim().slice(0, 400); } catch { /* нет причины */ }
+    return { secondsLeft: Math.floor(left / 1000), reason };
+  } catch { return null; }
+};
+
+export const inspectShutdown = async (token) => {
+  const r = await readShutdownToken(token);
+  return r ? { ok: true, ...r } : { error: 'invalid_link' };
+};
+
+export const decideShutdown = async (token, action) => {
+  if (action !== 'cancel' && action !== 'now') return { error: 'bad_action' };
+  if (!(await readShutdownToken(token))) return { error: 'invalid_link' };
+  await fs.writeFile(SHUTDOWN_DECISION_PATH, `${action} ${new Date().toISOString()}\n`);
+  await fs.rm(SHUTDOWN_TOKEN_PATH, { force: true });
+  try {
+    logEvent({ category: 'security', type: action === 'cancel' ? 'shutdown_cancelled' : 'shutdown_confirmed', detail: {} });
+  } catch { /* журнал не должен мешать решению */ }
+  return { ok: true, action };
+};

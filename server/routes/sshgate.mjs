@@ -1,6 +1,6 @@
 import { json, parseBody, clientIp } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
-import { inspectSshConfirm, confirmSshLogin, denySshConfirm } from './../breach.mjs';
+import { inspectSshConfirm, confirmSshLogin, denySshConfirm, inspectShutdown, decideShutdown } from './../breach.mjs';
 import { requestSsh, pollSsh, inspectSshLink, confirmSshLink, panicSshLink, loginSsh, watchSsh } from './../sshgate.mjs';
 
 /**
@@ -57,6 +57,15 @@ export const sshGateRoutes = async (req, res, url) => {
   if (req.method === 'POST' && u.pathname === '/api/ssh-gate/legacy/deny') {
     const r = await denySshConfirm((await parseBody(req))?.token);
     return json(res, r.error ? 404 : 200, r);
+  }
+  if (req.method === 'GET' && u.pathname === '/api/ssh-gate/shutdown') {
+    const r = await inspectShutdown(u.searchParams.get('token'));
+    return json(res, r.error ? 404 : 200, r);
+  }
+  if (req.method === 'POST' && u.pathname === '/api/ssh-gate/shutdown/decide') {
+    const b = await parseBody(req);
+    const r = await decideShutdown(b?.token, b?.action);
+    return json(res, r.error ? (r.error === 'bad_action' ? 400 : 404) : 200, r);
   }
   return json(res, 404, { error: 'not_found' });
 };
