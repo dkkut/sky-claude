@@ -40,6 +40,8 @@ let lastSwitch = 0;
 const listeners = new Set<(origin: string) => void>();
 
 /** Адрес API, который сейчас считается рабочим. */
+/** Адрес, который можно отправлять людям (ссылки-приглашения и т. п.): в приложении location.origin — это https://localhost / app://sky, ссылка с него мертва. */
+export const shareOrigin = (): string => (NATIVE_APP ? (API_ORIGIN || '') : (typeof window !== 'undefined' ? window.location.origin : ''));
 export const getApiOrigin = (): string => (NATIVE_APP ? (ORIGINS[active] ?? API_ORIGIN) : '');
 export const hasApiFallbacks = ORIGINS.length > 1;
 export const onApiOriginChange = (fn: (origin: string) => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };

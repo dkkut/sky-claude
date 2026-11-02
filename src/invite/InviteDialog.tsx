@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { X, Copy, Share2, Loader2, RefreshCw, Users } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
+import { shareOrigin } from '@/core/nativeApp';
 
 interface Invite { code: string; link: string; count: number; recent: { username: string | null; at: string }[] }
 
@@ -17,7 +18,7 @@ export function InviteDialog({ onClose }: { onClose: () => void }) {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  const link = inv ? (inv.link.startsWith('/') ? `${window.location.origin}${inv.link}` : inv.link) : '';
+  const link = inv ? (inv.link.startsWith('/') ? `${shareOrigin()}${inv.link}` : inv.link) : '';
   const copy = async () => { try { await navigator.clipboard.writeText(link); flash('Ссылка скопирована'); } catch { flash('Не удалось скопировать'); } };
   const share = async () => {
     const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };

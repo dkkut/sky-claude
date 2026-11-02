@@ -16,6 +16,7 @@ import type { ProfileData } from '../useProfileData';
 import { GiftModal, type GiftModalProps } from '@/gifts/SkyGifts';
 import { ReportProfileSheet, InviteToChatSheet } from '../ActionSheets';
 import type { IconComponent } from '@/shared/icon';
+import { shareOrigin } from '@/core/nativeApp';
 
 const Pill = ({ icon: Icon, label, onClick, tone, primary }: {
   icon: IconComponent; label: string; onClick: () => void; tone?: string; primary?: boolean;
@@ -170,7 +171,7 @@ const GiftModalLauncher = ({ acc, onClose }: { acc: NonNullable<ProfileData['acc
 };
 
 function shareProfile(userId: string, name: string) {
-  const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/u/${userId}`;
+  const url = `${shareOrigin()}/u/${userId}`;
   if (typeof navigator !== 'undefined' && navigator.share) {
     navigator.share({ title: `Профиль ${name} в Sky`, url }).catch(() => {});
   } else {
@@ -178,6 +179,6 @@ function shareProfile(userId: string, name: string) {
   }
 }
 function copyProfileLink(userId: string) {
-  const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/u/${userId}`;
+  const url = `${shareOrigin()}/u/${userId}`;
   navigator.clipboard.writeText(url).catch(() => {});
 }

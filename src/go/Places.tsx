@@ -6,6 +6,7 @@ import { flash } from '@/shared/flash';
 import { BookBlock, ReviewsBlock, ReportBlock, MyBookings } from './PlacesExtra';
 import { gp, placeImg, type GpCard, type GpCategory, type GpItem, type GpOrder, type GpPlace, type GpRoute } from './placesApi';
 import { Back, Btn, Card, Chip, Col, Empty, ErrorState, Input, Notice, Segmented, fail, useAction, useLoad, locate, C, GO, fmt } from './ui';
+import { shareOrigin } from '@/core/nativeApp';
 
 type Pos = { lat: number; lng: number } | null;
 const DAY_NAMES: [string, string][] = [['mon', 'Пн'], ['tue', 'Вт'], ['wed', 'Ср'], ['thu', 'Чт'], ['fri', 'Пт'], ['sat', 'Сб'], ['sun', 'Вс']];
@@ -105,7 +106,7 @@ const PlaceScreen = ({ id, pos, onBack }: { id: string; pos: Pos; onBack: () => 
     return { ...c, [it.id]: { ...cur, qty: Math.max(0, Math.min(max, cur.qty + d)) } };
   });
   const share = async () => {
-    const url = `${location.origin}/?place=${p.id}`;
+    const url = `${shareOrigin()}/?place=${p.id}`;
     try { if (navigator.share) await navigator.share({ title: p.name, text: p.address, url }); else { await navigator.clipboard.writeText(url); flash('Ссылка скопирована'); } } catch { /* отмена */ }
   };
   const toggleFav = () => void run(async () => { const r = await gp.fav(p.id, !p.fav); if (!r.ok) return fail(r); reload(); });

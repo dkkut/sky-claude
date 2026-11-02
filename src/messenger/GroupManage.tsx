@@ -17,6 +17,7 @@ import {
   type ChatRole, type ChatSettings,
 } from './adminStore';
 import type { ChatItem } from './types';
+import { shareOrigin } from '@/core/nativeApp';
 
 const C = { l1: 'var(--bg-l1)', l2: 'var(--bg-l2)', border: 'var(--border-m)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)', accent: 'var(--accent)', red: 'var(--red)' };
 
@@ -289,7 +290,7 @@ const InvitesTab = ({ invites, onCreate, onRevoke }: {
   onRevoke: (code: string) => void;
 }) => {
   const [copied, setCopied] = useState('');
-  const link = (code: string) => `${location.origin}/?join=${code}`;
+  const link = (code: string) => `${shareOrigin()}/?join=${code}`;
 
   return (
     <div className="space-y-2">

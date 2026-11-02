@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Copy, Share2, Loader2, RefreshCw, Users, Link2, Gift, Check } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
+import { shareOrigin } from '@/core/nativeApp';
 
 interface Milestone { count: number; primeDays: number; points: number; reached: boolean; claimed: boolean }
 interface Invite { code: string; link: string; count: number; milestones: Milestone[]; recent: { username: string | null; at: string }[] }
@@ -28,7 +29,7 @@ export function InvitePanel() {
     void load();
   };
 
-  const link = inv ? (inv.link.startsWith('/') ? `${window.location.origin}${inv.link}` : inv.link) : '';
+  const link = inv ? (inv.link.startsWith('/') ? `${shareOrigin()}${inv.link}` : inv.link) : '';
   const copy = async () => { try { await navigator.clipboard.writeText(link); flash('Ссылка скопирована'); } catch { flash('Не удалось скопировать'); } };
   const share = async () => {
     const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };

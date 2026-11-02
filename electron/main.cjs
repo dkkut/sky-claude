@@ -96,6 +96,18 @@ const writeStore = (store) => {
   try { fs.writeFileSync(STORE_FILE(), JSON.stringify(store), { mode: 0o600 }); } catch { /* диск недоступен — не критично */ }
 };
 
+/* Все ipcMain.handle принимают вызовы ТОЛЬКО со страницы самого приложения (app://sky): иначе любой фрейм/страница, оказавшаяся в окне,
+   читала бы защищённое хранилище, меняла прокси и запускала лаунчер. */
+{
+  const origHandle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = (channel, fn) => origHandle(channel, (event, ...args) => {
+    let ok = false;
+    try { ok = String(event.senderFrame?.url || '').startsWith(`${APP_ORIGIN}/`) || String(event.senderFrame?.url || '') === APP_ORIGIN; } catch { ok = false; }
+    if (!ok) throw new Error('forbidden_sender');
+    return fn(event, ...args);
+  });
+}
+
 ipcMain.handle('secure-storage:get', (_event, key) => {
   if (!safeStorage.isEncryptionAvailable()) return null;
   const enc = readStore()[key];

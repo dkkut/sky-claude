@@ -9,6 +9,7 @@
  * право на выдачу. Этот файл только спрашивает и показывает ответ.
  */
 import { apiCall } from '@/core/auth/api';
+import { shareOrigin } from '@/core/nativeApp';
 
 export type CampaignStatus = 'active' | 'suspicious' | 'blocked';
 export type GrantStatus = 'pending' | 'approved' | 'rejected' | 'granted' | 'failed';
@@ -132,7 +133,7 @@ export const apiRequestReward = async (participationId: string) => {
 };
 
 /** Публичный переход по ссылке — тот, что кликает зритель ролика. Не требует входа. */
-export const campaignLinkUrl = (link: string) => `${window.location.origin}/api/campaigns/r/${encodeURIComponent(link)}`;
+export const campaignLinkUrl = (link: string) => `${shareOrigin()}/api/campaigns/r/${encodeURIComponent(link)}`;
 
 export const campaignCoverUrl = (id: string) => `/api/campaigns/${encodeURIComponent(id)}/cover`;
 
