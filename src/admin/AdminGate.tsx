@@ -241,6 +241,9 @@ export const ShutdownConfirmPage = () => {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [adminToken, setAdminToken] = useState('');
+  const [code, setCode] = useState('');
+  const [ask, setAsk] = useState(false);
   useEffect(() => {
     void apiCall<{ secondsLeft: number; reason: string }>(`/api/ssh-gate/shutdown?token=${encodeURIComponent(token)}`).then((r) => {
       if (r.ok && r.data) { setLeft(r.data.secondsLeft); setReason(r.data.reason || ''); setPhase('ready'); } else setPhase('invalid');
@@ -253,10 +256,14 @@ export const ShutdownConfirmPage = () => {
   }, [phase]);
   const act = async (action: 'cancel' | 'now') => {
     setBusy(true); setErr('');
-    const r = await apiCall('/api/ssh-gate/shutdown/decide', { method: 'POST', body: JSON.stringify({ token, action }) });
+    const r = await apiCall('/api/ssh-gate/shutdown/decide', { method: 'POST', body: JSON.stringify({ token, action, adminToken: adminToken.trim(), code: code.replace(/\s+/g, '') }) });
     setBusy(false);
     if (r.ok) { setPhase(action); return; }
     if (r.error === 'invalid_link') { setPhase('invalid'); return; }
+    if (r.error === 'two_factor_required') { setErr('У владельца не включён аутентификатор — отменить нельзя, сервер выключится по таймеру.'); return; }
+    if (r.error === 'bad_code') { setErr('Неверный код аутентификатора.'); return; }
+    if (r.error === 'too_many_requests') { setErr('Слишком много попыток. Подождите минуту.'); return; }
+    if (typeof r.error === 'string' && r.error.startsWith('admin_token')) { setErr('Токен администратора неверный или не создан.'); return; }
     setErr('Не удалось выполнить действие. Попробуйте ещё раз.');
   };
   const btn = 'flex w-full items-center justify-center gap-2 rounded-full py-3 text-[14px] font-bold disabled:opacity-50';
@@ -270,7 +277,13 @@ export const ShutdownConfirmPage = () => {
           <div className="space-y-2">
             <p className="mb-1 text-[12.5px]" style={{ color: 'var(--t2)' }}>{`Сработала аварийная защита. Без вашего ответа сервер выключится через ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}.`}</p>
             {reason && <p translate="no" className="mb-3 text-[12px]" style={{ color: 'var(--t3)' }}>{reason}</p>}
-            <button type="button" disabled={busy} onClick={() => void act('cancel')} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}><ShieldCheck size={16} /> Не выключать</button>
+            {ask && (
+              <div className="space-y-2">
+                <input value={adminToken} onChange={(e) => setAdminToken(e.target.value)} placeholder="Токен администратора (SKA-…)" autoCapitalize="off" autoCorrect="off" spellCheck={false} translate="no" className="w-full rounded-full px-4 py-3 text-[14px] outline-none" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }} />
+                <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Код аутентификатора" inputMode="numeric" autoComplete="one-time-code" translate="no" className="w-full rounded-full px-4 py-3 text-[14px] outline-none" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }} />
+              </div>
+            )}
+            <button type="button" disabled={busy || (ask && (!adminToken.trim() || !code.trim()))} onClick={() => (ask ? void act('cancel') : setAsk(true))} className={btn} style={{ background: 'var(--accent)', color: '#fff' }}><ShieldCheck size={16} /> {ask ? 'Подтвердить: не выключать' : 'Не выключать'}</button>
             <button type="button" disabled={busy} onClick={() => void act('now')} className={btn} style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}><Siren size={16} /> Выключить сейчас</button>
             {err && <p className="mt-2 text-[12.5px]" style={{ color: 'var(--red)' }}>{err}</p>}
           </div>

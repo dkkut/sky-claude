@@ -28,6 +28,12 @@ import { query } from './db.mjs';
 import { sendEmail } from './notify.mjs';
 import { setLockdownSystem } from './adminsec.mjs';
 import { logEvent } from './skylog.mjs';
+import { config } from './config.mjs';
+import { decryptSecret } from './crypto.mjs';
+import { verifyTotp } from './totp.mjs';
+import { rateLimit } from './security.mjs';
+import { adminNow } from './admingate.mjs';
+import { verifyToken as verifyAdminToken } from './admintoken.mjs';
 
 /** Оповещение в приложении (раздел «Уведомления» и push): владельцу и всем администраторам. Сбой оповещения защиту не роняет. */
 const alertInApp = async (title, body) => {
@@ -236,9 +242,31 @@ export const inspectShutdown = async (token) => {
   return r ? { ok: true, ...r } : { error: 'invalid_link' };
 };
 
-export const decideShutdown = async (token, action) => {
+/**
+ * Отменить выключение может только владелец: токен администратора (SKA-…) И код аутентификатора, как при входе по SSH.
+ * «Выключить сейчас» — безопасное направление, подтверждения не требует. Нет токена или аутентификатора у владельца —
+ * отменить нельзя, сервер выключится по таймеру (закрыто, а не открыто).
+ */
+export const decideShutdown = async (token, action, { adminToken, code, ip } = {}) => {
   if (action !== 'cancel' && action !== 'now') return { error: 'bad_action' };
   if (!(await readShutdownToken(token))) return { error: 'invalid_link' };
+  if (action === 'cancel') {
+    if (!rateLimit(`shutdown:decide:${ip || 'x'}`, 6)) return { error: 'too_many_requests' };
+    const name = String(config.ownerUsername ?? '').trim().toLowerCase();
+    const { rows } = name ? await query('SELECT id FROM profiles WHERE lower(username) = $1', [name]) : { rows: [] };
+    const who = rows[0] ? await adminNow(rows[0].id) : null;
+    if (!who || !who.twoFactor) return { error: 'two_factor_required' };
+    const v = await verifyAdminToken(who.id, adminToken, { force: true });
+    if (!v.ok) {
+      try { logEvent({ category: 'security', type: 'shutdown_cancel_denied', level: 'WARN', result: 'denied', reason: String(v.error || 'token').slice(0, 60), detail: {} }); } catch { /* не мешаем */ }
+      return { error: v.error || 'admin_token_invalid' };
+    }
+    const key = decryptSecret(who.secret);
+    if (!key || !verifyTotp(key, String(code ?? '').replace(/\s+/g, ''))) {
+      try { logEvent({ category: 'security', type: 'shutdown_cancel_denied', level: 'WARN', result: 'denied', reason: 'bad_code', detail: {} }); } catch { /* не мешаем */ }
+      return { error: 'bad_code' };
+    }
+  }
   await fs.writeFile(SHUTDOWN_DECISION_PATH, `${action} ${new Date().toISOString()}\n`);
   await fs.rm(SHUTDOWN_TOKEN_PATH, { force: true });
   try {

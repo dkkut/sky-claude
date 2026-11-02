@@ -64,8 +64,8 @@ export const sshGateRoutes = async (req, res, url) => {
   }
   if (req.method === 'POST' && u.pathname === '/api/ssh-gate/shutdown/decide') {
     const b = await parseBody(req);
-    const r = await decideShutdown(b?.token, b?.action);
-    return json(res, r.error ? (r.error === 'bad_action' ? 400 : 404) : 200, r);
+    const r = await decideShutdown(b?.token, b?.action, { adminToken: b?.adminToken, code: b?.code, ip });
+    return json(res, r.error ? (r.error === 'bad_action' ? 400 : r.error === 'invalid_link' ? 404 : r.error === 'too_many_requests' ? 429 : 401) : 200, r);
   }
   return json(res, 404, { error: 'not_found' });
 };
