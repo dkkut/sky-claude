@@ -80,7 +80,14 @@ while true; do
       if [ -n "$tok" ] && [ -n "$dom" ]; then
         printf '%s\n' "$reason" > "$TOKFILE.reason"
         printf '%s\n' "$tok" > "$TOKFILE"
-        chmod 600 "$TOKFILE" "$TOKFILE.reason"
+        # API в контейнере работает от пользователя node (uid 1000), а не от root: файл должен принадлежать
+        # владельцу папки control (иначе токен не прочитать и ссылка всегда «недействительна»).
+        if [ "$(stat -c %u "$APP_DIR/control" 2>/dev/null)" != "0" ]; then
+          chown --reference="$APP_DIR/control" "$TOKFILE" "$TOKFILE.reason" 2>/dev/null
+          chmod 600 "$TOKFILE" "$TOKFILE.reason"
+        else
+          chmod 644 "$TOKFILE" "$TOKFILE.reason"
+        fi
         notify "ВНИМАНИЕ: аварийная защита хочет выключить сервер через $((WAIT / 60)) мин. Причина: $reason. Если это ложная тревога — нажмите «Не выключать»: https://$dom/shutdown-confirm?token=$tok . Без ответа сервер выключится сам."
         waited=0
         while [ "$waited" -lt "$WAIT" ] && [ ! -f "$DECFILE" ]; do sleep 5; waited=$((waited + 5)); done
