@@ -85,7 +85,7 @@ export const ArtistCardsTab = () => {
 };
 
 /* ─── Реестр карточек и передача владельца ─── */
-interface Row { id: string; name: string; ownerId: string | null; ownerUsername: string | null; tracks: number }
+interface Row { id: string; name: string; ownerId: string | null; ownerUsername: string | null; tracks: number; foreignAgent?: boolean }
 const Registry = ({ reason }: { reason: string; onDone: () => void }) => {
   const [q, setQ] = useState(''); const [own, setOwn] = useState(''); const [rows, setRows] = useState<Row[] | null>(null);
   const [to, setTo] = useState<Record<string, string>>({});
@@ -100,6 +100,13 @@ const Registry = ({ reason }: { reason: string; onDone: () => void }) => {
     const r = await apiCall(`/api/admin/artist-cards/${id}/transfer`, { method: 'POST', body: JSON.stringify({ username: u, reason }) });
     flash(r.ok ? 'Карточка передана' : (ERR[r.error ?? ''] ?? (r.error === 'user_not_found' ? 'Человек с таким ником не найден.' : r.error === 'already_owner' ? 'Он уже владелец.' : 'Не получилось')));
     if (r.ok) { setTo({ ...to, [id]: '' }); void load(); }
+  };
+  const foreignAgent = async (c: Row) => {
+    const on = !c.foreignAgent;
+    if (!window.confirm(on ? `Поставить на карточке «${c.name}» пометку «признан иноагентом на территории РФ»? Её увидят все.` : `Снять пометку «иноагент» с карточки «${c.name}»?`)) return;
+    const r = await apiCall(`/api/admin/artist-cards/${c.id}/foreign-agent`, { method: 'POST', body: JSON.stringify({ on, reason }) });
+    flash(r.ok ? (on ? 'Пометка поставлена' : 'Пометка снята') : (r.error === 'reason_required' ? 'Причина не короче 5 знаков.' : 'Не получилось'));
+    if (r.ok) void load();
   };
   return (
     <section className="space-y-2">
@@ -116,6 +123,8 @@ const Registry = ({ reason }: { reason: string; onDone: () => void }) => {
             <input value={to[c.id] ?? ''} onChange={(e) => setTo({ ...to, [c.id]: e.target.value })} placeholder="@ник нового владельца" className="min-w-0 flex-1 rounded-xl px-3 py-1.5 text-xs" style={field} />
             <button type="button" onClick={() => void transfer(c.id)} className="rounded-xl px-3 py-1.5 text-xs font-bold text-white" style={{ background: C.acc }}>Передать</button>
           </div>
+          <button type="button" onClick={() => void foreignAgent(c)} className="rounded-xl px-3 py-1.5 text-xs font-bold" style={{ background: c.foreignAgent ? 'transparent' : C.l1, color: C.t1, border: `1px solid ${C.brd}` }}>{c.foreignAgent ? 'Снять пометку «иноагент»' : 'Пометить «иноагент»'}</button>
+          {c.foreignAgent && <p className="text-[11.5px] font-semibold" style={{ color: '#ef4444' }}>Стоит пометка: признан иноагентом на территории РФ</p>}
         </div>))}
       <p className="text-[11.5px]" style={{ color: C.t3 }}>Причина берётся из поля выше (не короче 5 знаков). Новый владелец правит только треки, загруженные им самим; id карточки и все треки остаются на месте.</p>
     </section>

@@ -2,7 +2,7 @@ import { json, requireProfile, parseBody } from './../http.mjs';
 import { rateLimit } from './../security.mjs';
 import { hasPrime } from './../skyid.mjs';
 import { can } from './../admin.mjs';
-import { suggest, createCard, readCard, readCardByName, listCards, updateCard, claim, withdrawClaim, adminClaims, decideClaim, revokeOwner, duplicates, merge, unmerge, adminList, transferOwner, setCardImage, clearCardImage, cardImage } from './../artistcards.mjs';
+import { suggest, createCard, readCard, readCardByName, listCards, updateCard, claim, withdrawClaim, adminClaims, decideClaim, revokeOwner, duplicates, merge, unmerge, adminList, transferOwner, setForeignAgent, setCardImage, clearCardImage, cardImage } from './../artistcards.mjs';
 
 const CODE = { image_too_large: 413, no_transparency: 422, user_not_found: 404, not_allowed: 403, no_own_track: 403, self_review: 403, not_found: 404, exists: 409, already_owned: 409, already_owner: 409, already_pending: 409, not_pending: 409, already_merged: 409, name_taken: 409 };
 const send = (res, r) => (r.error ? json(res, CODE[r.error] ?? 400, r) : json(res, 200, r));
@@ -55,6 +55,8 @@ export const artistCardsRoutes = async (req, res, url) => {
   if (req.method === 'GET' && path === '/api/admin/artist-cards') return send(res, await adminList(me, Object.fromEntries(params)));
   const tr = path.match(/^\/api\/admin\/artist-cards\/([\w-]+)\/transfer$/);
   if (req.method === 'POST' && tr) { const b = (await parseBody(req)) ?? {}; return send(res, await transferOwner(me, tr[1], b.username, b.reason)); }
+  const fa = path.match(/^\/api\/admin\/artist-cards\/(acd-[0-9a-f-]{36})\/foreign-agent$/);
+  if (req.method === 'POST' && fa) { const b = (await parseBody(req)) ?? {}; return send(res, await setForeignAgent(me, fa[1], b.on === true, b.reason)); }
   const u = path.match(/^\/api\/admin\/artist-cards\/(acd-[0-9a-f-]{36})\/(unmerge|revoke-owner)$/);
   if (req.method === 'POST' && u) { const b = (await parseBody(req)) ?? {}; return send(res, u[2] === 'unmerge' ? await unmerge(me, u[1], b.reason) : await revokeOwner(me, u[1], b.reason)); }
   return json(res, 404, { error: 'not_found' });

@@ -102,6 +102,7 @@ export const ArtistProfile = ({ artist, tracks, favorites, playing, activeId, on
         <button type="button" onClick={onClose} aria-label="Назад" className="absolute left-3 grid h-10 w-10 place-items-center rounded-full" style={{ top: 'calc(env(safe-area-inset-top) + 10px)', background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(8px)', color: '#fff' }}><ChevronLeft size={22} /></button>
         <div className="absolute inset-x-0 bottom-0 px-5 pb-5 text-center">
           <h1 translate="no" className="break-words text-[40px] font-black leading-[1.05] tracking-tight text-white" style={{ textShadow: '0 2px 18px rgba(0,0,0,0.35)' }}>{artist}</h1>
+          {card?.foreignAgent && <p className="mt-2 inline-block rounded-lg px-2.5 py-1 text-[12px] font-bold" style={{ background: 'rgba(239,68,68,0.9)', color: '#fff' }}>Признан иноагентом на территории РФ</p>}
           <p className="mt-1.5 flex items-center justify-center gap-1.5 text-[15px] font-semibold text-white/85"><Headphones size={16} />{fmtPlays(totalPlays)} прослушиваний</p>
           <div className="mt-4 flex items-start justify-center gap-7">
             {profile && !profile.own && (

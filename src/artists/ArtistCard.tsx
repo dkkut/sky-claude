@@ -5,7 +5,7 @@ import { apiCall } from '@/core/auth/api';
 import { CardImageEditor, useCardImage } from './CardImages';
 import { flash } from '@/shared/flash';
 
-interface Card { id: string; name: string; bio?: string; genres: string[]; autoCreated: boolean; confirmedOwner: boolean; rightsVerified?: boolean; hasPhoto?: boolean; hasBanner?: boolean; hasCutout?: boolean; isOwner?: boolean; canClaim?: boolean; myClaim?: string; tracks: number }
+interface Card { id: string; name: string; bio?: string; genres: string[]; autoCreated: boolean; confirmedOwner: boolean; rightsVerified?: boolean; foreignAgent?: boolean; hasPhoto?: boolean; hasBanner?: boolean; hasCutout?: boolean; isOwner?: boolean; canClaim?: boolean; myClaim?: string; tracks: number }
 const ERR: Record<string, string> = { note_required: 'Опишите, почему карточка ваша (не короче 10 знаков).', no_own_track: 'Заявку подаёт тот, чей трек привязан к карточке.', already_pending: 'Заявка уже на проверке.', already_owned: 'У карточки уже есть владелец.' };
 const field = { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--t1)' };
 
@@ -55,6 +55,7 @@ export const ArtistCardBlock = ({ name }: { name: string }) => {
   return (
     <div className="mx-5 mb-3 space-y-2 rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.05)' }} data-artist-card>
       <CardMedia c={c} reload={() => void load()} />
+      {c.foreignAgent && <p className="rounded-xl px-3 py-2 text-[12px] font-bold" style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>Признан иноагентом на территории РФ</p>}
       <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--t2)' }}>
         {c.confirmedOwner ? <><BadgeCheck size={14} style={{ color: 'var(--accent)' }} />{c.rightsVerified ? 'Карточка подтверждена владельцем, права правообладателя подтверждены' : 'Карточка подтверждена владельцем'}</> : <>Карточка пока не подтверждена музыкантом{c.autoCreated ? ' (создана автоматически по трекам)' : ''}</>}
       </div>

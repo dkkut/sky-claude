@@ -2661,3 +2661,8 @@ Capacitor CLI 8 требует Node ≥ 22: `setup-build-tools.sh --android` с�
 - **Electron**: каждый `ipcMain.handle` принимает вызовы только со страницы `app://sky` (обёртка в начале `main.cjs`, иначе `forbidden_sender`); `ipcMain.on` по-прежнему проверяют отправителя сами. Нужна пересборка `.exe`.
 - Известные места, где `<audio src>` без пропуска (`music/ArtistSubmit.tsx`, плеер модератора) в приложениях не заиграет — тег не шлёт токен; нужен `getDownloadUrl`/пропуск, как у остальных плееров. Не исправлено.
 - Статически проверено и чисто: `remoteAddress` вне `clientIp`, `eval`/`new Function`, `exec` с подстановкой, `err.message` в ответах, `window.open` (кроме трёх безопасных мест), `postMessage('*')` (только пример в документации для разработчиков игр), `dangerouslySetInnerHTML` (только QR-SVG из своей библиотеки и экранированная наклейка), `message`-слушатели (Blox `Player` сверяет origin).
+
+## Пометка «иноагент» в карточке музыканта (ноябрь-2026)
+
+Миграция `236_artist_foreign_agent.sql` (`music_artist_cards.foreign_agent/_at/_by`), `artistcards.setForeignAgent`, `POST /api/admin/artist-cards/:id/foreign-agent {on, reason}` (право `content`, причина ≥5 знаков, журнал карточки и администрации).
+Клиент: кнопка «Пометить «иноагент»» в реестре карточек (`ArtistCardsTab`), надпись «Признан иноагентом на территории РФ» в `ArtistCardBlock` и под именем на странице исполнителя (`ArtistProfile`). Основание (решение госоргана) вносит сотрудник вручную — реестр Минюста не подключён. Нужен деплой (миграция 236) и пересборка `.apk`/`.exe`.

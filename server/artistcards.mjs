@@ -25,7 +25,7 @@ const log = (cardId, event, actor, detail) => query('INSERT INTO music_artist_ca
 
 const view = (c, extra = {}) => ({
   id: c.id, name: c.name, bio: c.bio ? decryptContent(c.bio) ?? undefined : undefined, genres: c.genres ? c.genres.split(',').filter(Boolean) : [],
-  autoCreated: c.auto_created === true, rightsVerified: Boolean(c.rights_verified_at), rightsHolder: c.rights_holder ?? undefined, confirmedOwner: Boolean(c.owner_id), ownerId: c.owner_id ?? undefined, tracks: Number(c.tracks ?? 0), ...extra,
+  autoCreated: c.auto_created === true, rightsVerified: Boolean(c.rights_verified_at), foreignAgent: c.foreign_agent === true, rightsHolder: c.rights_holder ?? undefined, confirmedOwner: Boolean(c.owner_id), ownerId: c.owner_id ?? undefined, tracks: Number(c.tracks ?? 0), ...extra,
 });
 
 const COUNT = `(SELECT count(*) FROM music_tracks t WHERE t.artist_card_id = c.id AND t.status = 'published') AS tracks`;
@@ -301,7 +301,21 @@ export const adminList = async (adminId, { q, owner, limit, offset } = {}) => {
   if (owner === 'none') where += ' AND c.owner_id IS NULL'; else if (owner === 'has') where += ' AND c.owner_id IS NOT NULL';
   args.push(lim, off);
   const { rows } = await query(`SELECT c.*, p.username AS owner_username, ${COUNT} FROM music_artist_cards c LEFT JOIN profiles p ON p.id = c.owner_id WHERE ${where} ORDER BY c.name LIMIT $${args.length - 1} OFFSET $${args.length}`, args);
-  return { cards: rows.map((r) => ({ id: r.id, name: r.name, ownerId: r.owner_id ?? null, ownerUsername: r.owner_username ?? null, tracks: Number(r.tracks), autoCreated: r.auto_created === true, updatedAt: r.updated_at })), limit: lim, offset: off };
+  return { cards: rows.map((r) => ({ id: r.id, name: r.name, ownerId: r.owner_id ?? null, ownerUsername: r.owner_username ?? null, tracks: Number(r.tracks), autoCreated: r.auto_created === true, foreignAgent: r.foreign_agent === true, updatedAt: r.updated_at })), limit: lim, offset: off };
+};
+
+/** Пометка «признан иноагентом на территории РФ»: ставит и снимает сотрудник (право content), причина обязательна, действие в журнале карточки и администрации. */
+export const setForeignAgent = async (adminId, cardId, on, reason) => {
+  if (!(await can(adminId, 'content'))) return { error: 'not_allowed' };
+  const why = clean(reason, MAX_REASON); if (why.length < 5) return { error: 'reason_required' };
+  const flag = on === true;
+  const c = (await query('SELECT id, foreign_agent FROM music_artist_cards WHERE id=$1 AND merged_into IS NULL', [String(cardId ?? '')])).rows[0];
+  if (!c) return { error: 'not_found' };
+  if (c.foreign_agent === flag) return { ok: true, foreignAgent: flag, unchanged: true };
+  await query('UPDATE music_artist_cards SET foreign_agent=$2, foreign_agent_at=CASE WHEN $2 THEN now() ELSE NULL END, foreign_agent_by=CASE WHEN $2 THEN $3 ELSE NULL END, updated_at=now() WHERE id=$1', [c.id, flag, adminId]);
+  await log(c.id, flag ? 'foreign_agent_on' : 'foreign_agent_off', adminId, { reason: why });
+  await logAdmin({ actorId: adminId, type: flag ? 'artist_foreign_agent_on' : 'artist_foreign_agent_off', detail: `${c.id} — ${why}` });
+  return { ok: true, foreignAgent: flag };
 };
 
 /** Передача владельца карточки другому аккаунту: решает сотрудник, причина обязательна, всё в одной транзакции. Треки, релизы и id не меняются. */
