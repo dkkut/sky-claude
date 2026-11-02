@@ -2632,3 +2632,5 @@ SSH-шлюз и самозащита (октябрь-2026): хук `ssh-gate.sh`
 `build-apps.sh apk` теперь до сборки проверяет версию Java: JDK < 21 → понятный пропуск вместо падения Gradle («invalid source release: 21»). Лечение на сервере: `sudo bash scripts/setup-build-tools.sh --android` (ставит `openjdk-21-jdk-headless`, переключает `java`), затем `bash scripts/build-apps.sh apk`.
 
 `useIsMobile` теперь true и для сенсорных устройств без мыши (`hover: none` + `pointer: coarse`, ширина ≤ 1400) в любой ориентации: при повороте телефона и на планшетах остаётся мобильная раскладка, а не ПК. `keyboardInset` при повороте сбрасывает `--vv-top/--app-h` (верхняя панель не остаётся за краем). `build-apps.sh exe` на Linux требует `xvfb-run` и 32-бит wine (иначе wine падает «no driver could be loaded»/«syswow64\ntdll.dll») — `sudo bash scripts/setup-build-tools.sh --wine`. Нужна пересборка `.apk`/`.exe`; вручную на устройствах не проверялось.
+
+Capacitor CLI 8 требует Node ≥ 22: `setup-build-tools.sh --android` ставит Node 22 (NodeSource) вместе с JDK 21, а `build-apps.sh apk` проверяет версию Node до сборки. Не проверялось на боевом сервере (нет apt/root на целевой ОС).

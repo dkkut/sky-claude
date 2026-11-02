@@ -11,6 +11,7 @@ MODE="${1:-all}"
 have() { command -v "$1" >/dev/null 2>&1; }
 
 check() {
+  echo "node:        $(have node && node -v || echo НЕТ) (нужен >=22)"
   echo "java:        $(have java && java -version 2>&1 | head -1 || echo НЕТ)"
   echo "ANDROID_SDK: $([ -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ] && echo "$SDK" || echo НЕТ)"
   echo "platform-34: $([ -d "$SDK/platforms/android-34" ] && echo есть || echo НЕТ)"
@@ -23,7 +24,17 @@ check() {
 [ "$(id -u)" = 0 ] || { echo "Нужен root (apt install)."; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 
+install_node() { # Capacitor CLI 8 требует Node >= 22 («The Capacitor CLI requires NodeJS >=22.0.0»)
+  local v; v="$(node -v 2>/dev/null | sed 's/^v//;s/\..*//')"
+  if [ "${v:-0}" -ge 22 ] 2>/dev/null; then echo "✔ node $(node -v)"; return; fi
+  apt-get install -y -qq curl ca-certificates gnupg
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  apt-get install -y -qq nodejs
+  hash -r; echo "✔ node $(node -v)"
+}
+
 install_android() {
+  install_node
   apt-get update -qq
   apt-get install -y -qq openjdk-21-jdk-headless unzip curl ca-certificates
   if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
