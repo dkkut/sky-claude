@@ -18,7 +18,7 @@
 import { useEffect, useState } from 'react';
 import { FileText, ShieldAlert, Trash2, Check, X } from 'lucide-react';
 import {
-  apiTracks, apiDeleteTrack, apiModerationQueue, apiModerate, type ServerTrack,
+  apiTracks, audioUrl, apiDeleteTrack, apiModerationQueue, apiModerate, type ServerTrack,
 } from './musicApi';
 
 const Card = ({ icon, title, children }: {
@@ -129,7 +129,7 @@ export const AdminMusicPanel = () => {
             <p className="truncate text-[11.5px]" style={{ color: 'var(--t3)' }}>
               {t.artist}{t.ownerName ? ` · загрузил @${t.ownerName}` : ''}
             </p>
-            <audio controls preload="none" src={`/api/music/track/${encodeURIComponent(t.id)}/audio`}
+            <audio controls preload="none" src={audioUrl(t.id)}
               className="mt-2 w-full" style={{ height: 32 }}/>
             {rejecting === t.id ? (
               <div className="mt-2 flex items-center gap-2">

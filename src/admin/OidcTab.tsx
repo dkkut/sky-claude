@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Loader2, KeyRound, Copy, RefreshCw, Plus } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
+import { shareOrigin } from '@/core/nativeApp';
 
 const C = { l1: 'var(--bg-l1)', l2: 'var(--bg-l2)', brd: 'var(--border)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)', acc: 'var(--accent)', red: 'var(--red)', green: 'var(--green)', amber: 'var(--amber)' };
 const field = { background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 };
@@ -72,7 +73,7 @@ export const OidcTab = () => {
     redirectUris: form.redirectUris.split(/\s+/).map((x) => x.trim()).filter(Boolean),
   }), (d) => { if (d.clientSecret) setSecret({ id: d.client.id, value: d.clientSecret }); setCreating(false); setForm({ name: '', description: '', homepageUrl: '', kind: 'confidential', redirectUris: '', scopes: ['openid'] }); });
 
-  const iss = `${location.origin}/api/oidc`;
+  const iss = `${shareOrigin()}/api/oidc`;
   if (!clients) return <Wait />;
   return (
     <div className="space-y-3">
