@@ -28,6 +28,12 @@ import { syncPush } from './pushClient';
 import { apiBloomEvents } from '@/bloom/bloomApi';
 import { apiBroadcastEvents } from './broadcastApi';
 import { apiAdEvents } from '@/ads/adsApi';
+import { useMoney } from '@/wallet/store';
+
+/** Серверное уведомление о деньгах (SkyKassa, возврат, кэшбэк, бонус) — сразу перечитываем баланс, а не ждём минутный опрос. */
+const refreshIfMoney = (n: { title?: string; kind?: string }) => {
+  if (/skykassa|cashback|topup|refund/i.test(String(n?.kind ?? '')) || /^SkyKassa/.test(String(n?.title ?? ''))) void useMoney.getState().refresh();
+};
 
 const BLOOM_POLL_MS = 20_000;
 const BROADCAST_POLL_MS = 20_000;
@@ -145,6 +151,7 @@ export const NotifBridge = () => {
     const onGift = (e: Event) => {
       const note = (e as CustomEvent).detail ?? {};
       if (!note.title) return;
+      refreshIfMoney(note);
       if (settings.desktopNotifs) sendWebPush({ title: note.title, body: note.body ?? '', senderName: note.title, senderLetter: 'S' });
       // Таблица gift_notifications общая для всех серверных уведомлений: «Подарок» — только по-настоящему подарочные виды,
       // остальное (защита аккаунта, заявки администрации, кэшбэк…) — «Система».
@@ -164,6 +171,7 @@ export const NotifBridge = () => {
     const onNote = (e: Event) => {
       const n = (e as CustomEvent).detail ?? {};
       if (!n.title && !n.body) return;
+      refreshIfMoney(n);
       if (n.id) { if (seen.has(n.id)) return; seen.add(n.id); }
       push({ kind: 'system', title: n.title ?? 'Sky', body: n.body ?? '', avatarLetter: 'S', color: 'var(--accent)' });
       if (settings.desktopNotifs) {
