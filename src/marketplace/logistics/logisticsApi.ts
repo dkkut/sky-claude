@@ -183,7 +183,7 @@ export const apiAdminDecideVerification = (verificationId: string, approve: bool
 export const fetchVerificationDocBlob = async (verificationId: string) => {
   const token = getAccessToken();
   try {
-    const res = await fetch(`/api/logistics/admin/verification/${enc(verificationId)}/doc`, {
+    const res = await fetch(uploadUrl(`/api/logistics/admin/verification/${enc(verificationId)}/doc`), {
       credentials: 'same-origin',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });

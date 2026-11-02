@@ -9,7 +9,7 @@
    мы никуда не передаём, и списать с чужого счёта нельзя даже подделав
    запрос.
 =============================================================== */
-import { getAccessToken, apiRefreshSession } from '@/core/auth/api';
+import { getAccessToken, apiRefreshSession, uploadUrl } from '@/core/auth/api';
 import type { Transaction, TxType } from './store';
 
 export interface WalletSnapshot {
@@ -34,7 +34,7 @@ const ERRORS: Record<string, string> = {
 };
 
 const call = async (path: string, init: RequestInit = {}): Promise<Response> => {
-  const send = () => fetch(`/api/wallet${path}`, {
+  const send = () => fetch(uploadUrl(`/api/wallet${path}`), {   // в Android/Windows-приложении интерфейс лежит на другом origin — адрес API абсолютный
     ...init,
     headers: {
       'Content-Type': 'application/json',
