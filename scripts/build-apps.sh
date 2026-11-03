@@ -6,7 +6,7 @@
 #   bash scripts/build-apps.sh all          # всё, что возможно на этой машине; остальное пропускается с пояснением
 #   OUT=/путь bash scripts/build-apps.sh apk   # другой каталог
 # Результат: $OUT/<имя>-<версия>-<дата>.<ext> + SHA256SUMS. Файлы потом можно загрузить в админке «Сайт» → «Скачивание».
-#   Подпись APK (автоматически, если задан ключ): SKY_KEYSTORE=/путь/sky-release.jks SKY_KEYSTORE_PASS_FILE=/путь/pass (chmod 600) [SKY_KEY_ALIAS=sky]
+#   Подпись APK: SKY_KEYSTORE=/путь/sky-release.jks [SKY_KEY_ALIAS=sky]; пароль спрашивается при каждом запуске (виден при вводе; SKY_PASS_HIDE=1 скрывает; SKY_PASS_ASK=0 — не спрашивать, тогда SKY_KEYSTORE_PASS_FILE или SKY_KEYSTORE_PASS)
 # Сборка идёт из исходников этого каталога (vite build --mode native), боевой сервер не затрагивается.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -65,9 +65,9 @@ sign_apk() { # $1 = неподписанный apk, $2 = куда положит
   bt="$(ls -d "$sdk"/build-tools/* 2>/dev/null | sort -V | tail -1)"
   [ -n "$bt" ] && [ -x "$bt/apksigner" ] && [ -x "$bt/zipalign" ] || { skipped+=("apk: нет apksigner/zipalign в $sdk/build-tools — выполните: sudo bash scripts/setup-build-tools.sh --android"); return 1; }
   local passarg
-  if [ -n "${SKY_KEYSTORE_PASS_FILE:-}" ] && [ -f "$SKY_KEYSTORE_PASS_FILE" ]; then passarg="file:$SKY_KEYSTORE_PASS_FILE"
-  elif [ -n "${SKY_KEYSTORE_PASS:-}" ]; then passarg="env:SKY_KEYSTORE_PASS"
-  else skipped+=("apk: ключ $ks найден, но нет пароля — задайте SKY_KEYSTORE_PASS_FILE (файл с паролем, chmod 600) или SKY_KEYSTORE_PASS"); return 1; fi
+  if [ -n "${SKY_KEYSTORE_PASS:-}" ]; then passarg="env:SKY_KEYSTORE_PASS"
+  elif [ -n "${SKY_KEYSTORE_PASS_FILE:-}" ] && [ -f "$SKY_KEYSTORE_PASS_FILE" ]; then passarg="file:$SKY_KEYSTORE_PASS_FILE"
+  else skipped+=("apk: ключ $ks найден, но пароль не введён (скрипт запущен без терминала)"); return 1; fi
   aligned="$(mktemp --suffix=.apk)"; rm -f "$aligned"
   "$bt/zipalign" -f -p 4 "$src" "$aligned" || { skipped+=("apk: zipalign не прошёл"); return 1; }
   "$bt/apksigner" sign --ks "$ks" --ks-key-alias "$al" --ks-pass "$passarg" --out "$dst" "$aligned" \
@@ -75,8 +75,23 @@ sign_apk() { # $1 = неподписанный apk, $2 = куда положит
   rm -f "$aligned" "$dst.idsig"
   "$bt/apksigner" verify --print-certs "$dst" | grep -E "SHA-256 digest" | head -1 | sed 's/^/   ✔ подписан, /'
 }
+# Пароль ключа спрашивается при КАЖДОМ запуске (до долгой сборки), вводимое видно на экране.
+# SKY_PASS_HIDE=1 — скрыть ввод; SKY_PASS_ASK=0 — не спрашивать (берётся SKY_KEYSTORE_PASS / SKY_KEYSTORE_PASS_FILE).
+ask_keystore_pass() {
+  local ks="${SKY_KEYSTORE:-}" p
+  [ "${SKY_PASS_ASK:-1}" = 0 ] && return 0
+  [ -n "$ks" ] || { [ -f "$HOME/sky-release.jks" ] && ks="$HOME/sky-release.jks"; }
+  [ -n "$ks" ] && [ -f "$ks" ] || return 0
+  if [ ! -r /dev/tty ]; then return 0; fi
+  echo "==> Подпись APK: ключ $ks (алиас ${SKY_KEY_ALIAS:-sky})"
+  if [ "${SKY_PASS_HIDE:-0}" = 1 ]; then read -r -s -p "   Пароль ключа: " p </dev/tty >/dev/tty; echo >/dev/tty
+  else read -r -p "   Пароль ключа (виден при вводе): " p </dev/tty >/dev/tty; fi
+  [ -n "$p" ] || { echo "   (пусто — подпись не пройдёт, APK будет пропущен)"; unset SKY_KEYSTORE_PASS SKY_KEYSTORE_PASS_FILE; return 0; }
+  export SKY_KEYSTORE_PASS="$p"; echo "   Введён пароль: $p"
+}
 build_apk() {
   local old; if old="$(unchanged apk)"; then echo "==> Android: исходники не менялись — беру готовый $old"; ok=$((ok+1)); return; fi
+  ask_keystore_pass
   J21="$(ls -d /usr/lib/jvm/java-21-openjdk-* 2>/dev/null | head -1)"; [ -n "$J21" ] && export JAVA_HOME="$J21" PATH="$J21/bin:$PATH"   # Capacitor 8 собирается только JDK 21 («invalid source release: 21» на 17)
   need java || { skipped+=("apk: нет JDK 21 — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
   local nv; nv="$(node -v 2>/dev/null | sed 's/^v//;s/\..*//')"
