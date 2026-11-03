@@ -186,6 +186,14 @@ server {
         proxy_send_timeout 4h;
         proxy_pass http://sky_api;
     }
+    # Без слеша (POST создания игры): у префиксного блока со слешем и proxy_pass nginx отвечает на такой адрес 301 на «.../games/»,
+    # браузер повторяет запрос как GET, и создание игры превращалось в 404. Точное совпадение это перехватывает.
+    location = /api/launcher/dev/games {
+        limit_req zone=req_general burst=100 nodelay;
+        client_max_body_size 2m;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_pass http://sky_api;
+    }
     location ^~ /api/launcher/dev/games/ {
         limit_req zone=req_general burst=100 nodelay;
         client_max_body_size 2m;
