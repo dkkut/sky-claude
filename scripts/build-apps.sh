@@ -77,11 +77,30 @@ sign_apk() { # $1 = неподписанный apk, $2 = куда положит
 }
 # Пароль ключа спрашивается при КАЖДОМ запуске (до долгой сборки), вводимое видно на экране.
 # SKY_PASS_HIDE=1 — скрыть ввод; SKY_PASS_ASK=0 — не спрашивать (берётся SKY_KEYSTORE_PASS / SKY_KEYSTORE_PASS_FILE).
+# Нет ключа — создаётся новый со случайным паролем, который выводится на экран (запишите его!).
+# SKY_NEW_KEY=1 — создать НОВЫЙ ключ даже если есть (старый сохраняется как .bak-<время>);
+# ВНИМАНИЕ: приложение с другой подписью не обновится поверх старого — его придётся удалить и поставить заново.
+create_keystore() {
+  local ks="${SKY_KEYSTORE:-$HOME/sky-release.jks}" al="${SKY_KEY_ALIAS:-sky}" p
+  command -v keytool >/dev/null || { echo "   ⚠ нет keytool (JDK) — ключ не создан"; return 1; }
+  [ -f "$ks" ] && mv "$ks" "$ks.bak-$(date +%Y%m%d-%H%M%S)" && echo "   старый ключ сохранён: $ks.bak-*"
+  p="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-20)"
+  keytool -genkeypair -keystore "$ks" -alias "$al" -keyalg RSA -keysize 4096 -validity 10000 \
+    -storepass "$p" -keypass "$p" -dname "CN=Sky, O=Sky, C=RU" >/dev/null 2>&1 || { echo "   ⚠ keytool не создал ключ"; return 1; }
+  chmod 600 "$ks"; export SKY_KEYSTORE="$ks" SKY_KEYSTORE_PASS="$p" SKY_PASS_ASK=0
+  echo "=========================================================="
+  echo "  НОВЫЙ КЛЮЧ ПОДПИСИ: $ks (алиас $al)"
+  echo "  НОВЫЙ ПАРОЛЬ: $p"
+  echo "  Запишите пароль и сохраните копию файла ключа вне сервера!"
+  echo "  Потеряете ключ или пароль — приложение придётся ставить заново."
+  echo "=========================================================="
+}
 ask_keystore_pass() {
   local ks="${SKY_KEYSTORE:-}" p
-  [ "${SKY_PASS_ASK:-1}" = 0 ] && return 0
+  if [ "${SKY_NEW_KEY:-0}" = 1 ]; then create_keystore; return 0; fi
   [ -n "$ks" ] || { [ -f "$HOME/sky-release.jks" ] && ks="$HOME/sky-release.jks"; }
-  [ -n "$ks" ] && [ -f "$ks" ] || return 0
+  if [ -z "$ks" ] || [ ! -f "$ks" ]; then create_keystore; return 0; fi
+  [ "${SKY_PASS_ASK:-1}" = 0 ] && return 0
   if [ ! -r /dev/tty ]; then return 0; fi
   echo "==> Подпись APK: ключ $ks (алиас ${SKY_KEY_ALIAS:-sky})"
   if [ "${SKY_PASS_HIDE:-0}" = 1 ]; then read -r -s -p "   Пароль ключа: " p </dev/tty >/dev/tty; echo >/dev/tty
@@ -91,13 +110,13 @@ ask_keystore_pass() {
 }
 build_apk() {
   local old; if old="$(unchanged apk)"; then echo "==> Android: исходники не менялись — беру готовый $old"; ok=$((ok+1)); return; fi
-  ask_keystore_pass
   J21="$(ls -d /usr/lib/jvm/java-21-openjdk-* 2>/dev/null | head -1)"; [ -n "$J21" ] && export JAVA_HOME="$J21" PATH="$J21/bin:$PATH"   # Capacitor 8 собирается только JDK 21 («invalid source release: 21» на 17)
   need java || { skipped+=("apk: нет JDK 21 — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
   local nv; nv="$(node -v 2>/dev/null | sed 's/^v//;s/\..*//')"
   [ "${nv:-0}" -ge 22 ] 2>/dev/null || { skipped+=("apk: Node ${nv:-?}, а Capacitor CLI 8 требует 22+ — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
   local jv; jv="$(java -version 2>&1 | sed -n '1s/.*"\([0-9]*\)[."].*/\1/p')"
   [ "${jv:-0}" -ge 21 ] 2>/dev/null || { skipped+=("apk: найден JDK ${jv:-?}, нужен 21+ (Capacitor 8: «invalid source release: 21») — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
+  ask_keystore_pass
   [ -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ] || { [ -d /opt/android-sdk ] && export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk; }
   [ -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ] || { skipped+=("apk: не задан ANDROID_HOME — выполните: sudo bash scripts/setup-build-tools.sh --android"); return; }
   [ -d android ] || { skipped+=("apk: нет каталога android/"); return; }
