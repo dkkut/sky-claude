@@ -209,7 +209,7 @@ export const TVPlayer = ({ source, onBack, onPlayEpisode }: TVPlayerProps) => {
       )}
 
       {(ex.inIntro || (ex.nextEp && dur > 0 && cur > dur - 45)) && (
-        <div className="absolute bottom-40 right-10 z-10 flex items-center gap-3 rounded-2xl px-6 py-4 text-[22px] font-bold text-white" style={{ background: 'rgba(0,0,0,0.7)', border: '2px solid var(--accent)' }} role="status">
+        <div className="absolute bottom-40 right-10 z-10 flex items-center gap-3 rounded-2xl px-6 py-4 text-[22px] font-bold text-white" style={{ background: 'rgba(16,14,34,0.72)', border: '2px solid #b3a7ff', backdropFilter: 'blur(18px)' }} role="status">
           <SkipForward size={26}/>
           <span translate="no">{ex.inIntro ? '↑ Пропустить заставку' : `↑ Следующая серия: ${ex.nextEp?.epNo ?? ''}. ${ex.nextEp?.title ?? ''}`}</span>
         </div>
@@ -221,16 +221,16 @@ export const TVPlayer = ({ source, onBack, onPlayEpisode }: TVPlayerProps) => {
             className="absolute inset-0 flex flex-col justify-between pointer-events-none">
             {/* верх */}
             <div className="flex items-center gap-4 p-8 pointer-events-auto" style={{ background: 'linear-gradient(rgba(0,0,0,0.7),transparent)' }}>
-              <button type="button" onClick={onBack} className="grid h-11 w-11 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }}>
+              <button type="button" onClick={onBack} aria-label="Назад" className="grid h-12 w-12 place-items-center rounded-full" style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(14px)' }}>
                 <ChevronLeft size={22} color="#fff"/>
               </button>
-              <p className="text-[20px] font-bold text-white">{title}</p>
+              <p translate="no" className="text-[22px] font-bold text-white">{title}</p>
             </div>
 
             {/* низ */}
-            <div className="p-8 pointer-events-auto" style={{ background: 'linear-gradient(transparent,rgba(0,0,0,0.8))' }}>
-              <div className="mb-3 h-[5px] w-full rounded-full bg-white/20 overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--accent)' }}/>
+            <div className="m-8 rounded-[30px] px-8 pb-5 pt-6 pointer-events-auto" style={{ background: 'rgba(16,14,34,0.62)', border: '1px solid rgba(255,255,255,0.14)', backdropFilter: 'blur(26px)', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+              <div className="mb-3 h-[6px] w-full rounded-full bg-white/20 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'linear-gradient(90deg,#8b7cff,#c084fc)' }}/>
               </div>
               <div className="flex items-center justify-between text-[13px] font-semibold mb-3" style={{ color: 'rgba(255,255,255,0.65)' }}>
                 <span>{fmt(cur)}</span><span>{fmt(dur)}</span>
@@ -247,8 +247,12 @@ export const TVPlayer = ({ source, onBack, onPlayEpisode }: TVPlayerProps) => {
                 <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>
                   <Subtitles size={17}/> {ex.tracks.length ? (ex.subLabel ? `Субтитры: ${ex.subLabel}` : 'Субтитры выкл. (↓ — включить)') : 'Субтитров нет'}
                 </div>
-                <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                  <Settings2 size={17}/> Авто
+                {/* Качество: файл отдаётся как загружен, переключаемых вариантов у источника нет — поэтому только сведение, а не выбор. */}
+                <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  <Settings2 size={17}/> {movie?.height ? `${movie.height}p · оригинал` : 'Оригинал'}
+                </div>
+                <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Источник: {movie ? 'Sky TV' : 'SkyVideo'}
                 </div>
               </div>
               <p className="mt-3 text-[12px]" style={{ color: 'rgba(255,255,255,0.35)' }}>← 10с назад · → 10с вперёд · OK пауза/пуск · Back выход</p>
