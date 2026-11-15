@@ -38,6 +38,8 @@ import { ConsoleShell } from '@/interface/console/ConsoleShell';
 import { CarShell } from '@/interface/car/CarShell';
 import { isElectron } from '@/core/nativeApp';
 import { isQuickActionsWindow } from '@/interface/quickactions/useQuickActionsWindow';
+import { IslandWindow } from '@/interface/island/IslandWindow';
+import { isIslandWindow } from '@/interface/island/useIslandWindow';
 import { QuickActionsShell } from '@/interface/quickactions/QuickActionsShell';
 import { useMainWindowPlayerBridge } from '@/interface/quickactions/playerBridge';
 import { ErrorBoundary }          from './ErrorBoundary';
@@ -153,6 +155,10 @@ export const AppShell = () => {
   // существует, и isQuickActionsWindow() всегда вернёт false.
   if (isElectron() && isQuickActionsWindow()) {
     return <ErrorBoundary><QuickActionsShell /></ErrorBoundary>;
+  }
+  // Окно Sky Island (капсула поверх экрана, Windows) — тоже отдельный рендер-процесс.
+  if (isElectron() && window.sky?.island && isIslandWindow()) {
+    return <ErrorBoundary><IslandWindow /></ErrorBoundary>;
   }
 
   // Sky Console — отдельная оболочка для консолей; приоритет выше Sky TV, сам Sky TV не затронут.

@@ -1,3 +1,4 @@
+import { IslandDesktopSettings } from '@/os/IslandSettings';
 import { LockScreenSettings } from '@/os/LockSettings';
 import { AdminSettingsLock } from '@/admin/AdminTokenSettings';
 import { APP_FONTS } from '../settings/fonts';
@@ -329,6 +330,7 @@ const IslandSection = () => {
 
   return (
     <SectionBlock title="Sky Island и Sky AI">
+      <IslandDesktopSettings />
       <SettingsRow icon={PanelTop} label="Где показывать плеер" sub="Остров сверху или боковой плеер"
         right={<Seg label="Где показывать плеер" value={s.islandMode} onChange={v => set({ islandMode: v })}
           options={[{ v: 'both', t: 'Оба' }, { v: 'island', t: 'Остров' }, { v: 'side', t: 'Сбоку' }]}/>}/>

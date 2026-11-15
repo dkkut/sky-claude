@@ -97,6 +97,13 @@ export type SkyPlayerCommand =
   | { type: 'prev' }
   | { type: 'skip'; deltaSec: number };
 
+export interface IslandConfig { enabled: boolean; timerEnabled: boolean; accel: string; accelOk: boolean; apps: { id: string; name: string }[] }
+export interface IslandStats {
+  cpu: number | null; gpu: number | null; ramUsedGb: number; ramTotalGb: number;
+  wifi: { connected: boolean; ssid: string | null; signal: number | null } | null;
+  vpn: { adapter: string } | null;
+}
+
 declare global {
   interface Window {
     Capacitor?: { isNativePlatform?: () => boolean };
@@ -129,6 +136,25 @@ declare global {
         pickFolder: () => Promise<string | null>;
         pauseAll: () => Promise<boolean>;
         onEvent: (fn: (ev: any) => void) => () => void;
+      };
+      island?: {
+        getConfig: () => Promise<IslandConfig | null>;
+        setConfig: (patch: Partial<Pick<IslandConfig, 'enabled' | 'timerEnabled' | 'accel'>>) => Promise<IslandConfig | null>;
+        appIcons: () => Promise<Record<string, string>>;
+        addApp: () => Promise<IslandConfig | null>;
+        removeApp: (id: string) => Promise<IslandConfig | null>;
+        launch: (id: string) => Promise<{ ok: boolean }>;
+        openSettings: (which: 'wifi' | 'bluetooth' | 'vpn' | 'sound' | 'display' | 'power') => Promise<boolean>;
+        stats: () => Promise<IslandStats | null>;
+        processes: () => Promise<{ name: string; pid: number; ramMb: number }[]>;
+        power: (action: 'shutdown' | 'restart' | 'cancel' | 'sleep') => Promise<{ ok: boolean }>;
+        setExpanded: (on: boolean) => void;
+        hide: () => void;
+        dock: () => void;
+        focusMain: () => void;
+        command: (cmd: string) => void;
+        onExpanded: (fn: (v: boolean) => void) => () => void;
+        onCommand: (fn: (cmd: string) => void) => () => void;
       };
       quickActions: {
         hide: () => void;

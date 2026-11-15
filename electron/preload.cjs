@@ -37,6 +37,26 @@ contextBridge.exposeInMainWorld('sky', {
       return () => ipcRenderer.removeListener('sky:game-detected', listener);
     },
   },
+  island: {
+    getConfig: () => ipcRenderer.invoke('island:get-config'),
+    setConfig: (patch) => ipcRenderer.invoke('island:set-config', patch),
+    appIcons: () => ipcRenderer.invoke('island:app-icons'),
+    addApp: () => ipcRenderer.invoke('island:add-app'),
+    removeApp: (id) => ipcRenderer.invoke('island:remove-app', id),
+    launch: (id) => ipcRenderer.invoke('island:launch', id),
+    openSettings: (which) => ipcRenderer.invoke('island:open-settings', which),
+    stats: () => ipcRenderer.invoke('island:stats'),
+    processes: () => ipcRenderer.invoke('island:processes'),
+    power: (action) => ipcRenderer.invoke('island:power', action),
+    setExpanded: (on) => ipcRenderer.send('island:set-expanded', Boolean(on)),
+    hide: () => ipcRenderer.send('island:hide'),
+    dock: () => ipcRenderer.send('island:dock'),
+    focusMain: () => ipcRenderer.send('island:focus-main'),
+    command: (cmd) => ipcRenderer.send('island:cmd', cmd),
+    onExpanded: (fn) => { const l = (_e, v) => fn(Boolean(v)); ipcRenderer.on('island:expanded', l); return () => ipcRenderer.removeListener('island:expanded', l); },
+    /** Основное окно: команды с острова («lock», «module:music»). */
+    onCommand: (fn) => { const l = (_e, c) => fn(c); ipcRenderer.on('sky:island-cmd', l); return () => ipcRenderer.removeListener('sky:island-cmd', l); },
+  },
   quickActions: {
     hide: () => ipcRenderer.send('quick-actions:hide'),
     focusMain: () => ipcRenderer.send('quick-actions:focus-main'),

@@ -365,13 +365,20 @@ if (!gotLock) {
     if (quickActionsWindow && !quickActionsWindow.isDestroyed()) {
       quickActionsWindow.webContents.send('sky:player-state', state);
     }
+    const iw = island.window(); if (iw) iw.webContents.send('sky:player-state', state);
   });
   ipcMain.on('sky:player-state:request', (event) => {
     if (lastPlayerState) event.sender.send('sky:player-state', lastPlayerState);
   });
   ipcMain.on('sky:player-command', (event, cmd) => {
-    if (event.sender !== quickActionsWindow?.webContents) return; // только из overlay
+    if (event.sender !== quickActionsWindow?.webContents && event.sender !== island.window()?.webContents) return; // только из overlay или острова
     mainWindow?.webContents.send('sky:player-command', cmd);
+  });
+
+  /* Sky Island: капсула поверх экрана (Windows). Подробности — electron/island.cjs. */
+  const island = require('./island.cjs')({
+    app, BrowserWindow, screen, ipcMain, globalShortcut, shell, dialog, APP_ORIGIN,
+    getMainWindow: () => mainWindow, preloadPath: path.join(__dirname, 'preload.cjs'),
   });
 
   /* Определение запущенных игр. Включается только по настройке в Sky; читаем лишь имена процессов и сверяем с известным
@@ -452,6 +459,7 @@ if (!gotLock) {
     });
 
     mainWindow.on('closed', () => { mainWindow = null; });
+    island.watchMain(mainWindow);
 
     // Закрытие окна уводит приложение в трей, а не завершает его: так
     // оно продолжает принимать сообщения и показывает уведомления Windows,
@@ -553,6 +561,8 @@ if (!gotLock) {
     if (!registered) {
       console.error(`[Quick Actions] не удалось зарегистрировать ${QUICK_ACTIONS_SHORTCUT} — сочетание уже занято`);
     }
+
+    island.start();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
