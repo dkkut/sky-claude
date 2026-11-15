@@ -65,7 +65,7 @@ const EXTRA_ICONS: Record<string, JSX.Element> = {
 
 const INK = '#1e3a5f';
 
-const EyesSvg = ({ kind }: { kind: Eyes }) => {
+export const EyesSvg = ({ kind }: { kind: Eyes }) => {
   const L = 44, R = 76, Y = 52;
   switch (kind) {
     case 'happy': return <g stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round"><path d={`M${L - 6} ${Y + 3} Q${L} ${Y - 6} ${L + 6} ${Y + 3}`} /><path d={`M${R - 6} ${Y + 3} Q${R} ${Y - 6} ${R + 6} ${Y + 3}`} /></g>;
@@ -81,7 +81,7 @@ const EyesSvg = ({ kind }: { kind: Eyes }) => {
   }
 };
 
-const MouthSvg = ({ kind }: { kind: Mouth }) => {
+export const MouthSvg = ({ kind }: { kind: Mouth }) => {
   const x = 60, y = 68;
   switch (kind) {
     case 'grin': return <g><path d={`M${x - 11} ${y - 3} Q${x} ${y + 13} ${x + 11} ${y - 3}Z`} fill={INK} /><path d={`M${x - 7} ${y + 2} Q${x} ${y + 9} ${x + 7} ${y + 2}`} fill="#fca5a5" /></g>;

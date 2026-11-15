@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, FolderOpen, Package, Wifi, WifiOff } from 'lucide-react';
+import { MessageCircle, FolderOpen, Package, Wifi } from 'lucide-react';
+import { SkyCloud } from '@/os/SkyCloud';
+import { getApiOrigin } from '@/core/nativeApp';
 import { OfflineChats } from './OfflineChats';
 import { OfflineMedia } from './OfflineMedia';
 import { OfflineOrders } from './OfflineOrders';
@@ -13,30 +15,36 @@ interface Props {
 
 export const OfflineMode = ({ onRetryOnline }: Props) => {
   const [tab, setTab] = useState<OfflineTab>('chats');
+  const [checking, setChecking] = useState(false);
+  const [tried, setTried] = useState(false);
+  /* Настоящая проверка: браузерный признак `onLine` врёт (Wi-Fi есть, интернета нет) — спрашиваем сервер. */
+  const retry = async () => {
+    setChecking(true);
+    let ok = false;
+    try { const r = await fetch(`${getApiOrigin()}/healthz`, { cache: 'no-store' }); ok = r.ok; } catch { ok = false; }
+    setChecking(false); setTried(true);
+    if (ok) onRetryOnline();
+  };
 
   return (
     <div className="flex flex-col h-full w-full" style={{ background: 'var(--bg)' }}>
       {/* Offline header */}
       <div className="shrink-0 px-4 pb-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="grid h-8 w-8 place-items-center rounded-full"
-              style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.25)' }}>
-              <WifiOff size={15} style={{ color: 'var(--red)' }} />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white leading-tight">Sky · Офлайн</p>
-              <p className="text-[11px]" style={{ color: 'var(--t2)' }}>Ограниченный доступ</p>
-            </div>
+        <div className="flex items-center gap-3 rounded-[26px] p-3.5"
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(18px)' }}>
+          <SkyCloud state={checking ? 'waiting' : 'offline'} size={72} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-extrabold leading-tight text-white">Нет подключения к интернету</p>
+            <p className="mt-0.5 text-[12px] leading-snug" style={{ color: 'var(--t2)' }}>
+              {tried && !checking ? 'Связи всё ещё нет. Проверьте Wi-Fi или мобильную сеть. ' : ''}Пока доступно то, что уже сохранено на устройстве: чаты, заказы и скачанное.
+            </p>
+            <motion.button type="button" onClick={retry} disabled={checking} whileTap={{ scale: 0.95 }}
+              className="mt-2 flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold"
+              style={{ background: '#fff', color: '#0a0a14', opacity: checking ? 0.7 : 1 }}>
+              <Wifi size={13} />{checking ? 'Проверяем…' : 'Проверить снова'}
+            </motion.button>
           </div>
-          <motion.button type="button" onClick={onRetryOnline}
-            whileTap={{ scale: 0.94 }}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold"
-            style={{ background: 'rgba(79,110,247,0.12)', border: '1px solid rgba(79,110,247,0.25)', color: 'var(--accent)' }}>
-            <Wifi size={12} />
-            Переподключить
-          </motion.button>
         </div>
 
         {/* Tabs */}

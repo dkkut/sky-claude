@@ -10,7 +10,7 @@ export const IslandCommandBridge = () => {
     if (!isElectron() || isIslandWindow()) return undefined;
     return window.sky?.island?.onCommand((cmd) => {
       if (cmd === 'lock') useLockScreen.getState().show();
-      else if (cmd.startsWith('module:')) runShortcut(cmd);
+      else if (cmd.startsWith('module:') || cmd.startsWith('widget:')) runShortcut(cmd);
     });
   }, []);
   return null;

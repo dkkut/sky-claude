@@ -1,3 +1,4 @@
+import { SkyCloud as SkyMascot } from '@/os/SkyCloud';
 import { Compass, ArrowLeftRight, Handshake, Car, Gamepad2, Home, BookOpen, Briefcase, Building2, Calendar, Check, ChevronLeft, Clock, Cloud, HardDrive, Crown, Film, Gem, Gift, Heart, MapPin, Megaphone, MessageCircle, MessageSquare, Mic2, MoreHorizontal, Music2, Pause, Play, Plus, QrCode, Send, Shield, ShoppingCart, Sparkles, Star, Ticket, Trash2, Tv2, Upload, Users, X, Zap, Bot, ChevronUp, ChevronDown, Inbox, Video } from 'lucide-react';
 import { visitKeyOf, apiCashbackVisit } from '@/prime/primeApi';
 import { flash } from '@/shared/flash';
@@ -1018,9 +1019,12 @@ const MediaHomeTab = ({
                 <span className="text-[10px] font-black uppercase tracking-[0.18em]"
                   style={{ color:'rgba(99,102,241,.9)' }}>Sky Media</span>
               </div>
-              <p className={isMobile ? 'text-[17px] font-black text-white leading-tight tracking-tight' : 'text-[22px] font-black text-white leading-tight tracking-tight'}>
-                {greeting}{me?.name ? `,\u00a0${me.name.split(' ')[0]}` : ''}
-              </p>
+              <div className="flex items-center gap-2.5">
+                <p className={isMobile ? 'text-[17px] font-black text-white leading-tight tracking-tight' : 'text-[22px] font-black text-white leading-tight tracking-tight'}>
+                  {greeting}{me?.name ? `,\u00a0${me.name.split(' ')[0]}` : ''}
+                </p>
+                <SkyMascot state="wave" size={isMobile ? 40 : 52} />
+              </div>
               {tracks.length > 0 && (
                 <p className="text-[11px] mt-1.5" style={{ color:'rgba(255,255,255,.4)' }}>
                   {tracks.length} {trackWord(tracks.length)} в библиотеке

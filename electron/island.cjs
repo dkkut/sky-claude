@@ -26,6 +26,7 @@ const MINIMIZE_DELAY_MS = 5 * 60 * 1000;
 const DEFAULT_ACCEL = 'CommandOrControl+Alt+I';
 
 const SETTINGS_URIS = { wifi: 'ms-settings:network-wifi', bluetooth: 'ms-settings:bluetooth', vpn: 'ms-settings:network-vpn', sound: 'ms-settings:sound', display: 'ms-settings:display', power: 'ms-settings:powersleep' };
+const WIDGET_KEYS = new Set(['weather', 'music', 'notifications', 'resources', 'quick', 'ai', 'wallet']);
 const MODULE_KEYS = new Set(['home', 'music', 'movies', 'tv', 'podcasts', 'books', 'ai', 'messages', 'market', 'go']);
 
 module.exports = function setupIsland(ctx) {
@@ -223,7 +224,7 @@ module.exports = function setupIsland(ctx) {
     return { ok: !err };
   });
   ipcMain.handle('island:open-settings', (e, which) => { if (!fromIsland(e)) return false; const uri = SETTINGS_URIS[String(which)]; if (!uri) return false; void shell.openExternal(uri); return true; });
-  ipcMain.handle('island:stats', (e) => (fromIsland(e) ? stats() : null));
+  ipcMain.handle('island:stats', (e) => (fromIsland(e) || fromMain(e) ? stats() : null));
   ipcMain.handle('island:processes', (e) => (fromIsland(e) ? processes() : []));
   ipcMain.handle('island:power', (e, action) => new Promise((res) => {
     if (!fromIsland(e) || process.platform !== 'win32') { res({ ok: false }); return; }
@@ -244,6 +245,7 @@ module.exports = function setupIsland(ctx) {
     const m = getMainWindow(); if (!m || m.isDestroyed()) return;
     let ok = cmd === 'lock';
     if (typeof cmd === 'string' && cmd.startsWith('module:') && MODULE_KEYS.has(cmd.slice(7))) ok = true;
+    if (typeof cmd === 'string' && cmd.startsWith('widget:') && WIDGET_KEYS.has(cmd.slice(7))) ok = true;
     if (!ok) return;
     if (cmd !== 'lock') { if (m.isMinimized()) m.restore(); m.show(); m.focus(); }
     m.webContents.send('sky:island-cmd', cmd);

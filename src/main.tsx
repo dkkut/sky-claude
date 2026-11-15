@@ -25,6 +25,7 @@ import { BetaGate }      from './auth/BetaGate';
 import { IpPinOverlay } from './auth/IpPin';
 import { AppLockGate } from './auth/AppLock';
 import { LockScreenHost } from './os/LockScreen';
+import { WidgetHost } from './os/widgets/WidgetHost';
 import { IslandCommandBridge } from './os/IslandBridge';
 import { AuthCodeAsk } from './auth/AuthCodeAsk';
 import { SshLoginNotice } from './auth/SshLoginNotice';
@@ -570,7 +571,7 @@ const Root = () => {
   // На ТВ, в консоли и в машине крупный интерфейс остаётся: загруженное видно, а о потере связи сообщает
   // плашка. Мелкий экран офлайн-режима для телефона там не годится.
   if (offline && isAuthenticated && !(consoleMode || deviceMode === 'tv' || carMode)) {
-    return wrap(<OfflineMode onRetryOnline={() => { if (navigator.onLine) setOffline(false); }} />);
+    return wrap(<OfflineMode onRetryOnline={() => setOffline(false)} />);
   }
 
   // «Кто играет?» при холодном запуске и смене профиля — в консоли, на ТВ и в автомобиле:
@@ -635,7 +636,7 @@ void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).fina
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><LockScreenHost /><IslandCommandBridge /><AppLockGate /><AdminTokenPrompt /><AuthCodeAsk /><SshLoginNotice /><LinkDeepLinkGate /><QrIncoming /><HandoffIncoming /><SafetyWatcher /><OidcAuthorizeGate /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><LockScreenHost /><WidgetHost /><IslandCommandBridge /><AppLockGate /><AdminTokenPrompt /><AuthCodeAsk /><SshLoginNotice /><LinkDeepLinkGate /><QrIncoming /><HandoffIncoming /><SafetyWatcher /><OidcAuthorizeGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));

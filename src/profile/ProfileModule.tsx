@@ -1,3 +1,4 @@
+import { WidgetLauncher } from '@/os/widgets/WidgetLauncher';
 import { IslandDesktopSettings } from '@/os/IslandSettings';
 import { LockScreenSettings } from '@/os/LockSettings';
 import { AdminSettingsLock } from '@/admin/AdminTokenSettings';
@@ -650,6 +651,10 @@ const SettingsSection = ({ logout, username, onOpen }: {
       {/* -- ТЕМА ------------------------------- */}
       <SectionBlock title="Язык / Language">
         <LanguageButtons />
+      </SectionBlock>
+
+      <SectionBlock title="Виджеты Sky">
+        <WidgetLauncher />
       </SectionBlock>
 
       <SectionBlock title="Экран блокировки Sky">
