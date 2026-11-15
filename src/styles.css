@@ -561,3 +561,22 @@ html[data-animations='off'] .cb-root *, html[data-animations='off'] .cb-pop, htm
 @keyframes sky-sheen { 0%,100% { background-position: 120% 0; } 50% { background-position: -20% 0; } }
 @media (prefers-reduced-motion: reduce) { .sky-wavebg-sheen { animation: none; } }
 html[data-animations='off'] .sky-wavebg-sheen { animation: none; }
+
+/* Sky OS: ПК-плеер Sky Music (src/music/PcPlayer.tsx) */
+.spp-blob { position: absolute; border-radius: 50%; filter: blur(120px); opacity: .5; will-change: transform; }
+.spp-blobA { left: -160px; top: -200px; width: 820px; height: 820px; animation: spp-d1 22s ease-in-out infinite alternate; }
+.spp-blobB { right: -200px; top: 120px; width: 760px; height: 760px; opacity: .45; animation: spp-d2 26s ease-in-out infinite alternate; }
+.spp-blobC { left: 30%; bottom: -320px; width: 900px; height: 700px; animation: spp-d3 30s ease-in-out infinite alternate; }
+@keyframes spp-d1 { 0% { transform: translate(0,0) scale(1) } 50% { transform: translate(180px,110px) scale(1.2) } 100% { transform: translate(-70px,190px) scale(.95) } }
+@keyframes spp-d2 { 0% { transform: translate(0,0) scale(1.05) } 50% { transform: translate(-200px,60px) scale(.9) } 100% { transform: translate(-90px,-140px) scale(1.2) } }
+@keyframes spp-d3 { 0% { transform: translate(0,0) scale(1) } 50% { transform: translate(220px,-90px) scale(1.15) } 100% { transform: translate(-140px,-30px) scale(.9) } }
+.spp-spin { animation: spp-rot 16s linear infinite; }
+@keyframes spp-rot { to { transform: rotate(360deg) } }
+.spp-ring { animation: spp-pulse 1.9s ease-out infinite; }
+.spp-ring2 { animation-delay: .95s; }
+@keyframes spp-pulse { 0% { transform: scale(1); opacity: .5 } 100% { transform: scale(1.22); opacity: 0 } }
+.spp-range { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; outline: none; cursor: pointer; }
+.spp-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.4); }
+.spp-range::-moz-range-thumb { width: 14px; height: 14px; border: none; border-radius: 50%; background: #fff; }
+@media (prefers-reduced-motion: reduce) { .spp-blob, .spp-spin, .spp-ring { animation: none; } }
+html[data-animations='off'] .spp-blob, html[data-animations='off'] .spp-spin, html[data-animations='off'] .spp-ring { animation: none; }
