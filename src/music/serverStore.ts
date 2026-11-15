@@ -69,7 +69,7 @@ interface MusicState {
   publish: (trackId: string, published: boolean) => Promise<void>;
   removeTrack: (trackId: string) => Promise<boolean>;
   /** Правка своего трека: название, исполнитель, жанр, текст. */
-  editTrack: (trackId: string, patch: { title?: string; artist?: string; album?: string; genre?: string; lyrics?: string; license?: string; licenseSource?: string; explicit?: boolean }) => Promise<boolean>;
+  editTrack: (trackId: string, patch: { title?: string; artist?: string; album?: string; genre?: string; lyrics?: string; lyricsMode?: 'auto' | 'static' | 'synced'; license?: string; licenseSource?: string; explicit?: boolean }) => Promise<boolean>;
   /** Своя обложка для трека. */
   setCover: (trackId: string, file: Blob) => Promise<boolean>;
   /** Видеофон для полноэкранного плеера: null — готово, иначе причина отказа. */

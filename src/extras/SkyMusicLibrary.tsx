@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, Download, ListMusic, Mic2, History as HistoryIcon, Radio, BookOpen,
-  Pin, Check, ArrowUpDown, ChevronLeft, Play, Trash2, X, FolderLock, Upload, CheckCircle, Pencil, Music2,
+  Pin, Check, ArrowUpDown, ChevronLeft, ChevronRight, Play, Trash2, X, FolderLock, Upload, CheckCircle, Pencil, Music2, Clapperboard, Ticket, Search as SearchIcon,
 } from 'lucide-react';
 import type { Track } from '@/platform/store';
 import { useMusicStore } from '@/music/serverStore';
@@ -11,8 +11,11 @@ import { PrivateUpload } from '@/music/PrivateUpload';
 import { TrackEditor } from '@/music/TrackEditor';
 import { getG } from '@/music/utils';
 import { useOfflineMusic } from '@/offline/musicOffline';
+import { apiTopArtists, type TopArtist } from '@/music/musicApi';
+import { useModuleStore } from '@/data/state/modules';
+import { visibleTick } from '@/shared/visibleTick';
 
-type Category = 'liked'|'mine'|'downloaded'|'albums'|'artists'|'playlists'|'history'|'podcasts'|'audiobooks';
+type Category = 'liked'|'mine'|'downloaded'|'albums'|'artists'|'playlists'|'history'|'clips';
 type SortKey = 'added'|'title'|'artist';
 
 /** Три главные кнопки сверху: то, ради чего сюда заходят чаще всего. */
@@ -28,8 +31,7 @@ const CATS: { key: Category; label: string; icon: React.FC<any> }[] = [
   { key:'albums',     label:'Альбомы',    icon:ListMusic },
   { key:'artists',    label:'Исполнители',icon:Mic2 },
   { key:'history',    label:'История',    icon:HistoryIcon },
-  { key:'podcasts',   label:'Подкасты',   icon:Radio },
-  { key:'audiobooks', label:'Аудиокниги', icon:BookOpen },
+  { key:'clips',      label:'Клипы',      icon:Clapperboard },
 ];
 
 const PIN_KEY = 'sky:music:pins:v1';
@@ -51,7 +53,7 @@ const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, 
       className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.03]">
       {selectMode && (
         <div className="grid h-5 w-5 shrink-0 place-items-center rounded-full"
-          style={{ background: selected ? '#4fe3d0' : 'transparent', border: selected ? 'none' : '1.5px solid #444851' }}>
+          style={{ background: selected ? '#a78bfa' : 'transparent', border: selected ? 'none' : '1.5px solid #444851' }}>
           {selected && <Check size={12} color="#0a0a0f"/>}
         </div>
       )}
@@ -60,10 +62,10 @@ const Row = ({ t, active, playing, onPlay, liked, onLike, selectMode, selected, 
         {t.coverUrl ? <img src={t.coverUrl} alt="" className="h-full w-full rounded-xl object-cover"/> : <Music2 size={18} color="rgba(255,255,255,0.65)"/>}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13.5px] font-medium" style={{ color: active ? '#4fe3d0' : '#f2f5f8' }}>{t.title}<ExplicitBadge show={t.explicit} /></p>
+        <p className="truncate text-[13.5px] font-medium" style={{ color: active ? '#a78bfa' : '#f2f5f8' }}>{t.title}<ExplicitBadge show={t.explicit} /></p>
         <p className="truncate text-[11.5px]" style={{ color: '#8a8f9a' }}>{t.artist}</p>
       </div>
-      {offline && <CheckCircle size={14} className="shrink-0" style={{ color:'#4fe3d0' }} aria-label="Скачано"/>}
+      {offline && <CheckCircle size={14} className="shrink-0" style={{ color:'#a78bfa' }} aria-label="Скачано"/>}
       {note && (
         <span className="shrink-0 rounded-full px-2 py-0.5 text-[10.5px]"
           style={{ background:'rgba(255,255,255,0.05)', color:'#8a8f9a' }}>{note}</span>
@@ -98,7 +100,7 @@ const OfflineBar = ({ cat, list, ids, bytes, bulk, progress, onDownload, onCance
   if (cat === 'downloaded') {
     return (
       <div className="mx-4 mb-2 mt-1 flex items-center gap-2 rounded-2xl px-3 py-2.5" style={card}>
-        <Download size={15} style={{ color:'#4fe3d0' }}/>
+        <Download size={15} style={{ color:'#a78bfa' }}/>
         <p className="flex-1 text-[12px]" style={{ color:'#c7ccd6' }}>
           {ids.size > 0 ? `На устройстве ${ids.size} · ${fmtMb(bytes)}. Играют без сети.` : 'Пока ничего не скачано.'}
         </p>
@@ -126,7 +128,7 @@ const OfflineBar = ({ cat, list, ids, bytes, bulk, progress, onDownload, onCance
             </button>
           </div>
           <div className="mt-2 h-1 overflow-hidden rounded-full" style={{ background:'rgba(255,255,255,0.1)' }}>
-            <div className="h-full rounded-full" style={{ width:`${pct}%`, background:'#4fe3d0', transition:'width 0.3s' }}/>
+            <div className="h-full rounded-full" style={{ width:`${pct}%`, background:'#a78bfa', transition:'width 0.3s' }}/>
           </div>
         </>
       ) : (
@@ -135,7 +137,7 @@ const OfflineBar = ({ cat, list, ids, bytes, bulk, progress, onDownload, onCance
             {todo > 0 ? `Не скачано ${todo} из ${list.length}. После скачивания играют без сети.` : `Все ${list.length} скачаны — играют без сети.`}
           </p>
           {todo > 0 && (
-            <button type="button" onClick={onDownload} className="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-bold" style={{ background:'#4fe3d0', color:'#0a0a0f' }}>
+            <button type="button" onClick={onDownload} className="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-bold" style={{ background:'#a78bfa', color:'#0a0a0f' }}>
               <Download size={13}/>Скачать всё
             </button>
           )}
@@ -165,7 +167,9 @@ export const SkyMusicLibrary = ({
   const offProg   = useOfflineMusic(st => st.progress);
   const offStore  = useOfflineMusic;
   useEffect(() => { void offStore.getState().hydrate(); }, []);
-  const [cat, setCat] = useState<Category>('liked');
+  const [cat, setCat] = useState<Category | null>(null);
+  const [top, setTop] = useState<TopArtist[] | null>(null);
+  const setPendingExtrasTab = useModuleStore(st => st.setPendingExtrasTab);
   const [sort, setSort] = useState<SortKey>('added');
   const [genreFilter, setGenreFilter] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
@@ -178,6 +182,14 @@ export const SkyMusicLibrary = ({
   const historyIds = useMusicStore(st => st.history).map(h => h.id);
 
   useEffect(() => { setPins(loadPins()); }, []);
+  // Любимые исполнители — по настоящей истории; опрос только пока вкладка видна.
+  useEffect(() => {
+    let alive = true;
+    const load = () => { void apiTopArtists().then(r => { if (alive && r) setTop(r); }); };
+    load();
+    const t = setInterval(visibleTick(load), 120000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
   const togglePin = (id: string) => setPins(p => { const next = p.includes(id) ? p.filter(x=>x!==id) : [id, ...p]; savePins(next); return next; });
 
   const pub = useMemo(() => tracks.filter(t => t.status === 'published'), [tracks]);
@@ -231,6 +243,14 @@ export const SkyMusicLibrary = ({
   const bulkLikeAll = () => { selected.forEach(id => { if (!favorites.includes(id)) onLike(id); }); setSelected(new Set()); setSelectMode(false); };
   const bulkUnlikeAll = () => { selected.forEach(id => { if (favorites.includes(id)) onLike(id); }); setSelected(new Set()); setSelectMode(false); };
 
+  const clipTracks = useMemo(() => applySort(applyGenre(tracks.filter(t => t.videoUrl && (t.status === 'published' || t.uploadedBy === 'me')))), [tracks, sort, genreFilter]);
+  const heartTotal = pub.filter(t => favorites.includes(t.id)).length;
+  const waveFromCollection = () => {
+    const pool = [...new Map([...pub.filter(t => favorites.includes(t.id)), ...tracks.filter(t => t.uploadedBy === 'me' || offIds.has(t.id))].map(t => [t.id, t])).values()]
+      .sort(() => Math.random() - 0.5);
+    if (pool[0]) onPlay(pool[0], pool);
+  };
+
   if (openPlaylist) {
     const pl = playlists.find(p => p.id === openPlaylist);
     const pool = pl ? (pl.trackIds.map(id => pub.find(t => t.id === id)).filter(Boolean) as Track[]) : [];
@@ -256,33 +276,132 @@ export const SkyMusicLibrary = ({
   const trackList = cat==='liked' ? likedTracks
     : cat==='mine' ? mineTracks
     : cat==='downloaded' ? downloaded
+    : cat==='clips' ? clipTracks
     : cat==='history' ? historyTracks : [];
-  const isTrackCat = cat==='liked' || cat==='mine' || cat==='downloaded' || cat==='history';
+  const isTrackCat = cat==='liked' || cat==='mine' || cat==='downloaded' || cat==='history' || cat==='clips';
+
+
+  /* ───── Хаб «Коллекция»: то, что у человека есть, в одном экране ───── */
+  if (cat === null) {
+    const A = '#a78bfa';
+    const glass = { background:'rgba(255,255,255,0.045)', border:'1px solid rgba(255,255,255,0.08)', backdropFilter:'blur(14px)' } as const;
+    const open = (c: Category) => { setCat(c); setSelectMode(false); setSelected(new Set()); };
+    const goTab = (tab: string) => { setPendingExtrasTab(tab); };
+    const artistImg = (name: string) => pub.find(t => t.artist === name && t.coverUrl)?.coverUrl;
+    const topList = (top && top.length > 0)
+      ? top.slice(0, 10)
+      : artists.filter(([a]) => pub.some(t => t.artist === a && favorites.includes(t.id))).slice(0, 10)
+          .map(([a, ts]) => ({ artist: a, plays: ts.length, seconds: 0 }));
+    const fmtTime = (sec: number) => sec <= 0 ? '' : sec < 3600 ? `${Math.max(1, Math.round(sec / 60))} мин` : `${(sec / 3600).toFixed(1).replace('.', ',').replace(/,0$/, '')} ч`;
+    const lastLiked = likedTracks.slice(0, 3);
+    const tiles: { key: string; label: string; sub: string; icon: React.FC<any>; run: () => void }[] = [
+      { key:'pl',  label:'Плейлисты',  sub: playlists.length ? `${playlists.length}` : 'Создайте первый', icon: ListMusic, run: () => open('playlists') },
+      { key:'al',  label:'Альбомы',    sub: albums.length ? `${albums.length}` : 'Пока нет', icon: ListMusic, run: () => open('albums') },
+      { key:'mine',label:'Моя музыка', sub: mineTracks.length ? `${mineTracks.length} треков` : 'Загрузите свои', icon: FolderLock, run: () => open('mine') },
+      { key:'dl',  label:'Скачанные',  sub: offIds.size ? `${offIds.size} без сети` : 'Для офлайна', icon: Download, run: () => open('downloaded') },
+      { key:'clip',label:'Клипы',      sub: clipTracks.length ? `${clipTracks.length} с видео` : 'С видеофоном', icon: Clapperboard, run: () => open('clips') },
+      { key:'conc',label:'Концерты',   sub: 'Билеты на события', icon: Ticket, run: () => goTab('tickets') },
+      { key:'pod', label:'Подкасты',   sub: 'Sky Podcasts', icon: Radio, run: () => goTab('podcasts') },
+      { key:'book',label:'Книги',      sub: 'Sky Books', icon: BookOpen, run: () => goTab('books') },
+      { key:'hist',label:'История',    sub: historyTracks.length ? `${historyTracks.length} треков` : 'Пока пусто', icon: HistoryIcon, run: () => open('history') },
+    ];
+    return (
+      <div className="sky-music-scope h-full overflow-y-auto pb-28" style={{ background:'transparent' }}>
+        <div className="mx-auto w-full max-w-[920px] px-3 pt-2">
+          {/* Волна по коллекции */}
+          <motion.button type="button" whileTap={{ scale: 0.985 }} onClick={waveFromCollection}
+            className="relative block w-full overflow-hidden rounded-[26px] text-center"
+            style={{ height: 112, border:'1px solid rgba(255,255,255,0.14)',
+              background:'radial-gradient(120% 140% at 15% 20%,#7c3aed 0%,transparent 60%),radial-gradient(110% 130% at 85% 80%,#2563eb 0%,transparent 58%),radial-gradient(90% 100% at 55% 0%,#c026d3 0%,transparent 55%),#0c0a1f' }}>
+            <span className="sky-wavebg-sheen absolute inset-0" aria-hidden/>
+            <span className="relative flex h-full flex-col items-center justify-center gap-1 text-white" data-keep-dark>
+              <span className="text-[12px] font-medium text-white/75">Моя волна по коллекции</span>
+              <span className="flex items-center gap-2 rounded-full px-5 py-2 text-[17px] font-bold" style={{ background:'rgba(8,6,24,0.42)', backdropFilter:'blur(10px)', border:'1px solid rgba(255,255,255,0.18)' }}>
+                <Play size={17} fill="#fff"/>Коллекция
+              </span>
+            </span>
+          </motion.button>
+
+          {/* Мне нравится */}
+          <div className="mt-5 rounded-[24px] p-1.5" style={glass}>
+            <button type="button" onClick={() => open('liked')} className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl" style={{ background:'linear-gradient(145deg,#f43f5e,#a21caf)' }}>
+                <Heart size={22} fill="#fff" color="#fff"/>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1 text-[17px] font-bold" style={{ color:'var(--t1)' }}>Мне нравится<ChevronRight size={17} style={{ color:'var(--t3)' }}/></span>
+                <span className="block text-[12px]" style={{ color:'var(--t3)' }}>{heartTotal} {heartTotal % 10 === 1 && heartTotal % 100 !== 11 ? 'трек' : [2,3,4].includes(heartTotal % 10) && ![12,13,14].includes(heartTotal % 100) ? 'трека' : 'треков'}</span>
+              </span>
+            </button>
+            {lastLiked.map(t => (
+              <Row key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, likedTracks)}
+                liked onLike={() => onLike(t.id)} selectMode={false} selected={false} onToggleSelect={() => {}} offline={offIds.has(t.id)}/>
+            ))}
+            {lastLiked.length === 0 && <p className="px-3 pb-3 pt-1 text-[12.5px]" style={{ color:'var(--t3)' }}>Нажимайте сердечко у треков — они соберутся здесь.</p>}
+          </div>
+
+          {/* Любимые исполнители */}
+          {topList.length > 0 && (
+            <section className="mt-6">
+              <button type="button" onClick={() => open('artists')} className="mb-2 flex items-center gap-1 px-1 text-[17px] font-bold" style={{ color:'var(--t1)' }}>
+                Любимые исполнители<ChevronRight size={17} style={{ color:'var(--t3)' }}/>
+              </button>
+              <div className="flex gap-4 overflow-x-auto px-1 pb-1" style={{ scrollbarWidth:'none' }}>
+                {topList.map((a, i) => {
+                  const img = artistImg(a.artist); const [c1, c2] = getG(a.artist);
+                  return (
+                    <button key={a.artist} type="button" className="w-[92px] shrink-0 text-center"
+                      onClick={() => (onArtist ? onArtist(a.artist) : undefined)}>
+                      <span className="relative mx-auto block h-[88px] w-[88px] overflow-hidden rounded-full"
+                        style={{ background: img ? '#111' : `linear-gradient(145deg,${c1},${c2})`, border:'2px solid rgba(167,139,250,0.35)' }}>
+                        {img ? <img src={img} alt="" className="h-full w-full object-cover"/> : <span className="grid h-full w-full place-items-center text-[26px] font-bold text-white/80" translate="no">{a.artist.slice(0,1).toUpperCase()}</span>}
+                      </span>
+                      <span className="mt-1.5 block truncate text-[12px] font-semibold" style={{ color:'var(--t1)' }} translate="no">{a.artist}</span>
+                      <span className="block text-[10.5px]" style={{ color:'var(--t3)' }}>{i + 1}{fmtTime(a.seconds) ? ` · ${fmtTime(a.seconds)}` : ''}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {top && top.length > 0 && <p className="px-1 pt-1 text-[10.5px]" style={{ color:'var(--t3)' }}>Время — оценка по последним прослушиваниям: трек считается целиком.</p>}
+            </section>
+          )}
+
+          {/* Ещё у вас в коллекции */}
+          <section className="mt-6">
+            <h2 className="mb-2 px-1 text-[17px] font-bold" style={{ color:'var(--t1)' }}>Ещё у вас в коллекции</h2>
+            <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
+              {tiles.map(t => (
+                <motion.button key={t.key} type="button" whileTap={{ scale: 0.97 }} onClick={t.run}
+                  className="flex items-center gap-3 rounded-2xl p-3 text-left" style={glass}>
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl" style={{ background:'rgba(167,139,250,0.16)', color:A }}><t.icon size={19}/></span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13.5px] font-semibold" style={{ color:'var(--t1)' }}>{t.label}</span>
+                    <span className="block truncate text-[11px]" style={{ color:'var(--t3)' }}>{t.sub}</span>
+                  </span>
+                </motion.button>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="sky-music-scope flex h-full flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
-      {/* Главные разделы */}
-      <div className="flex shrink-0 gap-2 px-3 pt-3">
-        {MAIN.map(m => (
-          <button key={m.key} type="button"
-            onClick={() => { setCat(m.key); setSelectMode(false); setSelected(new Set()); }}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl py-2.5 text-[12.5px] font-bold"
-            style={{
-              background: cat===m.key ? '#4fe3d0' : 'rgba(255,255,255,0.05)',
-              color: cat===m.key ? '#0a0a0f' : '#c7ccd6',
-              border: `1px solid ${cat===m.key ? 'transparent' : 'rgba(255,255,255,0.07)'}`,
-            }}>
-            <m.icon size={14}/>{m.label}
-          </button>
-        ))}
+      {/* Назад в «Коллекцию» */}
+      <div className="flex shrink-0 items-center gap-2 px-3 pt-3">
+        <button type="button" aria-label="Назад в коллекцию" onClick={() => { setCat(null); setSelectMode(false); setSelected(new Set()); }}
+          className="glass-btn round"><ChevronLeft size={18}/></button>
+        <p className="text-[16px] font-bold" style={{ color:'var(--t1)' }}>{[...MAIN, ...CATS].find(c => c.key === cat)?.label}</p>
       </div>
 
       {/* Остальные категории */}
       <div className="glass-pill mx-3 my-2 flex shrink-0 gap-0.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-        {CATS.map(c => (
+        {[...MAIN, ...CATS].map(c => (
           <button key={c.key} type="button" onClick={() => { setCat(c.key); setSelectMode(false); setSelected(new Set()); }}
             className="relative isolate flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-semibold"
-            style={{ color: cat===c.key ? '#4fe3d0' : 'var(--t3)' }}>
+            style={{ color: cat===c.key ? '#a78bfa' : 'var(--t3)' }}>
             {cat===c.key && <motion.span layoutId="mlib-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
             <c.icon size={13}/>{c.label}
           </button>
@@ -299,12 +418,12 @@ export const SkyMusicLibrary = ({
           {genres.map(g => (
             <button key={g} type="button" onClick={() => setGenreFilter(f => f===g ? null : g)}
               className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium"
-              style={{ background: genreFilter===g ? 'rgba(79,227,208,0.15)' : 'rgba(255,255,255,0.05)', color: genreFilter===g ? '#4fe3d0' : '#8a8f9a' }}>
+              style={{ background: genreFilter===g ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.05)', color: genreFilter===g ? '#a78bfa' : '#8a8f9a' }}>
               {g}
             </button>
           ))}
           <button type="button" onClick={() => setSelectMode(v => !v)}
-            className="ml-auto shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: selectMode ? '#4fe3d0' : 'rgba(255,255,255,0.05)', color: selectMode ? '#0a0a0f' : '#8a8f9a' }}>
+            className="ml-auto shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium" style={{ background: selectMode ? '#a78bfa' : 'rgba(255,255,255,0.05)', color: selectMode ? '#0a0a0f' : '#8a8f9a' }}>
             {selectMode ? 'Готово' : 'Выделить'}
           </button>
         </div>
@@ -383,7 +502,7 @@ export const SkyMusicLibrary = ({
                     <p className="truncate text-[11px]" style={{ color:'#5c626e' }}>{name.split(' · ')[1]}</p>
                   </button>
                   <button type="button" onClick={() => togglePin(name)} className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full" style={{ background:'rgba(0,0,0,0.5)' }}>
-                    <Pin size={11} fill={pins.includes(name) ? '#4fe3d0' : 'none'} color={pins.includes(name) ? '#4fe3d0' : '#fff'}/>
+                    <Pin size={11} fill={pins.includes(name) ? '#a78bfa' : 'none'} color={pins.includes(name) ? '#a78bfa' : '#fff'}/>
                   </button>
                 </motion.div>
               );
@@ -402,7 +521,7 @@ export const SkyMusicLibrary = ({
               <p className="text-[11px]" style={{ color:'#5c626e' }}>{ts.length} треков</p>
             </div>
             <button type="button" onClick={e => { e.stopPropagation(); togglePin(artist); }} className="shrink-0 p-1.5">
-              <Pin size={14} fill={pins.includes(artist) ? '#4fe3d0' : 'none'} color={pins.includes(artist) ? '#4fe3d0' : '#5c626e'}/>
+              <Pin size={14} fill={pins.includes(artist) ? '#a78bfa' : 'none'} color={pins.includes(artist) ? '#a78bfa' : '#5c626e'}/>
             </button>
           </button>
         ))}
@@ -443,7 +562,7 @@ export const SkyMusicLibrary = ({
             </button>
             <button type="button" onClick={() => togglePin(pl.id)} className="shrink-0 p-1.5"
               aria-label={pins.includes(pl.id) ? 'Открепить плейлист' : 'Закрепить плейлист'}>
-              <Pin size={14} fill={pins.includes(pl.id) ? '#4fe3d0' : 'none'} color={pins.includes(pl.id) ? '#4fe3d0' : '#5c626e'}/>
+              <Pin size={14} fill={pins.includes(pl.id) ? '#a78bfa' : 'none'} color={pins.includes(pl.id) ? '#a78bfa' : '#5c626e'}/>
             </button>
             <button type="button" aria-label="Переименовать плейлист"
               onClick={() => { setRenaming(pl.id); setRenameTo(pl.name); }}
@@ -479,8 +598,6 @@ export const SkyMusicLibrary = ({
           <p className="py-12 text-center text-[12.5px]" style={{ color:'#5c626e' }}>Плейлистов пока нет</p>
         )}
 
-        {cat === 'podcasts' && <p className="py-12 text-center text-[12.5px]" style={{ color:'#5c626e' }}>Раздел подкастов скоро появится</p>}
-        {cat === 'audiobooks' && <p className="py-12 text-center text-[12.5px]" style={{ color:'#5c626e' }}>Раздел аудиокниг скоро появится</p>}
       </div>
 
       {/* Панель действий при массовом выделении */}
@@ -490,7 +607,7 @@ export const SkyMusicLibrary = ({
             className="absolute inset-x-3 bottom-3 flex items-center gap-2 rounded-2xl p-2.5"
             style={{ background: 'var(--bg-l2)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
             <span className="px-2 text-[12px] font-medium" style={{ color:'#c7ccd6' }}>{selected.size} выбрано</span>
-            <button type="button" onClick={bulkDownload} className="flex items-center gap-1 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background:'rgba(79,227,208,0.14)', color:'#4fe3d0' }}>
+            <button type="button" onClick={bulkDownload} className="flex items-center gap-1 rounded-xl px-3 py-2 text-[12px] font-medium" style={{ background:'rgba(167,139,250,0.14)', color:'#a78bfa' }}>
               <Download size={13}/>Скачать
             </button>
             {cat==='downloaded' && (

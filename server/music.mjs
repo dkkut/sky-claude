@@ -210,6 +210,11 @@ export const updateTrack = async (trackId, ownerId, patch) => {
     const l = String(patch.lyrics ?? '').slice(0, MAX_LYRICS);
     put('lyrics', l ? encryptContent(l) : null);
   }
+  if (patch.lyricsMode !== undefined) {
+    const m = String(patch.lyricsMode);
+    if (!['auto', 'static', 'synced'].includes(m)) return { error: 'invalid_lyrics_mode' };
+    put('lyrics_mode', m);
+  }
   if (patch.status !== undefined) {
     // Снять с публикации или отозвать заявку владелец может сам.
     // Выложить в общий каталог — нет: туда трек попадает только через
@@ -370,6 +375,7 @@ export const readLyrics = async (trackId, viewerId) => {
   return {
     lyrics: row.lyrics ? (decryptContent(row.lyrics) ?? '') : '',
     canEdit: row.owner_id === viewerId,
+    mode: ['static', 'synced'].includes(row.lyrics_mode) ? row.lyrics_mode : 'auto',
   };
 };
 
@@ -583,6 +589,23 @@ export const listHistory = async (userId) => {
     .sort((a, b) => b.played_at - a.played_at)
     .slice(0, 100)
     .map(toTrack);
+};
+
+/** Любимые исполнители по реальной истории: прослушиваний и время (сумма
+ *  длительностей прослушанных треков — оценка по последним 200 записям
+ *  истории, трек считается целиком). Только то, что человек может видеть. */
+export const topArtists = async (userId, limit = 12) => {
+  const { rows } = await query(
+    `SELECT t.artist, COUNT(*)::int AS plays,
+            COALESCE(SUM(t.duration_sec), 0)::int AS seconds
+       FROM music_history h JOIN music_tracks t ON t.id = h.track_id
+      WHERE h.user_id = $1 AND (t.status = 'published' OR t.owner_id = $1) AND t.artist <> ''
+      GROUP BY t.artist
+      ORDER BY plays DESC, seconds DESC, t.artist
+      LIMIT $2`,
+    [userId, Math.max(1, Math.min(30, Number(limit) || 12))],
+  );
+  return rows.map(r => ({ artist: r.artist, plays: r.plays, seconds: r.seconds }));
 };
 
 export const setProgress = async (userId, trackId, seconds) => {

@@ -26,7 +26,7 @@ import {
   deleteTrack, setCover, setVideo, clearVideo, countPlay, readLyrics,
   listPlaylists, createPlaylist, renamePlaylist, setPlaylistPublic, deletePlaylist,
   readPlaylist, addToPlaylist, removeFromPlaylist, reorderPlaylist,
-  listFavorites, setFavorite, addHistory, listHistory, setProgress, listProgress,
+  listFavorites, setFavorite, addHistory, listHistory, topArtists, setProgress, listProgress,
 } from './../music.mjs';
 import { saveStream, saveBytes, sizeOf, openStream, remove, parseRange } from './../musicstore.mjs';
 import { ticketCookie, ticketFromCookies, issueTicket, readTicket } from './../musicticket.mjs';
@@ -593,6 +593,10 @@ export const musicRoutes = async (req, res, url) => {
 
   if (req.method === 'GET' && path === '/api/music/history') {
     return json(res, 200, { tracks: await listHistory(me) });
+  }
+
+  if (req.method === 'GET' && path === '/api/music/top-artists') {
+    return json(res, 200, { artists: await topArtists(me) });
   }
 
   if (path === '/api/music/progress') {

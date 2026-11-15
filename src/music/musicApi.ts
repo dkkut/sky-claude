@@ -150,7 +150,7 @@ export const apiTrack = async (id: string) => {
 
 export const apiPatchTrack = async (id: string, patch: {
   title?: string; artist?: string; album?: string; genre?: string;
-  lyrics?: string; status?: 'published' | 'private'; license?: string; licenseSource?: string; explicit?: boolean;
+  lyrics?: string; lyricsMode?: LyricsMode; status?: 'published' | 'private'; license?: string; licenseSource?: string; explicit?: boolean;
 }) => {
   const r = await apiCall<{ track: ServerTrack }>(`/api/music/track/${encodeURIComponent(id)}`,
     { method: 'PATCH', body: JSON.stringify(patch) });
@@ -263,8 +263,9 @@ export const apiNotePlay = async (id: string) => {
   await apiCall(`/api/music/track/${encodeURIComponent(id)}/play`, { method: 'POST' });
 };
 
+export type LyricsMode = 'auto' | 'static' | 'synced';
 export const apiLyrics = async (id: string) => {
-  const r = await apiCall<{ lyrics: string; canEdit: boolean }>(
+  const r = await apiCall<{ lyrics: string; canEdit: boolean; mode?: LyricsMode }>(
     `/api/music/track/${encodeURIComponent(id)}/lyrics`);
   return r.ok ? (r.data ?? null) : null;
 };
@@ -411,6 +412,12 @@ export const apiSetFavorite = async (trackId: string, on: boolean) => {
 export const apiHistory = async () => {
   const r = await apiCall<{ tracks: ServerTrack[] }>('/api/music/history');
   return r.ok ? (r.data?.tracks ?? []) : null;
+};
+
+export type TopArtist = { artist: string; plays: number; seconds: number };
+export const apiTopArtists = async () => {
+  const r = await apiCall<{ artists: TopArtist[] }>('/api/music/top-artists');
+  return r.ok ? (r.data?.artists ?? []) : null;
 };
 
 export const apiProgress = async () => {

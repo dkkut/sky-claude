@@ -46,6 +46,7 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
   const [explicit, setExplicit] = useState(track.explicit === true);
   const [lyrics, setLyrics] = useState('');
   const [lyricsLoaded, setLyricsLoaded] = useState(false);
+  const [lyricsMode, setLyricsMode] = useState<'auto' | 'static' | 'synced'>('auto');
   const [busy, setBusy] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
   const [videoBusy, setVideoBusy] = useState(false);
@@ -54,7 +55,7 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
 
   useEffect(() => {
     let alive = true;
-    void apiLyrics(track.id).then((r) => { if (alive) { setLyrics(r?.lyrics ?? ''); setLyricsLoaded(true); } });
+    void apiLyrics(track.id).then((r) => { if (alive) { setLyrics(r?.lyrics ?? ''); setLyricsMode(r?.mode ?? 'auto'); setLyricsLoaded(true); } });
     return () => { alive = false; };
   }, [track.id]);
 
@@ -87,7 +88,7 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
     if (!title.trim()) { flash('Укажите название'); return; }
     setBusy(true);
     const patch: Parameters<typeof editTrack>[1] = { title: title.trim(), artist: artist.trim() || 'Неизвестный исполнитель', genre: genre.trim() || 'Другое', license, licenseSource: licenseSource.trim(), explicit };
-    if (lyricsLoaded) patch.lyrics = lyrics;
+    if (lyricsLoaded) { patch.lyrics = lyrics; patch.lyricsMode = lyricsMode; }
     const ok = await editTrack(track.id, patch);
     setBusy(false);
     if (!ok) { flash('Не удалось сохранить изменения. Попробуйте ещё раз.'); return; }
@@ -148,7 +149,15 @@ export const TrackEditor = ({ track, onClose }: { track: Track; onClose: () => v
         <div className="mb-3"><LicensePicker license={license} source={licenseSource} onChange={(l, src) => { setLicense(l); setLicenseSource(src); }} /></div>
         <label className="mb-3 flex items-center gap-2 text-[13px]"><input type="checkbox" checked={explicit} onChange={(e) => setExplicit(e.target.checked)} />Пометка «E»: ненормативная лексика / 18+ (Explicit)</label>
         <label className="mb-1 block text-[12px] font-semibold" style={{ opacity: 0.7 }}>Текст песни</label>
-        <textarea value={lyrics} onChange={(e) => setLyrics(e.target.value)} rows={5} translate="no" disabled={!lyricsLoaded} className="mb-4 w-full resize-none rounded-[20px] px-4 py-2.5 text-[14px] outline-none" style={field} />
+        <textarea value={lyrics} onChange={(e) => setLyrics(e.target.value)} rows={5} translate="no" disabled={!lyricsLoaded} className="mb-2 w-full resize-none rounded-[20px] px-4 py-2.5 text-[14px] outline-none" style={field} />
+        <label className="mb-1 block text-[12px] font-semibold" style={{ opacity: 0.7 }}>Как показывать текст слушателям</label>
+        <div className="mb-1 flex gap-1.5">
+          {([['auto', 'Авто'], ['static', 'Статичный'], ['synced', 'По строкам']] as const).map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setLyricsMode(k)} className="flex-1 rounded-full px-2 py-2 text-[12.5px] font-semibold"
+              style={{ background: lyricsMode === k ? '#a78bfa' : 'rgba(255,255,255,0.06)', color: lyricsMode === k ? '#14102a' : 'inherit' }}>{l}</button>
+          ))}
+        </div>
+        <p className="mb-4 text-[11px] leading-snug" style={{ opacity: 0.6 }}>«По строкам» подсвечивает текущую строку: нужны метки времени вида [1:23] в начале строк. «Статичный» показывает текст целиком. «Авто» выбирает по меткам.</p>
 
         <div className="flex gap-2">
           <button type="button" disabled={busy} onClick={() => void save()} className="flex-1 rounded-full py-3 text-[14px] font-bold disabled:opacity-50" style={{ background: '#4fe3d0', color: '#0a0a0f' }}>

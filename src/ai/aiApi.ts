@@ -190,7 +190,7 @@ export const apiAiSend = async (
    закрывать подпиской обычный разговор. */
 
 export type AskTask = 'translate' | 'fix' | 'friendly' | 'formal' | 'shorten' | 'replies' | 'gist' | 'advise'
-  | 'simplify' | 'rewrite' | 'continue' | 'plan' | 'todo' | 'analyze' | 'shortreply' | 'explaincode' | 'findbug';
+  | 'simplify' | 'rewrite' | 'continue' | 'plan' | 'todo' | 'analyze' | 'shortreply' | 'explaincode' | 'findbug' | 'trackqa';
 
 export const apiAiAsk = async (task: AskTask, text: string, arg = '') => {
   const r = await apiCall<{ text: string }>('/api/ai/ask', {
