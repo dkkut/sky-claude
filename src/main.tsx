@@ -24,6 +24,7 @@ import { ConsoleProfilePicker } from './interface/console/ConsoleProfilePicker';
 import { BetaGate }      from './auth/BetaGate';
 import { IpPinOverlay } from './auth/IpPin';
 import { AppLockGate } from './auth/AppLock';
+import { LockScreenHost } from './os/LockScreen';
 import { AuthCodeAsk } from './auth/AuthCodeAsk';
 import { SshLoginNotice } from './auth/SshLoginNotice';
 import { AdminTokenPrompt } from './admin/AdminTokenPrompt';
@@ -633,7 +634,7 @@ void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).fina
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><AppLockGate /><AdminTokenPrompt /><AuthCodeAsk /><SshLoginNotice /><LinkDeepLinkGate /><QrIncoming /><HandoffIncoming /><SafetyWatcher /><OidcAuthorizeGate /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><LockScreenHost /><AppLockGate /><AdminTokenPrompt /><AuthCodeAsk /><SshLoginNotice /><LinkDeepLinkGate /><QrIncoming /><HandoffIncoming /><SafetyWatcher /><OidcAuthorizeGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));

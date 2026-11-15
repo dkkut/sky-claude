@@ -1,5 +1,6 @@
 // Горячие клавиши на ПК: человек сам назначает сочетание на действие (открыть раздел, вкладку, чат, управление плеером).
 // Хранится только на этом устройстве. Сочетание считается по физической клавише (event.code), поэтому работает в любой раскладке.
+import { useLockScreen } from '@/os/lockStore';
 import { create } from 'zustand';
 import { useEffect } from 'react';
 import { useModuleStore, type ModuleKey } from '@/data/state/modules';
@@ -24,6 +25,7 @@ export const EXTRAS_ACTIONS: { id: string; label: string }[] = [
 ];
 export const PLAYER_ACTIONS = [
   { id: 'player:toggle', label: 'Плеер: пауза / играть' }, { id: 'player:next', label: 'Плеер: следующий трек' }, { id: 'player:prev', label: 'Плеер: предыдущий трек' },
+  { id: 'lock:show', label: 'Экран блокировки Sky' },
 ];
 
 export const actionLabel = (action: string, chatName?: (id: string) => string | undefined): string => {
@@ -111,6 +113,7 @@ export const runShortcut = (action: string): boolean => {
   if (action === 'player:toggle') { if (!p.item) return false; p.setPlaying(!p.isPlaying); return true; }
   if (action === 'player:next') { if (!p.item) return false; p.nextTrack(); return true; }
   if (action === 'player:prev') { if (!p.item) return false; p.prevTrack(); return true; }
+  if (action === 'lock:show') { useLockScreen.getState().show(); return true; }
   return false;
 };
 

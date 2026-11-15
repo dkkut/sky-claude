@@ -234,6 +234,24 @@ if (!gotLock) {
   let mainWindow = null;
 
   // Сменная иконка: окно и трей. Картинку рисует страница (canvas), здесь только проверка и установка.
+  /* Экран блокировки Sky: основное окно разворачивается на весь экран и встаёт поверх остальных, пока экран открыт.
+     Это НЕ системная блокировка Windows: диспетчер задач, Win+L и переключение окон работают как обычно. */
+  let lockPrev = null;
+  ipcMain.handle('lock:set', (_e, on) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return { ok: false };
+    if (on) {
+      if (!lockPrev) lockPrev = { full: mainWindow.isFullScreen(), top: mainWindow.isAlwaysOnTop() };
+      mainWindow.show();
+      mainWindow.setFullScreen(true);
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    } else if (lockPrev) {
+      mainWindow.setAlwaysOnTop(lockPrev.top);
+      mainWindow.setFullScreen(lockPrev.full);
+      lockPrev = null;
+    }
+    return { ok: true };
+  });
+
   ipcMain.handle('app:set-icon', (_e, dataUrl) => {
     try {
       if (typeof dataUrl !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(dataUrl) || dataUrl.length > 600000) return { ok: false };

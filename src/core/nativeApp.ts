@@ -108,6 +108,8 @@ declare global {
       };
       /** Сменная иконка окна и трея (Windows): принимает PNG data:URL. */
       setAppIcon?: (dataUrl: string) => Promise<{ ok: boolean }>;
+      /** Экран блокировки Sky: окно на весь экран поверх других, пока он открыт. Это не системная блокировка. */
+      lock?: (on: boolean) => Promise<{ ok: boolean }>;
       /** Прокси приложения (Windows): настоящая маршрутизация через session.setProxy. */
       proxy?: {
         get: () => Promise<{ ok: boolean; encrypted: boolean; cfg: { enabled: boolean; type: 'http' | 'socks5' | 'socks4'; host: string; port: number; username: string; hasPassword: boolean } }>;

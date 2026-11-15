@@ -11,6 +11,7 @@
  * Локально хранится только кэш «замок включён» и хеш кода — чтобы показать замок сразу при запуске и открыть приложение без сети
  * (офлайн-режим: данных сервера там нет; при появлении сети код отправится на сервер сам).
  */
+import { LockScreenView } from '@/os/LockScreen';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Lock, ScanFace } from 'lucide-react';
 import { BiometricAuth } from '@aparajita/capacitor-biometric-auth';
@@ -214,9 +215,10 @@ export function AppLockGate() {
   if (!locked) return null;
   return (
     <div data-keep-dark role="dialog" aria-modal="true" aria-label="Приложение заблокировано"
-      className="fixed inset-0 z-[100000] flex flex-col items-center justify-center gap-5 px-8 text-center"
-      style={{ background: '#0b0b12', color: '#fff', paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      <div className="grid h-20 w-20 place-items-center rounded-full" style={{ background: 'rgba(139,124,255,0.18)' }}><Lock size={34} /></div>
+      className="fixed inset-0 z-[100000]" style={{ background: '#07070C', color: '#fff' }}>
+      <LockScreenView>
+      <div className="flex w-full flex-col items-center gap-4 px-2 text-center">
+      <div className="grid h-14 w-14 place-items-center rounded-full" style={{ background: 'rgba(139,124,255,0.28)', border: '1px solid rgba(255,255,255,0.2)' }}><Lock size={26} /></div>
       <div><p className="text-xl font-bold">Sky заблокирован</p><p className="mt-1 text-sm opacity-60">{bio === 'native' ? 'Подтвердите, что это вы — Face ID или отпечатком.' : bio ? 'Подтвердите, что это вы — Face ID, отпечатком или Windows Hello.' : 'Введите код приложения.'}</p></div>
       {!codeMode ? (
         <>
@@ -236,6 +238,8 @@ export function AppLockGate() {
           <button type="button" onClick={() => { write(false); clearCode(); useAuthStore.getState().logout(); setLocked(false); }} className="block w-full text-xs opacity-60">Забыли код? Выйти из аккаунта (после входа код можно задать заново)</button>
         </div>
       )}
+      </div>
+      </LockScreenView>
     </div>
   );
 }

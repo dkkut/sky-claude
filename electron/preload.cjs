@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('sky', {
     reach: (cfg) => ipcRenderer.invoke('proxy:reach', cfg),
   },
   setAppIcon: (dataUrl) => ipcRenderer.invoke('app:set-icon', dataUrl),
+  lock: (on) => ipcRenderer.invoke('lock:set', Boolean(on)),
   launcher: {
     init: (opts) => ipcRenderer.invoke('launcher:init', opts),
     setToken: (t) => ipcRenderer.invoke('launcher:token', t),

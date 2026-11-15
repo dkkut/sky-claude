@@ -1,3 +1,4 @@
+import { LockScreenSettings } from '@/os/LockSettings';
 import { AdminSettingsLock } from '@/admin/AdminTokenSettings';
 import { APP_FONTS } from '../settings/fonts';
 import { tr } from '@/i18n';
@@ -647,6 +648,10 @@ const SettingsSection = ({ logout, username, onOpen }: {
       {/* -- ТЕМА ------------------------------- */}
       <SectionBlock title="Язык / Language">
         <LanguageButtons />
+      </SectionBlock>
+
+      <SectionBlock title="Экран блокировки Sky">
+        <LockScreenSettings />
       </SectionBlock>
 
       <SectionBlock title="Тема оформления">
