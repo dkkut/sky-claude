@@ -106,7 +106,7 @@ export const TVShell = () => {
         {!isPlayer && <TVSidebar active={active} onNavigate={(k) => (k === 'search' ? (snapshot(), setTopLevel({ kind: 'search' })) : goNav(k))} />}
 
         <div ref={contentRef} className="relative h-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden" style={{ scrollbarWidth: 'none' }}>
-          {screen.kind === 'home' && <TVHome onOpenMovie={goDetail} onPlayMovie={goPlayMovie}/>}
+          {screen.kind === 'home' && <TVHome onOpenMovie={goDetail} onPlayMovie={goPlayMovie} onNavigate={goNav}/>}
 
           {screen.kind === 'movies' && (
             <TVCatalogGrid items={allMovies} onOpen={goDetail} emptyTitle="Каталог пока пуст"/>

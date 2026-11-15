@@ -33,11 +33,11 @@ export const TVCard = ({ id, title, subtitle, imageUrl, rating, badge, progress,
           animate={{ scale: focused ? 1.07 : 1 }}
           transition={{ duration: 0.16, ease: 'easeOut' }}
           style={{ transformOrigin: 'center bottom' }}>
-          <div className="relative rounded-xl overflow-hidden"
+          <div className="relative rounded-[18px] overflow-hidden"
             style={{
               aspectRatio: ASPECT[aspect],
               background: imageUrl ? `center/cover no-repeat url(${imageUrl})` : 'linear-gradient(160deg,#232330,#101018)',
-              boxShadow: focused ? '0 0 0 3px var(--accent), 0 10px 30px rgba(0,0,0,0.55)' : '0 2px 10px rgba(0,0,0,0.35)',
+              boxShadow: focused ? '0 0 0 3px #b3a7ff, 0 0 30px rgba(139,124,255,0.5), 0 10px 30px rgba(0,0,0,0.55)' : '0 2px 10px rgba(0,0,0,0.35)',
               transition: 'box-shadow 0.16s ease',
             }}>
             {!imageUrl && (

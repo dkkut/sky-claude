@@ -47,8 +47,8 @@ export function TVCarousel<T>({ title, items, getId, renderItem, rowAutoFocusPri
   const visible = items.slice(windowStart, windowStart + RENDER_WINDOW);
 
   return (
-    <div className="mb-8">
-      <p className="mb-3 px-1 text-[20px] font-extrabold" style={{ color: 'var(--t1)' }}>{title}</p>
+    <div className={title ? 'mb-8' : ''}>
+      {title && <p className="mb-3 px-1 text-[20px] font-extrabold" style={{ color: 'var(--t1)' }}>{title}</p>}
       <div ref={trackRef} className="flex gap-4 overflow-x-hidden px-1" style={{ scrollBehavior: 'smooth' }}>
         {windowStart > 0 && <div className="shrink-0" style={{ width: 1 }}/>}
         {visible.map((item, i) => (
