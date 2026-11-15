@@ -1,5 +1,5 @@
 import { ExplicitBadge } from '@/labels/Labels';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, Download, ListMusic, Mic2, History as HistoryIcon, Radio, BookOpen,
@@ -251,6 +251,19 @@ export const SkyMusicLibrary = ({
     if (pool[0]) onPlay(pool[0], pool);
   };
 
+  const likeScroll = useRef<HTMLDivElement>(null);
+  const [likePage, setLikePage] = useState(0);
+  const likePages = useMemo(() => {
+    const out: Track[][] = [];
+    for (let i = 0; i < Math.min(likedTracks.length, 15); i += 3) out.push(likedTracks.slice(i, i + 3));
+    return out;
+  }, [likedTracks]);
+  const onLikeScroll = () => {
+    const el = likeScroll.current; if (!el || el.children.length === 0) return;
+    const w = (el.children[0] as HTMLElement).offsetWidth + 10;
+    setLikePage(Math.max(0, Math.min(likePages.length - 1, Math.round(el.scrollLeft / w))));
+  };
+
   if (openPlaylist) {
     const pl = playlists.find(p => p.id === openPlaylist);
     const pool = pl ? (pl.trackIds.map(id => pub.find(t => t.id === id)).filter(Boolean) as Track[]) : [];
@@ -293,7 +306,6 @@ export const SkyMusicLibrary = ({
       : artists.filter(([a]) => pub.some(t => t.artist === a && favorites.includes(t.id))).slice(0, 10)
           .map(([a, ts]) => ({ artist: a, plays: ts.length, seconds: 0 }));
     const fmtTime = (sec: number) => sec <= 0 ? '' : sec < 3600 ? `${Math.max(1, Math.round(sec / 60))} мин` : `${(sec / 3600).toFixed(1).replace('.', ',').replace(/,0$/, '')} ч`;
-    const lastLiked = likedTracks.slice(0, 3);
     const tiles: { key: string; label: string; sub: string; icon: React.FC<any>; run: () => void }[] = [
       { key:'pl',  label:'Плейлисты',  sub: playlists.length ? `${playlists.length}` : 'Создайте первый', icon: ListMusic, run: () => open('playlists') },
       { key:'al',  label:'Альбомы',    sub: albums.length ? `${albums.length}` : 'Пока нет', icon: ListMusic, run: () => open('albums') },
@@ -322,23 +334,44 @@ export const SkyMusicLibrary = ({
             </span>
           </motion.button>
 
-          {/* Мне нравится */}
-          <div className="mt-5 rounded-[24px] p-1.5" style={glass}>
-            <button type="button" onClick={() => open('liked')} className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl" style={{ background:'linear-gradient(145deg,#f43f5e,#a21caf)' }}>
-                <Heart size={22} fill="#fff" color="#fff"/>
+          {/* Мне нравится: страницы по три трека, листаются вбок; следующая страница выглядывает справа */}
+          <section className="mt-5">
+            <button type="button" onClick={() => open('liked')} className="mb-2 flex w-full items-center gap-3 px-1 text-left">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl" style={{ background:'linear-gradient(145deg,#f43f5e,#a21caf)', boxShadow:'0 6px 20px rgba(162,28,175,0.35)' }}>
+                <Heart size={20} fill="#fff" color="#fff"/>
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1 text-[17px] font-bold" style={{ color:'var(--t1)' }}>Мне нравится<ChevronRight size={17} style={{ color:'var(--t3)' }}/></span>
                 <span className="block text-[12px]" style={{ color:'var(--t3)' }}>{heartTotal} {heartTotal % 10 === 1 && heartTotal % 100 !== 11 ? 'трек' : [2,3,4].includes(heartTotal % 10) && ![12,13,14].includes(heartTotal % 100) ? 'трека' : 'треков'}</span>
               </span>
             </button>
-            {lastLiked.map(t => (
-              <Row key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, likedTracks)}
-                liked onLike={() => onLike(t.id)} selectMode={false} selected={false} onToggleSelect={() => {}} offline={offIds.has(t.id)}/>
-            ))}
-            {lastLiked.length === 0 && <p className="px-3 pb-3 pt-1 text-[12.5px]" style={{ color:'var(--t3)' }}>Нажимайте сердечко у треков — они соберутся здесь.</p>}
-          </div>
+            {likePages.length > 0 ? (
+              <>
+                <div ref={likeScroll} onScroll={onLikeScroll} className="-mx-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-3 pb-1" style={{ scrollbarWidth:'none' }}>
+                  {likePages.map((page, pi) => (
+                    <div key={pi} className="w-[calc(100%-34px)] max-w-[460px] shrink-0 snap-start rounded-[26px] p-1.5 md:w-[calc(50%-8px)]" style={glass}>
+                      {page.map(t => (
+                        <Row key={t.id} t={t} active={activeId===t.id} playing={playing} onPlay={() => onPlay(t, likedTracks)}
+                          liked onLike={() => onLike(t.id)} selectMode={false} selected={false} onToggleSelect={() => {}} offline={offIds.has(t.id)}/>
+                      ))}
+                    </div>
+                  ))}
+                  {heartTotal > likePages.length * 3 && (
+                    <button type="button" onClick={() => open('liked')} className="grid w-[120px] shrink-0 snap-start place-items-center rounded-[26px] text-center" style={glass}>
+                      <span className="px-3 text-[12.5px] font-semibold" style={{ color:A }}>Все {heartTotal}<ChevronRight size={16} className="mx-auto mt-1"/></span>
+                    </button>
+                  )}
+                </div>
+                {likePages.length > 1 && (
+                  <div className="mt-1.5 flex justify-center gap-1.5" aria-hidden>
+                    {likePages.map((_, i) => <span key={i} className="h-1.5 rounded-full transition-all" style={{ width: i === likePage ? 16 : 6, background: i === likePage ? A : 'rgba(255,255,255,0.2)' }}/>)}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="rounded-[24px] px-4 py-4 text-[12.5px]" style={{ ...glass, color:'var(--t3)' }}>Нажимайте сердечко у треков — они соберутся здесь.</p>
+            )}
+          </section>
 
           {/* Любимые исполнители */}
           {topList.length > 0 && (
@@ -372,8 +405,8 @@ export const SkyMusicLibrary = ({
             <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3">
               {tiles.map(t => (
                 <motion.button key={t.key} type="button" whileTap={{ scale: 0.97 }} onClick={t.run}
-                  className="flex items-center gap-3 rounded-2xl p-3 text-left" style={glass}>
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl" style={{ background:'rgba(167,139,250,0.16)', color:A }}><t.icon size={19}/></span>
+                  className="flex items-center gap-3 rounded-[22px] p-3 text-left" style={glass}>
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] text-white" style={{ background:`linear-gradient(145deg,${getG(t.key)[0]},${getG(t.key)[1]})`, boxShadow:'inset 0 0 0 1px rgba(255,255,255,0.18)' }}><t.icon size={19}/></span>
                   <span className="min-w-0">
                     <span className="block truncate text-[13.5px] font-semibold" style={{ color:'var(--t1)' }}>{t.label}</span>
                     <span className="block truncate text-[11px]" style={{ color:'var(--t3)' }}>{t.sub}</span>
