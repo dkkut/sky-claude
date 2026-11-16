@@ -21,7 +21,7 @@ import {
   Heart, Plus, MoreHorizontal, ChevronLeft,
   ListMusic, Upload, Loader, History, BarChart3, Music2, Mic2, Download, CheckCircle, Crown, ArrowDownToLine,
   Sparkles, Flame, Star, Check, Clock, Film, Share2, SlidersHorizontal
-} from 'lucide-react';
+, Shuffle, TrendingUp } from 'lucide-react';
 import { saveDownload, isDownloaded } from '@/offline/offlineDB';
 import { useOfflineMusic } from '@/offline/musicOffline';
 import { flash } from '@/shared/flash';
@@ -1690,9 +1690,7 @@ const HistTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, 
   );
   return (
     <div className="flex flex-col h-full overflow-y-auto pb-4">
-      <h3 className="px-3 pt-3 pb-2 text-base font-bold" style={{ color: YM.text }}>
-        История · {hist.length}
-      </h3>
+      <TabHero title="История" sub={`Прослушано треков: ${hist.length}`} icon={<History size={22} />} list={hist} onPlay={onPlay} accent="rgba(59,130,246,.55)" />
       {hist.length === 0 && (
         <div className="flex flex-col items-center gap-2 py-12">
           <History size={32} color={YM.sub2} />
@@ -1708,6 +1706,30 @@ const HistTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, 
   );
 };
 
+/* -- Шапка вкладок «Чарты» и «История»: крупный заголовок, число треков, «Слушать» и «Вперемешку» -- */
+const TabHero = ({ title, sub, icon, list, onPlay, accent }: {
+  title: string; sub: string; icon: React.ReactNode; list: Track[]; onPlay: (t: Track, pool: Track[]) => void; accent: string;
+}) => (
+  <div className="relative overflow-hidden mx-3 mt-3 mb-2 rounded-[26px] p-4"
+    style={{ background: `linear-gradient(135deg, ${accent}, rgba(20,16,40,.94) 78%)`, border: '1px solid rgba(255,255,255,.14)', boxShadow: '0 10px 30px rgba(0,0,0,.22)' }}>
+    <div className="flex items-center gap-3" data-keep-dark>
+      <div className="grid place-items-center shrink-0 rounded-full" style={{ width: 46, height: 46, background: 'rgba(255,255,255,.14)', color: '#fff' }}>{icon}</div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[22px] font-black leading-tight" style={{ color: '#fff' }}>{title}</p>
+        <p className="text-[12.5px]" style={{ color: 'rgba(255,255,255,.72)' }}>{sub}</p>
+      </div>
+    </div>
+    {list.length > 0 && (
+      <div className="flex gap-2 mt-3" data-keep-dark>
+        <button type="button" onClick={() => onPlay(list[0], list)} className="flex items-center gap-2 px-5 rounded-full font-bold text-sm"
+          style={{ height: 42, background: '#fff', color: '#0A0A10' }}><Play size={16} fill="#0A0A10" />Слушать</button>
+        <button type="button" onClick={() => { const r = list[Math.floor(Math.random() * list.length)]; onPlay(r, [r, ...list.filter(t => t.id !== r.id).sort(() => Math.random() - 0.5)]); }}
+          className="flex items-center gap-2 px-5 rounded-full font-bold text-sm" style={{ height: 42, background: 'rgba(255,255,255,.16)', color: '#fff', border: '1px solid rgba(255,255,255,.22)' }}><Shuffle size={16} />Вперемешку</button>
+      </div>
+    )}
+  </div>
+);
+
 /* -- Charts tab ------------------------------------------- */
 const ChartsTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, onArtist }: {
   tracks: Track[]; favorites: string[]; playing: boolean; activeId: string | null;
@@ -1718,7 +1740,7 @@ const ChartsTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd
   const top = useMemo(() => [...pub].sort((a, b) => b.plays - a.plays), [pub]);
   return (
     <div className="flex flex-col h-full overflow-y-auto pb-4">
-      <h3 className="px-3 pt-3 pb-2 text-base font-bold" style={{ color: YM.text }}>Чарты</h3>
+      <TabHero title="Чарты" sub={`Самое прослушиваемое · ${top.length}`} icon={<TrendingUp size={22} />} list={top} onPlay={onPlay} accent="rgba(236,72,153,.55)" />
       {top.map((t, i) => (
         <TrackRow key={t.id} track={t} active={activeId === t.id} playing={playing && activeId === t.id}
           onPlay={() => onPlay(t, top)} liked={favorites.includes(t.id)} onLike={() => onLike(t.id)}
