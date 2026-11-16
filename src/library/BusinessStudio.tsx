@@ -5,7 +5,10 @@
    музыки и подкастов свои экраны с той же ролью (заявка → проверка),
    дублировать их здесь незачем — Studio отсюда только заводит контент.
 ================================================================ */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
+import { Scissors } from 'lucide-react';
+import { SkyLoader } from '@/shared/SkyLoader';
+const VideoEditor = lazy(() => import('@/studio/VideoEditor').then((m) => ({ default: m.VideoEditor })));
 import { BulkUploadPanel } from './BulkUpload';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -833,7 +836,7 @@ const VideoMonetizationCard = ({ video, onBack }:{ video:ServerVideo; onBack:()=
 /* ══════════════════════════════════════════════════════════════
    MAIN STUDIO
 ══════════════════════════════════════════════════════════════ */
-type StudioTab = 'overview'|'upload'|'content'|'revenue';
+type StudioTab = 'overview'|'upload'|'editor'|'content'|'revenue';
 
 export const BusinessStudio = () => {
   const { mine, load } = useSkyVideoStore();
@@ -862,6 +865,7 @@ export const BusinessStudio = () => {
   const TABS: { key:StudioTab; label:string; icon:LucideIcon }[] = [
     { key:'overview', label:'Обзор',      icon:BarChart3 },
     { key:'upload',   label:'Загрузить',  icon:Upload },
+    { key:'editor',   label:'Редактор',   icon:Scissors },
     { key:'content',  label:'Контент',    icon:Film },
     { key:'revenue',  label:'Доходы',     icon:TrendingUp },
   ];
@@ -930,6 +934,8 @@ export const BusinessStudio = () => {
                 )}
               </div>
             )}
+
+            {tab==='editor' && <Suspense fallback={<SkyLoader />}><VideoEditor /></Suspense>}
 
             {tab==='upload' && <UploadTab onDone={(kind)=>setTab(kind==='video'?'content':'overview')}/>}
 
