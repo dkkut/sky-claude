@@ -4,6 +4,7 @@
  * Всё, что раньше лежало в localStorage браузера, теперь спрашивается у
  * сервера. Здесь только вызовы; кому что можно — решает он, а не мы.
  */
+import { beginRoyaltyListen } from '@/royalties/listen';
 import { withTicketRefresh } from '@/core/mediaTicketRefresh';
 import { apiCall, uploadUrl } from '@/core/auth/api';
 import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
@@ -261,6 +262,7 @@ export const apiModerate = async (id: string, approve: boolean, reason?: string)
 /** Отметка о прослушивании: она же история, она же счётчик. */
 export const apiNotePlay = async (id: string) => {
   await apiCall(`/api/music/track/${encodeURIComponent(id)}/play`, { method: 'POST' });
+  beginRoyaltyListen(id);   // авторское вознаграждение: сервер сам решает, засчитывать ли
 };
 
 export type LyricsMode = 'auto' | 'static' | 'synced';

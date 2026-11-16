@@ -77,6 +77,9 @@ export const PERMISSIONS = [
   'tax',             // Sky Tax: налоговые операции Sky, предприниматели, документы, журнал (настройки и включение отправки — только владелец)
   'email_comms',     // Email-коммуникации: рассылки, шаблоны писем, адресная отправка, журнал отправок
   'server_ops',      // Sky Ops: диагностика сервера, «починить всё», деплой, сборка приложений из админки (критично, в «полные права» не входит)
+  'royalty_view',    // Sky Royalties: периоды, фонды, начисления, выплаты (просмотр)
+  'royalty_review',  // Sky Royalties: проверка подозрительных прослушиваний, проверка личности авторов, заявки на участие
+  'royalty_finance', // Sky Royalties: ввод и подтверждение выручки по периодам (закрытие периода, настройки и подтверждение выплат — только владелец)
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -135,6 +138,7 @@ export const ROLES = {
   ops_admin:       ['server_ops'],
   email_admin:     ['email_comms'],
   tax_admin:       ['tax'],
+  royalty_admin:   ['royalty_view', 'royalty_review', 'royalty_finance'],
   sandbox_admin:   ['sandbox'],
   sandbox_publisher:['sandbox', 'sandbox_publish'],
   global_block_admin:['global_block'],
@@ -170,6 +174,7 @@ export const ROLE_LABEL = {
   kassa_biz_admin: 'SkyKassa Business: бизнесы',
   partners_manager: 'Партнёры: добавление и правка',
   partners_approver: 'Партнёры: подтверждение и публикация',
+  royalty_admin: 'Sky Royalties: проверка и ввод выручки',
   sandbox_admin: 'Sky Sandbox: проверка сборок',
   sandbox_publisher: 'Sky Sandbox: проверка и одобрение публикации',
   ops_admin: 'Sky Ops: сервер, деплой и сборка приложений',

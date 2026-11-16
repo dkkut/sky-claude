@@ -72,6 +72,7 @@ import { TaxTab } from './TaxTab';
 import { PrimeTab } from './PrimeTab';
 import { AiUsageTab } from './AiUsageTab';
 import { PartnersTab } from './PartnersTab';
+import { RoyaltiesTab } from './RoyaltiesTab';
 import { KbizAdminTab } from './KbizAdminTab';
 import { GoAdminTab } from './GoAdmin';
 import { ParkingAdminTab } from './ParkingAdminTab';
@@ -5617,7 +5618,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'firewall' | 'maps' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops' | 'fxrates' | 'email' | 'ofd' | 'tax';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'firewall' | 'maps' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops' | 'fxrates' | 'email' | 'ofd' | 'tax' | 'royalties';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5846,6 +5847,7 @@ export const AdminPanel = () => {
     { key: 'defense', label: 'Самозащита', show: has('security') },
     { key: 'prime', label: 'Sky Prime', show: has('prime') },
     { key: 'partners', label: 'Партнёры', show: has('partners') },
+    { key: 'royalties', label: 'Sky Royalties', show: has('royalty_view') },
     { key: 'kbiz', label: 'SkyKassa Business', show: has('kassa_biz') },
     { key: 'aiusage', label: 'AI — ресурсы и токены', show: has('analytics') },
     { key: 'resources', label: 'Оптимизация ресурсов', show: has('analytics') },
@@ -6090,6 +6092,7 @@ export const AdminPanel = () => {
       {tab === 'defense' && <DefenseTab />}
       {tab === 'prime' && <PrimeTab />}
       {tab === 'partners' && <PartnersTab />}
+      {tab === 'royalties' && <RoyaltiesTab />}
       {tab === 'kbiz' && <KbizAdminTab />}
       {tab === 'aiusage' && <AiUsageTab />}
       {tab === 'resources' && <ResourcesTab />}

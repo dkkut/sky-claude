@@ -72,6 +72,8 @@ import { artistCardsRoutes } from './routes/artistcards.mjs';
 import { musicLabelsRoutes } from './routes/musiclabels.mjs';
 import { profileMusicRoutes } from './routes/profilemusic.mjs';
 import { creatorProfileRoutes } from './routes/creatorprofile.mjs';
+import { royaltiesRoutes } from './routes/royalties.mjs';
+import { releaseDue as royaltyReleaseDue } from './royalties.mjs';
 import { skyLogsRoutes } from './routes/skylogs.mjs';
 import { skyVideoRoutes } from './routes/skyvideo.mjs';
 import { primePulseRoutes } from './routes/primepulse.mjs';
@@ -289,7 +291,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -957,6 +959,7 @@ const start = async () => {
       await sweepTransfers().catch((e) => console.error('[transfer]', e.message));
       await sweepSandbox().catch((e) => console.error('[sandbox]', e.message));
       await sweepOps().catch((e) => console.error('[ops]', e.message));
+      await royaltyReleaseDue().catch((e) => console.error('[royalties]', e.message));
       await sweepHandoff().catch((e) => console.error('[handoff]', e.message));
       await sweepLogs().catch((e) => console.error('[skylog] уборка:', e.message));
       const arch = await sweepArchive().catch((e) => { console.error('[archive]', e.message); return { warned: 0, purged: 0 }; });
