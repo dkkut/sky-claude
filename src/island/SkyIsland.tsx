@@ -18,6 +18,7 @@ import { useIslandStore, type IslandEvent } from './islandStore';
 import { useNowPlaying, sourceLabel, type NowPlaying } from './mediaAdapter';
 import { useAiSession, type AiPhase } from './aiSession';
 import { useWake } from './wake';
+import { SkyCloud, type CloudState } from '@/os/SkyCloud';
 
 const fmt = (s: number) => {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -171,8 +172,10 @@ const EventIcon = ({ e }: { e: IslandEvent }) => {
   if (e.kind === 'download') return <Download size={18} />;
   if (e.kind === 'message') return <MessageCircle size={18} />;
   if (e.kind === 'track') return <Music2 size={18} />;
-  return <Bell size={18} />;
+  return <SkyCloud state="wave" size={34} />;
 };
+
+const CLOUD_OF: Partial<Record<AiPhase, CloudState>> = { processing: 'waiting', error: 'error', listening: 'surprise', detected: 'surprise', speaking: 'joy' };
 
 const EventPanel = ({ e, onClose }: { e: IslandEvent; onClose: () => void }) => (
   <div className="w-full px-4 pb-4 pt-4">
@@ -211,8 +214,8 @@ const AiPanel = () => {
   return (
     <div className="w-full px-4 pb-4 pt-4" aria-live="polite">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(139,124,255,0.2)', color: ACCENT }}>
-          <Sparkles size={18} />
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgba(139,124,255,0.2)', color: ACCENT }}>
+          <SkyCloud state={CLOUD_OF[s.phase] ?? 'greeting'} size={38} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[14px] font-semibold text-white">Sky AI</div>

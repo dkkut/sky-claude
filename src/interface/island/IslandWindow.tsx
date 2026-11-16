@@ -15,6 +15,7 @@ import { useRemotePlayer } from '@/interface/quickactions/useRemotePlayer';
 import { useNotifStore } from '@/notifications/store';
 import { readCachedWeather } from '@/os/lockStore';
 import { useLockSettings } from '@/os/lockStore';
+import { SkyCloud } from '@/os/SkyCloud';
 import type { IslandConfig, IslandStats } from '@/core/nativeApp';
 import type { WeatherKind } from '@/bloom/weatherApi';
 
@@ -115,7 +116,7 @@ export const IslandWindow = () => {
         style={{ background: 'rgba(11,10,24,0.97)', border: '1px solid rgba(139,92,246,0.4)', boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(139,92,246,0.22)', fontFamily: "'Manrope',system-ui,sans-serif" }}>
         {/* шапка: за неё окно можно перетаскивать */}
         <div className="flex shrink-0 items-center gap-2 px-4 pt-3" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-          <img src="/logo.png" alt="" className="h-7 w-7 object-contain" />
+          <SkyCloud state={playing?.isPlaying ? 'joy' : unread.length ? 'surprise' : 'greeting'} size={34} />
           <div className="flex gap-1 rounded-full p-1" style={{ ...panel, WebkitAppRegion: 'no-drag' } as React.CSSProperties} role="tablist">
             {([['home', 'Главная', Home], ['system', 'Система', Activity]] as const).map(([k, l, I]) => (
               <button key={k} type="button" role="tab" aria-selected={page === k} onClick={() => setPage(k)} className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold"

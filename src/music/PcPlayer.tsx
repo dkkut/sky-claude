@@ -27,6 +27,7 @@ import { useIsMobile } from '@/interface/mobile/useIsMobile';
 import { prepareWallpaper, putWallpaperBlob, getWallpaperBlob, deleteWallpaperBlob } from '@/messenger/wallpapers';
 import { flash } from '@/shared/flash';
 import { Image as ImageIcon } from 'lucide-react';
+import { SkyCloud } from '@/os/SkyCloud';
 
 export interface PcPlayerProps {
   track: Track; playing: boolean; currentTime: number; duration: number;
@@ -138,6 +139,7 @@ const AiPanel = ({ track, lyricsPlain, currentLine }: { track: Track; lyricsPlai
         </div>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 18px', scrollbarWidth: 'none' }}>
+        {msgs.length === 0 && <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0 4px' }}><SkyCloud state="greeting" size={84} /></div>}
         {msgs.length === 0 && <p style={{ fontSize: 13, color: 'rgba(255,255,255,.62)', lineHeight: 1.5, margin: '6px 4px 12px' }}>Выберите вопрос ниже или задайте свой.</p>}
         {msgs.map((m, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: m.role === 'me' ? 'flex-end' : 'flex-start', margin: '8px 0' }}>
@@ -148,7 +150,7 @@ const AiPanel = ({ track, lyricsPlain, currentLine }: { track: Track; lyricsPlai
             }}>{m.text}</div>
           </div>
         ))}
-        {busy && <div role="status" style={{ fontSize: 12.5, color: 'rgba(255,255,255,.65)', margin: '8px 4px' }}>Думаю…</div>}
+        {busy && <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'rgba(255,255,255,.65)', margin: '8px 4px' }}><SkyCloud state="waiting" size={44} />Думаю…</div>}
         <div ref={endRef} />
       </div>
       <div style={{ padding: '8px 14px 0', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -308,7 +310,7 @@ export const SkyPcPlayer = ({
       <div ref={boxRef} onWheel={() => { userScrollAt.current = Date.now(); }} onTouchMove={() => { userScrollAt.current = Date.now(); }}
         style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 30px 28px', scrollbarWidth: 'none' }}>
         {raw === null && <p style={{ color: 'rgba(255,255,255,.6)', fontSize: 14 }}>Загрузка…</p>}
-        {raw !== null && lines.length === 0 && <p style={{ color: 'rgba(255,255,255,.6)', fontSize: 14, lineHeight: 1.5 }}>Текст для этого трека не добавлен.</p>}
+        {raw !== null && lines.length === 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}><SkyCloud state="surprise" size={64} /><p style={{ color: 'rgba(255,255,255,.6)', fontSize: 14, lineHeight: 1.5 }}>Текст для этого трека не добавлен.</p></div>}
         {lines.map((l, i) => {
           const on = synced && i === active;
           return (

@@ -17,6 +17,7 @@ import { parseTimedLyrics } from '@/music/lyrics';
 import { intlLocale } from '@/i18n';
 import { useLockSettings, useLockScreen, readCachedWeather, refreshWeatherQuiet } from './lockStore';
 import type { WeatherKind } from '@/bloom/weatherApi';
+import { SkyCloud } from '@/os/SkyCloud';
 
 export const LOCK_WALLPAPER_KEY = 'lock';
 const glass = { background: 'rgba(24,20,44,0.46)', border: '1px solid rgba(255,255,255,0.16)', backdropFilter: 'blur(26px) saturate(1.4)', WebkitBackdropFilter: 'blur(26px) saturate(1.4)' } as const;
@@ -225,7 +226,7 @@ export const LockScreenView = ({ children, hint, onActivate }: { children?: Reac
         {hasMusic && <div onClick={e => e.stopPropagation()}><MusicCard open={open} onToggle={() => setMusicOpen(v => !v)} /></div>}
 
         <div onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, maxWidth: '100%', marginTop: 8 }}>
-          <img src="/logo.png" alt="Sky" style={{ width: 40, height: 40, objectFit: 'contain', opacity: 0.95 }} />
+          <SkyCloud state={typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : hint ? 'waiting' : 'greeting'} size={72} />
           {children}
           {hint && <p style={{ margin: 0, fontSize: 13, color: 'rgba(255,255,255,.75)' }}>{hint}</p>}
         </div>
