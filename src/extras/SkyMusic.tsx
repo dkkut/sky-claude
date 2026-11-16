@@ -5,6 +5,7 @@ import { VideoBackdrop } from '@/music/VideoBackdrop';
 import { EqualizerDialog } from '@/music/Equalizer';
 import { MusicContinue } from '@/handoff/Slots';
 import { ExplicitBadge, LabelsButton, LegacyChip } from '@/labels/Labels';
+import { useTrackBlocked } from '@/media/restrictions';
 import { requestDelete } from '@/island/deleteFlow';
 import { ArtistSuggest } from '@/artists/ArtistCard';
 import { RetentionNote } from '@/shared/RetentionNote';
@@ -160,6 +161,7 @@ const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNu
   /** Открыть страницу исполнителя. Без неё имя — просто подпись. */
   onArtist?: (name: string) => void;
 }) => {
+  const blocked = useTrackBlocked(track.id);
   const offHas  = useOfflineMusic(st => st.ids.has(track.id));
   const offProg = useOfflineMusic(st => st.progress[track.id]);
   const [localDone, setLocalDone] = useState(false);
@@ -227,7 +229,7 @@ const TrackRow = ({ track, active, playing, onPlay, liked, onLike, onAdd, showNu
       </div>
     )}
     <div className="flex-1 min-w-0">
-      <p className={isMobile ? 'text-[13px] font-medium truncate' : 'text-sm font-medium truncate'} style={{ color: active ? YM.accent : YM.text }}>{track.title}<ExplicitBadge show={track.explicit} /></p>
+      <p className={isMobile ? 'text-[13px] font-medium truncate' : 'text-sm font-medium truncate'} style={{ color: active ? YM.accent : YM.text }}>{track.title}<ExplicitBadge show={track.explicit} />{blocked && <span className="ml-1.5 text-[10px] font-bold rounded px-1.5 py-0.5" style={{ background: 'rgba(239,68,68,.18)', color: '#ef4444' }}>Недоступен</span>}</p>
       {onArtist ? (
         <button type="button" onClick={e => { e.stopPropagation(); onArtist(track.artist); }}
           className={isMobile ? 'block max-w-full truncate text-left text-[11px]' : 'block max-w-full truncate text-left text-xs'}

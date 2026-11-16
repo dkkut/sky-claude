@@ -64,3 +64,24 @@ export const MyRestrictionsPanel = () => {
     </div>
   );
 };
+
+/** Пометки «недоступен» в списках треков: id собираются пачкой (до 100 за запрос, раз в 200 мс) и спрашиваются у сервера один раз. */
+const blockedSet = new Set<string>(); const asked = new Set<string>(); const pending = new Set<string>(); const subs = new Set<() => void>();
+let timer: ReturnType<typeof setTimeout> | null = null;
+const flushBlocked = async () => {
+  timer = null; const ids = [...pending].slice(0, 100); ids.forEach((i) => pending.delete(i));
+  if (ids.length) {
+    const r = await apiCall<{ ids: string[] }>(`/api/media-restrictions/blocked-music?ids=${encodeURIComponent(ids.join(','))}`);
+    if (r.ok) { r.data?.ids.forEach((i) => blockedSet.add(i)); subs.forEach((f) => f()); }
+  }
+  if (pending.size) timer = setTimeout(() => { void flushBlocked(); }, 200);
+};
+export const useTrackBlocked = (id: string): boolean => {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const f = () => tick((n) => n + 1); subs.add(f);
+    if (!asked.has(id)) { asked.add(id); pending.add(id); if (!timer) timer = setTimeout(() => { void flushBlocked(); }, 200); }
+    return () => { subs.delete(f); };
+  }, [id]);
+  return blockedSet.has(id);
+};

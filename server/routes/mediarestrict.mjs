@@ -19,6 +19,7 @@ export const mediaRestrictRoutes = async (req, res) => {
   let m;
   if (user) {
     if (!rateLimit(`mr:${me}`, 240)) return json(res, 429, { error: 'too_many_requests' });
+    if (req.method === 'GET' && path === '/api/media-restrictions/blocked-music') return json(res, 200, { ids: await M.blockedMusicIds((u.searchParams.get('ids') ?? '').split(',')) });
     if (req.method === 'GET' && path === '/api/media-restrictions/status') return reply(await M.statusOf(u.searchParams.get('direction'), u.searchParams.get('id'), u.searchParams.get('kind') ?? 'work'));
     if (req.method === 'GET' && path === '/api/media-restrictions/mine') return json(res, 200, { restrictions: await M.mine(me) });
     if (req.method === 'POST' && (m = /^\/api\/media-restrictions\/(\d+)\/appeal$/.exec(path))) return reply(await M.appeal(me, m[1], b.body));

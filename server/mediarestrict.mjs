@@ -82,6 +82,17 @@ export const statusOf = async (direction, id, kind = 'work') => {
   return { blocked: !!(await activeFor(direction, w.workId, w.authorId)), restriction: publicOf(await activeFor(direction, w.workId, w.authorId)) };
 };
 
+/** Из списка id треков — те, что сейчас закрыты (сам трек или направление MUSIC у правообладателя). Для пометок в списках. */
+export const blockedMusicIds = async (ids) => {
+  const list = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))].slice(0, 100);
+  if (!list.length) return [];
+  const r = await query(
+    `SELECT t.id FROM music_tracks t LEFT JOIN music_artist_cards k ON k.id=t.artist_card_id
+      WHERE t.id = ANY($1::text[]) AND EXISTS (SELECT 1 FROM media_restrictions m WHERE m.status='active' AND m.direction='music'
+        AND ((m.scope='work' AND m.target_id=t.id) OR (m.scope='author_direction' AND m.target_id=COALESCE(k.owner_id,''))))`, [list]);
+  return r.rows.map((x) => x.id);
+};
+
 /** Направления автора, закрытые целиком (для профиля автора). */
 export const authorBlocks = async (authorId) => {
   const rows = (await query(`SELECT * FROM media_restrictions WHERE status='active' AND scope='author_direction' AND target_id=$1`, [authorId])).rows;
