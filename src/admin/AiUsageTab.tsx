@@ -44,6 +44,68 @@ const Bar = ({ used, limit }: { used: number; limit: number | null }) => {
   );
 };
 
+/** Помощники по сервисам: у каждого сервиса свои переключатель, модель, потолок ответа, суточный лимит и дополнение к инструкции. */
+const ServicesCard = ({ days }: { days: number }) => {
+  const [d, setD] = useState<Data | null>(null);
+  const [open, setOpen] = useState('');
+  const [f, setF] = useState<Data>({});
+  const [ask, setAsk] = useState(false);
+  const [code, setCode] = useState('');
+  const load = useCallback(async () => { const r = await apiCall<Data>(`${A}/services?days=${days}`); if (r.ok) setD(r.data ?? {}); }, [days]);
+  useEffect(() => { void load(); }, [load]);
+  if (!d) return <Card title="Помощники по сервисам"><Loader2 size={14} className="animate-spin" style={{ color: C.t3 }} /></Card>;
+  const edit = (x: Data) => { setOpen(x.id); setAsk(false); setCode(''); setF({ enabled: x.enabled, model: x.model, maxTokens: x.maxTokens, dailyTokens: x.dailyTokens, instructions: x.instructions }); };
+  const begin = async () => {
+    const r = await apiCall<Data>(`${A}/step-up`, { method: 'POST', body: '{}' });
+    if (!r.ok) { flash(errText(r.error)); return; }
+    setCode(''); setAsk(true);
+  };
+  const save = async () => {
+    const r = await apiCall<Data>(`${A}/services/${open}`, { method: 'PUT', body: JSON.stringify({ settings: f, stepUpCode: code }) });
+    if (!r.ok) { flash(errText(r.error, r.data?.field)); return; }
+    flash('Сохранено'); setAsk(false); setOpen(''); await load();
+  };
+  return (
+    <Card title="Помощники по сервисам">
+      <p className="text-[11px]" style={{ color: C.t3 }}>Один поставщик и ключ, но у каждого сервиса свой помощник: можно отключить его, назначить модель, ограничить ответ и расход за сутки, добавить инструкцию. Расход — токены из ответов поставщика, где их нет — оценка.</p>
+      {(d.services as Data[]).map((x) => (
+        <div key={x.id} className="rounded-xl p-3" style={{ background: C.l2 }}>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]" style={{ color: C.t2 }}>
+            <span className="font-bold" style={{ color: C.t1 }}>{x.title}</span>
+            <span style={{ color: x.enabled ? C.green : C.red }}>{x.enabled ? 'Включён' : 'Отключён'}</span>
+            <span translate="no">{x.model || 'общая модель'}</span>
+            <span>{`Запросов: ${n(x.requests)} · ошибок: ${n(x.errors)}`}</span>
+            <span>{`Токены: ${n(x.inputTokens + x.outputTokens)}${x.estimatedTokens ? ` + оценка ${n(x.estimatedTokens)}` : ''}`}</span>
+            {d.canEdit && <button type="button" onClick={() => (open === x.id ? setOpen('') : edit(x))} className="ml-auto text-[11px] font-bold" style={{ color: C.acc }}>{open === x.id ? 'Закрыть' : 'Настроить'}</button>}
+          </div>
+          <p className="text-[11px]" style={{ color: C.t3 }}>{x.hint}</p>
+          {x.dailyTokens > 0 && <Bar used={x.todayTokens} limit={x.dailyTokens} />}
+          {open === x.id && (
+            <div className="mt-2 space-y-2">
+              <label className="flex items-center gap-2 text-xs" style={{ color: C.t2 }}><input type="checkbox" checked={Boolean(f.enabled)} onChange={(e) => setF({ ...f, enabled: e.target.checked })} />Сервис включён</label>
+              <div className="flex flex-wrap gap-2 text-[11px]" style={{ color: C.t3 }}>
+                <label>Модель (пусто — общая)<input value={String(f.model ?? '')} onChange={(e) => setF({ ...f, model: e.target.value })} className="mt-0.5 block w-56 rounded-lg px-2 py-1.5 text-sm" style={field} /></label>
+                <label>Потолок ответа, токенов (0 — нет)<input value={String(f.maxTokens ?? 0)} onChange={(e) => setF({ ...f, maxTokens: e.target.value })} className="mt-0.5 block w-40 rounded-lg px-2 py-1.5 text-sm" style={field} /></label>
+                <label>Лимит в сутки, токенов (0 — нет)<input value={String(f.dailyTokens ?? 0)} onChange={(e) => setF({ ...f, dailyTokens: e.target.value })} className="mt-0.5 block w-44 rounded-lg px-2 py-1.5 text-sm" style={field} /></label>
+              </div>
+              <label className="block text-[11px]" style={{ color: C.t3 }}>Дополнение к инструкции (до 600 знаков)
+                <textarea value={String(f.instructions ?? '')} maxLength={600} rows={3} onChange={(e) => setF({ ...f, instructions: e.target.value })} className="mt-0.5 block w-full rounded-lg px-2 py-1.5 text-sm" style={field} />
+              </label>
+              {!ask && <Btn onClick={() => void begin()}>Сохранить</Btn>}
+              {ask && (
+                <div className="flex gap-2">
+                  <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="000000" aria-label="Код подтверждения" className="flex-1 rounded-lg px-3 py-2 text-sm tracking-[0.3em]" style={field} />
+                  <Btn disabled={code.length < 6} onClick={() => void save()}>Подтвердить кодом аутентификатора</Btn>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </Card>
+  );
+};
+
 export const AiUsageTab = () => {
   const [d, setD] = useState<Data | null>(null);
   const [days, setDays] = useState(30);
@@ -104,6 +166,8 @@ export const AiUsageTab = () => {
         </div>
         <p className="text-[11px]" style={{ color: C.t3 }}>Токены берутся из ответов поставщика; если он их не прислал, запрос считается оценкой (знаков / 4) и показывается отдельно.</p>
       </Card>
+
+      <ServicesCard days={days} />
 
       <Card title="По моделям">
         <div className="flex items-center gap-2 text-xs" style={{ color: C.t2 }}>Период:

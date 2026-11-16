@@ -209,6 +209,7 @@ export const buildSummary = async (episodeId, viewerId) => {
     )) + 5;
 
     const answer = await askModel({
+      service: 'podcasts',
       system: SYSTEM,
       user: `Расшифровка выпуска${partial ? ' (начало; расшифровка длиннее)' : ''}:\n\n${text}`,
       maxTokens: 3000,

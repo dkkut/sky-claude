@@ -174,7 +174,7 @@ export const summarize = async (profileId, { text, style = 'short', chatId = nul
   const pass = await gate(profileId, 'summary');
   if (pass.error) return pass;
 
-  const answer = await askModel({
+  const answer = await askModel({ service: 'documents',
     system: SYSTEM_SUMMARY,
     user: `${SUMMARY_STYLES[mode].ask}\n\nТекст:\n\n${body}`,
     maxTokens: mode === 'detailed' ? 3000 : 1200,
@@ -258,7 +258,7 @@ export const analyzeFile = async (profileId, { fileId, question = '', chatId = n
     )];
   }
 
-  const answer = await askModel({
+  const answer = await askModel({ service: 'documents',
     system: SYSTEM_FILE,
     messages: [{ role: 'user', content }],
     maxTokens: 3000,
@@ -345,7 +345,7 @@ export const analyzeImage = async (profileId, { fileId, question = '', chatId = 
   }
 
   const ask = clean(question, 2000) || 'Опиши, что изображено. Если есть текст — выпиши его.';
-  const answer = await askModel({
+  const answer = await askModel({ service: 'vision',
     system: SYSTEM_IMAGE,
     messages: [{ role: 'user', content: [imageBlock(mime, read.data.toString('base64')), textBlock(ask)] }],
     maxTokens: 1500,

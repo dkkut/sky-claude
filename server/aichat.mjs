@@ -366,6 +366,7 @@ export const sendMessage = async (profileId, { chatId, body, prime, mode = 'chat
     system,
     messages: [...history, { role: 'user', content: clean }],
     maxTokens: mode === 'code' ? 4000 : 2000,
+    service: mode === 'code' ? 'code' : 'chat',
   });
 
   if (answer.error) {
@@ -523,6 +524,7 @@ export const ask = async (profileId, { task, text: body, arg = '', prime = false
     system: rule.system,
     user: rule.build(clean, text(arg, 40)),
     maxTokens: rule.tokens,
+    service: task === 'trackqa' ? 'music' : 'quick',
   });
   if (answer.error) {
     await refundQuota(profileId, 'chat');

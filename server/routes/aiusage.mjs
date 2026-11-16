@@ -3,6 +3,7 @@ import { rateLimit } from './../security.mjs';
 import { can, isOwner } from './../admin.mjs';
 import { beginStepUp, consumeStepUp, requestMeta } from './../adminsec.mjs';
 import { overview, saveSettings } from './../aiusage.mjs';
+import { servicesOverview, saveService } from './../aiservices.mjs';
 
 /** «AI — ресурсы и токены»: просмотр — право `analytics`; изменение лимитов и блокировки — только владелец с подтверждением личности. */
 export const aiUsageRoutes = async (req, res, url) => {
@@ -16,6 +17,9 @@ export const aiUsageRoutes = async (req, res, url) => {
   if (req.method === 'GET' && path === '/api/admin/ai-usage') {
     return json(res, 200, { ...(await overview(new URL(req.url, 'http://x').searchParams.get('days') ?? 30)), canEdit: await isOwner(me) });
   }
+  if (req.method === 'GET' && path === '/api/admin/ai-usage/services') {
+    return json(res, 200, { ...(await servicesOverview(new URL(req.url, 'http://x').searchParams.get('days') ?? 30)), canEdit: await isOwner(me) });
+  }
   if (!(await isOwner(me))) return json(res, 403, { error: 'owner_only' });
   if (req.method === 'POST' && path === '/api/admin/ai-usage/step-up') {
     const r = await beginStepUp(me, 'ai_budget', { meta });
@@ -26,6 +30,14 @@ export const aiUsageRoutes = async (req, res, url) => {
     const st = await consumeStepUp(me, 'ai_budget', b.stepUpCode, { meta });
     if (st.error) return json(res, st.error === 'step_up_exhausted' ? 429 : 401, st);
     const r = await saveSettings(me, b.settings);
+    return json(res, r.error ? 400 : 200, r);
+  }
+  const sm = /^\/api\/admin\/ai-usage\/services\/([a-z]{2,20})$/.exec(path);
+  if (req.method === 'PUT' && sm) {
+    const b = (await parseBody(req)) ?? {};
+    const st = await consumeStepUp(me, 'ai_budget', b.stepUpCode, { meta });
+    if (st.error) return json(res, st.error === 'step_up_exhausted' ? 429 : 401, st);
+    const r = await saveService(me, sm[1], b.settings ?? {});
     return json(res, r.error ? 400 : 200, r);
   }
   return json(res, 404, { error: 'not_found' });

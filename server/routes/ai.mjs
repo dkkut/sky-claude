@@ -117,7 +117,7 @@ const codeFor = (error) => (
   error === 'prime_required' ? 402
     : error === 'not_found' ? 404
       : error === 'daily_limit' ? 429
-        : error === 'ai_busy' || error === 'ai_budget' ? 503
+        : error === 'ai_busy' || error === 'ai_budget' || error === 'ai_service_off' || error === 'ai_service_limit' ? 503
           : error === 'ai_not_configured' || error === 'stt_not_configured' ? 501
             : error === 'ai_timeout' ? 504
               : error === 'ai_failed' || error === 'stt_failed' ? 502

@@ -29,6 +29,7 @@
 import { aiLangNote } from './lang.mjs';
 import { config } from './config.mjs';
 import { checkBudget, recordCall } from './aiusage.mjs';
+import { serviceGate, recordService } from './aiservices.mjs';
 
 /** Минута: дольше ждать нечего, человек уже ушёл с экрана. */
 const TIMEOUT_MS = 60_000;
@@ -171,12 +172,16 @@ const extractResponseText = (data) => {
  * словами: подробности ответа поставщика могут содержать и ключ, и
  * внутренние адреса, поэтому в журнал идёт только код состояния.
  */
-export const askModel = async ({ system, user, messages, maxTokens = 2000, long = false }) => {
+export const askModel = async ({ system, user, messages, maxTokens = 2000, long = false, service = 'chat' }) => {
   if (!aiConfigured()) return { error: 'ai_not_configured' };
   if (inflight >= MAX_INFLIGHT) return { error: 'ai_busy' };
   // Лимит расхода, заданный администрацией (если включена блокировка). Сбой самой проверки не должен отключать Sky AI.
   const budget = await checkBudget().catch((e) => { console.error('[ai] проверка лимита:', e.message); return { ok: true }; });
   if (budget.error) return { error: 'ai_budget' };
+  const gate = await serviceGate(service);
+  if (gate.error) return { error: gate.error };
+  const svc = gate.cfg;
+  const useModel = svc.model || config.aiModel;
 
   const turns = Array.isArray(messages) && messages.length
     ? messages
@@ -188,16 +193,19 @@ export const askModel = async ({ system, user, messages, maxTokens = 2000, long 
   // Длина того, что уходит поставщику, — для ОЦЕНКИ расхода, если он не пришлёт usage (картинки и PDF в оценку не входят)
   const textLen = (c) => (typeof c === 'string' ? c.length : Array.isArray(c) ? c.reduce((a, b) => a + (typeof b === 'string' ? b.length : b?.type === 'text' ? String(b.text ?? '').length : 0), 0) : 0);
   const inChars = String(system ?? '').length + turns.reduce((a, t) => a + textLen(t.content), 0);
-  const note = (ok, code, usage = null, outChars = 0) => recordCall({ kind: 'chat', ok, code, usage, chars: { input: inChars, output: outChars } });
+  const note = (ok, code, usage = null, outChars = 0) => Promise.all([
+    recordCall({ kind: 'chat', ok, code, usage, chars: { input: inChars, output: outChars } }),
+    recordService({ service, model: useModel, ok, usage, chars: { input: inChars, output: outChars } }),
+  ]);
   try {
     const style = config.aiApiStyle;
-    const limit = Math.max(256, Math.min(8000, Number(maxTokens) || 2000));
-    const sys = `${system}${aiLangNote()}`;
+    const limit = Math.max(256, Math.min(svc.maxTokens > 0 ? svc.maxTokens : 8000, Number(maxTokens) || 2000));
+    const sys = `${system}${svc.instructions ? `\n\nДополнение администрации для этого сервиса: ${svc.instructions}` : ''}${aiLangNote()}`;
     // Поставщики расходятся в мелочах (temperature у новых моделей, max_tokens / max_completion_tokens): при 400 пробуем один раз без спорных полей.
     const build = (strict) => {
-      if (style === 'anthropic') return { url: '/v1/messages', headers: { 'x-api-key': config.aiApiKey, 'anthropic-version': '2023-06-01', ...(/(^|\.)anthropic\.com(\/|$)/i.test(config.aiBaseUrl.replace(/^https?:\/\//i, '')) ? {} : { authorization: `Bearer ${config.aiApiKey}` }) }, body: { model: config.aiModel, max_tokens: limit, system: sys, messages: turns.map(toAnthropicTurn) } };
-      if (style === 'chat') return { url: '/v1/chat/completions', headers: { authorization: `Bearer ${config.aiApiKey}` }, body: { model: config.aiModel, ...(strict ? { max_tokens: limit } : { max_completion_tokens: limit }), messages: [{ role: 'system', content: sys }, ...turns.map(toChatTurn)] } };
-      return { url: '/v1/responses', headers: { authorization: `Bearer ${config.aiApiKey}` }, body: { model: config.aiModel, max_output_tokens: limit, ...(strict ? { temperature: 0 } : {}), instructions: sys, input: turns.map(toResponsesTurn) } };
+      if (style === 'anthropic') return { url: '/v1/messages', headers: { 'x-api-key': config.aiApiKey, 'anthropic-version': '2023-06-01', ...(/(^|\.)anthropic\.com(\/|$)/i.test(config.aiBaseUrl.replace(/^https?:\/\//i, '')) ? {} : { authorization: `Bearer ${config.aiApiKey}` }) }, body: { model: useModel, max_tokens: limit, system: sys, messages: turns.map(toAnthropicTurn) } };
+      if (style === 'chat') return { url: '/v1/chat/completions', headers: { authorization: `Bearer ${config.aiApiKey}` }, body: { model: useModel, ...(strict ? { max_tokens: limit } : { max_completion_tokens: limit }), messages: [{ role: 'system', content: sys }, ...turns.map(toChatTurn)] } };
+      return { url: '/v1/responses', headers: { authorization: `Bearer ${config.aiApiKey}` }, body: { model: useModel, max_output_tokens: limit, ...(strict ? { temperature: 0 } : {}), instructions: sys, input: turns.map(toResponsesTurn) } };
     };
     const send = async (strict) => {
       const r = build(strict);
