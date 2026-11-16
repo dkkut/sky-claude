@@ -7,6 +7,7 @@ import { apiTrack, toClientTrack } from './musicApi';
 import { TrackEditor } from './TrackEditor';
 import type { Track } from './types';
 import { RoyaltiesCabinet } from '@/royalties/RoyaltiesCabinet';
+import { MyRestrictionsPanel } from '@/media/restrictions';
 
 const C = { bg: 'var(--bg)', card: 'var(--bg-l2)', border: 'var(--border)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)', accent: 'var(--accent)', red: 'var(--red)' };
 const S = '/api/music/studio';
@@ -42,6 +43,7 @@ export const MusicStudio = ({ onClose }: { onClose?: () => void }) => {
           <span translate="no" className="block font-bold" style={{ color: C.t1 }}>{c.name}</span>
           <span className="text-xs" style={{ color: C.t2 }}>Опубликовано треков: {c.published} · ваших: {c.mine}</span>
         </button>)))}
+      {!card && <MyRestrictionsPanel />}
       {!card && <RoyaltiesCabinet />}
       {card && <RoyaltyBlock cardId={card.id} />}
       {card && <Tracks card={card} />}

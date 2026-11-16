@@ -62,6 +62,11 @@ export const describeMediaFailure = async (el: HTMLMediaElement | null, url: str
   try {
     const r = await fetch(url, { headers: { Range: 'bytes=0-1' }, credentials: 'include' });
     http = `ответ сервера ${r.status}${r.headers.get('content-type') ? ` (${r.headers.get('content-type')})` : ''}`;
+    if (r.status === 403) {
+      // Ограничение Sky Media (server/mediarestrict.mjs): понятный текст вместо кода ошибки плеера.
+      const j = await r.clone().json().catch(() => null) as { error?: string; restriction?: { scope?: string } } | null;
+      if (j?.error === 'media_blocked') return j.restriction?.scope === 'author_direction' ? 'Доступ к материалам этого автора в этом разделе ограничен.' : 'Доступ к этому произведению ограничен.';
+    }
     void r.body?.cancel();
   } catch { http = 'сервер недоступен'; }
   return `Код ${code}${MEDIA_ERR[code] ? `: ${MEDIA_ERR[code]}` : ''}; ${http}`;

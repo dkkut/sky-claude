@@ -73,6 +73,8 @@ import { musicLabelsRoutes } from './routes/musiclabels.mjs';
 import { profileMusicRoutes } from './routes/profilemusic.mjs';
 import { creatorProfileRoutes } from './routes/creatorprofile.mjs';
 import { royaltiesRoutes } from './routes/royalties.mjs';
+import { mediaRestrictRoutes } from './routes/mediarestrict.mjs';
+import { gateFor as mediaGateFor } from './mediarestrict.mjs';
 import { releaseDue as royaltyReleaseDue } from './royalties.mjs';
 import { skyLogsRoutes } from './routes/skylogs.mjs';
 import { skyVideoRoutes } from './routes/skyvideo.mjs';
@@ -291,7 +293,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -408,6 +410,12 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
         const sta = await sessionStore.get(tka.sid);
         if (sta && sta.userId === tka.sky && await applockBlocked(tka.sid, sta)) return json(res, 423, { error: 'app_locked' });
       }
+    }
+
+    // Ограничения Sky Media (mediarestrict.mjs): воспроизведение работы или всего направления автора закрыто для всех, пока ограничение не снято.
+    if ((req.method === 'GET' || req.method === 'HEAD') && url.startsWith('/api/') && /\/(audio|video)$/.test(url)) {
+      const mr = await mediaGateFor(new URL(req.url, 'http://x').pathname).catch(() => null);
+      if (mr) return json(res, 403, { error: 'media_blocked', restriction: mr });
     }
 
     // Блокировка вкладок отдельным людям (modblocks.mjs): запросы к API заблокированного модуля получают 403.

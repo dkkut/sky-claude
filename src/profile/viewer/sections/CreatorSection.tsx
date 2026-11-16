@@ -8,15 +8,17 @@ import { apiTrack, apiPlaylist, toClientTrack } from '@/music/musicApi';
 import { playMusicQueue } from '@/music/useMusicSync';
 import { apiToggleFollow } from '../followsApi';
 import type { ProfileData } from '../useProfileData';
+import { BlockedBanner, MyRestrictionsPanel, type PublicRestriction } from '@/media/restrictions';
 
 type Dir = 'music' | 'film' | 'podcasts' | 'books';
+type Blk = { blocked?: PublicRestriction };
 interface Creator {
   own: boolean; followers: number; hasWorks: boolean; totals?: { plays: number; views: number };
   directions: {
-    music?: { count: number; plays: number; tracks: { id: string; title: string; artist: string; plays: number; status: string }[]; albums: { id: string; title: string; year?: number; tracks: number }[]; playlists: { id: string; name: string; count: number }[] };
-    film?: { count: number; seriesCount: number; views: number; films: { id: string; title: string; year?: number; views: number; status: string }[]; series: { id: string; title: string; episodes: number; views: number; status: string }[] };
-    podcasts?: { count: number; plays: number; items: { id: string; title: string; episodes: number; plays: number; status: string }[] };
-    books?: { count: number; items: { id: string; title: string; status: string }[] };
+    music?: Blk & { count: number; plays: number; tracks: { id: string; title: string; artist: string; plays: number; status: string }[]; albums: { id: string; title: string; year?: number; tracks: number }[]; playlists: { id: string; name: string; count: number }[] };
+    film?: Blk & { count: number; seriesCount: number; views: number; films: { id: string; title: string; year?: number; views: number; status: string }[]; series: { id: string; title: string; episodes: number; views: number; status: string }[] };
+    podcasts?: Blk & { count: number; plays: number; items: { id: string; title: string; episodes: number; plays: number; status: string }[] };
+    books?: Blk & { count: number; items: { id: string; title: string; status: string }[] };
   };
 }
 const card = { background: 'var(--profile-card-bg, var(--bg-l2))', border: '1px solid var(--profile-card-border, var(--border))' } as const;
@@ -84,9 +86,11 @@ export const CreatorSection = ({ data }: { data: ProfileData }) => {
               {cur === k && <span className="glass-lens absolute inset-0 -z-10 rounded-full" />}<Icon size={13} />{label}
             </button>))}
         </div>)}
+      {c.own && <MyRestrictionsPanel />}
+      {cur && c.directions[cur]?.blocked && <BlockedBanner r={c.directions[cur]!.blocked!} />}
       <div className="space-y-1.5">
         {cur === 'music' && m && <>
-          {m.tracks.map((t) => <Row key={t.id} icon={<Play size={14} />} title={t.title} sub={`${t.artist} · ${nf(t.plays)} прослуш.`} tag={t.status !== 'published' ? 'только вы' : undefined} onClick={() => void play(m.tracks.map((x) => x.id), t.id)} />)}
+          {m.tracks.map((t) => <Row key={t.id} icon={<Play size={14} />} title={t.title} sub={`${t.artist} · ${nf(t.plays)} прослуш.`} tag={(t as { blocked?: boolean }).blocked ? 'ограничено' : t.status !== 'published' ? 'только вы' : undefined} onClick={() => void play(m.tracks.map((x) => x.id), t.id)} />)}
           {m.albums.map((a) => <Row key={a.id} icon={<Disc3 size={14} />} title={a.title} sub={`Альбом · ${a.tracks} трек.${a.year ? ` · ${a.year}` : ''}`} />)}
           {m.playlists.map((l) => <Row key={l.id} icon={<ListMusic size={14} />} title={l.name} sub={`Подборка · ${l.count}`} onClick={() => void playList(l.id)} />)}
           {!m.tracks.length && c.own && <p className="text-xs" style={{ color: 'var(--t3)' }}>Музыка появится здесь, когда на вашей карточке музыканта будут опубликованные треки.</p>}

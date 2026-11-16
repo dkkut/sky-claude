@@ -79,6 +79,7 @@ export const PERMISSIONS = [
   'server_ops',      // Sky Ops: диагностика сервера, «починить всё», деплой, сборка приложений из админки (критично, в «полные права» не входит)
   'royalty_view',    // Sky Royalties: периоды, фонды, начисления, выплаты (просмотр)
   'royalty_review',  // Sky Royalties: проверка подозрительных прослушиваний, проверка личности авторов, заявки на участие
+  'media_restrict',  // Sky Media: ограничения произведений и направлений автора, апелляции (каждое действие — с кодом)
   'royalty_finance', // Sky Royalties: ввод и подтверждение выручки по периодам (закрытие периода, настройки и подтверждение выплат — только владелец)
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
@@ -97,7 +98,7 @@ export const PERMISSIONS = [
  */
 export const STORAGE_CRITICAL = ['storage_restore', 'storage_emergency', 'storage_enable', 'storage_unlock', 'storage_keys', 'storage_direct'];
 /** Подтверждение партнёров — тоже отдельное право: добавлять может менеджер, публиковать — только уполномоченный (или владелец). */
-export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve' && p !== 'global_block' && p !== 'sandbox_publish' && p !== 'server_ops');
+export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve' && p !== 'global_block' && p !== 'sandbox_publish' && p !== 'server_ops' && p !== 'media_restrict');
 
 export const ROLES = {
   super_admin:     DEFAULT_ADMIN_PERMISSIONS,
@@ -138,6 +139,7 @@ export const ROLES = {
   ops_admin:       ['server_ops'],
   email_admin:     ['email_comms'],
   tax_admin:       ['tax'],
+  media_restrict_admin: ['media_restrict'],
   royalty_admin:   ['royalty_view', 'royalty_review', 'royalty_finance'],
   sandbox_admin:   ['sandbox'],
   sandbox_publisher:['sandbox', 'sandbox_publish'],
@@ -174,6 +176,7 @@ export const ROLE_LABEL = {
   kassa_biz_admin: 'SkyKassa Business: бизнесы',
   partners_manager: 'Партнёры: добавление и правка',
   partners_approver: 'Партнёры: подтверждение и публикация',
+  media_restrict_admin: 'Sky Media: ограничения и апелляции',
   royalty_admin: 'Sky Royalties: проверка и ввод выручки',
   sandbox_admin: 'Sky Sandbox: проверка сборок',
   sandbox_publisher: 'Sky Sandbox: проверка и одобрение публикации',

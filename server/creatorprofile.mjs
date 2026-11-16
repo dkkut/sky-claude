@@ -10,6 +10,7 @@
  */
 import { query } from './db.mjs';
 import { getPrivacy, exceptionOf } from './privacy.mjs';
+import { authorBlocks } from './mediarestrict.mjs';
 
 /** Направление → ключ видимости в profileVisibility. */
 export const CREATOR_KEYS = { music: 'showCreatorMusic', film: 'showCreatorFilm', podcasts: 'showCreatorPodcasts', books: 'showCreatorBooks', stats: 'showCreatorStats' };
@@ -97,7 +98,18 @@ export const getCreatorProfile = async (viewerId, targetId) => {
     res.directions.books = { count: bt, items: books.map((b) => ({ id: b.id, title: b.title, status: b.status })) };
   }
 
+  // Ограничения Sky Media: закрытое направление автора — баннер вместо списка (владелец видит свои работы с пометкой); отдельные ограничённые работы помечаются.
+  const dirBlocks = await authorBlocks(targetId);
+  const workBlocks = new Set((await query(`SELECT direction || ':' || target_id AS k FROM media_restrictions WHERE status='active' AND scope='work' AND author_id=$1`, [targetId])).rows.map((r) => r.k));
+  const lists = { music: ['tracks'], film: ['films', 'series'], podcasts: ['items'], books: ['items'] };
+  for (const [dir, d] of Object.entries(res.directions)) {
+    for (const key of lists[dir] ?? []) for (const w of d[key] ?? []) if (workBlocks.has(`${dir}:${w.id}`)) w.blocked = true;
+    if (dirBlocks[dir]) {
+      d.blocked = dirBlocks[dir];
+      if (!own) { for (const key of lists[dir] ?? []) d[key] = []; if (dir === 'music') { d.albums = []; d.playlists = []; } }
+    }
+  }
   if (vis.stats) res.totals = { plays, views };
-  res.hasWorks = Object.values(res.directions).some((d) => d.count > 0 || (d.items?.length ?? 0) > 0 || (d.tracks?.length ?? 0) > 0);
+  res.hasWorks = Object.values(res.directions).some((d) => d.blocked || d.count > 0 || (d.items?.length ?? 0) > 0 || (d.tracks?.length ?? 0) > 0);
   return res;
 };
