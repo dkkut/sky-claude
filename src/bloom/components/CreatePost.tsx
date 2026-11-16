@@ -20,6 +20,11 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
   const [pollOn,     setPollOn]     = useState(false);
   const [pollQ,      setPollQ]      = useState('');
   const [pollOpts,   setPollOpts]   = useState(['', '']);
+  const [blog,       setBlog]       = useState(false);
+  const [title,      setTitle]      = useState('');
+  const [isAd,       setIsAd]       = useState(false);
+  const [adNote,     setAdNote]     = useState('');
+  const maxLen = blog ? 20000 : 280;
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,6 +39,7 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
 
   const publish = async () => {
     if (!text.trim() && !mediaUrl && !pollValid) return;
+    if (blog && title.trim().length < 3) { setError('Название блога — не короче 3 знаков.'); return; }
     setPublishing(true);
     setError(null);
     const tags = Array.from(text.matchAll(/#(\w+)/g)).map(m => m[1]);
@@ -41,6 +47,8 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
       text: text.trim(), tags,
       location: location.trim() || undefined,
       poll: pollValid ? { question: pollQ.trim(), options: validPollOpts } : undefined,
+      isBlog: blog || undefined, title: blog ? title.trim() : undefined,
+      isAd: isAd || undefined, adNote: isAd ? adNote.trim() : undefined,
     }, mediaFile);
     setPublishing(false);
     if (!ok) { setError('Не получилось опубликовать. Попробуй ещё раз.'); return; }
@@ -56,15 +64,19 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
         style={{ background: 'var(--bg-l1)', border: '1px solid var(--border-m)' }}>
 
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <p className="text-base font-bold" style={{ color: 'var(--t1)' }}>Новый пост</p>
+          <p className="text-base font-bold" style={{ color: 'var(--t1)' }}>{blog ? 'Новый блог' : 'Новый пост'}</p>
           <button type="button" onClick={onClose} style={{ color: 'var(--t3)' }}><X size={18}/></button>
         </div>
 
         <div className="flex items-start gap-3 px-5 pb-3">
           {me && <Av name={me.name} size={10}/>}
           <div className="flex-1">
-            <textarea value={text} onChange={e => setText(e.target.value)} rows={4}
-              placeholder="Что у тебя нового? Используй #теги"
+            {blog && (
+              <input value={title} onChange={e => setTitle(e.target.value)} maxLength={120} placeholder="Название блога"
+                className="mb-2 w-full bg-transparent text-base font-bold outline-none" style={{ color: 'var(--t1)' }}/>
+            )}
+            <textarea value={text} onChange={e => setText(e.target.value)} rows={blog ? 9 : 4}
+              placeholder={blog ? 'Текст блога. Используй #теги' : 'Что у тебя нового? Используй #теги'}
               className="w-full resize-none bg-transparent text-sm leading-relaxed outline-none"
               style={{ color: 'var(--t1)' }}/>
             {location && (
@@ -115,6 +127,16 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
           </div>
         )}
 
+        {isAd && (
+          <div className="mx-5 mb-3 rounded-2xl p-3" style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)' }}>
+            <p className="text-[12px] font-semibold" style={{ color: 'var(--t1)' }}>Запись будет с пометкой «Реклама»</p>
+            <input value={adNote} onChange={e => setAdNote(e.target.value)} maxLength={80} placeholder="Рекламодатель (по желанию)"
+              className="mt-2 w-full rounded-xl px-3 py-1.5 text-[13px] outline-none"
+              style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)', color: 'var(--t1)' }}/>
+            <p className="mt-1.5 text-[11px]" style={{ color: 'var(--t3)' }}>Пометку нельзя снять после публикации. Если запись рекламная, её нужно отметить — Sky не определяет рекламу сам.</p>
+          </div>
+        )}
+
         <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFile}/>
 
         {error && (
@@ -139,11 +161,17 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
             style={{ color: pollOn ? 'var(--accent)' : 'var(--t3)' }}>
             <BarChart2 size={14}/>Опрос
           </button>
-          <span className="ml-auto mr-2 shrink-0 text-xs" style={{ color: text.length > 280 ? 'var(--red)' : 'var(--t3)' }}>
-            {text.length}/280
+          <button type="button" onClick={() => setBlog(v => !v)}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs hover:bg-white/5"
+            style={{ color: blog ? 'var(--accent)' : 'var(--t3)' }}>Блог</button>
+          <button type="button" onClick={() => setIsAd(v => !v)}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs hover:bg-white/5"
+            style={{ color: isAd ? 'var(--accent)' : 'var(--t3)' }}>Реклама</button>
+          <span className="ml-auto mr-2 shrink-0 text-xs" style={{ color: text.length > maxLen ? 'var(--red)' : 'var(--t3)' }}>
+            {text.length}/{maxLen}
           </span>
           <motion.button type="button" whileTap={{ scale: 0.96 }} onClick={publish}
-            disabled={(!text.trim() && !mediaUrl && !pollValid) || publishing || text.length > 280}
+            disabled={(!text.trim() && !mediaUrl && !pollValid) || publishing || text.length > maxLen}
             className="shrink-0 rounded-xl px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
             style={{ background: 'var(--accent)' }}>
             {publishing ? 'Публикую...' : 'Опубликовать'}

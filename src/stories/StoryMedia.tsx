@@ -31,13 +31,13 @@ export const useStoryUrl = (src?: string) => {
   return { url, failed };
 };
 
-export const StoryImg = ({ src, className }: { src?: string; className?: string }) => {
+export const StoryImg = ({ src, className, onClick }: { src?: string; className?: string; onClick?: () => void }) => {
   const { url, failed } = useStoryUrl(src);
   if (failed) return <div className={className} style={{ display: 'grid', placeItems: 'center', color: 'rgba(255,255,255,.6)', fontSize: 12 }}>Не удалось загрузить</div>;
-  return url ? <img src={url} alt="" className={className} /> : <div className={className} style={{ background: 'rgba(255,255,255,.06)' }} />;
+  return url ? <img src={url} alt="" className={className} onClick={onClick} /> : <div className={className} style={{ background: 'rgba(255,255,255,.06)' }} />;
 };
 
-export const StoryVideo = forwardRef<HTMLVideoElement, { src?: string; className?: string; autoPlay?: boolean; loop?: boolean; muted?: boolean }>(({ src, ...rest }, ref) => {
+export const StoryVideo = forwardRef<HTMLVideoElement, { src?: string; className?: string; autoPlay?: boolean; loop?: boolean; muted?: boolean; controls?: boolean; style?: React.CSSProperties; onClick?: React.MouseEventHandler<HTMLVideoElement> }>(({ src, ...rest }, ref) => {
   const { url, failed } = useStoryUrl(src);
   if (failed) return <div className={rest.className} style={{ display: 'grid', placeItems: 'center', color: 'rgba(255,255,255,.6)', fontSize: 12 }}>Не удалось загрузить</div>;
   return url ? <video ref={ref} src={url} playsInline {...rest} /> : <div className={rest.className} style={{ background: 'rgba(255,255,255,.06)' }} />;

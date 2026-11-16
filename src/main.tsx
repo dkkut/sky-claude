@@ -42,6 +42,7 @@ import { startHandoff } from './handoff/handoffApi';
 import { hookOutput } from './handoff/audioOutput';
 import { SeasonLayer } from './settings/SeasonLayer';
 const GuideOnboarding = React.lazy(() => import('./guide/GuideOnboarding').then((m) => ({ default: m.GuideOnboarding })));
+const PublicBloom = React.lazy(() => import('./bloom/PublicBloom').then((m) => ({ default: m.PublicBloom })));
 const GuidePage = React.lazy(() => import('./guide/GuidePage').then((m) => ({ default: m.GuidePage })));
 import { LimitedAccessGate } from './auth/LimitedAccess';
 import { setBetaRequiredHandler, setPlatformBlockedHandler, initNativeAuth, type PlatformBlock } from './core/auth/api';
@@ -636,7 +637,7 @@ void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).fina
         </button>
       </div>
     }>
-      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><LockScreenHost /><WidgetHost /><IslandCommandBridge /><AppLockGate /><AdminTokenPrompt /><AuthCodeAsk /><SshLoginNotice /><LinkDeepLinkGate /><QrIncoming /><HandoffIncoming /><SafetyWatcher /><OidcAuthorizeGate /></>}
+      {location.pathname === '/admin-verify' ? <AdminVerifyLazy /> : location.pathname === '/ssh-verify' ? <AdminVerifyLazy kind="ssh" /> : location.pathname === '/unfreeze' ? <UnfreezeLinkPage /> : location.pathname === '/storage-verify' ? <StorageVerifyPage /> : /^\/b\/[A-Za-z0-9_-]+$/.test(location.pathname) ? <React.Suspense fallback={null}><PublicBloom kind="post" id={location.pathname.slice(3)} /></React.Suspense> : /^\/u\/[A-Za-z0-9_.-]+$/.test(location.pathname) ? <React.Suspense fallback={null}><PublicBloom kind="author" id={location.pathname.slice(3)} /></React.Suspense> : location.pathname === '/guide' ? <React.Suspense fallback={null}><GuidePage standalone /></React.Suspense> : <><Root /><SeasonLayer /><React.Suspense fallback={null}><GuideOnboarding /></React.Suspense><IpPinOverlay /><GloballyBlocked /><LimitedAccessGate /><LockScreenHost /><WidgetHost /><IslandCommandBridge /><AppLockGate /><AdminTokenPrompt /><AuthCodeAsk /><SshLoginNotice /><LinkDeepLinkGate /><QrIncoming /><HandoffIncoming /><SafetyWatcher /><OidcAuthorizeGate /></>}
     </ErrorBoundary>
   </React.StrictMode>
 ));

@@ -16,7 +16,7 @@ import { useMoney } from '@/wallet/store';
 import type { Rarity } from '@/gifts/types';
 import {
   apiBloomFeed, apiBloomAuthorPosts, apiBloomGetPost, apiBloomTrending, apiBloomSuggested, apiBloomHotComments,
-  apiBloomNotifCount, apiBloomUploadMedia, apiBloomCreatePost, apiBloomDeletePost,
+  apiBloomNotifCount, apiBloomUploadMedia, apiBloomCreatePost, apiBloomDeletePost, apiBloomEditPost,
   apiBloomReact, apiBloomComment, apiBloomDeleteComment, apiBloomLikeComment,
   apiBloomToggleSave, apiBloomRepost, apiBloomView, apiBloomVote, apiBloomGift,
   apiBloomHidden, apiBloomToggleHide, apiBloomWrite,
@@ -61,6 +61,7 @@ export interface BloomPost {
   reactions: PostReaction[]; comments: BloomComment[]; saved: string[];
   reposts: number; repostedByMe?: boolean; views: number; createdAt: string; tags: string[];
   isPinned?: boolean; location?: string; poll?: BloomPoll;
+  title?: string; isBlog?: boolean; isAd?: boolean; adNote?: string; editedAt?: string;
 }
 
 export type FeedTab = 'algo'|'fresh'|'saved'|'mine';
@@ -108,6 +109,7 @@ interface BloomState {
 
   addPost:      (input: Omit<CreatePostInput, 'mediaId'|'mediaMime'>, mediaFile?: File) => Promise<boolean>;
   deletePost:   (id: string) => Promise<void>;
+  editPost:     (id: string, patch: { text?: string; title?: string; isAd?: boolean; adNote?: string }) => Promise<string | null>;
   react:        (postId: string, emoji: ReactionKey) => Promise<void>;
   addComment:   (postId: string, text: string) => Promise<void>;
   deleteComment:(postId: string, commentId: string) => Promise<void>;
@@ -245,6 +247,20 @@ export const useBloomStore = create<BloomState>((set, get) => {
       if ('error' in r) return false;
       invalidateFeeds();
       return true;
+    },
+
+    editPost: async (id, patch) => {
+      const r = await apiBloomEditPost(id, patch);
+      if ('error' in r) return r.error;
+      const np = r.post;
+      const fn = (p: BloomPost) => p.id === id ? { ...p, text: np.text, title: np.title, isAd: np.isAd, adNote: np.adNote, editedAt: np.editedAt, tags: np.tags } : p;
+      set(s => ({
+        feedCache: Object.fromEntries(FEED_TABS.map(tab => [tab, mapCache(s.feedCache[tab], id, fn)])) as Partial<Record<FeedTab, BloomPost[]>>,
+        tagCache: Object.fromEntries(Object.entries(s.tagCache).map(([t, ps]) => [t, ps.map(fn)])),
+        authorPostsCache: Object.fromEntries(Object.entries(s.authorPostsCache).map(([a, ps]) => [a, ps.map(fn)])),
+        postCache: Object.fromEntries(Object.entries(s.postCache).map(([k, v]) => [k, fn(v)])),
+      }));
+      return null;
     },
 
     deletePost: async (id) => {

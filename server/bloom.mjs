@@ -21,6 +21,8 @@ export const COMMENT_ID_RE = /^blc-[0-9a-f-]{36}$/;
 export const MEDIA_ID_RE = /^blm-[0-9a-f-]{36}$/;
 
 export const MAX_BODY_CHARS = 4000;
+export const MAX_BLOG_CHARS = 20000;
+const MAX_TITLE_CHARS = 120;
 export const MAX_COMMENT_CHARS = 1000;
 export const MAX_TAGS = 10;
 export const MAX_TAG_LEN = 32;
@@ -151,6 +153,11 @@ const hydrate = async (postRows, viewerId) => {
       createdAt: p.created_at.toISOString(),
       tags: (tagsByPost.get(p.id) ?? []).map((t) => t.tag),
       isPinned: p.is_pinned,
+      title: p.title ?? undefined,
+      isBlog: !!p.is_blog,
+      isAd: !!p.is_ad,
+      adNote: p.ad_note ?? undefined,
+      editedAt: p.edited_at ? p.edited_at.toISOString() : undefined,
       location: p.location ?? undefined,
       poll,
       blockedRegions: (canModerate || p.author_id === viewerId) ? (p.blocked_regions ?? []) : undefined,
@@ -356,8 +363,14 @@ export const recentEvents = async (userId, sinceIso) => {
 
 /* ── Посты ──────────────────────────────────────────────────────── */
 
+const adFields = (body) => ({ isAd: body?.isAd === true, adNote: body?.isAd === true ? clean(body?.adNote, 80) : '' });
+
 export const createPost = async (authorId, body) => {
-  const text = clean(body?.text, MAX_BODY_CHARS);
+  const isBlog = body?.isBlog === true;
+  const title = isBlog ? clean(body?.title, MAX_TITLE_CHARS) : '';
+  if (isBlog && title.length < 3) return { error: 'blog_title_required' };
+  const text = clean(body?.text, isBlog ? MAX_BLOG_CHARS : MAX_BODY_CHARS);
+  const ad = adFields(body);
   const mediaId = body?.mediaId ? String(body.mediaId) : null;
   if (mediaId && !MEDIA_ID_RE.test(mediaId)) return { error: 'bad_media' };
   if (!text && !mediaId) return { error: 'empty_post' };
@@ -377,11 +390,12 @@ export const createPost = async (authorId, body) => {
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO bloom_posts (id, author_id, kind, body, media_id, media_mime, media_aspect, location)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      `INSERT INTO bloom_posts (id, author_id, kind, body, media_id, media_mime, media_aspect, location, title, is_blog, is_ad, ad_note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [id, authorId, kind, text, mediaId, mediaId ? String(body?.mediaMime ?? '').slice(0, 100) : null,
        mediaId && Number.isFinite(body?.mediaAspect) ? Number(body.mediaAspect) : null,
-       body?.location ? clean(body.location, 120) : null],
+       body?.location ? clean(body.location, 120) : null,
+       isBlog ? title : null, isBlog, ad.isAd, ad.isAd ? (ad.adNote || null) : null],
     );
     for (const tag of tags) {
       await client.query('INSERT INTO bloom_post_tags (post_id, tag) VALUES ($1,$2)', [id, tag]);
@@ -405,6 +419,65 @@ export const createPost = async (authorId, body) => {
     client.release();
   }
   return { id };
+};
+
+/** Правка своего поста: текст, заголовок блога, теги, пометка «реклама». Пометка, однажды поставленная, снимается только модератором — иначе рекламу можно было бы «разметить» и тут же спрятать метку. */
+export const editPost = async (postId, actorId, body = {}) => {
+  const { rows } = await query('SELECT * FROM bloom_posts WHERE id = $1 AND deleted_at IS NULL', [postId]);
+  const row = rows[0];
+  if (!row) return { error: 'not_found' };
+  if (row.author_id !== actorId) return { error: 'not_allowed' };
+  const text = clean(body?.text ?? row.body, row.is_blog ? MAX_BLOG_CHARS : MAX_BODY_CHARS);
+  if (!text && !row.media_id) return { error: 'empty_post' };
+  let title = row.title;
+  if (row.is_blog) { title = clean(body?.title ?? row.title, MAX_TITLE_CHARS); if (title.length < 3) return { error: 'blog_title_required' }; }
+  const isAd = row.is_ad || body?.isAd === true;
+  const adNote = isAd ? (body?.adNote !== undefined ? clean(body.adNote, 80) : (row.ad_note ?? '')) : '';
+  const tags = Array.isArray(body?.tags) ? [...new Set(body.tags.map(cleanTag).filter(Boolean))].slice(0, MAX_TAGS) : null;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('UPDATE bloom_posts SET body=$2, title=$3, is_ad=$4, ad_note=$5, edited_at=now() WHERE id=$1', [postId, text, title, isAd, isAd ? (adNote || null) : null]);
+    if (tags) {
+      await client.query('DELETE FROM bloom_post_tags WHERE post_id = $1', [postId]);
+      for (const tag of tags) await client.query('INSERT INTO bloom_post_tags (post_id, tag) VALUES ($1,$2)', [postId, tag]);
+    }
+    await client.query('COMMIT');
+  } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
+  return { ok: true, post: await getPost(postId, actorId) };
+};
+
+/* ── Публичные ссылки (без входа) ─────────────────────────────────── */
+
+/** Раздел «публикации» открыт всем (по умолчанию — да; «контакты»/«никому» — не публичный). */
+const postsPublic = (pv) => { const v = pv?.showPosts; return v === undefined || v === null || v === true || v === 'all'; };
+const publicShape = (p, mediaMap) => ({
+  id: p.id, authorName: p.authorName, authorUsername: p.authorUsername, kind: p.kind, text: p.text,
+  title: p.title, isBlog: p.isBlog, isAd: p.isAd, adNote: p.adNote, editedAt: p.editedAt, createdAt: p.createdAt, tags: p.tags,
+  mediaUrl: p.mediaUrl ? p.mediaUrl.replace('/api/bloom/media/', '/api/bloom/public/media/') : undefined, mediaAspect: p.mediaAspect,
+  reactions: p.reactions.reduce((a, r) => a + r.userIds.length, 0), comments: p.comments.length, views: p.views,
+});
+export const publicPost = async (postId) => {
+  const rows = await selectPosts('bp.id = $1', [postId], null, null);
+  if (!rows.length) return null;
+  const { rows: pr } = await query('SELECT profile_visibility FROM profiles WHERE id = $1', [rows[0].author_id]);
+  if (!postsPublic(pr[0]?.profile_visibility)) return null;
+  if ((rows[0].blocked_regions ?? []).length) return null;     // региональные ограничения без входа не проверить — не показываем
+  const [post] = await hydrate(rows, null);
+  return post ? publicShape(post) : null;
+};
+export const publicAuthor = async (username) => {
+  const { rows } = await query('SELECT id, name, username, bio, profile_visibility FROM profiles WHERE lower(username) = lower($1)', [String(username ?? '')]);
+  const pr = rows[0]; if (!pr || !postsPublic(pr.profile_visibility)) return null;
+  const sel = await selectPosts('bp.author_id = $1', [pr.id], null, null);
+  const open = sel.filter((r) => !(r.blocked_regions ?? []).length).slice(0, 30);
+  const posts = await hydrate(open, null);
+  return { name: pr.name, username: pr.username, bio: pr.profile_visibility?.showAbout === 'nobody' ? '' : (pr.bio ?? ''), posts: posts.map(publicShape) };
+};
+export const publicMediaMime = async (mediaId) => {
+  const { rows } = await query(`SELECT bp.media_mime, bp.author_id, bp.blocked_regions, p.profile_visibility FROM bloom_posts bp JOIN profiles p ON p.id = bp.author_id WHERE bp.media_id = $1 AND bp.deleted_at IS NULL`, [mediaId]);
+  const r = rows[0]; if (!r || !postsPublic(r.profile_visibility) || (r.blocked_regions ?? []).length) return null;
+  return r.media_mime ?? null;
 };
 
 export const deletePost = async (postId, actorId) => {

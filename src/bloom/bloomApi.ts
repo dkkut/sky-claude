@@ -56,6 +56,7 @@ export interface CreatePostInput {
   tags?: string[];
   location?: string;
   poll?: { question: string; options: string[] };
+  isBlog?: boolean; title?: string; isAd?: boolean; adNote?: string;
 }
 export const apiBloomCreatePost = async (input: CreatePostInput): Promise<{ id: string } | { error: string }> => {
   const r = await apiCall<{ id: string }>('/api/bloom/post', { method: 'POST', body: JSON.stringify(input) });
@@ -174,3 +175,8 @@ export const apiBloomSetPostRegions = async (postId: string, blockedRegions: str
   apiCall<{ ok: true; blockedRegions: string[] }>(`/api/bloom/post/${postId}/regions`, {
     method: 'POST', body: JSON.stringify({ blockedRegions, reason }),
   });
+
+export const apiBloomEditPost = async (postId: string, patch: { text?: string; title?: string; isAd?: boolean; adNote?: string }): Promise<{ post: BloomPost } | { error: string }> => {
+  const r = await apiCall<{ post: BloomPost }>(`/api/bloom/post/${postId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  return r.ok && r.data ? r.data : { error: r.error ?? 'failed' };
+};

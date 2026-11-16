@@ -110,7 +110,7 @@ const sweepWin = () => { const now = Date.now(); for (const [k, w] of win) if (n
 
 const PRIVATE = /^(::1$|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|f[cd][0-9a-f]{2}:|::ffff:(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.))/i;
 const EXEMPT_PATHS = ['/healthz', '/api/ssh-gate/', '/api/guard/', '/api/ops/agent/', '/api/sandbox/runner/', '/api/defense/', '/api/admin/firewall', '/api/skykassa/webhook/', '/api/kbiz/webhook/', '/api/platform/status'];
-const ANON_OK = ['/api/auth/', '/api/platform/', '/api/site/', '/api/oidc/', '/api/kbiz/public/', '/api/blocked/', '/api/email/', '/api/tax/doc/', '/api/recovery/', '/api/storage/verify/', '/api/storage/download/', '/api/guide', '/api/telemetry'];
+const ANON_OK = ['/api/auth/', '/api/platform/', '/api/site/', '/api/oidc/', '/api/kbiz/public/', '/api/bloom/public/', '/api/blocked/', '/api/email/', '/api/tax/doc/', '/api/recovery/', '/api/storage/verify/', '/api/storage/download/', '/api/guide', '/api/telemetry'];
 const MEDIA = /^\/api\/[\w/-]+\/(cover|audio|poster|thumb|thumbnail|avatar|media|file|stream|segment|image)(\/[\w.-]*)?(\?|$)/;
 
 /**

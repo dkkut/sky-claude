@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, MessageCircle, Repeat2, Bookmark, MoreHorizontal,
   Send, Eye, X, MapPin, Pin, User, Share2, ThumbsUp, Gift,
-  Flame, Zap,
+  Flame, Zap, Link2, Pencil,
 } from 'lucide-react';
 import type { BloomPost } from '../store';
 import { useBloomStore, fmtAgo, fmtViews, badgeFor } from '../store';
@@ -13,6 +13,8 @@ import { Av, Tagged, ReactionPicker } from './Primitives';
 import { CommentRow } from './CommentRow';
 import { GiftPicker } from './GiftPicker';
 import { ListSheet } from '@/profile/viewer/ListSheet';
+import { StoryImg, StoryVideo } from '@/stories/StoryMedia';
+import { shareOrigin } from '@/core/nativeApp';
 
 export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
   post: BloomPost;
@@ -28,6 +30,7 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
   const likeComment  = useBloomStore(s => s.likeComment);
   const votePoll     = useBloomStore(s => s.votePoll);
   const sendGift     = useBloomStore(s => s.sendGift);
+  const editPost     = useBloomStore(s => s.editPost);
   const { currentUserId, accounts } = useAuthStore();
   const myName = accounts.find(a => a.id === (currentUserId ?? ''))?.name ?? 'Вы';
   const uid = currentUserId ?? '';
@@ -55,6 +58,21 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
   const [imgExpanded,  setImgExpanded]  = useState(false);
   const [likeAnim,     setLikeAnim]     = useState(false);
   const [showGiftPicker, setShowGiftPicker] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editErr, setEditErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const copyLink = async () => {
+    const url = `${shareOrigin()}/b/${post.id}`;
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { window.prompt('Ссылка на публикацию:', url); }
+  };
+  const saveEdit = async () => {
+    setEditErr(null);
+    const e = await editPost(post.id, { text: editText, ...(post.isBlog ? { title: editTitle } : {}) });
+    if (e) { setEditErr(e === 'blog_title_required' ? 'Название блога — не короче 3 знаков.' : 'Не удалось сохранить.'); return; }
+    setEditing(false);
+  };
   const cardRef = useRef<HTMLDivElement>(null);
 
   const viewed = useRef(false);
@@ -72,7 +90,7 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
   const myReaction  = post.reactions.find(r => r.userIds.includes(uid));
   const topReacts   = [...post.reactions].sort((a, b) => b.userIds.length - a.userIds.length).slice(0, 3).filter(r => r.userIds.length > 0);
 
-  const TEXT_LIMIT = 180;
+  const TEXT_LIMIT = post.isBlog ? 600 : 180;
   const longText   = post.text.length > TEXT_LIMIT;
 
   const submitComment = () => {
@@ -129,7 +147,12 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
           <div className="flex items-center gap-1.5 mt-0.5">
             <p className="text-[10px]" style={{ color: 'var(--t3)' }}>@{post.authorUsername}</p>
             <span style={{ color: 'var(--t3)' }}>·</span>
-            <p className="text-[10px]" style={{ color: 'var(--t3)' }}>{fmtAgo(post.createdAt)}</p>
+            <p className="text-[10px]" style={{ color: 'var(--t3)' }}>{fmtAgo(post.createdAt)}{post.editedAt ? ' · изменено' : ''}</p>
+            {post.isAd && (
+              <span className="rounded px-1.5 py-px text-[9px] font-bold" style={{ background: 'rgba(255,122,0,.15)', color: '#ff7a00' }}>
+                {post.adNote ? `Реклама · ${post.adNote}` : 'Реклама'}
+              </span>
+            )}
             {post.location && (
               <>
                 <span style={{ color: 'var(--t3)' }}>·</span>
@@ -162,6 +185,18 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
                   style={{ color: 'var(--t1)' }}>
                   <Repeat2 size={14}/>Репост
                 </button>
+                <button type="button" onClick={() => { void copyLink(); setShowMenu(false); }}
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-[color:var(--bg-l2)]"
+                  style={{ color: 'var(--t1)' }}>
+                  <Link2 size={14}/>Копировать ссылку
+                </button>
+                {isOwn && (
+                  <button type="button" onClick={() => { setEditText(post.text); setEditTitle(post.title ?? ''); setEditing(true); setShowMenu(false); }}
+                    className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-[color:var(--bg-l2)]"
+                    style={{ color: 'var(--t1)' }}>
+                    <Pencil size={14}/>Редактировать
+                  </button>
+                )}
                 <button type="button" onClick={() => { setShowMenu(false); onAuthorClick(post.authorId); }}
                   className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-[color:var(--bg-l2)]"
                   style={{ color: 'var(--t1)' }}>
@@ -182,7 +217,26 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
       </div>
 
       {/* Текст */}
-      {post.text && (
+      {editing && (
+        <div className="px-4 pb-3">
+          {post.isBlog && (
+            <input value={editTitle} onChange={e => setEditTitle(e.target.value)} maxLength={120}
+              className="mb-2 w-full bg-transparent text-base font-bold outline-none" style={{ color: 'var(--t1)' }}/>
+          )}
+          <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={post.isBlog ? 8 : 4}
+            className="w-full resize-none rounded-xl p-3 text-sm outline-none"
+            style={{ background: 'var(--bg-l2)', border: '1px solid var(--border)', color: 'var(--t1)' }}/>
+          {editErr && <p className="mt-1 text-xs" style={{ color: 'var(--red)' }}>{editErr}</p>}
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => void saveEdit()} className="rounded-xl px-4 py-1.5 text-xs font-bold text-white" style={{ background: 'var(--accent)' }}>Сохранить</button>
+            <button type="button" onClick={() => setEditing(false)} className="rounded-xl px-4 py-1.5 text-xs" style={{ color: 'var(--t3)' }}>Отмена</button>
+          </div>
+        </div>
+      )}
+      {!editing && post.isBlog && post.title && (
+        <h3 translate="no" className="px-4 pb-1 text-base font-bold" style={{ color: 'var(--t1)' }}>{post.title}</h3>
+      )}
+      {!editing && post.text && (
         <div className="px-4 pb-2">
           <p translate="no" className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--t1)' }}>
             <Tagged text={expanded || !longText ? post.text : post.text.slice(0, TEXT_LIMIT) + '...'} onTag={onTagClick}/>
@@ -202,8 +256,8 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
           style={{ maxHeight: imgExpanded ? 'none' : 400 }}
           onClick={() => setImgExpanded(v => !v)}>
           {post.kind === 'video'
-            ? <video src={post.mediaUrl} controls className="w-full" style={{ maxHeight: 400 }} onClick={e => e.stopPropagation()}/>
-            : <img src={post.mediaUrl} alt="" className="w-full object-cover"/>}
+            ? <StoryVideo src={post.mediaUrl} controls className="w-full" style={{ maxHeight: 400 }} onClick={e => e.stopPropagation()}/>
+            : <StoryImg src={post.mediaUrl} className="w-full object-cover"/>}
           {!imgExpanded && post.mediaAspect && post.mediaAspect > 1.8 && (
             <div className="absolute bottom-0 inset-x-0 h-12 flex items-end pb-2 justify-center"
               style={{ background: 'linear-gradient(transparent,rgba(0,0,0,0.5))' }}>

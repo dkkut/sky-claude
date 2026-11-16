@@ -5,14 +5,14 @@
  * открыть уже существующий чат (chats.mjs) — см. в конце файла.
  */
 import { Readable } from 'node:stream';
-import { json, parseBody, requireProfile } from './../http.mjs';
+import { json, parseBody, requireProfile, clientIp } from './../http.mjs';
 import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   POST_ID_RE, COMMENT_ID_RE, MEDIA_ID_RE,
   feed, authorPosts, getPost, trending, suggestedUsers, hotComments, notificationsCount, recentEvents,
   createPost, deletePost, react, addComment, deleteComment, likeComment,
   toggleSave, toggleRepost, recordView, votePoll, toggleHide, hiddenAuthors, sendGift,
-  mediaMimeOf, adminSearchPosts, setPostRegions,
+  mediaMimeOf, adminSearchPosts, setPostRegions, editPost, publicPost, publicAuthor, publicMediaMime,
 } from './../bloom.mjs';
 import { saveStream, openStream, sizeOf, newMediaId } from './../bloomstore.mjs';
 import { parseRange } from './../skyvideostore.mjs';
@@ -87,8 +87,8 @@ const errCode = (error) => (
         : 400
 );
 
-const streamMedia = async (req, res, mediaId) => {
-  const mime = await mediaMimeOf(mediaId);
+const streamMedia = async (req, res, mediaId, mimeOverride = null) => {
+  const mime = mimeOverride ?? await mediaMimeOf(mediaId);
   if (!mime) return json(res, 404, { error: 'not_found' });
   const size = await sizeOf(mediaId);
   if (size === null || size === 0) return json(res, 404, { error: 'not_found' });
@@ -138,6 +138,23 @@ export const bloomRoutes = async (req, res, url) => {
     if (!session) return true;
     if (!rateLimit(`bloom:stream:${session.profileId}`, STREAM_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
     return streamMedia(req, res, mediaMatch[1]);
+  }
+
+  /* Публичные ссылки: без входа, только для постов авторов, у которых раздел «публикации» открыт всем. Пределы — по адресу. */
+  if (req.method === 'GET' && path.startsWith('/api/bloom/public/')) {
+    if (!rateLimit(`bloom:public:${clientIp(req)}`, 120)) return json(res, 429, { error: 'rate_limited' });
+    let m;
+    if ((m = /^\/api\/bloom\/public\/post\/([^/]+)$/.exec(path)) && POST_ID_RE.test(m[1])) {
+      const post = await publicPost(m[1]); return post ? json(res, 200, { post }) : json(res, 404, { error: 'not_found' });
+    }
+    if ((m = /^\/api\/bloom\/public\/author\/([A-Za-z0-9_.-]{1,40})$/.exec(path))) {
+      const a = await publicAuthor(m[1]); return a ? json(res, 200, { author: a }) : json(res, 404, { error: 'not_found' });
+    }
+    if ((m = /^\/api\/bloom\/public\/media\/([^/]+)$/.exec(path)) && MEDIA_ID_RE.test(m[1])) {
+      const mime = await publicMediaMime(m[1]); if (!mime) return json(res, 404, { error: 'not_found' });
+      return streamMedia(req, res, m[1], mime);
+    }
+    return json(res, 404, { error: 'not_found' });
   }
 
   const session = await requireProfile(req, res);
@@ -230,6 +247,14 @@ export const bloomRoutes = async (req, res, url) => {
       const post = await getPost(id, me);
       if (!post) return json(res, 404, { error: 'not_found' });
       return json(res, 200, { post });
+    }
+
+    if (req.method === 'PATCH' && tail === '') {
+      if (!rateLimit(`bloom:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+      const body = await parseBody(req);
+      const r = await editPost(id, me, body ?? {});
+      if (r.error) return json(res, errCode(r.error), r);
+      return json(res, 200, r);
     }
 
     if (req.method === 'DELETE' && tail === '') {
