@@ -134,7 +134,8 @@ export const visibleBook = async (bookId, viewerId) => {
 
 /* ─── Каталог ──────────────────────────────────────────────────────── */
 
-const PUBLIC_ONLY = "b.status = 'published'";
+// Ограничения Sky Media: ограниченное произведение и направление автора из каталога скрыты.
+const PUBLIC_ONLY = `b.status = 'published' AND NOT EXISTS (SELECT 1 FROM media_restrictions r WHERE r.status = 'active' AND r.direction = 'books' AND ((r.scope = 'work' AND r.target_id = b.id) OR (r.scope = 'author_direction' AND r.target_id = b.author_id)))`;
 
 const searchClause = (q, args, columns) => {
   const needle = text(q, 100).toLowerCase();

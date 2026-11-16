@@ -128,6 +128,8 @@ export const listTracks = async (viewerId, { q, limit, offset, mine, hideExplici
   const where = [mine ? 'owner_id = $1' : "(status = 'published' OR owner_id = $1)"];
 
   // «Скрывать Explicit» — настройка человека; своё в «Моей музыке» не прячем, это его собственная коллекция.
+  // Ограничения Sky Media: чужое ограниченное произведение (и всё направление правообладателя) из каталога скрыто.
+  if (!mine) where.push(`(owner_id = $1 OR NOT EXISTS (SELECT 1 FROM media_restrictions r WHERE r.status = 'active' AND r.direction = 'music' AND ((r.scope = 'work' AND r.target_id = music_tracks.id) OR (r.scope = 'author_direction' AND r.target_id = (SELECT k.owner_id FROM music_artist_cards k WHERE k.id = music_tracks.artist_card_id)))))`);
   if (hideExplicit && !mine) where.push('(owner_id = $1 OR NOT coalesce(mod_explicit, explicit))');
   const needle = text(q, 100).toLowerCase();
   if (needle) {

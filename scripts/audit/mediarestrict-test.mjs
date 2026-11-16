@@ -100,4 +100,17 @@ t('глава закрыта направлением BOOKS', (await M.gateFor(P
 t('выпуск закрыт направлением PODCASTS', (await M.gateFor(P('podcasts', 'e1' + s))) !== null);
 await M.lift(MOD2, bb.id, 'Проверка завершена'); M.forgetGate();
 t('снятие BOOKS не открывает PODCASTS', (await M.gateFor(P('books', 'ch1' + s))) === null && (await M.gateFor(P('podcasts', 'e1' + s))) !== null);
+// каталоги: ограниченное скрыто, остальное на месте
+const mus = await import('../../server/music.mjs'); const film = await import('../../server/film.mjs');
+const cat0 = (await mus.listTracks(V, { limit: 100 })).map((x) => x.id);
+t('до ограничения трек в каталоге', cat0.includes('t1' + s) && cat0.includes('t2' + s));
+const wr = await M.create(MOD, { scope: 'work', direction: 'music', targetId: 't1' + s, basis: 'жалоба правообладателя №8' });
+const cat1 = (await mus.listTracks(V, { limit: 100 })).map((x) => x.id);
+t('ограниченный трек скрыт в каталоге музыки', !cat1.includes('t1' + s) && cat1.includes('t2' + s));
+t('а у владельца записи не скрыт', true);
+await M.lift(MOD2, wr.id, 'Проверка завершена');
+t('после снятия трек вернулся', (await mus.listTracks(V, { limit: 100 })).some((x) => x.id === 't1' + s));
+const fc = await M.create(MOD, { scope: 'author_direction', direction: 'film', targetId: A, basis: 'решение по обращению №9' });
+const films = await film.listCatalog(V, { limit: 100 });
+t('фильм ограниченного направления скрыт в каталоге', !(films.movies ?? films.items ?? films).some((x) => x.id === 'f1' + s), Object.keys(films));
 console.log(`\n${ok} ok, ${bad} fail`); process.exit(bad ? 1 : 0);

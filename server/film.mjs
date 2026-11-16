@@ -217,7 +217,7 @@ export const readMovie = async (movieId, viewerId) => {
  * оно здесь: в каталог попадает только опубликованное. Своего закрытого
  * человек тут не увидит тоже — для него есть личная коллекция.
  */
-const PUBLIC_ONLY = "m.status = 'published' AND m.series_id IS NULL";
+const PUBLIC_ONLY = `m.status = 'published' AND m.series_id IS NULL AND NOT EXISTS (SELECT 1 FROM media_restrictions r WHERE r.status = 'active' AND r.direction = 'film' AND ((r.scope = 'work' AND r.target_id = m.id) OR (r.scope = 'author_direction' AND r.target_id = m.owner_id)))`;
 
 /**
  * Поиск по каталогу. Строка запроса уходит параметром, а не склейкой,
