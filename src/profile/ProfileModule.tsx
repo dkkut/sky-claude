@@ -1557,6 +1557,11 @@ export const ProfileModule = () => {
                   ['showPhotos',       'Фотографии'],
                   ['showStories',      'Истории'],
                   ['showPosts',        'Публикации'],
+                  ['showCreatorMusic',    'Авторское: музыку'],
+                  ['showCreatorFilm',     'Авторское: фильмы и сериалы'],
+                  ['showCreatorPodcasts', 'Авторское: подкасты'],
+                  ['showCreatorBooks',    'Авторское: книги'],
+                  ['showCreatorStats',    'Авторское: прослушивания и просмотры'],
                 ] as const).map(([key, label], i, arr) => (
                   <div key={key}>
                     <div className="flex items-center justify-between py-3 px-2">

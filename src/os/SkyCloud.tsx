@@ -7,7 +7,7 @@ import React from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { EyesSvg, MouthSvg } from '@/messenger/mascotStickers';
 
-export type CloudState = 'greeting' | 'wave' | 'joy' | 'surprise' | 'waiting' | 'error' | 'offline' | 'success';
+export type CloudState = 'greeting' | 'wave' | 'joy' | 'surprise' | 'waiting' | 'error' | 'offline' | 'success' | 'blocked';
 
 const FACE: Record<CloudState, { eyes: Parameters<typeof EyesSvg>[0]['kind']; mouth: Parameters<typeof MouthSvg>[0]['kind']; tint: string }> = {
   greeting: { eyes: 'happy', mouth: 'grin', tint: '#60a5fa' },
@@ -18,6 +18,7 @@ const FACE: Record<CloudState, { eyes: Parameters<typeof EyesSvg>[0]['kind']; mo
   error: { eyes: 'cry', mouth: 'frown', tint: '#f87171' },
   offline: { eyes: 'open', mouth: 'frown', tint: '#7dd3fc' },
   success: { eyes: 'happy', mouth: 'grin', tint: '#34d399' },
+  blocked: { eyes: 'open', mouth: 'flat', tint: '#f87171' },
 };
 
 const Y = '#fcd34d', YS = '#d99a06';
@@ -59,6 +60,15 @@ export const SkyCloud = ({ state = 'greeting', size = 96, className }: { state?:
         {state === 'error' && <g transform="translate(88 4)"><circle cx="12" cy="12" r="11" fill="#ef4444" /><rect x="10.6" y="5" width="2.8" height="9" rx="1.4" fill="#fff" /><circle cx="12" cy="18" r="1.7" fill="#fff" /></g>}
         {state === 'surprise' && <g transform="translate(88 2)" fill="#f59e0b"><rect x="9.8" y="2" width="4.4" height="12" rx="2.2" /><circle cx="12" cy="19" r="2.6" /></g>}
         {state === 'success' && <g transform="translate(88 4)"><circle cx="12" cy="12" r="11" fill="#22c55e" /><path d="M6.5 12.5 L10.5 16.5 L17.5 8" stroke="#fff" strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></g>}
+        {state === 'blocked' && (
+          <g aria-hidden>
+            {/* табличка с крестиком в руках облачка */}
+            <rect x="38" y="74" width="44" height="28" rx="7" fill="#fff" stroke="#ef4444" strokeWidth="2.4" />
+            <path d="M52 81 L68 95 M68 81 L52 95" stroke="#ef4444" strokeWidth="4.2" strokeLinecap="round" />
+            <circle cx="35" cy="90" r="7.5" fill={Y} stroke={YS} strokeWidth="1.2" />
+            <circle cx="85" cy="90" r="7.5" fill={Y} stroke={YS} strokeWidth="1.2" />
+          </g>
+        )}
         {state === 'offline' && (
           <g transform="translate(86 2)" stroke="#475569" strokeWidth="2.2" fill="none" strokeLinecap="round">
             <path d="M3 10 Q12 2 21 10" /><path d="M6.5 14 Q12 9 17.5 14" /><circle cx="12" cy="18" r="1.4" fill="#475569" stroke="none" />

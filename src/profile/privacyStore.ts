@@ -21,6 +21,7 @@ export type VisibilityKey =
   | 'showPhone' | 'showBirthDate' | 'showGames' | 'showMusic' | 'showMovies'
   | 'showGifts' | 'showAchievements' | 'showFollowing' | 'showFriends'
   | 'showPhotos' | 'showStories' | 'showPosts'
+  | 'showCreatorMusic' | 'showCreatorFilm' | 'showCreatorPodcasts' | 'showCreatorBooks' | 'showCreatorStats'
   | 'showCountry' | 'showTimezone' | 'showActivity'
   | 'showBio' | 'showBanner' | 'showNameCustomization' | 'showLinks' | 'showCustomStatus';
 

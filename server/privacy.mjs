@@ -49,6 +49,8 @@ const VISIBILITY_KEYS = new Set([
   'showPhone', 'showBirthDate', 'showGames', 'showMusic', 'showMovies',
   'showGifts', 'showAchievements', 'showFollowing', 'showFriends',
   'showPhotos', 'showStories', 'showPosts',
+  // Авторская часть профиля (Sky Media): по направлениям и статистика.
+  'showCreatorMusic', 'showCreatorFilm', 'showCreatorPodcasts', 'showCreatorBooks', 'showCreatorStats',
   // Расширенный профиль (EditExtendedProfileSheet): раньше нигде не
   // сохранялись, поэтому тумблеры молча ничего не значили.
   'showCountry', 'showTimezone', 'showActivity',
