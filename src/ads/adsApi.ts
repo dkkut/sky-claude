@@ -120,7 +120,14 @@ export interface ServedAd {
   linkUrl?: string;
   /** Длительность видеорекламы, если известна (MP4). */
   durationSec?: number;
+  /** Только для видеорекламы перед роликом: настройки администрации. */
+  skipAfterSec?: number;
+  label?: string;
 }
+
+export interface PrerollSettings { enabled: boolean; cooldownSec: number; skipAfterSec: number; maxPerUserDay: number; label: string; updatedAt?: string; updatedBy?: string | null }
+export const apiAdminPrerollGet = async () => { const r = await apiCall<{ settings: PrerollSettings }>('/api/ads/admin/preroll'); return r.ok ? r.data!.settings : null; };
+export const apiAdminPrerollSave = (b: Omit<PrerollSettings, 'updatedAt' | 'updatedBy'>) => apiCall<{ settings: PrerollSettings }>('/api/ads/admin/preroll', { method: 'PUT', body: JSON.stringify(b) });
 
 export const apiServeAd = async (placement: AdPlacement): Promise<ServedAd | null> => {
   const r = await apiCall<{ ad: ServedAd | null }>(`/api/ads/serve?placement=${encodeURIComponent(placement)}`);

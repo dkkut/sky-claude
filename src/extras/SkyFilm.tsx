@@ -1,3 +1,4 @@
+import { usePip, togglePip } from '@/shared/pip';
 import { UploadLimitsButton } from '@/shared/UploadLimitsDialog';
 import { SkyLoader } from '@/shared/SkyLoader';
 /* ===========================================================
@@ -27,7 +28,7 @@ import { RetentionNote } from '@/shared/RetentionNote';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Play, Pause, Volume2, VolumeX, Maximize2, Minimize2,
+  Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, PictureInPicture2,
   X, Star, Clock, Film, Search, ChevronLeft, RotateCcw,
   SkipForward, Bookmark, BookmarkCheck, Info,
   Tv, TrendingUp, Award, Layers, Download, CheckCircle, Upload, Image as ImageIcon,
@@ -224,6 +225,7 @@ export const Player = ({ movie, onClose, together = null, onNextEpisode }: {
   onNextEpisode?: (m: ServerMovie) => void;
 }) => {
   const vRef  = useRef<HTMLVideoElement>(null);
+  const pip = usePip(vRef, movie.id);
   const passTried = useRef(false);
   const cRef  = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
@@ -556,6 +558,12 @@ export const Player = ({ movie, onClose, together = null, onNextEpisode }: {
                   className="rounded-full px-3 py-1.5 text-[11px] font-semibold"
                   style={{ background: 'rgba(255,255,255,0.12)', color: K.text }}>
                   Выйти
+                </button>
+              )}
+              {pip.supported && (
+                <button type="button" aria-label="Картинка в картинке" aria-pressed={pip.active} onClick={() => void togglePip(vRef.current)}
+                  className="grid h-10 w-10 place-items-center rounded-full pointer-events-auto" style={{ background: 'rgba(0,0,0,0.5)' }}>
+                  <PictureInPicture2 size={16} className="text-white" />
                 </button>
               )}
               <button type="button" onClick={toggleFs}

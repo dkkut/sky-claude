@@ -16,7 +16,7 @@ import { rateLimit, rateLimitPerHour } from './../security.mjs';
 import {
   PLACEMENT_KEYS, createCampaign, myCampaigns, campaignDetail,
   pauseCampaign, resumeCampaign, cancelCampaign, reportCampaign,
-  resolveAdForPlacement, recordImpression, recordClick, recentAdEvents,
+  resolveAdForPlacement, adminGetPreroll, adminSavePreroll, recordImpression, recordClick, recentAdEvents,
   adminListCampaigns, adminApprove, adminReject, adminPause, adminResume, adminComplete, adminCancel,
   recordView,
 } from './../ads.mjs';
@@ -286,6 +286,17 @@ export const adsRoutes = async (req, res, url) => {
   }
 
   /* ── Админка (пункты 3, 15) ────────────────────────────────────── */
+
+  if (path === '/api/ads/admin/preroll') {
+    if (!rateLimit(`ads:admin:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    if (req.method === 'GET') { const r = await adminGetPreroll(me); return json(res, r.error ? errCode(r.error) : 200, r); }
+    if (req.method === 'PUT') {
+      const body = await parseBody(req).catch(() => ({}));
+      const r = await adminSavePreroll(me, body); if (r.error) return json(res, errCode(r.error), r);
+      await logAdmin({ actorId: me, targetId: 'preroll', targetType: 'ad_settings', type: 'ad_preroll_settings', result: 'ok', detail: JSON.stringify({ enabled: r.settings.enabled, cooldownSec: r.settings.cooldownSec, skipAfterSec: r.settings.skipAfterSec, maxPerUserDay: r.settings.maxPerUserDay }) });
+      return json(res, 200, r);
+    }
+  }
 
   if (req.method === 'GET' && path === '/api/ads/admin/campaigns') {
     if (!rateLimit(`ads:admin:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });

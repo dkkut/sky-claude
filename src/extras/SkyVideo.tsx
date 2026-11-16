@@ -28,6 +28,9 @@ import { ChannelAnalyticsView } from '@/video/ChannelAnalytics';
 import { useRegisterMedia } from '@/island/mediaRegistry';
 import { videoUrl, thumbnailUrl, fmtDuration, readVideoMeta, apiSkyVideoTicket, apiSkyVideo, type ServerVideo, type VideoComment } from '@/video/skyVideoApi';
 import { reloadWithFreshTicket } from '@/core/mediaTicketRefresh';
+import { usePip, togglePip } from '@/shared/pip';
+import { flash } from '@/shared/flash';
+import { PictureInPicture2 } from 'lucide-react';
 import {
   apiSkyVideoComments, apiAddSkyVideoComment, apiDeleteSkyVideoComment,
   apiSkyVideoChannels, apiSkyVideoChannel, type ChannelListEntry, type ChannelInfo,
@@ -177,6 +180,7 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
   const [showCtrl, setShowCtrl] = useState(true);
   const [failed, setFailed] = useState(false);
   const [adDone, setAdDone] = useState(false);          // реклама перед роликом: показывает сервер (не Prime, не чаще паузы), ролик ждёт
+  const pip = usePip(vidRef, adDone);
   const passTried = useRef(false);
   const hideTimer = useRef<number>(0);
   const noteView = useSkyVideoStore(s => s.noteView);
@@ -307,7 +311,13 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
                 <span className="text-xs text-white" style={{ fontFamily: 'DM Mono,monospace' }}>
                   {fmtS(duration * progress)} / {fmtS(duration)}
                 </span>
-                <div className="ml-auto">
+                <div className="ml-auto flex items-center gap-1">
+                  {pip.supported && (
+                    <button type="button" aria-label="Картинка в картинке" aria-pressed={pip.active} onClick={() => void togglePip(vidRef.current).then((r) => { if (r === 'error') flash('Не удалось включить «картинку в картинке»'); })}
+                      className="grid h-7 w-7 place-items-center text-white" style={{ opacity: pip.active ? 1 : 0.85 }}>
+                      <PictureInPicture2 size={15} />
+                    </button>
+                  )}
                   <button type="button" onClick={() => vidRef.current?.requestFullscreen()}
                     className="grid h-7 w-7 place-items-center text-white">
                     <Maximize2 size={15} />
@@ -321,6 +331,15 @@ const VideoPlayer = ({ video }: { video: ServerVideo }) => {
     </div>
   );
 };
+
+/* -- Источник материала: что Sky знает о происхождении ролика, и что НЕ проверял -- */
+const VideoSource = ({ video }: { video: ServerVideo }) => (
+  <div className="rounded-2xl px-3.5 py-3 text-[12px] leading-relaxed" style={{ background: V.bg2, border: `1px solid ${V.border}`, color: V.t2 }}>
+    <p className="mb-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: V.t3 }}>Источник</p>
+    <p>Загружено на Sky автором <span translate="no" className="font-semibold" style={{ color: V.t1 }}>{video.authorName ?? 'неизвестен'}{video.authorUsername ? ` (@${video.authorUsername})` : ''}</span>{video.publishedAt ? ` · опубликовано ${new Date(video.publishedAt).toLocaleDateString()}` : ''}.</p>
+    <p className="mt-1" style={{ color: V.t3 }}>Sky не проверял права на материал: за них отвечает загрузивший. Если вы правообладатель — сообщите через «Пожаловаться» или Профиль → Тех. поддержка.</p>
+  </div>
+);
 
 /* -- Full Video View ------------------------------------------- */
 const VideoView = ({ video, onBack, onOpenChannel }: { video: ServerVideo; onBack: () => void; onOpenChannel?: (authorId: string) => void }) => {
@@ -436,6 +455,8 @@ const VideoView = ({ video, onBack, onOpenChannel }: { video: ServerVideo; onBac
           </button>
           <SubscribeButton targetId={video.authorId} />
         </div>
+
+        <VideoSource video={video} />
 
         <div className="flex gap-2">
           <motion.button whileTap={{ scale: 0.92 }} type="button"

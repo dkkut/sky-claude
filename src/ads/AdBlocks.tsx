@@ -152,7 +152,7 @@ export const PrerollAd = ({ onSkip }: { onSkip: () => void }) => {
   const done = useRef(false);
   const isVideo = ad?.format === 'video' && !!ad.mediaUrl;
   // Пропуск открывается через 5 с (или через длительность, если ролик короче). Считаем реально прошедшее время показа.
-  const skipAfter = Math.max(1, Math.min(5, ad?.durationSec ?? 5));
+  const skipAfter = Math.max(0, Math.min(ad?.skipAfterSec ?? 5, ad?.durationSec ?? 99));
 
   const finish = () => {
     if (done.current) return;
@@ -198,7 +198,7 @@ export const PrerollAd = ({ onSkip }: { onSkip: () => void }) => {
         }
         <div className="absolute top-3 left-3 text-[10px] font-bold px-2 py-0.5 rounded"
           style={{ background:'rgba(0,0,0,0.6)', color:'rgba(255,255,255,0.7)' }}>
-          Реклама{ad.durationSec ? ` · ${Math.round(ad.durationSec)} с` : ''}
+          {ad.label || 'Реклама'}{ad.durationSec ? ` · ${Math.round(ad.durationSec)} с` : ''}
         </div>
       </div>
       <div className="absolute bottom-4 right-4">

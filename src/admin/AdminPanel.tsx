@@ -5159,6 +5159,44 @@ const AdsAdminDetail = ({ campaignId, onBack, onChanged }: { campaignId: string;
   );
 };
 
+const PrerollSettingsCard = () => {
+  const [v, setV] = useState<import('@/ads/adsApi').PrerollSettings | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  useEffect(() => { void import('@/ads/adsApi').then((m) => m.apiAdminPrerollGet()).then(setV); }, []);
+  if (!v) return null;
+  const numF = (label: string, key: 'cooldownSec' | 'skipAfterSec' | 'maxPerUserDay', hint: string) => (
+    <label className="block text-[11px]" style={{ color: C.t2 }}>{label}
+      <input type="number" min={0} value={v[key]} onChange={(e) => setV({ ...v, [key]: Number(e.target.value) })} className="mt-1 w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+      <span className="mt-0.5 block text-[10px]" style={{ color: C.t3 }}>{hint}</span></label>);
+  const save = async () => {
+    setBusy(true); setMsg('');
+    const { apiAdminPrerollSave } = await import('@/ads/adsApi');
+    const r = await apiAdminPrerollSave({ enabled: v.enabled, cooldownSec: v.cooldownSec, skipAfterSec: v.skipAfterSec, maxPerUserDay: v.maxPerUserDay, label: v.label });
+    setBusy(false); setMsg(r.ok ? 'Сохранено' : 'Не сохранено: проверьте значения и права');
+    if (r.ok && r.data) setV(r.data.settings);
+  };
+  return (
+    <div className="mb-3 space-y-2 rounded-2xl p-3" style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
+      <p className="text-xs font-bold" style={{ color: C.t1 }}>Реклама перед видео — настройки показа</p>
+      <label className="flex items-center gap-2 text-[11px]" style={{ color: C.t2 }}>
+        <input type="checkbox" checked={v.enabled} onChange={(e) => setV({ ...v, enabled: e.target.checked })} />Показывать рекламу перед роликами Sky Video (людям без Prime)</label>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {numF('Пауза между показами, с', 'cooldownSec', 'Не чаще раза в N секунд одному человеку; 0 — без паузы')}
+        {numF('Пропуск через, с', 'skipAfterSec', 'Кнопка «Пропустить» появляется через N секунд (0 — сразу)')}
+        {numF('Одной кампании на человека в сутки', 'maxPerUserDay', 'От 1 до 50')}
+      </div>
+      <label className="block text-[11px]" style={{ color: C.t2 }}>Метка на рекламе
+        <input value={v.label} maxLength={40} onChange={(e) => setV({ ...v, label: e.target.value })} className="mt-1 w-full rounded-xl px-3 py-2 text-xs outline-none" style={inputStyle} />
+        <span className="mt-0.5 block text-[10px]" style={{ color: C.t3 }}>Подпись в углу рекламного кадра, например «Реклама». Убрать совсем нельзя — реклама должна быть помечена.</span></label>
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={busy} onClick={() => void save()} className="rounded-xl px-3 py-2 text-xs font-bold" style={{ background: C.acc, color: '#fff', opacity: busy ? 0.6 : 1 }}>Сохранить</button>
+        {msg && <span className="text-[11px]" style={{ color: C.t3 }}>{msg}</span>}
+      </div>
+    </div>
+  );
+};
+
 const AdsAdminSection = () => {
   const [items, setItems] = useState<import('@/ads/adsApi').AdminAdCampaign[] | null>(null);
   const [status, setStatus] = useState<'' | 'moderation' | 'active' | 'paused' | 'scheduled' | 'rejected' | 'completed' | 'cancelled'>('moderation');
@@ -5178,6 +5216,7 @@ const AdsAdminSection = () => {
 
   return (
     <div className="space-y-2">
+      <PrerollSettingsCard />
       <ScrollTabs>
         {([
           ['moderation', 'На проверке'], ['active', 'Активные'], ['paused', 'На паузе'],

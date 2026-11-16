@@ -382,6 +382,28 @@ export const reportCampaign = async (actorId, id, reason) => {
   });
 };
 
+/* ─── Настройки рекламы перед видео (правит администрация, кэш 15 с) ───────── */
+let prerollCache = { at: 0, v: null };
+const PREROLL_DEFAULTS = { enabled: true, cooldownSec: FREQ_CAP.videoCooldownSec, skipAfterSec: 5, maxPerUserDay: FREQ_CAP.maxImpressionsPerUserPerCampaignPerDay, label: 'Реклама' };
+const prerollRow = (r) => r && ({ enabled: !!r.enabled, cooldownSec: Number(r.cooldown_sec), skipAfterSec: Number(r.skip_after_sec), maxPerUserDay: Number(r.max_per_user_day), label: r.label || 'Реклама', updatedAt: r.updated_at, updatedBy: r.updated_by });
+export const prerollSettings = async () => {
+  if (prerollCache.v && Date.now() - prerollCache.at < 15000) return prerollCache.v;
+  let v = PREROLL_DEFAULTS;
+  try { v = prerollRow((await query('SELECT * FROM ad_preroll_settings WHERE id = 1')).rows[0]) ?? PREROLL_DEFAULTS; } catch { /* таблицы ещё нет — прежние значения */ }
+  prerollCache = { at: Date.now(), v }; return v;
+};
+export const adminGetPreroll = async (actorId) => { if (!(await can(actorId, 'content'))) return { error: 'not_allowed' }; prerollCache.at = 0; return { settings: await prerollSettings() }; };
+export const adminSavePreroll = async (actorId, b = {}) => {
+  if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
+  const int = (x, lo, hi) => { const n = Number(x); return Number.isFinite(n) && n >= lo && n <= hi ? Math.round(n) : null; };
+  const cd = int(b.cooldownSec, 0, 86400), sk = int(b.skipAfterSec, 0, 30), mx = int(b.maxPerUserDay, 1, 50);
+  if (cd === null || sk === null || mx === null) return { error: 'bad_value' };
+  const label = clean(b.label, 40) || 'Реклама';
+  await query(`UPDATE ad_preroll_settings SET enabled=$1, cooldown_sec=$2, skip_after_sec=$3, max_per_user_day=$4, label=$5, updated_by=$6, updated_at=now() WHERE id=1`,
+    [b.enabled !== false, cd, sk, mx, label, actorId]);
+  prerollCache.at = 0; return { settings: await prerollSettings() };
+};
+
 /* ─── Показ рекламы пользователю (пункт 7) ────────────────────────── */
 
 /**
@@ -393,10 +415,12 @@ export const reportCampaign = async (actorId, id, reason) => {
 export const resolveAdForPlacement = async (viewerId, placement) => {
   if (!PLACEMENTS[placement]) return null;
   if (await hasPrime(viewerId)) return null; // Prime — без рекламы, решает только сервер
-  if (placement === 'video_preroll' && FREQ_CAP.videoCooldownSec > 0) {
+  const pre = placement === 'video_preroll' ? await prerollSettings() : null;
+  if (pre && !pre.enabled) return null;
+  if (pre && pre.cooldownSec > 0) {
     const { rows: recent } = await query(
       "SELECT 1 FROM ad_impressions WHERE user_id = $1 AND placement = 'video_preroll' AND created_at > now() - ($2 || ' seconds')::interval LIMIT 1",
-      [viewerId, String(FREQ_CAP.videoCooldownSec)]);
+      [viewerId, String(pre.cooldownSec)]);
     if (recent.length) return null;
   }
 
@@ -432,7 +456,7 @@ export const resolveAdForPlacement = async (viewerId, placement) => {
          FROM ad_impressions WHERE campaign_id = $1 AND user_id = $2`,
       [row.id, viewerId, placement],
     );
-    if (Number(mine[0].today) >= FREQ_CAP.maxImpressionsPerUserPerCampaignPerDay) continue;
+    if (Number(mine[0].today) >= (pre ? pre.maxPerUserDay : FREQ_CAP.maxImpressionsPerUserPerCampaignPerDay)) continue;
     const last = mine[0].last_same_placement;
     if (last && (Date.now() - new Date(last).getTime()) / 1000 < FREQ_CAP.minSecondsBetweenSamePlacementImpression) continue;
 
@@ -445,6 +469,7 @@ export const resolveAdForPlacement = async (viewerId, placement) => {
       format: row.format,
       linkUrl: row.link_url ?? undefined,
       durationSec: dur != null ? Number(dur) : undefined,
+      ...(pre ? { skipAfterSec: pre.skipAfterSec, label: pre.label } : {}),
     };
   }
   return null;
