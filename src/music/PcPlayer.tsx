@@ -23,6 +23,10 @@ import { ExplicitBadge } from '@/labels/Labels';
 import { BufferingRing, useBuffering } from '@/player/BufferingRing';
 import { usePlayerStore } from '@/player/playerStore';
 import { apiAiAsk } from '@/ai/aiApi';
+import { useIsMobile } from '@/interface/mobile/useIsMobile';
+import { prepareWallpaper, putWallpaperBlob, getWallpaperBlob, deleteWallpaperBlob } from '@/messenger/wallpapers';
+import { flash } from '@/shared/flash';
+import { Image as ImageIcon } from 'lucide-react';
 
 export interface PcPlayerProps {
   track: Track; playing: boolean; currentTime: number; duration: number;
@@ -39,6 +43,10 @@ type Mode = 'compact' | 'lyrics' | 'ai';
 const MODE_KEY = 'sky:pcplayer:mode';
 const DISC_KEY = 'sky:pcplayer:disc';
 const readMode = (): Mode => { try { const v = localStorage.getItem(MODE_KEY); return v === 'lyrics' || v === 'ai' ? v : 'compact'; } catch { return 'compact'; } };
+type Bg = 'tracks' | 'cover' | 'custom';
+const BG_KEY = 'sky:pcplayer:bg';
+const PLAYER_WP = 'player';
+const readBg = (): Bg => { try { const v = localStorage.getItem(BG_KEY); return v === 'cover' || v === 'custom' ? v : 'tracks'; } catch { return 'tracks'; } };
 const readDisc = (): boolean => { try { return localStorage.getItem(DISC_KEY) !== '0'; } catch { return true; } };
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -169,6 +177,24 @@ export const SkyPcPlayer = ({
   const setMode = (m: Mode) => { setModeState(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* не критично */ } };
   const [disc, setDiscState] = useState(readDisc);
   const setDisc = (v: boolean) => { setDiscState(v); try { localStorage.setItem(DISC_KEY, v ? '1' : '0'); } catch { /* не критично */ } };
+  const mobile = useIsMobile();
+  const [bg, setBgState] = useState<Bg>(readBg);
+  const setBg = (v: Bg) => { setBgState(v); try { localStorage.setItem(BG_KEY, v); } catch { /* не критично */ } };
+  const [customUrl, setCustomUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (bg !== 'custom') { setCustomUrl(null); return undefined; }
+    let url: string | null = null; let alive = true;
+    void getWallpaperBlob(PLAYER_WP).then(b => { if (alive && b) { url = URL.createObjectURL(b); setCustomUrl(url); } else if (alive) setBg('tracks'); });
+    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
+  }, [bg]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pickWallpaper = async (f?: File) => {
+    if (!f) return;
+    const r = await prepareWallpaper(f);
+    if (!r.ok) { flash(r.reason); return; }
+    if (!(await putWallpaperBlob(PLAYER_WP, r.blob))) { flash('Не удалось сохранить картинку на этом устройстве.'); return; }
+    setBg('custom');
+  };
   const [menu, setMenu] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -225,17 +251,17 @@ export const SkyPcPlayer = ({
     window.addEventListener('keydown', on); return () => window.removeEventListener('keydown', on);
   }, [onClose, onPlay, onSeek, currentTime, duration, menu, showQueue, editor]);
 
-  const narrow = w < 980;
+  const narrow = mobile || w < 980;
   const showText = mode !== 'compact';
   const showAi = mode === 'ai';
-  const discSize = showText ? Math.max(170, Math.min(w * 0.22, h * 0.36, 320)) : Math.max(200, Math.min(w * 0.3, h * 0.4, 380));
+  const discSize = mobile ? Math.max(150, Math.min(260, w * 0.66, h * 0.3)) : showText ? Math.max(170, Math.min(w * 0.22, h * 0.36, 320)) : Math.max(200, Math.min(w * 0.3, h * 0.4, 380));
   const queueItems = queue.slice(Math.max(0, queueIdx), queueIdx + 40);
 
   const infoBlock = (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, minWidth: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: mobile ? 16 : 22, minWidth: 0 }}>
       <SkyDisc track={track} size={discSize} playing={playing} disc={disc} c1={c1} c2={c2} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
-        <h1 translate="no" style={{ margin: 0, fontFamily: "'Unbounded','Manrope',sans-serif", fontWeight: 600, fontSize: showText ? 26 : 36, letterSpacing: '-.01em', textAlign: 'center', overflowWrap: 'anywhere' }}>
+        <h1 translate="no" style={{ margin: 0, fontFamily: "'Unbounded','Manrope',sans-serif", fontWeight: 600, fontSize: mobile ? 24 : showText ? 26 : 36, letterSpacing: '-.01em', textAlign: 'center', overflowWrap: 'anywhere' }}>
           {track.title}<ExplicitBadge show={track.explicit} />
         </h1>
         <div style={{ display: 'flex', gap: 22, justifyContent: 'center', flexWrap: 'wrap', marginTop: 4 }}>
@@ -301,18 +327,24 @@ export const SkyPcPlayer = ({
     <motion.div initial={{ opacity: 0, y: 32 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 24 }} transition={{ type: 'spring', stiffness: 320, damping: 34 }}
       className="fixed inset-0 z-[500] flex flex-col overflow-hidden" data-keep-dark
       style={{ fontFamily: "'Manrope','Nunito',system-ui,sans-serif", color: '#fff', background: '#07070C' }}>
-      {/* Фон: дрейфующие пятна цвета трека + фиолетовый Sky */}
+      {/* Фон: дрейфующие пятна цвета трека, обложка или своя картинка */}
       <div aria-hidden style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-        <div className="spp-blob spp-blobA" style={{ background: c1, animationPlayState: playing ? 'running' : 'paused' }} />
-        <div className="spp-blob spp-blobB" style={{ background: VIOLET, animationPlayState: playing ? 'running' : 'paused' }} />
-        <div className="spp-blob spp-blobC" style={{ background: c2, animationPlayState: playing ? 'running' : 'paused' }} />
+        {(bg === 'custom' && customUrl) || (bg === 'cover' && track.coverUrl) ? (
+          <div key={bg === 'custom' ? customUrl : track.coverUrl} style={{ position: 'absolute', inset: -40, background: `center/cover no-repeat url(${bg === 'custom' ? customUrl : track.coverUrl})`, filter: bg === 'cover' ? 'blur(48px) saturate(1.3)' : 'blur(6px)', transform: 'scale(1.1)', animation: 'lk-fade .6s ease both' }} />
+        ) : (
+          <>
+            <div className="spp-blob spp-blobA" style={{ background: c1, animationPlayState: playing ? 'running' : 'paused' }} />
+            <div className="spp-blob spp-blobB" style={{ background: VIOLET, animationPlayState: playing ? 'running' : 'paused' }} />
+            <div className="spp-blob spp-blobC" style={{ background: c2, animationPlayState: playing ? 'running' : 'paused' }} />
+          </>
+        )}
         <VideoBackdrop src={track.videoUrl} playing={playing} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(7,7,12,.3),rgba(7,7,12,.66))' }} />
+        <div style={{ position: 'absolute', inset: 0, background: bg === 'custom' ? 'linear-gradient(180deg,rgba(7,7,12,.4),rgba(7,7,12,.72))' : 'linear-gradient(180deg,rgba(7,7,12,.3),rgba(7,7,12,.66))' }} />
       </div>
 
       <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         {/* Верхняя панель */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'calc(var(--safe-top, 0px) + 14px) 40px 0', height: 72, boxSizing: 'content-box', flex: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: mobile ? 'calc(var(--safe-top, 0px) + 8px) 16px 0' : 'calc(var(--safe-top, 0px) + 14px) 40px 0', height: mobile ? 56 : 72, boxSizing: 'content-box', flex: 'none' }}>
           <button type="button" aria-label="Свернуть плеер" onClick={onClose} style={roundBtn(44)}><ChevronDown size={22} /></button>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
             <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.14em', color: 'rgba(255,255,255,.7)' }}>СЕЙЧАС ИГРАЕТ</span>
@@ -321,6 +353,8 @@ export const SkyPcPlayer = ({
           <button type="button" aria-label="Настройки плеера" onClick={() => setMenu(v => !v)} style={roundBtn(44, menu)}><MoreHorizontal size={22} /></button>
         </div>
 
+        {!mobile && (
+          <>
         {/* Основная часть */}
         <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 22, padding: `12px ${narrow ? 20 : 40}px 132px`, alignItems: 'stretch' }}>
           <div style={{ flex: showText && !narrow ? `0 0 ${Math.max(320, Math.min(w * 0.3, 480))}px` : 1, display: narrow && showText ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0, overflow: 'hidden' }}>
@@ -382,11 +416,65 @@ export const SkyPcPlayer = ({
           </div>
         </div>
 
+          </>
+        )}
+
+        {/* Мобильный вид (по референсу): диск, название, кнопки, внизу шкала, управление и режимы */}
+        {mobile && (
+          <>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '4px 20px 0', gap: 12 }}>
+              {mode === 'compact' ? (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0, overflow: 'hidden' }}>{infoBlock}</div>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setMode('compact')} aria-label="Показать обложку" style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'none', border: 'none', color: '#fff', textAlign: 'left', padding: 0, cursor: 'pointer', flex: 'none' }}>
+                    <span style={{ width: 52, height: 52, borderRadius: 14, overflow: 'hidden', flex: 'none', background: `linear-gradient(135deg,${c1},${c2})`, display: 'grid', placeItems: 'center' }}>
+                      {track.coverUrl ? <img src={track.coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Music2 size={22} color="rgba(255,255,255,.8)" />}
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      <span translate="no" style={{ display: 'block', fontSize: 16, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</span>
+                      <span translate="no" style={{ display: 'block', fontSize: 13, color: 'rgba(255,255,255,.72)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artist}</span>
+                    </span>
+                  </button>
+                  <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+                    {showAi
+                      ? <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}><AiPanel track={track} lyricsPlain={plain} currentLine={active >= 0 ? lines[active]?.text ?? '' : ''} /></div>
+                      : lyricsPanel}
+                  </div>
+                </>
+              )}
+            </div>
+            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 12, padding: '10px 24px calc(var(--safe-bottom, 0px) + 18px)' }}>
+              <div>
+                <input type="range" min={0} max={100} step={0.1} value={pct} aria-label="Перемотка" className="spp-range"
+                  onChange={e => { if (duration > 0) onSeek((Number(e.target.value) / 100) * duration); }}
+                  style={{ width: '100%', margin: '6px 0', background: `linear-gradient(90deg,#fff ${pct}%,rgba(255,255,255,.2) ${pct}%)` }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,.75)' }}><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px' }}>
+                <button type="button" aria-label="Перемешать" aria-pressed={shuffle} onClick={onShuffle} style={flatBtn(44, shuffle)}><Shuffle size={20} /></button>
+                <button type="button" aria-label="Предыдущий" onClick={onPrev} style={flatBtn(48)}><SkipBack size={24} fill="currentColor" /></button>
+                <button type="button" aria-label={playing ? 'Пауза' : 'Играть'} onClick={onPlay}
+                  style={{ width: 68, height: 68, borderRadius: '50%', border: 'none', background: '#fff', color: '#0A0A10', display: 'grid', placeItems: 'center', cursor: 'pointer', boxShadow: '0 12px 30px rgba(0,0,0,.4)' }}>
+                  {buffering ? <BufferingRing size={28} color="#0A0A10" /> : playing ? <Pause size={30} fill="currentColor" /> : <Play size={30} fill="currentColor" style={{ marginLeft: 3 }} />}
+                </button>
+                <button type="button" aria-label="Следующий" onClick={onNext} style={flatBtn(48)}><SkipForward size={24} fill="currentColor" /></button>
+                <button type="button" aria-label="Повтор" aria-pressed={repeat !== 'off'} onClick={onRepeat} style={flatBtn(44, repeat !== 'off')}>{repeat === 'one' ? <Repeat1 size={20} /> : <Repeat size={20} />}</button>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={() => setMode(showText ? 'compact' : 'lyrics')} aria-pressed={showText} style={{ ...roundBtn(46, showText), flex: 1, width: 'auto', borderRadius: 23, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 14, fontWeight: 800, fontFamily: 'inherit' }}><AlignLeft size={18} />Текст</button>
+                <button type="button" onClick={() => setMode(showAi ? 'lyrics' : 'ai')} aria-pressed={showAi} style={{ ...roundBtn(46, showAi), flex: 1, width: 'auto', borderRadius: 23, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 14, fontWeight: 800, fontFamily: 'inherit' }}><Sparkles size={18} />ИИ</button>
+                <button type="button" aria-label="Очередь" aria-pressed={showQueue} onClick={() => setShowQueue(v => !v)} style={roundBtn(46, showQueue)}><ListMusic size={20} /></button>
+              </div>
+            </div>
+          </>
+        )}
+
         {/* Настройки плеера */}
         <AnimatePresence>
           {menu && (
             <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-              style={{ ...glass, position: 'absolute', right: 40, top: 'calc(var(--safe-top, 0px) + 80px)', width: 320, boxSizing: 'border-box', borderRadius: 24, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, background: 'rgba(20,20,30,.86)', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
+              style={{ ...glass, position: 'absolute', right: mobile ? 12 : 40, top: mobile ? 'calc(var(--safe-top, 0px) + 60px)' : 'calc(var(--safe-top, 0px) + 80px)', width: mobile ? 'min(320px, calc(100vw - 24px))' : 320, boxSizing: 'border-box', borderRadius: 24, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, background: 'rgba(20,20,30,.86)', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
               <span style={{ fontSize: 17, fontWeight: 800 }}>Настройки плеера</span>
               <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.12em', color: 'rgba(255,255,255,.72)' }}>ЛОГОТИП</span>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -397,6 +485,15 @@ export const SkyPcPlayer = ({
                 ))}
               </div>
               <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.45, color: 'rgba(255,255,255,.75)' }}>Диск с логотипом Sky вращается, пока играет трек, и замирает на паузе.</span>
+              <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.12em', color: 'rgba(255,255,255,.72)' }}>ОБОИ</span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {([['tracks', 'Цвета'], ['cover', 'Обложка']] as const).map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => setBg(k)} style={{ flex: 1, height: 42, borderRadius: 21, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: '1px solid rgba(255,255,255,.18)', fontFamily: 'inherit', background: bg === k ? '#fff' : 'rgba(255,255,255,.08)', color: bg === k ? '#0A0A10' : '#fff' }}>{l}</button>
+                ))}
+                <button type="button" onClick={() => fileRef.current?.click()} style={{ flex: 1.2, height: 42, borderRadius: 21, fontSize: 13, fontWeight: 800, cursor: 'pointer', border: '1px solid rgba(255,255,255,.18)', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: bg === 'custom' ? '#fff' : 'rgba(255,255,255,.08)', color: bg === 'custom' ? '#0A0A10' : '#fff' }}><ImageIcon size={15} />Своя</button>
+              </div>
+              {bg === 'custom' && <button type="button" onClick={() => { void deleteWallpaperBlob(PLAYER_WP); setBg('tracks'); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.75)', fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer', textAlign: 'left', padding: 0, fontFamily: 'inherit' }}>Убрать свою картинку</button>}
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { void pickWallpaper(e.target.files?.[0]); e.target.value = ''; }} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -405,7 +502,7 @@ export const SkyPcPlayer = ({
         <AnimatePresence>
           {showQueue && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }}
-              style={{ ...glass, position: 'absolute', right: narrow ? 20 : 40, bottom: 140, width: 380, maxHeight: '55vh', borderRadius: 26, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'rgba(20,20,30,.9)', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
+              style={{ ...glass, position: 'absolute', right: mobile ? 12 : narrow ? 20 : 40, bottom: mobile ? 'calc(var(--safe-bottom, 0px) + 80px)' : 140, width: mobile ? 'min(380px, calc(100vw - 24px))' : 380, maxHeight: '55vh', borderRadius: 26, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'rgba(20,20,30,.9)', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 8px' }}>
                 <span style={{ fontSize: 15, fontWeight: 800 }}>Очередь · {queue.length}</span>
                 <button type="button" aria-label="Закрыть очередь" onClick={() => setShowQueue(false)} style={flatBtn(30)}><X size={18} /></button>

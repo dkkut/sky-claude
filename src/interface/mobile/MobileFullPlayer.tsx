@@ -10,6 +10,7 @@ import { haptic } from './haptics';
 import { VideoBackdrop } from '@/music/VideoBackdrop';
 import { openArtistCard } from '@/music/artistBridge';
 import { MusicContinue } from '@/handoff/Slots';
+import { MusicFullHost } from '@/music/MusicFullHost';
 
 const fmtTime = (s: number) => {
   if (!isFinite(s) || s < 0) s = 0;
@@ -52,6 +53,8 @@ export const MobileFullPlayer = ({ open, onClose }: { open: boolean; onClose: ()
   useEffect(() => { if (open) dragY.set(0); }, [open]);
 
   if (!item) return null;
+  // Музыка — тот же плеер, что в Sky Music (по референсу); подкасты и прочее остаются в прежнем виде.
+  if (item.kind === 'music') return <MusicFullHost open={open} onClose={onClose} />;
   const pct = scrubbing !== null ? scrubbing : (duration > 0 ? (currentTime / duration) * 100 : 0);
   const g1 = `hsl(${item.hue ?? 210},70%,22%)`, g2 = `hsl(${((item.hue ?? 210)+50)%360},60%,12%)`;
 

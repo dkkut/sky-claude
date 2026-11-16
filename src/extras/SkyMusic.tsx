@@ -2919,20 +2919,8 @@ export const SkyMusic = () => {
 
       {/* -- Fullscreen player -------------------------------- */}
       <AnimatePresence>
-        {cur && showNP && !isMobile && (
+        {cur && showNP && (
           <SkyPcPlayer
-            track={cur} playing={playing} currentTime={curTime} duration={durTime}
-            volume={volume} shuffle={shuffle} repeat={repeat}
-            favorites={favorites} queue={queue} queueIdx={qIdx}
-            onPlay={() => setPlaying(!playing)} onPrev={skipPrev} onNext={skipNext}
-            onSeek={seek} onVolume={setVolume}
-            onShuffle={() => setShuffle(!shuffle)}
-            onRepeat={() => setRepeat(repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off')}
-            onLike={onLike} onAdd={id => setAddModal(id)}
-            onClose={() => setShowNP(false)} onArtist={a => { setArtist(a); setShowNP(false); }} />
-        )}
-        {cur && showNP && isMobile && (
-          <SkyFullPlayer
             track={cur} playing={playing} currentTime={curTime} duration={durTime}
             volume={volume} shuffle={shuffle} repeat={repeat}
             favorites={favorites} queue={queue} queueIdx={qIdx}
