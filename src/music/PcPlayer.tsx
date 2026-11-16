@@ -180,6 +180,9 @@ export const SkyPcPlayer = ({
   const [disc, setDiscState] = useState(readDisc);
   const setDisc = (v: boolean) => { setDiscState(v); try { localStorage.setItem(DISC_KEY, v ? '1' : '0'); } catch { /* не критично */ } };
   const mobile = useIsMobile();
+  const [vh, setVh] = useState(() => window.innerHeight);
+  useEffect(() => { const on = () => setVh(window.innerHeight); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on); }, []);
+  const short = mobile && vh < 720;
   const [bg, setBgState] = useState<Bg>(readBg);
   const setBg = (v: Bg) => { setBgState(v); try { localStorage.setItem(BG_KEY, v); } catch { /* не критично */ } };
   const [customUrl, setCustomUrl] = useState<string | null>(null);
@@ -256,40 +259,40 @@ export const SkyPcPlayer = ({
   const narrow = mobile || w < 980;
   const showText = mode !== 'compact';
   const showAi = mode === 'ai';
-  const discSize = mobile ? Math.max(150, Math.min(260, w * 0.66, h * 0.3)) : showText ? Math.max(170, Math.min(w * 0.22, h * 0.36, 320)) : Math.max(200, Math.min(w * 0.3, h * 0.4, 380));
+  const discSize = mobile ? (short ? Math.max(130, Math.min(190, h * 0.25)) : Math.max(180, Math.min(320, w * 0.8, h * 0.36))) : showText ? Math.max(170, Math.min(w * 0.22, h * 0.36, 320)) : Math.max(200, Math.min(w * 0.3, h * 0.4, 380));
   const queueItems = queue.slice(Math.max(0, queueIdx), queueIdx + 40);
 
   const infoBlock = (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: mobile ? 16 : 22, minWidth: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: mobile ? (short ? 10 : 16) : 22, minWidth: 0 }}>
       <SkyDisc track={track} size={discSize} playing={playing} disc={disc} c1={c1} c2={c2} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
-        <h1 translate="no" style={{ margin: 0, fontFamily: "'Unbounded','Manrope',sans-serif", fontWeight: 600, fontSize: mobile ? 24 : showText ? 26 : 36, letterSpacing: '-.01em', textAlign: 'center', overflowWrap: 'anywhere' }}>
+        <h1 translate="no" style={{ margin: 0, fontFamily: "'Unbounded','Manrope',sans-serif", fontWeight: 600, fontSize: mobile ? (short ? 25 : 30) : showText ? 26 : 36, letterSpacing: '-.01em', textAlign: 'center', overflowWrap: 'anywhere' }}>
           {track.title}<ExplicitBadge show={track.explicit} />
         </h1>
-        <div style={{ display: 'flex', gap: 22, justifyContent: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+        <div style={{ display: 'flex', gap: short ? 12 : 22, justifyContent: 'center', flexWrap: short ? 'nowrap' : 'wrap', marginTop: 4 }}>
           <button type="button" onClick={() => onArtist?.(track.artist)} disabled={!onArtist} style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#fff', background: 'none', border: 'none', cursor: onArtist ? 'pointer' : 'default', padding: 0, textAlign: 'left' }}>
-            <span style={{ width: 38, height: 38, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 17, background: `linear-gradient(135deg,${c1},${c2})`, border: '1px solid rgba(255,255,255,.3)' }} translate="no">{track.artist.slice(0, 1).toUpperCase()}</span>
+            <span style={{ width: mobile ? (short ? 40 : 46) : 38, height: mobile ? (short ? 40 : 46) : 38, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: mobile ? 20 : 17, background: `linear-gradient(135deg,${c1},${c2})`, border: '1px solid rgba(255,255,255,.3)' }} translate="no">{track.artist.slice(0, 1).toUpperCase()}</span>
             <span style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', color: 'rgba(255,255,255,.72)' }}>Исполнитель</span>
-              <span translate="no" style={{ fontSize: 15, fontWeight: 800 }}>{track.artist}</span>
+              <span style={{ fontSize: mobile ? 13 : 11.5, fontWeight: 700, letterSpacing: '.06em', color: 'rgba(255,255,255,.72)' }}>Исполнитель</span>
+              <span translate="no" style={{ fontSize: mobile ? (short ? 15 : 18) : 15, fontWeight: 800 }}>{track.artist}</span>
             </span>
           </button>
           {track.uploaderName && (
             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ width: 38, height: 38, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 17, background: `linear-gradient(135deg,${c2},${VIOLET})`, border: '1px solid rgba(255,255,255,.3)' }} translate="no">{track.uploaderName.slice(0, 1).toUpperCase()}</span>
+              <span style={{ width: mobile ? (short ? 40 : 46) : 38, height: mobile ? (short ? 40 : 46) : 38, borderRadius: '50%', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: mobile ? 20 : 17, background: `linear-gradient(135deg,${c2},${VIOLET})`, border: '1px solid rgba(255,255,255,.3)' }} translate="no">{track.uploaderName.slice(0, 1).toUpperCase()}</span>
               <span style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', color: 'rgba(255,255,255,.72)' }}>Загрузил</span>
-                <span translate="no" style={{ fontSize: 15, fontWeight: 800 }}>{track.uploaderName}</span>
+                <span style={{ fontSize: mobile ? 13 : 11.5, fontWeight: 700, letterSpacing: '.06em', color: 'rgba(255,255,255,.72)' }}>Загрузил</span>
+                <span translate="no" style={{ fontSize: mobile ? (short ? 15 : 18) : 15, fontWeight: 800 }}>{track.uploaderName}</span>
               </span>
             </span>
           )}
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button type="button" aria-label="В избранное" onClick={() => onLike(track.id)} style={{ ...roundBtn(50), color: isFav ? '#f43f5e' : '#fff' }}><Heart size={21} fill={isFav ? '#f43f5e' : 'none'} /></button>
-        <button type="button" aria-label="Добавить в плейлист" onClick={() => onAdd(track.id)} style={roundBtn(50)}><Plus size={21} /></button>
-        <button type="button" onClick={() => setMode(showText ? 'compact' : 'lyrics')} style={{ ...roundBtn(50, showText), width: 'auto', padding: '0 20px', gap: 8, display: 'flex', alignItems: 'center', fontWeight: 700, fontSize: 14.5 }}><AlignLeft size={18} />Текст</button>
-        <button type="button" onClick={() => setMode(showAi ? 'lyrics' : 'ai')} style={{ ...roundBtn(50, showAi), width: 'auto', padding: '0 20px', gap: 8, display: 'flex', alignItems: 'center', fontWeight: 700, fontSize: 14.5 }}><Sparkles size={18} />ИИ</button>
+        <button type="button" aria-label="В избранное" onClick={() => onLike(track.id)} style={{ ...roundBtn(mobile ? (short ? 46 : 58) : 50), color: isFav ? '#f43f5e' : '#fff' }}><Heart size={mobile ? 25 : 21} fill={isFav ? '#f43f5e' : 'none'} /></button>
+        <button type="button" aria-label="Добавить в плейлист" onClick={() => onAdd(track.id)} style={roundBtn(mobile ? (short ? 46 : 58) : 50)}><Plus size={mobile ? 25 : 21} /></button>
+        {!mobile && <button type="button" onClick={() => setMode(showText ? 'compact' : 'lyrics')} style={{ ...roundBtn(50, showText), width: 'auto', padding: '0 20px', gap: 8, display: 'flex', alignItems: 'center', fontWeight: 700, fontSize: 14.5 }}><AlignLeft size={18} />Текст</button>}
+        {!mobile && <button type="button" onClick={() => setMode(showAi ? 'lyrics' : 'ai')} style={{ ...roundBtn(50, showAi), width: 'auto', padding: '0 20px', gap: 8, display: 'flex', alignItems: 'center', fontWeight: 700, fontSize: 14.5 }}><Sparkles size={21} />ИИ</button>}
       </div>
     </div>
   );
@@ -430,12 +433,12 @@ export const SkyPcPlayer = ({
               ) : (
                 <>
                   <button type="button" onClick={() => setMode('compact')} aria-label="Показать обложку" style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'none', border: 'none', color: '#fff', textAlign: 'left', padding: 0, cursor: 'pointer', flex: 'none' }}>
-                    <span style={{ width: 52, height: 52, borderRadius: 14, overflow: 'hidden', flex: 'none', background: `linear-gradient(135deg,${c1},${c2})`, display: 'grid', placeItems: 'center' }}>
+                    <span style={{ width: 60, height: 60, borderRadius: 16, overflow: 'hidden', flex: 'none', background: `linear-gradient(135deg,${c1},${c2})`, display: 'grid', placeItems: 'center' }}>
                       {track.coverUrl ? <img src={track.coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Music2 size={22} color="rgba(255,255,255,.8)" />}
                     </span>
                     <span style={{ minWidth: 0 }}>
-                      <span translate="no" style={{ display: 'block', fontSize: 16, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</span>
-                      <span translate="no" style={{ display: 'block', fontSize: 13, color: 'rgba(255,255,255,.72)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artist}</span>
+                      <span translate="no" style={{ display: 'block', fontSize: 19, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</span>
+                      <span translate="no" style={{ display: 'block', fontSize: 15, color: 'rgba(255,255,255,.72)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artist}</span>
                     </span>
                   </button>
                   <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -446,27 +449,27 @@ export const SkyPcPlayer = ({
                 </>
               )}
             </div>
-            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: 12, padding: '10px 24px calc(var(--safe-bottom, 0px) + 18px)' }}>
+            <div style={{ flex: 'none', display: 'flex', flexDirection: 'column', gap: short ? 8 : 12, padding: short ? '6px 20px calc(var(--safe-bottom, 0px) + 12px)' : '10px 24px calc(var(--safe-bottom, 0px) + 18px)' }}>
               <div>
                 <input type="range" min={0} max={100} step={0.1} value={pct} aria-label="Перемотка" className="spp-range"
                   onChange={e => { if (duration > 0) onSeek((Number(e.target.value) / 100) * duration); }}
                   style={{ width: '100%', margin: '6px 0', background: `linear-gradient(90deg,#fff ${pct}%,rgba(255,255,255,.2) ${pct}%)` }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,.75)' }}><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,.75)' }}><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px' }}>
-                <button type="button" aria-label="Перемешать" aria-pressed={shuffle} onClick={onShuffle} style={flatBtn(44, shuffle)}><Shuffle size={20} /></button>
-                <button type="button" aria-label="Предыдущий" onClick={onPrev} style={flatBtn(48)}><SkipBack size={24} fill="currentColor" /></button>
+                <button type="button" aria-label="Перемешать" aria-pressed={shuffle} onClick={onShuffle} style={flatBtn(50, shuffle)}><Shuffle size={25} /></button>
+                <button type="button" aria-label="Предыдущий" onClick={onPrev} style={flatBtn(56)}><SkipBack size={30} fill="currentColor" /></button>
                 <button type="button" aria-label={playing ? 'Пауза' : 'Играть'} onClick={onPlay}
-                  style={{ width: 68, height: 68, borderRadius: '50%', border: 'none', background: '#fff', color: '#0A0A10', display: 'grid', placeItems: 'center', cursor: 'pointer', boxShadow: '0 12px 30px rgba(0,0,0,.4)' }}>
-                  {buffering ? <BufferingRing size={28} color="#0A0A10" /> : playing ? <Pause size={30} fill="currentColor" /> : <Play size={30} fill="currentColor" style={{ marginLeft: 3 }} />}
+                  style={{ width: short ? 70 : 84, height: short ? 70 : 84, borderRadius: '50%', border: 'none', background: '#fff', color: '#0A0A10', display: 'grid', placeItems: 'center', cursor: 'pointer', boxShadow: '0 12px 30px rgba(0,0,0,.4)' }}>
+                  {buffering ? <BufferingRing size={34} color="#0A0A10" /> : playing ? <Pause size={38} fill="currentColor" /> : <Play size={38} fill="currentColor" style={{ marginLeft: 3 }} />}
                 </button>
-                <button type="button" aria-label="Следующий" onClick={onNext} style={flatBtn(48)}><SkipForward size={24} fill="currentColor" /></button>
-                <button type="button" aria-label="Повтор" aria-pressed={repeat !== 'off'} onClick={onRepeat} style={flatBtn(44, repeat !== 'off')}>{repeat === 'one' ? <Repeat1 size={20} /> : <Repeat size={20} />}</button>
+                <button type="button" aria-label="Следующий" onClick={onNext} style={flatBtn(56)}><SkipForward size={30} fill="currentColor" /></button>
+                <button type="button" aria-label="Повтор" aria-pressed={repeat !== 'off'} onClick={onRepeat} style={flatBtn(50, repeat !== 'off')}>{repeat === 'one' ? <Repeat1 size={25} /> : <Repeat size={25} />}</button>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => setMode(showText ? 'compact' : 'lyrics')} aria-pressed={showText} style={{ ...roundBtn(46, showText), flex: 1, width: 'auto', borderRadius: 23, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 14, fontWeight: 800, fontFamily: 'inherit' }}><AlignLeft size={18} />Текст</button>
-                <button type="button" onClick={() => setMode(showAi ? 'lyrics' : 'ai')} aria-pressed={showAi} style={{ ...roundBtn(46, showAi), flex: 1, width: 'auto', borderRadius: 23, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 14, fontWeight: 800, fontFamily: 'inherit' }}><Sparkles size={18} />ИИ</button>
-                <button type="button" aria-label="Очередь" aria-pressed={showQueue} onClick={() => setShowQueue(v => !v)} style={roundBtn(46, showQueue)}><ListMusic size={20} /></button>
+                <button type="button" onClick={() => setMode(showText ? 'compact' : 'lyrics')} aria-pressed={showText} style={{ ...roundBtn(short ? 48 : 56, showText), flex: 1, width: 'auto', borderRadius: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 16, fontWeight: 800, fontFamily: 'inherit' }}><AlignLeft size={21} />Текст</button>
+                <button type="button" onClick={() => setMode(showAi ? 'lyrics' : 'ai')} aria-pressed={showAi} style={{ ...roundBtn(short ? 48 : 56, showAi), flex: 1, width: 'auto', borderRadius: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 16, fontWeight: 800, fontFamily: 'inherit' }}><Sparkles size={18} />ИИ</button>
+                <button type="button" aria-label="Очередь" aria-pressed={showQueue} onClick={() => setShowQueue(v => !v)} style={roundBtn(short ? 48 : 56, showQueue)}><ListMusic size={24} /></button>
               </div>
             </div>
           </>
