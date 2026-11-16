@@ -21,6 +21,7 @@ import { VideoBackdrop } from '@/music/VideoBackdrop';
 import { TrackEditor } from '@/music/TrackEditor';
 import { ExplicitBadge } from '@/labels/Labels';
 import { BufferingRing, useBuffering } from '@/player/BufferingRing';
+import { BlockedBanner, checkBlocked, type PublicRestriction } from '@/media/restrictions';
 import { usePlayerStore } from '@/player/playerStore';
 import { apiAiAsk } from '@/ai/aiApi';
 import { useIsMobile } from '@/interface/mobile/useIsMobile';
@@ -175,6 +176,13 @@ export const SkyPcPlayer = ({
   onPlay, onPrev, onNext, onSeek, onVolume, onShuffle, onRepeat, onLike, onAdd, onArtist, onClose,
 }: PcPlayerProps) => {
   const buffering = useBuffering();
+  // Ограничение Sky Media: если произведение (или всё направление автора) закрыто, вместо тихого молчания — баннер.
+  const [restricted, setRestricted] = useState<PublicRestriction | null>(null);
+  useEffect(() => {
+    let alive = true; setRestricted(null);
+    if (track?.id) void checkBlocked('music', track.id).then((r) => { if (alive) setRestricted(r); });
+    return () => { alive = false; };
+  }, [track?.id]);
   const [mode, setModeState] = useState<Mode>(readMode);
   const setMode = (m: Mode) => { setModeState(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* не критично */ } };
   const [disc, setDiscState] = useState(readDisc);
@@ -372,6 +380,8 @@ export const SkyPcPlayer = ({
             </div>
           )}
         </div>
+
+        {restricted && <div style={{ position: 'absolute', left: narrow ? 20 : 40, right: narrow ? 20 : 40, bottom: 138, zIndex: 3, ['--t1' as string]: '#fff', ['--t2' as string]: 'rgba(255,255,255,.78)', ['--t3' as string]: 'rgba(255,255,255,.58)', ['--bg-l3' as string]: 'rgba(255,255,255,.1)', ['--border' as string]: 'rgba(255,255,255,.18)' }}><BlockedBanner r={restricted} compact /></div>}
 
         {/* Нижняя панель */}
         <div style={{ ...glass, position: 'absolute', left: narrow ? 20 : 40, right: narrow ? 20 : 40, bottom: 28, height: 96, boxSizing: 'border-box', borderRadius: 30, padding: '0 22px', display: 'flex', alignItems: 'center', gap: 22, boxShadow: '0 20px 60px rgba(0,0,0,.4)' }}>
