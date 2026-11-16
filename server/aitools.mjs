@@ -322,7 +322,7 @@ const SYSTEM_IMAGE = [
   'Отвечай на языке вопроса.',
 ].join(' ');
 
-export const analyzeImage = async (profileId, { fileId, question = '', chatId = null } = {}) => {
+export const analyzeImage = async (profileId, { fileId, question = '', chatId = null, noRecord = false } = {}) => {
   if (!aiConfigured()) return { error: 'ai_not_configured' };
 
   const found = await takeOwnFile(fileId, profileId);
@@ -358,7 +358,8 @@ export const analyzeImage = async (profileId, { fileId, question = '', chatId = 
     return { error: answer.error };
   }
 
-  const messageId = await record(
+  /* noRecord: разбор нужен для одной подсказки (например, музыкальная карточка по фото) и не должен попадать в историю чатов Sky AI. */
+  const messageId = noRecord ? null : await record(
     profileId, chatId, 'image',
     `Разбор изображения «${found.file.shown_name || 'без имени'}»: ${ask}`, answer.text,
   );

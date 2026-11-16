@@ -3,8 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Heart, Download, ListMusic, Mic2, History as HistoryIcon, Radio, BookOpen,
-  Pin, Check, ArrowUpDown, ChevronLeft, ChevronRight, Play, Trash2, X, FolderLock, Upload, CheckCircle, Pencil, Music2, Clapperboard, Ticket, Search as SearchIcon,
+  Pin, Check, ArrowUpDown, ChevronLeft, ChevronRight, Play, Trash2, X, FolderLock, Upload, CheckCircle, Pencil, Music2, Clapperboard, Ticket, Search as SearchIcon, ImagePlus,
 } from 'lucide-react';
+import { PhotoCard } from '@/music/PhotoCard';
 import type { Track } from '@/platform/store';
 import { useMusicStore } from '@/music/serverStore';
 import { PrivateUpload } from '@/music/PrivateUpload';
@@ -168,6 +169,7 @@ export const SkyMusicLibrary = ({
   const offStore  = useOfflineMusic;
   useEffect(() => { void offStore.getState().hydrate(); }, []);
   const [cat, setCat] = useState<Category | null>(null);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const [top, setTop] = useState<TopArtist[] | null>(null);
   const setPendingExtrasTab = useModuleStore(st => st.setPendingExtrasTab);
   const [sort, setSort] = useState<SortKey>('added');
@@ -312,6 +314,7 @@ export const SkyMusicLibrary = ({
       { key:'mine',label:'Моя музыка', sub: mineTracks.length ? `${mineTracks.length} треков` : 'Загрузите свои', icon: FolderLock, run: () => open('mine') },
       { key:'dl',  label:'Скачанные',  sub: offIds.size ? `${offIds.size} без сети` : 'Для офлайна', icon: Download, run: () => open('downloaded') },
       { key:'clip',label:'Клипы',      sub: clipTracks.length ? `${clipTracks.length} с видео` : 'С видеофоном', icon: Clapperboard, run: () => open('clips') },
+      { key:'photo',label:'По фото',    sub: 'Подборка по настроению снимка', icon: ImagePlus, run: () => setPhotoOpen(true) },
       { key:'conc',label:'Концерты',   sub: 'Билеты на события', icon: Ticket, run: () => goTab('tickets') },
       { key:'pod', label:'Подкасты',   sub: 'Sky Podcasts', icon: Radio, run: () => goTab('podcasts') },
       { key:'book',label:'Книги',      sub: 'Sky Books', icon: BookOpen, run: () => goTab('books') },
@@ -416,6 +419,7 @@ export const SkyMusicLibrary = ({
             </div>
           </section>
         </div>
+        {photoOpen && <PhotoCard onClose={() => setPhotoOpen(false)} />}
       </div>
     );
   }

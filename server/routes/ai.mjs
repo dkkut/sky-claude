@@ -359,7 +359,7 @@ export const aiRoutes = async (req, res, url) => {
   }
 
   if (path === '/api/ai/image') {
-    const result = await analyzeImage(me, { fileId: body.fileId, question: body.question, chatId: body.chatId });
+    const result = await analyzeImage(me, { fileId: body.fileId, question: body.question, chatId: body.chatId, noRecord: body.noRecord === true });
     if (result.error) return fail(res, result);
     return json(res, 200, result);
   }

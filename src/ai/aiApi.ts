@@ -244,9 +244,9 @@ export const apiAiAnalyzeFile = async (fileId: string, question = '', chatId?: s
     : { ok: false as const, reason: aiReason(r.error, r.reason), code: r.error };
 };
 
-export const apiAiAnalyzeImage = async (fileId: string, question = '', chatId?: string) => {
+export const apiAiAnalyzeImage = async (fileId: string, question = '', chatId?: string, noRecord = false) => {
   const r = await apiCall<{ text: string; mime: string; name: string }>(
-    '/api/ai/image', { method: 'POST', body: JSON.stringify({ fileId, question, chatId }) },
+    '/api/ai/image', { method: 'POST', body: JSON.stringify({ fileId, question, chatId, noRecord }) },
   );
   return r.ok
     ? { ok: true as const, ...(r.data as { text: string; mime: string; name: string }) }
