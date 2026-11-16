@@ -286,6 +286,22 @@ server {
         proxy_pass http://sky_api;
     }
 
+    # Пользовательские подарки: фото до 3 МБ, видео до 12 МБ (routes/customgifts.mjs). Без этого блока общий потолок 1m обрезал бы файл ещё на nginx.
+    # Корень `/api/custom-gifts` без слеша обслуживает API (создание подарка), поэтому нужен и блок с точным совпадением.
+    location = /api/custom-gifts {
+        limit_req zone=req_general burst=60 nodelay;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_pass http://sky_api;
+    }
+    location ^~ /api/custom-gifts/ {
+        limit_req zone=req_general burst=90 nodelay;
+        client_max_body_size 13m;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_pass http://sky_api;
+    }
+
     # Sky AI. Тело большое по двум причинам: документ на разбор и запись
     # на расшифровку (до 96 МБ, см. aitools.mjs). Потолок здесь с
     # запасом над серверным, чтобы отказ по размеру давало приложение.

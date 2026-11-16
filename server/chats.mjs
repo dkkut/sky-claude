@@ -9,6 +9,7 @@
  * это в обработчике сообщений нельзя — там легко забыть одну ветку.
  */
 import { query, pool } from './db.mjs';
+import { chatAllowedFor, frozenProfile, frozenChat } from './freezecheck.mjs';
 import { encryptContent, decryptContent } from './crypto.mjs';
 import { SKYBOT_PROFILE } from './skybotid.mjs';
 import { claimAttachment, linkAttachment, dropForMessage } from './attachments.mjs';
@@ -65,6 +66,8 @@ export const directChatId = (a, b) => `dm-${[String(a), String(b)].sort().join('
 
 /** Проверка участия. Основа всех прав в мессенджере. */
 export const isMember = async (chatId, userId) => {
+  // Заморожен аккаунт — доступны только чаты, которые разрешил сотрудник (acctfreeze.mjs).
+  if (!(await chatAllowedFor(userId, chatId))) return false;
   // Чат в корзине участникам недоступен: писать, читать и слать в него
   // нельзя, пока его не восстановят.
   const { rowCount } = await query(
@@ -200,7 +203,9 @@ export const listChats = async (userId) => {
   );
   // Роль берётся из строки. Писать rows.map(toChat) нельзя: вторым
   // аргументом ушёл бы номер строки и подменил бы роль числом.
-  return rows.map((row) => toChat(row));
+  const list = rows.map((row) => toChat(row));
+  const fz = await frozenProfile(userId);
+  return fz ? list.filter((c) => (fz.allowed_chat_ids ?? []).includes(c.id)) : list;       // замороженный человек видит только разрешённые чаты
 };
 
 /** Один чат — с проверкой участия. Нужен, чтобы отдать его создателю. */
@@ -518,6 +523,8 @@ export const saveMessage = async (chatId, authorId, msg) => {
   // Запрет проверяется на сервере: раньше «заблокировать» лишь прятало
   // сообщения в браузере получателя, а доходили они по-прежнему.
   if (await blockedInChat(chatId, authorId)) return null;
+  // Канал/группа заморожены администрацией: читать можно, писать нельзя.
+  if (authorId !== SKYBOT_PROFILE && await frozenChat(chatId)) return { error: 'chat_frozen' };
 
   // Правила группы и канала — одним местом на все ветки: канал только
   // для админов, ограничения участника, антифлуд, медленный режим,

@@ -8,6 +8,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { Scissors } from 'lucide-react';
 import { SkyLoader } from '@/shared/SkyLoader';
+const SpecialistsExchange = lazy(() => import('@/specialists/Specialists').then((m) => ({ default: m.SpecialistsExchange })));
 const VideoEditor = lazy(() => import('@/studio/VideoEditor').then((m) => ({ default: m.VideoEditor })));
 import { BulkUploadPanel } from './BulkUpload';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,6 +16,7 @@ import {
   Upload, Film, TrendingUp, DollarSign, BarChart3,
   Eye, Check, Trash2, Sparkles, Clock3, ThumbsUp,
   Video as VideoIcon, Music2, Mic2, Loader2, BookOpen,
+  Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Transition } from 'framer-motion';
@@ -836,7 +838,7 @@ const VideoMonetizationCard = ({ video, onBack }:{ video:ServerVideo; onBack:()=
 /* ══════════════════════════════════════════════════════════════
    MAIN STUDIO
 ══════════════════════════════════════════════════════════════ */
-type StudioTab = 'overview'|'upload'|'editor'|'content'|'revenue';
+type StudioTab = 'overview'|'upload'|'editor'|'specialists'|'content'|'revenue';
 
 export const BusinessStudio = () => {
   const { mine, load } = useSkyVideoStore();
@@ -866,6 +868,7 @@ export const BusinessStudio = () => {
     { key:'overview', label:'Обзор',      icon:BarChart3 },
     { key:'upload',   label:'Загрузить',  icon:Upload },
     { key:'editor',   label:'Редактор',   icon:Scissors },
+    { key:'specialists', label:'Специалисты', icon:Users },
     { key:'content',  label:'Контент',    icon:Film },
     { key:'revenue',  label:'Доходы',     icon:TrendingUp },
   ];
@@ -936,6 +939,7 @@ export const BusinessStudio = () => {
             )}
 
             {tab==='editor' && <Suspense fallback={<SkyLoader />}><VideoEditor /></Suspense>}
+            {tab==='specialists' && <Suspense fallback={<SkyLoader />}><SpecialistsExchange /></Suspense>}
 
             {tab==='upload' && <UploadTab onDone={(kind)=>setTab(kind==='video'?'content':'overview')}/>}
 

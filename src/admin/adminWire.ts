@@ -21,7 +21,7 @@ import { onAdminMessage } from '@/messenger/socket';
 export type AdminPermission =
   | 'moderation' | 'support' | 'content' | 'market'
   | 'logistics' | 'tickets' | 'bots' | 'finance' | 'security' | 'campaigns' | 'gifts' | 'garant'
-  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'global_block' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance' | 'oidc' | 'prime' | 'partners' | 'partners_approve' | 'kassa_biz' | 'upload_limits' | 'verification' | 'logs' | 'parking' | 'parking_moderation' | 'go_places' | 'sandbox' | 'sandbox_publish' | 'server_ops' | 'launcher' | 'launcher_moderation' | 'email_comms' | 'tax' | 'maps' | 'media_restrict' | 'royalty_view' | 'royalty_review' | 'royalty_finance';
+  | 'notifications' | 'kutrent_market' | 'violations' | 'codes' | 'seller_docs' | 'market_moderation' | 'pvz_manage' | 'blox' | 'blox_moderation' | 'blox_finance' | 'analytics' | 'go' | 'go_finance' | 'registration' | 'global_block' | 'site' | 'modules' | 'skykassa' | 'skykassa_settings' | 'storage_view' | 'storage_audit' | 'storage_backup' | 'storage_schedule' | 'storage_restore' | 'storage_quota' | 'storage_access' | 'storage_emergency' | 'storage_enable' | 'storage_unlock' | 'storage_keys' | 'storage_maintenance' | 'oidc' | 'prime' | 'partners' | 'partners_approve' | 'kassa_biz' | 'upload_limits' | 'verification' | 'logs' | 'parking' | 'parking_moderation' | 'go_places' | 'sandbox' | 'sandbox_publish' | 'server_ops' | 'launcher' | 'launcher_moderation' | 'email_comms' | 'tax' | 'maps' | 'media_restrict' | 'royalty_view' | 'royalty_review' | 'royalty_finance' | 'specialists' | 'game_infra' | 'account_freeze';
 
 export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   moderation: 'Модерация',
@@ -75,6 +75,9 @@ export const PERMISSION_LABEL: Record<AdminPermission, string> = {
   royalty_view: 'Sky Royalties: просмотр',
   royalty_review: 'Sky Royalties: проверка прослушиваний и авторов',
   royalty_finance: 'Sky Royalties: ввод и подтверждение выручки',
+  specialists: 'Биржа специалистов: анкеты, жалобы, споры',
+  game_infra: 'Sky Games: игровые серверы (критично)',
+  account_freeze: 'Заморозка и восстановление аккаунтов и каналов',
   upload_limits: 'Лимиты загрузки (личные и публичные)',
   verification: 'Верификация (заявки, отметки, критерии)',
   logs: 'Журналы (события Sky, выгрузка, хранение)',

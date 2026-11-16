@@ -616,6 +616,7 @@ const handle = (data: any) => {
     case 'message-rejected':
       useAdminStore.getState().notify(POST_ERRORS[payload?.reason] ?? 'Сообщение не отправлено');
       store.dropMessage(payload?.messageId);
+      if (payload?.reason === 'chat_frozen') { try { window.dispatchEvent(new CustomEvent('sky:chatfrozen', { detail: { chatId: payload?.chatId } })); } catch { /* ok */ } }
       break;
 
     case 'join-result':

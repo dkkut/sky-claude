@@ -43,6 +43,7 @@ import { AiSummarizeButton, AiTranscribeButton, AiVideoNoteButton, AiSuggestRepl
 // живёт в слое вызовов Sky AI.
 import { runAiComposerAction, type AiComposerAction } from '@/ai/aiApi';
 import { GroupManage } from './GroupManage';
+import { useChannelFreeze, ChannelFreezeBanner } from '@/freeze/FrozenAccount';
 import { useAdminStore, canDo } from './adminStore';
 import { useDictation } from './useDictation';
 import { GameActivityBadge } from '@/gaming/GamingUI';
@@ -969,6 +970,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
     drafts, setChatDraft, quickReplies, addQuickReply, removeQuickReply, markChannelViewed,
   } = useMessengerStore();
   const { accounts, currentUserId } = useAuthStore();
+  const chatFreeze = useChannelFreeze(activeChatId, chats.find((c) => c.id === activeChatId)?.type);
   // Имена собеседников приходят с сервера вместе с чатами: локальный
   // список accounts знает только тех, кто заведён в этом браузере, и
   // реальный участник группы подписывался бы в нём «Пользователь».
@@ -1506,9 +1508,9 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   // сервер, здесь мы лишь не показываем поле, которое ответит отказом.
   const runsChat = ['owner', 'admin', 'moderator'].includes(chat.myRole ?? 'member');
   const isSkyBotChat = chat.type === 'direct' && peerId === 'acc-skybot-official';
-  const canPost = chat.type === 'direct' ? !isSkyBotChat
+  const canPost = !chatFreeze?.frozen && (chat.type === 'direct' ? !isSkyBotChat
     : chat.type === 'channel' ? runsChat
-    : (chatSettings?.whoCanPost === 'admins' ? runsChat : true);
+    : (chatSettings?.whoCanPost === 'admins' ? runsChat : true));
 
   if (chat.type === 'channel') {
     const modBlocked = channelModBlocked;
@@ -1715,6 +1717,8 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ChannelFreezeBanner chatId={chat.id} st={chatFreeze} />
 
       {/* -- Pinned message ------------------------------------------- */}
       <AnimatePresence>

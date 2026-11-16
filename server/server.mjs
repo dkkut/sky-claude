@@ -184,6 +184,12 @@ import { limitedBlocks, sweepLimited } from './limitedaccess.mjs';
 import { primeRewardsRoutes } from './routes/primerewards.mjs';
 import { aiUsageRoutes } from './routes/aiusage.mjs';
 import { partnersRoutes } from './routes/partners.mjs';
+import { specialistsRoutes } from './routes/specialists.mjs';
+import { gameInfraRoutes } from './routes/gameinfra.mjs';
+import { customGiftsRoutes } from './routes/customgifts.mjs';
+import { acctFreezeRoutes } from './routes/acctfreeze.mjs';
+import { frozenSky, frozenMay } from './freezecheck.mjs';
+import { sweepFreezes } from './acctfreeze.mjs';
 import { kbizRoutes } from './routes/kbiz.mjs';
 import { kbizAdminRoutes } from './routes/kbizadmin.mjs';
 import { sweepAiEvents } from './aiusage.mjs';
@@ -293,7 +299,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [gameInfraRoutes, customGiftsRoutes, acctFreezeRoutes, taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, specialistsRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -439,6 +445,9 @@ const server = http.createServer((req, res) => runWithLang(req, () => runWithSes
         if (stc && stc.userId === tkc.sky && stc.profileId) {
           const hit = await childBlockedFor(stc.profileId, new URL(req.url, 'http://x').pathname, req.method);
           if (hit) return json(res, 403, { error: 'child_restricted', module: hit });
+          // Заморозка аккаунта администрацией (acctfreeze.mjs): открыт только короткий список (экран заморозки, поддержка, баланс, выгрузка данных, выход).
+          const fz = await frozenSky(stc.userId);
+          if (fz && !frozenMay(req.method, new URL(req.url, 'http://x').pathname)) return json(res, 403, { error: 'account_frozen', freezeId: fz.id, since: fz.started_at });
           if (req.method === 'GET' && /^\/api\/(film|music|books|skyvideo)\b/.test(new URL(req.url, 'http://x').pathname) && await childHidesAdult(stc.profileId)) {
             const u2 = new URL(req.url, 'http://x'); u2.searchParams.set('hideExplicit', '1'); req.url = u2.pathname + u2.search;
           }
@@ -786,6 +795,7 @@ const start = async () => {
     if (dispatchBusy) return;
     dispatchBusy = true;
     try { await sweepDispatch(); } catch (e) { console.error('[go] распределение:', e.message); }
+    try { await sweepFreezes(); } catch (e) { console.error('[freeze] срок:', e.message); }
     try { await sweepParking(); } catch (e) { console.error('[parking] уборка:', e.message); }
     try { await sweepSafety(); } catch (e) { console.error('[safety] уборка:', e.message); }
     try {   // проверка доступности серверов лаунчера: порциями, не чаще заданного интервала, и не при высокой нагрузке

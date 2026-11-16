@@ -74,6 +74,8 @@ services:
       GUARD_SECRET:          ${GUARD_SECRET:-}
       SANDBOX_SECRET:        ${SANDBOX_SECRET:-}
       OPS_SECRET:            ${OPS_SECRET:-}
+      GAMEINFRA_SECRET:      ${GAMEINFRA_SECRET:-}
+      GAMEINFRA_MC_IMAGE:    ${GAMEINFRA_MC_IMAGE:-}
       SANDBOX_MAX_AGE_H:     ${SANDBOX_MAX_AGE_H:-24}
       BUILD_ID:              ${BUILD_ID:-}
       SIGNAL_PORT:           "8081"

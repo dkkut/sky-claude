@@ -1,8 +1,8 @@
 /* ======================================================================
    SKY GIFTS NFT  —  Root shell
 ====================================================================== */
-import { useCallback, useEffect, useState } from 'react';
-import { Home as HomeIcon, ShoppingBag, User, BarChart3, Shield } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { Home as HomeIcon, ShoppingBag, User, BarChart3, Shield, Sparkles } from 'lucide-react';
 import { C } from '@/marketplace/SkyMarket';
 import { useAuthStore } from '@/core/auth/store';
 import { useNftGiftsStore } from './nftStore';
@@ -18,7 +18,8 @@ import { CollectionScreen } from './CollectionScreen';
 import { StatsScreen } from './StatsScreen';
 import { SecurityScreen } from './Security';
 
-type Tab = 'home' | 'market' | 'profile';
+type Tab = 'home' | 'market' | 'profile' | 'custom';
+const CustomGifts = lazy(() => import('@/customgifts/CustomGifts').then((m) => ({ default: m.CustomGifts })));
 
 export const SkyGiftsNFT = () => {
   const account = useAuthStore(s => s.accounts.find(a => a.id === s.currentUserId));
@@ -43,6 +44,7 @@ export const SkyGiftsNFT = () => {
     { key:'home', label:'Главная', icon:HomeIcon },
     { key:'market', label:'Маркет', icon:ShoppingBag },
     { key:'profile', label:'Профиль', icon:User },
+    { key:'custom', label:'Свои', icon:Sparkles },
   ];
 
   const openProfile = (userId: string) => { setProfileUserId(userId); setTab('profile'); };
@@ -63,6 +65,7 @@ export const SkyGiftsNFT = () => {
           />
         )}
         {tab==='market' && <Marketplace onOpenGift={setOpenGiftId}/>}
+        {tab==='custom' && <Suspense fallback={null}><CustomGifts/></Suspense>}
         {tab==='profile' && account && (
           <GiftsProfile
             userId={profileUserId ?? account.id}

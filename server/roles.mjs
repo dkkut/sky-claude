@@ -81,6 +81,9 @@ export const PERMISSIONS = [
   'royalty_review',  // Sky Royalties: проверка подозрительных прослушиваний, проверка личности авторов, заявки на участие
   'media_restrict',  // Sky Media: ограничения произведений и направлений автора, апелляции (каждое действие — с кодом)
   'royalty_finance', // Sky Royalties: ввод и подтверждение выручки по периодам (закрытие периода, настройки и подтверждение выплат — только владелец)
+  'specialists',     // Sky Marketplace (биржа специалистов): проверка анкет, жалобы, споры по предложениям
+  'game_infra',      // Sky Games: серверы Minecraft/GTA — конфигурации, запуск и остановка, журналы (критично, в «полные права» не входит; запуск на основном сервере — только владелец)
+  'account_freeze',  // Sky Account: заморозка и восстановление аккаунтов и каналов, апелляции
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -98,7 +101,7 @@ export const PERMISSIONS = [
  */
 export const STORAGE_CRITICAL = ['storage_restore', 'storage_emergency', 'storage_enable', 'storage_unlock', 'storage_keys', 'storage_direct'];
 /** Подтверждение партнёров — тоже отдельное право: добавлять может менеджер, публиковать — только уполномоченный (или владелец). */
-export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve' && p !== 'global_block' && p !== 'sandbox_publish' && p !== 'server_ops' && p !== 'media_restrict');
+export const DEFAULT_ADMIN_PERMISSIONS = PERMISSIONS.filter((p) => !STORAGE_CRITICAL.includes(p) && p !== 'partners_approve' && p !== 'global_block' && p !== 'sandbox_publish' && p !== 'server_ops' && p !== 'media_restrict' && p !== 'game_infra');
 
 export const ROLES = {
   super_admin:     DEFAULT_ADMIN_PERMISSIONS,
@@ -141,6 +144,9 @@ export const ROLES = {
   tax_admin:       ['tax'],
   media_restrict_admin: ['media_restrict'],
   royalty_admin:   ['royalty_view', 'royalty_review', 'royalty_finance'],
+  specialists_moderator: ['specialists'],
+  game_infra_admin: ['game_infra'],
+  freeze_admin:    ['account_freeze', 'support'],
   sandbox_admin:   ['sandbox'],
   sandbox_publisher:['sandbox', 'sandbox_publish'],
   global_block_admin:['global_block'],
@@ -178,6 +184,9 @@ export const ROLE_LABEL = {
   partners_approver: 'Партнёры: подтверждение и публикация',
   media_restrict_admin: 'Sky Media: ограничения и апелляции',
   royalty_admin: 'Sky Royalties: проверка и ввод выручки',
+  specialists_moderator: 'Биржа специалистов: модерация',
+  game_infra_admin: 'Sky Games: игровые серверы',
+  freeze_admin: 'Заморозка и восстановление аккаунтов',
   sandbox_admin: 'Sky Sandbox: проверка сборок',
   sandbox_publisher: 'Sky Sandbox: проверка и одобрение публикации',
   ops_admin: 'Sky Ops: сервер, деплой и сборка приложений',

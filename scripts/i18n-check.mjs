@@ -39,8 +39,12 @@ walk(join(ROOT, 'src'));
 const IGNORE = new Set(['по-русски', 'по-английски', 'а', 'ы', 'я', 'и', 'е', 'ое', 'ых', 'ЙЦУКЕНГШЩЗХ', 'ФЫВАПРОЛДЖЭ', 'ЯЧСМИТЬБЮ']);
 const IGNORE_PREFIX = ['Ты — семейный финансовый и бытовой ассистент'];
 
+/* Руководство администратора — только на русском: им пользуются сотрудники, а текст — десятки абзацев об устройстве панели.
+   Файл исключён осознанно (не из-за того, что строки «мешают»); остальной интерфейс вкладки «Обучение» переводится как обычно. */
+const SKIP_FILES = ['src/admin/guide/content.ts'];
 const missing = new Map();
 for (const f of files) {
+  if (SKIP_FILES.some((x) => f.endsWith(x))) continue;
   const src = readFileSync(f, 'utf8');
   const sf = ts.createSourceFile(f, src, ts.ScriptTarget.Latest, true, f.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const add = (raw) => {

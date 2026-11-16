@@ -415,6 +415,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
       } else askAdminToken(String(data?.error));
     }
     if (res.status === 423 && data?.error === 'app_locked') { try { window.dispatchEvent(new CustomEvent('sky:applock')); } catch { /* ok */ } }
+    if (res.status === 403 && data?.error === 'account_frozen') { try { window.dispatchEvent(new CustomEvent('sky:accountfrozen')); } catch { /* ok */ } }
     if (res.status === 403 && data?.error === 'limited_session') { try { window.dispatchEvent(new CustomEvent('sky:limited')); } catch { /* ok */ } }
     if (res.status === 403 && data?.error === 'money_locked') { try { window.dispatchEvent(new CustomEvent('sky:money-locked')); } catch { /* ok */ } }
     if (res.status === 503 && data?.error === 'platform_shutdown') onPlatformBlocked?.({ kind: 'shutdown', reason: String(data?.reason ?? '') });
