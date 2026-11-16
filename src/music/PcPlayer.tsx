@@ -5,6 +5,7 @@
  *   ai      — то же + окно Sky AI с быстрыми вопросами о треке.
  * Логику воспроизведения не трогает: всё приходит пропсами из SkyMusic (общий плеер).
  */
+import { MixPanel } from './MixPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -266,6 +267,7 @@ export const SkyPcPlayer = ({
 
   const narrow = mobile || w < 980;
   const showText = mode !== 'compact';
+  const [showMix, setShowMix] = useState(false);
   const showAi = mode === 'ai';
   const discSize = mobile ? (short ? Math.max(130, Math.min(190, h * 0.25)) : Math.max(180, Math.min(320, w * 0.8, h * 0.36))) : showText ? Math.max(170, Math.min(w * 0.22, h * 0.36, 320)) : Math.max(200, Math.min(w * 0.3, h * 0.4, 380));
   const queueItems = queue.slice(Math.max(0, queueIdx), queueIdx + 40);
@@ -300,6 +302,7 @@ export const SkyPcPlayer = ({
         <button type="button" aria-label="В избранное" onClick={() => onLike(track.id)} style={{ ...roundBtn(mobile ? (short ? 46 : 58) : 50), color: isFav ? '#f43f5e' : '#fff' }}><Heart size={mobile ? 25 : 21} fill={isFav ? '#f43f5e' : 'none'} /></button>
         <button type="button" aria-label="Добавить в плейлист" onClick={() => onAdd(track.id)} style={roundBtn(mobile ? (short ? 46 : 58) : 50)}><Plus size={mobile ? 25 : 21} /></button>
         {!mobile && <button type="button" onClick={() => setMode(showText ? 'compact' : 'lyrics')} style={{ ...roundBtn(50, showText), width: 'auto', padding: '0 20px', gap: 8, display: 'flex', alignItems: 'center', fontWeight: 700, fontSize: 14.5 }}><AlignLeft size={18} />Текст</button>}
+        {!mobile && <button type="button" onClick={() => setShowMix(true)} style={{ ...roundBtn(50, false), width: 'auto', padding: '0 20px', fontWeight: 700, fontSize: 14.5 }}>Микс</button>}
         {!mobile && <button type="button" onClick={() => setMode(showAi ? 'lyrics' : 'ai')} style={{ ...roundBtn(50, showAi), width: 'auto', padding: '0 20px', gap: 8, display: 'flex', alignItems: 'center', fontWeight: 700, fontSize: 14.5 }}><Sparkles size={21} />ИИ</button>}
       </div>
     </div>
@@ -478,6 +481,7 @@ export const SkyPcPlayer = ({
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button type="button" onClick={() => setMode(showText ? 'compact' : 'lyrics')} aria-pressed={showText} style={{ ...roundBtn(short ? 48 : 56, showText), flex: 1, width: 'auto', borderRadius: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 16, fontWeight: 800, fontFamily: 'inherit' }}><AlignLeft size={21} />Текст</button>
+                <button type="button" onClick={() => setShowMix(true)} style={{ ...roundBtn(short ? 48 : 56, false), flex: 1, width: 'auto', borderRadius: 28, fontSize: 16, fontWeight: 800, fontFamily: 'inherit' }}>Микс</button>
                 <button type="button" onClick={() => setMode(showAi ? 'lyrics' : 'ai')} aria-pressed={showAi} style={{ ...roundBtn(short ? 48 : 56, showAi), flex: 1, width: 'auto', borderRadius: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 16, fontWeight: 800, fontFamily: 'inherit' }}><Sparkles size={18} />ИИ</button>
                 <button type="button" aria-label="Очередь" aria-pressed={showQueue} onClick={() => setShowQueue(v => !v)} style={roundBtn(short ? 48 : 56, showQueue)}><ListMusic size={24} /></button>
               </div>
@@ -545,6 +549,7 @@ export const SkyPcPlayer = ({
         </AnimatePresence>
       </div>
       {editor && <TrackEditor track={track} onClose={() => setEditor(false)} />}
+      {showMix && <MixPanel a={{ id: track.id, title: track.title, artist: track.artist }} onClose={() => setShowMix(false)} />}
     </motion.div>
   ), document.body);
 };
