@@ -580,3 +580,8 @@ html[data-animations='off'] .sky-wavebg-sheen { animation: none; }
 .spp-range::-moz-range-thumb { width: 14px; height: 14px; border: none; border-radius: 50%; background: #fff; }
 @media (prefers-reduced-motion: reduce) { .spp-blob, .spp-spin, .spp-ring { animation: none; } }
 html[data-animations='off'] .spp-blob, html[data-animations='off'] .spp-spin, html[data-animations='off'] .spp-ring { animation: none; }
+
+/* Экран блокировки Sky: появление и подъём карточки музыки */
+@keyframes lk-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes lk-rise { from { opacity: 0; transform: translateY(14px) scale(.98) } to { opacity: 1; transform: none } }
+@media (prefers-reduced-motion: reduce) { [data-keep-dark] [style*="lk-"] { animation: none !important; } }
