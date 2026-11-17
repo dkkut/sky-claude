@@ -123,6 +123,10 @@ export interface ServedAd {
   /** Только для видеорекламы перед роликом: настройки администрации. */
   skipAfterSec?: number;
   label?: string;
+  /** Собственное объявление Sky: ведёт только внутрь приложения. */
+  house?: boolean;
+  cta?: string;
+  target?: { module: string; tab?: string };
 }
 
 export interface PrerollSettings { enabled: boolean; cooldownSec: number; skipAfterSec: number; maxPerUserDay: number; label: string; updatedAt?: string; updatedBy?: string | null }
@@ -143,11 +147,11 @@ export const apiRecordImpression = async (campaignId: string, placement: AdPlace
 
 export const apiRecordClick = async (
   campaignId: string, impressionId: string, placement: AdPlacement,
-): Promise<string | null> => {
-  const r = await apiCall<{ ok: true; linkUrl?: string }>('/api/ads/click', {
+): Promise<{ linkUrl?: string; target?: { module: string; tab?: string } } | null> => {
+  const r = await apiCall<{ ok: true; linkUrl?: string; target?: { module: string; tab?: string } }>('/api/ads/click', {
     method: 'POST', body: JSON.stringify({ campaignId, impressionId, placement }),
   });
-  return r.ok ? r.data?.linkUrl ?? null : null;
+  return r.ok ? { linkUrl: r.data?.linkUrl, target: r.data?.target } : null;
 };
 
 /* ═══ Уведомления рекламодателю ═══════════════════════════════ */

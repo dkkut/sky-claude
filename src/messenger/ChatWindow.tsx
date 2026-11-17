@@ -1,4 +1,5 @@
 import { VerifiedBadge } from '@/verification/marks';
+import { apiCall } from '@/core/auth/api';
 import { requestDelete } from '../island/deleteFlow';
 import { useRegisterMedia } from '../island/mediaRegistry';
 import {
@@ -728,7 +729,7 @@ const Bubble = ({ msg, replyTo, authorName, voiceFrom = '', myId, onReply, onEdi
         {!fromMe && authorName && (
           <button type="button" onClick={() => openProfile(msg.authorId)}
             className="text-xs font-semibold mb-0.5 px-1 text-left sky-hover-lift" style={{ color: theme.accent }}>
-            {authorName}
+            <span translate="no">{authorName}</span><VerifiedBadge type="user" id={msg.authorId} size={12} />
           </button>
         )}
 
@@ -920,6 +921,11 @@ const ReportModal = ({ chatId, onClose }: { chatId: string; onClose: () => void 
               addReport({ chatId, reporterId: currentUserId ?? '', reason, comment: '' });
               // Раньше жалоба оставалась в браузере и до модерации не доходила — теперь это обычное обращение kind=report.
               void apiCreateTicket({ subject: 'Жалоба из чата', body: `Причина: ${reason}\nID чата: ${chatId}`, kind: 'report' });
+              // Жалоба на канал дополнительно идёт в автомодерацию: вес зависит от репутации жалобщика, налёт новых аккаунтов не засчитывается (server/chanmod.mjs).
+              if (useMessengerStore.getState().chats.find((c) => c.id === chatId)?.type === 'channel') {
+                const code = ({ 'Спам': 'other', 'Оскорбления': 'abuse', 'Мошенничество': 'fraud', 'Нарушение правил': 'illegal' } as Record<string, string>)[reason] ?? 'other';
+                void apiCall('/api/channel-mod/report', { method: 'POST', body: JSON.stringify({ chatId, reason: code }) });
+              }
               onClose();
             }}
             className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40"

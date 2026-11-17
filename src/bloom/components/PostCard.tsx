@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, memo } from 'react';
+import { VerifiedBadge } from '@/verification/marks';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -138,7 +139,7 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
         </button>
         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onAuthorClick(post.authorId)}>
           <div className="flex items-center gap-1.5">
-            <p className="text-sm font-bold truncate" style={{ color: 'var(--t1)' }}>{post.authorName}</p>
+            <p className="text-sm font-bold truncate" style={{ color: 'var(--t1)' }}><span translate="no">{post.authorName}</span><VerifiedBadge type="user" id={post.authorId} size={14} /></p>
             {post.isPinned && (
               <span className="text-[9px] rounded-full px-1.5 py-0.5 font-bold shrink-0"
                 style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}><Pin size={10} /></span>

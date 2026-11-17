@@ -84,6 +84,9 @@ export const PERMISSIONS = [
   'specialists',     // Sky Marketplace (биржа специалистов): проверка анкет, жалобы, споры по предложениям
   'game_infra',      // Sky Games: серверы Minecraft/GTA — конфигурации, запуск и остановка, журналы (критично, в «полные права» не входит; запуск на основном сервере — только владелец)
   'account_freeze',  // Sky Account: заморозка и восстановление аккаунтов и каналов, апелляции
+  'ads_manage',      // Sky Ads: кампании от администрации, собственные объявления Sky
+  'business_rules',  // Sky Business: правила организаций (редакции, публикация, уведомления)
+  'channel_mod',     // Автомодерация каналов: очередь дел, решения, апелляции
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -147,6 +150,9 @@ export const ROLES = {
   specialists_moderator: ['specialists'],
   game_infra_admin: ['game_infra'],
   freeze_admin:    ['account_freeze', 'support'],
+  ads_admin:       ['ads_manage'],
+  business_rules_admin: ['business_rules'],
+  channel_moderator: ['channel_mod'],
   sandbox_admin:   ['sandbox'],
   sandbox_publisher:['sandbox', 'sandbox_publish'],
   global_block_admin:['global_block'],
@@ -187,6 +193,9 @@ export const ROLE_LABEL = {
   specialists_moderator: 'Биржа специалистов: модерация',
   game_infra_admin: 'Sky Games: игровые серверы',
   freeze_admin: 'Заморозка и восстановление аккаунтов',
+  ads_admin: 'Sky Ads: кампании и объявления Sky',
+  business_rules_admin: 'Sky Business: правила организаций',
+  channel_moderator: 'Модерация каналов',
   sandbox_admin: 'Sky Sandbox: проверка сборок',
   sandbox_publisher: 'Sky Sandbox: проверка и одобрение публикации',
   ops_admin: 'Sky Ops: сервер, деплой и сборка приложений',

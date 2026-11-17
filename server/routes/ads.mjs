@@ -18,8 +18,9 @@ import {
   pauseCampaign, resumeCampaign, cancelCampaign, reportCampaign,
   resolveAdForPlacement, adminGetPreroll, adminSavePreroll, recordImpression, recordClick, recentAdEvents,
   adminListCampaigns, adminApprove, adminReject, adminPause, adminResume, adminComplete, adminCancel,
-  recordView,
+  recordView, adminCreateCampaign, adminEditCampaign,
 } from './../ads.mjs';
+import { adminHouseList, adminHouseSave, adminHouseCreate, adminStats } from './../adsplus.mjs';
 import { saveStream, openStream, sizeOf, newMediaId, remove as removeAdFile } from './../adstore.mjs';
 import { mp4DurationSec, AD_VIDEO_MAX_SEC } from './../admedia.mjs';
 import { parseRange } from './../skyvideostore.mjs';
@@ -305,6 +306,33 @@ export const adsRoutes = async (req, res, url) => {
     });
     if (r.error) return json(res, errCode(r.error), r);
     return json(res, 200, r);
+  }
+
+  if (path === '/api/ads/admin/stats' && req.method === 'GET') {
+    if (!rateLimit(`ads:admin:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const r = await adminStats(me, { days: params.get('days') }); return json(res, r.error ? errCode(r.error) : 200, r);
+  }
+  if (path === '/api/ads/admin/house' && req.method === 'GET') {
+    if (!rateLimit(`ads:admin:${me}`, READ_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const r = await adminHouseList(me, { days: params.get('days') }); return json(res, r.error ? errCode(r.error) : 200, r);
+  }
+  if (path === '/api/ads/admin/house' && req.method === 'POST') {
+    if (!rateLimit(`ads:admin:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const r = await adminHouseCreate(me, await parseBody(req).catch(() => ({}))); return json(res, r.error ? errCode(r.error) : 200, r);
+  }
+  const houseMatch = /^\/api\/ads\/admin\/house\/([a-z0-9-]+)$/.exec(path);
+  if (houseMatch && req.method === 'PUT') {
+    if (!rateLimit(`ads:admin:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const r = await adminHouseSave(me, houseMatch[1], await parseBody(req).catch(() => ({}))); return json(res, r.error ? errCode(r.error) : 200, r);
+  }
+  if (path === '/api/ads/admin/campaigns' && req.method === 'POST') {
+    if (!rateLimit(`ads:admin:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const r = await adminCreateCampaign(me, await parseBody(req).catch(() => ({}))); return json(res, r.error ? errCode(r.error) : 200, r);
+  }
+  const editMatch = /^\/api\/ads\/admin\/campaigns\/([^/]+)$/.exec(path);
+  if (editMatch && req.method === 'PUT') {
+    if (!rateLimit(`ads:admin:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
+    const r = await adminEditCampaign(me, editMatch[1], await parseBody(req).catch(() => ({}))); return json(res, r.error ? errCode(r.error) : 200, r);
   }
 
   const adminMatch = /^\/api\/ads\/admin\/campaigns\/([^/]+)\/([a-z]+)$/.exec(path);

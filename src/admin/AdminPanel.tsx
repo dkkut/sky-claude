@@ -72,6 +72,10 @@ import { TaxTab } from './TaxTab';
 import { PrimeTab } from './PrimeTab';
 import { AiUsageTab } from './AiUsageTab';
 import { PartnersTab } from './PartnersTab';
+import { P2pTab } from './P2pTab';
+import { AdsPlusTab } from './AdsPlusTab';
+import { BizRulesTab } from './BizRulesTab';
+import { ChanModTab } from './ChanModTab';
 import { SpecialistsTab } from './SpecialistsTab';
 import { GameInfraTab } from './GameInfraTab';
 import { CustomGiftsTab } from './CustomGiftsTab';
@@ -5663,7 +5667,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'firewall' | 'maps' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops' | 'fxrates' | 'email' | 'ofd' | 'tax' | 'royalties' | 'mediarestrict' | 'specialists' | 'gameinfra' | 'customgifts' | 'acctfreeze' | 'guide';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'firewall' | 'maps' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops' | 'fxrates' | 'email' | 'ofd' | 'tax' | 'royalties' | 'mediarestrict' | 'specialists' | 'gameinfra' | 'customgifts' | 'acctfreeze' | 'guide' | 'p2p' | 'adsplus' | 'bizrules' | 'chanmod';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5893,6 +5897,10 @@ export const AdminPanel = () => {
     { key: 'prime', label: 'Sky Prime', show: has('prime') },
     { key: 'partners', label: 'Партнёры', show: has('partners') },
     { key: 'specialists', label: 'Биржа специалистов', show: has('specialists') },
+    { key: 'p2p', label: 'Переводы', show: has('finance') },
+    { key: 'adsplus', label: 'Реклама Sky', show: has('ads_manage') },
+    { key: 'bizrules', label: 'Правила Business', show: has('business_rules') },
+    { key: 'chanmod', label: 'Модерация каналов', show: has('channel_mod') },
     { key: 'gameinfra', label: 'Игровые серверы', show: has('game_infra') },
     { key: 'customgifts', label: 'Свои подарки', show: has('gifts') },
     { key: 'acctfreeze', label: 'Заморозка', show: has('account_freeze') },
@@ -6144,6 +6152,10 @@ export const AdminPanel = () => {
       {tab === 'prime' && <PrimeTab />}
       {tab === 'partners' && <PartnersTab />}
       {tab === 'specialists' && <SpecialistsTab />}
+      {tab === 'p2p' && <P2pTab />}
+      {tab === 'adsplus' && <AdsPlusTab />}
+      {tab === 'bizrules' && <BizRulesTab />}
+      {tab === 'chanmod' && <ChanModTab />}
       {tab === 'gameinfra' && <GameInfraTab />}
       {tab === 'customgifts' && <CustomGiftsTab />}
       {tab === 'acctfreeze' && <AccountFreezeTab />}

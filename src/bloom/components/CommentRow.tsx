@@ -1,4 +1,5 @@
 import { Heart } from 'lucide-react';
+import { VerifiedBadge } from '@/verification/marks';
 import type { BloomComment } from '../store';
 import { fmtAgo, useBloomStore } from '../store';
 import { useAuthStore } from '@/core/auth/store';
@@ -21,7 +22,7 @@ export const CommentRow = ({ comment, postId, onLike, onAuthorClick }: {
           <GiftBadge modelKey={comment.gift.modelKey} rarity={comment.gift.rarity} size={34}/>
           <div className="min-w-0 flex-1">
             <p className="text-xs" style={{ color: 'var(--t1)' }}>
-              <button type="button" onClick={goToAuthor} className="font-bold" style={{ color: 'var(--accent)' }}>{comment.authorName}</button>{' '}
+              <button type="button" onClick={goToAuthor} className="font-bold" style={{ color: 'var(--accent)' }}>{comment.authorName}<VerifiedBadge type="user" id={comment.authorId} size={12} /></button>{' '}
               {comment.text}
             </p>
             <span className="text-[10px]" style={{ color: 'var(--t3)' }}>{fmtAgo(comment.createdAt)}</span>

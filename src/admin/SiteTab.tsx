@@ -8,6 +8,7 @@ import { apiCall, getAccessToken, uploadUrl, nativeXhrHeaders } from '@/core/aut
 import { NATIVE_APP } from '@/core/nativeApp';
 import { flash } from '@/shared/flash';
 import { ScrollTabs } from './ScrollTabs';
+import { AppVersionCard } from './AppVersionCard';
 
 const C = { l1: 'var(--bg-l1)', l2: 'var(--bg-l2)', l3: 'var(--bg-l3)', brd: 'var(--border)', t1: 'var(--t1)', t2: 'var(--t2)', t3: 'var(--t3)', acc: 'var(--accent)', red: 'var(--red)', green: 'var(--green)' };
 const field = { background: C.l2, border: `1px solid ${C.brd}`, color: C.t1 };
@@ -409,6 +410,7 @@ export const UpdatesAdminTab = () => {
   };
   return (
     <div className="space-y-4">
+      <AppVersionCard />
       <div className="space-y-1"><h3 className="text-sm font-bold" style={{ color: C.t1 }}>Файлы приложений</h3>
         <p className="text-[11px]" style={{ color: C.t3 }}>Загрузите файл для платформы и укажите версию и «Что нового» — он сразу появится у людей в Профиль → Настройки → «Обновления». Это отдельный список: скачивание на сайте (вкладка «Сайт») не меняется.</p></div>
       {!items ? <Wait /> : items.map((d) => <AppUpdateCard key={d.platform} d={d} onChanged={() => void loadItems()} />)}

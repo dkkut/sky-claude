@@ -15,6 +15,7 @@ import { encryptContent, decryptContent } from './crypto.mjs';
 import { can, isOwner } from './admin.mjs';
 import { logAdmin } from './adminsec.mjs';
 import { notifyGift } from './giftnotify.mjs';
+import { SKYBOT_PROFILE } from './skybotid.mjs';
 
 const TYPES = ['user', 'chat_group', 'chat_channel', 'video_channel', 'official'];
 const MAX_NOTE = 1500; const MAX_REASON = 500; const MAX_LINKS = 5;
@@ -145,7 +146,10 @@ export const marksFor = async (type, ids) => {
   if (!TYPES.includes(type) || !list.length) return {};
   const { rows } = await query(
     `SELECT subject_id, mark FROM verifications WHERE subject_type = $1 AND subject_id = ANY($2) AND status = 'approved'`, [type, list]);
-  return Object.fromEntries(rows.map((r) => [r.subject_id, r.mark]));
+  const out = Object.fromEntries(rows.map((r) => [r.subject_id, r.mark]));
+  // Официальный бот Sky помечен ВСЕГДА — решение сервера по константе, а не по строке, которую можно потерять или подменить.
+  if (type === 'user' && list.includes(SKYBOT_PROFILE)) out[SKYBOT_PROFILE] = 'official';
+  return out;
 };
 
 /* ─── Сотрудники ───────────────────────────────────────────────────── */

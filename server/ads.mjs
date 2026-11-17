@@ -22,6 +22,8 @@ import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
 import { can } from './admin.mjs';
 import { hasPrime } from './skyid.mjs';
+import { logAdmin } from './adminsec.mjs';
+import { signLink, linkOk, safeHttps, noteTamper, houseAd, houseImpression, houseClick } from './adsplus.mjs';
 import { wallet } from './wallet.mjs';
 import { regionOf, cleanRegionList } from './regions.mjs';
 import { createTicket } from './support.mjs';
@@ -33,6 +35,7 @@ import { pushToOffline } from './webpush.mjs';
    при создании кампании он всегда считает сам по этой копии. */
 export const PLACEMENTS = {
   video_preroll:  { pricePerDay: 1500, minDays: 3, maxImpressions: 5000,  formats: ['video', 'image'] },
+  film_preroll:   { pricePerDay: 2000, minDays: 3, maxImpressions: 5000,  formats: ['video', 'image'] },
   video_banner:   { pricePerDay: 800,  minDays: 1, maxImpressions: 8000,  formats: ['image', 'text_image'] },
   bloom_feed:     { pricePerDay: 600,  minDays: 1, maxImpressions: 12000, formats: ['text', 'text_image', 'image'] },
   bloom_stories:  { pricePerDay: 1200, minDays: 1, maxImpressions: 7000,  formats: ['image', 'video'] },
@@ -233,6 +236,7 @@ export const createCampaign = async (actorId, body) => {
     throw err;
   }
 
+  if (linkUrl) await query('UPDATE ad_campaigns SET link_sig = $2 WHERE id = $1', [id, signLink(id, linkUrl)]);
   await logEvent(id, 'created', actorId, `Бюджет: ${budget} ₽, ${days} дн.`);
   await logEvent(id, 'submitted', actorId, 'Отправлена на модерацию');
 
@@ -415,11 +419,12 @@ export const adminSavePreroll = async (actorId, b = {}) => {
 export const resolveAdForPlacement = async (viewerId, placement) => {
   if (!PLACEMENTS[placement]) return null;
   if (await hasPrime(viewerId)) return null; // Prime — без рекламы, решает только сервер
-  const pre = placement === 'video_preroll' ? await prerollSettings() : null;
+  const isPre = placement === 'video_preroll' || placement === 'film_preroll';
+  const pre = isPre ? await prerollSettings() : null;
   if (pre && !pre.enabled) return null;
   if (pre && pre.cooldownSec > 0) {
     const { rows: recent } = await query(
-      "SELECT 1 FROM ad_impressions WHERE user_id = $1 AND placement = 'video_preroll' AND created_at > now() - ($2 || ' seconds')::interval LIMIT 1",
+      "SELECT 1 FROM ad_impressions WHERE user_id = $1 AND placement IN ('video_preroll','film_preroll') AND created_at > now() - ($2 || ' seconds')::interval LIMIT 1",
       [viewerId, String(pre.cooldownSec)]);
     if (recent.length) return null;
   }
@@ -434,11 +439,11 @@ export const resolveAdForPlacement = async (viewerId, placement) => {
       WHERE c.placement = $1 AND c.status = 'active'
         AND c.starts_at <= now() AND c.ends_at > now()
         AND (cardinality(c.target_regions) = 0 OR $2::text IS NULL OR c.target_regions @> ARRAY[$2::text])
-      ORDER BY today_impressions ASC, c.created_at ASC
+      ORDER BY c.priority DESC, today_impressions ASC, c.created_at ASC
       LIMIT 20`,
     [placement, region],
   );
-  if (!rows.length) return null;
+  if (!rows.length) return houseAd(viewerId, placement, pre?.cooldownSec ?? 60);
 
   for (const row of rows) {
     // Дневной и пожизненный потолок показов — тот самый «доступный
@@ -456,10 +461,16 @@ export const resolveAdForPlacement = async (viewerId, placement) => {
          FROM ad_impressions WHERE campaign_id = $1 AND user_id = $2`,
       [row.id, viewerId, placement],
     );
-    if (Number(mine[0].today) >= (pre ? pre.maxPerUserDay : FREQ_CAP.maxImpressionsPerUserPerCampaignPerDay)) continue;
+    if (Number(mine[0].today) >= (row.max_per_user_day ?? (pre ? pre.maxPerUserDay : FREQ_CAP.maxImpressionsPerUserPerCampaignPerDay))) continue;
     const last = mine[0].last_same_placement;
     if (last && (Date.now() - new Date(last).getTime()) / 1000 < FREQ_CAP.minSecondsBetweenSamePlacementImpression) continue;
 
+    // Защита ссылки: подпись должна совпадать. У кампаний, созданных до подписей, подпись ставится при первом показе.
+    let link = row.link_url ?? undefined;
+    if (link) {
+      if (!row.link_sig) await query('UPDATE ad_campaigns SET link_sig = $2 WHERE id = $1 AND link_sig IS NULL', [row.id, signLink(row.id, link)]);
+      else if (!linkOk(row.id, link, row.link_sig) || !safeHttps(link)) { await noteTamper(row.id); continue; }
+    }
     const dur = row.media_id ? (await query('SELECT duration_sec FROM ad_media_meta WHERE media_id = $1', [row.media_id])).rows[0]?.duration_sec : null;
     return {
       campaignId: row.id,
@@ -467,12 +478,13 @@ export const resolveAdForPlacement = async (viewerId, placement) => {
       description: row.description,
       mediaUrl: row.media_id ? `/api/ads/media/${row.media_id}` : undefined,
       format: row.format,
-      linkUrl: row.link_url ?? undefined,
+      linkUrl: link,
       durationSec: dur != null ? Number(dur) : undefined,
+      label: 'Реклама',
       ...(pre ? { skipAfterSec: pre.skipAfterSec, label: pre.label } : {}),
     };
   }
-  return null;
+  return houseAd(viewerId, placement, pre?.cooldownSec ?? 60);
 };
 
 /* ─── Показы и клики (пункты 8–9) ─────────────────────────────────── */
@@ -482,6 +494,7 @@ export const resolveAdForPlacement = async (viewerId, placement) => {
  * присланного campaignId: перепроверяет то же самое, чем отдавала бы
  * рекламу (regionOf с сервера, Prime, статус/период, частота). */
 export const recordImpression = async (viewerId, campaignId, placement) => {
+  if (String(campaignId).startsWith('house:')) return houseImpression(viewerId, String(campaignId).slice(6), String(placement));
   const offer = await resolveAdForPlacement(viewerId, placement);
   if (!offer || offer.campaignId !== campaignId) return { error: 'not_eligible' };
 
@@ -520,14 +533,18 @@ export const recordView = async (viewerId, impressionId, watchedSecRaw) => {
  * зрителя по этой же кампании (см. UNIQUE(impression_id) в миграции —
  * повторный клик по тому же показу не учитывается дважды). */
 export const recordClick = async (viewerId, campaignId, impressionId, placement) => {
+  if (String(campaignId).startsWith('house:')) return houseClick(viewerId, String(campaignId).slice(6), String(impressionId), String(placement));
   const { rows } = await query(
     'SELECT campaign_id, user_id FROM ad_impressions WHERE id = $1', [String(impressionId ?? '')],
   );
   const imp = rows[0];
   if (!imp || imp.campaign_id !== campaignId || imp.user_id !== viewerId) return { error: 'bad_impression' };
 
-  const { rows: camp } = await query('SELECT advertiser_id, link_url, status FROM ad_campaigns WHERE id = $1', [campaignId]);
+  const { rows: camp } = await query('SELECT advertiser_id, link_url, link_sig, status FROM ad_campaigns WHERE id = $1', [campaignId]);
   if (!camp[0]) return { error: 'not_found' };
+  // Адрес отдаёт только сервер и только если подпись цела.
+  const safeLink = camp[0].link_url && camp[0].link_sig && linkOk(campaignId, camp[0].link_url, camp[0].link_sig) && safeHttps(camp[0].link_url) ? camp[0].link_url : undefined;
+  if (camp[0].link_url && !safeLink) await noteTamper(campaignId);
 
   const region = await regionOf(viewerId);
   try {
@@ -540,7 +557,7 @@ export const recordClick = async (viewerId, campaignId, impressionId, placement)
     // не считаем во второй раз (replay-защита, не сбой запроса).
     if (err.code !== '23505') throw err;
   }
-  return { ok: true, linkUrl: camp[0].link_url ?? undefined };
+  return { ok: true, linkUrl: safeLink };
 };
 
 /* ─── Уведомления рекламодателю (по образцу recentEvents у Bloom) ─── */
@@ -562,8 +579,9 @@ export const recentAdEvents = async (userId, sinceIso) => {
 
 /* ─── Админка (пункты 3, 15) ───────────────────────────────────────── */
 
+const canAdsAdmin = async (id) => (await can(id, 'content')) || (await can(id, 'ads_manage'));
 export const adminListCampaigns = async (actorId, { status, q, limit } = {}) => {
-  if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
+  if (!(await canAdsAdmin(actorId))) return { error: 'not_allowed' };
   const lim = Math.max(1, Math.min(Number(limit) || 50, 200));
   const where = [];
   const args = [];
@@ -584,14 +602,14 @@ export const adminListCampaigns = async (actorId, { status, q, limit } = {}) => 
   const stats = await impressionsAndClicks(rows.map((r) => r.id));
   return {
     items: rows.map((r) => ({
-      ...toCampaign(r, stats.get(r.id)),
+      ...toCampaign(r, stats.get(r.id)), name: r.name ?? undefined, priority: r.priority, maxPerUserDay: r.max_per_user_day ?? undefined, adminCreated: r.admin_created,
       advertiserName: r.advertiser_name, advertiserUsername: r.advertiser_username,
     })),
   };
 };
 
 const adminAction = async (actorId, id, allowedFrom, nextStatus, kind, extra = {}) => {
-  if (!(await can(actorId, 'content'))) return { error: 'not_allowed' };
+  if (!(await canAdsAdmin(actorId))) return { error: 'not_allowed' };
   const { rows } = await query('SELECT status FROM ad_campaigns WHERE id = $1', [id]);
   if (!rows[0]) return { error: 'not_found' };
   if (!allowedFrom.includes(rows[0].status)) return { error: 'bad_status' };
@@ -705,4 +723,54 @@ export const sweepOrphanAdMedia = async () => {
   for (const id of orphans) await remove(id);
   if (orphans.length) await query('DELETE FROM ad_media_meta WHERE media_id = ANY($1::text[])', [orphans]).catch(() => {});
   return { removed: orphans.length };
+};
+
+/* ─── Кампании от администрации (право ads_manage): без оплаты, с приоритетом и частотой ─── */
+export const adminCreateCampaign = async (actorId, body = {}) => {
+  if (!(await can(actorId, 'ads_manage'))) return { error: 'not_allowed' };
+  const name = clean(body.name, 100); if (name.length < 2) return { error: 'empty_name' };
+  const title = clean(body.title, MAX_TITLE); if (!title) return { error: 'empty_title' };
+  const description = clean(body.description, MAX_DESCRIPTION);
+  const placement = String(body.placement ?? ''); const spec = PLACEMENTS[placement]; if (!spec) return { error: 'bad_placement' };
+  const format = String(body.format ?? ''); if (!spec.formats.includes(format)) return { error: 'bad_format' };
+  const mediaId = body.mediaId ? String(body.mediaId) : null;
+  if ((format === 'image' || format === 'video' || format === 'text_image') && !mediaId) return { error: 'media_required' };
+  if (mediaId) {
+    if (!/^adm-[0-9a-f-]{36}$/.test(mediaId)) return { error: 'bad_media' };
+    const meta = (await query('SELECT owner_id, kind FROM ad_media_meta WHERE media_id = $1', [mediaId])).rows[0];
+    if (!meta || meta.owner_id !== actorId) return { error: 'bad_media' };
+    if (format === 'video' && meta.kind !== 'video') return { error: 'bad_media' };
+    if ((format === 'image' || format === 'text_image') && meta.kind !== 'image') return { error: 'bad_media' };
+  }
+  let linkUrl = null; if (body.linkUrl) { linkUrl = safeHttps(body.linkUrl); if (!linkUrl) return { error: 'bad_link' }; }
+  const starts = body.startsAt ? new Date(body.startsAt) : new Date(); const ends = new Date(body.endsAt);
+  if (Number.isNaN(starts.getTime()) || Number.isNaN(ends.getTime()) || ends <= starts || ends <= new Date()) return { error: 'bad_dates' };
+  if (ends.getTime() - starts.getTime() > 366 * 86_400_000) return { error: 'bad_dates' };
+  const priority = Math.max(0, Math.min(100, Math.trunc(Number(body.priority)) || 0));
+  const perUser = body.maxPerUserDay === undefined || body.maxPerUserDay === null || body.maxPerUserDay === '' ? null : Math.max(1, Math.min(50, Math.trunc(Number(body.maxPerUserDay)) || 1));
+  const regions = cleanRegionList(body.targetRegions);
+  const start = body.start === false ? 'paused' : (starts <= new Date() ? 'active' : 'scheduled');
+  const id = newCampaignId(); const days = Math.max(1, Math.ceil((ends.getTime() - starts.getTime()) / 86_400_000));
+  await query(`INSERT INTO ad_campaigns (id, advertiser_id, name, title, description, format, placement, media_id, link_url, link_sig, target_regions, status, budget, daily_limit, duration_days, max_impressions_per_day, requested_start_at, starts_at, ends_at, approved_by, approved_at, priority, max_per_user_day, admin_created)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,0,0,$13,1000000,$14,$14,$15,$2,now(),$16,$17,TRUE)`,
+    [id, actorId, name, title, description, format, placement, mediaId, linkUrl, linkUrl ? signLink(id, linkUrl) : null, regions, start, days, starts, ends, priority, perUser]);
+  await logEvent(id, 'created', actorId, `Кампания администрации «${name}»`);
+  await logAdmin({ actorId, targetType: 'system', type: 'ad_admin_campaign', detail: `${name}: ${placement}, ${start}, приоритет ${priority}` });
+  return { ok: true, id, status: start };
+};
+/** Правка своей (админской) кампании: текст, ссылка, даты, приоритет, частота. Ссылка подписывается заново. */
+export const adminEditCampaign = async (actorId, id, body = {}) => {
+  if (!(await can(actorId, 'ads_manage'))) return { error: 'not_allowed' };
+  const c = (await query('SELECT * FROM ad_campaigns WHERE id = $1', [String(id)])).rows[0];
+  if (!c) return { error: 'not_found' }; if (!c.admin_created) return { error: 'not_admin_campaign' };
+  if (['completed', 'cancelled'].includes(c.status)) return { error: 'bad_status' };
+  const title = body.title === undefined ? c.title : clean(body.title, MAX_TITLE), description = body.description === undefined ? c.description : clean(body.description, MAX_DESCRIPTION);
+  const name = body.name === undefined ? c.name : clean(body.name, 100); if (!title || !name) return { error: 'empty_title' };
+  let link = c.link_url; if (body.linkUrl !== undefined) { link = body.linkUrl ? safeHttps(body.linkUrl) : null; if (body.linkUrl && !link) return { error: 'bad_link' }; }
+  const ends = body.endsAt ? new Date(body.endsAt) : c.ends_at; if (Number.isNaN(new Date(ends).getTime()) || new Date(ends) <= new Date()) return { error: 'bad_dates' };
+  const priority = body.priority === undefined ? c.priority : Math.max(0, Math.min(100, Math.trunc(Number(body.priority)) || 0));
+  const perUser = body.maxPerUserDay === undefined ? c.max_per_user_day : (body.maxPerUserDay === null || body.maxPerUserDay === '' ? null : Math.max(1, Math.min(50, Math.trunc(Number(body.maxPerUserDay)) || 1)));
+  await query('UPDATE ad_campaigns SET name=$2, title=$3, description=$4, link_url=$5, link_sig=$6, ends_at=$7, priority=$8, max_per_user_day=$9, updated_at=now() WHERE id=$1', [c.id, name, title, description, link, link ? signLink(c.id, link) : null, ends, priority, perUser]);
+  await logEvent(c.id, 'edited', actorId); await logAdmin({ actorId, targetType: 'system', type: 'ad_admin_campaign_edit', detail: `${c.id}` });
+  return { ok: true };
 };

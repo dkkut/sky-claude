@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, Wallet, Store, PackageCheck, Truck, Car, BarChart3, Settings2, ChevronRight, Loader2,
-  CheckCircle2, Clock3, CircleDashed, LifeBuoy, UserCog, Ticket, Receipt,
+  CheckCircle2, Clock3, CircleDashed, LifeBuoy, UserCog, Ticket, Receipt, BookOpen,
 } from 'lucide-react';
 import { ModuleGate } from '@/core/moduleClosures';
 import { useAuthStore } from '@/core/auth/store';
@@ -28,10 +28,11 @@ import * as K from '@/kassabiz/api';
 import { bizApi } from '@/go/bizApi';
 import { goApi } from '@/go/api';
 import { SkyGo } from '@/go/GoModule';
+import { BusinessRules } from './BusinessRules';
 import { OrganizerCabinet } from '@/tickets/OrganizerCabinet';
 import { apiOrganizer, type OrganizerState } from '@/tickets/ticketsApi';
 
-type Sec = 'overview' | 'kassa' | 'seller' | 'pvz' | 'logistics' | 'go' | 'tickets' | 'analytics' | 'tax' | 'settings';
+type Sec = 'overview' | 'rules' | 'kassa' | 'seller' | 'pvz' | 'logistics' | 'go' | 'tickets' | 'analytics' | 'tax' | 'settings';
 const SECTIONS: { id: Sec; label: string; hint: string; icon: typeof Wallet; closedKey?: string }[] = [
   { id: 'overview',  label: 'Обзор',      hint: 'Все ваши бизнес-системы',            icon: LayoutDashboard },
   { id: 'kassa',     label: 'Касса',      hint: 'Sky для бизнеса: оплата, QR, витрина', icon: Wallet, closedKey: 'kbiz' },
@@ -41,6 +42,7 @@ const SECTIONS: { id: Sec; label: string; hint: string; icon: typeof Wallet; clo
   { id: 'go',        label: 'Sky GO',     hint: 'Организации, водители, парковки',      icon: Car, closedKey: 'go' },
   { id: 'tickets',   label: 'Билеты',     hint: 'Мероприятия, продажа, контроль входа', icon: Ticket, closedKey: 'tickets' },
   { id: 'analytics', label: 'Аналитика',  hint: 'Показатели SkyKassa Business',         icon: BarChart3, closedKey: 'kbiz' },
+  { id: 'rules',     label: 'Правила',    hint: 'Правила организаций и бренда Sky',      icon: BookOpen },
   { id: 'tax',       label: 'Налоги',     hint: 'Sky Tax: чеки и отчёты',               icon: Receipt },
   { id: 'settings',  label: 'Настройки',  hint: 'Раздел по умолчанию, поддержка',       icon: Settings2 },
 ];
@@ -266,6 +268,7 @@ export const BusinessModule = () => {
       case 'go':        return wrap(<SkyGo businessMode />);
       case 'tickets':   return wrap(<OrganizerCabinet onBack={() => setSec('overview')} />);
       case 'analytics': return wrap(<Analytics />);
+      case 'rules':     return <div className="h-full overflow-y-auto overflow-x-hidden"><BusinessRules /></div>;
       case 'tax':       return <div className="h-full overflow-y-auto overflow-x-hidden p-3 sm:p-5"><MyTax /></div>;
       default:          return <div className="h-full overflow-y-auto overflow-x-hidden"><Settings open={setSec} /></div>;
     }

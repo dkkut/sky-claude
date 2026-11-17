@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, ExternalLink, Megaphone, Pin } from 'lucide-react';
 import type { AdPlacement } from './store';
+import { useModuleStore } from '@/data/state/modules';
 import { apiServeAd, apiRecordImpression, apiRecordClick, apiRecordView, type ServedAd } from './adsApi';
 
 /** Общий хук: получает рекламу под площадку, один раз пишет показ,
@@ -34,11 +35,16 @@ export const useServedAd = (placement: AdPlacement) => {
 
   const click = async () => {
     if (!ad) return;
-    const linkUrl = impressionId.current
-      ? await apiRecordClick(ad.campaignId, impressionId.current, placement)
-      : null;
-    const url = linkUrl ?? ad.linkUrl;
-    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    // Адрес и переход отдаёт сервер (подпись ссылки проверена там): присланное вместе с показом не используется для перехода.
+    const res = impressionId.current ? await apiRecordClick(ad.campaignId, impressionId.current, placement) : null;
+    if (ad.house) {
+      const t = res?.target; if (!t) return;
+      const m = useModuleStore.getState();
+      if (t.tab) m.setPendingExtrasTab(t.tab);
+      m.setActiveModule(t.module as never);
+      return;
+    }
+    if (res?.linkUrl) window.open(res.linkUrl, '_blank', 'noopener,noreferrer');
   };
 
   const view = (watchedSec: number) => { if (impressionId.current) void apiRecordView(impressionId.current, watchedSec); };
@@ -71,7 +77,7 @@ export const BannerAd = ({ placement, className = '' }: { placement: AdPlacement
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-              style={{ background:'rgba(79,110,247,0.2)', color:'#818cf8' }}>Реклама</span>
+              style={{ background:'rgba(79,110,247,0.2)', color:'#818cf8' }}>{ad.label || 'Реклама'}</span>
           </div>
           <p className="text-sm font-semibold text-white truncate">{ad.title}</p>
           {ad.description && (
@@ -113,7 +119,7 @@ export const FeedAd = () => {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
-            style={{ background:'rgba(79,110,247,0.15)', color:'#818cf8' }}>Реклама</span>
+            style={{ background:'rgba(79,110,247,0.15)', color:'#818cf8' }}>{ad.label || 'Реклама'}</span>
           <button type="button" onClick={() => setDismissed(true)}
             className="grid h-6 w-6 place-items-center rounded-full hover:bg-white/10">
             <X size={11} style={{ color:'rgba(255,255,255,0.4)' }}/>
@@ -143,8 +149,8 @@ export const FeedAd = () => {
 };
 
 /* -- Preroll Ad (перед видео) ------------------------------- */
-export const PrerollAd = ({ onSkip }: { onSkip: () => void }) => {
-  const { ad, ready, click, view } = useServedAd('video_preroll');
+export const PrerollAd = ({ onSkip, placement = 'video_preroll' }: { onSkip: () => void; placement?: AdPlacement }) => {
+  const { ad, ready, click, view } = useServedAd(placement);
   const [canSkip, setCanSkip] = useState(false);
   const [left, setLeft] = useState(5);
   const vidRef = useRef<HTMLVideoElement>(null);

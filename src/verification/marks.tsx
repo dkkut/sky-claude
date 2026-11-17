@@ -1,7 +1,7 @@
 /** Отметки верификации: «Подтверждено» и «Официальный». Данные — с сервера (`/api/verification/marks`), показ — только то, что он подтвердил. */
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import { BadgeCheck, ShieldCheck } from 'lucide-react';
+import { BadgeCheck } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 
 export type MarkType = 'user' | 'chat_group' | 'chat_channel' | 'video_channel';
@@ -53,17 +53,19 @@ export const useMark = (type: MarkType, id?: string): Mark => {
   return mark;
 };
 
+/** Все отметки — синие, одним цветом (в любой теме и при любом акценте); различаются подсказкой. */
+export const MARK_BLUE = '#1d9bf0';
+
 export const markLabel = (m: 'verified' | 'official') => (m === 'official' ? 'Официальный аккаунт Sky' : 'Подтверждено Sky');
 
 /** Значок рядом с именем. Ничего не рисует без подтверждения сервера. */
 export const VerifiedBadge = ({ type, id, size = 14 }: { type: MarkType; id?: string; size?: number }) => {
   const m = useMark(type, id);
   if (!m) return null;
-  const Icon = m === 'official' ? ShieldCheck : BadgeCheck;
   return (
     <span title={markLabel(m)} aria-label={markLabel(m)} role="img" data-verified-mark={m}
-      className="ml-1 inline-flex shrink-0 translate-y-[1px] align-middle" style={{ color: m === 'official' ? 'var(--amber, #f59e0b)' : 'var(--accent)' }}>
-      <Icon size={size} />
+      className="ml-1 inline-flex shrink-0 translate-y-[1px] align-middle" style={{ color: MARK_BLUE }}>
+      <BadgeCheck size={size} />
     </span>
   );
 };

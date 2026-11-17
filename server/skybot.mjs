@@ -22,6 +22,9 @@ const ensureBot = async () => {
   await query(
     `INSERT INTO profiles (id, sky_id, username, name, is_bot) VALUES ($1, NULL, $2, $3, TRUE) ON CONFLICT DO NOTHING`,
     [SKYBOT_PROFILE, SKYBOT_USERNAME, SKYBOT_NAME]);
+  await query(`INSERT INTO verifications (id, subject_type, subject_id, mark, status, requested_by, decided_by, decided_at)
+    SELECT 'ver-skybot-official', 'official', $1, 'official', 'approved', $1, $1, now()
+    WHERE NOT EXISTS (SELECT 1 FROM verifications WHERE id = 'ver-skybot-official' OR (subject_type = 'official' AND subject_id = $1 AND status IN ('pending','approved')))`, [SKYBOT_PROFILE]).catch(() => {});
   ready = true;
 };
 

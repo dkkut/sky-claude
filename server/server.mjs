@@ -48,6 +48,12 @@ import { passwordRoutes } from './routes/password.mjs';
 import { skyIdRoutes } from './routes/skyid.mjs';
 import { walletRoutes } from './routes/wallet.mjs';
 import { walletFxRoutes } from './routes/walletfx.mjs';
+import { appUpdateRoutes } from './routes/appupdate.mjs';
+import { walletP2pRoutes } from './routes/walletp2p.mjs';
+import { bizRulesRoutes } from './routes/bizrules.mjs';
+import { chanModRoutes } from './routes/chanmod.mjs';
+import { startChanMod } from './chanmod.mjs';
+import { startGateSync } from './appupdate.mjs';
 import { emailCommsRoutes, ofdRoutes } from './routes/emailcomms.mjs';
 import { taxRoutes } from './routes/tax.mjs';
 import { processQueue as taxQueue, sweepTax } from './taxcore.mjs';
@@ -299,7 +305,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [gameInfraRoutes, customGiftsRoutes, acctFreezeRoutes, taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, specialistsRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [appUpdateRoutes, walletP2pRoutes, bizRulesRoutes, chanModRoutes, gameInfraRoutes, customGiftsRoutes, acctFreezeRoutes, taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, specialistsRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -809,7 +815,7 @@ const start = async () => {
 
   // Самозащита: снятие уровня по сроку, чистка блокировок, проверка целостности кода (раз в 5 минут).
   let defTicks = 0;
-  startFirewall(); startFxRefresh();
+  startFirewall(); startFxRefresh(); startGateSync(); startChanMod();
   let mailTicks = 0;
   const mailSchedule = setInterval(() => { mailTicks += 1; (async () => { await processOutbox(); await tickCampaigns(); if (mailTicks % 5 === 1) { await sweepPrime(); await sweepMoney(); } })().catch((e) => console.error('[email] тик:', e.message)); }, 20 * 1000);
   mailSchedule.unref();

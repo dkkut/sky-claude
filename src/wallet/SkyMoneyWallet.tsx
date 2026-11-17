@@ -24,7 +24,8 @@ import { RefundRequest } from './RefundRequest';
 import { MoneyGate } from './MoneyGate';
 import { Secret } from './Secret';
 import { FxAccounts } from './FxAccounts';
-import { Settings as SettingsIcon, Sparkles } from 'lucide-react';
+import { SendMoney } from './SendMoney';
+import { Settings as SettingsIcon, Sparkles, Send } from 'lucide-react';
 import { MoneySettings } from './MoneySettings';
 import { apiCall } from '@/core/auth/api';
 import { SkyCards } from './stubs/SkyCards';
@@ -51,7 +52,7 @@ const C = {
 /* QUICK_AMOUNTS moved to TopUpSheet */
 
 /* -- Toplevel section type --------------------------------------- */
-type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan' | 'refund' | 'cards' | 'crypto' | 'fx';
+type WView = 'main' | 'topup' | 'checkout' | 'history' | 'pay_history' | 'gifts' | 'exchange' | 'codes' | 'scan' | 'refund' | 'cards' | 'crypto' | 'fx' | 'send';
 
 /* -- Balance Card ----------------------------------------------- */
 
@@ -481,6 +482,7 @@ const SkyMoneyWalletInner = ({ onSection, onSettings }: { onSection: (s: Section
       </div>
     </div>
   );
+  if (view === 'send') return <SendMoney onBack={() => { setView('main'); void useMoney.getState().refresh(); }} />;
   if (view === 'fx') return <FxAccounts onBack={() => setView('main')} rubBalance={getBalance(currentUserId ?? '')} />;
   if (view === 'refund') return <RefundRequest txs={txs} onBack={() => setView('main')}/>;
   if (view === 'history') return <HistoryView txs={txs} onBack={() => setView('main')}/>;
@@ -574,6 +576,17 @@ const SkyMoneyWalletInner = ({ onSection, onSettings }: { onSection: (s: Section
           <Gift size={15} style={{ color:'var(--t2)' }}/>
         </div>
         <span className="text-sm font-medium flex-1 text-left" style={{ color:C.t1 }}>Мои подарки</span>
+        <ChevronRight size={14} style={{ color:C.t3 }}/>
+      </button>
+
+      {/* Перевод по Sky ID */}
+      <button type="button" onClick={() => setView('send')}
+        className="flex items-center gap-2 w-full rounded-2xl px-4 py-3 transition-colors hover:bg-white/[0.03]"
+        style={{ background:C.l2, border:`1px solid ${C.border}` }}>
+        <div className="grid h-8 w-8 place-items-center rounded-xl" style={{ background:`${C.accent}15` }}>
+          <Send size={14} style={{ color:C.accent }}/>
+        </div>
+        <span className="text-sm font-medium flex-1 text-left" style={{ color:C.t1 }}>Перевод по Sky ID</span>
         <ChevronRight size={14} style={{ color:C.t3 }}/>
       </button>
 

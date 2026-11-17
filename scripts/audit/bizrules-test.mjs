@@ -1,0 +1,44 @@
+/** Правила Sky Business: редакции, публикация, архив, уведомления организациям, ознакомление с версией, права. Модуль на Postgres `skytest`. */
+process.env.OWNER_USERNAME = 'browner';
+const B = await import('../../server/bizrules.mjs');
+const { query } = await import('../../server/db.mjs');
+let ok = 0, bad = 0; const t = (n, c) => { c ? ok++ : (bad++, console.log('FAIL', n)); };
+const sfx = Date.now().toString(36);
+const mk = async (tag, { username, admin = false } = {}) => { const i = `acc-br${tag}${sfx}`; await query('INSERT INTO sky_ids (id, email) VALUES ($1,$2)', [`sky-${i}`, `${i}@t.test`]); await query('INSERT INTO profiles (id, username, name, sky_id, is_admin) VALUES ($1,$2,$3,$4,$5)', [i, username ?? `u${tag}${sfx}`, `Имя ${tag}`, `sky-${i}`, admin]); return { id: i }; };
+await query("DELETE FROM profiles WHERE username = 'browner'");
+await query('DELETE FROM biz_rule_acks'); await query('DELETE FROM biz_rule_revisions'); 
+const ADM = await mk('a', { admin: true }), U = await mk('u'), ORG = await mk('o'), ORG2 = await mk('p');
+await query(`INSERT INTO kb_businesses (id, owner_id, name) VALUES ($1,$2,'Орг') ON CONFLICT DO NOTHING`, [`kb-br${sfx}`, ORG.id]).catch(async () => { throw new Error('kb_businesses insert failed'); });
+await query('INSERT INTO market_sellers (profile_id, shop_name) VALUES ($1, \'Магазин\') ON CONFLICT DO NOTHING', [ORG2.id]);
+
+t('users cannot admin', (await B.adminList(U.id)).error === 'not_allowed' && (await B.adminSaveDraft(U.id, 'pvz', { title: 'xxx', body: 'y'.repeat(40) })).error === 'not_allowed' && (await B.adminPublish(U.id, 'pvz')).error === 'not_allowed' && (await B.adminHistory(U.id, 'pvz')).error === 'not_allowed' && (await B.adminAcks(U.id, 'pvz')).error === 'not_allowed');
+const l = await B.adminList(ADM.id);
+t('six sections, seeded as drafts, nothing published', l.sections.length === 6 && l.sections.every((s) => s.draft && !s.published));
+t('sections cover required topics', ['general', 'organizations', 'sellers', 'pvz', 'warehouses', 'brand'].every((k) => l.sections.some((s) => s.section === k)));
+const pvzDraft = l.sections.find((s) => s.section === 'pvz').draft;
+t('pvz template mentions logo placement, size, legibility, street visibility, entrance', ['25 см', '20 метров', 'Контраст', 'Вход'].every((w) => pvzDraft.body.includes(w)));
+t('warehouse template covers entrances, gates, vehicle reception', /входах/.test(l.sections.find((s) => s.section === 'warehouses').draft.body) && /въездах/.test(l.sections.find((s) => s.section === 'warehouses').draft.body) && /приёма транспорта/.test(l.sections.find((s) => s.section === 'warehouses').draft.body));
+t('drafts invisible to people', (await B.publicRules(ORG.id)).sections.every((s) => !s.published));
+t('validation', (await B.adminSaveDraft(ADM.id, 'zzz', { title: 'xxx', body: 'y'.repeat(40) })).error === 'bad_section' && (await B.adminSaveDraft(ADM.id, 'pvz', { title: 'x', body: 'y'.repeat(40) })).error === 'bad_title' && (await B.adminSaveDraft(ADM.id, 'pvz', { title: 'Заголовок', body: 'коротко' })).error === 'bad_body');
+t('edit draft (same version)', (await B.adminSaveDraft(ADM.id, 'pvz', { title: 'Правила пунктов выдачи', body: pvzDraft.body + '\n9. Дополнение.' })).ok && (await B.adminList(ADM.id)).sections.find((s) => s.section === 'pvz').draft.version === 1);
+t('publish nothing without draft', (await B.adminPublish(ADM.id, 'pvz')).ok && (await B.adminPublish(ADM.id, 'pvz')).error === 'no_draft');
+t('published visible, org needs ack', await (async () => { const r = (await B.publicRules(ORG.id)).sections.find((s) => s.section === 'pvz'); return r.published.version === 1 && r.needsAck && !r.acknowledged; })());
+t('notification went to organisation owners only', Number((await query("SELECT count(*)::int n FROM gift_notifications WHERE kind = 'biz_rules' AND user_id = $1", [ORG.id])).rows[0].n) >= 1 && Number((await query("SELECT count(*)::int n FROM gift_notifications WHERE kind = 'biz_rules' AND user_id = $1", [U.id])).rows[0].n) === 0);
+t('non-organisation cannot acknowledge', (await B.acknowledge(U.id, 'pvz')).error === 'not_organization');
+t('ack unpublished section refused', (await B.acknowledge(ORG.id, 'brand')).error === 'not_published');
+t('org acknowledges (idempotent), recorded with time', (await B.acknowledge(ORG.id, 'pvz')).ok && (await B.acknowledge(ORG.id, 'pvz')).ok && Number((await query("SELECT count(*)::int n FROM biz_rule_acks WHERE profile_id = $1 AND section = 'pvz'", [ORG.id])).rows[0].n) === 1);
+t('ack count visible to admin', (await B.adminAcks(ADM.id, 'pvz')).acknowledged.some((a) => a.profileId === ORG.id) && (await B.adminAcks(ADM.id, 'pvz')).pending >= 1);
+// новая редакция
+await B.adminSaveDraft(ADM.id, 'pvz', { title: 'Правила пунктов выдачи', body: 'Новая редакция правил. '.repeat(5) });
+t('new version needs change note', (await B.adminPublish(ADM.id, 'pvz')).error === 'change_note_required');
+await B.adminSaveDraft(ADM.id, 'pvz', { title: 'Правила пунктов выдачи', body: 'Новая редакция правил. '.repeat(5), changeNote: 'Уточнён размер логотипа' });
+const pub2 = await B.adminPublish(ADM.id, 'pvz', { notify: true });
+t('publish v2, previous archived, history kept', pub2.ok && pub2.version === 2 && (await B.adminHistory(ADM.id, 'pvz')).items.map((x) => `${x.version}:${x.status}`).join() === '2:published,1:archived');
+t('only one published', Number((await query("SELECT count(*)::int n FROM biz_rule_revisions WHERE section='pvz' AND status='published'")).rows[0].n) === 1);
+t('new version needs new ack', (await B.publicRules(ORG.id)).sections.find((s) => s.section === 'pvz').needsAck === true && (await B.pendingCount(ORG.id)) >= 1);
+t('old ack not counted for v2', (await B.adminAcks(ADM.id, 'pvz')).acknowledged.length === 0);
+t('ack v2', (await B.acknowledge(ORG.id, 'pvz')).version === 2 && (await B.adminAcks(ADM.id, 'pvz')).acknowledged.length === 1);
+t('concurrent publish: one wins', await (async () => { await B.adminSaveDraft(ADM.id, 'brand', { title: 'Бренд Sky', body: 'Правила использования бренда. '.repeat(4) }); const r = await Promise.all([B.adminPublish(ADM.id, 'brand'), B.adminPublish(ADM.id, 'brand'), B.adminPublish(ADM.id, 'brand')]); return r.filter((x) => x.ok).length === 1 && Number((await query("SELECT count(*)::int n FROM biz_rule_revisions WHERE section='brand' AND status='published'")).rows[0].n) === 1; })());
+t('publish without notify sends nothing', await (async () => { await B.adminSaveDraft(ADM.id, 'sellers', { title: 'Продавцы', body: 'Требования к продавцам. '.repeat(4) }); const before = Number((await query("SELECT count(*)::int n FROM gift_notifications WHERE kind='biz_rules'")).rows[0].n); const r = await B.adminPublish(ADM.id, 'sellers', { notify: false }); return r.ok && r.notified === 0 && Number((await query("SELECT count(*)::int n FROM gift_notifications WHERE kind='biz_rules'")).rows[0].n) === before; })());
+t('audit log written', Number((await query("SELECT count(*)::int n FROM admin_log WHERE type IN ('biz_rules_publish','biz_rules_draft')")).rows[0].n) >= 3);
+console.log(`bizrules: ${ok} ok, ${bad} failed`); process.exit(bad ? 1 : 0);

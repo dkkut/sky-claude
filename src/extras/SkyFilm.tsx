@@ -1,3 +1,4 @@
+import { PrerollAd } from '@/ads/AdBlocks';
 import { usePip, togglePip } from '@/shared/pip';
 import { UploadLimitsButton } from '@/shared/UploadLimitsDialog';
 import { SkyLoader } from '@/shared/SkyLoader';
@@ -230,6 +231,7 @@ export const Player = ({ movie, onClose, together = null, onNextEpisode }: {
   const cRef  = useRef<HTMLDivElement>(null);
   const timer = useRef<number | null>(null);
   const [pl,  setPl]  = useState(false);
+  const [adDone, setAdDone] = useState(Boolean(together));
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(movie.duration || 0);
   const [vol, setVol] = useState(0.85);
@@ -421,6 +423,7 @@ export const Player = ({ movie, onClose, together = null, onNextEpisode }: {
     <motion.div ref={cRef} data-keep-dark="" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-[100] bg-black flex items-center justify-center"
       onMouseMove={bump} style={{ cursor: ui ? 'default' : 'none' }}>
+      {!adDone && <PrerollAd key={movie.id} placement="film_preroll" onSkip={() => setAdDone(true)} />}
 
       {movie.bytes > 0 ? (
         <video ref={vRef} src={videoUrl(movie.id)} className="h-full w-full object-contain"

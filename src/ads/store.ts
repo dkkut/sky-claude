@@ -16,6 +16,7 @@ import {
 
 export type AdPlacement =
   | 'video_preroll'   // перед видео
+  | 'film_preroll'    // перед кино
   | 'video_banner'    // баннер поверх видео
   | 'bloom_feed'      // пост в Bloom-ленте
   | 'bloom_stories'   // в историях
