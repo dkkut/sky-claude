@@ -97,6 +97,8 @@ const hydrate = async (postRows, viewerId) => {
   ]);
 
   const authorById = new Map(authors.rows.map((a) => [a.id, a]));
+  const cids = [...new Set(postRows.map((p) => p.community_id).filter(Boolean))];
+  const commById = new Map(cids.length ? (await query('SELECT id, slug, name, emoji FROM bloom_communities WHERE id = ANY($1::text[])', [cids])).rows.map((c) => [c.id, c]) : []);
   const byPost = (rows) => {
     const m = new Map();
     for (const r of rows) {
@@ -153,6 +155,7 @@ const hydrate = async (postRows, viewerId) => {
       createdAt: p.created_at.toISOString(),
       tags: (tagsByPost.get(p.id) ?? []).map((t) => t.tag),
       isPinned: p.is_pinned,
+      ...(p.community_id && commById.get(p.community_id) ? { communityId: p.community_id, communitySlug: commById.get(p.community_id).slug, communityName: commById.get(p.community_id).name, communityEmoji: commById.get(p.community_id).emoji, communityPinned: p.community_pinned === true } : {}),
       title: p.title ?? undefined,
       isBlog: !!p.is_blog,
       isAd: !!p.is_ad,
@@ -174,6 +177,18 @@ const hydrate = async (postRows, viewerId) => {
  * в отдельном запросе к чему-то из этого нельзя: он всегда берётся из
  * серверной сессии (regionOf), не из тела запроса.
  */
+/** Условие видимости поста с учётом сообщества: пост вне сообщества виден всем, пост публичного — всем, закрытого — только его активным участникам. Заблокированное/удалённое сообщество скрыто. */
+export const communityVisibleSql = (viewerParam) => `(bp.community_id IS NULL OR EXISTS (
+  SELECT 1 FROM bloom_communities bc WHERE bc.id = bp.community_id AND NOT bc.blocked AND bc.deleted_at IS NULL
+    AND (bc.privacy = 'public' OR EXISTS (SELECT 1 FROM bloom_community_members bm WHERE bm.community_id = bc.id AND bm.profile_id = ${viewerParam}::text AND bm.status = 'active'))))`;
+/** Можно ли человеку видеть пост и взаимодействовать с ним (забаненный в сообществе — нет). */
+export const canInteract = async (postId, userId) => {
+  const { rows } = await query(
+    `SELECT 1 FROM bloom_posts bp WHERE bp.id = $1 AND bp.deleted_at IS NULL AND ${communityVisibleSql('$2')}
+       AND NOT EXISTS (SELECT 1 FROM bloom_community_members bm WHERE bm.community_id = bp.community_id AND bm.profile_id = $2::text AND bm.status = 'banned')`, [postId, userId]);
+  return rows.length > 0;
+};
+
 const selectPosts = async (whereSql, params, viewerId = null, viewerRegion = null) => {
   const a = params.length + 1;
   const r = params.length + 2;
@@ -182,6 +197,7 @@ const selectPosts = async (whereSql, params, viewerId = null, viewerRegion = nul
        FROM bloom_posts bp
       WHERE bp.deleted_at IS NULL AND ${whereSql}
         AND (bp.author_id = $${a} OR $${r}::text IS NULL OR NOT (bp.blocked_regions @> ARRAY[$${r}::text]))
+        AND ${communityVisibleSql(`$${a}`)}
       ORDER BY bp.created_at DESC
       LIMIT 500`,
     [...params, viewerId, viewerRegion],
@@ -275,7 +291,7 @@ export const trending = async () => {
   const { rows } = await query(
     `SELECT tag, count(*)::int AS n FROM bloom_post_tags t
        JOIN bloom_posts p ON p.id = t.post_id
-      WHERE p.deleted_at IS NULL
+      WHERE p.deleted_at IS NULL AND (p.community_id IS NULL OR EXISTS (SELECT 1 FROM bloom_communities bc WHERE bc.id = p.community_id AND bc.privacy = 'public' AND NOT bc.blocked AND bc.deleted_at IS NULL))
       GROUP BY tag ORDER BY n DESC LIMIT 8`,
   );
   return rows.map((r) => [r.tag, String(r.n)]);
@@ -297,7 +313,7 @@ export const hotComments = async (viewerId = null) => {
     `SELECT c.id AS comment_id, c.post_id, c.author_id, c.body, c.created_at, c.author_id AS c_author,
             (SELECT count(*)::int FROM bloom_comment_likes cl WHERE cl.comment_id = c.id) AS likes
        FROM bloom_comments c
-       JOIN bloom_posts p ON p.id = c.post_id AND p.deleted_at IS NULL
+       JOIN bloom_posts p ON p.id = c.post_id AND p.deleted_at IS NULL AND p.community_id IS NULL
       WHERE c.deleted_at IS NULL
       ORDER BY likes DESC, c.created_at DESC LIMIT 12`,
   );
@@ -366,6 +382,8 @@ export const recentEvents = async (userId, sinceIso) => {
 const adFields = (body) => ({ isAd: body?.isAd === true, adNote: body?.isAd === true ? clean(body?.adNote, 80) : '' });
 
 export const createPost = async (authorId, body) => {
+  const communityId = body?.communityId ? String(body.communityId) : null;
+  if (communityId) { const g = await communityPostGate(authorId, communityId); if (g.error) return g; }
   const isBlog = body?.isBlog === true;
   const title = isBlog ? clean(body?.title, MAX_TITLE_CHARS) : '';
   if (isBlog && title.length < 3) return { error: 'blog_title_required' };
@@ -390,12 +408,12 @@ export const createPost = async (authorId, body) => {
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO bloom_posts (id, author_id, kind, body, media_id, media_mime, media_aspect, location, title, is_blog, is_ad, ad_note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      `INSERT INTO bloom_posts (id, author_id, kind, body, media_id, media_mime, media_aspect, location, title, is_blog, is_ad, ad_note, community_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [id, authorId, kind, text, mediaId, mediaId ? String(body?.mediaMime ?? '').slice(0, 100) : null,
        mediaId && Number.isFinite(body?.mediaAspect) ? Number(body.mediaAspect) : null,
        body?.location ? clean(body.location, 120) : null,
-       isBlog ? title : null, isBlog, ad.isAd, ad.isAd ? (ad.adNote || null) : null],
+       isBlog ? title : null, isBlog, ad.isAd, ad.isAd ? (ad.adNote || null) : null, communityId],
     );
     for (const tag of tags) {
       await client.query('INSERT INTO bloom_post_tags (post_id, tag) VALUES ($1,$2)', [id, tag]);
@@ -475,7 +493,7 @@ export const publicAuthor = async (username) => {
   return { name: pr.name, username: pr.username, bio: pr.profile_visibility?.showAbout === 'nobody' ? '' : (pr.bio ?? ''), posts: posts.map(publicShape) };
 };
 export const publicMediaMime = async (mediaId) => {
-  const { rows } = await query(`SELECT bp.media_mime, bp.author_id, bp.blocked_regions, p.profile_visibility FROM bloom_posts bp JOIN profiles p ON p.id = bp.author_id WHERE bp.media_id = $1 AND bp.deleted_at IS NULL`, [mediaId]);
+  const { rows } = await query(`SELECT bp.media_mime, bp.author_id, bp.blocked_regions, p.profile_visibility FROM bloom_posts bp JOIN profiles p ON p.id = bp.author_id WHERE bp.media_id = $1 AND bp.deleted_at IS NULL AND ${communityVisibleSql('NULL')}`, [mediaId]);
   const r = rows[0]; if (!r || !postsPublic(r.profile_visibility) || (r.blocked_regions ?? []).length) return null;
   return r.media_mime ?? null;
 };
@@ -493,8 +511,7 @@ export const deletePost = async (postId, actorId) => {
 
 export const react = async (postId, userId, emoji) => {
   if (!REACTIONS.includes(emoji)) return { error: 'bad_emoji' };
-  const { rows } = await query('SELECT 1 FROM bloom_posts WHERE id = $1 AND deleted_at IS NULL', [postId]);
-  if (!rows.length) return { error: 'not_found' };
+  if (!(await canInteract(postId, userId))) return { error: 'not_found' };
 
   const del = await query(
     'DELETE FROM bloom_reactions WHERE post_id = $1 AND user_id = $2 AND emoji = $3',
@@ -513,8 +530,7 @@ export const react = async (postId, userId, emoji) => {
 export const addComment = async (postId, authorId, text) => {
   const body = clean(text, MAX_COMMENT_CHARS);
   if (!body) return { error: 'empty_comment' };
-  const { rows } = await query('SELECT 1 FROM bloom_posts WHERE id = $1 AND deleted_at IS NULL', [postId]);
-  if (!rows.length) return { error: 'not_found' };
+  if (!(await canInteract(postId, authorId))) return { error: 'not_found' };
   const id = newCommentId();
   await query(
     'INSERT INTO bloom_comments (id, post_id, author_id, body) VALUES ($1,$2,$3,$4)',
@@ -539,8 +555,8 @@ export const deleteComment = async (commentId, actorId) => {
 };
 
 export const likeComment = async (commentId, userId) => {
-  const { rows } = await query('SELECT 1 FROM bloom_comments WHERE id = $1 AND deleted_at IS NULL', [commentId]);
-  if (!rows.length) return { error: 'not_found' };
+  const { rows } = await query('SELECT post_id FROM bloom_comments WHERE id = $1 AND deleted_at IS NULL', [commentId]);
+  if (!rows.length || !(await canInteract(rows[0].post_id, userId))) return { error: 'not_found' };
   const del = await query('DELETE FROM bloom_comment_likes WHERE comment_id = $1 AND user_id = $2', [commentId, userId]);
   if (del.rowCount > 0) return { liked: false };
   await query('INSERT INTO bloom_comment_likes (comment_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [commentId, userId]);
@@ -552,8 +568,7 @@ export const likeComment = async (commentId, userId) => {
 export const toggleSave = async (postId, userId) => {
   const del = await query('DELETE FROM bloom_saves WHERE post_id = $1 AND user_id = $2', [postId, userId]);
   if (del.rowCount > 0) return { saved: false };
-  const { rows } = await query('SELECT 1 FROM bloom_posts WHERE id = $1 AND deleted_at IS NULL', [postId]);
-  if (!rows.length) return { error: 'not_found' };
+  if (!(await canInteract(postId, userId))) return { error: 'not_found' };
   await query('INSERT INTO bloom_saves (post_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [postId, userId]);
   return { saved: true };
 };
@@ -561,8 +576,7 @@ export const toggleSave = async (postId, userId) => {
 export const toggleRepost = async (postId, userId) => {
   const del = await query('DELETE FROM bloom_reposts WHERE post_id = $1 AND user_id = $2', [postId, userId]);
   if (del.rowCount > 0) return { reposted: false };
-  const { rows } = await query('SELECT 1 FROM bloom_posts WHERE id = $1 AND deleted_at IS NULL', [postId]);
-  if (!rows.length) return { error: 'not_found' };
+  if (!(await canInteract(postId, userId))) return { error: 'not_found' };
   await query('INSERT INTO bloom_reposts (post_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [postId, userId]);
   return { reposted: true };
 };
@@ -578,6 +592,7 @@ export const recordView = async (postId, userId) => {
 /* ── Опросы ─────────────────────────────────────────────────────── */
 
 export const votePoll = async (postId, userId, optionId) => {
+  if (!(await canInteract(postId, userId))) return { error: 'not_found' };
   const { rows } = await query(
     'SELECT 1 FROM bloom_poll_options WHERE id = $1 AND post_id = $2', [optionId, postId],
   );
@@ -610,6 +625,7 @@ export const toggleHide = async (userId, authorId) => {
 export const sendGift = async (fromId, postId, modelKey) => {
   const opt = GIFT_CATALOG[modelKey];
   if (!opt) return { error: 'bad_gift' };
+  if (!(await canInteract(postId, fromId))) return { error: 'not_found' };
   const { rows } = await query('SELECT author_id FROM bloom_posts WHERE id = $1 AND deleted_at IS NULL', [postId]);
   if (!rows[0]) return { error: 'not_found' };
   const toId = rows[0].author_id;
@@ -648,8 +664,8 @@ export const sendGift = async (fromId, postId, modelKey) => {
 };
 
 /** MIME по id уже сохранённого медиа — для раздачи файла (Content-Type). */
-export const mediaMimeOf = async (mediaId) => {
-  const { rows } = await query('SELECT media_mime FROM bloom_posts WHERE media_id = $1', [mediaId]);
+export const mediaMimeOf = async (mediaId, viewerId = null) => {
+  const { rows } = await query(`SELECT media_mime FROM bloom_posts bp WHERE bp.media_id = $1 AND ${communityVisibleSql('$2')}`, [mediaId, viewerId]);
   return rows[0]?.media_mime ?? null;
 };
 
@@ -723,4 +739,21 @@ export const sweepOrphanBloomMedia = async () => {
   const orphans = stored.filter((id) => !used.has(id));
   for (const id of orphans) await remove(id);
   return { removed: orphans.length };
+};
+
+/** Право писать в сообщество: активный участник, не забанен, не заблокировано; при политике «только модераторы» — владелец и модераторы. */
+export const communityPostGate = async (userId, communityId) => {
+  const { rows } = await query(
+    `SELECT c.post_policy, c.blocked, m.role, m.status FROM bloom_communities c LEFT JOIN bloom_community_members m ON m.community_id = c.id AND m.profile_id = $2 WHERE c.id = $1 AND c.deleted_at IS NULL`, [communityId, userId]);
+  const r = rows[0]; if (!r || r.blocked) return { error: 'not_found' };
+  if (r.status !== 'active') return { error: r.status === 'banned' ? 'banned' : 'not_member' };
+  if (r.post_policy === 'mods' && !['owner', 'mod'].includes(r.role)) return { error: 'mods_only' };
+  return { ok: true };
+};
+export const communityPosts = async (viewerId, communityId) => {
+  const [hidden, blocked, viewerRegion] = await Promise.all([query('SELECT hidden_author_id FROM bloom_hidden WHERE user_id = $1', [viewerId]), blockedSet(viewerId), regionOf(viewerId)]);
+  const hiddenIds = new Set(hidden.rows.map((r) => r.hidden_author_id));
+  const rows = await selectPosts('bp.community_id = $1', [communityId], viewerId, viewerRegion);
+  const posts = (await hydrate(rows, viewerId)).filter((p) => p.authorId === viewerId || (!hiddenIds.has(p.authorId) && !blocked.has(p.authorId)));
+  return posts.sort((a, b) => (b.communityPinned === true) - (a.communityPinned === true) || b.createdAt.localeCompare(a.createdAt));
 };

@@ -11,6 +11,7 @@
    в useEffect и читают закэшированное.
 ============================================================ */
 import { create } from 'zustand';
+import { apiCall } from '@/core/auth/api';
 import { useAuthStore } from '@/core/auth/store';
 import { useMoney } from '@/wallet/store';
 import type { Rarity } from '@/gifts/types';
@@ -62,6 +63,7 @@ export interface BloomPost {
   reposts: number; repostedByMe?: boolean; views: number; createdAt: string; tags: string[];
   isPinned?: boolean; location?: string; poll?: BloomPoll;
   title?: string; isBlog?: boolean; isAd?: boolean; adNote?: string; editedAt?: string;
+  communityId?: string; communitySlug?: string; communityName?: string; communityEmoji?: string; communityPinned?: boolean;
 }
 
 export type FeedTab = 'algo'|'fresh'|'saved'|'mine';
@@ -99,6 +101,8 @@ interface BloomState {
   loadFeed:       (tab: FeedTab, force?: boolean) => Promise<void>;
   loadTag:        (tag: string, force?: boolean) => Promise<void>;
   loadAuthorPosts:(authorId: string, force?: boolean) => Promise<void>;
+  /** Посты сообщества лежат в authorPostsCache под ключом `c:<id>` — так их патчат те же реакции/комментарии, что и везде. */
+  loadCommunityPosts:(communityId: string) => Promise<boolean>;
   /** Найти пост в уже загруженных кэшах; если нигде нет — попросить сервер. */
   loadPost:       (postId: string) => Promise<void>;
   loadTrending:   (force?: boolean) => Promise<void>;
@@ -196,6 +200,13 @@ export const useBloomStore = create<BloomState>((set, get) => {
       if (!force && get().authorPostsCache[authorId]) return;
       const posts = await apiBloomAuthorPosts(authorId);
       set(s => ({ authorPostsCache: { ...s.authorPostsCache, [authorId]: posts } }));
+    },
+
+    loadCommunityPosts: async (communityId) => {
+      const r = await apiCall<{ posts: BloomPost[]; contentVisible: boolean }>(`/api/bloom/communities/${encodeURIComponent(communityId)}/posts`);
+      if (!r.ok) return false;
+      set(s => ({ authorPostsCache: { ...s.authorPostsCache, [`c:${communityId}`]: r.data?.posts ?? [] } }));
+      return r.data?.contentVisible !== false;
     },
 
     loadPost: async (postId) => {

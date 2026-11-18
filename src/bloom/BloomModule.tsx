@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Clock, Bookmark, User, Search, Hash, Plus, X, Flower2, Bell, PenLine } from 'lucide-react';
+import { Sparkles, Clock, Bookmark, User, Search, Hash, Plus, X, Flower2, Bell, PenLine, Users } from 'lucide-react';
 import { FeedAd } from '@/ads/AdBlocks';
 import { useBloomStore, type FeedTab } from './store';
 import { PostCard }        from './components/PostCard';
 import { CreatePost }      from './components/CreatePost';
 import { ExploreView }     from './components/ExploreView';
+import { CommunitiesView } from './Communities';
 import { FeedWidgets }     from './components/FeedWidgets';
 import { NotificationsView } from './components/NotificationsView';
 import { PostDetailView }  from './components/PostDetailView';
@@ -53,6 +54,9 @@ export const BloomModule = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [tagSearch,  setTagSearch]  = useState<string | null>(null);
   const [explore,    setExplore]    = useState(false);
+  const [commOpen,   setCommOpen]   = useState(false);
+  const [commSlug,   setCommSlug]   = useState<string | null>(null);
+  useEffect(() => { const h = (e: Event) => { const slug = (e as CustomEvent<string>).detail; setCommOpen(true); setCommSlug(slug || null); setExplore(false); setTagSearch(null); }; window.addEventListener('sky:bloom-community', h); return () => window.removeEventListener('sky:bloom-community', h); }, []);
   const [notifOpen,  setNotifOpen]  = useState(false);
   const [detailPost, setDetailPost] = useState<string | null>(null);
 
@@ -116,12 +120,12 @@ export const BloomModule = () => {
         <div className={isMobile ? 'px-3 pb-2' : 'px-4 pb-3'}>
           <div className="glass-pill flex min-w-0 items-center gap-0.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
             {TABS.map(({ key, label, icon: TabIcon }) => {
-              const isActive = tab === key && !tagSearch && !explore;
+              const isActive = tab === key && !tagSearch && !explore && !commOpen;
               const cnt = key === 'saved' ? (feedCache.saved?.length ?? null)
                 : key === 'mine' ? (feedCache.mine?.length ?? null) : null;
               return (
                 <button key={key} type="button"
-                  onClick={() => { setTab(key); setTagSearch(null); setExplore(false); }}
+                  onClick={() => { setTab(key); setTagSearch(null); setExplore(false); setCommOpen(false); }}
                   className="relative isolate flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold"
                   style={{ color: isActive ? 'var(--t1)' : 'var(--t3)', background: 'transparent', border: 0 }}>
                   {isActive && <motion.span layoutId="bloom-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
@@ -134,7 +138,13 @@ export const BloomModule = () => {
                 </button>
               );
             })}
-            <button type="button" onClick={() => setExplore(v => !v)}
+            <button type="button" onClick={() => { setCommOpen(v => !v); setCommSlug(null); setExplore(false); setTagSearch(null); }}
+              className="relative isolate flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold"
+              style={{ color: commOpen ? 'var(--t1)' : 'var(--t3)', background: 'transparent', border: 0 }}>
+              {commOpen && <motion.span layoutId="bloom-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
+              <Users size={12} style={{ color: commOpen ? 'var(--accent)' : undefined }}/>Сообщества
+            </button>
+            <button type="button" onClick={() => { setExplore(v => !v); setCommOpen(false); }}
               className="relative isolate flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold"
               style={{ color: explore ? 'var(--t1)' : 'var(--t3)', background: 'transparent', border: 0 }}>
               {explore && <motion.span layoutId="bloom-lens" transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="glass-lens absolute inset-0 -z-10" />}
@@ -145,7 +155,11 @@ export const BloomModule = () => {
       </div>
 
       {/* Контент */}
-      {explore ? (
+      {commOpen ? (
+        <div className="flex-1 overflow-y-auto">
+          <CommunitiesView openSlug={commSlug} onOpen={setCommSlug} onAuthorClick={id => openProfile(id)} onTagClick={t => { setTagSearch(t); setCommOpen(false); }}/>
+        </div>
+      ) : explore ? (
         <ExploreView
           onAuthorClick={id => { openProfile(id); setExplore(false); }}
           onTagClick={t => { setTagSearch(t); setExplore(false); }}/>

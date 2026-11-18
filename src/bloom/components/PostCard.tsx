@@ -116,6 +116,13 @@ export const PostCard = memo(({ post, onAuthorClick, onTagClick }: {
       className="overflow-hidden rounded-2xl sky-transition relative"
       style={{ background: 'var(--bg-l1)', border: '1px solid var(--border)' }}>
 
+      {post.communityId && (
+        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('sky:bloom-community', { detail: post.communitySlug }))}
+          className="flex w-full items-center gap-1.5 px-4 pt-3 text-left text-[11px] font-bold" style={{ color: 'var(--accent)' }}>
+          <span>{post.communityEmoji ?? '🌸'}</span><span translate="no">{post.communityName}</span>{post.communityPinned && <Pin size={10} />}
+        </button>
+      )}
+
       {/* Индикатор популярности */}
       {heat && (
         <div className="absolute top-3 right-3 z-20 flex items-center gap-1 rounded-full px-2 py-0.5"

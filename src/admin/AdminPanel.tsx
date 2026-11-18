@@ -77,6 +77,7 @@ import { AdsPlusTab } from './AdsPlusTab';
 import { BizRulesTab } from './BizRulesTab';
 import { ChanModTab } from './ChanModTab';
 import { LifeAdminTab } from './LifeAdminTab';
+import { BloomCommTab } from './BloomCommTab';
 import { SpecialistsTab } from './SpecialistsTab';
 import { GameInfraTab } from './GameInfraTab';
 import { CustomGiftsTab } from './CustomGiftsTab';
@@ -5668,7 +5669,7 @@ const NotifyAdminSection = () => {
 
 /* ─── Панель ───────────────────────────────────────────────────────── */
 
-type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'firewall' | 'maps' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops' | 'fxrates' | 'email' | 'ofd' | 'tax' | 'royalties' | 'mediarestrict' | 'specialists' | 'gameinfra' | 'customgifts' | 'acctfreeze' | 'guide' | 'p2p' | 'adsplus' | 'bizrules' | 'chanmod' | 'life';
+type Tab = 'monitor' | 'overview' | 'people' | 'pending' | 'admins' | 'grant' | 'video' | 'bloom' | 'pulse' | 'campaigns' | 'gifts' | 'couriers' | 'family' | 'garant' | 'market' | 'kutrent' | 'goplaces' | 'pets' | 'customization' | 'ads' | 'codes' | 'sellers' | 'onsite' | 'blox' | 'notify' | 'log' | 'events' | 'violations' | 'content' | 'go' | 'parking' | 'registration' | 'globalblock' | 'site' | 'modules' | 'skykassa' | 'storage' | 'oidc' | 'ssh' | 'leaks' | 'defense' | 'firewall' | 'maps' | 'prime' | 'aiusage' | 'partners' | 'kbiz' | 'systems' | 'uploadlimits' | 'verification' | 'artists' | 'logs' | 'recovery' | 'resources' | 'sandbox' | 'updates' | 'launcher' | 'ops' | 'fxrates' | 'email' | 'ofd' | 'tax' | 'royalties' | 'mediarestrict' | 'specialists' | 'gameinfra' | 'customgifts' | 'acctfreeze' | 'guide' | 'p2p' | 'adsplus' | 'bizrules' | 'chanmod' | 'life' | 'bloomcomm';
 
 export const AdminPanel = () => {
   const [rights, setRights] = useState<MyRights | null>(null);
@@ -5902,6 +5903,7 @@ export const AdminPanel = () => {
     { key: 'adsplus', label: 'Реклама Sky', show: has('ads_manage') },
     { key: 'bizrules', label: 'Правила Business', show: has('business_rules') },
     { key: 'chanmod', label: 'Модерация каналов', show: has('channel_mod') },
+    { key: 'bloomcomm', label: 'Bloom: сообщества', show: has('bloom_communities') },
     { key: 'life', label: 'Sky Life', show: has('life_admin') || has('life_moderation') },
     { key: 'gameinfra', label: 'Игровые серверы', show: has('game_infra') },
     { key: 'customgifts', label: 'Свои подарки', show: has('gifts') },
@@ -6159,6 +6161,7 @@ export const AdminPanel = () => {
       {tab === 'bizrules' && <BizRulesTab />}
       {tab === 'chanmod' && <ChanModTab />}
       {tab === 'life' && <LifeAdminTab />}
+      {tab === 'bloomcomm' && <BloomCommTab />}
       {tab === 'gameinfra' && <GameInfraTab />}
       {tab === 'customgifts' && <CustomGiftsTab />}
       {tab === 'acctfreeze' && <AccountFreezeTab />}

@@ -1,11 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { apiCall } from '@/core/auth/api';
 import { motion } from 'framer-motion';
 import { X, ImageIcon, MapPin, BarChart2, Trash2 } from 'lucide-react';
 import { useBloomStore } from '../store';
 import { useAuthStore } from '@/core/auth/store';
 import { Av } from './Primitives';
 
-export const CreatePost = ({ onClose }: { onClose: () => void }) => {
+export const CreatePost = ({ onClose, communityId: fixedCommunity }: { onClose: () => void; communityId?: string }) => {
   const addPost = useBloomStore(s => s.addPost);
   const { currentUserId, accounts } = useAuthStore();
   const me = accounts.find(a => a.id === currentUserId);
@@ -24,6 +25,9 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
   const [title,      setTitle]      = useState('');
   const [isAd,       setIsAd]       = useState(false);
   const [adNote,     setAdNote]     = useState('');
+  const [communityId, setCommunityId] = useState<string>(fixedCommunity ?? '');
+  const [myCommunities, setMyCommunities] = useState<{ id: string; name: string; emoji: string; postPolicy: string; mine: { role: string; status: string } | null }[]>([]);
+  useEffect(() => { let on = true; void apiCall<{ communities: typeof myCommunities }>('/api/bloom/communities?sort=mine').then(r => { if (on && r.ok) setMyCommunities((r.data?.communities ?? []).filter(c => c.mine?.status === 'active' && (c.postPolicy === 'all' || ['owner', 'mod'].includes(c.mine.role)))); }); return () => { on = false; }; }, []);
   const maxLen = blog ? 20000 : 280;
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -44,7 +48,7 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
     setError(null);
     const tags = Array.from(text.matchAll(/#(\w+)/g)).map(m => m[1]);
     const ok = await addPost({
-      text: text.trim(), tags,
+      text: text.trim(), tags, communityId: communityId || undefined,
       location: location.trim() || undefined,
       poll: pollValid ? { question: pollQ.trim(), options: validPollOpts } : undefined,
       isBlog: blog || undefined, title: blog ? title.trim() : undefined,
@@ -167,6 +171,12 @@ export const CreatePost = ({ onClose }: { onClose: () => void }) => {
           <button type="button" onClick={() => setIsAd(v => !v)}
             className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs hover:bg-white/5"
             style={{ color: isAd ? 'var(--accent)' : 'var(--t3)' }}>Реклама</button>
+          {myCommunities.length > 0 && !fixedCommunity && (
+            <select value={communityId} onChange={e => setCommunityId(e.target.value)} aria-label="Где опубликовать" className="max-w-[130px] rounded-xl px-2 py-1.5 text-xs outline-none" style={{ background: 'var(--bg-l2)', color: 'var(--t2)', border: '1px solid var(--border)' }}>
+              <option value="">В мою ленту</option>
+              {myCommunities.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+            </select>
+          )}
           <span className="ml-auto mr-2 shrink-0 text-xs" style={{ color: text.length > maxLen ? 'var(--red)' : 'var(--t3)' }}>
             {text.length}/{maxLen}
           </span>

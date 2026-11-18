@@ -57,6 +57,7 @@ export interface CreatePostInput {
   location?: string;
   poll?: { question: string; options: string[] };
   isBlog?: boolean; title?: string; isAd?: boolean; adNote?: string;
+  communityId?: string;
 }
 export const apiBloomCreatePost = async (input: CreatePostInput): Promise<{ id: string } | { error: string }> => {
   const r = await apiCall<{ id: string }>('/api/bloom/post', { method: 'POST', body: JSON.stringify(input) });

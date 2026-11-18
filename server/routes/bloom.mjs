@@ -82,13 +82,13 @@ const rejectBody = (req, res, code, body) => {
 
 const errCode = (error) => (
   error === 'not_found' ? 404
-    : error === 'not_allowed' ? 403
+    : ['not_allowed', 'banned', 'not_member', 'mods_only'].includes(error) ? 403
       : error === 'already_voted' ? 409
         : 400
 );
 
-const streamMedia = async (req, res, mediaId, mimeOverride = null) => {
-  const mime = mimeOverride ?? await mediaMimeOf(mediaId);
+const streamMedia = async (req, res, mediaId, mimeOverride = null, viewerId = null) => {
+  const mime = mimeOverride ?? await mediaMimeOf(mediaId, viewerId);
   if (!mime) return json(res, 404, { error: 'not_found' });
   const size = await sizeOf(mediaId);
   if (size === null || size === 0) return json(res, 404, { error: 'not_found' });
@@ -137,7 +137,7 @@ export const bloomRoutes = async (req, res, url) => {
     const session = await requireProfile(req, res);
     if (!session) return true;
     if (!rateLimit(`bloom:stream:${session.profileId}`, STREAM_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
-    return streamMedia(req, res, mediaMatch[1]);
+    return streamMedia(req, res, mediaMatch[1], null, session.profileId);
   }
 
   /* Публичные ссылки: без входа, только для постов авторов, у которых раздел «публикации» открыт всем. Пределы — по адресу. */
