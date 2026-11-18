@@ -1712,7 +1712,7 @@ const HistTab = ({ tracks, favorites, playing, activeId, onPlay, onLike, onAdd, 
 const TabHero = ({ title, sub, icon, list, onPlay, accent }: {
   title: string; sub: string; icon: React.ReactNode; list: Track[]; onPlay: (t: Track, pool: Track[]) => void; accent: string;
 }) => (
-  <div className="relative overflow-hidden mx-3 mt-3 mb-2 rounded-[26px] p-4"
+  <div className="relative overflow-hidden shrink-0 mx-3 mt-3 mb-2 rounded-[26px] p-4"
     style={{ background: `linear-gradient(135deg, ${accent}, rgba(20,16,40,.94) 78%)`, border: '1px solid rgba(255,255,255,.14)', boxShadow: '0 10px 30px rgba(0,0,0,.22)' }}>
     <div className="flex items-center gap-3" data-keep-dark>
       <div className="grid place-items-center shrink-0 rounded-full" style={{ width: 46, height: 46, background: 'rgba(255,255,255,.14)', color: '#fff' }}>{icon}</div>
