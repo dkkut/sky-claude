@@ -26,7 +26,8 @@ import { ArchiveDialog } from '../archive/ArchiveDialog';
 import { AppIconSettings } from '../appicon/AppIconSettings';
 import { openGuide, goTo as goToGuide } from '../guide/nav';
 import { SEASONS, SEASON_ORDER, resolveSeason, type Season } from '../settings/seasons';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, lazy, Suspense } from 'react';
+const LifeModule = lazy(() => import('@/life/LifeModule'));
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Camera, Edit2, Check, X, Phone, Shield, Star, Crown, Clock,
@@ -75,7 +76,7 @@ const fmtDur = (s: number) => s < 60 ? `${s}с` : `${Math.floor(s/60)}м ${s%60}
 const fmtDate = (iso: string) => { try { return new Date(iso).toLocaleString('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}); } catch { return iso; } };
 
 type PrivacyVal = 'all'|'contacts'|'nobody';
-type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'business'|'customization'|'support'|'info';
+type Section = 'main'|'privacy'|'game'|'settings'|'wallet'|'gifts'|'pets'|'gaming_acc'|'proxy'|'referral'|'skyid'|'business'|'life'|'customization'|'support'|'info';
 
 // --- Toggle row --------------------------------------------------------------
 const PrivRow = ({ label, sub, value, onChange }: { label:string; sub?:string; value:PrivacyVal; onChange:(v:PrivacyVal)=>void }) => {
@@ -1232,6 +1233,7 @@ export const ProfileModule = () => {
     {key:'proxy',         label:'Подключение',        icon:Shield},
     {key:'referral',      label:'Приглашения',          icon:Users},
     {key:'skyid',         label:'Sky ID',               icon:Fingerprint},
+    {key:'life',          label:'Sky Life',             icon:Sparkles},
     {key:'business',      label:'Sky для бизнеса',      icon:Briefcase},
     {key:'support',       label:'Тех. поддержка',       icon:LifeBuoy},
     {key:'info',          label:'Информация',           icon:ScrollText},
@@ -1675,6 +1677,12 @@ export const ProfileModule = () => {
         {section === 'gaming_acc' && (
           <div className="flex flex-col h-full overflow-y-auto px-4 py-4" style={{ scrollbarWidth:'none' }}>
             <GamingAccountsPanel userId={currentUserId ?? ''}/>
+          </div>
+        )}
+
+        {section === 'life' && (
+          <div className="flex flex-col h-full overflow-hidden">
+            <Suspense fallback={null}><LifeModule /></Suspense>
           </div>
         )}
 

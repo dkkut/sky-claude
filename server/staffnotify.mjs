@@ -24,6 +24,7 @@ export const CATEGORIES = {
   custom_gift_review: { label: 'Пользовательские подарки на проверке', rights: ['gifts'] },
   freeze_appeal:  { label: 'Апелляции на заморозку', rights: ['account_freeze'] },
   channel_mod_case: { label: 'Автомодерация каналов: новые дела', rights: ['channel_mod'] },
+  life_review: { label: 'Sky Life: публикации и жалобы на проверку', rights: ['life_moderation'] },
   p2p_flag: { label: 'Подозрительные переводы', rights: ['finance'] },
   tax_error:      { label: 'Ошибки и ожидания Sky Tax', rights: ['tax'] },
   topup:          { label: 'Заявки на пополнение (SkyKassa)', rights: ['skykassa'] },

@@ -293,6 +293,15 @@ server {
         include /etc/nginx/snippets/proxy-common.conf;
         proxy_pass http://sky_api;
     }
+    # Sky Life: файлы записей, проектов и публикаций — до 20 МБ (routes/life.mjs). Корень `/api/life/files` API не обслуживает, парный блок не нужен.
+    location ^~ /api/life/files/ {
+        limit_req zone=req_general burst=40 nodelay;
+        client_max_body_size 21m;
+        include /etc/nginx/snippets/proxy-common.conf;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_pass http://sky_api;
+    }
     location ^~ /api/custom-gifts/ {
         limit_req zone=req_general burst=90 nodelay;
         client_max_body_size 13m;

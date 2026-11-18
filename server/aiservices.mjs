@@ -14,6 +14,7 @@ export const SERVICES = {
   documents: { title: 'Документы',             hint: 'Пересказ текста и разбор файлов.' },
   vision:    { title: 'Изображения',           hint: 'Разбор картинки, музыка по фото.' },
   podcasts:  { title: 'Подкасты',              hint: 'Краткое содержание выпусков.' },
+  life:      { title: 'Sky Life',              hint: 'Помощник личного пространства: цели, планы, бизнес-идеи.' },
 };
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:\/-]{0,79}$/;
 const DEFAULT = { enabled: true, model: '', maxTokens: 0, dailyTokens: 0, instructions: '' };

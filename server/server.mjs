@@ -51,6 +51,8 @@ import { walletFxRoutes } from './routes/walletfx.mjs';
 import { appUpdateRoutes } from './routes/appupdate.mjs';
 import { walletP2pRoutes } from './routes/walletp2p.mjs';
 import { bizRulesRoutes } from './routes/bizrules.mjs';
+import { lifeRoutes } from './routes/life.mjs';
+import { sweepLife } from './life.mjs';
 import { chanModRoutes } from './routes/chanmod.mjs';
 import { startChanMod } from './chanmod.mjs';
 import { startGateSync } from './appupdate.mjs';
@@ -305,7 +307,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [appUpdateRoutes, walletP2pRoutes, bizRulesRoutes, chanModRoutes, gameInfraRoutes, customGiftsRoutes, acctFreezeRoutes, taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, specialistsRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [lifeRoutes, appUpdateRoutes, walletP2pRoutes, bizRulesRoutes, chanModRoutes, gameInfraRoutes, customGiftsRoutes, acctFreezeRoutes, taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, specialistsRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -797,6 +799,7 @@ const start = async () => {
   bloxSchedule.unref();
   // Предложения водителям живут секунды, поэтому распределение проверяется часто (а не раз в час, как остальная уборка).
   let dispatchBusy = false;
+  let lastLifeSweep = 0;
   goDispatchSchedule = setInterval(async () => {
     if (dispatchBusy) return;
     dispatchBusy = true;
@@ -804,6 +807,7 @@ const start = async () => {
     try { await sweepFreezes(); } catch (e) { console.error('[freeze] срок:', e.message); }
     try { await sweepParking(); } catch (e) { console.error('[parking] уборка:', e.message); }
     try { await sweepSafety(); } catch (e) { console.error('[safety] уборка:', e.message); }
+    try { if (Date.now() - lastLifeSweep > 55_000) { lastLifeSweep = Date.now(); await sweepLife(); } } catch (e) { console.error('[life] уборка:', e.message); }
     try {   // проверка доступности серверов лаунчера: порциями, не чаще заданного интервала, и не при высокой нагрузке
       if (optionalAllowed()) {
         const st = (await query(`SELECT value FROM launcher_settings WHERE key='probe'`)).rows[0]?.value ?? {};

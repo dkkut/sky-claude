@@ -87,6 +87,8 @@ export const PERMISSIONS = [
   'ads_manage',      // Sky Ads: кампании от администрации, собственные объявления Sky
   'business_rules',  // Sky Business: правила организаций (редакции, публикация, уведомления)
   'channel_mod',     // Автомодерация каналов: очередь дел, решения, апелляции
+  'life_admin',      // Sky Life: настройки, лимиты тарифов, категории, статистика (личные записи недоступны)
+  'life_moderation', // Sky Life: проверка публичных деловых публикаций, жалобы, ограничения
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -153,6 +155,8 @@ export const ROLES = {
   ads_admin:       ['ads_manage'],
   business_rules_admin: ['business_rules'],
   channel_moderator: ['channel_mod'],
+  life_admin_role: ['life_admin'],
+  life_moderator: ['life_moderation'],
   sandbox_admin:   ['sandbox'],
   sandbox_publisher:['sandbox', 'sandbox_publish'],
   global_block_admin:['global_block'],
@@ -196,6 +200,8 @@ export const ROLE_LABEL = {
   ads_admin: 'Sky Ads: кампании и объявления Sky',
   business_rules_admin: 'Sky Business: правила организаций',
   channel_moderator: 'Модерация каналов',
+  life_admin_role: 'Sky Life: настройки и статистика',
+  life_moderator: 'Sky Life: модерация деловых публикаций',
   sandbox_admin: 'Sky Sandbox: проверка сборок',
   sandbox_publisher: 'Sky Sandbox: проверка и одобрение публикации',
   ops_admin: 'Sky Ops: сервер, деплой и сборка приложений',
