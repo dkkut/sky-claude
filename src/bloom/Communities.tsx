@@ -1,15 +1,16 @@
 /** Bloom → «Сообщества»: каталог, мои сообщества, создание, страница сообщества (посты, правила, участники, модерация, настройки). Права и видимость решает сервер (server/bloomcommunities.mjs). */
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Plus, Search, Lock, Globe2, Users, Pin, Flag, ShieldCheck, Loader2, ChevronLeft } from 'lucide-react';
+import { Plus, Search, Lock, Globe2, Users, Pin, Flag, ShieldCheck, Loader2, ChevronDown, MoreHorizontal, MessageSquare, Image as ImageIcon } from 'lucide-react';
 import { apiCall } from '@/core/auth/api';
 import { flash } from '@/shared/flash';
 import { useBloomStore } from './store';
+import { useAuthStore } from '@/core/auth/store';
 import { PostCard } from './components/PostCard';
 import { CreatePost } from './components/CreatePost';
 
 type Mine = { role: 'owner' | 'mod' | 'member'; status: 'active' | 'pending' | 'banned' } | null;
 type Comm = { id: string; slug: string; name: string; description: string; emoji: string; color: string; privacy: 'public' | 'closed'; postPolicy: 'all' | 'mods'; members: number; posts: number; mine: Mine; rules?: { title: string; text: string }[]; ownerId?: string;
-  owner?: { id: string; name: string; username: string }; mods?: { id: string; name: string; username: string; role: string }[]; contentVisible?: boolean; blocked?: boolean; blockReason?: string };
+  createdAt?: string; owner?: { id: string; name: string; username: string }; mods?: { id: string; name: string; username: string; role: string }[]; contentVisible?: boolean; blocked?: boolean; blockReason?: string };
 type Member = { id: string; name: string; username: string; role: string; status: string; banReason?: string };
 const ERR: Record<string, string> = { bad_name: 'Название — от 3 знаков.', bad_slug: 'Адрес: 3–30 знаков a–z, 0–9, _ (слова admin, sky и подобные заняты).', slug_taken: 'Такой адрес уже занят.', too_many_communities: 'Можно владеть не более чем 5 сообществами.', daily_limit: 'Слишком много за сутки.',
   banned: 'Вам закрыт доступ к этому сообществу.', not_member: 'Сначала вступите в сообщество.', mods_only: 'Здесь пишут только модераторы.', forbidden: 'Недостаточно прав.', reason_required: 'Укажите причину.', owner_cannot_leave: 'Владелец не может выйти — удалите сообщество или передайте его.', already_reported: 'Вы уже жаловались.', too_many_pinned: 'Закреплено уже 3 поста.', not_found: 'Не найдено.' };
@@ -87,44 +88,109 @@ const ManagePanel = ({ c, onChanged }: { c: Comm; onChanged: () => void }) => {
   );
 };
 
+const fmtN = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace('.0', '')} млн` : n >= 1e3 ? `${(n / 1e3).toFixed(1).replace('.0', '')} тыс.` : String(n));
+
+/** Боковая панель «О сообществе» (как справа у Reddit): описание, цифры, правила, модераторы. */
+const SideInfo = ({ c }: { c: Comm }) => {
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-2xl" style={card}>
+        <div className="px-4 py-3 text-[11px] font-black uppercase tracking-wide" style={{ background: `color-mix(in srgb, ${c.color} 28%, var(--bg-l2))`, color: 'var(--t1)' }}>О сообществе</div>
+        <div className="space-y-3 p-4">
+          {c.description ? <p className="whitespace-pre-wrap text-sm leading-relaxed" style={{ color: 'var(--t2)' }} translate="no">{c.description}</p> : <p className="text-xs" style={{ color: 'var(--t3)' }}>Описание не добавлено.</p>}
+          <div className="grid grid-cols-2 gap-3 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+            <div><p className="text-lg font-black" style={{ color: 'var(--t1)' }}>{fmtN(c.members)}</p><p className="text-[11px]" style={{ color: 'var(--t3)' }}>участников</p></div>
+            <div><p className="text-lg font-black" style={{ color: 'var(--t1)' }}>{fmtN(c.posts)}</p><p className="text-[11px]" style={{ color: 'var(--t3)' }}>постов</p></div>
+          </div>
+          <p className="flex items-center gap-1.5 border-t pt-3 text-[12px]" style={{ borderColor: 'var(--border)', color: 'var(--t3)' }}>{c.privacy === 'closed' ? <Lock size={12} /> : <Globe2 size={12} />}{c.privacy === 'closed' ? 'Закрытое — вступление по заявке' : 'Открытое — вступает любой'}</p>
+          <p className="text-[12px]" style={{ color: 'var(--t3)' }}>Создано {new Date(c.createdAt ?? Date.now()).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-2xl" style={card}>
+        <div className="px-4 py-3 text-[11px] font-black uppercase tracking-wide" style={{ background: 'var(--bg-l2)', color: 'var(--t1)' }}>Правила сообщества</div>
+        {!(c.rules?.length) ? <p className="p-4 text-xs" style={{ color: 'var(--t3)' }}>Правила не заданы.</p> : c.rules.map((r, i) => (
+          <div key={i} className="border-t" style={{ borderColor: 'var(--border)' }}>
+            <button type="button" onClick={() => setOpen(open === i ? null : i)} className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left" aria-expanded={open === i}>
+              <span className="text-sm font-semibold" style={{ color: 'var(--t1)' }} translate="no">{i + 1}. {r.title}</span><ChevronDown size={14} style={{ color: 'var(--t3)', transform: open === i ? 'rotate(180deg)' : undefined }} />
+            </button>
+            {open === i && r.text && <p className="px-4 pb-3 text-xs leading-relaxed" style={{ color: 'var(--t2)' }} translate="no">{r.text}</p>}
+          </div>))}
+      </div>
+      <div className="overflow-hidden rounded-2xl" style={card}>
+        <div className="px-4 py-3 text-[11px] font-black uppercase tracking-wide" style={{ background: 'var(--bg-l2)', color: 'var(--t1)' }}>Модераторы</div>
+        <div className="space-y-2 p-4">{c.mods?.map((x) => <p key={x.id} className="flex items-center gap-2 text-sm" style={{ color: 'var(--t2)' }} translate="no"><span className="grid h-6 w-6 place-items-center rounded-full text-[10px] font-black text-white" style={{ background: c.color }}>{x.name.slice(0, 1).toUpperCase()}</span>{x.name}<span style={{ color: 'var(--t3)' }}>@{x.username}</span>{x.role === 'owner' && <ShieldCheck size={12} style={{ color: 'var(--accent)' }} />}</p>)}</div>
+      </div>
+    </div>
+  );
+};
+
 const CommunityPage = ({ slug, onBack, onAuthorClick, onTagClick }: { slug: string; onBack: () => void; onAuthorClick: (id: string) => void; onTagClick: (t: string) => void }) => {
-  const [c, setC] = useState<Comm | null | false>(null); const [sub, setSub] = useState<'posts' | 'about' | 'manage'>('posts'); const [create, setCreate] = useState(false);
+  const [c, setC] = useState<Comm | null | false>(null); const [sub, setSub] = useState<'posts' | 'about' | 'manage'>('posts'); const [create, setCreate] = useState(false); const [menu, setMenu] = useState(false);
   const loadCommunityPosts = useBloomStore((s) => s.loadCommunityPosts); const feedVersion = useBloomStore((s) => s.feedVersion);
   const key = c ? `c:${c.id}` : ''; const posts = useBloomStore((s) => (key ? s.authorPostsCache[key] : undefined));
+  const meName = useAuthStore((s) => s.accounts.find((a) => a.id === s.currentUserId)?.name ?? '');
   const load = useCallback(async () => { const r = await apiCall<{ community: Comm }>(`/api/bloom/communities/${encodeURIComponent(slug)}`); if (!r.ok || !r.data) { setC(false); return; } setC(r.data.community); await loadCommunityPosts(r.data.community.id); }, [slug, loadCommunityPosts]);
   useEffect(() => { void load(); }, [load, feedVersion]);
   if (c === null) return <div className="grid h-40 place-items-center"><Loader2 className="animate-spin" size={18} style={{ color: 'var(--t3)' }} /></div>;
   if (c === false) return <div className="space-y-3 p-4"><Btn tone="plain" onClick={onBack}>‹ Назад</Btn><p className="text-sm" style={{ color: 'var(--t2)' }}>Сообщество не найдено или недоступно.</p></div>;
   const m = c.mine; const mod = m?.status === 'active' && (m.role === 'owner' || m.role === 'mod'); const canWrite = m?.status === 'active' && (c.postPolicy === 'all' || mod);
   const join = async () => { const r = await call<{ status: string }>(`/api/bloom/communities/${c.id}/join`, 'POST', {}); if (r) { flash(r.status === 'pending' ? 'Заявка отправлена — ждите решения модератора' : 'Вы вступили'); void load(); } };
+  const leave = async () => { if (window.confirm('Выйти из сообщества?') && (await call(`/api/bloom/communities/${c.id}/leave`, 'POST', {}))) void load(); };
   const pinOrRemove = async (id: string, pinned: boolean) => { const r = await call(`/api/bloom/community-posts/${id}/pin`, 'POST', { on: !pinned }); if (r) void load(); };
   const removeBy = async (id: string) => { const reason = window.prompt('Причина удаления поста (будет видна автору)') ?? ''; if (reason.trim().length < 3) return; if (await call(`/api/bloom/community-posts/${id}/remove`, 'POST', { reason })) void load(); };
+  const joinBtn = !m ? <button type="button" onClick={() => void join()} className="rounded-full px-6 py-2 text-sm font-black text-white transition active:scale-95" style={{ background: 'var(--accent)' }}>{c.privacy === 'closed' ? 'Подать заявку' : 'Вступить'}</button>
+    : m.status === 'pending' ? <button type="button" onClick={() => void leave()} className="rounded-full px-5 py-2 text-sm font-bold" style={{ border: '1px solid var(--border)', color: 'var(--t2)' }}>Заявка отправлена</button>
+    : m.status === 'banned' ? <span className="rounded-full px-4 py-2 text-xs font-bold" style={{ background: 'rgba(239,68,68,.14)', color: '#ef4444' }}>Доступ закрыт</span>
+    : <button type="button" onClick={() => (m.role === 'owner' ? setSub('manage') : void leave())} className="rounded-full px-5 py-2 text-sm font-bold" style={{ border: '1px solid var(--border)', color: 'var(--t1)' }}>{m.role === 'owner' ? 'Управление' : 'Вы в сообществе ✓'}</button>;
+  const feed = (
+    <div className="space-y-3">
+      {canWrite && (
+        <button type="button" onClick={() => setCreate(true)} className="flex w-full items-center gap-3 rounded-2xl p-3 text-left" style={card}>
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-black text-white" style={{ background: c.color }}>{(meName || '?').slice(0, 1).toUpperCase()}</span>
+          <span className="flex-1 rounded-full px-4 py-2 text-sm" style={{ background: 'var(--bg-l2)', color: 'var(--t3)' }}>Создать пост в b/{c.slug}</span><ImageIcon size={18} style={{ color: 'var(--t3)' }} />
+        </button>)}
+      {!c.contentVisible ? <div className="rounded-3xl p-8 text-center" style={card}><Lock size={24} className="mx-auto" style={{ color: 'var(--t3)' }} /><p className="mt-2 text-sm font-bold" style={{ color: 'var(--t1)' }}>Это закрытое сообщество</p><p className="text-xs" style={{ color: 'var(--t3)' }}>Посты видят только участники. Подайте заявку — модератор её рассмотрит.</p></div>
+        : !(posts?.length) ? <div className="rounded-3xl p-8 text-center" style={card}><MessageSquare size={24} className="mx-auto" style={{ color: 'var(--t3)' }} /><p className="mt-2 text-sm font-semibold" style={{ color: 'var(--t2)' }}>Здесь пока нет постов</p>{canWrite && <p className="text-xs" style={{ color: 'var(--t3)' }}>Станьте первым, кто напишет.</p>}</div>
+        : posts.map((p) => <div key={p.id}>
+          {p.communityPinned && <p className="mb-1 flex items-center gap-1 pl-1 text-[11px] font-bold" style={{ color: '#10b981' }}><Pin size={11} />Закреплено модераторами</p>}
+          <PostCard post={p} onAuthorClick={onAuthorClick} onTagClick={onTagClick} />
+          {mod && <div className="mt-1 flex gap-2 pl-1"><Btn tone="plain" onClick={() => void pinOrRemove(p.id, p.communityPinned === true)}><Pin size={11} className="mr-1 inline" />{p.communityPinned ? 'Открепить' : 'Закрепить'}</Btn><Btn tone="red" onClick={() => void removeBy(p.id)}>Удалить как модератор</Btn></div>}</div>)}
+    </div>
+  );
   return (
-    <div className="space-y-3 p-3 sm:p-4">
-      <button type="button" onClick={onBack} className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'var(--t3)' }}><ChevronLeft size={14} />Все сообщества</button>
-      <div className="rounded-3xl p-4" style={{ ...card, background: `linear-gradient(135deg, color-mix(in srgb, ${c.color} 22%, var(--bg-l1)), var(--bg-l1))` }}>
-        <div className="flex items-start gap-3"><Cover c={c} size={56} /><div className="min-w-0 flex-1"><p className="truncate text-lg font-black" style={{ color: 'var(--t1)' }} translate="no">{c.name}</p>
-          <p className="text-[11px]" style={{ color: 'var(--t3)' }}>@{c.slug} · {c.privacy === 'closed' ? 'закрытое' : 'открытое'} · {c.members} участн. · {c.posts} постов</p></div></div>
-        {c.description && <p className="mt-3 whitespace-pre-wrap text-sm" style={{ color: 'var(--t2)' }} translate="no">{c.description}</p>}
-        {c.blocked && <p className="mt-2 text-xs font-bold" style={{ color: '#ef4444' }}>Заблокировано администрацией: {c.blockReason}</p>}
-        <div className="mt-3 flex flex-wrap gap-2">
-          {!m && <Btn onClick={() => void join()}>{c.privacy === 'closed' ? 'Подать заявку' : 'Вступить'}</Btn>}
-          {m?.status === 'pending' && <Btn tone="plain" onClick={async () => { if (await call(`/api/bloom/communities/${c.id}/leave`, 'POST', {})) void load(); }}>Заявка отправлена · отозвать</Btn>}
-          {m?.status === 'active' && m.role !== 'owner' && <Btn tone="plain" onClick={async () => { if (window.confirm('Выйти из сообщества?') && (await call(`/api/bloom/communities/${c.id}/leave`, 'POST', {}))) void load(); }}>Выйти</Btn>}
-          {m?.status === 'banned' && <span className="text-xs font-bold" style={{ color: '#ef4444' }}>Вам закрыт доступ</span>}
-          {canWrite && <Btn onClick={() => setCreate(true)}><Plus size={12} className="mr-1 inline" />Пост в сообществе</Btn>}
-          {m && m.role !== 'owner' && <Btn tone="plain" onClick={async () => { const reason = window.prompt('Причина жалобы: spam, scam, hate, illegal, adult, other', 'spam'); if (reason && (await call(`/api/bloom/communities/${c.id}/report`, 'POST', { reason: reason.trim().toLowerCase() }))) flash('Жалоба отправлена'); }}><Flag size={12} className="mr-1 inline" />Пожаловаться</Btn>}
-        </div>
-        {c.postPolicy === 'mods' && <p className="mt-2 text-[11px]" style={{ color: 'var(--t3)' }}>Публикуют только модераторы.</p>}
+    <div className="pb-6">
+      <div className="relative h-24 sm:h-32" style={{ background: `linear-gradient(120deg, ${c.color}, color-mix(in srgb, ${c.color} 35%, #0b0b14) 70%, #0b0b14)` }}>
+        <div className="absolute inset-0 opacity-40" style={{ backgroundImage: 'radial-gradient(circle at 20% 30%, rgba(255,255,255,.35), transparent 40%), radial-gradient(circle at 80% 10%, rgba(255,255,255,.2), transparent 35%)' }} />
+        <button type="button" onClick={onBack} aria-label="Все сообщества" className="glass-btn round absolute left-3 top-3 grid h-9 w-9 place-items-center text-lg" style={{ color: '#fff' }}>‹</button>
       </div>
-      <div className="glass-pill flex w-fit gap-1 p-1" role="tablist">{([['posts', 'Посты'], ['about', 'О сообществе'], ...(mod ? [['manage', 'Управление']] : [])] as [string, string][]).map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={sub === k} onClick={() => setSub(k as typeof sub)} className="rounded-full px-3.5 py-1.5 text-[12px] font-semibold" style={{ color: sub === k ? 'var(--t1)' : 'var(--t3)', background: sub === k ? 'var(--bg-l2)' : 'transparent' }}>{l}</button>)}</div>
-      {sub === 'posts' && (!c.contentVisible ? <div className="rounded-3xl p-6 text-center" style={card}><Lock size={22} className="mx-auto" style={{ color: 'var(--t3)' }} /><p className="mt-2 text-sm font-semibold" style={{ color: 'var(--t2)' }}>Посты видят только участники</p><p className="text-[11px]" style={{ color: 'var(--t3)' }}>Подайте заявку — модератор её рассмотрит.</p></div>
-        : !(posts?.length) ? <div className="rounded-3xl p-6 text-center text-sm" style={{ ...card, color: 'var(--t3)' }}>В сообществе пока нет постов.</div>
-        : <div className="space-y-3">{posts.map((p) => <div key={p.id}><PostCard post={p} onAuthorClick={onAuthorClick} onTagClick={onTagClick} />
-          {mod && <div className="mt-1 flex gap-2 pl-1"><Btn tone="plain" onClick={() => void pinOrRemove(p.id, p.communityPinned === true)}><Pin size={11} className="mr-1 inline" />{p.communityPinned ? 'Открепить' : 'Закрепить'}</Btn><Btn tone="red" onClick={() => void removeBy(p.id)}>Удалить как модератор</Btn></div>}</div>)}</div>)}
-      {sub === 'about' && <div className="space-y-3"><div className="space-y-2 rounded-2xl p-4" style={card}><p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>Правила</p>{!(c.rules?.length) ? <p className="text-xs" style={{ color: 'var(--t3)' }}>Правила не заданы.</p> : c.rules.map((r, i) => <div key={i}><p className="text-sm font-semibold" style={{ color: 'var(--t1)' }} translate="no">{i + 1}. {r.title}</p>{r.text && <p className="text-xs" style={{ color: 'var(--t2)' }} translate="no">{r.text}</p>}</div>)}</div>
-        <div className="space-y-1 rounded-2xl p-4" style={card}><p className="text-sm font-bold" style={{ color: 'var(--t1)' }}>Владелец и модераторы</p>{c.mods?.map((x) => <p key={x.id} className="text-sm" style={{ color: 'var(--t2)' }} translate="no"><ShieldCheck size={12} className="mr-1 inline" />{x.name} @{x.username}{x.role === 'owner' ? ' · владелец' : ''}</p>)}</div></div>}
-      {sub === 'manage' && mod && <ManagePanel c={c} onChanged={() => void load()} />}
+      <div className="px-3 sm:px-5" style={{ background: 'var(--bg-l1)', borderBottom: '1px solid var(--border)' }}>
+        <div className="mx-auto flex max-w-5xl flex-wrap items-end gap-3 pb-3">
+          <div className="relative z-10 -mt-8 rounded-full p-1" style={{ background: 'var(--bg-l1)' }}><Cover c={c} size={72} /></div>
+          <div className="min-w-0 flex-1 pb-1"><h2 className="truncate text-xl font-black sm:text-2xl" style={{ color: 'var(--t1)' }} translate="no">{c.name}</h2>
+            <p className="text-xs" style={{ color: 'var(--t3)' }}>b/{c.slug} · {fmtN(c.members)} участн.{c.privacy === 'closed' ? ' · закрытое' : ''}</p></div>
+          <div className="relative flex items-center gap-2 pb-1">
+            {canWrite && <button type="button" onClick={() => setCreate(true)} className="hidden items-center gap-1 rounded-full px-4 py-2 text-sm font-bold sm:flex" style={{ border: '1px solid var(--border)', color: 'var(--t1)' }}><Plus size={14} />Пост</button>}
+            {joinBtn}
+            {m && m.role !== 'owner' && (<><button type="button" aria-label="Ещё" onClick={() => setMenu(!menu)} className="grid h-9 w-9 place-items-center rounded-full" style={{ border: '1px solid var(--border)', color: 'var(--t2)' }}><MoreHorizontal size={16} /></button>
+              {menu && <div className="absolute right-0 top-11 z-10 w-48 overflow-hidden rounded-2xl" style={{ ...card, boxShadow: '0 12px 30px rgba(0,0,0,.35)' }}><button type="button" className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm" style={{ color: 'var(--t1)' }} onClick={async () => { setMenu(false); const reason = window.prompt('Причина жалобы: spam, scam, hate, illegal, adult, other', 'spam'); if (reason && (await call(`/api/bloom/communities/${c.id}/report`, 'POST', { reason: reason.trim().toLowerCase() }))) flash('Жалоба отправлена'); }}><Flag size={14} />Пожаловаться</button></div>}</>)}
+          </div>
+        </div>
+        {c.blocked && <p className="mx-auto max-w-5xl pb-2 text-xs font-bold" style={{ color: '#ef4444' }}>Заблокировано администрацией: {c.blockReason}</p>}
+        <div className="mx-auto flex max-w-5xl gap-1 overflow-x-auto" role="tablist" style={{ scrollbarWidth: 'none' }}>
+          {([['posts', 'Посты'], ['about', 'О сообществе'], ...(mod ? [['manage', 'Управление']] : [])] as [string, string][]).map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={sub === k} onClick={() => setSub(k as typeof sub)} className="relative shrink-0 px-4 py-3 text-sm font-bold" style={{ color: sub === k ? 'var(--t1)' : 'var(--t3)' }}>{l}{sub === k && <span className="absolute inset-x-3 bottom-0 h-[3px] rounded-full" style={{ background: 'var(--accent)' }} />}</button>))}
+        </div>
+      </div>
+      <div className="mx-auto mt-4 grid max-w-5xl gap-4 px-3 sm:px-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0">
+          {sub === 'posts' && feed}
+          {sub === 'about' && <div className="lg:hidden"><SideInfo c={c} /></div>}
+          {sub === 'about' && <div className="hidden rounded-2xl p-5 text-sm lg:block" style={{ ...card, color: 'var(--t2)' }}>Сведения о сообществе — в панели справа.</div>}
+          {sub === 'manage' && mod && <ManagePanel c={c} onChanged={() => void load()} />}
+        </div>
+        <aside className="hidden lg:block"><SideInfo c={c} /></aside>
+      </div>
       {create && <CreatePost communityId={c.id} onClose={() => { setCreate(false); void load(); }} />}
     </div>
   );
@@ -142,11 +208,23 @@ export const CommunitiesView = ({ openSlug, onOpen, onAuthorClick, onTagClick }:
       <div className="flex gap-1.5">{([['popular', 'Популярные'], ['new', 'Новые'], ['mine', 'Мои']] as const).map(([k, l]) => <button key={k} type="button" onClick={() => setSort(k)} className="rounded-full px-3 py-1 text-[12px] font-semibold" style={{ background: sort === k ? 'var(--accent-bg)' : 'var(--bg-l2)', color: sort === k ? 'var(--accent)' : 'var(--t2)', border: '1px solid var(--border)' }}>{l}</button>)}</div>
       {!list ? <div className="grid h-32 place-items-center"><Loader2 className="animate-spin" size={18} style={{ color: 'var(--t3)' }} /></div> : !list.length ? (
         <div className="rounded-3xl p-8 text-center" style={{ ...card, border: '1px dashed var(--border)' }}><Users size={26} className="mx-auto" style={{ color: 'var(--t3)' }} /><p className="mt-2 text-sm font-semibold" style={{ color: 'var(--t2)' }}>{sort === 'mine' ? 'Вы пока не состоите ни в одном сообществе' : 'Ничего не найдено'}</p><p className="text-[11px]" style={{ color: 'var(--t3)' }}>Создайте своё — это бесплатно.</p></div>
-      ) : list.map((c) => (
-        <button key={c.id} type="button" onClick={() => onOpen(c.slug)} className="flex w-full items-center gap-3 rounded-2xl p-3 text-left transition active:scale-[.99]" style={card}>
-          <Cover c={c} /><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold" style={{ color: 'var(--t1)' }} translate="no">{c.name}</p>
-            <p className="truncate text-[12px]" style={{ color: 'var(--t3)' }} translate="no">{c.description || `@${c.slug}`}</p>
-            <p className="mt-0.5 flex items-center gap-2 text-[10px]" style={{ color: 'var(--t3)' }}>{c.privacy === 'closed' ? <Lock size={10} /> : <Globe2 size={10} />}{c.members} участн.{c.mine?.status === 'active' ? ' · вы в сообществе' : c.mine?.status === 'pending' ? ' · заявка отправлена' : ''}</p></div></button>))}
+      ) : (
+        <div className="overflow-hidden rounded-2xl" style={card}>
+          {list.map((c, i) => (
+            <div key={c.id} className="flex items-center gap-3 px-3 py-3" style={{ borderTop: i ? '1px solid var(--border)' : undefined }}>
+              {sort === 'popular' && !q && <span className="w-5 shrink-0 text-center text-xs font-black" style={{ color: 'var(--t3)' }}>{i + 1}</span>}
+              <button type="button" onClick={() => onOpen(c.slug)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                <Cover c={c} size={44} />
+                <span className="min-w-0 flex-1"><span className="flex items-center gap-1.5 text-sm font-bold" style={{ color: 'var(--t1)' }}><span className="truncate" translate="no">{c.name}</span>{c.privacy === 'closed' && <Lock size={11} style={{ color: 'var(--t3)' }} />}</span>
+                  <span className="block truncate text-[11px]" style={{ color: 'var(--t3)' }}>b/{c.slug} · {fmtN(c.members)} участн.</span>
+                  {c.description && <span className="block truncate text-[12px]" style={{ color: 'var(--t2)' }} translate="no">{c.description}</span>}</span>
+              </button>
+              {c.mine?.status === 'active' ? <span className="shrink-0 rounded-full px-3 py-1.5 text-xs font-bold" style={{ border: '1px solid var(--border)', color: 'var(--t2)' }}>Вы в сообществе</span>
+                : c.mine?.status === 'pending' ? <span className="shrink-0 rounded-full px-3 py-1.5 text-xs font-bold" style={{ border: '1px solid var(--border)', color: 'var(--t3)' }}>Заявка</span>
+                : c.mine?.status === 'banned' ? null
+                : <button type="button" onClick={async () => { const r = await call<{ status: string }>(`/api/bloom/communities/${c.id}/join`, 'POST', {}); if (r) { flash(r.status === 'pending' ? 'Заявка отправлена' : 'Вы вступили'); void load(); } }} className="shrink-0 rounded-full px-4 py-1.5 text-xs font-black text-white transition active:scale-95" style={{ background: 'var(--accent)' }}>{c.privacy === 'closed' ? 'Заявка' : 'Вступить'}</button>}
+            </div>))}
+        </div>)}
       {create && <CreateForm onClose={() => setCreate(false)} onCreated={(slug) => { setCreate(false); onOpen(slug); }} />}
     </div>
   );

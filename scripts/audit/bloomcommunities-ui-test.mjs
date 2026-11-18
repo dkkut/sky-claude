@@ -26,13 +26,13 @@ for (const [name, w, h] of [['desktop', 1280, 800], ['phone', 390, 800]]) {
   await R.getByRole('button', { name: /Создать/ }).first().click();
   await p.getByPlaceholder('Название').fill('Любители кофе ' + name); await p.getByPlaceholder('адрес_латиницей').fill('cafe_' + name + '_' + sfx);
   await p.getByPlaceholder('О чём это сообщество').fill('Всё о кофе'); await p.getByRole('dialog', { name: 'Новое сообщество' }).getByRole('button', { name: 'Создать' }).click(); await p.waitForTimeout(1500);
-  t(name + ': страница сообщества', (await R.innerText()).includes('Любители кофе ' + name) && (await R.innerText()).includes('Пост в сообществе'), (await R.innerText()).slice(0, 300));
+  t(name + ': страница сообщества', (await R.innerText()).includes('Любители кофе ' + name) && (await R.innerText()).includes('Создать пост в b/'), (await R.innerText()).slice(0, 300));
   t(name + ': нет горизонтальной прокрутки', await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
-  await R.getByRole('button', { name: /Пост в сообществе/ }).click(); await p.waitForTimeout(500);
+  await R.getByRole('button', { name: /Создать пост в/ }).click(); await p.waitForTimeout(500);
   await p.locator('textarea').first().fill('Первый пост про кофе в сообществе ' + name); await p.getByRole('button', { name: 'Опубликовать' }).click(); await p.waitForTimeout(1800);
   t(name + ': пост появился на странице сообщества', (await R.innerText()).includes('Первый пост про кофе в сообществе ' + name), (await R.innerText()).slice(0, 400));
   await R.getByRole('tab', { name: 'О сообществе' }).click(); await p.waitForTimeout(300);
-  t(name + ': вкладка «О сообществе»', (await R.innerText()).includes('Правила'));
+  t(name + ': вкладка «О сообществе»', /правила сообщества/i.test(await R.innerText()));
   await R.getByRole('tab', { name: 'Управление' }).click(); await p.waitForTimeout(700);
   t(name + ': управление владельца (участники, журнал, настройки)', (await R.innerText()).includes('Журнал модерации') && (await R.innerText()).includes('Удалить сообщество'));
   await p.screenshot({ path: '/tmp/bloomc-' + name + '.png' });
