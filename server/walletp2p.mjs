@@ -209,7 +209,7 @@ const doTransfer = async (senderId, { recipientId, currency, amount, token, idem
     flagWork = { id, senderId, rid, cur, amt, rubEquiv, me };
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
 
-  void notifyGift(rid, 'p2p', 'Вам перевели деньги', `${flagWork.me.name} (@${flagWork.me.username}) перевёл(а) вам ${amt}${cur === 'RUB' ? ' ₽' : ` (${cur}, сотых долей)`}`, result.id).catch(() => {});
+  void notifyGift(rid, 'p2p', 'Вам перевели деньги', `${flagWork.me.name} (@${flagWork.me.username}) перевёл(а) вам ${cur === 'RUB' ? `${amt} ₽` : `${(amt / 100).toFixed(2)} ${cur}`}`, result.id).catch(() => {});
   void evaluate(flagWork, s).catch(() => {});
   return result;
 };
