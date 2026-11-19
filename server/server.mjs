@@ -184,6 +184,8 @@ import { moneyGuardRoutes } from './routes/moneyguard.mjs';
 import { isMoneyPath, moneyOpen } from './moneyguard.mjs';
 import { decoyReply } from './moneyrecovery.mjs';
 import { skyQrRoutes } from './routes/skyqr.mjs';
+import { skyTimeRoutes } from './routes/skytime.mjs';
+import { sweepCapsules } from './skytime.mjs';
 import { transferRoutes } from './routes/transfer.mjs';
 import { sweepTransfers } from './transfer.mjs';
 import { applockBlocked, deviceHash } from './applock.mjs';
@@ -308,7 +310,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [bloomCommunitiesRoutes, lifeRoutes, appUpdateRoutes, walletP2pRoutes, bizRulesRoutes, chanModRoutes, gameInfraRoutes, customGiftsRoutes, acctFreezeRoutes, taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, specialistsRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [skyTimeRoutes, bloomCommunitiesRoutes, lifeRoutes, appUpdateRoutes, walletP2pRoutes, bizRulesRoutes, chanModRoutes, gameInfraRoutes, customGiftsRoutes, acctFreezeRoutes, taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, specialistsRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -807,6 +809,7 @@ const start = async () => {
     try { await sweepDispatch(); } catch (e) { console.error('[go] распределение:', e.message); }
     try { await sweepFreezes(); } catch (e) { console.error('[freeze] срок:', e.message); }
     try { await sweepParking(); } catch (e) { console.error('[parking] уборка:', e.message); }
+    try { await sweepCapsules(); } catch { /* сбой одной уборки не мешает остальным */ }
     try { await sweepSafety(); } catch (e) { console.error('[safety] уборка:', e.message); }
     try { if (Date.now() - lastLifeSweep > 55_000) { lastLifeSweep = Date.now(); await sweepLife(); } } catch (e) { console.error('[life] уборка:', e.message); }
     try {   // проверка доступности серверов лаунчера: порциями, не чаще заданного интервала, и не при высокой нагрузке
