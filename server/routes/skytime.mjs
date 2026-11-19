@@ -9,7 +9,7 @@ const STATUS = { not_found: 404, limit_reached: 409, daily_limit: 429, locked: 4
  * владелец данных — профиль из сессии, тело запроса его подменить не может.
  */
 export const skyTimeRoutes = async (req, res, url) => {
-  const u = new URL(url, 'http://x'); const path = u.pathname;
+  const u = new URL(req.url, 'http://x'); const path = u.pathname;
   if (!path.startsWith('/api/time/')) return false;
   const s = await requireProfile(req, res); if (!s) return true;
   const me = s.profileId; const m = req.method;

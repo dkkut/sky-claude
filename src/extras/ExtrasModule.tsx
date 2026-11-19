@@ -42,6 +42,7 @@ const Launcher = lazyChunk(() => import('@/launcher/Launcher').then(m => ({ defa
 const SkyCloud = lazyChunk(() => import('@/cloud/SkyCloud').then(m => ({ default: m.SkyCloud })));
 const SkyTransfer = lazyChunk(() => import('@/transfer/SkyTransfer').then(m => ({ default: m.SkyTransfer })));
 const GuidePage = lazyChunk(() => import('@/guide/GuidePage').then(m => ({ default: m.GuidePage })));
+const SkyCalendar = lazyChunk(() => import('@/calendar/SkyCalendar').then(m => ({ default: m.SkyCalendar })));
 const SkyTime = lazyChunk(() => import('@/time/SkyTime').then(m => ({ default: m.SkyTime })));
 const FriendsMap = lazyChunk(() => import('@/maps/FriendsMap').then(m => ({ default: m.FriendsMap })));
 const Partners = lazyChunk(() => import('@/partners/Partners').then(m => ({ default: m.Partners })));
@@ -101,7 +102,7 @@ import { MediaHome } from '@/mediahome/MediaHome';
    Оформление и порядок экранов сохранены: список карточками, кнопка
    создания, внутри плеер и колонка участников.                     */
 
-type Tab = 'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'partners'|'friendsmap'|'skytime'|'guide'|'transfer'|'more';
+type Tab = 'go'|'garant'|'home'|'music'|'movies'|'prime'|'rooms'|'market'|'blox'|'pvz'|'nftgifts'|'admin'|'ads'|'books'|'pulse'|'campaigns'|'musicians'|'tv'|'podcasts'|'tickets'|'ai'|'bots'|'mybots'|'work'|'family'|'partners'|'friendsmap'|'skytime'|'calendar'|'guide'|'transfer'|'more';
 
 const fmtBytes = (b?: number) => b ? `${(b/1024/1024).toFixed(1)} MB` : '';
 const fmtSec = (s: number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -627,6 +628,7 @@ const TABS = [
   {key:'partners', label:'Партнёры', icon:Handshake},
   {key:'friendsmap', label:'Карта друзей', icon:MapPin},
   {key:'skytime', label:'Sky Time', icon:Hourglass},
+  {key:'calendar', label:'Календарь', icon:Calendar},
   {key:'guide',    label:'Путеводитель', icon:Compass},
   {key:'transfer', label:'Sky Transfer', icon:ArrowLeftRight},
   {key:'more',   label:'Прочее', icon:MoreHorizontal},
@@ -939,6 +941,7 @@ const MediaHomeTab = ({
     { key:'partners',Icon:Handshake,label:'Партнёры', color:'#0ea5e9', bg:'rgba(14,165,233,.12)'  },
     { key:'friendsmap',Icon:MapPin,label:'Карта друзей', color:'#ef4444', bg:'rgba(239,68,68,.12)'  },
     { key:'skytime',Icon:Hourglass,label:'Sky Time', color:'#f59e0b', bg:'rgba(245,158,11,.12)'  },
+    { key:'calendar',Icon:Calendar,label:'Календарь', color:'#3b82f6', bg:'rgba(59,130,246,.12)'  },
     { key:'guide',Icon:Compass,label:'Путеводитель', color:'#8b5cf6', bg:'rgba(139,92,246,.12)'  },
     { key:'transfer',Icon:ArrowLeftRight,label:'Sky Transfer', color:'#38bdf8', bg:'rgba(56,189,248,.12)'  },
   ] as const;
@@ -1364,6 +1367,7 @@ export const ExtrasModule = () => {
         {tab==='partners' && <Partners/>}
         {tab==='friendsmap' && <FriendsMap/>}
         {tab==='skytime' && <SkyTime/>}
+        {tab==='calendar' && <SkyCalendar/>}
         {tab==='guide' && <GuidePage/>}
         {tab==='transfer' && <SkyTransfer/>}
         {tab==='market' && <SkyMarket/>}
