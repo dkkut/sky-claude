@@ -4,6 +4,7 @@
    Ничего здесь не решается: кто автор, что можно удалить, сколько
    стоит подарок — решает только сервер. Этот файл только зовёт ручки.
 =============================================================== */
+import { reportFilter } from '@/shared/contentFilter';
 import { apiCall } from '@/core/auth/api';
 import type { BloomPost, BloomComment, ReactionKey, FeedTab } from './store';
 
@@ -59,8 +60,8 @@ export interface CreatePostInput {
   isBlog?: boolean; title?: string; isAd?: boolean; adNote?: string;
   communityId?: string;
 }
-export const apiBloomCreatePost = async (input: CreatePostInput): Promise<{ id: string } | { error: string }> => {
-  const r = await apiCall<{ id: string }>('/api/bloom/post', { method: 'POST', body: JSON.stringify(input) });
+export const apiBloomCreatePost = async (input: CreatePostInput): Promise<{ id: string; held?: boolean } | { error: string }> => {
+  const r = await apiCall<{ id: string; held?: boolean }>('/api/bloom/post', { method: 'POST', body: JSON.stringify(input) });
   return r.ok && r.data ? r.data : { error: r.error ?? 'failed' };
 };
 
@@ -81,10 +82,11 @@ export const apiBloomReact = async (postId: string, emoji: ReactionKey): Promise
   return r.ok ? r.data?.reacted ?? null : null;
 };
 
-export const apiBloomComment = async (postId: string, text: string): Promise<{ id: string } | null> => {
-  const r = await apiCall<{ id: string }>(`/api/bloom/post/${postId}/comment`, {
+export const apiBloomComment = async (postId: string, text: string): Promise<{ id: string; held?: boolean } | null> => {
+  const r = await apiCall<{ id: string; held?: boolean }>(`/api/bloom/post/${postId}/comment`, {
     method: 'POST', body: JSON.stringify({ text }),
   });
+  if (!r.ok) reportFilter(r.error);
   return r.ok ? r.data ?? null : null;
 };
 

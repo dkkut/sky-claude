@@ -316,7 +316,7 @@ export const musicRoutes = async (req, res, url) => {
       if (!rateLimit(`music:write:${me}`, WRITE_PER_MIN)) return json(res, 429, { error: 'rate_limited' });
       const r = await submitTrack(id, me);
       if (r.error) {
-        const code = r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : /public/.test(r.error) ? 422 : 409;
+        const code = r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : /public/.test(r.error) || r.error === 'content_blocked' ? 422 : 409;
         return json(res, code, r);
       }
       return json(res, 200, { track: await readTrack(id, me) });

@@ -82,6 +82,7 @@ const rejectBody = (req, res, code, body) => {
 
 const errCode = (error) => (
   error === 'not_found' ? 404
+    : error === 'content_blocked' ? 422
     : ['not_allowed', 'banned', 'not_member', 'mods_only'].includes(error) ? 403
       : error === 'already_voted' ? 409
         : 400

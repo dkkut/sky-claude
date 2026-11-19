@@ -4,7 +4,7 @@ import { rateLimit } from './../security.mjs';
 import { communityPosts } from './../bloom.mjs';
 import * as C from './../bloomcommunities.mjs';
 
-const STATUS = { not_found: 404, forbidden: 403, not_allowed: 403, banned: 403, slug_taken: 409, bad_state: 409, already_reported: 409, daily_limit: 429, too_many_communities: 429, too_many_pinned: 409 };
+const STATUS = { content_blocked: 422, not_found: 404, forbidden: 403, not_allowed: 403, banned: 403, slug_taken: 409, bad_state: 409, already_reported: 409, daily_limit: 429, too_many_communities: 429, too_many_pinned: 409 };
 const KEY = '([a-z0-9_]{3,30}|bcm-[0-9a-f-]{36})';
 export const bloomCommunitiesRoutes = async (req, res) => {
   const u = new URL(req.url, 'http://x'); const p = u.pathname;

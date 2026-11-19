@@ -11,6 +11,7 @@
  *     сделал плейлист открытым;
  *   • избранное, история и позиция прослушивания — строго свои.
  */
+import { checkContent, blockedReply } from './contentfilterstore.mjs';
 import crypto from 'node:crypto';
 import { notifyStaff } from './staffnotify.mjs';
 import { retentionOf } from './storagequota.mjs';
@@ -244,14 +245,20 @@ const MAX_REASON = 500;
  */
 export const submitTrack = async (trackId, ownerId) => {
   const { rows } = await query(
-    'SELECT id, owner_id, status, bytes, mime, duration_sec FROM music_tracks WHERE id = $1', [String(trackId ?? '')]);
+    'SELECT id, owner_id, status, bytes, mime, duration_sec, title, artist, album, lyrics FROM music_tracks WHERE id = $1', [String(trackId ?? '')]);
   const row = rows[0];
   if (!row) return { error: 'not_found' };
   if (row.owner_id !== ownerId) return { error: 'not_allowed' };
   if (row.status === 'pending') return { error: 'already_pending' };
   if (row.status === 'published') return { error: 'already_published' };
+  // Фильтр контента: запрещённое не принимается; 18+ и спорное — только через проверку модератором,
+  // даже у владельца сервиса (иначе фильтр обходился бы публикацией «без проверки»).
+  const verdict = await checkContent('music_track', ownerId, [row.title, row.artist, row.album, row.lyrics]);
+  if (verdict.action === 'block') return blockedReply(verdict);
+  const needsReview = verdict.action === 'moderate';
+  if (needsReview && verdict.categories.includes('adult')) await query('UPDATE music_tracks SET explicit = true WHERE id = $1', [trackId]).catch(() => {});
   // Владелец сервиса публикует без проверки: подтверждать некому, кроме него самого.
-  if (await isOwner(ownerId)) {
+  if (!needsReview && await isOwner(ownerId)) {
     await query(
       `UPDATE music_tracks
           SET status = 'published', submitted_at = now(), reject_reason = NULL,

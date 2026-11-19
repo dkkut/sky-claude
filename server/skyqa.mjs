@@ -11,6 +11,7 @@ import { generateId } from './security.mjs';
 import { can } from './admin.mjs';
 import { logAdmin } from './adminsec.mjs';
 import { notifyGift } from './giftnotify.mjs';
+import { checkContent, blockedReply, createHold } from './contentfilterstore.mjs';
 
 export const LIMITS = { title: [10, 200], body: 5000, answer: [10, 5000], tags: 5, tag: 24, askPerDay: 10, answerPerDay: 30, reportPerDay: 10 };
 const clean = (s, n) => String(s ?? '').replace(/\u0000/g, '').replace(/[ \t]+\n/g, '\n').trim().slice(0, n);
@@ -62,18 +63,28 @@ export const getQuestion = async (me, id) => {
 
 export const ask = async (me, b) => {
   const title = clean(b.title, LIMITS.title[1]); if (title.length < LIMITS.title[0]) return { error: 'bad_title' };
-  const body = clean(b.body, LIMITS.body);
+  let body = clean(b.body, LIMITS.body);
+  const tags0 = cleanTags(b.tags);
+  const verdict = await checkContent('qa_question', me, [title, body, ...tags0]);
+  if (verdict.action === 'block') return blockedReply(verdict);
+  if (verdict.action === 'mask') body = verdict.maskFields[1] ?? body;
+  const hold = verdict.action === 'moderate';
   const n = (await query(`SELECT count(*)::int AS n FROM qa_questions WHERE author_id = $1 AND created_at > now() - interval '1 day'`, [me])).rows[0].n;
   if (n >= LIMITS.askPerDay) return { error: 'daily_limit', limit: LIMITS.askPerDay };
   const dup = (await query(`SELECT 1 FROM qa_questions WHERE author_id = $1 AND lower(title) = lower($2) AND created_at > now() - interval '1 day' AND status = 'open'`, [me, title])).rows[0];
   if (dup) return { error: 'duplicate' };
   const id = `qa-${generateId()}`;
-  await query(`INSERT INTO qa_questions (id, author_id, title, body, tags) VALUES ($1,$2,$3,$4,$5)`, [id, me, title, body, cleanTags(b.tags)]);
+  await query(`INSERT INTO qa_questions (id, author_id, title, body, tags, status) VALUES ($1,$2,$3,$4,$5,$6)`, [id, me, title, body, tags0, hold ? 'held' : 'open']);
+  if (hold) { await createHold(query, { kind: 'qa_question', targetId: id, authorId: me, categories: verdict.categories, text: `${title}\n${body}` }); return { ok: true, id, held: true }; }
   return { ok: true, id };
 };
 
 export const answer = async (me, qid, b) => {
-  const body = clean(b.body, LIMITS.answer[1]); if (body.length < LIMITS.answer[0]) return { error: 'bad_body' };
+  let body = clean(b.body, LIMITS.answer[1]); if (body.length < LIMITS.answer[0]) return { error: 'bad_body' };
+  const verdict = await checkContent('qa_answer', me, [body]);
+  if (verdict.action === 'block') return blockedReply(verdict);
+  if (verdict.action === 'mask') body = verdict.maskFields[0] ?? body;
+  const hold = verdict.action === 'moderate';
   const n = (await query(`SELECT count(*)::int AS n FROM qa_answers WHERE author_id = $1 AND created_at > now() - interval '1 day'`, [me])).rows[0].n;
   if (n >= LIMITS.answerPerDay) return { error: 'daily_limit', limit: LIMITS.answerPerDay };
   const client = await pool.connect();
@@ -83,10 +94,11 @@ export const answer = async (me, qid, b) => {
     if (!q) { await client.query('ROLLBACK'); return { error: 'not_found' }; }
     if (q.author_id === me) { await client.query('ROLLBACK'); return { error: 'own_question' }; }
     const id = `qaa-${generateId()}`;
-    const ins = await client.query(`INSERT INTO qa_answers (id, question_id, author_id, body) VALUES ($1,$2,$3,$4) ON CONFLICT (question_id, author_id) DO NOTHING RETURNING id`, [id, qid, me, body]);
+    const ins = await client.query(`INSERT INTO qa_answers (id, question_id, author_id, body, status) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (question_id, author_id) DO NOTHING RETURNING id`, [id, qid, me, body, hold ? 'held' : 'visible']);
     if (!ins.rows[0]) { await client.query('ROLLBACK'); return { error: 'already_answered' }; }
-    await client.query(`UPDATE qa_questions SET answers = answers + 1 WHERE id = $1`, [qid]);
+    if (!hold) await client.query(`UPDATE qa_questions SET answers = answers + 1 WHERE id = $1`, [qid]);
     await client.query('COMMIT');
+    if (hold) { await createHold(query, { kind: 'qa_answer', targetId: id, authorId: me, categories: verdict.categories, text: body }); return { ok: true, id, held: true }; }
     await note(q.author_id, 'qa_answer', 'Новый ответ на ваш вопрос', 'Кто-то ответил на вопрос, который вы задали в Sky Вопросах.', qid);
     return { ok: true, id };
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }

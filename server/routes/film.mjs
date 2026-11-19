@@ -438,7 +438,7 @@ export const filmRoutes = async (req, res, url) => {
         ageRestricted18: body?.ageRestricted18 === true,
       });
       if (r.error) {
-        const code = r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : /public/.test(r.error) ? 422 : 409;
+        const code = r.error === 'not_allowed' ? 403 : r.error === 'not_found' ? 404 : /public/.test(r.error) || r.error === 'content_blocked' ? 422 : 409;
         return json(res, code, r);
       }
       return json(res, 200, { movie: await readMovie(id, me) });

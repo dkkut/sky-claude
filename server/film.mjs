@@ -28,6 +28,7 @@
  * базе. Переписанный клиент, прямой запрос к API, подставленный чужой
  * owner_user_id — всё это проходит через те же условия в SQL.
  */
+import { checkContent, blockedReply } from './contentfilterstore.mjs';
 import crypto from 'node:crypto';
 import { retentionOf } from './storagequota.mjs';
 import { query } from './db.mjs';
@@ -488,13 +489,17 @@ export const deleteMovie = async (movieId, actorId) => {
  * общего каталога, а не для личной полки.
  */
 export const submitMovie = async (movieId, ownerId, { license, explicit, ageRestricted18 } = {}) => {
-  const { rows } = await query('SELECT id, owner_id, status, bytes, mime, duration_sec FROM film_movies WHERE id = $1',
+  const { rows } = await query('SELECT id, owner_id, status, bytes, mime, duration_sec, title, description FROM film_movies WHERE id = $1',
     [String(movieId ?? '')]);
   const row = rows[0];
   if (!row) return { error: 'not_found' };
   if (row.owner_id !== ownerId) return { error: 'not_allowed' };
   if (row.status === 'pending') return { error: 'already_pending' };
   if (row.status === 'published') return { error: 'already_published' };
+  // Фильтр контента: запрещённое не принимается, 18+ получает пометку (материал и так идёт на проверку).
+  const verdict = await checkContent('film_movie', ownerId, [row.title, row.description]);
+  if (verdict.action === 'block') return blockedReply(verdict);
+  if (verdict.categories.includes('adult') && ageRestricted18 !== true) ageRestricted18 = true;
   // Лимиты публикации (отдельно от лимитов личной загрузки): размер, формат, длительность, число и объём опубликованного.
   const lim = await checkPublish('film', row);
   if (lim.error) return lim;

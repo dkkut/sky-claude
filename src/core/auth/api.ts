@@ -14,6 +14,8 @@
    завести, есть ли Prime, нужен ли второй фактор — отвечает сервер.
    Этот файл только спрашивает и показывает ответ.
 =============================================================== */
+import { flash } from '@/shared/flash';
+import { BLOCKED_TEXT } from '@/shared/contentFilter';
 import { getAdminTokenCached, askAdminToken, askAdminTokenAndWait, isAdminTokenError } from './adminTokenCache';
 import { getInvite, clearInvite } from '../../invite/capture';
 import { isEnglish } from '@/i18n/lang';
@@ -418,6 +420,7 @@ const call = async <T>(path: string, init: RequestInit = {}, retry = true, trans
     if (res.status === 403 && data?.error === 'account_frozen') { try { window.dispatchEvent(new CustomEvent('sky:accountfrozen')); } catch { /* ok */ } }
     if (res.status === 403 && data?.error === 'limited_session') { try { window.dispatchEvent(new CustomEvent('sky:limited')); } catch { /* ok */ } }
     if (res.status === 403 && data?.error === 'money_locked') { try { window.dispatchEvent(new CustomEvent('sky:money-locked')); } catch { /* ok */ } }
+    if (res.status === 422 && data?.error === 'content_blocked') flash(BLOCKED_TEXT);
     if (res.status === 503 && data?.error === 'platform_shutdown') onPlatformBlocked?.({ kind: 'shutdown', reason: String(data?.reason ?? '') });
     if (res.status === 503 && data?.error === 'platform_maintenance') onPlatformBlocked?.({ kind: 'maintenance', reason: String(data?.reason ?? '') });
     return { ok: false, error: data?.error, reason: (data?.message && String(data?.error).startsWith('registration_')) ? String(data.message) : explain(data?.error, res.status), status: res.status, data };

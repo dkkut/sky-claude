@@ -2,6 +2,8 @@
  * Sky Вопросы — вопросы и ответы людей экосистемы: лента (новые / без ответа / популярные / мои), поиск и теги,
  * страница вопроса с ответами, голосами, «лучшим ответом» и жалобой. Репутация считается сервером из настоящих голосов.
  */
+import { flash } from '@/shared/flash';
+import { HELD_TEXT } from '@/shared/contentFilter';
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUp, ArrowDown, Check, ChevronLeft, Flag, MessageSquare, Plus, Search, Trash2, X } from 'lucide-react';
@@ -9,6 +11,7 @@ import { SkyLoader } from '@/shared/SkyLoader';
 import { qaApi, type QaAnswer, type QaQuestion, type QaSort } from './api';
 
 const ERR: Record<string, string> = {
+  content_blocked: 'Текст не прошёл проверку — измените его.',
   bad_title: 'Название — от 10 знаков.', bad_body: 'Ответ — от 10 знаков.', daily_limit: 'На сегодня лимит исчерпан — попробуйте завтра.', duplicate: 'Такой вопрос вы уже задавали сегодня.',
   already_answered: 'Вы уже отвечали на этот вопрос.', own_question: 'На свой вопрос отвечать нельзя.', own_answer: 'За свой ответ голосовать нельзя.', has_answers: 'На вопрос уже ответили — удалить его нельзя.',
   already_reported: 'Вы уже жаловались на это.', not_found: 'Не найдено — возможно, уже удалено.', rate_limited: 'Слишком часто — подождите минуту.',
@@ -104,7 +107,7 @@ const AskForm = ({ onClose, onDone }: { onClose: () => void; onDone: (id: string
     setBusy(true); setErr('');
     const r = await qaApi.ask({ title, body, tags: tags.split(/[,\s]+/).map((t) => t.replace(/^#/, '')).filter(Boolean) });
     setBusy(false);
-    if (r.ok && r.data?.id) onDone(r.data.id); else setErr(errText(r.error));
+    if (r.ok && r.data?.id) { if (r.data.held) { flash(HELD_TEXT); onClose(); } else onDone(r.data.id); } else setErr(errText(r.error));
   };
   return (
     <div className="fixed inset-0 z-[300] flex items-end justify-center sm:items-center" style={{ background: 'rgba(0,0,0,.55)' }} onClick={onClose}>
@@ -139,7 +142,7 @@ const QuestionPage = ({ id, onBack }: { id: string; onBack: () => void }) => {
     setBusy(true); setMsg('');
     const r = await qaApi.answer(id, text);
     setBusy(false);
-    if (r.ok) { setText(''); void load(); } else setMsg(errText(r.error));
+    if (r.ok) { setText(''); if (r.data?.held) flash(HELD_TEXT); void load(); } else setMsg(errText(r.error));
   };
   const vote = async (a: QaAnswer, v: number) => {
     const next = a.myVote === v ? 0 : v;

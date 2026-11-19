@@ -6,7 +6,7 @@ export interface QaAnswer { id: string; body: string; score: number; createdAt: 
 export type QaSort = 'new' | 'unanswered' | 'top';
 
 const qs = (o: Record<string, string | number | undefined>) => Object.entries(o).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
-const post = (path: string, b: unknown) => apiCall<{ ok?: boolean; id?: string; score?: number; myVote?: number }>(path, { method: 'POST', body: JSON.stringify(b) });
+const post = (path: string, b: unknown) => apiCall<{ ok?: boolean; id?: string; held?: boolean; score?: number; myVote?: number }>(path, { method: 'POST', body: JSON.stringify(b) });
 
 export const qaApi = {
   list: (p: { sort?: QaSort; q?: string; tag?: string; mine?: boolean; offset?: number }) =>

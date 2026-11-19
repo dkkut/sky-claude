@@ -10,6 +10,7 @@
    (feedCache) и по тегам (tagCache), а компоненты вызывают load*
    в useEffect и читают закэшированное.
 ============================================================ */
+import { reportFilter } from '@/shared/contentFilter';
 import { create } from 'zustand';
 import { apiCall } from '@/core/auth/api';
 import { useAuthStore } from '@/core/auth/store';
@@ -255,7 +256,8 @@ export const useBloomStore = create<BloomState>((set, get) => {
         mediaId = up.mediaId; mediaMime = up.mime;
       }
       const r = await apiBloomCreatePost({ ...input, mediaId, mediaMime, mediaAspect });
-      if ('error' in r) return false;
+      if ('error' in r) { reportFilter(r.error); return false; }
+      if (reportFilter(undefined, r.held)) return true;
       invalidateFeeds();
       return true;
     },
@@ -314,6 +316,7 @@ export const useBloomStore = create<BloomState>((set, get) => {
     addComment: async (postId, text) => {
       const res = await apiBloomComment(postId, text);
       if (!res) return;
+      if (reportFilter(undefined, res.held)) return;
       const uid = useAuthStore.getState().currentUserId ?? '';
       const acc = useAuthStore.getState().accounts.find(a => a.id === uid);
       patchEverywhere(postId, p => ({

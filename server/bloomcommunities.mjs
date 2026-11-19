@@ -5,6 +5,7 @@
  *  • роли: owner (один) → mod → member; модератор не трогает владельца и других модераторов; бан запоминается; каждое действие модерации — в журнал сообщества с причиной;
  *  • администрация Sky (право `bloom_communities`) может заблокировать сообщество целиком по жалобам — содержимое при этом не удаляется.
  */
+import { checkContent, blockedReply } from './contentfilterstore.mjs';
 import crypto from 'node:crypto';
 import { pool, query } from './db.mjs';
 import { can, isOwner } from './admin.mjs';
@@ -44,6 +45,8 @@ export const create = async (me, b) => {
   const color = colorOk(b.color) ? b.color : '#8b5cf6'; const emoji = [...String(b.emoji ?? '🌸')].slice(0, 2).join('') || '🌸';
   if ((await query('SELECT count(*)::int AS c FROM bloom_communities WHERE owner_id = $1 AND deleted_at IS NULL', [me])).rows[0].c >= MAX_OWNED) return { error: 'too_many_communities' };
   if ((await query(`SELECT count(*)::int AS c FROM bloom_communities WHERE owner_id = $1 AND created_at > now() - interval '24 hours'`, [me])).rows[0].c >= MAX_PER_DAY) return { error: 'daily_limit' };
+  const cv = await checkContent('bloom_community', me, [name, clean(b.description, 500)]);
+  if (cv.action === 'block' || cv.action === 'moderate') return blockedReply(cv);
   const id = `bcm-${crypto.randomUUID()}`; const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -64,6 +67,10 @@ export const update = async (me, id, b) => {
   if ('postPolicy' in b) { if (!['all', 'mods'].includes(b.postPolicy)) return { error: 'bad_policy' }; put('post_policy', b.postPolicy); }
   if ('rules' in b) put('rules', JSON.stringify(shapeRules(b.rules)));
   if (!set.length) return { ok: true };
+  if ('name' in b || 'description' in b) {
+    const cv = await checkContent('bloom_community', me, [String(b.name ?? ''), String(b.description ?? '')]);
+    if (cv.action === 'block' || cv.action === 'moderate') return blockedReply(cv);
+  }
   await query(`UPDATE bloom_communities SET ${set.join(', ')} WHERE id = $1`, args); await log(c.id, me, 'updated', null, Object.keys(b).join(','));
   // закрытое → публичное: ожидающие заявки принимаются не автоматически, владелец решает сам
   return { ok: true };

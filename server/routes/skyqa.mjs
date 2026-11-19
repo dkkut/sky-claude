@@ -3,7 +3,7 @@ import { rateLimit } from './../security.mjs';
 import { requestMeta } from './../adminsec.mjs';
 import { listQuestions, popularTags, getQuestion, ask, answer, vote, accept, unaccept, removeOwnQuestion, removeOwnAnswer, report, reportQueue, adminRemove, adminDismiss, reputationOf } from './../skyqa.mjs';
 
-const STATUS = { not_found: 404, not_allowed: 403, daily_limit: 429, duplicate: 409, already_answered: 409, already_reported: 409, has_answers: 409, own_question: 403, own_answer: 403, own_content: 403 };
+const STATUS = { content_blocked: 422, not_found: 404, not_allowed: 403, daily_limit: 429, duplicate: 409, already_answered: 409, already_reported: 409, has_answers: 409, own_question: 403, own_answer: 403, own_content: 403 };
 const ID = '(qa-[A-Za-z0-9_-]{6,64})', AID = '(qaa-[A-Za-z0-9_-]{6,64})';
 
 /** /api/qa/* — Sky Вопросы; /api/admin/qa/* — модерация (право content). Параметры запроса — только из req.url. */

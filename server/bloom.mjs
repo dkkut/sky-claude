@@ -9,6 +9,7 @@
  * (profileId), никогда не из тела запроса: presenceId клиент прислать
  * не может, что бы он ни написал в JSON.
  */
+import { checkContent, blockedReply, createHold } from './contentfilterstore.mjs';
 import { query, pool } from './db.mjs';
 import { generateId } from './security.mjs';
 import { wallet } from './wallet.mjs';
@@ -385,9 +386,9 @@ export const createPost = async (authorId, body) => {
   const communityId = body?.communityId ? String(body.communityId) : null;
   if (communityId) { const g = await communityPostGate(authorId, communityId); if (g.error) return g; }
   const isBlog = body?.isBlog === true;
-  const title = isBlog ? clean(body?.title, MAX_TITLE_CHARS) : '';
+  let title = isBlog ? clean(body?.title, MAX_TITLE_CHARS) : '';
   if (isBlog && title.length < 3) return { error: 'blog_title_required' };
-  const text = clean(body?.text, isBlog ? MAX_BLOG_CHARS : MAX_BODY_CHARS);
+  let text = clean(body?.text, isBlog ? MAX_BLOG_CHARS : MAX_BODY_CHARS);
   const ad = adFields(body);
   const mediaId = body?.mediaId ? String(body.mediaId) : null;
   if (mediaId && !MEDIA_ID_RE.test(mediaId)) return { error: 'bad_media' };
@@ -403,6 +404,11 @@ export const createPost = async (authorId, body) => {
     ? [...new Set(body.tags.map(cleanTag).filter(Boolean))].slice(0, MAX_TAGS)
     : [];
 
+  const pollOpts = Array.isArray(body?.poll?.options) ? body.poll.options.map((o) => clean(o, 80)) : [];
+  const verdict = await checkContent('bloom_post', authorId, [title, text, ...tags, body?.poll?.question ? clean(body.poll.question, 200) : '', ...pollOpts, body?.location ? clean(body.location, 120) : '', ad.isAd ? (ad.adNote || '') : '']);
+  if (verdict.action === 'block') return blockedReply(verdict);
+  if (verdict.action === 'mask') { text = verdict.maskFields[1] ?? text; if (isBlog) title = verdict.maskFields[0] ?? title; }
+  const hold = verdict.action === 'moderate';
   const id = newPostId();
   const client = await pool.connect();
   try {
@@ -429,6 +435,7 @@ export const createPost = async (authorId, body) => {
         );
       }
     }
+    if (hold) await client.query('UPDATE bloom_posts SET deleted_at = now(), held_at = now() WHERE id = $1', [id]);
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
@@ -436,6 +443,7 @@ export const createPost = async (authorId, body) => {
   } finally {
     client.release();
   }
+  if (hold) { await createHold(query, { kind: 'bloom_post', targetId: id, authorId, categories: verdict.categories, text: [title, text].filter(Boolean).join('\n') }); return { id, held: true }; }
   return { id };
 };
 
@@ -445,13 +453,18 @@ export const editPost = async (postId, actorId, body = {}) => {
   const row = rows[0];
   if (!row) return { error: 'not_found' };
   if (row.author_id !== actorId) return { error: 'not_allowed' };
-  const text = clean(body?.text ?? row.body, row.is_blog ? MAX_BLOG_CHARS : MAX_BODY_CHARS);
+  let text = clean(body?.text ?? row.body, row.is_blog ? MAX_BLOG_CHARS : MAX_BODY_CHARS);
   if (!text && !row.media_id) return { error: 'empty_post' };
   let title = row.title;
   if (row.is_blog) { title = clean(body?.title ?? row.title, MAX_TITLE_CHARS); if (title.length < 3) return { error: 'blog_title_required' }; }
   const isAd = row.is_ad || body?.isAd === true;
   const adNote = isAd ? (body?.adNote !== undefined ? clean(body.adNote, 80) : (row.ad_note ?? '')) : '';
   const tags = Array.isArray(body?.tags) ? [...new Set(body.tags.map(cleanTag).filter(Boolean))].slice(0, MAX_TAGS) : null;
+  // Правка проходит тот же фильтр, что и публикация (иначе запрещённое добавлялось бы правкой).
+  // Удержать правку на проверку нельзя — пост уже виден, поэтому спорное здесь не принимается.
+  const verdict = await checkContent('bloom_post', actorId, [title ?? '', text, ...(tags ?? []), adNote]);
+  if (verdict.action === 'block' || verdict.action === 'moderate') return blockedReply(verdict);
+  if (verdict.action === 'mask') { text = verdict.maskFields[1] ?? text; if (row.is_blog) title = verdict.maskFields[0] ?? title; }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -528,14 +541,20 @@ export const react = async (postId, userId, emoji) => {
 /* ── Комментарии ────────────────────────────────────────────────── */
 
 export const addComment = async (postId, authorId, text) => {
-  const body = clean(text, MAX_COMMENT_CHARS);
+  let body = clean(text, MAX_COMMENT_CHARS);
   if (!body) return { error: 'empty_comment' };
   if (!(await canInteract(postId, authorId))) return { error: 'not_found' };
+  const verdict = await checkContent('bloom_comment', authorId, [body]);
+  if (verdict.action === 'block') return blockedReply(verdict);
+  if (verdict.action === 'mask') body = verdict.maskFields[0] ?? body;
+  const hold = verdict.action === 'moderate';
   const id = newCommentId();
   await query(
-    'INSERT INTO bloom_comments (id, post_id, author_id, body) VALUES ($1,$2,$3,$4)',
+    hold ? 'INSERT INTO bloom_comments (id, post_id, author_id, body, deleted_at, held_at) VALUES ($1,$2,$3,$4, now(), now())'
+      : 'INSERT INTO bloom_comments (id, post_id, author_id, body) VALUES ($1,$2,$3,$4)',
     [id, postId, authorId, body],
   );
+  if (hold) { await createHold(query, { kind: 'bloom_comment', targetId: id, authorId, categories: verdict.categories, text: body }); return { id, held: true }; }
   return { id };
 };
 
