@@ -26,7 +26,7 @@ export const MODULES = [
   { key: 'partners', label: 'Партнёры', group: 'Сервисы Sky' },
   { key: 'friendsmap', label: 'Карта друзей', group: 'Сервисы Sky' },
   { key: 'skytime', label: 'Sky Time', group: 'Сервисы Sky' },
-  { key: 'calendar', label: 'Календарь', group: 'Сервисы Sky' },
+  { key: 'qa', label: 'Sky Вопросы', group: 'Сервисы Sky' },
   { key: 'tv', label: 'ТВ', group: 'Сервисы Sky' },
   { key: 'podcasts', label: 'Подкасты', group: 'Сервисы Sky' },
   { key: 'books', label: 'Книги', group: 'Сервисы Sky' },

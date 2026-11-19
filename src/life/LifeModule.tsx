@@ -1,7 +1,7 @@
 /** Sky Life — персональное пространство внутри профиля Sky: главная, моя жизнь, цели, проекты, бизнес-связи, финансовые цели, важное, воспоминания, Sky AI, приватность. Своей авторизации нет — всё под текущим Sky ID. */
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Home, BookHeart, Target, FolderKanban, Handshake, Wallet, ShieldCheck, History, Sparkles, SlidersHorizontal } from 'lucide-react';
+import { Home, BookHeart, Target, FolderKanban, Handshake, Wallet, ShieldCheck, History, Sparkles, SlidersHorizontal, CalendarDays } from 'lucide-react';
 import { useAuthStore } from '@/core/auth/store';
 import { J } from './api';
 import { Sheet, Note, Spinner } from './ui';
@@ -10,11 +10,12 @@ import { ItemsScreen } from './Items';
 import { GoalsScreen, FinanceScreen } from './Goals';
 import { ProjectsScreen } from './Projects';
 import { BusinessScreen } from './Business';
+import { SkyCalendar } from '@/calendar/SkyCalendar';
 import { AiScreen, SettingsScreen } from './AiSettings';
 
-export type Section = 'home' | 'life' | 'goals' | 'projects' | 'business' | 'finance' | 'important' | 'memory' | 'ai' | 'settings';
+export type Section = 'home' | 'life' | 'calendar' | 'goals' | 'projects' | 'business' | 'finance' | 'important' | 'memory' | 'ai' | 'settings';
 const NAV: { k: Section; l: string; i: typeof Home }[] = [
-  { k: 'home', l: 'Главная', i: Home }, { k: 'life', l: 'Моя жизнь', i: BookHeart }, { k: 'goals', l: 'Мои цели', i: Target }, { k: 'projects', l: 'Мои проекты', i: FolderKanban },
+  { k: 'home', l: 'Главная', i: Home }, { k: 'life', l: 'Моя жизнь', i: BookHeart }, { k: 'calendar', l: 'Календарь', i: CalendarDays }, { k: 'goals', l: 'Мои цели', i: Target }, { k: 'projects', l: 'Мои проекты', i: FolderKanban },
   { k: 'business', l: 'Бизнес-связи', i: Handshake }, { k: 'finance', l: 'Финансовые цели', i: Wallet }, { k: 'important', l: 'Важные вещи', i: ShieldCheck }, { k: 'memory', l: 'Воспоминания', i: History },
   { k: 'ai', l: 'Sky AI', i: Sparkles }, { k: 'settings', l: 'Приватность', i: SlidersHorizontal },
 ];
@@ -35,6 +36,7 @@ export const LifeModule = () => {
     switch (sec) {
       case 'home': return <HomeScreen go={setSec} />;
       case 'life': return <ItemsScreen kind="entry" heading="Моя жизнь" intro="Планы, мечты, важные даты, поездки, покупки, контакты, заметки и списки желаний. Всё зашифровано и видно только вам." />;
+      case 'calendar': return <SkyCalendar />;
       case 'goals': return <GoalsScreen />;
       case 'projects': return <ProjectsScreen me={me} />;
       case 'business': return <BusinessScreen />;
