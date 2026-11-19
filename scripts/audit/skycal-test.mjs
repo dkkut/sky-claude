@@ -74,6 +74,6 @@ t('гость «удаляет» = выходит', (await call(`/api/cal/events
 t('автор удаляет', (await call(`/api/cal/events/${id}`, { method: 'DELETE' }, a.tok)).status === 200 && !(await R(a.tok)).data.items.some((x) => x.ref === id));
 t('удаление каскадом убрало приглашения', Number(q(`SELECT count(*) FROM cal_invites WHERE event_id='${id}'`)) === 0);
 // предел
-q(`INSERT INTO cal_events (id, owner_id, title_enc, starts_at) SELECT 'cal-bulk'||g, '${c.pid}', 'x', now() FROM generate_series(1,500) g`);
+q(`DELETE FROM cal_events WHERE id LIKE 'cal-bulk%'`); q(`INSERT INTO cal_events (id, owner_id, title_enc, starts_at) SELECT 'cal-bulk'||g, '${c.pid}', 'x', now() FROM generate_series(1,500) g`);
 t('предел 500 событий — 409', (await call('/api/cal/events', J({ title: 'лишнее', start: iso(1) }), c.tok)).status === 409);
 console.log(`ok ${ok}, fail ${bad}`); process.exit(bad ? 1 : 0);
