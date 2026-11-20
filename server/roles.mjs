@@ -87,6 +87,9 @@ export const PERMISSIONS = [
   'ads_manage',      // Sky Ads: кампании от администрации, собственные объявления Sky
   'business_rules',  // Sky Business: правила организаций (редакции, публикация, уведомления)
   'channel_mod',     // Автомодерация каналов: очередь дел, решения, апелляции
+  'pets_create',     // Sky Pets: создание питомцев, яиц, скинов и предметов (черновики, отправка на модерацию)
+  'pets_moderate',   // Sky Pets: модерация содержимого (одобрить, отклонить, вернуть на правки)
+  'pets_publish',    // Sky Pets: публикация, расписание, снятие, события, экономика
   'bloom_communities', // Bloom: сообщества — жалобы, блокировка сообществ
   'life_admin',      // Sky Life: настройки, лимиты тарифов, категории, статистика (личные записи недоступны)
   'life_moderation', // Sky Life: проверка публичных деловых публикаций, жалобы, ограничения
@@ -154,6 +157,9 @@ export const ROLES = {
   royalty_admin:   ['royalty_view', 'royalty_review', 'royalty_finance'],
   specialists_moderator: ['specialists'],
   game_infra_admin: ['game_infra'],
+  pets_creator:    ['pets_create'],
+  pets_moderator:  ['pets_moderate'],
+  pets_admin:      ['pets_create', 'pets_moderate', 'pets_publish'],
   freeze_admin:    ['account_freeze', 'support'],
   ads_admin:       ['ads_manage'],
   business_rules_admin: ['business_rules'],
@@ -202,6 +208,9 @@ export const ROLE_LABEL = {
   royalty_admin: 'Sky Royalties: проверка и ввод выручки',
   specialists_moderator: 'Биржа специалистов: модерация',
   game_infra_admin: 'Sky Games: игровые серверы',
+  pets_creator: 'Sky Pets: создатель',
+  pets_moderator: 'Sky Pets: модератор',
+  pets_admin: 'Sky Pets: администратор',
   freeze_admin: 'Заморозка и восстановление аккаунтов',
   ads_admin: 'Sky Ads: кампании и объявления Sky',
   business_rules_admin: 'Sky Business: правила организаций',

@@ -20,6 +20,7 @@ import { pushToOffline } from './webpush.mjs';
 
 /** key → подпись и права на очередь. `owner: true` — только владелец (шаг его решения). */
 export const CATEGORIES = {
+  pets_review: { label: 'Sky Pets: контент на проверке', rights: ['pets_moderate'] },
   specialist_review: { label: 'Биржа специалистов: анкеты и жалобы', rights: ['specialists'] },
   custom_gift_review: { label: 'Пользовательские подарки на проверке', rights: ['gifts'] },
   freeze_appeal:  { label: 'Апелляции на заморозку', rights: ['account_freeze'] },
