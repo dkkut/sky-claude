@@ -13,6 +13,7 @@
  * Право торговать здесь не решается. Кнопки рисуются по тому, что уже
  * ответил сервер; каждое нажатие он проверяет заново.
  */
+import { DeliverySettings } from './DeliverySettings';
 import { useCallback, useEffect, useState } from 'react';
 import { useWarehouseStore } from './logistics/warehouseStore';
 import { MyTax } from '@/tax/TaxPanel';
@@ -957,7 +958,7 @@ const SellerSettings = ({ seller }: { seller: Seller }) => {
 
 type CabTab = 'verify' | 'orders' | 'products' | 'stats'
   | 'couriers' | 'transport' | 'warehouses' | 'cells' | 'shipments' | 'pvzship' | 'passes'
-  | 'ads' | 'violations' | 'tax' | 'settings';
+  | 'ads' | 'violations' | 'tax' | 'delivery' | 'settings';
 
 /* Логистика — часть кабинета продавца, как и была: курьеры, своя
    транспортная компания, склады, поставки и пропуска. Теперь всё это
@@ -977,6 +978,7 @@ const TABS: { key: CabTab; label: string; Icon: LucideIcon }[] = [
   { key: 'ads',        label: 'Реклама',  Icon: Zap },
   { key: 'violations', label: 'Нарушения и штрафы', Icon: ShieldAlert },
   { key: 'tax',        label: 'Налоги',   Icon: Receipt },
+  { key: 'delivery',   label: 'Доставка и самовывоз', Icon: Truck },
   { key: 'settings',   label: 'Магазин',  Icon: Settings },
 ];
 
@@ -1043,6 +1045,7 @@ export const SellerCabinet = ({ seller, meId }: { seller: Seller; meId: string }
         {tab === 'shipments' && <ShipmentHub />}
         {tab === 'pvzship' && <SellerPvzShipments />}
         {tab === 'passes' && <PassHub />}
+        {tab === 'delivery' && <DeliverySettings />}
         {tab === 'ads' && <SellerPromotions />}
         {tab === 'violations' && <SellerViolations />}
         {tab === 'tax' && <MyTax />}

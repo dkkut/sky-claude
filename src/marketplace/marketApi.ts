@@ -15,7 +15,7 @@
 import { apiCall, uploadUrl } from '@/core/auth/api';
 import { NATIVE_APP, MEDIA_BY_URL } from '@/core/nativeApp';
 import type {
-  Product, Review, Seller, SellerStats, Order, OrderEvent, OrderAction,
+  Product, Review, Seller, SellerStats, Order, OrderEvent, OrderAction, DeliveryMethod, DeliveryOption,
   Game, PickupPoint, Carrier, Shipment, DealChat, ChatMessage,
   MarketNotification, MarketConfig, MarketType, ProductCategory,
   GameCategoryKey, ShipMethod, ShipDestination, MyCarrier, CarrierJob,
@@ -243,10 +243,18 @@ export interface OrderInput {
   address?: string;
   contact?: string;
   pickupPointId?: string;
+  /** Способ получения физического товара; плату за него считает сервер. */
+  deliveryMethod?: DeliveryMethod;
   /** Услуга заказывается пакетом: уходит уровень, цену берёт сервер. */
   packageLevel?: ServiceLevel;
   requirements?: string;
 }
+
+export const apiSellerDelivery = (sellerId: string) =>
+  apiCall<{ options: DeliveryOption[] }>(`/api/market/sellers/${encodeURIComponent(sellerId)}/delivery`);
+export const apiMyDelivery = () => apiCall<{ options: DeliveryOption[] }>('/api/market/my-delivery');
+export const apiSaveMyDelivery = (options: Partial<DeliveryOption>[]) =>
+  apiCall<{ options: DeliveryOption[] }>('/api/market/my-delivery', { method: 'PUT', body: JSON.stringify({ options }) });
 
 export const apiCreateOrder = (input: OrderInput) =>
   apiCall<{ order: Order }>('/api/market/orders', { method: 'POST', body: JSON.stringify(input) });

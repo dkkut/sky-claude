@@ -70,7 +70,17 @@ export type OrderStatus =
   | 'disputed';
 
 /** Действие, которое клиент вправе попросить. Состояние выбирает сервер. */
-export type OrderAction = 'accept' | 'declare_paid' | 'confirm_paid' | 'fulfill' | 'received';
+export type OrderAction = 'accept' | 'declare_paid' | 'confirm_paid' | 'fulfill' | 'received' | 'ready_pickup' | 'ship_own';
+
+/** Способы получения заказа (физические товары). */
+export type DeliveryMethod = 'store_pickup' | 'courier' | 'pvz' | 'post';
+export const DELIVERY_LABEL: Record<DeliveryMethod, string> = {
+  store_pickup: 'Самовывоз из магазина', courier: 'Доставка курьером продавца', pvz: 'В пункт выдачи', post: 'Отправка по адресу',
+};
+export interface DeliveryOption {
+  method: DeliveryMethod; enabled: boolean; price: number; priceKop: number; freeFrom: number | null; freeFromKop: number | null;
+  minDays: number | null; maxDays: number | null; city: string; address: string; hours: string; note: string;
+}
 
 export type OrderRole = 'buyer' | 'seller' | 'support';
 
@@ -251,6 +261,10 @@ export interface Order {
   address: string;
   contact: string;
   pickupPointId: string | null;
+  deliveryMethod: DeliveryMethod | null;
+  deliveryFeeKop: number;
+  deliveryFee: number;
+  delivery: { method: DeliveryMethod; address?: string; hours?: string; city?: string; note?: string; minDays?: number | null; maxDays?: number | null } | null;
   packingStartedAt: string | null;
   packedAt: string | null;
   paidDeclaredAt: string | null;
@@ -443,4 +457,6 @@ export const ACTION_LABEL: Record<OrderAction, { buyer: string; seller: string }
   confirm_paid: { buyer: '', seller: 'Получил деньги' },
   fulfill:      { buyer: '', seller: 'Выдать заказ' },
   received:     { buyer: 'Подтверждаю получение', seller: '' },
+  ready_pickup: { buyer: '', seller: 'Заказ готов к выдаче' },
+  ship_own:     { buyer: '', seller: 'Передал курьеру' },
 };

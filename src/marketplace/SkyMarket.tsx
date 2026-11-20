@@ -26,13 +26,13 @@ import {
   inputStyle, Alert, ProductCard, ProductImage, ProductLogo, CatIcon, CAT_CFG,
 } from './ui';
 import {
-  apiProduct, apiProductReviews, apiCreateOrder, apiPickupPoints, apiMarketTicket, apiFlowerShops,
+  apiProduct, apiProductReviews, apiCreateOrder, apiPickupPoints, apiMarketTicket, apiFlowerShops, apiSellerDelivery,
 } from './marketApi';
 import type { FlowerShop } from './marketApi';
 import type {
-  Product, Review, ProductCategory, PickupPoint, MarketType,
+  Product, Review, ProductCategory, PickupPoint, MarketType, DeliveryOption, DeliveryMethod,
 } from './types';
-import { CATEGORY_LABEL } from './types';
+import { CATEGORY_LABEL, DELIVERY_LABEL } from './types';
 import { OrdersList, OrderPage } from './OrderScreens';
 import { ParcelLookup } from './ParcelTracking';
 import { BecomeSeller, SellerCabinet } from './SellerCabinet';
@@ -65,8 +65,22 @@ const Checkout = ({ product, onDone, onBack }:
   const [pointId, setPointId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [options, setOptions] = useState<DeliveryOption[]>([]);
+  const [method, setMethod] = useState<DeliveryMethod | ''>('');
 
   const game = product.marketType === 'game';
+  const std = product.marketType === 'standard';
+  const opt = options.find((o) => o.method === method) ?? null;
+  const itemsKop = Math.round(product.price * 100) * quantity;
+  const feeKop = opt ? (opt.freeFromKop != null && itemsKop >= opt.freeFromKop ? 0 : opt.priceKop) : 0;
+
+  useEffect(() => {
+    if (!std) return;
+    void apiSellerDelivery(product.sellerId).then((r) => {
+      const list = r.data?.options ?? [];
+      setOptions(list); if (list[0]) setMethod(list[0].method);
+    });
+  }, [std, product.sellerId]);
 
   useEffect(() => {
     if (game) return;
@@ -81,16 +95,19 @@ const Checkout = ({ product, onDone, onBack }:
     const r = await apiCreateOrder({
       productId: product.id,
       quantity,
-      address: !game && mode === 'address' ? address.trim() : undefined,
+      deliveryMethod: method || undefined,
+      address: !game && (method ? (method === 'courier' || method === 'post') : mode === 'address') ? address.trim() : undefined,
       contact: contact.trim() || undefined,
-      pickupPointId: !game && mode === 'pickup' ? pointId : undefined,
+      pickupPointId: !game && (method ? method === 'pvz' : mode === 'pickup') ? pointId : undefined,
     });
     setBusy(false);
     if (!r.ok || !r.data) { setError(r.reason ?? 'Заказ не оформился'); return; }
     onDone(r.data.order.id);
   };
 
-  const ready = game || (mode === 'address' ? address.trim().length > 4 : Boolean(pointId));
+  const wantAddr = method ? (method === 'courier' || method === 'post') : mode === 'address';
+  const wantPoint = method ? method === 'pvz' : mode === 'pickup';
+  const ready = game || (method === 'store_pickup') || (wantAddr ? address.trim().length > 4 : wantPoint ? Boolean(pointId) : false);
 
   return (
     <div className="flex h-full flex-col">
@@ -127,7 +144,43 @@ const Checkout = ({ product, onDone, onBack }:
           </div>
         </Field>
 
-        {!game && (
+        {!game && options.length > 0 && (
+          <div className="space-y-2">
+            {options.map((o) => {
+              const fee = o.freeFromKop != null && itemsKop >= o.freeFromKop ? 0 : o.priceKop;
+              return (
+                <button key={o.method} type="button" onClick={() => setMethod(o.method)} className="w-full rounded-xl p-3 text-left"
+                  style={{ background: method === o.method ? C.accBg : C.l2, border: `1px solid ${method === o.method ? 'rgba(79,110,247,0.3)' : C.brd}` }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[12px] font-bold" style={{ color: C.t1 }}>{DELIVERY_LABEL[o.method]}</p>
+                    <p className="text-[12px] font-black" style={{ color: fee === 0 ? '#22c55e' : C.t1 }}>{fee === 0 ? 'Бесплатно' : fmt(fee / 100)}</p>
+                  </div>
+                  {o.method === 'store_pickup' && <p className="mt-1 text-[11px]" style={{ color: C.t2 }}><span translate="no">{o.address}</span>{o.hours ? <> · <span translate="no">{o.hours}</span></> : null}</p>}
+                  {(o.minDays != null || o.maxDays != null) && <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>Срок: {o.minDays ?? 0}–{o.maxDays ?? o.minDays} дн.</p>}
+                  {o.freeFromKop != null && fee > 0 && <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }}>Бесплатно от {fmt(o.freeFromKop / 100)}</p>}
+                  {o.note && <p className="mt-0.5 text-[10px]" style={{ color: C.t3 }} translate="no">{o.note}</p>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {!game && options.length > 0 && (method === 'courier' || method === 'post') && (
+          <Field label="Адрес доставки" hint="Адрес хранится зашифрованным и открывается продавцу только после оплаты.">
+            <input value={address} onChange={(e) => setAddress(e.target.value)} maxLength={400} placeholder="Город, улица, дом, квартира"
+              className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
+          </Field>
+        )}
+        {!game && options.length > 0 && method === 'pvz' && (
+          <Field label="Пункт выдачи">
+            <select value={pointId} onChange={(e) => setPointId(e.target.value)} className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle}>
+              <option value="">Выберите пункт</option>
+              {points.map((pt) => <option key={pt.id} value={pt.id}>{pt.city}, {pt.address} · хранение {pt.holdDays} дн.</option>)}
+            </select>
+          </Field>
+        )}
+
+        {!game && options.length === 0 && (
           <>
             <div className="grid grid-cols-2 gap-2">
               {([['address', 'До двери', MapPin], ['pickup', 'В пункт выдачи', Warehouse]] as const).map(([k, label, Icon]) => (
@@ -180,7 +233,10 @@ const Checkout = ({ product, onDone, onBack }:
         <div className="flex items-center justify-between rounded-2xl p-3"
           style={{ background: C.l1, border: `1px solid ${C.brd}` }}>
           <p className="text-[12px]" style={{ color: C.t2 }}>Итого</p>
-          <p className="text-lg font-black" style={{ color: C.t1 }}>{fmt(product.price * quantity)}</p>
+          <div className="text-right">
+            {feeKop > 0 && <p className="text-[10px]" style={{ color: C.t3 }}>Товары {fmt(itemsKop / 100)} + доставка {fmt(feeKop / 100)}</p>}
+            <p className="text-lg font-black" style={{ color: C.t1 }}>{fmt((itemsKop + feeKop) / 100)}</p>
+          </div>
         </div>
 
         <button type="button" disabled={!ready || busy} onClick={buy}

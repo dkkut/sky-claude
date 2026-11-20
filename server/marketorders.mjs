@@ -30,6 +30,7 @@
  *   5. Заказ читается FOR UPDATE внутри транзакции — две одновременные
  *      кнопки выстраиваются в очередь, а не выполняются обе.
  */
+import { resolveForOrder } from './marketshipping.mjs';
 import { scheduleCashbackIn } from './primecashback.mjs';
 import { pool, query } from './db.mjs';
 import { generateId } from './security.mjs';
@@ -87,6 +88,10 @@ const FLOW = {
     fulfill:      { from: ['seller_payment_confirmed'], to: 'fulfillment', by: 'seller' },
     /* Покупатель получил посылку — на руки, из пункта выдачи, неважно. */
     received:     { from: ['seller_shipped', 'in_transit', 'ready_for_pickup'], to: 'buyer_received', by: 'buyer' },
+    /* Самовывоз из магазина: «Заказ готов к выдаче» (только для delivery_method = store_pickup). */
+    ready_pickup: { from: ['seller_payment_confirmed', 'fulfillment'], to: 'ready_for_pickup', by: 'seller', method: 'store_pickup' },
+    /* Доставка продавцом: «Передал курьеру / везу» (только для delivery_method = courier). */
+    ship_own:     { from: ['seller_payment_confirmed', 'fulfillment'], to: 'seller_shipped', by: 'seller', method: 'courier' },
   },
   /*
    * Услуга. Путь тот же, что у игрового лота: везти нечего, исполнитель
@@ -243,6 +248,11 @@ export const toOrder = (row, role) => {
     address: seeContact ? dec(row.address_enc) : '',
     contact: seeContact ? dec(row.contact_enc) : '',
     pickupPointId: row.pickup_point_id ?? null,
+    deliveryMethod: row.delivery_method ?? null,
+    deliveryFeeKop: Number(row.delivery_fee_kop ?? 0),
+    deliveryFee: Number(row.delivery_fee_kop ?? 0) / 100,
+    /* Адрес магазина для самовывоза показан покупателю (его опубликовал сам продавец). */
+    delivery: row.delivery_snap ?? null,
     packingStartedAt: row.packing_started_at?.toISOString?.() ?? null,
     packedAt: row.packed_at?.toISOString?.() ?? null,
     paidDeclaredAt: row.paid_declared_at?.toISOString?.() ?? null,
@@ -279,6 +289,9 @@ export const toOrder = (row, role) => {
  * Наличие уменьшается тем же запросом, которым проверяется. «Проверил,
  * потом списал» двумя запросами — это две продажи последней штуки.
  */
+const hasOptions = async (client, sellerId) =>
+  (await client.query('SELECT 1 FROM market_delivery_options WHERE seller_id = $1 AND enabled LIMIT 1', [sellerId])).rows.length > 0;
+
 export const createOrder = async (buyerId, input = {}) => {
   const productId = String(input.productId ?? '');
   if (!PRODUCT_ID_RE.test(productId)) return { error: 'not_found' };
@@ -331,7 +344,8 @@ export const createOrder = async (buyerId, input = {}) => {
 
     /* Обычный маркет — нужен адрес или пункт выдачи. Игровой — ни того,
        ни другого: там нечего везти. */
-    if (product.market_type === 'standard' && !address && !pickupPointId) {
+    const std = product.market_type === 'standard';
+    if (std && !input.deliveryMethod && !address && !pickupPointId && !(await hasOptions(client, product.seller_id))) {
       await client.query('ROLLBACK');
       return { error: 'address_required' };
     }
@@ -369,7 +383,14 @@ export const createOrder = async (buyerId, input = {}) => {
     }
 
     const priceKop = BigInt(pack ? pack.priceKop : product.price_kop);
-    const totalKop = priceKop * BigInt(qty);
+    const itemsKop = priceKop * BigInt(qty);
+    /* Способ получения и плата за него — только для физических товаров; считает сервер. */
+    let ship = { method: null, feeKop: 0, snap: null };
+    if (std) {
+      ship = await resolveForOrder(client, { sellerId: product.seller_id, subtotalKop: itemsKop, method: input.deliveryMethod, address, pickupPointId });
+      if (ship.error) { await client.query('ROLLBACK'); return { error: ship.error }; }
+    }
+    const totalKop = itemsKop + BigInt(ship.feeKop);
 
     const orderId = `mo-${generateId()}`;
     const { rows: made } = await client.query(
@@ -377,8 +398,9 @@ export const createOrder = async (buyerId, input = {}) => {
          (id, buyer_id, seller_id, product_id, market_type, title_snap,
           price_kop, quantity, total_kop, status,
           address_enc, contact_enc, pickup_point_id, state_seq,
-          package_level, package_title, delivery_days, requirements_enc)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'created',$10,$11,$12,1,$13,$14,$15,$16)
+          package_level, package_title, delivery_days, requirements_enc,
+          delivery_method, delivery_fee_kop, delivery_snap)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'created',$10,$11,$12,1,$13,$14,$15,$16,$17,$18,$19)
        RETURNING *`,
       [orderId, buyerId, product.seller_id, productId, product.market_type,
         product.title, String(priceKop), qty, String(totalKop),
@@ -386,7 +408,8 @@ export const createOrder = async (buyerId, input = {}) => {
         contact ? encryptContent(contact) : null,
         pickupPointId,
         pack?.level ?? null, pack?.title ?? null, pack?.delivery ?? null,
-        requirements ? encryptContent(requirements) : null]);
+        requirements ? encryptContent(requirements) : null,
+        ship.method, String(ship.feeKop), ship.snap ? JSON.stringify(ship.snap) : null]);
 
     await client.query(
       `INSERT INTO market_order_events (order_id, actor_id, actor_role, from_status, to_status, detail)
@@ -467,7 +490,9 @@ export const applyTransition = async (client, order, {
      VALUES ($1,$2,$3,$4,$5,$6::jsonb)`,
     [order.id, actorId, actorRole, order.status, to, JSON.stringify(detail)]);
 
-  const [title, body] = NOTES[to] ?? ['Заказ обновлён', ''];
+  let [title, body] = NOTES[to] ?? ['Заказ обновлён', ''];
+  if (to === 'ready_for_pickup' && order.delivery_method === 'store_pickup') [title, body] = ['Заказ ждёт в магазине', 'Заказ готов к выдаче — заберите его в магазине продавца.'];
+  if (to === 'seller_shipped' && order.delivery_method === 'courier') [title, body] = ['Заказ передан курьеру', 'Продавец отправил заказ с курьером — он везёт его по вашему адресу.'];
   const notes = [];
   for (const who of AUDIENCE[to] ?? []) {
     const userId = who === 'buyer' ? order.buyer_id : order.seller_id;
@@ -520,6 +545,10 @@ export const actOnOrder = async (orderId, actorId, action) => {
 
     const flow = FLOW[order.market_type]?.[act];
     if (!flow) { await client.query('ROLLBACK'); return { error: 'unknown_action' }; }
+    if (flow.method && order.delivery_method !== flow.method) {
+      await client.query('ROLLBACK');
+      return { error: 'unknown_action' };
+    }
     if (flow.by !== role) {
       await client.query('ROLLBACK');
       await logMarket(actorId, 'order_wrong_side', id, { action: act, role });

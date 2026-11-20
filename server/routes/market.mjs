@@ -21,6 +21,7 @@
  * Ни выплаты, ни вывода, ни баланса продавца здесь нет, потому что их
  * нет в Sky.
  */
+import { listOptions, saveOptions } from './../marketshipping.mjs';
 import { Readable } from 'node:stream';
 import { json, parseBody, requireProfile, readSession, mediaBody, clientIp } from './../http.mjs';
 import { ticketCookies, ticketFromCookies, issueTicket, readTicket } from './../marketticket.mjs';
@@ -73,6 +74,8 @@ const MAX_WEBHOOK_BYTES = 64 * 1024;
 /** Один список кодов на весь файл: иначе они расходятся между ручками. */
 const CODES = {
   not_found: 404,
+  delivery_method_required: 400, bad_delivery_method: 400, delivery_method_unavailable: 409, pickup_address_required: 400,
+  pickup_must_be_free: 400, bad_options: 400, bad_method: 400, bad_price: 400, bad_days: 400,
   not_allowed: 403,
   not_your_step: 403,
   carrier_owns_status: 403,
@@ -526,6 +529,24 @@ export const marketRoutes = async (req, res, url) => {
   }
 
   /* ══ Продавец ═══════════════════════════════════════════════════ */
+
+  /* Способы получения: покупателю — включённые у продавца, продавцу — свои настройки. */
+  const delOpts = path.match(/^\/api\/market\/sellers\/([0-9A-Za-z_-]{4,80})\/delivery$/);
+  if (req.method === 'GET' && delOpts) {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { options: await listOptions(delOpts[1], { onlyEnabled: true }) });
+  }
+  if (path === '/api/market/my-delivery') {
+    if (req.method === 'GET') {
+      if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+      return json(res, 200, { options: await listOptions(me) });
+    }
+    if (req.method === 'PUT') {
+      if (!writeOk()) return json(res, 429, { error: 'too_many_requests' });
+      const done = await saveOptions(me, await parseBody(req));
+      return done.error ? fail(res, done) : json(res, 200, done);
+    }
+  }
 
   if (path === '/api/market/seller') {
     if (req.method === 'GET') {

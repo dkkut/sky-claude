@@ -19,6 +19,7 @@ import {
   CheckCircle2, XCircle, Store, MessageSquare, Star, Warehouse, User,
   Wallet, Copy, Boxes, Video, KeyRound,
 } from 'lucide-react';
+import { DELIVERY_LABEL } from './types';
 import { apiPvzPublicVideo, videoUrl } from './logistics/sharedApi';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert,
@@ -767,6 +768,15 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
               <MapPin size={11} className="mr-1 inline" />{order.address}
             </p>
           )}
+          {order.deliveryMethod && order.marketType === 'standard' && (
+            <div className="mt-2 rounded-xl px-3 py-2 text-[11px]" style={{ background: C.l2, color: C.t2, border: `1px solid ${C.brd}` }}>
+              <p className="font-bold" style={{ color: C.t1 }}>{DELIVERY_LABEL[order.deliveryMethod]} · {order.deliveryFee > 0 ? `доставка ${fmt(order.deliveryFee)}` : 'бесплатно'}</p>
+              {order.deliveryMethod === 'store_pickup' && order.delivery?.address && (
+                <p className="mt-0.5">Забрать: <span translate="no">{order.delivery.address}</span>{order.delivery.hours ? <> · <span translate="no">{order.delivery.hours}</span></> : null}</p>
+              )}
+              {order.delivery?.note && <p className="mt-0.5" translate="no">{order.delivery.note}</p>}
+            </div>
+          )}
           {order.contact && (
             <p className="mt-1 text-[11px]" style={{ color: C.t2 }}>Связь: {order.contact}</p>
           )}
@@ -799,6 +809,14 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
             </button>
           </div>
         ))}
+
+        {iam === 'seller' && order.marketType === 'standard' && ['seller_payment_confirmed', 'fulfillment'].includes(order.status)
+          && (order.deliveryMethod === 'store_pickup' || order.deliveryMethod === 'courier') && (
+          <button type="button" disabled={busy} onClick={() => void act(order.deliveryMethod === 'store_pickup' ? 'ready_pickup' : 'ship_own')}
+            className="w-full rounded-xl py-2.5 text-[12px] font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
+            {order.deliveryMethod === 'store_pickup' ? 'Заказ готов к выдаче' : 'Передал курьеру'}
+          </button>
+        )}
 
         {iam === 'seller' && order.marketType === 'standard'
           && ['seller_payment_confirmed', 'fulfillment'].includes(order.status) && (
