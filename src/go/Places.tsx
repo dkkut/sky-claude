@@ -7,6 +7,7 @@ import { BookBlock, ReviewsBlock, ReportBlock, MyBookings } from './PlacesExtra'
 import { gp, placeImg, type GpCard, type GpCategory, type GpItem, type GpOrder, type GpPlace, type GpRoute } from './placesApi';
 import { Back, Btn, Card, Chip, Col, Empty, ErrorState, Input, Notice, Segmented, fail, useAction, useLoad, locate, C, GO, fmt } from './ui';
 import { shareOrigin } from '@/core/nativeApp';
+import { TransportInfo, MyWork } from './Transport';
 
 type Pos = { lat: number; lng: number } | null;
 const DAY_NAMES: [string, string][] = [['mon', 'Пн'], ['tue', 'Вт'], ['wed', 'Ср'], ['thu', 'Чт'], ['fri', 'Пт'], ['sat', 'Сб'], ['sun', 'Вс']];
@@ -19,26 +20,29 @@ const Img = ({ src, h, round = 16 }: { src: string | null; h: number; round?: nu
   : <div style={{ width: '100%', height: h, borderRadius: round, background: C.l2, display: 'grid', placeItems: 'center', color: C.t3 }}><Building2 size={28} /></div>;
 
 /* ─── Каталог ─── */
-export const PlacesScreen = ({ city, onBack }: { city: string; onBack: () => void }) => {
-  const [open, setOpen] = useState<string | null>(null);
+export const PlacesScreen = ({ city, onBack, group = '', initialOpen = null, onOpenApp }: { city: string; onBack: () => void; group?: string; initialOpen?: string | null; onOpenApp?: (k: 'fuel' | 'parking') => void }) => {
+  const [open, setOpen] = useState<string | null>(initialOpen);
+  const [grp, setGrp] = useState(group); const [work, setWork] = useState(false);
   const [orders, setOrders] = useState(false);
   const [q, setQ] = useState(''); const [cat, setCat] = useState(''); const [onlyOpen, setOnlyOpen] = useState(false); const [fav, setFav] = useState(false);
   const [sort, setSort] = useState<'name' | 'distance'>('name'); const [view, setView] = useState<'list' | 'map'>('list');
   const [pos, setPos] = useState<Pos>(null); const [useCity, setUseCity] = useState(true); const [qd, setQd] = useState('');
   useEffect(() => { const t = setTimeout(() => setQd(q.trim()), 300); return () => clearTimeout(t); }, [q]);
   const [cats] = useLoad(() => gp.categories(), []);
-  const [data, reload] = useLoad(() => gp.list({ q: qd, category: cat, city: useCity ? city : '', open: onlyOpen, fav, sort: sort === 'distance' && pos ? 'distance' : 'name', ...(pos ?? {}) }), [qd, cat, onlyOpen, fav, sort, pos?.lat, pos?.lng, useCity, city]);
+  const [data, reload] = useLoad(() => gp.list({ q: qd, category: cat, group: grp, city: useCity ? city : '', open: onlyOpen, fav, sort: sort === 'distance' && pos ? 'distance' : 'name', ...(pos ?? {}) }), [qd, cat, grp, onlyOpen, fav, sort, pos?.lat, pos?.lng, useCity, city]);
 
-  if (open) return <PlaceScreen id={open} pos={pos} onBack={() => { setOpen(null); reload(); }} />;
+  if (open) return <PlaceScreen id={open} pos={pos} onOpenApp={onOpenApp} onBack={() => { setOpen(null); reload(); }} />;
   if (orders) return <MyOrders onBack={() => setOrders(false)} />;
+  if (work) return <MyWork onBack={() => setWork(false)} />;
   const places: GpCard[] = data && data.ok ? data.data!.places : [];
   const points = places.filter((p) => p.lat != null && p.lng != null).map((p) => ({ id: p.id, pos: { lat: p.lat!, lng: p.lng! }, label: p.name }));
   const near = async () => { const p = await locate(); if (!p) return flash('Не удалось определить местоположение. Разрешите доступ к геолокации или выберите город.'); setPos(p); setSort('distance'); };
 
   return (
     <div>
-      <Back onClick={onBack} title="Организации" />
-      <div style={{ fontSize: 13, color: C.t2, margin: '-6px 0 12px' }}>Находите места рядом с собой</div>
+      <Back onClick={() => (grp && !group ? (setGrp(''), setCat('')) : onBack())} title={grp === 'transport' ? 'Для транспорта' : 'Организации'} />
+      <div style={{ fontSize: 13, color: C.t2, margin: '-6px 0 12px' }}>{grp === 'transport' ? 'АЗС, мойки, автосервисы, стоянки, эвакуаторы и другое для вашего авто' : 'Находите места рядом с собой'}</div>
+      {!grp && <button type="button" onClick={() => setGrp('transport')} style={{ width: '100%', textAlign: 'left', padding: '12px 14px', marginBottom: 10, borderRadius: 16, border: `1px solid ${GO}`, background: 'rgba(14,165,164,.10)', color: C.t1, fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>Для транспорта <span style={{ fontWeight: 500, fontSize: 12, color: C.t2 }}>· АЗС, мойки, автосервисы и другое →</span></button>}
       <Col>
         <div style={{ position: 'relative' }}>
           <Search size={16} style={{ position: 'absolute', left: 12, top: 15, color: C.t3 }} />
@@ -47,7 +51,7 @@ export const PlacesScreen = ({ city, onBack }: { city: string; onBack: () => voi
         </div>
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
           <button type="button" onClick={() => setCat('')} aria-pressed={!cat} style={chipBtn(!cat)}>Все</button>
-          {(cats && cats.ok ? cats.data!.categories : []).map((c: GpCategory) => <button key={c.id} type="button" onClick={() => setCat(c.id)} aria-pressed={cat === c.id} style={chipBtn(cat === c.id)}>{c.name}</button>)}
+          {(cats && cats.ok ? cats.data!.categories.filter((c) => !grp || c.groupId === grp) : []).map((c: GpCategory) => <button key={c.id} type="button" onClick={() => setCat(c.id)} aria-pressed={cat === c.id} style={chipBtn(cat === c.id)}>{c.name}</button>)}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" onClick={() => setOnlyOpen(!onlyOpen)} aria-pressed={onlyOpen} style={chipBtn(onlyOpen)}>Открыто сейчас</button>
@@ -58,6 +62,7 @@ export const PlacesScreen = ({ city, onBack }: { city: string; onBack: () => voi
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: 1 }}><Segmented value={view} onChange={setView} options={[{ v: 'list', t: 'Список' }, { v: 'map', t: 'Карта' }]} /></div>
           <Btn kind="soft" onClick={() => setOrders(true)}><ShoppingBag size={16} /> Мои заказы</Btn>
+          {grp === 'transport' && <Btn kind="soft" onClick={() => setWork(true)}>Мои работы</Btn>}
         </div>
         {!data ? <Empty text="Загрузка…" /> : !data.ok ? <ErrorState text="Не удалось загрузить каталог." onRetry={reload} />
           : !places.length ? <Empty text="Ничего не найдено" hint="Измените поиск или фильтры. Организации появляются после проверки администрацией." />
@@ -88,7 +93,7 @@ const PlaceRow = ({ p, onOpen }: { p: GpCard; onOpen: () => void }) => (
 );
 
 /* ─── Страница организации ─── */
-const PlaceScreen = ({ id, pos, onBack }: { id: string; pos: Pos; onBack: () => void }) => {
+const PlaceScreen = ({ id, pos, onBack, onOpenApp }: { id: string; pos: Pos; onBack: () => void; onOpenApp?: (k: 'fuel' | 'parking') => void }) => {
   const [res, reload] = useLoad(() => gp.get(id, pos), [id]);
   const [cart, setCart] = useState<Record<string, { qty: number; variant?: string }>>({});
   const [step, setStep] = useState<'view' | 'route' | 'checkout'>('view');
@@ -142,6 +147,7 @@ const PlaceScreen = ({ id, pos, onBack }: { id: string; pos: Pos; onBack: () => 
           <div style={{ fontWeight: 800, marginBottom: 6, color: C.t1 }}><Clock size={15} style={{ verticalAlign: -2 }} /> Часы работы</div>
           {Object.keys(p.hours).length ? DAY_NAMES.map(([k, n]) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: C.t2, padding: '2px 0' }}><span>{n}</span><span>{p.hours[k]?.length ? p.hours[k]!.map(([a, b]) => `${a}–${b}`).join(', ') : 'выходной'}</span></div>) : <div style={{ fontSize: 13, color: C.t2 }}>Часы работы не указаны.</div>}
         </Card>
+        <TransportInfo placeId={p.id} onOpenApp={(k) => onOpenApp?.(k)} />
         <BookBlock placeId={p.id} onBooked={() => undefined} />
         <div style={{ fontWeight: 800, fontSize: 17, color: C.t1 }}>Каталог</div>
         {!p.items.length ? <Empty text="Организация пока не добавила позиции" />

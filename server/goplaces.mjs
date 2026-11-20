@@ -16,6 +16,7 @@ import { can } from './admin.mjs';
 import { logAdmin as adminLog } from './adminsec.mjs';
 import { subState, imageFromDataUrl } from './kbiz.mjs';
 import { depositPaymentChanged } from './goplacebook.mjs';
+import { workPaymentChanged } from './gotransport.mjs';
 import { createOrderCore, returnStock, notifyBuyerOrder, ORDER_LABEL } from './kbcatalog.mjs';
 
 const err = (error, extra = {}) => ({ error, ...extra });
@@ -55,7 +56,7 @@ export const openState = (hours, tz = 'Europe/Moscow', now = new Date()) => {
 /* ─── Категории ─── */
 export const categories = async ({ all = false } = {}) => {
   const { rows } = await query(`SELECT c.*, (SELECT count(*)::int FROM gop_places p JOIN kb_businesses b ON b.id = p.business_id WHERE p.category_id = c.id AND p.connected AND p.status = 'published' AND b.status = 'active') AS places FROM gop_categories c ${all ? '' : 'WHERE NOT hidden'} ORDER BY sort, name`);
-  return { categories: rows.map((r) => ({ id: r.id, name: r.name, icon: r.icon, sort: r.sort, hidden: r.hidden, places: r.places })) };
+  return { categories: rows.map((r) => ({ id: r.id, name: r.name, icon: r.icon, sort: r.sort, hidden: r.hidden, places: r.places, groupId: r.group_id ?? null })) };
 };
 const CAT_ID = /^[a-z][a-z0-9-]{1,30}$/;
 export const adminSaveCategory = async (me, id, body) => {
@@ -63,13 +64,14 @@ export const adminSaveCategory = async (me, id, body) => {
   const name = clean(body?.name, 60); if (name.length < 2) return err('bad_field', { field: 'name' });
   const icon = clean(body?.icon, 30) || 'building'; const sort = Number.isInteger(Number(body?.sort)) ? Math.max(0, Math.min(10000, Number(body.sort))) : 100;
   const hidden = Boolean(body?.hidden);
+  const group = body?.groupId === 'transport' ? 'transport' : null;   // единственная группа — «Для транспорта»
   if (id) {
-    const { rowCount } = await query('UPDATE gop_categories SET name = $2, icon = $3, sort = $4, hidden = $5 WHERE id = $1', [id, name, icon, sort, hidden]);
+    const { rowCount } = await query('UPDATE gop_categories SET name = $2, icon = $3, sort = $4, hidden = $5, group_id = $6 WHERE id = $1', [id, name, icon, sort, hidden, group]);
     if (!rowCount) return err('not_found');
     await logAdmin(me, 'category_update', `${id}: ${name}${hidden ? ' (скрыта)' : ''}`); return { ok: true, id };
   }
   const nid = CAT_ID.test(String(body?.id ?? '')) ? String(body.id) : `c-${Date.now().toString(36)}`;
-  const r = await query('INSERT INTO gop_categories (id, name, icon, sort, hidden) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING', [nid, name, icon, sort, hidden]);
+  const r = await query('INSERT INTO gop_categories (id, name, icon, sort, hidden, group_id) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING', [nid, name, icon, sort, hidden, group]);
   if (!r.rowCount) return err('exists');
   await logAdmin(me, 'category_create', `${nid}: ${name}`); return { ok: true, id: nid };
 };
@@ -227,6 +229,7 @@ const SELECT = `SELECT p.*, b.name, (b.logo IS NOT NULL) AS has_logo, c.name AS 
 export const list = async (me, q = {}) => {
   const vals = [me]; let w = visible;
   if (q.category) { vals.push(String(q.category)); w += ` AND p.category_id = $${vals.length}`; }
+  if (q.group) { vals.push(String(q.group)); w += ` AND p.category_id IN (SELECT id FROM gop_categories WHERE group_id = $${vals.length})`; }
   if (q.city) { vals.push(`%${String(q.city).replace(/[%_\\]/g, ' ').trim()}%`); w += ` AND p.city ILIKE $${vals.length}`; }
   if (q.q) { vals.push(`%${String(q.q).replace(/[%_\\]/g, ' ').trim().slice(0, 60)}%`); w += ` AND (b.name ILIKE $${vals.length} OR p.about ILIKE $${vals.length} OR p.address ILIKE $${vals.length})`; }
   if (q.fav === '1' || q.fav === true) w += ` AND EXISTS (SELECT 1 FROM gop_favs f WHERE f.business_id = p.business_id AND f.profile_id = $1)`;
@@ -326,6 +329,7 @@ export const paymentChanged = (paymentId, to) => {
   setTimeout(async () => {
     try {
       if (await depositPaymentChanged(paymentId, to)) return;
+      if (await workPaymentChanged(paymentId, to)) return;
       const { rows } = await query(`SELECT p.status, o.id, o.number, o.buyer_profile_id FROM kb_payments p JOIN kb_orders o ON o.qr_id = p.qr_id WHERE p.id = $1 AND o.buyer_profile_id IS NOT NULL`, [paymentId]);
       const r = rows[0]; if (!r || r.status !== to) return;
       const text = { confirmed: ['Оплата подтверждена', 'Организация подтвердила оплату.'], refunded: ['Оплата возвращена', 'Организация вернула оплату.'], cancelled: ['Платёж отменён', 'Платёж по заказу отменён организацией.'] }[to];

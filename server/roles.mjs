@@ -90,6 +90,8 @@ export const PERMISSIONS = [
   'bloom_communities', // Bloom: сообщества — жалобы, блокировка сообществ
   'life_admin',      // Sky Life: настройки, лимиты тарифов, категории, статистика (личные записи недоступны)
   'life_moderation', // Sky Life: проверка публичных деловых публикаций, жалобы, ограничения
+  'jobs',            // Sky Работа: модерация вакансий, проверка работодателей, жалобы, блокировки, статистика
+  'jobs_tariffs',    // Sky Работа: тарифы и продвижение (цены вакансий, срок, правила поиска резюме)
   'site',            // сайт: ссылки, скачивание (файлы приложений), статус сервисов, апелляции и заявки на релиз с сайта
 ];
 
@@ -178,6 +180,8 @@ export const ROLES = {
   go_finance_staff:['go_finance'],
   go_places_admin: ['go_places'],
   go_places_moderator: ['go_places'],
+  jobs_moderator: ['jobs'],
+  jobs_admin: ['jobs', 'jobs_tariffs'],
   read_only_admin: [],
 };
 
@@ -242,5 +246,7 @@ export const ROLE_LABEL = {
   go_finance_staff: 'Sky GO: тарифы',
   go_places_admin: 'Sky GO: организации (управление)',
   go_places_moderator: 'Sky GO: организации (модерация)',
+  jobs_moderator: 'Sky Работа: модерация',
+  jobs_admin: 'Sky Работа: управление и тарифы',
   read_only_admin: 'Только чтение',
 };

@@ -3,7 +3,7 @@ import { apiCall } from '@/core/auth/api';
 import { getApiOrigin } from '@/core/nativeApp';
 
 export interface GpHours { [day: string]: [string, string][] | undefined }
-export interface GpCategory { id: string; name: string; icon?: string; hidden?: boolean; sort?: number }
+export interface GpCategory { id: string; name: string; icon?: string; hidden?: boolean; sort?: number; groupId?: string | null }
 export interface GpCard {
   id: string; name: string; categoryId: string | null; categoryName: string | null; city: string; address: string; lat: number | null; lng: number | null;
   distanceKm: number | null; open: boolean | null; today: string; about: string; logoUrl: string | null; photo: string | null; fav: boolean;
@@ -23,7 +23,7 @@ export interface GpOrder {
   id: string; number: number; placeId: string; placeName: string; lines: { title: string; variant: string; qty: number; priceRub: number }[]; totalRub: number;
   status: string; statusLabel: string; payStatus: string; payLabel: string; comment: string; createdAt: string; payUrl: string | null;
 }
-export interface GpQuery { q?: string; category?: string; city?: string; open?: boolean; fav?: boolean; sort?: 'name' | 'distance'; lat?: number; lng?: number }
+export interface GpQuery { q?: string; category?: string; group?: string; city?: string; open?: boolean; fav?: boolean; sort?: 'name' | 'distance'; lat?: number; lng?: number }
 
 const body = (b: unknown) => JSON.stringify(b ?? {});
 const P = '/api/go/places';
@@ -34,7 +34,7 @@ export const gp = {
   categories: () => apiCall<{ categories: GpCategory[] }>(`${P}/categories`),
   list: (q: GpQuery) => {
     const u = new URLSearchParams();
-    if (q.q) u.set('q', q.q); if (q.category) u.set('category', q.category); if (q.city) u.set('city', q.city);
+    if (q.q) u.set('q', q.q); if (q.category) u.set('category', q.category); if (q.group) u.set('group', q.group); if (q.city) u.set('city', q.city);
     if (q.open) u.set('open', '1'); if (q.fav) u.set('fav', '1'); if (q.sort) u.set('sort', q.sort);
     if (q.lat != null && q.lng != null) { u.set('lat', String(q.lat)); u.set('lng', String(q.lng)); }
     return apiCall<{ places: GpCard[]; total: number; located: boolean }>(`${P}?${u.toString()}`);

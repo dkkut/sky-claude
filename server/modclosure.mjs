@@ -20,6 +20,7 @@ export const MODULES = [
   { key: 'library', label: 'Библиотека', group: 'Разделы' },
   { key: 'studio', label: 'Studio', group: 'Разделы' },
   { key: 'business', label: 'Сервисы для бизнеса (вся среда)', group: 'Разделы' },
+  { key: 'jobs', label: 'Работа', group: 'Разделы' },
   { key: 'profile', label: 'Профиль', group: 'Разделы' },
   { key: 'music', label: 'Музыка', group: 'Сервисы Sky' },
   { key: 'movies', label: 'Кино', group: 'Сервисы Sky' },

@@ -17,7 +17,7 @@ const ERR_EXTRA: Record<string, string> = { not_allowed: 'Недостаточн
 const bad = (r: { error?: string; reason?: string; status?: number }) => flash((r.error && ERR_EXTRA[r.error]) || goError(r));
 
 interface Row { id: string; name: string; connected: boolean; status: string; statusLabel: string; bizStatus: string; city: string; address: string; category: string | null; photos: number; submittedAt: string | null; rejectReason: string }
-interface Cat { id: string; name: string; icon: string; sort: number; hidden: boolean; places: number }
+interface Cat { id: string; name: string; icon: string; sort: number; hidden: boolean; places: number; groupId?: string | null }
 type View = 'queue' | 'cats' | 'reports' | 'errors';
 
 const AdminPhoto = ({ url }: { url: string }) => {
@@ -116,6 +116,7 @@ const Cats = () => {
           <input aria-label="Название" defaultValue={c.name} maxLength={60} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.name) void save(c, { name: v }); }} style={{ ...inp, flex: 1, minWidth: 140 }} />
           <input aria-label="Порядок" type="number" defaultValue={c.sort} onBlur={(e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v !== c.sort) void save(c, { sort: v }); }} style={{ ...inp, width: 74 }} />
           <span style={{ fontSize: 12, color: C.t3 }}>{c.places} орг.</span>
+          <button type="button" aria-pressed={c.groupId === 'transport'} title="Группа «Для транспорта»" style={btn(c.groupId === 'transport' ? C.acc : C.l2)} onClick={() => void save(c, { groupId: c.groupId === 'transport' ? null : 'transport' })}><span style={{ color: c.groupId === 'transport' ? '#fff' : C.t1 }}>Для транспорта</span></button>
           <button type="button" style={btn(C.l2)} onClick={() => void save(c, { hidden: !c.hidden })}><span style={{ color: C.t1 }}>{c.hidden ? 'Показать' : 'Скрыть'}</span></button>
           <button type="button" style={btn(C.red)} onClick={() => void del(c)}>Удалить</button>
         </div>

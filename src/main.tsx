@@ -36,6 +36,7 @@ import { GloballyBlocked } from './auth/GloballyBlocked';
 import { FrozenAccountGate } from './freeze/FrozenAccount';
 import { UpdateWatcher } from './updates/UpdateWatcher';
 import { captureInvite } from './invite/capture';
+import { captureGoLink, useOpenGoIfAsked } from './go/deeplink';
 import { captureQr } from './qr/qrApi';
 import { QrIncoming } from './qr/QrIncoming';
 import { HandoffIncoming } from './handoff/HandoffIncoming';
@@ -604,7 +605,7 @@ const ConsoleAuth = ({ children }: { children: React.ReactNode }) => {
 
 /* Язык и словарь — до первого кадра: английский не должен мелькать русским. */
 /** Показывается только вошедшему: неавторизованный сначала видит обычный вход. */
-const OpenDevices = () => { useOpenRecoveryIfAsked(); useOpenDevicesIfAsked(); useOpenPrimeIfAsked(); useEntitlementSync(); return null; };
+const OpenDevices = () => { useOpenRecoveryIfAsked(); useOpenDevicesIfAsked(); useOpenPrimeIfAsked(); useOpenGoIfAsked(); useEntitlementSync(); return null; };
 const LinkDeepLinkGate = () => {
   const ok = useAuthStore((s) => s.isAuthenticated);
   return ok ? <><DeviceLinkDeepLink /><OpenDevices /></> : null;
@@ -613,6 +614,7 @@ const LinkDeepLinkGate = () => {
 installTelemetry();
 
 captureInvite();   // ссылка-приглашение ?inv=КОД
+captureGoLink();   // ссылки на организации Sky GO ?place=… / ?go=transport
 captureQr();   // ссылка из Sky QR ?qr=КОД — запоминается до входа
 void initI18n().then(() => consumeRecoveryHandoff()).catch(() => undefined).finally(() => ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

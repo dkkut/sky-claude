@@ -1,6 +1,6 @@
 /** Sky GO: оболочка раздела. Нижняя навигация: Главная / Заказы / Работа / Профиль. */
 import { NotifyPrefs, MySupport, SupportForm } from './Support';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Car, UtensilsCrossed, Package, Plane, Fuel, ParkingCircle, Building2, Home, ClipboardList, Briefcase, User, LifeBuoy, BedDouble, Map as MapIcon, Hotel } from 'lucide-react';
 import { goApi, ROLE_LABEL, STAY_LABEL, type GoRole, type StayKind } from './api';
 import { Back, Btn, Card, Chip, Col, CitySelect, Empty, ErrorState, Notice, fail, useCity, useLoad, C, GO, fmt } from './ui';
@@ -16,6 +16,7 @@ import { TravelScreen, type TravelTab } from './Travel';
 import { StayCabinet } from './StayCabinet';
 import { ParkingScreen } from './Parking';
 import { PlacesScreen } from './Places';
+import { takeGoLink, clearGoLink } from './deeplink';
 import { ParkingOwnerScreen } from './ParkingOwner';
 import { DriverCabinet, SellerCabinet, CompanyCabinet, PayDetailsCard } from './Cabinet';
 import { bizApi, type OrgRole, type Member, type AssignMode, type Workspaces } from './bizApi';
@@ -38,7 +39,9 @@ const SERVICES = [
 
 export const SkyGo = ({ businessMode = false }: { businessMode?: boolean } = {}) => {
   const [tab, setTab] = useState<Tab>(businessMode ? 'work' : 'home');
-  const [screen, setScreen] = useState<Screen>(null);
+  const [link] = useState(() => takeGoLink());   // переход по ссылке ?place= / ?go=transport
+  const [screen, setScreen] = useState<Screen>(link ? 'places' : null);
+  useEffect(() => { clearGoLink(); }, []);
   const [cfg, reloadCfg] = useLoad(() => goApi.config(), []);
   const [exec, reloadExec] = useLoad(() => goApi.executors(), []);
   const config = cfg?.ok ? cfg.data! : null;
@@ -92,7 +95,7 @@ export const SkyGo = ({ businessMode = false }: { businessMode?: boolean } = {})
     if (screen && typeof screen === 'object' && 'delivery' in screen) return <DeliveryForm mode={screen.delivery} city={city} cargo={config.cargo} onBack={() => setScreen('delivery')} onCreated={open} />;
     if (screen === 'flights') return <TravelScreen initial="flights" cities={config.cities} city={city} onCity={setCity} onBack={() => setScreen(null)} onBooked={open} onOrders={() => goTab('orders')} />;
     if (screen === 'parkingOwner') return <ParkingOwnerScreen onBack={() => setScreen(null)} />;
-    if (screen === 'places') return <PlacesScreen city={city} onBack={() => setScreen(null)} />;
+    if (screen === 'places') return <PlacesScreen city={city} onBack={() => setScreen(null)} group={link?.group} initialOpen={link?.open ?? null} onOpenApp={(k) => setScreen(k === 'fuel' ? 'fuel' : 'parking')} />;
     if (screen === 'parking') return <ParkingScreen city={city} onBack={() => setScreen(null)} />;
     if (screen === 'fuel') return <AutoScreen city={city} onBack={() => setScreen(null)} onOpen={(k) => setScreen({ auto: k })} />;
     if (screen && typeof screen === 'object' && 'auto' in screen && screen.auto) return <FuelScreen city={city} kind={screen.auto} onBack={() => setScreen('fuel')} />;

@@ -116,6 +116,8 @@ import { sshGateRoutes } from './routes/sshgate.mjs';
 import { ipPinRoutes } from './routes/ippin.mjs';
 import { passkeyRoutes } from './routes/passkeys.mjs';
 import { goPlacesRoutes } from './routes/goplaces.mjs';
+import { goTransportRoutes } from './routes/gotransport.mjs';
+import { jobsRoutes } from './routes/jobs.mjs';
 import { pinRequired, sweepIpPin } from './ippin.mjs';
 import { sessionStore } from './sessions.mjs';
 import { goRoutes } from './routes/go.mjs';
@@ -123,6 +125,7 @@ import { onsiteRoutes } from './routes/onsite.mjs';
 import { parkingRoutes } from './routes/parking.mjs';
 import { sweepOnsite } from './onsite.mjs';
 import { sweepBookings as sweepPlaceBookings } from './goplacebook.mjs';
+import { sweepJobs } from './jobsapps.mjs';
 import { goAdminRoutes } from './routes/goadmin.mjs';
 import { sweepExpired as goSweepExpired } from './gosubs.mjs';
 import { sweepOrgs } from './goorg.mjs';
@@ -317,7 +320,7 @@ const STORAGE_UPLOAD_PREFIX = /^\/api\/(music|film|podcasts|books|skyvideo|video
 const STORAGE_SERVE_TAIL = /\/(audio|cover|poster|video|thumbnail|logo|segment|manifest|stream|file|content|download|pdf|epub|watch|media|avatar|banner|photo|image)$/;
 
 /** Порядок важен только тем, что более специфичные пути идут раньше. */
-const ROUTES = [goodsStatusRoutes, bloomEventsRoutes, contentFilterRoutes, skyQaRoutes, skyCalRoutes, skyTimeRoutes, bloomCommunitiesRoutes, lifeRoutes, appUpdateRoutes, walletP2pRoutes, bizRulesRoutes, chanModRoutes, gameInfraRoutes, customGiftsRoutes, acctFreezeRoutes, taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, specialistsRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
+const ROUTES = [jobsRoutes, goTransportRoutes, goodsStatusRoutes, bloomEventsRoutes, contentFilterRoutes, skyQaRoutes, skyCalRoutes, skyTimeRoutes, bloomCommunitiesRoutes, lifeRoutes, appUpdateRoutes, walletP2pRoutes, bizRulesRoutes, chanModRoutes, gameInfraRoutes, customGiftsRoutes, acctFreezeRoutes, taxRoutes, emailCommsRoutes, ofdRoutes, walletFxRoutes, firewallRoutes, mapsAdminRoutes, friendLocRoutes, safetyRoutes, moneyGuardRoutes, lserversRoutes, lgamesRoutes, musicDuoRoutes, mediaHomeRoutes, profileMusicRoutes, creatorProfileRoutes, royaltiesRoutes, mediaRestrictRoutes, defenseRoutes, sandboxRoutes, opsRoutes, handoffRoutes, appLockRoutes, skyQrRoutes, transferRoutes, betaRoutes, globalBlockRoutes, lawRequestRoutes, inviteRoutes, onboardingRoutes, rtcRoutes, recoveryRoutes, limitedAccessRoutes, resourceRoutes, deviceLinkRoutes, accountFreezeRoutes, accountDeletionRoutes, accountRecoveryRoutes, primeRewardsRoutes, aiUsageRoutes, partnersRoutes, specialistsRoutes, kbizAdminRoutes, goPlacesRoutes, kbizRoutes, authRoutes, passwordRoutes, skyIdRoutes, walletRoutes, directoryRoutes, fileRoutes,
                 supportRoutes, uploadLimitsRoutes, entitlementsRoutes, verificationRoutes, contentLabelsRoutes, contentArchiveRoutes, artistCardsRoutes, musicLabelsRoutes, skyLogsRoutes, musicStudioRoutes, musicRoutes, filmSeriesRoutes, filmRoutes, skyVideoRoutes, tvRoutes, podcastRoutes, bookRoutes,
                 botRoutes, ticketRoutes, aiRoutes, togetherRoutes, marketVerifyRoutes, marketRoutes, bloxRoutes, analyticsRoutes, primePulseRoutes,
                 pvzRoutes, pvzShipmentRoutes, campaignRoutes, giftRoutes, sharedWarehouseRoutes, logisticsRoutes, mapsRoutes,
@@ -976,6 +979,7 @@ const start = async () => {
       await goSweepStay().catch(() => {});
       await sweepOnsite().catch((e) => console.error('[onsite] уборка:', e.message));
       await sweepPlaceBookings().catch((e) => console.error('[goplaces] брони:', e.message));
+      await sweepJobs().catch((e) => console.error('[jobs] уборка:', e.message));
       await sweepDirect().catch((e) => console.error('[storage] прямой доступ:', e.message));
       await sweepVersionFiles().catch((e) => console.error('[studio] уборка версий:', e.message));
       const staleRequests = await sweepPendingActions();
