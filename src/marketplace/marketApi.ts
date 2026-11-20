@@ -57,6 +57,12 @@ export interface CatalogQuery {
   shipping?: 'ru' | 'abroad' | 'intl';
 }
 
+export interface FlowerShop {
+  id: string; shopName: string; description?: string; hasAvatar: boolean;
+  rating: number | null; reviewCount: number; flowersCount: number;
+}
+export const apiFlowerShops = () => apiCall<{ shops: FlowerShop[] }>('/api/market/flower-shops');
+
 export const apiCatalog = (query: CatalogQuery = {}) =>
   apiCall<{ items: Product[] }>(`/api/market/catalog${q(query as Record<string, string>)}`);
 

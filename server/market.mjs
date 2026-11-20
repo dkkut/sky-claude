@@ -57,7 +57,7 @@ export const GAME_ID_RE    = /^mg-[0-9a-f-]{36}$/;
 
 export const CATEGORIES = [
   'electronics', 'clothing', 'home', 'beauty',
-  'sports', 'books', 'toys', 'food', 'other',
+  'sports', 'books', 'toys', 'food', 'flowers', 'other',
 ];
 
 /**
@@ -679,6 +679,32 @@ export const listCatalog = async (viewerId, {
     args,
   );
   return rows.map(toProduct);
+};
+
+/**
+ * Цветочные магазины: активные продавцы, у которых есть хотя бы одна
+ * опубликованная карточка в категории «цветы». Отдельного вида магазина
+ * нет — это просто выборка по реальным товарам. Свежесть, происхождение
+ * и условия доставки Sky не проверяет: это слова продавца.
+ */
+export const listFlowerShops = async ({ limit } = {}) => {
+  const lim = int(limit, 1, 100) ?? 40;
+  const { rows } = await query(
+    `SELECT s.profile_id, s.shop_name, s.description, s.has_avatar, s.rating,
+            s.review_count, count(p.id)::int AS flowers_count
+       FROM market_sellers s
+       JOIN market_products p ON p.seller_id = s.profile_id
+      WHERE s.status = 'active' AND p.active AND p.moderation_status = 'published'
+        AND p.category = 'flowers' AND p.market_type = 'standard'
+      GROUP BY s.profile_id
+      ORDER BY count(p.id) DESC, s.shop_name ASC
+      LIMIT $1`, [lim]);
+  return rows.map((r) => ({
+    id: r.profile_id, shopName: r.shop_name, description: r.description,
+    hasAvatar: Boolean(r.has_avatar),
+    rating: r.rating == null ? null : Math.round(Number(r.rating) * 10) / 10,
+    reviewCount: Number(r.review_count ?? 0), flowersCount: r.flowers_count,
+  }));
 };
 
 /** Товары продавца, включая снятые с витрины: это его кабинет. */

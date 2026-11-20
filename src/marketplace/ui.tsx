@@ -9,7 +9,7 @@ import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Package, Star, Heart, Laptop, Shirt, Home, Sparkles, Dumbbell,
-  BookOpen, Gamepad2, Apple, ImageOff,
+  BookOpen, Gamepad2, Apple, ImageOff, Flower2,
 } from 'lucide-react';
 import type { Product, ProductCategory } from './types';
 import { useMarketImage } from './marketMedia';
@@ -70,6 +70,7 @@ export const CAT_CFG: Record<ProductCategory, { label: string; Icon: typeof Pack
   books:       { label: 'Книги',       Icon: BookOpen, color: '#6366f1' },
   toys:        { label: 'Игрушки',     Icon: Gamepad2, color: '#f43f5e' },
   food:        { label: 'Питание',     Icon: Apple,    color: '#22c55e' },
+  flowers:     { label: 'Цветы',       Icon: Flower2,  color: '#f472b6' },
   other:       { label: 'Другое',      Icon: Package,  color: 'var(--t3)' },
 };
 

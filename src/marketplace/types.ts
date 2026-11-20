@@ -47,7 +47,7 @@ export interface ServicePackage {
 
 export type ProductCategory =
   | 'electronics' | 'clothing' | 'home' | 'beauty'
-  | 'sports' | 'books' | 'toys' | 'food' | 'other';
+  | 'sports' | 'books' | 'toys' | 'food' | 'flowers' | 'other';
 
 /**
  * Состояние сделки — ровно то же, что в машине переходов на сервере.
@@ -97,7 +97,7 @@ export const GAME_CATEGORY_LABEL: Record<GameCategoryKey, string> = {
 
 export const CATEGORY_LABEL: Record<ProductCategory, string> = {
   electronics: 'Электроника', clothing: 'Одежда', home: 'Дом', beauty: 'Красота',
-  sports: 'Спорт', books: 'Книги', toys: 'Игрушки', food: 'Питание', other: 'Другое',
+  sports: 'Спорт', books: 'Книги', toys: 'Игрушки', food: 'Питание', flowers: 'Цветы', other: 'Другое',
 };
 
 export interface Game {

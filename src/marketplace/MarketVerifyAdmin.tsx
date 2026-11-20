@@ -417,7 +417,7 @@ const ReportsTab = () => {
 
 const CATEGORY_RU: Record<string, string> = {
   electronics: 'Электроника', clothing: 'Одежда', home: 'Дом', beauty: 'Красота', sports: 'Спорт',
-  books: 'Книги', toys: 'Игрушки', food: 'Еда', other: 'Другое',
+  books: 'Книги', toys: 'Игрушки', food: 'Еда', flowers: 'Цветы', other: 'Другое',
 };
 const KIND_RU: Record<string, string> = { individual: 'Физлицо', npd: 'НПД', ip: 'ИП', legal: 'Юрлицо' };
 

@@ -64,6 +64,7 @@ export const createHold = async (exec, { kind, targetId, authorId, categories, t
 const APPLY = {
   async bloom_post(c, id, ok) { await c.query(ok ? 'UPDATE bloom_posts SET deleted_at = NULL, held_at = NULL WHERE id = $1 AND held_at IS NOT NULL' : 'UPDATE bloom_posts SET held_at = NULL WHERE id = $1 AND held_at IS NOT NULL', [id]); },
   async bloom_comment(c, id, ok) { await c.query(ok ? 'UPDATE bloom_comments SET deleted_at = NULL, held_at = NULL WHERE id = $1 AND held_at IS NOT NULL' : 'UPDATE bloom_comments SET held_at = NULL WHERE id = $1 AND held_at IS NOT NULL', [id]); },
+  async bloom_event(c, id, ok) { await c.query(ok ? 'UPDATE bloom_events SET held_at = NULL WHERE id = $1 AND held_at IS NOT NULL' : 'UPDATE bloom_events SET held_at = NULL, removed_at = now(), remove_reason = \'отклонено проверкой\' WHERE id = $1 AND held_at IS NOT NULL', [id]); },
   async qa_question(c, id, ok) { await c.query('UPDATE qa_questions SET status = $2 WHERE id = $1 AND status = \'held\'', [id, ok ? 'open' : 'removed']); },
   async qa_answer(c, id, ok) {
     const r = await c.query('UPDATE qa_answers SET status = $2 WHERE id = $1 AND status = \'held\' RETURNING question_id', [id, ok ? 'visible' : 'removed']);

@@ -271,6 +271,7 @@ export const CATEGORY_DEFAULTS = {
   toys:        { docsWhenNew: ['certificate'], markingPossible: false, manualReview: false },
   food:        { docsWhenNew: ['certificate'], markingPossible: true,  manualReview: true,
                  allowedKinds: ['npd', 'ip', 'legal'] },
+  flowers:     { docsWhenNew: [],              markingPossible: false, manualReview: false },
   other:       { docsWhenNew: [],              markingPossible: false, manualReview: false },
 };
 

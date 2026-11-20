@@ -219,7 +219,7 @@ const ApplicationForm = ({ config, my, onChanged }: { config: VerifyConfig; my: 
                 <button key={c} type="button" onClick={() => toggle(categories, c, setCategories)}
                   className="rounded-lg px-2.5 py-1 text-[11px] font-semibold"
                   style={{ background: categories.includes(c) ? C.accBg : C.l2, color: categories.includes(c) ? C.acc : C.t3 }}>
-                  {({ electronics: 'Электроника', clothing: 'Одежда', home: 'Дом', beauty: 'Красота', sports: 'Спорт', books: 'Книги', toys: 'Игрушки', food: 'Еда', other: 'Другое' } as Record<string, string>)[c] ?? c}
+                  {({ electronics: 'Электроника', clothing: 'Одежда', home: 'Дом', beauty: 'Красота', sports: 'Спорт', books: 'Книги', toys: 'Игрушки', food: 'Еда', flowers: 'Цветы', other: 'Другое' } as Record<string, string>)[c] ?? c}
                 </button>
               ))}
             </div>

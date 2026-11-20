@@ -32,7 +32,7 @@ import {
   PROMO_PLANS, buyPromotion, listPromotions,
   readSeller, readMySeller, createSeller, updateSeller, setSellerAvatar, sellerAvatarMime,
   paySellerSubscription, listGames, createGame, updateGame,
-  setGameCover, gameCoverMime, readProduct, listCatalog, listMyProducts,
+  setGameCover, gameCoverMime, readProduct, listCatalog, listFlowerShops, listMyProducts,
   listFavorites, setFavorite, createProduct, updateProduct, archiveProduct,
   addProductImage, readProductImage, deleteProductImage, listReviews,
   setProductLogo, productLogoMime, dropProductLogo,
@@ -340,6 +340,11 @@ export const marketRoutes = async (req, res, url) => {
   }
 
   /* ══ Каталог ════════════════════════════════════════════════════ */
+
+  if (req.method === 'GET' && path === '/api/market/flower-shops') {
+    if (!readOk()) return json(res, 429, { error: 'too_many_requests' });
+    return json(res, 200, { shops: await listFlowerShops({ limit: params.get('limit') }) });
+  }
 
   if (req.method === 'GET' && path === '/api/market/catalog') {
     if (!readOk()) return json(res, 429, { error: 'too_many_requests' });

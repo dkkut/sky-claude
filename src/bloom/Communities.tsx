@@ -7,6 +7,7 @@ import { useBloomStore } from './store';
 import { useAuthStore } from '@/core/auth/store';
 import { PostCard } from './components/PostCard';
 import { CreatePost } from './components/CreatePost';
+import { EventsView } from './Events';
 
 type Mine = { role: 'owner' | 'mod' | 'member'; status: 'active' | 'pending' | 'banned' } | null;
 type Comm = { id: string; slug: string; name: string; description: string; emoji: string; color: string; privacy: 'public' | 'closed'; postPolicy: 'all' | 'mods'; members: number; posts: number; mine: Mine; rules?: { title: string; text: string }[]; ownerId?: string;
@@ -126,7 +127,7 @@ const SideInfo = ({ c }: { c: Comm }) => {
 };
 
 const CommunityPage = ({ slug, onBack, onAuthorClick, onTagClick }: { slug: string; onBack: () => void; onAuthorClick: (id: string) => void; onTagClick: (t: string) => void }) => {
-  const [c, setC] = useState<Comm | null | false>(null); const [sub, setSub] = useState<'posts' | 'about' | 'manage'>('posts'); const [create, setCreate] = useState(false); const [menu, setMenu] = useState(false);
+  const [c, setC] = useState<Comm | null | false>(null); const [sub, setSub] = useState<'posts' | 'events' | 'about' | 'manage'>('posts'); const [create, setCreate] = useState(false); const [menu, setMenu] = useState(false);
   const loadCommunityPosts = useBloomStore((s) => s.loadCommunityPosts); const feedVersion = useBloomStore((s) => s.feedVersion);
   const key = c ? `c:${c.id}` : ''; const posts = useBloomStore((s) => (key ? s.authorPostsCache[key] : undefined));
   const meName = useAuthStore((s) => s.accounts.find((a) => a.id === s.currentUserId)?.name ?? '');
@@ -178,13 +179,14 @@ const CommunityPage = ({ slug, onBack, onAuthorClick, onTagClick }: { slug: stri
         </div>
         {c.blocked && <p className="mx-auto max-w-5xl pb-2 text-xs font-bold" style={{ color: '#ef4444' }}>Заблокировано администрацией: {c.blockReason}</p>}
         <div className="mx-auto flex max-w-5xl gap-1 overflow-x-auto" role="tablist" style={{ scrollbarWidth: 'none' }}>
-          {([['posts', 'Посты'], ['about', 'О сообществе'], ...(mod ? [['manage', 'Управление']] : [])] as [string, string][]).map(([k, l]) => (
+          {([['posts', 'Посты'], ['events', 'Мероприятия'], ['about', 'О сообществе'], ...(mod ? [['manage', 'Управление']] : [])] as [string, string][]).map(([k, l]) => (
             <button key={k} type="button" role="tab" aria-selected={sub === k} onClick={() => setSub(k as typeof sub)} className="relative shrink-0 px-4 py-3 text-sm font-bold" style={{ color: sub === k ? 'var(--t1)' : 'var(--t3)' }}>{l}{sub === k && <span className="absolute inset-x-3 bottom-0 h-[3px] rounded-full" style={{ background: 'var(--accent)' }} />}</button>))}
         </div>
       </div>
       <div className="mx-auto mt-4 grid max-w-5xl gap-4 px-3 sm:px-5 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0">
           {sub === 'posts' && feed}
+          {sub === 'events' && (c.contentVisible ? <EventsView communityId={c.id} /> : <div className="rounded-2xl p-5 text-sm" style={{ ...card, color: 'var(--t2)' }}>Мероприятия закрытого сообщества видны только участникам.</div>)}
           {sub === 'about' && <div className="lg:hidden"><SideInfo c={c} /></div>}
           {sub === 'about' && <div className="hidden rounded-2xl p-5 text-sm lg:block" style={{ ...card, color: 'var(--t2)' }}>Сведения о сообществе — в панели справа.</div>}
           {sub === 'manage' && mod && <ManagePanel c={c} onChanged={() => void load()} />}

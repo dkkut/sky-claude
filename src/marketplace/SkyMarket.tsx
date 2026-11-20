@@ -26,8 +26,9 @@ import {
   inputStyle, Alert, ProductCard, ProductImage, ProductLogo, CatIcon, CAT_CFG,
 } from './ui';
 import {
-  apiProduct, apiProductReviews, apiCreateOrder, apiPickupPoints, apiMarketTicket,
+  apiProduct, apiProductReviews, apiCreateOrder, apiPickupPoints, apiMarketTicket, apiFlowerShops,
 } from './marketApi';
+import type { FlowerShop } from './marketApi';
 import type {
   Product, Review, ProductCategory, PickupPoint, MarketType,
 } from './types';
@@ -364,6 +365,8 @@ export const ProductPage = ({ productId, onBack, onOrdered }:
 export const Catalog = ({ marketType = 'standard', onOpen }:
 { marketType?: MarketType; onOpen: (id: string) => void }) => {
   const { catalog, catalogLoading, catalogError, loadCatalog, toggleFavorite } = useMarketStore();
+  const [shops, setShops] = useState<FlowerShop[]>([]);
+  const [shopId, setShopId] = useState('');
   const [q, setQ] = useState('');
   const [category, setCategory] = useState<ProductCategory | ''>('');
   const [sort, setSort] = useState<'new' | 'cheap' | 'expensive' | 'popular' | 'rating'>('new');
@@ -372,10 +375,15 @@ export const Catalog = ({ marketType = 'standard', onOpen }:
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      void loadCatalog({ type: marketType, q: q.trim() || undefined, category: category || undefined, sort, shipping: shipping || undefined });
+      void loadCatalog({ type: marketType, q: q.trim() || undefined, category: category || undefined, sort, shipping: shipping || undefined, sellerId: category === 'flowers' && shopId ? shopId : undefined });
     }, 250);
     return () => clearTimeout(timer);
-  }, [q, category, sort, marketType, shipping]);
+  }, [q, category, sort, marketType, shipping, shopId]);
+
+  useEffect(() => {
+    if (category !== 'flowers') { setShopId(''); return; }
+    void apiFlowerShops().then((r) => { if (r.ok && r.data) setShops(r.data.shops); });
+  }, [category]);
 
   return (
     <div className="flex h-full flex-col">
@@ -434,6 +442,28 @@ export const Catalog = ({ marketType = 'standard', onOpen }:
                     {CATEGORY_LABEL[k]}
                   </button>
                 ))}
+              </div>
+            )}
+            {marketType === 'standard' && category === 'flowers' && (
+              <div className="space-y-1">
+                <div className="text-[10px] font-semibold" style={{ color: C.t3 }}>Цветочные магазины</div>
+                {shops.length === 0 ? (
+                  <div className="text-[10px]" style={{ color: C.t3 }}>Магазинов с цветами пока нет.</div>
+                ) : (
+                  <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                    <button type="button" onClick={() => setShopId('')}
+                      className="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
+                      style={{ background: shopId === '' ? C.accBg : C.l2, color: shopId === '' ? C.acc : C.t3 }}>Все магазины</button>
+                    {shops.map((s) => (
+                      <button key={s.id} type="button" onClick={() => setShopId(s.id)}
+                        className="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
+                        style={{ background: shopId === s.id ? C.accBg : C.l2, color: shopId === s.id ? C.acc : C.t3 }}>
+                        <span translate="no">{s.shopName}</span>{s.rating != null ? ` · ★${s.rating}` : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="text-[10px]" style={{ color: C.t3 }}>Свежесть и условия доставки указывает продавец — Sky их не проверяет.</div>
               </div>
             )}
           </div>
