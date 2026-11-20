@@ -986,7 +986,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
   const startCall = useCallStore(s => s.startCall);
 
   const [draft, setDraft]           = useState('');
-  const [starKey, setStarKey]         = useState(0);
+  const [starMsgId, setStarMsgId]     = useState<string | null>(null);
   const draftRef                    = useRef('');
   const [showHash, setShowHash]     = useState(false);
   const [hashQ, setHashQ]           = useState('');
@@ -1306,6 +1306,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
       const msg = sendMessage({ text: t, kind: 'text', ...extraFields });
       if (msg) {
         broadcast.message(msg);
+        setStarMsgId(msg.id); window.setTimeout(() => setStarMsgId((c) => (c === msg.id ? null : c)), 1800);
         // Монетки питомцу за переписку
         try {
           const _pc = JSON.parse(localStorage.getItem('sky:pet:coins:v1') || '{}');
@@ -1315,7 +1316,6 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
       }
     }
     setDraft(''); draftRef.current = ''; setReplyTo(null);
-    setStarKey((k) => k + 1);
     setChatDraft(activeChatId, '');
     setMsgOptions({ once: false, spoiler: false, silent: false, selfDestruct: 0, scheduled: false, scheduledAt: '' });
     requestAnimationFrame(() => taRef.current?.focus());
@@ -1545,7 +1545,6 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
       onDragOver={e => { e.preventDefault(); setDragging(true); }}
       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }}
       onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) sendFile(f); }}>
-      {starKey > 0 && <div key={starKey} className="sky-fallstar" aria-hidden="true"><i className="sky-fallstar-core" /><i className="sky-fallstar-trail" /><b className="sky-fallstar-burst" /></div>}
 
       <ChatWallpaper chatId={activeChatId ?? undefined} light={theme.light} />
 
@@ -2109,6 +2108,27 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                   </span>
                 </div>
               )}
+              {starMsgId === msg.id && msg.fromMe ? (
+                <div className="sky-star-wrap"><i className="sky-star-drop" aria-hidden="true" /><i className="sky-star-trail" aria-hidden="true" /><i className="sky-star-sparks" aria-hidden="true" />
+                <Bubble
+                msg={msg} replyTo={replyTo}
+                authorName={isGroup ? author : ''}
+                voiceFrom={nameOf(msg.authorId)}
+                myId={myId}
+                onReply={() => { setReplyTo(msg.id); taRef.current?.focus(); }}
+                onEdit={() => { startEdit(msg.id); setDraft(msg.text); draftRef.current = msg.text; taRef.current?.focus(); }}
+                onDelete={() => requestDelete({ id: `msg:${msg.id}`, title: '', noun: 'сообщение', confirmed: true, run: async () => { deleteMessage(msg.id); broadcast.delete(msg.id); } })}
+                onPin={() => pinMessage(msg.id)}
+                onFavorite={() => toggleFavoriteMessage(msg.id)}
+                onForward={() => setFwdMsg(msg)}
+                onReact={e => { react(msg.id, e); broadcast.react(msg.id, e, myId); }}
+                onReport={() => setShowReport(true)}
+                onPickSuggestion={t => { setDraft(t); draftRef.current=t; taRef.current?.focus(); }}
+                replyCount={replyCounts[msg.id]}
+                onOpenThread={() => setThreadRootId(msg.id)}
+              />
+                </div>
+              ) : (
               <Bubble
                 msg={msg} replyTo={replyTo}
                 authorName={isGroup ? author : ''}
@@ -2126,6 +2146,7 @@ export const ChatWindow = ({ onBack }: { onBack?: () => void } = {}) => {
                 replyCount={replyCounts[msg.id]}
                 onOpenThread={() => setThreadRootId(msg.id)}
               />
+              )}
             </motion.div>
           );
         })}

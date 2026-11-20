@@ -586,17 +586,19 @@ html[data-animations='off'] .spp-blob, html[data-animations='off'] .spp-spin, ht
 @keyframes lk-rise { from { opacity: 0; transform: translateY(14px) scale(.98) } to { opacity: 1; transform: none } }
 @media (prefers-reduced-motion: reduce) { [data-keep-dark] [style*="lk-"] { animation: none !important; } }
 
-/* Падающая звёздочка при отправке сообщения: летит сверху справа к своему пузырю, оставляет хвост и рассыпается искрами. */
-.sky-fallstar { position: absolute; inset: 0; z-index: 40; pointer-events: none; overflow: hidden; }
-.sky-fallstar-core, .sky-fallstar-trail { position: absolute; display: block; animation: sky-star-fall .85s cubic-bezier(.45,.05,.7,1) forwards; opacity: 0; }
-.sky-fallstar-core { width: 12px; height: 12px; margin: -6px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px 4px #fff, 0 0 24px 10px var(--accent, #a78bfa); }
-.sky-fallstar-core::before, .sky-fallstar-core::after { content: ''; position: absolute; left: 50%; top: 50%; background: #fff; border-radius: 2px; transform: translate(-50%, -50%); }
-.sky-fallstar-core::before { width: 26px; height: 2px; } .sky-fallstar-core::after { width: 2px; height: 26px; }
-.sky-fallstar-trail { width: 3px; height: 110px; margin: -116px 0 0 -1.5px; background: linear-gradient(to top, rgba(255,255,255,.95), rgba(167,139,250,.5) 50%, transparent); border-radius: 3px; transform: rotate(8deg); transform-origin: bottom center; }
-.sky-fallstar-burst { position: absolute; right: 10%; bottom: 14%; width: 6px; height: 6px; margin: 0 -3px -3px 0; border-radius: 50%; opacity: 0; background: #fff;
-  box-shadow: 0 -18px 0 -1px #fff, 16px -9px 0 -1px #fde68a, 18px 9px 0 -1px #fff, 0 18px 0 -1px #c4b5fd, -18px 9px 0 -1px #fff, -16px -9px 0 -1px #fde68a;
-  animation: sky-star-burst .55s ease-out .78s forwards; }
-@keyframes sky-star-fall { 0% { right: 18%; top: -8%; opacity: 0; } 12% { opacity: 1; } 100% { right: 10%; top: 86%; opacity: 1; } }
+/* Анимация отправки: звёздочка падает на место сообщения, и пузырь аккуратно «рождается» из неё. */
+.sky-star-wrap { position: relative; }
+.sky-star-wrap > :not(.sky-star-drop):not(.sky-star-trail):not(.sky-star-sparks) { transform-origin: 85% 50%; animation: sky-star-born .55s cubic-bezier(.2,.9,.3,1.2) .62s backwards; }
+.sky-star-drop, .sky-star-trail, .sky-star-sparks { position: absolute; right: 22px; top: 50%; display: block; pointer-events: none; z-index: 5; }
+.sky-star-drop { width: 12px; height: 12px; margin: -6px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px 4px #fff, 0 0 24px 10px var(--accent, #a78bfa); animation: sky-star-down .66s cubic-bezier(.5,.05,.75,1) forwards; }
+.sky-star-drop::before, .sky-star-drop::after { content: ''; position: absolute; left: 50%; top: 50%; background: #fff; border-radius: 2px; transform: translate(-50%, -50%); }
+.sky-star-drop::before { width: 26px; height: 2px; } .sky-star-drop::after { width: 2px; height: 26px; }
+.sky-star-trail { width: 3px; height: 120px; margin: -120px 0 0 -1.5px; background: linear-gradient(to top, rgba(255,255,255,.95), rgba(167,139,250,.5) 50%, transparent); border-radius: 3px; transform-origin: bottom center; animation: sky-star-down .66s cubic-bezier(.5,.05,.75,1) forwards; }
+.sky-star-sparks { width: 6px; height: 6px; margin: -3px; border-radius: 50%; opacity: 0; background: #fff;
+  box-shadow: 0 -18px 0 -1px #fff, 16px -9px 0 -1px #fde68a, 18px 9px 0 -1px #fff, 0 18px 0 -1px #c4b5fd, -18px 9px 0 -1px #fff, -16px -9px 0 -1px #fde68a; animation: sky-star-burst .55s ease-out .62s forwards; }
+@keyframes sky-star-down { 0% { transform: translateY(-150px); opacity: 0; } 15% { opacity: 1; } 88% { opacity: 1; } 100% { transform: translateY(0); opacity: 0; } }
+@keyframes sky-star-born { 0% { transform: scale(.05); opacity: 0; filter: blur(4px); } 100% { transform: scale(1); opacity: 1; filter: blur(0); } }
 @keyframes sky-star-burst { 0% { transform: scale(.2); opacity: 1; } 100% { transform: scale(2.4); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .sky-fallstar { display: none; } }
-html[data-animations='off'] .sky-fallstar { display: none; }
+@media (prefers-reduced-motion: reduce) { .sky-star-wrap > * { animation: none !important; } .sky-star-drop, .sky-star-trail, .sky-star-sparks { display: none; } }
+html[data-animations='off'] .sky-star-wrap > * { animation: none !important; }
+html[data-animations='off'] .sky-star-drop, html[data-animations='off'] .sky-star-trail, html[data-animations='off'] .sky-star-sparks { display: none; }
