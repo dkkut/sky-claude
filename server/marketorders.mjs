@@ -91,7 +91,7 @@ const FLOW = {
     /* Самовывоз из магазина: «Заказ готов к выдаче» (только для delivery_method = store_pickup). */
     ready_pickup: { from: ['seller_payment_confirmed', 'fulfillment'], to: 'ready_for_pickup', by: 'seller', method: 'store_pickup' },
     /* Доставка продавцом: «Передал курьеру / везу» (только для delivery_method = courier). */
-    ship_own:     { from: ['seller_payment_confirmed', 'fulfillment'], to: 'seller_shipped', by: 'seller', method: 'courier' },
+    ship_own:     { from: ['seller_payment_confirmed', 'fulfillment'], to: 'seller_shipped', by: 'seller', method: ['courier', 'intl'] },
   },
   /*
    * Услуга. Путь тот же, что у игрового лота: везти нечего, исполнитель
@@ -249,6 +249,7 @@ export const toOrder = (row, role) => {
     contact: seeContact ? dec(row.contact_enc) : '',
     pickupPointId: row.pickup_point_id ?? null,
     deliveryMethod: row.delivery_method ?? null,
+    deliveryCountry: row.delivery_country ?? null,
     deliveryFeeKop: Number(row.delivery_fee_kop ?? 0),
     deliveryFee: Number(row.delivery_fee_kop ?? 0) / 100,
     /* Адрес магазина для самовывоза показан покупателю (его опубликовал сам продавец). */
@@ -387,7 +388,7 @@ export const createOrder = async (buyerId, input = {}) => {
     /* Способ получения и плата за него — только для физических товаров; считает сервер. */
     let ship = { method: null, feeKop: 0, snap: null };
     if (std) {
-      ship = await resolveForOrder(client, { sellerId: product.seller_id, subtotalKop: itemsKop, method: input.deliveryMethod, address, pickupPointId });
+      ship = await resolveForOrder(client, { sellerId: product.seller_id, subtotalKop: itemsKop, method: input.deliveryMethod, address, pickupPointId, country: input.deliveryCountry });
       if (ship.error) { await client.query('ROLLBACK'); return { error: ship.error }; }
     }
     const totalKop = itemsKop + BigInt(ship.feeKop);
@@ -399,8 +400,8 @@ export const createOrder = async (buyerId, input = {}) => {
           price_kop, quantity, total_kop, status,
           address_enc, contact_enc, pickup_point_id, state_seq,
           package_level, package_title, delivery_days, requirements_enc,
-          delivery_method, delivery_fee_kop, delivery_snap)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'created',$10,$11,$12,1,$13,$14,$15,$16,$17,$18,$19)
+          delivery_method, delivery_fee_kop, delivery_snap, delivery_country)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'created',$10,$11,$12,1,$13,$14,$15,$16,$17,$18,$19,$20)
        RETURNING *`,
       [orderId, buyerId, product.seller_id, productId, product.market_type,
         product.title, String(priceKop), qty, String(totalKop),
@@ -409,7 +410,7 @@ export const createOrder = async (buyerId, input = {}) => {
         pickupPointId,
         pack?.level ?? null, pack?.title ?? null, pack?.delivery ?? null,
         requirements ? encryptContent(requirements) : null,
-        ship.method, String(ship.feeKop), ship.snap ? JSON.stringify(ship.snap) : null]);
+        ship.method, String(ship.feeKop), ship.snap ? JSON.stringify(ship.snap) : null, ship.country ?? null]);
 
     await client.query(
       `INSERT INTO market_order_events (order_id, actor_id, actor_role, from_status, to_status, detail)
@@ -492,6 +493,7 @@ export const applyTransition = async (client, order, {
 
   let [title, body] = NOTES[to] ?? ['Заказ обновлён', ''];
   if (to === 'ready_for_pickup' && order.delivery_method === 'store_pickup') [title, body] = ['Заказ ждёт в магазине', 'Заказ готов к выдаче — заберите его в магазине продавца.'];
+  if (to === 'seller_shipped' && order.delivery_method === 'intl') [title, body] = ['Заказ отправлен за границу', 'Продавец отправил заказ в вашу страну. Таможенное оформление и сроки зависят от перевозчика.'];
   if (to === 'seller_shipped' && order.delivery_method === 'courier') [title, body] = ['Заказ передан курьеру', 'Продавец отправил заказ с курьером — он везёт его по вашему адресу.'];
   const notes = [];
   for (const who of AUDIENCE[to] ?? []) {
@@ -545,7 +547,7 @@ export const actOnOrder = async (orderId, actorId, action) => {
 
     const flow = FLOW[order.market_type]?.[act];
     if (!flow) { await client.query('ROLLBACK'); return { error: 'unknown_action' }; }
-    if (flow.method && order.delivery_method !== flow.method) {
+    if (flow.method && ![].concat(flow.method).includes(order.delivery_method)) {
       await client.query('ROLLBACK');
       return { error: 'unknown_action' };
     }

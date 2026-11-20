@@ -75,7 +75,7 @@ const MAX_WEBHOOK_BYTES = 64 * 1024;
 const CODES = {
   not_found: 404,
   delivery_method_required: 400, bad_delivery_method: 400, delivery_method_unavailable: 409, pickup_address_required: 400,
-  pickup_must_be_free: 400, bad_options: 400, bad_method: 400, bad_price: 400, bad_days: 400,
+  pickup_must_be_free: 400, bad_countries: 400, countries_required: 400, country_not_served: 409, bad_options: 400, bad_method: 400, bad_price: 400, bad_days: 400,
   not_allowed: 403,
   not_your_step: 403,
   carrier_owns_status: 403,

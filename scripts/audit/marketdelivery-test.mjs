@@ -66,4 +66,28 @@ t('продавец передал курьеру', so.status === 200 && so.data
 t('покупатель получил доставку', ['buyer_received','completed'].includes((await act(id1, B, 'received')).data.order.status));
 t('чужой продавец не двигает заказ', (await act(o2.data.order.id, SL2, 'accept')).status === 404);
 t('игровой/услуга: способ доставки не требуется', (() => { const g = `mp-${crypto.randomUUID()}`; q(`INSERT INTO market_products (id, seller_id, title, price_kop, category, active, moderation_status, market_type, stock, search_text) VALUES ('${g}','${SL.pid}','Лот',20000,'other',true,'published','game',5,'x')`); return g; })() !== null);
+/* зарубежная доставка */
+t('intl без стран — отказ', (await call('/api/market/my-delivery', J({ options: [{ method: 'intl', enabled: true }] }, 'PUT'), SL.tok)).data.error === 'countries_required');
+t('intl: Россия и мусорные коды — отказ', (await call('/api/market/my-delivery', J({ options: [{ method: 'intl', countries: ['RU'] }] }, 'PUT'), SL.tok)).data.error === 'bad_countries'
+  && (await call('/api/market/my-delivery', J({ options: [{ method: 'intl', countries: ['XYZ'] }] }, 'PUT'), SL.tok)).data.error === 'bad_countries');
+t('intl: цена для страны вне списка — отказ', (await call('/api/market/my-delivery', J({ options: [{ method: 'intl', countries: ['KZ'], countryPrices: { DE: 100 } }] }, 'PUT'), SL.tok)).data.error === 'bad_price');
+const si = await call('/api/market/my-delivery', J({ options: [
+  { method: 'courier', price: 350, freeFrom: 2000 },
+  { method: 'intl', price: 1500, freeFrom: 20000, minDays: 7, maxDays: 21, countries: ['KZ', 'DE', 'AM'], countryPrices: { KZ: 900 }, note: 'Только EMS' },
+] }, 'PUT'), SL.tok);
+t('intl сохранён', si.status === 200 && si.data.options.find((o) => o.method === 'intl').countries.length === 3);
+t('покупателю видны страны и цены', (await call(`/api/market/sellers/${SL.pid}/delivery`, {}, B.tok)).data.options.find((o) => o.method === 'intl').countryPrices.KZ === 900);
+t('intl без страны', (await order(B, { productId: P, quantity: 1, deliveryMethod: 'intl', address: 'Astana, Abay 1' })).data.error === 'country_not_served');
+t('intl: страна не из списка', (await order(B, { productId: P, quantity: 1, deliveryMethod: 'intl', deliveryCountry: 'US', address: 'NY 5th avenue 1' })).data.error === 'country_not_served');
+t('intl без адреса', (await order(B, { productId: P, quantity: 1, deliveryMethod: 'intl', deliveryCountry: 'KZ' })).data.error === 'address_required');
+const k = await order(B, { productId: P, quantity: 1, deliveryMethod: 'intl', deliveryCountry: 'kz', address: 'Astana, Abay 1' });
+t('intl: цена по стране KZ = 900 ₽, страна сохранена', k.status === 201 && k.data.order.deliveryFeeKop === 90000 && k.data.order.deliveryCountry === 'KZ' && k.data.order.totalKop === 190000, k.text.slice(0, 250));
+const g = await order(B2, { productId: P, quantity: 1, deliveryMethod: 'intl', deliveryCountry: 'DE', address: 'Berlin, Str 1' });
+t('intl: страна без своей цены — общая 1500 ₽', g.status === 201 && g.data.order.deliveryFeeKop === 150000, g.text.slice(0, 200));
+const gid = k.data.order.id;
+for (const [u, a] of [[SL, 'accept'], [B, 'declare_paid'], [SL, 'confirm_paid']]) await act(gid, u, a);
+const sh = await act(gid, SL, 'ship_own');
+t('intl: «отправил за рубеж»', sh.status === 200 && sh.data.order.status === 'seller_shipped');
+t('покупателю пришло уведомление об отправке за границу', Number(q(`SELECT count(*) FROM market_notifications WHERE user_id='${B.pid}' AND title='Заказ отправлен за границу'`)) === 1);
+t('каталог: фильтр «международная» находит товар продавца с intl', (await call('/api/market/catalog?shipping=intl&sellerId=' + SL.pid, {}, B.tok)).data.items.some((i) => i.id === P));
 console.log(`ok=${ok} bad=${bad}`); process.exit(bad ? 1 : 0);

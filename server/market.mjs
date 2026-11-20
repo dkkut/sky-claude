@@ -651,7 +651,7 @@ export const listCatalog = async (viewerId, {
      производства со склада в России — это «отправка из России». */
   if (shipping === 'ru') where.push("p.ship_from_country = 'RU'");
   else if (shipping === 'abroad') where.push("p.ship_from_country IS NOT NULL AND p.ship_from_country <> 'RU'");
-  else if (shipping === 'intl') where.push('p.intl_shipping');
+  else if (shipping === 'intl') where.push("(p.intl_shipping OR EXISTS (SELECT 1 FROM market_delivery_options d WHERE d.seller_id = p.seller_id AND d.method = 'intl' AND d.enabled))");
 
   const lo = int(minPrice, 0, MAX_PRICE_KOP);
   if (lo !== null) { args.push(lo); where.push(`p.price_kop >= $${args.length}`); }

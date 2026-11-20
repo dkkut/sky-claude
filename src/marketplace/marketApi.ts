@@ -245,6 +245,8 @@ export interface OrderInput {
   pickupPointId?: string;
   /** Способ получения физического товара; плату за него считает сервер. */
   deliveryMethod?: DeliveryMethod;
+  /** Страна получателя при зарубежной доставке (двухбуквенный код). */
+  deliveryCountry?: string;
   /** Услуга заказывается пакетом: уходит уровень, цену берёт сервер. */
   packageLevel?: ServiceLevel;
   requirements?: string;

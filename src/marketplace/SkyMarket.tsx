@@ -33,6 +33,7 @@ import type {
   Product, Review, ProductCategory, PickupPoint, MarketType, DeliveryOption, DeliveryMethod,
 } from './types';
 import { CATEGORY_LABEL, DELIVERY_LABEL } from './types';
+import { countryName } from './countries';
 import { OrdersList, OrderPage } from './OrderScreens';
 import { ParcelLookup } from './ParcelTracking';
 import { BecomeSeller, SellerCabinet } from './SellerCabinet';
@@ -67,12 +68,14 @@ const Checkout = ({ product, onDone, onBack }:
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState<DeliveryOption[]>([]);
   const [method, setMethod] = useState<DeliveryMethod | ''>('');
+  const [country, setCountry] = useState('');
 
   const game = product.marketType === 'game';
   const std = product.marketType === 'standard';
   const opt = options.find((o) => o.method === method) ?? null;
   const itemsKop = Math.round(product.price * 100) * quantity;
-  const feeKop = opt ? (opt.freeFromKop != null && itemsKop >= opt.freeFromKop ? 0 : opt.priceKop) : 0;
+  const priceFor = (o: DeliveryOption) => (o.method === 'intl' && country && o.countryPrices[country] != null ? Math.round(o.countryPrices[country] * 100) : o.priceKop);
+  const feeKop = opt ? (opt.freeFromKop != null && itemsKop >= opt.freeFromKop ? 0 : priceFor(opt)) : 0;
 
   useEffect(() => {
     if (!std) return;
@@ -96,7 +99,8 @@ const Checkout = ({ product, onDone, onBack }:
       productId: product.id,
       quantity,
       deliveryMethod: method || undefined,
-      address: !game && (method ? (method === 'courier' || method === 'post') : mode === 'address') ? address.trim() : undefined,
+      deliveryCountry: method === 'intl' ? country : undefined,
+      address: !game && (method ? (method === 'courier' || method === 'post' || method === 'intl') : mode === 'address') ? address.trim() : undefined,
       contact: contact.trim() || undefined,
       pickupPointId: !game && (method ? method === 'pvz' : mode === 'pickup') ? pointId : undefined,
     });
@@ -105,9 +109,10 @@ const Checkout = ({ product, onDone, onBack }:
     onDone(r.data.order.id);
   };
 
-  const wantAddr = method ? (method === 'courier' || method === 'post') : mode === 'address';
+  const wantAddr = method ? (method === 'courier' || method === 'post' || method === 'intl') : mode === 'address';
   const wantPoint = method ? method === 'pvz' : mode === 'pickup';
-  const ready = game || (method === 'store_pickup') || (wantAddr ? address.trim().length > 4 : wantPoint ? Boolean(pointId) : false);
+  const ready = game || (method === 'store_pickup') ||
+    (method === 'intl' && Boolean(country) && address.trim().length > 4) || (wantAddr ? address.trim().length > 4 : wantPoint ? Boolean(pointId) : false);
 
   return (
     <div className="flex h-full flex-col">
@@ -147,7 +152,7 @@ const Checkout = ({ product, onDone, onBack }:
         {!game && options.length > 0 && (
           <div className="space-y-2">
             {options.map((o) => {
-              const fee = o.freeFromKop != null && itemsKop >= o.freeFromKop ? 0 : o.priceKop;
+              const fee = o.freeFromKop != null && itemsKop >= o.freeFromKop ? 0 : priceFor(o);
               return (
                 <button key={o.method} type="button" onClick={() => setMethod(o.method)} className="w-full rounded-xl p-3 text-left"
                   style={{ background: method === o.method ? C.accBg : C.l2, border: `1px solid ${method === o.method ? 'rgba(79,110,247,0.3)' : C.brd}` }}>
@@ -165,7 +170,20 @@ const Checkout = ({ product, onDone, onBack }:
           </div>
         )}
 
-        {!game && options.length > 0 && (method === 'courier' || method === 'post') && (
+        {!game && method === 'intl' && opt && (
+          <>
+            <Field label="Страна получателя">
+              <select value={country} onChange={(e) => setCountry(e.target.value)} className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle}>
+                <option value="">Выберите страну</option>
+                {opt.countries.map((c) => <option key={c} value={c}>{countryName(c)}</option>)}
+              </select>
+            </Field>
+            <div className="rounded-2xl px-3 py-2 text-[11px]" style={{ background: C.l2, color: C.t2, border: `1px solid ${C.brd}` }}>
+              Таможенное оформление, пошлины, налоги и ограничения на ввоз товара в вашу страну Sky не оформляет и не проверяет — уточните их у продавца в чате заказа до оплаты.
+            </div>
+          </>
+        )}
+        {!game && options.length > 0 && (method === 'courier' || method === 'post' || method === 'intl') && (
           <Field label="Адрес доставки" hint="Адрес хранится зашифрованным и открывается продавцу только после оплаты.">
             <input value={address} onChange={(e) => setAddress(e.target.value)} maxLength={400} placeholder="Город, улица, дом, квартира"
               className="w-full rounded-xl px-3 py-2 text-[12px]" style={inputStyle} />
@@ -458,6 +476,46 @@ export const Catalog = ({ marketType = 'standard', onOpen }:
           </button>
         </div>
 
+          {marketType === 'standard' && (
+            <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+              <button type="button" onClick={() => setCategory('')}
+                className="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
+                style={{ background: category === '' ? C.accBg : C.l2, color: category === '' ? C.acc : C.t3 }}>
+                Все
+              </button>
+              {(Object.keys(CAT_CFG) as ProductCategory[]).map((k) => (
+                <button key={k} type="button" onClick={() => setCategory(k)}
+                  className="flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
+                  style={{ background: category === k ? C.accBg : C.l2, color: category === k ? C.acc : C.t3 }}>
+                  <CatIcon cat={k} size={11} color={category === k ? C.acc : C.t3} />
+                  {CATEGORY_LABEL[k]}
+                </button>
+              ))}
+            </div>
+          )}
+          {marketType === 'standard' && category === 'flowers' && (
+            <div className="space-y-1">
+              <div className="text-[10px] font-semibold" style={{ color: C.t3 }}>Цветочные магазины</div>
+              {shops.length === 0 ? (
+                <div className="text-[10px]" style={{ color: C.t3 }}>Магазинов с цветами пока нет.</div>
+              ) : (
+                <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                  <button type="button" onClick={() => setShopId('')}
+                    className="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
+                    style={{ background: shopId === '' ? C.accBg : C.l2, color: shopId === '' ? C.acc : C.t3 }}>Все магазины</button>
+                  {shops.map((s) => (
+                    <button key={s.id} type="button" onClick={() => setShopId(s.id)}
+                      className="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
+                      style={{ background: shopId === s.id ? C.accBg : C.l2, color: shopId === s.id ? C.acc : C.t3 }}>
+                      <span translate="no">{s.shopName}</span>{s.rating != null ? ` · ★${s.rating}` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="text-[10px]" style={{ color: C.t3 }}>Свежесть и условия доставки указывает продавец — Sky их не проверяет.</div>
+            </div>
+          )}
+
         {filters && (
           <div className="space-y-2">
             <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
@@ -481,45 +539,6 @@ export const Catalog = ({ marketType = 'standard', onOpen }:
                     {l}
                   </button>
                 ))}
-              </div>
-            )}
-            {marketType === 'standard' && (
-              <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                <button type="button" onClick={() => setCategory('')}
-                  className="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
-                  style={{ background: category === '' ? C.accBg : C.l2, color: category === '' ? C.acc : C.t3 }}>
-                  Все
-                </button>
-                {(Object.keys(CAT_CFG) as ProductCategory[]).map((k) => (
-                  <button key={k} type="button" onClick={() => setCategory(k)}
-                    className="flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
-                    style={{ background: category === k ? C.accBg : C.l2, color: category === k ? C.acc : C.t3 }}>
-                    <CatIcon cat={k} size={11} color={category === k ? C.acc : C.t3} />
-                    {CATEGORY_LABEL[k]}
-                  </button>
-                ))}
-              </div>
-            )}
-            {marketType === 'standard' && category === 'flowers' && (
-              <div className="space-y-1">
-                <div className="text-[10px] font-semibold" style={{ color: C.t3 }}>Цветочные магазины</div>
-                {shops.length === 0 ? (
-                  <div className="text-[10px]" style={{ color: C.t3 }}>Магазинов с цветами пока нет.</div>
-                ) : (
-                  <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                    <button type="button" onClick={() => setShopId('')}
-                      className="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
-                      style={{ background: shopId === '' ? C.accBg : C.l2, color: shopId === '' ? C.acc : C.t3 }}>Все магазины</button>
-                    {shops.map((s) => (
-                      <button key={s.id} type="button" onClick={() => setShopId(s.id)}
-                        className="shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold"
-                        style={{ background: shopId === s.id ? C.accBg : C.l2, color: shopId === s.id ? C.acc : C.t3 }}>
-                        <span translate="no">{s.shopName}</span>{s.rating != null ? ` · ★${s.rating}` : ''}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div className="text-[10px]" style={{ color: C.t3 }}>Свежесть и условия доставки указывает продавец — Sky их не проверяет.</div>
               </div>
             )}
           </div>

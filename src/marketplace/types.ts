@@ -73,13 +73,13 @@ export type OrderStatus =
 export type OrderAction = 'accept' | 'declare_paid' | 'confirm_paid' | 'fulfill' | 'received' | 'ready_pickup' | 'ship_own';
 
 /** Способы получения заказа (физические товары). */
-export type DeliveryMethod = 'store_pickup' | 'courier' | 'pvz' | 'post';
+export type DeliveryMethod = 'store_pickup' | 'courier' | 'pvz' | 'post' | 'intl';
 export const DELIVERY_LABEL: Record<DeliveryMethod, string> = {
-  store_pickup: 'Самовывоз из магазина', courier: 'Доставка курьером продавца', pvz: 'В пункт выдачи', post: 'Отправка по адресу',
+  store_pickup: 'Самовывоз из магазина', courier: 'Доставка курьером продавца', pvz: 'В пункт выдачи', post: 'Отправка по адресу', intl: 'Доставка за рубеж',
 };
 export interface DeliveryOption {
   method: DeliveryMethod; enabled: boolean; price: number; priceKop: number; freeFrom: number | null; freeFromKop: number | null;
-  minDays: number | null; maxDays: number | null; city: string; address: string; hours: string; note: string;
+  minDays: number | null; maxDays: number | null; countries: string[]; countryPrices: Record<string, number>; city: string; address: string; hours: string; note: string;
 }
 
 export type OrderRole = 'buyer' | 'seller' | 'support';
@@ -262,9 +262,10 @@ export interface Order {
   contact: string;
   pickupPointId: string | null;
   deliveryMethod: DeliveryMethod | null;
+  deliveryCountry: string | null;
   deliveryFeeKop: number;
   deliveryFee: number;
-  delivery: { method: DeliveryMethod; address?: string; hours?: string; city?: string; note?: string; minDays?: number | null; maxDays?: number | null } | null;
+  delivery: { method: DeliveryMethod; country?: string; address?: string; hours?: string; city?: string; note?: string; minDays?: number | null; maxDays?: number | null } | null;
   packingStartedAt: string | null;
   packedAt: string | null;
   paidDeclaredAt: string | null;

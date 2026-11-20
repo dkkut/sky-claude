@@ -20,6 +20,7 @@ import {
   Wallet, Copy, Boxes, Video, KeyRound,
 } from 'lucide-react';
 import { DELIVERY_LABEL } from './types';
+import { countryName } from './countries';
 import { apiPvzPublicVideo, videoUrl } from './logistics/sharedApi';
 import {
   C, fmt, fmtTime, Empty, Field, inputStyle, Alert,
@@ -774,6 +775,7 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
               {order.deliveryMethod === 'store_pickup' && order.delivery?.address && (
                 <p className="mt-0.5">Забрать: <span translate="no">{order.delivery.address}</span>{order.delivery.hours ? <> · <span translate="no">{order.delivery.hours}</span></> : null}</p>
               )}
+              {order.deliveryMethod === 'intl' && order.deliveryCountry && <p className="mt-0.5">Страна: <span translate="no">{countryName(order.deliveryCountry)}</span>. Таможню и пошлины Sky не оформляет.</p>}
               {order.delivery?.note && <p className="mt-0.5" translate="no">{order.delivery.note}</p>}
             </div>
           )}
@@ -811,10 +813,10 @@ export const OrderPage = ({ orderId, meId, onBack, onChanged }:
         ))}
 
         {iam === 'seller' && order.marketType === 'standard' && ['seller_payment_confirmed', 'fulfillment'].includes(order.status)
-          && (order.deliveryMethod === 'store_pickup' || order.deliveryMethod === 'courier') && (
+          && (order.deliveryMethod === 'store_pickup' || order.deliveryMethod === 'courier' || order.deliveryMethod === 'intl') && (
           <button type="button" disabled={busy} onClick={() => void act(order.deliveryMethod === 'store_pickup' ? 'ready_pickup' : 'ship_own')}
             className="w-full rounded-xl py-2.5 text-[12px] font-bold disabled:opacity-40" style={{ background: C.acc, color: '#fff' }}>
-            {order.deliveryMethod === 'store_pickup' ? 'Заказ готов к выдаче' : 'Передал курьеру'}
+            {order.deliveryMethod === 'store_pickup' ? 'Заказ готов к выдаче' : order.deliveryMethod === 'intl' ? 'Отправил за рубеж' : 'Передал курьеру'}
           </button>
         )}
 
